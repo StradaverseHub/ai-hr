@@ -919,6 +919,7 @@ jobs:
 
           sampled_advisory_families = (lock_families - {'transaction', 'tuple', 'relation', 'advisory-unclassified'}) | {'unclassified'}
           sampled_advisory_modes = {'ShareLock', 'ExclusiveLock'}
+          sampled_audit_query_categories = {'auth-audit-append', 'rewards-access-observe', 'audit-append'}
 
           def project_lock_workload_stage(value, phase):
               if phase != 'browser-workflows':
@@ -931,12 +932,17 @@ jobs:
           def project_sampled_waiter(value):
               row = record(value)
               waiter = {'family': choice(row.get('family'), sampled_advisory_families), 'mode': choice(row.get('mode'), sampled_advisory_modes)}
+              category = choice(row.get('category'), sampled_audit_query_categories)
+              if waiter['family'] == 'audit-chain' and category is not None:
+                  waiter['category'] = category
               return waiter if None not in waiter.values() else None
 
           def project_sampled_blocker(value):
               row = record(value)
               categories = {'advisory-exclusive', 'advisory-shared', 'rewards-authority', 'rewards-library',
                             'rewards-company', 'audit-append', 'ai-action-pause', 'unknown'}
+              if row.get('family') == 'audit-chain' and row.get('source') == 'original-sample':
+                  categories |= sampled_audit_query_categories
               edge = {'source': choice(row.get('source'), {'original-sample', 'recheck'}), 'family': choice(row.get('family'), sampled_advisory_families),
                       'waiterMode': choice(row.get('waiterMode'), sampled_advisory_modes), 'blockerMode': choice(row.get('blockerMode'), sampled_advisory_modes),
                       'blockerState': choice(row.get('blockerState'), {'granted', 'queued'}),
@@ -1325,6 +1331,9 @@ jobs:
                           if waiting is None or advisory is None or not max(waiting, advisory):
                               continue
                           signal = {'waitingAppBackends': waiting, 'sampledAdvisoryAppBackends': advisory}
+                          sequence = number(row.get('observerSequence'), 4097, 1)
+                          if sequence is not None:
+                              signal['sampleSequence'] = sequence
                           categories = project_first_app_lock_wait_categories(row.get('firstAppLockWaitCategories'), waiting)
                           if categories is not None:
                               signal['firstProbeAppWaitCategories'] = categories

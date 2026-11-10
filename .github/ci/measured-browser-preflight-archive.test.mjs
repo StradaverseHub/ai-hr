@@ -178,10 +178,14 @@ workflow = Path(sys.argv[1]).read_text()
 script = next(block for block in re.findall(r"<<'PYTHON'\n(.*?)^          PYTHON$", workflow, re.S | re.M)
               if 'def project_first_app_lock_wait_categories' in block)
 definitions = ast.parse(textwrap.dedent(script))
-names = {'closed', 'choice', 'number', 'project_first_app_lock_wait_categories', 'project_private_preflight_timing',
-         'project_lock_workload_stage'}
-body = [node for node in definitions.body if isinstance(node, ast.FunctionDef) and node.name in names]
-assert {node.name for node in body} == names
+names = {'record', 'closed', 'choice', 'number', 'project_first_app_lock_wait_categories', 'project_private_preflight_timing',
+         'project_lock_workload_stage', 'project_sampled_waiter', 'project_sampled_blocker'}
+constants = {'lock_families', 'sampled_advisory_families', 'sampled_advisory_modes', 'sampled_audit_query_categories'}
+body = [node for node in definitions.body
+        if isinstance(node, ast.FunctionDef) and node.name in names
+        or isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id in constants]
+assert {node.name for node in body if isinstance(node, ast.FunctionDef)} == names
+assert {node.targets[0].id for node in body if isinstance(node, ast.Assign)} == constants
 exec(compile(ast.Module(body=body, type_ignores=[]), 'workflow-projections', 'exec'))
 kinds = dict(advisory=1, transactionid=2, tuple=0, relation=1, other=1)
 assert project_first_app_lock_wait_categories(kinds, 5) == kinds
@@ -197,6 +201,18 @@ for valid in ('payroll-close-pair', 'ai-baseline', 'transition'):
     assert project_lock_workload_stage(valid, 'transition') is None
 for unsafe in (None, 'payroll-close-pair/tenant123', '/admin/personnel', 'select * from hr', {'actor': 1}):
     assert project_lock_workload_stage(unsafe, 'browser-workflows') is None
+
+waiter = dict(family='audit-chain', mode='ExclusiveLock')
+edge = dict(source='original-sample', family='audit-chain', waiterMode='ExclusiveLock', blockerMode='ExclusiveLock',
+            blockerState='granted', waiterCategory='auth-audit-append', blockerCategory='rewards-access-observe')
+for category in ('auth-audit-append', 'rewards-access-observe', 'audit-append'):
+    assert project_sampled_waiter(dict(waiter, category=category, pid=123)) == dict(waiter, category=category)
+assert project_sampled_waiter(dict(waiter, category='private SQL')) == waiter
+assert project_sampled_waiter(dict(waiter, family='access-configuration', category='auth-audit-append')) == dict(waiter, family='access-configuration')
+assert project_sampled_blocker(dict(edge, query='private SQL', pid=123)) == edge
+assert project_sampled_blocker(dict(edge, source='recheck')) is None
+assert project_sampled_blocker(dict(edge, family='access-configuration')) is None
+assert project_sampled_blocker(dict(edge, blockerCategory='private SQL')) is None
 
 timing = dict(attemptIntervalMs=200, gapUs=508264, openingGapUs=209731, tailGapUs=130623,
               launchSpacingUs=496000, serialWaitPastDueUs=0, timerAfterReadyUs=296000,

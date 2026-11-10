@@ -20,7 +20,8 @@ async function bounded<T>(work:Promise<T>):Promise<T>{
  })]);}finally{deadline.abort();}
 }
 
-it.skipIf(!hosted)('observes and drains a genuine PostgreSQL app wait through the dedicated preflight worker',async()=>{
+it.skipIf(!hosted).each(['access-configuration','audit-chain'] as const)(
+ 'observes and drains a genuine PostgreSQL %s app wait through the dedicated preflight worker',async family=>{
  expect(process.env.CI).toBe('true');
  expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
  expect(process.env.RUNNER_OS).toBe('Linux');
@@ -47,8 +48,8 @@ it.skipIf(!hosted)('observes and drains a genuine PostgreSQL app wait through th
  expect(process.env.TEST_DATABASE_URL).toBe('postgres://ai_hr_app@127.0.0.1:5433/'+focusedDb);
  expect(process.env.TEST_MIGRATION_DATABASE_URL).toBe('postgres://postgres@127.0.0.1:5433/'+focusedDb);
 
- // The job provisions ai_hr_dev separately from its test workers. Use
- // only a unique advisory lock, outside the full browser and its native log window.
+ // The job provisions ai_hr_dev separately from its test workers and full browser.
+ // The system-tenant auth event is deliberately rolled back after the native witness.
  const options={max:1,connect_timeout:2,onnotice:()=>{},connection:{statement_timeout:5000}};
  const owner=postgres(measuredDevelopmentLockUrl,options),app=postgres(appUrl,options);
  const proof=Promise.withResolvers<Probe>(),clean=Promise.withResolvers<Probe>(),failed=Promise.withResolvers<never>();
@@ -56,9 +57,11 @@ it.skipIf(!hosted)('observes and drains a genuine PostgreSQL app wait through th
  const attribution=createMeasuredPreflightAttribution();
  attribution.setPhase('browser-workflows');
  attribution.setWorkload('personnel-profile');
- const key='measured-observer-test:'+randomUUID();
+ const audit=family==='audit-chain';
+ const key=audit?'audit-chain:00000000-0000-0000-0000-000000000000':'measured-observer-test:'+randomUUID();
+ const auditAggregateId=randomUUID();
  let holder:Awaited<ReturnType<typeof owner.reserve>>|undefined,actor:Awaited<ReturnType<typeof app.reserve>>|undefined;
- let observer:ReturnType<typeof createMeasuredPreflightObserver>|undefined,waiting:Promise<boolean>|undefined,holding=false,releasedAt=Infinity;
+ let observer:ReturnType<typeof createMeasuredPreflightObserver>|undefined,waiting:Promise<boolean>|undefined,holding=false,actorTransaction=false,releasedAt=Infinity;
  try{
   holder=await owner.reserve();actor=await app.reserve();
   const identity=(sql:typeof holder)=>sql!`select pg_backend_pid() as pid,current_database() as db,
@@ -67,10 +70,12 @@ it.skipIf(!hosted)('observes and drains a genuine PostgreSQL app wait through th
   expect(holderIdentity).toMatchObject({db:'ai_hr_dev',login:'postgres',role:'postgres',address:'127.0.0.1',port:5433});
   expect(actorIdentity).toMatchObject({db:'ai_hr_dev',login:'ai_hr_app',role:'ai_hr_app',address:'127.0.0.1',port:5433});
   expect(holderIdentity.pid).not.toBe(actorIdentity.pid);
-  const [ids]=await holder<{lockKey:string}[]>`select concat(((hashtextextended(${key},0)>>32)&4294967295),':',
-   (hashtextextended(${key},0)&4294967295),':1') as "lockKey"`;
+  const [ids]=await holder<{hash:string;lockKey:string}[]>`select key::text as hash,
+   concat(((key>>32)&4294967295),':',(key&4294967295),':1') as "lockKey"
+   from (select case when ${audit}::boolean then hashtext(${key})::bigint else hashtextextended(${key},0) end as key) k`;
   const lockKey=(row:Lock)=>row.classid+':'+row.objid+':'+row.objsubid;
-  observer=createMeasuredPreflightObserver({url:measuredDevelopmentLockUrl,accessLocks:[ids.lockKey],categorized:true,token:attribution.token,
+  observer=createMeasuredPreflightObserver({url:measuredDevelopmentLockUrl,accessLocks:audit?[]:[ids.lockKey],auditLocks:audit?[ids.lockKey]:[],
+   categorized:true,token:attribution.token,
    onFailure:failed.reject,onProbe(probe:Probe){
     if(probe.failure){failed.reject(Error('Native measured probe failed'));return;}
     const actorQueued=probe.locks.some(row=>!row.granted&&row.pid===actorIdentity.pid&&lockKey(row)===ids.lockKey);
@@ -84,9 +89,13 @@ it.skipIf(!hosted)('observes and drains a genuine PostgreSQL app wait through th
   expect(workerSession.pids).toHaveLength(1);
 
   expect((await holder`begin`).command).toBe('BEGIN');holding=true;
-  const [owned]=await holder<{held:boolean}[]>`select pg_try_advisory_xact_lock(hashtextextended(${key},0)) as held`;
+  const [owned]=await holder<{held:boolean}[]>`select pg_try_advisory_xact_lock(${ids.hash}::bigint) as held`;
   expect(owned.held).toBe(true);
-  waiting=actor`select pg_advisory_xact_lock(hashtextextended(${key},0))`.then(result=>result.command==='SELECT',()=>false);
+  if(audit){expect((await actor`begin`).command).toBe('BEGIN');actorTransaction=true;}
+  const command=audit
+   ?actor`select app.append_auth_event(NULL,'internal-login',${auditAggregateId}::uuid,'app-user.login-refused','external',NULL,NULL)`
+   :actor`select pg_advisory_xact_lock(${ids.hash}::bigint)`;
+  waiting=command.then(result=>result.command==='SELECT',()=>false);
   await observer.start();
   const blocked=await bounded(Promise.race([proof.promise,failed.promise]));
   const [edge]=await holder<{blocked:boolean}[]>`select pg_blocking_pids(${actorIdentity.pid}::int)=array[pg_backend_pid()] as blocked`;
@@ -98,12 +107,20 @@ it.skipIf(!hosted)('observes and drains a genuine PostgreSQL app wait through th
   expect(waitingOnLock).toBeGreaterThan(0);
   expect(firstAppLockWaitCategories(blocked.activity,waitingOnLock)?.advisory).toBeGreaterThan(0);
   expect(measuredPreflightAttribution(blocked.attributionStart,blocked.attributionEnd)).toEqual({phase:'browser-workflows',workloadStage:'personnel-profile'});
-  expect(originalAdvisoryAttribution(blocked.locks,new Map([[ids.lockKey,'access-configuration:fixture-test']]))).toMatchObject({
-   waiters:[{family:'access-configuration',mode:'ExclusiveLock'}],
-   edges:[{source:'original-sample',family:'access-configuration',waiterMode:'ExclusiveLock',blockerMode:'ExclusiveLock',blockerState:'granted'}],
+  expect(originalAdvisoryAttribution(blocked.locks,new Map([[ids.lockKey,family+':fixture-test']]))).toMatchObject({
+   waiters:[{family,mode:'ExclusiveLock',...(audit?{category:'auth-audit-append'}:{})}],
+   edges:[{source:'original-sample',family,waiterMode:'ExclusiveLock',blockerMode:'ExclusiveLock',blockerState:'granted',
+    waiterCategory:audit?'auth-audit-append':'unknown',blockerCategory:'unknown'}],
   });
   expect((await holder`rollback`).command).toBe('ROLLBACK');holding=false;
-  expect(await waiting).toBe(true);releasedAt=performance.now();
+  expect(await waiting).toBe(true);
+  if(actorTransaction){
+   expect((await actor`rollback`).command).toBe('ROLLBACK');actorTransaction=false;
+   const [settled]=await holder<{absent:boolean}[]>`select not exists(select 1 from domain_event
+    where aggregate_id=${auditAggregateId}::uuid) as absent`;
+   expect(settled.absent).toBe(true);
+  }
+  releasedAt=performance.now();
   await bounded(Promise.race([clean.promise,failed.promise]));
   const stopped=observer.stop();
   expect(observer.stop()).toBe(stopped);
@@ -120,8 +137,9 @@ it.skipIf(!hosted)('observes and drains a genuine PostgreSQL app wait through th
  }finally{
   const rollback=holding&&holder?await Promise.allSettled([holder`rollback`]):[];
   await waiting;
+  const actorRollback=actorTransaction&&actor?await Promise.allSettled([actor`rollback`]):[];
   actor?.release();holder?.release();
-  const outcomes=[...rollback,...await Promise.allSettled([observer?.stop(),owner.end({timeout:2}),app.end({timeout:2})])];
+  const outcomes=[...rollback,...actorRollback,...await Promise.allSettled([observer?.stop(),owner.end({timeout:2}),app.end({timeout:2})])];
   if(outcomes.some(outcome=>outcome.status==='rejected'))throw Error('Native measured lock proof did not settle');
  }
 });

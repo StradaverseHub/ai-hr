@@ -71,6 +71,7 @@ it.each([false,true])('uses one actual worker round trip per sample when the pro
   const sql=(parts)=>{
    const query=parts.join(' ');
    if(query.includes('jsonb_build_object'))return 'categories';
+   if(query.startsWith('concat(l.classid'))return 'audit-keys';
    if(query.includes('with backends as materialized')&&query.includes('from pg_stat_activity where')
     &&query.includes('advisory as materialized')&&query.includes('from pg_locks')&&query.includes('limit 40')){
     if(probeOpen)throw Error('Concurrent native probe');
@@ -132,12 +133,14 @@ it.each([false,true])('uses one actual worker round trip per sample when the pro
 it('fails closed on malformed native activity partitions or advisory rows',async()=>{
  const activity={state:'active',kind:'Lock',connections:1,app_connections:1,
   app_lock_wait_kinds:{advisory:1,transactionid:0,tuple:0,relation:0,other:0}};
- const waiter={...fictionalWaiter,granted:false};
+ const waiter={...fictionalWaiter,granted:false,category:'unknown'};
  const inputs=[
   {activity:[{...activity,app_connections:0}],locks:[]},
   {activity:[activity],locks:[{...waiter,query:'never a projected field'}]},
   {activity:[],locks:[]},
   {activity:[activity],locks:[{...waiter,blockers:[-1]}]},
+  {activity:[activity],locks:[{...fictionalWaiter,granted:false}]},
+  {activity:[activity],locks:[{...waiter,category:'private query'}]},
   {activity:[activity],locks:[waiter]},
  ];
  const observed:Record<string,unknown>[]=[];
@@ -149,8 +152,10 @@ it('fails closed on malformed native activity partitions or advisory rows',async
   onProbe(probe:Record<string,unknown>){observed.push(probe);if(observed.length===inputs.length)done.resolve();},onFailure:done.reject});
  try{await done.promise;}finally{await sampler.stop();}
  expect(queries).toBe(inputs.length);
- expect(observed.slice(0,-1).every(row=>Object.hasOwn(row,'failure')&&!Object.hasOwn(row,'activity')&&!Object.hasOwn(row,'locks'))).toBe(true);
- expect(observed.at(-1)).toMatchObject({probeMode:'combined-statement',activity:[activity],locks:[waiter]});
+ expect(observed.slice(0,-3).every(row=>Object.hasOwn(row,'failure')&&!Object.hasOwn(row,'activity')&&!Object.hasOwn(row,'locks'))).toBe(true);
+ for(const probe of observed.slice(-3)){
+  expect(probe).toMatchObject({probeMode:'combined-statement',activity:[activity],locks:[waiter]});
+ }
 });
 
 it('partitions only the first probe and preserves an original positive on refused category evidence',()=>{
@@ -199,6 +204,25 @@ it('retains original app waiter and exclusive blocker facts after an expired rec
  const enriched=await observeSampledAdvisoryBlockers(async()=>[{...fictionalBlocker,waiterMode:'ShareLock',blockerMode:'ExclusiveLock'}],[waiter],labels);
  expect(mergeAdvisoryEdges(snapshot.edges,enriched)).toMatchObject([{source:'original-sample'},{source:'recheck'}]);
  expect(originalAdvisoryAttribution([waiter],labels)).toEqual({waiters:snapshot.waiters,edges:null});
+});
+
+it('attributes closed original audit statements only on the same observed advisory resource',()=>{
+ const waiter={...fictionalWaiter,granted:false,category:'auth-audit-append'};
+ const holder={...waiter,pid:84,granted:true,blockers:null,category:'rewards-access-observe',query:'private SQL'};
+ const labels=new Map([['11:12:1','audit-chain:fixture-tenant-0']]);
+ expect(originalAdvisoryAttribution([waiter,{...holder,objid:'wrong-key'},holder],labels)).toEqual({
+  waiters:[{family:'audit-chain',mode:'ExclusiveLock',category:'auth-audit-append'}],
+  edges:[{source:'original-sample',family:'audit-chain',waiterMode:'ExclusiveLock',blockerMode:'ExclusiveLock',blockerState:'granted',
+   waiterCategory:'auth-audit-append',blockerCategory:'rewards-access-observe'}],
+ });
+ expect(originalAdvisoryAttribution([{...waiter,category:'private SQL'},{...holder,category:'audit-append'}],labels)).toMatchObject({
+  waiters:[{family:'audit-chain',mode:'ExclusiveLock'}],
+  edges:[{waiterCategory:'unknown',blockerCategory:'audit-append'}],
+ });
+ expect(originalAdvisoryAttribution([waiter,holder],new Map([['11:12:1','access-configuration:fixture-tenant-0']]))).toMatchObject({
+  edges:[{waiterCategory:'unknown',blockerCategory:'unknown'}],
+ });
+ expect(originalAdvisoryAttribution([waiter,{...holder,objid:'wrong-key'}],labels).edges).toBeNull();
 });
 
 it('keeps the positive lock gate when attribution refuses, disappears or overruns its bound',async()=>{

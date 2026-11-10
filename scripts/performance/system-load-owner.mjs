@@ -452,6 +452,7 @@ async function prepareDatabaseLockScope(){
   lockLabels.set(row.ai_classid+':'+row.ai_objid+':2','ai-control:fixture-tenant-'+index);
  }
  const accessLocks=[...lockLabels].filter(([,label])=>label.startsWith('access-configuration:')).map(([key])=>key);
+ const auditLocks=[...lockLabels].filter(([,label])=>label.startsWith('audit-chain:')).map(([key])=>key);
  if(measureDevelopment){
   const databaseOid=hashedLocks[0]?.dbid;
   const familyKeys=[...lockLabels].map(([key,label])=>[databaseOid+':'+key,label.split(':',1)[0]]);
@@ -459,14 +460,14 @@ async function prepareDatabaseLockScope(){
    writeFileSync(join(process.env.PERF_PRIVATE_DIR,'diagnostic-lock-families.json'),JSON.stringify(familyKeys),{flag:'wx',mode:0o600});
   }catch{/* Optional topology labels never determine acceptance. */}
  }
- return {lockLabels,accessLocks};
+ return {lockLabels,accessLocks,auditLocks};
 }
 
 const waits=[];
 const preflightAttribution=createMeasuredPreflightAttribution();
 const preflightLockWorkload=createPreflightLockWorkload(preflightAttribution.setWorkload);
 const withLockWorkload=fullDevelopmentRoutes?preflightLockWorkload.within:(_stage,work)=>work();
-function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
+function sampleDatabaseLocks({lockLabels,accessLocks,auditLocks},phase,interval){
  const rootStatements=new Map(),samples=[];
  const measuredPreflight=measureDevelopment&&phase==='preflight';
  let attributedSamples=0,enrichmentPending=false;
@@ -523,6 +524,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
    let attribution;
    if(wait&&probe&&fullDevelopmentRoutes&&blockingAppSessions>0&&attributedSamples<6){
     attributedSamples++;
+    wait.observerSequence=probe.sequence;
     attribution={...measuredPreflightAttribution(probe.attributionStart,probe.attributionEnd),
      ...originalAdvisoryAttribution(locks,lockLabels)};
     wait.appAdvisoryAttribution=attribution;
@@ -549,7 +551,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
  }
  const onFailure=reason=>failures.record('lock-sample-diagnostic',reason);
  if(measuredPreflight){
-  const worker=createMeasuredPreflightObserver({url:process.env.MIGRATION_DATABASE_URL,accessLocks,
+  const worker=createMeasuredPreflightObserver({url:process.env.MIGRATION_DATABASE_URL,accessLocks,auditLocks,
    categorized:fullDevelopmentRoutes,token:preflightAttribution.token,
    onProbe:probe=>{void collect(probe).catch(onFailure);},onFailure});
   return {samples,...worker};

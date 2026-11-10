@@ -2,6 +2,7 @@
 const families=new Set(['access-configuration','ai-control','audit-chain','employment','payroll-history','pay-component-catalog','unclassified']);
 const modes=new Set(['ShareLock','ExclusiveLock']);
 const categories=new Set(['advisory-exclusive','advisory-shared','rewards-authority','rewards-library','rewards-company','audit-append','ai-action-pause','unknown']);
+const originalAuditCategories=new Set(['auth-audit-append','rewards-access-observe','audit-append']);
 const states=new Set(['granted','queued']);
 const maxEdges=8;
 const lockKey=row=>row.classid+':'+row.objid+':'+row.objsubid;
@@ -9,6 +10,7 @@ const lockFamily=(key,labels)=>{
  const family=labels.get(key)?.split(':',1)[0];
  return families.has(family)?family:'unclassified';
 };
+export const originalAuditQueryCategory=value=>originalAuditCategories.has(value)?value:'unknown';
 
 const preflightWorkloads=new Set(['ai-baseline','org-explorer','personnel-switcher','payroll-readiness',
  'movement','payroll-register','saved-reports','mixed-workflows','payroll-close-pair','attendance-rejection',
@@ -74,7 +76,8 @@ export function originalAdvisoryAttribution(locks,labels){
    if(waiters.length===maxEdges)break;
    if(waiter.granted!==false||waiter.app_session!==true||!modes.has(waiter.mode))continue;
    const key=lockKey(waiter),family=lockFamily(key,labels);
-   waiters.push({family,mode:waiter.mode});
+   const waiterCategory=family==='audit-chain'?originalAuditQueryCategory(waiter.category):'unknown';
+   waiters.push({family,mode:waiter.mode,...(waiterCategory==='unknown'?{}:{category:waiterCategory})});
    for(const pid of new Set((waiter.blockers??[]).slice(0,4))){
     if(edges.length===maxEdges)break;
     if(!Number.isSafeInteger(pid)||pid<=0||pid===waiter.pid)continue;
@@ -83,7 +86,8 @@ export function originalAdvisoryAttribution(locks,labels){
     const blocker=candidates.find(row=>row.granted)??candidates[0];
     if(!blocker)continue;
     edges.push({source:'original-sample',family,waiterMode:waiter.mode,blockerMode:blocker.mode,
-     blockerState:blocker.granted?'granted':'queued',waiterCategory:'unknown',blockerCategory:'unknown'});
+     blockerState:blocker.granted?'granted':'queued',waiterCategory,
+     blockerCategory:family==='audit-chain'?originalAuditQueryCategory(blocker.category):'unknown'});
    }
   }
   return {waiters:waiters.length?waiters:null,edges:edges.length?edges:null};

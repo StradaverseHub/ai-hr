@@ -29,6 +29,7 @@ import { sql } from 'drizzle-orm';
 import { hireEmployee } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { getMobileSession } from '../lib/session';
+import { verifyTenantChain } from '../core/audit-chain';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let base: Base;
 const temp = 'Temporary private passphrase 722!';
@@ -340,6 +341,169 @@ describe('first-party authentication with real private storage and existing HR b
     const other = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
     await expect(verifyMfa(challenge(other), code)).rejects.toMatchObject({ code: 'invalidCode' });
   });
+  it('releases both returning MFA transactions before effects when their tenant audit owner is held', async () => {
+    const externalHttp = vi.fn(async () => { throw Error('External HTTP is blocked in this on-prem fixture.'); });
+    vi.stubGlobal('fetch', externalHttp);
+    const ctx = adminCtx(base);
+    await owner.client`insert into tenant_setting(tenant_id,key,value)
+      values(${base.tenantId}::uuid,'audit.hash_chain_enabled','true'::jsonb)
+      on conflict(tenant_id,key) do update set value=excluded.value`;
+    await enroll();
+    const employeeId = await createManualAccount(ctx, { id: randomUUID(), personId: null, fullName: 'Fictional MFA audit user',
+      username: 'audit.user', email: 'audit.user@example.test', role: 'employee', companyId: null, password: temp, ownershipAttested: true });
+    const firstLogin = await startLogin({ organization: 'alpha', username: 'audit.user', password: temp, native: false });
+    const firstSetup = await changeInitialPassword(challenge(firstLogin), final);
+    if (firstSetup.step !== 'enroll' || !firstSetup.secret) throw Error('Expected employee authenticator enrollment');
+    completed(await verifyMfa(challenge(firstSetup), await generate({ secret: firstSetup.secret })));
+
+    const now = Date.now(), clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    const rateWindow = 15 * minute, rateStart = Math.floor(now / rateWindow) * rateWindow;
+    const actors = await Promise.all([['owner', base.adminUserId], ['audit.user', employeeId]].map(async ([username, userId]) => {
+      const credential = await credentialByLogin('alpha', username);
+      if (!credential?.totpSecret) throw Error('Expected current, enrolled credential');
+      const login = await startLogin({ organization: 'alpha', username, password: final, native: false });
+      expect(login.step).toBe('mfa');
+      const raw = challenge(login);
+      return { username, userId, credential, raw, code: await nextCode(credential), challengeKey: `challenge:${digest(raw)}`,
+        rateKey: `rate:${digest(`mfa:${credential.subject}:${rateStart}`)}` };
+    }));
+    const subjects = actors.map(actor => actor.credential.subject);
+    expect(new Set(subjects).size).toBe(2);
+    expect(actors.every(actor => actor.credential.tenantId === base.tenantId)).toBe(true);
+
+    const storedCounts = () => owner.client<{ owner_id: string; families: number; sessions: number; challenges: number }[]>`select owner_id,
+      count(*) filter(where record_key like 'family:%')::int as families,
+      count(*) filter(where record_key like 'session:%')::int as sessions,
+      count(*) filter(where record_key like 'challenge:%')::int as challenges
+      from app_internal_auth_record where owner_id=any(${subjects}::uuid[]) group by owner_id order by owner_id`;
+    const before = await storedCounts();
+    expect(before).toHaveLength(2);
+    expect(before.every(actor => actor.families === 1 && actor.sessions === 1 && actor.challenges === 1)).toBe(true);
+    const ratesBefore = await Promise.all(actors.map(actor => readRecord<{ count: number }>(client, actor.rateKey)));
+    const [head] = await owner.client<{ seq: number; hash: string }[]>`select chain_seq::int as seq,hash from domain_event
+      where tenant_id=${base.tenantId}::uuid and chain_seq is not null order by chain_seq desc limit 1`;
+    expect(head?.seq).toBeGreaterThan(0);
+    const newEvents = () => owner.client<{ seq: number; prev_hash: string; hash: string; aggregate_type: string; aggregate_id: string;
+      event_type: string; actor_type: string; actor_id: string; subject_employment_id: string | null; payload: unknown }[]>`select
+      chain_seq::int as seq,prev_hash,hash,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload
+      from domain_event where tenant_id=${base.tenantId}::uuid and chain_seq>${head.seq} order by chain_seq`;
+
+    // Observe the actual driver's TRY return and transaction settlement. The underlying SQL and connection are unchanged.
+    const auditKey = `audit-chain:${base.tenantId}`, begin = client.begin.bind(client), misses = new Map<string, number>();
+    const observeBegin = vi.spyOn(client, 'begin').mockImplementation(((...args: unknown[]) => {
+      const callbackIndex = args.findIndex(arg => typeof arg === 'function');
+      const callback = args[callbackIndex] as (native: typeof client) => unknown;
+      let subject: string | undefined, missed = false, effects = 0;
+      args[callbackIndex] = (native: typeof client) => callback(new Proxy(native, { get(target, key, receiver) {
+        if (key !== 'unsafe') return Reflect.get(target, key, receiver);
+        return (...query: unknown[]) => {
+          const [text, params] = query;
+          const pending = Reflect.apply(target.unsafe, target, query);
+          if (typeof text !== 'string' || !Array.isArray(params)) return pending;
+          if (text.includes("pg_advisory_xact_lock(hashtextextended('internal-auth:'") && subjects.includes(params[0])) subject = params[0];
+          if (!subject) return pending;
+          if (/\bapp\.(?:internal_auth_(?:write|delete|revoke)|append_auth_event)\(/.test(text)) effects++;
+          if (/\bpg_try_advisory_xact_lock\(\s*(?:pg_catalog\.)?hashtext\(/.test(text)
+            && (params.includes(auditKey) || text.includes('audit-chain:') && params.includes(base.tenantId))) {
+            void (pending as PromiseLike<readonly { acquired: boolean }[]>).then(rows => { if (rows[0]?.acquired === false) missed = true; }, () => undefined);
+          }
+          return pending;
+        };
+      } }));
+      const transaction = Reflect.apply(begin, client, args) as PromiseLike<unknown>;
+      void transaction.then(() => { if (subject && missed) misses.set(subject, effects); }, () => undefined);
+      return transaction;
+    }) as typeof client.begin);
+    let attempts: Promise<PromiseSettledResult<AuthReply>[]> | undefined;
+    try {
+      await owner.client.begin(async holder => {
+        await holder`select pg_advisory_xact_lock(hashtext(${auditKey}))`;
+        const [identity] = await holder<{ pid: number }[]>`select pg_backend_pid() as pid`;
+        attempts = Promise.allSettled(actors.map(actor => verifyMfa(actor.raw, actor.code)));
+        const deadline = performance.now() + 2500;
+        for (;;) {
+          const state = await rateLockState(identity.pid);
+          expect(state).toEqual({ held: true, waiting: false });
+          if (misses.size === actors.length) break;
+          if (performance.now() >= deadline) throw Error('Returning MFA did not settle both native audit-key misses');
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        expect(misses).toEqual(new Map(subjects.map(subject => [subject, 0])));
+        expect(await storedCounts()).toEqual(before);
+        expect(await newEvents()).toEqual([]);
+        for (const actor of actors) {
+          expect(await readRecord(client, actor.challengeKey)).not.toBeNull();
+          expect((await credentialByLogin('alpha', actor.username))?.lastStep).toBe(actor.credential.lastStep);
+        }
+        // The code was already checked before the native misses. Crossing its
+        // tolerance while waiting must not change the decision for this request.
+        clock.mockReturnValue(now + 90_000);
+      });
+      const results = await attempts;
+      expect(results?.map(result => result.status)).toEqual(['fulfilled', 'fulfilled']);
+      const sessions = results!.map(result => {
+        if (result.status !== 'fulfilled') throw result.reason;
+        return completed(result.value);
+      });
+      const signedIn = await Promise.all(sessions.map(session => readSession(session.access_token)));
+      expect(signedIn.map(identity => identity?.subject)).toEqual(subjects);
+      expect(new Set(signedIn.map(identity => identity?.family)).size).toBe(2);
+      expect(await storedCounts()).toEqual(before.map(actor => ({ ...actor, families: actor.families + 1,
+        sessions: actor.sessions + 1, challenges: actor.challenges - 1 })));
+      for (const [index, actor] of actors.entries()) {
+        expect(await readRecord(client, actor.challengeKey)).toBeNull();
+        expect((await credentialByLogin('alpha', actor.username))?.lastStep).toBe(actor.credential.lastStep + 1);
+        await expect(verifyMfa(actor.raw, actor.code)).rejects.toMatchObject({ code: 'invalidChallenge' });
+        expect(await readRecord(client, actor.rateKey)).toEqual({ count: (ratesBefore[index]?.count ?? 0) + 1 });
+      }
+      const events = await newEvents();
+      expect(events.map(event => event.seq)).toEqual([head.seq + 1, head.seq + 2]);
+      expect(events.map(event => event.actor_id).sort()).toEqual(actors.map(actor => actor.userId).sort());
+      expect(events.map(event => event.prev_hash)).toEqual([head.hash, events[0].hash]);
+      for (const event of events) expect(event).toMatchObject({ aggregate_type: 'app-user', aggregate_id: event.actor_id,
+        event_type: 'app-user.logged-in', actor_type: 'user', subject_employment_id: null, payload: null, hash: expect.stringMatching(/^[0-9a-f]{64}$/) });
+      expect(await verifyTenantChain(ctx)).toMatchObject({ valid: true, checked: head.seq + 2, unchainedInsideChain: 0 });
+      expect(externalHttp).not.toHaveBeenCalled();
+    } finally { await attempts; observeBegin.mockRestore(); }
+  }, 20000);
+  it('advances returning MFA to required password change while the unused audit owner is held', async () => {
+    await enroll();
+    const ctx = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] };
+    const password = 'Single use fictional MFA password 448!';
+    await manageAccount(ctx, base.adminUserId, { type: 'temporary-password', reason: 'Verified account recovery', password, minutes: 30 });
+    const login = await startLogin({ organization: 'alpha', username: 'owner', password, native: false });
+    expect(login.step).toBe('mfa');
+    const raw = challenge(login), challengeKey = `challenge:${digest(raw)}`;
+    const credential = await credentialByLogin('alpha', 'owner');
+    if (!credential?.totpSecret) throw Error('Expected the existing authenticator');
+    expect(credential).toMatchObject({ mustChange: true, temporaryPasswordUsed: true });
+    const code = await nextCode(credential);
+    const initial = await readRecord<{ phase: string; attempts: number; version: string; mfaPassed?: boolean }>(client, challengeKey);
+    expect(initial).toMatchObject({ phase: 'mfa', attempts: 0, version: credential.version });
+    const auditEvents = () => owner.client`select id,event_type from domain_event where tenant_id=${base.tenantId}::uuid order by sequence`;
+    const sessionRecords = () => owner.client`select count(*)::int as n from app_internal_auth_record where owner_id=${credential.subject}::uuid
+      and (record_key like 'family:%' or record_key like 'session:%' or record_key like 'refresh:%')`;
+    const [beforeAudit, beforeSessions] = await Promise.all([auditEvents(), sessionRecords()]);
+    let attempt: Promise<AuthReply> | undefined, timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await owner.client.begin(async holder => {
+        await holder`select pg_advisory_xact_lock(hashtext(${'audit-chain:' + base.tenantId}))`;
+        const [identity] = await holder<{ pid: number }[]>`select pg_backend_pid() as pid`;
+        attempt = verifyMfa(raw, code);
+        const result = await Promise.race([attempt, new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(Error('A non-auditing MFA transition waited for the audit owner')), 1500);
+        })]);
+        clearTimeout(timeout);
+        expect(result.step).toBe('password');
+        expect(challenge(result)).toBe(raw);
+        expect(await rateLockState(identity.pid)).toEqual({ held: true, waiting: false });
+        expect(await readRecord(client, challengeKey)).toEqual({ ...initial, phase: 'password', mfaPassed: true });
+        expect(await credentialByLogin('alpha', 'owner')).toEqual({ ...credential, lastStep: credential.lastStep + 1 });
+        expect(await auditEvents()).toEqual(beforeAudit);
+        expect(await sessionRecords()).toEqual(beforeSessions);
+      });
+    } finally { clearTimeout(timeout); await attempt?.catch(() => undefined); }
+  }, 20000);
   it('looks up the MFA challenge once before charging the existing subject budget', async () => {
     const { signedIn } = await enroll();
     const account = (await credentialByLogin('alpha', 'owner'))!;

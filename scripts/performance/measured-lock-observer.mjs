@@ -2,6 +2,7 @@ import {performance} from 'node:perf_hooks';
 import {setTimeout as delay} from 'node:timers/promises';
 import {Worker} from 'node:worker_threads';
 import {driverErrorFact,measuredPreflightLockAttemptMs,startMeasuredLockInterval} from './driver-shutdown.mjs';
+import {originalAuditQueryCategory} from './lock-sample-attribution.mjs';
 
 export const measuredLockSampleLimit=4097; // 4096 accepted rows plus the existing overflow sentinel.
 export const measuredDevelopmentLockUrl='postgres://postgres@127.0.0.1:5433/ai_hr_dev';
@@ -46,6 +47,7 @@ export async function observeDatabaseLockCore(sql,phase,accessLocks,categorized)
 const activityFields=['state','kind','connections','app_connections'];
 const categoryFields=['advisory','transactionid','tuple','relation','other'];
 const lockFields=['pid','blockers','mode','granted','classid','objid','objsubid','app_session'];
+const classifiedLockFields=[...lockFields,'category'];
 const validCount=value=>Number.isSafeInteger(value)&&value>=0&&value<=1024;
 const validPid=value=>Number.isSafeInteger(value)&&value>=0&&value<=2147483647;
 const validOid=value=>typeof value==='string'&&/^(0|[1-9][0-9]{0,9})$/.test(value)&&Number(value)<=4294967295;
@@ -66,20 +68,25 @@ function decodeCombinedPreflightLocks(rows,categorized){
   return exactKeys(counts,categoryFields)&&categoryFields.every(key=>validCount(counts[key]))
    &&categoryFields.reduce((total,key)=>total+counts[key],0)===entry.app_connections;
  }))throw Error('Combined lock probe activity census refused');
- if(!Array.isArray(locks)||locks.length>40||!locks.every(entry=>exactKeys(entry,lockFields)&&validPid(entry.pid)&&entry.pid>0
+ if(!Array.isArray(locks)||locks.length>40||!locks.every(entry=>(exactKeys(entry,classifiedLockFields)||exactKeys(entry,lockFields))
+  &&validPid(entry.pid)&&entry.pid>0
   &&(entry.mode==='ExclusiveLock'||entry.mode==='ShareLock')&&typeof entry.granted==='boolean'
   &&validOid(entry.classid)&&validOid(entry.objid)&&(entry.objsubid===1||entry.objsubid===2)
   &&(entry.app_session===null||typeof entry.app_session==='boolean')
   &&(entry.granted?entry.blockers===null:Array.isArray(entry.blockers)&&entry.blockers.length<=1024&&entry.blockers.every(validPid)))){
   throw Error('Combined lock probe advisory census refused');
  }
- return {activity,locks};
+ return {activity,locks:locks.map(row=>({...row,category:originalAuditQueryCategory(row.category)}))};
 }
 
-async function observeCombinedPreflightLocks(sql,accessLocks,categorized){
+async function observeCombinedPreflightLocks(sql,accessLocks,auditLocks,categorized){
  const waitCategories=appWaitCategories(sql,categorized);
+ const knownAudit=sql`concat(l.classid,':',l.objid,':',l.objsubid)=any(${auditLocks}::text[])`;
+ // The bounded query prefix stays in PostgreSQL. A label describes the observed statement, not its lock acquisition site.
  const rows=await sql`with backends as materialized (
-   select pid,backend_type,state,wait_event_type,wait_event,usename from pg_stat_activity where datname=current_database()
+   select pid,backend_type,state,wait_event_type,wait_event,usename,
+    case when usename='ai_hr_app' then left(query,160) end as app_query
+   from pg_stat_activity where datname=current_database()
   ), activity as materialized (
    select state,coalesce(wait_event_type,'CPU-or-ready') as kind,count(*)::int as connections,
     (count(*) filter(where usename='ai_hr_app'))::int as app_connections${waitCategories}
@@ -87,11 +94,17 @@ async function observeCombinedPreflightLocks(sql,accessLocks,categorized){
   ), advisory as materialized (
    select a.pid,case when not l.granted then pg_blocking_pids(a.pid) end as blockers,l.mode,l.granted,
     l.classid::text as classid,l.objid::text as objid,l.objsubid,
-    a.usename='ai_hr_app' as app_session from pg_locks l join backends a on a.pid=l.pid
+    a.usename='ai_hr_app' as app_session,
+    case when ${knownAudit} then case
+     when a.app_query ~* '^[[:space:]]*select[[:space:]]+app[.]append_auth_event[[:space:]]*[(]' then 'auth-audit-append'
+     when a.app_query ~* '^[[:space:]]*select[[:space:]]+app[.]reward_access_observe[[:space:]]*[(]' then 'rewards-access-observe'
+     when a.app_query ~* '^[[:space:]]*insert[[:space:]]+into[[:space:]]+((public|"public")[.])?(domain_event|"domain_event")([[:space:]]|[(])' then 'audit-append'
+     else 'unknown' end else 'unknown' end as category
+   from pg_locks l join backends a on a.pid=l.pid
    where l.database=(select oid from pg_database where datname=current_database())
     and l.locktype='advisory' and (not l.granted or (
-     concat(l.classid,':',l.objid,':',l.objsubid)=any(${accessLocks}::text[]) and l.mode='ExclusiveLock'
-    )) order by l.granted,a.pid limit 40
+     (concat(l.classid,':',l.objid,':',l.objsubid)=any(${accessLocks}::text[]) or ${knownAudit}) and l.mode='ExclusiveLock'
+    )) order by l.granted,(l.granted and ${knownAudit}),a.pid limit 40
   ) select coalesce((select jsonb_agg(to_jsonb(a)) from activity a),'[]'::jsonb) as activity,
     coalesce((select jsonb_agg(to_jsonb(l) order by l.granted,l.pid) from advisory l),'[]'::jsonb) as locks`;
  const coreCompletedMs=performance.now();
@@ -99,13 +112,13 @@ async function observeCombinedPreflightLocks(sql,accessLocks,categorized){
 }
 
 /** Run real serial probes on the observer thread, with no dependency on message delivery. */
-export function startMeasuredPreflightProbes({sql,accessLocks,categorized,token,stopped,onProbe,onFailure}){
+export function startMeasuredPreflightProbes({sql,accessLocks,auditLocks=/** @type {string[]} */ ([]),categorized,token,stopped,onProbe,onFailure}){
  let sequence=0;
  const timer=startMeasuredLockInterval(measuredPreflightLockAttemptMs,async timing=>{
   if(Atomics.load(stopped,0)!==0)return;
   const attributionStart=Atomics.load(token,0),startedMs=performance.now();
   let observation;
-  try{observation=await observeCombinedPreflightLocks(sql,accessLocks,categorized);}
+  try{observation=await observeCombinedPreflightLocks(sql,accessLocks,auditLocks,categorized);}
   catch(reason){observation={failure:driverErrorFact(reason),coreCompletedMs:performance.now()};}
   const attributionEnd=Atomics.load(token,0);
   onProbe({sequence:++sequence,startedMs,timing,attributionStart,attributionEnd,...observation});
@@ -121,11 +134,11 @@ async function withinLifecycle(pending){
 }
 
 /** The browser thread consumes probes but never schedules or completes them. */
-export function createMeasuredPreflightObserver({url,accessLocks,categorized,token,onProbe,onFailure}){
+export function createMeasuredPreflightObserver({url,accessLocks,auditLocks=/** @type {string[]} */ ([]),categorized,token,onProbe,onFailure}){
  if(url!==measuredDevelopmentLockUrl)throw Error('Measured preflight lock observer database refused');
  const stopped=new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
  const worker=new Worker(new URL('./measured-lock-observer-worker.mjs',import.meta.url),{
-  workerData:{url,accessLocks,categorized,token,stopped},env:{},execArgv:[],
+  workerData:{url,accessLocks,auditLocks,categorized,token,stopped},env:{},execArgv:[],
  });
  const ready=Promise.withResolvers(),began=Promise.withResolvers(),exited=Promise.withResolvers();
  let state='starting',seen=0,stopRequested=false,closed=false,failure,stopping;
