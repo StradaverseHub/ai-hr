@@ -1,6 +1,7 @@
 /** Dedicated worker for staged employee imports (design B). Separate process and small pool so a long import never
  * competes with the web application's connection budget. MIGRATION_DATABASE_URL only discovers/coordinates the queue
  * and runs discard; DATABASE_URL owns all HR transactions under the initiating user's authority. */
+import './lib/stub-server-only';
 import postgres from 'postgres';
 if(!process.env.AIHR_DB_POOL_MAX)process.env.AIHR_DB_POOL_MAX='4';
 const url=process.env.MIGRATION_DATABASE_URL;

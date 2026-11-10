@@ -867,44 +867,6 @@ BEGIN
 END $function$;
 
 --> statement-breakpoint
--- app.assistant_workforce_profile_navigation_available() [S:1]
-CREATE OR REPLACE FUNCTION app.assistant_workforce_profile_navigation_available()
- RETURNS boolean
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public', 'pg_temp'
-AS $function$
- WITH permitted AS MATERIALIZED(
-  SELECT c.id FROM public.company c WHERE c.tenant_id=app.current_tenant_id()
-   AND app.access_workforce_command_company(c.id)
- ), candidates AS MATERIALIZED(
-  SELECT e.id FROM (SELECT * FROM public.employment WHERE import_pending_attempt_id IS NULL) e JOIN permitted c ON c.id=e.company_id
-  WHERE e.tenant_id=app.current_tenant_id()
- )
- SELECT app.current_user_id() IS NOT NULL AND app.principal_snapshot_current() IS TRUE
-  AND EXISTS(SELECT 1 FROM candidates e WHERE app.assistant_workforce_profile_choice_scope(e.id) IS NOT NULL);
-$function$;
-
---> statement-breakpoint
--- app.assistant_employee_code_navigation_available() [S:1]
-CREATE OR REPLACE FUNCTION app.assistant_employee_code_navigation_available()
- RETURNS boolean
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public', 'pg_temp'
-AS $function$
- WITH permitted AS MATERIALIZED(
-  SELECT c.id FROM public.company c WHERE c.tenant_id=app.current_tenant_id()
-   AND app.access_workforce_command_company(c.id)
- ), candidates AS MATERIALIZED(
-  SELECT e.id FROM (SELECT * FROM public.employment WHERE import_pending_attempt_id IS NULL) e JOIN permitted c ON c.id=e.company_id
-  WHERE e.tenant_id=app.current_tenant_id()
- )
- SELECT app.current_user_id() IS NOT NULL AND app.principal_snapshot_current() IS TRUE
-  AND EXISTS(SELECT 1 FROM candidates e WHERE app.assistant_employee_code_choice_scope(e.id));
-$function$;
-
---> statement-breakpoint
 -- app.assessment_unit_exclusion_facts(uuid,uuid,uuid) [S:2]
 CREATE OR REPLACE FUNCTION app.assessment_unit_exclusion_facts(wanted_cycle uuid, wanted_company uuid, wanted_department uuid)
  RETURNS jsonb
@@ -1117,25 +1079,6 @@ AS $function$
 $function$;
 
 --> statement-breakpoint
--- app.reward_policy_pair_valid(uuid,uuid,uuid,boolean) [S:1]
-CREATE OR REPLACE FUNCTION app.reward_policy_pair_valid(t uuid, c uuid, b uuid, p_shared boolean DEFAULT true)
- RETURNS boolean
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public', 'pg_temp'
-AS $function$
- SELECT EXISTS(SELECT 1 FROM public.company x JOIN public.business_unit u ON u.tenant_id=x.tenant_id
- WHERE x.id=c AND x.tenant_id=t AND u.id=b AND u.archived_at IS NULL AND (NOT p_shared OR x.currency='MYR')
- AND EXISTS(
-  SELECT 1 FROM public.assignment a JOIN (SELECT * FROM public.employment WHERE import_pending_attempt_id IS NULL) e ON e.id=a.employment_id AND e.tenant_id=a.tenant_id
-  WHERE a.tenant_id=t AND a.business_unit_id=u.id AND coalesce(a.company_id,e.company_id)=x.id
-   AND a.superseded_at IS NULL AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (a.valid_to IS NULL OR a.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
-   AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND e.blacklisted_at IS NULL
-   AND (least(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR least(e.resignation_date,e.last_working_date,e.terminated_on)>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
- ));
-$function$;
-
---> statement-breakpoint
 -- app.automatic_followup_facts(text,date,uuid[],integer) [S:3]
 CREATE OR REPLACE FUNCTION app.automatic_followup_facts(p_source text, p_today date, p_ids uuid[] DEFAULT NULL::uuid[], p_limit integer DEFAULT 2000)
  RETURNS SETOF jsonb
@@ -1250,17 +1193,6 @@ BEGIN
 END $function$;
 
 --> statement-breakpoint
--- app.probation_intake_companies() [S:1]
-CREATE OR REPLACE FUNCTION app.probation_intake_companies()
- RETURNS TABLE(id uuid, name text, "canPrepare" boolean)
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public', 'pg_temp'
-AS $function$
- SELECT co.id,co.legal_name,app.probation_config_admin(co.id) FROM company co WHERE co.tenant_id=app.current_tenant_id() AND co.archived_at IS NULL AND app.probation_active_user() AND app.probation_company_entitled(co.id) AND (app.probation_config_admin(co.id) OR CASE WHEN EXISTS(SELECT 1 FROM probation_access opted WHERE opted.tenant_id=co.tenant_id AND opted.user_id=app.current_user_id() AND opted.role IN('pbp','gbs') AND app.is_company_descendant(co.id,opted.company_id) AND opted.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (opted.valid_to IS NULL OR opted.valid_to>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)) THEN EXISTS(SELECT 1 FROM (SELECT * FROM public.employment WHERE import_pending_attempt_id IS NULL) employee WHERE employee.tenant_id=co.tenant_id AND employee.company_id=co.id AND (app.probation_role(employee.id,'pbp') OR app.probation_role(employee.id,'gbs'))) ELSE false END) ORDER BY co.legal_name,co.id;
-$function$;
-
---> statement-breakpoint
 -- app.probation_required_workflow_status(uuid) [S:1]
 CREATE OR REPLACE FUNCTION app.probation_required_workflow_status(p_company uuid)
  RETURNS jsonb
@@ -1292,24 +1224,6 @@ BEGIN
     WHERE (coalesce(step->>'subject','')||' '||coalesce(step->>'body',''))~'[{][{][[:space:]]*(employeeName|employeeCode|part|endOn)[[:space:]]*[}][}]')
   ),false) FROM published active WHERE active.data->'trigger'->>'event'='overdue_summary') INTO missing,summary_ready;
  RETURN jsonb_build_object('companyName',company_name,'canConfigure',can_configure,'missing',missing,'summaryReady',summary_ready);
-END $function$;
-
---> statement-breakpoint
--- app.probation_navigation_access() [S:1]
-CREATE OR REPLACE FUNCTION app.probation_navigation_access()
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public', 'pg_temp'
-AS $function$
-DECLARE configuration boolean;participant boolean;intake boolean;module_allowed boolean;
-BEGIN
- IF app.probation_active_user() IS NOT TRUE THEN RETURN jsonb_build_object('page',false,'configure',false,'intake',false);END IF;
- module_allowed:=app.access_capability_allowed('probation.module',NULL);
- SELECT EXISTS(SELECT 1 FROM company c WHERE c.tenant_id=app.current_tenant_id() AND CASE WHEN module_allowed THEN app.probation_config_admin(c.id) ELSE false END) INTO configuration;
- SELECT EXISTS(SELECT 1 FROM probation_case c WHERE c.tenant_id=app.current_tenant_id() AND app.probation_case_access(c.id)) INTO participant;
- SELECT EXISTS(SELECT 1 FROM company co WHERE co.tenant_id=app.current_tenant_id() AND co.archived_at IS NULL AND app.probation_company_entitled(co.id) AND (CASE WHEN module_allowed THEN app.probation_config_admin(co.id) ELSE false END OR CASE WHEN EXISTS(SELECT 1 FROM probation_access opted WHERE opted.tenant_id=co.tenant_id AND opted.user_id=app.current_user_id() AND opted.role IN('pbp','gbs') AND app.is_company_descendant(co.id,opted.company_id) AND opted.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (opted.valid_to IS NULL OR opted.valid_to>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)) THEN EXISTS(SELECT 1 FROM (SELECT * FROM public.employment WHERE import_pending_attempt_id IS NULL) employee WHERE employee.tenant_id=co.tenant_id AND employee.company_id=co.id AND (app.probation_role(employee.id,'pbp') OR app.probation_role(employee.id,'gbs'))) ELSE false END)) INTO intake;
- RETURN jsonb_build_object('page',configuration OR participant,'configure',configuration,'intake',intake);
 END $function$;
 
 --> statement-breakpoint
@@ -1649,24 +1563,24 @@ REVOKE ALL ON FUNCTION app.import_pending_person_ids() FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.import_pending_person_ids() TO ai_hr_app;
 --> statement-breakpoint
-CREATE POLICY assignment_import_pending ON public.assignment AS RESTRICTIVE FOR ALL USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
+CREATE POLICY assignment_import_pending ON public.assignment AS RESTRICTIVE FOR ALL TO ai_hr_app USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
 --> statement-breakpoint
-CREATE POLICY compensation_import_pending ON public.compensation AS RESTRICTIVE FOR ALL USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
+CREATE POLICY compensation_import_pending ON public.compensation AS RESTRICTIVE FOR ALL TO ai_hr_app USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
 --> statement-breakpoint
-CREATE POLICY leave_ledger_import_pending ON public.leave_ledger AS RESTRICTIVE FOR ALL USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
+CREATE POLICY leave_ledger_import_pending ON public.leave_ledger AS RESTRICTIVE FOR ALL TO ai_hr_app USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
 --> statement-breakpoint
-CREATE POLICY reporting_line_import_pending ON public.reporting_line AS RESTRICTIVE FOR ALL USING (subordinate_employment_id IS NULL OR NOT (subordinate_employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
+CREATE POLICY reporting_line_import_pending ON public.reporting_line AS RESTRICTIVE FOR ALL TO ai_hr_app USING (subordinate_employment_id IS NULL OR NOT (subordinate_employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
 --> statement-breakpoint
-CREATE POLICY employment_tax_selection_my_import_pending ON public.employment_tax_selection_my AS RESTRICTIVE FOR ALL USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
+CREATE POLICY employment_tax_selection_my_import_pending ON public.employment_tax_selection_my AS RESTRICTIVE FOR ALL TO ai_hr_app USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
 --> statement-breakpoint
-CREATE POLICY employment_tax_scheme_my_import_pending ON public.employment_tax_scheme_my AS RESTRICTIVE FOR ALL USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
+CREATE POLICY employment_tax_scheme_my_import_pending ON public.employment_tax_scheme_my AS RESTRICTIVE FOR ALL TO ai_hr_app USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
 --> statement-breakpoint
-CREATE POLICY employee_qualification_import_pending ON public.employee_qualification AS RESTRICTIVE FOR ALL USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
+CREATE POLICY employee_qualification_import_pending ON public.employee_qualification AS RESTRICTIVE FOR ALL TO ai_hr_app USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
 --> statement-breakpoint
-CREATE POLICY employment_cost_allocation_head_import_pending ON public.employment_cost_allocation_head AS RESTRICTIVE FOR ALL USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
+CREATE POLICY employment_cost_allocation_head_import_pending ON public.employment_cost_allocation_head AS RESTRICTIVE FOR ALL TO ai_hr_app USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
 --> statement-breakpoint
-CREATE POLICY employee_statutory_my_import_pending ON public.employee_statutory_my AS RESTRICTIVE FOR ALL USING (person_id IS NULL OR NOT (person_id = ANY ((SELECT app.import_pending_person_ids())::uuid[])));
+CREATE POLICY employee_statutory_my_import_pending ON public.employee_statutory_my AS RESTRICTIVE FOR ALL TO ai_hr_app USING (person_id IS NULL OR NOT (person_id = ANY ((SELECT app.import_pending_person_ids())::uuid[])));
 --> statement-breakpoint
-CREATE POLICY employee_dependent_import_pending ON public.employee_dependent AS RESTRICTIVE FOR ALL USING (person_id IS NULL OR NOT (person_id = ANY ((SELECT app.import_pending_person_ids())::uuid[])));
+CREATE POLICY employee_dependent_import_pending ON public.employee_dependent AS RESTRICTIVE FOR ALL TO ai_hr_app USING (person_id IS NULL OR NOT (person_id = ANY ((SELECT app.import_pending_person_ids())::uuid[])));
 --> statement-breakpoint
-CREATE POLICY person_emergency_contact_import_pending ON public.person_emergency_contact AS RESTRICTIVE FOR ALL USING (person_id IS NULL OR NOT (person_id = ANY ((SELECT app.import_pending_person_ids())::uuid[])));
+CREATE POLICY person_emergency_contact_import_pending ON public.person_emergency_contact AS RESTRICTIVE FOR ALL TO ai_hr_app USING (person_id IS NULL OR NOT (person_id = ANY ((SELECT app.import_pending_person_ids())::uuid[])));

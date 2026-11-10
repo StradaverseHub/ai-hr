@@ -32,7 +32,7 @@ export function EmployeeImportJobPanel({job:initial,onFinished}:{job:EmployeeImp
   finished.current=true;
   const r=job.result;
   onFinished(r?{companyId:r.companyId,imported:r.imported,failed:r.failed,skipped:r.skipped,dependentsImported:r.dependentsImported,registersImported:r.registersImported,superiorFailed:r.superiorFailed,fileErrors:r.fileErrors,warnings:r.warnings,runId:r.runId,attemptId:r.attemptId}:
-   {companyId:'',imported:0,failed:job.errors.map(e=>({rowNum:e.rowNum,email:e.email,message:e.message})),skipped:job.total-job.valid,dependentsImported:0,superiorFailed:[],fileErrors:job.error?[job.error]:[],warnings:[],runId:null,attemptId:job.attemptId});
+   {companyId:'',imported:job.state==='completed'?job.imported:0,failed:job.errors.map(e=>({rowNum:e.rowNum,email:e.email,message:e.message})),skipped:job.total-job.valid,dependentsImported:0,superiorFailed:[],fileErrors:job.error?[job.error]:[],warnings:[],runId:null,attemptId:job.attemptId});
  },[job,onFinished]);
  const stateText=j(job.state);
  const percent=employeeImportPercent(job);

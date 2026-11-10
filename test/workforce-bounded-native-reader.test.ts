@@ -16,7 +16,8 @@ it('retains selected/full purpose scope, private EXECUTE and public NULL/empty/s
  const [installed]=await owner.client<{body:string;owner:string;app_execute:boolean;public_execute:boolean}[]>`select prosrc as body,proowner::regrole::text as owner,has_function_privilege('ai_hr_app',oid,'EXECUTE')as app_execute,exists(select 1 from aclexplode(proacl)a where a.grantee=0 and a.privilege_type='EXECUTE')as public_execute from pg_proc where oid='app._access_workforce_list_rows(uuid[])'::regprocedure`;
  const proposal=JSON.parse(readFileSync(new URL('./performance/workforce-bounded-migration.proposal.json',import.meta.url),'utf8')) as {sql:string};
  expect(readFileSync(new URL('../db/migrations/2139_workforce_bounded_read_plan.sql',import.meta.url),'utf8')).toBe(proposal.sql);
- expect(installed.body).toBe(proposal.sql.split('AS $$')[1].split('$$;')[0]);
+ // Migration 9001 adds the staged-import filter next to both void filters; every other byte is still 2139's.
+ expect(installed.body).toBe(proposal.sql.split('AS $$')[1].split('$$;')[0].replace(/\b(e|me)\.voided_at IS NULL/g,'$1.voided_at IS NULL AND $1.import_pending_attempt_id IS NULL'));
  expect(installed.app_execute).toBe(false);expect(installed.public_execute).toBe(false);
  const ids=[employees[1].employmentId,employees[3].employmentId,employees[1].employmentId,randomUUID()];
  const rows=await withTenant(ctx,tx=>readWorkforcePickRowsTx(ctx,tx,ids));

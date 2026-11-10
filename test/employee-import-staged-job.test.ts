@@ -1,5 +1,6 @@
 /** Staged employee import job (migration 9001): real PostgreSQL, real RLS, real worker ticks. */
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {client,withTenant,type SessionContext,type Tx} from '../db/client';
@@ -227,4 +228,18 @@ describe('staged employee import job',()=>{
   const punches=await owner.client<{d:string;n:number}[]>`select a.attendance_date::text d,count(*)::int n from attendance a join attendance_punch p on p.attendance_id=a.id where a.employment_id=${hired.employmentId}::uuid and p.direction='in' group by 1 having count(*)<>1`;
   expect(punches).toEqual([]);
  },180000);
+ it('finishes across separate worker processes with no double-apply',async()=>{
+  const tag='PRC';const rows=Array.from({length:3},(_,i)=>row(tag,i));
+  const {job}=await startJob(rows);
+  for(let i=0;i<12;i++){
+   const [{state}]=await owner.client<{state:string}[]>`select state from employee_import_job where id=${job.id}::uuid`;
+   if(state==='completed')break;
+   const run=spawnSync(process.execPath,['--import','tsx','scripts/employee-import-runner.ts','--once'],{cwd:process.cwd(),env:{...process.env,EMPLOYEE_IMPORT_CHUNK_BUDGET_MS:'30'},encoding:'utf8',timeout:60000});
+   expect(run.status,run.stderr).toBe(0);
+  }
+  const final=await getEmployeeImportJob(ctx,job.id);
+  expect(final).toMatchObject({state:'completed',imported:3});
+  const [counted]=await owner.client<{n:number;hired:number}[]>`select (select count(*)::int from employment where employee_code like 'STGPRC%' and import_pending_attempt_id is null) n,(select count(*)::int from domain_event where tenant_id=${b.tenantId}::uuid and event_type='employment.hired') hired`;
+  expect(counted).toEqual({n:3,hired:3});
+ },120000);
 });

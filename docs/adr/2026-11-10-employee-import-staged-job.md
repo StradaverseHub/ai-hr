@@ -9,10 +9,11 @@ replaces it with a job: validate once, apply in chunk transactions of about 250 
 - **Staged state.** `employment` and `person` gain `import_pending_attempt_id`. A BEFORE INSERT trigger stamps every row
   written while `app.import_attempt` is set; a guard refuses any other writer of the column; a RESTRICTIVE policy hides
   pending rows from every RLS-subject role unless the session's `app.import_attempt` matches. Direct child rows written by
-  the hire are hidden by restrictive policies over `app.import_pending_employment_ids()`/`..._person_ids()` (one empty index
+  the hire are hidden from `ai_hr_app` by restrictive policies over `app.import_pending_employment_ids()`/`..._person_ids()` (one empty index
   probe per statement on the partial index). `app.access_workforce_employment` admits only the matching import session.
-- **Definer audit.** Definers bypass RLS. The audit (phase 1) classified all 622 definers mentioning employment/person; the
-  40 enumerators that would act on or leak pending rows were filtered, keeping the 0676 `voided_at` shape where it existed.
+- **Definer audit.** Definers bypass RLS. The audit (phase 1) classified all 622 definers mentioning employment/person; 35
+  enumerators that act on pending rows or return identified data were filtered, keeping the 0676 `voided_at` shape where it
+  existed. Five navigation/boolean-only readers stayed unfiltered: they reveal no employee and cannot act on one.
   Reservation readers (`employee_code_claim`, `card_identifier_*`, `create_login_person`, `people_nric_*`) intentionally
   still see pending rows so codes, cards, emails and NRICs stay reserved.
 - **Activation.** `app.import_activate` clears the marker with one UPDATE per table under a freshly re-checked initiating

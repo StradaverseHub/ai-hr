@@ -4,6 +4,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {EMPLOYEE_IMPORT_ALREADY_RUNNING,type EmployeeImportProgress,type EmployeeImportRowError,type EmployeeImportState,type EmployeeImportResultSummary,type EmployeeImportPhase} from '../lib/employee-import-job';
 import {IMPORT_SOURCE_MAX_BYTES,importSourceName} from './import-history';
+import {assertWorkforceCompanyTx} from './workforce-access';
 import type {EmployeeImportUploadInput} from './employee-import-upload';
 export class EmployeeImportJobError extends Error{constructor(message:string,readonly status=400){super(message);}}
 export type EmployeeImportJobRow={id:string;tenant_id:string;created_by:string;context:SessionContext;operation_key:string;company_id:string;company_ids:string[];source_name:string;source_hash:string;source_bytes:number;source_content:Buffer|null;input:EmployeeImportUploadInput|null;attempt_id:string|null;state:EmployeeImportState;phase:EmployeeImportPhase|null;total:number;valid:number;invalid:number;steps_total:number;steps_done:number;imported:number;transient_retries:number;chunks:number;max_chunk_ms:number;activation_ms:number|null;plan:Record<string,unknown>|null;result:EmployeeImportResultSummary|null;error:string|null;errors:EmployeeImportRowError[];created_at:Date;updated_at:Date};
@@ -23,6 +24,8 @@ export async function createEmployeeImportJob(ctx:SessionContext,input:EmployeeI
  const hash=createHash('sha256').update(source.content).digest('hex');
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'employee-import-admit:'+ctx.tenantId},0))`);
+  // Same permission the synchronous import enforced when it was requested: fail here, not later in the worker.
+  await assertWorkforceCompanyTx(tx,ctx,input.companyId,'maintain');
   const [existing]=await tx.execute<EmployeeImportJobRow>(sql`select * from employee_import_job where created_by=${ctx.userId!}::uuid and operation_key=${operationKey}::uuid`);
   if(existing)return{job:employeeImportProgress(existing),existing:true};
   const [active]=await tx.execute<{id:string}>(sql`select id from employee_import_job where state in ('queued','validating','importing','activating','discarding') limit 1`);
