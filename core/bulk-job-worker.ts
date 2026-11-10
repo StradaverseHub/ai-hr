@@ -71,6 +71,9 @@ export type BulkJobHandler<P=any>={
   *  so it must be idempotent. ctx is null when the creator's access is gone; owner is the queue-owner connection. */
  settle?(ctx:SessionContext|null,job:BulkJobRow,owner:postgres.ReservedSql):Promise<void>;
 };
+/** A unit that cannot start until other work finishes (a tenant-serialised kind whose turn has not come): the kernel
+ * runs it again after a short pause, without using the job's transient retry budget, so waiting never fails a job. */
+export class BulkJobWaiting extends Error{constructor(message='Waiting for another job of this kind to finish.'){super(message);this.name='BulkJobWaiting';}}
 export class BulkJobStepRefused extends Error{constructor(readonly step:BulkJobStep,readonly cause:unknown){super(publicErrorMessage(cause));this.name='BulkJobStepRefused';}}
 class LeaseLost extends Error{constructor(){super('Bulk job lease lost.');}}
 /** The creator can no longer act on the job (grants or company access changed). */
@@ -199,6 +202,7 @@ async function processClaimed(connection:postgres.ReservedSql,handler:BulkJobHan
  }catch(error){
   caches.delete(job.id); // a rolled-back chunk must not leave stale ids behind
   if(error instanceof LeaseLost)return;
+  if(error instanceof BulkJobWaiting)return waitLater(connection,c);
   if(isTransient(handler,error))return retryLater(connection,handler,c,error);
   const step=error instanceof BulkJobStepRefused?error.step:null;const cause=error instanceof BulkJobStepRefused?error.cause:error;
   const described=handler.describeFailure?await handler.describeFailure(job,cause,step,connection):{error:publicErrorMessage(cause)};
@@ -206,6 +210,10 @@ async function processClaimed(connection:postgres.ReservedSql,handler:BulkJobHan
  }
 }
 const isTransient=(handler:BulkJobHandler,error:unknown)=>handler.isTransient?.(error)??isTransientBulkJobError(error);
+const WAIT_SECONDS=2;
+async function waitLater(connection:postgres.ReservedSql,c:Claimed){
+ await connection`update bulk_job set not_before=now()+make_interval(secs=>${WAIT_SECONDS}),updated_at=now() where id=${c.job.id}::uuid and lease_token=${c.token}::uuid`;
+}
 async function retryLater(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,error:unknown){
  const [row]=await connection<{transient_retries:number}[]>`update bulk_job set transient_retries=transient_retries+1,
    not_before=now()+make_interval(secs=>least(5.0,0.05*power(2,least(transient_retries,7)))),updated_at=now()

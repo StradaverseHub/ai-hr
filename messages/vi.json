@@ -9972,7 +9972,24 @@
       "tickHint": "Một số bản ghi đã có dữ liệu lương. Chọn các bản ghi muốn ghi đè; bản ghi không chọn được giữ nguyên.",
       "acknowledge": "Tôi hiểu. Thay thế các bản ghi đã chọn bằng giá trị trong tệp của tôi. Giá trị gốc vẫn nằm trong lịch sử kiểm toán và có thể hoàn tác từ Log File.",
       "confirmOverwrite": "Xác nhận ghi đè và nhập",
-      "importNewOnly": "Chỉ nhập bản ghi mới"
+      "importNewOnly": "Chỉ nhập bản ghi mới",
+      "job": {
+        "title": "Đang ghi nhận ở chế độ nền",
+        "state": {
+          "queued": "Đang chờ bắt đầu",
+          "preparing": "Đang kiểm tra lại tệp",
+          "running": "Đang ghi lịch sử lương",
+          "finalizing": "Đang áp dụng các thay đổi",
+          "discarding": "Đang hoàn tác các thay đổi chưa xong",
+          "completed": "Đã ghi nhận",
+          "failed": "Đã dừng — lịch sử lương không bị thay đổi",
+          "cancelled": "Đã dừng — lịch sử lương không bị thay đổi"
+        },
+        "progressCount": "Đã hoàn tất {done}/{total} bước",
+        "backgroundHelp": "Bạn có thể rời khỏi trang này. Không ai nhìn thấy các thay đổi này cho đến khi tất cả được ghi nhận cùng lúc, và bạn sẽ nhận được thông báo khi hoàn tất.",
+        "waiting": "Đang chờ dịch vụ nền. Yêu cầu của bạn đã được lưu; đừng gửi lại.",
+        "workerUnavailable": "Dịch vụ nền chưa chạy. Yêu cầu của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy."
+      }
     },
     "individualImport": {
       "submitWorkbook": "Tải lên sổ làm việc",
@@ -37302,6 +37319,20 @@
         "cancelled": {
           "title": "Đã hủy xử lý bảng lương",
           "body": "Đợt lương trở về bản nháp và không giữ phiếu lương nào."
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "Đã ghi nhận thay đổi lịch sử lương",
+          "body": "Mở nhật ký nhập để xem những gì đã được ghi nhận."
+        },
+        "failed": {
+          "title": "Thay đổi lịch sử lương đã dừng",
+          "body": "Lịch sử lương không bị thay đổi. Mở nhật ký nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy thay đổi lịch sử lương",
+          "body": "Lịch sử lương không bị thay đổi."
         }
       }
     }

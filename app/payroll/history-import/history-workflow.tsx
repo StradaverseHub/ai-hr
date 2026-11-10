@@ -1,7 +1,7 @@
 'use client';
 import { ActionButton } from '@/components/ui/action-button';
 import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
-import {useRef,useState} from 'react';
+import {useCallback,useRef,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import Link from 'next/link';
 import {buildPayrollHistoryWorkbook,PAYROLL_HISTORY_XLSX_FILENAME} from '@/lib/import-template-xlsx';
@@ -9,6 +9,8 @@ import {PAYROLL_HISTORY_HEADERS} from '@/lib/payroll-history-import-schema';
 import {historyRecordKey,type HistoryRevisionPlan} from '@/lib/payroll-history-revisions';
 import {confirmHistoryUploadAction} from './workflow-actions';
 import {RevisionPreview} from './revision-preview';
+import {HistoryJobPanel} from './history-job-progress';
+import type {BulkJobProgress} from '@/lib/bulk-job';
 
 type Code={code:string;label:string;destination:string;direction:string};
 const button='inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40';
@@ -17,6 +19,13 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
  const [file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<{attemptId:string;plan:HistoryRevisionPlan}|null>(null);
  const [busy,setBusy]=useState<'validate'|'confirm'|'template'|null>(null),[error,setError]=useState<string|null>(null),[confirmed,setConfirmed]=useState(false),[ticked,setTicked]=useState<Set<string>>(new Set()),[acknowledged,setAcknowledged]=useState(false),[skipped,setSkipped]=useState(0),[done,setDone]=useState(false);
  const operation=useRef<string|null>(null);
+ // The confirmation commits in the background; the panel follows the job and hands back its outcome.
+ const [jobId,setJobId]=useState<string|null>(null);
+ const finished=useCallback((job:BulkJobProgress)=>{
+  setJobId(null);setBusy(null);
+  if(job.state==='completed'){setSkipped(Number((job.result as {skippedReplacements?:number}|null)?.skippedReplacements??0));setDone(true);}
+  else setError(job.error??t('failed'));
+ },[t]);
  async function validate(){
   if(!file||busy)return;setBusy('validate');setError(null);setDone(false);setConfirmed(false);setTicked(new Set());setAcknowledged(false);setSkipped(0);
   try{
@@ -30,7 +39,10 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
  async function commit(mode:'all'|'ticked'|'new'){
   if(!preview||busy)return;setBusy('confirm');setError(null);
   const selection=mode==='ticked'?{confirmReplacement:true,selectedRecordKeys:[...ticked],acknowledgeWarnings:acknowledged}:mode==='new'?{confirmReplacement:false,skipReplacements:true}:{confirmReplacement:false};
-  try{const result=await confirmHistoryUploadAction({attemptId:preview.attemptId,previewHash:preview.plan.previewHash,...selection});if(!result.ok)setError(result.error??t('failed'));else{setSkipped(result.result.skippedReplacements??0);setDone(true);}}catch{setError(t('failed'));}finally{setBusy(null);}
+  let following=false;
+  try{const result=await confirmHistoryUploadAction({attemptId:preview.attemptId,previewHash:preview.plan.previewHash,...selection});
+   if(!result.ok)setError(result.error??t('failed'));else if('jobId' in result&&result.jobId){following=true;setJobId(result.jobId);}else if('result' in result&&result.result){setSkipped(result.result.skippedReplacements??0);setDone(true);}}
+  catch{setError(t('failed'));}finally{if(!following)setBusy(null);}
  }
  async function template(){
   setBusy('template');setError(null);
@@ -56,6 +68,7 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
   {preview&&<section className="space-y-5 rounded-xl border bg-card p-5"><div className="flex flex-wrap justify-between gap-3"><h2 className="font-semibold">{done?t('results'):t('preview')}</h2><Link className="text-sm font-medium text-primary underline" href={'/payroll/history-import/logs/'+preview.attemptId}>{t('openLog')}</Link></div>
    <RevisionPreview key={preview.attemptId} plan={preview.plan} selection={done||!replaceable.length?undefined:{ticked,toggle:key=>setTicked(prev=>{const next=new Set(prev);if(!next.delete(key))next.add(key);return next;}),
     toggleAll:on=>setTicked(on?new Set(replaceable.map(historyRecordKey)):new Set())}}/>
+   {jobId&&<HistoryJobPanel jobId={jobId} onFinished={finished}/>}
    {done?<p role="status" className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">{t('success')}{skipped>0&&<> {t('successSkipped',{count:skipped})}</>}</p>:<div className="space-y-3 border-t pt-4"><p className="text-sm text-muted-foreground">{t('atomicHint')}</p>
     {replaceable.length>0&&<div className="space-y-3 rounded-lg border border-amber-500/40 bg-amber-50/40 p-4 text-sm dark:bg-amber-500/5">
      {ticked.size===0?<p>{t('tickHint')}</p>:<>

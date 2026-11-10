@@ -28,6 +28,7 @@ export type BulkJobNoticeOutcome='completed'|'failed'|'cancelled';
 export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  employee_import:{messages:'employeeImport',linkPath:'/admin/personnel/import/history'},
  payroll_process:{messages:'payrollProcess',linkPath:'/payroll'},
+ payroll_history:{messages:'payrollHistory',linkPath:'/payroll/history-import/logs'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){
  const notice=BULK_JOB_NOTICES[kind];

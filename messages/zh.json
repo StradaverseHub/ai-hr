@@ -9972,7 +9972,24 @@
       "tickHint": "部分记录已有工资数据。勾选要覆盖的记录；未勾选的记录保持不变。",
       "acknowledge": "我已了解。用我的文件数值替换已勾选的记录。原始数值保留在审计历史中，可从 Log File 撤销覆盖。",
       "confirmOverwrite": "确认覆盖并导入",
-      "importNewOnly": "仅导入新记录"
+      "importNewOnly": "仅导入新记录",
+      "job": {
+        "title": "正在后台提交",
+        "state": {
+          "queued": "等待开始",
+          "preparing": "正在重新检查文件",
+          "running": "正在写入薪资历史",
+          "finalizing": "正在使更改生效",
+          "discarding": "正在撤销未完成的更改",
+          "completed": "已提交",
+          "failed": "已停止——薪资历史未作任何更改",
+          "cancelled": "已停止——薪资历史未作任何更改"
+        },
+        "progressCount": "已完成 {done}/{total} 个步骤",
+        "backgroundHelp": "您可以离开此页面。在所有更改一起提交之前，任何人都看不到这些更改；完成后您会收到通知。",
+        "waiting": "正在等待后台服务。您的请求已保存，请勿重复提交。",
+        "workerUnavailable": "后台服务尚未运行。您的请求已保存，服务运行后将自动开始。"
+      }
     },
     "individualImport": {
       "submitWorkbook": "上传工作簿",
@@ -37302,6 +37319,20 @@
         "cancelled": {
           "title": "薪资处理已取消",
           "body": "批次已退回草稿，未保留任何工资单。"
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "薪资历史更改已提交",
+          "body": "打开导入日志查看已提交的内容。"
+        },
+        "failed": {
+          "title": "薪资历史更改已停止",
+          "body": "薪资历史未作任何更改。打开导入日志查看原因。"
+        },
+        "cancelled": {
+          "title": "薪资历史更改已取消",
+          "body": "薪资历史未作任何更改。"
         }
       }
     }

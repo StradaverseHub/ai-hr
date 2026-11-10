@@ -9972,7 +9972,24 @@
       "tickHint": "Gaji sudah wujud untuk sesetengah rekod. Tandakan rekod yang ingin ditulis ganti; rekod yang tidak ditanda kekal seperti sedia ada.",
       "acknowledge": "Saya faham. Gantikan rekod yang ditanda dengan nilai fail saya. Nilai asal kekal dalam sejarah audit dan tulis ganti boleh dibatalkan daripada Log File.",
       "confirmOverwrite": "Sahkan tulis ganti dan import",
-      "importNewOnly": "Import rekod baharu sahaja"
+      "importNewOnly": "Import rekod baharu sahaja",
+      "job": {
+        "title": "Disimpan di latar belakang",
+        "state": {
+          "queued": "Menunggu untuk bermula",
+          "preparing": "Menyemak fail sekali lagi",
+          "running": "Menulis sejarah gaji",
+          "finalizing": "Menjadikan perubahan kelihatan",
+          "discarding": "Membatalkan perubahan yang belum selesai",
+          "completed": "Disimpan",
+          "failed": "Dihentikan — tiada sejarah gaji diubah",
+          "cancelled": "Dihentikan — tiada sejarah gaji diubah"
+        },
+        "progressCount": "{done} daripada {total} langkah selesai",
+        "backgroundHelp": "Anda boleh meninggalkan halaman ini. Tiada sesiapa melihat perubahan ini sehingga semuanya disimpan bersama, dan anda akan menerima notis apabila selesai.",
+        "waiting": "Menunggu perkhidmatan latar belakang. Permintaan anda telah disimpan; jangan hantar semula.",
+        "workerUnavailable": "Perkhidmatan latar belakang belum berjalan. Permintaan anda telah disimpan dan akan bermula secara automatik sebaik sahaja ia berjalan."
+      }
     },
     "individualImport": {
       "submitWorkbook": "Muat naik buku kerja",
@@ -37302,6 +37319,20 @@
         "cancelled": {
           "title": "Pemprosesan gaji dibatalkan",
           "body": "Larian kembali ke draf dan tiada slip gaji disimpan."
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "Perubahan sejarah gaji disimpan",
+          "body": "Buka log import untuk melihat apa yang disimpan."
+        },
+        "failed": {
+          "title": "Perubahan sejarah gaji dihentikan",
+          "body": "Tiada sejarah gaji diubah. Buka log import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Perubahan sejarah gaji dibatalkan",
+          "body": "Tiada sejarah gaji diubah."
         }
       }
     }

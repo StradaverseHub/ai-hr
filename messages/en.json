@@ -9972,7 +9972,24 @@
       "tickHint": "Payroll is already on file for some records. Tick the ones you want to overwrite; records you do not tick stay as they are.",
       "acknowledge": "I understand. Replace the ticked records with my file's values. The original values stay in the audit history and the overwrite can be undone from Log File.",
       "confirmOverwrite": "Confirm overwrite and import",
-      "importNewOnly": "Import new records only"
+      "importNewOnly": "Import new records only",
+      "job": {
+        "title": "Committing in the background",
+        "state": {
+          "queued": "Waiting to start",
+          "preparing": "Checking the file again",
+          "running": "Writing payroll history",
+          "finalizing": "Making the changes visible",
+          "discarding": "Undoing the unfinished changes",
+          "completed": "Committed",
+          "failed": "Stopped — no payroll history was changed",
+          "cancelled": "Stopped — no payroll history was changed"
+        },
+        "progressCount": "{done} of {total} steps complete",
+        "backgroundHelp": "You can leave this page. Nobody sees any of these changes until all of them are committed together, and you get a notice when it finishes.",
+        "waiting": "Waiting for the background service. Your request is saved; do not submit it again.",
+        "workerUnavailable": "The background service is not running yet. Your request is saved and starts automatically as soon as it is."
+      }
     },
     "individualImport": {
       "submitWorkbook": "Upload workbook",
@@ -37302,6 +37319,20 @@
         "cancelled": {
           "title": "Payroll processing cancelled",
           "body": "The run is back in draft and no payslips were kept."
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "Payroll history change committed",
+          "body": "Open the import log to see what was committed."
+        },
+        "failed": {
+          "title": "Payroll history change stopped",
+          "body": "No payroll history was changed. Open the import log to see why."
+        },
+        "cancelled": {
+          "title": "Payroll history change cancelled",
+          "body": "No payroll history was changed."
         }
       }
     }
