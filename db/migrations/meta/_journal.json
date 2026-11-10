@@ -5664,6 +5664,41 @@
       "when": 1793330004790,
       "tag": "5090_audit_chain_commit_seal",
       "breakpoints": true
+    },
+    {
+      "idx": 9910,
+      "version": "7",
+      "when": 1793330099910,
+      "tag": "9910_bulk_job_movement_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 9911,
+      "version": "7",
+      "when": 1793330099911,
+      "tag": "9911_workforce_employment_access_set",
+      "breakpoints": true
+    },
+    {
+      "idx": 9912,
+      "version": "7",
+      "when": 1793330099912,
+      "tag": "9912_bulk_job_movement_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 9913,
+      "version": "7",
+      "when": 1793330099913,
+      "tag": "9913_bulk_job_movement_import_revert",
+      "breakpoints": true
+    },
+    {
+      "idx": 9914,
+      "version": "7",
+      "when": 1793330099914,
+      "tag": "9914_movement_revert_capture",
+      "breakpoints": true
     }
   ]
 }

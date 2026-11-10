@@ -2992,6 +2992,34 @@
         "waiting": "Waiting for the import worker. Progress is saved; do not upload the file again.",
         "otherRunning": "Another import of this kind that you started is still running. Wait for it to finish before starting a new one.",
         "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is."
+      },
+      "movementJob": {
+        "queued": "Waiting to start",
+        "validating": "Checking the file again",
+        "importing": "Saving movements",
+        "finishing": "Recording the import",
+        "completed": "Import finished",
+        "failed": "Import stopped",
+        "cancelled": "Import stopped",
+        "progressCount": "{done} of {total} employees processed",
+        "backgroundHelp": "You can leave this page. Each employee’s movements are saved together as soon as that employee is processed.",
+        "waiting": "Waiting for the import worker. Progress is saved; do not confirm the import again.",
+        "otherRunning": "Another movement import you started is still running. Wait for it to finish before confirming a new one.",
+        "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is."
+      },
+      "movementCheckJob": {
+        "queued": "Waiting to start",
+        "reading": "Reading the file",
+        "checking": "Checking movements",
+        "finishing": "Recording the check",
+        "completed": "Check finished",
+        "failed": "Check stopped",
+        "cancelled": "Check stopped",
+        "progressCount": "{done} of {total} employees checked",
+        "backgroundHelp": "Nothing is saved until you confirm the import. Keep this page open to review the result when the check finishes.",
+        "waiting": "Waiting for the import worker. The check starts automatically; do not upload the file again.",
+        "otherRunning": "Another movement check you started is still running. Wait for it to finish before checking a new file.",
+        "workerUnavailable": "The import service is not running yet. Your file is kept and the check starts automatically as soon as it is."
       }
     },
     "wizard": {
@@ -37831,6 +37859,48 @@
         "cancelled": {
           "title": "Payroll reprocess cancelled",
           "body": "Employees already reprocessed keep their new results."
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "Movement import finished",
+          "body": "Open Import History to see the movements that were saved and any employees that could not be."
+        },
+        "failed": {
+          "title": "Movement import stopped",
+          "body": "Open Import History to see why. Employees already saved keep their movements."
+        },
+        "cancelled": {
+          "title": "Movement import stopped",
+          "body": "Employees already saved keep their movements. Open Import History for details."
+        }
+      },
+      "movementCheck": {
+        "completed": {
+          "title": "Movement file checked",
+          "body": "The check is recorded in Import History. If you left the import screen, upload the file again to review and confirm it."
+        },
+        "failed": {
+          "title": "Movement check stopped",
+          "body": "Open Import History to see why. Nothing was saved."
+        },
+        "cancelled": {
+          "title": "Movement check stopped",
+          "body": "Nothing was saved. Open Import History for details."
+        }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "Movement import revert finished",
+          "body": "Open Import History to see the movements that were rolled back."
+        },
+        "failed": {
+          "title": "Movement import revert stopped",
+          "body": "Nothing was changed. Open Import History to see why."
+        },
+        "cancelled": {
+          "title": "Movement import revert cancelled",
+          "body": "Nothing was changed. Open Import History for details."
         }
       }
     },

@@ -46,6 +46,9 @@ export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  toil_year_close:{messages:'toilSweep',linkPath:'/admin/leave-config/leave-credit'},
  payroll_history:{messages:'payrollHistory',linkPath:'/payroll/history-import/logs'},
  payroll_reprocess:{messages:'payrollReprocess',linkPath:'/payroll'},
+ movement_import:{messages:'movementImport',linkPath:'/admin/personnel/import/history?kind=movement'},
+ movement_check:{messages:'movementCheck',linkPath:'/admin/personnel/import/history?kind=movement'},
+ movement_import_revert:{messages:'movementImportRevert',linkPath:'/admin/personnel/import/history?kind=movement'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){
  const notice=BULK_JOB_NOTICES[kind];

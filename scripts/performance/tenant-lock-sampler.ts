@@ -14,8 +14,9 @@ export type TenantLockReport={byLock:Record<string,{holds:number;maxMs:number;ov
 
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 
-export async function startTenantLockSampler(obs:postgres.Sql,tenantId:string,intervalMs=25){
- const names:[string,string,'ext'|'int4'][]=[
+/** `extra` adds a kind's own tenant-wide keys, as [name, key, 'ext' (hashtextextended) or 'int4' (hashtext)]. */
+export async function startTenantLockSampler(obs:postgres.Sql,tenantId:string,intervalMs=25,extra:[string,string,'ext'|'int4'][]=[]){
+ const names:[string,string,'ext'|'int4'][]=[...extra,
   ['access','access-configuration:'+tenantId,'ext'],
   ['leave','leave-dependency-configuration:'+tenantId,'ext'],
   ['profile','profile-edit-policy:'+tenantId,'ext'],

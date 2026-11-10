@@ -2,7 +2,7 @@ import {organisationManagedTx,organisationBusinessUnit} from './organisation-wri
 import {deriveCompanyOrganisationTx} from './company-organisation';
 import {organisationImportWarningsTx} from './derived-organisation-display';
 import {lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
-import {assertWorkforceCompanyTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
+import {assertWorkforceCompanyTx,workforceEmploymentSetPredicate,WorkforceAccessError} from './workforce-access';
 import {isAiPresentationPrincipalCurrentTx} from './ai-principal';
 /** Bounded canonical Movement rehearsals and per-employee atomic application.
  * Preview intentionally writes only inside a transaction that ALWAYS rolls back. It never dispatches
@@ -23,7 +23,7 @@ import {MOVEMENT_FORM_IDS,movementFormFields,type MovementFormField} from '../li
 import {personnelFormField,personnelFormChoices} from '../lib/personnel-form-contract';
 import {personnelImportOptionLookup} from '../lib/personnel-import-lookup';
 import {MOVEMENT_IMPORT_LIMITS,parseMovementImport,movementImportCellIssues,movementImportDate,type MovementImportAction,type MovementImportRecord,type MovementImportRow,type MovementImportEmployee,type MovementImportPreview,type MovementImportResult} from '../lib/movement-import-contract';
-import {createMovementEventTx,movementCurrentStateTx,applyDueMovementsTx,rehearseMovementSequenceTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx,movementCorrectionBaseTx,editMovementEventTx,reverseMovementForImportTx,MovementClosedPayrollAcknowledgementError,MovementFieldRuleError,MovementNoChangeError,MovementNotCorrectableError,MovementReasonRequiredError,type MovementSequenceCreate,type CreateMovementInput} from './movement';
+import {createMovementEventTx,movementCurrentStateTx,applyDueMovementsTx,rehearseMovementSequenceTx,applyMovementSequenceTx,MovementSequenceDeferred,movementLedgerMarkerTx,movementRowsAfterSequenceTx,movementCorrectionBaseTx,editMovementEventTx,reverseMovementForImportTx,MovementClosedPayrollAcknowledgementError,MovementFieldRuleError,MovementNoChangeError,MovementNotCorrectableError,MovementReasonRequiredError,type MovementSequenceCreate,type CreateMovementInput} from './movement';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {allocationCompanyCode,matchAllocationCompany} from './cost-allocation-import';
 import {recordImportItemTx} from './import-history';
@@ -53,33 +53,52 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function assertAdmin(ctx:SessionContext){if(!isAdmin(ctx))throw new Error('Only an admin can import movements.');}
 function budget(deadline:number){if(Date.now()>deadline)throw new Error('movement_import_timeout');}
 async function limits(tx:Tx){await tx.execute(sql`select set_config('lock_timeout',${MOVEMENT_IMPORT_LIMITS.lockMs+'ms'},true),set_config('statement_timeout',${MOVEMENT_IMPORT_LIMITS.statementMs+'ms'},true)`);}
-async function assertCompany(tx:Tx,ctx:SessionContext,id:string){
+async function assertCompany(tx:Tx,ctx:SessionContext,id:string,reads?:MovementChunkReads){
+ if(reads?.companies.has(id))return;
  if(!UUID.test(id))throw new Error('company_not_available');
  await assertWorkforceCompanyTx(tx,ctx,id,'view');
  await assertWorkforceCompanyTx(tx,ctx,id,'maintain');
  const [row]=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,id),sql`app.is_admin_for(${company.id})`)).limit(1);
  if(!row)throw new Error('company_not_available');
+ reads?.companies.add(id);
 }
-async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<MovementImportCatalog>{
- await assertCompany(tx,ctx,companyId);
- return catalogRowsTx(tx,ctx,companyId);
+async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string,reads?:MovementChunkReads):Promise<MovementImportCatalog>{
+ await assertCompany(tx,ctx,companyId,reads);
+ return catalogRowsTx(tx,ctx,companyId,reads);
 }
-/** Shared facts only: callers first admit either the command barrier or the pure
- * presentation purpose. A template is reference data, never command authority. */
-async function catalogRowsTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<MovementImportCatalog>{
+/** The live employments of the manager list: every one the actor may view, authorized set-wise (9911, the same rows
+ * as the per-row predicate). `only` narrows it to one employment with the very same columns and conditions. */
+function managerRowsTx(tx:Tx,ctx:SessionContext,only?:string){
+ return tx.select({value:employment.id,label:employment.employeeCode,name:person.fullName,companyId:employment.companyId,isTestRecord:employment.isTestRecord,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate,blacklistedAt:employment.blacklistedAt}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),only?eq(employment.id,only):undefined,isNull(employment.terminatedOn),workforceEmploymentSetPredicate({tenantId:sql`${employment.tenantId}`,companyId:sql`${employment.companyId}`,voidedAt:sql`${employment.voidedAt}`,importPendingAttemptId:sql`${employment.importPendingAttemptId}`},'view'))).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+}
+type ManagerRow=Awaited<ReturnType<typeof managerRowsTx>>[number];
+/** The company-independent part of a catalogue: types, companies, grades, the manager list and profile options. */
+async function sharedCatalogRowsTx(tx:Tx,ctx:SessionContext){
  const types=(await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(importType);
  // ac6645ec — the destination of an Entity Transfer may be named by the same Company ID as the row's company.
  const companies=(await tx.select({value:company.id,label:company.legalName,code:company.companyLabel,registration:company.registrationNo}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.view') and app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1)).map(({code,registration,...row})=>({...row,codes:[code,registration].filter((v):v is string=>!!v?.trim())}));
+ const grades=await tx.select({value:jobGrade.id,label:jobGrade.name,code:jobGrade.code}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),isNull(jobGrade.archivedAt))).orderBy(asc(jobGrade.code),asc(jobGrade.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ const managers=await managerRowsTx(tx,ctx);
+ const options=await tx.select({category:profileOption.category,value:profileOption.value,label:profileOption.label}).from(profileOption).where(and(eq(profileOption.tenantId,ctx.tenantId),eq(profileOption.isActive,true))).orderBy(asc(profileOption.category),asc(profileOption.sortOrder),asc(profileOption.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ return{types,companies,grades,managers,options};
+}
+type SharedCatalogRows=Awaited<ReturnType<typeof sharedCatalogRowsTx>>;
+/** The lists a catalogue reads for one company: departments, positions, business units and locations. */
+async function companyCatalogRowsTx(tx:Tx,ctx:SessionContext,companyId:string){
  const departments=await tx.select({value:department.id,label:department.label,code:department.name}).from(department).where(and(eq(department.tenantId,ctx.tenantId),isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',[companyId]))).orderBy(asc(department.name),asc(department.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  const positions=await tx.select({value:position.id,label:position.label,code:position.title}).from(position).where(and(eq(position.tenantId,ctx.tenantId),isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',[companyId]))).orderBy(asc(position.title),asc(position.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  const units=await tx.select({value:businessUnit.id,label:businessUnit.label,code:businessUnit.code,name:businessUnit.name}).from(businessUnit).where(and(eq(businessUnit.tenantId,ctx.tenantId),isNull(businessUnit.archivedAt),visibleLabelIdsCondition(businessUnit,'business_unit',[companyId]))).orderBy(asc(businessUnit.name),asc(businessUnit.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  const locations=await tx.select({value:location.id,label:location.name,code:location.code}).from(location).where(and(eq(location.tenantId,ctx.tenantId),eq(location.companyId,companyId),isNull(location.archivedAt))).orderBy(asc(location.name),asc(location.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
- const grades=await tx.select({value:jobGrade.id,label:jobGrade.name,code:jobGrade.code}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),isNull(jobGrade.archivedAt))).orderBy(asc(jobGrade.code),asc(jobGrade.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
- const managers=await tx.select({value:employment.id,label:employment.employeeCode,name:person.fullName,companyId:employment.companyId,isTestRecord:employment.isTestRecord,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate,blacklistedAt:employment.blacklistedAt}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),isNull(employment.terminatedOn),workforceEmploymentPredicate(sql`${employment.id}`,'view'))).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ return{departments,positions,units,locations};
+}
+type CompanyCatalogRows=Awaited<ReturnType<typeof companyCatalogRowsTx>>;
+/** A catalogue from its rows, with the same limits and the same option shapes. `today` decides which managers are
+ * eligible (hired, not resigned or blacklisted). */
+function assembleCatalog(shared:SharedCatalogRows,local:CompanyCatalogRows,today=todayInKualaLumpur()):MovementImportCatalog{
+ const {types,companies,grades,managers,options}=shared,{departments,positions,units,locations}=local;
  if([companies,departments,positions,units,locations,grades,managers].some(rows=>rows.length>MOVEMENT_IMPORT_LIMITS.referenceRows))throw new Error('movement_reference_catalog_too_large');
  const managerLabels=new Map(companies.map(c=>[c.value,c.label]));
- const fields:MovementImportCatalog['fields']={companyId:companies,departmentId:departments.map(row=>({value:row.value,label:row.label?.trim()||row.code,codes:[row.code]})),positionId:positions.map(row=>({value:row.value,label:row.label?.trim()||row.code,codes:[row.code]})),businessUnitId:units.map(row=>({value:row.value,label:row.label?.trim()||row.code,codes:[row.code],aliases:[row.name]})),locationId:locations.map(row=>({value:row.value,label:row.label,codes:[row.code]})),gradeId:grades.map(row=>({value:row.value,label:row.code+' · '+row.label,codes:[row.code],aliases:[row.label]})),managerEmploymentId:managers.map(row=>({value:row.value,label:(row.label??'')+' · '+row.name,codes:row.label?[row.label]:[],aliases:[row.name,...(managerLabels.has(row.companyId)?[managerLabels.get(row.companyId)+' · '+(row.label??'')+' · '+row.name]:[])].filter(Boolean),companyId:row.companyId,isTestRecord:row.isTestRecord,eligible:row.hiredOn<=todayInKualaLumpur()&&!['resigned','blacklisted'].includes(deriveEmploymentStatus(row,todayInKualaLumpur()))}))};
- const options=await tx.select({category:profileOption.category,value:profileOption.value,label:profileOption.label}).from(profileOption).where(and(eq(profileOption.tenantId,ctx.tenantId),eq(profileOption.isActive,true))).orderBy(asc(profileOption.category),asc(profileOption.sortOrder),asc(profileOption.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ const fields:MovementImportCatalog['fields']={companyId:companies,departmentId:departments.map(row=>({value:row.value,label:row.label?.trim()||row.code,codes:[row.code]})),positionId:positions.map(row=>({value:row.value,label:row.label?.trim()||row.code,codes:[row.code]})),businessUnitId:units.map(row=>({value:row.value,label:row.label?.trim()||row.code,codes:[row.code],aliases:[row.name]})),locationId:locations.map(row=>({value:row.value,label:row.label,codes:[row.code]})),gradeId:grades.map(row=>({value:row.value,label:row.code+' · '+row.label,codes:[row.code],aliases:[row.label]})),managerEmploymentId:managers.map(row=>({value:row.value,label:(row.label??'')+' · '+row.name,codes:row.label?[row.label]:[],aliases:[row.name,...(managerLabels.has(row.companyId)?[managerLabels.get(row.companyId)+' · '+(row.label??'')+' · '+row.name]:[])].filter(Boolean),companyId:row.companyId,isTestRecord:row.isTestRecord,eligible:row.hiredOn<=today&&!['resigned','blacklisted'].includes(deriveEmploymentStatus(row,today))}))};
  if(options.length>MOVEMENT_IMPORT_LIMITS.referenceRows)throw new Error('movement_reference_catalog_too_large');
  for(const field of Object.keys(fieldKinds) as (keyof typeof fieldKinds)[]){
   const category=personnelFormField(MOVEMENT_FORM_IDS[field]).allowedValuesOwner?.replace(/^profile_option:/,'');
@@ -87,6 +106,108 @@ async function catalogRowsTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<
  }
  if(Object.values(fields).some(rows=>rows&&rows.length>MOVEMENT_IMPORT_LIMITS.referenceRows))throw new Error('movement_reference_catalog_too_large');
  return {types,companies,fields};
+}
+/** Shared facts only: callers first admit either the command barrier or the pure
+ * presentation purpose. A template is reference data, never command authority. */
+async function catalogRowsTx(tx:Tx,ctx:SessionContext,companyId:string,reads?:MovementChunkReads):Promise<MovementImportCatalog>{
+ if(!reads)return assembleCatalog(await sharedCatalogRowsTx(tx,ctx),await companyCatalogRowsTx(tx,ctx,companyId));
+ fresh(reads);
+ const hit=reads.catalogs.get(companyId);if(hit)return hit;
+ reads.shared??=await sharedCatalogRowsTx(tx,ctx);
+ let local=reads.local.get(companyId);
+ if(!local){local=await companyCatalogRowsTx(tx,ctx,companyId);reads.local.set(companyId,local);}
+ const catalog=assembleCatalog(reads.shared,local,reads.today);reads.catalogs.set(companyId,catalog);
+ return catalog;
+}
+/**
+ * What the employees of one background chunk share (the lean commit and check, core/movement-import-worker.ts): the
+ * company admission, the catalogue rows, organisation tags and type resolutions, read once and reused while nothing
+ * can have changed them. Valid only inside the chunk transaction that built it, which holds for its whole length the
+ * exclusive Access lock (every authority and login writer), the reference-admission lock (test-record marks) and the
+ * shared type-catalogue lock (type settings), and only while it is still the same day. An employee's own writes
+ * change only that employee's own employment among the rows read here, so after every write its manager-list entry is
+ * read again with the same columns and conditions and patched in place (`refreshManagerEntryTx`); a change of its
+ * position in the list falls back to a full read. Employees whose own movements could change the actor's authority
+ * (the actor's own employment), and corrections or future-dated movements, run without it, exactly as before.
+ */
+export type MovementChunkReads={
+ today:string;
+ companies:Set<string>;
+ shared:SharedCatalogRows|null;
+ local:Map<string,CompanyCatalogRows>;
+ catalogs:Map<string,MovementImportCatalog>;
+ digests:Map<string,string>;
+ organisation:Map<string,Awaited<ReturnType<typeof deriveCompanyOrganisationTx>>>;
+ warnings:Map<string,Awaited<ReturnType<typeof organisationImportWarningsTx>>>;
+ types:Map<string,Awaited<ReturnType<typeof resolveMovementEventTypeTx>>>;
+ managed:boolean|null;
+ actorPersonId:string|null|undefined;
+ /** The subject's movement state as the last successful write of this employee left it (null: read it). */
+ state:{employmentId:string;value:Record<string,string|null>}|null;
+};
+export function newMovementChunkReads():MovementChunkReads{
+ return{today:todayInKualaLumpur(),companies:new Set(),shared:null,local:new Map(),catalogs:new Map(),digests:new Map(),organisation:new Map(),warnings:new Map(),types:new Map(),managed:null,actorPersonId:undefined,state:null};
+}
+/** A copy whose later changes stay its own: an employee (or one checked row) works on a fork, which replaces the
+ * chunk's reads only when its own savepoint commits. */
+function forkReads(r:MovementChunkReads):MovementChunkReads{
+ return{...r,companies:new Set(r.companies),local:new Map(r.local),catalogs:new Map(r.catalogs),digests:new Map(r.digests),organisation:new Map(r.organisation),warnings:new Map(r.warnings),types:new Map(r.types)};
+}
+function adoptReads(target:MovementChunkReads,from:MovementChunkReads){Object.assign(target,from);}
+/** A new day changes which managers are eligible and what a blacklist dates to: start again. */
+function fresh(r:MovementChunkReads){
+ const today=todayInKualaLumpur();
+ if(today!==r.today)adoptReads(r,{...newMovementChunkReads(),today,actorPersonId:r.actorPersonId});
+}
+/** After a write of the employee's own employment: its manager-list entry, read with the list's own columns and
+ * conditions. The same entry keeps the catalogues; a changed or vanished entry is patched where it stood (its order
+ * key, the Employee ID, is unchanged); an entry that appears or moves drops the list so the next read is a full one. */
+async function refreshManagerEntryTx(tx:Tx,ctx:SessionContext,reads:MovementChunkReads,employmentId:string){
+ const shared=reads.shared;if(!shared)return;
+ const [row]=await managerRowsTx(tx,ctx,employmentId);
+ const index=shared.managers.findIndex(m=>m.value===employmentId);
+ if(index<0&&!row)return;
+ const old=index<0?undefined:shared.managers[index];
+ if(old&&row&&digest(old)===digest(row))return;
+ reads.catalogs.clear();reads.digests.clear();
+ if(!old||(row&&row.label!==old.label)){reads.shared=null;return;}
+ const managers:ManagerRow[]=[...shared.managers];
+ if(row)managers[index]=row;else managers.splice(index,1);
+ reads.shared={...shared,managers};
+}
+async function organisationTagsTx(tx:Tx,ctx:SessionContext,p:{companyId:string;asOf:string},reads?:MovementChunkReads){
+ if(!reads)return deriveCompanyOrganisationTx(tx,ctx,p);
+ const key=p.companyId+'|'+p.asOf;let tags=reads.organisation.get(key);
+ if(!tags){tags=await deriveCompanyOrganisationTx(tx,ctx,p);reads.organisation.set(key,tags);}
+ return tags;
+}
+async function organisationWarningsTx(tx:Tx,ctx:SessionContext,p:{companyId:string;asOf:string;businessUnit?:string;parentCompany?:string},reads?:MovementChunkReads){
+ if(!reads)return organisationImportWarningsTx(tx,ctx,p);
+ const key=JSON.stringify([p.companyId,p.asOf,p.businessUnit??null,p.parentCompany??null]);let found=reads.warnings.get(key);
+ if(!found){found=await organisationImportWarningsTx(tx,ctx,p);reads.warnings.set(key,found);}
+ return{...found,warnings:[...found.warnings]};
+}
+async function managedTx(tx:Tx,reads?:MovementChunkReads){
+ if(!reads)return organisationManagedTx(tx);
+ reads.managed??=await organisationManagedTx(tx);return reads.managed;
+}
+async function eventTypeTx(tx:Tx,ctx:SessionContext,code:string,reads?:MovementChunkReads){
+ if(!reads)return resolveMovementEventTypeTx(tx,ctx.tenantId,code);
+ if(!reads.types.has(code))reads.types.set(code,await resolveMovementEventTypeTx(tx,ctx.tenantId,code));
+ return reads.types.get(code)!;
+}
+/** Whether the subject is the actor's own person: then its movements can change the actor's own authority. */
+async function actorsOwnEmploymentTx(tx:Tx,ctx:SessionContext,reads:MovementChunkReads,personId:string){
+ if(reads.actorPersonId===undefined){
+  const [row]=ctx.userId?await tx.execute<{person_id:string|null}>(sql`select person_id from app_user where id=${ctx.userId}::uuid`):[];
+  reads.actorPersonId=row?.person_id??null;
+ }
+ return personId===reads.actorPersonId||personId===ctx.personId;
+}
+/** The stable digest the fingerprint binds for a destination catalogue (no test-record classification). */
+function catalogueDigest(catalogue:MovementImportCatalog){
+ const stable={...catalogue,fields:{...catalogue.fields,managerEmploymentId:catalogue.fields.managerEmploymentId?.map(({isTestRecord:_classification,...facts})=>facts)}};
+ return digest(stable);
 }
 /** Snapshot admission preserves both existing Workforce capabilities and the
  * native administrative company fence, without taking a command/write lock. */
@@ -119,24 +240,25 @@ function lookup(raw:string,options:MovementImportOption[],field:string):string{
  if(value===undefined)throw new Error('unknown_reference:'+field);
  return value;
 }
-async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,employmentId:string,currentCompanyId:string,correctingExit=false){
- const source=await catalogTx(tx,ctx,currentCompanyId);
+/** `known` is the subject's current movement state when the caller has just read it (lean path only). */
+async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,employmentId:string,currentCompanyId:string,correctingExit=false,reads?:MovementChunkReads,known?:Record<string,string|null>){
+ const source=await catalogTx(tx,ctx,currentCompanyId,reads);
  const submitted=record.cells.kind??'';const code=lookup(submitted,source.types.map(type=>({value:type.code,label:type.label??type.code})),'event_type');
- const resolved=await resolveMovementEventTypeTx(tx,ctx.tenantId,code);
+ const resolved=await eventTypeTx(tx,ctx,code,reads);
  if(!resolved?.active)throw new Error('unknown_or_inactive_event_type');
- const managed=await organisationManagedTx(tx);
+ const managed=await managedTx(tx,reads);
  const checked=managed?{...record,cells:{...record.cells,businessUnitId:undefined}}:record;
  const issues=movementImportCellIssues(checked,resolved.behaviourKind);if(!managed&&record.ignoredOrganisation?.businessUnit)issues.push('not_applicable:businessUnitId');if(issues.length)throw new Error(issues.join('; '));
  const effectiveDate=record.importVersion===2&&resolved.behaviourKind==='blacklist'?todayInKualaLumpur():movementImportDate(record.cells.effectiveDate!)!;
- const [dates]=await tx.select({hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate}).from(employment).where(eq(employment.id,employmentId)).limit(1);
+ const [dates]=known?[{hiredOn:known.hiredOn!,terminatedOn:known.terminatedOn??null,lastWorkingDate:known.lastWorkingDate??null,resignationDate:known.resignationDate??null}]:await tx.select({hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate}).from(employment).where(eq(employment.id,employmentId)).limit(1);
  if(!dates)throw new Error('employee_not_available');
  if(!['groupJoinDateCorrection','blacklist','historicalHire'].includes(resolved.behaviourKind)&&effectiveDate<dates.hiredOn)throw new Error('event_before_hire');
  const exit=[dates.terminatedOn,dates.lastWorkingDate,dates.resignationDate].filter((date):date is string=>!!date).sort()[0];
  if(!correctingExit&&exit&&effectiveDate>exit&&(isComparisonKind(resolved.behaviourKind)||['secondment','actingPosition'].includes(resolved.behaviourKind)))throw new Error('event_after_exit');
  if(resolved.behaviourKind==='blacklist'&&effectiveDate!==todayInKualaLumpur())throw new Error('blacklist_date_must_be_today');
  const targetCompanyId=record.cells.companyId?lookup(record.cells.companyId,source.companies,'companyId'):currentCompanyId;
- const catalog=targetCompanyId===currentCompanyId?source:await catalogTx(tx,ctx,targetCompanyId);
- const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:resolved.behaviourKind==='entityTransfer'?targetCompanyId:currentCompanyId,asOf:effectiveDate});
+ const catalog=targetCompanyId===currentCompanyId?source:await catalogTx(tx,ctx,targetCompanyId,reads);
+ const tags=await organisationTagsTx(tx,ctx,{companyId:resolved.behaviourKind==='entityTransfer'?targetCompanyId:currentCompanyId,asOf:effectiveDate},reads);
  const input:CreateMovementInput={employmentId,kind:resolved.code,effectiveDate};
  for(const [key,raw] of Object.entries(record.cells)){
   const field=key as MovementFormField;if(field==='kind'||field==='effectiveDate'||raw==null)continue;
@@ -156,11 +278,11 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
    const options=catalog.fields[field]??[];input[field as keyof typeof fieldKinds]=options.length?lookup(raw,options,field):raw;
   }else if(field==='remarks'||field==='currency'||field==='payMode'||field==='paymentTerm'||field==='terminationReasonCode')input[field]=raw;
  }
- if(managed||tags.status!=='legacy'){const state=await movementCurrentStateTx(tx,employmentId);input.businessUnitId=organisationBusinessUnit(tags,managed,input.businessUnitId,resolved.behaviourKind==='entityTransfer'&&targetCompanyId!==currentCompanyId?null:state.businessUnitId);}
+ if(managed||tags.status!=='legacy'){const state=known?{businessUnitId:known.businessUnitId??null}:await movementCurrentStateTx(tx,employmentId);input.businessUnitId=organisationBusinessUnit(tags,managed,input.businessUnitId,resolved.behaviourKind==='entityTransfer'&&targetCompanyId!==currentCompanyId?null:state.businessUnitId);}
  return {input,source,catalog,behaviour:resolved.behaviourKind};
 }
 async function subjectTx(tx:Tx,ctx:SessionContext,companyId:string,code:string){
- const rows=await tx.select({id:employment.id,name:person.fullName}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.companyId,companyId),eq(employment.employeeCode,code),sql`app.is_admin_for(${employment.companyId})`)).limit(2);
+ const rows=await tx.select({id:employment.id,name:person.fullName,personId:employment.personId}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.companyId,companyId),eq(employment.employeeCode,code),sql`app.is_admin_for(${employment.companyId})`)).limit(2);
  if(rows.length!==1)throw new Error('employee_not_found_in_selected_company');
  await lockEmploymentStatutoryOwnerTx(tx,rows[0].id);
  const locked=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,rows[0].id),eq(employment.companyId,companyId))).for('update');
@@ -173,7 +295,7 @@ async function subjectTx(tx:Tx,ctx:SessionContext,companyId:string,code:string){
 }
 /** Fresh authoritative state, including historical/scheduled events and caller-visible current catalogs.
  * The digest is a stale-preview comparison, never an authorization credential. All writes revalidate. */
-async function fingerprintTx(tx:Tx,ctx:SessionContext,id:string,companyId:string,inputHash:string,selection:number[],records:MovementImportRecord[],deadline:number,references:MovementManagerEvidence[]=[]){
+async function fingerprintTx(tx:Tx,ctx:SessionContext,id:string,companyId:string,inputHash:string,selection:number[],records:MovementImportRecord[],deadline:number,references:MovementManagerEvidence[]=[],reads?:MovementChunkReads){
  // Confirmation may exclude other complete employees from the original preview. Bind only this
  // employee's selection; inputHash still binds the entire file and the whole-sequence guard remains.
  const employeeSelection=records.filter(row=>selection.includes(row.row)).map(row=>row.row).sort((a,b)=>a-b);
@@ -184,10 +306,14 @@ async function fingerprintTx(tx:Tx,ctx:SessionContext,id:string,companyId:string
  const lines=await tx.select().from(reportingLine).where(or(eq(reportingLine.subordinateEmploymentId,id),eq(reportingLine.managerEmploymentId,id))).orderBy(asc(reportingLine.id)).limit(MOVEMENT_IMPORT_LIMITS.historyRows+1);
  const events=await tx.select({id:domainEvent.id,sequence:domainEvent.sequence,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,id),ne(domainEvent.eventType,EMPLOYMENT_TEST_RECORD_EVENT))).orderBy(asc(domainEvent.sequence),asc(domainEvent.id)).limit(MOVEMENT_IMPORT_LIMITS.historyRows+1);
  if([assignments,salaries,lines,events].some(rows=>rows.length>MOVEMENT_IMPORT_LIMITS.historyRows))throw new Error('movement_history_too_large');
- const source=await catalogTx(tx,ctx,companyId);const destinations=new Set([companyId]);
+ const source=await catalogTx(tx,ctx,companyId,reads);const destinations=new Set([companyId]);
  for(const record of records)if(record.cells.companyId){try{destinations.add(lookup(record.cells.companyId,source.companies,'companyId'));}catch{/* The row validator reports an invalid reference without discarding other rows. */}}
- const catalogs=[];for(const destination of [...destinations].sort()){budget(deadline);const catalogue=destination===companyId?source:await catalogTx(tx,ctx,destination);const stable={...catalogue,fields:{...catalogue.fields,managerEmploymentId:catalogue.fields.managerEmploymentId?.map(({isTestRecord:_classification,...facts})=>facts)}};catalogs.push([destination,digest(stable)]);}
- const organisation=[];for(const record of records){const asOf=recordDay(record);if(/^\d{4}-\d{2}-\d{2}$/.test(asOf))for(const destination of [...destinations].sort())organisation.push(await deriveCompanyOrganisationTx(tx,ctx,{companyId:destination,asOf}));}
+ const catalogs=[];for(const destination of [...destinations].sort()){
+  budget(deadline);const catalogue=destination===companyId?source:await catalogTx(tx,ctx,destination,reads);
+  let bound=reads?.digests.get(destination);if(!bound){bound=catalogueDigest(catalogue);if(reads&&reads.catalogs.get(destination)===catalogue)reads.digests.set(destination,bound);}
+  catalogs.push([destination,bound]);
+ }
+ const organisation=[];for(const record of records){const asOf=recordDay(record);if(/^\d{4}-\d{2}-\d{2}$/.test(asOf))for(const destination of [...destinations].sort())organisation.push(await organisationTagsTx(tx,ctx,{companyId:destination,asOf},reads));}
  return digest({organisation:organisation.filter(tags=>tags.status!=='legacy'),tenant:ctx.tenantId,user:ctx.userId??null,inputHash,selection:employeeSelection,emp,assignments,salaries,lines,events,catalogs,references,blacklistDay:records.some(row=>row.importVersion===2&&source.types.find(t=>t.code===row.cells.kind)?.behaviour==='blacklist')?todayInKualaLumpur():null});
 }
 function message(error:unknown){
@@ -258,7 +384,11 @@ function employeeOrder(rows:MovementImportRecord[]){return [...rows.filter(isCor
 async function lifecycleTx(tx:Tx,id:string){
  const [row]=await tx.select({hiredOn:employment.hiredOn,joinDate:employment.joinDate,confirmationDate:employment.confirmationDate,extendedConfirmationDate:employment.extendedConfirmationDate,resignationDate:employment.resignationDate,tenderResignationDate:employment.tenderResignationDate,lastWorkingDate:employment.lastWorkingDate,terminatedOn:employment.terminatedOn,blacklistedAt:employment.blacklistedAt}).from(employment).where(eq(employment.id,id)).limit(1);return row??{};
 }
-type RehearsedRow={view:MovementImportRow;input:CreateMovementInput;changedFields:string[];references:MovementManagerEvidence[];rawAfter:Record<string,string|null>};
+/** `organisationWarnings` are the record's own organisation warnings (part of view.warnings), kept apart so the lean
+ * commit can record Import History items exactly as the rehearse-then-apply commit did. */
+type RehearsedRow={view:MovementImportRow;input:CreateMovementInput;changedFields:string[];references:MovementManagerEvidence[];rawAfter:Record<string,string|null>;organisationWarnings?:string[]};
+async function subjectStateTx(tx:Tx,id:string){return{...await movementCurrentStateTx(tx,id),...await lifecycleTx(tx,id)};}
+type SubjectState=Awaited<ReturnType<typeof subjectStateTx>>;
 function readable(values:Record<string,string|null>,catalog:MovementImportCatalog):Record<string,string|null>{
  return Object.fromEntries(Object.entries(values).map(([key,value])=>{
   const options=key==='companyId'?catalog.companies:catalog.fields[key as MovementFormField];
@@ -274,17 +404,21 @@ function assertSequence(previous:RehearsedRow[],next:RehearsedRow){
  if(sameDay.some(row=>digest(row.input)===digest(next.input)))throw new Error('duplicate_event_in_sequence');
  if(sameDay.some(row=>row.changedFields.some(field=>next.changedFields.includes(field))))throw new Error('same_date_conflicting_changes');
 }
-async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string,rehearsal:boolean,resolvedInput?:CreateMovementInput,create?:MovementSequenceCreate,policy?:RehearsedRow):Promise<RehearsedRow>{
- const before={...await movementCurrentStateTx(tx,id),...await lifecycleTx(tx,id)};
- const prepared=resolvedInput?null:await inputTx(tx,ctx,record,id,before.companyId);
+/** With `reads` (lean path, no `resolvedInput` or `policy`): the subject's state as this employee's previous write left
+ * it, the chunk's catalogues and organisation reads, and the subject's manager entry and state refreshed after the
+ * write. The caller discards `reads` when the row's savepoint rolls back. */
+async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string,rehearsal:boolean,resolvedInput?:CreateMovementInput,create?:MovementSequenceCreate,policy?:RehearsedRow,reads?:MovementChunkReads):Promise<RehearsedRow>{
+ const cached=reads?.state?.employmentId===id?reads.state.value as SubjectState:null;
+ const before:SubjectState=cached?{...cached}:await subjectStateTx(tx,id);
+ const prepared=resolvedInput?null:await inputTx(tx,ctx,record,id,before.companyId,false,reads,reads?before:undefined);
  const resolved=resolvedInput??prepared!.input;
  const behaviour=prepared?.behaviour??(await resolveMovementEventTypeTx(tx,ctx.tenantId,resolved.typeCode??resolved.kind))?.behaviourKind;
  const adapted=policy?{input:resolved,warnings:policy.view.warnings??[],references:policy.references,baselineDate:policy.view.baselineDate}:await movementImportRulesTx(tx,ctx,record,resolved,before,behaviour??'');
  if(policy){await recheckMovementManagerEvidenceTx(tx,ctx,policy.references);if(behaviour==='blacklist'&&resolved.effectiveDate!==todayInKualaLumpur())throw new Error('preview_stale_revalidate');}
  const input=adapted.input;
- const catalogBefore=prepared?.source??await catalogTx(tx,ctx,before.companyId);
+ const catalogBefore=prepared?.source??await catalogTx(tx,ctx,before.companyId,reads);
  if(record.before&&Object.keys(record.before).length)checkBefore(record,before,readable(before,catalogBefore),catalogBefore);
- const catalogAfter=prepared?.catalog??(input.companyId&&input.companyId!==before.companyId?await catalogTx(tx,ctx,input.companyId):catalogBefore);
+ const catalogAfter=prepared?.catalog??(input.companyId&&input.companyId!==before.companyId?await catalogTx(tx,ctx,input.companyId,reads):catalogBefore);
  const result=await (create?create(input):createMovementEventTx(tx,ctx,input)).catch(fieldRuleError);
  if('changed' in result&&result.changed===false)throw new Error('movement_has_no_changes');
  const scheduled='scheduled' in result&&result.scheduled===true;
@@ -292,13 +426,14 @@ async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,i
  // The committed pass records the original future intent and never runs this branch.
  if(scheduled&&rehearsal)await applyDueMovementsTx(tx,ctx,id,input.effectiveDate);
  if(movementNeedsEntitlementReprojection(result.behaviourKind))await reprojectEntitlementForEmployment(ctx,{employmentId:id,trigger:scheduled&&rehearsal?'movement_applied':'movement_recorded',gradeBefore:{gradeId:before.gradeId},changeEffectiveOn:input.effectiveDate,...(scheduled&&rehearsal?{asOf:input.effectiveDate}:{})},tx);
- const after={...await movementCurrentStateTx(tx,id),...await lifecycleTx(tx,id)};
+ const after=await subjectStateTx(tx,id);
+ if(reads){await refreshManagerEntryTx(tx,ctx,reads,id);reads.state={employmentId:id,value:{...after}};}
  const afterValues:Record<string,string|null>=after;
  const changedFields=Object.entries(before).filter(([key,value])=>afterValues[key]!==value).map(([key])=>key);
  const extra=Object.fromEntries(Object.entries(input).filter(([key])=>!['employmentId','kind','effectiveDate','typeCode'].includes(key)&&!(key in after)).map(([key,value])=>[key,value==null?null:String(value)]));
- const organisation=await organisationImportWarningsTx(tx,ctx,{companyId:resolved.companyId||before.companyId,asOf:resolved.effectiveDate,businessUnit:record.cells.businessUnitId??record.ignoredOrganisation?.businessUnit,parentCompany:record.ignoredOrganisation?.parentCompany});
+ const organisation=await organisationWarningsTx(tx,ctx,{companyId:resolved.companyId||before.companyId,asOf:resolved.effectiveDate,businessUnit:record.cells.businessUnitId??record.ignoredOrganisation?.businessUnit,parentCompany:record.ignoredOrganisation?.parentCompany},reads);
  const view:MovementImportRow={...rowView(record),...(record.sourceRows?{sourceRows:record.sourceRows}:{}),...(record.companyCode!==undefined?{companyCode:record.companyCode}:{}),eventType:input.kind,effectiveDate:input.effectiveDate,status:'valid',errors:[],warnings:[...adapted.warnings,...organisation.warnings],baselineDate:adapted.baselineDate,before:readable(before,catalogBefore),proposed:{...readable(after,catalogAfter),...extra},scheduled,payrollFlaggedPeriods:'payrollFlaggedPeriods' in result&&Array.isArray(result.payrollFlaggedPeriods)?result.payrollFlaggedPeriods:[]};
- return {view,input,changedFields,references:adapted.references,rawAfter:afterValues};
+ return {view,input,changedFields,references:adapted.references,rawAfter:afterValues,organisationWarnings:organisation.warnings};
 }
 async function rehearseSequenceTx(tx:Tx,ctx:SessionContext,records:MovementImportRecord[],id:string,deadline:number){
  return rehearseMovementSequenceTx(tx,ctx,async(rehearsalTx,create)=>{
@@ -392,6 +527,29 @@ function employeeFor(key:string,records:MovementImportRecord[],fallbackCompanyId
  const employee:MovementImportEmployee={employeeCode:first.employeeCode,employmentId:null,name:null,rows:employeeOrder(records).map(rowView),fingerprint:null,...(perRow?{key,companyId:companyId??null,companyName:companyId?names.get(companyId)??null:null}:{})};
  return{employee,companyId};
 }
+/** What a check settles before its first employee transaction: the file's inputs and the employees in file order with
+ * their companies resolved. The background check (core/movement-import-check-worker.ts) starts from this. */
+export async function planMovementCheck(ctx:SessionContext,p:{records:MovementImportRecord[];sourceHash:string;catalogueHash:string}){
+ assertAdmin(ctx);const parsed={records:p.records,fileErrors:movementRecordLimits(p.records)};const selection=selectionFor(parsed.records,undefined);const inputHash=digest({companyId:undefined,csv:'',records:p.records,sourceHash:p.sourceHash});
+ if(parsed.fileErrors.length)return{inputHash,selection,fileErrors:parsed.fileErrors,names:[] as [string,string][],groups:[] as {key:string;records:MovementImportRecord[]}[]};
+ const {records:resolved,names}=await resolveRecordCompanies(ctx,parsed.records);
+ return{inputHash,selection,fileErrors:parsed.fileErrors,names:[...names],groups:[...groupsFor(resolved)].map(([key,records])=>({key,records}))};
+}
+/** A check's employee whose company could not be resolved: its chosen rows refused, no transaction (null otherwise). */
+export function movementUncheckedEmployee(c:{key:string;records:MovementImportRecord[];selection:number[];names:Map<string,string>}):MovementImportEmployee|null{
+ const start=employeeFor(c.key,c.records,undefined,c.names);if(start.companyId)return null;
+ return{...start.employee,rows:start.employee.rows.map(row=>c.selection.includes(row.row)?{...row,status:'invalid',errors:row.errors.length?row.errors:['company_not_available']}:row)};
+}
+/** A check's employee that kept meeting transient refusals: every chosen row refused as a refused database change. */
+export function movementCheckRefusedEmployee(c:{key:string;records:MovementImportRecord[];selection:number[];names:Map<string,string>}):MovementImportEmployee{
+ const start=employeeFor(c.key,c.records,undefined,c.names);
+ return{...start.employee,fingerprint:null,rows:start.employee.rows.map(row=>c.selection.includes(row.row)?{...row,status:'invalid',errors:['change_refused']}:row)};
+}
+/** The check's totals, as previewMovementImport counts them. */
+export function movementCheckCounts(preview:MovementImportPreview){
+ let valid=0,excluded=0;for(const employee of preview.employees)for(const row of employee.rows){if(row.status==='valid')valid++;else excluded++;}
+ return{...preview,valid,excluded};
+}
 export async function previewMovementImport(ctx:SessionContext,p:{companyId?:string;csv:string;selection?:number[];records?:MovementImportRecord[];sourceHash?:string;catalogueHash?:string}):Promise<MovementImportPreview>{
  assertAdmin(ctx);const parsed=p.records?{records:p.records,fileErrors:movementRecordLimits(p.records)}:parseMovementImport(p.csv);const selection=selectionFor(parsed.records,p.selection);const inputHash=digest({companyId:p.companyId,csv:p.csv,records:p.records,sourceHash:p.sourceHash});
  const result:MovementImportPreview={inputHash,selection,fileErrors:parsed.fileErrors,employees:[],excluded:0,valid:0};if(parsed.fileErrors.length)return result;
@@ -400,62 +558,171 @@ export async function previewMovementImport(ctx:SessionContext,p:{companyId?:str
  for(const [key,records] of groupsFor(resolved)){
   budget(deadline);const code=records[0].employeeCode,start=employeeFor(key,records,p.companyId,names),companyId=start.companyId;let employee=start.employee;
   if(!companyId){employee={...employee,rows:employee.rows.map(row=>selection.includes(row.row)?{...row,status:'invalid',errors:row.errors.length?row.errors:['company_not_available']}:row)};result.employees.push(employee);continue;}
+  const held={employee};
   try{
    await withTenant(ctx,async tx=>{
     await limits(tx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
-    const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,companyId);if(p.catalogueHash&&digest({version:2,types:(await catalogTx(tx,ctx,companyId)).types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');
-    const subject=await subjectTx(tx,ctx,companyId,code);employee={...employee,employmentId:subject.id,name:subject.name,fingerprint:await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline)};
-    const baseFingerprint=employee.fingerprint;const rows:MovementImportRow[]=[];const previous:RehearsedRow[]=[];const corrected:CorrectedRow[]=[];
-    for(const record of employeeOrder(records)){
-     budget(employeeDeadline);
-     if(!selection.includes(record.row)){rows.push(rowView(record));continue;}
-     if(isCorrection(record)){
-      try{const next=await tx.transaction(rowTx=>applyCorrectionTx(rowTx,ctx,record,subject.id,companyId,true));corrected.push(next);rows.push(next.view);}
-      catch(error){rows.push({...rowView(record),status:'invalid',errors:[message(error)]});}
-      budget(employeeDeadline);continue;
-     }
-     try{const next=await tx.transaction(async rowTx=>{const value=await applyRowTx(rowTx,ctx,record,subject.id,true);assertSequence(previous,value);return value;});previous.push(next);rows.push(next.view);}
-     catch(error){rows.push({...rowView(record),status:'invalid',errors:[message(error)]});}
-     budget(employeeDeadline);
-    }
-    const invalid=rows.some(row=>row.status==='invalid');
-    if(invalid)for(const row of rows)if(row.status==='valid'){row.status='invalid';row.errors.push('employee_sequence_invalid');}
-    const references=[...corrected.flatMap(row=>row.references),...previous.flatMap(row=>row.references)];
-    employee={...employee,fingerprint:invalid?null:digest({base:baseFingerprint,references})};
     // Throwing is mandatory even after successful rehearsal. withTenant never observes success.
-    throw new PreviewRollback({...employee,rows});
+    throw new PreviewRollback(await checkEmployeeTx(tx,ctx,{employee,companyId,code,records,selection,inputHash,catalogueHash:p.catalogueHash,deadline},held));
    });
   }catch(error){
-   if(error instanceof PreviewRollback)employee=error.employee;
-   else employee={...employee,fingerprint:null,rows:employee.rows.map(row=>selection.includes(row.row)?{...row,status:'invalid',errors:[message(error)]}:row)};
+   employee=checkedEmployee(error,held.employee,selection);
   }
   result.employees.push(employee);
  }
  for(const employee of result.employees)for(const row of employee.rows)row.status==='valid'?result.valid++:result.excluded++;
  return result;
 }
+/** One employee of a check as the check reports it: the rolled-back rehearsal's employee, or every chosen row refused
+ * with the error's finite code. */
+function checkedEmployee(error:unknown,employee:MovementImportEmployee,selection:number[]):MovementImportEmployee{
+ if(error instanceof PreviewRollback)return error.employee;
+ return{...employee,fingerprint:null,rows:employee.rows.map(row=>selection.includes(row.row)?{...row,status:'invalid',errors:[message(error)]}:row)};
+}
+type MovementCheckEmployee={employee:MovementImportEmployee;companyId:string;code:string;records:MovementImportRecord[];selection:number[];inputHash:string;catalogueHash?:string;deadline:number};
+/**
+ * One employee of a check, after the session limits and the Access lock: the subject, its fingerprint and every row
+ * rehearsed in order, each in its own savepoint (a refused row leaves the others' effects in place, as before). The
+ * caller rolls the whole transaction or savepoint back. `held.employee` names the employee once it is resolved.
+ * `reads` (the background check) shares the chunk's reads; an employee with Update or Delete rows, or the actor's own
+ * employment, is checked without them, exactly as the synchronous check reads.
+ */
+async function checkEmployeeTx(tx:Tx,ctx:SessionContext,c:MovementCheckEmployee,held:{employee:MovementImportEmployee},chunk?:MovementChunkReads):Promise<MovementImportEmployee>{
+ const {companyId,code,records,selection,inputHash,deadline}=c;let employee=c.employee;held.employee=employee;
+ let reads=chunk&&!records.some(isCorrection)?forkReads(chunk):undefined;
+ const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,companyId,reads);if(c.catalogueHash&&digest({version:2,types:(await catalogTx(tx,ctx,companyId,reads)).types})!==c.catalogueHash)throw new Error('workbook_catalogue_changed');
+ const subject=await subjectTx(tx,ctx,companyId,code);
+ if(reads&&await actorsOwnEmploymentTx(tx,ctx,reads,subject.personId))reads=undefined;
+ employee={...employee,employmentId:subject.id,name:subject.name,fingerprint:await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline,[],reads)};held.employee=employee;
+ if(reads)reads.state=null;
+ const baseFingerprint=employee.fingerprint;const rows:MovementImportRow[]=[];const previous:RehearsedRow[]=[];const corrected:CorrectedRow[]=[];
+ for(const record of employeeOrder(records)){
+  budget(employeeDeadline);
+  if(!selection.includes(record.row)){rows.push(rowView(record));continue;}
+  if(isCorrection(record)){
+   try{const next=await tx.transaction(rowTx=>applyCorrectionTx(rowTx,ctx,record,subject.id,companyId,true));corrected.push(next);rows.push(next.view);}
+   catch(error){rows.push({...rowView(record),status:'invalid',errors:[message(error)]});}
+   budget(employeeDeadline);continue;
+  }
+  // A row's reads change with its writes; they are kept only when its savepoint commits.
+  const own=reads?forkReads(reads):undefined;
+  try{const next=await tx.transaction(async rowTx=>{const value=await applyRowTx(rowTx,ctx,record,subject.id,true,undefined,undefined,undefined,own);assertSequence(previous,value);return value;});previous.push(next);rows.push(next.view);if(reads&&own)adoptReads(reads,own);}
+  catch(error){rows.push({...rowView(record),status:'invalid',errors:[message(error)]});}
+  budget(employeeDeadline);
+ }
+ const invalid=rows.some(row=>row.status==='invalid');
+ if(invalid)for(const row of rows)if(row.status==='valid'){row.status='invalid';row.errors.push('employee_sequence_invalid');}
+ const references=[...corrected.flatMap(row=>row.references),...previous.flatMap(row=>row.references)];
+ employee={...employee,fingerprint:invalid?null:digest({base:baseFingerprint,references})};
+ return{...employee,rows};
+}
+/** The background check's employee (core/movement-import-check-worker.ts): one employee of `previewMovementImport`,
+ * in a savepoint of the chunk that always rolls back, with the chunk's reads. A transient database refusal is thrown
+ * for the kernel to retry; any other refusal is the employee's refused rows, as the synchronous check reports it. */
+export async function checkMovementEmployeeTx(tx:Tx,ctx:SessionContext,c:{key:string;records:MovementImportRecord[];selection:number[];inputHash:string;catalogueHash?:string;names:Map<string,string>},reads:MovementChunkReads,isTransient:(error:unknown)=>boolean):Promise<MovementImportEmployee>{
+ const start=employeeFor(c.key,c.records,undefined,c.names),companyId=start.companyId;const held={employee:start.employee};
+ if(!companyId)return movementUncheckedEmployee(c)!;
+ try{
+  await tx.transaction(async check=>{throw new PreviewRollback(await checkEmployeeTx(check,ctx,{employee:start.employee,companyId,code:c.records[0].employeeCode,records:c.records,selection:c.selection,inputHash:c.inputHash,catalogueHash:c.catalogueHash,deadline:Number.POSITIVE_INFINITY},held,reads));});
+  throw new Error('movement_check_did_not_rollback');
+ }catch(error){
+  if(!(error instanceof PreviewRollback)&&isTransient(error))throw error;
+  return checkedEmployee(error,held.employee,c.selection);
+ }
+}
 /** ac6645ec — with `attemptId`, every movement an employee's transaction creates is recorded as an import
  * history item (its movement id, the values before and after) in that SAME transaction. */
 export type MovementCommitHistory={attemptId:string};
-/** 646355e5 slice C — `acknowledgeClosedPayroll` is the import's confirmation box. Without it, an Update or
- * Delete row behind closed payroll fails its employee with the closed-payroll message. */
-export async function commitMovementImport(ctx:SessionContext,p:{companyId?:string;csv:string;selection:number[];inputHash:string;fingerprints:Record<string,string>;acknowledgeExcluded:boolean;records?:MovementImportRecord[];sourceHash?:string;catalogueHash?:string;history?:MovementCommitHistory;acknowledgeClosedPayroll?:boolean}):Promise<MovementImportResult>{
+export type MovementCommitInput={companyId?:string;csv:string;selection:number[];inputHash:string;fingerprints:Record<string,string>;acknowledgeExcluded:boolean;records?:MovementImportRecord[];sourceHash?:string;catalogueHash?:string;history?:MovementCommitHistory;acknowledgeClosedPayroll?:boolean};
+/** Everything a commit settles before its first employee transaction: the checked selection and the employees in
+ * file order, each with every record of that employee (companies already resolved). The synchronous commit and
+ * the background job (core/movement-import-worker.ts) start from this, so both refuse the same inputs. */
+export type MovementCommitPlan={total:number;selection:number[];names:[string,string][];groups:{key:string;records:MovementImportRecord[]}[]};
+export async function planMovementCommit(ctx:SessionContext,p:MovementCommitInput):Promise<MovementCommitPlan>{
  assertAdmin(ctx);const parsed=p.records?{records:p.records,fileErrors:movementRecordLimits(p.records)}:parseMovementImport(p.csv);if(parsed.fileErrors.length)throw new Error(parsed.fileErrors.join('; '));const selection=selectionFor(parsed.records,p.selection);
  if(!selection.length)throw new Error('select_valid_rows');const inputHash=digest({companyId:p.companyId,csv:p.csv,records:p.records,sourceHash:p.sourceHash});if(inputHash!==p.inputHash)throw new Error('preview_changed');
  if(selection.length!==parsed.records.length&&p.acknowledgeExcluded!==true)throw new Error('confirm_excluded_rows');
  const {records:resolved,names}=await resolveRecordCompanies(ctx,parsed.records);
  for(const records of groupsFor(resolved).values()){const picked=records.filter(r=>selection.includes(r.row)).length;if(picked&&picked!==records.length)throw new Error('whole_employee_selection_required');}
- const result:MovementImportResult={employees:[],imported:0,failed:0,excluded:parsed.records.length-selection.length,byEventType:[],batchId:p.history?.attemptId??randomUUID(),...(p.history?{attemptId:p.history.attemptId}:{})};const deadline=Date.now()+MOVEMENT_IMPORT_LIMITS.requestMs;
- for(const [key,records] of groupsFor(resolved)){
-  const code=records[0].employeeCode,start=employeeFor(key,records,p.companyId,names),companyId=start.companyId;
-  const chosen=sortSequence(records.filter(row=>selection.includes(row.row)));if(!chosen.length){result.employees.push({...start.employee,rows:records.map(rowView)});continue;}
-  let employee:MovementImportEmployee=start.employee;
-  try{
-   budget(deadline);if(!companyId)throw new Error('company_not_available');
-   employee=await withTenant(ctx,async tx=>{
-    await limits(tx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+ return{total:parsed.records.length,selection,names:[...names],groups:[...groupsFor(resolved)].map(([key,records])=>({key,records}))};
+}
+/** One employee of a commit plan, as the commit loop handles it. */
+export type MovementCommitEmployee={key:string;records:MovementImportRecord[];companyId?:string;names:Map<string,string>;selection:number[];inputHash:string;fingerprints:Record<string,string>;catalogueHash?:string;history?:MovementCommitHistory;acknowledgeClosedPayroll?:boolean;batchId:string};
+/** `path` (background job only): whether the lean single pass or the reference body decided the employee. */
+export type MovementEmployeeOutcome={employee:MovementImportEmployee;status:'excluded'|'imported'|'failed';count:number;path?:'lean'|'reference'};
+/** An employee whose file rows were all left out: its rows as read, nothing written. Null when rows were chosen. */
+export function movementExcludedEmployee(c:Pick<MovementCommitEmployee,'key'|'records'|'companyId'|'names'|'selection'>):MovementImportEmployee|null{
+ const start=employeeFor(c.key,c.records,c.companyId,c.names);
+ return c.records.some(row=>c.selection.includes(row.row))?null:{...start.employee,rows:c.records.map(rowView)};
+}
+/** The session limits and the Access lock every employee transaction of a commit starts with (the background job
+ * takes them once per chunk transaction, before its employees). */
+export async function beginMovementCommitTx(tx:Tx,ctx:SessionContext){await limits(tx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);}
+/**
+ * A background chunk's start for the lean commit and check: the same session limits and locks each employee
+ * transaction takes, in the same order (Access, reference admission, the shared type catalogue, the workforce writer
+ * lock, leave-dependency configuration), all in the chunk's own transaction so that an employee's savepoint rolling
+ * back never releases them, and the reads its employees share while they are held.
+ */
+export async function beginMovementChunkTx(tx:Tx,ctx:SessionContext):Promise<MovementChunkReads>{
+ await beginMovementCommitTx(tx,ctx);
+ await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ return newMovementChunkReads();
+}
+/**
+ * One employee's movements, all or nothing, as the synchronous commit applies them. `run` opens the employee's
+ * own atomic unit (its transaction, or a savepoint inside a background chunk that already holds the session limits
+ * and the Access lock) and passes the body to it. A refusal becomes the employee's failed rows; `rethrow` lets the
+ * caller keep a transient database refusal for a retry instead.
+ */
+export async function commitMovementEmployee(ctx:SessionContext,c:MovementCommitEmployee,deadline:number,run:(body:(tx:Tx)=>Promise<MovementImportEmployee>)=>Promise<MovementImportEmployee>,rethrow?:(error:unknown)=>boolean,reads?:MovementChunkReads):Promise<MovementEmployeeOutcome>{
+ const code=c.records[0].employeeCode,start=employeeFor(c.key,c.records,c.companyId,c.names),companyId=start.companyId,selection=c.selection;
+ const chosen=sortSequence(c.records.filter(row=>selection.includes(row.row)));if(!chosen.length)return{employee:{...start.employee,rows:c.records.map(rowView)},status:'excluded',count:0};
+ const held:{employee:MovementImportEmployee;path?:'lean'|'reference'}={employee:start.employee};
+ try{
+  budget(deadline);if(!companyId)throw new Error('company_not_available');
+  const e={code,companyId,chosen,deadline,held};
+  const employee=await run(tx=>reads?commitEmployeeLeanOrReferenceTx(tx,ctx,c,e,reads):commitEmployeeTx(tx,ctx,c,e));
+  return{employee,status:'imported',count:chosen.length,...(held.path?{path:held.path}:{})};
+ }catch(error){
+  if(rethrow?.(error))throw error;
+  const employee=held.employee;
+  return{employee:{...employee,rows:employee.rows.map(row=>selection.includes(row.row)?{...row,status:'failed',errors:[message(error)]}:row)},status:'failed',count:chosen.length,...(held.path?{path:held.path}:{})};
+ }
+}
+/** An employee whose commit never ran to an outcome (a background step that kept meeting transient refusals):
+ * reported exactly as a refused database change of that employee's transaction. */
+export function movementRefusedEmployee(c:Pick<MovementCommitEmployee,'key'|'records'|'companyId'|'names'|'selection'>):MovementEmployeeOutcome{
+ const start=employeeFor(c.key,c.records,c.companyId,c.names),count=c.records.filter(row=>c.selection.includes(row.row)).length;
+ return{employee:{...start.employee,rows:start.employee.rows.map(row=>c.selection.includes(row.row)?{...row,status:'failed',errors:['change_refused']}:row)},status:'failed',count};
+}
+/** By-event-type counts of a finished commit, in event type order. */
+export function movementCommitCounts(employees:MovementImportEmployee[]):MovementImportResult['byEventType']{
+ const counts=new Map<string,{eventType:string;imported:number;failed:number;excluded:number}>();
+ for(const employee of employees)for(const row of employee.rows){const count=counts.get(row.eventType)??{eventType:row.eventType,imported:0,failed:0,excluded:0};row.status==='imported'?count.imported++:row.status==='failed'?count.failed++:count.excluded++;counts.set(row.eventType,count);}
+ return [...counts.values()].sort((a,b)=>a.eventType.localeCompare(b.eventType));
+}
+/** 646355e5 slice C — `acknowledgeClosedPayroll` is the import's confirmation box. Without it, an Update or
+ * Delete row behind closed payroll fails its employee with the closed-payroll message. */
+export async function commitMovementImport(ctx:SessionContext,p:MovementCommitInput):Promise<MovementImportResult>{
+ const plan=await planMovementCommit(ctx,p),selection=plan.selection,names=new Map(plan.names);
+ const result:MovementImportResult={employees:[],imported:0,failed:0,excluded:plan.total-selection.length,byEventType:[],batchId:p.history?.attemptId??randomUUID(),...(p.history?{attemptId:p.history.attemptId}:{})};const deadline=Date.now()+MOVEMENT_IMPORT_LIMITS.requestMs;
+ for(const {key,records} of plan.groups){
+  const outcome=await commitMovementEmployee(ctx,{key,records,companyId:p.companyId,names,selection,inputHash:p.inputHash,fingerprints:p.fingerprints,catalogueHash:p.catalogueHash,history:p.history,acknowledgeClosedPayroll:p.acknowledgeClosedPayroll,batchId:result.batchId!},deadline,
+   body=>withTenant(ctx,async tx=>{await beginMovementCommitTx(tx,ctx);return body(tx);}));
+  if(outcome.status==='imported')result.imported+=outcome.count;else if(outcome.status==='failed')result.failed+=outcome.count;
+  result.employees.push(outcome.employee);
+ }
+ result.byEventType=movementCommitCounts(result.employees);return result;
+}
+/** The body of one employee's commit transaction (after the session limits and the Access lock). `held.employee`
+ * names the employee as soon as it is resolved, so a later refusal still reports who it was. */
+async function commitEmployeeTx(tx:Tx,ctx:SessionContext,p:MovementCommitEmployee,e:{code:string;companyId:string;chosen:MovementImportRecord[];deadline:number;held:{employee:MovementImportEmployee}}):Promise<MovementImportEmployee>{
+ const {key,records,selection,inputHash}=p,{code,companyId,chosen,deadline}=e;const result={batchId:p.batchId};
+ let employee=e.held.employee;
     const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,companyId);const catalog=await catalogTx(tx,ctx,companyId);if(p.catalogueHash&&digest({version:2,types:catalog.types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');const subject=await subjectTx(tx,ctx,companyId,code);
-    employee={...employee,employmentId:subject.id,name:subject.name};
+    employee={...employee,employmentId:subject.id,name:subject.name};e.held.employee=employee;
     const fingerprint=await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline);
     // Corrections act on recorded movements first, under the same lock order the create rehearsal takes.
     const corrections=employeeOrder(records).filter(isCorrection),corrected:CorrectedRow[]=[];
@@ -500,14 +767,69 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId?:stri
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'movement-import',aggregateId:result.batchId!,eventType:'movement-import.employee.applied',actor:actorOf(ctx),subjectEmploymentId:subject.id,payload:{companyId,eventCount:chosen.length,sourceRows:chosen.map(row=>({key:row.row,sheet:row.source?.sheet??'CSV',row:row.source?.row??row.row})),eventTypes:[...new Set(chosen.map(row=>row.cells.kind).filter(Boolean))],
      ...(corrected.length?{corrections:corrected.map(row=>({action:row.action,movementId:row.originalId,closedPayrollPeriods:row.closedPayrollPeriods})),closedPayrollAcknowledged:p.acknowledgeClosedPayroll===true}:{})}});
     return {...employee,employmentId:subject.id,name:subject.name,rows,fingerprint:combined};
-   });
-   result.imported+=chosen.length;
-  }catch(error){employee={...employee,rows:employee.rows.map(row=>selection.includes(row.row)?{...row,status:'failed',errors:[message(error)]}:row)};result.failed+=chosen.length;}
-  result.employees.push(employee);
+}
+/** An employee the lean path does not cover, raised before it wrote anything or inside its own savepoint. */
+class MovementLeanUnavailable extends Error{constructor(readonly reason:string){super('movement_lean_unavailable');}}
+/** The lean commit when it covers the employee, else the reference body (commitEmployeeTx) in the same employee
+ * savepoint. Either way the employee's outcome is the reference commit's. */
+async function commitEmployeeLeanOrReferenceTx(tx:Tx,ctx:SessionContext,p:MovementCommitEmployee,e:{code:string;companyId:string;chosen:MovementImportRecord[];deadline:number;held:{employee:MovementImportEmployee;path?:'lean'|'reference'}},reads:MovementChunkReads):Promise<MovementImportEmployee>{
+ const own=forkReads(reads);e.held.path='lean';
+ try{
+  const employee=await tx.transaction(lean=>commitEmployeeLeanTx(lean,ctx,p,e,own));
+  adoptReads(reads,{...own,state:null});
+  return employee;
+ }catch(error){if(!(error instanceof MovementLeanUnavailable||error instanceof MovementSequenceDeferred))throw error;}
+ e.held.path='reference';
+ const employee=await commitEmployeeTx(tx,ctx,p,e);
+ // Its writes may reach anything the chunk read (corrections, the actor's own employment): read again.
+ adoptReads(reads,{...newMovementChunkReads(),actorPersonId:reads.actorPersonId});
+ return employee;
+}
+/**
+ * One employee's commit in a single pass, for an employee whose movements all apply on save (no Update or Delete row,
+ * nothing dated after today, not the actor's own employment): the same admission, subject locks and reviewed
+ * fingerprint as commitEmployeeTx, then each movement through applyMovementSequenceTx (the rehearsal's own ordered
+ * create, applied for real) instead of a rolled-back rehearsal followed by its replay. For such movements the replay
+ * writes exactly what the rehearsal wrote, so the rows, their values, their order and the Import History items equal
+ * the reference commit's: each item's `organisationWarnings` repeats the movement's organisation warnings once more,
+ * as the replayed row reported them. The reviewed fingerprint is compared after the writes, inside this savepoint;
+ * a stale employee rolls back with the same `preview_stale_revalidate` and leaves nothing behind.
+ */
+async function commitEmployeeLeanTx(tx:Tx,ctx:SessionContext,p:MovementCommitEmployee,e:{code:string;companyId:string;chosen:MovementImportRecord[];deadline:number;held:{employee:MovementImportEmployee}},reads:MovementChunkReads):Promise<MovementImportEmployee>{
+ const {key,records,selection,inputHash}=p,{code,companyId,chosen,deadline}=e;const result={batchId:p.batchId};
+ let employee=e.held.employee;
+ const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);
+ if(records.some(isCorrection)||records.some(row=>!selection.includes(row.row))||records.some(row=>recordDay(row)>reads.today))throw new MovementLeanUnavailable('shape');
+ await assertCompany(tx,ctx,companyId,reads);const catalog=await catalogTx(tx,ctx,companyId,reads);if(p.catalogueHash&&digest({version:2,types:catalog.types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');const subject=await subjectTx(tx,ctx,companyId,code);
+ employee={...employee,employmentId:subject.id,name:subject.name};e.held.employee=employee;
+ if(await actorsOwnEmploymentTx(tx,ctx,reads,subject.personId))throw new MovementLeanUnavailable('actor');
+ const fingerprint=await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline,[],reads);
+ reads.state=null;
+ const creates=records,rows:MovementImportRow[]=[],passed:RehearsedRow[]=[],applied:{record:MovementImportRecord;plan:RehearsedRow;row:RehearsedRow;movementIds:string[]}[]=[];
+ await applyMovementSequenceTx(tx,ctx,async create=>{
+  for(const record of sortSequence(creates)){
+   budget(employeeDeadline);
+   const marker=p.history?await movementLedgerMarkerTx(tx,ctx,subject.id):0;
+   const row=await applyRowTx(tx,ctx,record,subject.id,true,undefined,create,undefined,reads);assertSequence(passed,row);passed.push(row);budget(employeeDeadline);
+   rows.push({...row.view,status:'imported',scheduled:row.view.scheduled,payrollFlaggedPeriods:row.view.payrollFlaggedPeriods});
+   // The replayed row's warnings were the rehearsal's (its organisation warnings included) plus its own organisation warnings.
+   if(p.history)applied.push({record,plan:row,row:{...row,view:{...row.view,warnings:[...row.view.warnings??[],...row.organisationWarnings??[]]}},movementIds:(await movementRowsAfterSequenceTx(tx,ctx,subject.id,marker)).map(created=>created.id)});
+  }
+ });
+ const combined=digest({base:fingerprint,references:passed.flatMap(row=>row.references)});
+ if(!p.fingerprints||p.fingerprints[key]!==combined)throw new Error('preview_stale_revalidate');
+ if(p.history){
+  const labels=new Map(catalog.types.map(type=>[type.code,type.label??type.code]));
+  for(const [index,{record,plan,row,movementIds}]of applied.entries()){const sequence=index;
+   const shown=[...new Set([...Object.keys(plan.view.before??{}),...Object.keys(plan.view.proposed??{})])].filter(field=>field!=='companyName'&&plan.view.before?.[field]!==plan.view.proposed?.[field]);
+   const base={employeeCode:code,eventType:plan.input.kind,eventLabel:labels.get(plan.input.kind)??plan.input.kind,effectiveDate:plan.input.effectiveDate,sourceRows:record.sourceRows??[record.source?.row??record.row]};
+   for(const movementId of movementIds.length?movementIds:[null])await recordImportItemTx(tx,ctx,{attemptId:p.history.attemptId,companyId,employmentId:subject.id,itemKey:`${record.row}|${movementId??'none'}`,label:`${code} · ${subject.name} · ${base.eventLabel} · ${base.effectiveDate}`,ordinal:record.row,status:'applied',
+    before:{...base,movementId,values:pick(plan.view.before,shown)} satisfies MovementImportItemState,
+    after:{...base,organisationWarnings:row.view.warnings??[],movementId,sequence,scheduled:row.view.scheduled===true,values:pick(plan.view.proposed,shown),raw:pick(row.rawAfter,row.changedFields)} satisfies MovementImportItemState});
+  }
  }
- const counts=new Map<string,{eventType:string;imported:number;failed:number;excluded:number}>();
- for(const employee of result.employees)for(const row of employee.rows){const count=counts.get(row.eventType)??{eventType:row.eventType,imported:0,failed:0,excluded:0};row.status==='imported'?count.imported++:row.status==='failed'?count.failed++:count.excluded++;counts.set(row.eventType,count);}
- result.byEventType=[...counts.values()].sort((a,b)=>a.eventType.localeCompare(b.eventType));return result;
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'movement-import',aggregateId:result.batchId!,eventType:'movement-import.employee.applied',actor:actorOf(ctx),subjectEmploymentId:subject.id,payload:{companyId,eventCount:chosen.length,sourceRows:chosen.map(row=>({key:row.row,sheet:row.source?.sheet??'CSV',row:row.source?.row??row.row})),eventTypes:[...new Set(chosen.map(row=>row.cells.kind).filter(Boolean))]}});
+ return {...employee,employmentId:subject.id,name:subject.name,rows,fingerprint:combined};
 }
 /** What an applied movement item stores (before/after). `raw` holds the state values the movement left for
  * the fields it changed; a revert is blocked while any of them has since been changed again. */

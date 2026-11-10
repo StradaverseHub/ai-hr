@@ -1,9 +1,10 @@
-import {getTranslations} from 'next-intl/server';
+import {getLocale,getTranslations} from 'next-intl/server';
 import {revalidatePath} from 'next/cache';
 import {requireAdmin} from '@/lib/authz';
 import {isSameOriginBrowserRequest} from '@/lib/request-origin';
 import {movementImportTemplateData} from '@/core/movement-import';
-import {previewMovementUpload,confirmMovementUpload} from '@/core/movement-import-history';
+import {startMovementCheckJob,startMovementImportJob,MovementImportJobError} from '@/core/movement-import-job';
+import {MOVEMENT_CHECK_ALREADY_RUNNING,MOVEMENT_IMPORT_ALREADY_RUNNING} from '@/lib/movement-import-job';
 import {ImportHistoryError} from '@/core/import-history';
 import {buildMovementWorkbook,MOVEMENT_WORKBOOK_LIMITS} from '@/lib/movement-workbook.server';
 export const runtime='nodejs';
@@ -16,9 +17,12 @@ async function form(request:Request){
 }
 const download=(bytes:Buffer,name:string)=>new Response(new Uint8Array(bytes),{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="${name}"`,'Cache-Control':'private, no-store'}});
 /**
- * ac6645ec — one template, no company or movement-type selection. `preview` records the upload (original
- * bytes) as an import attempt; `apply` names only that attempt, its reviewed preview hash and the chosen
- * employees: the server re-reads the stored file, so neither rows nor fingerprints come from the browser.
+ * ac6645ec — one template, no company or movement-type selection. `preview` stores the upload on a background check
+ * (core/movement-import-check-worker.ts), which records it (original bytes) as an import attempt; the screen follows
+ * it at movement/checks. `apply` names only that attempt, its reviewed preview hash and the chosen employees: the
+ * server re-reads the stored file, so neither rows nor fingerprints come from the browser. `apply` checks the attempt
+ * and enqueues a background job (core/movement-import-job.ts); the protected import worker saves the employees and
+ * the screen follows the job at movement/jobs.
  */
 export async function POST(request:Request){
  if(!isSameOriginBrowserRequest(request))return reply({ok:false,error:'origin'},403);
@@ -33,24 +37,25 @@ export async function POST(request:Request){
    const file=data.get('file');if(!(file instanceof File))throw new Error('invalid_file');
    if(file.size>MOVEMENT_WORKBOOK_LIMITS.maxBytes)throw new Error('file_too_large');
    const operationKey=String(data.get('operationKey')??'')||undefined;
-   const checked=await previewMovementUpload(ctx,{name:file.name,content:Buffer.from(await file.arrayBuffer()),operationKey,resolve});
-   revalidatePath('/admin/personnel/import/history');
-   return reply({ok:true,...checked});
+   const started=await startMovementCheckJob(ctx,{name:file.name,content:Buffer.from(await file.arrayBuffer()),operationKey,locale:await getLocale()});
+   return reply({ok:true,...started},202);
   }
   if(operation==='apply'){
    const raw=String(data.get('employees')??'');if(raw.length>20000)throw new Error('invalid_selection');
    let employees:unknown;try{employees=JSON.parse(raw);}catch{throw new Error('invalid_selection');}
    if(!Array.isArray(employees)||employees.length>200||employees.some(key=>typeof key!=='string'||key.length>300))throw new Error('invalid_selection');
-   const result=await confirmMovementUpload(ctx,{attemptId:String(data.get('attemptId')??''),previewHash:String(data.get('previewHash')??''),employees:employees as string[],acknowledgeExcluded:data.get('acknowledgeExcluded')==='true',
+   const started=await startMovementImportJob(ctx,{attemptId:String(data.get('attemptId')??''),previewHash:String(data.get('previewHash')??''),employees:employees as string[],acknowledgeExcluded:data.get('acknowledgeExcluded')==='true',
     // 646355e5 slice C — the closed-payroll confirmation box; the server decides where it is needed.
-    acknowledgeClosedPayroll:data.get('acknowledgeClosedPayroll')==='true',resolve});
-   if(result.imported){revalidatePath('/admin/personnel');for(const employee of result.employees)if(employee.employmentId)revalidatePath('/admin/personnel/'+employee.employmentId);}
+    acknowledgeClosedPayroll:data.get('acknowledgeClosedPayroll')==='true',locale:await getLocale(),operationKey:String(data.get('operationKey')??'')||undefined});
    revalidatePath('/admin/personnel/import/history');
-   return reply({ok:true,result});
+   if('already' in started)return reply({ok:true,result:started.already});
+   return reply({ok:true,...started},202);
   }
   throw new Error('invalid_file');
  }catch(error){
   if(error instanceof ImportHistoryError)return reply({ok:false,message:error.message},400);
+  // The one stable code the screen translates; the other job refusals are sentences.
+  if(error instanceof MovementImportJobError)return reply(error.message===MOVEMENT_IMPORT_ALREADY_RUNNING||error.message===MOVEMENT_CHECK_ALREADY_RUNNING?{ok:false,error:error.message}:{ok:false,message:error.message},error.status);
   // Database wrappers contain SQL/bound values. Only finite application codes are presentation data.
   const raw=error instanceof Error&&!('query'in error)&&!('cause'in error)?error.message:'';
   const code=/^(?:workbook_[a-z_]+|file_too_large|invalid_file|unknown_or_inactive_event_type|too_many_employees|movement_reference_catalog_too_large|whole_employee_selection_required|invalid_selection|preview_changed|confirm_excluded_rows|select_valid_rows)$/.test(raw)?raw:'change_refused';
