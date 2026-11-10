@@ -517,17 +517,25 @@ it('names the failed Home card and its catalog message key without exporting ren
  const result=projectWorkerDriverFailure('preflight-checks',null,report);
  expect(validateWorkerDriverFailure(result)).toEqual(result);
  expect(result.homeFailures).toEqual([{role:'manager',phase:'baseline',count:2,cards:[
-  {card:'tasks',marker:'alert',message:'employeeHome.tasks.timeout',count:2},
-  {card:'outside-card',marker:'alert',message:'unrecognized',count:1},
-  {card:'team',marker:'alert',message:'employeeHome.team.failed',count:1},
+  {card:'tasks',marker:'alert',section:null,message:'employeeHome.tasks.timeout',count:2},
+  {card:'outside-card',marker:'alert',section:'other',message:'unrecognized',count:1},
+  {card:'team',marker:'alert',section:null,message:'employeeHome.team.failed',count:1},
  ]}]);
  expect(JSON.stringify(result)).not.toContain(sensitive);
  for(const invalid of [
   {...result.homeFailures[0],cards:[{...result.homeFailures[0].cards[0],card:sensitive}]},
   {...result.homeFailures[0],cards:[{...result.homeFailures[0].cards[0],message:sensitive}]},
-  {...result.homeFailures[0],cards:[...result.homeFailures[0].cards,{card:'today',marker:'alert',message:'unrecognized',count:1}]},
+  {...result.homeFailures[0],cards:[{...result.homeFailures[0].cards[0],section:sensitive}]},
+  {...result.homeFailures[0],cards:[...result.homeFailures[0].cards,{card:'today',marker:'alert',section:null,message:'unrecognized',count:1}]},
   {role:'manager',phase:'baseline',count:2},
  ])expect(validateWorkerDriverFailure({...result,homeFailures:[invalid]})).toBeNull();
+ // A server-rendered Today section is outside every card, so its section names it.
+ const todayFacts=homeCardFailureFacts([{card:null,marker:'today-unavailable',section:'today-needs-you',text:'This section could not load.'}],
+  homeFailureMessageCatalog([{today:{unavailable:'This section could not load.'}}]));
+ const todayResult=projectWorkerDriverFailure('preflight-checks',null,{homeCardFailures:[{role:'manager',phase:'baseline',messages:[],cards:todayFacts}]});
+ expect(validateWorkerDriverFailure(todayResult)).toEqual(todayResult);
+ expect(todayResult.homeFailures).toEqual([{role:'manager',phase:'baseline',count:1,cards:[
+  {card:'outside-card',marker:'today-unavailable',section:'today-needs-you',message:'today.unavailable',count:1}]}]);
  // Every role and phase failing every card still fits the runner's bounded read.
  const many={homeCardFailures:['employee','manager','companyHR','groupHR'].flatMap(role=>['baseline','loaded'].flatMap(phase=>
   ['calendar','celebrations','notices','summary','tasks','team','timeOff','today'].map(card=>({role,phase,messages:[],

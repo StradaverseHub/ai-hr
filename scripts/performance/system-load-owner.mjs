@@ -185,7 +185,7 @@ const nativeShell=strictRenderedPreflight?baselineNavigation.nativeHiddenShell(r
 const routePool=user=>routePools[user.role];
 // Rendered Home failure text maps to its static catalog key; an unreadable catalog only yields 'unrecognized'.
 const homeFailureMessages=(()=>{
- try{return homeFailureMessageCatalog(['en','ms','ta','th','vi','zh'].map(locale=>JSON.parse(readFileSync(new URL('../../messages/'+locale+'.json',import.meta.url),'utf8'))));}
+ try{return homeFailureMessageCatalog(['','ai-centre/'].flatMap(directory=>['en','ms','ta','th','vi','zh'].map(locale=>JSON.parse(readFileSync(new URL('../../messages/'+directory+locale+'.json',import.meta.url),'utf8')))));}
  catch{return new Map();}
 })();
 const measuredRoutePools=suite==='whole-system'?routePools:{employee:['/me','/claims','/leave'],manager:['/approvals','/claims','/performance/home'],companyHR:['/admin/personnel','/payroll','/claims'],groupHR:['/admin/personnel','/payroll','/claims']};

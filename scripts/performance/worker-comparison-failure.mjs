@@ -142,8 +142,8 @@ function homeFailures(rows){
   const group=groups.get(key);
   group.count++;
   for(const fact of (Array.isArray(row.cards)?row.cards.slice(0,64):[]).map(closedHomeFact)){
-   const id=[fact.card,fact.marker,fact.message].join(':');
-   const entry=group.cards.get(id)??{card:fact.card,marker:fact.marker,message:fact.message,count:0};
+   const id=[fact.card,fact.marker,fact.section,fact.message].join(':');
+   const entry=group.cards.get(id)??{card:fact.card,marker:fact.marker,section:fact.section,message:fact.message,count:0};
    entry.count++;group.cards.set(id,entry);
   }
  }
@@ -162,12 +162,12 @@ const validAdvisory=value=>value===null||fields(value,['activityWaitSamples','ap
  &&integer(value.activityWaitSamples,4097)&&integer(value.appAdvisorySamples,4097)
  &&integer(value.activityWithoutAdvisorySamples,value.activityWaitSamples)
  &&fields(value.families,[...advisoryFamilies])&&Object.values(value.families).every(count=>integer(count,value.appAdvisorySamples));
-const validHomeCard=value=>fields(value,['card','marker','message','count'])&&homeCardSet.has(value.card)&&homeMarkers.has(value.marker)
- &&typeof value.message==='string'&&value.message.length<=80&&homeMessageKey.test(value.message)&&integer(value.count,4096)&&value.count>0;
+const validHomeCard=value=>fields(value,['card','marker','section','message','count'])&&homeCardSet.has(value.card)&&homeMarkers.has(value.marker)
+ &&(value.section===null||typeof value.section==='string'&&homeSection.test(value.section))&&typeof value.message==='string'&&value.message.length<=80&&homeMessageKey.test(value.message)&&integer(value.count,4096)&&value.count>0;
 const validHome=value=>value===null||Array.isArray(value)&&value.length<=roles.size*homePhases.size
  &&value.every(row=>fields(row,['role','phase','count','cards'])&&roles.has(row.role)&&homePhases.has(row.phase)&&integer(row.count,4096)&&row.count>0
   &&Array.isArray(row.cards)&&row.cards.length<=homeCardsPerGroup&&row.cards.every(validHomeCard)
-  &&new Set(row.cards.map(card=>[card.card,card.marker,card.message].join(':'))).size===row.cards.length);
+  &&new Set(row.cards.map(card=>[card.card,card.marker,card.section,card.message].join(':'))).size===row.cards.length);
 
 export function projectWorkerNativeLockFailures(failures){
  if(!Array.isArray(failures)||failures.length>64)return null;
