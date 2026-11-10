@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 export const BASE = 'f07f32dcd0ccaeb6b49d40f2b6c64307b9bf80fc';
-export const CANDIDATE = 'f152a15891d1e17d45093b4a1a20bc09b103f532';
+export const CANDIDATE = '88cdfc1345d348ee3a4111a5e14c5cd721753733';
 export const BASE_ROWS = 726;
 export const CANDIDATE_ROWS = 769;
 export const BRANCH = 'codex/architecture-streamline-ai-upgrade-witness-20261110';
