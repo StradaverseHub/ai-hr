@@ -20,11 +20,13 @@ exec(compile(path.read_bytes(), str(path), 'exec', dont_inherit=True), owner.__d
 
 class FamilyTests(unittest.TestCase):
     course = 'serial-2-4-8'
+    collected_modes = ('exited',)
 
     def setUp(self):
         course = patch.dict(os.environ, {'AIHR_MEASURED_BROWSER_COURSE': self.course})
         course.start()
         self.addCleanup(course.stop)
+        owner.ADOPTEES.update(live=0, exitedInSession=0, exitedOutsideSession=0, reapedOutsideSession=0)
 
     def test_exact_order_and_real_channel(self):
         parent, client = socket.socketpair()
@@ -192,7 +194,7 @@ os.close(release)
                         with self.assertRaises(ValueError):
                             owner.barrier(runner.pid, descriptor, birth)
                     with patch.object(owner.signal, 'pidfd_send_signal') as send:
-                        if mode == 'exited':
+                        if mode in self.collected_modes:
                             owner.barrier(runner.pid, descriptor, birth)
                             self.assertEqual(kernel.own_children(), [runner.pid])
                         else:
@@ -243,6 +245,8 @@ os.close(release)
 class ParallelCellTests(FamilyTests):
     """The parallel cell owner reuses every serial control, with exactly one cell barrier."""
     course = 'parallel-smoke'
+    # An exited helper outside the session is collected; a live one in any session stays refused.
+    collected_modes = ('exited', 'escaped')
 
     def test_exact_order_and_real_channel(self):
         parent, client = socket.socketpair()
