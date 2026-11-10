@@ -250,6 +250,13 @@ calculation, authority, ordering or failure changes.
   `explainEntitlementEligibility` live: every table version and rule of that type, the membership per rule and the first
   failing axis per rule. It could take the same preloaded tables and rules and ask every membership and axis subset in one
   `resolveOrgCriteriaTargetsBatch` statement, plus the person and dated assignment facts it quotes.
+- **Cards and sections' remaining reads** (decision 13). The own leave application index keeps its own bounded
+  transaction (begin, read-only setting, identity, time bounds, one statement, commit): a shared snapshot cannot take
+  those bounds for one read. An administrator's Needs you still reads its loop feeds (moved down, acted, weekly sample,
+  left alone), proposals, readiness and digest through their owners, and every prepared review's reopen repeats its
+  owner's checks. The greeting's workday checks still read the schedule owner per day when the lookback finds a
+  full-day candidate. At a glance's leave balances and payslip are their owners' own statements (decisions 6 and 3) in
+  the page render's snapshot, not the stream's: the two are separate requests and nothing is cached across them.
 
 ## Read models worth maintaining
 

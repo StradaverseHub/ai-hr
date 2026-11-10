@@ -639,43 +639,50 @@ async function cardsSectionsFixtures(actors:readonly Actor[],others:readonly Act
  for(const workerId of ['loop_missed_clock_outs','loop_missing_employee_data','loop_document_expiry','loop_probation_ending','loop_payroll_inputs','approver_recommendation'])
   await step('switch:'+workerId,()=>setWorkerSwitch(group.ctx,{workerId,enabled:true}));
  const teras=await import('../../db/teras-schema'),autonomy=await import('../../db/teras-autonomy-schema');
- await step('aiCentre:running',()=>owner.db.insert(teras.terasMandateControl).values({tenantId,stopped:false,version:4,changedByUserId:group.ctx.userId!})
-  .onConflictDoUpdate({target:teras.terasMandateControl.tenantId,set:{stopped:false,version:4}}));
+ // The mandate control's writers bind the tenant first (app.ai_centre_mandate_write_order).
+ const control=(bound:string,stopped:boolean,version:number,userId:string)=>owner.client.begin(async tx=>{
+  await tx`select set_config('app.tenant_id',${bound},true)`;
+  await tx`insert into teras_mandate_control(tenant_id,stopped,version,changed_by_user_id) values(${bound}::uuid,${stopped},${version},${userId}::uuid)
+   on conflict (tenant_id) do update set stopped=excluded.stopped,version=excluded.version`;
+ });
  const otherGroup=others.find(a=>a.role==='groupHR')!;
- await step('aiCentre:stopped',()=>owner.db.insert(teras.terasMandateControl).values({tenantId:otherGroup.ctx.tenantId,stopped:true,version:2,changedByUserId:otherGroup.ctx.userId!})
-  .onConflictDoUpdate({target:teras.terasMandateControl.tenantId,set:{stopped:true,version:2}}));
+ await step('aiCentre:running',()=>control(tenantId,false,4,group.ctx.userId!));
+ await step('aiCentre:stopped',()=>control(otherGroup.ctx.tenantId,true,2,otherGroup.ctx.userId!));
  // Open cases of several kinds: own clock-outs, a record gap and a passport for the employee; two clock-outs for the
  // manager; two clock-outs whose order key ties for the second manager (the owner reads); HR cards; and own cases in a
  // company where one loop is paused and another at Watch.
  const run=randomUUID(),companyOne=actors.find(a=>a.company===1)!.companyId;
- const kase=(a:Actor,workerId:string,key:string,recipient:'employee'|'hr',facts:Record<string,unknown>)=>({tenantId,workerId:workerId as 'loop_missed_clock_outs',companyId:a.companyId,
-  employmentId:a.employmentId,subjectKey:key+':'+a.employmentId,recipient,state:'open' as const,facts,openedRunId:run,checkedRunId:run});
+ // The case table's own key shape: kind, the employment, and for a dated case its date.
+ const key=(a:Actor,kind:string,date?:string)=>kind+':'+a.employmentId+(date?':'+date:'');
+ const kase=(a:Actor,workerId:string,subjectKey:string,recipient:'employee'|'hr',facts:Record<string,unknown>)=>({tenantId,workerId:workerId as 'loop_missed_clock_outs',companyId:a.companyId,
+  employmentId:a.employmentId,subjectKey,recipient,state:'open' as const,facts,openedRunId:run,checkedRunId:run});
  let cases:{id:string;subjectKey:string;employmentId:string|null}[]=[];
  await step('loops:cases',async()=>{cases=await owner.db.insert(teras.terasLoopCase).values([
-  kase(employee,'loop_missed_clock_outs','clockout:'+day(-2),'employee',{date:day(-2),checkIn:'09:00',proposedCheckOut:'18:00'}),
-  kase(employee,'loop_missing_employee_data','record','employee',{gaps:['bankAccount'],tabs:['bankStatutory']}),
-  kase(employee,'loop_document_expiry','passport','employee',{expiresOn:day(40)}),
-  kase(manager,'loop_missed_clock_outs','clockout:'+day(-3),'employee',{date:day(-3),checkIn:'09:05',proposedCheckOut:'18:00'}),
-  kase(manager,'loop_missed_clock_outs','clockout:'+day(-4),'employee',{date:day(-4),checkIn:'09:05',proposedCheckOut:'17:30'}),
-  kase(secondManager,'loop_missed_clock_outs','clockout:a','employee',{date:day(-2),checkIn:'09:00',proposedCheckOut:'18:00'}),
-  kase(secondManager,'loop_missed_clock_outs','clockout:b','employee',{date:day(-2),checkIn:'10:00',proposedCheckOut:'19:00'}),
-  kase(at(10),'loop_probation_ending','probation','hr',{endDate:day(10),stage:'none'}),
-  kase(at(11),'loop_document_expiry','passport','hr',{expiresOn:day(20)}),
-  kase(onLeave,'loop_document_expiry','passport','employee',{expiresOn:day(30)}),
-  kase(onLeave,'loop_missing_employee_data','record','employee',{gaps:['bankAccount'],tabs:['bankStatutory']}),
+  kase(employee,'loop_missed_clock_outs',key(employee,'clockout',day(-2)),'employee',{date:day(-2),checkIn:'09:00',proposedCheckOut:'18:00'}),
+  kase(employee,'loop_missing_employee_data',key(employee,'record'),'employee',{gaps:['bankAccount'],tabs:['bankStatutory']}),
+  kase(employee,'loop_document_expiry',key(employee,'passport'),'employee',{expiresOn:day(40)}),
+  kase(manager,'loop_missed_clock_outs',key(manager,'clockout',day(-3)),'employee',{date:day(-3),checkIn:'09:05',proposedCheckOut:'18:00'}),
+  kase(manager,'loop_missed_clock_outs',key(manager,'clockout',day(-4)),'employee',{date:day(-4),checkIn:'09:05',proposedCheckOut:'17:30'}),
+  // Two clock-out cards whose order key (the date in their facts) ties.
+  kase(secondManager,'loop_missed_clock_outs',key(secondManager,'clockout',day(-2)),'employee',{date:day(-2),checkIn:'09:00',proposedCheckOut:'18:00'}),
+  kase(secondManager,'loop_missed_clock_outs',key(secondManager,'clockout',day(-6)),'employee',{date:day(-2),checkIn:'10:00',proposedCheckOut:'19:00'}),
+  kase(at(10),'loop_probation_ending',key(at(10),'probation'),'hr',{endDate:day(10),stage:'none'}),
+  kase(at(11),'loop_document_expiry',key(at(11),'passport'),'hr',{expiresOn:day(20)}),
+  kase(onLeave,'loop_document_expiry',key(onLeave,'passport'),'employee',{expiresOn:day(30)}),
+  kase(onLeave,'loop_missing_employee_data',key(onLeave,'record'),'employee',{gaps:['bankAccount'],tabs:['bankStatutory']}),
  ]).returning({id:teras.terasLoopCase.id,subjectKey:teras.terasLoopCase.subjectKey,employmentId:teras.terasLoopCase.employmentId});});
  await step('loops:pause',()=>owner.db.insert(teras.terasLoopPause).values({tenantId,workerId:'loop_document_expiry',companyId:companyOne,paused:true,changedByUserId:group.ctx.userId!}));
  await step('loops:watch',()=>owner.db.insert(autonomy.terasLoopLevel).values({tenantId,workerId:'loop_missing_employee_data',companyId:companyOne,level:0,changedBy:'administrator',changedByUserId:group.ctx.userId!}));
  // Open undo windows on own days: one for the employee, one for the manager, and two created at the same instant for the
  // second manager (a tie on the owner's order key: the owner reads).
- const caseOf=(a:Actor,key:string)=>cases.find(row=>row.subjectKey===key+':'+a.employmentId)?.id;
+ const caseOf=(subjectKey:string)=>cases.find(row=>row.subjectKey===subjectKey)?.id;
  const action=(a:Actor,caseId:string|undefined,date:string,createdAt?:Date)=>({tenantId,workerId:'loop_missed_clock_outs' as const,companyId:a.companyId,caseId:caseId!,employmentId:a.employmentId,
   runId:run,level:2 as const,state:'applied' as const,ruleVersion:'loop_missed_clock_outs.act@v1',sponsorUserId:group.ctx.userId!,agentPrincipalId:randomUUID(),checks:[],
   facts:{date,checkIn:'09:00',checkOut:'18:00'},appliedAt:new Date(),undoUntil:new Date(Date.now()+86400000),...(createdAt?{createdAt}:{})});
  await step('loops:autonomy',async()=>{
   const tie=new Date(Date.now()-60000);
-  await owner.db.insert(autonomy.terasLoopAction).values([action(employee,caseOf(employee,'clockout:'+day(-2)),day(-2)),action(manager,caseOf(manager,'clockout:'+day(-3)),day(-3)),
-   action(secondManager,caseOf(secondManager,'clockout:a'),day(-2),tie),action(secondManager,caseOf(secondManager,'clockout:b'),day(-2),tie)]);
+  await owner.db.insert(autonomy.terasLoopAction).values([action(employee,caseOf(key(employee,'clockout',day(-2))),day(-2)),action(manager,caseOf(key(manager,'clockout',day(-3))),day(-3)),
+   action(secondManager,caseOf(key(secondManager,'clockout',day(-2))),day(-2),tie),action(secondManager,caseOf(key(secondManager,'clockout',day(-6))),day(-2),tie)]);
  });
  // Letter requests through the owners: a template approved by a second HR administrator, opened for requests, and two
  // employees' requests waiting in company 0.
