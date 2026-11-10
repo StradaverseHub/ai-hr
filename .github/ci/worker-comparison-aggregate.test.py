@@ -50,7 +50,7 @@ def cell(workers, course='parallel-smoke', **changes):
         'seedSettlement': 'settled', 'complete': True, 'host': dict(HOST), 'productionEquivalent': False, 'scope': 'x',
         'cell': {'name': name, 'scope': scope, 'state': 'passed', 'reason': None, 'fixtureDay': '2026-11-10',
                  'settlement': 'settled', 'observation': observation(scope)},
-        'processOwner': {'settled': True, 'cellBarriers': 1, 'runnerExitCode': 0},
+        'processOwner': {'settled': True, 'cellBarriers': 1, 'runnerExitCode': 0, 'exitedOutsideSession': 0},
     }
     for key, update in changes.items():
         if key == 'host':
@@ -171,7 +171,7 @@ class AggregateTests(unittest.TestCase):
         cases = (
             ((cell('2'), cell('4')), 'smoke-8-missing'),
             ((cell('2'), cell('4'), cell('8', complete=False, processOwner={'settled': True, 'cellBarriers': 1,
-              'runnerExitCode': 1}, cellState={'state': 'failed', 'reason': 'measurement'})), 'smoke-8-measurement'),
+              'runnerExitCode': 1, 'exitedOutsideSession': 0}, cellState={'state': 'failed', 'reason': 'measurement'})), 'smoke-8-measurement'),
             ((cell('2'), cell('4', transport={'seal': dict(SEAL, sha256='f' * 64), 'archiveSha256': ARCHIVE,
               'archiveBytes': 1}, buildSeal=dict(SEAL, sha256='f' * 64)), cell('8')), 'smoke-4-refused'),
             ((cell('2'), cell('4', cellState={'fixtureDay': '2026-11-11'}), cell('8')), 'fixture-day'),
@@ -186,7 +186,7 @@ class AggregateTests(unittest.TestCase):
 
     def test_failed_setup_phase_is_named_publicly(self):
         failed = cell('2', complete=False, buildSeal=None, seedSettlement=None,
-                      processOwner={'settled': True, 'cellBarriers': 0, 'runnerExitCode': 1},
+                      processOwner={'settled': True, 'cellBarriers': 0, 'runnerExitCode': 1, 'exitedOutsideSession': 0},
                       cellState={'state': 'failed', 'reason': 'build-proof', 'fixtureDay': None, 'observation': {
                           'phaseStatus': [{'label': 'postgres', 'exitCode': 2, 'timedOut': False}]}})
         self.publish(failed, cell('4'), cell('8'))
@@ -216,7 +216,7 @@ class AggregateTests(unittest.TestCase):
             owner.check_cell(cell('2', full, prerequisite=None), full, '2', owner.expected_identity(env(full)))
 
     def test_complete_without_settled_owner_proof_is_refused(self):
-        forged = cell('2', processOwner={'settled': True, 'cellBarriers': 0, 'runnerExitCode': 0})
+        forged = cell('2', processOwner={'settled': True, 'cellBarriers': 0, 'runnerExitCode': 0, 'exitedOutsideSession': 0})
         with self.assertRaises(owner.Refused):
             owner.check_cell(forged, 'parallel-smoke', '2', owner.expected_identity(env()))
 

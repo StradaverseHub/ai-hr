@@ -158,7 +158,9 @@ def check_cell(summary, course, workers, expected, seal=None, archive=None):
             and summary['releaseEligible'] is False and summary['productionEquivalent'] is False
             and summary['course'] == course and summary['identity'] == expected, 'cell identity')
     owner = summary['processOwner']
-    require(type(owner) is dict and set(owner) == {'settled', 'cellBarriers', 'runnerExitCode'} and owner['settled'] is True
+    require(type(owner) is dict and set(owner) == {'settled', 'cellBarriers', 'runnerExitCode', 'exitedOutsideSession'}
+            and type(owner['exitedOutsideSession']) is int and 0 <= owner['exitedOutsideSession'] <= 1024
+            and owner['settled'] is True
             and type(owner['cellBarriers']) is int and 0 <= owner['cellBarriers'] <= 1
             and type(owner['runnerExitCode']) is int, 'cell process owner')
     cell = summary['cell']
