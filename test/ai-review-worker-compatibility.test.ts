@@ -26,6 +26,7 @@ const archived=(ref:string,path:string)=>execFileSync('git',['show',ref+':'+path
 const REVIEWED_SECURITY_GRAPH={source:'c58c30efd6bc81b20bb4b5a82b026b93c7297760',baseline:'8b676f25c006dd9a95dfd30bb6005e558923980a',
  lockSha256:'0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd',
  baselineLockSha256:'959230b1c75266db4c15f8df1c9aa4317e74f887d8899f4c05aace77b5fe9a62'} as const;
+const REVIEWED_POSTGRES_PATCH={path:'patches/postgres@3.4.9.patch',sha256:'f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd'} as const;
 // Copied from the actual corrected V2 controller policy, not a fixture-only root expansion.
 // This source fixture never substitutes for that controller's authenticated extracted-packet boot proof.
 const PACKET_POLICY={controller:'567ec0908a24e21078e458ec1e93e696cafeb0a8',formatSha256:'07fa30e623f192ed8231ed42de4a606ed8251539db95389ec7ad6b50ff166369',
@@ -111,7 +112,17 @@ it.each([['legacy',WORKER_SOURCE],['staged',STAGING_BASELINE]] as const)(
   devDependencies:{...oldPackage.devDependencies,ajv:'8.20.0','eslint-config-next':'16.4.1'}});
  const securityLock=execFileSync('git',['show',REVIEWED_SECURITY_GRAPH.source+':pnpm-lock.yaml'],{encoding:'utf8'});
  expect(createHash('sha256').update(securityLock).digest('hex')).toBe(REVIEWED_SECURITY_GRAPH.lockSha256);
- expect(readFileSync('pnpm-lock.yaml','utf8'),'only the exact reviewed security dependency graph').toBe(securityLock);
+ // The PgBouncer work (ADR 2026-11-10 pgbouncer transaction pooling, patches/README.md) patches postgres@3.4.9 in the
+ // repository: no package or version changes. The lock may differ from the reviewed graph only by that patch's own
+ // entry and its hash on the five postgres@3.4.9 references, and the hash is the SHA-256 of the patch's exact bytes.
+ const postgresPatch=createHash('sha256').update(readFileSync(REVIEWED_POSTGRES_PATCH.path)).digest('hex');
+ expect(postgresPatch,REVIEWED_POSTGRES_PATCH.path).toBe(REVIEWED_POSTGRES_PATCH.sha256);
+ const patchEntry='  postgres@3.4.9:\n    hash: '+postgresPatch+'\n    path: '+REVIEWED_POSTGRES_PATCH.path+'\n';
+ const patchedVersion='3.4.9(patch_hash='+postgresPatch+')';
+ const currentLock=readFileSync('pnpm-lock.yaml','utf8');
+ expect(currentLock.split(patchEntry),'one postgres patch entry').toHaveLength(2);
+ expect(currentLock.split(patchedVersion),'five patched postgres references').toHaveLength(6);
+ expect(currentLock.replace(patchEntry,'').split(patchedVersion).join('3.4.9'),'only the exact reviewed security dependency graph').toBe(securityLock);
  expect(execFileSync('git',['rev-parse',REVIEWED_SECURITY_GRAPH.source+'^'],{encoding:'utf8'}).trim()).toBe(REVIEWED_SECURITY_GRAPH.baseline);
  const baselineLock=execFileSync('git',['show',REVIEWED_SECURITY_GRAPH.baseline+':pnpm-lock.yaml'],{encoding:'utf8'});
  expect(createHash('sha256').update(baselineLock).digest('hex')).toBe(REVIEWED_SECURITY_GRAPH.baselineLockSha256);

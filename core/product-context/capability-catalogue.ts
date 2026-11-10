@@ -141,6 +141,8 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/register-import-worker.ts':'Background worker of the register section imports: captured writes applied in one release.',
  'core/section-import-job.ts':'Background admission and progress of the section and register imports.',
  'core/section-import-worker.ts':'Background worker of the Profile and Family section imports, one row per step.',
+ 'core/system-label-import-job.ts':'Background admission and progress of the system label import.',
+ 'core/system-label-import-worker.ts':'Background worker of the staged system label import.',
  // AI v2 slice 3 (issue 16b): imports prepared in chat run the owners above; they own no import of their own.
  'core/proposals/chat-import.ts':'AI Centre chat import preparer: runs the listed owners\' own previews and signs the card; imports nothing.',
  'core/semantic-model/entities-imports.ts':'Semantic declaration of the chat import result the model is shown (counts and reasons only).',
