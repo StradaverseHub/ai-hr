@@ -17,7 +17,8 @@ import {settleReadGroup} from '../lib/settle-read-group';
 import {parsePageQuery,pageState,PAGE_SIZE_OPTIONS,type PageQuery,type PageState} from '../lib/pagination';
 import {withModulePresentationRead} from './module-presentation-read';
 import {summarizeOvertimeRecords,type FormulaOvertimeRecord,type OvertimeRecordSummary} from '../lib/overtime-records';
-import { exceptionDecisionsTx } from './schedule-group-controls';
+import { exceptionDecisionsFrom, exceptionDecisionsTx, exceptionLookupFrom, scheduleGroupEmployeeWhere, scheduleGroupLookupFrom, scheduleGroupRosterWhere,
+  SCHEDULE_GROUP_EMPLOYEE_FIELDS, SCHEDULE_GROUP_ROSTER_FIELDS, SCHEDULE_GROUP_SHIFT_FIELDS } from './schedule-group-controls';
 import { provenCompanyDatesTx } from './employment-company';
 import { attendanceClockPolicyOnTx, hasAttendanceClockPoliciesTx } from './attendance-clock-policy';
 import { attendanceClockPolicyEvidence, type ClockCalculationPolicy } from '../lib/attendance-policy-clocks';
@@ -44,8 +45,9 @@ import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 import { prepareAttendanceWorkflowSnapshotTx, snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, actionableAttendanceApplicationIdsTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
 import { attendanceApplicationType } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
-import { and, asc, desc, eq, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql, type Column, type Table } from 'drizzle-orm';
-import { decodeJsonRow, projectFields } from '../db/json-row';
+import { and, asc, desc, eq, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql, type Column, type SQL, type Table } from 'drizzle-orm';
+import { decodeJsonRow, jsonRowSql, projectFields } from '../db/json-row';
+import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { alias } from 'drizzle-orm/pg-core';
 // f618065d (r362) — the "All" ceiling the shared pager already assumes. Self Overtime is a server-paged
 // list now, so its read and lib/pagination must agree about how many rows "All" can be: a read that
@@ -94,6 +96,10 @@ import {
 import {
   absenceBreakdownByEmployment,
   deductAbsentDaysByEmployment,
+  deductAbsentDaysFrom,
+  DEDUCT_COMPANY_DEFAULT_FIELDS,
+  DEDUCT_EMPLOYMENT_FIELDS,
+  DEDUCT_POLICY_FIELDS,
   type AbsenceBreakdown,
 } from './absence-days';
 import { holidayDatesByEmployment, holidayDatesFor, holidayCalendarProvenanceFor } from './holidays';
@@ -110,9 +116,14 @@ import { otMinutesFromWindows, type ShiftOtWindowSpec } from './shift-ot-window'
 // it: pickArrangementOn resolves the period in force on a DATE, and `undefined` means the employment has no
 // ladder row at all, which is the signal to fall back to employment.default_shift_id exactly as before.
 import {
+  ARRANGEMENT_PERIOD_FIELDS,
   arrangementsForEmploymentTx,
+  groupArrangementPeriods,
+  LIVE_ARRANGEMENT_ORDER,
   liveArrangementsTx,
+  liveArrangementsWhere,
   pickArrangementOn,
+  type ArrangementPeriod,
 } from './shift-arrangement-resolve';
 import { extendedMinutesAfterShiftEnd, maybeAutoAccrueOnApprovalTx } from './toil';
 // r336 cbfa8b0b — the ONE double-claim predicate, shared with core/replacement-request.ts. See that file's
@@ -150,6 +161,7 @@ import {
   type AttendanceRequestKind,
   type ShiftOtRule,
   attendanceRotation, attendanceRuleOtRow,
+  attendanceExceptionRevision, companyPayrollConfig, payrollPolicy, employmentShiftArrangement,
 } from '../db/schema';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -2746,17 +2758,25 @@ export async function weekLookupTx(
   empGroupRuleId: string | null | undefined,
   shiftRuleIds: readonly (string | null | undefined)[],
 ): Promise<WeekLookup> {
-  const ids = [...new Set([empGroupRuleId, ...shiftRuleIds].filter((v): v is string => !!v))];
+  const ids = weekLookupRuleIds(empGroupRuleId, shiftRuleIds);
   const rows = await tx
-    .select({
-      id: attendanceRule.id,
-      isDefault: attendanceRule.isDefault,
-      pattern: attendanceRule.weeklyPattern,
-      halfPattern: attendanceRule.halfPattern,
-      offPattern: attendanceRule.offPattern,
-    })
+    .select(WEEK_LOOKUP_RULE_FIELDS)
     .from(attendanceRule)
     .where(ids.length ? or(inArray(attendanceRule.id, ids), eq(attendanceRule.isDefault, true)) : eq(attendanceRule.isDefault, true));
+  return weekLookupFrom(rows, empGroupRuleId);
+}
+const WEEK_LOOKUP_RULE_FIELDS = {
+  id: attendanceRule.id,
+  isDefault: attendanceRule.isDefault,
+  pattern: attendanceRule.weeklyPattern,
+  halfPattern: attendanceRule.halfPattern,
+  offPattern: attendanceRule.offPattern,
+};
+type WeekLookupRule = { id: string; isDefault: boolean; pattern: number[] | null; halfPattern: number[]; offPattern: number[] };
+const weekLookupRuleIds = (empGroupRuleId: string | null | undefined, shiftRuleIds: readonly (string | null | undefined)[]) =>
+  [...new Set([empGroupRuleId, ...shiftRuleIds].filter((v): v is string => !!v))];
+/** weekLookupTx over its rows: the named rules and the tenant's is_default rule. */
+function weekLookupFrom(rows: readonly WeekLookupRule[], empGroupRuleId: string | null | undefined): WeekLookup {
   const byId = new Map(rows.map((r) => [r.id, { pattern: r.pattern, halfPattern: r.halfPattern, offPattern: r.offPattern }]));
   const fallback = rows.find((r) => r.isDefault);
   return (shiftRuleId, sh, employeeRuleId = empGroupRuleId) => {
@@ -3353,27 +3373,67 @@ export function attendanceForEmploymentsRange(
   return withTenant(ctx, tx => attendanceForEmploymentsRangeTx(tx, ctx, employmentIds, from, to, opts));
 }
 
+/** The selects attendanceForEmploymentsRangeTx reads, as field maps shared with the Before payroll bundle. */
+const RANGE_EMPLOYEE_FIELDS={id:employment.id, companyId:employment.companyId,
+  employeeCode:employment.employeeCode,name:person.fullName,defShiftId:employment.defaultShiftId,
+  ruleId:employment.attendanceRuleId};
+const RANGE_DAY_FIELDS={employmentId:attendance.employmentId,date:attendance.attendanceDate,attendanceId:attendance.id,
+  checkInAt:attendance.checkInAt,checkOutAt:attendance.checkOutAt,status:attendance.status,dayType:attendance.dayType,
+  workedMinutes:attendance.workedMinutes,otMinutes:attendance.otMinutes,lateMinutes:attendance.lateMinutes,
+  earlyOutMinutes:attendance.earlyOutMinutes,underMinutes:attendance.underMinutes,
+  lateDeductMinutes:attendance.lateDeductMinutes,earlyOutDeductMinutes:attendance.earlyOutDeductMinutes,
+  otFlatMinutes:attendance.otFlatMinutes,ot00Minutes:attendance.ot00Minutes,ot10Minutes:attendance.ot10Minutes,
+  ot15Minutes:attendance.ot15Minutes,ot20Minutes:attendance.ot20Minutes,ot30Minutes:attendance.ot30Minutes,
+  calcTrace:attendance.calcTrace};
+const RANGE_POLICY_FIELDS={companyId:attendancePolicy.companyId,workingDays:attendancePolicy.workingDays,
+  halfWorkingDays:attendancePolicy.halfWorkingDays,workStart:attendancePolicy.workStart,
+  workEnd:attendancePolicy.workEnd,breakMinutes:attendancePolicy.breakMinutes};
+const RANGE_ROSTER_FIELDS={employmentId:rosterAssignment.employmentId,shiftDate:rosterAssignment.shiftDate,
+  isRestDay:rosterAssignment.isRestDay,code:shift.code,shiftType:shift.type,override:shift.normalMinutesOverride,start:shift.startTime,end:shift.endTime,
+  brk:shift.breakMinutes,crosses:shift.crossesMidnight,rounding:shift.normalHoursRoundingMinutes};
+const RANGE_SHIFT_FIELDS={id:shift.id,code:shift.code,shiftType:shift.type,override:shift.normalMinutesOverride,start:shift.startTime,
+  end:shift.endTime,brk:shift.breakMinutes,crosses:shift.crossesMidnight,pattern:shift.weeklyPattern,
+  halfPattern:shift.halfPattern,offPattern:shift.offPattern,ruleId:shift.ruleId,rounding:shift.normalHoursRoundingMinutes};
+const rangeEmployeesTx=(tx:Tx,employmentIds:readonly string[])=>tx.select(RANGE_EMPLOYEE_FIELDS).from(employment)
+  .innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.id,[...new Set(employmentIds)]));
+const rangeDayWhere=(ids:readonly string[],from:string,to:string)=>and(inArray(attendance.employmentId,[...ids]),
+  gte(attendance.attendanceDate,from),lte(attendance.attendanceDate,to));
+const rangePoliciesTx=(tx:Tx,companyIds:readonly string[])=>tx.select(RANGE_POLICY_FIELDS).from(attendancePolicy).where(inArray(attendancePolicy.companyId,[...companyIds]));
+const rangeRosterWhere=(ids:readonly string[],from:string,to:string)=>and(inArray(rosterAssignment.employmentId,[...ids]),gte(rosterAssignment.shiftDate,from),lte(rosterAssignment.shiftDate,to));
+const rangeRostersTx=(tx:Tx,ids:readonly string[],from:string,to:string)=>tx.select(RANGE_ROSTER_FIELDS)
+  .from(rosterAssignment).leftJoin(shift,eq(shift.id,rosterAssignment.shiftId)).where(rangeRosterWhere(ids,from,to));
+const rangeShiftsTx=(tx:Tx,shiftIds:readonly string[])=>tx.select(RANGE_SHIFT_FIELDS).from(shift).where(inArray(shift.id,[...shiftIds]));
+type RangeEmployee=Awaited<ReturnType<typeof rangeEmployeesTx>>[number];
+type RangeDay={[K in keyof typeof RANGE_DAY_FIELDS]:(typeof RANGE_DAY_FIELDS)[K]['_']['notNull'] extends true?(typeof RANGE_DAY_FIELDS)[K]['_']['data']:(typeof RANGE_DAY_FIELDS)[K]['_']['data']|null}
+  &{punchReviewFingerprint?:string;punchReviewed?:boolean};
+type RangeShift=Awaited<ReturnType<typeof rangeShiftsTx>>[number];
+/** The shift ids the range's default-shift ladder can name: each employment's live arrangement periods, else its default. */
+const rangeShiftIds=(employees:readonly RangeEmployee[],arrangements:ReadonlyMap<string,ArrangementPeriod[]>)=>[...new Set(employees.flatMap(e=>{
+  const periods=arrangements.get(e.id)??[];
+  return periods.length ? periods.map(p=>p.shiftId) : e.defShiftId ? [e.defShiftId] : [];
+}))];
+
+/** Everything attendanceForEmploymentsRangeTx reads, as the projection below takes it. */
+type AttendanceRangeInputs={
+  employees:readonly RangeEmployee[];rows:readonly RangeDay[];policies:readonly Awaited<ReturnType<typeof rangePoliciesTx>>[number][];
+  approvedDates:ReadonlyMap<string,Set<string>>;holidaySets:ReadonlyMap<string,Set<string>>;
+  rosters:readonly Awaited<ReturnType<typeof rangeRostersTx>>[number][];arrangements:ReadonlyMap<string,ArrangementPeriod[]>;deducted:ReadonlySet<string>;
+  rangeShifts:readonly RangeShift[];rangeWeek:WeekLookup;rangeRotations:Awaited<ReturnType<typeof rotationLookupTx>>;
+  datedOverrides:Awaited<ReturnType<typeof attendanceDateOverridesTx>>;exceptionOn:Awaited<ReturnType<typeof exceptionDecisionsTx>>;
+  formulaByDay:ReadonlyMap<string,FormulaOvertimeRecord|null>;
+};
+
 async function attendanceForEmploymentsRangeTx(
   tx: Tx, ctx: SessionContext, employmentIds: string[], from: string, to: string,
   opts: {includePunchReviews?:boolean} = {},
 ): Promise<Map<string, AttendanceRangeRow[]>> {
     const result = new Map<string, AttendanceRangeRow[]>();
     if (from > to || employmentIds.length === 0) return result;
-    const employees = await tx.select({id:employment.id, companyId:employment.companyId,
-      employeeCode:employment.employeeCode,name:person.fullName,defShiftId:employment.defaultShiftId,
-      ruleId:employment.attendanceRuleId}).from(employment)
-      .innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.id,[...new Set(employmentIds)]));
+    const employees = await rangeEmployeesTx(tx,employmentIds);
     if (employees.length === 0) return result;
     const ids=employees.map(e=>e.id),companyIds=[...new Set(employees.map(e=>e.companyId))];
     const [rows,policies,approvedDates,holidaySets,rosters,arrangements,deducted] = await settleReadGroup([
-      ()=>tx.select({employmentId:attendance.employmentId,date:attendance.attendanceDate,attendanceId:attendance.id,
-        checkInAt:attendance.checkInAt,checkOutAt:attendance.checkOutAt,status:attendance.status,dayType:attendance.dayType,
-        workedMinutes:attendance.workedMinutes,otMinutes:attendance.otMinutes,lateMinutes:attendance.lateMinutes,
-        earlyOutMinutes:attendance.earlyOutMinutes,underMinutes:attendance.underMinutes,
-        lateDeductMinutes:attendance.lateDeductMinutes,earlyOutDeductMinutes:attendance.earlyOutDeductMinutes,
-        otFlatMinutes:attendance.otFlatMinutes,ot00Minutes:attendance.ot00Minutes,ot10Minutes:attendance.ot10Minutes,
-        ot15Minutes:attendance.ot15Minutes,ot20Minutes:attendance.ot20Minutes,ot30Minutes:attendance.ot30Minutes,
-        calcTrace:attendance.calcTrace,
+      ()=>tx.select({...RANGE_DAY_FIELDS,
         ...(opts.includePunchReviews ? {
           punchReviewFingerprint:sql<string>`app.attendance_attention_fingerprint(${attendance})`,
           // A PgColumn interpolation in a single-table SELECT is unqualified by Drizzle.
@@ -3381,36 +3441,31 @@ async function attendanceForEmploymentsRangeTx(
           punchReviewed:sql<boolean>`EXISTS(SELECT 1 FROM attendance_attention_review r WHERE r.attendance_id=${sql.identifier('attendance')}.${sql.identifier('id')}
             AND r.reviewer_user_id=app.current_user_id() AND r.fingerprint=app.attendance_attention_fingerprint(${attendance}))`,
         } : {}),
-      }).from(attendance).where(and(inArray(attendance.employmentId,ids),
-          gte(attendance.attendanceDate,from),lte(attendance.attendanceDate,to))),
-      ()=>tx.select({companyId:attendancePolicy.companyId,workingDays:attendancePolicy.workingDays,
-        halfWorkingDays:attendancePolicy.halfWorkingDays,workStart:attendancePolicy.workStart,
-        workEnd:attendancePolicy.workEnd,breakMinutes:attendancePolicy.breakMinutes})
-        .from(attendancePolicy).where(inArray(attendancePolicy.companyId,companyIds)),
+      }).from(attendance).where(rangeDayWhere(ids,from,to)) as unknown as Promise<RangeDay[]>,
+      ()=>rangePoliciesTx(tx,companyIds),
       ()=>approvedLeaveDates(tx,ids,from,to),
       ()=>holidayDatesByEmployment(tx,{employmentIds:ids,startDate:from,endDate:to}),
-      ()=>tx.select({employmentId:rosterAssignment.employmentId,shiftDate:rosterAssignment.shiftDate,
-        isRestDay:rosterAssignment.isRestDay,code:shift.code,shiftType:shift.type,override:shift.normalMinutesOverride,start:shift.startTime,end:shift.endTime,
-        brk:shift.breakMinutes,crosses:shift.crossesMidnight,rounding:shift.normalHoursRoundingMinutes})
-        .from(rosterAssignment).leftJoin(shift,eq(shift.id,rosterAssignment.shiftId))
-        .where(and(inArray(rosterAssignment.employmentId,ids),gte(rosterAssignment.shiftDate,from),lte(rosterAssignment.shiftDate,to))),
+      ()=>rangeRostersTx(tx,ids,from,to),
       ()=>liveArrangementsTx(tx,ids),()=>deductAbsentDaysByEmployment(tx,ids),
     ]);
-    const shiftIds=[...new Set(employees.flatMap(e=>{
-      const periods=arrangements.get(e.id)??[];
-      return periods.length ? periods.map(p=>p.shiftId) : e.defShiftId ? [e.defShiftId] : [];
-    }))];
-    const rangeShifts=shiftIds.length ? await tx.select({id:shift.id,code:shift.code,shiftType:shift.type,override:shift.normalMinutesOverride,start:shift.startTime,
-      end:shift.endTime,brk:shift.breakMinutes,crosses:shift.crossesMidnight,pattern:shift.weeklyPattern,
-      halfPattern:shift.halfPattern,offPattern:shift.offPattern,ruleId:shift.ruleId,rounding:shift.normalHoursRoundingMinutes})
-      .from(shift).where(inArray(shift.id,shiftIds)) : [];
+    const shiftIds=rangeShiftIds(employees,arrangements);
+    const rangeShifts=shiftIds.length ? await rangeShiftsTx(tx,shiftIds) : [];
     const rangeWeek=await weekLookupTx(tx,null,[...rangeShifts.map(r=>r.ruleId),...employees.map(e=>e.ruleId)]);
     const rangeRotations = await rotationLookupTx(tx);
     const datedOverrides=await attendanceDateOverridesTx(tx,ids,from,to);
     const exceptionOn=await exceptionDecisionsTx(tx,ids,from,to);
     const formulaByDay=await formulaOvertimeForRowsTx(tx,ctx,rows);
-    const rowsByEmployment=new Map<string,typeof rows>();
-    const rosterByEmployment=new Map<string,typeof rosters>();
+    return attendanceRangeRowsFrom({employees,rows,policies,approvedDates,holidaySets,rosters,arrangements,deducted,
+      rangeShifts,rangeWeek,rangeRotations,datedOverrides,exceptionOn,formulaByDay},from,to,opts);
+}
+
+/** attendanceForEmploymentsRangeTx's day loop over its read inputs: one row per calendar day per employment. */
+function attendanceRangeRowsFrom(inputs:AttendanceRangeInputs,from:string,to:string,opts:{includePunchReviews?:boolean}):Map<string,AttendanceRangeRow[]>{
+    const {employees,rows,policies,approvedDates,holidaySets,rosters,arrangements,deducted,rangeShifts,rangeWeek,rangeRotations,
+      datedOverrides,exceptionOn,formulaByDay}=inputs;
+    const result = new Map<string, AttendanceRangeRow[]>();
+    const rowsByEmployment=new Map<string,RangeDay[]>();
+    const rosterByEmployment=new Map<string,(typeof rosters)[number][]>();
     for(const row of rows){const list=rowsByEmployment.get(row.employmentId)??[];list.push(row);rowsByEmployment.set(row.employmentId,list);}
     for(const row of rosters){const list=rosterByEmployment.get(row.employmentId)??[];list.push(row);rosterByEmployment.set(row.employmentId,list);}
     for(const emp of employees){
@@ -3491,6 +3546,100 @@ async function attendanceForEmploymentsRangeTx(
       result.set(emp.id,out);
     }
     return result;
+}
+
+/** The two date-local facts the range classifies a day with that another owner reads: approved full-day leave
+ * presence (core/leave.ts approvedLeaveDates) and the holiday calendar with retained replacements
+ * (core/holidays.ts holidayDatesByEmployment). The Before payroll bundle answers every other input of the range from
+ * its one statement and reads these two through this seam, so a one-statement reader of both can replace them. */
+export type AttendanceRangeDatedFacts=Readonly<{
+  approvedLeaveDates:(tx:Tx,employmentIds:string[],from:string,to:string)=>Promise<Map<string,Set<string>>>;
+  holidayDates:(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string})=>Promise<Map<string,Set<string>>>;
+}>;
+// Called through, not captured: these owners and this module import each other.
+export const LIVE_ATTENDANCE_RANGE_DATED_FACTS:AttendanceRangeDatedFacts=Object.freeze({
+  approvedLeaveDates:(tx:Tx,employmentIds:string[],from:string,to:string)=>approvedLeaveDates(tx,employmentIds,from,to),
+  holidayDates:(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string})=>holidayDatesByEmployment(tx,p)});
+
+/** attendanceForEmploymentRange's reads for ONE employment as one JSON value, a section of the one-statement Before
+ * payroll read (core/pre-salary/before-payroll-bundle.ts). Each part is the owner's own select, predicate and order:
+ * the employment and person, the days, the company policy, the roster, the live arrangements, the absence-deduction
+ * switch (employment, company default and policy rows), the arranged and default shifts, the Schedule Group weeks, the
+ * rotations with their allowed shifts, the day adjustments with their range-shaped schedule inputs (draft 9873, read
+ * only when an adjustment names a shift or day kind) and the exception lookups. Where the owner's next select depends
+ * on the rows of an earlier one, the section reads the same rows by the same predicate in a sub-select, or a superset
+ * that the projection narrows to exactly the owner's ids. Approved leave presence and the holiday calendar are not
+ * read here (AttendanceRangeDatedFacts), nor the stored overtime-formula records the checklist never reads. */
+export function attendanceRangeChecklistBundleSql(employmentId:string,from:string,to:string):SQL{
+  const ids=[employmentId];
+  const ownEmployment=sql`(select ${employment.companyId} from ${employment} where ${inArray(employment.id,ids)})`;
+  const noDirectPolicy=sql`(select ${employment.companyId} from ${employment} where ${and(inArray(employment.id,ids),isNull(employment.payrollPolicyId))})`;
+  const arranged=sql`(select ${employmentShiftArrangement.shiftId} from ${employmentShiftArrangement} where ${liveArrangementsWhere(ids)})`;
+  const defaultShift=sql`(select ${employment.defaultShiftId} from ${employment} where ${inArray(employment.id,ids)})`;
+  return sql`jsonb_build_object(
+   'employees',${jsonRowsSql({row:jsonFieldsSql(RANGE_EMPLOYEE_FIELDS),from:sql`${employment} inner join ${person} on ${eq(person.id,employment.personId)}`,where:inArray(employment.id,ids)})},
+   'rows',${jsonRowsSql({row:jsonFieldsSql(RANGE_DAY_FIELDS),from:sql`${attendance}`,where:rangeDayWhere(ids,from,to)})},
+   'policies',${jsonRowsSql({row:jsonFieldsSql(RANGE_POLICY_FIELDS),from:sql`${attendancePolicy}`,where:inArray(attendancePolicy.companyId,ownEmployment)})},
+   'rosters',${jsonRowsSql({row:jsonFieldsSql(RANGE_ROSTER_FIELDS),from:sql`${rosterAssignment} left join ${shift} on ${eq(shift.id,rosterAssignment.shiftId)}`,where:rangeRosterWhere(ids,from,to)})},
+   'arrangements',${jsonRowsSql({row:jsonFieldsSql(ARRANGEMENT_PERIOD_FIELDS),from:sql`${employmentShiftArrangement}`,where:liveArrangementsWhere(ids),order:sql.join(LIVE_ARRANGEMENT_ORDER,sql`, `)})},
+   'deductEmployments',${jsonRowsSql({row:jsonFieldsSql(DEDUCT_EMPLOYMENT_FIELDS),from:sql`${employment}`,where:inArray(employment.id,ids)})},
+   'deductDefaults',${jsonRowsSql({row:jsonFieldsSql(DEDUCT_COMPANY_DEFAULT_FIELDS),from:sql`${companyPayrollConfig}`,where:inArray(companyPayrollConfig.companyId,noDirectPolicy)})},
+   'deductPolicies',${jsonRowsSql({row:jsonFieldsSql(DEDUCT_POLICY_FIELDS),from:sql`${payrollPolicy}`,
+     where:or(inArray(payrollPolicy.id,sql`(select ${employment.payrollPolicyId} from ${employment} where ${inArray(employment.id,ids)})`),
+      inArray(payrollPolicy.id,sql`(select ${companyPayrollConfig.defaultPayrollPolicyId} from ${companyPayrollConfig} where ${inArray(companyPayrollConfig.companyId,noDirectPolicy)})`))})},
+   'shifts',${jsonRowsSql({row:jsonFieldsSql(RANGE_SHIFT_FIELDS),from:sql`${shift}`,where:or(inArray(shift.id,arranged),inArray(shift.id,defaultShift))})},
+   'rules',${jsonRowsSql({row:jsonFieldsSql(WEEK_LOOKUP_RULE_FIELDS),from:sql`${attendanceRule}`})},
+   'rotations',${jsonRowsSql({row:jsonRowSql(attendanceRotation,'attendance_rotation'),from:sql`${attendanceRotation}`,
+     order:sql`${attendanceRotation.ruleId} asc, ${attendanceRotation.effectiveFrom} asc`})},
+   'rotationShifts',${jsonRowsSql({row:jsonRowSql(shift,'shift'),from:sql`${shift}`,
+     where:inArray(shift.id,sql`(select unnest(${attendanceRotation.allowedShiftIds}) from ${attendanceRotation})`)})},
+   'adjustments',${jsonRowsSql({row:jsonRowSql(attendanceDayAdjustment,'attendance_day_adjustment'),from:sql`${attendanceDayAdjustment}`,where:dateAdjustmentWhere(ids,from,to)})},
+   'schedule',(case when exists(select 1 from ${attendanceDayAdjustment} where ${dateAdjustmentWhere(ids,from,to)}
+     and (${attendanceDayAdjustment.shiftId} is not null or ${attendanceDayAdjustment.dayKind} is not null))
+     then app.home_own_schedule_range(${employmentId}::uuid,${from}::date,${to}::date) end),
+   'groupEmployees',${jsonRowsSql({row:jsonFieldsSql(SCHEDULE_GROUP_EMPLOYEE_FIELDS),from:sql`${employment}`,where:scheduleGroupEmployeeWhere(ids)})},
+   'groupRoster',${jsonRowsSql({row:jsonFieldsSql(SCHEDULE_GROUP_ROSTER_FIELDS),from:sql`${rosterAssignment}`,where:scheduleGroupRosterWhere(ids,from,to)})},
+   'groupShifts',${jsonRowsSql({row:jsonFieldsSql(SCHEDULE_GROUP_SHIFT_FIELDS),from:sql`${shift}`,where:or(inArray(shift.id,defaultShift),inArray(shift.id,arranged),
+     inArray(shift.id,sql`(select ${rosterAssignment.shiftId} from ${rosterAssignment} where ${scheduleGroupRosterWhere(ids,from,to)})`))})},
+   'standardRuleId',(select ${attendanceRule.id} from ${attendanceRule} where ${eq(attendanceRule.isDefault,true)} limit 1),
+   'revisions',${jsonRowsSql({row:jsonRowSql(attendanceExceptionRevision,'attendance_exception_revision'),from:sql`${attendanceExceptionRevision}`,
+     order:sql`${attendanceExceptionRevision.ruleId} asc, ${attendanceExceptionRevision.effectiveFrom} asc`})})`;
+}
+type AttendanceRangeBundle={employees:unknown;rows:unknown;policies:unknown;rosters:unknown;arrangements:unknown;deductEmployments:unknown;
+  deductDefaults:unknown;deductPolicies:unknown;shifts:unknown;rules:unknown;rotations:Record<string,unknown>[];rotationShifts:Record<string,unknown>[];
+  adjustments:Record<string,unknown>[];schedule:OwnClockScheduleJson|null;groupEmployees:unknown;groupRoster:unknown;groupShifts:unknown;
+  standardRuleId:string|null;revisions:Record<string,unknown>[]};
+/** attendanceForEmploymentRange(ctx, employmentId, from, to) over attendanceRangeChecklistBundleSql's rows: the owner's
+ * own day loop on the same inputs, with leave presence and holidays from `facts`. Every row equals the owner's except
+ * `formulaOvertime` (null: the stored overtime-formula records are not read, and the checklist never reads them). */
+export async function attendanceRangeChecklistFromBundle(tx:Tx,value:unknown,employmentId:string,from:string,to:string,
+  facts:AttendanceRangeDatedFacts=LIVE_ATTENDANCE_RANGE_DATED_FACTS):Promise<AttendanceRangeRow[]>{
+  if(from>to)return [];
+  const raw=value as AttendanceRangeBundle;
+  const employees=decodeJsonFieldRows(RANGE_EMPLOYEE_FIELDS,raw.employees) as RangeEmployee[];
+  if(employees.length===0)return [];
+  const ids=employees.map(e=>e.id);
+  const [approvedDates,holidaySets]=await Promise.all([facts.approvedLeaveDates(tx,ids,from,to),facts.holidayDates(tx,{employmentIds:ids,startDate:from,endDate:to})]);
+  const arrangements=groupArrangementPeriods(decodeJsonFieldRows(ARRANGEMENT_PERIOD_FIELDS,raw.arrangements) as ArrangementPeriod[]);
+  const deducted=deductAbsentDaysFrom(decodeJsonFieldRows(DEDUCT_EMPLOYMENT_FIELDS,raw.deductEmployments) as {employmentId:string;companyId:string;policyId:string|null}[],
+    decodeJsonFieldRows(DEDUCT_COMPANY_DEFAULT_FIELDS,raw.deductDefaults) as {companyId:string;def:string|null}[],
+    decodeJsonFieldRows(DEDUCT_POLICY_FIELDS,raw.deductPolicies) as {id:string;status:string;config:unknown}[]);
+  // The owner reads exactly these shifts, and the rule weeks of exactly these ids (and the tenant default).
+  const shiftIds=new Set(rangeShiftIds(employees,arrangements));
+  const rangeShifts=(decodeJsonFieldRows(RANGE_SHIFT_FIELDS,raw.shifts) as RangeShift[]).filter(row=>shiftIds.has(row.id));
+  const ruleIds=new Set(weekLookupRuleIds(null,[...rangeShifts.map(r=>r.ruleId),...employees.map(e=>e.ruleId)]));
+  const rangeWeek=weekLookupFrom((decodeJsonFieldRows(WEEK_LOOKUP_RULE_FIELDS,raw.rules) as WeekLookupRule[]).filter(row=>ruleIds.has(row.id)||row.isDefault),null);
+  const rangeRotations=rotationLookupFrom(raw.rotations.map(row=>decodeJsonRow(attendanceRotation,row)),raw.rotationShifts.map(row=>decodeJsonRow(shift,row)));
+  const datedOverrides=await attendanceDateOverridesFrom(tx,employmentId,raw.adjustments.map(row=>decodeJsonRow(attendanceDayAdjustment,row)),
+    raw.schedule?decodeOwnClockSchedule(raw.schedule):null,holidaySets);
+  const groupInputs={employees:decodeJsonFieldRows(SCHEDULE_GROUP_EMPLOYEE_FIELDS,raw.groupEmployees) as {id:string;groupId:string|null;defaultShiftId:string|null}[],
+    roster:decodeJsonFieldRows(SCHEDULE_GROUP_ROSTER_FIELDS,raw.groupRoster) as {employmentId:string;date:string;shiftId:string|null;isRestDay:boolean}[],arrangements};
+  const exceptionOn=exceptionDecisionsFrom(scheduleGroupLookupFrom(groupInputs,decodeJsonFieldRows(SCHEDULE_GROUP_SHIFT_FIELDS,raw.groupShifts) as {id:string;ruleId:string|null}[],
+    raw.standardRuleId?{id:raw.standardRuleId}:undefined),exceptionLookupFrom(raw.revisions.map(row=>decodeJsonRow(attendanceExceptionRevision,row))));
+  return attendanceRangeRowsFrom({employees,rows:decodeJsonFieldRows(RANGE_DAY_FIELDS,raw.rows) as RangeDay[],
+    policies:decodeJsonFieldRows(RANGE_POLICY_FIELDS,raw.policies) as AttendanceRangeInputs['policies'][number][],approvedDates,holidaySets,
+    rosters:decodeJsonFieldRows(RANGE_ROSTER_FIELDS,raw.rosters) as AttendanceRangeInputs['rosters'][number][],arrangements,deducted,
+    rangeShifts,rangeWeek,rangeRotations,datedOverrides,exceptionOn,formulaByDay:new Map()},from,to,{}).get(employmentId)??[];
 }
 
 /** R45 92bdf77a — one punch (a single clock-in or clock-out) of a multi-clocking day. Feedback af552c5d
@@ -5926,47 +6075,67 @@ export function otMonthToDateMinutes(
   employmentId: string,
   date: string,
 ): Promise<OvertimeCapView> {
+  const { recordedWhere, plannedWhere } = otMonthToDateWhere(employmentId, date);
+  return withTenant(ctx, async (tx) => {
+    const [recorded] = await tx
+      .select({ total: OT_RECORDED_TOTAL })
+      .from(attendance)
+      .where(recordedWhere);
+    // Approved, not-yet-landed OT plans in the month. `applied_at IS NULL` is what makes these additive
+    // rather than double-counted: once a plan lands, its minutes are ON the attendance row above.
+    const [planned] = await tx
+      .select({ total: OT_PLANNED_TOTAL })
+      .from(attendanceCorrection)
+      .where(plannedWhere);
+    return otCapView(recorded?.total, planned?.total);
+  });
+}
+const OT_RECORDED_TOTAL = sql<string>`coalesce(sum(${attendance.otMinutes}), 0)`;
+const OT_PLANNED_TOTAL = sql<string>`coalesce(sum(${attendanceCorrection.requestedOtMinutes}), 0)`;
+function otMonthToDateWhere(employmentId: string, date: string) {
   const monthStart = `${date.slice(0, 7)}-01`;
   // Last day of the month, by UTC date arithmetic on a known date-only string (the form the codebase keeps
   // in UTC): day 0 of the NEXT month is the last day of this one.
   const [y, m] = [Number(date.slice(0, 4)), Number(date.slice(5, 7))];
   const monthEnd = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-  return withTenant(ctx, async (tx) => {
-    const [recorded] = await tx
-      .select({ total: sql<string>`coalesce(sum(${attendance.otMinutes}), 0)` })
-      .from(attendance)
-      .where(
-        and(
-          eq(attendance.employmentId, employmentId),
-          gte(attendance.attendanceDate, monthStart),
-          lte(attendance.attendanceDate, monthEnd),
-        ),
-      );
-    // Approved, not-yet-landed OT plans in the month. `applied_at IS NULL` is what makes these additive
-    // rather than double-counted: once a plan lands, its minutes are ON the attendance row above.
-    const [planned] = await tx
-      .select({ total: sql<string>`coalesce(sum(${attendanceCorrection.requestedOtMinutes}), 0)` })
-      .from(attendanceCorrection)
-      .where(
-        and(
-          eq(attendanceCorrection.employmentId, employmentId),
-          gte(attendanceCorrection.attendanceDate, monthStart),
-          lte(attendanceCorrection.attendanceDate, monthEnd),
-          eq(attendanceCorrection.status, 'approved'),
-          isNull(attendanceCorrection.appliedAt),
-          isNull(attendanceCorrection.proposedCheckIn),
-          sql`${attendanceCorrection.requestedOtMinutes} is not null`,
-        ),
-      );
-    const recordedMinutes = Number(recorded?.total ?? 0);
-    const plannedMinutes = Number(planned?.total ?? 0);
-    return {
-      recordedMinutes,
-      plannedMinutes,
-      totalMinutes: recordedMinutes + plannedMinutes,
-      capMinutes: OT_CAP_MINUTES,
-    };
-  });
+  return {
+    recordedWhere: and(
+      eq(attendance.employmentId, employmentId),
+      gte(attendance.attendanceDate, monthStart),
+      lte(attendance.attendanceDate, monthEnd),
+    ),
+    plannedWhere: and(
+      eq(attendanceCorrection.employmentId, employmentId),
+      gte(attendanceCorrection.attendanceDate, monthStart),
+      lte(attendanceCorrection.attendanceDate, monthEnd),
+      eq(attendanceCorrection.status, 'approved'),
+      isNull(attendanceCorrection.appliedAt),
+      isNull(attendanceCorrection.proposedCheckIn),
+      sql`${attendanceCorrection.requestedOtMinutes} is not null`,
+    ),
+  };
+}
+function otCapView(recorded: string | null | undefined, planned: string | null | undefined): OvertimeCapView {
+  const recordedMinutes = Number(recorded ?? 0);
+  const plannedMinutes = Number(planned ?? 0);
+  return {
+    recordedMinutes,
+    plannedMinutes,
+    totalMinutes: recordedMinutes + plannedMinutes,
+    capMinutes: OT_CAP_MINUTES,
+  };
+}
+/** otMonthToDateMinutes in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the owner's
+ * two sums over the same rows, each as the text the driver returns for it. */
+export function otMonthToDateBundleSql(employmentId: string, date: string) {
+  const { recordedWhere, plannedWhere } = otMonthToDateWhere(employmentId, date);
+  return sql`jsonb_build_object('recorded',(select (${OT_RECORDED_TOTAL})::text from ${attendance} where ${recordedWhere}),
+    'planned',(select (${OT_PLANNED_TOTAL})::text from ${attendanceCorrection} where ${plannedWhere}))`;
+}
+export function otMonthToDateFromBundle(value: unknown): OvertimeCapView {
+  const row = value as { recorded: unknown; planned: unknown };
+  if (typeof row?.recorded !== 'string' || typeof row.planned !== 'string') throw new Error('The bundled overtime cap is unavailable.');
+  return otCapView(row.recorded, row.planned);
 }
 
 /** Selected stored duration plus each approved/unlanded plan once. Old numeric API remains raw compatibility. */
@@ -6003,17 +6172,14 @@ export function myOvertimePlans(
   } = {},
 ): Promise<OvertimePlanRow[]> {
   // f618065d (r362) — the ceiling is the pager's "All" ceiling, not a private 200. See the import.
-  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 25)), ALL_ROW_CEILING);
+  const limit = overtimePlanLimit(opts.limit);
   const offset = Math.max(0, Math.trunc(opts.offset ?? 0));
   // ce5ded11 (r362) — an OPTIONAL overtime-date window, for the calendar, which draws one month and must
   // not be told about it by a `limit` that happened to reach far enough back. Absent ⇒ byte-identical to
   // before: no bound is added and the newest `limit` rows across every month come back.
   // f618065d (r362) — and the SAME builder now serves the counts read, so a chip and its rows are
   // narrowed by one expression rather than by two that can drift.
-  const window = [
-    ...overtimePlanFilters(employmentId, opts),
-    opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
-  ].filter((c) => c !== undefined);
+  const window = overtimePlanWindow(employmentId, opts);
   // Newest first BY THE OVERTIME DATE, then by when it was filed — the mockup's ordering, and still the
   // default here. Every alternative is a WHITELIST: a raw `?sort=` is a column name arriving from the
   // address bar. The secondary key is always the overtime date, so a page boundary cannot shuffle rows
@@ -6066,6 +6232,37 @@ export function myOvertimePlans(
  * OT-only by construction: a clock-time correction that happens to carry OT belongs to Attendance
  * Request, and mixing the two is the other half of the complaint this list was split out of.
  */
+const overtimePlanLimit = (limit: number | undefined) => Math.min(Math.max(1, Math.trunc(limit ?? 25)), ALL_ROW_CEILING);
+function overtimePlanWindow(employmentId: string, opts: OvertimePlanFilter & { status?: OvertimePlanRow['status'] }) {
+  return [
+    ...overtimePlanFilters(employmentId, opts),
+    opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
+  ].filter((c) => c !== undefined);
+}
+/** The fields of `myOvertimePlans` the Before payroll checklist reads, and the default order's two keys. */
+const OVERTIME_PLAN_CHECKLIST_FIELDS = { id: attendanceCorrection.id, attendanceDate: attendanceCorrection.attendanceDate,
+  status: attendanceCorrection.status, createdAt: attendanceCorrection.createdAt };
+/** myOvertimePlans (default order: overtime date, then filing time, both newest first) in the one-statement Before payroll
+ * read (core/pre-salary/before-payroll-bundle.ts): the owner's window and order, one row past its page so a tie at the
+ * page boundary can be seen. The workflow read after the owner's page carries only approver names the checklist never
+ * reads, so it is not made. */
+export function overtimePlanChecklistBundleSql(employmentId: string, opts: OvertimePlanFilter & { status?: OvertimePlanRow['status']; limit?: number }) {
+  return jsonRowsSql({ row: jsonFieldsSql(OVERTIME_PLAN_CHECKLIST_FIELDS), from: sql`${attendanceCorrection}`,
+    where: and(...overtimePlanWindow(employmentId, opts)),
+    order: sql`${attendanceCorrection.attendanceDate} desc, ${attendanceCorrection.createdAt} desc`, limit: overtimePlanLimit(opts.limit) + 1 });
+}
+export type OvertimePlanChecklistRow = { id: string; attendanceDate: string; status: OvertimePlanRow['status'] };
+/** The owner's page, or null when the row just past it ties with its last row on both order keys: the owner's order
+ * leaves such a tie to the plan, so which of them is on the page is the owner's to say. */
+export function overtimePlanChecklistFromBundle(value: unknown, limit: number | undefined): OvertimePlanChecklistRow[] | null {
+  const rows = decodeJsonFieldRows(OVERTIME_PLAN_CHECKLIST_FIELDS, value), page = overtimePlanLimit(limit);
+  if (rows.length > page) {
+    const last = rows[page - 1], next = rows[page];
+    if (last.attendanceDate === next.attendanceDate && last.createdAt?.getTime() === next.createdAt?.getTime()) return null;
+  }
+  return rows.slice(0, page).map(({ id, attendanceDate, status }) => ({ id, attendanceDate, status } as OvertimePlanChecklistRow));
+}
+
 function overtimePlanFilters(employmentId: string, f: OvertimePlanFilter) {
   return [
     eq(attendanceCorrection.employmentId, employmentId),
@@ -6686,12 +6883,42 @@ export function myAttendanceCorrectionCounts(
   });
 }
 
+type OwnAttendanceRequestFilter = { limit?: number; date?: string; status?: 'pending' | 'approved' | 'rejected' | 'cancelled'; before?: MyAttendanceRequestCursor | null; ids?: readonly string[] };
+const ownAttendanceRequestLimit = (limit: number | undefined) => Math.min(Math.max(1, Math.trunc(limit ?? 100)), MY_ATTENDANCE_REQUEST_ROW_CEILING + 1);
+function ownAttendanceRequestWhere(employmentId: string, opts: OwnAttendanceRequestFilter) {
+  return and(
+    eq(attendanceCorrection.employmentId, employmentId),
+    opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
+    opts.date ? eq(attendanceCorrection.attendanceDate, opts.date) : undefined,
+    opts.ids ? inArray(attendanceCorrection.id, [...opts.ids]) : undefined,
+    // Strictly after the cursor in the one order below (every key descending).
+    opts.before ? sql`(${attendanceCorrection.attendanceDate}, ${attendanceCorrection.createdAt}, ${attendanceCorrection.id}) < (${opts.before.date}::date, ${opts.before.at}::timestamptz, ${opts.before.id}::uuid)` : undefined,
+  );
+}
+// Newest first BY THE ATTENDANCE DATE, then by when it was filed — the same ordering the Plan OT
+// list uses, so two lists on one screen are not sorted two different ways.
+const OWN_ATTENDANCE_REQUEST_ORDER = [desc(attendanceCorrection.attendanceDate), desc(attendanceCorrection.createdAt), desc(attendanceCorrection.id)];
+/** The fields of `myAttendanceCorrections` the Before payroll checklist reads (core/pre-salary/person-items.ts). */
+const OWN_ATTENDANCE_REQUEST_CHECKLIST_FIELDS = { id: attendanceCorrection.id, attendanceDate: attendanceCorrection.attendanceDate,
+  requestKind: attendanceCorrection.requestKind, status: attendanceCorrection.status };
+/** myAttendanceCorrections in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the same
+ * rows (the owner's predicate, order and page) with the fields the checklist reads. The attachment and workflow reads
+ * that follow the owner's page carry only what the checklist never reads, so they are not made. */
+export function ownAttendanceRequestChecklistBundleSql(employmentId: string, opts: Pick<OwnAttendanceRequestFilter, 'limit' | 'status'>) {
+  return jsonRowsSql({ row: jsonFieldsSql(OWN_ATTENDANCE_REQUEST_CHECKLIST_FIELDS), from: sql`${attendanceCorrection}`,
+    where: ownAttendanceRequestWhere(employmentId, opts), order: sql.join(OWN_ATTENDANCE_REQUEST_ORDER, sql`, `), limit: ownAttendanceRequestLimit(opts.limit) });
+}
+export type OwnAttendanceRequestChecklistRow = Pick<MyAttendanceRequestRow, 'id' | 'attendanceDate' | 'requestKind' | 'status'>;
+export function ownAttendanceRequestChecklistFromBundle(value: unknown): OwnAttendanceRequestChecklistRow[] {
+  return decodeJsonFieldRows(OWN_ATTENDANCE_REQUEST_CHECKLIST_FIELDS, value) as OwnAttendanceRequestChecklistRow[];
+}
+
 async function ownAttendanceRequestRowsTx(
   tx: Tx,
   employmentId: string,
   opts: { limit?: number; date?: string; status?: 'pending' | 'approved' | 'rejected' | 'cancelled'; before?: MyAttendanceRequestCursor | null; ids?: readonly string[] },
 ): Promise<(MyAttendanceRequestRow & { cursorAt: string })[]> {
-  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 100)), MY_ATTENDANCE_REQUEST_ROW_CEILING + 1);
+  const limit = ownAttendanceRequestLimit(opts.limit);
   if (opts.ids && opts.ids.length === 0) return [];
   {
     const rows = await tx
@@ -6719,17 +6946,8 @@ async function ownAttendanceRequestRowsTx(
         cursorAt: sql<string>`to_char(${attendanceCorrection.createdAt} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
       })
       .from(attendanceCorrection)
-      .where(and(
-        eq(attendanceCorrection.employmentId, employmentId),
-        opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
-        opts.date ? eq(attendanceCorrection.attendanceDate, opts.date) : undefined,
-        opts.ids ? inArray(attendanceCorrection.id, [...opts.ids]) : undefined,
-        // Strictly after the cursor in the one order below (every key descending).
-        opts.before ? sql`(${attendanceCorrection.attendanceDate}, ${attendanceCorrection.createdAt}, ${attendanceCorrection.id}) < (${opts.before.date}::date, ${opts.before.at}::timestamptz, ${opts.before.id}::uuid)` : undefined,
-      ))
-      // Newest first BY THE ATTENDANCE DATE, then by when it was filed — the same ordering the Plan OT
-      // list uses, so two lists on one screen are not sorted two different ways.
-      .orderBy(desc(attendanceCorrection.attendanceDate), desc(attendanceCorrection.createdAt), desc(attendanceCorrection.id))
+      .where(ownAttendanceRequestWhere(employmentId, opts))
+      .orderBy(...OWN_ATTENDANCE_REQUEST_ORDER)
       .limit(limit);
     if (rows.length === 0) return [];
     // Which of them carry a file. One extra query for the page rather than one per row; the content
@@ -7687,16 +7905,38 @@ export async function attendanceDayCalculationTx(tx:Tx,ctx:SessionContext,employ
   };
 }
 
+type DateOverride={dayKind:WorkedDayKind;working:boolean;shiftDisplay:ShiftDisplay;shiftId:string|null;calendar:Omit<OtPlanCalendarDay,'date'|'kind'>};
+const dateAdjustmentWhere=(employmentIds:readonly string[],from:string,to:string)=>and(inArray(attendanceDayAdjustment.employmentId,[...employmentIds]),
+  gte(attendanceDayAdjustment.attendanceDate,from),lte(attendanceDayAdjustment.attendanceDate,to));
 /** Only dates with explicit corrections need the canonical per-date resolver beside the batched ladder. */
 export async function attendanceDateOverridesTx(tx:Tx,employmentIds:string[],from:string,to:string) {
-  const result=new Map<string,{dayKind:WorkedDayKind;working:boolean;shiftDisplay:ShiftDisplay;shiftId:string|null;calendar:Omit<OtPlanCalendarDay,'date'|'kind'>}>();
-  if(!employmentIds.length)return result;
-  const rows=await tx.select().from(attendanceDayAdjustment).where(and(inArray(attendanceDayAdjustment.employmentId,employmentIds),gte(attendanceDayAdjustment.attendanceDate,from),lte(attendanceDayAdjustment.attendanceDate,to)));
-  if(!rows.length)return result;
+  if(!employmentIds.length)return new Map<string,DateOverride>();
+  const rows=await tx.select().from(attendanceDayAdjustment).where(dateAdjustmentWhere(employmentIds,from,to));
+  if(!rows.length)return new Map<string,DateOverride>();
   const memo=await newScheduleMemo(tx,{employmentIds:[...new Set(rows.map(r=>r.employmentId))],from,to});
+  return dateOverridesFor(tx,rows,()=>memo);
+}
+/** attendanceDateOverridesTx for ONE employment over bundled rows: its adjustments in the range, the range-shaped schedule
+ * inputs of draft 9873 (app.home_own_schedule_range) and the range's holiday calendar. Each adjusted day resolves through
+ * scheduleFor on ownClockScheduleMemo, the memo whose entries are the values scheduleFor's memoized reads produce from
+ * those rows, with the holiday calendar the range already read for the same window (holidayDatesByEmployment's set for
+ * a visible employment is holidayDatesFor's: the same originals and retained replacements). */
+async function attendanceDateOverridesFrom(tx:Tx,employmentId:string,rows:readonly (typeof attendanceDayAdjustment.$inferSelect)[],
+  schedule:OwnClockSchedule|null,holidays:ReadonlyMap<string,Set<string>>){
+  if(!rows.length)return new Map<string,DateOverride>();
+  if(rows.some(row=>row.employmentId!==employmentId))throw new Error('The bundled day adjustments belong to another employment.');
+  if(rows.some(row=>row.shiftId||row.dayKind)&&!schedule)throw new Error('The bundled schedule range is unavailable.');
+  return dateOverridesFor(tx,rows,row=>{
+    const memo=ownClockScheduleMemo(schedule!,employmentId,row.attendanceDate);
+    memo.cache.set(`hol|${employmentId}`,Promise.resolve(holidays.get(employmentId)??new Set<string>()));
+    return memo;
+  });
+}
+async function dateOverridesFor(tx:Tx,rows:readonly (typeof attendanceDayAdjustment.$inferSelect)[],memoFor:(row:typeof attendanceDayAdjustment.$inferSelect)=>ScheduleMemo){
+  const result=new Map<string,DateOverride>();
   for(const row of rows){
     if(!row.shiftId&&!row.dayKind)continue;
-    const schedule=await scheduleFor(tx,row.employmentId,row.attendanceDate,memo);
+    const schedule=await scheduleFor(tx,row.employmentId,row.attendanceDate,memoFor(row));
     const dayKind:WorkedDayKind=schedule.dayType==='holiday'?'holiday':schedule.dayType==='rest_day'?'rest_day':schedule.scheduleDayKind==='off'?'off_day':'workday';
     result.set(`${row.employmentId}|${row.attendanceDate}`,{dayKind,working:dayKind==='workday',shiftId:schedule.displayShiftId??null,
       shiftDisplay:{shiftCode:schedule.displayShiftCode??null,scheduledMinutes:dayKind==='rest_day'||dayKind==='off_day'?null:schedule.scheduledMinutes,

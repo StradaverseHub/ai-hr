@@ -312,10 +312,27 @@ export function myProfile(ctx: SessionContext) {
         numChildren: employeeStatutoryMy.numChildren,
       })
       .from(employeeStatutoryMy)
-      .where(and(ownPersonPredicate(ctx),eq(employeeStatutoryMy.personId, ctx.personId)))
+      .where(myStatutoryWhere(ctx, ctx.personId))
       .limit(1);
     return { person: p ?? null, statutory: stat ?? null };
   });
+}
+const myStatutoryWhere = (ctx: SessionContext, personId: string) => and(ownPersonPredicate(ctx),eq(employeeStatutoryMy.personId, personId));
+/** The one fact of myProfile the Before payroll checklist reads (core/pre-salary/person-items.ts): whether the profile
+ * is the caller's own (the owner's isOwnPersonTx statement, as a value) and the statutory row's declared child count
+ * (the owner's predicate and limit). Contact, address and bank fields are not read. null without a person or login
+ * (the owner then answers null without reading). */
+export function myProfileChildCountBundleSql(ctx: SessionContext) {
+  if (!ctx.personId || !ctx.userId) return null;
+  return sql`jsonb_build_object('own',(select ${ownPersonPredicate(ctx)}),
+   'statutory',(select jsonb_build_object('numChildren',${employeeStatutoryMy.numChildren}) from ${employeeStatutoryMy}
+    where ${myStatutoryWhere(ctx, ctx.personId)} limit 1))`;
+}
+/** myProfile's answer narrowed to {statutory: {numChildren}}: null when the profile is not the caller's own. */
+export function myProfileChildCountFromBundle(value: unknown): { statutory: { numChildren: number | null } | null } | null {
+  const raw = value as { own: unknown; statutory: { numChildren: number | null } | null };
+  if (raw.own !== true) return null;
+  return { statutory: raw.statutory ? { numChildren: raw.statutory.numChildren } : null };
 }
 
 /** Direct self-edit of low-risk contact fields on the caller's own person row. Genuinely low-risk only —

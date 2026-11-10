@@ -46,6 +46,7 @@ import {leaveCreditClaimReviewTx} from './toil';
  */
 import { and, desc, eq, inArray, isNull, ne,sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependencyConfigurationTx,lockLeaveDependencyReadConfigurationTx, lockLeaveDependenciesTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
@@ -1289,6 +1290,28 @@ function claimLineView(l: {
   };
 }
 
+const OWN_REPLACEMENT_REQUEST_ORDER = [desc(replacementLeaveRequest.submittedOn), desc(replacementLeaveRequest.createdAt)];
+const OWN_REPLACEMENT_CHECKLIST_FIELDS = { id: replacementLeaveRequest.id, status: replacementLeaveRequest.status, submittedOn: replacementLeaveRequest.submittedOn };
+const OWN_REPLACEMENT_LINE_CHECKLIST_FIELDS = { requestId: replacementLeaveRequestDate.requestId, workedDate: replacementLeaveRequestDate.workedDate };
+/** listReplacementLeaveRequests in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the
+ * same requests and lines (the owner's predicates and orders) with the fields the checklist reads. No figure is read. */
+export function ownReplacementChecklistBundleSql(employmentId: string) {
+  return sql`jsonb_build_object('heads',${jsonRowsSql({ row: jsonFieldsSql(OWN_REPLACEMENT_CHECKLIST_FIELDS), from: sql`${replacementLeaveRequest}`,
+    where: eq(replacementLeaveRequest.employmentId, employmentId), order: sql.join(OWN_REPLACEMENT_REQUEST_ORDER, sql`, `) })},
+   'lines',${jsonRowsSql({ row: jsonFieldsSql(OWN_REPLACEMENT_LINE_CHECKLIST_FIELDS), from: sql`${replacementLeaveRequestDate}`,
+    where: inArray(replacementLeaveRequestDate.requestId, sql`(select ${replacementLeaveRequest.id} from ${replacementLeaveRequest} where ${eq(replacementLeaveRequest.employmentId, employmentId)})`),
+    order: sql`${replacementLeaveRequestDate.workedDate}` })})`;
+}
+export type OwnReplacementChecklistRow = Pick<ReplacementRequestRow, 'id' | 'status' | 'submittedOn'> & { dates: { workedDate: string }[] };
+/** The owner's requests in its order, each with its lines' worked dates in the lines' order. */
+export function ownReplacementChecklistFromBundle(value: unknown): OwnReplacementChecklistRow[] {
+  const raw = value as { heads: unknown; lines: unknown };
+  const heads = decodeJsonFieldRows(OWN_REPLACEMENT_CHECKLIST_FIELDS, raw.heads), lines = decodeJsonFieldRows(OWN_REPLACEMENT_LINE_CHECKLIST_FIELDS, raw.lines);
+  const byRequest = new Map<string, { workedDate: string }[]>();
+  for (const line of lines) { const list = byRequest.get(line.requestId) ?? []; list.push({ workedDate: line.workedDate }); byRequest.set(line.requestId, list); }
+  return heads.map((head) => ({ id: head.id, status: head.status, submittedOn: head.submittedOn, dates: byRequest.get(head.id) ?? [] }) as OwnReplacementChecklistRow);
+}
+
 export type PendingReplacementRequestRow = {
   id: string;
   employmentId: string;
@@ -1482,7 +1505,7 @@ export async function listReplacementLeaveRequests(
       .select()
       .from(replacementLeaveRequest)
       .where(eq(replacementLeaveRequest.employmentId, employmentId))
-      .orderBy(desc(replacementLeaveRequest.submittedOn), desc(replacementLeaveRequest.createdAt));
+      .orderBy(...OWN_REPLACEMENT_REQUEST_ORDER);
     if (heads.length === 0) return [];
     const lines = await tx
       .select()

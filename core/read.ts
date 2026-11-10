@@ -37,6 +37,7 @@ import {
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { decodeJsonFieldRows, decodeJsonFields, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { assertModuleGate } from './module-gate';
 import { assertAiPrincipalTx, assertAiPresentationPrincipalTx } from './ai-principal';
 import {assertReadCompositionPrincipalTx} from './read-composition-principal';
@@ -1898,7 +1899,17 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
   const perform = async (tx: Tx) => {
     const [types, [emp]] = await Promise.all([
       tx
-        .select({
+        .select(ELIGIBLE_LEAVE_TYPE_FIELDS)
+        .from(leaveType)
+        .where(isNull(leaveType.archivedAt)),
+      applyMenuEmploymentTx(tx,employmentId),
+    ]);
+    return eligibleLeaveTypesFrom(types, emp, locale);
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
+}
+/** listEligibleLeaveTypesFor's catalogue select. */
+const ELIGIBLE_LEAVE_TYPE_FIELDS = {
           id: leaveType.id,
           ...applyMenuTypeColumns,
           name: leaveType.name,
@@ -1930,11 +1941,11 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           // another type's balance. Missing it here would have silently re-shown those controls the moment
           // this became the dropdown's source.
           balanceSourceTypeId: leaveType.balanceSourceTypeId,
-        })
-        .from(leaveType)
-        .where(isNull(leaveType.archivedAt)),
-      applyMenuEmploymentTx(tx,employmentId),
-    ]);
+};
+type EligibleLeaveTypeRow = { [K in keyof typeof ELIGIBLE_LEAVE_TYPE_FIELDS]: (typeof ELIGIBLE_LEAVE_TYPE_FIELDS)[K]['_']['notNull'] extends true
+  ? (typeof ELIGIBLE_LEAVE_TYPE_FIELDS)[K]['_']['data'] : (typeof ELIGIBLE_LEAVE_TYPE_FIELDS)[K]['_']['data'] | null };
+type ApplyMenuEmployment = Awaited<ReturnType<typeof applyMenuEmploymentTx>>[number];
+function eligibleLeaveTypesFrom(types: readonly EligibleLeaveTypeRow[], emp: ApplyMenuEmployment | undefined, locale?: string) {
     const today = todayInKualaLumpur();
     // ONE named gate (mayAppearInApplyMenu above) rather than three chained filters restated per surface.
     return types
@@ -1945,8 +1956,19 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           name: pickName(r.name, i18n, locale),
         }),
       );
-  };
-  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
+}
+/** listEligibleLeaveTypesFor in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): its
+ * two selects (the unarchived catalogue and the employment's gate projection) as one JSON value. */
+export function eligibleLeaveTypesBundleSql(employmentId: string) {
+  return sql`jsonb_build_object('types',${jsonRowsSql({ row: jsonFieldsSql(ELIGIBLE_LEAVE_TYPE_FIELDS), from: sql`${leaveType}`, where: isNull(leaveType.archivedAt) })},
+    'employment',(select ${jsonFieldsSql(applyMenuEmpColumns)} from ${employment} inner join ${person} on ${eq(person.id, employment.personId)}
+     where ${eq(employment.id, employmentId)} limit 1))`;
+}
+/** listEligibleLeaveTypesFor's result over eligibleLeaveTypesBundleSql's rows. */
+export function eligibleLeaveTypesFromBundle(value: unknown, locale?: string) {
+  const raw = value as { types: unknown; employment: Record<string, unknown> | null };
+  const emp = raw.employment ? decodeJsonFields(applyMenuEmpColumns, raw.employment) as ApplyMenuEmployment : undefined;
+  return eligibleLeaveTypesFrom(decodeJsonFieldRows(ELIGIBLE_LEAVE_TYPE_FIELDS, raw.types) as EligibleLeaveTypeRow[], emp, locale);
 }
 
 /**
@@ -5743,7 +5765,7 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         // EL applications and partial cancellations both group rows; recorded origin identifies EL.
         parentGroupId: leaveRequest.parentGroupId,
         isEmergencyGroup: emergencyLeaveGroupOriginSql,
-        hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
+        hasDocument: LEAVE_REQUEST_HAS_DOCUMENT,
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
@@ -5765,6 +5787,21 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
     const withDates = await resolveLeaveWorkingDates(tx, rows);
     return withDates.map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n, locale) }));
   });
+}
+const LEAVE_REQUEST_HAS_DOCUMENT = sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`;
+/** The fields of leaveRequestsFor the Before payroll checklist reads (core/pre-salary/person-items.ts). */
+const LEAVE_REQUEST_CHECKLIST_FIELDS = { id: leaveRequest.id, leaveTypeId: leaveRequest.leaveTypeId, leaveType: leaveType.name, i18n: leaveType.i18n,
+  startDate: leaveRequest.startDate, endDate: leaveRequest.endDate, days: leaveRequest.days, status: leaveRequest.status, hasDocument: LEAVE_REQUEST_HAS_DOCUMENT };
+/** leaveRequestsFor in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the same rows
+ * (the owner's join, predicate and order) with the fields the checklist reads, the type name localized the same way.
+ * The working dates the owner resolves after its select feed only the give-back dialog, so they are not read. */
+export function leaveRequestsChecklistBundleSql(employmentId: string) {
+  return jsonRowsSql({ row: jsonFieldsSql(LEAVE_REQUEST_CHECKLIST_FIELDS),
+    from: sql`${leaveRequest} inner join ${leaveType} on ${eq(leaveType.id, leaveRequest.leaveTypeId)}`,
+    where: eq(leaveRequest.employmentId, employmentId), order: sql`${leaveRequest.startDate} desc` });
+}
+export function leaveRequestsChecklistFromBundle(value: unknown, locale?: string) {
+  return decodeJsonFieldRows(LEAVE_REQUEST_CHECKLIST_FIELDS, value).map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n as Parameters<typeof pickName>[1], locale) }));
 }
 
 /** The reporting-line vocabulary as the edge stores it, in the enum's DECLARATION order — which is also

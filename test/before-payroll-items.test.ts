@@ -20,6 +20,10 @@ const failing=(name:string)=>{if(fx.fail.has(name))throw new Error('Fictional ow
 
 // The only direct query is app.own_payroll_cut_off_day (migration 0967): one row for the person's own employment, or none.
 vi.mock('../db/client',()=>({withSharedReadSnapshot:async(_ctx:unknown,work:()=>unknown)=>work(),withTenant:async(_ctx:unknown,fn:(tx:unknown)=>unknown)=>fn({execute:async()=>{fx.calls.push(['ownCutOff']);return fx.cutOffRow?[{cut_off_day:fx.cutOffDay}]:[];}})}));
+// Every owner below reads on its own: the one-statement read of their rows (core/pre-salary/before-payroll-bundle.ts) answers
+// nothing here, and is compared with these owners over real rows in test/before-payroll-checklist.test.ts and the hosted
+// Home diagnostic.
+vi.mock('../core/pre-salary/before-payroll-bundle',()=>({readBeforePayrollBundle:async()=>null,withOwnerBeforePayrollReads:(work:()=>unknown)=>work()}));
 // Phase 2 hardening: the person's own answer to "Did you work for another employer earlier this year?" (core/pre-salary/tp3-answer.ts).
 vi.mock('../core/pre-salary/tp3-answer',()=>({myTp3PreviousEmployerAnswer:async(_ctx:unknown,year:number)=>{fx.calls.push(['tp3Answer',year]);return fx.tp3Answer;}}));
 vi.mock('../core/entitlements',()=>{

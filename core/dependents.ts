@@ -39,6 +39,7 @@ export { dependentNaturalKey } from '../lib/dependent-identity';
  */
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { employeeDependent, employeeStatutoryMy, profileOption } from '../db/schema';
 import { packFor } from '../localization/registry';
@@ -614,7 +615,13 @@ export function listDependents(
 ): Promise<DependentRow[]> {
   return withTenant(ctx, (tx) =>
     tx
-      .select({
+      .select(DEPENDENT_FIELDS)
+      .from(employeeDependent)
+      .where(dependentsWhere(p.personId))
+      .orderBy(asc(employeeDependent.createdAt), asc(employeeDependent.id)),
+  );
+}
+const DEPENDENT_FIELDS = {
         id: employeeDependent.id,
         personId: employeeDependent.personId,
         fullName: employeeDependent.fullName,
@@ -643,16 +650,19 @@ export function listDependents(
         childTaxRelief: employeeDependent.childTaxRelief,
         childReliefPercentage: employeeDependent.childReliefPercentage,
         archivedAt: employeeDependent.archivedAt,
-      })
-      .from(employeeDependent)
-      .where(
-        and(
-          eq(employeeDependent.personId, p.personId),
+};
+const dependentsWhere = (personId: string) => and(
+          eq(employeeDependent.personId, personId),
           isNull(employeeDependent.archivedAt),
-        ),
-      )
-      .orderBy(asc(employeeDependent.createdAt), asc(employeeDependent.id)),
-  );
+        );
+/** listDependents in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the same rows,
+ * fields, predicate and order. */
+export function listDependentsBundleSql(p: { personId: string }) {
+  return jsonRowsSql({ row: jsonFieldsSql(DEPENDENT_FIELDS), from: sql`${employeeDependent}`, where: dependentsWhere(p.personId),
+    order: sql`${employeeDependent.createdAt} asc, ${employeeDependent.id} asc` });
+}
+export function listDependentsFromBundle(value: unknown): DependentRow[] {
+  return decodeJsonFieldRows(DEPENDENT_FIELDS, value) as DependentRow[];
 }
 
 /**

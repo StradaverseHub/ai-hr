@@ -4,7 +4,8 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import { isAdmin, isGroupAdmin } from '../lib/authz-model';
-import { readinessSnapshot, type ReadinessGapId } from './record-readiness';
+import { readinessSnapshot, readinessSnapshotBundleSql, readinessSnapshotFromBundle, type ReadinessGapId } from './record-readiness';
+import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { profileChangeAllowedKeys, profileChangeApprover } from './tenant-settings';
 import { isAgentContext } from './agent-principal';
 
@@ -15,12 +16,17 @@ export { READINESS_CORRECTIONS, readinessActionFor, type ReadinessAction } from 
 export async function loadReadinessActions(tx: Tx, ctx: SessionContext, employmentIds: readonly string[]) {
   const result = new Map<string, ReadinessAction>();
   if (employmentIds.length === 0) return result;
-  const allowedFields = profileChangeAllowedKeys(ctx);
-  const approver = profileChangeApprover(ctx);
   // Bound parameter counts without truncating the workforce.
   for (let offset = 0; offset < employmentIds.length; offset += 500) {
     const ids = employmentIds.slice(offset, offset + 500);
-    const { employees, requests } = isAgentContext(ctx) ? await agentCorrectionSource(tx, ids) : await correctionSource(tx, ids);
+    addReadinessActions(result, ctx, isAgentContext(ctx) ? await agentCorrectionSource(tx, ids) : await correctionSource(tx, ids));
+  }
+  return result;
+}
+function addReadinessActions(result: Map<string, ReadinessAction>, ctx: SessionContext, { employees, requests }: CorrectionSource) {
+  const allowedFields = profileChangeAllowedKeys(ctx);
+  const approver = profileChangeApprover(ctx);
+  {
     const byEmployment = new Map<string, typeof requests>();
     for (const request of requests) {
       const list = byEmployment.get(request.employmentId) ?? [];
@@ -35,7 +41,6 @@ export async function loadReadinessActions(tx: Tx, ctx: SessionContext, employme
         mayReview: isAdmin(ctx) && ctx.personId !== employee.personId && (approver === 'admin' || isGroupAdmin(ctx)) });
     }
   }
-  return result;
 }
 
 /** Registry field ids whose legacy key a readiness correction can carry. One list for both readers. */
@@ -68,12 +73,23 @@ async function agentCorrectionSource(tx: Tx, ids: readonly string[]): Promise<Co
 }
 
 async function correctionSource(tx: Tx, ids: readonly string[]): Promise<CorrectionSource> {
-    const employees = await tx.select({
+    const employees = await tx.select(CORRECTION_EMPLOYEE_FIELDS).from(schema.employment).where(correctionEmployeeWhere(ids));
+    const requests = await tx.select(CORRECTION_REQUEST_FIELDS).from(schema.profileChangeRequest)
+      .innerJoin(schema.employment, eq(schema.employment.id, schema.profileChangeRequest.employmentId))
+      .where(correctionRequestWhere(ids))
+      .orderBy(...CORRECTION_REQUEST_ORDER);
+    return { employees, requests };
+}
+const CORRECTION_EMPLOYEE_FIELDS = {
       id: schema.employment.id,
       personId: schema.employment.personId,
       hasStatutoryProfile: sql<boolean>`exists (select 1 from ${schema.employeeStatutoryMy} s where s.person_id=${schema.employment.personId})`,
-    }).from(schema.employment).where(and(inArray(schema.employment.id, [...ids]), isNull(schema.employment.terminatedOn)));
-    const requests = await tx.select({
+};
+const correctionEmployeeWhere = (ids: readonly string[]) => and(inArray(schema.employment.id, [...ids]), isNull(schema.employment.terminatedOn));
+const correctionRequestWhere = (ids: readonly string[]) => and(inArray(schema.profileChangeRequest.employmentId, [...ids]), eq(schema.profileChangeRequest.status, 'pending'),
+        eq(schema.profileChangeRequest.personId, schema.employment.personId));
+const CORRECTION_REQUEST_ORDER = [desc(schema.profileChangeRequest.createdAt), asc(schema.profileChangeRequest.id)];
+const CORRECTION_REQUEST_FIELDS = {
       id: schema.profileChangeRequest.id, employmentId: schema.profileChangeRequest.employmentId,
       fields: sql<string[]>`array(select distinct correction.key from (
         select item.key from jsonb_each(case
@@ -90,13 +106,7 @@ async function correctionSource(tx: Tx, ids: readonly string[]): Promise<Correct
             on aliases.field_id=item->>'fieldId'
           where jsonb_typeof(item->'value')='string' and nullif(btrim(item->>'value'),'') is not null
       ) correction order by correction.key)`,
-    }).from(schema.profileChangeRequest)
-      .innerJoin(schema.employment, eq(schema.employment.id, schema.profileChangeRequest.employmentId))
-      .where(and(inArray(schema.profileChangeRequest.employmentId, [...ids]), eq(schema.profileChangeRequest.status, 'pending'),
-        eq(schema.profileChangeRequest.personId, schema.employment.personId)))
-      .orderBy(desc(schema.profileChangeRequest.createdAt), asc(schema.profileChangeRequest.id));
-    return { employees, requests };
-}
+};
 
 /** Self-service sees only the calling person's own active employment, never their reports or cases. */
 export async function myReadinessActions(ctx: SessionContext, employmentId: string) {
@@ -107,10 +117,40 @@ export async function myReadinessActions(ctx: SessionContext, employmentId: stri
       employmentIds: [employmentId], personId,
     });
     const actions = await loadReadinessActions(tx, ctx, snapshot.activeEmploymentIds);
+    return ownReadinessActions(snapshot, actions);
+  });
+}
+function ownReadinessActions(snapshot: ReturnType<typeof readinessSnapshotFromBundle>, actions: ReadonlyMap<string, ReadinessAction>) {
     return snapshot.view.gaps.flatMap(gap => gap.people.flatMap(person => {
       const action = actions.get(`${person.employmentId}:${gap.id}`);
       // A locked or HR-only field has no employee correction control.
       return action && action.type !== 'review_record' ? [{ gap: gap.id, ...action }] : [];
     }));
-  });
+}
+/** myReadinessActions in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): its
+ * readiness rows and the correction source of the same employment (its employee row and its pending requests), each
+ * the owner's own select and predicate. null for a principal the owner reads through another source (an agent). */
+export function myReadinessActionsBundleSql(ctx: SessionContext, employmentId: string) {
+  if (!ctx.personId || isAgentContext(ctx)) return null;
+  const ids = [employmentId];
+  return sql`jsonb_build_object('rows',${readinessSnapshotBundleSql({ employmentIds: ids, personId: ctx.personId })},
+   'employees',${jsonRowsSql({ row: jsonFieldsSql(CORRECTION_EMPLOYEE_FIELDS), from: sql`${schema.employment}`, where: correctionEmployeeWhere(ids) })},
+   'requests',${jsonRowsSql({ row: jsonFieldsSql(CORRECTION_REQUEST_FIELDS),
+     from: sql`${schema.profileChangeRequest} inner join ${schema.employment} on ${eq(schema.employment.id, schema.profileChangeRequest.employmentId)}`,
+     where: correctionRequestWhere(ids), order: sql.join(CORRECTION_REQUEST_ORDER, sql`, `) })})`;
+}
+/** myReadinessActions over myReadinessActionsBundleSql's rows: the same snapshot, the correction source read only for the
+ * snapshot's active employments (here that one employment or none), and the same actions. */
+export function myReadinessActionsFromBundle(ctx: SessionContext, employmentId: string, value: unknown) {
+  if (!ctx.personId) return [];
+  if (isAgentContext(ctx)) throw new Error('An agent reads its own readiness source.');
+  const raw = value as { rows: unknown; employees: unknown; requests: unknown };
+  const snapshot = readinessSnapshotFromBundle(raw.rows, Number.POSITIVE_INFINITY);
+  const actions = new Map<string, ReadinessAction>();
+  if (snapshot.activeEmploymentIds.length) {
+    if (snapshot.activeEmploymentIds.some(id => id !== employmentId)) throw new Error('The bundled readiness rows belong to another employment.');
+    addReadinessActions(actions, ctx, { employees: decodeJsonFieldRows(CORRECTION_EMPLOYEE_FIELDS, raw.employees) as CorrectionSource['employees'],
+      requests: decodeJsonFieldRows(CORRECTION_REQUEST_FIELDS, raw.requests) as CorrectionSource['requests'] });
+  }
+  return ownReadinessActions(snapshot, actions);
 }

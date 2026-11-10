@@ -32,6 +32,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // therefore NOT gated, deliberately: core/employment-review.ts (employment spine) calls it and must
 // keep working. See core/module-gate.ts.
 import { withPerformanceTenant as withTenant } from './module-gate';
+import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { actorOf, appendEvent } from '../db/events';
 import { assertModuleEnabled } from './entitlements';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
@@ -1876,7 +1877,7 @@ export function myReviews(ctx: SessionContext, existingTx?: AiReadTx) {
         reviewId: performanceReview.id,
         cycleName: reviewCycle.name,
         status: performanceReview.status,
-        released: sql<boolean>`${reviewCycle.releasedAt} is not null`,
+        released: MY_REVIEW_RELEASED,
         overallRating: sql<number | null>`case when ${reviewCycle.releasedAt} is not null then ${performanceReview.overallRating} end`,
         finalScore: sql<string | null>`case when ${reviewCycle.releasedAt} is not null then ${performanceReview.finalScore} end`,
         abcClass: sql<'A' | 'B' | 'C' | null>`case when ${reviewCycle.releasedAt} is not null then ${performanceReview.abcClass} end`,
@@ -1888,6 +1889,23 @@ export function myReviews(ctx: SessionContext, existingTx?: AiReadTx) {
       .where(eq(employment.personId, ctx.personId))
       .orderBy(desc(reviewCycle.periodEnd));
   });
+}
+const MY_REVIEW_RELEASED = sql<boolean>`${reviewCycle.releasedAt} is not null`;
+/** The fields of myReviews the Before payroll checklist reads (core/pre-salary/person-items.ts): no rating or score. */
+const MY_REVIEW_CHECKLIST_FIELDS = { reviewId: performanceReview.id, status: performanceReview.status, released: MY_REVIEW_RELEASED, periodEnd: reviewCycle.periodEnd };
+/** myReviews (no outer transaction) in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts):
+ * the same rows (the owner's joins, predicate and order) with the fields the checklist reads. null without a person
+ * (the owner then answers empty without reading). The Performance gate and the AI Centre check stay the caller's. */
+export function myReviewsChecklistBundleSql(ctx: SessionContext) {
+  if (!ctx.personId) return null;
+  return jsonRowsSql({ row: jsonFieldsSql(MY_REVIEW_CHECKLIST_FIELDS),
+    from: sql`${performanceReview} inner join ${reviewCycle} on ${eq(reviewCycle.id, performanceReview.cycleId)}
+     inner join ${employment} on ${eq(employment.id, performanceReview.employmentId)}`,
+    where: eq(employment.personId, ctx.personId), order: sql`${reviewCycle.periodEnd} desc` });
+}
+export type MyReviewChecklistRow = { reviewId: string; status: string; released: boolean; periodEnd: string };
+export function myReviewsChecklistFromBundle(value: unknown): MyReviewChecklistRow[] {
+  return decodeJsonFieldRows(MY_REVIEW_CHECKLIST_FIELDS, value) as MyReviewChecklistRow[];
 }
 
 /** Reviews awaiting the signed-in manager's action (manager_review, they are the reviewer). */

@@ -6,13 +6,14 @@
  * cases of employments and companies they administer. Each card opens the owning service's own page, where the person
  * confirms; the card itself completes nothing. Facts are the case's own dates, times and keys; the only names are the
  * employee's and the company's, read through their owners' row-level security. */
-import {and,eq,inArray} from 'drizzle-orm';
+import {and,eq,inArray,sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {company,employment,person} from '../../db/schema';
 import {terasLoopCase,terasLoopPause} from '../../db/teras-schema';
 import {terasLoopLevel} from '../../db/teras-autonomy-schema';
 import {assignedApprovalHref} from '../../lib/assigned-approval-focus';
-import {workerModule,workerRunGatesTx} from '../agent-registry/controls';
+import {workerModule,workerRunGatesBundleSql,workerRunGatesFromBundle,workerRunGatesTx} from '../agent-registry/controls';
+import {decodeJsonFieldRows,jsonFieldsSql,jsonRowsSql} from '../../db/json-fields';
 import {isModuleEnabled} from '../entitlements';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {PAYROLL_INPUTS_LEAD_DAYS,daysBetween} from './period';
@@ -60,7 +61,20 @@ export const LOOP_CARD_HREF=Object.freeze({
 
 /** `admin`: the viewer's Today shows HR cards for the companies in `scopeIds`; everyone sees their own cards. `today`
  * (default the HR day): the Pre-salary card shows only in the last PAYROLL_INPUTS_LEAD_DAYS before its cut-off. */
-export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:readonly string[];admin:boolean;today?:string;employeeOnly?:true}>):Promise<readonly LoopCard[]>{
+type LoopCardRead=Readonly<{scopeIds:readonly string[];admin:boolean;today?:string;employeeOnly?:true}>;
+const LOOP_PAUSE_FIELDS={workerId:terasLoopPause.workerId,companyId:terasLoopPause.companyId};
+const loopPauseWhere=(ctx:SessionContext)=>and(eq(terasLoopPause.tenantId,ctx.tenantId),eq(terasLoopPause.paused,true));
+const LOOP_CASE_FIELDS={id:terasLoopCase.id,workerId:terasLoopCase.workerId,companyId:terasLoopCase.companyId,employmentId:terasLoopCase.employmentId,
+ recipient:terasLoopCase.recipient,facts:terasLoopCase.facts,personId:employment.personId,name:person.fullName,companyName:company.legalName};
+const loopCaseWhere=(ctx:SessionContext,p:LoopCardRead,workers:readonly LoopId[])=>and(eq(terasLoopCase.tenantId,ctx.tenantId),eq(terasLoopCase.state,'open'),inArray(terasLoopCase.workerId,[...workers]),
+ p.employeeOnly ? and(eq(terasLoopCase.recipient,'employee'),eq(employment.personId,ctx.personId!)) : undefined);
+const LOOP_LEVEL_FIELDS={workerId:terasLoopLevel.workerId,companyId:terasLoopLevel.companyId};
+const loopWatchWhere=(ctx:SessionContext)=>and(eq(terasLoopLevel.tenantId,ctx.tenantId),eq(terasLoopLevel.level,0));
+const liveLoops=(gates:ReadonlyMap<string,{gate:{run:boolean}}>,p:LoopCardRead):LoopId[]=>LOOP_IDS.filter(id=>gates.get(id)?.gate.run===true &&
+ (!p.employeeOnly || id==='loop_missed_clock_outs'||id==='loop_missing_employee_data'||id==='loop_document_expiry'));
+type LoopCaseRow={id:string;workerId:string;companyId:string;employmentId:string|null;recipient:string;facts:LoopFacts;personId:string|null;name:string|null;companyName:string|null};
+type LoopKey={workerId:string;companyId:string};
+export async function readLoopCards(ctx:SessionContext,p:LoopCardRead):Promise<readonly LoopCard[]>{
  if(!ctx.userId||ctx.agent||(p.employeeOnly&&!ctx.personId))return [];
  const today=p.today??todayInKualaLumpur();
  return withTenant(ctx,async tx=>{
@@ -68,27 +82,65 @@ export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:read
   const autonomy=p.employeeOnly?[]:await readAutonomyCardsTx(tx,ctx,{scopeIds:p.scopeIds,admin:p.admin});
   // Every loop's gate, each as workerRunGateTx answers it, read in one pass (AI Centre navigation speed, 4 Nov 2026).
   const gates=await workerRunGatesTx(tx,ctx,LOOP_IDS);
-  const live:LoopId[]=LOOP_IDS.filter(id=>gates.get(id)?.gate.run===true &&
-   (!p.employeeOnly || id==='loop_missed_clock_outs'||id==='loop_missing_employee_data'||id==='loop_document_expiry'));
+  const live=liveLoops(gates,p);
   if(!live.length)return autonomy;
-  const paused=new Set((await tx.select({workerId:terasLoopPause.workerId,companyId:terasLoopPause.companyId}).from(terasLoopPause)
-   .where(and(eq(terasLoopPause.tenantId,ctx.tenantId),eq(terasLoopPause.paused,true)))).map(row=>`${row.workerId}:${row.companyId}`));
-  const fetched=(await tx.select({id:terasLoopCase.id,workerId:terasLoopCase.workerId,companyId:terasLoopCase.companyId,employmentId:terasLoopCase.employmentId,
-   recipient:terasLoopCase.recipient,facts:terasLoopCase.facts,personId:employment.personId,name:person.fullName,companyName:company.legalName})
+  const paused=await tx.select(LOOP_PAUSE_FIELDS).from(terasLoopPause).where(loopPauseWhere(ctx));
+  const fetched=await tx.select(LOOP_CASE_FIELDS)
    .from(terasLoopCase).leftJoin(employment,eq(employment.id,terasLoopCase.employmentId)).leftJoin(person,eq(person.id,employment.personId))
    .leftJoin(company,eq(company.id,terasLoopCase.companyId))
-   .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),eq(terasLoopCase.state,'open'),inArray(terasLoopCase.workerId,live),
-    p.employeeOnly ? and(eq(terasLoopCase.recipient,'employee'),eq(employment.personId,ctx.personId!)) : undefined)))
-   .filter(row=>!paused.has(`${row.workerId}:${row.companyId}`));
+   .where(loopCaseWhere(ctx,p,live));
   // P2-1: a loop at Watch for a company observes and records there, and shows nobody a card.
-  const watching=new Set((await tx.select({workerId:terasLoopLevel.workerId,companyId:terasLoopLevel.companyId}).from(terasLoopLevel)
-   .where(and(eq(terasLoopLevel.tenantId,ctx.tenantId),eq(terasLoopLevel.level,0)))).map(row=>`${row.workerId}:${row.companyId}`));
-  const rows=fetched.filter(row=>!watching.has(`${row.workerId}:${row.companyId}`)&&isModuleEnabled(ctx,workerModule(row.workerId),row.companyId));
+  const watching=await tx.select(LOOP_LEVEL_FIELDS).from(terasLoopLevel).where(loopWatchWhere(ctx));
+  return loopCardsFrom(ctx,p,today,{live,paused,fetched:fetched as LoopCaseRow[],watching},autonomy);
+ });
+}
+
+/** readLoopCards for the Before payroll checklist's own read (scopeIds [], admin false) as one JSON value, a section
+ * of the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): every loop's gate, the pauses,
+ * the open cases of every loop (the projection keeps those of the live loops, as the owner's own predicate does) and
+ * the Watch levels. The autonomy cards (open undo windows, moves down) are not read: the checklist reads clock-out
+ * cards only. */
+export function readLoopCardsBundleSql(ctx:SessionContext):SQL{
+ const p:LoopCardRead={scopeIds:[],admin:false};
+ return sql`jsonb_build_object('gates',${workerRunGatesBundleSql(ctx,LOOP_IDS)},
+  'paused',${jsonRowsSql({row:jsonFieldsSql(LOOP_PAUSE_FIELDS),from:sql`${terasLoopPause}`,where:loopPauseWhere(ctx)})},
+  'cases',${jsonRowsSql({row:jsonFieldsSql(LOOP_CASE_FIELDS),from:sql`${terasLoopCase} left join ${employment} on ${eq(employment.id,terasLoopCase.employmentId)}
+   left join ${person} on ${eq(person.id,employment.personId)} left join ${company} on ${eq(company.id,terasLoopCase.companyId)}`,where:loopCaseWhere(ctx,p,LOOP_IDS)})},
+  'watching',${jsonRowsSql({row:jsonFieldsSql(LOOP_LEVEL_FIELDS),from:sql`${terasLoopLevel}`,where:loopWatchWhere(ctx)})})`;
+}
+/** readLoopCards(ctx, {scopeIds: [], admin: false, today}) over readLoopCardsBundleSql's rows, without the autonomy
+ * cards; null where the owner must read (a gate read elsewhere, or two cards whose order the owner leaves to the plan). */
+export function readLoopCardsFromBundle(ctx:SessionContext,value:unknown,today?:string):readonly LoopCard[]|null{
+ if(!ctx.userId||ctx.agent)return [];
+ const p:LoopCardRead={scopeIds:[],admin:false};
+ const raw=value as {gates:unknown;paused:unknown;cases:unknown;watching:unknown};
+ const gates=workerRunGatesFromBundle(LOOP_IDS,raw.gates);
+ if(!gates)return null;
+ const live=liveLoops(gates,p);
+ if(!live.length)return [];
+ const cases=(decodeJsonFieldRows(LOOP_CASE_FIELDS,raw.cases) as LoopCaseRow[]).filter(row=>(live as readonly string[]).includes(row.workerId));
+ try{
+  return loopCardsFrom(ctx,p,today??todayInKualaLumpur(),{live,paused:decodeJsonFieldRows(LOOP_PAUSE_FIELDS,raw.paused),fetched:cases,
+   watching:decodeJsonFieldRows(LOOP_LEVEL_FIELDS,raw.watching)},[],true);
+ }catch(error){if(error instanceof LoopCardOrderTie)return null;throw error;}
+}
+class LoopCardOrderTie extends Error{}
+
+/** readLoopCards' card rules over its rows. `refuseTies`: two cards of one kind whose sort keys tie throw, because their
+ * order (and a consumer keying them by that value) is the plan's row order, which only the owner's own read can give. */
+function loopCardsFrom(ctx:SessionContext,p:LoopCardRead,today:string,read:Readonly<{live:readonly LoopId[];paused:readonly LoopKey[];
+ fetched:readonly LoopCaseRow[];watching:readonly LoopKey[]}>,autonomy:readonly AutonomyCard[],refuseTies=false):readonly LoopCard[]{
+  const paused=new Set(read.paused.map(row=>`${row.workerId}:${row.companyId}`));
+  const watching=new Set(read.watching.map(row=>`${row.workerId}:${row.companyId}`));
+  const rows=read.fetched.filter(row=>!paused.has(`${row.workerId}:${row.companyId}`))
+   .filter(row=>!watching.has(`${row.workerId}:${row.companyId}`)&&isModuleEnabled(ctx,workerModule(row.workerId),row.companyId));
   const scope=new Set(p.scopeIds),own=(row:typeof rows[number])=>row.recipient==='employee'&&!!ctx.personId&&row.personId===ctx.personId;
   const hr=(row:typeof rows[number])=>p.admin&&scope.has(row.companyId)&&!own(row);
   const cards:LoopCard[]=[];
   const take=<T extends LoopCard>(items:T[],order:(card:T)=>string,limit=LOOP_CARD_LIMIT)=>{
-   cards.push(...items.sort((a,b)=>order(a).localeCompare(order(b))).slice(0,limit));
+   const sorted=items.sort((a,b)=>order(a).localeCompare(order(b)));
+   if(refuseTies&&sorted.some((card,index)=>index>0&&order(card).localeCompare(order(sorted[index-1]))===0))throw new LoopCardOrderTie();
+   cards.push(...sorted.slice(0,limit));
   };
   // The employee's own cards.
   take(rows.filter(row=>own(row)&&row.workerId==='loop_missed_clock_outs').flatMap(row=>{
@@ -120,7 +172,6 @@ export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:read
   const expiring=rows.filter(row=>hr(row)&&row.workerId==='loop_document_expiry').map(row=>str(row.facts,'expiresOn')).filter(isDate).sort();
   if(expiring.length)cards.push({kind:'passports',count:expiring.length,first:expiring[0],href:LOOP_CARD_HREF.passports()});
   return Object.freeze([...cards,...autonomy]);
- });
 }
 
 export async function readEmployeeLoopCards(ctx:SessionContext):Promise<readonly EmployeeLoopCard[]>{

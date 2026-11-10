@@ -62,6 +62,7 @@ import { createHash } from 'node:crypto';
  */
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
+import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 // ADR-0077 D3 SERVICE GATE (r294, closing r292's stated gap). `withTenant` here is
 // `withPayrollTenant`: every TP1 entry point in this file — the whole declare → submit → approve write
 // path included — refuses a tenant without the Payroll module. A `layout.tsx` covers /me/tax-relief and
@@ -850,9 +851,10 @@ function requirePerson(ctx: SessionContext): string {
 /** Mine binds the actual login, not a caller-supplied Person, even when that login also administers Payroll. */
 async function assertMyTp1OwnerTx(tx:Tx,personId:string,lock=true) {
   // A read-only snapshot (listMyTp1DeclarationsSnapshot) cannot take, and needs no, row lock: it reads the login as of its snapshot.
-  const rows=await tx.execute(sql`select u.id from public.app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() and app.is_self_person(${personId}::uuid)${lock?sql` for share`:sql``}`);
+  const rows=await tx.execute(myTp1OwnerSql(personId,lock));
   if(!rows.length)throw new TaxReliefError('This account is not linked to this employee profile.');
 }
+const myTp1OwnerSql=(personId:string,lock:boolean)=>sql`select u.id from public.app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() and app.is_self_person(${personId}::uuid)${lock?sql` for share`:sql``}`;
 
 /**
  * Admin-on-behalf gate (Standardize-TP1, item 0cde61f3). The `*ForPerson` entry points let an HR admin
@@ -1348,6 +1350,24 @@ export function listMyTp1DeclarationsSnapshot(ctx: SessionContext, p: {assessmen
   });
 }
 
+/** listMyTp1DeclarationsSnapshot in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): its
+ * owner check (the same statement, as an EXISTS) and its rows (the same select, predicate and order). null where the
+ * owner refuses before reading (no person, an invalid year). */
+export function listMyTp1DeclarationsSnapshotBundleSql(ctx: SessionContext, p: {assessmentYear?: number} = {}) {
+  if (!ctx.personId) return null;
+  let year: number | null;
+  try { year = p.assessmentYear == null ? null : validateYear(p.assessmentYear); } catch { return null; }
+  return sql`jsonb_build_object('owner',exists(${myTp1OwnerSql(ctx.personId, false)}),
+   'rows',${jsonRowsSql({ row: jsonFieldsSql(TP1_MONTH_FIELDS), from: sql`${tp1Relief}`, where: tp1MonthWhere(ctx.personId, year),
+     order: sql`${tp1Relief.createdAt} desc, ${tp1Relief.id} desc` })})`;
+}
+/** The owner's result over those rows, or null when the owner check finds no row (the owner itself then refuses). */
+export function listMyTp1DeclarationsSnapshotFromBundle(value: unknown): Tp1MonthDeclaration[] | null {
+  const raw = value as { owner: boolean; rows: unknown };
+  if (raw.owner !== true) return null;
+  return tp1MonthDeclarationsFrom(decodeJsonFieldRows(TP1_MONTH_FIELDS, raw.rows) as Tp1MonthRow[]);
+}
+
 function listTp1MonthDeclarations(ctx: SessionContext, personId: string, assessmentYear?: number, ownOnly=false): Promise<Tp1MonthDeclaration[]> {
   // Validated only when supplied: an absent year is "every year", not year zero.
   const year = assessmentYear == null ? null : validateYear(assessmentYear);
@@ -1358,7 +1378,16 @@ function listTp1MonthDeclarations(ctx: SessionContext, personId: string, assessm
 }
 async function tp1MonthDeclarationsTx(tx: Tx, personId: string, year: number | null): Promise<Tp1MonthDeclaration[]> {
     const rows = await tx
-      .select({
+      .select(TP1_MONTH_FIELDS)
+      .from(tp1Relief)
+      .where(tp1MonthWhere(personId, year))
+      .orderBy(desc(tp1Relief.createdAt), desc(tp1Relief.id));
+    return tp1MonthDeclarationsFrom(rows);
+}
+const tp1MonthWhere = (personId: string, year: number | null) => year == null
+          ? eq(tp1Relief.personId, personId)
+          : and(eq(tp1Relief.personId, personId), eq(tp1Relief.assessmentYear, year));
+const TP1_MONTH_FIELDS = {
         id: tp1Relief.id,
         assessmentYear: tp1Relief.assessmentYear,
         status: tp1Relief.status,
@@ -1374,14 +1403,9 @@ async function tp1MonthDeclarationsTx(tx: Tx, personId: string, year: number | n
           .mapWith(tp1Relief.createdAt),
         approvedAt: tp1Relief.approvedAt,
         approvedMonth: tp1Relief.approvedMonth,
-      })
-      .from(tp1Relief)
-      .where(
-        year == null
-          ? eq(tp1Relief.personId, personId)
-          : and(eq(tp1Relief.personId, personId), eq(tp1Relief.assessmentYear, year)),
-      )
-      .orderBy(desc(tp1Relief.createdAt), desc(tp1Relief.id));
+};
+type Tp1MonthRow = Omit<Tp1MonthDeclaration, 'tp1Amount' | 'versions'> & { tp1Amount: string; lastSavedAt: Date };
+function tp1MonthDeclarationsFrom(rows: readonly Tp1MonthRow[]): Tp1MonthDeclaration[] {
     // KEYED ON YEAR **AND** MONTH — see the header on why the month alone is unsound once the query is
     // not fenced to one year. `0` is the bucket for a month-less legacy row: a real month is 1–12, so it
     // cannot collide with one.

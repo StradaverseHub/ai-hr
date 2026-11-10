@@ -110,12 +110,16 @@ export type WorkerGateState=Readonly<{gate:WorkerGate;on:boolean;changedByUserId
  * The teras_worker_control switches are read in one statement (same table, tenant filter and row-level security as
  * workerSwitchStateTx's worker_control branch: a worker with no row is off) and the stop switch once (`stopped`, when the
  * caller has already read it in this transaction); any other switch kind is read as workerSwitchStateTx reads it. */
+const controlledWorkerIds=(workers:readonly (readonly [string,ReturnType<typeof registeredWorker>])[])=>
+ [...new Set(workers.flatMap(([,worker])=>worker&&worker.switch.kind==='worker_control'?[worker.switch.workerId]:[]))];
+const WORKER_CONTROL_FIELDS={workerId:terasWorkerControl.workerId,enabled:terasWorkerControl.enabled,changedByUserId:terasWorkerControl.changedByUserId};
+const workerControlWhere=(tenantId:string,controlled:readonly string[])=>and(eq(terasWorkerControl.tenantId,tenantId),inArray(terasWorkerControl.workerId,controlled as TerasSwitchedWorker[]));
+type WorkerControlRow=Readonly<{workerId:string;enabled:boolean;changedByUserId:string|null}>;
 export async function workerRunGatesTx(tx:Tx,ctx:SessionContext,workerIds:readonly string[],known?:Readonly<{stopped:boolean}>):Promise<ReadonlyMap<string,WorkerGateState>>{
  const workers=workerIds.map(id=>[id,registeredWorker(id)] as const);
- const controlled=[...new Set(workers.flatMap(([,worker])=>worker&&worker.switch.kind==='worker_control'?[worker.switch.workerId]:[]))];
- const rows:readonly Readonly<{workerId:string;enabled:boolean;changedByUserId:string|null}>[]=controlled.length
-  ?await tx.select({workerId:terasWorkerControl.workerId,enabled:terasWorkerControl.enabled,changedByUserId:terasWorkerControl.changedByUserId})
-   .from(terasWorkerControl).where(and(eq(terasWorkerControl.tenantId,ctx.tenantId),inArray(terasWorkerControl.workerId,controlled as TerasSwitchedWorker[]))):[];
+ const controlled=controlledWorkerIds(workers);
+ const rows:readonly WorkerControlRow[]=controlled.length
+  ?await tx.select(WORKER_CONTROL_FIELDS).from(terasWorkerControl).where(workerControlWhere(ctx.tenantId,controlled)):[];
  const control=new Map(rows.map(row=>[row.workerId,row] as const));
  const stopped=workers.some(([,worker])=>Boolean(worker))?(known?known.stopped:await tenantStoppedTx(tx,ctx.tenantId)):false;
  const out=new Map<string,WorkerGateState>();
@@ -123,6 +127,32 @@ export async function workerRunGatesTx(tx:Tx,ctx:SessionContext,workerIds:readon
   if(!worker){out.set(id,Object.freeze({gate:Object.freeze({run:false,reasons:Object.freeze(['not_registered' as const])}),on:false,changedByUserId:null}));continue;}
   const sw=worker.switch,row=sw.kind==='worker_control'?control.get(sw.workerId):undefined;
   const on=sw.kind==='worker_control'?row?.enabled===true:(await workerSwitchStateTx(tx,ctx,worker)).on;
+  out.set(id,Object.freeze({gate:workerGateFromState(on,stopped),on,changedByUserId:on?row?.changedByUserId??null:null}));
+ }
+ return out;
+}
+/** workerRunGatesTx's two reads as one JSON value (the teras_worker_control rows and the stop switch), a section of the
+ * one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts). */
+export function workerRunGatesBundleSql(ctx:SessionContext,workerIds:readonly string[]){
+ const controlled=controlledWorkerIds(workerIds.map(id=>[id,registeredWorker(id)] as const));
+ return sql`jsonb_build_object('controls',(select coalesce(jsonb_agg(jsonb_build_object('workerId',${terasWorkerControl.workerId},
+   'enabled',${terasWorkerControl.enabled},'changedByUserId',${terasWorkerControl.changedByUserId})),'[]'::jsonb)
+   from ${terasWorkerControl} where ${controlled.length?workerControlWhere(ctx.tenantId,controlled):sql`false`}),
+  'stopped',(select ${terasMandateControl.stopped} from ${terasMandateControl} where ${eq(terasMandateControl.tenantId,ctx.tenantId)} limit 1))`;
+}
+/** workerRunGatesTx over workerRunGatesBundleSql's rows, or null when a worker's switch is not a teras_worker_control
+ * switch (workerSwitchStateTx reads that kind itself). */
+export function workerRunGatesFromBundle(workerIds:readonly string[],value:unknown):ReadonlyMap<string,WorkerGateState>|null{
+ const workers=workerIds.map(id=>[id,registeredWorker(id)] as const);
+ if(workers.some(([,worker])=>worker&&worker.switch.kind!=='worker_control'))return null;
+ const raw=value as {controls:WorkerControlRow[];stopped:boolean|null};
+ const control=new Map(raw.controls.map(row=>[row.workerId,{workerId:row.workerId,enabled:row.enabled,changedByUserId:row.changedByUserId}] as const));
+ const stopped=workers.some(([,worker])=>Boolean(worker))?raw.stopped===true:false;
+ const out=new Map<string,WorkerGateState>();
+ for(const [id,worker] of workers){
+  if(!worker){out.set(id,Object.freeze({gate:Object.freeze({run:false,reasons:Object.freeze(['not_registered' as const])}),on:false,changedByUserId:null}));continue;}
+  const sw=worker.switch,row=sw.kind==='worker_control'?control.get(sw.workerId):undefined;
+  const on=row?.enabled===true;
   out.set(id,Object.freeze({gate:workerGateFromState(on,stopped),on,changedByUserId:on?row?.changedByUserId??null:null}));
  }
  return out;

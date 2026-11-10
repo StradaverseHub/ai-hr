@@ -10,6 +10,8 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { and, asc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { withLifecycleTenant as withTenant } from '../../../core/module-gate';
+import { decodeJsonRow, jsonRowSql } from '../../../db/json-row';
+import { jsonRowsSql } from '../../../db/json-fields';
 import { type SessionContext, type Tx } from '../../../db/client';
 import { appendEvent, actorOf } from '../../../db/events';
 import { lcOnboardingCaseRevision as revisions, lcOnboardingPrivateRevision as privateRevisions, lcOnboardingCase as cases, lcOnboardingConfig as configs, lcOnboardingPrivate as secrets, lcOnboardingNote as notes, lcOnboardingSeen as seen, employeeDraft, department, company, position, businessUnit, jobGrade, costCenter, employment, person, assignment, employmentTypeEnum } from '../../../db/schema';
@@ -1388,11 +1390,29 @@ async function refreshRoleLinksTx(tx: Tx, ctx: SessionContext, row: Row, c: M.Ca
 export async function onboardingMyAcknowledgements(ctx: SessionContext) {
     return withTenant(ctx, async (tx) => {
         const list = await tx.select().from(cases).orderBy(asc(cases.createdAt), asc(cases.id));
+        return myAcknowledgementsFrom(ctx, list);
+    });
+}
+function myAcknowledgementsFrom(ctx: SessionContext, list: readonly Row[]) {
         return list.filter(row => !!ctx.personId && row.data.personId === ctx.personId && row.data.state === 'submitted').map(row => {
             const c = row.data, r = M.currentReq(c), f = M.effectiveFacts(c);
             return { id: c.id, revision: row.revision, name: f.fullName, employeeId: f.employeeId, joinDate: f.joinDate, number: c.number, available: !!r?.handedAt, submittedAt: c.acknowledgement?.at ?? null };
         });
-    });
+}
+/** onboardingMyAcknowledgements in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the
+ * owner's rows in its order, narrowed in SQL by the exact twin of its own filter (a JSON string person equal to the
+ * caller's, a JSON string state 'submitted': jsonb equality with a JSON string is JavaScript's strict equality with that
+ * string), then the owner's own projection. null without a person (the owner then answers empty). The Lifecycle gate
+ * stays the caller's. */
+export function onboardingMyAcknowledgementsBundleSql(ctx: SessionContext) {
+    if (!ctx.personId) return null;
+    return jsonRowsSql({ row: jsonRowSql(cases, 'lc_onboarding_case'), from: sql`${cases}`,
+        where: sql`${cases.data}->'personId' = to_jsonb(${ctx.personId}::text) and ${cases.data}->'state' = '"submitted"'::jsonb`,
+        order: sql`${cases.createdAt} asc, ${cases.id} asc` });
+}
+export function onboardingMyAcknowledgementsFromBundle(ctx: SessionContext, value: unknown) {
+    if (!Array.isArray(value)) throw new Error('The bundled onboarding cases are unavailable.');
+    return myAcknowledgementsFrom(ctx, value.map(row => decodeJsonRow(cases, row as Record<string, unknown>)));
 }
 export async function onboardingMyAcknowledgement(ctx: SessionContext, caseId?: string) {
     const views = await onboardingMyAcknowledgements(ctx);

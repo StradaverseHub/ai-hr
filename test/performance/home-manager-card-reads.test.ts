@@ -310,6 +310,136 @@ async function bundleCalculatorPairs(actor:Actor,today:string){
  return pairs;
 }
 
+// ── Before payroll as one statement (docs/adr/2026-11-10-home-request-read-scope.md decision 11,
+// core/pre-salary/before-payroll-bundle.ts). Every own owner reading on its own against the one statement: the traces,
+// the fixture rows that give each owner rows to compare (added after the traces), and the comparisons. ───────────────
+type TraceRow={before:number;after:number;afterOrdered:string[];shared:unknown;failure:unknown};
+async function beforePayrollTraces(label:string,actor:Actor,today:string,trace:(before:()=>Promise<unknown>,after:()=>Promise<unknown>)=>Promise<TraceRow>){
+ const {readMyPayrollReadiness,readMyPayrollReadinessFromOwners}=await import('../../core/pre-salary/person-items');
+ const {allowedCompanies}=await import('../../core/read');
+ const scopeIds=(await allowedCompanies(actor.ctx)).map(company=>company.id);
+ const summary=(value:{failed:boolean;items:readonly unknown[]}|null)=>({present:value!==null,failed:value?.failed??null,items:value?.items.length??null});
+ const owners=()=>readMyPayrollReadinessFromOwners(actor.ctx,{scopeIds,locale:'en',today,includeApprovals:false}).then(summary);
+ const bundled=()=>readMyPayrollReadiness(actor.ctx,{scopeIds,locale:'en',today,includeApprovals:false}).then(summary);
+ const rows:Record<string,TraceRow>={'section:beforePayroll:owners':await trace(owners,owners),'section:beforePayroll:bundled':await trace(bundled,bundled)};
+ print('before-payroll-trips',{label,owners:[rows['section:beforePayroll:owners'].before,rows['section:beforePayroll:owners'].after],
+  bundled:[rows['section:beforePayroll:bundled'].before,rows['section:beforePayroll:bundled'].after],bundledStatements:rows['section:beforePayroll:bundled'].afterOrdered});
+ return rows;
+}
+/** Rows for every Before payroll owner on the compared subjects. Each insert is fictional and stands alone: one the
+ * schema refuses is recorded and skipped, so the comparison still runs for the rest. */
+async function seedBeforePayrollFixtures(actors:readonly Actor[],today:string){
+ const day=(offset:number)=>new Date(Date.parse(today+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
+ const year=Number(today.slice(0,4)),seeded:string[]=[],refused:Record<string,string>={};
+ const step=async(name:string,work:()=>Promise<unknown>)=>{try{await work();seeded.push(name);}catch(error){refused[name]=String((error as Error)?.message??error).slice(0,200);}};
+ const [employee,manager,onLeave]=[actors.find(a=>a.index%250===4)!,actors.find(a=>a.index%250===2)!,actors.find(a=>a.index%250===54)!];
+ for(const actor of [employee,manager]){
+  const tenantId=actor.ctx.tenantId,employmentId=actor.employmentId,personId=actor.ctx.personId!,userId=actor.ctx.userId!,tag=actor.index;
+  // Attendance: an absent day, a missed clock-out, a pending correction and an OT plan, a rostered rest day and a day adjustment.
+  await step('absent:'+tag,()=>owner.client`delete from attendance where employment_id=${employmentId}::uuid and attendance_date=${day(-3)}::date`);
+  await step('missedClockOut:'+tag,()=>owner.client`update attendance set check_out_at=null where employment_id=${employmentId}::uuid and attendance_date=${day(-2)}::date`);
+  await step('correction:'+tag,()=>owner.client`insert into attendance_correction(tenant_id,employment_id,attendance_date,proposed_check_in,proposed_check_out,reason,status,request_kind)
+   values(${tenantId}::uuid,${employmentId}::uuid,${day(-4)}::date,'09:00','18:00','Fictional correction','pending','incomplete_entry')`);
+  await step('overtimePlan:'+tag,()=>owner.client`insert into attendance_correction(tenant_id,employment_id,attendance_date,requested_ot_minutes,planned_start_time,planned_end_time,reason,status,request_kind)
+   values(${tenantId}::uuid,${employmentId}::uuid,${day(-1)}::date,60,'18:00','19:00','Fictional overtime plan','pending','self_overtime')`);
+  await step('roster:'+tag,()=>owner.client`insert into roster_assignment(tenant_id,employment_id,shift_date,is_rest_day) values(${tenantId}::uuid,${employmentId}::uuid,${day(-5)}::date,true)`);
+  await step('dayAdjustment:'+tag,()=>owner.client`insert into attendance_day_adjustment(tenant_id,employment_id,attendance_date,day_kind,reason,updated_by)
+   values(${tenantId}::uuid,${employmentId}::uuid,${day(-6)}::date,'rest_day','Fictional adjustment','fixture')`);
+  // Claims: a draft with an attachment and one without, beside the pending claims.
+  await step('claimAttachment:'+tag,async()=>{
+   const [type]=await owner.client<{id:string}[]>`select id from claim_type where tenant_id=${tenantId}::uuid and code='PERF'`;
+   await owner.client`update claim_type set requires_receipt=true where id=${type.id}::uuid`;
+   const drafts=await owner.client<{id:string}[]>`insert into claim_request(tenant_id,employment_id,claim_type_id,amount,incurred_on,status,created_at)
+    values(${tenantId}::uuid,${employmentId}::uuid,${type.id}::uuid,1,${day(-2)}::date,'draft',now()),(${tenantId}::uuid,${employmentId}::uuid,${type.id}::uuid,1,${day(-1)}::date,'draft',now()) returning id`;
+   await owner.client`insert into claim_attachment(tenant_id,claim_request_id,employment_id,content,file_name,mime_type,size_bytes)
+    values(${tenantId}::uuid,${drafts[0].id}::uuid,${employmentId}::uuid,decode('00','hex'),'fictional-receipt.pdf','application/pdf',1)`;
+  });
+  // Details: TP1 rows (a draft, one sent), a TP3 record and answer, and two children on the Family register.
+  await step('tp1:'+tag,()=>owner.client`insert into tp1_relief(tenant_id,person_id,assessment_year,status,submitted_at,deduction_month)
+   values(${tenantId}::uuid,${personId}::uuid,${year},'draft',null,1),(${tenantId}::uuid,${personId}::uuid,${year},'submitted',now(),2)`);
+  await step('tp3:'+tag,()=>owner.client`insert into employee_tp3(tenant_id,person_id,assessment_year) values(${tenantId}::uuid,${personId}::uuid,${year-1})`);
+  await step('tp3Answer:'+tag,()=>owner.client`insert into payroll_tp3_previous_employer_answer(tenant_id,person_id,employment_id,assessment_year,had_previous_employer,answered_by_user_id)
+   values(${tenantId}::uuid,${personId}::uuid,${employmentId}::uuid,${year},true,${userId}::uuid)`);
+  await step('dependants:'+tag,()=>owner.client`insert into employee_dependent(tenant_id,person_id,full_name,relationship,date_of_birth)
+   values(${tenantId}::uuid,${personId}::uuid,'Fictional Child One','child','2015-03-01'),(${tenantId}::uuid,${personId}::uuid,'Fictional Child Two','child','1990-03-01')`);
+  // Acknowledge: a notice requiring acknowledgement, a released submitted review, a handed-over onboarding case.
+  await step('notice:'+tag,async()=>{
+   const [row]=await owner.client<{id:string}[]>`insert into notice(tenant_id,title,body,requires_acknowledgement,content_version,start_on,end_on,published_at)
+    values(${tenantId}::uuid,'Fictional notice '||${tag}::text,'Fictional body',true,1,${day(-10)}::date,${day(10)}::date,now()) returning id`;
+   await owner.client`insert into notice_recipient(tenant_id,notice_id,employment_id) values(${tenantId}::uuid,${row.id}::uuid,${employmentId}::uuid)`;
+  });
+  await step('review:'+tag,async()=>{
+   const [cycle]=await owner.client<{id:string}[]>`insert into review_cycle(tenant_id,name,period_start,period_end,status,rating_scale,released_at)
+    values(${tenantId}::uuid,'Fictional cycle '||${tag}::text,${(year-1)+'-01-01'}::date,${(year-1)+'-12-31'}::date,'closed','[{"value":1,"label":"One"}]'::jsonb,now()) returning id`;
+   await owner.client`insert into performance_review(tenant_id,cycle_id,employment_id,status) values(${tenantId}::uuid,${cycle.id}::uuid,${employmentId}::uuid,'submitted')`;
+  });
+  await step('onboarding:'+tag,()=>owner.client`insert into lc_onboarding_case(tenant_id,company_id,employment_id,data)
+   values(${tenantId}::uuid,${actor.companyId}::uuid,${employmentId}::uuid,${JSON.stringify({id:randomUUID(),personId,state:'submitted',number:'ON-PERF-'+tag,
+    local:{fullName:'PERF Person '+tag,joinDate:day(-30)},source:{},requisitions:[{id:randomUUID(),handedAt:new Date().toISOString(),items:[]}]})}::jsonb)`);
+ }
+ // Statutory facts: the manager's present (and more children declared than the register counts), the employee's missing.
+ await step('statutory:present',()=>owner.client`insert into employee_statutory_my(tenant_id,person_id,tax_number,epf_number,socso_number,bank_name,bank_account_no,num_children)
+  values(${manager.ctx.tenantId}::uuid,${manager.ctx.personId!}::uuid,'SG0000000001','00000001','000000000001','Fictional Bank','000000000001',3)`);
+ await step('statutory:missing',()=>owner.client`delete from employee_statutory_my where person_id=${employee.ctx.personId!}::uuid`);
+ // An approved and a pending own leave request already sit in the window for the employee; one on leave has another.
+ await step('leave:onLeave',()=>owner.client`insert into leave_request(tenant_id,employment_id,leave_type_id,start_date,end_date,days,status)
+  select ${onLeave.ctx.tenantId}::uuid,${onLeave.employmentId}::uuid,leave_type_id,${day(-4)}::date,${day(-4)}::date,1,'pending' from leave_request where employment_id=${onLeave.employmentId}::uuid limit 1`);
+ return {seeded,refused};
+}
+const BEFORE_PAYROLL_OWN_LOOP_KINDS=new Set(['clockOut','record','passport','probation','payroll','passports']);
+/** Before payroll's checklist and every section of its one statement against the owners it replaces, for one subject. */
+async function beforePayrollEquivalence(subject:string,actor:Actor,today:string,compare:(subject:string,target:string,old:unknown,fresh:unknown)=>void){
+ const items=await import('../../core/pre-salary/person-items'),{allowedCompanies,leaveRequestsFor,listEligibleLeaveTypesFor}=await import('../../core/read');
+ const attendance=await import('../../packs/attendance/service'),claims=await import('../../packs/claims/service'),payroll=await import('../../packs/payroll/service');
+ const leave=await import('../../packs/leave/service'),performanceService=await import('../../packs/performance/service'),lifecycle=await import('../../packs/lifecycle/service');
+ const {readLoopCards}=await import('../../core/loops/cards'),{myReadinessActions}=await import('../../core/readiness-actions'),{myProfile}=await import('../../core/profile');
+ const {listDependents}=await import('../../core/dependents'),{listMyLetters}=await import('../../core/letters'),{pendingNoticeAcknowledgementTasks}=await import('../../core/notice');
+ const {myTp3PreviousEmployerAnswer}=await import('../../core/pre-salary/tp3-answer');
+ const ctx=actor.ctx,scopeIds=(await allowedCompanies(ctx)).map(company=>company.id);
+ for(const [name,p] of [['checklist',{includeApprovals:false as const}],['checklistWithApprovals',{approvalPreview:true}]] as const){
+  const read=()=>items.readMyPayrollReadiness(ctx,{scopeIds,locale:'en',today,...p});
+  compare(subject,'beforePayroll:'+name,await outcome(()=>items.readMyPayrollReadinessFromOwners(ctx,{scopeIds,locale:'en',today,...p})),await outcome(read));
+  compare(subject,'beforePayroll:'+name+':independent',await outcome(()=>withIndependentTransactions(()=>items.readMyPayrollReadinessFromOwners(ctx,{scopeIds,locale:'en',today,...p}))),
+   await outcome(()=>withIndependentTransactions(read)));
+ }
+ const proof=await items.beforePayrollBundleForProof(ctx,{locale:'en',today});
+ if(!proof)return {subject,answered:[],deferred:['all: no own subject']};
+ const {read,bundle}=proof,id=read.employmentId,year=read.assessmentYear,att=read.attendance;
+ const byId=<T extends {id?:string;reviewId?:string;caseId?:string}>(rows:readonly T[])=>[...rows].sort((a,b)=>String(a.id??a.reviewId??a.caseId).localeCompare(String(b.id??b.reviewId??b.caseId)));
+ const owners:Record<string,()=>Promise<unknown>>={
+  corrections:async()=>att?(await attendance.myAttendanceCorrections(ctx,id,att.corrections)).map(({id,attendanceDate,requestKind,status})=>({id,attendanceDate,requestKind,status})):null,
+  overtimePlans:async()=>att?(await attendance.myOvertimePlans(ctx,id,att.overtime)).map(({id,attendanceDate,status})=>({id,attendanceDate,status})):null,
+  otCap:async()=>att?attendance.otMonthToDateMinutes(ctx,id,att.capDate):null,
+  loopCards:async()=>byId((await readLoopCards(ctx,{scopeIds:[],admin:false})).filter(card=>BEFORE_PAYROLL_OWN_LOOP_KINDS.has(card.kind)) as {caseId?:string}[]),
+  days:async()=>att?.range?(await attendance.attendanceForEmploymentRange(ctx,id,att.range.from,att.range.to)).map(({formulaOvertime:_formula,...row})=>row):null,
+  leaveRequests:async()=>byId((await leaveRequestsFor(ctx,id,'en')).map(({id,leaveTypeId,leaveType,startDate,endDate,days,status,hasDocument})=>({id,leaveTypeId,leaveType,startDate,endDate,days,status,hasDocument}))),
+  leaveTypes:()=>listEligibleLeaveTypesFor(ctx,id,'en'),
+  claims:async()=>(await claims.listOpenClaimsForEmployment(ctx,id)).map(row=>({id:row.id,claimTypeId:row.claimTypeId,typeName:row.typeName,incurredOn:row.incurredOn,status:row.status,attachmentCount:row.attachments.length})),
+  claimRules:()=>claims.claimTypeReceiptRules(ctx),
+  toil:async()=>(await leave.listReplacementLeaveRequests(ctx,id)).map(({id,status,submittedOn,dates})=>({id,status,submittedOn,dates:dates.map(({workedDate})=>({workedDate}))})),
+  readiness:()=>myReadinessActions(ctx,id),
+  tp3:async()=>({employments:await payroll.myTp3EmploymentsSnapshot(ctx),history:await payroll.myTp3HistorySnapshot(ctx)}),
+  tp3Answer:()=>myTp3PreviousEmployerAnswer(ctx,year),
+  tp1:()=>payroll.listMyTp1DeclarationsSnapshot(ctx,{assessmentYear:year}),
+  profile:async()=>{const value=await myProfile(ctx);return value&&{statutory:value.statutory?{numChildren:value.statutory.numChildren}:null};},
+  dependents:()=>listDependents(ctx,{personId:ctx.personId!}),
+  letters:()=>listMyLetters(ctx,{limit:read.letterLimit}),
+  notices:()=>pendingNoticeAcknowledgementTasks(ctx),
+  reviews:async()=>byId((await performanceService.myReviews(ctx)).map(({reviewId,status,released,periodEnd})=>({reviewId,status,released,periodEnd}))),
+  onboarding:()=>lifecycle.onboardingMyAcknowledgements(ctx),
+ };
+ const ordered:Record<string,(value:unknown)=>unknown>={loopCards:value=>byId(value as {caseId?:string}[]),leaveRequests:value=>byId(value as {id:string}[]),reviews:value=>byId(value as {reviewId:string}[])};
+ const answered:string[]=[],deferred:string[]=[];
+ for(const [name,owner] of Object.entries(owners)){
+  const section=(bundle as Record<string,{value:unknown}|null>|null)?.[name];
+  if(!section){deferred.push(name);continue;}
+  answered.push(name);
+  compare(subject,'beforePayroll:section:'+name,await outcome(()=>withIndependentTransactions(owner)),{ok:true,value:(ordered[name]??(value=>value))(section.value)});
+ }
+ return {subject,answered,deferred,attendance:att?{range:att.range,capDate:att.capDate}:null};
+}
+// ── end Before payroll ───────────────────────────────────────────────────────────────────────────────────────────────
+
 type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[]};
 const sharedStats:SharedReadStats[]=[];
 (globalThis as {__aihrPerfSharedRead?:(stats:SharedReadStats)=>void}).__aihrPerfSharedRead=stats=>{sharedStats.push(stats);};
@@ -548,6 +678,7 @@ it('completes every manager Home card and Today section read without a handled f
   }
   rows['ownerReads:stream']=await traceOwnerReads(stream);
   rows['ownerReads:page']=await traceOwnerReads(pageRendered);
+  Object.assign(rows,await beforePayrollTraces(label,actor,today,traceBoth));
   print('statement-trace',{label,trips:Object.fromEntries(Object.entries(rows).map(([name,row])=>[name,[row.before,row.after]])),
    shared:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.shared.sessions>0).map(([name,row])=>[name,row.shared])),
    failures:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.failure).map(([name,row])=>[name,row.failure]))});
@@ -593,6 +724,10 @@ it('completes every manager Home card and Today section read without a handled f
     stepIndex,approverKind:step.kind,approverEmploymentId:step.approver??null,approverAlternates:step.alternates??null,status:step.status??'pending' as const})));
   }
  }
+ // Before payroll's owners get rows of their own, after the traces (decision 11).
+ report.beforePayrollFixtures=await seedBeforePayrollFixtures([...tenants[0],...tenants[1]],today);
+ print('before-payroll-fixtures',report.beforePayrollFixtures);
+ const beforePayrollSections:unknown[]=[];report.beforePayrollSections=beforePayrollSections;
  const bundleSections:unknown[]=[];report.bundleSections=bundleSections;
  const {listClaimsForEmployment,listOpenClaimsForEmployment}=await import('../../packs/claims/service');
  for(const [subject,actor] of subjects){
@@ -723,6 +858,7 @@ it('completes every manager Home card and Today section read without a handled f
      .map(type=>({id:type.id,requiresReceipt:type.requiresReceipt,maxReceiptAgeDays:type.maxReceiptAgeDays}))),
     await outcome(()=>withSharedReadSnapshot(ctx,()=>claimsService.claimTypeReceiptRules(ctx))));
   }
+  beforePayrollSections.push(await beforePayrollEquivalence(subject,actor,today,compare));
  }
  // Isolation: a foreign identity inside a session, and two identities' sessions at once across tenants.
  const isolation:Record<string,unknown>={};report.isolation=isolation;
@@ -757,6 +893,7 @@ it('completes every manager Home card and Today section read without a handled f
  }
  const mismatches=equivalence.filter(row=>!row.equal);
  print('bundle-sections',bundleSections);
+ print('before-payroll-sections',beforePayrollSections);
  print('equivalence',{compared:equivalence.length,mismatches:mismatches.length,isolation,first:mismatches.slice(0,6)});
  evidence();
  // The browser renders Today sections and starts the card stream on the same worker pool.

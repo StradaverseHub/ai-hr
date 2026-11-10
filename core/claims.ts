@@ -8,6 +8,7 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  * later slices of this file.
  */
 import { and, asc, desc, eq, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withClaimsTenant` — every one of this file's
 // 35 exported entry points refuses a tenant without the Claims module, however the call was reached.
@@ -1813,9 +1814,18 @@ export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: s
  * types (unarchived and visible under Claims RLS) in the same order, behind the same Claims gate. Neither depends on
  * the employment, a policy, an item or a balance, so none of those are read: no limit, balance or amount. */
 export function claimTypeReceiptRules(ctx: SessionContext): Promise<{id: string; requiresReceipt: boolean; maxReceiptAgeDays: number}[]> {
-  return withTenant(ctx, async (tx) => (await tx.select({id: claimType.id, requiresReceipt: claimType.requiresReceipt, maxReceiptAgeDays: claimType.maxReceiptAgeDays})
-    .from(claimType).where(isNull(claimType.archivedAt)).orderBy(claimType.code))
-    .map((t) => ({id: t.id, requiresReceipt: t.requiresReceipt, maxReceiptAgeDays: t.maxReceiptAgeDays ?? RECEIPT_BACKDATE_DAYS})));
+  return withTenant(ctx, async (tx) => receiptRulesFrom(await tx.select(CLAIM_RECEIPT_RULE_FIELDS)
+    .from(claimType).where(isNull(claimType.archivedAt)).orderBy(claimType.code)));
+}
+const CLAIM_RECEIPT_RULE_FIELDS = {id: claimType.id, requiresReceipt: claimType.requiresReceipt, maxReceiptAgeDays: claimType.maxReceiptAgeDays};
+const receiptRulesFrom = (rows: readonly {id: string; requiresReceipt: boolean; maxReceiptAgeDays: number | null}[]) =>
+  rows.map((t) => ({id: t.id, requiresReceipt: t.requiresReceipt, maxReceiptAgeDays: t.maxReceiptAgeDays ?? RECEIPT_BACKDATE_DAYS}));
+/** claimTypeReceiptRules in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts). */
+export function claimTypeReceiptRulesBundleSql() {
+  return jsonRowsSql({row: jsonFieldsSql(CLAIM_RECEIPT_RULE_FIELDS), from: sql`${claimType}`, where: isNull(claimType.archivedAt), order: sql`${claimType.code}`});
+}
+export function claimTypeReceiptRulesFromBundle(value: unknown) {
+  return receiptRulesFrom(decodeJsonFieldRows(CLAIM_RECEIPT_RULE_FIELDS, value) as {id: string; requiresReceipt: boolean; maxReceiptAgeDays: number | null}[]);
 }
 
 /** AI v2 W5 — getEmployeeClaimTypes in the caller's own transaction, so the Assistant read facade
@@ -3464,6 +3474,7 @@ function employmentClaimWhere(employmentId: string, opts: EmploymentClaimRead) {
     opts.status === 'history' ? ne(claimRequest.status, 'draft') : undefined,
     opts.status === 'open' ? inArray(claimRequest.status, ['pending', 'draft']) : undefined);
 }
+const EMPLOYMENT_CLAIM_ORDER = [desc(claimRequest.createdAt), desc(claimRequest.id)];
 async function employmentClaimRowsTx(tx: Tx, employmentId: string, opts: EmploymentClaimRead = {}): Promise<ClaimRow[]> {
   const query = tx.select(rowSelect()).from(claimRequest)
     .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
@@ -3471,7 +3482,7 @@ async function employmentClaimRowsTx(tx: Tx, employmentId: string, opts: Employm
     .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
     .innerJoin(person, eq(person.id, employment.personId))
     .where(employmentClaimWhere(employmentId, opts))
-    .orderBy(desc(claimRequest.createdAt), desc(claimRequest.id)).$dynamic();
+    .orderBy(...EMPLOYMENT_CLAIM_ORDER).$dynamic();
   if (opts.limit !== undefined) query.limit(opts.limit);
   if (opts.offset !== undefined) query.offset(opts.offset);
   const rows = await query;
@@ -3488,6 +3499,27 @@ export function listClaimsForEmployment(ctx: SessionContext, employmentId: strin
  * Decided history (approved, rejected, paid) and its attachments are never read for a question it cannot answer. */
 export function listOpenClaimsForEmployment(ctx: SessionContext, employmentId: string): Promise<ClaimRow[]> {
   return withTenant(ctx, tx => employmentClaimRowsTx(tx, employmentId, {status: 'open'}));
+}
+
+/** The fields of listOpenClaimsForEmployment the Before payroll checklist reads, with the number of attachments the
+ * owner lists for each claim (core/pre-salary/person-items.ts reads only whether there is one). */
+const OPEN_CLAIM_CHECKLIST_FIELDS = { id: claimRequest.id, claimTypeId: claimRequest.claimTypeId, typeName: claimType.name,
+  incurredOn: claimRequest.incurredOn, status: claimRequest.status,
+  attachmentCount: sql<number>`(select count(*)::int from ${claimAttachment} where ${claimAttachment.claimRequestId}=${claimRequest.id})` };
+/** listOpenClaimsForEmployment in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the
+ * same rows (the owner's joins, predicate and order) with the fields the checklist reads; the attachments are counted
+ * under the same row-level security the owner's attachment read has. No amount is read. */
+export function openClaimsChecklistBundleSql(employmentId: string) {
+  return jsonRowsSql({ row: jsonFieldsSql(OPEN_CLAIM_CHECKLIST_FIELDS),
+    from: sql`${claimRequest} inner join ${claimType} on ${eq(claimType.id, claimRequest.claimTypeId)}
+     left join ${claimItem} on ${eq(claimItem.id, claimRequest.claimItemId)}
+     inner join ${employment} on ${eq(employment.id, claimRequest.employmentId)}
+     inner join ${person} on ${eq(person.id, employment.personId)}`,
+    where: employmentClaimWhere(employmentId, { status: 'open' }), order: sql.join(EMPLOYMENT_CLAIM_ORDER, sql`, `) });
+}
+export type OpenClaimChecklistRow = { id: string; claimTypeId: string; typeName: string; incurredOn: string; status: string; attachmentCount: number };
+export function openClaimsChecklistFromBundle(value: unknown): OpenClaimChecklistRow[] {
+  return decodeJsonFieldRows(OPEN_CLAIM_CHECKLIST_FIELDS, value) as OpenClaimChecklistRow[];
 }
 
 /** Drafts have their own workspace; never read filed history to populate it. */
