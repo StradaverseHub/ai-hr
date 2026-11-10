@@ -54,7 +54,7 @@ const ALL_TABLES = [
   'performance_assessment_summary',
   'performance_assessment_catalogue','performance_assessment_reminder_run','performance_assessment_reminder_recipient','performance_assessment_reminder_epoch',
   'performance_onehr_cycle', 'performance_onehr_review', 'performance_onehr_panel', 'performance_onehr_calibration', 'performance_onehr_calibration_entry', 'performance_onehr_plan', 'performance_onehr_evidence', 'performance_onehr_result',
-  'attendance_workflow_cc_delivery', 'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision',
+  'attendance_workflow_cc_delivery', 'attendance_workflow_preview', 'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision',
   'reward_company_exclusion','reward_access_source_epoch','reward_access_bootstrap','reward_access_observation','reward_access_request','reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision', 'reward_calendar',
   'mobile_design_draft', 'mobile_design_release',
   'tenant', 'company', 'company_logo', 'person', 'position', 'department', 'cost_center', 'employment',
