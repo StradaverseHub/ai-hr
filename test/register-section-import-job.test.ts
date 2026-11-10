@@ -3,7 +3,8 @@
  * same audit events in the same order, the same result and the same history row. */
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {randomUUID} from 'node:crypto';
-import type {SessionContext} from '../db/client';
+import {sql} from 'drizzle-orm';
+import {withTenant,type SessionContext} from '../db/client';
 import {commitSectionImport} from '../core/import-sections';
 import {createSectionImportJob,getSectionImportJob} from '../core/section-import-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
@@ -186,6 +187,34 @@ describe('register import job (all-or-nothing)',()=>{
   expect(done.metrics.recaptured).toBe(1);
   const [reg2]=await owner.client<{result:string|null;major:string|null}[]>`select result,major from employee_qualification where id=${await recordId(job,'qualification','REG2')}::uuid`;
   expect(reg2).toEqual({result:'Concurrent result',major:'Updated major 2'});
+ });
+
+ it('stops with nothing written when an employee resigns between capture and release',async()=>{
+  const job=await fixture();
+  const before=await endState(job);
+  const {job:started}=await createSectionImportJob(job.ctx,{section:'qualification',records:await qualificationFile(job),fileName:'f.csv',csv:'x',operationKey:randomUUID()});
+  await ticks(started.id,j=>j.state==='finalizing');
+  await owner.client`update employment set terminated_on=current_date-1 where id=${job.employments.REG1}::uuid`;
+  await ticks(started.id);
+  const progress=await getSectionImportJob(job.ctx,started.id);
+  expect(progress.state).toBe('failed');
+  expect(progress.result!.fileErrors).toEqual(['Correct all register rows before importing. Nothing from this register file will be written.']);
+  expect((await endState(job)).qualifications).toEqual(before.qualifications);
+ });
+
+ it('refuses a capture that names another employee\'s record, and keeps the release owner-only',async()=>{
+  const job=await fixture();
+  const before=await endState(job);
+  const {job:started}=await createSectionImportJob(job.ctx,{section:'qualification',records:await qualificationFile(job),fileName:'f.csv',csv:'x',operationKey:randomUUID()});
+  await ticks(started.id,j=>j.state==='finalizing');
+  // A tampered capture: a new row re-pointed at another employee.
+  await owner.client`update bulk_job_step set result=jsonb_set(result,'{created,0,employment_id}',to_jsonb(${job.employments.REG2}::text)) where job_id=${started.id}::uuid and result->'created'->0 is not null and seq=(select min(seq) from bulk_job_step where job_id=${started.id}::uuid and jsonb_array_length(result->'created')>0)`;
+  await expect(withTenant(job.ctx,tx=>tx.execute(sql`select app.register_import_release(${started.id}::uuid,false)`))).rejects.toThrow();
+  await ticks(started.id);
+  const progress=await getSectionImportJob(job.ctx,started.id);
+  expect(progress.state).toBe('failed');
+  expect(progress.result!.fileErrors[0]).toMatch(/^No register rows were written\./);
+  expect(await endState(job)).toEqual(before);
  });
 
  it('admits one register import per person at a time and refuses a non-administrator at the door',async()=>{
