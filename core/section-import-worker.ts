@@ -4,7 +4,7 @@
  * are unchanged. What moves is where it runs: off the web request, in short chunk transactions, with the row's
  * re-analysis narrowed to that row's own database checks. */
 import {sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
 import type {ImportRecord} from '../lib/import-schema';
 import type {ImportSection,SectionImportResult} from '../lib/import-sections';
@@ -27,7 +27,7 @@ const planOf=(job:BulkJobRow)=>(job.plan??{}) as SectionStoredPlan;
 class SectionRowRefused extends Error{constructor(message:string){super(message);this.name='SectionRowRefused';}}
 
 /** Persons earlier rows of this import wrote (the synchronous commit's appliedPeople), rebuilt after a restart. */
-async function appliedPeople(tx:Parameters<BulkJobHandler['applyStepTx']>[0],job:BulkJobRow,cache:Map<string,unknown>){
+async function appliedPeople(tx:Tx,job:BulkJobRow,cache:Map<string,unknown>){
  let people=cache.get('applied') as Set<string>|undefined;
  if(people)return people;
  const rows=await tx.execute<{person_id:string}>(sql`select result->>'personId' as person_id from bulk_job_step where job_id=${job.id}::uuid and state='applied' and (result->>'wrote')::boolean`);

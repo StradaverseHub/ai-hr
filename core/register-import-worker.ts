@@ -158,9 +158,9 @@ const sameSubjects=(refs:SubjectRef[],subjects:RegisterSubject[])=>refs.every(re
 async function currentSubjectsTx(tx:Tx,captures:RegisterCapture[]):Promise<RegisterSubject[]>{
  const ids=[...new Set(captures.flatMap(c=>c.subjects.map(s=>s.employmentId)))];
  if(!ids.length)return[];
- const rows=await tx.execute<{employment_id:string;person_id:string;company_id:string;employee_code:string|null;archived:boolean;admin:boolean;resignation_date:string|null;last_working_date:string|null;terminated_on:string|null;blacklisted_at:Date|null}>(sql`
+ const rows=await tx.execute<{employment_id:string;person_id:string;company_id:string;employee_code:string|null;archived:boolean;admin:boolean;resignation_date:string|null;last_working_date:string|null;terminated_on:string|null;blacklisted_at:string|null}>(sql`
   select e.id as employment_id,e.person_id,e.company_id,e.employee_code,c.archived_at is not null as archived,app.is_admin_for(e.company_id) as admin,
-   e.resignation_date::text as resignation_date,e.last_working_date::text as last_working_date,e.terminated_on::text as terminated_on,e.blacklisted_at
+   e.resignation_date::text as resignation_date,e.last_working_date::text as last_working_date,e.terminated_on::text as terminated_on,e.blacklisted_at::text as blacklisted_at
   from employment e join company c on c.id=e.company_id where e.id=any(${`{${ids.join(',')}}`}::uuid[]) order by e.id for update of e`);
  return rows.map(r=>({employmentId:r.employment_id,personId:r.person_id,companyId:r.company_id,employeeCode:normalizeEmployeeCode(r.employee_code??''),employeeName:'',
   valid:r.admin&&!r.archived&&!['resigned','blacklisted'].includes(deriveEmploymentStatus({resignationDate:r.resignation_date,lastWorkingDate:r.last_working_date,terminatedOn:r.terminated_on,blacklistedAt:r.blacklisted_at}))}));
