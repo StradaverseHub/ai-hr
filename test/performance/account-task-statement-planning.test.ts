@@ -67,7 +67,8 @@ describe.skipIf(!state.hostedFocused)('account task statement planning',()=>{
    }
    const whole=(tx:Parameters<Parameters<typeof withTenant>[1]>[0])=>accountTaskStatement(accountTaskStatementSections(tx,ctx,all),ctx);
    const statement=[];for(let attempt=0;attempt<3;attempt++)statement.push(await explain(ctx,whole,true));
-   const memory=await cachedPlanMemory(ctx,whole);
+   // The application role may not read pg_backend_memory_contexts on every installation: report the refusal instead.
+   const memory=await cachedPlanMemory(ctx,whole).catch(error=>({unavailable:String((error as {cause?:{code?:string}})?.cause?.code??(error as Error)?.message).slice(0,80)}));
    report[label]={sections,statement,memory};
    print(label,{statement,memory,sections});
   }
