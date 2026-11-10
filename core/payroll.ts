@@ -5548,6 +5548,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
      *  TP1) and `exemptionUsed` (per-code exempt/claimed amounts, stamped onto the slip for the YTD replay). */
     /** Which summarised figure on the payslip a component's money landed in (feedback 862ed0ad). */
     type PayComponentBucket = 'wage' | 'ot' | 'bonus' | 'reimburse' | 'deduct';
+    /** Feedback c2ea9567 — one pay item code's contribution to the HRDF wages (see `earningsOf`). */
+    type HrdfWorkingSource = { code: string; name: string; amount: number };
     type PayComponentLine = {
       code: string;
       name: string;
@@ -5663,6 +5665,13 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       /** Deduction money ticked "subject to HRDF" — leaves `hrdfBase` (applied in the payslip loop,
        *  not inside `statutory()`: the levy base is built in the kernel, not in the pack). */
       hrdfWageDeduction: number;
+      /** Feedback c2ea9567 — the pay items behind `hrdfAllowApplied` / `hrdfWageDeduction`, one entry per
+       *  pay item CODE (several lines of one code are summed into one entry, each line counted once), in
+       *  the order the run first met them. Amounts are positive; the deduction list is subtracted. Stamped
+       *  as `statutory.hrdfWorking` so the explanation itemises the HRDF wages without recomputing them.
+       *  Empty on the legacy untyped path, whose HRDF allowance is the compensation allowance (no codes). */
+      hrdfEarningItems: HrdfWorkingSource[];
+      hrdfDeductionItems: HrdfWorkingSource[];
       recordLines: PayslipRecordLine[];
       componentLines: PayComponentLine[];
       lpDeclared: number; exemptionUsed: Record<string, number>;
@@ -5709,6 +5718,11 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           socsoWageDeduction: 0,
           pcbWageDeduction: 0,
           hrdfWageDeduction: 0,
+          // c2ea9567 — the legacy path is deliberately UNCHANGED: its HRDF allowance is
+          // `compensation.monthly_allowance × factor` (above), a figure with no pay item codes behind it.
+          // The payslip stamp shows it as one "Fixed allowance" line rather than inventing items.
+          hrdfEarningItems: [],
+          hrdfDeductionItems: [],
           recordLines: [],
           // Nothing to itemise: with typed components off there IS no per-component detail — the figures
           // come from compensation + payroll_input, which is a different shape entirely.
@@ -5734,6 +5748,25 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // 2333b7fb — and the four deduction-side reductions, accumulated in the `kind === 'deduction'` branch.
       const epfDeductionItems: { label: string; amount: number }[] = [];
       let epfWageDeduction = 0, socsoWageDeduction = 0, pcbWageDeduction = 0, hrdfWageDeduction = 0;
+      // ── Feedback c2ea9567 — THE HRDF TICK IS THE ONLY RULE FOR HRDF WAGES ─────────────────────────
+      // Before this, `hrdfAllow` grew only on the declared 'normal' PCB stream (and there from the TAXABLE
+      // remainder, so a PCB_NON-TAXABLE meal allowance ticked HRDF counted RM0) and in the `epf && socso`
+      // fallback. A ticked item on the 'additional' stream (back pay), in the ot / bonus buckets, or paid
+      // untaxed, was silently left out. HRDF is not a PCB question and not an EPF/SOCSO question: a payable
+      // cash earning ticked "subject to HRDF" adds its full processed amount (`applied`, BEFORE any PCB
+      // exemption) exactly once, whatever branch below routes its cash. Routing, gross, net, EPF, SOCSO,
+      // EIS and PCB are untouched — only `hrdfAllow` and the itemisation below read this.
+      const hrdfEarningByCode = new Map<string, HrdfWorkingSource>();
+      const hrdfDeductionByCode = new Map<string, HrdfWorkingSource>();
+      const addHrdfItem = (into: Map<string, HrdfWorkingSource>, code: string, name: string, amount: number) => {
+        const prior = into.get(code);
+        if (prior) prior.amount = round2(prior.amount + amount);
+        else into.set(code, { code, name, amount: round2(amount) });
+      };
+      const addHrdfEarning = (code: string, name: string, amount: number) => {
+        hrdfAllow = round2(hrdfAllow + amount);
+        addHrdfItem(hrdfEarningByCode, code, name, amount);
+      };
       // 711adcd2 — the unpaid-leave ORP base's pay-item half. See the return type.
       let orpUnpaidLeaveExtra = 0;
       const recordLines: PayslipRecordLine[] = [];
@@ -5981,6 +6014,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           // (core/payslip-earning-lines.ts) repairs a txn-derived record line's label from today's
           // catalogue and must never touch this one. Drop the flag and it would.
           if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true, ...(c.kind === 'contribution' ? { kind: 'contribution' as const } : {}) }); continue; }
+          // c2ea9567 — paid cash, so a ticked HRDF box counts it like any other earning.
+          if (c.hrdf) addHrdfEarning(c.code, c.name, applied);
           reimburse = round2(reimburse + applied);
           contributes('reimburse', applied);
           continue;
@@ -6007,7 +6042,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           }
           if (c.socso) socsoWageDeduction = round2(socsoWageDeduction + applied);
           if (c.pcb) pcbWageDeduction = round2(pcbWageDeduction + applied);
-          if (c.hrdf) hrdfWageDeduction = round2(hrdfWageDeduction + applied);
+          if (c.hrdf) {
+            hrdfWageDeduction = round2(hrdfWageDeduction + applied);
+            addHrdfItem(hrdfDeductionByCode, c.code, c.name, applied);
+          }
           continue;
         }
         // FAIL-CLOSED (ADR-0025 §5): a PCB-taxable non-payable/BIK, or a PCB-only earning (not EPF and not
@@ -6034,6 +6072,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // the flag that keeps 417d4937's read-time label repair off it.
         if (c.nonPayable && c.pcb) throw new UnsupportedPayComponentError(c.code);
         if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true, ...(c.kind === 'contribution' ? { kind: 'contribution' as const } : {}) }); continue; }
+        // c2ea9567 — every payable cash earning reaching here is routed by ONE of the branches below; the
+        // HRDF leg is taken once, here, from the whole processed amount, so no branch can drop or repeat it.
+        if (c.hrdf) addHrdfEarning(c.code, c.name, applied);
         // ── Feedback 09b554e9: declared Normal/Additional remuneration, with per-code annual exemption ──
         // The exempt portion (up to the PCB code's remaining annual headroom; cap -1 = fully exempt,
         // cap 0 = fully taxable) is PAID but stays out of every statutory base (the reimburse bucket);
@@ -6059,7 +6100,6 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           if (stream === 'normal') {
             wageAllow = round2(wageAllow + taxable);
             contributes('wage', taxable);
-            if (c.hrdf) hrdfAllow = round2(hrdfAllow + taxable);
             // ── Feedback 017d9c25 (r187) — THE FIX. ──────────────────────────────────────────────────
             // The declaration above chose the STREAM (Y1 vs Yt: a PCB question, and the payslip box).
             // It does NOT get to answer the agency question as well. Before r187 it did — reaching this
@@ -6094,13 +6134,13 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           }
           continue;
         }
-        if (c.epf && c.socso) { wageAllow = round2(wageAllow + applied); contributes('wage', applied); if (c.hrdf) hrdfAllow = round2(hrdfAllow + applied); }
+        if (c.epf && c.socso) { wageAllow = round2(wageAllow + applied); contributes('wage', applied); }
         else if (!c.epf && c.socso) { ot = round2(ot + applied); contributes('ot', applied); }
         else if (c.epf && !c.socso) { bonusAmt = round2(bonusAmt + applied); contributes('bonus', applied); }
         else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
       for(const row of exemptionInformation.values())row.thisMonth=row.table==='lp' && isAdditionalRun ? 0 : round2((exemptionUsed[row.code]??0)+(reusedExemption.get(row.code)??0));
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, epfDeductionItems, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, exemptionInformation:[...exemptionInformation.values()].sort((a,b)=>a.code.localeCompare(b.code)), nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, epfDeductionItems, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, hrdfEarningItems: [...hrdfEarningByCode.values()], hrdfDeductionItems: [...hrdfDeductionByCode.values()], recordLines, componentLines, lpDeclared, exemptionUsed, exemptionInformation:[...exemptionInformation.values()].sort((a,b)=>a.code.localeCompare(b.code)), nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
     };
 
     /**
@@ -7358,6 +7398,44 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // statDeductions, so an employer-side override cannot reduce anyone's net pay.
       const st = applyStatutoryAdjustment(stComputed, statutoryAdjustmentByEmp.get(e.employmentId) ?? null);
 
+      // ── Feedback c2ea9567 — THE HRDF WAGES, ITEMISED, STAMPED WITH THE RATE THAT WAS APPLIED ──────────
+      // Every line is a figure this run already used to build `hrdfBase`; nothing here recomputes it. The
+      // lines sum to `wages`, which IS `statBases.hrdf` (the clamp at zero gets its own line rather than
+      // being hidden), and `levy` IS `st.hrdf` — the figure on the payslip, after any statutory adjustment.
+      // `calculatedLevy` is what the rate produced; the two differ only when a person set the levy by hand.
+      // The RATE is stamped from the same pack call `hrdfLevy` uses, never derived later as levy ÷ wages.
+      // Regular runs only: an additional run charges no levy and stamps a zero HRDF base. Old payslips
+      // carry no stamp and the explanation says the breakdown starts from the next processed payroll.
+      const savedHrdfWorking = isAdditionalRun ? null : (() => {
+        const items: { kind: 'basic' | 'allowance' | 'earning' | 'unpaid' | 'deduction' | 'floor'; code?: string; name?: string; amount: number }[] = [];
+        items.push({ kind: 'basic', amount: round2(basic) });
+        let named = 0;
+        // A pay item that paid RM0 this month adds nothing to the HRDF wages, so it gets no line: the
+        // breakdown lists money, and a "+RM0.00" row would also make the typed path differ from the legacy one.
+        for (const it of en.hrdfEarningItems) {
+          if (it.amount === 0) continue;
+          named = round2(named + it.amount);
+          items.push({ kind: 'earning', code: it.code, name: it.name, amount: it.amount });
+        }
+        // The legacy untyped path's compensation allowance has no pay item code; disclosed as one line.
+        const unnamed = round2(fixedAllowance - named);
+        if (unnamed !== 0) items.push({ kind: 'allowance', amount: unnamed });
+        if (unpaidDeduction !== 0) items.push({ kind: 'unpaid', amount: round2(-unpaidDeduction) });
+        for (const it of en.hrdfDeductionItems) if (it.amount !== 0) items.push({ kind: 'deduction', code: it.code, name: it.name, amount: round2(-it.amount) });
+        const floor = round2(hrdfBase - items.reduce((sum, it) => round2(sum + it.amount), 0));
+        if (floor !== 0) items.push({ kind: 'floor', amount: floor });
+        return {
+          version: 1 as const,
+          items,
+          wages: hrdfBase,
+          status: hrdfStatus,
+          subject: hrdfSubject,
+          rate: hrdfSubject ? pack.payroll.hrdfRate(hrdfStatus, rules.hrdf) : 0,
+          calculatedLevy: hrdf,
+          levy: round2(Number(st.hrdf ?? 0)),
+        };
+      })();
+
       // The method explains the cumulative wage calculation. Keep the final amounts on this
       // payslip separate because prior runs and statutory adjustments can change what it charges.
       const epfWorking = stCore.epfWorking;
@@ -7720,6 +7798,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         statutory: {
           ...st,
           ...(savedEpfWorking ? { epfWorking: savedEpfWorking } : {}),
+          ...(savedHrdfWorking ? { hrdfWorking: savedHrdfWorking } : {}),
           ...(formulaRefsByEmp.has(e.employmentId)?{formulaEvaluations:formulaRefsByEmp.get(e.employmentId)!.filter(ref=>stampComponentLines.some(line=>line.code===ref.componentCode))}:{}),
           ...statutoryProvenance,
           // Saved selection input, before existing proration. Back-pay reads this new contract rather

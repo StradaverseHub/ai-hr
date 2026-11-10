@@ -171,6 +171,7 @@ import {
   ENTITLEMENTS,
   GENERATE,
   ORGANIZATION,
+  SHARED_GROUPS,
   SPECIAL_SETTING,
   SYSTEM_LABELS,
   fail,
@@ -3020,13 +3021,17 @@ async function sharedGroupFailure(e: unknown): Promise<never> {
   // Leave types screen; it is drawn there at PAGE level, above the per-type workspace and outside it, so
   // it still reads as spanning several types rather than as a property of the selected one. The return
   // address follows the editor, exactly as it did at the cutover and for the same reason.
+  //
+  // 50d9b809 — SHARED_GROUPS, not ENTITLEMENTS. The editor left the Entitlements screen for its own
+  // Shared Leave Groups page under Leave Settings, so every success and every refusal of the three actions
+  // below returns there — the `?error=` banner lands on the page that holds the form it is about.
   if (e instanceof LeaveTypeAlreadyGroupedError) {
-    return fail(ENTITLEMENTS, t('errorAlreadyGrouped', { type: e.leaveTypeName, group: e.groupName }));
+    return fail(SHARED_GROUPS, t('errorAlreadyGrouped', { type: e.leaveTypeName, group: e.groupName }));
   }
   if (e instanceof LeaveSharedGroupNameTakenError) {
-    return fail(ENTITLEMENTS, t('errorNameTaken', { name: e.groupName }));
+    return fail(SHARED_GROUPS, t('errorNameTaken', { name: e.groupName }));
   }
-  return fail(ENTITLEMENTS, e);
+  return fail(SHARED_GROUPS, e);
 }
 
 export async function createLeaveSharedGroupAction(fd: FormData) {
@@ -3045,7 +3050,7 @@ export async function createLeaveSharedGroupAction(fd: FormData) {
   } catch (e) {
     await sharedGroupFailure(e);
   }
-  ok(ENTITLEMENTS);
+  ok(SHARED_GROUPS);
 }
 
 export async function updateLeaveSharedGroupAction(fd: FormData) {
@@ -3065,7 +3070,7 @@ export async function updateLeaveSharedGroupAction(fd: FormData) {
   } catch (e) {
     await sharedGroupFailure(e);
   }
-  ok(ENTITLEMENTS);
+  ok(SHARED_GROUPS);
 }
 
 export async function deleteLeaveSharedGroupAction(fd: FormData) {
@@ -3073,7 +3078,7 @@ export async function deleteLeaveSharedGroupAction(fd: FormData) {
   try {
     await deleteLeaveSharedGroup(s, { id: String(fd.get('id') ?? '') });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    fail(SHARED_GROUPS, e);
   }
-  ok(ENTITLEMENTS);
+  ok(SHARED_GROUPS);
 }

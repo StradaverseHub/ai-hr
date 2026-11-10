@@ -72,8 +72,12 @@ describe('independent Schedule Group forms after a server refresh', () => {
     const tree=await resolveGeneral(await ScheduleGroupSections({s:{} as SessionContext,rule,rules:[rule],mode:'edit'}));
     render(<NextIntlClientProvider locale="en" messages={messages}><AttendanceSettingsNavigation/>{tree}</NextIntlClientProvider>);
     const panels=screen.getAllByRole('tabpanel',{hidden:true});
-    expect(panels).toHaveLength(4);
+    // c03670cc — three tabs: General (with the Duty Roster under Shift Allowed), Attendance, Overtime.
+    expect(panels).toHaveLength(3);
+    expect(screen.getAllByRole('tab',{hidden:true}).map(tab=>tab.textContent)).toEqual([
+      messages.admin.scheduleConfig.sectionGeneral,messages.admin.scheduleConfig.sectionAttendance,messages.admin.scheduleConfig.sectionOvertime]);
     const general=screen.getByRole('tabpanel');
+    expect(general.querySelector('[data-schedule-duty-roster]'),'the Duty Roster sits in General').not.toBeNull();
     const label=general.querySelector<HTMLInputElement>('input[name="label"]')!;
     expect(label).not.toBeNull();
     fireEvent.change(label,{target:{value:'OFFICE-UNSAVED'}});
@@ -83,9 +87,9 @@ describe('independent Schedule Group forms after a server refresh', () => {
     expect(general).not.toBeVisible();
     expect(label.isConnected).toBe(true);
     expect(screen.getAllByRole('tabpanel',{hidden:true})).toEqual(panels);
-    const dutyTab=screen.getByRole('tab',{selected:true});
-    expect(dutyTab).toHaveTextContent(messages.scheduleGroupEditor.dutyRoster);
-    fireEvent.keyDown(dutyTab,{key:'ArrowLeft'});
+    const nextTab=screen.getByRole('tab',{selected:true});
+    expect(nextTab).toHaveTextContent(messages.admin.scheduleConfig.sectionAttendance);
+    fireEvent.keyDown(nextTab,{key:'ArrowLeft'});
     expect(screen.getByRole('tabpanel')).toBe(general);
     expect(general.querySelector('input[name="label"]')).toBe(label);
     expect(label.value).toBe('OFFICE-UNSAVED');
@@ -140,7 +144,7 @@ describe('independent Schedule Group forms after a server refresh', () => {
     await waitFor(()=>expect(saveScheduleGroupGeneralAction).toHaveBeenCalledTimes(1));
     const posted=vi.mocked(saveScheduleGroupGeneralAction).mock.calls[0][0];
     expect(posted.get('name')).toBe('Renamed group');
-    for(const key of ['lateGracePeriodMinutes','earlyGracePeriodMinutes','includeGraceInLateness','includeGraceInEarlyOut','applyToEarlyOt'])expect(posted.has(key)).toBe(false);
+    for(const key of ['lateGracePeriodMinutes','earlyGracePeriodMinutes','includeGraceInLateness','includeGraceInEarlyOut','applyToEarlyOt','applyDeductions'])expect(posted.has(key)).toBe(false);
     expect(posted.has('otRows')).toBe(false);
   });
 

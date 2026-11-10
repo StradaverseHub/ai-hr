@@ -2,9 +2,8 @@
 
 import { ActionButton } from '@/components/ui/action-button';
 import { useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
-import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
+import { Button, Card, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { ESS_PLACEMENTS, SHARED_GROUP_DEFAULT_PLACEMENT, type EssPlacement } from '@/lib/leave-groups';
@@ -16,8 +15,16 @@ import { ESS_PLACEMENTS, SHARED_GROUP_DEFAULT_PLACEMENT, type EssPlacement } fro
  * limit, an optional maximum per application, and a tick list of the member leave types. "Special Leave,
  * 10 days shared, at most 3 days per application, covering these seven types" is the whole idea.
  *
- * WHERE IT LIVES AND WHY. Beside Add Leave Type, in the leave-type workspace's left panel — because that is
- * the level the group is defined AT. Until r88 it was created INSIDE a Benefit Scheme: you picked a scheme
+ * WHERE IT LIVES AND WHY (50d9b809). On its OWN PAGE — Leave Settings › Shared Leave Groups
+ * (`app/admin/leave-config/shared-groups/page.tsx`), rendered INLINE: the list of groups, an Edit that opens
+ * that group's form in place under its row, and a Create section. Until 50d9b809 this whole editor sat
+ * inside a Radix Dialog behind a "Shared leave groups" button on the Entitlements screen; the reporter found
+ * a pop-up inside another settings page hard to find and cramped to work in. The Dialog shell is gone and
+ * NOTHING inside it changed: the same fields with the same names, the same ChipMultiSelect, the same
+ * placement select, the same ConfirmSubmit on Delete, posting the same three server actions.
+ *
+ * WHERE IT LIVED BEFORE THAT. Beside Add Leave Type, in the leave-type workspace's left panel — because that
+ * is the level the group is defined AT. Until r88 it was created INSIDE a Benefit Scheme: you picked a scheme
  * first, and the same shared rule had to be recreated in every scheme it applied to. The reporter rejected
  * improving that selector ("I don't want to improve the existing Benefit Scheme selector") and asked for
  * this shape instead. There is deliberately no scheme picker on this screen — a group is tenant-wide.
@@ -62,6 +69,9 @@ type SharedGroupActions = {
   remove: (fd: FormData) => void | Promise<void>;
 };
 
+/** Desktop column template shared by the list's header row and every group row, so they cannot drift. */
+const ROW_GRID = 'sm:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_6rem_7rem_minmax(0,1fr)_auto]';
+
 export function LeaveSharedGroupConfig({
   groups,
   leaveTypes,
@@ -72,11 +82,17 @@ export function LeaveSharedGroupConfig({
   actions: SharedGroupActions;
 }) {
   const t = useTranslations('admin.leave.sharedGroup');
-  const [open, setOpen] = useState(false);
+  // The ONE group whose form is open in place, or none. Not in the URL: Edit is a disclosure on this page,
+  // not a destination. The page keys this component on the group data, so a save that changed a group
+  // remounts it with every form closed and every default re-read; a refusal leaves the data unchanged, so
+  // the form the admin was filling in stays open under the error banner.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const typeOptions = leaveTypes.map((lt) => ({ value: lt.id, label: lt.name }));
   const nameById = new Map(leaveTypes.map((lt) => [lt.id, lt.name]));
+  const membersOf = (g: SharedGroup) => g.leaveTypeIds.map((id) => nameById.get(id) ?? '—').join(', ');
+  const editing = groups.find((g) => g.id === editingId) ?? null;
 
-  // The tick list is shared by the create and every edit form, so its translated copy is built once.
+  // The tick list is shared by the create and the edit form, so its translated copy is built once.
   const chipCopy = {
     options: typeOptions,
     addPlaceholder: t('membersPlaceholder'),
@@ -87,161 +103,204 @@ export function LeaveSharedGroupConfig({
     countLabelFor: (count: number) => t('membersCount', { count }),
   };
 
+  /** A cell's label: the column heading on a phone (where the row stacks), screen-reader only on desktop
+   *  (where the header row above says it). The header row itself is aria-hidden, so each value is named
+   *  exactly once for assistive technology at every width. */
+  const cellLabel = (text: string) => (
+    <span className="block text-xs text-muted-foreground sm:sr-only">{text}</span>
+  );
+
   return (
-    <>
-      <Button type="button" size="sm" variant="outline" className="w-full" onClick={() => setOpen(true)}>
-        {t('manage')}
-        {groups.length > 0 && (
-          <Badge className="ml-2">{groups.length}</Badge>
-        )}
-      </Button>
-
-      <Dialog.Root open={open} onOpenChange={setOpen}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-          <Dialog.Content
-            aria-describedby={undefined}
-            className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100vh-4rem)] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <Dialog.Title className="text-base font-semibold">{t('title')}</Dialog.Title>
-              <Dialog.Close asChild>
-                <Button type="button" variant="ghost" size="sm" aria-label={t('close')}>
-                  ✕
-                </Button>
-              </Dialog.Close>
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">{t('help')}</p>
-
-            {/* ── Existing groups ─────────────────────────────────────────────────────────────────── */}
-            <div className="mt-5 space-y-4">
-              {groups.length === 0 && <p className="text-sm text-muted-foreground">{t('empty')}</p>}
-              {groups.map((g) => (
-                <div key={g.id} className="rounded-md border border-border p-3">
-                  <form action={actions.update} className="space-y-3">
-                    <input type="hidden" name="id" value={g.id} />
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <Field label={t('nameLabel')} className="sm:col-span-3" required requiredAriaLabel={t('required')}>
-                        <input name="name" defaultValue={g.name} required className={inputCls} />
-                      </Field>
-                      <Field label={t('totalLimitLabel')} required requiredAriaLabel={t('required')}>
-                        <input
-                          name="totalLimitDays"
-                          type="number"
-                          step="0.5"
-                          min="0.5"
-                          defaultValue={g.totalLimitDays}
-                          required
-                          className={inputCls}
-                        />
-                      </Field>
-                      <Field label={t('maxPerApplicationLabel')}>
-                        <input
-                          name="maxDaysPerApplication"
-                          type="number"
-                          step="0.5"
-                          min="0.5"
-                          defaultValue={g.maxDaysPerApplication ?? ''}
-                          placeholder={t('maxPerApplicationBlank')}
-                          className={inputCls}
-                        />
-                      </Field>
+    <div className="space-y-6">
+      {/* ── Existing groups ──────────────────────────────────────────────────────────────────────── */}
+      <Card data-testid="shared-group-list">
+        <SectionHeader title={t('listTitle')} count={groups.length} />
+        {groups.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-muted-foreground">{t('empty')}</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            <li
+              aria-hidden="true"
+              className={`hidden gap-3 bg-muted/50 px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground sm:grid ${ROW_GRID}`}
+            >
+              <span>{t('nameLabel')}</span>
+              <span>{t('membersLabel')}</span>
+              <span className="text-right">{t('totalLimitLabel')}</span>
+              <span className="text-right">{t('maxPerApplicationLabel')}</span>
+              <span>{t('placementLabel')}</span>
+              <span />
+            </li>
+            {groups.map((g) => {
+              const open = g.id === editingId;
+              return (
+                <li key={g.id} className="px-4 py-3" data-testid="shared-group-row">
+                  <div className={`grid gap-2 sm:items-start sm:gap-3 ${ROW_GRID}`}>
+                    <div className="min-w-0">
+                      {cellLabel(t('nameLabel'))}
+                      <p className="break-words text-sm font-medium">{g.name}</p>
+                    </div>
+                    <div className="min-w-0">
+                      {cellLabel(t('membersLabel'))}
+                      <p className="break-words text-sm">{membersOf(g) || '—'}</p>
+                    </div>
+                    <div className="sm:text-right">
+                      {cellLabel(t('totalLimitLabel'))}
+                      <p className="text-sm tabular-nums">{g.totalLimitDays}</p>
+                    </div>
+                    <div className="sm:text-right">
+                      {cellLabel(t('maxPerApplicationLabel'))}
+                      <p className="text-sm tabular-nums">
+                        {g.maxDaysPerApplication ?? (
+                          <span className="text-muted-foreground">{t('maxPerApplicationBlank')}</span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="min-w-0">
+                      {cellLabel(t('placementLabel'))}
+                      <p className="text-sm">{t(`placementOption.${g.essPlacement}`)}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        aria-expanded={open}
+                        aria-controls={`shared-group-edit-${g.id}`}
+                        onClick={() => setEditingId(open ? null : g.id)}
+                      >
+                        {open ? t('close') : t('edit')}
+                      </Button>
+                      {/* Delete is its own form: a <form> may not nest inside another. */}
+                      <form action={actions.remove}>
+                        <input type="hidden" name="id" value={g.id} />
+                        <ConfirmSubmit
+                          variant="ghost"
+                          size="sm"
+                          title={t('deleteConfirmTitle')}
+                          subtitle={g.name}
+                          description={t('deleteConfirmDescription')}
+                          confirmLabel={t('delete')}
+                        >
+                          {t('delete')}
+                        </ConfirmSubmit>
+                      </form>
+                    </div>
+                  </div>
+                  {open && editing && (
+                    <form
+                      id={`shared-group-edit-${g.id}`}
+                      action={actions.update}
+                      aria-label={t('editTitle', { name: editing.name })}
+                      className="mt-3 space-y-3 rounded-md border border-border bg-card p-4"
+                    >
+                      <p className="text-sm font-semibold">{t('editTitle', { name: editing.name })}</p>
+                      <input type="hidden" name="id" value={editing.id} />
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <Field label={t('nameLabel')} required requiredAriaLabel={t('required')}>
+                          <input name="name" defaultValue={editing.name} required className={inputCls} />
+                        </Field>
+                        <Field label={t('totalLimitLabel')} required requiredAriaLabel={t('required')}>
+                          <input
+                            name="totalLimitDays"
+                            type="number"
+                            step="0.5"
+                            min="0.5"
+                            defaultValue={editing.totalLimitDays}
+                            required
+                            className={inputCls}
+                          />
+                        </Field>
+                        <Field label={t('maxPerApplicationLabel')}>
+                          <input
+                            name="maxDaysPerApplication"
+                            type="number"
+                            step="0.5"
+                            min="0.5"
+                            defaultValue={editing.maxDaysPerApplication ?? ''}
+                            placeholder={t('maxPerApplicationBlank')}
+                            className={inputCls}
+                          />
+                        </Field>
+                      </div>
+                      {/* Emits one hidden input per ticked id under this name — see ChipMultiSelect's form
+                          contract. The action reads formData.getAll('leaveTypeIds'). */}
+                      <ChipMultiSelect name="leaveTypeIds" defaultSelected={editing.leaveTypeIds} {...chipCopy} />
                       {/* 46afcc48 — where the employee sees this GROUP. Independent of every member type's
                           own placement, which stays on the leave type where it already is. */}
-                      <Field label={t('placementLabel')}>
-                        <select name="essPlacement" defaultValue={g.essPlacement} className={inputCls}>
-                          {ESS_PLACEMENTS.map((pl) => (
-                            <option key={pl} value={pl}>
-                              {t(`placementOption.${pl}`)}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{t('placementHelp')}</p>
-                    {/* Emits one hidden input per ticked id under this name — see ChipMultiSelect's form
-                        contract. The action reads formData.getAll('leaveTypeIds'). */}
-                    <ChipMultiSelect name="leaveTypeIds" defaultSelected={g.leaveTypeIds} {...chipCopy} />
-                    <div className="flex items-center justify-end gap-2">
-                      <ActionButton type="submit" className={btnPrimary}>
-                        {t('save')}
-                      </ActionButton>
-                    </div>
-                  </form>
-                  {/* Delete is its own form: a <form> may not nest inside another. */}
-                  <form action={actions.remove} className="mt-2 flex justify-end">
-                    <input type="hidden" name="id" value={g.id} />
-                    <ConfirmSubmit
-                      variant="ghost"
-                      size="sm"
-                      title={t('deleteConfirmTitle')}
-                      subtitle={g.name}
-                      description={t('deleteConfirmDescription')}
-                      confirmLabel={t('delete')}
-                    >
-                      {t('delete')}
-                    </ConfirmSubmit>
-                  </form>
-                  {g.leaveTypeIds.length > 0 && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t('membersSummary', {
-                        types: g.leaveTypeIds.map((id) => nameById.get(id) ?? '—').join(', '),
-                      })}
-                    </p>
+                      <div className="sm:max-w-sm">
+                        <Field label={t('placementLabel')}>
+                          <select name="essPlacement" defaultValue={editing.essPlacement} className={inputCls}>
+                            {ESS_PLACEMENTS.map((pl) => (
+                              <option key={pl} value={pl}>
+                                {t(`placementOption.${pl}`)}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{t('placementHelp')}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <ActionButton type="submit" className={btnPrimary}>
+                          {t('save')}
+                        </ActionButton>
+                        <Button type="button" variant="outline" onClick={() => setEditingId(null)}>
+                          {t('cancel')}
+                        </Button>
+                      </div>
+                    </form>
                   )}
-                </div>
-              ))}
-            </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
 
-            {/* ── Create ──────────────────────────────────────────────────────────────────────────── */}
-            <form action={actions.create} className="mt-6 space-y-3 rounded-md border border-dashed border-border p-3">
-              <p className="text-sm font-medium">{t('createTitle')}</p>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Field label={t('nameLabel')} className="sm:col-span-3" required requiredAriaLabel={t('required')}>
-                  <input name="name" required placeholder={t('namePlaceholder')} className={inputCls} />
-                </Field>
-                <Field label={t('totalLimitLabel')} required requiredAriaLabel={t('required')}>
-                  <input name="totalLimitDays" type="number" step="0.5" min="0.5" required className={inputCls} />
-                </Field>
-                <Field label={t('maxPerApplicationLabel')}>
-                  <input
-                    name="maxDaysPerApplication"
-                    type="number"
-                    step="0.5"
-                    min="0.5"
-                    placeholder={t('maxPerApplicationBlank')}
-                    className={inputCls}
-                  />
-                </Field>
-                {/* A NEW group starts Hidden too, and for the same reason an existing one does: a shared
-                    balance appears on employees' screens because someone chose it, never as a side effect
-                    of creating the configuration. */}
-                <Field label={t('placementLabel')}>
-                  <select
-                    name="essPlacement"
-                    defaultValue={SHARED_GROUP_DEFAULT_PLACEMENT}
-                    className={inputCls}
-                  >
-                    {ESS_PLACEMENTS.map((pl) => (
-                      <option key={pl} value={pl}>
-                        {t(`placementOption.${pl}`)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-              <p className="text-xs text-muted-foreground">{t('placementHelp')}</p>
-              <ChipMultiSelect name="leaveTypeIds" {...chipCopy} />
-              <p className="text-xs text-muted-foreground">{t('createHint')}</p>
-              <div className="flex justify-end">
-                <ActionButton type="submit" className={btnPrimary}>
-                  {t('create')}
-                </ActionButton>
-              </div>
-            </form>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-    </>
+      {/* ── Create ────────────────────────────────────────────────────────────────────────────────── */}
+      <Card id="new-shared-group" data-testid="shared-group-create" className="scroll-mt-6">
+        <SectionHeader title={t('createTitle')} subtitle={t('createHint')} />
+        <form action={actions.create} className="space-y-3 px-4 py-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label={t('nameLabel')} required requiredAriaLabel={t('required')}>
+              <input name="name" required placeholder={t('namePlaceholder')} className={inputCls} />
+            </Field>
+            <Field label={t('totalLimitLabel')} required requiredAriaLabel={t('required')}>
+              <input name="totalLimitDays" type="number" step="0.5" min="0.5" required className={inputCls} />
+            </Field>
+            <Field label={t('maxPerApplicationLabel')}>
+              <input
+                name="maxDaysPerApplication"
+                type="number"
+                step="0.5"
+                min="0.5"
+                placeholder={t('maxPerApplicationBlank')}
+                className={inputCls}
+              />
+            </Field>
+          </div>
+          <ChipMultiSelect name="leaveTypeIds" {...chipCopy} />
+          {/* A NEW group starts Hidden too, and for the same reason an existing one does: a shared
+              balance appears on employees' screens because someone chose it, never as a side effect
+              of creating the configuration. */}
+          <div className="sm:max-w-sm">
+            <Field label={t('placementLabel')}>
+              <select name="essPlacement" defaultValue={SHARED_GROUP_DEFAULT_PLACEMENT} className={inputCls}>
+                {ESS_PLACEMENTS.map((pl) => (
+                  <option key={pl} value={pl}>
+                    {t(`placementOption.${pl}`)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('placementHelp')}</p>
+          <div className="flex">
+            <ActionButton type="submit" className={btnPrimary}>
+              {t('create')}
+            </ActionButton>
+          </div>
+        </form>
+      </Card>
+    </div>
   );
 }

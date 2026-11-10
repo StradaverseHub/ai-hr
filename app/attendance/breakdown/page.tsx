@@ -7,6 +7,7 @@ import { ATTENDANCE_RANGE_MAX_DAYS } from '@/packs/attendance/service';
 import {readIndividualAttendance} from '../individual/read';
 import {resolveMyAttendanceRange} from '../my-records/range';
 import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
+import { formatOtRate } from '@/lib/ot-rate';
 import { explainAttendanceDay } from '@/core/attendance-explain';
 import {readEmployeeChoices} from '@/core/employee-choice';
 import { Button, Card, EmployeeName, PageHeader, inputCls } from '@/components/ui';
@@ -261,6 +262,8 @@ export default async function AttendanceBreakdownPage({
                   <th className={thNum}>{t('colOt15')}</th>
                   <th className={thNum}>{t('colOt20')}</th>
                   <th className={thNum}>{t('colOt30')}</th>
+                  {/* c03670cc — Variable bands typed at a rate outside the usual columns (for example 1.75). */}
+                  <th className={thNum}>{t('colOtOther')}</th>
                   <th className={th}>{t('colStatus')}</th>
                   <th className={th}>{t('colFlag')}</th>
                   <th className={th}>{t('punchTrail')}</th>
@@ -269,13 +272,13 @@ export default async function AttendanceBreakdownPage({
               <tbody className="divide-y divide-border">
                 {dayPage.length === 0 && (
                   <tr>
-                    <td colSpan={29} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={30} className="px-4 py-8 text-center text-muted-foreground">
                       {t('noRecords')}
                     </td>
                   </tr>
                 )}
                 {dayPage.map((r) => {
-                  const ot = otByRate(r);
+                  const ot = otByRate(r, { separateOtherRate: true });
                   const status = statusOf(r);
                   const flag = flagOf(r);
                   // The sanctioned reader. `unavailable` is a real answer — a day the engine never traced —
@@ -320,6 +323,9 @@ export default async function AttendanceBreakdownPage({
                       <td className={tdNum}>{fmtMin(ot.ot15)}</td>
                       <td className={tdNum}>{fmtMin(ot.ot20)}</td>
                       <td className={tdNum}>{fmtMin(ot.ot30)}</td>
+                      <td className={tdNum} data-ot-other-rate="">
+                        {ot.other ? t('otOtherRateValue', { minutes: fmtMin(ot.other.minutes), rates: ot.other.rates.map((rate) => formatOtRate(rate)).join(', ') }) : fmtMin(ot.flat == null ? null : 0)}
+                      </td>
                       <td className={td}>
                         <span className={status === 'absent' ? 'font-medium text-rose-600 dark:text-rose-400' : 'text-foreground'}>
                           {statusText[status]}

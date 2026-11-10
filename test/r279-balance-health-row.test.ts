@@ -157,12 +157,15 @@ const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').repl
 // ────────────────────────────────── §A · SOURCE SHAPE ──────────────────────────────────
 
 describe('r279 §A — the row, the page, and the mount that moved', () => {
-  it('the Settings card follows Entitlements and keeps the existing destination', () => {
+  it('the Settings card follows Entitlements (and Shared Leave Groups) and keeps the existing destination', () => {
     expect(HEALTH_ROW, 'the Balance Health row is gone').toBeTruthy();
     expect(HEALTH_ROW.labelKey).toBe('leaveBalanceHealth');
     // "Directly under Entitlements" asserted as the PAIR, so the row cannot drift down the list while
     // still technically being second to something.
-    expect(LEAVE_SETTINGS_DESTINATIONS.map((c) => c.labelKey).slice(0, 2)).toEqual(['leaveEntitlements', 'leaveBalanceHealth']);
+    // 50d9b809 — UPDATED, NOT LOOSENED: Shared Leave Groups (the pop-up that sat ON Entitlements) took the
+    // slot directly after Entitlements, so the three are pinned as a run and Balance Health still follows
+    // the entitlement rows rather than drifting anywhere further down.
+    expect(LEAVE_SETTINGS_DESTINATIONS.map((c) => c.labelKey).slice(0, 3)).toEqual(['leaveEntitlements', 'leaveSharedGroups', 'leaveBalanceHealth']);
     expect(LEAVE_SETTINGS_DESTINATIONS[0].href).toBe(TYPES_HREF);
     expect(NODE.children.map(c => c.labelKey)).toEqual(['leaveAdjustments','leaveDataImport','leaveCredit','employeeLeaveInquiry','leaveSettings']);
 
@@ -201,7 +204,8 @@ describe('r279 §A — the row, the page, and the mount that moved', () => {
     expect(group, 'every row whose page lives under the module IS a group').toBeTruthy();
     expect(group.id).toBe('balanceHealth');
     expect(group.items).toEqual([{ id: 'balanceHealth', href: HEALTH_HREF }]);
-    expect(LEAVE_CONFIG_MAP.map((g) => g.navKey as string).indexOf('leaveBalanceHealth')).toBe(1);
+    // 50d9b809 — 1 → 2: the Shared Leave Groups group sits between Entitlements and this one, as its row does.
+    expect(LEAVE_CONFIG_MAP.map((g) => g.navKey as string).indexOf('leaveBalanceHealth')).toBe(2);
     // A group of one draws NO tab row, so nothing new appears on screen (components/leave-config-map.tsx).
     expect(read('components/leave-config-map.tsx')).toContain('if (group.items.length < 2) return back;');
     //

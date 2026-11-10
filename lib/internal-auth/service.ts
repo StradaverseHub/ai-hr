@@ -1,5 +1,6 @@
 import {observeAccountExpiry,observeStoredAccountExpiry} from './account-expiry';
 import {accountAvailable,temporaryPasswordAvailable} from './account-state';
+import {settleRecoveryExemption,consumeRecoveryExemption} from './recovery-exemption';
 import { readRememberedMfaPolicy, rememberedFactorValid, rememberVerifiedFactor } from './remembered-mfa';
 import { passwordChangeRequired, replacePassword, effectivePasswordPolicy } from './password-policy';
 import {admitPasswordAttempt} from './login-lockout';
@@ -133,12 +134,22 @@ export async function startLogin(input: { organization: string; username: string
     }
     if(current.temporaryPasswordExpiresAt!==undefined){
       current.temporaryPasswordUsed=true;
+      // First sign-in with an administrator-issued temporary password: an active authenticator pause
+      // (single use) skips the old factor's code. The old factor is retired here, so the challenge can
+      // only continue through the forced password change and a fresh mandatory enrolment (ADR-0117).
+      if(current.totpSecret&&current.mustChange){
+        const exemption=await settleRecoveryExemption(tx,current);
+        if(exemption){
+          await consumeRecoveryExemption(tx,current,exemption,'temporary-password');
+          await revokeCredentialsSessions(tx,current.subject);
+        }
+      }
       await writeRecord(tx,credentialKey(current.subject),current,current.subject);
     }
     const rememberDays = (await readRememberedMfaPolicy(tx, current.tenantId)).policy.rememberDays;
     const raw = opaque();
     const phase = current.totpSecret ? 'mfa' : requirements?.firstResetVerification ? 'enroll' : await passwordChangeRequired(tx, current) ? 'password' : 'enroll';
-    const challenge: Challenge = { subject: c.subject, version: c.version, phase, attempts: 0, native: input.native, rememberDays, expiresAt: Date.now() + CHALLENGE_LIFE,
+    const challenge: Challenge = { subject: current.subject, version: current.version, phase, attempts: 0, native: input.native, rememberDays, expiresAt: Date.now() + CHALLENGE_LIFE,
       ...(phase === 'enroll' ? { secret: generateSecret() } : {}) };
     await writeRecord(tx, `challenge:${digest(raw)}`, challenge, c.subject, challenge.expiresAt);
     return reply(raw, current, challenge);

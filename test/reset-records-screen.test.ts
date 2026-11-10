@@ -284,6 +284,9 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
     const configRows = rows.filter((r) => r.href.startsWith('/admin/leave-config/'));
     expect(configRows.map((r) => r.href)).toEqual([
       '/admin/leave-config/types',
+      // 50d9b809 — Shared Leave Groups, the page the Entitlements pop-up became, named here for the same
+      // reason every other addition is. 7f69bd71's property is untouched.
+      '/admin/leave-config/shared-groups',
       '/admin/leave-config/balance-health',
       '/admin/leave-config/adjustments',
       // r378 consolidates importer rows; reset-record ownership remains unchanged.

@@ -48,6 +48,23 @@ export function timeInKualaLumpur(now: Date = new Date()): string {
   return localTimeFormatter.format(now);
 }
 
+/** A Kuala Lumpur wall-clock minute as an `<input type="datetime-local">` value, "yyyy-mm-ddTHH:mm". */
+export function kualaLumpurLocalInput(at: Date | number): string {
+  const d = typeof at === 'number' ? new Date(at) : at;
+  return `${todayInKualaLumpur(d)}T${timeInKualaLumpur(d)}`;
+}
+
+/**
+ * The instant named by a Kuala Lumpur wall-clock "yyyy-mm-ddTHH:mm" (a datetime-local value), or null.
+ * Malaysia keeps UTC+08:00 all year; the round trip through kualaLumpurLocalInput rejects impossible days
+ * (2026-02-30) and hours instead of letting Date roll them into a neighbouring day.
+ */
+export function instantFromKualaLumpurLocal(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const at = Date.parse(`${value}:00+08:00`);
+  return Number.isFinite(at) && kualaLumpurLocalInput(at) === value ? at : null;
+}
+
 /**
  * The years a payroll-period picker should offer: `back` years of history ending at today's, plus
  * `selected` whenever it falls outside that window (6babf4f6).

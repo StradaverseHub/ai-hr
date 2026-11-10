@@ -6,10 +6,10 @@ import { join, resolve } from 'node:path';
 import { appliedMigrationIdentity, HISTORICAL_MIGRATIONS } from '../../.github/ci/migration-history.mjs';
 import { expectedBaselineMigrationLedger } from '../../.github/ci/staging-migration-ledger.mjs';
 
-const incoming = 'f07f32dcd0ccaeb6b49d40f2b6c64307b9bf80fc';
-const checkpointJournalSha256 = '69e00aaf89b8c9deb4d0e81f36d3cb732343e66565b2fa95da15a33842d1cf38';
-const incomingLedgerSha256 = '949043cefb77fecae0e9909d9421680f9cfcb4d4fc9953b4a2052121ea92fb00';
-const architectureTailSha256 = '532c53d4023f74c55714c888b715bf5f700fc57693f42568743e156094b5a9f4';
+const incoming = '8d5254eb286b3dd1815253435001c02d01888856';
+const checkpointJournalSha256 = 'a62867f09a11f49229c4d26119443a5e036e44fe432ed09636f0c773aa219726';
+const incomingLedgerSha256 = 'cdabb04558aa8e6e7b8776c0e215b3ac9fb61460e604f5e71186ccfc3be2277d';
+const architectureTailSha256 = '3fdd895fd69c006e468a97c5ae175429be3dd428803224c5acea9e3d286c32cd';
 const firstPending = '2103_system_performance_read_guards';
 const compatibility = '3500_ai_centre_architecture_compatibility';
 const mandate = '3501_ai_centre_mandate_write_order';

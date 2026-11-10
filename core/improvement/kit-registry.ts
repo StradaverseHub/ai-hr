@@ -16,11 +16,12 @@ import {PAYROLL_LOOP_ENTITIES,PAYROLL_LOOP_READS} from '../semantic-model/entiti
 import {HANDBOOK_ENTITIES,HANDBOOK_READS} from '../semantic-model/entities-handbook';
 import {QUALITY_ENTITIES,QUALITY_READS} from '../semantic-model/entities-quality';
 import {PAYROLL_LEARNING_ENTITIES,PAYROLL_LEARNING_READS} from '../semantic-model/entities-payroll-learning';
+import {LEAVE_SETTINGS_ENTITIES,LEAVE_SETTINGS_READS} from '../semantic-model/entities-leave-settings';
 import type {EntityId,OwnerAnchor,SemanticEntity,SemanticRead} from '../semantic-model/types';
 import {kitCapability,type KitCapability,type KitDeclaration} from './kit';
 
-const entity=(id:EntityId):SemanticEntity=>{const found=[...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...METRIC_ENTITIES,...WHY_ENTITIES,...LOOP_ENTITIES,...PAYROLL_READINESS_ENTITIES,...PAYROLL_LOOP_ENTITIES,...HANDBOOK_ENTITIES,...QUALITY_ENTITIES,...PAYROLL_LEARNING_ENTITIES].find(row=>row.id===id);if(!found)throw Error('Unknown kit entity.');return found;};
-const read=(name:string):SemanticRead=>{const found=[...EXPLAIN_READS,...SETUP_READS,...METRIC_READS,...WHY_READS,...LOOP_READS,...PAYROLL_READINESS_READS,...PAYROLL_LOOP_READS,...HANDBOOK_READS,...QUALITY_READS,...PAYROLL_LEARNING_READS].find(row=>row.name===name);if(!found)throw Error('Unknown kit read.');return found;};
+const entity=(id:EntityId):SemanticEntity=>{const found=[...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...METRIC_ENTITIES,...WHY_ENTITIES,...LOOP_ENTITIES,...PAYROLL_READINESS_ENTITIES,...PAYROLL_LOOP_ENTITIES,...HANDBOOK_ENTITIES,...QUALITY_ENTITIES,...PAYROLL_LEARNING_ENTITIES,...LEAVE_SETTINGS_ENTITIES].find(row=>row.id===id);if(!found)throw Error('Unknown kit entity.');return found;};
+const read=(name:string):SemanticRead=>{const found=[...EXPLAIN_READS,...SETUP_READS,...METRIC_READS,...WHY_READS,...LOOP_READS,...PAYROLL_READINESS_READS,...PAYROLL_LOOP_READS,...HANDBOOK_READS,...QUALITY_READS,...PAYROLL_LEARNING_READS,...LEAVE_SETTINGS_READS].find(row=>row.name===name);if(!found)throw Error('Unknown kit read.');return found;};
 /** Purpose and inputs are the declaration's own words; the kit generates the rest. */
 const declare=(name:string,owner:OwnerAnchor,permission:KitDeclaration['permission']):KitDeclaration=>{
  const row=read(name);return{name,purpose:row.purpose,input:row.input,owner,permission,entity:entity(row.entity)};
@@ -58,5 +59,8 @@ export const KIT_DECLARATIONS:readonly KitDeclaration[]=Object.freeze([
  // Payroll history learning (P2): "Learned this cycle" (core/semantic-model/entities-payroll-learning.ts), administrators only;
  // the owner reads only the companies whose payroll the caller administers.
  declare('payroll_learning_status','core/payroll-learning/status.ts#learnedThisCycle',{module:'payroll',admin:true}),
+ // 50d9b809: the Shared Leave Groups page's groups (core/semantic-model/entities-leave-settings.ts), administrators only, the
+ // page's own requireAdmin; configuration only, read as the caller under tenant row-level security.
+ declare('shared_leave_groups','core/leave-shared-group.ts#listLeaveSharedGroups',{module:'leave',admin:true}),
 ]);
 export const KIT_CAPABILITIES:readonly KitCapability[]=Object.freeze(KIT_DECLARATIONS.map(kitCapability));

@@ -67,17 +67,25 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:3600,when:1793330003900,tag:'4200_employee_loop_action_digest'},
  {idx:3601,when:1793330003901,tag:'4201_retire_attendance_formula_builder'},
  {idx:3602,when:1793330003902,tag:'4202_attendance_clock_policy_revisions'},
+ {idx:4000,when:1793330004300,tag:'4600_attendance_clock_policy_group_scope'},
+ {idx:4001,when:1793330004301,tag:'4601_last_login_event_index'},
+ // 50d9b809: the AI Centre control for the shared_leave_groups read (docs/MIGRATION-ALLOCATION.md, 10 November 2026).
+ {idx:4200,when:1793330004500,tag:'4800_ai_shared_leave_groups_read'},
+ // Architecture candidate, renumbered above the released 8d5254eb watermark (docs/MIGRATION-ALLOCATION.md, 10 November 2026).
  ...PERFORMANCE_MIGRATION_IDENTITIES.map(({idx,when,tag})=>({idx,when,tag})),
- {idx:3736,when:1793330004036,tag:'3500_ai_centre_architecture_compatibility'},
- {idx:3737,when:1793330004037,tag:'3501_ai_centre_mandate_write_order'},
- {idx:3738,when:1793330004038,tag:'4338_assistant_rewards_return_presentation_snapshot'},
- {idx:3739,when:1793330004039,tag:'4339_assistant_rewards_calendar_cancel_presentation_snapshot'},
- {idx:3740,when:1793330004040,tag:'4340_ai_management_presentation_snapshot'},
- {idx:3741,when:1793330004041,tag:'4341_home_leave_presentation_snapshot'},
- {idx:3742,when:1793330004042,tag:'4342_attendance_clock_policy_audit_scope'},
+ {idx:4237,when:1793330004537,tag:'3500_ai_centre_architecture_compatibility'},
+ {idx:4238,when:1793330004538,tag:'3501_ai_centre_mandate_write_order'},
+ {idx:4239,when:1793330004539,tag:'4338_assistant_rewards_return_presentation_snapshot'},
+ {idx:4240,when:1793330004540,tag:'4339_assistant_rewards_calendar_cancel_presentation_snapshot'},
+ {idx:4241,when:1793330004541,tag:'4340_ai_management_presentation_snapshot'},
+ {idx:4242,when:1793330004542,tag:'4341_home_leave_presentation_snapshot'},
+ {idx:4243,when:1793330004543,tag:'4342_attendance_clock_policy_audit_scope'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
+ '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
+ '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
  '4200_employee_loop_action_digest':'8fb9906f3f5a4828507a87fe0e162826ccbbe76430e4ca39993e9ab1301d967f',
  '4201_retire_attendance_formula_builder':'7929ff4d341d96873c3d7c7f0a6c7253674816ed65e9b8d44171218377559778',
  '4202_attendance_clock_policy_revisions':'4633648e6d0869af1205dcf0911c9b6a02daeb177a16c6a89c5d5bdccf758df6',
@@ -141,7 +149,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '4339_assistant_rewards_calendar_cancel_presentation_snapshot':'6df872ead7dc864a8e2a7c78ee8dcdf9e4bd4d637186c185c54a656acb6f07e9',
  '4340_ai_management_presentation_snapshot':'17973dd386f8fb1fda3a2773de3cd189055bed744730949912b2206a77c4e32c',
  '4341_home_leave_presentation_snapshot':'91ceea84de63aa91d8d5c559c0c7c4ee4cadd86ee14bb0d2c1300be580c2a664',
- '4342_attendance_clock_policy_audit_scope':'be818457c18cd823f0cae24c5d8eeb3e51923ed16a7451c76cb6fcb18da8fe2a',
+ '4342_attendance_clock_policy_audit_scope':'e517de07fd7f1d536374ade1a23895b5064e459dcf3af30652b23c85554fe303',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);

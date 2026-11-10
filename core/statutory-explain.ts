@@ -323,6 +323,54 @@ const epfWorkingSchema = z.union([
   }).extend(epfSavedRunSchema.shape),
 ]);
 
+/**
+ * Feedback c2ea9567 — the HRDF wages as the run itemised them (`statutory.hrdfWorking`, core/payroll.ts).
+ *
+ * Every line is a figure the kernel used to build the levy base: Basic Salary, one line per pay item code
+ * ticked for HRDF (earnings positive, deductions negative), unpaid leave/absence, the compensation
+ * allowance on the legacy untyped path, and the clamp at zero. `rate` is the rate the run APPLIED, stamped
+ * from the same pack call as the levy — so unlike every other item on this screen the HRDF rate is read,
+ * not derived. `levy` is the payslip's own `st.hrdf`; `calculatedLevy` is what the rate produced, and the
+ * two differ only when a person set the levy by hand.
+ */
+const hrdfWorkingSchema = z.object({
+  version: z.literal(1),
+  items: z.array(z.object({
+    kind: z.enum(['basic', 'allowance', 'earning', 'unpaid', 'deduction', 'floor']),
+    code: z.string().optional(),
+    name: z.string().optional(),
+    amount: z.number(),
+  })).min(1),
+  wages: z.number().nonnegative(),
+  status: z.enum(['mandatory', 'optional', 'not_registered']),
+  subject: z.boolean(),
+  rate: z.number().nonnegative(),
+  calculatedLevy: z.number().nonnegative(),
+  levy: z.number().nonnegative(),
+});
+
+export type HrdfWorkingExplanation = z.infer<typeof hrdfWorkingSchema> & {
+  /** True when the payslip's levy is not the rate's product — a statutory adjustment set it by hand. */
+  levySetByHand: boolean;
+};
+
+/**
+ * Read the stamp ONLY when it agrees with the payslip it sits on: its lines sum to its wages, its wages
+ * are the recorded HRDF base, and its levy is the payslip's levy. A blob that fails any of those (hand
+ * edited, half written) is treated as unrecorded rather than shown — an itemisation that does not add up
+ * to the figure beside it is worse than none.
+ */
+function readHrdfWorking(raw: unknown, base: number | null, levy: number): HrdfWorkingExplanation | null {
+  const parsed = hrdfWorkingSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  const w = parsed.data;
+  const sum = w.items.reduce((acc, it) => r2(acc + it.amount), 0);
+  if (Math.abs(sum - w.wages) >= 0.005) return null;
+  if (base == null || Math.abs(base - w.wages) >= 0.005) return null;
+  if (Math.abs(w.levy - levy) >= 0.005) return null;
+  return { ...w, levySetByHand: Math.abs(w.levy - w.calculatedLevy) >= 0.005 };
+}
+
 /** The recorded calculation plus the final EPF amounts from the same payslip. */
 export type EpfWorkingExplanation = z.infer<typeof epfWorkingSchema> & {
   finalEmployee: number;
@@ -332,6 +380,14 @@ export type EpfWorkingExplanation = z.infer<typeof epfWorkingSchema> & {
 export type StatutoryExplanation = {
   items: StatutoryItemExplanation[];
   epfWorking: EpfWorkingExplanation | null;
+  /** c2ea9567 — the itemised HRDF wages, rate and levy this payslip recorded; null when it recorded none. */
+  hrdfWorking: HrdfWorkingExplanation | null;
+  /**
+   * c2ea9567 — a REGULAR payslip processed before the HRDF wages were itemised. The screen keeps the
+   * old base × rate line and says the itemised breakdown starts from the next processed payroll. False
+   * on an additional run, which charges no levy and so has nothing to itemise.
+   */
+  hrdfBreakdownNotRecorded: boolean;
   /**
    * The headline flag: this payslip carries no `statutory.bases` object at all, so EVERY item's working
    * is unavailable. Distinct from a per-item `workingNotRecorded` so the screen can lead with one honest
@@ -402,6 +458,7 @@ type Blob = {
    *  through `statutoryProvenance`, for the same reason and under the same guard as `adjustment`. */
   epfManual?: unknown;
   epfWorking?: unknown;
+  hrdfWorking?: unknown;
 };
 
 /**
@@ -629,6 +686,7 @@ export function explainStatutory(statutory: unknown, runType: string): Statutory
   ];
 
   const sum = (f: (i: StatutoryItemExplanation) => number) => r2(items.reduce((a, i) => a + f(i), 0));
+  const hrdfWorking = readHrdfWorking(st.hrdfWorking, bases ? bases.hrdf : null, r2(n(st.hrdf)));
 
   // The banner's input, derived from the items rather than by reading the stamp a second time. Order is
   // `STATUTORY_EXPLAIN_KEYS` order because `items` is, so the banner lists them as the screen does.
@@ -639,6 +697,8 @@ export function explainStatutory(statutory: unknown, runType: string): Statutory
     epfWorking: epfWorking.success
       ? { ...epfWorking.data, finalEmployee: items[0].employeeReported, finalEmployer: items[0].employer }
       : null,
+    hrdfWorking,
+    hrdfBreakdownNotRecorded: hrdfWorking == null && runType === 'regular',
     basesNotRecorded: bases == null,
     basesCoverWholeMonth: amountsAreIncremental,
     setByHand:

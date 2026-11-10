@@ -127,7 +127,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(await ledger()).toEqual(afterLedger);expect(await native()).toEqual(beforeRerun);
   // Rehearse from the combined staging baseline as well as the historical defect boundary.
   const performanceStart=journal.entries.findIndex(row=>row.tag===PERFORMANCE_MIGRATION_IDENTITIES[0].tag);
-  expect(performanceStart).toBe(726);
+  expect(performanceStart).toBe(729);
   expect(journal.entries.slice(performanceStart).map(row=>row.tag)).toEqual([
    ...PERFORMANCE_MIGRATION_IDENTITIES.map(row=>row.tag),
    '3500_ai_centre_architecture_compatibility',

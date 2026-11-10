@@ -341,6 +341,19 @@ describe("2333b7fb — the reporter's own figures, on a generated payslip", () =
     expect(Number(st.eisEmployer)).toBeCloseTo(9.5, 2);
     expect(Number(st.pcb)).toBeCloseTo(96.65, 2);
     expect(Number(st.hrdf)).toBeCloseTo(47.77, 2);
+    // c2ea9567 — the levy base itemised on the payslip: the ticked deduction is its own negative line.
+    // 5,000 + 100 − 322.58 = 4,777.42; × 1% = 47.7742 → 47.77.
+    expect((s.statutory as { hrdfWorking?: unknown }).hrdfWorking).toMatchObject({
+      items: [
+        { kind: 'basic', amount: 5000 },
+        { kind: 'earning', code: 'A0027', amount: 100 },
+        { kind: 'deduction', code: 'UPL', amount: -322.58 },
+      ],
+      wages: 4777.42,
+      rate: 0.01,
+      calculatedLevy: 47.77,
+      levy: 47.77,
+    });
 
     // THE MONEY, to the cent, against the stored production payslip (1,034.93 / 4,065.07 / 5,861.45):
     //   deductions 526 + 23.75 + 9.50 + 96.65 + UPL 322.58 = 978.48

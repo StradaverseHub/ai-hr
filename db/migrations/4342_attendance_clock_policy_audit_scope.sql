@@ -7,36 +7,10 @@ REVOKE SELECT ON TABLE public.attendance_clock_policy_revision FROM ai_hr_app;
 GRANT SELECT (id, tenant_id, company_id, rule_id, ordinal, effective_from, policy, reason)
  ON TABLE public.attendance_clock_policy_revision TO ai_hr_app;
 --> statement-breakpoint
--- The insert guard runs with caller privileges and only needs the prior order and date.
-CREATE OR REPLACE FUNCTION app.guard_attendance_clock_policy_revision() RETURNS trigger
-LANGUAGE plpgsql SET search_path=pg_catalog,public,app,pg_temp AS $$
-DECLARE previous_ordinal integer; previous_effective_from date;
-BEGIN
- IF TG_OP<>'INSERT' THEN
-  RAISE EXCEPTION 'Retain immutable Attendance clock policy history' USING ERRCODE='23514';
- END IF;
- PERFORM app.lock_attendance_clock_policy_configuration(NEW.tenant_id);
- IF app.attendance_policy_principal_current() IS NOT TRUE OR app.is_admin_for(NEW.company_id) IS NOT TRUE
-  OR NEW.created_by_user_id IS DISTINCT FROM app.current_user_id() THEN
-  RAISE EXCEPTION 'Attendance clock policy is outside company administrator scope' USING ERRCODE='42501';
- END IF;
- IF NOT EXISTS(SELECT 1 FROM public.company WHERE id=NEW.company_id AND tenant_id=NEW.tenant_id AND archived_at IS NULL)
-  OR NOT EXISTS(SELECT 1 FROM public.attendance_rule WHERE id=NEW.rule_id AND tenant_id=NEW.tenant_id AND status='active') THEN
-  RAISE EXCEPTION 'Choose an active company and Schedule Group in this tenant' USING ERRCODE='23514';
- END IF;
- NEW.created_at:=clock_timestamp();
- IF NEW.effective_from<=(NEW.created_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date THEN
-  RAISE EXCEPTION 'Choose a future date for Attendance clock settings' USING ERRCODE='23514';
- END IF;
- SELECT ordinal,effective_from INTO previous_ordinal,previous_effective_from FROM public.attendance_clock_policy_revision
- WHERE tenant_id=NEW.tenant_id AND company_id=NEW.company_id AND rule_id=NEW.rule_id
- ORDER BY ordinal DESC LIMIT 1;
- IF NEW.ordinal<>coalesce(previous_ordinal,0)+1 OR previous_effective_from>=NEW.effective_from THEN
-  RAISE EXCEPTION 'Attendance clock policy history changed. Reload before scheduling.' USING ERRCODE='23514';
- END IF;
- RETURN NEW;
-END $$;
---> statement-breakpoint
+-- The insert guard runs with caller privileges and only needs the prior order and date. Migration
+-- 4600_attendance_clock_policy_group_scope, which now applies before this one, already installs that
+-- guard (reading only ordinal and effective_from, for company and group-wide chains), so it is not
+-- re-created here: re-creating the company-only body would refuse every group-wide revision.
 CREATE FUNCTION app.attendance_clock_policy_history(wanted_company uuid,wanted_rule uuid)
  RETURNS TABLE(id uuid,ordinal integer,effective_from date,policy jsonb,reason text)
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,pg_temp SET row_security=on AS $$

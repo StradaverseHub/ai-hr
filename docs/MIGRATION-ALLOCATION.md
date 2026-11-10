@@ -1,3 +1,91 @@
+# Architecture candidate above released 8d5254eb — 10 November 2026 MYT (unapplied reallocation)
+
+Main, alpha and staging carry `8d5254eb286b3dd1815253435001c02d01888856`, whose
+729-entry journal ends with `4800_ai_shared_leave_groups_read` at idx 4200 / when
+1793330004500. Branch `claude/architecture-release-20261110` keeps that prefix and
+every applied SQL byte unchanged. It moves only its own 43 unapplied entries above
+that watermark, in their existing dependency order. Every tag is unchanged: no tag
+number collides with main or a surveyed peer, so no file is renamed. The 772-entry
+journal passes `node .github/ci/check-migration-order.mjs 8d5254eb`.
+
+| Candidate entries | Was idx / when | Now idx / when |
+| --- | ---: | ---: |
+| `2103_system_performance_read_guards` … `3211_access_editor_native_owner_presentation` (36, `test/performance-migration-identities.ts`) | 3700–3735 / 1793330004000–1793330004035 | 4201–4236 / 1793330004501–1793330004536 |
+| `3500_ai_centre_architecture_compatibility`, `3501_ai_centre_mandate_write_order` | 3736–3737 / 1793330004036–1793330004037 | 4237–4238 / 1793330004537–1793330004538 |
+| `4338`–`4341` presentation snapshots | 3738–3741 / 1793330004038–1793330004041 | 4239–4242 / 1793330004539–1793330004542 |
+| `4342_attendance_clock_policy_audit_scope` | 3742 / 1793330004042 | 4243 / 1793330004543 |
+
+`4600_attendance_clock_policy_group_scope` now applies before `4342`. So 4342 no
+longer re-creates `app.guard_attendance_clock_policy_revision()`: its company-only
+body would have replaced 4600's guard and refused every group-wide revision. 4600's
+guard already reads only the prior ordinal and effective_from, which is all 4342
+needed. 4342 has never been applied, so only its bytes change: SHA256
+`be818457c18cd823f0cae24c5d8eeb3e51923ed16a7451c76cb6fcb18da8fe2a` becomes
+`e517de07fd7f1d536374ade1a23895b5064e459dcf3af30652b23c85554fe303`. Its history
+function and restrictive audit-read policy still match company rows only, as the
+4600 reservation recorded. `ai_hr_app` therefore cannot read group-wide
+`attendance-rule.clock-policy.scheduled` events; that remains an owner decision.
+Main adds no `app` function, so the notification helper contract pin stays 2399.
+The AI Centre upgrade fixture now binds incoming `8d5254eb` (729 ledger rows).
+
+The read-only survey covered 7,256 refs: 545 distinct committed journal blobs, all
+parseable, plus one ref without a journal. It also covered 247 readable worktree
+journals among 1,264 registered worktrees. Above idx 4100 / when 1793330004400 it
+found the peer claims 4700–4703 (idx 4100–4103), main's 4800, 4900–4902 (idx
+4300–4302 / when 1793330004600–1793330004602), 9001–9004, and the 98xx/99xx
+bulk-job, Access and Home claims with timestamps from 1793330009820. None occupies
+idx 4201–4243 or when 1793330004501–1793330004543. A raw tuple scan of the one
+unparseable peer worktree journal (feedback-menu-operator-toggle-616263) found no
+occupant either. Refresh the peer survey and the installed ordered ledger before
+release admission. This reallocation grants no installation authority.
+
+# Shared Leave Groups AI read control — 10 November 2026 MYT (unapplied)
+
+Branch claude/fb-50d9b809-shared-leave-groups reserves `4800_ai_shared_leave_groups_read`
+at idx 4200 / when 1793330004500, one INSERT registering the AI Centre control
+`read:shared_leave_groups`. A read-only survey of 7,071 refs (531 committed journal
+blobs) found committed peers through `4601_last_login_event_index` (idx 4001 /
+when 1793330004301); 250 readable worktree journals added two uncommitted, mutually
+conflicting `4700_*` claims at idx 4100 / when 1793330004400, so this reservation
+sits above them. The source base f07f32dcd ends at `4202` (idx 3602). Recheck the
+published baseline, ordered ledger and peer claims before admission. The reservation
+grants no installation authority.
+
+# Security Center Last Login index — 10 November 2026 MYT (unapplied)
+
+Branch claude/fb-07c98c36-users-account-actions holds the coordinator's
+reservation `4601_last_login_event_index` at idx 4001 / when 1793330004301,
+above the peer reservations through 4502 (idx 3902 / when 1793330004202) and
+the Schedule Group builder's 4600. The SQL adds one partial index on
+domain_event for app-user.logged-in reads; no data changes. Recheck peer claims,
+the published baseline and the ordered applied ledger at admission; this
+reservation grants no installation authority.
+
+# Schedule Group configuration (c03670cc) — 10 November 2026 MYT (unapplied)
+
+Branch claude/fb-c03670cc-schedule-group-tabs reserves
+`4600_attendance_clock_policy_group_scope` at idx 4000 / when 1793330004300, above
+the peer reservations through 4502 (idx 3902 / when 1793330004202) and below 4601,
+which is reserved for the Users builder. It lets `attendance_clock_policy_revision`
+hold group-wide (company_id NULL) revisions with their own ordinal/date chain and
+group-administrator write check. It adds no column to any table. It re-creates the 4202 guard function reading only
+ordinal/effective_from, so it stays compatible with the peer
+`4342_attendance_clock_policy_audit_scope` (when 1793330004042) on
+codex/architecture-leave-withdraw-snapshot-test-20261110; that peer's audit-read
+policy and history function match company rows only. Recheck peer claims and the
+installed ledger before admission; this reservation grants no installation authority.
+
+# Schedule Group clock policy — 10 November 2026 MYT (unapplied)
+
+Reserve `4202_attendance_clock_policy_revisions` at idx 3602 and when
+1793330003902, after the joint candidate's 4200 employee digest and 4201
+Attendance Formula retirement. The allocation survey found no competing claim
+across 3,813 distinct Git heads, 516 committed journal blobs and 348 readable
+worktree journals. The staging source `5c990a639` was observed healthy with an
+exact 723-entry applied ledger ending at 4101. Recheck the published baseline,
+ordered ledger and peer claims before admission. The reservation grants no
+installation authority.
+
 # Joint AI Functions, Attendance and architecture candidate — 10 November 2026 (private proposal)
 
 The exact Streamline AI Functions and Schedule Group candidate

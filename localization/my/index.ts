@@ -20,6 +20,7 @@ import {
   epf,
   foldPriorSlipIntoAccumulators,
   hrdfLevy,
+  hrdfRate,
   hrdfSubject,
   openingAccumulatorsFromTp3,
   overtimePay,
@@ -177,6 +178,8 @@ export const myPack: CountryPack = {
     pcbMonth,
     overtimePay,
     hrdfLevy,
+    // Feedback c2ea9567 — the rate hrdfLevy applies, stamped beside the HRDF wages on the payslip.
+    hrdfRate,
     // Feedback 0df0c635 — effective per-employee HRDF subjectivity (tri-state subject_to_hrdf resolved
     // against the employer's registration band). D6 vocabulary: the kernel consumes it via the pack.
     hrdfSubject,
