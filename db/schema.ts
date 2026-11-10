@@ -10856,7 +10856,18 @@ export const attendanceWorkflowRequest = pgTable('attendance_workflow_request', 
     routingVersion: integer('routing_version').notNull().default(1).$type<1 | 2 | 3 | 4>(),
     cc: jsonb('cc').notNull().default([]).$type<import('../lib/attendance-workflow-v4').AttendanceCcRecipient[]>(),
     stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedStage[]>(), currentStage: integer('current_stage').notNull().default(0), createdAt: createdAt(),
+    /** v4 only: levels decided "not required" at submission because the reporting chain had ended. */
+    skippedLevels: jsonb('skipped_levels').notNull().default([]).$type<import('../lib/attendance-workflow').AttendanceSkippedLevel[]>(),
 }, t => [uniqueIndex('attendance_workflow_request_correction').on(t.correctionId)]);
+/** Append-only Preview Assignment snapshot of one saved workflow version (admin of every workflow company). */
+export const attendanceWorkflowPreview = pgTable('attendance_workflow_preview', {
+    id: id(), tenantId: tenantId(), lineageId: uuid('lineage_id').notNull(), templateId: uuid('template_id').notNull(),
+    templateVersion: integer('template_version').notNull(), generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+    generatedByUserId: uuid('generated_by_user_id').notNull(), companyIds: uuid('company_ids').array().notNull(),
+    totalMatching: integer('total_matching').notNull(), warningCount: integer('warning_count').notNull(), truncated: boolean('truncated').notNull().default(false),
+    employees: jsonb('employees').notNull().default([]).$type<import('../lib/attendance-workflow-preview').AttendanceWorkflowPreviewEmployee[]>(),
+    warnings: jsonb('warnings').notNull().default([]).$type<import('../lib/attendance-workflow-preview').AttendanceWorkflowPreviewWarning[]>(),
+});
 export const attendanceWorkflowDecision = pgTable('attendance_workflow_decision', {
     id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id),
     employmentId: uuid('employment_id').notNull().references(() => employment.id), stageIndex: integer('stage_index').notNull(),

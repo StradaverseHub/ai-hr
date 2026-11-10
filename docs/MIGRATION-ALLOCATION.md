@@ -1,3 +1,15 @@
+# Attendance workflow skipped levels and preview history — 10 November 2026 MYT (unapplied)
+
+Branch claude/fb-4452ba3c-attendance-approvals reserves
+`4501_attendance_workflow_skipped_levels` at idx 3901 / when 1793330004201,
+assigned by the open-board coordinator. 4500 is reserved for another builder.
+The read-only survey of 400 distinct committed journal blobs across 3,878
+origin refs found peer maximum 4342 / idx 3742 / when 1793330004042 and no
+competing claim at 4501, idx 3901 or when 1793330004201. The migration is
+additive (one request column, replaced v4 resolver and link trigger, one
+append-only preview table, one read-only diagnostic). Recheck peer claims and
+the installed ledger before admission; this grants no installation authority.
+
 # Import History section type — 10 November 2026 MYT (unapplied)
 
 Board item ccd3a65c reserves `4500_import_history_kind` at idx 3900 / when

@@ -27151,7 +27151,79 @@
     "approvalLevel": "Cấp phê duyệt",
     "warningIssue": "Vấn đề",
     "legacyReadinessWarning": "Người phê duyệt bắt buộc hiện không khả dụng.",
-    "warningPage": "{from}–{to} trên {total}"
+    "warningPage": "{from}–{to} trên {total}",
+    "groups": {
+      "help": "Trong một nhóm, mọi trường đã chọn đều phải khớp. Nhân viên khớp với bất kỳ nhóm nào sẽ dùng quy trình này.",
+      "or": "HOẶC",
+      "groupNumber": "Nhóm {number}",
+      "remove": "Xóa nhóm {number}",
+      "add": "+ Thêm nhóm HOẶC",
+      "everyone": "Tất cả nhân viên của các công ty đã chọn"
+    },
+    "copy": {
+      "action": "Sao chép",
+      "rowLabel": "Sao chép quy trình {code}",
+      "help": "Tạo quy trình mới từ một bản sao. Quy trình gốc không bị thay đổi.",
+      "banner": "Sao chép từ {code} (phiên bản {version}). Nhập Mã quy trình, Tên quy trình và Mô tả mới. Quy trình gốc không bị thay đổi.",
+      "codePlaceholder": "Nhập mã mới",
+      "namePlaceholder": "Nhập tên mới"
+    },
+    "previewHistory": {
+      "action": "Lịch sử xem trước",
+      "rowLabel": "Lịch sử xem trước của {code}",
+      "title": "Lịch sử xem trước",
+      "backToWorkflow": "Quay lại quy trình",
+      "generate": "Tạo bản xem trước mới",
+      "generating": "Đang tạo bản xem trước…",
+      "failed": "Không thể tạo bản xem trước. Vui lòng thử lại.",
+      "latestTitle": "Bản xem trước mới nhất",
+      "summary": "Tạo lúc {date} cho phiên bản {version}: {total} nhân viên khớp, {warnings} cảnh báo cấu hình.",
+      "olderVersion": "Bản xem trước này được tạo cho phiên bản {previewVersion}. Quy trình đã được lưu lại và hiện là phiên bản {currentVersion}, nên kết quả có thể đã lỗi thời.",
+      "none": "Chưa có bản xem trước nào. Hãy tạo bản xem trước để kiểm tra nhân viên khớp và cảnh báo cấu hình.",
+      "open": "Mở lịch sử xem trước",
+      "savedHint": "Đã lưu quy trình. Hãy tạo bản xem trước để kiểm tra nhân viên khớp và cảnh báo cấu hình.",
+      "draftNotStored": "Bản xem trước nháp của các thay đổi chưa lưu. Bản này không được lưu trữ; hãy lưu quy trình để giữ bản xem trước.",
+      "stats": {
+        "generatedAt": "Thời điểm tạo",
+        "generatedBy": "Người tạo",
+        "workflowVersion": "Phiên bản quy trình",
+        "matching": "Nhân viên khớp",
+        "warnings": "Cảnh báo cấu hình"
+      },
+      "earlier": "Các bản xem trước",
+      "chip": "{date} · v{version}",
+      "warningsTitle": "Cảnh báo cấu hình ({count})",
+      "approverSource": "Nguồn người duyệt",
+      "warning": "Cảnh báo",
+      "noWarnings": "Không có cảnh báo cấu hình.",
+      "warningsTruncated": "Hiển thị {shown} cảnh báo đầu tiên trong tổng số {total}.",
+      "employeesTitle": "Nhân viên khớp ({count})",
+      "noEmployees": "Không có nhân viên nào khớp với quy trình này.",
+      "employeesTruncated": "Hiển thị {shown} nhân viên đầu tiên trong tổng số {total}. Tổng số là chính xác.",
+      "seeWarning": "Xem cảnh báo",
+      "notRequired": "Không bắt buộc - không còn Cấp trên trực tiếp",
+      "otherWorkflow": "Được xử lý bởi {code} (ưu tiên cao hơn)",
+      "stoppedAt": "Tuyến báo cáo dừng ở {level}.",
+      "problems": {
+        "tie": "Hai quy trình khớp với nhân viên này ở cùng mức ưu tiên. Hãy đổi mức ưu tiên hoặc phạm vi áp dụng.",
+        "no_superior": "Chưa gán Cấp trên trực tiếp. Hãy gán trong Hồ sơ nhân sự.",
+        "superior_inactive": "Cấp trên trực tiếp đã ngừng hoạt động. Hãy cập nhật Cấp trên trực tiếp trong Hồ sơ nhân sự.",
+        "no_login": "Không có tài khoản đăng nhập dùng được. Hãy nhờ HR tạo hoặc kích hoạt lại tài khoản của người này.",
+        "multiple_logins": "Có nhiều hơn một tài khoản đăng nhập dùng được. Hãy nhờ HR chỉ giữ một tài khoản.",
+        "login_wrong_company": "Tài khoản của họ không bao gồm công ty của nhân viên này. Hãy nhờ HR mở rộng quyền công ty cho tài khoản.",
+        "outside_company_scope": "Làm việc ngoài công ty của nhân viên này và các công ty mẹ. Hãy chọn cấp trên trong phạm vi công ty được phép.",
+        "ambiguous_superior": "Có nhiều hơn một Cấp trên trực tiếp hiện tại được ghi nhận. Chỉ giữ một trong Hồ sơ nhân sự.",
+        "cycle": "Tuyến báo cáo quay vòng lại một người trước đó. Hãy sửa trong Hồ sơ nhân sự.",
+        "duplicate_person": "Cùng một người sẽ duyệt nhiều lần. Hãy đổi các cấp duyệt hoặc tuyến báo cáo.",
+        "duplicate_login": "Hai người duyệt dùng chung một tài khoản đăng nhập. Hãy nhờ HR sửa tài khoản.",
+        "missing_person": "Thiếu hồ sơ cá nhân của cấp trên. Hãy nhờ HR kiểm tra Hồ sơ nhân sự.",
+        "cc_unavailable": "Một người nhận CC bị thiếu, ngừng hoạt động hoặc không có tài khoản đăng nhập duy nhất dùng được.",
+        "unresolved": "Không thể xác định tuyến duyệt cho nhân viên này.",
+        "hr_unavailable": "Không có quản trị viên HR nào có thể duyệt cho nhân viên này.",
+        "selected_unavailable": "Người duyệt được chọn đã ngừng hoạt động, không có tài khoản đăng nhập duy nhất dùng được, hoặc nằm ngoài phạm vi công ty được phép. Hãy thay người được chọn.",
+        "login_unusable": "Người duyệt không có tài khoản đăng nhập duy nhất dùng được cho công ty của nhân viên này. Hãy nhờ HR sửa tài khoản."
+      }
+    }
   },
   "attendanceHistory": {
     "title": "Lịch sử đơn",
@@ -27370,7 +27442,10 @@
       "showWaiting": "Chỉ hiển thị lượt đang chờ",
       "showAll": "Hiển thị tất cả",
       "older": "Lượt chấm công cũ hơn"
-    }
+    },
+    "skippedNoSuperior": "Tự động bỏ qua - Không còn Cấp trên trực tiếp ({sources})",
+    "skippedDecidedAt": "Được quyết định khi gửi đơn, {date}",
+    "skippedLabel": "Không bắt buộc"
   },
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",
