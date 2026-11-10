@@ -100,7 +100,7 @@ export async function seedPersonnelScaleFixture(count: number): Promise<Personne
         from (${fixtureSql(personPrefix, employmentPrefix, count)}) f)
       select $1::uuid,f.employment_id,($2::uuid[])[f.earlier_company],
         ($3::uuid[])[(f.earlier_company-1)*6 + 1 + (f.n+3)%6],($4::uuid[])[(f.earlier_company-1)*4 + 1 + (f.n+1)%4],
-        ($5::uuid[])[(f.earlier_company-1)*2 + 1 + (f.n+1)%2],null,null,'full_time',f.hired_on,f.changed_on,null
+        ($5::uuid[])[(f.earlier_company-1)*2 + 1 + (f.n+1)%2],null::uuid,null::uuid,'full_time'::employment_type,f.hired_on,f.changed_on,null::timestamptz
       from f where f.changed_on < $8::date
       union all
       select $1::uuid,f.employment_id,($2::uuid[])[f.company_index],
@@ -109,17 +109,17 @@ export async function seedPersonnelScaleFixture(count: number): Promise<Personne
         ($6::uuid[])[(f.company_index-1)*2 + 1 + f.n%2],($7::uuid[])[(f.company_index-1)*2 + 1 + (f.n/2)%2],
         (array['full_time','part_time','contract','intern']::employment_type[])[1 + (f.n%17)%4],
         case when f.changed_on < $8::date then f.changed_on else f.hired_on end,
-        case when f.n%30=2 then greatest($8::date + 15, f.hired_on + 1) end,null
+        case when f.n%30=2 then greatest($8::date + 15, f.hired_on + 1) end,null::timestamptz
       from f
       union all
       select $1::uuid,f.employment_id,($2::uuid[])[f.company_index],
         ($3::uuid[])[(f.company_index-1)*6 + 1 + (f.n+2)%6],($4::uuid[])[(f.company_index-1)*4 + 1 + f.n%4],
-        ($5::uuid[])[(f.company_index-1)*2 + 1 + f.n%2],null,null,'full_time',greatest($8::date + 15, f.hired_on + 1),null,null
+        ($5::uuid[])[(f.company_index-1)*2 + 1 + f.n%2],null::uuid,null::uuid,'full_time'::employment_type,greatest($8::date + 15, f.hired_on + 1),null::date,null::timestamptz
       from f where f.n%30=2
       union all
       select $1::uuid,f.employment_id,($2::uuid[])[f.company_index],
-        ($3::uuid[])[(f.company_index-1)*6 + 1 + (f.n+4)%6],null,null,null,null,'contract',
-        case when f.changed_on < $8::date then f.changed_on else f.hired_on end,null,now() - interval '2 days'
+        ($3::uuid[])[(f.company_index-1)*6 + 1 + (f.n+4)%6],null::uuid,null::uuid,null::uuid,null::uuid,'contract'::employment_type,
+        case when f.changed_on < $8::date then f.changed_on else f.hired_on end,null::date,now() - interval '2 days'
       from f where f.n%10=1`,
       [t, companyArray, keys.flatMap(key => departments[key]), positions, businessUnits, costCenters, locations, today]);
     // Reporting lines: one manager per block of 25, a closed earlier line for some, none for 1 in 12.
