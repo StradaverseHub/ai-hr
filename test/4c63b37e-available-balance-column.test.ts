@@ -233,7 +233,10 @@ describe('4c63b37e · (a) the column is on the screen and in the export, immedia
     // before the supplied transaction is used; neither waives the check.
     expect(read).toContain('await (options?.presentationSnapshot?assertReadCompositionPrincipalTx:assertAiPrincipalTx)(existingTx, ctx);');
     const composition = code('core/read-composition-principal.ts');
-    expect(composition).toContain('if(carrier?.snapshot===true)return assertAiPresentationPrincipalTx(tx,ctx);');
+    // Home (docs/adr/2026-11-10-home-request-read-scope.md) moved the snapshot probe into one shared statement
+    // owner so a request's carrier answers it once; the branch on it is unchanged.
+    expect(composition).toContain('if(await isRepeatableReadOnlyTx(tx))return assertAiPresentationPrincipalTx(tx,ctx);');
+    expect(code('core/read-only-snapshot.ts')).toContain("return sql`select current_setting('transaction_isolation')='repeatable read' and current_setting('transaction_read_only')='on' as snapshot`;");
     expect(composition).toContain(' return assertAiPrincipalTx(tx,ctx);\n}');
     for (const src of [page, route, inquiry]) expect(src, 'presentation adds no separate balance read').not.toMatch(/\bleaveBalances(?:Tx)?\(/);
   });

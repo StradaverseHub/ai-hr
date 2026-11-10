@@ -212,6 +212,10 @@ it('profiles initial/search/deep Personnel pages with fifty thousand native reta
   await owner.client.unsafe('create view '+view+'('+factsOwner.columns.map(name=>'"'+name.replaceAll('"','""')+'"').join(',')+')with(security_barrier=true)as '+factsOwner.body);
   try{
    await owner.client.unsafe('revoke all on '+view+' from public;grant select on '+view+' to ai_hr_app');
+   // The facts body now carries the staged-import predicate (5012), which only its definer owner may run. A view runs
+   // its functions as the reader, so inside this disposable database and for this experiment only the reader is
+   // given that predicate and its registry; both are taken away again with the view.
+   await owner.client.unsafe('grant execute on function app.import_marker_visible(uuid) to ai_hr_app;grant select on app.import_attempt_release to ai_hr_app');
    const [properties]=await owner.client`select relowner::regrole::text as owner,reloptions as options,has_table_privilege('ai_hr_app',oid,'SELECT')as app_select from pg_class where oid=to_regclass(${view})`;
    expect(properties.owner).toBe(factsOwner.owner);expect(properties.options).toContain('security_barrier=true');expect(properties.app_select).toBe(true);
    const [same]=await withTenant(ctx,tx=>tx.execute<{mismatches:number}>(sql`select count(*)::int as mismatches from(
@@ -286,6 +290,7 @@ it('profiles initial/search/deep Personnel pages with fifty thousand native reta
    const foreignRows=await withTenant({...adminCtx(foreign),grants:[{role:'hr_admin',companyId:null}]},tx=>tx.execute(sql`select * from app.performance_personnel_facts_view where company_id=${b.companyId}::uuid`));expect(foreignRows).toHaveLength(0);
    report.viewPurposeRefusals=true;
   }finally{
+   await owner.client.unsafe('revoke execute on function app.import_marker_visible(uuid) from ai_hr_app;revoke select on app.import_attempt_release from ai_hr_app');
    await owner.client.unsafe('drop view '+view);
    const [after]=await owner.client`select prosrc as body,proowner::regrole::text as owner,proargnames as columns,pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.access_workforce_list_facts()'::regprocedure`;
    expect(after).toEqual(factsOwner);report.originalFactsFunctionUnchanged=true;report.prototypeViewDropped=true;save();

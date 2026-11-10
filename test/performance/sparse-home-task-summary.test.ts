@@ -49,9 +49,10 @@ it('coalesces four sparse header owners without omitting any actual assigned wor
   statement:await measure(candidate),statementWarm:await measure(candidate)};
  expect(phases.original.transactions-phases.candidate.transactions).toBe(160);
  expect(phases.original.trips-phases.candidate.trips).toBe(400);
- // Through the account task statement every owner here is answered: one read-only snapshot per read, whose four
- // statements are drizzle's SET TRANSACTION (repeatable read, read only), the identity, the JIT setting and the statement.
- expect(phases.statement).toMatchObject({transactions:40,trips:160});
+ // Through the account task statement every owner here is answered: one read-only snapshot per read, whose three
+ // statements are the identity, the JIT setting and the statement. BEGIN itself carries repeatable read, read only
+ // (2a4de3f53), so drizzle sends no separate SET TRANSACTION.
+ expect(phases.statement).toMatchObject({transactions:40,trips:120});
  expect(await sqlState(original(group,['not-a-uuid']))).toBe('22P02');expect(await sqlState(candidate(group,['not-a-uuid']))).toBe('22P02');
  expect(await sqlState(owners(group,['not-a-uuid']))).toBe('22P02');
  const [cancel]=await owner.db.insert(s.leaveCancellationRequest).values(cancellation).returning();

@@ -36,15 +36,15 @@ it('refuses exact query bytes with missing, wrong or only ancestral admission co
   expect(()=>notificationAdmissionSummary([admissionModel(expected.expression,context)],expected)).toThrow('Exact reviewed');
 });
 
-it('models all2481 real helper rows per exact admission without accepting clipping, repetitions or opaque plans',()=>{
+it('models all2482 real helper rows per exact admission without accepting clipping, repetitions or opaque plans',()=>{
  const expected=reviewedAdmissionExpression(readFileSync('test/fixtures/notification-worker/exact-source.sql','utf8'));
- const model=()=>{const scan={'Node Type':'Seq Scan','Relation Name':'helper_contract','Actual Rows':2481,'Actual Loops':1,'Rows Removed by Filter':0};
+ const model=()=>{const scan={'Node Type':'Seq Scan','Relation Name':'helper_contract','Actual Rows':2482,'Actual Loops':1,'Rows Removed by Filter':0};
   const entry={...admissionModel(expected.expression,'\n'+expected.frame),document:{Plan:{'Node Type':'Result','Actual Rows':1,'Actual Loops':1,Plans:[scan]}}};return{scan,entry};};
- expect(notificationHelperContractScans([model().entry,model().entry],expected)).toEqual({admissions:2,rowsPerAdmission:2481,everyContractExamined:true});
- for(const change of [(m:ReturnType<typeof model>)=>{m.scan['Actual Rows']=2480;},(m:ReturnType<typeof model>)=>{m.scan['Actual Loops']=2;},
+ expect(notificationHelperContractScans([model().entry,model().entry],expected)).toEqual({admissions:2,rowsPerAdmission:2482,everyContractExamined:true});
+ for(const change of [(m:ReturnType<typeof model>)=>{m.scan['Actual Rows']=2481;},(m:ReturnType<typeof model>)=>{m.scan['Actual Loops']=2;},
   (m:ReturnType<typeof model>)=>{m.scan['Node Type']='Function Scan';},(m:ReturnType<typeof model>)=>{m.entry.document.Plan.Plans.pop();},
   (m:ReturnType<typeof model>)=>{m.entry.document.Plan.Plans.push({...m.scan});}]){
   const m=model();change(m);expect(()=>notificationHelperContractScans([m.entry],expected)).toThrow();
  }
- const filtered=model();filtered.scan['Actual Rows']=0;filtered.scan['Rows Removed by Filter']=2481;expect(notificationHelperContractScans([filtered.entry],expected).admissions).toBe(1);
+ const filtered=model();filtered.scan['Actual Rows']=0;filtered.scan['Rows Removed by Filter']=2482;expect(notificationHelperContractScans([filtered.entry],expected).admissions).toBe(1);
 });

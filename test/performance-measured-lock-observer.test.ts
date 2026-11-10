@@ -96,7 +96,10 @@ it.each(['access-configuration','audit-chain'] as const)(
   expect((await holder`begin`).command).toBe('BEGIN');holding=true;
   const [owned]=await holder<{held:boolean}[]>`select pg_try_advisory_xact_lock(${ids.hash}::bigint) as held`;
   expect(owned.held).toBe(true);
-  if(audit){expect((await actor`begin`).command).toBe('BEGIN');actorTransaction=true;}
+  // Audit-chain commit seal (5090): an append no longer takes the chain key in its own statement; the seal takes it
+  // from a deferred trigger at commit. Firing the deferred triggers immediately puts that same seal, and its wait on
+  // the key, inside the append statement, so this transaction can still be rolled back and leave no event.
+  if(audit){expect((await actor`begin`).command).toBe('BEGIN');actorTransaction=true;expect((await actor`set constraints all immediate`).command).toBe('SET CONSTRAINTS');}
   const command=audit
    ?actor`select app.append_auth_event(NULL,'internal-login',${auditAggregateId}::uuid,'app-user.login-refused','external',NULL,NULL)`
    :actor`select pg_advisory_xact_lock(${ids.hash}::bigint)`;
