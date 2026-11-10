@@ -27,7 +27,7 @@
     ".github/ci/diagnostics/native-reference/application-mode.mjs": "b8dee0b836e1047d3574cf5ca30515c521096fef383741aa87d56202243957dd",
     ".github/ci/diagnostics/native-reference/application-mode.test.mjs": "caf06a5c9253830098f61ea0cefe7abdcc5a4a6f5a7004e6eb3e36d1031af2a0",
     ".github/ci/diagnostics/native-reference/application-original-attachment-inverse.json": "1a387510ae8ce606ba3ad6a56627e2833dbde96fa541e134bdaf005bbcc904bb",
-    ".github/ci/diagnostics/native-reference/application-owner-inverse.json": "8584d652e8e62ae358a286adbc9535de49b3c2fc03d40d2b5fc17da0597f828c",
+    ".github/ci/diagnostics/native-reference/application-owner-inverse.json": "b0e4cd913d0009edaeda45a33380089d72150fedd6468c4b4ce2a903c930ecda",
     ".github/ci/diagnostics/native-reference/application-parent-context-inverse.json": "176db10f6b9cb53a70aa5bf6f1c201317eb9cbd94882f902e1f966fff66ec816",
     ".github/ci/diagnostics/native-reference/application-protocol.mjs": "a3daa34c48285dd3ea17573245730fdcdb9f03a79f462a77735eff059a056376",
     ".github/ci/diagnostics/native-reference/application-syntax.mjs": "b395b3020bd0228937d656e42889e213b1096d584d988b1728f752aca2fb820d",
