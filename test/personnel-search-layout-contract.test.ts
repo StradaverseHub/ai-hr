@@ -39,6 +39,26 @@ describe('Personnel list search and profile switcher remain scoped RSC-safe isla
     const island=read('app/admin/personnel/organisation-filters.tsx');expect(island).toContain('method="post"');expect(island).toContain('name="term"');expect(island).not.toContain('name="q" type="search"');
   });
 
+  it('eaa7697c · the listing shows the private term box beside Filter, inside the shared request controller', () => {
+    const src=read(LISTING);
+    expect(src).toContain("import {PersonnelListSearch} from './list-search';");
+    const controller=src.indexOf('<PersonnelAutoFilters'),box=src.indexOf('<PersonnelListSearch'),filter=src.indexOf('<PersonnelOrganisationFilters'),end=src.indexOf('</PersonnelAutoFilters>');
+    expect(controller).toBeGreaterThan(-1);expect(box).toBeGreaterThan(controller);expect(filter).toBeGreaterThan(box);expect(end).toBeGreaterThan(filter);
+    // Directly beside Filter: nothing else is mounted between the two.
+    expect(src.slice(box,filter).match(/<[A-Z]/g)).toEqual(['<P']);
+    expect(src.slice(box,filter)).toContain('privateCriteria={privateCriteria??undefined}');
+    const island=read('app/admin/personnel/list-search.tsx');
+    expect(island.startsWith("'use client'")).toBe(true);
+    expect(island).toContain('action="/admin/personnel/search"');expect(island).toContain('method="post"');
+    expect(island).toContain('name="term"');expect(island).not.toContain('name="q"');expect(island).not.toContain('required');
+    expect(island).toContain("usePersonnelAutoFilter('personnel-list-search')");expect(island).toContain('<PersonnelFilterFeedback formId="personnel-list-search"/>');
+    expect(island).toContain("useTranslations('people.switcher')");
+    // Same size and look as the profile switcher.
+    expect(read(ISLAND)).toContain('h-9 w-52 sm:w-64 md:w-72');expect(island).toContain('h-9 w-52 sm:w-64 md:w-72');
+    // r123: plain-data props only, and no navigation — this box narrows the list, it does not jump.
+    expect(island).not.toMatch(/on[A-Z]\w*\??:\s*\(/);expect(island).not.toContain('router.push');
+  });
+
   it('the profile mounts it and keeps the open tab across the jump', () => {
     const src = read(PROFILE);
     expect(src).toContain('<EmployeeSwitcher');
