@@ -1,10 +1,11 @@
 /**
  * Fictional-data rehearsal of the background movement import (bulk-job kernel, draft 9910). Disposable database only:
  * refuses any URL not on the rehearsal port. Seeds a populated tenant (BASE_EMPLOYEES, default 3000) plus the
- * movement subjects, checks a full-size movement file (50 employees, ~180 rows: promotions with salary, transfers,
+ * movement subjects, checks a full-size movement file (50 employees, ~130 rows: promotions with salary, transfers,
  * manager changes, exits of people with logins and company changes), then confirms it twice on separate subjects:
- *   1. the old synchronous confirmation (one request), for the reference lock profile;
- *   2. the background job, run by the real protected worker process (scripts/bank-import-runner.ts).
+ *   1. the old synchronous check and confirmation (one request each), for the reference lock profile;
+ *   2. the background check and the background confirmation, run by the real protected worker process
+ *      (scripts/bank-import-runner.ts), and the whole-import revert of that confirmation.
  * Hot-path probes (login, an Access writer, clock-in, My Profile, Home, Personnel) and an independent sampler of every
  * tenant-wide lock run during each phase. Env: DATABASE_URL (app), MIGRATION_DATABASE_URL (owner), REHEARSAL_PORT,
  * REHEARSAL_TENANT, REHEARSAL_ADMIN, BASE_EMPLOYEES (3000), SUBJECTS (50), SKIP_SYNC=1.
@@ -30,7 +31,7 @@ const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 async function main(){
  const {commitEmployeeImport}=await import('../../core/import');
  const {previewMovementUpload,confirmMovementUpload}=await import('../../core/movement-import-history');
- const {startMovementImportJob}=await import('../../core/movement-import-job');
+ const {startMovementImportJob,startMovementCheckJob,getMovementCheckJob}=await import('../../core/movement-import-job');
  const {createJobGrade,createPosition}=await import('../../core/admin');
  const {checkIn}=await import('../../packs/attendance/service');
  const {withTenant,client}=await import('../../db/client');
@@ -122,17 +123,27 @@ async function main(){
  const report:Record<string,unknown>={baseline:{probes:baseline.probes,errorCount:baseline.errorCount,errors:baseline.errors}};
 
  if(syncSubjects){
-  const checked=await check(syncSubjects,'rehearsal-sync.csv');
-  report.syncPreview={ms:checked.ms,employees:checked.checked.preview.employees.length,rows:checked.rows,valid:checked.valid.length,refused:checked.refused.slice(0,5)};
+  const previewedSync=await phase('syncPreview',()=>check(syncSubjects,'rehearsal-sync.csv'));const checked=previewedSync.value;
+  report.syncPreview={ms:checked.ms,employees:checked.checked.preview.employees.length,rows:checked.rows,valid:checked.valid.length,refused:checked.refused.slice(0,5),probes:previewedSync.probes,errorCount:previewedSync.errorCount,busy:previewedSync.busy,tenantLocks:{byLock:previewedSync.tenantLocks.byLock}};
   const sync=await phase('sync',()=>confirmMovementUpload(admin,{attemptId:checked.checked.attemptId,previewHash:checked.checked.previewHash,employees:checked.valid,acknowledgeExcluded:true,resolve}));
   report.syncConfirm={wallMs:sync.wallMs,imported:sync.value.imported,failed:sync.value.failed,probes:sync.probes,errorCount:sync.errorCount,busy:sync.busy,errors:sync.errors,tenantLocks:sync.tenantLocks};
  }
- // The check (preview) still runs in the request: measured on its own, it is the next conversion candidate.
- const previewed=await phase('preview',()=>check(jobSubjects,'rehearsal-job.csv'));const checked=previewed.value;
- report.jobPreview={ms:checked.ms,employees:checked.checked.preview.employees.length,rows:checked.rows,valid:checked.valid.length,refused:checked.refused.slice(0,5),
-  probes:previewed.probes,errorCount:previewed.errorCount,busy:previewed.busy,errors:previewed.errors,tenantLocks:previewed.tenantLocks};
  const worker:{proc?:ChildProcess}={};
  worker.proc=spawn(process.execPath,['--import','tsx','scripts/bank-import-runner.ts'],{env:{...process.env,AIHR_DB_POOL_MAX:'4'},stdio:'inherit'});
+ // The check runs on the job too: the request only stores the file; the worker checks one employee per chunk.
+ const previewed=await phase('preview',async()=>{
+  const t0=Date.now();const started=await startMovementCheckJob(admin,{name:'rehearsal-job.csv',content:fileFor(jobSubjects),locale:'en',operationKey:randomUUID()});const requestMs=Date.now()-t0;
+  for(;;){const [r]=await obs`select state,metrics from bulk_job where id=${started.job.id}::uuid`;if(['completed','failed','cancelled'].includes(r.state))break;await sleep(500);}
+  const job=await getMovementCheckJob(admin,started.job.id);if(job.state!=='completed'||!job.result)throw new Error('the check job did not complete: '+job.error);
+  const [{metrics}]=await obs`select metrics from bulk_job where id=${started.job.id}::uuid`;
+  const preview=job.result.preview;const valid=preview.employees.filter(e=>e.fingerprint).map(e=>e.key!);
+  const refused=preview.employees.filter(e=>!e.fingerprint).map(e=>`${e.employeeCode}: ${e.rows.flatMap(r=>r.errors).join('; ')}`);
+  console.log(JSON.stringify({check:'rehearsal-job.csv (job)',ms:Date.now()-t0,requestMs,employees:preview.employees.length,valid:valid.length,refused:refused.slice(0,6)}));
+  if(!valid.length)throw new Error('no employee was checked without errors');
+  return{checked:job.result,valid,ms:Date.now()-t0,requestMs,refused,metrics,rows:preview.employees.reduce((n,e)=>n+e.rows.length,0)};
+ });const checked=previewed.value;
+ report.jobPreview={ms:checked.ms,requestMs:checked.requestMs,metrics:checked.metrics,employees:checked.checked.preview.employees.length,rows:checked.rows,valid:checked.valid.length,refused:checked.refused.slice(0,5),
+  probes:previewed.probes,errorCount:previewed.errorCount,busy:previewed.busy,errors:previewed.errors,tenantLocks:previewed.tenantLocks};
  const job=await phase('job',async()=>{
   const started=await startMovementImportJob(admin,{attemptId:checked.checked.attemptId,previewHash:checked.checked.previewHash,employees:checked.valid,acknowledgeExcluded:true,locale:'en',operationKey:randomUUID()});
   if(!('job' in started))throw new Error('expected a job');
@@ -140,7 +151,6 @@ async function main(){
   for(;;){const [r]=await obs`select state,steps_done,steps_total,counters,metrics,error,result->>'imported' as imported,result->>'failed' as failed,finished_at-created_at as duration from bulk_job where id=${started.job.id}::uuid`;
    if(['completed','failed','cancelled'].includes(r.state))return{...r,admissionToTerminalMs:Date.now()-admitted};await sleep(500);}
  });
- const exited=new Promise(resolve=>worker.proc!.once('exit',resolve));worker.proc.kill('SIGTERM');await exited;
  const [{punches,badDays}]=await obs`select count(*)::int punches,(select count(*)::int from (select a.attendance_date,count(*) c from attendance a join attendance_punch p on p.attendance_id=a.id where a.employment_id=${employmentId}::uuid and p.direction='in' and a.attendance_date>=${new Date(clockBase).toISOString().slice(0,10)}::date group by 1 having count(*)<>1) x) as "badDays" from attendance a join attendance_punch p on p.attendance_id=a.id where a.employment_id=${employmentId}::uuid and p.direction='in' and a.attendance_date>=${new Date(clockBase).toISOString().slice(0,10)}::date`;
  report.job={wallMs:job.wallMs,outcome:job.value,probes:job.probes,errorCount:job.errorCount,busy:job.busy,errors:job.errors,tenantLocks:job.tenantLocks};
  report.clockPunches={punches,datesWithOtherThanOnePunch:badDays};
@@ -152,6 +162,7 @@ async function main(){
    const t1=Date.now();const done=await revertImportForAttempt(admin,checked.checked.attemptId,{previewHash:review.previewHash,reason:'Fictional rehearsal revert'});return{reviewMs,revertMs:Date.now()-t1,restored:done.restored};});
   report.revert={...reverted.value,probes:reverted.probes,errorCount:reverted.errorCount,busy:reverted.busy,errors:reverted.errors,tenantLocks:reverted.tenantLocks};
  }
+ const exited=new Promise(resolve=>worker.proc!.once('exit',resolve));worker.proc.kill('SIGTERM');await exited;
  report.auditChain=await verifyTenantChain(admin);
  console.log(JSON.stringify(report,null,2));
  await obs.end();await client.end();
