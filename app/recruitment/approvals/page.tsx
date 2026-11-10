@@ -37,7 +37,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
   return (
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={t('purpose')} />
-      <RecruitmentTabs active="approvals" admin={access.isAdmin} approvals={access.pendingApprovals} />
+      <RecruitmentTabs active="approvals" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0} />
       <Notice text={sp.notice === 'saved' ? t('decidedNotice') : undefined} />
       <ErrorBanner message={await recruitmentErrorText(sp.error)} />
       {empty && <p className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">{t('empty')}</p>}

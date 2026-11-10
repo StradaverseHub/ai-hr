@@ -60,6 +60,8 @@ export const RECRUITMENT_ERROR_CODES = [
   // Slice 5.
   'possible_duplicate', 'repeat_application', 'candidate_removed', 'file_type', 'file_too_large', 'permission_required', 'not_due',
   'confirm_required', 'consent_state', 'tag_disabled',
+  // Slice 6.
+  'period_invalid', 'period_too_long', 'report_too_slow',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

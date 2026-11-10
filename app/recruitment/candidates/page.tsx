@@ -43,7 +43,7 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
   return (
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={t('purpose')} />
-      <RecruitmentTabs active="candidates" admin={access.isAdmin} approvals={access.pendingApprovals} />
+      <RecruitmentTabs active="candidates" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0} />
       <Notice text={sp.notice === 'saved' ? t('savedNotice') : undefined} />
       <ErrorBanner message={await recruitmentErrorText(sp.error)} />
       {companies.length === 0 ? <NoRecruitmentCompany /> : (

@@ -405,3 +405,68 @@ and tests. New tables get forced RLS, explicit grants and none to PUBLIC; every 
     and pipeline counts are unchanged; the event carries no personal data.
 27. Every new table has forced RLS, grants to the app role and none to PUBLIC; the AI Centre recruitment read still
     returns counts only.
+
+## Slice 6 — Recruitment reports (owner: "continue the next one", 2026-11-10; EV-032…EV-034)
+
+Scope: a Reports tab with four fixed dashboards computed by deterministic SQL aggregation in the pack. No report
+designer, template library or custom data sources (D-017). Nothing calls a model. Reports show counts, rates and
+durations only — never a candidate's name, contact or any restricted value. One migration only if indexes are needed
+(next free number after a fresh peer survey).
+
+### Access (EV-034: role-scoped data sources)
+
+- Recruitment administrators and Recruiting Partners: every company they administer.
+- Recruiters, assistants and hiring managers: the same dashboards restricted to the jobs they are on (Overview,
+  Positions, Interviews). The Team dashboard is for administrators only (D-018).
+- Interviewers and everyone else: no Reports tab; the service refuses.
+- Enforced by the existing row security and job predicates; the service never widens a query beyond what the caller
+  may read.
+
+### Filters
+
+Company, job (any of the caller's), department, and a period (from, to; Kuala Lumpur calendar days through the HR date
+owner; at most 24 months; default the last 3 months). A period filters by the application's creation date unless a
+measure says otherwise. Trends bucket by Monday-start week for periods up to 13 weeks, otherwise by calendar month.
+
+### Dashboards
+
+1. **Overview** (EV-033 Overview): applications in the period; offers created; offers sent; hired; now at Onboarding;
+   requisitions in the period and their completion rate (filled vacancies ÷ total vacancies, from the slice 4
+   figures); application trend; current active applications by stage; per-job progress (applications, interviews,
+   offers, hired against vacancies when a requisition is linked); applications by source (slice 5 source field).
+2. **Positions** (EV-033 Position): one row per job — applications, interviewed, offers created, offers sent, hired,
+   rejected; applications per hire; offer acceptance rate (accepted ÷ decided); average days from application to hire;
+   stage funnel (applications that ever reached each stage of the job's process, from the application history).
+3. **Interviews** (EV-033 Interview analysis): interviews held (past, not cancelled) with change against the previous
+   period of equal length; feedback rate (submitted scorecards ÷ interviewer places on held interviews); pending
+   feedback; upcoming interviews; result distribution (recommended, keep in view, not suitable); interview pass rate
+   (interviewed applications that later moved past the interview's stage or were hired ÷ interviewed applications
+   with an outcome).
+4. **Team** (EV-033 HR's efficiency; administrators only): per job recruiter — applications moved out of the first
+   stage, interviews scheduled, offers created, hires. Counts of work done, not a rating of people (D-018).
+
+Rules: a rate with a zero denominator shows "—", never 0 or an error. Durations are whole days in Kuala Lumpur
+calendar days. Removed candidates (slice 5) still count, anonymously. Not built: gender distribution (gender is not
+collected, D-013), candidate satisfaction (no survey exists), headhunter and referral dashboards (channels not built),
+export (D-019).
+
+Performance (owner scale bar): each dashboard is a bounded number of aggregate queries in one read-only snapshot
+transaction with a local statement timeout; indexes support (tenant, company, created date) and stage-history scans;
+per-job tables are limited to the 100 jobs with the most applications in the period, with a "showing 100 of N" note.
+A slow report must never block writes.
+
+### Slice 6 acceptance cases
+
+28. Access: administrators see their companies; a partner only theirs; a recruiter or hiring manager only their jobs'
+    figures; interviewers and bystanders get no tab and a refusal; no candidate name, email, phone or restricted value
+    appears in any report result (sentinel check).
+29. Overview figures equal independent SQL counts on a fixture with fixed dates, including period edges at Kuala
+    Lumpur midnight.
+30. Positions: applications per hire, acceptance rate and average days to hire match hand-computed values; zero
+    denominators show "—".
+31. Funnel counts applications that reached each stage even when later archived, from the application history.
+32. Interviews: feedback rate, pending feedback, result distribution, pass rate and the previous-period change match
+    hand-computed values; cancelled interviews are excluded.
+33. Team dashboard: administrators only; per-recruiter counts match.
+34. Periods over 24 months are refused; trends bucket correctly across month and week boundaries; removed candidates
+    are counted without any personal data; every query runs read-only.

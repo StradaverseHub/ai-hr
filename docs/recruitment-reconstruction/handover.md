@@ -70,6 +70,15 @@ repeated-application window, manual tags, PDPA consent, retention and confirmed 
 `parity-report.md`; decisions D-013…D-016 in `discrepancies.md` wait for the owner (sensitive questions not collected,
 no smart tags, no merge, retention defaults 6/24 months per company).
 
+## Update — slice 6 reports built, reviewed and rendered (uncommitted, 2026-11-11)
+
+Four fixed dashboards (Overview, Positions, Interviews, Team) with role scoping, a time budget and indexes (4406).
+Decisions D-017…D-019 wait for the owner.
+
+**Before any merge:** `origin/main` and `origin/alpha` now carry migrations 4600, 4601 and 4800 with later timestamps
+than this branch's 4400–4406. Bring the branch up to date with `main`, then renumber 4400–4406 into a free block above
+the highest applied and claimed timestamps (peer survey first), or the recruitment migrations will be skipped.
+
 ## Next actions, in order (original plan)
 
 1. Resolve B-001: the owner signs in to a Moka **test tenant** in the built-in browser pane. Then use read-only observation (`read_page`, screenshots, network list) per role and journey, recording EV-0xx entries.

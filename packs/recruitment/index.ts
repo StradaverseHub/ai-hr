@@ -21,6 +21,9 @@
  * - Candidate records and privacy (slice 5, ./candidates and ./privacy-model): profile, restricted values, files, duplicate
  *   detection that discloses only a count, repeated applications, manual tags, consent, retention and administrator-confirmed
  *   destruction (db/migrations/4405_recruitment_candidate_privacy.sql).
+ * - Reports (slice 6, ./reports and ./report-model): four fixed dashboards (Overview, Positions, Interviews, Team) of
+ *   aggregates only, each in one read-only snapshot with a local statement timeout; administrators see their companies,
+ *   a job's recruiter, assistants and hiring managers only their jobs; Team is administrator-only. Indexes: 4406.
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (4402); the menu shows for team members, interviewers and pending approvers.
  */

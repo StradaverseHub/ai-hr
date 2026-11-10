@@ -84,6 +84,9 @@ export type RecruitmentViewer = {
   teamCompanies: RecruitmentCompany[];
   /** The caller has an approval step waiting for them (offer or requisition). */
   pendingApprovals: number;
+  /** Slice 6: companies whose Reports the caller may open — those they administer, and those where they are a job's
+   *  recruiter, assistant or hiring manager (an interviewer alone gets none). */
+  reportCompanies: RecruitmentCompany[];
 };
 
 /**
@@ -93,8 +96,10 @@ export type RecruitmentViewer = {
 export async function recruitmentViewer(s: SessionContext, scopeIds: readonly string[]): Promise<RecruitmentViewer> {
   const ids = scopeIds.filter(isUuid);
   return withRecruitmentTenant(s, async (tx) => {
-    const rows = ids.length ? await tx.execute<{ id: string; name: string; admin: boolean; team: boolean }>(sql`
-      select c.id, c.legal_name as name, app.can_admin_recruitment_for(c.id) as admin, app.recruitment_team_in_company(c.id) as team
+    const rows = ids.length ? await tx.execute<{ id: string; name: string; admin: boolean; team: boolean; reporter: boolean }>(sql`
+      select c.id, c.legal_name as name, app.can_admin_recruitment_for(c.id) as admin, app.recruitment_team_in_company(c.id) as team,
+        exists (select 1 from recruitment_job_member m where m.tenant_id = c.tenant_id and m.company_id = c.id
+          and m.app_user_id = app.current_user_id() and m.member_role in ('recruiter', 'assistant', 'hiring_manager')) as reporter
       from company c
       where c.tenant_id = ${s.tenantId}::uuid and c.id = any(${uuidArray(ids)}::uuid[]) and c.archived_at is null
       order by c.legal_name, c.id`) : [];
@@ -106,6 +111,7 @@ export async function recruitmentViewer(s: SessionContext, scopeIds: readonly st
       adminCompanies: rows.filter((r) => r.admin).map((r) => ({ id: r.id, name: r.name })),
       teamCompanies: rows.filter((r) => !r.admin && r.team).map((r) => ({ id: r.id, name: r.name })),
       pendingApprovals: pending?.n ?? 0,
+      reportCompanies: rows.filter((r) => r.admin || r.reporter).map((r) => ({ id: r.id, name: r.name })),
     };
   });
 }

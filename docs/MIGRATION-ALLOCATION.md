@@ -1,3 +1,18 @@
+# Recruitment slice 6 — 10 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 5 entry,
+`4406_recruitment_report_indexes` at idx 3806 / when 1793330004106. A fresh read-only
+survey after `git fetch --prune origin` of 3,986 remote refs (421 distinct committed journal
+blobs), 1,264 registered worktrees (249 readable journals) and 343 committed
+allocation-document blobs found no claim of this name, position or timestamp. Peers above
+this block still exist (4500–4501, 4600–4601, 4700–4703, 4800, 4900–4902 and the 9xxx
+bulk-job and access series; the peer timestamp maximum is 1793330099951), so whichever lands
+later must be checked against the applied watermark; a lower timestamp can be silently
+skipped. 4406 adds four plain (tenant, company, date) indexes on recruitment tables created
+by 4401–4403 and changes nothing else; 4400–4405 are unapplied outside throwaway databases
+and CI. Recheck peer claims, the published baseline and the ordered applied ledger before
+admission. The reservation grants no installation authority.
+
 # Recruitment slice 5 — 10 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slices 2–4 block,

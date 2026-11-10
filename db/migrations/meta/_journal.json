@@ -5125,6 +5125,13 @@
       "when": 1793330004105,
       "tag": "4405_recruitment_candidate_privacy",
       "breakpoints": true
+    },
+    {
+      "idx": 3806,
+      "version": "7",
+      "when": 1793330004106,
+      "tag": "4406_recruitment_report_indexes",
+      "breakpoints": true
     }
   ]
 }

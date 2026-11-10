@@ -1,4 +1,4 @@
-# Recruitment — parity and verification report (slices 1–5, 2026-11-10)
+# Recruitment — parity and verification report (slices 1–6, 2026-11-11)
 
 Replica revision: uncommitted working tree on `claude/rea-web-app-reconstruction-2c12ee`, base `f07f32dcd`.
 Reference baseline: Moka `hire-r1`, the owner's live tenant, one non-super-admin account, read-only (EV-007…EV-020).
@@ -178,6 +178,54 @@ then removed — afterwards a scan of every text column of every recruitment tab
 name nor the email, and stage counts were unchanged; Settings › Tags; the duplicate warning for an administrator (the
 matching candidate, matched fields and the two choices) and for a recruiter ("may already have this candidate, ask
 an HR administrator", no details), with the audit events carrying ids and counts only. Server log: no errors.
+
+## GitHub Actions focused run 42831274035 (commit 16ed2b44e, slices 1–5, 2026-11-10)
+
+| Job | Result |
+| --- | --- |
+| Whole-repo `typecheck` | PASS |
+| `linux-build` (production build) | PASS |
+| Selected tests, no-DB batch (30 files, 554 tests) | 29 files PASS, including the DOM files `r374-no-basic-salary-forms`, `ui-audit-role-layout`, `create-employee-dialog`, `draft-record-tabs`; `provider-analysis-policy` 9 FAIL (stale owner approval, expected) |
+| Selected tests, DB batch (20 files, 406 tests) | 15 files PASS, including `recruitment-candidate-privacy` (12), `recruitment-privacy-rules` (20), `recruitment-slices-service` (15), `recruitment-service`, `company-referrers` (93), `module-job-source-security` (64), `partner-roles`, `module-gate`; 5 FAIL, 44 tests |
+
+The DB failures are the same five AI files with the same count as run 42792007535 (`assistant-conversation-evaluation-fence`
+11, `assistant-conversation-lifecycle` 5, `human-module-planner` 18, `module-agent-evaluation-progress` 4,
+`module-agent-prompt-release` 6). Logged causes: `AiPrivacyGateError`, fixture evaluations left `incomplete` because
+their provider calls are refused, and downstream timeouts. Consistent with the stale owner approval; not individually
+re-proven.
+
+## Slice 6 — recruitment reports (2026-11-11, uncommitted)
+
+Observed read-only first (EV-032…EV-034). Built by a builder agent, reviewed by a separate reviewer agent, fixed,
+then checked by the lead. Migration 4406 adds four report indexes (idx 3806) after a fresh peer survey.
+
+Review findings and outcomes:
+
+| Finding | Severity | Outcome |
+| --- | --- | --- |
+| Migrations 4400–4406 are timestamped below `4600`/`4601`/`4800`, which `origin/main` and `origin/alpha` now carry; after a merge they would be skipped on any database that applied 4800 | High (integration) | Open: renumber above the watermark when the branch is brought up to date with `main` (needs the owner's go-ahead) |
+| A dashboard's snapshot could live for minutes (per-statement timeout only), and a timeout showed an error page | Medium | Fixed: 20-second budget per dashboard, 5-second statements, timeouts shown as "narrow the period" in 6 languages |
+| Each dashboard rebuilt the job scope and application set several times | Medium (scale) | Fixed: scope computed once; statements per dashboard 12→7, 9→5, 8→4, 7→5 (asserted in tests) |
+| Years outside 2000–2100 caused server errors | Low | Fixed: refused as an invalid period |
+| Interview pass rate counted progress made before the interview | Low | Fixed: only progress at or after the interview counts |
+| Requisition figures shown for a mix of administered and non-administered companies | Low | Fixed: hidden with a note unless every selected company is administered |
+| Team dashboard credit rule unstated | Low | Documented on screen and in code |
+
+No access leak and no personal data were found: team members see only their own jobs, interviewers and approvers
+are refused, and no name, contact, restricted value, scorecard text or offer value reaches a result.
+
+Checks by the lead (private Postgres 16 cluster, resource lock): DB tests `recruitment-reports` (cases 28–34 and the
+review fixes), `recruitment-report-rules`, `recruitment-candidate-privacy`, `recruitment-privacy-rules`,
+`recruitment-slices-service`, `recruitment-service`, `module-gate`, `module-job-source-security`, `company-referrers`,
+`partner-roles` — PASS, 10 files, 288 tests. No-DB set (33 files) PASS except 9 `provider-analysis-policy` (stale
+owner approval, expected). Scoped `tsc` over 20 changed files: 0 errors. ESLint clean on touched files (one existing
+error in `lib/product-context/destinations.ts` `classifyPage`, not from this change). AI manifests regenerated.
+
+Rendered (fictional data): Overview (KPIs, trend chart with an accessible table, stages, sources, per-job progress),
+Positions (per-job figures, rates showing "—" with no hires, stage funnel), Interviews (held vs previous period,
+feedback rate, results), Team (recruiter work counts with the credit note) for HR Admin; an interviewer has no Reports
+tab and is sent back to Candidates; a 0099–9999 period is refused without an error page (its message still says the
+start is after the end — wording nit). Server log: no errors.
 
 ## Not verified
 

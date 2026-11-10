@@ -53,6 +53,7 @@ const TABS = [
   { key: 'interviews', href: '/recruitment/interviews', adminOnly: false },
   { key: 'positions', href: '/recruitment/positions', adminOnly: false },
   { key: 'talentPool', href: '/recruitment/talent-pool', adminOnly: true },
+  { key: 'reports', href: '/recruitment/reports', adminOnly: false },
   { key: 'approvals', href: '/recruitment/approvals', adminOnly: false },
   { key: 'settings', href: '/recruitment/settings', adminOnly: true },
 ] as const;
@@ -60,16 +61,18 @@ export type RecruitmentTabKey = (typeof TABS)[number]['key'];
 
 /**
  * The module's own sub-navigation (one menu entry, F1): Overview, Candidates, Interviews, Positions, Talent pool,
- * Approvals and Settings. A job-team member sees Candidates, Interviews and Positions (their own jobs); Approvals shows
- * when a step waits for the viewer; Overview, Talent pool and Settings are administrator-only.
+ * Reports, Approvals and Settings. A job-team member sees Candidates, Interviews and Positions (their own jobs); Reports
+ * shows for administrators and for a job's recruiter, assistant or hiring manager (`reports`; never an interviewer
+ * alone); Approvals shows when a step waits for the viewer; Overview, Talent pool and Settings are administrator-only.
  */
-export async function RecruitmentTabs({ active, admin = true, approvals = 0 }: { active: RecruitmentTabKey; admin?: boolean; approvals?: number }) {
+export async function RecruitmentTabs({ active, admin = true, approvals = 0, reports = false }: { active: RecruitmentTabKey; admin?: boolean; approvals?: number; reports?: boolean }) {
   const t = await getTranslations('recruitment.tabs');
   const label: Record<RecruitmentTabKey, string> = {
     overview: t('overview'), candidates: t('candidates'), interviews: t('interviews'), positions: t('positions'), talentPool: t('talentPool'),
-    approvals: t('approvals'), settings: t('settings'),
+    reports: t('reports'), approvals: t('approvals'), settings: t('settings'),
   };
-  const shown = TABS.filter((tab) => (admin || !tab.adminOnly) && (tab.key !== 'approvals' || approvals > 0 || active === 'approvals'));
+  const shown = TABS.filter((tab) => (admin || !tab.adminOnly) && (tab.key !== 'approvals' || approvals > 0 || active === 'approvals')
+    && (tab.key !== 'reports' || admin || reports || active === 'reports'));
   return (
     <nav aria-label={t('label')} className="flex flex-wrap gap-1 border-b border-border">
       {shown.map((tab) => (

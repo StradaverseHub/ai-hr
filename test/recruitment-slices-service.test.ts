@@ -136,7 +136,7 @@ describe('case 11 — no team, not an administrator: no menu and no rows', () =>
     const t = await hiringTeam();
     await scheduleInterview(t.recruiter, { applicationId: t.appX, type: 'onsite', startsAt: future(24), interviewerIds: [t.interviewerA.userId] });
     expect(await recruitmentTeamPresence(t.bystander)).toBe(false);
-    expect(await recruitmentViewer(t.bystander, [base.companyId, otherCompanyId])).toEqual({ adminCompanies: [], teamCompanies: [], pendingApprovals: 0 });
+    expect(await recruitmentViewer(t.bystander, [base.companyId, otherCompanyId])).toEqual({ adminCompanies: [], teamCompanies: [], pendingApprovals: 0, reportCompanies: [] });
     expect(await code(candidateBoard(t.bystander, [base.companyId]))).toBe('forbidden');
     expect(await code(interviewSchedule(t.bystander, [base.companyId]))).toBe('forbidden');
     const tables = await owner.db.execute<{ relname: string }>(sql`select relname from pg_class c join pg_namespace n on n.oid = c.relnamespace

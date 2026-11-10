@@ -175,13 +175,15 @@ export const SCREENS: readonly ScreenEntry[] = [
   // recruitment administrators (canAdminRecruitment: HR administrators and the company-scoped Recruiting Partner) for
   // the companies app.can_admin_recruitment_for answers true, and — slice 2 — job-team members and interviewers for
   // their own jobs and interviews (app.can_*_recruitment_job, 4402), and approvers for their own pending steps.
-  // Overview, Settings, Requisitions and Talent pool stay administrator-only inside the page. The service and row
+  // Overview, Settings, Requisitions and Talent pool stay administrator-only inside the page; Reports (slice 6) admits
+  // administrators and a job's recruiter, assistant or hiring manager for their own jobs, its Team view administrators only. The service and row
   // security refuse independently. A capability gate inside the page, not a role grant at the boundary — hence
   // conditionalAccess.
   {screenKey:'recruitment',href:'/recruitment',labelKey:'nav.recruitment',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
     '/recruitment','/recruitment/positions','/recruitment/positions/new','/recruitment/positions/[id]','/recruitment/candidates','/recruitment/settings',
     '/recruitment/applications/[id]','/recruitment/interviews','/recruitment/interviews/[id]/feedback','/recruitment/scorecards/[id]',
     '/recruitment/requisitions','/recruitment/requisitions/new','/recruitment/requisitions/[id]','/recruitment/talent-pool','/recruitment/approvals',
+    '/recruitment/reports',
   ]},
   // ── Everyday screens (scopedSession: every role reaches, data is scoped) ──
   { screenKey: 'dashboard', href: '/', labelKey: 'nav.dashboard', guard: 'scopedSession', routes: ['/'] },

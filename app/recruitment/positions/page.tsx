@@ -33,7 +33,7 @@ export default async function RecruitmentPositionsPage({ searchParams }: { searc
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={access.isAdmin ? t('purpose') : t('teamPurpose')}
         actions={access.isAdmin ? <Link href="/recruitment/positions/new" className={btnPrimary}>{t('new')}</Link> : undefined} />
-      <RecruitmentTabs active="positions" admin={access.isAdmin} approvals={access.pendingApprovals} />
+      <RecruitmentTabs active="positions" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0} />
       {access.isAdmin && <SubTabs label={t('areaTabs')} items={[
         { key: 'positions', href: '/recruitment/positions', text: t('positionsTab'), current: true },
         { key: 'requisitions', href: '/recruitment/requisitions', text: t('requisitionsTab'), current: false },
