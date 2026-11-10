@@ -710,8 +710,9 @@ function comparisonTelemetry(result,out){
  let canonicalBuild=null;
  if(result.build&&report.phases.some(row=>row.label==='build'))try{
   const memory=readComparisonJson(join(out,'next-build-memory','build-memory.json'),32768);
+  const verdict=memory.verdict==='within'?'pass':memory.verdict;
   canonicalBuild={...metrics(memory,['peakRssKiB','minMemAvailableKiB','memTotalKiB','memAvailableSamples','exitCode']),
-   verdict:['pass','warn','fail'].includes(memory.verdict)?memory.verdict:null};
+   verdict:['pass','warn','fail'].includes(verdict)?verdict:null};
  }catch{}
  const roles=['employee','manager','companyHR','groupHR'];
  const roleLatency=browser?.steady?Object.fromEntries(roles.map(role=>[role,Object.fromEntries(['navigation','read','write'].map(work=>

@@ -1,6 +1,6 @@
 /** Filesystem models for the hosted Linux byte owner. No Next build or worker starts here. */
 import assert from 'node:assert/strict';
-import fs,{chmodSync,existsSync,linkSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,renameSync,rmSync,symlinkSync,truncateSync,writeFileSync} from 'node:fs';
+import fs,{chmodSync,existsSync,linkSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,readlinkSync,realpathSync,renameSync,rmSync,symlinkSync,truncateSync,writeFileSync} from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -9,11 +9,19 @@ import {holdDevelopmentBuildSnapshot} from './worker-comparison-build.mjs';
 
 const privateName='aihr-worker-comparison-next';
 const sourceSha='a'.repeat(40);
+const runtimeAliases=['fontkit-aaaaaaaa','sharp-bbbbbbbb'];
 function fixture(work){
  const root=mkdtempSync(join(realpathSync(tmpdir()),'aihr-build-snapshot-model-'));
  const workspace=join(root,'workspace'),source=join(workspace,'source'),temp=join(root,'temp');
  const next=join(source,'.next'),privateRoot=join(temp,privateName),seed=join(privateRoot,'seed');
  mkdirSync(source,{recursive:true});mkdirSync(temp);
+ for(const name of ['fontkit','sharp']){
+  const packagePath=join(source,'node_modules','.store',name);
+  mkdirSync(packagePath,{recursive:true});
+  writeFileSync(join(packagePath,'package.json'),JSON.stringify({name,version:'1.0.0'}));
+  writeFileSync(join(packagePath,'index.js'),'module.exports = 1;');
+  symlinkSync('.store/'+name,join(source,'node_modules',name),'dir');
+ }
  const env={GITHUB_WORKSPACE:workspace,RUNNER_TEMP:temp,GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',
   RUNNER_OS:'Linux',RUNNER_ARCH:'X64',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',
   GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW:'alpha-focused-checks',GITHUB_JOB:'selected-tests',
@@ -22,6 +30,10 @@ function fixture(work){
  const open=()=>snapshot=holdDevelopmentBuildSnapshot(env);
  const build=(path=next)=>{
   mkdirSync(join(path,'server','app'),{recursive:true});
+  mkdirSync(join(path,'node_modules'));
+  // Next emits aliases to the installed source packages, not copies under .next.
+  symlinkSync('../../node_modules/fontkit',join(path,'node_modules',runtimeAliases[0]),'dir');
+  symlinkSync(join(source,'node_modules','.store','sharp'),join(path,'node_modules',runtimeAliases[1]),'dir');
   writeFileSync(join(path,'BUILD_ID'),'model-build-id');
   writeFileSync(join(path,'server','app','route.js'),'const stock=1;');
   writeFileSync(join(path,'server','app','empty'),'');
@@ -36,8 +48,9 @@ test('holds one build and produces exactly two fresh independent copies at the o
   const snapshot=open();build();
   const original=snapshot.capture();
   assert.deepEqual(original.identity,{candidateSha:sourceSha,controllerSha:sourceSha,runId:12345,runAttempt:1});
-  assert.equal(original.seal.buildId,'model-build-id');assert.equal(original.seal.entries,6);
-  assert.equal(original.seal.bytes,Buffer.byteLength('model-build-idconst stock=1;'));
+  assert.equal(original.seal.buildId,'model-build-id');assert.equal(original.seal.entries,9);
+  const links=runtimeAliases.map(name=>readlinkSync(join(next,'node_modules',name)));
+  assert.equal(original.seal.bytes,Buffer.byteLength('model-build-idconst stock=1;'+links.join('')));
   assert.match(original.seal.sha256,/^[a-f0-9]{64}$/);
   assert.equal(lstatSync(privateRoot).mode&0o777,0o700);
   const relative=join('server','app','route.js'),directories=[original.directory.inode];
@@ -52,6 +65,13 @@ test('holds one build and produces exactly two fresh independent copies at the o
    assert.equal(lstatSync(join(next,relative)).mode&0o777,0o640);
    assert.equal(lstatSync(join(next,relative)).nlink,1);
    assert.notEqual(lstatSync(join(next,relative)).ino,lstatSync(join(seed,relative)).ino);
+   for(const [index,name] of runtimeAliases.entries()){
+    const installedPath=join(next,'node_modules',name),seedPath=join(seed,'node_modules',name);
+    assert.equal(readlinkSync(installedPath),links[index]);
+    assert.equal(readlinkSync(seedPath),links[index]);
+    assert.notEqual(lstatSync(installedPath).ino,lstatSync(seedPath).ino);
+    assert.equal(realpathSync(installedPath),join(source,'node_modules','.store',name.split('-')[0]));
+   }
   }
   assert.equal(new Set(directories).size,3);
   assert.deepEqual(snapshot.verify(),original.seal);
@@ -136,7 +156,43 @@ test('refuses nested links without touching their targets or retrying a partial 
  });
 });
 
-test('refuses a build hardlink and a writable foreign mode',()=>{
+test('refuses a required alias pointed at the other canonical package and never opens a seed',()=>{
+ fixture(({source,next,seed,open,build})=>{
+  const snapshot=open();build();
+  const alias=join(next,'node_modules',runtimeAliases[0]);
+  rmSync(alias);symlinkSync(join(source,'node_modules','sharp'),alias,'dir');
+  assert.throws(()=>snapshot.capture(),/runtime aliases or package identity refused/);
+  assert.equal(readlinkSync(alias),join(source,'node_modules','sharp'));
+  assert.equal(existsSync(seed),false);
+ });
+});
+
+test('refuses an extra runtime alias and the same bytes under a replaced seed link',()=>{
+ fixture(({next,seed,open,build})=>{
+  const snapshot=open();build();
+  symlinkSync('../../node_modules/fontkit',join(next,'node_modules','other-cccccccc'),'dir');
+  assert.throws(()=>snapshot.capture(),/runtime alias inventory exceeds bound/);
+  assert.equal(existsSync(seed),false);
+ });
+ fixture(({source,next,seed,open,build})=>{
+  const snapshot=open();build();snapshot.capture();renameSync(next,join(source,'retired'));
+  const alias=join(seed,'node_modules',runtimeAliases[0]),target=readlinkSync(alias);
+  renameSync(alias,join(source,'held-alias'));symlinkSync(target,alias,'dir');
+  assert.throws(()=>snapshot.install(),/runtime alias birth or target changed/);
+  assert.equal(existsSync(next),false);
+ });
+});
+
+test('refuses changed runtime dependency bytes with the same name and package version before copying',()=>{
+ fixture(({source,next,open,build})=>{
+  const snapshot=open();build();snapshot.capture();renameSync(next,join(source,'retired'));
+  writeFileSync(join(source,'node_modules','.store','sharp','index.js'),'module.exports = 2;');
+  assert.throws(()=>snapshot.install(),/runtime package bytes changed/);
+  assert.equal(existsSync(next),false);
+ });
+});
+
+test('refuses a build hardlink and special mode before changing either member',()=>{
  fixture(({root,next,open,build})=>{
   const snapshot=open();build();
   const outside=join(root,'outside');writeFileSync(outside,'outside');
@@ -146,9 +202,89 @@ test('refuses a build hardlink and a writable foreign mode',()=>{
  });
  fixture(({next,open,build})=>{
   const snapshot=open();build();
-  const path=join(next,'server','app','route.js');chmodSync(path,0o666);
+  const path=join(next,'server','app','route.js');chmodSync(path,0o4666);
   assert.throws(()=>snapshot.capture(),/unsupported link, owner, mode/);
+  assert.equal(lstatSync(path).mode&0o7777,0o4666);
+ });
+});
+
+test('refuses a generated build root missing owner permissions without adding access',()=>{
+ fixture(({next,open,build})=>{
+  const snapshot=open();build();chmodSync(next,0o500);
+  try{
+   assert.throws(()=>snapshot.capture(),/build root lacks owner access/);
+   assert.equal(lstatSync(next).mode&0o777,0o500);
+  }finally{chmodSync(next,0o700);}
+ });
+});
+
+test('restricts only original generated writes and seals the same modes and bytes in all three cells',()=>{
+ fixture(({source,next,seed,open,build})=>{
+  const snapshot=open();build();
+  chmodSync(next,0o755);
+  chmodSync(join(next,'node_modules'),0o777);
+  chmodSync(join(next,'server'),0o777);
+  chmodSync(join(next,'server','app'),0o731);
+  const file='server/app/route.js';
+  const raw=readFileSync(join(next,file));
+  chmodSync(join(next,file),0o666);
+  const initialAlias=join(next,'node_modules',runtimeAliases[0]);
+  const aliasBefore=lstatSync(initialAlias,{bigint:true}),link=readlinkSync(initialAlias);
+  const expectedModes={'.':0o700,node_modules:0o755,server:0o755,'server/app':0o711,[file]:0o644};
+  const original=snapshot.capture();
+  const aliasAfter=lstatSync(initialAlias,{bigint:true});
+  assert.deepEqual([aliasAfter.ino,aliasAfter.mode,aliasAfter.ctimeNs,readlinkSync(initialAlias)],
+   [aliasBefore.ino,aliasBefore.mode,aliasBefore.ctimeNs,link]);
+  function check(tree){
+   for(const [path,mode] of Object.entries(expectedModes))assert.equal(lstatSync(join(tree,path)).mode&0o7777,mode);
+   assert.deepEqual(readFileSync(join(tree,file)),raw);
+  }
+  check(next);check(seed);
+  for(const ordinal of [1,2]){
+   renameSync(next,join(source,'retired-'+ordinal));
+   const installed=snapshot.install();
+   assert.deepEqual(installed.seal,original.seal);
+   check(next);
+  }
+ });
+});
+
+test('refuses a path replacement during permission restriction and preserves the replacement',()=>{
+ fixture(({next,source,open,build})=>{
+  const snapshot=open();build();
+  const path=join(next,'server','app','route.js');
+  const moved=join(source,'moved-original');
+  chmodSync(path,0o666);
+  const before=lstatSync(path,{bigint:true});
+  const realFchmod=fs.fchmodSync;
+  let replaced=false;
+  fs.fchmodSync=(fd,mode)=>{
+   if(!replaced&&fs.fstatSync(fd,{bigint:true}).ino===before.ino){
+    renameSync(path,moved);
+    writeFileSync(path,'unowned replacement');
+    chmodSync(path,0o666);
+    replaced=true;
+   }
+   return realFchmod(fd,mode);
+  };
+  syncBuiltinESMExports();
+  try{assert.throws(()=>snapshot.capture(),/entry changed during mode restriction/);}
+  finally{fs.fchmodSync=realFchmod;syncBuiltinESMExports();}
+  assert.equal(replaced,true);
+  assert.equal(readFileSync(path,'utf8'),'unowned replacement');
   assert.equal(lstatSync(path).mode&0o777,0o666);
+  assert.equal(readFileSync(moved,'utf8'),'const stock=1;');
+ });
+});
+
+test('refuses to normalize a seed that became writable after capture',()=>{
+ fixture(({source,next,seed,open,build})=>{
+  const snapshot=open();build();snapshot.capture();renameSync(next,join(source,'retired'));
+  const path=join(seed,'server','app','route.js');
+  chmodSync(path,0o666);
+  assert.throws(()=>snapshot.install(),/unsupported link, owner, mode/);
+  assert.equal(lstatSync(path).mode&0o777,0o666);
+  assert.equal(existsSync(next),false);
  });
 });
 

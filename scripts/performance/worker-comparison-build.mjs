@@ -1,11 +1,15 @@
 /** Dormant same-job .next custody. The caller owns build success and runtime settlement. */
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {closeSync,constants as flags,fchmodSync,fstatSync,lstatSync,mkdirSync,opendirSync,openSync,readSync,writeSync} from 'node:fs';
+import {closeSync,constants as flags,fchmodSync,fstatSync,lstatSync,mkdirSync,opendirSync,openSync,readlinkSync,readSync,symlinkSync,writeSync} from 'node:fs';
 import {isAbsolute,normalize} from 'node:path';
 import {performance} from 'node:perf_hooks';
+import {fileURLToPath} from 'node:url';
 
-const buildName='.next',privateName='aihr-worker-comparison-next',seedName='seed';
+const buildName='.next',privateName='aihr-worker-comparison-next',seedName='seed',aliasesDirectory='node_modules';
+const aliasVerifier=fileURLToPath(new URL('../../.github/ci/worker-comparison-build-aliases.py',import.meta.url));
+const aliasEnvironment=Object.freeze({PATH:'/usr/bin:/bin',LANG:'C',LC_ALL:'C'});
 const maxEntries=100000,maxBytes=3*1024**3,maxWorkMs=180000;
 const readFlags=flags.O_RDONLY|flags.O_NOFOLLOW|flags.O_NONBLOCK;
 const fdPath=fd=>`/proc/self/fd/${fd}`;
@@ -65,9 +69,23 @@ function ownedDirectory(parent,name){
  }catch(error){closeSync(fd);throw error;}
 }
 
-function requireEntry(row,owner,device){
- assert(row.dev===device&&row.uid===owner&&(row.mode&0o7022n)===0n
+function requireEntry(row,owner,device,canRestrictMode=false){
+ const forbiddenMode=canRestrictMode?0o7000n:0o7022n;
+ assert(row.dev===device&&row.uid===owner&&(row.mode&forbiddenMode)===0n
   &&(row.isDirectory()||row.isFile()&&row.nlink===1n),'Worker build contains an unsupported link, owner, mode or file kind');
+}
+
+// A descriptor chmod changes ctime. Every other birth/content field must agree,
+// and the descriptor and pathname must still denote the same new snapshot.
+function restrictMode(fd,path,before,permissions){
+ assert(unchanged(before,held(fd))&&unchanged(before,stats(path)),'Worker build entry changed before mode restriction');
+ if((before.mode&0o777n)===permissions)return before;
+ fchmodSync(fd,Number(permissions));
+ const after=held(fd);
+ assert(sameInode(before,after)&&after.mode===((before.mode&~0o777n)|permissions)
+  &&['uid','gid','nlink','size','mtimeNs'].every(key=>after[key]===before[key])
+  &&unchanged(after,stats(path)),'Worker build entry changed during mode restriction');
+ return after;
 }
 
 function namesIn(fd,takeEntry,check){
@@ -88,9 +106,55 @@ function namesIn(fd,takeEntry,check){
  return names.sort();
 }
 
+function readAlias(path,before,owner,device){
+ assert(before.isSymbolicLink()&&before.uid===owner&&before.dev===device&&before.nlink===1n,
+  'Worker build alias is not an owned link');
+ const raw=readlinkSync(path,{encoding:'buffer'});
+ const target=new TextDecoder('utf-8',{fatal:true}).decode(raw);
+ assert(raw.length>0&&raw.length<=4096&&Buffer.from(target).equals(raw)&&!/[\\\u0000-\u001f\u007f]/.test(target)
+  &&unchanged(before,stats(path)),'Worker build alias changed while reading');
+ return target;
+}
+
+function readAliasInventory(build,owner,device,check){
+ const directoryPath=child(build,aliasesDirectory),directory=openDirectory(directoryPath);
+ try{
+  const before=held(directory);
+  requireEntry(before,owner,device,true);
+  const restricted=restrictMode(directory,directoryPath,before,before.mode&0o755n);
+  const births=new Map();
+  let count=0;
+  const links=namesIn(directory,()=>assert(++count<=2,'Worker build runtime alias inventory exceeds bound'),check).map(name=>{
+   const path=child(directory,name),relative=aliasesDirectory+'/'+name,before=stats(path);
+   const target=readAlias(path,before,owner,device);
+   births.set(relative,before);
+   return {path:relative,target};
+  });
+  assert(unchanged(restricted,held(directory))&&unchanged(restricted,stats(directoryPath)),
+   'Worker build runtime alias directory changed during inventory');
+  return {links,births};
+ }finally{closeSync(directory);}
+}
+
+function proveAliasPackages(source,temporary,links,timeout){
+ try{
+  const proof=JSON.parse(execFileSync('/usr/bin/python3',['-I','-B',aliasVerifier],{
+   cwd:temporary,env:aliasEnvironment,input:JSON.stringify({source,aliases:links}),encoding:'utf8',
+   timeout,killSignal:'SIGKILL',maxBuffer:4096,stdio:['pipe','pipe','pipe'],
+  }));
+  assert(Array.isArray(proof)&&proof.length===links.length&&proof.length===2);
+  return new Map(proof.map((row,index)=>{
+   const link=links[index];
+   assert(Object.keys(row).length===5&&row.path===link.path&&typeof row.package==='string'&&typeof row.version==='string'
+    &&[row.packageJsonSha256,row.packageTreeSha256].every(value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)));
+   return [link.path,{...row,target:link.target}];
+  }));
+ }catch{throw Error('Worker build runtime aliases or package identity refused');}
+}
+
 /** Stream whole bytes into fresh files when copying, and seal the actual source in the same pass. */
-function inspectTree(source,destination,owner,device,check){
- const tree=createHash('sha256'),buffer=Buffer.alloc(256*1024),directories=new Set();
+function inspectTree(source,destination,owner,device,aliases,births,check,copyBirths,canRestrictMode=false){
+ const tree=createHash('sha256'),buffer=Buffer.alloc(256*1024),directories=new Set(),seenAliases=new Set();
  let entries=1,bytes=0,buildId;
  const takeEntry=()=>{assert(++entries<=maxEntries,'Worker build member ceiling exceeded');};
  const row=(...data)=>tree.update(JSON.stringify(data)+'\n');
@@ -102,7 +166,8 @@ function inspectTree(source,destination,owner,device,check){
   const idBytes=relative==='BUILD_ID'?Buffer.alloc(size):null;
   const input=openSync(sourcePath,readFlags);
   try{
-   assert(unchanged(before,held(input))&&unchanged(before,stats(sourcePath)),'Worker build file changed during open');
+   if(canRestrictMode)before=restrictMode(input,sourcePath,before,before.mode&0o755n);
+   else assert(unchanged(before,held(input))&&unchanged(before,stats(sourcePath)),'Worker build file changed during open');
    check();
    const output=destinationPath===null?null:openSync(destinationPath,flags.O_WRONLY|flags.O_CREAT|flags.O_EXCL|flags.O_NOFOLLOW,0o600);
    try{
@@ -146,16 +211,36 @@ function inspectTree(source,destination,owner,device,check){
    const relative=path?path+'/'+name:name;
    assert(Buffer.byteLength(relative)<=1024,'Worker build relative path bound exceeded');
    const sourcePath=child(fd,name),destinationPath=output===null?null:child(output,name),entry=stats(sourcePath);
-   requireEntry(entry,owner,device);
+   const alias=aliases.get(relative);
+   if(alias){
+    assert(births.has(relative)&&unchanged(entry,births.get(relative))
+     &&readAlias(sourcePath,entry,owner,device)===alias.target,'Worker build runtime alias birth or target changed');
+    bytes+=Buffer.byteLength(alias.target);
+    assert(bytes<=maxBytes,'Worker build byte ceiling exceeded');
+    if(destinationPath!==null){
+     symlinkSync(alias.target,destinationPath,'dir');
+     const copied=stats(destinationPath);
+     assert(!sameInode(entry,copied)&&readAlias(destinationPath,copied,owner,device)===alias.target,
+      'Worker build copy runtime alias changed');
+     copyBirths.set(relative,copied);
+    }
+    seenAliases.add(relative);
+    row('alias',relative,alias.target,alias.package,alias.version,alias.packageJsonSha256,alias.packageTreeSha256);
+    assert(unchanged(entry,stats(sourcePath)),'Worker build runtime alias birth changed');
+    continue;
+   }
+   assert(path!==aliasesDirectory,'Worker build unexpected runtime dependency entry');
+   requireEntry(entry,owner,device,canRestrictMode);
    if(entry.isFile())file(sourcePath,destinationPath,relative,entry);
    else{
     const next=openDirectory(sourcePath);
     try{
      assert(unchanged(entry,held(next)),'Worker build directory changed before traversal');
      check();
+     const expected=canRestrictMode?restrictMode(next,sourcePath,entry,entry.mode&0o755n):entry;
      const copy=output===null?null:ownedDirectory(output,name);
      try{directory(next,copy,relative,depth+1);}finally{if(copy!==null)closeSync(copy);}
-     assert(unchanged(entry,stats(sourcePath)),'Worker build directory name changed during traversal');
+     assert(unchanged(expected,stats(sourcePath)),'Worker build directory name changed during traversal');
     }finally{closeSync(next);}
    }
   }
@@ -163,6 +248,7 @@ function inspectTree(source,destination,owner,device,check){
   if(output!==null)fchmodSync(output,Number(before.mode&0o777n));
  }
  directory(source,destination,'',0);
+ assert(seenAliases.size===aliases.size,'Worker build runtime alias disappeared');
  check();
  assert(typeof buildId==='string'&&/^[A-Za-z0-9_-]{1,128}(?![\s\S])/.test(buildId),'Worker build ID refused');
  return Object.freeze({buildId,entries,bytes,sha256:tree.digest('hex')});
@@ -201,7 +287,8 @@ export function holdDevelopmentBuildSnapshot(env){
   assert(missing(child(source,buildName)),'Worker build requires an absent pre-build .next');
   assert(performance.now()-acquisitionStarted<maxWorkMs,'Worker build snapshot work budget exhausted');
   const privateRoot=keep(ownedDirectory(temp,privateName));
-  let state='waiting',seed,seal,installs=0,workMs=performance.now()-acquisitionStarted;
+  const seedAliasBirths=new Map();
+  let state='waiting',seed,seal,links,aliases,installs=0,workMs=performance.now()-acquisitionStarted;
   assert(workMs<maxWorkMs,'Worker build snapshot work budget exhausted');
   function namedRoots(){
    requireNamedRoot(sourcePath,source);requireNamedRoot(tempPath,temp);
@@ -211,15 +298,23 @@ export function holdDevelopmentBuildSnapshot(env){
    assert(state!=='failed'&&state!=='closed','Worker build snapshot unavailable');
    assert(deadlineMs===undefined||Number.isSafeInteger(deadlineMs)&&deadlineMs>0,'Worker build snapshot absolute deadline refused');
    const started=performance.now(),stop=started+maxWorkMs-workMs;
-   const check=()=>assert(performance.now()<stop
-    &&(deadlineMs===undefined||process.hrtime.bigint()/1_000_000n<BigInt(deadlineMs)),'Worker build snapshot work budget exhausted');
-   try{check();namedRoots();const result=work(check);namedRoots();check();return result;}
+   const remaining=()=>{
+    const relative=Math.floor(stop-performance.now());
+    const absolute=deadlineMs===undefined?relative:deadlineMs-Number(process.hrtime.bigint()/1_000_000n);
+    const timeout=Math.min(relative,absolute);
+    assert(timeout>0,'Worker build snapshot work budget exhausted');
+    return timeout;
+   };
+   try{remaining();namedRoots();const result=work(remaining);namedRoots();remaining();return result;}
    catch(error){state='failed';throw error;}
    finally{workMs+=performance.now()-started;}
   }
+  function checkPackages(remaining){
+   assert.deepEqual(proveAliasPackages(sourcePath,tempPath,links,remaining()),aliases,'Worker build runtime package bytes changed');
+  }
   function checkSeed(check){
    assert(state==='captured'&&sameInode(held(seed),stats(child(privateRoot,seedName))),'Worker build seed name changed or missing');
-   assert.deepEqual(inspectTree(seed,null,owner,device,check),seal,'Worker build seed bytes changed');
+   assert.deepEqual(inspectTree(seed,null,owner,device,aliases,seedAliasBirths,check),seal,'Worker build seed bytes changed');
    assert(sameInode(held(seed),stats(child(privateRoot,seedName))),'Worker build seed name changed during verification');
   }
   function view(fd){
@@ -232,30 +327,41 @@ export function holdDevelopmentBuildSnapshot(env){
     const path=child(source,buildName),built=openDirectory(path);
     try{
      check();
+     const root=held(built);
+     requireEntry(root,owner,device,true);
+     assert((root.mode&0o700n)===0o700n,'Worker build root lacks owner access');
+     const restrictedRoot=restrictMode(built,path,root,0o700n);
+     const inventory=readAliasInventory(built,owner,device,check);
+     links=inventory.links;
+     aliases=proveAliasPackages(sourcePath,tempPath,links,check());
      seed=keep(ownedDirectory(privateRoot,seedName));
-     seal=inspectTree(built,seed,owner,device,check);
-     assert(sameInode(held(built),stats(path))&&!sameInode(held(built),held(seed)),'Worker build origin or copy inode refused');
+     seal=inspectTree(built,seed,owner,device,aliases,inventory.births,check,seedAliasBirths,true);
+     assert(unchanged(restrictedRoot,held(built))&&unchanged(restrictedRoot,stats(path))
+      &&!sameInode(restrictedRoot,held(seed)),'Worker build origin or copy inode refused');
      state='captured';checkSeed(check);
-     assert.deepEqual(inspectTree(built,null,owner,device,check),seal,'Worker build origin changed after capture');
-     assert(sameInode(held(built),stats(path)),'Worker build origin name changed during verification');
+     assert.deepEqual(inspectTree(built,null,owner,device,aliases,inventory.births,check),seal,'Worker build origin changed after capture');
+     checkPackages(check);
+     assert(unchanged(restrictedRoot,held(built))&&unchanged(restrictedRoot,stats(path)),'Worker build origin name changed during verification');
      return view(built);
     }finally{closeSync(built);}
    },deadlineMs);},
    install(deadlineMs){return operation(check=>{
     assert(state==='captured'&&installs<2,'Worker build copy course exhausted');
     assert(missing(child(source,buildName)),'Worker build target is occupied');
-    checkSeed(check);check();
+    checkSeed(check);checkPackages(check);
     const target=ownedDirectory(source,buildName);
     try{
      assert(!sameInode(held(seed),held(target)),'Worker build install is not an independent directory');
-     assert.deepEqual(inspectTree(seed,target,owner,device,check),seal,'Worker build seed changed during copy');
-     assert.deepEqual(inspectTree(target,null,owner,device,check),seal,'Worker build copy bytes differ');
+     const targetAliasBirths=new Map();
+     assert.deepEqual(inspectTree(seed,target,owner,device,aliases,seedAliasBirths,check,targetAliasBirths),seal,'Worker build seed changed during copy');
+     assert.deepEqual(inspectTree(target,null,owner,device,aliases,targetAliasBirths,check),seal,'Worker build copy bytes differ');
+     checkPackages(check);
      assert(sameInode(held(target),stats(child(source,buildName)))&&sameInode(held(seed),stats(child(privateRoot,seedName))),
       'Worker build copy or seed name changed');
      installs++;return view(target);
     }finally{closeSync(target);}
    },deadlineMs);},
-   verify(deadlineMs){return operation(check=>{checkSeed(check);return seal;},deadlineMs);},
+   verify(deadlineMs){return operation(check=>{checkPackages(check);checkSeed(check);checkPackages(check);return seal;},deadlineMs);},
    close(){if(state!=='closed'){state='closed';close();}},
   });
  }catch(error){try{close();}catch{}throw error;}
