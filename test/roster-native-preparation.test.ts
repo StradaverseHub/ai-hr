@@ -24,6 +24,18 @@ vi.mock('next-intl/server',()=>({getLocale:async()=> 'en',getTranslations:async(
 vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=> 'classic'}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 import {POST} from '../app/roster/prepare/route';
+import {runBulkJobTick} from '../core/bulk-job-worker';
+import {rosterBulkJobHandler} from '../core/roster-bulk-worker';
+import {readRosterBulkJob} from '../core/roster-bulk-job';
+/** Confirm queues the background roster job; this runs the protected worker until it has ended. */
+async function runRosterJob(id:string){
+ for(let i=0;i<2000;i++){
+  const [row]=await owner.client<{state:string;notified:boolean}[]>`select state,notified_at is not null as notified from bulk_job where id=${id}::uuid`;
+  if(['completed','failed','cancelled'].includes(row.state)&&row.notified)return row.state;
+  if(!await runBulkJobTick(owner.client,{handlers:[rosterBulkJobHandler]}))await new Promise(r=>setTimeout(r,20));
+ }
+ throw new Error('roster job did not finish');
+}
 beforeAll(migrateTestDb);afterAll(closeAll);
 async function hire(name:string,companyId=b.companyId,departmentId=b.deptA){return (await hireEmployee(session,{person:{fullName:name,primaryEmail:randomUUID()+'@native-roster.invalid'},companyId,departmentId,employmentType:'full_time',hiredOn:'2020-01-01'})).employmentId;}
 beforeEach(async()=>{
@@ -44,14 +56,21 @@ function formPacket(document:Document){
  return result;
 }
 async function document(response:Response){return new JSDOM(await response.text()).window.document;}
-async function events(){return Number((await owner.db.select({n:sql<number>`count(*)::int`}).from(schema.domainEvent))[0].n);}
+// Audit events, without the background roster job's own completion notice (bulk-job.finished).
+async function events(){return Number((await owner.db.select({n:sql<number>`count(*)::int`}).from(schema.domainEvent).where(sql`${schema.domainEvent.eventType}<>'bulk-job.finished'`))[0].n);}
+/** Confirm now queues the background roster job (303 to its progress); run it and return its outcome. */
+async function confirmed(response:Response){
+ expect(response.status).toBe(303);
+ const id=new URL(response.headers.get('Location')!,'http://x').searchParams.get('rosterJob')!;expect(id).toMatch(/^[0-9a-f-]{36}$/);
+ await runRosterJob(id);return readRosterBulkJob(session,id);
+}
 
 it('uses a native no-JS prepare/count/review/confirm journey and excludes a subsequent new hire',async()=>{
  const before=await events(),prepared=await post(packet());expect(prepared.status).toBe(200);expect(prepared.headers.get('Cache-Control')).toBe('private, no-store');expect(await events()).toBe(before);
  const dom=await document(prepared);expect(dom.querySelector('script')).toBeNull();expect(dom.querySelector('img')).toBeNull();expect(dom.body.textContent).toContain('<img src=x onerror=alert(1)>');expect(dom.body.textContent).toContain('3 selected');expect(dom.querySelectorAll('tbody tr')).toHaveLength(3);
  const confirmation=formPacket(dom);expect(confirmation.get('stage')).toBe('confirm');expect(JSON.parse(confirmation.get('selectionIds')!)).toEqual(expect.arrayContaining(ids));expect(dom.querySelector('form')!.getAttribute('action')).toBe('/roster/prepare');
  const arrival=await hire('Native later arrival');await assignShift(session,{employmentId:arrival,shiftDate:'2027-01-04',shiftId});
- const confirmed=await post(confirmation);expect(confirmed.status).toBe(303);expect(confirmed.headers.get('Location')).toContain('copied=3');
+ expect((await confirmed(await post(confirmation))).href).toContain('copied=3');
  const written=await rosterForRange(session,{from:'2027-01-11',to:'2027-01-11'});expect(written.map(row=>row.employmentId).sort()).toEqual([...ids].sort());expect(written.some(row=>row.employmentId===arrival)).toBe(false);
 });
 
@@ -64,12 +83,12 @@ it('retains individual selection through native POST pages without putting IDs i
  expect(JSON.parse((last.querySelector('input[name="selectionIds"]') as HTMLInputElement).value)).toContain(selectedId);
  const second=last.querySelector<HTMLInputElement>('input[type="checkbox"]')!;second.checked=true;
  const review=formPacket(last);review.set('review','selected');const reviewed=await document(await post(review));expect(reviewed.body.textContent).toContain('2 selected');
- const confirmed=await post(formPacket(reviewed));expect(confirmed.status).toBe(303);
+ expect((await confirmed(await post(formPacket(reviewed)))).state).toBe('completed');
  const written=await rosterForRange(session,{from:'2027-01-11',to:'2027-01-12'});expect([...new Set(written.map(row=>row.employmentId))].sort()).toEqual([selectedId,second.value].sort());
  expect([...first.querySelectorAll('a,form')].every(el=>!(el.getAttribute('href')??el.getAttribute('action')??'').includes(selectedId))).toBe(true);
  const all=packet();all.set('targetFrom','2027-01-18');const allReview=await document(await post(all));
  expect(allReview.querySelectorAll('tbody tr')).toHaveLength(25);const allConfirmation=formPacket(allReview);expect(JSON.parse(allConfirmation.get('selectionIds')!)).toHaveLength(28);
- expect((await post(allConfirmation)).status).toBe(303);expect(await rosterForRange(session,{from:'2027-01-18',to:'2027-01-18'})).toHaveLength(28);
+ expect((await confirmed(await post(allConfirmation))).state).toBe('completed');expect(await rosterForRange(session,{from:'2027-01-18',to:'2027-01-18'})).toHaveLength(28);
 },60000);
 
 it.each([undefined,'[]','["bad-id"]'])('refuses absent/empty/forged confirm sets and raw legacy bypasses',async selection=>{
@@ -99,7 +118,7 @@ it('preserves the exact old department population and canonical generation while
  expect((await rosterDepartmentIds(session,{departmentId:b.deptA,shiftId})).sort()).toEqual(canonical.rows.map(row=>row.employmentId).sort());
  const baseline=await generateRosterFromTemplate(session,{departmentId:b.deptA,shiftId,from:'2027-01-18',to:'2027-01-19'});expect(baseline.employments).toBe(2);
  const data=packet('generate');data.set('departmentId',b.deptA);const reviewed=await document(await post(data));const confirmation=formPacket(reviewed);expect(JSON.parse(confirmation.get('selectionIds')!).sort()).toEqual(ids.slice(0,2).sort());
- expect((await post(confirmation)).status).toBe(303);const written=await rosterForRange(session,{from:'2027-01-11',to:'2027-01-12'});expect(written).toHaveLength(baseline.workingRows+baseline.restRows);expect([...new Set(written.map(row=>row.employmentId))].sort()).toEqual(ids.slice(0,2).sort());
+ expect((await confirmed(await post(confirmation))).state).toBe('completed');const written=await rosterForRange(session,{from:'2027-01-11',to:'2027-01-12'});expect(written).toHaveLength(baseline.workingRows+baseline.restRows);expect([...new Set(written.map(row=>row.employmentId))].sort()).toEqual(ids.slice(0,2).sort());
  const c=(await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Chosen empty company'}).returning())[0];scopeIds.push(c.id);data.set('companyId',c.id);data.set('populationQuery',new URLSearchParams({companyId:c.id}).toString());expect((await post(data)).status).toBe(400);
 },60000);
 
@@ -164,7 +183,7 @@ it.each(['transfer','new-arrival'] as const)('rechecks reviewed department targe
    expect(JSON.parse(formPacket(page).get('selectionIds')!)).toEqual(reviewed);expect(await events()).toBe(before);
    expect(await rosterForRange(session,{from:'2027-01-11',to:'2027-01-12'})).toEqual([]);
   }else{
-   expect(response.status).toBe(303);const rows=await rosterForRange(session,{from:'2027-01-11',to:'2027-01-12'});
+   expect((await confirmed(response)).state).toBe('completed');const rows=await rosterForRange(session,{from:'2027-01-11',to:'2027-01-12'});
    expect([...new Set(rows.map(row=>row.employmentId))].sort()).toEqual(reviewed.slice().sort());expect(rows.some(row=>row.employmentId===newcomer)).toBe(false);
   }
  }finally{release();await writer;await Promise.allSettled(pending?[pending]:[]);spy.mockRestore();}
@@ -199,9 +218,11 @@ it('validates the public reviewed department seam independently and keeps legacy
 it('reports an archived source shift through the canonical Copy refusal without partial writes',async()=>{
  const confirmation=formPacket(await document(await post(packet()))),before=await events();
  await owner.db.update(schema.shift).set({archivedAt:new Date()}).where(eq(schema.shift.id,shiftId));
- const response=await post(confirmation);expect(response.status).toBe(422);const page=await document(response);
- expect(page.querySelector('[role="alert"]')?.textContent).toBe('An archived shift cannot be selected for a new assignment. Select an active shift.');
- expect(formPacket(page).get('selectionIds')).toBe(confirmation.get('selectionIds'));expect(await events()).toBe(before);
+ // The copy's row guards run in the background job: it refuses before any row, with the same sentence, which the
+ // roster page then shows (the job's outcome address carries it as ?error=).
+ const job=await confirmed(await post(confirmation));expect(job.state).toBe('failed');
+ expect(job.error).toBe('An archived shift cannot be selected for a new assignment. Select an active shift.');
+ expect(new URL(job.href!,'http://x').searchParams.get('error')).toBe(job.error);expect(await events()).toBe(before);
  expect(await rosterForRange(session,{from:'2027-01-11',to:'2027-01-11'})).toEqual([]);
 });
 
@@ -210,9 +231,10 @@ it.each(['duty-off','shift-not-allowed'] as const)('renders canonical %s changes
  const group=await ensureStandardRule(session);
  await owner.db.update(schema.attendanceRule).set({dutyRosterControl:change!=='duty-off'}).where(eq(schema.attendanceRule.id,group.id));
  await owner.db.update(schema.employment).set({attendanceRuleId:group.id}).where(eq(schema.employment.id,ids[1]));
- const before=await events(),response=await post(confirmation);expect(response.status).toBe(422);const page=await document(response);
- expect(page.querySelector('[role="alert"]')?.textContent).toContain(change==='duty-off'?'Duty Roster Control is Off':'does not allow any shift');
- expect(formPacket(page).get('selectionIds')).toBe(confirmation.get('selectionIds'));expect(await events()).toBe(before);
+ // The per-employee guards run in the background job, which refuses the whole grid before any row.
+ const before=await events(),job=await confirmed(await post(confirmation));expect(job.state).toBe('failed');
+ expect(job.error).toContain(change==='duty-off'?'Duty Roster Control is Off':'does not allow any shift');
+ expect(new URL(job.href!,'http://x').searchParams.get('error')).toBe(job.error);expect(await events()).toBe(before);
  expect(await rosterForRange(session,{from:'2027-01-11',to:'2027-01-12'})).toEqual([]);
 });
 
@@ -239,7 +261,7 @@ it.each(['hr_admin','super_admin'] as const)('keeps actual %s native team compan
  const foreign=await seedBase(),foreignSubject=await hireEmployee(adminCtx(foreign),{person:{fullName:'Native foreign tenant subject',primaryEmail:randomUUID()+'@native-scope.invalid'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const before=await events();expect((await post(team({employmentId:foreignSubject.employmentId}))).status).toBe(400);expect(await events()).toBe(before);
  const forged=new URLSearchParams(selected);forged.set('selectionIds',JSON.stringify([foreignSubject.employmentId]));expect((await post(forged)).status).toBe(400);
- expect((await post(selected)).status).toBe(303);expect((await rosterForRange(session,{from:'2027-01-11',to:'2027-01-11'})).map(row=>row.employmentId)).toEqual([ids[0]]);
+ expect((await confirmed(await post(selected))).state).toBe('completed');expect((await rosterForRange(session,{from:'2027-01-11',to:'2027-01-11'})).map(row=>row.employmentId)).toEqual([ids[0]]);
  const saved=session,employeeUser=await createAppUser(b.tenantId,null,'employee');
  session={...session,userId:employeeUser,roles:['employee'],grants:[{role:'employee',companyId:null}]};
  try{expect((await post(team({employmentId:ids[0]}))).status).toBe(403);}finally{session=saved;}

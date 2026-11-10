@@ -13,6 +13,8 @@ import { parsePageQuery, pageState } from '@/lib/pagination';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { RosterGrid, RosterTemplateButton } from '@/components/roster-grid';
 import { copyRosterAction, generateRosterAction } from './actions';
+import { RosterBulkJobPanel } from '@/components/roster-bulk-job-panel';
+import { readRosterBulkJob } from '@/core/roster-bulk-job';
 import {
   ROSTER_MAX_RANGE_DAYS,
   addDaysIso,
@@ -60,6 +62,8 @@ export default async function RosterPage({
     error?: string;
     generated?: string;
     copied?: string;
+    /** A background Generate or Copy started from this screen (core/roster-bulk-job.ts); its progress panel. */
+    rosterJob?: string;
     rowSaved?: string;
     page?: string;
     size?: string;
@@ -156,6 +160,12 @@ export default async function RosterPage({
       : Promise.resolve<Awaited<ReturnType<typeof rosterWindowEmployees>>['employees']>([]),
   ]);
 
+  // A Generate or Copy queued by this administrator: its progress, read as its creator (row security hides anyone
+  // else's job). When it ends the panel opens the same banner (or error) the synchronous action redirected to.
+  const rosterJob = admin && sp.rosterJob && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sp.rosterJob)
+    ? await readRosterBulkJob(s, sp.rosterJob).catch(() => null)
+    : null;
+  const tJob = await getTranslations('bulkJobs.roster');
   // Success banner for the roster generator: "employments.workingRows.restRows" packed by the action.
   const gen = sp.generated && /^\d+\.\d+\.\d+$/.test(sp.generated) ? sp.generated.split('.').map(Number) : null;
   // R17 3e8350db — success banner for "copy roster": the number of rows copied onto the target window.
@@ -249,6 +259,9 @@ export default async function RosterPage({
     <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={sp.error} />
+      {rosterJob && (rosterJob.op === 'generate' || rosterJob.op === 'copy') && (
+        <RosterBulkJobPanel endpoint="/roster/jobs" job={rosterJob} title={tJob(rosterJob.op)} waitingLabel={tJob('queuedBehind')} />
+      )}
       {/* a57f0584 rev 2 — WHAT THE RESOLVER DID INSTEAD, said out loud. A window that was clamped or
           reversed still renders (the dates on screen are real), so this is a NOTICE rather than an error:
           the screen tells the operator what it is showing and why it is not what they typed. Silence here

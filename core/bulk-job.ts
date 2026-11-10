@@ -18,6 +18,8 @@ export type BulkJobRow={
  error:string|null;errors:BulkJobRowError[];cancel_requested_at:Date|null;transient_retries:number;not_before:Date|null;
  lease_token:string|null;lease_expires_at:Date|null;notice_event_id:string|null;notified_at:Date|null;
  created_at:Date;updated_at:Date;finished_at:Date|null;
+ /** Last poll of the creator's progress screen (draft 9921), for BulkJobHandler.quietNotice. */
+ watched_at?:Date|null;
 };
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export const isBulkJobId=(id:string)=>uuid.test(id);
@@ -68,6 +70,15 @@ export async function requestBulkJobCancel(ctx:SessionContext,id:string,kind?:st
   const [updated]=await tx.execute<BulkJobRow>(sql`update bulk_job set cancel_requested_at=coalesce(cancel_requested_at,now()),updated_at=now() where id=${row.id}::uuid returning *`);
   return updated;
  });
+}
+/** The creator's progress screen polled the job: stamp it (draft 9921), never waiting on the worker's row lock. */
+export async function markBulkJobWatchedTx(tx:Tx,id:string){
+ await tx.execute(sql`update bulk_job set watched_at=now() where id in (select id from bulk_job where id=${bulkJobId(id)}::uuid for update skip locked)`);
+}
+/** Whether the caller's own queued job waits behind an earlier active job of a 'tenant_queue' kind (draft 9921). */
+export async function bulkJobWaitingTx(tx:Tx,id:string):Promise<boolean>{
+ const [row]=await tx.execute<{waiting:boolean}>(sql`select app.bulk_job_waiting(${bulkJobId(id)}::uuid) as waiting`);
+ return Boolean(row?.waiting);
 }
 /** Whether a live worker serves this kind (heartbeat within 90 s). Read through a definer; reveals no job data. */
 export async function bulkJobWorkerStatusTx(tx:Tx,kind:string):Promise<BulkJobWorkerStatus>{

@@ -65,6 +65,9 @@ export type BulkJobHandler<P=any>={
  isTransient?(error:unknown):boolean;
  /** Best effort after the terminal state committed (history, post-commit refreshes). ctx is null when revoked. */
  afterTerminal?(ctx:SessionContext|null,job:BulkJobRow):Promise<void>;
+ /** true: skip the completion notice for this terminal job (for example a short job its creator watched to the end
+  *  on its own screen, bulk_job.watched_at, draft 9921). The job row still shows the outcome. */
+ quietNotice?(job:BulkJobRow):boolean;
 };
 export class BulkJobStepRefused extends Error{constructor(readonly step:BulkJobStep,readonly cause:unknown){super(publicErrorMessage(cause));this.name='BulkJobStepRefused';}}
 class LeaseLost extends Error{constructor(){super('Bulk job lease lost.');}}
@@ -115,10 +118,15 @@ export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOpt
   const token=randomUUID();
   // Active work first, through the partial queue index (literal state list so the index predicate applies); then a
   // terminal job whose completion notice is still owed (its own partial index). History rows are never scanned.
+  // A queued job of a 'tenant_queue' kind (draft 9921) waits until every earlier active job of its kind in its
+  // tenant has ended, so jobs of that kind run one after another without ever refusing an admission.
   let [job]=await connection<BulkJobRow[]>`update bulk_job set lease_token=${token}::uuid,lease_expires_at=now()+make_interval(secs=>${LEASE_SECONDS})
-   where id=(select id from bulk_job where state in ('queued','preparing','running','finalizing','discarding') and kind=any(${kinds})
-    and (lease_expires_at is null or lease_expires_at<now()) and (not_before is null or not_before<=now())
-    order by updated_at,created_at limit 1 for update skip locked) returning *`;
+   where id=(select j.id from bulk_job j where j.state in ('queued','preparing','running','finalizing','discarding') and j.kind=any(${kinds})
+    and (j.lease_expires_at is null or j.lease_expires_at<now()) and (j.not_before is null or j.not_before<=now())
+    and not (j.state='queued' and exists(select 1 from bulk_job_kind k where k.kind=j.kind and k.exclusive='tenant_queue')
+     and exists(select 1 from bulk_job o where o.tenant_id=j.tenant_id and o.kind=j.kind and o.id<>j.id
+      and o.state in ('queued','preparing','running','finalizing','discarding') and (o.created_at,o.id)<(j.created_at,j.id)))
+    order by j.updated_at,j.created_at limit 1 for update of j skip locked) returning *`;
   if(!job)[job]=await connection<BulkJobRow[]>`update bulk_job set lease_token=${token}::uuid,lease_expires_at=now()+make_interval(secs=>${LEASE_SECONDS})
    where id=(select id from bulk_job where notified_at is null and state in ('completed','failed','cancelled') and kind=any(${kinds})
     and finished_at>now()-interval '1 day' and (lease_expires_at is null or lease_expires_at<now()) and (not_before is null or not_before<=now())
@@ -171,7 +179,7 @@ async function jobTx<T>(ctx:SessionContext,c:Claimed,unit:BulkJobUnit,phase:stri
 
 async function processClaimed(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed){
  const job=c.job;const unit=unitOf(connection,c);
- if(TERMINAL.includes(job.state))return notifyFinished(connection,job);
+ if(TERMINAL.includes(job.state))return notifyFinished(connection,job,handler);
  if(job.state==='discarding')return discardUnit(connection,handler,c,unit);
  let ctx:SessionContext;
  try{ctx=await bulkJobContext(connection,job);}
@@ -336,12 +344,14 @@ async function terminal(connection:postgres.ReservedSql,handler:BulkJobHandler,c
  // Personal data the job no longer needs: the uploaded inputs and per-step payloads (outcomes stay on the job).
  await connection`update bulk_job set input=null,source_content=null where id=${fresh.id}::uuid`;
  await connection`delete from bulk_job_step where job_id=${fresh.id}::uuid`;
- await notifyFinished(connection,fresh);
+ await notifyFinished(connection,fresh,handler);
 }
 /** The creator's in-app notice (registry event bulk-job.finished), appended under their own authority exactly once.
  * When their access is gone nobody else is told; the job row still shows the outcome to an authorized creator. */
-async function notifyFinished(connection:postgres.ReservedSql,job:BulkJobRow){
+async function notifyFinished(connection:postgres.ReservedSql,job:BulkJobRow,handler?:BulkJobHandler){
  if(job.notified_at)return;
+ let quiet=false;try{quiet=handler?.quietNotice?.(job)??false;}catch{quiet=false;}
+ if(quiet){await connection`update bulk_job set notified_at=now() where id=${job.id}::uuid and notified_at is null`;return;}
  try{
   const ctx=await bulkJobContext(connection,job);
   const done=await withTenant(ctx,async tx=>{

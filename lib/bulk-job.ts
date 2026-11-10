@@ -30,6 +30,8 @@ export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  leave_ledger:{messages:'leaveImport',linkPath:'/admin/leave-config/import'},
  leave_generation:{messages:'leaveProcessing',linkPath:'/admin/leave-config/generate'},
  leave_accrual:{messages:'leaveProcessing',linkPath:'/admin/leave-config/earned-accrual'},
+ roster_bulk:{messages:'roster',linkPath:'/roster'},
+ schedule_group_bulk:{messages:'scheduleGroup',linkPath:'/admin/attendance/schedule-assignment/bulk'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){
  const notice=BULK_JOB_NOTICES[kind];

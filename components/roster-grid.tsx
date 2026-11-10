@@ -77,6 +77,8 @@ import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { assignCellAction, bulkAssignAction } from '@/app/roster/actions';
+import { waitForRosterBulkJob } from '@/lib/roster-bulk-job-poll';
+import { ROSTER_WRITE_FAILED } from '@/lib/roster-bulk-job';
 import { RosterLegend } from '@/components/roster-legend';
 import { EmployeeCode } from '@/components/ui';
 import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';
@@ -204,6 +206,7 @@ export function RosterGrid({
   serverPaged?: boolean;
 }) {
   const t = useTranslations('roster');
+  const tJob = useTranslations('bulkJobs.roster');
   const [cells, setCells] = useState<Record<string, AssignedCell>>(initial);
   const [brush, setBrush] = useState<Brush>(shifts[0]?.id ?? 'rest');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -271,10 +274,17 @@ export function RosterGrid({
       return n;
     });
     startTx(async () => {
+      // The bar's writes run as a background roster job (app/roster/actions.ts bulkAssignAction): the brush stays
+      // painted while it runs, and its outcome is reported exactly as the synchronous action's was.
       const r = await bulkAssignAction({ employmentIds: empIds, shiftDates: isoDates, brush });
-      if (!r.ok) {
+      // A brush queued behind another roster job starts by itself when that one ends; say so once.
+      let toldWaiting = false;
+      const job = r.ok && r.jobId ? await waitForRosterBulkJob('/roster/jobs', r.jobId, (j) => {
+        if (j.waiting && !toldWaiting) { toldWaiting = true; toast(tJob('queuedBehind')); }
+      }) : null;
+      if (!r.ok || (job && job.state !== 'completed')) {
         setCells(snapshot);
-        toast.error(r.error);
+        toast.error(r.ok ? job?.error || ROSTER_WRITE_FAILED : r.error);
       } else toast.success(t('bulkDone', { n: empIds.length }));
     });
   };

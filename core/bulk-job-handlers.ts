@@ -4,5 +4,7 @@ import type {BulkJobHandler} from './bulk-job-worker';
 import {employeeImportJobHandler} from './employee-import-worker';
 import {leaveImportJobHandler} from './leave-import-worker';
 import {earnedAccrualJobHandler,leaveGenerationJobHandler} from './leave-cohort-worker';
+import {rosterBulkJobHandler,scheduleGroupBulkJobHandler} from './roster-bulk-worker';
 
-export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,earnedAccrualJobHandler];
+export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,earnedAccrualJobHandler,
+ rosterBulkJobHandler,scheduleGroupBulkJobHandler];

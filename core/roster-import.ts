@@ -86,10 +86,12 @@ export type RosterImportResult = {
   committed: boolean;
 };
 
-/** One accepted instruction. `brush` matches the grid's vocabulary: a shift id, 'rest', or 'clear'. */
-type Cell = { sourceRow:number; employmentId: string; employeeCode: string; date: string; brush: string };
-type RosterImportInput={csvText:string;month:string;companyId:string;fileName?:string;dryRun:boolean};
-type RosterImportPlan={result:RosterImportResult;changes:Cell[];accepted:Cell[]};
+/** One accepted instruction. `brush` matches the grid's vocabulary: a shift id, 'rest', or 'clear'. `token` is
+ *  the cell's normalised text, kept so a background upload can re-check a shift code without the whole file. */
+export type RosterImportCell = { sourceRow:number; employmentId: string; employeeCode: string; date: string; brush: string; token: string };
+type Cell = RosterImportCell;
+export type RosterImportInput={csvText:string;month:string;companyId:string;fileName?:string;dryRun:boolean};
+export type RosterImportPlan={result:RosterImportResult;changes:Cell[];accepted:Cell[]};
 
 const CLEAR_TOKENS = new Set(['off', '-', '—', 'clear']);
 const REST_TOKENS = new Set(['rd', 'rest']);
@@ -112,16 +114,21 @@ export async function analyzeRosterImport(ctx:SessionContext,p:RosterImportInput
   p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   // Read-only nomination/preview under configuration ownership. Each actual group below replays
   // this SAME original raw file after its complete subject ownership; no client preview is trusted.
-  const plan=await withTenant(ctx,async tx=>{
-    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
-    return planRosterImport(ctx,p,tx);
-  });
+  const plan=await rosterImportPlan(ctx,p);
   if(p.dryRun)return plan.result;
   assertRosterDatesWritable(ctx,[...new Set(plan.changes.map(cell=>cell.date))]);
   await commitRosterCells(ctx,plan.changes,p.companyId,plan,p);
   await recordRosterUpload(ctx,{companyId:p.companyId,month:p.month,fileName:p.fileName??'',employees:plan.result.employees,
     rowsRead:plan.result.rowsRead,changed:plan.changes.length,rejected:plan.result.rejects.length});
   return{...plan.result,committed:true};
+}
+
+/** The read-only nomination/preview transaction (also the background upload's prepare). */
+export function rosterImportPlan(ctx:SessionContext,p:RosterImportInput):Promise<RosterImportPlan>{
+  return withTenant(ctx,async tx=>{
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
+    return planRosterImport(ctx,p,tx);
+  });
 }
 
 /** One canonical planner for initial nomination and same-Tx actual group revalidation. */
@@ -227,7 +234,7 @@ async function planRosterImport(ctx:SessionContext,p:RosterImportInput,existingT
         brush = shiftId;
       }
       seen.add(key);
-      accepted.push({ sourceRow:line, employmentId: emp.employmentId, employeeCode: emp.code, date: iso, brush });
+      accepted.push({ sourceRow:line, employmentId: emp.employmentId, employeeCode: emp.code, date: iso, brush, token });
     }
   });
 
@@ -285,6 +292,19 @@ async function commitRosterCells(ctx: SessionContext, cells: Cell[], companyId: 
       ||image(group)!==image(fresh.changes.filter(cell=>keys.has(sourceKey(cell)))))throw new LeaveDependencyUnavailable();
     return write(tx);
   });
+  const {groups,clears}=rosterImportWriteGroups(cells);
+  for (const { brush, employmentIds, dates, cells: group } of groups) {
+    await writeGroup(group,tx=>brush==='rest'
+      ?setRestDayBulk(ctx,{employmentIds,shiftDates:dates,anchorId:companyId},tx)
+      :assignShiftBulk(ctx,{employmentIds,shiftDates:dates,shiftId:brush},tx));
+  }
+  for (const c of clears) await writeGroup([c],tx=>clearRoster(ctx, { employmentId: c.employmentId, shiftDate: c.date },tx));
+}
+
+/** The upload's write order, shared by the synchronous commit and the background job: one group per brush and
+ *  identical date-set (in first-seen order), each written as one bulk call with its one summary event, then
+ *  every clear on its own, in file order. */
+export function rosterImportWriteGroups(cells:readonly Cell[]):{groups:{brush:string;employmentIds:string[];dates:string[];cells:Cell[]}[];clears:Cell[]}{
   const byTarget = new Map<string, Map<string, string[]>>(); // brush → employmentId → dates
   for (const c of cells) {
     if (c.brush === 'clear') continue;
@@ -294,6 +314,7 @@ async function commitRosterCells(ctx: SessionContext, cells: Cell[], companyId: 
     if (list) list.push(c.date);
     else perEmp.set(c.employmentId, [c.date]);
   }
+  const groups:{brush:string;employmentIds:string[];dates:string[];cells:Cell[]}[]=[];
   for (const [brush, perEmp] of byTarget) {
     // employees sharing an identical date-set are written in one call
     const bySignature = new Map<string, { employmentIds: string[]; dates: string[] }>();
@@ -306,12 +327,44 @@ async function commitRosterCells(ctx: SessionContext, cells: Cell[], companyId: 
     }
     for (const { employmentIds, dates } of bySignature.values()) {
       const group=cells.filter(cell=>cell.brush===brush&&employmentIds.includes(cell.employmentId)&&dates.includes(cell.date));
-      await writeGroup(group,tx=>brush==='rest'
-        ?setRestDayBulk(ctx,{employmentIds,shiftDates:dates,anchorId:companyId},tx)
-        :assignShiftBulk(ctx,{employmentIds,shiftDates:dates,shiftId:brush},tx));
+      groups.push({brush,employmentIds,dates,cells:group});
     }
   }
-  for (const c of cells) {
-    if (c.brush === 'clear') await writeGroup([c],tx=>clearRoster(ctx, { employmentId: c.employmentId, shiftDate: c.date },tx));
+  return {groups,clears:cells.filter(c=>c.brush==='clear')};
+}
+
+/** A background upload's narrowed replay for one employee's cells (the synchronous commit replays the whole
+ *  file per group): the employee number still resolves to this employment, every shift code still resolves to the
+ *  same shift, and every cell still differs from what is stored. `directory` is read once per chunk. */
+export type RosterImportDirectory={byCode:Map<string,string>;liveShift:Map<string,string>};
+export async function rosterImportDirectoryTx(ctx:SessionContext,companyId:string,tx:Tx):Promise<RosterImportDirectory>{
+  const [employees, allShifts] = await Promise.all([
+    listEmployees(ctx, [companyId],undefined,tx),
+    listShiftsForTenant(ctx, { includeArchived: true },tx),
+  ]);
+  // The same two maps planRosterImport builds, with the same first-wins / last-wins rules.
+  const byCode = new Map<string, string>();
+  for (const e of employees) {
+    if (e.terminatedOn || !e.employeeCode) continue;
+    const k = norm(e.employeeCode);
+    if (!byCode.has(k)) byCode.set(k, e.employmentId);
   }
+  const liveShift = new Map<string, string>();
+  for (const s of allShifts) {
+    if (!s.code || s.archivedAt) continue;
+    liveShift.set(norm(s.code), s.id);
+  }
+  return {byCode,liveShift};
+}
+export async function assertRosterImportCellsCurrentTx(ctx:SessionContext,tx:Tx,directory:RosterImportDirectory,cells:readonly Cell[]):Promise<void>{
+  if(!cells.length)return;
+  for(const c of cells){
+    if(directory.byCode.get(norm(c.employeeCode))!==c.employmentId)throw new LeaveDependencyUnavailable();
+    if(c.brush!=='rest'&&c.brush!=='clear'&&directory.liveShift.get(c.token)!==c.brush)throw new LeaveDependencyUnavailable();
+  }
+  const dates=cells.map(c=>c.date).sort(),ids=[...new Set(cells.map(c=>c.employmentId))];
+  const existing=new Map<string,string>();
+  for (const r of await rosterForRange(ctx, { employmentIds: ids, from: dates[0], to: dates[dates.length - 1] },tx))
+    existing.set(`${r.employmentId}|${r.shiftDate}`, r.isRestDay ? 'rest' : (r.shiftId ?? 'clear'));
+  if(cells.some(c=>(existing.get(`${c.employmentId}|${c.date}`)??'clear')===c.brush))throw new LeaveDependencyUnavailable();
 }

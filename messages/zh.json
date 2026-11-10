@@ -37467,7 +37467,63 @@
           "title": "休假处理已取消",
           "body": "已处理的员工保留其数据。请再次运行以完成其余部分。"
         }
+      },
+      "roster": {
+        "completed": {
+          "title": "排班更改已完成",
+          "body": "打开排班查看结果。"
+        },
+        "failed": {
+          "title": "排班更改已停止",
+          "body": "打开排班查看原因。"
+        },
+        "cancelled": {
+          "title": "排班更改已取消",
+          "body": "打开排班查看详情。"
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "排班组分配已完成",
+          "body": "打开分配排班组查看结果。"
+        },
+        "failed": {
+          "title": "排班组分配已停止",
+          "body": "打开分配排班组查看原因。"
+        },
+        "cancelled": {
+          "title": "排班组分配已取消",
+          "body": "打开分配排班组查看详情。"
+        }
       }
+    },
+    "panel": {
+      "queued": "等待开始",
+      "preparing": "正在检查每项更改",
+      "running": "正在保存",
+      "finalizing": "正在完成",
+      "discarding": "正在停止",
+      "completed": "已完成",
+      "failed": "已停止",
+      "cancelled": "已取消",
+      "progressCount": "已完成 {done}/{total} 个步骤",
+      "backgroundHelp": "您可以离开此页面。工作会继续进行，完成后会通知您。",
+      "waiting": "正在等待后台服务。进度已保存；请勿再次启动。",
+      "workerUnavailable": "后台服务尚未运行。您的请求已保存，服务一运行便会自动开始。"
+    },
+    "roster": {
+      "generate": "正在生成排班",
+      "copy": "正在复制排班",
+      "assign": "正在应用排班更改",
+      "import": "正在保存上传的排班",
+      "otherRunning": "另一项排班更改仍在保存。请等待其完成后再试。",
+      "saveFailed": "无法保存排班更改。请重试，或联系 HR 管理员。",
+      "queuedBehind": "正在排队，等待另一项排班任务完成。该任务完成后将自动开始。"
+    },
+    "scheduleGroup": {
+      "title": "正在分配排班组",
+      "otherRunning": "另一项排班组分配仍在保存。请等待其完成后再试。",
+      "queuedBehind": "正在排队，等待另一项排班组分配完成。该分配完成后将自动开始。"
     }
   }
 }

@@ -37467,7 +37467,63 @@
           "title": "Đã hủy việc xử lý nghỉ phép",
           "body": "Các nhân viên đã được xử lý giữ nguyên số liệu. Hãy chạy lại để hoàn tất phần còn lại."
         }
+      },
+      "roster": {
+        "completed": {
+          "title": "Thay đổi lịch ca đã hoàn tất",
+          "body": "Mở lịch ca để xem kết quả."
+        },
+        "failed": {
+          "title": "Thay đổi lịch ca đã dừng",
+          "body": "Mở lịch ca để xem lý do."
+        },
+        "cancelled": {
+          "title": "Thay đổi lịch ca đã bị hủy",
+          "body": "Mở lịch ca để xem chi tiết."
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "Phân nhóm lịch làm việc đã hoàn tất",
+          "body": "Mở trang Phân nhóm lịch làm việc để xem kết quả."
+        },
+        "failed": {
+          "title": "Phân nhóm lịch làm việc đã dừng",
+          "body": "Mở trang Phân nhóm lịch làm việc để xem lý do."
+        },
+        "cancelled": {
+          "title": "Phân nhóm lịch làm việc đã bị hủy",
+          "body": "Mở trang Phân nhóm lịch làm việc để xem chi tiết."
+        }
       }
+    },
+    "panel": {
+      "queued": "Đang chờ bắt đầu",
+      "preparing": "Đang kiểm tra từng thay đổi",
+      "running": "Đang lưu",
+      "finalizing": "Đang hoàn tất",
+      "discarding": "Đang dừng",
+      "completed": "Đã xong",
+      "failed": "Đã dừng",
+      "cancelled": "Đã hủy",
+      "progressCount": "Đã hoàn tất {done}/{total} bước",
+      "backgroundHelp": "Bạn có thể rời trang này. Công việc vẫn tiếp tục và bạn sẽ được thông báo khi hoàn tất.",
+      "waiting": "Đang chờ dịch vụ chạy nền. Tiến độ đã được lưu; đừng bắt đầu lại.",
+      "workerUnavailable": "Dịch vụ chạy nền chưa hoạt động. Yêu cầu của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ hoạt động."
+    },
+    "roster": {
+      "generate": "Đang tạo lịch ca",
+      "copy": "Đang sao chép lịch ca",
+      "assign": "Đang áp dụng thay đổi lịch ca",
+      "import": "Đang lưu lịch ca đã tải lên",
+      "otherRunning": "Một thay đổi lịch ca khác vẫn đang được lưu. Hãy đợi hoàn tất rồi thử lại.",
+      "saveFailed": "Không thể lưu thay đổi lịch ca. Vui lòng thử lại hoặc liên hệ quản trị viên nhân sự.",
+      "queuedBehind": "Đang xếp hàng sau một công việc lịch ca khác. Công việc sẽ tự bắt đầu ngay khi công việc kia hoàn tất."
+    },
+    "scheduleGroup": {
+      "title": "Đang phân nhóm lịch làm việc",
+      "otherRunning": "Một lượt phân nhóm lịch làm việc khác vẫn đang được lưu. Hãy đợi hoàn tất rồi thử lại.",
+      "queuedBehind": "Đang xếp hàng sau một lượt phân nhóm lịch làm việc khác. Sẽ tự bắt đầu ngay khi lượt kia hoàn tất."
     }
   }
 }

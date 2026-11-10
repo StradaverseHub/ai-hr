@@ -1103,7 +1103,9 @@ describe('a485afa1 — ONE record, TWO doors: the row opens its own page, throug
     expect(fs.readdirSync(path.join(dir, '[employmentId]')).sort()).toEqual(['loading.tsx', 'page.tsx']);
     // The bulk screen is a page plus ONE client island — the ticking. Everything it decides is on the
     // server, and the island imports its server action rather than being handed one as a prop.
-    expect(fs.readdirSync(path.join(dir, 'bulk')).sort()).toEqual(['bulk-form.tsx', 'loading.tsx', 'page.tsx']);
+    // `jobs` is the background batch's read-only progress endpoint (jobs/[jobId]/route.ts, GET only), not a page.
+    expect(fs.readdirSync(path.join(dir, 'bulk')).sort()).toEqual(['bulk-form.tsx', 'jobs', 'loading.tsx', 'page.tsx']);
+    expect(fs.readdirSync(path.join(dir, 'bulk', 'jobs', '[jobId]'))).toEqual(['route.ts']);
     expect(list, 'the list renders the shared chip').toContain('<StatusChip');
     expect(detail, 'and so does the detail page').toContain('<StatusChip');
   });

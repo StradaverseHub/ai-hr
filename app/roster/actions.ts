@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import { rosterFormCopyTargets, rosterFormGenerationTargets } from './command-targets';
@@ -12,11 +13,11 @@ import {
   assignShift,
   assignShiftBulk,
   clearRoster,
-  copyRoster,
-  generateRosterFromTemplate,
   RosterAdminRequiredError,
   setRestDay,
 } from '@/core/roster';
+import { enqueueRosterAssignJob, enqueueRosterCopyJob, enqueueRosterGenerateJob, RosterBulkJobError } from '@/core/roster-bulk-job';
+import { ROSTER_BRUSH_INLINE_CELLS, ROSTER_BULK_ALREADY_RUNNING, rosterReadableError } from '@/lib/roster-bulk-job';
 import { accrueToil, ToilFirstScheduleConsentRequiredError } from '@/core/toil';
 
 export type CellResult = { ok: true } | { ok: false; error: string };
@@ -39,12 +40,16 @@ export type CellResult = { ok: true } | { ok: false; error: string };
  * an error we RAISED speaks for itself and passes through; anything that smells of the driver is
  * replaced. It never swallows a refusal — the action still reports failure — only its wording.
  */
-const RAW_DRIVER_TEXT = /failed query|\bparams:|insert into\b|update\s+"|delete from\b/i;
-const ROSTER_WRITE_FAILED = 'The roster change could not be saved. Please try again, or ask an HR administrator.';
-
+// The driver-text check itself lives in lib/roster-bulk-job.ts (rosterReadableError), shared with the background
+// roster worker so a job's stored refusal is the same sentence this file would have shown.
 function readableError(e: unknown): string {
   const message = e instanceof Error ? e.message : '';
-  return message.trim() === '' || RAW_DRIVER_TEXT.test(message) ? ROSTER_WRITE_FAILED : message;
+  return rosterReadableError(message);
+}
+/** A roster bulk job refused at admission because the tenant already runs one: said in the reader's language. */
+async function admissionError(e: unknown): Promise<string> {
+  if (e instanceof RosterBulkJobError && e.message === ROSTER_BULK_ALREADY_RUNNING) return (await getTranslations('bulkJobs.roster'))('otherRunning');
+  return readableError(e);
 }
 
 export type AccrueToilResult =
@@ -103,14 +108,32 @@ export async function assignCellAction(input: { employmentId: string; shiftDate:
   }
 }
 
+export type BulkAssignResult = { ok: true; jobId?: string } | { ok: false; error: string };
+
 /** Bulk-apply a brush to many employees across a date range (the roster-grid bulk bar).
- *  Administrators only, re-checked here — see assignCellAction. */
+ *  Administrators only, re-checked here — see assignCellAction.
+ *
+ *  A SMALL brush (at most ROSTER_BRUSH_INLINE_CELLS employee-days) is written here, inline, exactly as before: one
+ *  short transaction for a shift brush, one per cell for rest and clear, no job and no notice. A larger brush runs as
+ *  a background roster job (core/roster-bulk-worker.ts): one employee's rows per step in short transactions, the same
+ *  writers and events, and the same all-or-nothing refusal for a shift brush. The grid waits for the job
+ *  (components/roster-grid.tsx) and reports its outcome exactly as it reported this action's. */
 export async function bulkAssignAction(input: {
   employmentIds: string[];
   shiftDates: string[];
   brush: string;
-}): Promise<CellResult> {
+  companyId?: string | null;
+  operationKey?: string;
+}): Promise<BulkAssignResult> {
   const s = await getSession();
+  if (input.employmentIds.length * input.shiftDates.length > ROSTER_BRUSH_INLINE_CELLS) {
+    try {
+      const job = await enqueueRosterAssignJob(s, input);
+      return { ok: true, jobId: job.id };
+    } catch (e) {
+      return { ok: false, error: await admissionError(e) };
+    }
+  }
   try {
     assertRosterAdmin(s);
     assertRosterDatesWritable(s, input.shiftDates);
@@ -211,24 +234,22 @@ export async function generateRosterAction(formData: FormData) {
   const from = String(formData.get('from') ?? '');
   // Outside the try on purpose: redirect() signals by throwing, and a catch here would swallow it.
   if (!isAdmin(s)) redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent(new RosterAdminRequiredError().message)}`);
-  let summary: { employments: number; workingRows: number; restRows: number };
+  let jobId: string;
   try {
     // Server-side admission of the posted targets (company write scope, fresh team scope, permitted
-    // population) before the writer; a department still wins over the employee selection.
+    // population) before the job is queued; a department still wins over the employee selection. The
+    // generator itself runs in the background roster job, and the page shows its progress; when it ends the
+    // page opens the same summary banner (or error) this action used to redirect to.
     const targets = await rosterFormGenerationTargets(s, formData);
-    summary = await generateRosterFromTemplate(s, {
-      shiftId: String(formData.get('shiftId') ?? ''),
-      ...targets,
-      from,
-      to: String(formData.get('to') ?? ''),
-    });
+    jobId = (await enqueueRosterGenerateJob(s, {
+      companyId,
+      input: { shiftId: String(formData.get('shiftId') ?? ''), ...targets, from, to: String(formData.get('to') ?? '') },
+    })).id;
   } catch (e) {
-    redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent(readableError(e))}`);
+    redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent(await admissionError(e))}`);
   }
   revalidatePath('/roster');
-  redirect(
-    `/roster?companyId=${companyId}&month=${from.slice(0, 7)}&generated=${summary.employments}.${summary.workingRows}.${summary.restRows}`,
-  );
+  redirect(`/roster?companyId=${companyId}&month=${from.slice(0, 7)}&rosterJob=${jobId}`);
 }
 
 /** R17 3e8350db — "Copy roster schedules from previous weeks or months". Copies every roster row from a
@@ -242,19 +263,21 @@ export async function copyRosterAction(formData: FormData) {
   const companyId = String(formData.get('companyId') ?? '');
   const targetFrom = String(formData.get('targetFrom') ?? '');
   if (!isAdmin(s)) redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent(new RosterAdminRequiredError().message)}`);
-  let summary: { copied: number; sourceRows: number };
+  let jobId: string;
   try {
-    // Every posted employee is admitted against the current scope; an empty post is bounded to it.
+    // Every posted employee is admitted against the current scope; an empty post is bounded to it. The copy
+    // runs in the background roster job; the page shows its progress, then the same banner as before.
     const employmentIds = await rosterFormCopyTargets(s, formData);
-    summary = await copyRoster(s, {
+    jobId = (await enqueueRosterCopyJob(s, {
+      companyId,
       sourceFrom: String(formData.get('sourceFrom') ?? ''),
       sourceTo: String(formData.get('sourceTo') ?? ''),
       targetFrom,
       employmentIds,
-    });
+    })).id;
   } catch (e) {
-    redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent(readableError(e))}`);
+    redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent(await admissionError(e))}`);
   }
   revalidatePath('/roster');
-  redirect(`/roster?companyId=${companyId}&month=${targetFrom.slice(0, 7)}&copied=${summary.copied}`);
+  redirect(`/roster?companyId=${companyId}&month=${targetFrom.slice(0, 7)}&rosterJob=${jobId}`);
 }
