@@ -222,13 +222,15 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
       const params = Object.fromEntries(new URL(href, 'http://x').searchParams);
       const runs: number[] = [];let first: unknown;
       for (let attempt = 0; attempt < 3; attempt++) {
-        const outcome = await traced(() => renderPage(modules, params));
+        let outcome: Awaited<ReturnType<typeof traced<Awaited<ReturnType<typeof renderPage>>>>>;
+        try {outcome = await traced(() => renderPage(modules, params));}
+        catch (error) {first = {error: String((error as Error)?.message ?? error).slice(0, 300)}; break;}
         runs.push(Math.round(outcome.ms));
         if (attempt === 0) first = {...summarize(outcome.statements), rowCount: outcome.result.ids.length, total: outcome.result.total};
         if (outcome.ms > 3000) break;
       }
       results.push({role, scenario: 'private-search-page', coldMs: runs[0], warmMs: runs.slice(1).sort((a, b) => a - b)[0] ?? null, runs, ...(first as object)});
-      print('scenario', {size: options.size, role, scenario: 'private-search-page', runs, trips: (first as {trips: number}).trips});
+      print('scenario', {size: options.size, role, scenario: 'private-search-page', runs, trips: (first as {trips?: number} | undefined)?.trips});
       save();
     }
   }
