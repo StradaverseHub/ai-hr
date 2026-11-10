@@ -67,12 +67,13 @@ fi
 df -Pk "$RUNNER_TEMP"
 free -b
 export NODE_OPTIONS=--max-old-space-size=12288
-# Whole repository, same strict config, no ignored build errors, in two compilers that each fit the
-# heap: tsconfig.json checks everything outside test/, then test/tsconfig.json checks every test
-# against the product's emitted declarations (tsconfig.typecheck-declarations.json, built with
-# noCheck because tsconfig.json has just checked those sources) instead of re-checking them.
+# Whole repository, same strict config, no ignored build errors, in compilers that each fit the heap:
+# tsconfig.json checks everything outside test/; tsconfig.typecheck-declarations.json then emits the
+# same sources' declarations with noCheck (they were just checked) in its own process; finally
+# test/tsconfig.json checks every test against those declarations instead of re-checking them.
 if [[ "${1:-}" == --whole-cache ]]; then
   node "$(dirname "$0")/compiler-cache.mjs"
+  pnpm exec tsc -b tsconfig.typecheck-declarations.json
   pnpm exec tsc -b test/tsconfig.json
 elif [[ "${1:-}" == --state-transport-producer ]]; then
   node "$(dirname "$0")/diagnostics/compiler-transport.mjs" producer
@@ -82,5 +83,6 @@ elif [[ "${1:-}" == --incremental-diagnostic ]]; then
   node "$(dirname "$0")/diagnostics/compiler-incremental.mjs"
 else
   /usr/bin/time -v pnpm exec tsc --noEmit
+  /usr/bin/time -v pnpm exec tsc -b tsconfig.typecheck-declarations.json
   /usr/bin/time -v pnpm exec tsc -b test/tsconfig.json
 fi
