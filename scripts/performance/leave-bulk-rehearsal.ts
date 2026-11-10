@@ -128,12 +128,13 @@ async function main(){
    // here: the tenant has no REPLACEMENT type yet, so the sweep creates it once, as the old sweep did.
    const seeded=await obs<{n:number}[]>`select count(*)::int as n from toil_accrual where tenant_id=${TENANT}::uuid`;
    if(!seeded[0].n)await obs`insert into toil_accrual(tenant_id,employment_id,worked_date,day_type,worked_day_kind,ot_minutes,days_credited,days_taken,accrual_basis,requested_on,expires_on,status,carry_forward_at_year_end,expiry_action)
-    select e.tenant_id,e.id,d.worked,d.kind::attendance_day_type,d.kind::toil_worked_day_kind,480,d.credited,0,'hours_worked'::toil_accrual_basis,d.worked,d.expires,'active',d.carry and (row_number() over (order by e.id))%2=0,
-     case when (row_number() over (order by e.id))%2=0 then 'convert_to_pay'::toil_expiry_action else 'lapse'::toil_expiry_action end
-    from employment e cross join (values ('2026-08-03'::date,'rest_day',1.00,'2026-10-01'::date,false),('2026-10-05'::date,'holiday',2.00,'2027-02-01'::date,true)) d(worked,kind,credited,expires,carry)
+    select e.tenant_id,e.id,d.worked,d.kind::attendance_day_type,d.kind::toil_worked_day_kind,480,d.credited,0,'hours_worked'::toil_accrual_basis,d.worked,d.expires,'active',
+     d.carry and (row_number() over (partition by d.kind order by e.id))%2=0,
+     case when (row_number() over (partition by d.kind order by e.id))%4<2 then 'convert_to_pay'::toil_expiry_action else 'lapse'::toil_expiry_action end
+    from employment e cross join (values ('2026-08-03'::date,'rest_day',1.00,'2026-10-01'::date,false),('2026-10-05'::date,'holiday',2.00,'2028-02-01'::date,true)) d(worked,kind,credited,expires,carry)
     where e.tenant_id=${TENANT}::uuid and e.voided_at is null and e.import_pending_attempt_id is null and e.hired_on<='2026-08-01'`;
    if(op==='toil_expiry')await measure(op,async()=>({...await job(await createToilExpiryJob(admin,{today:process.env.TOIL_TODAY??'2026-11-11'}))}));
-   else await measure(op,async()=>({...await job(await createReplacementYearCloseJob(admin,{asOf:process.env.TOIL_CLOSE_ASOF??'2026-12-31'}))}));
+   else await measure(op,async()=>({...await job(await createReplacementYearCloseJob(admin,{asOf:process.env.TOIL_CLOSE_ASOF??'2027-12-31'}))}));
   }else if(op==='accrual_job'){
    await measure(op,async()=>job(await createEarnedAccrualJob(admin,{asOf:process.env.ACCRUAL_ASOF??'2026-12-31'})));
   }else if(op==='expiry_timer'){
