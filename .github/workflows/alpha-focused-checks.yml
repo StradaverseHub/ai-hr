@@ -104,7 +104,7 @@ env:
   TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
   resolve:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref != 'refs/heads/codex/architecture-worker-build-custody-retained-proof-20261110' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -1653,3 +1653,74 @@ jobs:
           persist-credentials: false
       - name: Compile and exercise native proof handoff models
         run: bash automation/.github/ci/native-proof-models.sh "$GITHUB_WORKSPACE/source"
+
+  worker-build-custody-proof:
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref == 'refs/heads/codex/architecture-worker-build-custody-retained-proof-20261110' }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 31
+    defaults:
+      run:
+        working-directory: source
+    env:
+      STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+      PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+    steps:
+      - name: Admit a one-purpose diagnostic without qualification authority
+        working-directory: ${{ runner.temp }}
+        run: |
+          /usr/bin/python3 -I -B - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          env = os.environ
+          branch = 'codex/architecture-worker-build-custody-retained-proof-20261110'
+          repo = 'StradaverseHub/ai-hr'
+          required = {'GITHUB_ACTIONS':'true','CI':'true','RUNNER_ENVIRONMENT':'github-hosted',
+            'RUNNER_OS':'Linux','RUNNER_ARCH':'X64','GITHUB_REPOSITORY':repo,'GITHUB_REPOSITORY_ID':'1333414856',
+            'GITHUB_EVENT_NAME':'workflow_dispatch','GITHUB_RUN_ATTEMPT':'1','GITHUB_WORKFLOW':'alpha-focused-checks',
+            'GITHUB_JOB':'worker-build-custody-proof','GITHUB_REF':'refs/heads/'+branch,
+            'GITHUB_WORKFLOW_REF':repo+'/.github/workflows/alpha-focused-checks.yml@refs/heads/'+branch,
+            'STAGING_ENABLED':'false','PRODUCTION_ENABLED':'false'}
+          assert all(env.get(key) == value for key, value in required.items())
+          assert re.fullmatch(r'[a-f0-9]{40}',env['GITHUB_SHA']) and env['GITHUB_SHA']==env['GITHUB_WORKFLOW_SHA']
+          path = Path(env['GITHUB_EVENT_PATH'])
+          assert path.is_file() and 0 < path.stat().st_size <= 65536
+          row = json.loads(path.read_bytes())
+          given = row['inputs']
+          assert type(given) is dict
+          for key in ('model_eval','eval_allowed_providers','measured_browser_preflight_run'):
+              given.setdefault(key,'')
+          expected = {'candidate_ref':branch,'expected_sha':'51a44f79241705b53327f82f33743ccedfbf8366','selected_tests':'[]',
+            'architecture_browser_development_preflight':'false','employee_ascii_qualification':'off',
+            'qualify_restricted_port_prerequisites':'false','profile_database':'false','duration_order':'false',
+            'run_typecheck':'false','run_native_typecheck':'false','run_native_swift_models':'false','run_native_bundle':'false',
+            'run_build':'true','model_eval':'','eval_budget_usd':'20','eval_allowed_providers':'',
+            'measured_browser_course':'off','measured_browser_preflight_run':''}
+          assert given == expected
+          PY
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: StradaverseHub/ai-hr
+          path: automation
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: StradaverseHub/ai-hr
+          path: source
+          ref: 51a44f79241705b53327f82f33743ccedfbf8366
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./source/.github/actions/setup-alpha
+        with:
+          node: 24.22.1
+          mobile: 'false'
+          path: source
+          capacity_profile: legacy
+      - name: Prove actual build capture, byte-identical installs and owned retirement
+        run: |
+          set -euo pipefail
+          umask 077
+          node ../automation/.github/ci/worker-build-custody-positive.mjs
