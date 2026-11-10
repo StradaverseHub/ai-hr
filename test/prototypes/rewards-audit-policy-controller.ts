@@ -41,8 +41,8 @@ export function rewardsAuditPolicyController(){
      const deadline=performance.now()+2000;let absent=false;
      do{
       const [actual]=await observer`select current_database()as database,current_user,inet_server_addr()='127.0.0.1'::inet as loopback,
-       not exists(select 1 from pg_stat_activity s join jsonb_to_recordset(${JSON.stringify(identities)}::text::jsonb)as owned(pid integer,started text,session_user text)
-        on s.pid=owned.pid and s.backend_start=owned.started::timestamptz and s.usename=owned.session_user where s.datname=${database})as absent`;
+       not exists(select 1 from pg_stat_activity s join jsonb_to_recordset(${JSON.stringify(identities)}::text::jsonb)as owned(pid integer,started text,"session_user" text)
+        on s.pid=owned.pid and s.backend_start=owned.started::timestamptz and s.usename=owned."session_user" where s.datname=${database})as absent`;
       expect(actual).toMatchObject({database,current_user:decodeURIComponent(url.username),loopback:true});
       if(actual.absent===true){absent=true;break;}if(performance.now()>=deadline)break;await new Promise(resolve=>setTimeout(resolve,10));
      }while(performance.now()<deadline);
