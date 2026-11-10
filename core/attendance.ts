@@ -986,12 +986,15 @@ const nullShiftRow = () => Object.fromEntries(Object.keys(getTableColumns(shift)
  * memoized read in scheduleBaseFor would have produced from the same rows (the policy row, every rule, OT row and
  * exception revision, the arrangements, every shift it can name with its OT windows, the default shift, every
  * rotation version with its allowed shifts, the roster row, the day adjustment and its dated shift). The holiday
- * calendar is NOT answered here: with from = to = date, scheduleBaseFor reads it exactly as it does without a memo.
+ * calendar is answered only when the caller hands it in: `holidays` is holidayDatesFor(employmentId, date, date) computed
+ * from the bundled calendar window (core/calendar-window-inputs.ts), which is what scheduleBaseFor's own read for
+ * from = to = date returns; without it scheduleBaseFor reads it exactly as it does without a memo.
  * A key this bundle did not read falls through to its live read.
  */
-export function ownClockScheduleMemo(rows: OwnClockSchedule, employmentId: string, date: string): ScheduleMemo {
+export function ownClockScheduleMemo(rows: OwnClockSchedule, employmentId: string, date: string, holidays?: Promise<Set<string>>): ScheduleMemo {
   const cache = new Map<string, Promise<unknown>>();
   const put = (key: string, value: unknown) => { cache.set(key, Promise.resolve(value)); };
+  if (holidays) put(`hol|${employmentId}`, holidays);
   const shiftById = new Map(rows.shifts.map((row) => [row.id, row]));
   const fromShift = <R,>(fields: Record<string, Column>, row: Record<string, unknown> | undefined, restDay?: boolean) =>
     projectFields(fields, new Map<Table, Record<string, unknown>>([[shift, row ?? nullShiftRow()], [rosterAssignment, { isRestDay: restDay ?? null }]])) as R;

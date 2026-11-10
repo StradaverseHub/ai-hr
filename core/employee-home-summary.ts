@@ -5,7 +5,9 @@ import {settleReadGroup} from '../lib/settle-read-group';
 import {readOwnEmployeeHomeConfiguration,type OwnHomeConfigurationRead} from './employee-home-configuration';
 import {countEmployeeHomeTasks,type OwnHomeTaskSourceRead} from './employee-home-tasks';
 import {isModuleEnabled} from './entitlements';
-import {hasEligibleLeaveTypeForTx} from './read';
+import {hasEligibleLeaveTypeForTx,hasEligibleLeaveTypeFrom} from './read';
+import {sharedOwnLeaveInputsTx,type OwnLeaveInputs} from './own-leave-inputs';
+import {calendarWindowInputsFor,stagedHomeReads,type CalendarWindowInputs} from './calendar-window-inputs';
 import {nextApprovedLeavePresenceTx} from '../packs/leave/service';
 import {readOwnPayrollHomeMetadata,type OwnHomePayrollRead} from '../packs/payroll/service';
 import {ownClaimFormAvailable} from '../packs/claims/service';
@@ -29,12 +31,22 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
  const configured=new Set(configuration.quickActions);
  const [taskCount,[leave,holidays,replacements,leaveAvailable],payroll,claimAvailable,profile]=await settleReadGroup([
   ()=>taskSourceRead?.count(ctx,subjectId)??countEmployeeHomeTasks(ctx),
-  ()=>withTenant(ctx,tx=>settleReadGroup([
-   ()=>leaveOn?nextApprovedLeavePresenceTx(tx,subjectId,today):null,
-   ()=>originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:today,endDate:through}),
-   ()=>replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:today,endDate:through}),
-   ()=>leaveOn&&configured.has('leave')?hasEligibleLeaveTypeForTx(tx,subjectId):false,
-  ]),{readSignal:signal}),
+  ()=>withTenant(ctx,tx=>{
+   // The next approved date and the Apply entry point are answered from the own leave inputs (core/own-leave-inputs.ts),
+   // one read that Time Off shares inside a Home stream; the holidays and replacement days are the holiday owners' own
+   // answers over one calendar window read (core/calendar-window-inputs.ts), which every card shares inside a stream.
+   // Under withStagedHomeReads each owner reads exactly as before.
+   const staged=stagedHomeReads();
+   let own:Promise<OwnLeaveInputs>|undefined,calendar:Promise<CalendarWindowInputs|null>|undefined;
+   const inputs=()=>own??=sharedOwnLeaveInputsTx(tx,subjectId,today);
+   const window=()=>calendar??=calendarWindowInputsFor(tx,subjectId,today,through,{presence:false});
+   return settleReadGroup([
+    ()=>!leaveOn?null:staged?nextApprovedLeavePresenceTx(tx,subjectId,today):inputs().then(value=>structuredClone(value.nextApproved)),
+    ()=>window().then(pre=>originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:today,endDate:through},pre)),
+    ()=>window().then(pre=>replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:today,endDate:through},pre)),
+    ()=>!(leaveOn&&configured.has('leave'))?false:staged?hasEligibleLeaveTypeForTx(tx,subjectId):inputs().then(value=>hasEligibleLeaveTypeFrom(tx,subjectId,value)),
+   ]);
+  },{readSignal:signal}),
   ()=>payrollOn?(payrollRead?payrollRead.homeMetadata(ctx,subjectId):readOwnPayrollHomeMetadata(ctx,subjectId,signal)):Promise.resolve(null),
   ()=>claimsOn&&configured.has('claim')?ownClaimFormAvailable(ctx,subjectId,signal):Promise.resolve(false),
   ()=>configured.has('profile')?readProfilePresentationSnapshotPolicy(ctx,signal):Promise.resolve(null),

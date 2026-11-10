@@ -3,13 +3,21 @@ import {and,eq,gte,inArray,isNotNull,lte,asc,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {sharedReadWindow,sharedSnapshotValue} from '../db/shared-read';
 import {provenCompanyDatesTx} from './employment-company';
+import {sharedCalendarWindowInputs,stagedHomeReads,type CalendarWindowInputs} from './calendar-window-inputs';
 import {replacementHoliday,replacementHolidayRevision,replacementHolidayQueue,employment,person,holiday} from '../db/schema';
 type HolidayProjection=Pick<typeof replacementHoliday.$inferSelect,'id'|'employmentId'|'companyId'|'sourceDate'|'replacementDate'>;
 export type ReplacementHolidayCalendarProjection=Omit<HolidayProjection,'replacementDate'>&{replacementDate:string};
 /** One proof for both calendar overlays and HR review; a retained ledger date is not permission to
  * attach it to a different company or extend employment tenure. No history is changed by this read. */
 export async function replacementHolidayProjectionCoverageTx(tx:Tx,rows:readonly HolidayProjection[]){
- const proof=await provenCompanyDatesTx(tx,rows.filter(row=>row.replacementDate).flatMap(row=>[row.sourceDate,row.replacementDate!].map(date=>({employmentId:row.employmentId,date}))));
+ return replacementCoverageFrom(rows,await provenCompanyDatesTx(tx,replacementProofPoints(rows)));
+}
+/** The dated company proof points the coverage reads: each retained row's source and replacement date. */
+function replacementProofPoints(rows:readonly HolidayProjection[]){
+ return rows.filter(row=>row.replacementDate).flatMap(row=>[row.sourceDate,row.replacementDate!].map(date=>({employmentId:row.employmentId,date})));
+}
+/** The coverage decision over a proof already read (by provenCompanyDatesTx, or by the bundled calendar window). */
+function replacementCoverageFrom(rows:readonly HolidayProjection[],proof:ReadonlyMap<string,{companyId:string|null;reason:string|null}>){
  return new Map(rows.map(row=>{
   let reason:string|null=null;
   if(row.replacementDate)for(const date of [row.sourceDate,row.replacementDate]){const coverage=proof.get(`${row.employmentId}|${date}`);reason=coverage?.reason??(coverage?.companyId===row.companyId?null:'assignment_company_changed');if(reason)break;}
@@ -18,27 +26,47 @@ export async function replacementHolidayProjectionCoverageTx(tx:Tx,rows:readonly
 }
 /** The same retained, company-covered projection used by the calendar, with its evidence identities.
  * No schedules or replacement allocation are evaluated by this reader. */
-export async function replacementHolidayCalendarProjectionsTx(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string}):Promise<ReplacementHolidayCalendarProjection[]>{
+export async function replacementHolidayCalendarProjectionsTx(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string},pre?:CalendarWindowInputs|null):Promise<ReplacementHolidayCalendarProjection[]>{
  if(!p.employmentIds.length)return [];
+ // Rows already read for this transaction, employment and a window around this one (core/calendar-window-inputs.ts):
+ // this reader's own predicate and order over them, and its own coverage over their own proof.
+ const own=p.employmentIds.length===1?p.employmentIds[0]:null;
+ const answered=own&&pre?.answers(tx,own,p.startDate,p.endDate)?preloadedReplacementProjections(pre,p.startDate,p.endDate):null;
+ if(answered)return answered;
  // Each row's inclusion and coverage depend on that row alone: inside a shared snapshot with a declared wider window
  // for this one employment (db/shared-read.ts), read the window once and slice it, keeping the order.
  const wide=p.employmentIds.length===1?sharedReadWindow(tx,p.employmentIds[0],p.startDate,p.endDate):null;
  if(wide){
   const employmentId=p.employmentIds[0];
+  if(!stagedHomeReads()){
+   const inputs=await sharedCalendarWindowInputs(tx,employmentId,wide).catch(()=>null);
+   const shared=inputs?.answers(tx,employmentId,p.startDate,p.endDate)?preloadedReplacementProjections(inputs,p.startDate,p.endDate):null;
+   if(shared)return shared;
+  }
   const all=await sharedSnapshotValue(tx,'replacementHolidayCalendar|'+employmentId+'|'+wide.from+'|'+wide.to,
    ()=>replacementHolidayCalendarProjectionsForWindowTx(tx,{employmentIds:[employmentId],startDate:wide.from,endDate:wide.to})).catch(()=>null);
   if(all)return structuredClone(all.filter(row=>row.replacementDate>=p.startDate&&row.replacementDate<=p.endDate));
  }
  return replacementHolidayCalendarProjectionsForWindowTx(tx,p);
 }
+/** replacementHolidayCalendarProjectionsForWindowTx over one window's rows: the same rows (its predicate on the window's
+ *  ordered rows), the same coverage over the same proof points. Null when a point's proof is missing, where the live
+ *  proof read would refuse: that request reads live. */
+function preloadedReplacementProjections(w:CalendarWindowInputs,startDate:string,endDate:string):ReplacementHolidayCalendarProjection[]|null{
+ const rows=w.replacements.filter(row=>row.replacementDate!==null&&row.replacementDate>=startDate&&row.replacementDate<=endDate).map(row=>({...row}));
+ const points=replacementProofPoints(rows);
+ if(!points.every(point=>w.proofs.has(`${point.employmentId}|${point.date}`)))return null;
+ const coverage=replacementCoverageFrom(rows,w.proofs);
+ return rows.flatMap(row=>!coverage.get(row.id)&&row.replacementDate?[{...row,replacementDate:row.replacementDate}]:[]);
+}
 async function replacementHolidayCalendarProjectionsForWindowTx(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string}):Promise<ReplacementHolidayCalendarProjection[]>{
  const rows=await tx.select({id:replacementHoliday.id,employmentId:replacementHoliday.employmentId,companyId:replacementHoliday.companyId,sourceDate:replacementHoliday.sourceDate,replacementDate:replacementHoliday.replacementDate}).from(replacementHoliday).where(and(inArray(replacementHoliday.employmentId,[...p.employmentIds]),isNotNull(replacementHoliday.replacementDate),gte(replacementHoliday.replacementDate,p.startDate),lte(replacementHoliday.replacementDate,p.endDate))).orderBy(asc(replacementHoliday.employmentId),asc(replacementHoliday.replacementDate),asc(replacementHoliday.id));
  const coverage=await replacementHolidayProjectionCoverageTx(tx,rows);
  return rows.flatMap(row=>!coverage.get(row.id)&&row.replacementDate?[{...row,replacementDate:row.replacementDate}]:[]);
 }
-export async function replacementHolidayDatesByEmployment(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string}){
+export async function replacementHolidayDatesByEmployment(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string},pre?:CalendarWindowInputs|null){
  const out=new Map<string,Set<string>>();
- for(const row of await replacementHolidayCalendarProjectionsTx(tx,p)){
+ for(const row of await replacementHolidayCalendarProjectionsTx(tx,p,pre)){
   const dates=out.get(row.employmentId)??new Set<string>();dates.add(row.replacementDate);out.set(row.employmentId,dates);
  }
  return out;

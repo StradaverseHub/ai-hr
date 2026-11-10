@@ -132,6 +132,7 @@ import {
   explainEntitlementEligibility,
 } from './entitlement-template';
 import type { OwnLeaveInputs } from './own-leave-inputs';
+import { stagedHomeReads } from './calendar-window-inputs';
 // r303 (31492f74) — the per-line working HR's Leave Summary sentences are rendered from. Type only: the
 // renderer is a pure client-safe module and this read builds its input from the locals behind each figure.
 import type { LeaveSummaryDerivation } from '../lib/leave-summary-explain';
@@ -5408,8 +5409,10 @@ export function leaveEntitlementBreakdowns(
   if (items.length === 0) return Promise.resolve([]);
   const read = async (tx: Tx) => {
     const typeIds = [...new Set(items.map((i) => i.leaveTypeId))];
-    // Bundled own leave inputs answer the type and employment selects, the empty-table resolver and the four
-    // per-item statements; a leave type with an entitlement table in force still builds its resolver live.
+    // Bundled own leave inputs answer the type and employment selects, the four per-item statements and the
+    // entitlement resolver's table, rule and default reads; the rules' organisation matches are one statement per
+    // resolver (buildTemplateEntitlementResolver with preloaded inputs). Under withStagedHomeReads a leave type with a
+    // table in force builds its resolver live, as before.
     const own = inputs?.answers(tx, employmentId) ? inputs : undefined;
     const [types, [emp]] = own
       ? ([own.typeRows<BreakdownTypeRow>(breakdownTypeColumns(), (type) => typeIds.includes(type.id)),
@@ -5426,7 +5429,7 @@ export function leaveEntitlementBreakdowns(
       const ids = [...new Set(items.filter((i) => i.asOf === asOf && typeById.has(i.leaveTypeId)).map((i) => i.leaveTypeId))];
       resolverByAsOf.set(asOf, own && ids.length > 0 && !own.templatesInForce(asOf, ids)
         ? emptyTemplateEntitlementResolver()
-        : await buildTemplateEntitlementResolver(tx, { employmentIds: [employmentId], leaveTypeIds: ids, asOf }));
+        : await buildTemplateEntitlementResolver(tx, { employmentIds: [employmentId], leaveTypeIds: ids, asOf }, own && !stagedHomeReads() ? own : undefined));
     }
     return Promise.all(
       items.map((i) =>
