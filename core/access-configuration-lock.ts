@@ -66,7 +66,7 @@ async function acquireBounded(tx: Tx, tenantId: string, shared: boolean): Promis
         and l.objsubid = 1) as held`);
     if (held?.held === true) return;
   }
-  if (waiters >= ACCESS_CONFIGURATION_MAX_WAITERS) throw new AccessConfigurationBusyError();
+  if (waiters >= ACCESS_CONFIGURATION_MAX_WAITERS) { console.error('AIHR_LOCK_DIAG refused ' + JSON.stringify({waiters, shared, caller: (new Error().stack ?? '').split('\n').slice(2, 9).map(line => line.trim())})); throw new AccessConfigurationBusyError(); }
   waiters++;
   // Counted only until the wait itself returns. A connection that has been granted the lock is no longer
   // waiting, so its lock_timeout restore round trip must not occupy a waiter slot: counting it refused an

@@ -112,6 +112,7 @@ export async function withAssistantRead<T>(ctx: SessionContext, module: string |
     });
   } catch (error) {
     if (error instanceof AiAllowanceError) throw error;
+    {const d=error as {name?:string;message?:string;code?:string;stack?:string};console.error('AIHR_READ_DIAG '+JSON.stringify({module,name:d?.name,message:d?.message,code:d?.code,stack:(d?.stack??'').split('\n').slice(0,14).map(line=>line.trim())}));}
     return unavailable();
   }
 }
