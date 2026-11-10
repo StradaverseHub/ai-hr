@@ -21,9 +21,10 @@ beforeEach(async()=>{await resetDb();b=await seedBase();});
 afterAll(closeAll);
 
 async function hire(name:string,hiredOn='2024-01-01'){
- const {employmentId}=await hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:`job_${randomUUID().slice(0,8)}@t.local`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn,grantLeaveTypes:[{id:b.annualLeaveTypeId,code:'ANNUAL'}]});
+ const email=`job_${randomUUID().slice(0,8)}@t.local`;
+ const {employmentId}=await hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:email},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn,grantLeaveTypes:[{id:b.annualLeaveTypeId,code:'ANNUAL'}]});
  const [row]=await owner.db.select({code:schema.employment.employeeCode}).from(schema.employment).where(eq(schema.employment.id,employmentId));
- return {employmentId,code:row.code!};
+ return {employmentId,code:row.code!,email};
 }
 const line=(code:string,days:string,on='2026-02-02',type='adjustment'):LeaveImportRecord=>({employee_id:code,leave_type:'ANNUAL',transaction_type:type,days,effective_date:on});
 const tick=()=>runBulkJobTick(owner.client,{handlers:[leaveImportJobHandler]});
@@ -74,11 +75,20 @@ describe('leave ledger import as a background job on the shared kernel',()=>{
    // Opening balance, carry-forward credit, a correcting negative adjustment, a duplicate row inside the file, an
    // unknown employee, a bad sign and a row that was already imported before the file was submitted.
    await withTenant(adminCtx(b),tx=>tx.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:d.employmentId,leaveTypeId:b.annualLeaveTypeId,entryType:'adjustment',days:'2.00',effectiveOn:'2026-03-01',reason:'Imported (leave migration)'}));
+   // Also referenced by e-mail (upper-cased) and by a lower-cased code, which the per-row re-check resolves from
+   // its narrowed read exactly as the whole-file plan does from every employment.
    return [line(a.code,'5.50','2026-01-15'),line(a.code,'-1.00','2026-02-01'),line(c.code,'3.00','2026-01-10'),line(c.code,'3.00','2026-01-10'),
-    line('NOBODY','1.00'),line(c.code,'-2.00','2026-02-02','accrual'),line(d.code,'2.00','2026-03-01'),line(d.code,'7.00','2026-01-01','adjustment')];
+    line('NOBODY','1.00'),line(c.code,'-2.00','2026-02-02','accrual'),line(d.code,'2.00','2026-03-01'),line(d.code,'7.00','2026-01-01','adjustment'),
+    line(a.email.toUpperCase(),'1.25','2026-04-01'),line(d.code.toLowerCase(),'0.75','2026-04-02'),line(c.email,'2.00','2026-03-01','accrual')];
   };
   const syncResult=await commitLeaveImport(adminCtx(b),{records:await file(),source:{kind:'paste'}});
   const syncState=await snapshot();
+  // Independent of the comparison: every row the whole-file validation accepted is written by the narrowed per-row
+  // re-check (a re-check that resolved differently would refuse the row as changed), including the e-mail and
+  // lower-case references, and the prior duplicate is found in the narrowed ledger read and skipped.
+  expect(syncResult.failed).toEqual([]);
+  const written=syncState.ledger.map(r=>`${r.full_name}|${r.entry_type}|${r.days}`);
+  expect(written).toEqual(expect.arrayContaining(['Equiv A|adjustment|1.25','Equiv D|adjustment|0.75','Equiv C|accrual|2.00']));
   await resetDb();b=await seedBase();
   const job=await createLeaveImportJob(adminCtx(b),{records:await file(),source:{kind:'paste'}});
   await ticksUntil(job.id,['completed']);

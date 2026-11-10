@@ -44,7 +44,7 @@ import { NRIC_AMBIGUOUS_MESSAGE } from '../lib/nric-policy-message';
 // `and` and `sql` left with the 1-January marker query b2713800 removed (the marker set is now derived in
 // memory from the one ledger read). `inArray` / `isNull` were already unused before it.
 import { publicErrorMessage } from '@/lib/public-error';
-import { eq, inArray, isNull } from 'drizzle-orm';
+import { eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type Tx, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
@@ -140,7 +140,18 @@ async function analyze(
   // NOT active-only: leave history migration routinely includes people who have since left (their final
   // unconsumed balance matters for final-pay reconciliation). Match ALL employments; terminated ones are
   // flagged, never conflated with "not found".
+  //
+  // ONE RECORD RE-CHECKED INSIDE ITS OWN WRITE TRANSACTION (applyLeaveImportRowTx, under the Access and
+  // employee locks) reads only what that record's reference can match: every employment whose code or email
+  // equals it ignoring case, or whose IC digits equal its digits, plus any employment whose code or email is not
+  // plain ASCII (so no case-folding difference between the database and the matcher below can drop one), and
+  // only those employments' ledger rows. The matcher and the duplicate and year-open keys below run unchanged
+  // on that set and decide exactly as on the whole tenant; the locked read no longer grows with the tenant.
+  // The preview and the whole-file plan still read everything.
+  const singleRef = existingTx && records.length === 1 ? norm(records[0].employee_id) : '';
+  const narrow = singleRef !== '' && /^[\x20-\x7e]+$/.test(singleRef);
   const readSource = async (tx: Tx) => {
+    const refLower = singleRef.toLowerCase(), refDigits = onlyDigits(singleRef);
     const rows = await tx
       .select({
         id: employment.id,
@@ -152,10 +163,18 @@ async function analyze(
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId));
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(narrow ? or(
+        sql`lower(${employment.employeeCode}) = ${refLower}`,
+        sql`lower(${person.primaryEmail}) = ${refLower}`,
+        sql`${employment.employeeCode} !~ '^[ -~]*$'`,
+        sql`${person.primaryEmail} !~ '^[ -~]*$'`,
+        refDigits ? sql`regexp_replace(${employeeStatutoryMy.icNumber}, '[^0-9]+', '', 'g') = ${refDigits}` : undefined,
+      ) : undefined);
     // Existing ledger rows keyed on (employment|leaveType|entryType|effectiveOn|days) so a re-upload of an
     // already-loaded batch is a no-op (warning + skip on commit), per the ticket's dedupe requirement.
-    const ledger = await tx
+    const candidateIds = [...new Set(rows.map((r) => r.id))];
+    const ledger = narrow && candidateIds.length === 0 ? [] : await tx
       .select({
         employmentId: leaveLedger.employmentId,
         leaveTypeId: leaveLedger.leaveTypeId,
@@ -163,7 +182,8 @@ async function analyze(
         effectiveOn: leaveLedger.effectiveOn,
         days: leaveLedger.days,
       })
-      .from(leaveLedger);
+      .from(leaveLedger)
+      .where(narrow ? inArray(leaveLedger.employmentId, candidateIds) : undefined);
     const existingKeys = new Set(
       ledger.map((l) => `${l.employmentId}|${l.leaveTypeId}|${l.entryType}|${l.effectiveOn}|${round2(Number(l.days)).toFixed(2)}`),
     );
