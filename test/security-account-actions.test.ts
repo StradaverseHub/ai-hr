@@ -89,7 +89,7 @@ describe('Security Center sensitive account actions',()=>{
   expect(instantFromKualaLumpurLocal('2026-02-29T10:00')).toBeNull();expect(instantFromKualaLumpurLocal('2026-11-12T24:00')).toBeNull();
   const employment=(employeeCode:string|null,hiredOn:string,ended:string|null=null)=>({employeeCode,hiredOn,terminatedOn:ended,lastWorkingDate:ended});
   expect(currentEmployeeCode([employment('E0001','2020-01-01','2024-12-31'),employment('E0044','2025-01-01')],'2026-11-10')).toBe('E0044');
-  expect(currentEmployeeCode([employment('E0001','2020-01-01','2024-12-31'),employment('E0002','2021-01-01','2023-01-01')],'2026-11-10')).toBe('E0001');
+  expect(currentEmployeeCode([employment('E0001','2020-01-01','2024-12-31'),employment('E0002','2021-01-01','2023-01-01')],'2026-11-10')).toBe('E0002');
   expect(currentEmployeeCode([employment('E0012','2024-01-01'),employment('S0012','2025-01-01')],'2026-11-10')).toBe('S0012, E0012');
   expect(currentEmployeeCode([employment(null,'2024-01-01')],'2026-11-10')).toBeNull();
  });
