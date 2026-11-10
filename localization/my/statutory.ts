@@ -1481,6 +1481,16 @@ export async function getStatutoryProfileMYTx(tx: Tx, ctx: SessionContext, perso
     return row ?? null;
   }
 
+/** Set-wise form of getStatutoryProfileMYTx for a caller-held scoped snapshot (the Personnel export):
+ * the same RLS read of the same rows, in one statement for every person. person_id is unique
+ * (employee_statutory_my_person_uq), so a person maps to at most one row; a person with no visible
+ * row is absent from the map (the single read's null). */
+export async function getStatutoryProfilesMYTx(tx: Tx, ctx: SessionContext, personIds: readonly string[]) {
+    const ids = [...new Set(personIds)];
+    const rows = ids.length ? await tx.select().from(employeeStatutoryMy).where(inArray(employeeStatutoryMy.personId, ids)) : [];
+    return new Map(rows.map(row => [row.personId, row] as const));
+  }
+
 /** Values and their exact MVCC revision come from the same RLS read/lock. A timestamp is not a revision. */
 export function getStatutoryEditSnapshotMY(ctx: SessionContext, personId: string, outerTx?: Tx, opts: { forUpdate?: boolean } = {}) {
   const run = async (tx: Tx) => {

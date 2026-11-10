@@ -12,17 +12,18 @@ import type { EmployeeMasterSpec, MasterCell, MasterOwnerRecord, MasterSubject }
 import { draftFamily, draftProvisionalEndOn, withSameAsPermanent, type EmployeeDraftData } from '../lib/employee-draft-schema';
 import { completedYearsAt } from '../lib/completed-years';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { companyOnDate, dayBefore, provenCompanySegmentsForPeriodBulkTx, employedByCompanyDuring, provenCompanyDatesTx } from './employment-company';
+import { companyOnDate, companySegmentsForPeriodBulk, dayBefore, provenCompanySegmentsForPeriodBulkTx, employedByCompanyDuring, provenCompanyDatesTx } from './employment-company';
 import { deriveEmploymentStatus } from './employment-status';
 import { hireCorrectionViewTx } from './hire-correction';
 import { movementHistoryTx, movementDetailTx } from './movement';
-import { isChildReliefEligible, qualifyingChildReliefFor } from './dependents';
+import { isChildReliefEligible, qualifyingChildReliefFor, qualifyingChildReliefReaderTx, type QualifyingChildRelief } from './dependents';
 import { packFor } from '../localization/registry';
-import { benefitSchemeViewTx, encashmentSnapshotForEmploymentTx, leaveBalancesTx, leaveEntitlementBreakdownTx, serviceYearsMonthsDaysAt } from '../packs/leave/service';
+import { benefitSchemeViewTx, encashmentSnapshotForEmploymentTx, encashmentSnapshotsForEmploymentsTx, leaveBalancesTx, leaveEntitlementBreakdownTx, serviceYearsMonthsDaysAt, type EncashmentSnapshotView } from '../packs/leave/service';
 
 const nextDay=(value:unknown):string|null=>{const v=date(value);if(!v)return null;const d=new Date(v+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10);};
 const nextMonth=(value:unknown):string|null=>{const v=text(value)?.slice(0,7);if(!v)return null;const d=new Date(v+'-01T00:00:00Z');d.setUTCMonth(d.getUTCMonth()+1);return d.toISOString().slice(0,10);};
-const SUBJECT_LIMIT=2000, RECORD_LIMIT=50_000;
+const SUBJECT_LIMIT=2000, RECORD_LIMIT=50_000, TIME_LIMIT_MS=30_000;
+const TOO_MANY_RECORDS='Too many records. Narrow the report company/employee conditions.';
 type Row=Record<string,unknown>;
 const text=(value:unknown):string|null=>typeof value==='string'?value:value instanceof Date?value.toISOString():null;
 const date=(value:unknown):string|null=>text(value)?.slice(0,10)??null;
@@ -33,22 +34,110 @@ const duration=(from:unknown,asAt:string):string|null=>{
   return `${value.years}y ${value.months}m ${value.days}d`;
 };
 /** Metadata only: bytes and protected file URLs never enter report data. */
-async function rowsFor(tx:Tx,table:AnyPgTable,key:AnyPgColumn,ids:string[],extra?:SQL,omit:string[]=[]):Promise<Row[]>{
+async function rowsFor(tx:Tx,table:AnyPgTable,key:AnyPgColumn,ids:string[],extra?:SQL,omit:string[]=[],limit=RECORD_LIMIT):Promise<Row[]>{
   if(!ids.length)return [];
   const columns={...getTableColumns(table)};for(const field of omit)delete columns[field];
-  const rows=await tx.select(columns).from(table).where(and(inArray(key,ids),extra)).limit(RECORD_LIMIT+1);
-  if(rows.length>RECORD_LIMIT)throw new Error('Too many records. Narrow the report company/employee conditions.');
+  const rows=await tx.select(columns).from(table).where(and(inArray(key,ids),extra)).limit(limit+1);
+  if(rows.length>limit)throw new Error(TOO_MANY_RECORDS);
   return rows as Row[];
 }
 
-export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:EmployeeMasterSpec,fields:readonly PersonnelFieldDescriptor[],catalogue:readonly PersonnelFieldDescriptor[],options:{includeWithoutCompany?:boolean;employmentIds?:readonly string[]}={}):Promise<MasterSubject[]>{
+type TaxSelectionView=Awaited<ReturnType<NonNullable<NonNullable<ReturnType<typeof packFor>>['statutory']['getTaxSelection']>>>;
+/** The loop's per-subject owner inputs. Every value is computed by its owner, from rows it reads under the
+ * caller's transaction (RLS and the owner's own checks decide visibility either way); only WHEN rows are
+ * read differs between the two forms below. */
+type SubjectInputs={
+  companyOnDate:(employmentId:string,date:string)=>Promise<string|null>;
+  childRelief:(personId:string,country:string)=>Promise<QualifyingChildRelief|null>;
+  statutory:(country:string,personId:string)=>Promise<unknown>;
+  taxSelection:(country:string,employmentId:string)=>Promise<TaxSelectionView|null|undefined>;
+  encashment:(employmentId:string)=>Promise<EncashmentSnapshotView|null>;
+};
+/** One subject at a time: the owners' single reads, exactly as the projection has always issued them. */
+function singleSubjectInputs(tx:Tx,ctx:SessionContext,asAt:string):SubjectInputs{
+  return {
+    companyOnDate:(employmentId,date)=>companyOnDate(tx,employmentId,date),
+    childRelief:(personId,country)=>qualifyingChildReliefFor(ctx,{personId,country,asOf:asAt},tx),
+    statutory:async(country,personId)=>packFor(country)?.statutory.get(ctx,personId,tx),
+    taxSelection:async(country,employmentId)=>packFor(country)?.statutory.getTaxSelection?.(ctx,employmentId,undefined,{tx,readOnly:true}),
+    encashment:employmentId=>encashmentSnapshotForEmploymentTx(tx,ctx,employmentId),
+  };
+}
+/** Set-wise: each owner reads its source ONCE for every subject the loop will project (per country, as of
+ * one date), at the point the single form would first have read it, and each subject's value is then the
+ * same owner derivation over that subject's own rows. A key outside the prefetched set (never expected)
+ * falls back to the single read, so the values can only ever be the single form's values. */
+async function setWiseSubjectInputsTx(tx:Tx,ctx:SessionContext,asAt:string,today:string,companyIds:readonly string[],
+  subjects:readonly {employmentId:string;personId:string;scopeDate:string;provedCompanyId:string|null|undefined}[],
+  countryOf:(companyId:string)=>string|null):Promise<SubjectInputs>{
+  const single=singleSubjectInputs(tx,ctx,asAt);
+  // The loop's own company resolution: dated proof, else (for today only) the current company on that day.
+  const unproven=subjects.filter(row=>row.provedCompanyId==null&&row.scopeDate===today).map(row=>row.employmentId);
+  const onDate=new Map<string,string|null>();
+  if(unproven.length){
+    const current=await tx.select({id:schema.employment.id,companyId:schema.employment.companyId}).from(schema.employment).where(inArray(schema.employment.id,unproven));
+    const segments=await companySegmentsForPeriodBulk(tx,unproven,today,today,new Map(current.map(row=>[row.id,row.companyId])));
+    for(const id of unproven)onDate.set(id,segments.get(id)?.[0]?.companyId??null);
+  }
+  // The subjects the loop projects (its own scope test), grouped by the country their company names.
+  const byCountry=new Map<string,{employmentIds:string[];personIds:string[];employments:Set<string>;people:Set<string>}>(),projected:string[]=[];
+  for(const row of subjects){
+    const companyId=row.provedCompanyId??(row.scopeDate===today?onDate.get(row.employmentId)??null:null);
+    if(!companyId||!companyIds.includes(companyId))continue;
+    projected.push(row.employmentId);
+    const country=countryOf(companyId);if(!country)continue;
+    let group=byCountry.get(country);
+    if(!group){group={employmentIds:[],personIds:[],employments:new Set(),people:new Set()};byCountry.set(country,group);}
+    group.employmentIds.push(row.employmentId);group.personIds.push(row.personId);group.employments.add(row.employmentId);group.people.add(row.personId);
+  }
+  const once=<V,>(read:(key:string)=>Promise<V>)=>{const values=new Map<string,Promise<V>>();return (key:string)=>{let value=values.get(key);if(!value){value=read(key);values.set(key,value);}return value;};};
+  const reliefReaders=once(country=>qualifyingChildReliefReaderTx(ctx,{personIds:byCountry.get(country)?.personIds??[],country,asOf:asAt},tx));
+  const profiles=once(async country=>{const getMany=packFor(country)?.statutory.getManyTx;return getMany?getMany(tx,ctx,byCountry.get(country)?.personIds??[]):null;});
+  // The loop asks for a tax selection only for a subject whose statutory record it found.
+  const taxReaders=once(async country=>{
+    const getMany=packFor(country)?.statutory.getTaxSelections,found=await profiles(country),group=byCountry.get(country);
+    return getMany&&found&&group?getMany(ctx,group.employmentIds.filter((_,index)=>found.has(group.personIds[index])),{tx,readOnly:true}):null;
+  });
+  const listedEncashment=new Set(projected);let encashments:Promise<Map<string,EncashmentSnapshotView>>|undefined;
+  return {
+    companyOnDate:async(employmentId,date)=>date===today&&onDate.has(employmentId)?onDate.get(employmentId)??null:single.companyOnDate(employmentId,date),
+    childRelief:async(personId,country)=>byCountry.get(country)?.people.has(personId)?(await reliefReaders(country))(personId):single.childRelief(personId,country),
+    statutory:async(country,personId)=>{
+      const found=byCountry.get(country)?.people.has(personId)?await profiles(country):null;
+      return found?found.get(personId)??null:single.statutory(country,personId);
+    },
+    taxSelection:async(country,employmentId)=>{
+      const read=byCountry.get(country)?.employments.has(employmentId)?await taxReaders(country):null;
+      return read?read(employmentId):single.taxSelection(country,employmentId);
+    },
+    encashment:async employmentId=>listedEncashment.has(employmentId)?(await (encashments??=encashmentSnapshotsForEmploymentsTx(tx,ctx,projected))).get(employmentId)??null:single.encashment(employmentId),
+  };
+}
+
+/**
+ * `options.bulk` (with `employmentIds`) is the caller that used to read `employmentIds` in consecutive
+ * `batchSize` slices, one call each (the Personnel "export all" details). It now reads every source ONCE for
+ * the whole list, so its statement count no longer grows with the rows. Each slice's own bounds are kept
+ * exactly: the subject and per-source record limits are checked per slice, and the time budget is the
+ * slices' sum. Without `bulk` (the Employee Master Report), nothing here changes.
+ */
+export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:EmployeeMasterSpec,fields:readonly PersonnelFieldDescriptor[],catalogue:readonly PersonnelFieldDescriptor[],options:{includeWithoutCompany?:boolean;employmentIds?:readonly string[];bulk?:{batchSize:number}}={}):Promise<MasterSubject[]>{
   const today=todayInKualaLumpur(),started=Date.now();
   const needed=new Set(fields.filter(f=>spec.asAt===today||f.history!=='current'&&f.history!=='none').map(f=>f.owner));
   if (options.employmentIds?.length === 0) return [];
+  const bulk=options.bulk&&options.employmentIds?{size:Math.max(1,Math.floor(options.bulk.batchSize)),ids:options.employmentIds}:null;
+  const slices=bulk?Math.ceil(bulk.ids.length/bulk.size):1;
+  // Which of the caller's slices each employment was listed in (normally exactly one).
+  const employmentSlices=new Map<string,number[]>();
+  if(bulk)bulk.ids.forEach((id,index)=>{const slice=Math.floor(index/bulk.size),at=employmentSlices.get(id);if(!at)employmentSlices.set(id,[slice]);else if(!at.includes(slice))at.push(slice);});
   const candidates=await tx.select().from(schema.employment).where(and(
     options.employmentIds ? inArray(schema.employment.id, options.employmentIds) : undefined,
-    lte(schema.employment.hiredOn,spec.asAt),or(...spec.companyIds.map(id=>employedByCompanyDuring(id,spec.asAt,spec.asAt))))).orderBy(asc(schema.employment.id)).limit(SUBJECT_LIMIT+1);
-  if(candidates.length>SUBJECT_LIMIT)throw new Error('This report matches more than 2,000 employments. Narrow its company/employee conditions.');
+    lte(schema.employment.hiredOn,spec.asAt),or(...spec.companyIds.map(id=>employedByCompanyDuring(id,spec.asAt,spec.asAt))))).orderBy(asc(schema.employment.id)).limit(SUBJECT_LIMIT*slices+1);
+  if(candidates.length>SUBJECT_LIMIT*slices)throw new Error('This report matches more than 2,000 employments. Narrow its company/employee conditions.');
+  if(bulk){
+    const counts=new Array<number>(slices).fill(0);
+    for(const row of candidates)for(const slice of employmentSlices.get(row.id)??[])if(++counts[slice]>SUBJECT_LIMIT)throw new Error('This report matches more than 2,000 employments. Narrow its company/employee conditions.');
+  }
   // Canonical termination closes assignment.validTo at terminatedOn (exclusive). An ended report
   // subject needs strict proof of its last effective company day, never today's mutable employer.
   // If that day precedes hire or has missing history, the shared proof resolver still refuses it.
@@ -67,19 +156,33 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
   const ids=employments.map(e=>e.id),personIds=[...new Set(employments.map(e=>e.personId))];
   const earliest=employments.reduce((value,row)=>row.hiredOn<value?row.hiredOn:value,spec.asAt);
   const companySegments=await provenCompanySegmentsForPeriodBulkTx(tx,ids,earliest,spec.asAt);
-  const load=(owner:string,table:AnyPgTable,key:AnyPgColumn,keys:string[],extra?:SQL,omit:string[]=[])=>needed.has(owner)?rowsFor(tx,table,key,keys,extra,omit):Promise.resolve([] as Row[]);
+  // A set-wise read keeps each slice's record limit: the source's rows of that slice's employments/people.
+  const personSlices=new Map<string,number[]>();
+  if(bulk)for(const row of employments)for(const slice of employmentSlices.get(row.id)??[]){const at=personSlices.get(row.personId);if(!at)personSlices.set(row.personId,[slice]);else if(!at.includes(slice))at.push(slice);}
+  const records=async(table:AnyPgTable,key:AnyPgColumn,keys:string[],extra?:SQL,omit:string[]=[]):Promise<Row[]>=>{
+    const rows=await rowsFor(tx,table,key,keys,extra,omit,RECORD_LIMIT*slices);
+    if(bulk&&rows.length){
+      // Every source is keyed by this call's `personIds` or its employment `ids`.
+      const field=Object.entries(getTableColumns(table)).find(([,column])=>column===key)?.[0],of=keys===personIds?personSlices:employmentSlices;
+      if(!field)throw new Error('Report source key is not a column of its table.');
+      const counts=new Array<number>(slices).fill(0);
+      for(const row of rows)for(const slice of of.get(String(row[field]))??[])if(++counts[slice]>RECORD_LIMIT)throw new Error(TOO_MANY_RECORDS);
+    }
+    return rows;
+  };
+  const load=(owner:string,table:AnyPgTable,key:AnyPgColumn,keys:string[],extra?:SQL,omit:string[]=[])=>needed.has(owner)?records(table,key,keys,extra,omit):Promise.resolve([] as Row[]);
   const [people,assignments,compensations,dependents,emergency,superiors,payItems,cp38,qualifications,documents,shiftHistory,recalc,leaveRequests,reviews,reviewDocuments,events]=await Promise.all([
-    needed.has('person')?rowsFor(tx,schema.person,schema.person.id,personIds):Promise.resolve([]),
-    rowsFor(tx,schema.assignment,schema.assignment.employmentId,ids,isNull(schema.assignment.supersededAt)),
+    needed.has('person')?records(schema.person,schema.person.id,personIds):Promise.resolve([]),
+    records(schema.assignment,schema.assignment.employmentId,ids,isNull(schema.assignment.supersededAt)),
     load('compensation',schema.compensation,schema.compensation.employmentId,ids,isNull(schema.compensation.supersededAt)),
     load('dependent',schema.employeeDependent,schema.employeeDependent.personId,personIds,isNull(schema.employeeDependent.archivedAt)),
     load('emergencyContact',schema.personEmergencyContact,schema.personEmergencyContact.personId,personIds,isNull(schema.personEmergencyContact.archivedAt)),
-    needed.has('directSuperior')||needed.has('superiorHistory')||needed.has('delegation')?rowsFor(tx,schema.reportingLine,schema.reportingLine.subordinateEmploymentId,ids,isNull(schema.reportingLine.supersededAt)):Promise.resolve([]),
+    needed.has('directSuperior')||needed.has('superiorHistory')||needed.has('delegation')?records(schema.reportingLine,schema.reportingLine.subordinateEmploymentId,ids,isNull(schema.reportingLine.supersededAt)):Promise.resolve([]),
     load('payItem',schema.employmentPayComponent,schema.employmentPayComponent.employmentId,ids,isNull(schema.employmentPayComponent.supersededAt)),
     load('cp38',schema.employeeCp38,schema.employeeCp38.employmentId,ids,isNull(schema.employeeCp38.supersededAt)),
     load('qualification',schema.employeeQualification,schema.employeeQualification.employmentId,ids,isNull(schema.employeeQualification.archivedAt)),
     load('document',schema.employeeDocument,schema.employeeDocument.employmentId,ids,undefined,['content']),
-    needed.has('shiftHistory')||needed.has('attendanceProfile')?rowsFor(tx,schema.employmentShiftArrangement,schema.employmentShiftArrangement.employmentId,ids,isNull(schema.employmentShiftArrangement.supersededAt)):Promise.resolve([]),
+    needed.has('shiftHistory')||needed.has('attendanceProfile')?records(schema.employmentShiftArrangement,schema.employmentShiftArrangement.employmentId,ids,isNull(schema.employmentShiftArrangement.supersededAt)):Promise.resolve([]),
     load('leaveRecalc',schema.leaveEntitlementRecalcAudit,schema.leaveEntitlementRecalcAudit.employmentId,ids),
     load('leaveRequest',schema.leaveRequest,schema.leaveRequest.employmentId,ids),
     load('review',schema.employmentReview,schema.employmentReview.employmentId,ids),
@@ -103,14 +206,30 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
   const actors=needed.has('document')||needed.has('movement')||needed.has('movementComparison')||needed.has('audit')||needed.has('shiftHistory')?await tx.select({id:schema.appUser.id,name:schema.person.fullName}).from(schema.appUser).leftJoin(schema.person,eq(schema.person.id,schema.appUser.personId)):[];
   const actorName=(id:unknown)=>actors.find(actor=>actor.id===id)?.name??null;
   const clockLinks=needed.has('clockingLocation')?await tx.select({employmentId:schema.employeeClockingLocation.employmentId,site:schema.clockingLocation}).from(schema.employeeClockingLocation).innerJoin(schema.clockingLocation,eq(schema.clockingLocation.id,schema.employeeClockingLocation.clockingLocationId)).where(inArray(schema.employeeClockingLocation.employmentId,ids.length?ids:['00000000-0000-0000-0000-000000000000'])):[];
+  const inputs=bulk?await setWiseSubjectInputsTx(tx,ctx,spec.asAt,today,spec.companyIds,
+    employments.map(row=>({employmentId:row.id,personId:row.personId,scopeDate:scopeDates.get(row.id)!,provedCompanyId:proofs.get(row.id+'|'+scopeDates.get(row.id)!)?.companyId})),
+    companyId=>text(ref(0,companyId,'country'))):singleSubjectInputs(tx,ctx,spec.asAt);
+  // Set-wise, the sources hold every subject's rows, so a subject's rows are found by key (same rows, same
+  // order) rather than by scanning the whole source per subject.
+  const grouped=new Map<Row[],Map<string,Map<unknown,Row[]>>>();
+  const matching=(rows:Row[],key:string,value:unknown):Row[]=>{
+    if(!bulk)return rows.filter(row=>row[key]===value);
+    let byKey=grouped.get(rows);if(!byKey){byKey=new Map();grouped.set(rows,byKey);}
+    let groups=byKey.get(key);
+    if(!groups){groups=new Map();for(const row of rows){const list=groups.get(row[key]);if(list)list.push(row);else groups.set(row[key],[row]);}byKey.set(key,groups);}
+    return [...(groups.get(value)??[])];
+  };
   const results:MasterSubject[]=[...unknownScope];
+  let visited=0;
   for(const employment of employments){
-    if(Date.now()-started>30_000)throw new Error('This report took too long. Narrow its companies/conditions before running it again.');
-    const scopeDate=scopeDates.get(employment.id)!,companyId=proofs.get(employment.id+'|'+scopeDate)?.companyId??(scopeDate===today?await companyOnDate(tx,employment.id,scopeDate):null);if(!companyId||!spec.companyIds.includes(companyId))continue;
+    if(Date.now()-started>TIME_LIMIT_MS*slices)throw new Error('This report took too long. Narrow its companies/conditions before running it again.');
+    // A set-wise read never waits on the database inside this loop; let other requests run meanwhile.
+    if(bulk&&++visited%500===0)await new Promise<void>(resolve=>setImmediate(resolve));
+    const scopeDate=scopeDates.get(employment.id)!,companyId=proofs.get(employment.id+'|'+scopeDate)?.companyId??(scopeDate===today?await inputs.companyOnDate(employment.id,scopeDate):null);if(!companyId||!spec.companyIds.includes(companyId))continue;
     const subject:MasterSubject={id:employment.id,kind:'employment',personId:employment.personId,companyId,owners:{}};
     const e=employment as unknown as Row;
-    const own=(rows:Row[],key='employmentId')=>rows.filter(row=>row[key]===employment.id);
-    const personOwn=(rows:Row[])=>rows.filter(row=>row.personId===employment.personId);
+    const own=(rows:Row[],key='employmentId')=>matching(rows,key,employment.id);
+    const personOwn=(rows:Row[])=>matching(rows,'personId',employment.personId);
     const install=(owner:string,rows:Row[],overrides:(row:Row,index:number,all:Row[])=>Row=()=>({}))=>{
       if(!needed.has(owner))return;
       const ownerFields=fields.filter(field=>field.owner===owner);
@@ -154,7 +273,7 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
     const activeAssignment=own(assignments).filter(row=>String(row.validFrom)<=spec.asAt&&(!row.validTo||String(row.validTo)>spec.asAt)).sort((a,b)=>String(b.validFrom).localeCompare(String(a.validFrom))||String(b.id).localeCompare(String(a.id)))[0];
     install('employment',[e],row=>({companyName:refCell(0,companyId,'legalName'),gradeName:spec.asAt===today?refCell(4,employment.gradeId):{value:null,unavailable:'historical-unavailable'},employmentType:activeAssignment?.employmentType,groupService:duration(row.hiredOn,spec.asAt),companyService:duration(row.joinDate??row.hiredOn,spec.asAt),yearOfService:duration(row.joinDate??row.hiredOn,spec.asAt)}));
     install('employmentStatus',[{id:employment.id,validFrom:employment.hiredOn,status:deriveEmploymentStatus(employment,spec.asAt)}]);
-    install('person',people.filter(row=>row.id===employment.personId),row=>({age:completedYearsAt(text(row.dateOfBirth),spec.asAt)}));
+    install('person',matching(people,'id',employment.personId),row=>({age:completedYearsAt(text(row.dateOfBirth),spec.asAt)}));
     install('assignment',own(assignments),row=>({companyName:refCell(0,row.companyId??companyId,'legalName'),businessUnitName:refCell(2,row.businessUnitId,'name'),departmentName:refCell(1,row.departmentId,'name'),positionName:refCell(3,row.positionId,'title'),gradeName:spec.asAt===today?refCell(4,employment.gradeId):{value:null,unavailable:'historical-unavailable'},locationCode:ref(5,row.locationId,'code'),locationName:ref(5,row.locationId),locationEffectiveFrom:row.validFrom}));
     const salaries=own(compensations).sort((a,b)=>String(a.validFrom).localeCompare(String(b.validFrom))||String(a.id).localeCompare(String(b.id)));
     install('compensation',salaries,(row,index,all)=>{
@@ -187,14 +306,14 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
     install('review',reviewRows);
     const reliefNeeded=needed.has('childRelief')||needed.has('statutory')&&fields.some(field=>field.owner==='statutory'&&['qualifyingChildren','childReliefAmount'].includes(field.ownerField));
     const reliefCountry=text(ref(0,companyId,'country'));
-    const childRelief=reliefNeeded&&reliefCountry?await qualifyingChildReliefFor(ctx,{personId:employment.personId,country:reliefCountry,asOf:spec.asAt},tx):null;
+    const childRelief=reliefNeeded&&reliefCountry?await inputs.childRelief(employment.personId,reliefCountry):null;
     if(['statutory','bank','declaredChildRelief','tp3','zakat'].some(owner=>needed.has(owner))){
       const country=text(ref(0,companyId,'country'));
-      const statutory=country?await packFor(country)?.statutory.get(ctx,employment.personId,tx):null;
+      const statutory=country?await inputs.statutory(country,employment.personId):null;
       const row=statutory as unknown as Row|undefined|null;
       if(row){
         const taxNeeded=fields.some(field=>field.owner==='statutory'&&['taxResidency','employerName','selectionConfirmationRequired'].includes(field.ownerField));
-        const tax=taxNeeded&&country?await packFor(country)?.statutory.getTaxSelection?.(ctx,employment.id,undefined,{tx,readOnly:true}):null;
+        const tax=taxNeeded&&country?await inputs.taxSelection(country,employment.id):null;
         install('statutory',[row],()=>({hrdfSubject:row.subjectToHrdf,qualifyingChildren:childRelief?.qualifyingChildren,childReliefAmount:childRelief?.reliefRM,currency:'MYR',...(taxNeeded?{taxResidency:tax?.transitionState==='resolved'?tax.scheme:{value:null,unavailable:'not-recorded'},employerName:tax?.companyName,selectionConfirmationRequired:tax?tax.transitionState==='confirmation_required':null}:{})}));install('bank',[row]);
         const grid=object(row.childReliefTable),declared:Row={id:employment.personId};
         const categories:Record<string,string>={under18:'under_18',preUniversity:'study_preu',tertiary:'study_tertiary',disabled:'disabled',disabledStudy:'disabled_study'};
@@ -206,7 +325,7 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
     }
     if(childRelief)install('childRelief',childRelief.breakdown.map((row,index)=>({id:employment.personId+':relief:'+index,item:row.name??row.kind,category:row.category,share:row.sharePercent,qualifyingUnits:row.units,reliefAmount:row.amountRM,currency:'MYR'})));
     if(needed.has('encashment')){
-      const snapshot=await encashmentSnapshotForEmploymentTx(tx,ctx,employment.id);
+      const snapshot=await inputs.encashment(employment.id);
       if(snapshot)install('encashment',[snapshot as unknown as Row],row=>({rawBalance:row.balanceDays,autoDays:row.encashableDays,effectiveDays:row.days,asOf:row.calculatedAsOf,adjustedDays:row.overrideDays,reason:row.overrideReason}));
     }
     if(needed.has('benefitScheme')){
