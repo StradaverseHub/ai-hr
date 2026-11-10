@@ -2937,7 +2937,8 @@
         "payItems": "Item gaji berulang selain gaji pokok dan elaun bulanan — tambah pada tab Gaji atau dengan import item gaji.",
         "openingTax": "Baki cukai pembukaan untuk pekerja yang menyertai pertengahan tahun (TP3) — dimasukkan pada tab Gaji.",
         "holidayCalendar": "Kalendar cuti umum — tugasan bertarikh dengan sejarahnya sendiri; tetapkan pada tab Kehadiran selepas import."
-      }
+      },
+      "historyButton": "Sejarah Import"
     },
     "wizard": {
       "deleteRecord": "Padam Rekod",
@@ -3262,7 +3263,12 @@
         "bank_statutory": "Bank & Berkanun",
         "employee_full": "Semua — pekerja baharu",
         "movement": "Pergerakan",
-        "information_correction": "Pembetulan Maklumat Sahaja"
+        "information_correction": "Pembetulan Maklumat Sahaja",
+        "profile": "Profil",
+        "family": "Keluarga",
+        "qualification": "Kelayakan",
+        "emergency": "Kenalan Kecemasan",
+        "notRecorded": "Tidak direkodkan"
       },
       "reference": "Rujukan",
       "referenceLabel": "Rujukan {reference}",
@@ -3343,6 +3349,40 @@
       "employeeFull": {
         "created": "Dicipta {code} · {name}",
         "willVoid": "Pekerja ini akan dibatalkan: dikeluarkan daripada senarai, bilangan pekerja dan gaji, disimpan dalam jejak audit. ID Pekerja, e-mel dan NRIC dibebaskan."
+      },
+      "listDescription": "Setiap fail import kakitangan: siapa yang mengimport, bila, untuk syarikat mana, dan keputusan setiap baris.",
+      "backToImport": "Import pekerja",
+      "total": "Jumlah",
+      "successful": "Berjaya",
+      "failed": "Gagal",
+      "totalRows": "Jumlah baris",
+      "pasted": "Data yang ditampal",
+      "openLog": "Buka Log Import bagi {file}",
+      "log": {
+        "title": "Setiap baris fail",
+        "hint": "Baris yang disimpan menunjukkan perubahan. Baris yang tidak disimpan menunjukkan sebabnya. Hanya pekerja syarikat yang boleh anda lihat ditunjukkan.",
+        "empty": "Tiada baris fail ini yang boleh anda lihat.",
+        "row": "Baris",
+        "employee": "Pekerja",
+        "result": "Keputusan",
+        "field": "Medan",
+        "before": "Sebelum",
+        "after": "Selepas",
+        "reason": "Sebab diberikan",
+        "saved": "Disimpan",
+        "unchanged": "Tidak berubah",
+        "notSaved": "Tidak disimpan",
+        "notConfirmed": "Disemak, tidak disimpan",
+        "nothingChanged": "Semua nilai sudah sepadan — tiada apa disimpan."
+      },
+      "run": {
+        "noFile": "Import ini menyimpan ringkasan dan baris yang tidak disimpan. Fail itu sendiri tidak disimpan.",
+        "failedTitle": "Baris tidak disimpan",
+        "hint": "Setiap baris yang tidak disimpan, beserta sebabnya.",
+        "truncated": "Menunjukkan {shown} daripada {total} baris yang tidak disimpan.",
+        "noDetail": "Tiada butiran baris direkodkan untuk import ini.",
+        "none": "Semua baris telah disimpan.",
+        "reasonColumn": "Sebab"
       }
     },
     "informationCorrection": {
@@ -3381,14 +3421,38 @@
         "hiredOn": "Tarikh Menyertai Kumpulan",
         "joinDate": "Tarikh Menyertai",
         "gradeId": "Gred Jawatan",
-        "employmentType": "Jenis Pekerjaan"
+        "employmentType": "Jenis Pekerjaan",
+        "businessUnitId": "Unit Perniagaan",
+        "departmentId": "Jabatan",
+        "positionId": "Jawatan",
+        "orgDivision": "Bahagian",
+        "orgBranch": "Cawangan",
+        "orgRegion": "Wilayah",
+        "orgLine": "Barisan",
+        "orgSection": "Seksyen",
+        "orgTeam": "Pasukan",
+        "orgBase": "Pangkalan",
+        "employmentCategory": "Kategori",
+        "probationValue": "Tempoh Percubaan",
+        "probationUnit": "Unit Tempoh Percubaan",
+        "extendedProbationValue": "Tempoh Percubaan Lanjutan",
+        "extendedProbationUnit": "Unit Tempoh Percubaan Lanjutan",
+        "confirmationDate": "Tarikh Pengesahan",
+        "noticeBeforeConfirmationValue": "Notis Sebelum Pengesahan",
+        "noticeBeforeConfirmationUnit": "Unit Notis Sebelum Pengesahan",
+        "noticeAfterConfirmationValue": "Notis Selepas Pengesahan",
+        "noticeAfterConfirmationUnit": "Unit Notis Selepas Pengesahan",
+        "managerEmploymentId": "Penyelia Langsung"
       },
       "statuses": {
         "applied": "Berjaya",
         "failed": "Gagal",
         "unchanged": "Tiada perubahan"
       },
-      "effective": "Proses akan datang menggunakan maklumat dibetulkan mulai {date}."
+      "effective": "Proses akan datang menggunakan maklumat dibetulkan mulai {date}.",
+      "templateFields": "Medan yang dibetulkan oleh templat ini (medan baharu diserlahkan). Sel kosong mengekalkan nilai sedia ada.",
+      "templateFieldsLabel": "Medan yang dibetulkan oleh templat ini",
+      "ownersNote": "Gaji Pokok dan tarikh peletakan jawatan dibetulkan pada peristiwa yang merekodkannya: gunakan import Pergerakan dengan Tindakan \"Update\". Kaedah Pembayaran terdapat dalam import Bank dan Berkanun."
     }
   },
   "leave": {

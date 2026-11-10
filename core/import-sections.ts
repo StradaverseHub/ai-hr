@@ -929,7 +929,7 @@ export async function commitSectionImport(
   if(!isImportSection(p.section))throw new Error('Unknown import section. Employment updates use dated Movement import.');
   if(isPersonnelRegisterKind(p.section)) {
     const result=await commitRegisterSection(ctx,p.section,p.records);
-    if(result.updated>0)result.runId=await recordSectionRun(ctx,{companyId:null,fileName:p.fileName??'',totalRows:p.records.length,updated:result.updated,rejected:[],failed:[]});
+    if(result.updated>0)result.runId=await recordSectionRun(ctx,{section:p.section,companyId:null,fileName:p.fileName??'',totalRows:p.records.length,updated:result.updated,rejected:[],failed:[]});
     return result;
   }
   const { preview, resolved } = await analyze(ctx, p.section, p.records);
@@ -1068,6 +1068,7 @@ export async function commitSectionImport(
   }
 
   const runId = await recordSectionRun(ctx, {
+    section: p.section,
     companyId: resolved.find((r) => r.subject)?.subject?.companyId ?? null,
     fileName: p.fileName ?? '',
     totalRows: resolved.length,
@@ -1145,6 +1146,8 @@ export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{recor
 async function recordSectionRun(
   ctx: SessionContext,
   p: {
+    /** ccd3a65c — the section key, stored so Import History can list the run by its type. */
+    section: ImportSection;
     companyId: string | null;
     fileName: string;
     totalRows: number;
@@ -1185,6 +1188,7 @@ async function recordSectionRun(
           failedRows: errors.length,
           errors: errors.slice(0, IMPORT_RUN_ERROR_CAP),
           errorsTruncated: errors.length > IMPORT_RUN_ERROR_CAP,
+          importSection: p.section,
         })
         .returning({ id: employeeImportRun.id });
       return rowOut?.id ?? null;

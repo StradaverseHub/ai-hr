@@ -66,6 +66,7 @@ export async function commitSectionAction(
   });
   revalidatePath('/admin/personnel');
   revalidatePath('/admin/personnel/import');
+  revalidatePath('/admin/personnel/import/history');
   return result;
 }
 
