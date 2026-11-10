@@ -1,7 +1,8 @@
 # Reader/writer Access lock — 10 November 2026 (provisional, unapplied)
 
 Branch `claude/access-reader-writer-20261110` provisionally claims `4700_access_reader_writer_core`
-at idx 4100 / when 1793330004400, with `4701`+ held for the same branch's later waves. A read-only
+at idx 4100 / when 1793330004400 and `4701_access_reader_writer_serialisers` at idx 4101 / when
+1793330004401, with `4702`+ held for the same branch's later waves. A read-only
 survey of 7,145 refs (3,979 distinct heads), 529 distinct committed journal blobs and 247 readable
 worktree journals found highest claim 4601 / idx 4001 / when 1793330004301 (`4601_last_login_event_index`).
 The candidate base `7b585515d` ends at idx 3742 / when 1793330004042. Phase 0 and phase 1 of the same

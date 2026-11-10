@@ -15,6 +15,7 @@ import {lockAccessAdministratorSetTx,lockAccessConfigurationReadTx,lockAccessCon
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {hireEmployee} from '../core/org';
 import {revokeRole} from '../core/admin';
+import {checkIn,checkOut} from '../core/attendance';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 
@@ -277,6 +278,109 @@ describe('E2 model: why the administrator guard exists',()=>{
  it('with the guard row the second removal fails serialization under REPEATABLE READ',async()=>{
   expect(await modelRace(true,'repeatable read')).toEqual(['committed','40001']);expect(await left()).toBe(1);
  });
+});
+
+describe('wave 2: narrow serialisers under the shared Access lock',()=>{
+ const hireRow=async(label:string)=>{
+  const [p]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:`Fictional ${label}`,primaryEmail:`${label}-${randomUUID()}@example.invalid`}).returning({id:person.id});
+  const [e]=await owner.db.insert(employment).values({tenantId:b.tenantId,personId:p.id,companyId:b.companyId,employeeCode:`S-${randomUUID().slice(0,8)}`,hiredOn:todayInKualaLumpur()}).returning({id:employment.id});
+  return e.id;
+ };
+ const edge=(tx:postgres.TransactionSql,subordinate:string,manager:string)=>tx.unsafe(`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from) values('${b.tenantId}','${subordinate}','${manager}','administrative','${todayInKualaLumpur()}')`);
+ it('refuses a reporting loop formed by two concurrent edges under the shared lock',async()=>{
+  const [first,second]=[await hireRow('edge-a'),await hireRow('edge-b')];
+  const firstHeld=barrier(),releaseFirst=barrier();
+  const one=raw.begin(async tx=>{await asTenant(tx,b.tenantId);await tx.unsafe(`select app.access_workforce_write_lock()`);await edge(tx,first,second);firstHeld.resolve();await releaseFirst.promise;});
+  await firstHeld.promise;
+  const two=raw.begin(async tx=>{await asTenant(tx,b.tenantId);await tx.unsafe(`select app.access_workforce_write_lock()`);await edge(tx,second,first);});
+  await pause(250);releaseFirst.resolve();
+  const results=await Promise.allSettled([one,two]);
+  expect(results[0].status).toBe('fulfilled');expect(results[1].status).toBe('rejected');
+  expect(String((results[1] as PromiseRejectedResult).reason?.message)).toMatch(/reporting loop/);
+ },20000);
+ it('lets a second reader of the barrier overlap a reporting-line writer until its own statement',async()=>{
+  const [first,second]=[await hireRow('edge-c'),await hireRow('edge-d')];
+  const held=barrier(),release=barrier();
+  const writer=raw.begin(async tx=>{await asTenant(tx,b.tenantId);await edge(tx,first,second);held.resolve();await release.promise;});
+  await held.promise;
+  await expect(settled(raw.begin(async tx=>{await asTenant(tx,b.tenantId);await tx.unsafe(`select app.access_workforce_write_lock()`);}),3000)).resolves.not.toBe('timeout');
+  release.resolve();await writer;
+ },20000);
+ it('serialises two claims of the same employee code across employment and draft reservations',async()=>{
+  const code=`RWC-${randomUUID().slice(0,6).toUpperCase()}`;
+  const [p]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Fictional claimant',primaryEmail:`claim-${randomUUID()}@example.invalid`}).returning({id:person.id});
+  const firstHeld=barrier(),releaseFirst=barrier();
+  const one=raw.begin(async tx=>{await asTenant(tx,b.tenantId);const [row]=await tx.unsafe(`select app.employee_code_claim('${b.tenantId}','${code}',null,null) as claim`);expect(row.claim).toBeNull();await tx.unsafe(`insert into employment(tenant_id,person_id,company_id,employee_code,hired_on) values('${b.tenantId}','${p.id}','${b.companyId}','${code}','${todayInKualaLumpur()}')`);firstHeld.resolve();await releaseFirst.promise;});
+  await firstHeld.promise;
+  const two=raw.begin(async tx=>{await asTenant(tx,b.tenantId);const [row]=await tx.unsafe(`select app.employee_code_claim('${b.tenantId}','${code}',null,null) as claim`);return row.claim as string|null;});
+  expect(await settled(two,500)).toBe('timeout');
+  releaseFirst.resolve();await one;
+  await expect(two).resolves.toBe('employment');
+ },20000);
+ it('does not block claims for different employee codes against each other',async()=>{
+  const entered=barrier(),release=barrier();
+  const holder=raw.begin(async tx=>{await asTenant(tx,b.tenantId);await tx.unsafe(`select app.employee_code_claim('${b.tenantId}','RW-CODE-A',null,null)`);entered.resolve();await release.promise;});
+  await entered.promise;
+  await expect(settled(raw.begin(async tx=>{await asTenant(tx,b.tenantId);await tx.unsafe(`select app.employee_code_claim('${b.tenantId}','RW-CODE-B',null,null)`);}),3000)).resolves.not.toBe('timeout');
+  release.resolve();await holder;
+ },20000);
+ it('holds profile value writers in shared mode and excludes a policy editor while one is open',async()=>{
+  const entered=[barrier(),barrier()],release=barrier(),ctx=adminCtx(b);
+  const writers=entered.map(entry=>withTenant(ctx,async tx=>{await tx.execute(dsql`select app.access_profile_policy_value_lock()`);entry.resolve();await release.promise;}));
+  await expect(settled(Promise.all(entered.map(entry=>entry.promise)))).resolves.not.toBe('timeout');
+  const policy=`hashtextextended('profile-edit-policy:${b.tenantId}',0)`;
+  const [row]=await raw`select 1`.then(()=>raw.begin(async tx=>tx.unsafe(`select pg_try_advisory_xact_lock(${policy}) acquired`)));
+  expect(row.acquired).toBe(false);
+  release.resolve();await Promise.all(writers);
+ },20000);
+});
+
+describe('wave 3: clocking under the shared lock',()=>{
+ const today='2026-07-06';
+ async function worker(label:string){
+  const hired=await hireEmployee(adminCtx(b),{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01',person:{fullName:`Fictional clock ${label}`,primaryEmail:`clock-${label}-${randomUUID()}@example.invalid`}});
+  return hired.employmentId;
+ }
+ const modeDuring=async(employmentId:string)=>withTenant(adminCtx(b),async tx=>{
+  const {lockAttendanceClockDependenciesTx}=await import('../core/attendance');
+  await lockAttendanceClockDependenciesTx(tx,adminCtx(b),[employmentId]);
+  const [row]=await tx.execute<{mode:string}>(dsql`select app.access_lock_mode_held(${b.tenantId}::uuid) as mode`);return row.mode;
+ });
+ it('joins the shared Access lock when the tenant does not bank replacement leave',async()=>{
+  expect(await modeDuring(await worker('mode'))).toBe('S');
+ });
+ it('completes a clock-in and a clock-out while another writer holds the shared lock',async()=>{
+  const employmentId=await worker('solo'),held=barrier(),release=barrier();
+  const other=raw.begin(async tx=>{await tx.unsafe(`select pg_advisory_xact_lock_shared(${lockKey(b.tenantId)})`);held.resolve();await release.promise;});
+  await held.promise;
+  await expect(settled(checkIn(adminCtx(b),{employmentId,date:today,time:'08:00:00'}),30000)).resolves.not.toBe('timeout');
+  await expect(settled(checkOut(adminCtx(b),{employmentId,date:today,time:'17:00:00'}),30000)).resolves.not.toBe('timeout');
+  release.resolve();await other;
+ },70000);
+ it('lets two employees clock in at the same moment',async()=>{
+  const [first,second]=[await worker('a'),await worker('b')];
+  const results=await Promise.allSettled([first,second].map(employmentId=>checkIn(adminCtx(b),{employmentId,date:today,time:'08:00:00'})));
+  expect(results.map(result=>result.status)).toEqual(['fulfilled','fulfilled']);
+ },60000);
+ it('serialises a double tap for one employee instead of refusing it as busy',async()=>{
+  const employmentId=await worker('tap');
+  const results=await Promise.allSettled([1,2].map(()=>checkIn(adminCtx(b),{employmentId,date:today,time:'08:00:00'})));
+  const refused=results.filter((result):result is PromiseRejectedResult=>result.status==='rejected').map(result=>`${sqlState(result.reason)}|${result.reason?.name}|${result.reason?.message}`);
+  // The second tap either lands as a repeat of the same clocking or gets the ordinary business refusal.
+  // It must never be a lock refusal: no 55P03, no deadlock.
+  expect(refused.filter(reason=>/55P03|40P01|Leave source is unavailable/.test(reason))).toEqual([]);
+  const [{n}]=await owner.db.execute<{n:number}>(dsql`select count(*)::int n from attendance where employment_id=${employmentId}::uuid and attendance_date=${today}::date`);
+  expect(n).toBe(1);
+ },60000);
+ it('still waits behind an access editor, so a configuration change is never overlapped',async()=>{
+  const employmentId=await worker('editor'),held=barrier(),release=barrier();
+  const editor=raw.begin(async tx=>{await tx.unsafe(`select pg_advisory_xact_lock(${lockKey(b.tenantId)})`);held.resolve();await release.promise;});
+  await held.promise;
+  const clocking=checkIn(adminCtx(b),{employmentId,date:today,time:'08:00:00'});
+  expect(await settled(clocking,800)).toBe('timeout');
+  release.resolve();await editor;
+  await expect(clocking).resolves.toBeDefined();
+ },60000);
 });
 
 describe('authority writers never block in a trigger',()=>{

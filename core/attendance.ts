@@ -3,8 +3,8 @@ import {createDatabaseAdmission} from '../db/admission';
 import {applicationDatabaseBudget} from '../db/capacity';
 import { externalBreakBounds } from './shift-break-rules';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
-import { lockAccessConfigurationReadTx, lockAccessConfigurationWriteTx, tryLockAccessConfigurationTx } from './access-configuration-lock';
-import { LeaveDependencyUnavailable, lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
+import { lockAccessConfigurationReadTx, lockAccessConfigurationWriteTx, tryLockAccessConfigurationTx, lockAccessConfigurationTx } from './access-configuration-lock';
+import { LeaveDependencyUnavailable, lockLeaveDependenciesTx, lockLeaveDependenciesWaitTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {assessGeofence,type GeofenceAssessment} from '../lib/geofence-assessment';
 import {attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
@@ -113,7 +113,7 @@ import {
   liveArrangementsTx,
   pickArrangementOn,
 } from './shift-arrangement-resolve';
-import { extendedMinutesAfterShiftEnd, maybeAutoAccrueOnApprovalTx } from './toil';
+import { extendedMinutesAfterShiftEnd, findReplacementLeaveTypeIdTx, maybeAutoAccrueOnApprovalTx } from './toil';
 // r336 cbfa8b0b — the ONE double-claim predicate, shared with core/replacement-request.ts. See that file's
 // header for why a second copy of the rule here would have been the defect rather than the fix.
 import { assertNoCreditClaimForDatesTx } from './credit-ot-overlap';
@@ -2248,6 +2248,25 @@ export async function lockAttendanceLeaveDependenciesTx(tx: Tx, ctx: SessionCont
   await lockLeaveDependencyConfigurationTx(tx, tenantId);
   if (ids.length) await lockLeaveDependenciesTx(tx, tenantId, ids);
 }
+/** TOIL may bank during check-out and the first banking creates the REPLACEMENT leave type, which is a
+ * catalogue write. A tenant with TOIL on and the type missing keeps today's exclusive path; everyone else
+ * clocks under the shared lock. Decided before any lock so no shared holder ever needs an upgrade. */
+async function attendanceMayCreateReplacementTypeTx(tx: Tx, ctx: SessionContext): Promise<boolean> {
+  try {
+    if (ctx.entitlements && !isModuleEnabled(ctx, 'toil')) return false;
+  } catch (error) {
+    if (!(error instanceof EntitlementError)) throw error;
+  }
+  return (await findReplacementLeaveTypeIdTx(tx, ctx.tenantId)) === null;
+}
+
+/** Clocking writes the employee's own day under the per-employment locks taken here and by the callers.
+ * It needs configuration stable, not a tenant-wide writer, so it joins both locks in shared mode. */
+export async function lockAttendanceClockDependenciesTx(tx: Tx, ctx: SessionContext, employmentIds: readonly string[]) {
+  if (await attendanceMayCreateReplacementTypeTx(tx, ctx)) return lockAttendanceLeaveDependenciesTx(tx, ctx, employmentIds);
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, employmentIds);
+}
 function captureAttendanceContext(ctx: SessionContext): SessionContext {
   return {...ctx, roles:ctx.roles?.slice(), grants:ctx.grants?.map(grant=>({...grant}))};
 }
@@ -2259,7 +2278,7 @@ export async function checkInTx(
 ) {
   ctx = captureAttendanceContext(ctx); p = structuredClone(p);
   const perform = async (tx: Tx) => {
-    await lockAttendanceLeaveDependenciesTx(tx, ctx, [p.employmentId]);
+    await lockAttendanceClockDependenciesTx(tx, ctx, [p.employmentId]);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + p.employmentId}, 0))`);
     // Feedback 5249d43f: registered-device gate FIRST — when the company policy requires it, an absent /
     // unknown / revoked token throws the typed DeviceNotRegisteredError before anything is evaluated or
@@ -2406,7 +2425,7 @@ export async function checkOutTx(
 ) {
   ctx = captureAttendanceContext(ctx); p = structuredClone(p);
   const perform = async (tx: Tx) => {
-    await lockAttendanceLeaveDependenciesTx(tx, ctx, [p.employmentId]);
+    await lockAttendanceClockDependenciesTx(tx, ctx, [p.employmentId]);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + p.employmentId}, 0))`);
     // Feedback 5249d43f: same registered-device gate as checkInTx — see the comment there (r430: same
     // deviceGateExempt escape hatch).

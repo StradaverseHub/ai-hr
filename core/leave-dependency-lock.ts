@@ -5,6 +5,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Tx } from '../db/client';
+import { acquireBoundedAdvisoryLockTx } from './access-configuration-lock';
 
 /** `busy`: another writer holds a dependency lock right now, so retrying shortly can succeed.
  * `changed` (default): the nominated source changed between reads or is malformed, so the same request
@@ -67,6 +68,23 @@ export async function lockLeaveDependenciesTx(tx: Tx, tenantId: string, employme
   }
   await acquire(tx, tenantId, configuration);
   for (const id of subjects) await acquire(tx, tenantId, subjectLock(id));
+}
+
+/** For ordinary writers admitted under the shared Access lock: shared configuration, then each affected
+ * employment, WAITING with the bounded Access-lock wait instead of refusing. Writers no longer serialize on the
+ * exclusive Access lock, so two requests for one employment (a double tap) can meet here, and a no-wait
+ * refusal would surface as a false "busy" on the hottest path. IDs are deduplicated and sorted; configuration
+ * is taken first, matching the no-wait owner above. */
+export async function lockLeaveDependenciesWaitTx(tx: Tx, tenantId: string, employmentIds: readonly string[]): Promise<void> {
+  if (!uuid.safeParse(tenantId).success || employmentIds.some(id => !uuid.safeParse(id).success)) throw new LeaveDependencyUnavailable();
+  tenantId = tenantId.toLowerCase();
+  const subjects = [...new Set(employmentIds.map(id => id.toLowerCase()))].sort();
+  const [row] = await tx.execute<{ acquired: boolean }>(sql`select app.current_tenant_id()=${tenantId}::uuid
+    and current_setting('transaction_isolation')='read committed'
+    and current_setting('transaction_read_only')='off' as acquired`);
+  if (row?.acquired !== true) throw new LeaveDependencyUnavailable('busy');
+  await acquireBoundedAdvisoryLockTx(tx, `leave-dependency-configuration:${tenantId}`, true);
+  for (const id of subjects) await acquireBoundedAdvisoryLockTx(tx, `leave-dependency-employment:${tenantId}:${id}`, false);
 }
 
 /** Explicit SOURCE-READ interval for an actual READ COMMITTED READ ONLY transaction. Same physical

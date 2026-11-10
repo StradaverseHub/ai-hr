@@ -329,6 +329,10 @@ async function ensureReplacementLeaveType(tx: Tx, tenantId: string): Promise<str
   const find = () => findReplacementLeaveTypeIdTx(tx, tenantId);
   const existing = await find();
   if (existing) return existing;
+  // Creating the type is a catalogue write. A clocking transaction runs on the shared lock only after
+  // finding the type present; if it has since been removed, refuse for a retry instead of writing here.
+  const [held] = await tx.execute<{ mode: string | null }>(sql`select app.access_lock_mode_held(${tenantId}::uuid) as mode`);
+  if (held?.mode === 'S') throw new LeaveDependencyUnavailable('busy');
   const [created] = await tx
     .insert(leaveType)
     // ADR-0077 slice 5 — `country` is left to the column default ON PURPOSE, and this is a known seam.

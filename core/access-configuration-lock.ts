@@ -47,7 +47,12 @@ export function accessConfigurationLockWaitersForTests(): number {
 }
 
 async function acquireBounded(tx: Tx, tenantId: string, shared: boolean): Promise<void> {
-  const key = accessConfigurationKey(tenantId);
+  return acquireBoundedAdvisoryLockTx(tx, accessConfigurationKey(tenantId), shared);
+}
+
+/** A held-to-commit advisory lock with the same bounded wait as the Access lock. Any caller that can
+ * meet a long holder uses this so a waiter cannot keep a pool connection forever. */
+export async function acquireBoundedAdvisoryLockTx(tx: Tx, key: string, shared: boolean): Promise<void> {
   const [fast] = shared
     ? await tx.execute<{acquired: boolean}>(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) as acquired`)
     : await tx.execute<{acquired: boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${key},0)) as acquired`);
