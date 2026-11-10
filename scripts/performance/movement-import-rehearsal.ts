@@ -93,6 +93,8 @@ async function main(){
  const check=async(rows:{code:string}[],name:string)=>{const t0=Date.now();const checked=await previewMovementUpload(admin,{name,content:fileFor(rows),resolve});
   const valid=checked.preview.employees.filter(e=>e.fingerprint).map(e=>e.key!);const ms=Date.now()-t0;
   const refused=checked.preview.employees.filter(e=>!e.fingerprint).map(e=>`${e.employeeCode}: ${e.rows.flatMap(r=>r.errors).join('; ')}`);
+  console.log(JSON.stringify({check:name,ms,employees:checked.preview.employees.length,valid:valid.length,fileErrors:checked.preview.fileErrors,refused:refused.slice(0,6)}));
+  if(!valid.length)throw new Error('no employee was checked without errors');
   return{checked,valid,ms,refused,rows:checked.preview.employees.reduce((n,e)=>n+e.rows.length,0)};};
 
  // Probes and the lock sampler, as in the employee import rehearsal.

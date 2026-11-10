@@ -41,6 +41,17 @@ sites exclusive (`lockAccessConfigurationWriteTx`, `app.access_configuration_wri
 inside `beginMovementCommitTx` and in `rehearseMovementSequenceTx`. Its employment trigger then takes the
 administrator guard and the 4701 statement trigger the `org-reporting` lock on their own.
 
+**Not yet meeting the 1 s bar (measured, scripts/performance/movement-import-rehearsal.ts, loaded local host).** One
+employee's commit is one transaction and holds the exclusive Access lock throughout, job or not. It re-reads the
+movement catalogue about seven times, and the catalogue's manager list authorizes every live employment with
+`app.access_workforce_employment` (about 1 ms per row). On 340 employees a chunk held the lock for up to 10.8 s
+(synchronous path 9.1 s); that one query was 60% of the job's time. On 3,140 employees one read takes about 3.5 s,
+and the check and confirmation already refuse employees on the 5 s statement and 15 s per-employee limits. Meeting
+the bar needs the catalogue cost removed from the locked transaction (for example a set-based manager list per
+company from the Access owner, or one catalogue read per employee with an explicit invalidation rule), or the
+shared Access lock with the administrator guard once phase 2's (M) serialisers for compensation and statutory
+writers exist. Both need an owner decision.
+
 Known limits, unchanged from the synchronous path and left for follow-up decisions:
 - An exit or company change alters the tenant's manager list, which every later employee's reviewed fingerprint
   covers, so later employees of the same file are refused as stale (`preview_stale_revalidate`).
