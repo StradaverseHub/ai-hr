@@ -34,7 +34,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type SessionContext } from '../db/client';
+import { sql } from 'drizzle-orm';
+import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee, updatePerson } from '../core/org';
 import {
   getStatutoryProfileMY,
@@ -45,7 +46,7 @@ import {
   PassportRequiredError,
 } from '../localization/my/statutory';
 import { setPassportAction } from '../app/admin/personnel/[employmentId]/actions';
-import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { personnelControl } from '../lib/personnel-form-contract';
 
 // requireAdmin() (session) is unavailable in the harness — return the seeded admin ctx.
@@ -293,16 +294,48 @@ describe('Identity sections — service + action behaviour (55865c32, unchanged 
     expect(await getStatutoryProfileMY(a, e.personId)).toBeNull();
   });
 
-  it('initializes new SKBBK elections without changing existing or explicit No choices', async () => {
+  it('defaults new SKBBK elections and preserves existing and explicit choices', async () => {
     const a=adminCtx(base),e=await hireWithNationality(a,'New SKBBK','Singaporean');
-    await initializeHiredStatutoryMY(a,{personId:e.personId,icNumber:null});
+    const {id}=await initializeHiredStatutoryMY(a,{personId:e.personId,icNumber:null});
     expect((await getStatutoryProfileMY(a,e.personId))?.subjectToSkbbk).toBe(true);
+    expect(await latestEventPayload(base.tenantId,id,'statutory.my.created')).toMatchObject({
+      statutoryControls:{before:null,after:{subjectToSkbbk:true}},
+    });
     await setStatutoryProfileMY(a,{personId:e.personId,icNumber:null,subjectToSkbbk:false});
     await initializeHiredStatutoryMY(a,{personId:e.personId,icNumber:null});
     expect((await getStatutoryProfileMY(a,e.personId))?.subjectToSkbbk).toBe(false);
+    expect(await latestEventPayload(base.tenantId,id,'statutory.my.updated')).toMatchObject({
+      statutoryControls:{before:{subjectToSkbbk:false},after:{subjectToSkbbk:false}},
+    });
     const second=await hireWithNationality(a,'Explicit No','Singaporean');
     await initializeHiredStatutoryMY(a,{personId:second.personId,icNumber:null,subjectToSkbbk:false});
     expect((await getStatutoryProfileMY(a,second.personId))?.subjectToSkbbk).toBe(false);
+    await initializeHiredStatutoryMY(a,{personId:e.personId,icNumber:null,subjectToSkbbk:true});
+    expect(await latestEventPayload(base.tenantId,id,'statutory.my.updated')).toMatchObject({
+      statutoryControls:{before:{subjectToSkbbk:false},after:{subjectToSkbbk:true}},
+    });
+  });
+
+  it('rolls back statutory initialization and prior borrowed writes when PostgreSQL refuses its audit', async () => {
+    const a=adminCtx(base),e=await hireWithNationality(a,'Fictional statutory rollback','Singaporean');
+    expect(await getStatutoryProfileMY(a,e.personId)).toBeNull();
+    await owner.client`ALTER TABLE public.domain_event ADD CONSTRAINT fixture_statutory_hire_audit_refusal
+      CHECK (event_type <> 'statutory.my.created') NOT VALID`;
+    try {
+      await expect(withTenant(a,async tx=>{
+        const changed=await tx.execute(sql`UPDATE public.person SET full_name='Fictional uncommitted change'
+          WHERE id=${e.personId}::uuid RETURNING id`);
+        expect(changed).toEqual([{id:e.personId}]);
+        await initializeHiredStatutoryMY(a,{personId:e.personId,icNumber:null},tx);
+      })).rejects.toMatchObject({cause:{code:'23514',constraint_name:'fixture_statutory_hire_audit_refusal'}});
+    } finally {
+      await owner.client`ALTER TABLE public.domain_event DROP CONSTRAINT fixture_statutory_hire_audit_refusal`;
+    }
+    expect(await getStatutoryProfileMY(a,e.personId)).toBeNull();
+    expect(await owner.client`SELECT full_name FROM public.person WHERE id=${e.personId}::uuid`)
+      .toEqual([{full_name:'Fictional statutory rollback'}]);
+    expect(await owner.client`SELECT id FROM public.domain_event
+      WHERE subject_employment_id=${e.employmentId}::uuid AND event_type='statutory.my.created'`).toEqual([]);
   });
 
   it('(nonmy-3) requires a foreign passport number, preserves omissions and validates supplied optional values', async () => {

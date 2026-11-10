@@ -308,8 +308,7 @@ function normalizeStatutoryInputMY(p:StatutoryInput){
   };
   return {values,epf,zakat};
 }
-async function prepareStatutoryProfileMYTx(tx:Tx,p:StatutoryInput,normalized=normalizeStatutoryInputMY(p)){
-  const {values,epf,zakat}=normalized;
+async function lockStatutoryProfileBeforeMYTx(tx:Tx,personId:string){
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
@@ -337,13 +336,20 @@ async function prepareStatutoryProfileMYTx(tx:Tx,p:StatutoryInput,normalized=nor
         epfManualReason: employeeStatutoryMy.epfManualReason,
       })
       .from(employeeStatutoryMy)
-      .where(eq(employeeStatutoryMy.personId, p.personId))
+      .where(eq(employeeStatutoryMy.personId, personId))
       .limit(1).for('update');
+    return existing;
+}
+function prepareStatutoryProfileMY(p:StatutoryInput,normalized:ReturnType<typeof normalizeStatutoryInputMY>,existing:Awaited<ReturnType<typeof lockStatutoryProfileBeforeMYTx>>){
+    const {values,epf,zakat}=normalized;
     // Explicit identity changes must acknowledge the locked applicability boundary. Omitted legacy edits preserve it.
     if(p.taxCircumstance!==undefined && existing && (p.expectedApplicabilityEpoch!==undefined ? p.expectedApplicabilityEpoch!==existing.taxApplicabilityEpoch : existing.taxApplicabilityEpoch!==0))throw new TaxSelectionError('stale_context');
     const circumstance = writeTaxCircumstance({key:p.taxCircumstance,category:p.taxCategory,beforeKey:existing?.taxCircumstance,beforeCategory:existing?.taxCategory,epoch:existing?.taxApplicabilityEpoch});
     Object.assign(values,circumstance);
     return {values,epf,zakat,existing};
+}
+async function prepareStatutoryProfileMYTx(tx:Tx,p:StatutoryInput,normalized=normalizeStatutoryInputMY(p)){
+  return prepareStatutoryProfileMY(p,normalized,await lockStatutoryProfileBeforeMYTx(tx,p.personId));
 }
 async function writeStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,p:StatutoryInput,prepared:Awaited<ReturnType<typeof prepareStatutoryProfileMYTx>>){
     const {values,epf,zakat,existing}=prepared;
@@ -475,7 +481,14 @@ export async function setStatutoryProfileMY(ctx:SessionContext,p:StatutoryInput,
 /** New hire initializer: preserve an existing person's election; only a genuinely new profile defaults on. */
 export async function initializeHiredStatutoryMY(ctx:SessionContext,p:StatutoryInput,outerTx?:Tx){
  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
- const run=async(tx:Tx)=>{await statutoryWriteIntervalMYTx(tx,ctx);const current=await getStatutoryProfileMYTx(tx,ctx,p.personId,{forUpdate:true});return setStatutoryProfileMY(ctx,{...p,subjectToSkbbk:p.subjectToSkbbk??current?.subjectToSkbbk??true},tx);};
+ const run=async(tx:Tx)=>{
+  await statutoryWriteIntervalMYTx(tx,ctx);
+  const existing=await lockStatutoryProfileBeforeMYTx(tx,p.personId);
+  const input={...p,subjectToSkbbk:p.subjectToSkbbk??existing?.subjectToSkbbk??true};
+  const prepared=prepareStatutoryProfileMY(input,normalizeStatutoryInputMY(input),existing);
+  const {id}=await writeStatutoryProfileMYTx(tx,ctx,input,prepared);
+  return {id};
+ };
  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
