@@ -56,6 +56,8 @@ import {readShellNavigationAccess} from '@/core/shell-navigation-access';
 import { companyContextForPage } from '@/lib/scope';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
 import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
+// Registers the request preamble every carrier of this render's read scope reads (decision 12).
+import '@/core/home-request-preamble';
 import {requestReadScope} from '@/lib/request-read-scope';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';

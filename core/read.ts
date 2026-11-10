@@ -6992,32 +6992,45 @@ function ownEmploymentSubjectPredicate(ctx:SessionContext,personId:string){
 /** Same own-subject membership as the Home inventory, with fresh principal and actual-login checks. */
 export async function isCurrentOwnHomeEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
  if(!ctx.userId||!ctx.personId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId))return false;
- const [row]=await tx.select({id:employment.id}).from(employment)
-  .innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
-  .where(and(ownEmploymentSubjectPredicate(ctx,ctx.personId),eq(employment.id,employmentId),sql`app.principal_snapshot_current()`)).limit(1);
+ const [row]=await currentOwnHomeEmploymentQuery(tx,ctx,ctx.personId,employmentId);
  return row!==undefined;
+}
+/** The select isCurrentOwnHomeEmploymentTx sends (a request preamble answers it ahead, decision 12). */
+export function currentOwnHomeEmploymentQuery(tx:Tx,ctx:SessionContext,personId:string,employmentId:string|SQL){
+ return tx.select({id:employment.id}).from(employment)
+  .innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(ownEmploymentSubjectPredicate(ctx,personId),eq(employment.id,employmentId),sql`app.principal_snapshot_current()`)).limit(1);
 }
 
 /** Selected own subject eligibility, without projecting an inventory or resolving its dated companies. */
 export async function isOwnProfileEditEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
  if(!ctx.personId)return false;
- const [row]=await tx.select({id:employment.id}).from(employment)
-  .innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
-  .where(and(ownEmploymentSubjectPredicate(ctx,ctx.personId),eq(employment.id,employmentId),profileEditEmploymentPredicate(ctx))).limit(1);
+ const [row]=await ownProfileEditEmploymentQuery(tx,ctx,ctx.personId,employmentId);
  return row!==undefined;
 }
+/** The select isOwnProfileEditEmploymentTx sends (a request preamble answers it ahead, decision 12). */
+export function ownProfileEditEmploymentQuery(tx:Tx,ctx:SessionContext,personId:string,employmentId:string|SQL){
+ return tx.select({id:employment.id}).from(employment)
+  .innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(ownEmploymentSubjectPredicate(ctx,personId),eq(employment.id,employmentId),profileEditEmploymentPredicate(ctx))).limit(1);
+}
 
+/** The inventory select myOwnEmploymentSubjectsTx sends; `statusDay` defaults to today when the select is built, as
+ * before (a request preamble answers it ahead for its own day, decision 12). */
+export function ownEmploymentSubjectsQuery(tx:Tx,ctx:SessionContext,personId:string,opts:{profileEdit?:boolean}={},statusDay?:string){
+ return tx.select({employmentId:employment.id,personId:person.id,personName:person.fullName,employeeCode:employment.employeeCode,
+  currentCompanyId:employment.companyId,company:company.legalName,country:company.country,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,
+  resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt,status:employmentStatusSql(statusDay)})
+  .from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(ownEmploymentSubjectPredicate(ctx,personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
+  .orderBy(employment.hiredOn,employment.id);
+}
 /** Salary-free own-subject inventory. A caller must explicitly select an ID from this set.
  * Dated company proof is strict: a missing assignment is Unknown, never today's company fallback. */
 export async function myOwnEmploymentSubjectsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit?:boolean}={}){
  if(!ctx.personId)return [];
  const date=todayInKualaLumpur();
- const rows=await tx.select({employmentId:employment.id,personId:person.id,personName:person.fullName,employeeCode:employment.employeeCode,
-  currentCompanyId:employment.companyId,company:company.legalName,country:company.country,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,
-  resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt,status:employmentStatusSql()})
-  .from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
-  .where(and(ownEmploymentSubjectPredicate(ctx,ctx.personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
-  .orderBy(employment.hiredOn,employment.id);
+ const rows=await ownEmploymentSubjectsQuery(tx,ctx,ctx.personId,opts);
  const {provenCompanyDatesTx}=await import('./employment-company');
  const proofs=await provenCompanyDatesTx(tx,rows.map(row=>({employmentId:row.employmentId,date})));
  return rows.map(row=>({...row,companyProof:proofs.get(`${row.employmentId}|${date}`)??{companyId:null,reason:'employment_unavailable' as const}}));

@@ -45,10 +45,12 @@ async function lockPreferences(tx: Tx, ctx: SessionContext): Promise<void> {
 
 /** Read the caller's raw stored dashboard_layout jsonb through the own-row seam. */
 async function readRawLayout(tx: Tx): Promise<unknown> {
-  const rows = (await tx.execute(
-    sql`select app.dashboard_layout_get() as layout`,
-  )) as unknown as { layout: unknown }[];
+  const rows = (await tx.execute(dashboardLayoutGetSql())) as unknown as { layout: unknown }[];
   return rows[0]?.layout ?? null;
+}
+/** The statement readRawLayout sends (a request preamble answers it ahead, docs/adr/2026-11-10-home-request-read-scope.md decision 12). */
+export function dashboardLayoutGetSql() {
+  return sql`select app.dashboard_layout_get() as layout`;
 }
 
 /**

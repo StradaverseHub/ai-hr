@@ -17,6 +17,8 @@
  * a caught or swallowed refusal can never change its result.
  */
 import {AsyncLocalStorage} from 'node:async_hooks';
+import type {SQL} from 'drizzle-orm';
+import type {SessionContext} from './client';
 
 export class SharedReadIncompatibleError extends Error{
  constructor(readonly reason:string){super('This read must use its own transaction ('+reason+').');this.name='SharedReadIncompatibleError';}
@@ -24,7 +26,9 @@ export class SharedReadIncompatibleError extends Error{
 
 /** `flights`: idle-to-busy transitions of the carrier connection. The driver pipelines statements sent while others are
  * outstanding, so a busy period can hold many statements; this is a lower bound on waits, not a round-trip count. */
-export type SharedReadStats={joins:number;fallbacks:number;statements:number;memoHits:number;refused:Record<string,number>;failures:Record<string,number>;carriers:number;flights:number};
+export type SharedReadStats={joins:number;fallbacks:number;statements:number;memoHits:number;refused:Record<string,number>;failures:Record<string,number>;carriers:number;flights:number;
+ /** Carriers that read a request preamble, and the owner statements it answered ahead (statement memo entries). */
+ preambles:number;seeded:number};
 type Join={tainted:boolean};
 const sessions=new AsyncLocalStorage<SharedReadSession<unknown>>();
 const joins=new AsyncLocalStorage<Join>();
@@ -36,6 +40,44 @@ export function currentSharedRead():SharedReadSession<unknown>|undefined{return 
 export function withIndependentTransactions<T>(work:()=>Promise<T>):Promise<T>{return independent.run(true,work);}
 export function independentTransactionsRequired():boolean{return independent.getStore()===true;}
 export function runInSharedRead<T>(session:SharedReadSession<unknown>,work:()=>Promise<T>):Promise<T>{return sessions.run(session,work);}
+
+/** ── Request preamble (docs/adr/2026-11-10-home-request-read-scope.md decision 12) ──────────────────────────────────
+ * A carrier may answer, inside its own identity statement, the owner statements every composition of its request
+ * sends first (the snapshot and principal proofs, the own identity, the dated company proof, the dashboard role and the
+ * configuration reads). Each answer is one owner statement exactly: its text, its parameters, its mode and the rows the
+ * driver returns for it, evaluated as a sub-select of the same statement text in the same transaction, snapshot and
+ * identity settings. The carrier enters each answer into its statement memo before any owner can join, so the owner
+ * that later sends that exact statement receives it as a repeat of an identical read in the same snapshot, which the
+ * memo already answers (see the header). A statement whose text, parameters or mode differ (another employment, date
+ * or identity) is not in the memo and reads as before. Nothing is kept beyond the carrier. */
+export type SharedReadSeed={mode:'rows'|'values';query:string;params:unknown[];rows:unknown[]};
+export type SharedReadPreambleRead={
+ /** A JSON-valued expression of owner statements as sub-selects; evaluated only after the identity settings hold. */
+ sql:SQL;
+ /** The driver-shaped answer for each owner statement; throws when the value is not the expected shape. */
+ decode(value:unknown):SharedReadSeed[];
+ /** Every owner statement planned in this carrier may be planned with JIT off (it changes planning, never results). */
+ jitOff:boolean;
+};
+export type SharedReadPreamble={build(ctx:SessionContext,tx:unknown):SharedReadPreambleRead|null};
+const ownerPreamble=new AsyncLocalStorage<true>();
+/** Every carrier opened inside `work` reads no preamble: each owner sends its own proofs, identity and configuration
+ * reads, exactly as before decision 12. Equivalence proofs compare both paths. */
+export function withOwnerPreambleReads<T>(work:()=>Promise<T>):Promise<T>{return ownerPreamble.run(true,work);}
+export function ownerPreambleReads():boolean{return ownerPreamble.getStore()===true;}
+/** The current session's carriers (from the next one opened) read `preamble`. A request declares it before its reads. */
+export function declareSharedReadPreamble(preamble:SharedReadPreamble){
+ const session=currentSharedRead();
+ if(session)session.preamble=preamble;
+}
+let requestScopePreamble:SharedReadPreamble|undefined;
+/** The preamble every request read scope's carriers read (lib/request-read-scope.ts: one Today page render). Its
+ * module registers it when loaded (core/home-request-preamble.ts, imported by the root layout); until then, and in a
+ * process that never loads it, a request scope's carriers read none and every owner reads as before. */
+export function registerRequestScopePreamble(preamble:SharedReadPreamble){requestScopePreamble=preamble;}
+export function scopePreamble():SharedReadPreamble|undefined{return requestScopePreamble;}
+/** What a carrier lets its opener do before any owner joins: answer statements ahead, and record a held setting. */
+export type SharedReadCarrierControl={seed(seeds:readonly SharedReadSeed[]):number;hold(setting:'jit',value:'on'|'off'):void};
 
 /** One open carrier transaction. `finish` lets it commit; `done` settles after COMMIT or ROLLBACK. */
 export type SharedReadCarrier<Tx>={tx:Promise<Tx>;finish:()=>void;done:Promise<void>};
@@ -51,7 +93,9 @@ export class SharedReadSession<Tx>{
  private works=0;
  /** True only while a carrier sets its own transaction-local identity, before any owner can join it. */
  bootstrapping=false;
- readonly stats:SharedReadStats={joins:0,fallbacks:0,statements:0,memoHits:0,refused:{},failures:{},carriers:0,flights:0};
+ readonly stats:SharedReadStats={joins:0,fallbacks:0,statements:0,memoHits:0,refused:{},failures:{},carriers:0,flights:0,preambles:0,seeded:0};
+ /** The request preamble each new carrier reads (decision 12), if its request declared one. */
+ preamble?:SharedReadPreamble;
  /** Statements sent on the current carrier and not yet answered (diagnostic flight count only). */
  inFlight=0;
  /** `idleRelease`: a request-scoped session is shared by several independent compositions of one request (the
@@ -62,6 +106,11 @@ export class SharedReadSession<Tx>{
  /** Only the same database client and the exact same transaction identity settings. */
  admits(owner:object,identity:string){return !this.closed&&owner===this.owner&&identity===this.identity;}
  poison(){this.poisoned=true;}
+ /** The preamble a carrier opening now reads for `ctx`, or null (none declared, switched off, or not buildable). */
+ openPreamble(ctx:SessionContext,tx:unknown):SharedReadPreambleRead|null{
+  if(!this.preamble||ownerPreambleReads())return null;
+  try{return this.preamble.build(ctx,tx);}catch{return null;}
+ }
 
  async join<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal?:AbortSignal):Promise<T>{
   signal?.throwIfAborted();
@@ -214,11 +263,29 @@ type DriverTransaction={unsafe(query:string,params?:unknown[],options?:unknown):
 
 /** Wrap the driver's transaction-scoped client for the one carrier transaction. Drizzle issues every statement
  * through `unsafe(query, params)` (optionally `.values()`), and the driver starts a query only when awaited. */
-export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSession<unknown>):T{
+export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSession<unknown>,control?:{current?:SharedReadCarrierControl}):T{
  const driver=sqlTx as unknown as DriverTransaction;
  const memo=new Map<string,Promise<unknown>>();
  // Settings already in force on this carrier transaction: READ ONLY from BEGIN, and any SET LOCAL jit it was sent.
  const held=new Map<string,string>([['transaction','read only']]);
+ if(control)control.current={
+  // A request preamble's answers (decision 12): each is entered exactly as the driver's own result for that statement
+  // would be, before any owner joins. Only a plain read is answered ahead; an existing entry is never replaced.
+  seed(seeds){
+   let count=0;
+   for(const seed of seeds){
+    if(classifySharedStatement(seed.query).kind!=='memo')continue;
+    const key=seed.mode+'\u0000'+seed.query+'\u0000'+paramKey(seed.params);
+    if(memo.has(key))continue;
+    memo.set(key,Promise.resolve(Object.assign(seed.rows.map(cloneValue),{count:seed.rows.length,command:'SELECT'})));
+    count++;
+   }
+   session.stats.seeded+=count;
+   return count;
+  },
+  // A setting the carrier's identity statement already put in force.
+  hold(setting,value){held.set(setting,value);},
+ };
  const unsafe=(query:string,params?:unknown[],options?:unknown):Pending=>{
   let mode:'rows'|'values'='rows',started:Promise<unknown>|undefined;
   const run=()=>started??=execute(query,params,options,mode);

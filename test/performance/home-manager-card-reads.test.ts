@@ -813,6 +813,146 @@ async function explainTaskStatement(ctx:SessionContext,modules:import('../../cor
    top:nodes.filter(node=>node.node.startsWith('SubPlan')||node.node.startsWith('InitPlan')||node.node.startsWith('CTE')).sort((a,b)=>b.ms-a.ms).slice(0,12)};
  },{readOnlySnapshot:true});
 }
+// ── Request preamble (docs/adr/2026-11-10-home-request-read-scope.md decision 12, core/home-request-preamble.ts): every
+// card, Today section, the stream and one page render with each carrier's preamble (shipped) and with every owner sending
+// its own proofs, identity and configuration reads (withOwnerPreambleReads); each answered statement against the owner's
+// own statement in one snapshot; foreign identities and employments inside a host carrier; and a login whose principal
+// proof fails. ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+type PreambleTraceRow={before:number;after:number;beforeStatements:unknown;afterStatements:unknown;afterOrdered:string[];beforeOrdered:string[];
+ shared:ReturnType<typeof sharedSummary>;seeded:number;preambles:number;failure:unknown};
+type TodayTargets=Awaited<ReturnType<typeof todayReaders>>;
+/** A card read as the stream reads it: inside one carrier whose request declared the stream's preamble. */
+async function preambleCard(actor:Actor,employmentId:string,month:string,card:Card){
+ const {declareSharedReadPreamble}=await import('../../db/client'),{homeRequestPreamble}=await import('../../core/home-request-preamble');
+ return withSharedReadSnapshot(actor.ctx,()=>{declareSharedReadPreamble(homeRequestPreamble(employmentId));return readers(actor.ctx,employmentId,month)[card]();});
+}
+async function preambleTraces(label:string,actor:Actor,month:string,todayTargets:TodayTargets,pageSections:readonly string[]){
+ const {withOwnerPreambleReads}=await import('../../db/client');
+ const trace=async(work:()=>Promise<unknown>):Promise<PreambleTraceRow>=>{
+  await work().catch(()=>undefined);
+  sharedStats.length=0;const old=await traceStatements(()=>withOwnerPreambleReads(work));sharedStats.length=0;
+  const fresh=await traceStatements(work),stats=sharedStats.splice(0);
+  return {before:old.trace.trips,after:fresh.trace.trips,beforeStatements:old.trace.statements,afterStatements:fresh.trace.statements,afterOrdered:fresh.trace.ordered,
+   beforeOrdered:old.trace.ordered,shared:sharedSummary(stats),seeded:stats.reduce((n,row)=>n+(row.seeded??0),0),preambles:stats.reduce((n,row)=>n+(row.preambles??0),0),
+   failure:fresh.failure??old.failure};
+ };
+ const rows:Record<string,PreambleTraceRow>={},targets=await todayTargets(actor.ctx);
+ for(const card of CARDS)rows['preamble:card:'+card]=await trace(()=>preambleCard(actor,actor.employmentId,month,card));
+ for(const name of pageSections)rows['preamble:section:'+name]=await trace(()=>todayTargets.pageRender(()=>targets[name]()));
+ rows['preamble:stream']=await trace(()=>streamHome(actor,month,null));
+ rows['preamble:sections']=await trace(()=>todayTargets.pageRender(()=>Promise.all(pageSections.map(name=>targets[name]()))));
+ rows['preamble:page']=await trace(()=>Promise.all([streamHome(actor,month,null),todayTargets.pageRender(()=>Promise.all(pageSections.map(name=>targets[name]())))]));
+ const pair=(name:string)=>[rows[name].before,rows[name].after];
+ print('preamble-trips',{label,stream:pair('preamble:stream'),sections:pair('preamble:sections'),page:pair('preamble:page'),
+  seeded:{stream:rows['preamble:stream'].seeded,sections:rows['preamble:sections'].seeded,page:rows['preamble:page'].seeded},
+  carriers:{stream:rows['preamble:stream'].preambles,sections:rows['preamble:sections'].preambles,page:rows['preamble:page'].preambles},
+  cards:Object.fromEntries(CARDS.map(card=>[card,pair('preamble:card:'+card)])),eachSection:Object.fromEntries(pageSections.map(name=>[name,pair('preamble:section:'+name)])),
+  failures:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.failure).map(([name,row])=>[name,row.failure])),
+  streamStatements:rows['preamble:stream'].afterOrdered,sectionStatements:rows['preamble:sections'].afterOrdered});
+ return rows;
+}
+/** Each statement the preamble answers, against that owner statement sent by itself, in one read-only snapshot. */
+async function preambleSeedsAgainstOwners(ctx:SessionContext,employmentId?:string){
+ const {homeRequestPreamble}=await import('../../core/home-request-preamble');
+ return withTenant(ctx,async tx=>{
+  const preamble=homeRequestPreamble(employmentId).build(ctx,tx);
+  if(!preamble)return {built:false,pairs:[]};
+  const [row]=await tx.execute(sql`select (${preamble.sql}) as preamble`) as unknown as {preamble:unknown}[];
+  const seeds=preamble.decode(row.preamble);
+  type Sent=PromiseLike<unknown[]>&{values():PromiseLike<unknown[]>};
+  const driver=(tx as unknown as {session:{client:{unsafe(query:string,params:unknown[]):Sent}}}).session.client;
+  const pairs:{statement:string;mode:string;owner:unknown[];seeded:unknown[]}[]=[];
+  for(const seed of seeds){
+   const sent=driver.unsafe(seed.query,seed.params);
+   pairs.push({statement:seed.query.replace(/\s+/g,' ').slice(0,70),mode:seed.mode,owner:[...await (seed.mode==='values'?sent.values():sent)],seeded:seed.rows});
+  }
+  return {built:true,pairs};
+ },{readOnlySnapshot:true});
+}
+/** A second own employment for one person, a Home configuration revision and a stored dashboard layout, added after the
+ * traces so their counts stay comparable. */
+async function preambleFixtures(actors:Actor[]){
+ const at=(index:number)=>actors.find(a=>a.index===index)!;
+ const {defaultEmployeeHomeConfiguration}=await import('../../lib/employee-home-defaults');
+ const {saveEmployeeHomeConfiguration}=await import('../../core/employee-home-configuration');
+ // The configuration writer itself, as the group HR administrator (its guard trigger admits only an administrator).
+ for(const [actor,role] of [[at(2),'manager'],[at(4),'employee'],[at(54),'employee']] as const)
+  await saveEmployeeHomeConfiguration(at(0).ctx,{companyId:actor.companyId,audienceRole:role,expectedOrdinal:0,configuration:defaultEmployeeHomeConfiguration(),
+   reason:'Fictional preamble fixture'}).catch(error=>print('preamble-fixture-configuration',errorFact(error)));
+ await owner.client`update app_user set dashboard_layout=${JSON.stringify({homeDisplay:{version:1,timeZone:'Asia/Kuala_Lumpur',weekStartsOn:1},
+  employee:{selected:['summary','greeting','tasks'],order:['tasks','summary','greeting']}})}::jsonb where id=${at(2).ctx.userId!}::uuid`;
+ let second:string|null=null;
+ try{
+  const [row]=await owner.client<{id:string}[]>`insert into employment select (jsonb_populate_record(null::employment,to_jsonb(e)||jsonb_build_object('id',gen_random_uuid(),
+   'employee_code','PERF2ND','company_id',${at(70).companyId}::uuid))).* from employment e where e.id=${at(20).employmentId}::uuid returning id::text as id`;
+  second=row?.id??null;
+ }catch(error){second=null;print('preamble-fixture-second-employment',errorFact(error));}
+ return {second,twoEmployments:at(20)};
+}
+async function preambleEquivalence(subject:string,actor:Actor,month:string,compare:(subject:string,target:string,old:unknown,fresh:unknown)=>void,
+ todayTargets:TodayTargets,employmentId:string=actor.employmentId){
+ const {withOwnerPreambleReads}=await import('../../db/client');
+ const own=<T,>(work:()=>Promise<T>)=>withOwnerPreambleReads(work);
+ const byCard=(frames:Record<string,unknown>)=>Object.fromEntries(Object.entries(frames).sort(([a],[b])=>a.localeCompare(b)));
+ const streamActor={...actor,employmentId};
+ const oldFrames:Record<string,unknown>={},newFrames:Record<string,unknown>={};
+ await own(()=>streamHome(streamActor,month,null,GET,oldFrames));
+ await streamHome(streamActor,month,null,GET,newFrames);
+ compare(subject,'preamble:stream',byCard(oldFrames),byCard(newFrames));
+ for(const card of CARDS){
+  const read=()=>preambleCard(actor,employmentId,month,card);
+  compare(subject,'preamble:card:'+card,await outcome(()=>own(read)),await outcome(read));
+ }
+ // Every answered statement against the owner's statement itself, for the stream's employment and for a page render.
+ let answered=0;
+ for(const [mode,requested] of [['stream',employmentId],['page',undefined]] as const){
+  const {built,pairs}=await preambleSeedsAgainstOwners(actor.ctx,requested);
+  compare(subject,'preamble:built:'+mode,true,built);
+  for(const [index,row] of pairs.entries()){answered++;compare(subject,'preamble:seed:'+mode+':'+index+':'+row.mode+':'+row.statement,row.owner,row.seeded);}
+ }
+ // A login whose company scope cannot be read renders no section: the same refusal both ways.
+ const targets=await todayTargets(actor.ctx).catch(()=>null);
+ if(!targets){compare(subject,'preamble:sections',await outcome(()=>own(()=>todayTargets(actor.ctx))),await outcome(()=>todayTargets(actor.ctx)));return answered;}
+ for(const [name,read] of Object.entries(targets))
+  compare(subject,'preamble:section:'+name,await outcome(()=>own(()=>todayTargets.pageRender(read))),await outcome(()=>todayTargets.pageRender(read)));
+ // One page render of every complete section value and page owner at once.
+ const sectionReads=await import('../../components/today/reads'),{todayAudience}=await import('../../lib/today/audience');
+ const {readMyPayrollReadiness}=await import('../../core/pre-salary/person-items'),{allowedCompanies}=await import('../../core/read');
+ const today=todayInKualaLumpur(),scopeIds=(await allowedCompanies(actor.ctx)).map(company=>company.id);
+ const full:Record<string,()=>Promise<unknown>>={
+  needsYou:()=>sectionReads.readNeedsYou(actor.ctx,{scopeIds,audience:todayAudience(actor.ctx),today,locale:'en',now:Date.parse(today+'T12:00:00+08:00')}),
+  doneForYou:()=>sectionReads.readDoneForYou(actor.ctx,{scopeIds,today}),
+  atAGlance:()=>sectionReads.readAtAGlance(actor.ctx,{locale:'en',today}),
+  beforePayroll:()=>readMyPayrollReadiness(actor.ctx,{scopeIds,locale:'en',today,includeApprovals:false}),
+  ...await fullPageOwners(actor.ctx,scopeIds),
+ };
+ const render=()=>todayTargets.pageRender(async()=>Object.fromEntries(await Promise.all(Object.entries(full).map(async([name,read])=>[name,await outcome(read)] as const))));
+ const [offPage,onPage]=[await own(render),await render()];
+ for(const name of Object.keys(full))compare(subject,'preamble:pageRender:'+name,offPage[name],onPage[name]);
+ return answered;
+}
+/** A foreign identity or employment inside a host carrier that read the host's preamble never receives the host's answers. */
+async function preambleIsolation(host:Actor,guest:Actor,month:string,compare:(subject:string,target:string,old:unknown,fresh:unknown)=>void){
+ const {declareSharedReadPreamble}=await import('../../db/client'),{homeRequestPreamble}=await import('../../core/home-request-preamble');
+ sharedStats.length=0;
+ const inside=await withSharedReadSnapshot(host.ctx,async()=>{
+  declareSharedReadPreamble(homeRequestPreamble(host.employmentId));
+  await readers(host.ctx,host.employmentId,month).greeting().catch(()=>undefined);
+  const out:Record<string,unknown>={};
+  for(const card of CARDS){
+   out['guest:'+card]=await outcome(()=>readers(guest.ctx,guest.employmentId,month)[card]());
+   out['foreignEmployment:'+card]=await outcome(()=>readers(host.ctx,guest.employmentId,month)[card]());
+  }
+  return out;
+ });
+ const stats=sharedStats.splice(0);
+ for(const card of CARDS){
+  compare('guest:'+guest.index,'preamble:guestInsideHost:'+card,await outcome(()=>withIndependentTransactions(()=>readers(guest.ctx,guest.employmentId,month)[card]())),inside['guest:'+card]);
+  compare('host:'+host.index,'preamble:foreignEmployment:'+card,await outcome(()=>withIndependentTransactions(()=>readers(host.ctx,guest.employmentId,month)[card]())),inside['foreignEmployment:'+card]);
+ }
+ return {seeded:stats.reduce((n,row)=>n+(row.seeded??0),0),joins:stats.reduce((n,row)=>n+row.joins,0),fallbacks:stats.reduce((n,row)=>n+row.fallbacks,0)};
+}
+// ── end of the request preamble block ──
 
 type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[]};
 const sharedStats:SharedReadStats[]=[];
@@ -1054,6 +1194,7 @@ it('completes every manager Home card and Today section read without a handled f
   rows['ownerReads:stream']=await traceOwnerReads(stream);
   rows['ownerReads:page']=await traceOwnerReads(pageRendered);
   Object.assign(rows,await beforePayrollTraces(label,actor,today,traceBoth));
+  Object.assign(rows,await preambleTraces(label,actor,month,todayTargets,pageSections));
   print('statement-trace',{label,trips:Object.fromEntries(Object.entries(rows).map(([name,row])=>[name,[row.before,row.after]])),
    shared:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.shared.sessions>0).map(([name,row])=>[name,row.shared])),
    failures:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.failure).map(([name,row])=>[name,row.failure]))});
@@ -1100,6 +1241,7 @@ it('completes every manager Home card and Today section read without a handled f
   }
  }
  await calendarWindowFixtures(actors,today);
+ const preambleSubjects=await preambleFixtures(actors);let preambleAnswered=0;
  await calendarWindowEntitlementTrips([['manager',manager],['employee',employee],['companyHR',actors.find(a=>a.role==='companyHR'&&a.company===1)!]],month);
  // Before payroll's owners get rows of their own, after the traces (decision 11).
  report.beforePayrollFixtures=await seedBeforePayrollFixtures([...tenants[0],...tenants[1]],today);
@@ -1329,6 +1471,17 @@ it('completes every manager Home card and Today section read without a handled f
     await outcome(()=>withSharedReadSnapshot(ctx,()=>claimsService.claimTypeReceiptRules(ctx))));
   }
   beforePayrollSections.push(await beforePayrollEquivalence(subject,actor,today,compare));
+  preambleAnswered+=await preambleEquivalence(subject,actor,month,compare,todayTargets);
+ }
+ // The request preamble for two own employments (each requested by the stream; a page render has no sole employment), a
+ // login whose principal proof fails (a claimed grant it does not hold) and a login carrying another person's id.
+ {
+  const twice=preambleSubjects.twoEmployments,extra:[string,Actor,string][]=[['twoEmployments:first',twice,twice.employmentId]];
+  if(preambleSubjects.second)extra.push(['twoEmployments:second',twice,preambleSubjects.second]);
+  const refused={...employee,ctx:{...employee.ctx,roles:[...(employee.ctx.roles??[]),'hr_admin'],grants:[...(employee.ctx.grants??[]),{role:'hr_admin',companyId:null}]}};
+  const substituted={...employee,ctx:{...employee.ctx,personId:manager.ctx.personId}};
+  extra.push(['principalRefused',refused,refused.employmentId],['personSubstituted',substituted,substituted.employmentId]);
+  for(const [subject,actor,employmentId] of extra)preambleAnswered+=await preambleEquivalence(subject,actor,month,compare,todayTargets,employmentId);
  }
  // Isolation: a foreign identity inside a session, and two identities' sessions at once across tenants.
  const isolation:Record<string,unknown>={};report.isolation=isolation;
@@ -1363,6 +1516,10 @@ it('completes every manager Home card and Today section read without a handled f
  }
  // The onboarding joiner is a subject of its own: the only login with a case waiting for its acknowledgement.
  if(beforePayrollOwners.joiner)beforePayrollSections.push(await beforePayrollEquivalence('onboardingJoiner',beforePayrollOwners.joiner,today,compare));
+ const preambleIsolationRows:Record<string,unknown>={};report.preambleIsolation=preambleIsolationRows;
+ for(const [host,guest] of [[manager,employee],[manager,others.find(a=>a.role==='employee')!]] as const)
+  preambleIsolationRows[host.index+'>'+guest.index]=await preambleIsolation(host,guest,month,compare);
+ print('preamble-equivalence',{answered:preambleAnswered,second:preambleSubjects.second!==null,isolation:preambleIsolationRows});
  const mismatches=equivalence.filter(row=>!row.equal);
  print('bundle-sections',bundleSections);
  print('before-payroll-sections',beforePayrollSections);

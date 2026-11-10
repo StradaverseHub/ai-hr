@@ -17,9 +17,13 @@ import {AssignedWorkPrincipalUnavailableError} from '../lib/assigned-work';
  * before asking the canonical current-decision guard; broader HR visibility is not an own identity.
  */
 export async function assertAssignedWorkPrincipalTx(tx:Tx,ctx:SessionContext){
- const [proof]=await tx.execute(sql`SELECT (app.principal_snapshot_current()
-  AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`) as unknown as {ok:boolean}[];
+ const [proof]=await tx.execute(assignedWorkPrincipalSql(ctx)) as unknown as {ok:boolean}[];
  if(!ctx.userId||!proof?.ok)throw new AssignedWorkPrincipalUnavailableError();
+}
+/** The statement assertAssignedWorkPrincipalTx sends (a request preamble answers it ahead, decision 12). */
+export function assignedWorkPrincipalSql(ctx:SessionContext){
+ return sql`SELECT (app.principal_snapshot_current()
+  AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`;
 }
 
 /** Only this gate's explicit authority refusals may be omitted from an actionable read. Database,

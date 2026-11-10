@@ -450,10 +450,15 @@ async function provenCompanyDatePointsTx(
 ): Promise<Map<string, ProvenCompanyDate>> {
   // The same INVOKER fact reader can be composed behind a separately fenced, minimal Home peer
   // projection. Ordinary consumers retain their existing RLS; no owner credential or new scope is used.
-  const rows=await tx.execute(sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,
-   company_id::text AS "companyId",reason FROM app.proven_company_date_points(${JSON.stringify(requested)}::jsonb)
-   ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;companyId:string|null;reason:ProvenCompanyDate['reason']}[];
+  const rows=await tx.execute(provenCompanyDatePointsSql(JSON.stringify(requested))) as unknown as {employmentId:string;date:string;companyId:string|null;reason:ProvenCompanyDate['reason']}[];
   return new Map(rows.map(row=>[`${row.employmentId}|${row.date}`,{companyId:row.companyId,reason:row.reason}]));
+}
+/** The statement provenCompanyDatePointsTx sends for its points (their JSON text, or an equal jsonb value where a
+ * request preamble answers it ahead, docs/adr/2026-11-10-home-request-read-scope.md decision 12). */
+export function provenCompanyDatePointsSql(points:string|SQL){
+  return sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,
+   company_id::text AS "companyId",reason FROM app.proven_company_date_points(${points}::jsonb)
+   ORDER BY employment_id,on_date`;
 }
 
 /** Strict dated intervals. Unknown intervals are retained explicitly and never filled from a mutable

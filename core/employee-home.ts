@@ -1,5 +1,5 @@
 /** Salary-free self identity for employee Home. This is a read projection, not another personnel owner. */
-import {and,eq,sql} from 'drizzle-orm';
+import {and,eq,sql,type SQL} from 'drizzle-orm';
 import {settleReadGroup} from '../lib/settle-read-group';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {isAiPrincipalCurrentTx,isAiPresentationPrincipalCurrentTx} from './ai-principal';
@@ -33,8 +33,7 @@ async function ownHomeSubjectSelectionTx(tx:Tx,ctx:SessionContext,requestedEmplo
  if(!ctx.userId)throw new HomeAccessError('authentication');
  // The role/scope snapshot does not attest a caller's personId. Bind it independently through the
  // canonical actual-login predicate before an HR principal can query the own-subject inventory.
- const [principal]=await tx.execute<{ok:boolean}>(sql`SELECT (app.principal_snapshot_current()
-   AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`);
+ const [principal]=await tx.execute<{ok:boolean}>(ownHomeSubjectPrincipalSql(ctx));
  if(!principal?.ok)throw new HomeAccessError('employmentUnavailable');
  const subjects=await myOwnEmploymentSubjectsTx(tx,ctx);
  if(requestedEmploymentId!==undefined){
@@ -45,6 +44,16 @@ async function ownHomeSubjectSelectionTx(tx:Tx,ctx:SessionContext,requestedEmplo
  if(subjects.length===0)return {state:'none',subjects,subject:null};
  if(subjects.length!==1)return {state:'choose',subjects,subject:null};
  return {state:'selected',subjects,subject:subjects[0]};
+}
+
+/** The own-subject selection's principal statement (a request preamble answers it ahead, decision 12). */
+export function ownHomeSubjectPrincipalSql(ctx:SessionContext){
+ return sql`SELECT (app.principal_snapshot_current()
+   AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`;
+}
+/** The dashboard role statement of a selected own employment (a request preamble answers it ahead, decision 12). */
+export function ownHomeDashboardRoleSql(employmentId:string|SQL){
+ return sql`SELECT app.own_home_dashboard_role(${employmentId}::uuid) AS role`;
 }
 
 /** Card readers call this before loading employment facts. Their canonical module/field/date guards
@@ -122,7 +131,7 @@ export async function readEmployeeHomeIdentityContextTx(tx:Tx,ctx:SessionContext
  // grant/subtree predicates so a manager or HR grant elsewhere cannot choose this company's policy.
  let role=resolveDashboardRole({admin:isAdmin(ctx),managerRole:(ctx.roles??[]).includes('manager'),hasDirectReports:false});
  if(selection.subject){
-  const [proof]=await tx.execute(sql`SELECT app.own_home_dashboard_role(${selection.subject.employmentId}::uuid) AS role`) as unknown as {role:EmployeeHomeIdentity['role']|null}[];
+  const [proof]=await tx.execute(ownHomeDashboardRoleSql(selection.subject.employmentId)) as unknown as {role:EmployeeHomeIdentity['role']|null}[];
   if(!proof?.role||!['employee','manager','hr_admin'].includes(proof.role))throw new HomeAccessError('employmentUnavailable');
   role=proof.role;
  }
