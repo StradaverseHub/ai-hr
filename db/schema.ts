@@ -11545,6 +11545,13 @@ export const bankImportJob=pgTable('bank_import_job',{
  invalid:integer('invalid').notNull().default(0),unchanged:integer('unchanged').notNull().default(0),processed:integer('processed').notNull().default(0),saved:integer('saved').notNull().default(0),failed:integer('failed').notNull().default(0),
  attemptId:uuid('attempt_id').references(()=>importAttempt.id),error:text('error'),createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('bank_import_job_active_source').on(t.tenantId,t.sourceHash).where(sql`${t.state} in ('uploading','queued','validating','ready','importing')`),index('bank_import_job_queue').on(t.createdAt).where(sql`${t.state} in ('queued','validating','importing')`)]);
+/** Checkpoint and progress of a background leave ledger import; the ledger rows stay the record of what changed. */
+export const leaveImportJob=pgTable('leave_import_job',{
+ id:id(),tenantId:tenantId(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),context:jsonb('context').notNull(),records:jsonb('records').notNull(),source:jsonb('source'),
+ plan:jsonb('plan').notNull().default([]),state:text('state').notNull().default('queued'),batchId:uuid('batch_id').notNull().defaultRandom(),total:integer('total').notNull().default(0),nextIndex:integer('next_index').notNull().default(0),
+ imported:integer('imported').notNull().default(0),skipped:integer('skipped').notNull().default(0),failed:jsonb('failed').notNull().default([]),retries:integer('retries').notNull().default(0),
+ error:text('error'),createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[index('leave_import_job_queue').on(t.updatedAt).where(sql`${t.state} in ('queued','importing')`),uniqueIndex('leave_import_job_one_active').on(t.tenantId,t.createdBy).where(sql`${t.state} in ('queued','importing')`)]);
 export const bankImportChunk=pgTable('bank_import_chunk',{
  jobId:uuid('job_id').notNull().references(()=>bankImportJob.id,{onDelete:'cascade'}),part:integer('part').notNull(),content:bytea('content').notNull(),
 },t=>[primaryKey({columns:[t.jobId,t.part]})]);

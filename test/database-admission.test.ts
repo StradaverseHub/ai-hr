@@ -143,31 +143,89 @@ describe('fair capacity: one hot tenant cannot starve login or another tenant',(
  const shared=()=>createDatabaseAdmission({capacity:8,backgroundCapacity:2,maxWaiting:64,waitMs:1000,...databaseAdmissionShares(8,64)});
  it('derives shares from pool size and worker count',()=>{
   // P = floor(C/W): the deployed 16-connection web fleet at 2, 4 and 8 workers, plus a larger pool.
-  expect(databaseAdmissionShares(8,1024)).toMatchObject({authenticationReserve:1,perTenantCapacity:5,otherTenantReserve:2,authenticationCapacity:4,maxWaitingPerTenant:256,maxAuthenticationWaiting:128});
-  expect(databaseAdmissionShares(4,512)).toMatchObject({authenticationReserve:1,perTenantCapacity:2,otherTenantReserve:1,authenticationCapacity:2});
-  expect(databaseAdmissionShares(2,256)).toMatchObject({authenticationReserve:0,perTenantCapacity:1,otherTenantReserve:1,authenticationCapacity:1});
-  expect(databaseAdmissionShares(1,128)).toMatchObject({authenticationReserve:0,perTenantCapacity:1,otherTenantReserve:0,authenticationCapacity:1});
-  expect(databaseAdmissionShares(16,512)).toMatchObject({authenticationReserve:2,perTenantCapacity:10,otherTenantReserve:4,authenticationCapacity:8});
+  expect(databaseAdmissionShares(8,1024)).toMatchObject({authenticationReserve:1,tenantFairShare:5,otherTenantReserve:2,authenticationCapacity:4,maxWaitingPerTenant:768,maxAuthenticationWaiting:128});
+  expect(databaseAdmissionShares(4,512)).toMatchObject({authenticationReserve:1,tenantFairShare:2,otherTenantReserve:1,authenticationCapacity:2});
+  expect(databaseAdmissionShares(2,256)).toMatchObject({authenticationReserve:0,tenantFairShare:1,otherTenantReserve:1,authenticationCapacity:1});
+  expect(databaseAdmissionShares(1,128)).toMatchObject({authenticationReserve:0,tenantFairShare:1,otherTenantReserve:0,authenticationCapacity:1});
+  expect(databaseAdmissionShares(16,512)).toMatchObject({authenticationReserve:2,tenantFairShare:10,otherTenantReserve:4,authenticationCapacity:8});
   // Every pool of at least three keeps one permit from the hot tenant and one for login.
-  for(let p=3;p<=50;p++){const s=databaseAdmissionShares(p,1024);expect(s.perTenantCapacity+s.authenticationReserve).toBeLessThanOrEqual(p-1);expect(s.otherTenantReserve).toBeGreaterThanOrEqual(1);expect(s.authenticationReserve).toBeGreaterThanOrEqual(1);}
+  for(let p=3;p<=50;p++){const s=databaseAdmissionShares(p,1024);expect(s.tenantFairShare+s.authenticationReserve).toBeLessThanOrEqual(p-1);expect(s.otherTenantReserve).toBeGreaterThanOrEqual(1);expect(s.authenticationReserve).toBeGreaterThanOrEqual(1);}
   // Workers get no reservation: one tenant at a time, no logins.
-  expect(databaseAdmissionShares(3,64,{},'worker')).toMatchObject({authenticationReserve:0,perTenantCapacity:3,otherTenantReserve:0});
-  // A single-tenant installation may raise the tenant share up to the reserved login permits.
-  expect(databaseAdmissionShares(8,1024,{AIHR_DB_PER_TENANT_MAX:'7'}).perTenantCapacity).toBe(7);
-  expect(()=>databaseAdmissionShares(8,1024,{AIHR_DB_PER_TENANT_MAX:'8'})).toThrow(/AIHR_DB_PER_TENANT_MAX/);
+  expect(databaseAdmissionShares(3,64,'worker')).toMatchObject({authenticationReserve:0,tenantFairShare:3,otherTenantReserve:0});
  });
- it('admits other tenants and login at once while one tenant holds its full share and queues more',async()=>{
-  const q=shared(),hot=await Promise.all(Array.from({length:5},()=>q.acquire('hot','interactive')));
-  let queuedHotEntered=false;const queuedHot=q.acquire('hot','interactive').then(r=>{queuedHotEntered=true;return r;});
-  // The hot tenant is at its ceiling of 5 of 8: the sixth waits while others proceed immediately.
-  expect(q.snapshot()).toMatchObject({active:5,waiting:1});
-  const other=await q.acquire('other','interactive');
+ it('lets a lone tenant use every permit except the login reserve',async()=>{
+  const q=shared(),held=await Promise.all(Array.from({length:7},()=>q.acquire('solo','interactive')));
+  expect(q.snapshot()).toMatchObject({active:7,waiting:0});
+  let eighth=false;const queued=q.acquire('solo','interactive').then(r=>{eighth=true;return r;});
+  await Promise.resolve();
+  // The eighth permit is the login reserve, whichever tenant asks.
+  expect(eighth).toBe(false);expect(q.snapshot()).toMatchObject({active:7,waiting:1});
   const login=await q.acquire('authentication','authentication');
-  expect(q.snapshot()).toMatchObject({active:7,authentication:1,waiting:1});
-  expect(queuedHotEntered).toBe(false);
-  hot[0]();await vi.waitFor(()=>expect(queuedHotEntered).toBe(true));
-  [...hot.slice(1),other,login,await queuedHot].forEach(release=>release());
+  expect(q.snapshot()).toMatchObject({active:8,authentication:1});
+  login();held.forEach(release=>release());(await queued)();
   expect(q.snapshot()).toMatchObject({active:0,waiting:0});
+ });
+ it('uses the two connections a lone tenant has at W=8',async()=>{
+  const q=createDatabaseAdmission({capacity:2,backgroundCapacity:1,maxWaiting:32,waitMs:1000,...databaseAdmissionShares(2,32)});
+  const held=await Promise.all([q.acquire('solo','interactive'),q.acquire('solo','interactive')]);
+  expect(q.snapshot().active).toBe(2);held.forEach(release=>release());
+ });
+ it('gives a tenant that arrives during an over-share burst the next freed permits',async()=>{
+  const q=shared(),hot=await Promise.all(Array.from({length:7},()=>q.acquire('hot','interactive')));
+  const order:string[]=[];
+  const hotQueued=q.acquire('hot','interactive').then(r=>{order.push('hot');return r;});
+  const first=q.acquire('other','interactive').then(r=>{order.push('other-1');return r;});
+  const second=q.acquire('other','interactive').then(r=>{order.push('other-2');return r;});
+  expect(q.snapshot()).toMatchObject({active:7,waiting:3});
+  hot[0]();await vi.waitFor(()=>expect(order).toEqual(['other-1']));
+  hot[1]();await vi.waitFor(()=>expect(order).toEqual(['other-1','other-2']));
+  expect(q.snapshot()).toMatchObject({active:7,waiting:1});
+  // Below its share of five again: the hot tenant may run.
+  hot[2]();await vi.waitFor(()=>expect(order).toEqual(['other-1','other-2','hot']));
+  [...hot.slice(3),await first,await second,await hotQueued].forEach(release=>release());
+  expect(q.snapshot()).toMatchObject({active:0,waiting:0});
+ });
+ it('holds an over-share tenant back while another tenant waits, then resumes using idle permits',async()=>{
+  const q=createDatabaseAdmission({capacity:4,backgroundCapacity:1,maxWaiting:16,waitMs:1000,tenantFairShare:2,authenticationReserve:1});
+  const hot=await Promise.all([q.acquire('hot','interactive'),q.acquire('hot','interactive'),q.acquire('hot','interactive')]);
+  let hotEntered=false,otherEntered=false;
+  const hotQueued=q.acquire('hot','interactive').then(r=>{hotEntered=true;return r;});
+  const other=q.acquire('other','interactive').then(r=>{otherEntered=true;return r;});
+  hot[0]();await vi.waitFor(()=>expect(otherEntered).toBe(true));
+  // Hot is at its share while the other tenant runs, so the idle permit stays free for the other tenant.
+  expect(hotEntered).toBe(false);expect(q.snapshot()).toMatchObject({active:3,waiting:1});
+  (await other)();
+  // The other tenant is gone: idle capacity goes back to the lone tenant, even above its share.
+  await vi.waitFor(()=>expect(hotEntered).toBe(true));
+  expect(q.snapshot()).toMatchObject({active:3,waiting:0});
+  [hot[1],hot[2],await hotQueued].forEach(release=>release());
+ });
+ it('serves a login first even while tenants compete for freed permits',async()=>{
+  const q=createDatabaseAdmission({capacity:3,backgroundCapacity:1,maxWaiting:16,waitMs:1000,tenantFairShare:1,authenticationReserve:1,authenticationCapacity:2});
+  const hot=await Promise.all([q.acquire('hot','interactive'),q.acquire('hot','interactive')]);
+  const login1=await q.acquire('authentication','authentication');
+  const order:string[]=[];
+  const page=q.acquire('other','interactive').then(r=>{order.push('page');return r;});
+  const login2=q.acquire('authentication','authentication').then(r=>{order.push('login');return r;});
+  await Promise.resolve();expect(order).toEqual([]);
+  hot[0]();await vi.waitFor(()=>expect(order).toEqual(['login']));
+  hot[1]();await vi.waitFor(()=>expect(order).toEqual(['login','page']));
+  login1();(await login2)();(await page)();
+  expect(q.snapshot()).toMatchObject({active:0,waiting:0});
+ });
+ it('never treats login work as another tenant competing for the share',async()=>{
+  const q=createDatabaseAdmission({capacity:4,backgroundCapacity:1,maxWaiting:8,waitMs:1000,tenantFairShare:1,authenticationReserve:1,authenticationCapacity:2});
+  const login=await q.acquire('authentication','authentication');
+  const held=await Promise.all([q.acquire('solo','interactive'),q.acquire('solo','interactive')]);
+  expect(q.snapshot()).toMatchObject({active:3,authentication:1});
+  login();held.forEach(release=>release());
+ });
+ it('keeps a hard per-tenant ceiling hard even when the tenant is alone',async()=>{
+  const q=createDatabaseAdmission({capacity:4,backgroundCapacity:1,maxWaiting:8,waitMs:1000,perTenantCapacity:1,tenantFairShare:1});
+  const first=await q.acquire('solo','interactive');let entered=false;
+  const second=q.acquire('solo','interactive').then(r=>{entered=true;return r;});
+  await Promise.resolve();expect(entered).toBe(false);
+  first();(await second)();
  });
  it('always keeps a permit for login that no tenant work can take',async()=>{
   const q=shared(),work=await Promise.all([...Array.from({length:5},()=>q.acquire('a','interactive')),q.acquire('b','interactive'),q.acquire('c','interactive')]);

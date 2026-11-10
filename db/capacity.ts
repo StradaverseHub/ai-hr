@@ -17,16 +17,18 @@
  *
  *   authentication reserve   A = 0 when P < 3, otherwise ceil(P/8)
  *                            permits tenant work may never hold, so a login can always start
- *   per-tenant ceiling       T = max(1, floor(5P/8))
+ *   tenant fair share        T = max(1, floor(5P/8)), work-conserving (db/admission.ts): a tenant alone
+ *                            on the pool uses all of P - A; the share binds once another tenant has work
  *   other tenants keep       O = P - T - A, at least 1 whenever P >= 3
  *   authentication ceiling   ceil(P/2), so a login flood still leaves pages half the pool
- *   tenant waiting           floor(maxWaiting/4) per tenant, maxWaiting = floor(2048/W)
+ *   tenant waiting           floor(3*maxWaiting/4) per tenant, maxWaiting = floor(2048/W); queue entries
+ *                            cannot be reclaimed, so one tenant can never fill the whole queue
  *   authentication waiting   floor(maxWaiting/8), counted apart from the tenant queue
  *
  * Each process decides alone and the load balancer knows nothing about tenants, so the shares
- * must hold per process. Across the fleet that gives one tenant at most T*W connections, about
- * 5/8 of C whatever W is, and leaves logins A*W reserved connections. Below three connections a
- * process cannot reserve for both: with P=2 the hot tenant is capped at one connection and login
+ * must hold per process. When tenants compete, one tenant settles to T*W connections, about 5/8 of
+ * C whatever W is, and logins always keep A*W reserved connections. Below three connections a
+ * process cannot reserve for both: with P=2 a contended tenant is held to one connection and login
  * goes first on the other; with P=1 only the ordering can help.
  */
 export type DatabaseProcessRole = 'web' | 'worker';
@@ -76,22 +78,19 @@ export function applicationDatabaseBudget(env: Record<string, string | undefined
 export function databaseAdmissionShares(
   poolMax: number,
   maxWaiting: number,
-  env: Record<string, string | undefined> = {},
   role: DatabaseProcessRole = 'web',
 ) {
   // A worker runs one tenant at a time and serves no logins, so reservations would only idle it.
-  if (role === 'worker') return {authenticationReserve: 0, authenticationCapacity: poolMax, perTenantCapacity: poolMax, otherTenantReserve: 0, maxWaitingPerTenant: maxWaiting, maxAuthenticationWaiting: maxWaiting};
+  if (role === 'worker') return {authenticationReserve: 0, authenticationCapacity: poolMax, tenantFairShare: poolMax, otherTenantReserve: 0, maxWaitingPerTenant: maxWaiting, maxAuthenticationWaiting: maxWaiting};
   const authenticationReserve = poolMax < 3 ? 0 : Math.ceil(poolMax / 8);
   const authenticationCapacity = Math.max(1, Math.ceil(poolMax / 2));
-  const formula = Math.max(1, Math.floor((poolMax * 5) / 8));
-  // A single-tenant installation has no other tenant to reserve for and may raise this share.
-  const perTenantCapacity = reader(env)('AIHR_DB_PER_TENANT_MAX', formula, 1, Math.max(1, poolMax - authenticationReserve));
+  const tenantFairShare = Math.max(1, Math.floor((poolMax * 5) / 8));
   return {
     authenticationReserve,
     authenticationCapacity,
-    perTenantCapacity,
-    otherTenantReserve: poolMax - perTenantCapacity - authenticationReserve,
-    maxWaitingPerTenant: Math.floor(maxWaiting / 4),
+    tenantFairShare,
+    otherTenantReserve: poolMax - tenantFairShare - authenticationReserve,
+    maxWaitingPerTenant: Math.floor((maxWaiting * 3) / 4),
     maxAuthenticationWaiting: Math.floor(maxWaiting / 8),
   };
 }

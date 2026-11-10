@@ -202,7 +202,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     admission = createDatabaseAdmission({capacity: configuredPoolMax,
       backgroundCapacity: Math.max(1, Math.floor(configuredPoolMax / 4)), maxWaiting: applicationBudget.maxWaiting,
       maxBackgroundWaiting:Math.floor(applicationBudget.maxWaiting/4),waitMs: options?.admissionWaitMs ?? applicationBudget.waitMs,
-      ...databaseAdmissionShares(configuredPoolMax,applicationBudget.maxWaiting,process.env,applicationBudget.role)});
+      ...databaseAdmissionShares(configuredPoolMax,applicationBudget.maxWaiting,applicationBudget.role)});
     admissionByPool.set(client, admission);
   }
   const poolAdmission = admission;

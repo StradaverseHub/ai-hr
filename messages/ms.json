@@ -10869,7 +10869,20 @@
         "fileTooLarge": "Fail terlalu besar. Bahagikan kepada kelompok lebih kecil dan cuba lagi.",
         "emptySheet": "Lembaran kerja pertama kosong.",
         "pasteToggle": "Atau tampal CSV sebaliknya",
-        "downloadTemplateXlsx": "Muat turun templat Excel"
+        "downloadTemplateXlsx": "Muat turun templat Excel",
+        "job": {
+          "title": "Mengimport rekod cuti",
+          "progressCount": "{done} daripada {total} baris diproses",
+          "backgroundHelp": "Ini berjalan di latar belakang. Anda boleh meninggalkan halaman ini dan kembali kemudian.",
+          "waiting": "Menunggu perkhidmatan import untuk meneruskan. Tiada tindakan diperlukan.",
+          "failed": "Import tidak dapat diselesaikan. Baris yang telah disimpan dikekalkan.",
+          "state": {
+            "queued": "Menunggu untuk bermula",
+            "importing": "Sedang mengimport",
+            "completed": "Selesai",
+            "failed": "Dihentikan"
+          }
+        }
       },
       "expiryUnitMonths": "Bulan",
       "expiryUnitDays": "Hari",

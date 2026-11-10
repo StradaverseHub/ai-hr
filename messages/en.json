@@ -10869,7 +10869,20 @@
         "fileTooLarge": "File is too large. Split it into smaller batches and try again.",
         "emptySheet": "The first worksheet is empty.",
         "pasteToggle": "Or paste CSV instead",
-        "downloadTemplateXlsx": "Download Excel template"
+        "downloadTemplateXlsx": "Download Excel template",
+        "job": {
+          "title": "Importing leave records",
+          "progressCount": "{done} of {total} rows processed",
+          "backgroundHelp": "This runs in the background. You can leave this page and come back.",
+          "waiting": "Waiting for the import service to continue. No action is needed.",
+          "failed": "The import could not finish. Rows already saved are kept.",
+          "state": {
+            "queued": "Waiting to start",
+            "importing": "Importing",
+            "completed": "Finished",
+            "failed": "Stopped"
+          }
+        }
       },
       "expiryUnitMonths": "Months",
       "expiryUnitDays": "Days",

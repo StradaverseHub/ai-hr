@@ -51,6 +51,8 @@ Each conversion must keep:
 
 ### 3.1 Leave ledger import, PROOF CONVERSION (step 1)
 
+Status: proof built on this branch and gated by `LEAVE_IMPORT_BACKGROUND=true` (default off, because it needs the new `aihr-leave-import` worker unit): `core/leave-import-job.ts`, `core/leave-import-worker.ts`, draft migration 9002. No shared kernel yet; step K still applies.
+
 - **Locks.** One transaction per row (`core/leave-import.ts:399`): Access X (`:400`), `leave-dependency-configuration` S plus `leave-dependency-employment:<id>` X, no-wait (`:401`, `core/leave-dependency-lock.ts:54-69`). Measured 27 ms per row; hot-path probes unaffected (max 119 ms).
 - **All-or-nothing.** Not required. Row-level success is the design: "not-atomic-by-design" (`core/leave-import.ts:370-376`, `:393-396`).
 - **Job mapping.** Job row kind `leave_ledger`, source file and validated plan stored once. Chunk boundary: one row per transaction, as today, so a row failure cannot abort neighbours. Pending or activate: none, because ledger rows are visible when written, unchanged from today. Progress: rows processed, imported, skipped, failed. Resume: job row state plus the existing duplicate check (`core/leave-import.ts:157`, "skip on commit"). Discard: cancel before apply only; no reversal exists today and none is added.
