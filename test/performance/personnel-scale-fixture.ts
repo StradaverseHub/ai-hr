@@ -125,10 +125,10 @@ export async function seedPersonnelScaleFixture(count: number): Promise<Personne
     // Reporting lines: one manager per block of 25, a closed earlier line for some, none for 1 in 12.
     await tx.unsafe(`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from,valid_to,superseded_at)
       with f as (select * from (${fixtureSql(personPrefix, employmentPrefix, count)}) f)
-      select $1::uuid,f.employment_id,m.employment_id,'administrative',f.hired_on,null,null
+      select $1::uuid,f.employment_id,m.employment_id,'administrative'::reporting_line_type,f.hired_on,null,null
       from f join f m on m.n = ((f.n-1)/25)*25 + 1 where f.n%25<>1 and f.n%12<>5
       union all
-      select $1::uuid,f.employment_id,m.employment_id,'administrative',f.hired_on - 30,f.hired_on,null
+      select $1::uuid,f.employment_id,m.employment_id,'administrative'::reporting_line_type,f.hired_on - 30,f.hired_on,null
       from f join f m on m.n = ((f.n-1)/25)*25 + 26 where f.n%25<>1 and f.n%5=0 and m.n<>f.n`, [t]);
     // Accounts for most people; Personnel reads must not depend on them.
     await tx.unsafe(`insert into app_user(tenant_id,workos_user_id,person_id)
@@ -136,10 +136,10 @@ export async function seedPersonnelScaleFixture(count: number): Promise<Personne
       [t, employmentPrefix]);
     // Ordinary event history the dated-company resolver must skip: hires and past corrections.
     await tx.unsafe(`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload,occurred_at)
-      select $1::uuid,'employment',f.employment_id,'employment.hired','system',f.employment_id,jsonb_build_object('hiredOn',f.hired_on),f.hired_on::timestamptz
+      select $1::uuid,'employment',f.employment_id,'employment.hired','system'::actor_type,f.employment_id,jsonb_build_object('hiredOn',f.hired_on),f.hired_on::timestamptz
       from (${fixtureSql(personPrefix, employmentPrefix, count)}) f
       union all
-      select $1::uuid,'employment',f.employment_id,'employment.information.corrected','system',f.employment_id,
+      select $1::uuid,'employment',f.employment_id,'employment.information.corrected','system'::actor_type,f.employment_id,
         jsonb_build_object('effectiveOn',(f.hired_on + 10)::text,'before',jsonb_build_object('companyId','')),f.hired_on::timestamptz + interval '10 days'
       from (${fixtureSql(personPrefix, employmentPrefix, count)}) f where f.n%50=3`, [t]);
     await tx.unsafe(`insert into employee_draft(tenant_id,company_id,label,data,current_step)
