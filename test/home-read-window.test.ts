@@ -100,7 +100,7 @@ describe('Home date-local reads sliced from one declared window',()=>{
     if(declare)declareSharedReadWindow(employmentId,W.from,W.to);
     await Promise.all(narrow.slice(1).map(([from,to])=>withTenant(ctx,tx=>owners(tx,employmentId,from,to),{readOnlySnapshot:true})));
    });
-   return sessions[0].statements-sessions[0].memoHits;
+   return sessions[0].statements;
   };
   const [plain,windowed]=[await count(false),await count(true)];
   expect(windowed).toBeLessThan(plain);

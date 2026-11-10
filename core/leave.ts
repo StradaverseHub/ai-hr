@@ -6216,9 +6216,10 @@ async function approvedLeaveCalendarPresence(
   // The reader groups by employment and date, so each date's presence depends on that date alone. Inside a shared
   // snapshot with a declared wider window for this one employment (db/shared-read.ts), every presence of the window is
   // read once per status and each caller keeps its own dates and full-day filter, in the same order.
+  // Both statuses of the window come from one statement: each status is the same reader's own call.
   const wide = empIds.length === 1 ? sharedReadWindow(tx, empIds[0], from, to) : null;
-  const all = wide ? await sharedSnapshotValue(tx, 'leaveCalendarPresence|' + empIds[0] + '|' + status + '|' + wide.from + '|' + wide.to,
-    () => leaveCalendarPresenceRows(tx, empIds, wide.from, wide.to, false, status)).catch(() => null) : null;
+  const all = wide ? await sharedSnapshotValue(tx, 'leaveCalendarPresence|' + empIds[0] + '|' + wide.from + '|' + wide.to,
+    () => leaveCalendarPresenceWindowRows(tx, empIds[0], wide.from, wide.to)).then(rows => rows[status]).catch(() => null) : null;
   const rows = all ? all.filter(row => row.date >= from && row.date <= to && (!fullDayOnly || row.presence === 'full_day'))
     : await leaveCalendarPresenceRows(tx, empIds, from, to, fullDayOnly, status);
   for(const row of rows){
@@ -6234,6 +6235,17 @@ async function leaveCalendarPresenceRows(tx: Tx, empIds: string[], from: string,
   return await tx.execute(sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,presence
    FROM app.leave_calendar_presence(${JSON.stringify(empIds)}::jsonb,${from}::date,${to}::date,${status})
    WHERE (${!fullDayOnly} OR presence='full_day') ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;presence:'full_day'|'part_day'}[];
+}
+
+async function leaveCalendarPresenceWindowRows(tx: Tx, employmentId: string, from: string, to: string) {
+  const ids = JSON.stringify([employmentId]);
+  const rows = await tx.execute(sql`SELECT status,employment_id::text AS "employmentId",on_date::text AS date,presence FROM (
+   SELECT 'approved' AS status,p.*,1 AS part FROM app.leave_calendar_presence(${ids}::jsonb,${from}::date,${to}::date,'approved') p
+   UNION ALL
+   SELECT 'pending' AS status,p.*,2 AS part FROM app.leave_calendar_presence(${ids}::jsonb,${from}::date,${to}::date,'pending') p
+  ) both_statuses ORDER BY part,employment_id,on_date`) as unknown as {status:'approved'|'pending';employmentId:string;date:string;presence:'full_day'|'part_day'}[];
+  const strip = (status: 'approved' | 'pending') => rows.filter(row => row.status === status).map(({ employmentId, date, presence }) => ({ employmentId, date, presence }));
+  return { approved: strip('approved'), pending: strip('pending') };
 }
 
 /** Existing Attendance/Payroll consumers exclude partial days from full-day absence relief. */

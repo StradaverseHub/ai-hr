@@ -288,10 +288,15 @@ const comparable=(value:unknown)=>JSON.stringify(value,(key,item)=>key==='server
 async function outcome(read:()=>Promise<unknown>){try{return {ok:true,value:await read()};}catch(error){return {ok:false,error:{name:(error as Error)?.name??null,code:(error as {code?:string})?.code??null}};}}
 async function traceStatements<T>(work:()=>Promise<T>){
  const options=applicationClient.options as {debug?:unknown},ordered:string[]=[],owners:string[]=[],previous=options.debug;
- // The owner frames that sent each statement (application files only), so every trip is attributable.
- options.debug=(_connection:number,query:string)=>{ordered.push(query.replace(/\s+/g,' ').trim().slice(0,420));owners.push(transactionOwner());};
+ // The driver sends pipelined statements from socket callbacks, so the owner of a shared-carrier statement is read
+ // where the carrier sends it (db/shared-read.ts), in its owner's async context; other statements keep the stack seen
+ // at send time. Every trip stays attributable.
+ const sharedOwners=new Map<string,string[]>();
+ const hooks=globalThis as {__aihrPerfSharedStatement?:(query:string)=>void};
+ hooks.__aihrPerfSharedStatement=query=>{const key=query.replace(/\s+/g,' ').trim().slice(0,420),list=sharedOwners.get(key)??[];list.push(transactionOwner());sharedOwners.set(key,list);};
+ options.debug=(_connection:number,query:string)=>{const text=query.replace(/\s+/g,' ').trim().slice(0,420);ordered.push(text);owners.push(sharedOwners.get(text)?.shift()??transactionOwner());};
  let result:T|null=null,failure:unknown=null;
- try{result=await work();}catch(error){failure=errorFact(error);}finally{options.debug=previous;}
+ try{result=await work();}catch(error){failure=errorFact(error);}finally{options.debug=previous;delete hooks.__aihrPerfSharedStatement;}
  const counts=new Map<string,number>();
  for(const text of ordered)counts.set(text,(counts.get(text)??0)+1);
  const trace:Traced={trips:ordered.length,statements:[...counts].map(([text,count])=>({sql:text,count})).sort((a,b)=>b.count-a.count),ordered,owners};

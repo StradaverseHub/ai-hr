@@ -18,6 +18,10 @@ beforeEach(()=>{
     if(query.includes('app.own_home_dashboard_role(')){
       state.probes.push('selected-company-role');return [{role:state.dashboardRole}];
     }
+    // The canonical repeatable-read-only probe (core/read-only-snapshot.ts).
+    if(query.includes("current_setting('transaction_read_only')='on' as snapshot")){
+      state.probes.push('snapshot-mode');return [{snapshot:state.snapshotSafe}];
+    }
     if(query.includes(' as safe')){
       state.probes.push('snapshot-mode');return [{safe:state.snapshotSafe}];
     }

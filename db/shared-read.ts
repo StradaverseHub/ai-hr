@@ -220,6 +220,7 @@ export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSes
  const memo=new Map<string,Promise<unknown>>();
  // Settings already in force on this carrier transaction: READ ONLY from BEGIN, and any SET LOCAL jit it was sent.
  const held=new Map<string,string>([['transaction','read only']]);
+ const observe=(globalThis as {__aihrPerfSharedStatement?:(query:string)=>void}).__aihrPerfSharedStatement;
  const unsafe=(query:string,params?:unknown[],options?:unknown):Pending=>{
   let mode:'rows'|'values'='rows',started:Promise<unknown>|undefined;
   const run=()=>started??=execute(query,params,options,mode);
@@ -229,6 +230,8 @@ export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSes
  };
  const send=(query:string,params:unknown[]|undefined,options:unknown,mode:'rows'|'values')=>{
   session.stats.statements++;
+  // Diagnostics only: a sent statement, reported in the issuing owner's own async context.
+  observe?.(query);
   if(session.inFlight++===0)session.stats.flights++;
   const sent=driver.unsafe(query,params,options);
   return Promise.resolve(mode==='values'?sent.values():sent).finally(()=>{session.inFlight--;}).catch(error=>{

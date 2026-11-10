@@ -2857,3 +2857,12 @@ when1793330002902. A fresh full fetch and survey of 1046 journals and 686
 readable registered worktrees found no higher competing reservation than its
 owned 3301/2601/1793330002901. This adds explicit Maybank arrangement metadata
 and a separate, nullable payee banking-residency fact; no tax residency is copied.
+
+## Home round trips — 10 November 2026 (unallocated draft)
+
+Branch `claude/home-round-trips-20261110` journals `9850_reward_access_observation_due` at idx 3743 and when
+1793330009850 as an UNALLOCATED DRAFT from the owner-provided 9850–9859 block, so the focused suite applies it. It adds
+one read-only STABLE SECURITY DEFINER probe, `app.reward_access_observation_due(uuid)`, with EXECUTE for `ai_hr_app`
+only; no table, index, grant on data or existing function changes. Final tag, idx and `when` must be assigned above the
+freshly verified ledger at integration, and the approved upgrade tail pins (`test/helpers/approved-upgrade.ts`) updated
+then. This entry carries no allocation or deployment authority.
