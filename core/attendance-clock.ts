@@ -15,6 +15,9 @@ import { clockCommandContext } from '../lib/clock-command-context';
 import { todayInKualaLumpur, timeInKualaLumpur } from '../lib/hr-date';
 import {abandonSubmissionTx,submissionAbandonedTx} from './mobile-submission-state';
 import {assertLegacySelfServiceClockTx} from './mobile-clock-policy';
+import {tryLockAccessConfigurationTx} from './access-configuration-lock';
+import {withWebClockAccess} from './attendance-clock-admission';
+export {ClockAccessUnavailableError} from './attendance-clock-admission';
 export {ClockIntegrityRequiredError,ClockPolicyUnavailableError} from './mobile-clock-policy';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -108,8 +111,20 @@ export async function abandonNativeClock(ctx:SessionContext,employmentId:string,
  * mechanism checkIn/checkOut use (ADR-0070 §3); an event inside a transaction that rolls back never lands.
  */
 export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) {
+  return captureEmployeeClockCommand(ctx, p);
+}
+
+/** The authenticated browser POST opts into pre-effect admission and request cancellation. */
+export async function captureEmployeeClockFromWebRequest(ctx: SessionContext, p: ClockIntent, signal: AbortSignal) {
+  return captureEmployeeClockCommand(ctx, p, {signal});
+}
+
+type WebClockAdmission = { signal: AbortSignal };
+
+async function captureEmployeeClockCommand(ctx: SessionContext, p: ClockIntent, webAdmission?: WebClockAdmission) {
   try {
-    return await captureEmployeeClockTx(ctx, p);
+    webAdmission?.signal.throwIfAborted();
+    return await captureEmployeeClockTx(ctx, p, undefined, undefined, webAdmission);
   } catch (e) {
     if (e instanceof OutsideGeofenceError) await appendGeofenceBlockedEvent(ctx, e);
     throw e;
@@ -124,7 +139,7 @@ type JoinedCarrier = { tx: Tx; requireNew: boolean };
 type ClockSource = { source: 'web' | 'native_online' } | { source: 'mobile_offline'; at: Date; claimDigest: string };
 type ClockSubject = { employmentId: string };
 
-async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, native?: NativeCarrier,joined?:JoinedCarrier) {
+async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, native?: NativeCarrier, joined?: JoinedCarrier, webAdmission?: WebClockAdmission) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   p={...p,...(p.photo?{photo:Buffer.from(p.photo)}:{})}; native=native?{...native}:undefined;
   const me=native?(await (joined?myOwnEmploymentSubjectsTx(joined.tx,ctx,{profileEdit:true}):myEmployments(ctx))).find(e=>e.employmentId===native.employmentId):await resolveOwnClockEmployment(ctx,p.employmentId);
@@ -142,7 +157,15 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
     if(!joined)await assertLegacySelfServiceClockTx(tx,ctx,me.employmentId);
     return receipt;
   };
-  return joined?execute(joined.tx):withTenant(ctx,execute);
+  if (joined) return execute(joined.tx);
+  if (native || !webAdmission) return withTenant(ctx, execute);
+  return withWebClockAccess(
+    // withTenant observes the signal at pool admission and bootstrap, before invoking the write.
+    (attempt, signal) => withTenant(ctx, attempt, {readSignal: signal}),
+    (tx: Tx) => tryLockAccessConfigurationTx(tx, ctx.tenantId),
+    execute,
+    webAdmission.signal,
+  );
 }
 
 /** Every validation and typed refusal of a clocking, in the online order, with no write: locks and reads only.

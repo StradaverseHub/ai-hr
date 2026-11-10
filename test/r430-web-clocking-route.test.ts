@@ -5,7 +5,7 @@
  * real database, the session mocked the same way test/mobile-api-routes.test.ts mocks getMobileSession.
  */
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
@@ -13,6 +13,8 @@ import { adminCtx, harnessSnapshot, closeAll, migrateTestDb, owner, resetDb, see
 import { hireEmployee } from '../core/org';
 import { createClockingLocation, setClockingControl } from '../core/clocking-location';
 import { ownClockToday } from '../core/attendance-clock-read';
+import { captureEmployeeClock } from '../core/attendance-clock';
+import * as accessLock from '../core/access-configuration-lock';
 
 let b: Base;
 let CALLER: SessionContext;
@@ -58,6 +60,81 @@ const post = (fields: Record<string, string>) => {
 };
 
 describe('r430 — POST /api/attendance/clock contract', () => {
+  it('keeps direct service captures outside the browser admission wrapper', async () => {
+    await hire();
+    const spy = vi.spyOn(accessLock, 'tryLockAccessConfigurationTx')
+      .mockRejectedValue(new Error('Browser-only admission ran on a direct capture'));
+    try {
+      await expect(captureEmployeeClock(CALLER, {
+        action: 'in', requestId: randomUUID(), lat: null, lng: null, accuracy: null,
+      })).resolves.toMatchObject({direction: 'in'});
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('records one punch after contended Access and recovers the same request receipt', async () => {
+    const employmentId = await hire(), requestId = randomUUID();
+    const lockReady = Promise.withResolvers<void>(), unlock = Promise.withResolvers<void>();
+    const firstMiss = Promise.withResolvers<void>();
+    const hold = owner.db.transaction(async tx => {
+      await accessLock.lockAccessConfigurationTx(tx, b.tenantId);
+      lockReady.resolve();
+      await unlock.promise;
+    });
+    const tryLock = accessLock.tryLockAccessConfigurationTx;
+    const spy = vi.spyOn(accessLock, 'tryLockAccessConfigurationTx').mockImplementation(async (tx, tenantId) => {
+      const acquired = await tryLock(tx, tenantId);
+      if (!acquired) firstMiss.resolve();
+      return acquired;
+    });
+    const fields = {action: 'in', requestId};
+    let response: Promise<Response> | undefined;
+    try {
+      await Promise.race([lockReady.promise, hold]);
+      response = post(fields);
+      await Promise.race([
+        firstMiss.promise,
+        response.then(() => { throw new Error('Clock returned before observing the held Access lock'); }),
+      ]);
+      const [blocked] = await owner.db.execute<{count: number}>(sql`
+        select count(*)::int as count
+        from pg_locks granted
+        join pg_locks waiting using (locktype, database, classid, objid, objsubid)
+        where granted.pid <> waiting.pid and granted.locktype = 'advisory'
+          and granted.granted and not waiting.granted
+          and ((granted.classid::bigint << 32) | granted.objid::bigint) =
+            hashtextextended(${'access-configuration:' + b.tenantId}, 0)
+      `);
+      expect(blocked.count).toBe(0);
+      expect(await owner.db.select().from(schema.attendanceClockCapture)
+        .where(eq(schema.attendanceClockCapture.requestId, requestId))).toHaveLength(0);
+      unlock.resolve();
+      await hold;
+
+      const accepted = await response;
+      expect(accepted.status).toBe(200);
+      const body = await accepted.json();
+      const replay = await post(fields);
+      expect(replay.status).toBe(200);
+      expect(await replay.json()).toEqual(body);
+
+      const [capture, ...duplicates] = await owner.db.select().from(schema.attendanceClockCapture)
+        .where(and(eq(schema.attendanceClockCapture.employmentId, employmentId), eq(schema.attendanceClockCapture.requestId, requestId)));
+      expect(capture.direction).toBe('in');
+      expect(duplicates).toHaveLength(0);
+      expect(await owner.db.select().from(schema.attendancePunch)
+        .where(eq(schema.attendancePunch.clockCaptureId, capture.id))).toHaveLength(1);
+      expect(await owner.db.select().from(schema.domainEvent)
+        .where(and(eq(schema.domainEvent.aggregateId, capture.id), eq(schema.domainEvent.eventType, 'attendance.clock.captured')))).toHaveLength(1);
+    } finally {
+      unlock.resolve();
+      await Promise.allSettled([hold, ...(response ? [response] : [])]);
+      spy.mockRestore();
+    }
+  });
+
   it('requires a context for a selected command, rejects foreign or duplicate selectors, and recovers only its own selected receipt',async()=>{
     const employmentId=await hire(),requestId=randomUUID();
     const state=await ownClockToday(CALLER,undefined,employmentId);

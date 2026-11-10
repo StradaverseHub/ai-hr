@@ -123,7 +123,7 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
     expect(clockApi).toContain('export async function POST(request: Request)');
     expect(clockApi).toContain('const session = await clockApiSession()');
     expect(clockApi).toContain("from '@/packs/attendance/service'");
-    expect(clockApi).toContain("await captureEmployeeClock(session,{action:String(data.get('action')) as 'in'|'out'");
+    expect(clockApi).toContain("await captureEmployeeClockFromWebRequest(session,{action:String(data.get('action')) as 'in'|'out'");
   });
 
   it('wires all eleven Personnel tabs while Leave mutations retain their existing destination',()=>{
