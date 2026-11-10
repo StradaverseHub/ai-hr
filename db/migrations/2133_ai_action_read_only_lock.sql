@@ -3,6 +3,14 @@
 -- Commands, admission and pause writers retain their existing exclusive lock and predicates.
 -- Replaces the inner owner only: app.ai_agent_action_unpaused remains the 3200 wrapper, and this body
 -- carries the tenant-wide stop check itself, so no intermediate state can run without it.
+DO $action_predecessor$
+BEGIN
+ -- Refuse an unexpected installed owner rather than overwriting another owner's narrowing.
+ IF (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('app.ai_agent_action_unpaused_before_centre(text)')) IS DISTINCT FROM '96a2c89c92efcad817c0777a0cd8ad83' THEN
+  RAISE EXCEPTION 'Unexpected AI Centre compatibility predecessor: app.ai_agent_action_unpaused_before_centre(text)' USING ERRCODE='55000';
+ END IF;
+END $action_predecessor$;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.ai_agent_action_unpaused_before_centre(wanted_action text)
  RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();

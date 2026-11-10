@@ -2867,10 +2867,10 @@ indexes and `when` values are unchanged; only their bytes, so their hashes:
 | Tag | Was SHA256 | Now SHA256 |
 | --- | --- | --- |
 | `2103_system_performance_read_guards` | 0f9ec0dfac05dfd46db765cdc868b0dfc14637e4c6266d229dea12f3691f8111 | fa2c3b276ee87843773d2f90c645d2af2ac9edeeab9c8ee7990da2f93fc9dcdc |
-| `2124_ai_control_navigation_candidates` | ed8666bfc29767ce266c362f07046dcd6b5b65b8434738bb9257daf5e328292c | 70dcc77f66c43c2af88e938f7b98641601d79f815cdcbf43609df7126de6f171 |
+| `2124_ai_control_navigation_candidates` | ed8666bfc29767ce266c362f07046dcd6b5b65b8434738bb9257daf5e328292c | ce02dce4aba720205e6b47b1603cdbf71a01faedefe7f9e264ffa6ffc47928e9 |
 | `2131_ai_read_only_metadata_locks` | 409262dd7b958eb8c2633556f9dba13ad637042efcb07b632a5bcea5c8131077 | 7fc2ba831335cb8cd1a4907eb6291f4508e7355dd1c02324392a8c6b70011268 |
 | `2132_ai_metadata_claim_preview_index` | ea9d1a6ee283b0586a835d98ee4c5e75196615a5f51d22d643966fc519c97508 | b50f22b90580b0ec5fcce8fdc915094d7b119cd1df5547918779ce7aa8029bd7 |
-| `2133_ai_action_read_only_lock` | d22cc6aa2e0995a4b7368127ac4d0a2d0c8f18e4bc44a5ca31480ab5d144ea8f | 1d9e9b9e22f07b70cc2de54c25e9e330ef36146c8d9c4117e3dec23f780183ee |
+| `2133_ai_action_read_only_lock` | d22cc6aa2e0995a4b7368127ac4d0a2d0c8f18e4bc44a5ca31480ab5d144ea8f | 9a921722d5da531307921862ba8d3cfd257ea6f1da8caae52ae4d418746b131a |
 | `2134_claim_visibility_set_membership` | a489a4293bc835003a0c6ee3f77f68d3847c618827949b54d541290563d3f2f6 | 3aac721aa0f291127c3718f4379007eec1240a6900182c84ecf7f82e24c004ca |
 | `2138_ai_pause_company_discovery` | bc44d218c30fcaa1db8a2f92e661be228cc4638fdfeb4280be0cacef388e5574 | 074304d629b363cc1317fb1da1e06749ab4dd4102acbd1a0005b169b5ec835b7 |
 | `2212_payroll_audit_claim_lookup_indexes` | ba7080ebfe158a3e2c339552de3a4c9c5adc2ae63dd5e32ec846671e647f37e2 | 4e9b9b975ba6c22ee0c8e89b0d5e6ea5303812358a1cdab1344d08531ba1a9ef |
