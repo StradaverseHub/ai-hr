@@ -32,9 +32,9 @@ Open [Offline Clocking](/admin/attendance/settings/offline-clocking) under Atten
 
 ## Set up overtime patterns
 
-Open [Overtime patterns](/admin/attendance/settings/overtime-patterns) from Attendance settings. The setup has four steps: **General Settings**, **Overtime Rates**, **Eligibility** and **Preview**. Enter the general settings, review the applicable rates, define eligibility, then inspect the complete preview. Resolve validation messages before continuing.
+Open [Overtime patterns](/admin/attendance/settings/overtime-patterns) from Attendance settings. The setup has three steps: **General Settings**, **Eligibility** and **Preview**. Enter the pattern label, name, description and day types, define eligibility, then inspect the preview. Resolve validation messages before continuing.
 
-Review the pattern's company and effective settings before saving. Saving a draft, activating a pattern and assigning it to employees are separate actions; check the resulting status and intended assignments. A preview does not activate a pattern or authorize payment for recorded hours.
+Before creating a new pattern, select one company in the company switcher; the new pattern belongs to that company and uses its currency. Patterns saved here stay as drafts for now: overtime rates and switching a pattern on return in a later update. Editing an existing draft keeps its saved companies, currency, duration settings and rates exactly as they are, and patterns that are already active keep calculating as before. Assigning an active pattern to employees remains a separate action; check the intended assignments. A preview does not activate a pattern or authorize payment for recorded hours.
 
 ## Payroll handoff
 

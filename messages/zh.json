@@ -28337,7 +28337,7 @@
       "next": "下一步",
       "stepOf": "第{current}步，共{total}步",
       "stepNavigation": "方案设置导航",
-      "completeGeneral": "继续前请填写名称、简称、公司、币种和时长选项。",
+      "completeGeneral": "继续前请填写加班模式简称、名称和日期类型。",
       "employeeEligibility": "员工适用范围",
       "testCalculation": "测试计算及薪资处理",
       "editGeneral": "编辑常规设置",
@@ -28345,7 +28345,8 @@
       "editEligibility": "编辑适用条件",
       "salaryDateHelp": "工资条件使用计算日生效的员工薪酬，并采用配置的币种。",
       "and": "并且",
-      "or": "或者"
+      "or": "或者",
+      "draftOnlyNote": "在此保存的模式将保持为草稿。加班费率和启用模式将在下一次更新中恢复。已保存的公司、币种和费率保持不变。"
     },
     "title": "加班模式",
     "descriptionText": "配置和审核员工加班、应付时长及薪资映射。",
@@ -28397,7 +28398,7 @@
     "legacyLink": "打开排班组",
     "legacyContext": "在分配有效公式模式前，现有组设置继续适用。",
     "openWorkspace": "配置加班模式",
-    "immutableHelp": "已激活版本为只读。请派生新草稿以进行未来变更。",
+    "immutableHelp": "已激活版本为只读。修改功能将在本页面的下一次更新中恢复。",
     "readerLimitations": "已记录字段的可用性",
     "unknownHelp": "缺失的历史事实保持“未知”，不能用员工当前值替代历史证据。",
     "unavailable": "当前范围内无法访问此模式或版本。",
@@ -28877,7 +28878,8 @@
     },
     "positionSearch": "搜索职位",
     "loadMorePositions": "加载更多职位",
-    "attendanceFormulaBinding": "考勤公式结果集：{id}"
+    "attendanceFormulaBinding": "考勤公式结果集：{id}",
+    "chooseOneCompany": "保存新模式前，请在屏幕顶部的公司切换器中选择一家公司。新模式将归属该公司。"
   },
   "systemTestingWorkspace": {
     "title": "系统测试",
