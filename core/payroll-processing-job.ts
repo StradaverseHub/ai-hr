@@ -217,14 +217,18 @@ async function discardRun(job:BulkJobRow,unit:Omit<BulkJobUnit,'fenceTx'>):Promi
    // The one-off rows the begin unit stamped onto this run return to being period-keyed.
    const [begin]=await owner<{ids:string[]|null}[]>`select array(select jsonb_array_elements_text(result->'attachedTxnIds')) as ids from bulk_job_step where job_id=${job.id}::uuid and kind='begin' and state='applied'`;
    const attached=begin?.ids??[];
-   const detached=attached.length?await owner`update payroll_individual_txn set batch_id=null where batch_id=${batchId}::uuid and id=any(${attached}::uuid[])`:{count:0};
+   const detached=attached.length?await owner<{id:string;employment_id:string;pay_period:string}[]>`update payroll_individual_txn set batch_id=null where batch_id=${batchId}::uuid and id=any(${attached}::uuid[]) returning id,employment_id,pay_period`:[];
+   // The same record a draft teardown leaves for each one (core/payroll.ts teardownDraftChildren).
+   for(const t of detached)await owner`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+     values(${batch.tenant_id}::uuid,'payroll-individual-txn',${t.id}::uuid,'payroll.individual-txn.detached','system',null,${t.employment_id}::uuid,
+      ${JSON.stringify({batchId,payPeriod:t.pay_period,reason:'payroll-processing-discarded'})}::jsonb)`;
    // A draft is never marked: a mark written while the run processed went with the payslips it was about.
    await owner`update payroll_batch set status='draft',processing_job_id=null,processing_started_at=null,needs_recalc_at=null,recalc_employment_ids=null where id=${batchId}::uuid`;
    if(batch.needs_recalc_at)await owner`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
      values(${batch.tenant_id}::uuid,'payroll-batch',${batchId}::uuid,'payroll-batch.recalc-cleared','system',null,${JSON.stringify({processingJobId:job.id})}::jsonb)`;
    await owner`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
      values(${batch.tenant_id}::uuid,'payroll-batch',${batchId}::uuid,'payroll-batch.processing-discarded','system',null,
-      ${JSON.stringify({jobId:job.id,initiatedBy:job.created_by,outcome:job.outcome??'failed',reason:(job.error??'').slice(0,500),inputsRestored:restored,oneOffTransactionsDetached:detached.count})}::jsonb)`;
+      ${JSON.stringify({jobId:job.id,initiatedBy:job.created_by,outcome:job.outcome??'failed',reason:(job.error??'').slice(0,500),inputsRestored:restored,oneOffTransactionsDetached:detached.length})}::jsonb)`;
    return'done' as const;
   });
   unit.metric('discardTxMs',performance.now()-started);

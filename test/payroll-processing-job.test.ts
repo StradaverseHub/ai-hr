@@ -23,6 +23,7 @@ import {createBatch,generatePayslips,resetProcessedBatch,setPayrollInput,BatchNo
 import {createLoan,prefillLoansForBatch} from '../core/loans';
 import {listPayComponents,seedPayComponentCatalog,setEmploymentPayComponent} from '../core/pay-components';
 import {runBulkJobTick} from '../core/bulk-job-worker';
+import {createIndividualTxn} from '../core/payroll-individual-txn';
 import {payrollProcessJobHandler,payrollProcessingStatus,requestPayrollProcessing} from '../core/payroll-processing-job';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
@@ -184,9 +185,13 @@ describe('payroll processing background job',()=>{
 
  it('discards a failed run back to draft: no payslips, inputs and ledger as they were',async()=>{
   const f=await fixture();
+  // A one-off keyed against the month: the begin unit attaches it to the run, the discard must hand it back.
+  const oneOff=await createIndividualTxn(adminCtx(base),{companyId:base.companyId,payPeriod:'2026-05',employmentId:f.hired.get('Aisha')!.employmentId,kind:'earning',txnDate:'2026-05-12',amount:75});
+  const oneOffId=(oneOff as {id:string}).id;
   const inputsBefore=await owner.client`select to_jsonb(i)-'updated_at' as row from payroll_input i where batch_id=${f.batchId}::uuid order by employment_id`;
   const {jobId}=await requestPayrollProcessing(f.a,{batchId:f.batchId});
   await runUntil(jobId,applied=>applied>=2);
+  expect((await owner.client<{batch_id:string|null}[]>`select batch_id from payroll_individual_txn where id=${oneOffId}::uuid`)[0].batch_id).toBe(f.batchId);
   const chunks=await owner.client<{ids:string[]}[]>`select array(select jsonb_array_elements_text(payload->'employmentIds')) as ids from bulk_job_step where job_id=${jobId}::uuid and kind='employees' order by seq`;
   // An employee the job has not reached loses their salary record: their chunk's readiness gate refuses the run.
   await owner.client`delete from compensation where employment_id=${chunks[2].ids[0]}::uuid`;
@@ -199,8 +204,10 @@ describe('payroll processing background job',()=>{
   const [ledger]=await owner.db.select({outstandingBalance:schema.employeeLoan.outstandingBalance,instalmentsPaid:schema.employeeLoan.instalmentsPaid}).from(schema.employeeLoan).where(eq(schema.employeeLoan.id,f.loan.id));
   expect(ledger).toEqual({outstandingBalance:'2400.00',instalmentsPaid:0});
   expect(await owner.client`select to_jsonb(i)-'updated_at' as row from payroll_input i where batch_id=${f.batchId}::uuid order by employment_id`).toEqual(inputsBefore);
-  const [discarded]=await owner.client<{payload:{jobId:string}}[]>`select payload from domain_event where aggregate_id=${f.batchId}::uuid and event_type='payroll-batch.processing-discarded'`;
-  expect(discarded.payload.jobId).toBe(jobId);
+  const [discarded]=await owner.client<{payload:{jobId:string;oneOffTransactionsDetached:number}}[]>`select payload from domain_event where aggregate_id=${f.batchId}::uuid and event_type='payroll-batch.processing-discarded'`;
+  expect(discarded.payload).toMatchObject({jobId,oneOffTransactionsDetached:1});
+  expect((await owner.client<{batch_id:string|null}[]>`select batch_id from payroll_individual_txn where id=${oneOffId}::uuid`)[0].batch_id).toBeNull();
+  expect(await owner.client`select payload->>'reason' as reason from domain_event where aggregate_id=${oneOffId}::uuid and event_type='payroll.individual-txn.detached'`).toEqual([{reason:'payroll-processing-discarded'}]);
   expect((await owner.db.execute(sql`select count(*)::int as n from domain_event where aggregate_id=${f.batchId}::uuid and event_type='payroll-batch.processed'`))[0]).toMatchObject({n:0});
  },300000);
 });
