@@ -19,7 +19,8 @@ import {definitionOfDoneInputs} from './definition-of-done-inputs';
 /** Ceilings at the allowlist's creation (claude/teras-integration a2a39018). Lower them as gaps close; never raise. */
 // Re-baselined at integration against released main 50ea2471: +1 entry (page:/admin/settings/entra, semantic+guide+corpus).
 // AI Centre restructure (4 Nov 2026): lowered to the counts after it (356/344/236/4/339 before, 352/341/233/4/335 after).
-const CEILING={entries:352,semantic:341,guide:233,readiness:4,corpus:335} as const;
+// 50d9b809: the leave admin guide now links Leave Settings, closing its guide gap (guide 233 → 232).
+const CEILING={entries:352,semantic:341,guide:232,readiness:4,corpus:335} as const;
 
 const allowed=():Map<string,string[]>=>{const map=new Map<string,string[]>();
  for(const [signature,keys] of Object.entries(DEFINITION_OF_DONE_GAPS))for(const key of keys){

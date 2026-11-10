@@ -201,7 +201,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/admin/leave-config/leave-credit','admin',null],['/admin/leave-config/leave-credit/rules','admin','toil'],
  ['/admin/leave-config/records','admin',null],['/admin/leave-config/records/balances','admin',null],
  ['/admin/leave-config/records/entitlement','admin',null],['/admin/leave-config/settings','admin',null],
- ['/admin/leave-config/special-setting','admin',null],['/admin/leave-config/types','admin',null],['/admin/leave/adjustments','admin',null],
+ ['/admin/leave-config/shared-groups','admin',null],['/admin/leave-config/special-setting','admin',null],['/admin/leave-config/types','admin',null],['/admin/leave/adjustments','admin',null],
  ['/admin/leave/application-rules','admin',null],['/admin/leave/approval','admin',null],['/admin/leave/audit','admin',null],
  ['/admin/leave/entitlements','admin',null],['/admin/leave/entitlements/archive','admin',null],
  ['/admin/leave/entitlements/ledger-archive','admin',null],['/admin/leave/entitlements/templates','admin',null],

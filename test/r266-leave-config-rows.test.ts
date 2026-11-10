@@ -134,7 +134,9 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
     // ONE for a sharper version of the same reason: a tab of Leave History Data Import would have inherited
     // that row's "load past leave records" description, and this tool creates no leave record at all.
     // r378 consolidates the two import rows into one.
-    expect(ROWS).toHaveLength(10);
+    // 50d9b809 — ELEVEN: Shared Leave Groups took a row and a group in the same commit, directly after
+    // Entitlements (its editor was a pop-up on that screen), so the two `toEqual`s above moved together.
+    expect(ROWS).toHaveLength(11);
   });
 
   it('5ca446db — the Leave Inquiry door is the only child with no map group, and it is where r269 put it', () => {
@@ -189,7 +191,9 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
     expect(onMap).toEqual([
       '/admin/leave-config/types',
       '/admin/leave-config/entitlement-tables',
-      // r279 — its row is second, so its screen is second on the flattened map.
+      // 50d9b809 — its row is directly after Entitlements, so its screen follows Entitlements' two tabs.
+      '/admin/leave-config/shared-groups',
+      // r279 — its row follows, so its screen follows on the flattened map.
       '/admin/leave-config/balance-health',
       '/admin/leave-config/adjustments',
       '/admin/leave-config/import',
@@ -306,7 +310,8 @@ describe('§C · every page\'s heading is its submenu row, and its description i
       // db55d08a (r369) — FOURTEEN, with `leaveBfImport`. UPDATED, NOT LOOSENED: the old claim read
       // `expect(ids).toHaveLength(13)`.
       // r378 one canonical import id replaces two row ids.
-      expect(ids).toHaveLength(13);
+      // 50d9b809 — FOURTEEN, with `sharedGroups`: the one screen of its own row.
+      expect(ids).toHaveLength(14);
     for (const id of ids) {
       const group = leaveConfigGroupOf(id);
       const header = await leaveConfigPageHeader(id);
@@ -347,6 +352,8 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     }
     const descriptionKeys: Record<string, string> = {
       entitlements: 'admin.leaveConfigTypes.rowDescription',
+      // 50d9b809 — its own namespace, the house shape: the sentence says what a shared group IS.
+      sharedGroups: 'admin.leaveConfigSharedGroups.pageDescription',
       // r279 (3fbf7a02) — its own namespace, the house shape (`admin.leaveConfig<Row>.pageDescription`),
       // so the row that answers "can this leave type produce a balance" describes itself in its own words
       // rather than borrowing the Entitlements sentence.
@@ -391,6 +398,7 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     }
     // The heading strings the reporter listed, in English.
     expect(en.nav.leaveEntitlements).toBe('Entitlements');
+    expect(en.nav.leaveSharedGroups).toBe('Shared Leave Groups');
     expect(en.nav.leaveBalanceHealth).toBe('Leave Balance Health');
     expect(en.nav.leaveAdjustments).toBe('Leave Adjustments');
     // 3f15ffdb (r362) — the reporter's own words for the row they asked for, kept verbatim.
@@ -512,26 +520,20 @@ describe('§D · the moves, and what deliberately did not move', () => {
     expect(companyRules, 'the half-day card must not survive on Company rules too').not.toContain(
       '<HalfDayCompanyPicker',
     );
-    // r281 (cdd7500b) — SHARED LEAVE GROUPS LEFT THIS SCREEN TOO, at the reporter's request, and the
-    // assertion follows the editor the same way. It is on the Leave types screen at PAGE LEVEL — above
-    // the per-type workspace and outside it — which is the distinction the whole item turns on: it was
-    // taken OFF that screen because it sat INSIDE the workspace, where it read as a property of the
-    // selected type while a group spans several. So both halves are pinned: it is drawn on the types
-    // page, and it is NOT inside the workspace's panels (a mount there would put it back where it was).
-    //
-    // ⚠️ "ABOVE THE WORKSPACE" IS ASSERTED AGAINST THE WORKSPACE'S OWN CARD, NOT AGAINST THE
-    // `<LeaveTypeWorkspace` TAG. The first draft of this assertion compared against the tag, and a
-    // deliberate break — moving the whole section INSIDE that Card, immediately before the workspace —
-    // passed it, because the section is still textually earlier. The Card that carries `data-tour=
-    // "leave-config"` IS the per-type workspace as far as the reader is concerned, so that is the
-    // boundary the section must sit outside of.
+    // r281 (cdd7500b) — SHARED LEAVE GROUPS LEFT Company rules for the Leave types screen, at page level.
+    // 50d9b809 — AND LEFT THE LEAVE TYPES SCREEN for a page of its own: the editor was a pop-up behind a
+    // button there, which the reporter found hard to find and cramped, and they asked for a Leave Settings
+    // card that opens a Shared Leave Groups page. The assertion follows the editor, both halves pinned: it
+    // is drawn on its own page, and it survives on NO other Leave Config page — not on Entitlements (a copy
+    // left behind is two editors for one catalogue) and not on Company rules. The r281 concern that it must
+    // never sit INSIDE the per-type workspace is satisfied a fortiori: it is not on that screen at all.
+    const sharedGroupsPage = read('app/admin/leave-config/shared-groups/page.tsx');
+    expect(sharedGroupsPage).toContain('<LeaveSharedGroupConfig');
+    expect(sharedGroupsPage).toContain('listLeaveSharedGroups(s)');
     const types = read('app/admin/leave-config/types/page.tsx');
-    expect(types).toContain('<LeaveSharedGroupConfig');
-    expect(
-      types.indexOf('<LeaveSharedGroupConfig'),
-      'the shared-group section must render OUTSIDE and above the per-type workspace card — inside it, ' +
-        'it reads as a property of the selected leave type, which is why it was taken off this screen',
-    ).toBeLessThan(types.indexOf('<Card data-tour="leave-config">'));
+    for (const gone of ['<LeaveSharedGroupConfig', 'listLeaveSharedGroups(', 'SharedGroupAction', "getTranslations('admin.leave.sharedGroup')"]) {
+      expect(types, `${gone} must have left the Entitlements screen with the pop-up`).not.toContain(gone);
+    }
     // …and it is not handed into the workspace as a slot either, which would be the same defect by prop.
     const workspaceMount = types.slice(types.indexOf('<LeaveTypeWorkspace'));
     expect(workspaceMount.slice(0, workspaceMount.indexOf('/>'))).not.toContain('SharedGroup');
@@ -609,6 +611,10 @@ describe('§E · the strings, six locales', () => {
     'nav.leaveBfImport',
     'admin.leaveConfigMap.item.leaveBfImport',
     'admin.leaveConfigBfImport.pageDescription',
+    // 50d9b809 — Shared Leave Groups' own row: the nav label, the map item label and the row description.
+    'nav.leaveSharedGroups',
+    'admin.leaveConfigMap.item.sharedGroups',
+    'admin.leaveConfigSharedGroups.pageDescription',
   ];
   it('every key exists in all six catalogues and is not left in English outside en', () => {
     for (const key of NEW_OR_RENAMED) {

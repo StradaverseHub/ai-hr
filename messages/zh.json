@@ -344,6 +344,7 @@
     "systemLabels": "系统标签",
     "leaveConfig": "休假配置",
     "leaveEntitlements": "假期额度",
+    "leaveSharedGroups": "共享休假组",
     "leaveBalanceHealth": "假期余额健康检查",
     "leaveAdjustments": "假期调整",
     "leaveGenerate": "生成假期额度",
@@ -10988,7 +10989,7 @@
       "gradeDragAria": "将 {name} 拖入职级组",
       "sharedGroup": {
         "title": "共享休假组",
-        "manage": "共享休假组",
+        "listTitle": "分组",
         "close": "关闭",
         "help": "共享休假组让多个休假类型共用同一份额度——例如“特别假：每年共享 10 天，单次申请最多 3 天”。一个休假类型只能属于一个组。",
         "empty": "尚未设置共享休假组。",
@@ -10996,6 +10997,9 @@
         "create": "创建组",
         "createHint": "请至少选择两个休假类型——共享至少需要两个。",
         "save": "保存",
+        "edit": "编辑",
+        "editTitle": "编辑 · {name}",
+        "cancel": "取消",
         "delete": "删除",
         "deleteConfirmTitle": "删除此共享休假组？",
         "deleteConfirmDescription": "各休假类型保留各自的额度，只是不再共用同一份额度。已休的假期不受影响。",
@@ -13055,6 +13059,7 @@
         "companyRules": "公司规则",
         "specialSetting": "半天扣除",
         "entitlementTables": "额度表",
+        "sharedGroups": "共享休假组",
         "balanceHealth": "假期余额健康检查",
         "approvalChain": "审批链",
         "replacementLeave": "替假",
@@ -13118,6 +13123,9 @@
     },
     "leaveConfigSpecialSetting": {
       "pageDescription": "适用于所有休假类型、而非属于其中任何一种的设置。"
+    },
+    "leaveConfigSharedGroups": {
+      "pageDescription": "让多个休假类型共用同一份额度——例如特别假：丧假和婚假每年共享 10 天。"
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "一次建立审批流程，决定它适用于谁，并查看每一条决定由谁审批的规则。",

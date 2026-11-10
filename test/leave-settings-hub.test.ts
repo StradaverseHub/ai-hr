@@ -7,8 +7,9 @@ import { isNavRowActive } from '../components/nav-flyout';
 import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
 const root = path.resolve(__dirname, '..');
 const sidebar = leavePack.navNodes!.find(node => node.group === 'admin')!;
+// 50d9b809 — Shared Leave Groups joined the cards directly after Entitlements (it was a pop-up on that screen).
 const expectedSettings = [
-  '/admin/leave-config/types', '/admin/leave-config/balance-health', '/admin/leave-config/generate',
+  '/admin/leave-config/types', '/admin/leave-config/shared-groups', '/admin/leave-config/balance-health', '/admin/leave-config/generate',
   '/admin/leave-config/earned-accrual', '/admin/leave-config/approval-chains',
   '/admin/leave-config/company-rules', '/admin/leave-config/special-setting',
 ];
@@ -17,7 +18,7 @@ const expectedOperations = [
   '/admin/leave-config/leave-credit', '/leave/employee-balances',
 ];
 describe('Leave Settings retains every destination with exactly one menu owner', () => {
-  it('moves exactly the seven approved destinations into Settings, retaining operations in order', () => {
+  it('moves exactly the eight approved destinations into Settings, retaining operations in order', () => {
     expect(LEAVE_SETTINGS_DESTINATIONS.map(row => row.href)).toEqual(expectedSettings);
     expect(sidebar.children.map(row => row.href)).toEqual([...expectedOperations, LEAVE_SETTINGS_HREF]);
     expect([...LEAVE_SETTINGS_DESTINATIONS.map(row => row.href), ...expectedOperations].sort())

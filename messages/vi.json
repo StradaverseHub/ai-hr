@@ -344,6 +344,7 @@
     "systemLabels": "Nhãn hệ thống",
     "leaveConfig": "Cấu hình nghỉ phép",
     "leaveEntitlements": "Quyền lợi",
+    "leaveSharedGroups": "Nhóm nghỉ phép dùng chung",
     "leaveBalanceHealth": "Tình trạng số dư nghỉ phép",
     "leaveAdjustments": "Điều chỉnh nghỉ phép",
     "leaveGenerate": "Tạo quyền lợi",
@@ -10988,7 +10989,7 @@
       "gradeDragAria": "Kéo {name} vào một nhóm bậc",
       "sharedGroup": {
         "title": "Nhóm nghỉ phép dùng chung",
-        "manage": "Nhóm nghỉ phép dùng chung",
+        "listTitle": "Các nhóm",
         "close": "Đóng",
         "help": "Nhóm nghỉ phép dùng chung cho phép nhiều loại nghỉ phép rút từ một hạn mức chung — ví dụ \"Nghỉ đặc biệt: 10 ngày mỗi năm dùng chung, tối đa 3 ngày cho một đơn\". Một loại nghỉ phép chỉ thuộc về một nhóm.",
         "empty": "Chưa có nhóm nghỉ phép dùng chung nào.",
@@ -10996,6 +10997,9 @@
         "create": "Tạo nhóm",
         "createHint": "Chọn ít nhất hai loại nghỉ phép — một nhóm cần hai loại mới dùng chung được.",
         "save": "Lưu",
+        "edit": "Sửa",
+        "editTitle": "Sửa · {name}",
+        "cancel": "Hủy",
         "delete": "Xóa",
         "deleteConfirmTitle": "Xóa nhóm nghỉ phép dùng chung này?",
         "deleteConfirmDescription": "Các loại nghỉ phép vẫn giữ quyền lợi riêng; chúng chỉ ngừng dùng chung một hạn mức. Ngày phép đã nghỉ không bị ảnh hưởng.",
@@ -13055,6 +13059,7 @@
         "companyRules": "Quy định của công ty",
         "specialSetting": "Trừ lương nửa ngày",
         "entitlementTables": "Bảng định mức",
+        "sharedGroups": "Nhóm nghỉ phép dùng chung",
         "balanceHealth": "Tình trạng số dư nghỉ phép",
         "approvalChain": "Chuỗi phê duyệt",
         "replacementLeave": "Nghỉ bù",
@@ -13118,6 +13123,9 @@
     },
     "leaveConfigSpecialSetting": {
       "pageDescription": "Các thiết lập áp dụng cho mọi loại nghỉ phép thay vì thuộc về riêng loại nào."
+    },
+    "leaveConfigSharedGroups": {
+      "pageDescription": "Cho phép nhiều loại nghỉ phép dùng chung một hạn mức — ví dụ Nghỉ đặc biệt: 10 ngày mỗi năm dùng chung cho nghỉ tang và nghỉ kết hôn."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Xây dựng một luồng phê duyệt một lần, quyết định luồng đó áp dụng cho ai, và xem mọi quy tắc quyết định người phê duyệt.",
