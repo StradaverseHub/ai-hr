@@ -1384,6 +1384,10 @@ export async function commitEmployeeImport(
     allocationPreview=await previewCostAllocationImportTx(tx,ctx,p.allocationRecords,allocationEmployees);
     if(allocationPreview.token!==p.allocationToken||allocationPreview.groups.some(g=>g.errors.length))throw new Error('Cost Center Allocations changed. Preview the complete workbook again.');
   }
+  // The existing Bank-named hint selects the equivalent admin point-read policy. Both analyses
+  // and allocation validation above retain their regular plans. Native authority and writes stay in their owners.
+  const [previousEmploymentPointRead]=await tx.execute<{value:string|null}>(sql`select current_setting('app.bank_import_point_read',true) as value`);
+  await tx.execute(sql`select set_config('app.bank_import_point_read','on',true)`);
   const hireImportedEmployee=freshEmployeeImportHireTx(ctx,tx);
   for (const [index, row] of resolved.entries()) {
     if (!row.result.ok) continue;
@@ -1474,6 +1478,9 @@ export async function commitEmployeeImport(
       throw e;
     }
   }
+
+  // A refused row aborts the full transaction. On success restore the prior setting before later owners.
+  await tx.execute(sql`select set_config('app.bank_import_point_read',${previousEmploymentPointRead.value??''},true)`);
 
   // ── Item 2983802f — DIRECT SUPERIOR, after every row has been created.
   //
