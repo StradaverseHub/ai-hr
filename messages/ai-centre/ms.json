@@ -2562,7 +2562,8 @@
       "inProgress": "Import ini sedang disahkan.",
       "invalid": "Kad ini tidak dapat disemak. Lampirkan fail semula.",
       "unavailable": "Import tidak dapat diselesaikan, dan tiada apa-apa diimport. Cuba lagi, atau gunakan halaman import."
-    }
+    },
+    "started": "Import dimulakan. Ia berjalan di latar belakang; halamannya menunjukkan kemajuan dan apa yang telah diimport."
   },
   "payrollAudit": {
     "name": "Gelung audit",

@@ -6002,8 +6002,8 @@ export async function readEarnedAccrualRunInputsTx(tx: Tx, p: { asOf: string; le
   return { asOf: p.asOf, leaveTypeIds, activeTypes, templateConfigured, resolver, periodChecked: p.periodChecked };
 }
 /** D5(a) — run in the caller's transaction when one is passed (a mobile command receipt), else in a new one. */
-function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>): Promise<T> {
-  return existingTx ? run(existingTx) : withTenant(ctx, run);
+function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>, readOnlySnapshot = false): Promise<T> {
+  return existingTx ? run(existingTx) : withTenant(ctx, run, readOnlySnapshot ? { readOnlySnapshot: true } : undefined);
 }
 
 /** Information-only corrections apply to future processing. Earlier leave runs require an
@@ -6025,7 +6025,11 @@ export async function assertInformationLeavePeriodTx(tx:Tx,asOf:string,scope:{em
  * Read-only previews do not acquire employment-exclusive ownership. */
 async function lockLeaveCohortDependenciesTx(tx: Tx, ctx: SessionContext, scope: {
   employmentIds?: readonly string[]; companyIds?: readonly string[]; gradeIds?: readonly string[];
-}, writes = true): Promise<void> {
+}, writes = true, snapshot = false): Promise<void> {
+  // A preview (dry run) in its own READ ONLY REPEATABLE READ transaction reads one consistent snapshot of the
+  // configuration, the access rules and every employee, and the database refuses any write it might attempt; it
+  // takes no tenant lock at all, so a long preview never holds up an Access writer or a leave writer.
+  if (!writes && snapshot) return;
   await lockAccessConfigurationTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
   if (!writes) return;
@@ -8862,8 +8866,9 @@ export async function openLeaveYear(
   const dryRun = p.dryRun === true;
   p = { ...p, leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  const snapshot = dryRun && !run?.tx;
   return withLeaveTx(ctx, run?.tx, async (tx): Promise<OpenLeaveYearResult> => {
-    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds.length ? scopeEmpIds : undefined }, !dryRun);
+    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds.length ? scopeEmpIds : undefined }, !dryRun, snapshot);
     const yearStart = `${p.year}-01-01`;
     await assertInformationLeavePeriodTx(tx,yearStart,{employmentIds:scopeEmpIds.length?scopeEmpIds:undefined});
     // r193 — the leave year is a WINDOW now, not the instant at its left edge. See `effectiveGrantStart`.
@@ -9338,7 +9343,7 @@ export async function openLeaveYear(
       });
     }
     return { granted, skipped, forfeits, packBlocked, rows };
-  });
+  }, snapshot);
 }
 
 /** A non-granting log line — every one of these outcomes moves no days, so the four numbers are fixed. */
@@ -10150,8 +10155,9 @@ export async function accrueEarnedLeave(
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   // The run's once-per-run reads, when the caller made them for this same date and type scope.
   const pre = run?.preload && run.preload.asOf === p.asOf && run.preload.leaveTypeIds.join(',') === scopeTypeIds.join(',') ? run.preload : undefined;
+  const snapshot = dryRun && !run?.tx;
   return withLeaveTx(ctx, run?.tx, async (tx): Promise<EarnedAccrualResult> => {
-    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds === null ? undefined : scopeEmpIds, companyIds: scopeCompanyIds, gradeIds: scopeGradeIds }, !dryRun);
+    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds === null ? undefined : scopeEmpIds, companyIds: scopeCompanyIds, gradeIds: scopeGradeIds }, !dryRun, snapshot);
     if (!pre?.periodChecked) await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:scopeEmpIds===null?undefined:scopeEmpIds,companyIds:scopeCompanyIds,gradeIds:scopeGradeIds});
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
 
@@ -10827,7 +10833,7 @@ export async function accrueEarnedLeave(
       archivedHint = await archivedHintFor(scopedTypeNames);
     }
     return { granted, forfeits, breakdown, packBlocked, emptyReason, archivedHint, earnedToDateTotal, pairs };
-  });
+  }, snapshot);
 }
 
 // ── Entitlement-correction recalculation (feedback 49809272) ───────────────────────────────────────
