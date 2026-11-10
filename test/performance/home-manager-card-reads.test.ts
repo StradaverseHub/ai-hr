@@ -41,7 +41,7 @@ import {readEmployeeHomeToday} from '../../core/employee-home-today';
 import {readEmployeeHomeCalendar} from '../../core/employee-home-calendar';
 import {celebrationsResponse,noticesResponse,teamResponse,timeOffResponse} from '../../app/api/home/sharing-responses';
 import {GET} from '../../app/api/home/sharing-initial/route';
-import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from '../harness';
+import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from '../harness';
 import {readOwnLeaveInputsTx} from '../../core/own-leave-inputs';
 import {hasEligibleLeaveTypeForTx,hasEligibleLeaveTypeFrom,leaveBalancesTx,leaveEntitlementBreakdowns} from '../../core/read';
 import {leaveTypeApplySummaries,myCurrentLeaveSnapshotCards,nextApprovedLeavePresenceTx} from '../../packs/leave/service';
@@ -104,8 +104,10 @@ function transactionOwner(){
  return frames.join(' < ');
 }
 
+/** Each fixture tenant's seed base, for the Before payroll owner fixtures that act through the owners' own commands. */
+const seededBases=new Map<number,Base>();
 async function seedTenant(t:number,today:string){
- const b=await seedBase();
+ const b=await seedBase();seededBases.set(t,b);
  await owner.db.insert(s.tenantModule).values(MODULE_CATALOG.filter(m=>!m.isCore&&(m.packBacked||m.code==='system_testing'||m.code==='system_explorer'))
   .map(m=>({tenantId:b.tenantId,moduleCode:m.code,status:'active' as const}))).onConflictDoNothing();
  await setModule(b.tenantId,'notifications','active');
@@ -395,6 +397,101 @@ async function seedBeforePayrollFixtures(actors:readonly Actor[],today:string){
  await step('leave:onLeave',()=>owner.client`insert into leave_request(tenant_id,employment_id,leave_type_id,start_date,end_date,days,status)
   select ${onLeave.ctx.tenantId}::uuid,${onLeave.employmentId}::uuid,leave_type_id,${day(-4)}::date,${day(-4)}::date,1,'pending' from leave_request where employment_id=${onLeave.employmentId}::uuid limit 1`);
  return {seeded,refused};
+}
+/** Rows written through the owners' own commands, so the Leave Credit, letter, notice and onboarding sections compare
+ * non-empty rows: Time Off In Lieu switched on for the first tenant (every actor's entitlements re-resolved, as a login
+ * would on its next request) with a Leave Credit request pending for the employee and one approved for the manager; a
+ * template, policy and batch of letters approved by a second administrator and issued to both; a published notice that
+ * requires acknowledgement; and a new joiner hired through an employee draft whose onboarding case is submitted,
+ * fulfilled and handed over, waiting for the joiner's own acknowledgement. Each command stands alone: one that refuses
+ * is recorded and the rest still run. */
+async function seedBeforePayrollOwnerFixtures(actors:Actor[],today:string){
+ const b=seededBases.get(0)!,seeded:string[]=[],refused:Record<string,string>={};
+ const step=async<T,>(name:string,work:()=>Promise<T>):Promise<T|null>=>{try{const value=await work();seeded.push(name);return value;}catch(error){refused[name]=String((error as Error)?.message??error).slice(0,300);return null;}};
+ const day=(offset:number)=>new Date(Date.parse(today+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
+ const own=actors.filter(a=>a.tenant===0),employee=own.find(a=>a.index===4)!,manager=own.find(a=>a.index===2)!,reviewer=own.find(a=>a.index===1)!,tech=own.find(a=>a.index===5)!;
+ // Time Off In Lieu for the tenant, then every login's entitlements as they now resolve.
+ await setModule(b.tenantId,'toil','active');
+ let admin=await entitledCtx(b);
+ for(const actor of own)actor.ctx.entitlements=admin.entitlements;
+ const toil=await import('../../core/toil'),replacement=await import('../../core/replacement-request');
+ await step('toil:policy',()=>toil.setToilPolicy(admin,{companyId:employee.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',
+  allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true}));
+ // The most recent Saturday at least a week back: a rest day worked, claimed as one day.
+ let worked=day(-7);while(new Date(worked+'T00:00:00Z').getUTCDay()!==6)worked=new Date(Date.parse(worked+'T00:00:00Z')-86400000).toISOString().slice(0,10);
+ await step('toil:pending',()=>replacement.submitReplacementLeaveRequest(admin,{employmentId:employee.employmentId,unit:'day',lines:[{workedDate:worked,days:1}],today}));
+ const approved=await step('toil:submitted',()=>replacement.submitReplacementLeaveRequest(admin,{employmentId:manager.employmentId,unit:'day',lines:[{workedDate:worked,days:1}],today}));
+ if(approved)await step('toil:approved',()=>replacement.decideReplacementLeaveRequest(admin,{requestId:approved.requestId,decision:'approved'}));
+ // Letters, through the letter owner's own field, template, policy, batch, decision and issue commands. Issuing needs a
+ // public origin for the verification link, as the letter owner's own tests configure it.
+ const letters=await import('../../core/letters');
+ const signer={...reviewer.ctx,entitlements:admin.entitlements};
+ vi.stubEnv('AUTH_PROVIDER','workos');vi.stubEnv('NEXT_PUBLIC_WORKOS_REDIRECT_URI','https://letters.fixture.test/callback');
+ try{
+  const fields=await step('letter:fields',async()=>[await letters.saveLetterField(admin,{companyId:employee.companyId,definition:{key:'employeeName',label:'Employee name',description:'Canonical name',
+    kind:'text',source:'employee.name',required:true,editable:false,sensitive:false},active:true}),
+   await letters.saveLetterField(admin,{companyId:employee.companyId,definition:{key:'effectiveDate',label:'Effective date',description:'Date entered for this letter',kind:'date',
+    source:'custom.date',required:true,editable:true,sensitive:false},active:true})]);
+  const template=fields&&await step('letter:template',async()=>{
+   const saved=await letters.saveLetterTemplate(admin,{companyId:employee.companyId,code:'BEFORE-PAYROLL',name:'Fictional acknowledgement letter',category:'confirmation',effectiveFrom:today,
+    document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:'To '},{type:'field',key:'employeeName'},{type:'text',text:' — effective '},{type:'field',key:'effectiveDate'}]}]},
+    fieldVersionIds:fields.map(field=>field.id)});
+   await letters.decideLetterTemplate(admin,{versionId:saved.versionId,expectedStatus:'draft',action:'submit'});
+   await letters.decideLetterTemplate(signer,{versionId:saved.versionId,expectedStatus:'submitted',action:'approve'});
+   return saved;
+  });
+  const policy=template&&await step('letter:policy',()=>letters.saveLetterPolicy(admin,{companyId:employee.companyId,category:'confirmation',enabled:true,policy:{version:1,
+   stages:[{key:'signatory',label:'Authorised signatory',userIds:[signer.userId!],allowDelegation:false}],signatoryUserId:signer.userId!,signingMode:'authenticated',signatureAssetId:null,
+   letterheadAssetId:null,referenceFormat:'BP/{YYYY}/{SEQ:6}',retentionDays:365,sensitiveLinkMinutes:15,acknowledgement:'acknowledge',approvalDueHours:48,acknowledgementDueDays:7,
+   reminderHours:24,escalationUserId:null,portalNotifications:false,emailNotifications:false}}));
+  if(template&&policy!==null)await step('letter:issued',async()=>{
+   const ids=[employee.employmentId,manager.employmentId];
+   const made=await letters.createLetterDraftBatch(admin,{companyId:employee.companyId,templateVersionId:template.versionId,employmentIds:ids,
+    customValues:Object.fromEntries(ids.map(id=>[id,{effectiveDate:{kind:'date' as const,value:today}}])),operationKey:randomUUID()});
+   await letters.submitLetterBatch(admin,made.batchId);
+   for(const row of (await letters.getLetterGenerationBatch(admin,made.batchId))!.rows){
+    await letters.decideLetter(signer,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,
+     decision:{action:'approve',comment:'Fictional review of the exact letter',confirmSignature:true}});
+    await letters.issueLetter(admin,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion+1});
+   }
+  });
+ }finally{vi.unstubAllEnvs();}
+ // A notice requiring acknowledgement, published through the notice owner (which retains its audience snapshot).
+ const notices=await import('../../core/notice');
+ await step('notice:published',async()=>{
+  const created=await notices.createNotice(admin,{title:'Fictional payroll notice',summary:'Fictional summary.',body:'Fictional body.',startOn:today,endOn:day(10),
+   targetMode:'individual',employmentIds:[employee.employmentId,manager.employmentId],requiresAcknowledgement:true,notifyOnPublish:false});
+  return notices.publishNotice(admin,created.id);
+ });
+ // A new joiner, through an employee draft and the onboarding owner's own commands, to the hand-over.
+ const drafts=await import('../../core/employee-draft'),onboarding=await import('../../packs/lifecycle/service');
+ const joiner=await step('onboarding:joiner',async()=>{
+  await onboarding.onboardingSetup(admin);
+  const context=await onboarding.onboardingContext(admin),config=structuredClone(context.config);
+  for(const id of ['group-tech','people-gbs','tech-bp'])config.groups.find(group=>group.id===id)!.members=[tech.ctx.userId!];
+  config.checklists[0]!.tasks=[{id:'welcome',name:'Prepare welcome pack',by:'group',group:'people-gbs',method:'rr',opens:null,due:1,gate:false}];
+  config.catalogue=[{id:'m365',name:'M365',type:'system',active:true,rules:{},workflow:null,team:'group-tech',card:false}];
+  await onboarding.onboardingSaveConfig(admin,context.revision,config);
+  admin=await entitledCtx(b);
+  const saved=await drafts.saveEmployeeDraft(admin,{data:{profile:{fullName:'PERF Fictional Joiner',employeeCode:'PERF-JOINER',primaryEmail:'perf-joiner@example.invalid'},
+   employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:today},payroll:{basicSalary:'5000'}},currentStep:5});
+  const active=await drafts.completeEmployeeDraft(admin,saved.id);
+  const find=async()=>(await onboarding.onboardingList(admin)).find(row=>row.case.employmentId===active.employmentId)!;
+  let row=await find();
+  await onboarding.onboardingCommand(admin,row.case.id,row.revision,{type:'saveSubmit',patch:{hiring:'new_hire',local:{supervisor:'Manager'},selected:['m365']}});
+  const [person]=await owner.db.select({personId:s.employment.personId}).from(s.employment).where(eq(s.employment.id,active.employmentId));
+  const userId=await createAppUser(b.tenantId,person.personId,'employee');
+  await onboarding.refreshOnboardingPersonnel(admin);
+  const techCtx={...tech.ctx,entitlements:admin.entitlements};
+  row=await find();
+  await onboarding.onboardingCommand(techCtx,row.case.id,row.revision,{type:'fulfil',itemId:row.case.requisitions[0]!.items[0]!.id,status:'done'});
+  row=await find();
+  await onboarding.onboardingCommand(techCtx,row.case.id,row.revision,{type:'handover'});
+  for(const actor of own)actor.ctx.entitlements=admin.entitlements;
+  return {index:-1,tenant:0,company:0,role:'employee',employmentId:active.employmentId,companyId:b.companyId,
+   ctx:{tenantId:b.tenantId,userId,personId:person.personId,roles:['employee'],grants:[{role:'employee',companyId:null}],entitlements:admin.entitlements}} as Actor;
+ });
+ return {seeded,refused,joiner};
 }
 const BEFORE_PAYROLL_OWN_LOOP_KINDS=new Set(['clockOut','record','passport','probation','payroll','passports']);
 /** Before payroll's checklist and every section of its one statement against the owners it replaces, for one subject. */
@@ -860,6 +957,9 @@ it('completes every manager Home card and Today section read without a handled f
  // Before payroll's owners get rows of their own, after the traces (decision 11).
  report.beforePayrollFixtures=await seedBeforePayrollFixtures([...tenants[0],...tenants[1]],today);
  print('before-payroll-fixtures',report.beforePayrollFixtures);
+ const beforePayrollOwners=await seedBeforePayrollOwnerFixtures(tenants[0],today);
+ report.beforePayrollOwnerFixtures={seeded:beforePayrollOwners.seeded,refused:beforePayrollOwners.refused,joiner:beforePayrollOwners.joiner!==null};
+ print('before-payroll-owner-fixtures',report.beforePayrollOwnerFixtures);
  const beforePayrollSections:unknown[]=[];report.beforePayrollSections=beforePayrollSections;
  const bundleSections:unknown[]=[];report.bundleSections=bundleSections;
  const {listClaimsForEmployment,listOpenClaimsForEmployment}=await import('../../packs/claims/service');
@@ -1025,6 +1125,8 @@ it('completes every manager Home card and Today section read without a handled f
   report.requestScopeIsolation={sessions:sessions.length,joins:sessions.map(row=>row.joins)};
   expect(sessions).toHaveLength(2);
  }
+ // The onboarding joiner is a subject of its own: the only login with a case waiting for its acknowledgement.
+ if(beforePayrollOwners.joiner)beforePayrollSections.push(await beforePayrollEquivalence('onboardingJoiner',beforePayrollOwners.joiner,today,compare));
  const mismatches=equivalence.filter(row=>!row.equal);
  print('bundle-sections',bundleSections);
  print('before-payroll-sections',beforePayrollSections);
