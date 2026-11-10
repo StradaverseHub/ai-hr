@@ -17,8 +17,10 @@ import {publicErrorMessage} from '../lib/public-error';
 import {accrueEarnedLeave, expireCarriedLeave, type EarnedAccrualResult} from '../packs/leave/service';
 import {isTransientBulkJobError} from './bulk-job-worker';
 
-/** Employees per batch (one batch is one engine call in one transaction). Accrual measured about 3 ms per employee. */
-export const LEAVE_COHORT_BATCH_EMPLOYEES = Math.max(1, Number(process.env.LEAVE_COHORT_BATCH_EMPLOYEES ?? 20));
+/** Employees per batch (one batch is one engine call in one transaction). Measured on 3,000 employees on a heavily
+ * loaded host (load average 26): about 90 ms per engine call plus about 20 ms per employee, so 5 employees is
+ * typically 150-350 ms of tenant-lock time; 20 reached 2.3 s under the same load. */
+export const LEAVE_COHORT_BATCH_EMPLOYEES = Math.max(1, Number(process.env.LEAVE_COHORT_BATCH_EMPLOYEES ?? 5));
 export type LeaveCohortSummary = Record<string, unknown>;
 export type EarnedAccrualRunInput = {asOf: string; companyIds?: string[]; gradeIds?: string[]; leaveTypeIds?: string[]};
 export type CarryExpiryRunInput = {today: string};

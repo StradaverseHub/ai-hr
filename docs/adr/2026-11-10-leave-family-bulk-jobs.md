@@ -10,7 +10,7 @@ Entitlement, carry expiry and year-open the same shape or larger), and a busy em
 
 - **Batches, not one transaction.** The unchanged engines (`openLeaveYear`, `accrueEarnedLeave`,
   `expireCarriedLeave`) take an optional `LeaveCohortStepRun`: run inside the caller's transaction for one batch of
-  employees (20 by default) and hand over the summary event payload instead of appending it. Each employee's figures
+  employees (5 by default: about 90 ms per engine call plus 20 ms per employee, measured under host load) and hand over the summary event payload instead of appending it. Each employee's figures
   depend only on that employee's ledger and profile and the tenant's configuration, so a batch computes exactly what
   the whole-cohort run computed for it. The run appends the engine's one summary event for the whole cohort with the
   run's own scope (the batch never leaks into the audit payload). Equivalence is proven on a populated fixture

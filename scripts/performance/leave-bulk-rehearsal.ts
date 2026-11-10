@@ -20,7 +20,7 @@ const OWNER_URL=required('MIGRATION_DATABASE_URL',process.env.MIGRATION_DATABASE
 for(const url of [required('DATABASE_URL',process.env.DATABASE_URL),OWNER_URL])if(new URL(url).port!==port)throw new Error('Refusing: rehearsal runs only against the disposable cluster port.');
 const TENANT=required('REHEARSAL_TENANT',process.env.REHEARSAL_TENANT),ADMIN=required('REHEARSAL_ADMIN',process.env.REHEARSAL_ADMIN);
 const BASE=Number(process.env.BASE_EMPLOYEES??3000);
-const OPS=(process.env.OPS??'leave_import,generation,accrual_job,expiry_timer,accrual_timer').split(',').map(s=>s.trim()).filter(Boolean);
+const OPS=(process.env.OPS??'idle_baseline,leave_import,generation,accrual_job,expiry_timer,accrual_timer').split(',').map(s=>s.trim()).filter(Boolean);
 if(process.env.AUDIT_HASH_CHAIN_ENABLED!=='true')process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 const stat=(values:number[])=>{const s=[...values].sort((a,b)=>a-b);return s.length?{n:s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.floor(s.length*.95)],max:s[s.length-1]}:{n:0,p50:0,p95:0,max:0};};
@@ -92,9 +92,12 @@ async function main(){
  const job=(o:{id:string})=>waitJob(o.id).then(r=>({state:r.state,steps:r.steps_total,counters:r.counters,metrics:r.metrics,error:r.error,rowErrors:(r.errors??[]).length}));
  if(process.env.SYNC_BASELINE==='1')await measure('accrual_sync_baseline',async()=>{const r=await accrueEarnedLeave(admin,{asOf:'2026-11-30'});return{granted:r.granted,forfeits:r.forfeits};});
  for(const op of OPS){
-  if(op==='leave_import'){
+  if(op==='idle_baseline'){
+   // The same probes with no bulk work running, so a probe that is slow on this host anyway is not blamed on a job.
+   await measure(op,async()=>{await sleep(Number(process.env.BASELINE_SECONDS??30)*1000);return{};});
+  }else if(op==='leave_import'){
    const codes=await obs<{code:string}[]>`select employee_code as code from employment where tenant_id=${TENANT}::uuid and voided_at is null and employee_code is not null order by employee_code limit ${BASE}`;
-   const records=codes.map(c=>({employee_id:c.code,leave_type:'ANNUAL',transaction_type:'adjustment',days:'0.50',effective_date:'2026-11-02'}));
+   const records=codes.map(c=>({employee_id:c.code,leave_type:'ANNUAL',transaction_type:'adjustment',days:'0.50',effective_date:process.env.IMPORT_DATE??'2026-11-02'}));
    await measure(op,async()=>({rows:records.length,...await job(await createLeaveImportJob(admin,{records,source:{kind:'paste'}}))}));
   }else if(op==='generation'){
    await measure(op,async()=>job(await createLeaveGenerationJob(admin,{year:Number(process.env.GENERATION_YEAR??2027),targetMode:'criteria',criteria:{}})));
