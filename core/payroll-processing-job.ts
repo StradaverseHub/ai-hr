@@ -36,7 +36,7 @@ import {
 } from './payroll';
 import {PAYROLL_PROCESS_JOB_KIND,type PayrollProcessingStatus} from '../lib/payroll-processing-job';
 import {reasonForPayrollError} from './payroll-run-group-result';
-import {settleRunGroupsForJob} from './payroll-run-group-store';
+import {settleRunGroupsForJobTx} from './payroll-run-group-store';
 
 export {PAYROLL_PROCESS_JOB_KIND};
 /** Employees per step. A step is one pass of the full generation's compute path (its run-wide reads once, then each
@@ -162,9 +162,10 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
   return{error:publicErrorMessage(error),planMerge:{failureReason:reasonForPayrollError(error)}};
  },
  // A wizard run group waiting for this run settles when its last job finishes (core/payroll-run-group-store.ts);
- // the kernel retries a settle that fails until it succeeds.
- async settle(_ctx,job,owner){
-  await settleRunGroupsForJob(owner,job);
+ // the kernel retries a settle that fails until it succeeds. One owner transaction that the kernel opens, attributes
+ // to this job and commits (unit.ownerTx), so the run group's event carries the job (payload.bulkJob, 5014).
+ async settle(_ctx,job,unit){
+  await unit.ownerTx(owner=>settleRunGroupsForJobTx(owner,job));
  },
 };
 

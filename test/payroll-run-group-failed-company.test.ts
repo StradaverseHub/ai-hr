@@ -173,6 +173,9 @@ describe('a company job that fails inside a wizard run group renders as its reas
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({ actorType: 'user', actorId: base.adminUserId, aggregateType: 'payroll-run-group' });
       expect(events[0].payload).toMatchObject({ overallStatus: 'succeeded', startedAt: result.startedAt, endedAt: result.endedAt, companyIds: [base.companyId, companyB] });
+      // The settle runs in the kernel's owner transaction (unit.ownerTx), so the event carries the job that settled
+      // the group: the last company's (migration 5014).
+      expect((events[0].payload as { bulkJob?: unknown }).bulkJob).toEqual({ id: lastJob, kind: 'payroll_process' });
       const [group] = await owner.client<{ event_id: string }[]>`select event_id from payroll_run_group where id=${groupId}::uuid`;
       expect(group.event_id).toBe(events[0].id);
       // Idempotent: settling the same job again changes nothing.

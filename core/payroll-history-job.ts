@@ -21,12 +21,17 @@
  *
  * A refusal or failure discards: the queue owner deletes the staged rows nobody saw, and the attempt's failure record
  * (`failed` / `revert_failed` with the single transaction's reason) is written once, retried by the kernel.
+ *
+ * Hardened kernel (5013, 5014): the application role only reads the job store. The job's plan changes go through
+ * unit.set in a transaction that called unit.fenceTx (or inside unit.ownerTx); owner work (the registry clean-up in
+ * finalize, which is why the kind declares finalizeOwner / finalize_owner, and the discard) runs in unit.ownerTx,
+ * one kernel-managed transaction attributed to the job.
  */
 import {sql} from 'drizzle-orm';
 import {createHash} from 'node:crypto';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {bulkJobProgress,bulkJobTx,bulkJobWorkerStatusTx,enqueueBulkJobTx,isBulkJobId,type BulkJobRow} from './bulk-job';
-import {BulkJobWaiting,isTransientBulkJobError,type BulkJobHandler,type BulkJobPrepared,type BulkJobRefused,type BulkJobUnit} from './bulk-job-worker';
+import {BulkJobWaiting,isTransientBulkJobError,type BulkJobDiscardUnit,type BulkJobHandler,type BulkJobPrepared,type BulkJobRefused,type BulkJobRunner,type BulkJobUnit} from './bulk-job-worker';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {
  PayrollHistoryRevisionError,checkPayrollHistoryConfirm,checkPayrollHistoryRevert,joinPayrollHistoryStageTx,openPayrollHistoryStageTx,payrollHistoryFailureReason,
@@ -157,13 +162,16 @@ export const payrollHistoryJobHandler:BulkJobHandler<Step>={
   cache.set('batch:'+group,batchId);
   return{result:{change:await stageHistoryRowTx(tx,ctx,plan.attemptId,batchId,(step.payload as {row:HistoryRevisionRow}).row)},counters:{written:1}};
  },
+ // Finalize clears the released stage's registry rows on the queue-owner connection (unit.ownerTx); the kind's
+ // bulk_job_kind row declares finalize_owner to match (5055).
+ finalizeOwner:true,
  async finalize(ctx,job,unit){return finalizeHistory(ctx,job,unit);},
  async discard(job,unit){return discardHistory(job,unit);},
  // A failure after the release (only the registry clean-up can fail then) must not discard committed history.
  onFailure:job=>planOf(job)?.released?'fail':'discard',
  async describeFailure(_job,error){return{error:payrollHistoryFailureReason(error)};},
  // The attempt's failure record, written once (the kernel retries a settle that fails).
- async settle(ctx,job){await recordFailureOnce(ctx,job);},
+ async settle(ctx,job,unit){await recordFailureOnce(ctx,job,unit);},
 };
 
 async function stagedBatchTx(tx:Tx,jobId:string,group:number){
@@ -172,8 +180,11 @@ async function stagedBatchTx(tx:Tx,jobId:string,group:number){
  return row.batch_id;
 }
 const label=(tx:Tx,phase:string)=>tx.execute(sql`select set_config('application_name',${`aihr-bulk:${PAYROLL_HISTORY_JOB_KIND}:${phase}`},true)`);
-async function savePlanTx(tx:Tx,jobId:string,patch:Partial<JobPlan>){
- await tx.execute(sql`update bulk_job set plan=plan||${JSON.stringify(patch)}::jsonb,updated_at=now() where id=${jobId}::uuid`);
+/** Merges a patch into the job's plan through the kernel's sealed writer (the application role does not write the job
+ * store). `runner` is an app-role transaction that already called unit.fenceTx, or the connection inside
+ * unit.ownerTx. */
+async function savePlan(unit:Pick<BulkJobUnit,'set'>,runner:BulkJobRunner,patch:Partial<JobPlan>){
+ await unit.set(runner,{planMerge:patch as Record<string,unknown>});
 }
 
 /** Release, then settle the registry, in bounded units; each unit records itself on the plan in its own transaction,
@@ -186,7 +197,7 @@ async function finalizeHistory(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUni
    // Something the revert depends on changed: re-derive the whole eligibility without locks; it must still hold.
    const started=performance.now();
    const fresh=await planStagedPayrollHistoryRevert(ctx,plan.attemptId,plan.previewHash);
-   await withTenant(ctx,async tx=>{await label(tx,'recheck');await unit.fenceTx(tx);await savePlanTx(tx,job.id,{digest:fresh.digest,volatile:fresh.volatile,recheck:false});});
+   await withTenant(ctx,async tx=>{await label(tx,'recheck');await unit.fenceTx(tx);await savePlan(unit,tx,{digest:fresh.digest,volatile:fresh.volatile,recheck:false});});
    unit.metric('recheckMs',performance.now()-started);
    return'more';
   }
@@ -194,10 +205,13 @@ async function finalizeHistory(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUni
    // The digest changed: re-plan without locks; the plan must be the one the attempt was validated with.
    const started=performance.now();
    const fresh=await recheckStagedPayrollHistoryConfirm(ctx,plan.input);
-   await withTenant(ctx,async tx=>{await label(tx,'recheck');await unit.fenceTx(tx);await savePlanTx(tx,job.id,{digest:fresh.digest,factKeys:fresh.factKeys,recheck:false});});
+   await withTenant(ctx,async tx=>{await label(tx,'recheck');await unit.fenceTx(tx);await savePlan(unit,tx,{digest:fresh.digest,factKeys:fresh.factKeys,recheck:false});});
    unit.metric('recheckMs',performance.now()-started);
    return'more';
   }
+  // The release is decided from the plan and every step's result. The kernel verified the whole seal before the first
+  // finalize unit after the last step write; a release that follows a recheck (or a retried unit) verifies it again.
+  await unit.verifySeal();
   const started=performance.now();
   const outcome=await withTenant(ctx,async tx=>{
    await label(tx,'release');await unit.fenceTx(tx);
@@ -206,10 +220,10 @@ async function finalizeHistory(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUni
     const result=await releaseStagedPayrollHistoryRevertTx(tx,ctx,{stageId:plan.stageId,id:plan.attemptId,expectedPreviewHash:plan.previewHash,changes,volatile:plan.volatile,digest:plan.digest});
     if(result==='recheck'){
      if((plan.rechecks??0)>=MAX_RECHECKS)throw new PayrollHistoryRevisionError('The revert preview changed. Review eligibility again before confirming.');
-     await savePlanTx(tx,job.id,{recheck:true,rechecks:(plan.rechecks??0)+1});
+     await savePlan(unit,tx,{recheck:true,rechecks:(plan.rechecks??0)+1});
      return'recheck' as const;
     }
-    await savePlanTx(tx,job.id,{released:true,result});
+    await savePlan(unit,tx,{released:true,result});
     return'released' as const;
    }
    const batches=new Map((await tx.execute<{group:number;batch_id:string}>(sql`select (payload->>'group')::int as group,result->>'batchId' as batch_id from bulk_job_step where job_id=${job.id}::uuid and kind='batch' and state='applied'`)).map(r=>[r.group,r.batch_id]));
@@ -217,23 +231,26 @@ async function finalizeHistory(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUni
     groups:plan.groups.map((group,i)=>({...group,batchId:batches.get(i)!})),changes,counts:plan.counts,skippedReplacements:plan.skippedReplacements});
    if(released==='recheck'){
     if((plan.rechecks??0)>=MAX_RECHECKS)throw new PayrollHistoryRevisionError('The source, master data, permissions or target revisions changed. Validate a new attempt.');
-    await savePlanTx(tx,job.id,{recheck:true,rechecks:(plan.rechecks??0)+1});
+    await savePlan(unit,tx,{recheck:true,rechecks:(plan.rechecks??0)+1});
     return'recheck' as const;
    }
-   await savePlanTx(tx,job.id,{released:true,result:{attemptId:plan.attemptId,counts:plan.counts,changes:changes.length,skippedReplacements:plan.skippedReplacements,alreadyCommitted:false,importedRows:plan.importedRows}});
+   await savePlan(unit,tx,{released:true,result:{attemptId:plan.attemptId,counts:plan.counts,changes:changes.length,skippedReplacements:plan.skippedReplacements,alreadyCommitted:false,importedRows:plan.importedRows}});
    return'released' as const;
   });
   unit.metric(outcome==='released'?'releaseTxMs':'releaseRecheckTxMs',performance.now()-started);
   return'more';
  }
  if(!plan.settled){
-  // The registry rows of a released stage show nothing; clear them in bounded owner batches.
+  // The registry rows of a released stage show nothing; clear them in bounded owner batches (one kernel-managed
+  // owner transaction each, attributed to the job).
   const started=performance.now();
-  const owner=unit.owner;
-  const deleted=await owner`delete from app.payroll_history_staged_row where (relation,row_id) in (select relation,row_id from app.payroll_history_staged_row where stage_id=${plan.stageId}::uuid limit ${OWNER_BATCH})`;
+  const deleted=await unit.ownerTx!(async owner=>{
+   const gone=await owner`delete from app.payroll_history_staged_row where (relation,row_id) in (select relation,row_id from app.payroll_history_staged_row where stage_id=${plan.stageId}::uuid limit ${OWNER_BATCH})`;
+   return gone.count;
+  });
   unit.metric('settleTxMs',performance.now()-started);
-  if(deleted.count===OWNER_BATCH)return'more';
-  await withTenant(ctx,async tx=>{await label(tx,'settle');await unit.fenceTx(tx);await savePlanTx(tx,job.id,{settled:true});});
+  if(deleted===OWNER_BATCH)return'more';
+  await withTenant(ctx,async tx=>{await label(tx,'settle');await unit.fenceTx(tx);await savePlan(unit,tx,{settled:true});});
   return'more';
  }
  return{result:plan.result??null};
@@ -242,11 +259,11 @@ async function finalizeHistory(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUni
 /** Owner-only: delete what an unreleased stage wrote, newest revisions first (a correction references its adoption),
  * then snapshots, payslips, records and batches, in bounded batches; then the stage is closed as discarded. Nobody
  * ever saw these rows, so the visible outcome is that of the old rolled-back transaction. */
-async function discardHistory(job:BulkJobRow,unit:Omit<BulkJobUnit,'fenceTx'>):Promise<'more'|'done'>{
- const owner=unit.owner;const stageId=stageOf(job);
+async function discardHistory(job:BulkJobRow,unit:BulkJobDiscardUnit):Promise<'more'|'done'>{
+ const stageId=stageOf(job);
  const started=performance.now();
- const inTransaction=async<T,>(work:()=>Promise<T>)=>{await owner`begin`;try{const out=await work();await owner`commit`;return out;}catch(error){await owner`rollback`;throw error;}};
- const outcome=await inTransaction(async()=>{
+ // One bounded transaction per unit, opened, attributed to the job and committed by the kernel (unit.ownerTx).
+ const outcome=await unit.ownerTx(async owner=>{
   const [stage]=await owner<{state:string}[]>`select state from app.payroll_history_stage where stage_id=${stageId}::uuid for update`;
   if(!stage||stage.state!=='staged')return'done' as const;
   const staged=(relation:string)=>owner<{row_id:string}[]>`select row_id from app.payroll_history_staged_row where stage_id=${stageId}::uuid and relation=${relation} order by row_id limit ${OWNER_BATCH}`;
@@ -270,20 +287,26 @@ async function discardHistory(job:BulkJobRow,unit:Omit<BulkJobUnit,'fenceTx'>):P
  return outcome;
 }
 
-/** The failure record of a confirm or revert that did not commit: once, under the creator's authority, as the single
- * transaction wrote it (its marker commits with it). Nothing when it committed, or when the creator's access is gone
- * (the single transaction's recorder skipped an attempt its actor could no longer see). */
-async function recordFailureOnce(ctx:SessionContext|null,job:BulkJobRow){
+/** The failure record of a confirm or revert that did not commit: under the creator's authority, as the single
+ * transaction wrote it. Nothing when it committed, or when the creator's access is gone (the single transaction's
+ * recorder skipped an attempt its actor could no longer see).
+ *
+ * Once: the job's `failureRecorded` plan marker says the record exists. The application role does not write the job
+ * store and a settle unit has no fenced app-role transaction, so the marker can no longer commit with the record: it
+ * is written right after it, in the settle's owner transaction (unit.ownerTx, sealed). The record stays app-role work,
+ * outside that owner transaction. If the worker stops between the two commits the kernel's retried settle records
+ * the failure again (never loses it). */
+async function recordFailureOnce(ctx:SessionContext|null,job:BulkJobRow,unit:BulkJobDiscardUnit){
  if(job.state==='completed'||!ctx)return;
  const plan=planOf(job),input=inputOf(job);
  if(plan?.failureRecorded||plan?.released)return;
  const attemptId=plan?.attemptId??input?.attemptId;const operation=plan?.operation??input?.operation;
  if(!attemptId||!operation)return;
- await withTenant(ctx,async tx=>{
-  const [fresh]=await tx.execute<{plan:JobPlan|null}>(sql`select plan from bulk_job where id=${job.id}::uuid for update`);
-  if(fresh?.plan?.failureRecorded)return;
+ const recorded=await withTenant(ctx,async tx=>{
+  const [fresh]=await tx.execute<{plan:JobPlan|null}>(sql`select plan from bulk_job where id=${job.id}::uuid`);
+  if(fresh?.plan?.failureRecorded)return false;
   await recordPayrollHistoryFailureTx(tx,ctx,attemptId,operation==='revert'?'revert_failed':'failed',job.error??payrollHistoryFailureReason(null));
-  await tx.execute(sql`update bulk_job set plan=coalesce(plan,'{}'::jsonb)||'{"failureRecorded":true}'::jsonb where id=${job.id}::uuid`);
+  return true;
  });
+ if(recorded)await unit.ownerTx(owner=>savePlan(unit,owner,{failureRecorded:true}));
 }
-

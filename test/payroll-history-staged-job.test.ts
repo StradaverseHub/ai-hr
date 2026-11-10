@@ -232,6 +232,9 @@ describe('payroll history confirm and revert as staged jobs',()=>{
    expect(failures.map(e=>[e.kind,e.detail])).toEqual([['failed',{reason:job.error}]]);
    const audit=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,v.preview.attemptId),eq(schema.domainEvent.eventType,'payroll-history-import.failed')));
    expect(audit.map(e=>e.payload)).toEqual([{reason:job.error}]);
+   // The record is the creator's own (no job attribution: it is not owner work); its once-marker is on the job's plan,
+   // written by the settle's owner transaction through the kernel's sealed job update.
+   expect((await owner.client<{recorded:boolean|null}[]>`select (plan->>'failureRecorded')::boolean as recorded from bulk_job where id=${request.jobId}::uuid`)[0].recorded).toBe(true);
   }finally{delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;}
  },240000);
 
