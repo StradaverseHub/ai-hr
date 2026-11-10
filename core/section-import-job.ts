@@ -16,6 +16,8 @@ import {importSourceName} from './import-history';
 export class SectionImportJobError extends Error{constructor(message:string,readonly status=400){super(message);this.name='SectionImportJobError';}}
 const kindOf=(section:ImportSection)=>isPersonnelRegisterKind(section)?REGISTER_IMPORT_KIND:SECTION_IMPORT_KIND;
 type StoredPlan={section?:ImportSection;total?:number;result?:SectionImportResult};
+/** The worker writes the plan in prepare (there is no admission plan); until then the section is the admitted input's. */
+const sectionOf=(row:BulkJobRow,plan:StoredPlan)=>(plan.section??(row.input as {section?:ImportSection}|null)?.section??'profile') as ImportSection;
 
 /** The outcome the synchronous import returned, for any finished job: the job's own result once it completed, the
  * file refusal it stored, or (stopped early) what it saved and why it stopped. */
@@ -24,7 +26,7 @@ export function sectionImportJobResult(row:BulkJobRow):SectionImportResult|null{
  if(row.state==='completed'&&row.result)return row.result as SectionImportResult;
  const plan=(row.plan??{}) as StoredPlan;
  if(plan.result)return plan.result;
- const section=(plan.section??'profile') as ImportSection,total=Number(plan.total??row.counters?.total??0);
+ const section=sectionOf(row,plan),total=Number(plan.total??row.counters?.total??0);
  const register=row.kind===REGISTER_IMPORT_KIND;
  const updated=register?0:Number(row.counters?.updated??0);
  const failed=register?[]:(row.errors??[]).map(e=>({rowNum:e.rowNum,employeeCode:e.ref,message:e.message}));
@@ -32,7 +34,7 @@ export function sectionImportJobResult(row:BulkJobRow):SectionImportResult|null{
 }
 export function sectionImportProgress(row:BulkJobRow,worker:'running'|'unavailable'='running'):SectionImportJobProgress{
  const plan=(row.plan??{}) as StoredPlan;
- return{id:row.id,kind:row.kind,section:(plan.section??'profile') as ImportSection,sourceName:row.source_name,state:row.state as BulkJobState,
+ return{id:row.id,kind:row.kind,section:sectionOf(row,plan),sourceName:row.source_name,state:row.state as BulkJobState,
   stepsTotal:row.steps_total,stepsDone:row.steps_done,result:sectionImportJobResult(row),
   updatedAt:new Date(row.updated_at).toISOString(),createdAt:new Date(row.created_at).toISOString(),worker:row.state==='queued'?worker:'running'};
 }
@@ -57,7 +59,7 @@ export async function createSectionImportJob(ctx:SessionContext,input:{section:s
    if(!admin?.ok)throw new SectionImportJobError('You do not have permission to import Personnel files.',403);
    const {row,existing}=await enqueueBulkJobTx(tx,ctx,{kind:kindOf(section),operationKey:input.operationKey,
     source:{name:importSourceName(input.fileName,`${section}.csv`),content:Buffer.from(input.csv,'utf8')},
-    input:{section,records:input.records,fileName:input.fileName},plan:{section,total:input.records.length}});
+    input:{section,records:input.records,fileName:input.fileName}});
    return{job:await progressTx(tx,row),existing};
   });
  }catch(error){throw kernelError(error);}

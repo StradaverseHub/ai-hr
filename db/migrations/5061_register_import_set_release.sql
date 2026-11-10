@@ -136,7 +136,8 @@ BEGIN
  ORDER BY (e->>'rowNum')::integer,c.seq,o;
  GET DIAGNOSTICS events=ROW_COUNT;
  SELECT coalesce(sum((c.r->>'rows')::integer),0) INTO total FROM pg_temp.register_release_capture c;
- UPDATE public.bulk_job SET plan=coalesce(plan,'{}'::jsonb)||jsonb_build_object('released',true,'updated',total),updated_at=now() WHERE id=p_job;
+ -- The job store is written only through the kernel's sealed worker update (5013): the worker records the release on
+ -- the job's plan (released, updated) in this same owner transaction (unit.set in core/register-import-worker.ts).
  RETURN jsonb_build_object('released',true,'updated',total,'events',events);
 END $$;
 --> statement-breakpoint

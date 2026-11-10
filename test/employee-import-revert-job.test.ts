@@ -1,6 +1,7 @@
 /** The employee import Revert as a background job (draft migration 5062): real PostgreSQL, real RLS, real worker
  * ticks. Equivalence against the synchronous revert on an identical second tenant: the same voids, the same audit
- * events in the same order and the same Import History events. */
+ * events in the same order and the same Import History events. The one difference the hardened kernel adds is asserted
+ * on its own: the events the release writes on the owner connection carry their job (payload.bulkJob, migration 5014). */
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
@@ -40,9 +41,16 @@ async function endState(f:Fixture){
   select event_type,aggregate_id,subject_employment_id,actor_type::text,actor_id=${f.ctx.userId!}::uuid as by_admin,payload,import_pending_attempt_id is null as visible
   from domain_event where tenant_id=${f.b.tenantId}::uuid and event_type in ('employment.voided','import-attempt.reverted','import-attempt.revert-failed') order by sequence`)
   .map(e=>({...e,aggregate_id:code.get(e.aggregate_id)??(e.aggregate_id===f.attemptId?'attempt':e.aggregate_id),subject_employment_id:e.subject_employment_id?code.get(e.subject_employment_id):null,
-   payload:{...e.payload,...(e.payload.importAttemptId?{importAttemptId:e.payload.importAttemptId===f.attemptId?'attempt':'other'}:{})}}));
+   payload:{...withoutJob(e.payload),...(e.payload.importAttemptId?{importAttemptId:e.payload.importAttemptId===f.attemptId?'attempt':'other'}:{})}}));
  const history=await owner.client<Record<string,unknown>[]>`select kind,reason,detail,actor_id=${f.ctx.userId!}::uuid as by_admin from import_attempt_event where attempt_id=${f.attemptId}::uuid order by created_at,id`;
  return{employments,persons,events,history:history.map(h=>({...h,detail:{...(h.detail as object),...((h.detail as {blockers?:unknown[]}).blockers?{blockers:'present'}:{})}}))};
+}
+/** Owner-path events carry their job (5014). endState leaves that key out so the rest compares with the synchronous
+ * revert; eventJobs reports it for every revert event, in order (null: written outside an owner transaction). */
+const withoutJob=({bulkJob:_bulkJob,...rest}:Record<string,unknown>)=>rest;
+async function eventJobs(f:Fixture){
+ return owner.client<{event_type:string;job:{id:string;kind:string}|null}[]>`select event_type,payload->'bulkJob' as job from domain_event
+  where tenant_id=${f.b.tenantId}::uuid and event_type in ('employment.voided','import-attempt.reverted','import-attempt.revert-failed') order by sequence`;
 }
 const tick=async()=>{const {runBulkJobTick}=await import('../core/bulk-job-worker');const {BULK_JOB_HANDLERS}=await import('../core/bulk-job-handlers');return runBulkJobTick(owner.client,{handlers:BULK_JOB_HANDLERS});};
 
@@ -68,6 +76,12 @@ describe('employee import revert job',()=>{
   const after=await endState(job);
   expect(after).toEqual(await endState(sync));
   expect(after.events.filter(e=>e.event_type==='employment.voided').map(e=>e.aggregate_id)).toEqual(['RV000','RV001','RV002','RV003']);
+  // The release's events (four voids and the reverted event), and only they, carry the job that wrote them on the
+  // owner connection; the refused second revert was recorded by the creator's own session.
+  const attributed=await eventJobs(job);
+  expect(attributed.filter(e=>e.event_type!=='import-attempt.revert-failed').map(e=>e.job)).toEqual(Array.from({length:5},()=>({id:(started as {job:{id:string}}).job.id,kind:'employee_import_revert'})));
+  expect(attributed.filter(e=>e.event_type==='import-attempt.revert-failed').every(e=>e.job===null)).toBe(true);
+  expect((await eventJobs(sync)).every(e=>e.job===null)).toBe(true);
   expect(after.employments.every(e=>e.voided&&e.this_attempt&&e.by_admin&&e.employee_code===null)).toBe(true);
   expect(after.persons.every(p=>p.voided&&p.ic_number===null&&p.voided_ic_number)).toBe(true);
   expect((await verifyTenantChain(job.ctx)).valid).toBe(true);
@@ -107,8 +121,11 @@ describe('employee import revert job',()=>{
   const preview=await previewImportRevertForAttempt(job.ctx,job.attemptId);
   const started=await revertImportForAttempt(job.ctx,job.attemptId,{previewHash:preview.previewHash,reason:'Undo the file'}) as {job:{id:string}};
   for(let i=0;i<100;i++){const [r]=await owner.client<{state:string}[]>`select state from bulk_job where id=${started.job.id}::uuid`;if(r.state==='finalizing')break;await tick();}
-  // The job's stored review (plan and input) are rewritten as the app role could: neither is trusted.
+  // The job's stored review (plan and input) are rewritten: neither is trusted. The application role can no longer
+  // write the job (5013) and an unsealed change is stopped by the kernel's integrity check, so the seal is recomputed
+  // as only the queue owner could: the release must still refuse on its own recomputation.
   await owner.client`update bulk_job set plan=plan||'{"employmentIds":[],"confirmedEventId":"00000000-0000-4000-8000-000000000000"}'::jsonb,input=jsonb_set(input,'{previewHash}',to_jsonb(${'f'.repeat(64)}::text)) where id=${started.job.id}::uuid`;
+  await owner.client`update app.bulk_job_seal z set input_digest=app.bulk_job_value_digest(j.input),plan_digest=app.bulk_job_value_digest(j.plan) from bulk_job j where j.id=z.job_id and z.job_id=${started.job.id}::uuid`;
   for(let i=0;i<100;i++){const [r]=await owner.client<{state:string}[]>`select state from bulk_job where id=${started.job.id}::uuid`;if(['completed','failed'].includes(r.state))break;if(!await tick())await new Promise(r2=>setTimeout(r2,40));}
   expect(await getEmployeeImportRevertJob(job.ctx,started.job.id)).toMatchObject({state:'failed',error:'What this revert would restore has changed. Review it again before confirming.'});
   expect((await owner.client`select id from employment where tenant_id=${job.b.tenantId}::uuid and voided_at is not null`)).toHaveLength(0);

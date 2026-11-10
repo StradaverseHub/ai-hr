@@ -2,7 +2,9 @@
  * 5062; docs/adr/2026-11-10-register-section-import-jobs.md). The request only admits the job, inside the synchronous
  * revert's own checks. The worker reviews eligibility once without any lock (nothing is written), then performs the
  * whole revert in one short owner-run transaction that re-checks everything set-based under the revert's locks and
- * the creator's captured session: the same refusals, voids, audit events in the same order and Import History event. */
+ * the creator's captured session: the same refusals, voids, audit events in the same order and Import History event.
+ * The kind declares an owner finalize (finalizeOwner here, bulk_job_kind.finalize_owner in 5062): the release runs in
+ * unit.ownerTx, attributed to the job, and its plan marker is written through unit.set (sealed, migration 5013). */
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {normalizeImportRevertReason} from '../lib/import-history';
@@ -51,7 +53,7 @@ export async function createEmployeeImportRevertJob(ctx:SessionContext,attemptId
    const [covers]=await tx.execute<{ok:boolean}>(sql`select app.import_attempt_access(${attemptId}::uuid,'maintain',true) as ok`);
    if(!covers?.ok)throw new ImportHistoryError('Reverting this import needs maintain permission for every company in it.');
    const {row}=await enqueueBulkJobTx(tx,ctx,{kind:EMPLOYEE_IMPORT_REVERT_KIND,companyIds:attempt.company_ids,
-    input:{attemptId,previewHash:input.previewHash,reason} satisfies RevertInput,plan:{attemptId} satisfies RevertPlan});
+    input:{attemptId,previewHash:input.previewHash,reason} satisfies RevertInput});
    return employeeImportRevertProgress(row);
   });
  }catch(error){
@@ -66,7 +68,8 @@ export async function getEmployeeImportRevertJob(ctx:SessionContext,id:string){
 export async function activeEmployeeImportRevertJob(ctx:SessionContext,attemptId:string){
  return withTenant(ctx,async tx=>{
   const rows=await listBulkJobsTx(tx,ctx,EMPLOYEE_IMPORT_REVERT_KIND,10);
-  const row=rows.find(r=>planOf(r).attemptId===attemptId&&['queued','preparing','running','finalizing'].includes(r.state));
+  // The worker writes the plan in prepare (there is no admission plan); until then the attempt is the admitted input's.
+  const row=rows.find(r=>(planOf(r).attemptId??inputOf(r)?.attemptId)===attemptId&&['queued','preparing','running','finalizing'].includes(r.state));
   return row?employeeImportRevertProgress(row):null;
  });
 }
@@ -81,6 +84,7 @@ async function blockedError(ctx:SessionContext,attemptId:string){
 export const employeeImportRevertJobHandler:BulkJobHandler<never>={
  kind:EMPLOYEE_IMPORT_REVERT_KIND,
  mode:'per-step',
+ finalizeOwner:true,
  /** The revert has no steps: its review is the prepare and its whole write is the release. */
  async applyStepTx(){throw new Error('The employee import revert has no steps.');},
  /** The synchronous revert's review without its locks: a refusal here writes nothing. */
@@ -98,17 +102,24 @@ export const employeeImportRevertJobHandler:BulkJobHandler<never>={
   }
  },
  /** The revert: one owner-run statement (app.employee_import_revert_release) after the creator's own transaction has
-  * confirmed the lease and that the organisation accepts writes. */
+  * confirmed the lease and that the organisation accepts writes. The seal is verified immediately before it; the
+  * release and its plan marker commit in one owner transaction. A busy refusal (55P03: the release's short wait for
+  * the exclusive Access lock, or the leave-dependency lock) rolls that transaction back and is retried by the kernel. */
  async finalize(ctx,job,unit){
   const {attemptId}=inputOf(job);
   const [armed]=await withTenant(ctx,async tx=>{
    await unit.fenceTx(tx);await tx.execute(sql`select pg_current_xact_id()`);
    return tx.execute<{on:boolean}>(sql`select coalesce(current_setting('app.audit_hash_chain',true),'')='on' as on`);
   });
+  await unit.verifySeal();
   const started=performance.now();
-  const [row]=await unit.owner<{r:{released?:boolean;restored?:number;refused?:string}}[]>`select app.employee_import_revert_release(${job.id}::uuid,${armed?.on===true}) as r`;
+  const out=await unit.ownerTx!(async owner=>{
+   const [row]=await owner<{r:{released?:boolean;restored?:number;refused?:string}}[]>`select app.employee_import_revert_release(${job.id}::uuid,${armed?.on===true}) as r`;
+   // The routine no longer writes the job itself: the worker records the release through the sealed job update.
+   if(row.r.released)await unit.set(owner,{planMerge:{released:true,restored:row.r.restored??0}});
+   return row.r;
+  });
   unit.metric('releaseTxMs',performance.now()-started);
-  const out=row.r;
   if(out.refused==='blocked')throw await blockedError(ctx,attemptId);
   if(out.refused)throw new ImportHistoryError(REFUSALS[out.refused]??'The revert could not be completed. Nothing was changed.');
   return{result:{attemptId,restored:out.restored??0},counters:{restored:out.restored??0}};

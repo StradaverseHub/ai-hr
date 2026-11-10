@@ -113,7 +113,8 @@ BEGIN
  PERFORM set_config('app.tenant_id',t::text,true);
  PERFORM app.access_assert_administrator();
  PERFORM set_config('app.tenant_id','',true);
- UPDATE public.bulk_job SET plan=coalesce(plan,'{}'::jsonb)||jsonb_build_object('released',true,'restored',n),updated_at=now() WHERE id=p_job;
+ -- The job store is written only through the kernel's sealed worker update (5013): the worker records the release on
+ -- the job's plan (released, restored) in this same owner transaction (unit.set in core/employee-import-revert-job.ts).
  RETURN jsonb_build_object('released',true,'restored',n);
 END $$;
 --> statement-breakpoint

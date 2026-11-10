@@ -2,11 +2,13 @@
  * was refused; the job keeps exactly that: one step per row, each step running the same row applier
  * (applySectionRowTx) as the synchronous commit, so the validation, writers, refusal messages, history row and audit
  * are unchanged. What moves is where it runs: off the web request, in short chunk transactions, with the row's
- * re-analysis narrowed to that row's own database checks. */
+ * re-analysis narrowed to that row's own database checks. The job's own plan is written only through unit.set in a
+ * fenced transaction (sealed, migration 5013); finalize runs as the app role. */
 import {sql} from 'drizzle-orm';
 import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
+import {publicErrorMessage} from '../lib/public-error';
 import type {ImportRecord} from '../lib/import-schema';
 import type {ImportSection,SectionImportResult} from '../lib/import-sections';
 import {SECTION_IMPORT_KIND} from '../lib/section-import-job';
@@ -81,7 +83,7 @@ export const sectionImportJobHandler:BulkJobHandler<SectionRowNomination>={
  },
  /** After the rows: the child-relief refreshes the synchronous commit ran after each saved Family row (bounded
  * batches, each its own transaction), then the history row and the same result. */
- async finalize(ctx,job){
+ async finalize(ctx,job,unit){
   const plan=planOf(job);const {section,fileName}=inputOf(job);
   const from=plan.reliefFrom??0;
   const relief=await withTenant(ctx,tx=>tx.execute<{seq:number;row_num:number;person_id:string}>(sql`select seq,row_num,result->>'personId' as person_id from bulk_job_step
@@ -89,13 +91,19 @@ export const sectionImportJobHandler:BulkJobHandler<SectionRowNomination>={
   if(relief.length){
    const warnings=[...(plan.warnings??[])];
    for(const row of relief){try{await syncChildReliefFromFamily(ctx,row.person_id);}catch{warnings.push(`Row ${row.row_num} was saved; review the child-relief refresh on Personnel.`);}}
-   await withTenant(ctx,tx=>tx.execute(sql`update bulk_job set plan=${JSON.stringify({...plan,reliefFrom:relief.at(-1)!.seq+1,warnings})}::jsonb,updated_at=now() where id=${job.id}::uuid`));
+   await withTenant(ctx,async tx=>{await unit.fenceTx(tx);await unit.set(tx,{plan:{...plan,reliefFrom:relief.at(-1)!.seq+1,warnings}});});
    return'more';
   }
   const updated=Number(job.counters?.updated??0);const failed=failedOf(job);const total=plan.total??0;
   const runId=await recordSectionRun(ctx,{companyId:plan.companyId??null,fileName,totalRows:total,updated,rejected:plan.rejected??[],failed});
   const result:SectionImportResult={section,updated,skipped:total-updated-failed.length,failed,fileErrors:[],warnings:plan.warnings??[],runId};
   return{result};
+ },
+ /** The kernel's default failure text. There is no admission plan any more, so a failure before prepare committed
+ * keeps the section and row count the result needs (the kernel clears the input at the end), as a plan merge. */
+ async describeFailure(job,error){
+  const input=inputOf(job);
+  return{error:publicErrorMessage(error),...(!job.plan&&input?{planMerge:{section:input.section,total:input.records.length}}:{})};
  },
  /** A job that stopped early (cancelled, or the creator's access changed) keeps the rows it saved, as each row was
  * its own commit; its history row records them. Best effort, as the synchronous history row was. */

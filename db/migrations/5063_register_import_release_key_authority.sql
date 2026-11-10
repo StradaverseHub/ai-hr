@@ -233,7 +233,8 @@ BEGIN
  END IF;
  GET DIAGNOSTICS events=ROW_COUNT;
  IF events<>(SELECT count(*) FROM pg_temp.register_release_event) THEN RAISE EXCEPTION 'register_import_release_invalid' USING ERRCODE='22023'; END IF;
- UPDATE public.bulk_job SET plan=coalesce(plan,'{}'::jsonb)||jsonb_build_object('released',true,'updated',events),updated_at=now() WHERE id=p_job;
+ -- The job store is written only through the kernel's sealed worker update (5013): the worker records the release on
+ -- the job's plan (released, updated) in this same owner transaction (unit.set in core/register-import-worker.ts).
  RETURN jsonb_build_object('released',true,'updated',events,'events',events);
 END $$;
 --> statement-breakpoint

@@ -11,7 +11,11 @@
 -- eligibility review runs without locks, then this owner-only routine performs the whole revert in one short
 -- transaction with set-based checks, exactly as before: the same refusals, the same voids, the same audit events in
 -- the same order and the same Import History event.
-INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES('employee_import_revert','employee_full','creator');
+-- Hardened kernel (5013): the admission passes {attemptId, previewHash, reason} and nothing else (there is no admission
+-- plan), and the kind finalizes on the queue-owner connection (app.employee_import_revert_release below and in 5064;
+-- finalizeOwner in core/employee-import-revert-job.ts).
+INSERT INTO bulk_job_kind(kind,scope_kind,exclusive,input_shape,finalize_owner)
+ VALUES('employee_import_revert','employee_full','creator','{"attemptId":"string","previewHash":"string","reason":"string"}'::jsonb,true);
 --> statement-breakpoint
 -- The reference blockers of app.employment_void_blockers (0676) without its per-employment authority calls, so a caller
 -- that has already decided workforce maintain for the whole set reads the same blockers once. The 0676 function now
@@ -166,7 +170,8 @@ BEGIN
  PERFORM set_config('app.tenant_id',t::text,true);
  PERFORM app.access_assert_administrator();
  PERFORM set_config('app.tenant_id','',true);
- UPDATE public.bulk_job SET plan=coalesce(plan,'{}'::jsonb)||jsonb_build_object('released',true,'restored',n),updated_at=now() WHERE id=p_job;
+ -- The job store is written only through the kernel's sealed worker update (5013): the worker records the release on
+ -- the job's plan (released, restored) in this same owner transaction (unit.set in core/employee-import-revert-job.ts).
  RETURN jsonb_build_object('released',true,'restored',n);
 END $$;
 --> statement-breakpoint
