@@ -15,6 +15,12 @@ function inverse(value:string){
  for(const step of patch.steps){const text=step.kind==='same'?step.text:step.after;if(value.slice(offset,offset+text.length)!==text)throw Error('Exact whole reviewed successor required');offset+=text.length;original+=step.kind==='same'?text:step.before;}
  if(offset!==value.length||sha(value)!==patch.successor.sha256||sha(original)!==patch.baseline.sha256)throw Error('Whole reviewed source identity required');return original;
 }
+// The preserved owners were re-pinned from the 693af41de slice to the integrated release bytes the
+// bounded native controls now execute against. Each change is an intended later commit:
+// core/employee-choice.ts ba36e359f, fb5710607, e52a55f4c, 9e32ad8ec, bd5f6dffc, ea84770aa;
+// core/personnel-private-search.ts 47f1434e0, 129ea7ecf and the 9e04300eb Board 3 composition;
+// exact-ASCII purpose SQL, owner factory and runtime ba36e359f; native purpose owner factory 30176ff6d;
+// core/ai-principal.ts f283c2e7b. The successor and classic reader bytes themselves are unchanged.
 it('inverts every successor byte to the complete frozen classic reader and preserves each authority/SQL/runtime owner',()=>{
  expect(sha(baseline)).toBe(patch.baseline.sha256);expect(inverse(successor)).toBe(baseline);
  for(const [path,hash]of Object.entries(patch.preserved))expect(sha(readFileSync(path,'utf8')),path).toBe(hash);
