@@ -321,7 +321,8 @@ async function bundleCalculatorPairs(actor:Actor,today:string){
  * instead of failing the run. */
 async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
  const failures:{step:string;error:unknown}[]=[];
- const step=async(name:string,work:()=>Promise<unknown>)=>{try{await work();}catch(error){failures.push({step:name,error:errorFact(error)});}};
+ const step=async(name:string,work:()=>Promise<unknown>)=>{try{await work();}catch(error){const cause=(error as {cause?:{message?:string;code?:string}})?.cause;
+  failures.push({step:name,error:errorFact(error),cause:cause?{code:cause.code??null,message:String(cause.message).slice(0,240)}:null});}};
  const day=(offset:number)=>new Date(Date.parse(today+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
  const on=day(12);
  for(const [t,actors] of tenants.entries()){
@@ -343,7 +344,7 @@ async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
   };
   // The subject's one current assignment (assignment_no_overlap admits no second) moved to a department headed by `head`.
   const headed=async(subject:Actor,head:Actor)=>{
-   const [department]=await owner.db.insert(s.department).values({tenantId,companyId:subject.companyId,name:'Fictional headed department',headEmploymentId:head.employmentId}).returning();
+   const [department]=await owner.db.insert(s.department).values({tenantId,companyId:subject.companyId,name:'Fictional headed department '+subject.index,label:'FHD'+subject.index,headEmploymentId:head.employmentId}).returning();
    await owner.client`update assignment set department_id=${department.id}::uuid where employment_id=${subject.employmentId}::uuid and valid_to is null and superseded_at is null`;
   };
   const manager=at(2),second=at(3);
@@ -360,12 +361,14 @@ async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
     await leave(at(18),[{kind:'payroll',alternates:['manager_manager',{kind:'direct_manager',employmentId:'stray'}]}]);
     await leave(at(21),[{kind:'manager_manager',alternates:['direct_manager']}]);
     await leave(at(25),[{kind:'manager_manager'}]);
-    await headed(at(27),manager);await leave(at(27),[{kind:'department_head'}]);
     // Disagreeing manager's-manager lines and an alternate id the owner would trim: the cross-company manager's leave
     // reads alone. (A subject head cannot disagree: assignment_no_overlap leaves one current assignment.)
     await leave(at(30),[{kind:'manager_manager'}]);
-    await headed(at(32),cross);await leave(at(32),[{kind:'department_head'}]);
     await leave(at(33),[{kind:'custom_role',alternates:[{kind:'specific_employee',employmentId:' '+cross.employmentId+' '}]}]);
+   });
+   await step('departmentHeads',async()=>{
+    await headed(at(27),manager);await leave(at(27),[{kind:'department_head'}]);
+    await headed(at(32),cross);await leave(at(32),[{kind:'department_head'}]);
    });
    await step('cancellations',async()=>{
     await cancellation(at(5),[]);
@@ -391,7 +394,7 @@ async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
     const perf=await import('../../packs/performance/service'),{defaultPolicy}=await import('../../packs/performance/onehr/model');
     const framework=(await import('../../packs/performance/onehr/framework.json')).default;
     const admin=at(0).ctx,companyId=at(0).companyId;
-    const [grade]=await owner.db.insert(s.jobGrade).values({tenantId,code:'P12',name:'Fictional performance grade'}).returning();
+    const [grade]=await owner.db.insert(s.jobGrade).values({tenantId,code:'17',name:'Fictional performance grade'}).returning();
     await owner.client`update employment set grade_id=${grade.id}::uuid where tenant_id=${tenantId}::uuid and company_id=${companyId}::uuid`;
     const {cycleId}=await perf.createCycle(admin,{name:'Fictional current assessment',companyId,periodStart:day(-30),periodEnd:day(30)});
     await perf.configureOnehrCycle(admin,cycleId,null,defaultPolicy(framework));await perf.openCycle(admin,{cycleId});
@@ -740,6 +743,18 @@ it('completes every manager Home card and Today section read without a handled f
    }
   }
   report.taskOwnerTrips=trips;print('task-owner-trips',trips);evidence();
+  // The leave and cancellation decision sub-select's own flags for the subjects whose owners still read.
+  {
+   const bundles=await import('../../core/account-task-bundle'),flags:Record<string,unknown>={};
+   for(const [label,actor] of [['manager',manager],['secondManager',secondManager],['crossCompanyManager',actors.find(a=>a.index===6)!]] as const){
+    flags[label]=await withTenant(actor.ctx,async tx=>{
+     const section=bundles.accountTaskStatementSections(tx,actor.ctx,{attendance:false,claims:false,performance:false,rewards:false,lifecycle:false}).find(([name])=>name==='leave_decisions')![1];
+     const [row]=await tx.execute<{value:{leave:{defer:boolean;rows:unknown[]};cancellations:{defer:boolean;rows:unknown[]}}}>(sql`with ${bundles.accountTaskCallerSql(actor.ctx)} select ${section} as value`);
+     return {leave:{defer:row.value.leave.defer,rows:row.value.leave.rows.length},cancellations:{defer:row.value.cancellations.defer,rows:row.value.cancellations.rows.length}};
+    },{readOnlySnapshot:true}).catch(error=>errorFact(error));
+   }
+   print('task-owner-leave-flags',flags);
+  }
   const {isModuleEnabled}=await import('../../core/entitlements'),explains:Record<string,unknown>={};
   for(const [label,actor] of [['manager',manager],['employee',employee],['groupHR',actors.find(a=>a.role==='groupHR')!]] as const){
    const flags={attendance:isModuleEnabled(actor.ctx,'attendance'),claims:isModuleEnabled(actor.ctx,'claims'),performance:isModuleEnabled(actor.ctx,'performance'),
