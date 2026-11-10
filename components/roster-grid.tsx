@@ -77,6 +77,8 @@ import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { assignCellAction, bulkAssignAction } from '@/app/roster/actions';
+import { waitForRosterBulkJob } from '@/lib/roster-bulk-job-poll';
+import { ROSTER_WRITE_FAILED } from '@/lib/roster-bulk-job';
 import { RosterLegend } from '@/components/roster-legend';
 import { EmployeeCode } from '@/components/ui';
 import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';
@@ -271,10 +273,13 @@ export function RosterGrid({
       return n;
     });
     startTx(async () => {
+      // The bar's writes run as a background roster job (app/roster/actions.ts bulkAssignAction): the brush stays
+      // painted while it runs, and its outcome is reported exactly as the synchronous action's was.
       const r = await bulkAssignAction({ employmentIds: empIds, shiftDates: isoDates, brush });
-      if (!r.ok) {
+      const job = r.ok && r.jobId ? await waitForRosterBulkJob('/roster/jobs', r.jobId) : null;
+      if (!r.ok || (job && job.state !== 'completed')) {
         setCells(snapshot);
-        toast.error(r.error);
+        toast.error(r.ok ? job?.error || ROSTER_WRITE_FAILED : r.error);
       } else toast.success(t('bulkDone', { n: empIds.length }));
     });
   };

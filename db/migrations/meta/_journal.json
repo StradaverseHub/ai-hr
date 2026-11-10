@@ -5405,6 +5405,13 @@
       "when": 1793330090004,
       "tag": "9004_import_release_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 9920,
+      "version": "7",
+      "when": 1793330099920,
+      "tag": "9920_roster_bulk_jobs",
+      "breakpoints": true
     }
   ]
 }

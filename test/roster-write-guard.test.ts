@@ -44,7 +44,20 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { randomUUID } from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
 import {rosterAssignment} from '../db/schema';
-import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { runBulkJobTick } from '../core/bulk-job-worker';
+import { rosterBulkJobHandler } from '../core/roster-bulk-worker';
+import { readRosterBulkJob } from '../core/roster-bulk-job';
+
+/** The grid's bulk bar, Generate and Copy queue a background roster job; this runs the protected worker. */
+async function runRosterJob(id: string): Promise<string> {
+  for (let i = 0; i < 2000; i++) {
+    const [row] = await owner.client<{ state: string; notified: boolean }[]>`select state,notified_at is not null as notified from bulk_job where id=${id}::uuid`;
+    if (['completed', 'failed', 'cancelled'].includes(row.state) && row.notified) return row.state;
+    if (!(await runBulkJobTick(owner.client, { handlers: [rosterBulkJobHandler] }))) await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error('roster job did not finish');
+}
 import { hireEmployee } from '../core/org';
 import {
   assertRosterAdmin,
@@ -258,17 +271,23 @@ describe('the guard must not refuse everything — an administrator still roster
 
   it('assignCellAction, bulkAssignAction and rowAssignAction all still write', async () => {
     expect(await assignCellAction({ employmentId, shiftDate: FUTURE, brush: shiftId })).toEqual({ ok: true });
-    expect(await bulkAssignAction({ employmentIds: [employmentId], shiftDates: [FUTURE_2], brush: 'rest' })).toEqual({ ok: true });
+    const bulk = await bulkAssignAction({ employmentIds: [employmentId], shiftDates: [FUTURE_2], brush: 'rest' });
+    expect(bulk).toEqual({ ok: true, jobId: expect.any(String) });
+    expect(await runRosterJob((bulk as { jobId: string }).jobId)).toBe('completed');
     expect(await rowAssignAction({ employmentId, shiftDates: ['2099-01-07', '2099-01-08'], brush: shiftId })).toEqual({ ok: true });
     expect(await stored()).toHaveLength(4);
   });
 
-  it('generateRosterAction still redirects with its summary', async () => {
+  it('generateRosterAction still lands on its summary once the job has run', async () => {
     await expect(
       generateRosterAction(formOf({ companyId: b.companyId, shiftId, from: FUTURE, to: FUTURE_MONTH_END, employmentIds: [employmentId] })),
     ).rejects.toThrow('NEXT_REDIRECT');
-    expect(LAST_REDIRECT).toContain('generated=');
+    const jobId = new URL(LAST_REDIRECT, 'http://x').searchParams.get('rosterJob')!;
     expect(LAST_REDIRECT).not.toContain('error=');
+    expect(await runRosterJob(jobId)).toBe('completed');
+    const job = await readRosterBulkJob(admin, jobId);
+    expect(job.href).toContain('generated=');
+    expect(job.href).not.toContain('error=');
     expect((await stored()).length).toBeGreaterThan(0);
   });
 

@@ -23,9 +23,10 @@ import {
   ShiftHasNoWorkingPatternError,
   ShiftNotInScheduleGroupError,
   setEmploymentScheduleGroup,
-  setEmploymentScheduleGroupBulk,
 } from '@/core/roster';
 import { UNGROUPED } from '@/core/shift-arrangement';
+import { enqueueScheduleGroupBulkJob, RosterBulkJobError } from '@/core/roster-bulk-job';
+import { ROSTER_BULK_ALREADY_RUNNING } from '@/lib/roster-bulk-job';
 
 /**
  * a485afa1 — the Schedule Assignment screens' own Save and Remove (posted from ./[employmentId]/page.tsx
@@ -342,20 +343,19 @@ export async function bulkAssignScheduleGroupAction(formData: FormData) {
   if (posted.some((id) => !UUID_RE.test(id)) || (attendanceRuleId !== null && !UUID_RE.test(attendanceRuleId))) {
     redirect(bulkBackTo(formData, { error: await badField('badEmployment') }));
   }
-  let result: { requested: number; changed: number; unchanged: number };
+  // The batch runs as a background job (core/roster-bulk-worker.ts scheduleGroupBulkJobHandler): the same
+  // per-employment writer and reverse refusal, checked for every employee before anybody moves, then written in
+  // short transactions. The page shows its progress and then the same outcome this action redirected to.
+  let jobId: string;
   try {
-    result = await setEmploymentScheduleGroupBulk(s, { employmentIds: posted, attendanceRuleId });
+    jobId = (await enqueueScheduleGroupBulkJob(s, { employmentIds: posted, attendanceRuleId, returnQuery: bulkBackTo(formData, {}).split('?')[1] ?? '' })).id;
   } catch (e) {
-    redirect(bulkBackTo(formData, { error: await messageFor(e) }));
+    const error = e instanceof RosterBulkJobError && e.message === ROSTER_BULK_ALREADY_RUNNING
+      ? (await getTranslations('bulkJobs.scheduleGroup'))('otherRunning')
+      : await messageFor(e);
+    redirect(bulkBackTo(formData, { error }));
   }
   revalidatePath(PAGE);
   revalidatePath(BULK);
-  // Every employee in the batch has a personnel page whose cached render still shows the old group.
-  for (const id of posted) revalidatePath(`/admin/personnel/${id}`);
-  redirect(
-    bulkBackTo(formData, {
-      bulkChanged: String(result.changed),
-      bulkUnchanged: String(result.unchanged),
-    }),
-  );
+  redirect(bulkBackTo(formData, { bulkJob: jobId }));
 }

@@ -37264,7 +37264,61 @@
           "title": "Import pekerja dibatalkan",
           "body": "Tiada pekerja ditambah. Buka Sejarah Import untuk butiran."
         }
+      },
+      "roster": {
+        "completed": {
+          "title": "Perubahan roster selesai",
+          "body": "Buka roster untuk melihat hasilnya."
+        },
+        "failed": {
+          "title": "Perubahan roster dihentikan",
+          "body": "Buka roster untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Perubahan roster dibatalkan",
+          "body": "Buka roster untuk butiran."
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "Penetapan Kumpulan Jadual selesai",
+          "body": "Buka Tetapkan Kumpulan Jadual untuk melihat hasilnya."
+        },
+        "failed": {
+          "title": "Penetapan Kumpulan Jadual dihentikan",
+          "body": "Buka Tetapkan Kumpulan Jadual untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Penetapan Kumpulan Jadual dibatalkan",
+          "body": "Buka Tetapkan Kumpulan Jadual untuk butiran."
+        }
       }
+    },
+    "panel": {
+      "queued": "Menunggu untuk bermula",
+      "preparing": "Menyemak setiap perubahan",
+      "running": "Menyimpan",
+      "finalizing": "Menyelesaikan",
+      "discarding": "Menghentikan",
+      "completed": "Selesai",
+      "failed": "Dihentikan",
+      "cancelled": "Dibatalkan",
+      "progressCount": "{done} daripada {total} langkah selesai",
+      "backgroundHelp": "Anda boleh tinggalkan halaman ini. Kerja diteruskan dan anda akan dimaklumkan apabila selesai.",
+      "waiting": "Menunggu perkhidmatan latar belakang. Kemajuan disimpan; jangan mulakan sekali lagi.",
+      "workerUnavailable": "Perkhidmatan latar belakang belum berjalan. Permintaan anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
+    },
+    "roster": {
+      "generate": "Menjana roster",
+      "copy": "Menyalin roster",
+      "assign": "Menggunakan perubahan roster",
+      "import": "Menyimpan roster yang dimuat naik",
+      "otherRunning": "Satu lagi perubahan roster masih disimpan. Tunggu sehingga selesai, kemudian cuba lagi.",
+      "saveFailed": "Perubahan roster tidak dapat disimpan. Sila cuba lagi, atau hubungi pentadbir HR."
+    },
+    "scheduleGroup": {
+      "title": "Menetapkan Kumpulan Jadual",
+      "otherRunning": "Satu lagi penetapan Kumpulan Jadual masih disimpan. Tunggu sehingga selesai, kemudian cuba lagi."
     }
   }
 }

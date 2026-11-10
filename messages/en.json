@@ -37264,7 +37264,61 @@
           "title": "Employee import cancelled",
           "body": "No employees were added. Open Import History for details."
         }
+      },
+      "roster": {
+        "completed": {
+          "title": "Roster change finished",
+          "body": "Open the roster to see the result."
+        },
+        "failed": {
+          "title": "Roster change stopped",
+          "body": "Open the roster to see why."
+        },
+        "cancelled": {
+          "title": "Roster change cancelled",
+          "body": "Open the roster for details."
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "Schedule Group assignment finished",
+          "body": "Open Assign Schedule Group to see the result."
+        },
+        "failed": {
+          "title": "Schedule Group assignment stopped",
+          "body": "Open Assign Schedule Group to see why."
+        },
+        "cancelled": {
+          "title": "Schedule Group assignment cancelled",
+          "body": "Open Assign Schedule Group for details."
+        }
       }
+    },
+    "panel": {
+      "queued": "Waiting to start",
+      "preparing": "Checking every change",
+      "running": "Saving",
+      "finalizing": "Finishing",
+      "discarding": "Stopping",
+      "completed": "Finished",
+      "failed": "Stopped",
+      "cancelled": "Cancelled",
+      "progressCount": "{done} of {total} steps complete",
+      "backgroundHelp": "You can leave this page. The work continues and you will be notified when it finishes.",
+      "waiting": "Waiting for the background service. Progress is saved; do not start this again.",
+      "workerUnavailable": "The background service is not running yet. Your request is saved and starts automatically as soon as it is."
+    },
+    "roster": {
+      "generate": "Generating the roster",
+      "copy": "Copying the roster",
+      "assign": "Applying the roster change",
+      "import": "Saving the uploaded roster",
+      "otherRunning": "Another roster change is still being saved. Wait for it to finish, then try again.",
+      "saveFailed": "The roster change could not be saved. Please try again, or ask an HR administrator."
+    },
+    "scheduleGroup": {
+      "title": "Assigning the Schedule Group",
+      "otherRunning": "Another Schedule Group assignment is still being saved. Wait for it to finish, then try again."
     }
   }
 }

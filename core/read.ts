@@ -1256,6 +1256,20 @@ export function listEmployeesPage(
   return existingTx ? read(existingTx) : withTenant(ctx,read);
 }
 
+/** Which of `ids` the employee listing would return for these filters (the same FROM, joins and WHERE as
+ *  listEmployeesPage's rows, restricted to the given employments). RLS-scoped like the listing. */
+export async function employeeListMembersTx(tx: Tx, p: EmployeeListFilters, ids: readonly string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const rows = await tx
+    .select({ employmentId: employment.id })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .leftJoin(assignment, currentAssignmentJoin())
+    .where(and(employeeListWhere(p), inArray(employment.id, [...ids])));
+  return rows.map((row) => row.employmentId);
+}
+
 /**
  * Hiring enhancement — flat picker of active (non-terminated) employments the new hire can report to.
  * Scoped to the session's allowed companies (reuse the `companyIds` filter from listEmployeesPage); no

@@ -9,6 +9,9 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 import { Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { BulkScheduleGroupForm, type BulkRow } from './bulk-form';
+import { RosterBulkJobPanel } from '@/components/roster-bulk-job-panel';
+import { readRosterBulkJob } from '@/core/roster-bulk-job';
+import { SCHEDULE_GROUP_BULK_KIND, SCHEDULE_GROUP_BULK_UNEXPECTED } from '@/lib/roster-bulk-job';
 
 /**
  * 8cd601d0 (r329) — BULK SCHEDULE GROUP ASSIGNMENT.
@@ -58,6 +61,8 @@ export default async function BulkScheduleGroupPage({
     error?: string;
     bulkChanged?: string;
     bulkUnchanged?: string;
+    /** A background batch queued from this page (core/roster-bulk-job.ts); its progress panel. */
+    bulkJob?: string;
   }>;
 }) {
   const s = await requireAdmin();
@@ -191,6 +196,12 @@ export default async function BulkScheduleGroupPage({
   const changed = Number(sp.bulkChanged);
   const unchanged = Number(sp.bulkUnchanged);
   const showResult = !sp.error && Number.isInteger(changed) && Number.isInteger(unchanged);
+  // The batch's own progress, read as its creator; when it ends the panel opens the outcome below.
+  const bulkJob = sp.bulkJob && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sp.bulkJob)
+    ? await readRosterBulkJob(s, sp.bulkJob, SCHEDULE_GROUP_BULK_KIND).catch(() => null)
+    : null;
+  // A failure the screen must not print verbatim is stored as a code; it reads as the page's own sentence.
+  const errorMessage = sp.error === SCHEDULE_GROUP_BULK_UNEXPECTED ? t('unexpectedError') : sp.error;
 
   return (
     <div className={pageWideCls}>
@@ -204,7 +215,10 @@ export default async function BulkScheduleGroupPage({
       />
       <FilterChips action={BULK} fields={filterFields} values={filterValues} labels={filterLabels} />
 
-      <ErrorBanner message={sp.error} />
+      <ErrorBanner message={errorMessage} />
+      {bulkJob ? (
+        <RosterBulkJobPanel endpoint={`${BULK}/jobs`} job={bulkJob} title={(await getTranslations('bulkJobs.scheduleGroup'))('title')} />
+      ) : null}
       {showResult ? (
         <p className="rounded-lg border border-emerald-500/30 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
           {t('bulkDoneNote', { changed, unchanged })}

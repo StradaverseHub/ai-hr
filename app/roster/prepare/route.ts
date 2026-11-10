@@ -7,7 +7,9 @@ import {escapeFormHtml as esc,hiddenFormField as hidden,NativeFormError,readNati
 import {parseRosterDraftSelection,parseRosterSelection,RosterSelectionError} from '@/lib/roster-selection';
 import {isCalendarDate} from '@/lib/calendar-date';
 import {currentUiTheme} from '@/lib/ui-theme-server';
-import {copyRoster,generateRosterFromTemplate,listShiftsForTenant,RosterAdminRequiredError,RosterCommandRefusal,validateRosterGenerateRange,validateRosterCopyRange} from '@/core/roster';
+import {listShiftsForTenant,RosterAdminRequiredError,RosterCommandRefusal,validateRosterGenerateRange,validateRosterCopyRange} from '@/core/roster';
+import {enqueueRosterCopyJob,enqueueRosterGenerateJob,RosterBulkJobError} from '@/core/roster-bulk-job';
+import {ROSTER_BULK_ALREADY_RUNNING} from '@/lib/roster-bulk-job';
 import {rosterEmployeePage,rosterPopulationReview} from '@/core/roster-presentation';
 import {listDepartments} from '@/core/read';
 import {organisationChoiceLabel} from '@/lib/organisation-choice-label';
@@ -80,14 +82,16 @@ export async function POST(request:Request){
   else validateRosterCopyRange({sourceFrom:text(data,'sourceFrom'),sourceTo:text(data,'sourceTo'),targetFrom:text(data,'targetFrom')});
   if(stage==='confirm'){
    const q=new URLSearchParams({companyId:text(data,'companyId')});
+   // Confirm only queues the background roster job; the roster page shows its progress and then the same
+   // summary (or refusal) this confirmation used to redirect to.
    if(command==='generate'){
     const targets=await rosterGenerationTargets(s,data);
-    const result=await generateRosterFromTemplate(s,{shiftId:text(data,'shiftId'),...targets,from:text(data,'from'),to:text(data,'to')});
-    q.set('month',text(data,'from').slice(0,7));q.set('generated',`${result.employments}.${result.workingRows}.${result.restRows}`);
+    const job=await enqueueRosterGenerateJob(s,{companyId:text(data,'companyId'),input:{shiftId:text(data,'shiftId'),...targets,from:text(data,'from'),to:text(data,'to')}});
+    q.set('month',text(data,'from').slice(0,7));q.set('rosterJob',job.id);
    }else{
     const ids=await rosterCommandTargets(s,data);
-    const result=await copyRoster(s,{employmentIds:ids,sourceFrom:text(data,'sourceFrom'),sourceTo:text(data,'sourceTo'),targetFrom:text(data,'targetFrom')});
-    q.set('month',text(data,'targetFrom').slice(0,7));q.set('copied',String(result.copied));
+    const job=await enqueueRosterCopyJob(s,{companyId:text(data,'companyId'),employmentIds:ids,sourceFrom:text(data,'sourceFrom'),sourceTo:text(data,'sourceTo'),targetFrom:text(data,'targetFrom')});
+    q.set('month',text(data,'targetFrom').slice(0,7));q.set('rosterJob',job.id);
    }
    revalidatePath('/roster');return new Response(null,{status:303,headers:{...headers,Location:'/roster?'+q}});
   }
@@ -113,6 +117,10 @@ export async function POST(request:Request){
   return render(`<p>${esc(t('selectedCount',{n:ids.length}))}</p><p>${esc(t('prepareHint'))}</p>${controlSummary(data,t,labels)}<table><thead><tr><th>${esc(t('employee'))}</th><th>${esc(t('colEmployeeNo'))}</th></tr></thead><tbody>${page.rows.map(row=>`<tr><td>${esc(row.name)}</td><td>${esc(row.code??'')}</td></tr>`).join('')}</tbody></table><p>${esc(pt('range',{from:1,to:page.rows.length,total:ids.length}))}</p><form method="post" action="/roster/prepare">${fields(data)}${hidden('selectionIds',JSON.stringify(ids))}${hidden('stage','confirm')}<button type="submit">${esc(t('confirmRoster'))}</button></form>`);
  }catch(error){
   if(request.signal.aborted)throw error;
+  if(error instanceof RosterBulkJobError){
+   const message=error.message===ROSTER_BULK_ALREADY_RUNNING?(await getTranslations('bulkJobs.roster'))('otherRunning'):t('prepareFailed');
+   return render(`<p role="alert">${esc(message)}</p>${retryControls(data,t)}`,error.message===ROSTER_BULK_ALREADY_RUNNING?409:400);
+  }
   if(error instanceof RosterCommandRefusal||error instanceof DutyRosterWriteRefusal||error instanceof ShiftSelectionUnavailableError||error instanceof ShiftNotInScheduleGroupError||error instanceof LeaveDependencyUnavailable){
    const status=error instanceof RosterCommandRefusal&&error.code==='permission'||error instanceof DutyRosterWriteRefusal&&error.category==='permission'?403:error instanceof LeaveDependencyUnavailable?409:422;
    return render(`<p role="alert">${esc(error.message)}</p>${retryControls(data,t)}`,status);
