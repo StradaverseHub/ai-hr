@@ -5412,6 +5412,13 @@
       "when": 1793330090961,
       "tag": "9961_system_label_import_staged_job",
       "breakpoints": true
+    },
+    {
+      "idx": 9962,
+      "version": "7",
+      "when": 1793330090962,
+      "tag": "9962_workforce_capability_tenant_publication",
+      "breakpoints": true
     }
   ]
 }

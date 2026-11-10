@@ -14,8 +14,10 @@ import {accessConfigurationStore} from '../core/access-configuration-store';
 let b:Base;
 const ids=['workforce.view','workforce.maintain','profile.review'];
 beforeAll(migrateTestDb);
-beforeEach(async()=>{await resetDb();b=await seedBase();await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${ids}::text[])`;});
-afterAll(async()=>{try{await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${ids}::text[])`;}finally{await closeAll();}});
+// Publication state (migration 9962) is global: clear it with the catalogue so every case starts uninstalled.
+const clearPublication=async()=>{await owner.client`delete from app.access_capability_tenant_publication`;await owner.client`delete from app.access_capability_publication`;};
+beforeEach(async()=>{await resetDb();b=await seedBase();await clearPublication();await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${ids}::text[])`;});
+afterAll(async()=>{try{await clearPublication();await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${ids}::text[])`;}finally{await closeAll();}});
 async function snapshot(){return{
  catalog:await owner.client`select * from access_capability order by id`,
  configuration:await owner.client`select * from access_configuration order by tenant_id`,
@@ -63,11 +65,48 @@ it('refuses an active tenant without initialized recovery defaults instead of in
  await owner.db.insert(appUser).values({tenantId:other.id,workosUserId:'fictional-publication-without-recovery'});
  const before=await snapshot();await expect(publishWorkforceCapabilities(owner.client)).rejects.toThrow('Workforce capability installation refused');expect(await snapshot()).toEqual(before);
 });
-it('rolls back catalogue, preview revision and physical generations when the immutable publication audit refuses',async()=>{
+const effective=async(tenantId:string,id='workforce.view')=>(await owner.client<{supported:boolean;bindings:unknown[]}[]>`select supported,bindings from app.access_capability_effective(${tenantId}::uuid) where id=${id}`)[0];
+it('keeps a tenant whose publication audit refuses on its previous catalogue, preview revision and generation, and resumes',async()=>{
  await owner.client`create function public.fixture_refuse_capability_publication() returns trigger language plpgsql as $$begin if NEW.event_type='access-configuration.capabilities-published' then raise exception 'Fictional publication audit refusal';end if;return NEW;end$$`;
  await owner.client`create trigger fixture_refuse_capability_publication before insert on domain_event for each row execute function public.fixture_refuse_capability_publication()`;
- try{const before=await snapshot();await expect(publishWorkforceCapabilities(owner.client)).rejects.toMatchObject({code:'P0001'});expect(await snapshot()).toEqual(before);}
+ let before:Awaited<ReturnType<typeof snapshot>>;
+ try{before=await snapshot();await expect(publishWorkforceCapabilities(owner.client)).rejects.toMatchObject({code:'P0001'});}
  finally{await owner.client`drop trigger fixture_refuse_capability_publication on domain_event`;await owner.client`drop function public.fixture_refuse_capability_publication()`;}
+ // The version is open and the stored catalogue flipped, but no tenant was published: each still sees its previous
+ // catalogue, and its preview revision, writer generation and events are untouched.
+ const stopped=await snapshot();
+ for(const key of ['configuration','generation','grants','memberships','overrides','roles','users','events'] as const)expect(stopped[key]).toEqual(before[key]);
+ expect(await effective(b.tenantId)).toEqual({supported:false,bindings:[]});
+ expect((await owner.client`select state from app.access_capability_publication where version=1`)[0]?.state).toBe('publishing');
+ // Running it again publishes every tenant and closes the version: the single-transaction publication's end state.
+ expect(await publishWorkforceCapabilities(owner.client)).toMatchObject({changed:true,capabilities:3,tenantsFenced:before.configuration.length});
+ const after=await snapshot();
+ for(const row of before.generation)expect(after.generation.find(next=>next.tenant_id===row.tenant_id)?.generation).toBe(String(BigInt(row.generation)+BigInt(1)));
+ expect((await effective(b.tenantId)).supported).toBe(true);
+ expect((await owner.client`select state from app.access_capability_publication where version=1`)[0]?.state).toBe('published');
+ expect(await publishWorkforceCapabilities(owner.client)).toMatchObject({changed:false,tenantsFenced:0});
+});
+it('publishes each tenant in its own transaction: a refused later tenant leaves earlier tenants published and resumes',async()=>{
+ const [other]=await owner.db.insert(tenant).values({name:'Fictional second publication tenant',workosOrgId:'fictional-second-'+randomUUID()}).returning({id:tenant.id});
+ const [late]=await owner.client<{id:string}[]>`select id from tenant where id in (${b.tenantId}::uuid,${other.id}::uuid) order by id desc limit 1`;
+ const [early]=await owner.client<{id:string}[]>`select id from tenant where id in (${b.tenantId}::uuid,${other.id}::uuid) order by id limit 1`;
+ const before=await snapshot();
+ await owner.client.unsafe(`create function public.fixture_refuse_late_tenant() returns trigger language plpgsql as $$begin if NEW.event_type='access-configuration.capabilities-published' and NEW.tenant_id='${late.id}' then raise exception 'Fictional late tenant refusal';end if;return NEW;end$$`);
+ await owner.client`create trigger fixture_refuse_late_tenant before insert on domain_event for each row execute function public.fixture_refuse_late_tenant()`;
+ try{await expect(publishWorkforceCapabilities(owner.client)).rejects.toMatchObject({code:'P0001'});}
+ finally{await owner.client`drop trigger fixture_refuse_late_tenant on domain_event`;await owner.client`drop function public.fixture_refuse_late_tenant()`;}
+ expect((await effective(early.id)).supported).toBe(true);
+ expect((await effective(late.id)).supported).toBe(false);
+ const partial=await snapshot();
+ const generation=(rows:typeof before.generation,t:string)=>rows.find(row=>row.tenant_id===t)?.generation;
+ expect(generation(partial.generation,early.id)).toBe(String(BigInt(generation(before.generation,early.id)!)+BigInt(1)));
+ expect(generation(partial.generation,late.id)).toBe(generation(before.generation,late.id));
+ expect(await publishWorkforceCapabilities(owner.client)).toMatchObject({changed:true,tenantsFenced:1});
+ const after=await snapshot();
+ for(const row of before.generation)expect(generation(after.generation,row.tenant_id)).toBe(String(BigInt(row.generation)+BigInt(1)));
+ const audits=await owner.client<{tenant_id:string;n:number}[]>`select tenant_id,count(*)::int n from domain_event where event_type='access-configuration.capabilities-published' group by tenant_id order by tenant_id`;
+ expect(audits.map(row=>row.n)).toEqual(audits.map(()=>1));expect(audits).toHaveLength(before.generation.length);
+ expect((await effective(late.id)).supported).toBe(true);
 });
 it('invalidates a genuine pre-publication access preview without granting or changing its command',async()=>{
  const ctx=adminCtx(b),state=await readAccessConfigurationEditor(ctx),group=state.snapshot.groups.find(g=>g.name==='Employees');expect(group).toBeDefined();
