@@ -5461,6 +5461,13 @@
       "when": 1793330099952,
       "tag": "9952_payroll_run_group",
       "breakpoints": true
+    },
+    {
+      "idx": 9953,
+      "version": "7",
+      "when": 1793330099953,
+      "tag": "9953_bulk_job_settle",
+      "breakpoints": true
     }
   ]
 }

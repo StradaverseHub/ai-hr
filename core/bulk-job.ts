@@ -16,7 +16,7 @@ export type BulkJobRow={
  input:unknown;plan:unknown;attempt_id:string|null;state:BulkJobState;outcome:'failed'|'cancelled'|null;phase:string|null;
  steps_total:number;steps_done:number;counters:Record<string,number>;metrics:Record<string,number|string>;result:unknown;
  error:string|null;errors:BulkJobRowError[];cancel_requested_at:Date|null;transient_retries:number;not_before:Date|null;
- lease_token:string|null;lease_expires_at:Date|null;notice_event_id:string|null;notified_at:Date|null;
+ lease_token:string|null;lease_expires_at:Date|null;notice_event_id:string|null;notified_at:Date|null;settled_at:Date|null;
  created_at:Date;updated_at:Date;finished_at:Date|null;
 };
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;

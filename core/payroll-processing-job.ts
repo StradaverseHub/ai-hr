@@ -161,9 +161,10 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
   await owner`update bulk_job set plan=coalesce(plan,'{}'::jsonb)||${JSON.stringify({failureReason:reasonForPayrollError(error)})}::jsonb where id=${job.id}::uuid`;
   return{error:publicErrorMessage(error)};
  },
- // A wizard run group waiting for this run settles when its last job finishes (core/payroll-run-group-store.ts).
- async afterTerminal(ctx,job){
-  if(ctx)await settleRunGroupsForJob(ctx,job.id);
+ // A wizard run group waiting for this run settles when its last job finishes (core/payroll-run-group-store.ts);
+ // the kernel retries a settle that fails until it succeeds.
+ async settle(_ctx,job,owner){
+  await settleRunGroupsForJob(owner,job);
  },
 };
 

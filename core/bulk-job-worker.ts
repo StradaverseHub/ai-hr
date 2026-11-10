@@ -65,6 +65,11 @@ export type BulkJobHandler<P=any>={
  isTransient?(error:unknown):boolean;
  /** Best effort after the terminal state committed (history, post-commit refreshes). ctx is null when revoked. */
  afterTerminal?(ctx:SessionContext|null,job:BulkJobRow):Promise<void>;
+ /** A durable follow-up of the terminal state that must not be lost (for example a group outcome and its audit
+  *  event). Runs after afterTerminal and before the completion notice; until it succeeds the kernel keeps the job
+  *  unnotified with its inputs and retries it on a later tick with backoff (bulk_job.settled_at records success),
+  *  so it must be idempotent. ctx is null when the creator's access is gone; owner is the queue-owner connection. */
+ settle?(ctx:SessionContext|null,job:BulkJobRow,owner:postgres.ReservedSql):Promise<void>;
 };
 export class BulkJobStepRefused extends Error{constructor(readonly step:BulkJobStep,readonly cause:unknown){super(publicErrorMessage(cause));this.name='BulkJobStepRefused';}}
 class LeaseLost extends Error{constructor(){super('Bulk job lease lost.');}}
@@ -72,6 +77,9 @@ class LeaseLost extends Error{constructor(){super('Bulk job lease lost.');}}
 export class BulkJobAuthorityLost extends Error{constructor(){super('Your access to this job changed, so it was stopped.');this.name='BulkJobAuthorityLost';}}
 const TERMINAL:readonly BulkJobState[]=['completed','failed','cancelled'];
 const LEASE_SECONDS=60,PREPARE_LEASE_SECONDS=900,MAX_TRANSIENT_RETRIES=600,STEP_INSERT_BATCH=400;
+/** Settle attempts before the notice is sent anyway (about 50 minutes at the capped 5 s backoff); the failure stays
+ *  on the job's metrics. A tick claims an unsettled job only within the kernel's one-day notice window. */
+const MAX_SETTLE_RETRIES=600;
 
 /** Transient database refusals retry the same unit after a short backoff; anything else is a real failure. */
 export function isTransientBulkJobError(error:unknown){
@@ -171,7 +179,11 @@ async function jobTx<T>(ctx:SessionContext,c:Claimed,unit:BulkJobUnit,phase:stri
 
 async function processClaimed(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed){
  const job=c.job;const unit=unitOf(connection,c);
- if(TERMINAL.includes(job.state))return notifyFinished(connection,job);
+ if(TERMINAL.includes(job.state)){
+  // A settle that failed on an earlier tick resumes here (afterTerminal already ran once).
+  if(handler.settle&&!job.settled_at){let ctx:SessionContext|null=null;try{ctx=await bulkJobContext(connection,job);}catch{ctx=null;}return closeTerminal(connection,handler,c,ctx,job);}
+  return notifyFinished(connection,job);
+ }
  if(job.state==='discarding')return discardUnit(connection,handler,c,unit);
  let ctx:SessionContext;
  try{ctx=await bulkJobContext(connection,job);}
@@ -332,7 +344,26 @@ async function terminal(connection:postgres.ReservedSql,handler:BulkJobHandler,c
  const [fresh]=await connection<BulkJobRow[]>`select * from bulk_job where id=${c.job.id}::uuid`;
  if(!fresh||!TERMINAL.includes(fresh.state))return;
  caches.delete(fresh.id);
+ // The settle's own retry budget starts here, not where an earlier phase's transient retries left it.
+ if(handler.settle&&!fresh.settled_at&&fresh.transient_retries)await connection`update bulk_job set transient_retries=0 where id=${fresh.id}::uuid`;
  try{await handler.afterTerminal?.(ctx,fresh);}catch{/* best effort, as the synchronous imports were */}
+ return closeTerminal(connection,handler,c,ctx,fresh);
+}
+/** The kind's settle (retried until it succeeds), then the clean-up and the creator's notice. */
+async function closeTerminal(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,ctx:SessionContext|null,fresh:BulkJobRow){
+ if(handler.settle&&!fresh.settled_at){
+  try{
+   await handler.settle(ctx,fresh,connection);
+   await connection`update bulk_job set settled_at=now(),transient_retries=0,not_before=null where id=${fresh.id}::uuid`;
+  }catch(error){
+   const [row]=await connection<{transient_retries:number}[]>`update bulk_job set transient_retries=transient_retries+1,
+     not_before=now()+make_interval(secs=>least(5.0,0.05*power(2,least(transient_retries,7)))),updated_at=now()
+    where id=${fresh.id}::uuid and lease_token=${c.token}::uuid returning transient_retries`;
+   c.metrics.settleFailures=Math.max(c.metrics.settleFailures??0,row?.transient_retries??1);
+   if((row?.transient_retries??0)<MAX_SETTLE_RETRIES)return; // a later tick retries; the inputs stay until then
+   console.error('[bulk job settle]',fresh.kind,fresh.id,publicErrorMessage(error));
+  }
+ }
  // Personal data the job no longer needs: the uploaded inputs and per-step payloads (outcomes stay on the job).
  await connection`update bulk_job set input=null,source_content=null where id=${fresh.id}::uuid`;
  await connection`delete from bulk_job_step where job_id=${fresh.id}::uuid`;

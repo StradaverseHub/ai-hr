@@ -1,0 +1,12 @@
+-- UNALLOCATED DRAFT on branch claude/bulkjob-payroll-20261110 (payroll's last long holders, 11 Nov 2026): not a
+-- reservation, not an installation allocation. The journal position (idx 9953, when 1793330099953) exists only so
+-- this branch's schema is executable and reviewable; the integration owner assigns the final tag/idx/when after the
+-- freshly verified ledger, per docs/MIGRATION-ALLOCATION.md.
+--
+-- Kernel extension: a kind's settle (core/bulk-job-worker.ts BulkJobHandler.settle) is a durable follow-up of the
+-- terminal state that must not be lost, such as the Payroll Process wizard's run-group outcome and its
+-- payroll-run-group.completed event. It used to run as afterTerminal, best effort: a failed settle left the group
+-- unsettled and its audit event unwritten for good. The kernel now records when the settle succeeded and, until then,
+-- keeps the job unnotified (the existing bulk_job_unnotified partial index finds it) and retries it with backoff.
+-- Written only by the queue owner; no app-role grant.
+ALTER TABLE bulk_job ADD COLUMN settled_at timestamptz;

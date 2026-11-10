@@ -16,7 +16,7 @@ import { setCompensation } from '../core/comp';
 import { hireEmployee } from '../core/org';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { startMultiCompanyPayroll, type RunGroupResult } from '../core/payroll-run-group';
-import { readRunGroup } from '../core/payroll-run-group-store';
+import { readRunGroup, settleRunGroupsForJob } from '../core/payroll-run-group-store';
 import { runBulkJobTick } from '../core/bulk-job-worker';
 import { payrollProcessJobHandler } from '../core/payroll-processing-job';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -143,6 +143,45 @@ describe('a company job that fails inside a wizard run group renders as its reas
     expect(acmeRow).toContain(`/payroll/${result.perCompany.find((c) => c.companyId === base.companyId)!.batchId}`);
     expect(html).toContain('overall.partial');
     expect(html).not.toContain('resultExpired');
+  });
+
+  it('a settlement that fails is retried by the kernel: the group settles once, with one completed event, before the notice', async () => {
+    const a = groupAdmin();
+    await paid(a, base.companyId, base.deptA, 'Alice');
+    await paid(a, companyB, deptB, 'Bob');
+    // The first attempt to settle the group fails (a sequence survives the rolled-back attempt); later ones succeed.
+    await owner.client.unsafe(`create sequence if not exists test_settle_attempt;
+      create or replace function test_settle_refuse_once() returns trigger language plpgsql as $$
+       begin if nextval('test_settle_attempt')=1 then raise exception 'settlement refused once'; end if; return new; end $$;
+      create trigger test_settle_refuse_once before update of ended_at on payroll_run_group for each row execute function test_settle_refuse_once();`);
+    try {
+      const { groupId } = await startMultiCompanyPayroll(a, { companyIds: [base.companyId, companyB], payPeriod: '2026-05', payrollCycleId: await regularCycleId(base.companyId), employmentIds: [] });
+      const lastJob = (await jobOf(companyB)).job!;
+      const job = async () => (await owner.client<{ state: string; settled: boolean; notified: boolean; failures: number | null }[]>`select state,settled_at is not null as settled,
+        notified_at is not null as notified,(metrics->>'settleFailures')::int as failures from bulk_job where id=${lastJob}::uuid`)[0];
+      // Run until the last company's job is terminal: its first settle has failed, so it is neither settled nor notified.
+      for (let i = 0; i < 4000 && !['completed', 'failed'].includes((await job()).state); i++) if (!(await tick())) await new Promise((r) => setTimeout(r, 20));
+      expect(await job()).toMatchObject({ state: 'completed', settled: false, notified: false, failures: 1 });
+      expect((await owner.client<{ ended: boolean }[]>`select ended_at is not null as ended from payroll_run_group where id=${groupId}::uuid`)[0].ended).toBe(false);
+      // The kernel retries it on a later tick (after its backoff) and the group settles exactly once.
+      const result = await drainRunGroup(groupId);
+      expect(result).toMatchObject({ overallStatus: 'succeeded', totalCompanies: 2, totalEmployeesSucceeded: 2 });
+      for (let i = 0; i < 200 && !(await job()).notified; i++) if (!(await tick())) await new Promise((r) => setTimeout(r, 20));
+      expect(await job()).toMatchObject({ settled: true, notified: true });
+      const events = await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType, 'payroll-run-group.completed'));
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ actorType: 'user', actorId: base.adminUserId, aggregateType: 'payroll-run-group' });
+      expect(events[0].payload).toMatchObject({ overallStatus: 'succeeded', startedAt: result.startedAt, endedAt: result.endedAt, companyIds: [base.companyId, companyB] });
+      const [group] = await owner.client<{ event_id: string }[]>`select event_id from payroll_run_group where id=${groupId}::uuid`;
+      expect(group.event_id).toBe(events[0].id);
+      // Idempotent: settling the same job again changes nothing.
+      const reserved = await owner.client.reserve();
+      try { await settleRunGroupsForJob(reserved, { id: lastJob, tenant_id: base.tenantId, created_by: base.adminUserId }); } finally { reserved.release(); }
+      expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType, 'payroll-run-group.completed'))).toHaveLength(1);
+      expect((await readRunGroup(a, groupId))?.result).toEqual(result);
+    } finally {
+      await owner.client.unsafe('drop trigger if exists test_settle_refuse_once on payroll_run_group; drop function if exists test_settle_refuse_once(); drop sequence if exists test_settle_attempt;');
+    }
   });
 
   it('is refused when its job prepares: the same reason row, and the page still renders the other company', async () => {
