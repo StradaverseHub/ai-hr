@@ -16,10 +16,10 @@ import sys
 import time
 
 
-SOURCE = 'c257a608e255c3b784434575a6b7a9f2174843ab'
-SOURCE_TREE = 'b76e4800266de5c816f2456427af48f588f018f5'
-SOURCE_BRANCH = 'codex/architecture-c257a60-stock-compiler-reference-20261110'
-BRANCH = 'codex/compiler-native-clock-c257a608-13312-phase-proof-20261110'
+SOURCE = 'db3f301d0b7d0b19b4c000ff67067bb9099a5911'
+SOURCE_TREE = '7ad30e6b66f15bd5fc82d6ecbe8fa1878918422f'
+SOURCE_BRANCH = 'codex/architecture-db3f301-stock-compiler-reference-20261110'
+BRANCH = 'codex/compiler-fixture-root-db3f301d-13312-phase-proof-20261110'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 HEAP_MIB = 13 * 1024
@@ -41,8 +41,8 @@ PROGRESS_COUNTERS = ('cpuUsec', 'userUsec', 'systemUsec', 'cpuSomeUsec', 'cpuFul
 PROGRESS_OPTIONAL_COUNTERS = ('throttledPeriods', 'throttledUsec')
 PROGRESS_GAUGES = ('residentBytes', 'swapBytes', 'hostAvailableBytes')
 ROOT = Path('/sys/fs/cgroup')
-DIRECTORY = 'compiler-13312-native-clock-c257a608-phase'
-UNIT_PREFIX = 'aihr-compiler-13312-native-clock-c257a608-phase-'
+DIRECTORY = 'compiler-13312-fixture-root-db3f301d-phase'
+UNIT_PREFIX = 'aihr-compiler-13312-fixture-root-db3f301d-phase-'
 UNIT_NAME = re.compile(rf'{re.escape(UNIT_PREFIX)}[1-9][0-9]{{0,15}}\.service')
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -56,10 +56,10 @@ INVENTORY_FIELDS = ('configuredRoots', 'orderedRootSha256', 'rootSetSha256', 'ge
 STATE_FIELDS = ('buildInfoBytes', 'buildInfoSha256', 'nativeFiles', 'nativeRoots', 'nativeRootSetSha256')
 # The earlier managed command proves the tool, root census and route inputs on its own source.
 # Neither its typecheck result nor its compiler graph is adopted.
-BASELINE_RUN = '42750881563'
-CALIBRATION_SOURCE = 'a592c2361fb038855d91fcefb566fddb02f02995'
+BASELINE_RUN = '42755227568'
+CALIBRATION_SOURCE = 'c257a608e255c3b784434575a6b7a9f2174843ab'
 TRACKED_MEMBERS = 12970
-TRACKED_SHA256 = '32bffe2bdfdbd1f4b8cba2b316f9a212f88bb64eee6d3529f48745e570088504'
+TRACKED_SHA256 = '53bf2639c52fb0e6c4ba3e7bcfdcf3a25ca0729fd669855c508df6780b0e3da2'
 BASELINE_INVENTORY = {
     'configuredRoots': 9206,
     'orderedRootSha256': 'ede0443db2183aa00a164170912c73e28e9eebf10d06025f49140050e76d6c79',
@@ -70,9 +70,11 @@ BASELINE_INVENTORY = {
 }
 BASELINE_NODE_SHA256 = 'fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48'
 BASELINE_ARGV_SHA256 = 'c24f853d33edb0cfbb3068197aba380b9869e89e762827bb0edf9fe72de8027d'
-BASELINE_STOCK_LIST_SHA256 = '189e8ae08dbe25d609ae14a2326283cf6e79d173eeabf694dbd86153c29009cd'
-ADDED_NATIVE_MEMBER = 'scripts/performance/measured-lock-clock.mjs'
-EXPECTED_NATIVE_FILES = 11688
+BASELINE_STOCK_LIST_SHA256 = '7edd32d9578d34a6bab86f6a35da31f0f3475889e718c4a57cc14b99de8bd1a9'
+ADDED_NATIVE_MEMBER = 'scripts/performance/worker-comparison-custody.mjs'
+MOVED_NATIVE_MEMBER = 'scripts/performance/worker-comparison.mjs'
+PRIOR_NATIVE_ANCHOR = 'test/performance-worker-comparison.test.ts'
+EXPECTED_NATIVE_FILES = 11689
 LOCATION_POLICY = 'TRACKED_SOURCE_COMPILER_COORDINATES_V1'
 EXTENDED_DIAGNOSTICS_POLICY = 'STOCK_TYPESCRIPT_EXTENDED_DIAGNOSTICS_V1'
 EXTENDED_DIAGNOSTICS_FIELDS = {
@@ -744,22 +746,26 @@ def compiler_fingerprint(source, node, listing):
     row = json.loads(raw)
     require(valid_fingerprint(row), 'native-input-fingerprint')
     raw_listing = read_owned_compiler_log(listing)
-    require(matches_added_native_member(source, raw_listing, row), 'native-input-fingerprint')
+    require(matches_reviewed_native_delta(source, raw_listing, row), 'native-input-fingerprint')
     return row
 
 
-def matches_added_native_member(source, raw, fingerprint):
-    # Keep the entire stock program. Remove the reviewed path only from the
-    # comparison against the prior ordered list, never from compiler input.
+def matches_reviewed_native_delta(source, raw, fingerprint):
+    # Keep the entire stock program. Only the digest comparison removes the
+    # new dependency and restores the newly earlier dependency to its prior test.
     if (fingerprint['loadedFiles'] != EXPECTED_NATIVE_FILES
             or hashlib.sha256(raw).hexdigest() != fingerprint['stockListSha256']):
         return False
-    member = os.fsencode(source / ADDED_NATIVE_MEMBER) + b'\n'
+    added, moved, anchor = (os.fsencode(source / member) + b'\n'
+                            for member in (ADDED_NATIVE_MEMBER, MOVED_NATIVE_MEMBER, PRIOR_NATIVE_ANCHOR))
     parts = raw.splitlines(keepends=True)
-    if len(parts) != EXPECTED_NATIVE_FILES or parts.count(member) != 1:
+    if len(parts) != EXPECTED_NATIVE_FILES or any(parts.count(member) != 1 for member in (added, moved, anchor)):
         return False
-    prior = b''.join(line for line in parts if line != member)
-    return hashlib.sha256(prior).hexdigest() == BASELINE_STOCK_LIST_SHA256
+    if parts.index(moved) != parts.index(added) + 1:
+        return False
+    projected = [line for line in parts if line not in (added, moved)]
+    projected.insert(projected.index(anchor), moved)
+    return hashlib.sha256(b''.join(projected)).hexdigest() == BASELINE_STOCK_LIST_SHA256
 
 
 def valid_fingerprint(row):
