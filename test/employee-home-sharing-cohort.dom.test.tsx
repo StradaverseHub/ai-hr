@@ -1,5 +1,7 @@
 import * as React from 'react';
-import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {HomeInitialSharing,useHomeInitialSharing} from '../components/employee-home/sharing-cohort';
@@ -18,6 +20,7 @@ import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
+import {HOME_CARD_STREAM_STALL_MS} from '../lib/employee-home-delivery';
 
 const fetcher=vi.fn();
 const date=todayInKualaLumpur();
@@ -43,7 +46,7 @@ function responseStream(){
  };
 }
 beforeEach(()=>{fetcher.mockReset();vi.stubGlobal('fetch',fetcher);});
-afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();});
 
 it('streams the healthy card and retries only the failed card outside the cohort',async()=>{
  const stream=responseStream();
@@ -64,6 +67,63 @@ it('streams the healthy card and retries only the failed card outside the cohort
  expect(fetcher.mock.calls.map(([url])=>url)).toEqual([
   '/api/home/sharing-initial?employmentId=own','/api/home/celebrations?employmentId=own',
  ]);
+});
+
+it('keeps streamed cards loading while frames arrive, then shows the timeout alert only after the stream stalls',async()=>{
+ vi.useFakeTimers();
+ const advance=(ms:number)=>act(async()=>{await vi.advanceTimersByTimeAsync(ms);});
+ const stream=responseStream();
+ fetcher.mockResolvedValueOnce(stream.response);
+ render(<main>{view()}</main>);
+ await advance(0);
+ expect(fetcher).toHaveBeenCalledOnce();
+ const transport=fetcher.mock.calls[0][1].signal as AbortSignal;
+ const celebrationsRegion=screen.getByRole('region',{name:labels.celebrations.title});
+ // A frame just inside the window: well past the former 2.8 s deadline, and still no alert anywhere.
+ await advance(HOME_CARD_STREAM_STALL_MS-1);
+ expect(screen.queryByRole('alert')).toBeNull();
+ stream.push({version:1,card:'team',status:200,value:team()});
+ await advance(0);await advance(0);
+ expect(screen.getByText(labels.team.off)).toBeVisible();
+ // That frame restarted the window for the card still waiting.
+ await advance(HOME_CARD_STREAM_STALL_MS-1);
+ expect(celebrationsRegion).toHaveAttribute('aria-busy','true');
+ expect(screen.queryByRole('alert')).toBeNull();expect(transport.aborted).toBe(false);
+ await advance(1);
+ expect(within(celebrationsRegion).getByRole('alert')).toHaveTextContent(labels.celebrations.timeout);
+ expect(transport.aborted).toBe(true);
+ expect(screen.getByText(labels.team.off)).toBeVisible();
+ await advance(HOME_CARD_STREAM_STALL_MS*4);
+ expect(fetcher).toHaveBeenCalledOnce();
+
+ // The performance harness still recognises this as a genuine card failure: its own selector, marker
+ // mapping and catalog lookup name the card and the timeout message key.
+ const harness=readFileSync(join(process.cwd(),'scripts/performance/system-load-owner.mjs'),'utf8');
+ const selector=/const failureNodes=await page\.locator\('([^']+)'\)\.evaluateAll/.exec(harness)?.[1];
+ expect(selector).toContain('[role="alert"]');
+ const nodes=[...document.querySelectorAll(selector!)].map(node=>{
+  const card=node.closest('[data-home-card],[data-dashboard-card]');
+  return {card:card?.getAttribute('data-home-card')??card?.getAttribute('data-dashboard-card')??null,
+   marker:node.hasAttribute('data-today-unavailable')?'today-unavailable':node.hasAttribute('data-read-unavailable')?'read-unavailable':'alert',
+   section:node.closest('[data-today-section]')?.getAttribute('data-today-section')??null,text:node.textContent??''};
+ });
+ const {homeCardFailureFacts,homeFailureMessageCatalog}=await import('../scripts/performance/worker-comparison-failure.mjs');
+ expect(homeCardFailureFacts(nodes,homeFailureMessageCatalog([en]))).toEqual([
+  {card:'celebrations',marker:'alert',section:null,message:'employeeHome.celebrations.timeout'},
+ ]);
+});
+
+it('shows a refused streamed card at once with its failed message, not as a stall',async()=>{
+ const stream=responseStream();
+ fetcher.mockResolvedValueOnce(stream.response);
+ render(view());
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
+ stream.push({version:1,card:'team',status:403});
+ const region=screen.getByRole('region',{name:labels.team.title});
+ await waitFor(()=>expect(within(region).getByRole('alert')).toHaveTextContent(labels.team.failed));
+ expect(within(region).getByRole('alert')).not.toHaveTextContent(labels.team.timeout);
+ stream.push({version:1,card:'celebrations',status:200,value:celebrations()});stream.close();
+ expect(await screen.findByText(labels.celebrations.off)).toBeVisible();
 });
 
 it('uses the existing standalone endpoint when only Team renders',async()=>{

@@ -12,7 +12,7 @@ import postgres from 'postgres';
 import {createDatabaseAdmission} from './admission';
 import {createBackgroundReadAdmission} from './background-read-admission';
 import {createTenantWriteAdmission} from './tenant-write-admission';
-import {currentDatabaseWorkload,databaseReadSignal} from './workload';
+import {cancelStatementsAtDeadline,currentDatabaseReadDeadline,currentDatabaseWorkload,databaseReadSignal} from './workload';
 import {applicationDatabaseBudget} from './capacity';
 import {SharedReadSession,currentSharedRead,independentTransactionsRequired,runInSharedRead,sharedReadDriver,type SharedReadStats} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
@@ -244,6 +244,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
    */
   async function withTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>, options?: { readOnlySnapshot?: true; readSignal?: AbortSignal }): Promise<T> {
     const readSignal = databaseReadSignal(options?.readSignal);
+    const readDeadline = currentDatabaseReadDeadline();
     // Fail fast with a clear, diagnosable error rather than a cryptic "reading 'grants'/'tenantId'"
     // TypeError if a caller ever passes an unresolved session (e.g. a swallowed getSession failure).
     if (!ctx || !ctx.tenantId) {
@@ -259,9 +260,12 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     const ownTransaction = async (): Promise<T> => {
     const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
     let release: (() => void) | undefined;
+    let stopDeadline: (() => void) | undefined;
     try {
       release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal);
       return await db.transaction(async (tx) => {
+      // A hard read deadline (Home cards) cancels this transaction's running statement; see db/workload.ts.
+      if (readDeadline) stopDeadline = cancelStatementsAtDeadline((tx as unknown as { session: Parameters<typeof cancelStatementsAtDeadline>[0] }).session, readDeadline);
       timing?.acquired();
       // A queued read may have disconnected while waiting for a connection.
       readSignal?.throwIfAborted();
@@ -270,14 +274,17 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       return fn(tx);
     }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
     } finally {
+      stopDeadline?.();
       release?.();
       timing?.finished();
     }
     };
     // Inside one request's shared read snapshot, the same identity joins its single transaction. Any other
     // identity, client or incompatible statement keeps this owner's own transaction (db/shared-read.ts).
+    // A shared carrier cancels its statements at its own hard read deadline, so only an owner under that same
+    // deadline (or, for both, none) joins it; an owner under another deadline keeps its own cancellable transaction.
     const shared = currentSharedRead();
-    if (shared?.admits(client!, sharedReadIdentity(ctx, grants, roleNames))) {
+    if (shared?.admits(client!, sharedReadIdentity(ctx, grants, roleNames), readDeadline)) {
       return shared.join(fn as (tx: unknown) => Promise<T>, ownTransaction, readSignal);
     }
     return ownTransaction();
@@ -371,8 +378,10 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     if (!ctx?.tenantId || !ctx.userId || ctx.agent || independentTransactionsRequired()) return work();
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
+    // The hard read deadline (Home cards, db/workload.ts) in force where the snapshot is installed bounds its carrier.
+    const readDeadline = currentDatabaseReadDeadline();
     // A read already inside this identity's snapshot stays in it rather than opening a second one.
-    if (currentSharedRead()?.admits(client!, sharedReadIdentity(ctx, grants, roleNames))) return work();
+    if (currentSharedRead()?.admits(client!, sharedReadIdentity(ctx, grants, roleNames), readDeadline)) return work();
     const session: SharedReadSession<Tx> = new SharedReadSession<Tx>(client!, sharedReadIdentity(ctx, grants, roleNames), () => {
       let finish: () => void = () => {};
       const finished = new Promise<void>((resolve) => { finish = resolve; });
@@ -385,12 +394,18 @@ export function createDb(connectionString: string, options?: { max?: number }) {
         readSignal?.throwIfAborted();
         const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
         let release: (() => void) | undefined;
+        let stopDeadline: (() => void) | undefined;
         try {
           release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal);
           const carrierClient = new Proxy(client!, { get(target, property, receiver) {
             if (property !== 'begin') return Reflect.get(target, property, receiver);
             return (fn: (sqlTx: postgres.TransactionSql) => Promise<unknown>) =>
-              target.begin('isolation level repeatable read read only', (sqlTx) => fn(sharedReadDriver(sqlTx, session as SharedReadSession<unknown>)));
+              target.begin('isolation level repeatable read read only', (sqlTx) => {
+                // As in withTenant's own transaction, the deadline cancels the carrier's running statement and
+                // refuses later ones. It is armed on the driver's own client, beneath the shared statement guard.
+                if (readDeadline) stopDeadline = cancelStatementsAtDeadline({ client: sqlTx } as unknown as Parameters<typeof cancelStatementsAtDeadline>[0], readDeadline);
+                return fn(sharedReadDriver(sqlTx, session as SharedReadSession<unknown>));
+              });
           } });
           await drizzle(carrierClient).transaction(async (carrierTx) => {
             timing?.acquired();
@@ -401,12 +416,13 @@ export function createDb(connectionString: string, options?: { max?: number }) {
             await finished;
           });
         } finally {
+          stopDeadline?.();
           release?.();
           timing?.finished();
         }
       })().catch((error) => { session.poison(); rejectTx(error); });
       return { tx, finish, done };
-    });
+    }, readDeadline);
     try {
       return await runInSharedRead(session as SharedReadSession<unknown>, work);
     } finally {

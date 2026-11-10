@@ -5,6 +5,7 @@ import {useLocale} from 'next-intl';
 import {
  DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,HOME_SHARING_STREAM,isHomeSharingCard,type HomeSharingCard,
 } from '@/lib/employee-home-sharing-cohort';
+import {HOME_CARD_STREAM_STALL_MS,HomeCardReadTimeoutError} from '@/lib/employee-home-delivery';
 
 type Subscribe=(card:HomeSharingCard,signal:AbortSignal,fallback:()=>Promise<unknown>)=>Promise<unknown>;
 type Subscriber={
@@ -12,6 +13,8 @@ type Subscriber={
  fallback:()=>Promise<unknown>;
  complete:(value:unknown)=>void;
  fail:()=>void;
+ /** The stream stopped delivering frames: settle with the card's timeout result, not a refusal. */
+ stall:()=>void;
 };
 const SharingCohort=React.createContext<Subscribe|null>(null);
 const unavailable=()=>new Error('Initial Home sharing unavailable');
@@ -24,6 +27,18 @@ async function streamSharing(
 ){
  const requested=[...subscribers.keys()];
  const seen=new Set<HomeSharingCard>();
+ // Each delivered frame proves the stream is still making progress. Without one for the stall
+ // window, the cards still waiting settle as timed out and the request is cancelled (no retry).
+ let stallTimer:ReturnType<typeof setTimeout>|undefined;
+ const stopStallWatch=()=>{if(stallTimer!==undefined)clearTimeout(stallTimer);stallTimer=undefined;};
+ const watchStall=()=>{
+  stopStallWatch();
+  stallTimer=setTimeout(()=>{
+   stallTimer=undefined;
+   for(const subscriber of [...subscribers.values()])subscriber.stall();
+   controller.abort();
+  },HOME_CARD_STREAM_STALL_MS);
+ };
  function deliver(line:string){
   const frame:unknown=JSON.parse(line);
   if(!frame||typeof frame!=='object'||!('card' in frame)||!('version' in frame)||!('status' in frame)||
@@ -36,6 +51,7 @@ async function streamSharing(
    throw unavailable();
   }
   seen.add(frame.card);
+  watchStall();
   const subscriber=subscribers.get(frame.card);
   if(!subscriber)return;
   if(frame.status===200&&'value' in frame)subscriber.complete(frame.value);
@@ -44,6 +60,7 @@ async function streamSharing(
 
  let reader:ReadableStreamDefaultReader<Uint8Array>|undefined;
  try{
+  watchStall();
   const query=new URLSearchParams({employmentId});
   if(requested.includes('calendar')&&month)query.set('month',month);
   if(requested.length!==DEFAULT_HOME_SHARING_CARDS.length||!DEFAULT_HOME_SHARING_CARDS.every(card=>requested.includes(card))){
@@ -54,6 +71,7 @@ async function streamSharing(
   // validation, before invoking readers. Preserve its individual read protocol.
   // Authority/availability errors and malformed streams never trigger fallback.
   if(response.status===400&&requested.some(card=>card==='today'||card==='calendar')){
+   stopStallWatch(); // Individual reads have no stream; each keeps only its own hard cap.
    await response.body?.cancel();
    await Promise.allSettled([...subscribers.values()].map(async subscriber=>{
     if(subscriber.signal.aborted)return;
@@ -86,6 +104,7 @@ async function streamSharing(
    if(buffer.length>=HOME_SHARING_MAX_FRAME_BYTES)throw unavailable();
   }
  }finally{
+  stopStallWatch();
   for(const subscriber of subscribers.values())subscriber.fail();
   if(reader){
    try{await reader.cancel();}catch{/* Cancellation may already have reached fetch. */}
@@ -132,7 +151,8 @@ function createSharingSubscription(employmentId:string,month?:string):Subscribe 
    finish();
   };
   const abort=()=>settle(()=>reject(unavailable()));
-  const subscriber:Subscriber={signal,fallback,complete:value=>settle(()=>resolve(value)),fail:abort};
+  const subscriber:Subscriber={signal,fallback,complete:value=>settle(()=>resolve(value)),fail:abort,
+   stall:()=>settle(()=>reject(new HomeCardReadTimeoutError()))};
   batch.set(card,subscriber);
   signal.addEventListener('abort',abort,{once:true});
  });

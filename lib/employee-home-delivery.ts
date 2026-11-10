@@ -1,8 +1,21 @@
-/** A deadline belongs to one read, never to the whole Home or to a business command.
- * Readers must forward the supplied signal to their transport. An ignored signal cannot cancel
- * an upstream query, but its late value/error still cannot replace the settled card result.
+/** Home card read limits. This module is the single owner of both numbers: the browser cards, the
+ * streamed Home cohort and the server read routes all import them from here, so the alert a person
+ * sees and the server's abort can never use different values.
+ *
+ * A card keeps its loading state while its read is making progress. It shows its existing timeout
+ * alert only when one of these limits is reached, and never retries on its own:
  */
-export const HOME_CARD_READ_TIMEOUT_MS = 2800;
+/** Hard cap on one card read, measured from when that read starts. In the browser it ends the card's
+ * wait with the timeout alert. On the server it refuses further connection checkouts and cancels the
+ * statement that is still running, so a stuck read releases its connection. The browser starts its
+ * timer before the request reaches the server, so the browser always reaches the cap first. It stays
+ * below the database admission queue wait (30 s, db/capacity.ts) so a capped read leaves that queue
+ * before the queue would time it out. */
+export const HOME_CARD_READ_HARD_CAP_MS = 20_000;
+/** The streamed Home cohort counts as stalled when no new frame arrives within this window (measured
+ * from the request, then from each delivered frame). The cards still waiting on that stream then show
+ * their timeout alert and the stream is cancelled. Reads outside the stream have only the hard cap. */
+export const HOME_CARD_STREAM_STALL_MS = 8_000;
 
 export type HomeCardDelivery<T> =
   | {state:'ready';value:T}
@@ -10,16 +23,53 @@ export type HomeCardDelivery<T> =
   | {state:'cancelled'};
 export type HomeCardReader<T> = (signal:AbortSignal)=>Promise<T>;
 
-/** Invoke exactly one non-mutating reader. No sibling reads, automatic retry, error body or cache. */
+/** A read that ended because a Home read limit was reached, not because its owner refused or failed. */
+export class HomeCardReadTimeoutError extends Error {
+  constructor(){
+    super('The Home card read reached its time limit.');
+    this.name='HomeCardReadTimeoutError';
+  }
+}
+
+/** Focus and visibility usually both report one tab activation. Automatic refreshes this close together
+ * count as one. It only removes that duplicate; it never delays a refresh of an idle card. */
+export const HOME_CARD_REFRESH_DEDUPE_MS = 1_000;
+
+/** What a card reports about its own reads, so automatic refreshes can respect them. */
+export type HomeCardReadActivity={start():void;settle():void};
+
+/** One card's automatic-refresh rule. An automatic refresh (focus, visibility, interval) replaces the
+ * card's current read, so it is skipped while a read is still in flight: that read is already fetching
+ * current data, and cancelling it would restart the wait. An idle card refreshes at once. */
+export function createHomeCardRefreshGate(now:()=>number=()=>performance.now()){
+  let inFlight=0,lastRefresh=-Infinity;
+  return {
+    start(){inFlight++;},
+    settle(){inFlight=Math.max(0,inFlight-1);},
+    allow(){
+      if(inFlight>0)return false;
+      const at=now();
+      if(at-lastRefresh<HOME_CARD_REFRESH_DEDUPE_MS)return false;
+      lastRefresh=at;
+      return true;
+    },
+  };
+}
+
+/** Invoke exactly one non-mutating reader. No sibling reads, automatic retry, error body or cache.
+ * Readers must forward the supplied signal to their transport. A late value or error cannot replace the
+ * settled card result. An error observed at or after the limit is that limit, whichever side saw it first.
+ */
 export function deliverHomeCard<T>(
   read:HomeCardReader<T>,
   options:{signal?:AbortSignal;timeoutMs?:number}={},
 ):Promise<HomeCardDelivery<T>>{
-  const timeoutMs=options.timeoutMs??HOME_CARD_READ_TIMEOUT_MS;
-  if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>3000)throw new RangeError('Invalid Home read deadline.');
+  const timeoutMs=options.timeoutMs??HOME_CARD_READ_HARD_CAP_MS;
+  if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>HOME_CARD_READ_HARD_CAP_MS)throw new RangeError('Invalid Home read deadline.');
   if(options.signal?.aborted)return Promise.resolve({state:'cancelled'});
   return new Promise(resolve=>{
     const controller=new AbortController();
+    const startedAt=performance.now();
     let settled=false;
     let timer:ReturnType<typeof setTimeout>|undefined;
     const finish=(result:HomeCardDelivery<T>)=>{
@@ -37,6 +87,6 @@ export function deliverHomeCard<T>(
       if(!settled)return read(controller.signal);
     }).then(value=>{
       if(!settled)finish({state:'ready',value:value as T});
-    },()=>finish({state:'failed',reason:'unavailable'}));
+    },error=>finish({state:'failed',reason:error instanceof HomeCardReadTimeoutError||performance.now()-startedAt>=timeoutMs?'timeout':'unavailable'}));
   });
 }

@@ -9,7 +9,8 @@ import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,describe,expect,it} from 'vitest';
 import {withIndependentTransactions,withSharedReadSnapshot,withTenant,type SessionContext,type Tx} from '../db/client';
 import {classifySharedStatement,type SharedReadStats} from '../db/shared-read';
-import {adminCtx,closeAll,migrateTestDb,resetDb,seedBase,type Base} from './harness';
+import {withDatabaseReadDeadline} from '../db/workload';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 let a:Base,b:Base,ctxA:SessionContext,ctxB:SessionContext;
 const sessions:SharedReadStats[]=[];
@@ -128,6 +129,44 @@ describe('shared read snapshot',()=>{
   const off=await withIndependentTransactions(()=>withSharedReadSnapshot(ctxA,()=>probe(ctxA,'off')));
   expect(off.iso).toBe('read committed');
   expect(sessions).toHaveLength(2);
+ });
+
+ it('joins only owners under the snapshot\'s own hard read deadline; any other deadline keeps its own transaction',async()=>{
+  const cap=new AbortController(),other=new AbortController();
+  const [own,foreign]=await withDatabaseReadDeadline(cap.signal,()=>withSharedReadSnapshot(ctxA,()=>Promise.all([
+   probe(ctxA,'own'),withDatabaseReadDeadline(other.signal,()=>probe(ctxA,'other deadline'))])));
+  expect(own.iso).toBe('repeatable read');
+  expect(foreign.iso).toBe('read committed');expect(foreign.pid).not.toBe(own.pid);
+  expect(foreign.companies).toEqual(own.companies);
+  expect(sessions[0].joins).toBe(1);
+  sessions.length=0;
+  const [plain,capped]=await withSharedReadSnapshot(ctxA,()=>Promise.all([
+   probe(ctxA,'no deadline'),withDatabaseReadDeadline(other.signal,()=>probe(ctxA,'capped'))]));
+  expect(plain.iso).toBe('repeatable read');
+  expect(capped.iso).toBe('read committed');expect(capped.pid).not.toBe(plain.pid);
+  expect(sessions[0].joins).toBe(1);
+ });
+
+ it('cancels the shared carrier\'s running statement at the snapshot\'s deadline and releases its connection',async()=>{
+  const deadline=new AbortController(),reason=new Error('Fictional Home card hard cap');
+  const sleeping=async()=>(await owner.client`select count(*)::int as n from pg_stat_activity
+   where datname=current_database() and pid<>pg_backend_pid() and state='active' and query like '%pg_sleep(60)%'`)[0].n as number;
+  const started=performance.now();
+  const stuck=withDatabaseReadDeadline(deadline.signal,()=>withSharedReadSnapshot(ctxA,()=>
+   withTenant(ctxA,tx=>tx.execute(sql`select pg_sleep(60)`))));
+  const outcome=stuck.then(()=>'completed',(error:unknown)=>error);
+  while(await sleeping()===0){
+   expect(performance.now()-started).toBeLessThan(20000);
+   await new Promise(resolve=>setTimeout(resolve,25));
+  }
+  deadline.abort(reason);
+  // The carrier's statement is cancelled by PostgreSQL; the owner's rerun is refused at the same deadline.
+  expect(await outcome).not.toBe('completed');
+  expect(performance.now()-started).toBeLessThan(30000);
+  expect(await sleeping()).toBe(0);
+  expect(sessions[0].failures['57014']).toBe(1);
+  // The snapshot settled only after its carrier finished, so its connection is free for an ordinary read.
+  expect((await probe(ctxA,'after')).companies).toEqual([a.companyId]);
  });
 
  it('classifies statements conservatively',()=>{

@@ -48,10 +48,13 @@ export class SharedReadSession<Tx>{
  /** True only while a carrier sets its own transaction-local identity, before any owner can join it. */
  bootstrapping=false;
  readonly stats:SharedReadStats={joins:0,fallbacks:0,statements:0,memoHits:0,refused:{},failures:{},carriers:0};
- constructor(private readonly owner:object,readonly identity:string,private readonly open:()=>SharedReadCarrier<Tx>){}
+ constructor(private readonly owner:object,readonly identity:string,private readonly open:()=>SharedReadCarrier<Tx>,
+  /** The hard read deadline (db/workload.ts) the carrier cancels its statements at, if any. */
+  readonly deadline?:AbortSignal){}
 
- /** Only the same database client and the exact same transaction identity settings. */
- admits(owner:object,identity:string){return !this.closed&&owner===this.owner&&identity===this.identity;}
+ /** Only the same database client, the exact same transaction identity settings and the same hard read deadline
+  * (or none for both): an owner under another deadline would otherwise be cancelled at, or outlive, the wrong one. */
+ admits(owner:object,identity:string,deadline?:AbortSignal){return !this.closed&&owner===this.owner&&identity===this.identity&&deadline===this.deadline;}
  poison(){this.poisoned=true;}
 
  async join<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal?:AbortSignal):Promise<T>{
