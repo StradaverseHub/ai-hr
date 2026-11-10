@@ -7123,6 +7123,13 @@
         "backgroundHelp": "Bạn có thể rời trang này. Nhân viên không thấy gì cho đến khi đợt lương được đóng, và bạn sẽ nhận thông báo khi xử lý xong.",
         "waiting": "Đang chờ dịch vụ xử lý bảng lương. Tiến độ đã được lưu; đừng xử lý lại đợt lương này.",
         "workerUnavailable": "Dịch vụ xử lý bảng lương chưa chạy. Đợt lương đã được lưu và tự động bắt đầu ngay khi dịch vụ chạy."
+      },
+      "reprocessJob": {
+        "title": "Đang xử lý lại ở chế độ nền",
+        "queued": "Đang chờ bắt đầu",
+        "running": "Đang xử lý lại các nhân viên đã chọn",
+        "progress": "Đã xong {done}/{total} nhân viên",
+        "help": "Bạn có thể rời khỏi trang này. Mỗi nhân viên được tính lại riêng, và kết quả sẽ hiện ở đây khi việc xử lý lại hoàn tất."
       }
     },
     "transactions": {
@@ -37333,6 +37340,20 @@
         "cancelled": {
           "title": "Đã hủy thay đổi lịch sử lương",
           "body": "Lịch sử lương không bị thay đổi."
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "Đã xử lý lại bảng lương",
+          "body": "Mở kỳ lương để xem các nhân viên đã được xử lý lại."
+        },
+        "failed": {
+          "title": "Việc xử lý lại bảng lương đã dừng",
+          "body": "Nhân viên đã được xử lý lại vẫn giữ kết quả mới. Mở kỳ lương để xem nơi đã dừng."
+        },
+        "cancelled": {
+          "title": "Đã hủy xử lý lại bảng lương",
+          "body": "Nhân viên đã được xử lý lại vẫn giữ kết quả mới."
         }
       }
     }

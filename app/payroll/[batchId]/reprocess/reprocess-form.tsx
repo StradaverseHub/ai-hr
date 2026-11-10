@@ -85,11 +85,9 @@ const DELIBERATE_SKIP = 'nothingPayable';
  * is the workflow the reporter rejected: the calculation was right and in weekly use, the route to it
  * was not.
  *
- * WHAT IS NOT HERE, AND WHY. There is no progress bar and no poller over
- * /api/payroll/reprocess-job/<id>. `reprocessSelectedEmployees` enqueues a job AND runs it inline, so
- * the submit is synchronous: the honest states are "running" (this form's pending state) and
- * "complete" (the results panel the page renders afterwards). A percentage bar would be drawing a
- * background worker that does not exist.
+ * The submit enqueues a background job (core/payroll-reprocess-job.ts) and lands back on this screen with its id;
+ * the page then shows the job's progress (./reprocess-progress.tsx, polling /api/payroll/reprocess-job/<id>) and
+ * replaces it with the results panel when the job ends.
  */
 export function ReprocessForm({
   batchId,

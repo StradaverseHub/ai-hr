@@ -4,5 +4,6 @@ import type {BulkJobHandler} from './bulk-job-worker';
 import {employeeImportJobHandler} from './employee-import-worker';
 import {payrollProcessJobHandler} from './payroll-processing-job';
 import {payrollHistoryJobHandler} from './payroll-history-job';
+import {payrollReprocessJobHandler} from './payroll-reprocess-job';
 
-export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,payrollProcessJobHandler,payrollHistoryJobHandler];
+export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,payrollProcessJobHandler,payrollHistoryJobHandler,payrollReprocessJobHandler];

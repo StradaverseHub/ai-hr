@@ -7123,6 +7123,13 @@
         "backgroundHelp": "Anda boleh tinggalkan halaman ini. Pekerja tidak melihat apa-apa sehingga larian ditutup, dan anda menerima notis apabila pemprosesan selesai.",
         "waiting": "Menunggu perkhidmatan pemprosesan gaji. Kemajuan disimpan; jangan proses larian ini sekali lagi.",
         "workerUnavailable": "Perkhidmatan pemprosesan gaji belum berjalan. Larian telah disimpan dan bermula secara automatik sebaik sahaja perkhidmatan berjalan."
+      },
+      "reprocessJob": {
+        "title": "Memproses semula di latar belakang",
+        "queued": "Menunggu untuk bermula",
+        "running": "Memproses semula pekerja yang dipilih",
+        "progress": "{done} daripada {total} pekerja selesai",
+        "help": "Anda boleh meninggalkan halaman ini. Setiap pekerja dikira semula secara berasingan, dan keputusan dipaparkan di sini apabila pemprosesan semula selesai."
       }
     },
     "transactions": {
@@ -37333,6 +37340,20 @@
         "cancelled": {
           "title": "Perubahan sejarah gaji dibatalkan",
           "body": "Tiada sejarah gaji diubah."
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "Pemprosesan semula gaji selesai",
+          "body": "Buka larian untuk menyemak pekerja yang diproses semula."
+        },
+        "failed": {
+          "title": "Pemprosesan semula gaji dihentikan",
+          "body": "Pekerja yang telah diproses semula mengekalkan keputusan baharu mereka. Buka larian untuk melihat di mana ia berhenti."
+        },
+        "cancelled": {
+          "title": "Pemprosesan semula gaji dibatalkan",
+          "body": "Pekerja yang telah diproses semula mengekalkan keputusan baharu mereka."
         }
       }
     }

@@ -6399,6 +6399,13 @@
         "backgroundHelp": "You can leave this page. Employees see nothing until the run is closed, and you get a notice when processing finishes.",
         "waiting": "Waiting for the payroll processing service. Progress is saved; do not process the run again.",
         "workerUnavailable": "The payroll processing service is not running yet. The run is saved and starts automatically as soon as it is."
+      },
+      "reprocessJob": {
+        "title": "Reprocessing in the background",
+        "queued": "Waiting to start",
+        "running": "Reprocessing the selected employees",
+        "progress": "{done} of {total} employees done",
+        "help": "You can leave this page. Each employee is recalculated on its own, and the results appear here when the reprocess finishes."
       }
     },
     "reports": {
@@ -37333,6 +37340,20 @@
         "cancelled": {
           "title": "Payroll history change cancelled",
           "body": "No payroll history was changed."
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "Payroll reprocess finished",
+          "body": "Open the run to review the reprocessed employees."
+        },
+        "failed": {
+          "title": "Payroll reprocess stopped",
+          "body": "Employees already reprocessed keep their new results. Open the run to see where it stopped."
+        },
+        "cancelled": {
+          "title": "Payroll reprocess cancelled",
+          "body": "Employees already reprocessed keep their new results."
         }
       }
     }
