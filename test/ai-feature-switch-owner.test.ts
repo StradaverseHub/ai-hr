@@ -20,8 +20,12 @@ const live = (marker: string) => {
     return [...src.matchAll(pattern)].map(match => ({file, src, at: match.index + match[0].lastIndexOf(marker)}));
   });
   expect(definitions.length, marker).toBeGreaterThan(0);
-  const {file, src, at} = definitions.at(-1)!, end = src.indexOf('$$;', src.indexOf('$$', at) + 2);
-  expect(at).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(at);
+  // Bodies may use any dollar-quote tag ($$, $facts$, …); the body ends at the next occurrence of its own tag.
+  const {file, src, at} = definitions.at(-1)!, quote = /\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/g;
+  quote.lastIndex = at; const open = quote.exec(src);
+  expect(open, marker).not.toBeNull();
+  const end = src.indexOf(open![0], open!.index + open![0].length);
+  expect(at).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(open!.index);
   return {file, body: src.slice(at, end)};
 };
 /** The original installed wrapper is an independent byte oracle, not the final filename. */
@@ -51,7 +55,13 @@ describe('one switch owner per AI feature (0692)', () => {
   });
 
   it('reads the live switch key from the table, with no hard-coded CASE left', () => {
-    const context = live('FUNCTION app._ai_control_context_for_purpose(');
+    const purpose = live('FUNCTION app._ai_control_context_for_purpose(');
+    // 4338 keeps the ai-control lock in the purpose function and moves its policy reads into one facts owner.
+    expect(purpose.body).toContain('FROM app._ai_control_context_policy_facts(wanted_feature,forced_pause,pause_only) f');
+    expect(purpose.body).toContain("PERFORM pg_advisory_xact_lock_shared(hashtext('ai-control'),hashtext(tid::text))");
+    expect(purpose.body).toContain("ELSE PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text))");
+    expect(purpose.body).not.toContain('SELECT s.setting_key');
+    const context = live('FUNCTION app._ai_control_context_policy_facts(');
     expect(context.body).toContain('feature_paused:=coalesce(forced_pause,false) OR EXISTS(SELECT 1 FROM public.teras_mandate_control c WHERE c.tenant_id=tid AND c.stopped)');
     const pause=live('FUNCTION app.ai_action_unpaused(').body;
     // The installed centre stop wrapper must survive later pause-discovery optimisation.
@@ -70,8 +80,10 @@ describe('one switch owner per AI feature (0692)', () => {
     expect(wrapper.body).toContain('FROM app._ai_control_context_before_centre(wanted_feature,forced_pause) c');
     expect(wrapper.body).toContain('c.feature_paused OR EXISTS(SELECT 1 FROM public.teras_mandate_control t WHERE t.tenant_id=app.current_tenant_id() AND t.stopped)');
     expect(wrapper.body).not.toContain('SELECT s.setting_key');
-    expect(context.body).not.toMatch(/CASE\s+wanted_feature/);
-    for (const [, key] of settingBacked) expect(context.body).not.toContain(`'${key}'`);
+    for (const body of [purpose.body, context.body]) {
+      expect(body).not.toMatch(/CASE\s+wanted_feature/);
+      for (const [, key] of settingBacked) expect(body).not.toContain(`'${key}'`);
+    }
     expect(context.body).toContain('SELECT s.setting_key INTO switch_key FROM app.ai_feature_setting s WHERE s.feature_id=wanted_feature');
     // A `feature:` row pauses only a settingless feature; the setting is the switch for the others.
     expect(context.body).toContain("IF switch_key IS NULL AND EXISTS(SELECT 1 FROM ai_control_policy p WHERE p.tenant_id=tid AND p.kind='feature'");
