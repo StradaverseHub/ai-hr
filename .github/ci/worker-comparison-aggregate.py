@@ -147,8 +147,11 @@ def check_cell(summary, course, workers, expected, seal=None, archive=None):
     observation = cell.get('observation') if type(cell.get('observation')) is dict else {}
     driver = observation.get('driver') if type(observation.get('driver')) is dict else {}
     harness = driver.get('identity') if type(driver.get('identity')) is dict else {}
+    phases = observation.get('phaseStatus') if type(observation.get('phaseStatus')) is list else []
+    failed = [row.get('label') for row in phases if type(row) is dict and (row.get('exitCode') != 0 or row.get('timedOut') is not False)]
+    failed_phase = failed[0] if failed and type(failed[0]) is str and re.fullmatch(r'[a-z-]{1,64}', failed[0]) else None
     return {'workers': int(workers), 'name': name, 'scope': scope, 'state': cell['state'], 'reason': cell.get('reason'),
-            'passed': passed, 'fixtureDay': cell.get('fixtureDay'), 'host': host, 'processOwner': owner,
+            'passed': passed, 'failedPhase': failed_phase, 'fixtureDay': cell.get('fixtureDay'), 'host': host, 'processOwner': owner,
             'prerequisite': summary['prerequisite'],
             'harness': {key: harness.get(key) for key in ('harnessSha256', 'scenarioSha256')},
             'roleLatency': observation.get('roleLatency')}
@@ -259,7 +262,7 @@ def aggregate(env, root):
     complete = not reasons and all(cell.get('passed') for cell in cells)
     public = []
     for cell in cells:
-        public.append({key: cell[key] for key in ('workers', 'name', 'scope', 'state', 'reason', 'passed', 'fixtureDay',
+        public.append({key: cell[key] for key in ('workers', 'name', 'scope', 'state', 'reason', 'failedPhase', 'passed', 'fixtureDay',
                                                   'host', 'processOwner', 'harness', 'refusal') if key in cell})
     return {'kind': AGGREGATE_KIND, 'releaseEligible': False, 'productionEquivalent': False, 'course': course,
             'identity': expected, 'build': {'result': build_result, 'seal': seal, 'archiveSha256': archive},
@@ -307,7 +310,7 @@ def main(argv, env):
             with open(summary, 'a', encoding='utf-8') as stream:
                 stream.write(summary_markdown(result))
         print(json.dumps({key: result[key] for key in ('course', 'complete', 'steadyPairPassed', 'reasons')}), flush=True)
-        print(json.dumps({'cells': [{key: cell.get(key) for key in ('name', 'state', 'reason', 'host', 'fixtureDay')}
+        print(json.dumps({'cells': [{key: cell.get(key) for key in ('name', 'state', 'reason', 'failedPhase', 'host', 'fixtureDay')}
                                     for cell in result['cells']], 'steadyPair': {key: result['steadyPair'][key] for key in
                                                                                  ('comparable', 'differences', 'fixtureDayMatch')}}),
               flush=True)

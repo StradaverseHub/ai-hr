@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Job-owned disposable containers only: no Homebrew, shared PGDATA or production access.
 set -euo pipefail
+# Comparison cells keep this script's output private; this closed line names only the failing stage.
+aihr_pg_stage=profile-admission
+if [[ "${AIHR_CI_PG_DEVELOPMENT_LOCK_LOG:-0}" == 1 ]]; then
+  trap 'aihr_pg_exit=$?; [[ "$aihr_pg_exit" == 0 ]] || printf "AIHR_CI_POSTGRES_EXIT code=%s stage=%s\n" "$aihr_pg_exit" "$aihr_pg_stage" >&2' EXIT
+fi
 [[ "${GITHUB_ACTIONS:-}" == true && "${CI:-}" == true ]] || { echo 'GitHub CI only' >&2; exit 2; }
 [[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ && "${AIHR_CI_UNIT:-}" =~ ^db-([1-4]|[0-9a-f]{16})$ ]] || exit 2
 operation=${1:-}
@@ -38,10 +43,13 @@ name="aihr-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${AIHR_CI_UNIT}"
 auth_args=(-e POSTGRES_HOST_AUTH_METHOD=trust)
 workload_args=()
 development_log_args=()
+aihr_pg_stage=development-lock-log-admission
 case "${AIHR_CI_PG_DEVELOPMENT_LOCK_LOG:-0}" in
   0) ;;
   1)
-    [[ "$operation" == reset && "${GITHUB_JOB:-}" == selected-tests && "${GITHUB_EVENT_NAME:-}" == workflow_dispatch &&
+    [[ "$operation" == reset && ( "${GITHUB_JOB:-}" == selected-tests ||
+      ( "${GITHUB_JOB:-}" == worker-cell && ( "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-2-4-8 || "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-smoke ) ) ) &&
+      "${GITHUB_EVENT_NAME:-}" == workflow_dispatch &&
       "${GITHUB_RUN_ATTEMPT:-}" == 1 && "$AIHR_CI_UNIT" == db-1 && "$AIHR_CI_PG_PROFILE" == 2 &&
       "${AIHR_CI_PG_DURABLE:-}" == 1 && "${AIHR_CI_PG_STATEMENTS_OWNER:-}" == system-http-profile ]] || exit 2
     development_log_args=(--log-driver json-file --log-opt mode=blocking --log-opt max-size=16m --log-opt max-file=1)
@@ -77,6 +85,7 @@ if docker container inspect "$name" >/dev/null 2>&1; then
   if [[ "${1:-}" == stats ]]; then docker stats --no-stream --format '{{json .}}' "$name"; exit 0; fi
   docker rm -fv "$name" >/dev/null
 fi
+aihr_pg_stage=container-start
 [[ "${1:-}" == stats ]] && { echo 'Missing owned container' >&2; exit 2; }
 [[ "${1:-}" == stop ]] && exit 0
 [[ "$operation" == reset || "$operation" == reset-native-workload ]] || exit 2

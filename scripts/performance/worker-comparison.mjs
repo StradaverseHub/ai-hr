@@ -35,6 +35,15 @@ export function workerComparisonCourse(name) {
   assert(isWorkerComparisonCourse(name), 'Unknown worker comparison course');
   return courses[name];
 }
+const setupPhases = new Set(['postgres', 'migrate', 'organisation-admission-verifier', 'catalogs', 'fixture', 'build', 'certificate', 'cleanup']);
+/** Closed public fact for a failed setup phase. Raw process logs stay private. */
+export function workerSetupFailureFact({ label, code, timedOut, exitSignal, log }) {
+  const marker = typeof log === 'string' ? [...log.matchAll(/^AIHR_CI_POSTGRES_EXIT code=[0-9]{1,3} stage=([a-z-]{1,48})$/gm)].at(-1) : undefined;
+  return { kind: 'WORKER_COMPARISON_SETUP_FAILURE_V1', phase: setupPhases.has(label) ? label : 'unavailable',
+    exitCode: Number.isInteger(code) && code >= 0 && code <= 255 ? code : null, timedOut: timedOut === true,
+    exitSignal: typeof exitSignal === 'string' && /^SIG[A-Z0-9]{1,16}(?![\s\S])/.test(exitSignal) ? exitSignal : null,
+    postgresStage: marker ? marker[1] : null };
+}
 export function workerComparisonCellName(suite, workers, courseName = 'serial-2-4-8') {
   if (!isWorkerComparisonCourse(courseName)) return undefined;
   return courses[courseName].find(cell => cell.suite === suite && String(cell.workers) === workers)?.name;

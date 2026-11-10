@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createParallelWorkerCellModel,isWorkerComparisonCourse,PARALLEL_WORKER_CELL_FRONTIERS_MS,
- workerComparisonCellName,workerComparisonCourse} from './worker-comparison.mjs';
+ workerComparisonCellName,workerComparisonCourse,workerSetupFailureFact} from './worker-comparison.mjs';
 
 const identity={candidateSha:'a'.repeat(40),controllerSha:'a'.repeat(40),runId:123,runAttempt:1};
 const prerequisite={kind:'AUTHENTICATED_FULL_DEVELOPMENT_PREFLIGHT_SCOPE_ONLY',releaseEligible:false,source:identity.candidateSha,
@@ -94,6 +94,15 @@ test('runner specification and host profile are both required',()=>{
   assert.throws(()=>createParallelWorkerCellModel({courseName:'parallel-smoke',workers:'2',identity,prerequisite:null,
    host:{...host,...change},transport,anchorMs:1000,now:()=>1000,observeCell(){},settledForReuse(){},verifySeed(){},retireSeed(){}}));
  }
+});
+
+test('a failed setup phase publishes closed facts and never raw log text',()=>{
+ const secret='postgres://user:secret@10.0.0.1/payroll';
+ assert.deepEqual(workerSetupFailureFact({label:'postgres',code:2,timedOut:false,exitSignal:null,
+  log:secret+'\nAIHR_CI_POSTGRES_EXIT code=2 stage=development-lock-log-admission\n'}),
+ {kind:'WORKER_COMPARISON_SETUP_FAILURE_V1',phase:'postgres',exitCode:2,timedOut:false,exitSignal:null,postgresStage:'development-lock-log-admission'});
+ const foreign=workerSetupFailureFact({label:secret,code:'2;'+secret,timedOut:'yes',exitSignal:secret,log:'AIHR_CI_POSTGRES_EXIT code=2 stage=X '+secret});
+ assert.deepEqual(foreign,{kind:'WORKER_COMPARISON_SETUP_FAILURE_V1',phase:'unavailable',exitCode:null,timedOut:false,exitSignal:null,postgresStage:null});
 });
 
 test('a cell that cannot fit its active frontier is not entered',async()=>{

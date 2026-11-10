@@ -19,7 +19,7 @@ import {isolatedWorkerBudget,isolatedWorkerCpuAdmission} from './worker-budget.m
 import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
 import {projectWorkerNativeLockFailures,validateWorkerDriverFailure,workerDriverFailureFile} from './worker-comparison-failure.mjs';
 import {createParallelWorkerCellModel,createWorkerComparisonModel,isWorkerComparisonCourse,PARALLEL_WORKER_CELL_FRONTIERS_MS,
- PARALLEL_WORKER_COMPARISON_COURSES,workerComparisonCourse} from './worker-comparison.mjs';
+ PARALLEL_WORKER_COMPARISON_COURSES,workerComparisonCourse,workerSetupFailureFact} from './worker-comparison.mjs';
 import {holdDevelopmentBuildSnapshot} from './worker-comparison-build.mjs';
 import {comparisonClock,holdWorkerComparisonFiles,openWorkerComparisonFamily,readComparisonJson} from './worker-comparison-custody.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
@@ -172,6 +172,11 @@ async function run(label,command,args,childEnv=env,timeout=900000){
    if((lstatSync(path).mode&0o7777)===0o600)facts=validateWorkerDriverFailure(readComparisonJson(path,4096));
   }catch{}
   console.log('[system-perf] '+JSON.stringify(facts??{kind:'WORKER_COMPARISON_DRIVER_FAILURE_UNAVAILABLE'}));
+ }
+ if(comparison&&label!=='http-and-browser'&&(code!==0||timedOut)){
+  let log='';
+  try{log=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-4096);}catch{}
+  console.log('[system-perf] '+JSON.stringify(workerSetupFailureFact({label,code,timedOut,exitSignal,log})));
  }
  if(code!==0&&!comparison){const text=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>');writeFileSync(join(out,label+'-failure.txt'),text);}
  assert.equal(timedOut,false,label+' exceeded its unchanged process budget; retain incomplete evidence');
@@ -371,7 +376,7 @@ try{
    AIHR_CI_PG_DEVELOPMENT_LOCK_LOG:'1',GITHUB_JOB:env.GITHUB_JOB};
   for(const key of ['GITHUB_ACTIONS','CI','GITHUB_EVENT_NAME','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','AIHR_CI_UNIT',
    'AIHR_CI_PG_PROFILE','AIHR_CI_PG_CONFIGURED_CAP_BYTES','AIHR_CI_PG_PEAK_BUDGET_BYTES','AIHR_CI_PG_MEMORY_GIB',
-   'AIHR_CI_PG_JIT','AIHR_CI_PG_DURABLE','AIHR_CI_PG_STATEMENTS','AIHR_CI_PG_STATEMENTS_OWNER'])
+   'AIHR_CI_PG_JIT','AIHR_CI_PG_DURABLE','AIHR_CI_PG_STATEMENTS','AIHR_CI_PG_STATEMENTS_OWNER','AIHR_MEASURED_BROWSER_COURSE'])
    if(env[key]!==undefined)resetEnv[key]=env[key];
   developmentReset.admitted=true;
   await run('postgres','/usr/bin/bash',['--noprofile','--norc','-c',developmentResetCommand],resetEnv);

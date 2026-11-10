@@ -106,6 +106,16 @@ class AggregateTests(unittest.TestCase):
                 self.assertFalse(result['complete'])
                 self.assertIn(reason, result['reasons'])
 
+    def test_failed_setup_phase_is_named_publicly(self):
+        failed = cell('2', complete=False, buildSeal=None, seedSettlement=None,
+                      processOwner={'settled': True, 'cellBarriers': 0, 'runnerExitCode': 1},
+                      cellState={'state': 'failed', 'reason': 'build-proof', 'fixtureDay': None, 'observation': {
+                          'phaseStatus': [{'label': 'postgres', 'exitCode': 2, 'timedOut': False}]}})
+        self.publish(failed, cell('4'), cell('8'))
+        result = owner.aggregate(env(), self.root)
+        self.assertEqual(result['cells'][0]['failedPhase'], 'postgres')
+        self.assertIsNone(result['cells'][1]['failedPhase'])
+
     def test_failed_upstream_jobs_fail_even_with_every_summary(self):
         self.publish(cell('2'), cell('4'), cell('8'))
         result = owner.aggregate(env(WORKER_CELL_RESULT='failure'), self.root)
