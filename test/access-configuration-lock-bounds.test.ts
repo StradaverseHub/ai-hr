@@ -107,6 +107,28 @@ describe('bounded Access configuration lock',()=>{
     expect(accessConfigurationLockWaitersForTests()).toBe(0);
   },20_000);
 
+  it('an exclusive holder re-entering through a shared reader is never refused as a waiter while others queue',async()=>{
+    let ready!:()=>void,release!:()=>void;
+    const holding=new Promise<void>(yes=>{ready=yes;}),finish=new Promise<void>(yes=>{release=yes;});
+    let pid=0,reentered:{error:unknown;ms:number}|undefined;
+    const owner=withTenant(ctx,async tx=>{
+      await lockAccessConfigurationTx(tx,ctx.tenantId);
+      [{pid}]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);ready();await finish;
+      // Three exclusive callers are now queued behind this transaction: the per-process waiter bound.
+      reentered=await timed(()=>lockAccessConfigurationReadTx(tx,ctx.tenantId));
+    });
+    await holding;
+    const queued=Array.from({length:ACCESS_CONFIGURATION_MAX_WAITERS},()=>timed(()=>withTenant(ctx,tx=>lockAccessConfigurationTx(tx,ctx.tenantId))));
+    try{
+      await untilWaiters(pid,ACCESS_CONFIGURATION_MAX_WAITERS);
+      expect(accessConfigurationLockWaitersForTests()).toBe(ACCESS_CONFIGURATION_MAX_WAITERS);
+    }finally{release();}
+    await owner;
+    expect(reentered?.error).toBeUndefined();expect(reentered?.ms).toBeLessThan(1000);
+    for(const r of await Promise.all(queued))expect(r.error).toBeUndefined();
+    expect(accessConfigurationLockWaitersForTests()).toBe(0);
+  },20_000);
+
   it('one long holder plus nine Access callers: three wait, six are refused at once, unrelated work and login-style reads still respond',async()=>{
     const h=await holder();
     try{

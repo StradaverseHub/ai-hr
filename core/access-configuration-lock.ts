@@ -52,6 +52,20 @@ async function acquireBounded(tx: Tx, tenantId: string, shared: boolean): Promis
     ? await tx.execute<{acquired: boolean}>(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) as acquired`)
     : await tx.execute<{acquired: boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${key},0)) as acquired`);
   if (fast?.acquired === true) return;
+  // PostgreSQL 16 refuses a no-wait request whose mode conflicts with a queued waiter even when this
+  // transaction already holds the stronger lock, so an exclusive holder re-entering through a shared reader
+  // fails the try. It is no waiter: the exclusive hold already covers the shared request (the blocking call
+  // it replaced was granted at once), and refusing it as busy failed every read of that holder whenever
+  // three other callers were queued (teras-turn-timing, four concurrent turns).
+  if (shared) {
+    const [held] = await tx.execute<{held: boolean}>(sql`select exists(select 1 from pg_catalog.pg_locks l
+      cross join (select hashtextextended(${key},0) as k) target
+      where l.locktype = 'advisory' and l.pid = pg_backend_pid() and l.granted and l.mode = 'ExclusiveLock'
+        and l.database = (select oid from pg_catalog.pg_database where datname = current_database())
+        and l.classid::bigint = ((target.k >> 32) & 4294967295) and l.objid::bigint = (target.k & 4294967295)
+        and l.objsubid = 1) as held`);
+    if (held?.held === true) return;
+  }
   if (waiters >= ACCESS_CONFIGURATION_MAX_WAITERS) throw new AccessConfigurationBusyError();
   waiters++;
   // Counted only until the wait itself returns. A connection that has been granted the lock is no longer
