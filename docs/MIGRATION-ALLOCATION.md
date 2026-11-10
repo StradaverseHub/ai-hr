@@ -8,7 +8,7 @@ reviewed again. The migration creates and replaces SECURITY DEFINER Personnel re
 private-search entries, a set-wise organisation-tag resolver, typed page rows, the exact owner, search
 rows, the bind trigger function and the company filter choices). It adds no table, column, index,
 constraint or trigger and writes no row, so it needs no `online_migration` deferral or backfill. It
-refuses to run unless the four replaced bodies are exactly those 2210, 2450, 4001 and 2451 installed.
+refuses to run unless the five replaced bodies are exactly those 2210, 2450, 4001, 2451 and 2701 installed.
 
 # Joint AI Functions, Attendance and architecture candidate — 10 November 2026 (private proposal)
 

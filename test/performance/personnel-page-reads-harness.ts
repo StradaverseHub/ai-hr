@@ -246,9 +246,10 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
   };
   // Migration 9880 is applied by migrateTestDb: every scenario reads the typed facts.
   await measure('installed');
-  await planPass('installed');
+  // Before the plan pass, which restarts the application's database sessions.
   report.writes = await measureWrites(fixture);
   save();
+  await planPass('installed');
 
   report.elapsedMs = Math.round(performance.now() - started);
   save();
@@ -310,6 +311,7 @@ async function capabilityOnlyViewer(f: PersonnelScaleFixture): Promise<SessionCo
   const t = f.base.tenantId;
   const [person] = await owner.client<{personId: string}[]>`select e.person_id as "personId" from employment e
     where e.tenant_id=${t}::uuid and e.company_id=${f.companies.b}::uuid and e.terminated_on is null
+      and e.resignation_date is null and e.last_working_date is null and e.blacklisted_at is null
       and not exists(select 1 from app_user u where u.person_id=e.person_id) order by e.employee_code limit 1`;
   const [user] = await owner.client<{id: string}[]>`insert into app_user(tenant_id,workos_user_id,person_id)
     values(${t}::uuid,${'fictional-viewer-' + randomUUID()},${person.personId}::uuid) returning id`;

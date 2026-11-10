@@ -205,7 +205,7 @@ function fixtureSql(personPrefix: string, employmentPrefix: string, count: numbe
     from generate_series(1,${count}) n`;
 }
 
-/** The functions migration 9880 adds, and the four reviewed predecessors it replaces in place. */
+/** The functions migration 9880 adds, and the five reviewed predecessors it replaces in place. */
 export const PERSONNEL_FACTS_NEW_FUNCTIONS = [
   'app.personnel_list_rows_for_ids(date,uuid[],uuid[])', 'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])',
   'app.personnel_private_search_entries(text,uuid[])', 'app.personnel_overview_facts(date,uuid[])',
@@ -216,11 +216,13 @@ const PERSONNEL_FACTS_PREDECESSORS = [
   ['2450_personnel_search_projection', 'personnel_search_rows'],
   ['4001_personnel_employment_filter_projection', 'personnel_private_search_bind'],
   ['2451_personnel_company_filter_choices', 'personnel_filter_companies'],
+  ['2701_personnel_typed_overview_filter_fields', 'personnel_overview_filter_fields'],
 ] as const;
 const migrationSql = (tag: string) => readFileSync(new URL('../../db/migrations/' + tag + '.sql', import.meta.url), 'utf8');
 /** The exact statement an applied migration used to install a function (its last definition there). */
 export function predecessorStatement(tag: string, name: string) {
-  const chunks = migrationSql(tag).split('--> statement-breakpoint').filter(chunk => chunk.includes('FUNCTION app.' + name + '('));
+  const chunks = migrationSql(tag).split('--> statement-breakpoint')
+    .filter(chunk => chunk.includes('CREATE OR REPLACE FUNCTION app.' + name + '(') || chunk.includes('CREATE FUNCTION app.' + name + '('));
   expect(chunks.length, tag + ' ' + name).toBeGreaterThan(0);
   return chunks[chunks.length - 1];
 }
@@ -234,7 +236,9 @@ export async function installPreMigrationOwners(): Promise<() => Promise<void>> 
   expect(installed.n, 'migration 9880 is applied before the oracle switch').toBe(PERSONNEL_FACTS_NEW_FUNCTIONS.length);
   await owner.client.begin(async tx => {
     for (const name of PERSONNEL_FACTS_NEW_FUNCTIONS) await tx.unsafe(`drop function ${name}`);
-    for (const [tag, name] of PERSONNEL_FACTS_PREDECESSORS) await tx.unsafe(predecessorStatement(tag, name)).simple();
+    // 2701 created its function; the same statement replaces 9880's body in place (owner and grants kept).
+    for (const [tag, name] of PERSONNEL_FACTS_PREDECESSORS) await tx.unsafe(predecessorStatement(tag, name)
+      .replace('CREATE FUNCTION app.' + name + '(', 'CREATE OR REPLACE FUNCTION app.' + name + '(')).simple();
   });
   return async () => {
     await owner.client.unsafe(migrationSql('9880_personnel_overview_facts')).simple();

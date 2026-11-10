@@ -34,6 +34,8 @@ beforeAll(async()=>{
  const t=fixture.base.tenantId;
  const [person]=await owner.client<{personId:string}[]>`select e.person_id as "personId" from employment e
   where e.tenant_id=${t}::uuid and e.company_id=${fixture.companies.b}::uuid and e.terminated_on is null
+   -- A current employee, so app.login_blocked admits the account.
+   and e.resignation_date is null and e.last_working_date is null and e.blacklisted_at is null
    and not exists(select 1 from app_user u where u.person_id=e.person_id) order by e.employee_code limit 1`;
  const [user]=await owner.client<{id:string}[]>`insert into app_user(tenant_id,workos_user_id,person_id)
   values(${t}::uuid,${'fictional-viewer-'+randomBytes(6).toString('hex')},${person.personId}::uuid) returning id`;

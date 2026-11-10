@@ -826,14 +826,17 @@ function personnelNarrowOverviewQuery(
       join search_revisions r on r.employment_id = x."employmentId" and r.revision = x."filterRevision"
       where x."hasFilterRevision"
     ),` : sql``;
-  // personnelDuplicateAuthorityTx's predicate, over the admitted companies and over the requested scope.
-  const duplicateAuthority = (ids: SQL) => sql`select coalesce(bool_or(app.access_workforce_projection_company(id)
-    and app.is_admin_for(id) and app.personnel_identity_search_permitted(id)), false) from ${ids}`;
+  // personnelDuplicateAuthorityTx's predicate. Over the requested scope it equals the value over the
+  // admitted companies: the projection conjunct is false for every requested company that was not
+  // admitted, so it is evaluated once for both answers.
+  const duplicateAuthority = sql`select coalesce(bool_or(app.access_workforce_projection_company(id)
+    and app.is_admin_for(id) and app.personnel_identity_search_permitted(id)), false) as allowed from companies`;
   return sql`
     with companies as materialized (
       select c.* from app.personnel_filter_companies(${scope}, ${asOf}::date) with ordinality as
         c(id, name, "parentCompanyId", "parentCompany", "businessGroupId", "businessGroup", "businessUnitId", "businessUnit", ordinality)
-    ), ${privateSources} personnel_facts as materialized (
+    ), duplicate_authority as materialized (${duplicateAuthority}),
+    ${privateSources} personnel_facts as materialized (
       select ${read.uuid('employmentId')} as employment_id,
         ${sortValue ?? sql`null::text`} as sort_value,
         lower(${read.value('company')}) as company_sort,
@@ -846,6 +849,9 @@ function personnelNarrowOverviewQuery(
       from ${personnelFactRelation[source]}(${asOf}::date, ${scope}) as workforce_row
       where ${read.uuid('companyId')} in (select id from companies)
     ), page as materialized (
+      -- A typed fact row is one employment: its key, at most one dated assignment (the reviewed
+      -- exclusion constraint both typed relations require) and one row per employment from each set.
+      -- The counts below are therefore counts of distinct employments.
       select employment_id, sort_value, company_sort, name_sort from personnel_facts
       where page_matches order by ${order} limit ${input.limit} offset ${input.offset}
     ), page_details as materialized (${input.limit <= PERSONNEL_PAGE_ROWS_CHUNK ? sql`
@@ -863,9 +869,9 @@ function personnelNarrowOverviewQuery(
     )
     select
       (select coalesce(jsonb_agg(value order by ${order}), '[]'::jsonb) from page_details) as rows,
-      (select count(distinct employment_id)::int from personnel_facts where page_matches) as total,
+      (select count(*)::int from personnel_facts where page_matches) as total,
       (select coalesce(jsonb_object_agg(status, count), '{}'::jsonb) from (
-        select status, count(distinct employment_id)::int as count from personnel_facts
+        select status, count(*)::int as count from personnel_facts
         where facet_matches group by status
       ) as counts) as "byStatus",
       (select coalesce(jsonb_agg(to_jsonb(choice)), '[]'::jsonb) from (
@@ -876,8 +882,8 @@ function personnelNarrowOverviewQuery(
         'parentCompany', "parentCompany", 'businessGroupId', "businessGroupId", 'businessGroup', "businessGroup",
         'businessUnitId', "businessUnitId", 'businessUnit', "businessUnit") order by ordinality), '[]'::jsonb)
         from companies) as companies,
-      (${duplicateAuthority(sql`companies`)}) as "canInspectDuplicates",
-      (${duplicateAuthority(sql`unnest(${scope}) as id`)}) as "duplicateAuthority",
+      (select allowed from duplicate_authority) as "canInspectDuplicates",
+      (select allowed from duplicate_authority) as "duplicateAuthority",
       ${attachedColumn(extras.attach)} as attached,
       ${photos ? sql`(select coalesce(jsonb_agg(to_jsonb(photo)), '[]'::jsonb) from (${photos}) as photo)` : sql`null::jsonb`} as photos
   `;
