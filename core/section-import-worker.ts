@@ -66,7 +66,8 @@ export const sectionImportJobHandler:BulkJobHandler<SectionRowNomination>={
   try{
    const out:StepResult=await applySectionRowTx(tx,ctx,{section,records},step.payload,{appliedPeople:people,step:progress});
    if(out.wrote)people.add(out.personId);
-   return{result:out,counters:out.wrote?{updated:1}:{skipped:1}};
+   const counters:Record<string,number>=out.wrote?{updated:1}:{skipped:1};
+   return{result:out,counters};
   }catch(error){
    // A busy lock or serialization refusal is retried by the kernel; it never becomes a failed row while it clears.
    if(isTransientBulkJobError(error))throw error;
