@@ -20,7 +20,7 @@ const OWNER_URL=required('MIGRATION_DATABASE_URL',process.env.MIGRATION_DATABASE
 for(const url of [required('DATABASE_URL',process.env.DATABASE_URL),OWNER_URL])if(new URL(url).port!==port)throw new Error('Refusing: rehearsal runs only against the disposable cluster port.');
 const TENANT=required('REHEARSAL_TENANT',process.env.REHEARSAL_TENANT),ADMIN=required('REHEARSAL_ADMIN',process.env.REHEARSAL_ADMIN);
 const BASE=Number(process.env.BASE_EMPLOYEES??3000);
-const OPS=(process.env.OPS??'idle_baseline,leave_import,generation,accrual_job,expiry_timer,accrual_timer').split(',').map(s=>s.trim()).filter(Boolean);
+const OPS=(process.env.OPS??'idle_baseline,generation_preview,generation,accrual_job,recalc_job,a2c_job,leave_import,expiry_timer,accrual_timer').split(',').map(s=>s.trim()).filter(Boolean);
 if(process.env.AUDIT_HASH_CHAIN_ENABLED!=='true')process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 const stat=(values:number[])=>{const s=[...values].sort((a,b)=>a-b);return s.length?{n:s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.floor(s.length*.95)],max:s[s.length-1]}:{n:0,p50:0,p95:0,max:0};};
@@ -38,7 +38,9 @@ async function main(){
  const {freshImportContext}=await import('../../core/bank-import-worker');
  const {readEmployeeHomeSummary}=await import('../../core/employee-home-summary');
  const {createLeaveImportJob}=await import('../../core/leave-import-job');
- const {createLeaveGenerationJob,createEarnedAccrualJob}=await import('../../core/leave-cohort-job');
+ const {createLeaveGenerationJob,createEarnedAccrualJob,createLeaveRecalcJob}=await import('../../core/leave-cohort-job');
+ const {previewLeaveGeneration}=await import('../../core/leave-generation');
+ const {updateLeaveType}=await import('../../core/admin');
  const {accrueEarnedLeaveInBatches,expireCarriedLeaveInBatches}=await import('../../core/leave-cohort-run');
  const {accrueEarnedLeave}=await import('../../packs/leave/service');
  const obs=postgres(OWNER_URL,{max:4,onnotice:()=>{}});
@@ -101,6 +103,24 @@ async function main(){
    await measure(op,async()=>({rows:records.length,...await job(await createLeaveImportJob(admin,{records,source:{kind:'paste'}}))}));
   }else if(op==='generation'){
    await measure(op,async()=>job(await createLeaveGenerationJob(admin,{year:Number(process.env.GENERATION_YEAR??2027),targetMode:'criteria',criteria:{}})));
+  }else if(op==='generation_preview'){
+   // The dry run in its own READ ONLY snapshot: no tenant lock should be held at all while it computes.
+   await measure(op,async()=>{const r=await previewLeaveGeneration(admin,{year:Number(process.env.GENERATION_YEAR??2027),targetMode:'criteria',criteria:{}});return{granted:r.granted,reached:r.employeesReached,earnedPosted:r.accrual?.posted??null};});
+  }else if(op==='recalc_job'){
+   const [{id:annual}]=await obs<{id:string}[]>`select id from leave_type where tenant_id=${TENANT}::uuid and code='ANNUAL' and archived_at is null`;
+   await measure(op,async()=>job(await createLeaveRecalcJob(admin,{leaveTypeId:annual,trigger:'rehearsal',asOf:process.env.RECALC_ASOF??'2026-11-30'})));
+  }else if(op==='a2c_job'){
+   // A Leave Year Type save moving Annual Leave to Anniversary-to-Calendar: the save admits the job, which re-projects
+   // every first-year employee staged and releases them at once.
+   const [sick]=await obs<{id:string;name:string;override:string|null}[]>`select id,name,year_cycle_override as override from leave_type where tenant_id=${TENANT}::uuid and code='ANNUAL' and archived_at is null`;
+   if(sick.override==='a2c')await updateLeaveType(admin,{id:sick.id,name:sick.name,yearCycleOverride:null,asOf:'2026-11-30',a2cInBackground:true});
+   await measure(op,async()=>{
+    const started=Date.now();
+    await updateLeaveType(admin,{id:sick.id,name:sick.name,yearCycleOverride:'a2c',asOf:'2026-11-30',a2cInBackground:true});
+    const saveMs=Date.now()-started;
+    const [{id}]=await obs<{id:string}[]>`select id from bulk_job where tenant_id=${TENANT}::uuid and kind='leave_a2c' order by created_at desc limit 1`;
+    return{saveMs,...await job({id})};
+   });
   }else if(op==='accrual_job'){
    await measure(op,async()=>job(await createEarnedAccrualJob(admin,{asOf:'2026-12-31'})));
   }else if(op==='expiry_timer'){
