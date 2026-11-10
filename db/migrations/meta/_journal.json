@@ -5089,13 +5089,20 @@
       "version": "7",
       "when": 1793330004300,
       "tag": "4600_attendance_clock_policy_group_scope",
-        "breakpoints": true
-      },
-      {
+      "breakpoints": true
+    },
+    {
       "idx": 4001,
       "version": "7",
       "when": 1793330004301,
       "tag": "4601_last_login_event_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 4200,
+      "version": "7",
+      "when": 1793330004500,
+      "tag": "4800_ai_shared_leave_groups_read",
       "breakpoints": true
     }
   ]

@@ -1,3 +1,15 @@
+# Shared Leave Groups AI read control — 10 November 2026 MYT (unapplied)
+
+Branch claude/fb-50d9b809-shared-leave-groups reserves `4800_ai_shared_leave_groups_read`
+at idx 4200 / when 1793330004500, one INSERT registering the AI Centre control
+`read:shared_leave_groups`. A read-only survey of 7,071 refs (531 committed journal
+blobs) found committed peers through `4601_last_login_event_index` (idx 4001 /
+when 1793330004301); 250 readable worktree journals added two uncommitted, mutually
+conflicting `4700_*` claims at idx 4100 / when 1793330004400, so this reservation
+sits above them. The source base f07f32dcd ends at `4202` (idx 3602). Recheck the
+published baseline, ordered ledger and peer claims before admission. The reservation
+grants no installation authority.
+
 # Security Center Last Login index — 10 November 2026 MYT (unapplied)
 
 Branch claude/fb-07c98c36-users-account-actions holds the coordinator's

@@ -297,6 +297,10 @@ describe('1ef1cf95 · the group is configured at LEAVE TYPE level, from one labe
     expect(groupConfigSrc.match(/action=\{actions\.create\}/g) ?? []).toHaveLength(1);
     // …and the drag-to-group gesture really is gone, not merely unused.
     expect(groupConfigSrc).not.toMatch(/onDrop|dragStart|draggable/i);
+    // 50d9b809 — and the control is ON A PAGE, not behind a pop-up: the Radix Dialog shell that hid the
+    // whole editor behind a button on Entitlements is gone. Still one create form, still one mechanism.
+    expect(groupConfigSrc).not.toContain("from '@radix-ui/react-dialog'");
+    expect(read('../app/admin/leave-config/shared-groups/page.tsx')).toContain('<LeaveSharedGroupConfig');
   });
 
   it('every locale carries the three shared-group strings', () => {

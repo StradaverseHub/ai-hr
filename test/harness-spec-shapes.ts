@@ -83,9 +83,17 @@ export function v24OrganisationShapedSpec(){
  return {...v23,version:24,offer:{...v23.offer,guidanceTopics:[...v23.offer.guidanceTopics,'organisation_tagging']}};
 }
 
-/** Recover the exact prior published spec, preserving its original digest. */
+/** v29's one topic (50d9b809, the Shared Leave Groups page), appended to operations_status. v29 adds no instruction line. */
+export const V29_TOPIC='shared_leave_groups';
+/** The v29 spec with its one topic removed and the version set to 28: v28 exactly, preserving its recorded digest. */
+export function v28ShapedSpec(){
+ const topicTools={...HARNESS_SPEC.offer.topicTools,operations_status:HARNESS_SPEC.offer.topicTools.operations_status.filter(topic=>topic!==V29_TOPIC)};
+ return {...HARNESS_SPEC,version:28,offer:{...HARNESS_SPEC.offer,topicTools}};
+}
+/** Recover the exact prior published spec, preserving its original digest. 50d9b809: built from v28, not the current spec. */
 export function v26ShapedSpec(){
- return {...HARNESS_SPEC,version:26,offer:{...HARNESS_SPEC.offer,guidanceTopics:HARNESS_SPEC.offer.guidanceTopics.filter(topic=>topic!=='reward_reviews')}};
+ const v28=v28ShapedSpec();
+ return {...v28,version:26,offer:{...v28.offer,guidanceTopics:v28.offer.guidanceTopics.filter(topic=>topic!=='reward_reviews')}};
 }
 export function v27ShapedSpec(){
  const prior=v26ShapedSpec();

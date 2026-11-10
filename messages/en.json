@@ -344,6 +344,7 @@
     "systemLabels": "System Labels",
     "leaveConfig": "Leave config",
     "leaveEntitlements": "Entitlements",
+    "leaveSharedGroups": "Shared Leave Groups",
     "leaveBalanceHealth": "Leave Balance Health",
     "leaveAdjustments": "Leave Adjustments",
     "leaveGenerate": "Generate Entitlement",
@@ -11015,7 +11016,7 @@
       "gradeDragAria": "Drag {name} into a grade group",
       "sharedGroup": {
         "title": "Shared Leave Groups",
-        "manage": "Shared leave groups",
+        "listTitle": "Groups",
         "close": "Close",
         "help": "A shared leave group lets several leave types draw on one pooled allowance — for example \"Special Leave: 10 days a year shared between them, at most 3 days in any one application\". A leave type can belong to only one group.",
         "empty": "No shared leave groups yet.",
@@ -11023,6 +11024,9 @@
         "create": "Create group",
         "createHint": "Pick at least two leave types — a group needs two to share anything.",
         "save": "Save",
+        "edit": "Edit",
+        "editTitle": "Edit · {name}",
+        "cancel": "Cancel",
         "delete": "Delete",
         "deleteConfirmTitle": "Delete this shared leave group?",
         "deleteConfirmDescription": "The leave types keep their own entitlements; they simply stop sharing one allowance. Leave already taken is not affected.",
@@ -13109,6 +13113,7 @@
         "companyRules": "Company rules",
         "specialSetting": "Half-day deduction",
         "entitlementTables": "Entitlement tables",
+        "sharedGroups": "Shared Leave Groups",
         "balanceHealth": "Leave balance health",
         "approvalChain": "Approval chain",
         "replacementLeave": "Replacement leave",
@@ -13172,6 +13177,9 @@
     },
     "leaveConfigSpecialSetting": {
       "pageDescription": "Settings that apply across every leave type rather than belonging to any one of them."
+    },
+    "leaveConfigSharedGroups": {
+      "pageDescription": "Let several leave types draw on one pooled allowance — for example Special Leave: 10 days a year shared by Compassionate and Marriage leave."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Build an approval flow once, decide who it applies to, and see every rule that decides who signs off.",

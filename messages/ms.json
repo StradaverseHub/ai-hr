@@ -344,6 +344,7 @@
     "systemLabels": "Label Sistem",
     "leaveConfig": "Konfigurasi cuti",
     "leaveEntitlements": "Kelayakan",
+    "leaveSharedGroups": "Kumpulan Cuti Dikongsi",
     "leaveBalanceHealth": "Kesihatan Baki Cuti",
     "leaveAdjustments": "Pelarasan Cuti",
     "leaveGenerate": "Jana Kelayakan",
@@ -11015,7 +11016,7 @@
       "gradeDragAria": "Seret {name} ke dalam kumpulan gred",
       "sharedGroup": {
         "title": "Kumpulan Cuti Dikongsi",
-        "manage": "Kumpulan cuti dikongsi",
+        "listTitle": "Kumpulan",
         "close": "Tutup",
         "help": "Kumpulan cuti dikongsi membolehkan beberapa jenis cuti menggunakan satu peruntukan yang sama — contohnya \"Cuti Khas: 10 hari setahun dikongsi bersama, paling banyak 3 hari bagi satu permohonan\". Satu jenis cuti hanya boleh berada dalam satu kumpulan.",
         "empty": "Belum ada kumpulan cuti dikongsi.",
@@ -11023,6 +11024,9 @@
         "create": "Cipta kumpulan",
         "createHint": "Pilih sekurang-kurangnya dua jenis cuti — kumpulan memerlukan dua untuk berkongsi.",
         "save": "Simpan",
+        "edit": "Sunting",
+        "editTitle": "Sunting · {name}",
+        "cancel": "Batal",
         "delete": "Padam",
         "deleteConfirmTitle": "Padam kumpulan cuti dikongsi ini?",
         "deleteConfirmDescription": "Jenis cuti mengekalkan kelayakan masing-masing; ia cuma berhenti berkongsi satu peruntukan. Cuti yang telah diambil tidak terjejas.",
@@ -13109,6 +13113,7 @@
         "companyRules": "Peraturan syarikat",
         "specialSetting": "Potongan separuh hari",
         "entitlementTables": "Jadual kelayakan",
+        "sharedGroups": "Kumpulan Cuti Dikongsi",
         "balanceHealth": "Kesihatan baki cuti",
         "approvalChain": "Rantaian kelulusan",
         "replacementLeave": "Cuti ganti",
@@ -13172,6 +13177,9 @@
     },
     "leaveConfigSpecialSetting": {
       "pageDescription": "Tetapan yang terpakai merentasi setiap jenis cuti dan bukan milik mana-mana satu daripadanya."
+    },
+    "leaveConfigSharedGroups": {
+      "pageDescription": "Benarkan beberapa jenis cuti menggunakan satu peruntukan yang dikongsi — contohnya Cuti Khas: 10 hari setahun dikongsi oleh cuti ihsan dan cuti perkahwinan."
     },
     "leaveConfigApprovalChains": {
       "pageDescription": "Bina satu aliran kelulusan sekali sahaja, tetapkan kepada siapa ia terpakai, dan lihat setiap peraturan yang menentukan siapa meluluskan.",
