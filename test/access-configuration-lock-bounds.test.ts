@@ -7,7 +7,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import {
   ACCESS_CONFIGURATION_LOCK_WAIT_MS,ACCESS_CONFIGURATION_MAX_WAITERS,AccessConfigurationBusyError,
-  accessConfigurationLockWaitersForTests,lockAccessConfigurationReadTx,lockAccessConfigurationTx,
+  accessConfigurationLockWaitersForTests,lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx,
 } from '../core/access-configuration-lock';
 import {lockAttendanceLeaveDependenciesTx} from '../core/attendance';
 import {pgSqlState} from '../lib/db-error';
@@ -22,7 +22,7 @@ async function holder(mode:'exclusive'|'shared'='exclusive'){
   let ready!:(pid:number)=>void,release!:()=>void;
   const start=new Promise<number>(yes=>{ready=yes;}),finish=new Promise<void>(yes=>{release=yes;});
   const done=withTenant(ctx,async tx=>{
-    if(mode==='exclusive')await lockAccessConfigurationTx(tx,ctx.tenantId);else await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+    if(mode==='exclusive')await lockAccessConfigurationWriteTx(tx,ctx.tenantId);else await lockAccessConfigurationReadTx(tx,ctx.tenantId);
     const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);ready(row.pid);await finish;
   });
   return{pid:await start,release,done};
@@ -35,8 +35,8 @@ describe('bounded Access configuration lock',()=>{
   it('uncontended: acquires on the fast path and leaves lock_timeout unchanged',async()=>{
     const seen=await withTenant(ctx,async tx=>{
       await tx.execute(sql`select set_config('lock_timeout','2500ms',true)`);
-      await lockAccessConfigurationTx(tx,ctx.tenantId);
-      await lockAccessConfigurationTx(tx,ctx.tenantId); // re-entrant within one transaction
+      await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+      await lockAccessConfigurationWriteTx(tx,ctx.tenantId); // re-entrant within one transaction
       const [row]=await tx.execute<{v:string}>(sql`select current_setting('lock_timeout') as v`);return row.v;
     });
     expect(seen).toBe('2500ms');
@@ -46,7 +46,7 @@ describe('bounded Access configuration lock',()=>{
   it('a waiter gives up with the retryable 55P03 after the bound, and its connection returns to the pool',async()=>{
     const h=await holder();
     try{
-      const r=await timed(()=>withTenant(ctx,tx=>lockAccessConfigurationTx(tx,ctx.tenantId)));
+      const r=await timed(()=>withTenant(ctx,tx=>lockAccessConfigurationWriteTx(tx,ctx.tenantId)));
       expect(pgSqlState(r.error)).toBe('55P03');
       expect(r.ms).toBeGreaterThanOrEqual(ACCESS_CONFIGURATION_LOCK_WAIT_MS-250);
       expect(r.ms).toBeLessThan(ACCESS_CONFIGURATION_LOCK_WAIT_MS+3000);
@@ -58,7 +58,7 @@ describe('bounded Access configuration lock',()=>{
   it('keeps a tighter limit the caller already set',async()=>{
     const h=await holder();
     try{
-      const r=await timed(()=>withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('lock_timeout','800ms',true)`);await lockAccessConfigurationTx(tx,ctx.tenantId);}));
+      const r=await timed(()=>withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('lock_timeout','800ms',true)`);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);}));
       expect(pgSqlState(r.error)).toBe('55P03');
       expect(r.ms).toBeLessThan(ACCESS_CONFIGURATION_LOCK_WAIT_MS-1000);
     }finally{h.release();await h.done;}
@@ -69,7 +69,7 @@ describe('bounded Access configuration lock',()=>{
       const h=await holder();
       const waiting=withTenant(ctx,async tx=>{
         await tx.execute(sql`select set_config('lock_timeout',${prior},true)`);
-        await lockAccessConfigurationTx(tx,ctx.tenantId);
+        await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
         const [row]=await tx.execute<{v:string}>(sql`select current_setting('lock_timeout') as v`);return row.v;
       });
       await untilWaiters(h.pid,1);h.release();await h.done;
@@ -81,7 +81,7 @@ describe('bounded Access configuration lock',()=>{
   it('one long holder plus nine Access callers: three wait, six are refused at once, unrelated work and login-style reads still respond',async()=>{
     const h=await holder();
     try{
-      const callers=Array.from({length:9},()=>timed(()=>withTenant(ctx,tx=>lockAccessConfigurationTx(tx,ctx.tenantId))));
+      const callers=Array.from({length:9},()=>timed(()=>withTenant(ctx,tx=>lockAccessConfigurationWriteTx(tx,ctx.tenantId))));
       await untilWaiters(h.pid,ACCESS_CONFIGURATION_MAX_WAITERS);
       expect(accessConfigurationLockWaitersForTests()).toBe(ACCESS_CONFIGURATION_MAX_WAITERS);
       // The pool still serves work that does not need the Access lock (the login path takes none).
@@ -111,7 +111,7 @@ describe('bounded Access configuration lock',()=>{
     const h=await holder('shared');
     try{
       // A writer queues behind the shared holder.
-      const writer=timed(()=>withTenant(ctx,tx=>lockAccessConfigurationTx(tx,ctx.tenantId)));
+      const writer=timed(()=>withTenant(ctx,tx=>lockAccessConfigurationWriteTx(tx,ctx.tenantId)));
       await untilWaiters(h.pid,1);
       // A later shared reader must queue behind that writer rather than take the free shared slot.
       const reader=timed(()=>withTenant(ctx,tx=>lockAccessConfigurationReadTx(tx,ctx.tenantId)));

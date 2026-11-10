@@ -18,7 +18,7 @@ import { getTranslations } from 'next-intl/server';
 import { SCHEDULE, scheduleGroupEditPath, scheduleGroupNewPath } from './schedule-panel';
 import { failScheduleGroup, okScheduleGroup } from '../_redirects';
 import { withTenant } from '@/db/client';
-import { lockAccessConfigurationTx } from '@/core/access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from '@/core/access-configuration-lock';
 import { sql } from 'drizzle-orm';
 import { getScheduleRotation, lockAttendanceClockPolicyConfigurationTx, saveScheduleRotation, scheduleAttendanceClockPolicy } from '@/packs/attendance/service';
 import { readScheduleClockPolicyFields } from '../attendance/schedule/clock-policy-fields';
@@ -134,7 +134,7 @@ export async function createAttendanceRuleAction(fd: FormData) {
     }:null;
     section='general';
     created = await withTenant(s, async tx => {
-      await lockAccessConfigurationTx(tx,s.tenantId);
+      await lockAccessConfigurationWriteTx(tx,s.tenantId);
       if (clock) await lockAttendanceClockPolicyConfigurationTx(tx, s);
       if(week){
         const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.principal_snapshot_current() and app.is_group_admin() as allowed`);

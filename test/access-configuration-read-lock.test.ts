@@ -6,7 +6,7 @@ import {listEmployees,listEmployeesPage,listWorkforcePickOptions,countEmployeesB
 import {workforceCompanies,workforceEmploymentAccess,workforceCommandAccess} from '../core/workforce-access';
 import {workforceRecord} from '../core/workforce-record';
 import {withPersonnelRead} from '../core/personnel-read-bounds';
-import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx,lockAccessConfigurationReadTx} from '../core/access-configuration-lock';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
 function barrier(){let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};}
@@ -20,7 +20,7 @@ it('admits simultaneous metadata readers but excludes the existing configuration
  try{
   await bounded(Promise.all(entered.map(value=>value.promise)));
   expect(await tryWriter()).toBe(false);
-  writer=withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,b.tenantId);return true;});
+  writer=withTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,b.tenantId);return true;});
   release[0].resolve();await readers[0];expect(await tryWriter()).toBe(false);
   release[1].resolve();await readers[1];expect(await bounded(writer)).toBe(true);
   expect(await tryWriter()).toBe(true);
@@ -28,7 +28,7 @@ it('admits simultaneous metadata readers but excludes the existing configuration
 });
 it('keeps a metadata reader behind a native exclusive writer on the same tenant key',async()=>{
  await resetDb();const b=await seedBase(),ctx=adminCtx(b),entered=barrier(),release=barrier();
- const writer=withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,b.tenantId);entered.resolve();await release.promise;});
+ const writer=withTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,b.tenantId);entered.resolve();await release.promise;});
  let reader:Promise<unknown>|undefined;
  try{
   await bounded(entered.promise);
@@ -44,7 +44,7 @@ it.each(['companies','employment','command'] as const)('lets standalone %s metad
  await resetDb();const b=await seedBase(),ctx=adminCtx(b);
  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional metadata subject',primaryEmail:'metadata@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const entered=barrier(),release=barrier();
- const holder=withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,b.tenantId);entered.resolve();await release.promise;});
+ const holder=withTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,b.tenantId);entered.resolve();await release.promise;});
  let read:Promise<unknown>|undefined;
  try{
   await bounded(entered.promise);
@@ -100,7 +100,7 @@ it.each(['list','picker','counts','page','personnel','switcher','record','detail
  await resetDb();const b=await seedBase(),ctx=adminCtx(b);
  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional projection subject',primaryEmail:'projection@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const entered=barrier(),release=barrier();
- const holder=withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,b.tenantId);entered.resolve();await release.promise;});
+ const holder=withTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,b.tenantId);entered.resolve();await release.promise;});
  let read:Promise<unknown>|undefined;
  try{
   await bounded(entered.promise);

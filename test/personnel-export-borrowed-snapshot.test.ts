@@ -3,7 +3,7 @@ import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {roleAssignment} from '../db/schema';
 import {hireEmployee,updatePersonProfilePartial} from '../core/org';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {listEmployeesPage,listWorkforcePersonnelPresentationPageTx} from '../core/read';
 import {readPersonnelListExportDetails} from '../core/personnel-list-export-details';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -36,7 +36,7 @@ it('reads the same scoped Workforce rows and real export details behind an exclu
  const today=todayInKualaLumpur(),input={companyIds:[base.companyId],offset:0,limit:25};
  const entered=barrier(),release=barrier();
  const writer=withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,base.tenantId);
+  await lockAccessConfigurationWriteTx(tx,base.tenantId);
   entered.release();
   await release.promise;
  });

@@ -5384,6 +5384,13 @@
       "when": 1793330004042,
       "tag": "4342_attendance_clock_policy_audit_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 4100,
+      "version": "7",
+      "when": 1793330004400,
+      "tag": "4700_access_reader_writer_core",
+      "breakpoints": true
     }
   ]
 }

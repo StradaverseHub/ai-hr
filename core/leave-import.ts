@@ -51,7 +51,7 @@ import { appendEvent, actorOf } from '../db/events';
 import { employment, person, employeeStatutoryMy, leaveType, leaveLedger } from '../db/schema';
 import { isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 import { listLeaveTypes } from './read';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { LeaveDependencyUnavailable, lockLeaveDependenciesTx } from './leave-dependency-lock';
 import { isReplacementLeaveType } from './ess-view';
 import { leaveCreditRegisterLive } from './leave-credit-live';
@@ -397,7 +397,7 @@ export async function commitLeaveImport(
   for (const r of writable) {
     try {
       const written = await withTenant(ctx, async (tx) => {
-        await lockAccessConfigurationTx(tx, ctx.tenantId);
+        await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
         await lockLeaveDependenciesTx(tx, ctx.tenantId, [r.employmentId]);
         // The earlier preview nominates a row; all authorizing source reads and duplicate checks
         // join this actual row transaction after ownership. Do not lock a whole file or retarget.

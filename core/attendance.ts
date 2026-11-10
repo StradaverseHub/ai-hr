@@ -3,7 +3,7 @@ import {createDatabaseAdmission} from '../db/admission';
 import {applicationDatabaseBudget} from '../db/capacity';
 import { externalBreakBounds } from './shift-break-rules';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
-import { lockAccessConfigurationReadTx, lockAccessConfigurationTx, tryLockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationReadTx, lockAccessConfigurationWriteTx, tryLockAccessConfigurationTx } from './access-configuration-lock';
 import { LeaveDependencyUnavailable, lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {assessGeofence,type GeofenceAssessment} from '../lib/geofence-assessment';
@@ -2244,7 +2244,7 @@ function deriveDayFromPunchList(
  * This is dependency protection, not authority: original self/admin/device/workflow gates still run. */
 export async function lockAttendanceLeaveDependenciesTx(tx: Tx, ctx: SessionContext, employmentIds: readonly string[]) {
   const tenantId = ctx.tenantId, ids = [...new Set(employmentIds)].sort();
-  await lockAccessConfigurationTx(tx, tenantId);
+  await lockAccessConfigurationWriteTx(tx, tenantId);
   await lockLeaveDependencyConfigurationTx(tx, tenantId);
   if (ids.length) await lockLeaveDependenciesTx(tx, tenantId, ids);
 }
@@ -3886,7 +3886,7 @@ async function prepareAttendanceCorrectionInputTx(
   // Only this owned submission transaction shares Access. Native configuration writers
   // still conflict with it; the subject, workflow, policy epoch and audit fences remain.
   await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+ctx.tenantId},0))`);
- }else if(access==='exclusive')await lockAccessConfigurationTx(tx,ctx.tenantId);
+ }else if(access==='exclusive')await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  const [subject]=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment)
   .where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId),sharedAccess?and(
    eq(employment.personId,ctx.personId!),
@@ -4407,7 +4407,7 @@ async function withOwnedExclusiveAttendanceWrite<T>(ctx: SessionContext, operati
   }
   record?.(operation,'blockingFallback');
   return withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     return write(tx);
   });
 }
@@ -6877,7 +6877,7 @@ export async function setAttendancePolicy(
     throw new Error('Maximum location uncertainty must be a positive whole number of metres.');
 
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(attendancePolicy)

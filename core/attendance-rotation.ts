@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { and, asc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { lockLeaveDependencyConfigurationTx } from '../packs/leave/service';
 import { attendanceRotation, attendanceRule, attendanceRuleShift, employment, employmentShiftArrangement, rosterAssignment, shift } from '../db/schema';
 import { assertModuleGate } from './module-gate';
@@ -92,7 +92,7 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
   // A new optional Attendance configuration write; shared tx readers stay available to core Leave.
   assertModuleGate(ctx,'attendance');
   const save=async (tx:Tx)=>{
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     const [authority] = await tx.execute(sql`select app.is_group_admin() as allowed`) as unknown as { allowed: boolean }[];
     if (!authority?.allowed) throw new Error('A group-wide HR administrator is required to change tenant-wide schedule rotations.');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);

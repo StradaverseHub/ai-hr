@@ -10,7 +10,7 @@ vi.mock('../lib/authz',async importActual=>({...await importActual<typeof import
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {createCompany,createDepartment} from '../core/admin';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {hireEmployee} from '../core/org';
 import {employeeDetail} from '../core/read';
 import {workforceViewScope} from '../core/workforce-access';
@@ -42,7 +42,7 @@ it('offers bank and passport editors during an open Access writer while retainin
  const held=new Promise<void>(resolve=>{release=resolve;});
  signal.addEventListener('abort',release,{once:true});
  const holder=owner.withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,b.tenantId);
+  await lockAccessConfigurationWriteTx(tx,b.tenantId);
   const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
   announce(backend.pid);
   await held;

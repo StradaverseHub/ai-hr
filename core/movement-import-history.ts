@@ -100,7 +100,7 @@ const itemState=(value:unknown)=>value as MovementImportItemState;
 /** Blockers are stored with the revert's audit detail in the base language, like the other import kinds. */
 const fieldCaption=(field:string)=>movementImportFieldLabel(field,personnelImportLabelResolvers[0]);
 /** Writer locks precede the attempt row lock in revert, the same order as the Movement rollback. */
-async function lockMovementWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
+async function lockMovementWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
 /** The revert's own reason is not known while it is only being checked; the check never commits. */
 const CHECK_REASON='Import revert check';
 const isCorrectionItem=(i:ImportAttemptItemRow)=>!!itemState(i.after).action;

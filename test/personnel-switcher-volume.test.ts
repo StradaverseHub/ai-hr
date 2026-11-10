@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {and,inArray,sql,type SQL} from 'drizzle-orm';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import * as s from '../db/schema';
 import * as readers from '../core/read';
 import {withTenant,type Tx} from '../db/client';
@@ -24,7 +24,7 @@ async function unmaterializedReference(ctx:ReturnType<typeof adminCtx>,tx:Tx,com
   if(query.length>200)throw new RangeError('Invalid employee search');
   const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query);
   if(!raw||!companyIds.length)return [];
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const columns=workforcePickerColumns(),name=sql`lower(${columns.name})`,code=sql`lower(coalesce(${columns.employeeCode},''))`;
   const compact=sql`regexp_replace(${code}, '[[:space:]._-]', '', 'g')`;
   const rank=sql<number>`case

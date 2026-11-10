@@ -19,14 +19,14 @@ import { companyPayrollConfig, employment, payComponent, payrollPolicy, type Pay
 import { assertPayComponentReady } from '../lib/pay-component-contract';
 import { validatePayRule, type PayRuleKind } from './pay-rule';
 import { cleanPayrollPolicyConfig } from './payroll-policy-config';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 
 
 const capturePolicyContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
 /** Ordinary actual policy/assignment write scope is company HR-admin (native RLS), not Payroll partner.
  * Existing entry callers are USER-backed. No new SYSTEM/marker/roles-only grant is introduced. */
 async function ownPolicyWriteTx(tx:Tx,ctx:SessionContext,target:{companyId:string}|{policyId:string}|{employmentId:string}){
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const company='companyId' in target?sql`${target.companyId}::uuid`:'policyId' in target?
     sql`(select p.company_id from public.payroll_policy p where p.id=${target.policyId}::uuid and p.tenant_id=${ctx.tenantId}::uuid)`:
     sql`(select e.company_id from public.employment e where e.id=${target.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid)`;

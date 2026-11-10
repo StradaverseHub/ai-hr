@@ -6,13 +6,13 @@ import {notificationDelivery,notification} from '../db/schema';
 import type {NotificationSweepConnection} from './notice-projection';
 import {assertLetterNotificationConnection} from './letter-notifications';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {resolveEntitlementsTx,isModuleEnabled} from './entitlements';
 import {readNotificationEmailTransport,type NotificationEmailTransport} from './notification-email-delivery';
 import {notificationEmailIpc} from '../lib/notification-email-ipc';
 function context(ctx:SessionContext){if(ctx.userId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(ctx.tenantId))throw Error('Letters email requires its tenant-bound maintenance context.');}
 async function locks(tx:Tx,ctx:SessionContext){
- await assertLetterNotificationConnection(tx);await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
+ await assertLetterNotificationConnection(tx);await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
 }
 export async function deliverLetterEmailsFromSweep(ctx:SessionContext,connection:NotificationSweepConnection,transport:NotificationEmailTransport=notificationEmailIpc){
  context(ctx);

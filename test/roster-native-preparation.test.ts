@@ -153,8 +153,8 @@ it.each(['transfer','new-arrival'] as const)('rechecks reviewed department targe
   }
  });
  let pending:Promise<Response>|undefined;
- const original=accessOwner.lockAccessConfigurationTx;
- const spy=vi.spyOn(accessOwner,'lockAccessConfigurationTx').mockImplementation(async(tx,tenantId)=>{queued();return original(tx,tenantId);});
+ const original=accessOwner.lockAccessConfigurationWriteTx;
+ const spy=vi.spyOn(accessOwner,'lockAccessConfigurationWriteTx').mockImplementation(async(tx,tenantId)=>{queued();return original(tx,tenantId);});
  try{
   await held;pending=post(confirmation);
   await deadline(attempted,5000);release();await writer;

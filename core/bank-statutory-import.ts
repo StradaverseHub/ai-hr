@@ -208,7 +208,7 @@ export function bankStatutoryDiff(before:BankStatutoryState,after:BankStatutoryS
 const itemState=(value:unknown)=>(value??{fields:{}}) as BankStatutoryItemState;
 const shown=(v:string)=>v===''?'(blank)':v;
 /** Same writer locks as the import's row transactions, always before the attempt row lock. */
-async function lockBankStatutoryWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
+async function lockBankStatutoryWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
 /**
  * Eligible only while every field the import changed still holds exactly the value it set. Restores the
  * recorded "before" values through the merged writer, newest import row first. Nothing the import did not

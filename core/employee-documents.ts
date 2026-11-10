@@ -1,5 +1,5 @@
 import {assertWorkforceEmploymentTx} from './workforce-access';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 /**
  * General employee document store (f018ce8d — Personnel → Documents tab redesign).
  *
@@ -197,7 +197,7 @@ export function normalizeEmployeeDocumentMetadata(p:EmployeeDocumentMetadataInpu
 /** Nomination only, then the actual stored-employment authority, before private metadata is read.
  * This is not an Assistant permission or self rule; ordinary native HR callers retain their course. */
 export async function employeeDocumentMetadataSubjectTx(tx:Tx,ctx:SessionContext,documentId:string){
- assertAdmin(ctx);await lockAccessConfigurationTx(tx,ctx.tenantId);
+ assertAdmin(ctx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  const [row]=await tx.select({id:employeeDocument.id,employmentId:employeeDocument.employmentId,letterArtifactId:employeeDocument.letterArtifactId}).from(employeeDocument).where(eq(employeeDocument.id,documentId)).limit(1);
  if(!row)throw new EmployeeDocumentError('Document not found (or not visible).');
  await assertWorkforceEmploymentTx(tx,ctx,row.employmentId,'maintain');
@@ -221,7 +221,7 @@ export async function updateEmployeeDocumentMeta(
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};p=structuredClone(p);
  assertAdmin(ctx);const values=normalizeEmployeeDocumentMetadata(p);
  const run=async(tx:Tx)=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const [existing]=await tx.select({id:employeeDocument.id,employmentId:employeeDocument.employmentId}).from(employeeDocument).where(eq(employeeDocument.id,p.documentId)).limit(1);
   if(!existing)throw new EmployeeDocumentError('Document not found (or not visible).');
   await assertWorkforceEmploymentTx(tx,ctx,existing.employmentId,'maintain');
@@ -240,7 +240,7 @@ export async function replaceEmployeeDocumentContent(
   assertAdmin(ctx);
   assertValidEmployeeDocument(p.mimeType, p.content);
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     const [existing] = await tx
       .select({ id: employeeDocument.id, employmentId: employeeDocument.employmentId })
       .from(employeeDocument)
@@ -276,7 +276,7 @@ export async function replaceEmployeeDocumentContent(
 export async function deleteEmployeeDocument(ctx: SessionContext, p: { documentId: string }): Promise<{ id: string }> {
   assertAdmin(ctx);
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     const [existing] = await tx
       .select({ id: employeeDocument.id, employmentId: employeeDocument.employmentId, title: employeeDocument.title, fileName: employeeDocument.fileName })
       .from(employeeDocument)
@@ -323,7 +323,7 @@ export function listEmployeeDocuments(ctx: SessionContext, employmentId: string)
   const updater = alias(person, 'updater');
   const updaterUser = alias(appUser, 'updater_user');
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     return tx
       .select({
         id: employeeDocument.id,
@@ -361,7 +361,7 @@ export function getEmployeeDocument(
   expectedEmploymentId?: string,
 ): Promise<{ content: Buffer; fileName: string; mimeType: string; employmentId: string } | null> {
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     const [row] = await tx
       .select({
         content: employeeDocument.content,

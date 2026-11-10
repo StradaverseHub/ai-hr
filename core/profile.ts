@@ -9,7 +9,7 @@ import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {pgSqlState} from '../lib/db-error';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
-import {lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import {isProfilePhotoProposal} from '../lib/profile-photo-proposal';
 import {readProfileRoutingPolicy,resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate,ProfileRoutingError,type ProfileRouteDecisionSubject} from './profile-routing';
 import type {ProfilePresentationPolicy} from './profile-edit-policy';
@@ -364,7 +364,7 @@ export async function updateOwnContact(
  */
 type OwnProfileChangeInput={employmentId:string;proposed:ProfileChangeProposed|EssProfileProposal;attachments?:import('../lib/profile-attachment').ProfileAttachmentInput[]};
 async function prepareProfileChangeRequestTx(tx:Tx,ctx:SessionContext,p:OwnProfileChangeInput){
-  await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
   const {ownProfileSubjectTx,prepareProfileProposalTx}=await import('./profile-edit');
   await ownProfileSubjectTx(tx,ctx,p.employmentId);
@@ -479,9 +479,9 @@ export async function decideProfileChange(
   const reason = clean(p.reason);
   if (p.decision === 'rejected' && reason === null) throw new ProfileChangeReasonRequiredError();
   const run=async (tx:Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Serialize the decision with configuration revocation before loading any proposal or master data.
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     ctx=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
     const [req] = await tx
       .select()
@@ -595,7 +595,7 @@ export async function decideProfileChange(
 /** Bounded decision metadata for the existing Personnel rejection workflow. Values never leave this
  * owner. Photo/evidence/register proposals remain on the native queue. This is not new authority. */
 export async function profileRequestRejectionContextTx(tx:Tx,ctx:SessionContext,requestId:string,mode:'pending'|'recorded'='pending'){
- await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
  const [req]=await tx.select().from(profileChangeRequest).where(and(eq(profileChangeRequest.id,requestId),eq(profileChangeRequest.tenantId,ctx.tenantId),sql`octet_length(${profileChangeRequest.proposed}::text)<=65536`)).limit(1).for('update');
  if(!req||req.status!==(mode==='pending'?'pending':'rejected')||mode==='pending'&&(req.decisionReason!==null||req.decidedAt!==null)||req.personId===ctx.personId)throw new EssProfileError('unavailable');
@@ -675,7 +675,7 @@ export async function setPersonComplianceFields(
   if (Object.keys(personSet).length === 0) throw new Error('Nothing to change.');
 
   const run = async (tx:Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockProfileValueWritesTx(tx,ctx.tenantId);
     if(!administrator){const [direct]=await tx.execute<{allowed:boolean}>(sql`select app.profile_direct_subject(${p.employmentId}::uuid) as allowed`);if(!direct?.allowed)throw new EssProfileError('permission');}

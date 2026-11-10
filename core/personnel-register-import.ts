@@ -1,4 +1,4 @@
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {workforceEmploymentPredicate} from './workforce-access';
 import {addQualification,updateQualification,addEmergencyContact,updateEmergencyContact} from './workforce-registers';
 import {and,eq,inArray,sql} from 'drizzle-orm';
@@ -99,11 +99,11 @@ export async function analyzeRegisterImportTx(tx:Tx,kind:PersonnelRegisterKind,r
 }
 export function validateRegisterImport(ctx:SessionContext,kind:PersonnelRegisterKind,records:ImportRecord[],options?:{subjects:RegisterSubject[];newEmployees?:boolean}) {
   assertBounds(records);
-  return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return analyzeRegisterImportTx(tx,kind,records,options);});
+  return withTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,ctx.tenantId);return analyzeRegisterImportTx(tx,kind,records,options);});
 }
 /** Caller supplies only freshly created subjects or a freshly authorized/locked section subject. */
 export async function writeRegisterRowsTx(tx:Tx,ctx:SessionContext,kind:PersonnelRegisterKind,rows:Resolved[],created?:Map<string,{employmentId:string;personId:string}>) {
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   let count=0;
   for(const row of rows) {
     if(!row.preview.ok || !row.subject)throw new Error('Register row was not validated.');
@@ -137,7 +137,7 @@ export async function commitRegisterSection(ctx:SessionContext,kind:PersonnelReg
   assertBounds(records);
   let updated=0;let fileErrors:string[]=[];
   try {await withTenant(ctx,async tx=>{
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     const subjects=await loadSubjectsTx(tx,records,true);
     const analyzed=await analyzeRegisterImportTx(tx,kind,records,{subjects});
     if(analyzed.preview.fileErrors.length){fileErrors=analyzed.preview.fileErrors;return;}
@@ -149,7 +149,7 @@ export async function commitRegisterSection(ctx:SessionContext,kind:PersonnelReg
 /** IDs are obtained from authorized current records, never inferred from array positions or names. */
 export function registerRecordsForEmployee(ctx:SessionContext,kind:PersonnelRegisterKind,employeeCode:string):Promise<ImportRecord[]> {
   return withTenant(ctx,async tx=>{
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     const subjects=await loadSubjectsTx(tx,[{employee_code:employeeCode}],false);
     if(subjects.length!==1 || !subjects[0].valid)throw new Error('Choose one active Employee ID in your administered companies.');
     const subject=subjects[0];

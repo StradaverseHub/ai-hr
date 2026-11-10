@@ -12,7 +12,7 @@ import {mobileRewardPersonBlock} from './mobile-review-projection';
 import type { Tx as AiReadTx } from '../../db/client';
 import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
 import {withModulePresentationRead} from '../../core/module-presentation-read';
-import { lockAccessConfigurationTx } from '../../core/access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from '../../core/access-configuration-lock';
 import { isAdmin } from '../../lib/authz-model';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
@@ -653,7 +653,7 @@ export async function createRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitI
 /** Internal transaction seam used by approved bulk creation; SQL rechecks all authority and frozen bindings. */
 export async function createRewardUnitTx(tx:Tx,ctx:SessionContext,raw:PlannedRewardUnitInput){
  const version=idSchema.parse(raw.approvedPlanVersionId),companyId=idSchema.parse(raw.companyId),businessUnitId=idSchema.parse(raw.businessUnitId);
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  await setupLock(tx,ctx,'plans');
  await setupLock(tx,ctx,'pat:'+companyId+':'+setupYear.parse(raw.year));
  const resolved=await approvedPlanPolicyTx(tx,ctx,version,companyId,businessUnitId);
@@ -1104,7 +1104,7 @@ export async function decideRewardUnit(ctx: SessionContext, unitId: string, revi
 export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, action: 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', reason: string, acknowledged = false) {
   assertModuleGate(ctx, 'rewards');
   z.enum(['submit', 'approve', 'return', 'reject', 'withdraw']).parse(action); reason = z.string().trim().max(4000).parse(reason);
-    idSchema.parse(unitId);const [uploadKind]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from reward_uploaded_review where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()) as present`);if(uploadKind?.present)await tx.execute(sql`select app.access_workforce_write_lock()`);await funding(tx, unitId, true);
+    idSchema.parse(unitId);const [uploadKind]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from reward_uploaded_review where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()) as present`);if(uploadKind?.present)await tx.execute(sql`select app.access_configuration_write_lock()`);await funding(tx, unitId, true);
     const { unit, roles, entries } = await load(tx, unitId, true);
   const [preparationAdmission]=await tx.execute<{value:RewardPreparationView|null}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
   if(preparationAdmission?.value?.required&&!preparationAdmission.value.released)throw new RewardError('Preparation must be independently checked and released before a review decision.'); assertRevision(unit, revision);
@@ -1301,7 +1301,7 @@ export async function postRewardUnit(ctx: SessionContext, unitId: string, revisi
   return withRewardsTenant(ctx, async tx => {
     // Posting can enact an approved grade change. Own the graph interval before funding/source,
     // credit/Payroll or employment locks rather than upgrading at the later grade-writer call.
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const prepared=await prepareRewardPostTx(tx,ctx,unitId,revision,batchId);
     if(prepared.alreadyPosted)return {alreadyPosted:true};
@@ -1339,7 +1339,7 @@ async function reviewedRewardPostAuthorityTx(tx:Tx,ctx:SessionContext,unitId:str
 /** Advisory post-selection metadata only. No entries, compensation, budgets or hidden-person
  * arrays are loaded. Native prepare remains the sole posting eligibility/calculation owner. */
 export async function reviewedRewardPostChoiceMetadataTx(tx:Tx,supplied:SessionContext){
- const ctx=captureRewardPostContext(supplied);await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await reviewedRewardPostPrincipalTx(tx,ctx);
+ const ctx=captureRewardPostContext(supplied);await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await reviewedRewardPostPrincipalTx(tx,ctx);
  const nominees=await tx.select({id:rewardUnit.id}).from(rewardUnit).where(and(eq(rewardUnit.tenantId,ctx.tenantId),isNull(rewardUnit.deletedAt),eq(rewardUnit.status,'approved'),sql`exists(select 1 from app.reward_roles(${rewardUnit.id}) as assigned(role) where assigned.role='payroll')`,sql`app.reward_admin(${rewardUnit.companyId})`)).orderBy(asc(rewardUnit.id)).limit(21);
  const units=[];
  for(const nominated of nominees.slice(0,20)){
@@ -1353,7 +1353,7 @@ export async function reviewedRewardPostChoiceMetadataTx(tx:Tx,supplied:SessionC
 }
 export async function lockReviewedRewardPostSourceTx(tx:Tx,supplied:SessionContext,unitId:string){
  const ctx=captureRewardPostContext(supplied),id=idSchema.parse(unitId);
- await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  // Minimal selection/current native role and company authority BEFORE funding, private entries or employee locks.
  const nominee=await reviewedRewardPostAuthorityTx(tx,ctx,id);
  if(nominee.parentUnitId)await tx.select({id:rewardUnit.id}).from(rewardUnit).where(eq(rewardUnit.id,nominee.parentUnitId)).for('update',{noWait:true});
@@ -1430,7 +1430,7 @@ export async function createOffcycleReview(ctx: SessionContext, parentId: string
   if (new Set(p.entryIds).size !== p.entryIds.length) throw new RewardError('Select each employee only once.');
   if (p.exceptionReason && (p.kind !== 'adhoc' || p.exceptionReason.length < 30)) throw new RewardError('A budget exception is available only for an ad-hoc request and needs a reason of at least 30 characters.');
   return withRewardsTenant(ctx, async tx => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     const { unit: parent, roles, entries } = await load(tx, parentId, true);await assertRewardCapabilityTx(tx,parentId,'offcycle.raise');
     if (parent.kind !== 'annual' || parent.status !== 'posted') throw new RewardError('Use a posted annual review as the funding source.');
     if (!roles.some(r => ['bu', 'bg', 'gr'].includes(r))) throw new RewardError('BU, BG or Group Rewards access is required.');
@@ -1882,7 +1882,7 @@ export async function adoptConfirmedCompanyPat(ctx:SessionContext,unitId:string,
 }
 /** Internal extension seam: scoped read or locked mutation with native state/calculation ownership. */
 export async function withRewardReviewExtension<T>(ctx:SessionContext,unitId:string,mutating:boolean,fn:(tx:Tx,state:Awaited<ReturnType<typeof load>>,calculated:Awaited<ReturnType<typeof calculateUnit>>,commands:{recalculate:(entries:RewardEntry[])=>ReturnType<typeof calculateUnit>;touch:()=>Promise<void>;stamp:(action:string,payload:Record<string,unknown>)=>Promise<unknown>})=>Promise<T>):Promise<T>{
- return withRewardsTenant(ctx,async tx=>{if(mutating&&aiCentreActivity(ctx.tenantId))await assertAiCentreRunningTx(tx,ctx);if(mutating)await tx.execute(sql`select app.access_workforce_write_lock()`);const state=await load(tx,unitId,mutating);const calculated=await calculateUnit(tx,state.unit,state.entries);return fn(tx,state,calculated,{recalculate:(entries)=>calculateUnit(tx,state.unit,entries),touch:()=>touch(tx,unitId),stamp:(action,payload)=>stamp(tx,ctx,unitId,action,payload)});});
+ return withRewardsTenant(ctx,async tx=>{if(mutating&&aiCentreActivity(ctx.tenantId))await assertAiCentreRunningTx(tx,ctx);if(mutating)await tx.execute(sql`select app.access_configuration_write_lock()`);const state=await load(tx,unitId,mutating);const calculated=await calculateUnit(tx,state.unit,state.entries);return fn(tx,state,calculated,{recalculate:(entries)=>calculateUnit(tx,state.unit,entries),touch:()=>touch(tx,unitId),stamp:(action,payload)=>stamp(tx,ctx,unitId,action,payload)});});
 }
 /** Read-only extension projection; unlike getRewardUnit it performs no access-observation write. */
 export function readOnlyRewardProjection(ctx:SessionContext,unitId:string){return withRewardsTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return reviewProjectionTx(tx,ctx,unitId);});}

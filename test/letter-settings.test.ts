@@ -7,7 +7,7 @@ import {saveLetterPolicy,getLetterPolicy,listLetterPolicies,saveLetterPermission
 import type {LetterPolicy} from '../lib/letter-workflow';
 import type {NotificationEmailTransport} from '../core/notification-email-delivery';
 import {letterNavigation} from '../core/letter-navigation';
-import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {companyDeleteStatus,listReadOnlyWorkforcePickPageTx} from '../core/read';
 import {hireEmployee} from '../core/org';
 import {createCompany,deleteCompany} from '../core/admin';
@@ -97,7 +97,7 @@ it.each(['company permissions','employee picker'] as const)('finishes the %s dis
   try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Letter permission lock test timed out')),5000);})]);}
   finally{clearTimeout(timer);}
  };
- for(const lock of [lockAccessConfigurationReadTx,lockAccessConfigurationTx]){
+ for(const lock of [lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx]){
   const entered=barrier(),release=barrier();
   let read:ReturnType<typeof readSelection>|undefined;
   const held=withTenant(ctx,async tx=>{

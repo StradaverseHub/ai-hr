@@ -10,7 +10,7 @@ import { assistantFunctionAllowed,withAssistantRead, withAssistantReadTx, withAs
 import { setAiCentreReadControl } from '../core/ai-centre-inventory';
 import { ASSISTANT_TOOLS } from '../core/assistant-tools';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
-import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from '../core/access-configuration-lock';
 import { setAiFeature } from '../core/ai-management';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -189,7 +189,7 @@ describe('explicit Assistant read ownership', () => {
     let ready!: () => void, failed!: (error: unknown) => void, release!: () => void;
     const started = new Promise<void>((resolve, reject) => { ready = resolve; failed = reject; }), held = new Promise<void>(resolve => { release = resolve; });
     const watchdog = setTimeout(release, 10_000);
-    const holder = withTenant(a, async tx => { await lockAccessConfigurationTx(tx, base.tenantId); ready(); await held; });
+    const holder = withTenant(a, async tx => { await lockAccessConfigurationWriteTx(tx, base.tenantId); ready(); await held; });
     void holder.catch(failed);
     let reading: Promise<Awaited<ReturnType<typeof canonical.myEmployments>>> | undefined;
     try {

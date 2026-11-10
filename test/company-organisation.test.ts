@@ -1,5 +1,5 @@
 import {createBusinessUnit} from '../core/admin';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {derivedOrganisationForForm} from '../core/derived-organisation-display';
 import {setLabelGlobal} from '../core/system-labels';
 import {assertWorkforceCompanyTx,WorkforceAccessError} from '../core/workforce-access';
@@ -80,7 +80,7 @@ it('shows dated organisation fields during an open Access writer and refuses sta
  const held=new Promise<void>(resolve=>{release=resolve;});
  signal.addEventListener('abort',release,{once:true});
  const holder=owner.withTenant(adminCtx(b),async tx=>{
-  await lockAccessConfigurationTx(tx,b.tenantId);
+  await lockAccessConfigurationWriteTx(tx,b.tenantId);
   const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
   announce(backend.pid);
   await held;

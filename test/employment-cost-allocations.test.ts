@@ -6,7 +6,7 @@ import {hireEmployee,transferEmploymentCompanyTx} from '../core/org';
 import {createCostCenter,deleteCostCenter,listCostCenters,listCostCentersForLabels} from '../core/admin';
 import {setLabelCriteria} from '../core/system-labels';
 import {getEmploymentCostAllocations,previewEmploymentCostAllocations,saveEmploymentCostAllocations} from '../core/employment-cost-allocations';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {assertWorkforceEmploymentTx,WorkforceAccessError} from '../core/workforce-access';
 import {pgSqlState} from '../lib/db-error';
 import {previewCostAllocationImport,costAllocationWorkbookReferences,previewCostAllocationUpload,confirmCostAllocationUpload} from '../core/cost-allocation-import';
@@ -93,7 +93,7 @@ describe('Effective-dated employment cost allocation owner',()=>{
   const ready=new Promise<number>(resolve=>{announce=resolve;}),held=new Promise<void>(resolve=>{release=resolve;});
   signal.addEventListener('abort',release,{once:true});
   const holder=owner.withTenant(a,async tx=>{
-   await lockAccessConfigurationTx(tx,a.tenantId);
+   await lockAccessConfigurationWriteTx(tx,a.tenantId);
    const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
    announce(backend.pid);await held;
   });
@@ -134,7 +134,7 @@ describe('Effective-dated employment cost allocation owner',()=>{
   expect(await pendingWrite).toEqual({ok:true});
   expect(await getEmploymentCostAllocations(scoped,employmentId)).toMatchObject({revision:2,rows:[{costCenterId:cc2}],total:10000});
   await owner.withTenant(a,async tx=>{
-   await lockAccessConfigurationTx(tx,a.tenantId);
+   await lockAccessConfigurationWriteTx(tx,a.tenantId);
    await tx.update(s.roleAssignment).set({companyId:otherCompany.id}).where(eq(s.roleAssignment.appUserId,userId));
   });
   // A previously valid context must never replay its old company grant in the next snapshot.

@@ -12,7 +12,7 @@ import type {CheckInSchedulingSubject} from './checkin-scheduling-custody-adapte
 export const checkInSchedulingUnavailable=():never=>{throw Error('Please reopen the scheduling review.');};
 const fail=checkInSchedulingUnavailable,hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 type Subject=CheckInSchedulingSubject&{employeeName:string;companyName:string};
-async function interval(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);return fresh;}
+async function interval(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);return fresh;}
 async function subject(tx:Tx,ctx:SessionContext,id:string):Promise<Subject>{
  await assertCanDecide(tx,ctx,id,'check-in');
  const [row]=await tx.execute<{scope:Subject|null}>(sql`select app.assistant_checkin_schedule_scope(${id}::uuid) as scope`);if(!row?.scope)return fail();return row.scope;

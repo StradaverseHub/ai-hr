@@ -1,3 +1,15 @@
+# Reader/writer Access lock — 10 November 2026 (provisional, unapplied)
+
+Branch `claude/access-reader-writer-20261110` provisionally claims `4700_access_reader_writer_core`
+at idx 4100 / when 1793330004400, with `4701`+ held for the same branch's later waves. A read-only
+survey of 7,145 refs (3,979 distinct heads), 529 distinct committed journal blobs and 247 readable
+worktree journals found highest claim 4601 / idx 4001 / when 1793330004301 (`4601_last_login_event_index`).
+The candidate base `7b585515d` ends at idx 3742 / when 1793330004042. Phase 0 and phase 1 of the same
+Access-lock programme were in progress when this survey ran and may claim overlapping numbers; the
+integration owner must reconcile them. The claim sits above every surveyed peer, so a lower peer that
+lands later must move above it rather than be silently skipped. Applied SQL and the journal prefix
+are unchanged. This grants no deployment authority; confirm peers and the installed ledger at admission.
+
 # Joint AI Functions, Attendance and architecture candidate — 10 November 2026 (private proposal)
 
 The exact Streamline AI Functions and Schedule Group candidate

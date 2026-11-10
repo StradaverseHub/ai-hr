@@ -154,7 +154,7 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
 /** Validation and baseline comparison run again at approval, never trusting the editor or stored JSON. */
 export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employmentId:string,raw:unknown,approval=false,storedLegacy=false){
  raw=structuredClone(raw); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
- await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  let proposal=storedLegacy?null:parseEssProfileProposal(raw);const policy=await freshProfileEditPolicyTx(tx,ctx);
  let subject:Awaited<ReturnType<typeof ownProfileSubjectTx>>['subject'],master:typeof person.$inferSelect;
  if(approval){

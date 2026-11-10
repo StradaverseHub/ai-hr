@@ -8,7 +8,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {setTenantSetting,TenantSettingError} from '../core/tenant-settings';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let base:Base;
 // seedBase installs this actual group-wide assignment; flattened roles alone are not group authority.
@@ -24,7 +24,7 @@ async function heldAccess(revokeWithinOwnedTransaction=false){
  const watchdog=setTimeout(()=>{failed(Error('owned setting Access handshake timed out'));release();},10000);
  let revokeActualAuthority:()=>Promise<void>=async()=>{throw Error('Revocation requires the owned owner transaction');};
  const hold=async(tx:Tx)=>{
-  await lockAccessConfigurationTx(tx,base.tenantId);
+  await lockAccessConfigurationWriteTx(tx,base.tenantId);
   if(revokeWithinOwnedTransaction)revokeActualAuthority=async()=>{
    // role_assignment is the actual app.principal owner. Its BEFORE DELETE trigger joins Access;
    // perform this fixture revocation in the SAME owned holder transaction, never a blocked peer.
@@ -92,7 +92,7 @@ describe('current actual authority for tenant settings',()=>{
  it('joins an already Access-owned caller transaction and rolls setting/event back with that caller',async()=>{
   const ctx=groupCtx(),before=await state();
   await expect(withTenant(ctx,async tx=>{
-   await lockAccessConfigurationTx(tx,base.tenantId);
+   await lockAccessConfigurationWriteTx(tx,base.tenantId);
    await setTenantSetting(ctx,{key:'claims.input_triage_enabled',value:true},tx);
    const [stored]=await tx.select().from(schema.tenantSetting).where(eq(schema.tenantSetting.key,'claims.input_triage_enabled'));
    expect(stored?.value).toBe(true);throw Error('fixture caller rollback');

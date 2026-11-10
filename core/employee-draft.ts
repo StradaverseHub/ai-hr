@@ -1,7 +1,7 @@
 import {setTimeout as delay} from 'node:timers/promises';
 import {pgSqlState} from '../lib/db-error';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
-import {lockAccessConfigurationTx,tryLockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx,tryLockAccessConfigurationTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {assertWorkforceCompanyTx} from './workforce-access';
 import {hireEmployee,setEmploymentInfo} from './workforce-commands';
@@ -447,7 +447,7 @@ export async function saveEmployeeDraft(
   assertAdmin(ctx);
   const currentStep = Math.min(Math.max(Math.trunc(p.currentStep) || 1, 1), 20);
   const run=async(tx:Tx)=>{
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     const [existing]=p.id?await tx.select({id:employeeDraft.id,companyId:employeeDraft.companyId,reservedEmployeeCode:employeeDraft.reservedEmployeeCode,data:employeeDraft.data}).from(employeeDraft).where(and(eq(employeeDraft.id,p.id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update'):[];
     if(p.id&&!existing)throw new DraftActivationValidationError('draft_unavailable',[]);
     let data =
@@ -596,7 +596,7 @@ export async function createEmployeeDraftWithReservedCode(
   }
 
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
     let code: string;
     let configId: string | null = null;
@@ -722,7 +722,7 @@ export async function discardEmployeeDraft(
     // Match create/save: authority precedes Onboarding's audit and case locks.
     // The closed delete port repeats this native barrier; taking it here prevents
     // a discard from holding audit custody while another writer holds authority.
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     const [row] = await tx
       .select({
         reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
@@ -852,7 +852,7 @@ export async function saveAndCompleteEmployeeDraft(ctx:SessionContext,p:{id?:str
   if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new DraftActivationValidationError('permission',[]);
   if(p.id&&!UUID_RE.test(p.id))throw new DraftActivationValidationError('draft_unavailable',[]);
   const run=async(tx:Tx)=>{
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // saveEmployeeDraft acquires and retains this exact row's lock before pinning or saving input.
     const saved=await saveEmployeeDraft(ctx,p,tx);
@@ -886,7 +886,7 @@ export type EmployeeDraftActivationPreview={
 export async function previewSavedEmployeeDraftActivationTx(tx:Tx,supplied:SessionContext,p:{id:string;data:EmployeeDraftData;currentStep:number}):Promise<EmployeeDraftActivationPreview>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
  // Configuration and retained source locks precede the rollback-only savepoint, so they survive it.
- await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLabelCriteriaTx(tx,ctx.tenantId);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await lockLabelCriteriaTx(tx,ctx.tenantId);
  const [draft]=await tx.select({id:employeeDraft.id}).from(employeeDraft).where(and(eq(employeeDraft.id,p.id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update');if(!draft)throw new DraftActivationValidationError('draft_unavailable',[]);
  const lifecycle=await onboardingDraftActivationContextTx(ctx,tx);if(lifecycle.willSynchronize)throw new DraftActivationValidationError('invalid_data',[]);
  await tx.execute(sql`savepoint ai_employee_draft_activation_preview`);
@@ -917,9 +917,9 @@ export async function completeEmployeeDraft(
 
 async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promise<{employmentId:string}> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const [draft]=await tx.select().from(employeeDraft).where(and(eq(employeeDraft.id,id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update');
   if(!draft)throw new DraftActivationValidationError('draft_unavailable',[]);
   const data=activationData(draft.data);

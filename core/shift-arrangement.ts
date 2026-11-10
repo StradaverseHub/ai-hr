@@ -144,7 +144,7 @@ export async function assignEmployeeShiftDated(
   // b8aa3466 — the backup shift is mandatory on BOTH arrangements; the same refusal the legacy writer gives.
   if (!shiftId) throw new BackupShiftRequiredError();
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
     const [emp] = await tx
       .select({
@@ -370,7 +370,7 @@ export async function removeShiftArrangement(
   p={...p};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
     const rows = await tx
       .select({

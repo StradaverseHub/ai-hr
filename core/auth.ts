@@ -21,6 +21,7 @@ import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { client, withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { appInvitation, appUser, roleAssignment, accountEmailDelivery } from '../db/schema';
 import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { InvalidInvitationError } from '../lib/auth-errors';
@@ -151,6 +152,8 @@ export type InviteUserInput = {
  */
 async function createInvitationTx(tx:Tx,ctx:SessionContext,input:InviteUserInput,replacesDeliveryId?:string){
   assertGroupAdmin(ctx);
+  // Invitations are authority inputs: the row trigger only tries the exclusive Access lock.
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const email=input.email.trim().toLowerCase(),emailLocale=emailLocaleSchema.parse(input.emailLocale??'en');
   if(!email||!email.includes('@'))throw new Error('A valid email is required to invite a user.');
   if(!ROLES.has(input.role))throw new Error(`Unknown role: ${input.role}`);
@@ -199,7 +202,7 @@ export async function retryAccountEmail(ctx:SessionContext,id:string,acknowledge
     if(reserved[0]){await attemptAccountEmail(reserved[0].id,reserved[0].lease_token,provider);return;}
   }
   const created=await withTenant(ctx,async tx=>{
-    assertGroupAdmin(ctx);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`account-email-retry:${id}`},0))`);
+    assertGroupAdmin(ctx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`account-email-retry:${id}`},0))`);
     const [delivery]=await tx.select().from(accountEmailDelivery).where(and(eq(accountEmailDelivery.id,id),eq(accountEmailDelivery.kind,'invitation'),sql`${accountEmailDelivery.status} in ('failed','sent')`));
     if(!delivery?.invitationId)throw Error('This account email cannot be retried.');
     const [replacement]=await tx.select({id:accountEmailDelivery.id}).from(accountEmailDelivery).where(eq(accountEmailDelivery.replacesDeliveryId,id));
@@ -254,6 +257,7 @@ export async function setAppUserArchived(
 ): Promise<void> {
   await withTenant(ctx, async (tx) => {
     assertGroupAdmin(ctx);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     if (ctx.userId && input.appUserId === ctx.userId) {
       throw new Error('You cannot archive your own login.');
     }
@@ -321,6 +325,7 @@ export async function revokeInvitation(
 ): Promise<void> {
   await withTenant(ctx, async (tx) => {
     assertGroupAdmin(ctx);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     const [row] = await tx
       .update(appInvitation)
       .set({ status: 'revoked' })

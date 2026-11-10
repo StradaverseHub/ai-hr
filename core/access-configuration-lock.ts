@@ -72,14 +72,36 @@ async function acquireBounded(tx: Tx, tenantId: string, shared: boolean): Promis
   }
 }
 
-/** Join before reading authority or counting recovery administrators in every access-affecting writer. */
+/**
+ * Ordinary writers and readers that need configuration and authority to stay stable while they run.
+ * Shared: writers overlap each other and only exclude an access configuration editor. Take it before
+ * reading authority, a policy or counting anything that an editor can change.
+ */
 export async function lockAccessConfigurationTx(tx:Tx,tenantId:string){
+  await acquireBounded(tx, tenantId, true);
+}
+
+/**
+ * Editors of access configuration and the authority inputs other writers depend on: access groups,
+ * grants, membership, role_assignment, app_user, app_invitation, the company tree, policy settings
+ * and catalogues. Exclusive, so an editor is serialized against every writer depending on it.
+ */
+export async function lockAccessConfigurationWriteTx(tx:Tx,tenantId:string){
   await acquireBounded(tx, tenantId, false);
 }
 
 /** Navigation reads may wait for an access edit and can overlap other readers. */
 export async function lockAccessConfigurationReadTx(tx: Tx, tenantId: string) {
   await acquireBounded(tx, tenantId, true);
+}
+
+/**
+ * Writers that can reduce the usable system-administrator set (ending or blacklisting an employment of a
+ * person with a login, archiving a user, removing a role) while holding only the shared lock. Serialises
+ * the last-administrator check: of two concurrent removals, the second sees the first's committed result.
+ */
+export async function lockAccessAdministratorSetTx(tx:Tx,tenantId:string){
+  await tx.execute(sql`select app.access_administrator_set_lock(${tenantId}::uuid)`);
 }
 
 /** Personnel readers must not occupy pool connections while waiting for the same tenant. */
@@ -97,6 +119,6 @@ export async function tryLockAccessConfigurationReadTx(tx: Tx, tenantId: string)
 /** Profile/register writers join the physical configuration tuple before policy or subject locks.
  * This is a write barrier, not an access edit or an ESS approval bypass. */
 export async function lockProfileValueWritesTx(tx:Tx,tenantId:string){
-  await lockAccessConfigurationTx(tx,tenantId);
+  await lockAccessConfigurationWriteTx(tx,tenantId);
   await tx.execute(sql`select app.access_profile_policy_write_lock()`);
 }

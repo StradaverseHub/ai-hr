@@ -205,7 +205,7 @@ async function startReviewTx(
   ctx: SessionContext,
   p: { employmentId: string; auto?: boolean },
 ) {
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);
   const live = await liveTypeAndDates(tx, p.employmentId);
   if (!live) throw new ReviewError('Employee has no active assignment.');
   const window = computeReviewWindow(live.employmentType, live.emp);
@@ -276,7 +276,7 @@ export async function submitManagerEvaluation(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     const [rev] = await tx.select().from(employmentReview).where(eq(employmentReview.id, p.reviewId)).limit(1).for('update');
     if (!rev) throw new ReviewError('Review not found (or not visible).');
     await assertLegacyReviewOwnerTx(tx,rev);
@@ -326,7 +326,7 @@ export async function decideReview(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     const [rev] = await tx.select().from(employmentReview).where(eq(employmentReview.id, p.reviewId)).limit(1).for('update');
     if (!rev) throw new ReviewError('Review not found (or not visible).');
     await assertLegacyReviewOwnerTx(tx,rev);
@@ -615,7 +615,7 @@ export async function sweepDueReviews(
 ): Promise<{ opened: number }> {
   const today = opts.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     // Enumerate active employments left-joined to the current open assignment row.
     const rows = await tx
       .select({
@@ -832,7 +832,7 @@ export async function sweepReviewReminders(
 ): Promise<{ reminders: number }> {
   const today = opts.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     const rows = await tx
       .select({
         reviewId: employmentReview.id,
@@ -962,7 +962,7 @@ export async function uploadReviewDocument(
   }
   assertValidReviewDocument(p.mimeType, p.content);
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     const [rev] = await tx
       .select({ id: employmentReview.id, employmentId: employmentReview.employmentId, reviewType:employmentReview.reviewType,status: employmentReview.status })
       .from(employmentReview)

@@ -8,7 +8,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {LetterWorkflowError} from '../lib/letter-workflow';
 import {confirmationDateSql,employmentStatusSql} from './employment-status-sql';
 import {resolveEntitlementsTx,isModuleEnabled} from './entitlements';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
 import {movementAutomationFactsTx} from './movement';
 import {assertLetterNotificationConnection} from './letter-notifications';
@@ -21,7 +21,7 @@ export async function readLetterAutomationSourcesTx(tx:Tx,ctx:SessionContext,rul
  const limit=input.limit??25,today=input.today??todayInKualaLumpur();
  if(ctx.userId||!uuid.test(ctx.tenantId)||!uuid.test(ruleId)||input.afterEmploymentId&&!uuid.test(input.afterEmploymentId)||input.employmentId&&!uuid.test(input.employmentId)||!Number.isInteger(limit)||limit<1||limit>100||!isCalendarDate(today))throw new LetterWorkflowError('invalid','automation');
  await assertLetterNotificationConnection(tx);const [context]=await tx.execute<{ok:boolean}>(sql`select app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id() is null as ok`);if(!context?.ok)throw new LetterWorkflowError('permission');
- await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
+ await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
  const [rule]=await tx.select().from(letterAutomationRuleVersion).where(and(eq(letterAutomationRuleVersion.id,ruleId),eq(letterAutomationRuleVersion.tenantId,ctx.tenantId),eq(letterAutomationRuleVersion.enabled,true),sql`not exists(select 1 from letter_automation_rule_version newer where newer.tenant_id=${letterAutomationRuleVersion.tenantId} and newer.company_id=${letterAutomationRuleVersion.companyId} and newer.template_id=${letterAutomationRuleVersion.templateId} and newer.trigger=${letterAutomationRuleVersion.trigger} and newer.ordinal>${letterAutomationRuleVersion.ordinal})`));
  if(!rule)return {rule:null,rows:[] as LetterAutomationSource[],nextCursor:null};
  const [authority]=await tx.execute<{ok:boolean}>(sql`select app.letter_automation_owner_eligible_at(${ctx.tenantId}::uuid,${rule.createdBy}::uuid,${rule.companyId}::uuid,${rule.confidential}) as ok`);if(!authority?.ok)throw new LetterWorkflowError('permission');
