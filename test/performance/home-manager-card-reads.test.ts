@@ -4,7 +4,9 @@
  * It runs only when the hosted focused controller selects this file; every other Vitest run skips it.
  * It never changes an installation and supplies no release evidence. */
 import {randomUUID} from 'node:crypto';
+import {spawn} from 'node:child_process';
 import {writeFileSync} from 'node:fs';
+import {loadavg} from 'node:os';
 import {join,relative} from 'node:path';
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 const state=vi.hoisted(()=>{
@@ -208,13 +210,13 @@ async function todayReaders(today:string){
  };
 }
 
-async function streamHome(actor:Actor,month:string,run:string|null){
+async function streamHome(actor:Actor,month:string,run:string|null,handler:typeof GET=GET){
  state.session=actor.ctx;state.run=run;
  const query=new URLSearchParams({employmentId:actor.employmentId});
  for(const card of CARDS)query.append('card',card);
  query.set('month',month);
  const started=performance.now();
- const response=await GET(new Request('http://localhost/api/home/sharing-initial?'+query));
+ const response=await handler(new Request('http://localhost/api/home/sharing-initial?'+query));
  expect(response.status).toBe(200);
  const reader=response.body!.getReader(),decoder=new TextDecoder();
  const frames:{card:string;status:number;ms:number;bytes:number;total:number|null}[]=[];
@@ -264,6 +266,25 @@ async function sampleActivity<T>(work:()=>Promise<T>){
  })();
  try{return {result:await work(),statements:()=>[...seen.values()].sort((a,b)=>b.maxMs-a.maxMs).slice(0,20)};}
  finally{running=false;await sampler;}
+}
+
+/** A new application worker: fresh modules, fresh per-process caches and fresh connections, with the
+ * deployment's per-worker share of the fixed 16-connection budget (deploy/admission/next_profile.py). */
+const applicationUrl=process.env.DATABASE_URL;
+let workerGeneration=0;
+async function coldWorker(workers:number){
+ const url=new URL(applicationUrl!);url.searchParams.set('application_name','home-worker-'+workers+'-'+(++workerGeneration));
+ Object.assign(process.env,{DATABASE_URL:url.href,AIHR_APP_WORKERS:String(workers),AIHR_DB_TOTAL_CONNECTIONS:'16',AIHR_DB_POOL_MAX:String(Math.floor(16/workers))});
+ vi.resetModules();
+ const [route,database]=await Promise.all([import('../../app/api/home/sharing-initial/route'),import('../../db/client')]);
+ let trips=0;
+ (database.client.options as {debug?:unknown}).debug=()=>{trips++;};
+ return {GET:route.GET as typeof GET,trips:()=>trips,resetTrips(){trips=0;},close:()=>database.client.end({timeout:5})};
+}
+/** Compete for the four runner CPUs the way extra application workers and browser contexts do. */
+function cpuPressure(count:number){
+ const children=Array.from({length:count},()=>spawn(process.execPath,['-e','for(;;){}'],{stdio:'ignore'}));
+ return ()=>{for(const child of children)child.kill('SIGKILL');};
 }
 
 describe.skipIf(!state.hostedFocused)('manager Home at the worker fixture size',()=>{
@@ -413,6 +434,32 @@ it('completes every manager Home card and Today section read without a handled f
  report.plans=notices.slice(0,30);evidence();
  for(const notice of notices.slice(0,14))console.info('[home-card-diagnostic] plan '+notice.durationMs+'ms\n'+notice.plan.slice(0,7000));
 
+ // 6. Each deployed worker count, cold and warm, with and without CPU competition.
+ const workerModel:unknown[]=[];report.workerModel=workerModel;
+ const deadlineMs=2800;
+ for(const workers of [2,4,8])for(const pressure of [0,8]){
+  const stop=cpuPressure(pressure),worker=await coldWorker(workers);
+  try{
+   await new Promise(resolve=>setTimeout(resolve,pressure?1500:0));
+   const measure=async(label:string,actor:Actor)=>{
+    const run='model:'+workers+':'+pressure+':'+label;worker.resetTrips();
+    const result=await streamHome(actor,month,run,worker.GET),trace=transactions.filter(row=>row.run===run);
+    return {label,elapsedMs:result.elapsedMs,trips:worker.trips(),transactions:trace.length,
+     holdMs:Math.round(trace.reduce((sum,row)=>sum+row.totalMs-row.waitMs,0)),maxWaitMs:Math.round(Math.max(0,...trace.map(row=>row.waitMs))),
+     overDeadline:result.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card),
+     cards:Object.fromEntries(result.frames.map(frame=>[frame.card,frame.status===200?frame.ms:'status-'+frame.status]))};
+   };
+   const rows=[await measure('cold-manager',manager),await measure('warm-manager-1',manager),await measure('warm-manager-2',manager),await measure('warm-employee',employee)];
+   worker.resetTrips();
+   const startedOverlap=performance.now();
+   const overlap=await Promise.all([manager,employee,secondManager].map(actor=>streamHome(actor,month,null,worker.GET)));
+   const row={workers,poolPerWorker:Math.floor(16/workers),cpuPressure:pressure,load1:loadavg()[0],rows,
+    overlappedMs:Math.round(performance.now()-startedOverlap),overlappedOver:overlap.flatMap(result=>result.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card)),
+    overlappedSlowest:overlap.map(result=>[...result.frames].sort((a,b)=>b.ms-a.ms).slice(0,3).map(frame=>[frame.card,frame.status,frame.ms]))};
+   workerModel.push(row);print('worker-model',row);evidence();
+  }finally{stop();await worker.close().catch(()=>undefined);}
+ }
+ Object.assign(process.env,{DATABASE_URL:applicationUrl});delete process.env.AIHR_APP_WORKERS;delete process.env.AIHR_DB_TOTAL_CONNECTIONS;
  // Every stream frame, Today section and page owner completed. Timings stay diagnostic evidence.
  const failedFrames=(streams as {run:string;frames:{card:string;status:number}[]}[]).flatMap(row=>row.frames.filter(frame=>frame.status!==200).map(frame=>row.run+':'+frame.card));
  expect(failedFrames).toEqual([]);
