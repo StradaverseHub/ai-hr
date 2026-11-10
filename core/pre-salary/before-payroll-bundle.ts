@@ -53,19 +53,33 @@ export function withOwnerBeforePayrollReads<T>(work:()=>Promise<T>):Promise<T>{r
 /** One section's owner result, or null where that owner must read itself. */
 export type BundleAnswer<T>=Readonly<{value:T}>|null;
 
-/** What person-items.ts asks of the owners for one own employment: each window as it computes it, and which groups it
- * reads (a module that is off or could not be resolved reads nothing, exactly as the checklist decides). */
+/** The cut-off days row of app.own_payroll_cut_off_day, as the period owner reads it. */
+export type OwnCutOffRow=Readonly<{cut_off_day:number|null;attendance_cut_off_day:number|null;overtime_cut_off_day:number|null;
+ claim_cut_off_day:number|null;unpaid_leave_cut_off_day:number|null}>;
+/** The Attendance windows the checklist reads once the period is known. */
+export type AttendanceReadWindows=Readonly<{range:Readonly<{from:string;to:string}>|null;overtimeFrom:string;capDate:string}>;
+/** What person-items.ts asks of the owners for one own employment, and which groups it reads (a module that is off or
+ * could not be resolved reads nothing, exactly as the checklist decides).
+ *
+ * The cut-off day decides the Attendance windows, and is read in the same statement (`cutOff`: the period owner's own
+ * statement, null where the checklist reads none). So the Attendance sections are read for windows that cover every
+ * window the period owner can choose (`covering`): a pay period is this month or the next, and each input type's window
+ * for it opens on or after the first day of the previous month and closes by its end; the checklist reads no day after
+ * yesterday. `windowsFor` then gives the exact windows for the cut-off row the statement returned (null: none read),
+ * and each section is narrowed to them exactly as its owner would have read them (or left to its owner where a window
+ * falls outside what was covered). */
 export type BeforePayrollBundleRead=Readonly<{
- employmentId:string;today:string;locale:string;
- /** null: the Attendance module is not on for the person's company. `range`: null when the window has no past day. */
- attendance:Readonly<{range:Readonly<{from:string;to:string}>|null;corrections:Readonly<{status:'pending';limit:number}>;
-  overtime:Readonly<{status:'pending';from:string;limit:number}>;capDate:string}>|null;
+ employmentId:string;today:string;locale:string;cutOff:SQL|null;windowsFor:(cutOff:readonly OwnCutOffRow[]|null)=>AttendanceReadWindows;
+ /** null: the Attendance module is not on for the person's company. */
+ attendance:Readonly<{covering:Readonly<{from:string;to:string}>;corrections:Readonly<{status:'pending';limit:number}>;
+  overtime:Readonly<{status:'pending';from:string;limit:number}>;capMonths:readonly string[]}>|null;
  leave:boolean;claims:boolean;toil:boolean;
  /** Payroll on: TP3 and the previous-employer answer; with a person, also TP1, the profile and the Family register. */
  payroll:boolean;assessmentYear:number;letterLimit:number;performance:boolean;lifecycle:boolean;
 }>;
 
 export type BeforePayrollBundle=Readonly<{
+ cutOff:BundleAnswer<OwnCutOffRow[]>;
  corrections:BundleAnswer<OwnAttendanceRequestChecklistRow[]>;
  overtimePlans:BundleAnswer<OvertimePlanChecklistRow[]>;
  otCap:BundleAnswer<OvertimeCapView>;
@@ -90,6 +104,16 @@ export type BeforePayrollBundle=Readonly<{
 type SectionName=keyof BeforePayrollBundle;
 
 const gateOpen=(ctx:SessionContext,code:string)=>{try{assertModuleGate(ctx,code);return true;}catch{return false;}};
+const CUT_OFF_KEYS=['cut_off_day','attendance_cut_off_day','overtime_cut_off_day','claim_cut_off_day','unpaid_leave_cut_off_day'] as const;
+/** The cut-off rows as the driver returns them: integers or null, in the statement's column order. */
+function cutOffRowsFromBundle(value:unknown):OwnCutOffRow[]{
+ if(!Array.isArray(value))throw new Error('The bundled cut-off days are unavailable.');
+ return value.map(row=>{
+  const record=row as Record<string,unknown>;
+  for(const key of CUT_OFF_KEYS)if(record[key]!==null&&!Number.isInteger(record[key]))throw new Error('A bundled cut-off day is not an integer.');
+  return Object.fromEntries(CUT_OFF_KEYS.map(key=>[key,record[key] as number|null])) as OwnCutOffRow;
+ });
+}
 
 /** One Before payroll response's statement. Resolves null when every owner must read on its own. `facts`: the reader of
  * approved leave presence and the holiday calendar for the Attendance range (the seam a one-statement reader of those
@@ -103,11 +127,13 @@ export async function readBeforePayrollBundle(ctx:SessionContext,read:BeforePayr
  const claims=read.claims&&gateOpen(ctx,'claims'),payroll=read.payroll&&gateOpen(ctx,'payroll');
  const performance=read.performance&&gateOpen(ctx,'performance')&&!aiCentreActivity(ctx.tenantId),lifecycle=read.lifecycle&&gateOpen(ctx,'lifecycle');
  const sections:Partial<Record<SectionName|'range',SQL|null>>={
+  cutOff:read.cutOff?sql`(select coalesce(jsonb_agg(to_jsonb(cut_off_row)),'[]'::jsonb) from (${read.cutOff}) cut_off_row)`:null,
   corrections:attendance?ownAttendanceRequestChecklistBundleSql(employmentId,attendance.corrections):null,
   overtimePlans:attendance?overtimePlanChecklistBundleSql(employmentId,attendance.overtime):null,
-  otCap:attendance?otMonthToDateBundleSql(employmentId,attendance.capDate):null,
+  // Each month a cap date can fall in: the two sums for that month.
+  otCap:attendance?sql`jsonb_build_object(${sql.join(attendance.capMonths.map(month=>sql`${month}::text,${otMonthToDateBundleSql(employmentId,month+'-01')}`),sql`,`)})`:null,
   loopCards:attendance?readLoopCardsBundleSql(ctx):null,
-  range:attendance?.range?attendanceRangeChecklistBundleSql(employmentId,attendance.range.from,attendance.range.to):null,
+  range:attendance?attendanceRangeChecklistBundleSql(employmentId,attendance.covering.from,attendance.covering.to):null,
   leaveRequests:read.leave?leaveRequestsChecklistBundleSql(employmentId):null,
   leaveTypes:read.leave?eligibleLeaveTypesBundleSql(employmentId):null,
   claims:claims?openClaimsChecklistBundleSql(employmentId):null,
@@ -142,16 +168,24 @@ export async function readBeforePayrollBundle(ctx:SessionContext,read:BeforePayr
     const value=decide(()=>project(raw[name]));
     return value&&value.value!==null?value as BundleAnswer<T>:null;
    };
-   // The Attendance range's two date-local facts are read now, in this transaction, through the seam.
+   const cutOff=answer('cutOff',cutOffRowsFromBundle);
+   // The exact Attendance windows for the cut-off row read here (none read: the checklist's own calendar fallback).
+   let windows:AttendanceReadWindows|null=null;
+   if(attendance&&(!has('cutOff')||cutOff)){try{windows=read.windowsFor(cutOff?cutOff.value:null);}catch{windows=null;}}
+   const covered=(from:string,to:string)=>!!attendance&&from>=attendance.covering.from&&to<=attendance.covering.to;
+   // The Attendance range's two date-local facts are read now, in this transaction, through the seam, for the exact range.
    let days:BundleAnswer<AttendanceRangeRow[]>=null;
-   if(attendance?.range&&has('range')){
-    try{days=Object.freeze({value:await attendanceRangeChecklistFromBundle(tx,raw.range,employmentId,attendance.range.from,attendance.range.to,facts)});}
+   const range=windows?.range;
+   if(range&&has('range')&&covered(range.from,range.to)){
+    try{days=Object.freeze({value:await attendanceRangeChecklistFromBundle(tx,raw.range,employmentId,range.from,range.to,facts)});}
     catch{days=null;}
    }
    return Object.freeze({
+    cutOff,
     corrections:answer('corrections',ownAttendanceRequestChecklistFromBundle),
-    overtimePlans:answer('overtimePlans',value=>overtimePlanChecklistFromBundle(value,attendance?.overtime.limit)),
-    otCap:answer('otCap',otMonthToDateFromBundle),
+    overtimePlans:windows&&attendance&&windows.overtimeFrom>=attendance.overtime.from
+     ?answer('overtimePlans',value=>overtimePlanChecklistFromBundle(value,attendance.overtime.limit,windows!.overtimeFrom)):null,
+    otCap:windows?answer('otCap',value=>{const month=(value as Record<string,unknown>)[windows!.capDate.slice(0,7)];return month===undefined?null:otMonthToDateFromBundle(month);}):null,
     loopCards:answer('loopCards',value=>readLoopCardsFromBundle(ctx,value)),
     days,
     leaveRequests:answer('leaveRequests',value=>leaveRequestsChecklistFromBundle(value,locale)),

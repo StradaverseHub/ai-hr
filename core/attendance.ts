@@ -3609,13 +3609,16 @@ type AttendanceRangeBundle={employees:unknown;rows:unknown;policies:unknown;rost
   deductDefaults:unknown;deductPolicies:unknown;shifts:unknown;rules:unknown;rotations:Record<string,unknown>[];rotationShifts:Record<string,unknown>[];
   adjustments:Record<string,unknown>[];schedule:OwnClockScheduleJson|null;groupEmployees:unknown;groupRoster:unknown;groupShifts:unknown;
   standardRuleId:string|null;revisions:Record<string,unknown>[]};
-/** attendanceForEmploymentRange(ctx, employmentId, from, to) over attendanceRangeChecklistBundleSql's rows: the owner's
- * own day loop on the same inputs, with leave presence and holidays from `facts`. Every row equals the owner's except
+/** attendanceForEmploymentRange(ctx, employmentId, from, to) over attendanceRangeChecklistBundleSql's rows for any range
+ * that covers [from, to]: the owner's own day loop on the same inputs (its dated rows narrowed to [from, to]), with
+ * leave presence and holidays read from `facts` for [from, to] itself. Every row equals the owner's except
  * `formulaOvertime` (null: the stored overtime-formula records are not read, and the checklist never reads them). */
 export async function attendanceRangeChecklistFromBundle(tx:Tx,value:unknown,employmentId:string,from:string,to:string,
   facts:AttendanceRangeDatedFacts=LIVE_ATTENDANCE_RANGE_DATED_FACTS):Promise<AttendanceRangeRow[]>{
   if(from>to)return [];
   const raw=value as AttendanceRangeBundle;
+  // The section may cover a wider range than [from, to]: every dated row outside it is one the owner does not read.
+  const inRange=(date:string)=>date>=from&&date<=to;
   const employees=decodeJsonFieldRows(RANGE_EMPLOYEE_FIELDS,raw.employees) as RangeEmployee[];
   if(employees.length===0)return [];
   const ids=employees.map(e=>e.id);
@@ -3630,15 +3633,15 @@ export async function attendanceRangeChecklistFromBundle(tx:Tx,value:unknown,emp
   const ruleIds=new Set(weekLookupRuleIds(null,[...rangeShifts.map(r=>r.ruleId),...employees.map(e=>e.ruleId)]));
   const rangeWeek=weekLookupFrom((decodeJsonFieldRows(WEEK_LOOKUP_RULE_FIELDS,raw.rules) as WeekLookupRule[]).filter(row=>ruleIds.has(row.id)||row.isDefault),null);
   const rangeRotations=rotationLookupFrom(raw.rotations.map(row=>decodeJsonRow(attendanceRotation,row)),raw.rotationShifts.map(row=>decodeJsonRow(shift,row)));
-  const datedOverrides=await attendanceDateOverridesFrom(tx,employmentId,raw.adjustments.map(row=>decodeJsonRow(attendanceDayAdjustment,row)),
+  const datedOverrides=await attendanceDateOverridesFrom(tx,employmentId,raw.adjustments.map(row=>decodeJsonRow(attendanceDayAdjustment,row)).filter(row=>inRange(row.attendanceDate)),
     raw.schedule?decodeOwnClockSchedule(raw.schedule):null,holidaySets);
   const groupInputs={employees:decodeJsonFieldRows(SCHEDULE_GROUP_EMPLOYEE_FIELDS,raw.groupEmployees) as {id:string;groupId:string|null;defaultShiftId:string|null}[],
-    roster:decodeJsonFieldRows(SCHEDULE_GROUP_ROSTER_FIELDS,raw.groupRoster) as {employmentId:string;date:string;shiftId:string|null;isRestDay:boolean}[],arrangements};
+    roster:(decodeJsonFieldRows(SCHEDULE_GROUP_ROSTER_FIELDS,raw.groupRoster) as {employmentId:string;date:string;shiftId:string|null;isRestDay:boolean}[]).filter(row=>inRange(row.date)),arrangements};
   const exceptionOn=exceptionDecisionsFrom(scheduleGroupLookupFrom(groupInputs,decodeJsonFieldRows(SCHEDULE_GROUP_SHIFT_FIELDS,raw.groupShifts) as {id:string;ruleId:string|null}[],
     raw.standardRuleId?{id:raw.standardRuleId}:undefined),exceptionLookupFrom(raw.revisions.map(row=>decodeJsonRow(attendanceExceptionRevision,row))));
-  return attendanceRangeRowsFrom({employees,rows:decodeJsonFieldRows(RANGE_DAY_FIELDS,raw.rows) as RangeDay[],
+  return attendanceRangeRowsFrom({employees,rows:(decodeJsonFieldRows(RANGE_DAY_FIELDS,raw.rows) as RangeDay[]).filter(row=>inRange(row.date)),
     policies:decodeJsonFieldRows(RANGE_POLICY_FIELDS,raw.policies) as AttendanceRangeInputs['policies'][number][],approvedDates,holidaySets,
-    rosters:decodeJsonFieldRows(RANGE_ROSTER_FIELDS,raw.rosters) as AttendanceRangeInputs['rosters'][number][],arrangements,deducted,
+    rosters:(decodeJsonFieldRows(RANGE_ROSTER_FIELDS,raw.rosters) as AttendanceRangeInputs['rosters'][number][]).filter(row=>inRange(row.shiftDate)),arrangements,deducted,
     rangeShifts,rangeWeek,rangeRotations,datedOverrides,exceptionOn,formulaByDay:new Map()},from,to,{}).get(employmentId)??[];
 }
 
@@ -6253,9 +6256,12 @@ export function overtimePlanChecklistBundleSql(employmentId: string, opts: Overt
 }
 export type OvertimePlanChecklistRow = { id: string; attendanceDate: string; status: OvertimePlanRow['status'] };
 /** The owner's page, or null when the row just past it ties with its last row on both order keys: the owner's order
- * leaves such a tie to the plan, so which of them is on the page is the owner's to say. */
-export function overtimePlanChecklistFromBundle(value: unknown, limit: number | undefined): OvertimePlanChecklistRow[] | null {
-  const rows = decodeJsonFieldRows(OVERTIME_PLAN_CHECKLIST_FIELDS, value), page = overtimePlanLimit(limit);
+ * leaves such a tie to the plan, so which of them is on the page is the owner's to say. `from`: a later lower bound on
+ * the overtime date than the section was read with. The rows on or after it come first in the owner's order (overtime
+ * date, newest first), so the section's page filtered to them begins exactly the owner's page for that bound. */
+export function overtimePlanChecklistFromBundle(value: unknown, limit: number | undefined, from?: string): OvertimePlanChecklistRow[] | null {
+  const read = decodeJsonFieldRows(OVERTIME_PLAN_CHECKLIST_FIELDS, value), page = overtimePlanLimit(limit);
+  const rows = from === undefined ? read : read.filter((row) => row.attendanceDate >= from);
   if (rows.length > page) {
     const last = rows[page - 1], next = rows[page];
     if (last.attendanceDate === next.attendanceDate && last.createdAt?.getTime() === next.createdAt?.getTime()) return null;

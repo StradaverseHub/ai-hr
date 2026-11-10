@@ -74,7 +74,7 @@ import {addHrDays} from '../../lib/today/audience';
 import {PAYROLL_ITEM_GROUPS,groupStatus,monthEnd,orderItems,periodOf,type GroupState,type PayrollItem,type PayrollItemGroup,
  type PayrollItemKind,type PayrollItemState,type PayrollPeriod,type PayrollReadiness,type PayrollTypeWindows,type TypeWindow} from '../../lib/pre-salary/items';
 import {upcomingPeriod,type CompanyCutOffs} from '../loops/payroll-inputs';
-import {readBeforePayrollBundle,withOwnerBeforePayrollReads,type BeforePayrollBundle,type BeforePayrollBundleRead,type BundleAnswer} from './before-payroll-bundle';
+import {readBeforePayrollBundle,withOwnerBeforePayrollReads,type BeforePayrollBundle,type BeforePayrollBundleRead,type BundleAnswer,type OwnCutOffRow} from './before-payroll-bundle';
 import type {OvertimePlanChecklistRow,OwnAttendanceRequestChecklistRow} from '../../packs/attendance/service';
 import type {OwnReplacementChecklistRow} from '../../packs/leave/service';
 import type {MyReviewChecklistRow} from '../../packs/performance/service';
@@ -111,14 +111,19 @@ export async function resolvePayrollPeriod(ctx:SessionContext,employmentId:strin
 }
 
 type PeriodAndWindows=Readonly<{period:PayrollPeriod;windows:PayrollTypeWindows|null}>;
+const calendarPeriod=(today:string):PeriodAndWindows=>Object.freeze({period:Object.freeze({payPeriod:periodOf(today),start:`${periodOf(today)}-01`,cutOff:null,source:'unavailable' as const}),windows:null});
+/** The period owner's own statement for the caller's own employment (also a section of the one-statement read). */
+const ownCutOffSql=(employmentId:string)=>sql`SELECT cut_off_day,attendance_cut_off_day,overtime_cut_off_day,claim_cut_off_day,unpaid_leave_cut_off_day
+  FROM app.own_payroll_cut_off_day(${employmentId}::uuid)`;
 /** The period, and each input type's own window for it (null when no cut-off is known: the calendar month is used). */
 async function resolvePeriodAndWindows(ctx:SessionContext,employmentId:string|null,today:string):Promise<PeriodAndWindows>{
- const calendar=():PeriodAndWindows=>Object.freeze({period:Object.freeze({payPeriod:periodOf(today),start:`${periodOf(today)}-01`,cutOff:null,source:'unavailable' as const}),windows:null});
- if(!employmentId)return calendar();
- const rows=await withTenant(ctx,tx=>tx.execute(sql`SELECT cut_off_day,attendance_cut_off_day,overtime_cut_off_day,claim_cut_off_day,unpaid_leave_cut_off_day
-  FROM app.own_payroll_cut_off_day(${employmentId}::uuid)`)) as unknown as {cut_off_day:number|null;attendance_cut_off_day:number|null;
-  overtime_cut_off_day:number|null;claim_cut_off_day:number|null;unpaid_leave_cut_off_day:number|null}[];
- if(!rows.length)return calendar();
+ if(!employmentId)return calendarPeriod(today);
+ const rows=await withTenant(ctx,tx=>tx.execute(ownCutOffSql(employmentId))) as unknown as OwnCutOffRow[];
+ return periodAndWindowsFrom(rows,today);
+}
+/** resolvePeriodAndWindows over the statement's rows. */
+function periodAndWindowsFrom(rows:readonly OwnCutOffRow[],today:string):PeriodAndWindows{
+ if(!rows.length)return calendarPeriod(today);
  const row=rows[0];
  const company:CompanyCutOffs={cutOffDay:row.cut_off_day??null,attendanceCutOffDay:row.attendance_cut_off_day??null,overtimeCutOffDay:row.overtime_cut_off_day??null,
   claimCutOffDay:row.claim_cut_off_day??null,unpaidLeaveCutOffDay:row.unpaid_leave_cut_off_day??null,payDay:null};
@@ -357,31 +362,41 @@ async function approvalsGroup(approvalsRead:ReturnType<typeof startApprovals>,pe
   ...(preview?{total:items.length+omittedClaims,claimTotal:tasks.value.claimTotal}:{})};
 }
 
-/** The one-statement read of every own owner for this subject and period, with the windows and groups the readers ask
- * for (core/pre-salary/before-payroll-bundle.ts). null: the owners read on their own. */
-function readOwnInputs(ctx:SessionContext,subject:Subject,period:PayrollPeriod,today:string,locale:string):Promise<BeforePayrollBundle|null>{
- return readBeforePayrollBundle(ctx,ownInputsRead(ctx,subject,period,today,locale));
+/** The one-statement read of every own owner for this subject, the period owner's cut-off day included, with the
+ * groups the checklist reads (core/pre-salary/before-payroll-bundle.ts). null: the owners read on their own. */
+function readOwnInputs(ctx:SessionContext,subject:Subject,payroll:'on'|'failed',today:string,locale:string):Promise<BeforePayrollBundle|null>{
+ return readBeforePayrollBundle(ctx,ownInputsRead(ctx,subject,payroll,today,locale));
 }
-function ownInputsRead(ctx:SessionContext,subject:Subject,period:PayrollPeriod,today:string,locale:string):BeforePayrollBundleRead{
- const {ot,start,to,capDate}=attendanceWindows(period,today);
+/** The period (with its type windows) the checklist resolves from a period read; the calendar month when none. */
+function periodFrom(periodRead:Read<PeriodAndWindows>,today:string):PayrollPeriod{
+ const period:PayrollPeriod=periodRead.ok?periodRead.value.period:calendarPeriod(today).period;
+ // Each input type's own window travels with the period object to the group readers, not into the period's shape.
+ if(periodRead.ok&&periodRead.value.windows)windowsOf.set(period,periodRead.value.windows);
+ return period;
+}
+/** The first day of the month before `today`'s: no input type's window for this month's or next month's pay opens
+ * earlier (core/payroll-policy-config.ts anchorWindowFor: an anchor day D opens D of the month before the pay month). */
+const previousMonthStart=(today:string)=>{const [y,m]=[Number(today.slice(0,4)),Number(today.slice(5,7))];return m===1?`${y-1}-12-01`:`${y}-${String(m-1).padStart(2,'0')}-01`;};
+function ownInputsRead(ctx:SessionContext,subject:Subject,payroll:'on'|'failed',today:string,locale:string):BeforePayrollBundleRead{
+ const from=previousMonthStart(today),yesterday=addHrDays(today,-1);
  return Object.freeze({employmentId:subject.employmentId,today,locale,
-  attendance:moduleState(ctx,'attendance',subject.companyId)==='on'?{range:to>=start?{from:start,to}:null,corrections:CORRECTIONS_READ,
-   overtime:{status:'pending',from:ot.window.start,limit:200},capDate}:null,
+  cutOff:payroll==='on'?ownCutOffSql(subject.employmentId):null,
+  // The exact windows for the cut-off row the statement returns (null: the calendar month, as without a payroll read).
+  windowsFor:(rows:readonly OwnCutOffRow[]|null)=>{
+   const period=periodFrom(rows===null?{ok:false}:{ok:true,value:periodAndWindowsFrom(rows,today)},today);
+   const {ot,start,to,capDate}=attendanceWindows(period,today);
+   return {range:to>=start?{from:start,to}:null,overtimeFrom:ot.window.start,capDate};
+  },
+  attendance:moduleState(ctx,'attendance',subject.companyId)==='on'?{covering:{from,to:yesterday},corrections:CORRECTIONS_READ,
+   overtime:{status:'pending',from,limit:200},capMonths:[from.slice(0,7),today.slice(0,7)]}:null,
   leave:moduleState(ctx,'leave',subject.companyId)==='on',claims:moduleState(ctx,'claims',subject.companyId)==='on',toil:moduleState(ctx,'toil',subject.companyId)==='on',
   payroll:moduleState(ctx,'payroll',subject.companyId)==='on',assessmentYear:Number(today.slice(0,4)),letterLimit:LETTER_LIMIT,
   performance:moduleState(ctx,'performance',subject.companyId)==='on',lifecycle:moduleState(ctx,'lifecycle',subject.companyId)==='on'});
 }
-/** The subject and period readMyPayrollReadiness resolves: the own employment (null without one) and the pay period,
- * each input type's window travelling with it. */
-async function resolveSubjectAndPeriod(ctx:SessionContext,p:Readonly<{employmentId?:string}>,payroll:'on'|'failed',today:string){
- let subject:Subject|null=null;
- try{const own=await requireOwnHomeSubject(ctx,p.employmentId);subject={employmentId:own.employmentId,companyId:own.companyProof.companyId??own.currentCompanyId??null};}
- catch(error){if(!(error instanceof HomeAccessError))throw error;}
- const periodRead=payroll==='on'?await settle(()=>resolvePeriodAndWindows(ctx,subject?.employmentId??null,today)):{ok:false as const};
- const period:PayrollPeriod=periodRead.ok?periodRead.value.period:Object.freeze({payPeriod:periodOf(today),start:`${periodOf(today)}-01`,cutOff:null,source:'unavailable' as const});
- // Each input type's own window travels with the period object to the group readers, not into the period's shape.
- if(periodRead.ok&&periodRead.value.windows)windowsOf.set(period,periodRead.value.windows);
- return {subject,period,periodRead};
+/** The own employment readMyPayrollReadiness reads for (null without one: no own items). */
+async function resolveSubject(ctx:SessionContext,p:Readonly<{employmentId?:string}>):Promise<Subject|null>{
+ try{const own=await requireOwnHomeSubject(ctx,p.employmentId);return {employmentId:own.employmentId,companyId:own.companyProof.companyId??own.currentCompanyId??null};}
+ catch(error){if(!(error instanceof HomeAccessError))throw error;return null;}
 }
 /** The one-statement read readMyPayrollReadiness makes for its subject and period, with what it asked for: null where
  * the checklist reads no own owner (no payroll, no login, no own employment). Equivalence proofs only. */
@@ -392,9 +407,9 @@ export function beforePayrollBundleForProof(ctx:SessionContext,p:Readonly<{emplo
   const payroll=moduleState(ctx,'payroll');
   if(payroll==='off')return null;
   const today=p.today??todayInKualaLumpur(),locale=p.locale??'en';
-  const {subject,period}=await resolveSubjectAndPeriod(ctx,p,payroll,today);
+  const subject=await resolveSubject(ctx,p);
   if(!subject)return null;
-  const read=ownInputsRead(ctx,subject,period,today,locale);
+  const read=ownInputsRead(ctx,subject,payroll,today,locale);
   return {read,bundle:await readBeforePayrollBundle(ctx,read)};
  },undefined,requestReadScope());
 }
@@ -418,10 +433,15 @@ async function payrollReadinessOwners(ctx:SessionContext,p:Readonly<{employmentI
  const today=p.today??todayInKualaLumpur(),locale=p.locale??'en';
  // The approvals read depends on neither the subject nor the period, so it starts now and runs while they are resolved.
  const approvalsRead=p.includeApprovals===false?null:startApprovals(ctx,p.scopeIds,p.approvalPreview);
- const {subject,period,periodRead}=await resolveSubjectAndPeriod(ctx,p,payroll,today);
+ const subject=await resolveSubject(ctx,p);
+ // Every own owner's rows, the cut-off day with them, in one statement; an owner it did not answer reads on its own.
+ const bundle=subject?await readOwnInputs(ctx,subject,payroll,today,locale):null;
+ const cutOff=bundle?.cutOff;
+ const periodRead:Read<PeriodAndWindows>=payroll==='on'
+  ?cutOff?await settle(async()=>periodAndWindowsFrom(cutOff.value,today)):await settle(()=>resolvePeriodAndWindows(ctx,subject?.employmentId??null,today))
+  :{ok:false};
+ const period=periodFrom(periodRead,today);
  const none=Promise.resolve(off);
- // Every own owner's rows in one statement; an owner it did not answer reads on its own below.
- const bundle=subject?await readOwnInputs(ctx,subject,period,today,locale):null;
  const [att,leave,claims,toil,details,acknowledge,approvals]=await Promise.all([
   subject?attendanceGroups(ctx,subject,period,today,bundle):Promise.resolve({attendance:off,overtime:off}),
   subject?leaveGroup(ctx,subject,period,locale,bundle):none,

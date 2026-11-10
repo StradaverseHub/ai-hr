@@ -112,7 +112,8 @@ describe('the one-statement read of the owners (docs/adr/2026-11-10-home-request
  };
  const days=async(ctx:Login)=>{
   const proof=await beforePayrollBundleForProof(ctx,{today:TODAY,locale:'en'});
-  const range=proof?.read.attendance?.range;
+  const cutOff=proof?.bundle?.cutOff;
+  const range=cutOff?proof.read.windowsFor(cutOff.value).range:null;
   if(!proof?.bundle||!range)throw Error('No bundled attendance range.');
   const owner=(await attendanceForEmploymentRange(ctx,ctx.employmentId,range.from,range.to)).map(({formulaOvertime:_formula,...row})=>row);
   const bundled=proof.bundle.days?.value.map(({formulaOvertime:_formula,...row})=>row);
@@ -126,7 +127,7 @@ describe('the one-statement read of the owners (docs/adr/2026-11-10-home-request
  });
  it('answers the person\'s own owners from the statement, the Attendance range day for day',async()=>{
   const {owner,bundled,proof}=await days(aina);
-  for(const name of ['corrections','overtimePlans','otCap','loopCards','days','leaveRequests','leaveTypes','readiness','tp3','tp3Answer','tp1','profile','dependents','letters','notices'] as const)
+  for(const name of ['cutOff','corrections','overtimePlans','otCap','loopCards','days','leaveRequests','leaveTypes','readiness','tp3','tp3Answer','tp1','profile','dependents','letters','notices'] as const)
    expect(proof.bundle![name],name).not.toBeNull();
   expect(owner.length).toBeGreaterThan(0);
   expect(bundled).toEqual(owner);

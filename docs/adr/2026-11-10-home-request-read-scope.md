@@ -100,14 +100,55 @@ calculation, authority, ordering or failure changes.
    `getEmployeeClaimTypes`, which also computes every limit, balance, item and form field; `claimTypeReceiptRules` reads
    those two facts for the same types in the same order behind the same Claims gate.
 
+11. **Before payroll reads its own owners in one statement** (`core/pre-salary/before-payroll-bundle.ts`, branch
+   `claude/home-bundles-before-payroll-20261110`). The checklist (`readMyPayrollReadiness`) read about fifteen owners in
+   some fifty-five statements. After the own-subject proof and the cut-off day (both unchanged) it now sends one statement
+   of sections, each built beside its owner and sharing that owner's select, joins, predicate, order and page, evaluated
+   in the caller's own session, so row-level security is the owner's own. Each owner's own proof is a value of the same
+   statement: the TP1 owner check, the letters' presentation proof (`aiPresentationPrincipalSql`, the statement
+   `isAiPresentationPrincipalCurrentTx` sends) and the profile's own-person check. The checklist then runs each owner's
+   TypeScript on its section:
+   - *Attendance Records range* (`attendanceRangeChecklistFromBundle`): the owner's own day loop
+     (`attendanceRangeRowsFrom`, now shared by both paths) over the employment, days, policy, roster, live arrangements,
+     absence-deduction switch, arranged shifts, Schedule Group weeks, rotations and exception lookups, each from the
+     owner's select. Day adjustments that name a shift or day kind resolve through `scheduleFor` on `ownClockScheduleMemo`
+     (the Today memo, decision 6) fed by draft migration 9873 (`app.home_own_schedule_range`), the range-shaped twin of
+     9870's schedule inputs; the memo's holiday entry is the range's own holiday set (for a visible employment
+     `holidayDatesByEmployment` is `holidayDatesFor`'s originals and retained replacements). Every row equals the owner's
+     except `formulaOvertime`, the stored overtime-formula record, which the checklist never reads and the statement does
+     not read.
+   - *Approved leave presence and the holiday calendar* stay behind `AttendanceRangeDatedFacts`
+     (`LIVE_ATTENDANCE_RANGE_DATED_FACTS`: `approvedLeaveDates`, `holidayDatesByEmployment`), read after the statement in
+     the same transaction: the one-statement reader of those date-local facts plugs in there (the `facts` argument of
+     `readBeforePayrollBundle`).
+   - *Loop cards*: the owner's gate and card rules on the gate rows, pauses, open cases of every loop (the projection
+     keeps the live loops' cases, the owner's own predicate) and Watch levels; a gate read elsewhere or two cards of one
+     kind whose order the owner leaves to the plan read the owner.
+   - *Readiness gaps*, *TP1* (the month collapse), *TP3* (records and drafts), the *previous-employer answer*, the
+     *Family register* and *onboarding acknowledgements* (the owner's filter as its exact SQL twin: jsonb equality with a
+     JSON string is JavaScript's strict equality with that string) are the owners' own rows and projections.
+   - Where the checklist reads only some fields, the section carries those fields of the same rows (decision 8's rule):
+     the pending corrections and OT plans without their attachment and workflow reads, own leave requests without their
+     give-back working dates, open claims with an attachment count, Leave Credit requests with their worked dates, the
+     profile's declared child count only, reviews without ratings, letters' first page. No amount, limit, balance,
+     rating or bank fact is read. The OT plans' page is read one row past its end: a tie on its two order keys at the
+     boundary leaves the page to the owner.
+   Module gates stay the owners': a section is built only where the owner's own gate (`assertModuleGate`, and the AI
+   Centre check for Performance) would admit it. A projection that refuses its rows, a failed owner check, or a failed
+   statement leaves that owner, or every owner, to read exactly as before in the same snapshot;
+   `withOwnerBeforePayrollReads` keeps the old path for equivalence. Error paths of the reads the narrowed sections leave
+   out (an attachment, workflow, working-date or autonomy-card read that would fail) no longer mark their group "could not
+   check"; their values never reached the checklist. Equivalence: the hosted diagnostic compares the checklist both ways
+   and every section with its owner for each fixture subject (`beforePayroll:*`), with fixture rows for every owner
+   added after the traces; test/before-payroll-checklist.test.ts does the same per login.
+
 ## Not done here
 
-- **Before payroll as one read.** Its remaining owners still read separately: the attendance day chain
-  (`attendanceForEmploymentRange`, shared with Today), own corrections, overtime plans and cap, loop cards, own leave
-  requests and eligible types, open claims, Leave Credit requests, readiness gaps, profile and dependants, letters,
-  notices, reviews and onboarding acknowledgements. Each needs the treatment Tasks received: a section beside its owner
-  that shares the owner's SQL, a TypeScript projection fed from the preloaded rows, and an owner-against-section
-  equivalence comparison. The attendance chain follows the Today bundle.
+- **Before payroll's remaining reads** (decision 11). The own-subject proof and company date proof
+  (`requireOwnHomeSubject`), the cut-off day (`app.own_payroll_cut_off_day`, whose answer sets every window the
+  statement reads) and the approvals preview (decision 7) read as before. Approved leave presence and the holiday
+  calendar of the Attendance range read through `AttendanceRangeDatedFacts` until their one-statement reader replaces
+  `LIVE_ATTENDANCE_RANGE_DATED_FACTS`. The letters' fixture needs a letter batch chain the diagnostic does not build.
 - **Deferred task owners.** Leave cancellations, resignations and employment reviews (behind their shared candidate
   probe), Attendance, Profile, Rewards, assessment and calibration work, OneHR feedback and onboarding still read on
   their own whenever they have a candidate. Cancellations can reuse `leaveApproverDecisionSql` with its own task type;

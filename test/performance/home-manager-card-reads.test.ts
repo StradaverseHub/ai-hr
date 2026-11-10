@@ -405,13 +405,17 @@ async function beforePayrollEquivalence(subject:string,actor:Actor,today:string,
  const proof=await items.beforePayrollBundleForProof(ctx,{locale:'en',today});
  if(!proof)return {subject,answered:[],deferred:['all: no own subject']};
  const {read,bundle}=proof,id=read.employmentId,year=read.assessmentYear,att=read.attendance;
+ // The exact Attendance windows the checklist reads for the cut-off row the statement returned.
+ const windows=read.cutOff===null?read.windowsFor(null):bundle?.cutOff?read.windowsFor(bundle.cutOff.value):null;
  const byId=<T extends {id?:string;reviewId?:string;caseId?:string}>(rows:readonly T[])=>[...rows].sort((a,b)=>String(a.id??a.reviewId??a.caseId).localeCompare(String(b.id??b.reviewId??b.caseId)));
  const owners:Record<string,()=>Promise<unknown>>={
+  cutOff:async()=>[...await withTenant(ctx,tx=>tx.execute(sql`SELECT cut_off_day,attendance_cut_off_day,overtime_cut_off_day,claim_cut_off_day,unpaid_leave_cut_off_day
+   FROM app.own_payroll_cut_off_day(${id}::uuid)`))],
   corrections:async()=>att?(await attendance.myAttendanceCorrections(ctx,id,att.corrections)).map(({id,attendanceDate,requestKind,status})=>({id,attendanceDate,requestKind,status})):null,
-  overtimePlans:async()=>att?(await attendance.myOvertimePlans(ctx,id,att.overtime)).map(({id,attendanceDate,status})=>({id,attendanceDate,status})):null,
-  otCap:async()=>att?attendance.otMonthToDateMinutes(ctx,id,att.capDate):null,
+  overtimePlans:async()=>att&&windows?(await attendance.myOvertimePlans(ctx,id,{...att.overtime,from:windows.overtimeFrom})).map(({id,attendanceDate,status})=>({id,attendanceDate,status})):null,
+  otCap:async()=>att&&windows?attendance.otMonthToDateMinutes(ctx,id,windows.capDate):null,
   loopCards:async()=>byId((await readLoopCards(ctx,{scopeIds:[],admin:false})).filter(card=>BEFORE_PAYROLL_OWN_LOOP_KINDS.has(card.kind)) as {caseId?:string}[]),
-  days:async()=>att?.range?(await attendance.attendanceForEmploymentRange(ctx,id,att.range.from,att.range.to)).map(({formulaOvertime:_formula,...row})=>row):null,
+  days:async()=>att&&windows?.range?(await attendance.attendanceForEmploymentRange(ctx,id,windows.range.from,windows.range.to)).map(({formulaOvertime:_formula,...row})=>row):null,
   leaveRequests:async()=>byId((await leaveRequestsFor(ctx,id,'en')).map(({id,leaveTypeId,leaveType,startDate,endDate,days,status,hasDocument})=>({id,leaveTypeId,leaveType,startDate,endDate,days,status,hasDocument}))),
   leaveTypes:()=>listEligibleLeaveTypesFor(ctx,id,'en'),
   claims:async()=>(await claims.listOpenClaimsForEmployment(ctx,id)).map(row=>({id:row.id,claimTypeId:row.claimTypeId,typeName:row.typeName,incurredOn:row.incurredOn,status:row.status,attachmentCount:row.attachments.length})),
@@ -436,7 +440,7 @@ async function beforePayrollEquivalence(subject:string,actor:Actor,today:string,
   answered.push(name);
   compare(subject,'beforePayroll:section:'+name,await outcome(()=>withIndependentTransactions(owner)),{ok:true,value:(ordered[name]??(value=>value))(section.value)});
  }
- return {subject,answered,deferred,attendance:att?{range:att.range,capDate:att.capDate}:null};
+ return {subject,answered,deferred,windows};
 }
 // ── end Before payroll ───────────────────────────────────────────────────────────────────────────────────────────────
 
