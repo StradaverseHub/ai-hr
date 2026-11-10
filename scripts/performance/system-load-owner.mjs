@@ -43,6 +43,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
+import {projectWorkerDriverFailure,workerDriverFailureFile} from './worker-comparison-failure.mjs';
 import {readMeasuredClockCs,readMeasuredClockIdentity} from './measured-lock-clock.mjs';
 import {createMeasuredPreflightObserver,measuredLockSampleLimit,observeDatabaseLockCore,observeMeasuredLockConnection} from './measured-lock-observer.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
@@ -192,6 +193,10 @@ const report={suite,kind:nativePreflight?'NATIVE_RENDERED_UNION_WORKFLOW_SLICE':
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
 const nativeBrowserFailures=nativePreflight?createNativeBrowserFailureObservation():null;
 const measureDevelopment=!nativePreflight&&suite!=='claims-heavy';
+const serialComparison=measureDevelopment&&process.env.AIHR_MEASURED_BROWSER_COURSE==='serial-2-4-8';
+let comparisonStage='driver-initialization',comparisonWorkload=null;
+function markComparisonStage(stage){comparisonStage=stage;comparisonWorkload=null;}
+
 const developmentPageCensus=measureDevelopment?createDevelopmentPageCensus():null;
 let developmentNavigationBinding,developmentRenderedCapture,developmentWorkCompleted=false,developmentLoad=null;
 if(measureDevelopment)report.postgresWaitLogging={scope:'driver-observer-session-settings-only',
@@ -477,7 +482,12 @@ async function prepareDatabaseLockScope(){
 const waits=[];
 const preflightAttribution=createMeasuredPreflightAttribution();
 const preflightLockWorkload=createPreflightLockWorkload(preflightAttribution.setWorkload);
-const withLockWorkload=fullDevelopmentRoutes?preflightLockWorkload.within:(_stage,work)=>work();
+const withLockWorkload=fullDevelopmentRoutes?preflightLockWorkload.within:serialComparison?async (stage,work)=>{
+ comparisonWorkload=stage;
+ const result=await work();
+ comparisonWorkload=null;
+ return result;
+}:(_stage,work)=>work();
 function sampleDatabaseLocks({lockLabels,accessLocks,auditLocks},phase,interval){
  const rootStatements=new Map(),samples=[];
  const measuredPreflight=measureDevelopment&&phase==='preflight';
@@ -578,6 +588,7 @@ async function main(){
  const lockScope=nativePreflight?undefined:await prepareDatabaseLockScope();
  if(nativePreflight)await startProtectedPreflightLockSampling();
  else if(samplingRequired)await startPreflightLockSampling(lockScope);
+ markComparisonStage('pilot-http');
  const anonymous=await request(null,'/claims',undefined,307,false);assert(String(anonymous.headers.location).includes('/login'));report.boundaries.push({kind:'anonymous',passed:true});
  const claimsFormsBookmark='/admin/claims/forms';
  const claimsFormsWire=!nativePreflight&&suite==='workflow-preflight';
@@ -628,6 +639,7 @@ async function main(){
   const response=await request(actor,'/api/personnel/search?q='+encodeURIComponent(target.name));
   assert.deepEqual(JSON.parse(response.content).rows,[]);report.boundaries.push({kind:'company-or-tenant-search',role:actor.role,passed:true});
  }
+ markComparisonStage('browser-launch');
  preflightAttribution.setPhase('browser-sign-in-navigation');
  try{
   requireNativeBusiness();
@@ -637,6 +649,7 @@ async function main(){
  }catch(reason){acquired.browser='failed';throw reason;}
  ownedBrowser=observeDriverBrowser(browser,failures);
  requireCleanDriver();
+ markComparisonStage('browser-baseline');
  report.browserVersion=browser.version();
  browserDiagnosticTimer=setInterval(()=>noteEvidence(()=>{
   if(!lastPage||lastPage.isClosed())return;
@@ -1144,6 +1157,7 @@ async function main(){
   });
  }
  // Exercise real password/MFA before any capacity test; these results are never loaded proof.
+ markComparisonStage('sign-in-and-navigation');
  const signInPreflight=await runLanes(primaryActors,async user=>{
   const ctx=await context(user,'en',true);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
@@ -1179,6 +1193,7 @@ async function main(){
  // every native context-close outcome.
  for(const result of signInPreflight)if(result.status==='rejected')throw result.reason;
  preflightAttribution.setPhase('browser-workflows');
+ markComparisonStage('navigation-seal');
  let baselineCapture,sealStage='pre-render-settlement';
  try{
   requireCleanDriver();
@@ -1197,6 +1212,7 @@ async function main(){
  report.preflightHomeReady=['employee','manager','companyHR','groupHR'].every(role=>
   report.preflightBrowserSignIns?.some(row=>row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0));
  save();
+ markComparisonStage('ai-baseline');
  const aiBrowserActors=fixture.assistantHistory?[employee,hr,fixture.users[254],fixture.users[251]]:[employee,hr];
  const aiBaseline=await withLockWorkload('ai-baseline',()=>runLanes(aiBrowserActors,async user=>{
   const ctx=await context(user);
@@ -1206,6 +1222,7 @@ async function main(){
   ?[{role:aiBrowserActors[index].role,userIndex:aiBrowserActors[index].index,error:errorLabel(result.reason)}]:[]);
  save();
  requireCleanDriver();
+ markComparisonStage('workflow-baseline');
  if(suite==='whole-system'||strictRenderedPreflight){
   const ctx=await context(group);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
@@ -1484,6 +1501,7 @@ async function main(){
   await withContext(ctx,async()=>{const page=await ctx.newPage();await withLockWorkload('personnel-profile',()=>exerciseLivePersonnelProfile({page,user:hr,fixture,db,request,report,save,phase:'baseline'}));});
   requireCleanDriver();
  }
+ markComparisonStage('preflight-checks');
  assert.equal(report.browserErrors.length,0,'mutation/processing browser runtime errors');
  await homeHttp.read(fixture.users[5],false);await homeHttp.read(fixture.users[3],false);
  await homeHttp.boundary(employee,fixture.users[5]);await homeHttp.boundary(manager,employee);
@@ -1530,13 +1548,17 @@ async function main(){
   }
   if(measureDevelopment)developmentRenderedCapture=writeNavigationCaptureBundle(out,baselineCapture,undefined,'development-byte-binding');
   else writeNavigationCaptureBundle(out,baselineCapture);
+  markComparisonStage('preflight-lock-gate');
   if(!nativePreflight)await finishPreflightLockSampling();
   preflightComplete=true;return;
  }
+ markComparisonStage('steady-plan');
  const navigationPlan=suite==='whole-system'?planSteadyRouteCoverage({pools:routePools,users:fixture.users,thinkTimeMs,steadyHoldMs}):null;
  report.navigationCapacityPlan=navigationPlan; // Planning is not measured acceptance.
  requireCleanDriver();
+ markComparisonStage('preflight-lock-gate');
  await finishPreflightLockSampling();
+ markComparisonStage('loaded-setup');
  await db`select pg_stat_statements_reset()`;
  if(measureDevelopment){
   measuredLockDb=postgres(process.env.MIGRATION_DATABASE_URL,{max:1,connect_timeout:2,
@@ -1545,6 +1567,7 @@ async function main(){
  }
  loadedSampler=sampleDatabaseLocks(lockScope,'loaded',1000);
  const resourceCpuBefore=resourceCpu(),appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
+ markComparisonStage('loaded-workload');
  const offset=samples.length,started=performance.now(),steadyStart=started+10000,steadyUntil=steadyStart+steadyHoldMs;
  loadedWindow={startMs:steadyStart,endMs:steadyUntil};
  const navigationScheduler=navigationPlan?createSteadyRouteScheduler({pools:routePools,roleCounts,steadyStart,steadyUntil,groupReadSlots:navigationPlan.groupReadSlots}):null;
@@ -1726,6 +1749,7 @@ async function main(){
  const lockDrain=loadedSampler.stop(),progressDrain=sqlProgress.stop();
  clearInterval(progressTimer);progressTimer=null;report.progress={...progress,elapsedMs:performance.now()-started};
  report.functionalErrors=results.flatMap((value,index)=>value.status==='rejected'?[{user:index,error:errorLabel(value.reason)}]:[]);report.functionalAccountingComplete=true;
+ markComparisonStage('loaded-acceptance');
  const appCpuAfter=appCpu(),driverCpu=process.cpuUsage(driverCpuBefore),resourceCpuAfter=resourceCpu();
  const resourceDelta=Object.fromEntries(Object.keys(resourceCpuBefore).map(key=>{
   const before=resourceCpuBefore[key],after=resourceCpuAfter[key];
@@ -1857,6 +1881,7 @@ const diagnosticDrain=stopDiagnosticAdmission();
 const protectedAbort=nativePreflight&&!preflightComplete?protectedSampler?.close(false):undefined;
 await drainDriverLanes(lanes,requests);
 const failureAtExit=failures.failed();
+if(!failureAtExit)markComparisonStage('driver-settlement');
 const shutdown=report.shutdown={acquisition:acquired,browserClosed:false,nativeAuditPoolClosed:false,driverPoolClosed:false};
 const driverResources={
  async browser(){
@@ -1973,6 +1998,10 @@ report.driverFailures=failures.publicFailures();
 if(!nativePreflight&&preflightComplete&&!failures.failed())report.preflightPassed=true;
 noteEvidence(save);
 if(failures.failed()){
+ if(serialComparison)try{
+  const facts=projectWorkerDriverFailure(comparisonStage,comparisonWorkload,report);
+  writeFileSync(join(out,workerDriverFailureFile),JSON.stringify(facts),{mode:0o600,flag:'wx'});
+ }catch{/* Failure diagnostics never affect acceptance or settlement. */}
  // The outer runner publishes a bounded child log tail. Keep the actual reasons in its private directory.
  const privateFacts=failures.privateFailures();
  noteEvidence(()=>writeFileSync(join(process.env.PERF_PRIVATE_DIR,'driver-failures.log'),

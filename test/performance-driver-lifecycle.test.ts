@@ -431,6 +431,34 @@ it('refuses an actual third in-flight probe or a 4097th real completion before s
  });
 });
 
+it('projects a closed worker failure without exporting a raw error, route, SQL or fixture value',async()=>{
+ const {projectWorkerDriverFailure,validateWorkerDriverFailure}=await import('../scripts/performance/worker-comparison-failure.mjs');
+ const privateValue='/private/fictional-route/23; select employee_id';
+ const report={driverFailures:{primary:{kind:'AssertionError',code:'ERR_ASSERTION',message:privateValue},
+  secondary:[{kind:privateValue,code:privateValue,stage:privateValue}]},
+  coverage:[{status:'failed',route:privateValue},{status:'passed',route:privateValue}],
+  requestErrors:[{path:privateValue}],pageBusyResponses:[],
+  lockSampling:{preflight:{cadence:{reason:'coverage-gap',coveragePass:false,
+   observedBlockingSamples:0,openingGapUs:140000,interiorGapUs:540000,tailGapUs:120000}}}};
+ const projected=projectWorkerDriverFailure('preflight-lock-gate',privateValue,report);
+ expect(validateWorkerDriverFailure(projected)).toEqual(projected);
+ expect(projected).toMatchObject({stage:'preflight-lock-gate',workload:null,
+  primary:{kind:'AssertionError',code:'ERR_ASSERTION'},firstSecondary:{kind:'unclassified',code:null},
+  counts:{routeFailures:1,transportErrors:1,busyResponses:0,browserErrors:null},
+  preflightLocks:{reason:'coverage-gap',coveragePass:false,observedBlockingSamples:0,widestGapUs:540000},
+  loadedLocks:null,loadEntered:false,steadyWindowElapsed:null,
+ });
+ expect(JSON.stringify(projected)).not.toContain(privateValue);
+ expect(projectWorkerDriverFailure(privateValue,'payroll-register',{})).toMatchObject({stage:'unavailable',workload:'payroll-register'});
+ for(const invalid of [
+  {...projected,stage:privateValue},{...projected,workload:privateValue},{...projected,privateValue},
+  {...projected,primary:{kind:'Error',code:privateValue}},
+  {...projected,counts:{...projected.counts,transportErrors:1000001}},
+  {...projected,preflightLocks:{...projected.preflightLocks,reason:privateValue}},
+  {...projected,steadyWindowElapsed:true},
+ ])expect(validateWorkerDriverFailure(invalid)).toBeNull();
+});
+
 it('does not admit an early monotonic timer callback as an observation',async()=>{
  vi.useFakeTimers({now:0});
  let debtMs=0;

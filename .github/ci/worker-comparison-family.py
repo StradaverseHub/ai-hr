@@ -86,12 +86,13 @@ def barrier(child, descriptor, birth):
     exact_child(child, descriptor, birth)
 
 
-def exchange(connection, descriptor, child, birth, anchor):
+def exchange(connection, descriptor, child, birth, anchor, mark=lambda _stage, _ordinal=None: None):
     next_frame = b'H\n'
     ordinal = 0
     buffered = b''
     end = anchor + 7080_000
     while clock() < end:
+        mark('family-frame', ordinal)
         readable, _, _ = select.select([connection, descriptor], [], [], max(0, end - clock()) / 1000)
         if descriptor in readable:
             return ordinal
@@ -110,6 +111,7 @@ def exchange(connection, descriptor, child, birth, anchor):
             require(clock() < anchor + 6600_000)
         else:
             require(ordinal <= 3 and clock() < anchor + 6960_000)
+        mark('family-barrier', ordinal)
         barrier(child, descriptor, birth)
         reply = f'A{ordinal}\n'.encode('ascii')
         require(clock() < anchor + (6600_000 if ordinal == 0 else 6960_000))
@@ -181,8 +183,18 @@ def publish(anchor, code, ordinal):
         os.close(root)
 
 
-def run():
+def failure_fact(stage, ordinal):
+    phases = ('admission', 'subreaper', 'child-launch', 'family-frame', 'family-barrier',
+              'child-exit', 'summary-custody', 'family-cleanup', 'workflow-output')
+    return {'kind': 'WORKER_COMPARISON_FAMILY_FAILURE_V1',
+            'stage': stage if stage in phases else 'unavailable',
+            'ordinal': ordinal if type(ordinal) is int and 0 <= ordinal <= 4 else None}
+
+
+def run(mark=lambda _stage, _ordinal=None: None):
+    mark('admission')
     anchor, node = admit()
+    mark('subreaper')
     require(KERNEL.subreaper(True) == 0)
     child = None
     descriptor = None
@@ -195,6 +207,7 @@ def run():
     signal.signal(signal.SIGINT, interrupted)
     signal.signal(signal.SIGTERM, interrupted)
     try:
+        mark('child-launch')
         parent, client = socket.socketpair()
         with parent, client:
             parent.settimeout(5)
@@ -206,14 +219,18 @@ def run():
             descriptor = os.pidfd_open(child.pid)
             client.close()
             birth = KERNEL.identity(child.pid)['start']
-            ordinal = exchange(parent, descriptor, child.pid, birth, anchor)
+            ordinal = exchange(parent, descriptor, child.pid, birth, anchor, mark)
+            mark('child-exit', ordinal)
             code = child.wait(timeout=1)
             require(KERNEL.own_children() == [])
             if code == 0:
                 require(ordinal == 4 and clock() < anchor + 7080_000)
+            mark('summary-custody', ordinal)
             summary_digest = publish(anchor, code, ordinal)
             owner_result = 0 if code == 0 else 1
     finally:
+        if summary_digest is not None:
+            mark('family-cleanup', ordinal)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         if child is not None and child.returncode is None:
@@ -236,6 +253,7 @@ def run():
         monitor = child.pid if child is not None and child.returncode is None else -1
         settled, _ = KERNEL.settle_adopted(monitor, min(clock() / 1000 + 10, anchor / 1000 + 7100), time.monotonic)
         require(settled and monitor == -1 and KERNEL.own_children() == [])
+    mark('workflow-output', ordinal)
     require(summary_digest and clock() < anchor + 7080_000)
     with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='ascii') as output:
         output.write('published=true\nsummary_sha256=' + summary_digest + '\n')
@@ -243,8 +261,15 @@ def run():
 
 
 if __name__ == '__main__':
+    stage, ordinal = None, None
+
+    def mark(new_stage, new_ordinal=None):
+        global stage, ordinal
+        stage, ordinal = new_stage, new_ordinal
+
     try:
-        raise SystemExit(run())
+        raise SystemExit(run(mark))
     except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+        print(json.dumps(failure_fact(stage, ordinal)), file=sys.stderr, flush=True)
         print('Worker comparison family admission or settlement refused', file=sys.stderr, flush=True)
         raise SystemExit(1)

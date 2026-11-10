@@ -54,6 +54,26 @@ class FamilyTests(unittest.TestCase):
             os.close(descriptor)
             os.close(finished)
 
+    def test_closed_family_diagnostic_distinguishes_frame_from_barrier(self):
+        secret = '/private/fixture; select tenant_id'
+        self.assertEqual(owner.failure_fact(secret, True),
+                         {'kind': 'WORKER_COMPARISON_FAMILY_FAILURE_V1', 'stage': 'unavailable', 'ordinal': None})
+        for frame, stage in ((b'B2\n', 'family-frame'), (b'H\n', 'family-barrier')):
+            parent, client = socket.socketpair()
+            descriptor, finished = os.pipe()
+            marks = []
+            try:
+                with parent, client, patch.object(owner, 'barrier', side_effect=ValueError(secret)):
+                    client.sendall(frame)
+                    with self.assertRaises(ValueError):
+                        owner.exchange(parent, descriptor, 71, 951, owner.clock(),
+                                       lambda *value: marks.append(value))
+                self.assertEqual(owner.failure_fact(*marks[-1]),
+                                 {'kind': 'WORKER_COMPARISON_FAMILY_FAILURE_V1', 'stage': stage, 'ordinal': 0})
+            finally:
+                os.close(descriptor)
+                os.close(finished)
+
     def test_refuses_unknown_child_or_adopted_process(self):
         with patch.object(owner, 'exact_child') as exact:
             for direct, adopted in (([16], [71]), ([], [71, 16])):

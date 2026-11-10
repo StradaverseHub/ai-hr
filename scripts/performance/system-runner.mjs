@@ -17,6 +17,7 @@ import {createDriverFailures,createDriverSockets,validateDevelopmentMeasurement,
 import {systemBuildEnvironment} from './build-environment.mjs';
 import {isolatedWorkerBudget,isolatedWorkerCpuAdmission} from './worker-budget.mjs';
 import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
+import {validateWorkerDriverFailure,workerDriverFailureFile} from './worker-comparison-failure.mjs';
 import {createWorkerComparisonModel} from './worker-comparison.mjs';
 import {holdDevelopmentBuildSnapshot} from './worker-comparison-build.mjs';
 import {comparisonClock,holdWorkerComparisonFiles,openWorkerComparisonFamily,readComparisonJson} from './worker-comparison-custody.mjs';
@@ -156,6 +157,14 @@ async function run(label,command,args,childEnv=env,timeout=900000){
  if(measuring)measurement.settlement.driver=!timedOut&&code===0&&exitSignal===null?'settled':'failed';
  report.phases.push({label,elapsedMs:Date.now()-start,exitCode:code,timeoutMs:timeout,timedOut,exitSignal});save();
  console.log('[system-perf] '+JSON.stringify(report.phases.at(-1)));
+ if(comparison&&label==='http-and-browser'&&(code!==0||timedOut)){
+  let facts=null;
+  try{
+   const path=join(out,workerDriverFailureFile);
+   if((lstatSync(path).mode&0o7777)===0o600)facts=validateWorkerDriverFailure(readComparisonJson(path,4096));
+  }catch{}
+  console.log('[system-perf] '+JSON.stringify(facts??{kind:'WORKER_COMPARISON_DRIVER_FAILURE_UNAVAILABLE'}));
+ }
  if(code!==0&&!comparison){const text=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>');writeFileSync(join(out,label+'-failure.txt'),text);}
  assert.equal(timedOut,false,label+' exceeded its unchanged process budget; retain incomplete evidence');
  assert.equal(code,0,label+' failed; private process logs contain no published credentials');
