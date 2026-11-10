@@ -12,7 +12,8 @@ import {
 import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
 import {greetingProjection,tasksProjection,todayProjection,calendarProjection} from '../personal-projections';
 import {withDatabaseReadCancellation} from '@/db/workload';
-import {declareSharedReadWindow,withSharedReadSnapshot} from '@/db/client';
+import {declareSharedReadPreamble,declareSharedReadWindow,withSharedReadSnapshot} from '@/db/client';
+import {homeRequestPreamble} from '@/core/home-request-preamble';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import {readEmployeeHomeToday} from '@/core/employee-home-today';
 import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
@@ -131,6 +132,9 @@ export async function GET(request:Request){
     void withSharedReadSnapshot(session,()=>{
      // An optimization only: a window that cannot be computed leaves every card reading its own.
      try{const window=homeReadWindow(cards,month);if(window)declareSharedReadWindow(employmentId,window.from,window.to);}catch{/* own windows */}
+     // Every card's proofs, own identity and configuration reads for this login and employment, answered by the
+     // carrier's identity statement (decision 12); a card asking anything else reads it as before.
+     declareSharedReadPreamble(homeRequestPreamble(employmentId));
      return Promise.allSettled(cards.map(read));
     },signal).then(stop,stop);
    },

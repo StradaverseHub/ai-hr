@@ -7,15 +7,15 @@
  * isolation and ABAC are enforced by the database, not by app code.
  */
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import postgres from 'postgres';
 import {createDatabaseAdmission} from './admission';
 import {createBackgroundReadAdmission} from './background-read-admission';
 import {createTenantWriteAdmission} from './tenant-write-admission';
 import {currentDatabaseWorkload,databaseReadSignal} from './workload';
 import {applicationDatabaseBudget} from './capacity';
-import {SharedReadSession,currentSharedRead,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,sharedReadDriver,type SharedReadStats} from './shared-read';
-export {declareSharedReadWindow} from './shared-read';
+import {SharedReadSession,currentSharedRead,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
+export {declareSharedReadWindow,declareSharedReadPreamble,withOwnerPreambleReads} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
 const applicationBudget = applicationDatabaseBudget(process.env);
 import { chainArmingDecision } from '../core/audit-chain-arming';
@@ -289,7 +289,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
 
   /** The identity bootstrap every tenant transaction runs before its first read (r394: one statement), shared by
    * withTenant and the shared read snapshot so both establish exactly the same transaction-local identity. */
-  async function bootstrapTenantTx(tx: Tx, ctx: SessionContext, grants: Grant[], roleNames: string[]) {
+  async function bootstrapTenantTx(tx: Tx, ctx: SessionContext, grants: Grant[], roleNames: string[], extra?: SQL): Promise<Record<string, unknown> | undefined> {
       // The existing sticky fact only moves from unknown to on. An already known chain can
       // share the identity bootstrap statement; first activation still decides after this await.
       const auditAlreadyArmed = tenantHasChainedHistory(ctx.tenantId);
@@ -299,9 +299,12 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       // before its first real query (measured: 145 of 366 statements on one employee navigation to
       // My Leave). The four are independent and all evaluated in this one row, so the outcome is the
       // same; test/r394-with-tenant-one-round-trip.test.ts pins both the values and the single statement.
-      await tx.execute(
-        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true), set_config('app.payroll_tax_basis_reader', '1', true)${auditBootstrap}`,
-      );
+      // `extra` (a shared carrier's request preamble only, decision 12) adds columns after every setting; the
+      // statement is otherwise unchanged.
+      const columns = extra ?? sql``;
+      const [identityRow] = (await tx.execute(
+        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true), set_config('app.payroll_tax_basis_reader', '1', true)${auditBootstrap}${columns}`,
+      )) as unknown as Record<string, unknown>[];
       // ADR-0030 Layer 2 gate: the domain_event hash-chain trigger only fires when this GUC is 'on'.
       // Off by default → chain columns stay NULL → byte-identical behaviour (deployment flag).
       //
@@ -366,6 +369,18 @@ export function createDb(connectionString: string, options?: { max?: number }) {
         // are SELECTs, which do not close the window for SET TRANSACTION.
         await tx.execute(sql`SET TRANSACTION READ ONLY`);
       }
+      return identityRow;
+  }
+
+  /** A carrier's request preamble as columns of its identity statement (db/shared-read.ts, decision 12). The
+   * preamble's owner statements are evaluated only inside a sub-select whose one-time filter requires every identity
+   * setting this statement sets to hold already: if PostgreSQL ever evaluated it before the settings, the column is
+   * null and every owner reads as before. JIT, when every joining owner may plan without it, is set in the same row. */
+  function preambleColumns(preamble: SharedReadPreambleRead, ctx: SessionContext, grants: Grant[], roleNames: string[]) {
+    const identityHolds = sql`current_setting('app.tenant_id', true) = ${ctx.tenantId} and current_setting('app.user_id', true) = ${ctx.userId ?? ''}
+      and current_setting('app.roles', true) = ${roleNames.join(',')} and current_setting('app.grants', true) = ${JSON.stringify(grants)}
+      and current_setting('app.agent_principal_id', true) = ${ctx.agent?.principalId ?? ''} and current_setting('app.payroll_tax_basis_reader', true) = '1'`;
+    return sql`${preamble.jitOff ? sql`, set_config('jit', 'off', true)` : sql``}, (select (${preamble.sql}) where ${identityHolds}) as request_preamble`;
   }
 
   /** One request's reads as ONE read-only snapshot (db/shared-read.ts). `work` is every read owner of that
@@ -384,7 +399,11 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       let byIdentity = requestScopedSessions.get(scope);
       if (!byIdentity) requestScopedSessions.set(scope, byIdentity = new Map());
       let shared = byIdentity.get(identity);
-      if (!shared) byIdentity.set(identity, shared = newSession(ctx, grants, roleNames, identity, signal, true));
+      if (!shared) {
+        byIdentity.set(identity, shared = newSession(ctx, grants, roleNames, identity, signal, true));
+        // The render's own request preamble (lib/request-read-scope.ts), read by each carrier of this session.
+        shared.preamble = scopePreamble();
+      }
       return shared.track(work);
     }
     const session = newSession(ctx, grants, roleNames, identity, signal, false);
@@ -419,16 +438,30 @@ export function createDb(connectionString: string, options?: { max?: number }) {
         let release: (() => void) | undefined;
         try {
           release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal);
+          const control: { current?: SharedReadCarrierControl } = {};
           const carrierClient = new Proxy(client!, { get(target, property, receiver) {
             if (property !== 'begin') return Reflect.get(target, property, receiver);
             return (fn: (sqlTx: postgres.TransactionSql) => Promise<unknown>) =>
-              target.begin('isolation level repeatable read read only', (sqlTx) => fn(sharedReadDriver(sqlTx, session as SharedReadSession<unknown>)));
+              target.begin('isolation level repeatable read read only', (sqlTx) => fn(sharedReadDriver(sqlTx, session as SharedReadSession<unknown>, control)));
           } });
           await drizzle(carrierClient).transaction(async (carrierTx) => {
             timing?.acquired();
             readSignal?.throwIfAborted();
-            await bootstrapTenantTx(carrierTx, ctx, grants, roleNames);
+            // Decision 12: the request preamble rides this carrier's identity statement and answers its owner statements
+            // ahead, before any owner can join. Without one (or switched off) the statement is the plain bootstrap.
+            const preamble = session.openPreamble(ctx, carrierTx);
+            const identityRow = await bootstrapTenantTx(carrierTx, ctx, grants, roleNames, preamble ? preambleColumns(preamble, ctx, grants, roleNames) : undefined);
             session.bootstrapping = false;
+            if (preamble) {
+              if (preamble.jitOff) control.current?.hold('jit', 'off');
+              const value = identityRow?.request_preamble;
+              if (value !== null && value !== undefined) {
+                // A value of an unexpected shape answers nothing: every owner then reads its own statement.
+                let seeds: ReturnType<SharedReadPreambleRead['decode']> = [];
+                try { seeds = preamble.decode(value); } catch { seeds = []; }
+                if (control.current?.seed(seeds)) session.stats.preambles++;
+              }
+            }
             markSharedCarrierTransaction(carrierTx);
             resolveTx(carrierTx);
             await finished;

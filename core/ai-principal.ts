@@ -1,6 +1,6 @@
 /** Shared fresh calling-login prerequisite. This proves no module, subject, data disclosure or
  * effect authority. Canonical owners must still authorize minimal fields and protect dependencies. */
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { AiGatewayError } from '../lib/ai/types';
 import { lockAccessConfigurationTx,lockAccessConfigurationReadTx } from './access-configuration-lock';
@@ -26,9 +26,10 @@ async function readAiPrincipalTx(tx:Tx,supplied:SessionContext,isolation:'read c
   // Only read-only carriers whose callers do not require exclusive Access may share the barrier.
   await (!requireExclusive&&carrier.read_only===true?lockAccessConfigurationReadTx:lockAccessConfigurationTx)(tx,ctx.tenantId);
  }
- const [row]=await tx.execute<{allowed:boolean}>(sql`select ${aiPrincipalProofSql(ctx,ctx.userId,grants,roles,isolation)} as allowed`);
+ const [row]=await tx.execute<{allowed:boolean}>(principalProofStatement(aiPrincipalProofSql(ctx,ctx.userId,grants,roles,isolation)));
  return row?.allowed===true;
 }
+const principalProofStatement=(proof:SQL)=>sql`select ${proof} as allowed`;
 function aiPrincipalProofSql(ctx:SessionContext,userId:string,grants:readonly {role:string;companyId:string|null}[],roles:readonly string[],isolation:'read committed'|'repeatable read'){
  const requiredMode=isolation==='read committed'
   ? sql`current_setting('transaction_isolation')='read committed'`
@@ -51,6 +52,12 @@ export function aiPresentationPrincipalSql(supplied:SessionContext){
  const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
  const roles=ctx.roles??Array.from(new Set(grants.map(g=>g.role)));
  return aiPrincipalProofSql(ctx,ctx.userId,grants,roles,'repeatable read');
+}
+/** The exact statement isAiPresentationPrincipalCurrentTx sends, or null where it answers false without one (a request
+ * preamble answers it ahead in the same snapshot, docs/adr/2026-11-10-home-request-read-scope.md decision 12). */
+export function aiPresentationPrincipalStatementSql(supplied:SessionContext){
+ const proof=aiPresentationPrincipalSql(supplied);
+ return proof?principalProofStatement(proof):null;
 }
 export async function assertAiPrincipalTx(tx:Tx,supplied:SessionContext):Promise<void>{
  try{if(await isAiPrincipalCurrentTx(tx,supplied))return;}catch{/* Never continue the caller Tx after a storage failure. */}

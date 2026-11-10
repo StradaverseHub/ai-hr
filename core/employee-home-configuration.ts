@@ -1,6 +1,6 @@
 /** Company/role Home presentation policy. Immutable versions never own attendance, money, leave,
  * approvals or identity facts; module readers remain responsible for every fact used in a sentence. */
-import {and,asc,desc,eq,isNull,lt,sql} from 'drizzle-orm';
+import {and,asc,desc,eq,isNull,lt,sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,employeeHomeConfigurationRevision} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
@@ -30,10 +30,14 @@ async function assertAdminCompany(tx:Tx,ctx:SessionContext,companyId:string){
   .from(company).where(and(eq(company.id,companyId),eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt))).limit(1);
  if(!row?.allowed)throw new HomeConfigurationAccessError();
 }
-async function currentTx(tx:Tx,ctx:SessionContext,companyId:string,audienceRole:DashboardLayoutRole):Promise<EmployeeHomeConfigurationView>{
- const [row]=await tx.select({id:employeeHomeConfigurationRevision.id,ordinal:employeeHomeConfigurationRevision.ordinal,configuration:employeeHomeConfigurationRevision.configuration})
+/** The select currentTx sends (a request preamble answers it ahead for its own company and role, decision 12). */
+export function homeConfigurationRevisionQuery(tx:Tx,ctx:SessionContext,companyId:string|SQL,audienceRole:string|SQL){
+ return tx.select({id:employeeHomeConfigurationRevision.id,ordinal:employeeHomeConfigurationRevision.ordinal,configuration:employeeHomeConfigurationRevision.configuration})
   .from(employeeHomeConfigurationRevision).where(and(eq(employeeHomeConfigurationRevision.tenantId,ctx.tenantId),eq(employeeHomeConfigurationRevision.companyId,companyId),eq(employeeHomeConfigurationRevision.audienceRole,audienceRole)))
   .orderBy(desc(employeeHomeConfigurationRevision.ordinal)).limit(1);
+}
+async function currentTx(tx:Tx,ctx:SessionContext,companyId:string,audienceRole:DashboardLayoutRole):Promise<EmployeeHomeConfigurationView>{
+ const [row]=await homeConfigurationRevisionQuery(tx,ctx,companyId,audienceRole);
  return {version:1,companyId,audienceRole,revisionId:row?.id??null,ordinal:row?.ordinal??0,
   configuration:row?validateEmployeeHomeConfiguration(row.configuration):defaultEmployeeHomeConfiguration()};
 }

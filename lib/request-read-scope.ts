@@ -6,7 +6,8 @@
  * `cache` is a passthrough, so there is no request scope and every composition keeps its own snapshot, exactly as
  * before. A test or diagnostic that models one page render supplies its scope explicitly with `withRequestReadScope`.
  * The scope carries no identity: a session inside it is keyed by the exact transaction identity, so two identities
- * in one render never share a snapshot. */
+ * in one render never share a snapshot. Each carrier of a scope's session reads the registered request preamble
+ * (core/home-request-preamble.ts, docs/adr/2026-11-10-home-request-read-scope.md decision 12) for its own login. */
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {cache} from 'react';
 
