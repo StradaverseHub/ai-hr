@@ -82,7 +82,8 @@ describe('physical pool admission with real tenant transactions',()=>{
    await new Promise(resolve=>setTimeout(resolve,25));
   }
   deadline.abort(reason);
-  expect(await outcome).toMatchObject({code:'57014'});
+  // PostgreSQL itself cancelled the running statement (Drizzle wraps the driver error as its cause).
+  expect(await outcome).toMatchObject({cause:{code:'57014',message:'canceling statement due to user request'}});
   expect(performance.now()-started).toBeLessThan(30000);
   expect(await sleeping()).toBe(0);
   // Every slot of the four-connection pool is usable again, each on its own backend.
