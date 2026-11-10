@@ -17,7 +17,7 @@ import {createDriverFailures,createDriverSockets,validateDevelopmentMeasurement,
 import {systemBuildEnvironment} from './build-environment.mjs';
 import {isolatedWorkerBudget,isolatedWorkerCpuAdmission} from './worker-budget.mjs';
 import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
-import {validateWorkerDriverFailure,workerDriverFailureFile} from './worker-comparison-failure.mjs';
+import {projectWorkerNativeLockFailures,validateWorkerDriverFailure,workerDriverFailureFile} from './worker-comparison-failure.mjs';
 import {createWorkerComparisonModel} from './worker-comparison.mjs';
 import {holdDevelopmentBuildSnapshot} from './worker-comparison-build.mjs';
 import {comparisonClock,holdWorkerComparisonFiles,openWorkerComparisonFamily,readComparisonJson} from './worker-comparison-custody.mjs';
@@ -599,6 +599,14 @@ finally{
     'Owned disposable database during application runtime only';
    writeFileSync(join(out,'postgres-lock-failures.json'),JSON.stringify({scope:scope+'; bounded lock topology and routine frames; SQL/values/raw logs excluded',runtimeFrom:report.applicationRuntimeFrom??null,logWindow:window?'qualified-runtime':'unqualified',failures:postgresRuntimeFailures},null,2));
   }catch{report.postgresLockFailureSummaryUnavailable=true;}
+ }
+ if(comparison&&(report.exitCode!==0||postgresRuntimeFailures.length>0||!report.postgresWaitLogCoverage)){
+  let lockFacts=null;
+  try{
+   if(!report.postgresLockFailureSummaryUnavailable&&report.postgresWaitLogCoverage?.thresholdMs===100)
+    lockFacts=projectWorkerNativeLockFailures(postgresRuntimeFailures);
+  }catch{}
+  console.log('[system-perf] '+JSON.stringify(lockFacts??{kind:'WORKER_COMPARISON_NATIVE_LOCK_FAILURES_UNAVAILABLE'}));
  }
  if(measurement&&developmentReset.admitted){
   let physicalAbsent=null;

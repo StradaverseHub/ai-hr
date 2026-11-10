@@ -43,7 +43,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
-import {projectWorkerDriverFailure,workerDriverFailureFile} from './worker-comparison-failure.mjs';
+import {createWorkerLoadedDiagnostics,projectWorkerDriverFailure,workerDriverFailureFile} from './worker-comparison-failure.mjs';
 import {readMeasuredClockCs,readMeasuredClockIdentity} from './measured-lock-clock.mjs';
 import {createMeasuredPreflightObserver,measuredLockSampleLimit,observeDatabaseLockCore,observeMeasuredLockConnection} from './measured-lock-observer.mjs';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes,
@@ -194,6 +194,7 @@ const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report
 const nativeBrowserFailures=nativePreflight?createNativeBrowserFailureObservation():null;
 const measureDevelopment=!nativePreflight&&suite!=='claims-heavy';
 const serialComparison=measureDevelopment&&process.env.AIHR_MEASURED_BROWSER_COURSE==='serial-2-4-8';
+const workerLoadedDiagnostics=serialComparison?createWorkerLoadedDiagnostics():null;
 let comparisonStage='driver-initialization',comparisonWorkload=null;
 function markComparisonStage(stage){comparisonStage=stage;comparisonWorkload=null;}
 
@@ -454,8 +455,13 @@ async function prepareDatabaseLockScope(){
  const lockKeys=[];
  for(const [index,tenant]of fixture.tenants.entries()){
   for(const [kind,key]of [['access-configuration','access-configuration:'+tenant.tenantId],['payroll-history','payroll-history:'+tenant.tenantId],['pay-component-catalog',tenant.tenantId+':pay-component-catalog']])lockKeys.push({label:kind+':fixture-tenant-'+index,key});
+  if(serialComparison)lockKeys.push({label:'leave-dependency-configuration:fixture-tenant-'+index,key:'leave-dependency-configuration:'+tenant.tenantId});
  }
- for(const user of fixture.users)lockKeys.push({label:'employment:fixture-user-'+user.index,key:fixture.tenants[user.tenant].tenantId+':'+user.employmentId});
+ for(const user of fixture.users){
+  const key=fixture.tenants[user.tenant].tenantId+':'+user.employmentId;
+  lockKeys.push({label:'employment:fixture-user-'+user.index,key});
+  if(serialComparison)lockKeys.push({label:'leave-dependency-employment:fixture-user-'+user.index,key:'leave-dependency-employment:'+key});
+ }
  const hashedLocks=await db`select k,((hashtextextended(k,0)>>32)&4294967295)::text as classid,(hashtextextended(k,0)&4294967295)::text as objid, (select oid::text from pg_database where datname=current_database()) as dbid from unnest(${lockKeys.map(row=>row.key)}::text[])k`;
  const labelsByKey=new Map(lockKeys.map(row=>[row.key,row.label])),lockLabels=new Map(hashedLocks.map(row=>[row.classid+':'+row.objid+':1',labelsByKey.get(row.k)]));
  // Audit's native key uses hashtext (int4), unlike the other bigint advisory namespaces.
@@ -540,8 +546,13 @@ function sampleDatabaseLocks({lockLabels,accessLocks,auditLocks},phase,interval)
    const row={state:'complete',startedMs,completedMs:measureDevelopment?coreCompletedMs:performance.now(),locks:locks.length,blockingAppSessions,
     holdersRequested:pids.length,holdersObserved:holders.length,...(measureDevelopment?{appSessions:appConnections.open}:{}),
     ...(measuredPreflight?{...probe.timing,probeMode:probe.probeMode,nativeOpenedCs:probe.nativeOpenedCs,nativeClosedCs:probe.nativeClosedCs}:measureDevelopment?{activityCompletedMs}:{})};
+   const withinDiagnosticCensus=samples.length<measuredLockSampleLimit;
    retain(row);
    coreComplete=true;
+   if(workerLoadedDiagnostics&&phase==='loaded'&&withinDiagnosticCensus)try{
+    workerLoadedDiagnostics.lock(appConnections.waitingOnLock,queuedLocks.filter(row=>row.app_session)
+     .map(row=>lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)?.split(':',1)[0]));
+   }catch{/* Attribution cannot alter the retained native sample. */}
    let attribution;
    if(wait&&probe&&fullDevelopmentRoutes&&blockingAppSessions>0&&attributedSamples<6){
     attributedSamples++;
@@ -1679,20 +1690,25 @@ async function main(){
  const results=await runLanes(fixture.users.map((user,i)=>({user,i})),async({user,i})=>{
   await pause(i*20);progress.launched++;progress.active++;progress.peakActive=Math.max(progress.peakActive,progress.active);
   if(progress.active===500)fullConcurrencyAt??=performance.now();
-  let iteration=0;
+  let iteration=0,loadPhase='navigation',loadRoute;
   try{do{
   const ordinal=roleOrdinals.get(user.index),slots=navigationScheduler?.slots(user.role,ordinal,iteration)??measuredRoutePools[user.role].length;
   for(let slot=0;slot<slots;slot++){
    const navigationStarted=performance.now(),lease=navigationScheduler?.reserve({role:user.role,ordinal,actors:roleCounts.get(user.role),iteration,slot,startedMs:navigationStarted});
    const route=lease?.route??measuredRoutePools[user.role][slot];let usable=false;
+   loadPhase='navigation';loadRoute=route;
    try{
     await readRoute(user,route);
-    if(route==='/'&&['employee','manager'].includes(user.role))await homeHttp.read(user,true);
+    if(route==='/'&&['employee','manager'].includes(user.role)){
+     loadPhase='home-read';await homeHttp.read(user,true);
+    }
     pageInteractions.push({role:user.role,route,startedMs:navigationStarted,durationMs:performance.now()-navigationStarted});usable=true;
    }finally{if(lease)navigationScheduler.complete(lease,usable);}
    await pause(thinkTimeMs);
   }
+  loadPhase='mixed-workflow';loadRoute=undefined;
   if(mixedWorkflows&&await mixedWorkflows.run(user,iteration)){await pause(thinkTimeMs);iteration++;progress.iterations++;continue;}
+  loadPhase='claims-create';loadRoute='/claims';
   const description='PERF_HTTP_'+i+'_'+iteration;
   const template=contextTemplates.createTemplate,fields={...template.fields};
   for(const [key,value]of Object.entries({employmentId:user.employmentId,claimTypeId:user.claimTypeId,amount:'1',incurredOn:fixture.today,description,intent:'draft'}))fields[template.prefix+key]=value;
@@ -1701,10 +1717,12 @@ async function main(){
    const rows=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description} limit 2`;return rows.length===1;
   },()=>request(user,'/claims',fields,template.status,true,template.headers,template.fieldOrder,'claimsCreate'));assert.equal(new URL(String(created.headers['x-action-redirect']??created.headers.location).split(';')[0],base).searchParams.get('toast'),'Draft saved');
   const [draft]=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft'and description=${description}`;assert(draft,'HTTP create did not persist');
+  loadPhase='claims-edit';
   await pause(thinkTimeMs);await observedMutation(user,'edit',async()=>{
    const [row]=await db`select amount from claim_request where id=${draft.id}::uuid`;return row&&Number(row.amount)===2;
   },()=>request(user,'/claims',{...fields,[template.prefix+'draftId']:draft.id,[template.prefix+'amount']:'2'},template.status,true,template.headers,template.fieldOrder,'claimsEdit'));
   const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
+  loadPhase='claims-delete';
   await pause(thinkTimeMs);await observedMutation(user,'delete',async()=>{
    return (await db`select id from claim_request where id=${draft.id}::uuid`).length===0;
   },()=>request(user,'/claims',{...contextTemplates.deleteTemplate.fields,[contextTemplates.deleteTemplate.prefix+'employmentId']:user.employmentId,[contextTemplates.deleteTemplate.prefix+'id']:draft.id},contextTemplates.deleteTemplate.status,true,contextTemplates.deleteTemplate.headers,contextTemplates.deleteTemplate.fieldOrder,'claimsDelete'));
@@ -1712,7 +1730,10 @@ async function main(){
   await pause(thinkTimeMs);iteration++;progress.iterations++;
   }while(performance.now()<steadyUntil);
   progress.completed++;
-  }catch(error){progress.failed++;throw error;}finally{
+  }catch(error){
+   try{workerLoadedDiagnostics?.traffic(user.role,loadPhase,loadRoute,error);}catch{/* Counts are diagnostic only. */}
+   progress.failed++;throw error;
+  }finally{
    if(performance.now()<steadyUntil)earlyLaneExits++;
    progress.active--;
   }
@@ -1999,7 +2020,7 @@ if(!nativePreflight&&preflightComplete&&!failures.failed())report.preflightPasse
 noteEvidence(save);
 if(failures.failed()){
  if(serialComparison)try{
-  const facts=projectWorkerDriverFailure(comparisonStage,comparisonWorkload,report);
+  const facts=projectWorkerDriverFailure(comparisonStage,comparisonWorkload,report,workerLoadedDiagnostics.facts());
   writeFileSync(join(out,workerDriverFailureFile),JSON.stringify(facts),{mode:0o600,flag:'wx'});
  }catch{/* Failure diagnostics never affect acceptance or settlement. */}
  // The outer runner publishes a bounded child log tail. Keep the actual reasons in its private directory.

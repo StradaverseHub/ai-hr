@@ -459,6 +459,55 @@ it('projects a closed worker failure without exporting a raw error, route, SQL o
  ])expect(validateWorkerDriverFailure(invalid)).toBeNull();
 });
 
+it('aggregates only closed loaded traffic cohorts, Home phases and real sampled advisory families',async()=>{
+ const {createWorkerLoadedDiagnostics,projectWorkerDriverFailure,validateWorkerDriverFailure}
+  =await import('../scripts/performance/worker-comparison-failure.mjs');
+ const diagnostics=createWorkerLoadedDiagnostics();
+ const sensitive='/admin/personnel/fictional-person-private-id?q=select';
+ const http={name:'AssertionError',actual:503,message:'Unexpected HTTP status for '+sensitive};
+ for(let n=0;n<12;n++)diagnostics.traffic('groupHR','navigation',sensitive,http);
+ diagnostics.traffic('employee','claims-create','/claims?draft=secret',{name:'Error',code:'55P03'});
+ diagnostics.traffic('manager','home-read','/',{name:'TimeoutError',message:sensitive});
+ diagnostics.traffic('employee','mixed-workflow',undefined,{name:'Error',code:'WORKFLOW_ROUTE_CHANGED',message:sensitive});
+ diagnostics.lock(2,['audit-chain','audit-chain','leave-dependency-employment',sensitive]);
+ diagnostics.lock(1,[]);
+ diagnostics.lock(0,['access-configuration']);
+ const report={measurementWindow:{},homeCardFailures:[{role:'employee',phase:'loaded',messages:[sensitive]},
+  {role:'employee',phase:'loaded',messages:[sensitive]},{role:'manager',phase:'baseline',messages:[sensitive]},
+  {role:sensitive,phase:'loaded',messages:[sensitive]}]};
+ const result=projectWorkerDriverFailure('loaded-acceptance',null,report,diagnostics.facts());
+ expect(validateWorkerDriverFailure(result)).toEqual(result);
+ expect(result.traffic).toEqual({total:15,omitted:0,groups:[
+  {role:'groupHR',phase:'navigation',module:'personnel',outcome:'http-503',count:12},
+  {role:'employee',phase:'claims-create',module:'claims',outcome:'lock-timeout',count:1},
+  {role:'manager',phase:'home-read',module:'home',outcome:'timeout',count:1},
+  {role:'employee',phase:'mixed-workflow',module:'other',outcome:'workflow-route-changed',count:1},
+ ]});
+ expect(result.loadedAdvisory).toMatchObject({activityWaitSamples:2,appAdvisorySamples:2,activityWithoutAdvisorySamples:1,
+  families:{'audit-chain':1,'advisory-unclassified':1,'access-configuration':1,'leave-dependency-employment':1}});
+ expect(result.homeFailures).toEqual([{role:'employee',phase:'loaded',count:2},{role:'manager',phase:'baseline',count:1}]);
+ expect(JSON.stringify(result)).not.toContain(sensitive);
+ expect(validateWorkerDriverFailure({...result,traffic:{...result.traffic,omitted:1}})).toBeNull();
+ expect(validateWorkerDriverFailure({...result,loadedAdvisory:{...result.loadedAdvisory,families:{secret:1}}})).toBeNull();
+ expect(validateWorkerDriverFailure({...result,loadEntered:false})).toBeNull();
+});
+
+it('keeps native failure categories bounded, independent of the loaded sampling phase and free of process data',async()=>{
+ const {projectWorkerNativeLockFailures}=await import('../scripts/performance/worker-comparison-failure.mjs');
+ const failures=[
+  {kind:'observed heavyweight lock wait',pid:23,waitMs:105.731,query:'select private',
+   diagnostic:{waitFamily:'audit-chain',edges:[{waiter:23,blocker:9,family:'audit-chain'}]}},
+  {kind:'deadlock detected',pid:29,diagnostic:{waitFamily:null,edges:[{family:'transaction'},{family:'leave-dependency-configuration'},{family:'private payload'}]}},
+  {kind:'canceling statement due to lock timeout',pid:31},
+ ];
+ const result=projectWorkerNativeLockFailures(failures);
+ expect(result).toMatchObject({phase:'application-runtime',thresholdMs:100,retainedEntries:3,atRetentionCap:false,
+  heavyweight:1,deadlocks:1,lockTimeouts:1,longestWaitMs:106,families:{'audit-chain':1,transaction:1,'leave-dependency-configuration':1,unknown:2}});
+ expect(JSON.stringify(result)).not.toMatch(/pid|waiter|blocker|private/);
+ expect(projectWorkerNativeLockFailures(Array.from({length:64},()=>failures[0]))?.atRetentionCap).toBe(true);
+ expect(projectWorkerNativeLockFailures(Array.from({length:65},()=>failures[0]))).toBeNull();
+});
+
 it('does not admit an early monotonic timer callback as an observation',async()=>{
  vi.useFakeTimers({now:0});
  let debtMs=0;

@@ -1,5 +1,5 @@
 /** Optional fictional-run diagnostic. The original blocking sample is already retained. */
-const families=new Set(['access-configuration','ai-control','audit-chain','employment','payroll-history','pay-component-catalog','unclassified']);
+const families=new Set(['access-configuration','ai-control','audit-chain','employment','leave-dependency-configuration','leave-dependency-employment','payroll-history','pay-component-catalog','unclassified']);
 const modes=new Set(['ShareLock','ExclusiveLock']);
 const categories=new Set(['advisory-exclusive','advisory-shared','rewards-authority','rewards-library','rewards-company','audit-append','ai-action-pause','unknown']);
 const originalAuditCategories=new Set(['auth-audit-append','rewards-access-observe','audit-append']);

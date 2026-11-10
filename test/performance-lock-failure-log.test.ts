@@ -374,6 +374,16 @@ it('recognizes a still-blocked, acquired or failed heavyweight wait without reta
  expect(JSON.stringify(failures)).not.toMatch(/1234|5000|9999|ai_hr|abcdef01/);
 });
 
+it.each(['leave-dependency-configuration','leave-dependency-employment'])(
+ 'retains the exact %s family without exposing its key or SQL', family=>{
+ const log='2026-11-09 14:00:00.000 +08 [98] abcdef01.62 ai_hr_app@ai_hr_dev LOG:  process 98 still waiting for ShareLock on advisory lock [90,42,77,1] after 100.070 ms';
+ const [wait]=postgresLockFailures(log,{bracketed:true,advisoryKeys:new Map([['90:42:77:1',family]])});
+ expect(wait).toMatchObject({kind:'observed heavyweight lock wait',diagnostic:{phase:'qualified-runtime',waitFamily:family}});
+ expect(JSON.stringify(wait.diagnostic)).not.toContain('90:42:77:1');
+ const sample=originalAdvisoryAttribution([{...fictionalWaiter,granted:false}],new Map([['11:12:1',family+':fixture']]));
+ expect(sample.waiters).toEqual([{family,mode:'ExclusiveLock'}]);
+});
+
 it('qualifies only the exact bracketed PostgreSQL log window and retains blocking evidence',()=>{
  const nonce='0123456789abcdef0123456789abcdef';
  const marker=(phase:string,pid=98,sessionPid='62',actor='postgres@ai_hr_dev')=>

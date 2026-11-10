@@ -57,7 +57,8 @@ class FamilyTests(unittest.TestCase):
     def test_closed_family_diagnostic_distinguishes_frame_from_barrier(self):
         secret = '/private/fixture; select tenant_id'
         self.assertEqual(owner.failure_fact(secret, True),
-                         {'kind': 'WORKER_COMPARISON_FAMILY_FAILURE_V1', 'stage': 'unavailable', 'ordinal': None})
+                         {'kind': 'WORKER_COMPARISON_FAMILY_FAILURE_V1', 'stage': 'unavailable', 'ordinal': None,
+                          'barrierCheck': None, 'observedChildren': None})
         for frame, stage in ((b'B2\n', 'family-frame'), (b'H\n', 'family-barrier')):
             parent, client = socket.socketpair()
             descriptor, finished = os.pipe()
@@ -69,7 +70,8 @@ class FamilyTests(unittest.TestCase):
                         owner.exchange(parent, descriptor, 71, 951, owner.clock(),
                                        lambda *value: marks.append(value))
                 self.assertEqual(owner.failure_fact(*marks[-1]),
-                                 {'kind': 'WORKER_COMPARISON_FAMILY_FAILURE_V1', 'stage': stage, 'ordinal': 0})
+                                 {'kind': 'WORKER_COMPARISON_FAMILY_FAILURE_V1', 'stage': stage, 'ordinal': 0,
+                                  'barrierCheck': None, 'observedChildren': None})
             finally:
                 os.close(descriptor)
                 os.close(finished)
@@ -83,6 +85,27 @@ class FamilyTests(unittest.TestCase):
             with patch.object(owner, 'children_of', return_value=[]), patch.object(owner.KERNEL, 'own_children', return_value=[71]):
                 owner.barrier(71, 9, 951)
             self.assertEqual(exact.call_count, 4)
+
+    def test_barrier_subreason_distinguishes_adopted_direct_and_refused_scan(self):
+        cases = (
+            ([71, 997], [], 'owner-census-before', 2),
+            ([71], [997], 'runner-descendant-census', 1),
+            ([71], OSError('untrusted private process path'), 'runner-descendant-census', None),
+        )
+        for adopted, descendants, check, count in cases:
+            values = []
+            def observe(*value):
+                values.append(value)
+            with patch.object(owner, 'exact_child'), patch.object(owner.KERNEL, 'own_children', return_value=adopted), \
+                    patch.object(owner, 'children_of', return_value=descendants if isinstance(descendants, list) else [],
+                                 side_effect=descendants if isinstance(descendants, Exception) else None), \
+                    patch.object(owner.signal, 'pidfd_send_signal', create=True) as signal:
+                with self.assertRaises((ValueError, OSError)):
+                    owner.barrier(71, 9, 951, observe)
+                signal.assert_not_called()
+            fact = owner.failure_fact('family-barrier', 1, *values[-1])
+            self.assertEqual((fact['barrierCheck'], fact['observedChildren']), (check, count))
+            self.assertNotIn('997', str(fact))
 
     def test_only_sealed_current_child_result_is_published(self):
         with tempfile.TemporaryDirectory() as temp:

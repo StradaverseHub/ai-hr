@@ -1,4 +1,4 @@
-const advisoryFamilies=new Set(['access-configuration','ai-control','audit-chain','employment','payroll-history','pay-component-catalog']);
+const advisoryFamilies=new Set(['access-configuration','ai-control','audit-chain','employment','leave-dependency-configuration','leave-dependency-employment','payroll-history','pay-component-catalog']);
 const sourceRoutines=new Map([
  ['app.access_workforce_write_lock','workforce-policy-write'],
  ['app.access_profile_policy_read_lock','profile-policy-read'],

@@ -912,6 +912,7 @@ jobs:
               return {'scope': 'Closed worker diagnostics without raw logs or references', 'failures': failures} if failures is not None else None
 
           lock_families = {'access-configuration', 'ai-control', 'audit-chain', 'employment', 'payroll-history',
+                           'leave-dependency-configuration', 'leave-dependency-employment',
                            'pay-component-catalog', 'advisory-unclassified', 'transaction', 'tuple', 'relation'}
           lock_routines = {'workforce-policy-write', 'profile-policy-read', 'profile-policy-write', 'ai-centre-running',
                            'ai-centre-control', 'ai-centre-mandate-order', 'personnel-draft-delete',
@@ -1323,6 +1324,7 @@ jobs:
                       lambda rows: count(rows) is not None, value_type=list)
                   blocking_signals = []
                   families = {'access-configuration', 'ai-control', 'audit-chain', 'employment',
+                              'leave-dependency-configuration', 'leave-dependency-employment',
                               'payroll-history', 'pay-component-catalog', 'unclassified'}
                   if wait_state == 'observed':
                       for item in wait_samples:

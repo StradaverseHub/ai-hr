@@ -80,13 +80,24 @@ def exact_child(child, descriptor, birth):
     require(row['parent'] == os.getpid() and row['start'] == birth and row['state'] not in ('Z', 'X'))
 
 
-def barrier(child, descriptor, birth):
+def barrier(child, descriptor, birth, mark=lambda _check, _count=None: None):
+    def census(check, read, expected):
+        mark(check)
+        actual = read()
+        if actual != expected:
+            mark(check, len(actual))
+        require(actual == expected)
+
+    mark('runner-birth-before')
     exact_child(child, descriptor, birth)
-    require(KERNEL.own_children() == [child] and children_of(child) == [] and KERNEL.own_children() == [child])
+    census('owner-census-before', KERNEL.own_children, [child])
+    census('runner-descendant-census', lambda: children_of(child), [])
+    census('owner-census-after', KERNEL.own_children, [child])
+    mark('runner-birth-after')
     exact_child(child, descriptor, birth)
 
 
-def exchange(connection, descriptor, child, birth, anchor, mark=lambda _stage, _ordinal=None: None):
+def exchange(connection, descriptor, child, birth, anchor, mark=lambda _stage, _ordinal=None, _check=None, _count=None: None):
     next_frame = b'H\n'
     ordinal = 0
     buffered = b''
@@ -112,7 +123,7 @@ def exchange(connection, descriptor, child, birth, anchor, mark=lambda _stage, _
         else:
             require(ordinal <= 3 and clock() < anchor + 6960_000)
         mark('family-barrier', ordinal)
-        barrier(child, descriptor, birth)
+        barrier(child, descriptor, birth, lambda check, count=None: mark('family-barrier', ordinal, check, count))
         reply = f'A{ordinal}\n'.encode('ascii')
         require(clock() < anchor + (6600_000 if ordinal == 0 else 6960_000))
         require(connection.send(reply) == len(reply))
@@ -183,15 +194,21 @@ def publish(anchor, code, ordinal):
         os.close(root)
 
 
-def failure_fact(stage, ordinal):
+def failure_fact(stage, ordinal, check=None, count=None):
     phases = ('admission', 'subreaper', 'child-launch', 'family-frame', 'family-barrier',
               'child-exit', 'summary-custody', 'family-cleanup', 'workflow-output')
+    checks = ('runner-birth-before', 'owner-census-before', 'runner-descendant-census',
+              'owner-census-after', 'runner-birth-after')
+    check = check if stage == 'family-barrier' and check in checks else None
+    census = check in ('owner-census-before', 'runner-descendant-census', 'owner-census-after')
     return {'kind': 'WORKER_COMPARISON_FAMILY_FAILURE_V1',
             'stage': stage if stage in phases else 'unavailable',
-            'ordinal': ordinal if type(ordinal) is int and 0 <= ordinal <= 4 else None}
+            'ordinal': ordinal if type(ordinal) is int and 0 <= ordinal <= 4 else None,
+            'barrierCheck': check,
+            'observedChildren': count if census and type(count) is int and 0 <= count <= 1024 else None}
 
 
-def run(mark=lambda _stage, _ordinal=None: None):
+def run(mark=lambda _stage, _ordinal=None, _check=None, _count=None: None):
     mark('admission')
     anchor, node = admit()
     mark('subreaper')
@@ -261,15 +278,15 @@ def run(mark=lambda _stage, _ordinal=None: None):
 
 
 if __name__ == '__main__':
-    stage, ordinal = None, None
+    stage, ordinal, check, count = None, None, None, None
 
-    def mark(new_stage, new_ordinal=None):
-        global stage, ordinal
-        stage, ordinal = new_stage, new_ordinal
+    def mark(new_stage, new_ordinal=None, new_check=None, new_count=None):
+        global stage, ordinal, check, count
+        stage, ordinal, check, count = new_stage, new_ordinal, new_check, new_count
 
     try:
         raise SystemExit(run(mark))
     except (OSError, ValueError, KeyError, subprocess.SubprocessError):
-        print(json.dumps(failure_fact(stage, ordinal)), file=sys.stderr, flush=True)
+        print(json.dumps(failure_fact(stage, ordinal, check, count)), file=sys.stderr, flush=True)
         print('Worker comparison family admission or settlement refused', file=sys.stderr, flush=True)
         raise SystemExit(1)

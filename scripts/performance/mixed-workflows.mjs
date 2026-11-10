@@ -1,10 +1,56 @@
 /** Real built browser actions, replayed over HTTPS; owner DB access is a read-only oracle. */
 import assert from 'node:assert/strict';
+import {JSDOM} from 'jsdom';
 import {driverErrorFact} from './driver-shutdown.mjs';
 import {setTimeout as pause} from 'node:timers/promises';
 import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
 import {attendanceCorrectionForm} from './attendance-rejection-browser.mjs';
 import {exerciseConcurrentPayrollClose} from './payroll-close-concurrency.mjs';
+
+const attendanceFingerprint=/^[a-f0-9]{64}$/;
+
+export function readAttendanceCorrectionForm(html,{actionId,date,employmentId}){
+ assert(typeof actionId==='string'&&/^[a-f0-9]{42}$/.test(actionId),'Missing captured Attendance action identity');
+ // Parse inert HTML, never the RSC script text. Streamed HTML can place the real form
+ // in a segment that the browser moves under <main> after the response arrives.
+ const document=JSDOM.fragment(html);
+ const actionName='$ACTION_ID_'+actionId;
+ const actions=Array.from(document.querySelectorAll('input')).filter(input=>input.name===actionName);
+ assert(actions.length===1,'Expected one captured action in the current Attendance HTML');
+ const [action]=actions,form=action.form;
+ assert(form&&form.getAttribute('action')===''&&form.method==='post'&&form.enctype==='multipart/form-data',
+  'Attendance action must be the native same-page POST form');
+ const controls=Array.from(form.elements);
+ const named=(name,type)=>{
+  const fields=controls.filter(control=>control.name===name);
+  assert(fields.length===1&&fields[0].localName==='input'&&fields[0].type===type&&!fields[0].matches(':disabled'),
+   'Missing, duplicate or disabled Attendance form control');
+  return fields[0].value;
+ };
+ named(actionName,'hidden');
+ assert(controls.filter(control=>control.name.startsWith('$ACTION_')).length===1,'Ambiguous Attendance form action');
+ assert(named('date','hidden')===date&&named('employmentId','hidden')===employmentId,'Attendance form date or subject differs');
+ named('checkIn','time');named('checkOut','time');named('reason','text');
+ assert(controls.filter(control=>control.localName==='button'&&control.type==='submit'&&!control.matches(':disabled')).length===1,
+  'Attendance correction is unavailable');
+ const fingerprint=named('workflowFingerprint','hidden');
+ assert(attendanceFingerprint.test(fingerprint),'Missing current Attendance workflow fingerprint');
+ return fingerprint;
+}
+
+export function attendanceCorrectionOutcome(response,expected){
+ const redirect=response.headers['x-action-redirect']??response.headers.location;
+ assert(typeof redirect==='string','Attendance correction returned no native redirect');
+ const target=new URL(redirect.split(';',1)[0],expected);
+ const selectors=target.searchParams.getAll('employmentId');
+ assert(target.origin===expected.origin&&target.pathname===expected.pathname
+  &&selectors.length===1&&selectors[0]===expected.searchParams.get('employmentId'),'Attendance correction redirect scope differs');
+ const refusals=target.searchParams.getAll('workflowRefusal'),success=target.searchParams.getAll('corrected');
+ if(['error','correctionError','workflowProblem'].some(key=>target.searchParams.has(key)))return 'refused';
+ if(refusals.length===1&&refusals[0]==='routeChanged'&&success.length===0)return 'routeChanged';
+ return refusals.length===0&&success.length===1&&success[0]==='1'?'corrected':'refused';
+}
+
 export async function prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs,withLockWorkload}){
  const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[],capturedTransport:[],captureProtocol:'new click request and response headers; UI and persisted outcomes checked separately'};
  const failedAttendanceActions=[];
@@ -49,13 +95,20 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
  async function send(user,template,fields,record=true){
   const response=await request(user,template.path,fields,template.status,record,template.headers,template.fieldOrder,template.kind);
   const target=response.headers['x-action-redirect']??response.headers.location;
-  const fail=(reason)=>{
+  const fail=(reason,code)=>{
    const safe=String(reason).replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'<email>').replace(/[A-Za-z0-9_-]{40,}/g,'<token>').slice(0,240);
    report.mixedWorkflows.failures.push({stage:template.kind,user:user.index,role:user.role,reason:safe});
-   save();throw Error(template.kind+': '+safe);
+   save();const error=Error(template.kind+': '+safe);
+   if(code)error.code=code;
+   throw error;
   };
   if(target){const url=new URL(String(target).split(';')[0],base);if(url.searchParams.has('error'))fail('business refusal: '+url.searchParams.get('error'));}
   if(/(?:^|\n)[0-9a-f]+:E\{/.test(response.content))fail('server action returned an exception record');
+  if(template.kind==='attendanceCreate'){
+   const outcome=attendanceCorrectionOutcome(response,new URL(template.path,base));
+   if(outcome==='routeChanged')fail('routeChanged','WORKFLOW_ROUTE_CHANGED');
+   if(outcome!=='corrected')fail('native Attendance correction refused');
+  }
   if(template.kind==='personnelDelete'){
    // The native typed contract can refuse with HTTP200. Keep its public reference, never its SQL/body.
    const outcomes=[];
@@ -146,12 +199,16 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   const ctx=await context(employee);let correction;
   await withContext(ctx,async()=>{
    const page=await ctx.newPage();
-   await visit(page,employee,'/attendance/my-records/'+fixture.today);
+   await visit(page,employee,attendanceFormPath(employee));
    const form=attendanceCorrectionForm(page);
    await form.locator('input[type="time"][name="checkIn"]').fill('09:15');
    await form.locator('input[type="time"][name="checkOut"]').fill('18:15');
    await form.locator('input[name="reason"]').fill('PERF_ATTENDANCE_BROWSER');
-   await capture(page,()=>form.getByRole('button',{name:'Submit correction',exact:true}).click(),'attendanceCreate');
+   const captured=await capture(page,()=>form.getByRole('button',{name:'Submit correction',exact:true}).click(),'attendanceCreate');
+   // React FormData actions encode controls under a wire prefix. Capture the
+   // selector field in the browser so replay cannot append an unbound root field.
+   const selectors=Object.entries(captured.fields).filter(([key])=>key==='employmentId'||key.endsWith('_employmentId'));
+   assert(selectors.length===1&&selectors[0][1]===employee.employmentId,'Missing encoded Attendance subject selector');
    await page.waitForLoadState('networkidle');
    [correction]=await db`select id,status from attendance_correction where employment_id=${employee.employmentId}::uuid and reason='PERF_ATTENDANCE_BROWSER'`;
    assert(correction&&correction.status==='pending');
@@ -168,6 +225,26 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    const [day]=await db`select check_in_at,check_out_at from attendance where employment_id=${employee.employmentId}::uuid and attendance_date=${fixture.today}::date`;assert.equal(day.check_in_at,'09:15:00');assert.equal(day.check_out_at,'18:15:00');
    evidence.push({workflow:'attendance correction/approval/applied punches',persisted:true});save();
   });
+ }
+ {
+  // The real legacy replay error: an authorized subject and role with another
+  // employee's actual browser-issued fingerprint. Keep this proof out of the odd
+  // employee Attendance cohort, which owns its own measured day mutations.
+  const subject=fixture.users.find(user=>user.role==='employee'&&user.index%2===0
+   &&user.tenant===employee.tenant&&user.company!==employee.company);
+  assert(subject&&approverFor(subject)?.role==='companyHR','Missing alternate-company Attendance replay witness');
+  const {template,fingerprint}=await currentAttendanceForm(subject);
+  const baselineFingerprints=Object.entries(template.fields)
+   .filter(([key])=>key==='workflowFingerprint'||key.endsWith('_workflowFingerprint'));
+  assert(baselineFingerprints.length===1&&attendanceFingerprint.test(baselineFingerprints[0][1])
+   &&baselineFingerprints[0][1]!==fingerprint,'Attendance replay witness needs two distinct native fingerprints');
+  const staleMarker='PERF_ATTENDANCE_FOREIGN_FORM',checkIn='09:15',checkOut='18:15';
+  const staleFields=formFields(template,{date:fixture.today,employmentId:subject.employmentId,checkIn,checkOut,reason:staleMarker});
+  const refusal=await request(subject,template.path,staleFields,template.status,true,template.headers,template.fieldOrder,template.kind);
+  assert(attendanceCorrectionOutcome(refusal,new URL(template.path,base))==='routeChanged','Foreign Attendance form was not refused as stale');
+  assert((await correctionRows(subject,staleMarker)).length===0,'Foreign Attendance form persisted a correction');
+  await runAttendance(subject,'PERF_ATTENDANCE_CURRENT_FORM',checkIn,checkOut);
+  evidence.push({workflow:'actor-issued Attendance replay',foreignFormRefused:true,persisted:true,companyApprover:true});save();
  }
  if(report.suite==='workflow-preflight'){
   const actor=fixture.users.find(user=>user.role==='groupHR');
@@ -270,6 +347,37 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   try{return await send(user,template,fields);}
   catch(error){failedAttendanceActions.push(effect);throw error;}
  }
+ function attendanceFormPath(user){
+  return '/attendance/my-records/'+fixture.today+'?employmentId='+encodeURIComponent(user.employmentId);
+ }
+ async function currentAttendanceForm(user){
+  const template={...templates.attendanceCreate,path:attendanceFormPath(user)};
+  assert(template.fields&&!Array.isArray(template.fields),'Expected captured Attendance FormData');
+  const page=await request(user,template.path,undefined,200,true,{},[],'attendanceForm');
+  assert(/^text\/html\b/i.test(page.headers['content-type']??''),'Attendance form owner did not return HTML');
+  const fingerprint=readAttendanceCorrectionForm(page.content,{
+   actionId:template.headers['next-action'],date:fixture.today,employmentId:user.employmentId,
+  });
+  return {template,fingerprint};
+ }
+ function correctionRows(user,marker){
+  return db`select id,status from attendance_correction where tenant_id=${user.tenantId}::uuid
+   and employment_id=${user.employmentId}::uuid and attendance_date=${fixture.today}::date and reason=${marker}`;
+ }
+ async function runAttendance(user,marker,checkIn,checkOut){
+  const {template,fingerprint}=await currentAttendanceForm(user);
+  const fields=formFields(template,{date:fixture.today,employmentId:user.employmentId,checkIn,checkOut,reason:marker,workflowFingerprint:fingerprint});
+  await sendAttendance(user,template,fields,{action:'attendanceCreate',employment_id:user.employmentId,marker});
+  const rows=await correctionRows(user,marker);
+  assert.equal(rows.length,1);assert.equal(rows[0].status,'pending');
+  await pause(thinkTimeMs);const approver=approverFor(user);assert(approver);
+  await sendAttendance(approver,{...templates.attendanceApprove,path:'/attendance/application-history/'+rows[0].id},formFields(templates.attendanceApprove,{id:rows[0].id,action:'approved',workflowStage:'0',workflowParticipant:'0:0',reason:marker+'_APPROVED'}),{action:'attendanceApprove',employment_id:user.employmentId,correction_id:rows[0].id});
+  const approved=await correctionRows(user,marker);
+  assert(approved.length===1&&approved[0].id===rows[0].id&&approved[0].status==='approved','Attendance correction was not approved');
+  const [day]=await db`select check_in_at,check_out_at from attendance where tenant_id=${user.tenantId}::uuid
+   and employment_id=${user.employmentId}::uuid and attendance_date=${fixture.today}::date`;
+  assert.equal(day.check_in_at,checkIn+':00');assert.equal(day.check_out_at,checkOut+':00');
+ }
  async function verifyFailedAttendanceActions(){
   if(!failedAttendanceActions.length)return [];
   return db`select action,count(*)::int as attempts,count(*) filter(where case
@@ -290,12 +398,7 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   }
   if(user.role==='employee'&&user.index%2===1){
    const checkIn=iteration%2?'09:30':'09:15',checkOut=iteration%2?'18:30':'18:15';
-   await sendAttendance(user,{...templates.attendanceCreate,path:'/attendance/my-records/'+fixture.today},formFields(templates.attendanceCreate,{date:fixture.today,employmentId:user.employmentId,checkIn,checkOut,reason:marker}),{action:'attendanceCreate',employment_id:user.employmentId,marker});
-   const rows=await db`select id,status from attendance_correction where employment_id=${user.employmentId}::uuid and reason=${marker}`;assert.equal(rows.length,1);assert.equal(rows[0].status,'pending');
-   await pause(thinkTimeMs);const approver=approverFor(user);assert(approver);
-   await sendAttendance(approver,{...templates.attendanceApprove,path:'/attendance/application-history/'+rows[0].id},formFields(templates.attendanceApprove,{id:rows[0].id,action:'approved',workflowStage:'0',workflowParticipant:'0:0',reason:marker+'_APPROVED'}),{action:'attendanceApprove',employment_id:user.employmentId,correction_id:rows[0].id});
-   const [approved]=await db`select status from attendance_correction where id=${rows[0].id}::uuid`;assert.equal(approved.status,'approved');
-   const [day]=await db`select check_in_at,check_out_at from attendance where employment_id=${user.employmentId}::uuid and attendance_date=${fixture.today}::date`;assert.equal(day.check_in_at,checkIn+':00');assert.equal(day.check_out_at,checkOut+':00');
+   await runAttendance(user,marker,checkIn,checkOut);
    report.mixedWorkflows.completed.attendance++;return true;
   }
   if(user.role==='companyHR'||user.role==='groupHR'){
