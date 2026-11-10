@@ -609,7 +609,11 @@ it('completes every manager Home card and Today section read without a handled f
    const ctx=actor.ctx,inboxModules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
    const modules={...inboxModules,lifecycle:isModuleEnabled(ctx,'lifecycle')};
    const bundle=await withSharedReadSnapshot(ctx,()=>bundles.readAccountTaskBundle(ctx,modules));
-   compare(subject,'bundle:answered',true,bundle!==null);
+   // The statement answers exactly when the owners' own assigned-work principal proof holds (a login that is no
+   // longer this person's, such as an ended employment's, leaves every owner to refuse on its own).
+   const [proof]=await withTenant(ctx,tx=>tx.execute<{ok:boolean}>(sql`SELECT (app.principal_snapshot_current()
+    AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`));
+   compare(subject,'bundle:answered',proof?.ok===true,bundle!==null);
    const owners:Record<string,()=>Promise<unknown>>={
     leave:()=>leaveService.pendingLeaveTaskMetadata(ctx),
     replacement:()=>leaveService.listPendingReplacementLeaveTasks(ctx,{}),

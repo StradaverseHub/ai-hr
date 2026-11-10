@@ -61,7 +61,7 @@ import { createHash } from 'node:crypto';
  * amounts. That holds for the three new decision events (tp1.approved / rejected / cancelled) too.
  */
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { withTenant as withSnapshotTenant, type SessionContext, type Tx } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r294, closing r292's stated gap). `withTenant` here is
 // `withPayrollTenant`: every TP1 entry point in this file — the whole declare → submit → approve write
 // path included — refuses a tenant without the Payroll module. A `layout.tsx` covers /me/tax-relief and
@@ -73,7 +73,7 @@ import { withTenant as withSnapshotTenant, type SessionContext, type Tx } from '
 // (core/payroll.ts — itself payroll-bound — and localization/my/reports.ts's EA dataset, which
 // dynamic-imports them and runs its own query), and `TP1_FORM_CODE` / `TP1_ITEMS` / `TP1_REBATES`
 // (components/tp1-declaration-form.tsx, lib/tp1-form-input.ts). See core/module-gate.ts.
-import { assertModuleGate, withPayrollTenant as withTenant } from './module-gate';
+import { withPayrollSnapshotTenant, withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { isAdmin } from '../lib/authz-model';
 import {
@@ -1342,14 +1342,10 @@ export function listMyTp1Declarations(
 export function listMyTp1DeclarationsSnapshot(ctx: SessionContext, p: {assessmentYear?: number} = {}): Promise<Tp1MonthDeclaration[]> {
   const personId = requirePerson(ctx);
   const year = p.assessmentYear == null ? null : validateYear(p.assessmentYear);
-  return withPayrollSnapshotRead(ctx, async (tx) => {
+  return withPayrollSnapshotTenant(ctx, async (tx) => {
     await assertMyTp1OwnerTx(tx, personId, false);
     return tp1MonthDeclarationsTx(tx, personId, year);
   });
-}
-async function withPayrollSnapshotRead<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
-  assertModuleGate(ctx, 'payroll');
-  return withSnapshotTenant(ctx, fn, {readOnlySnapshot: true});
 }
 
 function listTp1MonthDeclarations(ctx: SessionContext, personId: string, assessmentYear?: number, ownOnly=false): Promise<Tp1MonthDeclaration[]> {

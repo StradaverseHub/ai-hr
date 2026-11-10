@@ -77,10 +77,10 @@ import {captureStatutorySourceContext,lockStatutorySourceTx} from './statutory-s
  * changes roles or calls the administrator entry point.
  */
 import { and, eq, desc, sql } from 'drizzle-orm';
-import { withTenant as withSnapshotTenant, type SessionContext, type Tx } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE — the same binding core/tax-relief.ts uses and for the same reason: a
 // `layout.tsx` covers a RENDER and covers no server action, so the module check belongs on the service.
-import { assertModuleGate, withPayrollTenant as withTenant } from './module-gate';
+import { withPayrollSnapshotTenant, withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { isAdmin } from '../lib/authz-model';
 import {
@@ -1263,19 +1263,15 @@ function myTp3EmploymentsTx(tx:Tx,personId:string):Promise<MyTp3Employment[]> {
  * payroll-history barrier. The employments are one statement; the history's two statements read the same snapshot,
  * taken at the transaction's first statement, so neither can see half of a history correction and the barrier could
  * only delay them (the reasoning of core/payroll-self-metadata.ts). Nothing is written. Every other caller keeps it. */
-function withTp3SnapshotRead<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>):Promise<T> {
-  assertModuleGate(ctx,'payroll');
-  return withSnapshotTenant(ctx,fn,{readOnlySnapshot:true});
-}
 export async function myTp3EmploymentsSnapshot(ctx:SessionContext):Promise<MyTp3Employment[]> {
   const personId=ctx.personId;
   if(!personId)return [];
-  return withTp3SnapshotRead(ctx,tx=>myTp3EmploymentsTx(tx,personId));
+  return withPayrollSnapshotTenant(ctx,tx=>myTp3EmploymentsTx(tx,personId));
 }
 export async function myTp3HistorySnapshot(ctx:SessionContext):Promise<{records:Tp3Record[];drafts:MyTp3Draft[]}> {
   const personId=ctx.personId;
   if(!personId)return {records:[],drafts:[]};
-  return withTp3SnapshotRead(ctx,tx=>myTp3HistoryTx(tx,personId));
+  return withPayrollSnapshotTenant(ctx,tx=>myTp3HistoryTx(tx,personId));
 }
 export {myTp3Eligibility} from '../lib/my-tp3-eligibility';
 /** Both top-level and legacy payload notes are removed before this model leaves its owner. */

@@ -191,6 +191,15 @@ export function withModuleTenant(code: string) {
   };
 }
 
+/** The Payroll gate for an own read-only view that needs no payroll-history barrier: ONE REPEATABLE READ READ ONLY
+ * snapshot, taken at its first statement, so no statement of it can see half of a history correction and the barrier
+ * could only delay it (core/payroll-self-metadata.ts). Inside a request's shared snapshot it joins that snapshot. Only
+ * the Before payroll checklist's TP1 and TP3 reads use it; calculations, reports and writers keep withPayrollTenant. */
+export async function withPayrollSnapshotTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  assertModuleGate(ctx, 'payroll');
+  return withTenant(ctx, fn, { readOnlySnapshot: true });
+}
+
 /** The four optional PACKS (packs/catalog.ts: `packBacked: true`, `isCore: false`). */
 export const withAttendanceTenant = withModuleTenant('attendance');
 export const withClaimsTenant = withModuleTenant('claims');
