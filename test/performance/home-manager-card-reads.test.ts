@@ -42,6 +42,12 @@ import {readEmployeeHomeCalendar} from '../../core/employee-home-calendar';
 import {celebrationsResponse,noticesResponse,teamResponse,timeOffResponse} from '../../app/api/home/sharing-responses';
 import {GET} from '../../app/api/home/sharing-initial/route';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from '../harness';
+import {readOwnLeaveInputsTx} from '../../core/own-leave-inputs';
+import {hasEligibleLeaveTypeForTx,hasEligibleLeaveTypeFrom,leaveBalancesTx,leaveEntitlementBreakdowns} from '../../core/read';
+import {leaveTypeApplySummaries,myCurrentLeaveSnapshotCards,nextApprovedLeavePresenceTx} from '../../packs/leave/service';
+import {employeeClockingLocationLabelsTx,ownClockTodayHomeTx,ownClockTodaySummaryTx,readOwnClockDayInputsTx,resolvedScheduleForTx} from '../../packs/attendance/service';
+import {readEmployeeHomeTimeOff} from '../../core/employee-home-time-off';
+import {stagedHomeTimeOff,stagedHomeToday} from '../helpers/home-staged-cards';
 
 const CARDS=['summary','greeting','today','notices','tasks','timeOff','team','celebrations','calendar'] as const;
 type Card=typeof CARDS[number];
@@ -275,6 +281,31 @@ async function todayReaders(today:string){
  return Object.assign(readers,{pageRender});
 }
 
+/** Every leave and clock calculator the Time Off and Today bundles answer, live and bundled, inside ONE read-only
+ * snapshot, as outcome pairs. A refusal on one side must be the same refusal on the other. */
+async function bundleCalculatorPairs(actor:Actor,today:string){
+ const pairs:Record<string,[unknown,unknown]>={},id=actor.employmentId,ctx=actor.ctx;
+ await withTenant(ctx,async tx=>{
+  const pair=async(name:string,live:()=>Promise<unknown>,bundled:()=>Promise<unknown>)=>{pairs[name]=[await outcome(live),await outcome(bundled)];};
+  const inputs=await readOwnLeaveInputsTx(tx,id,today),typeIds=inputs.types.map(type=>type.id);
+  await pair('leaveBalances',()=>leaveBalancesTx(tx,ctx,id,'en',{includeArchived:false}),()=>leaveBalancesTx(tx,ctx,id,'en',{includeArchived:false},inputs));
+  await pair('leaveBalances:all',()=>leaveBalancesTx(tx,ctx,id,'en',{includeHidden:true,includeIneligible:true,includeArchived:true}),
+   ()=>leaveBalancesTx(tx,ctx,id,'en',{includeHidden:true,includeIneligible:true,includeArchived:true},inputs));
+  const year=today.slice(0,4),items=typeIds.flatMap(leaveTypeId=>[today,year+'-12-31',(Number(year)-1)+'-12-31'].map(asOf=>({leaveTypeId,asOf})));
+  await pair('breakdowns',()=>leaveEntitlementBreakdowns(ctx,id,items,'en',tx),()=>leaveEntitlementBreakdowns(ctx,id,items,'en',tx,inputs));
+  await pair('applySummaries',async()=>[...await leaveTypeApplySummaries(ctx,id,typeIds,tx)],async()=>[...await leaveTypeApplySummaries(ctx,id,typeIds,tx,inputs)]);
+  await pair('cards',()=>myCurrentLeaveSnapshotCards(ctx,id,{today,locale:'en'},tx),()=>myCurrentLeaveSnapshotCards(ctx,id,{today,locale:'en'},tx,inputs));
+  await pair('eligible',()=>hasEligibleLeaveTypeForTx(tx,id),()=>hasEligibleLeaveTypeFrom(tx,id,inputs));
+  await pair('nextApproved',()=>nextApprovedLeavePresenceTx(tx,id,today),async()=>inputs.nextApproved);
+  await pair('clock',()=>ownClockTodaySummaryTx(tx,ctx,id),async()=>(await ownClockTodayHomeTx(tx,ctx,id)).clock);
+  await pair('locations',()=>employeeClockingLocationLabelsTx(tx,id),async()=>(await ownClockTodayHomeTx(tx,ctx,id)).workLocations);
+  const now=new Date(),pre=await readOwnClockDayInputsTx(tx,id,now);
+  for(const date of [todayInKualaLumpur(new Date(now.getTime()-86400000)),todayInKualaLumpur(now)])
+   await pair('schedule:'+(date===todayInKualaLumpur(now)?'today':'yesterday'),()=>resolvedScheduleForTx(tx,id,date),()=>resolvedScheduleForTx(tx,id,date,pre.memo(date)));
+ },{readOnlySnapshot:true});
+ return pairs;
+}
+
 type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[]};
 const sharedStats:SharedReadStats[]=[];
 (globalThis as {__aihrPerfSharedRead?:(stats:SharedReadStats)=>void}).__aihrPerfSharedRead=stats=>{sharedStats.push(stats);};
@@ -481,6 +512,11 @@ it('completes every manager Home card and Today section read without a handled f
    const read=()=>readers(actor.ctx,actor.employmentId,month)[card]();
    rows['card:'+card]=await traceBoth(read,()=>withSharedReadSnapshot(actor.ctx,read));
   }
+  // The Time Off and Today owners as they read before their per-card bundles (test/helpers/home-staged-cards.ts),
+  // traced the same way, so one run reports both sides of the bundle change.
+  const stagedTimeOff=()=>stagedHomeTimeOff(actor.ctx,actor.employmentId,'en'),stagedToday=()=>stagedHomeToday(actor.ctx,actor.employmentId);
+  rows['card:timeOff:staged']=await traceBoth(stagedTimeOff,()=>withSharedReadSnapshot(actor.ctx,stagedTimeOff));
+  rows['card:today:staged']=await traceBoth(stagedToday,()=>withSharedReadSnapshot(actor.ctx,stagedToday));
   for(const [name,read] of Object.entries(targets))rows['section:'+name]=await traceBoth(read,read);
   const stream=()=>streamHome(actor,month,null);
   rows.stream=await traceBoth(stream,stream);
@@ -489,6 +525,9 @@ it('completes every manager Home card and Today section read without a handled f
   rows.page=await traceBoth(page,pageRendered);
   // The page's sections alone: each in its own snapshot before, one render's request scope after.
   rows.sections=await traceBoth(()=>Promise.all(pageSections.map(name=>targets[name]())),()=>todayTargets.pageRender(()=>Promise.all(pageSections.map(name=>targets[name]()))));
+  print('bundle-trips',{label,timeOff:{staged:rows['card:timeOff:staged'].after,bundled:rows['card:timeOff'].after},
+   today:{staged:rows['card:today:staged'].after,bundled:rows['card:today'].after},stream:rows.stream.after,page:rows.page.after,
+   timeOffStatements:rows['card:timeOff'].afterOrdered,todayStatements:rows['card:today'].afterOrdered});
   print('statement-trace',{label,trips:Object.fromEntries(Object.entries(rows).map(([name,row])=>[name,[row.before,row.after]])),
    shared:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.shared.sessions>0).map(([name,row])=>[name,row.shared])),
    failures:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.failure).map(([name,row])=>[name,row.failure]))});
@@ -555,6 +594,10 @@ it('completes every manager Home card and Today section read without a handled f
   const foreignCarrier=new OwnHomePayrollRead(manager.ctx,manager.employmentId);
   compare(subject,'payrollRead:foreignCarrier',await outcome(()=>readOwnPayrollHomeMetadata(actor.ctx,actor.employmentId)),
    await outcome(()=>foreignCarrier.homeMetadata(actor.ctx,actor.employmentId)));
+  // The per-card bundles: each shipped card against its staged owners, and each calculator inside one snapshot.
+  compare(subject,'bundle:timeOff',await outcome(()=>stagedHomeTimeOff(actor.ctx,actor.employmentId,'en')),await outcome(()=>readEmployeeHomeTimeOff(actor.ctx,actor.employmentId,'en')));
+  compare(subject,'bundle:today',await outcome(()=>stagedHomeToday(actor.ctx,actor.employmentId)),await outcome(()=>readEmployeeHomeToday(actor.ctx,actor.employmentId)));
+  for(const [name,[live,bundled]] of Object.entries(await bundleCalculatorPairs(actor,today)))compare(subject,'bundle:'+name,live,bundled);
   const oldFrames:Record<string,unknown>={},newFrames:Record<string,unknown>={};
   await withIndependentTransactions(()=>streamHome(actor,month,null,GET,oldFrames));
   await streamHome(actor,month,null,GET,newFrames);

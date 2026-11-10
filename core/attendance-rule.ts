@@ -210,6 +210,14 @@ export async function resolveRuleTx(
   if (!rule) return null;
   const rows = await tx.select().from(attendanceRuleOtRow).where(eq(attendanceRuleOtRow.ruleId, rule.id));
   const exceptions=await tx.select({id:attendanceExceptionRevision.id,effectiveFrom:attendanceExceptionRevision.effectiveFrom,enabled:attendanceExceptionRevision.enabled}).from(attendanceExceptionRevision).where(eq(attendanceExceptionRevision.ruleId,rule.id)).orderBy(asc(attendanceExceptionRevision.effectiveFrom));
+  return resolvedAttendanceRuleFrom(rule, rows, exceptions);
+}
+/** resolveRuleTx's result from the three rows it reads, for a caller that read them in one bundled statement. */
+export function resolvedAttendanceRuleFrom(
+  rule: typeof attendanceRule.$inferSelect,
+  rows: (typeof attendanceRuleOtRow.$inferSelect)[],
+  exceptions: { id: string; effectiveFrom: string; enabled: boolean }[],
+): ResolvedAttendanceRule {
   return {...toResolved(rule, rows),exceptions};
 }
 

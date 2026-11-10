@@ -1845,17 +1845,21 @@ export type TemplateEntitlementResolver = {
   isEmpty: boolean;
 };
 
+const emptyWith = (hasTemplatesFor: (leaveTypeId: string) => boolean): TemplateEntitlementResolver => ({
+  bandFor: () => null,
+  winnerFor: () => null,
+  hasTemplatesFor,
+  isEmpty: true,
+});
+/** The resolver `buildTemplateEntitlementResolver` returns when no table version is in force on `asOf` for any of
+ *  the asked leave types: the caller that already knows that (bundled own leave inputs) skips the read. */
+export const emptyTemplateEntitlementResolver = (): TemplateEntitlementResolver => emptyWith(() => false);
+
 export async function buildTemplateEntitlementResolver(
   tx: Tx,
   p: { employmentIds: string[]; leaveTypeIds: string[]; asOf: string },
 ): Promise<TemplateEntitlementResolver> {
-  const emptyWith = (hasTemplatesFor: (leaveTypeId: string) => boolean): TemplateEntitlementResolver => ({
-    bandFor: () => null,
-    winnerFor: () => null,
-    hasTemplatesFor,
-    isEmpty: true,
-  });
-  const empty = emptyWith(() => false);
+  const empty = emptyTemplateEntitlementResolver();
   const empIds = [...new Set(p.employmentIds.filter(Boolean))];
   const typeIds = [...new Set(p.leaveTypeIds.filter(Boolean))];
   if (empIds.length === 0 || typeIds.length === 0) return empty;

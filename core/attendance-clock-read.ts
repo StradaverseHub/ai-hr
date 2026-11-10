@@ -1,11 +1,12 @@
 import { clockFingerprint, punchesForCorrectionTx } from './attendance-punch-change';
 /** Own live clock read model. This never writes or derives payable payroll figures. */
-import { and, asc, desc, eq, gte, isNotNull, isNull, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
 import { attendance, attendancePunch, attendanceClockCapture, attendanceCorrection, clockingLocation, employment } from '../db/schema';
 import type { SessionContext, Tx } from '../db/client';
 import { assertModuleGate, withAttendanceTenant as withTenant } from './module-gate';
 import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
-import { clockScheduleForTx, workedDayKindForTx, resolveGeofence,OutsideGeofenceError,GeofenceQualityError } from './attendance';
+import { clockScheduleForTx, workedDayKindForTx, resolveGeofence,OutsideGeofenceError,GeofenceQualityError,
+  decodeOwnClockSchedule, ownClockScheduleMemo, type OwnClockScheduleJson, type ScheduleMemo } from './attendance';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { clockCommandContext } from '../lib/clock-command-context';
 import { anchorAttendanceClockMinute } from './attendance-timeline';
@@ -38,27 +39,65 @@ export async function previewOwnClockLocation(ctx:SessionContext,selectedEmploym
     }
   });
 }
-/** Shared live punch calculation; neither reader creates a capture or payable figure. */
-async function ownClockCoreTx(tx:Tx,employmentId:string,geo?:ClockGeo){
-    const now = new Date();
+/** The rows ownClockCoreTx reads, read once for its two candidate dates by app.home_own_clock_day (draft 9870). */
+type OwnClockDayJson = OwnClockScheduleJson & {
+  openDay: string | null;
+  days: { attendanceDate: string; id: string; checkIn: string | null; checkOut: string | null; checkInMethod: (typeof attendance.$inferSelect)['checkInMethod']; trace: (typeof attendance.$inferSelect)['calcTrace'] }[];
+  punches: { attendanceId: string; id: string; direction: 'in' | 'out'; time: string; captureId: string | null; recordedAt: string | null }[];
+  control: { enabled: boolean; attendancePhotoSetting: (typeof employment.$inferSelect)['attendancePhotoSetting'] } | null;
+  locations: { total: number; names: string[] };
+};
+export type OwnClockDayInputs = {
+  now: Date; openDay: string | null; days: OwnClockDayJson['days'];
+  punches: { attendanceId: string; id: string; direction: 'in' | 'out'; time: string; captureId: string | null; recordedAt: Date | null }[];
+  control: OwnClockDayJson['control']; locations: OwnClockDayJson['locations'];
+  /** A fresh schedule memo for yesterday or today, answered from the bundle (core/attendance.ts ownClockScheduleMemo). */
+  memo: (date: string) => ScheduleMemo;
+};
+/** One statement for the own clock day at `now`: the open-day probe, both candidate days, their punches, the switches,
+ *  the work locations and every schedule input. Its rows are read under the caller's RLS (SECURITY INVOKER). */
+export async function readOwnClockDayInputsTx(tx: Tx, employmentId: string, now: Date): Promise<OwnClockDayInputs> {
+  const today = todayInKualaLumpur(now);
+  const yesterday = todayInKualaLumpur(new Date(now.getTime() - 86400000));
+  const [row] = await tx.execute<{ day: OwnClockDayJson | null }>(sql`select app.home_own_clock_day(${employmentId}::uuid, ${today}::date, ${yesterday}::date) as day`);
+  const raw = row?.day;
+  if (!raw) throw new Error('The own clock day is unavailable.');
+  const schedule = decodeOwnClockSchedule(raw);
+  return {
+    now, openDay: raw.openDay, days: raw.days, control: raw.control,
+    // The capture instant arrives as its driver text and is decoded by the very column mapWith names.
+    punches: raw.punches.map(({ attendanceId, id, direction, time, captureId, recordedAt }) => ({ attendanceId, id, direction, time, captureId,
+      recordedAt: recordedAt === null ? null : attendanceClockCapture.serverRecordedAt.mapFromDriverValue(recordedAt) as Date })),
+    locations: { total: raw.locations.total, names: raw.locations.names },
+    memo: (date) => {
+      // The bundle holds exactly yesterday's and today's dated rows; any other date would read as "no row".
+      if (date !== today && date !== yesterday) throw new Error('The own clock day bundle covers yesterday and today only.');
+      return ownClockScheduleMemo(schedule, employmentId, date);
+    },
+  };
+}
+/** Shared live punch calculation; neither reader creates a capture or payable figure. `pre` answers every read
+ *  from one bundled statement (Home); the calculation is the same lines either way. */
+async function ownClockCoreTx(tx:Tx,employmentId:string,geo?:ClockGeo,pre?:OwnClockDayInputs){
+    const now = pre?.now ?? new Date();
     const today = todayInKualaLumpur(now);
     const yesterday = todayInKualaLumpur(new Date(now.getTime() - 86400000));
     // Older open rows cannot select the live date. Keep newer rows in the probe so they
     // still take precedence over yesterday, even if a future import left one open.
-    const [openDay] = await tx.select({ date: attendance.attendanceDate }).from(attendance)
+    const [openDay] = pre ? (pre.openDay === null ? [] : [{ date: pre.openDay }]) : await tx.select({ date: attendance.attendanceDate }).from(attendance)
       .where(and(eq(attendance.employmentId, employmentId), gte(attendance.attendanceDate, yesterday),
         isNotNull(attendance.checkInAt), isNull(attendance.checkOutAt)))
       .orderBy(desc(attendance.attendanceDate)).limit(1);
     const overnightSchedule = openDay?.date === yesterday
-      ? await clockScheduleForTx(tx, employmentId, yesterday) : null;
+      ? await clockScheduleForTx(tx, employmentId, yesterday, pre?.memo(yesterday)) : null;
     const date = overnightSchedule?.crossesMidnight ? yesterday : today;
     const schedule = overnightSchedule?.crossesMidnight
-      ? overnightSchedule : await clockScheduleForTx(tx, employmentId, today);
-    const [day] = await tx.select({ id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt, checkInMethod: attendance.checkInMethod, trace: attendance.calcTrace }).from(attendance).where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date))).limit(1);
+      ? overnightSchedule : await clockScheduleForTx(tx, employmentId, today, pre?.memo(today));
+    const [day] = pre ? pre.days.filter(row => row.attendanceDate === date).slice(0, 1).map(({ id, checkIn, checkOut, checkInMethod, trace }) => ({ id, checkIn, checkOut, checkInMethod, trace })) : await tx.select({ id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt, checkInMethod: attendance.checkInMethod, trace: attendance.calcTrace }).from(attendance).where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date))).limit(1);
     // A capture's true instant orders and times the day: an offline capture's server_recorded_at is its arrival.
     // Typed nullable: a raw SQL field is not widened by the left join, and a punch without a capture reads NULL.
-    const captureInstant = await clockCaptureInstantTx(tx);
-    const punches = day ? await tx.select({ id:attendancePunch.id,direction: attendancePunch.direction, time: attendancePunch.punchAt, captureId: attendancePunch.clockCaptureId, recordedAt: captureInstant as SQL<Date | null> }).from(attendancePunch).leftJoin(attendanceClockCapture, eq(attendanceClockCapture.id, attendancePunch.clockCaptureId)).where(and(eq(attendancePunch.attendanceId, day.id), isNull(attendancePunch.voidedAt))).orderBy(asc(attendancePunch.createdAt), asc(attendancePunch.id)) : [];
+    const captureInstant = pre ? null : await clockCaptureInstantTx(tx);
+    const punches = day ? pre ? pre.punches.filter(row => row.attendanceId === day.id).map(({ id, direction, time, captureId, recordedAt }) => ({ id, direction, time, captureId, recordedAt })) : await tx.select({ id:attendancePunch.id,direction: attendancePunch.direction, time: attendancePunch.punchAt, captureId: attendancePunch.clockCaptureId, recordedAt: captureInstant! as SQL<Date | null> }).from(attendancePunch).leftJoin(attendanceClockCapture, eq(attendanceClockCapture.id, attendancePunch.clockCaptureId)).where(and(eq(attendancePunch.attendanceId, day.id), isNull(attendancePunch.voidedAt))).orderBy(asc(attendancePunch.createdAt), asc(attendancePunch.id)) : [];
     const clockPolicy=day?.trace?.clockPolicy?.attendanceDate===date?day.trace.clockPolicy:undefined;
     const toInstant = (time: string) => {
       const clock = time.slice(0,8).padEnd(8, ':00');
@@ -93,7 +132,7 @@ async function ownClockCoreTx(tx:Tx,employmentId:string,geo?:ClockGeo){
     // r430 — attendancePhotoSetting joins the same row: the client needs it to know which capture flow to
     // run (required / optional / not_required), though the SERVER re-reads and enforces it independently
     // at submit time (core/attendance-clock.ts) — this is display-only.
-    const [control] = await tx.select({ enabled: employment.geofencingEnabled, attendancePhotoSetting: employment.attendancePhotoSetting }).from(employment).where(eq(employment.id, employmentId)).limit(1);
+    const [control] = pre ? (pre.control ? [pre.control] : []) : await tx.select({ enabled: employment.geofencingEnabled, attendancePhotoSetting: employment.attendancePhotoSetting }).from(employment).where(eq(employment.id, employmentId)).limit(1);
     const geofencingRequired = control?.enabled ?? false;
     const attendancePhotoSetting = control?.attendancePhotoSetting ?? 'not_required';
     let locationValid = !geofencingRequired;
@@ -134,11 +173,14 @@ async function readClockSummaryTx(tx:Tx,employmentId:string){
  return {...value.summary,crossesMidnight:value.crossesMidnight};
 }
 
-/** Explicit own-subject summary for an existing request transaction. */
-export async function ownClockTodaySummaryTx(tx:Tx,ctx:SessionContext,employmentId:string){
+async function assertOwnClockSubjectTx(tx:Tx,ctx:SessionContext,employmentId:string){
  if(!ctx.userId||!ctx.personId||typeof employmentId!=='string'||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId)
   ||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))throw new OwnClockEmploymentUnavailableError();
  assertModuleGate(ctx,'attendance');
+}
+/** Explicit own-subject summary for an existing request transaction. */
+export async function ownClockTodaySummaryTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ await assertOwnClockSubjectTx(tx,ctx,employmentId);
  const {summary,crossesMidnight,businessDate,todayKind}=await ownClockCoreTx(tx,employmentId);
  // An open overnight clock uses yesterday's shift, while Home describes today's schedule.
  const dayKind=todayKind??await workedDayKindForTx(tx,employmentId,businessDate);
@@ -151,4 +193,16 @@ export async function ownClockTodaySummary(ctx:SessionContext,selectedEmployment
  const me=await resolveOwnClockEmployment(ctx,selectedEmploymentId);
  if(!me)throw new OwnClockEmploymentUnavailableError();
  return withTenant(ctx,tx=>readClockSummaryTx(tx,me.employmentId));
+}
+
+/** Home Today: ownClockTodaySummaryTx and the work location names (employeeClockingLocationLabelsTx) from ONE bundled
+ * read. The same own-subject authority is proved first; the same clock, schedule and day-kind lines then run on the
+ * bundled rows. No capture coordinates, photographs or removal commands are selected, and nothing is written. */
+export async function ownClockTodayHomeTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ await assertOwnClockSubjectTx(tx,ctx,employmentId);
+ const pre=await readOwnClockDayInputsTx(tx,employmentId,new Date());
+ const {summary,crossesMidnight,businessDate,todayKind}=await ownClockCoreTx(tx,employmentId,undefined,pre);
+ // An open overnight clock uses yesterday's shift, while Home describes today's schedule.
+ const dayKind=todayKind??await workedDayKindForTx(tx,employmentId,businessDate,pre.memo(businessDate));
+ return {clock:{...summary,crossesMidnight,businessDate,dayKind},workLocations:pre.locations};
 }

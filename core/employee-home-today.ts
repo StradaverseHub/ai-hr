@@ -1,8 +1,7 @@
 import {withTenant,type SessionContext} from '../db/client';
-import {settleReadGroup} from '../lib/settle-read-group';
 import {HomeAccessError,requireSelectedOwnHomeEmploymentIdTx} from './employee-home';
 import {isModuleEnabled} from './entitlements';
-import {ownClockTodaySummaryTx,employeeClockingLocationLabelsTx} from '../packs/attendance/service';
+import {ownClockTodayHomeTx} from '../packs/attendance/service';
 import {approvedLeavePresenceByEmploymentTx} from '../packs/leave/service';
 import {readOwnNextPayrollPaymentDate,type OwnHomePayrollRead} from '../packs/payroll/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -17,13 +16,12 @@ export async function readEmployeeHomeToday(ctx:SessionContext,employmentId:stri
   signal?.throwIfAborted();
   const attendanceEnabled=isModuleEnabled(ctx,'attendance'),payrollEnabled=isModuleEnabled(ctx,'payroll');
   if(!attendanceEnabled)return {subjectId,attendanceEnabled,payrollEnabled,attendance:null};
-  const clock=await ownClockTodaySummaryTx(tx,ctx,subjectId);
+  // The own clock summary and the work location names come from one bundled read of the clock day (draft 9870);
+  // approved leave presence keeps its own date-local read, which a Home stream answers from its shared window.
+  const {clock,workLocations}=await ownClockTodayHomeTx(tx,ctx,subjectId);
   signal?.throwIfAborted();
   const {businessDate,dayKind}=clock;
-  const [presence,workLocations]=await settleReadGroup([
-   ()=>approvedLeavePresenceByEmploymentTx(tx,[subjectId],businessDate,businessDate),
-   ()=>employeeClockingLocationLabelsTx(tx,subjectId),
-  ]);
+  const presence=await approvedLeavePresenceByEmploymentTx(tx,[subjectId],businessDate,businessDate);
   return {subjectId,attendanceEnabled,payrollEnabled,
    attendance:{clock,businessDate,dayKind,leavePresence:presence.get(subjectId)?.get(businessDate)??null,workLocations}};
  },{readOnlySnapshot:true,readSignal:signal});

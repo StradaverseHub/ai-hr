@@ -9,6 +9,7 @@ import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, l
 import { randomUUID, createHash } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import type { OwnLeaveInputs } from './own-leave-inputs';
 import { sharedReadWindow, sharedSnapshotValue } from '../db/shared-read';
 import {assertReadCompositionPrincipalTx} from './read-composition-principal';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
@@ -1908,18 +1909,27 @@ export async function leaveTypeApplySummaries(
   employmentId: string,
   leaveTypeIds: readonly string[],
   existingTx?: Tx,
+  /** Bundled own leave inputs (core/own-leave-inputs.ts): the five statements below are answered from them for the
+   *  employment and transaction they were read for; every figure is the same `round2` of the same numbers. */
+  inputs?: OwnLeaveInputs,
 ): Promise<Map<string, LeaveTypeApplySummary>> {
   const ids = [...new Set(leaveTypeIds)];
   if (ids.length === 0) return new Map();
   const read = async (tx: Tx) => {
-    const typeRows = await tx
-      .select({ id: leaveType.id, src: leaveType.balanceSourceTypeId, essViewConfig: leaveType.essViewConfig, role: leaveType.role, code: leaveType.code })
-      .from(leaveType)
-      .where(inArray(leaveType.id, ids));
+    const own = inputs?.answers(tx, employmentId) ? inputs : undefined;
+    const typeColumns = { id: leaveType.id, src: leaveType.balanceSourceTypeId, essViewConfig: leaveType.essViewConfig, role: leaveType.role, code: leaveType.code };
+    const typeQuery = tx.select(typeColumns).from(leaveType).where(inArray(leaveType.id, ids));
+    const typeRows = own
+      ? own.typeRows<Awaited<typeof typeQuery>[number]>(typeColumns, (type) => ids.includes(type.id))
+      : await typeQuery;
     const typeById = new Map(typeRows.map((r) => [r.id, r]));
     const sourceOf = new Map(ids.map((id) => [id, typeById.get(id)?.src ?? id]));
     const sources = [...new Set(sourceOf.values())];
-    const [balanceRows, takenRows, borrowerRows] = await Promise.all([
+    const [balanceRows, takenRows, borrowerRows] = own
+      ? ([own.ledgerBalanceBySourceType(sources), own.ledgerTakenBySourceType(sources),
+          own.typeRows<{ id: string; src: (typeof leaveType.$inferSelect)['balanceSourceTypeId'] }>({ id: leaveType.id, src: leaveType.balanceSourceTypeId },
+            (type) => type.balanceSourceTypeId !== null && sources.includes(type.balanceSourceTypeId))] as const)
+      : await Promise.all([
       tx
         .select({ typeId: leaveLedger.leaveTypeId, bal: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
         .from(leaveLedger)
@@ -1949,7 +1959,7 @@ export async function leaveTypeApplySummaries(
         pairType.push(t);
       }
     }
-    const pendingRows = (await tx.execute(
+    const pendingRows = own ? own.pendingBySource(pairSrc, pairType) : (await tx.execute(
       sql`select m.src::text as src, coalesce(sum(${leaveRequest.days} - coalesce(${leaveRequest.unpaidDays}, 0)), 0) as pending
           from unnest(${`{${pairSrc.join(',')}}`}::uuid[], ${`{${pairType.join(',')}}`}::uuid[]) as m(src, type_id)
           join ${leaveRequest} on ${leaveRequest.leaveTypeId} = m.type_id
@@ -6278,7 +6288,12 @@ export async function leaveCalendarPresenceByEmploymentTx(tx:Tx,employmentIds:st
 export async function nextApprovedLeavePresenceTx(tx:Tx,employmentId:string,today:string):Promise<{
  requestId:string;date:string;duration:'full_day'|'part_day';
 }|null>{
- const rows=await tx.execute(sql`
+ const rows=await tx.execute(nextApprovedLeavePresenceSql(employmentId,today));
+ return (rows as unknown as {requestId:string;date:string;duration:'full_day'|'part_day'}[])[0]??null;
+}
+/** The statement above, also carried unchanged inside the bundled own leave inputs (core/own-leave-inputs.ts). */
+export function nextApprovedLeavePresenceSql(employmentId:string,today:string){
+ return sql`
   SELECT candidate."requestId",candidate.date,candidate.duration FROM (
    SELECT ${leaveRequest.id} AS "requestId",${leaveRequestDate.leaveDate}::text AS date,
     CASE WHEN ${leaveRequest.durationType}='full_day' THEN 'full_day' ELSE 'part_day' END AS duration
@@ -6291,8 +6306,7 @@ export async function nextApprovedLeavePresenceTx(tx:Tx,employmentId:string,toda
    FROM ${leaveRequest} WHERE ${leaveRequest.employmentId}=${employmentId}::uuid AND ${leaveRequest.status}='approved'
     AND ${leaveRequest.endDate}>=${today}::date
     AND NOT EXISTS(SELECT 1 FROM ${leaveRequestDate} WHERE ${leaveRequestDate.leaveRequestId}=${leaveRequest.id})
-  ) candidate ORDER BY candidate.date,candidate."requestId" LIMIT 1`);
- return (rows as unknown as {requestId:string;date:string;duration:'full_day'|'part_day'}[])[0]??null;
+  ) candidate ORDER BY candidate.date,candidate."requestId" LIMIT 1`;
 }
 
 /** ADR-0068 §4A (exported for the span consumers in attendance/roster/read). See approvedLeaveDates. */

@@ -5391,6 +5391,13 @@
       "when": 1793330009850,
       "tag": "9850_reward_access_observation_due",
       "breakpoints": true
+    },
+    {
+      "idx": 3744,
+      "version": "7",
+      "when": 1793330009870,
+      "tag": "9870_home_own_clock_day",
+      "breakpoints": true
     }
   ]
 }

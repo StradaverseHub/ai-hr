@@ -71,6 +71,7 @@ import { leaveBalances, leaveEntitlementBreakdowns, listLeaveRequestsPage, type 
 import { balanceStoryTypeId, type SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
 import { PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup } from '../lib/leave-groups';
 import type { EntitlementStatus } from '../lib/entitlement-status';
+import type { OwnLeaveInputs } from './own-leave-inputs';
 
 /** One leave type's card on the dashboard. Every figure is null when HR has hidden it (ESS view) or nothing
  *  could be read — the card renders an em dash, never a number the employee was not meant to see. */
@@ -298,9 +299,9 @@ function projectCurrentLeaveCards(dashboard:MyLeaveDashboard){
 /** Complete presentation composition only. The legacy Read Committed entry point and all
  * command/approval calculations keep their original authority and transaction contracts. */
 export async function myCurrentLeaveSnapshotCards(ctx:SessionContext,employmentId:string,
- opts:{today:string;locale?:string},tx:Tx){
+ opts:{today:string;locale?:string},tx:Tx,inputs?:OwnLeaveInputs){
  await assertAiPresentationPrincipalTx(tx,ctx);
- return projectCurrentLeaveCards(await buildMyLeaveDashboard(ctx,employmentId,{today:opts.today,locale:opts.locale},false,tx));
+ return projectCurrentLeaveCards(await buildMyLeaveDashboard(ctx,employmentId,{today:opts.today,locale:opts.locale},false,tx,inputs));
 }
 
 export async function myLeaveDashboard(
@@ -317,6 +318,9 @@ async function buildMyLeaveDashboard(
   opts: { today: string; year?: string; locale?: string },
   fullDashboard: boolean,
   existingTx?: Tx,
+  /** Bundled own leave inputs (core/own-leave-inputs.ts): each read below is answered from them for the employment and
+   *  transaction they were read for. Every figure is computed by the same lines either way. */
+  inputs?: OwnLeaveInputs,
 ): Promise<MyLeaveDashboard> {
   const { today, locale } = opts;
   const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => existingTx ? fn(existingTx) : withTenant(ctx, fn);
@@ -329,7 +333,8 @@ async function buildMyLeaveDashboard(
   // not repeated here — it is `leaveBalances`'s own `includeIneligible` (default: gated), the SAME
   // `isProfileEligible` the apply dropdown has always used, so the card and the dropdown can no longer
   // disagree about whether a type is this person's.
-  const balances = (await leaveBalances(ctx, employmentId, locale, { includeArchived: false }, existingTx)).filter(
+  const own = existingTx && inputs?.answers(existingTx, employmentId) ? inputs : undefined;
+  const balances = (await leaveBalances(ctx, employmentId, locale, { includeArchived: false }, existingTx, own)).filter(
     (b) => b.placement !== 'hidden',
   );
   if (balances.length === 0) {
@@ -344,6 +349,16 @@ async function buildMyLeaveDashboard(
 
   const storyIds = [...new Set(balances.map((b) => balanceStoryTypeId(b)))];
   const { hiredOn, companyCycle, overrides } = await read(async (tx) => {
+    if (own) {
+      const [emp] = own.employmentRows<{ hiredOn: string; leaveCycle: string }>({ hiredOn: employment.hiredOn, leaveCycle: company.leaveCycle });
+      const types = own.typeRows<{ id: string; yearCycleOverride: string | null }>(
+        { id: leaveType.id, yearCycleOverride: leaveType.yearCycleOverride }, (type) => storyIds.includes(type.id));
+      return {
+        hiredOn: emp?.hiredOn ?? null,
+        companyCycle: emp?.leaveCycle ?? null,
+        overrides: new Map(types.map((t) => [t.id, t.yearCycleOverride])),
+      };
+    }
     const [emp] = await tx
       .select({ hiredOn: employment.hiredOn, leaveCycle: company.leaveCycle })
       .from(employment)
@@ -393,8 +408,8 @@ async function buildMyLeaveDashboard(
   });
   const shownPlans = plans.filter((p) => p.shown);
   const [breakdowns, applyByType] = await Promise.all([
-    leaveEntitlementBreakdowns(ctx, employmentId, shownPlans.map((p) => ({ leaveTypeId: p.storyId, asOf: p.asOf })), locale, existingTx),
-    leaveTypeApplySummaries(ctx, employmentId, shownPlans.filter((p) => p.isCurrentCycle).map((p) => p.b.leaveTypeId), existingTx),
+    leaveEntitlementBreakdowns(ctx, employmentId, shownPlans.map((p) => ({ leaveTypeId: p.storyId, asOf: p.asOf })), locale, existingTx, own),
+    leaveTypeApplySummaries(ctx, employmentId, shownPlans.filter((p) => p.isCurrentCycle).map((p) => p.b.leaveTypeId), existingTx, own),
   ]);
   const breakdownByPlan = new Map(shownPlans.map((p, i) => [p, breakdowns[i]] as const));
 

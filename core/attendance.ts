@@ -38,13 +38,14 @@ import { removalPreservesSequence } from '../lib/attendance-removal';
  * domain event (ADR-0006).
  */
 import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validateClockEntries, lockAttendancePayrollTx, markAttendancePayrollTx, ClockDataChangedError, AttendancePayrollClosedError, type ClockChanges } from './attendance-punch-change';
-import { rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
+import { rotationLookupFrom, rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
 import { isDeepStrictEqual } from 'node:util';
 import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 import { prepareAttendanceWorkflowSnapshotTx, snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, actionableAttendanceApplicationIdsTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
 import { attendanceApplicationType } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
-import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql, type Column, type Table } from 'drizzle-orm';
+import { decodeJsonRow, projectFields } from '../db/json-row';
 import { alias } from 'drizzle-orm/pg-core';
 // f618065d (r362) — the "All" ceiling the shared pager already assumes. Self Overtime is a server-paged
 // list now, so its read and lib/pagination must agree about how many rows "All" can be: a read that
@@ -66,7 +67,7 @@ import { filterDelegationOrgScopeTx, assertAssignedWorkPrincipalTx } from './app
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import { scopeOf } from '../lib/delegation-scope';
 import { enforceDeviceGateTx } from './attendance-device';
-import { applyOtRuleRows, resolveRuleTx, type ResolvedAttendanceRule } from './attendance-rule';
+import { applyOtRuleRows, resolveRuleTx, resolvedAttendanceRuleFrom, type ResolvedAttendanceRule } from './attendance-rule';
 // 07ebd04d (r331) — the ONE resolver for "whose working week is this, the group's or the shift's".
 // A leaf module with no imports, so the rule service can enforce the write-side half of the same
 // rule without a cycle through this file. Re-exported below for every caller that had it from here.
@@ -148,6 +149,7 @@ import {
   // 2166ef79 — which of My Attendance's four sections a request was filed from (same text + CHECK shape).
   type AttendanceRequestKind,
   type ShiftOtRule,
+  attendanceRotation, attendanceRuleOtRow,
 } from '../db/schema';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -491,6 +493,12 @@ async function policyFor(tx: Tx, employmentId: string, includeScheduleGroup = fa
     .leftJoin(attendancePolicy, eq(attendancePolicy.companyId, employment.companyId))
     .where(eq(employment.id, employmentId))
     .limit(1);
+  return policyFromRow(row);
+}
+/** policyFor's result from its one row (the employment's company policy, left-joined), wherever that row was read. */
+type PolicyRow = { scheduleGroupId?: string | null; lateAfter: string | null; halfDayBefore: string | null; workStart: string | null;
+  workEnd: string | null; breakMinutes: number | null; workingDays: number[] | null; halfWorkingDays: number[] | null };
+function policyFromRow(row: PolicyRow | undefined): Policy & { scheduleGroupId: string | null } {
   return {
     scheduleGroupId: row?.scheduleGroupId ?? null,
     lateAfter: row?.lateAfter ?? DEFAULTS.lateAfter,
@@ -836,6 +844,8 @@ export type ScheduleMemo = {
   /** When set, the roster row for `${employmentId}|${date}` (absent = no roster row) — see prefetch. */
   roster?: Map<string, RosterRow>;
   adjustments?: Map<string,typeof attendanceDayAdjustment.$inferSelect>;
+  /** When set, a day adjustment's dated shift by id, as the dated-shift select returns it (absent = read it). */
+  datedShifts?: Map<string, RosterRow>;
 };
 type RosterRow = {
   isRestDay: boolean;
@@ -889,6 +899,35 @@ const rosterRowCols = {
   shiftType: shift.type,
 };
 
+/** The default-shift columns scheduleBaseFor reads for an arrangement's or the employment's default shift. */
+const defaultShiftColumns = {
+  shiftId: shift.id,
+  code: shift.code,
+  name: shift.name,
+  start: shift.startTime,
+  end: shift.endTime,
+  brk: shift.breakMinutes,
+  crosses: shift.crossesMidnight,
+  override: shift.normalMinutesOverride,
+  periods: shift.breakPeriods,
+  pattern: shift.weeklyPattern,
+  lateGrace: shift.lateGraceMinutes,
+  earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
+  otRule: shift.otRule,
+  ruleId: shift.ruleId,
+  rounding: shift.normalHoursRoundingMinutes,
+  halfDayFirstOut: shift.halfDayFirstOut,
+  // b8aa3466 — the four-way weekly row and the daily cut-off (migration 0429).
+  halfPattern: shift.halfPattern,
+  offPattern: shift.offPattern,
+  cutoffOn: shift.dailyCutoffEnabled,
+  cutoffAt: shift.dailyCutoffTime,
+  // 6340aecb — the flexible break (migration 0457).
+  flexOn: shift.flexibleBreakEnabled,
+  flexMin: shift.flexibleBreakMinutes,
+  shiftType: shift.type,
+};
+
 /** A memo over [from, to] with the roster for `employmentIds` prefetched in chunks (one query each). */
 export async function newScheduleMemo(tx: Tx, p: { employmentIds: string[]; from: string; to: string }): Promise<ScheduleMemo> {
   const roster = new Map<string, RosterRow>();
@@ -914,6 +953,80 @@ export async function newScheduleMemo(tx: Tx, p: { employmentIds: string[]; from
     inArray(attendanceDayAdjustment.employmentId,p.employmentIds),gte(attendanceDayAdjustment.attendanceDate,p.from),lte(attendanceDayAdjustment.attendanceDate,p.to))))
     adjustments.set(`${row.employmentId}|${row.attendanceDate}`,row);
   return { from: p.from, to: p.to, cache: new Map(), roster, adjustments };
+}
+
+/** The schedule rows of app.home_own_clock_day (draft 9870): the reads scheduleFor makes for one employment on its
+ *  two clock dates, carried as JSON (db/json-row.ts) and decoded as each of those reads returns them. */
+export type OwnClockScheduleJson = {
+  policy: PolicyRow | null; adjustments: Record<string, unknown>[];
+  roster: { shiftDate: string; isRestDay: boolean; shiftId: string | null }[];
+  arrangements: { employmentId: string; shiftType: string; shiftId: string; validFrom: string }[];
+  defaultShiftId: string | null; shiftIds: string[]; shifts: Record<string, unknown>[];
+  otWindows: (ShiftOtWindowSpec & { shiftId: string })[]; rotations: Record<string, unknown>[];
+  defaultRuleId: string | null; ruleIds: string[]; rules: Record<string, unknown>[]; otRows: Record<string, unknown>[];
+  exceptions: { ruleId: string; id: string; effectiveFrom: string; enabled: boolean }[];
+};
+export function decodeOwnClockSchedule(raw: OwnClockScheduleJson) {
+  return {
+    policy: raw.policy, roster: raw.roster, defaultShiftId: raw.defaultShiftId, shiftIds: raw.shiftIds, ruleIds: raw.ruleIds, defaultRuleId: raw.defaultRuleId,
+    adjustments: raw.adjustments.map((row) => decodeJsonRow(attendanceDayAdjustment, row)),
+    arrangements: raw.arrangements.map(({ employmentId, shiftType, shiftId, validFrom }) => ({ employmentId, shiftType, shiftId, validFrom })),
+    shifts: raw.shifts.map((row) => decodeJsonRow(shift, row)),
+    otWindows: raw.otWindows,
+    rotations: raw.rotations.map((row) => decodeJsonRow(attendanceRotation, row)),
+    rules: raw.rules.map((row) => decodeJsonRow(attendanceRule, row)),
+    otRows: raw.otRows.map((row) => decodeJsonRow(attendanceRuleOtRow, row)),
+    exceptions: raw.exceptions,
+  };
+}
+export type OwnClockSchedule = ReturnType<typeof decodeOwnClockSchedule>;
+const nullShiftRow = () => Object.fromEntries(Object.keys(getTableColumns(shift)).map((key) => [key, null]));
+/**
+ * A ScheduleMemo for ONE employment and date answered from the bundled own clock day. Each entry is the value the
+ * memoized read in scheduleBaseFor would have produced from the same rows (the policy row, every rule, OT row and
+ * exception revision, the arrangements, every shift it can name with its OT windows, the default shift, every
+ * rotation version with its allowed shifts, the roster row, the day adjustment and its dated shift). The holiday
+ * calendar is NOT answered here: with from = to = date, scheduleBaseFor reads it exactly as it does without a memo.
+ * A key this bundle did not read falls through to its live read.
+ */
+export function ownClockScheduleMemo(rows: OwnClockSchedule, employmentId: string, date: string): ScheduleMemo {
+  const cache = new Map<string, Promise<unknown>>();
+  const put = (key: string, value: unknown) => { cache.set(key, Promise.resolve(value)); };
+  const shiftById = new Map(rows.shifts.map((row) => [row.id, row]));
+  const fromShift = <R,>(fields: Record<string, Column>, row: Record<string, unknown> | undefined, restDay?: boolean) =>
+    projectFields(fields, new Map<Table, Record<string, unknown>>([[shift, row ?? nullShiftRow()], [rosterAssignment, { isRestDay: restDay ?? null }]])) as R;
+  put(`pol|${employmentId}`, policyFromRow(rows.policy ?? undefined));
+  const ruleById = new Map(rows.rules.map((rule) => [rule.id, rule]));
+  const resolved = (id: string) => {
+    const rule = ruleById.get(id);
+    return rule ? resolvedAttendanceRuleFrom(rule, rows.otRows.filter((row) => row.ruleId === id),
+      rows.exceptions.filter((row) => row.ruleId === id).map(({ id, effectiveFrom, enabled }) => ({ id, effectiveFrom, enabled }))) : null;
+  };
+  for (const id of rows.ruleIds) put(`rule|${id}`, resolved(id));
+  put('rule|default', rows.defaultRuleId ? resolved(rows.defaultRuleId) : null);
+  for (const id of rows.shiftIds) {
+    const windows = rows.otWindows.filter((row) => row.shiftId === id).map(({ label, startTime, endTime, endNextDay, minMinutes, maxMinutes,
+      adjustAfterMinutes, adjustDeltaMinutes }) => ({ label, startTime, endTime, endNextDay, minMinutes, maxMinutes, adjustAfterMinutes, adjustDeltaMinutes }));
+    put(`otw|${id}`, windows.length > 0 ? windows : null);
+    const row = shiftById.get(id);
+    put(`shift|${id}`, row ? [fromShift(defaultShiftColumns, row)] : []);
+  }
+  put(`arr|${employmentId}`, rows.arrangements);
+  const defaultShift = rows.defaultShiftId ? shiftById.get(rows.defaultShiftId) : undefined;
+  put(`dshift|${employmentId}`, defaultShift ? [fromShift(defaultShiftColumns, defaultShift)] : []);
+  const allowed = new Set(rows.rotations.flatMap((version) => version.allowedShiftIds));
+  put('rotations', rotationLookupFrom(rows.rotations, rows.shifts.filter((row) => allowed.has(row.id))));
+  const key = `${employmentId}|${date}`;
+  const roster = new Map<string, RosterRow>();
+  const dayRoster = rows.roster.find((row) => row.shiftDate === date);
+  if (dayRoster) roster.set(key, fromShift<RosterRow>(rosterRowCols, dayRoster.shiftId ? shiftById.get(dayRoster.shiftId) : undefined, dayRoster.isRestDay));
+  const adjustments = new Map<string, typeof attendanceDayAdjustment.$inferSelect>();
+  const adjustment = rows.adjustments.find((row) => row.attendanceDate === date);
+  if (adjustment) adjustments.set(key, adjustment);
+  const datedShifts = new Map<string, RosterRow>();
+  const dated = adjustment?.shiftId ? shiftById.get(adjustment.shiftId) : undefined;
+  if (dated) datedShifts.set(dated.id, fromShift<RosterRow>(rosterRowCols, dated, false));
+  return { from: date, to: date, cache, roster, adjustments, datedShifts };
 }
 
 function memoized<T>(memo: ScheduleMemo | undefined, key: string, f: () => Promise<T>): Promise<T> {
@@ -1032,7 +1145,8 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
   };
   const prefetched=memo?.roster;
   const [ra] = datedShiftId
-    ? await tx.select({...rosterRowCols,isRestDay:sql<boolean>`false`}).from(shift).where(eq(shift.id,datedShiftId)).limit(1)
+    ? memo?.datedShifts?.has(datedShiftId) ? [memo.datedShifts.get(datedShiftId)!]
+    : await tx.select({...rosterRowCols,isRestDay:sql<boolean>`false`}).from(shift).where(eq(shift.id,datedShiftId)).limit(1)
     : prefetched ? ((r)=>(r?[r]:[]))(prefetched.get(`${employmentId}|${date}`))
     : await tx.select(rosterRowCols).from(rosterAssignment).leftJoin(shift,eq(shift.id,rosterAssignment.shiftId))
       .where(and(eq(rosterAssignment.employmentId,employmentId),eq(rosterAssignment.shiftDate,date))).limit(1);
@@ -1168,33 +1282,7 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
     await memoized(memo, `arr|${employmentId}`, () => arrangementsForEmploymentTx(tx, employmentId)),
     date,
   );
-  const defaultShiftCols = {
-    shiftId: shift.id,
-    code: shift.code,
-    name: shift.name,
-    start: shift.startTime,
-    end: shift.endTime,
-    brk: shift.breakMinutes,
-    crosses: shift.crossesMidnight,
-    override: shift.normalMinutesOverride,
-    periods: shift.breakPeriods,
-    pattern: shift.weeklyPattern,
-    lateGrace: shift.lateGraceMinutes,
-    earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
-    otRule: shift.otRule,
-    ruleId: shift.ruleId,
-    rounding: shift.normalHoursRoundingMinutes,
-    halfDayFirstOut: shift.halfDayFirstOut,
-    // b8aa3466 — the four-way weekly row and the daily cut-off (migration 0429).
-    halfPattern: shift.halfPattern,
-    offPattern: shift.offPattern,
-    cutoffOn: shift.dailyCutoffEnabled,
-    cutoffAt: shift.dailyCutoffTime,
-    // 6340aecb — the flexible break (migration 0457).
-    flexOn: shift.flexibleBreakEnabled,
-    flexMin: shift.flexibleBreakMinutes,
-    shiftType: shift.type,
-  };
+  const defaultShiftCols = defaultShiftColumns;
   const [legacyDs] = arrangement
     ? await memoized(memo, `shift|${arrangement.shiftId}`, () =>
         tx.select(defaultShiftCols).from(shift).where(eq(shift.id, arrangement.shiftId)).limit(1),
@@ -5319,8 +5407,12 @@ function workedDayKindForSchedule(s:Pick<ResolvedSchedule,'source'|'dayType'>):W
   if (s.source === 'default-shift-rest') return 'off_day';
   return 'workday';
 }
-export async function workedDayKindForTx(tx: Tx, employmentId: string, date: string): Promise<WorkedDayKind> {
-  return workedDayKindForSchedule(await scheduleFor(tx, employmentId, date));
+/** The complete resolved schedule of one day, for checks that a memoized reader resolves exactly what a fresh one does. */
+export function resolvedScheduleForTx(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo): Promise<ResolvedSchedule> {
+  return scheduleFor(tx, employmentId, date, memo);
+}
+export async function workedDayKindForTx(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo): Promise<WorkedDayKind> {
+  return workedDayKindForSchedule(await scheduleFor(tx, employmentId, date, memo));
 }
 
 /** Bounded calendar evidence for one policy timeline. Uses the final Schedule owner, including day
@@ -7438,8 +7530,8 @@ async function deriveStoredAttendanceTx(tx:Tx,schedule:ResolvedSchedule,p:{emplo
 }
 
 /** Presentation/command anchoring only; calculation remains in the existing writer. */
-export async function clockScheduleForTx(tx: Tx, employmentId: string, date: string) {
-  const schedule = await scheduleFor(tx, employmentId, date);
+export async function clockScheduleForTx(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo) {
+  const schedule = await scheduleFor(tx, employmentId, date, memo);
   return { crossesMidnight: schedule.crossesMidnight, durationOnly: schedule.durationOnly === true, start: schedule.shiftStart, end: schedule.shiftEnd, code: schedule.displayShiftCode ?? null, dayKind: workedDayKindForSchedule(schedule) };
 }
 

@@ -126,10 +126,12 @@ import {
 } from './leave';
 import {
   buildTemplateEntitlementResolver,
+  emptyTemplateEntitlementResolver,
   type TemplateEntitlementResolver,
   eligibilityNoticeFrom,
   explainEntitlementEligibility,
 } from './entitlement-template';
+import type { OwnLeaveInputs } from './own-leave-inputs';
 // r303 (31492f74) — the per-line working HR's Leave Summary sentences are rendered from. Type only: the
 // renderer is a pure client-safe module and this read builds its input from the locals behind each figure.
 import type { LeaveSummaryDerivation } from '../lib/leave-summary-explain';
@@ -1868,6 +1870,15 @@ export async function hasEligibleLeaveTypeForTx(tx:Tx,employmentId:string):Promi
   const today=todayInKualaLumpur();
   return types.some(type=>mayAppearInApplyMenu(type,emp,today));
 }
+/** hasEligibleLeaveTypeForTx over bundled own leave inputs: the same two selects, answered from the bundle. */
+export function hasEligibleLeaveTypeFrom(tx:Tx,employmentId:string,own:OwnLeaveInputs):Promise<boolean>{
+  if(!own.answers(tx,employmentId))return hasEligibleLeaveTypeForTx(tx,employmentId);
+  const types=own.typeRows<Awaited<ReturnType<typeof applyMenuTypesTx>>[number]>(applyMenuTypeColumns,type=>type.archivedAt===null);
+  const [emp]=own.employmentRows<Awaited<ReturnType<typeof applyMenuEmploymentTx>>[number]>(applyMenuEmpColumns);
+  const today=todayInKualaLumpur();
+  return Promise.resolve(types.some(type=>mayAppearInApplyMenu(type,emp,today)));
+}
+const applyMenuTypesTx=(tx:Tx)=>tx.select(applyMenuTypeColumns).from(leaveType).where(isNull(leaveType.archivedAt));
 
 /**
  * The leave types ONE employee may actually take — `listLeaveTypes` filtered through the eligibility
@@ -3465,10 +3476,11 @@ export function pickName(name: string, i18n: LeaveTypeI18n, locale?: string): st
  * Same date cut as the caller (`effective_on <= asOf`, none when absent), so an as-at read counts exactly the
  * recalculations that had happened by then.
  */
-async function earnedRecalcDaysBy(tx: Tx, employmentIds: string[], asOf?: string): Promise<Map<string, number>> {
+async function earnedRecalcDaysBy(tx: Tx, employmentIds: string[], asOf?: string, own?: OwnLeaveInputs): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (employmentIds.length === 0) return out;
-  const recalcRows = await tx
+  const answered = own && employmentIds.length === 1 && own.answers(tx, employmentIds[0]) ? own : undefined;
+  const recalcRows = answered ? answered.recalculationRows(asOf) : await tx
     .select({
       employmentId: leaveLedger.employmentId,
       leaveTypeId: leaveLedger.leaveTypeId,
@@ -3667,14 +3679,17 @@ export type LeaveBalanceReadOptions = {
    */
   asOf?: string;
 };
-export function leaveBalances(ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}, existingTx?: Tx) {
-  return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts),{presentationSnapshot:true});
+export function leaveBalances(ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}, existingTx?: Tx, inputs?: OwnLeaveInputs) {
+  return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts, inputs),{presentationSnapshot:true});
 }
-/** Explicit transaction seam for snapshot report consumers; the same canonical calculation and defaults. */
-export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}) {
+/** Explicit transaction seam for snapshot report consumers; the same canonical calculation and defaults.
+ *  `inputs` (bundled own leave inputs, core/own-leave-inputs.ts) answers each statement below for the employment and
+ *  transaction they were read for; every line of the calculation is the same either way. */
+export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}, inputs?: OwnLeaveInputs) {
     const asOf = opts.asOf;
+    const own = inputs?.answers(tx, employmentId) ? inputs : undefined;
     const [rows, pend, takenFiled, unpaidFiled, recalcEarnedBy] = await Promise.all([
-      tx
+      own ? own.ledgerTotalsByType(asOf) : tx
         .select({
           leaveTypeId: leaveType.id,
           leaveType: leaveType.name,
@@ -3694,7 +3709,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
             : eq(leaveLedger.employmentId, employmentId),
         )
         .groupBy(leaveType.id, leaveType.name),
-      tx
+      own ? own.pendingDaysByType(asOf) : tx
         .select({
           leaveTypeId: leaveRequest.leaveTypeId,
           leaveType: leaveType.name,
@@ -3731,7 +3746,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
        *
        * Identical to `rows`'s own filter and date cut, or the two would disagree about which rows exist.
        */
-      tx
+      own ? own.debitsByFiledType(asOf) : tx
         .select({
           filedTypeId: sql<string>`coalesce(${leaveRequest.leaveTypeId}, ${leaveLedger.leaveTypeId})`,
           taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
@@ -3762,7 +3777,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
        * Split survivors (r302) each carry their own `days` and `unpaid_days`, so a partially cancelled
        * leave contributes only what actually survived.
        */
-      tx
+      own ? own.unpaidDaysByType(asOf) : tx
         .select({
           leaveTypeId: leaveRequest.leaveTypeId,
           unpaid: sql<string>`coalesce(sum(${leaveRequest.unpaidDays}), 0)`,
@@ -3779,7 +3794,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
         .groupBy(leaveRequest.leaveTypeId),
       // r389 (62a1bec1) — the automatic recalculations the engines granted, decided by the kernel's
       // `isEarnedToDateRow` exactly as the breakdown walk decides them. Same date cut as `rows`.
-      earnedRecalcDaysBy(tx, [employmentId], asOf),
+      earnedRecalcDaysBy(tx, [employmentId], asOf, own),
     ]);
     const pendingBy = new Map(pend.map((p) => [p.leaveTypeId, Number(p.pending)]));
     // 690d4400 — TAKEN IS ABSENCE, not balance spend: the days the employee was away. `taken` from the
@@ -3885,18 +3900,19 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
       balanceSourceTypeId: leaveType.balanceSourceTypeId, archivedAt: leaveType.archivedAt,
       eligibility: leaveType.eligibility,
     };
-    const [types, [emp]] = await Promise.all([
-      tx
-        .select({ ...typePresentation, name: leaveType.name, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig })
-        .from(leaveType)
-        .where(isNull(leaveType.archivedAt)),
-      tx
-        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory })
+    const typeColumns = { ...typePresentation, name: leaveType.name, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig };
+    const profileColumns = { gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory };
+    const typesQuery = tx.select(typeColumns).from(leaveType).where(isNull(leaveType.archivedAt));
+    const profileQuery = tx
+        .select(profileColumns)
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))
         .where(eq(employment.id, employmentId))
-        .limit(1),
-    ]);
+        .limit(1);
+    type TypeRow = Awaited<typeof typesQuery>[number];
+    const [types, [emp]] = own
+      ? ([own.typeRows<TypeRow>(typeColumns, (type) => type.archivedAt === null), own.employmentRows<Awaited<typeof profileQuery>[number]>(profileColumns)] as const)
+      : await Promise.all([typesQuery, profileQuery]);
     const today = todayInKualaLumpur();
     for (const lt of types) {
       if (seen.has(lt.id)) continue;
@@ -3924,7 +3940,9 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
     const visualByType = new Map(types.map(type => [type.id, type] as const));
     const retainedIds = out.map(row => row.leaveTypeId).filter(id => !visualByType.has(id));
     if (retainedIds.length > 0) {
-      const retained = await tx.select({
+      const retained = own
+        ? own.typeRows<TypeRow>(typeColumns, (type) => retainedIds.includes(type.id))
+        : await tx.select({
         ...typePresentation, name: leaveType.name, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig,
       }).from(leaveType).where(inArray(leaveType.id, retainedIds));
       for (const type of retained) visualByType.set(type.id, type);
@@ -4171,7 +4189,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
      */
     const pooledAway = await (async () => {
       if (opts.includeHidden) return visible;
-      const members = await tx
+      const members = own ? own.sharedGroupMembers() : await tx
         .select({
           leaveTypeId: leaveSharedGroupMember.leaveTypeId,
           placement: leaveSharedGroup.essPlacement,
@@ -4764,6 +4782,9 @@ type BreakdownPreloaded = {
   type: BreakdownTypeRow | undefined;
   emp: BreakdownEmploymentRow | undefined;
   templates: TemplateEntitlementResolver;
+  /** Bundled own leave inputs, already checked to answer this employment in this transaction: the four
+   *  ledger/request statements below are answered from them. */
+  own?: OwnLeaveInputs;
 };
 
 export async function leaveEntitlementBreakdownTx(
@@ -4871,7 +4892,12 @@ export async function leaveEntitlementBreakdownTx(
 
     // The aggregates, all bounded by `effective_on <= asOf` (closed interval). One round-trip.
     const num = (x: unknown) => Number(x ?? 0);
-    const [[agg], [debitAgg], pendingRows, rows] = await Promise.all([
+    const own = pre?.own;
+    const [[agg], [debitAgg], pendingRows, rows] = own
+      ? ([[own.breakdownTotals(leaveTypeId, asOf, cycleStart)],
+          [own.breakdownDebits(leaveTypeId, cycleStart, carryForwardExpiryDate && carryForwardExpiryDate < asOf ? carryForwardExpiryDate : asOf)],
+          own.breakdownPending(leaveTypeId, asOf), own.breakdownLedger(leaveTypeId, cycleStart, asOf)] as const)
+      : await Promise.all([
       tx
         .select({
           // r303: "fresh entitlement granted within the current cycle" (accruals + in-lieu top-ups) used to be
@@ -5371,11 +5397,18 @@ export function leaveEntitlementBreakdowns(
   items: readonly { leaveTypeId: string; asOf: string }[],
   locale?: string,
   existingTx?: Tx,
+  inputs?: OwnLeaveInputs,
 ): Promise<(LeaveEntitlementBreakdown | null)[]> {
   if (items.length === 0) return Promise.resolve([]);
   const read = async (tx: Tx) => {
     const typeIds = [...new Set(items.map((i) => i.leaveTypeId))];
-    const [types, [emp]] = await Promise.all([
+    // Bundled own leave inputs answer the type and employment selects, the empty-table resolver and the four
+    // per-item statements; a leave type with an entitlement table in force still builds its resolver live.
+    const own = inputs?.answers(tx, employmentId) ? inputs : undefined;
+    const [types, [emp]] = own
+      ? ([own.typeRows<BreakdownTypeRow>(breakdownTypeColumns(), (type) => typeIds.includes(type.id)),
+          own.employmentRows<BreakdownEmploymentRow>(breakdownEmploymentColumns)] as const)
+      : await Promise.all([
       selectBreakdownTypes(tx).where(inArray(leaveType.id, typeIds)),
       selectBreakdownEmployment(tx, employmentId),
     ]);
@@ -5385,7 +5418,9 @@ export function leaveEntitlementBreakdowns(
     const resolverByAsOf = new Map<string, TemplateEntitlementResolver>();
     for (const asOf of [...new Set(items.map((i) => i.asOf))]) {
       const ids = [...new Set(items.filter((i) => i.asOf === asOf && typeById.has(i.leaveTypeId)).map((i) => i.leaveTypeId))];
-      resolverByAsOf.set(asOf, await buildTemplateEntitlementResolver(tx, { employmentIds: [employmentId], leaveTypeIds: ids, asOf }));
+      resolverByAsOf.set(asOf, own && ids.length > 0 && !own.templatesInForce(asOf, ids)
+        ? emptyTemplateEntitlementResolver()
+        : await buildTemplateEntitlementResolver(tx, { employmentIds: [employmentId], leaveTypeIds: ids, asOf }));
     }
     return Promise.all(
       items.map((i) =>
@@ -5393,6 +5428,7 @@ export function leaveEntitlementBreakdowns(
           type: typeById.get(i.leaveTypeId),
           emp,
           templates: resolverByAsOf.get(i.asOf)!,
+          own,
         }),
       ),
     );
