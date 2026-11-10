@@ -194,7 +194,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
    e.voided_at IS NULL AND e.xmin::text=x.item->>'employmentRevision' AND p.xmin::text=x.item->>'personRevision'
      AND (x.item->>'kind'='public' OR (x.item->>'kind'='identity' AND i.xmin::text=x.item->>'identityRevision'))
  FROM entries x
- JOIN public.employment e ON e.id::text=x.item->>'employmentId' AND e.tenant_id=x.tenant_id
+ JOIN public.employment e ON e.id=(x.item->>'employmentId')::uuid AND e.tenant_id=x.tenant_id
  JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
  LEFT JOIN public.employee_statutory_my i ON i.person_id=p.id AND i.tenant_id=p.tenant_id
 $$;
@@ -500,9 +500,13 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  admitted AS MATERIALIZED (
    SELECT t.* FROM tagged t JOIN permitted_companies allowed ON allowed.id=t.dated_company_id
  ),
+ -- Fenced, so the permission is evaluated once per company and not pushed down to every admitted row.
+ dated_companies AS MATERIALIZED (
+   SELECT DISTINCT dated_company_id FROM admitted
+ ),
  identity_companies AS MATERIALIZED (
    SELECT d.dated_company_id
-   FROM (SELECT DISTINCT dated_company_id FROM admitted) d
+   FROM dated_companies d
    WHERE app.personnel_identity_search_permitted(d.dated_company_id)
  )
  SELECT jsonb_build_object('employmentId',a.id,'companyId',a.dated_company_id,
@@ -544,14 +548,20 @@ BEGIN
   WITH entries AS MATERIALIZED (
    SELECT item,ordinal FROM jsonb_array_elements(NEW.matches) WITH ORDINALITY AS m(item,ordinal)
   ),
-  matched AS MATERIALIZED (
-   SELECT m.ordinal,m.item->>'kind' AS kind,e.id,e.company_id
+  -- Each entry's employment first, by its key. Rows written in one transaction share an xmin, so a
+  -- planner free to join entries to persons on the revision text alone multiplies them.
+  entry_employments AS MATERIALIZED (
+   SELECT m.ordinal,m.item,e.id,e.company_id,e.person_id,e.tenant_id,e.xmin::text AS employment_revision
    FROM entries m
    JOIN public.employment e ON e.id=(m.item->>'employmentId')::uuid AND e.tenant_id=NEW.tenant_id
-   JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
-   LEFT JOIN public.employee_statutory_my i ON i.person_id=p.id AND i.tenant_id=p.tenant_id
    WHERE e.voided_at IS NULL
-     AND e.xmin::text=m.item->>'employmentRevision'
+  ),
+  matched AS MATERIALIZED (
+   SELECT m.ordinal,m.item->>'kind' AS kind,m.id,m.company_id
+   FROM entry_employments m
+   JOIN public.person p ON p.id=m.person_id AND p.tenant_id=m.tenant_id
+   LEFT JOIN public.employee_statutory_my i ON i.person_id=p.id AND i.tenant_id=p.tenant_id
+   WHERE m.employment_revision=m.item->>'employmentRevision'
      AND p.xmin::text=m.item->>'personRevision'
      AND (m.item->>'kind'='public' OR i.xmin::text=m.item->>'identityRevision')
   ),
