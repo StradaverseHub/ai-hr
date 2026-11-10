@@ -318,6 +318,8 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   // ADR-0080 D10 — Recruitment (4401). Jobs and candidates are hiring history: a company with either refuses.
   { table: 'recruitment_job_opening', column: 'company_id', disposition: 'other', note: 'A job opening with its MJ number, team and applications. Close it; the history stays with the company.' },
   { table: 'recruitment_candidate', column: 'company_id', disposition: 'other', note: 'A candidate who applied to this company, and their application history.' },
+  // 4404 — a job requisition (HC number, vacancies, approval history) is hiring history like a job opening.
+  { table: 'recruitment_requisition', column: 'company_id', disposition: 'other', note: 'A job requisition with its HC number, approvals and associated jobs. Complete or cancel it; the history stays with the company.' },
 
   // ── config: deleted with the company, in this order ──────────────────────────────────────────────────
   { table: 'company_logo', column: 'company_id', disposition: 'config', note: 'The company\'s logo image, held in its own side table.' },
@@ -364,6 +366,12 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   // Recruitment setup (4401): editable defaults seeded when Recruitment is first opened. Removed by one definer
   // function (the app role has no DELETE here and default reasons refuse deletion), only when no job opening or
   // candidate exists — those refuse the delete first, above.
+  // 4402/4403 — further setup the same function removes first: approval flows, the offer-field set, the settings row
+  // and evaluation forms. Only interviews, scorecards and offers point at forms and fields, and those need a job opening.
+  { table: 'recruitment_approval_step', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s offer and requisition approval flows (ordered approvers).' },
+  { table: 'recruitment_offer_field', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s offer-field set. Offer values point at it only through an offer, which needs a job opening.' },
+  { table: 'recruitment_company_setting', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment settings row (feedback visibility and lock, offer validity and automation).' },
+  { table: 'recruitment_evaluation_form', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s interview evaluation forms. Interviews and scorecards point at them only through a job opening.' },
   { table: 'recruitment_archive_reason', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s rejection / archive reasons. Removed with its stages and processes.' },
   { table: 'recruitment_process', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment processes; their ordered stages go with them (ON DELETE CASCADE).' },
   { table: 'recruitment_stage', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment stage catalogue. After the processes that order it.' },
@@ -436,6 +444,11 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'recruitment_application_event', column: 'from_stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'Append-only application history keeps its stages.' },
   { table: 'recruitment_application_event', column: 'to_stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'Append-only application history keeps its stages.' },
   { table: 'recruitment_application_event', column: 'archive_reason_id', references: 'recruitment_archive_reason', effect: 'blocks', note: 'Append-only application history keeps its reasons.' },
+  { table: 'recruitment_interview', column: 'stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'An interview keeps the stage it was scheduled in.' },
+  { table: 'recruitment_interview', column: 'evaluation_form_id', references: 'recruitment_evaluation_form', effect: 'blocks', note: 'An interview keeps its evaluation form.' },
+  { table: 'recruitment_scorecard', column: 'evaluation_form_id', references: 'recruitment_evaluation_form', effect: 'blocks', note: 'Feedback keeps the form it answered.' },
+  { table: 'recruitment_offer_value', column: 'field_id', references: 'recruitment_offer_field', effect: 'blocks', note: 'An offer value keeps its field.' },
+  { table: 'recruitment_requisition', column: 'department_id', references: 'department', effect: 'blocks', note: 'A requisition keeps its department.' },
   { table: 'shift_ot_window', column: 'shift_id', references: 'shift', effect: 'part', note: 'A shift\'s clock-time OT windows. ON DELETE CASCADE.' },
   { table: 'attendance_rule_ot_row', column: 'rule_id', references: 'attendance_rule', effect: 'part', note: 'A rule\'s OT rows. ON DELETE CASCADE.' },
   { table: 'holiday_group_holiday', column: 'holiday_id', references: 'holiday', effect: 'blocks', note: 'ON DELETE CASCADE, but a holiday group may serve another company: removing our holiday from it would change their calendar. Refuses.' },

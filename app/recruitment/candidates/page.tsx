@@ -6,16 +6,21 @@ import { ErrorBanner, Field, Input, PageHeader, btnGhost, btnPrimary } from '@/c
 import { cn } from '@/lib/utils';
 import { applicationHistory, candidateBoard, RecruitmentError, type ApplicationHistoryRow } from '@/packs/recruitment/service';
 import { addApplicationAction, moveApplicationAction, rejectApplicationAction } from '../actions';
-import { NoRecruitmentCompany, Notice, RecruitmentTabs, recruitmentAccess, recruitmentErrorText, selectCls } from '../shared';
+import { NoRecruitmentCompany, Notice, RecruitmentTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
 import { RejectDialog } from './reject-dialog';
 
 type Search = { job?: string; tab?: string; application?: string; error?: string; notice?: string };
 
-/** Recruitment › Candidates: the pipeline by stage, with live counts, Move forward, Reject and Add application. */
+/**
+ * Recruitment › Candidates: the pipeline by stage, with live counts, Move forward, Reject and Add application.
+ * Administrators see their companies' pipeline; a job-team member sees their jobs' applications and the ones they
+ * interview, with only the actions their role allows (slice 2; the service and row security decide).
+ */
 export default async function RecruitmentCandidatesPage({ searchParams }: { searchParams: Promise<Search> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
-  const companies = await recruitmentAccess(s, scopeIds);
+  const access = await recruitmentViewerAccess(s, scopeIds);
+  const companies = access.companies;
   const sp = await searchParams;
   const [t, nav, locale] = await Promise.all([getTranslations('recruitment.candidates'), getTranslations('nav'), getLocale()]);
   const board = await candidateBoard(s, companies.map((c) => c.id), { jobId: sp.job, tab: sp.tab });
@@ -32,12 +37,12 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
   const date = (value: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date(value));
   const dateTime = (value: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date(value));
   const tabLabel = (key: string, name: string) => (key === 'hired' ? t('hired') : key === 'archived' ? t('archived') : name);
-  const openJobs = board.jobs.filter((j) => j.status !== 'closed');
+  const openJobs = board.jobs.filter((j) => j.status !== 'closed' && j.canOperate);
   const rejectLabels = { open: t('reject'), title: t('rejectTitle'), reason: t('rejectReason'), choose: t('choose'), external: t('externalReason'), confirm: t('rejectConfirm'), cancel: t('cancel') };
   return (
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={t('purpose')} />
-      <RecruitmentTabs active="candidates" />
+      <RecruitmentTabs active="candidates" admin={access.isAdmin} approvals={access.pendingApprovals} />
       <Notice text={sp.notice === 'saved' ? t('savedNotice') : undefined} />
       <ErrorBanner message={await recruitmentErrorText(sp.error)} />
       {companies.length === 0 ? <NoRecruitmentCompany /> : (
@@ -82,7 +87,7 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                         {card.archiveReason && <div className="col-span-2"><dt className="text-muted-foreground">{t('archiveReason')}</dt><dd>{card.archiveReason}</dd></div>}
                       </dl>
                       <div className="flex flex-wrap items-center gap-2">
-                        {card.state === 'active' && next && (
+                        {card.state === 'active' && card.canReview && next && (
                           <form action={moveApplicationAction}>
                             <input type="hidden" name="applicationId" value={card.id} />
                             <input type="hidden" name="returnTo" value={here} />
@@ -101,10 +106,11 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                             <button type="submit" className={btnGhost}>{t('move')}</button>
                           </form>
                         )}
-                        {card.state === 'active' && (
+                        {card.state === 'active' && card.canReview && (
                           <RejectDialog action={rejectApplicationAction} applicationId={card.id} returnTo={here} candidateName={card.candidateName}
                             reasons={board.reasons.filter((r) => r.companyId === card.companyId)} labels={rejectLabels} />
                         )}
+                        <Link href={`/recruitment/applications/${card.id}`} className="text-sm font-medium text-primary hover:underline">{t('open')}</Link>
                         <Link href={query({ application: card.id })} className="text-sm text-primary hover:underline">{t('history')}</Link>
                       </div>
                     </li>
@@ -130,7 +136,7 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                 </ol>
               </section>
             )}
-            <section className="space-y-3 rounded-xl border border-border bg-card p-4" aria-labelledby="add-title">
+            {(access.isAdmin || openJobs.length > 0) && <section className="space-y-3 rounded-xl border border-border bg-card p-4" aria-labelledby="add-title">
               <h2 id="add-title" className="text-sm font-semibold">{t('addTitle')}</h2>
               {openJobs.length === 0 ? <p className="text-sm text-muted-foreground">{t('noOpenJobs')}</p> : (
                 <form action={addApplicationAction} className="space-y-3">
@@ -148,7 +154,7 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                   <button type="submit" className={btnPrimary}>{t('add')}</button>
                 </form>
               )}
-            </section>
+            </section>}
           </aside>
         </div>
       )}

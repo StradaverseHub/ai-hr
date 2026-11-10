@@ -7,18 +7,21 @@ import { ErrorBanner, Field, PageHeader, StatusBadge, btnGhost, btnPrimary } fro
 import { cn } from '@/lib/utils';
 import { getJob, JOB_MEMBER_ROLES, JOB_STATUS_TRANSITIONS, RecruitmentError, type JobDetail } from '@/packs/recruitment/service';
 import { addJobMemberAction, changeJobStatusAction, removeJobMemberAction, updateJobAction } from '../../actions';
-import { Notice, recruitmentAccess, recruitmentErrorText, selectCls } from '../../shared';
+import { Notice, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
 import { JobInfoFields } from '../job-fields';
 
 type Tab = 'info' | 'settings' | 'team';
 
-/** Recruitment › Position: Job info, Job settings and Team, with the status control in the header. */
+/**
+ * Recruitment › Position: Job info, Job settings and Team, with the status control in the header. Administrators edit;
+ * a job-team member sees the job read-only (slice 2).
+ */
 export default async function RecruitmentPositionPage({ params, searchParams }: {
   params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; error?: string; notice?: string }>;
 }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
-  await recruitmentAccess(s, scopeIds, false);
+  await recruitmentViewerAccess(s, scopeIds);
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   let detail: JobDetail;
   try {
@@ -30,6 +33,7 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
   const tab: Tab = sp.tab === 'settings' || sp.tab === 'team' ? sp.tab : 'info';
   const [t, status] = await Promise.all([getTranslations('recruitment.job'), getTranslations('recruitment.status')]);
   const { job, options } = detail;
+  if (!detail.manage || !options) return <TeamJobView detail={detail} />;
   const here = `/recruitment/positions/${job.id}${tab === 'info' ? '' : `?tab=${tab}`}`;
   const hidden = (name: string, value: string | null | undefined) => <input type="hidden" name={name} value={value ?? ''} />;
   const notice = sp.notice === 'created' ? t('createdNotice') : sp.notice === 'saved' ? t('savedNotice') : undefined;
@@ -39,15 +43,19 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
         title={job.title}
         description={<><span className="font-mono">{job.jobNumber}</span> · {detail.companyName} · <StatusBadge status={job.status} label={status(job.status)} /></>}
         back={{ href: '/recruitment/positions', label: t('backToPositions') }}
-        actions={JOB_STATUS_TRANSITIONS[job.status].map((to) => (
+        actions={[...(job.status !== 'closed' ? [<Link key="cand" href={`/recruitment/candidates?job=${job.id}`} className={btnGhost}>{t('candidates')}</Link>] : []), ...JOB_STATUS_TRANSITIONS[job.status].map((to) => (
           <form key={to} action={changeJobStatusAction}>
             {hidden('jobId', job.id)}{hidden('status', to)}{hidden('returnTo', here)}
             <button type="submit" className={to === 'closed' ? btnGhost : btnPrimary}>{t(`statusAction.${to}`)}</button>
           </form>
-        ))}
+        ))]}
       />
       <Notice text={notice} />
       <ErrorBanner message={await recruitmentErrorText(sp.error)} />
+      {detail.requisition && (
+        <p className="text-sm text-muted-foreground">{t('requisition')}: <Link className="text-primary hover:underline" href={`/recruitment/requisitions/${detail.requisition.id}`}>
+          <span className="font-mono">{detail.requisition.reqNumber}</span> · {detail.requisition.title}</Link></p>
+      )}
       <nav aria-label={t('sections')} className="flex gap-1 border-b border-border">
         {(['info', 'settings', 'team'] as const).map((key) => (
           <Link key={key} href={`/recruitment/positions/${job.id}${key === 'info' ? '' : `?tab=${key}`}`} aria-current={tab === key ? 'page' : undefined}
@@ -146,6 +154,37 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
           </form>
         </section>
       )}
+    </div>
+  );
+}
+
+/** A job-team member's read-only view of their job: its information and pipeline counts. */
+async function TeamJobView({ detail }: { detail: JobDetail }) {
+  const [t, status] = await Promise.all([getTranslations('recruitment.job'), getTranslations('recruitment.status')]);
+  const { job } = detail;
+  return (
+    <div className="mx-auto w-full max-w-5xl space-y-5">
+      <PageHeader title={job.title} description={<><span className="font-mono">{job.jobNumber}</span> · {detail.companyName} · <StatusBadge status={job.status} label={status(job.status)} /></>}
+        back={{ href: '/recruitment/positions', label: t('backToPositions') }}
+        actions={<Link href={`/recruitment/candidates?job=${job.id}`} className={btnPrimary}>{t('candidates')}</Link>} />
+      <p className="text-sm text-muted-foreground">{t('readOnly')}</p>
+      <section className="space-y-3 rounded-xl border border-border bg-card p-4 text-sm">
+        <dl className="grid gap-3 sm:grid-cols-2">
+          <div><dt className="text-xs text-muted-foreground">{t('workLocation')}</dt><dd>{job.workLocation}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">{t('employmentType')}</dt><dd>{t(`employmentTypes.${job.employmentType}`)}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">{t('recruitmentType')}</dt><dd>{t(`recruitmentTypes.${job.recruitmentType}`)}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">{t('positionAttribute')}</dt><dd>{t(`positionAttributes.${job.positionAttribute}`)}</dd></div>
+        </dl>
+        {job.description && <p className="whitespace-pre-wrap">{job.description}</p>}
+      </section>
+      <section className="space-y-2 rounded-xl border border-border bg-card p-4">
+        <h2 className="text-sm font-semibold">{t('pipeline')}</h2>
+        <ol className="flex flex-wrap gap-2 text-xs">
+          {detail.stages.filter((st) => st.enabled).map((st) => <li key={st.stageId} className="rounded-full border border-border px-2 py-1">{st.name} <span className="tabular-nums">({st.active})</span></li>)}
+          <li className="rounded-full bg-muted px-2 py-1">{t('hired')} <span className="tabular-nums">({detail.hired})</span></li>
+          <li className="rounded-full bg-muted px-2 py-1">{t('archived')} <span className="tabular-nums">({detail.archived})</span></li>
+        </ol>
+      </section>
     </div>
   );
 }

@@ -54,6 +54,9 @@ export const RECRUITMENT_ERROR_CODES = [
   'forbidden', 'not_found', 'missing_fields', 'invalid_input', 'invalid_status_change', 'process_locked',
   'process_unavailable', 'stage_not_in_process', 'stage_unavailable', 'reason_required', 'application_closed',
   'job_closed', 'duplicate_application', 'system_stage', 'reason_in_use', 'default_reason',
+  // Slices 2–4.
+  'not_interviewer', 'feedback_locked', 'interview_closed', 'invalid_form', 'form_in_use', 'self_approval', 'not_your_step',
+  'offer_state', 'offer_closed', 'approval_pending', 'requisition_terminal', 'hire_not_eligible', 'hire_linked', 'not_in_pool',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

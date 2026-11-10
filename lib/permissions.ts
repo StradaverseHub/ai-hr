@@ -172,11 +172,16 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/shared'] },
   { screenKey: 'rewardsPolicy', href: '/admin/rewards/[unitId]', labelKey: 'rewards.configuration', guard: 'scopedSession', routes: ['/admin/rewards/[unitId]'] },
   // ADR-0080 D10 / ADR-0049 — Recruitment. Every page calls requireModule('recruitment') + scopedSession and then admits
-  // only recruitment administrators (canAdminRecruitment: HR administrators and the company-scoped Recruiting Partner),
-  // for the companies app.can_admin_recruitment_for answers true; the service and row security refuse independently.
-  // A capability gate inside the page, not a role grant at the boundary — hence conditionalAccess.
+  // recruitment administrators (canAdminRecruitment: HR administrators and the company-scoped Recruiting Partner) for
+  // the companies app.can_admin_recruitment_for answers true, and — slice 2 — job-team members and interviewers for
+  // their own jobs and interviews (app.can_*_recruitment_job, 4402), and approvers for their own pending steps.
+  // Overview, Settings, Requisitions and Talent pool stay administrator-only inside the page. The service and row
+  // security refuse independently. A capability gate inside the page, not a role grant at the boundary — hence
+  // conditionalAccess.
   {screenKey:'recruitment',href:'/recruitment',labelKey:'nav.recruitment',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
     '/recruitment','/recruitment/positions','/recruitment/positions/new','/recruitment/positions/[id]','/recruitment/candidates','/recruitment/settings',
+    '/recruitment/applications/[id]','/recruitment/interviews','/recruitment/interviews/[id]/feedback','/recruitment/scorecards/[id]',
+    '/recruitment/requisitions','/recruitment/requisitions/new','/recruitment/requisitions/[id]','/recruitment/talent-pool','/recruitment/approvals',
   ]},
   // ── Everyday screens (scopedSession: every role reaches, data is scoped) ──
   { screenKey: 'dashboard', href: '/', labelKey: 'nav.dashboard', guard: 'scopedSession', routes: ['/'] },

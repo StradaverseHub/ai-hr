@@ -1,4 +1,4 @@
-# Recruitment — parity and verification report (slice 1, 2026-11-10)
+# Recruitment — parity and verification report (slices 1–4, 2026-11-10)
 
 Replica revision: uncommitted working tree on `claude/rea-web-app-reconstruction-2c12ee`, base `f07f32dcd`.
 Reference baseline: Moka `hire-r1`, the owner's live tenant, one non-super-admin account, read-only (EV-007…EV-020).
@@ -73,9 +73,60 @@ DB-batch failures:
 - `module-job-source-security` > recruitment: a group HR admin's counts named another company in the tenant. That
   is an authorized administrative scope (same as Rewards). Fixed after the run: recruitment is added to the
   test's administrative scopes, and a new `recruitment-service` case proves that a company-scoped partner sees only
-  their company and that no candidate, email, job title or job number appears. NOT RUN yet.
+  their company and that no candidate, email, job title or job number appears. Re-run 42775945376 on
+  commit 0e0c238b3: both files PASS (`module-job-source-security`, `recruitment-service`).
+
+## Slices 2–4 — team access, interviews, offers, hire hand-off, requisitions, talent pool (2026-11-10)
+
+Owner scope: core path plus requisitions and a basic talent pool; reports excluded (never observed). Built in the
+working tree by a builder agent, then reviewed independently by a separate reviewer agent and by the lead.
+
+Migrations 4402–4404 (idx 3802–3804) append after 4401. A peer survey after a fresh fetch found no other claim on
+those numbers, indexes or timestamps. Other branches hold 4500–4502 with higher timestamps; whichever lands later must
+be checked against the applied watermark.
+
+Independent review findings and what happened to them:
+
+| Finding | Severity | Outcome |
+| --- | --- | --- |
+| The offer guard let an operator (including the creator) approve an offer, or rewrite approvers or the pending step, with a direct write | High | Fixed in 4403: every approval-state change must be one of the service's transitions; DB tests added |
+| Same gap for requisitions (`approval_status`) | High | Fixed in 4404 the same way; DB tests added |
+| Editing a requisition during approval kept earlier approvals | Medium | Fixed: a required-field change while a round runs starts a new round; tested |
+| Server actions logged raw database errors, whose messages carry bound values (candidate details, private offer values) | Medium (privacy) | Fixed: only the error kind and SQLSTATE are logged |
+| A creator removed from the job kept database read access to the offer and its private values | Low | Fixed: the creator branch now also needs operate access on the job |
+| Approver and team pickers offered another company's partner | Low | Fixed: role grants must be group-wide or for this company |
+| The last approval of a requisition whose target date passed during approval failed | Low | Fixed: it is approved and stays a Draft (D-010) |
+| Someone other than the creator who starts a round may approve it | Design | Open for the owner (D-008) |
+
+Checks (lead), all on a private throwaway Postgres 16 cluster with every migration applied, under the resource lock:
+
+| Check | Result |
+| --- | --- |
+| DB tests: `recruitment-slices-service` (cases 10–18 plus the new bypass tests), `recruitment-service`, `company-referrers`, `module-catalog-drift`, `invitation-privesc`, `draft-action-atomicity`, `module-gate`, `partner-roles` | PASS, 8 files, 236 tests |
+| No-DB: recruitment rules and drift, i18n, navigation, registries, personnel hand-off sources, AI module bindings and prompts, provider review gate (30 files) | PASS, except 9 `provider-analysis-policy` tests (owner provider-data approval stale, expected) |
+| Both AI source manifests | Regenerated; `--check` passes |
+| Scoped `tsc` over all 40 changed TypeScript files (not `app/layout.tsx`, `components/sidebar.tsx`) | PASS, 0 errors |
+| ESLint on recruitment, personnel and test files | Clean except one error in untouched `app/admin/personnel/new/wizard.tsx` |
+| Whole-repo `tsc`, production build, shared-cluster gate | NOT RUN locally (GitHub Actions) |
+
+Rendered screens (local dev server against the private cluster, fictional demo data, dev users switched with the
+demo selector):
+
+- HR Admin: Overview tiles, Candidates board, Interview schedule (today/upcoming), application Interview tab with
+  scorecard link, Offer tab (private salary visible to an administrator; "Pay figures are entered by people"),
+  Positions › Job requisitions, Talent pool, Settings, a scorecard (sum 17/25).
+- Approver (an employee in the company flow): Approvals tab lists the offer and the requisition; the offer's private
+  salary reads "Private — not visible to you"; approving both through the screen succeeded and the database shows
+  each decision logged and the items approved. After the last decision the page now confirms instead of redirecting.
+- Interviewer: the board shows only the interviewed application; another application returns 404; no Offer tab.
+- Hire hand-off: "Start new hire" opened the existing new-employee form pre-filled from the application; nothing
+  existed before HR pressed Create; afterwards the application shows the employee ID and links to the draft.
+- Server log: no errors.
+
+The demo seed (`db/seed.ts`) stopped partway on this branch with an attendance-workflow error unrelated to
+recruitment; the core demo users and companies it creates first were enough for rendering. Not investigated.
 
 ## Not verified
 
-The rendered screens, the whole-repo type check, the DB-backed AI Centre tests, any hiring-manager or
-interviewer access (deliberately not built, D-004), and any reference write-path behaviour.
+The whole-repo type check and production build for slices 2–4, the DB-backed AI Centre tests, every screen in a
+language other than English, mobile widths, and any reference write-path behaviour (U-003).

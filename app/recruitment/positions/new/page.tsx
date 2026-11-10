@@ -3,19 +3,24 @@ import { getTranslations } from 'next-intl/server';
 import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
-import { jobFormOptions, POSITION_ATTRIBUTES } from '@/packs/recruitment/service';
+import { jobFormOptions, requisitionJobPrefill, POSITION_ATTRIBUTES, RecruitmentError } from '@/packs/recruitment/service';
 import { createJobAction } from '../../actions';
 import { NoRecruitmentCompany, pickCompany, recruitmentAccess, recruitmentErrorText, selectCls } from '../../shared';
 import { JobInfoFields } from '../job-fields';
 
-/** Recruitment › Positions › New position. The company is chosen first; every list below is that company's. */
-export default async function NewRecruitmentPositionPage({ searchParams }: { searchParams: Promise<{ company?: string; error?: string; fields?: string }> }) {
+/**
+ * Recruitment › Positions › New position. The company is chosen first; every list below is that company's.
+ * "Create job" from a requisition (slice 4) arrives with ?requisition=<id>: the server reads the requisition (after
+ * re-checking access) and pre-fills the form from it; the new job is associated with that requisition.
+ */
+export default async function NewRecruitmentPositionPage({ searchParams }: { searchParams: Promise<{ company?: string; error?: string; fields?: string; requisition?: string }> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
   const companies = await recruitmentAccess(s, scopeIds, false);
   const sp = await searchParams;
   const t = await getTranslations('recruitment.job');
-  const company = pickCompany(companies, sp.company);
+  const prefill = sp.requisition ? await requisitionJobPrefill(s, sp.requisition).catch((e) => { if (e instanceof RecruitmentError) return null; throw e; }) : null;
+  const company = pickCompany(companies, prefill?.companyId ?? sp.company);
   const back = { href: '/recruitment/positions', label: t('backToPositions') };
   if (!company) return <div className="w-full space-y-5"><PageHeader title={t('newTitle')} back={back} /><NoRecruitmentCompany /></div>;
   const options = await jobFormOptions(s, company.id);
@@ -25,7 +30,7 @@ export default async function NewRecruitmentPositionPage({ searchParams }: { sea
     <div className="mx-auto w-full max-w-4xl space-y-5">
       <PageHeader title={t('newTitle')} description={t('newPurpose')} back={back} />
       <ErrorBanner message={error && missing.length ? `${error} ${missing.map((f) => t(`fieldNames.${f}`)).join(', ')}` : error} />
-      {companies.length > 1 && (
+      {companies.length > 1 && !prefill && (
         <form method="get" className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-4">
           <Field label={t('company')} required requiredAriaLabel={t('required')} className="min-w-64">
             <select name="company" defaultValue={company.id} className={selectCls}>
@@ -35,11 +40,13 @@ export default async function NewRecruitmentPositionPage({ searchParams }: { sea
           <button type="submit" className={btnGhost}>{t('switchCompany')}</button>
         </form>
       )}
+      {prefill && <p className="text-sm text-muted-foreground">{t('fromRequisition', { number: prefill.reqNumber })}</p>}
       <form action={createJobAction} className="space-y-5">
         <input type="hidden" name="companyId" value={company.id} />
+        {prefill && <input type="hidden" name="requisitionId" value={prefill.requisitionId} />}
         <section className="space-y-4 rounded-xl border border-border bg-card p-4">
           <h2 className="text-sm font-semibold">{t('infoSection')} <span className="font-normal text-muted-foreground">· {company.name}</span></h2>
-          <JobInfoFields options={options} />
+          <JobInfoFields options={options} values={prefill?.values} />
         </section>
         <section className="grid gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2">
           <h2 className="text-sm font-semibold sm:col-span-2">{t('settingsSection')}</h2>
@@ -55,7 +62,7 @@ export default async function NewRecruitmentPositionPage({ searchParams }: { sea
             </select>
           </Field>
           <Field label={t('recruiter')}>
-            <select name="recruiterUserId" defaultValue={s.userId ?? ''} className={selectCls}>
+            <select name="recruiterUserId" defaultValue={prefill?.recruiterUserId ?? s.userId ?? ''} className={selectCls}>
               <option value="">{t('none')}</option>
               {options.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>

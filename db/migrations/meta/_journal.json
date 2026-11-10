@@ -5097,6 +5097,27 @@
       "when": 1793330004101,
       "tag": "4401_recruitment_core",
       "breakpoints": true
+    },
+    {
+      "idx": 3802,
+      "version": "7",
+      "when": 1793330004102,
+      "tag": "4402_recruitment_team_interviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 3803,
+      "version": "7",
+      "when": 1793330004103,
+      "tag": "4403_recruitment_offers_hire_handoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 3804,
+      "version": "7",
+      "when": 1793330004104,
+      "tag": "4404_recruitment_requisitions",
+      "breakpoints": true
     }
   ]
 }

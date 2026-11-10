@@ -62,6 +62,7 @@ import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
+import { recruitmentTeamPresence } from '@/packs/recruitment/service';
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
@@ -232,6 +233,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
+  // Recruitment slice 2 — the menu also shows for a job-team member, an interviewer or a pending approver who does not
+  // administer recruitment. The database answers from the viewer's own membership rows; a failure hides the row only.
+  const recruitmentTeam = isModuleEnabledOrFalse(session, 'recruitment') && !canAdminRecruitment(session)
+    ? await recruitmentTeamPresence(session).catch((e) => { console.error('recruitment team presence failed', e); return false; })
+    : false;
   const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0};
   const scopedLifecycleNavigation=await lifecycleModuleNavigation(session);
   const onboardingAccess=onboardingNav.module;
@@ -316,8 +322,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // ADR-0142 — the OneHR performance partner gets the Performance admin entry only, NOT the admin rail:
               // it is deliberately absent from isAdmin above, because it can enter no admin screen.
               canAdministerOnehr={canAdminOnehr(session)}
-              // ADR-0049 — Recruitment administration: HR administrators and the company-scoped Recruiting Partner.
-              canAdministerRecruitment={canAdminRecruitment(session)}
+              // ADR-0049 — Recruitment administration: HR administrators and the company-scoped Recruiting Partner; and,
+              // since slice 2, job-team members, interviewers and pending approvers (their pages admit them per job).
+              canAdministerRecruitment={canAdminRecruitment(session) || recruitmentTeam}
               // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
               // talent and development are tabs inside the area, so the rail no longer reads the worklist.
               performanceAdminHref={await performanceAdminHref}

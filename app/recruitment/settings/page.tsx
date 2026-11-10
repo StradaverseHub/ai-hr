@@ -4,13 +4,17 @@ import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, Input, PageHeader, btnGhost, btnPrimary, tableWrapCls, tbodyCls, thCls, theadCls } from '@/components/ui';
 import { recruitmentSettings, RECRUITMENT_STAGE_TYPES } from '@/packs/recruitment/service';
 import { deleteArchiveReasonAction, saveArchiveReasonAction, updateProcessAction, updateStageAction } from '../actions';
-import { NoRecruitmentCompany, Notice, RecruitmentTabs, pickCompany, recruitmentAccess, recruitmentErrorText, selectCls } from '../shared';
+import { NoRecruitmentCompany, Notice, RecruitmentTabs, SubTabs, pickCompany, recruitmentAccess, recruitmentErrorText, selectCls } from '../shared';
+import { InterviewSettingsSection } from './interview-settings';
+import { OfferSettingsSection } from './offer-settings';
 
 /**
- * Recruitment › Settings for one company: the stage catalogue, recruitment processes and archive reasons. Every
- * row shows who last changed it and when; every change is also a domain event.
+ * Recruitment › Settings for one company (administrators only). Pipeline: the stage catalogue, recruitment processes
+ * and archive reasons. Interviews (slice 2): feedback visibility, the edit lock, whether a result is required, and
+ * evaluation forms. Offers and approvals (slices 3–4): the offer-field set, validity, the optional automation and the
+ * offer and requisition approval flows. Every change is a domain event.
  */
-export default async function RecruitmentSettingsPage({ searchParams }: { searchParams: Promise<{ company?: string; error?: string; notice?: string }> }) {
+export default async function RecruitmentSettingsPage({ searchParams }: { searchParams: Promise<{ company?: string; error?: string; notice?: string; section?: string }> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
   const companies = await recruitmentAccess(s, scopeIds, false);
@@ -18,7 +22,9 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
   const [t, nav, locale] = await Promise.all([getTranslations('recruitment.settings'), getTranslations('nav'), getLocale()]);
   const company = pickCompany(companies, sp.company);
   const settings = company ? await recruitmentSettings(s, company.id) : null;
-  const here = company ? `/recruitment/settings?company=${company.id}` : '/recruitment/settings';
+  const section = sp.section === 'interviews' || sp.section === 'offers' ? sp.section : 'general';
+  const sectionHref = (key: string) => `/recruitment/settings?${new URLSearchParams({ ...(company ? { company: company.id } : {}), ...(key === 'general' ? {} : { section: key }) })}`;
+  const here = sectionHref(section);
   const when = (iso: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date(iso));
   const audit = (by: string | null, at: string) => t('changed', { by: by ?? t('unnamedUser'), at: when(at) });
   const hidden = (name: string, value: string) => <input type="hidden" name={name} value={value} />;
@@ -40,6 +46,9 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
               <button type="submit" className={btnGhost}>{t('switchCompany')}</button>
             </form>
           )}
+          <SubTabs label={t('sections')} items={(['general', 'interviews', 'offers'] as const).map((key) => ({ key, href: sectionHref(key), text: t(`section.${key}`), current: section === key }))} />
+          {section === 'interviews' ? <InterviewSettingsSection s={s} companyId={company.id} here={here} />
+            : section === 'offers' ? <OfferSettingsSection s={s} companyId={company.id} here={here} /> : (<>
 
           <section className="space-y-3" aria-labelledby="stages-title">
             <div><h2 id="stages-title" className="text-base font-semibold">{t('stagesTitle')}</h2><p className="text-sm text-muted-foreground">{t('stagesNote')}</p></div>
@@ -142,6 +151,7 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
               <button type="submit" className={btnPrimary}>{t('addReason')}</button>
             </form>
           </section>
+          </>)}
         </>
       )}
     </div>

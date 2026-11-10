@@ -46,6 +46,23 @@ Open:
 3. Database-backed AI tests (permission parity, read session, source security, native outcomes): NOT RUN here.
    They belong on GitHub Actions after commit and push.
 
+## Update — slices 2–4 built, reviewed and rendered (uncommitted, 2026-11-10)
+
+Hiring-team access and interviews (4402), offers with approval and the hire hand-off (4403), job requisitions and the
+talent pool (4404), with their screens in 6 languages. Results and the review findings are in `parity-report.md`;
+deviations D-005…D-012 in `discrepancies.md`.
+
+Open:
+
+1. **Owner decisions:** D-008 (should whoever starts an approval round also be barred from approving it?) and D-009
+   (should approvers see the candidate's name?).
+2. **Owner provider-data approval** (unchanged from slice 1): the regenerated manifests no longer match the recorded
+   approval.
+3. Commit, push and run `alpha-focused-checks.yml` once for the whole-repo type check, production build and the
+   DB-backed AI tests.
+4. Retire the private render cluster (`/private/tmp/aihr-recruit-render-2c12ee`, port 55440) and the local
+   `recruitment-render` preview entry when rendering is no longer needed.
+
 ## Next actions, in order (original plan)
 
 1. Resolve B-001: the owner signs in to a Moka **test tenant** in the built-in browser pane. Then use read-only observation (`read_page`, screenshots, network list) per role and journey, recording EV-0xx entries.

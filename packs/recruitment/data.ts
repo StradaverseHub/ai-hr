@@ -4,13 +4,16 @@
  * Every entry point:
  *   1. runs inside `withRecruitmentTenant` — the module gate refuses a tenant that has not bought Recruitment
  *      before any SQL runs (ADR-0077 D3);
- *   2. asks the database whether the caller administers recruitment for the company it touches
- *      (app.can_admin_recruitment_for: HR administrators and the company-scoped Recruiting Partner);
- *   3. applies the pure rules in ./model, and the 4401 guards refuse the same illegal states again.
- * Hiring managers and interviewers are per-job team memberships; in slice 1 they confer no access.
+ *   2. asks the database whether the caller may do this to the company or job it touches: administration
+ *      (app.can_admin_recruitment_for: HR administrators and the company-scoped Recruiting Partner) or, since slice 2,
+ *      the caller's per-job team role (app.can_operate_recruitment_job / app.can_review_recruitment_job, 4402);
+ *   3. applies the pure rules in ./model, and the 4401–4404 guards refuse the same illegal states again.
+ * Row security narrows every read to what the caller may see: a team member's rows are their own jobs' and the
+ * applications they interview.
  * Nothing here calls a model: every number on these screens is a count query. The AI Centre reads only
  * recruitmentPipelineCounts (per-company counts, never a candidate).
  */
+import { randomUUID } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
@@ -26,27 +29,97 @@ import {
   type RecruitmentStageType, type ValidJob,
 } from './model';
 import {
-  recruitmentApplication, recruitmentApplicationEvent, recruitmentArchiveReason, recruitmentCandidate, recruitmentJobMember,
-  recruitmentJobOpening, recruitmentProcess, recruitmentProcessStage, recruitmentStage,
+  recruitmentApplication, recruitmentApplicationEvent, recruitmentArchiveReason, recruitmentCandidate, recruitmentCompanySetting,
+  recruitmentEvaluationForm, recruitmentJobMember, recruitmentJobOpening, recruitmentOfferField, recruitmentProcess, recruitmentProcessStage,
+  recruitmentRequisitionJob, recruitmentStage,
 } from './schema';
+import { DEFAULT_EVALUATION_FORM, DEFAULT_OFFER_FIELDS } from './hiring-model';
 
-const uuidArray = (ids: readonly string[]) => {
+export const uuidArray = (ids: readonly string[]) => {
   if (!ids.every(isUuid)) throw new RecruitmentError('invalid_input');
   return `{${ids.join(',')}}`;
 };
-const actorId = (s: SessionContext): string => {
+export const actorId = (s: SessionContext): string => {
   if (!s.userId) throw new RecruitmentError('forbidden');
   return s.userId;
 };
 
 /** Refuse unless the caller administers recruitment for `companyId` (the database's own predicate). */
-async function assertCompanyTx(tx: Tx, companyId: string): Promise<void> {
+export async function assertCompanyTx(tx: Tx, companyId: string): Promise<void> {
   if (!isUuid(companyId)) throw new RecruitmentError('forbidden');
   const [row] = await tx.execute<{ ok: boolean }>(sql`select app.can_admin_recruitment_for(${companyId}::uuid) as ok`);
   if (row?.ok !== true) throw new RecruitmentError('forbidden');
 }
+/** Refuse unless the caller administers recruitment for the company OR is on one of its job teams / interviews (4402). */
+export async function assertSeeCompanyTx(tx: Tx, companyId: string): Promise<void> {
+  if (!isUuid(companyId)) throw new RecruitmentError('forbidden');
+  const [row] = await tx.execute<{ ok: boolean }>(sql`select app.can_see_recruitment_company(${companyId}::uuid) as ok`);
+  if (row?.ok !== true) throw new RecruitmentError('forbidden');
+}
+export type JobLevel = 'read' | 'review' | 'operate';
+/** The caller's access to one job, from the database predicates (4402). */
+export async function jobLevelTx(tx: Tx, companyId: string, jobId: string, applicationId?: string): Promise<{ admin: boolean; operate: boolean; review: boolean; read: boolean }> {
+  const [row] = await tx.execute<{ admin: boolean; operate: boolean; review: boolean; interviews: boolean }>(sql`
+    select app.can_admin_recruitment_for(${companyId}::uuid) as admin, app.can_operate_recruitment_job(${companyId}::uuid, ${jobId}::uuid) as operate,
+      app.can_review_recruitment_job(${companyId}::uuid, ${jobId}::uuid) as review,
+      ${applicationId ? sql`app.recruitment_interviews_application(${applicationId}::uuid)` : sql`false`} as interviews`);
+  return { admin: row?.admin === true, operate: row?.operate === true, review: row?.review === true, read: row?.review === true || row?.interviews === true };
+}
+/** Refuse unless the caller has `level` on the job (operate ⊂ review ⊂ read). */
+export async function assertJobLevelTx(tx: Tx, companyId: string, jobId: string, level: JobLevel, applicationId?: string): Promise<void> {
+  const access = await jobLevelTx(tx, companyId, jobId, applicationId);
+  if (!access[level]) throw new RecruitmentError('forbidden');
+}
 
 export type RecruitmentCompany = { id: string; name: string };
+export type RecruitmentViewer = {
+  /** Companies in scope whose recruitment the caller administers. */
+  adminCompanies: RecruitmentCompany[];
+  /** Companies in scope where the caller is on a job team or interviews, but does not administer. */
+  teamCompanies: RecruitmentCompany[];
+  /** The caller has an approval step waiting for them (offer or requisition). */
+  pendingApprovals: number;
+};
+
+/**
+ * Who the caller is to Recruitment within `scopeIds`, answered by the database: the companies they administer, the
+ * companies where they only have per-job team access (slice 2), and how many approval steps wait for them.
+ */
+export async function recruitmentViewer(s: SessionContext, scopeIds: readonly string[]): Promise<RecruitmentViewer> {
+  const ids = scopeIds.filter(isUuid);
+  return withRecruitmentTenant(s, async (tx) => {
+    const rows = ids.length ? await tx.execute<{ id: string; name: string; admin: boolean; team: boolean }>(sql`
+      select c.id, c.legal_name as name, app.can_admin_recruitment_for(c.id) as admin, app.recruitment_team_in_company(c.id) as team
+      from company c
+      where c.tenant_id = ${s.tenantId}::uuid and c.id = any(${uuidArray(ids)}::uuid[]) and c.archived_at is null
+      order by c.legal_name, c.id`) : [];
+    // A step waits for the caller when the item's pending position names them (4403/4404 keep the round on the row).
+    const [pending] = await tx.execute<{ n: number }>(sql`select
+      (select count(*)::int from recruitment_offer o where o.tenant_id = ${s.tenantId}::uuid and o.status = 'pending' and o.approver_user_ids[o.pending_position] = app.current_user_id())
+      + (select count(*)::int from recruitment_requisition r where r.tenant_id = ${s.tenantId}::uuid and r.approval_status = 'pending' and r.approver_user_ids[r.pending_position] = app.current_user_id()) as n`);
+    return {
+      adminCompanies: rows.filter((r) => r.admin).map((r) => ({ id: r.id, name: r.name })),
+      teamCompanies: rows.filter((r) => !r.admin && r.team).map((r) => ({ id: r.id, name: r.name })),
+      pendingApprovals: pending?.n ?? 0,
+    };
+  });
+}
+
+/**
+ * The menu question for a caller who is not a recruitment administrator: are they on any job team, scheduled to
+ * interview, or asked to approve? Row security answers it — the caller sees only their own membership rows.
+ */
+export async function recruitmentTeamPresence(s: SessionContext): Promise<boolean> {
+  if (!s.userId) return false;
+  return withRecruitmentTenant(s, async (tx) => {
+    const [row] = await tx.execute<{ any: boolean }>(sql`select
+      exists (select 1 from recruitment_job_member m where m.tenant_id = ${s.tenantId}::uuid and m.app_user_id = app.current_user_id())
+      or exists (select 1 from recruitment_interview_interviewer i where i.tenant_id = ${s.tenantId}::uuid and i.app_user_id = app.current_user_id())
+      or exists (select 1 from recruitment_offer o where o.tenant_id = ${s.tenantId}::uuid and o.status = 'pending' and o.approver_user_ids[o.pending_position] = app.current_user_id())
+      or exists (select 1 from recruitment_requisition r where r.tenant_id = ${s.tenantId}::uuid and r.approval_status = 'pending' and r.approver_user_ids[r.pending_position] = app.current_user_id()) as any`);
+    return row?.any === true;
+  });
+}
 
 /** The companies in `scopeIds` whose recruitment the caller administers, by name. */
 export async function recruitmentCompanies(s: SessionContext, scopeIds: readonly string[]): Promise<RecruitmentCompany[]> {
@@ -104,6 +177,23 @@ export async function ensureRecruitmentDefaultsTx(tx: Tx, s: SessionContext, com
       position, seedKey: reason.seedKey, createdByUserId: user, updatedByUserId: user,
     }).onConflictDoNothing();
   }
+  // Slice 2: the settings row (scorecards private, edit lock "until the stage is left", result required) and the
+  // generic default evaluation form. Slice 3: the generic offer-field set (offer validity 15 days, automation off).
+  await tx.insert(recruitmentCompanySetting).values({ tenantId: s.tenantId, companyId, createdByUserId: user, updatedByUserId: user }).onConflictDoNothing();
+  const [hasDefaultForm] = await tx.select({ id: recruitmentEvaluationForm.id }).from(recruitmentEvaluationForm)
+    .where(and(eq(recruitmentEvaluationForm.tenantId, s.tenantId), eq(recruitmentEvaluationForm.companyId, companyId), eq(recruitmentEvaluationForm.isDefault, true)));
+  await tx.insert(recruitmentEvaluationForm).values({
+    tenantId: s.tenantId, companyId, name: DEFAULT_EVALUATION_FORM.name, definition: DEFAULT_EVALUATION_FORM.definition, isDefault: !hasDefaultForm,
+    seedKey: DEFAULT_EVALUATION_FORM.seedKey, createdByUserId: user, updatedByUserId: user,
+  }).onConflictDoNothing();
+  position = 0;
+  for (const field of DEFAULT_OFFER_FIELDS) {
+    position += 10;
+    await tx.insert(recruitmentOfferField).values({
+      tenantId: s.tenantId, companyId, label: field.label, fieldType: field.type, choices: [], required: field.required,
+      needsApproval: field.needsApproval, private: field.private, position, seedKey: field.seedKey, createdByUserId: user, updatedByUserId: user,
+    }).onConflictDoNothing();
+  }
 }
 
 /** Seed every listed company the caller administers (the pages call this when Recruitment opens). */
@@ -117,13 +207,14 @@ export async function ensureRecruitmentDefaults(s: SessionContext, companyIds: r
 // ── Reads shared by several screens ─────────────────────────────────────────────────────────────────────
 
 export type UserLabel = { id: string; name: string; active: boolean; employed: boolean };
-async function userLabelsTx(tx: Tx, companyId: string): Promise<Map<string, UserLabel>> {
+/** Names of the company's people and recruitment administrators — for administrators and the company's job teams (4402). */
+export async function userLabelsTx(tx: Tx, companyId: string): Promise<Map<string, UserLabel>> {
   const rows = await tx.execute<{ app_user_id: string; full_name: string; active: boolean; employed: boolean }>(
-    sql`select * from app.recruitment_user_labels(${companyId}::uuid)`);
+    sql`select * from app.recruitment_people_labels(${companyId}::uuid)`);
   return new Map(rows.map((r) => [r.app_user_id, { id: r.app_user_id, name: r.full_name, active: r.active, employed: r.employed }]));
 }
 
-async function processStagesTx(tx: Tx, processId: string): Promise<(ProcessStage & { name: string; type: RecruitmentStageType; systemKey: string | null })[]> {
+export async function processStagesTx(tx: Tx, processId: string): Promise<(ProcessStage & { name: string; type: RecruitmentStageType; systemKey: string | null })[]> {
   const rows = await tx.select({
     stageId: recruitmentProcessStage.stageId, position: recruitmentProcessStage.position, enabled: recruitmentStage.enabled,
     name: recruitmentStage.name, type: recruitmentStage.stageType, systemKey: recruitmentStage.systemKey,
@@ -139,6 +230,9 @@ async function processStagesTx(tx: Tx, processId: string): Promise<(ProcessStage
 export type RecruitmentOverview = {
   applicationsToday: number; toScreen: number; interview: number; offer: number; onboarding: number;
   openJobs: number; activeApplications: number;
+  /** Slice 2: interviews starting today (not cancelled); active applications in an Interview-type stage with no
+   *  upcoming interview; ended interviews where an interviewer has not submitted feedback. */
+  interviewsToday: number; toBeScheduled: number; awaitingFeedback: number;
 };
 
 /**
@@ -149,9 +243,10 @@ export type RecruitmentOverview = {
  *   onboarding — active, in the Onboarding system stage.
  */
 export async function recruitmentOverview(s: SessionContext, companyIds: readonly string[]): Promise<RecruitmentOverview> {
-  const empty = { applicationsToday: 0, toScreen: 0, interview: 0, offer: 0, onboarding: 0, openJobs: 0, activeApplications: 0 };
+  const empty = { applicationsToday: 0, toScreen: 0, interview: 0, offer: 0, onboarding: 0, openJobs: 0, activeApplications: 0, interviewsToday: 0, toBeScheduled: 0, awaitingFeedback: 0 };
   if (!companyIds.length) return empty;
-  const today = todayInKualaLumpur();
+  const now = new Date();
+  const today = todayInKualaLumpur(now);
   return withRecruitmentTenant(s, async (tx) => {
     for (const id of companyIds) await assertCompanyTx(tx, id);
     const ids = uuidArray(companyIds);
@@ -163,11 +258,20 @@ export async function recruitmentOverview(s: SessionContext, companyIds: readonl
         count(*) filter (where a.state = 'active' and st.stage_type = 'offer')::int as "offer",
         count(*) filter (where a.state = 'active' and st.system_key = 'onboarding')::int as "onboarding",
         (select count(*)::int from recruitment_job_opening j where j.tenant_id = ${s.tenantId}::uuid and j.company_id = any(${ids}::uuid[]) and j.status = 'open') as "openJobs",
-        count(*) filter (where a.state = 'active')::int as "activeApplications"
+        count(*) filter (where a.state = 'active')::int as "activeApplications",
+        count(*) filter (where a.state = 'active' and st.stage_type = 'interview' and not exists (
+          select 1 from recruitment_interview i where i.application_id = a.id and i.cancelled_at is null and i.starts_at > ${now.toISOString()}::timestamptz))::int as "toBeScheduled"
       from recruitment_application a
       join recruitment_stage st on st.id = a.current_stage_id
       where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[])`);
-    return row ? { ...empty, ...row } : empty;
+    const [interviews] = await tx.execute<{ interviewsToday: number; awaitingFeedback: number }>(sql`
+      select count(*) filter (where (i.starts_at at time zone 'Asia/Kuala_Lumpur')::date = ${today}::date)::int as "interviewsToday",
+        count(*) filter (where i.starts_at + make_interval(mins => i.duration_minutes) <= ${now.toISOString()}::timestamptz
+          and (select count(*) from recruitment_interview_interviewer v where v.interview_id = i.id)
+            > (select count(*) from recruitment_scorecard c where c.interview_id = i.id))::int as "awaitingFeedback"
+      from recruitment_interview i
+      where i.tenant_id = ${s.tenantId}::uuid and i.company_id = any(${ids}::uuid[]) and i.cancelled_at is null`);
+    return row ? { ...empty, ...row, ...(interviews ?? {}) } : empty;
   });
 }
 
@@ -238,7 +342,8 @@ export type JobList = {
 export async function listJobs(s: SessionContext, companyIds: readonly string[], filters: JobListFilters = {}): Promise<JobList> {
   if (!companyIds.length) return { rows: [], counts: { opening: 0, closed: 0 }, departments: [], recruiters: [] };
   return withRecruitmentTenant(s, async (tx) => {
-    for (const id of companyIds) await assertCompanyTx(tx, id);
+    // Administrators list every job of the company; a team member's row security lists only their own jobs (4402).
+    for (const id of companyIds) await assertSeeCompanyTx(tx, id);
     const ids = uuidArray(companyIds);
     const title = filters.title?.trim() ? `%${filters.title.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
     const number = filters.jobNumber?.trim() ? filters.jobNumber.trim().toUpperCase() : null;
@@ -355,7 +460,7 @@ function validJob(input: JobInput): ValidJob {
 }
 
 /** Create a job opening. Required fields are refused here whatever the form sent; the number is allocated in SQL. */
-export async function createJob(s: SessionContext, input: JobInput & { recruiterUserId?: unknown }): Promise<{ id: string; jobNumber: string }> {
+export async function createJob(s: SessionContext, input: JobInput & { recruiterUserId?: unknown; requisitionId?: unknown }): Promise<{ id: string; jobNumber: string }> {
   const job = validJob(input);
   const user = actorId(s);
   return withRecruitmentTenant(s, async (tx) => {
@@ -371,20 +476,33 @@ export async function createJob(s: SessionContext, input: JobInput & { recruiter
       createdByUserId: user, updatedByUserId: user,
     }).returning({ id: recruitmentJobOpening.id, jobNumber: recruitmentJobOpening.jobNumber });
     if (isUuid(input.recruiterUserId)) await addMemberTx(tx, s, row.id, job.companyId, 'recruiter', input.recruiterUserId);
+    // Slice 4 — "Create job" from a requisition associates the new job with it (many jobs to one requisition).
+    let requisitionId: string | null = null;
+    if (input.requisitionId != null && input.requisitionId !== '') {
+      if (!isUuid(input.requisitionId)) throw new RecruitmentError('invalid_input', ['requisition']);
+      const [req] = await tx.execute<{ id: string; status: string }>(sql`
+        select id, status from recruitment_requisition where id = ${input.requisitionId}::uuid and tenant_id = ${s.tenantId}::uuid and company_id = ${job.companyId}::uuid`);
+      if (!req) throw new RecruitmentError('invalid_input', ['requisition']);
+      if (req.status === 'completed' || req.status === 'cancelled') throw new RecruitmentError('requisition_terminal');
+      await tx.insert(recruitmentRequisitionJob).values({ tenantId: s.tenantId, companyId: job.companyId, requisitionId: req.id, jobId: row.id, createdByUserId: user });
+      requisitionId = req.id;
+    }
     await appendEvent(tx, {
       tenantId: s.tenantId, aggregateType: 'recruitment-job', aggregateId: row.id, eventType: 'recruitment-job.created', actor: actorOf(s),
-      payload: { companyId: job.companyId, jobNumber: row.jobNumber, processId },
+      payload: { companyId: job.companyId, jobNumber: row.jobNumber, processId, requisitionId },
     });
     return row;
   });
 }
 
-async function jobTx(tx: Tx, s: SessionContext, jobId: string) {
+/** The job, if the caller may see it, checked at `level`: 'admin' administers the company; the others are per-job (4402). */
+export async function jobTx(tx: Tx, s: SessionContext, jobId: string, level: 'admin' | JobLevel = 'admin') {
   if (!isUuid(jobId)) throw new RecruitmentError('not_found');
   const [job] = await tx.select().from(recruitmentJobOpening)
     .where(and(eq(recruitmentJobOpening.id, jobId), eq(recruitmentJobOpening.tenantId, s.tenantId)));
   if (!job) throw new RecruitmentError('not_found');
-  await assertCompanyTx(tx, job.companyId);
+  if (level === 'admin') await assertCompanyTx(tx, job.companyId);
+  else await assertJobLevelTx(tx, job.companyId, job.id, level);
   return job;
 }
 async function jobHasApplicationsTx(tx: Tx, jobId: string): Promise<boolean> {
@@ -399,14 +517,27 @@ export type JobDetail = {
   members: { id: string; role: JobMemberRole; userId: string; name: string | null }[];
   stages: { stageId: string; name: string; enabled: boolean; position: number; active: number }[];
   hired: number; archived: number;
-  options: JobFormOptions;
+  /** The administrator's edit choices; null for a team member, who sees the job read-only (slice 2). */
+  options: JobFormOptions | null;
+  manage: boolean;
+  /** The requisition this job belongs to (slice 4), if any. */
+  requisition: { id: string; reqNumber: string; title: string } | null;
 };
 
 export async function getJob(s: SessionContext, jobId: string): Promise<JobDetail> {
   return withRecruitmentTenant(s, async (tx) => {
-    const job = await jobTx(tx, s, jobId);
+    if (!isUuid(jobId)) throw new RecruitmentError('not_found');
+    const [visible] = await tx.select({ companyId: recruitmentJobOpening.companyId }).from(recruitmentJobOpening)
+      .where(and(eq(recruitmentJobOpening.id, jobId), eq(recruitmentJobOpening.tenantId, s.tenantId)));
+    if (!visible) throw new RecruitmentError('not_found');
+    const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.can_admin_recruitment_for(${visible.companyId}::uuid) as ok`);
+    const manage = admin?.ok === true;
+    const job = await jobTx(tx, s, jobId, manage ? 'admin' : 'read');
     const [company] = await tx.execute<{ name: string }>(sql`select legal_name as name from company where id = ${job.companyId}::uuid`);
-    const options = await jobFormOptionsTx(tx, s, job.companyId);
+    const options = manage ? await jobFormOptionsTx(tx, s, job.companyId) : null;
+    const [requisition] = manage ? await tx.execute<{ id: string; req_number: string; title: string }>(sql`
+      select r.id, r.req_number, r.title from recruitment_requisition_job rj join recruitment_requisition r on r.id = rj.requisition_id
+      where rj.job_id = ${job.id}::uuid`) : [];
     const labels = await userLabelsTx(tx, job.companyId);
     const members = await tx.select({ id: recruitmentJobMember.id, role: recruitmentJobMember.memberRole, userId: recruitmentJobMember.appUserId })
       .from(recruitmentJobMember).where(eq(recruitmentJobMember.jobId, job.id)).orderBy(asc(recruitmentJobMember.createdAt));
@@ -417,7 +548,8 @@ export async function getJob(s: SessionContext, jobId: string): Promise<JobDetai
       active: counts.filter((c) => c.stage_id === st.stageId && c.state === 'active').reduce((n, c) => n + c.n, 0),
     }));
     return {
-      job, companyName: company?.name ?? '', hasApplications: counts.length > 0, options, stages,
+      job, companyName: company?.name ?? '', hasApplications: counts.length > 0, options, stages, manage,
+      requisition: requisition ? { id: requisition.id, reqNumber: requisition.req_number, title: requisition.title } : null,
       hired: counts.filter((c) => c.state === 'hired').reduce((n, c) => n + c.n, 0),
       archived: counts.filter((c) => c.state === 'archived').reduce((n, c) => n + c.n, 0),
       members: members.map((m) => ({ ...m, name: labels.get(m.userId)?.name ?? null })),
@@ -521,10 +653,13 @@ export type ApplicationCard = {
   id: string; candidateName: string; email: string | null; phone: string | null; jobId: string; jobTitle: string; jobNumber: string;
   source: string | null; appliedAt: string; ownerName: string | null; state: ApplicationState; stageId: string; stageName: string;
   archiveReason: string | null; companyId: string;
+  /** Slice 2: what the viewer may do on this card's job (database predicates). */
+  canReview: boolean; canOperate: boolean;
 };
 export type CandidateBoard = {
   tabs: StageTab[]; cards: ApplicationCard[];
-  jobs: { id: string; title: string; jobNumber: string; status: JobStatus; companyId: string }[];
+  /** The jobs in view; `canOperate` marks those the viewer may add applications to (slice 2). */
+  jobs: { id: string; title: string; jobNumber: string; status: JobStatus; companyId: string; canOperate: boolean }[];
   reasons: { id: string; internal: string; external: string; companyId: string }[];
   nextStage: Record<string, { stageId: string; name: string } | 'hired'>;
   moveTargets: Record<string, { stageId: string; name: string }[]>;
@@ -538,7 +673,9 @@ export type CandidateBoard = {
 export async function candidateBoard(s: SessionContext, companyIds: readonly string[], filter: { jobId?: string; tab?: string } = {}): Promise<CandidateBoard> {
   if (!companyIds.length) return { tabs: [], cards: [], jobs: [], reasons: [], nextStage: {}, moveTargets: {} };
   return withRecruitmentTenant(s, async (tx) => {
-    for (const id of companyIds) await assertCompanyTx(tx, id);
+    // Administrators see the company's pipeline; a team member's row security narrows it to their jobs' applications
+    // and the applications they interview (4402). Every count below runs under the same row security.
+    for (const id of companyIds) await assertSeeCompanyTx(tx, id);
     const ids = uuidArray(companyIds);
     const jobs = await tx.execute<{ id: string; title: string; job_number: string; status: JobStatus; company_id: string; process_id: string }>(sql`
       select j.id, j.title, j.job_number, j.status, j.company_id, j.process_id from recruitment_job_opening j
@@ -587,23 +724,29 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
     const nextStage: CandidateBoard['nextStage'] = {};
     const moveTargets: CandidateBoard['moveTargets'] = {};
     const byProcess = new Map<string, Awaited<ReturnType<typeof processStagesTx>>>();
+    const access = new Map<string, { review: boolean; operate: boolean }>();
+    for (const j of jobs) access.set(j.id, await jobLevelTx(tx, j.company_id, j.id));
     for (const r of rows) {
-      if (r.state !== 'active') continue;
+      if (!access.has(r.job_id)) access.set(r.job_id, await jobLevelTx(tx, r.company_id, r.job_id));
+    }
+    for (const r of rows) {
+      if (r.state !== 'active' || !access.get(r.job_id)?.review) continue;
       const processId = jobs.find((j) => j.id === r.job_id)?.process_id;
       if (!processId) continue;
       if (!byProcess.has(processId)) byProcess.set(processId, await processStagesTx(tx, processId));
       const stages = byProcess.get(processId)!;
       const plan = planMoveForward(stages, r.stage_id);
       nextStage[r.id] = plan.kind === 'hired' ? 'hired' : { stageId: plan.to, name: stages.find((x) => x.stageId === plan.to)!.name };
-      moveTargets[r.id] = stages.filter((x) => x.enabled && x.stageId !== r.stage_id).map((x) => ({ stageId: x.stageId, name: x.name }));
+      moveTargets[r.id] = access.get(r.job_id)?.operate ? stages.filter((x) => x.enabled && x.stageId !== r.stage_id).map((x) => ({ stageId: x.stageId, name: x.name })) : [];
     }
     return {
       tabs, nextStage, moveTargets, reasons: [...reasons],
-      jobs: jobs.map((j) => ({ id: j.id, title: j.title, jobNumber: j.job_number, status: j.status, companyId: j.company_id })),
+      jobs: jobs.map((j) => ({ id: j.id, title: j.title, jobNumber: j.job_number, status: j.status, companyId: j.company_id, canOperate: access.get(j.id)?.operate ?? false })),
       cards: rows.map((r) => ({
         id: r.id, candidateName: r.full_name, email: r.email, phone: r.phone, jobId: r.job_id, jobTitle: r.title, jobNumber: r.job_number,
         source: r.source, appliedAt: r.applied_at, ownerName: r.owner_user_id ? labels.get(r.owner_user_id)?.name ?? null : null, state: r.state,
         stageId: r.stage_id, stageName: r.stage_name, archiveReason: r.reason, companyId: r.company_id,
+        canReview: access.get(r.job_id)?.review ?? false, canOperate: access.get(r.job_id)?.operate ?? false,
       })),
     };
   });
@@ -624,14 +767,17 @@ export async function addApplication(s: SessionContext, input: { jobId?: unknown
   if (!isUuid(input.jobId)) throw new RecruitmentError('missing_fields', ['job']);
   const user = actorId(s);
   return withRecruitmentTenant(s, async (tx) => {
-    const job = await jobTx(tx, s, input.jobId as string);
+    // The job's recruiter and assistants may add applications to it, as administrators may (slice 2).
+    const job = await jobTx(tx, s, input.jobId as string, 'operate');
     if (job.status === 'closed') throw new RecruitmentError('job_closed');
     const start = firstStage(await processStagesTx(tx, job.processId));
     if (!start) throw new RecruitmentError('process_unavailable');
-    const [created] = await tx.insert(recruitmentCandidate).values({
-      tenantId: s.tenantId, companyId: job.companyId, fullName: candidate.value.fullName, email: candidate.value.email, phone: candidate.value.phone,
+    // The id is made here, not returned: a job team member cannot read a candidate until its application exists.
+    const created = { id: randomUUID() };
+    await tx.insert(recruitmentCandidate).values({
+      id: created.id, tenantId: s.tenantId, companyId: job.companyId, fullName: candidate.value.fullName, email: candidate.value.email, phone: candidate.value.phone,
       ownerUserId: user, createdByUserId: user, updatedByUserId: user,
-    }).returning({ id: recruitmentCandidate.id });
+    });
     const [application] = await tx.insert(recruitmentApplication).values({
       tenantId: s.tenantId, companyId: job.companyId, jobId: job.id, candidateId: created.id, currentStageId: start,
       source: candidate.value.source, createdByUserId: user, updatedByUserId: user,
@@ -641,7 +787,8 @@ export async function addApplication(s: SessionContext, input: { jobId?: unknown
   });
 }
 
-async function applicationTx(tx: Tx, s: SessionContext, applicationId: unknown) {
+/** An ACTIVE application the caller may act on at `level` on its job (review: move forward / reject; operate: the rest). */
+export async function applicationTx(tx: Tx, s: SessionContext, applicationId: unknown, level: JobLevel = 'review') {
   if (!isUuid(applicationId)) throw new RecruitmentError('not_found');
   const [row] = await tx.select({ app: recruitmentApplication, processId: recruitmentJobOpening.processId })
     .from(recruitmentApplication)
@@ -649,7 +796,7 @@ async function applicationTx(tx: Tx, s: SessionContext, applicationId: unknown) 
     .where(and(eq(recruitmentApplication.id, applicationId), eq(recruitmentApplication.tenantId, s.tenantId)))
     .for('update', { of: recruitmentApplication });
   if (!row) throw new RecruitmentError('not_found');
-  await assertCompanyTx(tx, row.app.companyId);
+  await assertJobLevelTx(tx, row.app.companyId, row.app.jobId, level, row.app.id);
   if (row.app.state !== 'active') throw new RecruitmentError('application_closed');
   return row;
 }
@@ -660,8 +807,10 @@ async function applicationTx(tx: Tx, s: SessionContext, applicationId: unknown) 
  */
 export async function moveApplication(s: SessionContext, applicationId: unknown, targetStageId?: unknown): Promise<{ state: ApplicationState; stageId: string }> {
   const user = actorId(s);
+  // Move forward: the job's reviewers (hiring manager included). Move to a chosen stage: its operators.
+  const chosen = !(targetStageId == null || targetStageId === '');
   return withRecruitmentTenant(s, async (tx) => {
-    const { app, processId } = await applicationTx(tx, s, applicationId);
+    const { app, processId } = await applicationTx(tx, s, applicationId, chosen ? 'operate' : 'review');
     const stages = await processStagesTx(tx, processId);
     const plan = targetStageId == null || targetStageId === ''
       ? planMoveForward(stages, app.currentStageId)
@@ -701,10 +850,10 @@ export type ApplicationHistoryRow = {
 export async function applicationHistory(s: SessionContext, applicationId: unknown): Promise<ApplicationHistoryRow[]> {
   if (!isUuid(applicationId)) throw new RecruitmentError('not_found');
   return withRecruitmentTenant(s, async (tx) => {
-    const [app] = await tx.select({ companyId: recruitmentApplication.companyId }).from(recruitmentApplication)
+    const [app] = await tx.select({ companyId: recruitmentApplication.companyId, jobId: recruitmentApplication.jobId }).from(recruitmentApplication)
       .where(and(eq(recruitmentApplication.id, applicationId), eq(recruitmentApplication.tenantId, s.tenantId)));
     if (!app) throw new RecruitmentError('not_found');
-    await assertCompanyTx(tx, app.companyId);
+    await assertJobLevelTx(tx, app.companyId, app.jobId, 'read', applicationId);
     const labels = await userLabelsTx(tx, app.companyId);
     const rows = await tx.execute<{ id: string; kind: ApplicationHistoryRow['kind']; from_stage: string | null; to_stage: string | null; reason: string | null; actor_user_id: string; occurred_at: string }>(sql`
       select e.id, e.kind, f.name as from_stage, t.name as to_stage, r.internal_reason as reason, e.actor_user_id, to_char(e.occurred_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as occurred_at

@@ -173,3 +173,137 @@ locking, protection period, candidate privacy and retention.
 7. Reject requires a reason and moves the application to Archived, keeping the stage it left.
 8. Users without access cannot read or move applications (server-checked; RLS on every table).
 9. Every move and rejection is in the application history with actor and time.
+
+## Slices 2–4 (owner decisions 2026-11-10)
+
+Scope: the rest of the core hiring path, plus job requisitions and a basic talent pool. Reports (F12) stay out
+because they were never observed. Each slice ships its own migration, service functions, pages, six-locale labels
+and tests. New tables get forced RLS and grants, and every service entry point runs inside `withRecruitmentTenant`.
+
+### Slice 2 — Hiring team access and interviews (EV-011, EV-015, EV-019, EV-021, EV-022)
+
+Access (D, refines D-004):
+- A job's team members (F3 Owner) gain per-job access. Recruiter and recruitment assistant: full operation on that
+  job's applications. Hiring manager: read the job's applications, move forward or reject, see every scorecard on
+  the job. Interviewer: read only the applications they are scheduled to interview, and write only their own
+  feedback.
+- Enforced in the database: new predicate(s) next to `app.can_admin_recruitment_for`, used by RLS and checked by the
+  service. HR admins and Recruiting Partners keep company-wide access.
+- The Recruitment menu shows for anyone who is on at least one job team, as well as for administrators. Team
+  members see only Candidates, Interviews and their own jobs; Settings stays administrator-only.
+
+Interviews:
+- An interview belongs to one application. Fields: round (from the job's interview plan, default 1st/2nd/3rd),
+  type (On-site, Video, Phone), start time, duration, site (free text), meeting room (optional), interviewers (one or
+  more users), and candidate response (Pending, Accepted, Declined). It is scheduled by a recruiter or
+  administrator.
+- Status is derived:
+  - Scheduled — before its start;
+  - Awaiting feedback — after its end, with any interviewer not submitted;
+  - Feedback complete;
+  - Cancelled.
+- Schedule page: groups Today, Upcoming and Recent. Columns: round and type, time, candidate, position, site,
+  recruiter, and status ("n interview feedback" / Awaiting feedback). Filters: position, recruiter, interviewer,
+  type.
+- Application drawer, Interview tab: "Add an interview", interview cards; per interviewer either "Not evaluated" with
+  "Add feedback" (only for that interviewer) or the overall result with "See scorecard".
+
+Scorecards (EV-019, EV-022):
+- An evaluation form (company setting) has an ordered list of sections. Each section has criteria, each criterion a
+  1–5 rating with optional notes (max 500 words) and an optional suggested question. A section total is shown as
+  sum/(5 × criteria).
+- Overall feedback: an evaluation result (Recommended to hire, Keep in view, Not suitable) and an overview text.
+  Whether the result is required is a company setting. The seed default form is a generic 5-criterion foundational
+  assessment. The owner's own form text is not copied.
+- Rules (company settings, seeded on):
+  - interviewers cannot see each other's scorecards; the hiring manager, recruiter and administrators can;
+  - feedback editing is allowed (a) at any stage, (b) until the application moves past the interview's stage, or
+    (c) until it is archived. Default: (b).
+- Section totals are computed by deterministic SQL/TS, never by a model.
+
+Overview tiles (F2): add Today's interviews, To be scheduled (active in an Interview-type stage with no future
+interview), and Awaiting feedback. A tile the viewer cannot open renders as text, not a link.
+
+### Slice 3 — Offers with approval, and the hire hand-off (EV-019, EV-023)
+
+Offers:
+- One current offer per application (re-issuing replaces it; history is kept in events).
+- Details are fields from a company offer-field set: type (text, number, date, single choice, money), required,
+  needs approval and private flags. The seeded fields are generic: job offered, department, reporting to, job level,
+  commencement date, work location, basic salary (money with currency), and probation months. Money is entered by
+  people and stored as a decimal with currency. No model or rule computes pay.
+- Private fields are visible only to administrators, the job's recruiter and the offer's creator.
+- Approval:
+  - a company offer-approval flow: an ordered list of approver users (one step = one approver);
+  - states: Draft → Pending approval → Approved, or Rejected (back to Draft, with a comment);
+  - Withdraw is available while pending. Reinitiate after a change to a field that needs approval re-runs the
+    approval from step 1;
+  - approvers act only on their own pending step;
+  - the creator cannot approve their own offer.
+- Sending: AI HR does not send email or SMS in this build. "Mark as sent" records channel (email/SMS/other), the time
+  and the actor. Candidate decision: Pending, Accepted, Declined — recorded by a person. The link validity
+  (default 15 days from sent) is shown as an expiry date; it only labels the offer "Expired"; nothing is sent.
+- Optional automation (company setting, off by default): on Accepted, move the application to the next stage; on
+  Declined, archive to the talent pool with a "Candidate declined the offer" reason.
+
+Hire hand-off (owner decision: HR confirms on the hire form):
+- When an application reaches Onboarding or Hired, administrators see "Start new hire". It opens the existing
+  short create form (`/admin/personnel/new`) with company, full name and email pre-filled. The server loads them from
+  the application after re-checking access; it never takes them from the URL.
+- HR reviews and saves; that creates an employee draft through the existing writers (`createEmployeeDraftWithReservedCode`).
+  The draft id is linked back to the application. Recruitment never creates a person, employee or employment
+  itself.
+- Accepted-offer details that the personnel draft already supports (for example the job title and the commencement
+  date as the hire date) may be offered as defaults on the continue form. Pay is not copied automatically; HR enters
+  it.
+
+### Slice 4 — Job requisitions and talent pool (EV-020, EV-024, EV-025)
+
+Job requisitions:
+- Number `HC` + 6 digits, in sequence per company.
+- Fields: job title; description (rich text); total vacancies (≥1); job level(s); hiring manager; people business
+  partner; recruiter; work location; employment type; recruitment type; employee to be replaced; company;
+  department; date opened; target on-board date; years of experience; education requirement; salary range
+  (min ≤ max, per month); working days; working hours; mandatory and preferred skills; benefits text.
+- Statuses: Draft, Not started, In progress, Paused, Completed, Cancelled, Expired.
+  - Completed and Cancelled are terminal; Expired is set only by date (target on-board date passed while not
+    terminal).
+  - Allowed manual moves: Draft → Not started (by submitting); Not started ↔ In progress ↔ Paused;
+    any non-terminal → Completed or Cancelled.
+- Approval: optional per-company requisition approval flow (same shape as the offer flow). Submitting a Draft starts
+  approval when a flow exists. Editing a required field outside Draft resets approval.
+- Vacancies table:
+  - remaining offers available = vacancies − hires already onboarded − offers in process;
+  - remaining capacity for onboarding = vacancies − hires already onboarded.
+  Both are deterministic counts, never below zero in the display (a negative is shown as 0 with an over-filled
+  warning).
+- Associate jobs: many jobs to one requisition ("Multi-to-One"); "Create job" pre-fills a new job from the
+  requisition.
+- The requisition list has status tabs with counts, filters (department, hiring manager, creator, has associated job)
+  and an approval-status filter.
+
+Talent pool:
+- An application archived by Reject (slice 1) or by "Archive to talent pool" lands in the pool. One public pool per
+  company.
+- List: the latest application per candidate in the pool. Card: name, latest employer and role if captured,
+  applied date, position, archiving date, pre-archiving stage, archiving reason. Filters: position, archiving
+  reason, archived since. Totals: today's archived and total.
+- "Add to job": create a new application for the candidate on an open job; it starts at the first stage, and the
+  archived application stays archived.
+
+### Slices 2–4 acceptance cases
+
+10. An interviewer sees only the applications they interview and can write only their own scorecard; another
+    interviewer's scorecard is hidden from them but visible to the hiring manager (DB + service).
+11. A user on no job team who is not an administrator gets no Recruitment menu and no rows.
+12. Interview status is derived correctly for before-start, after-end-with-missing-feedback and complete.
+13. Feedback editing follows the company lock setting (default: locked once the application leaves the stage).
+14. An offer needs approval in step order; the creator cannot approve their own; a rejected step returns to Draft;
+    a change to an approval field after approval re-runs approval.
+15. Private offer fields are hidden from users without access (DB + service).
+16. "Start new hire" is available only at Onboarding/Hired, pre-fills from the server, and the employee is created
+    only when HR saves; the draft is linked back to the application.
+17. A requisition moves only along the allowed statuses; terminal statuses refuse changes; remaining offers and
+    onboarding capacity match independent counts.
+18. A rejected application appears in the talent pool with its pre-archiving stage and reason; "Add to job" creates a
+    new active application and leaves the archived one archived.

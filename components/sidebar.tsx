@@ -616,7 +616,8 @@ export function Sidebar({
    * The ONLY gate of the Performance admin entry (D-P1-32 PT-X5); it never opens the admin rail, approvals or My Team.
    */
   canAdministerOnehr?: boolean;
-  /** ADR-0049 — Recruitment administration (HR administrators and Recruiting Partners). The ONLY role gate of the Recruitment entry. */
+  /** ADR-0049 — Recruitment access: administrators (HR administrators and Recruiting Partners) and, since slice 2, job-team
+   *  members, interviewers and pending approvers (app/layout.tsx asks the database). The ONLY role gate of the entry. */
   canAdministerRecruitment?: boolean;
   /**
    * D-P1-32 PT-X5 — where Performance admin opens: the admin area's first tab for the latest cycle the viewer

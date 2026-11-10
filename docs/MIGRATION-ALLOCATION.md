@@ -1,3 +1,19 @@
+# Recruitment slices 2–4 — 10 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 1 pair,
+`4402_recruitment_team_interviews` at idx 3802 / when 1793330004102,
+`4403_recruitment_offers_hire_handoff` at idx 3803 / when 1793330004103 and
+`4404_recruitment_requisitions` at idx 3804 / when 1793330004104, in that order. A fresh
+read-only survey of 7,035 refs (526 distinct committed journal blobs), 1,232 registered
+worktrees (233 readable journals) and 359 committed allocation-document blobs found no
+claim of these names, positions or timestamps. Peers above this block exist:
+`4500_import_history_kind` (idx 3900), `4501_attendance_workflow_skipped_levels` (idx 3901)
+and `4502_account_action_authority` (idx 3902 / when 1793330004202, the peer maximum,
+branch claude/fix-account-action-privilege). Their timestamps are higher than this block's,
+so whichever lands later must be checked against the applied watermark; a lower timestamp
+can be silently skipped. Recheck peer claims, the published baseline and the ordered applied
+ledger before admission. The reservation grants no installation authority.
+
 # Recruitment slice 1 — 10 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves `4400_recruiting_partner_role`

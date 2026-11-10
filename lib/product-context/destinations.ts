@@ -174,6 +174,11 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/recruitment/positions',
  '/recruitment/positions/new',
  '/recruitment/settings',
+ '/recruitment/interviews',
+ '/recruitment/requisitions',
+ '/recruitment/requisitions/new',
+ '/recruitment/talent-pool',
+ '/recruitment/approvals',
 ]);
 export function classifyPage(route:string,source:string):Readonly<{audience:DestinationAudience;module:string|null}>|null{
  if(NOT_LINKABLE.some(area=>under(route,area))||FORWARD_STUBS.has(route)||NATIVE_SCOPE_ONLY_PAGES.has(route))return null;

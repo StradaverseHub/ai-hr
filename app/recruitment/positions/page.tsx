@@ -5,15 +5,19 @@ import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Input, PageHeader, StatusBadge, btnGhost, btnPrimary, tableWrapCls, tbodyCls, thCls, theadCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { listJobs } from '@/packs/recruitment/service';
-import { NoRecruitmentCompany, RecruitmentTabs, recruitmentAccess, recruitmentErrorText, selectCls } from '../shared';
+import { NoRecruitmentCompany, RecruitmentTabs, SubTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
 
 type Search = { tab?: string; title?: string; jobNumber?: string; department?: string; recruiter?: string; error?: string };
 
-/** Recruitment › Positions: Opening (Open + On hold) and Closed, with filters. */
+/**
+ * Recruitment › Positions: Opening (Open + On hold) and Closed, with filters. Administrators see every job of their
+ * companies and the Job requisitions sub-tab; a job-team member sees only their own jobs (row security, slice 2).
+ */
 export default async function RecruitmentPositionsPage({ searchParams }: { searchParams: Promise<Search> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
-  const companies = await recruitmentAccess(s, scopeIds);
+  const access = await recruitmentViewerAccess(s, scopeIds);
+  const companies = access.companies;
   const sp = await searchParams;
   const tab = sp.tab === 'closed' ? 'closed' : 'opening';
   const [t, nav, list] = await Promise.all([
@@ -27,9 +31,13 @@ export default async function RecruitmentPositionsPage({ searchParams }: { searc
   };
   return (
     <div className="w-full space-y-5">
-      <PageHeader title={nav('recruitment')} description={t('purpose')}
-        actions={companies.length ? <Link href="/recruitment/positions/new" className={btnPrimary}>{t('new')}</Link> : undefined} />
-      <RecruitmentTabs active="positions" />
+      <PageHeader title={nav('recruitment')} description={access.isAdmin ? t('purpose') : t('teamPurpose')}
+        actions={access.isAdmin ? <Link href="/recruitment/positions/new" className={btnPrimary}>{t('new')}</Link> : undefined} />
+      <RecruitmentTabs active="positions" admin={access.isAdmin} approvals={access.pendingApprovals} />
+      {access.isAdmin && <SubTabs label={t('areaTabs')} items={[
+        { key: 'positions', href: '/recruitment/positions', text: t('positionsTab'), current: true },
+        { key: 'requisitions', href: '/recruitment/requisitions', text: t('requisitionsTab'), current: false },
+      ]} />}
       <ErrorBanner message={await recruitmentErrorText(sp.error)} />
       {companies.length === 0 ? <NoRecruitmentCompany /> : (
         <>
