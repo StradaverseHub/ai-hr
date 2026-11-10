@@ -119,6 +119,8 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/individual-import-job.ts':'Scoped workbook custody, admission and confirmation queue for the individual transaction import.',
  'core/individual-import-worker.ts':'Background worker invoking the individual transaction import owner after human confirmation.',
  'core/import-history.ts':'Shared import history and revert.',
+ 'core/leave-import-job.ts':'Admission and creator-scoped progress of the background leave ledger import.',
+ 'core/leave-import-worker.ts':'Bulk-job worker step that runs the leave ledger import owner one row at a time.',
  'core/movement-import-admission.ts':'Admission lock of the movement import.',
  'core/movement-import-history.ts':'Recorded upload preview and confirm of the movement import.',
  'core/movement-import-rules.ts':'Admission rules of the movement import.',

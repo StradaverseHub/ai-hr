@@ -10881,7 +10881,20 @@
         "fileTooLarge": "文件过大。请拆分为较小批次后重试。",
         "emptySheet": "第一个工作表为空。",
         "pasteToggle": "或改为粘贴 CSV",
-        "downloadTemplateXlsx": "下载 Excel 模板"
+        "downloadTemplateXlsx": "下载 Excel 模板",
+        "job": {
+          "title": "正在导入休假记录",
+          "progressCount": "已处理 {done} / {total} 行",
+          "backgroundHelp": "此操作在后台运行。您可以离开此页面，稍后再回来。",
+          "waiting": "正在等待导入服务继续。无需任何操作。",
+          "failed": "导入未能完成。已保存的记录将被保留。",
+          "state": {
+            "queued": "等待开始",
+            "importing": "正在导入",
+            "completed": "已完成",
+            "failed": "已停止"
+          }
+        }
       },
       "expiryUnitMonths": "月",
       "expiryUnitDays": "天",
@@ -37263,6 +37276,20 @@
         "cancelled": {
           "title": "员工导入已取消",
           "body": "未添加任何员工。打开导入历史查看详情。"
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "休假数据导入已完成",
+          "body": "导入的记录现已计入员工的休假余额。"
+        },
+        "failed": {
+          "title": "休假数据导入已停止",
+          "body": "已保存的记录将被保留。再次导入同一文件时会跳过这些记录。"
+        },
+        "cancelled": {
+          "title": "休假数据导入已取消",
+          "body": "已保存的记录将被保留。再次导入同一文件时会跳过这些记录。"
         }
       }
     }

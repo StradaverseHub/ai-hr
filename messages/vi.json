@@ -10881,7 +10881,20 @@
         "fileTooLarge": "Tệp quá lớn. Chia thành các lô nhỏ hơn và thử lại.",
         "emptySheet": "Trang tính đầu tiên trống.",
         "pasteToggle": "Hoặc dán CSV thay thế",
-        "downloadTemplateXlsx": "Tải xuống mẫu Excel"
+        "downloadTemplateXlsx": "Tải xuống mẫu Excel",
+        "job": {
+          "title": "Đang nhập hồ sơ nghỉ phép",
+          "progressCount": "Đã xử lý {done} trên {total} dòng",
+          "backgroundHelp": "Quá trình này chạy trong nền. Bạn có thể rời trang này và quay lại sau.",
+          "waiting": "Đang chờ dịch vụ nhập tiếp tục. Bạn không cần làm gì.",
+          "failed": "Không thể hoàn tất việc nhập. Các dòng đã lưu được giữ lại.",
+          "state": {
+            "queued": "Đang chờ bắt đầu",
+            "importing": "Đang nhập",
+            "completed": "Đã hoàn tất",
+            "failed": "Đã dừng"
+          }
+        }
       },
       "expiryUnitMonths": "Tháng",
       "expiryUnitDays": "Ngày",
@@ -37263,6 +37276,20 @@
         "cancelled": {
           "title": "Đã hủy việc nhập nhân viên",
           "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "Đã nhập dữ liệu nghỉ phép xong",
+          "body": "Các dòng đã nhập hiện đã có trong số dư nghỉ phép của nhân viên."
+        },
+        "failed": {
+          "title": "Việc nhập dữ liệu nghỉ phép đã dừng",
+          "body": "Các dòng đã lưu được giữ lại. Nhập lại cùng tệp sẽ bỏ qua các dòng đó."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc nhập dữ liệu nghỉ phép",
+          "body": "Các dòng đã lưu được giữ lại. Nhập lại cùng tệp sẽ bỏ qua các dòng đó."
         }
       }
     }

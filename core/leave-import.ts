@@ -380,12 +380,8 @@ export async function commitLeaveImport(
 ): Promise<LeaveImportResult> {
   p = { ...p, records: p.records.map(record => ({ ...record })) };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  const { resolved } = await analyze(ctx, p.records, undefined, p.companyId);
-  // Skip = a valid row that already exists in the ledger (already-imported warning) — never written.
-  const alreadyImported = (r: ResolvedRow) => r.result.warnings.some((w) => w.startsWith('Already imported'));
-  const writable = resolved.filter((r) => r.result.ok && !alreadyImported(r));
-  let skipped = resolved.filter((r) => r.result.ok && alreadyImported(r)).length;
-
+  const plan = await planLeaveImport(ctx, p);
+  let skipped = plan.skipped;
   const failed: LeaveImportResult['failed'] = [];
   let imported = 0;
   const batchId = randomUUID();
@@ -394,32 +390,10 @@ export async function commitLeaveImport(
   // WITH CHECK denial or FK error aborts only that row's transaction, so the JS catch below can record it
   // and continue. A single shared transaction would go into an aborted state on the first per-row error,
   // failing every subsequent insert AND the summary event too — the not-atomic-by-design requirement.
-  for (const r of writable) {
+  // The background job (core/leave-import-worker.ts) runs the same row writer, one row per step.
+  for (const r of plan.writable) {
     try {
-      const written = await withTenant(ctx, async (tx) => {
-        await lockAccessConfigurationTx(tx, ctx.tenantId);
-        await lockLeaveDependenciesTx(tx, ctx.tenantId, [r.employmentId]);
-        // The earlier preview nominates a row; all authorizing source reads and duplicate checks
-        // join this actual row transaction after ownership. Do not lock a whole file or retarget.
-        const raw = p.records[r.result.rowNum - 1];
-        if (!raw) throw new LeaveDependencyUnavailable();
-        const { resolved: freshRows } = await analyze(ctx, [raw], tx, p.companyId);
-        const fresh = freshRows[0];
-        if (!fresh?.result.ok || fresh.employmentId !== r.employmentId || fresh.leaveTypeId !== r.leaveTypeId
-          || fresh.entryType !== r.entryType || fresh.days !== r.days || fresh.effectiveOn !== r.effectiveOn
-          || fresh.dedupeKey !== r.dedupeKey) throw new LeaveDependencyUnavailable();
-        if (alreadyImported(fresh)) return false;
-        await tx.insert(leaveLedger).values({
-          tenantId: ctx.tenantId,
-          employmentId: r.employmentId,
-          leaveTypeId: r.leaveTypeId,
-          entryType: r.entryType,
-          days: r.days.toFixed(2),
-          effectiveOn: r.effectiveOn,
-          reason: 'Imported (leave migration)',
-        });
-        return true;
-      });
+      const written = await withTenant(ctx, (tx) => applyLeaveImportRowTx(tx, ctx, r, p.records[r.result.rowNum - 1], p.companyId));
       // Counters describe committed effects, including a duplicate discovered under ownership.
       if (written) imported += 1;
       else skipped += 1;
@@ -429,21 +403,85 @@ export async function commitLeaveImport(
     }
   }
 
-  // Substrate: ONE summary DomainEvent in its own transaction. Per-row ledger inserts are the per-item
-  // audit (deliberate skip, matching grantAdHocLeave / openLeaveYear). No subjectEmploymentId — batch-level.
-  await withTenant(ctx, (tx) =>
-    appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-ledger-import',
-      aggregateId: batchId,
-      eventType: 'leave.import.completed',
-      actor: actorOf(ctx),
-      // source: how the batch reached commit (file upload vs paste) so a migration is distinguishable
-      // in audit. Payload-only enrichment of THE existing summary event — no new write.
-      payload: { imported, failed: failed.length, skipped, totalRows: resolved.length, source: p.source ?? null },
-    }),
-  );
+  // Substrate: ONE summary DomainEvent in its own transaction.
+  await withTenant(ctx, (tx) => appendLeaveImportCompletedTx(tx, ctx, batchId, { imported, failed: failed.length, skipped, totalRows: plan.totalRows, source: p.source ?? null }));
+  return { imported, failed, skipped, totalRows: plan.totalRows, ...(plan.otherCompany === undefined ? {} : { otherCompany: plan.otherCompany }) };
+}
 
-  const otherCompany = p.companyId === undefined ? undefined : resolved.filter((r) => r.result.errors.includes(LEAVE_IMPORT_OTHER_COMPANY)).length;
-  return { imported, failed, skipped, totalRows: resolved.length, ...(otherCompany === undefined ? {} : { otherCompany }) };
+/** A resolved row is safe to keep as a background job step: ids, dates, days and validation output only. */
+export type LeaveImportPlanRow = ResolvedRow;
+
+/**
+ * Validates the whole file once, outside any write transaction. Each row is re-checked under its own
+ * locks by applyLeaveImportRowTx, so this plan only nominates work.
+ */
+export async function planLeaveImport(
+  ctx: SessionContext,
+  p: { records: LeaveImportRecord[]; companyId?: string },
+): Promise<{ totalRows: number; writable: LeaveImportPlanRow[]; skipped: number; otherCompany: number | undefined }> {
+  const { resolved } = await analyze(ctx, p.records, undefined, p.companyId);
+  // Skip = a valid row that already exists in the ledger (already-imported warning) — never written.
+  const alreadyImported = (r: ResolvedRow) => r.result.warnings.some((w) => w.startsWith('Already imported'));
+  return {
+    totalRows: resolved.length,
+    writable: resolved.filter((r) => r.result.ok && !alreadyImported(r)),
+    skipped: resolved.filter((r) => r.result.ok && alreadyImported(r)).length,
+    otherCompany: p.companyId === undefined ? undefined : resolved.filter((r) => r.result.errors.includes(LEAVE_IMPORT_OTHER_COMPANY)).length,
+  };
+}
+
+/**
+ * Writes one planned row in the caller's transaction. Returns false when the row turned out to exist
+ * already (skip on commit). Throws LeaveDependencyUnavailable when the row no longer matches its plan
+ * ('changed') or another writer holds the employee right now ('busy').
+ */
+export async function applyLeaveImportRowTx(
+  tx: Tx,
+  ctx: SessionContext,
+  r: LeaveImportPlanRow,
+  raw: LeaveImportRecord | undefined,
+  companyId?: string,
+): Promise<boolean> {
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, [r.employmentId]);
+  // The earlier preview nominates a row; all authorizing source reads and duplicate checks
+  // join this actual row transaction after ownership. Do not lock a whole file or retarget.
+  if (!raw) throw new LeaveDependencyUnavailable();
+  const { resolved: freshRows } = await analyze(ctx, [raw], tx, companyId);
+  const fresh = freshRows[0];
+  if (!fresh?.result.ok || fresh.employmentId !== r.employmentId || fresh.leaveTypeId !== r.leaveTypeId
+    || fresh.entryType !== r.entryType || fresh.days !== r.days || fresh.effectiveOn !== r.effectiveOn
+    || fresh.dedupeKey !== r.dedupeKey) throw new LeaveDependencyUnavailable();
+  if (fresh.result.warnings.some((w) => w.startsWith('Already imported'))) return false;
+  await tx.insert(leaveLedger).values({
+    tenantId: ctx.tenantId,
+    employmentId: r.employmentId,
+    leaveTypeId: r.leaveTypeId,
+    entryType: r.entryType,
+    days: r.days.toFixed(2),
+    effectiveOn: r.effectiveOn,
+    reason: 'Imported (leave migration)',
+  });
+  return true;
+}
+
+/**
+ * Substrate: ONE summary DomainEvent. Per-row ledger inserts are the per-item audit (deliberate skip,
+ * matching grantAdHocLeave / openLeaveYear). No subjectEmploymentId — batch-level. `source` records how
+ * the batch reached commit (file upload vs paste) so a migration is distinguishable in audit.
+ */
+export function appendLeaveImportCompletedTx(
+  tx: Tx,
+  ctx: SessionContext,
+  batchId: string,
+  payload: { imported: number; failed: number; skipped: number; totalRows: number; source: LeaveImportSource | null },
+) {
+  return appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'leave-ledger-import',
+    aggregateId: batchId,
+    eventType: 'leave.import.completed',
+    actor: actorOf(ctx),
+    payload,
+  });
 }
