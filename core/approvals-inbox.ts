@@ -162,6 +162,7 @@ async function loadCommonTaskSources(ctx:SessionContext,scopeIds:string[]|undefi
 }
 
 type CommonTaskSources=ReturnType<typeof loadCommonTaskSources>;
+type ClaimTaskSource=ReturnType<typeof loadClaimTaskSource>;
 function loadClaimTaskSource(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:TaskSourceOptions){
   return modules.claims
     ? options.countOnly || options.deferClaimPreview ? countPendingClaimTasks(ctx,scopeIds).then(total=>({items:[],total}))
@@ -174,25 +175,29 @@ export function countPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined
   return countTaskSources(ctx,scopeIds,modules);
 }
 
-async function countTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,common?:CommonTaskSources){
+async function countTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,common?:CommonTaskSources,claimTotal?:()=>ClaimTaskSource){
   const options={preview:true,countOnly:true} as const;
   const [[leave,decisionHeaders,replacement,attendance,profile,notices,packTasks],claims]=await settleReadGroup([
     ()=>common??loadCommonTaskSources(ctx,scopeIds,modules,options),
-    ()=>loadClaimTaskSource(ctx,scopeIds,modules,options),
+    ()=>claimTotal?.()??loadClaimTaskSource(ctx,scopeIds,modules,options),
   ]);
   return claims.total+leave.length+replacement.length+attendance.length+profile.length+notices.length+
     decisionHeaders.reduce((total,rows)=>total+rows.length,0)+packTasks.reduce((total,rows)=>total+rows.length,0);
 }
 
-/** Reuse the live account-wide preview sources within one Home response. The Claims count and
- * Claims preview use separate owners, so a preview failure cannot turn the exact count into a failure. */
+/** Reuse the live account-wide preview sources within one Home response. The bounded Claims preview
+ * already reads the exact total, so the count shares that one read instead of repeating its subject,
+ * authority and count statements. Only a failed preview pays for the separate count owner, so a
+ * preview failure still cannot turn the exact count into a failure. */
 export function createAccountTaskPreviewRead(ctx:SessionContext,modules:InboxModules){
   const options={preview:true} as const;
-  let pending:CommonTaskSources|undefined;
+  let pending:CommonTaskSources|undefined,claimPreview:ClaimTaskSource|undefined;
   const common=()=>pending??=loadCommonTaskSources(ctx,undefined,modules,options);
+  const preview=()=>claimPreview??=loadClaimTaskSource(ctx,undefined,modules,options);
   return {
-    count:()=>countTaskSources(ctx,undefined,modules,common()),
-    summary:()=>loadPendingTasks(ctx,undefined,modules,options,common()),
+    count:()=>countTaskSources(ctx,undefined,modules,common(),
+      ()=>preview().catch(()=>loadClaimTaskSource(ctx,undefined,modules,{preview:true,countOnly:true}))),
+    summary:()=>loadPendingTasks(ctx,undefined,modules,options,common(),preview()),
   };
 }
 
@@ -205,11 +210,11 @@ export async function pendingBellClaimPreview(ctx:SessionContext,scopeIds:string
 }
 
 async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
-  options:TaskSourceOptions,common?:CommonTaskSources){
+  options:TaskSourceOptions,common?:CommonTaskSources,claimPreview?:ClaimTaskSource){
   const [[leave,[cancellations,resignations,managerReviews,hrReviews],replacement,attendance,profile,noticeAcknowledgements,packTaskLists],claimResult]=
     await settleReadGroup([
       ()=>common??loadCommonTaskSources(ctx,scopeIds,modules,options),
-      ()=>loadClaimTaskSource(ctx,scopeIds,modules,options),
+      ()=>claimPreview??loadClaimTaskSource(ctx,scopeIds,modules,options),
     ]);
   const packTasks:PackTaskItem[]=packTaskLists.flat();
   const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();

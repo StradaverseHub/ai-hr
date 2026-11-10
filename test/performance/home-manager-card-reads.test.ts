@@ -188,6 +188,7 @@ async function todayReaders(today:string){
  const performanceService=await import('../../packs/performance/service');
  const home=await import('../../core/employee-home');
  const assistant=await import('../../core/assistant-grant');
+ const database=await import('../../db/client');
  return async(ctx:SessionContext):Promise<Record<string,()=>Promise<unknown>>>=>{
   const scopeIds=(await allowedCompanies(ctx)).map(company=>company.id),audience=todayAudience(ctx);
   const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
@@ -207,6 +208,7 @@ async function todayReaders(today:string){
    'page.performanceBlock':()=>performanceService.getPerformanceHomeBlock(ctx,scopeIds).then(value=>value===null?'none':'block'),
    'page.assignedPerformance':()=>performanceService.hasAssignedPerformanceWork(ctx,scopeIds),
    'page.assistant':()=>assistant.mayUseAssistant(ctx).then(value=>value.allowed),
+   'page.layoutApprovals':()=>database.withBackgroundReadWork(ctx.tenantId,()=>inbox.pendingTaskSummary(ctx,scopeIds,modules,{deferClaimPreview:true})).then(value=>({total:value.total})),
   };
  };
 }
@@ -491,6 +493,28 @@ it('completes every manager Home card and Today section read without a handled f
    const overlapped=await Promise.all([manager,employee,secondManager].map(once));
    const row={workers,poolPerWorker:Math.floor(16/workers),cpuPressure:pressure,cold,warm,overlapped};
    ramp.push(row);print('cpu-ramp',row);evidence();
+  }finally{stop();await worker.close().catch(()=>undefined);}
+ }
+ // 9. The first browser sweep: six simultaneous whole Home pages, shared round-robin across the workers.
+ const burst:unknown[]=[];report.pageBurst=burst;
+ for(const [workers,pressure] of [[2,16],[4,16],[8,16]] as const){
+  const stop=cpuPressure(pressure),worker=await coldWorker(workers);
+  try{
+   await new Promise(resolve=>setTimeout(resolve,1500));
+   const targets=await todayReaders(today),pagesPerWorker=Math.ceil(6/workers);
+   const lane=[manager,employee,secondManager].slice(0,Math.min(3,pagesPerWorker));
+   while(lane.length<pagesPerWorker)lane.push(actors.find(a=>a.index===5+lane.length)!);
+   for(const attempt of ['cold','warm']){
+    const pages=await Promise.all(lane.map(async actor=>{
+     const owners=await targets(actor.ctx),started=performance.now(),sections:Record<string,unknown>={};
+     const [stream]=await Promise.all([streamHome(actor,month,null,worker.GET),...['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'].map(name=>
+      owners[name]().then(()=>{sections[name]=Math.round(performance.now()-started);},error=>{sections[name]=errorFact(error);}))]);
+     return {role:actor.role,elapsedMs:stream.elapsedMs,over:stream.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card),
+      slowest:[...stream.frames].sort((a,b)=>b.ms-a.ms).slice(0,4).map(frame=>[frame.card,frame.status,frame.ms]),sections};
+    }));
+    const row={workers,poolPerWorker:Math.floor(16/workers),cpuPressure:pressure,pagesPerWorker,attempt,pages};
+    burst.push(row);print('page-burst',row);evidence();
+   }
   }finally{stop();await worker.close().catch(()=>undefined);}
  }
  Object.assign(process.env,{DATABASE_URL:applicationUrl});delete process.env.AIHR_APP_WORKERS;delete process.env.AIHR_DB_TOTAL_CONNECTIONS;
