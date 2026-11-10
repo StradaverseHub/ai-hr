@@ -10,6 +10,7 @@ import {createDb,type SessionContext} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import {appUser,roleAssignment,informationPayslipSnapshot} from '../db/schema';
 import {lockEmploymentStatutoryOwnerTx} from '../core/org';
+import {waitAccessConfigurationExclusiveTx} from '../core/access-exclusive-wait';
 import {isCalendarDate} from '../lib/calendar-date';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
 import {pgSqlState} from '../lib/db-error';
@@ -38,6 +39,9 @@ export async function reconcileInformationSnapshots(storage:ReturnType<typeof cr
  const ctx:SessionContext={tenantId:manifest.tenantId,userId:user.id,personId:user.personId,roles:[...new Set(grants.map(g=>g.role))],grants};
  return storage.withTenant(ctx,async tx=>{
   const [database]=await tx.execute<{role:string}>(sql`select current_user as role`);if(database.role==='ai_hr_app')throw new Error('Use the private operator connection for reconciliation.');
+  // Operator tool holding exclusive Access to commit (flagged for chunking). Queue briefly and back off from a
+  // long holder rather than waiting unbounded, which would stop every later clock-in behind it.
+  if(!await waitAccessConfigurationExclusiveTx(tx,manifest.tenantId,{attempts:12,maxBackoffMs:5000}))throw new Error('Access configuration is busy. Nothing was reconciled; retry the reconciliation.');
   await tx.execute(sql`select app.access_configuration_write_lock()`);
   let missing=0;const evidenceRecords:unknown[]=[];
   for(const item of [...manifest.items].sort((a,b)=>a.employmentId.localeCompare(b.employmentId)||a.payslipId.localeCompare(b.payslipId))){
