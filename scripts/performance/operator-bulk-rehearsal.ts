@@ -79,7 +79,7 @@ async function main(){
  let clockSeq=0;const clockDay=()=>new Date(Date.parse('2027-01-04')+(clockSeq++)*86400000).toISOString().slice(0,10);
  const runPhase=async(name:string,fn:()=>Promise<unknown>)=>{
   const lat:Record<string,number[]>={login:[],access:[],clock:[],profile:[],personnel:[],home:[]};const errors:string[]=[];let stop=false;
-  const loop=async(probe:string,gap:number,work:()=>Promise<unknown>)=>{while(!stop){const s=Date.now();try{await work();lat[probe].push(Date.now()-s);}catch(e){errors.push(`${probe}: ${String((e as Error)?.message??e).slice(0,160)}`);}await sleep(gap);}};
+  const loop=async(probe:string,gap:number,work:()=>Promise<unknown>)=>{while(!stop){const s=Date.now();try{await work();lat[probe].push(Date.now()-s);}catch(e){const c=(e as {cause?:{code?:string;message?:string}})?.cause;errors.push(`${probe}: ${c?.code??(e as {code?:string})?.code??''} ${String(c?.message??(e as Error)?.message??e).slice(0,160)}`);}await sleep(gap);}};
   const probes=Promise.all([
    loop('login',200,()=>client.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'app-user.logged-in','user',$2::uuid,NULL)",[TENANT,ADMIN])),
    loop('access',200,()=>withTenant(admin,async(tx:any)=>{await lockAccessConfigurationTx(tx,TENANT);await tx.execute(sql`select 1`);})),
@@ -94,7 +94,7 @@ async function main(){
   try{result=await fn();}catch(e){failure=String((e as Error)?.message??e).slice(0,300);}
   const wallMs=Date.now()-started;await sleep(1000);stop=true;await probes;const locks:TenantLockReport=await sampler.stop();
   // Holds by the operation itself (not the probes): every sampled hold not taken by a probe backend.
-  const out={name,wallMs,result,failure,probes:Object.fromEntries(Object.entries(lat).map(([k,v])=>[k,stat(v)])),errors:[...new Set(errors)].slice(0,8),errorCount:errors.length,busy:errors.filter(e=>/busy|55P03|try again/i.test(e)).length,tenantLocks:locks};
+  const out={name,wallMs,result,failure,probes:Object.fromEntries(Object.entries(lat).map(([k,v])=>[k,stat(v)])),errors:[...new Set(errors)].slice(0,8),errorCount:errors.length,busy:errors.filter(e=>/busy|55P03|57014|try again/i.test(e)).length,tenantLocks:locks};
   console.log(JSON.stringify({phase:name,wallMs,failure,result:typeof result==='object'?JSON.stringify(result).slice(0,300):result,maxHold:Object.fromEntries(Object.entries(locks.byLock).map(([k,v])=>[k,v.maxMs])),longest:locks.longest.slice(0,3).map(h=>({lock:h.lock,mode:h.mode,ms:h.ms,app:h.app,q:h.queries.slice(0,3)})),probes:out.probes,errorCount:out.errorCount,errors:out.errors}));
   return out;
  };

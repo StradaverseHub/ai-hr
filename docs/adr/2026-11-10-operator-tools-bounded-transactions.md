@@ -9,7 +9,7 @@ Context: DESIGN.md (Access lock and audit chain), owner bar "no transaction hold
 Cron sweeps and operator scripts that no administrator starts from the app do not need the web job UI. They keep
 their callers and results but no longer hold the tenant's writer lock for a whole run. `core/operator-chunks.ts` gives
 the shape: each transaction takes the same locks as before, re-reads what it needs, handles items until about
-`OPERATOR_CHUNK_BUDGET_MS` (200 ms) has passed, and commits. Every item is still judged under the lock on fresh reads,
+`OPERATOR_CHUNK_BUDGET_MS` (100 ms) has passed, and commits. Every item is still judged under the lock on fresh reads,
 so the end state equals the single-transaction run; each tool is idempotent per item, so a stopped run is completed by
 running it again. Every chunk takes its writer lock through `lockOperatorChunkTx`; with the reader/writer Access lock (branch
 `claude/access-wave4-admin-20261110`) that one function becomes the bounded exclusive wait followed by

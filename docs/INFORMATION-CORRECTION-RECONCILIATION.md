@@ -28,7 +28,7 @@ before a separately authorised application:
 node --env-file=.env.local --import tsx scripts/reconcile-information-snapshots.ts /private/path/manifest.json --apply --acknowledge-verified-originals --expected-database ACTUAL_DATABASE_NAME
 ```
 
-The script works in short transactions of about 200 ms each, so the tenant's other work is never held
+The script works in short transactions of about 100 ms of work each, so the tenant's other work is never held
 behind it. Applying first checks the whole manifest without writing: a binding, permission or existing
 snapshot problem anywhere refuses the manifest with nothing written. It then writes the missing snapshots
 chunk by chunk, each chunk together with its own audit event listing that chunk's snapshots and evidence. If

@@ -11,7 +11,9 @@
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client';
 
-export const OPERATOR_CHUNK_BUDGET_MS = 200;
+/** About 100 ms of items per transaction, as the employee import chunks (its rehearsal: 200 ms chunks peaked at 1.42 s
+ * on a loaded host, 100 ms chunks kept holds near the longest clock-in's). */
+export const OPERATOR_CHUNK_BUDGET_MS = 100;
 
 /** Rows a chunk reads at most before it handles them; the time budget usually ends a chunk first. */
 export const OPERATOR_CHUNK_ROWS = 400;
