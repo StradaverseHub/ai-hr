@@ -21,7 +21,7 @@ const state=vi.hoisted(()=>{
 });
 vi.mock('../../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>(key:string)=>key}));
-import {sql} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {client as applicationClient,withIndependentTransactions,withSharedReadSnapshot,withTenant,type SessionContext} from '../../db/client';
 import type {SharedReadStats} from '../../db/shared-read';
 import * as s from '../../db/schema';
@@ -386,6 +386,23 @@ async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
    await step('attendanceWorkflow',()=>requestAttendanceCorrection(at(35).ctx,{employmentId:at(35).employmentId,date:day(-5),checkIn:'09:00',checkOut:'18:00',reason:'Fictional workflow correction'}));
    await step('attendanceLegacy',()=>requestAttendanceCorrection(second.ctx,{employmentId:second.employmentId,date:day(-6),checkIn:'09:00',checkOut:'18:00',reason:'Fictional legacy correction'}));
    await step('profile',()=>owner.db.insert(s.profileChangeRequest).values({tenantId,employmentId:at(11).employmentId,personId:at(11).ctx.personId!,proposed:{preferredName:'Fictional preferred name'}}));
+   // A current OneHR cycle for company 0: the managers' review queue and assessment rows, a OneHR feedback panel for the
+   // cross-company manager and a department calibration session naming the manager.
+   await step('performance',async()=>{
+    const perf=await import('../../packs/performance/service'),{defaultPolicy}=await import('../../packs/performance/onehr/model');
+    const framework=(await import('../../packs/performance/onehr/framework.json')).default;
+    const admin=at(0).ctx,companyId=at(0).companyId;
+    const [grade]=await owner.db.insert(s.jobGrade).values({tenantId,code:'P12',name:'Fictional performance grade'}).returning();
+    await owner.client`update employment set grade_id=${grade.id}::uuid where tenant_id=${tenantId}::uuid and company_id=${companyId}::uuid`;
+    const {cycleId}=await perf.createCycle(admin,{name:'Fictional current assessment',companyId,periodStart:day(-30),periodEnd:day(30)});
+    await perf.configureOnehrCycle(admin,cycleId,null,defaultPolicy(framework));await perf.openCycle(admin,{cycleId});
+    const reviewOf=async(subject:Actor)=>(await owner.db.select({id:s.performanceReview.id}).from(s.performanceReview)
+     .where(and(eq(s.performanceReview.cycleId,cycleId),eq(s.performanceReview.employmentId,subject.employmentId))))[0].id;
+    const reviewId=await reviewOf(at(5)),view=await perf.getOnehrReview(admin,reviewId);
+    await perf.assignOnehrPanel(admin,reviewId,view!.revision,[{employmentId:at(6).employmentId,relationship:'peer'}]);
+    const [session]=await owner.db.insert(s.onehrCalibration).values({tenantId,cycleId,companyId,name:'Fictional department calibration',tier:'hod',reviewerUserIds:[manager.ctx.userId!]}).returning();
+    for(const position of [5,7,8])await owner.db.insert(s.onehrCalibrationEntry).values({tenantId,sessionId:session.id,reviewId:await reviewOf(at(position)),employmentId:at(position).employmentId});
+   });
   }else{
    // Only this tenant's manager (and its administrators, not compared) sees these: the owner throws a non-refusal error.
    await step('errorChains',async()=>{

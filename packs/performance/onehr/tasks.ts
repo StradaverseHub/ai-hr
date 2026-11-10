@@ -165,12 +165,12 @@ export function pendingPerformanceTasksBundleSql(ctx: SessionContext) {
   const assessment = personId ? sql`case when not exists(select 1 from public.employment mine where mine.person_id=${personId}::uuid) then ${empty} else
     (with assessment_row as materialized (select jsonb_build_object('review',${jsonColumnsSql(getTableName(onehrReview), assessmentReviewColumns)},
        'cycle',${jsonColumnsSql(getTableName(reviewCycle), [reviewCycle.periodEnd])},'config',${jsonColumnsSql(getTableName(onehrCycle), [onehrCycle.policy])},
-       'header',app.onehr_review_header(${onehrReview.reviewId}),'manager',app.onehr_effective_reviewer(${onehrReview.reviewId})) as row,
+       'header',app.onehr_review_header(${onehrReview.reviewId}),'manager',app.onehr_effective_reviewer(${onehrReview.reviewId})) as assessment_json,
        ${onehrReview.employmentId} as employment_id,${reviewCycle.periodEnd} as period_end,${onehrReview.reviewId} as review_id
       from ${onehrReview} inner join ${reviewCycle} on ${eq(reviewCycle.id, onehrReview.cycleId)} inner join ${onehrCycle} on ${eq(onehrCycle.cycleId, onehrReview.cycleId)}
       where ${assessmentTaskWhere(mine)})
      select jsonb_build_object('mine',to_jsonb(${mine}),
-      'rows',coalesce((select jsonb_agg(assessment_row.row order by assessment_row.period_end desc,assessment_row.review_id) from assessment_row),'[]'::jsonb),
+      'rows',coalesce((select jsonb_agg(assessment_row.assessment_json order by assessment_row.period_end desc,assessment_row.review_id) from assessment_row),'[]'::jsonb),
       'plans',coalesce((select jsonb_agg(${jsonColumnsSql(getTableName(onehrPlan), Object.values(assessmentPlanFields))}) from ${onehrPlan}
         where ${onehrPlan.employmentId} in (select assessment_row.employment_id from assessment_row)),'[]'::jsonb))) end` : empty;
   return sql`jsonb_build_object('reviews',${managerPendingReviewsBundleSql(ctx)},'assessment',${assessment},'calibration',${pendingCalibrationTasksBundleSql(ctx)})`;
