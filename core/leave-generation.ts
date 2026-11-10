@@ -563,9 +563,12 @@ export async function completeLeaveGeneration(
         employeesFailed,
       })
       .returning({ id: leaveGenerationRun.id });
-    if (engineRows.length) {
+    // In statements of at most 1,000 lines, in the same transaction: one statement for every line exceeded the
+    // database's 65,535 bind parameters at about 7,300 lines (3,000 employees with three leave types), which
+    // failed the log after the grants had committed.
+    for (let at = 0; at < engineRows.length; at += 1000) {
       await tx.insert(leaveGenerationRunItem).values(
-        engineRows.map((r) => ({
+        engineRows.slice(at, at + 1000).map((r) => ({
           tenantId: ctx.tenantId,
           runId: run.id,
           employmentId: r.employmentId,
