@@ -160,6 +160,29 @@ class AggregateTests(unittest.TestCase):
                 if row[0] == 'four':
                     self.assertEqual(result['scalingComparison'], 'not-claimed')
 
+    def test_a_stopped_driver_is_unobserved_never_a_reported_violation(self):
+        stopped = cell('2', complete=False, processOwner={'settled': True, 'cellBarriers': 1, 'runnerExitCode': 1, 'exitedOutsideSession': 6},
+                       cellState={'state': 'failed', 'reason': 'measurement', 'observation': {
+                           'driver': None, 'workerCrashes': 0, 'browserErrors': None, 'runtimeAcceptance': {'pass': True},
+                           'postgresWaitLog': {'retainedFailures': 0}, 'phaseStatus': [{'label': 'http-and-browser', 'exitCode': 1, 'timedOut': False}]}})
+        self.publish(stopped, cell('4'), cell('8'))
+        result = owner.aggregate(env(), self.root)
+        row = result['cells'][0]
+        self.assertFalse(result['complete'])
+        self.assertEqual(row['gateFailures'], [])
+        self.assertEqual(row['gatesUnobserved'], ['browser-errors', 'busy', 'driver-complete', 'page-crashes', 'preflight-lock-sampler'])
+        self.assertEqual(row['failedPhase'], 'http-and-browser')
+        self.assertFalse([reason for reason in result['reasons'] if '-gate-' in reason])
+        self.assertIn('smoke-2-measurement', result['reasons'])
+
+    def test_a_cell_claiming_success_cannot_pass_with_an_unobserved_gate(self):
+        unproven = cell('2')
+        del unproven['cell']['observation']['driver']['busyResponses']
+        self.publish(unproven, cell('4'), cell('8'))
+        result = owner.aggregate(env(), self.root)
+        self.assertFalse(result['complete'])
+        self.assertIn('smoke-2-gate-unobserved-busy', result['reasons'])
+
     def test_memory_and_kernel_differences_are_reported_not_hidden(self):
         self.publish(cell('2'), cell('4', host={'memoryBytes': 16 * 1024 ** 3 - 4096, 'kernel': '6.8.0-1'}), cell('8'))
         result = owner.aggregate(env(), self.root)

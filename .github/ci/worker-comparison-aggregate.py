@@ -128,25 +128,31 @@ def record(value):
     return value if type(value) is dict else {}
 
 
-def gate_failures(observation, scope, host):
-    """Per-cell release gates, read independently of the runner's own verdict and of CPU matching."""
+def gate_results(observation, scope, host):
+    """Per-cell release gates from the published evidence, independent of the runner's verdict and CPU matching.
+
+    A failed gate is an observed violation. An unobserved gate had no receipt, for example when the
+    driver stopped early, and is never reported as a violation; a cell still cannot pass with one.
+    """
     driver = record(observation.get('driver'))
     locks = record(driver.get('locks'))
-    wait_log = record(observation.get('postgresWaitLog'))
+    zero = lambda value: None if type(value) is not int else value == 0
+    flag = lambda value: value if type(value) is bool else None
     gates = {
         'runner-class': runner_class_ok(host),
-        'driver-complete': driver.get('complete') is True,
-        'busy': driver.get('busyResponses') == 0,
-        'page-crashes': record(driver.get('pageEvents')).get('qualifiedCrashes') == 0,
-        'worker-crashes': observation.get('workerCrashes') == 0,
-        'browser-errors': observation.get('browserErrors') == 0,
-        'preflight-lock-sampler': record(locks.get('preflight')).get('pass') is True,
-        'runtime-acceptance': record(observation.get('runtimeAcceptance')).get('pass') is True,
-        'database-lock-waits': wait_log.get('retainedFailures') == 0,
+        'driver-complete': flag(driver.get('complete')),
+        'busy': zero(driver.get('busyResponses')),
+        'page-crashes': zero(record(driver.get('pageEvents')).get('qualifiedCrashes')),
+        'worker-crashes': zero(observation.get('workerCrashes')),
+        'browser-errors': zero(observation.get('browserErrors')),
+        'preflight-lock-sampler': flag(record(locks.get('preflight')).get('pass')),
+        'runtime-acceptance': flag(record(observation.get('runtimeAcceptance')).get('pass')),
+        'database-lock-waits': zero(record(observation.get('postgresWaitLog')).get('retainedFailures')),
     }
     if scope == 'steady-500':
-        gates['loaded-lock-sampler'] = record(locks.get('loaded')).get('pass') is True
-    return sorted(name for name, passed in gates.items() if not passed)
+        gates['loaded-lock-sampler'] = flag(record(locks.get('loaded')).get('pass'))
+    return (sorted(name for name, result in gates.items() if result is False),
+            sorted(name for name, result in gates.items() if result is None))
 
 
 def check_cell(summary, course, workers, expected, seal=None, archive=None):
@@ -185,15 +191,15 @@ def check_cell(summary, course, workers, expected, seal=None, archive=None):
     if summary['complete'] is True:
         require(settled, 'complete cell without settled proof')
     observation = cell.get('observation') if type(cell.get('observation')) is dict else {}
-    gates = gate_failures(observation, scope, host)
-    passed = settled and not gates
+    gates, unobserved = gate_results(observation, scope, host)
+    passed = settled and not gates and not unobserved
     driver = observation.get('driver') if type(observation.get('driver')) is dict else {}
     harness = driver.get('identity') if type(driver.get('identity')) is dict else {}
     phases = observation.get('phaseStatus') if type(observation.get('phaseStatus')) is list else []
     failed = [row.get('label') for row in phases if type(row) is dict and (row.get('exitCode') != 0 or row.get('timedOut') is not False)]
     failed_phase = failed[0] if failed and type(failed[0]) is str and re.fullmatch(r'[a-z-]{1,64}', failed[0]) else None
     return {'workers': int(workers), 'name': name, 'scope': scope, 'state': cell['state'], 'reason': cell.get('reason'),
-            'passed': passed, 'gateFailures': gates, 'failedPhase': failed_phase, 'fixtureDay': cell.get('fixtureDay'), 'host': host, 'processOwner': owner,
+            'passed': passed, 'gateFailures': gates, 'gatesUnobserved': unobserved, 'failedPhase': failed_phase, 'fixtureDay': cell.get('fixtureDay'), 'host': host, 'processOwner': owner,
             'prerequisite': summary['prerequisite'],
             'harness': {key: harness.get(key) for key in ('harnessSha256', 'scenarioSha256')},
             'roleLatency': observation.get('roleLatency')}
@@ -273,6 +279,8 @@ def aggregate(env, root):
         if not cells[-1]['passed']:
             reasons.append(name + '-' + str(cells[-1]['reason'] or cells[-1]['state']))
             reasons.extend(name + '-gate-' + gate for gate in cells[-1]['gateFailures'])
+            if cells[-1]['state'] == 'passed':
+                reasons.extend(name + '-gate-unobserved-' + gate for gate in cells[-1]['gatesUnobserved'])
     if cell_result != 'success':
         reasons.append('cell-jobs-' + str(cell_result))
 
@@ -319,7 +327,7 @@ def aggregate(env, root):
     complete = not reasons and all(cell.get('passed') for cell in cells)
     public = []
     for cell in cells:
-        public.append({key: cell[key] for key in ('workers', 'name', 'scope', 'state', 'reason', 'gateFailures', 'failedPhase', 'passed', 'fixtureDay',
+        public.append({key: cell[key] for key in ('workers', 'name', 'scope', 'state', 'reason', 'gateFailures', 'gatesUnobserved', 'failedPhase', 'passed', 'fixtureDay',
                                                   'host', 'processOwner', 'harness', 'refusal') if key in cell})
     return {'kind': AGGREGATE_KIND, 'releaseEligible': False, 'productionEquivalent': False, 'course': course,
             'identity': expected, 'build': {'result': build_result, 'seal': seal, 'archiveSha256': archive},
@@ -374,7 +382,7 @@ def main(argv, env):
             with open(summary, 'a', encoding='utf-8') as stream:
                 stream.write(summary_markdown(result))
         print(json.dumps({key: result[key] for key in ('course', 'complete', 'steadyPairPassed', 'scalingComparison', 'reasons')}), flush=True)
-        print(json.dumps({'cells': [{key: cell.get(key) for key in ('name', 'state', 'reason', 'gateFailures', 'failedPhase', 'host', 'fixtureDay')}
+        print(json.dumps({'cells': [{key: cell.get(key) for key in ('name', 'state', 'reason', 'gateFailures', 'gatesUnobserved', 'failedPhase', 'host', 'fixtureDay')}
                                     for cell in result['cells']], 'steadyPair': {key: result['steadyPair'][key] for key in
                                                                                  ('scalingNotClaimedReason', 'cpuModels', 'differences', 'fixtureDayMatch')}}),
               flush=True)
