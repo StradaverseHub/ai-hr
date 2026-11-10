@@ -128,7 +128,8 @@ beforeAll(async()=>{
  await ledger(b,first.employmentId,types.annual,'accrual','10.00',`${YEAR-3}-01-01`);
  const old=await requestLeave(admin,{employmentId:first.employmentId,leaveTypeId:types.annual,startDate:addDays(TODAY,3),endDate:addDays(TODAY,3),today:TODAY});
  await decideLeave(admin,{leaveRequestId:old.leaveRequestId,decision:'approved'});
- await owner.db.update(schema.employment).set({terminatedOn:addDays(TODAY,-1)}).where(eq(schema.employment.id,first.employmentId));
+ // Terminated before the rehire starts, so the two employments never overlap.
+ await owner.db.update(schema.employment).set({terminatedOn:`${YEAR-1}-12-31`}).where(eq(schema.employment.id,first.employmentId));
  const second=await hire(b,'Rehired bundle employee',`${YEAR}-01-01`,first.personId);
  await ledger(b,second.employmentId,types.annual,'accrual','7.00',`${YEAR}-01-01`);
  await requestLeave(admin,{employmentId:second.employmentId,leaveTypeId:types.sick,startDate:addDays(TODAY,5),endDate:addDays(TODAY,6),today:TODAY});
@@ -140,7 +141,7 @@ beforeAll(async()=>{
 
  // A tenant without any entitlement table: every breakdown resolver is the empty one, answered from the bundle.
  b2=await seedBase();
- await owner.db.update(schema.leaveType).set({role:'annual',essPlacement:'primary'} as never).where(eq(schema.leaveType.id,b2.annualLeaveTypeId));
+ await owner.db.update(schema.leaveType).set({role:'annual',essPlacement:'primary',durations:['full_day','half_day_am','half_day_pm']} as never).where(eq(schema.leaveType.id,b2.annualLeaveTypeId));
  const pool=await leaveType(b2,{code:'EMERG',name:'Emergency Leave',balanceSourceTypeId:b2.annualLeaveTypeId});
  const plain=await hire(b2,'Plain bundle employee',`${YEAR-2}-05-01`),p=plain.employmentId;
  await ledger(b2,p,b2.annualLeaveTypeId,'accrual','10.67',`${YEAR-1}-05-01`);

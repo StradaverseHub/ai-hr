@@ -3708,7 +3708,10 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
             ? and(eq(leaveLedger.employmentId, employmentId), lte(leaveLedger.effectiveOn, asOf))
             : eq(leaveLedger.employmentId, employmentId),
         )
-        .groupBy(leaveType.id, leaveType.name),
+        .groupBy(leaveType.id, leaveType.name)
+        // Ordered by leave type id, here and in the bundled answer: the row order decides the order of `out`, and so of
+        // a pool's `contributingLeaveTypes`; without an ORDER BY it was whatever the grouping plan produced.
+        .orderBy(leaveType.id),
       own ? own.pendingDaysByType(asOf) : tx
         .select({
           leaveTypeId: leaveRequest.leaveTypeId,
@@ -3730,7 +3733,8 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
             ...(asOf ? [lte(leaveRequest.startDate, asOf)] : []),
           ),
         )
-        .groupBy(leaveRequest.leaveTypeId, leaveType.name),
+        .groupBy(leaveRequest.leaveTypeId, leaveType.name)
+        .orderBy(leaveRequest.leaveTypeId),
       /**
        * 39136455 — TAKEN, ATTRIBUTED TO THE LEAVE CODE IT WAS FILED UNDER.
        *
@@ -3902,7 +3906,8 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
     };
     const typeColumns = { ...typePresentation, name: leaveType.name, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig };
     const profileColumns = { gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory };
-    const typesQuery = tx.select(typeColumns).from(leaveType).where(isNull(leaveType.archivedAt));
+    // Ordered by id for the same reason as `rows`: the eligible-but-inactive tail below follows this order.
+    const typesQuery = tx.select(typeColumns).from(leaveType).where(isNull(leaveType.archivedAt)).orderBy(leaveType.id);
     const profileQuery = tx
         .select(profileColumns)
         .from(employment)
@@ -3911,7 +3916,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
         .limit(1);
     type TypeRow = Awaited<typeof typesQuery>[number];
     const [types, [emp]] = own
-      ? ([own.typeRows<TypeRow>(typeColumns, (type) => type.archivedAt === null), own.employmentRows<Awaited<typeof profileQuery>[number]>(profileColumns)] as const)
+      ? ([own.typeRows<TypeRow>(typeColumns, (type) => type.archivedAt === null, true), own.employmentRows<Awaited<typeof profileQuery>[number]>(profileColumns)] as const)
       : await Promise.all([typesQuery, profileQuery]);
     const today = todayInKualaLumpur();
     for (const lt of types) {
@@ -4998,7 +5003,8 @@ export async function leaveEntitlementBreakdownTx(
             lte(leaveLedger.effectiveOn, asOf),
           ),
         )
-        .orderBy(asc(leaveLedger.effectiveOn)),
+        // The id breaks a same-date tie, here and in the bundled answer, instead of the scan order.
+        .orderBy(asc(leaveLedger.effectiveOn), asc(leaveLedger.id)),
     ]);
 
     const balance = num(agg?.balance);

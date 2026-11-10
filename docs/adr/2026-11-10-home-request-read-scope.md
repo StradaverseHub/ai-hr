@@ -51,7 +51,9 @@ calculation, authority, ordering or failure changes.
      `leaveTypeApplySummaries` and the Apply entry point keep every line of arithmetic and take the bundle as an
      optional input. Each staged statement is answered by a method that computes exactly its result: the same
      predicates and joins, `numeric` sums as exact text at the widest scale (`lib/pg-numeric.ts`), `LIKE` with its
-     wildcards, the statement's own order, and heap order where it has none. The bundle answers only the
+     wildcards, and the statement's own order. Every staged statement whose row order reaches a result now orders
+     deterministically on both paths (leave type id for the balance rows, pending rows and active catalogue, which
+     fixes the order of a pool's `contributingLeaveTypes`; ledger id after the date for the breakdown walk). The bundle answers only the
      employment and transaction it was read for; any other request, and any leave type with an entitlement table in
      force on the asked date (whose resolver still reads its rules live), reads exactly as before. The cards'
      principal proof is asked before the bundle is read.

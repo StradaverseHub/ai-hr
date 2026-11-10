@@ -298,8 +298,12 @@ async function bundleCalculatorPairs(actor:Actor,today:string){
   await pair('eligible',()=>hasEligibleLeaveTypeForTx(tx,id),()=>hasEligibleLeaveTypeFrom(tx,id,inputs));
   await pair('nextApproved',()=>nextApprovedLeavePresenceTx(tx,id,today),async()=>inputs.nextApproved);
   await pair('clock',()=>ownClockTodaySummaryTx(tx,ctx,id),async()=>(await ownClockTodayHomeTx(tx,ctx,id)).clock);
-  await pair('locations',()=>employeeClockingLocationLabelsTx(tx,id),async()=>(await ownClockTodayHomeTx(tx,ctx,id)).workLocations);
+  // The old card read the location names only after the own clock summary admitted the subject, so the bundled card
+  // is compared with that composition; the function's location rows are compared with the labels owner directly.
+  await pair('locations',async()=>{await ownClockTodaySummaryTx(tx,ctx,id);return employeeClockingLocationLabelsTx(tx,id);},
+   async()=>(await ownClockTodayHomeTx(tx,ctx,id)).workLocations);
   const now=new Date(),pre=await readOwnClockDayInputsTx(tx,id,now);
+  await pair('locations:rows',()=>employeeClockingLocationLabelsTx(tx,id),async()=>pre.locations);
   for(const date of [todayInKualaLumpur(new Date(now.getTime()-86400000)),todayInKualaLumpur(now)])
    await pair('schedule:'+(date===todayInKualaLumpur(now)?'today':'yesterday'),()=>resolvedScheduleForTx(tx,id,date),()=>resolvedScheduleForTx(tx,id,date,pre.memo(date)));
  },{readOnlySnapshot:true});

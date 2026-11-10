@@ -6,7 +6,7 @@
  * kind. States: not clocked in, clocked in, on a break, back from a break, clocked out (a legacy day row), a rostered
  * rest day, a company holiday, approved leave, offline punches whose arrival is later than their instant, an open
  * overnight shift from yesterday, and a Schedule Group employee with a dated shift arrangement, OT windows, a
- * group rule with OT rows and a day adjustment naming another shift. Clock writes use the unchanged writers. */
+ * group rule with OT rows and a future rotation, and a day adjustment naming another shift. Clock writes use the unchanged writers. */
 import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
@@ -93,12 +93,21 @@ beforeAll(async()=>{
  await owner.db.insert(S.attendance).values({tenantId:base.tenantId,employmentId:night.employmentId,attendanceDate:YESTERDAY,checkInAt:'22:00',status:'present'} as never);
  subjects.push(night);
  const group=await employee('schedule group');
- const [rule]=await owner.db.insert(S.attendanceRule).values({tenantId:base.tenantId,name:'Fictional schedule group',isDefault:false} as never).returning({id:S.attendanceRule.id});
- await owner.db.insert(S.attendanceRuleOtRow).values([{tenantId:base.tenantId,ruleId:rule.id,fromMinutes:0,toMinutes:120,rate:'1.50',sortOrder:0},
-  {tenantId:base.tenantId,ruleId:rule.id,fromMinutes:120,toMinutes:0,rate:'2.00',phRate:'3.00',sortOrder:1}]);
+ // A Schedule Group and its OT rows are overtime configuration: their snapshot trigger needs an administrator transaction.
+ const rule=await withTenant(adminCtx(base),async tx=>{
+  const [row]=await tx.insert(S.attendanceRule).values({tenantId:base.tenantId,name:'Fictional schedule group',isDefault:false} as never).returning({id:S.attendanceRule.id});
+  await tx.insert(S.attendanceRuleOtRow).values([{tenantId:base.tenantId,ruleId:row.id,fromMinutes:0,toMinutes:120,rate:'1.50',sortOrder:0},
+   {tenantId:base.tenantId,ruleId:row.id,fromMinutes:120,toMinutes:0,rate:'2.00',phRate:'3.00',sortOrder:1}]);
+  return row;
+ });
  const fixed=await shiftRow({ruleId:rule.id,lateGraceMinutes:10});
  await owner.db.insert(S.shiftOtWindow).values([{tenantId:base.tenantId,shiftId:fixed,sortOrder:0,label:'Evening',startTime:'18:30:00',endTime:'21:00:00',minMinutes:30}]);
  const other=await shiftRow({startTime:'08:00:00',endTime:'17:00:00'});
+ // A rotation version can only start tomorrow or later: the bundle carries it and its shift, and the lookup finds no
+ // version in force on yesterday or today, exactly as the live lookup does.
+ const rotated=await shiftRow({startTime:'07:00:00',endTime:'16:00:00'}),tomorrow=todayInKualaLumpur(new Date(Date.now()+86400000));
+ await owner.db.insert(S.attendanceRotation).values({tenantId:base.tenantId,ruleId:rule.id,effectiveFrom:tomorrow,anchorDate:tomorrow,unit:'day',length:1,
+  allowedShiftIds:[rotated],days:[{kind:'full',shiftId:rotated}],createdBy:base.adminUserId} as never);
  await owner.db.update(S.employment).set({attendanceRuleId:rule.id} as never).where(eq(S.employment.id,group.employmentId));
  await owner.db.insert(S.employmentShiftArrangement).values({tenantId:base.tenantId,employmentId:group.employmentId,shiftType:'fixed',shiftId:fixed,validFrom:'2024-01-01',validTo:null,createdBy:null});
  await owner.db.insert(S.attendanceDayAdjustment).values({tenantId:base.tenantId,employmentId:group.employmentId,attendanceDate:TODAY,shiftId:other,reason:'Fictional dated shift',updatedBy:base.adminUserId});
@@ -148,6 +157,11 @@ describe('the own clock day from one bundled statement',()=>{
    expect(state('offline punches').workedSeconds).toBeGreaterThan(0);
    expect(state('overnight')).toMatchObject({clockedIn:true,date:yesterday});
    expect(state('schedule group').shift).not.toBeNull();
+   // Yesterday resolves through the dated arrangement's shift and today through the day adjustment's dated shift.
+   const group=subjects.find(s=>s.name==='schedule group')!;
+   const [arrangedDay,datedDay]=await withTenant(group.ctx,tx=>Promise.all([yesterday,today].map(date=>clockScheduleForTx(tx,group.employmentId,date))),{readOnlySnapshot:true});
+   expect([arrangedDay.start,datedDay.start]).toEqual(['09:00:00','08:00:00']);
+   await withTenant(group.ctx,async tx=>expect((await readOwnClockDayInputsTx(tx,group.employmentId,frozen)).memo(today)).toBeTruthy(),{readOnlySnapshot:true});
   }finally{vi.useRealTimers();}
  },120_000);
  it('returns exactly the staged Home Today card, leave presence included, with fewer statements',async()=>{

@@ -7,7 +7,8 @@
  * answered from it. Each answer below names the statement it replaces and computes exactly its result:
  *   · the same rows (the same predicates and inner/left joins over rows this login may read),
  *   · the same `numeric` text (lib/pg-numeric.ts: exact sums at the widest input scale, `coalesce(..., 0)` as `0`),
- *   · the same order where that statement orders, and a stable order where it does not.
+ *   · the same order: every statement whose row order reaches a result orders deterministically (by id where it
+ *     had no ORDER BY), and its answer here sorts the same way.
  * The calculators keep every line of their arithmetic. They use these answers only for the employment and the
  * transaction this was read for (`answers`); any other request, and any branch not answered here, reads live.
  *
@@ -45,9 +46,11 @@ type Raw={types:Record<string,unknown>[];employment:Record<string,unknown>|null;
 
 const a=(alias:string,column:Column)=>columnRefSql(alias,column);
 const dec=(text:string)=>parseNumeric(text);
+/** PostgreSQL's uuid order: unsigned bytes, which is the order of their lowercase hex text. */
+const byText=(x:string,y:string)=>x<y?-1:x>y?1:0;
 const sumText=(rows:readonly {days:string}[])=>coalescedSumText(rows.map(row=>dec(row.days)));
 const negatedSumText=(rows:readonly {days:string}[])=>coalescedNegatedSumText(rows.map(row=>dec(row.days)));
-/** Insertion-ordered grouping: a GROUP BY without ORDER BY promises no order, and every consumer keys by it. */
+/** Insertion-ordered grouping; callers order the groups the way their statement orders them. */
 function groupBy<T>(rows:readonly T[],key:(row:T)=>string){
  const groups=new Map<string,T[]>();
  for(const row of rows){const k=key(row),group=groups.get(k);if(group)group.push(row);else groups.set(k,[row]);}
@@ -87,9 +90,11 @@ export class OwnLeaveInputs{
   const row=projectFields(fields,this.sources);
   return (row?[row]:[]) as R[];
  }
- /** `select <fields> from leave_type [where …]`, in heap order. */
- typeRows<R>(fields:Record<string,Column>,where:(type:LeaveTypeRow)=>boolean=()=>true):R[]{
-  return this.types.filter(where).map(type=>projectFields(fields,new Map([[leaveType,type]]))) as R[];
+ /** `select <fields> from leave_type [where …] [order by id]`: heap order unless the statement orders by id. */
+ typeRows<R>(fields:Record<string,Column>,where:(type:LeaveTypeRow)=>boolean=()=>true,orderById=false):R[]{
+  const types=this.types.filter(where);
+  if(orderById)types.sort((x,y)=>byText(x.id,y.id));
+  return types.map(type=>projectFields(fields,new Map([[leaveType,type]]))) as R[];
  }
  /** leaveBalancesTx: `select member.leave_type_id, group.ess_placement from leave_shared_group_member join leave_shared_group`. */
  sharedGroupMembers(){return this.raw.groupMembers.map(row=>({leaveTypeId:row.leaveTypeId,placement:row.placement}));}
@@ -97,14 +102,14 @@ export class OwnLeaveInputs{
  /** leaveBalancesTx `rows`: per visible leave type, accrual + in-lieu, negated debits and the signed balance. */
  ledgerTotalsByType(asOf?:string){
   const rows=this.ownLedger(asOf).filter(row=>this.typeById.has(row.leaveTypeId));
-  return [...groupBy(rows,row=>row.leaveTypeId)].map(([id,group])=>({leaveTypeId:id,leaveType:this.typeById.get(id)!.name,
+  return [...groupBy(rows,row=>row.leaveTypeId)].sort(([x],[y])=>byText(x,y)).map(([id,group])=>({leaveTypeId:id,leaveType:this.typeById.get(id)!.name,
    accrued:sumText(group.filter(row=>row.entryType==='accrual'||row.entryType==='in_lieu_accrual')),
    taken:negatedSumText(group.filter(row=>row.entryType==='debit')),balance:sumText(group)}));
  }
  /** leaveBalancesTx `pend`: pending request days per visible leave type, starting on or before `asOf` when given. */
  pendingDaysByType(asOf?:string){
   const rows=this.ownRequests('pending',asOf).filter(row=>this.typeById.has(row.leaveTypeId));
-  return [...groupBy(rows,row=>row.leaveTypeId)].map(([id,group])=>({leaveTypeId:id,leaveType:this.typeById.get(id)!.name,pending:sumText(group)}));
+  return [...groupBy(rows,row=>row.leaveTypeId)].sort(([x],[y])=>byText(x,y)).map(([id,group])=>({leaveTypeId:id,leaveType:this.typeById.get(id)!.name,pending:sumText(group)}));
  }
  /** leaveBalancesTx `takenFiled`: negated debits per coalesce(filed request's type, ledger type). */
  debitsByFiledType(asOf?:string){
@@ -148,9 +153,10 @@ export class OwnLeaveInputs{
    .sort((x,y)=>x.startDate<y.startDate?-1:x.startDate>y.startDate?1:x.id<y.id?-1:x.id>y.id?1:0)
    .map(({startDate,endDate,days})=>({startDate,endDate,days}));
  }
- /** leaveEntitlementBreakdownTx `rows`: one type's ledger in [from, to], `order by effective_on` (ties in heap order). */
+ /** leaveEntitlementBreakdownTx `rows`: one type's ledger in [from, to], `order by effective_on, id`. */
  breakdownLedger(leaveTypeId:string,from:string,to:string){
   return this.ownLedger().filter(row=>row.leaveTypeId===leaveTypeId&&row.effectiveOn>=from&&row.effectiveOn<=to)
+   .sort((x,y)=>byText(x.effectiveOn,y.effectiveOn)||byText(x.id,y.id))
    .map(({id,effectiveOn,entryType,days,sourceRequestId,reason})=>({id,effectiveOn,entryType,days,sourceRequestId,reason}));
  }
 
