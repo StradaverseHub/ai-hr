@@ -121,6 +121,12 @@ export async function tryLockAccessConfigurationReadTx(tx: Tx, tenantId: string)
   return row.acquired;
 }
 
+/** The Access lock mode this transaction holds: 'X', 'S', or null when it holds neither. */
+export async function accessLockModeHeldTx(tx:Tx,tenantId:string):Promise<'X'|'S'|null>{
+  const [row]=await tx.execute<{mode:'X'|'S'|null}>(sql`select app.access_lock_mode_held(${tenantId}::uuid) as mode`);
+  return row?.mode??null;
+}
+
 /** Profile/register writers join the physical configuration tuple before policy or subject locks.
  * This is a write barrier, not an access edit or an ESS approval bypass. */
 export async function lockProfileValueWritesTx(tx:Tx,tenantId:string){

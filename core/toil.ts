@@ -18,7 +18,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { earnedCycleStart } from './leave';
-import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx, accessLockModeHeldTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import {
   appUser,
@@ -331,8 +331,7 @@ async function ensureReplacementLeaveType(tx: Tx, tenantId: string): Promise<str
   if (existing) return existing;
   // Creating the type is a catalogue write. A clocking transaction runs on the shared lock only after
   // finding the type present; if it has since been removed, refuse for a retry instead of writing here.
-  const [held] = await tx.execute<{ mode: string | null }>(sql`select app.access_lock_mode_held(${tenantId}::uuid) as mode`);
-  if (held?.mode === 'S') throw new LeaveDependencyUnavailable('busy');
+  if (await accessLockModeHeldTx(tx, tenantId) === 'S') throw new LeaveDependencyUnavailable('busy');
   const [created] = await tx
     .insert(leaveType)
     // ADR-0077 slice 5 — `country` is left to the column default ON PURPOSE, and this is a known seam.
