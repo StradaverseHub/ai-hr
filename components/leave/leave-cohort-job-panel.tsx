@@ -47,7 +47,10 @@ export function LeaveCohortJobPanel({job: initial, onDone}: {job: LeaveCohortJob
     if (finished.current || leaveCohortJobActive(job.state)) return;
     finished.current = true;
     if (job.state === 'completed' && job.result) {
-      if (job.kind === 'leave_generation') {
+      // A recalculation after a save said nothing when it ran inside the save; the refreshed page shows it.
+      if (job.kind === 'leave_recalc' || job.kind === 'leave_a2c') {
+        // Nothing to add: the save's own message stood alone when this ran inside it.
+      } else if (job.kind === 'leave_generation') {
         const message = leaveGenerationMessages((key, values) => t(key as never, values as never), job.result as LeaveGenerationResult);
         toast.success(message.toast);
         if (message.error) toast.error(message.error);
@@ -57,7 +60,8 @@ export function LeaveCohortJobPanel({job: initial, onDone}: {job: LeaveCohortJob
       }
       if (job.failedEmployees > 0) toast.error(tj('partial', {count: job.failedEmployees, reason: job.error ?? ''}));
     } else {
-      toast.error(tj('failed', {reason: job.error ?? ''}));
+      // Generate Entitlement and the A2C correction are all-or-nothing: a stopped run changed nothing.
+      toast.error(tj(job.kind === 'leave_generation' || job.kind === 'leave_a2c' ? 'failedNothingChanged' : 'failed', {reason: job.error ?? ''}));
     }
     router.refresh();
     onDone?.(job);

@@ -11042,6 +11042,25 @@ const a2cSupersededReasonCond = () =>
     ]),
   );
 
+/** Where the background A2C job collects each corrected employee's history row and event (see `sink` below). */
+export type A2cRecalcSink = {
+  corrected(audit: typeof leaveEntitlementRecalcAudit.$inferInsert, event: Parameters<typeof appendEvent>[1]): void;
+};
+/** The employments an A2C re-projection of this type reaches, read the way `reprojectA2cEntitlement` reads them
+ * (same window, same first-year predicate), with no lock: the background job's batches, each of which the engine
+ * then re-reads and re-filters under its locks. `isA2c` false: the type is not on a2c, so the engine is a no-op. */
+export async function a2cReprojectionCandidatesTx(tx: Tx, p: { leaveTypeId: string; asOf: string }): Promise<{ isA2c: boolean; employmentIds: string[] }> {
+  const [type] = await tx.select({ code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride }).from(leaveType)
+    .where(and(eq(leaveType.id, p.leaveTypeId), isNull(leaveType.archivedAt))).limit(1);
+  if (!type || type.yearCycleOverride !== A2C_OVERRIDE) return { isA2c: false, employmentIds: [] };
+  const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
+  const rows = await tx.select({ employmentId: employment.id, hiredOn: employment.hiredOn }).from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .where(and(lte(employment.hiredOn, p.asOf), or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart))))
+    .orderBy(employment.id);
+  return { isA2c: true, employmentIds: rows.filter((e) => isA2cFirstYear(type.yearCycleOverride, type.code, e.hiredOn, p.asOf)).map((e) => e.employmentId) };
+}
+
 /**
  * Anniversary to Calendar — the dedicated first-year correction (feedback f3a64d90).
  *
@@ -11104,6 +11123,10 @@ export async function reprojectA2cEntitlement(
     newGradeId?: string | null;
     changeEffectiveOn?: string | null;
   },
+  /** The background A2C job (core/leave-follow-up-worker.ts) only: each corrected employee's history row and
+   * `leave.entitlement.recalculated` event are handed here instead of being written, so the job writes them
+   * once its staged ledger rows are released together. Ordinary callers write them as before. */
+  sink?: A2cRecalcSink,
 ): Promise<{ affected: number; totalDelta: number; packBlocked: PackBlockedEmployment[] }> {
   p = { ...p, employmentIds: p.employmentIds?.slice(), ...(p.gradeBefore ? { gradeBefore: { ...p.gradeBefore } } : {}) };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
@@ -11264,7 +11287,7 @@ export async function reprojectA2cEntitlement(
       anchorRowId ??= row.id;
     }
 
-    await tx.insert(leaveEntitlementRecalcAudit).values({
+    const auditRow = {
       tenantId: ctx.tenantId,
       employmentId: e.employmentId,
       leaveTypeId: p.leaveTypeId,
@@ -11279,8 +11302,8 @@ export async function reprojectA2cEntitlement(
       previousGradeId: p.gradeBefore ? (p.gradeBefore.gradeId ?? null) : null,
       newGradeId: p.gradeBefore ? (p.newGradeId ?? null) : null,
       ledgerId: anchorRowId,
-    });
-    await appendEvent(tx, {
+    };
+    const recalculated = {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-ledger',
       aggregateId: anchorRowId!,
@@ -11298,7 +11321,12 @@ export async function reprojectA2cEntitlement(
         reason: 'a2c_recalc',
         trigger: p.trigger,
       },
-    });
+    } satisfies Parameters<typeof appendEvent>[1];
+    if (sink) sink.corrected(auditRow, recalculated);
+    else {
+      await tx.insert(leaveEntitlementRecalcAudit).values(auditRow);
+      await appendEvent(tx, recalculated);
+    }
     affected += 1;
     totalDelta = round2(totalDelta + accrualDelta + reversal);
   }
@@ -11682,26 +11710,29 @@ export async function reprojectEntitlementForEmployment(
  * Sequential + best-effort per employee (log and continue): a rare admin operation, and one frozen or
  * hiccuping employment must never abort the rest of the cohort.
  */
+/** Who a leave-type cohort recalculation visits, in the order it visits them: read-only candidate resolution (no
+ * events — CLAUDE.md skip rule) with the SAME live-in-cycle window guard the granting engines use;
+ * reprojectEntitlementForEmployment re-checks it per employment anyway. Shared with the background job. */
+export async function leaveTypeCohortRecalcCandidatesTx(tx: Tx, asOf: string): Promise<string[]> {
+  const yearStart = `${asOf.slice(0, 4)}-01-01`;
+  const rows = await tx
+    .select({ id: employment.id })
+    .from(employment)
+    .where(
+      and(
+        lte(employment.hiredOn, asOf),
+        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
+      ),
+    );
+  return rows.map((r) => r.id);
+}
+
 export async function reprojectEntitlementForLeaveTypeCohort(
   ctx: SessionContext,
   p: { leaveTypeId: string; trigger: string; asOf?: string },
 ): Promise<{ employees: number; affected: number; totalDelta: number }> {
   const asOf = p.asOf ?? todayInKualaLumpur();
-  // Read-only candidate resolution (no events — CLAUDE.md skip rule). The SAME live-in-cycle window guard
-  // the granting engines use; reprojectEntitlementForEmployment re-checks it per employment anyway.
-  const empIds = await withTenant(ctx, async (tx) => {
-    const yearStart = `${asOf.slice(0, 4)}-01-01`;
-    const rows = await tx
-      .select({ id: employment.id })
-      .from(employment)
-      .where(
-        and(
-          lte(employment.hiredOn, asOf),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
-        ),
-      );
-    return rows.map((r) => r.id);
-  });
+  const empIds = await withTenant(ctx, (tx) => leaveTypeCohortRecalcCandidatesTx(tx, asOf));
 
   let affected = 0;
   let totalDelta = 0;

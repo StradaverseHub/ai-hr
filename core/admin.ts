@@ -1,4 +1,5 @@
 import { saveCompanyDisplayGroupTx } from './company-display-group';
+import { enqueueLeaveA2cJobTx } from './leave-cohort-job';
 import {deriveCompanyOrganisationTx} from './company-organisation';
 import { tenantMutation } from '../db/tenant-mutation';
 /**
@@ -3458,6 +3459,9 @@ export async function updateLeaveType(
     /** f3a64d90: tenant-local (MYT) "today" anchoring the a2c day-by-day correction fired on an override
      *  change. The action layer passes it; tests pass a fixed date. Defaults to todayInKualaLumpur(). */
     asOf?: string;
+    /** Bulk-job conversion: the web save passes true so the a2c correction runs as the background A2C job
+     *  (admitted in this transaction, staged and released at once). Other callers keep the inline correction. */
+    a2cInBackground?: boolean;
     // Leave Type Employee Visibility (feedback 7b11f1c1; contract narrowed by 464b58e6). Both remain
     // tri-state (undefined = column untouched, null = clear), but they are no longer BOTH posted from one
     // sub-form and the old wording here described a form that no longer exists:
@@ -4286,16 +4290,21 @@ export async function updateLeaveType(
     // accrual-class rows so YTD Entitled moves, plus the compensating reversal so Balance/Available agree.
     // Idempotent, so a re-save of the same value writes nothing. A move AWAY from a2c is a no-op inside the
     // helper (the type is no longer a2c) — the ordinary calendar engines own it from the next year-open.
+    //
+    // Bulk-job conversion (draft 9903): for a signed-in administrator the correction no longer runs inside this
+    // transaction (it held the tenant's locks over every live employee of the type). The background A2C job is
+    // admitted HERE, in the same transaction, so it exists exactly when this save commits; its batches stage their
+    // rows and one short release makes the whole correction visible at once (core/leave-follow-up-worker.ts).
+    // A move AWAY from a2c stays a provable no-op. Other callers (no signed-in user, scripts, tests of this
+    // service) keep the inline correction.
     if (
       touchYearCycle &&
       (p.yearCycleOverride ?? null) !== (before?.yearCycleOverride ?? null) &&
       ((p.yearCycleOverride ?? null) === A2C_OVERRIDE || (before?.yearCycleOverride ?? null) === A2C_OVERRIDE)
     ) {
-      await reprojectA2cEntitlement(tx, ctx, {
-        leaveTypeId: p.id,
-        asOf: p.asOf ?? todayInKualaLumpur(),
-        trigger: 'year_cycle_override',
-      });
+      const a2c = { leaveTypeId: p.id, asOf: p.asOf ?? todayInKualaLumpur(), trigger: 'year_cycle_override' };
+      if (!p.a2cInBackground || !ctx.userId) await reprojectA2cEntitlement(tx, ctx, a2c);
+      else if ((p.yearCycleOverride ?? null) === A2C_OVERRIDE) await enqueueLeaveA2cJobTx(tx, ctx, a2c);
     }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,

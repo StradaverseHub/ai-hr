@@ -11313,7 +11313,9 @@
       "processingJob": {
         "title": {
           "leave_generation": "正在生成休假权益",
-          "leave_accrual": "正在运行累计休假"
+          "leave_accrual": "正在运行累计休假",
+          "leave_recalc": "正在重新计算假期余额",
+          "leave_a2c": "正在将假期年度类型应用于余额"
         },
         "progressCount": "已处理 {done} / {total} 名员工",
         "backgroundHelp": "此操作在后台运行。您可以离开此页面，稍后再回来。",
@@ -11326,7 +11328,8 @@
         },
         "failed": "运行已停止：{reason} 已处理的员工保留其数据。",
         "partial": "{count} 名员工无法处理，保持不变：{reason} 请再次运行以完成。",
-        "alreadyRunning": "另一位管理员正在运行此操作。请在其完成后重试。"
+        "alreadyRunning": "另一位管理员正在运行此操作。请在其完成后重试。",
+        "failedNothingChanged": "运行已停止：{reason} 未做任何更改。"
       }
     },
     "holidays": {
@@ -37322,6 +37325,48 @@
         "cancelled": {
           "title": "休假处理已取消",
           "body": "已处理的员工保留其数据。请再次运行以完成其余部分。"
+        }
+      },
+      "leaveGeneration": {
+        "completed": {
+          "title": "假期额度生成已完成",
+          "body": "假期数据已更新。"
+        },
+        "failed": {
+          "title": "假期额度生成已停止",
+          "body": "未做任何更改。请打开生成假期额度查看原因，然后再次运行。"
+        },
+        "cancelled": {
+          "title": "假期额度生成已取消",
+          "body": "未做任何更改。"
+        }
+      },
+      "leaveRecalculation": {
+        "completed": {
+          "title": "假期余额已重新计算",
+          "body": "员工的假期数据现已按已保存的设置计算。"
+        },
+        "failed": {
+          "title": "假期重新计算已停止",
+          "body": "已重新计算的员工保留其新数据。请再次保存该设置以重新计算其余员工。"
+        },
+        "cancelled": {
+          "title": "假期重新计算已取消",
+          "body": "已重新计算的员工保留其新数据。请再次保存该设置以重新计算其余员工。"
+        }
+      },
+      "leaveYearType": {
+        "completed": {
+          "title": "假期年度类型已应用",
+          "body": "首年员工的假期数据现已按已保存的假期年度类型计算。"
+        },
+        "failed": {
+          "title": "假期年度类型未应用于余额",
+          "body": "未更改任何假期数据。请再次保存假期年度类型以重试。"
+        },
+        "cancelled": {
+          "title": "假期年度类型调整已取消",
+          "body": "未更改任何假期数据。"
         }
       }
     }

@@ -11313,7 +11313,9 @@
       "processingJob": {
         "title": {
           "leave_generation": "Menjana kelayakan",
-          "leave_accrual": "Menjalankan akruan cuti yang diperoleh"
+          "leave_accrual": "Menjalankan akruan cuti yang diperoleh",
+          "leave_recalc": "Mengira semula baki cuti",
+          "leave_a2c": "Menggunakan jenis tahun cuti pada baki"
         },
         "progressCount": "{done} daripada {total} pekerja diproses",
         "backgroundHelp": "Ini berjalan di latar belakang. Anda boleh meninggalkan halaman ini dan kembali kemudian.",
@@ -11326,7 +11328,8 @@
         },
         "failed": "Proses dihentikan: {reason} Pekerja yang telah diproses mengekalkan angka mereka.",
         "partial": "{count} pekerja tidak dapat diproses dan tidak diubah: {reason} Jalankan sekali lagi untuk melengkapkannya.",
-        "alreadyRunning": "Pentadbir lain sedang menjalankan proses ini. Cuba lagi apabila ia selesai."
+        "alreadyRunning": "Pentadbir lain sedang menjalankan proses ini. Cuba lagi apabila ia selesai.",
+        "failedNothingChanged": "Proses dihentikan: {reason} Tiada apa-apa yang diubah."
       }
     },
     "holidays": {
@@ -37322,6 +37325,48 @@
         "cancelled": {
           "title": "Pemprosesan cuti dibatalkan",
           "body": "Pekerja yang telah diproses mengekalkan angka mereka. Jalankan sekali lagi untuk melengkapkan selebihnya."
+        }
+      },
+      "leaveGeneration": {
+        "completed": {
+          "title": "Penjanaan kelayakan selesai",
+          "body": "Angka cuti telah dikemas kini."
+        },
+        "failed": {
+          "title": "Penjanaan kelayakan dihentikan",
+          "body": "Tiada apa-apa yang diubah. Buka Jana Kelayakan untuk melihat sebabnya, kemudian jalankan sekali lagi."
+        },
+        "cancelled": {
+          "title": "Penjanaan kelayakan dibatalkan",
+          "body": "Tiada apa-apa yang diubah."
+        }
+      },
+      "leaveRecalculation": {
+        "completed": {
+          "title": "Baki cuti telah dikira semula",
+          "body": "Angka cuti pekerja kini mengikut tetapan yang disimpan."
+        },
+        "failed": {
+          "title": "Pengiraan semula cuti dihentikan",
+          "body": "Pekerja yang telah dikira semula mengekalkan angka baharu mereka. Simpan tetapan sekali lagi untuk mengira semula selebihnya."
+        },
+        "cancelled": {
+          "title": "Pengiraan semula cuti dibatalkan",
+          "body": "Pekerja yang telah dikira semula mengekalkan angka baharu mereka. Simpan tetapan sekali lagi untuk mengira semula selebihnya."
+        }
+      },
+      "leaveYearType": {
+        "completed": {
+          "title": "Jenis tahun cuti telah digunakan",
+          "body": "Angka cuti pekerja tahun pertama kini mengikut jenis tahun cuti yang disimpan."
+        },
+        "failed": {
+          "title": "Jenis tahun cuti tidak digunakan pada baki",
+          "body": "Tiada angka cuti yang diubah. Simpan jenis tahun cuti sekali lagi untuk mencuba semula."
+        },
+        "cancelled": {
+          "title": "Pembetulan jenis tahun cuti dibatalkan",
+          "body": "Tiada angka cuti yang diubah."
         }
       }
     }

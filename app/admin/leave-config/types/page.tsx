@@ -29,6 +29,7 @@ import {
 // stay, because the rail's per-type badge below still reads that derivation.
 import { leaveConfigHealthAll, tablesReachNobody } from '@/lib/leave-config-health';
 import { LeaveConfigMap, leaveConfigPageHeader, leaveConfigScreenHref } from '@/components/leave-config-map';
+import { LeaveFollowUpJobs } from '@/components/leave/leave-follow-up-jobs';
 import { LeaveTypeApprovalReadout, loadLeaveTypeApprovalReadout } from '../approval-readout';
 import { LeaveTypeTabs, type LeaveTypeTabsData } from './leave-type-tabs';
 import {
@@ -310,6 +311,7 @@ export default async function LeaveConfigTypesPage({
           `current="leaveTypes"` because this IS that tab. */}
       <LeaveConfigMap current="leaveTypes" />
       <ErrorBanner message={error} />
+      <LeaveFollowUpJobs session={s} />
 
       {/* r279 (3fbf7a02) — THE PAGE-LEVEL LEAVE BALANCE HEALTH CARD STOOD HERE, above the workspace,
           under a comment reading "it answers 'which of these can produce a balance at all', and every

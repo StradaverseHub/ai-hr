@@ -75,7 +75,7 @@ import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 // the grant sweep THROUGH core/leave-generation.ts, which calls it and writes the processing log, so the
 // engine has one entry point from the app layer instead of two.
 import type { LeaveGenerationRequest } from '@/packs/leave/service';
-import { createEarnedAccrualJob, createLeaveGenerationJob, LEAVE_COHORT_ALREADY_RUNNING } from '@/core/leave-cohort-job';
+import { createEarnedAccrualJob, createLeaveGenerationJob, createLeaveRecalcJob, LEAVE_COHORT_ALREADY_RUNNING } from '@/core/leave-cohort-job';
 import type { LeaveCohortJobProgress } from '@/lib/leave-cohort-job';
 import { orgCriteriaFromFields } from '@/core/org-criteria';
 // Override Leave Application (56910869): the trigger list the form iterates, so the card and the parser
@@ -1043,7 +1043,10 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
   // trigger, so a failure here must not turn a successful save into an error banner.
   if (saved.unconfiguredCleared) {
     try {
-      await reprojectEntitlementForLeaveTypeCohort(s, { leaveTypeId: id, trigger: 'leave_type_rules' });
+      // Bulk-job conversion: the same catch-up in the background (core/leave-follow-up-worker.ts), one employee per
+      // step, admitted at the same moment with the same as-at date. Without a signed-in user it still runs here.
+      if (s.userId) await createLeaveRecalcJob(s, { leaveTypeId: id, trigger: 'leave_type_rules', asOf: todayInKualaLumpur() });
+      else await reprojectEntitlementForLeaveTypeCohort(s, { leaveTypeId: id, trigger: 'leave_type_rules' });
     } catch (e) {
       console.error(`leave-type cohort catch-up failed for leave type ${id}:`, e);
     }
@@ -2285,6 +2288,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
   try {
     await updateLeaveType(s, {
       id: leaveTypeId,
+      a2cInBackground: true,
       name: String(fd.get('name') ?? '').trim(),
       ...identityFields,
       eligibility,
