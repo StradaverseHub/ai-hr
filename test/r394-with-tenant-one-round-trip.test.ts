@@ -6,10 +6,8 @@
  * transaction-local (cleared at COMMIT), and the saving must be real: one set_config round trip per
  * transaction.
  */
-import fs from 'node:fs';
-import path from 'node:path';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import { closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
@@ -54,19 +52,38 @@ describe('r394 · withTenant session context in one round trip', () => {
     } finally { reserved.release(); }
   });
 
-  it('withTenant issues exactly ONE set_config statement for the four values', () => {
-    const src = fs.readFileSync(path.join(process.cwd(), 'db/client.ts'), 'utf8');
-    const start = src.indexOf('async function withTenant');
-    const end = src.indexOf('return fn(tx);', start);
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(end).toBeGreaterThan(start + 500);
-    const body = src.slice(start, end);
-    const statements = body.match(/tx\.execute\(\s*sql`[^`]*`/g) ?? [];
-    const fourInOne = statements.filter((s) => ['app.tenant_id', 'app.user_id', 'app.roles', 'app.grants'].every((k) => s.includes(`set_config('${k}'`)));
-    expect(fourInOne).toHaveLength(1);
-    // …and none of the four is set again in a statement of its own.
-    for (const k of ['app.tenant_id', 'app.user_id', 'app.roles', 'app.grants']) {
-      expect(statements.filter((s) => s.includes(`set_config('${k}'`)), k).toHaveLength(1);
+  it('withTenant issues exactly ONE set_config round trip for the four values before the caller runs', async () => {
+    // Observe what the driver actually sends on the transaction's own connection rather than the source
+    // text, so a refactor of withTenant cannot keep a matching string while adding round trips.
+    vi.stubEnv('AUDIT_HASH_CHAIN_ENABLED', 'false'); // first arming may add its own statement; this pins the ordinary path
+    const { client } = await import('../db/client');
+    const sent: { connection: number; text: string }[] = [];
+    const previous = client.options.debug;
+    client.options.debug = (connection: number, text: string) => { sent.push({ connection, text }); };
+    const grants = [{ role: 'hr_admin', companyId: null }, { role: 'manager', companyId: b.companyId }];
+    const ctx = { tenantId: b.tenantId, userId: b.adminUserId, roles: ['hr_admin', 'manager'], grants } as SessionContext;
+    let sentBeforeCaller = -1;
+    try {
+      await withTenant(ctx, async (tx) => { sentBeforeCaller = sent.length; await tx.execute(sql`select 'r394-caller-first' as marker`); });
+    } finally {
+      client.options.debug = previous;
+      vi.unstubAllEnvs();
     }
+    const callerAt = sent.findIndex((q) => q.text.includes("'r394-caller-first'"));
+    expect(callerAt, 'the caller statement was observed').toBeGreaterThan(0);
+    expect(callerAt, 'nothing else is sent once the caller runs').toBe(sentBeforeCaller);
+    const own = sent.filter((q) => q.connection === sent[callerAt].connection).map((q) => q.text.replace(/\s+/g, ' ').trim());
+    const begin = own.findIndex((text) => /^begin\b/i.test(text));
+    const caller = own.findIndex((text) => text.includes("'r394-caller-first'"));
+    const commit = own.findIndex((text, index) => index > caller && /^commit\b/i.test(text));
+    expect(begin).toBe(0);
+    expect(commit).toBe(caller + 1);
+    // Exactly one round trip between BEGIN and the caller's first statement, and it sets all four values.
+    const bootstrap = own.slice(begin + 1, caller);
+    expect(bootstrap).toHaveLength(1);
+    const keys = ['app.tenant_id', 'app.user_id', 'app.roles', 'app.grants'];
+    for (const k of keys) expect(bootstrap[0], k).toContain(`set_config('${k}'`);
+    // …and none of the four is set again anywhere else in the transaction.
+    for (const k of keys) expect(own.filter((text) => text.includes(`set_config('${k}'`)), k).toHaveLength(1);
   });
 });
