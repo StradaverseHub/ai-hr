@@ -16,6 +16,9 @@ import {verifyTenantChain} from '../core/audit-chain';
 import {buildSystemLabelWorkbook} from '../lib/system-label-workbook';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import * as XLSX from 'xlsx';
+/** The error workbook's content (its file bytes carry a creation time). */
+const report=(result:{errorReport?:string}|null|undefined)=>{if(!result?.errorReport)return null;const book=XLSX.read(Buffer.from(result.errorReport,'base64'),{type:'buffer'});return Object.fromEntries(book.SheetNames.map(name=>[name,XLSX.utils.sheet_to_json(book.Sheets[name],{header:1})]));};
 
 // Near one-code chunks, so a refusal lands after earlier chunks already committed; arm the audit chain.
 vi.hoisted(()=>{process.env.SYSTEM_LABEL_IMPORT_CHUNK_BUDGET_MS='1';process.env.AUDIT_HASH_CHAIN_ENABLED='true';});
@@ -37,7 +40,8 @@ const workbook=(tag:string)=>{
   position:[org(`${tag}_POS_A`),org(`${tag}_POS_B`)],
   cost_center:[org(`${tag}_CC_A`)],
   business_unit:[org(`${tag}_BU_A`)],
-  division:[{Code:`${tag}_DIV_A`,Label:'Fictional division',Status:'Active'},{Code:`${tag}_DIV_B`,Label:'Fictional division B',Status:'Inactive'}],
+  // The repeated code is a row-level outcome (skipped as a duplicate) that the error workbook reports.
+  division:[{Code:`${tag}_DIV_A`,Label:'Fictional division',Status:'Active'},{Code:`${tag}_DIV_B`,Label:'Fictional division B',Status:'Inactive'},{Code:`${tag}_DIV_A`,Label:'Fictional division',Status:'Active'}],
   religion:[{Code:`${tag}_REL_A`,Label:'Fictional religion',Status:'Active'}],
   grades:[{Code:`${tag}_G1`,Label:`Fictional grade ${tag} one`,Rank:'3',Status:'Active'},{Code:`${tag}_G2`,Label:`Fictional grade ${tag} two`,Rank:'4',Status:'Inactive'}],
   grade_groups:[{Name:`Fictional group ${tag}`,'Grade Codes':'STG_BASE'}],
@@ -115,7 +119,8 @@ describe('staged System Labels import job',{timeout:240_000},()=>{
   expect(done.state).toBe('completed');
   expect(await visible('EQ')).toBeGreaterThan(10);
   const progress=await getSystemLabelImportJob(ctx,started.id);
-  expect(progress.result).toEqual(sync);
+  expect(sync.skipped).toBe(1);expect(report(sync)).not.toBeNull();
+  expect({...progress.result,errorReport:report(progress.result)}).toEqual({...sync,errorReport:report(sync)});
   expect(await endState(b.tenantId)).toEqual(expected);
   expect((await verifyTenantChain(ctx)).valid).toBe(true);
   // Every chunk held the import's writer locks only briefly.
