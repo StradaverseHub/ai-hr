@@ -16,10 +16,10 @@ import sys
 import time
 
 
-SOURCE = '3b15775ac076804b777856367981688360563e0e'
-SOURCE_TREE = '75abda8ac08be0edafb59d3e93fd2fdc89b9cf3f'
-SOURCE_BRANCH = 'codex/architecture-3b15775-stock-compiler-reference-20261110'
-BRANCH = 'codex/compiler-provider-labels-3b15775a-13312-phase-proof-20261110'
+SOURCE = '88cdfc1345d348ee3a4111a5e14c5cd721753733'
+SOURCE_TREE = 'fe3c011f9c3989943909ff55eed6507f8a4108ee'
+SOURCE_BRANCH = 'codex/architecture-88cdfc1-stock-compiler-reference-20261110'
+BRANCH = 'codex/compiler-mfa-audit-88cdfc13-13312-phase-proof-20261110'
 REPO = 'StradaverseHub/ai-hr'
 GIB = 1024 ** 3
 HEAP_MIB = 13 * 1024
@@ -41,8 +41,8 @@ PROGRESS_COUNTERS = ('cpuUsec', 'userUsec', 'systemUsec', 'cpuSomeUsec', 'cpuFul
 PROGRESS_OPTIONAL_COUNTERS = ('throttledPeriods', 'throttledUsec')
 PROGRESS_GAUGES = ('residentBytes', 'swapBytes', 'hostAvailableBytes')
 ROOT = Path('/sys/fs/cgroup')
-DIRECTORY = 'compiler-13312-provider-labels-3b15775a-phase'
-UNIT_PREFIX = 'aihr-compiler-13312-provider-labels-3b15775a-phase-'
+DIRECTORY = 'compiler-13312-mfa-audit-88cdfc13-phase'
+UNIT_PREFIX = 'aihr-compiler-13312-mfa-audit-88cdfc13-phase-'
 UNIT_NAME = re.compile(rf'{re.escape(UNIT_PREFIX)}[1-9][0-9]{{0,15}}\.service')
 BASE_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CG_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -56,10 +56,10 @@ INVENTORY_FIELDS = ('configuredRoots', 'orderedRootSha256', 'rootSetSha256', 'ge
 STATE_FIELDS = ('buildInfoBytes', 'buildInfoSha256', 'nativeFiles', 'nativeRoots', 'nativeRootSetSha256')
 # The earlier managed command proves the tool, root census and route inputs on its own source.
 # Neither its typecheck result nor its compiler graph is adopted.
-BASELINE_RUN = '42717062686'
-CALIBRATION_SOURCE = '61067d5b8b15f81e378088c9aff0b7a3b9f67987'
+BASELINE_RUN = '42720892080'
+CALIBRATION_SOURCE = '3b15775ac076804b777856367981688360563e0e'
 TRACKED_MEMBERS = 12968
-TRACKED_SHA256 = '97b5d8bb534ea34758f87de123c2aafe0d754780e485381d19f86504e012d24e'
+TRACKED_SHA256 = 'c8f1cb1d3ab94c2b069a8d1ba6698dbb1fb4cfa3abe5d313c8e1eed35cdba893'
 BASELINE_INVENTORY = {
     'configuredRoots': 9206,
     'orderedRootSha256': 'ede0443db2183aa00a164170912c73e28e9eebf10d06025f49140050e76d6c79',
