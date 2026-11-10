@@ -6,21 +6,15 @@
 --
 -- Unchanged: app.domain_event_hash, the chain columns, verifyTenantChain, app._domain_event_next and
 -- every caller of it. A transaction that already owns the audit-chain key (the Assistant bank and
--- catalogue frames, onboarding and lifecycle services, the MFA admission path, a genesis write) keeps
--- immediate assignment exactly as before, so its preimage and position fences see the same values.
+-- catalogue frames, the MFA admission path, a tenant's first armed write) keeps immediate assignment
+-- exactly as before, so its preimage and position fences see the same values. The onboarding, lifecycle,
+-- probation, contract and draft-discard writers stop taking the key (see the end of this file).
 --
 -- The tables are private: no grants, RLS enabled with no policy, reached only through SECURITY DEFINER
 -- trigger functions owned by the native audit owner.
 --
 -- SET CONSTRAINTS ALL IMMEDIATE fires the seal at the end of the statement instead of at commit. The
 -- transaction then holds the chain key until it commits, as every audited transaction did before.
-DO $m4700$ BEGIN
- PERFORM set_config('aihr.m4700_lock_timeout',current_setting('lock_timeout'),true);
- PERFORM set_config('lock_timeout','5s',true);
-END $m4700$;
---> statement-breakpoint
-LOCK TABLE public.domain_event IN SHARE ROW EXCLUSIVE MODE;
---> statement-breakpoint
 CREATE TABLE app.domain_event_chain_pending (
  event_id uuid PRIMARY KEY,
  tenant_id uuid NOT NULL,
@@ -62,10 +56,13 @@ REVOKE ALL ON FUNCTION app._domain_event_chain_key_held(uuid) FROM PUBLIC, ai_hr
 -- True only while this transaction's seal is writing the chain columns. Unforgeable: the row is written
 -- only by the seal function, and no caller role can touch the table.
 CREATE FUNCTION app.domain_event_chain_sealing() RETURNS boolean
-LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
- SELECT EXISTS(SELECT 1 FROM app.domain_event_chain_seal s
-  WHERE s.xid=pg_current_xact_id_if_assigned() AND s.sealing);
-$$;
+LANGUAGE plpgsql STABLE SECURITY DEFINER AS $$
+BEGIN
+ -- Evaluated per row per fence trigger during a seal, so it keeps a cached plan and no SET clause; every name
+ -- and operator is schema-qualified instead.
+ RETURN EXISTS(SELECT 1 FROM app.domain_event_chain_seal s
+  WHERE s.xid OPERATOR(pg_catalog.=) pg_catalog.pg_current_xact_id_if_assigned() AND s.sealing);
+END $$;
 --> statement-breakpoint
 -- Evaluated by the domain_event fence triggers' WHEN clause, under whichever role fired them.
 REVOKE ALL ON FUNCTION app.domain_event_chain_sealing() FROM PUBLIC;
@@ -82,33 +79,65 @@ END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.domain_event_chain_arm() FROM PUBLIC, ai_hr_app;
 --> statement-breakpoint
-CREATE FUNCTION app.domain_event_chain_seal_now() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE r public.domain_event%ROWTYPE;s bigint;h text;armed boolean;next_hash text;
+-- One tenant's seal: under the key, chain this transaction's pending events onto the head in sequence
+-- order, then clear them. Used at commit by the seal trigger and, earlier, by domain_event_chain_flush.
+CREATE FUNCTION app._domain_event_chain_seal_tenant(p_tenant uuid) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r record;s bigint;h text;armed boolean;n integer:=0;
+ ids uuid[]:='{}';seqs bigint[]:='{}';prevs text[]:='{}';hashes text[]:='{}';
 BEGIN
- PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||NEW.tenant_id::text));
+ PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||p_tenant::text));
  -- This transaction's still-pending rows are not the chain head, even if a caller supplied slot values.
  SELECT e.chain_seq,e.hash INTO s,h FROM public.domain_event e
-  WHERE e.tenant_id=NEW.tenant_id AND e.chain_seq IS NOT NULL
+  WHERE e.tenant_id=p_tenant AND e.chain_seq IS NOT NULL
    AND NOT EXISTS(SELECT 1 FROM app.domain_event_chain_pending p WHERE p.event_id=e.id)
   ORDER BY e.chain_seq DESC LIMIT 1;
  armed:=current_setting('app.audit_hash_chain',true) IS NOT DISTINCT FROM 'on' OR s IS NOT NULL
-  OR EXISTS(SELECT 1 FROM public.tenant_setting t WHERE t.tenant_id=NEW.tenant_id AND t.key='audit.hash_chain_enabled' AND t.value='true'::jsonb);
+  OR EXISTS(SELECT 1 FROM public.tenant_setting t WHERE t.tenant_id=p_tenant AND t.key='audit.hash_chain_enabled' AND t.value='true'::jsonb);
  IF armed THEN
   s:=coalesce(s,0);h:=coalesce(h,'GENESIS');
-  UPDATE app.domain_event_chain_seal SET sealing=true WHERE xid=NEW.xid AND tenant_id=NEW.tenant_id;
-  FOR r IN SELECT e.* FROM app.domain_event_chain_pending p JOIN public.domain_event e ON e.id=p.event_id
-   WHERE p.tenant_id=NEW.tenant_id ORDER BY p.sequence LOOP
-   s:=s+1;
-   next_hash:=app.domain_event_hash(h,r.tenant_id,s,r.aggregate_type,r.aggregate_id,r.event_type,r.actor_type::text,r.actor_id,r.subject_employment_id,r.payload);
-   UPDATE public.domain_event SET chain_seq=s,prev_hash=h,hash=next_hash WHERE id=r.id;
-   h:=next_hash;
+  FOR r IN SELECT e.id,e.tenant_id,e.aggregate_type,e.aggregate_id,e.event_type,e.actor_type,e.actor_id,e.subject_employment_id,e.payload
+   FROM app.domain_event_chain_pending p JOIN public.domain_event e ON e.id=p.event_id
+   WHERE p.tenant_id=p_tenant ORDER BY p.sequence LOOP
+   s:=s+1;ids:=ids||r.id;seqs:=seqs||s;prevs:=prevs||h;
+   h:=app.domain_event_hash(h,r.tenant_id,s,r.aggregate_type,r.aggregate_id,r.event_type,r.actor_type::text,r.actor_id,r.subject_employment_id,r.payload);
+   hashes:=hashes||h;n:=n+1;
   END LOOP;
+  IF n>0 THEN
+   -- One UPDATE for the whole transaction: the fence triggers see the sealing marker and stand aside.
+   INSERT INTO app.domain_event_chain_seal(xid,tenant_id,sealing) VALUES(pg_current_xact_id(),p_tenant,true)
+    ON CONFLICT (xid,tenant_id) DO UPDATE SET sealing=true;
+   UPDATE public.domain_event d SET chain_seq=u.seq,prev_hash=u.prev,hash=u.hash
+    FROM unnest(ids,seqs,prevs,hashes) u(id,seq,prev,hash) WHERE d.id=u.id;
+  END IF;
  END IF;
- DELETE FROM app.domain_event_chain_pending WHERE tenant_id=NEW.tenant_id;
- DELETE FROM app.domain_event_chain_seal WHERE xid=NEW.xid AND tenant_id=NEW.tenant_id;
+ DELETE FROM app.domain_event_chain_pending WHERE tenant_id=p_tenant;
+ DELETE FROM app.domain_event_chain_seal WHERE xid=pg_current_xact_id() AND tenant_id=p_tenant;
+ RETURN n;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app._domain_event_chain_seal_tenant(uuid) FROM PUBLIC, ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.domain_event_chain_seal_now() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app._domain_event_chain_seal_tenant(NEW.tenant_id);
  RETURN NULL;
 END $$;
+--> statement-breakpoint
+-- For a reader that needs its own transaction's chain columns before commit. A no-op, taking no key,
+-- unless this transaction has pending events for the tenant; otherwise it seals them now and then holds
+-- the key to commit, exactly as an audited transaction did before this migration.
+CREATE FUNCTION app.domain_event_chain_flush(p_tenant uuid) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM app.domain_event_chain_pending p WHERE p.tenant_id=p_tenant) THEN RETURN 0;END IF;
+ RETURN app._domain_event_chain_seal_tenant(p_tenant);
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.domain_event_chain_flush(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.domain_event_chain_flush(uuid) TO ai_hr_app;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.domain_event_chain_seal_now() FROM PUBLIC, ai_hr_app;
 --> statement-breakpoint
@@ -129,6 +158,8 @@ BEGIN
  EXECUTE format('ALTER FUNCTION app.domain_event_chain_sealing() OWNER TO %I',native_owner);
  EXECUTE format('ALTER FUNCTION app.domain_event_chain_arm() OWNER TO %I',native_owner);
  EXECUTE format('ALTER FUNCTION app.domain_event_chain_seal_now() OWNER TO %I',native_owner);
+ EXECUTE format('ALTER FUNCTION app._domain_event_chain_seal_tenant(uuid) OWNER TO %I',native_owner);
+ EXECUTE format('ALTER FUNCTION app.domain_event_chain_flush(uuid) OWNER TO %I',native_owner);
 END $audit_owner$;
 --> statement-breakpoint
 -- Append replacement only: 0534, 0863 and 0864 stay byte-identical. The frame guards run first and
@@ -164,6 +195,51 @@ BEGIN
  RETURN NEW;
 END $$;
 --> statement-breakpoint
+-- The onboarding, lifecycle, probation, contract and draft-discard writers took the audit-chain key first
+-- only to match the insert trigger's lock order (d839ff30). The trigger no longer takes it, so holding it
+-- would now make them the long key holders that block every seal, and a key holder waiting on a row lock
+-- of a sealing transaction is a deadlock. Each body loses exactly that one acquisition; the onboarding and
+-- lifecycle keys that follow keep these writers serialized among themselves. Everything else is unchanged.
+DO $holders$
+DECLARE
+ edit record;
+ def text;
+BEGIN
+ FOR edit IN SELECT * FROM (VALUES
+  ('app.onboarding_v9_save_case_values(uuid,integer,jsonb)',
+   E' PERFORM pg_advisory_xact_lock(hashtext(''audit-chain:''||app.current_tenant_id()::text));\n',''),
+  ('app.onboarding_v9_receipt(uuid,integer,text,text,text)',
+   E' PERFORM pg_advisory_xact_lock(hashtext(''audit-chain:'' || app.current_tenant_id()::text));\n',''),
+  ('app.lc_v9_report_return(uuid,integer,text,text)',
+   E' PERFORM pg_advisory_xact_lock(hashtext(''audit-chain:'' || app.current_tenant_id()::text));\n',''),
+  ('app.lc_v9_assigned_item(uuid,integer,text)',
+   E' PERFORM pg_advisory_xact_lock(hashtext(''audit-chain:'' || app.current_tenant_id()::text));\n',''),
+  ('app.onboarding_draft_discard_absence_context(uuid,uuid,uuid)',
+   E' -- Exactly audit-chain -> onboarding, as lockOnboardingTx and persisted audit-chain trigger.\n IF NOT pg_try_advisory_xact_lock(hashtext(''audit-chain:''||t::uuid::text)) THEN\n  RAISE EXCEPTION ''Draft discard unavailable'' USING ERRCODE=''42501'';END IF;\n',
+   E' -- The onboarding key first, as lockOnboardingTx. The audit chain is sealed at commit.\n'),
+  ('app.probation_offboarding_intent(uuid)',
+   E' IF NOT pg_try_advisory_xact_lock(hashtext(''audit-chain:''||app.current_tenant_id()::text)) THEN RAISE EXCEPTION ''Offboarding audit writer is busy'' USING ERRCODE=''55P03'';END IF;\n',''),
+  ('app.contract_lock_authority_sources()',
+   E'IF NOT pg_try_advisory_xact_lock(hashtext(''audit-chain:''||app.current_tenant_id()::text)) OR NOT pg_try_advisory_xact_lock(hashtextextended(',
+   E'IF NOT pg_try_advisory_xact_lock(hashtextextended(')
+ ) v(signature,old_text,new_text) LOOP
+  def:=pg_get_functiondef(edit.signature::regprocedure);
+  IF (length(def)-length(replace(def,edit.old_text,'')))/length(edit.old_text)<>1 OR position('audit-chain' IN replace(def,edit.old_text,edit.new_text))<>0 THEN
+   RAISE EXCEPTION 'Unexpected audit-chain acquisition in %',edit.signature USING ERRCODE='55000';
+  END IF;
+  EXECUTE replace(def,edit.old_text,edit.new_text);
+ END LOOP;
+END $holders$;
+--> statement-breakpoint
+-- The only lock on a populated table: CREATE OR REPLACE TRIGGER takes SHARE ROW EXCLUSIVE on domain_event, which
+-- blocks event writes (not reads) until the whole migration batch commits. It is the last statement here and this
+-- should be the last migration of its batch. The wait for it is bounded, so a busy table fails the batch instead
+-- of queueing writers, and the caller's lock_timeout is restored afterwards.
+DO $seal_lock_timeout$ BEGIN
+ PERFORM set_config('aihr.audit_chain_seal_lock_timeout',current_setting('lock_timeout'),true);
+ PERFORM set_config('lock_timeout','5s',true);
+END $seal_lock_timeout$;
+--> statement-breakpoint
 -- The seal fills three NULL chain columns on rows this transaction just inserted. It is not an edit of
 -- a completed record, so the completed-root fences must not refuse it. Function bodies stay byte-identical; each trigger
 -- gains one WHEN. pg_trigger_depth() = 0 short-circuits ordinary top-level writes past the function call.
@@ -197,6 +273,6 @@ BEGIN
  END LOOP;
 END $fences$;
 --> statement-breakpoint
-DO $m4700$ BEGIN
- PERFORM set_config('lock_timeout',current_setting('aihr.m4700_lock_timeout'),true);
-END $m4700$;
+DO $seal_lock_timeout$ BEGIN
+ PERFORM set_config('lock_timeout',current_setting('aihr.audit_chain_seal_lock_timeout'),true);
+END $seal_lock_timeout$;

@@ -329,9 +329,10 @@ describe('V3.1 onboarding database and authorization', () => {
     });
     it('d839ff30: a save already holding the audit chain and a starting backfill cannot deadlock', async () => {
         // The interleaving the full gate hit as 40P01, forced instead of hoped for. The save has appended its
-        // event, so it holds the tenant's audit-chain lock, and only then asks for the onboarding lock; the
-        // backfill starts in between. Before d839ff30 the backfill took the onboarding lock and then waited on
-        // the audit chain, so each waited on the other. Now it queues on the audit chain first and holds nothing.
+        // event and only then asks for the onboarding lock; the backfill starts in between. Before d839ff30 the
+        // backfill took the onboarding lock and then waited on the audit chain the save held. Since the audit chain is sealed at commit
+        // an event insert takes no lock, so the backfill either finishes or queues
+        // on an advisory lock, and the save then waits for the onboarding lock alone.
         const [stored] = await owner.db.insert(schema.employeeDraft).values({tenantId:b.tenantId,companyId:b.companyId,label:'Forced interleaving draft',data:{profile:{fullName:'Forced interleaving draft'},employment:{companyId:b.companyId}},currentStep:1}).returning();
         const system:SessionContext = {tenantId:b.tenantId,roles:['hr_admin'],entitlements:admin.entitlements};
         let appended!: () => void, proceed!: () => void;
@@ -343,7 +344,9 @@ describe('V3.1 onboarding database and authorization', () => {
             await onboardingSyncDraftTx(admin, tx, stored!.id, 'save');
         });
         await Promise.race([holding, save]);
+        let backfillSettled = false;
         const backfill = refreshOnboardingPersonnel(system,owner.withTenant);
+        void backfill.then(() => { backfillSettled = true; }, () => { backfillSettled = true; });
         // Wait until the backfill is actually blocked on an advisory lock, so the save resumes into the
         // contested window every time rather than on a lucky schedule.
         let observationError:unknown;
@@ -351,8 +354,8 @@ describe('V3.1 onboarding database and authorization', () => {
             const deadline = Date.now() + 10_000;
             for (;;) {
                 const [{ n }] = await owner.db.execute(sql`select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted and database = (select oid from pg_database where datname = current_database())`) as unknown as { n: number }[];
-                if (n > 0) break;
-                if (Date.now() > deadline) throw new Error('the backfill never queued on an advisory lock; the interleaving was not reached');
+                if (n > 0 || backfillSettled) break;
+                if (Date.now() > deadline) throw new Error('the backfill neither queued on an advisory lock nor finished; the interleaving was not reached');
                 await new Promise(resolve => setTimeout(resolve, 25));
             }
         } catch(error){observationError=error;} finally {proceed();}

@@ -1,5 +1,5 @@
 /**
- * Audit chain sealed at commit (migration 4700). A tenant's chain position is taken when the transaction
+ * Audit chain sealed at commit (the audit_chain_commit_seal migration). A tenant's chain position is taken when the transaction
  * commits, under the existing audit-chain key, so a long transaction no longer blocks every other audited
  * write of the tenant. These tests run against real PostgreSQL, through separate connections.
  */
@@ -17,6 +17,9 @@ import { withTenant } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { grantAssistant } from '../core/assistant-grant';
 import { peopleGeneralPolicyReviews } from '../core/assistant-actions/people-general-policy-review-store';
+import { commitEmployeeImport } from '../core/import';
+import { hireEmployee } from '../core/org';
+import { checkIn } from '../core/attendance';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, setSetting, type Base } from './harness';
 
 let b: Base;
@@ -448,6 +451,155 @@ describe('non-blocking proof', () => {
   }, 20_000);
 });
 
+describe('audit-chain key holders', () => {
+  // Who still takes the key directly: the Assistant bank and catalogue frames (via app._domain_event_next), the
+  // MFA admission path, and the chain owners themselves. Every other writer reaches it only through its seal.
+  it('leaves no business SQL function acquiring the key outside the chain owners', async () => {
+    const holders = await ownerClient`select p.oid::regprocedure::text signature from pg_proc p
+      where p.pronamespace not in ('pg_catalog'::regnamespace,'information_schema'::regnamespace)
+       and p.prosrc like '%advisory_xact_lock(hashtext(''audit-chain:%' order by 1`;
+    expect(holders.map((row) => row.signature)).toEqual([
+      'app._domain_event_chain_seal_tenant(uuid)', 'app._domain_event_next(uuid,boolean)',
+    ]);
+  });
+
+  it('leaves the onboarding, lifecycle, probation, contract and draft-discard writers off the key', async () => {
+    const converted = await ownerClient`select p.oid::regprocedure::text signature, p.prosrc ~ 'audit-chain:' takes from pg_proc p
+      where p.oid in ('app.onboarding_v9_save_case_values(uuid,integer,jsonb)'::regprocedure,'app.onboarding_v9_receipt(uuid,integer,text,text,text)'::regprocedure,
+       'app.lc_v9_report_return(uuid,integer,text,text)'::regprocedure,'app.lc_v9_assigned_item(uuid,integer,text)'::regprocedure,
+       'app.onboarding_draft_discard_absence_context(uuid,uuid,uuid)'::regprocedure,'app.probation_offboarding_intent(uuid)'::regprocedure,
+       'app.contract_lock_authority_sources()'::regprocedure) order by 1`;
+    expect(converted).toHaveLength(7);
+    for (const row of converted) expect(row.takes, row.signature as string).toBe(false);
+    for (const file of ['packs/lifecycle/onboarding/service.ts', 'packs/lifecycle/v9/service.ts']) {
+      expect(readFileSync(file, 'utf8'), file).not.toContain("'audit-chain:'");
+    }
+  });
+
+  it('the d839ff30 interleaving (event then onboarding key, against onboarding key then event) completes both ways', async () => {
+    await armWithHead(b.tenantId);
+    const onboardingKey = (c: ReservedSql) => c`select pg_advisory_xact_lock(hashtextextended(${b.tenantId + ':onboarding'},0))`;
+    const save = await begin(ownerClient);
+    const backfill = await begin(ownerClient);
+    await insertEvent(save, b.tenantId, 'personnel.saved');
+    await onboardingKey(backfill);
+    const saveWaits = onboardingKey(save);
+    await insertEvent(backfill, b.tenantId, 'onboarding.case.refreshed');
+    await finish(backfill);
+    await saveWaits;
+    await insertEvent(save, b.tenantId, 'onboarding.case.synchronized');
+    await finish(save);
+    await assertChainIntact(b.tenantId, 4);
+  });
+
+  it('a long import-shaped transaction never holds the key, so login and clock-in proceed while it runs', async () => {
+    await armWithHead(b.tenantId);
+    const ctx = adminCtx(b);
+    const worker = await hireEmployee(ctx, { person: { fullName: 'Fictional Clocker', primaryEmail: `clock_${randomUUID()}@fixture.test` },
+      companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2024-01-01' });
+    const [dept] = await ownerClient`select name from public.department where id=${b.deptA}::uuid`;
+    const tag = randomUUID().slice(0, 8);
+    const records = Array.from({ length: 120 }, (_, i) => ({
+      full_name: `Fictional Import ${tag} ${i}`, email: `import_${tag}_${i}@fixture.test`, department: dept.name as string,
+      hired_on: '2026-06-01', ic_number: `9001010${String(10000 + i).slice(-5)}`, basic_salary: '5000', monthly_allowance: '0',
+      bank_name: '', bank_account_no: '', tax_category: '1',
+    }));
+    const latencies = { login: [] as number[], clock: [] as number[] };
+    const keyHolds: number[] = [];
+    let importing = true;
+    const login = (async () => {
+      while (importing) {
+        const start = performance.now();
+        await appClient.begin(async (tx) => {
+          await tx`select app.append_auth_event(${b.tenantId}::uuid,'app-user',${randomUUID()}::uuid,'app-user.login','system',null,null)`;
+        });
+        latencies.login.push(performance.now() - start);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+    })();
+    const clock = (async () => {
+      for (let day = 1; importing && day <= 28; day++) {
+        const start = performance.now();
+        await checkIn(ctx, { employmentId: worker.employmentId, date: `2026-02-${String(day).padStart(2, '0')}`, time: '08:00:00' });
+        latencies.clock.push(performance.now() - start);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    })();
+    // Any other backend seen holding this tenant's key, for how long it was seen.
+    const keyWaits: number[] = [];
+    const clockWaits = new Set<string>();
+    const watch = (async () => {
+      const held = new Map<string, { first: number; last: number }>();
+      const waited = new Map<string, { first: number; last: number }>();
+      const track = (map: Map<string, { first: number; last: number }>, key: string, now: number) => {
+        const span = map.get(key) ?? { first: now, last: now };
+        span.last = now;
+        map.set(key, span);
+      };
+      while (importing) {
+        const now = performance.now();
+        for (const row of await ownerClient`select l.pid::text||':'||coalesce(a.xact_start::text,'') who,l.granted from pg_locks l join pg_stat_activity a on a.pid=l.pid
+          cross join (select hashtext('audit-chain:'||${b.tenantId}::uuid::text)::bigint k) key
+          where l.locktype='advisory' and l.objsubid=1 and l.classid::bigint=((key.k>>32)&4294967295) and l.objid::bigint=(key.k&4294967295)`) {
+          track(row.granted ? held : waited, row.who as string, now);
+        }
+        // What else waits while the import runs, for the report. Clock-in queues on the tenant's Access
+        // configuration key, which the import holds to its commit: a separate lock, not the audit chain.
+        for (const row of await ownerClient`select case when w.locktype='advisory' and w.objsubid=1
+            and w.classid::bigint=((access.k>>32)&4294967295) and w.objid::bigint=(access.k&4294967295) then 'access-configuration key'
+            else w.locktype||coalesce(':'||w.relation::regclass::text,'') end||' '||w.mode lock
+          from pg_locks w cross join (select hashtextextended('access-configuration:'||${b.tenantId}::uuid::text,0) k) access
+          where not w.granted and w.pid<>pg_backend_pid()`) clockWaits.add(row.lock as string);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      for (const span of held.values()) keyHolds.push(span.last - span.first);
+      for (const span of waited.values()) keyWaits.push(span.last - span.first);
+    })();
+    const started = performance.now();
+    const result = await commitEmployeeImport(ctx, { companyId: b.companyId, records });
+    const importMs = performance.now() - started;
+    importing = false;
+    await Promise.all([login, clock, watch]);
+    expect(result.imported).toBe(120);
+    const [sealed] = await ownerClient`select count(*)::int n from public.domain_event where tenant_id=${b.tenantId}::uuid and chain_seq is not null
+      and event_type not in ('app-user.login','attendance.check-in') and aggregate_type<>'test'`;
+    const max = (values: number[]) => Math.max(...values);
+    process.stderr.write(`[audit-commit-seal] import ${importMs.toFixed(0)} ms; ${latencies.login.length} logins max ${max(latencies.login).toFixed(1)} ms; `
+      + `${latencies.clock.length} clock-ins max ${max(latencies.clock).toFixed(1)} ms; longest key hold ${keyHolds.length ? max(keyHolds).toFixed(1) : 0} ms; `
+      + `longest key wait ${keyWaits.length ? max(keyWaits).toFixed(1) : 0} ms; about ${sealed.n} import events sealed; other waits seen: ${[...clockWaits].join(', ') || 'none'}\n`);
+    expect(importMs).toBeGreaterThan(1000);
+    expect(latencies.login.length).toBeGreaterThan(5);
+    expect(max(latencies.login)).toBeLessThan(200);
+    expect(latencies.clock.length).toBeGreaterThan(0);
+    // The only holder is the import's own seal at its commit, for a time proportional to its events (about
+    // 0.1 ms each); nothing holds the key while the import runs. Bounded loosely for a loaded runner.
+    expect(keyHolds.every((span) => span < 250)).toBe(true);
+    expect(keyWaits.every((span) => span < 250)).toBe(true);
+    const [count] = await ownerClient`select count(*)::int n from public.domain_event where tenant_id=${b.tenantId}::uuid and chain_seq is not null`;
+    await assertChainIntact(b.tenantId, count.n as number);
+  }, 120_000);
+
+  it('reproduces the deadlock a key holder would cause by waiting on a sealing transaction, which no converted path can now form', async () => {
+    // The hazard the conversions remove, reproduced with an explicit holder: H holds the key and waits for a row
+    // that the sealing transaction T has locked, while T's seal waits for the key. Postgres must abort one of them.
+    await armWithHead(b.tenantId);
+    const [row] = await ownerClient`select id from public.company where id=${b.companyId}::uuid`;
+    const sealing = await begin(ownerClient);
+    const holder = await begin(ownerClient);
+    await sealing`update public.company set legal_name=legal_name where id=${row.id}::uuid`;
+    await insertEvent(sealing, b.tenantId, 'sealing.with.row');
+    await holder`select pg_advisory_xact_lock(hashtext('audit-chain:'||${b.tenantId}::uuid::text))`;
+    const holderWaits = holder`update public.company set legal_name=legal_name where id=${row.id}::uuid`.then(() => 'ok', (e: { code?: string }) => e.code);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const committed = sealing`commit`.then(() => 'ok', (e: { code?: string }) => e.code);
+    const outcomes = await Promise.all([committed, holderWaits]);
+    expect(outcomes.sort()).toEqual(['40P01', 'ok']);
+    open.splice(open.indexOf(sealing), 1);
+    sealing.release();
+    await finish(holder, 'rollback');
+  }, 20_000);
+});
+
 describe('installed by the non-superuser production owner', () => {
   it('migrates as ai_hr_owner and seals with every definer running as that owner', async () => {
     const database = `ai_hr_seal_owner_${randomBytes(12).toString('hex')}`;
@@ -461,11 +613,13 @@ describe('installed by the non-superuser production owner', () => {
     try {
       // Everything but this migration, as the fixture superuser, exactly as the database arrived before it.
       mkdirSync(join(directory, 'meta'));
+      // Found by name, not number or position: the integration step renumbers new migrations together.
       const journal = JSON.parse(readFileSync('db/migrations/meta/_journal.json', 'utf8'));
-      const last = journal.entries.at(-1);
-      expect(last.tag).toBe('4700_audit_chain_commit_seal');
-      for (const entry of journal.entries) copyFileSync(`db/migrations/${entry.tag}.sql`, join(directory, `${entry.tag}.sql`));
-      writeFileSync(join(directory, 'meta/_journal.json'), JSON.stringify({ ...journal, entries: journal.entries.slice(0, -1) }));
+      const at = journal.entries.findIndex((entry: { tag: string }) => entry.tag.endsWith('_audit_chain_commit_seal'));
+      expect(at).toBeGreaterThan(0);
+      const prefix = journal.entries.slice(0, at), seal = journal.entries[at];
+      for (const entry of [...prefix, seal]) copyFileSync(`db/migrations/${entry.tag}.sql`, join(directory, `${entry.tag}.sql`));
+      writeFileSync(join(directory, 'meta/_journal.json'), JSON.stringify({ ...journal, entries: prefix }));
       fixture = postgres(dbUrl('postgres'), { max: 1, onnotice: () => {} });
       await migrate(drizzle(fixture), { migrationsFolder: directory });
 
@@ -490,7 +644,7 @@ describe('installed by the non-superuser production owner', () => {
       ordinary = postgres(dbUrl('ai_hr_owner'), { max: 1, onnotice: () => {} });
       const [identity] = await ordinary`select session_user login, (select rolsuper or rolbypassrls from pg_roles where rolname=session_user) elevated`;
       expect(identity).toEqual({ login: 'ai_hr_owner', elevated: false });
-      writeFileSync(join(directory, 'meta/_journal.json'), JSON.stringify(journal));
+      writeFileSync(join(directory, 'meta/_journal.json'), JSON.stringify({ ...journal, entries: [...prefix, seal] }));
       await migrate(drizzle(ordinary), { migrationsFolder: directory });
 
       const owners = await fixture`select p.proname::text name, p.proowner::regrole::text owner from pg_proc p

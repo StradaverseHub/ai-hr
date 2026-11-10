@@ -60,7 +60,7 @@ async function configTx(tx: Tx, ctx: SessionContext, lock = false): Promise<M.Co
   return { ...row.data, groups: shared?.data.groups ?? [], groupsRevision: shared?.revision ?? 0 };
 }
 async function lockTx(tx: Tx, ctx: SessionContext): Promise<void> {
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtext('audit-chain:' || ${ctx.tenantId}::uuid::text))`);
+  // The onboarding key first, as lockOnboardingTx. The audit chain is sealed at commit.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':onboarding'},0))`);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'lifecycle-v9:' + ctx.tenantId},0))`);
 }

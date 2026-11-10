@@ -775,7 +775,11 @@ export async function discardEmployeeDraft(
           // The native port still checks policy generation and executes the delete.
           if (!await tryLockAccessConfigurationTx(tx, ctx.tenantId)) throw accessBusy;
           try {
-            return await run(tx);
+            const result = await run(tx);
+            // Seal this transaction's audit events inside the retried body (audit-chain commit seal migration), so a wait on the
+            // tenant's audit-chain key still ends in an in-body lock failure that is retried, never at COMMIT.
+            await tx.execute(sql`select app.domain_event_chain_flush(${ctx.tenantId}::uuid)`);
+            return result;
           } catch (error) {
             // The effects (including Onboarding, number release and audit) all
             // belong to this transaction. Capture only a PostgreSQL lock failure

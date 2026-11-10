@@ -301,7 +301,8 @@ describe('real evaluation to signed letter custody',()=>{
      const [filed]=await owner.db.execute<{ready:boolean}>(sql`select released_at is not null as ready from probation_outcome where id=${decision.id}::uuid`);
      if(filed.ready){
       contender=owner.withTenant(runner,async tx=>{
-       await tx.execute(sql`select pg_advisory_xact_lock(hashtext('audit-chain:'||${b.tenantId}::uuid::text))`);
+       // A competing V9 writer's serialization key. The audit chain itself is sealed at commit.
+       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${b.tenantId}::uuid::text||':onboarding',0))`);
        enteredAudit();
        await auditGate;
       });

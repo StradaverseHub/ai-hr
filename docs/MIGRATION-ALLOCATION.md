@@ -17,9 +17,20 @@ integration owner has not confirmed the pending union.
 
 This is a provisional source proposal. Refresh peer allocations, the accepted source
 and the installed ordered ledger before release admission. It carries no reservation
-authority beyond this branch, and no deployment authority. The migration takes SHARE
-ROW EXCLUSIVE on `public.domain_event` under a 5-second `lock_timeout`, held until the
-migration transaction commits, so it should be the last migration of its batch.
+authority beyond this branch, and no deployment authority.
+
+**Collision, for the integration owner:** the phase 2 branch
+`claude/access-reader-writer-20261110` also claims 4700–4703 (idx 4100 onwards). As
+instructed, this branch keeps 4700 and the integration step renumbers all new migrations
+in one pass. Nothing in the migration, its tests or the code depends on the number: the
+test finds the entry by its `_audit_chain_commit_seal` suffix.
+
+Ordering: apply it last in its batch. Its only lock on a populated table is the SHARE ROW
+EXCLUSIVE that `CREATE OR REPLACE TRIGGER` takes on `public.domain_event` (blocking event
+writes, not reads). That is its final statement, acquired under a statement-scoped 5-second
+`lock_timeout` and held until the batch commits. It follows the online-migration rules on
+`claude/candidate-migrations-online-20261110`: no scan, rewrite or index build on a populated
+table, and a bounded, scoped lock wait.
 
 # Joint AI Functions, Attendance and architecture candidate — 10 November 2026 (private proposal)
 
