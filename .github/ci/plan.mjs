@@ -18,7 +18,7 @@ export function createPlan(cwd = process.cwd()) {
   if (git('status', '--porcelain')) throw Error('CI requires a clean candidate');
   if (process.env.AIHR_CI_HEAD && process.env.AIHR_CI_HEAD !== sha) throw Error('CI checkout does not match requested HEAD');
   const tracked = git('ls-files', 'test').split('\n');
-  assertAiCentreUpgradeCoverage(tracked,file=>{
+  assertAiCentreUpgradeCoverage([...tracked,...git('ls-files','--','db/migrations').split('\n')],file=>{
    const path=resolve(cwd,file),stat=lstatSync(path,{throwIfNoEntry:false});
    if(!stat)return undefined;
    if(!stat.isFile()||stat.isSymbolicLink()||realpathSync(path)!==path||stat.size>singletonSourceMaximum(file))throw Error('Unsafe AI Centre upgrade source');

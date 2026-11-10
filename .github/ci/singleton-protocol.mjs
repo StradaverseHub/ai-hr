@@ -34,6 +34,9 @@ export const NATIVE_WORKLOAD_DATABASE_SETTINGS=Object.freeze({
  log_statement:'none',log_min_error_statement:'panic',log_parameter_max_length_on_error:'0',
 });
 export const AI_CENTRE_CURRENT_UPGRADE_FILE='test/ai-centre-current-prefix-upgrade.test.ts';
+export const AI_CENTRE_UPGRADE_SUBJECT_MIGRATIONS=Object.freeze([
+ 'db/migrations/3500_ai_centre_architecture_compatibility.sql','db/migrations/3501_ai_centre_mandate_write_order.sql',
+]);
 // Complete cbc5b07d1e2256d00ede059977cd7fdacae37b2f sources. Historical
 // execution uses the original paths and controller on that revision.
 const aiCentreHistoricalUpgradeArchives=Object.freeze({
@@ -94,6 +97,12 @@ export function assertAiCentreUpgradeCoverage(tracked,read){
  assert.equal(singletonProfile(AI_CENTRE_CURRENT_UPGRADE_FILE),'controlled-database-v1','Current AI Centre upgrade must be controlled');
  for(const file of Object.keys(aiCentreHistoricalUpgradeArchives))
   assert(!files.has(file)&&read(file)===undefined,'Historical AI Centre upgrade path must be absent from the current candidate: '+file);
+ // The course upgrades through these migrations. A candidate that tracks either one, or any
+ // pinned upgrade source (tracked or present), must carry the complete reviewed course. Only
+ // a candidate predating both migrations and every source (a main-based candidate) has no
+ // AI Centre upgrade to cover.
+ if(!AI_CENTRE_UPGRADE_SUBJECT_MIGRATIONS.some(file=>files.has(file))
+  &&!Object.keys(aiCentreUpgradeSourcePins).some(file=>files.has(file)||read(file)!==undefined))return;
  for(const [file,expected] of Object.entries(aiCentreUpgradeSourcePins)){
   assert(files.has(file),'Required AI Centre upgrade source must be tracked: '+file);
   const bytes=read(file);

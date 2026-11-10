@@ -13,7 +13,7 @@ import {buildUnits,requiredEvidence,CI_EXECUTION} from './manifest.mjs';
 import {verifyReports,verifyUnitReport} from './verify-shards.mjs';
 import {readUnitReportDirectories,readWorkloadDatabaseArtifact} from './unit-report-directories.mjs';
 import {selectCommissioning,summarizeCommissioning} from './singleton-commissioning.mjs';
-import {SINGLETON_FILES,assertNativeBuildMatches,nativeNextUnit,singletonJobName,singletonDescriptor,singletonKind,singletonSources,singletonSourceMaximum,protocolHash,assertSingletonSourceHashes,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection,AI_CENTRE_CURRENT_UPGRADE_FILE,assertAiCentreUpgradeCoverage} from './singleton-protocol.mjs';
+import {SINGLETON_FILES,assertNativeBuildMatches,nativeNextUnit,singletonJobName,singletonDescriptor,singletonKind,singletonSources,singletonSourceMaximum,protocolHash,assertSingletonSourceHashes,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection,AI_CENTRE_CURRENT_UPGRADE_FILE,AI_CENTRE_UPGRADE_SUBJECT_MIGRATIONS,assertAiCentreUpgradeCoverage} from './singleton-protocol.mjs';
 import {NATIVE_WORKLOAD_DATABASE_CASE,NATIVE_WORKLOAD_DATABASE_FILE,NATIVE_WORKLOAD_DATABASE_HBA,NATIVE_WORKLOAD_DATABASE_MEMBER,NATIVE_WORKLOAD_DATABASE_SETTINGS,NATIVE_WORKLOAD_OBSERVER,
  NATIVE_WORKLOAD_OBSERVER_URL,nativeWorkloadDatabaseUnit,validateNativeWorkloadDatabaseUrls,validateNativeWorkloadObserverUrl} from './singleton-protocol.mjs';
 import {prepareNativeWorkloadPostgres} from './native-workload-postgres.mjs';
@@ -569,6 +569,16 @@ test('shared module JIT diagnostic owns one unchanged controlled database and ca
 });
 
 
+test('AI Centre upgrade coverage is owed by any candidate carrying its migrations or sources, and only then',()=>{
+ // Pure membership model: no candidate bytes. A candidate predating both migrations and every source owes nothing.
+ const none=()=>undefined;
+ assert.equal(assertAiCentreUpgradeCoverage(['test/ordinary.test.ts','db/migrations/3201_ai_centre_function_coverage.sql'],none),undefined);
+ for(const migration of AI_CENTRE_UPGRADE_SUBJECT_MIGRATIONS)
+  assert.throws(()=>assertAiCentreUpgradeCoverage(['test/ordinary.test.ts',migration],none),/Required AI Centre upgrade source must be tracked/);
+ assert.throws(()=>assertAiCentreUpgradeCoverage([AI_CENTRE_CURRENT_UPGRADE_FILE],none),/must be tracked|is missing/);
+ assert.throws(()=>assertAiCentreUpgradeCoverage([],path=>path===AI_CENTRE_CURRENT_UPGRADE_FILE?Buffer.from('untracked shadow'):undefined),/must be tracked/);
+ assert.throws(()=>assertAiCentreUpgradeCoverage(['test/ai-centre-architecture-compatibility-upgrade.test.ts'],none),/Historical AI Centre upgrade path/);
+});
 test('current AI Centre upgrade is mandatory with exact historical archives and a dedicated native unit',{skip:singletonFree},()=>{
  const file=AI_CENTRE_CURRENT_UPGRADE_FILE,f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
  const originals=['test/ai-centre-architecture-compatibility-upgrade.test.ts','test/ai-centre-mandate-write-order-upgrade.test.ts'];
