@@ -27,6 +27,9 @@ export const BULK_JOB_NOTICE_KIND='bulk-job.finished';
 export type BulkJobNoticeOutcome='completed'|'failed'|'cancelled';
 export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  employee_import:{messages:'employeeImport',linkPath:'/admin/personnel/import/history'},
+ clocking_import:{messages:'clockingImport',linkPath:'/attendance/import/logs'},
+ attendance_recompute_preview:{messages:'attendanceRecomputePreview',linkPath:'/attendance/recompute'},
+ attendance_recompute:{messages:'attendanceRecompute',linkPath:'/attendance/recompute'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){
  const notice=BULK_JOB_NOTICES[kind];

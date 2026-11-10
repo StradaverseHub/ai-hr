@@ -93,6 +93,8 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/assistant/chat-import-actions.ts':support('AI Centre chat import Confirm through each import\'s own owner (core/chat-import/confirm.ts).'),
  'app/assistant/launcher-actions.ts':support('AI Centre chat command; chatImportOfferedAction only says whether Ask offers the paperclip.'),
  'app/attendance/import/actions.ts':'attendance_clockings',
+ 'app/attendance/import/jobs/[jobId]/route.ts':'attendance_clockings',
+ 'app/attendance/import/jobs/route.ts':'attendance_clockings',
  'app/attendance/import/logs/[runId]/page.tsx':'attendance_clockings',
  'app/attendance/import/logs/page.tsx':'attendance_clockings',
  'app/attendance/import/page.tsx':'attendance_clockings',

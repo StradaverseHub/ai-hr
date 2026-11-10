@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, useState, useTransition } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button, Card, Field, inputCls } from '@/components/ui';
@@ -13,7 +13,10 @@ import type {
   RecomputeRunSummary,
 } from '@/core/attendance-recompute';
 import { labelsInCompanyScope } from '@/lib/system-label-scope';
-import { applyRecomputeAction, previewRecomputeAction } from './actions';
+import type { RecomputeJobProgress } from '@/core/attendance-recompute-job';
+import { ATTENDANCE_RECOMPUTE_PREVIEW_KIND, attendanceJobActive } from '@/lib/attendance-bulk-job';
+import { AttendanceJobPanel } from '../attendance-job-panel';
+import { applyRecomputeAction, previewRecomputeAction, type RecomputeStart } from './actions';
 
 /**
  * The Recompute screen (feedback 1c1b321a), modelled on app/attendance/import/punch-import.tsx: the same
@@ -81,6 +84,9 @@ export function RecomputeClient({
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [openRunId, setOpenRunId] = useState<string | null>(null);
+  // Draft 9940: Preview and Apply run as background jobs; the screen follows the running one and rejoins it.
+  const [job, setJob] = useState<RecomputeJobProgress | null>(null);
+  const [leftOut, setLeftOut] = useState<RecomputeJobProgress['errors']>([]);
   const [pending, startTransition] = useTransition();
 
   const companyName = (id: string) => companies.find((c) => c.id === id)?.name ?? id;
@@ -110,6 +116,7 @@ export function RecomputeClient({
     setApplied(null);
     setPhase('idle');
     setError(null);
+    setLeftOut([]);
   };
   /** Any scope edit invalidates a preview: a preview is a statement about ONE scope. */
   const onScopeChange = <T,>(set: (v: T) => void) => (v: T) => {
@@ -126,31 +133,79 @@ export function RecomputeClient({
   });
   const canPreview = companyId !== '' && from !== '' && to !== '' && from <= to;
 
+  useEffect(() => {
+    let alive = true;
+    fetch('/attendance/recompute/jobs', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p: { jobs?: RecomputeJobProgress[] } | null) => {
+        const latest = p?.jobs?.[0];
+        if (!alive || !latest) return;
+        if (attendanceJobActive(latest.state)) {
+          setJob(latest);
+          return;
+        }
+        // A preview finished while the reporter was away (its notice links here): show it, over its own scope.
+        if (latest.kind === ATTENDANCE_RECOMPUTE_PREVIEW_KIND && latest.state === 'completed' && latest.result) {
+          const r = latest.result;
+          setCompanyId(r.companyId);
+          setDepartmentId(r.departmentId ?? '');
+          setEmploymentId(r.employmentIds?.[0] ?? '');
+          setFrom(r.from);
+          setTo(r.to);
+          setLeftOut(latest.errors);
+          setPreview(r);
+          setPhase('previewed');
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const started = (r: RecomputeStart) => {
+    if (!r.ok) {
+      setError(r.code ? t(`job.${r.code}`) : r.error);
+      return;
+    }
+    setLeftOut([]);
+    setJob(r.job);
+  };
   const runPreview = () =>
     startTransition(async () => {
       setError(null);
-      try {
-        const r = await previewRecomputeAction(request());
-        setPreview(r);
-        setApplied(null);
-        setPhase('previewed');
-      } catch (e) {
-        setError((e as Error).message);
-      }
+      started(await previewRecomputeAction(request(), crypto.randomUUID()));
     });
 
   const runApply = () =>
     startTransition(async () => {
       setError(null);
-      try {
-        const r = await applyRecomputeAction(request());
-        setApplied(r);
-        setPhase('done');
-        router.refresh();
-      } catch (e) {
-        setError((e as Error).message);
-      }
+      started(await applyRecomputeAction(request(), crypto.randomUUID()));
     });
+
+  /** The finished job's result goes to the same preview / result panels the synchronous call filled. */
+  const finished = useCallback(
+    (done: RecomputeJobProgress) => {
+      setJob(null);
+      if (done.state !== 'completed' || !done.result) {
+        setError(done.error ?? '');
+        return;
+      }
+      setLeftOut(done.errors);
+      if (done.kind === ATTENDANCE_RECOMPUTE_PREVIEW_KIND) {
+        setPreview(done.result);
+        setApplied(null);
+        setPhase('previewed');
+        return;
+      }
+      setApplied(done.result);
+      setPhase('done');
+      router.refresh();
+    },
+    [router],
+  );
+  const running = !!job && attendanceJobActive(job.state);
+  const jobT = useCallback((k: string, v?: Record<string, string | number>) => t(`job.${k}`, v), [t]);
 
   const dayTypeText = (v: RecomputeFigures['dayType']) =>
     v === 'workday' ? t('dayWorking') : v === 'rest_day' ? t('dayRest') : v === 'holiday' ? t('dayHoliday') : '—';
@@ -380,16 +435,39 @@ export function RecomputeClient({
           <Field label={t('dateTo')} className="w-40">
             <input type="date" className={inputCls} value={to} onChange={(e) => onScopeChange(setTo)(e.target.value)} />
           </Field>
-          <Button aria-busy={pending} onClick={runPreview} disabled={pending || !canPreview}>
-            {pending && phase !== 'done' ? t('previewing') : t('preview')}
+          <Button aria-busy={pending || running} onClick={runPreview} disabled={pending || running || !canPreview}>
+            {(pending || running) && phase !== 'done' ? t('previewing') : t('preview')}
           </Button>
         </div>
         <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">{t('scopeHint')}</p>
       </Card>
 
+      {job && (
+        <AttendanceJobPanel
+          job={job}
+          endpoint="/attendance/recompute/jobs"
+          title={job.kind === ATTENDANCE_RECOMPUTE_PREVIEW_KIND ? t('job.previewTitle') : t('job.applyTitle')}
+          t={jobT}
+          onFinished={finished}
+        />
+      )}
+
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
           {error}
+        </div>
+      )}
+
+      {leftOut.length > 0 && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+          <p className="font-semibold">{t('job.leftOut', { count: leftOut.length })}</p>
+          <ul className="mt-1.5 space-y-1">
+            {leftOut.map((e) => (
+              <li key={`${e.rowNum}-${e.ref}`}>
+                <span className="font-medium">{e.ref}</span> · {e.message}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -419,11 +497,11 @@ export function RecomputeClient({
           <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
             <p className="text-xs text-muted-foreground">{t('clockNote')}</p>
             <div className="ml-auto flex gap-2">
-              <Button aria-busy={pending} variant="outline" onClick={reset} disabled={pending}>
+              <Button aria-busy={pending || running} variant="outline" onClick={reset} disabled={pending || running}>
                 {t('cancel')}
               </Button>
-              <Button aria-busy={pending} onClick={runApply} disabled={pending || preview.updated === 0}>
-                {pending ? t('applying') : t('apply', { count: preview.updated })}
+              <Button aria-busy={pending || running} onClick={runApply} disabled={pending || running || preview.updated === 0}>
+                {pending || running ? t('applying') : t('apply', { count: preview.updated })}
               </Button>
             </div>
           </div>

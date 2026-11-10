@@ -4727,7 +4727,26 @@
       "runByUnknown": "System",
       "scopeEmployees": "{count, plural, =1 {# employee} other {# employees}}",
       "runNoChanges": "This run changed nothing.",
-      "recentNote": "Every run is kept permanently — who ran it, which employees and dates, and the before-and-after figures for each day that moved. Each run also appears in the Audit Trail under Attendance."
+      "recentNote": "Every run is kept permanently — who ran it, which employees and dates, and the before-and-after figures for each day that moved. Each run also appears in the Audit Trail under Attendance.",
+      "job": {
+        "queued": "Waiting to start",
+        "preparing": "Checking the scope",
+        "running": "Recalculating employees",
+        "finalizing": "Putting the result together",
+        "discarding": "Stopping",
+        "completed": "Finished",
+        "failed": "Stopped",
+        "cancelled": "Stopped",
+        "progressCount": "{done} of {total} employees done",
+        "backgroundHelp": "You can leave this page and come back; the result appears here when it is ready.",
+        "waiting": "Waiting for the import service. Progress is saved; do not start this again.",
+        "workerUnavailable": "The import service is not running yet. This request is saved and starts automatically as soon as it is.",
+        "previewTitle": "Preview",
+        "applyTitle": "Applying the changes",
+        "leftOut": "{count, plural, =1 {# employee was not recalculated} other {# employees were not recalculated}}",
+        "alreadyRunning": "You already have a recompute running. Wait for it to finish before starting another.",
+        "unavailable": "This recompute is no longer available. Reopen the page."
+      }
     },
     "reject": "Reject",
     "rejectNotRecorded": "Explanation not recorded",
@@ -23462,8 +23481,26 @@
         "emptyFile": "The file is empty.",
         "fileTooLarge": "The file is larger than about 900 KB (roughly 25,000 lines). Split it into two files and import each.",
         "unreadable": "The file could not be read.",
-        "excel": "Excel files are not accepted here. Export the device file as CSV or TXT."
-      }
+        "excel": "Excel files are not accepted here. Export the device file as CSV or TXT.",
+        "alreadyRunning": "Another clocking import is still running. Wait for it to finish before starting a new one.",
+        "notAdmin": "Only an HR administrator can import clocking data.",
+        "unavailable": "This import is no longer available. Reopen the page to see its progress."
+      },
+      "job": {
+        "queued": "Waiting to start",
+        "preparing": "Reading the file",
+        "running": "Adding clockings",
+        "finalizing": "Writing the import log",
+        "discarding": "Stopping the import",
+        "completed": "Import finished",
+        "failed": "Import stopped",
+        "cancelled": "Import stopped",
+        "progressCount": "{done} of {total} employees done",
+        "backgroundHelp": "You can leave this page. Clockings are added one employee at a time; the import log opens when the import finishes.",
+        "waiting": "Waiting for the import service. Progress is saved; do not import the file again.",
+        "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is."
+      },
+      "jobStopped": "The import stopped: {reason}"
     },
     "result": {
       "imported": "Imported",
@@ -37263,6 +37300,48 @@
         "cancelled": {
           "title": "Employee import cancelled",
           "body": "No employees were added. Open Import History for details."
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "Clocking import finished",
+          "body": "Open the import logs to see the clockings that were added."
+        },
+        "failed": {
+          "title": "Clocking import stopped",
+          "body": "Open the import logs to see what was saved and why it stopped."
+        },
+        "cancelled": {
+          "title": "Clocking import stopped",
+          "body": "Open the import logs to see what was saved."
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "Recompute preview ready",
+          "body": "Open Recompute Attendance to review what would change."
+        },
+        "failed": {
+          "title": "Recompute preview stopped",
+          "body": "Open Recompute Attendance to see why."
+        },
+        "cancelled": {
+          "title": "Recompute preview stopped",
+          "body": "Open Recompute Attendance to start it again."
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "Attendance recalculated",
+          "body": "Open Recompute Attendance to see the days that changed."
+        },
+        "failed": {
+          "title": "Attendance recompute stopped",
+          "body": "Open Recompute Attendance to see why."
+        },
+        "cancelled": {
+          "title": "Attendance recompute stopped",
+          "body": "Open Recompute Attendance for details."
         }
       }
     }

@@ -4727,7 +4727,26 @@
       "runByUnknown": "Hệ thống",
       "scopeEmployees": "{count, plural, other {# nhân viên}}",
       "runNoChanges": "Lần chạy này không thay đổi gì.",
-      "recentNote": "Mọi lần chạy đều được giữ vĩnh viễn — ai đã chạy, những nhân viên và ngày nào, cùng các con số trước và sau cho mỗi ngày đã thay đổi. Mỗi lần chạy cũng xuất hiện trong Nhật ký kiểm toán ở mục Chấm công."
+      "recentNote": "Mọi lần chạy đều được giữ vĩnh viễn — ai đã chạy, những nhân viên và ngày nào, cùng các con số trước và sau cho mỗi ngày đã thay đổi. Mỗi lần chạy cũng xuất hiện trong Nhật ký kiểm toán ở mục Chấm công.",
+      "job": {
+        "queued": "Đang chờ bắt đầu",
+        "preparing": "Đang kiểm tra phạm vi",
+        "running": "Đang tính lại cho nhân viên",
+        "finalizing": "Đang tổng hợp kết quả",
+        "discarding": "Đang dừng",
+        "completed": "Đã xong",
+        "failed": "Đã dừng",
+        "cancelled": "Đã dừng",
+        "progressCount": "Đã xong {done}/{total} nhân viên",
+        "backgroundHelp": "Bạn có thể rời trang này và quay lại sau; kết quả sẽ hiện ở đây khi sẵn sàng.",
+        "waiting": "Đang chờ dịch vụ nhập. Tiến độ đã được lưu; đừng bắt đầu lại.",
+        "workerUnavailable": "Dịch vụ nhập chưa chạy. Yêu cầu này đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy.",
+        "previewTitle": "Xem trước",
+        "applyTitle": "Đang áp dụng thay đổi",
+        "leftOut": "{count, plural, other {# nhân viên chưa được tính lại}}",
+        "alreadyRunning": "Bạn đang có một lần tính lại đang chạy. Hãy chờ hoàn tất trước khi bắt đầu lần khác.",
+        "unavailable": "Lần tính lại này không còn khả dụng. Hãy mở lại trang."
+      }
     },
     "reject": "Từ chối",
     "rejectNotRecorded": "Chưa ghi giải thích",
@@ -23462,8 +23481,26 @@
         "emptyFile": "Tệp trống.",
         "fileTooLarge": "Tệp lớn hơn khoảng 900 KB (khoảng 25.000 dòng). Hãy chia thành hai tệp và nhập từng tệp.",
         "unreadable": "Không thể đọc tệp.",
-        "excel": "Không chấp nhận tệp Excel tại đây. Hãy xuất tệp của thiết bị dưới dạng CSV hoặc TXT."
-      }
+        "excel": "Không chấp nhận tệp Excel tại đây. Hãy xuất tệp của thiết bị dưới dạng CSV hoặc TXT.",
+        "alreadyRunning": "Một lần nhập dữ liệu chấm công khác vẫn đang chạy. Hãy chờ hoàn tất trước khi bắt đầu lần mới.",
+        "notAdmin": "Chỉ quản trị viên nhân sự mới có thể nhập dữ liệu chấm công.",
+        "unavailable": "Lần nhập này không còn khả dụng. Hãy mở lại trang để xem tiến độ."
+      },
+      "job": {
+        "queued": "Đang chờ bắt đầu",
+        "preparing": "Đang đọc tệp",
+        "running": "Đang thêm dữ liệu chấm công",
+        "finalizing": "Đang ghi nhật ký nhập",
+        "discarding": "Đang dừng quá trình nhập",
+        "completed": "Đã nhập xong",
+        "failed": "Quá trình nhập đã dừng",
+        "cancelled": "Quá trình nhập đã dừng",
+        "progressCount": "Đã xong {done}/{total} nhân viên",
+        "backgroundHelp": "Bạn có thể rời trang này. Dữ liệu chấm công được thêm lần lượt từng nhân viên; nhật ký nhập sẽ mở khi quá trình nhập hoàn tất.",
+        "waiting": "Đang chờ dịch vụ nhập. Tiến độ đã được lưu; đừng nhập lại tệp này.",
+        "workerUnavailable": "Dịch vụ nhập chưa chạy. Lần nhập của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy."
+      },
+      "jobStopped": "Quá trình nhập đã dừng: {reason}"
     },
     "result": {
       "imported": "Đã nhập",
@@ -37263,6 +37300,48 @@
         "cancelled": {
           "title": "Đã hủy việc nhập nhân viên",
           "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "Đã nhập dữ liệu chấm công xong",
+          "body": "Mở nhật ký nhập để xem dữ liệu chấm công đã được thêm."
+        },
+        "failed": {
+          "title": "Quá trình nhập chấm công đã dừng",
+          "body": "Mở nhật ký nhập để xem những gì đã được lưu và lý do dừng."
+        },
+        "cancelled": {
+          "title": "Quá trình nhập chấm công đã dừng",
+          "body": "Mở nhật ký nhập để xem những gì đã được lưu."
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "Bản xem trước tính lại đã sẵn sàng",
+          "body": "Mở Tính lại chấm công để xem những gì sẽ thay đổi."
+        },
+        "failed": {
+          "title": "Bản xem trước tính lại đã dừng",
+          "body": "Mở Tính lại chấm công để xem lý do."
+        },
+        "cancelled": {
+          "title": "Bản xem trước tính lại đã dừng",
+          "body": "Mở Tính lại chấm công để bắt đầu lại."
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "Đã tính lại chấm công",
+          "body": "Mở Tính lại chấm công để xem những ngày đã thay đổi."
+        },
+        "failed": {
+          "title": "Quá trình tính lại chấm công đã dừng",
+          "body": "Mở Tính lại chấm công để xem lý do."
+        },
+        "cancelled": {
+          "title": "Quá trình tính lại chấm công đã dừng",
+          "body": "Mở Tính lại chấm công để xem chi tiết."
         }
       }
     }
