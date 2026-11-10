@@ -20,7 +20,7 @@ import {company,employment,entitlementEligibilityRule,entitlementTemplate,leaveL
 import {columnRefSql,decodeJsonColumns,decodeJsonRow,jsonColumnsSql,jsonRowSql,projectFields} from '../db/json-row';
 import {sharedSnapshotValue} from '../db/shared-read';
 import {stagedHomeReads} from './calendar-window-inputs';
-import type {RuleSelect,TemplateResolverInputs,TemplateSelect} from './entitlement-template';
+import type {RuleSelect,TemplateResolverInputs,TemplateSelect} from '../packs/leave/service';
 import {coalescedNegatedSumText,coalescedSumText,compareNumeric,NUMERIC_ZERO,numericText,parseNumeric,sqlLike,subtractNumeric,
  sumNumeric,type PgNumeric} from '../lib/pg-numeric';
 import {A2C_RECALC_REASON_PREFIX,AGED_FORFEIT_REASON,POLICY_RECALC_REASON_PREFIX,PROFILE_RECALC_REASON_PREFIX,

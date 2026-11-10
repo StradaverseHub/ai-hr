@@ -388,7 +388,7 @@ function ownInputsRead(ctx:SessionContext,subject:Subject,payroll:'on'|'failed',
    return {range:to>=start?{from:start,to}:null,overtimeFrom:ot.window.start,capDate};
   },
   attendance:moduleState(ctx,'attendance',subject.companyId)==='on'?{covering:{from,to:yesterday},corrections:CORRECTIONS_READ,
-   overtime:{status:'pending',from,limit:200},capMonths:[from.slice(0,7),today.slice(0,7)]}:null,
+   overtime:{status:'pending' as const,from,limit:200},capMonths:[from.slice(0,7),today.slice(0,7)]}:null,
   leave:moduleState(ctx,'leave',subject.companyId)==='on',claims:moduleState(ctx,'claims',subject.companyId)==='on',toil:moduleState(ctx,'toil',subject.companyId)==='on',
   payroll:moduleState(ctx,'payroll',subject.companyId)==='on',assessmentYear:Number(today.slice(0,4)),letterLimit:LETTER_LIMIT,
   performance:moduleState(ctx,'performance',subject.companyId)==='on',lifecycle:moduleState(ctx,'lifecycle',subject.companyId)==='on'});

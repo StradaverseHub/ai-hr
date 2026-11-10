@@ -48,7 +48,6 @@ import {leaveTypeApplySummaries,myCurrentLeaveSnapshotCards,nextApprovedLeavePre
 import {employeeClockingLocationLabelsTx,ownClockTodayHomeTx,ownClockTodaySummaryTx,readOwnClockDayInputsTx,resolvedScheduleForTx} from '../../packs/attendance/service';
 import {readEmployeeHomeTimeOff} from '../../core/employee-home-time-off';
 import {stagedHomeSummary,stagedHomeTimeOff,stagedHomeToday} from '../helpers/home-staged-cards';
-import {eq} from 'drizzle-orm';
 import type {Tx} from '../../db/client';
 import {readCalendarWindowInputsTx,withStagedHomeReads,type CalendarWindowInputs} from '../../core/calendar-window-inputs';
 import {holidayDatesFor,originalHolidayCalendarFor} from '../../core/holidays';

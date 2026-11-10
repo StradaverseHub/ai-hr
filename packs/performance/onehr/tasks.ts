@@ -201,7 +201,7 @@ export async function pendingPerformanceTasksFromStatement(ctx: SessionContext, 
   try { assertModuleGate(ctx, 'performance'); } catch { return null; }
   try {
     const [row] = await withTenant(ctx, (tx) => tx.execute<{ performance: unknown }>(sql`select ${pendingPerformanceTasksBundleSql(ctx)} as performance`), { readOnlySnapshot: true });
-    return pendingPerformanceTasksFromBundle(row?.performance, scopeIds);
+    return pendingPerformanceTasksFromBundle(row?.performance, scopeIds, ctx);
   } catch { return null; }
 }
 

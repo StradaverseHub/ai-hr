@@ -1188,7 +1188,7 @@ export async function onboardingAssignedTasksFromBundle(value: unknown, ctx: Ses
     }
     for (const row of section.cases) {
         const id = (row.data as { id?: unknown } | null)?.id;
-        if (typeof id === 'string' && row.updatedAt !== null) updated.set(id, cases.updatedAt.mapFromDriverValue(row.updatedAt));
+        if (typeof id === 'string' && row.updatedAt !== null) updated.set(id, cases.updatedAt.mapFromDriverValue(row.updatedAt) as Date);
     }
     return onboardingAssignedMetadata(assigned, updated);
 }

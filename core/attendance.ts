@@ -6285,7 +6285,8 @@ export type OvertimePlanChecklistRow = { id: string; attendanceDate: string; sta
  * the overtime date than the section was read with. The rows on or after it come first in the owner's order (overtime
  * date, newest first), so the section's page filtered to them begins exactly the owner's page for that bound. */
 export function overtimePlanChecklistFromBundle(value: unknown, limit: number | undefined, from?: string): OvertimePlanChecklistRow[] | null {
-  const read = decodeJsonFieldRows(OVERTIME_PLAN_CHECKLIST_FIELDS, value), page = overtimePlanLimit(limit);
+  // Every field is a non-null column of the owner's one-table select, so each row has the owner's own types.
+  const read = decodeJsonFieldRows(OVERTIME_PLAN_CHECKLIST_FIELDS, value) as (OvertimePlanChecklistRow & { createdAt: Date })[], page = overtimePlanLimit(limit);
   const rows = from === undefined ? read : read.filter((row) => row.attendanceDate >= from);
   if (rows.length > page) {
     const last = rows[page - 1], next = rows[page];

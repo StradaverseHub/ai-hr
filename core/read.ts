@@ -5804,7 +5804,10 @@ export function leaveRequestsChecklistBundleSql(employmentId: string) {
     where: eq(leaveRequest.employmentId, employmentId), order: sql`${leaveRequest.startDate} desc` });
 }
 export function leaveRequestsChecklistFromBundle(value: unknown, locale?: string) {
-  return decodeJsonFieldRows(LEAVE_REQUEST_CHECKLIST_FIELDS, value).map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n as Parameters<typeof pickName>[1], locale) }));
+  // Non-null columns of the owner's inner-joined select: each decoded row has the owner's own types.
+  type Row = { id: string; leaveTypeId: string; leaveType: string; i18n: unknown; startDate: string; endDate: string; days: string;
+    status: (typeof leaveRequest.$inferSelect)['status']; hasDocument: boolean };
+  return (decodeJsonFieldRows(LEAVE_REQUEST_CHECKLIST_FIELDS, value) as Row[]).map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n as Parameters<typeof pickName>[1], locale) }));
 }
 
 /** The reporting-line vocabulary as the edge stores it, in the enum's DECLARATION order — which is also

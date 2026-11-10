@@ -72,7 +72,7 @@ const LOOP_LEVEL_FIELDS={workerId:terasLoopLevel.workerId,companyId:terasLoopLev
 const loopWatchWhere=(ctx:SessionContext)=>and(eq(terasLoopLevel.tenantId,ctx.tenantId),eq(terasLoopLevel.level,0));
 const liveLoops=(gates:ReadonlyMap<string,{gate:{run:boolean}}>,p:LoopCardRead):LoopId[]=>LOOP_IDS.filter(id=>gates.get(id)?.gate.run===true &&
  (!p.employeeOnly || id==='loop_missed_clock_outs'||id==='loop_missing_employee_data'||id==='loop_document_expiry'));
-type LoopCaseRow={id:string;workerId:string;companyId:string;employmentId:string|null;recipient:string;facts:LoopFacts;personId:string|null;name:string|null;companyName:string|null};
+type LoopCaseRow={id:string;workerId:LoopId;companyId:string;employmentId:string|null;recipient:string;facts:LoopFacts;personId:string|null;name:string|null;companyName:string|null};
 type LoopKey={workerId:string;companyId:string};
 export async function readLoopCards(ctx:SessionContext,p:LoopCardRead):Promise<readonly LoopCard[]>{
  if(!ctx.userId||ctx.agent||(p.employeeOnly&&!ctx.personId))return [];
@@ -125,8 +125,8 @@ export function readLoopCardsFromSection(ctx:SessionContext,scopeIds:readonly st
  if(!live.length)return autonomy;
  const cases=(decodeJsonFieldRows(LOOP_CASE_FIELDS,raw.cases) as LoopCaseRow[]).filter(row=>(live as readonly string[]).includes(row.workerId));
  try{
-  return loopCardsFrom(ctx,p,today??todayInKualaLumpur(),{live,paused:decodeJsonFieldRows(LOOP_PAUSE_FIELDS,raw.paused),fetched:cases,
-   watching:decodeJsonFieldRows(LOOP_LEVEL_FIELDS,raw.watching)},autonomy,true);
+  return loopCardsFrom(ctx,p,today??todayInKualaLumpur(),{live,paused:decodeJsonFieldRows(LOOP_PAUSE_FIELDS,raw.paused) as LoopKey[],fetched:cases,
+   watching:decodeJsonFieldRows(LOOP_LEVEL_FIELDS,raw.watching) as LoopKey[]},autonomy,true);
  }catch(error){if(error instanceof LoopCardOrderTie)return null;throw error;}
 }
 
@@ -155,8 +155,8 @@ export function readLoopCardsFromBundle(ctx:SessionContext,value:unknown,today?:
  if(!live.length)return [];
  const cases=(decodeJsonFieldRows(LOOP_CASE_FIELDS,raw.cases) as LoopCaseRow[]).filter(row=>(live as readonly string[]).includes(row.workerId));
  try{
-  return loopCardsFrom(ctx,p,today??todayInKualaLumpur(),{live,paused:decodeJsonFieldRows(LOOP_PAUSE_FIELDS,raw.paused),fetched:cases,
-   watching:decodeJsonFieldRows(LOOP_LEVEL_FIELDS,raw.watching)},[],true);
+  return loopCardsFrom(ctx,p,today??todayInKualaLumpur(),{live,paused:decodeJsonFieldRows(LOOP_PAUSE_FIELDS,raw.paused) as LoopKey[],fetched:cases,
+   watching:decodeJsonFieldRows(LOOP_LEVEL_FIELDS,raw.watching) as LoopKey[]},[],true);
  }catch(error){if(error instanceof LoopCardOrderTie)return null;throw error;}
 }
 class LoopCardOrderTie extends Error{}

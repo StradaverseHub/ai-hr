@@ -1306,7 +1306,9 @@ export type OwnReplacementChecklistRow = Pick<ReplacementRequestRow, 'id' | 'sta
 /** The owner's requests in its order, each with its lines' worked dates in the lines' order. */
 export function ownReplacementChecklistFromBundle(value: unknown): OwnReplacementChecklistRow[] {
   const raw = value as { heads: unknown; lines: unknown };
-  const heads = decodeJsonFieldRows(OWN_REPLACEMENT_CHECKLIST_FIELDS, raw.heads), lines = decodeJsonFieldRows(OWN_REPLACEMENT_LINE_CHECKLIST_FIELDS, raw.lines);
+  // Non-null columns of the owner's own selects: each decoded row has the owner's own types.
+  const heads = decodeJsonFieldRows(OWN_REPLACEMENT_CHECKLIST_FIELDS, raw.heads) as Pick<ReplacementRequestRow, 'id' | 'status' | 'submittedOn'>[],
+    lines = decodeJsonFieldRows(OWN_REPLACEMENT_LINE_CHECKLIST_FIELDS, raw.lines) as { requestId: string; workedDate: string }[];
   const byRequest = new Map<string, { workedDate: string }[]>();
   for (const line of lines) { const list = byRequest.get(line.requestId) ?? []; list.push({ workedDate: line.workedDate }); byRequest.set(line.requestId, list); }
   return heads.map((head) => ({ id: head.id, status: head.status, submittedOn: head.submittedOn, dates: byRequest.get(head.id) ?? [] }) as OwnReplacementChecklistRow);
