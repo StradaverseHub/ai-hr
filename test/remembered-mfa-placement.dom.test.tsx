@@ -33,6 +33,13 @@ vi.mock('../app/admin/security-center/password-policy/actions', () => ({
 vi.mock('../app/admin/settings/login/remembered-mfa-actions', () => ({
   saveRememberedMfaAction: vi.fn(),
 }));
+// Automatic sign-out also renders here (board f3edc521); its own placement is proven in session-policy-placement.
+vi.mock('../core/session-policy', () => ({
+  readSessionPolicyEditor: vi.fn(async () => ({idleTimeoutMinutes: 15, revision: 0})),
+}));
+vi.mock('../app/admin/settings/login/actions', () => ({
+  saveSessionPolicyAction: vi.fn(),
+}));
 
 afterEach(() => {
   cleanup();
@@ -50,7 +57,7 @@ describe('authenticator frequency on the Password page', () => {
     expect(frequency).toHaveAttribute('max', '90');
     expect(frequency.closest('form')?.querySelector('input[name="revision"]')).toHaveValue('3');
     const forms = [...document.querySelectorAll('form')];
-    expect(forms).toHaveLength(2);
+    expect(forms).toHaveLength(3);
     expect(forms[1]).toBe(frequency.closest('form'));
     expect(state.read).toHaveBeenCalledTimes(1);
   });
