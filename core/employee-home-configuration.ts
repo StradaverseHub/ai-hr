@@ -9,6 +9,7 @@ import {validateEmployeeHomeConfiguration,type EmployeeHomeConfiguration} from '
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {readEmployeeHomeIdentityContextTx,HomeAccessError} from './employee-home';
 import {isOwnProfileEditEmploymentTx} from './read';
+import {isPrincipalSnapshotCurrentTx} from './read-only-snapshot';
 
 export class HomeConfigurationAccessError extends Error{
  constructor(){super('This employee Home configuration is outside your company scope.');this.name='HomeConfigurationAccessError';}
@@ -54,8 +55,7 @@ export async function readOwnEmployeeHomeConfiguration(ctx:SessionContext,reques
   const employmentId=identity.selectedEmploymentId;
   if(!companyId||!employmentId||!hiredOn||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))
    throw new HomeAccessError('employmentUnavailable');
-  const [proof]=await tx.execute(sql`SELECT app.principal_snapshot_current() AS allowed`) as unknown as {allowed:boolean}[];
-  if(!proof?.allowed)throw new HomeConfigurationAccessError();
+  if(!await isPrincipalSnapshotCurrentTx(tx))throw new HomeConfigurationAccessError();
   signal?.throwIfAborted();
   const view=await currentTx(tx,ctx,companyId,identity.role);
   return {...view,employmentId,hiredOn};

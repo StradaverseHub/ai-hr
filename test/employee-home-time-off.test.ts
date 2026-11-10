@@ -67,7 +67,9 @@ describe('Home Time Off consumes canonical own leave facts',()=>{
    expect(result).toMatchObject({employmentId:own.employmentId,month,payrollEnabled:true,team:{days:expect.any(Array)}});
    expect(read).toHaveBeenCalledTimes(2);
    expect(read.mock.calls[0]?.[2]).toMatchObject({readOnlySnapshot:true});
-   expect(read.mock.calls[1]?.[2]?.readOnlySnapshot).toBeUndefined();
+   // Payroll keeps its own separate read: one metadata statement in its own read-only snapshot, without the history
+   // barrier it never needed (core/payroll-self-metadata.ts).
+   expect(read.mock.calls[1]?.[2]).toMatchObject({readOnlySnapshot:true});
    const from=result.days[0].date,to=result.days[result.days.length-1].date;
    expect(await readHomeTeamCalendar(own.ctx,own.employmentId,from,to)).toEqual(result.team);
   }finally{read.mockRestore();}

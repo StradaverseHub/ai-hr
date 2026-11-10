@@ -3,9 +3,9 @@ import {getLocale,getTranslations} from 'next-intl/server';
 import {isLocale} from '@/i18n/config';
 import {OwnHomeConfigurationRead} from '@/core/employee-home-configuration';
 import {readEmployeeHomeGreeting} from '@/core/employee-home-greeting';
-import {HOME_SUMMARY_LOOKAHEAD_DAYS,readEmployeeHomeSummary} from '@/core/employee-home-summary';
+import {readEmployeeHomeSummary} from '@/core/employee-home-summary';
 import {OwnHomeTaskSourceRead,readEmployeeHomeTasks} from '@/core/employee-home-tasks';
-import {validateEmployeeHomeSummary} from '@/lib/employee-home-summary';
+import {HOME_SUMMARY_LOOKAHEAD_DAYS,validateEmployeeHomeSummary} from '@/lib/employee-home-summary';
 import {
  DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,isHomeSharingCard,HOME_SHARING_STREAM,type HomeSharingCard,type HomeSharingFrame,
 } from '@/lib/employee-home-sharing-cohort';
@@ -128,9 +128,9 @@ export async function GET(request:Request){
     // Disconnect stops eligible readers at their next admission check and drops pending values. The cards' own
     // date-local reads for this employment (holidays, replacement days, leave presence, dated company proof) are
     // read once for the widest window they need and sliced per card (db/shared-read.ts).
-    const window=homeReadWindow(cards,month);
     void withSharedReadSnapshot(session,()=>{
-     if(window)declareSharedReadWindow(employmentId,window.from,window.to);
+     // An optimization only: a window that cannot be computed leaves every card reading its own.
+     try{const window=homeReadWindow(cards,month);if(window)declareSharedReadWindow(employmentId,window.from,window.to);}catch{/* own windows */}
      return Promise.allSettled(cards.map(read));
     },signal).then(stop,stop);
    },

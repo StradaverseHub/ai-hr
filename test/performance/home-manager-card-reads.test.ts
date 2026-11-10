@@ -163,7 +163,9 @@ async function seedTenant(t:number,today:string){
   {tenantId:b.tenantId,country:'MY',companyId:companies[1].companyId,holidayDate:day(5),name:'Fictional company holiday'},
  ]);
  const pick=(position:number)=>users.find(u=>u.index===t*250+position)!;
- await owner.db.insert(s.replacementHoliday).values({tenantId:b.tenantId,employmentId:pick(4).employmentId,companyId:pick(4).companyId,sourceHolidayId:national.id,
+ const [policy]=await owner.db.insert(s.replacementHolidayPolicy).values({tenantId:b.tenantId,companyId:pick(4).companyId,effectiveFrom:today,regime:'MY_EA_60D',
+  confirmed:true,restMode:'scheduled_rest',searchDays:30,reason:'Fictional replacement policy',createdBy:'fixture'}).returning();
+ await owner.db.insert(s.replacementHoliday).values({tenantId:b.tenantId,employmentId:pick(4).employmentId,companyId:pick(4).companyId,sourceHolidayId:national.id,policyId:policy.id,
    sourceDate:day(3),sourceName:national.name,inputDigest:'fictional',status:'allocated',replacementDate:day(4),reason:'Fictional replacement'});
  await owner.db.insert(s.leaveRequest).values([
   {tenantId:b.tenantId,employmentId:pick(4).employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:day(1),endDate:day(2),days:'2',status:'approved' as const},
@@ -278,6 +280,8 @@ const sharedStats:SharedReadStats[]=[];
 (globalThis as {__aihrPerfSharedRead?:(stats:SharedReadStats)=>void}).__aihrPerfSharedRead=stats=>{sharedStats.push(stats);};
 const sharedSummary=(rows:SharedReadStats[])=>({sessions:rows.length,joins:rows.reduce((n,row)=>n+row.joins,0),fallbacks:rows.reduce((n,row)=>n+row.fallbacks,0),
  sharedStatements:rows.reduce((n,row)=>n+row.statements,0),memoHits:rows.reduce((n,row)=>n+row.memoHits,0),
+ // Carrier round trips: statements the driver pipelined while others were outstanding share one.
+ flights:rows.reduce((n,row)=>n+(row.flights??0),0),carriers:rows.reduce((n,row)=>n+row.carriers,0),
  refused:rows.reduce((all,row)=>{for(const [reason,count] of Object.entries(row.refused))all[reason]=(all[reason]??0)+count;return all;},{} as Record<string,number>)});
 /** Results without the response clock, which differs between any two reads. */
 const comparable=(value:unknown)=>JSON.stringify(value,(key,item)=>key==='serverNow'?undefined:item);

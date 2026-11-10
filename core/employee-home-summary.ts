@@ -17,8 +17,8 @@ import {homeSummaryCandidates,renderHomeTemplate,type HomeSummaryCandidate,type 
 import type {EmployeeHomeSummary,HomeActionRefusal} from '../lib/employee-home-summary';
 import type {Locale} from '../i18n/config';
 
-/** Seven civil business dates ahead is a presentation window, not an eligibility or payroll rule. */
-export const HOME_SUMMARY_LOOKAHEAD_DAYS=7;
+import {HOME_SUMMARY_LOOKAHEAD_DAYS} from '../lib/employee-home-summary';
+export {HOME_SUMMARY_LOOKAHEAD_DAYS};
 export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:string,locale:Locale,replacementHolidayName:string,configurationRead?:OwnHomeConfigurationRead,taskSourceRead?:OwnHomeTaskSourceRead,payrollRead?:OwnHomePayrollRead):Promise<EmployeeHomeSummary>{
  // The configuration owner already proves the exact current own employment and its company role.
  const {configuration,employmentId:subjectId}=await (configurationRead?.read(ctx,employmentId)??readOwnEmployeeHomeConfiguration(ctx,employmentId));

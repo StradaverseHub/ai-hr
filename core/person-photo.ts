@@ -1,6 +1,7 @@
 import {assertWorkforcePersonTx} from './workforce-access';
 import {createHash} from 'node:crypto';
 import {isAdmin} from '../lib/authz-model';
+import {isPrincipalSnapshotCurrentTx} from './read-only-snapshot';
 import {freshProfileEditPolicyTx,freshProfilePresentationPolicyTx,readProfilePresentationSnapshotPolicyTx,lockProfileEditPolicyTx} from './profile-edit-policy';
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {getSetting} from './entitlements';
@@ -178,8 +179,7 @@ export async function removePersonPhoto(ctx: SessionContext, p: { personId: stri
 /** Shared avatars retain their independent directory/self visibility. The actual login proves
  * ownership; a caller-supplied Person or old role claim cannot choose a different read course. */
 async function photoReadPredicateTx(tx:Tx,ctx:SessionContext,options?:{presentationSnapshot:true}){
-  const [principal]=await tx.execute<{current:boolean}>(sql`select app.principal_snapshot_current() as current`);
-  if(principal?.current!==true)return sql`false`;
+  if(!await isPrincipalSnapshotCurrentTx(tx))return sql`false`;
   if(!isAdmin(ctx)){
     const policy=await (options?.presentationSnapshot?readProfilePresentationSnapshotPolicyTx:freshProfilePresentationPolicyTx)(tx,ctx);
     if(!policy.visible.has('profile.personal_details.photo'))return sql`NOT app.is_self_person(${personPhoto.personId})`;

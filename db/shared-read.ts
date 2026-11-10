@@ -22,7 +22,10 @@ export class SharedReadIncompatibleError extends Error{
  constructor(readonly reason:string){super('This read must use its own transaction ('+reason+').');this.name='SharedReadIncompatibleError';}
 }
 
-export type SharedReadStats={joins:number;fallbacks:number;statements:number;memoHits:number;refused:Record<string,number>;failures:Record<string,number>;carriers:number};
+/** `flights`: network round trips of the carrier's statements. The driver pipelines statements sent while others are in
+ * flight on the carrier connection, so several statements can share one round trip; a flight starts whenever a
+ * statement is sent with none outstanding. */
+export type SharedReadStats={joins:number;fallbacks:number;statements:number;memoHits:number;refused:Record<string,number>;failures:Record<string,number>;carriers:number;flights:number};
 type Join={tainted:boolean};
 const sessions=new AsyncLocalStorage<SharedReadSession<unknown>>();
 const joins=new AsyncLocalStorage<Join>();
@@ -49,7 +52,9 @@ export class SharedReadSession<Tx>{
  private works=0;
  /** True only while a carrier sets its own transaction-local identity, before any owner can join it. */
  bootstrapping=false;
- readonly stats:SharedReadStats={joins:0,fallbacks:0,statements:0,memoHits:0,refused:{},failures:{},carriers:0};
+ readonly stats:SharedReadStats={joins:0,fallbacks:0,statements:0,memoHits:0,refused:{},failures:{},carriers:0,flights:0};
+ /** Statements sent on the current carrier and not yet answered (diagnostic flight count only). */
+ inFlight=0;
  /** `idleRelease`: a request-scoped session is shared by several independent compositions of one request (the
   * Today sections and the shell's approvals). It is never closed; its carrier commits whenever no composition and
   * no owner is inside it, so it never holds a connection between them. A later composition opens a fresh carrier. */
@@ -213,6 +218,8 @@ type DriverTransaction={unsafe(query:string,params?:unknown[],options?:unknown):
 export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSession<unknown>):T{
  const driver=sqlTx as unknown as DriverTransaction;
  const memo=new Map<string,Promise<unknown>>();
+ // Settings already in force on this carrier transaction: READ ONLY from BEGIN, and any SET LOCAL jit it was sent.
+ const held=new Map<string,string>([['transaction','read only']]);
  const unsafe=(query:string,params?:unknown[],options?:unknown):Pending=>{
   let mode:'rows'|'values'='rows',started:Promise<unknown>|undefined;
   const run=()=>started??=execute(query,params,options,mode);
@@ -222,8 +229,9 @@ export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSes
  };
  const send=(query:string,params:unknown[]|undefined,options:unknown,mode:'rows'|'values')=>{
   session.stats.statements++;
+  if(session.inFlight++===0)session.stats.flights++;
   const sent=driver.unsafe(query,params,options);
-  return Promise.resolve(mode==='values'?sent.values():sent).catch(error=>{
+  return Promise.resolve(mode==='values'?sent.values():sent).finally(()=>{session.inFlight--;}).catch(error=>{
    const code=String((error as {code?:unknown})?.code??'unknown');
    if(code==='25006'&&learnedWriters.size<LEARNED_LIMIT)learnedWriters.add(query);
    session.failed(code);throw error;
@@ -234,6 +242,19 @@ export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSes
   if(session.bootstrapping){const sent=driver.unsafe(query,params,options);return Promise.resolve(mode==='values'?sent.values():sent);}
   const statement=classifySharedStatement(query);
   if(statement.kind==='refuse')return Promise.reject(session.refuse(statement.reason));
+  // A transaction-local setting the carrier already holds changes nothing when sent again: answer it here. The carrier
+  // is begun READ ONLY, so SET TRANSACTION READ ONLY is always already in force.
+  if(statement.kind==='pass'&&options===undefined){
+   const setting=/^\s*set\s+local\s+jit\s*(?:=|to)\s*(on|off)\s*;?\s*$/i.exec(query)?.[1]?.toLowerCase()??(/^\s*set\s+transaction\s+read\s+only\s*;?\s*$/i.test(query)?'read only':null);
+   if(setting){
+    const key=setting==='read only'?'transaction':'jit';
+    if(held.get(key)===setting){session.stats.memoHits++;return Promise.resolve(Object.assign([],{count:null,command:'SET'}));}
+    // Held from the moment it is sent: the driver runs this carrier's statements in order, and a failure aborts the
+    // whole carrier, rerunning every owner on its own.
+    held.set(key,setting);
+    return send(query,params,options,mode);
+   }
+  }
   if(statement.kind==='pass'||options!==undefined)return send(query,params,options,mode);
   const key=mode+'\u0000'+query+'\u0000'+paramKey(params);
   let first=memo.get(key);

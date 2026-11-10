@@ -16,6 +16,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // See core/module-gate.ts for why the binding is the import and not a call in each function.
 import { withClaimsTenant as withTenant } from './module-gate';
 import { assertModuleGate } from './module-gate';
+import {isRepeatableReadOnlyTx} from './read-only-snapshot';
 import { actorOf, appendEvent } from '../db/events';
 import {
   claimAttachment,
@@ -4016,9 +4017,7 @@ async function pendingClaimSubjectsTx(tx:Tx,ctx:SessionContext,companyIds:string
   await assertAssignedWorkPrincipalTx(tx,ctx);
   // This private header reader relies on one repeatable, read-only snapshot. Refuse any future
   // caller that changes that contract rather than reusing a proof across different authority reads.
-  const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
-   and current_setting('transaction_read_only')='on' as safe`);
-  if(snapshot?.safe!==true)throw new Error('Claims metadata requires a read-only repeatable snapshot.');
+  if(!await isRepeatableReadOnlyTx(tx))throw new Error('Claims metadata requires a read-only repeatable snapshot.');
   if(companyIds?.length===0)return [];
   // Preserve the native visibility/delegation candidate owners and actual Claim RLS.
   // Probe pending existence before projecting labels, then keep each native call bounded.

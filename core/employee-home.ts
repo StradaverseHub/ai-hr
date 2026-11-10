@@ -4,6 +4,7 @@ import {settleReadGroup} from '../lib/settle-read-group';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {isAiPrincipalCurrentTx,isAiPresentationPrincipalCurrentTx} from './ai-principal';
 import {person} from '../db/schema';
+import {isRepeatableReadOnlyTx} from './read-only-snapshot';
 import {isCurrentOwnHomeEmploymentTx,isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx,type OwnEmploymentSubject} from './read';
 import {hasPersonPhotoTx,hasPersonPhotoSnapshotTx} from './person-photo';
 import {isAdmin} from '../lib/authz-model';
@@ -113,9 +114,7 @@ export async function readEmployeeHomeIdentityTx(tx:Tx,ctx:SessionContext,reques
 export async function readEmployeeHomeIdentityContextTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<{
  identity:EmployeeHomeIdentity;companyId:string|null;hiredOn:string|null;
 }>{
- const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
-  and current_setting('transaction_read_only')='on' as safe`);
- if(snapshot?.safe!==true)throw new HomeAccessError('employmentUnavailable');
+ if(!await isRepeatableReadOnlyTx(tx))throw new HomeAccessError('employmentUnavailable');
  // The repeatable read snapshot admits this presentation once. Its login, role,
  // subject and dated-company facts use the same committed view. Writers retain their barriers.
  const selection=await ownHomeSubjectSelectionTx(tx,ctx,requestedEmploymentId);

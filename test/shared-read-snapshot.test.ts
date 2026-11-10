@@ -166,6 +166,21 @@ describe('shared read snapshot',()=>{
   expect(own).toEqual({window:null,values:[{n:2},{n:3}]});
  });
 
+ it('answers a carrier setting it already holds without sending it again',async()=>{
+  const owner=()=>withTenant(ctxA,async tx=>{
+   await tx.execute(sql`set local jit=off`);await tx.execute(sql`set local jit=off`);await tx.execute(sql`SET TRANSACTION READ ONLY`);
+   const [row]=await tx.execute(sql`select current_setting('jit') as jit,current_setting('transaction_read_only') as ro`) as unknown as {jit:string;ro:string}[];
+   await tx.execute(sql`set local jit=on`);
+   const [after]=await tx.execute(sql`select current_setting('jit') as later`) as unknown as {later:string}[];
+   return {...row,later:after.later};
+  });
+  const shared=await withSharedReadSnapshot(ctxA,owner);
+  expect(shared).toEqual({jit:'off',ro:'on',later:'on'});
+  expect(sessions[0].fallbacks).toBe(0);
+  // Sent: one jit=off, the first read, jit=on and the second read. The repeated jit=off and READ ONLY are held.
+  expect(sessions[0].statements).toBe(4);
+ });
+
  it('classifies statements conservatively',()=>{
   const kind=(query:string)=>{const result=classifySharedStatement(query);return result.kind==='refuse'?'refuse:'+result.reason:result.kind;};
   expect(kind('select "id" from "employment" where "employment"."id" = $1')).toBe('memo');
