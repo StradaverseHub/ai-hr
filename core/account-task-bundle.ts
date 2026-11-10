@@ -1,20 +1,23 @@
-/** Home's account-grained task sources in ONE statement (docs/adr/2026-11-10-home-request-read-scope.md, decision 6).
+/** Home's account-grained task sources in ONE statement (docs/adr/2026-11-10-home-request-read-scope.md, decisions 7 and 10).
  *
  * The Home Tasks card and the Summary count read every workflow owner of core/approvals-inbox.ts and Home's personal
  * owners (core/employee-home-tasks.ts). Each owner opened its own reads: about thirty statements per Home stream even
  * for someone with no work at all. Here every owner's section is one sub-select of a single statement, built next to
  * the owner it reproduces (the owner and the section share their SQL text), and evaluated in the caller's own session,
  * so row-level security, delegation, organisation scope and the self-approval ban are the owner's own:
- *  - decided in SQL: Leave (current step authority, leaveApproverDecisionSql), Leave Credit and the Claims preview with
- *    its exact count (decisionEmploymentAuthoritySql), Notice acknowledgements, standard feedback and the performance
- *    review queue (the owner's TypeScript combination runs on the rows);
- *  - empty answers: every other owner's own first probe. Its empty result is the owner's empty result; a candidate is
- *    never decided here.
- * A section the statement cannot answer exactly returns `null` from its owner's `FromBundle` and that owner alone runs
- * itself, unchanged, in the same snapshot: a Leave chain outside the exact step kinds, decision-header candidates,
- * Attendance, Profile, Rewards, assessment, calibration, OneHR feedback and onboarding candidates, a module gate that
- * would refuse, an AI Centre activity, or a Claims guard outside a repeatable snapshot. Without a login, or when the
- * principal proof fails, or when the statement itself fails, every owner runs exactly as before.
+ *  - decided in SQL: Leave and leave cancellations (the current step's approvers in order, leaveStepDecisionSql), the
+ *    resignation and employment review headers, Attendance (frozen workflow decision functions, or
+ *    decisionEmploymentAuthoritySql), Leave Credit and the Claims preview with its exact count;
+ *  - the owner's rows, with the owner's TypeScript run on them: Notice acknowledgements, standard and OneHR feedback,
+ *    the performance review queue, assessment and calibration work, Rewards (when no access observation is due) and the
+ *    onboarding interpreter;
+ *  - the owner's first transaction: Profile candidates, whose locked decision transaction still runs for them.
+ * A section the statement cannot answer exactly returns `null` from its owner's `FromBundle` (or its projection throws)
+ * and that owner alone runs itself, unchanged, in the same snapshot: a Leave or cancellation step whose `limit 1` rows
+ * disagree, an alternate id the owner would trim, an unknown step kind or a named step naming nobody (the owner's own
+ * error), an Attendance request whose frozen subject differs, a Rewards observation that is due (a write), a cycle,
+ * policy or case id the owner's parse would refuse, a module gate that would refuse or an AI Centre activity. Without a
+ * login, or when the principal proof fails, or when the statement itself fails, every owner runs exactly as before.
  *
  * Module entitlements stay the caller's decision (core/approvals-inbox.ts InboxModules): a module the caller did not
  * enable contributes no sub-select and no owner call. test/performance/home-manager-card-reads.test.ts compares every
@@ -29,12 +32,12 @@ import {pendingLeaveTaskBundleSql,pendingLeaveTasksFromBundle,pendingLeaveCancel
  pendingReplacementLeaveTaskBundleSql,pendingReplacementLeaveTasksFromBundle} from '../packs/leave/service';
 import {pendingClaimTaskPreviewBundleSql,pendingClaimTaskPreviewFromBundle} from '../packs/claims/service';
 import {pendingAttendanceTaskBundleSql,pendingAttendanceTasksFromBundle} from '../packs/attendance/service';
-import {pendingProfileTaskBundleSql,pendingProfileTasksFromBundle} from './profile';
+import {pendingProfileTaskBundleSql,pendingProfileCandidatesFromBundle} from './profile';
 import {pendingResignationTaskBundleSql,pendingResignationTasksFromBundle} from './offboarding';
 import {pendingReviewTaskBundleSql,pendingReviewTasksFromBundle} from './employment-review';
 import {pendingNoticeAcknowledgementTaskBundleSql,pendingNoticeAcknowledgementTasksFromBundle} from './notice';
 import {pendingPerformanceTasksBundleSql,pendingPerformanceTasksFromBundle,pendingStandardFeedbackTaskBundleSql,
- pendingStandardFeedbackTasksFromBundle,pendingOnehrFeedbackCandidatesBundleSql} from '../packs/performance/service';
+ pendingStandardFeedbackTasksFromBundle,pendingOnehrFeedbackTaskBundleSql,pendingOnehrFeedbackTasksFromBundle} from '../packs/performance/service';
 import {pendingRewardTasksBundleSql,pendingRewardTasksFromBundle} from '../packs/rewards/service';
 import {onboardingAssignedTasksBundleSql,onboardingAssignedTasksFromBundle} from '../packs/lifecycle/service';
 import type {AssignedApprovalMetadata,AssignedPersonalTaskMetadata,PackTaskItem} from '../lib/assigned-work';
@@ -57,7 +60,11 @@ export type AccountTaskBundle=Readonly<{
  hrReviews:AssignedApprovalMetadata[]|null;
  replacement:{id:string;personId:string;employee:string|null;createdAt:Date}[]|null;
  attendance:AssignedApprovalMetadata[]|null;
+ /** The Profile owner's result where its first transaction found no candidate ([]); null otherwise. */
  profile:AssignedApprovalMetadata[]|null;
+ /** The Profile owner's candidates (its first transaction), for its locked decision transaction
+  * (core/profile.ts pendingProfileTasksFromCandidates); null where the owner must run whole. */
+ profileCandidates:AssignedApprovalMetadata[]|null;
  notices:ReturnType<typeof pendingNoticeAcknowledgementTasksFromBundle>|null;
  performance:PackTaskItem[]|null;
  rewards:PackTaskItem[]|null;
@@ -84,7 +91,8 @@ export async function readAccountTaskBundle(ctx:SessionContext,modules:AccountTa
  const companyIds=read.companyIds===undefined?undefined:[...read.companyIds],personal=read.personal;
  // A gate or AI Centre check that the owner itself would run decides only that owner: it reads on its own.
  const performance=gateOpen(ctx,'performance')&&!aiCentreActivity(ctx.tenantId),rewards=gateOpen(ctx,'rewards'),lifecycle=gateOpen(ctx,'lifecycle');
- const none=sql`null::jsonb`,today=todayInKualaLumpur(),person=ctx.personId??null;
+ const none=sql`null::jsonb`,today=todayInKualaLumpur();
+ const person=ctx.personId??null;
  let row:Record<string,unknown>|undefined;
  try{
   row=await withTenant(ctx,async tx=>{
@@ -98,14 +106,14 @@ export async function readAccountTaskBundle(ctx:SessionContext,modules:AccountTa
     ['hr_reviews',pendingReviewTaskBundleSql(tx,ctx,'hr',companyIds)],
     ['replacement',pendingReplacementLeaveTaskBundleSql(ctx,companyIds)],
     ['attendance',modules.attendance?pendingAttendanceTaskBundleSql(ctx,companyIds):none],
-    ['profile',pendingProfileTaskBundleSql(ctx,companyIds)],
+    ['profile',pendingProfileTaskBundleSql(tx,ctx,companyIds)],
     ['notices',read.notices?pendingNoticeAcknowledgementTaskBundleSql(ctx,today):none],
-    ['performance',modules.performance?pendingPerformanceTasksBundleSql(ctx):none],
-    ['rewards',modules.rewards?pendingRewardTasksBundleSql():none],
+    ['performance',modules.performance&&performance?pendingPerformanceTasksBundleSql(ctx):none],
+    ['rewards',modules.rewards&&rewards?pendingRewardTasksBundleSql(companyIds):none],
     ['claims',modules.claims?pendingClaimTaskPreviewBundleSql(ctx,ACCOUNT_TASK_CLAIM_PREVIEW,companyIds):none],
     ['standard_feedback',personal&&modules.performance?pendingStandardFeedbackTaskBundleSql(ctx):none],
-    ['onehr_feedback',personal&&modules.performance?pendingOnehrFeedbackCandidatesBundleSql(ctx):none],
-    ['onboarding',personal&&modules.lifecycle?onboardingAssignedTasksBundleSql(ctx):none],
+    ['onehr_feedback',personal&&modules.performance&&performance?pendingOnehrFeedbackTaskBundleSql(ctx):none],
+    ['onboarding',personal&&modules.lifecycle&&lifecycle?onboardingAssignedTasksBundleSql(ctx):none],
    ];
    const [result]=await tx.execute<Record<string,unknown>>(sql`select (app.principal_snapshot_current()
      and (${person}::uuid is null or app.is_self_person(${person}::uuid))) as principal,
@@ -121,6 +129,12 @@ export async function readAccountTaskBundle(ctx:SessionContext,modules:AccountTa
  // A section whose projection refuses its rows is that owner's to report: it reads on its own.
  const decide=<T,>(read:()=>T|null):T|null=>{try{return read();}catch{return null;}};
  const module=<T,>(enabled:boolean,gate:boolean,read:()=>T|null,absent:T):T|null=>!enabled?absent:gate?decide(read):null;
+ const profileCandidates=decide(()=>pendingProfileCandidatesFromBundle(result.profile));
+ let onboarding:AssignedPersonalTaskMetadata[]|null=null;
+ if(personal){
+  if(!modules.lifecycle)onboarding=[];
+  else if(lifecycle){try{onboarding=await onboardingAssignedTasksFromBundle(result.onboarding,ctx);}catch{onboarding=null;}}
+ }
  return Object.freeze({
   modules:Object.freeze({...modules}),read:Object.freeze({...read,...(companyIds?{companyIds:Object.freeze(companyIds)}:{})}),
   leave:decide(()=>pendingLeaveTasksFromBundle(result.leave)),
@@ -130,13 +144,14 @@ export async function readAccountTaskBundle(ctx:SessionContext,modules:AccountTa
   hrReviews:decide(()=>pendingReviewTasksFromBundle(result.hr_reviews)),
   replacement:decide(()=>pendingReplacementLeaveTasksFromBundle(result.replacement)),
   attendance:module(modules.attendance,true,()=>pendingAttendanceTasksFromBundle(result.attendance),[]),
-  profile:decide(()=>pendingProfileTasksFromBundle(result.profile)),
+  profile:profileCandidates&&profileCandidates.length===0?[]:null,
+  profileCandidates,
   notices:read.notices?decide(()=>pendingNoticeAcknowledgementTasksFromBundle(result.notices)):[],
-  performance:module(modules.performance,performance,()=>pendingPerformanceTasksFromBundle(result.performance,companyIds),[]),
+  performance:module(modules.performance,performance,()=>pendingPerformanceTasksFromBundle(result.performance,companyIds,ctx),[]),
   rewards:module(modules.rewards,rewards,()=>pendingRewardTasksFromBundle(result.rewards),[]),
   claims:module(modules.claims,true,()=>pendingClaimTaskPreviewFromBundle(result.claims),{items:[],total:0}),
   standardFeedback:personal?module(modules.performance,true,()=>pendingStandardFeedbackTasksFromBundle(result.standard_feedback),[]):null,
-  onehrFeedback:personal?module(modules.performance,performance,()=>result.onehr_feedback===false?[]:null,[]):null,
-  onboarding:personal?module(modules.lifecycle,lifecycle,()=>onboardingAssignedTasksFromBundle(result.onboarding,ctx),[]):null,
+  onehrFeedback:personal?module(modules.performance,performance,()=>pendingOnehrFeedbackTasksFromBundle(result.onehr_feedback),[]):null,
+  onboarding,
  });
 }

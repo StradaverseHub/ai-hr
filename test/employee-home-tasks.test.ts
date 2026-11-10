@@ -149,10 +149,11 @@ describe('Home Waiting for You projects complete actual owner assignments',()=>{
    expect(standardRead).toHaveBeenCalledExactlyOnceWith(peer.ctx);
    expect(onehrRead).toHaveBeenCalledExactlyOnceWith(peer.ctx);
    standardRead.mockClear();onehrRead.mockClear();
-   // The account task statement answers standard feedback; an assigned OneHR panel is left to its owner's window check.
+   // The account task statement answers standard feedback and the assigned OneHR panel (the owner's cycle and window
+   // checks run on the panel's bundled cycle), so neither owner reads.
    expect(await read()).toEqual(owners);
    expect(standardRead).not.toHaveBeenCalled();
-   expect(onehrRead).toHaveBeenCalledExactlyOnceWith(peer.ctx);
+   expect(onehrRead).not.toHaveBeenCalled();
   }finally{standardRead.mockRestore();onehrRead.mockRestore();}
   await perf.declineOnehrFeedback(peer.ctx,assigned[0].id);expect(await perf.pendingOnehrFeedbackTaskMetadata(peer.ctx)).toEqual([]);
  });

@@ -100,6 +100,41 @@ calculation, authority, ordering or failure changes.
    `getEmployeeClaimTypes`, which also computes every limit, balance, item and form field; `claimTypeReceiptRules` reads
    those two facts for the same types in the same order behind the same Claims gate.
 
+10. **The deferred task owners are decided in the account task statement** (`claude/home-bundles-task-owners-20261110`).
+   Every owner decision 7 left to read whenever it had a candidate is now a section beside that owner, sharing its SQL
+   text and run in the caller's session, so its result is the owner's own:
+   - *Leave and leave cancellations.* `leaveStepDecisionSql` (core/leave.ts) decides the current step as
+     `assertCanDecideLeaveStep` does: the primary approver, then the stored alternates kept exactly as
+     `sanitizeApprovalLevels` keeps them (known kinds only, a fixed kind with its named employment, a dynamic kind's id
+     cleared), tried in order; the first approver that allows decides, refusals are skipped and a non-refusal error
+     stops. An unordered `limit 1` (the manager's manager line, the head of a subject's current assignment) is decided
+     for every row it could return, and rows that agree answer exactly; an approver whose rows disagree is still exact
+     when a later approver allows. A cancellation's copied steps use the same decision with its own
+     'leave.cancellation' task type over the owner's unchanged header query.
+   - *Resignations and employment reviews.* The owners' header queries unchanged, kept where their authority checks
+     return (`canDecideSql`, the admin role, the stored manager's person): every throw of those checks is a refusal.
+   - *Attendance.* The owner's candidates, a frozen workflow request of routing version 2, 3 or 4 decided by its own
+     native function, every other candidate by `decisionEmploymentAuthoritySql`.
+   - *Rewards* (when no access observation is due, decision 4), *assessment and calibration work*, *OneHR feedback* and
+     *onboarding*: the owner's own rows (with a calibration session's routing work, each onboarding case's update time by
+     its JSON id, and the claimant directory when an item carries a claim), and the owner's TypeScript runs on them
+     (`combineRewardTasks`, `parseAssessmentRows`/`assessmentSources`, `calibrationTaskOf`, the cycle and window checks,
+     `interpretOnboardingTasks`).
+   - *Profile.* The owner's first transaction (probe and candidate query). No candidate is its empty result; candidates
+     still pass its locked decision transaction (`pendingProfileTasksFromCandidates`).
+   Each remaining case leaves only that owner to read on its own, as before: a step whose `limit 1` rows disagree with no
+   later allowing approver; an alternate whose named id is not plain UUID text (the owner trims it in JavaScript and
+   casts it in PostgreSQL); an unknown step kind or a named-person step naming nobody, and an Attendance request whose
+   frozen subject differs from its candidate (the owner throws its own non-refusal error, which a statement cannot
+   reproduce as the same error object from inside the owner's transaction); a Rewards observation that is due (a write
+   that must commit first); Profile candidates (the decision takes the exclusive profile-write barrier, re-resolves the
+   policy after it and locks routed subjects FOR UPDATE, which a read-only statement can neither take nor reproduce); a
+   cycle, policy or case id the owner's own parse would refuse, a claimed onboarding item without a preloaded directory, a
+   module gate that refuses or an AI Centre activity. test/performance/home-manager-card-reads.test.ts seeds candidates
+   for each section after its traces and compares every section, scoped and unscoped, and every composed result with the
+   owners; the focused Performance, Rewards, onboarding and OneHR feedback tests compare their sections on real
+   fixtures.
+
 ## Not done here
 
 - **Before payroll as one read.** Its remaining owners still read separately: the attendance day chain
@@ -108,10 +143,10 @@ calculation, authority, ordering or failure changes.
   notices, reviews and onboarding acknowledgements. Each needs the treatment Tasks received: a section beside its owner
   that shares the owner's SQL, a TypeScript projection fed from the preloaded rows, and an owner-against-section
   equivalence comparison. The attendance chain follows the Today bundle.
-- **Deferred task owners.** Leave cancellations, resignations and employment reviews (behind their shared candidate
-  probe), Attendance, Profile, Rewards, assessment and calibration work, OneHR feedback and onboarding still read on
-  their own whenever they have a candidate. Cancellations can reuse `leaveApproverDecisionSql` with its own task type;
-  the others need their decision proofs as SQL beside their owners, or the assigned work index below.
+- **Deferred task owners.** Decision 10 brought them into the account task statement. Still reading on their own: Profile
+  candidates' locked decision transaction, Rewards while an access observation is due, and decision 10's exact-or-owner
+  cases (disagreeing `limit 1` rows, an untrimmed alternate id, the owners' own non-refusal errors, parse refusals). The
+  full lists (`listPendingTasks`) still read the owners; the assigned work index below would answer them too.
 - **Entitlement tables in Time Off.** A leave type with an entitlement table in force still builds its template
   resolver live (its eligibility rules and their organisation matches): the bundle could carry the rule rows and the
   dated assignment, but `resolveOrgCriteriaTargets` would first need the same preloaded-input refactor and equivalence

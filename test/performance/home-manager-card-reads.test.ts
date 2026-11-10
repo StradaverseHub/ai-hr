@@ -760,7 +760,7 @@ it('completes every manager Home card and Today section read without a handled f
    const leaveService=await import('../../packs/leave/service'),claimsService=await import('../../packs/claims/service');
    const attendanceService=await import('../../packs/attendance/service'),performanceService=await import('../../packs/performance/service');
    const rewardsService=await import('../../packs/rewards/service'),lifecycleService=await import('../../packs/lifecycle/service');
-   const {pendingProfileTaskMetadata}=await import('../../core/profile'),{pendingNoticeAcknowledgementTasks}=await import('../../core/notice');
+   const {pendingProfileTaskMetadata,pendingProfileTasksFromCandidates}=await import('../../core/profile'),{pendingNoticeAcknowledgementTasks}=await import('../../core/notice');
    const {pendingResignationTaskMetadata}=await import('../../core/offboarding'),{pendingReviewTaskMetadata}=await import('../../core/employment-review');
    const ctx=actor.ctx,inboxModules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
    const modules={...inboxModules,lifecycle:isModuleEnabled(ctx,'lifecycle')};
@@ -810,6 +810,13 @@ it('completes every manager Home card and Today section read without a handled f
     const value=(scopedBundle as Record<string,unknown>|null)?.[name];
     if(value===null||value===undefined){scopedDeferred.push(name);continue;}
     compare(subject,'bundle:scoped:'+name,await outcome(()=>withIndependentTransactions(read)),{ok:true,value});
+   }
+   // Profile candidates read by the statement, through the owner's own locked decision transaction.
+   for(const [name,read,candidates] of [['profileCandidates',()=>pendingProfileTaskMetadata(ctx),bundle?.profileCandidates],
+    ['scoped:profileCandidates',()=>pendingProfileTaskMetadata(ctx,scopeIds),scopedBundle?.profileCandidates]] as const){
+    if(!candidates?.length)continue;
+    answered[name]=candidates.length;
+    compare(subject,'bundle:'+name,await outcome(()=>withIndependentTransactions(read)),await outcome(()=>withIndependentTransactions(()=>pendingProfileTasksFromCandidates(ctx,candidates))));
    }
    bundleSections.push({subject,deferred,answered,scopedDeferred});
    const ownersOnly=<T,>(work:()=>Promise<T>)=>withIndependentTransactions(()=>bundles.withOwnerTaskReads(work));

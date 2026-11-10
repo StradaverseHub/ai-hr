@@ -26,7 +26,8 @@
  *
  * Payload: id, kind, subject name, owner timestamp and link. No band, rating, score, plan body or remark.
  */
-import { and, asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableName, inArray, sql, type SQL } from 'drizzle-orm';
+import { decodeJsonColumns, jsonColumnsSql } from '../../../db/json-row';
 import {settleReadGroup} from '../../../lib/settle-read-group';
 import type { SessionContext } from '../../../db/client';
 import { employment, onehrCycle, onehrPlan, onehrReview, reviewCycle } from '../../../db/schema';
@@ -35,7 +36,7 @@ import { managerPendingReviews, managerPendingReviewsBundleSql, managerPendingRe
 import type { PackTaskItem } from '../../../lib/assigned-work';
 import { competencySchema, kpiSchema, policySchema } from './model';
 import { reviewWorkspaceParts } from './workspace-model';
-import { pendingCalibrationCandidatesBundleSql, pendingCalibrationTasks } from './calibration-list';
+import { pendingCalibrationTasks, pendingCalibrationTasksBundleSql, pendingCalibrationTasksFromBundle } from './calibration-list';
 
 /** companyId null: a group-wide calibration session. reviewId: the assessment, for review-scoped kinds only. */
 type Sourced = PackTaskItem & { companyId: string | null; reviewId?: string };
@@ -83,24 +84,40 @@ async function assessmentTasks(ctx: SessionContext): Promise<Sourced[]> {
       .innerJoin(onehrCycle, eq(onehrCycle.cycleId, onehrReview.cycleId))
       .where(assessmentTaskWhere(ids))
       .orderBy(desc(reviewCycle.periodEnd), asc(onehrReview.reviewId));
-    // This runs from the root layout: a row the canonical schemas reject yields no task rather than a
-    // 500 on every route. Its own screen still reports the defect.
-    const parsed = rows.flatMap((row) => {
-      const policy = policySchema.safeParse(row.policy), kpis = kpiSchema.array().safeParse(row.kpis), competencies = competencySchema.array().safeParse(row.competencies);
-      return policy.success && kpis.success && competencies.success ? [{ row, policy: policy.data, kpis: kpis.data, competencies: competencies.data }] : [];
-    });
+    const parsed = parseAssessmentRows(rows);
     if (!parsed.length) return [];
-    // Plan year follows the workspace: a year-end cycle plans the following year.
-    const planYear = (periodEnd: string) => Number(periodEnd.slice(0, 4)) + 1;
     const planned = parsed.filter(({ policy }) => policy.modules.idp && policy.kind === 'year_end');
     const plans = planned.length
-      ? await tx.select({ id: onehrPlan.id, employmentId: onehrPlan.employmentId, planYear: onehrPlan.planYear, status: onehrPlan.status, createdAt: onehrPlan.createdAt })
+      ? await tx.select(assessmentPlanFields)
         .from(onehrPlan)
         .where(and(
           inArray(onehrPlan.employmentId, [...new Set(planned.map(({ row }) => row.employmentId))]),
           inArray(onehrPlan.planYear, [...new Set(planned.map(({ row }) => planYear(row.periodEnd)))]),
         ))
       : [];
+    return assessmentSources(parsed, plans, mine);
+  });
+}
+
+type AssessmentRow = {
+  reviewId: string; employmentId: string; companyId: string; kpis: unknown; competencies: unknown; competencyStatus: (typeof onehrReview.$inferSelect)['competencyStatus'];
+  resultsSubmittedAt: Date | null; managerPerformance: (typeof onehrReview.$inferSelect)['managerPerformance']; createdAt: Date; periodEnd: string; policy: unknown;
+  header: { name: string; ownEmploymentIds: string[] } | null; manager: boolean;
+};
+const assessmentPlanFields = { id: onehrPlan.id, employmentId: onehrPlan.employmentId, planYear: onehrPlan.planYear, status: onehrPlan.status, createdAt: onehrPlan.createdAt };
+type AssessmentPlan = { id: string; employmentId: string; planYear: number; status: string; createdAt: Date };
+// Plan year follows the workspace: a year-end cycle plans the following year.
+const planYear = (periodEnd: string) => Number(periodEnd.slice(0, 4)) + 1;
+/** This runs from the root layout: a row the canonical schemas reject yields no task rather than a 500 on every route.
+ * Its own screen still reports the defect. */
+function parseAssessmentRows(rows: readonly AssessmentRow[]) {
+  return rows.flatMap((row) => {
+    const policy = policySchema.safeParse(row.policy), kpis = kpiSchema.array().safeParse(row.kpis), competencies = competencySchema.array().safeParse(row.competencies);
+    return policy.success && kpis.success && competencies.success ? [{ row, policy: policy.data, kpis: kpis.data, competencies: competencies.data }] : [];
+  });
+}
+/** assessmentTasks' tasks from its parsed rows and the plans it read for them (a plan is unique per employment and year). */
+function assessmentSources(parsed: ReturnType<typeof parseAssessmentRows>, plans: readonly AssessmentPlan[], mine: string[]): Sourced[] {
     const out: Sourced[] = [];
     for (const { row, policy, kpis, competencies } of parsed) {
       const plan = policy.modules.idp && policy.kind === 'year_end'
@@ -118,7 +135,6 @@ async function assessmentTasks(ctx: SessionContext): Promise<Sourced[]> {
       }
     }
     return out;
-  });
 }
 
 function assessmentTaskWhere(ids: SQL) {
@@ -136,20 +152,38 @@ export async function pendingPerformanceTasks(ctx: SessionContext, scopeIds: str
   return combinePerformanceTasks((await settleReadGroup(sources.map((source) => ()=>source(ctx)))).flat(), scopeIds);
 }
 
-/** The pack's three task sources in the one-statement Home task read (core/account-task-bundle.ts): the review queue's
- * own rows, and whether any assessment or calibration row exists. Those two need the owner's schema parsing, plan read
- * and window checks; when either has a row, pendingPerformanceTasksFromBundle defers to the owner. */
+const assessmentReviewColumns = [onehrReview.reviewId, onehrReview.employmentId, onehrReview.companyId, onehrReview.kpis, onehrReview.competencies,
+  onehrReview.competencyStatus, onehrReview.resultsSubmittedAt, onehrReview.managerPerformance, onehrReview.createdAt];
+/** The pack's three task sources in the one-statement Home task read (core/account-task-bundle.ts): the review queue's own
+ * rows; assessmentTasks' own employments, rows (the same columns, predicates and order) and the plans of those rows'
+ * employments; and pendingCalibrationTasks' session rows with their work. The owners' TypeScript runs on them
+ * (pendingPerformanceTasksFromBundle). */
 export function pendingPerformanceTasksBundleSql(ctx: SessionContext) {
   const personId = ctx.personId;
-  const assessment = personId ? sql`case when not exists(select 1 from public.employment mine where mine.person_id=${personId}::uuid) then false
-    else exists(select 1 from ${onehrReview} inner join ${reviewCycle} on ${eq(reviewCycle.id, onehrReview.cycleId)} inner join ${onehrCycle} on ${eq(onehrCycle.cycleId, onehrReview.cycleId)}
-     where ${assessmentTaskWhere(sql`array(select mine.id::text from public.employment mine where mine.person_id=${personId}::uuid)`)}) end` : sql`false`;
-  return sql`jsonb_build_object('reviews',${managerPendingReviewsBundleSql(ctx)},'assessment',${assessment},'calibration',${pendingCalibrationCandidatesBundleSql(ctx)})`;
+  const mine = sql`array(select mine.id::text from public.employment mine where mine.person_id=${personId}::uuid)`;
+  const empty = sql`jsonb_build_object('mine','[]'::jsonb,'rows','[]'::jsonb,'plans','[]'::jsonb)`;
+  const assessment = personId ? sql`case when not exists(select 1 from public.employment mine where mine.person_id=${personId}::uuid) then ${empty} else
+    (with assessment_row as materialized (select jsonb_build_object('review',${jsonColumnsSql(getTableName(onehrReview), assessmentReviewColumns)},
+       'cycle',${jsonColumnsSql(getTableName(reviewCycle), [reviewCycle.periodEnd])},'config',${jsonColumnsSql(getTableName(onehrCycle), [onehrCycle.policy])},
+       'header',app.onehr_review_header(${onehrReview.reviewId}),'manager',app.onehr_effective_reviewer(${onehrReview.reviewId})) as row,
+       ${onehrReview.employmentId} as employment_id,${reviewCycle.periodEnd} as period_end,${onehrReview.reviewId} as review_id
+      from ${onehrReview} inner join ${reviewCycle} on ${eq(reviewCycle.id, onehrReview.cycleId)} inner join ${onehrCycle} on ${eq(onehrCycle.cycleId, onehrReview.cycleId)}
+      where ${assessmentTaskWhere(mine)})
+     select jsonb_build_object('mine',to_jsonb(${mine}),
+      'rows',coalesce((select jsonb_agg(assessment_row.row order by assessment_row.period_end desc,assessment_row.review_id) from assessment_row),'[]'::jsonb),
+      'plans',coalesce((select jsonb_agg(${jsonColumnsSql(getTableName(onehrPlan), Object.values(assessmentPlanFields))}) from ${onehrPlan}
+        where ${onehrPlan.employmentId} in (select assessment_row.employment_id from assessment_row)),'[]'::jsonb))) end` : empty;
+  return sql`jsonb_build_object('reviews',${managerPendingReviewsBundleSql(ctx)},'assessment',${assessment},'calibration',${pendingCalibrationTasksBundleSql(ctx)})`;
 }
-export function pendingPerformanceTasksFromBundle(value: unknown, scopeIds: string[] | undefined): PackTaskItem[] | null {
-  const section = value as { reviews: unknown; assessment: boolean; calibration: boolean };
-  if (section.assessment || section.calibration) return null;
-  return combinePerformanceTasks(managerReviewSources(managerPendingReviewsFromBundle(section.reviews)), scopeIds);
+export function pendingPerformanceTasksFromBundle(value: unknown, scopeIds: string[] | undefined, ctx: SessionContext): PackTaskItem[] | null {
+  const section = value as { reviews: unknown; assessment: { mine: string[]; rows: { review: Record<string, unknown>; cycle: Record<string, unknown>; config: Record<string, unknown>;
+    header: AssessmentRow['header']; manager: boolean }[]; plans: Record<string, unknown>[] }; calibration: unknown };
+  const rows = section.assessment.rows.map((row) => ({ ...decodeJsonColumns(assessmentReviewColumns, row.review), ...decodeJsonColumns([reviewCycle.periodEnd], row.cycle),
+    ...decodeJsonColumns([onehrCycle.policy], row.config), header: row.header, manager: row.manager }) as AssessmentRow);
+  const plans = section.assessment.plans.map((plan) => decodeJsonColumns(Object.values(assessmentPlanFields), plan) as AssessmentPlan);
+  const assessment = assessmentSources(parseAssessmentRows(rows), plans, section.assessment.mine);
+  return combinePerformanceTasks([...managerReviewSources(managerPendingReviewsFromBundle(section.reviews)), ...assessment,
+    ...pendingCalibrationTasksFromBundle(ctx, section.calibration)], scopeIds);
 }
 
 function combinePerformanceTasks(all: Sourced[], scopeIds: string[] | undefined): PackTaskItem[] {

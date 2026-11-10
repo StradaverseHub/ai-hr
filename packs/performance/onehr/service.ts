@@ -1471,10 +1471,35 @@ function pendingOnehrFeedbackWhere(ctx:SessionContext){
     sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${onehrPanel.peerEmploymentId}
       AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`);
 }
-/** pendingOnehrFeedbackTaskMetadata's empty answer in the one-statement Home task read (core/account-task-bundle.ts): no
- * panel row is the owner's empty result. A row needs the owner's cycle window check, so the owner then runs itself. */
-export function pendingOnehrFeedbackCandidatesBundleSql(ctx:SessionContext){
- return sql`exists(select 1 from ${onehrPanel} inner join ${peerFeedbackRequest} on ${eq(peerFeedbackRequest.id,onehrPanel.requestId)} where ${pendingOnehrFeedbackWhere(ctx)})`;
+/** pendingOnehrFeedbackTaskMetadata in the one-statement Home task read (core/account-task-bundle.ts): the owner's rows in
+ * its order, each with the review cycle (status and configured policy) loadCycle would read for its cycle id, under the
+ * same RLS. pendingOnehrFeedbackTasksFromBundle runs the owner's cycle and window checks on them. */
+export function pendingOnehrFeedbackTaskBundleSql(ctx:SessionContext){
+ return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',feedback_row.id,'subjectName',feedback_row.subject_name,'sourceUpdatedAt',feedback_row.source_updated_at,
+   'cycleId',feedback_row.cycle_id,'cycles',(select coalesce(jsonb_agg(jsonb_build_object('status',${reviewCycle.status},'policy',${onehrCycle.policy})),'[]'::jsonb)
+     from ${reviewCycle} inner join ${onehrCycle} on ${eq(onehrCycle.cycleId,reviewCycle.id)}
+     where ${reviewCycle.id}=case when feedback_row.cycle_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then feedback_row.cycle_id::uuid end))
+   order by feedback_row.source_updated_at desc,feedback_row.id),'[]'::jsonb)
+  from (select ${onehrPanel.requestId} as id,${peerFeedbackRequest.subjectName} as subject_name,${peerFeedbackRequest.createdAt} as source_updated_at,
+    app.onehr_feedback_card(${onehrPanel.requestId})->>'cycleId' as cycle_id
+   from ${onehrPanel} inner join ${peerFeedbackRequest} on ${eq(peerFeedbackRequest.id,onehrPanel.requestId)} where ${pendingOnehrFeedbackWhere(ctx)}) feedback_row)`;
+}
+/** The owner's loop over the bundled rows: loadCycle's id parse, single cycle and policy parse, then its status and window
+ * checks. Anything loadCycle would throw throws here too, and the owner then reads (and throws) itself. */
+export function pendingOnehrFeedbackTasksFromBundle(value:unknown):AssignedPersonalTaskMetadata[]{
+ const rows=value as {id:string;subjectName:string;sourceUpdatedAt:string;cycleId:string;cycles:{status:string;policy:unknown}[]}[];
+ const cycles=new Map<string,{status:string;policy:z.infer<typeof policySchema>}>(),result:AssignedPersonalTaskMetadata[]=[];
+ for(const row of rows){
+  let cycle=cycles.get(row.cycleId);
+  if(!cycle){
+   uuid.parse(row.cycleId);
+   if(row.cycles.length!==1)throw Error('Performance review cycle not found.');
+   cycle={status:row.cycles[0].status,policy:policySchema.parse(row.cycles[0].policy)};cycles.set(row.cycleId,cycle);
+  }
+  if(!['open','calibration'].includes(cycle.status)||!assessmentWorkWindowOpen(cycle.policy,'f360'))continue;
+  result.push({id:row.id,kind:'feedback',subjectName:row.subjectName,sourceUpdatedAt:new Date(row.sourceUpdatedAt),linkPath:`/performance/assessment/feedback/${row.id}`});
+ }
+ return result;
 }
 /** Form assignment metadata, repeating the canonical feedback owner's current window and frozen
  * recipient gates. No feedback answers, remarks, draft or assessment ratings enter this projection. */
