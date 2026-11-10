@@ -5419,6 +5419,13 @@
       "when": 1793330099911,
       "tag": "9911_workforce_employment_access_set",
       "breakpoints": true
+    },
+    {
+      "idx": 9912,
+      "version": "7",
+      "when": 1793330099912,
+      "tag": "9912_bulk_job_movement_check",
+      "breakpoints": true
     }
   ]
 }

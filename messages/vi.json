@@ -2981,6 +2981,20 @@
         "waiting": "Đang chờ trình xử lý nhập. Tiến độ đã được lưu; đừng xác nhận việc nhập lần nữa.",
         "otherRunning": "Một lần nhập biến động khác do bạn bắt đầu vẫn đang chạy. Hãy chờ hoàn tất trước khi xác nhận lần mới.",
         "workerUnavailable": "Dịch vụ nhập chưa chạy. Lần nhập của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy."
+      },
+      "movementCheckJob": {
+        "queued": "Đang chờ bắt đầu",
+        "reading": "Đang đọc tệp",
+        "checking": "Đang kiểm tra biến động",
+        "finishing": "Đang ghi nhận lần kiểm tra",
+        "completed": "Đã kiểm tra xong",
+        "failed": "Việc kiểm tra đã dừng",
+        "cancelled": "Việc kiểm tra đã dừng",
+        "progressCount": "Đã kiểm tra {done}/{total} nhân viên",
+        "backgroundHelp": "Không có gì được lưu cho đến khi bạn xác nhận việc nhập. Hãy giữ trang này mở để xem kết quả khi kiểm tra xong.",
+        "waiting": "Đang chờ trình xử lý nhập. Việc kiểm tra sẽ tự động bắt đầu; đừng tải tệp lên lần nữa.",
+        "otherRunning": "Một lần kiểm tra biến động khác do bạn bắt đầu vẫn đang chạy. Hãy chờ hoàn tất trước khi kiểm tra tệp mới.",
+        "workerUnavailable": "Dịch vụ nhập chưa chạy. Tệp của bạn được giữ lại và việc kiểm tra sẽ tự động bắt đầu ngay khi dịch vụ chạy."
       }
     },
     "wizard": {
@@ -37291,6 +37305,20 @@
         "cancelled": {
           "title": "Việc nhập biến động đã dừng",
           "body": "Nhân viên đã được lưu vẫn giữ các biến động của mình. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "movementCheck": {
+        "completed": {
+          "title": "Đã kiểm tra tệp biến động",
+          "body": "Lần kiểm tra được ghi trong Lịch sử nhập. Nếu bạn đã rời màn hình nhập, hãy tải tệp lên lần nữa để xem lại và xác nhận."
+        },
+        "failed": {
+          "title": "Việc kiểm tra biến động đã dừng",
+          "body": "Mở Lịch sử nhập để xem lý do. Chưa có gì được lưu."
+        },
+        "cancelled": {
+          "title": "Việc kiểm tra biến động đã dừng",
+          "body": "Chưa có gì được lưu. Mở Lịch sử nhập để xem chi tiết."
         }
       }
     }

@@ -4,13 +4,15 @@
  * file and saves each employee in its own short chunk (core/movement-import-worker.ts). */
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {isAdmin} from '../lib/authz-model';
 import {BULK_JOB_ALREADY_RUNNING,BulkJobError,bulkJobTx,bulkJobWorkerStatusTx,enqueueBulkJobTx,isBulkJobId,listBulkJobsTx,type BulkJobRow} from './bulk-job';
-import {recordImportFailure} from './import-history';
+import {importSourceName,recordImportFailure} from './import-history';
 import {chosenMovementEmployees,confirmableMovementAttemptTx,type MovementConfirmInput,type MovementUploadResult} from './movement-import-history';
 import type {BulkJobState} from '../lib/bulk-job';
-import {MOVEMENT_IMPORT_ALREADY_RUNNING,type MovementImportJobProgress,type MovementImportJobResult,type MovementImportJobState} from '../lib/movement-import-job';
+import {MOVEMENT_CHECK_ALREADY_RUNNING,MOVEMENT_IMPORT_ALREADY_RUNNING,type MovementCheckJobProgress,type MovementCheckJobResult,type MovementCheckJobState,type MovementImportJobProgress,type MovementImportJobResult,type MovementImportJobState} from '../lib/movement-import-job';
 
 export const MOVEMENT_IMPORT_KIND='movement_import';
+export const MOVEMENT_CHECK_KIND='movement_check';
 export class MovementImportJobError extends Error{constructor(message:string,readonly status=400){super(message);this.name='MovementImportJobError';}}
 /** What the worker reads back: the confirmation exactly as the browser sent it, and the screen's language for the
  * file's localized headers and the Import History texts (as the request's translator supplied them). */
@@ -76,3 +78,48 @@ export function movementImportJobHttpError(error:unknown){
  if(error instanceof MovementImportJobError)return Response.json({error:error.message},{status:error.status,headers:{'Cache-Control':'private, no-store'}});
  return Response.json({error:'The import request could not be completed. Reopen its progress before retrying.'},{status:500,headers:{'Cache-Control':'private, no-store'}});
 }
+
+// ---- The check of an uploaded file (kind movement_check, draft 9912), core/movement-import-check-worker.ts.
+/** What the check worker reads back: the file's name, the screen's language (localized headers and refusal texts) and
+ * the browser's operation key (one attempt per upload, as the synchronous check recorded it). The bytes are the job's
+ * source content, removed when the job ends. */
+export type MovementCheckJobInput={name:string;locale:string;operationKey?:string};
+const checkState:Record<BulkJobState,MovementCheckJobState>={queued:'queued',preparing:'reading',running:'checking',finalizing:'finishing',discarding:'finishing',completed:'completed',failed:'failed',cancelled:'cancelled'};
+export function movementCheckJobProgress(row:BulkJobRow,worker:'running'|'unavailable'='running'):MovementCheckJobProgress{
+ return{id:row.id,sourceName:row.source_name||(row.input as MovementCheckJobInput|null)?.name||'',state:checkState[row.state],stepsTotal:row.steps_total,stepsDone:row.steps_done,error:row.error,
+  result:(row.state==='completed'?row.result:null) as MovementCheckJobResult|null,
+  updatedAt:new Date(row.updated_at).toISOString(),createdAt:new Date(row.created_at).toISOString(),worker:row.state==='queued'?worker:'running'};
+}
+async function checkProgressTx(tx:Tx,row:BulkJobRow){return movementCheckJobProgress(row,row.state==='queued'?await bulkJobWorkerStatusTx(tx,MOVEMENT_CHECK_KIND):'running');}
+const checkKernelError=(error:unknown)=>{
+ if(error instanceof BulkJobError)return new MovementImportJobError(error.message===BULK_JOB_ALREADY_RUNNING?MOVEMENT_CHECK_ALREADY_RUNNING:error.message==='Job unavailable.'?'Check unavailable.':error.message,error.status);
+ return error;
+};
+/**
+ * Start checking an uploaded movement file. The request only stores the file on the job; the protected import worker
+ * reads it, checks each employee in its own short chunk (every change rolled back) and records the attempt with the
+ * reviewed plan exactly as the synchronous check did. A repeated request with the same operation key rejoins its job.
+ */
+export async function startMovementCheckJob(ctx:SessionContext,input:{name:string;content:Buffer;locale:string;operationKey?:string}):Promise<{job:MovementCheckJobProgress;existing:boolean}>{
+ if(!ctx.userId)throw new MovementImportJobError('Sign in again to import movements.',401);
+ if(!isAdmin(ctx))throw new MovementImportJobError('Only an admin can import movements.',403);
+ const operationKey=input.operationKey&&isBulkJobId(input.operationKey)?input.operationKey:undefined;
+ const name=importSourceName(input.name,'movements.xlsx');
+ try{
+  return await withTenant(ctx,async tx=>{
+   // The file's own name, as the synchronous check read and recorded it (format detection, attempt name).
+   const jobInput:MovementCheckJobInput={name:input.name.slice(0,1000),locale:input.locale,...(operationKey?{operationKey}:{})};
+   const {row,existing}=await enqueueBulkJobTx(tx,ctx,{kind:MOVEMENT_CHECK_KIND,operationKey,source:{name,content:input.content},input:jobInput});
+   return{job:await checkProgressTx(tx,row),existing};
+  });
+ }catch(error){throw checkKernelError(error);}
+}
+export async function getMovementCheckJob(ctx:SessionContext,id:string){
+ try{return await withTenant(ctx,async tx=>checkProgressTx(tx,await bulkJobTx(tx,id,{kind:MOVEMENT_CHECK_KIND})));}catch(error){throw checkKernelError(error);}
+}
+/** The signed-in user's most recent movement checks, newest first (the screen rejoins a running one). */
+export async function listMovementCheckJobs(ctx:SessionContext){return withTenant(ctx,async tx=>{
+ const rows=await listBulkJobsTx(tx,ctx,MOVEMENT_CHECK_KIND,10);
+ const worker=rows.some(r=>r.state==='queued')?await bulkJobWorkerStatusTx(tx,MOVEMENT_CHECK_KIND):'running';
+ return rows.map(row=>movementCheckJobProgress(row,worker));
+});}

@@ -7,23 +7,23 @@ import {movementPageHref} from '@/lib/personnel-movement-navigation';
 import {Button,Card,Field,inputCls} from '@/components/ui';
 import {movementImportFieldLabel,movementImportIssueText} from '@/lib/movement-import-issues';
 import {movementEmployeeKey,type MovementImportPreview,type MovementImportResult,type MovementImportRow} from '@/lib/movement-import-contract';
-import {MOVEMENT_IMPORT_ALREADY_RUNNING,movementImportJobActive,type MovementImportJobProgress} from '@/lib/movement-import-job';
+import {MOVEMENT_CHECK_ALREADY_RUNNING,MOVEMENT_IMPORT_ALREADY_RUNNING,movementCheckJobActive,movementImportJobActive,type MovementCheckJobProgress,type MovementCheckJobResult,type MovementImportJobProgress} from '@/lib/movement-import-job';
 import {MovementImportJobPanel} from './movement-import-progress';
 function download(data:BlobPart,type:string,name:string){const url=URL.createObjectURL(new Blob([data],{type}));const anchor=document.createElement('a');anchor.href=url;anchor.download=name;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 const HISTORY='/admin/personnel/import/history';
 /**
  * ac6645ec — one template for every company and movement type: no company or type is chosen first. The
  * upload is recorded in Import History; confirming names only the checked attempt and the chosen employees.
- * Confirming starts a background job; the screen follows it (and rejoins it after navigation) and then shows the
- * same result the confirmation used to return.
+ * Checking and confirming each start a background job; the screen follows it (and rejoins a running one after
+ * navigation) and then shows the same preview or result the request used to return.
  */
 export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(pending:boolean)=>void}){
- const t=useTranslations('people.import.movement'),j=useTranslations('people.import.movementJob'),labels=useTranslations();
+ const t=useTranslations('people.import.movement'),j=useTranslations('people.import.movementJob'),c=useTranslations('people.import.movementCheckJob'),labels=useTranslations();
  const word=(key:string,fallback:string)=>t.has(`sheet.${key}`)?t(`sheet.${key}`):fallback;
  const [file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<MovementImportPreview|null>(null),[result,setResult]=useState<MovementImportResult|null>(null);
  const [attempt,setAttempt]=useState<{attemptId:string;previewHash:string}|null>(null);
  const [selected,setSelected]=useState<string[]>([]),[acknowledge,setAcknowledge]=useState(false),[closedPayroll,setClosedPayroll]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
- const [job,setJob]=useState<MovementImportJobProgress|null>(null);
+ const [job,setJob]=useState<MovementImportJobProgress|null>(null),[check,setCheck]=useState<MovementCheckJobProgress|null>(null);
  const revision=useRef(0),pending=useRef(false),input=useRef<HTMLInputElement>(null),summary=useRef<HTMLDivElement>(null);
  const resolver=(key:string,fallback:string)=>labels.has(key)?labels(key):fallback;
  const fieldLabel=(key:string)=>movementImportFieldLabel(key,resolver);
@@ -31,12 +31,21 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
  const issueText=(issue:string|readonly string[])=>movementImportIssueText(issue,resolver);
  const reset=()=>{revision.current++;setPreview(null);setResult(null);setAttempt(null);setSelected([]);setAcknowledge(false);setClosedPayroll(false);setError(null);};
  useEffect(()=>()=>{revision.current++;},[]);
- // A confirmation saved in the background keeps running after navigation: rejoin the newest active one.
+ // A check or a confirmation running in the background keeps running after navigation: rejoin the newest active one.
  useEffect(()=>{
   let alive=true;
   fetch('/admin/personnel/import/movement/jobs',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(p=>{if(alive&&p?.jobs){const active=(p.jobs as MovementImportJobProgress[]).find(found=>movementImportJobActive(found.state));if(active)setJob(active);}}).catch(()=>undefined);
+  fetch('/admin/personnel/import/movement/checks',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(p=>{if(alive&&p?.jobs){const active=(p.jobs as MovementCheckJobProgress[]).find(found=>movementCheckJobActive(found.state));if(active)setCheck(active);}}).catch(()=>undefined);
   return()=>{alive=false;};
  },[]);
+ const showPreview=useCallback((value:MovementCheckJobResult)=>{
+  setPreview(value.preview);setAttempt({attemptId:value.attemptId,previewHash:value.previewHash});setSelected(value.preview.employees.filter(e=>e.fingerprint&&e.rows.every(r=>r.status==='valid')).map(movementEmployeeKey));setAcknowledge(false);requestAnimationFrame(()=>summary.current?.focus());
+ },[]);
+ const checked=useCallback((done:MovementCheckJobProgress)=>{
+  setCheck(null);
+  if(done.state==='completed'&&done.result)showPreview(done.result);
+  else setError(done.error??t('checkFailed'));
+ },[t,showPreview]);
  const finished=useCallback((done:MovementImportJobProgress)=>{
   setJob(null);
   if(done.state==='completed'&&done.result){setResult(done.result);requestAnimationFrame(()=>summary.current?.focus());}
@@ -54,9 +63,9 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
    if(current!==revision.current)return;
    if(response.ok&&response.headers.get('content-type')?.includes('spreadsheetml')){download(await response.arrayBuffer(),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','movement-import.xlsx');return;}
    const value=await response.json();
-   if(!response.ok||!value.ok){setError(value.error===MOVEMENT_IMPORT_ALREADY_RUNNING?j('otherRunning'):value.message??issueText(value.error??'change_refused'));return;}
-   if(value.job){setJob(value.job);return;}
-   if(value.preview){setPreview(value.preview);setAttempt({attemptId:value.attemptId,previewHash:value.previewHash});setSelected(value.preview.employees.filter((e:MovementImportPreview['employees'][number])=>e.fingerprint&&e.rows.every(r=>r.status==='valid')).map(movementEmployeeKey));setAcknowledge(false);requestAnimationFrame(()=>summary.current?.focus());}
+   if(!response.ok||!value.ok){setError(value.error===MOVEMENT_IMPORT_ALREADY_RUNNING?j('otherRunning'):value.error===MOVEMENT_CHECK_ALREADY_RUNNING?c('otherRunning'):value.message??issueText(value.error??'change_refused'));return;}
+   if(value.job){if(operation==='preview')setCheck(value.job);else setJob(value.job);return;}
+   if(value.preview)showPreview(value);
    if(value.result){setResult(value.result);requestAnimationFrame(()=>summary.current?.focus());}
   }catch{if(current===revision.current)setError(operation==='apply'?t('applyFailed'):operation==='download'?word('templateFailed','The template could not be downloaded.'):t('checkFailed'));}
   finally{pending.current=false;setBusy(false);if(operation==='apply')onCommitPendingChange?.(false);}
@@ -66,7 +75,7 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
  // 646355e5 slice C — the closed months behind the chosen employees' Update and Delete rows.
  const closedPeriods=[...new Set((preview?.employees??[]).filter(e=>selected.includes(movementEmployeeKey(e))).flatMap(e=>e.rows.flatMap(r=>r.closedPayrollPeriods??[])))].sort();
  const actionLabel=(row:MovementImportRow)=>row.action&&row.action!=='create'?word('action.'+row.action,row.action)+' · ':'';
- const canCommit=!!preview&&!!attempt&&!result&&!job&&!preview.fileErrors.length&&selected.length>0&&(!excludedEmployees||acknowledge);
+ const canCommit=!!preview&&!!attempt&&!result&&!job&&!check&&!preview.fileErrors.length&&selected.length>0&&(!excludedEmployees||acknowledge);
  const compare=(row:MovementImportRow)=>{const fields=[...new Set([...Object.keys(row.before??{}),...Object.keys(row.proposed??{})])].filter(key=>key!=='companyName'&&row.before?.[key]!==row.proposed?.[key]);return <dl className="space-y-1 text-xs">{fields.map(key=><div key={key} className="grid gap-1 sm:grid-cols-[minmax(8rem,1fr)_1fr_1fr]"><dt className="font-medium">{fieldLabel(key)}</dt><dd className="break-words">{row.before?.[key]??'—'}</dd><dd className="break-words">{row.proposed?.[key]??'—'}</dd></div>)}</dl>;};
  const sheetRows=(row:MovementImportRow)=>(row.sourceRows??[row.source?.row??row.row]).join(', ');
  // d9e33556 — name the worksheet with its original Excel rows so a correction can be found in the file.
@@ -76,10 +85,11 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
   <Card className="space-y-4 p-5"><h2 className="font-medium">{t('title')}</h2>
    <p className="text-sm text-muted-foreground">{word('screenHint','One template for every movement type and company. Enter one row per field that changes; rows with the same company, employee, date and event type are one movement.')}</p>
    <div className="flex flex-wrap items-center gap-2"><Button aria-busy={busy} type="button" disabled={busy} onClick={()=>void run('download')}>{word('downloadTemplate','Download template')}</Button><Link className="text-sm text-primary underline" href={`${HISTORY}?kind=movement`}>{word('history','Import history')}</Link></div>
-   <Field label={t('file')}><input ref={input} type="file" accept=".xlsx,.csv" disabled={busy||!!result||!!job} className={inputCls} onChange={e=>{reset();setFile(e.target.files?.[0]??null);}}/></Field>
+   <Field label={t('file')}><input ref={input} type="file" accept=".xlsx,.csv" disabled={busy||!!result||!!job||!!check} className={inputCls} onChange={e=>{reset();setFile(e.target.files?.[0]??null);}}/></Field>
    {file&&<p className="text-xs text-muted-foreground">{file.name}</p>}
-   <Button aria-busy={busy} type="button" disabled={busy||!file||!!result||!!job} onClick={()=>void run('preview')}>{busy?t('working'):t('check')}</Button>
+   <Button aria-busy={busy} type="button" disabled={busy||!file||!!result||!!job||!!check} onClick={()=>void run('preview')}>{busy?t('working'):t('check')}</Button>
   </Card>
+  {check&&!preview&&<MovementImportJobPanel kind="check" job={check} onFinished={checked}/>}
   {job&&!result&&<MovementImportJobPanel job={job} onFinished={finished}/>}
   {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
   {!!preview?.fileErrors.length&&<div role="alert" className="rounded-lg border border-destructive p-4"><p>{t('fileRefused')}</p><ul>{preview.fileErrors.map((issue,i)=><li key={i} className="text-sm">{issueText(issue)}</li>)}</ul></div>}

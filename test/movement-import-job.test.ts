@@ -10,12 +10,14 @@ import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {createJobGrade,createPosition} from '../core/admin';
-import {createMovementEvent} from '../core/movement';
+import {createMovementEvent,movementHistory} from '../core/movement';
 import {previewMovementUpload,confirmMovementUpload,type MovementUploadResult} from '../core/movement-import-history';
-import {getMovementImportJob,listMovementImportJobs,startMovementImportJob,MovementImportJobError} from '../core/movement-import-job';
+import {getMovementCheckJob,getMovementImportJob,listMovementImportJobs,startMovementCheckJob,startMovementImportJob,MovementImportJobError} from '../core/movement-import-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
-import {getImportAttempt} from '../core/import-history';
+import {getImportAttempt,previewImportRevert} from '../core/import-history';
+import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
+import {movementRevertHandler} from '../core/movement-import-history';
 import {verifyTenantChain} from '../core/audit-chain';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {bulkJobNoticeKeys} from '../lib/bulk-job';
@@ -96,6 +98,42 @@ async function checked(f:Fixture,rows:string[][]=FILE_A,expected:{valid:string[]
  const keys=preview.preview.employees.filter(e=>e.fingerprint).map(e=>e.key!);
  return{preview,keys};
 }
+/** The same check as a background job: the screen's language, a fresh operation key, every chunk run to the end. */
+async function checkedByJob(f:Fixture,content:Buffer){
+ const started=await startMovementCheckJob(f.a,{name:'movements.csv',content,locale:'en',operationKey:randomUUID()});
+ expect(started.job.state).toBe('queued');
+ const done=await ticks(started.job.id,terminal);
+ expect(done.state).toBe('completed');
+ const job=await getMovementCheckJob(f.a,started.job.id);
+ return{preview:job.result!,keys:job.result!.preview.employees.filter(e=>e.fingerprint).map(e=>e.key!),done};
+}
+const HEADER11=['Company ID','Employee ID','Employee Name','Effective Date','Event Type','System Fields','Before','After','Action','Movement Event ID','Reason'];
+/** Shapes the lean single pass covers (an increment with a Before value and a new Direct Superior; organisation
+ * warnings, which Import History records twice) and those it hands to the reference body: a future-dated movement
+ * (scheduled), an Update correction and the actor's own employment. */
+function fileC(updateOf:string){
+ return Buffer.from(toCsv([HEADER11,
+  ['ACME','AC001','',day(5),'promotion','gradeId','JUNIOR','SENIOR','','',''],
+  ['ACME','AC002','',day(-25),'','','','','Update',updateOf,'Fictional wrong date'],
+  ['ACME','AC003','',day(-1),'transfer','departmentId','','Operations','','',''],
+  ['ACME','AC005','',day(-2),'promotion','gradeId','JUNIOR','SENIOR','','',''],
+  ['ACME','AC005','',day(-2),'promotion','incrementAmount','','250','','',''],
+  ['ACME','AC005','',day(-1),'reportingLineChange','managerEmploymentId','','AC001','','',''],
+  ['ACME','AC006','',day(-1),'transfer','departmentId','','Operations','','',''],
+  ['ACME','AC006','',day(-1),'transfer','parentCompany','','Fictional Parent Bhd','','',''],
+ ]));
+}
+/** Fixture additions for file C: AC002's transfer to correct, and the administrator signing in as AC003's person. */
+async function prepareC(f:Fixture){
+ await createMovementEvent(f.a,{employmentId:f.ids.AC002,kind:'transfer',effectiveDate:day(-30),departmentId:f.b.deptB});
+ const moved=(await movementHistory(f.a,f.ids.AC002)).find(row=>row.kind==='transfer'&&!row.reversed);
+ if(!moved)throw new Error('expected the transfer to correct');
+ const[{personId}]=await owner.db.select({personId:s.employment.personId}).from(s.employment).where(eq(s.employment.id,f.ids.AC003));
+ await owner.db.update(s.appUser).set({personId}).where(eq(s.appUser.id,f.b.adminUserId));
+ // The session names the person its login now belongs to, as a fresh sign-in would.
+ f.a={...f.a,personId};
+ return{updateOf:moved.id};
+}
 /** After review, AC006 gets a new Direct Superior elsewhere: its reviewed state is stale, so its commit is refused. */
 const makeStale=(f:Fixture)=>createMovementEvent(f.a,{employmentId:f.ids.AC006,kind:'reportingLineChange',effectiveDate:day(-3),managerEmploymentId:f.ids.AC003});
 
@@ -170,8 +208,8 @@ describe('movement import background job (bulk-job kernel)',()=>{
    expect((await getImportAttempt(f.a,c.preview.attemptId))!.items).toHaveLength(0);
    const done=await ticks(started.job.id,terminal);
    expect(done).toMatchObject({state:'completed',steps_total:employees,steps_done:employees});
-   // One employee per chunk: the Access lock is held for one employee's commit at a time.
-   expect(Number(done.metrics.chunks)).toBeGreaterThanOrEqual(employees);expect(Number(done.metrics.chunkHoldMs)).toBeGreaterThan(0);
+   // A chunk takes another employee only while it has done less than about 100 ms of work (at most four).
+   expect(Number(done.metrics.chunks)).toBeGreaterThanOrEqual(Math.ceil(employees/4));expect(Number(done.metrics.chunkHoldMs)).toBeGreaterThan(0);
    expect(done.notice_event_id).toBeTruthy();
    const[notice]=await owner.client<{event_type:string;payload:{kind:string;outcome:string}}[]>`select event_type,payload from domain_event where id=${done.notice_event_id}::uuid`;
    expect(notice).toMatchObject({event_type:'bulk-job.finished',payload:{kind:'movement_import',outcome:'completed'}});
@@ -252,8 +290,96 @@ describe('movement import background job (bulk-job kernel)',()=>{
   expect(done.error).toBe('Your access to this job changed, so it was stopped.');
  },180_000);
 
+ it('checks a file as a background job: the same preview, fingerprints and sealed plan as the synchronous check, nothing written',async()=>{
+  const sync=await previewMovementUpload(f.a,{name:'movements.csv',content:file(FILE_A),resolve});
+  const hrRows=async()=>(await owner.client<{n:number}[]>`select (select count(*) from assignment where tenant_id=${f.b.tenantId}::uuid)+(select count(*) from compensation where tenant_id=${f.b.tenantId}::uuid)+(select count(*) from reporting_line where tenant_id=${f.b.tenantId}::uuid)+(select count(*) from domain_event where tenant_id=${f.b.tenantId}::uuid and event_type not like 'import-attempt.%' and event_type not like 'bulk-job.%')+(select count(*) from leave_ledger where tenant_id=${f.b.tenantId}::uuid) as n`)[0].n;
+  const before=await hrRows();
+  const started=await startMovementCheckJob(f.a,{name:'movements.csv',content:file(FILE_A),locale:'en',operationKey:randomUUID()});
+  // The request stores the file and nothing else: no attempt yet.
+  expect((await owner.client`select 1 from import_attempt where tenant_id=${f.b.tenantId}::uuid`).length).toBe(1);
+  const done=await ticks(started.job.id,terminal);
+  expect(done).toMatchObject({state:'completed',steps_total:5,steps_done:5});
+  expect(Number(done.metrics.chunks)).toBeGreaterThanOrEqual(1);
+  const job=await getMovementCheckJob(f.a,started.job.id);
+  expect(job.state).toBe('completed');
+  expect(job.result!.preview).toEqual(sync.preview);
+  expect(job.result!.preview.employees.filter(e=>e.fingerprint).map(e=>e.employeeCode).sort()).toEqual(['AC001','AC002','AC005','AC006']);
+  expect(job.result!.previewHash).toBe(sync.previewHash);
+  expect(job.result!.attemptId).not.toBe(sync.attemptId);
+  const plans=await owner.client<{id:string;plan:unknown;kind:string;source_name:string;company_ids:string[]}[]>`select id,plan,kind,source_name,company_ids from import_attempt where id in (${sync.attemptId}::uuid,${job.result!.attemptId}::uuid)`;
+  const byId=Object.fromEntries(plans.map(p=>[p.id,{plan:p.plan,kind:p.kind,name:p.source_name,companies:p.company_ids}]));
+  expect(byId[job.result!.attemptId]).toEqual(byId[sync.attemptId]);
+  expect(await hrRows()).toBe(before);
+  const[residue]=await owner.client<{steps:number;input:unknown;content:unknown}[]>`select (select count(*)::int from bulk_job_step where job_id=${started.job.id}::uuid) steps,input,source_content content from bulk_job where id=${started.job.id}::uuid`;
+  expect(residue).toEqual({steps:0,input:null,content:null});
+  // The background attempt confirms exactly like the synchronous one.
+  const keys=job.result!.preview.employees.filter(e=>e.fingerprint).map(e=>e.key!);
+  const confirmed=await startMovementImportJob(f.a,{attemptId:job.result!.attemptId,previewHash:job.result!.previewHash,employees:keys,acknowledgeExcluded:true,locale:'en',operationKey:randomUUID()});
+  if(!('job' in confirmed))throw new Error('expected a job');
+  await ticks(confirmed.job.id,terminal);
+  expect((await getMovementImportJob(f.a,confirmed.job.id)).result).toMatchObject({imported:5,failed:0});
+ },300_000);
+
+ it('the lean commit and its hand-backs (future-dated, Update, the actor\'s own employment) end like the synchronous confirmation',async()=>{
+  const failedRows=(r:MovementUploadResult)=>r.employees.flatMap(e=>e.rows.filter(x=>x.status==='failed').map(x=>e.employeeCode+':'+x.errors.join(',')));
+  const first=await prepareC(f);
+  const sync1=await previewMovementUpload(f.a,{name:'c.csv',content:fileC(first.updateOf),resolve});
+  const keys1=sync1.preview.employees.filter(e=>e.fingerprint).map(e=>e.key!);
+  expect(sync1.preview.employees.filter(e=>e.fingerprint).map(e=>e.employeeCode).sort(),JSON.stringify(sync1.preview.employees.map(e=>[e.employeeCode,e.rows.flatMap(r=>r.errors)]))).toEqual(['AC001','AC002','AC003','AC005','AC006']);
+  const syncC=await confirmMovementUpload(f.a,{attemptId:sync1.attemptId,previewHash:sync1.previewHash,employees:keys1,acknowledgeExcluded:true,resolve});
+  expect(failedRows(syncC)).toEqual([]);
+  expect(await verifyTenantChain(f.a)).toMatchObject({valid:true});
+  const before=await snapshot(f.b.tenantId);const syncResult=comparable(syncC,before.canon);
+  f=await fixture();
+  const second=await prepareC(f);
+  const {preview:check,keys:keys2}=await checkedByJob(f,fileC(second.updateOf));
+  const job=await startMovementImportJob(f.a,{attemptId:check.attemptId,previewHash:check.previewHash,employees:keys2,acknowledgeExcluded:true,locale:'en',operationKey:randomUUID()});
+  if(!('job' in job))throw new Error('expected a job');
+  await ticks(job.job.id,terminal);
+  const[counted]=await owner.client<{counters:Record<string,number>}[]>`select counters from bulk_job where id=${job.job.id}::uuid`;
+  // AC005 and AC006 in one pass; AC001 (scheduled), AC002 (Update) and AC003 (the actor's own) through the reference body.
+  expect(counted.counters).toMatchObject({leanEmployees:2,referenceEmployees:3,imported:6});
+  const jobC=await getMovementImportJob(f.a,job.job.id);
+  expect(await verifyTenantChain(f.a)).toMatchObject({valid:true});
+  const after=await snapshot(f.b.tenantId);
+  // The two files differ only in the Movement Event ID they correct (a fresh id per run), so the recorded file hash does.
+  const sourceless=(tables:Record<string,unknown[]>)=>JSON.parse(JSON.stringify(tables).replace(/"sourceHash":"[0-9a-f]{64}"/g,'"sourceHash":"<file>"'));
+  expect(JSON.stringify(after.tables).match(/"sourceHash":"[0-9a-f]{64}"/g)?.length).toBe(JSON.stringify(before.tables).match(/"sourceHash":"[0-9a-f]{64}"/g)?.length);
+  expect(sourceless(after.tables)).toEqual(sourceless(before.tables));
+  expect(comparable(jobC.result!,after.canon)).toEqual(syncResult);
+  // The organisation warning appears twice on the item, as the rehearse-then-apply commit recorded it.
+  const items=await owner.client<{after:{organisationWarnings?:string[]}}[]>`select after from import_attempt_item where attempt_id=${check.attemptId}::uuid and employment_id=${f.ids.AC006}::uuid`;
+  expect(items.map(i=>i.after.organisationWarnings?.length)).toEqual([2]);
+ },300_000);
+
+ it('reviews a create-only movement revert on a read-only snapshot without the writer locks, with the locked review\'s result',async()=>{
+  const{preview,keys}=await checked(f);
+  const started=await startMovementImportJob(f.a,{attemptId:preview.attemptId,previewHash:preview.previewHash,employees:keys,acknowledgeExcluded:true,locale:'en'});
+  if(!('job' in started))throw new Error('expected a job');
+  await ticks(started.job.id,terminal);
+  const locked=await previewImportRevert(f.a,preview.attemptId,movementRevertHandler);
+  expect(locked.eligible).toBe(true);expect(locked.items.length).toBeGreaterThan(4);
+  // Another Access writer holds the tenant lock for longer than the review takes.
+  let release!:()=>void;const held=new Promise<void>(r=>{release=r;});let locked2!:()=>void;const isLocked=new Promise<void>(r=>{locked2=r;});
+  const holder=withTenant(f.a,async tx=>{await lockAccessConfigurationTx(tx,f.b.tenantId);await tx.execute(sql`select app.access_workforce_write_lock()`);locked2();await held;});
+  await isLocked;
+  const review=await Promise.race([previewImportRevertForAttempt(f.a,preview.attemptId),new Promise<'waited'>(r=>setTimeout(()=>r('waited'),8000))]);
+  release();await holder;
+  expect(review).not.toBe('waited');
+  expect(review).toEqual(locked);
+  // The reviewed hash is the one the locked revert re-checks.
+  await expect(revertImportForAttempt(f.a,preview.attemptId,{previewHash:(review as typeof locked).previewHash,reason:'Fictional revert after a lock-free review'})).resolves.toMatchObject({restored:locked.items.length});
+ },180_000);
+
  it('names its completion notice in all six catalogues',()=>{
   for(const outcome of ['completed','failed','cancelled'] as const){
+   const check=bulkJobNoticeKeys('movement_check',outcome)!;expect(check.linkPath).toBe('/admin/personnel/import/history?kind=movement');
+   for(const catalogue of [en,ms,zh,ta,th,vi_]){
+    const group=(catalogue as unknown as {bulkJobs:{notification:Record<string,Record<string,{title:string;body:string}>>}}).bulkJobs.notification.movementCheck[outcome];
+    expect(group.title.length).toBeGreaterThan(3);expect(group.body.length).toBeGreaterThan(3);
+    const job=(catalogue as unknown as {people:{import:{movementCheckJob:Record<string,string>}}}).people.import.movementCheckJob;
+    expect(Object.keys(job).sort()).toEqual(Object.keys(en.people.import.movementCheckJob).sort());
+   }
    const keys=bulkJobNoticeKeys('movement_import',outcome)!;expect(keys.linkPath).toBe('/admin/personnel/import/history?kind=movement');
    for(const catalogue of [en,ms,zh,ta,th,vi_]){
     const group=(catalogue as unknown as {bulkJobs:{notification:Record<string,Record<string,{title:string;body:string}>>}}).bulkJobs.notification.movementImport[outcome];

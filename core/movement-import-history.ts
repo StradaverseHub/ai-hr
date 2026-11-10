@@ -23,7 +23,7 @@ export type MovementImportPlan=ImportPlanBase&{kind:'movement';inputHash:string;
  employees:{key:string;employeeCode:string;companyId:string|null;name:string|null;rows:number[];valid:boolean;errors:string[]}[]};
 const sha=(content:Buffer)=>createHash('sha256').update(content).digest('hex');
 type Words={resolve:PersonnelLabelResolver};
-async function sourceRecords(ctx:SessionContext,name:string,content:Buffer,words:Words){
+export async function sourceRecords(ctx:SessionContext,name:string,content:Buffer,words:Words){
  const types=await movementImportTypes(ctx);
  const parsed=await readMovementSource(name,content,{tenantId:ctx.tenantId,types,resolve:words.resolve});
  return{...parsed,catalogueHash:movementWorkbookCatalogue({types}),sourceHash:sha(content)};
@@ -33,13 +33,25 @@ export async function previewMovementUpload(ctx:SessionContext,input:{name:strin
  const source=await sourceRecords(ctx,input.name,input.content,input);
  let preview:MovementImportPreview={inputHash:'',selection:[],fileErrors:source.fileErrors,employees:[],excluded:0,valid:0};
  if(!source.fileErrors.length)preview=await previewMovementImport(ctx,{csv:'',records:source.records,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash});
+ return recordMovementPreview(ctx,{...input,source,preview});
+}
+export type MovementCheckSource=Awaited<ReturnType<typeof sourceRecords>>;
+/** Records a finished check as an import attempt with the original bytes and the sealed plan (the synchronous check and
+ * the background check, core/movement-import-check-worker.ts). `hooks` run first and last in that one transaction. */
+export async function recordMovementPreview(ctx:SessionContext,input:{name:string;content:Buffer;operationKey?:string;source:Pick<MovementCheckSource,'sourceHash'|'catalogueHash'|'fileErrors'>;preview:MovementImportPreview}&Words,hooks:{before?:(tx:Tx)=>Promise<void>;after?:(tx:Tx,attempt:{attemptId:string;previewHash:string})=>Promise<void>}={}):Promise<{attemptId:string;previewHash:string;preview:MovementImportPreview}>{
+ const {source,preview}=input;
  const describe=(errors:readonly string[])=>movementImportIssueText(errors,input.resolve);
  const employees=preview.employees.map(e=>{const errors=e.rows.flatMap(r=>r.errors);return{key:movementEmployeeKey(e),employeeCode:e.employeeCode,companyId:e.companyId??null,name:e.name,rows:e.rows.map(r=>r.row),valid:!!e.fingerprint&&e.rows.every(r=>r.status==='valid'),errors:errors.length?[describe(errors)]:[]};});
  const movements=preview.employees.reduce((n,e)=>n+e.rows.length,0),valid=employees.filter(e=>e.valid).reduce((n,e)=>n+e.rows.length,0);
  const plan=sealImportPlan<MovementImportPlan>({version:1,kind:'movement',inputHash:preview.inputHash,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash,fingerprints:Object.fromEntries(preview.employees.filter(e=>e.fingerprint).map(e=>[movementEmployeeKey(e),e.fingerprint!])),employees,
   counts:{total:movements,valid,invalid:movements-valid},issues:source.fileErrors.map(code=>({rowNum:1,reason:describe([code])})),previewHash:''});
  const companyIds=[...new Set(employees.map(e=>e.companyId).filter((id):id is string=>!!id))];
- const created=await withTenant(ctx,tx=>createImportAttemptTx(tx,ctx,{kind:'movement',sourceName:input.name,content:input.content,companyIds,plan,operationKey:input.operationKey}));
+ const created=await withTenant(ctx,async tx=>{
+  await hooks.before?.(tx);
+  const made=await createImportAttemptTx(tx,ctx,{kind:'movement',sourceName:input.name,content:input.content,companyIds,plan,operationKey:input.operationKey});
+  await hooks.after?.(tx,{attemptId:made.attemptId,previewHash:made.plan.previewHash});
+  return made;
+ });
  return{attemptId:created.attemptId,previewHash:created.plan.previewHash,preview};
 }
 export type MovementUploadResult=MovementImportResult&{attemptId:string;alreadyCommitted:boolean};
@@ -133,6 +145,12 @@ export async function confirmMovementUpload(ctx:SessionContext,input:MovementCon
 }
 
 const itemState=(value:unknown)=>value as MovementImportItemState;
+/** Whether reviewing this attempt's revert writes (and so needs the writer locks): an applied Update or Delete item is
+ * checked by rehearsing its compensation in a savepoint. Items never change after the confirmation. */
+export async function movementRevertReviewWritesTx(tx:Tx,attemptId:string){
+ const [row]=await tx.execute<{writes:boolean}>(sql`select exists(select 1 from import_attempt_item where attempt_id=${attemptId}::uuid and status='applied' and after ? 'action') as writes`);
+ return row?.writes!==false;
+}
 /** Blockers are stored with the revert's audit detail in the base language, like the other import kinds. */
 const fieldCaption=(field:string)=>movementImportFieldLabel(field,personnelImportLabelResolvers[0]);
 /** Writer locks precede the attempt row lock in revert, the same order as the Movement rollback. */
