@@ -56,7 +56,8 @@ function modelMetadata() {
       { number: 4, name: 'Admit the fixed full-rendered development browser course', ...interval('10:00:15', '10:00:18') },
     ] },
     { id: 2002, name: 'selected-tests', ...interval('10:01:02', '10:30:00'), steps: selectedSteps },
-    ...['typecheck', 'linux-build', 'native-typecheck', 'native-bundle', 'native-swift-models']
+    ...['worker-build', 'worker-cell (${{ matrix.workers }})', 'worker-aggregate',
+      'typecheck', 'linux-build', 'native-typecheck', 'native-bundle', 'native-swift-models']
       .map((name, index) => ({ id: 2003 + index, name, status: 'completed', conclusion: 'skipped' })),
   ].map(row => ({ ...row, run_id: 101, head_sha: sha, run_attempt: 1 }));
   return {
@@ -67,7 +68,7 @@ function modelMetadata() {
       head_branch: branch, head_sha: sha, event: 'workflow_dispatch', run_attempt: 1, status: 'completed', conclusion: 'success',
       run_started_at: at('10:00:00'), updated_at: at('10:30:01'),
     },
-    jobInventory: { total_count: 7, jobs },
+    jobInventory: { total_count: 10, jobs },
     artifactInventory: { total_count: 1, artifacts: [{
       id: 3001, name: 'architecture-browser-development-preflight-evidence', size_in_bytes: 54321,
       digest: 'sha256:' + archiveDigest, expired: false, created_at: at('10:28:25'), updated_at: at('10:28:26'),
@@ -112,6 +113,7 @@ test('rejects open worker counts and absent, noncanonical or unsafe run IDs', ()
   for (const upstream of ['', '0', '01', '1.0', '1\n', ' 1', '+1', '9007199254740992', 101]) {
     assert.throws(() => measuredWorkerCourse('steady-2', upstream), /run ID/);
     assert.throws(() => measuredWorkerCourse('serial-2-4-8', upstream), /run ID/);
+    assert.throws(() => measuredWorkerCourse('parallel-2-4-8', upstream), /run ID/);
   }
   assert.throws(() => measuredWorkerCourse('off', '101'));
   assert.throws(() => measuredWorkerCourse('preflight-2', '101'));
@@ -125,6 +127,19 @@ test('models only the exact same-source dispatch and first resolve job', () => {
   assert.equal(model.currentRunId, 102);
   assert.equal(model.profile.upstreamRunId, 101);
   assert.equal(model.profile.course, 'serial-2-4-8');
+  // The parallel course consumes the same authenticated preflight; the harness smoke never does.
+  const parallel = dispatch();
+  parallel.event.inputs.measured_browser_course = 'parallel-2-4-8';
+  assert.equal(inspectMeasuredWorkerDispatch(parallel.environment, parallel.event).profile.course, 'parallel-2-4-8');
+  for (const upstream of ['', '102']) {
+    const missing = dispatch();
+    missing.event.inputs.measured_browser_course = 'parallel-2-4-8';
+    missing.event.inputs.measured_browser_preflight_run = upstream;
+    assert.throws(() => inspectMeasuredWorkerDispatch(missing.environment, missing.event));
+  }
+  const smoke = dispatch();
+  smoke.event.inputs.measured_browser_course = 'parallel-smoke';
+  assert.throws(() => inspectMeasuredWorkerDispatch(smoke.environment, smoke.event), /course refused/);
   for (const patch of [
     { GITHUB_RUN_ATTEMPT: '2' }, { GITHUB_JOB: 'selected-tests' }, { GITHUB_SHA: 'c'.repeat(40) },
     { GITHUB_WORKFLOW_SHA: sha + '\n' }, { STAGING_ENABLED: 'true' }, { PRODUCTION_ENABLED: 'true' },
@@ -174,9 +189,13 @@ test('refuses provider identity, wrong source, stale or nonterminal upstreams', 
   assert.throws(() => inspectMeasuredPreflightProviderMetadata(modelMetadata(), { ...expected, currentRunId: 101 }));
 });
 
-test('requires all seven terminal jobs and the actual selected step order', () => {
+test('requires all ten terminal jobs and the actual selected step order', () => {
   const mutations = [
-    row => { row.jobInventory.total_count = 6; }, row => { row.jobInventory.jobs[2].name = 'resolve'; },
+    row => { row.jobInventory.total_count = 9; },
+    // A preflight run that executed a parallel worker job is not an independent preflight.
+    row => { row.jobInventory.jobs[3].conclusion = 'success'; },
+    row => { row.jobInventory.jobs[3].name = 'worker-cell (2)'; },
+    row => { row.jobInventory.jobs.pop(); row.jobInventory.total_count = 9; }, row => { row.jobInventory.jobs[2].name = 'resolve'; },
     row => { row.jobInventory.jobs[2].id = 2002; }, row => { row.jobInventory.jobs[1].head_sha = 'd'.repeat(40); },
     row => { row.jobInventory.jobs[0].steps = []; },
     row => { row.jobInventory.jobs[0].steps[0].conclusion = 'skipped'; },

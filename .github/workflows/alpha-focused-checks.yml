@@ -1564,7 +1564,8 @@ jobs:
         run: |
           set -euo pipefail
           node --experimental-strip-types --test scripts/performance/worker-comparison-build.test.mjs \
-            scripts/performance/worker-comparison-custody.test.mjs .github/ci/measured-browser-worker-contract.test.mjs
+            scripts/performance/worker-comparison-custody.test.mjs scripts/performance/worker-comparison-parallel.test.mjs \
+            .github/ci/measured-browser-worker-contract.test.mjs
           /usr/bin/python3 -I -B .github/ci/worker-comparison-family.test.py
           /usr/bin/python3 -I -B .github/ci/worker-comparison-aggregate.test.py
       - name: Build once and seal the transport for every worker cell

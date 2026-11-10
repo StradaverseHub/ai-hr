@@ -10,7 +10,12 @@ const REF = 'refs/heads/' + BRANCH;
 const ARTIFACT = 'architecture-browser-development-preflight-evidence';
 const maximumArchiveBytes = 64 * 1024 ** 2;
 const freshnessMs = 24 * 60 * 60 * 1000;
-const jobs = ['resolve', 'selected-tests', 'typecheck', 'linux-build', 'native-typecheck', 'native-bundle', 'native-swift-models'];
+// A job skipped before matrix expansion keeps its unexpanded name in the provider inventory.
+const jobs = ['resolve', 'selected-tests', 'worker-build', 'worker-cell (${{ matrix.workers }})', 'worker-aggregate',
+  'typecheck', 'linux-build', 'native-typecheck', 'native-bundle', 'native-swift-models'];
+export const MEASURED_PREFLIGHT_JOB_NAMES = Object.freeze([...jobs]);
+// Courses that consume one authenticated same-source full preflight.
+const comparisonCourses = new Set(['serial-2-4-8', 'parallel-2-4-8']);
 const preflightAdmissionStep = 'Admit the fixed full-rendered development browser course';
 const preflightSteps = [
   'Verify the exact self-source before dependency installation',
@@ -53,7 +58,7 @@ export function measuredWorkerCourse(course, upstream) {
     assert(upstream === '', 'An inactive worker course cannot name a preflight');
     return null;
   }
-  if (course === 'serial-2-4-8') return Object.freeze({ course, upstreamRunId: runId(upstream), ...commonProfile });
+  if (comparisonCourses.has(course)) return Object.freeze({ course, upstreamRunId: runId(upstream), ...commonProfile });
   assert(typeof course === 'string' && Object.hasOwn(courseProfiles, course), 'Unknown measured worker course');
   if (course === 'preflight-2') assert(upstream === '', 'Preflight must be independent');
   return Object.freeze({
@@ -102,7 +107,7 @@ export function inspectMeasuredWorkerDispatch(environment, event) {
     run_native_bundle: 'false', run_build: 'false', model_eval: '', eval_budget_usd: '20', eval_allowed_providers: '',
   };
   assert(exactFields(inputs, expected), 'Measured worker dispatch inputs refused');
-  assert(course === 'preflight-2' || course === 'serial-2-4-8', 'Measured worker dispatch course refused');
+  assert(course === 'preflight-2' || comparisonCourses.has(course), 'Measured worker dispatch course refused');
   const profile = measuredWorkerCourse(course, upstream);
   const currentRunId = runId(environment.GITHUB_RUN_ID);
   assert(profile && profile.upstreamRunId !== currentRunId, 'Inactive or same-run measured worker prerequisite refused');
