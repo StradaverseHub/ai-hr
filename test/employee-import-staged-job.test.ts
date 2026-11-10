@@ -242,4 +242,18 @@ describe('staged employee import job',()=>{
   const [counted]=await owner.client<{n:number;hired:number}[]>`select (select count(*)::int from employment where employee_code like 'STGPRC%' and import_pending_attempt_id is null) n,(select count(*)::int from domain_event where tenant_id=${b.tenantId}::uuid and event_type='employment.hired') hired`;
   expect(counted).toEqual({n:3,hired:3});
  },120000);
+ it('applies direct superiors after every employee, as their own chunks, and activates the reporting line',async()=>{
+  const tag='SUP';
+  const manager={...row(tag,0),direct_superior:''};
+  const report={...row(tag,1),direct_superior:row(tag,0).employee_code};
+  const {job}=await startJob([report,manager]);
+  await ticks(s=>s==='importing');
+  const [plan]=await owner.client<{steps_total:number}[]>`select steps_total from employee_import_job where id=${job.id}::uuid`;
+  expect(plan.steps_total).toBe(3); // two employees + one superior step
+  const kinds=await owner.client<{kind:string}[]>`select kind from employee_import_step where job_id=${job.id}::uuid order by seq`;
+  expect(kinds.map(k=>k.kind)).toEqual(['employee','employee','superior']);
+  await ticks(s=>s==='completed',800);
+  const [line]=await owner.client<{n:number}[]>`select count(*)::int n from reporting_line r join employment s on s.id=r.subordinate_employment_id join employment m on m.id=r.manager_employment_id where s.employee_code=${report.employee_code} and m.employee_code=${manager.employee_code} and s.import_pending_attempt_id is null`;
+  expect(line.n).toBe(1);
+ });
 });
