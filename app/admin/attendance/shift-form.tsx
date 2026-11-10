@@ -172,7 +172,7 @@ export async function ShiftForm({
               value={
                 <>
                   {group?.name ?? '—'}{' '}
-                  <Link href={scheduleGroupSectionHref(group?.id ?? '', 'workingDay')} className="text-primary hover:underline">
+                  <Link href={scheduleGroupSectionHref(group?.id ?? '', 'general')} className="text-primary hover:underline">
                     {t('shiftScheduleGroupChangeLink')}
                   </Link>
                 </>

@@ -67,11 +67,20 @@ export type OtSplit = {
   ot15: number;
   ot20: number;
   ot30: number;
+  /** c03670cc — a VARIABLE band whose typed rate is none of 0 / 1.0 / 1.5 / 2.0 / 3.0 (for example 1.75).
+   *  Present only when such minutes exist, so every existing split keeps its exact six-key shape. Stored
+   *  in attendance.ot_other_minutes; the band's rate itself is on the calculation rows and the trace. */
+  other?: number;
 };
 export type OtSplitBucket = keyof OtSplit;
 
 export const emptyOtSplit = (): OtSplit => ({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 0 });
-export const otSplitTotal = (s: OtSplit): number => s.flat + s.ot00 + s.ot10 + s.ot15 + s.ot20 + s.ot30;
+export const otSplitTotal = (s: OtSplit): number => s.flat + s.ot00 + s.ot10 + s.ot15 + s.ot20 + s.ot30 + (s.other ?? 0);
+/** Add minutes to one bucket; the optional `other` bucket is created on first use. */
+export function addToOtSplit(split: OtSplit, bucket: OtSplitBucket, minutes: number): void {
+  if (bucket === 'other' && split.other === undefined && minutes === 0) return;
+  split[bucket] = (split[bucket] ?? 0) + minutes;
+}
 
 /** The five standardized variable multipliers the rule editor offers, mapped to their bucket. */
 const VARIABLE_BUCKETS: [number, OtSplitBucket][] = [
@@ -87,14 +96,15 @@ const VARIABLE_BUCKETS: [number, OtSplitBucket][] = [
  *
  *  • FLAT pattern → the `flat` bucket, whatever the numeric rate says. The request is explicit: choosing
  *    Flat disables the rate selector and attendance reports only "Flat OT hours".
- *  • VARIABLE pattern → the bucket for its multiplier (0 / 1.0 / 1.5 / 2.0 / 3.0). A stored multiplier
- *    that is none of those (only reachable by a hand-written row — the editor offers the five) falls back
- *    to `flat` rather than being dropped, because dropping it would break the sum invariant.
+ *  • VARIABLE pattern → the bucket for its multiplier (0 / 1.0 / 1.5 / 2.0 / 3.0).
+ *  • c03670cc — a VARIABLE multiplier that is none of those (the editor now takes a typed rate such as
+ *    1.75) lands in `other`, reported with its rate, instead of being misreported as Flat. Never dropped:
+ *    the sum invariant holds. Rates are stored with two decimals, so the comparison tolerance is exact.
  */
 export function bucketForRate(ratePattern: 'flat' | 'variable', rate: number): OtSplitBucket {
   if (ratePattern !== 'variable') return 'flat';
   const hit = VARIABLE_BUCKETS.find(([r]) => Math.abs(r - rate) < 0.005);
-  return hit ? hit[1] : 'flat';
+  return hit ? hit[1] : 'other';
 }
 
 /**
@@ -173,7 +183,7 @@ export function overtimeCalculationRows(otMinutes:number|null,dayType:DayType,ru
   return rows;
 }
 export function splitOtMinutes(otMinutes:number|null,dayType:DayType,rule:ResolvedAttendanceRule|null):OtSplit {
-  const out=emptyOtSplit();for(const row of overtimeCalculationRows(otMinutes,dayType,rule))out[row.bucket]+=row.calculatedMinutes;return out;
+  const out=emptyOtSplit();for(const row of overtimeCalculationRows(otMinutes,dayType,rule))addToOtSplit(out,row.bucket,row.calculatedMinutes);return out;
 }
 
 export class ManualOtConfigurationChangedError extends Error {
@@ -183,7 +193,7 @@ export function effectiveOvertimeRows(total:number|null,dayType:DayType,rule:Res
   const calculated=overtimeCalculationRows(total,dayType,rule);
   if(Object.keys(manual).some(key=>!calculated.some(r=>r.key===key)))throw new ManualOtConfigurationChangedError();
   const rows=calculated.map(row=>({...row,effectiveMinutes:manual[row.key]?.minutes??row.calculatedMinutes,manual:manual[row.key]!=null}));
-  const split=emptyOtSplit();for(const row of rows)split[row.bucket]+=row.effectiveMinutes;
+  const split=emptyOtSplit();for(const row of rows)addToOtSplit(split,row.bucket,row.effectiveMinutes);
   return {rows,split,total:otSplitTotal(split),calculatedSplit:splitOtMinutes(total,dayType,rule)};
 }
 

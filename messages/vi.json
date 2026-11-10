@@ -4743,7 +4743,9 @@
       "requestedIntervals": "Các khoảng làm thêm đề nghị",
       "requestedHelp": "Chọn các khoảng trong bản khai toàn bộ công việc thực tế. Số phút phải bằng thời gian làm thêm đề nghị; phương pháp phê duyệt đã cấu hình vẫn được áp dụng."
     },
-    "yourRequest": "yêu cầu của bạn"
+    "yourRequest": "yêu cầu của bạn",
+    "colOtOther": "OT mức khác",
+    "otOtherRateValue": "{minutes} ({rates}×)"
   },
   "org": {
     "title": "Sơ đồ tổ chức",
@@ -12684,7 +12686,12 @@
       "shiftsAllowedHint": "Các ca làm việc áp dụng quy tắc đi muộn, về sớm và tăng ca của nhóm này. Mỗi ca chỉ thuộc đúng một nhóm, nên chọn ở đây sẽ chuyển ca ra khỏi nhóm hiện tại; bỏ chọn sẽ để ca đó theo nhóm Standard.",
       "shiftsAllowedEmpty": "Chưa có ca nào để chọn.",
       "shiftsAllowedInGroup": "hiện thuộc {group}",
-      "shiftsAllowedNoGroup": "chưa có nhóm"
+      "shiftsAllowedNoGroup": "chưa có nhóm",
+      "otRateInvalid": "Mức OT phải là số từ 0 đến 99.99, tối đa hai chữ số thập phân.",
+      "otPhRateInvalid": "Hệ số ngày lễ phải để trống hoặc là số từ 0 đến 99.99, tối đa hai chữ số thập phân.",
+      "otRateHint": "Chấp nhận 0 và số thập phân như 1.0, 1.5, 1.75, 2.0 và 3.0, tối đa hai chữ số thập phân. Giá trị được hiển thị đúng như đã lưu. Để trống Hệ số ngày lễ sẽ giữ mức mặc định cho ngày lễ.",
+      "otOtherRateNote": "Được báo cáo là “OT mức khác ({rate})”.",
+      "otRateReportingNote": "Mức OT quyết định số giờ được báo cáo ở cột tăng ca nào trên các màn hình chấm công. Tiền tăng ca trong bảng lương được tính theo cài đặt tăng ca của bảng lương và không thay đổi."
     },
     "benefitScheme": {
       "groupsTitle": "Nhóm bậc",
@@ -13299,7 +13306,6 @@
       "savedToast": "Đã lưu.",
       "createdToast": "Đã tạo Nhóm lịch làm việc.",
       "duplicatedToast": "Đã nhân bản Nhóm lịch làm việc. Bạn đang ở trên bản sao.",
-      "deductionsHere": "Công tắc này được đặt ở phần Chung ở đầu trang này, và chỉ ở đó. Ngày bắt đầu được hệ thống đóng dấu khi bạn bật lên và không thể tự nhập, nên một tháng lương đã chốt sẽ không bao giờ phát sinh khấu trừ về sau.",
       "colShift": "Ca",
       "shiftsInGroupTitle": "Các ca trong nhóm này",
       "shiftsInGroupEmpty": "Chưa có ca nào thuộc nhóm này.",
@@ -37259,14 +37265,11 @@
     "noShifts": "Danh sách này không có ca.",
     "includeMarked": "Đưa vào {count} ca đã chọn →",
     "excludeMarked": "← Loại trừ {count} ca đã chọn",
-    "rotationPoolSave": "Danh sách này hiển thị chu kỳ đã lưu cho ngày {date}. Để thay đổi ca, hãy lưu cùng chu kỳ mới trong thẻ Lịch trực.",
+    "rotationPoolSave": "Danh sách này hiển thị vòng xoay đã lưu cho {date}. Để thay đổi danh sách, hãy lưu cùng một vòng xoay mới trong phần Lịch trực bên dưới.",
     "saveShiftPool": "Lưu các ca được phép",
     "currentRotation": "Chu kỳ {days} ngày có hiệu lực từ {date}",
     "company": "Công ty",
-    "chooseCompany": "Chọn công ty",
     "currentRevision": "Bản sửa đổi {revision} · có hiệu lực từ {date}",
-    "noClockRevision": "Công ty này chưa có thiết lập chấm công đang áp dụng.",
-    "scheduleClock": "Lên lịch áp dụng thiết lập chấm công mới cho công ty này",
     "pairing": "Cách ghép lượt chấm công",
     "pairingHelp": "Chọn cách ghép các lượt chấm công cho từng loại ngày.",
     "normal": "Ngày làm việc",
@@ -37278,11 +37281,19 @@
     "minimumInterval": "Khoảng cách tối thiểu giữa các lượt chấm công",
     "minutes": "Phút",
     "intervalHelp": "Giá trị 0 tắt bộ lọc khoảng cách. Lượt bị bỏ qua vẫn có trong dữ liệu chấm công gốc.",
-    "effectiveFrom": "Có hiệu lực từ",
-    "reason": "Lý do thay đổi",
     "clockHistory": "Lịch sử thiết lập chấm công",
     "saveAttendance": "Lưu thiết lập chấm công",
     "lateGrace": "Thời gian cho phép đi muộn (phút)",
-    "earlyGrace": "Thời gian cho phép về sớm (phút)"
+    "earlyGrace": "Thời gian cho phép về sớm (phút)",
+    "appliesTo": "Áp dụng cho",
+    "allCompanies": "Tất cả công ty",
+    "specificCompanies": "Chọn công ty cụ thể",
+    "chooseOneCompany": "Chọn ít nhất một công ty.",
+    "allCompaniesHelp": "Tất cả công ty bao gồm cả các công ty được thêm sau này. Chọn công ty cụ thể để chỉ áp dụng các cài đặt này cho những công ty đó; các công ty khác giữ cài đặt riêng của mình.",
+    "companyScopedHelp": "Các cài đặt này áp dụng cho các công ty bạn chọn. Công ty không được chọn giữ cài đặt riêng của mình.",
+    "differingNote": "Các công ty này giữ cài đặt chấm công riêng, khác biệt: {companies}.",
+    "appliesFromTomorrow": "Thay đổi Cách ghép lượt chấm công và Khoảng cách tối thiểu giữa các lượt chấm công có hiệu lực từ ngày mai, nên dữ liệu chấm công đã ghi nhận hôm nay không bị tính lại. Lịch sử ghi lại ai đã thay đổi và khi nào.",
+    "systemReason": "Đã cập nhật trong cài đặt Nhóm lịch làm việc",
+    "dutyRosterPoolNote": "Vòng xoay chỉ có thể dùng các ca Đã đưa vào trong Ca được phép ở trên."
   }
 }

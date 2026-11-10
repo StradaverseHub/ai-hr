@@ -1745,9 +1745,15 @@ function deriveAttendance(
 }
 
 /** The six per-rate columns as a DB value object. Null split ⇒ all six stay NULL ("no engine computed
- *  this"), which is a different statement from six zeros and is what the read layer renders as "—". */
+ *  this"), which is a different statement from six zeros and is what the read layer renders as "—".
+ *
+ *  c03670cc — minutes in the `other` bucket (a Variable band typed at a rate outside 0/1.0/1.5/2.0/3.0)
+ *  are STORED in ot_flat_minutes, exactly where such minutes have always been stored, so the six columns
+ *  keep summing to ot_minutes and no stored meaning, payroll input or audit hash changes shape. The
+ *  separation is recorded in the trace (split.other and each row's bucket and rate), and the attendance
+ *  breakdown reports it on its own "other rate" line (core/attendance-derive.ts otherRateFromTrace). */
 const otSplitColumns = (split: OtSplit | null) => ({
-  otFlatMinutes: split?.flat ?? null,
+  otFlatMinutes: split ? split.flat + (split.other ?? 0) : null,
   ot00Minutes: split?.ot00 ?? null,
   ot10Minutes: split?.ot10 ?? null,
   ot15Minutes: split?.ot15 ?? null,

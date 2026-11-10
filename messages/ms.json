@@ -4743,7 +4743,9 @@
       "requestedIntervals": "Selang kerja lebih masa yang diminta",
       "requestedHelp": "Pilih selang dalam pernyataan kerja sebenar yang lengkap. Bilangan minit mesti sama dengan kerja lebih masa yang diminta; kaedah kelulusan yang ditetapkan masih terpakai."
     },
-    "yourRequest": "permohonan anda"
+    "yourRequest": "permohonan anda",
+    "colOtOther": "OT kadar lain",
+    "otOtherRateValue": "{minutes} ({rates}×)"
   },
   "org": {
     "title": "Carta organisasi",
@@ -12684,7 +12686,12 @@
       "shiftsAllowedHint": "Syif yang mengikut peraturan lewat, balik awal dan kerja lebih masa kumpulan ini. Satu syif hanya milik satu kumpulan, jadi menandakannya di sini akan mengeluarkannya daripada kumpulan semasa; menyahtanda akan mengekalkannya pada kumpulan Standard.",
       "shiftsAllowedEmpty": "Belum ada syif untuk dipilih.",
       "shiftsAllowedInGroup": "kini dalam {group}",
-      "shiftsAllowedNoGroup": "belum ada kumpulan"
+      "shiftsAllowedNoGroup": "belum ada kumpulan",
+      "otRateInvalid": "Kadar OT mestilah nombor dari 0 hingga 99.99 dengan sehingga dua tempat perpuluhan.",
+      "otPhRateInvalid": "Kadar cuti umum mestilah kosong atau nombor dari 0 hingga 99.99 dengan sehingga dua tempat perpuluhan.",
+      "otRateHint": "Menerima 0 dan perpuluhan seperti 1.0, 1.5, 1.75, 2.0 dan 3.0, dengan sehingga dua tempat perpuluhan. Nilai dipaparkan tepat seperti yang disimpan. Kadar cuti umum yang kosong mengekalkan kadar lalai cuti umum.",
+      "otOtherRateNote": "Dilaporkan sebagai “OT kadar lain ({rate})”.",
+      "otRateReportingNote": "Kadar OT menentukan lajur lebih masa yang digunakan untuk melaporkan jam pada skrin kehadiran. Bayaran lebih masa dalam gaji dikira oleh tetapan lebih masa gaji dan tidak berubah."
     },
     "benefitScheme": {
       "groupsTitle": "Kumpulan Gred",
@@ -13299,7 +13306,6 @@
       "savedToast": "Disimpan.",
       "createdToast": "Kumpulan Jadual dicipta.",
       "duplicatedToast": "Kumpulan Jadual diduplikasi. Anda berada pada salinan itu.",
-      "deductionsHere": "Suis ini ditetapkan dalam bahagian Umum di bahagian atas halaman ini, dan hanya di situ. Tarikh permulaannya dicap apabila anda menghidupkannya dan tidak boleh ditaip, jadi bulan gaji yang sudah anda tutup tidak akan menerima potongan selepas itu.",
       "colShift": "Syif",
       "shiftsInGroupTitle": "Syif dalam kumpulan ini",
       "shiftsInGroupEmpty": "Belum ada syif dalam kumpulan ini.",
@@ -37259,14 +37265,11 @@
     "noShifts": "Tiada syif dalam senarai ini.",
     "includeMarked": "Sertakan {count} pilihan →",
     "excludeMarked": "← Kecualikan {count} pilihan",
-    "rotationPoolSave": "Senarai ini menunjukkan giliran yang disimpan untuk {date}. Simpan perubahan syif bersama giliran baharu pada tab Jadual Bertugas.",
+    "rotationPoolSave": "Senarai ini menunjukkan giliran yang disimpan untuk {date}. Untuk mengubah senarai, simpan bersama giliran baharu dalam bahagian Jadual Bertugas di bawah.",
     "saveShiftPool": "Simpan syif dibenarkan",
     "currentRotation": "Giliran {days} hari berkuat kuasa mulai {date}",
     "company": "Syarikat",
-    "chooseCompany": "Pilih syarikat",
     "currentRevision": "Semakan {revision} · berkuat kuasa mulai {date}",
-    "noClockRevision": "Belum ada tetapan perakam waktu berkuat kuasa untuk syarikat ini.",
-    "scheduleClock": "Jadualkan tetapan perakam waktu baharu untuk syarikat ini",
     "pairing": "Kaedah Padanan",
     "pairingHelp": "Pilih cara rekod waktu dipadankan bagi setiap jenis hari.",
     "normal": "Hari Bekerja",
@@ -37278,11 +37281,19 @@
     "minimumInterval": "Sela Minimum Antara Rekod Waktu",
     "minutes": "Minit",
     "intervalHelp": "Sifar mematikan penapisan sela. Rekod yang diabaikan kekal dalam Fail Rekod Waktu Mentah.",
-    "effectiveFrom": "Berkuat kuasa mulai",
-    "reason": "Sebab perubahan",
     "clockHistory": "Sejarah tetapan perakam waktu",
     "saveAttendance": "Simpan tetapan Kehadiran",
     "lateGrace": "Toleransi Lewat Masuk (Minit)",
-    "earlyGrace": "Toleransi Keluar Awal (Minit)"
+    "earlyGrace": "Toleransi Keluar Awal (Minit)",
+    "appliesTo": "Terpakai kepada",
+    "allCompanies": "Semua Syarikat",
+    "specificCompanies": "Pilih syarikat tertentu",
+    "chooseOneCompany": "Pilih sekurang-kurangnya satu syarikat.",
+    "allCompaniesHelp": "Semua Syarikat juga merangkumi syarikat yang ditambah kemudian. Pilih syarikat tertentu untuk menggunakan tetapan ini pada syarikat itu sahaja; syarikat lain mengekalkan tetapan masing-masing.",
+    "companyScopedHelp": "Tetapan ini terpakai kepada syarikat yang anda pilih. Syarikat yang tidak dipilih mengekalkan tetapan masing-masing.",
+    "differingNote": "Syarikat ini mengekalkan tetapan rekod waktu mereka sendiri yang berbeza: {companies}.",
+    "appliesFromTomorrow": "Perubahan pada Kaedah Padanan dan Sela Minimum Antara Rekod Waktu berkuat kuasa mulai esok, jadi kehadiran yang sudah direkodkan hari ini tidak dikira semula. Sejarah merekodkan siapa yang mengubahnya dan bila.",
+    "systemReason": "Dikemas kini dalam tetapan Kumpulan Jadual",
+    "dutyRosterPoolNote": "Giliran hanya boleh menggunakan syif yang Disertakan dalam Syif Dibenarkan di atas."
   }
 }

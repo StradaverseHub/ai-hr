@@ -203,7 +203,7 @@ export default async function ShiftSettingsPage({
                         </td>
                         <td className="px-4 py-2.5">
                           {group ? (
-                            <Link href={scheduleGroupSectionHref(group.id, 'workingDay')} className="text-primary hover:underline">
+                            <Link href={scheduleGroupSectionHref(group.id, 'general')} className="text-primary hover:underline">
                               {group.name}
                             </Link>
                           ) : (

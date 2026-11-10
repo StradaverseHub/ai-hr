@@ -121,7 +121,7 @@ vi.mock('next-intl/server', async () => {
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { listAttendancePolicies, setAttendancePolicy } from '../core/attendance';
 import { getScheduleRotation } from '../core/attendance-rotation';
-import { attendanceClockPolicyHistory } from '../core/attendance-clock-policy';
+import { attendanceClockPolicyGroupHistory, attendanceClockPolicyHistory } from '../core/attendance-clock-policy';
 import {
   createAttendanceRule,
   ensureStandardRule,
@@ -519,8 +519,9 @@ describe('E. every writer stays on the record — and the two row actions that h
     const date=new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+86_400_000).toISOString().slice(0,10);
     const form=fd({
       name:'Atomic Schedule Group',allowedShiftsEditor:'1',allowedShiftIds:shift.id,createRotation:'1',
-      createDayKind_1:'full',lateGracePeriodMinutes:'5',scheduleClockPolicy:'1',
-      clockCompanyId:b.companyId,clockExpectedOrdinal:'0',clockEffectiveFrom:date,clockReason:'Launch',
+      createDayKind_1:'full',lateGracePeriodMinutes:'5',
+      // c03670cc — no Effective From, no Reason, no tick box: All Companies, dated tomorrow by the service.
+      clockEditor:'1',clockScope:'all',clockRevisionToken:JSON.stringify({group:0}),
       clockPairing_normal:'auto',clockPairing_rest:'firstInLastOut',clockPairing_off:'auto',
       clockPairing_publicHoliday:'firstInLastOut',clockMinimumInterval:'2',
       cycle:JSON.stringify({effectiveFrom:date,anchorDate:date,unit:'day',length:1,days:[{kind:'full',shiftId:shift.id}]}),
@@ -533,14 +534,17 @@ describe('E. every writer stays on the record — and the two row actions that h
     const rotation=await getScheduleRotation(ADMIN,group.id);
     expect(rotation.memberships).toEqual([{shiftId:shift.id}]);
     expect(rotation.versions).toMatchObject([{effectiveFrom:date,allowedShiftIds:[shift.id]}]);
-    expect(await attendanceClockPolicyHistory(ADMIN,{companyId:b.companyId,ruleId:group.id})).toMatchObject([
-      {effectiveFrom:date,policy:{pairing:{rest:'firstInLastOut'},minimumIntervalMinutes:2}},
+    expect(await attendanceClockPolicyGroupHistory(ADMIN,{ruleId:group.id})).toMatchObject([
+      {ordinal:1,effectiveFrom:date,policy:{pairing:{normal:'auto',rest:'firstInLastOut',off:'auto',publicHoliday:'firstInLastOut'},minimumIntervalMinutes:2}},
     ]);
+    expect(await attendanceClockPolicyHistory(ADMIN,{companyId:b.companyId,ruleId:group.id}),'All Companies writes no company row').toEqual([]);
 
+    // A clock write refused INSIDE the transaction (a stale revision token) rolls the whole group back.
     form.set('name','Rolled Back Schedule Group');
-    form.set('clockReason','');
+    form.set('clockRevisionToken',JSON.stringify({group:1}));
     const refusal=await redirectOf(()=>createAttendanceRuleAction(form));
-    expect(queryOf(refusal).get('error')).toContain('reason');
+    expect(queryOf(refusal).get('error')).toContain('Clock settings changed');
+    expect(queryOf(refusal).get('section')).toBe('attendance');
     expect((await listAttendanceRules(ADMIN)).some(row=>row.name==='Rolled Back Schedule Group')).toBe(false);
   });
 
@@ -717,11 +721,16 @@ describe('G. General has scoped ownership; standalone and create forms retain fu
     );
     const panel = elementById(await renderEdit(group.id), 'section-general');
     expect(oldEdit.length).toBeGreaterThan(1200);
-    expect(panel, 'General uses the scoped identity and deduction form').toContain(oldEdit);
+    expect(panel, 'General uses the scoped identity form').toContain(oldEdit);
     // Pin the submitted fields positively; two empty renders cannot satisfy this contract.
-    for (const name of ['ruleId', 'name', 'status', 'description', 'applyDeductions']) {
+    for (const name of ['ruleId', 'name', 'status', 'description']) {
       expect(panel, `the editor posts ${name}`).toContain(`name="${name}"`);
     }
+    // c03670cc — Wage Deductions moved to the Attendance section, its only writer.
+    expect(panel, 'General no longer draws the deduction switch').not.toContain('name="applyDeductions"');
+    const attendanceSection = elementById(await renderEdit(group.id), 'section-attendance');
+    expect(attendanceSection).toContain('name="applyDeductions"');
+    expect(attendanceSection).toContain('name="deductionsEditor"');
 
     for (const name of ['lateGracePeriodMinutes','earlyGracePeriodMinutes','includeGraceInLateness','includeGraceInEarlyOut','applyToEarlyOt','otRows']) {
       expect(panel, `${name} has one owner outside General`).not.toContain(`name="${name}"`);
@@ -732,9 +741,13 @@ describe('G. General has scoped ownership; standalone and create forms retain fu
     expect(full).toContain('name="lateGracePeriodMinutes"');
     expect(full).toContain('name="applyToEarlyOt"');
     expect(panel, 'legacy groups can save the base pool from General').toContain('name="allowedShiftsEditor"');
-    const workingDay = elementById(await renderEdit(group.id), 'section-workingDay');
-    expect(workingDay).toContain('name="allowedShiftIds"');
-    expect(workingDay).toContain('name="cycle"');
+    // c03670cc — the Duty Roster (switch + rotation) is in General now, after Shift Allowed.
+    const general = elementById(await renderEdit(group.id), 'section-general');
+    expect(general).toContain('name="allowedShiftIds"');
+    expect(general).toContain('name="cycle"');
+    expect(general).toContain('data-schedule-control="duty"');
+    expect(general.indexOf(esc(en.scheduleGroupEditor.shiftAllowed)), 'Shift Allowed comes first')
+      .toBeLessThan(general.indexOf('data-schedule-duty-roster'));
 
     // And Add New: the retired rules/new page body. Here the form DOES draw a Cancel, because Add Schedule
     // has no record to go back to and "Back to Schedule" and "Cancel" are the same destination for it.
@@ -747,11 +760,17 @@ describe('G. General has scoped ownership; standalone and create forms retain fu
       }),
     );
     const add = await renderNew();
-    expect(oldNew).toContain('id="section-workingDay"');
-    for(const section of ['general','workingDay','attendance','overtime']) {
+    expect(oldNew).not.toContain('id="section-workingDay"');
+    for(const section of ['general','attendance','overtime']) {
       expect(add).toContain(`id="section-${section}"`);
     }
-    expect(add).toContain('name="createRotation"');
+    expect(add).not.toContain('id="section-workingDay"');
+    // c03670cc — on Add, the first rotation sits in General and Wage Deductions in Attendance.
+    expect(elementById(add,'section-general')).toContain('name="createRotation"');
+    expect(elementById(add,'section-attendance')).toContain('name="applyDeductions"');
+    expect(elementById(add,'section-general')).not.toContain('name="applyDeductions"');
+    expect(add).not.toContain('name="clockEffectiveFrom"');
+    expect(add).not.toContain('name="clockReason"');
   });
 
   it('the policy Edit panel is that company’s WorkScheduleForm, and only that company’s', async () => {
@@ -866,9 +885,10 @@ describe('I. addressing — the per-group pages, and the panel that stayed', () 
   it('every section the reporter named is on the group\'s own page, exactly once', async () => {
     const group = await createAttendanceRule(ADMIN, ruleInput({ name: 'Plant crew' }));
     for (const html of [await renderView(group.id), await renderEdit(group.id)]) {
-      for (const key of ['general','attendance','overtime','workingDay']) {
+      for (const key of ['general','attendance','overtime']) {
         expect(html.split(` id="section-${key}"`).length - 1, `section-${key}`).toBe(1);
       }
+      expect(html, 'c03670cc — the Duty Roster tab is retired').not.toContain(' id="section-workingDay"');
       // …and no group PICKER: the page is the group. That is the item in one assertion.
       expect(html, 'no group selector on a group\'s own page').not.toContain(esc(SC.groupHint));
     }

@@ -4743,7 +4743,9 @@
       "requestedIntervals": "申请加班时段",
       "requestedHelp": "请选择完整实际工作声明内的时段。时段分钟数须与申请加班分钟数一致，仍按已配置的审批计算方式处理。"
     },
-    "yourRequest": "您的申请"
+    "yourRequest": "您的申请",
+    "colOtOther": "OT 其他费率",
+    "otOtherRateValue": "{minutes}（{rates}×）"
   },
   "org": {
     "title": "组织架构图",
@@ -12684,7 +12686,12 @@
       "shiftsAllowedHint": "遵循本组迟到、早退与加班规则的班次。一个班次只属于一个组，因此在此勾选会把它从当前所属的组中移出；取消勾选则会让它沿用标准组。",
       "shiftsAllowedEmpty": "目前还没有可选的班次。",
       "shiftsAllowedInGroup": "当前属于 {group}",
-      "shiftsAllowedNoGroup": "尚未分组"
+      "shiftsAllowedNoGroup": "尚未分组",
+      "otRateInvalid": "加班费率必须是 0 到 99.99 之间的数字，最多两位小数。",
+      "otPhRateInvalid": "公共假期倍率必须留空，或为 0 到 99.99 之间的数字，最多两位小数。",
+      "otRateHint": "可输入 0 及 1.0、1.5、1.75、2.0、3.0 等小数，最多两位小数。数值按保存时原样显示。公共假期倍率留空时沿用公共假期默认值。",
+      "otOtherRateNote": "将报告为“OT 其他费率（{rate}）”。",
+      "otRateReportingNote": "加班费率决定工时在考勤页面上归入哪一个加班列。工资中的加班费由工资加班设置计算，不会改变。"
     },
     "benefitScheme": {
       "groupsTitle": "职级组",
@@ -13299,7 +13306,6 @@
       "savedToast": "已保存。",
       "createdToast": "排班组已创建。",
       "duplicatedToast": "排班组已复制。您当前正在查看副本。",
-      "deductionsHere": "此开关只在本页顶部的「通用」部分设置。生效起始日期在您开启时由系统自动记录，无法手动输入，因此已经结算封存的工资月份绝不会事后产生扣减。",
       "colShift": "班次",
       "shiftsInGroupTitle": "此组中的班次",
       "shiftsInGroupEmpty": "此组中尚无任何班次。",
@@ -37259,14 +37265,11 @@
     "noShifts": "此列表没有班次。",
     "includeMarked": "纳入所选的 {count} 项 →",
     "excludeMarked": "← 排除所选的 {count} 项",
-    "rotationPoolSave": "此列表显示为 {date} 保存的轮班。要更改允许的班次，请在值班表中随新的轮班一起保存。",
+    "rotationPoolSave": "此列表显示为 {date} 保存的轮班。如需更改班次列表，请在下方值班表部分随新的轮班一起保存。",
     "saveShiftPool": "保存允许的班次",
     "currentRotation": "{days} 天轮班，自 {date} 起生效",
     "company": "公司",
-    "chooseCompany": "选择公司",
     "currentRevision": "版本 {revision} · 自 {date} 起生效",
-    "noClockRevision": "此公司尚无已生效的打卡设置。",
-    "scheduleClock": "安排此公司的新打卡设置",
     "pairing": "配对方式",
     "pairingHelp": "为各类日期选择打卡记录的配对方式。",
     "normal": "工作日",
@@ -37278,11 +37281,19 @@
     "minimumInterval": "打卡最短间隔",
     "minutes": "分钟",
     "intervalHelp": "设为零可关闭间隔筛选。跳过的记录仍保留在原始打卡记录中。",
-    "effectiveFrom": "生效日期",
-    "reason": "变更原因",
     "clockHistory": "打卡设置历史",
     "saveAttendance": "保存考勤设置",
     "lateGrace": "迟到宽限（分钟）",
-    "earlyGrace": "早退宽限（分钟）"
+    "earlyGrace": "早退宽限（分钟）",
+    "appliesTo": "适用于",
+    "allCompanies": "所有公司",
+    "specificCompanies": "选择特定公司",
+    "chooseOneCompany": "请至少选择一家公司。",
+    "allCompaniesHelp": "“所有公司”也涵盖之后新增的公司。选择特定公司可仅对这些公司应用这些设置；其他公司保留各自的设置。",
+    "companyScopedHelp": "这些设置适用于您选择的公司。未选择的公司保留各自的设置。",
+    "differingNote": "以下公司保留各自不同的打卡设置：{companies}。",
+    "appliesFromTomorrow": "配对方式和打卡最短间隔的更改从明天起生效，今天已记录的考勤不会被重新计算。历史记录会保存更改人和更改时间。",
+    "systemReason": "已在排班组设置中更新",
+    "dutyRosterPoolNote": "轮班只能使用上方“允许的班次”中已纳入的班次。"
   }
 }

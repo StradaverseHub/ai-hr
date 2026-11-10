@@ -8,6 +8,20 @@ domain_event for app-user.logged-in reads; no data changes. Recheck peer claims,
 the published baseline and the ordered applied ledger at admission; this
 reservation grants no installation authority.
 
+# Schedule Group configuration (c03670cc) — 10 November 2026 MYT (unapplied)
+
+Branch claude/fb-c03670cc-schedule-group-tabs reserves
+`4600_attendance_clock_policy_group_scope` at idx 4000 / when 1793330004300, above
+the peer reservations through 4502 (idx 3902 / when 1793330004202) and below 4601,
+which is reserved for the Users builder. It lets `attendance_clock_policy_revision`
+hold group-wide (company_id NULL) revisions with their own ordinal/date chain and
+group-administrator write check. It adds no column to any table. It re-creates the 4202 guard function reading only
+ordinal/effective_from, so it stays compatible with the peer
+`4342_attendance_clock_policy_audit_scope` (when 1793330004042) on
+codex/architecture-leave-withdraw-snapshot-test-20261110; that peer's audit-read
+policy and history function match company rows only. Recheck peer claims and the
+installed ledger before admission; this reservation grants no installation authority.
+
 # Schedule Group clock policy — 10 November 2026 MYT (unapplied)
 
 Reserve `4202_attendance_clock_policy_revisions` at idx 3602 and when

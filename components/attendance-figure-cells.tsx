@@ -81,6 +81,7 @@ const BUCKET_KEY: Record<string, string> = {
   ot15: 'colOt15',
   ot20: 'colOt20',
   ot30: 'colOt30',
+  other: 'colOtOther',
 };
 
 const CELL = 'px-3 py-2.5 text-right tabular-nums text-muted-foreground';
