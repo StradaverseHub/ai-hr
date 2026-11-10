@@ -19,7 +19,7 @@ let b: Base, manager: SessionContext, employee: SessionContext, hr: SessionConte
 let managerEmploymentId: string, employeeEmploymentId: string;
 beforeAll(async () => {
   await migrateTestDb(); await resetDb(); b = await seedBase();
-  for (const module of ['claims', 'payroll', 'leave', 'attendance']) await setModule(b.tenantId, module, 'active');
+  for (const module of ['claims', 'payroll', 'attendance']) await setModule(b.tenantId, module, 'active');
   const root: SessionContext = {...adminCtx(b), grants: [{role: 'hr_admin', companyId: null}]};
   const hire = (fullName: string) => hireEmployee(root, {person: {fullName, primaryEmail: randomUUID() + '@fixture.test'},
     companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2020-01-01'});
