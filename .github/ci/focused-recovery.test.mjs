@@ -1,6 +1,6 @@
 import test from 'node:test';
 import {readFileSync as readModelSource} from 'node:fs';
-import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {controllerRegressionRoots,candidateCarriesSingletonFixtures,SINGLETON_FREE_CANDIDATE} from './controller-regression-roots.mjs';
 import {createHash as modelCreateHash} from 'node:crypto';
 import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
 import {singletonSources} from './singleton-protocol.mjs';
@@ -15,7 +15,7 @@ import {installationFixture} from './staging-install-test-fixture.mjs';
 
 
 // Source-data model only: actual hosted/source authentication belongs to the real adapters.
-const {candidate:modelRoot}=controllerRegressionRoots();
+const {candidate:modelRoot}=controllerRegressionRoots(),singletonFixtures=candidateCarriesSingletonFixtures(modelRoot);
 function databaseModel(f,root=modelRoot){
  const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
  const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
@@ -48,10 +48,12 @@ function input(root){
  return {plan,assessment,run:f.run,jobs:f.jobs,reports:f.reports,focused:[{run,jobs,artifact,producer:jobs[1],report,result}],classifierHash:'classifier',verificationController:'e'.repeat(40)};
 }
 const certificate=f=>({...verifyFocusedRecovery(f),verificationDiagnostic:{runId:501,controller:f.verificationController}});
-test('Recovery retains every successful unit and every original failure without mutating reports',()=>{
+test('Recovery retains every successful unit and every original failure without mutating reports',t=>{
  const f=input(),before=structuredClone(f.reports),c=certificate(f);assert.deepEqual(f.reports,before);assert.equal(f.run.conclusion,'failure');assert.equal(c.units.filter(u=>u.kind==='focused-recovery').length,1);assert.equal(c.tests,5);assert.equal(c.originalConclusion,'failure');assert.equal(c.units.length,f.plan.units.length);
 
+ if(!singletonFixtures)t.diagnostic(SINGLETON_FREE_CANDIDATE);else{
  const db=input(modelRoot);assert.throws(()=>verifyFocusedRecovery(db));assert.equal(verifyFocusedRecovery(db,modelRoot).tests,5);assert.equal(verifyFocusedRecovery(db,modelRoot).units.filter(unit=>unit.kind==='retained').length,4);assert.throws(()=>verifyFocusedRecovery({...db,candidateRoot:modelRoot}));
+ }
 });
 for(const [name,mutate] of [
  ['missing focused coverage',f=>f.focused=[]],['duplicate focused coverage',f=>f.focused.push(structuredClone(f.focused[0]))],

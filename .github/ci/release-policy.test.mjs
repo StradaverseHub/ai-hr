@@ -3,7 +3,7 @@ import {mkdtempSync as modelMkdtemp,mkdirSync as modelMkdir,readdirSync as model
 import {tmpdir as modelTmpdir} from 'node:os';
 
 import {realpathSync,readFileSync as readModelSource} from 'node:fs';
-import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {controllerRegressionRoots,candidateCarriesSingletonFixtures,SINGLETON_FREE_CANDIDATE} from './controller-regression-roots.mjs';
 import {createHash as modelCreateHash} from 'node:crypto';
 import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
 import {singletonSources} from './singleton-protocol.mjs';
@@ -36,7 +36,7 @@ function differentDatabaseRoot(){
  modelWrite(modelJoin(root,journal),JSON.stringify(data));modelWrite(modelJoin(root,'db/migrations/9999_distinct_current_model.sql'),'-- fictional new source input\n');return root;
 }
 // Source-data model only: actual hosted/source authentication belongs to the real adapters.
-const {candidate:modelRoot}=controllerRegressionRoots();
+const {candidate:modelRoot}=controllerRegressionRoots(),singletonFixtures=candidateCarriesSingletonFixtures(modelRoot);
 function databaseModel(f,root=modelRoot){
  const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
  const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
@@ -67,10 +67,12 @@ function proof(){
  const reports=units.map(u=>({schemaVersion:1,sha:candidate,fingerprint:plan.fingerprint,id:u.id,cwd:'/candidate',files:u.files,exitCode:0,...(u.kind==='db'?{databaseTerminalEvidence:databaseEvidence()}:{}),batches:[{exitCode:0,...(u.kind==='db'?{databaseEvidence:databaseEvidence()}:{}),result:{success:true,numFailedTests:0,numFailedTestSuites:0,numTotalTests:u.files.length,numPassedTests:u.files.length,testResults:u.files.map(file=>({name:'/candidate/'+file,status:'passed',assertionResults:[{status:'passed'}]}))}}]}));
  return {plan,reports,receipt:verifyReports(plan,reports),expectedPlan:structuredClone(plan),p:expected};
 }
-test('A complete same-policy witness validates without creating any local full receipt',()=>{assert.equal(validateRun(run(),expected),true);assert.equal(validateJobs(jobs(),proof().expectedPlan),true);assert.equal(validateArtifacts(artifacts(),expected,proof().expectedPlan),true);const v=validateProof(proof());assert.equal(v.tier,'ci');assert.equal(v.tests,11);assert.equal(v.suiteFiles,8);
+test('A complete same-policy witness validates without creating any local full receipt',t=>{assert.equal(validateRun(run(),expected),true);assert.equal(validateJobs(jobs(),proof().expectedPlan),true);assert.equal(validateArtifacts(artifacts(),expected,proof().expectedPlan),true);const v=validateProof(proof());assert.equal(v.tier,'ci');assert.equal(v.tests,11);assert.equal(v.suiteFiles,8);
+ if(!singletonFixtures)t.diagnostic(SINGLETON_FREE_CANDIDATE);else{
  const p=proof();databaseModel({expectedPlan:p.plan,reports:p.reports,expected:p.p});p.expectedPlan=structuredClone(p.plan);p.receipt=verifyReports(p.plan,p.reports,{runId,attempt:1},modelRoot);
  assert.equal(validateProof(p,modelRoot).tests,p.receipt.tests);assert.throws(()=>validateProof(p));assert.throws(()=>validateProof({...p,candidateRoot:modelRoot}));
  const other=differentDatabaseRoot();try{assert.throws(()=>validateProof(p,other),{code:'ERR_ASSERTION',message:/^Singleton source membership differs$/});}finally{modelRemove(other,{recursive:true,force:true});}
+ }
 });
 for(const [name,change] of [
  ['wrong controller',r=>r.head_sha=candidate],['wrong workflow',r=>r.workflow_id=99],['fork',r=>r.head_repository.id=99],['wrong repository',r=>r.repository.id=99],['PR event',r=>r.event='pull_request'],['other controller branch',r=>r.head_branch='feature'],['partial rerun',r=>r.run_attempt=2],['unfinished run',r=>r.status='in_progress'],['failed run',r=>r.conclusion='failure'],['old run',r=>r.created_at='2020-01-01T00:00:00Z']

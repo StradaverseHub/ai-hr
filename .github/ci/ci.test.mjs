@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {readFileSync as readModelSource} from 'node:fs';
-import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {controllerRegressionRoots,candidateCarriesSingletonFixtures,SINGLETON_FREE_CANDIDATE} from './controller-regression-roots.mjs';
 import {createHash as modelCreateHash} from 'node:crypto';
 import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
 import {singletonSources} from './singleton-protocol.mjs';
@@ -12,7 +12,7 @@ import {verifyReports} from './verify-shards.mjs';
 import {candidateRequest,repository} from './resolve.mjs';
 
 // Source-data model only: actual hosted/source authentication belongs to the real adapters.
-const {controller:automationRoot,candidate:modelRoot}=controllerRegressionRoots();
+const {controller:automationRoot,candidate:modelRoot}=controllerRegressionRoots(),singletonFixtures=candidateCarriesSingletonFixtures(modelRoot);
 function databaseModel(f,root=modelRoot){
  const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
  const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
@@ -35,8 +35,10 @@ function sample(){
  const report={schemaVersion:1,sha,fingerprint:'fixture',id:'nodb-1',cwd:'/candidate',files:['test/example.test.ts'],exitCode:0,batches:[{exitCode:0,result:{success:true,numFailedTests:0,numFailedTestSuites:0,numTotalTests:1,numPassedTests:1,testResults:[{name:'/candidate/test/example.test.ts',status:'passed',assertionResults:[{status:'passed'}]}]}}]};
  return {plan,report};
 }
-test('Complete execution retains exact candidate and controller identity',()=>{const {plan,report}=sample();const receipt=verifyReports(plan,[report]);assert.equal(receipt.sha,sha);assert.equal(receipt.controller,plan.controller);assert.equal(receipt.tests,1);
+test('Complete execution retains exact candidate and controller identity',t=>{const {plan,report}=sample();const receipt=verifyReports(plan,[report]);assert.equal(receipt.sha,sha);assert.equal(receipt.controller,plan.controller);assert.equal(receipt.tests,1);
+ if(!singletonFixtures)t.diagnostic(SINGLETON_FREE_CANDIDATE);else{
  const db=databaseModel(databaseBaseFixture());assert.equal(verifyReports(db.expectedPlan,db.reports,{runId:100,attempt:1},modelRoot).tests,5);assert.throws(()=>verifyReports(db.expectedPlan,db.reports,{runId:100,attempt:1}));assert.throws(()=>verifyReports(db.expectedPlan,db.reports.filter(report=>!report.singleton)));
+ }
 });
 for(const [name,change] of [
  ['foreign commit',r=>r.sha=base],
@@ -97,7 +99,7 @@ function cleanupGuardPredicate(source){
  return facts=>{assert(facts&&typeof facts.phase==='string'&&typeof facts.activation==='boolean'&&typeof facts.repository==='string');const value=predicate(facts);assert.equal(typeof value,'boolean');return value;};
 }
 test('normal cleanup diagnostic selects only the explicit non-activation phase',()=>{
- const workflow=readFileSync(modelJoin(modelRoot,'.github/workflows/alpha-staging-diagnostics.yml'),'utf8');
+ const workflow=readFileSync(modelJoin(automationRoot,'.github/workflows/alpha-staging-diagnostics.yml'),'utf8');
  const job=workflow.match(/^  normal-cleanup:\n    if: \$\{\{ (.+) \}\}/m);assert(job,'Normal cleanup diagnostic must have an explicit routing guard');
  const normal=cleanupGuardPredicate(job[1]);
  const options=workflow.match(/options: \[([^\n]+)\]/);assert(options,'Fixed installer phase choices required');

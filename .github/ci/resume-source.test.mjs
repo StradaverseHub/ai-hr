@@ -1,6 +1,6 @@
 import test from 'node:test';
 import {readFileSync as readModelSource} from 'node:fs';
-import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {controllerRegressionRoots,candidateCarriesSingletonFixtures,SINGLETON_FREE_CANDIDATE} from './controller-regression-roots.mjs';
 import {createHash as modelCreateHash} from 'node:crypto';
 import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
 import {singletonSources} from './singleton-protocol.mjs';
@@ -11,7 +11,7 @@ import {fixture, put, remove, time} from './resume-test-fixtures.mjs';
 
 
 // Source-data model only: actual hosted/source authentication belongs to the real adapters.
-const {candidate:modelRoot}=controllerRegressionRoots();
+const {candidate:modelRoot}=controllerRegressionRoots(),singletonFixtures=candidateCarriesSingletonFixtures(modelRoot);
 function databaseModel(f,root=modelRoot){
  const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
  const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
@@ -29,7 +29,7 @@ function databaseModel(f,root=modelRoot){
  if(f.archives){remove(f,'unit-'+oldId);put(f,'gate-plan','ci-plan.json',plan);for(const row of f.reports)put(f,'unit-'+row.id,`unit-${row.id}.json`,row);}
  return f;
 }
-test('Verified raw archives produce a non-authoritative assessment, preserving a failed whole run', () => {
+test('Verified raw archives produce a non-authoritative assessment, preserving a failed whole run', t => {
   const f = fixture(), before = structuredClone(f.run), r = assessResumeSource(f);
   assert.equal(r.reusable.length, 5); assert.equal(r.rerun.length, 0);
   assert.equal(r.releaseAuthorized, false); assert.equal(r.result, undefined);
@@ -38,11 +38,14 @@ test('Verified raw archives produce a non-authoritative assessment, preserving a
   assert.equal(r.sourceRun.conclusion, 'failure'); assert.deepEqual(f.run, before);
   for (const unit of r.reusable) {assert.equal(unit.source.runId, 100); assert(unit.source.jobId > 0); assert.match(unit.source.digest, /^sha256:/);}
   assert.equal(r.observations.length, f.expectedPlan.units.length); assert(r.freshPrerequisites.includes('build'));
+ if(!singletonFixtures)t.diagnostic(SINGLETON_FREE_CANDIDATE);else{
   const db=databaseModel(fixture());assert.throws(()=>assessResumeSource(db),/Explicit candidate root/);assert.throws(()=>assessResumeSource({...db,candidateRoot:modelRoot}),/Explicit candidate root/);assert.equal(assessResumeSource(db,modelRoot).reusable.length,5);
+ }
 });
-test('replaced database archives keep unique fresh IDs and reach the actual root and plan guards', () => {
+test('replaced database archives keep unique fresh IDs and reach the actual root and plan guards', t => {
   const f = fixture(), before = new Map(f.artifacts.map(artifact => [artifact.name, artifact.id]));
   const old = f.expectedPlan.units.find(unit => unit.kind === 'db'), oldName = 'unit-' + old.id;
+ if(!singletonFixtures)t.diagnostic(SINGLETON_FREE_CANDIDATE);else{
   const db = databaseModel(f), unit = db.expectedPlan.units.find(row => row.singleton), name = 'unit-' + unit.id;
   const current = db.artifacts.find(artifact => artifact.name === name);
   assert(current); assert(!db.archives.has(oldName)); assert(db.archives.has(name));
@@ -57,6 +60,7 @@ test('replaced database archives keep unique fresh IDs and reach the actual root
   put(db, 'gate-plan', 'ci-plan.json', {...db.expectedPlan, candidateRoot: modelRoot});
   assert.equal(db.artifacts.find(artifact => artifact.name === 'gate-plan').id, planId);
   assert.throws(() => assessResumeSource(db, modelRoot), /plan/);
+ }
 
   const malformed = fixture(); malformed.artifacts[0].id = 0;
   put(malformed, 'gate-plan', 'ci-plan.json', malformed.expectedPlan);
@@ -107,12 +111,14 @@ for (const [name, mutate] of [
   ['artifact id', f => f.artifacts[1].id = f.artifacts[0].id], ['artifact time', f => f.artifacts[0].created_at = time(20)],
   ['archive digest', f => {const a = f.artifacts[0]; const bytes = Buffer.from(f.archives.get(a.name)); bytes[bytes.length - 1] ^= 1; f.archives.set(a.name, bytes);}],
 ]) test('Refuse mismatched ' + name, () => {const f = fixture(); mutate(f); assert.throws(() => assessResumeSource(f));});
-test('Archived plan and report identity are independently checked', () => {
+test('Archived plan and report identity are independently checked', t => {
   for (const change of [f => {const p = structuredClone(f.expectedPlan); p.runtime.node = '22.99.0'; put(f, 'gate-plan', 'ci-plan.json', p);},
     f => {const r = structuredClone(f.reports[0]); r.id = f.reports[1].id; put(f, 'unit-' + f.reports[0].id, `unit-${f.reports[0].id}.json`, r);}]) {
     const f = fixture(); change(f); assert.throws(() => assessResumeSource(f));
   }
+ if(!singletonFixtures)t.diagnostic(SINGLETON_FREE_CANDIDATE);else{
   const db=databaseModel(fixture()),archived={...db.expectedPlan,candidateRoot:modelRoot};put(db,'gate-plan','ci-plan.json',archived);assert.throws(()=>assessResumeSource(db,modelRoot),/plan/);
+ }
 });
 test('Authenticated archive bytes still cannot contain traversal or executable files', () => {
   for (const name of ['../escape.json', 'payload.sh']) {

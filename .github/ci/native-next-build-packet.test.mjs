@@ -1,5 +1,5 @@
 import test from 'node:test';
-import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {controllerRegressionRoots,candidateCarriesSingletonFixtures,SINGLETON_FREE_CANDIDATE} from './controller-regression-roots.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {validateNativeBuildMetadata,provisionNativeNextBuild,captureNativeNextInstallation,nativeHelperClosure,NATIVE_HELPER_SOURCES} from './native-next-build-packet.mjs';
@@ -61,11 +61,14 @@ test('private archives, packet and binding stay outside uploaded evidence, and o
  assert(source.includes('downloadCiArchives([metadata.artifact]'));assert(source.includes('inspectCiNativeBuildPacket(packetDirectory,metadata.expected)'));
  assert(source.includes("'-I','-B'"));
 });
-test('privileged helper closure is finite, committed on both sides and sealed before returning candidate hints',()=>{
+test('privileged helper closure is finite, committed on both sides and sealed before returning candidate hints',t=>{
  assert.equal(Object.keys(NATIVE_HELPER_SOURCES).length,11);
+ const candidate=controllerRegressionRoots().candidate;
+ if(!candidateCarriesSingletonFixtures(candidate))t.diagnostic(SINGLETON_FREE_CANDIDATE);else{
  const file='test/runtime-next-admission-native.test.ts',unit={kind:'db',files:[file],singleton:singletonDescriptor(file)};
- const sources=singletonSources(unit,controllerRegressionRoots().candidate);assert(sources.includes('db/migrations/meta/_journal.json'));for(const path of Object.values(NATIVE_HELPER_SOURCES))assert(sources.includes(path));
+ const sources=singletonSources(unit,candidate);assert(sources.includes('db/migrations/meta/_journal.json'));for(const path of Object.values(NATIVE_HELPER_SOURCES))assert(sources.includes(path));
  assert(sources.includes('.github/ci/native-next-helper-sources.mjs'));
+ }
  assert.throws(()=>nativeHelperClosure({sha:'HEAD',controller:'HEAD'},'/caller'),/Exact native helper/);
  const source=readFileSync(new URL('./native-next-build-packet.mjs',import.meta.url),'utf8');
  assert(source.indexOf('const NATIVE_HELPER_BYTES=')<source.indexOf('export async function provisionNativeNextBuild'));

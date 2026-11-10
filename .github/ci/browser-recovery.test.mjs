@@ -1,6 +1,6 @@
 import test from 'node:test';
 import {readFileSync as readModelSource} from 'node:fs';
-import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {controllerRegressionRoots,candidateCarriesSingletonFixtures,SINGLETON_FREE_CANDIDATE} from './controller-regression-roots.mjs';
 import {createHash as modelCreateHash} from 'node:crypto';
 import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
 import {singletonSources} from './singleton-protocol.mjs';
@@ -17,7 +17,7 @@ import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 
 // Source-data model only: actual hosted/source authentication belongs to the real adapters.
-const {candidate:modelRoot}=controllerRegressionRoots();
+const {candidate:modelRoot}=controllerRegressionRoots(),singletonFixtures=candidateCarriesSingletonFixtures(modelRoot);
 function databaseModel(f,root=modelRoot){
  const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
  const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
@@ -50,8 +50,10 @@ function input(root){
  const m=metadata(),fresh={...m,report,producer:m.jobs[3],binding:{kind:'PINNED_OFFICIAL_IMAGE_TOOLING_NOT_TEST_OR_RELEASE_PASS',releaseAuthorized:false,image:BROWSER_IMAGE,playwrightVersion:'1.62.1',nodeVersion:'22.23.3',candidate:plan.sha,controller,baseline:plan.migrationBase,engine:'firefox',runId:'200',attempt:'1',runtime:plan.runtime,lang:'en_US.UTF-8',tz:'Asia/Kuala_Lumpur',browsersPath:'/ms-playwright',lockSha256:lock}};
  return {plan,freshPlan,assessment,run:f.run,jobs:f.jobs,reports:f.reports,fresh,verificationController:controller,verificationDiagnostic:{runId:500,controller},producerDiagnostic:{runId:501,controller},lockSha256:lock};
 }
-test('Complete Firefox replacement preserves original failure, all retained sources and both plan fingerprints',()=>{const f=input(),before=structuredClone(f),c=verifyBrowserRecovery(f);assert.deepEqual(f,before);assert.equal(c.originalConclusion,'failure');assert.equal(c.tests,5);assert.equal(c.units.length,f.plan.units.length);assert.equal(c.units.filter(u=>u.kind==='browser-capacity-recovery').length,1);assert.notEqual(c.sourceFingerprint,c.replacementFingerprint);
+test('Complete Firefox replacement preserves original failure, all retained sources and both plan fingerprints',t=>{const f=input(),before=structuredClone(f),c=verifyBrowserRecovery(f);assert.deepEqual(f,before);assert.equal(c.originalConclusion,'failure');assert.equal(c.tests,5);assert.equal(c.units.length,f.plan.units.length);assert.equal(c.units.filter(u=>u.kind==='browser-capacity-recovery').length,1);assert.notEqual(c.sourceFingerprint,c.replacementFingerprint);
+ if(!singletonFixtures)t.diagnostic(SINGLETON_FREE_CANDIDATE);else{
  const db=input(modelRoot);assert.throws(()=>verifyBrowserRecovery(db));const bound=verifyBrowserRecovery(db,modelRoot);assert.equal(bound.tests,5);assert.notEqual(db.plan.controller,db.freshPlan.controller);assert.equal(db.plan.sha,db.freshPlan.sha);assert.throws(()=>verifyBrowserRecovery({...db,candidateRoot:modelRoot}));
+ }
 });
 for(const [name,mutate] of [
  ['source identity',f=>f.assessment.sha='b'.repeat(40)],['missing source assessment',f=>f.assessment.sourceRun.id++],['relabelled source',f=>f.run.conclusion='success'],['second original attempt',f=>f.run.run_attempt=2],

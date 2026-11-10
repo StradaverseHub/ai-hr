@@ -4,9 +4,28 @@ import {execFileSync} from 'node:child_process';
 import {lstatSync,realpathSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {SINGLETON_FILES} from './singleton-protocol.mjs';
 
 const controllerRoot=realpathSync(fileURLToPath(new URL('../../',import.meta.url)));
 const sha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
+
+// Shared singleton fixtures that only a singleton-bearing candidate tracks. The regression
+// checkout is verified clean, so presence on disk is tracked presence.
+const SINGLETON_FIXTURE_MARKERS=Object.freeze([
+ 'test/fixtures/historical-migrations','test/helpers/ci-singleton-admission.ts',
+]);
+/**
+ * Regression fixtures built from the candidate's own singleton closure apply only to a
+ * candidate that carries one. ANY registered singleton file or shared singleton fixture
+ * selects the strict mode, where every missing closure member still fails. Only a
+ * candidate with none of them (for example a main-based candidate, whose plan cannot form
+ * a singleton unit) is singleton-free.
+ */
+export function candidateCarriesSingletonFixtures(candidate){
+ const present=path=>{try{lstatSync(join(candidate,path));return true;}catch(error){if(error.code==='ENOENT'||error.code==='ENOTDIR')return false;throw error;}};
+ return [...SINGLETON_FIXTURE_MARKERS,...Object.keys(SINGLETON_FILES)].some(present);
+}
+export const SINGLETON_FREE_CANDIDATE='singleton-free candidate: no registered singleton file or shared singleton fixture is tracked, so its plan cannot form a singleton unit';
 
 export function frozenRegressionRoots({workspace,controller,candidateSha,controllerSha}){
  assert(typeof workspace==='string'&&realpathSync(workspace)===workspace,'Canonical regression workspace required');
