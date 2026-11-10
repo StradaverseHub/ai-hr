@@ -133,6 +133,12 @@ type Modules = {
   exportRoute: (request: Request) => Promise<Response>;
 };
 
+/** The real Personnel page for personnelDiagnosticState.session, settled and rendered. */
+export async function renderPersonnelPage(sp: Record<string, string>) {
+  const page = (await import('../../app/admin/personnel/page')).default as Modules['page'];
+  return renderPage({page} as Modules, sp);
+}
+
 async function renderPage(modules: Modules, sp: Record<string, string>) {
   const tree = await settle(await modules.page({searchParams: Promise.resolve(sp)}));
   const dataDone = performance.now();
@@ -307,7 +313,7 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
 
 /** A capability-only Workforce viewer: an employee of B with a published workforce.view allow on B and an
  * explicit deny on its descendant C, and no HR, payroll or rewards role. Before 9880 the page refused it. */
-async function capabilityOnlyViewer(f: PersonnelScaleFixture): Promise<SessionContext> {
+export async function capabilityOnlyViewer(f: PersonnelScaleFixture): Promise<SessionContext> {
   const t = f.base.tenantId;
   const [person] = await owner.client<{personId: string}[]>`select e.person_id as "personId" from employment e
     where e.tenant_id=${t}::uuid and e.company_id=${f.companies.b}::uuid and e.terminated_on is null

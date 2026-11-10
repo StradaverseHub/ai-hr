@@ -275,15 +275,18 @@ export async function employmentPhotoIds(
   });
 }
 
-/** employmentPhotoIds inside a caller's read-only snapshot (the Personnel page). */
+/** employmentPhotoIds inside a caller's read-only REPEATABLE READ snapshot (the Personnel page). A
+ * non-administrator's photo policy is read from that snapshot (readProfilePresentationSnapshotPolicyTx):
+ * the fresh policy's shared lock refuses anything but Read Committed, which failed the whole page for a
+ * Workforce viewer without an administrator role. */
 export async function employmentPhotoIdsTx(tx: Tx, ctx: SessionContext, employmentIds: readonly string[]): Promise<Map<string, string>> {
   const ids = [...new Set(employmentIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
   if (ids.length === 0) return new Map();
-  return employmentPhotoRowsTx(tx, ctx, ids);
+  return employmentPhotoRowsTx(tx, ctx, ids, {presentationSnapshot: true});
 }
 
-async function employmentPhotoRowsTx(tx: Tx, ctx: SessionContext, ids: string[]) {
-  const visible=await photoReadPredicateTx(tx,ctx);
+async function employmentPhotoRowsTx(tx: Tx, ctx: SessionContext, ids: string[], options?: {presentationSnapshot: true}) {
+  const visible=await photoReadPredicateTx(tx,ctx,options);
   const rows = await tx
     .select({ employmentId: employment.id, personId: personPhoto.personId })
     .from(employment)
