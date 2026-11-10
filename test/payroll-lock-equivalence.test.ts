@@ -20,10 +20,13 @@ import {createLoan,prefillLoansForBatch} from '../core/loans';
 import {listPayComponents,seedPayComponentCatalog,setEmploymentPayComponent} from '../core/pay-components';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
-/** sha256 of the canonical document the base commit produced for this exact fixture: focused CI run
- * 42812523075 on 9b94dafef plus this file only (Chen's payroll-input bonus and overtime are recorded but
- * not paid, because the typed pay component path pays from items). */
-const GOLDEN='13f356722b8a12c17c3f6c716f4f1760785e93172519bbeefa98318d3e2da142';
+/** sha256 of the canonical document the base commit produced for this exact fixture (Chen's payroll-input bonus
+ * and overtime are recorded but not paid, because the typed pay component path pays from items). Recorded twice:
+ * on 9b94dafef plus this file only it was 13f356722b8a12c17c3f6c716f4f1760785e93172519bbeefa98318d3e2da142 (focused CI
+ * run 42812523075). The combined release stands on the architecture release 6e4a883c2, whose own document for the
+ * same fixture is the value below (focused CI run 42888470119 on 6e4a883c2 plus this file only, no reader/writer
+ * lock and no payroll job in that tree), so this is the base the combined release must reproduce. */
+const GOLDEN='5b4730ac081e0d12377359c31d0c7272bf3440a64fd03495f367398d26343aa6';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T/;

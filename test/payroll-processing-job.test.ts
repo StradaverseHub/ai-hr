@@ -31,7 +31,7 @@ import {withTenant} from '../db/client';
 import {adminCtx,closeAll,createAppUser,entitledCtx,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
 /** The synchronous path's digest for this fixture (test/payroll-lock-equivalence.test.ts, recorded on the base). */
-const GOLDEN='13f356722b8a12c17c3f6c716f4f1760785e93172519bbeefa98318d3e2da142';
+const GOLDEN='5b4730ac081e0d12377359c31d0c7272bf3440a64fd03495f367398d26343aa6';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T/;
 const DROPPED=new Set(['id','createdAt','updatedAt','version','tenantId','batchId','reservedBatchId','appliedBatchId','appliedAt','loanId']);
