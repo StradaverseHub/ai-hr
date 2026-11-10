@@ -5384,6 +5384,13 @@
       "when": 1793330004042,
       "tag": "4342_attendance_clock_policy_audit_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 9002,
+      "version": "7",
+      "when": 1793330090002,
+      "tag": "9002_leave_import_job",
+      "breakpoints": true
     }
   ]
 }
