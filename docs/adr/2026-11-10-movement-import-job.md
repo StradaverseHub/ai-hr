@@ -3,7 +3,9 @@
 Status: source implementation on `claude/bulkjob-movement-20261110`; hosted verification and integration pending.
 Base: `claude/import-staged-job-20261110` @ `0143d761c` (shared bulk-job kernel, ADR 2026-11-10 employee import).
 Draft migrations (unallocated): 9910 `bulk_job_kind` row `movement_import` (scope `movement`, one active job per person),
-9911 set-wise manager-list authorization, 9912 `bulk_job_kind` row `movement_check` (scope `movement`, one per person).
+9911 set-wise manager-list authorization, 9912 `bulk_job_kind` row `movement_check` (scope `movement`, one per person),
+9913 `bulk_job_kind` row `movement_import_revert` (scope `movement`, one per person), 9914 the revert rehearsal's row-write
+capture.
 
 Confirming a checked movement import saved every chosen employee in the web request, one transaction per
 employee, each holding the exclusive tenant Access lock for that employee's whole commit (checks, rehearsal,
@@ -122,19 +124,54 @@ synchronous confirmation of the same file ran its 45 s request budget and failed
 `movement_import_timeout`, holding up to 1.37 s; under the load spike the synchronous check itself ran out of its
 45 s budget.
 
+**The whole-import revert runs on the job: a rehearsed plan and one verified set-based release (drafts 9913, 9914).**
+The movement rollback is not a restore of before-images: an assignment, compensation or reporting-line leg marks the
+movement's own row superseded (it stays in Employment History) and reopens its predecessor, a grade leg writes through
+`setEmploymentGrade` with its own event, and the reversal events are composed from the movement's recorded legs. So the
+release replays the rollback's own writes rather than restoring images:
+- **Review** once on a read-only snapshot without the writer locks (`planImportRevert`): blockers and the reviewed hash,
+  refused in the synchronous words. An attempt with Update or Delete items goes straight to the fallback.
+- **Plan**, one employee per step, in a savepoint of its chunk (the revert's writer locks, 1 s lock wait, retried) that
+  always rolls back: `applyMovementRevertTx`, the very compensation the synchronous revert applies, for that employee's
+  items with the revert's reason. Captured: every row write of the employee's own movement records (employment,
+  assignment, compensation, reporting lines as subordinate) in order with its images before and after
+  (`app.movement_revert_capture`, a trigger whose WHEN condition reads a transaction-local setting, so no other writer
+  calls it; its rows roll back with the savepoint), the events it appended in order, and the database's own per-table
+  write counts. A write to another employee's row, to an organisation classification (tenants with a published group
+  structure), or to any table outside the movement records and the trigger-maintained set (audit-chain pending rows,
+  notification processing, the Access revision, tenant epochs, the replacement-holiday queue), a deletion, or a count
+  the capture does not explain, sends the revert to the fallback. The step also records, per employee, the digest of
+  its movement records, its ledger position and its payroll closure.
+- **Release**, one transaction under the synchronous revert's locks: the lease; the attempt not reverted, the same
+  confirmation and items; principal, maintain on the attempt and on every employment, administration of every company an
+  employment returns to; the same day; every planned employee's records, ledger position and payroll closure exactly as
+  planned. Then each recorded write is applied once, setting exactly the columns it changed, set-based: one statement
+  per group of writes of the same table, kind, columns and ordinal write of a row, in an order every employee's own
+  write order agrees with (a conflict falls back); then the events in the rollback's order (employees in employment-id
+  order, as `revertOrder`). Timestamps the rollback wrote during its rehearsal take the release's time. The result is
+  checked: every written row equals its rehearsed after-image, the events equal and ordered, every table's write count
+  equal to the rehearsal's (so the same triggers ran on the same rows as often). Then the Import History event.
+- **Fallback**: any check or difference rolls the release back whole and the synchronous revert runs instead, exactly as
+  before (its own locked review, refusals, rollback and Import History records). The outcome is never partial and
+  never differs; the job records which path decided (`plan.released.path`, `plan.fallback`).
+- The coordinator's sketch captured before-images at confirm time and restored them at revert. That would delete the
+  rows the rollback keeps as superseded and would need the reversal events re-composed outside the owner; capturing
+  the rollback's own writes at revert time, under the reverting administrator's authority on that day, reproduces them
+  exactly and checks itself, so the confirm job stays as it was (no added hold) and nothing is captured that a later
+  change could invalidate unseen.
+- The screen follows the job (`ImportRevertControl`, `revert-jobs/[jobId]`, the register branch's pattern) and rejoins
+  it; completion notice `bulkJobs.notification.movementImportRevert.*` in six catalogues.
+- Equivalence (`test/movement-import-job.test.ts`): on both files the job's release leaves every tenant row of the
+  synchronous revert, the same events per employee in the same order, employees in employment-id order, and the same
+  Import History records; an unrelated edit of a planned employee's record before the release sends it to the fallback,
+  which ends exactly like the synchronous revert after the same edit. The existing revert suites (Update, Delete,
+  blocked and repeated reverts) run through the job.
+
+**A check that finished while its creator was away is shown again.** The check list marks the newest finished check
+`reviewOpen` while its attempt is neither confirmed nor reverted and no confirmation of it has started; the screen shows
+its recorded preview on return (a running confirmation takes precedence), so the file is not uploaded again.
+
 Known limits:
 - An exit or company change alters the tenant's manager list, which every later employee's reviewed fingerprint
   covers, so later employees of the same file are refused as stale (`preview_stale_revalidate`), as before.
-- **The whole-import revert still holds the writer locks for one transaction (9.6 s for 120 movements).** It is the
-  movement owner's rollback, movement by movement (`reverseMovementForImportTx`, `editMovementEventTx`,
-  `createMovementEventTx`); about a fifth of its statements write (12 movements: 368 statements, of which 31 event
-  inserts, 10 assignment, 8 compensation, 6 employment and 3 reporting-line updates and 12 organisation-tag records).
-  The employee import's set-based release (an owner-only SQL routine that voids the hires in one statement) does not
-  carry over: a set-based movement release means either expressing the rollback itself in SQL (a second implementation
-  of the movement rollback, to be reviewed as a calculation change) or a release that replays write images captured
-  from rolled-back per-employee rehearsals, verified against the rehearsal's own after-state and write counts with a
-  fall-back to today's transaction (new audit-chain, sequence and trigger rules to review). Either needs a decision
-  before it is built; a per-employee revert with an explicit partial outcome needs an owner decision.
-- A check that finished while its creator was away is not shown again on the import screen; its attempt is in Import
-  History and the file is uploaded again to confirm it (the synchronous check behaved the same after navigation).
 - `movementImportDownloadData` has no product caller; the template download uses the lock-free presentation snapshot.

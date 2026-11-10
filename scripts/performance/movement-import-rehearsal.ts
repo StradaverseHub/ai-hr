@@ -159,7 +159,13 @@ async function main(){
   const {previewImportRevertForAttempt,revertImportForAttempt}=await import('../../core/import-history-handlers');
   const reverted=await phase('revert',async()=>{const t0=Date.now();const review=await previewImportRevertForAttempt(admin,checked.checked.attemptId);const reviewMs=Date.now()-t0;
    if(!review.eligible)return{reviewMs,eligible:false,blockers:review.blockers.slice(0,3)};
-   const t1=Date.now();const done=await revertImportForAttempt(admin,checked.checked.attemptId,{previewHash:review.previewHash,reason:'Fictional rehearsal revert'});return{reviewMs,revertMs:Date.now()-t1,restored:done.restored};});
+   const t1=Date.now();const done=await revertImportForAttempt(admin,checked.checked.attemptId,{previewHash:review.previewHash,reason:'Fictional rehearsal revert'});
+   if(!('job' in done))return{reviewMs,revertMs:Date.now()-t1,restored:done.restored};
+   // The revert runs on the job: a rehearsed plan per employee, then one verified release (or the synchronous fallback).
+   const requestMs=Date.now()-t1;
+   for(;;){const [r]=await obs`select state from bulk_job where id=${done.job.id}::uuid`;if(['completed','failed','cancelled'].includes(r.state))break;await sleep(250);}
+   const [r]=await obs`select state,error,counters,metrics,plan->'released' as released,plan->>'fallback' as fallback from bulk_job where id=${done.job.id}::uuid`;
+   return{reviewMs,requestMs,revertMs:Date.now()-t1,state:r.state,error:r.error,counters:r.counters,metrics:r.metrics,released:r.released,fallback:r.fallback};});
   report.revert={...reverted.value,probes:reverted.probes,errorCount:reverted.errorCount,busy:reverted.busy,errors:reverted.errors,tenantLocks:reverted.tenantLocks};
  }
  const exited=new Promise(resolve=>worker.proc!.once('exit',resolve));worker.proc.kill('SIGTERM');await exited;
