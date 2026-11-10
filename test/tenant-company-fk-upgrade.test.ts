@@ -167,7 +167,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()',
    'app._assistant_presentation_feature_unpaused_v1()',
    'app._assistant_rewards_return_choice_payload_v1()','app._assert_assistant_rewards_presentation_v1(text)',
-   'app._assistant_rewards_calendar_choice_payload_v1()','app._assistant_rewards_cancel_choice_payload_v1()'];
+   'app._assistant_rewards_calendar_choice_payload_v1()','app._assistant_rewards_cancel_choice_payload_v1()',
+   // Audit-chain commit seal: trigger functions and the key/seal helpers stay private.
+   'app._domain_event_chain_key_held(uuid)','app._domain_event_chain_seal_tenant(uuid)','app.domain_event_chain_arm()','app.domain_event_chain_seal_now()'];
+  // The fence triggers' WHEN calls it under whichever role writes an event, and PostgreSQL checks EXECUTE for that
+  // role; it answers only whether the caller's own transaction is sealing.
+  const publicFunctions=['app.domain_event_chain_sealing()'];
   const addedFunctions=[...privateFunctions,'app.access_editor_presentation_v1()','app.access_profile_policy_read_lock()','app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.attendance_frozen_actor_identity_keys(jsonb,text)','app.delegated_approval_subjects(uuid[],text,text)',
    'app.may_have_attendance_task_metadata()',
    'app.attendance_pending_visible_headers(uuid)',
@@ -181,6 +186,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.assistant_rewards_cancel_presentation_choices_v1()',
    'app.home_leave_presentation_index(text)',
    'app.attendance_clock_policy_history(uuid,uuid)',
+   'app.domain_event_chain_flush(uuid)',...publicFunctions,
   ].sort();
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
@@ -188,7 +194,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    const [permission]=await storage.client`select has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app_execute,
     exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_execute
     from pg_proc p where p.oid=to_regprocedure(${fn})`;
-   expect(permission).toEqual({app_execute:!privateFunctions.includes(fn),public_execute:false});
+   expect(permission).toEqual({app_execute:!privateFunctions.includes(fn),public_execute:publicFunctions.includes(fn)});
   }
   // Independently parse both reviewed Claim expressions against this table. No broad policy
   // exception: only this exact USING representation may differ; WITH CHECK and every other field stay.
