@@ -2,7 +2,10 @@
 import json
 import os
 from pathlib import Path
+import select
 import socket
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -79,7 +82,8 @@ class FamilyTests(unittest.TestCase):
     def test_refuses_unknown_child_or_adopted_process(self):
         with patch.object(owner, 'exact_child') as exact:
             for direct, adopted in (([16], [71]), ([], [71, 16])):
-                with patch.object(owner, 'children_of', return_value=direct), patch.object(owner.KERNEL, 'own_children', return_value=adopted):
+                with patch.object(owner, 'children_of', return_value=direct), patch.object(owner.KERNEL, 'own_children', return_value=adopted), \
+                        patch.object(owner, 'reap_exited_adoptees', side_effect=ValueError('unverified adoptee')):
                     with self.assertRaises(ValueError):
                         owner.barrier(71, 9, 951)
             with patch.object(owner, 'children_of', return_value=[]), patch.object(owner.KERNEL, 'own_children', return_value=[71]):
@@ -99,6 +103,7 @@ class FamilyTests(unittest.TestCase):
             with patch.object(owner, 'exact_child'), patch.object(owner.KERNEL, 'own_children', return_value=adopted), \
                     patch.object(owner, 'children_of', return_value=descendants if isinstance(descendants, list) else [],
                                  side_effect=descendants if isinstance(descendants, Exception) else None), \
+                    patch.object(owner, 'reap_exited_adoptees', side_effect=ValueError('unverified adoptee')), \
                     patch.object(owner.signal, 'pidfd_send_signal', create=True) as signal:
                 with self.assertRaises((ValueError, OSError)):
                     owner.barrier(71, 9, 951, observe)
@@ -106,6 +111,103 @@ class FamilyTests(unittest.TestCase):
             fact = owner.failure_fact('family-barrier', 1, *values[-1])
             self.assertEqual((fact['barrierCheck'], fact['observedChildren']), (check, count))
             self.assertNotIn('997', str(fact))
+
+    def test_refuses_identity_and_descriptor_faults_before_consuming_child_exit(self):
+        pid, runner = 997, 71
+        before = {'pid': pid, 'parent': os.getpid(), 'state': 'Z', 'session': runner, 'group': runner, 'start': 20}
+        read = owner.os.WEXITED | owner.os.WNOHANG | owner.os.WNOWAIT
+        wrong = type('Status', (), {'si_pid': pid + 1})()
+        for identities, opening, result, calls in (
+            ([dict(before, parent=100)], 9, wrong, []),
+            ([dict(before, session=100)], 9, wrong, []),
+            ([dict(before, state='S')], 9, wrong, []),
+            ([before], OSError('descriptor unavailable'), wrong, []),
+            ([before, dict(before, start=21)], 9, wrong, []),
+            ([before, before], 9, None, [(5, 9, read)]),
+            ([before, before], 9, wrong, [(5, 9, read)]),
+        ):
+            with patch.object(owner.KERNEL, 'identity', side_effect=identities), \
+                    patch.object(owner.os, 'P_PIDFD', 5, create=True), \
+                    patch.object(owner.os, 'pidfd_open', return_value=9,
+                                 side_effect=opening if isinstance(opening, Exception) else None, create=True), \
+                    patch.object(owner.os, 'waitid', return_value=result, create=True) as wait, \
+                    patch.object(owner.os, 'close') as close, \
+                    patch.object(owner.signal, 'pidfd_send_signal', create=True) as send:
+                with self.assertRaises((ValueError, OSError)):
+                    owner.reap_exited_adoptees(runner, [pid])
+                self.assertEqual([call.args for call in wait.call_args_list], calls)
+                self.assertEqual(close.call_count, int(len(identities) > 1))
+                send.assert_not_called()
+
+    @unittest.skipUnless(sys.platform == 'linux', 'real Linux pidfd and subreaper')
+    def test_native_reaps_already_exited_adoptee_and_keeps_live_or_escaped_children_refused(self):
+        helper = """
+import os
+import sys
+
+mode = sys.argv[1]
+read, release = os.pipe()
+parent = os.fork()
+if parent == 0:
+    target = os.fork()
+    if target == 0:
+        os.close(release)
+        if mode == 'live':
+            os.read(read, 1)
+        if mode == 'escaped':
+            os.setsid()
+        os._exit(0)
+    if mode != 'live':
+        os.waitid(os.P_PID, target, os.WEXITED | os.WNOWAIT)
+    os._exit(0)
+os.close(read)
+os.waitpid(parent, 0)
+print('ready', flush=True)
+sys.stdin.buffer.read()
+os.close(release)
+"""
+        kernel = owner.KERNEL
+        self.assertEqual(kernel.own_children(), [])
+        previous = kernel.subreaper(True)
+        try:
+            for mode in ('exited', 'live', 'escaped'):
+                runner = subprocess.Popen([sys.executable, '-c', helper, mode],
+                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, start_new_session=True)
+                descriptor = os.pidfd_open(runner.pid)
+                adopted_descriptor = None
+                try:
+                    self.assertTrue(select.select([runner.stdout], [], [], 3)[0])
+                    self.assertEqual(runner.stdout.readline(), b'ready\n')
+                    birth = kernel.identity(runner.pid)['start']
+                    adopted, = [pid for pid in kernel.own_children() if pid != runner.pid]
+                    adopted_descriptor = os.pidfd_open(adopted)
+                    with patch.object(owner, 'reap_exited_adoptees'):
+                        with self.assertRaises(ValueError):
+                            owner.barrier(runner.pid, descriptor, birth)
+                    with patch.object(owner.signal, 'pidfd_send_signal') as send:
+                        if mode == 'exited':
+                            owner.barrier(runner.pid, descriptor, birth)
+                            self.assertEqual(kernel.own_children(), [runner.pid])
+                        else:
+                            with self.assertRaises(ValueError):
+                                owner.barrier(runner.pid, descriptor, birth)
+                            self.assertIn(adopted, kernel.own_children())
+                        send.assert_not_called()
+                finally:
+                    runner.stdin.close()
+                    self.assertEqual(runner.wait(timeout=3), 0)
+                    runner.stdout.close()
+                    os.close(descriptor)
+                    if adopted_descriptor is not None:
+                        try:
+                            if adopted in kernel.own_children():
+                                self.assertTrue(select.select([adopted_descriptor], [], [], 3)[0])
+                                os.waitid(os.P_PIDFD, adopted_descriptor, os.WEXITED | os.WNOHANG)
+                        finally:
+                            os.close(adopted_descriptor)
+                self.assertEqual(kernel.own_children(), [])
+        finally:
+            kernel.subreaper(previous)
 
     def test_only_sealed_current_child_result_is_published(self):
         with tempfile.TemporaryDirectory() as temp:

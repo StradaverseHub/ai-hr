@@ -80,17 +80,45 @@ def exact_child(child, descriptor, birth):
     require(row['parent'] == os.getpid() and row['start'] == birth and row['state'] not in ('Z', 'X'))
 
 
+def reap_exited_adoptees(child, candidates):
+    # The subreaper started childless and launched just the session leader.
+    # A helper that has already exited can be adopted before its parent exits.
+    require(0 < len(candidates) <= 32 and len(set(candidates)) == len(candidates))
+    require(hasattr(os, 'P_PIDFD') and hasattr(os, 'pidfd_open'))
+    owner = os.getpid()
+    for pid in candidates:
+        require(type(pid) is int and pid > 1 and pid not in (owner, child))
+        before = KERNEL.identity(pid)
+        require(before['pid'] == pid and before['parent'] == owner and before['state'] == 'Z'
+                and before['group'] == before['session'] == child)
+        descriptor = os.pidfd_open(pid)
+        try:
+            require(KERNEL.identity(pid) == before)
+            status = os.waitid(os.P_PIDFD, descriptor, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            require(status is not None and status.si_pid == pid and status.si_signo == signal.SIGCHLD
+                    and status.si_code in (os.CLD_EXITED, os.CLD_KILLED, os.CLD_DUMPED))
+            require(KERNEL.identity(pid) == before)
+            require(os.waitid(os.P_PIDFD, descriptor, os.WEXITED | os.WNOHANG) == status)
+        finally:
+            os.close(descriptor)
+
+
 def barrier(child, descriptor, birth, mark=lambda _check, _count=None: None):
-    def census(check, read, expected):
+    def census(check, read, expected, reap=False):
         mark(check)
         actual = read()
         if actual != expected:
             mark(check, len(actual))
+            if reap and actual.count(child) == 1:
+                reap_exited_adoptees(child, [pid for pid in actual if pid != child])
+                actual = read()
+                if actual != expected:
+                    mark(check, len(actual))
         require(actual == expected)
 
     mark('runner-birth-before')
     exact_child(child, descriptor, birth)
-    census('owner-census-before', KERNEL.own_children, [child])
+    census('owner-census-before', KERNEL.own_children, [child], reap=True)
     census('runner-descendant-census', lambda: children_of(child), [])
     census('owner-census-after', KERNEL.own_children, [child])
     mark('runner-birth-after')
