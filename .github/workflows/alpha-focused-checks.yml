@@ -1758,7 +1758,7 @@ jobs:
         with:
           pattern: worker-comparison-cell-*
           path: ${{ runner.temp }}/worker-comparison-cells
-      - name: Compare 2 and 4 workers and require comparable runners
+      - name: Require every cell gate and claim 2-versus-4 scaling only on matching runners
         env:
           WORKER_BUILD_RESULT: ${{ needs.worker-build.result }}
           WORKER_CELL_RESULT: ${{ needs.worker-cell.result }}
