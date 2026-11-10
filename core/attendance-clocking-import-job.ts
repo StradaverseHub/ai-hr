@@ -222,8 +222,8 @@ export const clockingImportJobHandler:BulkJobHandler<StepPayload>={
      from bulk_job_step s cross join lateral jsonb_array_elements(s.payload->'employees') with ordinality as p(e,i)
      join lateral jsonb_array_elements(s.result->'employees') with ordinality as x(r,j) on j=i
      where s.job_id=${job.id}::uuid and s.state='applied' and r ? 'refused' order by 1`);
-    if(left.length)await tx.execute(sql`update bulk_job set errors=errors||${JSON.stringify([...left].slice(0,2000))}::jsonb where id=${job.id}::uuid`);
-    await tx.execute(sql`update bulk_job set plan=plan||${JSON.stringify({runRecorded:true,linesWritten:0})}::jsonb,updated_at=now() where id=${job.id}::uuid`);
+    if(left.length)await unit.set(tx,{errorsAppend:[...left].slice(0,2000)});
+    await unit.set(tx,{planMerge:{runRecorded:true,linesWritten:0}});
    });
    return'more';
   }
@@ -233,7 +233,7 @@ export const clockingImportJobHandler:BulkJobHandler<StepPayload>={
    const part=c.decided.slice(done,done+LINE_BATCH);
    if(part.length){
     await insertClockingImportLinesTx(tx,ctx.tenantId,plan.runId,part,c.punchIdOf);
-    await tx.execute(sql`update bulk_job set plan=plan||${JSON.stringify({linesWritten:done+part.length})}::jsonb,updated_at=now() where id=${job.id}::uuid`);
+    await unit.set(tx,{planMerge:{linesWritten:done+part.length}});
    }
    return{...c,wrote:part.length};
   });
