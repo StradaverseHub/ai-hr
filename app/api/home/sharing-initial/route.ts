@@ -12,7 +12,7 @@ import {
 import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
 import {greetingProjection,tasksProjection,todayProjection,calendarProjection} from '../personal-projections';
 import {withDatabaseReadCancellation} from '@/db/workload';
-import {withIndependentTransactions,withSharedReadSnapshot} from '@/db/client';
+import {withSharedReadSnapshot} from '@/db/client';
 import {readEmployeeHomeToday} from '@/core/employee-home-today';
 import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
 import {homeCalendarMonth} from '@/lib/employee-home-calendar';
@@ -106,12 +106,7 @@ export async function GET(request:Request){
      if(open)controller.enqueue(encoded);
     };
     // Disconnect stops eligible readers at their next admission check and drops pending values.
-    // EXPERIMENT (removed before merge): compare one snapshot per stream, one per card, and none.
-    const scope=process.env.AIHR_HOME_SHARED_READ_SCOPE??'stream';
-    const all=scope==='off'?withIndependentTransactions(()=>Promise.allSettled(cards.map(read)))
-     :scope==='card'?Promise.allSettled(cards.map(card=>withSharedReadSnapshot(session,()=>read(card),signal)))
-     :withSharedReadSnapshot(session,()=>Promise.allSettled(cards.map(read)),signal);
-    void all.then(stop,stop);
+    void withSharedReadSnapshot(session,()=>Promise.allSettled(cards.map(read)),signal).then(stop,stop);
    },
    cancel(){detach();},
   });

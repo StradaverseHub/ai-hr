@@ -614,16 +614,17 @@ it('completes every manager Home card and Today section read without a handled f
   }finally{await worker.close().catch(()=>undefined);}
   evidence();
  }
- // 8 and 9, per transaction scope on the same runner: 'off' (every owner its own transaction, the old path),
- // 'stream' (one shared snapshot per stream and per Today section) and 'card' (one per card and per section).
- const scopes=['off','stream','card'] as const;
+ // 8 and 9, both transaction scopes on the same runner: 'off' (every owner its own transaction, the old path)
+ // and 'stream' (one shared snapshot per Home stream and per Today section, the shipped path). A per-card scope was
+ // measured and rejected: cards awaiting a carrier read held in another card's snapshot stalled at two connections.
+ const scopes=['off','stream'] as const;
  const ramp:unknown[]=[];report.cpuRamp=ramp;
  for(const [workers,pressure] of [[2,16],[8,16],[4,32]] as const)for(const scope of scopes){
-  process.env.AIHR_HOME_SHARED_READ_SCOPE=scope;
   const stop=cpuPressure(pressure),worker=await coldWorker(workers);
   try{
    await new Promise(resolve=>setTimeout(resolve,1500));
-   const once=async(actor:Actor)=>{const result=await streamHome(actor,month,null,worker.GET);return {elapsedMs:result.elapsedMs,over:result.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card)};};
+   const scoped=<T,>(work:()=>Promise<T>)=>scope==='off'?worker.independent(work):work();
+   const once=async(actor:Actor)=>{const result=await scoped(()=>streamHome(actor,month,null,worker.GET));return {elapsedMs:result.elapsedMs,over:result.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card)};};
    const cold=await once(manager),warm=[await once(manager),await once(manager)];
    worker.resetTrips();const counted=await once(manager);const trips=worker.trips();
    const overlapped=await Promise.all([manager,employee,secondManager].map(once));
@@ -634,19 +635,18 @@ it('completes every manager Home card and Today section read without a handled f
  // The first browser sweep: six simultaneous whole Home pages, shared round-robin across the workers.
  const burst:unknown[]=[];report.pageBurst=burst;
  for(const [workers,pressure] of [[2,16],[4,16],[8,16]] as const)for(const scope of scopes){
-  process.env.AIHR_HOME_SHARED_READ_SCOPE=scope;
   const stop=cpuPressure(pressure),worker=await coldWorker(workers);
   try{
    await new Promise(resolve=>setTimeout(resolve,1500));
    const targets=await todayReaders(today),pagesPerWorker=Math.ceil(6/workers);
    const lane=[manager,employee,secondManager].slice(0,Math.min(3,pagesPerWorker));
    while(lane.length<pagesPerWorker)lane.push(actors.find(a=>a.index===5+lane.length)!);
-   const section=(read:()=>Promise<unknown>)=>scope==='off'?worker.independent(read):read();
+   const section=<T,>(read:()=>Promise<T>)=>scope==='off'?worker.independent(read):read();
    for(const attempt of ['cold','warm']){
     worker.resetTrips();
     const pages=await Promise.all(lane.map(async actor=>{
      const owners=await targets(actor.ctx),started=performance.now(),sections:Record<string,unknown>={};
-     const [stream]=await Promise.all([streamHome(actor,month,null,worker.GET),...['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'].map(name=>
+     const [stream]=await Promise.all([section(()=>streamHome(actor,month,null,worker.GET)),...['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'].map(name=>
       section(owners[name]).then(()=>{sections[name]=Math.round(performance.now()-started);},error=>{sections[name]=errorFact(error);}))]);
      return {role:actor.role,elapsedMs:stream.elapsedMs,over:stream.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card),
       failed:stream.frames.filter(frame=>frame.status!==200).map(frame=>frame.card),
@@ -657,7 +657,6 @@ it('completes every manager Home card and Today section read without a handled f
    }
   }finally{stop();await worker.close().catch(()=>undefined);}
  }
- delete process.env.AIHR_HOME_SHARED_READ_SCOPE;
  Object.assign(process.env,{DATABASE_URL:applicationUrl});delete process.env.AIHR_APP_WORKERS;delete process.env.AIHR_DB_TOTAL_CONNECTIONS;
  // Every stream frame, Today section and page owner completed. Timings stay diagnostic evidence.
  const failedFrames=(streams as {run:string;frames:{card:string;status:number}[]}[]).flatMap(row=>row.frames.filter(frame=>frame.status!==200).map(frame=>row.run+':'+frame.card));
