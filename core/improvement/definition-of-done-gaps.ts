@@ -54,10 +54,9 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/admin/leave-config/approval-chains','page:/admin/leave-config/balance-health','page:/admin/leave-config/company-rules',
  'page:/admin/leave-config/earned-accrual','page:/admin/leave-config/generate','page:/admin/leave-config/leave-credit',
  // 50d9b809 (Shared Leave Groups card): the admin leave guide now links Leave Settings, so its guide gap closed and the
- // hub moved here from 'semantic,guide,corpus'. The new Shared Leave Groups page is the group editor that was a pop-up on
- // /admin/leave-config/types (itself listed here for the same two gaps); it ships with its guide link, and its semantic
- // and corpus gaps are the ones that screen already carried. Listed within the existing ceilings, none raised.
- 'page:/admin/leave-config/settings','page:/admin/leave-config/shared-groups',
+ // hub moved here from 'semantic,guide,corpus'. The new Shared Leave Groups page ships with no gap: its guide link, its
+ // semantic entry (core/semantic-model/entities-leave-settings.ts) and its corpus turn (test/explainer-corpus.ts).
+ 'page:/admin/leave-config/settings',
  'page:/admin/leave-config/types','page:/admin/lifecycle','page:/admin/loans','page:/admin/notice-board','page:/admin/organization',
  'page:/admin/personnel','page:/admin/personnel/duplicates','page:/admin/personnel/import','page:/admin/privacy',
  'page:/admin/rewards/access','page:/admin/rewards/shared','page:/admin/scheduled-actions','page:/admin/settings/email',

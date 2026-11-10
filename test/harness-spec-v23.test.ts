@@ -29,7 +29,9 @@ const instructions=v23ShapedSpec().instructions as readonly string[];
 const OPERATIONS={loops:'loops_overview',payroll_cycle:'payroll_cycle_status',salary_payroll:'salary_payroll_checks',payroll_loop_settings:'payroll_loop_settings',
  payroll_audit:'payroll_audit_status',ai_quality:'ai_quality_summary',
  // Payroll history learning (P2): its operations_status topic, listed in offer.topicTools from spec v24.
- payroll_learning:'payroll_learning_status'};
+ payroll_learning:'payroll_learning_status',
+ // 50d9b809: the Shared Leave Groups page's groups, listed in offer.topicTools from spec v29.
+ shared_leave_groups:'shared_leave_groups'};
 const WHY={pay_difference:'explain_pay_difference',payslip_statutory:'explain_payslip_statutory',claim_limit:'explain_claim_limit',
  leave_entitlement:'explain_leave_entitlement',attendance_day:'explain_attendance_day'};
 

@@ -61,7 +61,7 @@ describe('gating each topic',()=>{
  it('refuses a topic the caller is not permitted before any runner, and runs a permitted one as its capability',async()=>{
   const {calls,bindings}=recorded(['loops_overview','ai_quality_summary'],name=>({ok:true,from:name}));
   const operations=tool(bindings,'operations_status');
-  for(const topic of ['payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','payroll_learning']){
+  for(const topic of ['payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','payroll_learning','shared_leave_groups']){
    const run=await operations.run({topic});
    expect(run,topic).toMatchObject({ok:false,refusal:'not_permitted',content:{ok:false,refusal:'not_permitted'}});
    expect(String((run.content as {message:string}).message)).toMatch(/^This topic is not available to this person here\./);
@@ -76,6 +76,10 @@ describe('gating each topic',()=>{
    .toEqual({ok:false,refusal:'no_data',content:{ok:false,refusal:'no_data',message:'No such claim type.'}});
   expect(await tool(refusing.bindings,'explain_why').run({topic:'pay_difference'})).toMatchObject({ok:false,refusal:'not_permitted'});
   expect(refusing.calls).toEqual([['explain_claim_limit',{claim_type:'Fictional Sabbatical'}]]);
+  // 50d9b809: shared_leave_groups takes no input, so a slipped-in subject never reaches its runner.
+  const groups=recorded(['shared_leave_groups'],name=>({ok:true,from:name}));
+  expect(await tool(groups.bindings,'operations_status').run({topic:'shared_leave_groups'})).toEqual({ok:true,content:{ok:true,from:'shared_leave_groups'}});
+  expect(groups.calls).toEqual([['shared_leave_groups',{}]]);
  });
  it('refuses a topic outside its family as invalid, before any runner',async()=>{
   const {calls,bindings}=recorded(ALL);

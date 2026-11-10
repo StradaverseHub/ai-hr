@@ -137,8 +137,12 @@ export const HARNESS_SPEC=freeze({
   * today. Only the change line's last two sentences differ from v24.
   * 26: merge v25 with the deployed organisation review guidance, a literal public product_guidance topic.
   * 27: public Attendance formula and Rewards review guidance topics; native decisions and private data remain outside guidance.
-  * 28: retire the Attendance formula builder guidance topics. */
- version:28,
+  * 28: retire the Attendance formula builder guidance topics.
+  * 29: 50d9b809 (owner decision, 10 November 2026): operations_status gains the shared_leave_groups topic, the Shared
+  * Leave Groups page under Leave Settings (core/semantic-model/entities-leave-settings.ts: administrators only,
+  * configuration only, no new tool). No instruction line is added: the topic's own generated description says what the
+  * read returns, and the instructions stay within v18's character budget. */
+ version:29,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -187,7 +191,7 @@ export const HARNESS_SPEC=freeze({
   /** v23: the topic tools and their topics, in order (core/semantic-model/topic-tools.ts TOPIC_TOOLS). Each topic is one
    * declared read, bound only through its tool; the harness refuses any other topic before a runner. */
   topicTools:{
-   operations_status:['loops','payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','ai_quality','payroll_learning'],
+   operations_status:['loops','payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','ai_quality','payroll_learning','shared_leave_groups'],
    explain_why:['pay_difference','payslip_statutory','claim_limit','leave_entitlement','attendance_day'],
   },
   /** v17: the capability catalogue, offered only on an open turn whose words ask what the person can do, how, or to
@@ -388,6 +392,8 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  26:'584e57dba0129ecb6c4c488137a82186f68c7cbfa171d2672a9b0d3f68b76dfa',
  27:'fdcc4753d0026dccf1d1eb14075944fa5bbd48a98d1e03ff80f2c5750381f04a',
  28:'8201900d74c1c75410f36439f671ba498f671c5ad647a746b6b3917a7c825cd0',
+ // 50d9b809: the shared_leave_groups operations_status topic.
+ 29:'e5108db742b9e4fcc58f0a341477390f3f2fd977f4f686cebf31e068ee8fc13c',
 });
 
 /** Parallel v24 deployed before the histories converged. Its number also identifies main's payroll-learning spec. */

@@ -5,7 +5,7 @@ import {GUIDANCE_TOPICS,CONTEXT_TOOL_SPECS} from '../core/product-context/tools'
 import {TERAS_CAPABILITIES} from '../core/explainers/capabilities';
 import {TERAS_READS,terasEntity} from '../core/semantic-model/generate';
 import {KIT_CAPABILITIES} from '../core/improvement/kit-registry';
-import {v24OrganisationShapedSpec,v25ShapedSpec,v26ShapedSpec,v27ShapedSpec} from './harness-spec-shapes';
+import {v24OrganisationShapedSpec,v25ShapedSpec,v26ShapedSpec,v27ShapedSpec,v28ShapedSpec} from './harness-spec-shapes';
 it('merges main v25 and preserves the parallel deployed v24 digest',()=>{
  const v25=v25ShapedSpec();
  expect(v26ShapedSpec().version).toBe(26);
@@ -29,6 +29,7 @@ it('registers one literal public topic with no input handles or additional provi
 it('v28 retires the Attendance formula topics and keeps the previous spec digest',()=>{
  const previous=v27ShapedSpec();
  expect(harnessSpecDigest(previous)).toBe(HARNESS_SPEC_DIGESTS[27]);
- expect(HARNESS_SPEC).toEqual({...previous,version:28,offer:{...previous.offer,guidanceTopics:[...v26ShapedSpec().offer.guidanceTopics,'reward_reviews']}});
- expect(harnessSpecDigest()).toBe(HARNESS_SPEC_DIGESTS[28]);
+ // 50d9b809 (v29) appends one operations_status topic, so v28 is the v28-shaped spec rather than the current one.
+ expect(v28ShapedSpec()).toEqual({...previous,version:28,offer:{...previous.offer,guidanceTopics:[...v26ShapedSpec().offer.guidanceTopics,'reward_reviews']}});
+ expect(harnessSpecDigest(v28ShapedSpec())).toBe(HARNESS_SPEC_DIGESTS[28]);
 });
