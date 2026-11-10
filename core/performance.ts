@@ -1936,14 +1936,41 @@ export function managerPendingReviews(ctx: SessionContext) {
     const stepped = await tx.execute<{ review_id: string; employee: string; employee_code: string | null; cycle_name: string; status: string; company_id: string; created_at: string | Date }>(
       sql`select review_id, employee, employee_code, cycle_name, status, company_id, created_at from app.onehr_effective_review_queue()`,
     );
+    return combineManagerPendingReviews(own, stepped);
+  });
+}
+type ManagerPendingReview = { reviewId: string; employee: string; employeeCode: string | null; cycleName: string; status: (typeof performanceReview.$inferSelect)['status']; companyId: string; createdAt: Date };
+type SteppedPendingReview = { review_id: string; employee: string; employee_code: string | null; cycle_name: string; status: string; company_id: string; created_at: string | Date };
+function combineManagerPendingReviews(own: ManagerPendingReview[], stepped: readonly SteppedPendingReview[]): ManagerPendingReview[] {
     const seen = new Set(own.map((r) => r.reviewId));
     const extra = stepped.filter((r) => !seen.has(r.review_id)).map((r) => ({
       reviewId: r.review_id, employee: r.employee, employeeCode: r.employee_code, cycleName: r.cycle_name,
-      status: r.status as (typeof own)[number]['status'], companyId: r.company_id, createdAt: new Date(r.created_at),
+      status: r.status as ManagerPendingReview['status'], companyId: r.company_id, createdAt: new Date(r.created_at),
     }));
     if (!extra.length) return own;
     return [...own, ...extra].sort((a, b) => a.cycleName.localeCompare(b.cycleName) || a.employee.localeCompare(b.employee) || a.reviewId.localeCompare(b.reviewId));
-  });
+}
+/** managerPendingReviews in the one-statement Home task read (core/account-task-bundle.ts): the same two reads in the
+ * caller's session, `stepped` only when the viewer holds an employment, as in the owner. */
+export function managerPendingReviewsBundleSql(ctx: SessionContext) {
+  if (!ctx.personId) return sql`jsonb_build_object('own','[]'::jsonb,'stepped','[]'::jsonb)`;
+  const mine = sql`(select mine.id from public.employment mine where mine.person_id=${ctx.personId}::uuid)`;
+  return sql`(case when not exists${mine} then jsonb_build_object('own','[]'::jsonb,'stepped','[]'::jsonb) else jsonb_build_object(
+    'own',coalesce((select jsonb_agg(jsonb_build_object('reviewId',${performanceReview.id},'employee',${person.fullName},'employeeCode',${employment.employeeCode},
+      'cycleName',${reviewCycle.name},'status',${performanceReview.status},'companyId',${employment.companyId},'createdAt',${performanceReview.createdAt})
+      order by ${reviewCycle.name},${person.fullName})
+     from ${performanceReview} inner join ${reviewCycle} on ${eq(reviewCycle.id, performanceReview.cycleId)}
+      inner join ${employment} on ${eq(employment.id, performanceReview.employmentId)} inner join ${person} on ${eq(person.id, employment.personId)}
+     where ${performanceReview.reviewerEmploymentId} in ${mine} and ${inArray(performanceReview.status, ['manager_review', 'self_review'])}
+      and ${eq(reviewCycle.status, 'open')} and not app.onehr_reviewer_unit_out(${performanceReview.id})),'[]'::jsonb),
+    'stepped',coalesce((select jsonb_agg(jsonb_build_object('review_id',queue.review_id,'employee',queue.employee,'employee_code',queue.employee_code,
+      'cycle_name',queue.cycle_name,'status',queue.status,'company_id',queue.company_id,'created_at',queue.created_at))
+     from app.onehr_effective_review_queue() queue),'[]'::jsonb)) end)`;
+}
+export function managerPendingReviewsFromBundle(value: unknown): ManagerPendingReview[] {
+  const section = value as { own: (Omit<ManagerPendingReview, 'createdAt'> & { createdAt: string })[]; stepped: SteppedPendingReview[] };
+  return combineManagerPendingReviews(section.own.map((row) => ({ reviewId: row.reviewId, employee: row.employee, employeeCode: row.employeeCode,
+    cycleName: row.cycleName, status: row.status, companyId: row.companyId, createdAt: new Date(row.createdAt) })), section.stepped);
 }
 
 /** Map a set of employment ids → person full name (one query). */
@@ -2582,14 +2609,27 @@ export function pendingStandardFeedbackTaskMetadata(ctx:SessionContext):Promise<
     await assertAssignedWorkPrincipalTx(tx,ctx);
     const rows=await tx.select({id:peerFeedbackRequest.id,subjectName:peerFeedbackRequest.subjectName,
       sourceUpdatedAt:peerFeedbackRequest.createdAt}).from(peerFeedbackRequest)
-      .where(and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),
-        sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${peerFeedbackRequest.peerEmploymentId}
-          AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`,
-        sql`NOT EXISTS (SELECT 1 FROM public.performance_onehr_panel panel WHERE panel.request_id=${peerFeedbackRequest.id})`,
-        sql`NOT EXISTS (SELECT 1 FROM public.performance_review review JOIN public.performance_onehr_cycle cycle ON cycle.cycle_id=review.cycle_id WHERE review.id=${peerFeedbackRequest.reviewId})`))
+      .where(pendingStandardFeedbackWhere(ctx))
       .orderBy(desc(peerFeedbackRequest.createdAt),peerFeedbackRequest.id);
     return rows.map(row=>({...row,kind:'feedback' as const,linkPath:`/me/performance#feedback-${row.id}`}));
   });
+}
+function pendingStandardFeedbackWhere(ctx:SessionContext){
+  return and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),
+        sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${peerFeedbackRequest.peerEmploymentId}
+          AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`,
+        sql`NOT EXISTS (SELECT 1 FROM public.performance_onehr_panel panel WHERE panel.request_id=${peerFeedbackRequest.id})`,
+        sql`NOT EXISTS (SELECT 1 FROM public.performance_review review JOIN public.performance_onehr_cycle cycle ON cycle.cycle_id=review.cycle_id WHERE review.id=${peerFeedbackRequest.reviewId})`);
+}
+/** pendingStandardFeedbackTaskMetadata in the one-statement Home task read (core/account-task-bundle.ts): same rows, same order. */
+export function pendingStandardFeedbackTaskBundleSql(ctx:SessionContext){
+  return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',${peerFeedbackRequest.id},'subjectName',${peerFeedbackRequest.subjectName},
+    'sourceUpdatedAt',${peerFeedbackRequest.createdAt}) order by ${peerFeedbackRequest.createdAt} desc,${peerFeedbackRequest.id}),'[]'::jsonb)
+   from ${peerFeedbackRequest} where ${pendingStandardFeedbackWhere(ctx)})`;
+}
+export function pendingStandardFeedbackTasksFromBundle(value:unknown):AssignedPersonalTaskMetadata[]{
+  return (value as {id:string;subjectName:string;sourceUpdatedAt:string}[]).map(row=>({id:row.id,subjectName:row.subjectName,
+    sourceUpdatedAt:new Date(row.sourceUpdatedAt),kind:'feedback' as const,linkPath:`/me/performance#feedback-${row.id}`}));
 }
 
 /** The signed-in peer's pending feedback requests — "give 360 feedback". */

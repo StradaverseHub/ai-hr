@@ -26,16 +26,16 @@
  *
  * Payload: id, kind, subject name, owner timestamp and link. No band, rating, score, plan body or remark.
  */
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import {settleReadGroup} from '../../../lib/settle-read-group';
 import type { SessionContext } from '../../../db/client';
 import { employment, onehrCycle, onehrPlan, onehrReview, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
-import { managerPendingReviews } from '../../../core/performance';
+import { managerPendingReviews, managerPendingReviewsBundleSql, managerPendingReviewsFromBundle } from '../../../core/performance';
 import type { PackTaskItem } from '../../../lib/assigned-work';
 import { competencySchema, kpiSchema, policySchema } from './model';
 import { reviewWorkspaceParts } from './workspace-model';
-import { pendingCalibrationTasks } from './calibration-list';
+import { pendingCalibrationCandidatesBundleSql, pendingCalibrationTasks } from './calibration-list';
 
 /** companyId null: a group-wide calibration session. reviewId: the assessment, for review-scoped kinds only. */
 type Sourced = PackTaskItem & { companyId: string | null; reviewId?: string };
@@ -46,7 +46,10 @@ const iso = (value: Date | string) => (value instanceof Date ? value : new Date(
 /** The kernel review queue /performance shows as "Reviews awaiting you". */
 async function managerReviewTasks(ctx: SessionContext): Promise<Sourced[]> {
   // D-P1-22: the queue itself drops a review whose stored reviewer's unit is out and adds the one-level-up reviews.
-  return (await managerPendingReviews(ctx)).map((r) => ({
+  return managerReviewSources(await managerPendingReviews(ctx));
+}
+function managerReviewSources(reviews: Awaited<ReturnType<typeof managerPendingReviews>>): Sourced[] {
+  return reviews.map((r) => ({
     id: r.reviewId, kind: 'performanceReview' as const, subjectName: r.employee, createdAt: iso(r.createdAt),
     linkPath: reviewHref(r.reviewId), companyId: r.companyId, reviewId: r.reviewId,
   }));
@@ -78,12 +81,7 @@ async function assessmentTasks(ctx: SessionContext): Promise<Sourced[]> {
       .from(onehrReview)
       .innerJoin(reviewCycle, eq(reviewCycle.id, onehrReview.cycleId))
       .innerJoin(onehrCycle, eq(onehrCycle.cycleId, onehrReview.cycleId))
-      .where(and(
-        inArray(reviewCycle.status, ['open', 'calibration']),
-        sql`not exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`,
-        sql`(app.onehr_effective_reviewer(${onehrReview.reviewId}) or (exists(select 1 from jsonb_array_elements(${onehrReview.kpis}) k where k->>'moderatorEmploymentId' = any(${ids}) or exists(select 1 from jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) step where step->>'employmentId' = any(${ids}))) and app.onehr_moderator(${onehrReview.reviewId})))`,
-        sql`app.assessment_review_participates(${onehrReview.reviewId})`,
-      ))
+      .where(assessmentTaskWhere(ids))
       .orderBy(desc(reviewCycle.periodEnd), asc(onehrReview.reviewId));
     // This runs from the root layout: a row the canonical schemas reject yields no task rather than a
     // 500 on every route. Its own screen still reports the defect.
@@ -123,10 +121,38 @@ async function assessmentTasks(ctx: SessionContext): Promise<Sourced[]> {
   });
 }
 
+function assessmentTaskWhere(ids: SQL) {
+  return and(
+    inArray(reviewCycle.status, ['open', 'calibration']),
+    sql`not exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`,
+    sql`(app.onehr_effective_reviewer(${onehrReview.reviewId}) or (exists(select 1 from jsonb_array_elements(${onehrReview.kpis}) k where k->>'moderatorEmploymentId' = any(${ids}) or exists(select 1 from jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) step where step->>'employmentId' = any(${ids}))) and app.onehr_moderator(${onehrReview.reviewId})))`,
+    sql`app.assessment_review_participates(${onehrReview.reviewId})`,
+  );
+}
+
 /** The performance pack's task provider (core/approvals-inbox.ts PACK_TASK_SOURCES). */
 export async function pendingPerformanceTasks(ctx: SessionContext, scopeIds: string[] | undefined): Promise<PackTaskItem[]> {
   const sources: Array<(ctx: SessionContext) => Promise<Sourced[]>> = [managerReviewTasks, assessmentTasks, (c) => pendingCalibrationTasks(c)];
-  const all = (await settleReadGroup(sources.map((source) => ()=>source(ctx)))).flat();
+  return combinePerformanceTasks((await settleReadGroup(sources.map((source) => ()=>source(ctx)))).flat(), scopeIds);
+}
+
+/** The pack's three task sources in the one-statement Home task read (core/account-task-bundle.ts): the review queue's
+ * own rows, and whether any assessment or calibration row exists. Those two need the owner's schema parsing, plan read
+ * and window checks; when either has a row, pendingPerformanceTasksFromBundle defers to the owner. */
+export function pendingPerformanceTasksBundleSql(ctx: SessionContext) {
+  const personId = ctx.personId;
+  const assessment = personId ? sql`case when not exists(select 1 from public.employment mine where mine.person_id=${personId}::uuid) then false
+    else exists(select 1 from ${onehrReview} inner join ${reviewCycle} on ${eq(reviewCycle.id, onehrReview.cycleId)} inner join ${onehrCycle} on ${eq(onehrCycle.cycleId, onehrReview.cycleId)}
+     where ${assessmentTaskWhere(sql`array(select mine.id::text from public.employment mine where mine.person_id=${personId}::uuid)`)}) end` : sql`false`;
+  return sql`jsonb_build_object('reviews',${managerPendingReviewsBundleSql(ctx)},'assessment',${assessment},'calibration',${pendingCalibrationCandidatesBundleSql(ctx)})`;
+}
+export function pendingPerformanceTasksFromBundle(value: unknown, scopeIds: string[] | undefined): PackTaskItem[] | null {
+  const section = value as { reviews: unknown; assessment: boolean; calibration: boolean };
+  if (section.assessment || section.calibration) return null;
+  return combinePerformanceTasks(managerReviewSources(managerPendingReviewsFromBundle(section.reviews)), scopeIds);
+}
+
+function combinePerformanceTasks(all: Sourced[], scopeIds: string[] | undefined): PackTaskItem[] {
   // One assessment, one task: a review already in the "Reviews awaiting you" queue is not repeated as
   // assessment work. A career plan is a separate decision on its own record and stays.
   const reviewed = new Set(all.filter((t) => t.kind === 'performanceReview').map((t) => t.reviewId));

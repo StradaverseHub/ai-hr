@@ -3,7 +3,8 @@ import type {SessionContext} from '../db/client';
 import {settleReadGroup} from '../lib/settle-read-group';
 import {HomeAccessError} from './employee-home';
 import {readOwnEmployeeHomeConfiguration,type OwnHomeConfigurationRead} from './employee-home-configuration';
-import {countPendingTasks,createAccountTaskPreviewRead,listPendingTasks,pendingTaskSummary} from './approvals-inbox';
+import {countPendingTasks,createAccountTaskPreviewRead,listPendingTasks} from './approvals-inbox';
+import {readAccountTaskBundle,type AccountTaskBundle} from './account-task-bundle';
 import {pendingStandardFeedbackTaskMetadata,pendingOnehrFeedbackTaskMetadata} from '../packs/performance/service';
 import {onboardingAssignedTaskMetadata} from '../packs/lifecycle/service';
 import {isModuleEnabled} from './entitlements';
@@ -14,13 +15,24 @@ import {ASSIGNED_APPROVAL_KINDS,assignedApprovalHref,type AssignedApprovalKind} 
 const taskModules=(ctx:SessionContext)=>({attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),
  performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')});
 
-async function loadAdditionalTasks(ctx:SessionContext,performance:boolean){
+async function loadAdditionalTasks(ctx:SessionContext,performance:boolean,bundle?:Promise<AccountTaskBundle|null>){
  const lifecycle=isModuleEnabled(ctx,'lifecycle');
+ // Each owner the account task statement answered for the same module flags takes that answer (core/account-task-bundle.ts).
+ const read=bundle?await bundle:null;
+ const answered=<T,>(value:T|null|undefined,same:boolean)=>same&&value!=null?value:null;
+ const feedback=read?.modules.performance===performance,onboarding=read?.modules.lifecycle===lifecycle;
  return settleReadGroup([
-  ()=>performance?pendingStandardFeedbackTaskMetadata(ctx):Promise.resolve([]),
-  ()=>performance?pendingOnehrFeedbackTaskMetadata(ctx):Promise.resolve([]),
-  ()=>lifecycle?onboardingAssignedTaskMetadata(ctx):Promise.resolve([]),
+  ()=>performance?answered(read?.standardFeedback,feedback)??pendingStandardFeedbackTaskMetadata(ctx):Promise.resolve([]),
+  ()=>performance?answered(read?.onehrFeedback,feedback)??pendingOnehrFeedbackTaskMetadata(ctx):Promise.resolve([]),
+  ()=>lifecycle?answered(read?.onboarding,onboarding)??onboardingAssignedTaskMetadata(ctx):Promise.resolve([]),
  ]);
+}
+/** One account task statement per Home response, for the module flags the owners above are called with. A module
+ * whose flag cannot be resolved is left to its owner (and its own failure). */
+function startAccountTaskBundle(ctx:SessionContext,modules:ReturnType<typeof taskModules>){
+ let lifecycle:boolean|null=null;
+ try{lifecycle=isModuleEnabled(ctx,'lifecycle');}catch{lifecycle=null;}
+ return readAccountTaskBundle(ctx,{...modules,lifecycle:lifecycle??false}).then(read=>read&&lifecycle===null?{...read,onboarding:null}:read);
 }
 
 /** Summary needs the exact account total, without materializing the full Claims queue. */
@@ -43,8 +55,8 @@ export class OwnHomeTaskSourceRead {
  private read(session:SessionContext,employmentId:string){
   if(session!==this.session||employmentId!==this.employmentId)throw new HomeAccessError('employmentUnavailable');
   if(!this.pending){
-   const modules=taskModules(session);
-   this.pending={inbox:createAccountTaskPreviewRead(session,modules),additional:loadAdditionalTasks(session,modules.performance)};
+   const modules=taskModules(session),bundle=startAccountTaskBundle(session,modules);
+   this.pending={inbox:createAccountTaskPreviewRead(session,modules,bundle),additional:loadAdditionalTasks(session,modules.performance,bundle)};
   }
   return this.pending;
  }
@@ -63,9 +75,13 @@ export class OwnHomeTaskSourceRead {
 
 function readTaskPage(ctx:SessionContext,page:number|undefined){
  const modules=taskModules(ctx);
+ if((page??1)<=1){
+  // The first page is the account preview: the same owners, read through one account task statement.
+  const bundle=startAccountTaskBundle(ctx,modules);
+  return settleReadGroup([()=>createAccountTaskPreviewRead(ctx,modules,bundle).summary(),()=>loadAdditionalTasks(ctx,modules.performance,bundle)]);
+ }
  return settleReadGroup([
-  ()=>(page??1)<=1?pendingTaskSummary(ctx,undefined,modules)
-   :listPendingTasks(ctx,undefined,modules).then(items=>({items,total:items.length})),
+  ()=>listPendingTasks(ctx,undefined,modules).then(items=>({items,total:items.length})),
   ()=>loadAdditionalTasks(ctx,modules.performance),
  ]);
 }

@@ -939,6 +939,13 @@ export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:
  return candidates.filter(row=>allowed.has(row.id));
 }
 
+/** pendingProfileTaskMetadata's empty-queue answer in the one-statement Home task read (core/account-task-bundle.ts): the
+ * owner's own first probe, for Home's whole account. No pending request is the owner's empty result; any pending
+ * request still needs the owner's reader predicate and locked decision check, so the owner then runs itself. */
+export function pendingProfileTaskBundleSql(ctx:SessionContext){
+ return sql`exists(select 1 from ${profileChangeRequest} where ${and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'))})`;
+}
+export function pendingProfileTasksFromBundle(pending:unknown):AssignedApprovalMetadata[]|null{return pending===false?[]:null;}
 
 export function actionableProfileChangeIds(ctx:SessionContext,requestIds:readonly string[]){
  return withTenant(ctx,async tx=>{

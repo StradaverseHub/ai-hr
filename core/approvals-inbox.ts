@@ -36,6 +36,7 @@ import {pendingReviewCandidatesExistSql,pendingReviewTaskMetadata} from './emplo
 import {pendingPerformanceTasks} from '../packs/performance/service';
 import {pendingRewardTasks} from '../packs/rewards/service';
 import type {PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
+import type {AccountTaskBundle} from './account-task-bundle';
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
 export type PendingTaskKind =
@@ -120,9 +121,10 @@ export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefine
   return loadPendingTasks(ctx,scopeIds,modules,{...options,preview:true});
 }
 
-async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefined,preview?:true){
+async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefined,preview?:true,knownCandidates?:boolean){
   if(preview){
-    const candidates=await withTenant(ctx,async tx=>{
+    // knownCandidates: this same probe, already answered by the account task statement (core/account-task-bundle.ts).
+    const candidates=knownCandidates??await withTenant(ctx,async tx=>{
       await assertAssignedWorkPrincipalTx(tx,ctx);
       const [row]=await tx.execute<{has_candidates:boolean}>(sql`
         select (
@@ -161,6 +163,28 @@ async function loadCommonTaskSources(ctx:SessionContext,scopeIds:string[]|undefi
   ]);
 }
 
+/** loadCommonTaskSources(ctx, undefined, modules, {preview:true}) from the account task statement: each owner whose
+ * section the statement answered takes that answer; every other owner reads exactly as loadCommonTaskSources reads it. */
+async function loadBundledCommonTaskSources(ctx:SessionContext,modules:InboxModules,bundle:Promise<AccountTaskBundle|null>):CommonTaskSources{
+  const read=await bundle;
+  if(!read)return loadCommonTaskSources(ctx,undefined,modules,{preview:true});
+  const same=(module:keyof InboxModules)=>read.modules[module]===modules[module];
+  const own=<T,>(value:T|null,owner:()=>Promise<T>)=>()=>value!==null?Promise.resolve(value):owner();
+  return settleReadGroup([
+    own(read.leave,()=>pendingLeaveTaskMetadata(ctx,undefined)),()=>loadDecisionHeaders(ctx,undefined,true,read.decisionCandidates),
+    own(read.replacement,()=>listPendingReplacementLeaveTasks(ctx,{companyIds:undefined})),
+    own(same('attendance')?read.attendance:null,()=>modules.attendance?pendingAttendanceTaskMetadata(ctx,undefined):Promise.resolve([])),
+    own(read.profile,()=>pendingProfileTaskMetadata(ctx,undefined)),
+    own(read.notices,()=>pendingNoticeAcknowledgementTasks(ctx)),
+    ()=>settleReadGroup(PACK_TASK_SOURCES.map(source=>own(same(source.module)?read[source.module]:null,
+      ()=>modules[source.module]?source.load(ctx,undefined):Promise.resolve([])))),
+  ]);
+}
+async function loadBundledClaimTaskSource(ctx:SessionContext,modules:InboxModules,bundle:Promise<AccountTaskBundle|null>):ClaimTaskSource{
+  const read=await bundle;
+  return read?.claims&&read.modules.claims===modules.claims?read.claims:loadClaimTaskSource(ctx,undefined,modules,{preview:true});
+}
+
 type CommonTaskSources=ReturnType<typeof loadCommonTaskSources>;
 type ClaimTaskSource=ReturnType<typeof loadClaimTaskSource>;
 function loadClaimTaskSource(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:TaskSourceOptions){
@@ -189,11 +213,12 @@ async function countTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,m
  * already reads the exact total, so the count shares that one read instead of repeating its subject,
  * authority and count statements. Only a failed preview pays for the separate count owner, so a
  * preview failure still cannot turn the exact count into a failure. */
-export function createAccountTaskPreviewRead(ctx:SessionContext,modules:InboxModules){
+export function createAccountTaskPreviewRead(ctx:SessionContext,modules:InboxModules,bundle?:Promise<AccountTaskBundle|null>){
   const options={preview:true} as const;
   let pending:CommonTaskSources|undefined,claimPreview:ClaimTaskSource|undefined;
-  const common=()=>pending??=loadCommonTaskSources(ctx,undefined,modules,options);
-  const preview=()=>claimPreview??=loadClaimTaskSource(ctx,undefined,modules,options);
+  // With the account task statement, every owner it answered costs no further statement (core/account-task-bundle.ts).
+  const common=()=>pending??=bundle?loadBundledCommonTaskSources(ctx,modules,bundle):loadCommonTaskSources(ctx,undefined,modules,options);
+  const preview=()=>claimPreview??=bundle?loadBundledClaimTaskSource(ctx,modules,bundle):loadClaimTaskSource(ctx,undefined,modules,options);
   const exactClaimTotal=async()=>{
     try{return await preview();}
     catch{return loadClaimTaskSource(ctx,undefined,modules,{preview:true,countOnly:true});}

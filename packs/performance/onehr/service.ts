@@ -1465,6 +1465,17 @@ export async function ownPerformanceWorkStatusesTx(tx:Tx,supplied:SessionContext
 export async function onehrAssignments(ctx:SessionContext) {
   return withPerformanceTenant(ctx,async tx=>({reviews:await tx.select({id:onehrReview.reviewId,cycle:reviewCycle.name,cycleStatus:reviewCycle.status,periodEnd:reviewCycle.periodEnd,name:sql<string>`app.onehr_review_header(${onehrReview.reviewId})->>'name'`}).from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).where(sql`(app.assessment_review_participates(${onehrReview.reviewId}) or ${reviewCycle.status}='closed') and (app.onehr_manager(${onehrReview.reviewId}) or app.onehr_effective_reviewer(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}) or exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id)))`).orderBy(desc(reviewCycle.periodEnd)),sessions:await tx.select({id:onehrCalibration.id,name:onehrCalibration.name,lockedAt:onehrCalibration.lockedAt}).from(onehrCalibration).orderBy(desc(onehrCalibration.createdAt)),feedback:await tx.select({id:onehrPanel.requestId,subject:peerFeedbackRequest.subjectName}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).where(and(isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),sql`app.onehr_feedback_card(${onehrPanel.requestId})->>'closed'='false'`,sql`exists(select 1 from employment e where e.id=${onehrPanel.peerEmploymentId} and app.is_self_person(e.person_id))`))}));
 }
+function pendingOnehrFeedbackWhere(ctx:SessionContext){
+ return and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),
+    sql`app.onehr_feedback_card(${onehrPanel.requestId})->>'closed'='false'`,
+    sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${onehrPanel.peerEmploymentId}
+      AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`);
+}
+/** pendingOnehrFeedbackTaskMetadata's empty answer in the one-statement Home task read (core/account-task-bundle.ts): no
+ * panel row is the owner's empty result. A row needs the owner's cycle window check, so the owner then runs itself. */
+export function pendingOnehrFeedbackCandidatesBundleSql(ctx:SessionContext){
+ return sql`exists(select 1 from ${onehrPanel} inner join ${peerFeedbackRequest} on ${eq(peerFeedbackRequest.id,onehrPanel.requestId)} where ${pendingOnehrFeedbackWhere(ctx)})`;
+}
 /** Form assignment metadata, repeating the canonical feedback owner's current window and frozen
  * recipient gates. No feedback answers, remarks, draft or assessment ratings enter this projection. */
 export function pendingOnehrFeedbackTaskMetadata(ctx:SessionContext):Promise<AssignedPersonalTaskMetadata[]>{
@@ -1473,10 +1484,7 @@ export function pendingOnehrFeedbackTaskMetadata(ctx:SessionContext):Promise<Ass
   const rows=await tx.select({id:onehrPanel.requestId,subjectName:peerFeedbackRequest.subjectName,
    sourceUpdatedAt:peerFeedbackRequest.createdAt,cycleId:sql<string>`app.onehr_feedback_card(${onehrPanel.requestId})->>'cycleId'`})
    .from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId))
-   .where(and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),
-    sql`app.onehr_feedback_card(${onehrPanel.requestId})->>'closed'='false'`,
-    sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${onehrPanel.peerEmploymentId}
-      AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`))
+   .where(pendingOnehrFeedbackWhere(ctx))
    .orderBy(desc(peerFeedbackRequest.createdAt),onehrPanel.requestId);
   const cycles=new Map<string,Awaited<ReturnType<typeof loadCycle>>>(),result:AssignedPersonalTaskMetadata[]=[];
   for(const row of rows){

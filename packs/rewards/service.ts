@@ -1533,10 +1533,7 @@ export async function pendingRewardTasks(ctx: SessionContext, scopeIds: string[]
   const readable = await withRewardsTenant(ctx, (tx) => tx
     .select({ id: rewardUnit.id, companyId: rewardUnit.companyId, status: rewardUnit.status, createdAt: rewardUnit.createdAt })
     .from(rewardUnit)
-    .where(and(isNull(rewardUnit.deletedAt), or(
-      inArray(rewardUnit.status, [...REWARD_TASK_APPROVAL_STAGES]),
-      and(eq(rewardUnit.status, 'draft'), sql`${latestDecisionActionSql}='return'`),
-    ))));
+    .where(rewardTaskUnitWhere()));
   if (!readable.length) return [];
   const atApproval = readable.filter((u) => u.status !== 'draft');
   const createdAt = new Map(atApproval.map((u) => [u.id, u.createdAt]));
@@ -1558,6 +1555,23 @@ export async function pendingRewardTasks(ctx: SessionContext, scopeIds: string[]
     id: r.id, kind: 'rewardReview' as const, subjectName: `${r.cycle} · ${r.name}`, createdAt: r.returnedAt, linkPath: `/rewards/${r.id}`,
   }));
   return [...approvals, ...back];
+}
+
+function rewardTaskUnitWhere() {
+  return and(isNull(rewardUnit.deletedAt), or(
+    inArray(rewardUnit.status, [...REWARD_TASK_APPROVAL_STAGES]),
+    and(eq(rewardUnit.status, 'draft'), sql`${latestDecisionActionSql}='return'`),
+  ));
+}
+/** pendingRewardTasks' empty answer in the one-statement Home task read (core/account-task-bundle.ts): the owner's
+ * observation probe and its first read. With nothing to observe and no readable unit, the owner returns no task and
+ * writes nothing; otherwise the owner runs itself (its observation write included). */
+export function pendingRewardTasksBundleSql() {
+  return sql`jsonb_build_object('due',app.reward_access_observation_due(NULL::uuid),'readable',exists(select 1 from ${rewardUnit} where ${rewardTaskUnitWhere()}))`;
+}
+export function pendingRewardTasksFromBundle(value: unknown): PackTaskItem[] | null {
+  const section = value as { due: boolean | null; readable: boolean };
+  return section.due === false && !section.readable ? [] : null;
 }
 
 // ── Reward calendar (migration 0646) ────────────────────────────────────────────────────────────────────

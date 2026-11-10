@@ -8,15 +8,24 @@ const canonicalUuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 
 /** The caller already checked the live actor. The native query excludes only states the interpreter
  * cannot emit, then reads potential mentions for the admitted case IDs under the original note RLS. */
-export async function readOnboardingTaskQueueInputsTx(tx: Tx, tenantId: string, actor: { id: string; module: boolean }) {
+function onboardingTaskCaseWhere(tenantId: string, module: boolean) {
   const data = cases.data;
   const reqs = sql`${data}->'requisitions'`;
-  const list = await tx.select({ revision: cases.revision, data }).from(cases).where(and(eq(cases.tenantId, tenantId), sql`case
+  return and(eq(cases.tenantId, tenantId), sql`case
     -- Preserve historical parse failures that can occur before the interpreter looks at the state.
     when jsonb_typeof(${data}) is distinct from 'object'
       or jsonb_typeof(${reqs}) is distinct from 'array' or ${reqs} @> '[null]'::jsonb then true
-    when ${data}->>'state' = 'pending' then ${actor.module}::boolean
-    else ${data}->>'state' = 'submitted' end`)).orderBy(asc(cases.id));
+    when ${data}->>'state' = 'pending' then ${module}::boolean
+    else ${data}->>'state' = 'submitted' end`);
+}
+/** Whether any case could reach the interpreter for an actor with module access, the wider of the two queue predicates. */
+export function onboardingTaskCasesExistSql(tenantId: string) {
+  return sql`exists(select 1 from ${cases} where ${onboardingTaskCaseWhere(tenantId, true)})`;
+}
+
+export async function readOnboardingTaskQueueInputsTx(tx: Tx, tenantId: string, actor: { id: string; module: boolean }) {
+  const data = cases.data;
+  const list = await tx.select({ revision: cases.revision, data }).from(cases).where(onboardingTaskCaseWhere(tenantId, actor.module)).orderBy(asc(cases.id));
   const notesByCase = new Map<string, Note[]>();
   // The interpreter compares exact case JSON IDs to PostgreSQL UUID strings. A differently shaped
   // historical ID never matched a note; do not cast it or drop the case itself.

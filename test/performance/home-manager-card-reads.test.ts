@@ -489,6 +489,22 @@ it('completes every manager Home card and Today section read without a handled f
   rows.page=await traceBoth(page,pageRendered);
   // The page's sections alone: each in its own snapshot before, one render's request scope after.
   rows.sections=await traceBoth(()=>Promise.all(pageSections.map(name=>targets[name]())),()=>todayTargets.pageRender(()=>Promise.all(pageSections.map(name=>targets[name]()))));
+  // The same shared snapshots with every task owner reading on its own (before) and through the one account task
+  // statement (after, core/account-task-bundle.ts): the Tasks and Summary cards, the stream and the whole page.
+  const {withOwnerTaskReads}=await import('../../core/account-task-bundle');
+  const traceOwnerReads=async(work:()=>Promise<unknown>)=>{
+   await work().catch(()=>undefined);
+   sharedStats.length=0;const old=await traceStatements(()=>withOwnerTaskReads(work));sharedStats.length=0;
+   const fresh=await traceStatements(work);
+   return {before:old.trace.trips,after:fresh.trace.trips,beforeStatements:old.trace.statements,afterStatements:fresh.trace.statements,
+    afterOrdered:fresh.trace.ordered,shared:sharedSummary(sharedStats.splice(0)),failure:fresh.failure??old.failure};
+  };
+  for(const card of ['tasks','summary'] as const){
+   const read=()=>readers(actor.ctx,actor.employmentId,month)[card]();
+   rows['ownerReads:card:'+card]=await traceOwnerReads(()=>withSharedReadSnapshot(actor.ctx,read));
+  }
+  rows['ownerReads:stream']=await traceOwnerReads(stream);
+  rows['ownerReads:page']=await traceOwnerReads(pageRendered);
   print('statement-trace',{label,trips:Object.fromEntries(Object.entries(rows).map(([name,row])=>[name,[row.before,row.after]])),
    shared:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.shared.sessions>0).map(([name,row])=>[name,row.shared])),
    failures:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.failure).map(([name,row])=>[name,row.failure]))});
@@ -515,6 +531,26 @@ it('completes every manager Home card and Today section read without a handled f
    select ${subject.ctx.tenantId}::uuid,${subject.employmentId}::uuid,${type.id}::uuid,1,${today}::date-n::integer,s,now()-n::integer*interval '1 second'
    from unnest(array['draft','draft','approved','approved','rejected','rejected']::claim_status[]) with ordinality as statuses(s,n)`;
  }
+ // Pending Leave with an approval chain of every step kind the account task statement decides, a decided step before
+ // the current one, a chain with no pending step and an alternate it leaves to the owner (core/leave.ts
+ // leaveApproverDecisionSql), on subjects of both managers. Added after the traces, so their counts stay comparable.
+ {
+  const tenantId=manager.ctx.tenantId,on=new Date(Date.parse(today+'T00:00:00Z')+10*86400000).toISOString().slice(0,10);
+  const [{leaveTypeId}]=await owner.client<{leaveTypeId:string}[]>`select leave_type_id as "leaveTypeId" from leave_request where tenant_id=${tenantId}::uuid limit 1`;
+  const chains:[number,{kind:string;approver?:string;status?:'approved';alternates?:unknown}[]][]=[
+   [5,[{kind:'direct_manager'}]],[7,[{kind:'hr_admin'}]],[8,[{kind:'payroll'}]],[9,[{kind:'specific_employee',approver:secondManager.employmentId}]],
+   [10,[{kind:'manager_manager'}]],[11,[{kind:'department_head'}]],[12,[{kind:'business_unit_head'}]],
+   [13,[{kind:'direct_manager',status:'approved'},{kind:'custom_role'}]],[14,[{kind:'direct_manager',status:'approved'}]],
+   [15,[{kind:'direct_manager',alternates:['hr_admin']}]],[16,[{kind:'specific_employee',approver:manager.employmentId}]],
+  ];
+  for(const [position,steps] of chains){
+   const subject=actors.find(a=>a.index===position)!;
+   const [request]=await owner.db.insert(s.leaveRequest).values({tenantId,employmentId:subject.employmentId,leaveTypeId,startDate:on,endDate:on,days:'1',status:'pending'}).returning();
+   await owner.db.insert(s.leaveApprovalStep).values(steps.map((step,stepIndex)=>({tenantId,leaveRequestId:request.id,subjectEmploymentId:subject.employmentId,
+    stepIndex,approverKind:step.kind,approverEmploymentId:step.approver??null,approverAlternates:step.alternates??null,status:step.status??'pending' as const})));
+  }
+ }
+ const bundleSections:unknown[]=[];report.bundleSections=bundleSections;
  const {listClaimsForEmployment,listOpenClaimsForEmployment}=await import('../../packs/claims/service');
  for(const [subject,actor] of subjects){
   const targets=await todayTargets(actor.ctx);
@@ -560,6 +596,55 @@ it('completes every manager Home card and Today section read without a handled f
   await streamHome(actor,month,null,GET,newFrames);
   const byCard=(frames:Record<string,unknown>)=>Object.fromEntries(Object.entries(frames).sort(([a],[b])=>a.localeCompare(b)));
   compare(subject,'stream',byCard(oldFrames),byCard(newFrames));
+  // The account task statement (core/account-task-bundle.ts) against every owner it answers, section by section, then
+  // the results it composes: the account preview and exact count, the Tasks card and the whole stream (Summary count
+  // included), every owner reading on its own against the statement.
+  {
+   const bundles=await import('../../core/account-task-bundle'),inbox=await import('../../core/approvals-inbox');
+   const {isModuleEnabled}=await import('../../core/entitlements');
+   const leaveService=await import('../../packs/leave/service'),claimsService=await import('../../packs/claims/service');
+   const attendanceService=await import('../../packs/attendance/service'),performanceService=await import('../../packs/performance/service');
+   const rewardsService=await import('../../packs/rewards/service'),lifecycleService=await import('../../packs/lifecycle/service');
+   const {pendingProfileTaskMetadata}=await import('../../core/profile'),{pendingNoticeAcknowledgementTasks}=await import('../../core/notice');
+   const ctx=actor.ctx,inboxModules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
+   const modules={...inboxModules,lifecycle:isModuleEnabled(ctx,'lifecycle')};
+   const bundle=await withSharedReadSnapshot(ctx,()=>bundles.readAccountTaskBundle(ctx,modules));
+   compare(subject,'bundle:answered',true,bundle!==null);
+   const owners:Record<string,()=>Promise<unknown>>={
+    leave:()=>leaveService.pendingLeaveTaskMetadata(ctx),
+    replacement:()=>leaveService.listPendingReplacementLeaveTasks(ctx,{}),
+    attendance:async()=>modules.attendance?attendanceService.pendingAttendanceTaskMetadata(ctx):[],
+    profile:()=>pendingProfileTaskMetadata(ctx),
+    notices:()=>pendingNoticeAcknowledgementTasks(ctx),
+    performance:async()=>modules.performance?performanceService.pendingPerformanceTasks(ctx,undefined):[],
+    rewards:async()=>modules.rewards?rewardsService.pendingRewardTasks(ctx,undefined):[],
+    claims:async()=>modules.claims?claimsService.pendingClaimTaskSummary(ctx,undefined,bundles.ACCOUNT_TASK_CLAIM_PREVIEW):{items:[],total:0},
+    standardFeedback:async()=>modules.performance?performanceService.pendingStandardFeedbackTaskMetadata(ctx):[],
+    onehrFeedback:async()=>modules.performance?performanceService.pendingOnehrFeedbackTaskMetadata(ctx):[],
+    onboarding:async()=>modules.lifecycle?lifecycleService.onboardingAssignedTaskMetadata(ctx):[],
+   };
+   const deferred:string[]=[],answered:Record<string,number>={};
+   for(const [name,read] of Object.entries(owners)){
+    const value=(bundle as Record<string,unknown>|null)?.[name];
+    if(value===null||value===undefined){deferred.push(name);continue;}
+    answered[name]=Array.isArray(value)?value.length:(value as {total?:number}).total??-1;
+    compare(subject,'bundle:'+name,await outcome(()=>withIndependentTransactions(read)),{ok:true,value});
+   }
+   bundleSections.push({subject,deferred,answered,decisionCandidates:bundle?.decisionCandidates??null});
+   const ownersOnly=<T,>(work:()=>Promise<T>)=>withIndependentTransactions(()=>bundles.withOwnerTaskReads(work));
+   const withBundle=<T,>(work:(read:ReturnType<typeof bundles.readAccountTaskBundle>)=>Promise<T>)=>
+    withSharedReadSnapshot(ctx,()=>work(bundles.readAccountTaskBundle(ctx,modules)));
+   compare(subject,'bundle:accountPreview',await outcome(()=>ownersOnly(()=>inbox.pendingTaskSummary(ctx,undefined,inboxModules))),
+    await outcome(()=>withBundle(read=>inbox.createAccountTaskPreviewRead(ctx,inboxModules,read).summary())));
+   compare(subject,'bundle:accountCount',await outcome(()=>ownersOnly(()=>inbox.countPendingTasks(ctx,undefined,inboxModules))),
+    await outcome(()=>withBundle(read=>inbox.createAccountTaskPreviewRead(ctx,inboxModules,read).count())));
+   const card=()=>readEmployeeHomeTasks(ctx,actor.employmentId,1,new OwnHomeConfigurationRead(ctx,actor.employmentId,new AbortController().signal));
+   compare(subject,'bundle:card:tasks',await outcome(()=>ownersOnly(card)),await outcome(()=>withSharedReadSnapshot(ctx,card)));
+   const ownerFrames:Record<string,unknown>={},bundleFrames:Record<string,unknown>={};
+   await ownersOnly(()=>streamHome(actor,month,null,GET,ownerFrames));
+   await streamHome(actor,month,null,GET,bundleFrames);
+   compare(subject,'bundle:stream',byCard(ownerFrames),byCard(bundleFrames));
+  }
  }
  // Isolation: a foreign identity inside a session, and two identities' sessions at once across tenants.
  const isolation:Record<string,unknown>={};report.isolation=isolation;
@@ -593,6 +678,7 @@ it('completes every manager Home card and Today section read without a handled f
   expect(sessions).toHaveLength(2);
  }
  const mismatches=equivalence.filter(row=>!row.equal);
+ print('bundle-sections',bundleSections);
  print('equivalence',{compared:equivalence.length,mismatches:mismatches.length,isolation,first:mismatches.slice(0,6)});
  evidence();
  // The browser renders Today sections and starts the card stream on the same worker pool.

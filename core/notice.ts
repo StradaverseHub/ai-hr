@@ -701,15 +701,28 @@ export function pendingNoticeAcknowledgementTasks(ctx:SessionContext){
  return withTenant(ctx,tx=>tx.select({noticeId:notice.id,employmentId:noticeRecipient.employmentId,
   title:notice.title,contentVersion:notice.contentVersion,sourceUpdatedAt:notice.updatedAt})
   .from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
-  .where(and(eq(noticeRecipient.tenantId,notice.tenantId),eq(notice.tenantId,ctx.tenantId),
+  .where(pendingNoticeAcknowledgementWhere(ctx,today))
+  .orderBy(desc(notice.updatedAt),asc(notice.id),asc(noticeRecipient.employmentId)));
+}
+function pendingNoticeAcknowledgementWhere(ctx:SessionContext,today:string){
+ return and(eq(noticeRecipient.tenantId,notice.tenantId),eq(notice.tenantId,ctx.tenantId),
    sql`app.principal_snapshot_current()`,isNotNull(notice.publishedAt),isNull(notice.archivedAt),
    lte(notice.startOn,today),gte(notice.endOn,today),eq(notice.requiresAcknowledgement,true),
    sql`EXISTS(SELECT 1 FROM public.employment self_employment
     WHERE self_employment.id=notice_recipient.employment_id AND self_employment.tenant_id=notice_recipient.tenant_id
      AND app.is_self_person(self_employment.person_id))`,
    sql`NOT EXISTS(SELECT 1 FROM public.notice_acknowledgement a
-    WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version)`))
-  .orderBy(desc(notice.updatedAt),asc(notice.id),asc(noticeRecipient.employmentId)));
+    WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version)`);
+}
+/** pendingNoticeAcknowledgementTasks in the one-statement Home task read (core/account-task-bundle.ts): same rows, same order. */
+export function pendingNoticeAcknowledgementTaskBundleSql(ctx:SessionContext,today:string){
+ return sql`(select coalesce(jsonb_agg(jsonb_build_object('noticeId',${notice.id},'employmentId',${noticeRecipient.employmentId},'title',${notice.title},
+   'contentVersion',${notice.contentVersion},'sourceUpdatedAt',${notice.updatedAt}) order by ${notice.updatedAt} desc,${notice.id},${noticeRecipient.employmentId}),'[]'::jsonb)
+  from ${noticeRecipient} inner join ${notice} on ${eq(notice.id,noticeRecipient.noticeId)} where ${pendingNoticeAcknowledgementWhere(ctx,today)})`;
+}
+export function pendingNoticeAcknowledgementTasksFromBundle(value:unknown){
+ return (value as {noticeId:string;employmentId:string;title:string;contentVersion:number;sourceUpdatedAt:string}[])
+  .map(row=>({noticeId:row.noticeId,employmentId:row.employmentId,title:row.title,contentVersion:row.contentVersion,sourceUpdatedAt:new Date(row.sourceUpdatedAt)}));
 }
 
 /**
