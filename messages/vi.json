@@ -36585,6 +36585,7 @@
     "reason": "Lý do",
     "confirm": "Tôi xác nhận thao tác nhạy cảm này. Các phiên hiện tại sẽ bị thu hồi.",
     "exemptionHelp": "Chỉ một bước đặt lại mật khẩu, tối đa 60 phút. Người dùng phải xác minh hoặc đăng ký ứng dụng xác thực trước khi vào HR.",
+    "noActions": "Bạn không thể thay đổi tài khoản này. Các thao tác tài khoản cần vai trò cao hơn vai trò của người này, và không ai có thể tự thay đổi tài khoản của mình tại đây.",
     "expiryHelp": "Ngày theo lịch Malaysia, bao gồm ngày cuối. Để trống để bỏ ngày hết hạn. Gia hạn tài khoản đã hết hạn trước khi kích hoạt lại.",
     "saved": "Đã lưu thao tác tài khoản. Kiểm tra nhật ký gửi email để biết kết quả gửi.",
     "failed": "Không thể hoàn tất thao tác. Kiểm tra phạm vi quyền, trạng thái tài khoản, chính sách mật khẩu và dữ liệu nhập rồi thử lại.",

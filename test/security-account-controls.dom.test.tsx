@@ -49,6 +49,16 @@ describe('real account controls',()=>{
   await act(async()=>{release({status:'saved',delivery:'failed'});});
   expect(await screen.findByRole('alert')).toHaveTextContent(en.accountManagement.delivery.failed);
  });
+ it('offers only the actions the server admits and explains when none are available',()=>{
+  const view=render(<NextIntlClientProvider locale="en" messages={en}><AccountControls userId="fictional-target" allowed={['suspend','reset-email']}/></NextIntlClientProvider>);
+  expect(view.container.querySelectorAll('form')).toHaveLength(2);
+  expect(screen.queryByRole('button',{name:en.accountManagement['temporary-password']})).toBeNull();
+  expect(screen.queryByRole('button',{name:en.accountManagement['recovery-exemption']})).toBeNull();
+  view.unmount();
+  const none=render(<NextIntlClientProvider locale="en" messages={en}><AccountControls userId="fictional-target" allowed={[]}/></NextIntlClientProvider>);
+  expect(none.container.querySelectorAll('form')).toHaveLength(0);
+  expect(screen.getByRole('note')).toHaveTextContent(en.accountManagement.noActions);
+ });
  it.each(Object.keys(locales) as (keyof typeof locales)[])('renders %s controls for desktop and phone review using fictional account context',async locale=>{
   const view=show(locale);expect(view.container.querySelectorAll('form')).toHaveLength(6);
   await captureAiReviewScreenshots(aiReviewDomHtml(view.container),locale,'security-flyout-account-controls','real AccountControls component; fictional target and synthetic server-action port; no authenticated server journey');

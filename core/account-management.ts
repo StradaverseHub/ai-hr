@@ -20,25 +20,41 @@ function authSql(tx:Tx):AuthSql {
   return tx.execute(sql.join(parts.map(part=>/^\$\d+$/.test(part)?sql`${values[Number(part.slice(1))-1]}`:sql.raw(part)),sql``));
  }} as unknown as AuthSql;
 }
-async function withAccount<T>(ctx:SessionContext,userId:string,operation:(tx:Tx,auth:AuthSql,c:Credential)=>Promise<T>):Promise<T>{
+const accountCommandTypes=['suspend','reactivate','expiry','temporary-password','recovery-exemption','reset-email'] as const;
+export type AccountCommandType=typeof accountCommandTypes[number];
+/** Reads admit through 2106's scope proof; an action additionally needs strictly higher authority (4502). */
+function admission(userId:string,issuer:string,action?:AccountCommandType){
+ return action?sql`select app.account_action_subject(${userId}::uuid,${issuer},${action}) subject`
+  :sql`select app.account_management_subject(${userId}::uuid,${issuer}) subject`;
+}
+async function withAccount<T>(ctx:SessionContext,userId:string,operation:(tx:Tx,auth:AuthSql,c:Credential)=>Promise<T>,action?:AccountCommandType):Promise<T>{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!internalSelected()||!ctx.userId||!isAdmin(ctx)||! /^[0-9a-f-]{36}$/i.test(userId))throw Error('forbidden');
+ // Nobody acts on their own account here; the database refuses it too, this keeps the error early and plain.
+ if(action&&userId.toLowerCase()===ctx.userId.toLowerCase())throw Error('forbidden');
  return withTenant(ctx,async tx=>{
   const issuer=internalIssuer(ctx.tenantId);
-  const [identity]=await tx.execute(sql`select app.account_management_subject(${userId}::uuid,${issuer}) subject`) as unknown as {subject:string}[];
+  const [identity]=await tx.execute(admission(userId,issuer,action)) as unknown as {subject:string|null}[];
   if(!identity?.subject)throw Error('forbidden');
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'internal-auth:'+identity.subject},0))`);
   // Re-admit after acquiring the same serialization lock as login/recovery and session refresh.
-  await tx.execute(sql`select app.account_management_subject(${userId}::uuid,${issuer})`);
+  const [again]=await tx.execute(admission(userId,issuer,action)) as unknown as {subject:string|null}[];
+  if(again?.subject!==identity.subject)throw Error('forbidden');
   const auth=authSql(tx),c=await readRecord<Credential>(auth,`credential:${identity.subject}`,true);
   if(!c||c.subject!==identity.subject||c.tenantId!==ctx.tenantId||c.issuer!==issuer)throw Error('forbidden');
   return operation(tx,auth,c);
  });
 }
-export type AccountSummary={username:string;email:string;status:'active'|'suspended'|'expired'|'preparing';activeUntil:string|null;mustChange:boolean;temporaryPasswordExpiresAt:number|null;exemptionUntil:number|null};
-export function readManagedAccount(ctx:SessionContext,userId:string){return withAccount(ctx,userId,async(_tx,auth,c):Promise<AccountSummary>=>{
+export type AccountSummary={username:string;email:string;status:'active'|'suspended'|'expired'|'preparing';activeUntil:string|null;mustChange:boolean;temporaryPasswordExpiresAt:number|null;exemptionUntil:number|null;actions:AccountCommandType[]};
+export function readManagedAccount(ctx:SessionContext,userId:string){return withAccount(ctx,userId,async(tx,auth,c):Promise<AccountSummary>=>{
  const exemption=await readRecord<RecoveryExemption>(auth,`recovery-exemption:${c.subject}`);
- return {username:c.username,email:c.email,status:!c.enabled?'preparing':c.suspended?'suspended':!accountAvailable(c)?'expired':'active',activeUntil:c.accountActiveUntil??null,mustChange:c.mustChange,temporaryPasswordExpiresAt:c.temporaryPasswordExpiresAt??null,exemptionUntil:exemption?.expiresAt??null};
+ // Offer only the actions the database would admit for this actor and target (self and peers get none).
+ const issuer=internalIssuer(ctx.tenantId),actions:AccountCommandType[]=[];
+ if(userId.toLowerCase()!==ctx.userId?.toLowerCase())for(const action of accountCommandTypes){
+  const [row]=await tx.execute(admission(userId,issuer,action)) as unknown as {subject:string|null}[];
+  if(row?.subject===c.subject)actions.push(action);
+ }
+ return {actions,username:c.username,email:c.email,status:!c.enabled?'preparing':c.suspended?'suspended':!accountAvailable(c)?'expired':'active',activeUntil:c.accountActiveUntil??null,mustChange:c.mustChange,temporaryPasswordExpiresAt:c.temporaryPasswordExpiresAt??null,exemptionUntil:exemption?.expiresAt??null};
 });}
 export type AccountCommand=
  |{type:'suspend'|'reactivate';reason:string}
@@ -49,7 +65,7 @@ export type AccountCommand=
 export async function manageAccount(ctx:SessionContext,userId:string,command:AccountCommand){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  command=structuredClone(command);
- if(!['suspend','reactivate','expiry','temporary-password','recovery-exemption','reset-email'].includes(command.type))throw Error('invalid');
+ if(!(accountCommandTypes as readonly string[]).includes(command.type))throw Error('invalid');
  const reason=command.reason.trim();if(reason.length<5||reason.length>500)throw Error('invalid');
  const result=await withAccount(ctx,userId,async(tx,auth,c)=>{
   if(!c.enabled)throw Error('invalid'); // Provisioning/activation retains its existing owner.
@@ -84,7 +100,7 @@ export async function manageAccount(ctx:SessionContext,userId:string,command:Acc
   metadata.afterStatus=c.suspended?'suspended':accountAvailable(c)?'active':'expired';
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'app-user',aggregateId:userId,eventType:`app-user.account-${command.type}`,actor:actorOf(ctx),payload:metadata});
   return {password,organization:c.organization,username:c.username};
- });
+ },command.type);
  let delivery:'sent'|'failed'|'skipped'|'uncertain'|undefined;
  if(command.type==='reset-email'){
   delivery='uncertain';

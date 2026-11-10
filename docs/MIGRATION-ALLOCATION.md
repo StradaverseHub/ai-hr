@@ -1,3 +1,13 @@
+# Security Center account-action authority — 10 November 2026 MYT (unapplied)
+
+Branch claude/fix-account-action-privilege reserves `4502_account_action_authority`
+at idx 3902 / when 1793330004202. The survey of main and the 60 most recently
+updated origin heads found peer maximum 4342 / idx 3742 / when 1793330004042;
+4500 (idx 3900 / when 1793330004200) and 4501 (idx 3901 / when 1793330004201)
+are reserved the same day by the ccd3a65c and 4452ba3c board builders. The
+staging ledger includes 4202. Recheck peer claims and the installed ledger at
+admission; this reservation grants no installation authority.
+
 # Schedule Group clock policy — 10 November 2026 MYT (unapplied)
 
 Reserve `4202_attendance_clock_policy_revisions` at idx 3602 and when

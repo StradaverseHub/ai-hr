@@ -5,9 +5,10 @@ import {useTranslations} from 'next-intl';
 import {accountAction,type AccountActionState} from './actions';
 import {btnGhost,inputCls} from '@/components/ui';
 const commands=['temporary-password','reset-email','recovery-exemption','suspend','reactivate','expiry'] as const;
-export function AccountControls({userId}:{userId:string}){
- const t=useTranslations('accountManagement');
- return <div className="grid gap-4 lg:grid-cols-2">{commands.map(type=><Control key={type} type={type} userId={userId} title={t(type)}/>)}</div>;
+export function AccountControls({userId,allowed=commands}:{userId:string;allowed?:readonly string[]}){
+ const t=useTranslations('accountManagement'),shown=commands.filter(type=>allowed.includes(type));
+ if(shown.length===0)return <p role="note" className="rounded-lg border border-border p-5 text-sm text-muted-foreground">{t('noActions')}</p>;
+ return <div className="grid gap-4 lg:grid-cols-2">{shown.map(type=><Control key={type} type={type} userId={userId} title={t(type)}/>)}</div>;
 }
 function Control({type,userId,title}:{type:typeof commands[number];userId:string;title:string}){
  const t=useTranslations('accountManagement'),[state,action,pending]=useActionState<AccountActionState,FormData>(accountAction,{status:'idle'}),[hiddenPassword,setHiddenPassword]=useState<string|null>(null);

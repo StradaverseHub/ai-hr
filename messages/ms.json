@@ -36585,6 +36585,7 @@
     "reason": "Sebab",
     "confirm": "Saya mengesahkan tindakan sensitif ini. Sesi sedia ada akan dibatalkan.",
     "exemptionHelp": "Satu langkah tetapan semula kata laluan sahaja, sehingga 60 minit. Pengguna mesti mengesahkan atau mendaftarkan pengesah sebelum memasuki HR.",
+    "noActions": "Anda tidak boleh mengubah akaun ini. Tindakan akaun memerlukan peranan yang lebih tinggi daripada peranan orang ini, dan tiada sesiapa boleh mengubah akaun sendiri di sini.",
     "expiryHelp": "Tarikh kalendar Malaysia termasuk hari terakhir. Kosongkan untuk membuang tarikh tamat. Lanjutkan tempoh akaun yang tamat sebelum mengaktifkannya semula.",
     "saved": "Tindakan akaun disimpan. Untuk penghantaran e-mel, semak log penghantaran.",
     "failed": "Tindakan tidak dapat diselesaikan. Semak skop, status akaun, dasar kata laluan dan input anda, kemudian cuba semula.",
