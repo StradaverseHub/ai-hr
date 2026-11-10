@@ -8,7 +8,9 @@
  *  · specific companies write one revision per company in ONE transaction (all or nothing);
  *  · the service dates every change itself (tomorrow, or the day after that chain's latest start), records a
  *    system reason, writes nothing when the settings are unchanged, and refuses a stale revision token;
- *  · saving never recalculates attendance that already exists.
+ *  · saving never recalculates attendance that already exists;
+ *  · All Companies audit history and scheduled-change events are read by exactly the group administrators
+ *    who may write them (owner decision 11 Nov 2026); company administrators keep their own companies only.
  */
 import {randomUUID} from 'node:crypto';
 import {and,eq,isNull,sql} from 'drizzle-orm';
@@ -113,6 +115,83 @@ describe('All Companies', ()=>{
     await expect(withTenant(admin,tx=>tx.insert(schema.attendanceClockPolicyRevision).values({...row,ordinal:2,effectiveFrom:day(1)})),'not after the latest').rejects.toThrow();
     await expect(owner.db.update(schema.attendanceClockPolicyRevision).set({reason:'Changed'}).where(eq(schema.attendanceClockPolicyRevision.id,first.id))).rejects.toThrow();
     await expect(owner.db.delete(schema.attendanceClockPolicyRevision).where(eq(schema.attendanceClockPolicyRevision.id,first.id))).rejects.toThrow();
+  });
+});
+
+describe('All Companies audit history and events (owner decision 11 Nov 2026)', ()=>{
+  type AuditRow={id:string;ordinal:number;effectiveFrom:string;policy:unknown;reason:string};
+  const nativeHistory=(ctx:SessionContext,companyId:string|null)=>withTenant(ctx,tx=>tx.execute<AuditRow>(sql`
+    select id,ordinal,effective_from::text as "effectiveFrom",policy,reason
+    from app.attendance_clock_policy_history(${companyId}::uuid,${ruleId}::uuid) order by ordinal`));
+  const scheduledEvents=(ctx:SessionContext)=>withTenant(ctx,tx=>tx.execute<{revisionId:string;companyId:string|null;reason:string}>(sql`
+    select payload->>'versionId' as "revisionId",payload->>'companyId' as "companyId",payload->>'reason' as reason
+    from public.domain_event where tenant_id=${base.tenantId}::uuid and event_type='attendance-rule.clock-policy.scheduled'
+      and aggregate_id=${ruleId}::uuid order by sequence`));
+  const GROUP_REASON='Fictional All Companies audit reason',OWN_REASON='Fictional own company audit reason';
+
+  async function scheduleBoth() {
+    const group=await scheduleAttendanceClockPolicy(admin,{companyId:null,ruleId,expectedOrdinal:0,effectiveFrom:day(2),reason:GROUP_REASON,policy:auto});
+    const own=await scheduleAttendanceClockPolicy(admin,{companyId:base.companyId,ruleId,expectedOrdinal:0,effectiveFrom:day(3),reason:OWN_REASON,policy:fil});
+    return {
+      group,own,
+      groupRow:{id:group.id,ordinal:1,effectiveFrom:day(2),policy:auto,reason:GROUP_REASON},
+      ownRow:{id:own.id,ordinal:1,effectiveFrom:day(3),policy:fil,reason:OWN_REASON},
+      groupEvent:{revisionId:group.id,companyId:null,reason:GROUP_REASON},
+      ownEvent:{revisionId:own.id,companyId:base.companyId,reason:OWN_REASON},
+    };
+  }
+
+  it('a group administrator sees the All Companies history and events; a forged event scope stays hidden', async()=>{
+    const {group,own,groupRow,ownRow,groupEvent,ownEvent}=await scheduleBoth();
+    const [written]=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.aggregateId,ruleId),sql`${schema.domainEvent.payload}->>'versionId'=${group.id}`));
+    expect(written?.payload,'fixture precondition: the real writer records the group scope').toMatchObject({companyId:null,scope:'group'});
+    const forged=(payload:Record<string,unknown>):typeof schema.domainEvent.$inferInsert=>({tenantId:base.tenantId,aggregateType:'attendance-rule',aggregateId:ruleId,
+      eventType:'attendance-rule.clock-policy.scheduled',actorType:'user',actorId:admin.userId,payload});
+    await owner.db.insert(schema.domainEvent).values([
+      forged({versionId:group.id,companyId:base.companyId,scope:'company',reason:'Fictional group row claimed as a company'}),
+      forged({versionId:group.id,reason:'Fictional group row without a company field'}),
+      forged({versionId:group.id,companyId:null,reason:'Fictional group row without a scope label'}),
+      forged({versionId:own.id,companyId:null,scope:'group',reason:'Fictional company row claimed as All Companies'}),
+    ]);
+    expect(await nativeHistory(admin,null)).toEqual([groupRow]);
+    expect(await nativeHistory(admin,base.companyId),'the company chain is still its own').toEqual([ownRow]);
+    expect(await scheduledEvents(admin)).toEqual([groupEvent,ownEvent]);
+  });
+
+  it('a company-scoped administrator still sees only their own company', async()=>{
+    const {group,ownRow,ownEvent}=await scheduleBoth();
+    const scoped=await companyScopedAdmin(base.companyId);
+    expect(await nativeHistory(scoped,null)).toEqual([]);
+    expect(await nativeHistory(scoped,base.companyId)).toEqual([ownRow]);
+    expect(await scheduledEvents(scoped)).toEqual([ownEvent]);
+    // The dated group-wide settings (no audit fields) stay readable to administrators, as before.
+    expect(await attendanceClockPolicyGroupHistory(scoped,{ruleId})).toEqual([{...group,policy:auto}]);
+  });
+
+  it('an employee sees no clock policy audit history or events, even with a forged group grant', async()=>{
+    await scheduleBoth();
+    const worker=await hireEmployee(admin,{person:{fullName:'Fictional audit reader',primaryEmail:randomUUID()+'@fixture.invalid'},
+      companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:day(-1)});
+    const employee={...admin,userId:await createAppUser(base.tenantId,worker.personId,'employee'),personId:worker.personId,roles:['employee'],grants:[]};
+    const forgedGroup={...employee,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+    for(const ctx of [employee,forgedGroup]) {
+      expect(await nativeHistory(ctx,null)).toEqual([]);
+      expect(await nativeHistory(ctx,base.companyId)).toEqual([]);
+      expect(await scheduledEvents(ctx)).toEqual([]);
+    }
+  });
+
+  it('another tenant’s group administrator sees nothing, including through a forged tenant', async()=>{
+    await scheduleBoth();
+    const foreign=await seedBase();
+    await setModule(foreign.tenantId,'attendance','active');
+    const foreignAdmin={...adminCtx(foreign),grants:[{role:'hr_admin',companyId:null}]};
+    for(const ctx of [foreignAdmin,{...foreignAdmin,tenantId:base.tenantId}]) {
+      expect(await nativeHistory(ctx,null)).toEqual([]);
+      expect(await nativeHistory(ctx,base.companyId)).toEqual([]);
+      expect(await scheduledEvents(ctx)).toEqual([]);
+    }
   });
 });
 
