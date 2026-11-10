@@ -3393,6 +3393,43 @@ export async function rehearseMovementSequenceTx<T>(tx:Tx,ctx:SessionContext,pre
   return {value,replay};
 }
 
+/** Raised by applyMovementSequenceTx for an input that would be recorded as a future intent: the caller rolls its
+ * savepoint back and rehearses the sequence instead (a future baseline exists only in a rehearsal). */
+export class MovementSequenceDeferred extends Error{constructor(){super('movement_sequence_deferred');this.name='MovementSequenceDeferred';}}
+/**
+ * The same ordered create as rehearseMovementSequenceTx — at most twenty events for ONE employee, in effective-date
+ * order, the same writer locks in the caller's transaction — applied for real in one pass instead of rehearsed and
+ * then replayed. Only for movements that apply on save: an input dated after today, or any write the owner records as
+ * scheduled, raises MovementSequenceDeferred. For those inputs the rehearsal's replay writes exactly what its shadow
+ * pass wrote (a captured baseline is used only by a scheduled comparison), so one pass leaves the same rows.
+ */
+export async function applyMovementSequenceTx<T>(tx:Tx,ctx:SessionContext,run:(create:MovementSequenceCreate)=>Promise<T>):Promise<T>{
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+  let count=0,subject:string|undefined,previousDate:string|undefined,open=true,inFlight=false,failed=false;
+  const create:MovementSequenceCreate=async input=>{
+    if(!open)throw new Error('movement_sequence_not_available');
+    if(inFlight||failed){failed=true;throw new Error('movement_sequence_not_available');}
+    inFlight=true;
+    try{
+      if(count>=MOVEMENT_SEQUENCE_MAX)throw new Error('too_many_employee_rows');
+      if(subject!==undefined&&input.employmentId!==subject)throw new Error('movement_sequence_employee_changed');
+      if(previousDate!==undefined&&input.effectiveDate<previousDate)throw new Error('movement_sequence_order_changed');
+      const frozen=Object.freeze({...input});
+      if(!isCalendarDate(frozen.effectiveDate)||frozen.effectiveDate>todayInKualaLumpur())throw new MovementSequenceDeferred();
+      const result=await dispatchMovementEventTx(tx,ctx,frozen);
+      if('scheduled' in result&&result.scheduled===true)throw new MovementSequenceDeferred();
+      count++;subject=frozen.employmentId;previousDate=frozen.effectiveDate;
+      return result;
+    }catch(error){failed=true;throw error;}finally{inFlight=false;}
+  };
+  try{
+    const value=await run(create);
+    if(failed||inFlight)throw new Error('movement_sequence_rehearsal_failed');
+    return value;
+  }finally{open=false;}
+}
+
 // ───────────── Scheduled application — 941c9dac ─────────────
 
 /** What one employment's due-movement pass did. `noop` counts movements that arrived to find their

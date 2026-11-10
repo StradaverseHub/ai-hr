@@ -3,18 +3,20 @@
  * The synchronous confirmation saved each employee in its own transaction (all of that employee's movements or none;
  * other employees still go through), so this kind is `per-step` with one step per employee: nothing is staged,
  * and an employee's movements become visible when its chunk commits, exactly as before. Every chunk transaction takes
- * the session limits and the exclusive Access lock the employee transaction took (beginMovementCommitTx), so ending
- * or blacklisting the employment of a person with a login, and changing who someone reports to or which company they
- * belong to, keep today's serialisation; each employee's work then runs in a savepoint through the very same
- * commit code (commitMovementEmployee). The confirmation (failed items and the confirmed event) is one short
- * transaction at the end, under the initiator's freshly resolved authority. */
+ * the session limits and every lock the employee transaction took, in the same order (beginMovementChunkTx: the
+ * exclusive Access lock, reference admission, the type catalogue, the workforce writer and leave-dependency locks), so
+ * ending or blacklisting the employment of a person with a login, and changing who someone reports to or which company
+ * they belong to, keep today's serialisation. Each employee then runs in a savepoint through commitMovementEmployee
+ * with the chunk's shared reads: the lean single pass when it covers the employee, otherwise the very same reference
+ * body. The confirmation (failed items and the confirmed event) is one short transaction at the end, under the
+ * initiator's freshly resolved authority. */
 import {sql} from 'drizzle-orm';
 import {createTranslator} from 'next-intl';
 import {withTenant,type SessionContext} from '../db/client';
 import {isTransientBulkJobError,type BulkJobHandler,type BulkJobStep} from './bulk-job-worker';
 import type {BulkJobRow} from './bulk-job';
 import {ImportHistoryError,recordImportFailure} from './import-history';
-import {beginMovementCommitTx,commitMovementEmployee,movementCommitCounts,movementExcludedEmployee,movementRefusedEmployee,planMovementCommit,type MovementCommitEmployee,type MovementEmployeeOutcome} from './movement-import';
+import {beginMovementChunkTx,commitMovementEmployee,movementCommitCounts,movementExcludedEmployee,movementRefusedEmployee,planMovementCommit,type MovementChunkReads,type MovementCommitEmployee,type MovementEmployeeOutcome} from './movement-import';
 import {chosenMovementEmployees,confirmableMovementAttemptTx,movementAttemptSource,movementCommitFailure,movementConfirmCommitInput,recordMovementConfirmation,type MovementImportPlan,type MovementUploadResult} from './movement-import-history';
 import {MOVEMENT_IMPORT_KIND,type MovementImportJobInput} from './movement-import-job';
 import {defaultLocale,isLocale} from '../i18n/config';
@@ -69,6 +71,8 @@ function stepEmployee(plan:MovementImportStoredPlan,payload:StepPayload,names:Ma
  return{key:payload.key,records:payload.records,names,selection:plan.selection!,inputHash:commit.inputHash,fingerprints:commit.fingerprints,catalogueHash:commit.catalogueHash,
   history:{attemptId:plan.attemptId},acknowledgeClosedPayroll:commit.acknowledgeClosedPayroll,batchId:plan.attemptId};
 }
+/** The reads of the chunk transaction now open for a job (replaced at every chunk start, never kept across one). */
+const chunkReads=new Map<string,MovementChunkReads>();
 const namesOf=(plan:MovementImportStoredPlan,cache:Map<string,unknown>)=>{let names=cache.get('names') as Map<string,string>|undefined;if(!names){names=new Map(plan.names??[]);cache.set('names',names);}return names;};
 
 export const movementImportJobHandler:BulkJobHandler<StepPayload>={
@@ -118,16 +122,19 @@ export const movementImportJobHandler:BulkJobHandler<StepPayload>={
   }
   return{attemptId:input.attemptId};
  },
- async beginChunkTx(tx,ctx){await beginMovementCommitTx(tx,ctx);},
+ /** Every lock an employee transaction takes, once for the chunk, and the reads its employees share (see
+  * MovementChunkReads): one employee's commit then runs about a third of the statements it ran alone. */
+ async beginChunkTx(tx,ctx,job){chunkReads.set(job.id,await beginMovementChunkTx(tx,ctx));},
  /** One employee, all or nothing, in a savepoint of the chunk; a refusal is that employee's failed rows. */
  async applyStepTx(tx,ctx,job,step,cache){
   const plan=planOf(job);
-  const outcome=await commitMovementEmployee(ctx,stepEmployee(plan,step.payload,namesOf(plan,cache)),Number.POSITIVE_INFINITY,body=>tx.transaction(body),isTransient);
-  const counters:Record<string,number>|undefined=outcome.status==='imported'?{imported:outcome.count}:outcome.status==='failed'?{refused:outcome.count}:undefined;
+  const outcome=await commitMovementEmployee(ctx,stepEmployee(plan,step.payload,namesOf(plan,cache)),Number.POSITIVE_INFINITY,body=>tx.transaction(body),isTransient,chunkReads.get(job.id));
+  const counters:Record<string,number>={...(outcome.status==='imported'?{imported:outcome.count}:outcome.status==='failed'?{refused:outcome.count}:{}),...(outcome.path?{[outcome.path+'Employees']:1}:{})};
   return{result:outcome,counters};
  },
  /** The result in file order, then the confirmation in one short transaction fenced on the lease. */
  async finalize(ctx,job,unit){
+  chunkReads.delete(job.id);
   const plan=planOf(job);
   if(plan.already)return{result:plan.already};
   const steps=await withTenant(ctx,tx=>tx.execute<{seq:number;state:string;payload:StepPayload;result:MovementEmployeeOutcome|null}>(sql`select seq,state,payload,result from bulk_job_step where job_id=${job.id}::uuid order by seq`));
@@ -153,6 +160,7 @@ export const movementImportJobHandler:BulkJobHandler<StepPayload>={
  },
  /** Import History for a job that stopped before its confirmation, under the creator's authority (best effort). */
  async afterTerminal(ctx,job){
+  chunkReads.delete(job.id);
   if(job.state==='completed'||!ctx)return;
   const plan=planOf(job),attemptId=job.attempt_id??plan.attemptId;
   if(!attemptId||plan.confirmed)return;
