@@ -17,12 +17,13 @@ import type {SectionImportPreview,SectionImportResult} from '../lib/import-secti
 
 /** Explicit subjects allow the full new-employee import to validate rows before IDs exist. */
 export type RegisterSubject={employeeCode:string;employeeName:string;companyId:string;employmentId:string|null;personId:string|null;valid:boolean};
-type Resolved={subject:RegisterSubject|null;recordId:string;input:Partial<QualificationInput>&Partial<EmergencyContactInput>;preview:RegisterPreview['rows'][number]};
-function assertBounds(records:ImportRecord[]) {
+export type RegisterResolvedRow={subject:RegisterSubject|null;recordId:string;input:Partial<QualificationInput>&Partial<EmergencyContactInput>;preview:RegisterPreview['rows'][number]};
+/** The commit's synchronous size refusal (also checked when a background register import is requested). */
+export function assertRegisterImportBounds(records:ImportRecord[]) {
   if(records.length>MAX_PERSONNEL_REGISTER_ROWS)throw new Error(`A register import supports at most ${MAX_PERSONNEL_REGISTER_ROWS} rows. Split the file and check each part.`);
   if(Buffer.byteLength(JSON.stringify(records),'utf8')>900000)throw new Error('The register file is too large. Split it and check each part.');
 }
-async function loadSubjectsTx(tx:Tx,records:ImportRecord[],lock:boolean):Promise<RegisterSubject[]> {
+export async function loadSubjectsTx(tx:Tx,records:ImportRecord[],lock:boolean):Promise<RegisterSubject[]> {
   const codes=[...new Set(records.map(record=>normalizeEmployeeCode(record.employee_code)).filter(Boolean))];
   if(!codes.length)return [];
   const query=tx.select({employmentId:employment.id,personId:employment.personId,companyId:employment.companyId,
@@ -35,7 +36,7 @@ async function loadSubjectsTx(tx:Tx,records:ImportRecord[],lock:boolean):Promise
 }
 /** No writes. Callers must pass the same explicit Tx to all owner validators/readers. */
 export async function analyzeRegisterImportTx(tx:Tx,kind:PersonnelRegisterKind,records:ImportRecord[],options?:{subjects:RegisterSubject[];newEmployees?:boolean}) {
-  assertBounds(records);
+  assertRegisterImportBounds(records);
   const subjects=options?.subjects??await loadSubjectsTx(tx,records,false);
   const allowed=options?.newEmployees?new Set((await tx.select({id:company.id}).from(company).where(sql`app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.maintain') and ${company.archivedAt} is null`)).map(row=>row.id)):null;
   const byCode=new Map<string,RegisterSubject|null>();
@@ -46,7 +47,7 @@ export async function analyzeRegisterImportTx(tx:Tx,kind:PersonnelRegisterKind,r
   const catalog=new PersonnelImportCatalog();
   // Active values resolve names; canonical owners separately distinguish never configured from all inactive.
   for(const option of await tx.select({category:profileOption.category,value:profileOption.value,label:profileOption.label}).from(profileOption).where(eq(profileOption.isActive,true)))catalog.addOption(option);
-  const resolved:Resolved[]=[];const fileErrors:string[]=[];
+  const resolved:RegisterResolvedRow[]=[];const fileErrors:string[]=[];
   const ids=new Map<string,number>();const promoted=new Map<string,number>();
   for(const [index,raw] of records.entries()) {
     const normalized=normalizePersonnelCatalogRecord(raw,kind,catalog);
@@ -63,7 +64,7 @@ export async function analyzeRegisterImportTx(tx:Tx,kind:PersonnelRegisterKind,r
         resolved[prior].preview.errors.push(`Record ID repeats row ${index+1}.`);resolved[prior].preview.ok=false;
       } else ids.set(parsed.recordId,index);
     }
-    const input=parsed.input as Resolved['input'];
+    const input=parsed.input as RegisterResolvedRow['input'];
     if(subject && subject.valid && !errors.length)try {
       if(kind==='qualification') {
         let existing:typeof employeeQualification.$inferSelect|undefined;
@@ -97,12 +98,14 @@ export async function analyzeRegisterImportTx(tx:Tx,kind:PersonnelRegisterKind,r
   const preview:RegisterPreview={kind,total:records.length,validCount:resolved.filter(row=>row.preview.ok).length,rows:resolved.map(row=>row.preview),fileErrors};
   return {preview,resolved};
 }
+/** A dry run writes nothing, so it reads one consistent snapshot instead of holding the tenant's Access lock (which
+ * stopped every workforce writer for the whole file). The commit re-validates under its writer locks. */
 export function validateRegisterImport(ctx:SessionContext,kind:PersonnelRegisterKind,records:ImportRecord[],options?:{subjects:RegisterSubject[];newEmployees?:boolean}) {
-  assertBounds(records);
-  return withTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,ctx.tenantId);return analyzeRegisterImportTx(tx,kind,records,options);});
+  assertRegisterImportBounds(records);
+  return withTenant(ctx,tx=>analyzeRegisterImportTx(tx,kind,records,options),{readOnlySnapshot:true});
 }
 /** Caller supplies only freshly created subjects or a freshly authorized/locked section subject. */
-export async function writeRegisterRowsTx(tx:Tx,ctx:SessionContext,kind:PersonnelRegisterKind,rows:Resolved[],created?:Map<string,{employmentId:string;personId:string}>) {
+export async function writeRegisterRowsTx(tx:Tx,ctx:SessionContext,kind:PersonnelRegisterKind,rows:RegisterResolvedRow[],created?:Map<string,{employmentId:string;personId:string}>) {
   await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   let count=0;
   for(const row of rows) {
@@ -134,7 +137,7 @@ export async function validateRegisterSection(ctx:SessionContext,kind:PersonnelR
     rows:preview.rows.map(row=>({...row,registerAction:row.action,verdict:'update' as const,warnings:[row.action==='create'?'Blank Record ID: creates a new register record.':'Updates only the supplied fields on this Record ID.'],changes:row.proposed.filter(cell=>!['employee_code','record_id'].includes(cell.column)).map(cell=>cell.column)}))};
 }
 export async function commitRegisterSection(ctx:SessionContext,kind:PersonnelRegisterKind,records:ImportRecord[]):Promise<SectionImportResult> {
-  assertBounds(records);
+  assertRegisterImportBounds(records);
   let updated=0;let fileErrors:string[]=[];
   try {await withTenant(ctx,async tx=>{
     await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
@@ -148,8 +151,8 @@ export async function commitRegisterSection(ctx:SessionContext,kind:PersonnelReg
 
 /** IDs are obtained from authorized current records, never inferred from array positions or names. */
 export function registerRecordsForEmployee(ctx:SessionContext,kind:PersonnelRegisterKind,employeeCode:string):Promise<ImportRecord[]> {
+  // A read-only snapshot (taken at BEGIN): the tenant's Access lock added no consistency here, only a wait.
   return withTenant(ctx,async tx=>{
-    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     const subjects=await loadSubjectsTx(tx,[{employee_code:employeeCode}],false);
     if(subjects.length!==1 || !subjects[0].valid)throw new Error('Choose one active Employee ID in your administered companies.');
     const subject=subjects[0];

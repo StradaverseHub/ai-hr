@@ -1,0 +1,11 @@
+-- UNALLOCATED DRAFT on branch claude/bulkjob-register-20261110 (register and section imports as background jobs on the
+-- shared bulk-job kernel, 9003): not a reservation, not an installation allocation. The journal position (idx 9930,
+-- when 1793330099300) exists only so this branch's schema is executable and reviewable; the integration owner assigns
+-- the final tag/idx/when after the freshly verified ledger, per docs/MIGRATION-ALLOCATION.md.
+--
+-- Two kinds, no new tables (docs/adr/2026-11-10-register-section-import-jobs.md). Neither records an Import History attempt,
+-- exactly as the synchronous imports did not, so the job is readable by its creator only (scope_kind NULL). One active
+-- import of each kind per person, as one person could only run one synchronous import at a time from the screen.
+--  section_import:  Profile and Family files, one row per step (rows succeed or fail on their own, as before).
+--  register_import: Qualification and Emergency Contact files, all-or-nothing (captured writes, one release).
+INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES('section_import',NULL,'creator'),('register_import',NULL,'creator');

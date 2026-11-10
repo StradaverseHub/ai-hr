@@ -9,7 +9,11 @@ import {clockingImportJobHandler} from '../packs/attendance/service';
 import {attendanceRecomputeJobHandler,attendanceRecomputePreviewJobHandler} from './attendance-recompute-job';
 import {payrollProcessJobHandler} from './payroll-processing-job';
 import {systemLabelImportJobHandler} from './system-label-import-worker';
+import {employeeImportRevertJobHandler} from './employee-import-revert-job';
+import {registerImportJobHandler} from './register-import-worker';
+import {sectionImportJobHandler} from './section-import-worker';
 
 export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,
  earnedAccrualJobHandler,rosterBulkJobHandler,scheduleGroupBulkJobHandler,clockingImportJobHandler,attendanceRecomputePreviewJobHandler,
- attendanceRecomputeJobHandler,payrollProcessJobHandler,systemLabelImportJobHandler];
+ attendanceRecomputeJobHandler,payrollProcessJobHandler,systemLabelImportJobHandler,employeeImportRevertJobHandler,sectionImportJobHandler,
+ registerImportJobHandler];

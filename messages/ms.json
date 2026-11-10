@@ -2976,6 +2976,22 @@
         "waiting": "Menunggu pekerja import. Kemajuan disimpan; jangan muat naik fail ini sekali lagi.",
         "otherRunning": "Satu lagi import pekerja masih berjalan. Tunggu sehingga selesai sebelum memulakan yang baharu.",
         "workerUnavailable": "Perkhidmatan import belum berjalan. Import anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
+      },
+      "sectionJob": {
+        "queued": "Menunggu untuk bermula",
+        "preparing": "Menyemak fail",
+        "running": "Menyimpan baris",
+        "finalizing": "Menyelesaikan import",
+        "discarding": "Menghentikan import",
+        "completed": "Import selesai",
+        "failed": "Import dihentikan",
+        "cancelled": "Import dibatalkan",
+        "progressCount": "{done} daripada {total} langkah selesai",
+        "backgroundHelp": "Anda boleh tinggalkan halaman ini. Setiap baris disimpan secara berasingan semasa import berjalan.",
+        "backgroundHelpRegister": "Anda boleh tinggalkan halaman ini. Tiada sesiapa melihat perubahan daftar ini sehingga keseluruhan fail disimpan.",
+        "waiting": "Menunggu pekerja import. Kemajuan disimpan; jangan muat naik fail ini sekali lagi.",
+        "otherRunning": "Satu lagi import jenis ini yang anda mulakan masih berjalan. Tunggu sehingga selesai sebelum memulakan yang baharu.",
+        "workerUnavailable": "Perkhidmatan import belum berjalan. Import anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
       }
     },
     "wizard": {
@@ -37644,6 +37660,48 @@
         "cancelled": {
           "title": "Import Label Sistem dibatalkan",
           "body": "Tiada kod ditambah."
+        }
+      },
+      "sectionImport": {
+        "completed": {
+          "title": "Import bahagian selesai",
+          "body": "Buka Import untuk melihat baris yang dikemas kini."
+        },
+        "failed": {
+          "title": "Import bahagian dihentikan",
+          "body": "Baris yang disimpan sebelum ia berhenti dikekalkan. Buka Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Import bahagian dibatalkan",
+          "body": "Baris yang disimpan sebelum ia berhenti dikekalkan. Buka Import untuk butiran."
+        }
+      },
+      "registerImport": {
+        "completed": {
+          "title": "Import daftar selesai",
+          "body": "Buka Import untuk melihat rekod daftar yang disimpan."
+        },
+        "failed": {
+          "title": "Import daftar dihentikan",
+          "body": "Tiada rekod daftar disimpan. Buka Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Import daftar dibatalkan",
+          "body": "Tiada rekod daftar disimpan. Buka Import untuk butiran."
+        }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "Pembatalan import selesai",
+          "body": "Buka Sejarah Import untuk melihat pekerja yang dibatalkan."
+        },
+        "failed": {
+          "title": "Pembatalan import dihentikan",
+          "body": "Tiada apa-apa yang diubah. Buka Sejarah Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pembatalan import dibatalkan",
+          "body": "Tiada apa-apa yang diubah. Buka Sejarah Import untuk butiran."
         }
       }
     },

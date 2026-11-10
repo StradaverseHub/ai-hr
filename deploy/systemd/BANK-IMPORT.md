@@ -95,6 +95,8 @@ The same protected worker also runs every kind on the shared bulk-job kernel (mi
 iteration runs one Bank tick, one Individual Transaction tick and one bounded bulk-job unit. The worker records a
 heartbeat with the kinds it serves; `scripts/check-import-worker.ts` (run by `deploy/deploy.sh`) reports a kind
 without a live worker. Include the employee import journey in staging worker acceptance.
+Section and register imports (kinds `section_import` and `register_import`, draft migration 9930) run on the same
+worker; include a Profile file and a Qualification file in staging worker acceptance.
 
 The leave family runs on the same worker (draft 9900, docs/adr/2026-11-10-leave-family-bulk-jobs.md): leave ledger
 import (`leave_ledger`), Generate Entitlement (`leave_generation`) and Run Earned Accrual (`leave_accrual`). The

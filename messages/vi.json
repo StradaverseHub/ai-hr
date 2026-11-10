@@ -2976,6 +2976,22 @@
         "waiting": "Đang chờ trình xử lý nhập. Tiến độ đã được lưu; đừng tải tệp lên lần nữa.",
         "otherRunning": "Một lần nhập nhân viên khác vẫn đang chạy. Hãy chờ hoàn tất trước khi bắt đầu lần mới.",
         "workerUnavailable": "Dịch vụ nhập chưa chạy. Lần nhập của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy."
+      },
+      "sectionJob": {
+        "queued": "Đang chờ bắt đầu",
+        "preparing": "Đang kiểm tra tệp",
+        "running": "Đang lưu các dòng",
+        "finalizing": "Đang hoàn tất việc nhập",
+        "discarding": "Đang dừng việc nhập",
+        "completed": "Đã nhập xong",
+        "failed": "Việc nhập đã dừng",
+        "cancelled": "Đã hủy việc nhập",
+        "progressCount": "Đã hoàn tất {done}/{total} bước",
+        "backgroundHelp": "Bạn có thể rời trang này. Mỗi dòng được lưu riêng khi việc nhập đang chạy.",
+        "backgroundHelpRegister": "Bạn có thể rời trang này. Sẽ không ai thấy các thay đổi sổ đăng ký này cho đến khi toàn bộ tệp được lưu.",
+        "waiting": "Đang chờ trình xử lý nhập. Tiến độ đã được lưu; đừng tải tệp lên lần nữa.",
+        "otherRunning": "Một lần nhập cùng loại do bạn bắt đầu vẫn đang chạy. Hãy chờ hoàn tất trước khi bắt đầu lần mới.",
+        "workerUnavailable": "Dịch vụ nhập chưa chạy. Lần nhập của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy."
       }
     },
     "wizard": {
@@ -37644,6 +37660,48 @@
         "cancelled": {
           "title": "Đã hủy nhập Nhãn hệ thống",
           "body": "Không có mã nào được thêm."
+        }
+      },
+      "sectionImport": {
+        "completed": {
+          "title": "Đã nhập phần hồ sơ xong",
+          "body": "Mở Nhập để xem các dòng đã được cập nhật."
+        },
+        "failed": {
+          "title": "Việc nhập phần hồ sơ đã dừng",
+          "body": "Các dòng đã lưu trước khi dừng vẫn được giữ. Mở Nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc nhập phần hồ sơ",
+          "body": "Các dòng đã lưu trước khi dừng vẫn được giữ. Mở Nhập để xem chi tiết."
+        }
+      },
+      "registerImport": {
+        "completed": {
+          "title": "Đã nhập sổ đăng ký xong",
+          "body": "Mở Nhập để xem các bản ghi sổ đăng ký đã được lưu."
+        },
+        "failed": {
+          "title": "Việc nhập sổ đăng ký đã dừng",
+          "body": "Không có bản ghi sổ đăng ký nào được lưu. Mở Nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc nhập sổ đăng ký",
+          "body": "Không có bản ghi sổ đăng ký nào được lưu. Mở Nhập để xem chi tiết."
+        }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "Đã hoàn tác việc nhập xong",
+          "body": "Mở Lịch sử nhập để xem các nhân viên đã bị vô hiệu."
+        },
+        "failed": {
+          "title": "Việc hoàn tác nhập đã dừng",
+          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc hoàn tác nhập",
+          "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem chi tiết."
         }
       }
     },

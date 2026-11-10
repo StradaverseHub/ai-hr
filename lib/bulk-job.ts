@@ -37,6 +37,9 @@ export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  attendance_recompute:{messages:'attendanceRecompute',linkPath:'/attendance/recompute'},
  payroll_process:{messages:'payrollProcess',linkPath:'/payroll'},
  system_label_import:{messages:'systemLabelImport',linkPath:'/admin/settings/system-labels'},
+ section_import:{messages:'sectionImport',linkPath:'/admin/personnel/import'},
+ register_import:{messages:'registerImport',linkPath:'/admin/personnel/import'},
+ employee_import_revert:{messages:'employeeImportRevert',linkPath:'/admin/personnel/import/history'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){
  const notice=BULK_JOB_NOTICES[kind];

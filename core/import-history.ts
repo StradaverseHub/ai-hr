@@ -173,7 +173,7 @@ async function revertPlanTx(tx:Tx,ctx:SessionContext,source:ImportAttemptRow,han
  if(items.some(i=>!byId.has(i.id)))fail('The revert check is incomplete. Try again.');
  const blockers:ImportRevertBlocker[]=items.flatMap(i=>byId.get(i.id)!.blockers.map(reason=>({itemId:i.id,label:i.label,reason})));
  const previewHash=importCanonicalHash({attemptId:source.id,kind:source.kind,actorId:ctx.userId,confirmedEventId:confirmed.id,items:items.map(i=>i.id),fingerprint:inspection.fingerprint,blockers});
- return{items,inspection:items.map(i=>({itemId:i.id,label:i.label,employmentId:i.employmentId,companyId:i.companyId,before:i.before,after:i.after,restore:byId.get(i.id)!.restore,blockers:byId.get(i.id)!.blockers})),blockers,previewHash};
+ return{items,inspection:items.map(i=>({itemId:i.id,label:i.label,employmentId:i.employmentId,companyId:i.companyId,before:i.before,after:i.after,restore:byId.get(i.id)!.restore,blockers:byId.get(i.id)!.blockers})),blockers,previewHash,confirmedEventId:confirmed.id};
 }
 /** Read-only eligibility review: what will be restored, and every blocker. No change is written. */
 export async function previewImportRevert(ctx:SessionContext,attemptId:string,handler:ImportRevertHandler){
@@ -186,6 +186,17 @@ export async function previewImportRevert(ctx:SessionContext,attemptId:string,ha
  });
 }
 export type ImportRevertPreview=Awaited<ReturnType<typeof previewImportRevert>>;
+/** The same review for a background revert (core/employee-import-revert-job.ts): one read-only snapshot and no tenant
+ * lock, because nothing is written; the revert itself re-checks everything under its locks. */
+export async function planImportRevert(ctx:SessionContext,attemptId:string,handler:ImportRevertHandler){
+ if(!uuid.test(attemptId))fail('Import attempt unavailable.');
+ return withTenant(ctx,async tx=>{
+  await principalTx(tx,ctx);
+  const[source]=await tx.select().from(attempt).where(eq(attempt.id,attemptId));if(!source||source.kind!==handler.kind)fail('Import attempt unavailable.');
+  const plan=await revertPlanTx(tx,ctx,source,handler,false);
+  return{attempt:source,items:plan.items,inspection:plan.inspection,blockers:plan.blockers,previewHash:plan.previewHash,confirmedEventId:plan.confirmedEventId};
+ },{readOnlySnapshot:true});
+}
 /** All or nothing, once only, with a reason; the reviewed preview hash must still hold under lock. */
 export async function revertImport(ctx:SessionContext,attemptId:string,handler:ImportRevertHandler,input:{previewHash:string;reason:string}){
  if(!uuid.test(attemptId))fail('Import attempt unavailable.');
