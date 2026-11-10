@@ -3,6 +3,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {Worker} from 'node:worker_threads';
 import {driverErrorFact,startMeasuredPreflightLockInterval} from './driver-shutdown.mjs';
 import {originalAuditQueryCategory} from './lock-sample-attribution.mjs';
+import {measuredClockIdentity,measuredNativeBracket,readMeasuredClockCs} from './measured-lock-clock.mjs';
 
 export const measuredLockSampleLimit=4097; // 4096 accepted rows plus the existing overflow sentinel.
 export const measuredDevelopmentLockUrl='postgres://postgres@127.0.0.1:5433/ai_hr_dev';
@@ -16,6 +17,16 @@ export async function observeMeasuredLockConnection(sql){
  if(!settings?.readonly||!settings?.bounded||!Number.isSafeInteger(settings.pid)||settings.pid<=0)
   throw Error('Measured lock observer settings unavailable');
  return settings.pid;
+}
+
+/** Both startup attestations must belong to the backend used for every later probe. */
+export async function observeMeasuredPreflightLockConnection(sql,bootIdentity){
+ const pid=await observeMeasuredLockConnection(sql);
+ const [clock]=await sql`select pg_backend_pid() as pid,pg_read_file('/proc/sys/kernel/random/boot_id',0,64) as boot,
+  pg_read_file('/proc/self/timens_offsets',0,128) as offsets`;
+ if(clock?.pid!==pid||measuredClockIdentity(clock.boot,clock.offsets)!==bootIdentity)
+  throw Error('Measured lock clock backend refused');
+ return pid;
 }
 
 function appWaitCategories(sql,categorized){
@@ -58,7 +69,7 @@ const exactKeys=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Obj
 /** A malformed aggregate cannot turn into a clean sample. Only closed native fields cross the worker boundary. */
 function decodeCombinedPreflightLocks(rows,categorized){
  const [row]=rows;
- if(rows.length!==1||!exactKeys(row,['activity','locks']))throw Error('Combined lock probe envelope refused');
+ if(rows.length!==1||!exactKeys(row,['activity','locks','opened','closed']))throw Error('Combined lock probe envelope refused');
  const {activity,locks}=row;
  const fields=categorized?[...activityFields,'app_lock_wait_kinds']:activityFields;
  if(!Array.isArray(activity)||activity.length<1||activity.length>128||!activity.every(entry=>{
@@ -81,20 +92,27 @@ function decodeCombinedPreflightLocks(rows,categorized){
  return {activity,locks:locks.map(row=>({...row,category:originalAuditQueryCategory(row.category)}))};
 }
 
-async function observeCombinedPreflightLocks(sql,accessLocks,auditLocks,categorized){
+async function observeCombinedPreflightLocks(sql,pid,accessLocks,auditLocks,categorized,readClockCs){
  const waitCategories=appWaitCategories(sql,categorized);
  const knownAudit=sql`concat(l.classid,':',l.objid,':',l.objsubid)=any(${auditLocks}::text[])`;
  // The bounded query prefix stays in PostgreSQL. A label describes the observed statement, not its lock acquisition site.
- const rows=await sql`with backends as materialized (
-   select pid,backend_type,state,wait_event_type,wait_event,usename,
-    case when usename='ai_hr_app' then left(query,160) end as app_query
-   from pg_stat_activity where datname=current_database()
+ const clientOpenedCs=readClockCs();
+ const rows=await sql`with opened as materialized (
+   select pg_read_file('/proc/uptime',0,64) as uptime where pg_backend_pid()=${pid}::int
+  ), backends as materialized (
+   select a.* from opened o cross join lateral (
+    select pid,backend_type,state,wait_event_type,wait_event,usename,
+     case when usename='ai_hr_app' then left(query,160) end as app_query
+    from pg_stat_activity where datname=current_database()
+    offset case when o.uptime is not null then 0 else 1 end
+   ) a
   ), activity as materialized (
    select state,coalesce(wait_event_type,'CPU-or-ready') as kind,count(*)::int as connections,
     (count(*) filter(where usename='ai_hr_app'))::int as app_connections${waitCategories}
    from backends where backend_type='client backend' group by 1,2
   ), advisory as materialized (
-   select a.pid,case when not l.granted then pg_blocking_pids(a.pid) end as blockers,l.mode,l.granted,
+   select locked.* from opened o cross join lateral (
+    select a.pid,case when not l.granted then pg_blocking_pids(a.pid) end as blockers,l.mode,l.granted,
     l.classid::text as classid,l.objid::text as objid,l.objsubid,
     a.usename='ai_hr_app' as app_session,
     case when ${knownAudit} then case
@@ -107,21 +125,36 @@ async function observeCombinedPreflightLocks(sql,accessLocks,auditLocks,categori
     and l.locktype='advisory' and (not l.granted or (
      (concat(l.classid,':',l.objid,':',l.objsubid)=any(${accessLocks}::text[]) or ${knownAudit}) and l.mode='ExclusiveLock'
     )) order by l.granted,(l.granted and ${knownAudit}),a.pid limit 40
-  ) select coalesce((select jsonb_agg(to_jsonb(a)) from activity a),'[]'::jsonb) as activity,
-    coalesce((select jsonb_agg(to_jsonb(l) order by l.granted,l.pid) from advisory l),'[]'::jsonb) as locks`;
+    offset case when o.uptime is not null then 0 else 1 end
+   ) locked
+  ), observed as materialized (
+   select uptime as opened,
+    coalesce((select jsonb_agg(to_jsonb(a)) from activity a),'[]'::jsonb) as activity,
+    coalesce((select jsonb_agg(to_jsonb(l) order by l.granted,l.pid) from advisory l),'[]'::jsonb) as locks
+   from opened
+  ) select activity,locks,opened,case when jsonb_typeof(activity)='array' and jsonb_typeof(locks)='array'
+   then pg_read_file('/proc/uptime',0,64) end as closed from observed`;
  const coreCompletedMs=performance.now();
- return {...decodeCombinedPreflightLocks(rows,categorized),coreCompletedMs,probeMode:'combined-statement'};
+ const observation=decodeCombinedPreflightLocks(rows,categorized);
+ const {opened,closed}=rows[0];
+ let bounds;
+ try{bounds=measuredNativeBracket(opened,closed,clientOpenedCs,readClockCs());}
+ catch{/* A clock refusal cannot discard actual positive lock observations. */}
+ return {...observation,...bounds,coreCompletedMs,probeMode:'combined-statement'};
 }
 
 /** Run real probes on the observer thread, with no dependency on message delivery. */
-export function startMeasuredPreflightProbes({sql,rescueSql=undefined,accessLocks,auditLocks=/** @type {string[]} */ ([]),categorized,token,stopped,onProbe,onFailure}){
+export function startMeasuredPreflightProbes({sql,rescueSql=undefined,backendPids,accessLocks,auditLocks=/** @type {string[]} */ ([]),categorized,token,stopped,onProbe,onFailure,readClockCs=readMeasuredClockCs}){
  let sequence=0;
  const connections=rescueSql?[sql,rescueSql]:[sql];
+ if(!Array.isArray(backendPids)||backendPids.length!==connections.length
+  ||!backendPids.every(pid=>validPid(pid)&&pid>0)||new Set(backendPids).size!==connections.length)
+  throw Error('Measured lock clock backend census refused');
  const timer=startMeasuredPreflightLockInterval(measuredLockSampleLimit,connections.length,async (slot,timing)=>{
   if(Atomics.load(stopped,0)!==0)return;
   const attributionStart=Atomics.load(token,0),startedMs=performance.now();
   let observation;
-  try{observation=await observeCombinedPreflightLocks(connections[slot],accessLocks,auditLocks,categorized);}
+  try{observation=await observeCombinedPreflightLocks(connections[slot],backendPids[slot],accessLocks,auditLocks,categorized,readClockCs);}
   catch(reason){observation={failure:driverErrorFact(reason),coreCompletedMs:performance.now()};}
   const attributionEnd=Atomics.load(token,0);
   onProbe({sequence:++sequence,startedMs,timing,attributionStart,attributionEnd,...observation});
@@ -136,11 +169,11 @@ async function withinLifecycle(pending){
 }
 
 /** The browser thread consumes probes but never schedules or completes them. */
-export function createMeasuredPreflightObserver({url,accessLocks,auditLocks=/** @type {string[]} */ ([]),categorized,token,onProbe,onFailure}){
+export function createMeasuredPreflightObserver({url,bootIdentity,accessLocks,auditLocks=/** @type {string[]} */ ([]),categorized,token,onProbe,onFailure}){
  if(url!==measuredDevelopmentLockUrl)throw Error('Measured preflight lock observer database refused');
  const stopped=new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
  const worker=new Worker(new URL('./measured-lock-observer-worker.mjs',import.meta.url),{
-  workerData:{url,accessLocks,auditLocks,categorized,token,stopped},env:{},execArgv:[],
+  workerData:{url,bootIdentity,accessLocks,auditLocks,categorized,token,stopped},env:{},execArgv:[],
  });
  const ready=Promise.withResolvers(),began=Promise.withResolvers(),exited=Promise.withResolvers();
  let state='starting',seen=0,stopRequested=false,closed=false,failure,stopping;

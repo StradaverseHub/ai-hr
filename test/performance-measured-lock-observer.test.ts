@@ -4,14 +4,15 @@ import postgres from 'postgres';
 import {expect,it} from 'vitest';
 import {workerDb} from './db-names';
 import {createMeasuredPreflightAttribution,firstAppLockWaitCategories,measuredPreflightAttribution,originalAdvisoryAttribution} from '../scripts/performance/lock-sample-attribution.mjs';
-import {createMeasuredPreflightObserver,measuredDevelopmentLockApplication,measuredDevelopmentLockUrl} from '../scripts/performance/measured-lock-observer.mjs';
+import {readMeasuredClockCs,readMeasuredClockIdentity} from '../scripts/performance/measured-lock-clock.mjs';
+import {createMeasuredPreflightObserver,measuredDevelopmentLockApplication,measuredDevelopmentLockUrl,startMeasuredPreflightProbes} from '../scripts/performance/measured-lock-observer.mjs';
 
 const selector='test/performance-measured-lock-observer.test.ts';
 const appUrl='postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev';
 const hosted=process.env.GITHUB_ACTIONS==='true';
 
 type Lock={pid:number;mode:string;granted:boolean;classid:string;objid:string;objsubid:number;app_session:boolean;blockers?:number[]};
-type Probe={failure?:unknown;startedMs:number;locks:Lock[];activity:{kind:string;app_connections:number}[];attributionStart:number;attributionEnd:number;probeMode:string};
+type Probe={failure?:unknown;startedMs:number;locks:Lock[];activity:{kind:string;app_connections:number}[];attributionStart:number;attributionEnd:number;probeMode:string;nativeOpenedCs:number;nativeClosedCs:number};
 
 async function bounded<T>(work:Promise<T>):Promise<T>{
  const deadline=new AbortController();
@@ -74,7 +75,7 @@ it.skipIf(!hosted).each(['access-configuration','audit-chain'] as const)(
    concat(((key>>32)&4294967295),':',(key&4294967295),':1') as "lockKey"
    from (select case when ${audit}::boolean then hashtext(${key})::bigint else hashtextextended(${key},0) end as key) k`;
   const lockKey=(row:Lock)=>row.classid+':'+row.objid+':'+row.objsubid;
-  observer=createMeasuredPreflightObserver({url:measuredDevelopmentLockUrl,accessLocks:audit?[]:[ids.lockKey],auditLocks:audit?[ids.lockKey]:[],
+  observer=createMeasuredPreflightObserver({url:measuredDevelopmentLockUrl,bootIdentity:readMeasuredClockIdentity(),accessLocks:audit?[]:[ids.lockKey],auditLocks:audit?[ids.lockKey]:[],
    categorized:true,token:attribution.token,
    onFailure:failed.reject,onProbe(probe:Probe){
     if(probe.failure){failed.reject(Error('Native measured probe failed'));return;}
@@ -97,11 +98,15 @@ it.skipIf(!hosted).each(['access-configuration','audit-chain'] as const)(
    ?actor`select app.append_auth_event(NULL,'internal-login',${auditAggregateId}::uuid,'app-user.login-refused','external',NULL,NULL)`
    :actor`select pg_advisory_xact_lock(${ids.hash}::bigint)`;
   waiting=command.then(result=>result.command==='SELECT',()=>false);
+  const nativeWindowOpenedCs=readMeasuredClockCs();
   await observer.start();
   const blocked=await bounded(Promise.race([proof.promise,failed.promise]));
   const [edge]=await holder<{blocked:boolean}[]>`select pg_blocking_pids(${actorIdentity.pid}::int)=array[pg_backend_pid()] as blocked`;
   expect(edge.blocked).toBe(true);
   expect(blocked.probeMode).toBe('combined-statement');
+  expect(blocked.nativeOpenedCs).toBeGreaterThanOrEqual(nativeWindowOpenedCs);
+  expect(blocked.nativeClosedCs).toBeGreaterThanOrEqual(blocked.nativeOpenedCs);
+  expect(blocked.nativeClosedCs).toBeLessThanOrEqual(readMeasuredClockCs());
   expect(blocked).not.toHaveProperty('activityCompletedMs');
   expect(blocked).not.toHaveProperty('advisoryStartedMs');
   const waitingOnLock=blocked.activity.filter(row=>row.kind==='Lock').reduce((sum,row)=>sum+row.app_connections,0);
@@ -122,7 +127,10 @@ it.skipIf(!hosted).each(['access-configuration','audit-chain'] as const)(
    expect(settled.absent).toBe(true);
   }
   releasedAt=performance.now();
-  await bounded(Promise.race([clean.promise,failed.promise]));
+  const unblocked=await bounded(Promise.race([clean.promise,failed.promise]));
+  expect(unblocked.nativeOpenedCs).toBeGreaterThanOrEqual(blocked.nativeClosedCs);
+  expect(unblocked.nativeClosedCs).toBeGreaterThanOrEqual(unblocked.nativeOpenedCs);
+  expect(unblocked.nativeClosedCs).toBeLessThanOrEqual(readMeasuredClockCs());
   const stopped=observer.stop();
   expect(observer.stop()).toBe(stopped);
   await stopped;
@@ -135,6 +143,19 @@ it.skipIf(!hosted).each(['access-configuration','audit-chain'] as const)(
    if(!workerGone)await delay(10);
   }while(!workerGone&&performance.now()<closureDeadline);
   expect(workerGone).toBe(true);
+  if(!audit){
+   // An already-settled observer PID cannot produce clock evidence on another actual backend.
+   const refused=Promise.withResolvers<{failure?:unknown;nativeOpenedCs?:number}>();
+   const stopped=new Int32Array(new SharedArrayBuffer(4));
+   const probe=startMeasuredPreflightProbes({sql:holder,backendPids:[workerSession.pids[0]!],accessLocks:[],
+    categorized:true,token:attribution.token,stopped,onFailure:refused.reject,
+    onProbe(result:{failure?:unknown;nativeOpenedCs?:number}){Atomics.store(stopped,0,1);refused.resolve(result);}});
+   try{
+    const replaced=await bounded(refused.promise);
+    expect(replaced.failure).toBeDefined();
+    expect(replaced).not.toHaveProperty('nativeOpenedCs');
+   }finally{await probe.stop();}
+  }
  }finally{
   const rollback=holding&&holder?await Promise.allSettled([holder`rollback`]):[];
   await waiting;

@@ -1263,6 +1263,8 @@ jobs:
                   lock_sampling = record(driver.get('lockSampling'))
                   locks = record(lock_sampling.get('preflight'))
                   gap_timing = project_private_preflight_timing(lock_sampling.get('privatePreflightTiming'), record(locks.get('cadence')))
+                  client_gap_timing = project_private_preflight_timing(
+                      lock_sampling.get('privatePreflightTiming'), record(lock_sampling.get('privatePreflightClientCadence')))
                   completed = number(locks.get('completed'), 4096)
                   invalid = number(locks.get('invalidBlockingCounts'), completed) if completed is not None else None
                   observed = completed - invalid if invalid is not None else None
@@ -1391,6 +1393,7 @@ jobs:
                       'browserErrorSignals': browser_signals,
                       'sampledBlockingSignals': {'evidence': wait_state, 'samples': blocking_signals},
                       'preflightLockGapTiming': gap_timing,
+                      'preflightClientLockGapTiming': client_gap_timing,
                       'milestones': {'workerReadinessRows': count(readiness), 'readyWorkers': ready,
                                      'browserVersionObserved': True if type(driver.get('browserVersion')) is str and driver['browserVersion'] else None,
                                      'browserAcquisition': choice(record(shutdown.get('acquisition')).get('browser'), {'absent', 'acquired', 'failed'}),

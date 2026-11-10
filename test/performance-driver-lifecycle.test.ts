@@ -7,7 +7,7 @@ import {PassThrough} from 'node:stream';
 import {gzipSync} from 'node:zlib';
 import {afterEach,expect,it,vi} from 'vitest';
 import {acquireDriverResource,buildDevelopmentMeasurement,closedChromiumEnvironment,closePerformanceDbPools,createDriverContexts,
- createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,developmentDockerContext,developmentLockWindowEvidence,developmentMeasuredPreflightLockWindowEvidence,
+ createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,developmentDockerContext,developmentLockWindowEvidence,developmentMeasuredPreflightLockWindowEvidence,developmentNativePreflightLockWindowEvidence,
  developmentPostgresBirthId,developmentPostgresSettlement,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
  MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS,measuredPreflightLockAttemptMs,measuredPreflightLockTiming,measuredPreflightLockWitnesses,openDriverResponse,qualifyLockSampleCadence,settleDriverBrowser,
  settleDriverLanes,settleDriverResources,startDriverInterval,startMeasuredLockInterval,startMeasuredPreflightLockInterval,validateDevelopmentMeasurement} from '../scripts/performance/driver-shutdown.mjs';
@@ -354,6 +354,44 @@ it('never discards an overlapping positive, broken probe, unclosed sampler or a 
  expect(developmentMeasuredPreflightLockWindowEvidence([...samples,row(252,255)],window,true)).toMatchObject({pass:false,observedBlockingSamples:1});
  expect(developmentMeasuredPreflightLockWindowEvidence([row(0,30),row(490,501),row(625,635)],window,true)).toMatchObject({
   pass:false,reason:'coverage-gap',interiorGapUs:501000,maxGapUs:500000,
+ });
+});
+
+it('qualifies only actual bounded native envelopes inside the actor window at the unchanged 500ms limit',()=>{
+ const row=(start:number,end:number,nativeOpenedCs:number,nativeClosedCs:number,blocking=0,appSessions=2)=>
+  ({...legacyLockRow(start,end,blocking),appSessions,nativeOpenedCs,nativeClosedCs});
+ const window={startMs:0,endMs:650,bootStartCs:200,bootEndCs:265};
+ const first=row(5,20,201,201),second=row(134,574,246,250),third=row(580,600,259,260);
+ const samples=[first,second,third];
+ expect(developmentMeasuredPreflightLockWindowEvidence(samples,window,true)).toMatchObject({
+  pass:false,reason:'coverage-gap',interiorGapUs:569000,
+ });
+ expect(developmentNativePreflightLockWindowEvidence(samples,window,true)).toMatchObject({
+  pass:true,interiorGapUs:500000,maxGapUs:500000,openingGapUs:20000,tailGapUs:70000,qualifiedSamples:3,
+ });
+ const over=[first,{...second,nativeClosedCs:251},third];
+ expect(developmentNativePreflightLockWindowEvidence(over,window,true)).toMatchObject({
+  pass:false,reason:'coverage-gap',interiorGapUs:510000,maxGapUs:500000,
+ });
+ const outOfWindowPositive=row(602,670,264,265,1);
+ expect(developmentNativePreflightLockWindowEvidence([...samples,outOfWindowPositive],window,true)).toMatchObject({
+  pass:false,coveragePass:true,observedBlockingSamples:1,blockingSamples:1,qualifiedSamples:3,
+ });
+ const uncertainOpening=row(0,4,200,200);
+ expect(developmentNativePreflightLockWindowEvidence([uncertainOpening,...samples],window,true)).toMatchObject({
+  pass:true,qualifiedSamples:3,
+ });
+ expect(developmentNativePreflightLockWindowEvidence(samples,window,false)).toMatchObject({
+  pass:false,reason:'window-unsettled',
+ });
+ expect(developmentNativePreflightLockWindowEvidence(samples.map(sample=>({...sample,appSessions:0})),window,true)).toMatchObject({
+  pass:false,reason:'application-unobserved',
+ });
+ expect(developmentNativePreflightLockWindowEvidence([first,{...second,nativeClosedCs:245},outOfWindowPositive],window,true)).toMatchObject({
+  pass:false,reason:'sample-unknown',observedBlockingSamples:1,
+ });
+ expect(developmentNativePreflightLockWindowEvidence([...samples,{state:'failed',startedMs:610,completedMs:620}],window,true)).toMatchObject({
+  pass:false,reason:'sample-failed',
  });
 });
 

@@ -4,7 +4,8 @@ import {Worker} from 'node:worker_threads';
 import {developmentPostgresLockWindow,postgresLockFailures} from '../scripts/performance/lock-failure-log.mjs';
 import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from '../scripts/performance/lock-sample-attribution.mjs';
 import {lockSampleEvidence,qualifyLockSampleCadence} from '../scripts/performance/driver-shutdown.mjs';
-import {createMeasuredPreflightObserver,startMeasuredPreflightProbes} from '../scripts/performance/measured-lock-observer.mjs';
+import {measuredClockIdentity,measuredNativeBracket} from '../scripts/performance/measured-lock-clock.mjs';
+import {createMeasuredPreflightObserver,observeMeasuredPreflightLockConnection,startMeasuredPreflightProbes} from '../scripts/performance/measured-lock-observer.mjs';
 
 const fictionalWaiter={app_session:true,pid:22,classid:'11',objid:'12',objsubid:1,mode:'ExclusiveLock',blockers:[84]};
 const fictionalBlocker={family:'access-configuration',waiterMode:'ExclusiveLock',blockerMode:'ShareLock',blockerState:'granted',
@@ -52,7 +53,7 @@ it('preserves cross-thread workload boundaries even if a nested stage came and w
 });
 
 it('refuses a database other than the fixed fictional development observer before creating a Worker',()=>{
- const inputs={accessLocks:[],categorized:true,token:createMeasuredPreflightAttribution().token,onProbe:()=>{},onFailure:()=>{}};
+ const inputs={bootIdentity:"unused",accessLocks:[],categorized:true,token:createMeasuredPreflightAttribution().token,onProbe:()=>{},onFailure:()=>{}};
  for(const url of ['postgres://postgres@127.0.0.1:5433/ai_hr_test','postgres://postgres:secret@127.0.0.1:5433/ai_hr_dev',
   'postgres://postgres@localhost:5433/ai_hr_dev','postgres://postgres@127.0.0.1:5433/ai_hr_dev?application_name=other']){
   expect(()=>createMeasuredPreflightObserver({url,...inputs})).toThrow('Measured preflight lock observer database refused');
@@ -72,7 +73,7 @@ it.each([false,true])('uses one actual worker round trip per sample when the pro
    const query=parts.join(' ');
    if(query.includes('jsonb_build_object'))return 'categories';
    if(query.startsWith('concat(l.classid'))return 'audit-keys';
-   if(query.includes('with backends as materialized')&&query.includes('from pg_stat_activity where')
+   if(query.includes('backends as materialized')&&query.includes('from pg_stat_activity where')
     &&query.includes('advisory as materialized')&&query.includes('from pg_locks')&&query.includes('limit 40')){
     if(probeOpen)throw Error('Concurrent native probe');
     probeOpen=true;
@@ -80,13 +81,13 @@ it.each([false,true])('uses one actual worker round trip per sample when the pro
      if(++attempts===2&&slowProbe){parentPort.postMessage({secondStarted:true});await delay(550);}
      probeOpen=false;
      return [{activity:[{state:'active',kind:'CPU-or-ready',connections:1,app_connections:1,
-      app_lock_wait_kinds:{advisory:0,transactionid:0,tuple:0,relation:0,other:1}}],locks:[]}];
+      app_lock_wait_kinds:{advisory:0,transactionid:0,tuple:0,relation:0,other:1}}],locks:[],opened:'1.00 0.00'+String.fromCharCode(10),closed:'1.00 0.00'+String.fromCharCode(10)}];
     })();
    }
    throw Error('Unexpected probe SQL');
   };
   parentPort.on('message',async command=>{
-   if(command==='start')sampler=startMeasuredPreflightProbes({sql,accessLocks:[],categorized:true,token,stopped:control,
+   if(command==='start')sampler=startMeasuredPreflightProbes({sql,backendPids:[1],readClockCs:()=>100,accessLocks:[],categorized:true,token,stopped:control,
     onProbe(probe){Atomics.add(control,1,1);parentPort.postMessage(probe);},onFailure(reason){throw reason;}});
    else{await sampler.stop();if(probeOpen||attempts!==sampler.samples())throw Error('Native probe was not drained once');parentPort.close();}
   });
@@ -143,16 +144,16 @@ it('executes the same combined probe once on each owned connection and drains a 
    const query=parts.join(' ');
    if(query.includes('jsonb_build_object'))return 'categories';
    if(query.startsWith('concat(l.classid'))return 'audit-keys';
-   if(!query.includes('with backends as materialized')||!query.includes('from pg_locks'))throw Error('Unexpected native query');
+   if(!query.includes('backends as materialized')||!query.includes('from pg_locks'))throw Error('Unexpected native query');
    if(Atomics.add(control,lane,1)!==0)throw Error('Repeated native query after fixture settlement');
    return (async()=>{
     if(lane===1)await delay(400);
     return [{activity:[{state:'active',kind:'CPU-or-ready',connections:lane,app_connections:1,
-     app_lock_wait_kinds:{advisory:0,transactionid:0,tuple:0,relation:0,other:1}}],locks:[]}];
+     app_lock_wait_kinds:{advisory:0,transactionid:0,tuple:0,relation:0,other:1}}],locks:[],opened:'1.00 0.00'+String.fromCharCode(10),closed:'1.00 0.00'+String.fromCharCode(10)}];
    })();
   };
   parentPort.on('message',async command=>{
-   if(command==='start')sampler=startMeasuredPreflightProbes({sql:makeSql(1),rescueSql:makeSql(2),accessLocks:[],categorized:true,token,stopped:control,
+   if(command==='start')sampler=startMeasuredPreflightProbes({sql:makeSql(1),rescueSql:makeSql(2),backendPids:[1,2],readClockCs:()=>100,accessLocks:[],categorized:true,token,stopped:control,
     onProbe(probe){
      if(probe.activity?.[0]?.connections===2)Atomics.store(control,0,1);
      parentPort.postMessage(probe);
@@ -202,9 +203,11 @@ it('fails closed on malformed native activity partitions or advisory rows',async
  const observed:Record<string,unknown>[]=[];
  const done=Promise.withResolvers<void>();
  let queries=0;
- const sampler=startMeasuredPreflightProbes({accessLocks:[],categorized:true,
+ const sampler=startMeasuredPreflightProbes({backendPids:[1],readClockCs:()=>100,accessLocks:[],categorized:true,
   token:createMeasuredPreflightAttribution().token,stopped:new Int32Array(new SharedArrayBuffer(4)),
-  sql(parts:TemplateStringsArray){return parts.join('').includes('with backends')?Promise.resolve([inputs[queries++]]):'categories';},
+  sql(parts:TemplateStringsArray){return parts.join('').includes('backends as materialized')?Promise.resolve([
+   {...inputs[queries++],opened:'1.00 0.00\n',closed:'1.00 0.00\n'},
+  ]):'categories';},
   onProbe(probe:Record<string,unknown>){observed.push(probe);if(observed.length===inputs.length)done.resolve();},onFailure:done.reject});
  try{await done.promise;}finally{await sampler.stop();}
  expect(queries).toBe(inputs.length);
@@ -212,6 +215,45 @@ it('fails closed on malformed native activity partitions or advisory rows',async
  for(const probe of observed.slice(-3)){
   expect(probe).toMatchObject({probeMode:'combined-statement',activity:[activity],locks:[waiter]});
  }
+});
+
+it('refuses a different boot, nonzero clock offset, or replacement of the attested backend',async()=>{
+ const boot='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\n';
+ const offsets='monotonic 0 0\nboottime 0 0\n';
+ const connection=(clock:{pid:number;boot:string;offsets:string})=>async(parts:TemplateStringsArray)=>
+  parts.join('').includes('transaction_read_only')?[{readonly:true,bounded:true,pid:5}]:[clock];
+ expect(measuredClockIdentity(boot,offsets)).toBe(boot);
+ await expect(observeMeasuredPreflightLockConnection(connection({pid:5,boot,offsets}),boot)).resolves.toBe(5);
+ await expect(observeMeasuredPreflightLockConnection(connection({pid:6,boot,offsets}),boot)).rejects.toThrow('backend refused');
+ await expect(observeMeasuredPreflightLockConnection(connection({pid:5,boot:boot.replace('a','b'),offsets}),boot)).rejects.toThrow('backend refused');
+ await expect(observeMeasuredPreflightLockConnection(connection({pid:5,boot,offsets:offsets.replace('boottime 0','boottime 37')}),boot))
+  .rejects.toThrow('clock identity refused');
+ expect(()=>measuredClockIdentity(boot+'\n',offsets)).toThrow('clock identity refused');
+});
+
+it('keeps the original positive on a malformed or causally impossible native clock bracket',async()=>{
+ const activity=[{state:'active',kind:'Lock',connections:1,app_connections:1,
+  app_lock_wait_kinds:{advisory:1,transactionid:0,tuple:0,relation:0,other:0}}];
+ const read='1.00 0.00\n';
+ expect(measuredNativeBracket(read,read,100,100)).toEqual({nativeOpenedCs:100,nativeClosedCs:100});
+ expect(()=>measuredNativeBracket(read,read,101,101)).toThrow('clock bracket refused');
+ expect(()=>measuredNativeBracket(read,read+'\n',100,100)).toThrow('clock reading refused');
+ const done=Promise.withResolvers<Record<string,unknown>>();
+ const stopped=new Int32Array(new SharedArrayBuffer(4));
+ const sampler=startMeasuredPreflightProbes({backendPids:[5],readClockCs:()=>100,accessLocks:[],categorized:true,
+  token:createMeasuredPreflightAttribution().token,stopped,
+  sql(parts:TemplateStringsArray,...args:unknown[]){
+   if(!parts.join('').includes('with opened as materialized'))return 'fragment';
+   expect(args[0]).toBe(5);
+   return Promise.resolve([{activity,locks:[],opened:read,closed:'0.99 0.00\n'}]);
+  },
+  onProbe(probe:Record<string,unknown>){Atomics.store(stopped,0,1);done.resolve(probe);},onFailure:done.reject});
+ try{
+  const observed=await done.promise;
+  expect(observed).toMatchObject({probeMode:'combined-statement',activity,locks:[]});
+  expect(observed).not.toHaveProperty('nativeOpenedCs');
+  expect(observed).not.toHaveProperty('nativeClosedCs');
+ }finally{await sampler.stop();}
 });
 
 it('partitions only the first probe and preserves an original positive on refused category evidence',()=>{

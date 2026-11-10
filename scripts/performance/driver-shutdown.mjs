@@ -3,6 +3,7 @@ import {performance} from 'node:perf_hooks';
 import {createGunzip} from 'node:zlib';
 import {lstatSync,readdirSync,realpathSync} from 'node:fs';
 import {join} from 'node:path';
+import {validMeasuredClockCs} from './measured-lock-clock.mjs';
 
 const knownCodes=new Set(['ERR_ASSERTION','ABORT_ERR','ECONNRESET','ETIMEDOUT','EPIPE','ERR_STREAM_PREMATURE_CLOSE',
  'Z_DATA_ERROR','Z_BUF_ERROR','57014','55P03','53300','08006','42501','23514','25P02','57P01']);
@@ -320,6 +321,31 @@ export function developmentMeasuredPreflightLockWindowEvidence(samples,window,cl
  const observedBlockingSamples=samples.length?samples.filter(row=>row.blockingAppSessions>0).length:null;
  if(!evidence.coveragePass)return {...evidence,observedBlockingSamples};
  return {...evidence,observedBlockingSamples,blockingSamples:observedBlockingSamples,
+  pass:observedBlockingSamples===0,reason:observedBlockingSamples===0?null:'blocking-observed'};
+}
+
+/** The proved server envelope can be tighter than the full client round trip.
+ * The same conservative 500 ms rule applies to outward-rounded real readings. */
+export function developmentNativePreflightLockWindowEvidence(samples,window,closed){
+ const client=developmentMeasuredPreflightLockWindowEvidence(samples,window,closed);
+ if(!closed||!measuredPreflightLockWitnesses(samples,window))return client;
+ const {bootStartCs,bootEndCs}=window;
+ const refused={...client,state:'unknown',reason:'sample-unknown',coveragePass:false,pass:false,
+  blockingSamples:null,qualifiedSamples:null,openingGapUs:null,interiorGapUs:null,tailGapUs:null};
+ if(!validMeasuredClockCs(bootStartCs)||!validMeasuredClockCs(bootEndCs)||bootEndCs<=bootStartCs)
+  return {...refused,reason:'window-unknown'};
+ if(!samples.every(({nativeOpenedCs,nativeClosedCs})=>validMeasuredClockCs(nativeOpenedCs)
+  &&validMeasuredClockCs(nativeClosedCs)&&nativeClosedCs>=nativeOpenedCs))return refused;
+
+ // Qualify only readings certainly inside the actor window. Use the wider
+ // possible actor boundaries for opening/tail and keep all raw positive votes.
+ const nativeWindow={startMs:bootStartCs*10,endMs:(bootEndCs+1)*10};
+ const projected=samples.filter(row=>row.nativeOpenedCs>=bootStartCs+1&&row.nativeClosedCs+1<=bootEndCs)
+  .map(row=>({...row,startedMs:row.nativeOpenedCs*10,completedMs:(row.nativeClosedCs+1)*10}));
+ const native=developmentMeasuredPreflightLockWindowEvidence(projected,nativeWindow,true);
+ const {observedBlockingSamples}=client;
+ if(!native.coveragePass)return {...native,observedBlockingSamples};
+ return {...native,observedBlockingSamples,blockingSamples:observedBlockingSamples,
   pass:observedBlockingSamples===0,reason:observedBlockingSamples===0?null:'blocking-observed'};
 }
 
