@@ -35,6 +35,11 @@ const profileNamespaces = [
   'holidayCalendarAssignments', 'derivedOrganisation', 'costAllocations', 'currencySelect',
   'pagination', 'common', 'common.databaseError', 'components.confirmSubmit',
   'components.tabSave', 'components.drawer',
+  // 92f10a420 merged the Atelier download feedback: the Movement tab's Excel export is the shared
+  // ExportDownloadLink, whose hook reads these two namespaces (components/use-export-download.ts).
+  'letters.reports', 'labelExcelRoundTrip',
+  // 736b7f288 added the Maybank V7.4 payment-file fields to the profile's bank card (components/bank-info-card.tsx).
+  'maybankPayment',
 ] as const;
 type ProfileNamespace = (typeof profileNamespaces)[number];
 function profileTranslator(
@@ -69,6 +74,8 @@ function profileTranslator(
       holidayCalendarAssignments: messages.holidayCalendarAssignments,
       derivedOrganisation: messages.derivedOrganisation, costAllocations: messages.costAllocations,
       currencySelect: messages.currencySelect, pagination: messages.pagination,
+      letters: { reports: messages.letters.reports }, labelExcelRoundTrip: messages.labelExcelRoundTrip,
+      maybankPayment: messages.maybankPayment,
     },
     namespace,
     timeZone: 'Asia/Kuala_Lumpur',

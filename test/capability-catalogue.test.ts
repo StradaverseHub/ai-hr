@@ -108,7 +108,11 @@ describe('the capability catalogue per role',()=>{
  it('lists pages only where the page guard admits the caller, never an administrator page to anyone else',async()=>{
   const {employee,manager,hrAdmin,payroll,groupAdmin}=await callers();
   const pages=async(ctx:SessionContext)=>(await capabilityCatalogueFor(ctx)).filter(row=>row.kind==='page').map(row=>row.page!);
-  const [asEmployee,asManager,asAdmin,asPayroll,asGroup]=await Promise.all([employee,manager,hrAdmin,payroll,groupAdmin].map(pages));
+  // Each catalogue read holds the tenant's exclusive Access lock across its whole pause check, and the accepted
+  // bounded-lock hotfix (11c4b5407) lets one holder plus ACCESS_CONFIGURATION_MAX_WAITERS (3) wait per process.
+  // Five simultaneous reads exceed that bound by design (one is refused as busy), so the five roles are read in
+  // turn, as 799afc80c did for the ai-management ceiling; every per-role assertion below is unchanged.
+  const asEmployee=await pages(employee),asManager=await pages(manager),asAdmin=await pages(hrAdmin),asPayroll=await pages(payroll),asGroup=await pages(groupAdmin);
   expect(asEmployee).toEqual(expect.arrayContaining(['/me/payslip','/claims','/attendance/clock']));
   expect(asManager).toContain('/manage/my-team');expect(asEmployee).not.toContain('/manage/my-team');
   for(const list of [asEmployee,asManager,asPayroll])

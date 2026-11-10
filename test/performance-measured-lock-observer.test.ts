@@ -9,7 +9,6 @@ import {createMeasuredPreflightObserver,measuredDevelopmentLockApplication,measu
 
 const selector='test/performance-measured-lock-observer.test.ts';
 const appUrl='postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev';
-const hosted=process.env.GITHUB_ACTIONS==='true';
 
 type Lock={pid:number;mode:string;granted:boolean;classid:string;objid:string;objsubid:number;app_session:boolean;blockers?:number[]};
 type Probe={failure?:unknown;startedMs:number;locks:Lock[];activity:{kind:string;app_connections:number}[];attributionStart:number;attributionEnd:number;probeMode:string;nativeOpenedCs:number;nativeClosedCs:number};
@@ -21,8 +20,12 @@ async function bounded<T>(work:Promise<T>):Promise<T>{
  })]);}finally{deadline.abort();}
 }
 
-it.skipIf(!hosted).each(['access-configuration','audit-chain'] as const)(
+// No skip: the v21 singleton plan refuses a focused-aware file with conditional cases, and both required
+// lanes (the focused selected-tests job and the full test job) are hosted and run every case. Any other run
+// fails here with the missing hosted identity instead of passing by omission.
+it.each(['access-configuration','audit-chain'] as const)(
  'observes and drains a genuine PostgreSQL %s app wait through the dedicated preflight worker',async family=>{
+ expect(process.env.GITHUB_ACTIONS,'requires a GitHub-hosted focused or full CI job').toBe('true');
  expect(process.env.CI).toBe('true');
  expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
  expect(process.env.RUNNER_OS).toBe('Linux');
