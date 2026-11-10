@@ -149,23 +149,25 @@ write. Job and step rows are app-role writable today (kernel grants, migration 9
 Private PostgreSQL 16 cluster with durability on, 3,008 fictional employees each holding one live Highest
 qualification and one Primary contact, audit chain armed, the real protected worker process, 500-row files (the
 register cap) and two 500-hire employee import files for the Revert rows. The host is shared with other agents'
-clusters; this run had load average about 12 on 12 cores (an earlier run of round 1 at 23 to 34 measured the old
-synchronous register commit at 30 to 52 s). Holds are tenant-wide advisory keys sampled every 25 ms in the
+clusters. The table is the run with drafts 9933 and 9934 applied (11 Nov, load average 6 to 9 on 12 cores); the
+run before them (9931 and 9932, load about 12) measured the releases at 0.30 s (Qualifications), 0.79 s (Emergency
+Contacts) and 0.64 s (Revert): the added checks stay within this shared host's run-to-run variation. A round-1 run at load 23 to 34
+measured the old synchronous register commit at 30 to 52 s. Holds are tenant-wide advisory keys sampled every 25 ms in the
 rehearsal's own database; the baseline row is the same probes with no import running.
 
 | Phase | Longest import hold | Import chunk holds p50 / p95 / max | Clock-in max | Login max | Access writer max | My Profile / Home max |
 |---|---|---|---|---|---|---|
-| Baseline (no import) | - | - | 0.47 s | 0.03 s | 0.44 s | 0.04 / 0.16 s |
-| Synchronous register commit (before) | 12.0 s Access X | one transaction | 11.2 s | 10.1 s | 12.1 s | 0.04 / 0.13 s |
-| Register job, Qualifications | release 0.30 s | 0.11 / 0.19 / 0.26 s | 0.71 s | 0.22 s | 0.65 s | 0.08 / 0.40 s |
-| Register job, Emergency Contacts | release 0.79 s | 0.11 / 0.17 / 0.25 s | 0.79 s | 0.38 s | 0.86 s | 0.11 / 0.34 s |
-| Section job, Profile | 0.62 s | 0.11 / 0.35 / 0.62 s | 0.99 s | 0.16 s | 1.26 s | 0.25 / 0.62 s |
-| Section job, Family | 0.33 s | 0.11 / 0.16 / 0.33 s | 0.55 s | 0.10 s | 0.46 s | 0.07 / 0.39 s |
-| Register job, late refusal (row 490) | 0.36 s | 0.11 / 0.16 / 0.36 s | 0.34 s | 0.11 s | 0.37 s | 0.06 / 0.24 s |
-| Employee import Revert, synchronous (before) | 5.24 s Access and leave X | one transaction | 4.41 s | 1.37 s | 5.42 s | 0.02 / 0.09 s |
-| Employee import Revert, job | release 0.64 s | - (review 0.8 s, no lock) | 0.84 s | 0.39 s | 0.82 s | 0.03 / 0.12 s |
+| Baseline (no import) | - | - | 0.75 s | 0.09 s | 0.75 s | 0.12 / 0.51 s |
+| Synchronous register commit (before) | 11.8 s Access X | one transaction | 11.0 s | 10.2 s | 11.6 s | 0.02 / 0.15 s |
+| Register job, Qualifications | release 0.32 s | 0.08 / 0.14 / 0.17 s | 0.31 s | 0.16 s | 0.24 s | 0.03 / 0.13 s |
+| Register job, Emergency Contacts | release 0.43 s | 0.11 / 0.17 / 0.44 s | 0.68 s | 0.07 s | 0.66 s | 0.10 / 0.38 s |
+| Section job, Profile | 0.22 s | 0.11 / 0.14 / 0.22 s | 0.40 s | 0.13 s | 0.27 s | 0.03 / 0.14 s |
+| Section job, Family | 0.14 s | 0.08 / 0.11 / 0.14 s | 0.32 s | 0.07 s | 0.22 s | 0.02 / 0.08 s |
+| Register job, late refusal (row 490) | 0.14 s | 0.08 / 0.14 / 0.14 s | 0.26 s | 0.02 s | 0.24 s | 0.01 / 0.10 s |
+| Employee import Revert, synchronous (before) | 5.52 s Access and leave X | one transaction | 4.69 s | 1.49 s | 5.76 s | 0.05 / 0.12 s |
+| Employee import Revert, job | release 0.71 s | - (review 0.7 s, no lock) | 0.79 s | 0.19 s | 0.79 s | 0.02 / 0.14 s |
 
-No errors and no Busy in any probe (the Personnel list probe is 3 to 12 s on this host with or without an import).
+No errors and no Busy in any probe (the Personnel list probe is 3 to 6 s on this host with or without an import).
 A normal session saw no partial register file (none, then all) and nothing after the late refusal; the database then
 held exactly 1,000 imported qualifications (500 synchronous, 500 by the job), 500 contacts, none from the refused
 file, and 500 voided hires for each Revert. `verifyTenantChain` valid at the end.
