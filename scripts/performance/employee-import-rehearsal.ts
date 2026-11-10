@@ -87,7 +87,8 @@ async function main(){
  const[{punches,badDays}]=await obs`select count(*)::int punches,(select count(*)::int from (select a.attendance_date,count(*) c from attendance a join attendance_punch p on p.attendance_id=a.id where a.employment_id=${employmentId}::uuid and p.direction='in' and a.attendance_date>=${new Date(clockBase).toISOString().slice(0,10)}::date group by 1 having count(*)<>1) x) as "badDays" from attendance a join attendance_punch p on p.attendance_id=a.id where a.employment_id=${employmentId}::uuid and p.direction='in' and a.attendance_date>=${new Date(clockBase).toISOString().slice(0,10)}::date`;
  console.log(JSON.stringify({file:{rows:ROWS,wallMs:wall,state:done.state,imported:done.imported,chunks:done.chunks,maxChunkMs:done.max_chunk_ms,activationMs:done.activation_ms,error:done.error},visibleAfter:visible,clockPunches:{punches,clockProbesOk:lat.clock.length,datesWithOtherThanOnePunch:badDays},probes:Object.fromEntries(Object.entries(lat).map(([k,v])=>[k,stat(v)])),errors:[...new Set(errors)].slice(0,8),errorCount:errors.length,accessLockHoldMs:[...holds.values()].map(h=>h.last-h.first).sort((a,b)=>b-a).slice(0,8),longestHolds:[...holds.values()].sort((a,b)=>(b.last-b.first)-(a.last-a.first)).slice(0,4).map(h=>({ms:h.last-h.first,lastQuery:h.query,state:h.state})),accessLockHolds:holds.size,baseline:Object.fromEntries(Object.entries(baseline).map(([k,v])=>[k,stat(v)])),baselineErrors:[...new Set(baselineErrors)].slice(0,8)},null,2));
  // Late-row failure: leaves no visible employee.
- if(process.env.SKIP_LATE==='1'){worker.proc?.kill('SIGTERM');const chain=await verifyTenantChain(admin);console.log(JSON.stringify({auditChain:chain},null,2));await obs.end();await client.end();process.exit(0);}
+ const stopWorker=async()=>{const proc=worker.proc;if(!proc||proc.exitCode!==null)return;const exited=new Promise(resolve=>proc.once('exit',resolve));proc.kill('SIGTERM');await exited;};
+ if(process.env.SKIP_LATE==='1'){await stopWorker();const chain=await verifyTenantChain(admin);console.log(JSON.stringify({auditChain:chain},null,2));await obs.end();await client.end();process.exit(0);}
  await obs.unsafe(`create or replace function public.rehearsal_refuse() returns trigger language plpgsql as $$ begin if exists(select 1 from employment where id=new.employment_id and employee_code like 'RL%0${String(ROWS-10).padStart(3,'0')}') then raise exception 'rehearsal late-row refusal'; end if; return new; end $$;`);
  await obs.unsafe('drop trigger if exists rehearsal_refuse on compensation');
  await obs.unsafe('create trigger rehearsal_refuse before insert on compensation for each row execute function public.rehearsal_refuse()');
@@ -96,7 +97,7 @@ async function main(){
  const failed=await waitTerminal(failedJob.id);
  await obs.unsafe('drop trigger if exists rehearsal_refuse on compensation');await obs.unsafe('drop function public.rehearsal_refuse()');
  const[{visible:lateVisible,voided}]=await obs`select count(*) filter (where voided_at is null and import_pending_attempt_id is null)::int visible,count(*) filter (where voided_at is not null)::int voided from employment where tenant_id=${TENANT}::uuid and (employee_code like ${'RL'+tag+'%'} or voided_employee_code like ${'RL'+tag+'%'})`;
- worker.proc?.kill('SIGTERM');
+ await stopWorker();
  const chain=await verifyTenantChain(admin);
  console.log(JSON.stringify({lateFailure:{state:failed.state,error:(failed.error??'').slice(0,160),visibleEmployees:lateVisible,voidedStaged:voided},auditChain:chain},null,2));
  await obs.end();await client.end();
