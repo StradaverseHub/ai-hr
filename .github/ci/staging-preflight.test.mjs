@@ -41,7 +41,12 @@ test('normal, unchanged-source, browser-capacity and repaired-source operators a
  assert.equal(source.split(early).length,2);assert.equal(source.split(verify).length,2);assert(source.indexOf(early)>=0&&source.indexOf(early)<source.indexOf(verify));
  const observedBaseline='const initial=current(),baseline=baselineRules.readyProductionBaseline(initial);';
  assert.equal(source.split(observedBaseline).length,2);assert(source.indexOf(observedBaseline)<source.indexOf(early));
- assert(source.includes('const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,baseline,announced,ssh});await (browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence));'));
+ // 1b38c64d2 extracted the mode-selected evidence revalidation so arrival cleanup can repeat it;
+ // the selection itself is unchanged and the profile probe must still precede it.
+ const revalidateEvidence='const revalidateEvidence=()=>browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence);';
+ const revalidate='const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,baseline,announced,ssh});await revalidateEvidence();';
+ assert.equal(source.split(revalidateEvidence).length,2);assert.equal(source.split(revalidate).length,2);
+ assert(source.indexOf(revalidateEvidence)<source.indexOf(revalidate));
 });
 
 test('CI runtime branch is line-anchored and refuses a default-only substring match',()=>{const source=readFileSync(new URL('../../deploy/deploy.sh',import.meta.url),'utf8');assert.doesNotThrow(()=>validateCandidateRuntimeSelection(source));const marker='if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then';assert(source.includes(marker));assert.throws(()=>validateCandidateRuntimeSelection(source.replace(marker,'elif [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then')));});
