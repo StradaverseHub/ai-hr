@@ -43,3 +43,9 @@ On 11 November 2026 MYT the repository owner approved carrying the existing appr
 No provider contract, outbound field or transport is added or widened. The covered-source changes since `b6e04e75…` come from the architecture candidate (bounded database admission, request-scoped shared read snapshots, Home and Claims read consolidation, online migration tooling, restored roster and Claims behaviour, and the deduplicated server source maps in `package.json`'s build script); none of them adds data to any provider payload.
 
 The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority; a later change to the covered source needs a new owner decision.
+
+## Board staging window 1 (rebased on 8d5254eb)
+
+On 11 November 2026 MYT the repository owner approved staging window 1 review commit `56454e12b2a46567b1319970606d1d3ee7aadfc5` and exact fingerprint `a146ce7f78b132b784519acd00be3aa4aedc03fdb3237f574ab6ec1c15ddbaa6` in the Claude board session ("Yes, I approve"). The window integrates board items 81e64843 (delete, retire and restore On/Off Boarding workflows), f3edc521 (Automatic sign-out under Password Policy) and eaa7697c (Personnel list search). No provider transform, outbound field, approved purpose or transport changes; the only changed file under lib/ai is the agent capability inventory, which registers the board actions as native handoff, internal or backlog entries.
+
+The same 28 approvals carry forward from `b6e04e75dd91e46898fc6d8c509cf331e00bbae6e65ee9cf565d66859680312c` (the four-item board release 8d5254eb) to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status.

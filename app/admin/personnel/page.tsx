@@ -44,6 +44,7 @@ import {
 } from './list-query';
 // Approved9c6b06d4: one private list search and hierarchy-aware filters; profile switchers stay on profiles.
 import {PersonnelOrganisationFilters} from './organisation-filters';
+import {PersonnelListSearch} from './list-search';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -304,6 +305,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
           // group `shrink-0` — without wrapping, a narrow window would scroll the PAGE sideways rather
           // than stacking the controls, which is the one thing a full-width change must not introduce.
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            <PersonnelListSearch pageSize={String(pq.size)} parameters={[...personnelQueryParams(sp)]} privateCriteria={privateCriteria??undefined}/>
             <PersonnelOrganisationFilters pageSize={String(pq.size)} fields={filterFields} values={filterValues} privateCriteria={privateCriteria??undefined} employmentFields={employmentFilterFields} columnFields={(['code','name','email','reportingTo','costCenter','workLocation','jobGrade'] as const).map(key=>({key,label:t(COLUMN_LABEL_KEY[key]),type:'text'}))} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
             {canCreate && (
               <CreateEmployeeDialog

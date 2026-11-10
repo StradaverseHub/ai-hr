@@ -1,6 +1,7 @@
 import {serviceYearsMonthsDaysAt} from '../packs/leave/service';
 import {matchesPersonnelColumnFilters,normalizePersonnelPrivateCriteria,type PersonnelPrivateCriteria,type PersonnelColumnFilter} from '../lib/personnel-list-controls';
 import {deriveEmploymentStatus} from './employment-status';
+import {matchesEmployeeSearch} from '../lib/employee-search';
 import {todayInKualaLumpur} from '../lib/hr-date';
 /** Five-minute principal-bound private filters. Criteria stay in the protected row, never URLs or logs. */
 import {createHash,randomBytes} from 'node:crypto';
@@ -53,7 +54,10 @@ export async function createPersonnelPrivateSearch(ctx:SessionContext,p:{text:st
    const identityFilters=filters.filter(f=>f.field==='identity');
    const permittedIdentityMatch=(text:string)=>!!(row.icNumber?.toLocaleLowerCase().includes(text.toLocaleLowerCase())||row.passportNumber?.toLocaleLowerCase().includes(text.toLocaleLowerCase()));
    if(identityFilters.length&&!identityFilters.every(f=>f.operator==='contains'&&permittedIdentityMatch(f.value)))return [];
-   const publicMatch=[row.name,row.email,row.employeeCode].some(value=>value?.toLocaleLowerCase().includes(needle));
+   // eaa7697c: Employee ID and name use the ONE shared employee-search rule (case, spaces and dashes in an
+   // Employee ID do not matter, so "emp0008" finds "EMP-0008"), exactly as the profile switcher does.
+   // Work email stays a literal case-insensitive substring; identity matching below stays literal.
+   const publicMatch=matchesEmployeeSearch({name:row.name??'',employeeCode:row.employeeCode},criteria.term)||!!row.email?.toLocaleLowerCase().includes(needle);
    const identityMatch=!!needle&&!!(row.icNumber?.toLocaleLowerCase().includes(needle)||nricNeedle&&row.icNumber===nricNeedle||row.passportNumber?.toLocaleLowerCase().includes(needle));
    return (!needle||publicMatch||identityMatch)?[{employmentId:row.employmentId,kind:identityFilters.length?'identity':!needle||publicMatch?'public':'identity',personRevision:row.personRevision,employmentRevision:row.employmentRevision,identityRevision:identityMatch||identityFilters.length?row.identityRevision:null,...(fields?{filterRevision:fields.filterRevision}:{})}]:[];
   });

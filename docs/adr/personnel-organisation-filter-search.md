@@ -13,3 +13,11 @@ The five-minute state stores only bounded matched employment IDs, public/identit
 The shared organisation quality owner defines missing BU, grade, superior and structure flags. Duplicate evidence follows the existing duplicate-person owner's normalized name plus hire date and distinct Person identities, over the permitted visible population only. Multiple employments of one Person are not suspected duplicates. Readers without the native administrative/identity evidence authority cannot acquire a duplicate flag or count from an inaccessible counterpart.
 
 No employee re-tag or mapping activation is performed by this feature's migration or deployment. Legacy grouping is retained until the separately reviewed initial mapping publication.
+
+## 2026-11-10 note: visible list search box and the Employee ID matching rule
+
+Approved feedback: eaa7697c-da54-4727-b577-8dd754356ab9.
+
+The listing again shows a "Search employee ID or name…" box beside Filter (`app/admin/personnel/list-search.tsx`). It is not a second search: it is another input for the same private term as the Filter dialog's employee-details field. It posts the complete criteria to the same route, receives the same five-minute principal-bound token, shares the same chip and request controller, and never places the term in a URL. Clearing the box posts an empty term with the remaining criteria, so only the search word is removed.
+
+The private term's name and Employee ID comparison now uses the shared employee-search rule (`matchesEmployeeSearch` and `foldEmployeeCode` in `lib/employee-search.ts`), the same rule as the profile switcher. Case does not matter, and spaces, dots, underscores and dashes in an Employee ID are ignored, so "emp0008" finds "EMP-0008". This replaces "compared literally" above for those two public fields only. Work email remains a literal case-insensitive substring. IC and passport matching is unchanged: literal, except the existing complete-NRIC separator rule, and only under the current identity permission. Legacy `q` and the column "Emp ID contains" filter remain literal.

@@ -183,6 +183,7 @@ export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, wor
     const row=await load(tx,ctx,caseId), config=await configTx(tx,ctx);
     const workflow=config?.workflows.find(workflow=>workflow.id===workflowId&&workflow.module===row.data.module);
     if(!config||!workflow)throw new M.V9Error('Workflow not found.','not_found');
+    if(workflow.status==='retired')throw new M.V9Error('This workflow is retired. Restore it before previewing it.','conflict');
     const c=structuredClone(row.data),env=await environment(tx,ctx,c,config);
     const email=workflow.steps.find(step=>step.type==='email'),notification=workflow.steps.find(step=>step.type==='notify'),document=workflow.steps.find(step=>step.type==='doc');
     // Match the reference's single-output priority; an unrelated later draft cannot break this preview.
@@ -349,6 +350,83 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
   });
 }
 
+export type WorkflowRemovalPreview = { revision: number; workflowId: string; name: string; module: M.Module; mode: 'delete' | 'retire'; cases: number; automatic: boolean; when: string };
+export type WorkflowRemovalResult = { done: true; mode: 'delete' | 'retire'; revision: number } | { done: false; preview: WorkflowRemovalPreview };
+const workflowIdSchema = z.string().min(1).max(120);
+const removalSchema = z.object({ revision: z.number().int().positive(), workflowId: workflowIdSchema, expected: z.object({ mode: z.enum(['delete', 'retire']), cases: z.number().int().nonnegative(), automatic: z.boolean() }).strict() }).strict();
+const restoreSchema = z.object({ revision: z.number().int().positive(), workflowId: workflowIdSchema, name: z.string().max(200).optional() }).strict();
+/** Distinct cases whose current or historical record (V9 offboarding or native onboarding) ran or queued mail for this workflow. */
+async function workflowCaseCountTx(tx: Tx, ctx: SessionContext, workflowId: string): Promise<number> {
+  const [row] = await tx.execute<{ cases: number }>(sql`with records as (
+    select id as case_id,data->'runs' as runs,data->'mails' as mails from lc_v9_case where tenant_id=${ctx.tenantId}::uuid
+    union all select case_id,data->'runs',data->'mails' from lc_v9_case_revision where tenant_id=${ctx.tenantId}::uuid
+    union all select case_id,data->'lifecycleV9'->'runs',data->'lifecycleV9'->'mails' from lc_onboarding_private where tenant_id=${ctx.tenantId}::uuid
+    union all select case_id,data->'lifecycleV9'->'runs',data->'lifecycleV9'->'mails' from lc_onboarding_private_revision where tenant_id=${ctx.tenantId}::uuid
+  ) select count(distinct case_id)::int as cases from records
+    where exists(select 1 from jsonb_array_elements(case when jsonb_typeof(runs)='array' then runs else '[]'::jsonb end) r where r->>'workflowId'=${workflowId})
+       or exists(select 1 from jsonb_array_elements(case when jsonb_typeof(mails)='array' then mails else '[]'::jsonb end) m where m->>'workflowId'=${workflowId})`);
+  return Number(row?.cases ?? 0);
+}
+async function workflowRemovalPreviewTx(tx: Tx, ctx: SessionContext, config: M.Config, workflowId: string): Promise<WorkflowRemovalPreview> {
+  const workflow = config.workflows.find(candidate => candidate.id === workflowId);
+  if (!workflow) throw new M.V9Error('Workflow not found.', 'not_found');
+  if (workflow.status === 'retired') throw new M.V9Error('This workflow is already retired.', 'conflict');
+  const cases = await workflowCaseCountTx(tx, ctx, workflow.id);
+  return { revision: config.revision, workflowId: workflow.id, name: workflow.name, module: workflow.module, mode: cases ? 'retire' : 'delete', cases, automatic: M.workflowStartsAutomatically(workflow), when: M.workflowWhen(workflow) };
+}
+async function saveWorkflowConfigTx(tx: Tx, ctx: SessionContext, previous: M.Config, next: M.Config): Promise<number> {
+  await tx.execute(sql`insert into lc_v9_config_revision(tenant_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${previous.revision},${JSON.stringify(previous)}::jsonb,${ctx.userId ?? null}::uuid)`);
+  next.revision = previous.revision + 1;
+  await tx.execute(sql`update lc_v9_config set data=${JSON.stringify(next)}::jsonb,revision=${next.revision},updated_at=now() where tenant_id=${ctx.tenantId}::uuid`);
+  return next.revision;
+}
+/** What Delete would do now: permanent for an unused workflow, Retired for one with case history. */
+export async function v9PreviewWorkflowRemoval(ctx: SessionContext, workflowId: string): Promise<WorkflowRemovalPreview> {
+  workflowId = workflowIdSchema.parse(workflowId);
+  return withLifecycleTenant(ctx, async tx => {
+    await admin(tx); const config = await configTx(tx, ctx);
+    if (!config) throw new M.V9Error('V9 configuration is unavailable.');
+    return workflowRemovalPreviewTx(tx, ctx, config, workflowId);
+  });
+}
+/** Re-decides under the lock that also guards workflow starts; a changed decision returns a fresh preview instead of acting. */
+export async function v9RemoveWorkflow(ctx: SessionContext, input: unknown): Promise<WorkflowRemovalResult> {
+  const request = removalSchema.parse(input);
+  return withLifecycleTenant(ctx, async tx => {
+    await lockTx(tx, ctx); await admin(tx);
+    const previous = await configTx(tx, ctx, true);
+    if (!previous) throw new M.V9Error('V9 configuration is unavailable.');
+    const preview = await workflowRemovalPreviewTx(tx, ctx, previous, request.workflowId);
+    if (previous.revision !== request.revision || preview.mode !== request.expected.mode || preview.cases !== request.expected.cases || preview.automatic !== request.expected.automatic) return { done: false, preview };
+    const next = structuredClone(previous), who = await actor(tx, ctx);
+    if (preview.mode === 'delete') next.workflows = next.workflows.filter(workflow => workflow.id !== preview.workflowId);
+    else { const workflow = next.workflows.find(candidate => candidate.id === preview.workflowId)!; workflow.status = 'retired'; workflow.retired = { at: new Date().toISOString(), by: who, cases: preview.cases, automatic: preview.automatic }; }
+    const revision = await saveWorkflowConfigTx(tx, ctx, previous, next);
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-config', aggregateId: ctx.tenantId, eventType: preview.mode === 'delete' ? 'lifecycle-v9.workflowDeleted' : 'lifecycle-v9.workflowRetired', actor: actorOf(ctx), payload: { workflowId: preview.workflowId, name: preview.name, module: preview.module, outcome: preview.mode === 'delete' ? 'deleted' : 'retired', cases: preview.cases, stoppedAutomaticStart: preview.automatic, actorName: who.name, revision } });
+    return { done: true, mode: preview.mode, revision };
+  });
+}
+/** Restores a retired workflow as a draft: same steps and recipients, never live or automatic until HR makes it live again. */
+export async function v9RestoreWorkflow(ctx: SessionContext, input: unknown): Promise<{ revision: number }> {
+  const request = restoreSchema.parse(input);
+  return withLifecycleTenant(ctx, async tx => {
+    await lockTx(tx, ctx); await admin(tx);
+    const previous = await configTx(tx, ctx, true);
+    if (!previous) throw new M.V9Error('V9 configuration is unavailable.');
+    if (previous.revision !== request.revision) throw new M.V9Error('Settings changed. Refresh before restoring.', 'conflict');
+    const next = structuredClone(previous), workflow = next.workflows.find(candidate => candidate.id === request.workflowId);
+    if (!workflow) throw new M.V9Error('Workflow not found.', 'not_found');
+    if (workflow.status !== 'retired') throw new M.V9Error('Only a retired workflow can be restored.', 'conflict');
+    const before = workflow.name, name = request.name?.trim() || before;
+    const key = (value: string) => value.trim().toLocaleLowerCase();
+    const duplicate = next.workflows.find(candidate => candidate.id !== workflow.id && candidate.module === workflow.module && candidate.status !== 'retired' && key(candidate.name) === key(name));
+    if (duplicate) throw new M.V9Error(`An active workflow is already called "${duplicate.name}". Rename one of them before restoring.`, 'conflict');
+    workflow.name = name; workflow.status = 'draft'; delete workflow.retired;
+    const revision = await saveWorkflowConfigTx(tx, ctx, previous, next), who = await actor(tx, ctx);
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-config', aggregateId: ctx.tenantId, eventType: 'lifecycle-v9.workflowRestored', actor: actorOf(ctx), payload: { workflowId: workflow.id, name, module: workflow.module, outcome: 'restored', ...(name !== before ? { previousName: before } : {}), actorName: who.name, revision } });
+    return { revision };
+  });
+}
 export async function v9CreateOffboarding(ctx: SessionContext, input: { employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string }): Promise<string> {
   return withLifecycleTenant(ctx, tx => v9CreateOffboardingTx(tx, ctx, input));
 }
@@ -836,7 +914,7 @@ export async function v9UploadFile(ctx: SessionContext, input: { caseId: string;
     const previousFile = row.data.files.find(file => file.slot === input.slot);
     if (previousFile && row.data.mails.some(mail => !mail.test && ['pending','sending','uncertain'].includes(mail.status) && mail.fileIds.includes(previousFile.id))) throw new M.V9Error('This file is reserved for a queued delivery. Review that delivery before replacing it.', 'conflict');
     if (row.revision !== input.revision) throw new M.V9Error('This case changed. Refresh before uploading.', 'conflict');
-    const slots = [...config.emails.filter(e => e.module === row.data.module).flatMap(e => e.slots.map(s => `${e.id}:${s.id}`)), ...config.workflows.filter(w => w.module === row.data.module).flatMap(w => w.steps.filter(s => s.type === 'waitFile').map(s => s.slot)), ...row.data.runs.flatMap(r => r.definition?.steps.filter(s => s.type === 'waitFile').map(s => s.slot) ?? [])];
+    const slots = [...config.emails.filter(e => e.module === row.data.module).flatMap(e => e.slots.map(s => `${e.id}:${s.id}`)), ...config.workflows.filter(w => w.module === row.data.module && w.status !== 'retired').flatMap(w => w.steps.filter(s => s.type === 'waitFile').map(s => s.slot)), ...row.data.runs.flatMap(r => r.definition?.steps.filter(s => s.type === 'waitFile').map(s => s.slot) ?? [])];
     if (!slots.includes(input.slot)) throw new M.V9Error('Choose a configured attachment slot for this case.');
     const id = randomUUID();
     await tx.execute(sql`insert into lc_v9_file(id,tenant_id,case_id,onboarding_case_id,company_id,slot,filename,mime_type,content,uploaded_by) values(${id}::uuid,${ctx.tenantId}::uuid,${row.native ? null : row.id}::uuid,${row.native ? row.id : null}::uuid,${row.company_id}::uuid,${input.slot},${input.name},${mimeType},decode(${content.toString('base64')},'base64'),${ctx.userId}::uuid)`);

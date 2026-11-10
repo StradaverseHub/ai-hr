@@ -4,11 +4,12 @@ import {getPathMatch} from 'next/dist/shared/lib/router/utils/path-match';
 import config from '../next.config';
 const scope=vi.hoisted(()=>({ctx:{tenantId:'11111111-1111-4111-8111-111111111111',userId:'22222222-2222-4222-8222-222222222222'},company:'33333333-3333-4333-8333-333333333333'}));
 const create=vi.hoisted(()=>vi.fn());
-vi.mock('../lib/workforce-authz',()=>({requireWorkforceAccess:async()=>({s:scope.ctx,scopeIds:[scope.company]})}));
+const access=vi.hoisted(()=>({denied:false}));
+vi.mock('../lib/workforce-authz',()=>({requireWorkforceAccess:async()=>{if(access.denied)throw new Error('NEXT_REDIRECT fixture: no Personnel list access');return {s:scope.ctx,scopeIds:[scope.company]};}}));
 vi.mock('../core/personnel-private-search',()=>({createPersonnelPrivateSearch:create,privateSearchHash:()=>null,personnelPrivateSearchAvailable:async()=>false,PersonnelSearchLimitError:class extends Error{}}));
 import {POST} from '../app/admin/personnel/search/route';
 import {PersonnelSearchLimitError} from '../core/personnel-private-search';
-beforeEach(()=>{create.mockReset();create.mockResolvedValue('a'.repeat(43));});
+beforeEach(()=>{access.denied=false;create.mockReset();create.mockResolvedValue('a'.repeat(43));});
 const request=(body:string,origin='https://fixture.invalid')=>new Request('https://fixture.invalid/admin/personnel/search',{method:'POST',headers:{origin,host:'fixture.invalid','content-type':'application/x-www-form-urlencoded'},body});
 it('applies no-referrer at the Next router only for the private search endpoint',async()=>{
  const rules=await config(PHASE_PRODUCTION_SERVER).headers!();
@@ -66,4 +67,33 @@ it('individual removal sends a complete replacement while retaining the other pr
 });
 it('removing the last private criterion clears the token instead of reusing its old membership',async()=>{
  const response=await POST(request('term=private&removeField=term&search='+('a'.repeat(43))));expect(response.status).toBe(303);expect(create).not.toHaveBeenCalled();expect(response.headers.get('location')).toBe('/admin/personnel');
+});
+
+// eaa7697c — the visible list box posts an EMPTY term when it is cleared. Only the search word goes.
+it('an emptied list search box with a remaining column criterion yields a token holding only that filter',async()=>{
+ const form=new URLSearchParams({term:'','field.name':'PRIVATE-COLUMN-NAME','operator.name':'contains',companies:scope.company,bucket:'active',sort:'joinDate',direction:'desc',size:'50'});
+ const response=await POST(request(form.toString()));expect(response.status).toBe(303);
+ expect(create).toHaveBeenCalledTimes(1);
+ expect(create).toHaveBeenCalledWith(scope.ctx,{text:'',companyIds:[scope.company],replaceCriteria:true,columnFilters:[{field:'name',operator:'contains',value:'PRIVATE-COLUMN-NAME'}]});
+ const location=new URL(response.headers.get('location')!,'https://fixture.invalid');
+ expect(location.searchParams.get('search')).toBe('a'.repeat(43));expect(location.searchParams.get('companies')).toBe(scope.company);expect(location.searchParams.get('bucket')).toBe('active');expect(location.searchParams.get('sort')).toBe('joinDate');expect(location.searchParams.get('size')).toBe('50');
+ expect(location.toString()).not.toContain('PRIVATE-COLUMN-NAME');
+});
+it('an emptied list search box with no private criteria keeps the ordinary filters and drops the search token',async()=>{
+ const form=new URLSearchParams({term:'   ',companies:scope.company,bucket:'probation',size:'50'});
+ const response=await POST(request(form.toString()));expect(response.status).toBe(303);expect(create).not.toHaveBeenCalled();
+ const location=new URL(response.headers.get('location')!,'https://fixture.invalid');
+ expect(location.pathname).toBe('/admin/personnel');expect(location.searchParams.has('search')).toBe(false);
+ expect(location.searchParams.get('companies')).toBe(scope.company);expect(location.searchParams.get('bucket')).toBe('probation');expect(location.searchParams.get('size')).toBe('50');
+});
+it('the list box JSON request returns the same validated destination without echoing the term',async()=>{
+ const body=new URLSearchParams({term:'emp0008',companies:scope.company});
+ const response=await POST(new Request('https://fixture.invalid/admin/personnel/search',{method:'POST',headers:{origin:'https://fixture.invalid',host:'fixture.invalid',accept:'application/json','content-type':'application/x-www-form-urlencoded'},body:body.toString()}));
+ expect(response.status).toBe(200);expect(create).toHaveBeenCalledWith(scope.ctx,{text:'emp0008',companyIds:[scope.company],columnFilters:[],replaceCriteria:true});
+ const {href}=await response.json() as {href:string};expect(href).toMatch(/^\/admin\/personnel\?/);expect(href).not.toContain('emp0008');expect(href).toContain('search='+'a'.repeat(43));
+});
+it('a caller without Personnel list access never reaches the private search owner',async()=>{
+ access.denied=true;
+ await expect(POST(request(new URLSearchParams({term:'emp0008',companies:scope.company}).toString()))).rejects.toThrow(/NEXT_REDIRECT/);
+ expect(create).not.toHaveBeenCalled();
 });
