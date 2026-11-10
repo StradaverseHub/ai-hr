@@ -14,7 +14,7 @@
  *  - the owner's first transaction: Profile candidates, whose locked decision transaction still runs for them.
  * A section the statement cannot answer exactly returns `null` from its owner's `FromBundle` (or its projection throws)
  * and that owner alone runs itself, unchanged, in the same snapshot: a Leave or cancellation step whose `limit 1` rows
- * disagree, an alternate id the owner would trim, an unknown step kind or a named step naming nobody (the owner's own
+ * disagree, an alternate id spelled other than plain UUID text once trimmed, an unknown step kind or a named step naming nobody (the owner's own
  * error), an Attendance request whose frozen subject differs, a Rewards observation that is due (a write), a cycle,
  * policy or case id the owner's parse would refuse, a module gate that would refuse or an AI Centre activity. Without a
  * login, or when the principal proof fails, or when the statement itself fails, every owner runs exactly as before.

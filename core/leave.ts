@@ -12414,13 +12414,19 @@ const levelKindsSql=(kinds:readonly string[])=>sql.raw(`array[${kinds.map(kind=>
 /** A step's stored alternates exactly as assertCanDecideLeaveStep reads them (sanitizeApprovalLevels over an array, none
  * otherwise), in order: a known dynamic kind as a bare string, or an object whose `kind` is a known kind, with the
  * employment id of a fixed kind (a level naming nobody is dropped; a dynamic kind's id is cleared). A fixed kind's id that
- * is not plain UUID text (sanitizeApprover trims it in JavaScript and the gate casts it in PostgreSQL) is `unsupported`. */
+ * is trimmed exactly as sanitizeApprover trims it; trimmed text that is not plain UUID text (the gate would cast it in
+ * PostgreSQL: another accepted spelling, or a cast error) is `unsupported`. */
+/** String.prototype.trim's whitespace (WhiteSpace and LineTerminator: tab to carriage return, space, no-break space,
+ * ogham space, en quad to hair space, line and paragraph separators, narrow no-break, medium mathematical and
+ * ideographic spaces, and the byte order mark) at either end, as a PostgreSQL regular expression. */
+const JS_TRIM_CLASS='[\\u0009-\\u000d\\u0020\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]';
+const JS_TRIM_PATTERN=`^${JS_TRIM_CLASS}+|${JS_TRIM_CLASS}+$`;
 function leaveStepAlternatesSql(alternates:SQL):SQL{
   const known=levelKindsSql(LEVEL_KINDS),fixed=levelKindsSql(FIXED_LEVEL_KINDS);
   return sql`select entry.ord,entry.kind,case when entry.fixed and entry.named~'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' then entry.named::uuid end as employment_id,
      entry.fixed and not entry.named~'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' as unsupported
     from (select raw.ord,raw.kind,raw.kind=any(${fixed}) as fixed,raw.shape,
-      case when jsonb_typeof(raw.value->'employmentId')='string' then raw.value->>'employmentId' end as named
+      case when jsonb_typeof(raw.value->'employmentId')='string' then regexp_replace(raw.value->>'employmentId',${sql.raw(`'${JS_TRIM_PATTERN}'`)},'','g') end as named
      from (select item.ord,item.value,jsonb_typeof(item.value) as shape,
        case jsonb_typeof(item.value) when 'string' then item.value#>>'{}'
         when 'object' then case when jsonb_typeof(item.value->'kind')='string' then item.value->>'kind' end end as kind

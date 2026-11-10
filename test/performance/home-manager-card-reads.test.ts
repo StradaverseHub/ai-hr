@@ -352,8 +352,12 @@ async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
    const cross=at(6);
    await step('lines',async()=>{
     await line(second,manager);await line(at(21),manager);await line(at(25),second);await line(at(25),second,day(-20));await line(at(27),second);
-    for(const position of [30,31,32,33,34])await line(at(position),cross);
-    await line(at(30),at(31));await line(at(34),at(31));
+    for(const position of [32,33])await line(at(position),cross);
+    // Company 1: one employee (position 54) manages 55-58 and 56 also manages 55 and 57, so a manager's-manager step on
+    // 55 or 57 has two lines whose decisions disagree for 54. No other compared non-admin sees company 1's subjects.
+    const lone=at(54);
+    for(const position of [55,56,57,58])await line(at(position),lone);
+    await line(at(55),at(56));await line(at(57),at(56));
    });
    await step('leaveChains',async()=>{
     await leave(at(17),[{kind:'hr_admin',alternates:[42,null,['direct_manager'],'mystery_kind',{kind:'specific_employee'},{kind:'specific_employee',employmentId:''},
@@ -361,10 +365,14 @@ async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
     await leave(at(18),[{kind:'payroll',alternates:['manager_manager',{kind:'direct_manager',employmentId:'stray'}]}]);
     await leave(at(21),[{kind:'manager_manager',alternates:['direct_manager']}]);
     await leave(at(25),[{kind:'manager_manager'}]);
-    // Disagreeing manager's-manager lines and an alternate id the owner would trim: the cross-company manager's leave
-    // reads alone. (A subject head cannot disagree: assignment_no_overlap leaves one current assignment.)
-    await leave(at(30),[{kind:'manager_manager'}]);
+    // Alternate ids padded with JavaScript whitespace, trimmed exactly as sanitizeApprover trims them.
     await leave(at(33),[{kind:'custom_role',alternates:[{kind:'specific_employee',employmentId:' '+cross.employmentId+' '}]}]);
+    await leave(at(19),[{kind:'custom_role',alternates:[{kind:'specific_employee',employmentId:'\u00a0'+second.employmentId+'\t\u3000'}]}]);
+    // The documented fallbacks, for position 54 only: disagreeing manager's-manager lines, and an alternate id spelled
+    // as PostgreSQL but not plain UUID text accepts it (braces). That employee's leave owner reads alone. (A subject head
+    // cannot disagree: assignment_no_overlap leaves one current assignment.)
+    await leave(at(55),[{kind:'manager_manager'}]);
+    await leave(at(58),[{kind:'custom_role',alternates:[{kind:'specific_employee',employmentId:'{'+lone.employmentId+'}'}]}]);
    });
    await step('departmentHeads',async()=>{
     await headed(at(27),manager);await leave(at(27),[{kind:'department_head'}]);
@@ -374,7 +382,7 @@ async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
     await cancellation(at(5),[]);
     await cancellation(at(14),[{kind:'direct_manager',status:'approved'},{kind:'hr_admin',alternates:[{kind:'specific_employee',employmentId:second.employmentId}]}]);
     await cancellation(at(7),[{kind:'direct_manager',status:'approved'}]);
-    await cancellation(at(34),[{kind:'manager_manager'}]);
+    await cancellation(at(57),[{kind:'manager_manager'}]);
    });
    await step('resignations',()=>owner.db.insert(s.resignationRequest).values([8,60].map(position=>({tenantId,employmentId:at(position).employmentId,personId:at(position).ctx.personId!,lastWorkingDay:day(30)}))));
    await step('reviews',()=>owner.db.insert(s.employmentReview).values([
@@ -402,8 +410,12 @@ async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
      .where(and(eq(s.performanceReview.cycleId,cycleId),eq(s.performanceReview.employmentId,subject.employmentId))))[0].id;
     const reviewId=await reviewOf(at(5)),view=await perf.getOnehrReview(admin,reviewId);
     await perf.assignOnehrPanel(admin,reviewId,view!.revision,[{employmentId:at(6).employmentId,relationship:'peer'}]);
-    const [session]=await owner.db.insert(s.onehrCalibration).values({tenantId,cycleId,companyId,name:'Fictional department calibration',tier:'hod',reviewerUserIds:[manager.ctx.userId!]}).returning();
-    for(const position of [5,7,8])await owner.db.insert(s.onehrCalibrationEntry).values({tenantId,sessionId:session.id,reviewId:await reviewOf(at(position)),employmentId:at(position).employmentId});
+    // Calibration writes are the performance administrator's (as test/p1-wpa2-performance-home.test.ts seeds them).
+    const entries=await Promise.all([5,7,8].map(async position=>({reviewId:await reviewOf(at(position)),employmentId:at(position).employmentId})));
+    await withTenant(admin,async tx=>{
+     const [session]=await tx.insert(s.onehrCalibration).values({tenantId,cycleId,companyId,name:'Fictional department calibration',tier:'hod',reviewerUserIds:[manager.ctx.userId!]}).returning();
+     for(const entry of entries)await tx.insert(s.onehrCalibrationEntry).values({tenantId,sessionId:session.id,...entry});
+    });
    });
   }else{
    // Only this tenant's manager (and its administrators, not compared) sees these: the owner throws a non-refusal error.
@@ -743,15 +755,16 @@ it('completes every manager Home card and Today section read without a handled f
    }
   }
   report.taskOwnerTrips=trips;print('task-owner-trips',trips);evidence();
-  // The leave and cancellation decisions, candidate by candidate, for the subjects whose owners still read.
+  // Every leave and cancellation candidate the statement leaves to its owner, for the non-admin subjects: only the
+  // documented fallback fixtures (position 54's disagreeing lines and brace-spelled alternate id) may appear.
   {
    const bundles=await import('../../core/account-task-bundle'),leaveService=await import('../../packs/leave/service'),decisions:Record<string,unknown>={};
-   for(const [label,actor] of [['manager',manager],['secondManager',secondManager],['crossCompanyManager',actors.find(a=>a.index===6)!]] as const){
+   for(const [label,actor] of [['manager',manager],['secondManager',secondManager],['crossCompanyManager',actors.find(a=>a.index===6)!],['companyOneOnLeave',actors.find(a=>a.index===54)!]] as const){
     decisions[label]=await withTenant(actor.ctx,async tx=>[...await tx.execute(sql`with ${bundles.accountTaskCallerSql(actor.ctx)}
       select decision_candidate.section,decision_candidate.approver_kind as kind,(select users.index from (values ${sql.join(actors.map(a=>sql`(${a.employmentId}::uuid,${a.index}::int)`),sql`,`)}) users(id,index)
        where users.id=decision_candidate.employment_id) as subject,decided.decision
       ${leaveService.pendingLeaveDecisionCandidatesSql(tx,actor.ctx,undefined,sql`cast((select task_caller.own_ids from task_caller) as uuid[])`)}
-      order by 1,3,2`)],{readOnlySnapshot:true}).catch(error=>errorFact(error));
+      where decided.decision in ('defer','error') order by 1,3,2`)],{readOnlySnapshot:true}).catch(error=>errorFact(error));
    }
    print('task-owner-leave-decisions',decisions);
   }
@@ -767,6 +780,7 @@ it('completes every manager Home card and Today section read without a handled f
   report.taskStatementExplain=explains;print('task-statement-explain',explains);evidence();
  }
  const bundleSections:unknown[]=[];report.bundleSections=bundleSections;
+ const failurePrecedence:unknown[]=[];report.taskFailurePrecedence=failurePrecedence;
  const {listClaimsForEmployment,listOpenClaimsForEmployment}=await import('../../packs/claims/service');
  for(const [subject,actor] of subjects){
   const targets=await todayTargets(actor.ctx);
@@ -853,11 +867,16 @@ it('completes every manager Home card and Today section read without a handled f
     onboarding:async()=>modules.lifecycle?lifecycleService.onboardingAssignedTaskMetadata(ctx):[],
    };
    const deferred:string[]=[],answered:Record<string,number>={};
-   for(const [name,read] of Object.entries(owners)){
+   // Each owner alone, independently: its result, and the failure it raises for this subject (if any).
+   const ownerOutcomes:Record<string,Awaited<ReturnType<typeof outcome>>>={};
+   for(const [name,read] of Object.entries(owners))ownerOutcomes[name]=await outcome(()=>withIndependentTransactions(read));
+   const failureKey=(failure:unknown)=>JSON.stringify((failure as {error?:unknown})?.error??null);
+   const ownerFailures=new Set(Object.values(ownerOutcomes).filter(row=>!row.ok).map(failureKey));
+   for(const name of Object.keys(owners)){
     const value=(bundle as Record<string,unknown>|null)?.[name];
     if(value===null||value===undefined){deferred.push(name);continue;}
     answered[name]=Array.isArray(value)?value.length:(value as {total?:number}).total??-1;
-    compare(subject,'bundle:'+name,await outcome(()=>withIndependentTransactions(read)),{ok:true,value});
+    compare(subject,'bundle:'+name,ownerOutcomes[name],{ok:true,value});
    }
    // The same sections under this subject's company filter (the scoped previews' statement), against each owner so filtered.
    const scopedRead={companyIds:scopeIds,personal:false,notices:true},scopedModules={...modules,lifecycle:false};
@@ -897,6 +916,17 @@ it('completes every manager Home card and Today section read without a handled f
    compare(subject,'bundle:card:summary',await outcome(()=>ownersOnly(summary)),await outcome(()=>withSharedReadSnapshot(ctx,summary)));
    const {countEmployeeHomeTasks}=await import('../../core/employee-home-tasks');
    compare(subject,'bundle:homeCount',await outcome(()=>ownersOnly(()=>countEmployeeHomeTasks(ctx))),await outcome(()=>withSharedReadSnapshot(ctx,()=>countEmployeeHomeTasks(ctx))));
+   // Which failure a composed read surfaces when several of its owners refuse: lib/settle-read-group.ts keeps the FIRST
+   // OBSERVED failure (by time, not array order). Each read repeated: owners alone in independent transactions (the
+   // comparisons' reference), owners alone in one shared snapshot (the bundled read's scope) and through the statement.
+   if(ownerFailures.size>1){
+    const runs=async(read:()=>Promise<unknown>)=>{const seen=new Map<string,number>();
+     for(let attempt=0;attempt<6;attempt++){const key=failureKey(await outcome(read));seen.set(key,(seen.get(key)??0)+1);}return Object.fromEntries(seen);};
+    failurePrecedence.push({subject,ownerFailures:[...ownerFailures],
+     ownersIndependent:await runs(()=>ownersOnly(()=>countEmployeeHomeTasks(ctx))),
+     ownersShared:await runs(()=>withSharedReadSnapshot(ctx,()=>bundles.withOwnerTaskReads(()=>countEmployeeHomeTasks(ctx)))),
+     bundledShared:await runs(()=>withSharedReadSnapshot(ctx,()=>countEmployeeHomeTasks(ctx)))});
+   }
    const ownerFrames:Record<string,unknown>={},bundleFrames:Record<string,unknown>={};
    await ownersOnly(()=>streamHome(actor,month,null,GET,ownerFrames));
    await streamHome(actor,month,null,GET,bundleFrames);
@@ -959,6 +989,7 @@ it('completes every manager Home card and Today section read without a handled f
  }
  const mismatches=equivalence.filter(row=>!row.equal);
  print('bundle-sections',bundleSections);
+ print('task-failure-precedence',failurePrecedence);
  print('equivalence',{compared:equivalence.length,mismatches:mismatches.length,isolation,first:mismatches.slice(0,6)});
  evidence();
  // The browser renders Today sections and starts the card stream on the same worker pool.

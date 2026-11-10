@@ -134,8 +134,8 @@ calculation, authority, ordering or failure changes.
      concurrent Home reads exhausted the 2 GB test database. With the set read once the statement plans in about 45 ms
      and executes in about 70 ms for the fixture's manager, and the Tasks card is back to its earlier time.
    Each remaining case leaves only that owner to read on its own, as before: a step whose `limit 1` rows disagree with no
-   later allowing approver; an alternate whose named id is not plain UUID text (the owner trims it in JavaScript and
-   casts it in PostgreSQL); an unknown step kind or a named-person step naming nobody, and an Attendance request whose
+   later allowing approver; an alternate whose named id, trimmed exactly as `sanitizeApprover` trims it, is not plain UUID text (the gate would
+   cast another spelling, such as braces, or fail the cast); an unknown step kind or a named-person step naming nobody, and an Attendance request whose
    frozen subject differs from its candidate (the owner throws its own non-refusal error, which a statement cannot
    reproduce as the same error object from inside the owner's transaction); a Rewards observation that is due (a write
    that must commit first); Profile candidates (the decision takes the exclusive profile-write barrier, re-resolves the
@@ -156,7 +156,7 @@ calculation, authority, ordering or failure changes.
   equivalence comparison. The attendance chain follows the Today bundle.
 - **Deferred task owners.** Decision 10 brought them into the account task statement. Still reading on their own: Profile
   candidates' locked decision transaction, Rewards while an access observation is due, and decision 10's exact-or-owner
-  cases (disagreeing `limit 1` rows, an untrimmed alternate id, the owners' own non-refusal errors, parse refusals). The
+  cases (disagreeing `limit 1` rows, an alternate id spelled other than plain UUID text, the owners' own non-refusal errors, parse refusals). The
   full lists (`listPendingTasks`) still read the owners; the assigned work index below would answer them too.
 - **Entitlement tables in Time Off.** A leave type with an entitlement table in force still builds its template
   resolver live (its eligibility rules and their organisation matches): the bundle could carry the rule rows and the
