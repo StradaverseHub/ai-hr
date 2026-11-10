@@ -28,8 +28,10 @@ fixed-item and policy edits for that company waited for the whole run and were r
   held (its event still follows the processed event). Totals are each payslip's exact addends, summed in the planned
   order, so they equal the single loop's to the bit.
 - **Unit size.** One pass of the compute path carries about 250 ms of run-wide reads plus about 50 ms per employee
-  (quiet host), so steps are two employees and a chunk applies steps until 250 ms of work
-  (`PAYROLL_PROCESS_STEP_EMPLOYEES`, `PAYROLL_PROCESS_CHUNK_BUDGET_MS`).
+  (quiet host), so steps are two employees and a chunk takes a second step only when the first finished within
+  100 ms (`PAYROLL_PROCESS_STEP_EMPLOYEES`, `PAYROLL_PROCESS_CHUNK_BUDGET_MS`). The 3,000-employee rehearsal on a host
+  at load 27 to 48 held the run's keys for at most 1.25 to 1.7 s (3 to 8 of about 1,120 chunks over 1 s) with a
+  250 ms budget; ten employees per chunk held them for 3.7 s and the old single transaction for 144 s.
 - **Edits while processing.** `markBatchNeedsRecalc` and `markRunsAffectedByEmploymentChangeTx` treat a processing run
   like a processed one for the employees it has already paid; fixed-item and policy-assignment writers mark such a run
   (`markProcessingRunsForEmploymentsTx`). A writer holds the employee's payroll inputs key (shared) and a chunk holds

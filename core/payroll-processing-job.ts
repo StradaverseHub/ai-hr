@@ -42,7 +42,7 @@ export {PAYROLL_PROCESS_JOB_KIND};
  * its hold is at most the budget plus one step, on a quiet host or a loaded one (the populated rehearsal,
  * scripts/performance/payroll-processing-rehearsal.ts, sized both under the 1 s bar). */
 export const payrollProcessStepEmployees=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_STEP_EMPLOYEES??2));
-const payrollProcessChunkBudgetMs=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS??250));
+const payrollProcessChunkBudgetMs=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS??100));
 /** Payslips deleted per discard transaction. */
 const DISCARD_BATCH=500;
 
