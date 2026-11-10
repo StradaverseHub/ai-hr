@@ -13,7 +13,13 @@
 -- None is scoped to an Import History kind (the creator alone reads the job while their grants stay current).
 -- A clocking import runs one at a time per tenant, as the synchronous import's one background slot did; a
 -- recompute preview or apply runs one at a time per administrator.
-INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES
- ('clocking_import',NULL,'tenant'),
- ('attendance_recompute_preview',NULL,'creator'),
- ('attendance_recompute',NULL,'creator');
+--
+-- Hardened kernel (5013): each kind declares the input its admission passes. The clocking file itself travels as the
+-- job's source file, not in the input, so every input stays far below the default 1 MiB limit. No kind's finalize
+-- needs the queue-owner connection (each writes its run log or run event as the creator), so finalize_owner is false.
+--  clocking_import: core/attendance-clocking-import-job.ts ClockingImportJobInput.
+--  attendance_recompute_preview, attendance_recompute: core/attendance-recompute-job.ts RecomputeJobInput.
+INSERT INTO bulk_job_kind(kind,scope_kind,exclusive,input_shape,finalize_owner) VALUES
+ ('clocking_import',NULL,'tenant','{"mappingId":"string","fileName":"string","fileBytes":"number","companyId":"string?"}'::jsonb,false),
+ ('attendance_recompute_preview',NULL,'creator','{"scope":"object","runId":"string","ranAt":"string"}'::jsonb,false),
+ ('attendance_recompute',NULL,'creator','{"scope":"object","runId":"string","ranAt":"string"}'::jsonb,false);
