@@ -724,12 +724,13 @@ export async function correctHireDetails(
     if (input.basicSalary !== undefined) await tx.execute(sql`select app.access_configuration_write_lock()`);
     else {
       // Reader/writer lock. Correcting one hire's organisation fields: shared Access, and the Workforce check joins
-      // it. Department and position feed leave cohorts, so leave commands on this employment wait for it. A
+      // it. Department and position at hire select leave cohorts, so it takes the leave configuration lock
+      // exclusively (bounded wait) and this employment's lock, as the dated assignment writer does. A
       // reporting-manager correction runs the canonical cycle rule before writing, a check-then-write on the
       // reporting graph that exclusivity used to serialise; the reporting-line serialiser (4701) is taken before
       // that read. A salary correction keeps the exclusive lock its compensation owner still needs.
       await lockAccessConfigurationTx(tx, ctx.tenantId);
-      await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [input.employmentId], { configuration: false });
+      await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [input.employmentId], { configuration: true });
       if (requested.managerEmploymentId !== undefined) await lockOrgReportingTx(tx, ctx.tenantId);
     }
     await assertWorkforceEmploymentTx(tx,ctx,input.employmentId,'maintain');

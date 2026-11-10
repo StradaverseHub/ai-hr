@@ -120,6 +120,13 @@ export function resolveDocumentUpload(fileName: string, bytes: Buffer): { mimeTy
   return { mimeType: spec.mime };
 }
 
+/** The document row lock, taken only after the caller's authority check so an unauthorised caller keeps its
+ * Workforce refusal. A document removed meanwhile is refused as not found, and nothing is recorded. */
+async function lockEmployeeDocumentTx(tx: Tx, documentId: string): Promise<void> {
+  const [locked] = await tx.select({ id: employeeDocument.id }).from(employeeDocument).where(eq(employeeDocument.id, documentId)).limit(1).for('update');
+  if (!locked) throw new EmployeeDocumentError('Document not found (or not visible).');
+}
+
 function assertAdmin(ctx: SessionContext): void {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
@@ -244,17 +251,17 @@ export async function replaceEmployeeDocumentContent(
   assertAdmin(ctx);
   assertValidEmployeeDocument(p.mimeType, p.content);
   return withTenant(ctx, async (tx) => {
-    // Shared Access. The document row lock serialises a replace against a concurrent delete or replace,
-    // so a replace never records an event for a document another writer has just removed.
+    // Shared Access. After the authority check, the document row lock serialises a replace against a
+    // concurrent delete or replace, so a replace never records an event for a document just removed.
     await lockAccessConfigurationTx(tx, ctx.tenantId);
     const [existing] = await tx
       .select({ id: employeeDocument.id, employmentId: employeeDocument.employmentId })
       .from(employeeDocument)
       .where(eq(employeeDocument.id, p.documentId))
-      .limit(1)
-      .for('update');
+      .limit(1);
     if (!existing) throw new EmployeeDocumentError('Document not found (or not visible).');
     await assertWorkforceEmploymentTx(tx, ctx, existing.employmentId, 'maintain');
+    await lockEmployeeDocumentTx(tx, p.documentId);
     await tx
       .update(employeeDocument)
       .set({
@@ -283,16 +290,17 @@ export async function replaceEmployeeDocumentContent(
 export async function deleteEmployeeDocument(ctx: SessionContext, p: { documentId: string }): Promise<{ id: string }> {
   assertAdmin(ctx);
   return withTenant(ctx, async (tx) => {
-    // Shared Access; the document row lock makes two concurrent deletes record one deletion.
+    // Shared Access. After the authority check, the document row lock makes two concurrent deletes record one
+    // deletion, and a delete racing a replace sees the replace's outcome.
     await lockAccessConfigurationTx(tx, ctx.tenantId);
     const [existing] = await tx
       .select({ id: employeeDocument.id, employmentId: employeeDocument.employmentId, title: employeeDocument.title, fileName: employeeDocument.fileName })
       .from(employeeDocument)
       .where(eq(employeeDocument.id, p.documentId))
-      .limit(1)
-      .for('update');
+      .limit(1);
     if (!existing) throw new EmployeeDocumentError('Document not found (or not visible).');
     await assertWorkforceEmploymentTx(tx, ctx, existing.employmentId, 'maintain');
+    await lockEmployeeDocumentTx(tx, p.documentId);
     await tx.delete(employeeDocument).where(eq(employeeDocument.id, p.documentId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,

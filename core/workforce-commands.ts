@@ -1,5 +1,6 @@
 import {probationDateAuthorityTx} from './probation-effect-authority';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockEmploymentLeaveDependenciesTx} from './workforce-lock-mode';
 /** HR Workforce entry points compose the capability owner with existing canonical writers.
  * Independent approval/posting services keep importing their existing owner, never a manufactured HR role.
  */
@@ -38,8 +39,10 @@ export async function setReportingLine(ctx:SessionContext,p:Parameters<typeof or
  * employment and the shared person before reusing the canonical validation/event writer. */
 export function setPersonComplianceFields(ctx:SessionContext,p:Parameters<typeof writeComplianceFields>[1],outerTx?:Tx){
  ctx=captureCommandContext(ctx);p=structuredClone(p);
- // Shared Access: the canonical compliance writer locks the person's leave dependencies and profile subject.
+ // Shared Access. This command keeps the exclusive leave configuration lock it always took (waiting, bounded,
+ // under the shared Access lock), then the canonical writer locks the person's employments and profile subject.
  return maintain(ctx,p.employmentId,async tx=>{
+  await lockEmploymentLeaveDependenciesTx(tx,ctx.tenantId,[],{configuration:true});
   const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
   if(!subject)throw new Error('Employment not found (or not visible).');
   await assertWorkforcePersonTx(tx,ctx,subject.personId,'maintain');
