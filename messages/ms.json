@@ -29375,7 +29375,25 @@
     },
     "notSelected": "Kod baharu yang sah tidak dipilih untuk import ini. Tiada rekod dicipta.",
     "notSelectedStatus": "Tidak dipilih — dilangkau",
-    "invalidStatus": "Status mestilah Active atau Inactive. Biarkan kosong untuk menggunakan Active."
+    "invalidStatus": "Status mestilah Active atau Inactive. Biarkan kosong untuk menggunakan Active.",
+    "job": {
+      "state": {
+        "queued": "Menunggu untuk bermula",
+        "preparing": "Menyemak buku kerja",
+        "running": "Mengimport kod",
+        "finalizing": "Menyelesaikan import",
+        "discarding": "Membatalkan import",
+        "completed": "Import selesai",
+        "failed": "Import dihentikan — tiada kod ditambah",
+        "cancelled": "Import dibatalkan — tiada kod ditambah"
+      },
+      "progressCount": "{done} daripada {total} kod ditulis",
+      "backgroundHelp": "Anda boleh menutup tetingkap ini. Tiada sesiapa melihat kod baharu sehingga import selesai.",
+      "waiting": "Menunggu pekerja import. Kemajuan disimpan; jangan muat naik buku kerja sekali lagi.",
+      "workerUnavailable": "Perkhidmatan import belum berjalan. Import anda disimpan dan bermula secara automatik sebaik sahaja ia berjalan.",
+      "otherRunning": "Satu lagi import Label Sistem masih berjalan. Tunggu sehingga ia selesai sebelum memulakan yang baharu.",
+      "unavailable": "Status import tidak tersedia. Muat semula halaman untuk menyemak sekali lagi."
+    }
   },
   "onboardingV31": {
     "copy": {
@@ -37263,6 +37281,20 @@
         "cancelled": {
           "title": "Import pekerja dibatalkan",
           "body": "Tiada pekerja ditambah. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "Import Label Sistem selesai",
+          "body": "Buka Label Sistem untuk melihat kod yang ditambah."
+        },
+        "failed": {
+          "title": "Import Label Sistem dihentikan",
+          "body": "Tiada kod ditambah. Buka Label Sistem dan pratonton buku kerja sekali lagi."
+        },
+        "cancelled": {
+          "title": "Import Label Sistem dibatalkan",
+          "body": "Tiada kod ditambah."
         }
       }
     }

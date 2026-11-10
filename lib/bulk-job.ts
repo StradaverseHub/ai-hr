@@ -27,6 +27,7 @@ export const BULK_JOB_NOTICE_KIND='bulk-job.finished';
 export type BulkJobNoticeOutcome='completed'|'failed'|'cancelled';
 export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  employee_import:{messages:'employeeImport',linkPath:'/admin/personnel/import/history'},
+ system_label_import:{messages:'systemLabelImport',linkPath:'/admin/settings/system-labels'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){
  const notice=BULK_JOB_NOTICES[kind];

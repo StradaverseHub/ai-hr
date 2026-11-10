@@ -29375,7 +29375,25 @@
     },
     "notSelected": "Valid new code was not selected for this import. No record was created.",
     "notSelectedStatus": "Not selected — skipped",
-    "invalidStatus": "Status must be Active or Inactive. Leave it blank to use Active."
+    "invalidStatus": "Status must be Active or Inactive. Leave it blank to use Active.",
+    "job": {
+      "state": {
+        "queued": "Waiting to start",
+        "preparing": "Checking the workbook",
+        "running": "Importing codes",
+        "finalizing": "Finishing the import",
+        "discarding": "Undoing the import",
+        "completed": "Import finished",
+        "failed": "Import stopped — no codes were added",
+        "cancelled": "Import cancelled — no codes were added"
+      },
+      "progressCount": "{done} of {total} codes written",
+      "backgroundHelp": "You can close this window. Nobody sees the new codes until the import finishes.",
+      "waiting": "Waiting for the import worker. Progress is saved; do not upload the workbook again.",
+      "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is.",
+      "otherRunning": "Another System Labels import is still running. Wait for it to finish before starting a new one.",
+      "unavailable": "The import status is unavailable. Refresh the page to check again."
+    }
   },
   "onboardingV31": {
     "copy": {
@@ -37263,6 +37281,20 @@
         "cancelled": {
           "title": "Employee import cancelled",
           "body": "No employees were added. Open Import History for details."
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "System Labels import finished",
+          "body": "Open System Labels to see the codes that were added."
+        },
+        "failed": {
+          "title": "System Labels import stopped",
+          "body": "No codes were added. Open System Labels and preview the workbook again."
+        },
+        "cancelled": {
+          "title": "System Labels import cancelled",
+          "body": "No codes were added."
         }
       }
     }
