@@ -35,7 +35,7 @@ vi.mock('next-intl/server', () => ({
 }));
 
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createElement } from 'react';
+import { createElement, type FC, type ReactNode } from 'react';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
 import ResultPage from '../app/payroll/process/result/page';
@@ -44,7 +44,8 @@ const tick = () => runBulkJobTick(owner.client, { handlers: [payrollProcessJobHa
 /** The result page exactly as the browser asks for it after the wizard's redirect (`?g=<group>`). */
 async function renderResult(groupId: string) {
   const page = await ResultPage({ searchParams: Promise.resolve({ g: groupId }) });
-  return renderToStaticMarkup(createElement(NextIntlClientProvider, { locale: 'en', messages }, page));
+  const Provider = NextIntlClientProvider as unknown as FC<{ locale: string; messages: unknown; children?: ReactNode }>;
+  return renderToStaticMarkup(createElement(Provider, { locale: 'en', messages }, page));
 }
 /** The <tr> of one company in the per-company outcome table. */
 function rowOf(html: string, companyName: string) {
