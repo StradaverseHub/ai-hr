@@ -5,7 +5,8 @@ Base: `7b585515d67885045d79ebb3dce4ef6c5e7b1bd8` (on main `f07f32dcd`). Producti
 Draft migrations (unallocated): 9001 staged rows, 9003 shared bulk-job kernel, 9004 release visibility and staged events.
 
 The single import transaction held tenant-wide locks for its whole length (DESIGN.md: 11 s for 200 rows). This decision
-replaces it with a job: validate once, apply in chunk transactions of about 200 ms, then release in one short transaction.
+replaces it with a job: validate once, apply in chunk transactions of about 100 ms of work (one or two rows), then release in
+one short transaction.
 
 - **Staged state.** `employment`, `person` and (9004) `domain_event` carry `import_pending_attempt_id`, stamped by the
   database for every row written while `app.import_attempt` is set; a guard refuses any other writer of the column.

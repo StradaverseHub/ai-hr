@@ -20,7 +20,9 @@ import type {EmployeeImportResultSummary} from '../lib/employee-import-job';
 import type {RowResult} from '../lib/import-schema';
 import type {BulkJobRowError} from '../lib/bulk-job';
 
-export const EMPLOYEE_IMPORT_CHUNK_BUDGET_MS=Number(process.env.EMPLOYEE_IMPORT_CHUNK_BUDGET_MS??200);
+/** Step work per chunk before it commits. One hire costs 60–150 ms (more on a loaded host), so most chunks hold the
+ * tenant writer locks for one or two rows; the 8,000-row rehearsal at 200 ms peaked at 1.42 s under host load. */
+export const EMPLOYEE_IMPORT_CHUNK_BUDGET_MS=Number(process.env.EMPLOYEE_IMPORT_CHUNK_BUDGET_MS??100);
 /** Target wall time of one settle or discard batch, and its bounds in rows per table. */
 const BATCH_TARGET_MS=Number(process.env.EMPLOYEE_IMPORT_BATCH_TARGET_MS??200);
 const BATCH_MIN=10,BATCH_MAX=1000;

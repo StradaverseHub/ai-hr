@@ -7,7 +7,7 @@ unit: the same closed `worker-package-v1`, first-install helper (`bank_import_wo
 upgrade helper (`bank_import_worker_upgrade_v1.py`) build, install, enable and update it. Follow BANK-IMPORT.md for
 every installation and release step; nothing here installs or starts a service.
 
-What the worker does: validates the file once with no tenant lock, applies rows in chunk transactions of about 200 ms
+What the worker does: validates the file once with no tenant lock, applies rows in chunk transactions of about 100 ms of work (one or two rows)
 under the initiating user's freshly checked authority, then releases the whole import in one short transaction.
 Nothing is visible to anyone until that release; afterwards the markers are settled in bounded batches. A failure
 before release discards the staged rows in bounded batches (each discarded hire leaves `employment.hired` followed by
