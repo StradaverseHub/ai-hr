@@ -61,7 +61,8 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
  kind:EMPLOYEE_IMPORT_KIND,
  mode:'atomic',
  chunkBudgetMs:EMPLOYEE_IMPORT_CHUNK_BUDGET_MS,
- maxStepsPerChunk:64,
+ // A chunk applies a few rows within its budget; reading more pending payloads than that is wasted work.
+ maxStepsPerChunk:16,
  phaseOf:kind=>kind==='employee'?'employees':kind==='superior'?'superiors':'registers',
  isTransient,
  stepRef:step=>(step.payload as {email?:string}).email??'',
