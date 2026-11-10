@@ -464,9 +464,22 @@ describe('authority writers never block in a trigger',()=>{
   const reader=raw.begin(async tx=>{await tx.unsafe(`select pg_advisory_xact_lock_shared(${lockKey(b.tenantId)})`);entered.resolve();await release.promise;});
   await entered.promise;
   const started=Date.now();
-  await expect(raw.begin(async tx=>{await insertRole(tx,b.adminUserId);})).rejects.toMatchObject({code:'55P03'});
+  await expect(raw.begin(async tx=>{await asTenant(tx,b.tenantId);await insertRole(tx,b.adminUserId);})).rejects.toMatchObject({code:'55P03'});
   expect(Date.now()-started).toBeLessThan(2000);
   release.resolve();await reader;
+ });
+ it('lets an owner session without a tenant context wait instead of refusing',async()=>{
+  const entered=barrier(),release=barrier();
+  const reader=raw.begin(async tx=>{await tx.unsafe(`select pg_advisory_xact_lock_shared(${lockKey(b.tenantId)})`);entered.resolve();await release.promise;});
+  await entered.promise;
+  const writer=raw.begin(async tx=>{await insertRole(tx,b.adminUserId);return 'written';});
+  expect(await settled(writer,400)).toBe('timeout');
+  release.resolve();await reader;
+  await expect(writer).resolves.toBe('written');
+ });
+ it('lets three concurrent owner-side login fixtures complete',async()=>{
+  const people=await Promise.all(['p','q','r'].map(async label=>{const [row]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:`Fictional ${label}`,primaryEmail:`${label}-${randomUUID()}@example.invalid`}).returning({id:person.id});return row.id;}));
+  await expect(Promise.all(people.map(id=>createAppUser(b.tenantId,id,'manager')))).resolves.toHaveLength(3);
  });
  it('passes once the caller already holds the exclusive lock',async()=>{
   await raw.begin(async tx=>{await tx.unsafe(`select pg_advisory_xact_lock(${lockKey(b.tenantId)})`);await insertRole(tx,b.adminUserId);});
