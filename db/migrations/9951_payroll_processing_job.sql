@@ -38,32 +38,11 @@ CREATE TRIGGER payroll_retired_attendance_formula_status BEFORE UPDATE OF status
   OR (OLD.status::text='processed' AND NEW.status::text IN ('processed','closed'))
  ) EXECUTE FUNCTION app.payroll_retired_attendance_formula_status_guard();
 --> statement-breakpoint
--- 3. Kernel extension: exclusive 'none'. A kind whose own durable lease provides exclusivity (here the run's
---    processing_job_id, one per run) does not limit its creator to one active job: an operator may start the runs
---    of several companies back to back. The derived key is the job's own id, so the one-active index never refuses.
---    Combined release: this follows the roster kernel extension (tenant_queue, watched_at), so the constraint and
---    the admission function below are the one kernel's union of every exclusivity: tenant, creator, tenant_queue
---    (key 'queue:'||id; the worker's claim serialises the kind) and none (key = the job's own id).
-ALTER TABLE bulk_job_kind DROP CONSTRAINT bulk_job_kind_exclusive_check;
---> statement-breakpoint
-ALTER TABLE bulk_job_kind ADD CONSTRAINT bulk_job_kind_exclusive_check CHECK(exclusive IN ('tenant','creator','tenant_queue','none'));
---> statement-breakpoint
-CREATE OR REPLACE FUNCTION app.bulk_job_admit() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE mode text;
-BEGIN
- IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.created_by IS DISTINCT FROM app.current_user_id()
- OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Bulk job access denied' USING ERRCODE='42501';END IF;
- SELECT k.exclusive INTO mode FROM public.bulk_job_kind k WHERE k.kind=NEW.kind;
- IF mode IS NULL THEN RAISE EXCEPTION 'Unknown bulk job kind' USING ERRCODE='22023';END IF;
- NEW.context:=jsonb_build_object('tenantId',app.current_tenant_id(),'userId',app.current_user_id(),
-  'roles',to_jsonb(app.current_roles()),'grants',coalesce(nullif(current_setting('app.grants',true),'')::jsonb,'[]'::jsonb));
- NEW.exclusive_key:=CASE mode WHEN 'tenant' THEN 'tenant' WHEN 'creator' THEN NEW.created_by::text
-  WHEN 'tenant_queue' THEN 'queue:'||NEW.id::text ELSE NEW.id::text END;
- NEW.state:='queued';NEW.outcome:=NULL;NEW.lease_token:=NULL;NEW.lease_expires_at:=NULL;NEW.notice_event_id:=NULL;NEW.notified_at:=NULL;
- NEW.created_at:=now();NEW.updated_at:=now();NEW.finished_at:=NULL;NEW.watched_at:=NULL;
- RETURN NEW;
-END $$;
---> statement-breakpoint
+-- 3. Kernel mode 'none'. A kind whose own durable lease provides exclusivity (here the run's processing_job_id, one
+--    per run) does not limit its creator to one active job: an operator may start the runs of several companies
+--    back to back. Combined release: 'none' is the one kernel mode the unbounded-kind extension (leave follow-up
+--    jobs) introduced and the roster extension kept beside tenant_queue; its key is 'job:'||the job's own id, so the
+--    one-active index never refuses. This migration therefore changes neither the constraint nor app.bulk_job_admit.
 -- 4. The kind. No Import History scope: the creator reads the job while their captured grants stay current; every
 --    payroll operator sees the run's own 'processing' status through payroll_batch.
 INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES('payroll_process',NULL,'none');

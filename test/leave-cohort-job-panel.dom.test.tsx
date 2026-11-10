@@ -47,6 +47,30 @@ describe('background leave processing panel',()=>{
   expect(success.mock.calls[0][0]).toContain('Leave year 2027: 4 entitlement record(s) granted');
   expect(failure).not.toHaveBeenCalled();
  });
+ it('a stopped Generate Entitlement or A2C correction says nothing was changed (they are all-or-nothing); a stopped accrual keeps its wording',async()=>{
+  respond({...running,kind:'leave_generation',state:'failed',error:'Leave generation was stopped.'});
+  panel({...running,kind:'leave_generation'});
+  await vi.waitFor(()=>expect(failure).toHaveBeenCalled());
+  expect(failure).toHaveBeenCalledWith('The run stopped: Leave generation was stopped. Nothing was changed.');
+  cleanup();failure.mockReset();
+  respond({...running,state:'failed',error:'Access changed.'});
+  panel(running);
+  await vi.waitFor(()=>expect(failure).toHaveBeenCalled());
+  expect(failure).toHaveBeenCalledWith('The run stopped: Access changed. Employees already processed keep their figures.');
+ });
+ it('a recalculation after a save shows its progress and ends quietly with a page refresh',async()=>{
+  const recalc={...running,kind:'leave_recalc' as const,total:40,done:10};
+  respond(recalc);
+  panel(recalc);
+  await act(async()=>{await Promise.resolve();await Promise.resolve();});
+  expect(screen.getByText(en.admin.leave.processingJob.title.leave_recalc)).toBeTruthy();
+  cleanup();
+  respond({...recalc,state:'completed',done:40,result:{employees:40,affected:12,totalDelta:24}});
+  const done=panel(recalc);
+  await vi.waitFor(()=>expect(done).toHaveBeenCalled());
+  expect(success).not.toHaveBeenCalled();expect(failure).not.toHaveBeenCalled();
+  expect(refresh).toHaveBeenCalled();
+ });
  it('says a queued run is waiting when no background service serves it',async()=>{
   const queued={...running,state:'queued' as const,done:0,worker:'unavailable' as const};
   respond(queued);

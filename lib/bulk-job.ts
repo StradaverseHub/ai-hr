@@ -28,7 +28,7 @@ export type BulkJobNoticeOutcome='completed'|'failed'|'cancelled';
 export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  employee_import:{messages:'employeeImport',linkPath:'/admin/personnel/import/history'},
  leave_ledger:{messages:'leaveImport',linkPath:'/admin/leave-config/import'},
- leave_generation:{messages:'leaveProcessing',linkPath:'/admin/leave-config/generate'},
+ leave_generation:{messages:'leaveGeneration',linkPath:'/admin/leave-config/generate'},
  leave_accrual:{messages:'leaveProcessing',linkPath:'/admin/leave-config/earned-accrual'},
  roster_bulk:{messages:'roster',linkPath:'/roster'},
  schedule_group_bulk:{messages:'scheduleGroup',linkPath:'/admin/attendance/schedule-assignment/bulk'},
@@ -40,6 +40,10 @@ export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  section_import:{messages:'sectionImport',linkPath:'/admin/personnel/import'},
  register_import:{messages:'registerImport',linkPath:'/admin/personnel/import'},
  employee_import_revert:{messages:'employeeImportRevert',linkPath:'/admin/personnel/import/history'},
+ leave_recalc:{messages:'leaveRecalculation',linkPath:'/admin/leave-config/types'},
+ leave_a2c:{messages:'leaveYearType',linkPath:'/admin/leave-config/types'},
+ toil_expiry:{messages:'toilSweep',linkPath:'/admin/leave-config/leave-credit'},
+ toil_year_close:{messages:'toilSweep',linkPath:'/admin/leave-config/leave-credit'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){
  const notice=BULK_JOB_NOTICES[kind];

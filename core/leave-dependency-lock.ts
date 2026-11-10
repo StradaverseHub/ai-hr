@@ -67,8 +67,13 @@ export async function lockLeaveDependenciesTx(tx: Tx, tenantId: string, employme
     await acquire(tx, tenantId, sql`case when ${configuration} then ${subjectLock(subjects[0])} else false end`);
     return;
   }
-  await acquire(tx, tenantId, configuration);
-  for (const id of subjects) await acquire(tx, tenantId, subjectLock(id));
+  // The configuration and every subject in ONE statement, in the same order and with the same keys (a cohort batch
+  // used to pay one round trip per employee while it held the tenant's Access lock). CASE keeps configuration first
+  // and touches no subject when it fails; any refused subject refuses the whole set, and whatever was acquired is
+  // released by the required outer rollback, exactly as before.
+  const keys = subjects.map(id => `leave-dependency-employment:${tenantId}:${id}`);
+  await acquire(tx, tenantId, sql`case when ${configuration} then (select coalesce(bool_and(pg_try_advisory_xact_lock(hashtextextended(k.key,0))),false)
+    from unnest(${`{${keys.join(',')}}`}::text[]) as k(key)) else false end`);
 }
 
 /** For ordinary writers admitted under the shared Access lock: shared configuration, then each affected

@@ -5587,6 +5587,41 @@
       "when": 1793330099340,
       "tag": "9934_employee_import_revert_release_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 9901,
+      "version": "7",
+      "when": 1793330099901,
+      "tag": "9901_leave_ledger_stage",
+      "breakpoints": true
+    },
+    {
+      "idx": 9902,
+      "version": "7",
+      "when": 1793330099902,
+      "tag": "9902_bulk_job_unbounded_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 9903,
+      "version": "7",
+      "when": 1793330099903,
+      "tag": "9903_leave_follow_up_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 9905,
+      "version": "7",
+      "when": 1793330099905,
+      "tag": "9905_leave_stage_digests",
+      "breakpoints": true
+    },
+    {
+      "idx": 9906,
+      "version": "7",
+      "when": 1793330099906,
+      "tag": "9906_leave_type_pending_year_cycle",
+      "breakpoints": true
     }
   ]
 }

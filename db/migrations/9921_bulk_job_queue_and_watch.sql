@@ -12,7 +12,10 @@
 -- Roster bulk operations and Schedule Group bulk assignment move from 'tenant' to 'tenant_queue'.
 ALTER TABLE bulk_job_kind DROP CONSTRAINT bulk_job_kind_exclusive_check;
 --> statement-breakpoint
-ALTER TABLE bulk_job_kind ADD CONSTRAINT bulk_job_kind_exclusive_check CHECK (exclusive IN ('tenant','creator','tenant_queue'));
+-- Combined release: one kernel. 'none' (no one-active-job rule; leave follow-up jobs, payroll processing) came with
+-- the unbounded-kind extension that precedes this migration, so the constraint and the admission function below
+-- carry every mode: tenant, creator, none and tenant_queue.
+ALTER TABLE bulk_job_kind ADD CONSTRAINT bulk_job_kind_exclusive_check CHECK (exclusive IN ('tenant','creator','none','tenant_queue'));
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.bulk_job_admit() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE mode text;
@@ -23,8 +26,11 @@ BEGIN
  IF mode IS NULL THEN RAISE EXCEPTION 'Unknown bulk job kind' USING ERRCODE='22023';END IF;
  NEW.context:=jsonb_build_object('tenantId',app.current_tenant_id(),'userId',app.current_user_id(),
   'roles',to_jsonb(app.current_roles()),'grants',coalesce(nullif(current_setting('app.grants',true),'')::jsonb,'[]'::jsonb));
+ IF NEW.id IS NULL THEN NEW.id:=gen_random_uuid(); END IF;
  -- A queued kind's key is the job's own id, so bulk_job_one_active never refuses it; the worker serialises instead.
- NEW.exclusive_key:=CASE mode WHEN 'tenant' THEN 'tenant' WHEN 'tenant_queue' THEN 'queue:'||NEW.id::text ELSE NEW.created_by::text END;
+ -- 'none' keeps its own-id key too and is never serialised.
+ NEW.exclusive_key:=CASE mode WHEN 'tenant' THEN 'tenant' WHEN 'creator' THEN NEW.created_by::text
+  WHEN 'tenant_queue' THEN 'queue:'||NEW.id::text ELSE 'job:'||NEW.id::text END;
  NEW.state:='queued';NEW.outcome:=NULL;NEW.lease_token:=NULL;NEW.lease_expires_at:=NULL;NEW.notice_event_id:=NULL;NEW.notified_at:=NULL;
  NEW.created_at:=now();NEW.updated_at:=now();NEW.finished_at:=NULL;NEW.watched_at:=NULL;
  RETURN NEW;

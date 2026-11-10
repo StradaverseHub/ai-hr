@@ -2562,7 +2562,8 @@
       "inProgress": "This import is already being confirmed.",
       "invalid": "This card could not be checked. Attach the file again.",
       "unavailable": "The import could not be completed, and nothing was imported. Try again, or use the import page."
-    }
+    },
+    "started": "Import started. It runs in the background; its page shows the progress and what was imported."
   },
   "payrollAudit": {
     "name": "Audit loop",

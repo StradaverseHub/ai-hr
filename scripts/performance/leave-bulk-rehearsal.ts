@@ -20,7 +20,7 @@ const OWNER_URL=required('MIGRATION_DATABASE_URL',process.env.MIGRATION_DATABASE
 for(const url of [required('DATABASE_URL',process.env.DATABASE_URL),OWNER_URL])if(new URL(url).port!==port)throw new Error('Refusing: rehearsal runs only against the disposable cluster port.');
 const TENANT=required('REHEARSAL_TENANT',process.env.REHEARSAL_TENANT),ADMIN=required('REHEARSAL_ADMIN',process.env.REHEARSAL_ADMIN);
 const BASE=Number(process.env.BASE_EMPLOYEES??3000);
-const OPS=(process.env.OPS??'idle_baseline,leave_import,generation,accrual_job,expiry_timer,accrual_timer').split(',').map(s=>s.trim()).filter(Boolean);
+const OPS=(process.env.OPS??'idle_baseline,generation_preview,generation,accrual_job,recalc_job,a2c_job,leave_import,expiry_timer,accrual_timer').split(',').map(s=>s.trim()).filter(Boolean);
 if(process.env.AUDIT_HASH_CHAIN_ENABLED!=='true')process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 const stat=(values:number[])=>{const s=[...values].sort((a,b)=>a-b);return s.length?{n:s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.floor(s.length*.95)],max:s[s.length-1]}:{n:0,p50:0,p95:0,max:0};};
@@ -38,7 +38,10 @@ async function main(){
  const {freshImportContext}=await import('../../core/bank-import-worker');
  const {readEmployeeHomeSummary}=await import('../../core/employee-home-summary');
  const {createLeaveImportJob}=await import('../../core/leave-import-job');
- const {createLeaveGenerationJob,createEarnedAccrualJob}=await import('../../core/leave-cohort-job');
+ const {createLeaveGenerationJob,createEarnedAccrualJob,createLeaveRecalcJob}=await import('../../core/leave-cohort-job');
+ const {previewLeaveGeneration}=await import('../../core/leave-generation');
+ const {createToilExpiryJob,createReplacementYearCloseJob}=await import('../../core/toil-sweep-job');
+ const {updateLeaveType}=await import('../../core/admin');
  const {accrueEarnedLeaveInBatches,expireCarriedLeaveInBatches}=await import('../../core/leave-cohort-run');
  const {accrueEarnedLeave}=await import('../../packs/leave/service');
  const obs=postgres(OWNER_URL,{max:4,onnotice:()=>{}});
@@ -101,8 +104,43 @@ async function main(){
    await measure(op,async()=>({rows:records.length,...await job(await createLeaveImportJob(admin,{records,source:{kind:'paste'}}))}));
   }else if(op==='generation'){
    await measure(op,async()=>job(await createLeaveGenerationJob(admin,{year:Number(process.env.GENERATION_YEAR??2027),targetMode:'criteria',criteria:{}})));
+  }else if(op==='generation_preview'){
+   // The dry run in its own READ ONLY snapshot: no tenant lock should be held at all while it computes.
+   await measure(op,async()=>{const r=await previewLeaveGeneration(admin,{year:Number(process.env.GENERATION_YEAR??2027),targetMode:'criteria',criteria:{}});return{granted:r.granted,reached:r.employeesReached,earnedPosted:r.accrual?.posted??null};});
+  }else if(op==='recalc_job'){
+   const [{id:annual}]=await obs<{id:string}[]>`select id from leave_type where tenant_id=${TENANT}::uuid and code='ANNUAL' and archived_at is null`;
+   await measure(op,async()=>job(await createLeaveRecalcJob(admin,{leaveTypeId:annual,trigger:'rehearsal',asOf:process.env.RECALC_ASOF??'2026-11-30'})));
+  }else if(op==='a2c_job'){
+   // A Leave Year Type save moving Annual Leave to Anniversary-to-Calendar: the save admits the job, which re-projects
+   // every first-year employee staged and releases them at once.
+   const [sick]=await obs<{id:string;name:string;override:string|null}[]>`select id,name,year_cycle_override as override from leave_type where tenant_id=${TENANT}::uuid and code='ANNUAL' and archived_at is null`;
+   // The save itself takes the leave configuration lock exclusively without waiting (unchanged, a known phase-2
+   // item): while the probes hold it shared it can be refused busy, so the rehearsal retries it as a person would.
+   const save=async(override:string|null)=>{let busy=0;for(;;){try{await updateLeaveType(admin,{id:sick.id,name:sick.name,yearCycleOverride:override,asOf:'2026-11-30',a2cInBackground:true});return busy;}
+    catch(e){if(!/unavailable; review it again/.test(String((e as Error)?.message))||busy>=100)throw e;busy++;await sleep(100);}}};
+   if(sick.override==='a2c')await save(null);
+   await measure(op,async()=>{
+    const started=Date.now();
+    const saveBusyRetries=await save('a2c');
+    const saveMs=Date.now()-started;
+    const [{id}]=await obs<{id:string}[]>`select id from bulk_job where tenant_id=${TENANT}::uuid and kind='leave_a2c' order by created_at desc limit 1`;
+    return{saveMs,saveBusyRetries,...await job({id})};
+   });
+  }else if(op==='toil_expiry'||op==='toil_year_close'){
+   // Fictional replacement-leave credits for every employee, set-wise: one due for expiry (half convert to pay,
+   // half lapse) and one still running at the year end (half carried forward). Credited days need no ledger row
+   // here: the tenant has no REPLACEMENT type yet, so the sweep creates it once, as the old sweep did.
+   const seeded=await obs<{n:number}[]>`select count(*)::int as n from toil_accrual where tenant_id=${TENANT}::uuid`;
+   if(!seeded[0].n)await obs`insert into toil_accrual(tenant_id,employment_id,worked_date,day_type,worked_day_kind,ot_minutes,days_credited,days_taken,accrual_basis,requested_on,expires_on,status,carry_forward_at_year_end,expiry_action)
+    select e.tenant_id,e.id,d.worked,d.kind::attendance_day_type,d.kind::toil_worked_day_kind,480,d.credited,0,'hours_worked'::toil_accrual_basis,d.worked,d.expires,'active',
+     d.carry and (row_number() over (partition by d.kind order by e.id))%2=0,
+     case when (row_number() over (partition by d.kind order by e.id))%4<2 then 'convert_to_pay'::toil_expiry_action else 'lapse'::toil_expiry_action end
+    from employment e cross join (values ('2026-08-03'::date,'rest_day',1.00,'2026-10-01'::date,false),('2026-10-05'::date,'holiday',2.00,'2028-02-01'::date,true)) d(worked,kind,credited,expires,carry)
+    where e.tenant_id=${TENANT}::uuid and e.voided_at is null and e.import_pending_attempt_id is null and e.hired_on<='2026-08-01'`;
+   if(op==='toil_expiry')await measure(op,async()=>({...await job(await createToilExpiryJob(admin,{today:process.env.TOIL_TODAY??'2026-11-11'}))}));
+   else await measure(op,async()=>({...await job(await createReplacementYearCloseJob(admin,{asOf:process.env.TOIL_CLOSE_ASOF??'2027-12-31'}))}));
   }else if(op==='accrual_job'){
-   await measure(op,async()=>job(await createEarnedAccrualJob(admin,{asOf:'2026-12-31'})));
+   await measure(op,async()=>job(await createEarnedAccrualJob(admin,{asOf:process.env.ACCRUAL_ASOF??'2026-12-31'})));
   }else if(op==='expiry_timer'){
    let longest=0;await measure(op,async()=>({...await expireCarriedLeaveInBatches(system,{today:process.env.EXPIRY_TODAY??'2027-04-01'},{onBatch:ms=>{longest=Math.max(longest,ms);}}),longestBatchTxMs:Math.round(longest)}));
   }else if(op==='accrual_timer'){

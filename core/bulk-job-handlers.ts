@@ -12,8 +12,10 @@ import {systemLabelImportJobHandler} from './system-label-import-worker';
 import {employeeImportRevertJobHandler} from './employee-import-revert-job';
 import {registerImportJobHandler} from './register-import-worker';
 import {sectionImportJobHandler} from './section-import-worker';
+import {leaveA2cJobHandler,leaveRecalcJobHandler} from './leave-follow-up-worker';
+import {toilExpiryJobHandler,toilYearCloseJobHandler} from './toil-sweep-worker';
 
 export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,
  earnedAccrualJobHandler,rosterBulkJobHandler,scheduleGroupBulkJobHandler,clockingImportJobHandler,attendanceRecomputePreviewJobHandler,
  attendanceRecomputeJobHandler,payrollProcessJobHandler,systemLabelImportJobHandler,employeeImportRevertJobHandler,sectionImportJobHandler,
- registerImportJobHandler];
+ registerImportJobHandler,leaveRecalcJobHandler,leaveA2cJobHandler,toilExpiryJobHandler,toilYearCloseJobHandler];

@@ -5947,10 +5947,46 @@ export type LeaveCohortStepRun = {
   onSummary: (payload: Record<string, unknown>) => void;
   /** Carry expiry only (it has no employee scope of its own): restrict the sweep to these employments. */
   employmentIds?: readonly string[];
+  /** Earned accrual only: the run's own reads, made once for the whole run instead of once per batch
+   * (`readEarnedAccrualRunInputsTx`). Used only for the same as-at date and leave-type scope; the caller
+   * guarantees they are still current (core/leave-cohort-worker.ts re-checks them before every batch). */
+  preload?: EarnedAccrualRunInputs;
 };
+/** What earned accrual reads once per run rather than per employee: the scoped active leave types, the types with
+ * a table in force at the as-at date, the template resolver for every employee the run may reach, and whether the
+ * run's whole-scope protected-period check has already passed (the synchronous run made it once, at its start). */
+export type EarnedAccrualRunInputs = {
+  asOf: string;
+  leaveTypeIds: string[];
+  activeTypes: Awaited<ReturnType<typeof readEarnedAccrualActiveTypesTx>>;
+  templateConfigured: Set<string>;
+  resolver: Awaited<ReturnType<typeof buildTemplateEntitlementResolver>>;
+  periodChecked: boolean;
+};
+/** Which of the scoped types the sweep accrues: Annual Leave, with a table in force, configured, earned method. */
+function earnedAccrualTypeIdsOf(types: readonly { id: string; code: string | null; role: string | null; accrualMethod: string | null; accrualUnconfigured?: Date | string | null }[], templateConfigured: ReadonlySet<string>) {
+  return types
+    .filter((t) => {
+      if (!templateConfigured.has(t.id)) return false;
+      // bc36c768 — THE NOT-CONFIGURED GATE, ahead of method resolution. An unconfigured type is not an
+      // earned type and is not a lump type; it is a type that grants nothing until HR configures it.
+      if (isAccrualUnconfigured(t)) return false;
+      return isEarnedMethod(t.accrualMethod);
+    })
+    .map((t) => t.id);
+}
+/** The earned accrual run's once-per-run reads (see `EarnedAccrualRunInputs`), for every employee it may reach. */
+export async function readEarnedAccrualRunInputsTx(tx: Tx, p: { asOf: string; leaveTypeIds?: string[]; employmentIds: readonly string[]; periodChecked: boolean }): Promise<EarnedAccrualRunInputs> {
+  const leaveTypeIds = (p.leaveTypeIds ?? []).filter(Boolean);
+  const activeTypes = await readEarnedAccrualActiveTypesTx(tx, leaveTypeIds);
+  const templateConfigured = await leaveTypeIdsWithTemplatesAt(tx, p.asOf);
+  const earnedTypeIds = earnedAccrualTypeIdsOf(activeTypes.filter((t) => isEarnedAccrualType(t)), templateConfigured);
+  const resolver = await buildTemplateEntitlementResolver(tx, { employmentIds: [...p.employmentIds], leaveTypeIds: earnedTypeIds, asOf: p.asOf });
+  return { asOf: p.asOf, leaveTypeIds, activeTypes, templateConfigured, resolver, periodChecked: p.periodChecked };
+}
 /** D5(a) — run in the caller's transaction when one is passed (a mobile command receipt), else in a new one. */
-function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>): Promise<T> {
-  return existingTx ? run(existingTx) : withTenant(ctx, run);
+function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>, readOnlySnapshot = false): Promise<T> {
+  return existingTx ? run(existingTx) : withTenant(ctx, run, readOnlySnapshot ? { readOnlySnapshot: true } : undefined);
 }
 
 /** Information-only corrections apply to future processing. Earlier leave runs require an
@@ -5972,7 +6008,11 @@ export async function assertInformationLeavePeriodTx(tx:Tx,asOf:string,scope:{em
  * Read-only previews do not acquire employment-exclusive ownership. */
 async function lockLeaveCohortDependenciesTx(tx: Tx, ctx: SessionContext, scope: {
   employmentIds?: readonly string[]; companyIds?: readonly string[]; gradeIds?: readonly string[];
-}, writes = true): Promise<void> {
+}, writes = true, snapshot = false): Promise<void> {
+  // A preview (dry run) in its own READ ONLY REPEATABLE READ transaction reads one consistent snapshot of the
+  // configuration, the access rules and every employee, and the database refuses any write it might attempt; it
+  // takes no tenant lock at all, so a long preview never holds up an Access writer or a leave writer.
+  if (!writes && snapshot) return;
   await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
   if (!writes) return;
@@ -8813,8 +8853,9 @@ export async function openLeaveYear(
   const dryRun = p.dryRun === true;
   p = { ...p, leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  const snapshot = dryRun && !run?.tx;
   return withLeaveTx(ctx, run?.tx, async (tx): Promise<OpenLeaveYearResult> => {
-    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds.length ? scopeEmpIds : undefined }, !dryRun);
+    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds.length ? scopeEmpIds : undefined }, !dryRun, snapshot);
     const yearStart = `${p.year}-01-01`;
     await assertInformationLeavePeriodTx(tx,yearStart,{employmentIds:scopeEmpIds.length?scopeEmpIds:undefined});
     // r193 — the leave year is a WINDOW now, not the instant at its left edge. See `effectiveGrantStart`.
@@ -9289,7 +9330,7 @@ export async function openLeaveYear(
       });
     }
     return { granted, skipped, forfeits, packBlocked, rows };
-  });
+  }, snapshot);
 }
 
 /** A non-granting log line — every one of these outcomes moves no days, so the four numbers are fixed. */
@@ -10099,9 +10140,12 @@ export async function accrueEarnedLeave(
   const accrualPeriod = Number(p.asOf.slice(0, 4));
   p = { ...p, companyIds: p.companyIds?.slice(), gradeIds: p.gradeIds?.slice(), leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  // The run's once-per-run reads, when the caller made them for this same date and type scope.
+  const pre = run?.preload && run.preload.asOf === p.asOf && run.preload.leaveTypeIds.join(',') === scopeTypeIds.join(',') ? run.preload : undefined;
+  const snapshot = dryRun && !run?.tx;
   return withLeaveTx(ctx, run?.tx, async (tx): Promise<EarnedAccrualResult> => {
-    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds === null ? undefined : scopeEmpIds, companyIds: scopeCompanyIds, gradeIds: scopeGradeIds }, !dryRun);
-    await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:scopeEmpIds===null?undefined:scopeEmpIds,companyIds:scopeCompanyIds,gradeIds:scopeGradeIds});
+    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds === null ? undefined : scopeEmpIds, companyIds: scopeCompanyIds, gradeIds: scopeGradeIds }, !dryRun, snapshot);
+    if (!pre?.periodChecked) await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:scopeEmpIds===null?undefined:scopeEmpIds,companyIds:scopeCompanyIds,gradeIds:scopeGradeIds});
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
 
     // ── feedback cf9dcb98 — the empty-preview explanation. Everything below this comment runs ONLY where
@@ -10160,19 +10204,7 @@ export async function accrueEarnedLeave(
     // `role` MUST ride in the select. Without it every row is unclassified to `leaveTypeIs`, the predicate
     // silently falls back to the code, and the reporter's `AL` "*Annual Leave" — switched on by role — is
     // declined exactly as before. Nothing would fail; the sweep would just stay wrong.
-    const activeTypes = await tx
-      // Leave Year Type override (e1a51aea): yearCycleOverride is selected so the per-type effective cycle
-      // can be resolved below (resolveLeaveYearCycle) — null on every pre-existing row ⇒ company cycle.
-      // 9816a5ad step 2: the type's own rules ride along (see leaveTypeRuleColumns).
-      .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
-      .from(leaveType)
-      .where(
-        and(
-          isNull(leaveType.archivedAt),
-          // Leave-Type scope filter (feedback 2c7c6385). Empty ⇒ every active type, narrowed below.
-          scopeTypeIds.length ? inArray(leaveType.id, scopeTypeIds) : undefined,
-        ),
-      );
+    const activeTypes = pre?.activeTypes ?? await readEarnedAccrualActiveTypesTx(tx, scopeTypeIds);
     const types = activeTypes.filter((t) => isEarnedAccrualType(t));
     const typeIds = types.map((t) => t.id);
     if (typeIds.length === 0) {
@@ -10238,16 +10270,8 @@ export async function accrueEarnedLeave(
     // The membership test is deliberately KEPT — a type with nothing configured has no days to accrue and
     // was never swept here. It also decides which ledger rows are read back as "already accrued", so
     // widening it would have this sweep reasoning about a type it must not touch.
-    const templateConfigured = await leaveTypeIdsWithTemplatesAt(tx, p.asOf);
-    const earnedTypeIds = types
-      .filter((t) => {
-        if (!templateConfigured.has(t.id)) return false;
-        // bc36c768 — THE NOT-CONFIGURED GATE, ahead of method resolution. An unconfigured type is not an
-        // earned type and is not a lump type; it is a type that grants nothing until HR configures it.
-        if (isAccrualUnconfigured(t)) return false;
-        return isEarnedMethod(t.accrualMethod);
-      })
-      .map((t) => t.id);
+    const templateConfigured = pre?.templateConfigured ?? await leaveTypeIdsWithTemplatesAt(tx, p.asOf);
+    const earnedTypeIds = earnedAccrualTypeIdsOf(types, templateConfigured);
     if (earnedTypeIds.length === 0) {
       // feedback cf9dcb98 — EXIT 2, partitioned by the SAME three conditions the filter above applies, in
       // the same order, so the sentence and the gate can never disagree about which one bit.
@@ -10368,7 +10392,9 @@ export async function accrueEarnedLeave(
     // dates the same question `templateConfigured` above asked, so both answer for the same moment. The
     // BAND is still picked per (employee, type) at that pair's own cycle-start service length, below —
     // dating the eligibility and dating the band are different questions and only the first one is `asOf`.
-    const templates = await buildTemplateEntitlementResolver(tx, {
+    // A run's preloaded resolver was built for every employee it may reach and the same earned types: each
+    // employee's band depends only on that employee and the configuration, so it answers exactly as this one.
+    const templates = pre?.resolver ?? await buildTemplateEntitlementResolver(tx, {
       employmentIds: empIds,
       leaveTypeIds: earnedTypeIds,
       asOf: p.asOf,
@@ -10794,10 +10820,29 @@ export async function accrueEarnedLeave(
       archivedHint = await archivedHintFor(scopedTypeNames);
     }
     return { granted, forfeits, breakdown, packBlocked, emptyReason, archivedHint, earnedToDateTotal, pairs };
-  });
+  }, snapshot);
+}
+
+/** Earned accrual's scoped active leave types, with the type's own rules (the one shared shape): read by the
+ * engine, or once per run by `readEarnedAccrualRunInputsTx`. */
+function readEarnedAccrualActiveTypesTx(tx: Tx, scopeTypeIds: readonly string[]) {
+  return tx
+    // Leave Year Type override (e1a51aea): yearCycleOverride is selected so the per-type effective cycle
+    // can be resolved below (resolveLeaveYearCycle) — null on every pre-existing row ⇒ company cycle.
+    // 9816a5ad step 2: the type's own rules ride along (see leaveTypeRuleColumns).
+    .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
+    .from(leaveType)
+    .where(
+      and(
+        isNull(leaveType.archivedAt),
+        // Leave-Type scope filter (feedback 2c7c6385). Empty ⇒ every active type, narrowed below.
+        scopeTypeIds.length ? inArray(leaveType.id, [...scopeTypeIds]) : undefined,
+      ),
+    );
 }
 
 // ── Entitlement-correction recalculation (feedback 49809272) ───────────────────────────────────────
+
 /**
  * Pure per-employee current-cycle entitlement projection — the shared kernel used by BOTH recalc paths:
  * the configuration-triggered `reprojectEntitlementForLeaveType` (49809272) and the profile-triggered
@@ -11009,6 +11054,26 @@ const a2cSupersededReasonCond = () =>
     ]),
   );
 
+/** Where the background A2C job collects each corrected employee's history row and event (see `sink` below). */
+export type A2cRecalcSink = {
+  corrected(audit: typeof leaveEntitlementRecalcAudit.$inferInsert, event: Parameters<typeof appendEvent>[1]): void;
+};
+/** The employments an A2C re-projection of this type reaches, read the way `reprojectA2cEntitlement` reads them
+ * (same window, same first-year predicate), with no lock: the background job's batches, each of which the engine
+ * then re-reads and re-filters under its locks. `isA2c` false: the type is not on a2c, so the engine is a no-op. */
+export async function a2cReprojectionCandidatesTx(tx: Tx, p: { leaveTypeId: string; asOf: string; yearCycleOverrideAs?: string | null }): Promise<{ isA2c: boolean; employmentIds: string[] }> {
+  const [stored] = await tx.select({ code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride }).from(leaveType)
+    .where(and(eq(leaveType.id, p.leaveTypeId), isNull(leaveType.archivedAt))).limit(1);
+  const type = stored && p.yearCycleOverrideAs !== undefined ? { ...stored, yearCycleOverride: p.yearCycleOverrideAs } : stored;
+  if (!type || type.yearCycleOverride !== A2C_OVERRIDE) return { isA2c: false, employmentIds: [] };
+  const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
+  const rows = await tx.select({ employmentId: employment.id, hiredOn: employment.hiredOn }).from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .where(and(lte(employment.hiredOn, p.asOf), or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart))))
+    .orderBy(employment.id);
+  return { isA2c: true, employmentIds: rows.filter((e) => isA2cFirstYear(type.yearCycleOverride, type.code, e.hiredOn, p.asOf)).map((e) => e.employmentId) };
+}
+
 /**
  * Anniversary to Calendar — the dedicated first-year correction (feedback f3a64d90).
  *
@@ -11070,7 +11135,14 @@ export async function reprojectA2cEntitlement(
     gradeBefore?: { gradeId: string | null };
     newGradeId?: string | null;
     changeEffectiveOn?: string | null;
+    /** The background A2C job only: the Leave Year Type the save asked for, which the job's release will set
+     *  together with these corrections (draft 9906). The engine computes exactly as if the type already had it. */
+    yearCycleOverrideAs?: string | null;
   },
+  /** The background A2C job (core/leave-follow-up-worker.ts) only: each corrected employee's history row and
+   * `leave.entitlement.recalculated` event are handed here instead of being written, so the job writes them
+   * once its staged ledger rows are released together. Ordinary callers write them as before. */
+  sink?: A2cRecalcSink,
 ): Promise<{ affected: number; totalDelta: number; packBlocked: PackBlockedEmployment[] }> {
   p = { ...p, employmentIds: p.employmentIds?.slice(), ...(p.gradeBefore ? { gradeBefore: { ...p.gradeBefore } } : {}) };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
@@ -11080,12 +11152,13 @@ export async function reprojectA2cEntitlement(
   await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:protectedIds.length?protectedIds:undefined});
   const none = { affected: 0, totalDelta: 0, packBlocked: [] as PackBlockedEmployment[] };
 
-  const [type] = await tx
+  const [stored] = await tx
     // 9816a5ad step 2: the type's own rules ride along and are handed to the projection kernel below.
     .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
     .from(leaveType)
     .where(and(eq(leaveType.id, p.leaveTypeId), isNull(leaveType.archivedAt)))
     .limit(1);
+  const type = stored && p.yearCycleOverrideAs !== undefined ? { ...stored, yearCycleOverride: p.yearCycleOverrideAs } : stored;
   // No-op unless the type is actually on a2c today. Callers fire this on any move TO or FROM a2c; a move
   // AWAY simply hands the type back to the ordinary calendar engines from the next year-open.
   if (!type || type.yearCycleOverride !== A2C_OVERRIDE) return none;
@@ -11231,7 +11304,7 @@ export async function reprojectA2cEntitlement(
       anchorRowId ??= row.id;
     }
 
-    await tx.insert(leaveEntitlementRecalcAudit).values({
+    const auditRow = {
       tenantId: ctx.tenantId,
       employmentId: e.employmentId,
       leaveTypeId: p.leaveTypeId,
@@ -11246,8 +11319,8 @@ export async function reprojectA2cEntitlement(
       previousGradeId: p.gradeBefore ? (p.gradeBefore.gradeId ?? null) : null,
       newGradeId: p.gradeBefore ? (p.newGradeId ?? null) : null,
       ledgerId: anchorRowId,
-    });
-    await appendEvent(tx, {
+    };
+    const recalculated = {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-ledger',
       aggregateId: anchorRowId!,
@@ -11265,7 +11338,12 @@ export async function reprojectA2cEntitlement(
         reason: 'a2c_recalc',
         trigger: p.trigger,
       },
-    });
+    } satisfies Parameters<typeof appendEvent>[1];
+    if (sink) sink.corrected(auditRow, recalculated);
+    else {
+      await tx.insert(leaveEntitlementRecalcAudit).values(auditRow);
+      await appendEvent(tx, recalculated);
+    }
     affected += 1;
     totalDelta = round2(totalDelta + accrualDelta + reversal);
   }
@@ -11651,26 +11729,29 @@ export async function reprojectEntitlementForEmployment(
  * Sequential + best-effort per employee (log and continue): a rare admin operation, and one frozen or
  * hiccuping employment must never abort the rest of the cohort.
  */
+/** Who a leave-type cohort recalculation visits, in the order it visits them: read-only candidate resolution (no
+ * events — CLAUDE.md skip rule) with the SAME live-in-cycle window guard the granting engines use;
+ * reprojectEntitlementForEmployment re-checks it per employment anyway. Shared with the background job. */
+export async function leaveTypeCohortRecalcCandidatesTx(tx: Tx, asOf: string): Promise<string[]> {
+  const yearStart = `${asOf.slice(0, 4)}-01-01`;
+  const rows = await tx
+    .select({ id: employment.id })
+    .from(employment)
+    .where(
+      and(
+        lte(employment.hiredOn, asOf),
+        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
+      ),
+    );
+  return rows.map((r) => r.id);
+}
+
 export async function reprojectEntitlementForLeaveTypeCohort(
   ctx: SessionContext,
   p: { leaveTypeId: string; trigger: string; asOf?: string },
 ): Promise<{ employees: number; affected: number; totalDelta: number }> {
   const asOf = p.asOf ?? todayInKualaLumpur();
-  // Read-only candidate resolution (no events — CLAUDE.md skip rule). The SAME live-in-cycle window guard
-  // the granting engines use; reprojectEntitlementForEmployment re-checks it per employment anyway.
-  const empIds = await withTenant(ctx, async (tx) => {
-    const yearStart = `${asOf.slice(0, 4)}-01-01`;
-    const rows = await tx
-      .select({ id: employment.id })
-      .from(employment)
-      .where(
-        and(
-          lte(employment.hiredOn, asOf),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
-        ),
-      );
-    return rows.map((r) => r.id);
-  });
+  const empIds = await withTenant(ctx, (tx) => leaveTypeCohortRecalcCandidatesTx(tx, asOf));
 
   let affected = 0;
   let totalDelta = 0;

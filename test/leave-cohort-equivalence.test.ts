@@ -7,12 +7,12 @@
  * comparison maps ids to employee names and leave type codes.
  */
 import {randomUUID} from 'node:crypto';
-import {eq} from 'drizzle-orm';
+import {eq,sql as sqlTag} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {accrueEarnedLeave,expireCarriedLeave,openLeaveYear} from '../core/leave';
+import {accrueEarnedLeave,expireCarriedLeave,openLeaveYear,CARRY_FORFEIT_REASON_EXPIRY as CARRY_EXPIRY} from '../core/leave';
 import {runLeaveGeneration} from '../core/leave-generation';
 import {accrueEarnedLeaveInBatches,expireCarriedLeaveInBatches} from '../core/leave-cohort-run';
 import {createEarnedAccrualJob,createLeaveGenerationJob,readLeaveCohortJob} from '../core/leave-cohort-job';
@@ -196,4 +196,149 @@ describe('leave cohort jobs keep the refusals and never surface Busy',()=>{
   expect(await readLeaveCohortJob(adminCtx(b),job.id)).toMatchObject({state:'completed',failedEmployees:0,error:null});
   void withTenant;
  },120_000);
+});
+
+/** A real failure part-way, injected the way a database refusal would arrive: a test trigger on the ledger. */
+async function failInserts(name:string,where:string){
+ await owner.client.unsafe(`create or replace function public.${name}() returns trigger language plpgsql as $$ begin if ${where} then raise exception 'injected failure for this test'; end if; return new; end $$`);
+ await owner.client.unsafe(`create trigger ${name} before insert on leave_ledger for each row execute function public.${name}()`);
+}
+async function dropFailure(name:string){await owner.client.unsafe(`drop trigger if exists ${name} on leave_ledger; drop function if exists public.${name}()`);}
+const employmentNamed=async(name:string)=>(await owner.client<{id:string}[]>`select e.id from employment e join person p on p.id=e.person_id where e.tenant_id=${b.tenantId}::uuid and p.full_name=${name}`)[0].id;
+const nameOf=async(id:string)=>(await owner.client<{name:string}[]>`select p.full_name as name from employment e join person p on p.id=e.person_id where e.id=${id}::uuid`)[0].name;
+const typeCode=async(code:string)=>(await owner.client<{id:string}[]>`select id from leave_type where tenant_id=${b.tenantId}::uuid and code=${code}`)[0].id;
+async function tickUntil(id:string,done:()=>Promise<boolean>){
+ for(let i=0;i<4000;i++){if(await done())return;if(!await tick())await new Promise(resolve=>setTimeout(resolve,20));}
+ throw new Error('condition never reached');
+}
+const appliedSteps=async(id:string,kind:string)=>(await owner.client<{n:number}[]>`select count(*)::int as n from bulk_job_step where job_id=${id}::uuid and kind=${kind} and state='applied'`)[0].n;
+const visibleLedgerRows=()=>withTenant(adminCtx(b),async tx=>Number((await tx.execute<{n:number}>(sqlTag`select count(*)::int as n from leave_ledger`))[0].n));
+
+describe('Generate Entitlement stays all-or-nothing on the job (staged batches, one release)',()=>{
+ it('an earned batch refused part-way keeps the entitlement and none of the earned days, as the old run did; nobody sees a staged row',async()=>{
+  // Job arm first: its plan names an employee in the LAST batches, so earlier earned batches are already staged.
+  await fixture(true);
+  const before=await visibleLedgerRows();
+  const job=await createLeaveGenerationJob(adminCtx(b),{year:2026,targetMode:'criteria',criteria:{}});
+  await tickUntil(job.id,async()=>(await owner.client`select 1 from bulk_job where id=${job.id}::uuid and state='running'`).length>0);
+  const [{plan}]=await owner.client<{plan:{generation:{targets:string[]}}}[]>`select plan from bulk_job where id=${job.id}::uuid`;
+  const targets=plan.generation.targets;
+  const victim=await nameOf(targets[targets.length-2]);
+  const al=b.annualLeaveTypeId;
+  await failInserts('test_fail_earned',`new.employment_id='${await employmentNamed(victim)}' and new.leave_type_id='${al}' and new.entry_type='accrual'`);
+  let jobResult:unknown,after:Awaited<ReturnType<typeof snapshot>>;
+  try{
+   // Mid-run: the year-open is staged and several earned batches too, and an ordinary session sees none of it.
+   await tickUntil(job.id,async()=>await appliedSteps(job.id,'accrue')>=3);
+   expect(await visibleLedgerRows()).toBe(before);
+   const [{staged}]=await owner.client<{staged:number}[]>`select count(*)::int as staged from leave_ledger where tenant_id=${b.tenantId}::uuid and stage_id is not null`;
+   expect(staged).toBeGreaterThan(EMPLOYEES);
+   expect(await runJob(job.id)).toBe('completed');
+   jobResult=(await readLeaveCohortJob(adminCtx(b),job.id))!.result;
+   after=await snapshot();
+  }finally{await dropFailure('test_fail_earned');}
+  // Arm B: the synchronous run with the same refusal for the same person.
+  await resetDb();b=await seedBase();await fixture(true);
+  await failInserts('test_fail_earned',`new.employment_id='${await employmentNamed(victim)}' and new.leave_type_id='${b.annualLeaveTypeId}' and new.entry_type='accrual'`);
+  let syncResult:Awaited<ReturnType<typeof runLeaveGeneration>>,sync:Awaited<ReturnType<typeof snapshot>>;
+  try{syncResult=await runLeaveGeneration(adminCtx(b),{year:2026,targetMode:'criteria',criteria:{}});sync=await snapshot();}
+  finally{await dropFailure('test_fail_earned');}
+  const strip=(r:unknown)=>{const {runId:_r,...rest}=r as {runId?:string;accrual:{error:string|null}|null};void _r;return {...rest,accrual:rest.accrual?{...rest.accrual,error:Boolean(rest.accrual.error)}:null};};
+  expect(syncResult.accrual?.error).toBeTruthy();
+  expect((jobResult as typeof syncResult).accrual?.error).toBeTruthy();
+  expect(after!.map(strip(jobResult))).toEqual(sync.map(strip(syncResult)));
+  expect(after!.state).toEqual(sync.state);
+  // The entitlement is written and none of the earned Annual Leave days are.
+  expect(syncResult.granted).toBeGreaterThan(EMPLOYEES);
+  const earned=(after!.state.ledger as {leave_type_id:string;entry_type:string;effective_on:string}[]).filter(r=>r.leave_type_id==='type:AL'&&r.entry_type==='accrual'&&r.effective_on>'2026-01-01');
+  expect(earned).toEqual([]);
+  expect(after!.state.events.map(e=>(e as {event_type:string}).event_type)).toEqual(['leave.earned-accrual.run','leave-year.opened','leave-generation.run']);
+ },300_000);
+
+ it('a year-open batch refused part-way leaves nothing at all: no ledger row, no event, no log',async()=>{
+  await fixture(false);
+  const pristine=(await snapshot()).state;
+  const job=await createLeaveGenerationJob(adminCtx(b),{year:2026,targetMode:'criteria',criteria:{}});
+  await tickUntil(job.id,async()=>(await owner.client`select 1 from bulk_job where id=${job.id}::uuid and state='running'`).length>0);
+  const [{plan}]=await owner.client<{plan:{generation:{targets:string[]}}}[]>`select plan from bulk_job where id=${job.id}::uuid`;
+  const victim=plan.generation.targets[plan.generation.targets.length-1];
+  await failInserts('test_fail_open',`new.employment_id='${victim}' and new.leave_type_id='${await typeCode('SICK')}'`);
+  try{
+   await tickUntil(job.id,async()=>await appliedSteps(job.id,'open')>=3);
+   expect(await runJob(job.id)).toBe('failed');
+  }finally{await dropFailure('test_fail_open');}
+  expect((await readLeaveCohortJob(adminCtx(b),job.id))!.error).toMatch(/refused by a safeguard/);
+  expect((await snapshot()).state).toEqual(pristine);
+  const [{n}]=await owner.client<{n:number}[]>`select count(*)::int as n from leave_ledger where tenant_id=${b.tenantId}::uuid and stage_id is not null`;
+  expect(n).toBe(0);
+ },300_000);
+
+ it('an employee another writer changed after their batch was staged is computed again before release (as if the run were atomic then)',async()=>{
+  await fixture(false);
+  const job=await createLeaveGenerationJob(adminCtx(b),{year:2026,targetMode:'criteria',criteria:{}});
+  await tickUntil(job.id,async()=>(await owner.client`select 1 from bulk_job where id=${job.id}::uuid and state='finalizing'`).length>0);
+  const [{plan}]=await owner.client<{plan:{generation:{targets:string[]}}}[]>`select plan from bulk_job where id=${job.id}::uuid`;
+  const changed=await nameOf(plan.generation.targets[1]);
+  // Another writer (here a leave debit in the carry window) commits for an employee whose year-open is staged.
+  await post(await employmentNamed(changed),b.annualLeaveTypeId,'debit',-3,'2025-10-01');
+  expect(await runJob(job.id)).toBe('completed');
+  const jobResult=(await readLeaveCohortJob(adminCtx(b),job.id))!.result;
+  const [{plan:finished}]=await owner.client<{plan:{releaseAttempts?:number}}[]>`select plan from bulk_job where id=${job.id}::uuid`;
+  expect(finished.releaseAttempts).toBe(1);
+  const after=await snapshot();
+  await resetDb();b=await seedBase();await fixture(false);
+  await post(await employmentNamed(changed),b.annualLeaveTypeId,'debit',-3,'2025-10-01');
+  const syncResult=await runLeaveGeneration(adminCtx(b),{year:2026,targetMode:'criteria',criteria:{}});
+  const sync=await snapshot();
+  const strip=(r:unknown)=>{const {runId:_r,...rest}=r as {runId?:string};void _r;return rest;};
+  expect(after.map(strip(jobResult))).toEqual(sync.map(strip(syncResult)));
+  expect(after.state).toEqual(sync.state);
+ },300_000);
+});
+
+describe('per-step leave runs: a refusal part-way, then the same run again, ends where an uninterrupted run ends',()=>{
+ const balancesAndLedger=async()=>{const {state}=await snapshot();return {ledger:state.ledger,balances:state.balances};};
+ const victimWhere=async(extra:string)=>`new.employment_id='${await employmentNamed('Equiv 30')}' and new.leave_type_id='${b.annualLeaveTypeId}' and ${extra}`;
+ it('Run Earned Accrual job: the refused batch is left unchanged and reported; running it again completes it',async()=>{
+  await fixture(true);
+  await accrueEarnedLeave(adminCtx(b),{asOf:'2026-12-31',leaveTypeIds:[b.annualLeaveTypeId]});
+  const uninterrupted=await balancesAndLedger();
+  await resetDb();b=await seedBase();await fixture(true);
+  await failInserts('test_fail_accrual',await victimWhere(`new.entry_type='accrual'`));
+  try{
+   const first=await createEarnedAccrualJob(adminCtx(b),{asOf:'2026-12-31',leaveTypeIds:[b.annualLeaveTypeId]});
+   expect(await runJob(first.id)).toBe('completed');
+   const done=await readLeaveCohortJob(adminCtx(b),first.id);
+   expect(done!.failedEmployees).toBeGreaterThan(0);
+   expect(await balancesAndLedger()).not.toEqual(uninterrupted);
+  }finally{await dropFailure('test_fail_accrual');}
+  const again=await createEarnedAccrualJob(adminCtx(b),{asOf:'2026-12-31',leaveTypeIds:[b.annualLeaveTypeId]});
+  expect(await runJob(again.id)).toBe('completed');
+  expect((await readLeaveCohortJob(adminCtx(b),again.id))!.failedEmployees).toBe(0);
+  expect(await balancesAndLedger()).toEqual(uninterrupted);
+ },300_000);
+
+ it('the monthly accrual and carry-expiry timers: the refused batch is reported after the others, and the next run completes it',async()=>{
+  // The reference: the two whole-tenant runs, uninterrupted, in the order the timers run them below.
+  await fixture(true);
+  await accrueEarnedLeave(systemCtx(),{asOf:'2026-06-30'});
+  await expireCarriedLeave(systemCtx(),{today:'2026-04-01'});
+  const uninterrupted=await balancesAndLedger();
+  // One employee each run actually wrote for: a carry-forward expiry, and an earned top-up.
+  const writtenFor=async(where:string)=>(await owner.client.unsafe<{name:string}[]>(`select p.full_name as name from leave_ledger l join employment e on e.id=l.employment_id join person p on p.id=e.person_id
+   where l.tenant_id='${b.tenantId}' and ${where} order by p.full_name limit 1`))[0].name;
+  const expired=await writtenFor(`l.reason='${CARRY_EXPIRY}'`);
+  const topped=await writtenFor(`l.entry_type='accrual' and l.effective_on='2026-06-30'`);
+  await resetDb();b=await seedBase();await fixture(true);
+  // Each timer: refused for one employee (reported after the others are written), then run again.
+  await failInserts('test_fail_accrual_timer',`new.employment_id='${await employmentNamed(topped)}' and new.entry_type='accrual'`);
+  try{await expect(accrueEarnedLeaveInBatches(systemCtx(),{asOf:'2026-06-30'},{batchSize:6,maxRetries:0})).rejects.toThrow(/could not be processed/);}
+  finally{await dropFailure('test_fail_accrual_timer');}
+  await accrueEarnedLeaveInBatches(systemCtx(),{asOf:'2026-06-30'},{batchSize:6});
+  await failInserts('test_fail_expiry',`new.employment_id='${await employmentNamed(expired)}' and new.reason='${CARRY_EXPIRY}'`);
+  try{await expect(expireCarriedLeaveInBatches(systemCtx(),{today:'2026-04-01'},{batchSize:6,maxRetries:0})).rejects.toThrow(/could not be processed/);}
+  finally{await dropFailure('test_fail_expiry');}
+  await expireCarriedLeaveInBatches(systemCtx(),{today:'2026-04-01'},{batchSize:6});
+  expect(await balancesAndLedger()).toEqual(uninterrupted);
+ },300_000);
 });

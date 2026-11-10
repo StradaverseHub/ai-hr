@@ -52,6 +52,24 @@ export async function createLeaveImportJob(ctx: SessionContext, input: {records:
   });
 }
 
+/** A chat-confirmed import (core/chat-import/confirm.ts): admitted once for the card's own operation key, and
+ * `started: false` (nothing admitted) while another of the person's leave imports is still running, so the card
+ * never silently joins a different file. */
+export async function startLeaveImportJobOnce(ctx: SessionContext, input: {records: LeaveImportRecord[]; source?: LeaveImportSource; companyId?: string}, operationKey: string): Promise<{started: boolean; job: LeaveImportJobProgress | null}> {
+  if (!ctx.userId) throw new BulkJobError('Sign in again to import leave.', 401);
+  if (!isAdmin(ctx)) throw new BulkJobError('Only HR administrators can import leave records.', 403);
+  const jobInput: LeaveImportJobInput = {records: input.records.map(record => ({...record})), source: input.source ?? null, ...(input.companyId ? {companyId: input.companyId} : {})};
+  return withTenant(ctx, async tx => {
+    try {
+      const {row} = await enqueueBulkJobTx(tx, ctx, {kind: LEAVE_LEDGER_IMPORT_KIND, operationKey, input: jobInput});
+      return {started: true, job: await progressTx(tx, row)};
+    } catch (error) {
+      if (!(error instanceof BulkJobError) || error.message !== BULK_JOB_ALREADY_RUNNING) throw error;
+      return {started: false, job: null};
+    }
+  });
+}
+
 /** Progress for the person who started the import; row security hides everyone else's. */
 export async function readLeaveImportJob(ctx: SessionContext, id: string): Promise<LeaveImportJobProgress | null> {
   if (!isBulkJobId(id)) return null;

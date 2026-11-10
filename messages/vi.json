@@ -11408,7 +11408,9 @@
       "processingJob": {
         "title": {
           "leave_generation": "Đang tạo quyền lợi nghỉ phép",
-          "leave_accrual": "Đang chạy tích lũy ngày nghỉ"
+          "leave_accrual": "Đang chạy tích lũy ngày nghỉ",
+          "leave_recalc": "Đang tính lại số dư nghỉ phép",
+          "leave_a2c": "Đang áp dụng loại năm nghỉ phép cho số dư"
         },
         "progressCount": "Đã xử lý {done} trên {total} nhân viên",
         "backgroundHelp": "Quá trình này chạy trong nền. Bạn có thể rời trang này và quay lại sau.",
@@ -11421,7 +11423,8 @@
         },
         "failed": "Quá trình đã dừng: {reason} Các nhân viên đã được xử lý giữ nguyên số liệu.",
         "partial": "{count} nhân viên không thể xử lý và được giữ nguyên: {reason} Hãy chạy lại để hoàn tất.",
-        "alreadyRunning": "Một quản trị viên khác đang chạy tác vụ này. Hãy thử lại khi tác vụ đó hoàn tất."
+        "alreadyRunning": "Một quản trị viên khác đang chạy tác vụ này. Hãy thử lại khi tác vụ đó hoàn tất.",
+        "failedNothingChanged": "Quá trình đã dừng: {reason} Không có gì bị thay đổi."
       }
     },
     "holidays": {
@@ -12447,7 +12450,25 @@
       "closeAlready": "Ranh giới năm này đã được chốt; không có gì để làm.",
       "configMovedTitle": "Replacement leave settings",
       "configMovedHint": "The policy editor for replacement leave now lives under Leave Config.",
-      "configMovedLink": "Go to Replacement Leave settings"
+      "configMovedLink": "Go to Replacement Leave settings",
+      "sweepJob": {
+        "title": {
+          "toil_expiry": "Đang xử lý các khoản hết hạn",
+          "toil_year_close": "Đang chốt năm ngày nghỉ bù"
+        },
+        "progressCount": "Đã xử lý {done} trên {total} nhân viên",
+        "backgroundHelp": "Quá trình này chạy trong nền. Bạn có thể rời trang này và quay lại sau.",
+        "waiting": "Đang chờ dịch vụ nền tiếp tục. Bạn không cần làm gì.",
+        "state": {
+          "queued": "Đang chờ bắt đầu",
+          "running": "Đang chạy",
+          "completed": "Đã hoàn tất",
+          "failed": "Đã dừng"
+        },
+        "failed": "Quá trình đã dừng: {reason} Các khoản đã được xử lý vẫn giữ nguyên. Hãy chạy lại để xử lý phần còn lại.",
+        "partial": "{count} nhân viên không thể xử lý và các khoản ngày nghỉ bù của họ được giữ nguyên: {reason} Hãy chạy lại để hoàn tất.",
+        "alreadyRunning": "Một quản trị viên khác đang chạy tác vụ này. Hãy thử lại khi tác vụ đó hoàn tất."
+      }
     },
     "locations": {
       "pageTitle": "Địa điểm",
@@ -37702,6 +37723,62 @@
         "cancelled": {
           "title": "Đã hủy việc hoàn tác nhập",
           "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "leaveGeneration": {
+        "completed": {
+          "title": "Đã tạo xong quyền lợi nghỉ phép",
+          "body": "Số liệu nghỉ phép đã được cập nhật."
+        },
+        "failed": {
+          "title": "Việc tạo quyền lợi nghỉ phép đã dừng",
+          "body": "Không có gì bị thay đổi. Mở Tạo quyền lợi để xem lý do, sau đó chạy lại."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc tạo quyền lợi nghỉ phép",
+          "body": "Không có gì bị thay đổi."
+        }
+      },
+      "leaveRecalculation": {
+        "completed": {
+          "title": "Đã tính lại số dư nghỉ phép",
+          "body": "Số liệu nghỉ phép của nhân viên giờ đã theo các thiết lập đã lưu."
+        },
+        "failed": {
+          "title": "Việc tính lại nghỉ phép đã dừng",
+          "body": "Các nhân viên đã được tính lại giữ số liệu mới. Hãy lưu lại thiết lập để tính lại phần còn lại."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc tính lại nghỉ phép",
+          "body": "Các nhân viên đã được tính lại giữ số liệu mới. Hãy lưu lại thiết lập để tính lại phần còn lại."
+        }
+      },
+      "leaveYearType": {
+        "completed": {
+          "title": "Đã áp dụng loại năm nghỉ phép",
+          "body": "Số liệu nghỉ phép của nhân viên năm đầu giờ đã theo loại năm nghỉ phép đã lưu."
+        },
+        "failed": {
+          "title": "Chưa áp dụng loại năm nghỉ phép cho số dư",
+          "body": "Không có số liệu nghỉ phép nào bị thay đổi. Hãy lưu lại loại năm nghỉ phép để thử lại."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc điều chỉnh loại năm nghỉ phép",
+          "body": "Không có số liệu nghỉ phép nào bị thay đổi."
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "Đã xử lý xong ngày nghỉ bù",
+          "body": "Các khoản ngày nghỉ bù đến hạn đã được xử lý. Mở Tín dụng nghỉ phép để xem lại."
+        },
+        "failed": {
+          "title": "Việc xử lý ngày nghỉ bù đã dừng",
+          "body": "Các khoản đã được xử lý vẫn giữ nguyên. Hãy chạy lại để xử lý phần còn lại."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc xử lý ngày nghỉ bù",
+          "body": "Các khoản đã được xử lý vẫn giữ nguyên. Hãy chạy lại để xử lý phần còn lại."
         }
       }
     },
