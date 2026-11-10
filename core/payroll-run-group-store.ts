@@ -25,7 +25,7 @@ export type StoredCompanyOutcome=CompanyOutcome|PendingCompanyOutcome;
 export type RunGroupKind='run'|'resume';
 /** What the result screen shows: the finished result, or each company's progress while any job runs. */
 export type RunGroupView={id:string;kind:RunGroupKind;payPeriod:string;done:boolean;result:RunGroupResult|null;
- companies:{companyId:string;companyName:string;job:BulkJobProgress|null}[];worker:BulkJobWorkerStatus};
+ companies:{companyId:string;companyName:string;status:StoredCompanyOutcome['status'];job:BulkJobProgress|null}[];worker:BulkJobWorkerStatus};
 
 type GroupRow={id:string;kind:RunGroupKind;pay_period:string;started_at:Date|string;company_ids:string[];outcomes:StoredCompanyOutcome[];
  sealed_at:Date|null;ended_at:Date|string|null;result:RunGroupResult|null;event_id:string|null};
@@ -133,7 +133,7 @@ export async function readRunGroup(ctx:SessionContext,id:string):Promise<RunGrou
   if(!g)return null;
   const worker=await bulkJobWorkerStatusTx(tx,PAYROLL_PROCESS_JOB_KIND);
   const jobs=g.result?new Map<string,BulkJobRow>():await jobsTx(tx,g.outcomes.filter(pending).map(o=>o.jobId));
-  const companies=g.outcomes.map(o=>({companyId:o.companyId,companyName:o.companyName,job:pending(o)&&jobs.get(o.jobId)?bulkJobProgress(jobs.get(o.jobId)!):null}));
+  const companies=g.outcomes.map(o=>({companyId:o.companyId,companyName:o.companyName,status:o.status,job:pending(o)&&jobs.get(o.jobId)?bulkJobProgress(jobs.get(o.jobId)!):null}));
   if(g.result)return{id:g.id,kind:g.kind,payPeriod:g.pay_period,done:true,result:g.result,companies,worker};
   const resolved=g.outcomes.map(o=>pending(o)?finishedOutcome(o,jobs.get(o.jobId)):o);
   if(resolved.some(o=>o===null))return{id:g.id,kind:g.kind,payPeriod:g.pay_period,done:false,result:null,companies,worker};

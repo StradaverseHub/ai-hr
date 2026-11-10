@@ -14,6 +14,7 @@ type Progress=Pick<RunGroupView,'done'|'companies'|'worker'>;
  * company's run has finished. */
 export function RunGroupProgressPanel({groupId,initial}:{groupId:string;initial:Progress}){
  const t=useTranslations('payroll.batch.processingJob');
+ const tp=useTranslations('payroll.process');
  const router=useRouter();
  const [progress,setProgress]=useState(initial),[error,setError]=useState(''),[checkedAt,setCheckedAt]=useState(0);
  const settled=useRef(initial.done);
@@ -41,7 +42,8 @@ export function RunGroupProgressPanel({groupId,initial}:{groupId:string;initial:
   <ul className="space-y-3">
    {progress.companies.map(company=>{
     const job=company.job;
-    const stateText=job?t(`state.${job.state}`):t('othersRun');
+    // A company refused before its run could start (no access, no cycle, nothing selected) is already failed.
+    const stateText=job?t(`state.${job.state}`):company.status==='failed'?tp('companyFailed'):t('othersRun');
     return <li key={company.companyId} className="space-y-1">
      <div className="flex flex-wrap items-baseline justify-between gap-2"><span className="text-sm">{company.companyName}</span><span role="status" className="text-sm">{stateText}</span></div>
      {job&&bulkJobActive(job.state)&&<><progress aria-label={`${company.companyName}: ${stateText}`} value={bulkJobPercent(job)} max={100} className="h-2 w-full accent-primary"/>
