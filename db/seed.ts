@@ -13,6 +13,7 @@ import { assertAiCustodyResetAllowed } from './seed-ai-custody-guard';
 import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, requestAttendanceCorrection } from '../packs/attendance/service';
+import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled } from '../core/attendance-workflow';
 import { requestLeave, decideLeave, addLeaveAttachment, accrueEarnedLeave } from '../core/leave';
 import { createJobGrade, setLeaveTypeRules } from '../core/admin';
 // 6e9a126e RELEASE THREE — the demo's entitlement is configured through the TEMPLATE layer now.
@@ -567,6 +568,22 @@ async function main() {
   // Today: Daniel late, Wei Jie present (both still in the office).
   await checkIn(admin, { employmentId: hired[1].employmentId, date: seedToday, time: '09:30' });
   await checkIn(admin, { employmentId: weijie.employmentId, date: seedToday, time: '09:00' });
+  // New attendance applications need a saved, enabled route (28c8b1348: there is no unconfigured fallback).
+  // Configure the demo company as its HR admin would: the direct manager reviews, HR admin when there is none.
+  for (const applicationType of ['irregularity', 'self_overtime'] as const) {
+    await saveAttendanceWorkflow(admin, {
+      companyId: company.id,
+      code: applicationType === 'irregularity' ? 'DEMO_CORRECTIONS' : 'DEMO_OVERTIME',
+      name: applicationType === 'irregularity' ? 'Attendance corrections' : 'Overtime applications',
+      description: 'Demo route: the direct manager reviews, or HR admin when the employee has no manager.',
+      applicationType,
+      priority: 100,
+      criteria: {},
+      stages: [{ name: 'Manager review', level: { kind: 'direct_manager', employmentId: null, alternates: [{ kind: 'hr_admin', employmentId: null }] } }],
+      active: true,
+    });
+    await setAttendanceWorkflowEnabled(admin, company.id, applicationType, true);
+  }
   // A pending correction so the manager inbox has something to act on (Mei Ling forgot to punch).
   await requestAttendanceCorrection(admin, {
     employmentId: hired[2].employmentId,
