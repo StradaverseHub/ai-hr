@@ -103,7 +103,8 @@ describe('development navigation source identity',()=>{
  it('streams the four exact protected-history objects into the original ordered digest',()=>{
   const revision=currentSource(repo),pins=historyPins();
   expect(pins).toHaveLength(4);
-  expect(pins.reduce((total,pin)=>total+pin.size,0)).toBe(73_681_717);
+  // The three re-pinned startup inverses grew with the integrated release (204d2dd04); host history is unchanged.
+  expect(pins.reduce((total,pin)=>total+pin.size,0)).toBe(76_554_158);
   const records=sourceGit(repo,'ls-tree','-r','-z','--full-tree',revision,'--',...NAVIGATION_HARNESS_ROOTS).toString().split('\0').filter(Boolean);
   const expected=records.map(row=>{
    const [metadata,path]=row.split('\t'),[mode,,blob]=metadata.split(' ');
