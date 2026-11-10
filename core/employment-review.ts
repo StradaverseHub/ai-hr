@@ -29,7 +29,7 @@ import {
 } from '../db/schema';
 
 type EmploymentType = (typeof employmentTypeEnum.enumValues)[number];
-import { assertCanDecide, assertAssignedWorkPrincipalTx, canDecideSql, isApprovalDecisionRefusal } from './approvals';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, canDecideSql, isApprovalDecisionRefusal, isCallerOwnEmploymentSql } from './approvals';
 import { currentAdminManager } from './performance';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -1080,12 +1080,11 @@ export function pendingReviewCandidatesExistSql(tx:Tx,ctx:SessionContext,stage:'
  * same row under the same RLS). An HR review: assertCanDecide (canDecideSql, no task scope), then an admin role. Every
  * throw of both checks is a refusal the owner skips, so each header is decided exactly here. jsonb array of the owner's
  * rows (with the due date, without the manager) in its order. */
-export function pendingReviewTaskBundleSql(tx:Tx,ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[]):SQL{
+export function pendingReviewTaskBundleSql(tx:Tx,ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[],own?:SQL):SQL{
   const roles=ctx.roles??[],admin=roles.includes('super_admin')||roles.includes('hr_admin'),person=ctx.personId??null;
   const allowed=stage==='manager'
-    ?admin?sql`true`:person!=null?sql`(review_header.manager_employment_id is not null and exists(select 1 from public.employment review_manager
-       where review_manager.id=review_header.manager_employment_id and review_manager.person_id=${person}::uuid))`:sql`false`
-    :admin?canDecideSql(ctx,sql`review_header.employment_id`):sql`false`;
+    ?admin?sql`true`:person!=null?sql`(review_header.manager_employment_id is not null and ${isCallerOwnEmploymentSql(ctx,sql`review_header.manager_employment_id`,own)})`:sql`false`
+    :admin?canDecideSql(ctx,sql`review_header.employment_id`,undefined,undefined,own):sql`false`;
   return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',review_header.id,'employmentId',review_header.employment_id,
      'personId',review_header.person_id,'employee',review_header.employee,'createdAt',review_header.created_at,'dueDate',review_header.due_date)
      order by review_header.created_at desc,review_header.id) filter(where decided.allowed),'[]'::jsonb)

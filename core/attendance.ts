@@ -44,7 +44,7 @@ import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 import { prepareAttendanceWorkflowSnapshotTx, snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, actionableAttendanceApplicationIdsTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
 import { attendanceApplicationType } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
-import { and, asc, desc, eq, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql, type Column, type Table } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql, type Column, type SQL, type Table } from 'drizzle-orm';
 import { decodeJsonRow, projectFields } from '../db/json-row';
 import { alias } from 'drizzle-orm/pg-core';
 // f618065d (r362) — the "All" ceiling the shared pager already assumes. Self Overtime is a server-paged
@@ -7956,14 +7956,14 @@ function pendingAttendanceCandidateSource(ctx:SessionContext,requestId?:string){
  * candidate by decisionEmploymentAuthoritySql (the SQL twin of decisionEmploymentAuthorityTx) in the
  * 'attendance.correction' scope. A request whose frozen subject differs from its candidate's is the owner's
  * AttendanceWorkflowError: `defer` is then true and the owner runs (and throws) itself. */
-export function pendingAttendanceTaskBundleSql(ctx:SessionContext,companyIds?:string[]){
+export function pendingAttendanceTaskBundleSql(ctx:SessionContext,companyIds?:string[],own?:SQL){
   if(companyIds?.length===0)return sql`jsonb_build_object('possible',false,'section',null)`;
   const {source,otherPerson}=pendingAttendanceCandidateSource(ctx);
   const scoped=companyIds===undefined?sql`true`:
     sql`(pending_attendance.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(pending_attendance.id) IS NOT NULL)`;
   const decision=sql`case
     when attendance_flow.id is null or attendance_flow.routing_version not in (2,3,4)
-     then case when ${decisionEmploymentAuthoritySql(ctx,sql`pending_attendance.employment_id`,scopeOf('attendance.correction'))} then 'allow' else 'refuse' end
+     then case when ${decisionEmploymentAuthoritySql(ctx,sql`pending_attendance.employment_id`,scopeOf('attendance.correction'),own)} then 'allow' else 'refuse' end
     when attendance_flow.employment_id<>pending_attendance.employment_id then 'error'
     when (case when attendance_flow.routing_version=2 then app.attendance_workflow_v2_decide(attendance_flow.correction_id)
       when attendance_flow.routing_version in (3,4) then app.attendance_workflow_v3_decision_slot(attendance_flow.correction_id) is not null

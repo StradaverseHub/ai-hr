@@ -28,6 +28,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {aiCentreActivity} from '../lib/ai/centre-activity';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {assertModuleGate} from './module-gate';
+import {callerOwnEmploymentIdsSql} from './approvals';
 import {pendingLeaveDecisionTasksBundleSql,pendingLeaveTasksFromBundle,
  pendingReplacementLeaveTaskBundleSql,pendingReplacementLeaveTasksFromBundle} from '../packs/leave/service';
 import {pendingClaimTaskPreviewBundleSql,pendingClaimTaskPreviewFromBundle} from '../packs/claims/service';
@@ -87,17 +88,18 @@ const gateOpen=(ctx:SessionContext,code:string)=>{try{assertModuleGate(ctx,code)
 
 /** The account task statement's sections for one read: [name, sub-select] pairs, in the statement's order. A module
  * the caller did not enable, or whose gate or AI Centre check refuses, contributes no sub-select. */
-export function accountTaskStatementSections(tx:Tx,ctx:SessionContext,modules:AccountTaskModules,read:AccountTaskRead=HOME_ACCOUNT_TASK_READ):[string,SQL][]{
+export function accountTaskStatementSections(tx:Tx,ctx:SessionContext,modules:AccountTaskModules,read:AccountTaskRead=HOME_ACCOUNT_TASK_READ,
+ own:SQL|undefined=ACCOUNT_TASK_OWN):[string,SQL][]{
  const companyIds=read.companyIds===undefined?undefined:[...read.companyIds],personal=read.personal;
  const {performance,rewards,lifecycle}=sectionGates(ctx);
  const none=sql`null::jsonb`,today=todayInKualaLumpur();
  return [
-  ['leave_decisions',pendingLeaveDecisionTasksBundleSql(tx,ctx,companyIds)],
-  ['resignations',pendingResignationTaskBundleSql(tx,ctx,companyIds)],
-  ['manager_reviews',pendingReviewTaskBundleSql(tx,ctx,'manager',companyIds)],
-  ['hr_reviews',pendingReviewTaskBundleSql(tx,ctx,'hr',companyIds)],
+  ['leave_decisions',pendingLeaveDecisionTasksBundleSql(tx,ctx,companyIds,own)],
+  ['resignations',pendingResignationTaskBundleSql(tx,ctx,companyIds,own)],
+  ['manager_reviews',pendingReviewTaskBundleSql(tx,ctx,'manager',companyIds,own)],
+  ['hr_reviews',pendingReviewTaskBundleSql(tx,ctx,'hr',companyIds,own)],
   ['replacement',pendingReplacementLeaveTaskBundleSql(ctx,companyIds)],
-  ['attendance',modules.attendance?pendingAttendanceTaskBundleSql(ctx,companyIds):none],
+  ['attendance',modules.attendance?pendingAttendanceTaskBundleSql(ctx,companyIds,own):none],
   ['profile',pendingProfileTaskBundleSql(tx,ctx,companyIds)],
   ['notices',read.notices?pendingNoticeAcknowledgementTaskBundleSql(ctx,today):none],
   ['performance',modules.performance&&performance?pendingPerformanceTasksBundleSql(ctx):none],
@@ -108,10 +110,14 @@ export function accountTaskStatementSections(tx:Tx,ctx:SessionContext,modules:Ac
   ['onboarding',personal&&modules.lifecycle&&lifecycle?onboardingAssignedTasksBundleSql(ctx):none],
  ];
 }
+/** The caller's own employments (core/approvals.ts callerOwnEmploymentIdsSql), read once for every section that tests an
+ * employment against the caller's person. */
+const ACCOUNT_TASK_OWN=sql`(select task_caller.own_ids from task_caller)`;
+export const accountTaskCallerSql=(ctx:SessionContext)=>sql`task_caller as materialized (select ${callerOwnEmploymentIdsSql(ctx)} as own_ids)`;
 /** The statement itself: the assigned-work principal proof, then every section. */
 export function accountTaskStatement(sections:readonly [string,SQL][],ctx:SessionContext):SQL{
  const person=ctx.personId??null;
- return sql`select (app.principal_snapshot_current()
+ return sql`with ${accountTaskCallerSql(ctx)} select (app.principal_snapshot_current()
      and (${person}::uuid is null or app.is_self_person(${person}::uuid))) as principal,
     ${sql.join(sections.map(([name,section])=>sql`${section} as ${sql.raw(name)}`),sql`,\n`)}`;
 }

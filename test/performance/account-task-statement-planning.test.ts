@@ -17,7 +17,7 @@ import {withTenant,type SessionContext} from '../../db/client';
 import * as s from '../../db/schema';
 import {hireEmployee,setReportingLine} from '../../core/org';
 import {MODULE_CATALOG} from '../../packs/catalog';
-import {accountTaskStatement,accountTaskStatementSections,type AccountTaskModules} from '../../core/account-task-bundle';
+import {accountTaskCallerSql,accountTaskStatement,accountTaskStatementSections,type AccountTaskModules} from '../../core/account-task-bundle';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 
 const print=(label:string,value:unknown)=>console.info('[task-statement-planning] '+label+' '+JSON.stringify(value));
@@ -62,7 +62,7 @@ describe.skipIf(!state.hostedFocused)('account task statement planning',()=>{
    const names=await withTenant(ctx,async tx=>accountTaskStatementSections(tx,ctx,all).map(([name])=>name));
    for(const name of names){
     const runs=[];
-    for(let attempt=0;attempt<2;attempt++)runs.push(await explain(ctx,tx=>sql`select ${accountTaskStatementSections(tx,ctx,all).find(([section])=>section===name)![1]} as section`));
+    for(let attempt=0;attempt<2;attempt++)runs.push(await explain(ctx,tx=>sql`with ${accountTaskCallerSql(ctx)} select ${accountTaskStatementSections(tx,ctx,all).find(([section])=>section===name)![1]} as section`));
     sections[name]=runs.at(-1);
    }
    const whole=(tx:Parameters<Parameters<typeof withTenant>[1]>[0])=>accountTaskStatement(accountTaskStatementSections(tx,ctx,all),ctx);
