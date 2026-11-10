@@ -76,19 +76,22 @@ describe('physical pool admission with real tenant transactions',()=>{
   await activeEntered.promise;activeController.abort(reason);release.resolve();
   expect((await active).tenant).toBe(base.tenantId);
  });
- it('allows three independent interactive transactions while background work waits outside the four-slot pool',async()=>{
+ it('allows interactive transactions while background work waits outside the four-slot pool',async()=>{
   const ctx=adminCtx(base),entered=deferred(),finish=deferred();
   const held=withBackgroundDatabaseWork(()=>database.withTenant(ctx,async tx=>{await tx.execute(sql`select 1`);entered.resolve();await finish.promise;}));
   await entered.promise;
   let backgroundEntered=false;
   const waiting=withBackgroundDatabaseWork(()=>database.withTenant(ctx,async tx=>{backgroundEntered=true;return(await tx.execute(sql`select app.current_tenant_id() as tenant`))[0];}));
-  const pageReleases=Array.from({length:3},deferred),pageEntered=Array.from({length:3},deferred);
-  const pages=pageReleases.map((release,i)=>database.withTenant(ctx,async tx=>{const [row]=await tx.execute(sql`select app.current_tenant_id() as tenant,pg_backend_pid() as pid`);pageEntered[i].resolve();await release.promise;return row;}));
+  // In a pool of 4 one permit is reserved for login and each tenant holds at most 2, so the
+  // remaining permits go to this tenant's second transaction and to another tenant.
+  const contexts=[ctx,{...ctx,tenantId:randomUUID()}];
+  const pageReleases=Array.from({length:2},deferred),pageEntered=Array.from({length:2},deferred);
+  const pages=pageReleases.map((release,i)=>database.withTenant(contexts[i],async tx=>{const [row]=await tx.execute(sql`select app.current_tenant_id() as tenant,pg_backend_pid() as pid`);pageEntered[i].resolve();await release.promise;return row;}));
   try{
    await Promise.all(pageEntered.map(x=>x.promise));expect(backgroundEntered).toBe(false);
   }finally{pageReleases.forEach(x=>x.resolve());finish.resolve();}
   const rows=await Promise.all(pages);await held;const backgroundRow=await waiting;
-  expect(new Set(rows.map(r=>r.pid)).size).toBe(3);expect(rows.every(r=>r.tenant===base.tenantId)).toBe(true);expect(backgroundRow.tenant).toBe(base.tenantId);
+  expect(new Set(rows.map(r=>r.pid)).size).toBe(2);expect(rows[0].tenant).toBe(base.tenantId);expect(rows[1].tenant).toBe(contexts[1].tenantId);expect(backgroundRow.tenant).toBe(base.tenantId);
  });
  it('shares the same physical budget with raw connection owners and releases their failures',async()=>{
   const ctx=adminCtx(base),entered=deferred(),finish=deferred();
@@ -106,8 +109,9 @@ describe('physical pool admission with real tenant transactions',()=>{
   expect(await database.withPoolWork(ctx.tenantId,()=>Promise.resolve('released'))).toBe('released');
  });
  it('does not start an abandoned queued read and frees admission after rollback',async()=>{
-  const ctx=adminCtx(base),finish=deferred(),entered=Array.from({length:4},deferred);
-  const held=entered.map((entry)=>database.withTenant(ctx,async tx=>{await tx.execute(sql`select 1`);entry.resolve();await finish.promise;}));
+  // Three distinct tenants fill the tenant-work capacity of a pool of 4 (one permit stays reserved for login).
+  const ctx=adminCtx(base),finish=deferred(),entered=Array.from({length:3},deferred);
+  const held=entered.map((entry)=>database.withTenant({...ctx,tenantId:randomUUID()},async tx=>{await tx.execute(sql`select 1`);entry.resolve();await finish.promise;}));
   await Promise.all(entered.map(x=>x.promise));
   const controller=new AbortController(),reason=new Error('read disconnected');let ran=false;
   const pending=database.withTenant(ctx,async()=>{ran=true;},{readSignal:controller.signal});

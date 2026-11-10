@@ -30,4 +30,14 @@ describe('every raw postgres client query is admitted before it borrows a connec
    expect(readFileSync(ROOT+file,'utf8'),file).toMatch(/withPoolWork\('authentication'/);
   }
  });
+ it('makes every deployed Node worker declare a counted connection budget',()=>{
+  const units=execFileSync('git',['ls-files','deploy/systemd/*.service','deploy/entra/aihr-entra.service'],{cwd:ROOT,encoding:'utf8'}).split('\n').filter(Boolean);
+  const nodeUnits=units.filter(unit=>/^ExecStart=.*\bnode\b.*--import tsx/m.test(readFileSync(ROOT+unit,'utf8')));
+  expect(nodeUnits.length).toBeGreaterThanOrEqual(7);
+  for(const unit of nodeUnits){
+   const text=readFileSync(ROOT+unit,'utf8');
+   expect(text,unit).toMatch(/^Environment=AIHR_DB_PROCESS_ROLE=worker$/m);
+   expect(text,unit).toMatch(/^Environment=AIHR_DB_POOL_MAX=[1-8]$/m);
+  }
+ });
 });

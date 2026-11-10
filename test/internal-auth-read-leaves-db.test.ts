@@ -19,8 +19,9 @@ describe('explicit transaction reads through real canonical private SQL',()=>{
     await writeRecord(client,'fixture:admitted-family',{active:true},null);
     let release!:()=>void;
     const finish=new Promise<void>(resolve=>{release=resolve;});
-    const started=Array.from({length:client.options.max},()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r;});return{promise,resolve};});
-    const holders=started.map(entry=>withPoolWork('fixture-admission',async()=>{entry.resolve();await finish;}));
+    // Hold every permit in the authentication lane (its ceiling is half the pool), so these reads must queue.
+    const started=Array.from({length:Math.ceil(client.options.max/2)},()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r;});return{promise,resolve};});
+    const holders=started.map(entry=>withPoolWork('authentication',async()=>{entry.resolve();await finish;}));
     await Promise.all(started.map(entry=>entry.promise));
     const controller=new AbortController(),reason=new Error('fixture read abandoned');
     const record=withDatabaseReadCancellation(controller.signal,()=>readAuthRecord('fixture:admitted-read'));
