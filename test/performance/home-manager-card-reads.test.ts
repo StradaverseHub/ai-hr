@@ -275,31 +275,25 @@ async function todayReaders(today:string){
  return Object.assign(readers,{pageRender});
 }
 
-type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[];owners:string[]};
+type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[]};
 const sharedStats:SharedReadStats[]=[];
 (globalThis as {__aihrPerfSharedRead?:(stats:SharedReadStats)=>void}).__aihrPerfSharedRead=stats=>{sharedStats.push(stats);};
 const sharedSummary=(rows:SharedReadStats[])=>({sessions:rows.length,joins:rows.reduce((n,row)=>n+row.joins,0),fallbacks:rows.reduce((n,row)=>n+row.fallbacks,0),
  sharedStatements:rows.reduce((n,row)=>n+row.statements,0),memoHits:rows.reduce((n,row)=>n+row.memoHits,0),
- // Carrier round trips: statements the driver pipelined while others were outstanding share one.
+ // Idle-to-busy transitions of the carrier connection: the driver pipelines statements sent while others are outstanding.
  flights:rows.reduce((n,row)=>n+(row.flights??0),0),carriers:rows.reduce((n,row)=>n+row.carriers,0),
  refused:rows.reduce((all,row)=>{for(const [reason,count] of Object.entries(row.refused))all[reason]=(all[reason]??0)+count;return all;},{} as Record<string,number>)});
 /** Results without the response clock, which differs between any two reads. */
 const comparable=(value:unknown)=>JSON.stringify(value,(key,item)=>key==='serverNow'?undefined:item);
 async function outcome(read:()=>Promise<unknown>){try{return {ok:true,value:await read()};}catch(error){return {ok:false,error:{name:(error as Error)?.name??null,code:(error as {code?:string})?.code??null}};}}
 async function traceStatements<T>(work:()=>Promise<T>){
- const options=applicationClient.options as {debug?:unknown},ordered:string[]=[],owners:string[]=[],previous=options.debug;
- // The driver sends pipelined statements from socket callbacks, so the owner of a shared-carrier statement is read
- // where the carrier sends it (db/shared-read.ts), in its owner's async context; other statements keep the stack seen
- // at send time. Every trip stays attributable.
- const sharedOwners=new Map<string,string[]>();
- const hooks=globalThis as {__aihrPerfSharedStatement?:(query:string)=>void};
- hooks.__aihrPerfSharedStatement=query=>{const key=query.replace(/\s+/g,' ').trim().slice(0,420),list=sharedOwners.get(key)??[];list.push(transactionOwner());sharedOwners.set(key,list);};
- options.debug=(_connection:number,query:string)=>{const text=query.replace(/\s+/g,' ').trim().slice(0,420);ordered.push(text);owners.push(sharedOwners.get(text)?.shift()??transactionOwner());};
+ const options=applicationClient.options as {debug?:unknown},ordered:string[]=[],previous=options.debug;
+ options.debug=(_connection:number,query:string)=>{ordered.push(query.replace(/\s+/g,' ').trim().slice(0,420));};
  let result:T|null=null,failure:unknown=null;
- try{result=await work();}catch(error){failure=errorFact(error);}finally{options.debug=previous;delete hooks.__aihrPerfSharedStatement;}
+ try{result=await work();}catch(error){failure=errorFact(error);}finally{options.debug=previous;}
  const counts=new Map<string,number>();
  for(const text of ordered)counts.set(text,(counts.get(text)??0)+1);
- const trace:Traced={trips:ordered.length,statements:[...counts].map(([text,count])=>({sql:text,count})).sort((a,b)=>b.count-a.count),ordered,owners};
+ const trace:Traced={trips:ordered.length,statements:[...counts].map(([text,count])=>({sql:text,count})).sort((a,b)=>b.count-a.count),ordered};
  return {result,failure,trace};
 }
 
@@ -476,12 +470,10 @@ it('completes every manager Home card and Today section read without a handled f
   const old=await traceStatements(()=>withIndependentTransactions(before));
   sharedStats.length=0;
   const fresh=await traceStatements(after);
-  // Each remaining statement with the first application frames that sent it, and a count per owning function.
-  const byOwner=new Map<string,number>();
-  for(const owner of fresh.trace.owners){const key=owner.split(' < ')[0]||'(driver)';byOwner.set(key,(byOwner.get(key)??0)+1);}
+  // Statement text identifies each remaining trip's owner: the driver sends pipelined statements from socket callbacks
+  // and drizzle's thenables end the async stack, so a stack at send time names no application frame.
   return {before:old.trace.trips,after:fresh.trace.trips,beforeStatements:old.trace.statements,afterStatements:fresh.trace.statements,
-   afterOrdered:fresh.trace.ordered,afterOwned:fresh.trace.ordered.map((text,index)=>(fresh.trace.owners[index]||'(driver)')+' :: '+text.slice(0,200)),
-   afterByOwner:Object.fromEntries([...byOwner].sort((a,b)=>b[1]-a[1])),shared:sharedSummary(sharedStats.splice(0)),failure:fresh.failure};
+   afterOrdered:fresh.trace.ordered,shared:sharedSummary(sharedStats.splice(0)),failure:fresh.failure};
  };
  for(const [label,actor] of [['manager',manager],['employee',employee]] as const){
   const targets=await todayTargets(actor.ctx),rows:Record<string,Awaited<ReturnType<typeof traceBoth>>>={};statementTrace[label]=rows;
@@ -497,7 +489,6 @@ it('completes every manager Home card and Today section read without a handled f
   rows.page=await traceBoth(page,pageRendered);
   // The page's sections alone: each in its own snapshot before, one render's request scope after.
   rows.sections=await traceBoth(()=>Promise.all(pageSections.map(name=>targets[name]())),()=>todayTargets.pageRender(()=>Promise.all(pageSections.map(name=>targets[name]()))));
-  print('statement-owners',{label,stream:rows.stream.afterByOwner,sections:rows.sections.afterByOwner});
   print('statement-trace',{label,trips:Object.fromEntries(Object.entries(rows).map(([name,row])=>[name,[row.before,row.after]])),
    shared:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.shared.sessions>0).map(([name,row])=>[name,row.shared])),
    failures:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.failure).map(([name,row])=>[name,row.failure]))});
