@@ -10,7 +10,7 @@
  *
  * Future dates (Aug 2026) so no backdating/advance-notice gate interferes. 2026-08-10..12 = Mon–Wed (3 wd).
  */
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -18,6 +18,7 @@ import { hireEmployee, setReportingLine } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import {
   cancelOwnLeave,
+  cancelOwnLeaveFromBrowser,
   decideLeave,
   editLeaveRequest,
   requestLeave,
@@ -27,7 +28,7 @@ import {
 } from '../core/leave';
 import { dispatchNotifications } from '../core/notifications';
 import { leaveRequestsFor } from '../core/read';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   adminCtx,
   closeAll,
@@ -138,6 +139,163 @@ it('submits own annual leave while another transaction shares the Access lock', 
   } finally {
     if (timeout) clearTimeout(timeout);
     await submission?.catch(() => undefined);
+  }
+});
+
+async function waitForWithdrawalAccess(
+  tx: Tx, writerPid: number, mode: 'ShareLock' | 'ExclusiveLock', granted: boolean,
+) {
+  const deadline = performance.now() + 5_000;
+  do {
+    const [row] = await tx.execute<{ pid: number }>(sql`
+      select l.pid from pg_locks l
+        where l.locktype = 'advisory' and l.mode = ${mode} and l.granted = ${granted}
+          and l.objsubid = 1
+          and ((l.classid::bigint << 32) | l.objid::bigint) =
+            hashtextextended(${'access-configuration:' + b.tenantId}, 0)
+          and ${writerPid}::integer = any(pg_blocking_pids(l.pid))
+        limit 1
+    `);
+    if (row) return row.pid;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  } while (performance.now() < deadline);
+  throw new Error('Expected withdrawal Access lock was not observed');
+}
+
+async function ownWithdrawEvent(requestId: string) {
+  return owner.db.select().from(schema.domainEvent).where(and(
+    eq(schema.domainEvent.aggregateId, requestId),
+    eq(schema.domainEvent.eventType, 'leave-request.self-cancelled'),
+  ));
+}
+
+it('lets different own browser withdrawals hold shared Access without changing native effects', async () => {
+  const firstId = await pendingThreeDay();
+  const second = await hire('Second browser subject');
+  const secondUser = await createAppUser(b.tenantId, second.personId, 'employee');
+  const secondCtx: SessionContext = {
+    tenantId: b.tenantId, userId: secondUser, personId: second.personId, roles: ['employee'],
+  };
+  await grantAnnual(second.employmentId, '20.00');
+  const secondId = await pendingThreeDay(secondCtx, second.employmentId);
+  let first: ReturnType<typeof cancelOwnLeaveFromBrowser> | undefined;
+  let next: ReturnType<typeof cancelOwnLeaveFromBrowser> | undefined;
+  let repeat: ReturnType<typeof cancelOwnLeaveFromBrowser> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await owner.db.transaction(async tx => {
+      await tx.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id, firstId)).for('update');
+      const [writer] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+      first = cancelOwnLeaveFromBrowser(subjectCtx, {leaveRequestId: firstId});
+      void first.catch(() => undefined);
+      const firstPid = await waitForWithdrawalAccess(tx, writer.pid, 'ShareLock', true);
+
+      next = cancelOwnLeaveFromBrowser(secondCtx, {leaveRequestId: secondId});
+      const result = await Promise.race([next, new Promise<null>(resolve => {
+        timer = setTimeout(() => resolve(null), 5_000);
+      })]);
+      expect(result).toEqual({previousStatus: 'pending', restoredDays: 0});
+      expect((await rowOf(firstId)).status).toBe('pending');
+      expect(await ownWithdrawEvent(firstId)).toHaveLength(0);
+
+      repeat = cancelOwnLeaveFromBrowser(subjectCtx, {leaveRequestId: firstId});
+      await Promise.race([
+        waitForWithdrawalAccess(tx, firstPid, 'ExclusiveLock', false),
+        repeat.then(() => { throw new Error('Duplicate withdrawal committed while the first request was locked'); }),
+      ]);
+    });
+    await expect(first).resolves.toEqual({previousStatus: 'pending', restoredDays: 0});
+    await expect(repeat).rejects.toMatchObject({refusal: 'already_final'});
+    for (const id of [firstId, secondId]) {
+      expect((await rowOf(id)).status).toBe('cancelled');
+      const events = await ownWithdrawEvent(id);
+      expect(events).toHaveLength(1);
+      expect(events[0].payload).toMatchObject({previousStatus: 'pending', newStatus: 'cancelled', restoredDays: 0});
+      expect(await owner.db.select().from(schema.notificationEventProcessing).where(and(
+        eq(schema.notificationEventProcessing.eventId, events[0].id),
+        eq(schema.notificationEventProcessing.consumer, 'notifications'),
+      ))).toHaveLength(1);
+      expect(await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.sourceRequestId, id)))
+        .toHaveLength(0);
+    }
+  } finally {
+    if (timer) clearTimeout(timer);
+    await Promise.allSettled([first, next, repeat]);
+  }
+});
+
+it('reproves the actual principal after native role revocation wins Access', async () => {
+  const id = await pendingThreeDay();
+  let withdrawal: ReturnType<typeof cancelOwnLeaveFromBrowser> | undefined;
+  try {
+    await withTenant(adminCtx(b), async tx => {
+      await tx.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId, subjectCtx.userId!));
+      const [writer] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+      withdrawal = cancelOwnLeaveFromBrowser(subjectCtx, {leaveRequestId: id});
+      void withdrawal.catch(() => undefined);
+      await waitForWithdrawalAccess(tx, writer.pid, 'ShareLock', false);
+    });
+    await expect(withdrawal).rejects.toMatchObject({refusal: 'not_yours'});
+    expect((await rowOf(id)).status).toBe('pending');
+    expect(await ownWithdrawEvent(id)).toHaveLength(0);
+  } finally {
+    await withdrawal?.catch(() => undefined);
+  }
+});
+
+it('keeps the browser grouped and approved refusal order without audit or balance effects', async () => {
+  const id = await pendingThreeDay();
+  await owner.db.update(schema.leaveRequest).set({parentGroupId: randomUUID()})
+    .where(eq(schema.leaveRequest.id, id));
+  await expect(cancelOwnLeaveFromBrowser(subjectCtx, {leaveRequestId: id}))
+    .rejects.toMatchObject({refusal: 'grouped'});
+  await owner.db.update(schema.leaveRequest).set({status: 'approved'})
+    .where(eq(schema.leaveRequest.id, id));
+  await expect(cancelOwnLeaveFromBrowser(subjectCtx, {leaveRequestId: id}))
+    .rejects.toMatchObject({refusal: 'already_approved'});
+  expect((await rowOf(id)).status).toBe('approved');
+  expect(await ownWithdrawEvent(id)).toHaveLength(0);
+  expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(20);
+});
+
+it.each([
+  {name: 'legacy net debit', days: ['-2.00'], restoredDays: 2},
+  {name: 'balanced legacy history', days: ['-2.00', '2.00'], restoredDays: 0},
+])('rolls back shared admission before $name uses exclusive Access', async ({days, restoredDays}) => {
+  const id = await pendingThreeDay();
+  await owner.db.insert(schema.leaveLedger).values(days.map(amount => ({
+    tenantId: b.tenantId, employmentId: subject.employmentId, leaveTypeId: b.annualLeaveTypeId,
+    entryType: 'debit' as const, days: amount, sourceRequestId: id, effectiveOn: '2026-08-10',
+  })));
+  const releaseRequestRow = new Error('Release the row holder savepoint');
+  let withdrawal: ReturnType<typeof cancelOwnLeaveFromBrowser> | undefined;
+  try {
+    await owner.db.transaction(async tx => {
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + b.tenantId},0))`);
+      const [writer] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+      try {
+        await tx.transaction(async rowHolder => {
+          await rowHolder.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id, id)).for('update');
+          withdrawal = cancelOwnLeaveFromBrowser(subjectCtx, {leaveRequestId: id});
+          void withdrawal.catch(() => undefined);
+          await waitForWithdrawalAccess(rowHolder, writer.pid, 'ShareLock', true);
+          throw releaseRequestRow;
+        });
+      } catch (error) {
+        if (error !== releaseRequestRow) throw error;
+      }
+      await waitForWithdrawalAccess(tx, writer.pid, 'ExclusiveLock', false);
+      expect((await rowOf(id)).status).toBe('pending');
+      expect(await ownWithdrawEvent(id)).toHaveLength(0);
+    });
+    await expect(withdrawal).resolves.toEqual({previousStatus: 'pending', restoredDays});
+    expect((await rowOf(id)).status).toBe('cancelled');
+    const ledger = await owner.db.select({days: schema.leaveLedger.days}).from(schema.leaveLedger)
+      .where(eq(schema.leaveLedger.sourceRequestId, id));
+    expect(ledger.map(row => row.days).sort()).toEqual(['-2.00', '2.00']);
+    expect(await ownWithdrawEvent(id)).toHaveLength(1);
+  } finally {
+    await withdrawal?.catch(() => undefined);
   }
 });
 

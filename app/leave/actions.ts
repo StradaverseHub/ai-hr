@@ -13,7 +13,7 @@ import {
   leaveTypeIs,
   addLeaveAttachment,
   adminCancelLeave,
-  cancelOwnLeave,
+  cancelOwnLeaveFromBrowser,
   editLeaveRequest,
   requestLeave,
   requestLeaveCancellation,
@@ -403,7 +403,7 @@ export async function cancelOwnLeaveAction(formData: FormData) {
   const session = await getSession();
   const leaveRequestId = String(formData.get('leaveRequestId'));
   try {
-    await cancelOwnLeave(session, { leaveRequestId });
+    await cancelOwnLeaveFromBrowser(session, { leaveRequestId });
   } catch (e) {
     redirect(leaveSelfReturnUrl(formData, 'error', await localizeLeaveError(e)));
   }

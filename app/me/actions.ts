@@ -16,7 +16,7 @@ import {
   addLeaveAttachment,
   requestLeave,
   editLeaveRequest,
-  cancelOwnLeave,
+  cancelOwnLeaveFromBrowser,
   requestLeaveCancellation,
   previewLeaveDeduction,
   validateLeaveDocument,
@@ -270,7 +270,7 @@ export async function myCancelLeave(formData: FormData) {
   const { s } = await resolveMe();
   const leaveRequestId = String(formData.get('leaveRequestId'));
   try {
-    await cancelOwnLeave(s, { leaveRequestId });
+    await cancelOwnLeaveFromBrowser(s, { leaveRequestId });
   } catch (e) {
     redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e))}`);
   }

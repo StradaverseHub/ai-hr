@@ -10,9 +10,10 @@ import { randomUUID, createHash } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {assertReadCompositionPrincipalTx} from './read-composition-principal';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationReadTx, lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
+import { aiCentreActivity } from '../lib/ai/centre-activity';
 import { assertCanDecide, assertAssignedWorkPrincipalTx, decideByRoleForKnownSubject, isApprovalDecisionRefusal, subjectPersonIdsTx } from './approvals';
 import {assertMyTeamSubjectTx} from './my-team-scope';
 import type {MyTeamQuery} from '../lib/my-team-types';
@@ -8194,6 +8195,33 @@ export async function cancelOwnLeave(
   return { previousStatus, restoredDays };
 }
 
+const retryOwnLeaveWithdrawalWithExclusiveAccess = new Error('Pending leave withdrawal requires exclusive Access.');
+
+type OwnLeaveWithdrawalAdmission = 'shared-browser' | 'exclusive-browser';
+
+/** Only the ordinary browser caller can open a fresh shared-Access transaction. */
+export async function cancelOwnLeaveFromBrowser(
+  ctx: SessionContext,
+  p: { leaveRequestId: string },
+): Promise<{ previousStatus: 'pending'; restoredDays: number }> {
+  if (!ctx.userId || !ctx.personId || ctx.agent || ctx.roles?.length !== 1 || ctx.roles[0] !== 'employee'
+      || ctx.grants?.some(grant => grant.role !== 'employee') || aiCentreActivity(ctx.tenantId)) {
+    return cancelOwnLeave(ctx, p);
+  }
+  ctx = {...ctx, roles: ctx.roles.slice(), grants: ctx.grants?.map(grant => ({...grant}))};
+  p = {...p};
+  try {
+    const { previousStatus, restoredDays } = await withTenant(ctx,
+      tx => cancelOwnLeaveInTransaction(tx, ctx, p, 'shared-browser'));
+    return { previousStatus, restoredDays };
+  } catch (error) {
+    if (error !== retryOwnLeaveWithdrawalWithExclusiveAccess) throw error;
+  }
+  const { previousStatus, restoredDays } = await withTenant(ctx,
+    tx => cancelOwnLeaveInTransaction(tx, ctx, p, 'exclusive-browser'));
+  return { previousStatus, restoredDays };
+}
+
 /** cancelOwnLeave in the caller's transaction (ADR-0151): the Assistant's leave-cancellation review commits
  *  the cancellation and its own receipt together, so the self-cancelled event id is returned for that receipt. */
 export async function cancelOwnLeaveTx(
@@ -8201,10 +8229,38 @@ export async function cancelOwnLeaveTx(
   ctx: SessionContext,
   p: { leaveRequestId: string },
 ): Promise<{ previousStatus: 'pending'; restoredDays: number; eventId: string }> {
+  return cancelOwnLeaveInTransaction(tx, ctx, p);
+}
+
+async function cancelOwnLeaveInTransaction(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { leaveRequestId: string },
+  admission?: OwnLeaveWithdrawalAdmission,
+): Promise<{ previousStatus: 'pending'; restoredDays: number; eventId: string }> {
   {
-    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
-    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
-    if (!req) throw new Error('leave request not found (or not visible)');
+    const readRequest = () => tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    const shared = admission === 'shared-browser';
+    let req: typeof leaveRequest.$inferSelect;
+    if (shared) {
+      await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+      // A request row lock also excludes FK key-share from a same-request ledger or date-row insert.
+      try {
+        req = await readLeaveRequestWithDependenciesTx(tx, ctx, p.leaveRequestId,
+          () => readRequest().for('update'), true);
+      } catch (error) {
+        // The exclusive owner serialized participating same-subject commands before checking the request.
+        if (error instanceof LeaveDependencyUnavailable && error.reason === 'busy') {
+          throw retryOwnLeaveWithdrawalWithExclusiveAccess;
+        }
+        throw error;
+      }
+    } else {
+      await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
+      const [current] = await readRequest();
+      if (!current) throw new Error('leave request not found (or not visible)');
+      req = current;
+    }
 
     // Subject-only (creator). Enforced in code (RLS is symmetric).
     const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
@@ -8224,18 +8280,44 @@ export async function cancelOwnLeaveTx(
       throw new LeaveCancellationNotAllowedError('grouped (emergency / split) leave cannot be cancelled here', 'grouped');
     }
 
+    if (admission) {
+      const [principal] = await tx.execute<{ current: boolean }>(sql`
+        select (app.principal_snapshot_current() and app.is_self_person(${ctx.personId}::uuid)) as current
+      `);
+      if (principal?.current !== true) {
+        throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave', 'not_yours');
+      }
+    }
+
     const [lt] = await tx
-      .select({ code: leaveType.code, name: leaveType.name })
+      .select({ code: leaveType.code, name: leaveType.name, role: leaveType.role, paid: leaveType.paid,
+        balanceSourceTypeId: leaveType.balanceSourceTypeId, archivedAt: leaveType.archivedAt })
       .from(leaveType)
       .where(eq(leaveType.id, req.leaveTypeId))
       .limit(1);
 
-    // Reverse the NET ledger debit (net 0 for pending ⇒ restoredDays 0; kept robust for defense-in-depth).
-    const [netRow] = await tx
-      .select({ net: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
-      .from(leaveLedger)
-      .where(eq(leaveLedger.sourceRequestId, req.id));
-    const net = Number(netRow?.net ?? 0);
+    let net = 0;
+    if (shared) {
+      if (!lt || !leaveTypeIs(lt, 'annual') || !lt.paid || lt.balanceSourceTypeId !== null || lt.archivedAt !== null
+          || req.durationType !== 'full_day' || req.importedHistory || Number(req.unpaidDays ?? 0) !== 0) {
+        throw retryOwnLeaveWithdrawalWithExclusiveAccess;
+      }
+      // Any linked ledger history uses the canonical exclusive reversal, even if it currently nets to zero.
+      const [ledgerRow] = await tx.select({ id: leaveLedger.id }).from(leaveLedger)
+        .where(eq(leaveLedger.sourceRequestId, req.id)).limit(1);
+      if (ledgerRow) throw retryOwnLeaveWithdrawalWithExclusiveAccess;
+      const [dateRow] = await tx.select({ id: leaveRequestDate.id }).from(leaveRequestDate)
+        .where(eq(leaveRequestDate.leaveRequestId, req.id)).limit(1);
+      if (dateRow) throw retryOwnLeaveWithdrawalWithExclusiveAccess;
+    } else {
+      // Reverse the NET ledger debit (normally zero for pending requests).
+      const [netRow] = await tx
+        .select({ net: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
+        .from(leaveLedger)
+        .where(eq(leaveLedger.sourceRequestId, req.id));
+      net = Number(netRow?.net ?? 0);
+    }
+
     let restoredDays = 0;
     if (net < 0) {
       restoredDays = round2(-net);
