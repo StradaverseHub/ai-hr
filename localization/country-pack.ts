@@ -564,6 +564,9 @@ export interface CountryPack {
       status: HrdfStatus,
       cfg?: { mandatoryRate: number; optionalRate: number },
     ) => number;
+    /** Feedback c2ea9567 — the rate `hrdfLevy` applies for this band (0 when not registered), stamped on
+     *  the payslip beside the HRDF wages so the explanation never derives it as levy ÷ base. */
+    hrdfRate: (status: HrdfStatus, cfg?: { mandatoryRate: number; optionalRate: number }) => number;
     /** Effective per-employee HRDF subjectivity (tri-state flag resolved against the employer band). */
     hrdfSubject: (subjectToHrdf: boolean | null | undefined, status: HrdfStatus) => boolean;
     /**

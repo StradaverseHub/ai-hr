@@ -812,6 +812,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // REGISTERING IT IS NOT PAPERWORK: test/function-access.test.ts fails BOTH ways — a guarded
       // page.tsx absent from REGISTERED_ROUTES, and a registered route with no page on disk.
       '/admin/leave-config/special-setting',
+      // 50d9b809 — SHARED LEAVE GROUPS' own address, a Leave Settings card. The group editor was a pop-up
+      // on the Entitlements screen (`/admin/leave-config/types`, a route on this key behind the same
+      // `requireAdmin` guard), so it is a ROUTE on this screen key rather than a new one: the people who
+      // could manage groups in the pop-up are exactly the people who can open this page, and no new
+      // permission is created. REGISTERING IT IS NOT PAPERWORK: test/function-access.test.ts fails BOTH
+      // ways — a guarded page.tsx absent from REGISTERED_ROUTES, and a registered route with no page.
+      '/admin/leave-config/shared-groups',
       // f1b994e3 — `/admin/leave/audit` STOOD HERE and is DELIBERATELY GONE. The Leave Config Audit tab
       // is retired into the one central Audit Trail (/admin/audit, screenKey `auditTrail` below, also
       // requireAdmin — so nobody who could open the leave page loses access). The route survives as an

@@ -112,19 +112,36 @@ Disabling expiry preserves reuse protection. Existing recovery still requires MF
 This amendment describes the source candidate; hosted checks, installation and rendered acceptance
 remain separate evidence. It grants no production deployment authority.
 
+## Amendment: administrator authenticator pause (board 07c98c36, 10 November 2026)
+
+The Security Center recovery exemption becomes an administrator "authenticator pause" with an absolute
+end chosen in Malaysia time, at least 5 minutes and at most 7 days ahead, and a required reason. It is
+single use and applies to exactly two paths: the reset-email completion (as before) and the first
+sign-in with an administrator-issued temporary password (`mustChange` with a temporary-password expiry).
+Consuming it retires the old authenticator secret and recovery codes and rotates the credential version,
+so the person must still change the password and enrol a new authenticator before any session exists;
+`assertActiveCredential` continues to require a TOTP secret. MFA therefore remains mandatory; a request
+to enter HR without any authenticator is a separate security-policy decision. An administrator can
+switch the check back on at any time (the record is deleted; sessions are unaffected). An ended pause
+is deleted and audited once as expired when the next locked read, sign-in or reset observes it.
+Audit events carry times, actor and the administrator's reason only, never passwords, links or codes.
+Temporary-password issuance keeps policy, history, single-use and session revocation unchanged; its
+reason becomes optional. Password Policy settings are not changed by either action.
+
 ## Account actions need strictly higher authority — 10 November 2026
 
-Security Center account actions (suspend, reactivate, expiry, temporary password, authenticator
-recovery and reset email) previously admitted any group administrator for every target. A tenant-wide
-HR administrator could therefore set a temporary password and an authenticator-skip recovery window on
-a super administrator, and any administrator could act on their own account. Migration 4502 adds
-`app.account_action_subject`, which keeps every read-admission proof from 2106 and additionally:
+Security Center account actions (suspend, reactivate, expiry, temporary password, authenticator pause
+and its early end, and reset email) previously admitted any group administrator for every target. A
+tenant-wide HR administrator could therefore set a temporary password and an authenticator pause on a
+super administrator, and any administrator could act on their own account. Migration 4902 adds
+`app.account_actions_admitted` and `app.account_action_subject`, which keep every read-admission proof
+from 2106 and additionally:
 
-- refuses the actor's own account;
-- ranks super_admin 3, tenant-wide hr_admin 2, company-scoped hr_admin 1 and all other roles 0, and
-  admits an action only when the target's highest role ranks strictly below the actor's;
-- never admits authenticator recovery for a target holding hr_admin or super_admin at any scope.
+- refuse the actor's own account;
+- rank super_admin 3, tenant-wide hr_admin 2, company-scoped hr_admin 1 and all other roles 0, and
+  admit an action only when the target's highest role ranks strictly below the actor's;
+- never admit an authenticator pause for a target holding hr_admin or super_admin at any scope.
 
-Reading an account summary or history is unchanged. The account page offers only admitted actions.
-Super administrators therefore cannot reset one another in the product; they use self-service
+Reading an account summary or history is unchanged. The Users list and account page offer only admitted
+actions. Super administrators therefore cannot reset one another in the product; they use self-service
 recovery or the installation operator route. Payroll and performance partner roles rank 0.

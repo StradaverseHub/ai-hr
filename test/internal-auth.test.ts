@@ -1,4 +1,5 @@
-import {manageAccount,readManagedAccount} from '../core/account-management';
+import {generateManagedAccountPassword,manageAccount,readManagedAccount,readManagedAccountDirectory,readManagedAccountHistory} from '../core/account-management';
+import {readLastSignIns} from '../core/last-sign-in';
 import { pgSqlState } from '../lib/db-error';
 import { readRememberedMfaPolicyEditor, saveRememberedMfaPolicy } from '../core/remembered-mfa-policy';
 import { rememberedFactorValid } from '../lib/internal-auth/remembered-mfa';
@@ -51,17 +52,28 @@ async function enroll(native = false, rememberDevice = false) {
   const signedIn = completed(await verifyMfa(challenge(setup), await generate({ secret: setup.secret }), native, rememberDevice));
   return { signedIn, setup };
 }
-/** A separate super admin: account actions never target the actor and need strictly higher authority (4502). */
+/** A separate super admin: account actions never target the actor and need strictly higher authority (4902). */
 async function superCtx() {
   const userId = await createAppUser(base.tenantId, null, 'super_admin');
   return { ...adminCtx(base), userId, roles: ['super_admin'], grants: [{ role: 'super_admin', companyId: null }] };
 }
-/** Authenticator recovery is never admitted for an administrator target, so these flows use a non-admin owner login. */
+/** An authenticator pause is never admitted for an administrator target, so these flows use a non-admin owner login. */
 async function demoteOwnerToEmployee() {
   await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId, base.adminUserId));
   await owner.db.insert(schema.roleAssignment).values({ tenantId: base.tenantId, appUserId: base.adminUserId, companyId: null, role: 'employee' });
 }
 async function nextCode(c: Credential) { return generate({ secret: c.totpSecret!, epoch: (c.lastStep + 1) * 30 }); }
+/** A fictional employee account (not the acting administrator) with a completed first sign-in and authenticator. */
+async function enrolledEmployee() {
+  await enroll();const group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+  const employee=await hireEmployee(group,{person:{fullName:'Fictional Paused Employee',primaryEmail:'paused@example.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  const userId=await createManualAccount(group,{id:randomUUID(),personId:employee.personId,username:'paused.user',email:'paused@example.test',role:'employee',companyId:null,password:temp,ownershipAttested:true});
+  let next=await startLogin({organization:'alpha',username:'paused.user',password:temp,native:false});
+  if(next.step==='password')next=await changeInitialPassword(challenge(next),final);
+  if(next.step!=='enroll'||!next.secret)throw new Error('Expected first-sign-in enrolment');
+  const secret=next.secret;completed(await verifyMfa(challenge(next),await generate({secret})));
+  return {group,userId,password:final,secret};
+}
 
 describe('first-party authentication with real private storage and existing HR bindings', () => {
   it('suspends account-wide access and rejects expired reactivation for browser and native',async()=>{
@@ -110,7 +122,7 @@ describe('first-party authentication with real private storage and existing HR b
   });
   it('consumes a bounded exemption only for password recovery and requires MFA for subsequent HR access',async()=>{
     await enroll();await demoteOwnerToEmployee();const ctx=await superCtx();
-    await manageAccount(ctx,base.adminUserId,{type:'recovery-exemption',reason:'Verified offline recovery',minutes:5});
+    await manageAccount(ctx,base.adminUserId,{type:'recovery-exemption',reason:'Verified offline recovery',expiresAt:Date.now()+10*60_000});
     await writeRecord(client,'email-state',{active:{config:{host:'smtp.invalid'}},revision:'test',drafts:{}},null);
     let text='';await requestRecovery('alpha','owner',async(_relay,mail)=>{text=mail.text;});
     const token=text.match(/#token=([A-Za-z0-9_-]{43})/)![1];
@@ -131,13 +143,13 @@ describe('first-party authentication with real private storage and existing HR b
   });
   it('never retires an authenticator for an expired exemption or a failed replacement password',async()=>{
     const {signedIn}=await enroll();await demoteOwnerToEmployee();const ctx=await superCtx();
-    await manageAccount(ctx,base.adminUserId,{type:'recovery-exemption',reason:'Verified short-lived recovery',minutes:5});
+    await manageAccount(ctx,base.adminUserId,{type:'recovery-exemption',reason:'Verified short-lived recovery',expiresAt:Date.now()+10*60_000});
     await writeRecord(client,'email-state',{active:{config:{host:'smtp.invalid'}},revision:'test',drafts:{}},null);
     let text='';await requestRecovery('alpha','owner',async(_relay,mail)=>{text=mail.text;});
     const token=text.match(/#token=([A-Za-z0-9_-]{43})/)![1],before=(await credentialByLogin('alpha','owner'))!;
     await expect(completeRecovery(token,final,'')).rejects.toMatchObject({code:'passwordPolicy'});
     expect((await credentialByLogin('alpha','owner'))?.totpSecret).toBe(before.totpSecret);
-    const now=Date.now();vi.spyOn(Date,'now').mockReturnValue(now+6*60_000);
+    const now=Date.now();vi.spyOn(Date,'now').mockReturnValue(now+11*60_000);
     await expect(completeRecovery(token,'Expired exemption replacement 738!','')).rejects.toMatchObject({code:'invalidCode'});
     const unchanged=(await credentialByLogin('alpha','owner'))!;
     expect(unchanged.totpSecret).toBe(before.totpSecret);expect(unchanged.recoveryHashes).toEqual(before.recoveryHashes);
@@ -147,9 +159,94 @@ describe('first-party authentication with real private storage and existing HR b
   it('denies unlinked account management to company HR and rejects unknown targets',async()=>{
     await enroll();const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:base.companyId}]};
     await expect(manageAccount(ctx,base.adminUserId,{type:'suspend',reason:'Unauthorized scoped action'})).rejects.toThrow();
+    // Board 07c98c36: the new dialogs pass through the same complete-scope proof.
+    await expect(manageAccount(ctx,base.adminUserId,{type:'recovery-exemption',reason:'Unauthorized scoped pause',expiresAt:Date.now()+3600_000})).rejects.toThrow();
+    await expect(manageAccount(ctx,base.adminUserId,{type:'recovery-exemption-cancel'})).rejects.toThrow();
+    await expect(manageAccount(ctx,base.adminUserId,{type:'temporary-password',minutes:60})).rejects.toThrow();
+    await expect(generateManagedAccountPassword(ctx,base.adminUserId)).rejects.toThrow();
+    await expect(readManagedAccountHistory(ctx,base.adminUserId)).rejects.toThrow();
+    expect(await readManagedAccountDirectory(ctx,[base.adminUserId])).toEqual({});
     const group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
     await expect(manageAccount(group,randomUUID(),{type:'suspend',reason:'Unknown target account'})).rejects.toThrow('forbidden');
     expect((await credentialByLogin('alpha','owner'))?.suspended).not.toBe(true);
+  });
+  it('pauses the authenticator for one temporary-password first sign-in and still requires a new authenticator',async()=>{
+    const {group,userId}=await enrolledEmployee(),temporary='Fictional temporary passphrase 4410!';
+    await manageAccount(group,userId,{type:'temporary-password',password:temporary,minutes:60});
+    const until=Date.now()+2*3600_000;
+    await manageAccount(group,userId,{type:'recovery-exemption',reason:'Verified lost phone by video call',expiresAt:until});
+    expect((await readManagedAccount(group,userId)).exemptionUntil).toBe(until);
+    expect((await readManagedAccountDirectory(group,[userId]))[userId]).toMatchObject({username:'paused.user',status:'active',exemptionUntil:until});
+    const before=(await credentialByLogin('alpha','paused.user'))!;expect(before.totpSecret).not.toBeNull();
+    const login=await startLogin({organization:'alpha',username:'paused.user',password:temporary,native:false});
+    expect(login.step).toBe('password');
+    const retired=(await credentialByLogin('alpha','paused.user'))!;
+    expect(retired.totpSecret).toBeNull();expect(retired.recoveryHashes).toEqual([]);expect(retired.version).not.toBe(before.version);
+    expect(await readRecord(client,`recovery-exemption:${retired.subject}`)).toBeNull();
+    expect(await readSession(challenge(login))).toBeNull();
+    await expect(verifyMfa(challenge(login),await generate({secret:before.totpSecret!}))).rejects.toMatchObject({code:'invalidChallenge'});
+    // The forced password change cannot open a session: a fresh authenticator must be enrolled first.
+    const enrolment=await changeInitialPassword(challenge(login),'Fictional replaced passphrase 4411!');
+    if(enrolment.step!=='enroll'||!enrolment.secret)throw Error('Expected mandatory authenticator enrolment');
+    completed(await verifyMfa(challenge(enrolment),await generate({secret:enrolment.secret})));
+    expect((await readManagedAccount(group,userId)).exemptionUntil).toBeNull();
+    // Single use: the next temporary password needs the new authenticator again.
+    await manageAccount(group,userId,{type:'temporary-password',reason:'Second verified recovery',password:'Fictional temporary passphrase 4412!',minutes:60});
+    expect((await startLogin({organization:'alpha',username:'paused.user',password:'Fictional temporary passphrase 4412!',native:false})).step).toBe('mfa');
+    const events=await owner.client`select event_type,actor_id,payload from domain_event where aggregate_id=${userId}::uuid and event_type like '%recovery-exemption%' order by occurred_at,sequence`;
+    expect(events.map(e=>e.event_type)).toEqual(['app-user.account-recovery-exemption','app-user.recovery-exemption-consumed']);
+    expect(events[0].actor_id).toBe(base.adminUserId);expect(events[1].payload).toEqual({path:'temporary-password',expiresAt:until});
+    const audit=JSON.stringify(await owner.client`select payload from domain_event where aggregate_id=${userId}::uuid`);
+    for(const secret of [temporary,'Fictional replaced passphrase 4411!','Fictional temporary passphrase 4412!',before.totpSecret!,enrolment.secret])expect(audit).not.toContain(secret);
+    const history=await readManagedAccountHistory(group,userId);
+    expect(history.map(e=>e.event_type)).toEqual(expect.arrayContaining(['app-user.account-temporary-password','app-user.account-recovery-exemption','app-user.recovery-exemption-consumed','app-user.logged-in','app-user.password-reset','app-user.mfa-enrolled']));
+    const times=history.map(e=>new Date(e.occurred_at).getTime());expect(times).toEqual([...times].sort((a,b)=>b-a));
+    expect(JSON.stringify(history)).not.toContain(temporary);
+  });
+  it('bounds the pause to 7 days, requires a reason, switches it back on and ignores an expired pause',async()=>{
+    const {group,userId}=await enrolledEmployee(),now=Date.now();
+    for(const expiresAt of [now+7*24*3600_000+60_000,now+60_000,now-60_000,Number.NaN])
+      await expect(manageAccount(group,userId,{type:'recovery-exemption',reason:'Verified lost phone',expiresAt})).rejects.toThrow('invalid');
+    await expect(manageAccount(group,userId,{type:'recovery-exemption',reason:'',expiresAt:now+3600_000})).rejects.toThrow('invalid');
+    await expect(manageAccount(group,userId,{type:'temporary-password',reason:'abc',minutes:60})).rejects.toThrow('invalid');
+    await manageAccount(group,userId,{type:'recovery-exemption',reason:'Verified lost phone',expiresAt:now+7*24*3600_000-60_000});
+    await manageAccount(group,userId,{type:'recovery-exemption-cancel'});
+    await manageAccount(group,userId,{type:'recovery-exemption-cancel'});
+    expect((await readManagedAccount(group,userId)).exemptionUntil).toBeNull();
+    await manageAccount(group,userId,{type:'temporary-password',password:'Fictional temporary passphrase 4420!',minutes:60});
+    expect((await startLogin({organization:'alpha',username:'paused.user',password:'Fictional temporary passphrase 4420!',native:false})).step).toBe('mfa');
+    await manageAccount(group,userId,{type:'recovery-exemption',reason:'Verified short pause',expiresAt:Date.now()+10*60_000});
+    await manageAccount(group,userId,{type:'temporary-password',password:'Fictional temporary passphrase 4421!',minutes:60});
+    const later=Date.now()+11*60_000;vi.spyOn(Date,'now').mockReturnValue(later);
+    expect((await startLogin({organization:'alpha',username:'paused.user',password:'Fictional temporary passphrase 4421!',native:false})).step).toBe('mfa');
+    const c=(await credentialByLogin('alpha','paused.user'))!;expect(c.totpSecret).not.toBeNull();
+    expect(await readRecord(client,`recovery-exemption:${c.subject}`)).toBeNull();
+    expect((await readManagedAccount(group,userId)).exemptionUntil).toBeNull();
+    const events=await owner.client`select event_type from domain_event where aggregate_id=${userId}::uuid and event_type like '%recovery-exemption%' order by occurred_at,sequence`;
+    expect(events.map(e=>e.event_type)).toEqual(['app-user.account-recovery-exemption','app-user.account-recovery-exemption-cancelled','app-user.account-recovery-exemption','app-user.recovery-exemption-expired']);
+  });
+  it('generates a candidate from the saved Password Policy without storing it',async()=>{
+    const {group,userId}=await enrolledEmployee();
+    await savePasswordPolicy(group,{enabled:false,interval:90,unit:'days',requirements:{...NEW_PASSWORD_REQUIREMENTS,maxLength:32,uppercase:true,lowercase:true,numbers:true,special:true}},0);
+    const candidate=await generateManagedAccountPassword(group,userId);
+    expect(candidate).toHaveLength(32);expect(candidate).toMatch(/[A-Z]/);expect(candidate).toMatch(/[a-z]/);expect(candidate).toMatch(/[0-9]/);expect(candidate).toMatch(/[^A-Za-z0-9\s]/);
+    await expect(startLogin({organization:'alpha',username:'paused.user',password:candidate,native:false})).rejects.toMatchObject({code:'invalidLogin'});
+    expect(JSON.stringify(await owner.client`select payload from domain_event where aggregate_id=${userId}::uuid`)).not.toContain(candidate);
+  });
+  it('reads Last Login from the latest sign-in event for every listed user in one batch',async()=>{
+    const {group,userId,password,secret}=await enrolledEmployee(),unknown=randomUUID();
+    const [index]=await owner.client`select indexdef from pg_indexes where indexname='domain_event_app_user_last_login_idx'`;
+    expect(index.indexdef).toContain('WHERE');
+    const first=await readLastSignIns(group,[userId,unknown,base.adminUserId]);
+    expect(Object.keys(first).sort()).toEqual([userId,base.adminUserId].sort());expect(first[unknown]).toBeUndefined();
+    const login=await startLogin({organization:'alpha',username:'paused.user',password,native:false});
+    expect(login.step).toBe('mfa');expect(secret).toBe((await credentialByLogin('alpha','paused.user'))!.totpSecret);
+    completed(await verifyMfa(challenge(login),await nextCode((await credentialByLogin('alpha','paused.user'))!)));
+    const latest=await readLastSignIns(group,[userId]);
+    const [expected]=await owner.client`select max(occurred_at) as last_at from domain_event where aggregate_id=${userId}::uuid and event_type='app-user.logged-in'`;
+    expect(latest[userId]).toBe(new Date(expected.last_at).toISOString());expect(new Date(latest[userId]).getTime()).toBeGreaterThanOrEqual(new Date(first[userId]).getTime());
+    const [{count}]=await owner.client`select count(*)::int count from domain_event where aggregate_id=${userId}::uuid and event_type='app-user.logged-in'`;expect(count).toBe(2);
+    expect(await readLastSignIns({...group,roles:['employee']},[userId])).toEqual({});
   });
   it('limits delegated HR to accounts wholly within their administered companies and protects group admins',async()=>{
     await enroll();const group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
@@ -168,7 +265,7 @@ describe('first-party authentication with real private storage and existing HR b
     await expect(manageAccount(scoped,userId,{type:'suspend',reason:'Forbidden mixed-company account'})).rejects.toThrow('forbidden');
     expect((await credentialByLogin('alpha','scoped.user'))?.suspended).toBe(false);
   });
-  it('refuses self, equal and higher authority, and authenticator recovery for administrators',async()=>{
+  it('refuses self, equal and higher authority, and an authenticator pause for administrators',async()=>{
     await enroll();const group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]},issuer=internalIssuer(base.tenantId);
     const admitted=(ctx:Parameters<typeof manageAccount>[0],userId:string,action:string)=>withTenant(ctx,async tx=>
       ((await tx.execute(sql`select app.account_action_subject(${userId}::uuid,${issuer},${action}) subject`)) as unknown as {subject:string|null}[])[0].subject);
@@ -176,31 +273,36 @@ describe('first-party authentication with real private storage and existing HR b
       await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,userId));
       await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:userId,role,companyId});
     };
-    // Self: refused in the service and, independently, in the database.
+    const pause=()=>({type:'recovery-exemption' as const,reason:'Takeover attempt via pause',expiresAt:Date.now()+3600_000});
+    // Self: refused in the service and, independently, in the database; the account page offers nothing.
     await expect(manageAccount(group,base.adminUserId,{type:'suspend',reason:'Self suspension attempt'})).rejects.toThrow('forbidden');
     expect(await admitted(group,base.adminUserId,'temporary-password')).toBeNull();
     expect((await readManagedAccount(group,base.adminUserId)).actions).toEqual([]);
     const employee=await hireEmployee(group,{person:{fullName:'Authority target',primaryEmail:'authority@example.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
     const userId=await createManualAccount(group,{id:randomUUID(),personId:employee.personId,username:'authority.user',email:'authority@example.test',role:'employee',companyId:null,password:temp,ownershipAttested:true});
-    // Lower-ranked target: every action is offered and admitted, including authenticator recovery.
-    expect((await readManagedAccount(group,userId)).actions).toEqual(['suspend','reactivate','expiry','temporary-password','recovery-exemption','reset-email']);
+    // Lower-ranked target: every action is offered and admitted, including the authenticator pause.
+    const all=['suspend','reactivate','expiry','temporary-password','recovery-exemption','recovery-exemption-cancel','reset-email'];
+    expect((await readManagedAccount(group,userId)).actions).toEqual(all);
+    expect((await readManagedAccountDirectory(group,[userId]))[userId].actions).toEqual(all);
     // Higher (super admin) and equal (tenant-wide HR admin) targets: nothing is admitted and nothing changes.
     const before=(await credentialByLogin('alpha','authority.user'))!;
     for(const [role,companyId] of [['super_admin',null],['hr_admin',null]] as const){
       await setRole(userId,role,companyId);
       await expect(manageAccount(group,userId,{type:'temporary-password',reason:'Takeover attempt',minutes:30})).rejects.toThrow('forbidden');
-      await expect(manageAccount(group,userId,{type:'recovery-exemption',reason:'Takeover attempt',minutes:5})).rejects.toThrow('forbidden');
+      await expect(manageAccount(group,userId,pause())).rejects.toThrow('forbidden');
+      await expect(generateManagedAccountPassword(group,userId)).rejects.toThrow('forbidden');
       expect((await readManagedAccount(group,userId)).actions).toEqual([]);
+      expect((await readManagedAccountDirectory(group,[userId]))[userId].actions).toEqual([]);
     }
     const untouched=(await credentialByLogin('alpha','authority.user'))!;
     expect(untouched.version).toBe(before.version);expect(untouched.password).toEqual(before.password);
-    expect(await readRecord(client,`recovery-exemption:${untouched.subject}`)).toBeNull();
-    // A super admin may act on a tenant-wide HR admin, but never grant that administrator an authenticator skip.
+    expect((await readManagedAccount(group,userId)).exemptionUntil).toBeNull();
+    // A super admin may act on a tenant-wide HR admin, but never pause that administrator's authenticator.
     const sup=await superCtx();
     await manageAccount(sup,userId,{type:'suspend',reason:'Verified administrator suspension'});
     await manageAccount(sup,userId,{type:'reactivate',reason:'Verified administrator restoration'});
-    await expect(manageAccount(sup,userId,{type:'recovery-exemption',reason:'Administrator MFA skip',minutes:5})).rejects.toThrow('forbidden');
-    expect((await readManagedAccount(sup,userId)).actions).not.toContain('recovery-exemption');
+    await expect(manageAccount(sup,userId,pause())).rejects.toThrow('forbidden');
+    expect((await readManagedAccount(sup,userId)).actions).toEqual(all.filter(a=>a!=='recovery-exemption'));
     // Company HR admins cannot act on another HR admin of the same company.
     await setRole(userId,'hr_admin',base.companyId);await setRole(base.adminUserId,'hr_admin',base.companyId);
     const scoped={...adminCtx(base),grants:[{role:'hr_admin',companyId:base.companyId}]};
@@ -210,7 +312,7 @@ describe('first-party authentication with real private storage and existing HR b
     const other=await seedBase();
     await expect(manageAccount({...adminCtx(other),grants:[{role:'hr_admin',companyId:null}]},userId,{type:'suspend',reason:'Cross-tenant attempt'})).rejects.toThrow('forbidden');
     expect((await credentialByLogin('alpha','authority.user'))?.suspended).toBe(false);
-    expect(JSON.stringify(await owner.client`select event_type,payload from domain_event where aggregate_id=${userId}::uuid and event_type like 'app-user.account-%' order by sequence`))
+    expect(JSON.stringify(await owner.client`select event_type from domain_event where aggregate_id=${userId}::uuid and event_type like 'app-user.account-%' order by sequence`))
       .toMatch(/account-suspend.*account-reactivate/);
   });
   it('requires password change and confirmed MFA before granting any browser or API session', async () => {

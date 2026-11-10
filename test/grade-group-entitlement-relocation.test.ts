@@ -164,10 +164,15 @@ describe('f12d77e5 · the Grade Groups editor is off the Entitlement screen', ()
     // whichever type was selected; a group spans several. It is a PAGE-LEVEL section above the workspace
     // now, which is the whole of the difference and is asserted as the ordering below. The property
     // f12d77e5 cared about is unchanged: the editor exists on a real screen after a relocation.
-    expect(entitlementsCode).toContain('<LeaveSharedGroupConfig');
-    expect(entitlementsCode.indexOf('<LeaveSharedGroupConfig')).toBeLessThan(
-      entitlementsCode.indexOf('<LeaveTypeWorkspace'),
-    );
+    //
+    // 50d9b809 — AND IT LEFT THIS SCREEN AGAIN, for a page of its own (Leave Settings › Shared Leave
+    // Groups): the reporter found the pop-up here hard to find and cramped. The property f12d77e5 cared
+    // about is unchanged and is asserted against the new home — the editor still EXISTS on a real screen
+    // after the relocation — and it is gone from here and from Company rules, so no copy was left behind.
+    expect(entitlementsCode).not.toContain('<LeaveSharedGroupConfig');
+    expect(
+      stripComments(fs.readFileSync(path.join(ROOT, 'app/admin/leave-config/shared-groups/page.tsx'), 'utf8')),
+    ).toContain('<LeaveSharedGroupConfig');
     expect(stripComments(fs.readFileSync(COMPANY_RULES, 'utf8'))).not.toContain('<LeaveSharedGroupConfig');
     // ee6b7c69 renamed this slot, and the rename IS the surface change: `entitlementTablesLink` held a
     // caption and a link to a separate screen; `entitlementTablesSection` holds the tables themselves,
@@ -200,12 +205,15 @@ describe('f12d77e5 · the Grade Groups editor is off the Entitlement screen', ()
     // on this screen (at page level, above the per-type workspace). The expected shape grows to four and
     // the arity + position assertions are unchanged — they are the guard, and adding a name in the wrong
     // slot is the same silent shift as dropping one.
+    // 50d9b809 — `sharedGroups` LEFT this destructure again, WITH the editor it fed (Leave Settings ›
+    // Shared Leave Groups reads its own catalogue). The expected shape shrinks to three and the arity +
+    // position assertions are unchanged — they are the guard.
     const { names, calls } = destructuredAwaitAll(entitlementsCode, 'const [types,');
-    expect(names).toEqual(['types', 'companies', 'profileOptionsActive', 'sharedGroups']);
+    expect(names).toEqual(['types', 'companies', 'profileOptionsActive']);
     expect(calls).toHaveLength(names.length);
     expect(calls[0]).toMatch(/^listLeaveTypes\(/);
     expect(calls[names.indexOf('profileOptionsActive')]).toMatch(/^listAllProfileOptions\(/);
-    expect(calls[names.indexOf('sharedGroups')]).toMatch(/^listLeaveSharedGroups\(/);
+    expect(entitlementsCode).not.toContain('listLeaveSharedGroups(');
     // …and the read did NOT stay behind on the screen the editor left: an unmounted card's data prep is a
     // query per render for a surface nobody sees (the e4238594 precedent this file cites twice).
     const companyRules = stripComments(fs.readFileSync(COMPANY_RULES, 'utf8'));

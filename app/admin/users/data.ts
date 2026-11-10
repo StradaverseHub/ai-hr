@@ -75,6 +75,7 @@ export async function loadUsersData(s: SessionContext) {
     invitedCompanyId: null,
     manuallyArchived: Boolean(u.archivedAt),
     hasEmployment: u.hasEmployment,
+    employeeCode: u.employeeCode,
   }));
   const peopleWithLogin = new Set(allUsers.map(u => u.personId).filter(Boolean));
   const invitationPeople = new Set(invitations.map(inv => inv.personId).filter(Boolean));
@@ -98,6 +99,7 @@ export async function loadUsersData(s: SessionContext) {
       invitedCompanyId: inv.companyId,
       manuallyArchived: false,
       hasEmployment: activationCandidates.find(p=>p.id===inv.personId)?.hasEmployment,
+      employeeCode: activationCandidates.find(p=>p.id===inv.personId)?.code ?? null,
     });
   }
 
@@ -105,7 +107,7 @@ export async function loadUsersData(s: SessionContext) {
     if (peopleWithLogin.has(p.id) || invitationPeople.has(p.id)) continue;
     rows.push({ key: `person:${p.id}`, personId: p.id, status: setupPeople.has(p.id) ? 'preparing' : 'pending',
       name: p.name, email: p.email, appUserId: null, loginSuffix: null, roles: [],
-      invitationId: null, invitedRole: null, invitedCompanyId: null, manuallyArchived: false, hasEmployment: p.hasEmployment });
+      invitationId: null, invitedRole: null, invitedCompanyId: null, manuallyArchived: false, hasEmployment: p.hasEmployment, employeeCode: p.code });
   }
 
   return { rows, groupAdmin, companies, roleOptions, assistantGranted, peopleOptions, pendingEmployees, manualEnrollments };

@@ -30,6 +30,7 @@ import {payrollAuditStatus,payrollCycleStatus,payrollLoopSettings,salaryPayrollC
 import {askPolicyHandbook} from '../handbook/ask';
 import {askAiQuality} from '../learning/ask';
 import {payrollLearningStatus} from './payroll-learning';
+import {sharedLeaveGroupsStatus} from './shared-leave-groups';
 
 export type TerasCapabilityScope=Readonly<{companyId:string;locale?:string}>;
 export type TerasCapability=Readonly<{name:string;module:string|null;admin:boolean;
@@ -148,6 +149,9 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  // Payroll history learning (P2): "Learned this cycle", payroll administrators only (core/payroll-learning/status.ts), counts under the
  // small-group rule; the owner reads only the companies whose payroll the caller administers.
  {name:'payroll_learning_status',module:'payroll',admin:true,worker:null,run:(ctx,input)=>payrollLearningStatus(ctx,input)},
+ // 50d9b809: the Shared Leave Groups page's groups, administrators only (the page's requireAdmin), configuration only
+ // (core/explainers/shared-leave-groups.ts); served as the operations_status topic shared_leave_groups, no new tool.
+ {name:'shared_leave_groups',module:'leave',admin:true,worker:null,run:ctx=>sharedLeaveGroupsStatus(ctx)},
 ]);
 /** Capabilities this caller may be offered. A capability that belongs to a worker is offered only while that worker's
  * run gate is open (registered, switched on, tenant not stopped), read once per call in the caller's tenant. */

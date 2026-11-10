@@ -14,11 +14,9 @@ import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 import { EARNED_METHODS, annualLeaveSwitchState, isEarnedAccrualType } from '@/core/leave';
 import { leaveFormulaTemplateFrom, type LeaveFormulaEntry } from '@/core/leave-formula';
 import { listAllProfileOptions } from '@/core/profile-options';
-import { listLeaveSharedGroups } from '@/core/leave-shared-group';
 import type { LeaveRoundingMethod, RoundingBand } from '@/core/leave-compute';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { AddLeaveTypeCancel, LeaveTypeWorkspace } from '@/components/leave-type-workspace';
-import { LeaveSharedGroupConfig } from '@/components/leave-shared-group-config';
 import {
   EntitlementTablesBlock,
   loadEntitlementTablesData,
@@ -33,12 +31,9 @@ import { LeaveTypeApprovalReadout, loadLeaveTypeApprovalReadout } from '../appro
 import { LeaveTypeTabs, type LeaveTypeTabsData } from './leave-type-tabs';
 import {
   archiveLeaveTypeAction,
-  createLeaveSharedGroupAction,
   createLeaveTypeAction,
-  deleteLeaveSharedGroupAction,
   deleteLeaveTypeAction,
   setLeaveTypeRulesAction,
-  updateLeaveSharedGroupAction,
   updateLeaveTypeAction,
 } from '../../actions';
 
@@ -103,28 +98,20 @@ export default async function LeaveConfigTypesPage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
-  // r281 (cdd7500b) — the shared-group card's own strings, read where the card is drawn.
-  const tGroup = await getTranslations('admin.leave.sharedGroup');
   const { error, editTemplate, editRule } = await searchParams;
   const header = await leaveConfigPageHeader('leaveTypes');
 
   // 10b59703 — the job-grade list LEFT this read with Run earned accrual, whose scope selector was its
   // only consumer here; Generate Entitlement reads it for the dialog now (generate/page.tsx).
-  const [types, companies, profileOptionsActive, sharedGroups] = await Promise.all([
+  // 50d9b809 — `sharedGroups` LEFT this destructure WITH the editor it fed (Leave Settings › Shared Leave
+  // Groups reads its own catalogue now). Name and element left together, so no later slot shifts.
+  const [types, companies, profileOptionsActive] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
     listCompanies(s),
     // The ACTIVE picker values for the eight org fields come from the SAME master list the profile
     // Organisation Assignment screen reads, so deleted/inactive values are never offered as new choices.
     listAllProfileOptions(s, { activeOnly: true }),
-    // r281 (cdd7500b) — the shared-group catalogue, for the page-level section below.
-    listLeaveSharedGroups(s),
   ]);
-  // r281 (cdd7500b) — DERIVED FROM THE READ THIS PAGE ALREADY MAKES, never read again. `types` is every
-  // leave type including the archived ones (the workspace rail lists both), and the group's member tick
-  // list offers only the ACTIVE ones — the same set `listLeaveTypes(s, { includeArchived: false })` would
-  // return. Calling that a second time would be a second derivation of "active leave types", which is the
-  // drift this repo keeps paying for.
-  const activeTypeOptions = types.filter((lt) => !lt.archivedAt).map((lt) => ({ id: lt.id, name: lt.name }));
 
   /**
    * r299 (3de1453a) — THE TENANT'S ACTIVE ANNUAL LEAVE, READ FROM ITS OWN ROWS.
@@ -334,41 +321,11 @@ export default async function LeaveConfigTypesPage({
           in the shared tables block. Both are the warning shown BESIDE the thing it is about, which is
           the half of r209 that deliberately did not move. */}
 
-      {/* ── F3 · Shared leave groups ───────────────────────────────────────────────────────────────────
-          r281 (cdd7500b) — BACK ON THIS SCREEN, AND AT PAGE LEVEL, WHICH IS THE WHOLE DISTINCTION.
-
-          The reporter asked for Shared Leave Groups to sit under Leave types rather than under Company
-          rules, because a shared group is about leave types. That reading is right. The history that
-          matters is not WHETHER it belongs here but WHERE on this screen: it used to sit inside the
-          per-leave-type workspace, beside Add Leave Type, where it read as a property of whichever type
-          you happened to have selected — and a group spans several types at once, which is exactly the
-          shape r88 took it OUT of Benefit Schemes to avoid. So that reasoning is not reversed by this
-          move; it is what decides the mount point. The card is drawn HERE, at page level, ABOVE the
-          per-type workspace and outside it, so it still reads as a tenant-wide catalogue rather than as a
-          setting on the selected type. A page-level section in this slot is a known shape: the
-          traffic-light health listing was mounted exactly here until r279 gave it a row of its own.
-
-          The member tick list offers every ACTIVE leave type, derived from the read this page already
-          makes. The at-most-one-group-per-type rule is enforced in the DATABASE (unique on
-          (tenant, leave_type), migration 0342) and reported by name from the action, never re-derived on
-          screen — which is why moving the screen cannot weaken it. */}
-      <Card>
-        <SectionHeader title={tGroup('title')} count={sharedGroups.length} />
-        <div className="space-y-3 px-4 py-3">
-          <p className="text-xs text-muted-foreground">{tGroup('help')}</p>
-          <div className="max-w-xs">
-            <LeaveSharedGroupConfig
-              groups={sharedGroups}
-              leaveTypes={activeTypeOptions}
-              actions={{
-                create: createLeaveSharedGroupAction,
-                update: updateLeaveSharedGroupAction,
-                remove: deleteLeaveSharedGroupAction,
-              }}
-            />
-          </div>
-        </div>
-      </Card>
+      {/* ── F3 · Shared leave groups ── 50d9b809 — MOVED OFF THIS SCREEN, to Leave Settings › Shared Leave
+          Groups (`app/admin/leave-config/shared-groups/page.tsx`), where the editor renders inline on a page
+          of its own instead of as a pop-up behind a button here. The reporter found the pop-up hard to find
+          and cramped. ONE PLACE, NOT TWO: no copy is left here, and the catalogue read, the strings and the
+          three action imports left with it. */}
 
       {/* r126 9861b8a4 — THE LIST THE PLAN PROMISED, CARRIED ACROSS (r258 fix pass). Rendered only when the
           set is non-empty: a permanent empty banner is furniture, and furniture stops being read. */}

@@ -1,12 +1,49 @@
 # Security Center account-action authority — 10 November 2026 MYT (unapplied)
 
-Branch claude/fix-account-action-privilege reserves `4502_account_action_authority`
-at idx 3902 / when 1793330004202. The survey of main and the 60 most recently
-updated origin heads found peer maximum 4342 / idx 3742 / when 1793330004042;
-4500 (idx 3900 / when 1793330004200) and 4501 (idx 3901 / when 1793330004201)
-are reserved the same day by the ccd3a65c and 4452ba3c board builders. The
-staging ledger includes 4202. Recheck peer claims and the installed ledger at
-admission; this reservation grants no installation authority.
+PR 240 (branch claude/fix-account-action-privilege) moves its unapplied reservation
+`4502_account_action_authority` to `4902_account_action_authority` at idx 4302 / when
+1793330004602, because main now ends at 4800 (idx 4200 / when 1793330004500) and a
+lower timestamp would be silently skipped after it. The 4502 bytes were never applied
+anywhere. A survey of main and the 150 most recently updated origin heads found no
+claim at idx 4302 or between when 1793330004500 and 1793330009820; 4900 and 4901 are
+reserved the same day for the rebased ccd3a65c and 4452ba3c board releases. Recheck
+peer claims and the installed ledger at admission; this grants no installation authority.
+
+# Shared Leave Groups AI read control — 10 November 2026 MYT (unapplied)
+
+Branch claude/fb-50d9b809-shared-leave-groups reserves `4800_ai_shared_leave_groups_read`
+at idx 4200 / when 1793330004500, one INSERT registering the AI Centre control
+`read:shared_leave_groups`. A read-only survey of 7,071 refs (531 committed journal
+blobs) found committed peers through `4601_last_login_event_index` (idx 4001 /
+when 1793330004301); 250 readable worktree journals added two uncommitted, mutually
+conflicting `4700_*` claims at idx 4100 / when 1793330004400, so this reservation
+sits above them. The source base f07f32dcd ends at `4202` (idx 3602). Recheck the
+published baseline, ordered ledger and peer claims before admission. The reservation
+grants no installation authority.
+
+# Security Center Last Login index — 10 November 2026 MYT (unapplied)
+
+Branch claude/fb-07c98c36-users-account-actions holds the coordinator's
+reservation `4601_last_login_event_index` at idx 4001 / when 1793330004301,
+above the peer reservations through 4502 (idx 3902 / when 1793330004202) and
+the Schedule Group builder's 4600. The SQL adds one partial index on
+domain_event for app-user.logged-in reads; no data changes. Recheck peer claims,
+the published baseline and the ordered applied ledger at admission; this
+reservation grants no installation authority.
+
+# Schedule Group configuration (c03670cc) — 10 November 2026 MYT (unapplied)
+
+Branch claude/fb-c03670cc-schedule-group-tabs reserves
+`4600_attendance_clock_policy_group_scope` at idx 4000 / when 1793330004300, above
+the peer reservations through 4502 (idx 3902 / when 1793330004202) and below 4601,
+which is reserved for the Users builder. It lets `attendance_clock_policy_revision`
+hold group-wide (company_id NULL) revisions with their own ordinal/date chain and
+group-administrator write check. It adds no column to any table. It re-creates the 4202 guard function reading only
+ordinal/effective_from, so it stays compatible with the peer
+`4342_attendance_clock_policy_audit_scope` (when 1793330004042) on
+codex/architecture-leave-withdraw-snapshot-test-20261110; that peer's audit-read
+policy and history function match company rows only. Recheck peer claims and the
+installed ledger before admission; this reservation grants no installation authority.
 
 # Schedule Group clock policy — 10 November 2026 MYT (unapplied)
 

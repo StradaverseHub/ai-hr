@@ -383,6 +383,10 @@ describe('00e28308 · the month records the ruleset version it was opened under'
         ...GOLDEN_STATUTORY,
         reportContext:{version:1,payingCompanyId:base.companyId,currency:'MYR',itemization:'partial',proration:{payMode:'monthly',from:'2025-01-01',to:null,factor:1,window:{from:'2026-05-01',to:'2026-05-31'}}},
         // Exact additive display evidence; all pre-existing monetary fields stay pinned below.
+        // c2ea9567 — the HRDF wages itemised (additive; the levy and base above are unchanged). The
+        // seeded company is not registered with HRD Corp, so the rate applied is 0 and the levy 0.
+        hrdfWorking: { version: 1, items: [{ kind: 'basic', amount: 5000 }], wages: 5000, status: 'not_registered',
+          subject: false, rate: 0, calculatedLevy: 0, levy: 0 },
         pcbExemptions: {version:1,payPeriod:MONTH,taxYear:2026,basis:'selected_calculation',rows:[]},
         salaryBasis: { version: 1, referenceDate: '2026-05-31', compensationId: salaryOwners[0].id,
           effectiveFrom: '2025-01-01', basicSalary: '5000.00', payMode: 'monthly' },

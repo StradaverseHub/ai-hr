@@ -21,3 +21,17 @@ Reversing the 28 substitutions yields the serving registry byte for byte. Both p
 On 10 November 2026 MYT the repository owner approved compatibility review commit `39d25732db1ad349473521dc32a776e52840e891` and exact fingerprint `2213fbcc07038de42a8f6a10e554affddf99dc665c1c97269295928d63543027`. The repair restores the previous online punch response and removes the extra receipt timestamp from that response. The shared overtime parser test now exercises empty and explicit zero rates. No provider transport or payload gains data.
 
 The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This exact binding supersedes the earlier joint candidate above.
+
+## Four approved board items: Shared Leave Groups, HRD Corp levy, Security Center Users and Schedule Group
+
+On 10 November 2026 MYT the repository owner approved combined review commit `c040577e199c81f3f0e4a9f2955d6909c8a6a0c0` and exact fingerprint `af80e1f36af9182034c599c908a094566af5c935ca581848bc2cc61ab0911e4a`. The candidate integrates board items 50d9b809, c2ea9567, 07c98c36 and c03670cc on claude/fb-board-four-integration-20261110.
+
+Outbound data changes are limited to three. A new read-only `shared_leave_groups` topic of the existing operations_status tool gives HR and group administrators each shared leave group's name, member leave type names, shared days per year, maximum days per application and employee placement; it returns no ids, employees, balances or requests, is refused to non-administrators before reading, runs under tenant row-level security and has its own AI Centre control (`read:shared_leave_groups`, migration 4800). The attendance-day explainer may label overtime minutes at a typed non-standard rate as "OT other rate" where it previously said Flat OT; the rate itself is not sent. HRD Corp wage base and levy values change under the corrected HRDF rule, in fields that already go out. An independent review found no other new outbound field from the HRDF breakdown stamp, the Security Center account controls or the group-wide clock policy.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This exact binding supersedes the online clock compatibility repair binding above.
+
+## Four approved board items: gate repair re-binding
+
+On 10 November 2026 MYT the repository owner approved re-binding to repair commit `60030e151703e3698508b2302a7010c18e2b9db1` and exact fingerprint `b6e04e75dd91e46898fc6d8c509cf331e00bbae6e65ee9cf565d66859680312c`. The only covered-source change since the binding above is that the HRD Corp levy working stamped on payslips omits pay items that paid RM0, so it prints no +RM0.00 rows. That working is not read by any AI path. No provider transport or payload gains data, and the outbound changes recorded above are unchanged.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This exact binding supersedes the four-item binding above.

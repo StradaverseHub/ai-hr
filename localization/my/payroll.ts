@@ -611,8 +611,23 @@ export function hrdfLevy(
   cfg: { mandatoryRate: number; optionalRate: number } = MY_HRDF,
 ): number {
   if (status === 'not_registered' || base <= 0) return 0;
-  const rate = status === 'mandatory' ? cfg.mandatoryRate : cfg.optionalRate;
-  return round2(Math.max(0, base) * rate);
+  return round2(Math.max(0, base) * hrdfRate(status, cfg));
+}
+
+/**
+ * Feedback c2ea9567 — THE RATE `hrdfLevy` APPLIES, exposed so the kernel can STAMP it beside the HRDF
+ * wages on the payslip instead of a screen deriving it later as `levy ÷ base` (a quotient that stops being
+ * the rate the moment the levy is rounded to the sen or typed by hand). `hrdfLevy` calls this, so the
+ * stamped rate and the charged levy come from one expression and cannot disagree. Registration band →
+ * rate from the resolved ruleset (`rules.hrdf`, which carries any dated override) or the built-in MY_HRDF;
+ * not registered → 0.
+ */
+export function hrdfRate(
+  status: HrdfStatus,
+  cfg: { mandatoryRate: number; optionalRate: number } = MY_HRDF,
+): number {
+  if (status === 'not_registered') return 0;
+  return status === 'mandatory' ? cfg.mandatoryRate : cfg.optionalRate;
 }
 
 /**
