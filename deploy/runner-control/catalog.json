@@ -11,7 +11,6 @@
  {"id":"ai-alerts","unit":"aihr-ai-alerts","frequency":"interval","defaultMinutes":60,"impact":"monitoring","destination":"/admin/ai"},
  {"id":"ai-retention","unit":"aihr-ai-retention","frequency":"interval","defaultMinutes":5,"impact":"deletion","destination":null},
  {"id":"bank-import","unit":"aihr-bank-import","frequency":"continuous","impact":"hr","destination":null},
- {"id":"employee-import","unit":"aihr-employee-import","frequency":"continuous","impact":"hr","destination":null},
  {"id":"replacement-holidays","unit":"aihr-replacement-holidays","frequency":"interval","defaultMinutes":1,"impact":"hr","destination":"/admin/holidays/replacements"},
  {"id":"reports","unit":"aihr-report-dispatch","frequency":"interval","defaultMinutes":1,"impact":"messages","destination":"/reports/employee-master"},
  {"id":"mobile-push","unit":"aihr-mobile-push","frequency":"interval","defaultMinutes":1,"impact":"messages","destination":null},

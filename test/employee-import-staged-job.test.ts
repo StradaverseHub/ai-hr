@@ -66,7 +66,7 @@ describe('staged employee import job',()=>{
   // Direct child rows the hire wrote are hidden from a normal session but readable by the owner.
   const [{eids,pids}]=await owner.client<{eids:string[];pids:string[]}[]>`select array_agg(id) eids,array_agg(person_id) pids from employment where import_pending_attempt_id is not null`;
   const childRows=(table:string,col:string,ids:string[])=>withTenant(ctx,tx=>tx.execute<{n:number}>(sql.raw(`select count(*)::int n from ${table} where ${col} = any(array[${ids.map(i=>`'${i}'`).join(',')}]::uuid[])`))).then(r=>r[0].n);
-  for(const [table,col,ids] of [['assignment','employment_id',eids],['compensation','employment_id',eids],['employee_statutory_my','person_id',pids],['leave_ledger','employment_id',eids]] as const){expect(await childRows(table,col,ids as string[])).toBe(0);}
+  for(const [table,col,ids] of [['assignment','employment_id',eids],['compensation','employment_id',eids],['employee_statutory_my','person_id',pids],['leave_ledger','employment_id',eids],['domain_event','subject_employment_id',eids],['import_attempt_item','employment_id',eids]] as const){expect(await childRows(table,col,ids as string[])).toBe(0);}
   const [{ownerAssignments}]=await owner.client<{ownerAssignments:number}[]>`select count(*)::int as "ownerAssignments" from assignment where employment_id = any(${eids}::uuid[])`;expect(ownerAssignments).toBeGreaterThan(0);
   await ticks(s=>s==='completed');
   const final=await getEmployeeImportJob(ctx,job.id);

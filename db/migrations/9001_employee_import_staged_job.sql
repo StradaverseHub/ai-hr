@@ -1584,3 +1584,8 @@ CREATE POLICY employee_statutory_my_import_pending ON public.employee_statutory_
 CREATE POLICY employee_dependent_import_pending ON public.employee_dependent AS RESTRICTIVE FOR ALL TO ai_hr_app USING (person_id IS NULL OR NOT (person_id = ANY ((SELECT app.import_pending_person_ids())::uuid[])));
 --> statement-breakpoint
 CREATE POLICY person_emergency_contact_import_pending ON public.person_emergency_contact AS RESTRICTIVE FOR ALL TO ai_hr_app USING (person_id IS NULL OR NOT (person_id = ANY ((SELECT app.import_pending_person_ids())::uuid[])));
+--> statement-breakpoint
+-- The hire's audit events and the attempt's per-row items reveal the staged employee too; they become visible at activation.
+CREATE POLICY domain_event_import_pending ON public.domain_event AS RESTRICTIVE FOR ALL TO ai_hr_app USING (subject_employment_id IS NULL OR NOT (subject_employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
+--> statement-breakpoint
+CREATE POLICY import_attempt_item_import_pending ON public.import_attempt_item AS RESTRICTIVE FOR ALL TO ai_hr_app USING (employment_id IS NULL OR NOT (employment_id = ANY ((SELECT app.import_pending_employment_ids())::uuid[])));
