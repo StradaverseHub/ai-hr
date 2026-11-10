@@ -213,15 +213,16 @@ describe('attendance corrections in a caller’s transaction and the fallback re
   requestedOtMinutes:60,reason:'Fictional overtime claim',
   originalClockSnapshot:{version:1,attendanceId:null,originalCheckIn:null,originalCheckOut:null,capturedAt:new Date().toISOString()},
  })).id;
- const reject=(correctionId:string,tx?:Parameters<typeof decideAttendanceCorrection>[2])=>decideAttendanceCorrection(adminCtx(b),
-  {correctionId,decision:'rejected',rejectReason:'Fictional refusal'},tx);
+ const reject=(correctionId:string,tx?:Parameters<typeof decideAttendanceCorrection>[2],stage?:number)=>decideAttendanceCorrection(adminCtx(b),
+  {correctionId,decision:'rejected',rejectReason:'Fictional refusal',...(stage===undefined?{}:{expectedStageIndex:stage})},tx);
  it('files and decides inside a caller-owned transaction on the shared lock',async()=>{
   await configureAttendanceSubmissionFixtures(b);
   const employmentId=await hire('caller-tx','2020-01-01'),ctx=adminCtx(b);
   let correctionId='';
   await completesBesideSharedHolder(async()=>{correctionId=(await withTenant(ctx,tx=>requestAttendanceCorrection(ctx,
    {employmentId,date:'2026-06-03',checkIn:'09:00',checkOut:'18:00',reason:'Fictional caller-owned request'},tx))).correctionId;});
-  await completesBesideSharedHolder(()=>withTenant(ctx,tx=>reject(correctionId,tx)));
+  // A routed request is decided at its pending stage; the HR alternate of the fixture route decides stage 0.
+  await completesBesideSharedHolder(()=>withTenant(ctx,tx=>reject(correctionId,tx,0)));
   const [row]=await owner.db.select({status:schema.attendanceCorrection.status}).from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id,correctionId));
   expect(row.status).toBe('rejected');
  },90000);
