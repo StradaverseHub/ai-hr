@@ -131,7 +131,11 @@ calculation, authority, ordering or failure changes.
    - *Loop cards*: the owner's gate and card rules on the gate rows, pauses, open cases of every loop (the projection
      keeps the live loops' cases, the owner's own predicate) and Watch levels; a gate read elsewhere or two cards of one
      kind whose order the owner leaves to the plan read the owner.
-   - *Readiness gaps*, *TP1* (the month collapse), *TP3* (records and drafts), the *previous-employer answer*, the
+   - *Readiness gaps* send the correction source's statutory flag in the text its owner's one-table select renders
+     (`s.person_id="person_id"`, which binds to the statutory row itself, so the owner's flag is whether any statutory
+     row the caller can read exists; for an HR caller that differs from the employee's own row). The section keeps the
+     owner's answer; correcting the owner is a separate decision because it changes which gaps an HR caller is offered.
+   - *TP1* (the month collapse), *TP3* (records and drafts), the *previous-employer answer*, the
      *Family register* and *onboarding acknowledgements* (the owner's filter as its exact SQL twin: jsonb equality with a
      JSON string is JavaScript's strict equality with that string) are the owners' own rows and projections.
    - Where the checklist reads only some fields, the section carries those fields of the same rows (decision 8's rule):
