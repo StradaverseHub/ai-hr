@@ -119,7 +119,10 @@ async function updateRowsTx(tx:Tx,kind:PersonnelRegisterKind,changes:{id:string;
  for(const {columns,rows} of groups.values()){
   // updated_at is the moment the change becomes visible, as for the synchronous write.
   const assignments=sql.raw(columns.map(c=>c==='updated_at'?'updated_at=now()':`${c}=x.${c}`).join(','));
-  await tx.execute(sql`update ${t.table} t set ${assignments} from jsonb_populate_recordset(null::${t.table},${JSON.stringify(rows)}::jsonb) x where t.id=x.id`);
+  // Address the rows by primary key first: row security is then evaluated for these rows only, not for every row
+  // of the table that a join plan would scan.
+  const ids=`{${rows.map(r=>r.id).join(',')}}`;
+  await tx.execute(sql`update ${t.table} t set ${assignments} from jsonb_populate_recordset(null::${t.table},${JSON.stringify(rows)}::jsonb) x where t.id=any(${ids}::uuid[]) and t.id=x.id`);
  }
 }
 async function insertRowsTx(tx:Tx,kind:PersonnelRegisterKind,rows:Row[]){
@@ -164,8 +167,8 @@ async function currentSubjectsTx(tx:Tx,captures:RegisterCapture[]):Promise<Regis
 }
 
 /** The visibility flip. Captures are read first without locks; then one transaction under the register writers' locks
- * re-checks the creator's authority over every employee (the commit's own subject read), compares fingerprints and
- * applies everything, or sends changed employees back for a fresh capture. */
+ * and the creator's fresh authority re-checks every captured employee, compares fingerprints and applies everything,
+ * or sends changed employees back for a fresh capture. */
 async function release(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,plan:RegisterStoredPlan){
  const {section}=inputOf(job);
  const steps=await withTenant(ctx,tx=>tx.execute<{seq:number;result:RegisterCapture}>(sql`select seq,result from bulk_job_step where job_id=${job.id}::uuid and state='applied' order by seq`));

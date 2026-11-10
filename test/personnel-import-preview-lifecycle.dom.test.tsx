@@ -18,7 +18,8 @@ const reference:ImportReference={departments:[],positions:[],costCenters:[],stat
 const sectionPreview:SectionImportPreview={section:'qualification',total:1,updateCount:1,skipCount:0,createCount:0,missingColumns:[],fileErrors:[],rows:[{rowNum:1,employeeCode:'FIX-1',employeeName:'Fictional Employee',verdict:'update',ok:true,errors:[],warnings:[],changes:['from_ym','is_highest'],proposed:[{column:'from_ym',value:'2018-02'},{column:'is_highest',value:'true'}]}]};
 const employeePreview:ImportPreview={companyId:'c1',total:1,validCount:1,missingColumns:[],fileErrors:[],rows:[{rowNum:1,fullName:'Fictional Employee',email:'fictional@demo.test',ok:true,errors:[],warnings:[],company:'Fixture'}],dependents:{total:0,validCount:0,missingColumns:[],rows:[]}};
 /** A section file starts a background job; the panel polls it until it reports the synchronous import's result. */
-const sectionJob:{finished:unknown}={finished:null};
+const sectionJob:{finished:unknown;employeeFinished:unknown}={finished:null,employeeFinished:null};
+const runningEmployeeJob=()=>({id:'00000000-0000-4000-8000-000000000003',sourceName:'submitted.csv',state:'importing',phase:null,total:1,valid:1,invalid:0,stepsTotal:1,stepsDone:0,imported:0,attemptId:null,error:null,errors:[],result:null,updatedAt:new Date().toISOString(),createdAt:new Date().toISOString(),worker:'running'});
 const runningSectionJob=(section:string)=>({id:'00000000-0000-4000-8000-000000000001',kind:'register_import',section,sourceName:'submitted.csv',state:'running',stepsTotal:1,stepsDone:0,result:null,updatedAt:new Date().toISOString(),createdAt:new Date().toISOString(),worker:'running'});
 function deferred<T>(){let resolve!:(v:T)=>void;let reject!:(e:Error)=>void;const promise=new Promise<T>((r,j)=>{resolve=r;reject=j});return{promise,resolve,reject};}
 function pick(name:string){fireEvent.change(document.querySelector('input[type="file"]')!,{target:{files:[new File(['fixture'],name,{type:'text/csv'})]}});}
@@ -30,6 +31,7 @@ beforeEach(()=>{vi.resetAllMocks();mocks.read.mockImplementation(async(file:File
   vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
     if(/\/import\/(section|employee)\/jobs$/.test(String(url)))return new Response(JSON.stringify({jobs:[]}),{status:200});
     if(/\/import\/section\/jobs\//.test(String(url)))return new Response(JSON.stringify({job:sectionJob.finished}),{status:200});
+    if(/\/import\/employee\/jobs\//.test(String(url)))return new Response(JSON.stringify({job:sectionJob.employeeFinished}),{status:200});
     const result=await mocks.commit();return new Response(JSON.stringify(result),{status:result&&'error' in result?400:200});}));});
 describe.each(['section','employee'] as const)('%s import input ownership',kind=>{
   const preview=kind==='section'?sectionPreview:employeePreview;
@@ -68,7 +70,9 @@ describe.each(['section','employee'] as const)('%s import input ownership',kind=
     if(outcome==='success'){
       const result=kind==='section'?{section:'qualification',updated:1,skipped:0,failed:[],fileErrors:[],runId:null}:{companyId:'c1',imported:1,failed:[],skipped:0,dependentsImported:0,superiorFailed:[],fileErrors:[],runId:null};
       if(kind==='section')sectionJob.finished={...runningSectionJob('qualification'),state:'completed',stepsDone:1,result};
-      await act(async()=>saving.resolve(kind==='section'?{job:runningSectionJob('qualification'),existing:false}:result));await screen.findByText(kind==='section'?'1 register record saved':'Imported 1 employee');
+      else sectionJob.employeeFinished={...runningEmployeeJob(),state:'completed',stepsDone:1,imported:1,result:{...result,registersImported:{qualification:0,emergency:0},warnings:[],attemptId:null}};
+      // Both imports run as background jobs; each progress panel hands the finished result to its result card.
+      await act(async()=>saving.resolve(kind==='section'?{job:runningSectionJob('qualification'),existing:false}:{job:runningEmployeeJob(),existing:false}));await screen.findByText(kind==='section'?'1 register record saved':'Imported 1 employee');
     }else{await act(async()=>kind==='employee'?saving.resolve({error:'Fixture save failed.'}):saving.reject(new Error('Fixture save failed.')));await screen.findByText('Fixture save failed.');expect(screen.queryByText(/register record saved|Imported 1 employee/)).toBeNull();}
     expect(screen.getByText('submitted.csv loaded')).toBeInTheDocument();expect(screen.queryByText('replacement.csv loaded')).toBeNull();expect(screen.getByLabelText('CSV data')).toBeEnabled();for(const radio of screen.getAllByRole('radio'))expect(radio).toBeEnabled();
   });

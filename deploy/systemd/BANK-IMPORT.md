@@ -95,6 +95,8 @@ The same protected worker also runs every kind on the shared bulk-job kernel (mi
 iteration runs one Bank tick, one Individual Transaction tick and one bounded bulk-job unit. The worker records a
 heartbeat with the kinds it serves; `scripts/check-import-worker.ts` (run by `deploy/deploy.sh`) reports a kind
 without a live worker. Include the employee import journey in staging worker acceptance.
+Section and register imports (kinds `section_import` and `register_import`, draft migration 9930) run on the same
+worker; include a Profile file and a Qualification file in staging worker acceptance.
 
 ## Protected staging update after first installation
 
