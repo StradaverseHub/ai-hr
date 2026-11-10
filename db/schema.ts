@@ -10991,9 +10991,10 @@ export const attendanceGroupPolicyRevision=pgTable('attendance_group_policy_revi
 },t=>[uniqueIndex('attendance_group_policy_revision_ordinal_uq').on(t.tenantId,t.companyId,t.ruleId,t.ordinal),
  uniqueIndex('attendance_group_policy_revision_date_uq').on(t.tenantId,t.companyId,t.ruleId,t.effectiveFrom)]);
 
-/** Independent append-only clock configuration. Existing overtime policy revisions stay intact. */
+/** Independent append-only clock configuration. Existing overtime policy revisions stay intact.
+ * c03670cc (4600) — company_id NULL is a group-wide revision for every company without its own. */
 export const attendanceClockPolicyRevision=pgTable('attendance_clock_policy_revision',{
- id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull(),ruleId:uuid('rule_id').notNull(),
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id'),ruleId:uuid('rule_id').notNull(),
  ordinal:integer('ordinal').notNull(),effectiveFrom:date('effective_from').notNull(),
  policy:jsonb('policy').$type<AttendanceClockPolicy>().notNull(),reason:text('reason').notNull(),
  createdByUserId:uuid('created_by_user_id').notNull(),createdAt:createdAt(),
@@ -11003,6 +11004,8 @@ export const attendanceClockPolicyRevision=pgTable('attendance_clock_policy_revi
  foreignKey({name:'attendance_clock_policy_actor_fk',columns:[t.createdByUserId,t.tenantId],foreignColumns:[appUser.id,appUser.tenantId]}).onDelete('restrict'),
  uniqueIndex('attendance_clock_policy_revision_ordinal_uq').on(t.tenantId,t.companyId,t.ruleId,t.ordinal),
  uniqueIndex('attendance_clock_policy_revision_date_uq').on(t.tenantId,t.companyId,t.ruleId,t.effectiveFrom),
+ uniqueIndex('attendance_clock_policy_group_ordinal_uq').on(t.tenantId,t.ruleId,t.ordinal).where(sql`company_id IS NULL`),
+ uniqueIndex('attendance_clock_policy_group_date_uq').on(t.tenantId,t.ruleId,t.effectiveFrom).where(sql`company_id IS NULL`),
  index('attendance_clock_policy_tenant_date_idx').on(t.tenantId,t.effectiveFrom),
 ]);
 

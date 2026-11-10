@@ -4743,7 +4743,9 @@
       "requestedIntervals": "Requested overtime intervals",
       "requestedHelp": "Choose intervals within the complete actual-work statement. Their minute count must equal the requested overtime count; the configured approval method still applies."
     },
-    "yourRequest": "your request"
+    "yourRequest": "your request",
+    "colOtOther": "OT other rate",
+    "otOtherRateValue": "{minutes} ({rates}×)"
   },
   "org": {
     "title": "Org chart",
@@ -12637,7 +12639,12 @@
       "shiftsAllowedHint": "The shifts that follow this group’s lateness, early-out and overtime rules. A shift belongs to exactly one group, so ticking one here moves it out of the group it is in now; unticking one leaves it on the Standard group.",
       "shiftsAllowedEmpty": "There are no shifts to choose from yet.",
       "shiftsAllowedInGroup": "now in {group}",
-      "shiftsAllowedNoGroup": "no group yet"
+      "shiftsAllowedNoGroup": "no group yet",
+      "otRateInvalid": "OT Rate must be a number from 0 to 99.99 with up to two decimal places.",
+      "otPhRateInvalid": "PH Rate must be blank or a number from 0 to 99.99 with up to two decimal places.",
+      "otRateHint": "Accepts 0 and decimals such as 1.0, 1.5, 1.75, 2.0 and 3.0, with up to two decimal places. Values are shown exactly as saved. A blank PH Rate keeps the public holiday default.",
+      "otOtherRateNote": "Reported as “OT other rate ({rate})”.",
+      "otRateReportingNote": "The OT Rate decides which overtime column the hours are reported under on the attendance screens. Overtime pay in payroll is worked out by the payroll overtime settings and is unchanged."
     },
     "benefitScheme": {
       "groupsTitle": "Grade Groups",
@@ -13252,7 +13259,6 @@
       "savedToast": "Saved.",
       "createdToast": "Schedule Group created.",
       "duplicatedToast": "Schedule Group duplicated. You are on the copy.",
-      "deductionsHere": "This switch is set in the General section at the top of this page, and only there. The date it starts from is stamped when you turn it on and can never be typed, so a payroll month you have already closed can never pick up a deduction afterwards.",
       "colShift": "Shift",
       "shiftsInGroupTitle": "Shifts in this group",
       "shiftsInGroupEmpty": "No shift belongs to this group yet.",
@@ -37142,14 +37148,11 @@
     "noShifts": "No shifts in this list.",
     "includeMarked": "Include {count} selected →",
     "excludeMarked": "← Exclude {count} selected",
-    "rotationPoolSave": "This list shows the rotation saved for {date}. To change the pool, save it with a new rotation on the Duty Roster tab.",
+    "rotationPoolSave": "This list shows the rotation saved for {date}. To change the pool, save it with a new rotation in the Duty Roster section below.",
     "saveShiftPool": "Save allowed shifts",
     "currentRotation": "{days}-day rotation effective from {date}",
     "company": "Company",
-    "chooseCompany": "Choose a company",
     "currentRevision": "Revision {revision} · effective from {date}",
-    "noClockRevision": "No clock settings are in effect for this company yet.",
-    "scheduleClock": "Schedule new clock settings for this company",
     "pairing": "Pairing Method",
     "pairingHelp": "Choose how punches are paired for each day type.",
     "normal": "Working Day",
@@ -37161,11 +37164,19 @@
     "minimumInterval": "Minimum Interval Between Clock",
     "minutes": "Minutes",
     "intervalHelp": "Zero turns off interval filtering. Ignored punches remain in Raw Clocking File.",
-    "effectiveFrom": "Effective from",
-    "reason": "Reason for change",
     "clockHistory": "Clock settings history",
     "saveAttendance": "Save Attendance settings",
     "lateGrace": "Late In Grace (Minutes)",
-    "earlyGrace": "Early Out Grace (Minutes)"
+    "earlyGrace": "Early Out Grace (Minutes)",
+    "appliesTo": "Applies to",
+    "allCompanies": "All Companies",
+    "specificCompanies": "Choose specific companies",
+    "chooseOneCompany": "Choose at least one company.",
+    "allCompaniesHelp": "All Companies also covers companies added later. Choose specific companies to apply these settings to them only; the other companies keep their own settings.",
+    "companyScopedHelp": "These settings apply to the companies you choose. Companies you do not choose keep their own settings.",
+    "differingNote": "These companies keep their own, different clock settings: {companies}.",
+    "appliesFromTomorrow": "Changes to Pairing Method and Minimum Interval Between Clock apply from tomorrow, so attendance already captured today is not reworked. The history records who changed them and when.",
+    "systemReason": "Updated in Schedule Group settings",
+    "dutyRosterPoolNote": "The rotation can only use the shifts Included in Shift Allowed above."
   }
 }

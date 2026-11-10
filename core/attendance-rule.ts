@@ -14,6 +14,7 @@
  * Substrate: every write appends a DomainEvent (attendance-rule.created / .updated / .deleted). Reads are
  * documented skips.
  */
+import { OT_RATE_MAX, otRateStorageText, otRateText } from '../lib/ot-rate';
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 // 07ebd04d (r331) — the group's WORKING WEEK. `weekPatternWorkingDayCount` is the ONE definition of
 // "how many days does this week actually schedule" (core/week-pattern.ts, a leaf module with no imports
@@ -567,14 +568,18 @@ function normalizeInput(p: AttendanceRuleInput) {
     if (r.rate == null || (r.rate as unknown) === '') {
       throw new Error(`Overtime row ${i + 1} has no rate. Enter the rate this band uses.`);
     }
-    const rate = Number(r.rate);
-    // Zero is a legitimate multiplier — "record the hours but do not pay them" (request §7). It always was
-    // accepted here; what was missing was a way to CHOOSE it, which the editor now offers.
-    if (!Number.isFinite(rate) || rate < 0) throw new Error('OT rate must be a non-negative number.');
+    // Zero is a legitimate multiplier — "record the hours but do not pay them" (request §7).
+    // c03670cc — the rate is TYPED now: 0 to 99.99 with at most two decimals. A third decimal is refused
+    // rather than silently rounded (toFixed(2) used to turn 1.755 into 1.76, a number nobody typed).
+    const rate = otRateText(r.rate);
+    if (rate === null) {
+      throw new Error(`Overtime row ${i + 1}: OT Rate must be a number from 0 to ${OT_RATE_MAX} with up to two decimal places.`);
+    }
     const phRaw = r.phRate;
-    const phRate = phRaw == null || phRaw === ('' as unknown as number) ? null : Number(phRaw);
-    if (phRate != null && (!Number.isFinite(phRate) || phRate < 0)) {
-      throw new Error('Public-holiday OT rate must be a non-negative number.');
+    // Blank PH Rate keeps the public-holiday default (rateForDay falls back), exactly as before.
+    const phRate = phRaw == null || phRaw === ('' as unknown as number) ? null : otRateText(phRaw);
+    if (phRaw != null && phRaw !== ('' as unknown as number) && phRate === null) {
+      throw new Error(`Overtime row ${i + 1}: PH Rate must be blank or a number from 0 to ${OT_RATE_MAX} with up to two decimal places.`);
     }
     // 7c834696 contested — an unrecognised mode falls back to 'none', the only value that cannot change
     // what a band pays. Never to 'down': guessing a DIRECTION from a value we did not recognise is how a
@@ -597,8 +602,8 @@ function normalizeInput(p: AttendanceRuleInput) {
       fromMinutes,
       toMinutes,
       ratePattern,
-      rate: rate.toFixed(2),
-      phRate: phRate == null ? null : phRate.toFixed(2),
+      rate: otRateStorageText(rate),
+      phRate: phRate == null ? null : otRateStorageText(phRate),
       roundingMode,
       roundToMinutes,
       sortOrder: i,
@@ -756,10 +761,12 @@ export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } 
   });
 }
 
-export type AttendanceSectionFields = Pick<AttendanceRuleInput, 'lateGracePeriodMinutes' | 'lateAfterMinutes' | 'lateDeductMinutes' | 'includeGraceInLateness' | 'earlyGracePeriodMinutes' | 'earlyAfterMinutes' | 'earlyDeductMinutes' | 'includeGraceInEarlyOut'>;
+/** c03670cc — `applyDeductions` (Wage Deductions) belongs to the Attendance section now; General no
+ *  longer accepts it. resolveDeductionStart still stamps its start date, unchanged. */
+export type AttendanceSectionFields = Pick<AttendanceRuleInput, 'lateGracePeriodMinutes' | 'lateAfterMinutes' | 'lateDeductMinutes' | 'includeGraceInLateness' | 'earlyGracePeriodMinutes' | 'earlyAfterMinutes' | 'earlyDeductMinutes' | 'includeGraceInEarlyOut' | 'applyDeductions'>;
 type GeneralBand = Pick<OtRowInput, 'fromMinutes' | 'toMinutes' | 'ratePattern' | 'rate' | 'phRate'>;
 export type AttendanceRuleSectionUpdate = { ruleId: string } & (
-  | { section: 'general'; label?: string|null; name: string; description: string | null; status: 'active' | 'inactive'; applyDeductions: boolean; otRows?: GeneralBand[] }
+  | { section: 'general'; label?: string|null; name: string; description: string | null; status: 'active' | 'inactive'; otRows?: GeneralBand[] }
   | { section: 'attendance'; fields: Partial<AttendanceSectionFields> }
   | { section: 'overtime'; applyToEarlyOt?: boolean; bands: OtRowInput[] }
   | { section: 'overtimeFull'; applyToEarlyOt: boolean; bands: OtRowInput[]; expected: string }
@@ -778,7 +785,8 @@ export function attendanceRuleOvertimeSnapshot(rows: readonly {
 
 /** Section ownership is enforced here, never by a posted marker. Read/merge/write uses one row lock,
  * including the current bands, so independent requests cannot carry a stale full-rule snapshot.
- * General: identity/status/deduction switch + ladder boundaries/rates. Attendance: six timing values + two Include Grace flags.
+ * General: identity/status + ladder boundaries/rates. Attendance: six timing values + two Include Grace flags + the
+ * deduction switch (c03670cc moved Wage Deductions from General to Attendance; one writer per field).
  * Overtime: early inclusion + rounding only, against the exact displayed ladder boundaries, pattern and rates (not generated row IDs).
  * No section can write the week, allowed shift pool or immutable rotations. */
 export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRuleSectionUpdate, existingTx?:Tx): Promise<{ id: string }> {
@@ -802,7 +810,7 @@ export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRu
       applyToEarlyOt:rule.applyToEarlyOt,applyDeductions:rule.applyDeductions,otRows:currentRows,
     };
     if (p.section === 'general') {
-      merged.name=p.name;if(p.label!==undefined)merged.label=p.label;merged.description=p.description;merged.status=p.status;merged.applyDeductions=p.applyDeductions;
+      merged.name=p.name;if(p.label!==undefined)merged.label=p.label;merged.description=p.description;merged.status=p.status;
       if(p.otRows)merged.otRows=p.otRows.map(row=>{
         const current=currentRows.find(band=>band.fromMinutes===row.fromMinutes);
         return {fromMinutes:row.fromMinutes,toMinutes:row.toMinutes,ratePattern:row.ratePattern,rate:row.rate,phRate:row.phRate,
@@ -814,9 +822,9 @@ export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRu
         const value=p.fields[key];
         if (value !== undefined) merged[key]=value;
       }
-      for (const key of ['includeGraceInLateness','includeGraceInEarlyOut'] as const) {
+      for (const key of ['includeGraceInLateness','includeGraceInEarlyOut','applyDeductions'] as const) {
         const value=p.fields[key];
-        if (value !== undefined) merged[key]=value;
+        if (value !== undefined) merged[key]=value===true;
       }
     } else if (p.section === 'overtimeFull') {
       if(p.expected!==attendanceRuleOvertimeSnapshot(rows,rule.applyToEarlyOt)) {

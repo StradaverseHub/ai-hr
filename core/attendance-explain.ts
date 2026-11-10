@@ -200,7 +200,7 @@ export function explainAttendanceDay(raw: unknown): AttendanceExplanation {
           // The split always sums back to `minutes` (core/attendance-calc.ts guarantees it), so the panel
           // can show the columns without a reconciling line that would only ever read "0 unaccounted".
           ...Object.entries(o.split)
-            .filter(([, v]) => v > 0)
+            .filter(([, v]) => (v ?? 0) > 0)
             .map(([bucket, v]) => ({ key: 'otBucket', args: { bucket, minutes: v as number } })),
         ],
       }

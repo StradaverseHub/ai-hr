@@ -16,7 +16,7 @@ export * from './my-calendar';
 export * from '../../core/attendance-allowance';
 export * from '../../core/attendance-calc';
 export * from '../../core/attendance-group-policy';
-export {attendanceClockPolicyHistory, lockAttendanceClockPolicyConfigurationTx, scheduleAttendanceClockPolicy} from '../../core/attendance-clock-policy';
+export {attendanceClockPolicyGroupHistory, attendanceClockPolicyHistory, lockAttendanceClockPolicyConfigurationTx, saveScheduleGroupClockPolicy} from '../../core/attendance-clock-policy';
 export * from '../../core/attendance-derive';
 export * from '../../core/attendance-device';
 export * from '../../core/attendance-rule';

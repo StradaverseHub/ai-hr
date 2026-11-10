@@ -2,7 +2,7 @@ import { scheduleGroupControls } from '@/core/schedule-group-controls';
 import { saveScheduleGroupControlAction } from './actions';
 import { ScheduleGroupTabs } from '@/components/schedule-group-tabs';
 import { ScheduleDraftShiftPicker } from '@/components/schedule-shift-picker';
-import { ScheduleClockFields, type ScheduleClockCompany } from '@/components/schedule-clock-fields';
+import { ScheduleClockFields, type ScheduleClockSettings } from '@/components/schedule-clock-fields';
 import type { ReactNode } from 'react';
 import { ScheduleOvertimeDraftFields } from '@/components/schedule-overtime-draft-fields';
 import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
@@ -25,6 +25,8 @@ import {
   thCls,
 } from '@/components/ui';
 import { RuleForm, renderScheduleOvertimeBands } from '../../attendance-policy/rules/rule-form';
+import { WageDeductionsCard } from '@/components/schedule-wage-deductions';
+import { formatOtRate } from '@/lib/ot-rate';
 import {
   type ScheduleSectionKey,
 } from './sections';
@@ -55,8 +57,9 @@ import {rotationVersionOn,type RotationCycle} from '@/core/week-pattern';
  *
  * ── THE SEVEN SECTIONS, AND WHICH OF THEM ARE REAL ──────────────────────────────────────────────────────
  * ./sections.ts holds the order (the reporter's own) and the honest audit of what is behind each key.
- * FOUR render something: general, overtime, attendance and — new in this item — workingDay. THREE are
- * named and empty: holiday, request, notification. They render one sentence saying so.
+ * THREE render something and are the tabs: general, attendance, overtime. c03670cc retired the separate
+ * Duty Roster (workingDay) tab: its switch and rotation sit in General directly under Shift Allowed, and an
+ * old `?section=workingDay` link resolves to General. Holiday, request and notification are named and empty.
  *
  * DO NOT "finish" this screen by drawing a control for a setting nothing stores. The list page's header
  * names the remaining gaps (the duty-roster controls, the day-type
@@ -131,7 +134,7 @@ export async function ScheduleGroupSections({
   typedWeek,
   savedSection,
   savedReceipt,
-  clockCompanies = [],
+  clockCompanies = {canUseAll:false,group:[],companies:[]},
   canEditShared = true,
 }: {
   s: SessionContext;
@@ -145,7 +148,7 @@ export async function ScheduleGroupSections({
   typedWeek?: string;
   savedSection?: ScheduleSectionKey | null;
   savedReceipt?: string;
-  clockCompanies?: ScheduleClockCompany[];
+  clockCompanies?: ScheduleClockSettings;
   canEditShared?: boolean;
 }) {
   const t = await getTranslations('admin.scheduleConfig');
@@ -174,7 +177,7 @@ export async function ScheduleGroupSections({
   const bannerFor = (key: ScheduleSectionKey) => (section === key ? error : undefined);
   /** An error with no section, or one naming a section that renders no banner, still has to be readable
    *  somewhere — a refusal that lands on a page and is never printed is worse than an ugly one. */
-  const BANNERED: readonly ScheduleSectionKey[] = ['general', 'overtime', 'attendance', 'workingDay'];
+  const BANNERED: readonly ScheduleSectionKey[] = ['general', 'overtime', 'attendance'];
   const orphanError = error && (section == null || !BANNERED.includes(section)) ? error : undefined;
 
   const SECTION_LABEL: Record<ScheduleSectionKey, string> = {
@@ -184,7 +187,6 @@ export async function ScheduleGroupSections({
     attendance: t('sectionAttendance'),
     request: t('sectionRequest'),
     notification: t('sectionNotification'),
-    workingDay: te('dutyRoster'),
   };
 
   /** The Schedule Group's own identity + ladder — rules/rule-form.tsx, or a read-only mirror of it. */
@@ -229,10 +231,8 @@ export async function ScheduleGroupSections({
               {rule.status === 'active' ? tr('statusActive') : tr('statusInactive')}
             </dd>
           </div>
-          {/* The deduction switch is NOT repeated here. It is rendered once per page, read-only, in the
-              Attendance section below — the place it has been shown since r277 and the place whose note
-              explains why it cannot be typed. Two readouts of one money-adjacent switch on one screen is
-              how two readouts start disagreeing. */}
+          {/* c03670cc — Wage Deductions is shown (and, on Edit, set) once per page: in the Attendance
+              section. Two readouts of one money-adjacent switch on one screen is how they start disagreeing. */}
         </dl>
       </Card>
 
@@ -254,6 +254,40 @@ export async function ScheduleGroupSections({
           <AttendanceSettingsSaveButton className={btnPrimary}>{te('saveShiftPool')}</AttendanceSettingsSaveButton>
         </AttendanceSettingsActionForm>}
   </Card>;
+  // Legacy groups retain their weekly pattern until a future-dated cycle is saved.
+  // The immutable version owns both its allowed pool and every day of the cycle.
+  const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0,10);
+  const minimumDate = latest && latest.effectiveFrom >= tomorrow
+    ? new Date(Date.parse(`${latest.effectiveFrom}T00:00:00Z`)+86_400_000).toISOString().slice(0,10) : tomorrow;
+  const monday = new Date(Date.parse(`${minimumDate}T00:00:00Z`));
+  monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+  const initialRotation: RotationCycle = latest ? { effectiveFrom: editing ? minimumDate : latest.effectiveFrom,
+    anchorDate: latest.anchorDate, unit: latest.unit, length: latest.length, days: latest.days }
+    : { effectiveFrom: minimumDate, anchorDate: monday.toISOString().slice(0,10), unit:'week',length:1,
+      days:ISO_DAYS.map(d=>({kind:kinds[d],shiftId:kinds[d]==='full'||kinds[d]==='half'?groupShifts.find(sh=>!sh.archivedAt)?.id??null:null})) };
+  // c03670cc — the Duty Roster (its on/off switch and the rotation) sits in General directly under Shift
+  // Allowed: both read the same draft pool (SchedulePoolDraft), and each keeps its own Save.
+  const dutyRoster = <div className="space-y-4" data-schedule-duty-roster="">
+    {controlPanel('duty')}
+    <Card><SectionHeader title={te('dutyRoster')} subtitle={rotationT('title')}/>
+      <p className="px-4 pt-3 text-sm text-muted-foreground">{te('dutyRosterPoolNote')}</p>
+      {rule.isDefault ? <>{editing&&<AttendanceSettingsNavigation/>}<p className="p-4 text-sm text-muted-foreground">{rotationT('standard')}</p></>
+      : <ScheduleRotationEditor ruleId={rule.id} revision={rotationState.revision}
+          minimumDate={minimumDate} initial={initialRotation} editing={editing&&canEditShared} poolInGeneral useSavedPool={!latest}
+          shifts={shifts.map(sh=>{const input={type:sh.type,start:sh.startTime,end:sh.endTime,crosses:sh.crossesMidnight,
+            breakMinutes:sh.breakMinutes,roundingMinutes:sh.normalHoursRoundingMinutes,normalMinutesOverride:sh.normalMinutesOverride};
+            const full=workingShiftSchedule(input,'full'),half=workingShiftSchedule(input,'half');
+            return {id:sh.id,name:sh.name,code:sh.code,startTime:sh.startTime,endTime:full.shiftEnd,
+              fullMinutes:full.normalMinutes,halfMinutes:half.normalMinutes,halfEnd:half.shiftEnd,
+              archived:!!sh.archivedAt,available:!sh.archivedAt,selected:latest?latest.allowedShiftIds.includes(sh.id):membershipIds.has(sh.id)};})}/>
+      }
+      {!latest && <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{rotationT('legacy')}</p>}
+      {latest && <details className="border-t border-border px-4 py-3 text-sm"><summary>{rotationT('versions')}</summary>
+        <ul className="mt-2 space-y-1">{rotationState.versions.map(v=><li key={v.id}>{v.effectiveFrom} · {v.unit==='week'?rotationT('week'):rotationT('day')} × {v.length} · {rotationT('anchor')}: {v.anchorDate}</li>)}</ul>
+      </details>}
+    </Card>
+  </div>;
+
   const general = <>
     {identity}
     <Card className="space-y-2 p-4">
@@ -293,6 +327,7 @@ export async function ScheduleGroupSections({
       </Card>
 
 )}
+    {dutyRoster}
   </>;
   const overtimeLadderView = (
       <Card>
@@ -323,9 +358,9 @@ export async function ScheduleGroupSections({
                     <td className="px-3 py-2">
                       {row.ratePattern === 'flat' ? tr('otPatternFlat') : tr('otPatternVariable')}
                     </td>
-                    <td className="px-3 py-2">{row.rate == null ? tr('otRateUnset') : Number(row.rate).toFixed(2)}</td>
+                    <td className="px-3 py-2">{row.rate == null ? tr('otRateUnset') : formatOtRate(row.rate)}</td>
                     <td className="px-3 py-2">
-                      {row.phRate == null ? tr('otPhRateNone') : Number(row.phRate).toFixed(2)}
+                      {row.phRate == null ? tr('otPhRateNone') : formatOtRate(row.phRate)}
                     </td>
                   </tr>
                 ))}
@@ -335,38 +370,6 @@ export async function ScheduleGroupSections({
         )}
       </Card>
 );
-
-  // Legacy groups retain their weekly pattern until a future-dated cycle is saved.
-  // The immutable version owns both its allowed pool and every day of the cycle.
-  const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0,10);
-  const minimumDate = latest && latest.effectiveFrom >= tomorrow
-    ? new Date(Date.parse(`${latest.effectiveFrom}T00:00:00Z`)+86_400_000).toISOString().slice(0,10) : tomorrow;
-  const monday = new Date(Date.parse(`${minimumDate}T00:00:00Z`));
-  monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
-  const initialRotation: RotationCycle = latest ? { effectiveFrom: editing ? minimumDate : latest.effectiveFrom,
-    anchorDate: latest.anchorDate, unit: latest.unit, length: latest.length, days: latest.days }
-    : { effectiveFrom: minimumDate, anchorDate: monday.toISOString().slice(0,10), unit:'week',length:1,
-      days:ISO_DAYS.map(d=>({kind:kinds[d],shiftId:kinds[d]==='full'||kinds[d]==='half'?groupShifts.find(sh=>!sh.archivedAt)?.id??null:null})) };
-  const workingDay = <>
-    {controlPanel('duty')}
-    <ErrorBanner message={bannerFor('workingDay')} />
-    <Card><SectionHeader title={SECTION_LABEL.workingDay} subtitle={rotationT('title')}/>
-      {rule.isDefault ? <>{editing&&<AttendanceSettingsNavigation/>}<p className="p-4 text-sm text-muted-foreground">{rotationT('standard')}</p></>
-      : <ScheduleRotationEditor ruleId={rule.id} revision={rotationState.revision}
-          minimumDate={minimumDate} initial={initialRotation} editing={editing&&canEditShared} poolInGeneral useSavedPool={!latest}
-          shifts={shifts.map(sh=>{const input={type:sh.type,start:sh.startTime,end:sh.endTime,crosses:sh.crossesMidnight,
-            breakMinutes:sh.breakMinutes,roundingMinutes:sh.normalHoursRoundingMinutes,normalMinutesOverride:sh.normalMinutesOverride};
-            const full=workingShiftSchedule(input,'full'),half=workingShiftSchedule(input,'half');
-            return {id:sh.id,name:sh.name,code:sh.code,startTime:sh.startTime,endTime:full.shiftEnd,
-              fullMinutes:full.normalMinutes,halfMinutes:half.normalMinutes,halfEnd:half.shiftEnd,
-              archived:!!sh.archivedAt,available:!sh.archivedAt,selected:latest?latest.allowedShiftIds.includes(sh.id):membershipIds.has(sh.id)};})}/>
-      }
-      {!latest && <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{rotationT('legacy')}</p>}
-      {latest && <details className="border-t border-border px-4 py-3 text-sm"><summary>{rotationT('versions')}</summary>
-        <ul className="mt-2 space-y-1">{rotationState.versions.map(v=><li key={v.id}>{v.effectiveFrom} · {v.unit==='week'?rotationT('week'):rotationT('day')} × {v.length} · {rotationT('anchor')}: {v.anchorDate}</li>)}</ul>
-      </details>}
-    </Card>
-  </>;
 
   /**
    * e5ff7189 stage 1 — THE ATTENDANCE SECTION: the four settings the reporter asked for, which already exist.
@@ -414,7 +417,7 @@ export async function ScheduleGroupSections({
 
   const attendanceBody = (
     <>
-      <ScheduleClockFields companies={clockCompanies} today={today} editing={editing}
+      <ScheduleClockFields settings={clockCompanies} editing={editing}
         grace={<div className="space-y-3">
         <h3 className="font-semibold">{t('graceTitle')}</h3>
         <Field label={te('lateGrace')}>{editing ? <input type="number" min={0} name="lateGracePeriodMinutes"
@@ -453,12 +456,15 @@ export async function ScheduleGroupSections({
           </label>)}
         </div>
         <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('notPayNote')}</p>
-        {editing && (
-          <div className="flex items-center gap-3 border-t border-border px-4 py-3">
-            <AttendanceSettingsSaveButton className={btnPrimary}>{te('saveAttendance')}</AttendanceSettingsSaveButton>
-          </div>
-        )}
       </Card>
+      {/* c03670cc — Wage Deductions moved here from General: the same switch, the same service-stamped
+          start date (never typed) and the same deduction rules; this section is now its only writer. */}
+      <WageDeductionsCard rule={rule} editing={editing}/>
+      {editing && (
+        <div className="flex items-center gap-3">
+          <AttendanceSettingsSaveButton className={btnPrimary}>{te('saveAttendance')}</AttendanceSettingsSaveButton>
+        </div>
+      )}
     </>
   );
 
@@ -476,30 +482,6 @@ export async function ScheduleGroupSections({
         <div className="space-y-6">{attendanceBody}</div>
       )}
 
-      {/* ⚠️ THE ONE SETTING THAT DID NOT MOVE, AND IT IS READ-ONLY HERE ON PURPOSE.
-          `apply_deductions` + `deductions_effective_from` (7c834696 stage 1, migration 0394): the
-          effective-from date is STAMPED BY THE SERVICE the moment the switch flips and can never be typed,
-          and a DB CHECK makes "deductions on with no start date" unrepresentable. Together that is what
-          stops a deduction reaching a payroll month that is already closed. A second form over this switch
-          would be a second way to get that date wrong, so it stays on the General section and this card
-          shows it and says where it is edited. DO NOT "finish" this section by adding a checkbox here. */}
-      <Card>
-        <SectionHeader title={tr('deductionsSectionTitle')} />
-        <dl className="divide-y divide-border">
-          <div className="flex items-center justify-between px-4 py-3">
-            <dt className="text-sm font-medium">{t('recordSwitchLabel')}</dt>
-            <dd className="text-sm text-foreground">
-              {rule.applyDeductions ? t('settingOn') : t('settingOff')}
-              {rule.applyDeductions && rule.deductionsEffectiveFrom && (
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {t('recordSwitchFrom', { date: rule.deductionsEffectiveFrom })}
-                </span>
-              )}
-            </dd>
-          </div>
-        </dl>
-        <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('deductionsHere')}</p>
-      </Card>
     </>
   );
 
@@ -563,14 +545,13 @@ export async function ScheduleGroupSections({
     attendance,
     request: notBuilt('request'),
     notification: notBuilt('notification'),
-    workingDay,
   };
 
   return (
     <div className="space-y-8">
       <ErrorBanner message={orphanError} />
       <ScheduleGroupTabs initial={section ?? savedSection} ariaLabel={t('sectionsAria')} initialPool={editing&&canEditShared?draftPool:undefined}
-        tabs={(['general','workingDay','attendance','overtime'] as const).map(key=>({id:key,label:SECTION_LABEL[key],body:bodyFor[key]}))}/>
+        tabs={(['general','attendance','overtime'] as const).map(key=>({id:key,label:SECTION_LABEL[key],body:bodyFor[key]}))}/>
       {mode === 'view' && (
         <div className="flex items-center gap-3">
           <Link href={scheduleGroupEditPath(rule.id)} className={btnPrimary}>

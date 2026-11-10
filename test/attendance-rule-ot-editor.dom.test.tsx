@@ -62,6 +62,10 @@ const labelsFrom = (cat: Record<string, string>): OtEditorLabels => ({
   phRateNone: cat.otPhRateNone,
   ladderGapWarning: cat.otLadderGapWarning,
   ladderOpenEndedWarning: cat.otLadderOpenEndedWarning,
+  rateInvalid: cat.otRateInvalid,
+  phRateInvalid: cat.otPhRateInvalid,
+  rateHint: cat.otRateHint,
+  otherRateNote: cat.otOtherRateNote,
 });
 
 const catalogues = {
@@ -188,7 +192,8 @@ describe('7c834696: a new band no longer pre-fills 1.5', () => {
     expect(rateBoxes[1]).toBeRequired();
 
     const posted = postedRows(container);
-    expect(posted[0].rate).toBe(1.5); // the saved band is untouched
+    // c03670cc — the typed text is posted exactly as shown, so the server validates what the admin saw.
+    expect(posted[0].rate).toBe('1.5'); // the saved band is untouched
     // null, NOT 0 — 0 is a real setting ("record the hours but do not pay them"), so the server has to be
     // able to tell "nobody typed anything" from "somebody chose zero", and it refuses the first.
     expect(posted[1].rate).toBeNull();
@@ -201,16 +206,65 @@ describe('7c834696: a new band no longer pre-fills 1.5', () => {
     expect(screen.getByText(EN.rateFlatSuffix)).toBeInTheDocument();
   });
 
-  it('an empty VARIABLE rate shows "not set" and does not silently select 0×', async () => {
-    // Number('') is 0, so without the guard in rateValue an unfilled band would display — and then save —
-    // as 0×, which means "record the hours but pay nothing". This is the case that guard exists for.
+  it('an empty VARIABLE rate stays empty and posts null, never 0×', async () => {
     const user = userEvent.setup();
     const { container } = renderEditor([savedRow({ rate: '', ratePattern: 'flat' })]);
     await user.selectOptions(screen.getByLabelText(EN.colPattern), 'variable');
-    const rate = screen.getByLabelText(EN.colRate) as HTMLSelectElement;
+    const rate = screen.getByLabelText(EN.colRate) as HTMLInputElement;
     expect(rate.value).toBe('');
-    expect(within(rate).getByRole('option', { name: EN.rateUnset })).toBeInTheDocument();
+    expect(rate).toBeRequired();
+    expect(rate).toHaveAttribute('placeholder', EN.rateUnset);
     expect(postedRows(container)[0].rate).toBeNull();
+  });
+});
+
+describe('c03670cc: Variable OT Rate and PH Rate are typed decimal boxes', () => {
+  it('are text inputs with a decimal keyboard and a two-decimal pattern, not selects', () => {
+    renderEditor([savedRow({ ratePattern: 'variable', rate: '1.75', phRate: '' })]);
+    for (const label of [EN.colRate, EN.colPhRate]) {
+      const box = screen.getByLabelText(label) as HTMLInputElement;
+      expect(box.tagName, label).toBe('INPUT');
+      expect(box).toHaveAttribute('inputmode', 'decimal');
+      expect(box).toHaveAttribute('pattern', '\\d{1,2}(\\.\\d{1,2})?');
+    }
+    expect(screen.getByLabelText(EN.colRate)).toHaveValue('1.75');
+    expect(screen.getByLabelText(EN.colPhRate)).toHaveAttribute('placeholder', EN.phRateNone);
+  });
+
+  it('accepts 0 and decimals such as 1.75, posting them exactly as typed; blank PH posts null (the default)', async () => {
+    const user = userEvent.setup();
+    const { container } = renderEditor([savedRow({ ratePattern: 'variable', rate: '1.5', phRate: '3.0' })]);
+    const rate = screen.getByLabelText(EN.colRate), ph = screen.getByLabelText(EN.colPhRate);
+    await user.clear(rate);
+    await user.type(rate, '1.75');
+    await user.clear(ph);
+    expect(postedRows(container)[0]).toMatchObject({ rate: '1.75', phRate: null });
+    await user.clear(rate);
+    await user.type(rate, '0');
+    expect(postedRows(container)[0].rate).toBe('0');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('refuses letters and a third decimal with a clear message instead of rounding', async () => {
+    const user = userEvent.setup();
+    renderEditor([savedRow({ ratePattern: 'variable', rate: '1.5', phRate: '' })]);
+    const rate = screen.getByLabelText(EN.colRate) as HTMLInputElement;
+    await user.clear(rate);
+    await user.type(rate, '2.x');
+    expect(screen.getByRole('alert')).toHaveTextContent(EN.rateInvalid!);
+    expect(rate).toHaveAttribute('aria-invalid', 'true');
+    expect(rate.validity.patternMismatch, 'the browser blocks the submit too').toBe(true);
+    await user.clear(rate);
+    await user.type(rate, '1.755');
+    expect(rate.value, 'the box never rounds what was typed').toBe('1.755');
+    expect(screen.getByRole('alert')).toHaveTextContent(EN.rateInvalid!);
+    expect(rate.validity.patternMismatch).toBe(true);
+  });
+
+  it('a saved typed rate reopens exactly as saved and says which column it is reported in', () => {
+    renderEditor([savedRow({ ratePattern: 'variable', rate: '1.75', phRate: '' })]);
+    expect(screen.getByLabelText(EN.colRate)).toHaveValue('1.75');
+    expect(document.querySelector('[data-ot-other-rate-note]')).toHaveTextContent('1.75');
   });
 });
 

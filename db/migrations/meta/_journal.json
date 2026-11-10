@@ -5083,6 +5083,13 @@
       "when": 1793330003902,
       "tag": "4202_attendance_clock_policy_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 4000,
+      "version": "7",
+      "when": 1793330004300,
+      "tag": "4600_attendance_clock_policy_group_scope",
+      "breakpoints": true
     }
   ]
 }

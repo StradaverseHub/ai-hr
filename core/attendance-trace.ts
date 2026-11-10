@@ -49,6 +49,8 @@ export type TraceOtSplit = {
   ot15: number;
   ot20: number;
   ot30: number;
+  /** c03670cc — Variable minutes at a typed rate outside the usual columns; absent when there are none. */
+  other?: number;
 };
 
 /** Bump when a field's MEANING changes. A reader that does not recognise the version reports
