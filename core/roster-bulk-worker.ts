@@ -166,7 +166,6 @@ const isRefusal=(error:unknown)=>!isTransientBulkJobError(error);
 async function fencedTx<T>(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,fn:(tx:Tx)=>Promise<T>){
  return withTenant(ctx,async tx=>{await label(tx,job.kind,'finalize');await unit.fenceTx(tx);return fn(tx);});
 }
-const markSummarizedTx=(tx:Tx,job:BulkJobRow)=>tx.execute(sql`update bulk_job set plan=coalesce(plan,'{}'::jsonb)||'{"summarized":true}'::jsonb where id=${job.id}::uuid`);
 const rosterLocks=async(tx:Tx,ctx:SessionContext)=>{await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);};
 
 /** Nominate once (short read transactions); every guard runs later in the chunked check and write steps. */
@@ -212,7 +211,7 @@ async function prepareRoster(ctx:SessionContext,job:BulkJobRow):Promise<BulkJobP
   }
   if(input.op==='assign'){
    const a=input.assign;
-   plan={op:'assign',companyId:input.companyId,brush:a.brush,shiftDates:a.shiftDates,employments:a.employmentIds.length};
+   plan={op:'assign',companyId:input.companyId??null,brush:a.brush,shiftDates:a.shiftDates,employments:a.employmentIds.length};
    assertRosterDatesWritable(ctx,a.shiftDates);
    const refs=await withTenant(ctx,tx=>refsTx(tx,a.employmentIds));
    if(a.brush==='rest'||a.brush==='clear'){
@@ -255,7 +254,7 @@ async function prepareRoster(ctx:SessionContext,job:BulkJobRow):Promise<BulkJobP
 function basePlan(input:RosterBulkInput):Partial<RosterPlan>{
  if(input.op==='generate')return{op:'generate',companyId:input.companyId,month:String(input.generate?.from??'').slice(0,7)};
  if(input.op==='copy')return{op:'copy',companyId:input.companyId,month:String(input.copy?.targetFrom??'').slice(0,7)};
- return{op:input.op,companyId:input.companyId} as Partial<RosterPlan>;
+ return{op:input.op,companyId:input.companyId??null} as Partial<RosterPlan>;
 }
 
 async function applyCheckStep(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep,cache:Map<string,unknown>):Promise<BulkJobStepOutcome>{
@@ -367,7 +366,8 @@ async function finalizeRoster(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit
     const r=plan.result;
     await recordRosterUploadTx(tx,ctx,{companyId:plan.companyId,month:plan.month,fileName:plan.fileName,employees:r.employees,rowsRead:r.rowsRead,changed:r.changed,rejected:r.rejects.length});
    }
-   await markSummarizedTx(tx,job);
+   // The kernel writes the flag (the application role cannot write the job store); fencedTx fenced this transaction.
+   await unit.set(tx,{planMerge:{summarized:true}});
   }
   return t;
  });
@@ -440,7 +440,7 @@ export const scheduleGroupBulkJobHandler:BulkJobHandler<EmployeeStep>={
   * and nobody is moved. Then the writes, one employment each. */
  async prepare(ctx,job){
   const input=job.input as ScheduleGroupBulkInput;
-  const plan:SchedulePlan={returnQuery:input.returnQuery,attendanceRuleId:input.attendanceRuleId,requested:0};
+  const plan:SchedulePlan={returnQuery:input.returnQuery,attendanceRuleId:input.attendanceRuleId??null,requested:0};
   try{
    assertScheduleAdmin(ctx);
    const ids=sortedIds(input.employmentIds.map(v=>v.trim()).filter(Boolean));
