@@ -5,7 +5,7 @@
  * Access writer, clock-in, My Profile, Home, Personnel), samples every tenant-wide lock, and reports per operation:
  * wall time, chunk metrics, the longest tenant-lock holds, probe maxima, errors and Busy refusals.
  *
- * Operations (OPS, comma separated): baseline (probes only), plan (the upload's plan transaction alone), sync (today's single-transaction generateRosterFromTemplate, for comparison),
+ * Operations (OPS, comma separated): brush (the grid's inline brush timed by size), baseline (probes only), plan (the upload's plan transaction alone), sync (today's single-transaction generateRosterFromTemplate, for comparison),
  * generate, copy, import, group. Env: DATABASE_URL (app), MIGRATION_DATABASE_URL (owner), REHEARSAL_PORT,
  * REHEARSAL_TENANT, REHEARSAL_ADMIN, BASE_EMPLOYEES (3000), ROSTER_EMPLOYEES (all), IMPORT_EMPLOYEES (1200),
  * SYNC_EMPLOYEES (1200), MONTH (2027-01).
@@ -105,6 +105,23 @@ async function main(){
  const days=monthDays(MONTH),next=nextMonth(MONTH);
  // The same probes with no bulk operation, so host load is not mistaken for lock waits.
  if(OPS.includes('baseline'))await measure('baseline',async()=>{await sleep(Number(process.env.BASELINE_SECONDS??60)*1000);return{detail:'idle'};});
+ // The grid's inline brush (bulkAssignAction at or below ROSTER_BRUSH_INLINE_CELLS): the old one-transaction shift
+ // brush and the old per-cell rest loop, timed at growing sizes, to place the inline threshold under the lock bar.
+ if(OPS.includes('brush')){
+  const sizes=(process.env.BRUSH_SIZES??'1x31,2x31,4x31,8x31,16x31').split(',').map(v=>v.split('x').map(Number));
+  const out:Record<string,unknown>[]=[];let offset=0;
+  for(const [n,d] of sizes){
+   const ids=rosterIds.slice(offset,offset+n);offset+=n;const dates=days.slice(0,d);
+   const shiftRuns:number[]=[],restTx:number[]=[];
+   for(let r=0;r<3;r++){
+    const t0=Date.now();await roster.assignShiftBulk(admin,{employmentIds:ids,shiftDates:dates,shiftId:r%2?night.id:day.id});shiftRuns.push(Date.now()-t0);
+   }
+   const t1=Date.now();
+   for(const employmentId of ids)for(const shiftDate of dates){const s0=Date.now();await roster.setRestDay(admin,{employmentId,shiftDate});restTx.push(Date.now()-s0);}
+   out.push({cells:n*d,shiftBrushTxMs:shiftRuns,restLoopTotalMs:Date.now()-t1,restCellTxMaxMs:Math.max(...restTx)});
+  }
+  console.log(JSON.stringify({brushInline:out},null,2));
+ }
  if(OPS.includes('sync')){
   // Today's path, for comparison: one transaction for the whole grid (no worker involved).
   const ids=rosterIds.slice(0,Number(process.env.SYNC_EMPLOYEES??1200));

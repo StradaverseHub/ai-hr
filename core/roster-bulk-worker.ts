@@ -40,7 +40,7 @@ import {
 import {assertRosterImportCellsCurrentTx,rosterImportDirectoryTx,rosterImportPlan,rosterImportWriteGroups,type RosterImportCell,type RosterImportDirectory,type RosterImportResult} from './roster-import';
 import {employment,person} from '../db/schema';
 import {eq} from 'drizzle-orm';
-import {ROSTER_BULK_KIND,ROSTER_WRITE_FAILED,SCHEDULE_GROUP_BULK_KIND,SCHEDULE_GROUP_BULK_UNEXPECTED,rosterReadableError} from '../lib/roster-bulk-job';
+import {ROSTER_BULK_KIND,ROSTER_QUIET_NOTICE_MS,ROSTER_WRITE_FAILED,SCHEDULE_GROUP_BULK_KIND,SCHEDULE_GROUP_BULK_UNEXPECTED,rosterReadableError} from '../lib/roster-bulk-job';
 import type {RosterBulkInput,RosterBulkResult,ScheduleGroupBulkInput,ScheduleGroupBulkResult} from './roster-bulk-job';
 
 /** Step work per chunk transaction before it commits. One employee-month half costs about 10–40 ms on a quiet host. */
@@ -400,6 +400,14 @@ export const rosterBulkJobHandler:BulkJobHandler={
  finalize:finalizeRoster,
  async describeFailure(job,error){return{error:rosterMessage(error),errors:job.errors??[]};},
  async afterTerminal(_ctx,job){chunkState.delete(job.id);},
+ // A grid brush job its creator watched to the end on the grid, and that took a few seconds at most, is reported by
+ // the grid itself (its toast); the bell is for brushes that ran long or finished after the creator left the page.
+ quietNotice:job=>{
+  const plan=job.plan as RosterPlan|null;
+  if(plan?.op!=='assign'||!job.watched_at||!job.finished_at)return false;
+  const finished=new Date(job.finished_at).getTime();
+  return finished-new Date(job.created_at).getTime()<=ROSTER_QUIET_NOTICE_MS&&finished-new Date(job.watched_at).getTime()<=ROSTER_QUIET_NOTICE_MS;
+ },
 };
 
 // ── Schedule Group bulk assignment ─────────────────────────────────────────────────────────────────────

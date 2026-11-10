@@ -5412,6 +5412,13 @@
       "when": 1793330099920,
       "tag": "9920_roster_bulk_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 9921,
+      "version": "7",
+      "when": 1793330099921,
+      "tag": "9921_bulk_job_queue_and_watch",
+      "breakpoints": true
     }
   ]
 }

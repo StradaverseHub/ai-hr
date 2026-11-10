@@ -37314,11 +37314,13 @@
       "assign": "Applying the roster change",
       "import": "Saving the uploaded roster",
       "otherRunning": "Another roster change is still being saved. Wait for it to finish, then try again.",
-      "saveFailed": "The roster change could not be saved. Please try again, or ask an HR administrator."
+      "saveFailed": "The roster change could not be saved. Please try again, or ask an HR administrator.",
+      "queuedBehind": "Queued behind another roster job. It starts automatically as soon as that one finishes."
     },
     "scheduleGroup": {
       "title": "Assigning the Schedule Group",
-      "otherRunning": "Another Schedule Group assignment is still being saved. Wait for it to finish, then try again."
+      "otherRunning": "Another Schedule Group assignment is still being saved. Wait for it to finish, then try again.",
+      "queuedBehind": "Queued behind another Schedule Group assignment. It starts automatically as soon as that one finishes."
     }
   }
 }

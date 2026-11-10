@@ -21,7 +21,7 @@ export function pollRosterBulkJob(endpoint:string,id:string,onUpdate:(job:Roster
  return()=>{alive=false;if(timer)clearTimeout(timer);};
 }
 /** Resolves with the job once it has ended (the grid's bulk bar awaits it inside its transition). */
-export function waitForRosterBulkJob(endpoint:string,id:string):Promise<RosterBulkJobView>{
- return new Promise(resolve=>{const stop=pollRosterBulkJob(endpoint,id,job=>{if(!rosterBulkActive(job.state)){stop();resolve(job);}},()=>{});});
+export function waitForRosterBulkJob(endpoint:string,id:string,onUpdate?:(job:RosterBulkJobView)=>void):Promise<RosterBulkJobView>{
+ return new Promise(resolve=>{const stop=pollRosterBulkJob(endpoint,id,job=>{onUpdate?.(job);if(!rosterBulkActive(job.state)){stop();resolve(job);}},()=>{});});
 }
 

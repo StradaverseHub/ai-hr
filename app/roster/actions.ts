@@ -11,12 +11,13 @@ import {
   assertRosterDatesWritable,
   assignRosterRow,
   assignShift,
+  assignShiftBulk,
   clearRoster,
   RosterAdminRequiredError,
   setRestDay,
 } from '@/core/roster';
 import { enqueueRosterAssignJob, enqueueRosterCopyJob, enqueueRosterGenerateJob, RosterBulkJobError } from '@/core/roster-bulk-job';
-import { ROSTER_BULK_ALREADY_RUNNING, rosterReadableError } from '@/lib/roster-bulk-job';
+import { ROSTER_BRUSH_INLINE_CELLS, ROSTER_BULK_ALREADY_RUNNING, rosterReadableError } from '@/lib/roster-bulk-job';
 import { accrueToil, ToilFirstScheduleConsentRequiredError } from '@/core/toil';
 
 export type CellResult = { ok: true } | { ok: false; error: string };
@@ -107,14 +108,16 @@ export async function assignCellAction(input: { employmentId: string; shiftDate:
   }
 }
 
-export type BulkAssignResult = { ok: true; jobId: string } | { ok: false; error: string };
+export type BulkAssignResult = { ok: true; jobId?: string } | { ok: false; error: string };
 
 /** Bulk-apply a brush to many employees across a date range (the roster-grid bulk bar).
  *  Administrators only, re-checked here — see assignCellAction.
  *
- *  The writes run as a background roster job (core/roster-bulk-worker.ts): one employee's rows per step in short
- *  transactions, the same writers and events, and the same all-or-nothing refusal for a shift brush. The grid
- *  waits for the job (components/roster-grid.tsx) and reports its outcome exactly as it reported this action's. */
+ *  A SMALL brush (at most ROSTER_BRUSH_INLINE_CELLS employee-days) is written here, inline, exactly as before: one
+ *  short transaction for a shift brush, one per cell for rest and clear, no job and no notice. A larger brush runs as
+ *  a background roster job (core/roster-bulk-worker.ts): one employee's rows per step in short transactions, the same
+ *  writers and events, and the same all-or-nothing refusal for a shift brush. The grid waits for the job
+ *  (components/roster-grid.tsx) and reports its outcome exactly as it reported this action's. */
 export async function bulkAssignAction(input: {
   employmentIds: string[];
   shiftDates: string[];
@@ -123,11 +126,31 @@ export async function bulkAssignAction(input: {
   operationKey?: string;
 }): Promise<BulkAssignResult> {
   const s = await getSession();
+  if (input.employmentIds.length * input.shiftDates.length > ROSTER_BRUSH_INLINE_CELLS) {
+    try {
+      const job = await enqueueRosterAssignJob(s, input);
+      return { ok: true, jobId: job.id };
+    } catch (e) {
+      return { ok: false, error: await admissionError(e) };
+    }
+  }
   try {
-    const job = await enqueueRosterAssignJob(s, input);
-    return { ok: true, jobId: job.id };
+    assertRosterAdmin(s);
+    assertRosterDatesWritable(s, input.shiftDates);
+    if (input.brush === 'clear') {
+      for (const employmentId of input.employmentIds) {
+        for (const shiftDate of input.shiftDates) await clearRoster(s, { employmentId, shiftDate });
+      }
+    } else if (input.brush === 'rest') {
+      for (const employmentId of input.employmentIds) {
+        for (const shiftDate of input.shiftDates) await setRestDay(s, { employmentId, shiftDate });
+      }
+    } else {
+      await assignShiftBulk(s, { employmentIds: input.employmentIds, shiftDates: input.shiftDates, shiftId: input.brush });
+    }
+    return { ok: true };
   } catch (e) {
-    return { ok: false, error: await admissionError(e) };
+    return { ok: false, error: readableError(e) };
   }
 }
 

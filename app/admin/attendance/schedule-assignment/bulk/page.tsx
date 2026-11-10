@@ -202,6 +202,7 @@ export default async function BulkScheduleGroupPage({
     : null;
   // A failure the screen must not print verbatim is stored as a code; it reads as the page's own sentence.
   const errorMessage = sp.error === SCHEDULE_GROUP_BULK_UNEXPECTED ? t('unexpectedError') : sp.error;
+  const tGroupJob = await getTranslations('bulkJobs.scheduleGroup');
 
   return (
     <div className={pageWideCls}>
@@ -217,7 +218,7 @@ export default async function BulkScheduleGroupPage({
 
       <ErrorBanner message={errorMessage} />
       {bulkJob ? (
-        <RosterBulkJobPanel endpoint={`${BULK}/jobs`} job={bulkJob} title={(await getTranslations('bulkJobs.scheduleGroup'))('title')} />
+        <RosterBulkJobPanel endpoint={`${BULK}/jobs`} job={bulkJob} title={tGroupJob('title')} waitingLabel={tGroupJob('queuedBehind')} />
       ) : null}
       {showResult ? (
         <p className="rounded-lg border border-emerald-500/30 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">

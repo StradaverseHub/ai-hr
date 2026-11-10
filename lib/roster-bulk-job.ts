@@ -7,6 +7,11 @@ export const ROSTER_BULK_KIND='roster_bulk';
 export const SCHEDULE_GROUP_BULK_KIND='schedule_group_bulk';
 /** Generate from a shift template, copy a window forward, the grid's bulk brush, and the month-grid upload. */
 export type RosterBulkOp='generate'|'copy'|'assign'|'import';
+/** A grid brush of at most this many employee-days is written inline in one short transaction, exactly as before
+ * (no job, no notice); a larger one runs as a background job. Measured: see docs/adr/2026-11-10-roster-bulk-jobs.md. */
+export const ROSTER_BRUSH_INLINE_CELLS=62;
+/** A background job its creator watched to the end on screen and that ran at most this long sends no bell notice. */
+export const ROSTER_QUIET_NOTICE_MS=5000;
 /** Stable code for an admission refused because the tenant already runs a roster (or Schedule Group) bulk job. */
 export const ROSTER_BULK_ALREADY_RUNNING='roster-bulk-already-running';
 /** Stored instead of a message the screen must not print (the Schedule Group page shows its own sentence). */
@@ -17,6 +22,8 @@ export const SCHEDULE_GROUP_BULK_UNEXPECTED='schedule-group-bulk-unexpected';
 export type RosterBulkJobView={
  id:string;kind:string;op:RosterBulkOp|'schedule-group';state:BulkJobState;stepsDone:number;stepsTotal:number;
  worker:'running'|'unavailable';updatedAt:string;error:string|null;
+ /** Queued behind another job of the same kind in this tenant; it starts by itself when that one ends. */
+ waiting:boolean;
  /** Terminal only: the page that shows the outcome (Generate, Copy, Schedule Group bulk). */
  href:string|null;
  /** Terminal only: the upload's result (Upload Shift Roster renders it in place). */

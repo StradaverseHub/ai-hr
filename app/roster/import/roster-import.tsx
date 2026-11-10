@@ -258,7 +258,7 @@ export function RosterImport({
         </div>
       )}
 
-      {job && <RosterBulkJobPanel endpoint="/roster/jobs" job={job} title={tJob('import')} onFinished={finished} />}
+      {job && <RosterBulkJobPanel endpoint="/roster/jobs" job={job} title={tJob('import')} waitingLabel={tJob('queuedBehind')} onFinished={finished} />}
 
       {committed && (
         <Card className="overflow-hidden border-emerald-200 dark:border-emerald-500/30">

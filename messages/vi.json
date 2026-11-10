@@ -37314,11 +37314,13 @@
       "assign": "Đang áp dụng thay đổi lịch ca",
       "import": "Đang lưu lịch ca đã tải lên",
       "otherRunning": "Một thay đổi lịch ca khác vẫn đang được lưu. Hãy đợi hoàn tất rồi thử lại.",
-      "saveFailed": "Không thể lưu thay đổi lịch ca. Vui lòng thử lại hoặc liên hệ quản trị viên nhân sự."
+      "saveFailed": "Không thể lưu thay đổi lịch ca. Vui lòng thử lại hoặc liên hệ quản trị viên nhân sự.",
+      "queuedBehind": "Đang xếp hàng sau một công việc lịch ca khác. Công việc sẽ tự bắt đầu ngay khi công việc kia hoàn tất."
     },
     "scheduleGroup": {
       "title": "Đang phân nhóm lịch làm việc",
-      "otherRunning": "Một lượt phân nhóm lịch làm việc khác vẫn đang được lưu. Hãy đợi hoàn tất rồi thử lại."
+      "otherRunning": "Một lượt phân nhóm lịch làm việc khác vẫn đang được lưu. Hãy đợi hoàn tất rồi thử lại.",
+      "queuedBehind": "Đang xếp hàng sau một lượt phân nhóm lịch làm việc khác. Sẽ tự bắt đầu ngay khi lượt kia hoàn tất."
     }
   }
 }

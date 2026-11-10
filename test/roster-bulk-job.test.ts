@@ -11,7 +11,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import * as schema from '../db/schema';
 import type {SessionContext} from '../db/client';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {runBulkJobTick,type BulkJobHandler} from '../core/bulk-job-worker';
 import {rosterBulkJobHandler,scheduleGroupBulkJobHandler} from '../core/roster-bulk-worker';
 import {enqueueRosterAssignJob,enqueueRosterCopyJob,enqueueRosterGenerateJob,enqueueRosterImportJob,enqueueScheduleGroupBulkJob,readRosterBulkJob} from '../core/roster-bulk-job';
@@ -21,8 +21,7 @@ import {resolveWorkedDayKindTx} from '../core/toil';
 import {withTenant} from '../db/client';
 import {createAttendanceRule,type AttendanceRuleInput} from '../packs/attendance/service';
 import {SCHEDULE_GROUP_BULK_KIND} from '../lib/roster-bulk-job';
-import {BULK_JOB_ALREADY_RUNNING} from '../core/bulk-job';
-import {ROSTER_BULK_ALREADY_RUNNING} from '../lib/roster-bulk-job';
+
 
 let b:Base,ctx:SessionContext;
 // One step per chunk transaction, so every comparison below crosses many chunks.
@@ -178,13 +177,38 @@ describe('Generate', ()=>{
   expect(summary.payload).toMatchObject({employmentCount:4,rows:40});
  });
 
- it('admits one roster job at a time per tenant and re-checks the administrator right in the worker',async()=>{
+ it('queues a second administrator\'s roster job behind the running one and starts it by itself, never refusing it',async()=>{
   const S=await mkShift('Day','DAY');
-  const {B}=await groups(1);
-  await enqueueRosterGenerateJob(ctx,{companyId:b.companyId,input:{shiftId:S.id,employmentIds:[B[0].id],from:FROM,to:TO}});
-  await expect(enqueueRosterCopyJob(ctx,{companyId:b.companyId,employmentIds:[B[0].id],sourceFrom:FROM,sourceTo:TO,targetFrom:'2027-04-05'})).rejects.toThrow(ROSTER_BULK_ALREADY_RUNNING);
-  expect(BULK_JOB_ALREADY_RUNNING).not.toBe(ROSTER_BULK_ALREADY_RUNNING);
+  const {B}=await groups(2);
+  const second:SessionContext={...ctx,userId:await createAppUser(b.tenantId,null,'hr_admin'),grants:[{role:'hr_admin',companyId:null}],roles:['hr_admin']};
+  const first=await enqueueRosterGenerateJob(ctx,{companyId:b.companyId,input:{shiftId:S.id,employmentIds:[B[0].id],from:FROM,to:TO}});
+  const queued=await enqueueRosterCopyJob(second,{companyId:b.companyId,employmentIds:[B[1].id],sourceFrom:FROM,sourceTo:TO,targetFrom:'2027-04-05'});
+  const own=await enqueueRosterAssignJob(ctx,{employmentIds:[B[1].id],shiftDates:['2027-03-20'],brush:'rest'}); // the first admin's own second job queues too
+  expect(queued).toMatchObject({state:'queued',waiting:true});
+  expect(own).toMatchObject({state:'queued',waiting:true});
+  expect((await readRosterBulkJob(ctx,first.id)).waiting,'the first job waits for nothing').toBe(false);
+  // The queued jobs are not claimed while the first one is active.
+  expect(await runJob(first.id,state=>state==='running')).toBe('running');
+  expect((await readRosterBulkJob(second,queued.id)).state).toBe('queued');
+  expect(await runJob(first.id)).toBe('completed');
+  expect(await runJob(queued.id)).toBe('completed');
+  expect(await runJob(own.id)).toBe('completed');
+  const [order]=await owner.client<{ok:boolean}[]>`select (select finished_at from bulk_job where id=${first.id}::uuid)<=(select finished_at from bulk_job where id=${queued.id}::uuid) ok`;
+  expect(order.ok,'the queued job ran after the first').toBe(true);
+  expect(await rosterRows([B[1].id],new Map())).toHaveLength(1); // the rest day; the copy of an empty source wrote nothing
   await expect(enqueueRosterGenerateJob({...ctx,roles:['manager']},{companyId:b.companyId,input:{shiftId:S.id,employmentIds:[B[0].id],from:FROM,to:TO}})).rejects.toThrow(/administrator/i);
+ });
+
+ it('sends no bell notice for a short brush its creator watched to the end, and one when nobody was watching',async()=>{
+  const {B}=await groups(2);
+  const watched=await enqueueRosterAssignJob(ctx,{employmentIds:[B[0].id],shiftDates:['2027-03-20'],brush:'rest'});
+  expect(await runJob(watched.id)).toBe('completed');
+  const unwatched=await enqueueRosterAssignJob(ctx,{employmentIds:[B[1].id],shiftDates:['2027-03-20'],brush:'rest'});
+  await owner.client`update bulk_job set watched_at=null where id=${unwatched.id}::uuid`;
+  expect(await runJob(unwatched.id)).toBe('completed');
+  const rows=await owner.client<{id:string;notice:string|null;notified:boolean}[]>`select id,notice_event_id notice,notified_at is not null notified from bulk_job where id=any(${[watched.id,unwatched.id]}::uuid[])`;
+  expect(rows.find(r=>r.id===watched.id)).toMatchObject({notice:null,notified:true});
+  expect(rows.find(r=>r.id===unwatched.id)?.notice).toEqual(expect.any(String));
  });
 });
 

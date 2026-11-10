@@ -2,16 +2,30 @@
 
 Status: source implementation on `claude/bulkjob-roster-20261110`; hosted verification and integration pending.
 Base: `claude/import-staged-job-20261110` @ `0143d761c` merged with `claude/candidate-behaviour-restore-20261110` @ `5e7d80ff6`.
-Draft migration (unallocated, range 9920–9929): 9920 `roster_bulk_jobs`. Production and staging untouched.
+Draft migrations (unallocated, range 9920–9929): 9920 `roster_bulk_jobs`, 9921 `bulk_job_queue_and_watch` (a kernel
+extension, below). Production and staging untouched.
 
 Generate, Copy, the roster grid's bulk bar, Upload Shift Roster and Schedule Group bulk assignment each ran in one
 transaction that held the tenant's Access lock (and, with the audit chain armed, the chain lock) for the whole grid:
 26.4 s for a 1,200-employee month (docs/plans/bulk-operations-job-migration.md §3.6). They now run on the shared
 bulk-job kernel (ADR 2026-11-10 employee import, "Shared job kernel") as two kinds:
 
-- `roster_bulk` (Generate, Copy, the grid's bulk bar, Upload) and `schedule_group_bulk`; one active job of each per
-  tenant (`exclusive:'tenant'`), so two bulk roster operations never interleave their per-employee writes. A second
-  one is refused at admission with a translated "still being saved" sentence, never queued behind the first.
+- `roster_bulk` (Generate, Copy, the grid's bulk bar, Upload) and `schedule_group_bulk`, each `exclusive:'tenant_queue'`
+  (9921): one job of the kind runs at a time per tenant, so two bulk roster operations never interleave their
+  per-employee writes, but a second one is never refused. It is admitted, waits in `queued` until every earlier
+  active job of its kind has ended, and the worker then starts it by itself. Its progress panel says it is queued
+  behind another roster (or Schedule Group) job (`app.bulk_job_waiting`, one boolean about the caller's own job).
+- **Kernel extension for integration (9921, core/bulk-job-worker.ts, core/bulk-job.ts):** the `tenant_queue`
+  exclusivity (admission key = the job's own id; the claim skips a queued job while an earlier active job of its
+  kind exists in its tenant), `bulk_job.watched_at` stamped by the creator's polling (`markBulkJobWatchedTx`, which
+  never waits on the worker's row lock) and `BulkJobHandler.quietNotice`. Other kernel clients are unaffected:
+  their kinds keep `tenant`/`creator`, and without `quietNotice` every job notifies as before.
+- **The grid's bulk bar.** A brush of at most `ROSTER_BRUSH_INLINE_CELLS` = 62 employee-days (two employees for a
+  month) is written inline exactly as before: one transaction for a shift brush, one per cell for rest and clear, no
+  job, no notice. Measured on the rehearsal host (load ~11): a shift brush took 55–83 ms at 31 cells, 74–77 ms at 62,
+  110–137 ms at 124, 211–294 ms at 248 and 337–423 ms at 496; the rest loop's longest per-cell transaction was
+  ≤ 239 ms and its request 1.3 s at 31 cells, 3.1 s at 62 and 4.1 s at 124. A larger brush runs as a job and sends
+  the bell notice only if its creator left the grid (no poll within 5 s of the end) or it ran longer than 5 s.
 - **Admission** (`core/roster-bulk-job.ts`) keeps every check the click made: the administrator right, the posted
   targets' admission (`app/roster/command-targets.ts`, unchanged), the input capture and, for Generate, the
   generator's read-only nomination (template, nominated employments, reviewed department and team) so those
@@ -41,7 +55,7 @@ bulk-job kernel (ADR 2026-11-10 employee import, "Shared job kernel") as two kin
   made by someone else while the job runs is refused for that employee and recorded on the job; the others are
   written (the sequential upload and rest/clear loops stop instead). The job then ends as failed with that sentence.
   This is the one result that can differ from the single transaction, which would have serialised before or after.
-- **Screens.** The click validates and enqueues; the page shows the progress panel (the employee-import panel's
+- **Screens.** For Generate, Copy, Upload, Schedule Group and a large brush, the click validates and enqueues; the page shows the progress panel (the employee-import panel's
   pattern) and, when the job ends, opens the same address the action used to redirect to (`?generated=`,
   `?copied=`, `?bulkChanged=`, or `?error=`), so the outcome banners are unchanged. The upload screen renders the
   same result panel in place. The grid's bulk bar keeps its painted cells while the job runs and reports the

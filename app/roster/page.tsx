@@ -260,7 +260,7 @@ export default async function RosterPage({
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={sp.error} />
       {rosterJob && (rosterJob.op === 'generate' || rosterJob.op === 'copy') && (
-        <RosterBulkJobPanel endpoint="/roster/jobs" job={rosterJob} title={tJob(rosterJob.op)} />
+        <RosterBulkJobPanel endpoint="/roster/jobs" job={rosterJob} title={tJob(rosterJob.op)} waitingLabel={tJob('queuedBehind')} />
       )}
       {/* a57f0584 rev 2 — WHAT THE RESOLVER DID INSTEAD, said out loud. A window that was clamped or
           reversed still renders (the dates on screen are real), so this is a NOTICE rather than an error:

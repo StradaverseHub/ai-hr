@@ -37314,11 +37314,13 @@
       "assign": "Menggunakan perubahan roster",
       "import": "Menyimpan roster yang dimuat naik",
       "otherRunning": "Satu lagi perubahan roster masih disimpan. Tunggu sehingga selesai, kemudian cuba lagi.",
-      "saveFailed": "Perubahan roster tidak dapat disimpan. Sila cuba lagi, atau hubungi pentadbir HR."
+      "saveFailed": "Perubahan roster tidak dapat disimpan. Sila cuba lagi, atau hubungi pentadbir HR.",
+      "queuedBehind": "Beratur di belakang kerja roster lain. Ia bermula secara automatik sebaik sahaja kerja itu selesai."
     },
     "scheduleGroup": {
       "title": "Menetapkan Kumpulan Jadual",
-      "otherRunning": "Satu lagi penetapan Kumpulan Jadual masih disimpan. Tunggu sehingga selesai, kemudian cuba lagi."
+      "otherRunning": "Satu lagi penetapan Kumpulan Jadual masih disimpan. Tunggu sehingga selesai, kemudian cuba lagi.",
+      "queuedBehind": "Beratur di belakang penetapan Kumpulan Jadual lain. Ia bermula secara automatik sebaik sahaja penetapan itu selesai."
     }
   }
 }

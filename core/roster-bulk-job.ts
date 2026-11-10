@@ -2,7 +2,7 @@
  * side. Each door checks the same authority the synchronous path checked, then only enqueues; the protected import
  * worker writes (core/roster-bulk-worker.ts). No roster row changes in an HTTP request. */
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {BULK_JOB_ALREADY_RUNNING,BulkJobError,bulkJobTx,bulkJobWorkerStatusTx,enqueueBulkJobTx,type BulkJobRow} from './bulk-job';
+import {BULK_JOB_ALREADY_RUNNING,BulkJobError,bulkJobTx,bulkJobWaitingTx,bulkJobWorkerStatusTx,enqueueBulkJobTx,markBulkJobWatchedTx,type BulkJobRow} from './bulk-job';
 import {assertRosterAdmin,assertRosterDatesWritable,captureRosterGenerateInput,rosterGenerationNominationTx,validateRosterCopyRange,NoEmploymentsSelectedError,type RosterGenerateInput} from './roster';
 import {isAdmin} from '../lib/authz-model';
 import {ROSTER_BULK_ALREADY_RUNNING,ROSTER_BULK_KIND,SCHEDULE_GROUP_BULK_KIND,type RosterBulkJobView,type RosterBulkOp} from '../lib/roster-bulk-job';
@@ -59,12 +59,15 @@ export function enqueueRosterCopyJob(ctx:SessionContext,p:{companyId:string;empl
 }
 /** The roster grid's bulk bar: one brush over the ticked employees and the window's dates. Both rights are checked
  * here as bulkAssignAction checked them (administrator, then the dates); the worker re-checks per row. */
-export function enqueueRosterAssignJob(ctx:SessionContext,p:{companyId?:string|null;employmentIds:string[];shiftDates:string[];brush:string;operationKey?:string}){
+export async function enqueueRosterAssignJob(ctx:SessionContext,p:{companyId?:string|null;employmentIds:string[];shiftDates:string[];brush:string;operationKey?:string}){
  assertRosterAdmin(ctx);
  assertRosterDatesWritable(ctx,p.shiftDates);
  const assign={employmentIds:p.employmentIds.slice(),shiftDates:p.shiftDates.slice(),brush:p.brush};
  const companyId=p.companyId&&uuid.test(p.companyId)?p.companyId:null;
- return admit(ctx,ROSTER_BULK_KIND,{op:'assign',companyId,assign} satisfies RosterBulkInput,companyId?[companyId]:[],undefined,p.operationKey);
+ const view=await admit(ctx,ROSTER_BULK_KIND,{op:'assign',companyId,assign} satisfies RosterBulkInput,companyId?[companyId]:[],undefined,p.operationKey);
+ // The creator is on the grid now; its polls keep this current (a short watched brush sends no bell notice).
+ await withTenant(ctx,tx=>markBulkJobWatchedTx(tx,view.id)).catch(()=>undefined);
+ return view;
 }
 /** Upload Shift Roster: the month grid is the job's source; the worker re-derives everything from it. */
 export function enqueueRosterImportJob(ctx:SessionContext,p:{csvText:string;month:string;companyId:string;fileName?:string;operationKey?:string}){
@@ -107,16 +110,25 @@ function outcomeHref(row:BulkJobRow):string|null{
  else if(result.op==='copy')q.set('copied',String(result.copied));
  return `/roster?${q}`;
 }
-export function rosterBulkJobView(row:BulkJobRow,worker:'running'|'unavailable'='running'):RosterBulkJobView{
+export function rosterBulkJobView(row:BulkJobRow,worker:'running'|'unavailable'='running',waiting=false):RosterBulkJobView{
  const plan=row.plan as {op?:RosterBulkOp}|null;const input=row.input as RosterBulkInput|null;
  const op=row.kind===SCHEDULE_GROUP_BULK_KIND?'schedule-group':(plan?.op??input?.op??'assign');
  const result=row.result as RosterBulkResult|null;
  return{id:row.id,kind:row.kind,op,state:row.state,stepsDone:row.steps_done,stepsTotal:row.steps_total,
   worker:row.state==='queued'?worker:'running',updatedAt:new Date(row.updated_at).toISOString(),error:row.state==='completed'?null:row.error,
+  waiting:row.state==='queued'&&waiting,
   href:outcomeHref(row),importResult:row.state==='completed'&&result?.op==='import'?result.result:null};
 }
-async function viewTx(tx:Tx,row:BulkJobRow){return rosterBulkJobView(row,row.state==='queued'?await bulkJobWorkerStatusTx(tx,row.kind):'running');}
-/** The creator's view of one of their roster or Schedule Group bulk jobs (row security hides anyone else's). */
-export async function readRosterBulkJob(ctx:SessionContext,id:string,kind:typeof ROSTER_BULK_KIND|typeof SCHEDULE_GROUP_BULK_KIND=ROSTER_BULK_KIND){
- try{return await withTenant(ctx,async tx=>viewTx(tx,await bulkJobTx(tx,id,{kind})));}catch(error){throw kernelError(error);}
+async function viewTx(tx:Tx,row:BulkJobRow){
+ if(row.state!=='queued')return rosterBulkJobView(row);
+ return rosterBulkJobView(row,await bulkJobWorkerStatusTx(tx,row.kind),await bulkJobWaitingTx(tx,row.id));
+}
+/** The creator's view of one of their roster or Schedule Group bulk jobs (row security hides anyone else's).
+ * `watch`: the progress screen is polling, which lets a short watched job skip its bell notice. */
+export async function readRosterBulkJob(ctx:SessionContext,id:string,kind:typeof ROSTER_BULK_KIND|typeof SCHEDULE_GROUP_BULK_KIND=ROSTER_BULK_KIND,options:{watch?:boolean}={}){
+ try{return await withTenant(ctx,async tx=>{
+  const row=await bulkJobTx(tx,id,{kind});
+  if(options.watch&&!['completed','failed','cancelled'].includes(row.state))await markBulkJobWatchedTx(tx,row.id);
+  return viewTx(tx,row);
+ });}catch(error){throw kernelError(error);}
 }
