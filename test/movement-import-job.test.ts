@@ -19,6 +19,7 @@ import {getImportAttempt,previewImportRevert} from '../core/import-history';
 import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
 import {revertImport} from '../core/import-history';
 import {revertMovementByJob} from './movement-revert-job-helper';
+import {getMovementImportRevertJob} from '../core/movement-import-revert-job';
 import {createHash} from 'node:crypto';
 import {movementRevertHandler} from '../core/movement-import-history';
 import {verifyTenantChain} from '../core/audit-chain';
@@ -410,6 +411,55 @@ describe('movement import background job (bulk-job kernel)',()=>{
   expect(job.plan.released?.path).toBe('reference');expect(job.plan.fallback).toBe('records:employment');expect(job.counters).toMatchObject({reference:1});
   const after=await snapshot(f.b.tenantId);
   expect(perEmployeeEvents(after.tables)).toEqual(perEmployeeEvents(before.tables));
+  expect(await verifyTenantChain(f.a)).toMatchObject({valid:true});
+ },300_000);
+
+ it('finishes as succeeded, with the outcome its fallback recorded, when the worker lost the lease while that fallback ran',async()=>{
+  const a=await checked(f);
+  const ja=await startMovementImportJob(f.a,{attemptId:a.preview.attemptId,previewHash:a.preview.previewHash,employees:a.keys,acknowledgeExcluded:true,locale:'en',operationKey:randomUUID()});if(!('job' in ja))throw new Error('expected a job');await ticks(ja.job.id,terminal);
+  const attemptId=a.preview.attemptId;
+  const review=await previewImportRevertForAttempt(f.a,attemptId);
+  const out=await revertImportForAttempt(f.a,attemptId,{previewHash:review.previewHash,reason:'Fictional wrong batch'});
+  if(!('job' in out))throw new Error('expected a job');
+  const jobId=out.job.id;
+  await ticks(jobId,j=>j.state==='finalizing'||terminal(j));
+  // A planned record changes before the release, so the whole revert is the synchronous fallback.
+  await owner.client`update employment set org_division='Fictional division' where id=${f.ids.AC001}::uuid`;
+  // The fallback's reverted Import History event waits, inside the fallback's own transaction, on a lock this test holds.
+  const KEY=Math.floor(Math.random()*1_000_000_000)+1;
+  await owner.client.unsafe(`create function public.test_hold_movement_revert() returns trigger language plpgsql as $$ begin perform pg_advisory_xact_lock(${KEY}); return new; end $$`);
+  await owner.client.unsafe(`create trigger test_hold_movement_revert before insert on public.import_attempt_event for each row when (new.kind='reverted') execute function public.test_hold_movement_revert()`);
+  const until=async(what:string,ok:()=>Promise<boolean>)=>{for(let i=0;i<600;i++){if(await ok())return;await new Promise(r=>setTimeout(r,50));}throw new Error('timed out waiting for '+what);};
+  const holder=await owner.client.reserve();
+  let first:Promise<boolean>|undefined,second:Promise<boolean>|undefined;
+  try{
+   await holder`begin`;await holder`select pg_advisory_xact_lock(${KEY})`;
+   first=tick();
+   await until('the fallback to wait inside its transaction',async()=>(await owner.client<{n:number}[]>`select count(*)::int n from pg_locks where locktype='advisory' and not granted and classid=0 and objid=${KEY}`)[0].n===1);
+   const [{token}]=await owner.client<{token:string}[]>`select lease_token::text token from bulk_job where id=${jobId}::uuid`;
+   expect(token).toBeTruthy();
+   // The lease runs out while the fallback is still running, and another worker takes the job.
+   await owner.client`update bulk_job set lease_expires_at=now()-interval '1 second' where id=${jobId}::uuid`;
+   second=tick();
+   await until('another worker to take the job',async()=>(await owner.client<{token:string|null}[]>`select lease_token::text token from bulk_job where id=${jobId}::uuid`)[0].token!==token);
+   await holder`rollback`;
+   await Promise.all([first,second]);
+  }finally{
+   await holder`rollback`.catch(()=>undefined);holder.release();
+   await Promise.allSettled([first,second].filter(Boolean));
+   await owner.client.unsafe('drop trigger test_hold_movement_revert on public.import_attempt_event; drop function public.test_hold_movement_revert()');
+  }
+  const done=await ticks(jobId,terminal);
+  expect(done.state,String(done.error)).toBe('completed');
+  const[job]=await owner.client<{counters:Record<string,number>;plan:{released?:{path:string;restored:number};fallback?:string};result:{restored:number}}[]>`select counters,plan,result from bulk_job where id=${jobId}::uuid`;
+  const events=await owner.client<{id:string;kind:string}[]>`select id::text,kind from import_attempt_event where attempt_id=${attemptId}::uuid order by created_at,id`;
+  // Reverted once, by the fallback whose worker lost the lease; never refused as already reverted.
+  expect(events.map(e=>e.kind).filter(k=>k.startsWith('revert'))).toEqual(['reverted']);
+  const[outcome]=await owner.client<{event_id:string;restored:number;fallback:string}[]>`select event_id::text,restored,fallback from app.movement_revert_job_outcome where job_id=${jobId}::uuid`;
+  expect(outcome).toEqual({event_id:events.find(e=>e.kind==='reverted')!.id,restored:review.items.length,fallback:'records:employment'});
+  expect(job.plan.released).toEqual({restored:review.items.length,path:'reference'});expect(job.plan.fallback).toBe('records:employment');
+  expect(job.result.restored).toBe(review.items.length);expect(job.counters).toMatchObject({reference:1,restored:review.items.length});
+  expect((await getMovementImportRevertJob(f.a,jobId))).toMatchObject({state:'completed',restored:review.items.length,error:null});
   expect(await verifyTenantChain(f.a)).toMatchObject({valid:true});
  },300_000);
 

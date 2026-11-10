@@ -238,6 +238,35 @@ describe('payroll history confirm and revert as staged jobs',()=>{
   }finally{delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;}
  },240000);
 
+ it('a batch without a pay period exists only while staged: a discard deletes every one, and no other can commit',async()=>{
+  const t=await tenant();const v=await validated(t);
+  const periodless=async()=>Number((await owner.client<{n:number}[]>`select count(*)::int as n from payroll_batch where tenant_id=${t.b.tenantId}::uuid and pay_period_id is null`)[0].n);
+  expect(await periodless()).toBe(0);
+  let draft='';
+  process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS='1';
+  try{
+   const request=await requestPayrollHistoryConfirm(t.ctx,v.input);if(!('jobId' in request))throw new Error('expected a job');
+   // Until the job has staged its batches: each has no pay period yet, and each is registered to the open stage.
+   const stagedPeriodless=()=>owner.client<{id:string}[]>`select b.id::text from payroll_batch b join app.payroll_history_staged_row r on r.relation='payroll_batch' and r.row_id=b.id
+    join app.payroll_history_stage s on s.stage_id=r.stage_id where s.stage_id=${request.jobId}::uuid and s.state='staged' and b.pay_period_id is null`;
+   for(let i=0;i<2000&&(await stagedPeriodless()).length<2;i++)await tick();
+   expect((await stagedPeriodless()).length).toBe(2);
+   expect(await periodless()).toBe(2);
+   // Meanwhile an operator opens a run for the earlier month: the release refuses and the job discards its stage.
+   draft=(await createBatch(t.ctx,{companyId:t.b.companyId,payPeriod:earlier})).batchId;
+   expect(await drain(request.jobId)).toBe('failed');
+   expect((await owner.client<{state:string}[]>`select state from app.payroll_history_stage where stage_id=${request.jobId}::uuid`)[0].state).toBe('discarded');
+   expect(await owner.client`select 1 from app.payroll_history_staged_row where stage_id=${request.jobId}::uuid`).toHaveLength(0);
+   expect(await periodless()).toBe(0);
+  }finally{delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;}
+  // Outside a staged history import no batch may be left without one, whoever writes it: the deferred check refuses
+  // the commit (23502) and the operator's draft run keeps its period.
+  const [before]=await owner.client<{pay_period_id:string}[]>`select pay_period_id::text from payroll_batch where id=${draft}::uuid`;
+  expect(before.pay_period_id).toBeTruthy();
+  await expect(owner.client.begin(async tx=>{await tx`update payroll_batch set pay_period_id=null where id=${draft}::uuid`;})).rejects.toMatchObject({code:'23502'});
+  expect((await owner.client<{pay_period_id:string}[]>`select pay_period_id::text from payroll_batch where id=${draft}::uuid`)[0].pay_period_id).toBe(before.pay_period_id);
+ },240000);
+
  it('re-derives a staged revert whose dependencies changed, and refuses it exactly as the single transaction would',async()=>{
   const t=await tenant();const v=await validated(t);
   const confirm=await requestPayrollHistoryConfirm(t.ctx,v.input);if(!('jobId' in confirm))throw new Error('expected a job');

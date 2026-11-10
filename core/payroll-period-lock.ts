@@ -40,6 +40,13 @@ export async function lockPayrollPeriodsTx(tx:Tx,supplied:SessionContext,selecti
  if(!await lockPayrollRunInputsTx(tx,ctx.tenantId,ordered.map(([,p])=>p.companyId),tryOnly))throw new PayrollPeriodOwnershipUnavailable();
  return ordered.map(([,p])=>p);
 }
+/** A payroll run's pay period. Every run a reader can see has one: only a payroll history job's own staged draft batch
+ * goes without until its release (migration 5055), and app.payroll_batch_period_required refuses any other at commit.
+ * A row without one is refused with the caller's own error (as if it were absent), never assumed to have one. */
+export function withRunPayPeriod<T extends {payPeriodId:string|null}>(row:T|undefined,refuse:()=>Error):T&{payPeriodId:string}{
+ if(!row||row.payPeriodId===null)throw refuse();
+ return row as T&{payPeriodId:string};
+}
 /** Resolve only the RLS-visible key BEFORE period ownership, then reread the SAME key/parent.
  * Every caller invokes this BEFORE OT policy, job, batch, source, employee/credit or Payroll rows. */
 export async function lockPayrollBatchPeriodTx(tx:Tx,supplied:SessionContext,batchId:string,tryOnly=false){
@@ -47,9 +54,10 @@ export async function lockPayrollBatchPeriodTx(tx:Tx,supplied:SessionContext,bat
  const ctx=await canonicalPeriodContextTx(tx,rawContext);
  await lockAccessConfigurationTx(tx,ctx.tenantId);await currentPayrollPeriodPrincipalTx(tx,ctx);
  const read=()=>tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod,payPeriodId:payrollBatch.payPeriodId}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1);
- const [nominee]=await read();if(!nominee)throw new PayrollPeriodOwnershipUnavailable();
+ const [nominee]=await read();if(!nominee||nominee.payPeriodId===null)throw new PayrollPeriodOwnershipUnavailable();
  await lockPayrollPeriodsTx(tx,ctx,[nominee],tryOnly);
- const [current]=await read();if(!current||JSON.stringify(current)!==JSON.stringify(nominee))throw new PayrollPeriodOwnershipUnavailable();
+ const [reread]=await read();if(!reread||JSON.stringify(reread)!==JSON.stringify(nominee))throw new PayrollPeriodOwnershipUnavailable();
+ const current=withRunPayPeriod(reread,()=>new PayrollPeriodOwnershipUnavailable());
  const [parent]=await tx.select({id:payPeriod.id,companyId:payPeriod.companyId,period:payPeriod.period}).from(payPeriod).where(eq(payPeriod.id,current.payPeriodId)).limit(1);
  if(!parent||parent.companyId!==current.companyId||parent.period!==current.payPeriod)throw new PayrollPeriodOwnershipUnavailable();
  return current;

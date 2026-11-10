@@ -18,3 +18,37 @@
 -- role under the creator's authority (no owner routine), so there is no owner finalize.
 INSERT INTO bulk_job_kind(kind,scope_kind,exclusive,input_shape,finalize_owner)
  VALUES('movement_import_revert','movement','creator','{"attemptId":"string","previewHash":"string","reason":"string"}'::jsonb,false);
+--> statement-breakpoint
+-- The synchronous fallback's completion, committed in the fallback's own transaction (core/movement-import-revert-job.ts).
+-- The fallback can outlast the job's lease; a worker that then picks the job up finds this row (under the attempt's
+-- row lock, so a fallback still committing is waited for) and finishes the job with the recorded outcome instead of
+-- reverting again and failing as already reverted. One row per job; the reverted Import History event it names is the
+-- proof, so a row can be written only by the job's creator, while the job is finalizing, for the job's own attempt and
+-- that attempt's reverted event. Never updated or deleted by the application.
+CREATE TABLE app.movement_revert_job_outcome(
+ job_id uuid PRIMARY KEY,
+ tenant_id uuid NOT NULL,
+ attempt_id uuid NOT NULL,
+ event_id uuid NOT NULL UNIQUE REFERENCES public.import_attempt_event(id),
+ restored integer NOT NULL CHECK(restored>=0),
+ fallback text,
+ recorded_at timestamptz NOT NULL DEFAULT now()
+);
+--> statement-breakpoint
+ALTER TABLE app.movement_revert_job_outcome ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+REVOKE ALL ON app.movement_revert_job_outcome FROM PUBLIC;
+--> statement-breakpoint
+GRANT SELECT,INSERT ON app.movement_revert_job_outcome TO ai_hr_app;
+--> statement-breakpoint
+CREATE POLICY movement_revert_job_outcome_read ON app.movement_revert_job_outcome FOR SELECT TO ai_hr_app
+ USING (tenant_id=app.current_tenant_id()
+  AND EXISTS(SELECT 1 FROM public.bulk_job j WHERE j.id=movement_revert_job_outcome.job_id AND j.kind='movement_import_revert'));
+--> statement-breakpoint
+CREATE POLICY movement_revert_job_outcome_record ON app.movement_revert_job_outcome FOR INSERT TO ai_hr_app
+ WITH CHECK (tenant_id=app.current_tenant_id()
+  AND EXISTS(SELECT 1 FROM public.bulk_job j WHERE j.id=movement_revert_job_outcome.job_id AND j.tenant_id=movement_revert_job_outcome.tenant_id
+   AND j.kind='movement_import_revert' AND j.state='finalizing' AND j.created_by=app.current_user_id()
+   AND j.input->>'attemptId'=movement_revert_job_outcome.attempt_id::text)
+  AND EXISTS(SELECT 1 FROM public.import_attempt_event e WHERE e.id=movement_revert_job_outcome.event_id
+   AND e.tenant_id=movement_revert_job_outcome.tenant_id AND e.attempt_id=movement_revert_job_outcome.attempt_id AND e.kind='reverted'));

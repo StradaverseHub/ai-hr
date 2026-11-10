@@ -95,8 +95,6 @@ $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.payroll_history_hidden_rows(text) FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.payroll_history_hidden_rows(text) TO PUBLIC;
---> statement-breakpoint
 -- RESTRICTIVE, ANDed with each table's own policies, for every role subject to row security (FOR ALL: another session
 -- can neither read, update nor delete a staged row). The owner and BYPASSRLS roles are audited below.
 DO $$
@@ -106,6 +104,36 @@ BEGIN
   EXECUTE format('CREATE POLICY %I ON public.%I AS RESTRICTIVE FOR ALL USING (NOT (id IN (SELECT unnest(app.payroll_history_hidden_rows(%L)))))',t||'_history_stage',t,t);
  END LOOP;
 END $$;
+--> statement-breakpoint
+-- app.payroll_history_hidden_rows(text) is evaluated by row security under whichever role a policy applies to, so it is executable by exactly
+-- those roles instead of PUBLIC: a policy's own roles, or, for a policy to PUBLIC, every role holding a privilege on
+-- the policy's table (and the table owner where row security is forced). A role granted such a table later needs
+-- this grant too; without it the policy fails closed (permission denied), never open.
+DO $policy_function_grants$
+DECLARE fn regprocedure:='app.payroll_history_hidden_rows(text)'::regprocedure; r record;
+BEGIN
+ FOR r IN
+  WITH policies AS (
+   SELECT DISTINCT p.oid,p.polrelid,p.polroles FROM pg_catalog.pg_policy p JOIN pg_catalog.pg_depend d
+    ON d.classid='pg_catalog.pg_policy'::regclass AND d.objid=p.oid AND d.refclassid='pg_catalog.pg_proc'::regclass AND d.refobjid=fn)
+  SELECT DISTINCT g.grantee FROM (
+   SELECT unnest(p.polroles) AS grantee FROM policies p
+   UNION ALL
+   SELECT a.grantee FROM policies p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid
+    CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) a
+    WHERE 0=ANY(p.polroles) AND (a.grantee<>c.relowner OR c.relforcerowsecurity)
+   UNION ALL
+   SELECT a.grantee FROM policies p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid
+    JOIN pg_catalog.pg_attribute att ON att.attrelid=c.oid AND att.attacl IS NOT NULL
+    CROSS JOIN LATERAL pg_catalog.aclexplode(att.attacl) a
+    WHERE 0=ANY(p.polroles) AND (a.grantee<>c.relowner OR c.relforcerowsecurity)
+   UNION ALL
+   SELECT c.relowner FROM policies p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid WHERE 0=ANY(p.polroles) AND c.relforcerowsecurity
+  ) g WHERE g.grantee<>0
+ LOOP
+  EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %I',fn,pg_catalog.pg_get_userbyid(r.grantee));
+ END LOOP;
+END $policy_function_grants$;
 --> statement-breakpoint
 -- Definer side: the same rule for one row. SQL, invoker, no SET clause, so the planner inlines it into each definer.
 CREATE FUNCTION app.payroll_history_row_visible(p_relation text,p_id uuid) RETURNS boolean LANGUAGE sql STABLE AS $$

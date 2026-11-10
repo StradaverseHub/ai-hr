@@ -84,9 +84,12 @@ export async function recordImportItemTx(tx:Tx,ctx:SessionContext,input:RecordIm
  const[row]=await tx.insert(item).values({tenantId:ctx.tenantId,attemptId:input.attemptId,companyId:input.companyId,employmentId:input.employmentId??null,itemKey:input.itemKey.slice(0,500),label:input.label.slice(0,500),ordinal:input.ordinal,status:input.status,before:input.before??null,after:input.after??null,errors:(input.errors??[]).map(e=>String(e).slice(0,1000)).slice(0,50)}).returning({id:item.id});
  return row.id;
 }
+/** Returns the Import History event's id (assigned here: a RETURNING would also apply the event's read policy). */
 export async function recordImportEventTx(tx:Tx,ctx:SessionContext,input:{attemptId:string;kind:Exclude<ImportEventKind,'previewed'>;importKind:ImportKind;reason?:string|null;detail?:Record<string,unknown>}){
- await tx.insert(historyEvent).values({tenantId:ctx.tenantId,attemptId:input.attemptId,kind:input.kind,actorId:ctx.userId!,reason:input.reason??null,detail:input.detail??{}});
+ const id=randomUUID();
+ await tx.insert(historyEvent).values({id,tenantId:ctx.tenantId,attemptId:input.attemptId,kind:input.kind,actorId:ctx.userId!,reason:input.reason??null,detail:input.detail??{}});
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'import-attempt',aggregateId:input.attemptId,eventType:'import-attempt.'+input.kind.replace('_','-'),actor:actorOf(ctx),payload:{kind:input.importKind,...(input.reason?{reason:input.reason}:{}),...(input.detail??{})}});
+ return id;
 }
 /** Best effort, in its own transaction: the failed operation's transaction has already rolled back. */
 export async function recordImportFailure(ctx:SessionContext,attemptId:string,importKind:ImportKind,kind:'failed'|'revert_failed',error:unknown){
@@ -197,19 +200,31 @@ export async function planImportRevert(ctx:SessionContext,attemptId:string,handl
   return{attempt:source,items:plan.items,inspection:plan.inspection,blockers:plan.blockers,previewHash:plan.previewHash,confirmedEventId:plan.confirmedEventId};
  },{readOnlySnapshot:true});
 }
+/** A caller that must survive losing track of its own revert (a background job whose lease can lapse while the revert
+ * commits) records the completion in the revert's transaction and recognises it on a retry. */
+export type ImportRevertCompletion={
+ /** Under the attempt's row lock, before the revert's own checks: a completion this caller already recorded (a
+  *  concurrent revert still committing has been waited for). Returning it ends the call without writing anything. */
+ completedTx?(tx:Tx):Promise<{restored:number}|null>;
+ /** In the revert's transaction, after its Import History event: commits or rolls back with the revert. */
+ recordTx?(tx:Tx,completion:{eventId:string;restored:number}):Promise<void>;
+};
 /** All or nothing, once only, with a reason; the reviewed preview hash must still hold under lock. */
-export async function revertImport(ctx:SessionContext,attemptId:string,handler:ImportRevertHandler,input:{previewHash:string;reason:string}){
+export async function revertImport(ctx:SessionContext,attemptId:string,handler:ImportRevertHandler,input:{previewHash:string;reason:string},completion:ImportRevertCompletion={}){
  if(!uuid.test(attemptId))fail('Import attempt unavailable.');
  const reason=normalizeImportRevertReason(input.reason);if(!reason)fail('Enter a reason for the revert (3 to 1,000 characters).');
  if(typeof input.previewHash!=='string'||!/^[0-9a-f]{64}$/.test(input.previewHash))fail('Review what will be restored before confirming.');
  try{return await withTenant(ctx,async tx=>{
   await handler.lock?.(tx,ctx);
   const source=await lockImportAttemptTx(tx,ctx,attemptId,handler.kind);
+  const prior=await completion.completedTx?.(tx);
+  if(prior)return{attemptId,restored:prior.restored};
   const plan=await revertPlanTx(tx,ctx,source,handler,true);
   if(plan.blockers.length)fail('This import cannot be reverted because some records changed after it.',plan.blockers);
   if(plan.previewHash!==input.previewHash)fail('What this revert would restore has changed. Review it again before confirming.');
   const detail=await handler.apply(tx,ctx,plan.items,{reason});
-  await recordImportEventTx(tx,ctx,{attemptId,kind:'reverted',importKind:source.kind,reason,detail:{restored:plan.items.length,...detail}});
+  const eventId=await recordImportEventTx(tx,ctx,{attemptId,kind:'reverted',importKind:source.kind,reason,detail:{restored:plan.items.length,...detail}});
+  await completion.recordTx?.(tx,{eventId,restored:plan.items.length});
   return{attemptId,restored:plan.items.length};
  });}catch(error){
   // A concurrent second revert loses on the once-only index; report it as such.

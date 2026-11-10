@@ -18,7 +18,7 @@ idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when sh
 | `9820_access_wave4_admin_fair_exclusive` | 9820 / 1793330009820 | `5006_access_wave4_admin_fair_exclusive` | 4406 / 1793330004706 | `3a8ef207e6235548a53d2d49993c81404a097a6dc503eb77e1e5a7115abe8445` |
 | `9001_employee_import_staged_job` | 9001 / 1793330090001 | `5010_employee_import_staged_job` | 4410 / 1793330004710 | `c71e21ef9571ebd015bcff95b87da46fbedb098b66f0b8edfbb10d4b16fe9e65` |
 | `9003_bulk_job_kernel` | 9003 / 1793330090003 | `5011_bulk_job_kernel` | 4411 / 1793330004711 | `50af4670d06419c82ec7495827cf14db2905fda780b21ee58f17ae2f1df7af58` |
-| `9004_import_release_visibility` | 9004 / 1793330090004 | `5012_import_release_visibility` | 4412 / 1793330004712 | `c9317842654b48046d93ca842cf5fbb99db42324bca02858fcea4759a0d90801` |
+| `9004_import_release_visibility` | 9004 / 1793330090004 | `5012_import_release_visibility` | 4412 / 1793330004712 | `215ea68a36df931277a14a4a5fcdc7ab213da17c39e68d83def21c1209a9e5b9` |
 | `9005_bulk_job_least_privilege` | 9005 / 1793330090005 | `5013_bulk_job_least_privilege` | 4413 / 1793330004713 | `14ced1c75079a4b5846cbb2c267671cbdbcb77e5810aeb43f73909e3b5a3cde6` |
 | `9006_bulk_job_owner_attribution` | 9006 / 1793330090006 | `5014_bulk_job_owner_attribution` | 4414 / 1793330004714 | `204bdda42c5a3bbde262c07698d25d34071056b45cf3068189c1cb8c2bb7bdfe` |
 | `9880_personnel_overview_facts` | 3743 / 1793330004043 | `5020_personnel_overview_facts` | 4420 / 1793330004720 | `e45555e45eee6f644abf2cd2665b9ac7c3c4adad5b46874fc8b1296f648d350f` |
@@ -36,25 +36,25 @@ idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when sh
 | `9952_payroll_run_group` | 9952 / 1793330099952 | `5052_payroll_run_group` | 4452 / 1793330004752 | `f420568a0612c6da490ea7330d36b464bedad8fc5e25663d268e9750b1886901` |
 | `9953_bulk_job_settle` | 9953 / 1793330099953 | `5053_bulk_job_settle` | 4453 / 1793330004753 | `a0edd7cf60bd4cb3dc5c52a924abc749b5af3dde9c53a22034673e2ba78d3f6e` |
 | `9954_payroll_partner_point_read` | 9954 / 1793330099954 | `5054_payroll_partner_point_read` | 4454 / 1793330004754 | `628f65f096449ddfca7075e1fc75e6e727f1e5ea566d83b3610b2924378a5d45` |
-| `9955_payroll_history_staged_job` | 9955 / 1793330099955 | `5055_payroll_history_staged_job` | 4455 / 1793330004755 | `0484c6569d846c4ae89afaaac6acd8617380764df3e8d9d35b05fb9d6403dc47` |
+| `9955_payroll_history_staged_job` | 9955 / 1793330099955 | `5055_payroll_history_staged_job` | 4455 / 1793330004755 | `52b094d559f748ff638bdaff0575ad97bce1a1312a719ed1508e25b90333e69b` |
 | `9956_payroll_reprocess_job` | 9956 / 1793330099956 | `5056_payroll_reprocess_job` | 4456 / 1793330004756 | `9c060255355bcb74569ffde8d8974ab433cfaa4a319c837b874abd1a33bcb57c` |
 | `9930_register_section_import_jobs` | 9930 / 1793330099300 | `5060_register_section_import_jobs` | 4460 / 1793330004760 | `208d2d40dd1c9b6a5c3cc061ac6a9f282e8f20eb1309c69aeb0e15c2a5088346` |
 | `9931_register_import_set_release` | 9931 / 1793330099310 | `5061_register_import_set_release` | 4461 / 1793330004761 | `2e58415bc1ba2925268df41bf07d3b9cf802f274e01476b336b7dd207b843efe` |
 | `9932_employee_import_revert_job` | 9932 / 1793330099320 | `5062_employee_import_revert_job` | 4462 / 1793330004762 | `1e48068ba30160e2a94e5e511a5dd68bf23f5f968f5fd675da39cc11599d8d43` |
 | `9933_register_import_release_key_authority` | 9933 / 1793330099330 | `5063_register_import_release_key_authority` | 4463 / 1793330004763 | `ae0827b9a2cc63fdc9a2485d4e2762f34800c070da43e2e5b4b2bb2567316f40` |
 | `9934_employee_import_revert_release_hash` | 9934 / 1793330099340 | `5064_employee_import_revert_release_hash` | 4464 / 1793330004764 | `8862489275a2132ff64547b7e1641afd43c57a2cc4f1660ff9a3a8464d2ff568` |
-| `9961_system_label_import_staged_job` | 9961 / 1793330090961 | `5070_system_label_import_staged_job` | 4470 / 1793330004770 | `ba9f29643d13bbe4e69f169d004c698a393af6b639edf97f1d7dd835347e61ba` |
+| `9961_system_label_import_staged_job` | 9961 / 1793330090961 | `5070_system_label_import_staged_job` | 4470 / 1793330004770 | `6ed0f9b6bf699fb05d21c920ef2a11f7fedb03308dac3a166b7031dbd2ab7ffb` |
 | `9962_workforce_capability_tenant_publication` | 9962 / 1793330090962 | `5071_workforce_capability_tenant_publication` | 4471 / 1793330004771 | `4d22cd648ea0698c5ce230461862fc4c93e61cbc9196800e0317b680d694a311` |
 | `9910_bulk_job_movement_import` | 9910 / 1793330099910 | `5075_bulk_job_movement_import` | 4475 / 1793330004775 | `11a734038c4f7d7dd31e3f342a1d85103365f7b13f2936bd6c1348f7f30ce190` |
 | `9911_workforce_employment_access_set` | 9911 / 1793330099911 | `5076_workforce_employment_access_set` | 4476 / 1793330004776 | `0e1c2bce56e6ee1380bae2451d2d7ab83b6fff9b33a5eddba2d247595fbc995f` |
 | `9912_bulk_job_movement_check` | 9912 / 1793330099912 | `5077_bulk_job_movement_check` | 4477 / 1793330004777 | `3abc199fe1d6602b771e9c205d5b4f1be15133b10f9deec2f4b33e50d26a4dc1` |
-| `9913_bulk_job_movement_import_revert` | 9913 / 1793330099913 | `5078_bulk_job_movement_import_revert` | 4478 / 1793330004778 | `7c9cc1e2564400925acece3c05644e62eb87b31315cbc7b43d28eab9c0d7489f` |
-| `9914_movement_revert_capture` | 9914 / 1793330099914 | `5079_movement_revert_capture` | 4479 / 1793330004779 | `e5f5a468d2087067101ab6df786e682023952ab75251efdcb0799f2957b77139` |
+| `9913_bulk_job_movement_import_revert` | 9913 / 1793330099913 | `5078_bulk_job_movement_import_revert` | 4478 / 1793330004778 | `de9210cf356101a69c19ea695bdc6b7ccc6ec9e0667e19b82e4b1d20dda98f5d` |
+| `9914_movement_revert_capture` | 9914 / 1793330099914 | `5079_movement_revert_capture` | 4479 / 1793330004779 | `0e334a7236ee9a2ae433b28bce3e7e011aa8cee9407bea46ca4a225cf6f2d47c` |
 | `9990_access_administrator_coalesced_assert` | 9990 / 1793330099990 | `5080_access_administrator_coalesced_assert` | 4480 / 1793330004780 | `721af90b5e4554c36ce39ee8e8db2ae6b53bdfa2cabc0029b990bd0f78cfd1f2` |
 | `9850_reward_access_observation_due` | 3743 / 1793330009850 | `5081_reward_access_observation_due` | 4481 / 1793330004781 | `f55738cd1422d1c955c722869e0328f9dcafafeb0042fd2b137165606663460a` |
 | `9870_home_own_clock_day` | 3744 / 1793330009870 | `5082_home_own_clock_day` | 4482 / 1793330004782 | `345c604cebcc58946865d6cc93cd248ad693165063a67648d6781243ec652c58` |
 | `9873_home_own_schedule_range` | 3745 / 1793330009873 | `5083_home_own_schedule_range` | 4483 / 1793330004783 | `75045a4ec8c176c55ddc51ddba0b079e6ca8c5662b004a345945ee335efce70a` |
-| `4700_audit_chain_commit_seal` | 4100 / 1793330004400 | `5090_audit_chain_commit_seal` | 4490 / 1793330004790 | `f6bf0e0f80ca6cb222c8ec10996d55e1bafdbe436809987d9d7b7cf9c11485f1` |
+| `4700_audit_chain_commit_seal` | 4100 / 1793330004400 | `5090_audit_chain_commit_seal` | 4490 / 1793330004790 | `6ce9bebe8c8de296b3b4a03b1d5d52c90c7df79fbdb0b8f8e0617616001e263e` |
 
 Order and why:
 
@@ -86,6 +86,16 @@ Order and why:
 - **Home reads (5081–5083).** Accepted after the first allocation: one read-only probe for the Rewards access
   observation and two SECURITY INVOKER readers of one employment's own clock day and schedule range. They create
   functions only and change no existing definition.
+<!-- combined-release-fixes:begin -->
+- **Integration fixes (branch `claude/combined-release-fixes-20261111`, 11 November 2026).** Six of these unapplied
+  migrations changed in place; the table above holds their new SHA256, and `test/helpers/approved-upgrade.ts` the same.
+  `5012_import_release_visibility`: `app.import_released_attempt_ids()` is no longer executable by PUBLIC; it is granted to the roles its policies reach (was `c9317842654b48046d93ca842cf5fbb99db42324bca02858fcea4759a0d90801`).
+  `5055_payroll_history_staged_job`: `app.payroll_history_hidden_rows(text)` likewise (was `0484c6569d846c4ae89afaaac6acd8617380764df3e8d9d35b05fb9d6403dc47`).
+  `5070_system_label_import_staged_job`: the same grant for the nine catalogue tables' policies that also call `app.import_released_attempt_ids()` (was `ba9f29643d13bbe4e69f169d004c698a393af6b639edf97f1d7dd835347e61ba`).
+  `5078_bulk_job_movement_import_revert`: adds `app.movement_revert_job_outcome`, the synchronous fallback's durable completion (row security, a policy-checked insert by the job's creator) (was `7c9cc1e2564400925acece3c05644e62eb87b31315cbc7b43d28eab9c0d7489f`).
+  `5079_movement_revert_capture`: the capture table gains tenant and transaction columns, row security limiting the application role to its own transaction's rows of its own tenant, and a deferred trigger refusing any commit that holds a capture row (was `e5f5a468d2087067101ab6df786e682023952ab75251efdcb0799f2957b77139`).
+  `5090_audit_chain_commit_seal`: `app.domain_event_chain_sealing()` is granted to the roles that write `domain_event` instead of PUBLIC (was `f6bf0e0f80ca6cb222c8ec10996d55e1bafdbe436809987d9d7b7cf9c11485f1`).
+<!-- combined-release-fixes:end -->
 - **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069, 5072–5074 and 5084–5089 are
   left for branches accepted later; they are inserted before 5090 in journal order while the block is unapplied.
 

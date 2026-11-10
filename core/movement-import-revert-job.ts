@@ -313,6 +313,18 @@ export async function activeMovementImportRevertJob(ctx:SessionContext,attemptId
 /** Jobs whose synchronous fallback ran in this process (it records its own failure on the attempt). */
 const referenceRan=new Set<string>();
 const captureOf=(result:unknown)=>(result as StepResult|null)??{fallback:'missing'};
+type FallbackOutcome={restored:number;fallback:string|null};
+/** The fallback's completion, committed with the revert itself (5078, app.movement_revert_job_outcome). A worker that
+ * lost the lease while the fallback ran cannot write the job afterwards; whoever finalizes the job next finds this. */
+async function fallbackOutcomeTx(tx:Tx,jobId:string):Promise<FallbackOutcome|null>{
+ const [row]=await tx.execute<FallbackOutcome>(sql`select restored,fallback from app.movement_revert_job_outcome where job_id=${jobId}::uuid`);
+ return row?{restored:Number(row.restored),fallback:row.fallback??null}:null;
+}
+/** Ends the job as the fallback did: the same plan marker and result as a fallback that kept its lease. */
+async function finishFallback(ctx:SessionContext,unit:BulkJobUnit,attemptId:string,outcome:FallbackOutcome){
+ await withTenant(ctx,async tx=>{await unit.fenceTx(tx);await unit.set(tx,{planMerge:{released:{restored:outcome.restored,path:'reference'},...(outcome.fallback?{fallback:outcome.fallback}:{})}});});
+ return{result:{attemptId,restored:outcome.restored},counters:{restored:outcome.restored,reference:1}};
+}
 
 export const movementImportRevertJobHandler:BulkJobHandler<{employmentId:string;itemIds:string[]}>={
  kind:MOVEMENT_REVERT_KIND,
@@ -359,6 +371,9 @@ export const movementImportRevertJobHandler:BulkJobHandler<{employmentId:string;
   const {attemptId,previewHash,reason}=inputOf(job);const plan=planOf(job);
   const counted=(extra:Record<string,number>):Record<string,number>=>extra;
   if(plan.released)return{result:{attemptId,restored:plan.released.restored},counters:counted({restored:plan.released.restored})};
+  // A fallback that committed after its worker lost the lease: finish with its outcome, never revert again.
+  const recorded=await withTenant(ctx,tx=>fallbackOutcomeTx(tx,job.id));
+  if(recorded)return finishFallback(ctx,unit,attemptId,recorded);
   let fallback=plan.fallback;const captures:MovementRevertCapture[]=[];
   if(!fallback){
    const steps=await withTenant(ctx,tx=>tx.execute<{state:string;result:unknown}>(sql`select state,result from bulk_job_step where job_id=${job.id}::uuid order by seq`));
@@ -378,11 +393,18 @@ export const movementImportRevertJobHandler:BulkJobHandler<{employmentId:string;
   }
   // The synchronous revert, exactly as before: its own locked review, blockers, hash check, rollback and records
   // (a refusal there is recorded on the attempt by revertImport itself).
+  // Its completion commits in its own transaction (recordTx), and under the attempt's row lock it first looks for one
+  // already recorded for this job (completedTx), so a retry after a lost lease never reverts twice or fails as
+  // already reverted; the job then ends with the outcome that fallback recorded.
   const started=performance.now();referenceRan.add(job.id);
-  const done=await revertImport(ctx,attemptId,movementRevertHandler,{previewHash,reason});
+  let outcome:FallbackOutcome|null=null;
+  const done=await revertImport(ctx,attemptId,movementRevertHandler,{previewHash,reason},{
+   completedTx:async tx=>(outcome=await fallbackOutcomeTx(tx,job.id)),
+   recordTx:async(tx,completion)=>{await tx.execute(sql`insert into app.movement_revert_job_outcome(job_id,tenant_id,attempt_id,event_id,restored,fallback)
+    values(${job.id}::uuid,${ctx.tenantId}::uuid,${attemptId}::uuid,${completion.eventId}::uuid,${completion.restored},${fallback??null})`);},
+  });
   unit.metric('referenceTxMs',performance.now()-started);
-  await withTenant(ctx,async tx=>{await unit.fenceTx(tx);await unit.set(tx,{planMerge:{released:{restored:done.restored,path:'reference'},fallback}});});
-  return{result:{attemptId,restored:done.restored},counters:counted({restored:done.restored,reference:1})};
+  return finishFallback(ctx,unit,attemptId,outcome??{restored:done.restored,fallback:fallback??null});
  },
  async describeFailure(_job,error){
   if(error instanceof ImportHistoryError)return{error:error.message,errors:toErrors(error.blockers)};

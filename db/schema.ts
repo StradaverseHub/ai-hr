@@ -6650,8 +6650,10 @@ export const payrollBatch = pgTable(
       .references(() => company.id),
     // ADR-0024 (Wave 2C): a "run" within a pay_period. Backfilled so every existing batch is
     // run_seq=1, run_type='regular' under one parent per (company, month) — behaviour-preserving.
+    // Nullable since 5055: a payroll history job's staged draft batch has no period until its release. The deferred
+    // app.payroll_batch_period_required refuses any other period-less batch at commit, so every run a reader can see
+    // has one, but readers check (core/payroll-period-lock.ts withRunPayPeriod) instead of assuming.
     payPeriodId: uuid('pay_period_id')
-      .notNull()
       .references(() => payPeriod.id),
     runSeq: integer('run_seq').notNull().default(1),
     runType: payrollRunTypeEnum('run_type').notNull().default('regular'),

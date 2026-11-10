@@ -216,8 +216,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const afterPerformancePrivileges=await privileges();
   // Every function the forward migrations add, with its reviewed EXECUTE privileges: private functions are not
-  // callable by the application role; the public ones are policy-side or trigger-WHEN helpers that every writing
-  // role must be able to call and that reveal nothing beyond the caller's own transaction or released ids.
+  // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
+  // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
@@ -232,13 +232,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.domain_event_chain_arm()','app.domain_event_chain_seal_now()','app.employee_import_revert_release(uuid,boolean)',
    'app.employment_void_reference_blockers(uuid[])','app.import_discard_batch(uuid,uuid,uuid,text,integer)','app.import_marker_visible(uuid)',
    'app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()',
-   'app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.org_structure_statement_lock()',
+   'app.movement_revert_capture_never_commits()','app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.org_structure_statement_lock()',
    'app.payroll_history_row_visible(text,uuid)','app.register_import_release(uuid,boolean)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
   ];
-  const publicFunctions=[
-   'app.domain_event_chain_sealing()','app.import_released_attempt_ids()',
-   'app.payroll_history_hidden_rows(text)',
-  ];
+  const publicFunctions:string[]=[];
   const addedFunctions=[
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
@@ -270,7 +267,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.import_pending_stamp()','app.import_release(uuid)','app.import_released_attempt_ids()',
    'app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()',
    'app.leave_stage_digests(uuid[],uuid[],boolean)','app.leave_stage_release(uuid,uuid)','app.leave_stage_released_ids()',
-   'app.may_have_attendance_task_metadata()','app.movement_revert_capture_row()','app.notification_event_processing_enqueue()',
+   'app.may_have_attendance_task_metadata()','app.movement_revert_capture_never_commits()','app.movement_revert_capture_row()','app.notification_event_processing_enqueue()',
    'app.notification_projection_exists(uuid,uuid,text)','app.org_structure_statement_lock()','app.payroll_batch_period_required()',
    'app.payroll_history_hidden_rows(text)','app.payroll_history_row_visible(text,uuid)','app.payroll_history_stage_busy(uuid)',
    'app.payroll_history_stage_open(uuid,uuid,text)','app.payroll_history_stage_release(uuid)','app.payroll_history_stage_stamp()',
@@ -419,8 +416,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.bulk_job_step_seal':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.import_attempt_release':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_reward_setup_reader=r/OWNER}'},
    'app.leave_stage_release':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
-   'app.movement_revert_capture':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'app.movement_revert_capture':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'app.movement_revert_capture_seq_seq':{rls:false,force:false,acl:null},
+   'app.movement_revert_job_outcome':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    'app.payroll_history_stage':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.payroll_history_staged_row':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.system_label_import_release':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_reward_setup_reader=r/OWNER,ai_hr_reward_upload_reader=r/OWNER}'},
@@ -438,6 +436,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {rel:'payroll_run_group',col:'sealed_at',acl:'{ai_hr_app=w/OWNER}'},
   ];
   const combinedPolicies=[
+   {schemaname:'app',tablename:'movement_revert_capture',policyname:'movement_revert_capture_own_transaction',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'PENDING_CI_DIGEST',with_check:null},
+   {schemaname:'app',tablename:'movement_revert_job_outcome',policyname:'movement_revert_job_outcome_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'PENDING_CI_DIGEST',with_check:null},
+   {schemaname:'app',tablename:'movement_revert_job_outcome',policyname:'movement_revert_job_outcome_record',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'PENDING_CI_DIGEST'},
    {schemaname:'public',tablename:'assignment',policyname:'assignment_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'0f9dd65355006232e921e629437f17ed',with_check:null},
    {schemaname:'public',tablename:'bulk_job',policyname:'bulk_job_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'854f996ebf0fabb3d26bab47074b4367',with_check:null},
    {schemaname:'public',tablename:'bulk_job_step',policyname:'bulk_job_step_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'d7dd4940b61e35f349026181b8e2bf9f',with_check:null},

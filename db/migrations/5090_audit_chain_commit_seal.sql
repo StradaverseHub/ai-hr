@@ -66,10 +66,29 @@ BEGIN
   WHERE s.xid OPERATOR(pg_catalog.=) pg_catalog.pg_current_xact_id_if_assigned() AND s.sealing);
 END $$;
 --> statement-breakpoint
--- Evaluated by the domain_event fence triggers' WHEN clause, under whichever role fired them.
+-- Evaluated by the domain_event fence triggers' WHEN clause, under whichever role fired them, so it is executable by
+-- exactly the roles that write domain_event (a table or column INSERT, UPDATE, DELETE or TRUNCATE grant, and the
+-- table's owner), not PUBLIC. A role granted a write on domain_event later needs this grant too; without it that
+-- write fails closed (permission denied).
 REVOKE ALL ON FUNCTION app.domain_event_chain_sealing() FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.domain_event_chain_sealing() TO PUBLIC;
+DO $sealing_grants$
+DECLARE r record;
+BEGIN
+ FOR r IN
+  SELECT DISTINCT g.grantee FROM (
+   SELECT a.grantee FROM pg_catalog.pg_class c CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) a
+    WHERE c.oid='public.domain_event'::regclass AND a.privilege_type IN ('INSERT','UPDATE','DELETE','TRUNCATE')
+   UNION ALL
+   SELECT a.grantee FROM pg_catalog.pg_attribute att CROSS JOIN LATERAL pg_catalog.aclexplode(att.attacl) a
+    WHERE att.attrelid='public.domain_event'::regclass AND att.attacl IS NOT NULL AND a.privilege_type IN ('INSERT','UPDATE')
+   UNION ALL
+   SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.domain_event'::regclass
+  ) g WHERE g.grantee<>0
+ LOOP
+  EXECUTE format('GRANT EXECUTE ON FUNCTION app.domain_event_chain_sealing() TO %I',pg_catalog.pg_get_userbyid(r.grantee));
+ END LOOP;
+END $sealing_grants$;
 --> statement-breakpoint
 CREATE FUNCTION app.domain_event_chain_arm() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$

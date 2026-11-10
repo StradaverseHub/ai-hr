@@ -22,7 +22,7 @@ import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {
   lockPayrollPeriodsTx, lockPayrollBatchPeriodTx, lockNativePayrollPeriodsTx,
-  lockNativePayrollBatchPeriodTx, tryLockNativePayrollClosePeriodTx, PayrollPeriodOwnershipUnavailable,
+  lockNativePayrollBatchPeriodTx, tryLockNativePayrollClosePeriodTx, PayrollPeriodOwnershipUnavailable, withRunPayPeriod,
 } from './payroll-period-lock';
 import { lockPayrollOvertimeBatchContextTx, readPayrollOvertimePatternCashTx, readPayrollOvertimeCoverageTx, composePayrollOvertime, OvertimePayrollError } from './payroll-overtime-pattern';
 import { releaseOvertimeSettlementsForDraftTeardownTx } from '../packs/attendance/service';
@@ -2716,7 +2716,7 @@ export async function deleteDraftBatch(ctx: SessionContext, p: { batchId: string
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
-    const [batch] = await tx
+    const [batchRow] = await tx
       .select({
         status: payrollBatch.status,
         companyId: payrollBatch.companyId,
@@ -2728,7 +2728,7 @@ export async function deleteDraftBatch(ctx: SessionContext, p: { batchId: string
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1).for('update');
-    if (!batch) throw new Error('batch not found');
+    const batch=withRunPayPeriod(batchRow,()=>new Error('batch not found'));
     if (batch.status !== 'draft') throw new BatchNotDraftError();
 
     const teardown = await teardownDraftChildren(tx, ctx, p.batchId);
@@ -4046,8 +4046,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
   const processing = subset ? null : p.processing ?? null;
     // The job's plan only reads (its chunks re-assert everything under the run's keys), so it holds no row lock.
     const batchRead = tx.select().from(payrollBatch).where(eq(payrollBatch.id, p.batchId)).limit(1);
-    const [batch] = processing?.phase === 'plan' ? await batchRead : await batchRead.for('update');
-    if (!batch) throw new Error('batch not found');
+    const [batchRow] = processing?.phase === 'plan' ? await batchRead : await batchRead.for('update');
+    const batch=withRunPayPeriod(batchRow,()=>new Error('batch not found'));
     if (subset) {
       // Reprocess target must be a processed run (a draft has nothing to reprocess; a closed run is frozen).
       if (batch.status !== 'processed') throw new BatchNotResettableError();
@@ -8844,7 +8844,7 @@ async function recordSegmentCoverageTx(tx: Tx, ctx: SessionContext, run: { batch
 const NO_ANOMALY_VERDICT_SOURCE_VERSION=createHash('md5').update('').digest('hex');
 async function preparePayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string},reviewed=false){
     await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
-    const [batch] = await tx
+    const [batchRow] = await tx
       .select({
         status: payrollBatch.status,
         payPeriodId: payrollBatch.payPeriodId,
@@ -8860,7 +8860,7 @@ async function preparePayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string}
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1)
       .for('update',reviewed?{noWait:true}:undefined);
-    if (!batch) throw new Error('batch not found');
+    const batch=withRunPayPeriod(batchRow,()=>new Error('batch not found'));
     // Granular RBAC (9bc442bc): payroll.close (configurable per company/tenant), not a coarse admin check.
     await assertPayrollPermission(tx, ctx, 'payroll.close', batch.companyId);
     if (batch.status !== 'processed') throw new BatchNotCloseableError();
@@ -9390,8 +9390,8 @@ const capturePayrollCloseContext=(ctx:SessionContext):SessionContext=>({...ctx,r
 /** No employee self row, salary, payslip total or anomaly details is exposed before this exact native
  * financial scope AND configurable close permission. A nominated visible batch alone is insufficient. */
 async function reviewedPayrollCloseAuthorityTx(tx:Tx,ctx:SessionContext,batchId:string){
- const [nominee]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod})
-  .from(payrollBatch).where(eq(payrollBatch.id,batchId)).limit(1);if(!nominee)throw new Error('Payroll close source unavailable');
+ const [nomineeRow]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod})
+  .from(payrollBatch).where(eq(payrollBatch.id,batchId)).limit(1);const nominee=withRunPayPeriod(nomineeRow,()=>new Error('Payroll close source unavailable'));
  const [scope]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.company c where c.id=${nominee.companyId}::uuid and c.tenant_id=${ctx.tenantId}::uuid and app.can_admin_payroll_for(c.id)) as allowed`);
  if(scope?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.close');
  await assertPayrollPermission(tx,ctx,'payroll.close',nominee.companyId);return nominee;
@@ -9431,14 +9431,14 @@ export async function withReviewedPayrollCloseIntervalTx<T>(tx:Tx,supplied:Sessi
  await lockPayrollOvertimeBatchContextTx(tx,ctx,id);
  const [locked]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1).for('update',{noWait:true});
  if(!locked||JSON.stringify(locked)!==JSON.stringify(current))throw new Error('Payroll close binding changed');
- return run(ctx,locked);
+ return run(ctx,withRunPayPeriod(locked,()=>new Error('Payroll close binding changed')));
 }
 async function reviewedPayrollClosePreflightTx(tx:Tx,supplied:SessionContext,batchId:string){
  return withReviewedPayrollCloseIntervalTx(tx,supplied,batchId,async(ctx,source)=>{
  const id=source.id;
  const prepared=await preparePayrollCloseTx(tx,ctx,{batchId:id},true);
- const [header]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq,payrollCycleId:payrollBatch.payrollCycleId,status:payrollBatch.status,employeeCount:payrollBatch.employeeCount}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1);
- if(!header)throw new Error('Payroll close header unavailable');
+ const [headerRow]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq,payrollCycleId:payrollBatch.payrollCycleId,status:payrollBatch.status,employeeCount:payrollBatch.employeeCount}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1);
+ const header=withRunPayPeriod(headerRow,()=>new Error('Payroll close header unavailable'));
  const [reviewCompany]=await tx.select({name:company.legalName}).from(company).where(eq(company.id,header.companyId)).limit(1);if(!reviewCompany?.name)throw new Error('Payroll close company unavailable.');
  const siblings=await tx.select({id:payrollBatch.id,status:payrollBatch.status}).from(payrollBatch).where(eq(payrollBatch.payPeriodId,header.payPeriodId)).orderBy(payrollBatch.id);
  const [cycle]=header.payrollCycleId?await tx.select({name:payrollCycle.name}).from(payrollCycle).where(eq(payrollCycle.id,header.payrollCycleId)):[];
@@ -9687,7 +9687,7 @@ export async function resetProcessedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:
   const reason=(p.reason??'').trim();
   if (!reason) throw new ResetReasonRequiredError();
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
-    const [batch] = await tx
+    const [batchRow] = await tx
       .select({
         status: payrollBatch.status,
         companyId: payrollBatch.companyId,
@@ -9701,7 +9701,7 @@ export async function resetProcessedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
-    if (!batch) throw new Error('batch not found');
+    const batch=withRunPayPeriod(batchRow,()=>new Error('batch not found'));
     // Granular RBAC (9bc442bc): payroll.rollback (configurable per company/tenant). Defaults to
     // hr_admin/super_admin — a payroll_partner is refused exactly as before — but now an operator can
     // re-map it. RLS still scopes WHICH batches resolve (a cross-company batch reads as "batch not found").
@@ -9999,7 +9999,7 @@ export async function unlockClosedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:st
   const reason = (p.reason ?? '').trim();
   if (!reason) throw new UnlockReasonRequiredError();
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
-    const [batch] = await tx
+    const [batchRow] = await tx
       .select({
         status: payrollBatch.status,
         companyId: payrollBatch.companyId,
@@ -10009,7 +10009,7 @@ export async function unlockClosedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:st
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
-    if (!batch) throw new Error('batch not found');
+    const batch=withRunPayPeriod(batchRow,()=>new Error('batch not found'));
     await assertPayrollPermission(tx, ctx, 'payroll.unlock', batch.companyId);
     if (batch.status !== 'closed') throw new BatchNotUnlockableError();
     // d28501b8 r2 — a run with a payslip that Import Payroll History overwrote stays closed: reopening it
@@ -10151,9 +10151,9 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
     throw new Error('Stored payroll employee outcomes are invalid.');
   if (prior?.outcomes?.some(r => r.employmentId === employmentId)) return;
   await lockPayrollOvertimeBatchContextTx(tx,ctx,run.batchId);
-  const [currentBatch] = await tx.select().from(payrollBatch)
+  const [currentBatchRow] = await tx.select().from(payrollBatch)
     .where(eq(payrollBatch.id, run.batchId)).limit(1).for('update');
-  if (!currentBatch) throw new Error('batch not found');
+  const currentBatch=withRunPayPeriod(currentBatchRow,()=>new Error('batch not found'));
   await assertPayrollPermission(tx, ctx, 'payroll.reprocess.selective', currentBatch.companyId);
   if (currentBatch.status !== 'processed') throw new BatchNotResettableError();
   const [period] = await tx.select({status:payPeriod.status}).from(payPeriod)
@@ -10300,12 +10300,12 @@ export async function enqueueSelectiveReprocess(
   // recompute runs (so a poll can observe 'running', and a crash mid-recompute leaves a re-runnable job).
   const enq = await withTenant(ctx, async (tx) => {
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
-    const [batch] = await tx
+    const [batchRow] = await tx
       .select({id:payrollBatch.id,runType:payrollBatch.runType,payrollCycleId:payrollBatch.payrollCycleId,status: payrollBatch.status, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, payPeriodId: payrollBatch.payPeriodId, employeeCount: payrollBatch.employeeCount })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
-    if (!batch) throw new Error('batch not found');
+    const batch=withRunPayPeriod(batchRow,()=>new Error('batch not found'));
     await assertPayrollPermission(tx, ctx, 'payroll.reprocess.selective', batch.companyId);
     if (batch.status !== 'processed') throw new BatchNotResettableError();
     const [period] = await tx
@@ -10564,7 +10564,7 @@ export async function reprocessEligibility(
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
-    if (!batch) return null;
+    if (!batch || batch.payPeriodId === null) return null;
     const [period] = await tx
       .select({ status: payPeriod.status })
       .from(payPeriod)
@@ -10682,7 +10682,7 @@ export async function removeEligibility(
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
-    if (!batch) return null;
+    if (!batch || batch.payPeriodId === null) return null;
     const [period] = await tx
       .select({ status: payPeriod.status })
       .from(payPeriod)
@@ -10885,7 +10885,7 @@ export async function removeEmployeePayroll(
 
   return withTenant(ctx, async (tx) => {
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
-    const [batch] = await tx
+    const [batchRow] = await tx
       .select({
         status: payrollBatch.status,
         companyId: payrollBatch.companyId,
@@ -10899,7 +10899,7 @@ export async function removeEmployeePayroll(
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
-    if (!batch) throw new Error('batch not found');
+    const batch=withRunPayPeriod(batchRow,()=>new Error('batch not found'));
     // Its OWN key, never payroll.rollback — an operator who may take one person off a run is not
     // thereby allowed to zeroize the whole company's month. Defaults to the same roles (lib/payroll-
     // permissions.ts), so nothing widens on the day this ships.
@@ -13068,8 +13068,8 @@ export function revertStatutoryAdjustment(ctx: SessionContext, p: { batchId: str
 /** Actual composite native authority: configurable unlock, financial scope and the unchanged
  * 0173 payroll_status_history INSERT policy. No new role grant or fictional employment. */
 async function reviewedPayrollReopenAuthorityTx(tx:Tx,ctx:SessionContext,batchId:string){
- const [batch]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,batchId)).limit(1);
- if(!batch)throw new BatchNotUnlockableError();
+ const [batchRow]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,batchId)).limit(1);
+ const batch=withRunPayPeriod(batchRow,()=>new BatchNotUnlockableError());
  const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_payroll_for(${batch.companyId}::uuid) AND app.is_admin() as allowed`);
  if(scope?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.unlock');
  await assertPayrollPermission(tx,ctx,'payroll.unlock',batch.companyId);return batch;
@@ -13142,8 +13142,8 @@ export async function previewReviewedPayrollResetTx(tx:Tx,supplied:SessionContex
  await lockPayrollBatchPeriodTx(tx,ctx,batchId,true);
  const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
  if(scope?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.rollback');
- const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,batchId)).for('update',{noWait:true});
- if(!batch)throw new BatchNotResettableError();
+ const [batchRow]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,batchId)).for('update',{noWait:true});
+ const batch=withRunPayPeriod(batchRow,()=>new BatchNotResettableError());
  await assertPayrollPermission(tx,ctx,'payroll.rollback',batch.companyId);
  if(batch.status!=='processed')throw new BatchNotResettableError();
  if(!settingEnabled(ctx,'payroll.reset_enabled'))throw new SettingNotEnabledError('payroll.reset_enabled','Payroll reset is not enabled.');
@@ -13205,8 +13205,8 @@ export async function previewReviewedPayrollResetTx(tx:Tx,supplied:SessionContex
 }
 
 async function reviewedPayrollResetAuthorityTx(tx:Tx,ctx:SessionContext,batchId:string){
- const [batch]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,batchId)).limit(1);
- if(!batch)throw new BatchNotResettableError();
+ const [batchRow]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,batchId)).limit(1);
+ const batch=withRunPayPeriod(batchRow,()=>new BatchNotResettableError());
  const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_payroll_for(${batch.companyId}::uuid) AND app.is_admin() as allowed`);
  if(scope?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.rollback');
  await assertPayrollPermission(tx,ctx,'payroll.rollback',batch.companyId);return batch;
