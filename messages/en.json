@@ -6445,6 +6445,13 @@
         "backgroundHelp": "You can leave this page. Employees see nothing until the run is closed, and you get a notice when processing finishes.",
         "waiting": "Waiting for the payroll processing service. Progress is saved; do not process the run again.",
         "workerUnavailable": "The payroll processing service is not running yet. The run is saved and starts automatically as soon as it is."
+      },
+      "reprocessJob": {
+        "title": "Reprocessing in the background",
+        "queued": "Waiting to start",
+        "running": "Reprocessing the selected employees",
+        "progress": "{done} of {total} employees done",
+        "help": "You can leave this page. Each employee is recalculated on its own, and the results appear here when the reprocess finishes."
       }
     },
     "reports": {
@@ -10043,7 +10050,24 @@
       "tickHint": "Payroll is already on file for some records. Tick the ones you want to overwrite; records you do not tick stay as they are.",
       "acknowledge": "I understand. Replace the ticked records with my file's values. The original values stay in the audit history and the overwrite can be undone from Log File.",
       "confirmOverwrite": "Confirm overwrite and import",
-      "importNewOnly": "Import new records only"
+      "importNewOnly": "Import new records only",
+      "job": {
+        "title": "Committing in the background",
+        "state": {
+          "queued": "Waiting to start",
+          "preparing": "Checking the file again",
+          "running": "Writing payroll history",
+          "finalizing": "Making the changes visible",
+          "discarding": "Undoing the unfinished changes",
+          "completed": "Committed",
+          "failed": "Stopped — no payroll history was changed",
+          "cancelled": "Stopped — no payroll history was changed"
+        },
+        "progressCount": "{done} of {total} steps complete",
+        "backgroundHelp": "You can leave this page. Nobody sees any of these changes until all of them are committed together, and you get a notice when it finishes.",
+        "waiting": "Waiting for the background service. Your request is saved; do not submit it again.",
+        "workerUnavailable": "The background service is not running yet. Your request is saved and starts automatically as soon as it is."
+      }
     },
     "individualImport": {
       "submitWorkbook": "Upload workbook",
@@ -37779,6 +37803,34 @@
         "cancelled": {
           "title": "Replacement leave settlement cancelled",
           "body": "Credits already settled stay settled. Run it again to settle the rest."
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "Payroll history change committed",
+          "body": "Open the import log to see what was committed."
+        },
+        "failed": {
+          "title": "Payroll history change stopped",
+          "body": "No payroll history was changed. Open the import log to see why."
+        },
+        "cancelled": {
+          "title": "Payroll history change cancelled",
+          "body": "No payroll history was changed."
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "Payroll reprocess finished",
+          "body": "Open the run to review the reprocessed employees."
+        },
+        "failed": {
+          "title": "Payroll reprocess stopped",
+          "body": "Employees already reprocessed keep their new results. Open the run to see where it stopped."
+        },
+        "cancelled": {
+          "title": "Payroll reprocess cancelled",
+          "body": "Employees already reprocessed keep their new results."
         }
       }
     },

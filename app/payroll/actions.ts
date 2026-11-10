@@ -1,6 +1,7 @@
 'use server';
 
 import { publicErrorMessage } from '@/lib/public-error';
+import {requestSelectiveReprocess} from '@/core/payroll-reprocess-job';
 import { revalidatePath } from 'next/cache';
 import { payrollNonCashErrorMessage } from '@/lib/payroll-noncash-error';
 import { payrollTaxSchemeErrorMessage } from '@/lib/payroll-tax-scheme-error';
@@ -35,7 +36,6 @@ import {
   prefillShiftDifferentialFromRoster,
   prefillTp1FromSelfRelief,
   removeEmployeePayroll,
-  reprocessSelectedEmployees,
   PayrollReprocessStoppedError,
   ReprocessRunBlockedError,
   resetProcessedBatch,
@@ -523,7 +523,8 @@ export async function reprocessSelectedAction(formData: FormData) {
   }
   let jobId = '';
   try {
-    const r = await reprocessSelectedEmployees(s, {
+    // The recompute runs in the background (core/payroll-reprocess-job.ts); this screen follows the job it returns.
+    const r = await requestSelectiveReprocess(s, {
       batchId,
       employmentIds,
       reason: reason || undefined,

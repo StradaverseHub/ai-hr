@@ -237,8 +237,11 @@ it('allows independent ordinary submissions to overlap before audit while retain
   return contract;
  }
  expect(await observedStandalone(today,'ShareLock')).toMatchObject({kind:'epoch',companyId:second.companyId});
- // A retained request outside the known dated employment preserves the original unavailable contract.
- expect(await observedStandalone('2019-12-31','ExclusiveLock')).toMatchObject({kind:'unavailable',companyId:null,visibleEpoch:null});
+ // A retained request outside the known dated employment preserves the original unavailable contract. It takes the
+ // held course, which is exclusive only while the tenant has TOIL on and no REPLACEMENT leave type yet (the first
+ // banking creates one) and shared otherwise (reader/writer Access lock). This fixture has no REPLACEMENT type.
+ const heldMode=second.ctx.entitlements?.enabledModules.includes('toil')?'ExclusiveLock':'ShareLock';
+ expect(await observedStandalone('2019-12-31',heldMode)).toMatchObject({kind:'unavailable',companyId:null,visibleEpoch:null});
 },30000);
 
 it('limits standalone submissions waiting on Access without dropping or duplicating a request',async()=>{

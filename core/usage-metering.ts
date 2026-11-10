@@ -108,6 +108,9 @@ export async function usageForTenant(db: OwnerDb, tenantId: string, capturedOn: 
         and(
           eq(payrollBatch.companyId, c.id),
           sql`(${payslip.createdAt} AT TIME ZONE 'Asia/Kuala_Lumpur')::date = ${capturedOn}::date`,
+          // The owner connection bypasses RLS, so a staged payroll history import's unreleased payslips (5055) are
+          // excluded here explicitly, as a staged employee import's employments are above.
+          sql`app.payroll_history_row_visible('payslip', ${payslip.id})`,
         ),
       );
 

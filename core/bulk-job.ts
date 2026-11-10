@@ -18,7 +18,7 @@ export type BulkJobRow={
  input:unknown;plan:unknown;attempt_id:string|null;state:BulkJobState;outcome:'failed'|'cancelled'|null;phase:string|null;
  steps_total:number;steps_done:number;counters:Record<string,number>;metrics:Record<string,number|string>;result:unknown;
  error:string|null;errors:BulkJobRowError[];cancel_requested_at:Date|null;transient_retries:number;not_before:Date|null;
- lease_token:string|null;lease_expires_at:Date|null;notice_event_id:string|null;notified_at:Date|null;
+ lease_token:string|null;lease_expires_at:Date|null;notice_event_id:string|null;notified_at:Date|null;settled_at:Date|null;
  created_at:Date;updated_at:Date;finished_at:Date|null;
  /** Last poll of the creator's progress screen (draft 5041), for BulkJobHandler.quietNotice. */
  watched_at?:Date|null;

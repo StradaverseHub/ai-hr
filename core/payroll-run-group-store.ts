@@ -9,6 +9,7 @@
  */
 import {sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
+import type postgres from 'postgres';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import {bulkJobProgress,bulkJobWorkerStatusTx,isBulkJobId,type BulkJobRow} from './bulk-job';
@@ -27,7 +28,7 @@ export type RunGroupKind='run'|'resume';
 export type RunGroupView={id:string;kind:RunGroupKind;payPeriod:string;done:boolean;result:RunGroupResult|null;
  companies:{companyId:string;companyName:string;status:StoredCompanyOutcome['status'];job:BulkJobProgress|null}[];worker:BulkJobWorkerStatus};
 
-type GroupRow={id:string;kind:RunGroupKind;pay_period:string;started_at:Date|string;company_ids:string[];outcomes:StoredCompanyOutcome[];
+type GroupRow={id:string;tenant_id:string;created_by:string;kind:RunGroupKind;pay_period:string;started_at:Date|string;company_ids:string[];outcomes:StoredCompanyOutcome[];
  sealed_at:Date|null;ended_at:Date|string|null;result:RunGroupResult|null;event_id:string|null};
 type JobOutcomeRow=Pick<BulkJobRow,'id'|'state'|'result'|'plan'|'finished_at'>;
 const pending=(o:StoredCompanyOutcome):o is PendingCompanyOutcome=>o.status==='processing';
@@ -53,10 +54,9 @@ async function jobsTx(tx:Tx,ids:string[]){
  return new Map(rows.map(r=>[r.id,r]));
 }
 
+type RunGroupEventInput={mode:'draft'|'process';payPeriod:string;startedAt:string;endedAt:string;requested:string[];result:RunGroupResult};
 /** The run group's durable audit record (unchanged shape: the synchronous run appended it after its loop). */
-export async function appendRunGroupEventTx(tx:Tx,ctx:SessionContext,p:{mode:'draft'|'process';payPeriod:string;startedAt:string;endedAt:string;
- requested:string[];result:RunGroupResult}){
- const perCompany=p.result.perCompany;
+export async function appendRunGroupEventTx(tx:Tx,ctx:SessionContext,p:RunGroupEventInput){
  return appendEvent(tx,{
   tenantId:ctx.tenantId,
   aggregateType:'payroll-run-group',
@@ -64,9 +64,15 @@ export async function appendRunGroupEventTx(tx:Tx,ctx:SessionContext,p:{mode:'dr
   // event. domain_event.aggregate_id is UUID-typed, so mint a synthetic id for the virtual run-group and
   // carry the human-addressable "<period>:<startedAt>" key in the payload as `runKey`.
   aggregateId:randomUUID(),
-  eventType:p.mode==='draft'?'payroll-run-group.drafts-saved':'payroll-run-group.completed',
+  eventType:runGroupEventType(p),
   actor:actorOf(ctx),
-  payload:{
+  payload:runGroupEventPayload(p),
+ },{returnId:true});
+}
+const runGroupEventType=(p:Pick<RunGroupEventInput,'mode'>)=>p.mode==='draft'?'payroll-run-group.drafts-saved':'payroll-run-group.completed';
+function runGroupEventPayload(p:RunGroupEventInput){
+ const perCompany=p.result.perCompany;
+ return{
    ...(p.mode==='draft'?{mode:'draft'}:{}),
    runKey:`${p.payPeriod}:${p.startedAt}`,
    payPeriod:p.payPeriod,
@@ -85,22 +91,32 @@ export async function appendRunGroupEventTx(tx:Tx,ctx:SessionContext,p:{mode:'dr
     // only: the per-employee ids and reasons are on each batch's own `payroll-batch.processed` event.
     employeesSkipped:c.employeesSkipped??0,
    })),
-  },
- },{returnId:true});
+ };
+}
+
+/** The settled result of a group whose every company has a finished outcome, or null while a job still runs. */
+function settlement(g:GroupRow,jobs:Map<string,JobOutcomeRow>):{result:RunGroupResult;event:RunGroupEventInput|null}|null{
+ const resolved:CompanyOutcome[]=[];
+ for(const o of g.outcomes){const out=pending(o)?finishedOutcome(o,jobs.get(o.jobId)):o;if(!out)return null;resolved.push(out);}
+ const startedAt=iso(g.started_at),endedAt=new Date().toISOString();
+ const result=summarize(g.pay_period,startedAt,endedAt,resolved);
+ return{result,event:g.kind==='run'?{mode:'process',payPeriod:g.pay_period,startedAt,endedAt,requested:g.company_ids,result}:null};
 }
 
 /** Settle the group once every company has a finished outcome: the result and, for a multi-company run, its
- * event. Under the group's row lock, so the action and every finishing job can race to it safely. */
+ * event. Under the group's row lock, so the action and every finishing job can race to it safely; a settled group
+ * is never settled again. The jobs' rows are read FOR SHARE: a job whose terminal state has not committed yet then
+ * commits after this transaction, so its own settle (below) finds this group. */
 async function settleTx(tx:Tx,ctx:SessionContext,id:string){
  const [g]=await tx.execute<GroupRow>(sql`select * from payroll_run_group where id=${id}::uuid for update`);
  if(!g||g.ended_at||!g.sealed_at)return;
- const jobs=await jobsTx(tx,g.outcomes.filter(pending).map(o=>o.jobId));
- const resolved:CompanyOutcome[]=[];
- for(const o of g.outcomes){const out=pending(o)?finishedOutcome(o,jobs.get(o.jobId)):o;if(!out)return;resolved.push(out);}
- const startedAt=iso(g.started_at),endedAt=new Date().toISOString();
- const result=summarize(g.pay_period,startedAt,endedAt,resolved);
- const eventId=g.kind==='run'?await appendRunGroupEventTx(tx,ctx,{mode:'process',payPeriod:g.pay_period,startedAt,endedAt,requested:g.company_ids,result}):null;
- await tx.execute(sql`update payroll_run_group set ended_at=${endedAt}::timestamptz,result=${JSON.stringify(result)}::jsonb,event_id=${eventId}::uuid where id=${id}::uuid`);
+ const ids=g.outcomes.filter(pending).map(o=>o.jobId);
+ const jobs=ids.length?new Map((await tx.execute<BulkJobRow>(sql`select * from bulk_job where kind=${PAYROLL_PROCESS_JOB_KIND}
+  and id in (${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}) order by id for share`)).map(r=>[r.id,r])):new Map<string,BulkJobRow>();
+ const settled=settlement(g,jobs);
+ if(!settled)return;
+ const eventId=settled.event?await appendRunGroupEventTx(tx,ctx,settled.event):null;
+ await tx.execute(sql`update payroll_run_group set ended_at=${settled.result.endedAt}::timestamptz,result=${JSON.stringify(settled.result)}::jsonb,event_id=${eventId}::uuid where id=${id}::uuid`);
 }
 
 /** Record a run group once every company's outcome is known or admitted as a job, and settle it at once when no
@@ -115,13 +131,33 @@ export async function recordRunGroup(ctx:SessionContext,p:{kind:RunGroupKind;pay
  });
 }
 
-/** A processing job finished: settle every open group of its creator that waited for it (the job's afterTerminal). */
-export async function settleRunGroupsForJob(ctx:SessionContext,jobId:string){
- await withTenant(ctx,async tx=>{
-  const groups=await tx.execute<{id:string}>(sql`select id from payroll_run_group where ended_at is null and sealed_at is not null
-   and outcomes @> ${JSON.stringify([{jobId}])}::jsonb order by id`);
-  for(const g of groups)await settleTx(tx,ctx,g.id);
- });
+/** A processing job finished: settle every open group that waited for it. This is the job kind's settle
+ * (core/bulk-job-worker.ts): the kernel retries it with backoff until it succeeds, so a failed settlement no longer
+ * loses the group's result or its audit event, and it is idempotent (a settled group is skipped under its row lock).
+ * It runs on the worker's queue-owner connection, so it does not depend on the creator's grants still matching the
+ * ones captured when the run started (each job already re-checked them in its own units): the run group is the
+ * run's own record, and its event carries the creator as actor, exactly as the synchronous run appended it. */
+export async function settleRunGroupsForJob(owner:postgres.ReservedSql,job:Pick<BulkJobRow,'id'|'tenant_id'|'created_by'>){
+ await owner`begin`;
+ try{
+  const groups=await owner<GroupRow[]>`select * from payroll_run_group where tenant_id=${job.tenant_id}::uuid and ended_at is null and sealed_at is not null
+   and outcomes @> ${JSON.stringify([{jobId:job.id}])}::jsonb order by id for update`;
+  for(const g of groups){
+   const ids=g.outcomes.filter(pending).map(o=>o.jobId);
+   const jobs=new Map((ids.length?await owner<JobOutcomeRow[]>`select id,state,result,plan,finished_at from bulk_job where tenant_id=${g.tenant_id}::uuid and id=any(${ids}::uuid[])`:[]).map(r=>[r.id,r]));
+   const settled=settlement(g,jobs);
+   if(!settled)continue;
+   let eventId:string|null=null;
+   if(settled.event){
+    const [row]=await owner<{id:string}[]>`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+     values(${g.tenant_id}::uuid,'payroll-run-group',${randomUUID()}::uuid,${runGroupEventType(settled.event)},'user',${g.created_by}::uuid,
+      ${JSON.stringify(runGroupEventPayload(settled.event))}::jsonb) returning id`;
+    eventId=row.id;
+   }
+   await owner`update payroll_run_group set ended_at=${settled.result.endedAt}::timestamptz,result=${JSON.stringify(settled.result)}::jsonb,event_id=${eventId}::uuid where id=${g.id}::uuid`;
+  }
+  await owner`commit`;
+ }catch(error){await owner`rollback`;throw error;}
 }
 
 /** The result screen's view of a group: the settled result, or (while a job runs) each company's job progress.

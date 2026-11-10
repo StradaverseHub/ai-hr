@@ -10102,6 +10102,194 @@ export async function reprocessSelectedEmployees(
   p: { batchId: string; employmentIds: string[]; reason?: string; idempotencyKey?: string },
 ) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  const enq = await enqueueSelectiveReprocess(ctx, p);
+  const job = enq.job;
+  // Idempotent replay: a completed job returns its stored result without re-running (double-submit safety).
+  if (job.status === 'completed') {
+    return { jobId: job.id, status: 'completed' as const, ...(job.result as Record<string, unknown> | null) };
+  }
+  const abandonedBefore = new Date(Date.now() - 10 * 60 * 1000);
+  if (job.status === 'running' && job.updatedAt >= abandonedBefore) {
+    return { jobId: job.id, status: 'running' as const };
+  }
+  const workerToken = randomUUID();
+  if (!await claimSelectiveReprocess(ctx, job.id, workerToken)) {
+    return { jobId: job.id, status: 'running' as const };
+  }
+  const run:SelectiveReprocessRun={jobId:job.id,batchId:p.batchId,employmentIds:enq.employmentIds,reason:p.reason,workerToken};
+  const stopped:{current:{employmentId:string;name:string;employeeCode:string|null}|null}={current:null};
+  try {
+    for (const employmentId of enq.employmentIds) {
+      stopped.current=null;
+      await withTenant(ctx, (tx) => reprocessEmployeeTx(tx, ctx, run, employmentId, stopped));
+    }
+    const result = await completeSelectiveReprocess(ctx, job.id, workerToken);
+    return {jobId:job.id,status:'completed' as const,...result};
+  } catch (e) {
+    await failSelectiveReprocess(ctx, job.id, workerToken, e, stopped.current);
+    throw new PayrollReprocessStoppedError(job.id,e);
+  }
+}
+/** One employee of a selective reprocess, in its own transaction: the run's catalogue and company/month keys, the
+ * exact job row and run checks, the recalculation (or the exclusion) and the employee's outcome checkpoint, all
+ * committed together or not at all. Shared by the request-path loop and the background job's steps
+ * (core/payroll-reprocess-job.ts), so both run exactly this. `stopped` names the employee a failure stopped at. */
+export type SelectiveReprocessRun={jobId:string;batchId:string;employmentIds:string[];reason?:string;workerToken:string};
+export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:SelectiveReprocessRun,employmentId:string,
+ stopped:{current:{employmentId:string;name:string;employeeCode:string|null}|null}){
+  await lockPayComponentCatalogReadTx(tx,ctx);
+  const ownedBatch=await lockNativePayrollBatchPeriodTx(tx,ctx,run.batchId);
+  // One authoritative checkpoint: exact job row + batch lock stay held until this employee's
+  // money AND outcome commit. Duplicate/resumed workers see committed outcomes before acting.
+  const [currentJob] = await tx.select().from(payrollReprocessJob)
+    .where(eq(payrollReprocessJob.id, run.jobId)).limit(1).for('update');
+  if(currentJob.batchId!==ownedBatch?.id||JSON.stringify(currentJob.employmentIds)!==JSON.stringify(run.employmentIds))throw new Error('Payroll job source changed.');
+  const prior = currentJob.result as ReprocessJobResult | null;
+  if (currentJob.status!=='running' || prior?.workerToken!==run.workerToken)
+    throw new ReprocessRunBlockedError('SUPERSEDED','This payroll processing attempt was superseded by a recovered worker.');
+  if (prior && !decodeReprocessEmployeeOutcomes(prior,currentJob.employmentIds))
+    throw new Error('Stored payroll employee outcomes are invalid.');
+  if (prior?.outcomes?.some(r => r.employmentId === employmentId)) return;
+  await lockPayrollOvertimeBatchContextTx(tx,ctx,run.batchId);
+  const [currentBatch] = await tx.select().from(payrollBatch)
+    .where(eq(payrollBatch.id, run.batchId)).limit(1).for('update');
+  if (!currentBatch) throw new Error('batch not found');
+  await assertPayrollPermission(tx, ctx, 'payroll.reprocess.selective', currentBatch.companyId);
+  if (currentBatch.status !== 'processed') throw new BatchNotResettableError();
+  const [period] = await tx.select({status:payPeriod.status}).from(payPeriod)
+    .where(eq(payPeriod.id,currentBatch.payPeriodId)).limit(1).for('share');
+  if (period?.status === 'closed') throw new ReprocessRunBlockedError('PERIOD_CLOSED','This pay period is closed.');
+  const [year,month] = currentBatch.payPeriod.split('-').map(Number);
+  const periodStart = `${currentBatch.payPeriod}-01`;
+  const periodEnd = `${currentBatch.payPeriod}-${String(daysInMonth(year,month)).padStart(2,'0')}`;
+  // 3244584c — the identity is read WITHOUT the period filter, so an employee who no longer belongs
+  // to the month is still named on their outcome; membership is a column of the same read. A row
+  // RLS hides from this operator is still unexpected and still stops the job.
+  const [identity] = await tx.select({name:person.fullName,employeeCode:employment.employeeCode,
+    hiredOn:employment.hiredOn,terminatedOn:payrollEmploymentEnd,
+    outstanding:sql<boolean>`${outstandingPaymentPredicate(currentBatch,settingEnabled(ctx,'payroll.individual_txn_pay_enabled'))}`,
+    withCompany:sql<boolean>`${employedByCompanyDuring(currentBatch.companyId,periodStart,periodEnd)}`})
+    .from(employment).innerJoin(person,eq(person.id,employment.personId))
+    .where(eq(employment.id,employmentId)).limit(1);
+  if (!identity) throw new Error('Selected employment no longer belongs to this payroll period.');
+  stopped.current={employmentId,name:identity.name,employeeCode:identity.employeeCode};
+  // 3244584c — the SAME window the kernel's earnings read applies (hiredOn ≤ end, terminatedOn null or
+  // ≥ start, with the company during the period), asked first so the answer is an outcome by name.
+  // A mid-period leaver or joiner is IN the month and is recalculated (prorated) as before.
+  // Only for somebody whose result IS on the run: that is the stale payslip to deal with. An employee
+  // with no payslip here is an addition, and an addition outside the month keeps its fbcf706d refusal.
+  const [onThisRun] = await tx.select({id:payslip.id}).from(payslip)
+    .where(and(eq(payslip.batchId,run.batchId),eq(payslip.employmentId,employmentId))).limit(1);
+  let exclusion: ReprocessEmploymentNotInPeriodError | null = null;
+  if (onThisRun && !identity.outstanding && identity.terminatedOn && identity.terminatedOn < periodStart) {
+    exclusion = new ReprocessEmploymentNotInPeriodError('RESIGNED_BEFORE_PERIOD', identity.terminatedOn);
+  } else if (onThisRun && identity.hiredOn > periodEnd) {
+    exclusion = new ReprocessEmploymentNotInPeriodError('JOINED_AFTER_PERIOD', identity.hiredOn);
+  } else if (onThisRun && !identity.outstanding && !identity.withCompany) {
+    // valid_to is EXCLUSIVE: the first day the employee was no longer with this company.
+    const [left] = await tx.select({validTo:assignment.validTo}).from(assignment)
+      .where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt),
+        eq(assignment.companyId,currentBatch.companyId),isNotNull(assignment.validTo)))
+      .orderBy(desc(assignment.validTo)).limit(1);
+    exclusion = new ReprocessEmploymentNotInPeriodError('NOT_WITH_COMPANY_IN_PERIOD', left?.validTo ?? null);
+  }
+  const [before] = await tx.select({id:payslip.id,version:payslip.version}).from(payslip)
+    .where(and(eq(payslip.batchId,run.batchId),eq(payslip.employmentId,employmentId))).limit(1);
+  let classification: ReprocessEmployeeOutcome['classification'];
+  let historyId: string | null = null;
+  let outcomeState: Pick<ReprocessEmployeeOutcome,'status'|'reasonCode'|'validationCode'|'validationDetails'|'configuredTaxScheme'|'effectiveTaxScheme'>;
+  try {
+    if (exclusion) throw exclusion;
+    // Nested drizzle transaction is a SAVEPOINT on this same connection, never another tenant
+    // transaction. Collection, snapshot/delete, money, ledger and coverage all roll back together.
+    const result = await tx.transaction(employeeTx => generatePayslipsTx(employeeTx, ctx, {
+      batchId:run.batchId,reprocessSubset:{employmentIds:[employmentId],reason:run.reason,actorId:ctx.userId},
+    }));
+    if (!('reprocessed' in result)) throw new Error('Unexpected selected payroll result.');
+    classification = result.added ? 'added' : 'recalculated';
+    historyId = result.snapshotLinks?.[employmentId] ?? null;
+    if (!historyId) throw new Error('Selected payroll result has no history checkpoint.');
+    outcomeState = {status:'reprocessed',reasonCode:null};
+  } catch (error) {
+    const validation = employeeReprocessValidation(error);
+    if (!validation) throw error;
+    outcomeState = validation;
+  }
+  // 3244584c — AN EXCLUDED EMPLOYEE'S OLD RESULT LEAVES THE RUN, through the removal owner itself
+  // (snapshot, loan/claim/one-off release, statutory adjustment, verdicts, totals by delta, recount,
+  // recalc mark, audit, event) and under the removal's own gates. Gate closed ⇒ 'not_eligible' and the
+  // result stays for an administrator. The last payslip on a run is never removed here: emptying a run
+  // is a Reset, so that one is not_eligible too (validationCode 'last_on_run').
+  if (outcomeState.status === 'excluded' && before && exclusion) {
+    const removable = settingEnabled(ctx, 'payroll.reset_enabled')
+      && await resolvePayrollPermission(tx, ctx, 'payroll.remove.employee', currentBatch.companyId);
+    if (!removable) {
+      outcomeState = {...outcomeState, status:'not_eligible'};
+    } else {
+      try {
+        const removed = await tx.transaction(removeTx => removeEmployeePayrollTx(removeTx, ctx, {
+          batchId:run.batchId, employmentIds:[employmentId], batch:currentBatch,
+          reason:`${run.reason?.trim() ? `${run.reason.trim()} — ` : ''}Excluded on reprocess: ${exclusion!.message}`,
+        }));
+        historyId = removed.historyIds[employmentId] ?? null;
+        if (!historyId) throw new Error('Excluded payroll result has no history checkpoint.');
+      } catch (error) {
+        if (!(error instanceof RemoveWholeRunError)) throw error;
+        outcomeState = {...outcomeState, status:'not_eligible', validationCode:'last_on_run'};
+      }
+    }
+  }
+  const [after] = await tx.select({id:payslip.id,version:payslip.version,statutory:payslip.statutory}).from(payslip)
+    .where(and(eq(payslip.batchId,run.batchId),eq(payslip.employmentId,employmentId))).limit(1);
+  const savedScheme = (after?.statutory as {pcbMeta?:{calculationScheme?:unknown}} | undefined)?.pcbMeta?.calculationScheme;
+  const outcome: ReprocessEmployeeOutcome = {
+    employmentId,name:identity.name,employeeCode:identity.employeeCode,...outcomeState,classification,
+    ...(outcomeState.status==='reprocessed' && typeof savedScheme==='string'
+      && (REPROCESS_TAX_SCHEMES as readonly string[]).includes(savedScheme) ? {effectiveTaxScheme:savedScheme as ReprocessTaxScheme}:{}),
+    resultRetained:outcomeState.status === 'excluded' ? false : outcomeState.status !== 'reprocessed' && !!before,
+    payslipId:after?.id ?? null,versionBefore:before?.version ?? null,
+    versionAfter:after?.version ?? null,historyId,at:new Date().toISOString(),
+  };
+  const outcomes = [...(prior?.outcomes ?? []),outcome];
+  const [freshBatch] = await tx.select({totals:payrollBatch.totals,headcount:payrollBatch.employeeCount})
+    .from(payrollBatch).where(eq(payrollBatch.id,run.batchId)).limit(1);
+  const checkpoint: ReprocessJobResult = {
+    workerToken:run.workerToken,outcomes,selected:run.employmentIds.length,
+    reprocessed:outcomes.filter(r=>r.status==='reprocessed').length,
+    recalculated:outcomes.filter(r=>r.classification==='recalculated').length,
+    added:outcomes.filter(r=>r.classification==='added').length,
+    skipped:outcomes.filter(r=>r.status==='skipped').length,
+    validationFailed:outcomes.filter(r=>r.status==='validation_failed').length,
+    excluded:outcomes.filter(r=>r.status==='excluded').length,
+    notEligible:outcomes.filter(r=>r.status==='not_eligible').length,
+    headcount:freshBatch.headcount,totals:(freshBatch.totals ?? {}) as Record<string,number>,
+  };
+  await tx.update(payrollReprocessJob).set({result:checkpoint,updatedAt:new Date()})
+    .where(eq(payrollReprocessJob.id,run.jobId));
+  await appendEvent(tx,{
+    tenantId:ctx.tenantId,aggregateType:'payroll-batch',aggregateId:run.batchId,
+    eventType:'payroll-batch.employee-reprocess-outcome',actor:actorOf(ctx),subjectEmploymentId:employmentId,
+    payload:{jobId:run.jobId,batchId:run.batchId,companyId:currentBatch.companyId,payPeriod:currentBatch.payPeriod,
+      employmentId,employeeName:outcome.name,employeeCode:outcome.employeeCode,
+      status:outcome.status,reasonCode:outcome.reasonCode,
+      validationCode:outcome.validationCode ?? null,resultRetained:outcome.resultRetained,
+      exclusionDate:outcome.reasonCode && REPROCESS_EXCLUSION_REASONS.has(outcome.reasonCode) ? outcome.validationDetails?.[0]?.date ?? null : null,
+      configuredTaxScheme:outcome.configuredTaxScheme ?? null,effectiveTaxScheme:outcome.effectiveTaxScheme ?? null,
+      payslipId:outcome.payslipId,historyId:outcome.historyId,
+      versionBefore:outcome.versionBefore,versionAfter:outcome.versionAfter},
+  });
+}
+/** The reprocess job row the background job claims and follows (row security as the request path). */
+export async function payrollReprocessJobRowTx(tx:Tx,jobId:string){
+  const [row]=await tx.select().from(payrollReprocessJob).where(eq(payrollReprocessJob.id,jobId)).limit(1);
+  return row??null;
+}
+/** Phase 1 of a selective reprocess — validate, permission-check and enqueue (idempotent). */
+export async function enqueueSelectiveReprocess(
+  ctx: SessionContext,
+  p: { batchId: string; employmentIds: string[]; reason?: string; idempotencyKey?: string },
+) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   if (!isModuleEnabled(ctx, 'multi_cycle_payroll')) {
     throw new ModuleNotEnabledError('multi_cycle_payroll', 'Multiple payroll runs per month are not enabled.');
   }
@@ -10196,197 +10384,42 @@ export async function reprocessSelectedEmployees(
     return { job, employmentIds };
   });
 
-  const job = enq.job;
-  // Idempotent replay: a completed job returns its stored result without re-running (double-submit safety).
-  if (job.status === 'completed') {
-    return { jobId: job.id, status: 'completed' as const, ...(job.result as Record<string, unknown> | null) };
-  }
+  return enq;
+}
+/** Phase 2 — atomically CLAIM the job (queued→running) so a concurrent duplicate request can never run the
+ * recompute twice; false when another worker already took it. */
+export async function claimSelectiveReprocess(ctx:SessionContext,jobId:string,workerToken:string){
   const abandonedBefore = new Date(Date.now() - 10 * 60 * 1000);
-  if (job.status === 'running' && job.updatedAt >= abandonedBefore) {
-    return { jobId: job.id, status: 'running' as const };
-  }
-
-  // Phase 2 — atomically CLAIM the job (queued→running) so a concurrent duplicate request can never
-  // run the recompute twice; if the claim updates no row, another worker already took it → don't re-run.
-  const workerToken = randomUUID();
   const claimed = await withTenant(ctx, (tx) =>
     tx
       .update(payrollReprocessJob)
       .set({ status: 'running', updatedAt: new Date(),
         result:sql`coalesce(${payrollReprocessJob.result}, '{}'::jsonb) || jsonb_build_object('workerToken', ${workerToken}::text,
           'outcomes', coalesce(${payrollReprocessJob.result}->'outcomes', '[]'::jsonb))` })
-      .where(and(eq(payrollReprocessJob.id, job.id), or(eq(payrollReprocessJob.status, 'queued'),eq(payrollReprocessJob.status, 'failed'),
+      .where(and(eq(payrollReprocessJob.id, jobId), or(eq(payrollReprocessJob.status, 'queued'),eq(payrollReprocessJob.status, 'failed'),
         and(eq(payrollReprocessJob.status,'running'),lt(payrollReprocessJob.updatedAt,abandonedBefore)))))
       .returning({ id: payrollReprocessJob.id }),
   );
-  if (claimed.length === 0) {
-    return { jobId: job.id, status: 'running' as const };
-  }
-  let stoppedEmployee: {employmentId:string;name:string;employeeCode:string|null}|null=null;
-  try {
-    for (const employmentId of enq.employmentIds) {
-      stoppedEmployee=null;
-      await withTenant(ctx, async (tx) => {
-        await lockPayComponentCatalogReadTx(tx,ctx);
-        const ownedBatch=await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
-        // One authoritative checkpoint: exact job row + batch lock stay held until this employee's
-        // money AND outcome commit. Duplicate/resumed workers see committed outcomes before acting.
-        const [currentJob] = await tx.select().from(payrollReprocessJob)
-          .where(eq(payrollReprocessJob.id, job.id)).limit(1).for('update');
-        if(currentJob.batchId!==ownedBatch?.id||JSON.stringify(currentJob.employmentIds)!==JSON.stringify(enq.employmentIds))throw new Error('Payroll job source changed.');
-        const prior = currentJob.result as ReprocessJobResult | null;
-        if (currentJob.status!=='running' || prior?.workerToken!==workerToken)
-          throw new ReprocessRunBlockedError('SUPERSEDED','This payroll processing attempt was superseded by a recovered worker.');
-        if (prior && !decodeReprocessEmployeeOutcomes(prior,currentJob.employmentIds))
-          throw new Error('Stored payroll employee outcomes are invalid.');
-        if (prior?.outcomes?.some(r => r.employmentId === employmentId)) return;
-        await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
-        const [currentBatch] = await tx.select().from(payrollBatch)
-          .where(eq(payrollBatch.id, p.batchId)).limit(1).for('update');
-        if (!currentBatch) throw new Error('batch not found');
-        await assertPayrollPermission(tx, ctx, 'payroll.reprocess.selective', currentBatch.companyId);
-        if (currentBatch.status !== 'processed') throw new BatchNotResettableError();
-        const [period] = await tx.select({status:payPeriod.status}).from(payPeriod)
-          .where(eq(payPeriod.id,currentBatch.payPeriodId)).limit(1).for('share');
-        if (period?.status === 'closed') throw new ReprocessRunBlockedError('PERIOD_CLOSED','This pay period is closed.');
-        const [year,month] = currentBatch.payPeriod.split('-').map(Number);
-        const periodStart = `${currentBatch.payPeriod}-01`;
-        const periodEnd = `${currentBatch.payPeriod}-${String(daysInMonth(year,month)).padStart(2,'0')}`;
-        // 3244584c — the identity is read WITHOUT the period filter, so an employee who no longer belongs
-        // to the month is still named on their outcome; membership is a column of the same read. A row
-        // RLS hides from this operator is still unexpected and still stops the job.
-        const [identity] = await tx.select({name:person.fullName,employeeCode:employment.employeeCode,
-          hiredOn:employment.hiredOn,terminatedOn:payrollEmploymentEnd,
-          outstanding:sql<boolean>`${outstandingPaymentPredicate(currentBatch,settingEnabled(ctx,'payroll.individual_txn_pay_enabled'))}`,
-          withCompany:sql<boolean>`${employedByCompanyDuring(currentBatch.companyId,periodStart,periodEnd)}`})
-          .from(employment).innerJoin(person,eq(person.id,employment.personId))
-          .where(eq(employment.id,employmentId)).limit(1);
-        if (!identity) throw new Error('Selected employment no longer belongs to this payroll period.');
-        stoppedEmployee={employmentId,name:identity.name,employeeCode:identity.employeeCode};
-        // 3244584c — the SAME window the kernel's earnings read applies (hiredOn ≤ end, terminatedOn null or
-        // ≥ start, with the company during the period), asked first so the answer is an outcome by name.
-        // A mid-period leaver or joiner is IN the month and is recalculated (prorated) as before.
-        // Only for somebody whose result IS on the run: that is the stale payslip to deal with. An employee
-        // with no payslip here is an addition, and an addition outside the month keeps its fbcf706d refusal.
-        const [onThisRun] = await tx.select({id:payslip.id}).from(payslip)
-          .where(and(eq(payslip.batchId,p.batchId),eq(payslip.employmentId,employmentId))).limit(1);
-        let exclusion: ReprocessEmploymentNotInPeriodError | null = null;
-        if (onThisRun && !identity.outstanding && identity.terminatedOn && identity.terminatedOn < periodStart) {
-          exclusion = new ReprocessEmploymentNotInPeriodError('RESIGNED_BEFORE_PERIOD', identity.terminatedOn);
-        } else if (onThisRun && identity.hiredOn > periodEnd) {
-          exclusion = new ReprocessEmploymentNotInPeriodError('JOINED_AFTER_PERIOD', identity.hiredOn);
-        } else if (onThisRun && !identity.outstanding && !identity.withCompany) {
-          // valid_to is EXCLUSIVE: the first day the employee was no longer with this company.
-          const [left] = await tx.select({validTo:assignment.validTo}).from(assignment)
-            .where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt),
-              eq(assignment.companyId,currentBatch.companyId),isNotNull(assignment.validTo)))
-            .orderBy(desc(assignment.validTo)).limit(1);
-          exclusion = new ReprocessEmploymentNotInPeriodError('NOT_WITH_COMPANY_IN_PERIOD', left?.validTo ?? null);
-        }
-        const [before] = await tx.select({id:payslip.id,version:payslip.version}).from(payslip)
-          .where(and(eq(payslip.batchId,p.batchId),eq(payslip.employmentId,employmentId))).limit(1);
-        let classification: ReprocessEmployeeOutcome['classification'];
-        let historyId: string | null = null;
-        let outcomeState: Pick<ReprocessEmployeeOutcome,'status'|'reasonCode'|'validationCode'|'validationDetails'|'configuredTaxScheme'|'effectiveTaxScheme'>;
-        try {
-          if (exclusion) throw exclusion;
-          // Nested drizzle transaction is a SAVEPOINT on this same connection, never another tenant
-          // transaction. Collection, snapshot/delete, money, ledger and coverage all roll back together.
-          const result = await tx.transaction(employeeTx => generatePayslipsTx(employeeTx, ctx, {
-            batchId:p.batchId,reprocessSubset:{employmentIds:[employmentId],reason:p.reason,actorId:ctx.userId},
-          }));
-          if (!('reprocessed' in result)) throw new Error('Unexpected selected payroll result.');
-          classification = result.added ? 'added' : 'recalculated';
-          historyId = result.snapshotLinks?.[employmentId] ?? null;
-          if (!historyId) throw new Error('Selected payroll result has no history checkpoint.');
-          outcomeState = {status:'reprocessed',reasonCode:null};
-        } catch (error) {
-          const validation = employeeReprocessValidation(error);
-          if (!validation) throw error;
-          outcomeState = validation;
-        }
-        // 3244584c — AN EXCLUDED EMPLOYEE'S OLD RESULT LEAVES THE RUN, through the removal owner itself
-        // (snapshot, loan/claim/one-off release, statutory adjustment, verdicts, totals by delta, recount,
-        // recalc mark, audit, event) and under the removal's own gates. Gate closed ⇒ 'not_eligible' and the
-        // result stays for an administrator. The last payslip on a run is never removed here: emptying a run
-        // is a Reset, so that one is not_eligible too (validationCode 'last_on_run').
-        if (outcomeState.status === 'excluded' && before && exclusion) {
-          const removable = settingEnabled(ctx, 'payroll.reset_enabled')
-            && await resolvePayrollPermission(tx, ctx, 'payroll.remove.employee', currentBatch.companyId);
-          if (!removable) {
-            outcomeState = {...outcomeState, status:'not_eligible'};
-          } else {
-            try {
-              const removed = await tx.transaction(removeTx => removeEmployeePayrollTx(removeTx, ctx, {
-                batchId:p.batchId, employmentIds:[employmentId], batch:currentBatch,
-                reason:`${p.reason?.trim() ? `${p.reason.trim()} — ` : ''}Excluded on reprocess: ${exclusion!.message}`,
-              }));
-              historyId = removed.historyIds[employmentId] ?? null;
-              if (!historyId) throw new Error('Excluded payroll result has no history checkpoint.');
-            } catch (error) {
-              if (!(error instanceof RemoveWholeRunError)) throw error;
-              outcomeState = {...outcomeState, status:'not_eligible', validationCode:'last_on_run'};
-            }
-          }
-        }
-        const [after] = await tx.select({id:payslip.id,version:payslip.version,statutory:payslip.statutory}).from(payslip)
-          .where(and(eq(payslip.batchId,p.batchId),eq(payslip.employmentId,employmentId))).limit(1);
-        const savedScheme = (after?.statutory as {pcbMeta?:{calculationScheme?:unknown}} | undefined)?.pcbMeta?.calculationScheme;
-        const outcome: ReprocessEmployeeOutcome = {
-          employmentId,name:identity.name,employeeCode:identity.employeeCode,...outcomeState,classification,
-          ...(outcomeState.status==='reprocessed' && typeof savedScheme==='string'
-            && (REPROCESS_TAX_SCHEMES as readonly string[]).includes(savedScheme) ? {effectiveTaxScheme:savedScheme as ReprocessTaxScheme}:{}),
-          resultRetained:outcomeState.status === 'excluded' ? false : outcomeState.status !== 'reprocessed' && !!before,
-          payslipId:after?.id ?? null,versionBefore:before?.version ?? null,
-          versionAfter:after?.version ?? null,historyId,at:new Date().toISOString(),
-        };
-        const outcomes = [...(prior?.outcomes ?? []),outcome];
-        const [freshBatch] = await tx.select({totals:payrollBatch.totals,headcount:payrollBatch.employeeCount})
-          .from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).limit(1);
-        const checkpoint: ReprocessJobResult = {
-          workerToken,outcomes,selected:enq.employmentIds.length,
-          reprocessed:outcomes.filter(r=>r.status==='reprocessed').length,
-          recalculated:outcomes.filter(r=>r.classification==='recalculated').length,
-          added:outcomes.filter(r=>r.classification==='added').length,
-          skipped:outcomes.filter(r=>r.status==='skipped').length,
-          validationFailed:outcomes.filter(r=>r.status==='validation_failed').length,
-          excluded:outcomes.filter(r=>r.status==='excluded').length,
-          notEligible:outcomes.filter(r=>r.status==='not_eligible').length,
-          headcount:freshBatch.headcount,totals:(freshBatch.totals ?? {}) as Record<string,number>,
-        };
-        await tx.update(payrollReprocessJob).set({result:checkpoint,updatedAt:new Date()})
-          .where(eq(payrollReprocessJob.id,job.id));
-        await appendEvent(tx,{
-          tenantId:ctx.tenantId,aggregateType:'payroll-batch',aggregateId:p.batchId,
-          eventType:'payroll-batch.employee-reprocess-outcome',actor:actorOf(ctx),subjectEmploymentId:employmentId,
-          payload:{jobId:job.id,batchId:p.batchId,companyId:currentBatch.companyId,payPeriod:currentBatch.payPeriod,
-            employmentId,employeeName:outcome.name,employeeCode:outcome.employeeCode,
-            status:outcome.status,reasonCode:outcome.reasonCode,
-            validationCode:outcome.validationCode ?? null,resultRetained:outcome.resultRetained,
-            exclusionDate:outcome.reasonCode && REPROCESS_EXCLUSION_REASONS.has(outcome.reasonCode) ? outcome.validationDetails?.[0]?.date ?? null : null,
-            configuredTaxScheme:outcome.configuredTaxScheme ?? null,effectiveTaxScheme:outcome.effectiveTaxScheme ?? null,
-            payslipId:outcome.payslipId,historyId:outcome.historyId,
-            versionBefore:outcome.versionBefore,versionAfter:outcome.versionAfter},
-        });
-      });
-    }
-    const result = await withTenant(ctx, async tx => {
-      const [completed] = await tx.update(payrollReprocessJob)
-        .set({status:'completed',error:null,updatedAt:new Date()})
-        .where(and(eq(payrollReprocessJob.id,job.id),eq(payrollReprocessJob.status,'running'),
-          sql`${payrollReprocessJob.result}->>'workerToken' = ${workerToken}`))
-        .returning({result:payrollReprocessJob.result});
-      if (!completed) throw new ReprocessRunBlockedError('SUPERSEDED','This payroll processing attempt was superseded by a recovered worker.');
-      return completed.result as ReprocessJobResult;
-    });
-    return {jobId:job.id,status:'completed' as const,...result};
-  } catch (e) {
-    await withTenant(ctx, tx => tx.update(payrollReprocessJob)
-      .set({status:'failed',error:reprocessRunErrorCode(e),updatedAt:new Date(),result:sql`coalesce(${payrollReprocessJob.result}, '{"outcomes":[]}'::jsonb) || jsonb_build_object('stoppedEmployee',${JSON.stringify(stoppedEmployee)}::jsonb)`})
-      .where(and(eq(payrollReprocessJob.id,job.id),eq(payrollReprocessJob.status,'running'),
-        sql`${payrollReprocessJob.result}->>'workerToken' = ${workerToken}`)));
-    throw new PayrollReprocessStoppedError(job.id,e);
-  }
+  return claimed.length > 0;
+}
+/** The job completes only under the token that claimed it. */
+export async function completeSelectiveReprocess(ctx:SessionContext,jobId:string,workerToken:string){
+  return withTenant(ctx, async tx => {
+    const [completed] = await tx.update(payrollReprocessJob)
+      .set({status:'completed',error:null,updatedAt:new Date()})
+      .where(and(eq(payrollReprocessJob.id,jobId),eq(payrollReprocessJob.status,'running'),
+        sql`${payrollReprocessJob.result}->>'workerToken' = ${workerToken}`))
+      .returning({result:payrollReprocessJob.result});
+    if (!completed) throw new ReprocessRunBlockedError('SUPERSEDED','This payroll processing attempt was superseded by a recovered worker.');
+    return completed.result as ReprocessJobResult;
+  });
+}
+/** A run that stopped keeps the employees already committed; the job records its stop code and where it stopped. */
+export async function failSelectiveReprocess(ctx:SessionContext,jobId:string,workerToken:string,error:unknown,stoppedEmployee:{employmentId:string;name:string;employeeCode:string|null}|null){
+  await withTenant(ctx, tx => tx.update(payrollReprocessJob)
+    .set({status:'failed',error:reprocessRunErrorCode(error),updatedAt:new Date(),result:sql`coalesce(${payrollReprocessJob.result}, '{"outcomes":[]}'::jsonb) || jsonb_build_object('stoppedEmployee',${JSON.stringify(stoppedEmployee)}::jsonb)`})
+    .where(and(eq(payrollReprocessJob.id,jobId),eq(payrollReprocessJob.status,'running'),
+      sql`${payrollReprocessJob.result}->>'workerToken' = ${workerToken}`)));
 }
 
 /** Validate the saved per-employee contract; legacy jobs have no outcomes and assert nothing.

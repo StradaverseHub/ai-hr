@@ -341,17 +341,25 @@ async function occupiedHistoryPeriodsTx(tx:Tx,companyId:string,periods:string[])
     return new Set(rows.map((r) => r.period));
 }
 
-async function analyze(
-  ctx: SessionContext,
-  companyId: string,
-  records: PayrollHistoryRecord[],
-  options: { transaction?: Tx; prepareRevision?: boolean } = {},
-): Promise<{ preview: HistoryImportPreview; months: ResolvedMonth[]; statutoryVersion: string }> {
-  const codes = await resolveImportCodes(ctx, options.transaction);
-  const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => options.transaction ? fn(options.transaction) : withTenant(ctx, fn);
-
-  const { companyKeys, targetCompany, employees, cycles, statutoryVersion } = await read(
-    async (tx) => {
+/** Everything `analyze` reads for one company, as a canonical value: the payroll history revision owner digests it
+ * (with its own reads) to prove at release that the plan's inputs did not change (core/payroll-history-revisions.ts
+ * `historyPlanFactsTx`). Same reads, same order, as `analyze` itself. */
+export async function historyAnalyzeFactsTx(ctx: SessionContext, tx: Tx, companyId: string) {
+  const codes = await resolveImportCodes(ctx, tx);
+  const inputs = await readAnalyzeInputs(tx, companyId);
+  return analyzeFacts(codes, inputs);
+}
+type AnalyzeInputs = Awaited<ReturnType<typeof readAnalyzeInputs>>;
+function analyzeFacts(codes: Map<string, ImportCodeEntry>, inputs: AnalyzeInputs) {
+  const byId = <T extends { id?: string; employmentId?: string }>(a: T, b: T) => String(a.id ?? a.employmentId).localeCompare(String(b.id ?? b.employmentId));
+  return {
+    codes: [...codes.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+    companies: [...inputs.companies].sort(byId),
+    employees: [...inputs.employees].sort(byId),
+    cycles: [...inputs.cycles].sort(byId),
+  };
+}
+async function readAnalyzeInputs(tx: Tx, companyId: string) {
       const companies = await tx
         .select({
           id: company.id,
@@ -362,6 +370,44 @@ async function analyze(
           archivedAt: company.archivedAt,
         })
         .from(company);
+      const employees = await tx
+        .select({
+          employmentId: employment.id,
+          code: employment.employeeCode,
+          hiredOn: employment.hiredOn,
+          terminatedOn: employment.terminatedOn,
+          // leftJoin: the MY statutory profile may be absent, which is exactly the CP39 warning below.
+          taxNumber: employeeStatutoryMy.taxNumber,
+        })
+        .from(employment)
+        .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+        .where(eq(employment.companyId, companyId));
+      const cycles = await tx
+        .select({
+          id: payrollCycle.id,
+          name: payrollCycle.name,
+          code: payrollCycle.code,
+          archivedAt: payrollCycle.archivedAt,
+        })
+        .from(payrollCycle)
+        .where(eq(payrollCycle.companyId, companyId));
+      return { companies, employees, cycles };
+}
+
+async function analyze(
+  ctx: SessionContext,
+  companyId: string,
+  records: PayrollHistoryRecord[],
+  options: { transaction?: Tx; prepareRevision?: boolean; facts?: (facts: ReturnType<typeof analyzeFacts>) => void } = {},
+): Promise<{ preview: HistoryImportPreview; months: ResolvedMonth[]; statutoryVersion: string }> {
+  const codes = await resolveImportCodes(ctx, options.transaction);
+  const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => options.transaction ? fn(options.transaction) : withTenant(ctx, fn);
+
+  const { companyKeys, targetCompany, employees, cycles, statutoryVersion } = await read(
+    async (tx) => {
+      const inputs = await readAnalyzeInputs(tx, companyId);
+      options.facts?.(analyzeFacts(codes, inputs));
+      const { companies, employees, cycles } = inputs;
       const targetCompany = companies.find((c) => c.id === companyId);
       const statutoryVersion = requirePackFor(targetCompany?.country).statutoryConfig.default.version;
 
@@ -379,29 +425,6 @@ async function analyze(
           companyKeys.set(kk, hits);
         }
       }
-
-      const employees = await tx
-        .select({
-          employmentId: employment.id,
-          code: employment.employeeCode,
-          hiredOn: employment.hiredOn,
-          terminatedOn: employment.terminatedOn,
-          // leftJoin: the MY statutory profile may be absent, which is exactly the CP39 warning below.
-          taxNumber: employeeStatutoryMy.taxNumber,
-        })
-        .from(employment)
-        .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-        .where(eq(employment.companyId, companyId));
-
-      const cycles = await tx
-        .select({
-          id: payrollCycle.id,
-          name: payrollCycle.name,
-          code: payrollCycle.code,
-          archivedAt: payrollCycle.archivedAt,
-        })
-        .from(payrollCycle)
-        .where(eq(payrollCycle.companyId, companyId));
 
       return { companyKeys, targetCompany, employees, cycles, statutoryVersion };
     },
@@ -909,8 +932,8 @@ async function analyze(
 
 /** Pure preparation for the revision owner. Occupancy is adjudicated there against exact imported
  * identities, inside this same transaction. This helper grants no write or replacement authority. */
-export function preparePayrollHistoryRevisionTx(ctx: SessionContext, tx: Tx, companyId: string, records: PayrollHistoryRecord[]) {
-  return analyze(ctx, companyId, records, {transaction: tx, prepareRevision: true});
+export function preparePayrollHistoryRevisionTx(ctx: SessionContext, tx: Tx, companyId: string, records: PayrollHistoryRecord[], facts?: (facts: Awaited<ReturnType<typeof historyAnalyzeFactsTx>>) => void) {
+  return analyze(ctx, companyId, records, {transaction: tx, prepareRevision: true, facts});
 }
 
 /** Dry run: validate the file against the company's master data; writes nothing. */

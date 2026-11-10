@@ -3,7 +3,7 @@
 Branch `claude/combined-release-20261111` (base `claude/architecture-release-20261110` @ `6e4a883c2`) merges every
 accepted branch of the combined release and moves all of their draft migrations into one block: tags `5000`–`5090`,
 idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when share one offset (tag 50NN, idx 44NN, when
-…47NN). The 772-entry journal of the base keeps its entries, order and SQL bytes; the 805-entry journal passes
+…47NN). The 772-entry journal of the base keeps its entries, order and SQL bytes; the 809-entry journal passes
 `node .github/ci/check-migration-order.mjs origin/main` (main `9cf69292a`, 729 entries ending at
 `4800_ai_shared_leave_groups_read`, idx 4200 / when 1793330004500).
 
@@ -34,6 +34,10 @@ idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when sh
 | `9950_payroll_processing_status` | 9950 / 1793330099950 | `5050_payroll_processing_status` | 4450 / 1793330004750 | `1e9ca4115879eff695e815bc7e83ce18eef78ce0982da05a8d292eb5a08bc7d1` |
 | `9951_payroll_processing_job` | 9951 / 1793330099951 | `5051_payroll_processing_job` | 4451 / 1793330004751 | `37caaa2ba6bc6ea90552cf3da0a933c9972cc9aff3d56c98c567b28e6891be16` |
 | `9952_payroll_run_group` | 9952 / 1793330099952 | `5052_payroll_run_group` | 4452 / 1793330004752 | `f420568a0612c6da490ea7330d36b464bedad8fc5e25663d268e9750b1886901` |
+| `9953_bulk_job_settle` | 9953 / 1793330099953 | `5053_bulk_job_settle` | 4453 / 1793330004753 | `a0edd7cf60bd4cb3dc5c52a924abc749b5af3dde9c53a22034673e2ba78d3f6e` |
+| `9954_payroll_partner_point_read` | 9954 / 1793330099954 | `5054_payroll_partner_point_read` | 4454 / 1793330004754 | `628f65f096449ddfca7075e1fc75e6e727f1e5ea566d83b3610b2924378a5d45` |
+| `9955_payroll_history_staged_job` | 9955 / 1793330099955 | `5055_payroll_history_staged_job` | 4455 / 1793330004755 | `c2344884621bc3017920a44fa3d51feff14459dca8342dab1705a19e4fa74cb0` |
+| `9956_payroll_reprocess_job` | 9956 / 1793330099956 | `5056_payroll_reprocess_job` | 4456 / 1793330004756 | `96a041edc8964a6234bc13b7a0c905a396d342fa83e8f16f86ff36472a5df881` |
 | `9930_register_section_import_jobs` | 9930 / 1793330099300 | `5060_register_section_import_jobs` | 4460 / 1793330004760 | `208d2d40dd1c9b6a5c3cc061ac6a9f282e8f20eb1309c69aeb0e15c2a5088346` |
 | `9931_register_import_set_release` | 9931 / 1793330099310 | `5061_register_import_set_release` | 4461 / 1793330004761 | `2e58415bc1ba2925268df41bf07d3b9cf802f274e01476b336b7dd207b843efe` |
 | `9932_employee_import_revert_job` | 9932 / 1793330099320 | `5062_employee_import_revert_job` | 4462 / 1793330004762 | `1e48068ba30160e2a94e5e511a5dd68bf23f5f968f5fd675da39cc11599d8d43` |
@@ -65,7 +69,7 @@ Order and why:
   after the kernel and before any kind row, so every kind declares its `input_shape` when it is inserted.
   `5041_bulk_job_queue_and_watch` stamps `watched_at` through the definer `app.bulk_job_mark_watched` instead of a
   column grant.
-- **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5053–5059, 5065–5069 and 5072–5089 are
+- **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069 and 5072–5089 are
   left for branches accepted later; they are inserted before 5090 in journal order while the block is unapplied.
 
 Retired: `9002_leave_import_job` (phase 3's leave import proof). The leave ledger import runs on the shared kernel
@@ -77,7 +81,7 @@ Read-only survey, 11 November 2026: 7,316 refs (4,055 distinct heads, 556 distin
 parseable, one ref without a journal) and 250 readable journals among 265 registered worktrees (one unparseable:
 feedback-menu-operator-toggle-616263). Above idx 4243 / when 1793330004543 the peers hold `4900`–`4902` at idx
 4300–4302 / when 1793330004600–1793330004602 (staging board window 4 and the account-action fix), the Home drafts
-`9850`, `9870`, `9873`, and the pending drafts of this programme (`9910`–`9912`, `9953`–`9955`).
+`9850`, `9870`, `9873`, and the pending drafts of this programme (`9910`–`9912`).
 Nothing occupies tags 5000–5099, idx 4303–4600 or when 1793330004603–1793330004999. This block sits above
 4900–4902 on purpose. **The architecture block of this same release (idx 4201–4243 / when …4501–…4543) sits below
 them:** if 4900–4902 are installed anywhere before this release, those 43 entries would be skipped there and must

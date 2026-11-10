@@ -76,10 +76,10 @@ async function lockRunUnitTx(tx:Tx,ctx:SessionContext,batchId:string){
 }
 
 /** A processing unit reads its employments one chunk at a time, under the initiator's own authority. The
- * transaction-local marker (migration 0691, first used by the bank import worker) lets an employment read by a
- * company administrator skip rebuilding the whole visible-employment array for every statement: the
- * administrator arm is already part of the original predicate, so the rows read are the same and no authority is
- * added. An initiator who is not a company administrator takes the original predicate unchanged. */
+ * transaction-local marker (migration 0691, first used by the bank import worker) lets an employment read skip
+ * rebuilding the whole visible-employment array for every statement when the initiator administers the company or
+ * its payroll (5054 added the payroll partner): `app.can_admin_payroll_for` is already an arm of the original
+ * predicate, so the rows read are the same and no authority is added. Anyone else takes the original predicate. */
 async function pointReadTx(tx:Tx){await tx.execute(sql`select set_config('app.bank_import_point_read','on',true)`);}
 
 /** Web side: validate the run and the caller's authority, admit the job and move the run to 'processing'. Short:
@@ -161,10 +161,10 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
  async describeFailure(_job,error){
   return{error:publicErrorMessage(error),planMerge:{failureReason:reasonForPayrollError(error)}};
  },
- // A wizard run group waiting for this run settles when its last job finishes (core/payroll-run-group-store.ts).
- // The plan stays: it keeps the run id and the failure reason the run screen and the run group read afterwards.
- async afterTerminal(ctx,job){
-  if(ctx)await settleRunGroupsForJob(ctx,job.id);
+ // A wizard run group waiting for this run settles when its last job finishes (core/payroll-run-group-store.ts);
+ // the kernel retries a settle that fails until it succeeds.
+ async settle(_ctx,job,owner){
+  await settleRunGroupsForJob(owner,job);
  },
 };
 

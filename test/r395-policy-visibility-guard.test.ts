@@ -40,12 +40,12 @@ const assessmentAttachment = {
 const importVoidNarrowed = new Set(['employment.employment_rls', 'person.person_rls']);
 const voidNarrowedQual = (qual: string) => `((voided_at IS NULL) AND ${qual})`;
 
-// Pin the reviewed 0691 arm independently of the migration bytes. PostgreSQL normalizes
+// Pin the reviewed 0691 arm (with 5054's payroll-partner short-circuit) independently of the migration bytes. PostgreSQL normalizes
 // the complete expected expression; the temporary policy edit always rolls back.
 async function bankPointReadQual(original: string): Promise<string> {
  const expected=`voided_at IS NULL AND tenant_id=app.current_tenant_id() AND CASE
   WHEN (SELECT current_setting('app.bank_import_point_read',true))='on'
-  THEN CASE WHEN app.is_admin_for(company_id) THEN true ELSE ${original} END
+  THEN CASE WHEN (app.is_admin_for(company_id) OR app.can_admin_payroll_for(company_id)) THEN true ELSE ${original} END
   ELSE ${original} END`;
  const rollback=new Error('Bank policy normalization rollback');let normalized='';
  try {

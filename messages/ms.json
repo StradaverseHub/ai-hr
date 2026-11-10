@@ -7169,6 +7169,13 @@
         "backgroundHelp": "Anda boleh tinggalkan halaman ini. Pekerja tidak melihat apa-apa sehingga larian ditutup, dan anda menerima notis apabila pemprosesan selesai.",
         "waiting": "Menunggu perkhidmatan pemprosesan gaji. Kemajuan disimpan; jangan proses larian ini sekali lagi.",
         "workerUnavailable": "Perkhidmatan pemprosesan gaji belum berjalan. Larian telah disimpan dan bermula secara automatik sebaik sahaja perkhidmatan berjalan."
+      },
+      "reprocessJob": {
+        "title": "Memproses semula di latar belakang",
+        "queued": "Menunggu untuk bermula",
+        "running": "Memproses semula pekerja yang dipilih",
+        "progress": "{done} daripada {total} pekerja selesai",
+        "help": "Anda boleh meninggalkan halaman ini. Setiap pekerja dikira semula secara berasingan, dan keputusan dipaparkan di sini apabila pemprosesan semula selesai."
       }
     },
     "transactions": {
@@ -10043,7 +10050,24 @@
       "tickHint": "Gaji sudah wujud untuk sesetengah rekod. Tandakan rekod yang ingin ditulis ganti; rekod yang tidak ditanda kekal seperti sedia ada.",
       "acknowledge": "Saya faham. Gantikan rekod yang ditanda dengan nilai fail saya. Nilai asal kekal dalam sejarah audit dan tulis ganti boleh dibatalkan daripada Log File.",
       "confirmOverwrite": "Sahkan tulis ganti dan import",
-      "importNewOnly": "Import rekod baharu sahaja"
+      "importNewOnly": "Import rekod baharu sahaja",
+      "job": {
+        "title": "Disimpan di latar belakang",
+        "state": {
+          "queued": "Menunggu untuk bermula",
+          "preparing": "Menyemak fail sekali lagi",
+          "running": "Menulis sejarah gaji",
+          "finalizing": "Menjadikan perubahan kelihatan",
+          "discarding": "Membatalkan perubahan yang belum selesai",
+          "completed": "Disimpan",
+          "failed": "Dihentikan — tiada sejarah gaji diubah",
+          "cancelled": "Dihentikan — tiada sejarah gaji diubah"
+        },
+        "progressCount": "{done} daripada {total} langkah selesai",
+        "backgroundHelp": "Anda boleh meninggalkan halaman ini. Tiada sesiapa melihat perubahan ini sehingga semuanya disimpan bersama, dan anda akan menerima notis apabila selesai.",
+        "waiting": "Menunggu perkhidmatan latar belakang. Permintaan anda telah disimpan; jangan hantar semula.",
+        "workerUnavailable": "Perkhidmatan latar belakang belum berjalan. Permintaan anda telah disimpan dan akan bermula secara automatik sebaik sahaja ia berjalan."
+      }
     },
     "individualImport": {
       "submitWorkbook": "Muat naik buku kerja",
@@ -37779,6 +37803,34 @@
         "cancelled": {
           "title": "Penyelesaian cuti ganti dibatalkan",
           "body": "Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya."
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "Perubahan sejarah gaji disimpan",
+          "body": "Buka log import untuk melihat apa yang disimpan."
+        },
+        "failed": {
+          "title": "Perubahan sejarah gaji dihentikan",
+          "body": "Tiada sejarah gaji diubah. Buka log import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Perubahan sejarah gaji dibatalkan",
+          "body": "Tiada sejarah gaji diubah."
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "Pemprosesan semula gaji selesai",
+          "body": "Buka larian untuk menyemak pekerja yang diproses semula."
+        },
+        "failed": {
+          "title": "Pemprosesan semula gaji dihentikan",
+          "body": "Pekerja yang telah diproses semula mengekalkan keputusan baharu mereka. Buka larian untuk melihat di mana ia berhenti."
+        },
+        "cancelled": {
+          "title": "Pemprosesan semula gaji dibatalkan",
+          "body": "Pekerja yang telah diproses semula mengekalkan keputusan baharu mereka."
         }
       }
     },

@@ -7169,6 +7169,13 @@
         "backgroundHelp": "您可以离开此页面。批次关闭前员工看不到任何内容，处理完成后您会收到通知。",
         "waiting": "正在等待薪资处理服务。进度已保存；请勿再次处理此批次。",
         "workerUnavailable": "薪资处理服务尚未运行。批次已保存，服务一运行便会自动开始。"
+      },
+      "reprocessJob": {
+        "title": "正在后台重新处理",
+        "queued": "等待开始",
+        "running": "正在重新处理所选员工",
+        "progress": "已完成 {done}/{total} 名员工",
+        "help": "您可以离开此页面。每位员工单独重新计算，重新处理完成后结果会显示在这里。"
       }
     },
     "transactions": {
@@ -10043,7 +10050,24 @@
       "tickHint": "部分记录已有工资数据。勾选要覆盖的记录；未勾选的记录保持不变。",
       "acknowledge": "我已了解。用我的文件数值替换已勾选的记录。原始数值保留在审计历史中，可从 Log File 撤销覆盖。",
       "confirmOverwrite": "确认覆盖并导入",
-      "importNewOnly": "仅导入新记录"
+      "importNewOnly": "仅导入新记录",
+      "job": {
+        "title": "正在后台提交",
+        "state": {
+          "queued": "等待开始",
+          "preparing": "正在重新检查文件",
+          "running": "正在写入薪资历史",
+          "finalizing": "正在使更改生效",
+          "discarding": "正在撤销未完成的更改",
+          "completed": "已提交",
+          "failed": "已停止——薪资历史未作任何更改",
+          "cancelled": "已停止——薪资历史未作任何更改"
+        },
+        "progressCount": "已完成 {done}/{total} 个步骤",
+        "backgroundHelp": "您可以离开此页面。在所有更改一起提交之前，任何人都看不到这些更改；完成后您会收到通知。",
+        "waiting": "正在等待后台服务。您的请求已保存，请勿重复提交。",
+        "workerUnavailable": "后台服务尚未运行。您的请求已保存，服务运行后将自动开始。"
+      }
     },
     "individualImport": {
       "submitWorkbook": "上传工作簿",
@@ -37779,6 +37803,34 @@
         "cancelled": {
           "title": "补假结算已取消",
           "body": "已处理的补假保持不变。请再次运行以处理其余部分。"
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "薪资历史更改已提交",
+          "body": "打开导入日志查看已提交的内容。"
+        },
+        "failed": {
+          "title": "薪资历史更改已停止",
+          "body": "薪资历史未作任何更改。打开导入日志查看原因。"
+        },
+        "cancelled": {
+          "title": "薪资历史更改已取消",
+          "body": "薪资历史未作任何更改。"
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "薪资重新处理已完成",
+          "body": "打开薪资批次查看已重新处理的员工。"
+        },
+        "failed": {
+          "title": "薪资重新处理已停止",
+          "body": "已重新处理的员工保留其新结果。打开薪资批次查看停止的位置。"
+        },
+        "cancelled": {
+          "title": "薪资重新处理已取消",
+          "body": "已重新处理的员工保留其新结果。"
         }
       }
     },
