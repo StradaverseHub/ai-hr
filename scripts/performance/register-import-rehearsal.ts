@@ -1,10 +1,12 @@
 /**
- * Fictional-data rehearsal of register and section imports as background jobs (docs/adr/2026-11-10-register-section-import-jobs.md). Disposable database only: refuses any URL not pointing at the rehearsal port. Expects a populated tenant
+ * Fictional-data rehearsal of register and section imports and the employee import Revert as background jobs
+ * (docs/adr/2026-11-10-register-section-import-jobs.md). Disposable database only: refuses any URL not pointing at the
+ * rehearsal port. Expects a populated tenant
  * whose fictional employees RB00000.. each hold one live Highest qualification and one Primary contact. Runs the
  * synchronous register commit once as the "before" measurement, then each import kind as a job through the real
  * protected worker process (scripts/bank-import-runner.ts), with hot-path probes, the tenant-lock sampler and a
- * visibility poll (an all-or-nothing register file must jump from none to all). Optionally measures the employee
- * import Revert hold (REVERT_ROWS). Env: DATABASE_URL (app), MIGRATION_DATABASE_URL (owner), REHEARSAL_PORT,
+ * visibility poll (an all-or-nothing register file must jump from none to all). With REVERT_ROWS it imports that many
+ * fictional hires twice and reverts one file synchronously ("before") and the other as a job. Env: DATABASE_URL (app), MIGRATION_DATABASE_URL (owner), REHEARSAL_PORT,
  * REHEARSAL_TENANT, REHEARSAL_ADMIN, IMPORT_ROWS (500), REVERT_ROWS (0 = skip), PHASES (comma list).
  */
 import '../lib/stub-server-only';
@@ -46,7 +48,7 @@ const OWNER_URL=required('MIGRATION_DATABASE_URL',process.env.MIGRATION_DATABASE
 for(const url of [required('DATABASE_URL',process.env.DATABASE_URL),OWNER_URL])if(new URL(url).port!==port)throw new Error('Refusing: rehearsal runs only against the disposable cluster port.');
 const TENANT=required('REHEARSAL_TENANT',process.env.REHEARSAL_TENANT),ADMIN=required('REHEARSAL_ADMIN',process.env.REHEARSAL_ADMIN);
 const ROWS=Number(process.env.IMPORT_ROWS??500),REVERT_ROWS=Number(process.env.REVERT_ROWS??0);
-const PHASES=new Set((process.env.PHASES??'baseline,sync,qualification,emergency,profile,family,late').split(','));
+const PHASES=new Set((process.env.PHASES??'baseline,sync,qualification,emergency,profile,family,late,revertSync,revertJob').split(','));
 if(process.env.AUDIT_HASH_CHAIN_ENABLED!=='true')process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 const stat=(values:number[])=>{const s=[...values].sort((a,b)=>a-b);return s.length?{n:s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.floor(s.length*.95)],max:s[s.length-1]}:{n:0,p50:0,p95:0,max:0};};
@@ -159,19 +161,36 @@ async function main(){
   finally{await obs.unsafe('drop trigger if exists rehearsal_register_refuse on employee_qualification');await obs.unsafe('drop function if exists public.rehearsal_register_refuse()');}
   report.lateVisibleAfter=await institutes(lateTag)();
  }
- await stopWorker();
  if(REVERT_ROWS>0){
-  // The employee import Revert (core/employee-import-history.ts:72): one transaction over every employment.
+  // The employee import Revert: the synchronous one transaction ("before"), then the background job, each over its own
+  // freshly imported file of REVERT_ROWS fictional hires.
   const {commitEmployeeImport}=await import('../../core/import');
   const {previewImportRevert,revertImport}=await import('../../core/import-history');
   const {employeeFullRevertHandler}=await import('../../core/employee-import-history');
+  const {previewImportRevertForAttempt,revertImportForAttempt}=await import('../../core/import-history-handlers');
   const [{company_id:companyId}]=await obs`select company_id from department where name='Finance' and tenant_id=${TENANT}::uuid limit 1`;
-  const rows=Array.from({length:REVERT_ROWS},(_,i)=>({full_name:`Rehearsal revert ${tag} ${i}`,email:`rv-${tag.toLowerCase()}-${i}@example.test`,employee_code:`RV${tag}${String(i).padStart(4,'0')}`,department:'Finance',hired_on:'2026-03-02',employment_type:'full_time',basic_salary:'4200'}));
-  const imported=await commitEmployeeImport(admin,{companyId,records:rows,fileName:'rehearsal-revert.csv',source:{name:'rehearsal-revert.csv',content:Buffer.from('x')}} as never);
-  const attemptId=(imported as {attemptId?:string|null}).attemptId!;
-  const preview=await previewImportRevert(admin,attemptId,employeeFullRevertHandler);
-  await phase('employeeRevertSync',async()=>{const r=await revertImport(admin,attemptId,employeeFullRevertHandler,{previewHash:preview.previewHash,reason:'Rehearsal revert'});return r;});
+  const hires=async(prefix:string)=>{
+   const rows=Array.from({length:REVERT_ROWS},(_,i)=>({full_name:`Rehearsal revert ${tag} ${prefix} ${i}`,email:`${prefix.toLowerCase()}-${tag.toLowerCase()}-${i}@example.test`,employee_code:`${prefix}${tag}${String(i).padStart(4,'0')}`,department:'Finance',hired_on:'2026-03-02',employment_type:'full_time',basic_salary:'4200'}));
+   const imported=await commitEmployeeImport(admin,{companyId,records:rows,fileName:`rehearsal-${prefix}.csv`,source:{name:`rehearsal-${prefix}.csv`,content:Buffer.from(prefix+tag)}} as never);
+   return (imported as {attemptId?:string|null}).attemptId!;
+  };
+  const voided=(prefix:string)=>async()=>(await obs<{n:number}[]>`select count(*)::int n from employment where tenant_id=${TENANT}::uuid and voided_employee_code like ${prefix+tag+'%'}`)[0].n;
+  if(PHASES.has('revertSync')){
+   const attemptId=await hires('RS');
+   const preview=await previewImportRevert(admin,attemptId,employeeFullRevertHandler);
+   await phase('employeeRevertSync',()=>revertImport(admin,attemptId,employeeFullRevertHandler,{previewHash:preview.previewHash,reason:'Rehearsal revert'}));
+  }
+  if(PHASES.has('revertJob')){
+   const attemptId=await hires('RJ');
+   await phase('employeeRevertJob',async()=>{
+    const preview=await previewImportRevertForAttempt(admin,attemptId);
+    const started=await revertImportForAttempt(admin,attemptId,{previewHash:preview.previewHash,reason:'Rehearsal revert'}) as {job:{id:string}};
+    const done=await waitTerminal(started.job.id);
+    return{state:done.state,ms:Math.round(Number(done.ms)),metrics:done.metrics,error:done.error,result:done.result};
+   },voided('RJ'));
+  }
  }
+ await stopWorker();
  const chain=await verifyTenantChain(admin);
  console.log(JSON.stringify({auditChain:chain},null,1));
  await obs.end();await client.end();process.exit(0);
