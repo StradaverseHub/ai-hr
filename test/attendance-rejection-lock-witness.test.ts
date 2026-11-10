@@ -18,20 +18,31 @@ beforeAll(migrateTestDb);
 afterAll(closeAll);
 
 const dialect=new PgDialect();
+// Bounded Access waits (core/access-configuration-lock.ts) try the lock first. Only a contended try is followed by
+// the bounded blocking wait, which completes that same acquisition, so either path counts as one Access acquisition.
+const accessTryStatement='select pg_try_advisory_xact_lock(hashtextextended($1,0)) as acquired';
 const accessStatement='select pg_advisory_xact_lock(hashtextextended($1,0))';
 const attendanceSubjectStatement='select pg_advisory_xact_lock(hashtextextended($1, 0))';
 const leaveStatement="select case when app.current_tenant_id()=$1::uuid and current_setting('transaction_isolation')='read committed' and current_setting('transaction_read_only')='off' then pg_try_advisory_xact_lock(hashtextextended($2,0)) else false end as acquired";
 
 function observedCarrier(tx:Tx,tenantId:string,employmentId:string,shared:boolean,onSubjectLocked?:()=>Promise<void>){
-  let access=0,leave=0,subject=0;
+  let access=0,leave=0,subject=0,contendedAccess=false;
   const carrier=new Proxy(tx,{get(target,key){
     if(key==='execute')return async (statement:Parameters<Tx['execute']>[0])=>{
       if(typeof statement==='string')return target.execute(statement);
       const compiled=dialect.sqlToQuery(statement.getSQL());
       const text=compiled.sql.replace(/\s+/g,' ').trim();
       const params=compiled.params;
-      if(text===accessStatement&&params.length===1&&params[0]==='access-configuration:'+tenantId){
+      if(text===accessTryStatement&&params.length===1&&params[0]==='access-configuration:'+tenantId){
         access++;
+        const tried=shared
+          ?await target.execute(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${params[0]},0)) as acquired`)
+          :await target.execute(statement);
+        contendedAccess=(tried as unknown as {acquired?:boolean}[])[0]?.acquired!==true;
+        return tried;
+      }
+      if(text===accessStatement&&params.length===1&&params[0]==='access-configuration:'+tenantId){
+        if(contendedAccess)contendedAccess=false;else access++;
         if(shared)return target.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${params[0]},0))`);
       }
       if(text===leaveStatement&&params.length===2&&params[0]===tenantId&&params[1]==='leave-dependency-configuration:'+tenantId){

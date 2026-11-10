@@ -522,6 +522,7 @@ it('names the failed Home card and its catalog message key without exporting ren
   {card:'team',marker:'alert',section:null,message:'employeeHome.team.failed',count:1},
  ]}]);
  expect(JSON.stringify(result)).not.toContain(sensitive);
+ if(!result.homeFailures)throw Error('Home failure facts absent');
  for(const invalid of [
   {...result.homeFailures[0],cards:[{...result.homeFailures[0].cards[0],card:sensitive}]},
   {...result.homeFailures[0],cards:[{...result.homeFailures[0].cards[0],message:sensitive}]},
