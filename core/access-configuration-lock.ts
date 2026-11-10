@@ -40,6 +40,10 @@ export class AccessConfigurationBusyError extends Error {
 }
 
 let waiters = 0;
+// DIAGNOSTIC ONLY (never merged): records every in-flight bounded acquisition and its phase.
+const diagInflight = new Map<symbol, {phase: string; shared: boolean; started: number; caller: string}>();
+let diagSeq = 0;
+const diagCaller = () => (new Error().stack ?? '').split('\n').slice(3).filter(line => !line.includes('node_modules') && !line.includes('access-configuration-lock')).slice(0, 4).map(line => line.trim().replace(/^at /, '').replace(/\(.*\/(?:source|ai-hr)\//, '(')).join(' <- ');
 
 /** Tests only: the number of this process's connections currently waiting for an Access lock. */
 export function accessConfigurationLockWaitersForTests(): number {
@@ -48,12 +52,20 @@ export function accessConfigurationLockWaitersForTests(): number {
 
 async function acquireBounded(tx: Tx, tenantId: string, shared: boolean): Promise<void> {
   const key = accessConfigurationKey(tenantId);
+  const diagId = Symbol(); const diag = {phase: 'try', shared, started: performance.now(), caller: diagCaller()}; diagInflight.set(diagId, diag);
+  try {
   const [fast] = shared
     ? await tx.execute<{acquired: boolean}>(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) as acquired`)
     : await tx.execute<{acquired: boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${key},0)) as acquired`);
   if (fast?.acquired === true) return;
-  if (waiters >= ACCESS_CONFIGURATION_MAX_WAITERS) throw new AccessConfigurationBusyError();
+  if (waiters >= ACCESS_CONFIGURATION_MAX_WAITERS) {
+    const now = performance.now();
+    console.error('AIHR_LOCK_DIAG refused ' + JSON.stringify({seq: ++diagSeq, waiters, refused: {shared, caller: diag.caller},
+      inflight: [...diagInflight.values()].filter(row => row !== diag).map(row => ({phase: row.phase, shared: row.shared, ms: Math.round((now - row.started) * 10) / 10, caller: row.caller}))}));
+    throw new AccessConfigurationBusyError();
+  }
   waiters++;
+  diag.phase = 'waiting';
   try {
     // pg_settings is materialised before the projection runs, so `saved` is the value from before this
     // set_config. Keep any tighter limit the caller already set; 0 means "no limit".
@@ -66,9 +78,13 @@ async function acquireBounded(tx: Tx, tenantId: string, shared: boolean): Promis
     // The transaction is then aborted, so lock_timeout is not restored; SET LOCAL ends with the rollback.
     if (shared) await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`);
     else await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key},0))`);
+    diag.phase = 'granted-restoring';
     await tx.execute(sql`select set_config('lock_timeout', ${prior.saved}, true)`);
   } finally {
     waiters--;
+  }
+  } finally {
+    diagInflight.delete(diagId);
   }
 }
 
