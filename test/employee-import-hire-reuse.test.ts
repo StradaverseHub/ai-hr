@@ -5,6 +5,7 @@ import {commitEmployeeImport, validateEmployeeImport} from '../core/import';
 import type {ImportRecord} from '../lib/import-schema';
 import {hireEmployee} from '../core/org';
 import * as organisation from '../core/company-organisation';
+import {client as appClient} from '../db/client';
 import * as schema from '../db/schema';
 import {pgSqlState} from '../lib/db-error';
 import {adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
@@ -55,10 +56,47 @@ it('reuses only identical company and date facts, retaining persisted placement,
     }
     return deriveCompanyOrganisationTx(...args);
   });
+  const criteriaRevisions = () => owner.db.execute<{kind: string; revision: string}>(sql`
+    select label_kind as kind, revision from public.system_label_criteria_epoch
+    where tenant_id=${base.tenantId}::uuid order by label_kind`);
+  const revisionsBefore = new Map((await criteriaRevisions()).map(({kind, revision}) => [kind, Number(revision)]));
+  const originalDebug = appClient.options.debug;
+  let criteriaCommands = 0;
+  let departmentLocks = 0;
+  appClient.options.debug = (_connection, query) => {
+    if (query.startsWith('select app.lock_system_label_criteria(')) criteriaCommands++;
+    if (query.includes('from "department"') && query.endsWith('for share')) departmentLocks++;
+  };
+  const recordTags = organisation.recordEmploymentOrganisationTagsTx;
+  let writerConflictsChecked = false;
+  const tags = vi.spyOn(organisation, 'recordEmploymentOrganisationTagsTx').mockImplementation(async (...args) => {
+    if (!writerConflictsChecked) {
+      for (const statement of [
+        sql`update public.department set archived_at=now() where id=${base.deptA}::uuid`,
+        sql`update public.system_label_criteria_epoch set revision=revision+1
+            where tenant_id=${base.tenantId}::uuid and label_kind='department'`,
+      ]) {
+        const conflict = await owner.db.transaction(async tx => {
+          await tx.execute(sql`set local lock_timeout='100ms'`);
+          await tx.execute(statement);
+        }).then(() => null, pgSqlState);
+        expect(conflict).toBe('55P03');
+      }
+      writerConflictsChecked = true;
+    }
+    return recordTags(...args);
+  });
   try {
     const result = await commitEmployeeImport(ctx, {companyId: base.companyId, records});
     expect(result).toMatchObject({imported: 5, skipped: 0, failed: [], fileErrors: []});
     expect(lockVerified).toBe(true);
+    expect(writerConflictsChecked).toBe(true);
+    expect(criteriaCommands).toBe(records.length);
+    expect(departmentLocks).toBe(2);
+    const nativeIncrements = (await criteriaRevisions()).map(({kind, revision}) =>
+      [kind, Number(revision) - (revisionsBefore.get(kind) ?? 0)]);
+    expect(nativeIncrements).toEqual(['business_unit', 'cost_center', 'department', 'position']
+      .map(kind => [kind, 2 * records.length]));
     expect(derive.mock.calls.map(([, , ref]) => ref)).toEqual([
       {companyId: base.companyId, asOf: earlier},
       {companyId: base.companyId, asOf: later},
@@ -94,7 +132,11 @@ it('reuses only identical company and date facts, retaining persisted placement,
       const subject = byCode.get(input.employee_code)?.id;
       return [{type: 'employment.hired', subject}, {type: 'compensation.set', subject}];
     }));
-  } finally { derive.mockRestore(); }
+  } finally {
+    tags.mockRestore();
+    derive.mockRestore();
+    appClient.options.debug = originalDebug;
+  }
 });
 
 it('rolls back a late native refusal and resolves fresh facts for another file and for manual Hire', async () => {

@@ -216,14 +216,16 @@ type HireOrganisation = {
 type ImportHireFacts = {
   companies: Map<string, HireCompany>;
   organisation: Map<string, HireOrganisation>;
+  ownLabels: Set<string>;
 };
 
 /** Only Everything import keeps these facts between fresh hires in its full-file write transaction.
- * Company rows stay locked FOR SHARE and organisation publication takes the same Access lock.
+ * Company and local label rows stay locked FOR SHARE. Criteria writers share the same epoch locks,
+ * and organisation publication takes the same Access lock. The import does not write these sources.
  * Never reuse this closure after a savepoint rollback, which can release those locks.
  * Other Hire validation and all effects still run in input order for every row. */
 export function freshEmployeeImportHireTx(ctx: SessionContext, tx: Tx) {
-  const facts: ImportHireFacts = { companies: new Map(), organisation: new Map() };
+  const facts: ImportHireFacts = { companies: new Map(), organisation: new Map(), ownLabels: new Set() };
   return (input: HireParams) => runHireEmployee(ctx, input, tx,
     input.person.id || input.fromEmployeeDraftId || input.reportingManagerEmploymentId ? undefined : facts);
 }
@@ -246,7 +248,8 @@ async function runHireEmployee(ctx: SessionContext, p: HireParams, outerTx?: Tx,
     // before Criteria, catalogue/template reads or any new person/employment/assignment is written.
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // The same Criteria-before-row lock order as the canonical reference writers.
-    await lockLabelCriteriaTx(tx,ctx.tenantId);
+    if (importFacts) await lockLabelCriteriaTx(tx, ctx.tenantId, 'ordered-batch');
+    else await lockLabelCriteriaTx(tx,ctx.tenantId);
     let hireCompany = importFacts?.companies.get(p.companyId);
     if (!hireCompany) {
       [hireCompany] = await tx.select({id:company.id,country:company.country}).from(company)
@@ -266,8 +269,16 @@ async function runHireEmployee(ctx: SessionContext, p: HireParams, outerTx?: Tx,
     p.businessUnitId=organisationBusinessUnit(organisation.tags,organisation.managed,p.businessUnitId)??undefined;
     for(const [table,id,kind] of [[businessUnit,p.businessUnitId,'business_unit'],[department,p.departmentId,'department'],[position,p.positionId,'position'],[costCenter,p.costCenterId,'cost_center']] as const) {
       if(!id)continue;
-      const [active]=await tx.select({id:table.id}).from(table).where(and(eq(table.tenantId,ctx.tenantId),eq(table.id,id),isNull(table.archivedAt))).for('share');
+      const labelKey = `${p.companyId}:${kind}:${id}`;
+      if (importFacts?.ownLabels.has(labelKey)) continue;
+      const liveLabel = and(eq(table.tenantId,ctx.tenantId),eq(table.id,id),isNull(table.archivedAt));
+      const [active] = importFacts
+        ? await tx.select({id:table.id, companyId:table.companyId}).from(table).where(liveLabel).for('share')
+        : await tx.select({id:table.id}).from(table).where(liveLabel).for('share');
       if(!active || !(await labelUsableByCompany(tx,ctx.tenantId,kind,id,p.companyId)))throw new CrossCompanyError(kind==='business_unit'?'business-unit':kind==='cost_center'?'cost-center':kind);
+      if (importFacts && 'companyId' in active && active.companyId === p.companyId && importFacts.ownLabels.size < MAX_IMPORT_HIRE_FACTS) {
+        importFacts.ownLabels.add(labelKey);
+      }
     }
     if(p.businessUnitId){
       const [dept]=await tx.select({businessUnitId:department.businessUnitId}).from(department).where(eq(department.id,p.departmentId));

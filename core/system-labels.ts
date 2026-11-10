@@ -73,7 +73,15 @@ function assertKind(kind: string): asserts kind is LabelKind {
  * This is coordination only, never authorization; the database still checks tenant identity/RLS.
  * A caller-supplied transaction must invoke this before its first label FOR SHARE/FOR UPDATE.
  */
-export async function lockLabelCriteriaTx(tx: Tx, tenantId: string): Promise<void> {
+export async function lockLabelCriteriaTx(tx: Tx, tenantId: string, mode?: 'ordered-batch'): Promise<void> {
+  if (mode === 'ordered-batch') {
+    const kinds = sql.join(LABEL_KINDS.map((kind, ordinal) => sql`(${kind}::text, ${ordinal}::int)`), sql`, `);
+    // PostgreSQL evaluates the volatile target after sorting because ORDER BY uses only the ordinal.
+    // Each existing owner call still takes its lock and advances its revision in the same order.
+    await tx.execute(sql`select app.lock_system_label_criteria(${tenantId}::uuid, criteria.kind)
+      from (values ${kinds}) as criteria(kind, ordinal) order by criteria.ordinal`);
+    return;
+  }
   for (const kind of LABEL_KINDS) {
     await tx.execute(sql`select app.lock_system_label_criteria(${tenantId}::uuid, ${kind})`);
   }
