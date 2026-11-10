@@ -5104,6 +5104,13 @@
       "when": 1793330004500,
       "tag": "4800_ai_shared_leave_groups_read",
       "breakpoints": true
+    },
+    {
+      "idx": 4300,
+      "version": "7",
+      "when": 1793330004600,
+      "tag": "4900_import_history_kind",
+      "breakpoints": true
     }
   ]
 }

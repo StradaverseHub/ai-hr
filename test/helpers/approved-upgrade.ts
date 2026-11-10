@@ -70,9 +70,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4001,when:1793330004301,tag:'4601_last_login_event_index'},
  // 50d9b809: the AI Centre control for the shared_leave_groups read (docs/MIGRATION-ALLOCATION.md, 10 November 2026).
  {idx:4200,when:1793330004500,tag:'4800_ai_shared_leave_groups_read'},
+ {idx:4300,when:1793330004600,tag:'4900_import_history_kind'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '4900_import_history_kind':'2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
