@@ -10,6 +10,7 @@ import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {projectHomeAssignedWork,type EmployeeHomeTask} from '../lib/employee-home-tasks';
 import {decideLeave} from '../packs/leave/service';
 import * as perf from '../packs/performance/service';
+import * as claims from '../packs/claims/service';
 import {defaultPolicy} from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -71,6 +72,25 @@ describe('Home Waiting for You projects complete actual owner assignments',()=>{
   expect((await readEmployeeHomeTasks(subject.ctx,subject.employmentId)).total).toBe(0);
   expect((await GET(new Request('http://localhost/api/home/tasks?employmentId='+subject.employmentId))).status).toBe(403);
   for(const query of ['companyId='+b.companyId,'personId='+subject.personId,'page=0','page=-1','page=1&page=2','employmentId=a&employmentId=b'])expect((await GET(new Request('http://localhost/api/home/tasks?'+query))).status).toBe(400);
+ });
+ it('reads one Claims preview for the Home count and first page, and keeps the exact count when that preview fails',async()=>{
+  await setModule(b.tenantId,'claims','active');const a=await entitledCtx(b);
+  const manager=await employee('Fictional claim approver'),subject=await employee('Fictional claim subject',manager.employmentId);
+  manager.ctx.entitlements=a.entitlements;
+  const type=await claims.createClaimType(a,{code:'HOME_TASK',name:'Fictional Home task claim',requiresReceipt:false,defaultTaxable:false});
+  await owner.db.insert(s.claimRequest).values(Array.from({length:3},()=>({tenantId:b.tenantId,employmentId:subject.employmentId,claimTypeId:type.id,amount:'1',incurredOn:today(),status:'pending' as const})));
+  const preview=vi.spyOn(claims,'pendingClaimTaskSummary'),count=vi.spyOn(claims,'countPendingClaimTasks');
+  try{
+   const source=new OwnHomeTaskSourceRead(manager.ctx,manager.employmentId);
+   const [total,value]=await Promise.all([source.count(manager.ctx,manager.employmentId),readEmployeeHomeTasks(manager.ctx,manager.employmentId,1,undefined,source)]);
+   expect(total).toBe(3);expect(value.total).toBe(3);expect(value.items.filter(row=>row.kind==='claim')).toHaveLength(3);
+   expect(preview).toHaveBeenCalledOnce();expect(count).not.toHaveBeenCalled();
+   preview.mockClear();preview.mockRejectedValueOnce(Error('Fictional preview failure'));
+   const degraded=new OwnHomeTaskSourceRead(manager.ctx,manager.employmentId);
+   const [exact,first]=await Promise.allSettled([degraded.count(manager.ctx,manager.employmentId),readEmployeeHomeTasks(manager.ctx,manager.employmentId,1,undefined,degraded)]);
+   expect(exact).toEqual({status:'fulfilled',value:3});expect(first.status).toBe('rejected');
+   expect(preview).toHaveBeenCalledOnce();expect(count).toHaveBeenCalledOnce();
+  }finally{preview.mockRestore();count.mockRestore();}
  });
  it('lists an assigned replacement-leave decision once instead of failing the whole list as a duplicate',async()=>{
   const manager=await employee('Fictional replacement approver'),subject=await employee('Fictional replacement requester',manager.employmentId);

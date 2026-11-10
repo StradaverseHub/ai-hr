@@ -485,11 +485,100 @@ it('aggregates only closed loaded traffic cohorts, Home phases and real sampled 
  ]});
  expect(result.loadedAdvisory).toMatchObject({activityWaitSamples:2,appAdvisorySamples:2,activityWithoutAdvisorySamples:1,
   families:{'audit-chain':1,'advisory-unclassified':1,'access-configuration':1,'leave-dependency-employment':1}});
- expect(result.homeFailures).toEqual([{role:'employee',phase:'loaded',count:2},{role:'manager',phase:'baseline',count:1}]);
+ expect(result.homeFailures).toEqual([{role:'employee',phase:'loaded',count:2,cards:[]},{role:'manager',phase:'baseline',count:1,cards:[]}]);
  expect(JSON.stringify(result)).not.toContain(sensitive);
  expect(validateWorkerDriverFailure({...result,traffic:{...result.traffic,omitted:1}})).toBeNull();
  expect(validateWorkerDriverFailure({...result,loadedAdvisory:{...result.loadedAdvisory,families:{secret:1}}})).toBeNull();
  expect(validateWorkerDriverFailure({...result,loadEntered:false})).toBeNull();
+});
+
+it('names the failed Home card and its catalog message key without exporting rendered text',async()=>{
+ const {homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,validateWorkerDriverFailure,workerDriverFailureBytes}
+  =await import('../scripts/performance/worker-comparison-failure.mjs');
+ const sensitive='PERF Person 0004 private-id 4f0c';
+ const catalog=homeFailureMessageCatalog([{employeeHome:{tasks:{timeout:'Your assigned work is taking longer than expected. Try again.',
+  failed:'Your assigned work is unavailable. Try again.'},team:{failed:'Shared team status could not be loaded.'}},
+  'not-a-key!':{value:sensitive}}]);
+ const nodes=[
+  {card:'tasks',marker:'alert',section:null,text:' Your assigned work is taking longer than expected. Try again. '},
+  {card:'team',marker:'alert',section:null,text:'Shared team status could not be loaded.'},
+  {card:sensitive,marker:sensitive,section:sensitive,text:sensitive},
+  {card:'today',marker:'today-unavailable',section:'today-at-a-glance',text:sensitive},
+ ];
+ const facts=homeCardFailureFacts(nodes,catalog);
+ expect(facts).toEqual([
+  {card:'tasks',marker:'alert',section:null,message:'employeeHome.tasks.timeout'},
+  {card:'team',marker:'alert',section:null,message:'employeeHome.team.failed'},
+  {card:'outside-card',marker:'alert',section:'other',message:'unrecognized'},
+  {card:'today',marker:'today-unavailable',section:'today-at-a-glance',message:'unrecognized'},
+ ]);
+ const report={homeCardFailures:[{role:'manager',phase:'baseline',messages:nodes.map(node=>node.text),cards:facts},
+  {role:'manager',phase:'baseline',messages:[sensitive],cards:[facts[0],{...facts[1],message:sensitive}]}]};
+ const result=projectWorkerDriverFailure('preflight-checks',null,report);
+ expect(validateWorkerDriverFailure(result)).toEqual(result);
+ expect(result.homeFailures).toEqual([{role:'manager',phase:'baseline',count:2,cards:[
+  {card:'tasks',marker:'alert',section:null,message:'employeeHome.tasks.timeout',count:2},
+  {card:'outside-card',marker:'alert',section:'other',message:'unrecognized',count:1},
+  {card:'team',marker:'alert',section:null,message:'employeeHome.team.failed',count:1},
+ ]}]);
+ expect(JSON.stringify(result)).not.toContain(sensitive);
+ for(const invalid of [
+  {...result.homeFailures[0],cards:[{...result.homeFailures[0].cards[0],card:sensitive}]},
+  {...result.homeFailures[0],cards:[{...result.homeFailures[0].cards[0],message:sensitive}]},
+  {...result.homeFailures[0],cards:[{...result.homeFailures[0].cards[0],section:sensitive}]},
+  {...result.homeFailures[0],cards:[...result.homeFailures[0].cards,{card:'today',marker:'alert',section:null,message:'unrecognized',count:1}]},
+  {role:'manager',phase:'baseline',count:2},
+ ])expect(validateWorkerDriverFailure({...result,homeFailures:[invalid]})).toBeNull();
+ // A server-rendered Today section is outside every card, so its section names it.
+ const todayFacts=homeCardFailureFacts([{card:null,marker:'today-unavailable',section:'today-needs-you',text:'This section could not load.'}],
+  homeFailureMessageCatalog([{today:{unavailable:'This section could not load.'}}]));
+ const todayResult=projectWorkerDriverFailure('preflight-checks',null,{homeCardFailures:[{role:'manager',phase:'baseline',messages:[],cards:todayFacts}]});
+ expect(validateWorkerDriverFailure(todayResult)).toEqual(todayResult);
+ expect(todayResult.homeFailures).toEqual([{role:'manager',phase:'baseline',count:1,cards:[
+  {card:'outside-card',marker:'today-unavailable',section:'today-needs-you',message:'today.unavailable',count:1}]}]);
+ // Every role and phase failing every card still fits the runner's bounded read.
+ const many={homeCardFailures:['employee','manager','companyHR','groupHR'].flatMap(role=>['baseline','loaded'].flatMap(phase=>
+  ['calendar','celebrations','notices','summary','tasks','team','timeOff','today'].map(card=>({role,phase,messages:[],
+   cards:[{card,marker:'read-unavailable',section:null,message:'employeeHome.'+card+'.timeoutWithAVeryLongCatalogKeySegment'}]})))),
+  coverage:Array.from({length:10},()=>({status:'failed'}))};
+ const bounded=projectWorkerDriverFailure('loaded-acceptance','movement',many);
+ expect(validateWorkerDriverFailure(bounded)).toEqual(bounded);
+ expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(workerDriverFailureBytes);
+ expect(bounded.homeFailures).toHaveLength(8);expect(bounded.counts.homeCardFailures).toBe(64);
+});
+
+it('names the failing driver step, route and authored assertion without exporting a fixture value',async()=>{
+ const {projectWorkerDriverFailure,validateWorkerDriverFailure,workerStageFailureFact}=await import('../scripts/performance/worker-comparison-failure.mjs');
+ const assert=(await import('node:assert/strict')).default;
+ const sensitive='PERF Person 0004 person4@example.invalid';
+ const failure=(work:()=>void)=>{try{work();}catch(error){return error;}throw Error('expected an assertion');};
+ const inventory=failure(()=>assert.deepEqual(['calendar','tasks',sensitive],['calendar','summary','tasks'],'fictional Home must render every expected card'));
+ const home=workerStageFailureFact({step:'home-cards',role:'manager',route:'/',sourceFile:'system-load-owner.mjs',sourceLine:917,error:inventory,navigation:null});
+ expect(home).toEqual({step:'home-cards',role:'manager',route:'/',sourceFile:'system-load-owner.mjs',sourceLine:917,navigation:null,
+  assertion:{message:'fictional Home must render every expected card',expected:null,actual:null,missing:['summary'],unexpected:[]}});
+ const census=failure(()=>assert(false,'Navigation rendered failure state or browser/server error'));
+ const navigation=workerStageFailureFact({step:'legacy-navigation-capture',role:'employee',route:null,sourceFile:'navigation-browser-capture.ts',sourceLine:458,error:census,
+  navigation:{scenarioId:'submenu.claims.types.employee.denied',checkId:null,counts:{busy:0,unavailable:0,alerts:1,http500:0,pageErrors:0}}});
+ expect(navigation).toMatchObject({assertion:{message:'Navigation rendered failure state or browser/server error'},
+  navigation:{scenarioId:'submenu.claims.types.employee.denied',check:null,counts:{alerts:1}}});
+ // Generated assertion text and values never leave, whatever they contain.
+ const generated=workerStageFailureFact({step:sensitive,role:sensitive,route:'/personnel/'+sensitive,sourceFile:sensitive,sourceLine:-1,
+  error:failure(()=>assert.equal(sensitive,'other')),navigation:{scenarioId:sensitive,checkId:sensitive,counts:{secret:sensitive}}});
+ expect(generated).toEqual({step:'unavailable',role:null,route:'other',sourceFile:null,sourceLine:null,navigation:null,
+  assertion:{message:null,expected:null,actual:null,missing:[],unexpected:[]}});
+ expect(workerStageFailureFact({step:'navigation',error:Error(sensitive)}).assertion).toBeNull();
+ const numeric=workerStageFailureFact({step:'home-cards',error:failure(()=>assert.equal(3,0,'cards'))});
+ expect(numeric.assertion).toMatchObject({expected:0,actual:3,message:'cards'});
+ const result=projectWorkerDriverFailure('sign-in-and-navigation',null,{workerStageFailure:home});
+ expect(validateWorkerDriverFailure(result)).toEqual(result);expect(result.stageFailure).toEqual(home);
+ expect(JSON.stringify([home,navigation,generated,result])).not.toContain(sensitive);
+ expect(projectWorkerDriverFailure('sign-in-and-navigation',null,{workerStageFailure:{...home,route:sensitive}}).stageFailure).toBeNull();
+ expect(projectWorkerDriverFailure('sign-in-and-navigation',null,{}).stageFailure).toBeNull();
+ for(const invalid of [{...home,sourceFile:sensitive},{...home,assertion:{...home.assertion,message:sensitive}},{...home,assertion:{...home.assertion,missing:[sensitive]}},{...navigation,navigation:{...navigation.navigation,scenarioId:sensitive}}])
+  expect(validateWorkerDriverFailure({...result,stageFailure:invalid})).toBeNull();
+ const signedIn=projectWorkerDriverFailure('sign-in-and-navigation',null,{homeCardFailures:[{role:'manager',phase:'sign-in-preflight',messages:[],cards:[{card:'tasks',marker:'alert',section:null,message:'employeeHome.tasks.timeout'}]}]});
+ expect(signedIn.homeFailures).toEqual([{role:'manager',phase:'sign-in-preflight',count:1,cards:[{card:'tasks',marker:'alert',section:null,message:'employeeHome.tasks.timeout',count:1}]}]);
+ expect(validateWorkerDriverFailure(signedIn)).toEqual(signedIn);
 });
 
 it('keeps native failure categories bounded, independent of the loaded sampling phase and free of process data',async()=>{
