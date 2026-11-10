@@ -4,7 +4,7 @@ import {withTenant, type SessionContext, type Tx} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
 import type {LeaveImportJobProgress, LeaveImportJobState} from '../lib/leave-import-job';
 import type {LeaveImportRecord, LeaveImportResult, LeaveImportSource} from '../lib/leave-import-schema';
-import type {LeaveImportPlanRow} from './leave-import';
+import type {LeaveImportPlanRow} from '../packs/leave/service';
 
 export type LeaveImportJobRow = {
   id: string; tenant_id: string; created_by: string; context: SessionContext; records: LeaveImportRecord[];

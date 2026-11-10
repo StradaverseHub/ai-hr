@@ -12,8 +12,7 @@ import {withTenant, type SessionContext} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
 import {publicErrorMessage} from '../lib/public-error';
 import {freshImportContext} from './bank-import-worker';
-import {LeaveDependencyUnavailable} from './leave-dependency-lock';
-import {appendLeaveImportCompletedTx, applyLeaveImportRowTx, planLeaveImport} from './leave-import';
+import {LeaveDependencyUnavailable, appendLeaveImportCompletedTx, applyLeaveImportRowTx, planLeaveImport} from '../packs/leave/service';
 import {leaveImportJobTx, type LeaveImportJobRow} from './leave-import-job';
 
 const CHUNK_BUDGET_MS = 250;
