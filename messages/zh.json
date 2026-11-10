@@ -2965,7 +2965,8 @@
         "progressCount": "已完成 {done}/{total} 个步骤",
         "backgroundHelp": "您可以离开此页面。导入完成前，其他人看不到新员工。",
         "waiting": "正在等待导入进程。进度已保存；请勿再次上传文件。",
-        "otherRunning": "另一项员工导入仍在进行。请等待其完成后再开始新的导入。"
+        "otherRunning": "另一项员工导入仍在进行。请等待其完成后再开始新的导入。",
+        "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务一运行便会自动开始。"
       }
     },
     "wizard": {
@@ -37247,5 +37248,23 @@
     "saveAttendance": "保存考勤设置",
     "lateGrace": "迟到宽限（分钟）",
     "earlyGrace": "早退宽限（分钟）"
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "员工导入已完成",
+          "body": "打开导入历史，查看已添加的员工。"
+        },
+        "failed": {
+          "title": "员工导入已停止",
+          "body": "未添加任何员工。打开导入历史查看原因。"
+        },
+        "cancelled": {
+          "title": "员工导入已取消",
+          "body": "未添加任何员工。打开导入历史查看详情。"
+        }
+      }
+    }
   }
 }

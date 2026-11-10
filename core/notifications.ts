@@ -476,6 +476,12 @@ const webNotificationRecipients:NotificationRecipientReaders<Tx>={
       return [...new Set(rows.map((r) => r.e))];
     },
   approvalChase:source=>async(tx,ev,payload)=>{if(payload?.source!==source||typeof payload?.stage!=='string'||!ev.subjectEmploymentId)return [];return (await currentApproverEmploymentsTx(tx,source,ev.aggregateId,ev.subjectEmploymentId,payload.stage))??[];},
+  // The creator's own current employment, only for the bulk job's recorded notice event (migration 9003).
+  bulkJobInitiator:async(tx,ev)=>{
+      if(!ev.id)return [];
+      const rows=await tx.execute<{id:string}>(sql`select r as id from app.bulk_job_notice_recipients(${ev.id}::uuid) r`);
+      return [...new Set(rows.map(row=>row.id))];
+    },
 };
 const REGISTRY=createNotificationRegistry(webNotificationRecipients);
 

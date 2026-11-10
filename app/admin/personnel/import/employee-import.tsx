@@ -44,7 +44,8 @@ import {
   EMPLOYEE_XLSX_FILENAME,
   EMPLOYEE_XLSX_SHEETS,
 } from '@/lib/import-template-xlsx';
-import { validateImportAction, commitImportAction } from './actions';
+import { validateImportAction, commitImportAction, reopenEmployeeImportEvaluationAction } from './actions';
+import type {EmployeeImportEvaluationBinding} from '@/lib/personnel-import-evaluation';
 import {EmployeeImportJobPanel} from './employee-import-progress';
 import {EMPLOYEE_IMPORT_ALREADY_RUNNING,employeeImportActive,type EmployeeImportProgress} from '@/lib/employee-import-job';
 
@@ -154,6 +155,15 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   const [result, setResult] = useState<ImportResult | null>(null);
   // Background employee import (design B): the running job, resumed after navigation.
   const [importJob, setImportJob] = useState<EmployeeImportProgress | null>(null);
+  // An evaluation-bound import runs as the same background job; its receipt is read once the job finishes.
+  const boundJob=useRef<{jobId:string;binding:EmployeeImportEvaluationBinding;companyId:string}|null>(null);
+  const settleBoundJob=(jobId:string,completed:boolean)=>{
+    const bound=boundJob.current;if(!bound||bound.jobId!==jobId)return;boundJob.current=null;
+    if(!completed){evaluation.current?.commitUncertain();return;}
+    void reopenEmployeeImportEvaluationAction(bound.binding,bound.companyId)
+      .then(outcome=>{if(outcome.kind==='evaluation'&&outcome.receipt.state==='committed')evaluation.current?.acceptCommit(outcome.receipt);else evaluation.current?.commitUncertain();})
+      .catch(()=>evaluation.current?.commitUncertain());
+  };
   useEffect(()=>{
     let alive=true;
     fetch('/admin/personnel/import/employee/jobs',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(p=>{if(alive&&p?.jobs){const active=(p.jobs as EmployeeImportProgress[]).find(job=>employeeImportActive(job.state));if(active)setImportJob(active);}}).catch(()=>undefined);
@@ -468,7 +478,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
             started=payload as {job:EmployeeImportProgress};
           }
         }catch(cause){if(binding)evaluation.current?.commitUncertain();throw cause;}
-        if(started){setImportJob(started.job);setPhase('done');return;}
+        if(started){boundJob.current=binding?{jobId:started.job.id,binding,companyId}:null;setImportJob(started.job);setPhase('done');return;}
         if(binding)evaluation.current?.acceptCommit(r!.evaluationReceipt);
         setResult(r!);
         setPhase('done');
@@ -779,7 +789,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         </div>
       )}
 
-      {importJob && !result && <EmployeeImportJobPanel job={importJob} onFinished={r=>{setImportJob(null);setResult(r);setPhase('done');router.refresh();}}/>}
+      {importJob && !result && <EmployeeImportJobPanel job={importJob} onFinished={r=>{settleBoundJob(importJob.id,r.fileErrors.length===0);setImportJob(null);setResult(r);setPhase('done');router.refresh();}}/>}
 
       {result && (
         <Card className="overflow-hidden border-emerald-200 dark:border-emerald-500/30">

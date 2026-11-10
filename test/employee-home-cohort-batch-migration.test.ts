@@ -65,6 +65,8 @@ it('compares chunked dated-company proof with scalar Home cohorts over more than
   expected=await measure();report.phases.original={elapsedMs:expected.elapsedMs};
   for(const statement of migration)await owner.client.unsafe(statement);
   await owner.client.unsafe(stagedImport!);
+  // ...and 9004's release-aware rewrite of that predicate (its DO block, for this one signature).
+  await owner.client.unsafe(`DO $do$ BEGIN EXECUTE regexp_replace(pg_get_functiondef('app._home_peer_cohort(uuid,text)'::regprocedure),'(\\m[a-z_]+\\.)?import_pending_attempt_id IS NULL','app.import_marker_visible(\\1import_pending_attempt_id)','g'); END $do$`);
   const [applied]=await owner.client<{ddl:string}[]>`select pg_get_functiondef('app._home_peer_cohort(uuid,text)'::regprocedure) as ddl`;
   expect(applied.ddl).toEqual(candidate);expect(installed.values).toEqual(expected.values);
   const [metadata]=await owner.client<{metadata:unknown;callable:boolean}[]>`select jsonb_build_object('owner',proowner,'acl',proacl,'securityDefiner',prosecdef,'volatility',provolatile,'config',proconfig,'arguments',proargnames) as metadata,

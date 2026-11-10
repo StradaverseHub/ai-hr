@@ -5391,6 +5391,20 @@
       "when": 1793330090001,
       "tag": "9001_employee_import_staged_job",
       "breakpoints": true
+    },
+    {
+      "idx": 9003,
+      "version": "7",
+      "when": 1793330090003,
+      "tag": "9003_bulk_job_kernel",
+      "breakpoints": true
+    },
+    {
+      "idx": 9004,
+      "version": "7",
+      "when": 1793330090004,
+      "tag": "9004_import_release_visibility",
+      "breakpoints": true
     }
   ]
 }

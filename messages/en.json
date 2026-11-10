@@ -2965,7 +2965,8 @@
         "progressCount": "{done} of {total} steps complete",
         "backgroundHelp": "You can leave this page. Nobody sees the new employees until the import finishes.",
         "waiting": "Waiting for the import worker. Progress is saved; do not upload the file again.",
-        "otherRunning": "Another employee import is still running. Wait for it to finish before starting a new one."
+        "otherRunning": "Another employee import is still running. Wait for it to finish before starting a new one.",
+        "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is."
       }
     },
     "wizard": {
@@ -37247,5 +37248,23 @@
     "saveAttendance": "Save Attendance settings",
     "lateGrace": "Late In Grace (Minutes)",
     "earlyGrace": "Early Out Grace (Minutes)"
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "Employee import finished",
+          "body": "Open Import History to see the employees that were added."
+        },
+        "failed": {
+          "title": "Employee import stopped",
+          "body": "No employees were added. Open Import History to see why."
+        },
+        "cancelled": {
+          "title": "Employee import cancelled",
+          "body": "No employees were added. Open Import History for details."
+        }
+      }
+    }
   }
 }

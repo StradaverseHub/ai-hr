@@ -88,6 +88,14 @@ results commit together. A restart replays the interrupted phase, and an attempt
 writes already committed supplies its recorded outcomes without repeating them.
 Include both import paths in staging worker acceptance.
 
+## Shared bulk-job kernel
+
+The same protected worker also runs every kind on the shared bulk-job kernel (migration 9003,
+`core/bulk-job-handlers.ts`), starting with the staged employee import (EMPLOYEE-IMPORT.md). Each loop
+iteration runs one Bank tick, one Individual Transaction tick and one bounded bulk-job unit. The worker records a
+heartbeat with the kinds it serves; `scripts/check-import-worker.ts` (run by `deploy/deploy.sh`) reports a kind
+without a live worker. Include the employee import journey in staging worker acceptance.
+
 ## Protected staging update after first installation
 
 `bank_import_worker_upgrade_v1.py` is a staging-only two-step update, separate from

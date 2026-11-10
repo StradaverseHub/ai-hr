@@ -12,10 +12,10 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness'
 const migration=readFileSync(new URL('../db/migrations/2701_personnel_typed_overview_filter_fields.sql',import.meta.url),'utf8');
 const typed='app.personnel_overview_filter_fields(date,uuid[])';
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(resetDb);
-// Migration 9001 later adds the staged-import filter to this body; 2701 pins its exact predecessor, so replay from that shape.
+// Migrations 9001/9004 later add the release-aware staged-import filter to this body; 2701 pins its exact predecessor, so replay from that shape.
 const restoreNarrowPredecessor=async(tx:{unsafe:(q:string)=>Promise<unknown>})=>{
  const rows=await tx.unsafe("select pg_get_functiondef('app.personnel_overview_narrow_rows(date,uuid[])'::regprocedure) as ddl") as {ddl:string}[];
- await tx.unsafe(rows[0].ddl.replace(/ AND e\.import_pending_attempt_id IS NULL/g,''));
+ await tx.unsafe(rows[0].ddl.replace(/ AND app\.import_marker_visible\(e\.import_pending_attempt_id\)/g,''));
 };
 const normalize=(value:Awaited<ReturnType<typeof readPersonnelOverview>>)=>({...value,organisationChoices:{...value.organisationChoices,rows:value.organisationChoices.rows.map(row=>JSON.stringify(row)).sort()}});
 

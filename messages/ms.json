@@ -2965,7 +2965,8 @@
         "progressCount": "{done} daripada {total} langkah selesai",
         "backgroundHelp": "Anda boleh tinggalkan halaman ini. Tiada sesiapa melihat pekerja baharu sehingga import selesai.",
         "waiting": "Menunggu pekerja import. Kemajuan disimpan; jangan muat naik fail ini sekali lagi.",
-        "otherRunning": "Satu lagi import pekerja masih berjalan. Tunggu sehingga selesai sebelum memulakan yang baharu."
+        "otherRunning": "Satu lagi import pekerja masih berjalan. Tunggu sehingga selesai sebelum memulakan yang baharu.",
+        "workerUnavailable": "Perkhidmatan import belum berjalan. Import anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
       }
     },
     "wizard": {
@@ -37247,5 +37248,23 @@
     "saveAttendance": "Simpan tetapan Kehadiran",
     "lateGrace": "Toleransi Lewat Masuk (Minit)",
     "earlyGrace": "Toleransi Keluar Awal (Minit)"
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "Import pekerja selesai",
+          "body": "Buka Sejarah Import untuk melihat pekerja yang ditambah."
+        },
+        "failed": {
+          "title": "Import pekerja dihentikan",
+          "body": "Tiada pekerja ditambah. Buka Sejarah Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Import pekerja dibatalkan",
+          "body": "Tiada pekerja ditambah. Buka Sejarah Import untuk butiran."
+        }
+      }
+    }
   }
 }

@@ -40,7 +40,7 @@ export function EmployeeImportJobPanel({job:initial,onFinished}:{job:EmployeeImp
   <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="break-all text-sm font-semibold">{job.sourceName}</h3><span role="status" className="text-sm">{stateText}</span></div>
   {employeeImportActive(job.state)&&<><progress aria-label={stateText} value={percent} max={100} className="h-2 w-full accent-primary"/>
    <p className="text-xs text-muted-foreground">{job.phase&&job.state==='importing'?`${j(`phase.${job.phase}`)} · `:''}{j('progressCount',{done:job.stepsDone,total:job.stepsTotal})}</p>
-   <p className="text-xs text-muted-foreground">{checkedAt-Date.parse(job.updatedAt)>90_000?j('waiting'):j('backgroundHelp')}</p></>}
+   <p className="text-xs text-muted-foreground">{job.state==='queued'&&job.worker==='unavailable'?j('workerUnavailable'):checkedAt-Date.parse(job.updatedAt)>90_000?j('waiting'):j('backgroundHelp')}</p></>}
   {error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
  </Card>;
 }

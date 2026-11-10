@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import {parseBulkJobNoticeKey} from '@/lib/bulk-job';
 import { useIsMonolith } from '@/components/ui-theme-context';
 import {useShellApprovalFacts} from '@/components/shell-approval-facts';
 import { Bell, Search } from 'lucide-react';
@@ -104,10 +105,18 @@ export function NotificationCenter({
     const title=/^payrollReadiness\.reminder\.(title\.(?:lead5|lead2|lead1|soon))$/.exec(item.title),body=/^payrollReadiness\.reminder\.(body\.(?:own|approvals|both))$/.exec(item.body);
     return title&&body?{title:tReminder(title[1]),body:tReminder(body[1])}:null;
   },[tReminder]);
-  const notificationText=useCallback((item:NotificationRow)=>reminderText(item)??(item.kind==='employee-home.greeting'
+  // Shared bulk-job kernel completion notice (core/notification-registry.ts 'bulk-job.finished'): exact keys only.
+  const tBulk=useTranslations('bulkJobs.notification');
+  const bulkJobText=useCallback((item:NotificationRow)=>{
+    if(item.kind!=='bulk-job.finished')return null;
+    const title=parseBulkJobNoticeKey(item.title),body=parseBulkJobNoticeKey(item.body);
+    return title&&body&&title.part==='title'&&body.part==='body'&&title.group===body.group&&title.outcome===body.outcome
+      ?{title:tBulk(`${title.group}.${title.outcome}.title`),body:tBulk(`${body.group}.${body.outcome}.body`)}:null;
+  },[tBulk]);
+  const notificationText=useCallback((item:NotificationRow)=>reminderText(item)??bulkJobText(item)??(item.kind==='employee-home.greeting'
     &&item.title==='employeeHome.greetingNotification.title'&&item.body==='employeeHome.greetingNotification.body'
     ?{title:tGreeting('title'),body:tGreeting('body')}:typeof item.kind==='string'&&item.body==='letters.notifications.body'&&item.title==='letters.notifications.'+item.kind.slice(7)&&['letter.approval','letter.approvalReminder','letter.escalation','letter.issued','letter.acknowledgementReminder','letter.returned','letter.rejected','letter.approved','letter.acknowledged','letter.signed','letter.created'].includes(item.kind)
-    ?{title:tLetter(item.kind.slice(7)),body:tLetter('body')}:{title:item.title,body:item.body}),[tGreeting,tLetter,reminderText]);
+    ?{title:tLetter(item.kind.slice(7)),body:tLetter('body')}:{title:item.title,body:item.body}),[tGreeting,tLetter,reminderText,bulkJobText]);
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabKey>('notifications');

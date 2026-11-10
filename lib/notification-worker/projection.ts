@@ -56,6 +56,7 @@ const nativeReaders:NotificationRecipientReaders<Reader>={
  noticePublished:(r,e)=>ids(r,e,'notice-audience'),
  payrollClosed:(r,e)=>ids(r,e,'payroll-audience'),
  approvalChase:()=>unsupported,
+ bulkJobInitiator:unsupported,
 };
 /** Closed source-owned support, not permission or an installation receipt.
  * Unknown/missing metadata never falls back to subject audience. */
@@ -95,6 +96,7 @@ export const nativeNotificationReaderSupport:Readonly<Record<keyof NotificationR
  noticePublished:true,
  payrollClosed:true,
  approvalChase:false,
+ bulkJobInitiator:false,
 });
 export function nativeNotificationRecipeImplemented(spec:Pick<NotificationSpec<Reader>,'recipientAudience'|'recipientPort'>,version:2|3){
  if(spec.recipientAudience==='subject'||spec.recipientAudience==='none')return true;

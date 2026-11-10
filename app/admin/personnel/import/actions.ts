@@ -5,7 +5,7 @@ import {parseCostAllocationCsv} from '@/lib/cost-allocation-import';
 import {PERSONNEL_REGISTER_KINDS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterRecords} from '@/lib/personnel-register-import';
 import { revalidatePath } from 'next/cache';
 import {createEmployeeImportJob,EmployeeImportJobError} from '@/core/employee-import-job';
-import type {EmployeeImportProgress} from '@/lib/employee-import-job';
+import {EMPLOYEE_IMPORT_ALREADY_RUNNING,type EmployeeImportProgress} from '@/lib/employee-import-job';
 import { requireAdmin } from '@/lib/authz';
 import {getBrowserCommandSession} from '@/lib/session';
 import {beginEmployeeImportEvaluation,prepareEmployeeImportEvaluationCommit,reopenEmployeeImportEvaluation,recordEmployeeImportEvaluationTelemetry,associateReusedEmployeeImportHeader,eraseOwnImportEvaluationMetadata,EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE} from '@/core/personnel-import-evaluation';
@@ -16,7 +16,7 @@ const parseEmployee=(text:string)=>parsePersonnelImportCsv(text,{columns:[...IMP
 const parseFamily=(text:string)=>parsePersonnelImportCsv(text,{columns:[...DEPENDENT_IMPORT_COLUMNS.required,...DEPENDENT_IMPORT_COLUMNS.optional],sheet:'family',resolvers:personnelImportLabelResolvers});
 import {
   validateEmployeeImport,
-  commitEmployeeImport,
+  measuredImportReplay,
   type ImportPreview,
   type ImportResult,
 } from '@/core/import';
@@ -77,7 +77,7 @@ export async function commitImportAction(
 ): Promise<(ImportResult & {evaluationReceipt?:EmployeeImportEvaluationReceipt}) | {job:EmployeeImportProgress;existing:boolean} | EmployeeImportFailure> {
   if(evaluationBinding!==undefined){
     try{return await commitMeasuredEmployeeImport(csv,companyId,evaluationBinding,dependentsCsv,registers,allocationsCsv,allocationToken,fileName);}
-    catch{return {error:EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE};}
+    catch(error){if(error instanceof EmployeeImportJobError&&error.message===EMPLOYEE_IMPORT_ALREADY_RUNNING)return {error:error.message};return {error:EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE};}
   }
   const s = await requireAdmin();
   try {
@@ -85,6 +85,7 @@ export async function commitImportAction(
     const source=pastedSource(csv,fileName);
     const started=await createEmployeeImportJob(s,{companyId,csv,fileName:fileName??'',dependentsCsv:dependentsCsv??'',registers:registers??{},allocationsCsv:allocationsCsv??'',allocationToken},source);
     revalidatePath('/admin/personnel/import');
+    if('replay' in started)throw new Error('Unexpected receipt replay without an evaluation binding.');
     return started;
   } catch(error) { if(error instanceof EmployeeImportJobError)return {error:error.message}; return employeeImportFailure(error,'commit'); }
 }
@@ -103,10 +104,17 @@ export async function beginEmployeeImportEvaluationAction(metadata:unknown):Prom
 export async function prepareEmployeeImportEvaluationCommitAction(preparation:unknown,csv:string,companyId:string,dependentsCsv?:string,registers?:PersonnelRegisterTexts,allocationsCsv?:string):Promise<EmployeeImportEvaluationPublicResult>{
  try{const captured=structuredClone(preparation),inputs=measuredInputs(csv,companyId,dependentsCsv,registers,allocationsCsv),ctx=await getBrowserCommandSession();return{kind:'evaluation',receipt:await prepareEmployeeImportEvaluationCommit(ctx,captured,inputs)};}catch{return{kind:'unavailable',message:EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE};}
 }
-async function commitMeasuredEmployeeImport(csv:string,companyId:string,binding:EmployeeImportEvaluationBinding,dependentsCsv?:string,registers?:PersonnelRegisterTexts,allocationsCsv?:string,allocationToken?:string,fileName?:string){
- try{const inputs=measuredInputs(csv,companyId,dependentsCsv,registers,allocationsCsv),captured=EmployeeImportEvaluationBindingSchema.parse(structuredClone(binding)),ctx=await getBrowserCommandSession();
-  const result=await commitEmployeeImport(ctx,{...inputs,allocationToken,fileName:fileName??'',evaluationBinding:captured});revalidatePath('/admin/personnel');revalidatePath('/admin/personnel/import');return result;
- }catch{throw Error(EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE);}
+/** Evaluation-bound import: the same background job as every import, carrying the receipt binding. The worker claims
+ * the binding when writing starts and completes the receipt in the activation transaction; a binding that already
+ * committed replays its receipt here instead of importing twice. The browser reads the receipt with the reopen action. */
+async function commitMeasuredEmployeeImport(csv:string,companyId:string,binding:EmployeeImportEvaluationBinding,dependentsCsv?:string,registers?:PersonnelRegisterTexts,allocationsCsv?:string,allocationToken?:string,fileName?:string):Promise<(ImportResult&{evaluationReceipt?:EmployeeImportEvaluationReceipt})|{job:EmployeeImportProgress;existing:boolean}>{
+ const captured=structuredClone({csv,companyId,dependentsCsv,registers,allocationsCsv});
+ measuredInputs(captured.csv,captured.companyId,captured.dependentsCsv,captured.registers,captured.allocationsCsv);
+ const bound=EmployeeImportEvaluationBindingSchema.parse(structuredClone(binding)),ctx=await getBrowserCommandSession();
+ const started=await createEmployeeImportJob(ctx,{companyId:captured.companyId,csv:captured.csv,fileName:fileName??'',dependentsCsv:captured.dependentsCsv??'',registers:captured.registers??{},allocationsCsv:captured.allocationsCsv??'',allocationToken},pastedSource(captured.csv,fileName),bound);
+ revalidatePath('/admin/personnel/import');
+ if('replay' in started){revalidatePath('/admin/personnel');return measuredImportReplay(captured.companyId,started.replay);}
+ return started;
 }
 /** Recovery is metadata/event reconciliation only. It can NEVER re-import the original source. */
 export async function reopenEmployeeImportEvaluationAction(binding:EmployeeImportEvaluationBinding,companyId:string):Promise<EmployeeImportEvaluationPublicResult>{

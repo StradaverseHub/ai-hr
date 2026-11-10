@@ -11688,21 +11688,28 @@ export const aiAgentPrincipal=agentPrincipalPrivate.table('ai_agent_principal',{
  id:id(),tenantId:uuid('tenant_id').notNull().unique().references(()=>tenant.id),createdAt:createdAt(),
 });
 
-/** Staged employee import job (migration 9001). Same durable queue shape as bank_import_job; the plan is persisted before any write. */
-export const employeeImportJob=pgTable('employee_import_job',{
- id:id(),tenantId:tenantId(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),context:jsonb('context').notNull().$type<Record<string,unknown>>(),operationKey:uuid('operation_key').notNull(),
- companyId:uuid('company_id').notNull().references(()=>company.id),companyIds:uuid('company_ids').array().notNull().default(sql`'{}'`),
- sourceName:text('source_name').notNull(),sourceHash:text('source_hash').notNull(),sourceBytes:integer('source_bytes').notNull(),sourceContent:bytea('source_content'),input:jsonb('input').$type<Record<string,unknown>>(),
- attemptId:uuid('attempt_id').references(()=>importAttempt.id),state:text('state').notNull().default('queued').$type<import('../lib/employee-import-job').EmployeeImportState>(),phase:text('phase').$type<import('../lib/employee-import-job').EmployeeImportPhase>(),
- total:integer('total').notNull().default(0),valid:integer('valid').notNull().default(0),invalid:integer('invalid').notNull().default(0),stepsTotal:integer('steps_total').notNull().default(0),stepsDone:integer('steps_done').notNull().default(0),imported:integer('imported').notNull().default(0),
- transientRetries:integer('transient_retries').notNull().default(0),chunks:integer('chunks').notNull().default(0),maxChunkMs:integer('max_chunk_ms').notNull().default(0),activationMs:integer('activation_ms'),
- plan:jsonb('plan').$type<Record<string,unknown>>(),result:jsonb('result').$type<Record<string,unknown>>(),error:text('error'),errors:jsonb('errors').notNull().default([]).$type<unknown[]>(),
- createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
-},t=>[uniqueIndex('employee_import_job_operation').on(t.tenantId,t.createdBy,t.operationKey),uniqueIndex('employee_import_job_one_active').on(t.tenantId).where(sql`${t.state} in ('queued','validating','importing','activating','discarding')`),index('employee_import_job_queue').on(t.updatedAt,t.createdAt).where(sql`${t.state} in ('queued','validating','importing','activating','discarding')`)]);
-export const employeeImportStep=pgTable('employee_import_step',{
- jobId:uuid('job_id').notNull().references(()=>employeeImportJob.id,{onDelete:'cascade'}),tenantId:tenantId(),seq:integer('seq').notNull(),kind:text('kind').notNull().$type<'employee'|'superior'|'register'>(),rowNum:integer('row_num'),
- state:text('state').notNull().default('pending').$type<'pending'|'applied'>(),payload:jsonb('payload').notNull().$type<Record<string,unknown>>(),employmentId:uuid('employment_id'),personId:uuid('person_id'),error:text('error'),
-},t=>[primaryKey({columns:[t.jobId,t.seq]}),index('employee_import_step_pending').on(t.jobId,t.seq).where(sql`${t.state}='pending'`)]);
+/** Shared background bulk-job kernel (migration 9003): one job/step store for every background bulk operation.
+ * Admission, reads and cancel: core/bulk-job.ts. Worker: core/bulk-job-worker.ts. Kinds: bulk_job_kind rows. */
+export const bulkJobKind=pgTable('bulk_job_kind',{kind:text('kind').primaryKey(),scopeKind:text('scope_kind'),exclusive:text('exclusive').notNull().$type<'tenant'|'creator'>()});
+export const bulkJob=pgTable('bulk_job',{
+ id:id(),tenantId:tenantId(),kind:text('kind').notNull().references(()=>bulkJobKind.kind),createdBy:uuid('created_by').notNull().references(()=>appUser.id),
+ context:jsonb('context').notNull().$type<Record<string,unknown>>(),operationKey:uuid('operation_key').notNull(),exclusiveKey:text('exclusive_key').notNull(),
+ companyIds:uuid('company_ids').array().notNull().default(sql`'{}'`),sourceName:text('source_name').notNull().default(''),sourceHash:text('source_hash'),
+ sourceBytes:integer('source_bytes').notNull().default(0),sourceContent:bytea('source_content'),input:jsonb('input').$type<unknown>(),plan:jsonb('plan').$type<unknown>(),
+ attemptId:uuid('attempt_id').references(()=>importAttempt.id),state:text('state').notNull().default('queued').$type<import('../lib/bulk-job').BulkJobState>(),
+ outcome:text('outcome').$type<'failed'|'cancelled'>(),phase:text('phase'),stepsTotal:integer('steps_total').notNull().default(0),stepsDone:integer('steps_done').notNull().default(0),
+ counters:jsonb('counters').notNull().default({}).$type<Record<string,number>>(),metrics:jsonb('metrics').notNull().default({}).$type<Record<string,number>>(),
+ result:jsonb('result').$type<unknown>(),error:text('error'),errors:jsonb('errors').notNull().default([]).$type<unknown[]>(),
+ cancelRequestedAt:timestamp('cancel_requested_at',{withTimezone:true}),transientRetries:integer('transient_retries').notNull().default(0),notBefore:timestamp('not_before',{withTimezone:true}),
+ leaseToken:uuid('lease_token'),leaseExpiresAt:timestamp('lease_expires_at',{withTimezone:true}),noticeEventId:uuid('notice_event_id'),notifiedAt:timestamp('notified_at',{withTimezone:true}),
+ createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),finishedAt:timestamp('finished_at',{withTimezone:true}),
+},t=>[uniqueIndex('bulk_job_tenant_id_created_by_operation_key_key').on(t.tenantId,t.createdBy,t.operationKey),
+ uniqueIndex('bulk_job_one_active').on(t.tenantId,t.kind,t.exclusiveKey).where(sql`${t.state} in ('queued','preparing','running','finalizing','discarding')`),
+ index('bulk_job_queue').on(t.updatedAt).where(sql`${t.state} in ('queued','preparing','running','finalizing','discarding')`),index('bulk_job_creator').on(t.tenantId,t.createdBy,t.kind,t.createdAt)]);
+export const bulkJobStep=pgTable('bulk_job_step',{
+ jobId:uuid('job_id').notNull().references(()=>bulkJob.id,{onDelete:'cascade'}),tenantId:tenantId(),seq:integer('seq').notNull(),kind:text('kind').notNull(),rowNum:integer('row_num'),
+ state:text('state').notNull().default('pending').$type<'pending'|'applied'|'failed'>(),payload:jsonb('payload').notNull().$type<unknown>(),result:jsonb('result').$type<unknown>(),error:text('error'),
+},t=>[primaryKey({columns:[t.jobId,t.seq]}),index('bulk_job_step_pending').on(t.jobId,t.seq).where(sql`${t.state}='pending'`)]);
 
 /** Canonical row meaning approved by the import preview; codes and names are only lookup inputs. */
 export type PayrollTxnImportBinding={employmentId:string;companyId:string;departmentId:string|null;componentId:string;intendedCycleId:string|null;targetBatchId:string|null;targetCycle:string;payPeriod:string;txnDate:string;kind:string;quantity:number|null;unit:string|null;sourceRef:string;notes:string|null};

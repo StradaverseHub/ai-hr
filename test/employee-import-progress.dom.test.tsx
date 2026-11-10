@@ -40,6 +40,17 @@ describe('EmployeeImportJobPanel',()=>{
   expect(onFinished.mock.calls[0][0]).toMatchObject({imported:0,failed:[{rowNum:4,email:'a@fixture.test',message:'Refused'}],fileErrors:['No employee rows were written.']});
  });
 
+ it('keeps a queued job visibly waiting for the import service when no worker is running',async()=>{
+  const queued:EmployeeImportProgress={...base,state:'queued',phase:null,stepsTotal:0,stepsDone:0,imported:0,worker:'unavailable'};
+  vi.stubGlobal('fetch',vi.fn(()=>respond(queued)));
+  const {onFinished}=harness(en as never,'en',queued);
+  const j=(en as never as {people:{import:{employeeJob:{queued:string;workerUnavailable:string;backgroundHelp:string}}}}).people.import.employeeJob;
+  await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent(j.queued));
+  expect(screen.getByText(j.workerUnavailable)).toBeInTheDocument();
+  expect(screen.queryByText(j.backgroundHelp)).toBeNull();
+  expect(onFinished).not.toHaveBeenCalled();
+ });
+
  it('renders the shipping translation for another locale',async()=>{
   vi.stubGlobal('fetch',vi.fn(()=>respond(base)));
   harness(zh as never,'zh',base);

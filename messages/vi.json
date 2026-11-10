@@ -2965,7 +2965,8 @@
         "progressCount": "Đã hoàn tất {done}/{total} bước",
         "backgroundHelp": "Bạn có thể rời trang này. Sẽ không ai thấy nhân viên mới cho đến khi việc nhập hoàn tất.",
         "waiting": "Đang chờ trình xử lý nhập. Tiến độ đã được lưu; đừng tải tệp lên lần nữa.",
-        "otherRunning": "Một lần nhập nhân viên khác vẫn đang chạy. Hãy chờ hoàn tất trước khi bắt đầu lần mới."
+        "otherRunning": "Một lần nhập nhân viên khác vẫn đang chạy. Hãy chờ hoàn tất trước khi bắt đầu lần mới.",
+        "workerUnavailable": "Dịch vụ nhập chưa chạy. Lần nhập của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy."
       }
     },
     "wizard": {
@@ -37247,5 +37248,23 @@
     "saveAttendance": "Lưu thiết lập chấm công",
     "lateGrace": "Thời gian cho phép đi muộn (phút)",
     "earlyGrace": "Thời gian cho phép về sớm (phút)"
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "Đã nhập nhân viên xong",
+          "body": "Mở Lịch sử nhập để xem các nhân viên đã được thêm."
+        },
+        "failed": {
+          "title": "Việc nhập nhân viên đã dừng",
+          "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem lý do."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc nhập nhân viên",
+          "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem chi tiết."
+        }
+      }
+    }
   }
 }

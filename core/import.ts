@@ -1360,7 +1360,7 @@ export async function applyEmployeeImportRowTx(tx:Tx,ctx:SessionContext,input:{r
 /** Commit the valid rows. Re-validates server-side (never trusts a client-supplied preview),
  *  imports row-by-row reusing the hire / statutory / compensation services, and records a
  *  batch event so the import itself shows up in the audit trail. */
-function measuredImportReplay(companyId:string,evaluationReceipt:EmployeeImportEvaluationReceipt):ImportResult&{evaluationReceipt:EmployeeImportEvaluationReceipt}{
+export function measuredImportReplay(companyId:string,evaluationReceipt:EmployeeImportEvaluationReceipt):ImportResult&{evaluationReceipt:EmployeeImportEvaluationReceipt}{
  const c=evaluationReceipt.canonicalCounts;if(!c)throw Error('The import receipt could not be confirmed.');
  return{companyId,imported:c.imported,failed:[],skipped:c.skipped,dependentsImported:c.dependents,registersImported:{qualification:c.qualification,emergency:c.emergency},superiorFailed:[],fileErrors:[],runId:null,evaluationReceipt};
 }
@@ -1656,7 +1656,7 @@ export async function assertEmployeeImportAuthorityTx(tx:Tx,ctx:SessionContext,c
   for(const id of new Set(companyIds)){await assertWorkforceCompanyTx(tx,ctx,id,'view');await assertWorkforceCompanyTx(tx,ctx,id,'maintain');}
 }
 /** Apply one persisted step inside a chunk transaction. Idempotency is the caller's step-state check under row lock. */
-export async function applyEmployeeImportStepTx(tx:Tx,ctx:SessionContext,step:EmployeeImportPlanStep,env:{attemptId:string;allocationPreview?:AllocationImportPreview;employmentByIndex:Map<number,string>;registerSubjects:Map<string,{employmentId:string;personId:string}>}):Promise<{employmentId?:string;personId?:string;family?:number;register?:'qualification'|'emergency';superior?:boolean}>{
+export async function applyEmployeeImportStepTx(tx:Tx,ctx:SessionContext,step:EmployeeImportPlanStep,env:{attemptId:string;allocationPreview?:AllocationImportPreview;employmentByIndex:Map<number,string>;registerSubjects:Map<string,{employmentId:string;personId:string}>}):Promise<{employmentId?:string;personId?:string;family?:number;register?:'qualification'|'emergency';superior?:boolean;subordinate?:string;manager?:string;target?:{employmentId:string;personId:string}|null}>{
   if(step.kind==='employee'){
     const pack=requirePackFor(step.row.country);
     const saved=await applyEmployeeImportRowTx(tx,ctx,{row:step.row,pack,index:step.index,allocationPreview:env.allocationPreview,family:step.family,attemptId:env.attemptId});
@@ -1670,10 +1670,13 @@ export async function applyEmployeeImportStepTx(tx:Tx,ctx:SessionContext,step:Em
     const manager=step.superior.kind==='existing'?step.superior.employmentId:env.employmentByIndex.get(step.superior.index);
     if(!manager)throw new Error('The direct superior named on this row was not imported.');
     await setReportingLine(ctx,{subordinateEmploymentId:subordinate,managerEmploymentId:manager,lineType:'administrative',validFrom:step.hiredOn},tx);
-    return{superior:true};
+    return{superior:true,subordinate,manager};
   }
-  await writeRegisterRowsTx(tx,ctx,step.registerKind,[step.item as Parameters<typeof writeRegisterRowsTx>[3][number]],env.registerSubjects);
-  return{register:step.registerKind};
+  const item=step.item as Parameters<typeof writeRegisterRowsTx>[3][number];
+  await writeRegisterRowsTx(tx,ctx,step.registerKind,[item],env.registerSubjects);
+  // The register row's real subject, as the synchronous measured import records it for its outcome receipt.
+  const target=env.registerSubjects.get(item.preview.employeeCode)??item.subject??null;
+  return{register:step.registerKind,target:target?.employmentId&&target.personId?{employmentId:target.employmentId,personId:target.personId}:null};
 }
 
 /**
