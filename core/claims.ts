@@ -3554,6 +3554,7 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
  * company-switcher filter (the base inbox shows every claim the caller may decide across the group).
  * Only identity/sort columns are read here so a page can bound the private details and attachments. */
 async function pendingClaimQueueTx(tx:Tx,ctx:SessionContext){
+  await assertAssignedWorkPrincipalTx(tx,ctx);
   const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,createdAt:claimRequest.createdAt,
     claimantName:sql<string>`approval_subject.employee`,personId:sql<string>`approval_subject.person_id`})
     .from(claimRequest)
