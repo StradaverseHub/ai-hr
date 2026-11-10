@@ -122,27 +122,6 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
             ELSE b.legacy_business_unit_id END AS dated_bu_id
    FROM tagged b
    JOIN permitted_companies dated ON dated.id=COALESCE((b.tags->>'companyId')::uuid,b.company_id)
- ),
- -- The dated administrative manager, once per subordinate (the same first edge the JSON subquery takes).
- managers AS MATERIALIZED (
-   SELECT DISTINCT ON (r.subordinate_employment_id) r.subordinate_employment_id AS id,mp.full_name
-   FROM public.reporting_line r
-   JOIN visible v ON v.id=r.subordinate_employment_id AND v.tenant_id=r.tenant_id
-   JOIN public.employment me ON me.id=r.manager_employment_id AND me.tenant_id=r.tenant_id AND me.voided_at IS NULL
-   JOIN permitted_companies manager_scope ON manager_scope.id=me.company_id
-   JOIN public.person mp ON mp.id=me.person_id AND mp.tenant_id=me.tenant_id
-   WHERE r.line_type='administrative' AND r.superseded_at IS NULL AND r.valid_from<=p_as_of
-     AND (r.valid_to IS NULL OR r.valid_to>p_as_of)
-   ORDER BY r.subordinate_employment_id,r.valid_from DESC,r.id
- ),
- -- app.employment_organisation_quality_flags' direct-superior test, as two anti-join sets.
- superior_present AS MATERIALIZED (
-   SELECT DISTINCT r.subordinate_employment_id AS id FROM public.reporting_line r
-   WHERE r.tenant_id=app.current_tenant_id() AND r.line_type='administrative'
-     AND r.superseded_at IS NULL AND r.valid_from<=p_as_of AND (r.valid_to IS NULL OR r.valid_to>p_as_of)
-   UNION
-   SELECT r.employment_id FROM public.org_chart_root r
-   WHERE r.tenant_id=app.current_tenant_id() AND r.valid_from<=p_as_of AND (r.valid_to IS NULL OR r.valid_to>p_as_of)
  )
  SELECT v.id,v.name,v.email,v.employee_code,
    v.final_confirmation_date,v.confirmation_date,v.probation_end_date,v.provisional_end_on,
@@ -155,7 +134,18 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
    CASE WHEN COALESCE(v.final_confirmation_date,v.confirmation_date)<=p_as_of THEN 'confirmed' ELSE 'unconfirmed' END,
    CASE WHEN v.tags IS NOT NULL AND v.tags->>'companyId' IS NOT NULL THEN v.hired_on<=p_as_of AND v.dated_bu_id IS NULL END,
    CASE WHEN v.tags IS NOT NULL AND v.tags->>'companyId' IS NOT NULL THEN v.hired_on<=p_as_of AND v.grade_id IS NULL END,
-   CASE WHEN v.tags IS NOT NULL AND v.tags->>'companyId' IS NOT NULL THEN v.hired_on<=p_as_of AND s.id IS NULL END,
+   -- app.employment_organisation_quality_flags' direct-superior test, per row through the subordinate index.
+   CASE WHEN v.tags IS NOT NULL AND v.tags->>'companyId' IS NOT NULL THEN v.hired_on<=p_as_of
+     AND NOT EXISTS (
+       SELECT 1 FROM public.reporting_line r
+       WHERE r.tenant_id=app.current_tenant_id() AND r.subordinate_employment_id=v.id AND r.line_type='administrative'
+         AND r.superseded_at IS NULL AND r.valid_from<=p_as_of AND (r.valid_to IS NULL OR r.valid_to>p_as_of)
+     )
+     AND NOT EXISTS (
+       SELECT 1 FROM public.org_chart_root r
+       WHERE r.tenant_id=app.current_tenant_id() AND r.employment_id=v.id
+         AND r.valid_from<=p_as_of AND (r.valid_to IS NULL OR r.valid_to>p_as_of)
+     ) END,
    CASE WHEN v.tags IS NOT NULL AND v.tags->>'companyId' IS NOT NULL THEN v.tags->>'status'='pending' END
  FROM visible v
  JOIN public.company co ON co.id=v.dated_company_id AND co.tenant_id=v.tenant_id
@@ -167,8 +157,16 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  LEFT JOIN public.location loc ON loc.id=v.location_id AND loc.tenant_id=v.tenant_id
  LEFT JOIN permitted_companies allowed_parent ON allowed_parent.id=(v.tags->>'parentCompanyId')::uuid
  LEFT JOIN permitted_companies allowed_group ON allowed_group.id=(v.tags->>'businessGroupId')::uuid
- LEFT JOIN managers m ON m.id=v.id
- LEFT JOIN superior_present s ON s.id=v.id
+ -- The dated administrative manager: the JSON owner's first edge, through the subordinate index.
+ LEFT JOIN LATERAL (
+   SELECT mp.full_name FROM public.reporting_line r
+   JOIN public.employment me ON me.id=r.manager_employment_id AND me.tenant_id=r.tenant_id AND me.voided_at IS NULL
+   JOIN permitted_companies manager_scope ON manager_scope.id=me.company_id
+   JOIN public.person mp ON mp.id=me.person_id AND mp.tenant_id=me.tenant_id
+   WHERE r.tenant_id=v.tenant_id AND r.subordinate_employment_id=v.id AND r.line_type='administrative'
+     AND r.superseded_at IS NULL AND r.valid_from<=p_as_of AND (r.valid_to IS NULL OR r.valid_to>p_as_of)
+   ORDER BY r.valid_from DESC,r.id LIMIT 1
+ ) m ON true
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.personnel_overview_facts(date,uuid[]) FROM PUBLIC,ai_hr_app;

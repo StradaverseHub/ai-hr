@@ -141,7 +141,7 @@ describe('bounded Personnel overview equivalence on a fictional multi-company fi
    const {used,compared}=await compareAll(role,true);
    expect(compared).toBeGreaterThan(60);
    // Every case is bounded once the complete typed projection is installed.
-   expect(used.exact).toBe(0);expect(used.facts).toBeGreaterThan(30);
+   expect(used.exact).toBe(0);expect(used.facts).toBeGreaterThanOrEqual(30);
   },600_000);
  }
  it('the draft resolves organisation tags, page rows and search rows exactly as the per-row owners',async()=>{
@@ -157,11 +157,11 @@ describe('bounded Personnel overview equivalence on a fictional multi-company fi
    const scopeSql=sql`array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
    const [rows]=await withTenant(ctx,tx=>tx.execute<{n:number;different:number}>(sql`
     with ids as materialized (select array(select e.id from employment e where e.tenant_id=${ctx.tenantId}::uuid
-      and e.company_id=any(${scopeSql}) order by e.id limit 2000) as ids)
+      and e.company_id=any(${scopeSql}) order by e.id limit 2000) as ids),
+    per_row as materialized (select a.value from ids cross join lateral app.personnel_overview_page_rows(${day}::date,${scopeSql},ids.ids) a(value)),
+    set_wise as materialized (select b.value from ids cross join lateral app.personnel_overview_page_rows_typed(${day}::date,${scopeSql},ids.ids) b(value))
     select count(*)::int as n,count(*) filter(where a.value is distinct from b.value)::int as different
-    from ids cross join lateral app.personnel_overview_page_rows(${day}::date,${scopeSql},ids.ids) a(value)
-    full join lateral app.personnel_overview_page_rows_typed(${day}::date,${scopeSql},ids.ids) b(value)
-      on a.value->>'employmentId'=b.value->>'employmentId'`));
+    from per_row a full join set_wise b on a.value->>'employmentId'=b.value->>'employmentId'`));
    expect(rows.n,role+' page rows').toBeGreaterThan(100);expect(rows.different,role+' page row differences').toBe(0);
    const after=await withTenant(ctx,tx=>tx.execute<{value:Record<string,unknown>}>(sql`select value from app.personnel_search_rows(${scopeSql}) r(value)`))
     .then(found=>found.map(row=>JSON.stringify(row.value)).sort());

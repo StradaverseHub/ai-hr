@@ -760,11 +760,12 @@ function personnelFactWhere(
   const confirmation = source === 'facts' ? read.value<string>('confirmationState')
     : sql<string>`(case when coalesce(${read.date('finalConfirmationDate')},${read.date('confirmationDate')})<=${asOf}::date then 'confirmed' else 'unconfirmed' end)`;
   // app.personnel_column_search_matches, set-wise: a verified token entry (identity entries only where
-  // identity search is permitted) and an entry whose filter fingerprint, if any, is still current.
-  const member = sql`(exists(select 1 from search_entries x where x."employmentId"=${read.uuid('employmentId')} and x.verified
-      and (x.kind='public' or ${read.uuid('companyId')} in (select id from identity_companies)))
-    and exists(select 1 from search_entries x where x."employmentId"=${read.uuid('employmentId')}
-      and (not x."hasFilterRevision" or x."filterRevision"=(select r.revision from search_revisions r where r.employment_id=${read.uuid('employmentId')}))))`;
+  // identity search is permitted) and an entry whose filter fingerprint, if any, is still current. Each
+  // side is an uncorrelated set (search_members below), so it is hashed once rather than scanned per row.
+  const id = read.uuid('employmentId');
+  const member = sql`((${id} in (select employment_id from search_public)
+      or (${id} in (select employment_id from search_identity) and ${read.uuid('companyId')} in (select id from identity_companies)))
+    and ${id} in (select employment_id from search_current))`;
   return and(
     workforceListWhere(ordinary, workforceListColumns(asOf, read), [], read),
     confirmationState ? eq(confirmation, confirmationState) : undefined,
@@ -814,6 +815,16 @@ function personnelNarrowOverviewQuery(
       union all
       select (r.value->>'employmentId')::uuid, r.value->>'filterRevision'
       from app.personnel_list_rows(${asOf}::date, ${scope}) r(value) where (select n from revision_subjects) > 2000
+    ), search_public as materialized (
+      select "employmentId" as employment_id from search_entries where verified and kind = 'public'
+    ), search_identity as materialized (
+      select "employmentId" as employment_id from search_entries where verified and kind = 'identity'
+    ), search_current as materialized (
+      select "employmentId" as employment_id from search_entries where not "hasFilterRevision"
+      union
+      select x."employmentId" from search_entries x
+      join search_revisions r on r.employment_id = x."employmentId" and r.revision = x."filterRevision"
+      where x."hasFilterRevision"
     ),` : sql``;
   // personnelDuplicateAuthorityTx's predicate, over the admitted companies and over the requested scope.
   const duplicateAuthority = (ids: SQL) => sql`select coalesce(bool_or(app.access_workforce_projection_company(id)

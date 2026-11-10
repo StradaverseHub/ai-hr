@@ -67,6 +67,7 @@ function summarize(statements: Statement[]) {
     connections: new Set(statements.map(s => s.connection)).size,
     byOwner: [...byOwner].map(([owner, trips]) => ({owner, trips})).sort((a, b) => b.trips - a.trips),
     repeated: [...bySql].filter(([, count]) => count > 1).map(([text, count]) => ({sql: text, count})).sort((a, b) => b.count - a.count).slice(0, 12),
+    ordered: statements.length <= 40 ? statements.map(s => s.sql.slice(0, 140)) : undefined,
   };
 }
 
@@ -249,13 +250,19 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
     try {
       await measure('with-draft', new Set(['list', 'filter-department', 'filter-parent-company', 'filter-grade',
         'filter-quality-superior', 'sort-department', 'sort-join-date-desc', 'private-search', 'export-page', 'export-all-department']));
+      await planPass('with-draft');
     } finally {
       await removeDraft();
     }
-  }
+  } else await planPass('installed');
+
+  report.elapsedMs = Math.round(performance.now() - started);
+  save();
+  return {report, fixture};
 
   // Nested plans (auto_explain, ANALYZE + BUFFERS) for statements at or above 20 ms.
-  if (performance.now() - started <= options.budgetMs + 60_000) {
+  async function planPass(variant: string) {
+  if (performance.now() - started <= options.budgetMs + 120_000) {
     const [{db}] = await owner.client<{db: string}[]>`select current_database() as db`;
     const notices: {durationMs: number; role: string; scenario: string; plan: string}[] = [];
     let label = {role: '', scenario: ''};
@@ -280,7 +287,7 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
       }
       const [loaded] = await withTenant(fixture.admin, tx => tx.execute<{v: string | null}>(sql`select current_setting('auto_explain.log_min_duration',true) as v`));
       report.autoExplain = loaded?.v ?? null;
-      const planned = ['list', 'filter-department', 'sort-department', 'filter-status-resigned', 'search-q-name', 'private-search', 'export-page'];
+      const planned = ['list', 'filter-department', 'filter-parent-company', 'sort-department', 'filter-status-resigned', 'search-q-name', 'private-search', 'export-page'];
       for (const [role, ctx] of Object.entries(roles)) {
         personnelDiagnosticState.session = ctx;
         for (const scenario of scenarios(fixture).filter(s => planned.includes(s.name))) {
@@ -296,10 +303,9 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
       await owner.client`select pg_terminate_backend(pid) from pg_stat_activity where datname=current_database() and usename='ai_hr_app' and pid<>pg_backend_pid()`;
     }
     notices.sort((a, b) => b.durationMs - a.durationMs);
+    report.plansVariant = variant;
     report.plans = notices.slice(0, 40);
-    for (const notice of notices.slice(0, 12)) console.info(`[personnel-page-diagnostic] plan ${notice.role}/${notice.scenario} ${notice.durationMs}ms\n` + notice.plan.slice(0, 6000));
+    for (const notice of notices.slice(0, 12)) console.info(`[personnel-page-diagnostic] plan ${variant} ${notice.role}/${notice.scenario} ${notice.durationMs}ms\n` + notice.plan.slice(0, 6000));
   }
-  report.elapsedMs = Math.round(performance.now() - started);
-  save();
-  return {report, fixture};
+  }
 }
