@@ -67,7 +67,7 @@ describe('mandatory configured route for new attendance submissions',()=>{
   const {worker,self}=await fixture();
   const input={...config('irregularity'),criteria:{employeeIds:[worker.employmentId]},stages:[{name:'Manager review',level:{kind:'direct_manager',employmentId:null,alternates:[]}}]};
   const saved=await saveAttendanceWorkflow(adminCtx(b),input);
-  expect(saved.warningCount).toBe(1);
+  expect(saved.lineageId).toEqual(expect.any(String));
   expect(await ownAttendanceSubmissionRoute(self,worker.employmentId,'irregularity')).toEqual({available:false,reason:'unresolved'});
   await expect(submit(worker.employmentId)).rejects.toMatchObject({reason:'unresolved'});
   await expectNoApplication();
