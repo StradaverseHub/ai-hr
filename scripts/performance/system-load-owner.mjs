@@ -37,9 +37,9 @@ import postgres from 'postgres';
 import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironment,createDriverContexts,
  createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,driverErrorFact,lockSampleEvidence,
- developmentLockWindowEvidence,developmentSteadyLoadPass,buildDevelopmentMeasurement,developmentDockerContext,DEVELOPMENT_DOCKER_COMMAND,
+ developmentLockWindowEvidence,developmentMeasuredPreflightLockWindowEvidence,developmentSteadyLoadPass,buildDevelopmentMeasurement,developmentDockerContext,DEVELOPMENT_DOCKER_COMMAND,
  observeDriverBrowser,openDriverResponse,settleDriverLanes,startDriverInterval,startMeasuredLockInterval,acquireDriverResource,
- measuredPreflightLockTiming,
+ measuredPreflightLockTiming,measuredPreflightLockWitnesses,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
@@ -380,13 +380,14 @@ function recordLockSampling(){
  const preflight=lockSampleEvidence(preflightSampler?.samples??[],preflightWindow);
  const loaded=lockSampleEvidence(loadedSampler?.samples??[],loadedWindow);
  const qualified=(phase,legacy,closed)=>{
-  const cadence=developmentLockWindowEvidence(phase,legacy.samples,legacy.window,closed);
+  const cadence=phase==='preflight'?developmentMeasuredPreflightLockWindowEvidence(legacy.samples,legacy.window,closed):
+   developmentLockWindowEvidence(phase,legacy.samples,legacy.window,closed);
   return {...legacy,cadence,coveragePass:cadence.coveragePass,pass:cadence.pass,blockingSamples:cadence.blockingSamples};
  };
  report.lockSampling={strict:samplingRequired,scope:'Sampled application heavyweight lock waits, including advisory waits. Unobserved waits are outside this evidence.',
   preflight:measureDevelopment?qualified('preflight',preflight,preflightCadenceClosed):preflight,
   loaded:measureDevelopment?qualified('loaded',loaded,loadedCadenceClosed):loaded,
-  ...(measureDevelopment?{privatePreflightTiming:measuredPreflightLockTiming(preflight.samples,preflight.window)}:{})};
+  ...(measureDevelopment?{privatePreflightTiming:measuredPreflightLockTiming(measuredPreflightLockWitnesses(preflight.samples,preflight.window)??[],preflight.window)}:{})};
 }
 async function startPreflightLockSampling(lockScope){
  if(!measureDevelopment)preflightWindow={startMs:performance.now()};

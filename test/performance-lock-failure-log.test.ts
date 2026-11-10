@@ -130,6 +130,62 @@ it.each([false,true])('uses one actual worker round trip per sample when the pro
  }finally{await worker.terminate();}
 });
 
+it('executes the same combined probe once on each owned connection and drains a delayed primary',async()=>{
+ const control=new Int32Array(new SharedArrayBuffer(3*Int32Array.BYTES_PER_ELEMENT));
+ const token=createMeasuredPreflightAttribution().token;
+ const moduleUrl=new URL('../scripts/performance/measured-lock-observer.mjs',import.meta.url).href;
+ const source=`import {parentPort,workerData} from 'node:worker_threads';
+  import {setTimeout as delay} from 'node:timers/promises';
+  import {startMeasuredPreflightProbes} from ${JSON.stringify(moduleUrl)};
+  const {control,token}=workerData;
+  let sampler;
+  const makeSql=lane=>parts=>{
+   const query=parts.join(' ');
+   if(query.includes('jsonb_build_object'))return 'categories';
+   if(query.startsWith('concat(l.classid'))return 'audit-keys';
+   if(!query.includes('with backends as materialized')||!query.includes('from pg_locks'))throw Error('Unexpected native query');
+   if(Atomics.add(control,lane,1)!==0)throw Error('Repeated native query after fixture settlement');
+   return (async()=>{
+    if(lane===1)await delay(400);
+    return [{activity:[{state:'active',kind:'CPU-or-ready',connections:lane,app_connections:1,
+     app_lock_wait_kinds:{advisory:0,transactionid:0,tuple:0,relation:0,other:1}}],locks:[]}];
+   })();
+  };
+  parentPort.on('message',async command=>{
+   if(command==='start')sampler=startMeasuredPreflightProbes({sql:makeSql(1),rescueSql:makeSql(2),accessLocks:[],categorized:true,token,stopped:control,
+    onProbe(probe){
+     if(probe.activity?.[0]?.connections===2)Atomics.store(control,0,1);
+     parentPort.postMessage(probe);
+    },onFailure(reason){throw reason;}});
+   else{
+    await sampler.stop();
+    if(sampler.samples()!==2)throw Error('Both native probes must drain');
+    parentPort.close();
+   }
+  });
+  parentPort.postMessage({ready:true});`;
+ const worker=new Worker(new URL('data:text/javascript,'+encodeURIComponent(source)),{execArgv:[],workerData:{control,token}});
+ const exited=once(worker,'exit');void exited.catch(()=>{});
+ try{
+  const [ready]=await once(worker,'message');
+  expect(ready).toEqual({ready:true});
+  const receipts:{activity:{connections:number}[];sequence:number;startedMs:number;coreCompletedMs:number}[]=[];
+  const first=Promise.withResolvers<void>();
+  worker.on('message',probe=>{receipts.push(probe);first.resolve();});
+  worker.postMessage('start');
+  await first.promise;
+  worker.postMessage('stop');
+  await expect(exited).resolves.toEqual([0]);
+  expect(receipts).toHaveLength(2);
+  const [rescue,primary]=receipts;
+  expect([rescue.activity[0].connections,primary.activity[0].connections]).toEqual([2,1]);
+  expect([rescue.sequence,primary.sequence]).toEqual([1,2]);
+  expect(primary.startedMs).toBeLessThan(rescue.startedMs);
+  expect(rescue.coreCompletedMs).toBeLessThan(primary.coreCompletedMs);
+  expect([Atomics.load(control,1),Atomics.load(control,2)]).toEqual([1,1]);
+ }finally{await worker.terminate();}
+});
+
 it('fails closed on malformed native activity partitions or advisory rows',async()=>{
  const activity={state:'active',kind:'Lock',connections:1,app_connections:1,
   app_lock_wait_kinds:{advisory:1,transactionid:0,tuple:0,relation:0,other:0}};

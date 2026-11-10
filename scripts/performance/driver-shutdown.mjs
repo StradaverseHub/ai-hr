@@ -127,6 +127,40 @@ export function startMeasuredLockInterval(interval,run,recordFailure,now=()=>per
  return {stop(){stopped=true;clearTimeout(timer);return pending??Promise.resolve();}};
 }
 
+/** At most one query per owned connection and one global scheduled launch. */
+export function startMeasuredPreflightLockInterval(maximum,slots,run,recordFailure,now=()=>performance.now()){
+ if(!Number.isSafeInteger(maximum)||maximum<1||maximum>4097||!([1,2].includes(slots)))
+  throw Error('Measured preflight probe capacity refused');
+ const pending=Array(slots).fill(null);
+ let timer,stopped=false,starts=0,stopPromise;
+ let attemptIntervalMs=measuredPreflightLockAttemptMs(starts),due=now()+attemptIntervalMs;
+ function arm(){
+  if(stopped||starts>=maximum||timer!==undefined||pending.every(Boolean))return;
+  timer=setTimeout(fire,Math.max(0,Math.ceil(due-now())));
+ }
+ function fire(){
+  timer=undefined;
+  if(stopped)return;
+  const started=now();
+  if(started<due){arm();return;}
+  const slot=pending.indexOf(null);
+  if(slot<0)return;
+  const timing={dueMs:due,timerStartedMs:started,attemptIntervalMs};
+  starts++;
+  attemptIntervalMs=measuredPreflightLockAttemptMs(starts);
+  due=started+attemptIntervalMs;
+  pending[slot]=Promise.resolve().then(()=>run(slot,timing)).catch(recordFailure).finally(()=>{
+   pending[slot]=null;arm();
+  });
+  arm();
+ }
+ arm();
+ return {stop(){
+  stopped=true;clearTimeout(timer);
+  return stopPromise??=Promise.all(pending.filter(Boolean)).then(()=>{});
+ }};
+}
+
 export function lockSampleEvidence(samples,window){
  const completed=samples.filter(sample=>sample.state==='complete');
  const qualified=window?completed.filter(sample=>sample.startedMs>=window.startMs&&sample.completedMs<=window.endMs):[];
@@ -250,6 +284,43 @@ export function developmentLockWindowEvidence(phase,samples,window,closed){
  if(closed&&(!evidence.coveragePass||appWitness))return {...evidence,observedBlockingSamples};
  return {...evidence,state:'unknown',reason:closed?'application-unobserved':'window-unsettled',
   coveragePass:false,pass:false,blockingSamples:null,observedBlockingSamples};
+}
+
+/** Pick real disjoint intervals. The existing serial bound is conservative even
+ * when other probes overlap, since none of those intervals supplies coverage. */
+export function measuredPreflightLockWitnesses(samples,window){
+ const {startMs,endMs}=window??{};
+ if(!Number.isFinite(startMs)||startMs<0||!Number.isFinite(endMs)||endMs<=startMs
+  ||!Array.isArray(samples)||samples.length>maxProtectedLockSamples||!samples.every(row=>row?.state==='complete'
+   &&Number.isFinite(row.startedMs)&&row.startedMs>=0&&Number.isFinite(row.completedMs)&&row.completedMs>=row.startedMs
+   &&lockCount(row.locks)&&lockCount(row.blockingAppSessions)))return null;
+ const byStart=[...samples].sort((left,right)=>left.startedMs-right.startedMs);
+ let activeEnds=[],priorStart=-1;
+ for(const row of byStart){
+  activeEnds=activeEnds.filter(end=>end>row.startedMs);
+  if(row.startedMs<=priorStart||activeEnds.length>=2)return null;
+  activeEnds.push(row.completedMs);priorStart=row.startedMs;
+ }
+ const byCompletion=byStart.filter(row=>row.startedMs>=startMs&&row.completedMs<=endMs)
+  .sort((left,right)=>left.completedMs-right.completedMs||right.startedMs-left.startedMs);
+ const witnesses=[];
+ for(const row of byCompletion){
+  const previous=witnesses.at(-1);
+  if(!previous||row.startedMs>=previous.completedMs&&row.startedMs>previous.startedMs)witnesses.push(row);
+ }
+ return witnesses;
+}
+
+export function developmentMeasuredPreflightLockWindowEvidence(samples,window,closed){
+ const witnesses=measuredPreflightLockWitnesses(samples,window);
+ // The serial verifier refuses malformed, failed, excessive and overlapping
+ // inputs. It also preserves any positive observation if the window failed.
+ if(!witnesses)return developmentLockWindowEvidence('preflight',samples,window,closed);
+ const evidence=developmentLockWindowEvidence('preflight',witnesses,window,closed);
+ const observedBlockingSamples=samples.length?samples.filter(row=>row.blockingAppSessions>0).length:null;
+ if(!evidence.coveragePass)return {...evidence,observedBlockingSamples};
+ return {...evidence,observedBlockingSamples,blockingSamples:observedBlockingSamples,
+  pass:observedBlockingSamples===0,reason:observedBlockingSamples===0?null:'blocking-observed'};
 }
 
 export const DEVELOPMENT_DOCKER_COMMAND='/usr/bin/docker';

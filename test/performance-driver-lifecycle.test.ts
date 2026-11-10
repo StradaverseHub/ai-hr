@@ -7,10 +7,10 @@ import {PassThrough} from 'node:stream';
 import {gzipSync} from 'node:zlib';
 import {afterEach,expect,it,vi} from 'vitest';
 import {acquireDriverResource,buildDevelopmentMeasurement,closedChromiumEnvironment,closePerformanceDbPools,createDriverContexts,
- createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,developmentDockerContext,developmentLockWindowEvidence,
+ createDriverFailures,createDriverSockets,createDriverWork,createProtectedClaimCustody,createProtectedLockSampler,createProtectedWorkAdmission,developmentDockerContext,developmentLockWindowEvidence,developmentMeasuredPreflightLockWindowEvidence,
  developmentPostgresBirthId,developmentPostgresSettlement,drainDriverLanes,lockSampleEvidence,observeDriverBrowser,
- MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS,measuredPreflightLockAttemptMs,measuredPreflightLockTiming,openDriverResponse,qualifyLockSampleCadence,settleDriverBrowser,
- settleDriverLanes,settleDriverResources,startDriverInterval,startMeasuredLockInterval,validateDevelopmentMeasurement} from '../scripts/performance/driver-shutdown.mjs';
+ MEASURED_PREFLIGHT_LOCK_ATTEMPT_MS,measuredPreflightLockAttemptMs,measuredPreflightLockTiming,measuredPreflightLockWitnesses,openDriverResponse,qualifyLockSampleCadence,settleDriverBrowser,
+ settleDriverLanes,settleDriverResources,startDriverInterval,startMeasuredLockInterval,startMeasuredPreflightLockInterval,validateDevelopmentMeasurement} from '../scripts/performance/driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts} from '../scripts/performance/protected-lock-observer.mjs';
 
 function deferred<T=void>(){
@@ -259,6 +259,102 @@ it('bounds the serial preflight attempts across the entire 600-second driver bud
  await sampler.stop();
  await vi.advanceTimersByTimeAsync(1000);
  expect(starts).toHaveLength(4050);
+});
+
+it('uses one global cadence, opens a second slot only during an actual overrun and drains both',async()=>{
+ vi.useFakeTimers({now:0});
+ const first=deferred(),second=deferred(),recordFailure=vi.fn();
+ const starts:{slot:number;dueMs:number;timerStartedMs:number;attemptIntervalMs:number}[]=[];
+ const pending=new Set<number>();
+ const sampler=startMeasuredPreflightLockInterval(4,2,async(slot:number,timing:Omit<typeof starts[number],'slot'>)=>{
+  expect(pending.has(slot)).toBe(false);
+  pending.add(slot);starts.push({slot,...timing});
+  if(starts.length===1)await first.promise;
+  if(starts.length===4)await second.promise;
+  pending.delete(slot);
+ },recordFailure,Date.now);
+ await vi.advanceTimersByTimeAsync(375);
+ expect(starts.map(row=>[row.slot,row.dueMs,row.timerStartedMs])).toEqual([[0,125,125],[1,250,250],[1,375,375]]);
+ first.resolve();
+ await vi.advanceTimersByTimeAsync(125);
+ expect(starts.map(row=>[row.slot,row.dueMs,row.timerStartedMs])).toEqual([[0,125,125],[1,250,250],[1,375,375],[0,500,500]]);
+ const drain=sampler.stop();
+ expect(sampler.stop()).toBe(drain);
+ expect(pending.size).toBe(1);
+ second.resolve();
+ await drain;
+ await vi.advanceTimersByTimeAsync(1000);
+ expect(starts).toHaveLength(4);
+ expect(pending.size).toBe(0);
+ expect(recordFailure).not.toHaveBeenCalled();
+});
+
+it('does not queue past two real in-flight observations or fill in skipped time',async()=>{
+ vi.useFakeTimers({now:0});
+ const first=deferred(),second=deferred();
+ const calls:number[]=[];
+ const sampler=startMeasuredPreflightLockInterval(10,2,async(slot:number)=>{
+  calls.push(Date.now());
+  await (slot===0?first.promise:second.promise);
+ },vi.fn(),Date.now);
+ await vi.advanceTimersByTimeAsync(750);
+ expect(calls).toEqual([125,250]);
+ const drained=sampler.stop();
+ first.resolve();second.resolve();
+ await drained;
+ await vi.advanceTimersByTimeAsync(500);
+ expect(calls).toEqual([125,250]);
+});
+
+it('does not use the rescue or exceed the old global start census when probes are healthy',async()=>{
+ vi.useFakeTimers({now:0});
+ const starts:{slot:number;timerStartedMs:number}[]=[];
+ const sampler=startMeasuredPreflightLockInterval(4097,2,(slot:number,timing:{timerStartedMs:number})=>{
+  starts.push({slot,...timing});
+ },vi.fn(),Date.now);
+ await vi.advanceTimersByTimeAsync(600000);
+ await sampler.stop();
+ expect(starts).toHaveLength(4050);
+ expect(starts.every(row=>row.slot===0)).toBe(true);
+ expect(starts.at(-1)?.timerStartedMs).toBe(600000);
+});
+
+it.each([
+ {gapUs:587467,window:{startMs:0,endMs:700},slow:[legacyLockRow(0,15),legacyLockRow(125.532,587.467)],
+  rescue:[legacyLockRow(250,260),legacyLockRow(375,385),legacyLockRow(500,510),legacyLockRow(625,635)]},
+ {gapUs:538308,window:{startMs:0,endMs:800},slow:[legacyLockRow(125,422.329),legacyLockRow(423.549,663.308)],
+  rescue:[legacyLockRow(250,255),legacyLockRow(375,390),legacyLockRow(500,510),legacyLockRow(625,630),legacyLockRow(750,760)]},
+])('requires a real serial witness even with rescue probes for the observed $gapUs µs failure',({gapUs,window,slow,rescue})=>{
+ const withApp=(row:ReturnType<typeof legacyLockRow>)=>({...row,appSessions:2});
+ expect(developmentMeasuredPreflightLockWindowEvidence(slow.map(withApp),window,true)).toMatchObject({
+  interiorGapUs:gapUs,coveragePass:false,pass:false,reason:'coverage-gap',
+ });
+ const rescued=[...slow,...rescue].map(withApp).sort((a,b)=>a.completedMs-b.completedMs);
+ expect(developmentMeasuredPreflightLockWindowEvidence(rescued,window,true)).toMatchObject({maxGapUs:500000,pass:true,observedBlockingSamples:0});
+ const blocked={...slow[0],blockingAppSessions:1,appSessions:2};
+ const lockRows=[...rescued.filter(row=>row.startedMs!==blocked.startedMs),blocked].sort((a,b)=>a.completedMs-b.completedMs);
+ expect(developmentMeasuredPreflightLockWindowEvidence(lockRows,window,true)).toMatchObject({pass:false,observedBlockingSamples:1,blockingSamples:1});
+});
+
+it('never discards an overlapping positive, broken probe, unclosed sampler or a gap over 500ms',()=>{
+ const row=(start:number,end:number,blocking=0)=>({...legacyLockRow(start,end,blocking),appSessions:2});
+ const window={startMs:0,endMs:690};
+ const overlappingPositive=row(125,475,1);
+ const samples=[row(0,15),row(250,260),row(375,385),overlappingPositive,row(500,510),row(625,635)];
+ const witnesses=measuredPreflightLockWitnesses(samples,window);
+ expect(witnesses).not.toContain(overlappingPositive);
+ expect(qualifyLockSampleCadence('preflight',witnesses!,window)).toMatchObject({pass:true,observedBlockingSamples:0});
+ expect(developmentMeasuredPreflightLockWindowEvidence(samples,window,true)).toMatchObject({
+  pass:false,coveragePass:true,reason:'blocking-observed',blockingSamples:1,observedBlockingSamples:1,
+ });
+ expect(developmentMeasuredPreflightLockWindowEvidence(samples,window,false)).toMatchObject({pass:false,reason:'window-unsettled',observedBlockingSamples:1});
+ const failed={state:'failed',startedMs:210,completedMs:220};
+ expect(developmentMeasuredPreflightLockWindowEvidence([failed,...samples],window,true)).toMatchObject({pass:false,observedBlockingSamples:1});
+ expect(measuredPreflightLockWitnesses([...samples,row(252,255)],window)).toBeNull();
+ expect(developmentMeasuredPreflightLockWindowEvidence([...samples,row(252,255)],window,true)).toMatchObject({pass:false,observedBlockingSamples:1});
+ expect(developmentMeasuredPreflightLockWindowEvidence([row(0,30),row(490,501),row(625,635)],window,true)).toMatchObject({
+  pass:false,reason:'coverage-gap',interiorGapUs:501000,maxGapUs:500000,
+ });
 });
 
 it('does not admit an early monotonic timer callback as an observation',async()=>{

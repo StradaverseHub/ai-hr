@@ -86,7 +86,8 @@ it.skipIf(!hosted).each(['access-configuration','audit-chain'] as const)(
   await observer.ready();
   const [workerSession]=await holder<{pids:number[]}[]>`select coalesce(array_agg(pid),array[]::integer[]) as pids from pg_stat_activity
    where datname=current_database() and usename='postgres' and application_name=${measuredDevelopmentLockApplication}`;
-  expect(workerSession.pids).toHaveLength(1);
+  expect(new Set(workerSession.pids).size).toBe(2);
+  expect(workerSession.pids).toHaveLength(2);
 
   expect((await holder`begin`).command).toBe('BEGIN');holding=true;
   const [owned]=await holder<{held:boolean}[]>`select pg_try_advisory_xact_lock(${ids.hash}::bigint) as held`;
@@ -129,7 +130,7 @@ it.skipIf(!hosted).each(['access-configuration','audit-chain'] as const)(
   let workerGone=false;
   do{
    const [settled]=await holder<{gone:boolean}[]>`select not exists(select 1 from pg_stat_activity
-    where pid=${workerSession.pids[0]} and application_name=${measuredDevelopmentLockApplication}) as gone`;
+    where pid=any(${workerSession.pids}::int[]) and application_name=${measuredDevelopmentLockApplication}) as gone`;
    workerGone=settled.gone;
    if(!workerGone)await delay(10);
   }while(!workerGone&&performance.now()<closureDeadline);

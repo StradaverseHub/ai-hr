@@ -1,7 +1,7 @@
 import {performance} from 'node:perf_hooks';
 import {setTimeout as delay} from 'node:timers/promises';
 import {Worker} from 'node:worker_threads';
-import {driverErrorFact,measuredPreflightLockAttemptMs,startMeasuredLockInterval} from './driver-shutdown.mjs';
+import {driverErrorFact,startMeasuredPreflightLockInterval} from './driver-shutdown.mjs';
 import {originalAuditQueryCategory} from './lock-sample-attribution.mjs';
 
 export const measuredLockSampleLimit=4097; // 4096 accepted rows plus the existing overflow sentinel.
@@ -11,9 +11,11 @@ const lifecycleTimeoutMs=5000;
 
 export async function observeMeasuredLockConnection(sql){
  const [settings]=await sql`select current_setting('transaction_read_only')='on' as readonly,
-  current_setting('statement_timeout')='400ms' as bounded
+  current_setting('statement_timeout')='400ms' as bounded,pg_backend_pid() as pid
   where session_user='postgres' and current_user='postgres' and current_database()='ai_hr_dev'`;
- if(!settings?.readonly||!settings?.bounded)throw Error('Measured lock observer settings unavailable');
+ if(!settings?.readonly||!settings?.bounded||!Number.isSafeInteger(settings.pid)||settings.pid<=0)
+  throw Error('Measured lock observer settings unavailable');
+ return settings.pid;
 }
 
 function appWaitCategories(sql,categorized){
@@ -111,18 +113,18 @@ async function observeCombinedPreflightLocks(sql,accessLocks,auditLocks,categori
  return {...decodeCombinedPreflightLocks(rows,categorized),coreCompletedMs,probeMode:'combined-statement'};
 }
 
-/** Run real serial probes on the observer thread, with no dependency on message delivery. */
-export function startMeasuredPreflightProbes({sql,accessLocks,auditLocks=/** @type {string[]} */ ([]),categorized,token,stopped,onProbe,onFailure}){
+/** Run real probes on the observer thread, with no dependency on message delivery. */
+export function startMeasuredPreflightProbes({sql,rescueSql=undefined,accessLocks,auditLocks=/** @type {string[]} */ ([]),categorized,token,stopped,onProbe,onFailure}){
  let sequence=0;
- const timer=startMeasuredLockInterval(measuredPreflightLockAttemptMs,async timing=>{
+ const connections=rescueSql?[sql,rescueSql]:[sql];
+ const timer=startMeasuredPreflightLockInterval(measuredLockSampleLimit,connections.length,async (slot,timing)=>{
   if(Atomics.load(stopped,0)!==0)return;
   const attributionStart=Atomics.load(token,0),startedMs=performance.now();
   let observation;
-  try{observation=await observeCombinedPreflightLocks(sql,accessLocks,auditLocks,categorized);}
+  try{observation=await observeCombinedPreflightLocks(connections[slot],accessLocks,auditLocks,categorized);}
   catch(reason){observation={failure:driverErrorFact(reason),coreCompletedMs:performance.now()};}
   const attributionEnd=Atomics.load(token,0);
   onProbe({sequence:++sequence,startedMs,timing,attributionStart,attributionEnd,...observation});
-  if(sequence===measuredLockSampleLimit)void timer.stop();
  },onFailure);
  return {stop:timer.stop,samples:()=>sequence};
 }
