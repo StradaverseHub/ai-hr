@@ -147,6 +147,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5010_employee_import_staged_job',
    '5011_bulk_job_kernel',
    '5012_import_release_visibility',
+   '5013_bulk_job_least_privilege',
+   '5014_bulk_job_owner_attribution',
    '5020_personnel_overview_facts',
    '5030_leave_bulk_jobs',
    '5031_leave_ledger_stage',
