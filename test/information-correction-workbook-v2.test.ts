@@ -36,7 +36,7 @@ describe('ccd3a65c Information-Only Correction template version 2',()=>{
   expect(rows[0].values).not.toHaveProperty('Department');
  });
  it('refuses an altered or partial version 2 header row',()=>{
-  const changed=[...INFORMATION_HEADERS_V2];changed[12]='Unit';
+  const changed:string[]=[...INFORMATION_HEADERS_V2];changed[12]='Unit';
   expect(()=>parseInformationWorkbook(book(changed,[v2(base)]))).toThrow('template columns changed');
   expect(()=>parseInformationWorkbook(book(INFORMATION_HEADERS_V2.slice(0,20),[v2(base).slice(0,20)]))).toThrow('template columns changed');
  });

@@ -22,7 +22,9 @@ beforeEach(async()=>{await resetDb();b=await seedBase();await owner.db.update(sc
 afterAll(()=>closeAll());
 const ctx=()=>adminCtx(b);
 async function fixture(code:string,companyId=b.companyId){
- const hired=await hireEmployee(ctx(),{person:{fullName:'Fixture '+code,primaryEmail:randomUUID()+'@example.test'},companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:'2025-01-15'});
+ // Another company hires into its own department; the seed department belongs to the base company.
+ const departmentId=companyId===b.companyId?b.deptA:(await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId,name:'Other '+code}).returning())[0].id;
+ const hired=await hireEmployee(ctx(),{person:{fullName:'Fixture '+code,primaryEmail:randomUUID()+'@example.test'},companyId,departmentId,...(companyId===b.companyId?{positionId:b.positionId}:{}),employmentType:'full_time',hiredOn:'2025-01-15'});
  await owner.db.update(schema.employment).set({employeeCode:code}).where(eq(schema.employment.id,hired.employmentId));return hired.employmentId;
 }
 const row=(cells:Partial<Record<InformationHeader,unknown>>)=>INFORMATION_HEADERS_V2.map(header=>cells[header]??'');

@@ -239,7 +239,7 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
   if(s.current.validFrom===effectiveOn)await tx.update(assignment).set({supersededAt:new Date()}).where(eq(assignment.id,s.current.id));
   else await tx.update(assignment).set({validTo:effectiveOn}).where(eq(assignment.id,s.current.id));
   const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:p.after.companyId!,asOf:effectiveOn});
-  const [version]=await tx.insert(assignment).values({...prior,departmentId:p.after.departmentId,positionId:p.after.positionId,businessUnitId:p.after.businessUnitId,...(tags.status==='legacy'?{}:{businessUnitId:tags.businessUnitId}),validFrom:effectiveOn,validTo:null,companyId:p.after.companyId,employmentType:p.after.employmentType as typeof s.current.employmentType}).returning({id:assignment.id});
+  const [version]=await tx.insert(assignment).values({...prior,departmentId:p.after.departmentId??prior.departmentId,positionId:p.after.positionId,businessUnitId:p.after.businessUnitId,...(tags.status==='legacy'?{}:{businessUnitId:tags.businessUnitId}),validFrom:effectiveOn,validTo:null,companyId:p.after.companyId,employmentType:p.after.employmentType as typeof s.current.employmentType}).returning({id:assignment.id});
   assignmentVersionId=version.id;
  }
  await tx.update(employment).set({companyId:p.after.companyId!,hiredOn:p.after.hiredOn!,joinDate:p.after.joinDate,gradeId:p.after.gradeId}).where(eq(employment.id,s.emp.id));

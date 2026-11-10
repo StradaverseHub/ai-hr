@@ -5969,7 +5969,7 @@ async function assertInformationLeavePeriodTx(tx:Tx,asOf:string,scope:{employmen
   // ccd3a65c (ADR-0163 amendment) — only corrections of a field leave processing reads. A notice-period,
   // probation-length or Direct Superior correction does not change any leave answer; an event without a
   // field list (none is written) is treated as relevant.
-  sql`exists(select 1 from domain_event ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ((ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf} and (jsonb_typeof(ev.payload->'fields')<>'array' or exists(select 1 from jsonb_array_elements_text(ev.payload->'fields') field where field in (${sql.join(INFORMATION_LEAVE_FIELDS.map(field=>sql`${field}`),sql`,`)})))) or (ev.event_type='employment.movement.reversed' and ev.payload->>'closedPayrollCorrectedOn'>${asOf})))`,
+  sql`exists(select 1 from domain_event ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ((ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf} and (coalesce(jsonb_typeof(ev.payload->'fields'),'none')<>'array' or exists(select 1 from jsonb_array_elements_text(ev.payload->'fields') field where field in (${sql.join(INFORMATION_LEAVE_FIELDS.map(field=>sql`${field}`),sql`,`)})))) or (ev.event_type='employment.movement.reversed' and ev.payload->>'closedPayrollCorrectedOn'>${asOf})))`,
  )).limit(1);
  if(protectedPeriod)throw new Error('Historical leave processing before an information-only correction requires review. Use a current processing date or exclude the corrected employee.');
 }
