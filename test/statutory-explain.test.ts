@@ -853,6 +853,13 @@ describe('6b4ca488 — the screen’s captions exist, and are translated', () =>
       'agencySocso',
       'agencyHrdf',
       'agencyPcb',
+      // c2ea9567 — the HRD Corp levy's itemised working (app/payroll/statutory-detail/hrdf-working.ts),
+      // every caption a static key in the row builder, the view and the export.
+      'hrdfWorkingTitle', 'hrdfWorkingIntro', 'hrdfEmployerCostNote', 'hrdfColDescription', 'hrdfColTreatment',
+      'hrdfColAmount', 'hrdfBasic', 'hrdfBasicTreatment', 'hrdfEarningTreatment', 'hrdfDeductionTreatment',
+      'hrdfPayItem', 'hrdfAllowance', 'hrdfUnpaid', 'hrdfFloor', 'hrdfFloorTreatment', 'hrdfTotalWages',
+      'hrdfRateRow', 'hrdfStatusMandatory', 'hrdfStatusOptional', 'hrdfStatusNotRegistered', 'hrdfNotSubject',
+      'hrdfLevyRow', 'hrdfLevySetByHand', 'hrdfCalculation', 'hrdfBreakdownNotRecorded',
       // The four cycles, static-keyed for the same reason.
       'cycleRegular',
       'cycleOffCycle',
@@ -891,10 +898,80 @@ describe('6b4ca488 — the screen’s captions exist, and are translated', () =>
         // 70b14723 — the longest new sentence in the catalogue, and exactly the kind a rushed round leaves
         // in English on a screen whose whole job is to be trusted about where a number came from.
         'manualBannerBodyElection',
+        // c2ea9567 — the levy breakdown's own two sentences.
+        'hrdfWorkingIntro',
+        'hrdfBreakdownNotRecorded',
       ];
       for (const k of LONG_SENTENCES) {
         expect(m.payroll.statutoryDetail[k], `${loc}: payroll.statutoryDetail.${k} is still English`).not.toBe(en[k]);
       }
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Feedback c2ea9567 — the HRDF wages breakdown is READ off the payslip's own `statutory.hrdfWorking`.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('c2ea9567 — the itemised HRDF working', () => {
+  /** basic 2,400 + Meal Allowance 600 ticked HRDF = 3,000 × 1% = 30.00, as the kernel stamps it. */
+  const WORKING = {
+    version: 1,
+    items: [
+      { kind: 'basic', amount: 2400 },
+      { kind: 'earning', code: 'A0040', name: 'Meal Allowance', amount: 600 },
+    ],
+    wages: 3000,
+    status: 'mandatory',
+    subject: true,
+    rate: 0.01,
+    calculatedLevy: 30,
+    levy: 30,
+  };
+  const BLOB = { ...STAMPED, hrdf: 30, bases: { ...STAMPED.bases, hrdf: 3000 }, hrdfWorking: WORKING };
+
+  it('a regular payslip that stamped it explains the levy line by line, with the STAMPED rate', () => {
+    const x = explainStatutory(BLOB, 'regular');
+    expect(x.hrdfWorking).toEqual({ ...WORKING, levySetByHand: false });
+    expect(x.hrdfBreakdownNotRecorded).toBe(false);
+    // The summary row still reads the same recorded figures.
+    const hrdf = x.items.find((i) => i.key === 'hrdf')!;
+    expect(hrdf.base).toBe(3000);
+    expect(hrdf.employer).toBe(30);
+  });
+
+  it('an older regular payslip without the stamp keeps its line and is flagged, never itemised', () => {
+    const x = explainStatutory(STAMPED, 'regular');
+    expect(x.hrdfWorking).toBeNull();
+    expect(x.hrdfBreakdownNotRecorded).toBe(true);
+    // An additional run charges no levy: there is nothing to itemise and nothing to apologise for.
+    expect(explainStatutory(STAMPED, 'bonus').hrdfBreakdownNotRecorded).toBe(false);
+  });
+
+  it('a stamp that does not add up to the payslip beside it is refused, not shown', () => {
+    // Lines that do not sum to the wages.
+    const badSum = { ...BLOB, hrdfWorking: { ...WORKING, items: [{ kind: 'basic', amount: 2400 }] } };
+    expect(explainStatutory(badSum, 'regular').hrdfWorking).toBeNull();
+    // Wages that are not the recorded HRDF base.
+    const badBase = { ...BLOB, bases: { ...BLOB.bases, hrdf: 2400 } };
+    expect(explainStatutory(badBase, 'regular').hrdfWorking).toBeNull();
+    // A levy that is not the payslip's levy.
+    const badLevy = { ...BLOB, hrdf: 24 };
+    expect(explainStatutory(badLevy, 'regular').hrdfWorking).toBeNull();
+    // Not the schema at all.
+    expect(explainStatutory({ ...BLOB, hrdfWorking: { version: 2 } }, 'regular').hrdfWorking).toBeNull();
+    // …and the partner: the untouched blob IS read, so the four refusals above are not vacuous.
+    expect(explainStatutory(BLOB, 'regular').hrdfWorking).not.toBeNull();
+  });
+
+  it('a levy set by hand keeps the rate’s own product beside the figure that was charged', () => {
+    const blob = {
+      ...BLOB,
+      hrdf: 45,
+      hrdfWorking: { ...WORKING, levy: 45 },
+      adjustment: { reason: 'HRD Corp letter', lines: { hrdf: { system: 30, applied: 45 } } },
+    };
+    const x = explainStatutory(blob, 'regular');
+    expect(x.hrdfWorking).toMatchObject({ calculatedLevy: 30, levy: 45, levySetByHand: true });
+    expect(x.items.find((i) => i.key === 'hrdf')!.ruleKind).toBe('manual');
   });
 });
