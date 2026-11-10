@@ -50,7 +50,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/organization/organisation-tagging-actions.ts":{"prepareOrganisationAction":"backlog:approve","decideOrganisationAction":"backlog:approve","processOrganisationAction":"backlog:approve"},
  "app/admin/personnel/derived-organisation-actions.ts":{"derivedOrganisationAction":"internal:session_and_presentation"},
  "app/admin/personnel/search/route.ts#route":{"POST":"internal:session_and_presentation"},
- "app/admin/users/[userId]/account/actions.ts":{"accountAction":"handoff:access_and_authentication"},
+ "app/admin/users/[userId]/account/actions.ts":{"accountAction":"handoff:access_and_authentication","accountHistoryAction":"handoff:access_and_authentication","generatePasswordAction":"handoff:access_and_authentication"},
  "app/org/export/route.ts#route":{"POST":"backlog:approve"},
  "app/org/actions.ts":{"designateRoot":"backlog:approve"},
  "app/admin/settings/login/password-policy-actions.ts":{"savePasswordPolicyAction":"handoff:access_and_authentication"},
