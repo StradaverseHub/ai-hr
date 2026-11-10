@@ -41,7 +41,7 @@ export {PAYROLL_PROCESS_JOB_KIND};
  * employee's own). A chunk transaction applies steps until PAYROLL_PROCESS_CHUNK_BUDGET_MS of work and commits, so
  * its hold is at most the budget plus one step, on a quiet host or a loaded one (the populated rehearsal,
  * scripts/performance/payroll-processing-rehearsal.ts, sized both under the 1 s bar). */
-export const payrollProcessStepEmployees=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_STEP_EMPLOYEES??2));
+export const payrollProcessStepEmployees=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_STEP_EMPLOYEES??4));
 const payrollProcessChunkBudgetMs=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS??100));
 /** Payslips deleted per discard transaction. */
 const DISCARD_BATCH=500;
@@ -67,6 +67,13 @@ async function lockRunUnitTx(tx:Tx,ctx:SessionContext,batchId:string){
  await lockPayComponentCatalogReadTx(tx,ctx);
  await lockNativePayrollBatchPeriodTx(tx,ctx,batchId);
 }
+
+/** A processing unit reads its employments one chunk at a time, under the initiator's own authority. The
+ * transaction-local marker (migration 0691, first used by the bank import worker) lets an employment read by a
+ * company administrator skip rebuilding the whole visible-employment array for every statement: the
+ * administrator arm is already part of the original predicate, so the rows read are the same and no authority is
+ * added. An initiator who is not a company administrator takes the original predicate unchanged. */
+async function pointReadTx(tx:Tx){await tx.execute(sql`select set_config('app.bank_import_point_read','on',true)`);}
 
 /** Web side: validate the run and the caller's authority, admit the job and move the run to 'processing'. Short:
  * no figure is read. A repeated request while the run processes returns the running job. */
@@ -131,7 +138,7 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
   await tx.update(payrollBatch).set({status:'draft',processingJobId:null,processingStartedAt:null})
    .where(and(eq(payrollBatch.id,inputOf(job).batchId),eq(payrollBatch.processingJobId,job.id)));
  },
- async beginChunkTx(tx,ctx,job){await lockRunUnitTx(tx,ctx,inputOf(job).batchId);},
+ async beginChunkTx(tx,ctx,job){await lockRunUnitTx(tx,ctx,inputOf(job).batchId);await pointReadTx(tx);},
  async applyStepTx(tx,ctx,job,step){
   return applyRunStepTx(tx,ctx,job,step);
  },
@@ -189,7 +196,7 @@ async function finalizeRun(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit):P
    await withTenant(ctx,async tx=>{
     await label(tx,'finalize');
     await unit.fenceTx(tx);
-    await lockRunUnitTx(tx,ctx,batchId);
+    await lockRunUnitTx(tx,ctx,batchId);await pointReadTx(tx);
     const batch=await batchOf(tx,batchId);
     if(batch)await assertRunAuthorityTx(tx,batch.companyId);
     const rows=await tx.execute<{result:PayrollProcessingChunkResult}>(sql`select result from bulk_job_step where job_id=${job.id}::uuid and kind='employees' and state='applied' order by seq`);

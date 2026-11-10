@@ -170,7 +170,7 @@ import {
 // Feedback 3c473773 — the payslip-box vocabulary. PRESENTATION ONLY: nothing imported here reaches a
 // statutory base, a stored payslip column, or any EA/CP39/KWSP/PERKESO grouping.
 import { defaultCategoryOfBucket, resolveDisplayCategory, type PayDisplayCategory } from './pay-display-category';
-import { resolveAssignedPolicy } from './payroll-policy';
+import { resolveAssignedPolicy, resolveAssignedPoliciesTx } from './payroll-policy';
 import {
   applyOvertimeCaps,
   applyOvertimeCapsDetailed,
@@ -3091,8 +3091,25 @@ function resolveTp1Feed(p: Tp1FeedInput): Tp1Feed {
  */
 async function tp1TargetEmploymentByPerson(
   tx: Tx,
-  p: { companyId: string; periodStart: string; periodEnd: string },
+  p: {
+    companyId: string; periodStart: string; periodEnd: string;
+    /** A payroll processing chunk's employments: read only the people whose routing can name one of them
+     *  (their own people, and anyone designating one of them as paymaster). Each such person's entry is
+     *  still decided from ALL of that person's employments in the batch's whole active set, so it is the
+     *  whole-set answer for every employment of the chunk. */
+    forEmploymentIds?: readonly string[];
+  },
 ): Promise<Map<string, string>> {
+  const activeSet = and(
+    // 3c88d593 — the DATED entity question, the same one generatePayslips asks. Reading only the
+    // column here and the history there is exactly the drift this helper exists to prevent: an
+    // employee the kernel pays on the outgoing entity's run, routed by a screen that cannot see them.
+    employedByCompanyDuring(p.companyId, p.periodStart, p.periodEnd),
+    lte(employment.hiredOn, p.periodEnd),
+    or(isNull(employment.terminatedOn), gte(employment.terminatedOn, p.periodStart)),
+  );
+  const none = '00000000-0000-0000-0000-000000000000';
+  const only = p.forEmploymentIds ? (p.forEmploymentIds.length ? [...p.forEmploymentIds] : [none]) : null;
   const emps = await tx
     .select({
       employmentId: employment.id,
@@ -3103,15 +3120,21 @@ async function tp1TargetEmploymentByPerson(
     .innerJoin(person, eq(person.id, employment.personId))
     .where(
       and(
-        // 3c88d593 — the DATED entity question, the same one generatePayslips asks. Reading only the
-        // column here and the history there is exactly the drift this helper exists to prevent: an
-        // employee the kernel pays on the outgoing entity's run, routed by a screen that cannot see them.
-        employedByCompanyDuring(p.companyId, p.periodStart, p.periodEnd),
-        lte(employment.hiredOn, p.periodEnd),
-        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, p.periodStart)),
+        activeSet,
+        // One indexed person-id list (a UNION, so the planner never ORs across the join).
+        only
+          ? sql`${employment.personId} in (select e2.person_id from employment e2 where e2.id in (${sql.join(only.map((id) => sql`${id}::uuid`), sql`, `)})
+              union select p2.id from person p2 where p2.designated_paymaster_employment_id in (${sql.join(only.map((id) => sql`${id}::uuid`), sql`, `)}))`
+          : undefined,
       ),
     );
   const batchEmpIds = new Set(emps.map((e) => e.employmentId));
+  // Narrowed: a designated paymaster outside the people read is checked against the whole active set too.
+  const outside = only ? [...new Set(emps.map((e) => e.designatedPaymaster).filter((id): id is string => !!id && !batchEmpIds.has(id)))] : [];
+  if (outside.length) {
+    for (const r of await tx.select({ id: employment.id }).from(employment).innerJoin(person, eq(person.id, employment.personId))
+      .where(and(activeSet, inArray(employment.id, outside)))) batchEmpIds.add(r.id);
+  }
   const byPerson = new Map<string, typeof emps>();
   for (const e of emps) {
     const list = byPerson.get(e.personId) ?? [];
@@ -4698,8 +4721,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // inactive / monthly / unassigned policy never populates this map, so the legacy monthly path is unchanged
     // (proven byte-identical). Resolved ONCE here so the per-employee loop reads a map, not a re-query.
     const dailyPayByEmp = new Map<string, { rate: number; eligibleDays: number; basic: number }>();
+    // One set-wise read for the whole list: the same answer per employment as resolveAssignedPolicy.
+    const assignedPolicies = await resolveAssignedPoliciesTx(tx, emps.map((e) => e.employmentId));
     for (const e of emps) {
-      const policy = await resolveAssignedPolicy(tx, e.employmentId);
+      const policy = assignedPolicies.get(e.employmentId) ?? null;
       const cfg = policy?.config ?? null;
       policyConfigByEmp.set(e.employmentId, cfg);
       // 1b / Step 3 (f3148da1) — proration divisor + working-day basis, resolved once per employee. The formula
@@ -5420,6 +5445,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         companyId: batch.companyId,
         periodStart,
         periodEnd,
+        // A processing chunk asks only about its own employments (the same whole-set answer for each).
+        ...(processing?.phase === 'employees' ? { forEmploymentIds: empIds } : {}),
       });
       const inRun = new Set(empIds);
       for (const [personId, employmentId] of targetByPerson) {

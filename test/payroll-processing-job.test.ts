@@ -25,7 +25,10 @@ import {listPayComponents,seedPayComponentCatalog,setEmploymentPayComponent} fro
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {createIndividualTxn} from '../core/payroll-individual-txn';
 import {payrollProcessJobHandler,payrollProcessingStatus,requestPayrollProcessing} from '../core/payroll-processing-job';
-import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
+import {approveTp1ForPerson,getTp1ForPerson,submitTp1} from '../core/tax-relief';
+import {initializeHiredTaxSelectionMYTx} from '../localization/my/tax-selection';
+import {withTenant} from '../db/client';
+import {adminCtx,closeAll,createAppUser,entitledCtx,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
 /** The synchronous path's digest for this fixture (test/payroll-lock-equivalence.test.ts, recorded on the base). */
 const GOLDEN='13f356722b8a12c17c3f6c716f4f1760785e93172519bbeefa98318d3e2da142';
@@ -158,6 +161,51 @@ describe('payroll processing background job',()=>{
   expect(await f.eventsSince(started)).toEqual(syncEvents);
   const status=await payrollProcessingStatus(f.a,f.batchId);
   expect(status).toMatchObject({status:'processed',job:{id:jobId,state:'completed',result:{payslips:5}}});
+ },300000);
+
+ it('routes TP1 relief across chunks exactly as one synchronous run: paymaster, single and ambiguous people',async()=>{
+  // One employee per step, so a person's two employments are always paid in different chunk transactions.
+  process.env.PAYROLL_PROCESS_STEP_EMPLOYEES='1';
+  const admin=adminCtx(base);const a=await entitledCtx(base);const names=new Map<string,string>();
+  const hire=async(label:string,ic:string,basic:number)=>{
+   const e=await hireEmployee(admin,{person:{fullName:`Fictional ${label}`,primaryEmail:`fictional-${label.toLowerCase()}@routing.test`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
+   await setCompensation(admin,{employmentId:e.employmentId,basicSalary:basic,monthlyAllowance:0,effectiveFrom:'2026-01-01'});
+   await setStatutoryProfileMY(admin,{personId:e.personId,icNumber:ic});names.set(e.employmentId,label);return e;
+  };
+  const second=async(personId:string,label:string,basic:number)=>{
+   const [e]=await owner.db.insert(schema.employment).values({tenantId:base.tenantId,personId,companyId:base.companyId,hiredOn:'2026-01-01'}).returning({id:schema.employment.id});
+   await setCompensation(admin,{employmentId:e.id,basicSalary:basic,monthlyAllowance:0,effectiveFrom:'2026-01-01'});names.set(e.id,label);
+   // The hire path's own initial tax selection, which the raw second employment did not get.
+   await withTenant(admin,tx=>initializeHiredTaxSelectionMYTx(tx,admin,{employmentId:e.id,companyId:base.companyId,scheme:'resident'}));
+   return e.id;
+  };
+  const relieve=async(personId:string,amount:number)=>{
+   const uid=await createAppUser(base.tenantId,personId,'employee');
+   await submitTp1({tenantId:base.tenantId,userId:uid,personId,roles:['employee'],entitlements:harnessSnapshot(base.tenantId)},{assessmentYear:2026,tp1Amount:amount});
+   const row=await getTp1ForPerson(admin,{personId,assessmentYear:2026});if(!row)throw new Error('no TP1 row');
+   await approveTp1ForPerson(admin,{personId,id:row.id,approvedMonth:1,approvedYear:2026});
+  };
+  // A paymaster person whose designated job is their SECOND employment, a one-job person, and a two-job person
+  // with no paymaster (relieved on neither job), with others between them so the jobs fall in separate chunks.
+  const pay=await hire('Paymaster',  '880101145511',6100);await hire('Filler A','900215105512',3300);
+  const payJob2=await second(pay.personId,'Paymaster second',4200);
+  const single=await hire('Single','850630085513',7400);await hire('Filler B','780912105514',2900);
+  const amb=await hire('Ambiguous','010405145515',5600);await second(amb.personId,'Ambiguous second',3800);
+  await owner.db.update(schema.person).set({designatedPaymasterEmploymentId:payJob2}).where(eq(schema.person.id,pay.personId));
+  for(const [personId,amount] of [[pay.personId,2400],[single.personId,1800],[amb.personId,3000]] as const)await relieve(personId,amount);
+  const {batchId}=await createBatch(a,{companyId:base.companyId,payPeriod:'2026-03'});
+  const slips=async()=>canonical([...await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))]
+   .sort((x,y)=>names.get(x.employmentId)!.localeCompare(names.get(y.employmentId)!)),names);
+  await generatePayslips(a,{batchId});
+  const sync=await slips();
+  const lp=(doc:unknown,label:string)=>Number(((doc as {employmentId:string;statutory:{lp?:number}}[]).find(r=>r.employmentId===label)?.statutory?.lp)??0);
+  // The routing itself, so the comparison below cannot pass on two equally wrong runs.
+  expect(lp(sync,'Paymaster second')).toBeGreaterThan(0);expect(lp(sync,'Paymaster')).toBe(0);
+  expect(lp(sync,'Single')).toBeGreaterThan(0);expect(lp(sync,'Ambiguous')).toBe(0);expect(lp(sync,'Ambiguous second')).toBe(0);
+  await resetProcessedBatch(a,{batchId,reason:'Fictional routing reset'});
+  const {jobId}=await requestPayrollProcessing(a,{batchId});
+  expect(await runJob(jobId)).toMatchObject({state:'completed',error:null});
+  expect(await slips()).toEqual(sync);
  },300000);
 
  it('lets salary edits land while processing: included for employees not reached yet, marked for employees already paid',async()=>{
