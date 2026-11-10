@@ -2,7 +2,9 @@
  * No private identity/session/provider fields leave this helper or enter evidence. */
 import assert from 'node:assert/strict';
 import {constants,openSync,closeSync,fstatSync,readSync,lstatSync,realpathSync} from 'node:fs';
-import {join,resolve} from 'node:path';
+import {isAbsolute,join,resolve} from 'node:path';
+import {WORKER_COMPARISON_CELLS_DIRECTORY} from './worker-comparison-custody.mjs';
+import {workerComparisonCellName} from './worker-comparison.mjs';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {fixtureNavigationActor,type NavigationFixtureTextBindings} from './navigation-protocol';
 const UUID=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
@@ -49,8 +51,21 @@ export function projectNavigationFixtureBindings(value:unknown):ReadonlyMap<numb
 export function readNavigationFixtureBindings():ReadonlyMap<number,Readonly<NavigationFixtureTextBindings>>{
  assert(process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'&&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'
   &&process.env.AIHR_PERFORMANCE_ROLE_FIXTURE==='true','Hosted fictional fixture reader required');
- const directory=resolve(process.env.RUNNER_TEMP??'/missing','system-performance-private');
+ const temporary=process.env.RUNNER_TEMP??'/missing';
+ let directory=resolve(temporary,'system-performance-private');
+ let cellsRoot;
+ if(process.env.AIHR_MEASURED_BROWSER_COURSE==='serial-2-4-8'){
+  const cell=workerComparisonCellName(process.env.PERF_HTTP_SUITE,process.env.PERF_APP_WORKERS);
+  assert(cell&&isAbsolute(temporary)&&realpathSync(temporary)===temporary,'Owned worker comparison fixture cell refused');
+  cellsRoot=join(temporary,WORKER_COMPARISON_CELLS_DIRECTORY);
+  directory=join(cellsRoot,cell);
+ }
  assert(process.env.PERF_PRIVATE_DIR===directory,'Unexpected native fictional fixture directory');
+ if(cellsRoot){
+  const root=lstatSync(cellsRoot);
+  assert(root.isDirectory()&&root.uid===process.getuid!()&&(root.mode&0o7777)===0o700&&realpathSync(cellsRoot)===cellsRoot,
+   'Private worker comparison fixture root required');
+ }
  const parent=lstatSync(directory);assert(parent.isDirectory()&&!parent.isSymbolicLink()&&realpathSync(directory)===directory&&parent.uid===process.getuid!()&&(parent.mode&0o777)===0o700,'Private native fictional fixture directory required');
  const path=join(directory,'fixture.json'),fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW);
  try{

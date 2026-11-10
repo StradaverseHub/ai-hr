@@ -15,6 +15,10 @@ const course = Object.freeze([
     workers: 8, heapMiBPerWorker: 512, poolPerWorker: 2, claimsPerActor: 200, activeMinimumMs: 1390 * second,
     buildMode: 'comparison-copy', buildMs: null, driverMs: 600 * second, rampMs: null, holdMs: 30 * second, oversubscribed: true }),
 ]);
+export function workerComparisonCellName(suite, workers) {
+  return course.find(cell => cell.suite === suite && String(cell.workers) === workers)?.name;
+}
+
 const sameIdentity = (left, right) => left?.candidateSha === right.candidateSha && left.controllerSha === right.controllerSha
   && left.runId === right.runId && left.runAttempt === 1;
 const closed = (row, keys) => row !== null && typeof row === 'object' && !Array.isArray(row)

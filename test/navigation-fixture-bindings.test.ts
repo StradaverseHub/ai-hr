@@ -1,6 +1,6 @@
 /** Pure projection tests; no native fixture execution or runtime qualification. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {mkdtempSync,mkdirSync,writeFileSync,chmodSync,symlinkSync,rmSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,chmodSync,symlinkSync,rmSync,realpathSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {projectNavigationFixtureBindings,readNavigationFixtureBindings} from '../scripts/performance/navigation-fixture-bindings';
@@ -65,6 +65,36 @@ describe('bounded expected content from the existing native fictional fixture',(
   chmodSync(path,0o644);expect(()=>readNavigationFixtureBindings()).toThrow(/Bounded private/);chmodSync(path,0o600);
   writeFileSync(path,'x'.repeat(2*1024*1024+1));expect(()=>readNavigationFixtureBindings()).toThrow(/Bounded private/);
   rmSync(path);const other=join(temporary,'other.json');writeFileSync(other,JSON.stringify(fixture()),{mode:0o600});symlinkSync(other,path);expect(()=>readNavigationFixtureBindings()).toThrow();
+ });
+ it.each([
+  ['whole-system','2','steady-2'],
+  ['whole-system','4','steady-4'],
+  ['workflow-preflight','8','functional-8'],
+ ])('reads only the fixed %s / %s worker cell', (suite, workers, cell)=>{
+  const temporary=realpathSync(mkdtempSync(join(tmpdir(),'worker-fixture-unit-')));ownedTemporary.push(temporary);
+  const root=join(temporary,'aihr-worker-comparison-cells'),directory=join(root,cell);
+  const standalone=join(temporary,'system-performance-private');
+  mkdirSync(root,{mode:0o700});mkdirSync(directory,{mode:0o700});mkdirSync(standalone,{mode:0o700});
+  const path=join(directory,'fixture.json'),raw=JSON.stringify(fixture());
+  writeFileSync(path,raw,{mode:0o600});
+  writeFileSync(join(standalone,'fixture.json'),raw,{mode:0o600});
+  for(const [key,value] of Object.entries({
+   GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',
+   AIHR_PERFORMANCE_ROLE_FIXTURE:'true',RUNNER_TEMP:temporary,PERF_PRIVATE_DIR:directory,
+   AIHR_MEASURED_BROWSER_COURSE:'serial-2-4-8',PERF_HTTP_SUITE:suite,PERF_APP_WORKERS:workers,
+  }))vi.stubEnv(key,value);
+  expect(readNavigationFixtureBindings().get(250)?.actorName).toBe('PERF Person 0250');
+  vi.stubEnv('PERF_APP_WORKERS',workers==='2'?'4':'2');
+  expect(()=>readNavigationFixtureBindings()).toThrow(/fixture (cell refused|directory)/);
+  vi.stubEnv('PERF_APP_WORKERS',workers);
+  vi.stubEnv('PERF_PRIVATE_DIR',standalone);
+  expect(()=>readNavigationFixtureBindings()).toThrow(/Unexpected native fictional fixture directory/);
+  vi.stubEnv('PERF_PRIVATE_DIR',directory);
+  chmodSync(root,0o755);
+  expect(()=>readNavigationFixtureBindings()).toThrow(/Private worker comparison fixture root/);
+  chmodSync(root,0o700);
+  rmSync(path);symlinkSync(join(standalone,'fixture.json'),path);
+  expect(()=>readNavigationFixtureBindings()).toThrow();
  });
  it('refuses incomplete, duplicate, wrong-scope/role/name and unsealed fictional fixture metadata',()=>{
   for(const edit of [(v:ReturnType<typeof fixture>)=>v.users.pop(),(v:ReturnType<typeof fixture>)=>{v.users[1].index=0;},

@@ -14,6 +14,7 @@ const stat=path=>lstatSync(path,{bigint:true});
 const held=fd=>fstatSync(fd,{bigint:true});
 const same=(left,right)=>left.dev===right.dev&&left.ino===right.ino;
 const digest=raw=>createHash('sha256').update(raw).digest('hex');
+export const WORKER_COMPARISON_CELLS_DIRECTORY='aihr-worker-comparison-cells';
 export const comparisonClock=()=>Number(process.hrtime.bigint()/1_000_000n);
 
 function absent(path){
@@ -117,7 +118,7 @@ export function holdWorkerComparisonFiles(env){
    assert(held(fd).dev===held(parent).dev&&(held(fd).mode&0o7777n)===0o700n,'Worker comparison reservation refused');
    return fd;
   }
-  const workName='aihr-worker-comparison-cells',outName='system-worker-comparison-evidence';
+  const workName=WORKER_COMPARISON_CELLS_DIRECTORY,outName='system-worker-comparison-evidence';
   const work=fresh(temp,workName),out=fresh(temp,outName);
   const buildName='.next',seedName='aihr-worker-comparison-next';
   let seed=null;
