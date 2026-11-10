@@ -22,7 +22,7 @@ const state=vi.hoisted(()=>{
 vi.mock('../../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>(key:string)=>key}));
 import {sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../../db/client';
+import {client as applicationClient,withTenant,type SessionContext} from '../../db/client';
 import * as s from '../../db/schema';
 import {hireEmployee} from '../../core/org';
 import {createClaimType} from '../../packs/claims/service';
@@ -213,6 +213,18 @@ async function todayReaders(today:string){
  };
 }
 
+type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[]};
+async function traceStatements<T>(work:()=>Promise<T>){
+ const options=applicationClient.options as {debug?:unknown},ordered:string[]=[],previous=options.debug;
+ options.debug=(_connection:number,query:string)=>{ordered.push(query.replace(/\s+/g,' ').trim().slice(0,420));};
+ let result:T|null=null,failure:unknown=null;
+ try{result=await work();}catch(error){failure=errorFact(error);}finally{options.debug=previous;}
+ const counts=new Map<string,number>();
+ for(const text of ordered)counts.set(text,(counts.get(text)??0)+1);
+ const trace:Traced={trips:ordered.length,statements:[...counts].map(([text,count])=>({sql:text,count})).sort((a,b)=>b.count-a.count),ordered};
+ return {result,failure,trace};
+}
+
 async function streamHome(actor:Actor,month:string,run:string|null,handler:typeof GET=GET){
  state.session=actor.ctx;state.run=run;
  const query=new URLSearchParams({employmentId:actor.employmentId});
@@ -372,6 +384,26 @@ it('completes every manager Home card and Today section read without a handled f
   print('today-solo',{label,sections:Object.fromEntries(Object.entries(rows).map(([name,row])=>{
    const value=row as {timesMs:number[];result:unknown;failure:unknown};return [name,{ms:value.timesMs,result:value.result,failure:value.failure}];
   }))});
+  evidence();
+ }
+ // 5b. Exact statements each card and Today section issues, on the application client. Statement
+ // text only (bound values never appear in it); BEGIN, set_config and COMMIT all count as trips.
+ const statementTrace:Record<string,unknown>={};report.statementTrace=statementTrace;
+ const pageSections=['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'];
+ for(const [label,actor] of [['manager',manager],['employee',employee]] as const){
+  const targets=await todayTargets(actor.ctx),rows:Record<string,Traced>={};statementTrace[label]=rows;
+  for(const card of CARDS){
+   await readers(actor.ctx,actor.employmentId,month)[card]().catch(()=>undefined);
+   rows['card:'+card]=(await traceStatements(()=>readers(actor.ctx,actor.employmentId,month)[card]())).trace;
+  }
+  for(const [name,read] of Object.entries(targets)){
+   await read().catch(()=>undefined);
+   rows['section:'+name]=(await traceStatements(read)).trace;
+  }
+  rows.stream=(await traceStatements(()=>streamHome(actor,month,null))).trace;
+  const page=await traceStatements(()=>Promise.all([streamHome(actor,month,null),...pageSections.map(name=>targets[name]())]));
+  rows.page=page.trace;
+  print('statement-trace',{label,trips:Object.fromEntries(Object.entries(rows).map(([name,row])=>[name,row.trips])),pageFailure:page.failure});
   evidence();
  }
  // The browser renders Today sections and starts the card stream on the same worker pool.
