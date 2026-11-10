@@ -23,8 +23,13 @@ fixed-item and policy edits for that company waited for the whole run and were r
   run), `begin` (opening gates, whole-run attach-on-generate), `employees` chunks (the same path narrowed to the
   chunk, sorted back to the planned order; each chunk re-asserts the readiness gate for its employments) and finalize.
   Finalize prefills the company's remaining overtime candidates and runs the extracted, shared tail
-  (`recordSegmentCoverageTx`, `completeFullGenerationTx`): status, totals, ledgers, claims, events, audit capture.
-  Totals are each payslip's exact addends, summed in the planned order, so they equal the single loop's to the bit.
+  (`recordSegmentCoverageTx`, `completeFullGenerationTx`): status, totals, ledgers, claims and events. The audit loop's
+  input capture, which reads every owner row of the run and grows with it, follows in its own unit with no run key
+  held (its event still follows the processed event). Totals are each payslip's exact addends, summed in the planned
+  order, so they equal the single loop's to the bit.
+- **Unit size.** One pass of the compute path carries about 250 ms of run-wide reads plus about 50 ms per employee
+  (quiet host), so steps are two employees and a chunk applies steps until 250 ms of work
+  (`PAYROLL_PROCESS_STEP_EMPLOYEES`, `PAYROLL_PROCESS_CHUNK_BUDGET_MS`).
 - **Edits while processing.** `markBatchNeedsRecalc` and `markRunsAffectedByEmploymentChangeTx` treat a processing run
   like a processed one for the employees it has already paid; fixed-item and policy-assignment writers mark such a run
   (`markProcessingRunsForEmploymentsTx`). A writer holds the employee's payroll inputs key (shared) and a chunk holds

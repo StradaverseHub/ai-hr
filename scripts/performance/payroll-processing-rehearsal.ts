@@ -11,7 +11,8 @@
  *
  * and compares the canonical figure digests of B and C (every payslip, the statutory breakdown, run totals). Env:
  * DATABASE_URL (app), MIGRATION_DATABASE_URL (owner), REHEARSAL_PORT, REHEARSAL_TENANT, REHEARSAL_ADMIN,
- * BASE_EMPLOYEES (3000), PAY_PERIOD (2026-06), PAYROLL_PROCESS_CHUNK_EMPLOYEES, SKIP_SYNC=1 (skip C).
+ * BASE_EMPLOYEES (3000), PAY_PERIOD (2026-06), PAYROLL_PROCESS_STEP_EMPLOYEES, PAYROLL_PROCESS_CHUNK_BUDGET_MS,
+ * SKIP_SYNC=1 (skip C), PHASES (default ABC).
  */
 import '../lib/stub-server-only';
 import {spawn,type ChildProcess} from 'node:child_process';
@@ -86,7 +87,7 @@ async function main(){
  }
  let [batch]=await obs<{id:string;status:string}[]>`select id,status::text from payroll_batch where tenant_id=${TENANT}::uuid and company_id=${companyId}::uuid and pay_period=${PERIOD} and run_type='regular'`;
  if(!batch){const created=await createBatch(admin,{companyId,payPeriod:PERIOD});batch={id:created.batchId,status:'draft'};}
- if(batch.status==='processed')await resetProcessedBatch(admin,{batchId:batch.id,reason:'Rehearsal reset'});
+ if(batch.status==='processed'&&process.env.PHASES!=='C')await resetProcessedBatch(admin,{batchId:batch.id,reason:'Rehearsal reset'});
  const batchId=batch.id;
  // Salary-edit subjects: employees of the processing company spread over the run.
  const editable=await obs<{id:string;basic:string}[]>`select e.id,c.basic_salary::text as basic from employment e join compensation c on c.employment_id=e.id and c.valid_to is null
@@ -96,7 +97,7 @@ async function main(){
  const stopWorker=async()=>{const proc=worker.proc;if(!proc||proc.exitCode!==null)return;const exited=new Promise(resolve=>proc.once('exit',resolve));proc.kill('SIGTERM');await exited;};
  const newLat=():Record<string,number[]>=>({login:[],access:[],clock:[],profile:[],personnel:[],home:[],salaryEdit:[]});
  let lat=newLat();const errors:string[]=[];let stop=false;let edits=false;let editSeq=0;
- const loop=async(name:string,gap:number,fn:(i:number)=>Promise<unknown>)=>{let i=0;while(!stop){const s=Date.now();try{await fn(i++);lat[name].push(Date.now()-s);}catch(e){errors.push(`${name}: ${String((e as Error)?.message??e).slice(0,160)}`);}await sleep(gap);}};
+ const loop=async(name:string,gap:number,fn:(i:number)=>Promise<unknown>)=>{let i=0;while(!stop){const s=Date.now();try{await fn(i++);lat[name].push(Date.now()-s);}catch(e){const err=e as {message?:string;code?:string;cause?:{code?:string;message?:string}};errors.push(`${name}: [${err?.cause?.code??err?.code??'-'}] ${String(err?.cause?.message??err?.message??e).slice(0,160)}`);}await sleep(gap);}};
  const clockBase=Date.parse(process.env.CLOCK_BASE??'2027-01-01');
  let clockSeq=0;const clockDay=()=>new Date(clockBase+(clockSeq++)*86400000).toISOString().slice(0,10);
  const runProbes=()=>Promise.all([
@@ -139,19 +140,18 @@ async function main(){
  lat=newLat();stop=false;const base=runProbes();await sleep(Number(process.env.BASELINE_SECONDS??15)*1000);stop=true;await base;
  console.log(JSON.stringify({baseline:Object.fromEntries(Object.entries(lat).map(([k,v])=>[k,stat(v)])),errors:[...new Set(errors)].slice(0,8)},null,2));
  errors.length=0;
- const a=await phase('A job + salary edits',async()=>({jobId:(await requestPayrollProcessing(admin,{batchId,operationKey:randomUUID()})).jobId}),true);
- await resetProcessedBatch(admin,{batchId,reason:'Rehearsal reset'});
+ const PHASES=process.env.PHASES??(process.env.SKIP_SYNC==='1'?'AB':'ABC');
+ type Phase=Awaited<ReturnType<typeof phase>>;
+ let a:Phase|null=null,b:Phase|null=null,c:Phase|null=null;
+ const reset=async()=>{const [r]=await obs<{status:string}[]>`select status::text from payroll_batch where id=${batchId}::uuid`;if(r.status==='processed')await resetProcessedBatch(admin,{batchId,reason:'Rehearsal reset'});};
+ if(PHASES.includes('A'))a=await phase('A job + salary edits',async()=>({jobId:(await requestPayrollProcessing(admin,{batchId,operationKey:randomUUID()})).jobId}),true);
  // B and C both run after A's last edit and change no input, so they read identical inputs.
- const b=await phase('B job',async()=>({jobId:(await requestPayrollProcessing(admin,{batchId,operationKey:randomUUID()})).jobId}),false);
- let c:Awaited<ReturnType<typeof phase>>|null=null;
- if(process.env.SKIP_SYNC!=='1'){
-  await resetProcessedBatch(admin,{batchId,reason:'Rehearsal reset'});
-  c=await phase('C synchronous',async()=>{await generatePayslips(admin,{batchId});return{};},false);
- }
+ if(PHASES.includes('B')){await reset();b=await phase('B job',async()=>({jobId:(await requestPayrollProcessing(admin,{batchId,operationKey:randomUUID()})).jobId}),false);}
+ if(PHASES.includes('C')){await reset();c=await phase('C synchronous',async()=>{await generatePayslips(admin,{batchId});return{};},false);}
  await stopWorker();
  const chain=await verifyTenantChain(admin);
- console.log(JSON.stringify({summary:{employees:b.figures.payslips,jobDigest:b.figures.digest,syncDigest:c?.figures.digest??null,identical:c?b.figures.digest===c.figures.digest:null,
-  phaseA:{wallMs:a.wallMs,busy:a.busy,errors:a.errorCount,recalcMarked:a.recalcMarked,chunkHoldMs:(a.job?.metrics as Record<string,number>|undefined)?.chunkHoldMs,finalizeTxMs:(a.job?.metrics as Record<string,number>|undefined)?.finalizeTxMs}},auditChain:chain},null,2));
+ console.log(JSON.stringify({summary:{employees:(b??a)?.figures.payslips??null,jobDigest:b?.figures.digest??null,syncDigest:c?.figures.digest??null,identical:b&&c?b.figures.digest===c.figures.digest:null,
+  phaseA:a&&{wallMs:a.wallMs,busy:a.busy,errors:a.errorCount,recalcMarked:a.recalcMarked,chunkHoldMs:(a.job?.metrics as Record<string,number>|undefined)?.chunkHoldMs,finalizeTxMs:(a.job?.metrics as Record<string,number>|undefined)?.finalizeTxMs,captureTxMs:(a.job?.metrics as Record<string,number>|undefined)?.captureTxMs}},auditChain:chain},null,2));
  await obs.end();await client.end();
 }
 main().catch(e=>{console.error('REHEARSAL FATAL',e);process.exit(1);});

@@ -63,3 +63,15 @@ END $$;
 -- 4. The kind. No Import History scope: the creator reads the job while their captured grants stay current; every
 --    payroll operator sees the run's own 'processing' status through payroll_batch.
 INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES('payroll_process',NULL,'none');
+--> statement-breakpoint
+-- 5. The effective-batch view (0660) projects every payroll_batch column, listed when it was created; the readers'
+--    projection (db/schema.ts payrollHistoryBatchView) now includes the two lease columns. Rebuilt with 0660's own
+--    expressions, so the existing columns are unchanged and the new ones are appended in table order.
+DO $$ DECLARE columns text; BEGIN
+ SELECT string_agg(CASE a.attname
+  WHEN 'totals' THEN 'CASE WHEN b.history_import_attempt_id IS NULL AND NOT app.payroll_history_batch_adopted(b.id) THEN b.totals ELSE app.payroll_history_batch_totals(b.id) END AS totals'
+  WHEN 'employee_count' THEN 'CASE WHEN b.history_import_attempt_id IS NULL AND NOT app.payroll_history_batch_adopted(b.id) THEN b.employee_count ELSE (app.payroll_history_batch_totals(b.id)->>''employeeCount'')::integer END AS employee_count'
+  ELSE format('b.%I',a.attname) END,',' ORDER BY a.attnum) INTO columns
+ FROM pg_attribute a WHERE a.attrelid='public.payroll_batch'::regclass AND a.attnum>0 AND NOT a.attisdropped;
+ EXECUTE 'CREATE OR REPLACE VIEW public.payroll_history_effective_batch WITH (security_invoker=true) AS SELECT '||columns||' FROM public.payroll_batch b';
+END $$;

@@ -438,6 +438,8 @@ describe('0b326d5f — the Payroll Process listing renders the state, the count 
     const unfiltered = await renderList();
     expect(unfiltered.statusOptions?.map((o) => o.value)).toEqual([
       'draft',
+      // Owner decision 2026-11-10: the background payroll job's own status, listed in enum order.
+      'processing',
       'processed',
       'closed',
       REPROCESS_REQUIRED,

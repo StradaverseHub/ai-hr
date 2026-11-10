@@ -62,10 +62,11 @@ async function runUntil(id:string,done:(applied:number)=>boolean,max=200){
 let base:Base;
 beforeAll(async()=>{await migrateTestDb();});
 beforeEach(async()=>{
- process.env.PAYROLL_PROCESS_CHUNK_EMPLOYEES='2';
+ // Steps of two employees, one step per chunk transaction, so a test can stop between chunks.
+ process.env.PAYROLL_PROCESS_STEP_EMPLOYEES='2';process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS='1';
  await resetDb();base=await seedBase();for(const module of ['payroll','typed_pay_components'])await setModule(base.tenantId,module,'active');await setSetting(base.tenantId,'payroll.reset_enabled',true);
 });
-afterEach(()=>{delete process.env.PAYROLL_PROCESS_CHUNK_EMPLOYEES;});
+afterEach(()=>{delete process.env.PAYROLL_PROCESS_STEP_EMPLOYEES;delete process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS;});
 afterAll(async()=>{await closeAll();});
 
 /** The payroll wave's equivalence fixture, verbatim. */

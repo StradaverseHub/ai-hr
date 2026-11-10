@@ -11,7 +11,8 @@
  *
  *   prepare   the whole-run readiness gate and the run's planned employments, read with no key held;
  *   begin     the opening gates and the whole-run attach-on-generate;
- *   employees chunks of PAYROLL_PROCESS_CHUNK_EMPLOYEES payslips, each employee's figures exactly as the full run;
+ *   employees steps of PAYROLL_PROCESS_STEP_EMPLOYEES payslips, applied in chunk transactions of about
+ *             PAYROLL_PROCESS_CHUNK_BUDGET_MS, each employee's figures exactly as the full run;
  *   finalize  the remaining overtime-prefill candidates, segment coverage and the full generation's tail (status,
  *             totals summed in the run's order, ledgers, claims, events, audit capture) in one transaction.
  *
@@ -30,20 +31,23 @@ import {publicErrorMessage} from '../lib/public-error';
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {lockNativePayrollBatchPeriodTx} from './payroll-period-lock';
 import {
- BatchNotDraftError,clearBatchRecalc,completePayrollProcessingTx,runPayrollProcessingUnitTx,
+ BatchNotDraftError,capturePayrollProcessingInputsTx,clearBatchRecalc,completePayrollProcessingTx,runPayrollProcessingUnitTx,
  type PayrollProcessingChunkResult,type PayrollProcessingInputSnapshot,type PayrollProcessingPlan,
 } from './payroll';
 import {PAYROLL_PROCESS_JOB_KIND,type PayrollProcessingStatus} from '../lib/payroll-processing-job';
 
 export {PAYROLL_PROCESS_JOB_KIND};
-/** Employees per chunk transaction. One chunk reads the run's shared inputs once and then each employee's own; the
- * populated rehearsal (scripts/performance/payroll-processing-rehearsal.ts) sizes it under the 1 s hold bar. */
-export const payrollProcessChunkEmployees=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_CHUNK_EMPLOYEES??10));
+/** Employees per step. A step is one pass of the full generation's compute path (its run-wide reads once, then each
+ * employee's own). A chunk transaction applies steps until PAYROLL_PROCESS_CHUNK_BUDGET_MS of work and commits, so
+ * its hold is at most the budget plus one step, on a quiet host or a loaded one (the populated rehearsal,
+ * scripts/performance/payroll-processing-rehearsal.ts, sized both under the 1 s bar). */
+export const payrollProcessStepEmployees=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_STEP_EMPLOYEES??2));
+const payrollProcessChunkBudgetMs=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS??250));
 /** Payslips deleted per discard transaction. */
 const DISCARD_BATCH=500;
 
 type JobInput={batchId:string};
-type JobPlan=PayrollProcessingPlan&{batchId:string;finalized?:{payslips:number;totalNet:number;skipped:number}};
+type JobPlan=PayrollProcessingPlan&{batchId:string;finalized?:{payslips:number;totalNet:number;skipped:number};captured?:boolean};
 type EmployeesStep={employmentIds:string[]};
 const inputOf=(job:BulkJobRow)=>job.input as JobInput;
 const planOf=(job:BulkJobRow)=>job.plan as JobPlan|null;
@@ -108,7 +112,8 @@ async function batchOf(tx:Tx,batchId:string){
 export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string,never>>={
  kind:PAYROLL_PROCESS_JOB_KIND,
  mode:'atomic',
- maxStepsPerChunk:1,
+ maxStepsPerChunk:32,
+ get chunkBudgetMs(){return payrollProcessChunkBudgetMs();},
  phaseOf:kind=>kind==='begin'?'begin':'employees',
  isTransient:error=>error instanceof PayrollRunQueuedError||isTransientBulkJobError(error),
  async prepare(ctx,job){
@@ -150,8 +155,9 @@ async function prepareRun(ctx:SessionContext,job:BulkJobRow,batchId:string):Prom
    if(!('processingPlan' in unit)||!unit.processingPlan)throw new Error('Payroll processing plan unavailable.');
    const plan=unit.processingPlan;
    const steps:BulkJobStepInput[]=[{kind:'begin',payload:{}}];
-   for(let i=0;i<plan.employmentIds.length;i+=payrollProcessChunkEmployees())
-    steps.push({kind:'employees',payload:{employmentIds:plan.employmentIds.slice(i,i+payrollProcessChunkEmployees())} satisfies EmployeesStep});
+   const size=payrollProcessStepEmployees();
+   for(let i=0;i<plan.employmentIds.length;i+=size)
+    steps.push({kind:'employees',payload:{employmentIds:plan.employmentIds.slice(i,i+size)} satisfies EmployeesStep});
    return{steps,plan:{...plan,batchId} satisfies JobPlan,counters:{employees:plan.employmentIds.length},companyIds:[batch.companyId],phase:'begin'};
   });
 }
@@ -170,26 +176,41 @@ async function applyRunStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJ
   return{result:unit.processingChunk,counters:{paid:unit.processingChunk.paid.length,skipped:unit.processingChunk.skipped.length}};
 }
 
-async function finalizeRun(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit){
+/** Finalize in two bounded units. First the flip, under the run's keys: status, totals, ledgers, claims and events,
+ * exactly the full generation's tail. Then, with no run key held, the audit loop's input capture, which reads every
+ * owner row of the run and grows with it. Each unit records itself on the job plan in its own transaction, so a
+ * unit that committed is never repeated after a worker restart. */
+async function finalizeRun(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit):Promise<'more'|{result:unknown}>{
   const plan=planOf(job);const {batchId}=inputOf(job);
   if(!plan)throw new Error('Payroll processing plan unavailable.');
-  // A finalize that committed before the kernel recorded completion is not repeated.
-  if(plan.finalized)return{result:{batchId,...plan.finalized}};
-  const started=performance.now();
-  const outcome=await withTenant(ctx,async tx=>{
-   await tx.execute(sql`select set_config('application_name',${`aihr-bulk:${PAYROLL_PROCESS_JOB_KIND}:finalize`},true)`);
-   await unit.fenceTx(tx);
-   await lockRunUnitTx(tx,ctx,batchId);
-   const batch=await batchOf(tx,batchId);
-   if(batch)await assertRunAuthorityTx(tx,batch.companyId);
-   const rows=await tx.execute<{result:PayrollProcessingChunkResult}>(sql`select result from bulk_job_step where job_id=${job.id}::uuid and kind='employees' and state='applied' order by seq`);
-   const done=await completePayrollProcessingTx(tx,ctx,{batchId,jobId:job.id,plannedEmploymentIds:plan.employmentIds,prefillOvertime:plan.prefillOvertime,chunks:rows.map(r=>r.result)});
-   const finalized={payslips:done.payslips,totalNet:done.totalNet,skipped:done.skipped.length};
-   await tx.execute(sql`update bulk_job set plan=plan||${JSON.stringify({finalized})}::jsonb,updated_at=now() where id=${job.id}::uuid`);
-   return finalized;
-  });
-  unit.metric('finalizeTxMs',performance.now()-started);
-  return{result:{batchId,...outcome}};
+  const label=(tx:Tx,phase:string)=>tx.execute(sql`select set_config('application_name',${`aihr-bulk:${PAYROLL_PROCESS_JOB_KIND}:${phase}`},true)`);
+  if(!plan.finalized){
+   const started=performance.now();
+   await withTenant(ctx,async tx=>{
+    await label(tx,'finalize');
+    await unit.fenceTx(tx);
+    await lockRunUnitTx(tx,ctx,batchId);
+    const batch=await batchOf(tx,batchId);
+    if(batch)await assertRunAuthorityTx(tx,batch.companyId);
+    const rows=await tx.execute<{result:PayrollProcessingChunkResult}>(sql`select result from bulk_job_step where job_id=${job.id}::uuid and kind='employees' and state='applied' order by seq`);
+    const done=await completePayrollProcessingTx(tx,ctx,{batchId,jobId:job.id,plannedEmploymentIds:plan.employmentIds,prefillOvertime:plan.prefillOvertime,chunks:rows.map(r=>r.result)});
+    const finalized={payslips:done.payslips,totalNet:done.totalNet,skipped:done.skipped.length};
+    await tx.execute(sql`update bulk_job set plan=plan||${JSON.stringify({finalized})}::jsonb,updated_at=now() where id=${job.id}::uuid`);
+   });
+   unit.metric('finalizeTxMs',performance.now()-started);
+   return 'more';
+  }
+  if(!plan.captured){
+   const started=performance.now();
+   await withTenant(ctx,async tx=>{
+    await label(tx,'capture');
+    await unit.fenceTx(tx);
+    await capturePayrollProcessingInputsTx(tx,ctx,batchId);
+    await tx.execute(sql`update bulk_job set plan=plan||'{"captured":true}'::jsonb,updated_at=now() where id=${job.id}::uuid`);
+   });
+   unit.metric('captureTxMs',performance.now()-started);
+  }
+  return{result:{batchId,...plan.finalized}};
 }
 
 /** Owner-only: undo what the job wrote in bounded batches, then return the run to draft and record it. */

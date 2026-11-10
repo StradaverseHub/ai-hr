@@ -1261,6 +1261,19 @@ export async function completePayrollProcessingTx(tx: Tx, ctx: SessionContext, p
   });
 }
 
+/** The processing job's last unit: the audit loop's capture of the inputs as the run used them (the full generation
+ * takes it right after its processed event, in the same transaction). Read-only over owner rows plus the capture
+ * record itself, so it holds none of the run's keys: the flip committed just before, nothing it reads is the
+ * job's to change, and its event follows the run's processed event exactly as before. */
+export async function capturePayrollProcessingInputsTx(tx: Tx, ctx: SessionContext, batchId: string) {
+  const [batch] = await tx.select({ id: payrollBatch.id, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, status: payrollBatch.status })
+    .from(payrollBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+  // A run reset in the moment between the flip and this unit has no processing left to record.
+  if (!batch || batch.status === 'draft' || batch.status === 'processing') return false;
+  await captureAuditInputsTx(tx, ctx, { batchId: batch.id, companyId: batch.companyId, payPeriod: batch.payPeriod }, 'processed');
+  return true;
+}
+
 async function markIndividualTxnsConsumed(
   tx: Tx,
   p: { batchId: string; employmentIds: string[];postEmploymentIds?:string[];postEmploymentTxnIds?:string[] },
@@ -8503,7 +8516,8 @@ export type PayrollGenerationCompletion={batchId:string;companyId:string;payPeri
  individualTxnPay:boolean;postEmploymentIds:string[];postEmploymentTxnIds:string[];appliedLoanCentsByEmp:Map<string,number>;
  deductionClampsByEmp:Map<string,Record<string,number>>;skippedEmployees:SkippedEmployee[];
  runFrequency:ReturnType<typeof payrollFrequencyOf>;runSchedule:ReturnType<typeof payrollScheduleFor>;perCycle:boolean;
- /** Set by the processing job: the status flip also releases its lease, and the recalculation mark is kept. */
+ /** Set by the processing job: the status flip also releases its lease, and the recalculation mark is kept. The
+  * job takes the audit-loop capture in its own following unit (capturePayrollProcessingInputsTx). */
  processingJobId?:string|null};
 export async function completeFullGenerationTx(tx: Tx, ctx: SessionContext, run: PayrollGenerationCompletion) {
   // r226 — `run.employmentIds.length` IS THE PAYSLIP COUNT, and after the skip block above that is no longer a
@@ -8628,7 +8642,7 @@ export async function completeFullGenerationTx(tx: Tx, ctx: SessionContext, run:
   });
   // AI v2 P2-2b — the inputs as this run used them, captured for the Audit loop in this same transaction.
   // Read-only (core/payroll-audit/inputs.ts): it hashes owner rows, never changes a figure, never stops the run.
-  await captureAuditInputsTx(tx, ctx, { batchId: run.batchId, companyId: run.companyId, payPeriod: run.payPeriod }, 'processed');
+  if (!run.processingJobId) await captureAuditInputsTx(tx, ctx, { batchId: run.batchId, companyId: run.companyId, payPeriod: run.payPeriod }, 'processed');
   // r226 — `payslips` is the number of payslips WRITTEN (it always was; the skip is what made the
   // distinction visible), and `skipped` names everyone this run had nothing to pay. The subset-reprocess
   // branch returns its own shape above and never carries a skip: it recomputes existing payslips.
