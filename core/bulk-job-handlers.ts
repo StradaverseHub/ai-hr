@@ -5,6 +5,9 @@ import {employeeImportJobHandler} from './employee-import-worker';
 import {leaveImportJobHandler} from './leave-import-worker';
 import {earnedAccrualJobHandler,leaveGenerationJobHandler} from './leave-cohort-worker';
 import {rosterBulkJobHandler,scheduleGroupBulkJobHandler} from './roster-bulk-worker';
+import {clockingImportJobHandler} from '../packs/attendance/service';
+import {attendanceRecomputeJobHandler,attendanceRecomputePreviewJobHandler} from './attendance-recompute-job';
 
-export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,earnedAccrualJobHandler,
- rosterBulkJobHandler,scheduleGroupBulkJobHandler];
+export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,
+ earnedAccrualJobHandler,rosterBulkJobHandler,scheduleGroupBulkJobHandler,clockingImportJobHandler,attendanceRecomputePreviewJobHandler,
+ attendanceRecomputeJobHandler];

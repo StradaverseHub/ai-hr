@@ -4,14 +4,16 @@
  * r424 (50ed39e1) — Import Clocking Data. Validate writes nothing; Import re-runs every check on the
  * server (the browser's preview is never trusted) and saves the valid lines. The rules all live in
  * core/attendance-clocking-import.ts; `requireAdmin` is this surface's guard, and RLS is the authority.
+ * Draft 9940: Import admits a background job (core/attendance-clocking-import-job.ts) and returns at once; the
+ * import worker decides and adds every line, employee by employee, and the screen follows its progress.
  */
-import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
 import {
   ClockingImportError,
-  commitClockingImport,
+  ClockingImportJobRefused,
+  startClockingImportJob,
   validateClockingImport,
-  type ClockingImportOutcome,
+  type ClockingImportJobProgress,
   type ClockingImportPreview,
 } from '@/packs/attendance/service';
 
@@ -35,15 +37,13 @@ export async function commitClockingImportAction(
   text: string,
   fileName: string,
   fileBytes: number,
-): Promise<{ ok: true; outcome: ClockingImportOutcome } | Refusal> {
+  operationKey?: string,
+): Promise<{ ok: true; job: ClockingImportJobProgress; existing: boolean } | { ok: false; error: ClockingImportError['code'] | string }> {
   const s = await requireAdmin();
   try {
-    const outcome = await commitClockingImport(s, { mappingId, text, fileName, fileBytes });
-    revalidatePath('/attendance');
-    revalidatePath('/attendance/import/logs');
-    return { ok: true, outcome };
+    return { ok: true, ...(await startClockingImportJob(s, { mappingId, text, fileName, fileBytes, operationKey })) };
   } catch (e) {
-    if (e instanceof ClockingImportError) return { ok: false, error: e.code };
+    if (e instanceof ClockingImportError || e instanceof ClockingImportJobRefused) return { ok: false, error: e.code };
     throw e;
   }
 }

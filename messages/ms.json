@@ -4736,7 +4736,26 @@
       "runByUnknown": "Sistem",
       "scopeEmployees": "{count, plural, other {# pekerja}}",
       "runNoChanges": "Pengiraan semula ini tidak mengubah apa-apa.",
-      "recentNote": "Setiap pengiraan semula disimpan secara kekal — siapa yang menjalankannya, pekerja dan tarikh mana, serta angka sebelum dan selepas bagi setiap hari yang berubah. Setiap pengiraan semula juga muncul dalam Jejak Audit di bawah Kehadiran."
+      "recentNote": "Setiap pengiraan semula disimpan secara kekal — siapa yang menjalankannya, pekerja dan tarikh mana, serta angka sebelum dan selepas bagi setiap hari yang berubah. Setiap pengiraan semula juga muncul dalam Jejak Audit di bawah Kehadiran.",
+      "job": {
+        "queued": "Menunggu untuk bermula",
+        "preparing": "Menyemak skop",
+        "running": "Mengira semula pekerja",
+        "finalizing": "Menyusun keputusan",
+        "discarding": "Menghentikan",
+        "completed": "Selesai",
+        "failed": "Dihentikan",
+        "cancelled": "Dihentikan",
+        "progressCount": "{done} daripada {total} pekerja selesai",
+        "backgroundHelp": "Anda boleh meninggalkan halaman ini dan kembali semula; keputusan akan dipaparkan di sini apabila siap.",
+        "waiting": "Menunggu perkhidmatan import. Kemajuan disimpan; jangan mulakan ini sekali lagi.",
+        "workerUnavailable": "Perkhidmatan import belum berjalan. Permintaan ini telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan.",
+        "previewTitle": "Pratonton",
+        "applyTitle": "Melaksanakan perubahan",
+        "leftOut": "{count, plural, =1 {# pekerja tidak dikira semula} other {# pekerja tidak dikira semula}}",
+        "alreadyRunning": "Anda sudah mempunyai kiraan semula yang sedang berjalan. Tunggu sehingga ia selesai sebelum memulakan yang lain.",
+        "unavailable": "Kiraan semula ini tidak lagi tersedia. Buka semula halaman."
+      }
     },
     "reject": "Tolak",
     "rejectNotRecorded": "Penjelasan tidak direkod",
@@ -23562,8 +23581,26 @@
         "emptyFile": "Fail itu kosong.",
         "fileTooLarge": "Fail itu lebih besar daripada kira-kira 900 KB (lebih kurang 25,000 baris). Pecahkannya kepada dua fail dan import setiap satu.",
         "unreadable": "Fail itu tidak dapat dibaca.",
-        "excel": "Fail Excel tidak diterima di sini. Eksport fail peranti sebagai CSV atau TXT."
-      }
+        "excel": "Fail Excel tidak diterima di sini. Eksport fail peranti sebagai CSV atau TXT.",
+        "alreadyRunning": "Satu lagi import kehadiran masih berjalan. Tunggu sehingga ia selesai sebelum memulakan yang baharu.",
+        "notAdmin": "Hanya pentadbir HR boleh mengimport data kehadiran.",
+        "unavailable": "Import ini tidak lagi tersedia. Buka semula halaman untuk melihat kemajuannya."
+      },
+      "job": {
+        "queued": "Menunggu untuk bermula",
+        "preparing": "Membaca fail",
+        "running": "Menambah rekod kehadiran",
+        "finalizing": "Menulis log import",
+        "discarding": "Menghentikan import",
+        "completed": "Import selesai",
+        "failed": "Import dihentikan",
+        "cancelled": "Import dihentikan",
+        "progressCount": "{done} daripada {total} pekerja selesai",
+        "backgroundHelp": "Anda boleh meninggalkan halaman ini. Rekod kehadiran ditambah seorang pekerja pada satu masa; log import dibuka apabila import selesai.",
+        "waiting": "Menunggu perkhidmatan import. Kemajuan disimpan; jangan import fail ini sekali lagi.",
+        "workerUnavailable": "Perkhidmatan import belum berjalan. Import anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
+      },
+      "jobStopped": "Import dihentikan: {reason}"
     },
     "result": {
       "imported": "Diimport",
@@ -37494,6 +37531,48 @@
         "cancelled": {
           "title": "Penetapan Kumpulan Jadual dibatalkan",
           "body": "Buka Tetapkan Kumpulan Jadual untuk butiran."
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "Import kehadiran selesai",
+          "body": "Buka log import untuk melihat rekod kehadiran yang ditambah."
+        },
+        "failed": {
+          "title": "Import kehadiran dihentikan",
+          "body": "Buka log import untuk melihat apa yang disimpan dan sebab ia dihentikan."
+        },
+        "cancelled": {
+          "title": "Import kehadiran dihentikan",
+          "body": "Buka log import untuk melihat apa yang disimpan."
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "Pratonton kiraan semula sedia",
+          "body": "Buka Kira Semula Kehadiran untuk menyemak apa yang akan berubah."
+        },
+        "failed": {
+          "title": "Pratonton kiraan semula dihentikan",
+          "body": "Buka Kira Semula Kehadiran untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pratonton kiraan semula dihentikan",
+          "body": "Buka Kira Semula Kehadiran untuk memulakannya semula."
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "Kehadiran dikira semula",
+          "body": "Buka Kira Semula Kehadiran untuk melihat hari yang berubah."
+        },
+        "failed": {
+          "title": "Kiraan semula kehadiran dihentikan",
+          "body": "Buka Kira Semula Kehadiran untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Kiraan semula kehadiran dihentikan",
+          "body": "Buka Kira Semula Kehadiran untuk butiran."
         }
       }
     },

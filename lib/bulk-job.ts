@@ -32,6 +32,9 @@ export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  leave_accrual:{messages:'leaveProcessing',linkPath:'/admin/leave-config/earned-accrual'},
  roster_bulk:{messages:'roster',linkPath:'/roster'},
  schedule_group_bulk:{messages:'scheduleGroup',linkPath:'/admin/attendance/schedule-assignment/bulk'},
+ clocking_import:{messages:'clockingImport',linkPath:'/attendance/import/logs'},
+ attendance_recompute_preview:{messages:'attendanceRecomputePreview',linkPath:'/attendance/recompute'},
+ attendance_recompute:{messages:'attendanceRecompute',linkPath:'/attendance/recompute'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){
  const notice=BULK_JOB_NOTICES[kind];

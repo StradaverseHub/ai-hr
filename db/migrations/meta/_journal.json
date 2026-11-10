@@ -5510,6 +5510,13 @@
       "when": 1793330099921,
       "tag": "9921_bulk_job_queue_and_watch",
       "breakpoints": true
+    },
+    {
+      "idx": 9940,
+      "version": "7",
+      "when": 1793330099400,
+      "tag": "9940_attendance_bulk_jobs",
+      "breakpoints": true
     }
   ]
 }

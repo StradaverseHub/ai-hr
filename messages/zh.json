@@ -4736,7 +4736,26 @@
       "runByUnknown": "系统",
       "scopeEmployees": "{count, plural, other {# 名员工}}",
       "runNoChanges": "本次重新计算没有改变任何内容。",
-      "recentNote": "每次重新计算都会永久保留 — 执行人、涉及的员工和日期，以及每个变动日的前后数字。每次重新计算也会出现在审计记录的考勤栏目下。"
+      "recentNote": "每次重新计算都会永久保留 — 执行人、涉及的员工和日期，以及每个变动日的前后数字。每次重新计算也会出现在审计记录的考勤栏目下。",
+      "job": {
+        "queued": "等待开始",
+        "preparing": "正在检查范围",
+        "running": "正在为员工重新计算",
+        "finalizing": "正在汇总结果",
+        "discarding": "正在停止",
+        "completed": "已完成",
+        "failed": "已中止",
+        "cancelled": "已中止",
+        "progressCount": "已完成 {done}/{total} 名员工",
+        "backgroundHelp": "您可以离开此页面稍后再回来；结果准备好后会显示在这里。",
+        "waiting": "正在等待导入服务。进度已保存；请勿再次开始。",
+        "workerUnavailable": "导入服务尚未运行。此请求已保存，服务一运行便会自动开始。",
+        "previewTitle": "预览",
+        "applyTitle": "正在应用更改",
+        "leftOut": "{count, plural, other {# 名员工未重新计算}}",
+        "alreadyRunning": "您已有一项重新计算正在运行。请等待其完成后再开始另一项。",
+        "unavailable": "此重新计算已不可用。请重新打开页面。"
+      }
     },
     "reject": "驳回",
     "rejectNotRecorded": "未记录说明",
@@ -23562,8 +23581,26 @@
         "emptyFile": "文件为空。",
         "fileTooLarge": "文件超过约 900 KB（约 25,000 行）。请拆分为两个文件并分别导入。",
         "unreadable": "无法读取该文件。",
-        "excel": "此处不接受 Excel 文件。请将设备文件导出为 CSV 或 TXT。"
-      }
+        "excel": "此处不接受 Excel 文件。请将设备文件导出为 CSV 或 TXT。",
+        "alreadyRunning": "另一项打卡导入仍在运行。请等待其完成后再开始新的导入。",
+        "notAdmin": "只有人力资源管理员可以导入打卡数据。",
+        "unavailable": "此导入已不可用。请重新打开页面查看进度。"
+      },
+      "job": {
+        "queued": "等待开始",
+        "preparing": "正在读取文件",
+        "running": "正在添加打卡记录",
+        "finalizing": "正在写入导入日志",
+        "discarding": "正在停止导入",
+        "completed": "导入已完成",
+        "failed": "导入已中止",
+        "cancelled": "导入已中止",
+        "progressCount": "已完成 {done}/{total} 名员工",
+        "backgroundHelp": "您可以离开此页面。打卡记录按员工逐一添加；导入完成后将打开导入日志。",
+        "waiting": "正在等待导入服务。进度已保存；请勿再次导入此文件。",
+        "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务一运行便会自动开始。"
+      },
+      "jobStopped": "导入已中止：{reason}"
     },
     "result": {
       "imported": "已导入",
@@ -37494,6 +37531,48 @@
         "cancelled": {
           "title": "排班组分配已取消",
           "body": "打开分配排班组查看详情。"
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "打卡导入已完成",
+          "body": "打开导入日志，查看已添加的打卡记录。"
+        },
+        "failed": {
+          "title": "打卡导入已中止",
+          "body": "打开导入日志，查看已保存的内容及中止原因。"
+        },
+        "cancelled": {
+          "title": "打卡导入已中止",
+          "body": "打开导入日志，查看已保存的内容。"
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "重新计算预览已就绪",
+          "body": "打开重新计算考勤，查看将会发生的变化。"
+        },
+        "failed": {
+          "title": "重新计算预览已中止",
+          "body": "打开重新计算考勤，查看原因。"
+        },
+        "cancelled": {
+          "title": "重新计算预览已中止",
+          "body": "打开重新计算考勤，重新开始。"
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "考勤已重新计算",
+          "body": "打开重新计算考勤，查看发生变化的日期。"
+        },
+        "failed": {
+          "title": "考勤重新计算已中止",
+          "body": "打开重新计算考勤，查看原因。"
+        },
+        "cancelled": {
+          "title": "考勤重新计算已中止",
+          "body": "打开重新计算考勤，查看详情。"
         }
       }
     },

@@ -36,6 +36,8 @@ export {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from '../.
 
 // r424 (50ed39e1) — File Structure Mapping, Import Clocking Data and Import Logs.
 export * from '../../core/attendance-clocking-import';
+// Import Clocking Data as a background job on the shared bulk-job kernel (draft 9940).
+export * from '../../core/attendance-clocking-import-job';
 
 export * from '../../core/attendance-clock-data';
 export { ClockDataChangedError, AttendancePayrollClosedError } from '../../core/attendance-punch-change';

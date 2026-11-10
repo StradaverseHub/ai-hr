@@ -63,3 +63,12 @@ their own layouts, with their own In/Out codes.
 - One file is capped at ~900 KB of decoded text (the server-action body), roughly 25,000 lines.
 - Not done: dragging on fixed-width files, Excel input, other encodings, automatic pick-up from devices,
   deleting an imported clocking from the log, checking imports against clocking locations.
+
+## Amendment (2026-11-10, draft 9940): the import runs as a background job
+
+Decisions 3–5 are unchanged in what an import decides and writes; WHERE it runs moved. The single import transaction
+held the tenant Access and leave-dependency locks and every named employee's clock key for the whole file, so the
+import now runs on the shared bulk-job kernel, one matched employee per step, each step re-deciding that employee's
+lines against their days under that employee's own locks, and the run log is written when it finishes. "A run that
+throws saves nothing" now reads per employee: a stop before anything was added leaves the Failed row; a stop after
+some employees were added logs what was added. See `docs/adr/2026-11-10-attendance-bulk-jobs.md`.
