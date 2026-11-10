@@ -1,12 +1,14 @@
 /** Staged employee import as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; migrations 9001, 9003,
- * 9004). Steps are applied in short chunk transactions under the initiating user's authority and stay invisible.
- * Activation is a constant-time release of the attempt; the markers are then settled in bounded owner batches.
- * A failure before release discards the staged rows in bounded batches (ADR-0157 void trail). */
+ * 9004, 9005). Steps are applied in short chunk transactions under the initiating user's authority and stay invisible.
+ * Activation is a constant-time release of the attempt; the markers are then settled in bounded owner batches, so
+ * this kind declares an owner finalize (finalizeOwner here, bulk_job_kind.finalize_owner in 9005). A failure before
+ * release discards the staged rows in bounded batches (ADR-0157 void trail). Every write to the job itself goes
+ * through unit.set (sealed); owner work runs in unit.ownerTx, attributed to the job. */
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
 import {publicErrorMessage} from '@/lib/public-error';
-import {isTransientBulkJobError,type BulkJobHandler,type BulkJobStep,type BulkJobUnit} from './bulk-job-worker';
+import {isTransientBulkJobError,type BulkJobDiscardUnit,type BulkJobHandler,type BulkJobStep,type BulkJobUnit} from './bulk-job-worker';
 import type {BulkJobRow} from './bulk-job';
 import {parseEmployeeImportUpload} from './employee-import-upload';
 import {applyEmployeeImportStepTx,assertEmployeeImportAuthorityTx,prepareEmployeeImportJobPlan,recordEmployeeImportAttemptTx,recordImportRun,type EmployeeImportJobPlan,type EmployeeImportPlanStep} from './import';
@@ -51,7 +53,7 @@ async function stepEnv(tx:Tx,job:BulkJobRow,cache:Map<string,unknown>){
 async function setImportAttemptTx(tx:Tx,attemptId:string){await tx.execute(sql`select set_config('app.import_attempt',${attemptId},true)`);}
 /** Adaptive batch size so one settle or discard statement stays near BATCH_TARGET_MS of tenant-lock time. */
 const batchSizes=new Map<string,number>();
-async function ownerBatch(job:BulkJobRow,unit:Pick<BulkJobUnit,'metric'>,name:string,run:(limit:number)=>Promise<number>){
+async function ownerBatch(job:BulkJobRow,unit:Pick<BulkJobDiscardUnit,'metric'>,name:string,run:(limit:number)=>Promise<number>){
  const limit=batchSizes.get(job.id)??100;const started=performance.now();
  const remaining=await run(limit);
  const ms=performance.now()-started;unit.metric(`${name}TxMs`,ms);
@@ -67,6 +69,7 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
  maxStepsPerChunk:16,
  phaseOf:kind=>kind==='employee'?'employees':kind==='superior'?'superiors':'registers',
  isTransient,
+ finalizeOwner:true,
  stepRef:step=>(step.payload as {email?:string}).email??'',
  /** Validate once with no tenant locks; a whole-file problem refuses the import before anything is written. */
  async prepare(ctx,job){
@@ -109,8 +112,13 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   const plan=planOf(job);
   if(!plan.released){await release(ctx,job,unit,plan);return'more';}
   if(!plan.settled){
-   const remaining=await ownerBatch(job,unit,'settle',async limit=>{const [r]=await unit.owner<{remaining:string}[]>`select app.import_settle(${job.tenant_id}::uuid,${job.attempt_id}::uuid,${limit}) as remaining`;return Number(r.remaining);});
-   if(remaining===0)await unit.owner`update bulk_job set plan=plan||'{"settled":true}'::jsonb where id=${job.id}::uuid`;
+   // Settle and its plan marker commit together, attributed to the job (app.bulk_job).
+   await ownerBatch(job,unit,'settle',limit=>unit.ownerTx!(async owner=>{
+    const [r]=await owner<{remaining:string}[]>`select app.import_settle(${job.tenant_id}::uuid,${job.attempt_id}::uuid,${limit}) as remaining`;
+    const remaining=Number(r.remaining);
+    if(remaining===0)await unit.set(owner,{planMerge:{settled:true}});
+    return remaining;
+   }));
    return'more';
   }
   batchSizes.delete(job.id);
@@ -131,15 +139,18 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   const plan=planOf(job);
   if(!plan.released){
    const reason=(job.error??'Employee import was stopped before activation.').slice(0,900);
-   const remaining=await ownerBatch(job,unit,'discard',async limit=>{const [r]=await unit.owner<{remaining:string}[]>`select app.import_discard_batch(${job.tenant_id}::uuid,${job.attempt_id}::uuid,${job.created_by}::uuid,${reason.length<3?'Import stopped.':reason},${limit}) as remaining`;return Number(r.remaining);});
-   if(remaining===0)await unit.owner`update bulk_job set plan=coalesce(plan,'{}'::jsonb)||'{"released":true}'::jsonb where id=${job.id}::uuid`;
+   await ownerBatch(job,unit,'discard',limit=>unit.ownerTx(async owner=>{
+    const [r]=await owner<{remaining:string}[]>`select app.import_discard_batch(${job.tenant_id}::uuid,${job.attempt_id}::uuid,${job.created_by}::uuid,${reason.length<3?'Import stopped.':reason},${limit}) as remaining`;
+    const remaining=Number(r.remaining);
+    if(remaining===0)await unit.set(owner,{planMerge:{released:true}});
+    return remaining;
+   }));
    return'more';
   }
-  const remaining=await ownerBatch(job,unit,'settle',async limit=>{const [r]=await unit.owner<{remaining:string}[]>`select app.import_settle(${job.tenant_id}::uuid,${job.attempt_id}::uuid,${limit}) as remaining`;return Number(r.remaining);});
+  const remaining=await ownerBatch(job,unit,'settle',limit=>unit.ownerTx(async owner=>{const [r]=await owner<{remaining:string}[]>`select app.import_settle(${job.tenant_id}::uuid,${job.attempt_id}::uuid,${limit}) as remaining`;return Number(r.remaining);}));
   if(remaining>0)return'more';
-  // The plan (company, rejected rows) stays until afterTerminal has recorded Import History.
-  await unit.owner`update bulk_job set input=null,source_content=null where id=${job.id}::uuid`;
-  await unit.owner`delete from bulk_job_step where job_id=${job.id}::uuid`;
+  // The plan (company, rejected rows) stays until afterTerminal has recorded Import History; the kernel then clears
+  // the inputs, the steps and (afterTerminal asks) the plan.
   batchSizes.delete(job.id);
   return'done';
  },
@@ -151,7 +162,8 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   const companyId=plan.companyId??inputOf(job)?.upload.companyId;
   if(companyId)await recordImportRun(ctx,{companyId,fileName:job.source_name,totalRows:Number(job.counters?.total??0),imported:0,
    rejected:plan.rejected??[],failed:(job.errors??[]).map(e=>({rowNum:e.rowNum,email:e.ref,message:e.message}))});
-  await withTenant(ctx,tx=>tx.execute(sql`update bulk_job set plan=null,input=null,source_content=null where id=${job.id}::uuid`)).catch(()=>undefined);
+  // History holds the rejected rows now; the kernel clears the plan with the inputs.
+  return{clearPlan:true};
  },
 };
 
@@ -192,7 +204,7 @@ async function release(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,plan:E
    payload:{companyId:plan.companyId,imported:counts.imported,failed:0,skipped,companyIds,dependents:counts.dependents,registers:{qualification:counts.qualification,emergency:counts.emergency}}},{returnId:true});
   if(evaluationBinding)await completeEmployeeImportEvaluationTx(tx,ctx,evaluationBinding,plan.companyId,eventId,{imported:counts.imported,failed:0,skipped,dependents:counts.dependents,qualification:counts.qualification,emergency:counts.emergency},summary.targets);
   const next:EmployeeImportStoredPlan={...plan,released:true,counts};
-  await tx.execute(sql`update bulk_job set plan=${JSON.stringify(next)}::jsonb,updated_at=now() where id=${job.id}::uuid`);
+  await unit.set(tx,{plan:next});
  });
  unit.metric('releaseTxMs',performance.now()-started);
 }
@@ -207,8 +219,7 @@ async function followUps(ctx:SessionContext,job:BulkJobRow,plan:EmployeeImportSt
  const runId=await recordImportRun(ctx,{companyId:plan.companyId,fileName:upload?.fileName||job.source_name,totalRows:Number(job.counters?.total??0),imported:counts.imported,rejected:plan.rejected??[],failed:[]}).catch(()=>null);
  const summary:EmployeeImportResultSummary={companyId:plan.companyId,imported:counts.imported,failed:[],skipped:plan.skipped??0,dependentsImported:counts.dependents,
   registersImported:{qualification:counts.qualification,emergency:counts.emergency},superiorFailed:[],fileErrors:[],warnings:[...new Set(warnings)],runId,attemptId:job.attempt_id};
- // The job no longer needs its inputs or per-step state; Import History keeps the source.
- await withTenant(ctx,async tx=>{await tx.execute(sql`delete from bulk_job_step where job_id=${job.id}::uuid`);await tx.execute(sql`update bulk_job set input=null,source_content=null where id=${job.id}::uuid`);}).catch(()=>undefined);
+ // The kernel clears the job's inputs and per-step state once it completes; Import History keeps the source.
  return summary;
 }
 export type {BulkJobStep};

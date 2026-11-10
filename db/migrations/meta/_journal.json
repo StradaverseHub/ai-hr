@@ -5405,6 +5405,20 @@
       "when": 1793330090004,
       "tag": "9004_import_release_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 9005,
+      "version": "7",
+      "when": 1793330090005,
+      "tag": "9005_bulk_job_least_privilege",
+      "breakpoints": true
+    },
+    {
+      "idx": 9006,
+      "version": "7",
+      "when": 1793330090006,
+      "tag": "9006_bulk_job_owner_attribution",
+      "breakpoints": true
     }
   ]
 }

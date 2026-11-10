@@ -11690,7 +11690,9 @@ export const aiAgentPrincipal=agentPrincipalPrivate.table('ai_agent_principal',{
 
 /** Shared background bulk-job kernel (migration 9003): one job/step store for every background bulk operation.
  * Admission, reads and cancel: core/bulk-job.ts. Worker: core/bulk-job-worker.ts. Kinds: bulk_job_kind rows. */
-export const bulkJobKind=pgTable('bulk_job_kind',{kind:text('kind').primaryKey(),scopeKind:text('scope_kind'),exclusive:text('exclusive').notNull().$type<'tenant'|'creator'>()});
+/** input_shape, input_max_bytes, finalize_owner: migration 9005 (admission shape check; owner-connection finalize). */
+export const bulkJobKind=pgTable('bulk_job_kind',{kind:text('kind').primaryKey(),scopeKind:text('scope_kind'),exclusive:text('exclusive').notNull().$type<'tenant'|'creator'>(),
+ inputShape:jsonb('input_shape').$type<Record<string,string>>(),inputMaxBytes:integer('input_max_bytes').notNull().default(1048576),finalizeOwner:boolean('finalize_owner').notNull().default(false)});
 export const bulkJob=pgTable('bulk_job',{
  id:id(),tenantId:tenantId(),kind:text('kind').notNull().references(()=>bulkJobKind.kind),createdBy:uuid('created_by').notNull().references(()=>appUser.id),
  context:jsonb('context').notNull().$type<Record<string,unknown>>(),operationKey:uuid('operation_key').notNull(),exclusiveKey:text('exclusive_key').notNull(),
