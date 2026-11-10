@@ -103,8 +103,256 @@ env:
   TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
   TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
+  worker-resolver-diagnostic:
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref == 'refs/heads/codex/architecture-88cdf-worker-resolver-checkpoints-20261110' && github.event_name == 'workflow_dispatch' && github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        cwd: [root, isolated]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 88cdfc1345d348ee3a4111a5e14c5cd721753733
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Diagnose second controller checkout read in root layout
+        env:
+          FORENSIC_CWD: ${{ matrix.cwd }}
+          GH_TOKEN: ${{ github.token }}
+          STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: |
+          node --input-type=module - <<'JS'
+          /** Historical, read-only replay. No worker prerequisite handle or workflow output is produced. */
+          import assert from 'node:assert/strict';
+          import { execFileSync, spawn } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { closeSync, constants, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readSync, realpathSync } from 'node:fs';
+          import { isAbsolute, join, relative } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+
+          const repository='StradaverseHub/ai-hr';
+          const repositoryId=1333414856;
+          const workflowId=395862645;
+          const workflowPath='.github/workflows/alpha-focused-checks.yml';
+          const branch='codex/architecture-88cdf-worker-resolver-checkpoints-20261110';
+          const ref='refs/heads/'+branch;
+          const originalBranch='codex/architecture-five-item-browser-convergence-20261109';
+          const source='88cdfc1345d348ee3a4111a5e14c5cd721753733';
+          const ancestry='f919bef2deff9bfc56448a63fb5d17d8bd42ec2a';
+          const upstreamRun=42725251848;
+          const failedRun=42728023445;
+          const failedJob=129538595142;
+          const failedStart='2026-11-10T00:24:12Z';
+          const artifactId=13722154036;
+          const archiveBytes=12226;
+          const archiveSha='ca59241cc0945b2918b1c6f5a8688d3f21498162be6530d09ec0473b8d1c09f5';
+          const environment=Object.freeze({PATH:'/usr/bin:/bin',LANG:'C',LC_ALL:'C'});
+          const deadline=performance.now()+150000;
+          const json=raw=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));
+          const statKeys=['dev','ino','mode','uid','gid','nlink','size','mtimeNs','ctimeNs'];
+          const sameStat=(a,b)=>statKeys.every(key=>a[key]===b[key]);
+          let stage='entry';
+
+          function phase(name,fn){
+           stage=name;
+           const result=fn();
+           console.log('worker-resolver-forensic passed '+name);
+           return result;
+          }
+          function left(limit=15000){
+           const wait=Math.min(limit,Math.floor(deadline-performance.now()));
+           assert(wait>0);
+           return wait;
+          }
+          function run(file,args,env=environment,cwd){
+           return execFileSync(file,args,{env,cwd,timeout:left(),killSignal:'SIGKILL',maxBuffer:1024**2,stdio:['ignore','pipe','pipe']});
+          }
+          function heldEvent(path){
+           const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+           try{
+            const before=fstatSync(fd,{bigint:true});
+            assert(before.isFile()&&before.uid===BigInt(process.getuid())&&before.nlink===1n&&!(before.mode&0o022n)
+             &&before.size>0n&&before.size<=65536n&&sameStat(before,lstatSync(path,{bigint:true})));
+            const bytes=Buffer.alloc(Number(before.size)+1);
+            let size=0;
+            while(size<bytes.length){
+             const count=readSync(fd,bytes,size,bytes.length-size,null);
+             if(!count)break;
+             size+=count;
+            }
+            assert(BigInt(size)===before.size&&sameStat(before,fstatSync(fd,{bigint:true}))
+             &&sameStat(before,lstatSync(path,{bigint:true}))&&realpathSync(path)===path);
+            return bytes.subarray(0,size);
+           }finally{closeSync(fd);}
+          }
+          const sameRepo=row=>row?.id===repositoryId&&row.full_name===repository;
+
+          try{
+           const env=process.env;
+           const controller=env.GITHUB_WORKFLOW_SHA;
+           const mode=env.FORENSIC_CWD;
+           phase('closed-mode',()=>assert(mode==='root'||mode==='isolated'));
+           console.log('worker-resolver-forensic mode '+mode);
+           phase('diagnostic-event-environment',()=>{
+            const expected={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux',RUNNER_ARCH:'X64',
+             GITHUB_REPOSITORY:repository,GITHUB_REPOSITORY_ID:String(repositoryId),GITHUB_EVENT_NAME:'workflow_dispatch',
+             GITHUB_WORKFLOW:'alpha-focused-checks',GITHUB_JOB:'worker-resolver-diagnostic',GITHUB_RUN_ATTEMPT:'1',
+             GITHUB_REF:ref,GITHUB_WORKFLOW_REF:repository+'/'+workflowPath+'@'+ref,GITHUB_SHA:controller,
+             AIHR_CI_CONTROL_HEAD:controller,STAGING_ENABLED:'false',PRODUCTION_ENABLED:'false'};
+            assert(/^[a-f0-9]{40}$/.test(controller)&&controller!==source&&/^[1-9][0-9]{0,15}$/.test(env.GITHUB_RUN_ID));
+            assert(Object.entries(expected).every(([key,value])=>env[key]===value));
+           });
+           const temp=phase('runner-temp',()=>{
+            const dir=env.RUNNER_TEMP;
+            assert(typeof dir==='string'&&realpathSync(dir)===dir&&lstatSync(dir).isDirectory()&&lstatSync(dir).uid===process.getuid());
+            return dir;
+           });
+           const eventPath=phase('event-path',()=>{
+            const path=join(temp,'_github_workflow','event.json');
+            assert(env.GITHUB_EVENT_PATH===path&&realpathSync(path)===path);
+            return path;
+           });
+           const eventBytes=phase('event-owner-mode-custody',()=>heldEvent(eventPath));
+           phase('diagnostic-event-payload',()=>{
+            const event=json(eventBytes);
+            assert(sameRepo(event.repository)&&event.repository.private===false&&event.repository.fork===false&&event.repository.default_branch==='main');
+            assert(event.ref===branch||event.ref===ref);
+            assert.deepEqual({model_eval:'',eval_allowed_providers:'',measured_browser_preflight_run:'',...event.inputs},{
+             candidate_ref:branch,expected_sha:source,selected_tests:'[]',architecture_browser_development_preflight:'false',
+             measured_browser_course:'off',measured_browser_preflight_run:'',employee_ascii_qualification:'off',
+             qualify_restricted_port_prerequisites:'false',profile_database:'false',duration_order:'false',
+             run_typecheck:'false',run_native_typecheck:'false',run_native_swift_models:'false',run_native_bundle:'false',
+             run_build:'false',model_eval:'',eval_budget_usd:'20',eval_allowed_providers:''});
+           });
+           const checkout=env.GITHUB_WORKSPACE;
+           stage='import-exact-checkout-models';
+           const load=name=>import(pathToFileURL(join(checkout,'.github','ci',name)).href);
+           const {inspectMeasuredPreflightProviderMetadata}=await load('measured-browser-worker-contract.mjs');
+           const {inspectMeasuredPreflightArchiveBytes}=await load('measured-browser-preflight-archive.mjs');
+           const {downloadCiArchives,readCiArchive}=await load('archive-downloads.mjs');
+           console.log('worker-resolver-forensic passed '+stage);
+           const git=(...args)=>run('/usr/bin/git',['--no-optional-locks','-C',checkout,...args]).toString('utf8').trim();
+           function checkStatus(boundary){
+            phase(boundary+'-status',()=>{
+             const status=git('status','--porcelain');
+             const rows=status?status.split('\n'):[];
+             const untracked=rows.filter(row=>row.startsWith('?? ')).length;
+             const tracked=rows.length-untracked;
+             console.log('worker-resolver-forensic '+boundary+' tracked='+Math.min(tracked,4096)+' untracked='+Math.min(untracked,4096));
+             assert(status==='');
+            });
+           }
+           function checkCheckout(boundary){
+            phase(boundary+'-path',()=>assert(process.cwd()===checkout&&realpathSync(checkout)===checkout));
+            phase(boundary+'-head',()=>assert(git('rev-parse','HEAD')===source));
+            checkStatus(boundary);
+            phase(boundary+'-origin',()=>assert(['https://github.com/'+repository,'https://github.com/'+repository+'.git']
+             .includes(git('remote','get-url','origin'))));
+            phase(boundary+'-ancestry',()=>git('merge-base','--is-ancestor',ancestry,source));
+           }
+           checkCheckout('controller-before');
+           const token=phase('action-read-credential',()=>{
+            const value=env.GH_TOKEN;
+            assert(typeof value==='string'&&value.length>0&&value.length<=4096);
+            return value;
+           });
+           const privateDirectory=phase('private-archive-directory',()=>{
+            const directory=mkdtempSync(join(temp,'measured-preflight-archive-'));
+            const stat=lstatSync(directory);
+            const boundary=relative(checkout,directory);
+            assert((boundary==='..'||boundary.startsWith('../')||isAbsolute(boundary))
+             &&realpathSync(directory)===directory&&stat.isDirectory()&&stat.uid===process.getuid()&&(stat.mode&0o777)===0o700);
+            mkdirSync(join(directory,'gh'),{mode:0o700});
+            return directory;
+           });
+           checkStatus('after-private-directory');
+           const providerCwd=mode==='isolated'?privateDirectory:undefined;
+           const github={...environment,GH_TOKEN:token,GH_CONFIG_DIR:join(privateDirectory,'gh'),GH_PROMPT_DISABLED:'1',
+            GH_NO_UPDATE_NOTIFIER:'1',GH_NO_EXTENSION_UPDATE_NOTIFIER:'1'};
+           const root='repos/'+repository;
+           const args=suffix=>['api','--hostname','github.com','--method','GET',root+suffix];
+           const get=(label,suffix)=>{
+            const value=phase(label,()=>json(run('/usr/bin/gh',args(suffix),github,providerCwd)));
+            checkStatus('after-'+label);
+            return value;
+           };
+           const historical=get('get-failed-worker-run','/actions/runs/'+failedRun);
+           phase('failed-worker-historical-identity',()=>{
+            assert(historical.id===failedRun&&sameRepo(historical.repository)&&sameRepo(historical.head_repository)
+             &&historical.workflow_id===workflowId&&historical.path===workflowPath&&historical.head_sha===source
+             &&historical.head_branch===originalBranch&&historical.event==='workflow_dispatch'&&historical.run_attempt===1
+             &&historical.status==='completed'&&historical.conclusion==='failure'&&historical.run_started_at===failedStart);
+           });
+           const upstream='/actions/runs/'+upstreamRun;
+           const metadata={
+            repository:get('get-repository',''),workflow:get('get-workflow','/actions/workflows/'+workflowId),
+            run:get('get-browser-run',upstream),jobInventory:get('get-browser-jobs',upstream+'/jobs?filter=all&per_page=8&page=1'),
+            artifactInventory:get('get-browser-artifact-inventory',upstream+'/artifacts?per_page=2&page=1'),
+           };
+           const identity=phase('browser-metadata-historical',()=>{
+            const verified=inspectMeasuredPreflightProviderMetadata(metadata,{source,upstreamRunId:upstreamRun,
+             currentRunId:failedRun,currentRunStartedAt:failedStart,nowMs:Date.parse(failedStart)});
+            assert(verified.artifactId===artifactId&&verified.archiveBytes===archiveBytes&&verified.archiveSha256===archiveSha);
+            return verified;
+           });
+           const artifact=metadata.artifactInventory.artifacts[0];
+           stage='authenticated-archive-transfer';
+           await downloadCiArchives([artifact],privateDirectory,{concurrency:1,timeoutMs:left(100000),
+            start:()=>spawn('/usr/bin/gh',args('/actions/artifacts/'+identity.artifactId+'/zip'),{env:github,cwd:providerCwd,stdio:['ignore','pipe','pipe']})});
+           console.log('worker-resolver-forensic passed '+stage);
+           checkStatus('after-archive-transfer');
+           const bytes=phase('independent-archive-digest',()=>{
+            const bytes=readCiArchive(artifact,join(privateDirectory,artifact.name+'.zip'));
+            assert(bytes.length===archiveBytes&&createHash('sha256').update(bytes).digest('hex')===archiveSha);
+            return bytes;
+           });
+           checkStatus('after-archive-file');
+           const evidence=phase('exact-browser-archive-parser',()=>{
+            // The strict parser is synchronous. The separate runner restores its root before the next Git checkpoint.
+            if(providerCwd)process.chdir(providerCwd);
+            try{return inspectMeasuredPreflightArchiveBytes(bytes,{source,runId:upstreamRun},left());}
+            finally{if(providerCwd)process.chdir(checkout);}
+           });
+           checkStatus('after-archive-parser');
+           checkCheckout('controller-after');
+           phase('archive-freeze',()=>{
+            function freeze(value){
+             if(value!==null&&typeof value==='object'){
+              Object.freeze(value);
+              for(const child of Object.values(value))freeze(child);
+             }
+             return value;
+            }
+            const archive=freeze({kind:'HISTORICAL_FORENSIC_MODEL_ONLY',source,runId:identity.runId,
+             resolveJobId:identity.resolveJobId,selectedJobId:identity.selectedJobId,artifactId:identity.artifactId,
+             archiveSha256:identity.archiveSha256,archiveBytes:identity.archiveBytes,
+             captureSha256:evidence.measurement.capture.sha256,renderedUnionSha256:evidence.measurement.renderedUnion.sha256,
+             harnessSha256:evidence.measurement.capture.harnessSha256,scenarioSha256:evidence.measurement.capture.scenarioSha256,evidence});
+            assert(Object.isFrozen(archive)&&Object.isFrozen(archive.evidence));
+           });
+           checkStatus('after-archive-freeze');
+           phase('result-deadline',()=>left());
+           const failed=get('get-failed-worker-resolve','/actions/jobs/'+failedJob);
+           phase('failed-worker-resolve-identity',()=>{
+            assert(failed.id===failedJob&&failed.run_id===failedRun&&failed.head_sha===source&&failed.run_attempt===1
+             &&failed.name==='resolve'&&failed.status==='completed'&&failed.conclusion==='failure');
+            const step=failed.steps.filter(row=>row.name==='Authenticate same-source full browser preflight for the worker comparison');
+            assert(step.length===1&&step[0].status==='completed'&&step[0].conclusion==='failure');
+           });
+           console.log('worker-resolver-forensic historical-replay-complete');
+          }catch{
+           process.stderr.write('worker-resolver-forensic refused '+stage+'\n');
+           process.exitCode=1;
+          }finally{delete process.env.GH_TOKEN;}
+          JS
   resolve:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.ref != 'refs/heads/codex/architecture-88cdf-worker-resolver-checkpoints-20261110' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
