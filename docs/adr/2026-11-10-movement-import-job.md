@@ -167,6 +167,17 @@ release replays the rollback's own writes rather than restoring images:
   which ends exactly like the synchronous revert after the same edit. The existing revert suites (Update, Delete,
   blocked and repeated reverts) run through the job.
 
+- **Measured** (the same file, 3,650-3,950 employments, load 3-9, probes running): the request 8-12 ms; the review
+  2.1-2.4 s with no lock; 41 plan chunks holding at most 0.27-0.40 s; the release on the release path (no fallback), its
+  own work 0.5 s (checks 86-96 ms, 280 row writes 250 ms, 400 events 120 ms, verification 40 ms). The release still
+  holds 3.6-4.3 s because each employment write queues the deferred last-administrator check
+  (`access_employment_administrator`), about 75-90 ms each at this size, 3.0-3.8 s for 41 grade restores: the
+  synchronous revert pays exactly the same at its commit. The reader/writer Access branch's
+  `4700_access_reader_writer_core.sql` (section 5) returns early for employments whose people have no login; with that
+  function applied to the rehearsal database the release held 1.05 s (the five login holders' checks 0.4 s and the
+  release's own 0.5 s), against 10-18 s for the synchronous revert. Probes during that release: login 587 ms, Access
+  writer 958 ms, clock-in 831 ms.
+
 **A check that finished while its creator was away is shown again.** The check list marks the newest finished check
 `reviewOpen` while its attempt is neither confirmed nor reverted and no confirmation of it has started; the screen shows
 its recorded preview on return (a running confirmation takes precedence), so the file is not uploaded again.
