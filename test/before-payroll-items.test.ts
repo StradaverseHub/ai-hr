@@ -74,11 +74,11 @@ vi.mock('../core/read',()=>({
   {id:'lt-mc',paid:true,requiresDocument:true,mandatoryAfterDays:1}],
 }));
 vi.mock('../packs/claims/service',()=>({
- listClaimsForEmployment:async()=>{failing('claims');const claim=(id:string,claimTypeId:string,typeName:string,status:string,incurredOn:string,attachments:unknown[]=[])=>
+ listOpenClaimsForEmployment:async()=>{failing('claims');const claim=(id:string,claimTypeId:string,typeName:string,status:string,incurredOn:string,attachments:unknown[]=[])=>
   ({id,claimTypeId,claimItemId:null,typeCode:'X',typeName,itemName:null,amount:1234.56,quantityKm:null,incurredOn,description:'Fictional typed words',taxable:false,status,createdAt:'2026-11-01',decidedAt:null,paidAt:null,employeeCode:'E-1',personId:'p',attachments});
   return [claim('cl-near','ct-travel','Travel','draft','2026-10-01'),claim('cl-receipt','ct-parking','Parking','draft','2026-11-08'),
    claim('cl-draft','ct-meal','Meal','draft','2026-11-09'),claim('cl-has','ct-parking','Parking','draft','2026-11-09',[{id:'f',fileName:'r.pdf',sizeBytes:10}]),
-   claim('cl-pending','ct-meal','Meal','pending','2026-11-03'),claim('cl-old','ct-meal','Meal','draft','2026-09-01'),claim('cl-paid','ct-meal','Meal','paid','2026-10-03')];},
+   claim('cl-pending','ct-meal','Meal','pending','2026-11-03'),claim('cl-old','ct-meal','Meal','draft','2026-09-01')];},
  getEmployeeClaimTypes:async()=>[{id:'ct-travel',requiresReceipt:false,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}},{id:'ct-parking',requiresReceipt:true,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}},
   {id:'ct-meal',requiresReceipt:false,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}}],
 }));

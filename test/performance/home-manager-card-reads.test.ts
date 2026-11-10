@@ -305,7 +305,8 @@ async function coldWorker(workers:number){
  let trips=0;
  (database.client.options as {debug?:unknown}).debug=()=>{trips++;};
  tripCounter=()=>trips;
- return {GET:route.GET as typeof GET,trips:()=>trips,resetTrips(){trips=0;},close:()=>database.client.end({timeout:5})};
+ return {GET:route.GET as typeof GET,trips:()=>trips,resetTrips(){trips=0;},close:()=>database.client.end({timeout:5}),
+  independent:database.withIndependentTransactions as <T>(work:()=>Promise<T>)=>Promise<T>};
 }
 /** Compete for the four runner CPUs the way extra application workers and browser contexts do. */
 function cpuPressure(count:number){
@@ -437,8 +438,19 @@ it('completes every manager Home card and Today section read without a handled f
   const [a,b]=[comparable(old),comparable(fresh)];
   equivalence.push(a===b?{subject,target,equal:true}:{subject,target,equal:false,old:a.slice(0,1500),fresh:b.slice(0,1500)});
  };
+ // Give one subject decided history and drafts beside its pending claims, so the open-claims read has rows to leave out.
+ {
+  const subject=subjects.at(-1)![1];
+  const [type]=await owner.client<{id:string}[]>`select id from claim_type where tenant_id=${subject.ctx.tenantId}::uuid and code='PERF'`;
+  await owner.client`insert into claim_request(tenant_id,employment_id,claim_type_id,amount,incurred_on,status,created_at)
+   select ${subject.ctx.tenantId}::uuid,${subject.employmentId}::uuid,${type.id}::uuid,1,${today}::date-n,s,now()-n*interval '1 second'
+   from unnest(array['draft','draft','approved','approved','rejected','rejected']::claim_status[]) with ordinality as statuses(s,n)`;
+ }
+ const {listClaimsForEmployment,listOpenClaimsForEmployment}=await import('../../packs/claims/service');
  for(const [subject,actor] of subjects){
   const targets=await todayTargets(actor.ctx);
+  compare(subject,'claims:open',await outcome(async()=>(await listClaimsForEmployment(actor.ctx,actor.employmentId)).filter(row=>row.status==='pending'||row.status==='draft')),
+   await outcome(()=>listOpenClaimsForEmployment(actor.ctx,actor.employmentId)));
   for(const card of CARDS){
    const read=()=>readers(actor.ctx,actor.employmentId,month)[card]();
    compare(subject,'card:'+card,await outcome(()=>withIndependentTransactions(read)),await outcome(()=>withSharedReadSnapshot(actor.ctx,read)));
@@ -457,10 +469,22 @@ it('completes every manager Home card and Today section read without a handled f
    beforePayrollWithApprovals:()=>readMyPayrollReadiness(actor.ctx,{scopeIds,locale:'en',today,approvalPreview:true}),
   };
   for(const [name,read] of Object.entries(full))compare(subject,'full:'+name,await outcome(()=>withIndependentTransactions(read)),await outcome(read));
+  // One request's own payroll read (Summary, Today, Calendar) against each card's own payroll reader.
+  const {OwnHomePayrollRead,readOwnPayrollHomeMetadata}=await import('../../packs/payroll/service');
+  const payrollCards=(shared?:InstanceType<typeof OwnHomePayrollRead>)=>Promise.all([
+   readEmployeeHomeToday(actor.ctx,actor.employmentId,undefined,shared),
+   readEmployeeHomeCalendar(actor.ctx,actor.employmentId,month,undefined,undefined,shared),
+   readEmployeeHomeSummary(actor.ctx,actor.employmentId,'en','replacement',undefined,undefined,shared)]);
+  compare(subject,'payrollRead',await outcome(()=>payrollCards()),await outcome(()=>payrollCards(new OwnHomePayrollRead(actor.ctx,actor.employmentId))));
+  // A carrier bound to another login or employment never answers for this one: it reruns this card's own reader.
+  const foreignCarrier=new OwnHomePayrollRead(manager.ctx,manager.employmentId);
+  compare(subject,'payrollRead:foreignCarrier',await outcome(()=>readOwnPayrollHomeMetadata(actor.ctx,actor.employmentId)),
+   await outcome(()=>foreignCarrier.homeMetadata(actor.ctx,actor.employmentId)));
   const oldFrames:Record<string,unknown>={},newFrames:Record<string,unknown>={};
   await withIndependentTransactions(()=>streamHome(actor,month,null,GET,oldFrames));
   await streamHome(actor,month,null,GET,newFrames);
-  compare(subject,'stream',oldFrames,newFrames);
+  const byCard=(frames:Record<string,unknown>)=>Object.fromEntries(Object.entries(frames).sort(([a],[b])=>a.localeCompare(b)));
+  compare(subject,'stream',byCard(oldFrames),byCard(newFrames));
  }
  // Isolation: a foreign identity inside a session, and two identities' sessions at once across tenants.
  const isolation:Record<string,unknown>={};report.isolation=isolation;
@@ -590,41 +614,50 @@ it('completes every manager Home card and Today section read without a handled f
   }finally{await worker.close().catch(()=>undefined);}
   evidence();
  }
- // 8. Find where a Home stream crosses the card deadline as CPU competition rises.
+ // 8 and 9, per transaction scope on the same runner: 'off' (every owner its own transaction, the old path),
+ // 'stream' (one shared snapshot per stream and per Today section) and 'card' (one per card and per section).
+ const scopes=['off','stream','card'] as const;
  const ramp:unknown[]=[];report.cpuRamp=ramp;
- for(const [workers,pressure] of [[2,16],[8,16],[2,32],[8,32],[4,32]] as const){
+ for(const [workers,pressure] of [[2,16],[8,16],[4,32]] as const)for(const scope of scopes){
+  process.env.AIHR_HOME_SHARED_READ_SCOPE=scope;
   const stop=cpuPressure(pressure),worker=await coldWorker(workers);
   try{
    await new Promise(resolve=>setTimeout(resolve,1500));
    const once=async(actor:Actor)=>{const result=await streamHome(actor,month,null,worker.GET);return {elapsedMs:result.elapsedMs,over:result.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card)};};
    const cold=await once(manager),warm=[await once(manager),await once(manager)];
+   worker.resetTrips();const counted=await once(manager);const trips=worker.trips();
    const overlapped=await Promise.all([manager,employee,secondManager].map(once));
-   const row={workers,poolPerWorker:Math.floor(16/workers),cpuPressure:pressure,cold,warm,overlapped};
+   const row={scope,workers,poolPerWorker:Math.floor(16/workers),cpuPressure:pressure,cold,warm,counted:{...counted,trips},overlapped};
    ramp.push(row);print('cpu-ramp',row);evidence();
   }finally{stop();await worker.close().catch(()=>undefined);}
  }
- // 9. The first browser sweep: six simultaneous whole Home pages, shared round-robin across the workers.
+ // The first browser sweep: six simultaneous whole Home pages, shared round-robin across the workers.
  const burst:unknown[]=[];report.pageBurst=burst;
- for(const [workers,pressure] of [[2,16],[4,16],[8,16]] as const){
+ for(const [workers,pressure] of [[2,16],[4,16],[8,16]] as const)for(const scope of scopes){
+  process.env.AIHR_HOME_SHARED_READ_SCOPE=scope;
   const stop=cpuPressure(pressure),worker=await coldWorker(workers);
   try{
    await new Promise(resolve=>setTimeout(resolve,1500));
    const targets=await todayReaders(today),pagesPerWorker=Math.ceil(6/workers);
    const lane=[manager,employee,secondManager].slice(0,Math.min(3,pagesPerWorker));
    while(lane.length<pagesPerWorker)lane.push(actors.find(a=>a.index===5+lane.length)!);
+   const section=(read:()=>Promise<unknown>)=>scope==='off'?worker.independent(read):read();
    for(const attempt of ['cold','warm']){
+    worker.resetTrips();
     const pages=await Promise.all(lane.map(async actor=>{
      const owners=await targets(actor.ctx),started=performance.now(),sections:Record<string,unknown>={};
      const [stream]=await Promise.all([streamHome(actor,month,null,worker.GET),...['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'].map(name=>
-      owners[name]().then(()=>{sections[name]=Math.round(performance.now()-started);},error=>{sections[name]=errorFact(error);}))]);
+      section(owners[name]).then(()=>{sections[name]=Math.round(performance.now()-started);},error=>{sections[name]=errorFact(error);}))]);
      return {role:actor.role,elapsedMs:stream.elapsedMs,over:stream.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card),
+      failed:stream.frames.filter(frame=>frame.status!==200).map(frame=>frame.card),
       slowest:[...stream.frames].sort((a,b)=>b.ms-a.ms).slice(0,4).map(frame=>[frame.card,frame.status,frame.ms]),sections};
     }));
-    const row={workers,poolPerWorker:Math.floor(16/workers),cpuPressure:pressure,pagesPerWorker,attempt,pages};
+    const row={scope,workers,poolPerWorker:Math.floor(16/workers),cpuPressure:pressure,pagesPerWorker,attempt,trips:worker.trips(),pages};
     burst.push(row);print('page-burst',row);evidence();
    }
   }finally{stop();await worker.close().catch(()=>undefined);}
  }
+ delete process.env.AIHR_HOME_SHARED_READ_SCOPE;
  Object.assign(process.env,{DATABASE_URL:applicationUrl});delete process.env.AIHR_APP_WORKERS;delete process.env.AIHR_DB_TOTAL_CONNECTIONS;
  // Every stream frame, Today section and page owner completed. Timings stay diagnostic evidence.
  const failedFrames=(streams as {run:string;frames:{card:string;status:number}[]}[]).flatMap(row=>row.frames.filter(frame=>frame.status!==200).map(frame=>row.run+':'+frame.card));
@@ -639,5 +672,5 @@ it('completes every manager Home card and Today section read without a handled f
  // Old and new reads are identical, and no foreign identity ever joined a host session.
  expect(mismatches).toEqual([]);
  expect(Object.values(isolation).map(row=>(row as {hostSessionJoins:number}).hostSessionJoins)).toEqual([0,0]);
-},900_000);
+},1_400_000);
 });

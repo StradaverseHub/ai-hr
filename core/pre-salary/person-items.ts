@@ -55,7 +55,7 @@ import {HomeAccessError,requireOwnHomeSubject} from '../employee-home';
 import {leaveRequestsFor,listEligibleLeaveTypesFor} from '../read';
 import {attendanceForEmploymentRange,classifyDay,myAttendanceCorrections,myOvertimePlans,otMonthToDateMinutes} from '../../packs/attendance/service';
 import {listReplacementLeaveRequests} from '../../packs/leave/service';
-import {getEmployeeClaimTypes,listClaimsForEmployment} from '../../packs/claims/service';
+import {getEmployeeClaimTypes,listOpenClaimsForEmployment} from '../../packs/claims/service';
 import {listMyTp1Declarations,myTp3Employments,myTp3History} from '../../packs/payroll/service';
 import {myReadinessActions} from '../readiness-actions';
 import {myProfile} from '../profile';
@@ -205,7 +205,8 @@ async function leaveGroup(ctx:SessionContext,subject:Subject,period:PayrollPerio
 async function claimsGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod,today:string):Promise<GroupRead>{
  const state=moduleState(ctx,'claims',subject.companyId);
  if(state!=='on')return state==='off'?off:failed;
- const [claims,types]=await Promise.all([settle(()=>listClaimsForEmployment(ctx,subject.employmentId)),settle(()=>getEmployeeClaimTypes(ctx,subject.employmentId))]);
+ // Only pending and draft claims produce an item, so decided history is never loaded (same rows, same order).
+ const [claims,types]=await Promise.all([settle(()=>listOpenClaimsForEmployment(ctx,subject.employmentId)),settle(()=>getEmployeeClaimTypes(ctx,subject.employmentId))]);
  if(!claims.ok)return failed;
  // Only the receipt rule and the receipt-age window are taken from each type; limits and balances are left behind.
  const rules=new Map((types.ok?types.value:[]).map(type=>[type.id,{requiresReceipt:type.requiresReceipt,window:type.maxReceiptAgeDays}]));

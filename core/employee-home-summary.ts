@@ -7,7 +7,7 @@ import {countEmployeeHomeTasks,type OwnHomeTaskSourceRead} from './employee-home
 import {isModuleEnabled} from './entitlements';
 import {hasEligibleLeaveTypeForTx} from './read';
 import {nextApprovedLeavePresenceTx} from '../packs/leave/service';
-import {readOwnPayrollHomeMetadata} from '../packs/payroll/service';
+import {readOwnPayrollHomeMetadata,type OwnHomePayrollRead} from '../packs/payroll/service';
 import {ownClaimFormAvailable} from '../packs/claims/service';
 import {readProfilePresentationSnapshotPolicy} from './profile-edit-policy';
 import {originalHolidayCalendarFor} from './holidays';
@@ -19,7 +19,7 @@ import type {Locale} from '../i18n/config';
 
 /** Seven civil business dates ahead is a presentation window, not an eligibility or payroll rule. */
 export const HOME_SUMMARY_LOOKAHEAD_DAYS=7;
-export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:string,locale:Locale,replacementHolidayName:string,configurationRead?:OwnHomeConfigurationRead,taskSourceRead?:OwnHomeTaskSourceRead):Promise<EmployeeHomeSummary>{
+export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:string,locale:Locale,replacementHolidayName:string,configurationRead?:OwnHomeConfigurationRead,taskSourceRead?:OwnHomeTaskSourceRead,payrollRead?:OwnHomePayrollRead):Promise<EmployeeHomeSummary>{
  // The configuration owner already proves the exact current own employment and its company role.
  const {configuration,employmentId:subjectId}=await (configurationRead?.read(ctx,employmentId)??readOwnEmployeeHomeConfiguration(ctx,employmentId));
  const signal=configurationRead?.signal;
@@ -35,7 +35,7 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
    ()=>replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:today,endDate:through}),
    ()=>leaveOn&&configured.has('leave')?hasEligibleLeaveTypeForTx(tx,subjectId):false,
   ]),{readSignal:signal}),
-  ()=>payrollOn?readOwnPayrollHomeMetadata(ctx,subjectId,signal):Promise.resolve(null),
+  ()=>payrollOn?(payrollRead?payrollRead.homeMetadata(ctx,subjectId):readOwnPayrollHomeMetadata(ctx,subjectId,signal)):Promise.resolve(null),
   ()=>claimsOn&&configured.has('claim')?ownClaimFormAvailable(ctx,subjectId,signal):Promise.resolve(false),
   ()=>configured.has('profile')?readProfilePresentationSnapshotPolicy(ctx,signal):Promise.resolve(null),
  ]);

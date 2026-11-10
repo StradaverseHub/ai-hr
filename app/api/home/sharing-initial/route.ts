@@ -12,12 +12,12 @@ import {
 import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
 import {greetingProjection,tasksProjection,todayProjection,calendarProjection} from '../personal-projections';
 import {withDatabaseReadCancellation} from '@/db/workload';
-import {withSharedReadSnapshot} from '@/db/client';
+import {withIndependentTransactions,withSharedReadSnapshot} from '@/db/client';
 import {readEmployeeHomeToday} from '@/core/employee-home-today';
 import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
 import {homeCalendarMonth} from '@/lib/employee-home-calendar';
 import {OwnClockEmploymentUnavailableError} from '@/packs/attendance/service';
-import {OwnPayrollSubjectUnavailableError} from '@/packs/payroll/service';
+import {OwnHomePayrollRead,OwnPayrollSubjectUnavailableError} from '@/packs/payroll/service';
 import {HomeAccessError} from '@/core/employee-home';
 import {markHomeRead} from '@/lib/home-read-timing';
 
@@ -42,6 +42,8 @@ export async function GET(request:Request){
   const signal=readLifetime.signal;
   const configurationRead=new OwnHomeConfigurationRead(session,employmentId,signal);
   const taskSourceRead=cards.includes('summary')&&cards.includes('tasks')?new OwnHomeTaskSourceRead(session,employmentId):undefined;
+  // Summary, Today and Calendar share one own payroll read when at least two of them are requested.
+  const payrollRead=(['summary','today','calendar'] as const).filter(card=>cards.includes(card)).length>1?new OwnHomePayrollRead(session,employmentId,signal):undefined;
   const readLocale=async()=>{
    const value=await getLocale();
    if(!isLocale(value))throw Error('Home locale unavailable');
@@ -57,18 +59,18 @@ export async function GET(request:Request){
    greeting:async()=>greetingProjection(await readEmployeeHomeGreeting(session,employmentId,await locale(),undefined,configurationRead)),
    summary:async()=>{
     const [language,t]=await Promise.all([locale(),getTranslations('employeeHome.calendar')]);
-    const value=await readEmployeeHomeSummary(session,employmentId,language,t('replacement'),configurationRead,taskSourceRead);
+    const value=await readEmployeeHomeSummary(session,employmentId,language,t('replacement'),configurationRead,taskSourceRead,payrollRead);
     return validateEmployeeHomeSummary(value,employmentId);
    },
    tasks:async()=>tasksProjection(await readEmployeeHomeTasks(session,employmentId,1,configurationRead,taskSourceRead)),
    today:async()=>{
-    try{return todayProjection(await readEmployeeHomeToday(session,employmentId,signal));}
+    try{return todayProjection(await readEmployeeHomeToday(session,employmentId,signal,payrollRead));}
     catch(error){
      if(error instanceof OwnClockEmploymentUnavailableError||error instanceof OwnPayrollSubjectUnavailableError)throw new HomeAccessError('employmentUnavailable');
      throw error;
     }
    },
-   calendar:async()=>calendarProjection(await readEmployeeHomeCalendar(session,employmentId,month,undefined,signal)),
+   calendar:async()=>calendarProjection(await readEmployeeHomeCalendar(session,employmentId,month,undefined,signal,payrollRead)),
   };
   const encoder=new TextEncoder();
   let detach=()=>{};
@@ -104,7 +106,12 @@ export async function GET(request:Request){
      if(open)controller.enqueue(encoded);
     };
     // Disconnect stops eligible readers at their next admission check and drops pending values.
-    void withSharedReadSnapshot(session,()=>Promise.allSettled(cards.map(read)),signal).then(stop,stop);
+    // EXPERIMENT (removed before merge): compare one snapshot per stream, one per card, and none.
+    const scope=process.env.AIHR_HOME_SHARED_READ_SCOPE??'stream';
+    const all=scope==='off'?withIndependentTransactions(()=>Promise.allSettled(cards.map(read)))
+     :scope==='card'?Promise.allSettled(cards.map(card=>withSharedReadSnapshot(session,()=>read(card),signal)))
+     :withSharedReadSnapshot(session,()=>Promise.allSettled(cards.map(read)),signal);
+    void all.then(stop,stop);
    },
    cancel(){detach();},
   });

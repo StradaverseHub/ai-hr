@@ -8,14 +8,14 @@ import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
 import {homeDisplayClock} from '../lib/employee-home';
 import {homeCalendarGrid,type EmployeeHomeCalendar,type HomeCalendarEntry} from '../lib/employee-home-calendar';
 import {leaveCalendarPresenceByEmploymentTx} from '../packs/leave/service';
-import {readOwnPayrollCalendarPayments} from '../packs/payroll/service';
+import {readOwnPayrollCalendarPayments,type OwnHomePayrollRead} from '../packs/payroll/service';
 import {isModuleEnabled} from './entitlements';
 import {originalHolidayCalendarFor} from './holidays';
 import {replacementHolidayCalendarProjectionsTx} from './holiday-replacement-read';
 import {provenCompanyDatesTx} from './employment-company';
 import {readHomeTeamCalendar} from './employee-home-sharing';
 
-export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:string,requestedMonth?:string,now=new Date(),signal?:AbortSignal):Promise<EmployeeHomeCalendar>{
+export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:string,requestedMonth?:string,now=new Date(),signal?:AbortSignal,payrollRead?:OwnHomePayrollRead):Promise<EmployeeHomeCalendar>{
  if (!ctx.userId) throw new HomeAccessError('authentication');
  const subjectId = employmentId;
  const {preferences,display,month,dates,from,to,facts,team}=await withTenant(ctx,async tx=>{
@@ -40,7 +40,7 @@ export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:s
  signal?.throwIfAborted();
  // Payroll owns a separate history barrier and must read after acquiring it.
  const payrollEnabled=isModuleEnabled(ctx,'payroll');
- const paymentDates=payrollEnabled?await readOwnPayrollCalendarPayments(ctx,subjectId,from,to,signal):[];
+ const paymentDates=payrollEnabled?await (payrollRead?payrollRead.calendarPayments(ctx,subjectId,from,to):readOwnPayrollCalendarPayments(ctx,subjectId,from,to,signal)):[];
  signal?.throwIfAborted();
  const canApply=facts.active&&facts.eligible;
  const payments=new Set(paymentDates);
