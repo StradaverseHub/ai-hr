@@ -4,6 +4,8 @@ import {parseCostAllocationCsv} from '@/lib/cost-allocation-import';
 
 import {PERSONNEL_REGISTER_KINDS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterRecords} from '@/lib/personnel-register-import';
 import { revalidatePath } from 'next/cache';
+import {createEmployeeImportJob,EmployeeImportJobError} from '@/core/employee-import-job';
+import type {EmployeeImportProgress} from '@/lib/employee-import-job';
 import { requireAdmin } from '@/lib/authz';
 import {getBrowserCommandSession} from '@/lib/session';
 import {beginEmployeeImportEvaluation,prepareEmployeeImportEvaluationCommit,reopenEmployeeImportEvaluation,recordEmployeeImportEvaluationTelemetry,associateReusedEmployeeImportHeader,eraseOwnImportEvaluationMetadata,EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE} from '@/core/personnel-import-evaluation';
@@ -72,7 +74,7 @@ export async function commitImportAction(
   dependentsCsv?: string,
   registers?:PersonnelRegisterTexts,
   allocationsCsv?:string,allocationToken?:string,evaluationBinding?:EmployeeImportEvaluationBinding,
-): Promise<(ImportResult & {evaluationReceipt?:EmployeeImportEvaluationReceipt}) | EmployeeImportFailure> {
+): Promise<(ImportResult & {evaluationReceipt?:EmployeeImportEvaluationReceipt}) | {job:EmployeeImportProgress;existing:boolean} | EmployeeImportFailure> {
   if(evaluationBinding!==undefined){
     try{return await commitMeasuredEmployeeImport(csv,companyId,evaluationBinding,dependentsCsv,registers,allocationsCsv,allocationToken,fileName);}
     catch{return {error:EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE};}
@@ -80,20 +82,11 @@ export async function commitImportAction(
   const s = await requireAdmin();
   try {
     if(Buffer.byteLength([csv,dependentsCsv??'',allocationsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
-    const { records } = parseEmployee(csv);
-    const result = await commitEmployeeImport(s, {
-      companyId,
-      records,
-      dependentRecords: familyRecords(dependentsCsv),
-      registerRecords:registerRecords(registers),
-      allocationRecords:parseCostAllocationCsv(allocationsCsv??''),allocationToken,
-      fileName: fileName ?? '',
-      source:pastedSource(csv,fileName),
-    });
-    revalidatePath('/admin/personnel');
+    const source=pastedSource(csv,fileName);
+    const started=await createEmployeeImportJob(s,{companyId,csv,fileName:fileName??'',dependentsCsv:dependentsCsv??'',registers:registers??{},allocationsCsv:allocationsCsv??'',allocationToken},source);
     revalidatePath('/admin/personnel/import');
-    return result;
-  } catch(error) { return employeeImportFailure(error,'commit'); }
+    return started;
+  } catch(error) { if(error instanceof EmployeeImportJobError)return {error:error.message}; return employeeImportFailure(error,'commit'); }
 }
 
 /** Snapshot raw effect inputs before authentication awaits. They never enter evaluation metadata/provider. */

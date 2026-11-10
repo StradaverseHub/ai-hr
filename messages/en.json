@@ -2947,6 +2947,25 @@
         "payItems": "Recurring pay items beyond basic salary and monthly allowance — add them on the Payroll tab or with the pay item import.",
         "openingTax": "Opening tax balances for mid-year joiners (TP3) — entered on the Payroll tab.",
         "holidayCalendar": "Holiday calendar — a dated assignment with its own history; set it on the Attendance tab after the import."
+      },
+      "employeeJob": {
+        "queued": "Waiting to start",
+        "validating": "Checking the file",
+        "importing": "Importing employees",
+        "activating": "Finishing the import",
+        "discarding": "Undoing the import",
+        "completed": "Import finished",
+        "failed": "Import stopped — no employees were added",
+        "phase": {
+          "employees": "Creating employees",
+          "superiors": "Linking reporting lines",
+          "registers": "Adding register records",
+          "activation": "Finalising"
+        },
+        "progressCount": "{done} of {total} steps complete",
+        "backgroundHelp": "You can leave this page. Nobody sees the new employees until the import finishes.",
+        "waiting": "Waiting for the import worker. Progress is saved; do not upload the file again.",
+        "otherRunning": "Another employee import is still running. Wait for it to finish before starting a new one."
       }
     },
     "wizard": {

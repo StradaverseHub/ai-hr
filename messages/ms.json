@@ -2947,6 +2947,25 @@
         "payItems": "Item gaji berulang selain gaji pokok dan elaun bulanan — tambah pada tab Gaji atau dengan import item gaji.",
         "openingTax": "Baki cukai pembukaan untuk pekerja yang menyertai pertengahan tahun (TP3) — dimasukkan pada tab Gaji.",
         "holidayCalendar": "Kalendar cuti umum — tugasan bertarikh dengan sejarahnya sendiri; tetapkan pada tab Kehadiran selepas import."
+      },
+      "employeeJob": {
+        "queued": "Menunggu untuk bermula",
+        "validating": "Menyemak fail",
+        "importing": "Mengimport pekerja",
+        "activating": "Menyelesaikan import",
+        "discarding": "Membatalkan import",
+        "completed": "Import selesai",
+        "failed": "Import dihentikan — tiada pekerja ditambah",
+        "phase": {
+          "employees": "Mencipta pekerja",
+          "superiors": "Memautkan garis pelaporan",
+          "registers": "Menambah rekod daftar",
+          "activation": "Memuktamadkan"
+        },
+        "progressCount": "{done} daripada {total} langkah selesai",
+        "backgroundHelp": "Anda boleh tinggalkan halaman ini. Tiada sesiapa melihat pekerja baharu sehingga import selesai.",
+        "waiting": "Menunggu pekerja import. Kemajuan disimpan; jangan muat naik fail ini sekali lagi.",
+        "otherRunning": "Satu lagi import pekerja masih berjalan. Tunggu sehingga selesai sebelum memulakan yang baharu."
       }
     },
     "wizard": {
