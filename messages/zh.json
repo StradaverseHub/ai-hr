@@ -2992,6 +2992,34 @@
         "waiting": "正在等待导入进程。进度已保存；请勿再次上传文件。",
         "otherRunning": "您发起的同类导入仍在进行。请等待其完成后再开始新的导入。",
         "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务一运行便会自动开始。"
+      },
+      "movementJob": {
+        "queued": "等待开始",
+        "validating": "正在重新检查文件",
+        "importing": "正在保存异动",
+        "finishing": "正在记录导入",
+        "completed": "导入已完成",
+        "failed": "导入已停止",
+        "cancelled": "导入已停止",
+        "progressCount": "已处理 {done}/{total} 名员工",
+        "backgroundHelp": "您可以离开此页面。每名员工的异动会在处理该员工时一并保存。",
+        "waiting": "正在等待导入进程。进度已保存；请勿再次确认导入。",
+        "otherRunning": "您发起的另一项异动导入仍在进行。请等待其完成后再确认新的导入。",
+        "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务一运行便会自动开始。"
+      },
+      "movementCheckJob": {
+        "queued": "等待开始",
+        "reading": "正在读取文件",
+        "checking": "正在检查异动",
+        "finishing": "正在记录检查",
+        "completed": "检查已完成",
+        "failed": "检查已停止",
+        "cancelled": "检查已停止",
+        "progressCount": "已检查 {done}/{total} 名员工",
+        "backgroundHelp": "在您确认导入之前，不会保存任何内容。请保持此页面打开，以便检查完成时查看结果。",
+        "waiting": "正在等待导入进程。检查会自动开始；请勿再次上传该文件。",
+        "otherRunning": "您发起的另一项异动检查仍在进行。请等待其完成后再检查新文件。",
+        "workerUnavailable": "导入服务尚未运行。您的文件已保留，服务一运行检查便会自动开始。"
       }
     },
     "wizard": {
@@ -37831,6 +37859,48 @@
         "cancelled": {
           "title": "薪资重新处理已取消",
           "body": "已重新处理的员工保留其新结果。"
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "异动导入已完成",
+          "body": "打开导入历史，查看已保存的异动以及未能保存的员工。"
+        },
+        "failed": {
+          "title": "异动导入已停止",
+          "body": "打开导入历史查看原因。已保存的员工会保留其异动。"
+        },
+        "cancelled": {
+          "title": "异动导入已停止",
+          "body": "已保存的员工会保留其异动。打开导入历史查看详情。"
+        }
+      },
+      "movementCheck": {
+        "completed": {
+          "title": "异动文件已检查",
+          "body": "检查已记录在导入历史中。如果您已离开导入页面，请重新上传该文件以查看并确认。"
+        },
+        "failed": {
+          "title": "异动检查已停止",
+          "body": "打开导入历史查看原因。未保存任何内容。"
+        },
+        "cancelled": {
+          "title": "异动检查已停止",
+          "body": "未保存任何内容。打开导入历史查看详情。"
+        }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "异动导入撤销已完成",
+          "body": "打开导入历史，查看已撤销的异动。"
+        },
+        "failed": {
+          "title": "异动导入撤销已停止",
+          "body": "未作任何更改。打开导入历史查看原因。"
+        },
+        "cancelled": {
+          "title": "异动导入撤销已取消",
+          "body": "未作任何更改。打开导入历史查看详情。"
         }
       }
     },

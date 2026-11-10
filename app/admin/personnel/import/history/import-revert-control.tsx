@@ -5,7 +5,7 @@ import {useTranslations} from 'next-intl';
 import {inputCls} from '@/components/ui';
 import {IMPORT_REVERT_REASON_MAX,normalizeImportRevertReason} from '@/lib/import-history';
 import {previewImportRevertAction,revertImportAction} from './actions';
-import type {EmployeeImportRevertProgress} from '@/lib/employee-import-revert';
+import type {ImportRevertJobProgress} from '@/lib/import-revert-job';
 type Preview=Extract<Awaited<ReturnType<typeof previewImportRevertAction>>,{ok:true}>['result'];
 type Blocker={itemId:string;label:string;reason:string};
 /** What a revert will restore, for any kind: rows when the kind restores a set, otherwise its fields. */
@@ -23,7 +23,8 @@ export function RestoreSummary({restore}:{restore:unknown}){
 export function ImportRevertControl({attemptId,activeJobId}:{attemptId:string;activeJobId?:string|null}){
  const t=useTranslations('people.importHistory'),router=useRouter();
  const[preview,setPreview]=useState<Preview|null>(null),[blockers,setBlockers]=useState<Blocker[]>([]),[reason,setReason]=useState(''),[acknowledged,setAcknowledged]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
- // An employee import revert runs in the background: the control stays busy until the job reports its outcome.
+ // An employee import revert and a movement import revert run in the background (the two jobs report the same
+ // progress shape): the control stays busy until the job reports its outcome.
  const[jobId,setJobId]=useState<string|null>(activeJobId??null);
  useEffect(()=>{
   if(!jobId)return;
@@ -31,7 +32,7 @@ export function ImportRevertControl({attemptId,activeJobId}:{attemptId:string;ac
   const poll=async()=>{
    try{
     const response=await fetch(`/admin/personnel/import/history/revert-jobs/${jobId}`,{cache:'no-store'});
-    const payload=await response.json().catch(()=>null) as {job?:EmployeeImportRevertProgress}|null;
+    const payload=await response.json().catch(()=>null) as {job?:ImportRevertJobProgress}|null;
     const job=payload?.job;
     if(!alive)return;
     if(!response.ok||!job){setJobId(null);setBusy(false);setError(t('revert.failed'));return;}
