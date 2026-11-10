@@ -12,7 +12,7 @@
   },
   "preserved": {
     "core/employee-choice.ts": "cd2f40fb4ed55bf591202638936a986ee57c5cdc874e5dcafd4ec40f7914124a",
-    "core/personnel-private-search.ts": "990490b0efce638b9c48b6a8b7036880c67088be258d1fa419b0398c785d13f9",
+    "core/personnel-private-search.ts": "a4e1496bf56e663e456807d4b28cb143f48607b7286d176096a08720c445a0dc",
     "test/fixtures/employee-choice-native-purpose.sql": "d72e6ded4a07cbbb848856c35391e1e56fdd02ad793c71a18360754e11fe8efc",
     "test/fixtures/employee-choice-exact-ascii-purpose.sql": "e1468e77942f4f2dc557d729be7eb42683d844bc92288e127fd2b6a095ad6b92",
     "test/performance/employee-choice-native-current-baseline.ts": "fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816",
@@ -21,7 +21,7 @@
     "test/performance/employee-choice-exact-ascii-reader.ts": "ed2e2fb304de2d78435c13ec9caf9d71161c68755abea459674d50fbf1a1a8fd",
     "test/performance/employee-choice-exact-ascii-runtime.ts": "c39beac3ddc7079c9c1bae241ed14f5ea60d0fb7c8b5d7699315c4d1cb2a55bc",
     "test/performance/employee-choice-exact-ascii-runtime-contract.ts": "14f1f74b60fedaf394c3b5a7c1b1e0661d6327bc34472d146c81830e69cd7813",
-    "core/ai-principal.ts": "1240757bd847438fe23bcc9da7139437c4d0e3807b28567b3c7deca3bfc551ab"
+    "core/ai-principal.ts": "a21e0c529e7c858a63d7c9a5f24b336020e41ea5a60ca185779f97b59881cfce"
   },
   "steps": [
     {
