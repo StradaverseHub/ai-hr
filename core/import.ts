@@ -62,8 +62,8 @@ import {
   attendanceRule,
 } from '../db/schema';
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
-import {updatePerson} from './org';
-import {hireEmployee,setEmploymentInfo,setReportingLine} from './workforce-commands';
+import {freshEmployeeImportHireTx,updatePerson} from './org';
+import {setEmploymentInfo,setReportingLine} from './workforce-commands';
 // r369 — `unpayableSalaryLeg` is the SAME predicate `setCompensation` refuses on, imported rather than
 // re-stated, so the dry run and the write can never disagree about which rows need a reason.
 import { setCompensation, unpayableSalaryLeg } from './comp';
@@ -384,6 +384,7 @@ async function analyze(
   // correct across a mixed file; if a pack ever normalises differently, this is where to revisit.
   const { allowDuplicatedNric, allowDuplicatedEmail } = await (outerTx?readPeopleGeneralTx(outerTx):getPeopleGeneral(ctx));
   let normPack = contexts.get(companyId)?.pack ?? [...contexts.values()][0]?.pack;
+  const hasSuperiorReferences = records.some(record => norm(record.direct_superior) !== '');
   const {
     existingEmails,
     existingIcs,
@@ -422,11 +423,11 @@ async function analyze(
     // Item 2983802f — the tenant's existing employments, keyed by Employee ID and by work email, so a
     // `direct_superior` cell may name somebody who is ALREADY employed (the usual case: a new intake
     // reporting to a manager who has been here for years) as well as somebody further down the file.
-    const superiorCandidates = await tx
+    const superiorCandidates = hasSuperiorReferences ? await tx
       .select({ id: employment.id, code: employment.employeeCode, email: person.primaryEmail })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(workforceEmploymentPredicate(sql`${employment.id}`,'view'));
+      .where(workforceEmploymentPredicate(sql`${employment.id}`,'view')) : [];
     // Item 2983802f — the catalog-governed vocabularies the new columns write into. Read ONCE here so a
     // typo in `state` / `country` / an emergency-contact or family relationship is a per-row error in the
     // DRY RUN, where a spreadsheet can still be fixed, instead of a failure at write with an employee
@@ -1383,6 +1384,7 @@ export async function commitEmployeeImport(
     allocationPreview=await previewCostAllocationImportTx(tx,ctx,p.allocationRecords,allocationEmployees);
     if(allocationPreview.token!==p.allocationToken||allocationPreview.groups.some(g=>g.errors.length))throw new Error('Cost Center Allocations changed. Preview the complete workbook again.');
   }
+  const hireImportedEmployee=freshEmployeeImportHireTx(ctx,tx);
   for (const [index, row] of resolved.entries()) {
     if (!row.result.ok) continue;
     // Per-ROW pack (d8471481): a file may span companies, and a company's statutory writer is its
@@ -1390,7 +1392,7 @@ export async function commitEmployeeImport(
     const pack = row.pack;
     try {
       const saved = await (async()=>{
-      const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.initialTaxScheme}, tx);
+      const { employmentId, personId } = await hireImportedEmployee({...row.hire,initialTaxScheme:row.initialTaxScheme});
       if(allocationPreview)await writeNewEmployeeCostAllocationsTx(tx,ctx,allocationPreview.groups,index,employmentId);
       let familyCount=0;
       await (pack.statutory.initializeForHire??pack.statutory.set)(ctx, { personId, ...row.statutory }, tx);

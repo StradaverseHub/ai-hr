@@ -206,9 +206,35 @@ export function resolveProbationMonths(probationMonths: number | null | undefine
   return probationMonths != null && probationMonths > 0 ? probationMonths : 3;
 }
 
+const MAX_IMPORT_HIRE_FACTS = 500;
+
+type HireCompany = Pick<typeof company.$inferSelect, 'id' | 'country'>;
+type HireOrganisation = {
+  tags: Awaited<ReturnType<typeof deriveCompanyOrganisationTx>>;
+  managed: boolean;
+};
+type ImportHireFacts = {
+  companies: Map<string, HireCompany>;
+  organisation: Map<string, HireOrganisation>;
+};
+
+/** Only Everything import keeps these facts between fresh hires in its full-file write transaction.
+ * Company rows stay locked FOR SHARE and organisation publication takes the same Access lock.
+ * Never reuse this closure after a savepoint rollback, which can release those locks.
+ * Other Hire validation and all effects still run in input order for every row. */
+export function freshEmployeeImportHireTx(ctx: SessionContext, tx: Tx) {
+  const facts: ImportHireFacts = { companies: new Map(), organisation: new Map() };
+  return (input: HireParams) => runHireEmployee(ctx, input, tx,
+    input.person.id || input.fromEmployeeDraftId || input.reportingManagerEmploymentId ? undefined : facts);
+}
+
 export async function hireEmployee(ctx: SessionContext, p: HireParams,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
+  return runHireEmployee(ctx, p, outerTx);
+}
+
+async function runHireEmployee(ctx: SessionContext, p: HireParams, outerTx?: Tx, importFacts?: ImportHireFacts) {
   p = { ...p, person: { ...p.person }, grantLeaveTypes: p.grantLeaveTypes?.map(type => ({ ...type })) };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   const run = async (tx:Tx) => withSystemLabelCompanyTx(tx,p.companyId,async()=>{
@@ -221,10 +247,23 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // The same Criteria-before-row lock order as the canonical reference writers.
     await lockLabelCriteriaTx(tx,ctx.tenantId);
-    const [hireCompany]=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,p.companyId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id})`)).for('share');
-    if(!hireCompany)throw new CrossCompanyError('employment');
-    const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:p.companyId,asOf:p.hiredOn});
-    p.businessUnitId=organisationBusinessUnit(organisation,await organisationManagedTx(tx),p.businessUnitId)??undefined;
+    let hireCompany = importFacts?.companies.get(p.companyId);
+    if (!hireCompany) {
+      [hireCompany] = await tx.select({id:company.id,country:company.country}).from(company)
+        .where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,p.companyId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id})`)).for('share');
+      if (!hireCompany) throw new CrossCompanyError('employment');
+      if (importFacts && importFacts.companies.size < MAX_IMPORT_HIRE_FACTS) importFacts.companies.set(p.companyId, hireCompany);
+    }
+    const organisationKey = p.companyId + ':' + p.hiredOn;
+    let organisation = importFacts?.organisation.get(organisationKey);
+    if (!organisation) {
+      organisation = {
+        tags: await deriveCompanyOrganisationTx(tx,ctx,{companyId:p.companyId,asOf:p.hiredOn}),
+        managed: await organisationManagedTx(tx),
+      };
+      if (importFacts && importFacts.organisation.size < MAX_IMPORT_HIRE_FACTS) importFacts.organisation.set(organisationKey, organisation);
+    }
+    p.businessUnitId=organisationBusinessUnit(organisation.tags,organisation.managed,p.businessUnitId)??undefined;
     for(const [table,id,kind] of [[businessUnit,p.businessUnitId,'business_unit'],[department,p.departmentId,'department'],[position,p.positionId,'position'],[costCenter,p.costCenterId,'cost_center']] as const) {
       if(!id)continue;
       const [active]=await tx.select({id:table.id}).from(table).where(and(eq(table.tenantId,ctx.tenantId),eq(table.id,id),isNull(table.archivedAt))).for('share');
@@ -377,12 +416,12 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
       // Entitlement comes from the employee's winning ENTITLEMENT TEMPLATE band. The country pack's
       // statutory floor is still resolved, but fa3f4ccb made it ADVISORY — it flags a below-minimum
       // figure and never clamps one.
-      const [co] = await tx
+      const country = importFacts ? hireCompany.country : (await tx
         .select({ country: company.country })
         .from(company)
         .where(eq(company.id, p.companyId))
-        .limit(1);
-      const pack = packFor(co?.country);
+        .limit(1))[0]?.country;
+      const pack = packFor(country);
       if (pack) {
         // 6e9a126e — the entitlement TEMPLATE layer, resolved AT THE HIRE DATE. Release three removed the
         // two reads that stood here (the types' active `leave_policy` rows and the benefit-scheme
@@ -503,8 +542,8 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
       },
     });
 
-    const [taxCompany]=await tx.select({country:company.country}).from(company).where(eq(company.id,p.companyId)).limit(1);
-    await packFor(taxCompany?.country)?.statutory.initializeHiredTaxSelectionTx?.(tx,ctx,{employmentId:emp.id,companyId:p.companyId,scheme:p.initialTaxScheme??'resident'});
+    const taxCountry=importFacts?hireCompany.country:(await tx.select({country:company.country}).from(company).where(eq(company.id,p.companyId)).limit(1))[0]?.country;
+    await packFor(taxCountry)?.statutory.initializeHiredTaxSelectionTx?.(tx,ctx,{employmentId:emp.id,companyId:p.companyId,scheme:p.initialTaxScheme??'resident'});
     await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:emp.id,companyId:p.companyId,asOf:p.hiredOn,trigger:'hire'});
     return { employmentId: emp.id, personId };
   });
