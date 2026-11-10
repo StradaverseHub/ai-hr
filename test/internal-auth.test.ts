@@ -170,7 +170,7 @@ describe('first-party authentication with real private storage and existing HR b
   });
   it('refuses self, equal and higher authority, and authenticator recovery for administrators',async()=>{
     await enroll();const group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]},issuer=internalIssuer(base.tenantId);
-    const admitted=(ctx:typeof group,userId:string,action:string)=>withTenant(ctx,async tx=>
+    const admitted=(ctx:Parameters<typeof manageAccount>[0],userId:string,action:string)=>withTenant(ctx,async tx=>
       ((await tx.execute(sql`select app.account_action_subject(${userId}::uuid,${issuer},${action}) subject`)) as unknown as {subject:string|null}[])[0].subject);
     const setRole=async(userId:string,role:'employee'|'hr_admin'|'super_admin',companyId:string|null)=>{
       await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,userId));
