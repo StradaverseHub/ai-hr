@@ -34,11 +34,11 @@ idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when sh
 | `9950_payroll_processing_status` | 9950 / 1793330099950 | `5050_payroll_processing_status` | 4450 / 1793330004750 | `1e9ca4115879eff695e815bc7e83ce18eef78ce0982da05a8d292eb5a08bc7d1` |
 | `9951_payroll_processing_job` | 9951 / 1793330099951 | `5051_payroll_processing_job` | 4451 / 1793330004751 | `37caaa2ba6bc6ea90552cf3da0a933c9972cc9aff3d56c98c567b28e6891be16` |
 | `9952_payroll_run_group` | 9952 / 1793330099952 | `5052_payroll_run_group` | 4452 / 1793330004752 | `f420568a0612c6da490ea7330d36b464bedad8fc5e25663d268e9750b1886901` |
-| `9930_register_section_import_jobs` | 9930 / 1793330099300 | `5060_register_section_import_jobs` | 4460 / 1793330004760 | `9f31d58e832178bffeb05db717d387225bfbf81486aed12b91d8806814fb10dc` |
-| `9931_register_import_set_release` | 9931 / 1793330099310 | `5061_register_import_set_release` | 4461 / 1793330004761 | `5f42cc417104ce3e72cd00b9c81abaaebc2c0c5fe24854b67fb00c50479751e7` |
-| `9932_employee_import_revert_job` | 9932 / 1793330099320 | `5062_employee_import_revert_job` | 4462 / 1793330004762 | `8fd23f7bf263f64338fc21ddf8caeb94b527cbba10396425e68dd2368f6266c1` |
-| `9933_register_import_release_key_authority` | 9933 / 1793330099330 | `5063_register_import_release_key_authority` | 4463 / 1793330004763 | `3bfcee2909aa130c3c415ab07f4da31c04ccb89d2299606d8b9ea64428287db9` |
-| `9934_employee_import_revert_release_hash` | 9934 / 1793330099340 | `5064_employee_import_revert_release_hash` | 4464 / 1793330004764 | `eeff6f99fe872fc063e96d13ef339d65c1acb2c9625d810d5ae5df5998851683` |
+| `9930_register_section_import_jobs` | 9930 / 1793330099300 | `5060_register_section_import_jobs` | 4460 / 1793330004760 | `208d2d40dd1c9b6a5c3cc061ac6a9f282e8f20eb1309c69aeb0e15c2a5088346` |
+| `9931_register_import_set_release` | 9931 / 1793330099310 | `5061_register_import_set_release` | 4461 / 1793330004761 | `2e58415bc1ba2925268df41bf07d3b9cf802f274e01476b336b7dd207b843efe` |
+| `9932_employee_import_revert_job` | 9932 / 1793330099320 | `5062_employee_import_revert_job` | 4462 / 1793330004762 | `1e48068ba30160e2a94e5e511a5dd68bf23f5f968f5fd675da39cc11599d8d43` |
+| `9933_register_import_release_key_authority` | 9933 / 1793330099330 | `5063_register_import_release_key_authority` | 4463 / 1793330004763 | `ae0827b9a2cc63fdc9a2485d4e2762f34800c070da43e2e5b4b2bb2567316f40` |
+| `9934_employee_import_revert_release_hash` | 9934 / 1793330099340 | `5064_employee_import_revert_release_hash` | 4464 / 1793330004764 | `8862489275a2132ff64547b7e1641afd43c57a2cc4f1660ff9a3a8464d2ff568` |
 | `9961_system_label_import_staged_job` | 9961 / 1793330090961 | `5070_system_label_import_staged_job` | 4470 / 1793330004770 | `ba9f29643d13bbe4e69f169d004c698a393af6b639edf97f1d7dd835347e61ba` |
 | `9962_workforce_capability_tenant_publication` | 9962 / 1793330090962 | `5071_workforce_capability_tenant_publication` | 4471 / 1793330004771 | `4d22cd648ea0698c5ce230461862fc4c93e61cbc9196800e0317b680d694a311` |
 | `4700_audit_chain_commit_seal` | 4100 / 1793330004400 | `5090_audit_chain_commit_seal` | 4490 / 1793330004790 | `f6bf0e0f80ca6cb222c8ec10996d55e1bafdbe436809987d9d7b7cf9c11485f1` |
