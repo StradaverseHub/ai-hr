@@ -1615,6 +1615,9 @@ export const leaveType = pgTable('leave_type', {
   // where set, company cycle otherwise. 'a2c' resolves to its OWN token, which every boundary consumer
   // treats as calendar through its existing non-anniversary default (see that function's ADR note).
   yearCycleOverride: text('year_cycle_override'),
+  // Draft 9906: the background A2C job that will set year_cycle_override together with its staged corrections
+  // (core/leave-follow-up-worker.ts). NULL unless a move to a2c is waiting for its release.
+  pendingYearCycleJobId: uuid('pending_year_cycle_job_id'),
   // Leave Type Employee Visibility (feedback 7b11f1c1): two additive, NULLABLE booleans that let HR control,
   // per leave type, whether an employee sees the type at all on their self-service Leave surface, and whether
   // they may submit an application for it. These are the SINGLE SOURCE OF TRUTH for employee-facing leave-type

@@ -12,8 +12,8 @@ import {BULK_JOB_ALREADY_RUNNING, BulkJobError, bulkJobTx, bulkJobWorkerStatusTx
 export {LEAVE_A2C_JOB_KIND, LEAVE_ACCRUAL_JOB_KIND, LEAVE_GENERATION_JOB_KIND, LEAVE_RECALC_JOB_KIND};
 /** Entitlement recalculation after a leave-type earning-rule, table or eligibility-rule save. */
 export type LeaveRecalcJobInput = {leaveTypeId: string; trigger: string; asOf: string};
-/** The A2C re-projection after a Leave Year Type save. */
-export type LeaveA2cJobInput = {leaveTypeId: string; trigger: string; asOf: string};
+/** The A2C re-projection after a Leave Year Type save, and the Leave Year Type it sets at release (draft 9906). */
+export type LeaveA2cJobInput = {leaveTypeId: string; trigger: string; asOf: string; yearCycleOverride?: string};
 /** Another administrator's run of the same kind is still going (one per tenant). Translated by the screen. */
 export const LEAVE_COHORT_ALREADY_RUNNING = 'leave-cohort-already-running';
 const KINDS: readonly string[] = [LEAVE_GENERATION_JOB_KIND, LEAVE_ACCRUAL_JOB_KIND, LEAVE_RECALC_JOB_KIND, LEAVE_A2C_JOB_KIND];

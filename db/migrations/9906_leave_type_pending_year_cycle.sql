@@ -1,0 +1,11 @@
+-- UNALLOCATED DRAFT on branch claude/bulkjob-leave-20261110: not a reservation, not an installation allocation. The
+-- journal position (idx 9906, when 1793330099906) exists only so this branch's schema is executable and reviewable;
+-- the integration owner assigns the final tag/idx/when, per docs/MIGRATION-ALLOCATION.md. Requires 9903.
+--
+-- A Leave Year Type save that moves a type TO Anniversary-to-Calendar used to change the type and correct every
+-- first-year employee in one transaction. On the job kernel the correction is staged (leave_ledger.stage_id), so the
+-- type change must wait with it: the save leaves year_cycle_override as it was and names the background A2C job
+-- here; the job's release sets the new override, clears this, and releases the staged rows in ONE transaction, so no
+-- reader ever sees the new type with the old rows or the old type with the corrected rows. A later save that touches
+-- the Leave Year Type writes NULL or its own job here, and a superseded job releases nothing.
+ALTER TABLE public.leave_type ADD COLUMN pending_year_cycle_job_id uuid;

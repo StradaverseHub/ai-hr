@@ -4231,6 +4231,16 @@ export async function updateLeaveType(
     }
     const payrollHits = touchPaid && before && p.paid !== before.paid
       ? await lockPayrollForLeavePaidSettingTx(tx, p.id, p.paid!) : [];
+    // Bulk-job conversion (drafts 9903/9906): a web save moving the type TO Anniversary-to-Calendar does not
+    // change year_cycle_override here. It admits the background A2C job and names it on the type; the job's
+    // release sets the override and makes every staged correction visible in ONE transaction, so readers see the
+    // old type with the old figures until then and the new type with the corrected figures after. Any other
+    // Leave Year Type save clears a waiting job (it is superseded and releases nothing).
+    const deferredA2cJobId =
+      touchYearCycle && p.a2cInBackground && ctx.userId &&
+      (p.yearCycleOverride ?? null) === A2C_OVERRIDE && (before?.yearCycleOverride ?? null) !== A2C_OVERRIDE
+        ? (await enqueueLeaveA2cJobTx(tx, ctx, { leaveTypeId: p.id, asOf: p.asOf ?? todayInKualaLumpur(), trigger: 'year_cycle_override', yearCycleOverride: A2C_OVERRIDE })).id
+        : null;
     await tx
       .update(leaveType)
       .set({
@@ -4258,7 +4268,7 @@ export async function updateLeaveType(
         ...dayTypeInclusionSet,
         ...overrideRulesSet,
         ...leaveUnitSet,
-        ...yearCycleSet,
+        ...(deferredA2cJobId ? { pendingYearCycleJobId: deferredA2cJobId } : touchYearCycle ? { ...yearCycleSet, pendingYearCycleJobId: null } : {}),
         ...visibleToEmployeeSet,
         ...employeeCanApplySet,
         // Leave grouping visibility (b653ac1b): the stored placement column + the shared visibility flag it
@@ -4302,9 +4312,8 @@ export async function updateLeaveType(
       (p.yearCycleOverride ?? null) !== (before?.yearCycleOverride ?? null) &&
       ((p.yearCycleOverride ?? null) === A2C_OVERRIDE || (before?.yearCycleOverride ?? null) === A2C_OVERRIDE)
     ) {
-      const a2c = { leaveTypeId: p.id, asOf: p.asOf ?? todayInKualaLumpur(), trigger: 'year_cycle_override' };
-      if (!p.a2cInBackground || !ctx.userId) await reprojectA2cEntitlement(tx, ctx, a2c);
-      else if ((p.yearCycleOverride ?? null) === A2C_OVERRIDE) await enqueueLeaveA2cJobTx(tx, ctx, a2c);
+      // Inline for every other caller; a move AWAY from a2c is a no-op inside the helper.
+      if (!deferredA2cJobId) await reprojectA2cEntitlement(tx, ctx, { leaveTypeId: p.id, asOf: p.asOf ?? todayInKualaLumpur(), trigger: 'year_cycle_override' });
     }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -4369,7 +4378,8 @@ export async function updateLeaveType(
           ...(touchDayTypeInclusion ? { dayTypeInclusion: before?.dayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: before?.color ?? null, icon: before?.icon ?? null } : {}),
           ...(touchLeaveUnit ? { leaveUnit: before?.leaveUnit ?? null } : {}),
-          ...(touchYearCycle ? { yearCycleOverride: before?.yearCycleOverride ?? null } : {}),
+          // A deferred move to a2c is recorded by the A2C job's release, with the change itself.
+          ...(touchYearCycle && !deferredA2cJobId ? { yearCycleOverride: before?.yearCycleOverride ?? null } : {}),
           ...(touchProbation ? { probationEligibility: before?.probationEligibility ?? null } : {}),
           ...(touchVisibleToEmployee ? { visibleToEmployee: before?.visibleToEmployee ?? null } : {}),
           ...(touchEmployeeCanApply ? { employeeCanApply: before?.employeeCanApply ?? null } : {}),
@@ -4450,7 +4460,7 @@ export async function updateLeaveType(
           ...(touchDayTypeInclusion ? { dayTypeInclusion: nextDayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: nextColor ?? null, icon: nextIcon ?? null } : {}),
           ...(touchLeaveUnit ? { leaveUnit: p.leaveUnit ?? before?.leaveUnit ?? null } : {}),
-          ...(touchYearCycle ? { yearCycleOverride: p.yearCycleOverride ?? null } : {}),
+          ...(touchYearCycle && !deferredA2cJobId ? { yearCycleOverride: p.yearCycleOverride ?? null } : {}),
           ...(touchProbation ? { probationEligibility: p.probationEligibility ?? null } : {}),
           ...(touchVisibleToEmployee ? { visibleToEmployee: p.visibleToEmployee ?? null } : {}),
           ...(touchEmployeeCanApply ? { employeeCanApply: p.employeeCanApply ?? null } : {}),

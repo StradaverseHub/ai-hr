@@ -6,7 +6,8 @@
  * Also the kernel extension these need: a kind with exclusive 'none' admits several active jobs per person.
  */
 import {randomUUID} from 'node:crypto';
-import {eq} from 'drizzle-orm';
+import {eq,sql as sqlTag} from 'drizzle-orm';
+import {withTenant} from '../db/client';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -138,6 +139,9 @@ describe('the A2C re-projection after a Leave Year Type save is staged and relea
   expect(visible).toBe(rowsBefore);
   const [{h}]=await owner.client<{h:number}[]>`select count(*)::int as h from leave_entitlement_recalc_audit where tenant_id=${b.tenantId}::uuid`;
   expect(h).toBe(0);
+  // ...and the type itself still reads as before: the save named the job, it did not change the type.
+  const [pending]=await owner.client<{o:string|null;p:string|null}[]>`select year_cycle_override as o,pending_year_cycle_job_id::text as p from leave_type where id=${b.annualLeaveTypeId}::uuid`;
+  expect(pending).toEqual({o:null,p:id});
   await drain();
   const job=await readLeaveCohortJob(adminCtx(b),id);
   expect(job).toMatchObject({kind:'leave_a2c',state:'completed'});
@@ -145,8 +149,16 @@ describe('the A2C re-projection after a Leave Year Type save is staged and relea
   expect((after.audit as unknown[]).length).toBeGreaterThan(2);
   expect(after.ledger).toEqual(sync.ledger);
   expect(after.audit).toEqual(sync.audit);
-  // The same events; the save's own leave-type.updated now commits before the job's corrections.
-  expect(after.events).toEqual(sync.events);
+  // The same corrections' events. The Leave Year Type change is recorded by the release that makes it (the save's
+  // own leave-type.updated carries the rest of the save), so the one synchronous event is two here.
+  const recalculated=(e:unknown)=>(e as {event_type:string}).event_type==='leave.entitlement.recalculated';
+  expect((after.events as unknown[]).filter(recalculated)).toEqual((sync.events as unknown[]).filter(recalculated));
+  const typeEvents=(after.events as {event_type:string;payload:{before:Record<string,unknown>;after:Record<string,unknown>}}[]).filter(e=>e.event_type==='leave-type.updated');
+  expect(typeEvents).toHaveLength(2);
+  expect(typeEvents.some(e=>JSON.stringify(e.payload)===JSON.stringify({after:{yearCycleOverride:'a2c'},before:{yearCycleOverride:null}}))).toBe(true);
+  expect(typeEvents.some(e=>!('yearCycleOverride' in e.payload.after))).toBe(true);
+  const [type]=await owner.client<{o:string|null;p:string|null}[]>`select year_cycle_override as o,pending_year_cycle_job_id::text as p from leave_type where id=${b.annualLeaveTypeId}::uuid`;
+  expect(type).toEqual({o:'a2c',p:null});
  },300_000);
 
  it('a batch refused part-way leaves no correction at all, as the save transaction did',async()=>{
@@ -166,7 +178,51 @@ describe('the A2C re-projection after a Leave Year Type save is staged and relea
    expect(h).toBe(0);
    const [{e}]=await owner.client<{e:number}[]>`select count(*)::int as e from domain_event where tenant_id=${b.tenantId}::uuid and event_type='leave.entitlement.recalculated'`;
    expect(e).toBe(0);
+   // The Leave Year Type stays as it was, and its pending change is withdrawn.
+   const [type]=await owner.client<{o:string|null;p:string|null}[]>`select year_cycle_override as o,pending_year_cycle_job_id::text as p from leave_type where id=${b.annualLeaveTypeId}::uuid`;
+   expect(type).toEqual({o:null,p:null});
   }finally{await owner.client.unsafe(`drop trigger if exists test_fail_a2c on leave_ledger; drop function if exists public.test_fail_a2c()`);}
   void eq;void schema;
+ },300_000);
+ it('no reader ever sees the new Leave Year Type with the old figures, or the old type with the corrected figures',async()=>{
+  await fixture();
+  await save(true);
+  const [{id}]=await owner.client<{id:string}[]>`select id from bulk_job where tenant_id=${b.tenantId}::uuid and kind='leave_a2c'`;
+  // After every unit of work, one consistent read as an ordinary administrator: the type and the corrections.
+  const observe=()=>withTenant(adminCtx(b),async tx=>{
+   const [row]=await tx.execute<{o:string|null;n:number;h:number}>(sqlTag`select (select year_cycle_override from leave_type where id=${b.annualLeaveTypeId}::uuid) as o,
+    (select count(*)::int from leave_ledger where reason like 'sys:a2c_recalc%') as n,
+    (select count(*)::int from leave_entitlement_recalc_audit) as h`);
+   return row;
+  },{readOnlySnapshot:true});
+  const seen:{o:string|null;n:number}[]=[];
+  for(let i=0;i<5000;i++){
+   const [row]=await owner.client<{state:string;notified:boolean}[]>`select state,notified_at is not null as notified from bulk_job where id=${id}::uuid`;
+   seen.push(await observe());
+   if(['completed','failed','cancelled'].includes(row.state)&&row.notified)break;
+   await runBulkJobTick(owner.client,{handlers});
+  }
+  const finalRows=seen[seen.length-1].n;
+  expect(finalRows).toBeGreaterThan(2);
+  expect(seen.some(r=>r.o===null)).toBe(true);
+  for(const r of seen){
+   // Old type: none of the corrections. New type: all of them, never some.
+   if(r.o===null)expect(r.n).toBe(0);
+   else{expect(r.o).toBe('a2c');expect(r.n).toBe(finalRows);}
+  }
+ },300_000);
+
+ it('a later Leave Year Type save supersedes a waiting conversion: it releases nothing',async()=>{
+  await fixture();
+  await save(true);
+  // The administrator changes their mind before the background job ran.
+  await updateLeaveType(adminCtx(b),{id:b.annualLeaveTypeId,name:'Annual Leave',yearCycleOverride:null,asOf:ASOF,a2cInBackground:true});
+  await drain();
+  const [job]=await owner.client<{state:string;result:{superseded?:boolean}}[]>`select state,result from bulk_job where tenant_id=${b.tenantId}::uuid and kind='leave_a2c'`;
+  expect(job).toMatchObject({state:'completed',result:{superseded:true}});
+  const [type]=await owner.client<{o:string|null;p:string|null}[]>`select year_cycle_override as o,pending_year_cycle_job_id::text as p from leave_type where id=${b.annualLeaveTypeId}::uuid`;
+  expect(type).toEqual({o:null,p:null});
+  const [{n}]=await owner.client<{n:number}[]>`select count(*)::int as n from leave_ledger where tenant_id=${b.tenantId}::uuid and reason like 'sys:a2c_recalc%'`;
+  expect(n).toBe(0);
  },300_000);
 });

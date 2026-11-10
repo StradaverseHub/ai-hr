@@ -5965,21 +5965,6 @@ export type EarnedAccrualRunInputs = {
   resolver: Awaited<ReturnType<typeof buildTemplateEntitlementResolver>>;
   periodChecked: boolean;
 };
-function readEarnedAccrualActiveTypesTx(tx: Tx, scopeTypeIds: readonly string[]) {
-  return tx
-    // Leave Year Type override (e1a51aea): yearCycleOverride is selected so the per-type effective cycle
-    // can be resolved below (resolveLeaveYearCycle) — null on every pre-existing row ⇒ company cycle.
-    // 9816a5ad step 2: the type's own rules ride along (see leaveTypeRuleColumns).
-    .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
-    .from(leaveType)
-    .where(
-      and(
-        isNull(leaveType.archivedAt),
-        // Leave-Type scope filter (feedback 2c7c6385). Empty ⇒ every active type, narrowed below.
-        scopeTypeIds.length ? inArray(leaveType.id, [...scopeTypeIds]) : undefined,
-      ),
-    );
-}
 /** Which of the scoped types the sweep accrues: Annual Leave, with a table in force, configured, earned method. */
 function earnedAccrualTypeIdsOf(types: readonly { id: string; code: string | null; role: string | null; accrualMethod: string | null; accrualUnconfigured?: Date | string | null }[], templateConfigured: ReadonlySet<string>) {
   return types
@@ -10836,7 +10821,26 @@ export async function accrueEarnedLeave(
   }, snapshot);
 }
 
+/** Earned accrual's scoped active leave types, with the type's own rules (the one shared shape): read by the
+ * engine, or once per run by `readEarnedAccrualRunInputsTx`. */
+function readEarnedAccrualActiveTypesTx(tx: Tx, scopeTypeIds: readonly string[]) {
+  return tx
+    // Leave Year Type override (e1a51aea): yearCycleOverride is selected so the per-type effective cycle
+    // can be resolved below (resolveLeaveYearCycle) — null on every pre-existing row ⇒ company cycle.
+    // 9816a5ad step 2: the type's own rules ride along (see leaveTypeRuleColumns).
+    .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
+    .from(leaveType)
+    .where(
+      and(
+        isNull(leaveType.archivedAt),
+        // Leave-Type scope filter (feedback 2c7c6385). Empty ⇒ every active type, narrowed below.
+        scopeTypeIds.length ? inArray(leaveType.id, [...scopeTypeIds]) : undefined,
+      ),
+    );
+}
+
 // ── Entitlement-correction recalculation (feedback 49809272) ───────────────────────────────────────
+
 /**
  * Pure per-employee current-cycle entitlement projection — the shared kernel used by BOTH recalc paths:
  * the configuration-triggered `reprojectEntitlementForLeaveType` (49809272) and the profile-triggered
@@ -11055,9 +11059,10 @@ export type A2cRecalcSink = {
 /** The employments an A2C re-projection of this type reaches, read the way `reprojectA2cEntitlement` reads them
  * (same window, same first-year predicate), with no lock: the background job's batches, each of which the engine
  * then re-reads and re-filters under its locks. `isA2c` false: the type is not on a2c, so the engine is a no-op. */
-export async function a2cReprojectionCandidatesTx(tx: Tx, p: { leaveTypeId: string; asOf: string }): Promise<{ isA2c: boolean; employmentIds: string[] }> {
-  const [type] = await tx.select({ code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride }).from(leaveType)
+export async function a2cReprojectionCandidatesTx(tx: Tx, p: { leaveTypeId: string; asOf: string; yearCycleOverrideAs?: string | null }): Promise<{ isA2c: boolean; employmentIds: string[] }> {
+  const [stored] = await tx.select({ code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride }).from(leaveType)
     .where(and(eq(leaveType.id, p.leaveTypeId), isNull(leaveType.archivedAt))).limit(1);
+  const type = stored && p.yearCycleOverrideAs !== undefined ? { ...stored, yearCycleOverride: p.yearCycleOverrideAs } : stored;
   if (!type || type.yearCycleOverride !== A2C_OVERRIDE) return { isA2c: false, employmentIds: [] };
   const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
   const rows = await tx.select({ employmentId: employment.id, hiredOn: employment.hiredOn }).from(employment)
@@ -11128,6 +11133,9 @@ export async function reprojectA2cEntitlement(
     gradeBefore?: { gradeId: string | null };
     newGradeId?: string | null;
     changeEffectiveOn?: string | null;
+    /** The background A2C job only: the Leave Year Type the save asked for, which the job's release will set
+     *  together with these corrections (draft 9906). The engine computes exactly as if the type already had it. */
+    yearCycleOverrideAs?: string | null;
   },
   /** The background A2C job (core/leave-follow-up-worker.ts) only: each corrected employee's history row and
    * `leave.entitlement.recalculated` event are handed here instead of being written, so the job writes them
@@ -11142,12 +11150,13 @@ export async function reprojectA2cEntitlement(
   await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:protectedIds.length?protectedIds:undefined});
   const none = { affected: 0, totalDelta: 0, packBlocked: [] as PackBlockedEmployment[] };
 
-  const [type] = await tx
+  const [stored] = await tx
     // 9816a5ad step 2: the type's own rules ride along and are handed to the projection kernel below.
     .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
     .from(leaveType)
     .where(and(eq(leaveType.id, p.leaveTypeId), isNull(leaveType.archivedAt)))
     .limit(1);
+  const type = stored && p.yearCycleOverrideAs !== undefined ? { ...stored, yearCycleOverride: p.yearCycleOverrideAs } : stored;
   // No-op unless the type is actually on a2c today. Callers fire this on any move TO or FROM a2c; a move
   // AWAY simply hands the type back to the ordinary calendar engines from the next year-open.
   if (!type || type.yearCycleOverride !== A2C_OVERRIDE) return none;

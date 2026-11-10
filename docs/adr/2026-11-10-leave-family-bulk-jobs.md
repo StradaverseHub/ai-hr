@@ -4,7 +4,8 @@ Status: source implementation on `claude/bulkjob-leave-20261110` (base `claude/i
 0143d761c); hosted verification and integration pending. Production and staging untouched.
 Draft migrations (unallocated): 9900 `leave_bulk_jobs` (three `bulk_job_kind` rows), 9901 `leave_ledger_stage`
 (staged ledger rows), 9902 `bulk_job_unbounded_kind` (KERNEL: exclusive 'none'), 9903 `leave_follow_up_jobs` (four
-`bulk_job_kind` rows), 9905 `leave_stage_digests` (the release's per-employee digests).
+`bulk_job_kind` rows), 9905 `leave_stage_digests` (the release's per-employee digests), 9906
+`leave_type_pending_year_cycle` (the deferred Leave Year Type change).
 
 The leave cohort writers each ran as ONE transaction over the whole tenant, holding the tenant's Access lock and every
 employee's leave-dependency lock until commit (earned accrual measured 3.4 s for 1,207 employees; Generate
@@ -91,9 +92,19 @@ Entitlement, carry expiry and year-open the same shape or larger), and a busy em
   makes the whole-tenant protected-period check the save made; batches of first-year employees stage their ledger
   rows and hand each corrected employee's history row and `leave.entitlement.recalculated` event to the job (a
   `sink` on the unchanged engine); release as above, then the history rows and events in bounded steps. A refused
-  batch discards everything. Residual: the override itself commits with the save, so for the minutes the job runs
-  first-year employees on the type read the new model against the old ledger rows, until every correction appears at
-  once; the old save committed both together. The save's `leave-type.updated` event now precedes the corrections.
+  batch discards everything.
+- **The Leave Year Type change waits for its corrections (draft 9906; return round 1).** A save that moves a type TO
+  a2c leaves `year_cycle_override` as it was and names the job in `leave_type.pending_year_cycle_job_id`; the
+  engine computes as if the type had the new value (`yearCycleOverrideAs`). The release is the configuration write
+  the save used to make: under the configuration lock exclusively it sets the override, clears the pending job,
+  appends the override's own `leave-type.updated` event and releases the staged rows, all in ONE transaction. So
+  every reader sees the old type with the old figures until then and the new type with every correction after,
+  never a mix (`test/leave-follow-up-jobs.test.ts` observes the type and the corrections in one snapshot after every
+  unit of the job). The save's own event carries the rest of the save; the override's change is recorded by the
+  release that makes it. A later Leave Year Type save clears or replaces the pending job, and a superseded job
+  releases nothing; a refused or stopped job withdraws its pending change. A move away from a2c is still made by the
+  save itself (the engine has nothing to correct then). While a conversion waits, the Leave Year Type form shows the
+  old value and the progress panel says the type is being applied.
 - **Previews** (Generate Entitlement, Run Earned Accrual) no longer take the tenant's exclusive Access lock and the
   leave configuration lock for their whole length: each dry run runs in its own READ ONLY REPEATABLE READ
   transaction, one consistent snapshot, where the database refuses any write. Their figures are unchanged (the
@@ -103,9 +114,10 @@ Entitlement, carry expiry and year-open the same shape or larger), and a busy em
   started and links to the leave import page, which shows progress and counts.
 - **TOIL expiry and year-end close**: see the section below (converted in a separate checkout and merged here).
 
-Open questions for the owner: Run Earned Accrual and the carry-expiry and monthly accrual timers were single
-transactions too but stay per-step (each employee independent and idempotent; a rerun completes a refused batch);
-the same staging would make them all-or-nothing. The A2C window above.
+Owner decision (return round 1): per-step is accepted for Run Earned Accrual, the carry-expiry and monthly accrual
+timers and the TOIL sweeps (each employee independent, reruns idempotent). A refusal part-way followed by the same run
+again ends exactly where an uninterrupted run ends: proven for the accrual job and both timers in
+`test/leave-cohort-equivalence.test.ts` ("per-step leave runs") and for the sweeps in `test/toil-sweep-job.test.ts`.
 
 ## TOIL expiry and the replacement-leave year-end close (kinds `toil_expiry`, `toil_year_close`, draft 9903)
 

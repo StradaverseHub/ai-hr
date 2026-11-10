@@ -12,7 +12,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {accrueEarnedLeave,expireCarriedLeave,openLeaveYear} from '../core/leave';
+import {accrueEarnedLeave,expireCarriedLeave,openLeaveYear,CARRY_FORFEIT_REASON_EXPIRY as CARRY_EXPIRY} from '../core/leave';
 import {runLeaveGeneration} from '../core/leave-generation';
 import {accrueEarnedLeaveInBatches,expireCarriedLeaveInBatches} from '../core/leave-cohort-run';
 import {createEarnedAccrualJob,createLeaveGenerationJob,readLeaveCohortJob} from '../core/leave-cohort-job';
@@ -293,5 +293,52 @@ describe('Generate Entitlement stays all-or-nothing on the job (staged batches, 
   const strip=(r:unknown)=>{const {runId:_r,...rest}=r as {runId?:string};void _r;return rest;};
   expect(after.map(strip(jobResult))).toEqual(sync.map(strip(syncResult)));
   expect(after.state).toEqual(sync.state);
+ },300_000);
+});
+
+describe('per-step leave runs: a refusal part-way, then the same run again, ends where an uninterrupted run ends',()=>{
+ const balancesAndLedger=async()=>{const {state}=await snapshot();return {ledger:state.ledger,balances:state.balances};};
+ const victimWhere=async(extra:string)=>`new.employment_id='${await employmentNamed('Equiv 30')}' and new.leave_type_id='${b.annualLeaveTypeId}' and ${extra}`;
+ it('Run Earned Accrual job: the refused batch is left unchanged and reported; running it again completes it',async()=>{
+  await fixture(true);
+  await accrueEarnedLeave(adminCtx(b),{asOf:'2026-12-31',leaveTypeIds:[b.annualLeaveTypeId]});
+  const uninterrupted=await balancesAndLedger();
+  await resetDb();b=await seedBase();await fixture(true);
+  await failInserts('test_fail_accrual',await victimWhere(`new.entry_type='accrual'`));
+  try{
+   const first=await createEarnedAccrualJob(adminCtx(b),{asOf:'2026-12-31',leaveTypeIds:[b.annualLeaveTypeId]});
+   expect(await runJob(first.id)).toBe('completed');
+   const done=await readLeaveCohortJob(adminCtx(b),first.id);
+   expect(done!.failedEmployees).toBeGreaterThan(0);
+   expect(await balancesAndLedger()).not.toEqual(uninterrupted);
+  }finally{await dropFailure('test_fail_accrual');}
+  const again=await createEarnedAccrualJob(adminCtx(b),{asOf:'2026-12-31',leaveTypeIds:[b.annualLeaveTypeId]});
+  expect(await runJob(again.id)).toBe('completed');
+  expect((await readLeaveCohortJob(adminCtx(b),again.id))!.failedEmployees).toBe(0);
+  expect(await balancesAndLedger()).toEqual(uninterrupted);
+ },300_000);
+
+ it('the monthly accrual and carry-expiry timers: the refused batch is reported after the others, and the next run completes it',async()=>{
+  // The reference: the two whole-tenant runs, uninterrupted, in the order the timers run them below.
+  await fixture(true);
+  await accrueEarnedLeave(systemCtx(),{asOf:'2026-06-30'});
+  await expireCarriedLeave(systemCtx(),{today:'2026-04-01'});
+  const uninterrupted=await balancesAndLedger();
+  // One employee each run actually wrote for: a carry-forward expiry, and an earned top-up.
+  const writtenFor=async(where:string)=>(await owner.client.unsafe<{name:string}[]>(`select p.full_name as name from leave_ledger l join employment e on e.id=l.employment_id join person p on p.id=e.person_id
+   where l.tenant_id='${b.tenantId}' and ${where} order by p.full_name limit 1`))[0].name;
+  const expired=await writtenFor(`l.reason='${CARRY_EXPIRY}'`);
+  const topped=await writtenFor(`l.entry_type='accrual' and l.effective_on='2026-06-30'`);
+  await resetDb();b=await seedBase();await fixture(true);
+  // Each timer: refused for one employee (reported after the others are written), then run again.
+  await failInserts('test_fail_accrual_timer',`new.employment_id='${await employmentNamed(topped)}' and new.entry_type='accrual'`);
+  try{await expect(accrueEarnedLeaveInBatches(systemCtx(),{asOf:'2026-06-30'},{batchSize:6,maxRetries:0})).rejects.toThrow(/could not be processed/);}
+  finally{await dropFailure('test_fail_accrual_timer');}
+  await accrueEarnedLeaveInBatches(systemCtx(),{asOf:'2026-06-30'},{batchSize:6});
+  await failInserts('test_fail_expiry',`new.employment_id='${await employmentNamed(expired)}' and new.reason='${CARRY_EXPIRY}'`);
+  try{await expect(expireCarriedLeaveInBatches(systemCtx(),{today:'2026-04-01'},{batchSize:6,maxRetries:0})).rejects.toThrow(/could not be processed/);}
+  finally{await dropFailure('test_fail_expiry');}
+  await expireCarriedLeaveInBatches(systemCtx(),{today:'2026-04-01'},{batchSize:6});
+  expect(await balancesAndLedger()).toEqual(uninterrupted);
  },300_000);
 });

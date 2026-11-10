@@ -15,7 +15,9 @@
 import {sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {withTenant, type SessionContext, type Tx} from '../db/client';
-import {appendEvent} from '../db/events';
+import {actorOf, appendEvent} from '../db/events';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {leaveEntitlementRecalcAudit} from '../db/schema';
 import {isAdmin} from '../lib/authz-model';
 import {publicErrorMessage} from '../lib/public-error';
@@ -77,7 +79,9 @@ export const leaveRecalcJobHandler: BulkJobHandler<{employmentId: string}> = {
 type A2cCorrection = {audit: typeof leaveEntitlementRecalcAudit.$inferInsert; event: Parameters<typeof appendEvent>[1]};
 type A2cStepResult = {affected: number; totalDelta: number; packBlocked: unknown[]; corrections: A2cCorrection[];
   fp: Record<string, string>; configFp: string; written?: boolean};
-type A2cPlan = {stage?: string; released?: boolean; settled?: boolean; restage?: number[]; releaseAttempts?: number; noop?: boolean};
+type A2cPlan = {stage?: string; released?: boolean; settled?: boolean; restage?: number[]; releaseAttempts?: number; noop?: boolean;
+  /** A later Leave Year Type save replaced this job's pending change: nothing is released. */
+  superseded?: boolean};
 const a2cPlanOf = (job: BulkJobRow) => (job.plan ?? {}) as A2cPlan;
 export const LEAVE_A2C_RELEASE_ATTEMPTS = 40;
 /** History rows and events written per follow-up transaction after the release. */
@@ -92,7 +96,8 @@ async function a2cBatchTx(tx: Tx, ctx: SessionContext, input: LeaveA2cJobInput, 
   await useLeaveStageTx(tx, stage, [stage]);
   const corrections: A2cCorrection[] = [];
   const sink: A2cRecalcSink = {corrected: (audit, event) => { corrections.push({audit, event}); }};
-  const res = await reprojectA2cEntitlement(tx, ctx, {leaveTypeId: input.leaveTypeId, employmentIds, asOf: input.asOf, trigger: input.trigger}, sink);
+  const res = await reprojectA2cEntitlement(tx, ctx, {leaveTypeId: input.leaveTypeId, employmentIds, asOf: input.asOf, trigger: input.trigger,
+    ...(input.yearCycleOverride !== undefined ? {yearCycleOverrideAs: input.yearCycleOverride} : {})}, sink);
   return {affected: res.affected, totalDelta: res.totalDelta, packBlocked: res.packBlocked, corrections,
     fp: await leaveStageFingerprintsTx(tx, employmentIds, [stage]), configFp: await leaveConfigFingerprintTx(tx)};
 }
@@ -113,7 +118,7 @@ async function a2cRestageUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJo
   });
 }
 async function a2cReleaseUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJobUnit) {
-  const plan = a2cPlanOf(job), stage = plan.stage!;
+  const plan = a2cPlanOf(job), stage = plan.stage!, input = job.input as LeaveA2cJobInput;
   const started = performance.now();
   await withTenant(ctx, async tx => {
     await label(tx, job.kind, 'release');
@@ -121,7 +126,9 @@ async function a2cReleaseUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJo
     if (!isAdmin(ctx)) throw new Error(notAdmin);
     await useLeaveStageTx(tx, null, [stage]);
     const steps = await a2cStepsTx(tx, job);
-    await lockLeaveStageSubjectsTx(tx, ctx, steps.flatMap(s => s.payload.employmentIds));
+    const subjects = steps.flatMap(s => s.payload.employmentIds);
+    if (subjects.length) await lockLeaveStageSubjectsTx(tx, ctx, subjects);
+    else await lockAccessConfigurationTx(tx, ctx.tenantId);
     const configFp = await leaveConfigFingerprintTx(tx);
     const expected: Record<string, string> = {};
     for (const s of steps) Object.assign(expected, s.result.fp);
@@ -132,6 +139,22 @@ async function a2cReleaseUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJo
       if (attempts > LEAVE_A2C_RELEASE_ATTEMPTS) throw new Error('The recalculation was stopped because the employees kept changing while it ran. Nothing was changed; save the leave year type again.');
       await setA2cPlanTx(tx, job, {restage, releaseAttempts: attempts});
       return;
+    }
+    if (input.yearCycleOverride !== undefined) {
+      // The Leave Year Type change itself, in the SAME transaction as the corrections (draft 9906): this release
+      // is the configuration write the save used to make, so it takes the configuration lock exclusively (busy
+      // is retried). A later Leave Year Type save superseded this job: nothing is released.
+      await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+      const [type] = await tx.execute<{override: string | null; pending: string | null}>(sql`select year_cycle_override as override, pending_year_cycle_job_id::text as pending
+        from leave_type where id=${input.leaveTypeId}::uuid for update`);
+      if (!type || type.pending !== job.id) {
+        await dropLeaveStageRowsTx(tx, [stage]);
+        await setA2cPlanTx(tx, job, {released: true, settled: true, superseded: true, restage: []});
+        return;
+      }
+      await tx.execute(sql`update leave_type set year_cycle_override=${input.yearCycleOverride},pending_year_cycle_job_id=null where id=${input.leaveTypeId}::uuid`);
+      await appendEvent(tx, {tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: input.leaveTypeId, eventType: 'leave-type.updated', actor: actorOf(ctx),
+        payload: {before: {yearCycleOverride: type.override}, after: {yearCycleOverride: input.yearCycleOverride}}});
     }
     await releaseLeaveStageTx(tx, job.id, stage);
     await setA2cPlanTx(tx, job, {released: true, restage: []});
@@ -170,14 +193,22 @@ export const leaveA2cJobHandler: BulkJobHandler<{employmentIds: string[]}> = {
     if (!isAdmin(ctx)) return {refused: notAdmin};
     const input = job.input as LeaveA2cJobInput;
     let candidates: {isA2c: boolean; employmentIds: string[]} = {isA2c: false, employmentIds: []};
+    let superseded = false;
     const refused = await refusal(() => withTenant(ctx, async tx => {
-      candidates = await a2cReprojectionCandidatesTx(tx, input);
+      if (input.yearCycleOverride !== undefined) {
+        const [type] = await tx.execute<{pending: string | null}>(sql`select pending_year_cycle_job_id::text as pending from leave_type where id=${input.leaveTypeId}::uuid`);
+        if (type?.pending !== job.id) { superseded = true; return; }
+      }
+      candidates = await a2cReprojectionCandidatesTx(tx, {leaveTypeId: input.leaveTypeId, asOf: input.asOf,
+        ...(input.yearCycleOverride !== undefined ? {yearCycleOverrideAs: input.yearCycleOverride} : {})});
       // The whole-tenant protected-period check the save's single call made before writing.
       if (candidates.isA2c && candidates.employmentIds.length) await assertInformationLeavePeriodTx(tx, input.asOf, {});
     }));
     if (refused) return {refused};
+    if (superseded) return {steps: [], counters: {employees: 0}, plan: {superseded: true} satisfies A2cPlan};
     const steps = batchesOf(candidates.employmentIds).map((employmentIds, i) => ({kind: 'employees', rowNum: i + 1, payload: {employmentIds}}));
-    return {steps, counters: {employees: candidates.employmentIds.length}, plan: {stage: randomUUID(), noop: !steps.length} satisfies A2cPlan};
+    // With nobody to correct, a deferred Leave Year Type change is still made, by the release.
+    return {steps, counters: {employees: candidates.employmentIds.length}, plan: {stage: randomUUID(), noop: !steps.length && input.yearCycleOverride === undefined} satisfies A2cPlan};
   },
   async applyStepTx(tx, ctx, job, step) {
     const result = await a2cBatchTx(tx, ctx, job.input as LeaveA2cJobInput, a2cPlanOf(job).stage!, step.payload.employmentIds);
@@ -185,6 +216,7 @@ export const leaveA2cJobHandler: BulkJobHandler<{employmentIds: string[]}> = {
   },
   async finalize(ctx, job, unit) {
     const plan = a2cPlanOf(job);
+    if (plan.superseded && (plan.released || !plan.stage)) return {result: {affected: 0, totalDelta: 0, packBlocked: [], superseded: true}};
     if (!plan.noop) {
       if (!plan.released) {
         if (plan.restage?.length) await a2cRestageUnit(ctx, job, unit, plan.restage[0]);
@@ -204,6 +236,8 @@ export const leaveA2cJobHandler: BulkJobHandler<{employmentIds: string[]}> = {
   },
   /** Refused or stopped before release: the staged rows are deleted (nobody saw them) and no history is written. */
   async discard(job, unit) {
+    // A refused or stopped conversion leaves the type as it was: its pending change is withdrawn.
+    await unit.owner`update leave_type set pending_year_cycle_job_id=null where tenant_id=${job.tenant_id}::uuid and pending_year_cycle_job_id=${job.id}::uuid`;
     const stage = a2cPlanOf(job).stage;
     if (!stage) return 'done';
     const removed = await discardLeaveStageRows(unit.owner, job.tenant_id, [stage]);

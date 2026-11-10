@@ -114,13 +114,17 @@ async function main(){
    // A Leave Year Type save moving Annual Leave to Anniversary-to-Calendar: the save admits the job, which re-projects
    // every first-year employee staged and releases them at once.
    const [sick]=await obs<{id:string;name:string;override:string|null}[]>`select id,name,year_cycle_override as override from leave_type where tenant_id=${TENANT}::uuid and code='ANNUAL' and archived_at is null`;
-   if(sick.override==='a2c')await updateLeaveType(admin,{id:sick.id,name:sick.name,yearCycleOverride:null,asOf:'2026-11-30',a2cInBackground:true});
+   // The save itself takes the leave configuration lock exclusively without waiting (unchanged, a known phase-2
+   // item): while the probes hold it shared it can be refused busy, so the rehearsal retries it as a person would.
+   const save=async(override:string|null)=>{let busy=0;for(;;){try{await updateLeaveType(admin,{id:sick.id,name:sick.name,yearCycleOverride:override,asOf:'2026-11-30',a2cInBackground:true});return busy;}
+    catch(e){if(!/unavailable; review it again/.test(String((e as Error)?.message))||busy>=100)throw e;busy++;await sleep(100);}}};
+   if(sick.override==='a2c')await save(null);
    await measure(op,async()=>{
     const started=Date.now();
-    await updateLeaveType(admin,{id:sick.id,name:sick.name,yearCycleOverride:'a2c',asOf:'2026-11-30',a2cInBackground:true});
+    const saveBusyRetries=await save('a2c');
     const saveMs=Date.now()-started;
     const [{id}]=await obs<{id:string}[]>`select id from bulk_job where tenant_id=${TENANT}::uuid and kind='leave_a2c' order by created_at desc limit 1`;
-    return{saveMs,...await job({id})};
+    return{saveMs,saveBusyRetries,...await job({id})};
    });
   }else if(op==='toil_expiry'||op==='toil_year_close'){
    // Fictional replacement-leave credits for every employee, set-wise: one due for expiry (half convert to pay,
