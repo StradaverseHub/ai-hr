@@ -14,7 +14,7 @@ import { ModuleNotEnabledError } from '../core/entitlements';
 import { deleteCompany } from '../core/admin';
 import {
   addApplication, applicationHistory, candidateBoard, changeJobStatus, createJob, ensureRecruitmentDefaults, listJobs, moveApplication,
-  recruitmentCompanies, recruitmentSettings, rejectApplication, updateJob, updateStage, RecruitmentError,
+  recruitmentCompanies, recruitmentPipelineCounts, recruitmentSettings, rejectApplication, updateJob, updateStage, RecruitmentError,
 } from '../packs/recruitment/service';
 import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
@@ -69,6 +69,22 @@ describe('case 1 — module gate and recruitment administration', () => {
     expect((await recruitmentCompanies(admin, both)).map((c) => c.id).sort()).toEqual([...both].sort());
     expect((await recruitmentCompanies(partner, both)).map((c) => c.id)).toEqual([base.companyId]);
     expect(await recruitmentCompanies(employee, both)).toEqual([]);
+  });
+  it('gives the AI Centre counts only, scoped to the companies the caller administers', async () => {
+    const { id: jobId } = await createJob(partner, job());
+    await addApplication(partner, { jobId, fullName: 'PRIVATE_CANDIDATE_SENTINEL', email: 'sentinel@example.test', source: 'Referral' });
+    await createJob(admin, job({ companyId: otherCompanyId, title: 'PRIVATE_JOB_TITLE_SENTINEL' }));
+    const mine = await recruitmentPipelineCounts(partner);
+    expect(mine.truncated).toBe(false);
+    expect(mine.rows).toHaveLength(1);
+    expect(mine.rows[0]).toMatchObject({ openJobs: 1, onHoldJobs: 0, activeApplications: 1, toScreen: 1, hired: 0, archived: 0 });
+    expect(Object.keys(mine.rows[0]).sort()).toEqual(['activeApplications', 'archived', 'company', 'hired', 'interview', 'offer', 'onHoldJobs', 'onboarding', 'openJobs', 'toScreen']);
+    const text = JSON.stringify(await Promise.all([mine, recruitmentPipelineCounts(otherPartner), recruitmentPipelineCounts(admin)]));
+    for (const marker of ['PRIVATE_CANDIDATE_SENTINEL', 'sentinel@example.test', 'PRIVATE_JOB_TITLE_SENTINEL', 'MJ0']) expect(text).not.toContain(marker);
+    expect((await recruitmentPipelineCounts(otherPartner)).rows).toEqual([expect.objectContaining({ company: 'Fictional Other Sdn Bhd', openJobs: 1, activeApplications: 0 })]);
+    expect((await recruitmentPipelineCounts(admin)).rows.map((r) => r.company)).toContain('Fictional Other Sdn Bhd');
+    expect((await recruitmentPipelineCounts(admin)).rows.length).toBeGreaterThanOrEqual(2);
+    expect((await recruitmentPipelineCounts(employee)).rows).toEqual([]);
   });
 });
 

@@ -54,6 +54,27 @@ Built in the working tree; see handover.md. Runs under the resource lock:
 | DB-backed AI tests (parity, read session, source security, native outcomes) | NOT RUN (need a cluster; Actions) |
 | Rendered AI Centre answer for Recruitment | NOT RUN |
 
+## GitHub Actions focused run 42772917480 (commit e44710e6b, 2026-11-10)
+
+| Job | Result |
+| --- | --- |
+| Whole-repo `typecheck` | PASS |
+| `linux-build` (production build) | PASS |
+| Selected tests, no-DB batch (26 files) | 25 PASS; `provider-analysis-policy` FAIL (owner provider-data approval stale, expected) |
+| Selected tests, DB batch (27 files, 476 tests) | 22 files PASS; 5 FAIL, 27 tests |
+
+DB-batch failures:
+
+- `assistant-conversation-evaluation-fence`, `assistant-conversation-lifecycle`, `module-agent-evaluation-progress`
+  and `module-agent-prompt-release` (26 tests): the logged cause is `AiPrivacyGateError` from
+  `assertProviderDataContractReviewed`. The approval digest no longer matches, so provider calls are refused, along
+  with the downstream "did not complete" errors and timeouts. Consistent with the stale owner approval; not
+  individually re-proven.
+- `module-job-source-security` > recruitment: a group HR admin's counts named another company in the tenant. That
+  is an authorized administrative scope (same as Rewards). Fixed after the run: recruitment is added to the
+  test's administrative scopes, and a new `recruitment-service` case proves that a company-scoped partner sees only
+  their company and that no candidate, email, job title or job number appears. NOT RUN yet.
+
 ## Not verified
 
 The rendered screens, the whole-repo type check, the DB-backed AI Centre tests, any hiring-manager or
