@@ -303,6 +303,8 @@ BEGIN
   IF EXISTS(SELECT 1 FROM reward_audit_private.projection p WHERE p.receipt_id=r.id)THEN CONTINUE;END IF;
   IF r.version<>1 OR NOT EXISTS(SELECT 1 FROM public.domain_event WHERE tenant_id=r.tenant_id AND chain_seq IS NOT NULL)THEN RAISE EXCEPTION 'Supported armed-chain audit receipt required' USING ERRCODE='55000';END IF;
   appended:=clock_timestamp();
+  -- Chained in this frame: the canonical append below is checked before this transaction commits.
+  PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||r.tenant_id::text));
   INSERT INTO public.domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload,occurred_at)
   VALUES(r.event_id,r.tenant_id,'rewards-setup',r.aggregate_id,'rewards-setup.'||CASE WHEN r.operation='libraries'THEN 'libraries.viewed'ELSE 'pat.viewed'END,'user',r.actor_id,NULL,
    CASE WHEN r.operation='libraries'THEN jsonb_build_object('kind',r.kind,'year',r.year)ELSE jsonb_build_object('year',r.year)END
