@@ -92,6 +92,10 @@ export async function lockAccessConfigurationTx(tx:Tx,tenantId:string){
  * and catalogues. Exclusive, so an editor is serialized against every writer depending on it.
  */
 export async function lockAccessConfigurationWriteTx(tx:Tx,tenantId:string){
+  // Test-only: a shared holder asking for exclusive would deadlock against another one doing the same.
+  if (process.env.AIHR_ACCESS_LOCK_STRICT === 'on' && await accessLockModeHeldTx(tx, tenantId) === 'S') {
+    throw new Error('Access lock strict mode: shared holder requested the exclusive lock');
+  }
   await acquireBounded(tx, tenantId, false);
 }
 
