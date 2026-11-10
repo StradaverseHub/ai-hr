@@ -12371,11 +12371,11 @@ export function leaveApproverDecisionSql(ctx:SessionContext,subject:SQL,kind:SQL
     else 'defer' end`;
 }
 
-/** pendingLeaveTaskMetadata in one statement for the Home task read (core/account-task-bundle.ts), Home's whole
- * account (no company filter). jsonb {defer, rows}: `rows` are the owner's result in its order; `defer` is true when
+/** pendingLeaveTaskMetadata(ctx, companyIds) in one statement for the account task read (core/account-task-bundle.ts),
+ * with the owner's own company filter. jsonb {defer, rows}: `rows` are the owner's result in its order; `defer` is true when
  * any candidate's current step falls outside leaveApproverDecisionSql's exact answers (alternates included), and then
  * the owner itself runs. A chain without a pending step is skipped; no chain is assertCanDecide, as in the owner. */
-export function pendingLeaveTaskBundleSql(ctx:SessionContext):SQL{
+export function pendingLeaveTaskBundleSql(ctx:SessionContext,companyIds?:string[]):SQL{
   const scope=scopeOf('leave.application'),subject=sql`pending_leave.employment_id`;
   const decision=sql`case
     when leave_current.id is null and leave_chain.present then 'skip'
@@ -12390,7 +12390,8 @@ export function pendingLeaveTaskBundleSql(ctx:SessionContext):SQL{
    left join lateral (select step.id,step.approver_kind,step.approver_employment_id,step.approver_alternates from public.leave_approval_step step
      where step.leave_request_id=pending_leave.id and step.status='pending' order by step.step_index,step.id limit 1) leave_current on true
    cross join lateral (select ${decision} as decision) decided
-   where not app.is_self_person(pending_leave.person_id))`;
+   where not app.is_self_person(pending_leave.person_id)
+    ${companyIds===undefined?sql``:sql`and pending_leave.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`})`;
 }
 type BundleApprovalRow={id:string;employmentId:string;personId:string;employee:string|null;createdAt:string};
 /** The leave section's owner result, or null when the owner must run itself. */

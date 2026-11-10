@@ -644,6 +644,14 @@ it('completes every manager Home card and Today section read without a handled f
    await ownersOnly(()=>streamHome(actor,month,null,GET,ownerFrames));
    await streamHome(actor,month,null,GET,bundleFrames);
    compare(subject,'bundle:stream',byCard(ownerFrames),byCard(bundleFrames));
+   // The company-scoped previews through the same statement: Needs you, the shell badge (count-only Claims), Before
+   // payroll's approvals (no Notices, no packs) and an empty company selection.
+   const approvalsOnly={...inboxModules,performance:false,rewards:false};
+   for(const [name,ids,listModules,options] of [['scoped',scopeIds,inboxModules,{}],['scopedBadge',scopeIds,inboxModules,{deferClaimPreview:true}],
+    ['scopedApprovals',scopeIds,approvalsOnly,{noticeAcknowledgements:false}],['scopedEmpty',[],inboxModules,{}]] as const){
+    const read=()=>inbox.pendingTaskSummary(ctx,[...ids],listModules,options);
+    compare(subject,'bundle:'+name,await outcome(()=>ownersOnly(read)),await outcome(()=>withSharedReadSnapshot(ctx,read)));
+   }
   }
   // Before payroll's narrowed reads against the owners they replace: TP1 and TP3 without the payroll-history barrier
   // (one read-only snapshot each), and each claim type's receipt rule without its limits and balances.

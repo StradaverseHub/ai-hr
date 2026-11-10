@@ -4061,13 +4061,14 @@ function pendingClaimSubjectsSql(ctx:SessionContext,companyIds:string[]|undefine
     and ${companyIds===undefined?sql`true`:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}`;
 }
 
-/** readPendingClaimTasks(ctx, undefined, limit) for Home's whole account in one statement (core/account-task-bundle.ts):
- * the same subjects, kept where decisionEmploymentAuthorityTx allows them, the exact count of their pending requests
- * and the same bounded preview in the same order. jsonb {snapshot, total, items}; `snapshot` false means the owner's
+/** readPendingClaimTasks(ctx, companyIds, limit) in one statement (core/account-task-bundle.ts): the same subjects
+ * under the same company filter (an empty list selects none, the owner's own empty answer), kept where
+ * decisionEmploymentAuthorityTx allows them, the exact count of their pending requests and the same bounded preview
+ * in the same order. jsonb {snapshot, total, items}; `snapshot` false means the owner's
  * repeatable-read guard would refuse, and the owner then runs itself. */
-export function pendingClaimTaskPreviewBundleSql(ctx:SessionContext,limit:number){
+export function pendingClaimTaskPreviewBundleSql(ctx:SessionContext,limit:number,companyIds?:string[]){
   if(!Number.isSafeInteger(limit)||limit<1||limit>200)throw new Error('Invalid claim task preview limit');
-  return sql`(with claim_subjects as materialized (${pendingClaimSubjectsSql(ctx,undefined)}),
+  return sql`(with claim_subjects as materialized (${pendingClaimSubjectsSql(ctx,companyIds)}),
    claim_allowed as materialized (select subject.* from claim_subjects subject
     where ${decisionEmploymentAuthoritySql(ctx,sql`subject."employmentId"`,scopeOf('claims.claim'))}),
    claim_preview as (select header.id,header.employment_id,header.created_at from claim_allowed allowed

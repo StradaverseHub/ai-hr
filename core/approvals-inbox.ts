@@ -36,7 +36,18 @@ import {pendingReviewCandidatesExistSql,pendingReviewTaskMetadata} from './emplo
 import {pendingPerformanceTasks} from '../packs/performance/service';
 import {pendingRewardTasks} from '../packs/rewards/service';
 import type {PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
-import type {AccountTaskBundle} from './account-task-bundle';
+import type {AccountTaskBundle,AccountTaskModules,AccountTaskRead} from './account-task-bundle';
+
+/** The account task statement, loaded on first use: this file is reached from the root layout and from narrow unit
+ * harnesses, and a statement that cannot be built or sent leaves every owner to read on its own. */
+async function startAccountTaskBundle(ctx:SessionContext,modules:AccountTaskModules,read:AccountTaskRead):Promise<AccountTaskBundle|null>{
+  try{return await (await import('./account-task-bundle')).readAccountTaskBundle(ctx,modules,read);}catch{return null;}
+}
+/** core/account-task-bundle.ts sameAccountTaskRead, kept here so the type-only import above stays type-only. */
+function sameRead(built:AccountTaskRead,wanted:AccountTaskRead){
+  const ids=(read:AccountTaskRead)=>read.companyIds===undefined?null:JSON.stringify(read.companyIds);
+  return ids(built)===ids(wanted)&&built.notices===wanted.notices&&(built.personal||!wanted.personal);
+}
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
 export type PendingTaskKind =
@@ -118,7 +129,12 @@ export async function listPendingTasks(
 }
 
 export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:{noticeAcknowledgements?:boolean;deferClaimPreview?:true}={}){
-  return loadPendingTasks(ctx,scopeIds,modules,{...options,preview:true});
+  const preview={...options,preview:true} as const;
+  // The same owners through one account task statement with this list's company filter (core/account-task-bundle.ts).
+  const read:AccountTaskRead={companyIds:scopeIds,personal:false,notices:options.noticeAcknowledgements!==false};
+  const bundle=startAccountTaskBundle(ctx,{...modules,lifecycle:false},read);
+  return loadPendingTasks(ctx,scopeIds,modules,preview,loadBundledCommonTaskSources(ctx,scopeIds,modules,preview,bundle),
+    loadBundledClaimTaskSource(ctx,scopeIds,modules,preview,bundle));
 }
 
 async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefined,preview?:true,knownCandidates?:boolean){
@@ -163,26 +179,33 @@ async function loadCommonTaskSources(ctx:SessionContext,scopeIds:string[]|undefi
   ]);
 }
 
-/** loadCommonTaskSources(ctx, undefined, modules, {preview:true}) from the account task statement: each owner whose
- * section the statement answered takes that answer; every other owner reads exactly as loadCommonTaskSources reads it. */
-async function loadBundledCommonTaskSources(ctx:SessionContext,modules:InboxModules,bundle:Promise<AccountTaskBundle|null>):CommonTaskSources{
-  const read=await bundle;
-  if(!read)return loadCommonTaskSources(ctx,undefined,modules,{preview:true});
+/** loadCommonTaskSources(ctx, scopeIds, modules, options) from the account task statement, for a preview: each owner
+ * whose section the statement answered for this same read takes that answer; every other owner reads exactly as
+ * loadCommonTaskSources reads it. */
+async function loadBundledCommonTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:TaskSourceOptions,
+  bundle:Promise<AccountTaskBundle|null>):CommonTaskSources{
+  const read=await bundle,notices=options.noticeAcknowledgements!==false;
+  if(!read||!options.preview||!sameRead(read.read,{companyIds:scopeIds,personal:false,notices}))return loadCommonTaskSources(ctx,scopeIds,modules,options);
   const same=(module:keyof InboxModules)=>read.modules[module]===modules[module];
   const own=<T,>(value:T|null,owner:()=>Promise<T>)=>()=>value!==null?Promise.resolve(value):owner();
   return settleReadGroup([
-    own(read.leave,()=>pendingLeaveTaskMetadata(ctx,undefined)),()=>loadDecisionHeaders(ctx,undefined,true,read.decisionCandidates),
-    own(read.replacement,()=>listPendingReplacementLeaveTasks(ctx,{companyIds:undefined})),
-    own(same('attendance')?read.attendance:null,()=>modules.attendance?pendingAttendanceTaskMetadata(ctx,undefined):Promise.resolve([])),
-    own(read.profile,()=>pendingProfileTaskMetadata(ctx,undefined)),
-    own(read.notices,()=>pendingNoticeAcknowledgementTasks(ctx)),
+    own(read.leave,()=>pendingLeaveTaskMetadata(ctx,scopeIds)),()=>loadDecisionHeaders(ctx,scopeIds,true,read.decisionCandidates),
+    own(read.replacement,()=>listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds})),
+    own(same('attendance')?read.attendance:null,()=>modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([])),
+    own(read.profile,()=>pendingProfileTaskMetadata(ctx,scopeIds)),
+    own(notices?read.notices:[],()=>pendingNoticeAcknowledgementTasks(ctx)),
     ()=>settleReadGroup(PACK_TASK_SOURCES.map(source=>own(same(source.module)?read[source.module]:null,
-      ()=>modules[source.module]?source.load(ctx,undefined):Promise.resolve([])))),
+      ()=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([])))),
   ]);
 }
-async function loadBundledClaimTaskSource(ctx:SessionContext,modules:InboxModules,bundle:Promise<AccountTaskBundle|null>):ClaimTaskSource{
+/** loadClaimTaskSource(ctx, scopeIds, modules, options) from the same statement: its preview, or for a count-only read
+ * (countOnly, deferClaimPreview) the same exact total with no rows, as countPendingClaimTasks answers it. */
+async function loadBundledClaimTaskSource(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:TaskSourceOptions,
+  bundle:Promise<AccountTaskBundle|null>):ClaimTaskSource{
   const read=await bundle;
-  return read?.claims&&read.modules.claims===modules.claims?read.claims:loadClaimTaskSource(ctx,undefined,modules,{preview:true});
+  if(!read?.claims||read.modules.claims!==modules.claims||!options.preview
+   ||!sameRead(read.read,{companyIds:scopeIds,personal:false,notices:read.read.notices}))return loadClaimTaskSource(ctx,scopeIds,modules,options);
+  return options.countOnly||options.deferClaimPreview?{items:[],total:read.claims.total}:read.claims;
 }
 
 type CommonTaskSources=ReturnType<typeof loadCommonTaskSources>;
@@ -217,8 +240,8 @@ export function createAccountTaskPreviewRead(ctx:SessionContext,modules:InboxMod
   const options={preview:true} as const;
   let pending:CommonTaskSources|undefined,claimPreview:ClaimTaskSource|undefined;
   // With the account task statement, every owner it answered costs no further statement (core/account-task-bundle.ts).
-  const common=()=>pending??=bundle?loadBundledCommonTaskSources(ctx,modules,bundle):loadCommonTaskSources(ctx,undefined,modules,options);
-  const preview=()=>claimPreview??=bundle?loadBundledClaimTaskSource(ctx,modules,bundle):loadClaimTaskSource(ctx,undefined,modules,options);
+  const common=()=>pending??=bundle?loadBundledCommonTaskSources(ctx,undefined,modules,options,bundle):loadCommonTaskSources(ctx,undefined,modules,options);
+  const preview=()=>claimPreview??=bundle?loadBundledClaimTaskSource(ctx,undefined,modules,options,bundle):loadClaimTaskSource(ctx,undefined,modules,options);
   const exactClaimTotal=async()=>{
     try{return await preview();}
     catch{return loadClaimTaskSource(ctx,undefined,modules,{preview:true,countOnly:true});}

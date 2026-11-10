@@ -56,7 +56,10 @@ calculation, authority, ordering or failure changes.
    head), any candidate that needs a live decision proof (decision headers, Attendance, Profile, Rewards, assessment,
    calibration, OneHR feedback, onboarding), a module gate that would refuse or an AI Centre activity. Without a login,
    a failed principal proof or a failed statement, every owner reads as before. Module entitlements stay the caller's
-   decision. The company-scoped reads (Needs you, the shell badge, Before payroll's approvals) still read the owners.
+   decision. Every preview (`pendingTaskSummary`: Needs you, the shell badge, My tasks, Before payroll's approvals) reads
+   the same statement with each owner's own company filter, without the Notice owner where the list leaves it out, and
+   with a count-only Claims read answered by the same exact total. Full lists (`listPendingTasks`) still read the
+   owners.
 
 7. **Before payroll's payroll reads need no history barrier, and its claim rules no balances.** TP1 and the two TP3 reads
    (`listMyTp1DeclarationsSnapshot`, `myTp3EmploymentsSnapshot`, `myTp3HistorySnapshot`) keep the Payroll module gate,
@@ -79,8 +82,10 @@ calculation, authority, ordering or failure changes.
   notices, reviews and onboarding acknowledgements. Each needs the treatment Tasks received: a section beside its owner
   that shares the owner's SQL, a TypeScript projection fed from the preloaded rows, and an owner-against-section
   equivalence comparison. The attendance chain follows the Today bundle.
-- **Company-scoped task reads.** The statement answers Home's whole account only; the same sections with the company
-  filter each owner applies would serve Needs you, the shell badge and Before payroll's approvals.
+- **Deferred task owners.** Leave cancellations, resignations and employment reviews (behind their shared candidate
+  probe), Attendance, Profile, Rewards, assessment and calibration work, OneHR feedback and onboarding still read on
+  their own whenever they have a candidate. Cancellations can reuse `leaveApproverDecisionSql` with its own task type;
+  the others need their decision proofs as SQL beside their owners, or the assigned work index below.
 
 ## Read models worth maintaining
 

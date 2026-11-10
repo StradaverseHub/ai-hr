@@ -1398,12 +1398,12 @@ export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{compan
  });
 }
 
-/** listPendingReplacementLeaveTasks for Home's whole account in one statement (core/account-task-bundle.ts): the same
+/** listPendingReplacementLeaveTasks(ctx, {companyIds}) in one statement (core/account-task-bundle.ts): the same
  * candidates in the same order, kept where decisionEmploymentAuthorityTx would allow their subject. */
-export function pendingReplacementLeaveTaskBundleSql(ctx:SessionContext){
+export function pendingReplacementLeaveTaskBundleSql(ctx:SessionContext,companyIds?:string[]){
   return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',candidate.id,'personId',candidate."personId",'employee',candidate.employee,
     'createdAt',candidate."createdAt") order by candidate."createdAt" desc,candidate.id),'[]'::jsonb)
-   from (${pendingReplacementLeaveCandidatesSql(ctx,{})}) candidate
+   from (${pendingReplacementLeaveCandidatesSql(ctx,{companyIds})}) candidate
    where ${decisionEmploymentAuthoritySql(ctx,sql`candidate."employmentId"`,scopeOf('leave.replacement'))})`;
 }
 export function pendingReplacementLeaveTasksFromBundle(value:unknown):{id:string;personId:string;employee:string|null;createdAt:Date}[]{
