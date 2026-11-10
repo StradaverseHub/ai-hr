@@ -45,6 +45,9 @@ it('compares chunked dated-company proof with scalar Home cohorts over more than
  const legacy=legacySource.slice(legacyStart,legacySource.indexOf('$$;',legacyStart)+3).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION');
  const migration=readFileSync('db/migrations/2137_home_peer_cohort_batch.sql','utf8').split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean);
  const candidate=original.ddl;
+ // Migration 9001 later adds the staged-import filter to this function; replay it after 2137 so the result is the installed owner.
+ const stagedImport=readFileSync('db/migrations/9001_employee_import_staged_job.sql','utf8').split('--> statement-breakpoint').map(s=>s.trim()).find(s=>s.startsWith('-- app._home_peer_cohort(uuid,text) ['));
+ expect(stagedImport,'9001 owns the later _home_peer_cohort amendment').toBeTruthy();
  const measure=async()=>withTenant(ctx,async tx=>{
   await tx.execute(sql`set transaction read only`);const start=performance.now();
   const [row]=await tx.execute<{team:{totalPeople:number;items:unknown[]};celebrations:{total:number;items:unknown[]}}>(sql`select
@@ -61,6 +64,7 @@ it('compares chunked dated-company proof with scalar Home cohorts over more than
   await owner.client.unsafe(legacy);
   expected=await measure();report.phases.original={elapsedMs:expected.elapsedMs};
   for(const statement of migration)await owner.client.unsafe(statement);
+  await owner.client.unsafe(stagedImport!);
   const [applied]=await owner.client<{ddl:string}[]>`select pg_get_functiondef('app._home_peer_cohort(uuid,text)'::regprocedure) as ddl`;
   expect(applied.ddl).toEqual(candidate);expect(installed.values).toEqual(expected.values);
   const [metadata]=await owner.client<{metadata:unknown;callable:boolean}[]>`select jsonb_build_object('owner',proowner,'acl',proacl,'securityDefiner',prosecdef,'volatility',provolatile,'config',proconfig,'arguments',proargnames) as metadata,
