@@ -2,7 +2,8 @@
  * Fictional fixtures only. Reproduces one long exclusive holder plus many Access callers on the app pool
  * (max 10) and checks that waits are bounded, the waiter cap leaves connections free, unrelated work and
  * the clock-in dependency lock respond within bounds, and lock_timeout is restored on the success path. */
-import {sql} from 'drizzle-orm';
+import {sql,type SQL} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import {
@@ -75,6 +76,34 @@ describe('bounded Access configuration lock',()=>{
       await untilWaiters(h.pid,1);h.release();await h.done;
       expect(await waiting).toBe(prior==='0'?'0':'1h');
     }
+    expect(accessConfigurationLockWaitersForTests()).toBe(0);
+  },20_000);
+
+  it('a granted waiter stops counting before it restores lock_timeout, so it cannot refuse a caller it no longer blocks',async()=>{
+    const h=await holder();
+    let reached!:()=>void,resume!:()=>void;
+    const restoring=new Promise<void>(yes=>{reached=yes;}),proceed=new Promise<void>(yes=>{resume=yes;});
+    const granted=withTenant(ctx,async tx=>{
+      // Pause only the restore statement (the narrowing statement reads pg_settings); every query still runs.
+      const paused=new Proxy(tx,{get(target,key,receiver){
+        if(key!=='execute')return Reflect.get(target,key,receiver);
+        return async(query:SQL)=>{
+          const text=new PgDialect().sqlToQuery(query).sql;
+          if(text.includes("set_config('lock_timeout'")&&!text.includes('pg_settings')){reached();await proceed;}
+          return target.execute(query);
+        };
+      }}) as typeof tx;
+      await lockAccessConfigurationTx(paused,ctx.tenantId);
+      const [row]=await tx.execute<{v:string}>(sql`select current_setting('lock_timeout') as v`);return row.v;
+    });
+    try{
+      await untilWaiters(h.pid,1);
+      expect(accessConfigurationLockWaitersForTests()).toBe(1);
+      h.release();await h.done;await restoring;
+      // The lock is granted and only the restore is outstanding: nothing is waiting any more.
+      expect(accessConfigurationLockWaitersForTests()).toBe(0);
+    }finally{resume();h.release();await h.done;}
+    expect(await granted).toBe('0');
     expect(accessConfigurationLockWaitersForTests()).toBe(0);
   },20_000);
 

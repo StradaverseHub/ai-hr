@@ -54,6 +54,10 @@ async function acquireBounded(tx: Tx, tenantId: string, shared: boolean): Promis
   if (fast?.acquired === true) return;
   if (waiters >= ACCESS_CONFIGURATION_MAX_WAITERS) throw new AccessConfigurationBusyError();
   waiters++;
+  // Counted only until the wait itself returns. A connection that has been granted the lock is no longer
+  // waiting, so its lock_timeout restore round trip must not occupy a waiter slot: counting it refused an
+  // ordinary fourth caller while only two connections were actually waiting (teras-turn-timing, 4 turns).
+  let waiting = true;
   try {
     // pg_settings is materialised before the projection runs, so `saved` is the value from before this
     // set_config. Keep any tighter limit the caller already set; 0 means "no limit".
@@ -66,9 +70,11 @@ async function acquireBounded(tx: Tx, tenantId: string, shared: boolean): Promis
     // The transaction is then aborted, so lock_timeout is not restored; SET LOCAL ends with the rollback.
     if (shared) await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`);
     else await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key},0))`);
+    waiting = false;
+    waiters--;
     await tx.execute(sql`select set_config('lock_timeout', ${prior.saved}, true)`);
   } finally {
-    waiters--;
+    if (waiting) waiters--;
   }
 }
 
