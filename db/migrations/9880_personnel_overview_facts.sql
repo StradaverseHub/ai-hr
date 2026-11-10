@@ -1,7 +1,10 @@
--- UNALLOCATED DRAFT MIGRATION — not in db/migrations/meta/_journal.json and not applied by db:migrate.
--- Allocate it through docs/MIGRATION-ALLOCATION.md (and move it into db/migrations) before release.
--- core/read.ts detects these functions inside its existing bounds statement and keeps the current
--- Personnel readers when they are absent, so the application is correct with or without this draft.
+-- Personnel overview typed facts (UNALLOCATED draft number 9880; reallocate through
+-- docs/MIGRATION-ALLOCATION.md before release). Functions only: it creates and replaces SECURITY DEFINER
+-- readers and the private-search bind trigger function. It adds no table, column, index, constraint or
+-- trigger and writes no row, so it holds no lock on an application table and needs no backfill or
+-- post-migration step; running readers keep their snapshot of the previous bodies.
+-- core/read.ts probes for the new functions inside its existing bounds statement and keeps the previous
+-- Personnel readers when they are absent.
 -- The same installation prerequisites as 2403 and 2701.
 DO $personnel_assignment_prerequisite$
 BEGIN
@@ -27,10 +30,45 @@ BEGIN
 END;
 $personnel_assignment_prerequisite$;
 --> statement-breakpoint
+-- Replace only the reviewed predecessors: the bodies 2210, 2450, 4001 and 2451 installed, under the
+-- migration owner, SECURITY DEFINER, with their search path and the application grant.
+DO $personnel_overview_predecessors$
+DECLARE previous record;
+BEGIN
+ FOR previous IN SELECT x.signature,x.digest,p.oid,p.prosrc,p.prosecdef,p.proowner,p.proconfig
+   FROM (VALUES
+     ('app.personnel_filter_rows(date,uuid[])','c064b074d4e5c3c0820a00e927a0f418'),
+     ('app.personnel_search_rows(uuid[])','58ef080639a4f5b977aed32e6a22bb6d'),
+     ('app.personnel_private_search_bind()','337bfcb9e3943c6a8215403271964e48'),
+     ('app.personnel_filter_companies(uuid[],date)','ed25dd94dd1ef1bd49c63d18276cf715')
+   ) AS x(signature,digest)
+   LEFT JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(x.signature)
+ LOOP
+  IF previous.oid IS NULL OR pg_catalog.md5(previous.prosrc) IS DISTINCT FROM previous.digest
+     OR NOT previous.prosecdef OR pg_catalog.pg_get_userbyid(previous.proowner)<>current_user
+     OR previous.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, public, app']
+  THEN
+   RAISE EXCEPTION 'Unexpected Personnel overview predecessor %',previous.signature USING ERRCODE='55000';
+  END IF;
+ END LOOP;
+ IF EXISTS (SELECT 1 FROM pg_catalog.unnest(ARRAY['app.personnel_overview_facts(date,uuid[])',
+     'app.personnel_private_search_entries(text,uuid[])','app._personnel_employment_tags(uuid[],date)',
+     'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_list_rows_for_ids(date,uuid[],uuid[])']) AS name
+   WHERE pg_catalog.to_regprocedure(name) IS NOT NULL) THEN
+  RAISE EXCEPTION 'Personnel overview typed facts are already installed' USING ERRCODE='55000';
+ END IF;
+END;
+$personnel_overview_predecessors$;
+--> statement-breakpoint
 -- Complete typed Personnel facts: every list filter, sort key and data-quality flag, evaluated set-wise.
 -- Authority, dated company/assignment and organisation tags follow app.personnel_overview_filter_fields
 -- (2701) exactly; the additional columns repeat the canonical JSON owners (2129/2139 list rows and 2210
 -- personnel_filter_rows) per key, so a typed predicate or sort reads the same value the JSON row carries.
+-- This reads every admitted employment of the scope, so each relation is joined once by hash: the
+-- retained classification, the dated administrative manager and the direct-superior and org-chart root
+-- presence are fenced sets keyed by employment instead of per-row probes. Workforce authority makes the
+-- permitted-company estimate one row, which would otherwise make the planner probe every dimension per
+-- employment; nested loops are therefore off inside this function (lateral joins still use one).
 CREATE FUNCTION app.personnel_overview_facts(p_as_of date,p_scope uuid[]) RETURNS TABLE (
  "employmentId" uuid,name text,email text,"employeeCode" text,
  "finalConfirmationDate" date,"confirmationDate" date,"probationEndDate" date,"provisionalEndOn" date,
@@ -42,7 +80,7 @@ CREATE FUNCTION app.personnel_overview_facts(p_as_of date,p_scope uuid[]) RETURN
  "confirmationState" text,"qualityMissingBusinessUnit" boolean,"qualityMissingJobGrade" boolean,
  "qualityMissingDirectSuperior" boolean,"qualityCompanyNotInStructure" boolean
 )
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET enable_nestloop=off AS $$
  WITH permitted_companies AS MATERIALIZED (
    SELECT c.id FROM public.company c
    WHERE c.tenant_id=app.current_tenant_id() AND app.access_workforce_projection_company(c.id)
@@ -90,6 +128,21 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
      AND (SELECT allowed FROM current_principal)
      AND EXISTS (SELECT 1 FROM dated d WHERE d.dated_company=pc.id)
  ),
+ -- The retained classification of each candidate at its dated company: the same row the per-row
+ -- lookup took (latest effective, then created, then id), for every candidate at once.
+ recorded AS MATERIALIZED (
+   SELECT DISTINCT ON (c.employment_id,c.company_id) c.employment_id,c.company_id,c.tags
+   FROM public.employment_organisation_classification c
+   JOIN public.company_organisation_run r ON r.id=c.mapping_version_id AND r.tenant_id=c.tenant_id
+   JOIN dated d ON d.id=c.employment_id AND d.dated_company=c.company_id
+   WHERE c.tenant_id=app.current_tenant_id() AND c.effective_on<=p_as_of AND r.state='published' AND NOT EXISTS (
+       SELECT 1 FROM public.company_organisation_mapping m
+       JOIN public.company_organisation_run newer ON newer.id=m.run_id AND newer.tenant_id=m.tenant_id
+       WHERE m.tenant_id=c.tenant_id AND m.company_id=c.company_id AND newer.state='published'
+         AND newer.effective_on>c.effective_on AND newer.effective_on<=p_as_of
+     )
+   ORDER BY c.employment_id,c.company_id,c.effective_on DESC,c.created_at DESC,c.id DESC
+ ),
  tagged AS MATERIALIZED (
    SELECT d.*,
           CASE
@@ -100,20 +153,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
           END AS tags
    FROM dated d
    LEFT JOIN company_tags t ON t.id=d.dated_company
-   LEFT JOIN LATERAL (
-     SELECT c.tags
-     FROM public.employment_organisation_classification c
-     JOIN public.company_organisation_run r ON r.id=c.mapping_version_id AND r.tenant_id=c.tenant_id
-     WHERE t.tags IS NOT NULL AND t.tags->>'status' IS DISTINCT FROM 'legacy'
-       AND c.tenant_id=d.tenant_id AND c.employment_id=d.id AND c.company_id=d.dated_company
-       AND c.effective_on<=p_as_of AND r.state='published' AND NOT EXISTS (
-         SELECT 1 FROM public.company_organisation_mapping m
-         JOIN public.company_organisation_run newer ON newer.id=m.run_id AND newer.tenant_id=m.tenant_id
-         WHERE m.tenant_id=d.tenant_id AND m.company_id=d.dated_company AND newer.state='published'
-           AND newer.effective_on>c.effective_on AND newer.effective_on<=p_as_of
-       )
-     ORDER BY c.effective_on DESC,c.created_at DESC,c.id DESC LIMIT 1
-   ) recorded ON true
+   LEFT JOIN recorded ON recorded.employment_id=d.id AND recorded.company_id=d.dated_company
  ),
  visible AS MATERIALIZED (
    SELECT b.*,
@@ -122,6 +162,34 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
             ELSE b.legacy_business_unit_id END AS dated_bu_id
    FROM tagged b
    JOIN permitted_companies dated ON dated.id=COALESCE((b.tags->>'companyId')::uuid,b.company_id)
+ ),
+ -- The dated administrative lines of the visible employments, once.
+ current_lines AS MATERIALIZED (
+   SELECT r.id,r.subordinate_employment_id,r.manager_employment_id,r.valid_from
+   FROM public.reporting_line r
+   WHERE r.tenant_id=app.current_tenant_id() AND r.line_type='administrative'
+     AND r.superseded_at IS NULL AND r.valid_from<=p_as_of AND (r.valid_to IS NULL OR r.valid_to>p_as_of)
+     AND r.subordinate_employment_id IN (SELECT v.id FROM visible v)
+ ),
+ -- The JSON owner's reportingTo: the first such line (latest valid_from, then id) whose manager is a
+ -- current employment of a permitted company.
+ superiors AS MATERIALIZED (
+   SELECT DISTINCT ON (l.subordinate_employment_id) l.subordinate_employment_id AS employment_id,mp.full_name
+   FROM current_lines l
+   JOIN public.employment me ON me.id=l.manager_employment_id AND me.tenant_id=app.current_tenant_id() AND me.voided_at IS NULL
+   JOIN permitted_companies manager_scope ON manager_scope.id=me.company_id
+   JOIN public.person mp ON mp.id=me.person_id AND mp.tenant_id=me.tenant_id
+   ORDER BY l.subordinate_employment_id,l.valid_from DESC,l.id
+ ),
+ -- app.employment_organisation_quality_flags' direct-superior test: any dated administrative line, or
+ -- a dated org-chart root.
+ lined AS MATERIALIZED (
+   SELECT DISTINCT l.subordinate_employment_id AS employment_id FROM current_lines l
+ ),
+ rooted AS MATERIALIZED (
+   SELECT DISTINCT r.employment_id FROM public.org_chart_root r
+   WHERE r.tenant_id=app.current_tenant_id()
+     AND r.valid_from<=p_as_of AND (r.valid_to IS NULL OR r.valid_to>p_as_of)
  )
  SELECT v.id,v.name,v.email,v.employee_code,
    v.final_confirmation_date,v.confirmation_date,v.probation_end_date,v.provisional_end_on,
@@ -134,18 +202,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
    CASE WHEN COALESCE(v.final_confirmation_date,v.confirmation_date)<=p_as_of THEN 'confirmed' ELSE 'unconfirmed' END,
    CASE WHEN v.tags IS NOT NULL AND v.tags->>'companyId' IS NOT NULL THEN v.hired_on<=p_as_of AND v.dated_bu_id IS NULL END,
    CASE WHEN v.tags IS NOT NULL AND v.tags->>'companyId' IS NOT NULL THEN v.hired_on<=p_as_of AND v.grade_id IS NULL END,
-   -- app.employment_organisation_quality_flags' direct-superior test, per row through the subordinate index.
    CASE WHEN v.tags IS NOT NULL AND v.tags->>'companyId' IS NOT NULL THEN v.hired_on<=p_as_of
-     AND NOT EXISTS (
-       SELECT 1 FROM public.reporting_line r
-       WHERE r.tenant_id=app.current_tenant_id() AND r.subordinate_employment_id=v.id AND r.line_type='administrative'
-         AND r.superseded_at IS NULL AND r.valid_from<=p_as_of AND (r.valid_to IS NULL OR r.valid_to>p_as_of)
-     )
-     AND NOT EXISTS (
-       SELECT 1 FROM public.org_chart_root r
-       WHERE r.tenant_id=app.current_tenant_id() AND r.employment_id=v.id
-         AND r.valid_from<=p_as_of AND (r.valid_to IS NULL OR r.valid_to>p_as_of)
-     ) END,
+     AND lined.employment_id IS NULL AND rooted.employment_id IS NULL END,
    CASE WHEN v.tags IS NOT NULL AND v.tags->>'companyId' IS NOT NULL THEN v.tags->>'status'='pending' END
  FROM visible v
  JOIN public.company co ON co.id=v.dated_company_id AND co.tenant_id=v.tenant_id
@@ -157,16 +215,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  LEFT JOIN public.location loc ON loc.id=v.location_id AND loc.tenant_id=v.tenant_id
  LEFT JOIN permitted_companies allowed_parent ON allowed_parent.id=(v.tags->>'parentCompanyId')::uuid
  LEFT JOIN permitted_companies allowed_group ON allowed_group.id=(v.tags->>'businessGroupId')::uuid
- -- The dated administrative manager: the JSON owner's first edge, through the subordinate index.
- LEFT JOIN LATERAL (
-   SELECT mp.full_name FROM public.reporting_line r
-   JOIN public.employment me ON me.id=r.manager_employment_id AND me.tenant_id=r.tenant_id AND me.voided_at IS NULL
-   JOIN permitted_companies manager_scope ON manager_scope.id=me.company_id
-   JOIN public.person mp ON mp.id=me.person_id AND mp.tenant_id=me.tenant_id
-   WHERE r.tenant_id=v.tenant_id AND r.subordinate_employment_id=v.id AND r.line_type='administrative'
-     AND r.superseded_at IS NULL AND r.valid_from<=p_as_of AND (r.valid_to IS NULL OR r.valid_to>p_as_of)
-   ORDER BY r.valid_from DESC,r.id LIMIT 1
- ) m ON true
+ LEFT JOIN superiors m ON m.employment_id=v.id
+ LEFT JOIN lined ON lined.employment_id=v.id
+ LEFT JOIN rooted ON rooted.employment_id=v.id
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.personnel_overview_facts(date,uuid[]) FROM PUBLIC,ai_hr_app;
@@ -202,9 +253,6 @@ $$;
 REVOKE ALL ON FUNCTION app.personnel_private_search_entries(text,uuid[]) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.personnel_private_search_entries(text,uuid[]) TO ai_hr_app;
---> statement-breakpoint
-
-
 --> statement-breakpoint
 -- app.employment_organisation_tags for a set of employments. A subject whose dated company is a current
 -- Workforce projection company, for a current principal and finite day, gets the identical value the
@@ -360,7 +408,6 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  LEFT JOIN public.company pc ON pc.id=allowed_parent.id AND pc.tenant_id=v.tenant_id
  LEFT JOIN public.company bg ON bg.id=allowed_group.id AND bg.tenant_id=v.tenant_id
 $$;
-
 --> statement-breakpoint
 -- app.personnel_overview_page_rows (2403) with its per-row organisation resolver replaced by the
 -- set-wise one above: the same JSON for every subject (compared row for row in the equivalence test).
@@ -471,7 +518,6 @@ $$;
 REVOKE ALL ON FUNCTION app.personnel_list_rows_for_ids(date,uuid[],uuid[]) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.personnel_list_rows_for_ids(date,uuid[],uuid[]) TO ai_hr_app;
-
 --> statement-breakpoint
 -- Same signature, owner and grants: personnel_search_rows (2450) with the set-wise resolver.
 CREATE OR REPLACE FUNCTION app.personnel_search_rows(p_scope uuid[]) RETURNS SETOF jsonb
@@ -518,7 +564,6 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  LEFT JOIN public.employee_statutory_my s ON s.person_id=a.person_id AND s.tenant_id=a.tenant_id
    AND allowed.dated_company_id IS NOT NULL
 $$;
-
 --> statement-breakpoint
 -- Same trigger function (4001): the dated company of each entry set-wise, each company's permissions
 -- once, and filter fingerprints compared against only the fingerprinted entries' current rows.
@@ -606,3 +651,48 @@ BEGIN
  DELETE FROM public.personnel_private_search WHERE tenant_id=NEW.tenant_id AND actor_id=NEW.actor_id AND (expires_at<=now() OR token_hash IN(SELECT token_hash FROM public.personnel_private_search WHERE tenant_id=NEW.tenant_id AND actor_id=NEW.actor_id ORDER BY created_at DESC OFFSET 7));
  RETURN NEW;
 END $$;
+--> statement-breakpoint
+-- Same signature, owner and grants: personnel_filter_companies (2451). Every company it lists is
+-- already admitted by app.access_workforce_projection_company, the Workforce view that opens the
+-- Personnel page. Its organisation tags were read through app.company_organisation_tags, whose
+-- company-read check recognises HR roles, payroll and rewards but not the published workforce.view
+-- capability, so a capability-only viewer the page admits failed the whole page with 42501. For an
+-- admitted company those tags are what every Personnel row of that viewer already resolves
+-- (app.employment_organisation_tags admits the projection company; the typed facts above read
+-- app.company_org_tags_unchecked for permitted companies); no company outside the viewer's projection
+-- is read and labels still require their own projection. A missing day keeps the checked owner's refusal.
+CREATE OR REPLACE FUNCTION app.personnel_filter_companies(p_scope uuid[],p_as_of date)
+RETURNS TABLE(id uuid,name text,"parentCompanyId" uuid,"parentCompany" text,"businessGroupId" uuid,"businessGroup" text,"businessUnitId" uuid,"businessUnit" text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ WITH admitted AS MATERIALIZED (
+   SELECT c.id,c.tenant_id,c.legal_name
+   FROM public.company c
+   WHERE c.tenant_id=app.current_tenant_id() AND c.id=ANY(p_scope)
+     AND app.access_workforce_projection_company(c.id)
+ ),
+ tagged AS MATERIALIZED (
+   SELECT c.*,CASE WHEN p_as_of IS NULL THEN app.company_organisation_tags(c.id,p_as_of)
+     ELSE app.company_org_tags_unchecked(c.id,p_as_of) END AS tags
+   FROM admitted c
+ ),
+ related_ids AS MATERIALIZED (
+   SELECT (tags->>'parentCompanyId')::uuid AS id FROM tagged
+   UNION
+   SELECT (tags->>'businessGroupId')::uuid AS id FROM tagged
+ ),
+ visible_labels AS MATERIALIZED (
+   SELECT id,legal_name FROM admitted
+   UNION ALL
+   SELECT c.id,c.legal_name
+   FROM related_ids r JOIN public.company c ON c.id=r.id
+   WHERE c.tenant_id=app.current_tenant_id()
+     AND NOT EXISTS (SELECT 1 FROM admitted a WHERE a.id=c.id)
+     AND app.access_workforce_projection_company(c.id)
+ )
+ SELECT c.id,c.legal_name,pc.id,pc.legal_name,bg.id,bg.legal_name,bu.id,bu.name
+ FROM tagged c
+ LEFT JOIN visible_labels pc ON pc.id=(c.tags->>'parentCompanyId')::uuid
+ LEFT JOIN visible_labels bg ON bg.id=(c.tags->>'businessGroupId')::uuid
+ LEFT JOIN public.business_unit bu ON bu.id=(c.tags->>'businessUnitId')::uuid AND bu.tenant_id=c.tenant_id
+ ORDER BY c.legal_name,c.id
+$$;

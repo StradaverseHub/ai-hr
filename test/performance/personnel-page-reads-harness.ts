@@ -2,7 +2,8 @@
  * The calling test file owns the module mocks (session, cookies, translations, navigation); this module
  * only drives the application code and records round trips, owners, wall time and nested plans.
  * It supplies no release evidence and never touches an installation. */
-import {existsSync,writeFileSync} from 'node:fs';
+import {writeFileSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
 import {join,relative} from 'node:path';
 import {cloneElement,createElement,isValidElement,type ReactElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -13,7 +14,9 @@ import {vi,expect} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {client as applicationClient,withTenant,type SessionContext} from '../../db/client';
 import {owner} from '../harness';
-import {seedPersonnelScaleFixture,type PersonnelScaleFixture} from './personnel-scale-fixture';
+import {installPreMigrationOwners,seedPersonnelScaleFixture,type PersonnelScaleFixture} from './personnel-scale-fixture';
+import {hireEmployee,setEmploymentAssignment,terminateEmployment} from '../../core/org';
+import {todayInKualaLumpur} from '../../lib/hr-date';
 
 export type PersonnelDiagnosticState = {session?: SessionContext; scopeCookie?: string};
 export const personnelDiagnosticState = ((globalThis as {__personnelPageDiagnostic?: PersonnelDiagnosticState})
@@ -182,7 +185,8 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
     search: (await import('../../app/admin/personnel/search/route')).POST,
     exportRoute: (await import('../../app/admin/personnel/export/route')).GET,
   };
-  const roles = {admin: fixture.admin, manager: fixture.manager} as const;
+  const viewer = await capabilityOnlyViewer(fixture);
+  const roles = {admin: fixture.admin, manager: fixture.manager, viewer} as const;
   const results: unknown[] = [];
   report.results = results;
   const searchHrefs: Record<string, string> = {};
@@ -240,21 +244,11 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
     }
   }
   };
+  // Migration 9880 is applied by migrateTestDb: every scenario reads the typed facts.
   await measure('installed');
-  // The unallocated typed-facts draft, where this source carries it: the views that still use the exact
-  // owner without it, measured again with it installed.
-  const draftUrl = new URL('../../db/migration-drafts/personnel_overview_facts.sql', import.meta.url);
-  if (existsSync(draftUrl)) {
-    const {installPersonnelDraft} = await import('./personnel-scale-fixture');
-    const removeDraft = await installPersonnelDraft();
-    try {
-      await measure('with-draft', new Set(['list', 'filter-department', 'filter-parent-company', 'filter-grade',
-        'filter-quality-superior', 'sort-department', 'sort-join-date-desc', 'private-search', 'export-page', 'export-all-department']));
-      await planPass('with-draft');
-    } finally {
-      await removeDraft();
-    }
-  } else await planPass('installed');
+  await planPass('installed');
+  report.writes = await measureWrites(fixture);
+  save();
 
   report.elapsedMs = Math.round(performance.now() - started);
   save();
@@ -270,7 +264,7 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
     const spy = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
       const notice = args[0] as {message?: string} | undefined;
       if (notice && typeof notice === 'object' && typeof notice.message === 'string' && notice.message.startsWith('duration:')) {
-        notices.push({durationMs: Number(/^duration: ([0-9.]+) ms/.exec(notice.message)?.[1] ?? 0), ...label, plan: notice.message.slice(0, 16000)});
+        notices.push({durationMs: Number(/^duration: ([0-9.]+) ms/.exec(notice.message)?.[1] ?? 0), ...label, plan: notice.message.slice(0, 60000)});
         return;
       }
       log(...args);
@@ -287,8 +281,8 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
       }
       const [loaded] = await withTenant(fixture.admin, tx => tx.execute<{v: string | null}>(sql`select current_setting('auto_explain.log_min_duration',true) as v`));
       report.autoExplain = loaded?.v ?? null;
-      const planned = ['list', 'filter-department', 'filter-parent-company', 'sort-department', 'filter-status-resigned', 'search-q-name', 'private-search', 'export-page'];
-      for (const [role, ctx] of Object.entries(roles)) {
+      const planned = ['list', 'filter-department', 'filter-parent-company', 'filter-grade', 'filter-quality-superior', 'sort-department', 'sort-join-date-desc', 'filter-status-resigned', 'search-q-name', 'private-search', 'export-page'];
+      for (const [role, ctx] of Object.entries(roles).filter(([role]) => role !== 'viewer')) {
         personnelDiagnosticState.session = ctx;
         for (const scenario of scenarios(fixture).filter(s => planned.includes(s.name))) {
           label = {role, scenario: scenario.name};
@@ -308,4 +302,58 @@ export async function runPersonnelPageDiagnostic(options: DiagnosticOptions) {
     for (const notice of notices.slice(0, 12)) console.info(`[personnel-page-diagnostic] plan ${variant} ${notice.role}/${notice.scenario} ${notice.durationMs}ms\n` + notice.plan.slice(0, 6000));
   }
   }
+}
+
+/** A capability-only Workforce viewer: an employee of B with a published workforce.view allow on B and an
+ * explicit deny on its descendant C, and no HR, payroll or rewards role. Before 9880 the page refused it. */
+async function capabilityOnlyViewer(f: PersonnelScaleFixture): Promise<SessionContext> {
+  const t = f.base.tenantId;
+  const [person] = await owner.client<{personId: string}[]>`select e.person_id as "personId" from employment e
+    where e.tenant_id=${t}::uuid and e.company_id=${f.companies.b}::uuid and e.terminated_on is null
+      and not exists(select 1 from app_user u where u.person_id=e.person_id) order by e.employee_code limit 1`;
+  const [user] = await owner.client<{id: string}[]>`insert into app_user(tenant_id,workos_user_id,person_id)
+    values(${t}::uuid,${'fictional-viewer-' + randomUUID()},${person.personId}::uuid) returning id`;
+  await owner.client`insert into role_assignment(tenant_id,app_user_id,company_id,role) values(${t}::uuid,${user.id}::uuid,${f.companies.b}::uuid,'employee')`;
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect) values
+    (${t}::uuid,${user.id}::uuid,'workforce.view',${f.companies.b}::uuid,'allow'),
+    (${t}::uuid,${user.id}::uuid,'workforce.view',${f.companies.c}::uuid,'deny')`;
+  return {tenantId: t, userId: user.id, personId: person.personId, roles: ['employee'],
+    grants: [{role: 'employee', companyId: f.companies.b}], entitlements: f.admin.entitlements};
+}
+
+/** Wall time of the ordinary hire, edit (dated department change) and terminate commands with 9880 and
+ * with the pre-9880 owners. 9880 adds no trigger, index or constraint to any table they write. */
+async function measureWrites(f: PersonnelScaleFixture) {
+  const ctx = f.admin, today = todayInKualaLumpur();
+  const median = (values: number[]) => {const sorted = [...values].sort((a, b) => a - b); return sorted[Math.floor((sorted.length - 1) / 2)];};
+  const batch = async (variant: string, n: number) => {
+    const hire: number[] = [], edit: number[] = [], terminate: number[] = [];
+    for (let i = 0; i < n; i++) {
+      let started = performance.now();
+      const hired = await hireEmployee(ctx, {person: {fullName: 'Fictional writer ' + variant + ' ' + i, primaryEmail: randomUUID() + '@example.invalid'},
+        companyId: f.companies.a, departmentId: f.departments.a[0], employmentType: 'full_time', hiredOn: '2026-01-05',
+        employeeCode: 'WR' + variant.slice(0, 3).toUpperCase() + randomUUID().slice(0, 8)});
+      hire.push(performance.now() - started);
+      started = performance.now();
+      await setEmploymentAssignment(ctx, {employmentId: hired.employmentId, effectiveDate: today, departmentId: f.departments.a[1]});
+      edit.push(performance.now() - started);
+      started = performance.now();
+      await terminateEmployment(ctx, {employmentId: hired.employmentId, terminationDate: today, terminationType: 'voluntary'});
+      terminate.push(performance.now() - started);
+    }
+    return {variant, n, hireMs: Math.round(median(hire) * 10) / 10, editMs: Math.round(median(edit) * 10) / 10,
+      terminateMs: Math.round(median(terminate) * 10) / 10};
+  };
+  const results: Record<string, unknown>[] = [];
+  try {
+    await batch('warm', 3);
+    results.push(await batch('migrated', 15));
+    const reapply = await installPreMigrationOwners();
+    try {results.push(await batch('pre9880', 15));} finally {await reapply();}
+    results.push(await batch('migrated', 15));
+  } catch (error) {
+    results.push({error: String((error as Error)?.message ?? error).slice(0, 300)});
+  }
+  for (const row of results) print('writes', {size: f.count, ...row});
+  return results;
 }

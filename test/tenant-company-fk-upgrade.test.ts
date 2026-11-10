@@ -137,6 +137,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '4340_ai_management_presentation_snapshot',
    '4341_home_leave_presentation_snapshot',
    '4342_attendance_clock_policy_audit_scope',
+   '9880_personnel_overview_facts',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

@@ -15,6 +15,7 @@ import {pgSqlState} from '../../lib/db-error';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 import {seedPersonnelCorrectionFixture,seedPersonnelNativeFixture} from './personnel-native-fixture';
 import {provePersonnelSingleAssignmentConstraint} from './personnel-dated-tags-prototype';
+import {installPreMigrationOwners} from './personnel-scale-fixture';
 
 const singletonAdmission=admitSingletonTest('test/performance/personnel-narrow-production.test.ts');
 const draftSql=readFileSync(new URL('../../db/migrations/2403_personnel_bounded_overview.sql',import.meta.url),'utf8');
@@ -22,7 +23,8 @@ const dropNarrowFunctions='drop function app.personnel_overview_narrow_rows(date
 beforeAll(migrateTestDb);
 afterAll(closeAll);
 
-it('preserves the real overview rows, facets, scope, dated assignment and unsupported filter paths',async()=>{
+// Written for the Personnel owners before 9880 (no typed facts): its fallback and drop expectations hold there.
+it('preserves the real overview rows, facets, scope, dated assignment and unsupported filter paths',()=>inPreMigrationOwners(async()=>{
  await resetDb();
  const base=await seedBase();
  const foreign=await seedBase();
@@ -43,7 +45,7 @@ it('preserves the real overview rows, facets, scope, dated assignment and unsupp
   organisationChoices:{...data.organisationChoices,rows:data.organisationChoices.rows
    .map(row=>JSON.stringify(row)).sort()},
  });
- // Without the unallocated typed-facts draft, quality filters keep the exact owner.
+ // Without 9880's typed facts, quality filters keep the exact owner.
  const fallbackCases=[
   {name:'quality',input:{...scope,qualityFlags:['missing_business_unit' as const]},expected:[first.employmentId,second.employmentId]},
  ];
@@ -138,7 +140,11 @@ it('preserves the real overview rows, facets, scope, dated assignment and unsupp
  }finally{
   await owner.client.unsafe(dropNarrowFunctions);
  }
-},60000);
+}),60000);
+async function inPreMigrationOwners(work:()=>Promise<void>){
+ const reapply=await installPreMigrationOwners();
+ try{await work();}finally{await reapply();}
+}
 
 it('times the real Personnel overview at fifty thousand employees', async () => {
  const count = 50_000;

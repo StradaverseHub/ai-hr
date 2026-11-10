@@ -205,24 +205,38 @@ function fixtureSql(personPrefix: string, employmentPrefix: string, count: numbe
     from generate_series(1,${count}) n`;
 }
 
-const DRAFT_NEW_FUNCTIONS = [
+/** The functions migration 9880 adds, and the four reviewed predecessors it replaces in place. */
+export const PERSONNEL_FACTS_NEW_FUNCTIONS = [
   'app.personnel_list_rows_for_ids(date,uuid[],uuid[])', 'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])',
   'app.personnel_private_search_entries(text,uuid[])', 'app.personnel_overview_facts(date,uuid[])',
+  'app._personnel_employment_tags(uuid[],date)',
 ];
-const DRAFT_REPLACED_FUNCTIONS = [
-  'app.personnel_filter_rows(date,uuid[])', 'app.personnel_search_rows(uuid[])', 'app.personnel_private_search_bind()',
-];
-const draftSql = () => readFileSync(new URL('../../db/migration-drafts/personnel_overview_facts.sql', import.meta.url), 'utf8');
+const PERSONNEL_FACTS_PREDECESSORS = [
+  ['2210_personnel_projection_reuse', 'personnel_filter_rows'],
+  ['2450_personnel_search_projection', 'personnel_search_rows'],
+  ['4001_personnel_employment_filter_projection', 'personnel_private_search_bind'],
+  ['2451_personnel_company_filter_choices', 'personnel_filter_companies'],
+] as const;
+const migrationSql = (tag: string) => readFileSync(new URL('../../db/migrations/' + tag + '.sql', import.meta.url), 'utf8');
+/** The exact statement an applied migration used to install a function (its last definition there). */
+export function predecessorStatement(tag: string, name: string) {
+  const chunks = migrationSql(tag).split('--> statement-breakpoint').filter(chunk => chunk.includes('FUNCTION app.' + name + '('));
+  expect(chunks.length, tag + ' ' + name).toBeGreaterThan(0);
+  return chunks[chunks.length - 1];
+}
 
-/** Install the unallocated typed-facts draft, remembering the exact definitions it replaces. */
-export async function installPersonnelDraft(): Promise<() => Promise<void>> {
-  const originals = await owner.client<{definition: string}[]>`
-    select pg_get_functiondef(to_regprocedure(name)) as definition from unnest(${DRAFT_REPLACED_FUNCTIONS}::text[]) name`;
-  expect(originals.every(row => typeof row.definition === 'string')).toBe(true);
-  await owner.client.unsafe(draftSql());
+/** Return the database to the Personnel owners as they were before migration 9880 (the predecessor
+ * bodies from the migrations that installed them, and none of its new functions); the returned
+ * function re-applies 9880 itself. The pre-existing exact owner is the equivalence oracle. */
+export async function installPreMigrationOwners(): Promise<() => Promise<void>> {
+  const [installed] = await owner.client<{n: number}[]>`
+    select count(*)::int as n from unnest(${PERSONNEL_FACTS_NEW_FUNCTIONS}::text[]) name where to_regprocedure(name) is not null`;
+  expect(installed.n, 'migration 9880 is applied before the oracle switch').toBe(PERSONNEL_FACTS_NEW_FUNCTIONS.length);
+  await owner.client.begin(async tx => {
+    for (const name of PERSONNEL_FACTS_NEW_FUNCTIONS) await tx.unsafe(`drop function ${name}`);
+    for (const [tag, name] of PERSONNEL_FACTS_PREDECESSORS) await tx.unsafe(predecessorStatement(tag, name)).simple();
+  });
   return async () => {
-    for (const name of DRAFT_NEW_FUNCTIONS) await owner.client.unsafe(`drop function if exists ${name}`);
-    for (const {definition} of originals) await owner.client.unsafe(definition);
-    await owner.client.unsafe('drop function if exists app._personnel_employment_tags(uuid[],date)');
+    await owner.client.unsafe(migrationSql('9880_personnel_overview_facts')).simple();
   };
 }

@@ -1,3 +1,15 @@
+# Personnel overview typed facts — 10 November 2026 (unallocated draft number)
+
+Branch `claude/personnel-speed-20261110` journals `9880_personnel_overview_facts` at idx 3743 and when
+1793330004043, directly after `4342_attendance_clock_policy_audit_scope`, so the branch's journal stays
+strictly monotonic. **9880 is a draft number, not a reservation**: reallocate the tag, idx and when
+through this file (peer survey, installed ordered ledger) before release; the SQL bytes may then be
+reviewed again. The migration creates and replaces SECURITY DEFINER Personnel readers only (typed facts,
+private-search entries, a set-wise organisation-tag resolver, typed page rows, the exact owner, search
+rows, the bind trigger function and the company filter choices). It adds no table, column, index,
+constraint or trigger and writes no row, so it needs no `online_migration` deferral or backfill. It
+refuses to run unless the four replaced bodies are exactly those 2210, 2450, 4001 and 2451 installed.
+
 # Joint AI Functions, Attendance and architecture candidate — 10 November 2026 (private proposal)
 
 The exact Streamline AI Functions and Schedule Group candidate
