@@ -35,3 +35,11 @@ The same 28 approvals carry forward to the new fingerprint. Historical review me
 On 10 November 2026 MYT the repository owner approved re-binding to repair commit `60030e151703e3698508b2302a7010c18e2b9db1` and exact fingerprint `b6e04e75dd91e46898fc6d8c509cf331e00bbae6e65ee9cf565d66859680312c`. The only covered-source change since the binding above is that the HRD Corp levy working stamped on payslips omits pay items that paid RM0, so it prints no +RM0.00 rows. That working is not read by any AI path. No provider transport or payload gains data, and the outbound changes recorded above are unchanged.
 
 The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This exact binding supersedes the four-item binding above.
+
+## Architecture optimisation release binding
+
+On 11 November 2026 MYT the repository owner approved carrying the existing approvals forward to this release's AI code version, in their words: "i fully approve carrying the existing approvals forward to this release's AI code version". The release is the architecture optimisation candidate on `claude/architecture-release-20261110` (head `ceb7fa849bcbb52fb1051883a95f2950a23042b0` before this record), with exact fingerprint `c4745ba3dfa34e710b67857fbb6069a539f8c674609c4d171289ecf8aca6f579` over 1,522 files.
+
+No provider contract, outbound field or transport is added or widened. The covered-source changes since `b6e04e75…` come from the architecture candidate (bounded database admission, request-scoped shared read snapshots, Home and Claims read consolidation, online migration tooling, restored roster and Claims behaviour, and the deduplicated server source maps in `package.json`'s build script); none of them adds data to any provider payload.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority; a later change to the covered source needs a new owner decision.
