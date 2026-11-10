@@ -146,7 +146,7 @@ describe('All Companies audit history and events (owner decision 11 Nov 2026)', 
     const [written]=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent)
       .where(and(eq(schema.domainEvent.aggregateId,ruleId),sql`${schema.domainEvent.payload}->>'versionId'=${group.id}`));
     expect(written?.payload,'fixture precondition: the real writer records the group scope').toMatchObject({companyId:null,scope:'group'});
-    const forged=(payload:Record<string,unknown>)=>({tenantId:base.tenantId,aggregateType:'attendance-rule',aggregateId:ruleId,
+    const forged=(payload:Record<string,unknown>):typeof schema.domainEvent.$inferInsert=>({tenantId:base.tenantId,aggregateType:'attendance-rule',aggregateId:ruleId,
       eventType:'attendance-rule.clock-policy.scheduled',actorType:'user',actorId:admin.userId,payload});
     await owner.db.insert(schema.domainEvent).values([
       forged({versionId:group.id,companyId:base.companyId,scope:'company',reason:'Fictional group row claimed as a company'}),
