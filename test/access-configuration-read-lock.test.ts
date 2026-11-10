@@ -1,6 +1,6 @@
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
-import {withTenant} from '../db/client';
+import {withTenant,type Tx} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {listEmployees,listEmployeesPage,listWorkforcePickOptions,countEmployeesByStatus,employeeDetail,personnelListPage,searchWorkforceEmployees,searchWorkforceEmployeesTx} from '../core/read';
 import {workforceCompanies,workforceEmploymentAccess,workforceCommandAccess} from '../core/workforce-access';
@@ -63,6 +63,37 @@ it.each(['view','maintain'] as const)('keeps borrowed %s metadata exclusive for 
  });
  const [released]=await owner.client`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0))as acquired`;
  expect(released.acquired).toBe(true);
+});
+
+async function statementTimeoutMs(tx:Tx){
+ const [row]=await tx.execute<{milliseconds:number}>(sql`select setting::int as milliseconds from pg_catalog.pg_settings where name='statement_timeout'`);
+ return row.milliseconds;
+}
+
+it.each([0,45_000,5_000])('retains the caller’s %i ms statement timeout and Access lock through paired borrowed Personnel reads',async timeout=>{
+ await resetDb();const b=await seedBase(),ctx=adminCtx(b),key='access-configuration:'+b.tenantId;
+ const canShare=async()=>owner.client.begin(async observer=>{
+  const [row]=await observer`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) as acquired`;
+  return row.acquired;
+ });
+ await withTenant(ctx,async tx=>{
+  await tx.execute(sql`select set_config('statement_timeout',${String(timeout)},true)`);
+  expect(await statementTimeoutMs(tx)).toBe(timeout);
+  const read=withPersonnelRead(ctx,statementTimeoutMs,{existingTx:tx});
+  const results=await Promise.all([workforceCompanies(ctx,'maintain',tx),workforceCompanies(ctx,'view',tx),read]);
+  expect(results).toEqual([[b.companyId],[b.companyId],timeout]);
+  expect(await statementTimeoutMs(tx)).toBe(timeout);
+  expect(await canShare()).toBe(false);
+ });
+ expect(await canShare()).toBe(true);
+});
+
+it('keeps the owned Personnel snapshot bound without changing the application pool default',async()=>{
+ await resetDb();const b=await seedBase(),ctx=adminCtx(b);
+ const ownerTimeout=await withTenant(ctx,statementTimeoutMs);
+ const observed=await withPersonnelRead(ctx,statementTimeoutMs);
+ expect(observed).toBe(Math.min(ownerTimeout||20_000,20_000));
+ expect(await withTenant(ctx,statementTimeoutMs)).toBe(ownerTimeout);
 });
 
 it.each(['list','picker','counts','page','personnel','switcher','record','detail'] as const)('lets a complete standalone Workforce %s projection finish while an exclusive writer is active',async kind=>{

@@ -31,7 +31,7 @@ export async function withPersonnelRead<T>(ctx: SessionContext, read: (tx: Tx) =
   if (options.existingTx) {
     await assertAiPrincipalTx(options.existingTx, ctx);
     await lockAccessConfigurationTx(options.existingTx, ctx.tenantId);
-    await boundPersonnelStatementTx(options.existingTx);
+    // The command owner keeps its timeout through subsequent writes and COMMIT.
     return read(options.existingTx);
   }
   return withTenant(ctx, async tx => {
