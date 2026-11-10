@@ -364,8 +364,8 @@ async function seedBeforePayrollFixtures(actors:readonly Actor[],today:string){
    values(${tenantId}::uuid,${personId}::uuid,'Fictional Child One','child','2015-03-01'),(${tenantId}::uuid,${personId}::uuid,'Fictional Child Two','child','1990-03-01')`);
   // Acknowledge: a notice requiring acknowledgement, a released submitted review, a handed-over onboarding case.
   await step('notice:'+tag,async()=>{
-   const [row]=await owner.client<{id:string}[]>`insert into notice(tenant_id,title,body,requires_acknowledgement,content_version,start_on,end_on,published_at)
-    values(${tenantId}::uuid,'Fictional notice '||${tag}::text,'Fictional body',true,1,${day(-10)}::date,${day(10)}::date,now()) returning id`;
+   const [row]=await owner.client<{id:string}[]>`insert into notice(tenant_id,title,body,requires_acknowledgement,content_version,start_on,end_on,published_at,published_by_user_id)
+    values(${tenantId}::uuid,'Fictional notice '||${tag}::text,'Fictional body',true,1,${day(-10)}::date,${day(10)}::date,now(),${userId}::uuid) returning id`;
    await owner.client`insert into notice_recipient(tenant_id,notice_id,employment_id) values(${tenantId}::uuid,${row.id}::uuid,${employmentId}::uuid)`;
   });
   await step('review:'+tag,async()=>{
@@ -373,9 +373,8 @@ async function seedBeforePayrollFixtures(actors:readonly Actor[],today:string){
     values(${tenantId}::uuid,'Fictional cycle '||${tag}::text,${(year-1)+'-01-01'}::date,${(year-1)+'-12-31'}::date,'closed','[{"value":1,"label":"One"}]'::jsonb,now()) returning id`;
    await owner.client`insert into performance_review(tenant_id,cycle_id,employment_id,status) values(${tenantId}::uuid,${cycle.id}::uuid,${employmentId}::uuid,'submitted')`;
   });
-  await step('onboarding:'+tag,()=>owner.client`insert into lc_onboarding_case(tenant_id,company_id,employment_id,data)
-   values(${tenantId}::uuid,${actor.companyId}::uuid,${employmentId}::uuid,${JSON.stringify({id:randomUUID(),personId,state:'submitted',number:'ON-PERF-'+tag,
-    local:{fullName:'PERF Person '+tag,joinDate:day(-30)},source:{},requisitions:[{id:randomUUID(),handedAt:new Date().toISOString(),items:[]}]})}::jsonb)`);
+  // No onboarding case is seeded: a hand-built case would have to satisfy the whole onboarding interpreter, which every
+  // assigned-task read on the tenant runs. The onboarding section is compared on the owner's own (empty) rows.
  }
  // Statutory facts: the manager's present (and more children declared than the register counts), the employee's missing.
  await step('statutory:present',()=>owner.client`insert into employee_statutory_my(tenant_id,person_id,tax_number,epf_number,socso_number,bank_name,bank_account_no,num_children)
@@ -432,13 +431,23 @@ async function beforePayrollEquivalence(subject:string,actor:Actor,today:string,
   reviews:async()=>byId((await performanceService.myReviews(ctx)).map(({reviewId,status,released,periodEnd})=>({reviewId,status,released,periodEnd}))),
   onboarding:()=>lifecycle.onboardingMyAcknowledgements(ctx),
  };
- const ordered:Record<string,(value:unknown)=>unknown>={loopCards:value=>byId(value as {caseId?:string}[]),leaveRequests:value=>byId(value as {id:string}[]),reviews:value=>byId(value as {reviewId:string}[])};
+ // The range rows' stored overtime-formula record is the one field the statement does not read (decision 11).
+ const ordered:Record<string,(value:unknown)=>unknown>={loopCards:value=>byId(value as {caseId?:string}[]),leaveRequests:value=>byId(value as {id:string}[]),reviews:value=>byId(value as {reviewId:string}[]),
+  days:value=>(value as {formulaOvertime?:unknown}[]).map(({formulaOvertime:_formula,...row})=>row)};
  const answered:string[]=[],deferred:string[]=[];
  for(const [name,owner] of Object.entries(owners)){
   const section=(bundle as Record<string,{value:unknown}|null>|null)?.[name];
   if(!section){deferred.push(name);continue;}
   answered.push(name);
   compare(subject,'beforePayroll:section:'+name,await outcome(()=>withIndependentTransactions(owner)),{ok:true,value:(ordered[name]??(value=>value))(section.value)});
+ }
+ // The readiness snapshot alone, owner against the section's own rows, so a difference names its stage.
+ if(ctx.personId){
+  const recordReadiness=await import('../../core/record-readiness');
+  const scope={employmentIds:[id],personId:ctx.personId};
+  compare(subject,'beforePayroll:section:readinessSnapshot',await outcome(()=>withIndependentTransactions(()=>withTenant(ctx,tx=>recordReadiness.readinessSnapshot(tx,Number.POSITIVE_INFINITY,false,scope)))),
+   await outcome(()=>withIndependentTransactions(()=>withTenant(ctx,async tx=>{const [row]=await tx.execute<{rows:unknown}>(sql`select ${recordReadiness.readinessSnapshotBundleSql(scope)} as rows`);
+    return recordReadiness.readinessSnapshotFromBundle(row.rows,Number.POSITIVE_INFINITY);},{readOnlySnapshot:true}))));
  }
  return {subject,answered,deferred,windows};
 }

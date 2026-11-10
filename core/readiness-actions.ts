@@ -1,5 +1,5 @@
 /** ADR-0111. One source-derived action catalogue for readiness cases, ESS and follow-ups. */
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql, type SQLWrapper } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
@@ -80,11 +80,19 @@ async function correctionSource(tx: Tx, ids: readonly string[]): Promise<Correct
       .orderBy(...CORRECTION_REQUEST_ORDER);
     return { employees, requests };
 }
+const hasStatutoryProfileSql = (personIdRef: SQLWrapper) =>
+  sql<boolean>`exists (select 1 from ${schema.employeeStatutoryMy} s where s.person_id=${personIdRef})`;
 const CORRECTION_EMPLOYEE_FIELDS = {
       id: schema.employment.id,
       personId: schema.employment.personId,
-      hasStatutoryProfile: sql<boolean>`exists (select 1 from ${schema.employeeStatutoryMy} s where s.person_id=${schema.employment.personId})`,
+      hasStatutoryProfile: hasStatutoryProfileSql(schema.employment.personId),
 };
+/** CORRECTION_EMPLOYEE_FIELDS as the owner's select sends them. That select reads one table, so Drizzle renders the column
+ * inside the EXISTS unqualified, `s.person_id="person_id"`, which PostgreSQL binds to the statutory row's own person:
+ * the owner's flag is whether any statutory row the caller can read exists. The bundled section reproduces that text,
+ * so it returns the same flag; correcting the owner is a separate, result-changing decision. */
+const CORRECTION_EMPLOYEE_BUNDLE_FIELDS = { ...CORRECTION_EMPLOYEE_FIELDS,
+      hasStatutoryProfile: hasStatutoryProfileSql(sql.identifier(schema.employment.personId.name)) };
 const correctionEmployeeWhere = (ids: readonly string[]) => and(inArray(schema.employment.id, [...ids]), isNull(schema.employment.terminatedOn));
 const correctionRequestWhere = (ids: readonly string[]) => and(inArray(schema.profileChangeRequest.employmentId, [...ids]), eq(schema.profileChangeRequest.status, 'pending'),
         eq(schema.profileChangeRequest.personId, schema.employment.personId));
@@ -134,7 +142,7 @@ export function myReadinessActionsBundleSql(ctx: SessionContext, employmentId: s
   if (!ctx.personId || isAgentContext(ctx)) return null;
   const ids = [employmentId];
   return sql`jsonb_build_object('rows',${readinessSnapshotBundleSql({ employmentIds: ids, personId: ctx.personId })},
-   'employees',${jsonRowsSql({ row: jsonFieldsSql(CORRECTION_EMPLOYEE_FIELDS), from: sql`${schema.employment}`, where: correctionEmployeeWhere(ids) })},
+   'employees',${jsonRowsSql({ row: jsonFieldsSql(CORRECTION_EMPLOYEE_BUNDLE_FIELDS), from: sql`${schema.employment}`, where: correctionEmployeeWhere(ids) })},
    'requests',${jsonRowsSql({ row: jsonFieldsSql(CORRECTION_REQUEST_FIELDS),
      from: sql`${schema.profileChangeRequest} inner join ${schema.employment} on ${eq(schema.employment.id, schema.profileChangeRequest.employmentId)}`,
      where: correctionRequestWhere(ids), order: sql.join(CORRECTION_REQUEST_ORDER, sql`, `) })})`;
@@ -149,7 +157,7 @@ export function myReadinessActionsFromBundle(ctx: SessionContext, employmentId: 
   const actions = new Map<string, ReadinessAction>();
   if (snapshot.activeEmploymentIds.length) {
     if (snapshot.activeEmploymentIds.some(id => id !== employmentId)) throw new Error('The bundled readiness rows belong to another employment.');
-    addReadinessActions(actions, ctx, { employees: decodeJsonFieldRows(CORRECTION_EMPLOYEE_FIELDS, raw.employees) as CorrectionSource['employees'],
+    addReadinessActions(actions, ctx, { employees: decodeJsonFieldRows(CORRECTION_EMPLOYEE_BUNDLE_FIELDS, raw.employees) as CorrectionSource['employees'],
       requests: decodeJsonFieldRows(CORRECTION_REQUEST_FIELDS, raw.requests) as CorrectionSource['requests'] });
   }
   return ownReadinessActions(snapshot, actions);

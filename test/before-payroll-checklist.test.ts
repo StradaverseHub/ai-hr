@@ -133,11 +133,13 @@ describe('the one-statement read of the owners (docs/adr/2026-11-10-home-request
   expect(bundled).toEqual(owner);
  });
  it('reads a day adjustment and a rostered rest day through the same schedule owner (draft 9873)',async()=>{
-  await owner.db.insert(schema.attendanceDayAdjustment).values({tenantId:b.tenantId,employmentId:aina.employmentId,attendanceDate:TUESDAY,dayKind:'rest_day',reason:'Fictional adjustment',updatedBy:'fixture'});
-  await owner.db.insert(schema.rosterAssignment).values({tenantId:b.tenantId,employmentId:aina.employmentId,shiftDate:YESTERDAY,isRestDay:true});
+  // The checklist's July range is 1 July only (yesterday): the adjustment and the roster row are on it.
+  await owner.db.insert(schema.attendanceDayAdjustment).values({tenantId:b.tenantId,employmentId:aina.employmentId,attendanceDate:YESTERDAY,dayKind:'rest_day',reason:'Fictional adjustment',updatedBy:'fixture'});
+  await owner.db.insert(schema.rosterAssignment).values({tenantId:b.tenantId,employmentId:siti.employmentId,shiftDate:YESTERDAY,isRestDay:true});
   const {owner:live,bundled}=await days(aina);
   expect(bundled).toEqual(live);
-  expect(live.find(row=>row.date===TUESDAY)?.dayType).toBe('rest_day');
+  expect(live.find(row=>row.date===YESTERDAY)?.dayType).toBe('rest_day');
+  const theirs=await days(siti);expect(theirs.bundled).toEqual(theirs.owner);
   const all=await both(aina);expect(all.bundled).toEqual(all.owners);
  });
  it('answers the loop\'s own clock-out card as the loop cards owner does',async()=>{
