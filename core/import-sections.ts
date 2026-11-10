@@ -262,7 +262,7 @@ async function analyze(
     section,
     records.map(record=>norm(record.ic_number).replace(/\D/g,'')),
     suppliedTx,
-    {present:presentSet,residencyCodes:new Set(records.filter(record=>['tax_residency','is_resident','tax_circumstance','tax_category','epf_citizenship'].some(column=>norm(record[column]))).map(record=>normalizeEmployeeCode(record[SECTION_KEY_COLUMN]))),focusCode:focusRowNum?normalizeEmployeeCode(norm(records[focusRowNum-1]?.[SECTION_KEY_COLUMN])):undefined},
+    {present:presentSet,emails:records.map(record=>norm(record.email).toLowerCase()),residencyCodes:new Set(records.filter(record=>['tax_residency','is_resident','tax_circumstance','tax_category','epf_citizenship'].some(column=>norm(record[column]))).map(record=>normalizeEmployeeCode(record[SECTION_KEY_COLUMN]))),focusCode:focusRowNum?normalizeEmployeeCode(norm(records[focusRowNum-1]?.[SECTION_KEY_COLUMN])):undefined},
   );
 
   const { allowDuplicatedNric, allowDuplicatedEmail } = await (suppliedTx?readPeopleGeneralTx(suppliedTx):getPeopleGeneral(ctx));
@@ -410,7 +410,7 @@ async function analyze(
 }
 
 /** Read every employee this file names, plus the catalogs and the IC ownership map, in one pass. */
-async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection, submittedNrics: string[],suppliedTx?:Tx,scope:{present?:Set<string>;focusCode?:string;residencyCodes?:Set<string>}={}) {
+async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection, submittedNrics: string[],suppliedTx?:Tx,scope:{present?:Set<string>;focusCode?:string;residencyCodes?:Set<string>;emails?:string[]}={}) {
   if(section==='bank_statutory'){const read=(tx:Tx)=>loadBankImportSubjects(tx,ctx,codes,scope);return suppliedTx?read(suppliedTx):withTenant(ctx,read);}
   const read=async (tx:Tx) => {
     // The tenant's employments, keyed by Employee ID and by work email. Both keys are needed: the
@@ -539,14 +539,20 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
     const emailOwners = new Map<string, string>();
     if (section === 'profile') {
       if(wanted[0])for(const key of await occupiedNricsTx(tx,{personId:wanted[0].personId,keys:submittedNrics}))icOwners.set(key,new Set(['occupied']));
-      const allStat = await tx
+      // Both maps are only ever looked up with a value this file supplies, so only owners of those values are read
+      // (any non-ASCII value is read too and normalised here, as before). The whole tenant was read once per row.
+      const icKeys=[...new Set(submittedNrics.filter(Boolean))];
+      const allStat = icKeys.length ? await tx
         .select({ personId: employeeStatutoryMy.personId, icNumber: employeeStatutoryMy.icNumber })
-        .from(employeeStatutoryMy);
+        .from(employeeStatutoryMy)
+        .where(sql`(regexp_replace(${employeeStatutoryMy.icNumber},'[^0-9]','','g') in (select jsonb_array_elements_text(${JSON.stringify(icKeys)}::jsonb)) or ${employeeStatutoryMy.icNumber} ~ '[^\\x01-\\x7f]')`) : [];
       for (const s of allStat) if (s.icNumber) {
         const key=s.icNumber.replace(/\D/g,'');const owners=icOwners.get(key)??new Set<string>();
         owners.add(s.personId);icOwners.set(key,owners);
       }
-      const allPeople = await tx.select({ id: person.id, primaryEmail: person.primaryEmail }).from(person);
+      const emailKeys=[...new Set((scope.emails??[]).filter(Boolean))];
+      const allPeople = emailKeys.length ? await tx.select({ id: person.id, primaryEmail: person.primaryEmail }).from(person)
+        .where(sql`(lower(trim(${person.primaryEmail})) in (select jsonb_array_elements_text(${JSON.stringify(emailKeys)}::jsonb)) or ${person.primaryEmail} ~ '[^\\x01-\\x7f]')`) : [];
       for (const p of allPeople) if (p.primaryEmail) emailOwners.set(p.primaryEmail.trim().toLowerCase(), p.id);
     }
 

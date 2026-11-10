@@ -12,7 +12,33 @@ import {spawn,type ChildProcess} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import postgres from 'postgres';
 import {sql} from 'drizzle-orm';
-import {startTenantLockSampler} from './tenant-lock-sampler';
+
+/** Tenant-wide advisory key holds in THIS database only (advisory locks are per database, and other databases on a
+ * shared cluster hash the same tenant keys), with every hold kept so the import's own holds get a distribution. */
+async function startSampler(obs:postgres.Sql,tenantId:string,intervalMs=25){
+ const names:[string,string,'ext'|'int4'][]=[['access','access-configuration:'+tenantId,'ext'],['leave','leave-dependency-configuration:'+tenantId,'ext'],
+  ['profile','profile-edit-policy:'+tenantId,'ext'],['cards',tenantId+':card-identifiers','ext'],['audit','audit-chain:'+tenantId,'int4']];
+ const keyOf=new Map<string,string>();
+ for(const [name,key,kind] of names){const [row]=await obs<{k:string}[]>`select (((k>>32)&4294967295)::oid::text||':'||(k&4294967295)::oid::text) as k from (select case when ${kind}='int4' then hashtext(${key})::bigint else hashtextextended(${key},0) end as k) x`;keyOf.set(row.k,name);}
+ const holds=new Map<string,{lock:string;app:string;first:number;last:number}>();let sampling=true;
+ const loop=(async()=>{while(sampling){
+  const rows=await obs<{pid:number;k:string;mode:string;xact:string;app:string}[]>`select l.pid,(l.classid::text||':'||l.objid::text) as k,l.mode,a.xact_start::text as xact,coalesce(a.application_name,'') as app
+   from pg_locks l join pg_stat_activity a on a.pid=l.pid where l.locktype='advisory' and l.granted and l.objsubid=1 and a.xact_start is not null
+    and l.database=(select oid from pg_database where datname=current_database()) and (l.classid::text||':'||l.objid::text)=any(${[...keyOf.keys()]}::text[])`;
+  const now=Date.now();
+  for(const r of rows){const lock=keyOf.get(r.k)!;const id=`${r.pid}|${r.xact}|${lock}|${r.mode}`;const h=holds.get(id)??{lock,app:r.app,first:now,last:now};h.last=now;if(r.app)h.app=r.app;holds.set(id,h);}
+  await sleep(intervalMs);}})();
+ return{async stop(){
+  sampling=false;await loop;
+  const all=[...holds.values()].map(h=>({lock:h.lock,import:h.app.startsWith('aihr-bulk:'),app:h.app,ms:h.last-h.first}));
+  const summary=(list:typeof all)=>{const ms=list.map(h=>h.ms);return{...stat(ms),over1s:ms.filter(v=>v>1000).length};};
+  const byLock:Record<string,unknown>={};
+  for(const lock of new Set(all.map(h=>h.lock)))byLock[lock]={import:summary(all.filter(h=>h.lock===lock&&h.import)),other:summary(all.filter(h=>h.lock===lock&&!h.import))};
+  const importApps:Record<string,unknown>={};
+  for(const app of new Set(all.filter(h=>h.import).map(h=>h.app)))importApps[app]=summary(all.filter(h=>h.app===app&&h.lock==='access'));
+  return{byLock,importAccessHoldsByPhase:importApps,longest:all.sort((a,b)=>b.ms-a.ms).slice(0,6).map(h=>({lock:h.lock,app:h.app,ms:h.ms}))};
+ }};
+}
 
 const required=(name:string,v:string|undefined)=>{if(!v)throw new Error(`${name} is required`);return v;};
 const port=required('REHEARSAL_PORT',process.env.REHEARSAL_PORT);
@@ -20,7 +46,7 @@ const OWNER_URL=required('MIGRATION_DATABASE_URL',process.env.MIGRATION_DATABASE
 for(const url of [required('DATABASE_URL',process.env.DATABASE_URL),OWNER_URL])if(new URL(url).port!==port)throw new Error('Refusing: rehearsal runs only against the disposable cluster port.');
 const TENANT=required('REHEARSAL_TENANT',process.env.REHEARSAL_TENANT),ADMIN=required('REHEARSAL_ADMIN',process.env.REHEARSAL_ADMIN);
 const ROWS=Number(process.env.IMPORT_ROWS??500),REVERT_ROWS=Number(process.env.REVERT_ROWS??0);
-const PHASES=new Set((process.env.PHASES??'sync,qualification,emergency,profile,family,late').split(','));
+const PHASES=new Set((process.env.PHASES??'baseline,sync,qualification,emergency,profile,family,late').split(','));
 if(process.env.AUDIT_HASH_CHAIN_ENABLED!=='true')process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 const stat=(values:number[])=>{const s=[...values].sort((a,b)=>a-b);return s.length?{n:s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.floor(s.length*.95)],max:s[s.length-1]}:{n:0,p50:0,p95:0,max:0};};
@@ -86,7 +112,7 @@ async function main(){
  /** One measured phase: probes and the lock sampler around one operation. */
  const phase=async(name:string,run:()=>Promise<unknown>,watch?:()=>Promise<number>)=>{
   lat=newLat();errors.length=0;seen.clear();visible=watch??null;stop=false;
-  const probes=runProbes();const sampler=await startTenantLockSampler(obs,TENANT);
+  const probes=runProbes();const sampler=await startSampler(obs,TENANT);
   const started=Date.now();let outcome:unknown;
   try{outcome=await run();}finally{stop=true;await probes;}
   const locks=await sampler.stop();
@@ -105,6 +131,8 @@ async function main(){
  const institutes=(prefix:string)=>async()=>(await obs<{n:number}[]>`select count(*)::int n from employee_qualification where tenant_id=${TENANT}::uuid and institute like ${prefix+'%'}`)[0].n;
  const contacts=(prefix:string)=>async()=>(await obs<{n:number}[]>`select count(*)::int n from person_emergency_contact where tenant_id=${TENANT}::uuid and remarks like ${prefix+'%'}`)[0].n;
 
+ // The host's own noise: the same probes and sampler with no import running.
+ if(PHASES.has('baseline'))await phase('baseline',()=>sleep(Number(process.env.BASELINE_SECONDS??45)*1000));
  if(PHASES.has('sync'))await phase('syncRegisterBefore',async()=>{
   const r=await commitSectionImport(admin,{section:'qualification',records:await records('qualification',2000),fileName:'Rehearsal · sync qualification.csv'});
   return{updated:r.updated,fileErrors:r.fileErrors};
