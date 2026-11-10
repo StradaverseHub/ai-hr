@@ -40,7 +40,7 @@ async function main(){
  const {createLeaveImportJob}=await import('../../core/leave-import-job');
  const {createLeaveGenerationJob,createEarnedAccrualJob}=await import('../../core/leave-cohort-job');
  const {accrueEarnedLeaveInBatches,expireCarriedLeaveInBatches}=await import('../../core/leave-cohort-run');
- const {accrueEarnedLeave}=await import('../../core/leave');
+ const {accrueEarnedLeave}=await import('../../packs/leave/service');
  const obs=postgres(OWNER_URL,{max:4,onnotice:()=>{}});
  const {entitlements}=await freshImportContext({tenantId:TENANT,userId:ADMIN,roles:['hr_admin']} as never);
  const [{person_id:adminPerson}]=await obs`select person_id from app_user where id=${ADMIN}::uuid`;
