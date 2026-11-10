@@ -15,6 +15,7 @@ import {createDb} from '../db/client';
 import * as schema from '../db/schema';
 import {setLeaveApprovalPolicy} from '../packs/leave/service';
 import {adminCtx,closeAll,owner,resetDb,seedBase} from './harness';
+import {copyTenantRowsAtPrefix} from './helpers/prefix-seed';
 beforeAll(async()=>{await resetDb();});afterAll(closeAll);
 
 const TAIL=[['0924_teras_outcome_record_mandates','1793330000324'],['0925_teras_rule_version_labels','1793330000325']] as const;
@@ -51,8 +52,9 @@ it('applies the Teras tail from 0890/0891 on over populated leave policy and app
     await target.client`insert into public.company(id,tenant_id,legal_name) values(${b.companyId},${b.tenantId},${company.name})`;
     continue;
    }
-   const rows=await owner.db.select().from(table).where(table===schema.tenant?eq(schema.tenant.id,b.tenantId):sql`tenant_id=${b.tenantId}::uuid`);
-   if(rows.length)await target.db.insert(table).values(rows);
+   // Prefix-era seed: only the columns these tables have before 0924. The combined release's pending A2C
+   // year-cycle job (5036, leave_type) and staged-import marker (5010, person) postdate it and must be null here.
+   await copyTenantRowsAtPrefix(owner,target,table,b.tenantId);
   }
   const snapshot=async()=>{const out:Record<string,unknown>={};
    for(const table of ['leave_type','leave_approval_policy','leave_approval_template'])out[table]=await target!.client.unsafe(`select to_jsonb(t)-'rule_version' as value from public.${table} t order by id`);
@@ -60,7 +62,14 @@ it('applies the Teras tail from 0890/0891 on over populated leave policy and app
   const old=await snapshot();expect((old.leave_type as unknown[]).length).toBeGreaterThan(0);expect(old.leave_approval_policy as unknown[]).toHaveLength(1);
 
   await migrate(target.db,{migrationsFolder:'db/migrations'});
-  expect(await snapshot()).toEqual(old);
+  // 5036 appends one nullable column to leave_type, the pending A2C year-cycle job. It must be present and null on
+  // every retained type, and only then is the row compared without it; any other change still fails.
+  const withoutPendingYearCycle=(out:Record<string,unknown>)=>({...out,leave_type:(out.leave_type as {value:Record<string,unknown>}[]).map(({value})=>{
+   expect(Object.hasOwn(value,'pending_year_cycle_job_id'),'leave_type.pending_year_cycle_job_id added by the tail').toBe(true);
+   expect(value.pending_year_cycle_job_id,'leave_type.pending_year_cycle_job_id').toBeNull();
+   const original={...value};delete original.pending_year_cycle_job_id;return {value:original};
+  })});
+  expect(withoutPendingYearCycle(await snapshot())).toEqual(old);
   const afterLedger=await target.db.execute<{hash:string;created_at:string}>(sql`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`);
   expect(afterLedger.slice(0,installed.length)).toEqual(beforeLedger);
   expect(afterLedger.slice(installed.length)).toEqual(tail.map(({tag,when})=>({hash:createHash('sha256').update(readFileSync(`db/migrations/${tag}.sql`)).digest('hex'),created_at:String(when)})));
