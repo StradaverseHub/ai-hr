@@ -1671,6 +1671,7 @@ async function recordImportRun(
           failedRows,
           errors: errors.slice(0, IMPORT_RUN_ERROR_CAP),
           errorsTruncated: failedRows > IMPORT_RUN_ERROR_CAP,
+          importSection: 'full',
         })
         .returning({ id: employeeImportRun.id });
       return row?.id ?? null;

@@ -1,3 +1,15 @@
+# Import History section type — 10 November 2026 MYT (unapplied)
+
+Board item ccd3a65c reserves `4500_import_history_kind` at idx 3900 / when
+1793330004200 (branch claude/fb-ccd3a65c-import-employees, based on origin/main
+f07f32dcd whose journal ends at 4202 / idx 3602 / when 1793330003902). The
+coordinator's survey saw a peer maximum of 4342 / idx 3742 / when 1793330004042,
+with 4501 reserved for another builder. A rescan of 7,016 local refs and the
+readable builder worktree journals found no other claim on 4500, idx 3900 or
+when 1793330004200. The SQL only adds a nullable column (no backfill, RLS or
+grant change). Recheck the installed ledger and peer claims before admission;
+the reservation grants no installation authority.
+
 # Schedule Group clock policy — 10 November 2026 MYT (unapplied)
 
 Reserve `4202_attendance_clock_policy_revisions` at idx 3602 and when

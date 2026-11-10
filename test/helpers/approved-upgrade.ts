@@ -66,10 +66,12 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:3600,when:1793330003900,tag:'4200_employee_loop_action_digest'},
  {idx:3601,when:1793330003901,tag:'4201_retire_attendance_formula_builder'},
  {idx:3602,when:1793330003902,tag:'4202_attendance_clock_policy_revisions'},
+ {idx:3900,when:1793330004200,tag:'4500_import_history_kind'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '4202_attendance_clock_policy_revisions':'4633648e6d0869af1205dcf0911c9b6a02daeb177a16c6a89c5d5bdccf758df6',
+ '4500_import_history_kind':'2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7',
  '4200_employee_loop_action_digest':'8fb9906f3f5a4828507a87fe0e162826ccbbe76430e4ca39993e9ab1301d967f',
  '4201_retire_attendance_formula_builder':'7929ff4d341d96873c3d7c7f0a6c7253674816ed65e9b8d44171218377559778',
  '4100_rewards_review_creator_independence':'2b985ae73e3da8c1ce3e7015829734632bff6ac550021dc644c59b9603083dff',

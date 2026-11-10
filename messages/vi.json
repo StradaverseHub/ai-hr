@@ -2937,7 +2937,8 @@
         "payItems": "Các khoản lương định kỳ ngoài lương cơ bản và phụ cấp hằng tháng — thêm ở thẻ Lương hoặc bằng chức năng nhập khoản lương.",
         "openingTax": "Số dư thuế đầu kỳ cho người vào giữa năm (TP3) — nhập ở thẻ Lương.",
         "holidayCalendar": "Lịch ngày nghỉ — một phân công có ngày hiệu lực với lịch sử riêng; đặt ở thẻ Chấm công sau khi nhập."
-      }
+      },
+      "historyButton": "Lịch sử nhập"
     },
     "wizard": {
       "deleteRecord": "Xóa hồ sơ",
@@ -3262,7 +3263,12 @@
         "bank_statutory": "Ngân hàng & Luật định",
         "employee_full": "Tất cả — nhân viên mới",
         "movement": "Biến động",
-        "information_correction": "Chỉ chỉnh sửa thông tin"
+        "information_correction": "Chỉ chỉnh sửa thông tin",
+        "profile": "Hồ sơ",
+        "family": "Gia đình",
+        "qualification": "Bằng cấp",
+        "emergency": "Liên hệ khẩn cấp",
+        "notRecorded": "Không được ghi nhận"
       },
       "reference": "Mã tham chiếu",
       "referenceLabel": "Mã tham chiếu {reference}",
@@ -3343,6 +3349,40 @@
       "employeeFull": {
         "created": "Đã tạo {code} · {name}",
         "willVoid": "Nhân viên này sẽ bị vô hiệu: bị loại khỏi danh sách, số lượng nhân sự và bảng lương, vẫn giữ trong nhật ký kiểm tra. Mã nhân viên, email và NRIC được giải phóng."
+      },
+      "listDescription": "Mọi tệp nhập nhân sự: ai đã nhập, khi nào, cho công ty nào và kết quả của từng dòng.",
+      "backToImport": "Nhập nhân viên",
+      "total": "Tổng",
+      "successful": "Thành công",
+      "failed": "Thất bại",
+      "totalRows": "Tổng số dòng",
+      "pasted": "Dữ liệu đã dán",
+      "openLog": "Mở Nhật ký nhập của {file}",
+      "log": {
+        "title": "Mọi dòng của tệp",
+        "hint": "Dòng đã lưu hiển thị nội dung thay đổi. Dòng chưa lưu hiển thị lý do. Chỉ hiển thị nhân viên của các công ty bạn được xem.",
+        "empty": "Bạn không xem được dòng nào của tệp này.",
+        "row": "Dòng",
+        "employee": "Nhân viên",
+        "result": "Kết quả",
+        "field": "Trường",
+        "before": "Trước",
+        "after": "Sau",
+        "reason": "Lý do đã nêu",
+        "saved": "Đã lưu",
+        "unchanged": "Không thay đổi",
+        "notSaved": "Chưa lưu",
+        "notConfirmed": "Đã kiểm tra, chưa lưu",
+        "nothingChanged": "Mọi giá trị đã khớp — không lưu gì."
+      },
+      "run": {
+        "noFile": "Lần nhập này giữ bản tóm tắt và các dòng chưa lưu. Bản thân tệp không được lưu trữ.",
+        "failedTitle": "Các dòng chưa lưu",
+        "hint": "Từng dòng chưa lưu kèm lý do.",
+        "truncated": "Hiển thị {shown} trên {total} dòng chưa lưu.",
+        "noDetail": "Không có chi tiết dòng nào được ghi nhận cho lần nhập này.",
+        "none": "Mọi dòng đã được lưu.",
+        "reasonColumn": "Lý do"
       }
     },
     "informationCorrection": {
@@ -3381,14 +3421,38 @@
         "hiredOn": "Ngày vào tập đoàn",
         "joinDate": "Ngày vào làm",
         "gradeId": "Bậc công việc",
-        "employmentType": "Loại việc làm"
+        "employmentType": "Loại việc làm",
+        "businessUnitId": "Đơn vị kinh doanh",
+        "departmentId": "Phòng ban",
+        "positionId": "Vị trí",
+        "orgDivision": "Khối",
+        "orgBranch": "Chi nhánh",
+        "orgRegion": "Khu vực",
+        "orgLine": "Tuyến",
+        "orgSection": "Bộ phận",
+        "orgTeam": "Nhóm",
+        "orgBase": "Cơ sở",
+        "employmentCategory": "Danh mục",
+        "probationValue": "Thời gian thử việc",
+        "probationUnit": "Đơn vị thời gian thử việc",
+        "extendedProbationValue": "Thời gian thử việc gia hạn",
+        "extendedProbationUnit": "Đơn vị thời gian thử việc gia hạn",
+        "confirmationDate": "Ngày xác nhận chính thức",
+        "noticeBeforeConfirmationValue": "Báo trước khi xác nhận chính thức",
+        "noticeBeforeConfirmationUnit": "Đơn vị báo trước khi xác nhận chính thức",
+        "noticeAfterConfirmationValue": "Báo trước sau khi xác nhận chính thức",
+        "noticeAfterConfirmationUnit": "Đơn vị báo trước sau khi xác nhận chính thức",
+        "managerEmploymentId": "Cấp trên trực tiếp"
       },
       "statuses": {
         "applied": "Thành công",
         "failed": "Thất bại",
         "unchanged": "Không đổi"
       },
-      "effective": "Xử lý trong tương lai sử dụng thông tin đã sửa từ {date}."
+      "effective": "Xử lý trong tương lai sử dụng thông tin đã sửa từ {date}.",
+      "templateFields": "Các trường mẫu này sửa được (trường mới được làm nổi bật). Ô trống giữ nguyên giá trị hiện có.",
+      "templateFieldsLabel": "Các trường mẫu này sửa được",
+      "ownersNote": "Lương cơ bản và các ngày nghỉ việc được sửa trên sự kiện đã ghi nhận chúng: dùng nhập Biến động với Action \"Update\". Phương thức thanh toán nằm trong nhập Ngân hàng và Pháp định."
     }
   },
   "leave": {

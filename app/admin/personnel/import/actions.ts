@@ -112,7 +112,7 @@ export async function prepareEmployeeImportEvaluationCommitAction(preparation:un
 }
 async function commitMeasuredEmployeeImport(csv:string,companyId:string,binding:EmployeeImportEvaluationBinding,dependentsCsv?:string,registers?:PersonnelRegisterTexts,allocationsCsv?:string,allocationToken?:string,fileName?:string){
  try{const inputs=measuredInputs(csv,companyId,dependentsCsv,registers,allocationsCsv),captured=EmployeeImportEvaluationBindingSchema.parse(structuredClone(binding)),ctx=await getBrowserCommandSession();
-  const result=await commitEmployeeImport(ctx,{...inputs,allocationToken,fileName:fileName??'',evaluationBinding:captured});revalidatePath('/admin/personnel');revalidatePath('/admin/personnel/import');return result;
+  const result=await commitEmployeeImport(ctx,{...inputs,allocationToken,fileName:fileName??'',evaluationBinding:captured});revalidatePath('/admin/personnel');revalidatePath('/admin/personnel/import');revalidatePath('/admin/personnel/import/history');return result;
  }catch{throw Error(EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE);}
 }
 /** Recovery is metadata/event reconciliation only. It can NEVER re-import the original source. */
