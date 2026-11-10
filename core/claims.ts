@@ -1808,6 +1808,16 @@ export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: s
   return withTenant(ctx, (tx) => employeeClaimTypesTx(tx, employmentId));
 }
 
+/** The two facts of each type getEmployeeClaimTypes lists that the Before payroll checklist uses (core/pre-salary/
+ * person-items.ts): its receipt rule and receipt-age window, exactly as getEmployeeClaimTypes sets them, for the same
+ * types (unarchived and visible under Claims RLS) in the same order, behind the same Claims gate. Neither depends on
+ * the employment, a policy, an item or a balance, so none of those are read: no limit, balance or amount. */
+export function claimTypeReceiptRules(ctx: SessionContext): Promise<{id: string; requiresReceipt: boolean; maxReceiptAgeDays: number}[]> {
+  return withTenant(ctx, async (tx) => (await tx.select({id: claimType.id, requiresReceipt: claimType.requiresReceipt, maxReceiptAgeDays: claimType.maxReceiptAgeDays})
+    .from(claimType).where(isNull(claimType.archivedAt)).orderBy(claimType.code))
+    .map((t) => ({id: t.id, requiresReceipt: t.requiresReceipt, maxReceiptAgeDays: t.maxReceiptAgeDays ?? RECEIPT_BACKDATE_DAYS})));
+}
+
 /** AI v2 W5 — getEmployeeClaimTypes in the caller's own transaction, so the Assistant read facade
  *  (core/assistant-read-session.ts) reads the very same limits inside its read-only, guarded transaction. The
  *  caller passes an employment it has already resolved as the person's own; RLS still scopes every row. */

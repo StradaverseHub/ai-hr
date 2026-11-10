@@ -645,6 +645,21 @@ it('completes every manager Home card and Today section read without a handled f
    await streamHome(actor,month,null,GET,bundleFrames);
    compare(subject,'bundle:stream',byCard(ownerFrames),byCard(bundleFrames));
   }
+  // Before payroll's narrowed reads against the owners they replace: TP1 and TP3 without the payroll-history barrier
+  // (one read-only snapshot each), and each claim type's receipt rule without its limits and balances.
+  {
+   const payrollService=await import('../../packs/payroll/service'),claimsService=await import('../../packs/claims/service');
+   const ctx=actor.ctx,year=Number(today.slice(0,4));
+   compare(subject,'beforePayroll:tp1',await outcome(()=>withIndependentTransactions(()=>payrollService.listMyTp1Declarations(ctx,{assessmentYear:year}))),
+    await outcome(()=>withSharedReadSnapshot(ctx,()=>payrollService.listMyTp1DeclarationsSnapshot(ctx,{assessmentYear:year}))));
+   compare(subject,'beforePayroll:tp3Employments',await outcome(()=>withIndependentTransactions(()=>payrollService.myTp3Employments(ctx))),
+    await outcome(()=>withSharedReadSnapshot(ctx,()=>payrollService.myTp3EmploymentsSnapshot(ctx))));
+   compare(subject,'beforePayroll:tp3History',await outcome(()=>withIndependentTransactions(()=>payrollService.myTp3History(ctx))),
+    await outcome(()=>withSharedReadSnapshot(ctx,()=>payrollService.myTp3HistorySnapshot(ctx))));
+   compare(subject,'beforePayroll:claimRules',await outcome(async()=>(await withIndependentTransactions(()=>claimsService.getEmployeeClaimTypes(ctx,actor.employmentId)))
+     .map(type=>({id:type.id,requiresReceipt:type.requiresReceipt,maxReceiptAgeDays:type.maxReceiptAgeDays}))),
+    await outcome(()=>withSharedReadSnapshot(ctx,()=>claimsService.claimTypeReceiptRules(ctx))));
+  }
  }
  // Isolation: a foreign identity inside a session, and two identities' sessions at once across tenants.
  const isolation:Record<string,unknown>={};report.isolation=isolation;
