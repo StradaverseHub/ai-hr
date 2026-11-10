@@ -82,9 +82,14 @@ describe('atomic Schedule Group section ownership',()=>{
     await updateAttendanceRuleSection(ctx,{ruleId:id,section:'attendance',fields:{applyDeductions:'yes' as unknown as boolean}});
     expect((await getAttendanceRule(ctx,id))!.applyDeductions,'a non-boolean is never read as on').toBe(false);
     await updateAttendanceRuleSection(ctx,{ruleId:id,section:'attendance',fields:{applyDeductions:true}});
-    expect((await getAttendanceRule(ctx,id))!.applyDeductions).toBe(true);
+    const switchedOn=(await getAttendanceRule(ctx,id))!;
+    expect(switchedOn.applyDeductions).toBe(true);
+    // Back off, so the other-tenant refusal below compares against the same stored row as before.
+    await updateAttendanceRuleSection(ctx,{ruleId:id,section:'attendance',fields:{applyDeductions:false}});
+    expect({...(await getAttendanceRule(ctx,id))!,updatedAt:after.updatedAt}).toEqual(after);
     const other=await seedBase();
+    const beforeForeign=await getAttendanceRule(ctx,id);
     await expect(updateAttendanceRuleSection(adminCtx(other),{ruleId:id,section:'attendance',fields:{lateGracePeriodMinutes:99}})).rejects.toThrow();
-    expect(await getAttendanceRule(ctx,id)).toEqual(after);
+    expect(await getAttendanceRule(ctx,id)).toEqual(beforeForeign);
   });
 });

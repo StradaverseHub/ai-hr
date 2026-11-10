@@ -66,12 +66,12 @@ describe('c03670cc — typed band rates change the reporting column, never the p
     const { ruleId } = await employeeOnBand(1.75, `typed_store_${randomUUID()}@t.local`);
     const [row] = await owner.db.select().from(schema.attendanceRuleOtRow).where(eq(schema.attendanceRuleOtRow.ruleId, ruleId));
     expect(row.rate).toBe('1.75');
-    await expect(createAttendanceRule(adminCtx(b), {
+    await expect((async () => createAttendanceRule(adminCtx(b), {
       name: `Three decimals ${randomUUID().slice(0, 6)}`, status: 'active', lateGracePeriodMinutes: 0, lateAfterMinutes: 0,
       lateDeductMinutes: 0, includeGraceInLateness: false, earlyGracePeriodMinutes: 0, earlyAfterMinutes: 0,
       earlyDeductMinutes: 0, includeGraceInEarlyOut: false, applyToEarlyOt: false,
       otRows: [{ fromMinutes: 1, toMinutes: 0, ratePattern: 'variable', rate: 1.755, phRate: null, roundingMode: 'none', roundToMinutes: null }],
-    }), 'a third decimal is refused, never rounded to 1.76').rejects.toThrow(/two decimal places/);
+    }))(), 'a third decimal is refused, never rounded to 1.76').rejects.toThrow(/two decimal places/);
   });
 
   it('1.5 and 1.75 bands with the same punches produce the same payroll overtime, reported in different columns', async () => {

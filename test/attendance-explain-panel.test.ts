@@ -395,7 +395,8 @@ describe('D. the panel chrome and the enum-driven keys resolve', () => {
   });
 
   it('there is a bucket label for every bucket the split can carry', () => {
-    const buckets = Object.keys(split());
+    // c03670cc — `other` (typed Variable rates) is optional on the split, present only when used.
+    const buckets = [...Object.keys(split()), 'other'];
     const mapped = [...PANEL.matchAll(/^\s*(\w+):\s*'col[A-Za-z0-9]+',$/gm)].map((m) => m[1]);
     expect(mapped.sort()).toEqual(buckets.sort());
   });
