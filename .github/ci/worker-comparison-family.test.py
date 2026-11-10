@@ -300,7 +300,51 @@ class ParallelCellTests(FamilyTests):
                     owner.publish(owner.clock(), 0, 3)
                 owner.publish(owner.clock(), 0, 2)
                 final = json.loads((out / 'summary.json').read_text())
-                self.assertEqual(final['processOwner'], {'settled': True, 'cellBarriers': 1, 'runnerExitCode': 0})
+                self.assertEqual(final['processOwner'], {'settled': True, 'cellBarriers': 1, 'runnerExitCode': 0,
+                                                         'exitedOutsideSession': 0})
+
+
+class ExitedOutsideSessionTests(unittest.TestCase):
+    runner, pid = 71, 997
+
+    def setUp(self):
+        self.addCleanup(owner.ADOPTEES.update, dict(owner.ADOPTEES))
+        owner.ADOPTEES.update(live=0, exitedInSession=0, exitedOutsideSession=0, reapedOutsideSession=0)
+
+    def row(self, **change):
+        return {'pid': self.pid, 'parent': os.getpid(), 'state': 'Z', 'session': 500, 'group': 500, 'start': 20, **change}
+
+    def reap(self, row, allow):
+        status = type('Status', (), {'si_pid': self.pid, 'si_signo': owner.signal.SIGCHLD, 'si_code': owner.os.CLD_EXITED})()
+        with patch.object(owner.KERNEL, 'identity', return_value=row), patch.object(owner.os, 'P_PIDFD', 5, create=True), \
+                patch.object(owner.os, 'pidfd_open', return_value=9, create=True), \
+                patch.object(owner.os, 'waitid', return_value=status, create=True), patch.object(owner.os, 'close'):
+            owner.reap_exited_adoptees(self.runner, [self.pid], allow)
+
+    def test_serial_owner_keeps_refusing_an_exited_helper_outside_the_session(self):
+        with self.assertRaises(ValueError):
+            self.reap(self.row(), False)
+        self.assertEqual(owner.ADOPTEES['reapedOutsideSession'], 0)
+
+    def test_one_cell_owner_collects_it_and_counts_it(self):
+        self.reap(self.row(), True)
+        self.assertEqual(owner.ADOPTEES['reapedOutsideSession'], 1)
+
+    def test_one_cell_owner_still_refuses_any_live_or_foreign_child(self):
+        for change in ({'state': 'S'}, {'state': 'R'}, {'parent': 100}):
+            with self.assertRaises(ValueError):
+                self.reap(self.row(**change), True)
+        self.assertEqual(owner.ADOPTEES['reapedOutsideSession'], 0)
+
+    def test_modes_bind_the_outside_session_allowance(self):
+        self.assertEqual({course: row['exited_outside_session'] for course, row in owner.MODES.items()},
+                         {'serial-2-4-8': False, 'parallel-2-4-8': True, 'parallel-smoke': True})
+
+    def test_classification_is_counts_only(self):
+        rows = {1: self.row(pid=1, state='S'), 2: self.row(pid=2, session=71, group=71), 3: self.row(pid=3)}
+        with patch.object(owner.KERNEL, 'identity', side_effect=rows.__getitem__):
+            self.assertEqual(owner.classify_adoptees(71, [1, 2, 3]),
+                             {'live': 1, 'exitedInSession': 1, 'exitedOutsideSession': 1})
 
 
 class FamilyExitWaitTests(unittest.TestCase):

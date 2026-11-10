@@ -30,15 +30,17 @@ def clock():
 MODES = {
     'serial-2-4-8': {'job': 'selected-tests', 'entry': '--serial-2-4-8', 'kind': 'HOSTED_WORKER_COMPARISON_V1',
                      'cells': 3, 'active': 6600_000, 'minimum': 2560_000, 'settlement': 6960_000, 'final': 7080_000,
-                     'outer': 7100_000},
+                     'outer': 7100_000, 'exited_outside_session': False},
     'parallel-2-4-8': {'job': 'worker-cell', 'entry': '--parallel-cell', 'kind': 'HOSTED_WORKER_COMPARISON_CELL_V1',
                        'cells': 1, 'active': 3000_000, 'minimum': 1390_000, 'settlement': 3360_000, 'final': 3480_000,
-                       'outer': 3500_000},
+                       'outer': 3500_000, 'exited_outside_session': True},
 }
 MODES['parallel-smoke'] = MODES['parallel-2-4-8']
 # Exiting descendants may still be tearing down when cleanup returns. Wait, bounded,
 # for the whole owned family to finish exiting before any census is taken.
 FAMILY_EXIT_WAIT_MS = 20_000
+# Closed counts for the public record. Browser helpers leave the runner's session by design.
+ADOPTEES = {'live': 0, 'exitedInSession': 0, 'exitedOutsideSession': 0, 'reapedOutsideSession': 0}
 
 
 def mode():
@@ -102,17 +104,37 @@ def exact_child(child, descriptor, birth):
     require(row['parent'] == os.getpid() and row['start'] == birth and row['state'] not in ('Z', 'X'))
 
 
-def reap_exited_adoptees(child, candidates):
-    # The subreaper started childless and launched just the session leader.
-    # A helper that has already exited can be adopted before its parent exits.
+def classify_adoptees(child, candidates):
+    counts = {'live': 0, 'exitedInSession': 0, 'exitedOutsideSession': 0}
+    for pid in candidates:
+        try:
+            row = KERNEL.identity(pid)
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        if row['state'] not in ('Z', 'X'):
+            counts['live'] += 1
+        elif row['group'] == row['session'] == child:
+            counts['exitedInSession'] += 1
+        else:
+            counts['exitedOutsideSession'] += 1
+    ADOPTEES.update(counts)
+    return counts
+
+
+def reap_exited_adoptees(child, candidates, allow_outside_session=False):
+    # The subreaper started childless and launched just the session leader, so every
+    # adoptee descends from it. A helper can be adopted once its parent exits. Serial reuse
+    # refuses one that left the session. A one-cell runner is never reused and may collect
+    # it once exited: anything it left alive is adopted here too and stays refused as live.
     require(0 < len(candidates) <= 32 and len(set(candidates)) == len(candidates))
     require(hasattr(os, 'P_PIDFD') and hasattr(os, 'pidfd_open'))
     owner = os.getpid()
     for pid in candidates:
         require(type(pid) is int and pid > 1 and pid not in (owner, child))
         before = KERNEL.identity(pid)
+        inside = before['group'] == before['session'] == child
         require(before['pid'] == pid and before['parent'] == owner and before['state'] == 'Z'
-                and before['group'] == before['session'] == child)
+                and (inside or allow_outside_session))
         descriptor = os.pidfd_open(pid)
         try:
             require(KERNEL.identity(pid) == before)
@@ -121,6 +143,8 @@ def reap_exited_adoptees(child, candidates):
                     and status.si_code in (os.CLD_EXITED, os.CLD_KILLED, os.CLD_DUMPED))
             require(KERNEL.identity(pid) == before)
             require(os.waitid(os.P_PIDFD, descriptor, os.WEXITED | os.WNOHANG) == status)
+            if not inside:
+                ADOPTEES['reapedOutsideSession'] += 1
         finally:
             os.close(descriptor)
 
@@ -156,7 +180,9 @@ def barrier(child, descriptor, birth, mark=lambda _check, _count=None: None, dea
         if actual != expected:
             mark(check, len(actual))
             if reap and actual.count(child) == 1:
-                reap_exited_adoptees(child, [pid for pid in actual if pid != child])
+                others = [pid for pid in actual if pid != child]
+                classify_adoptees(child, others)
+                reap_exited_adoptees(child, others, mode()['exited_outside_session'])
                 actual = read()
                 if actual != expected:
                     mark(check, len(actual))
@@ -243,6 +269,8 @@ def publish(anchor, code, ordinal):
                     and identity['runId'] == int(os.environ['GITHUB_RUN_ID']) and identity['runAttempt'] == 1
                     and 'processOwner' not in summary and 1 <= ordinal <= limits['cells'] + 1 and clock() < final_end)
             summary['processOwner'] = {'settled': True, 'cellBarriers': ordinal - 1, 'runnerExitCode': code}
+            if limits['exited_outside_session']:
+                summary['processOwner']['exitedOutsideSession'] = ADOPTEES['reapedOutsideSession']
             data = (json.dumps(summary, indent=2) + '\n').encode('utf-8')
             require(len(data) <= limit)
             packet = 'summary-building.json'
@@ -366,5 +394,6 @@ if __name__ == '__main__':
         raise SystemExit(run(mark))
     except (OSError, ValueError, KeyError, subprocess.SubprocessError):
         print(json.dumps(failure_fact(stage, ordinal, check, count)), file=sys.stderr, flush=True)
+        print(json.dumps({'kind': 'WORKER_COMPARISON_FAMILY_ADOPTEES_V1', **ADOPTEES}), file=sys.stderr, flush=True)
         print('Worker comparison family admission or settlement refused', file=sys.stderr, flush=True)
         raise SystemExit(1)
