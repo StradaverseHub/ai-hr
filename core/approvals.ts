@@ -154,7 +154,7 @@ export function decisionEmploymentAuthoritySql(ctx:SessionContext,subject:SQL,sc
  if(admin)return sql`(not ${self})`;
  if(!person)return sql`false`;
  return sql`(not ${self} and (${currentAdministrativeManagerSql(subject,person)}
-  or ${subject}=any((select app.delegated_subject_ids(${scope?.module??null}::text,${scope?.taskType??null}::text)))))`;
+  or ${subject}=any(cast((select app.delegated_subject_ids(${scope?.module??null}::text,${scope?.taskType??null}::text)) as uuid[]))))`;
 }
 
 /** Current authority for a bounded batch of read-only task subjects. */
