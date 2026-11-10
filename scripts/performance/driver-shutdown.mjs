@@ -302,7 +302,11 @@ export function measuredPreflightLockWitnesses(samples,window){
   if(row.startedMs<=priorStart||activeEnds.length>=2)return null;
   activeEnds.push(row.completedMs);priorStart=row.startedMs;
  }
- const byCompletion=byStart.filter(row=>row.startedMs>=startMs&&row.completedMs<=endMs)
+ return disjointLockWitnesses(byStart,window);
+}
+
+function disjointLockWitnesses(samples,{startMs,endMs}){
+ const byCompletion=samples.filter(row=>row.startedMs>=startMs&&row.completedMs<=endMs)
   .sort((left,right)=>left.completedMs-right.completedMs||right.startedMs-left.startedMs);
  const witnesses=[];
  for(const row of byCompletion){
@@ -342,7 +346,10 @@ export function developmentNativePreflightLockWindowEvidence(samples,window,clos
  const nativeWindow={startMs:bootStartCs*10,endMs:(bootEndCs+1)*10};
  const projected=samples.filter(row=>row.nativeOpenedCs>=bootStartCs+1&&row.nativeClosedCs+1<=bootEndCs)
   .map(row=>({...row,startedMs:row.nativeOpenedCs*10,completedMs:(row.nativeClosedCs+1)*10}));
- const native=developmentMeasuredPreflightLockWindowEvidence(projected,nativeWindow,true);
+ // The raw schedule above proves the two actual slots. Native brackets are
+ // outward bounds and can overlap or share a start even when the probes did not.
+ const witnesses=disjointLockWitnesses(projected,nativeWindow);
+ const native=developmentLockWindowEvidence('preflight',witnesses,nativeWindow,true);
  const {observedBlockingSamples}=client;
  if(!native.coveragePass)return {...native,observedBlockingSamples};
  return {...native,observedBlockingSamples,blockingSamples:observedBlockingSamples,

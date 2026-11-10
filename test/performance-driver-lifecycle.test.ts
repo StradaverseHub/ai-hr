@@ -395,6 +395,42 @@ it('qualifies only actual bounded native envelopes inside the actor window at th
  });
 });
 
+const nativeWitnessModel=(start:number,end:number,nativeOpenedCs:number,nativeClosedCs:number)=>
+ ({...legacyLockRow(start,end),appSessions:2,nativeOpenedCs,nativeClosedCs});
+
+it.each([
+ {name:'three apparent overlaps after outward rounding',samples:[
+  nativeWitnessModel(10,259.8,101,126),nativeWitnessModel(135,265,113,126),
+  nativeWitnessModel(260,275,126,127),nativeWitnessModel(385,400,138,140),
+ ]},
+ {name:'two distinct launches in the same server start bucket',samples:[
+  nativeWitnessModel(10,260,125,126),nativeWitnessModel(135,267,125,126),nativeWitnessModel(385,399,138,139),
+ ]},
+])('selects actual disjoint witnesses despite $name',({samples})=>{
+ const window={startMs:0,endMs:600,bootStartCs:100,bootEndCs:160};
+ expect(measuredPreflightLockWitnesses(samples,window)).not.toBeNull();
+ expect(developmentNativePreflightLockWindowEvidence(samples,window,true)).toMatchObject({
+  pass:true,reason:null,coveragePass:true,observedBlockingSamples:0,qualifiedSamples:2,maxGapUs:500000,
+ });
+ const overlappingPositive={...samples[0],blockingAppSessions:1};
+ expect(developmentNativePreflightLockWindowEvidence([overlappingPositive,...samples.slice(1)],window,true)).toMatchObject({
+  pass:false,coveragePass:true,reason:'blocking-observed',blockingSamples:1,observedBlockingSamples:1,
+ });
+});
+
+it('refuses an actual third in-flight probe or a 4097th real completion before selecting native witnesses',()=>{
+ const window={startMs:0,endMs:600,bootStartCs:100,bootEndCs:160};
+ const three=[nativeWitnessModel(10,400,101,102),nativeWitnessModel(135,405,113,114),nativeWitnessModel(260,410,126,127)];
+ expect(measuredPreflightLockWitnesses(three,window)).toBeNull();
+ expect(developmentNativePreflightLockWindowEvidence(three,window,true)).toMatchObject({
+  pass:false,coveragePass:false,reason:'sample-order',
+ });
+ const overflow=Array.from({length:4097},(_,index)=>nativeWitnessModel(index*10,index*10+1,index,index));
+ expect(developmentNativePreflightLockWindowEvidence(overflow,{...window,endMs:41000,bootEndCs:4200},true)).toMatchObject({
+  pass:false,coveragePass:false,reason:'samples-unknown',
+ });
+});
+
 it('does not admit an early monotonic timer callback as an observation',async()=>{
  vi.useFakeTimers({now:0});
  let debtMs=0;
