@@ -11,13 +11,16 @@ import type {RosterImportResult} from './roster-import';
 export class RosterBulkJobError extends Error{constructor(message:string,readonly status=400){super(message);this.name='RosterBulkJobError';}}
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
-/** What the worker reads back (bulk_job.input). The upload's file is the job's source content, not input. */
+/** What the worker reads back (bulk_job.input). The upload's file is the job's source content, not input.
+ * The top-level keys and their JSON types are the kind's declared input_shape (migration 5040), which the database
+ * checks at admission. A shape has no null, so a key that would be null is left out and read back as null: a grid
+ * brush with no company chosen, and a Schedule Group batch that takes the employees out of every group. */
 export type RosterBulkInput=
  |{op:'generate';companyId:string;generate:RosterGenerateInput}
  |{op:'copy';companyId:string;copy:{employmentIds:string[];sourceFrom:string;sourceTo:string;targetFrom:string}}
- |{op:'assign';companyId:string|null;assign:{employmentIds:string[];shiftDates:string[];brush:string}}
+ |{op:'assign';companyId?:string;assign:{employmentIds:string[];shiftDates:string[];brush:string}}
  |{op:'import';companyId:string;import:{month:string;fileName:string}};
-export type ScheduleGroupBulkInput={employmentIds:string[];attendanceRuleId:string|null;returnQuery:string};
+export type ScheduleGroupBulkInput={employmentIds:string[];attendanceRuleId?:string;returnQuery:string};
 
 /** The outcomes the synchronous paths returned, kept on the finished job (bulk_job.result). */
 export type RosterBulkResult=
@@ -64,7 +67,7 @@ export async function enqueueRosterAssignJob(ctx:SessionContext,p:{companyId?:st
  assertRosterDatesWritable(ctx,p.shiftDates);
  const assign={employmentIds:p.employmentIds.slice(),shiftDates:p.shiftDates.slice(),brush:p.brush};
  const companyId=p.companyId&&uuid.test(p.companyId)?p.companyId:null;
- const view=await admit(ctx,ROSTER_BULK_KIND,{op:'assign',companyId,assign} satisfies RosterBulkInput,companyId?[companyId]:[],undefined,p.operationKey);
+ const view=await admit(ctx,ROSTER_BULK_KIND,{op:'assign',...(companyId?{companyId}:{}),assign} satisfies RosterBulkInput,companyId?[companyId]:[],undefined,p.operationKey);
  // The creator is on the grid now; its polls keep this current (a short watched brush sends no bell notice).
  await withTenant(ctx,tx=>markBulkJobWatchedTx(tx,view.id)).catch(()=>undefined);
  return view;
@@ -83,7 +86,7 @@ export function enqueueScheduleGroupBulkJob(ctx:SessionContext,p:{employmentIds:
  if(!isAdmin(ctx))throw new RosterBulkJobError('Forbidden',403);
  const ids=[...new Set(p.employmentIds.map(v=>v.trim()).filter(Boolean))].sort();
  if(ids.length===0)throw new NoEmploymentsSelectedError();
- const input:ScheduleGroupBulkInput={employmentIds:ids,attendanceRuleId:p.attendanceRuleId,returnQuery:p.returnQuery.slice(0,4000)};
+ const input:ScheduleGroupBulkInput={employmentIds:ids,...(p.attendanceRuleId===null?{}:{attendanceRuleId:p.attendanceRuleId}),returnQuery:p.returnQuery.slice(0,4000)};
  return admit(ctx,SCHEDULE_GROUP_BULK_KIND,input,[],undefined,p.operationKey);
 }
 

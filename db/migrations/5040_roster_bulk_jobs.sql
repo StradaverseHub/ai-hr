@@ -8,4 +8,14 @@
 -- Roster generation, copy, upload and the grid's bulk brush run as one background kind; Schedule Group bulk
 -- assignment as another (ADR 2026-11-10 roster bulk jobs). One active job of each per tenant, so two bulk roster
 -- operations never interleave their per-employee writes. No new table: steps live in bulk_job_step (5011).
-INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES('roster_bulk',NULL,'tenant'),('schedule_group_bulk',NULL,'tenant');
+--
+-- Hardened kernel (5013): each kind declares the top-level keys and JSON types of its admission input
+-- (core/roster-bulk-job.ts). A shape has no null, so a key that would be null is left out and is optional here.
+--  roster_bulk: op names the operation and one of generate, copy, assign and import carries its request; companyId
+--   is absent for a grid brush with no company chosen. The upload's file is the job's source, not its input.
+--  schedule_group_bulk: attendanceRuleId is absent when the batch takes the employees out of every Schedule Group.
+-- input_max_bytes: one operation may name up to 100,000 employments (lib/roster-selection.ts, 4,000,002 bytes of
+-- JSON), above the 1 MiB default; 8 MiB covers that list as stored text. Neither finalize needs the owner connection.
+INSERT INTO bulk_job_kind(kind,scope_kind,exclusive,input_shape,input_max_bytes,finalize_owner) VALUES
+ ('roster_bulk',NULL,'tenant','{"op":"string","companyId":"string?","generate":"object?","copy":"object?","assign":"object?","import":"object?"}'::jsonb,8388608,false),
+ ('schedule_group_bulk',NULL,'tenant','{"employmentIds":"array","attendanceRuleId":"string?","returnQuery":"string"}'::jsonb,8388608,false);
