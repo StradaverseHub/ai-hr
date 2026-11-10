@@ -1,5 +1,7 @@
 import {EmployeePersonalHome} from '@/components/employee-home/personal-home';
 import {HomeAccessError,readEmployeeHomeIdentity} from '@/core/employee-home';
+import {withSharedReadSnapshot} from '@/db/client';
+import {requestReadScope} from '@/lib/request-read-scope';
 import {notFound} from 'next/navigation';
 import { Suspense, type ReactNode } from 'react';
 import Link from 'next/link';
@@ -218,7 +220,7 @@ async function DashboardMore({
     // Only an explicit workbench request resolves management authority here; its selected own
     // identity is salary-free and cannot be replaced by a query-string role or company scope.
     if(homeQuery?.workspace!=='team')return personalLanding();
-    const identity=await readEmployeeHomeIdentity(s,homeQuery.employmentId).catch(error=>{
+    const identity=await withSharedReadSnapshot(s,()=>readEmployeeHomeIdentity(s,homeQuery.employmentId),undefined,requestReadScope()).catch(error=>{
       if(error instanceof HomeAccessError&&error.code==='employmentUnavailable')notFound();
       throw error;
     });

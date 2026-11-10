@@ -7,8 +7,9 @@
  * repeated identical reads are answered from the first execution as independent copies, within one request only. */
 import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,describe,expect,it} from 'vitest';
-import {withIndependentTransactions,withSharedReadSnapshot,withTenant,type SessionContext,type Tx} from '../db/client';
-import {classifySharedStatement,type SharedReadStats} from '../db/shared-read';
+import {declareSharedReadWindow,requestScopedReadStats,withIndependentTransactions,withSharedReadSnapshot,withTenant,type SessionContext,type Tx} from '../db/client';
+import {classifySharedStatement,sharedReadWindow,sharedSnapshotValue,type SharedReadStats} from '../db/shared-read';
+import {requestReadScope,withRequestReadScope} from '../lib/request-read-scope';
 import {adminCtx,closeAll,migrateTestDb,resetDb,seedBase,type Base} from './harness';
 
 let a:Base,b:Base,ctxA:SessionContext,ctxB:SessionContext;
@@ -128,6 +129,41 @@ describe('shared read snapshot',()=>{
   const off=await withIndependentTransactions(()=>withSharedReadSnapshot(ctxA,()=>probe(ctxA,'off')));
   expect(off.iso).toBe('read committed');
   expect(sessions).toHaveLength(2);
+ });
+
+ it('one request scope shares one session per identity across its compositions, then commits when idle',async()=>{
+  const scope={};
+  const compose=(ctx:SessionContext,tag:string)=>withSharedReadSnapshot(ctx,()=>probe(ctx,tag),undefined,scope);
+  const [one,two,foreign]=await Promise.all([compose(ctxA,'one'),compose(ctxA,'two'),compose(ctxB,'foreign')]);
+  expect(one.iso).toBe('repeatable read');
+  expect([two.at,two.pid]).toEqual([one.at,one.pid]);
+  expect(foreign.iso).toBe('repeatable read');
+  expect(foreign.pid).not.toBe(one.pid);
+  expect(foreign.companies).toEqual([b.companyId]);
+  expect(one.companies).toEqual([a.companyId]);
+  const stats=await requestScopedReadStats(scope);
+  expect(stats.map(row=>[row.carriers,row.joins])).toEqual([[1,2],[1,1]]);
+  // The idle carrier committed: a later composition of the same request opens a fresh snapshot.
+  const later=await compose(ctxA,'later');
+  expect(later.at).not.toBe(one.at);
+  expect((await requestScopedReadStats(scope))[0].carriers).toBe(2);
+  // Without a scope (no request is rendering) every composition keeps its own snapshot, exactly as before.
+  expect(requestReadScope()).toBeUndefined();
+  const supplied={};
+  expect(await withRequestReadScope(supplied,async()=>requestReadScope())).toBe(supplied);
+ });
+
+ it('serves a declared window only inside the carrier, and computes a snapshot value once per carrier',async()=>{
+  let computed=0;
+  const value=(tx:Tx)=>sharedSnapshotValue(tx,'k',async()=>{computed++;return {n:computed};});
+  const inside=await withSharedReadSnapshot(ctxA,async()=>{
+   declareSharedReadWindow('e','2026-01-01','2026-01-31');
+   return withTenant(ctxA,async tx=>({covered:sharedReadWindow(tx,'e','2026-01-05','2026-01-09'),wider:sharedReadWindow(tx,'e','2025-12-31','2026-01-09'),
+    other:sharedReadWindow(tx,'f','2026-01-05','2026-01-09'),values:[await value(tx),await value(tx)]}));
+  });
+  expect(inside).toEqual({covered:{from:'2026-01-01',to:'2026-01-31'},wider:null,other:null,values:[{n:1},{n:1}]});
+  const own=await withTenant(ctxA,async tx=>({window:sharedReadWindow(tx,'e','2026-01-05','2026-01-09'),values:[await value(tx),await value(tx)]}));
+  expect(own).toEqual({window:null,values:[{n:2},{n:3}]});
  });
 
  it('classifies statements conservatively',()=>{

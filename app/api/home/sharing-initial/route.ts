@@ -3,7 +3,7 @@ import {getLocale,getTranslations} from 'next-intl/server';
 import {isLocale} from '@/i18n/config';
 import {OwnHomeConfigurationRead} from '@/core/employee-home-configuration';
 import {readEmployeeHomeGreeting} from '@/core/employee-home-greeting';
-import {readEmployeeHomeSummary} from '@/core/employee-home-summary';
+import {HOME_SUMMARY_LOOKAHEAD_DAYS,readEmployeeHomeSummary} from '@/core/employee-home-summary';
 import {OwnHomeTaskSourceRead,readEmployeeHomeTasks} from '@/core/employee-home-tasks';
 import {validateEmployeeHomeSummary} from '@/lib/employee-home-summary';
 import {
@@ -12,7 +12,8 @@ import {
 import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
 import {greetingProjection,tasksProjection,todayProjection,calendarProjection} from '../personal-projections';
 import {withDatabaseReadCancellation} from '@/db/workload';
-import {withSharedReadSnapshot} from '@/db/client';
+import {declareSharedReadWindow,withSharedReadSnapshot} from '@/db/client';
+import {todayInKualaLumpur} from '@/lib/hr-date';
 import {readEmployeeHomeToday} from '@/core/employee-home-today';
 import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
 import {homeCalendarMonth} from '@/lib/employee-home-calendar';
@@ -20,6 +21,25 @@ import {OwnClockEmploymentUnavailableError} from '@/packs/attendance/service';
 import {OwnHomePayrollRead,OwnPayrollSubjectUnavailableError} from '@/packs/payroll/service';
 import {HomeAccessError} from '@/core/employee-home';
 import {markHomeRead} from '@/lib/home-read-timing';
+
+const addDays=(date:string,days:number)=>new Date(Date.parse(date+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
+/** The widest own date window this response's cards read: Today (yesterday's open overnight day and today), the
+ * Summary's lookahead, and any Calendar grid of the requested month (a grid starts up to six days before the month
+ * and ends up to six days after it). A card whose window falls outside it simply reads its own window. */
+function homeReadWindow(cards:readonly HomeSharingCard[],month:string|undefined){
+ const today=todayInKualaLumpur(),ranges:{from:string;to:string}[]=[];
+ if(cards.includes('today'))ranges.push({from:addDays(today,-1),to:today});
+ if(cards.includes('summary'))ranges.push({from:today,to:addDays(today,HOME_SUMMARY_LOOKAHEAD_DAYS)});
+ if(cards.includes('calendar')){
+  const {from,to}=homeCalendarMonth(month??today.slice(0,7));
+  ranges.push({from:addDays(from,-6),to:addDays(to,6)});
+ }
+ if(!ranges.length)return null;
+ const from=ranges.map(range=>range.from).sort()[0],to=ranges.map(range=>range.to).sort().at(-1)!;
+ // A distant calendar month keeps its own grid as the window instead of every month in between.
+ if((Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z'))/86400000>70)return cards.includes('calendar')?ranges.at(-1)!:null;
+ return {from,to};
+}
 
 /** One fresh web session and independent live reads for the requested Home cards. */
 export async function GET(request:Request){
@@ -105,8 +125,14 @@ export async function GET(request:Request){
      }
      if(open)controller.enqueue(encoded);
     };
-    // Disconnect stops eligible readers at their next admission check and drops pending values.
-    void withSharedReadSnapshot(session,()=>Promise.allSettled(cards.map(read)),signal).then(stop,stop);
+    // Disconnect stops eligible readers at their next admission check and drops pending values. The cards' own
+    // date-local reads for this employment (holidays, replacement days, leave presence, dated company proof) are
+    // read once for the widest window they need and sliced per card (db/shared-read.ts).
+    const window=homeReadWindow(cards,month);
+    void withSharedReadSnapshot(session,()=>{
+     if(window)declareSharedReadWindow(employmentId,window.from,window.to);
+     return Promise.allSettled(cards.map(read));
+    },signal).then(stop,stop);
    },
    cancel(){detach();},
   });

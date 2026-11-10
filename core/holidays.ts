@@ -58,6 +58,7 @@ import {companySegmentsForPeriod,companySegmentsForPeriodBulk,type CompanySegmen
 // 0e276da0 — the calendar-coverage read at the foot of this file is SESSION-scoped (a screen asks it),
 // unlike every resolver above, which runs inside the caller's tx. `withTenant` is the only addition.
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {sharedReadWindow,sharedSnapshotValue} from '../db/shared-read';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { appendEvents, actorOf } from '../db/events';
 import { company, employment, holiday, holidayGroup, holidayGroupHoliday } from '../db/schema';
@@ -310,8 +311,22 @@ export async function appendHolidayCompletenessWarnings(
  *  with it. */
 const ORIGINAL_HOLIDAY_COLUMNS={id:holiday.id,date:holiday.holidayDate,name:holiday.name,holidayType:holiday.holidayType,tentative:holiday.tentative,active:holiday.active};
 function uniqueOriginalHolidays(rows:OriginalHoliday[]):OriginalHoliday[]{return [...new Map(rows.map(row=>[row.id,row])).values()].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));}
-/** Stable annual winner, preserving the canonical company > assigned/state/national precedence. */
+/** Stable annual winner, preserving the canonical company > assigned/state/national precedence.
+ *
+ * Every holiday row belongs to the one (company segment, calendar period, year) chunk its own date falls in, and each
+ * chunk filters its rows by date, so a date's answer never depends on the window around it. Inside a shared read
+ * snapshot whose request declared a wider window for this employment (db/shared-read.ts), the window is resolved once
+ * and each caller receives its own slice; if that wider read fails, this window is read alone exactly as before. */
 export async function originalHolidayCalendarFor(tx:Tx,p:HolidayWindow):Promise<OriginalHoliday[]>{
+ const wide=sharedReadWindow(tx,p.employmentId,p.startDate,p.endDate);
+ if(wide){
+  const all=await sharedSnapshotValue(tx,'originalHolidayCalendar|'+p.employmentId+'|'+wide.from+'|'+wide.to,
+   ()=>originalHolidayCalendarForWindow(tx,{employmentId:p.employmentId,startDate:wide.from,endDate:wide.to})).catch(()=>null);
+  if(all)return structuredClone(all.filter(row=>row.date>=p.startDate&&row.date<=p.endDate));
+ }
+ return originalHolidayCalendarForWindow(tx,p);
+}
+async function originalHolidayCalendarForWindow(tx:Tx,p:HolidayWindow):Promise<OriginalHoliday[]>{
  const result:OriginalHoliday[]=[];
  const segments=await companySegmentsForPeriod(tx,p.employmentId,p.startDate,p.endDate);
  const periods=(await holidayCalendarPeriodsByEmploymentTx(tx,[p.employmentId],p.startDate,p.endDate)).get(p.employmentId)??[];

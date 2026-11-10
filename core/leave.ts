@@ -9,6 +9,7 @@ import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, l
 import { randomUUID, createHash } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { sharedReadWindow, sharedSnapshotValue } from '../db/shared-read';
 import {assertReadCompositionPrincipalTx} from './read-composition-principal';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
@@ -6212,16 +6213,27 @@ async function approvedLeaveCalendarPresence(
 ): Promise<Map<string, Map<string, 'full_day' | 'part_day'>>> {
   const out = new Map<string, Map<string, 'full_day' | 'part_day'>>();
   if (empIds.length === 0) return out;
-  // Preserve the established child-date/span distinction in one INVOKER reader. A purpose-bound
-  // Home projection may compose it without granting coworkers access to the underlying leave rows.
-  const rows=await tx.execute(sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,presence
-   FROM app.leave_calendar_presence(${JSON.stringify(empIds)}::jsonb,${from}::date,${to}::date,${status})
-   WHERE (${!fullDayOnly} OR presence='full_day') ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;presence:'full_day'|'part_day'}[];
+  // The reader groups by employment and date, so each date's presence depends on that date alone. Inside a shared
+  // snapshot with a declared wider window for this one employment (db/shared-read.ts), every presence of the window is
+  // read once per status and each caller keeps its own dates and full-day filter, in the same order.
+  const wide = empIds.length === 1 ? sharedReadWindow(tx, empIds[0], from, to) : null;
+  const all = wide ? await sharedSnapshotValue(tx, 'leaveCalendarPresence|' + empIds[0] + '|' + status + '|' + wide.from + '|' + wide.to,
+    () => leaveCalendarPresenceRows(tx, empIds, wide.from, wide.to, false, status)).catch(() => null) : null;
+  const rows = all ? all.filter(row => row.date >= from && row.date <= to && (!fullDayOnly || row.presence === 'full_day'))
+    : await leaveCalendarPresenceRows(tx, empIds, from, to, fullDayOnly, status);
   for(const row of rows){
    let dates=out.get(row.employmentId);if(!dates)out.set(row.employmentId,(dates=new Map()));
    dates.set(row.date,row.presence);
   }
   return out;
+}
+
+async function leaveCalendarPresenceRows(tx: Tx, empIds: string[], from: string, to: string, fullDayOnly: boolean, status: 'approved' | 'pending') {
+  // Preserve the established child-date/span distinction in one INVOKER reader. A purpose-bound
+  // Home projection may compose it without granting coworkers access to the underlying leave rows.
+  return await tx.execute(sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,presence
+   FROM app.leave_calendar_presence(${JSON.stringify(empIds)}::jsonb,${from}::date,${to}::date,${status})
+   WHERE (${!fullDayOnly} OR presence='full_day') ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;presence:'full_day'|'part_day'}[];
 }
 
 /** Existing Attendance/Payroll consumers exclude partial days from full-day absence relief. */

@@ -14,7 +14,8 @@ import {createBackgroundReadAdmission} from './background-read-admission';
 import {createTenantWriteAdmission} from './tenant-write-admission';
 import {currentDatabaseWorkload,databaseReadSignal} from './workload';
 import {applicationDatabaseBudget} from './capacity';
-import {SharedReadSession,currentSharedRead,independentTransactionsRequired,runInSharedRead,sharedReadDriver,type SharedReadStats} from './shared-read';
+import {SharedReadSession,currentSharedRead,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,sharedReadDriver,type SharedReadStats} from './shared-read';
+export {declareSharedReadWindow} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
 const applicationBudget = applicationDatabaseBudget(process.env);
 import { chainArmingDecision } from '../core/audit-chain-arming';
@@ -224,6 +225,9 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   }
   const withTenantWriteWork=tenantWrites.run;
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+  /** Request-scoped shared read sessions of this client, keyed by the request's scope object and then by identity. A
+   * scope object lives only as long as its request (React `cache` per server render), so nothing outlives a request. */
+  const requestScopedSessions = new WeakMap<object, Map<string, SharedReadSession<Tx>>>();
 
   /** For existing raw SQL owners only. This adds no transaction, GUC, retry or authority.
    * Open queries inside work; do not pass an already-running promise or nest withTenant here.
@@ -367,13 +371,41 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   /** One request's reads as ONE read-only snapshot (db/shared-read.ts). `work` is every read owner of that
    * request; each joins while the identity matches. BEGIN carries the isolation and access mode, so the whole
    * request pays BEGIN, one identity statement and COMMIT, instead of those per owner. Nothing outlives `work`. */
-  async function withSharedReadSnapshot<T>(ctx: SessionContext, work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  async function withSharedReadSnapshot<T>(ctx: SessionContext, work: () => Promise<T>, signal?: AbortSignal, scope?: object): Promise<T> {
     if (!ctx?.tenantId || !ctx.userId || ctx.agent || independentTransactionsRequired()) return work();
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
+    const identity = sharedReadIdentity(ctx, grants, roleNames);
     // A read already inside this identity's snapshot stays in it rather than opening a second one.
-    if (currentSharedRead()?.admits(client!, sharedReadIdentity(ctx, grants, roleNames))) return work();
-    const session: SharedReadSession<Tx> = new SharedReadSession<Tx>(client!, sharedReadIdentity(ctx, grants, roleNames), () => {
+    if (currentSharedRead()?.admits(client!, identity)) return work();
+    // One request's independent read compositions (the Today sections and the shell's approvals of one page render)
+    // share one session per identity: overhead and identical statements are paid once while they overlap.
+    if (scope) {
+      let byIdentity = requestScopedSessions.get(scope);
+      if (!byIdentity) requestScopedSessions.set(scope, byIdentity = new Map());
+      let shared = byIdentity.get(identity);
+      if (!shared) byIdentity.set(identity, shared = newSession(ctx, grants, roleNames, identity, signal, true));
+      return shared.track(work);
+    }
+    const session = newSession(ctx, grants, roleNames, identity, signal, false);
+    try {
+      return await runInSharedRead(session as SharedReadSession<unknown>, work);
+    } finally {
+      await session.close();
+      globalForPg.__aihrPerfSharedRead?.(session.stats);
+    }
+  }
+
+  /** Diagnostics only: the request-scoped sessions of `scope` (their statistics), after their carriers settle. */
+  async function requestScopedReadStats(scope: object): Promise<SharedReadStats[]> {
+    const sessions = [...(requestScopedSessions.get(scope)?.values() ?? [])];
+    await Promise.all(sessions.map((session) => session.settled()));
+    return sessions.map((session) => session.stats);
+  }
+
+  function newSession(ctx: SessionContext, grants: Grant[], roleNames: string[], identity: string, signal: AbortSignal | undefined, idleRelease: boolean): SharedReadSession<Tx> {
+    // The carrier factory runs only when the first owner joins, after `session` is assigned.
+    const session: SharedReadSession<Tx> = new SharedReadSession<Tx>(client!, identity, () => {
       let finish: () => void = () => {};
       const finished = new Promise<void>((resolve) => { finish = resolve; });
       let resolveTx: (tx: Tx) => void = () => {};
@@ -397,6 +429,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
             readSignal?.throwIfAborted();
             await bootstrapTenantTx(carrierTx, ctx, grants, roleNames);
             session.bootstrapping = false;
+            markSharedCarrierTransaction(carrierTx);
             resolveTx(carrierTx);
             await finished;
           });
@@ -406,16 +439,11 @@ export function createDb(connectionString: string, options?: { max?: number }) {
         }
       })().catch((error) => { session.poison(); rejectTx(error); });
       return { tx, finish, done };
-    });
-    try {
-      return await runInSharedRead(session as SharedReadSession<unknown>, work);
-    } finally {
-      await session.close();
-      globalForPg.__aihrPerfSharedRead?.(session.stats);
-    }
+    }, idleRelease);
+    return session;
   }
 
-  return { db, client, withTenant, withSharedReadSnapshot, withPoolWork, withBackgroundReadWork, withTenantWriteWork };
+  return { db, client, withTenant, withSharedReadSnapshot, requestScopedReadStats, withPoolWork, withBackgroundReadWork, withTenantWriteWork };
 }
 
 export type Db = ReturnType<typeof createDb>['db'];
@@ -426,4 +454,4 @@ if (!url) throw new Error('DATABASE_URL is not set');
 
 // App singleton (non-privileged role). Keep the default for deployments that do
 // not explicitly divide a connection budget among application workers.
-export const { db, client, withTenant, withSharedReadSnapshot, withPoolWork, withBackgroundReadWork, withTenantWriteWork } = createDb(url, {max: applicationBudget.poolMax});
+export const { db, client, withTenant, withSharedReadSnapshot, requestScopedReadStats, withPoolWork, withBackgroundReadWork, withTenantWriteWork } = createDb(url, {max: applicationBudget.poolMax});

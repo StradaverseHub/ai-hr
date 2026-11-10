@@ -45,10 +45,15 @@ export class SharedReadSession<Tx>{
  private closed=false;
  private active=0;
  private waitingOwn=0;
+ /** Request-scoped sessions only: compositions currently running inside this session. */
+ private works=0;
  /** True only while a carrier sets its own transaction-local identity, before any owner can join it. */
  bootstrapping=false;
  readonly stats:SharedReadStats={joins:0,fallbacks:0,statements:0,memoHits:0,refused:{},failures:{},carriers:0};
- constructor(private readonly owner:object,readonly identity:string,private readonly open:()=>SharedReadCarrier<Tx>){}
+ /** `idleRelease`: a request-scoped session is shared by several independent compositions of one request (the
+  * Today sections and the shell's approvals). It is never closed; its carrier commits whenever no composition and
+  * no owner is inside it, so it never holds a connection between them. A later composition opens a fresh carrier. */
+ constructor(private readonly owner:object,readonly identity:string,private readonly open:()=>SharedReadCarrier<Tx>,private readonly idleRelease=false){}
 
  /** Only the same database client and the exact same transaction identity settings. */
  admits(owner:object,identity:string){return !this.closed&&owner===this.owner&&identity===this.identity;}
@@ -79,7 +84,16 @@ export class SharedReadSession<Tx>{
   return result!.value;
  }
  private begin(){this.stats.carriers++;this.bootstrapping=true;const carrier=this.open();this.carriers.push(carrier.done);return carrier;}
- private leave(){this.active--;if(this.active===0&&this.waitingOwn>0)this.release();}
+ private leave(){this.active--;if(this.active===0&&(this.waitingOwn>0||this.idleRelease&&this.works===0))this.release();}
+ /** One request-scoped composition: while it runs, its owners join this session; when the last one settles and no
+  * owner is inside, the carrier commits. Results and failures are the composition's own. */
+ async track<T>(work:()=>Promise<T>):Promise<T>{
+  this.works++;
+  try{return await runInSharedRead(this as SharedReadSession<unknown>,work);}
+  finally{this.works--;if(this.works===0&&this.active===0)this.release();}
+ }
+ /** Every carrier this session opened has committed or rolled back. */
+ settled(){return Promise.all(this.carriers.map(done=>done.catch(()=>undefined))).then(()=>undefined);}
  /** Commit an idle carrier so this request never holds a pool slot while its own fallback waits for one. A later
   * join opens a fresh carrier (a new snapshot and an empty memo). */
  private release(){const carrier=this.carrier;this.carrier=undefined;carrier?.finish();}
@@ -96,6 +110,45 @@ export class SharedReadSession<Tx>{
   return new SharedReadIncompatibleError(reason);
  }
  failed(code:string){this.stats.failures[code]=(this.stats.failures[code]??0)+1;this.poisoned=true;const join=joins.getStore();if(join)join.tainted=true;}
+}
+
+/** The carrier transactions of shared sessions: one REPEATABLE READ READ ONLY snapshot each, for one identity. */
+const carrierTransactions=new WeakSet<object>();
+export function markSharedCarrierTransaction(tx:object){carrierTransactions.add(tx);}
+const derived=new WeakMap<object,Map<string,Promise<unknown>>>();
+const windows=new WeakMap<SharedReadSession<unknown>,Map<string,{from:string;to:string}>>();
+
+/** A request that knows the widest date window its own reads need for one employment declares it here. Owners that
+ * read a date-local fact (each date's answer depends only on that date, such as a holiday calendar, leave presence or a
+ * dated company proof) may then read the whole window once inside the shared snapshot and answer each narrower request
+ * by slicing it. A request outside the window, or outside a shared carrier, reads exactly as before. */
+export function declareSharedReadWindow(employmentId:string,from:string,to:string){
+ const session=currentSharedRead();
+ if(!session||!(from<=to))return;
+ let byEmployment=windows.get(session);
+ if(!byEmployment)windows.set(session,byEmployment=new Map());
+ byEmployment.set(employmentId,{from,to});
+}
+/** The declared window for `employmentId` when `tx` is the current shared carrier and it covers [from, to]. */
+export function sharedReadWindow(tx:object,employmentId:string,from:string,to:string):{from:string;to:string}|null{
+ if(!carrierTransactions.has(tx))return null;
+ const session=currentSharedRead(),window=session?windows.get(session)?.get(employmentId):undefined;
+ return window&&window.from<=from&&to<=window.to?window:null;
+}
+/** One value per shared carrier transaction and key: a pure function of that snapshot and its key, computed once.
+ * Outside a carrier (an owner's own transaction, which may be READ COMMITTED) it is always computed afresh. A failed
+ * computation is not kept. Callers hand each consumer its own copy. */
+export function sharedSnapshotValue<T>(tx:object,key:string,compute:()=>Promise<T>):Promise<T>{
+ if(!carrierTransactions.has(tx))return compute();
+ let values=derived.get(tx);
+ if(!values)derived.set(tx,values=new Map());
+ let value=values.get(key) as Promise<T>|undefined;
+ if(!value){
+  value=compute();
+  values.set(key,value);
+  value.catch(()=>{if(values!.get(key)===value)values!.delete(key);});
+ }
+ return value;
 }
 
 /** Statement classes. Only a plain read is memoized; a compatible non-read passes through; anything that needs

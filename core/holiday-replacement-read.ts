@@ -1,6 +1,7 @@
 /** Employee projection only. This reader never resolves schedules or allocates another holiday. */
 import {and,eq,gte,inArray,isNotNull,lte,asc,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {sharedReadWindow,sharedSnapshotValue} from '../db/shared-read';
 import {provenCompanyDatesTx} from './employment-company';
 import {replacementHoliday,replacementHolidayRevision,replacementHolidayQueue,employment,person,holiday} from '../db/schema';
 type HolidayProjection=Pick<typeof replacementHoliday.$inferSelect,'id'|'employmentId'|'companyId'|'sourceDate'|'replacementDate'>;
@@ -19,6 +20,18 @@ export async function replacementHolidayProjectionCoverageTx(tx:Tx,rows:readonly
  * No schedules or replacement allocation are evaluated by this reader. */
 export async function replacementHolidayCalendarProjectionsTx(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string}):Promise<ReplacementHolidayCalendarProjection[]>{
  if(!p.employmentIds.length)return [];
+ // Each row's inclusion and coverage depend on that row alone: inside a shared snapshot with a declared wider window
+ // for this one employment (db/shared-read.ts), read the window once and slice it, keeping the order.
+ const wide=p.employmentIds.length===1?sharedReadWindow(tx,p.employmentIds[0],p.startDate,p.endDate):null;
+ if(wide){
+  const employmentId=p.employmentIds[0];
+  const all=await sharedSnapshotValue(tx,'replacementHolidayCalendar|'+employmentId+'|'+wide.from+'|'+wide.to,
+   ()=>replacementHolidayCalendarProjectionsForWindowTx(tx,{employmentIds:[employmentId],startDate:wide.from,endDate:wide.to})).catch(()=>null);
+  if(all)return structuredClone(all.filter(row=>row.replacementDate>=p.startDate&&row.replacementDate<=p.endDate));
+ }
+ return replacementHolidayCalendarProjectionsForWindowTx(tx,p);
+}
+async function replacementHolidayCalendarProjectionsForWindowTx(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string}):Promise<ReplacementHolidayCalendarProjection[]>{
  const rows=await tx.select({id:replacementHoliday.id,employmentId:replacementHoliday.employmentId,companyId:replacementHoliday.companyId,sourceDate:replacementHoliday.sourceDate,replacementDate:replacementHoliday.replacementDate}).from(replacementHoliday).where(and(inArray(replacementHoliday.employmentId,[...p.employmentIds]),isNotNull(replacementHoliday.replacementDate),gte(replacementHoliday.replacementDate,p.startDate),lte(replacementHoliday.replacementDate,p.endDate))).orderBy(asc(replacementHoliday.employmentId),asc(replacementHoliday.replacementDate),asc(replacementHoliday.id));
  const coverage=await replacementHolidayProjectionCoverageTx(tx,rows);
  return rows.flatMap(row=>!coverage.get(row.id)&&row.replacementDate?[{...row,replacementDate:row.replacementDate}]:[]);

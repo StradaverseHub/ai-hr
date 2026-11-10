@@ -50,6 +50,7 @@
  * either. One owner that fails is reported as that group's "could not check", never as done. Never writes. */
 import {sql} from 'drizzle-orm';
 import {withSharedReadSnapshot,withTenant,type SessionContext} from '../../db/client';
+import {requestReadScope} from '../../lib/request-read-scope';
 import {EntitlementsResolutionFailedError,isModuleEnabled} from '../entitlements';
 import {HomeAccessError,requireOwnHomeSubject} from '../employee-home';
 import {leaveRequestsFor,listEligibleLeaveTypesFor} from '../read';
@@ -337,7 +338,7 @@ async function approvalsGroup(approvalsRead:ReturnType<typeof startApprovals>,pe
 /** One read-only snapshot for the caller's own identity (db/shared-read.ts). Each owner keeps its own result and
  * failure; a barrier-locked or read-committed owner still reads in its own transaction. */
 export function readMyPayrollReadiness(ctx:SessionContext,p:Readonly<{employmentId?:string;scopeIds?:readonly string[];locale?:string;today?:string;approvalPreview?:boolean;includeApprovals?:false}>={}):Promise<PayrollReadiness|null>{
- return withSharedReadSnapshot(ctx,()=>payrollReadinessOwners(ctx,p));
+ return withSharedReadSnapshot(ctx,()=>payrollReadinessOwners(ctx,p),undefined,requestReadScope());
 }
 async function payrollReadinessOwners(ctx:SessionContext,p:Readonly<{employmentId?:string;scopeIds?:readonly string[];locale?:string;today?:string;approvalPreview?:boolean;includeApprovals?:false}>):Promise<PayrollReadiness|null>{
  if(!ctx.userId||ctx.agent)return null;

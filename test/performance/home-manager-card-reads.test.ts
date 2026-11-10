@@ -120,6 +120,8 @@ async function seedTenant(t:number,today:string){
   if(u.role==='manager')rows.push({tenantId:b.tenantId,appUserId:u.userId,role:'manager',companyId:u.companyId});
   if(u.role==='companyHR'||u.role==='groupHR')rows.push({tenantId:b.tenantId,appUserId:u.userId,role:'hr_admin',companyId:u.role==='groupHR'?null:u.companyId});
   if(u.role==='groupHR')for(const r of ['payroll_partner','performance_comp_partner'])rows.push({tenantId:b.tenantId,appUserId:u.userId,role:r,companyId:null});
+  // One employee of company 0 manages in company 2 only: a grant that must never widen to its own company.
+  if(u.index%250===6)rows.push({tenantId:b.tenantId,appUserId:u.userId,role:'manager',companyId:companies[2].companyId});
   return rows;
  });
  await owner.db.insert(s.roleAssignment).values(grants as typeof s.roleAssignment.$inferInsert[]);
@@ -150,6 +152,27 @@ async function seedTenant(t:number,today:string){
   &&v.index%50>=4+(u.index%50-2)*10&&v.index%50<14+(u.index%50-2)*10).map(v=>({tenantId:b.tenantId,managerEmploymentId:u.employmentId,
    subordinateEmploymentId:v.employmentId,lineType:'administrative' as const,validFrom:hiredOn}))));
  const standard=await ensureStandardRule(ctx);expect(standard.created).toBe(true);
+ // Dated facts every Home owner reads, so equivalence compares real rows: national, tentative and one company's
+ // own holidays inside the Summary lookahead and the calendar grid, one replacement day, approved full and part
+ // days, a pending request, leave balances, and one employment that ended yesterday.
+ const day=(offset:number)=>new Date(Date.parse(today+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
+ const [national]=await owner.db.insert(s.holiday).values({tenantId:b.tenantId,country:'MY',holidayDate:day(3),name:'Fictional national holiday'}).returning();
+ await owner.db.insert(s.holiday).values([
+  {tenantId:b.tenantId,country:'MY',holidayDate:day(2),name:'Fictional tentative holiday',tentative:true},
+  {tenantId:b.tenantId,country:'MY',holidayDate:day(-2),name:'Fictional recent holiday'},
+  {tenantId:b.tenantId,country:'MY',companyId:companies[1].companyId,holidayDate:day(5),name:'Fictional company holiday'},
+ ]);
+ const pick=(position:number)=>users.find(u=>u.index===t*250+position)!;
+ await owner.db.insert(s.replacementHoliday).values({tenantId:b.tenantId,employmentId:pick(4).employmentId,companyId:pick(4).companyId,sourceHolidayId:national.id,
+   sourceDate:day(3),sourceName:national.name,inputDigest:'fictional',status:'allocated',replacementDate:day(4),reason:'Fictional replacement'});
+ await owner.db.insert(s.leaveRequest).values([
+  {tenantId:b.tenantId,employmentId:pick(4).employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:day(1),endDate:day(2),days:'2',status:'approved' as const},
+  {tenantId:b.tenantId,employmentId:pick(4).employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:day(6),endDate:day(6),days:'1',status:'pending' as const},
+  {tenantId:b.tenantId,employmentId:pick(2).employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:today,endDate:today,days:'0.5',durationType:'half_day_am',status:'approved' as const},
+  {tenantId:b.tenantId,employmentId:pick(54).employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:day(-1),endDate:day(8),days:'8',status:'approved' as const},
+ ]);
+ await owner.db.insert(s.leaveLedger).values([2,3,4,54].map(position=>({tenantId:b.tenantId,employmentId:pick(position).employmentId,leaveTypeId:b.annualLeaveTypeId,entryType:'accrual' as const,days:'14',effectiveOn:hiredOn})));
+ await owner.client`update employment set terminated_on=${day(-1)}::date where id=${pick(49).employmentId}::uuid`;
  const entitlements=(await entitledCtx(b)).entitlements;
  return users.map(u=>{
   const actorGrants=grants.filter(g=>g.appUserId===u.userId).map(g=>({role:g.role,companyId:g.companyId}));
@@ -172,6 +195,31 @@ function readers(ctx:SessionContext,employmentId:string,month:string):Record<Car
  };
 }
 
+/** Complete values of every page owner besides the four sections, wrapped exactly as the page wraps them. */
+async function fullPageOwners(ctx:SessionContext,scopeIds:string[]):Promise<Record<string,()=>Promise<unknown>>>{
+ const database=await import('../../db/client'),requestScope=await import('../../lib/request-read-scope');
+ const home=await import('../../core/employee-home'),performanceService=await import('../../packs/performance/service');
+ const assistant=await import('../../core/assistant-grant'),inbox=await import('../../core/approvals-inbox');
+ const loops=await import('../../core/loops/cards'),letters=await import('../../core/letter-requests'),reviews=await import('../../core/home-leave-review-presentation');
+ const {isModuleEnabled}=await import('../../core/entitlements');
+ const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
+ const inPage=<T,>(read:()=>Promise<T>)=>()=>database.withSharedReadSnapshot(ctx,read,undefined,requestScope.requestReadScope());
+ return {
+  'page.identity':inPage(()=>home.readEmployeeHomeIdentity(ctx)),
+  'page.greetingIdentity':inPage(()=>home.readEmployeeHomeGreetingIdentity(ctx)),
+  'page.performanceBlock':inPage(()=>performanceService.getPerformanceHomeBlock(ctx,scopeIds)),
+  'page.assignedPerformance':inPage(async()=>performanceService.hasAssignedPerformanceWork(ctx,scopeIds)),
+  'page.assistant':inPage(()=>assistant.mayUseAssistant(ctx)),
+  'page.layoutApprovals':()=>database.withBackgroundReadWork(ctx.tenantId,inPage(()=>inbox.pendingTaskSummary(ctx,scopeIds,modules,{deferClaimPreview:true}))),
+  'needs.pendingTaskSummary':inPage(()=>inbox.pendingTaskSummary(ctx,scopeIds,modules)),
+  'needs.loopCards':inPage(()=>loops.readLoopCards(ctx,{scopeIds,admin:false})),
+  'needs.letterRequests':inPage(()=>letters.countWaitingLetterRequests(ctx,scopeIds)),
+  'needs.ownLeaveReviews':inPage(()=>reviews.readHomeOwnLeaveReviewIndex(ctx)),
+  'needs.cancellationReviews':inPage(()=>reviews.readHomeLeaveCancellationReviewIndex(ctx)),
+  'needs.decisionReviews':inPage(()=>reviews.readHomeLeaveDecisionReviewIndex(ctx)),
+ };
+}
+
 const errorFact=(error:unknown)=>({name:(error as Error)?.name??typeof error,code:(error as {code?:string})?.code??null,
  reason:(error as {reason?:string})?.reason??null,message:String((error as Error)?.message??error).slice(0,240)});
 
@@ -190,7 +238,11 @@ async function todayReaders(today:string){
  const home=await import('../../core/employee-home');
  const assistant=await import('../../core/assistant-grant');
  const database=await import('../../db/client');
- return async(ctx:SessionContext):Promise<Record<string,()=>Promise<unknown>>>=>{
+ const requestScope=await import('../../lib/request-read-scope');
+ // The page wraps these owners in its render's read scope exactly so (components/today/today-page.tsx, app/layout.tsx,
+ // components/performance-home/performance-home.tsx, app/page.tsx).
+ const inPage=<T,>(ctx:SessionContext,read:()=>Promise<T>)=>database.withSharedReadSnapshot(ctx,read,undefined,requestScope.requestReadScope());
+ const readers=async(ctx:SessionContext):Promise<Record<string,()=>Promise<unknown>>>=>{
   const scopeIds=(await allowedCompanies(ctx)).map(company=>company.id),audience=todayAudience(ctx);
   const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
   return {
@@ -204,17 +256,24 @@ async function todayReaders(today:string){
    'needs.ownLeaveReviews':()=>reviews.readHomeOwnLeaveReviewIndex(ctx).then(()=>'ok'),
    'needs.cancellationReviews':()=>reviews.readHomeLeaveCancellationReviewIndex(ctx).then(()=>'ok'),
    'needs.decisionReviews':()=>reviews.readHomeLeaveDecisionReviewIndex(ctx).then(()=>'ok'),
-   'page.identity':()=>home.readEmployeeHomeIdentity(ctx).then(()=>'ok'),
-   'page.greetingIdentity':()=>home.readEmployeeHomeGreetingIdentity(ctx).then(()=>'ok'),
-   'page.performanceBlock':()=>performanceService.getPerformanceHomeBlock(ctx,scopeIds).then(value=>value===null?'none':'block'),
-   'page.assignedPerformance':()=>performanceService.hasAssignedPerformanceWork(ctx,scopeIds),
-   'page.assistant':()=>assistant.mayUseAssistant(ctx).then(value=>value.allowed),
-   'page.layoutApprovals':()=>database.withBackgroundReadWork(ctx.tenantId,()=>inbox.pendingTaskSummary(ctx,scopeIds,modules,{deferClaimPreview:true})).then(value=>({total:value.total})),
+   'page.identity':()=>inPage(ctx,()=>home.readEmployeeHomeIdentity(ctx)).then(()=>'ok'),
+   'page.greetingIdentity':()=>inPage(ctx,()=>home.readEmployeeHomeGreetingIdentity(ctx)).then(()=>'ok'),
+   'page.performanceBlock':()=>inPage(ctx,()=>performanceService.getPerformanceHomeBlock(ctx,scopeIds)).then(value=>value===null?'none':'block'),
+   'page.assignedPerformance':()=>inPage(ctx,async()=>performanceService.hasAssignedPerformanceWork(ctx,scopeIds)),
+   'page.assistant':()=>inPage(ctx,()=>assistant.mayUseAssistant(ctx)).then(value=>value.allowed),
+   'page.layoutApprovals':()=>database.withBackgroundReadWork(ctx.tenantId,()=>inPage(ctx,()=>inbox.pendingTaskSummary(ctx,scopeIds,modules,{deferClaimPreview:true}))).then(value=>({total:value.total})),
   };
  };
+ /** One modelled page render: every section inside `work` shares one request scope; its carriers commit before return. */
+ const pageRender=async<T,>(work:()=>Promise<T>):Promise<T>=>{
+  const scope={};
+  try{return await requestScope.withRequestReadScope(scope,work);}
+  finally{for(const stats of await database.requestScopedReadStats(scope))(globalThis as {__aihrPerfSharedRead?:(stats:SharedReadStats)=>void}).__aihrPerfSharedRead?.(stats);}
+ };
+ return Object.assign(readers,{pageRender});
 }
 
-type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[]};
+type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[];owners:string[]};
 const sharedStats:SharedReadStats[]=[];
 (globalThis as {__aihrPerfSharedRead?:(stats:SharedReadStats)=>void}).__aihrPerfSharedRead=stats=>{sharedStats.push(stats);};
 const sharedSummary=(rows:SharedReadStats[])=>({sessions:rows.length,joins:rows.reduce((n,row)=>n+row.joins,0),fallbacks:rows.reduce((n,row)=>n+row.fallbacks,0),
@@ -224,13 +283,14 @@ const sharedSummary=(rows:SharedReadStats[])=>({sessions:rows.length,joins:rows.
 const comparable=(value:unknown)=>JSON.stringify(value,(key,item)=>key==='serverNow'?undefined:item);
 async function outcome(read:()=>Promise<unknown>){try{return {ok:true,value:await read()};}catch(error){return {ok:false,error:{name:(error as Error)?.name??null,code:(error as {code?:string})?.code??null}};}}
 async function traceStatements<T>(work:()=>Promise<T>){
- const options=applicationClient.options as {debug?:unknown},ordered:string[]=[],previous=options.debug;
- options.debug=(_connection:number,query:string)=>{ordered.push(query.replace(/\s+/g,' ').trim().slice(0,420));};
+ const options=applicationClient.options as {debug?:unknown},ordered:string[]=[],owners:string[]=[],previous=options.debug;
+ // The owner frames that sent each statement (application files only), so every trip is attributable.
+ options.debug=(_connection:number,query:string)=>{ordered.push(query.replace(/\s+/g,' ').trim().slice(0,420));owners.push(transactionOwner());};
  let result:T|null=null,failure:unknown=null;
  try{result=await work();}catch(error){failure=errorFact(error);}finally{options.debug=previous;}
  const counts=new Map<string,number>();
  for(const text of ordered)counts.set(text,(counts.get(text)??0)+1);
- const trace:Traced={trips:ordered.length,statements:[...counts].map(([text,count])=>({sql:text,count})).sort((a,b)=>b.count-a.count),ordered};
+ const trace:Traced={trips:ordered.length,statements:[...counts].map(([text,count])=>({sql:text,count})).sort((a,b)=>b.count-a.count),ordered,owners};
  return {result,failure,trace};
 }
 
@@ -407,8 +467,12 @@ it('completes every manager Home card and Today section read without a handled f
   const old=await traceStatements(()=>withIndependentTransactions(before));
   sharedStats.length=0;
   const fresh=await traceStatements(after);
+  // Each remaining statement with the first application frames that sent it, and a count per owning function.
+  const byOwner=new Map<string,number>();
+  for(const owner of fresh.trace.owners){const key=owner.split(' < ')[0]||'(driver)';byOwner.set(key,(byOwner.get(key)??0)+1);}
   return {before:old.trace.trips,after:fresh.trace.trips,beforeStatements:old.trace.statements,afterStatements:fresh.trace.statements,
-   afterOrdered:fresh.trace.ordered,shared:sharedSummary(sharedStats.splice(0)),failure:fresh.failure};
+   afterOrdered:fresh.trace.ordered,afterOwned:fresh.trace.ordered.map((text,index)=>(fresh.trace.owners[index]||'(driver)')+' :: '+text.slice(0,200)),
+   afterByOwner:Object.fromEntries([...byOwner].sort((a,b)=>b[1]-a[1])),shared:sharedSummary(sharedStats.splice(0)),failure:fresh.failure};
  };
  for(const [label,actor] of [['manager',manager],['employee',employee]] as const){
   const targets=await todayTargets(actor.ctx),rows:Record<string,Awaited<ReturnType<typeof traceBoth>>>={};statementTrace[label]=rows;
@@ -420,7 +484,11 @@ it('completes every manager Home card and Today section read without a handled f
   const stream=()=>streamHome(actor,month,null);
   rows.stream=await traceBoth(stream,stream);
   const page=()=>Promise.all([streamHome(actor,month,null),...pageSections.map(name=>targets[name]())]);
-  rows.page=await traceBoth(page,page);
+  const pageRendered=()=>Promise.all([streamHome(actor,month,null),todayTargets.pageRender(()=>Promise.all(pageSections.map(name=>targets[name]())))]);
+  rows.page=await traceBoth(page,pageRendered);
+  // The page's sections alone: each in its own snapshot before, one render's request scope after.
+  rows.sections=await traceBoth(()=>Promise.all(pageSections.map(name=>targets[name]())),()=>todayTargets.pageRender(()=>Promise.all(pageSections.map(name=>targets[name]()))));
+  print('statement-owners',{label,stream:rows.stream.afterByOwner,sections:rows.sections.afterByOwner});
   print('statement-trace',{label,trips:Object.fromEntries(Object.entries(rows).map(([name,row])=>[name,[row.before,row.after]])),
    shared:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.shared.sessions>0).map(([name,row])=>[name,row.shared])),
    failures:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.failure).map(([name,row])=>[name,row.failure]))});
@@ -433,14 +501,15 @@ it('completes every manager Home card and Today section read without a handled f
  const others=tenants[1];
  const subjects=[['manager',manager],['employee',employee],['secondManager',secondManager],['groupHR',actors.find(a=>a.role==='groupHR')!],
   ['companyHR',actors.find(a=>a.role==='companyHR'&&a.company===1)!],['otherTenantManager',others.find(a=>a.role==='manager')!],
-  ['otherTenantEmployee',others.find(a=>a.role==='employee'&&a.company===2)!]] as const;
+  ['otherTenantEmployee',others.find(a=>a.role==='employee'&&a.company===2)!],['terminated',actors.find(a=>a.index===49)!],
+  ['crossCompanyManager',actors.find(a=>a.index===6)!],['companyOneOnLeave',actors.find(a=>a.index===54)!]] as const;
  const compare=(subject:string,target:string,old:unknown,fresh:unknown)=>{
   const [a,b]=[comparable(old),comparable(fresh)];
   equivalence.push(a===b?{subject,target,equal:true}:{subject,target,equal:false,old:a.slice(0,1500),fresh:b.slice(0,1500)});
  };
  // Give one subject decided history and drafts beside its pending claims, so the open-claims read has rows to leave out.
  {
-  const subject=subjects.at(-1)![1];
+  const subject=subjects.find(([name])=>name==='otherTenantEmployee')![1];
   const [type]=await owner.client<{id:string}[]>`select id from claim_type where tenant_id=${subject.ctx.tenantId}::uuid and code='PERF'`;
   await owner.client`insert into claim_request(tenant_id,employment_id,claim_type_id,amount,incurred_on,status,created_at)
    select ${subject.ctx.tenantId}::uuid,${subject.employmentId}::uuid,${type.id}::uuid,1,${today}::date-n::integer,s,now()-n::integer*interval '1 second'
@@ -467,8 +536,14 @@ it('completes every manager Home card and Today section read without a handled f
    watching:()=>sectionReads.readWatching(actor.ctx,{scopeIds,today}),
    beforePayroll:()=>readMyPayrollReadiness(actor.ctx,{scopeIds,locale:'en',today,includeApprovals:false}),
    beforePayrollWithApprovals:()=>readMyPayrollReadiness(actor.ctx,{scopeIds,locale:'en',today,approvalPreview:true}),
+   // The remaining page owners, as the page composes them, with their complete values.
+   ...await fullPageOwners(actor.ctx,scopeIds),
   };
   for(const [name,read] of Object.entries(full))compare(subject,'full:'+name,await outcome(()=>withIndependentTransactions(read)),await outcome(read));
+  // One page render: every section and page owner at once inside one request scope, against each alone.
+  const independentValues=Object.fromEntries(await Promise.all(Object.entries(full).map(async([name,read])=>[name,await outcome(()=>withIndependentTransactions(read))] as const)));
+  const pageValues=await todayTargets.pageRender(async()=>Object.fromEntries(await Promise.all(Object.entries(full).map(async([name,read])=>[name,await outcome(read)] as const))));
+  for(const name of Object.keys(full))compare(subject,'pageRender:'+name,independentValues[name],pageValues[name]);
   // One request's own payroll read (Summary, Today, Calendar) against each card's own payroll reader.
   const {OwnHomePayrollRead,readOwnPayrollHomeMetadata}=await import('../../packs/payroll/service');
   const payrollCards=(shared?:InstanceType<typeof OwnHomePayrollRead>)=>Promise.all([
@@ -502,6 +577,20 @@ it('completes every manager Home card and Today section read without a handled f
    compare('host:'+host.index,'concurrentSessions:'+card,await outcome(()=>withIndependentTransactions(()=>read(host,card))),(hostShared as Record<string,unknown>)[card]);
   }
   isolation[host.index+'>'+guest.index]={hostSessionJoins:hostStats.joins,hostSessionStatements:hostStats.sharedStatements};
+ }
+ // Two identities rendered in one request scope (never expected in production, where a render has one session) keep
+ // separate sessions, each with its own owners' results.
+ {
+  const [host,guest]=[manager,others.find(a=>a.role==='employee')!];
+  const scope={},requestScope=await import('../../lib/request-read-scope'),database=await import('../../db/client');
+  const reads=async(actor:Actor)=>{const scopeIds=(await (await import('../../core/read')).allowedCompanies(actor.ctx)).map(company=>company.id);return fullPageOwners(actor.ctx,scopeIds);};
+  const [hostReads,guestReads]=await Promise.all([reads(host),reads(guest)]);
+  const together=await requestScope.withRequestReadScope(scope,()=>Promise.all([host,guest].map(async(actor,index)=>Object.fromEntries(await Promise.all(Object.entries(index?guestReads:hostReads).map(async([name,read])=>[name,await outcome(read)] as const))))));
+  const sessions=await database.requestScopedReadStats(scope);
+  for(const [index,actor] of [host,guest].entries())for(const [name,read] of Object.entries(index?guestReads:hostReads))
+   compare((index?'guest:':'host:')+actor.index,'sharedRequestScope:'+name,await outcome(()=>withIndependentTransactions(read)),together[index][name]);
+  report.requestScopeIsolation={sessions:sessions.length,joins:sessions.map(row=>row.joins)};
+  expect(sessions).toHaveLength(2);
  }
  const mismatches=equivalence.filter(row=>!row.equal);
  print('equivalence',{compared:equivalence.length,mismatches:mismatches.length,isolation,first:mismatches.slice(0,6)});
@@ -633,8 +722,9 @@ it('completes every manager Home card and Today section read without a handled f
   }finally{stop();await worker.close().catch(()=>undefined);}
  }
  // The first browser sweep: six simultaneous whole Home pages, shared round-robin across the workers.
+ // 'page' additionally renders each page's sections in one request scope (lib/request-read-scope.ts), as the page now does.
  const burst:unknown[]=[];report.pageBurst=burst;
- for(const [workers,pressure] of [[2,16],[4,16],[8,16]] as const)for(const scope of scopes){
+ for(const [workers,pressure] of [[2,16],[4,16],[8,16]] as const)for(const scope of [...scopes,'page'] as const){
   const stop=cpuPressure(pressure),worker=await coldWorker(workers);
   try{
    await new Promise(resolve=>setTimeout(resolve,1500));
@@ -646,8 +736,9 @@ it('completes every manager Home card and Today section read without a handled f
     worker.resetTrips();
     const pages=await Promise.all(lane.map(async actor=>{
      const owners=await targets(actor.ctx),started=performance.now(),sections:Record<string,unknown>={};
-     const [stream]=await Promise.all([section(()=>streamHome(actor,month,null,worker.GET)),...['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'].map(name=>
-      section(owners[name]).then(()=>{sections[name]=Math.round(performance.now()-started);},error=>{sections[name]=errorFact(error);}))]);
+     const render=<T,>(work:()=>Promise<T>)=>scope==='page'?targets.pageRender(work):work();
+     const [stream]=await Promise.all([section(()=>streamHome(actor,month,null,worker.GET)),render(()=>Promise.all(['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'].map(name=>
+      section(owners[name]).then(()=>{sections[name]=Math.round(performance.now()-started);},error=>{sections[name]=errorFact(error);}))))]);
      return {role:actor.role,elapsedMs:stream.elapsedMs,over:stream.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card),
       failed:stream.frames.filter(frame=>frame.status!==200).map(frame=>frame.card),
       slowest:[...stream.frames].sort((a,b)=>b.ms-a.ms).slice(0,4).map(frame=>[frame.card,frame.status,frame.ms]),sections};

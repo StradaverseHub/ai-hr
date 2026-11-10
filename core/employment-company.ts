@@ -47,6 +47,7 @@
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { assignment, employment } from '../db/schema';
 import type { Tx } from '../db/client';
+import { sharedReadWindow, sharedSnapshotValue } from '../db/shared-read';
 
 /** One maximal range over which a single legal entity applied. Inclusive on both ends. */
 export type CompanySegment = {
@@ -376,12 +377,26 @@ export async function provenCompanyDatesTx(
 ): Promise<Map<string, ProvenCompanyDate>> {
   const out = new Map<string, ProvenCompanyDate>();
   if (!requested.length) return out;
-  // The same INVOKER fact reader can be composed behind a separately fenced, minimal Home peer
-  // projection. Ordinary consumers retain their existing RLS; no owner credential or new scope is used.
-  const rows=await tx.execute(sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,
-   company_id::text AS "companyId",reason FROM app.proven_company_date_points(${JSON.stringify(requested)}::jsonb)
-   ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;companyId:string|null;reason:ProvenCompanyDate['reason']}[];
-  const byPoint=new Map(rows.map(row=>[`${row.employmentId}|${row.date}`,{companyId:row.companyId,reason:row.reason}]));
+  // Each point's proof depends on that point alone. Inside a shared snapshot whose request declared a window for the
+  // one employment asked about (db/shared-read.ts), every date of the window is proven once and each caller reads its
+  // own points from it, in its own order; a point outside the window reads exactly as before.
+  const subject = requested[0].employmentId;
+  if (requested.every((point) => point.employmentId === subject)) {
+    const dates = requested.map((point) => point.date).sort();
+    const wide = sharedReadWindow(tx, subject, dates[0], dates[dates.length - 1]);
+    if (wide && requested.every((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.date))) {
+      const all = await sharedSnapshotValue(tx, 'provenCompanyDates|' + subject + '|' + wide.from + '|' + wide.to,
+        () => provenCompanyDatePointsTx(tx, windowDates(wide.from, wide.to).map((date) => ({ employmentId: subject, date })))).catch(() => null);
+      if (all && requested.every((point) => all.has(`${point.employmentId}|${point.date}`))) {
+        for (const point of requested) {
+          const key = `${point.employmentId}|${point.date}`;
+          out.set(key, { ...all.get(key)! });
+        }
+        return out;
+      }
+    }
+  }
+  const byPoint = await provenCompanyDatePointsTx(tx, requested);
   // Preserve the caller's requested insertion order, including the established duplicate-key behaviour.
   for(const point of requested){
    const key=`${point.employmentId}|${point.date}`,proof=byPoint.get(key);
@@ -389,6 +404,22 @@ export async function provenCompanyDatesTx(
    out.set(key,proof);
   }
   return out;
+}
+function windowDates(from: string, to: string): string[] {
+  const dates: string[] = [];
+  for (let at = Date.parse(from + 'T00:00:00Z'), end = Date.parse(to + 'T00:00:00Z'); at <= end; at += 86_400_000) dates.push(new Date(at).toISOString().slice(0, 10));
+  return dates;
+}
+async function provenCompanyDatePointsTx(
+  tx: Tx,
+  requested: readonly { employmentId: string; date: string }[],
+): Promise<Map<string, ProvenCompanyDate>> {
+  // The same INVOKER fact reader can be composed behind a separately fenced, minimal Home peer
+  // projection. Ordinary consumers retain their existing RLS; no owner credential or new scope is used.
+  const rows=await tx.execute(sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,
+   company_id::text AS "companyId",reason FROM app.proven_company_date_points(${JSON.stringify(requested)}::jsonb)
+   ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;companyId:string|null;reason:ProvenCompanyDate['reason']}[];
+  return new Map(rows.map(row=>[`${row.employmentId}|${row.date}`,{companyId:row.companyId,reason:row.reason}]));
 }
 
 /** Strict dated intervals. Unknown intervals are retained explicitly and never filled from a mutable

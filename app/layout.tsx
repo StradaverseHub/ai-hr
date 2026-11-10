@@ -55,7 +55,8 @@ import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import {readShellNavigationAccess} from '@/core/shell-navigation-access';
 import { companyContextForPage } from '@/lib/scope';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
-import {withBackgroundReadWork} from '@/db/client';
+import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
+import {requestReadScope} from '@/lib/request-read-scope';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
@@ -250,12 +251,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
   // The passive badge and task preview stream separately from navigation. Reserve
   // interactive database capacity for the active page and the user's explicit actions.
-  const approvalFacts:Promise<ShellApprovalResult> = withBackgroundReadWork(session.tenantId,() => pendingTaskSummary(session, scopeIds, {
+  // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the
+  // page's own sections are read once; another identity or an incompatible owner keeps its own transaction.
+  const approvalFacts:Promise<ShellApprovalResult> = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: claimsEnabled,
     performance: isModuleEnabledOrFalse(session, 'performance'),
     rewards: isModuleEnabledOrFalse(session, 'rewards'),
-  }, { deferClaimPreview: true })).then((approvalSummary):ShellApprovalResult=>({
+  }, { deferClaimPreview: true }),undefined,requestReadScope())).then((approvalSummary):ShellApprovalResult=>({
     state:'ready',
     items:approvalSummary.items,
     total:approvalSummary.total,

@@ -1497,6 +1497,18 @@ export async function importOnehrRewardResults(ctx: SessionContext, unitId: stri
 const REWARD_TASK_APPROVAL_STAGES = ['bg', 'gr', 'ctro', 'ec'] as const;
 
 /**
+ * The native suspension observation (0681 app.reward_access_observe) is a separately committed WRITE before the task
+ * presentation, and a failure still blocks it. It records only a member state not yet recorded; the read-only probe
+ * (9850 app.reward_access_observation_due) answers exactly that for the current login, so the write runs whenever it
+ * has something to record and is skipped only when it would record nothing. The probe reads inside the caller's
+ * snapshot (one shared statement on Home) instead of a write transaction on every read.
+ */
+async function observeRewardAccessWhenDue(ctx: SessionContext) {
+  const [probe] = await withRewardsTenant(ctx, tx => tx.execute<{ due: boolean | null }>(sql`select app.reward_access_observation_due(NULL::uuid) as due`));
+  if (probe?.due !== false) await withRewardsTenant(ctx, tx => tx.execute(sql`select app.reward_access_observe(NULL::uuid)`));
+}
+
+/**
  * Rewards work awaiting the viewer, projected into the shared task list (WP-A1; core/approvals-inbox.ts
  * PACK_TASK_SOURCES). Two owners decide the rows; this function only supplies what the shared list needs:
  *
@@ -1517,7 +1529,7 @@ const REWARD_TASK_APPROVAL_STAGES = ['bg', 'gr', 'ctro', 'ec'] as const;
  * reason or actor.
  */
 export async function pendingRewardTasks(ctx: SessionContext, scopeIds: string[] | undefined): Promise<PackTaskItem[]> {
-  await withRewardsTenant(ctx,tx=>tx.execute(sql`select app.reward_access_observe(NULL::uuid)`));
+  await observeRewardAccessWhenDue(ctx);
   const readable = await withRewardsTenant(ctx, (tx) => tx
     .select({ id: rewardUnit.id, companyId: rewardUnit.companyId, status: rewardUnit.status, createdAt: rewardUnit.createdAt })
     .from(rewardUnit)
