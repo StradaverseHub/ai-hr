@@ -2866,15 +2866,15 @@ indexes and `when` values are unchanged; only their bytes, so their hashes:
 
 | Tag | Was SHA256 | Now SHA256 |
 | --- | --- | --- |
-| `2103_system_performance_read_guards` | 0f9ec0dfac05dfd46db765cdc868b0dfc14637e4c6266d229dea12f3691f8111 | 8dc535d69f99933cac34abd2400cc1ae46fb70464ac47ace403cbc267e835adf |
+| `2103_system_performance_read_guards` | 0f9ec0dfac05dfd46db765cdc868b0dfc14637e4c6266d229dea12f3691f8111 | fa2c3b276ee87843773d2f90c645d2af2ac9edeeab9c8ee7990da2f93fc9dcdc |
 | `2124_ai_control_navigation_candidates` | ed8666bfc29767ce266c362f07046dcd6b5b65b8434738bb9257daf5e328292c | 70dcc77f66c43c2af88e938f7b98641601d79f815cdcbf43609df7126de6f171 |
 | `2131_ai_read_only_metadata_locks` | 409262dd7b958eb8c2633556f9dba13ad637042efcb07b632a5bcea5c8131077 | 7fc2ba831335cb8cd1a4907eb6291f4508e7355dd1c02324392a8c6b70011268 |
-| `2132_ai_metadata_claim_preview_index` | ea9d1a6ee283b0586a835d98ee4c5e75196615a5f51d22d643966fc519c97508 | 7d09a912e170ab6270d424dd9633130b52ddc42a1b68ca785dc6ec4f76a91216 |
+| `2132_ai_metadata_claim_preview_index` | ea9d1a6ee283b0586a835d98ee4c5e75196615a5f51d22d643966fc519c97508 | b50f22b90580b0ec5fcce8fdc915094d7b119cd1df5547918779ce7aa8029bd7 |
 | `2133_ai_action_read_only_lock` | d22cc6aa2e0995a4b7368127ac4d0a2d0c8f18e4bc44a5ca31480ab5d144ea8f | 1d9e9b9e22f07b70cc2de54c25e9e330ef36146c8d9c4117e3dec23f780183ee |
 | `2134_claim_visibility_set_membership` | a489a4293bc835003a0c6ee3f77f68d3847c618827949b54d541290563d3f2f6 | 3aac721aa0f291127c3718f4379007eec1240a6900182c84ecf7f82e24c004ca |
 | `2138_ai_pause_company_discovery` | bc44d218c30fcaa1db8a2f92e661be228cc4638fdfeb4280be0cacef388e5574 | 074304d629b363cc1317fb1da1e06749ab4dd4102acbd1a0005b169b5ec835b7 |
-| `2212_payroll_audit_claim_lookup_indexes` | ba7080ebfe158a3e2c339552de3a4c9c5adc2ae63dd5e32ec846671e647f37e2 | 159d9c71390f6213499bf9c88f6c8a4b600d20cf35350afcb040007c763fba9b |
-| `2504_notification_event_processing` | a473a533cd967d7ad2ac971e24b5141af87d25967b84b3ca491e42fa9f1d81ce | eb10e7c73d338853eea16899d2d645f83b839be90773b3b4c6b1f2266a4a5668 |
+| `2212_payroll_audit_claim_lookup_indexes` | ba7080ebfe158a3e2c339552de3a4c9c5adc2ae63dd5e32ec846671e647f37e2 | 4e9b9b975ba6c22ee0c8e89b0d5e6ea5303812358a1cdab1344d08531ba1a9ef |
+| `2504_notification_event_processing` | a473a533cd967d7ad2ac971e24b5141af87d25967b84b3ca491e42fa9f1d81ce | 84ea1697e55e7df6dba1458912ab0e8a56330e2fd12c7c2a253b0f6af9e82e62 |
 | `2506_notification_receipt_retention` | 764bd405d99e398e35f2282202f07daf9c5f732cdbd67d19b35862849bfc88cf | 9094888120376fbc21a9f56eca8b7dcc6bb2774bbc6bf380a24c488cb6ceaf8d |
 | `2903_notification_receipt_cycle_authority` | 82711cacac3c69fc217fb9038ccc6a6000dc41c746e3751d8584499698471e22 | d6aae2dcc297c146afb6584701159cc09a0f65592dd4e779a83cd7782a1279ff |
 | `3001_employment_membership_initplan` | cd25b675ca404c364d4aef1f436f2e8a89ddeff8d4c63c355cd1fb28dc1507d0 | 9a7a4d8019b34041b4a7eb7c09fb44932c3e93d22a5b55000e2247da9dd8d8c7 |
@@ -2885,8 +2885,8 @@ indexes and `when` values are unchanged; only their bytes, so their hashes:
 - `2504` no longer locks `domain_event` or copies history inside the batch; it records the cursor cutover and
   `scripts/post-migrate-online.ts` writes historical receipts in small resumable transactions. `2506` is a no-op
   because `ON DELETE CASCADE` now ships on the original foreign key.
-- `2103`, `2132`, `2212` and `2504` build hot-table indexes through `app.online_index_or_defer`: inside the migration
-  below 8 MB, otherwise `CREATE INDEX CONCURRENTLY` in the post-migration step (`app.online_deferred_index`).
+- `2103`, `2132`, `2212` and `2504` build hot-table indexes through `online_migration.index_or_defer`: inside the migration
+  below 8 MB, otherwise `CREATE INDEX CONCURRENTLY` in the post-migration step (`online_migration.deferred_index`).
 - Lock timeouts are scoped to the statements that need them (`2134`, `2504`, `3001`, `3102`, `4342`) and restored.
 - `2124`, `2131`, `2133` and `2138` edit the inner AI control owners; the 3200 wrappers and the tenant stop check stay
   live at every prefix. `3500` re-asserts the same final bodies.

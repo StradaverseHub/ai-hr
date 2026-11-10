@@ -1,7 +1,7 @@
 -- Durable projection intent is created in the source event transaction. A serial allocation
 -- is not commit order. Keep the old cursor only for overlap/operational compatibility.
 -- Online cutover. The enqueue trigger captures every event written after this batch commits; receipts
--- for existing history are written by app.notification_receipt_backfill_batch in small transactions
+-- for existing history are written by online_migration.notification_receipt_backfill_batch in small transactions
 -- from scripts/post-migrate-online.ts, never here. Existing events <= historical cursors are not
 -- replayed. The lock wait is bounded, so a busy table fails the batch rather than queueing writers.
 SET LOCAL lock_timeout = '5s';
@@ -64,33 +64,33 @@ SET LOCAL lock_timeout TO DEFAULT;
 -- cursor past this snapshot; those events stay pending and the (event, recipient, kind) check keeps
 -- the new consumer from repeating what the old one already projected. Frozen on purpose: a later
 -- cursor can be advanced by the new dispatcher and must not classify a receipt as already handled.
-CREATE TABLE app.notification_event_processing_cutover (
+CREATE TABLE online_migration.notification_cursor_cutover (
  tenant_id uuid PRIMARY KEY REFERENCES public.tenant(id),
  last_sequence bigint,
  assessment_last_sequence bigint
 );
 --> statement-breakpoint
-ALTER TABLE app.notification_event_processing_cutover ENABLE ROW LEVEL SECURITY;
+ALTER TABLE online_migration.notification_cursor_cutover ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
-REVOKE ALL ON TABLE app.notification_event_processing_cutover FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON TABLE online_migration.notification_cursor_cutover FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
-INSERT INTO app.notification_event_processing_cutover(tenant_id,last_sequence,assessment_last_sequence)
+INSERT INTO online_migration.notification_cursor_cutover(tenant_id,last_sequence,assessment_last_sequence)
  SELECT tenant_id,last_sequence,assessment_last_sequence FROM public.notification_cursor;
 --> statement-breakpoint
-INSERT INTO app.online_migration_step(step) VALUES('notification-receipts');
+INSERT INTO online_migration.step(step) VALUES('notification-receipts');
 --> statement-breakpoint
 -- Do not infer historical delivery completeness from these legacy markers. Suspected historical
 -- omissions need a separately reviewed reconciliation; replay must not resend old external effects.
 -- One physical-range page per call, so history is read sequentially instead of in random UUID order.
 -- ON CONFLICT leaves receipts the trigger already wrote untouched. Rows appended after a page was read
 -- already have trigger-written receipts, so the walk only needs to reach the end of the table once.
-CREATE FUNCTION app.notification_receipt_backfill_batch(p_pages integer DEFAULT 150)
+CREATE FUNCTION online_migration.notification_receipt_backfill_batch(p_pages integer DEFAULT 150)
  RETURNS TABLE(scanned integer,inserted integer,done boolean)
  LANGUAGE plpgsql SET search_path=public,pg_temp AS $backfill$
 DECLARE start_page bigint;last_page bigint;total_pages bigint;
 BEGIN
  IF p_pages IS NULL OR p_pages<1 OR p_pages>5000 THEN RAISE EXCEPTION 'Backfill page range out of bounds'; END IF;
- SELECT coalesce(s.position::bigint,0) INTO start_page FROM app.online_migration_step s WHERE s.step='notification-receipts' FOR UPDATE;
+ SELECT coalesce(s.position::bigint,0) INTO start_page FROM online_migration.step s WHERE s.step='notification-receipts' FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Notification receipt backfill step is missing'; END IF;
  total_pages:=pg_relation_size('public.domain_event')/current_setting('block_size')::bigint;
  last_page:=start_page+p_pages;
@@ -102,20 +102,20 @@ BEGIN
   SELECT b.tenant_id,b.id,consumer.name,b.sequence,
    CASE WHEN b.sequence<=consumer.last_sequence THEN 'legacy-cursor' ELSE NULL END,
    CASE WHEN b.sequence<=consumer.last_sequence THEN now() ELSE NULL END
-  FROM batch b LEFT JOIN app.notification_event_processing_cutover c ON c.tenant_id=b.tenant_id
+  FROM batch b LEFT JOIN online_migration.notification_cursor_cutover c ON c.tenant_id=b.tenant_id
   CROSS JOIN LATERAL(SELECT 'notifications'::text AS name,c.last_sequence
    UNION ALL SELECT 'assessment-reminders',c.assessment_last_sequence WHERE b.event_type='assessment.reminder-queued') consumer
   ON CONFLICT(event_id,consumer) DO NOTHING RETURNING 1
  )
  SELECT (SELECT count(*) FROM batch)::integer,(SELECT count(*) FROM written)::integer INTO scanned,inserted;
  done:=last_page>=total_pages;
- UPDATE app.online_migration_step s SET position=last_page::text,completed_at=CASE WHEN done THEN now() END WHERE s.step='notification-receipts';
+ UPDATE online_migration.step s SET position=last_page::text,completed_at=CASE WHEN done THEN now() END WHERE s.step='notification-receipts';
  RETURN NEXT;
 END $backfill$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.notification_receipt_backfill_batch(integer) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION online_migration.notification_receipt_backfill_batch(integer) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
-SELECT app.online_index_or_defer('public.notification','notification_source_recipient_kind_idx',
+SELECT online_migration.index_or_defer('public.notification','notification_source_recipient_kind_idx',
  'ON public.notification(tenant_id,source_event_id,recipient_employment_id,kind) WHERE source_event_id IS NOT NULL');
 --> statement-breakpoint
 -- Boolean-only overlap check: ordinary recipients retain their existing notification disclosure.

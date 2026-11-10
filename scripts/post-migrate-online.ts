@@ -8,10 +8,10 @@
  * It is idempotent and resumable: re-run it after any failure. The previous build keeps serving
  * throughout, so a failure stops the release before activation without leaving the app down.
  *
- *  1. Builds every index recorded in app.online_deferred_index with CREATE INDEX CONCURRENTLY,
+ *  1. Builds every index recorded in online_migration.deferred_index with CREATE INDEX CONCURRENTLY,
  *     replacing any INVALID leftover from an interrupted build.
  *  2. Writes notification_event_processing receipts for existing domain_event history in small
- *     physical-range transactions (app.notification_receipt_backfill_batch), then proves nothing was missed.
+ *     physical-range transactions (online_migration.notification_receipt_backfill_batch), then proves nothing was missed.
  */
 import postgres from 'postgres';
 
@@ -35,7 +35,7 @@ async function withRetry<T>(label:string,run:()=>Promise<T>,attempts=8):Promise<
 
 async function buildDeferredIndexes(sql:postgres.Sql){
  const pending=await sql<{index_name:string;table_name:string;definition:string;analyze_after:boolean}[]>`
-  select index_name,table_name::text as table_name,definition,analyze_after from app.online_deferred_index where built_at is null order by index_name`;
+  select index_name,table_name::text as table_name,definition,analyze_after from online_migration.deferred_index where built_at is null order by index_name`;
  log(`${pending.length} deferred index(es) to build`);
  // A CONCURRENTLY build never blocks reads or writes, so it may wait for older transactions.
  await sql.unsafe(`SET lock_timeout=0`);await sql.unsafe(`SET statement_timeout='2h'`);
@@ -50,7 +50,7 @@ async function buildDeferredIndexes(sql:postgres.Sql){
   }
   await sql.unsafe(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${quoteIdent(row.index_name)} ${row.definition}`);
   if(row.analyze_after)await sql.unsafe(`ANALYZE ${row.table_name}`);
-  await sql`update app.online_deferred_index set built_at=now() where index_name=${row.index_name}`;
+  await sql`update online_migration.deferred_index set built_at=now() where index_name=${row.index_name}`;
   log(`${row.index_name}: built in ${Date.now()-started} ms`);
  }
 }
@@ -59,14 +59,14 @@ function quoteIdent(value:string){return `"${value.replace(/"/g,'""')}"`;}
 function quoted(schema:string,name:string){return `${quoteIdent(schema)}.${quoteIdent(name)}`;}
 
 async function backfillReceipts(sql:postgres.Sql){
- const [step]=await sql<{completed_at:Date|null}[]>`select completed_at from app.online_migration_step where step='notification-receipts'`;
+ const [step]=await sql<{completed_at:Date|null}[]>`select completed_at from online_migration.step where step='notification-receipts'`;
  if(!step)throw new Error('notification-receipts step missing; run db:migrate first');
  if(!step.completed_at){
   await sql.unsafe(`SET lock_timeout='5s'`);await sql.unsafe(`SET statement_timeout='60s'`);
   let scanned=0,inserted=0,pages=0,maxPageMs=0;const started=Date.now();
   for(;;){
    const pageStart=Date.now();
-   const [page]=await withRetry('receipt page',()=>sql<{scanned:number;inserted:number;done:boolean}[]>`select * from app.notification_receipt_backfill_batch(${pageRange})`);
+   const [page]=await withRetry('receipt page',()=>sql<{scanned:number;inserted:number;done:boolean}[]>`select * from online_migration.notification_receipt_backfill_batch(${pageRange})`);
    maxPageMs=Math.max(maxPageMs,Date.now()-pageStart);
    scanned+=page.scanned;inserted+=page.inserted;pages++;
    if(pages%100===0)log(`receipts: ${scanned} events scanned, ${inserted} receipts written`);

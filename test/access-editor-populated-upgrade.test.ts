@@ -33,7 +33,7 @@ it('preserves populated permissions/history and atomically refuses a drifted pre
  const journal=JSON.parse(readFileSync('test/fixtures/access-editor-original739-journal.json','utf8')),prefix=journal.entries,componentJournal={...journal,entries:[...prefix,append]};
  expect(prefix).toHaveLength(739);expect(componentJournal.entries).toHaveLength(740);expect(componentJournal.entries.at(-1)).toEqual(append);
  expect(sha(JSON.stringify(prefix))).toBe('2f2bf63ad7197b2b9042dee26f1a701539addc7f146cce14914fdc8ec1006a05');
- expect(sha(JSON.stringify(prefix.map((entry:{tag:string})=>[entry.tag,sha(readFileSync(historicalMigrationSourcePath(entry.tag)))])))).toBe('2c89df7ffca49026bd54e122a600d3197b5e9d0b785b558f8358c0f99c3602ac');
+ expect(sha(JSON.stringify(prefix.map((entry:{tag:string})=>[entry.tag,sha(readFileSync(historicalMigrationSourcePath(entry.tag)))])))).toBe('3b7dacb6821fa1675c4656407ebb31f1d0d5229ed64f0d69276320235f0314b2');
  expect(sha(readFileSync(historicalMigrationSourcePath(append.tag)))).toBe(appendHash);
  const name='ai_hr_access_upgrade_'+randomUUID().replaceAll('-',''),folder=mkdtempSync(join(tmpdir(),'aihr-access-upgrade-'));
  source.pathname='/postgres';const admin=postgres(source.toString(),{max:1,onnotice:()=>{}});source.pathname='/'+name;

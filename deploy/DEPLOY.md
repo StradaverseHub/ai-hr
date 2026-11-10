@@ -640,7 +640,7 @@ table: anything it takes is held until the whole batch commits. Migrations there
 
     node --env-file=.env.production --import tsx scripts/post-migrate-online.ts
 
-It builds the indexes listed in `app.online_deferred_index` with `CREATE INDEX CONCURRENTLY` (tables under 8 MB
+It builds the indexes listed in `online_migration.deferred_index` with `CREATE INDEX CONCURRENTLY` (tables under 8 MB
 are built inside the migration instead) and writes `notification_event_processing` receipts for existing
 `domain_event` history in small physical-range transactions (150 table pages each), frozen against the notification cursors recorded at cutover.
 Neither blocks application reads or writes. It is idempotent and resumable: if it fails, the release stops with the
