@@ -12,14 +12,14 @@ type Need={role:string;relation:string;policy:string;execute:boolean};
 const publicExecute=async(fn:string)=>(await owner.client<{p:boolean}[]>`select exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
  where p.oid=to_regprocedure(${fn}) and a.grantee=0 and a.privilege_type='EXECUTE') as p`)[0].p;
 /** Every role subject to row security that can reach a policy calling the helper: it holds a privilege on the table
- * (directly or through membership), the policy applies to it, and it neither owns the table (unless row security is
- * forced), bypasses row security nor is a superuser or a predefined pg_ role. */
+ * (directly or through membership), the policy applies to it, and it neither owns the table nor acts with its owner's
+ * privileges (unless row security is forced), bypasses row security nor is a superuser or a predefined pg_ role. */
 const policyNeeds=(fn:string)=>owner.client<Need[]>`
  with policies as (select distinct p.oid,p.polname,p.polrelid,p.polroles from pg_policy p join pg_depend d on d.classid='pg_policy'::regclass and d.objid=p.oid
    and d.refclassid='pg_proc'::regclass and d.refobjid=to_regprocedure(${fn}))
  select r.rolname::text as role,c.relname::text as relation,p.polname::text as policy,has_function_privilege(r.oid,to_regprocedure(${fn}),'EXECUTE') as execute
  from policies p join pg_class c on c.oid=p.polrelid cross join pg_roles r
- where not r.rolsuper and not r.rolbypassrls and r.rolname not like 'pg\\_%' and (r.oid<>c.relowner or c.relforcerowsecurity)
+ where not r.rolsuper and not r.rolbypassrls and r.rolname not like 'pg\\_%' and (not pg_has_role(r.oid,c.relowner,'USAGE') or c.relforcerowsecurity)
   and (has_table_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE') or has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE'))
   and (0=any(p.polroles) or exists(select 1 from unnest(p.polroles) x where pg_has_role(r.oid,x,'MEMBER')))
  order by 1,2,3`;
