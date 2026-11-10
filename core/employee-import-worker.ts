@@ -143,7 +143,8 @@ async function activate(ctx:SessionContext,job:EmployeeImportJobRow):Promise<voi
  (globalThis as WorkerGlobal).__aihrEmployeeImportActivation?.(Date.now()-started,job.id);
  // Post-commit best effort, exactly as the synchronous import: never reported as a rolled-back import.
  const warnings:string[]=[];
- const familyPersons=stepCaches.get(job.id)?.familyPersons??(await withTenant(ctx,tx=>tx.execute<{person_id:string}>(sql`select person_id from employee_import_step where job_id=${job.id}::uuid and kind='employee' and jsonb_array_length(coalesce(payload->'family','[]'::jsonb))>0 and person_id is not null`)).then(rows=>new Set(rows.map(r=>r.person_id))));
+ const cached=stepCaches.get(job.id)?.familyPersons;
+ const familyPersons:Set<string>=cached??new Set((await withTenant(ctx,tx=>tx.execute<{person_id:string}>(sql`select person_id from employee_import_step where job_id=${job.id}::uuid and kind='employee' and jsonb_array_length(coalesce(payload->'family','[]'::jsonb))>0 and person_id is not null`))).map(r=>r.person_id));
  for(const personId of familyPersons){try{const r=await syncChildReliefFromFamily(ctx,personId);if(r.skipped==='error')warnings.push('Family records were saved; review the tax child-relief refresh on the Personnel record.');}catch{warnings.push('Family records were saved; review the tax child-relief refresh on the Personnel record.');}}
  const rejected=(job.plan as StoredPlan|null)?.rejected??[];
  const runId=await recordImportRun(ctx,{companyId:job.company_id,fileName:job.input?.fileName??job.source_name,totalRows:job.total,imported:result.imported,rejected,failed:[]}).catch(()=>null);

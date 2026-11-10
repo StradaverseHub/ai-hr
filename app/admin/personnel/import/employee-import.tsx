@@ -20,7 +20,7 @@ import {PERSONNEL_REGISTER_KINDS,PERSONNEL_REGISTER_SHEETS,personnelRegisterColu
 import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
 import { PersonnelImportValues } from '@/components/personnel-import-values';
 
-import { Fragment, useRef, useState, useTransition } from 'react';
+import { Fragment, useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -447,7 +447,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         const revision=inputRevision.current;
         const binding=await evaluation.current?.prepareCommit({csv,companyId,family:dependentsCsv,registers:registerTexts,allocations:allocationsCsv,revision});
         if(binding===null||revision!==inputRevision.current)return;
-        let r:Exclude<Awaited<ReturnType<typeof commitImportAction>>, {error:string}>;
+        let r:Exclude<Awaited<ReturnType<typeof commitImportAction>>, {error:string}|{job:EmployeeImportProgress;existing:boolean}>;
         let started:{job:EmployeeImportProgress}|null=null;
         try{
           // 524303d9 — an uploaded file whose text is still exactly what is being imported goes to Import History
