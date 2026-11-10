@@ -106,6 +106,7 @@ import {
   narrowedOrgCriteriaAxes,
   orgCriteriaSpecificity,
   resolveOrgCriteriaTargets,
+  resolveOrgCriteriaTargetsBatch,
   type OrgCriteria,
 } from './org-criteria';
 import { ORG_ASSIGNMENT_CRITERIA } from './leave-org-criteria';
@@ -1855,16 +1856,34 @@ const emptyWith = (hasTemplatesFor: (leaveTypeId: string) => boolean): TemplateE
  *  the asked leave types: the caller that already knows that (bundled own leave inputs) skips the read. */
 export const emptyTemplateEntitlementResolver = (): TemplateEntitlementResolver => emptyWith(() => false);
 
+/**
+ * The statements `buildTemplateEntitlementResolver` reads, answered from rows already read for the caller's transaction
+ * (bundled own leave inputs, core/own-leave-inputs.ts: every entitlement table version and eligibility rule this login
+ * may read, and the leave types). Each method is its statement's own predicate over the rows that statement reads, in
+ * its order: `templatesAt` is `activeTemplatesAt`'s, `leaveTypeIdsWithRulesAt` the rule ⋈ table lineage join of
+ * `leaveTypeIdsWithEligibilityRulesAt`, `defaultLineages` the leave types' default table select and `rulesAt` the rules
+ * in force ordered by (created_at, id). Which employments each rule reaches is still asked in SQL, by
+ * `resolveOrgCriteriaTargets`' own predicate: every candidate rule of one resolver in one statement
+ * (`resolveOrgCriteriaTargetsBatch`). Everything else, ranking included, is the one code path below.
+ */
+export type TemplateResolverInputs = {
+  templatesAt(asOf: string, leaveTypeIds: readonly string[]): TemplateSelect[];
+  leaveTypeIdsWithRulesAt(asOf: string, leaveTypeIds: readonly string[]): Set<string>;
+  defaultLineages(leaveTypeIds: readonly string[]): { id: string; lineageId: string | null }[];
+  rulesAt(asOf: string): RuleSelect[];
+};
+
 export async function buildTemplateEntitlementResolver(
   tx: Tx,
   p: { employmentIds: string[]; leaveTypeIds: string[]; asOf: string },
+  pre?: TemplateResolverInputs,
 ): Promise<TemplateEntitlementResolver> {
   const empty = emptyTemplateEntitlementResolver();
   const empIds = [...new Set(p.employmentIds.filter(Boolean))];
   const typeIds = [...new Set(p.leaveTypeIds.filter(Boolean))];
   if (empIds.length === 0 || typeIds.length === 0) return empty;
 
-  const templates = await activeTemplatesAt(tx, p.asOf, typeIds);
+  const templates = pre ? activeTemplatesFrom(pre.templatesAt(p.asOf, typeIds)) : await activeTemplatesAt(tx, p.asOf, typeIds);
   // r209 — captured HERE, before any short-circuit, because every `return empty` below is a case where the
   // question "does this type have a table at all" still has a real answer and the screens need it. A tenant
   // whose only eligibility rule expired takes the `matchedByEmp.size === 0` exit two blocks down with six
@@ -1900,7 +1919,7 @@ export async function buildTemplateEntitlementResolver(
   }
   const soleCandidates = [...lineagesByType].filter(([, rows]) => rows.length === 1).map(([id]) => id);
   const ruledTypeIds = soleCandidates.length
-    ? await leaveTypeIdsWithEligibilityRulesAt(tx, p.asOf, soleCandidates)
+    ? pre ? pre.leaveTypeIdsWithRulesAt(p.asOf, soleCandidates) : await leaveTypeIdsWithEligibilityRulesAt(tx, p.asOf, soleCandidates)
     : new Set<string>();
   const soleTemplateByType = new Map<string, EntitlementTemplateRow>();
   for (const typeId of soleCandidates) {
@@ -1931,7 +1950,7 @@ export async function buildTemplateEntitlementResolver(
   // pointing at another leave type's table is refused at write time and ignored here regardless.
   const defaultTemplateByType = new Map<string, EntitlementTemplateRow>();
   {
-    const defaults = await tx
+    const defaults = pre ? pre.defaultLineages(typeIds) : await tx
       .select({ id: leaveType.id, lineageId: leaveType.defaultEntitlementTemplateLineageId })
       .from(leaveType)
       .where(inArray(leaveType.id, typeIds));
@@ -1943,7 +1962,7 @@ export async function buildTemplateEntitlementResolver(
   }
 
   const ruleRows = (
-    await tx
+    pre ? pre.rulesAt(p.asOf) : await tx
       .select()
       .from(entitlementEligibilityRule)
       .where(
@@ -1971,10 +1990,14 @@ export async function buildTemplateEntitlementResolver(
     return emptyWith(hasTemplatesFor);
   }
 
-  // employmentId → the rules that match it, unranked. One query per rule, narrowed to the batch.
+  // employmentId → the rules that match it, unranked. One query per rule, narrowed to the batch; from preloaded inputs,
+  // the same query of every rule as one statement, each answer in its rule's place.
   const matchedByEmp = new Map<string, EligibilityRuleRow[]>();
-  for (const rule of ruleRows) {
-    const hits = await resolveOrgCriteriaTargets(tx, {
+  const batched = pre
+    ? await resolveOrgCriteriaTargetsBatch(tx, ruleRows.map((rule) => ({ criteria: rule.criteria, asOf: p.asOf, employmentIds: empIds })))
+    : null;
+  for (const [index, rule] of ruleRows.entries()) {
+    const hits = batched ? batched[index] : await resolveOrgCriteriaTargets(tx, {
       criteria: rule.criteria,
       asOf: p.asOf,
       employmentIds: empIds,
@@ -2449,6 +2472,10 @@ async function activeTemplatesAt(
         or(isNull(entitlementTemplate.validTo), gt(entitlementTemplate.validTo, asOf)),
       ),
     );
+  return activeTemplatesFrom(rows);
+}
+/** The lineage map `activeTemplatesAt` builds from its rows (the in-force versions of the asked leave types). */
+function activeTemplatesFrom(rows: TemplateSelect[]): Map<string, EntitlementTemplateRow> {
   // At most one open version per lineage is a DB invariant (entitlement_template_open_uq), and the dated
   // window is half-open, so this map can never lose a row to a collision. Built defensively anyway: the
   // last-writer-wins on a duplicate would be non-deterministic, and silent non-determinism in entitlement
@@ -2473,8 +2500,8 @@ async function assertTemplateLineageExists(tx: Tx, lineageId: string): Promise<v
   if (!row) throw new Error('That entitlement table does not exist.');
 }
 
-type TemplateSelect = typeof entitlementTemplate.$inferSelect;
-type RuleSelect = typeof entitlementEligibilityRule.$inferSelect;
+export type TemplateSelect = typeof entitlementTemplate.$inferSelect;
+export type RuleSelect = typeof entitlementEligibilityRule.$inferSelect;
 
 const toTemplateRow = (r: TemplateSelect): EntitlementTemplateRow => ({
   id: r.id,

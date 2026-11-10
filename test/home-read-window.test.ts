@@ -15,6 +15,7 @@ import {provenCompanyDatesTx} from '../core/employment-company';
 import {approvedLeavePresenceByEmploymentTx,leaveCalendarPresenceByEmploymentTx,nextApprovedLeavePresenceTx} from '../packs/leave/service';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {readCalendarWindowInputsTx,withStagedHomeReads,type CalendarWindowInputs} from '../core/calendar-window-inputs';
 
 // The next December not yet begun, so the policy can take effect before every source date.
 const now=todayInKualaLumpur(),Y0=Number(now.slice(0,4))+(now.slice(5)<'12-01'?0:1),Y1=Y0+1;
@@ -62,13 +63,13 @@ beforeAll(async()=>{
 });
 afterAll(async()=>{delete hooks.__aihrPerfSharedRead;await closeAll();});
 
-const owners=(tx:Tx,id:string,from:string,to:string)=>Promise.all([
- originalHolidayCalendarFor(tx,{employmentId:id,startDate:from,endDate:to}),
- holidayDatesFor(tx,{employmentId:id,startDate:from,endDate:to}).then(dates=>[...dates].sort()),
- replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[id],startDate:from,endDate:to}),
- approvedLeavePresenceByEmploymentTx(tx,[id],from,to).then(map=>[...map].map(([key,dates])=>[key,[...dates]])),
- leaveCalendarPresenceByEmploymentTx(tx,[id],from,to).then(value=>({approved:[...value.approved].map(([key,dates])=>[key,[...dates]]),pending:[...value.pending].map(([key,dates])=>[key,[...dates]])})),
- provenCompanyDatesTx(tx,[to,from,day(from,1),from].map(date=>({employmentId:id,date}))).then(map=>[...map]),
+const owners=(tx:Tx,id:string,from:string,to:string,pre?:CalendarWindowInputs)=>Promise.all([
+ originalHolidayCalendarFor(tx,{employmentId:id,startDate:from,endDate:to},pre),
+ holidayDatesFor(tx,{employmentId:id,startDate:from,endDate:to},pre).then(dates=>[...dates].sort()),
+ replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[id],startDate:from,endDate:to},pre),
+ approvedLeavePresenceByEmploymentTx(tx,[id],from,to,pre).then(map=>[...map].map(([key,dates])=>[key,[...dates]])),
+ leaveCalendarPresenceByEmploymentTx(tx,[id],from,to,pre).then(value=>({approved:[...value.approved].map(([key,dates])=>[key,[...dates]]),pending:[...value.pending].map(([key,dates])=>[key,[...dates]])})),
+ provenCompanyDatesTx(tx,[to,from,day(from,1),from].map(date=>({employmentId:id,date})),pre).then(map=>[...map]),
  nextApprovedLeavePresenceTx(tx,id,from),
 ]);
 const narrow=[[W.from,W.to],[`${Y0}-12-10`,`${Y0}-12-13`],[`${Y0}-12-14`,`${Y0}-12-14`],[`${Y0}-12-24`,`${Y1}-01-02`],[`${Y1}-01-05`,`${Y1}-01-07`],[`${Y1}-01-13`,`${Y1}-01-25`],[`${Y0}-12-31`,`${Y1}-01-01`]] as const;
@@ -90,6 +91,21 @@ describe('Home date-local reads sliced from one declared window',()=>{
     expect(independent[0][2].map(row=>row.replacementDate)).toEqual([`${Y0}-12-28`]);
     expect(independent[0][4].pending).toEqual([[employmentId,[[`${Y1}-01-12`,'full_day'],[`${Y1}-01-13`,'full_day']]]]);
    }else expect(independent[0][0].map(row=>row.date)).toEqual([`${Y0}-12-12`,`${Y0}-12-25`,`${Y0}-12-31`,`${Y1}-01-14`]);
+  }
+ });
+
+ it('answers every slice from the one calendar window statement, and staged reads keep each owner\'s own wide read',async()=>{
+  for(const id of [employmentId,otherCompanyEmployment]){
+   await withTenant(ctx,async tx=>{
+    const pre=await readCalendarWindowInputsTx(tx,id,W.from,W.to);
+    for(const [from,to] of narrow)expect(await owners(tx,id,from,to,pre)).toStrictEqual(await owners(tx,id,from,to));
+   },{readOnlySnapshot:true});
+   const independent=await Promise.all(narrow.map(([from,to])=>withTenant(ctx,tx=>owners(tx,id,from,to),{readOnlySnapshot:true})));
+   const staged=await withSharedReadSnapshot(ctx,async()=>{
+    declareSharedReadWindow(id,W.from,W.to);
+    return withStagedHomeReads(()=>Promise.all(narrow.map(([from,to])=>withTenant(ctx,tx=>owners(tx,id,from,to),{readOnlySnapshot:true}))));
+   });
+   expect(staged).toEqual(independent);
   }
  });
 

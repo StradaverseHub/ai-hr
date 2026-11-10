@@ -3,7 +3,10 @@
 import {withTenant,type SessionContext} from '../db/client';
 import {settleReadGroup} from '../lib/settle-read-group';
 import {HomeAccessError} from './employee-home';
-import {isCurrentOwnHomeEmploymentTx,isOwnProfileEditEmploymentTx,hasEligibleLeaveTypeForTx} from './read';
+import {isCurrentOwnHomeEmploymentTx,isOwnProfileEditEmploymentTx,hasEligibleLeaveTypeForTx,hasEligibleLeaveTypeFrom} from './read';
+import {sharedOwnLeaveInputsTx} from './own-leave-inputs';
+import {calendarWindowInputsFor,stagedHomeReads,type CalendarWindowInputs} from './calendar-window-inputs';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
 import {homeDisplayClock} from '../lib/employee-home';
 import {homeCalendarGrid,type EmployeeHomeCalendar,type HomeCalendarEntry} from '../lib/employee-home-calendar';
@@ -25,12 +28,19 @@ export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:s
   const month=requestedMonth??display.date.slice(0,7),dates=homeCalendarGrid(month,preferences.weekStartsOn);
   const from=dates[0],to=dates[dates.length-1];
   signal?.throwIfAborted();
+  // Leave presence, holidays, replacement days and the grid's dated company proof are each owner's own answer over one
+  // calendar window read of the grid (core/calendar-window-inputs.ts; inside a Home stream, the stream's one read), and
+  // the Apply entry point is answered from the own leave inputs Time Off shares. Under withStagedHomeReads each owner
+  // reads exactly as before.
+  const staged=stagedHomeReads();
+  let calendar:Promise<CalendarWindowInputs|null>|undefined;
+  const window=()=>calendar??=calendarWindowInputsFor(tx,subjectId,from,to,{presence:true});
   const [leave,holidays,replacements,coverage,eligible,active,team]=await settleReadGroup([
-   ()=>leaveCalendarPresenceByEmploymentTx(tx,[subjectId],from,to),
-   ()=>originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:from,endDate:to}),
-   ()=>replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:from,endDate:to}),
-   ()=>provenCompanyDatesTx(tx,dates.map(date=>({employmentId:subjectId,date}))),
-   ()=>hasEligibleLeaveTypeForTx(tx,subjectId),
+   ()=>window().then(pre=>leaveCalendarPresenceByEmploymentTx(tx,[subjectId],from,to,pre)),
+   ()=>window().then(pre=>originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:from,endDate:to},pre)),
+   ()=>window().then(pre=>replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:from,endDate:to},pre)),
+   ()=>window().then(pre=>provenCompanyDatesTx(tx,dates.map(date=>({employmentId:subjectId,date})),pre)),
+   ()=>staged?hasEligibleLeaveTypeForTx(tx,subjectId):sharedOwnLeaveInputsTx(tx,subjectId,todayInKualaLumpur()).then(inputs=>hasEligibleLeaveTypeFrom(tx,subjectId,inputs)),
    ()=>isOwnProfileEditEmploymentTx(tx,ctx,subjectId),
    // The native team projection keeps its own authority check on the same snapshot.
    ()=>readHomeTeamCalendar(ctx,subjectId,from,to,signal,tx),

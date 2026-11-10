@@ -12,6 +12,9 @@ import { clockCommandContext } from '../lib/clock-command-context';
 import { anchorAttendanceClockMinute } from './attendance-timeline';
 import { clockCaptureInstantTx } from './attendance-clock';
 import { isOwnProfileEditEmploymentTx } from './read';
+import { holidayDatesFor } from './holidays';
+import { sharedReadWindow } from '../db/shared-read';
+import { calendarWindowInputsFrom, calendarWindowSql, sharedCalendarWindowInputs, stagedHomeReads, type CalendarWindowInputs } from './calendar-window-inputs';
 
 type ClockGeo={lat:number;lng:number;accuracy:number};
 type LiveClockPunch={id?:string;direction:'in'|'out';time:string;captureId:string|null;recordedAt:Date|null;instant:number};
@@ -51,20 +54,29 @@ export type OwnClockDayInputs = {
   now: Date; openDay: string | null; days: OwnClockDayJson['days'];
   punches: { attendanceId: string; id: string; direction: 'in' | 'out'; time: string; captureId: string | null; recordedAt: Date | null }[];
   control: OwnClockDayJson['control']; locations: OwnClockDayJson['locations'];
+  /** The holiday calendar, replacement days and leave presence of yesterday and today (core/calendar-window-inputs.ts),
+   *  or null where they keep their own reads (`withStagedHomeReads`, or a failed shared window). */
+  calendar: CalendarWindowInputs | null;
   /** A fresh schedule memo for yesterday or today, answered from the bundle (core/attendance.ts ownClockScheduleMemo). */
   memo: (date: string) => ScheduleMemo;
 };
 /** One statement for the own clock day at `now`: the open-day probe, both candidate days, their punches, the switches,
- *  the work locations and every schedule input. Its rows are read under the caller's RLS (SECURITY INVOKER). */
+ *  the work locations and every schedule input, and beside them the calendar window of yesterday and today (holidays,
+ *  replacement days, leave presence). Its rows are read under the caller's RLS (SECURITY INVOKER). Inside a Home stream
+ *  whose declared window covers both days, the stream's one calendar window statement answers the calendar instead. */
 export async function readOwnClockDayInputsTx(tx: Tx, employmentId: string, now: Date): Promise<OwnClockDayInputs> {
   const today = todayInKualaLumpur(now);
   const yesterday = todayInKualaLumpur(new Date(now.getTime() - 86400000));
-  const [row] = await tx.execute<{ day: OwnClockDayJson | null }>(sql`select app.home_own_clock_day(${employmentId}::uuid, ${today}::date, ${yesterday}::date) as day`);
+  const staged = stagedHomeReads(), wide = staged ? null : sharedReadWindow(tx, employmentId, yesterday, today), own = !staged && !wide;
+  const [row] = await tx.execute<{ day: OwnClockDayJson | null; calendar?: Parameters<typeof calendarWindowInputsFrom>[4] }>(sql`select app.home_own_clock_day(${employmentId}::uuid, ${today}::date, ${yesterday}::date) as day${
+    own ? sql`, ${calendarWindowSql(employmentId, yesterday, today, { presence: true })} as calendar` : sql``}`);
   const raw = row?.day;
   if (!raw) throw new Error('The own clock day is unavailable.');
   const schedule = decodeOwnClockSchedule(raw);
+  const calendar = own ? calendarWindowInputsFrom(tx, employmentId, yesterday, today, row.calendar ?? null)
+    : wide ? await sharedCalendarWindowInputs(tx, employmentId, wide).catch(() => null) : null;
   return {
-    now, openDay: raw.openDay, days: raw.days, control: raw.control,
+    now, openDay: raw.openDay, days: raw.days, control: raw.control, calendar,
     // The capture instant arrives as its driver text and is decoded by the very column mapWith names.
     punches: raw.punches.map(({ attendanceId, id, direction, time, captureId, recordedAt }) => ({ attendanceId, id, direction, time, captureId,
       recordedAt: recordedAt === null ? null : attendanceClockCapture.serverRecordedAt.mapFromDriverValue(recordedAt) as Date })),
@@ -72,7 +84,10 @@ export async function readOwnClockDayInputsTx(tx: Tx, employmentId: string, now:
     memo: (date) => {
       // The bundle holds exactly yesterday's and today's dated rows; any other date would read as "no row".
       if (date !== today && date !== yesterday) throw new Error('The own clock day bundle covers yesterday and today only.');
-      return ownClockScheduleMemo(schedule, employmentId, date);
+      // scheduleBaseFor's holiday read for this one date, from the calendar window by the holiday owner itself.
+      const holidays = calendar ? holidayDatesFor(tx, { employmentId, startDate: date, endDate: date }, calendar) : undefined;
+      holidays?.catch(() => undefined);
+      return ownClockScheduleMemo(schedule, employmentId, date, holidays);
     },
   };
 }
@@ -204,5 +219,6 @@ export async function ownClockTodayHomeTx(tx:Tx,ctx:SessionContext,employmentId:
  const {summary,crossesMidnight,businessDate,todayKind}=await ownClockCoreTx(tx,employmentId,undefined,pre);
  // An open overnight clock uses yesterday's shift, while Home describes today's schedule.
  const dayKind=todayKind??await workedDayKindForTx(tx,employmentId,businessDate,pre.memo(businessDate));
- return {clock:{...summary,crossesMidnight,businessDate,dayKind},workLocations:pre.locations};
+ // The calendar window of both days, for the card's own leave presence of the business date.
+ return {clock:{...summary,crossesMidnight,businessDate,dayKind},workLocations:pre.locations,calendar:pre.calendar};
 }

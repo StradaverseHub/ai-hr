@@ -99,6 +99,37 @@ calculation, authority, ordering or failure changes.
    barrier and the lock. The checklist used only each claim type's receipt rule and receipt-age window from
    `getEmployeeClaimTypes`, which also computes every limit, balance, item and form field; `claimTypeReceiptRules` reads
    those two facts for the same types in the same order behind the same Claims gate.
+9. **One calendar window statement, one shared own leave inputs read and a preloaded entitlement resolver**
+   (branch `claude/home-bundles-today-leave-20261110`).
+   - *Calendar window* (`core/calendar-window-inputs.ts`). One statement for one employment and window reads every row
+     the date-local owners could read inside it: the employment, its dated entity rows (`entityRowsFor`'s predicate)
+     and holiday calendar periods, the companies and holiday groups they name with each group's parent, every holiday
+     row of the window's calendar years in those companies' countries together with the companies its subtree check
+     (`app.is_company_descendant`, the resolver's own definer helper) accepts, the ticks of those groups, the retained
+     replacement rows, dated company proof (`app.proven_company_date_points`) for every date of the window and every
+     replacement date, and approved and pending presence (`app.leave_calendar_presence`). The original-calendar
+     resolution runs its one code path over either its live statements or these rows (`OriginalCalendarReads` in
+     core/holidays.ts), each statement answered by its own predicate, so a window anywhere inside the read is answered
+     exactly, not sliced; replacement coverage and presence keep their own logic over their own rows and functions.
+     It answers only the transaction, employment and a window inside its own, and declines a group whose states are not
+     all text (which the live statement binds as text). Inside a Home stream the declared window (decision 2) is read
+     once by it and answers every card's holidays, replacement days, presence and in-window company proof. Today reads
+     its two days beside the clock day statement (draft 9870) unless a stream window covers them; the Summary
+     (lookahead) and the Calendar (grid) read their own window when alone. A failed window read leaves each owner to
+     its previous path.
+   - *Own leave inputs, shared.* Inside a shared carrier the own leave inputs are read once per employment and date
+     (`sharedOwnLeaveInputsTx`) and each card decodes its own copy: Time Off, the Summary's next approved leave and Apply
+     entry point and the Calendar's Apply entry point answer from the same rows of the same snapshot. Outside a carrier
+     each call reads its own.
+   - *Entitlement resolver.* The bundle carries every entitlement table version and eligibility rule this login may read
+     (rules in `created_at, id` order). `buildTemplateEntitlementResolver` takes them as `TemplateResolverInputs`
+     (in-force tables, ruled types, defaults and rules, each its statement's predicate over those rows), and asks the
+     rules' organisation matches by `resolveOrgCriteriaTargets`' own predicate builder, every candidate rule of one
+     resolver in one statement (`resolveOrgCriteriaTargetsBatch`, one sub-select per rule in its place). A leave type
+     with an entitlement table in force now costs one further statement when a rule is in force, none otherwise.
+   - `withStagedHomeReads` keeps every previous path reachable; the hosted diagnostic, test/home-calendar-window.test.ts,
+     test/home-read-window.test.ts, test/home-own-clock-day.test.ts and test/home-own-leave-inputs.test.ts compare the
+     two paths to the byte.
 
 11. **Before payroll reads its own owners in one statement** (`core/pre-salary/before-payroll-bundle.ts`, branch
    `claude/home-bundles-before-payroll-20261110`). The checklist (`readMyPayrollReadiness`) read about fifteen owners in
@@ -124,10 +155,14 @@ calculation, authority, ordering or failure changes.
      `holidayDatesByEmployment` is `holidayDatesFor`'s originals and retained replacements). Every row equals the owner's
      except `formulaOvertime`, the stored overtime-formula record, which the checklist never reads and the statement does
      not read.
-   - *Approved leave presence and the holiday calendar* stay behind `AttendanceRangeDatedFacts`
-     (`LIVE_ATTENDANCE_RANGE_DATED_FACTS`: `approvedLeaveDates`, `holidayDatesByEmployment`), read after the statement in
-     the same transaction: the one-statement reader of those date-local facts plugs in there (the `facts` argument of
-     `readBeforePayrollBundle`).
+   - *Approved leave presence and the holiday calendar* reach the day loop through `AttendanceRangeDatedFacts`. The
+     statement carries decision 9's calendar window (`calendarWindowSql`) for the covering window as one more section, and
+     `calendarWindowDatedFacts` answers both facts from it with their owners' own projections: the presence owner
+     (`approvedLeavePresenceByEmploymentTx` with the window) kept to its full days, which is `approvedLeaveDates`' own
+     filter, and `holidayDatesFor` with the window, the same originals and retained replacements
+     `holidayDatesByEmployment` unions for a visible employment. A request the window does not answer, or a section
+     that fails to decode, reads `LIVE_ATTENDANCE_RANGE_DATED_FACTS` (`approvedLeaveDates`, `holidayDatesByEmployment`)
+     in the same transaction; a caller can also pass its own `facts` to `readBeforePayrollBundle`.
    - *Loop cards*: the owner's gate and card rules on the gate rows, pauses, open cases of every loop (the projection
      keeps the live loops' cases, the owner's own predicate) and Watch levels; a gate read elsewhere or two cards of one
      kind whose order the owner leaves to the plan read the owner.
@@ -156,17 +191,18 @@ calculation, authority, ordering or failure changes.
 ## Not done here
 
 - **Before payroll's remaining reads** (decision 11). The own-subject proof and company date proof
-  (`requireOwnHomeSubject`) and the approvals preview (decision 7) read as before. Approved leave presence and the holiday
-  calendar of the Attendance range read through `AttendanceRangeDatedFacts` until their one-statement reader replaces
-  `LIVE_ATTENDANCE_RANGE_DATED_FACTS`. The letters' fixture needs a letter batch chain the diagnostic does not build.
+  (`requireOwnHomeSubject`) and the approvals preview (decision 7) read as before. The letters' and onboarding
+  fixtures need a letter batch chain and a complete onboarding case that the diagnostic does not build, so those two
+  sections are compared on their owners' empty rows there.
 - **Deferred task owners.** Leave cancellations, resignations and employment reviews (behind their shared candidate
   probe), Attendance, Profile, Rewards, assessment and calibration work, OneHR feedback and onboarding still read on
   their own whenever they have a candidate. Cancellations can reuse `leaveApproverDecisionSql` with its own task type;
   the others need their decision proofs as SQL beside their owners, or the assigned work index below.
-- **Entitlement tables in Time Off.** A leave type with an entitlement table in force still builds its template
-  resolver live (its eligibility rules and their organisation matches): the bundle could carry the rule rows and the
-  dated assignment, but `resolveOrgCriteriaTargets` would first need the same preloaded-input refactor and equivalence
-  proof.
+- **The entitlement explanation in Time Off.** The resolver now reads from the bundle (decision 9), but an employee whom
+  no rule, sole table or default reaches still gets the "no eligibility match" explanation from
+  `explainEntitlementEligibility` live: every table version and rule of that type, the membership per rule and the first
+  failing axis per rule. It could take the same preloaded tables and rules and ask every membership and axis subset in one
+  `resolveOrgCriteriaTargetsBatch` statement, plus the person and dated assignment facts it quotes.
 
 ## Read models worth maintaining
 

@@ -26,10 +26,11 @@ import {withTenant,type SessionContext} from '../../db/client';
 import {aiCentreActivity} from '../../lib/ai/centre-activity';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {assertModuleGate} from '../module-gate';
-import {attendanceRangeChecklistBundleSql,attendanceRangeChecklistFromBundle,otMonthToDateBundleSql,otMonthToDateFromBundle,
+import {attendanceRangeChecklistBundleSql,attendanceRangeChecklistFromBundle,calendarWindowDatedFacts,otMonthToDateBundleSql,otMonthToDateFromBundle,
  overtimePlanChecklistBundleSql,overtimePlanChecklistFromBundle,ownAttendanceRequestChecklistBundleSql,ownAttendanceRequestChecklistFromBundle,
  LIVE_ATTENDANCE_RANGE_DATED_FACTS,type AttendanceRangeDatedFacts,type AttendanceRangeRow,type OvertimeCapView,type OvertimePlanChecklistRow,
  type OwnAttendanceRequestChecklistRow} from '../../packs/attendance/service';
+import {calendarWindowInputsFrom,calendarWindowSql} from '../calendar-window-inputs';
 import {readLoopCardsBundleSql,readLoopCardsFromBundle,type LoopCard} from '../loops/cards';
 import {eligibleLeaveTypesBundleSql,eligibleLeaveTypesFromBundle,leaveRequestsChecklistBundleSql,leaveRequestsChecklistFromBundle} from '../read';
 import {claimTypeReceiptRulesBundleSql,claimTypeReceiptRulesFromBundle,openClaimsChecklistBundleSql,openClaimsChecklistFromBundle,
@@ -126,7 +127,7 @@ export async function readBeforePayrollBundle(ctx:SessionContext,read:BeforePayr
  const attendance=read.attendance&&gateOpen(ctx,'attendance')?read.attendance:null;
  const claims=read.claims&&gateOpen(ctx,'claims'),payroll=read.payroll&&gateOpen(ctx,'payroll');
  const performance=read.performance&&gateOpen(ctx,'performance')&&!aiCentreActivity(ctx.tenantId),lifecycle=read.lifecycle&&gateOpen(ctx,'lifecycle');
- const sections:Partial<Record<SectionName|'range',SQL|null>>={
+ const sections:Partial<Record<SectionName|'range'|'calendar',SQL|null>>={
   cutOff:read.cutOff?sql`(select coalesce(jsonb_agg(to_jsonb(cut_off_row)),'[]'::jsonb) from (${read.cutOff}) cut_off_row)`:null,
   corrections:attendance?ownAttendanceRequestChecklistBundleSql(employmentId,attendance.corrections):null,
   overtimePlans:attendance?overtimePlanChecklistBundleSql(employmentId,attendance.overtime):null,
@@ -134,6 +135,8 @@ export async function readBeforePayrollBundle(ctx:SessionContext,read:BeforePayr
   otCap:attendance?sql`jsonb_build_object(${sql.join(attendance.capMonths.map(month=>sql`${month}::text,${otMonthToDateBundleSql(employmentId,month+'-01')}`),sql`,`)})`:null,
   loopCards:attendance?readLoopCardsBundleSql(ctx):null,
   range:attendance?attendanceRangeChecklistBundleSql(employmentId,attendance.covering.from,attendance.covering.to):null,
+  // The range's leave presence and holiday calendar over the covering window, in the calendar window owner's own statement.
+  calendar:attendance&&facts===LIVE_ATTENDANCE_RANGE_DATED_FACTS?calendarWindowSql(employmentId,attendance.covering.from,attendance.covering.to,{presence:true}):null,
   leaveRequests:read.leave?leaveRequestsChecklistBundleSql(employmentId):null,
   leaveTypes:read.leave?eligibleLeaveTypesBundleSql(employmentId):null,
   claims:claims?openClaimsChecklistBundleSql(employmentId):null,
@@ -162,7 +165,7 @@ export async function readBeforePayrollBundle(ctx:SessionContext,read:BeforePayr
    const [row]=await tx.execute<{bundle:Record<string,unknown>|null}>(sql`select ${sql.join(chunks,sql` || `)} as bundle`);
    const raw=row?.bundle;
    if(!raw)throw new Error('The Before payroll statement returned no row.');
-   const has=(name:string)=>name in sections&&sections[name as SectionName|'range']!=null;
+   const has=(name:string)=>name in sections&&sections[name as SectionName|'range'|'calendar']!=null;
    const answer=<T,>(name:SectionName,project:(value:unknown)=>T|null):BundleAnswer<T>=>{
     if(!has(name))return null;
     const value=decide(()=>project(raw[name]));
@@ -177,7 +180,10 @@ export async function readBeforePayrollBundle(ctx:SessionContext,read:BeforePayr
    let days:BundleAnswer<AttendanceRangeRow[]>=null;
    const range=windows?.range;
    if(range&&has('range')&&covered(range.from,range.to)){
-    try{days=Object.freeze({value:await attendanceRangeChecklistFromBundle(tx,raw.range,employmentId,range.from,range.to,facts)});}
+    // Read from the calendar window section where it answered; otherwise the facts' own owners read them.
+    let dated=facts;
+    if(has('calendar')){try{dated=calendarWindowDatedFacts(calendarWindowInputsFrom(tx,employmentId,attendance!.covering.from,attendance!.covering.to,raw.calendar as never));}catch{dated=facts;}}
+    try{days=Object.freeze({value:await attendanceRangeChecklistFromBundle(tx,raw.range,employmentId,range.from,range.to,dated)});}
     catch{days=null;}
    }
    return Object.freeze({

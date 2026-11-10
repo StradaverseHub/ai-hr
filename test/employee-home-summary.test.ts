@@ -7,8 +7,12 @@ vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,read:(tx:unknown)=>un
 vi.mock('../core/employee-home-configuration',()=>({readOwnEmployeeHomeConfiguration:state.config}));
 vi.mock('../core/employee-home-tasks',()=>({countEmployeeHomeTasks:state.tasks}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:state.enabled}));
-vi.mock('../core/read',()=>({hasEligibleLeaveTypeForTx:state.types}));
+vi.mock('../core/read',()=>({hasEligibleLeaveTypeForTx:state.types,hasEligibleLeaveTypeFrom:(tx:unknown,id:string)=>state.types(tx,id)}));
 vi.mock('../packs/leave/service',()=>({nextApprovedLeavePresenceTx:state.leave}));
+// The next approved date and the Apply entry point come from the shared own leave inputs (one read per Summary), and the
+// holidays from the calendar window (none here, so each holiday owner is handed null and reads on its own).
+vi.mock('../core/own-leave-inputs',()=>({sharedOwnLeaveInputsTx:async(tx:unknown,id:string,day:string)=>({nextApproved:await state.leave(tx,id,day)})}));
+vi.mock('../core/calendar-window-inputs',()=>({calendarWindowInputsFor:async()=>null,stagedHomeReads:()=>false}));
 vi.mock('../packs/payroll/service',()=>({readOwnPayrollHomeMetadata:state.payroll}));
 vi.mock('../packs/claims/service',()=>({ownClaimFormAvailable:state.claims}));
 vi.mock('../core/profile-edit-policy',()=>({readProfilePresentationSnapshotPolicy:state.profile}));

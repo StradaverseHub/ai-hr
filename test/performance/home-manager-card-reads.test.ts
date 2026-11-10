@@ -47,7 +47,17 @@ import {hasEligibleLeaveTypeForTx,hasEligibleLeaveTypeFrom,leaveBalancesTx,leave
 import {leaveTypeApplySummaries,myCurrentLeaveSnapshotCards,nextApprovedLeavePresenceTx} from '../../packs/leave/service';
 import {employeeClockingLocationLabelsTx,ownClockTodayHomeTx,ownClockTodaySummaryTx,readOwnClockDayInputsTx,resolvedScheduleForTx} from '../../packs/attendance/service';
 import {readEmployeeHomeTimeOff} from '../../core/employee-home-time-off';
-import {stagedHomeTimeOff,stagedHomeToday} from '../helpers/home-staged-cards';
+import {stagedHomeSummary,stagedHomeTimeOff,stagedHomeToday} from '../helpers/home-staged-cards';
+import {eq} from 'drizzle-orm';
+import type {Tx} from '../../db/client';
+import {readCalendarWindowInputsTx,withStagedHomeReads,type CalendarWindowInputs} from '../../core/calendar-window-inputs';
+import {holidayDatesFor,originalHolidayCalendarFor} from '../../core/holidays';
+import {replacementHolidayCalendarProjectionsTx} from '../../core/holiday-replacement-read';
+import {provenCompanyDatesTx} from '../../core/employment-company';
+import {approvedLeavePresenceByEmploymentTx,leaveCalendarPresenceByEmploymentTx} from '../../packs/leave/service';
+import {buildTemplateEntitlementResolver,type TemplateEntitlementResolver} from '../../core/entitlement-template';
+import type {OwnLeaveInputs} from '../../core/own-leave-inputs';
+import {homeCalendarMonth} from '../../lib/employee-home-calendar';
 
 const CARDS=['summary','greeting','today','notices','tasks','timeOff','team','celebrations','calendar'] as const;
 type Card=typeof CARDS[number];
@@ -306,6 +316,7 @@ async function bundleCalculatorPairs(actor:Actor,today:string){
   await pair('locations:rows',()=>employeeClockingLocationLabelsTx(tx,id),async()=>pre.locations);
   for(const date of [todayInKualaLumpur(new Date(now.getTime()-86400000)),todayInKualaLumpur(now)])
    await pair('schedule:'+(date===todayInKualaLumpur(now)?'today':'yesterday'),()=>resolvedScheduleForTx(tx,id,date),()=>resolvedScheduleForTx(tx,id,date,pre.memo(date)));
+  await calendarWindowPairs(tx,actor,today,pair,inputs);
  },{readOnlySnapshot:true});
  return pairs;
 }
@@ -452,6 +463,112 @@ async function beforePayrollEquivalence(subject:string,actor:Actor,today:string,
  return {subject,answered,deferred,windows};
 }
 // ── end Before payroll ───────────────────────────────────────────────────────────────────────────────────────────────
+// ── Calendar window, shared own leave inputs and the preloaded entitlement resolver (core/calendar-window-inputs.ts,
+// decision 9) ── every helper of this block is called from one line in the trace, fixture and equivalence steps.
+const shiftDays=(date:string,days:number)=>new Date(Date.parse(date+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
+/** The holiday, replacement, presence and dated company proof owners for one window, each with `pre` when given. */
+const calendarOwners=(tx:Tx,id:string,from:string,to:string,pre?:CalendarWindowInputs)=>Promise.all([
+ originalHolidayCalendarFor(tx,{employmentId:id,startDate:from,endDate:to},pre),
+ holidayDatesFor(tx,{employmentId:id,startDate:from,endDate:to},pre).then(set=>[...set].sort()),
+ replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[id],startDate:from,endDate:to},pre),
+ approvedLeavePresenceByEmploymentTx(tx,[id],from,to,pre).then(map=>[...map].map(([key,days])=>[key,[...days]])),
+ leaveCalendarPresenceByEmploymentTx(tx,[id],from,to,pre).then(value=>({approved:[...value.approved].map(([key,days])=>[key,[...days]]),
+  pending:[...value.pending].map(([key,days])=>[key,[...days]])})),
+ provenCompanyDatesTx(tx,[from,to].map(date=>({employmentId:id,date})),pre).then(map=>[...map]),
+]);
+/** Live against the one calendar window statement, for a window of one day, Today's two days, the Summary lookahead, a
+ * month grid and the stream's widest window, each asked for itself and for one day inside it; and the entitlement
+ * resolver live against the bundled own leave inputs at each date the breakdowns ask. */
+async function calendarWindowPairs(tx:Tx,actor:Actor,today:string,pair:(name:string,live:()=>Promise<unknown>,bundled:()=>Promise<unknown>)=>Promise<void>,inputs:OwnLeaveInputs){
+ const id=actor.employmentId,month=homeCalendarMonth(today.slice(0,7));
+ const windows:Record<string,{from:string;to:string}>={day:{from:today,to:today},today:{from:shiftDays(today,-1),to:today},
+  summary:{from:today,to:shiftDays(today,7)},month:{from:shiftDays(month.from,-6),to:shiftDays(month.to,6)}};
+ windows.stream={from:[windows.today.from,windows.month.from].sort()[0],to:[windows.summary.to,windows.month.to].sort()[1]};
+ for(const [name,window] of Object.entries(windows)){
+  const pre=await readCalendarWindowInputsTx(tx,id,window.from,window.to);
+  for(const [part,from,to] of [['all',window.from,window.to],['first',window.from,window.from],['last',window.to,window.to]] as const)
+   await pair('calendar:'+name+':'+part,()=>calendarOwners(tx,id,from,to),()=>calendarOwners(tx,id,from,to,pre));
+ }
+ const year=today.slice(0,4),typeIds=inputs.types.map(type=>type.id);
+ const describe=(resolver:TemplateEntitlementResolver)=>({isEmpty:resolver.isEmpty,types:typeIds.map(type=>({type,has:resolver.hasTemplatesFor(type),
+  winner:resolver.winnerFor(id,type),band:resolver.bandFor(id,type,5)}))});
+ for(const asOf of [today,year+'-12-31',(Number(year)-1)+'-12-31'])
+  await pair('resolver:'+asOf,async()=>describe(await buildTemplateEntitlementResolver(tx,{employmentIds:[id],leaveTypeIds:typeIds,asOf})),
+   async()=>describe(await buildTemplateEntitlementResolver(tx,{employmentIds:[id],leaveTypeIds:typeIds,asOf},inputs)));
+}
+type TraceRow={before:number;after:number;afterOrdered:string[]};
+/** The cards and the stream as they read before this block (withStagedHomeReads), traced like every other row. */
+async function calendarWindowTraces(label:string,actor:Actor,month:string,rows:Record<string,TraceRow>,traceBoth:(before:()=>Promise<unknown>,after:()=>Promise<unknown>)=>Promise<TraceRow>){
+ for(const card of ['summary','today','calendar','timeOff'] as const){
+  const read=()=>withStagedHomeReads(()=>readers(actor.ctx,actor.employmentId,month)[card]());
+  rows['card:'+card+':windowStaged']=await traceBoth(read,()=>withSharedReadSnapshot(actor.ctx,read));
+ }
+ const stream=()=>withStagedHomeReads(()=>streamHome(actor,month,null));
+ rows['stream:windowStaged']=await traceBoth(stream,stream);
+ const trips=(name:string)=>({staged:rows[name+':windowStaged'].after,bundled:rows[name].after});
+ print('calendar-window-trips',{label,summary:trips('card:summary'),today:trips('card:today'),calendar:trips('card:calendar'),timeOff:trips('card:timeOff'),
+  stream:trips('stream'),page:rows.page?.after??null,todayStatements:rows['card:today'].afterOrdered,summaryStatements:rows['card:summary'].afterOrdered});
+}
+/** Added after the traces: dated holiday calendars of every kind the window statement answers (a group inheriting an
+ * extended parent, with extra and ticked days; a custom group; a work state; a dated calendar period) and entitlement
+ * tables in force on the annual leave type with rules on a company, a dated assignment axis, a person axis and a service
+ * band, so some subjects match a rule, some match none and the other tenant has no table. */
+async function calendarWindowFixtures(actors:Actor[],today:string){
+ const tenantId=actors[0].ctx.tenantId,at=(index:number)=>actors.find(a=>a.index===index)!;
+ const day=(offset:number)=>shiftDays(today,offset),companies=[0,1,2].map(c=>actors.find(a=>a.company===c)!.companyId);
+ const group=async(name:string,states:string[],archetype:'standard'|'extended'|'custom',parentGroupId:string|null=null)=>
+  (await owner.db.insert(s.holidayGroup).values({tenantId,name,states,archetype,parentGroupId}).returning())[0].id;
+ const parent=await group('Fictional extended parent',['Johor'],'extended');
+ const child=await group('Fictional inheriting child',[],'standard',parent),custom=await group('Fictional custom calendar',[],'custom');
+ const [ticked]=await owner.db.insert(s.holiday).values({tenantId,country:'MY',state:'Sabah',holidayDate:day(6),name:'Fictional Sabah day'}).returning();
+ await owner.db.insert(s.holiday).values([{tenantId,country:'MY',state:'Johor',holidayDate:day(1),name:'Fictional Johor day'},
+  {tenantId,country:'MY',holidayGroupId:parent,holidayDate:day(4),name:'Fictional parent extra'},{tenantId,country:'MY',holidayGroupId:child,holidayDate:day(7),name:'Fictional child extra'},
+  {tenantId,country:'MY',holidayGroupId:custom,holidayDate:day(2),name:'Fictional custom extra'}]);
+ await owner.db.insert(s.holidayGroupHoliday).values({tenantId,holidayGroupId:child,holidayId:ticked.id});
+ await owner.db.update(s.employment).set({holidayGroupId:child}).where(eq(s.employment.id,at(4).employmentId));
+ await owner.db.update(s.employment).set({holidayGroupId:custom}).where(eq(s.employment.id,at(3).employmentId));
+ await owner.db.update(s.employment).set({workState:'Johor'}).where(eq(s.employment.id,at(2).employmentId));
+ await owner.db.insert(s.employmentHolidayCalendar).values({tenantId,employmentId:at(6).employmentId,validFrom:day(-1),kind:'state',workState:'Sabah',
+  recordedBy:actors.find(a=>a.role==='groupHR')!.ctx.userId!});
+ const [{leaveTypeId}]=await owner.client<{leaveTypeId:string}[]>`select leave_type_id as "leaveTypeId" from leave_request where tenant_id=${tenantId}::uuid limit 1`;
+ const table=async(name:string,days:number)=>{const id=randomUUID();
+  await owner.db.insert(s.entitlementTemplate).values({id,tenantId,lineageId:id,leaveTypeId,name,serviceBands:[{fromYears:0,toYears:null,days}],validFrom:hiredOn});return id;};
+ const [first,second]=[await table('Fictional company table',16),await table('Fictional part-time table',10)];
+ await owner.db.insert(s.entitlementEligibilityRule).values([
+  {tenantId,lineageId:randomUUID(),name:'Fictional company rule',templateLineageId:first,criteria:{companyIds:[companies[0]]},validFrom:hiredOn},
+  {tenantId,lineageId:randomUUID(),name:'Fictional part-time rule',templateLineageId:second,criteria:{employmentTypes:['part_time']},validFrom:hiredOn},
+  {tenantId,lineageId:randomUUID(),name:'Fictional person rule',templateLineageId:second,criteria:{genders:['female'],companyIds:[companies[1]]},validFrom:hiredOn},
+  {tenantId,lineageId:randomUUID(),name:'Fictional service rule',templateLineageId:first,criteria:{minYearsOfService:0,companyIds:[companies[2]]},validFrom:hiredOn},
+ ]);
+}
+/** The Summary, Today, Calendar and Time Off cards and the whole stream before this block (withStagedHomeReads) against
+ * the shipped path, alone and inside one shared snapshot; and Time Off's trips with entitlement tables in force. */
+async function calendarWindowEquivalence(subject:string,actor:Actor,month:string,compare:(subject:string,target:string,old:unknown,fresh:unknown)=>void){
+ for(const card of ['summary','today','calendar','timeOff'] as const){
+  const read=()=>readers(actor.ctx,actor.employmentId,month)[card]();
+  compare(subject,'window:'+card,await outcome(()=>withStagedHomeReads(read)),await outcome(read));
+  compare(subject,'window:'+card+':shared',await outcome(()=>withSharedReadSnapshot(actor.ctx,()=>withStagedHomeReads(read))),
+   await outcome(()=>withSharedReadSnapshot(actor.ctx,read)));
+ }
+ compare(subject,'window:summary:stagedHelper',await outcome(()=>stagedHomeSummary(actor.ctx,actor.employmentId,'en','replacement')),
+  await outcome(()=>readEmployeeHomeSummary(actor.ctx,actor.employmentId,'en','replacement')));
+ const oldFrames:Record<string,unknown>={},newFrames:Record<string,unknown>={};
+ await withStagedHomeReads(()=>streamHome(actor,month,null,GET,oldFrames));
+ await streamHome(actor,month,null,GET,newFrames);
+ const byCard=(frames:Record<string,unknown>)=>Object.fromEntries(Object.entries(frames).sort(([a],[b])=>a.localeCompare(b)));
+ compare(subject,'window:stream',byCard(oldFrames),byCard(newFrames));
+}
+async function calendarWindowEntitlementTrips(subjects:[string,Actor][],month:string){
+ const out:Record<string,unknown>={};
+ for(const [label,actor] of subjects){
+  const read=()=>withSharedReadSnapshot(actor.ctx,()=>readers(actor.ctx,actor.employmentId,month).timeOff());
+  await read().catch(()=>undefined);
+  const staged=await traceStatements(()=>withStagedHomeReads(read)),bundled=await traceStatements(read);
+  out[label]={staged:staged.trace.trips,bundled:bundled.trace.trips,bundledStatements:bundled.trace.ordered};
+ }
+ report.entitlementTrips=out;print('entitlement-trips',out);
+}
+// ── end of the calendar window block ──
 
 type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[]};
 const sharedStats:SharedReadStats[]=[];
@@ -675,6 +792,7 @@ it('completes every manager Home card and Today section read without a handled f
   print('bundle-trips',{label,timeOff:{staged:rows['card:timeOff:staged'].after,bundled:rows['card:timeOff'].after},
    today:{staged:rows['card:today:staged'].after,bundled:rows['card:today'].after},stream:rows.stream.after,page:rows.page.after,
    timeOffStatements:rows['card:timeOff'].afterOrdered,todayStatements:rows['card:today'].afterOrdered});
+  await calendarWindowTraces(label,actor,month,rows,traceBoth);
   // The same shared snapshots with every task owner reading on its own (before) and through the one account task
   // statement (after, core/account-task-bundle.ts): the Tasks and Summary cards, the stream and the whole page.
   const {withOwnerTaskReads}=await import('../../core/account-task-bundle');
@@ -737,6 +855,8 @@ it('completes every manager Home card and Today section read without a handled f
     stepIndex,approverKind:step.kind,approverEmploymentId:step.approver??null,approverAlternates:step.alternates??null,status:step.status??'pending' as const})));
   }
  }
+ await calendarWindowFixtures(actors,today);
+ await calendarWindowEntitlementTrips([['manager',manager],['employee',employee],['companyHR',actors.find(a=>a.role==='companyHR'&&a.company===1)!]],month);
  // Before payroll's owners get rows of their own, after the traces (decision 11).
  report.beforePayrollFixtures=await seedBeforePayrollFixtures([...tenants[0],...tenants[1]],today);
  print('before-payroll-fixtures',report.beforePayrollFixtures);
@@ -786,6 +906,7 @@ it('completes every manager Home card and Today section read without a handled f
   compare(subject,'bundle:timeOff',await outcome(()=>stagedHomeTimeOff(actor.ctx,actor.employmentId,'en')),await outcome(()=>readEmployeeHomeTimeOff(actor.ctx,actor.employmentId,'en')));
   compare(subject,'bundle:today',await outcome(()=>stagedHomeToday(actor.ctx,actor.employmentId)),await outcome(()=>readEmployeeHomeToday(actor.ctx,actor.employmentId)));
   for(const [name,[live,bundled]] of Object.entries(await bundleCalculatorPairs(actor,today)))compare(subject,'bundle:'+name,live,bundled);
+  await calendarWindowEquivalence(subject,actor,month,compare);
   const oldFrames:Record<string,unknown>={},newFrames:Record<string,unknown>={};
   await withIndependentTransactions(()=>streamHome(actor,month,null,GET,oldFrames));
   await streamHome(actor,month,null,GET,newFrames);

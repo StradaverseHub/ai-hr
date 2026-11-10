@@ -107,7 +107,8 @@ import type {PolicyCalendarProof} from '../lib/attendance-policy-calendar';
 import {attendanceGroupPolicyOnTx,type ResolvedAttendanceGroupPolicy} from './attendance-group-policy';
 import {HR_LOCAL_TZ} from '../lib/hr-date';
 import {overtimeUuid,overtimeDate} from '../lib/overtime-pattern-schema';
-import { approvedLeaveDates } from './leave';
+import { approvedLeaveDates, approvedLeavePresenceByEmploymentTx } from './leave';
+import type { CalendarWindowInputs } from './calendar-window-inputs';
 // cf21e554 stage 2 — the shift's own clock-time overtime windows. Pure, DB-free arithmetic in its own
 // module (see its header): this file reads the rows and hands them over, it does not restate the rule.
 import { otMinutesFromWindows, type ShiftOtWindowSpec } from './shift-ot-window';
@@ -998,12 +999,15 @@ const nullShiftRow = () => Object.fromEntries(Object.keys(getTableColumns(shift)
  * memoized read in scheduleBaseFor would have produced from the same rows (the policy row, every rule, OT row and
  * exception revision, the arrangements, every shift it can name with its OT windows, the default shift, every
  * rotation version with its allowed shifts, the roster row, the day adjustment and its dated shift). The holiday
- * calendar is NOT answered here: with from = to = date, scheduleBaseFor reads it exactly as it does without a memo.
+ * calendar is answered only when the caller hands it in: `holidays` is holidayDatesFor(employmentId, date, date) computed
+ * from the bundled calendar window (core/calendar-window-inputs.ts), which is what scheduleBaseFor's own read for
+ * from = to = date returns; without it scheduleBaseFor reads it exactly as it does without a memo.
  * A key this bundle did not read falls through to its live read.
  */
-export function ownClockScheduleMemo(rows: OwnClockSchedule, employmentId: string, date: string): ScheduleMemo {
+export function ownClockScheduleMemo(rows: OwnClockSchedule, employmentId: string, date: string, holidays?: Promise<Set<string>>): ScheduleMemo {
   const cache = new Map<string, Promise<unknown>>();
   const put = (key: string, value: unknown) => { cache.set(key, Promise.resolve(value)); };
+  if (holidays) put(`hol|${employmentId}`, holidays);
   const shiftById = new Map(rows.shifts.map((row) => [row.id, row]));
   const fromShift = <R,>(fields: Record<string, Column>, row: Record<string, unknown> | undefined, restDay?: boolean) =>
     projectFields(fields, new Map<Table, Record<string, unknown>>([[shift, row ?? nullShiftRow()], [rosterAssignment, { isRestDay: restDay ?? null }]])) as R;
@@ -3560,6 +3564,26 @@ export type AttendanceRangeDatedFacts=Readonly<{
 export const LIVE_ATTENDANCE_RANGE_DATED_FACTS:AttendanceRangeDatedFacts=Object.freeze({
   approvedLeaveDates:(tx:Tx,employmentIds:string[],from:string,to:string)=>approvedLeaveDates(tx,employmentIds,from,to),
   holidayDates:(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string})=>holidayDatesByEmployment(tx,p)});
+/** The same two facts answered from one calendar window statement (core/calendar-window-inputs.ts) that covers the range:
+ *  - approved full-day leave: the presence owner's own calendar (approvedLeavePresenceByEmploymentTx with the window, its
+ *    every day's presence of the same reader) kept to its full days, which is approvedLeaveDates' own filter;
+ *  - the holiday calendar: holidayDatesFor with the window, the originals and retained replacements of that employment,
+ *    which for a visible employment is holidayDatesByEmployment's set (the same two owners, unioned the same way).
+ * A request the window does not answer (another employment, a wider range) reads the live owners. */
+export function calendarWindowDatedFacts(pre:CalendarWindowInputs):AttendanceRangeDatedFacts{
+  return Object.freeze({
+    approvedLeaveDates:async(tx:Tx,employmentIds:string[],from:string,to:string)=>{
+      if(employmentIds.length!==1||!pre.answers(tx,employmentIds[0],from,to))return approvedLeaveDates(tx,employmentIds,from,to);
+      const presence=await approvedLeavePresenceByEmploymentTx(tx,employmentIds,from,to,pre);
+      return new Map([...presence].map(([id,dates])=>[id,new Set([...dates].filter(([,kind])=>kind==='full_day').map(([date])=>date))]));
+    },
+    holidayDates:async(tx:Tx,p:{employmentIds:readonly string[];startDate:string;endDate:string})=>{
+      if(p.employmentIds.length!==1||!pre.answers(tx,p.employmentIds[0],p.startDate,p.endDate))return holidayDatesByEmployment(tx,p);
+      const id=p.employmentIds[0];
+      return new Map([[id,await holidayDatesFor(tx,{employmentId:id,startDate:p.startDate,endDate:p.endDate},pre)]]);
+    },
+  });
+}
 
 /** attendanceForEmploymentRange's reads for ONE employment as one JSON value, a section of the one-statement Before
  * payroll read (core/pre-salary/before-payroll-bundle.ts). Each part is the owner's own select, predicate and order:
@@ -7934,9 +7958,7 @@ async function attendanceDateOverridesFrom(tx:Tx,employmentId:string,rows:readon
   if(rows.some(row=>row.employmentId!==employmentId))throw new Error('The bundled day adjustments belong to another employment.');
   if(rows.some(row=>row.shiftId||row.dayKind)&&!schedule)throw new Error('The bundled schedule range is unavailable.');
   return dateOverridesFor(tx,rows,row=>{
-    const memo=ownClockScheduleMemo(schedule!,employmentId,row.attendanceDate);
-    memo.cache.set(`hol|${employmentId}`,Promise.resolve(holidays.get(employmentId)??new Set<string>()));
-    return memo;
+    return ownClockScheduleMemo(schedule!,employmentId,row.attendanceDate,Promise.resolve(holidays.get(employmentId)??new Set<string>()));
   });
 }
 async function dateOverridesFor(tx:Tx,rows:readonly (typeof attendanceDayAdjustment.$inferSelect)[],memoFor:(row:typeof attendanceDayAdjustment.$inferSelect)=>ScheduleMemo){

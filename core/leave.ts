@@ -11,6 +11,7 @@ import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import type { OwnLeaveInputs } from './own-leave-inputs';
 import { sharedReadWindow, sharedSnapshotValue } from '../db/shared-read';
+import { sharedCalendarWindowInputs, stagedHomeReads, type CalendarWindowInputs } from './calendar-window-inputs';
 import {assertReadCompositionPrincipalTx} from './read-composition-principal';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
@@ -6220,16 +6221,22 @@ async function approvedLeaveCalendarPresence(
   to: string,
   fullDayOnly: boolean,
   status: 'approved' | 'pending' = 'approved',
+  pre?: CalendarWindowInputs | null,
 ): Promise<Map<string, Map<string, 'full_day' | 'part_day'>>> {
   const out = new Map<string, Map<string, 'full_day' | 'part_day'>>();
   if (empIds.length === 0) return out;
   // The reader groups by employment and date, so each date's presence depends on that date alone. Inside a shared
   // snapshot with a declared wider window for this one employment (db/shared-read.ts), every presence of the window is
   // read once per status and each caller keeps its own dates and full-day filter, in the same order.
-  // Both statuses of the window come from one statement: each status is the same reader's own call.
+  // Both statuses of the window come from one statement: each status is the same reader's own call. The window's rows
+  // come from the one calendar window statement (core/calendar-window-inputs.ts) whenever it holds them, or from rows a
+  // card already read for this transaction and employment (`pre`); otherwise from this reader's own window statement.
   const wide = empIds.length === 1 ? sharedReadWindow(tx, empIds[0], from, to) : null;
-  const all = wide ? await sharedSnapshotValue(tx, 'leaveCalendarPresence|' + empIds[0] + '|' + wide.from + '|' + wide.to,
-    () => leaveCalendarPresenceWindowRows(tx, empIds[0], wide.from, wide.to)).then(rows => rows[status]).catch(() => null) : null;
+  const preloaded = empIds.length === 1 && pre?.presence && pre.answers(tx, empIds[0], from, to) ? pre.presence[status] : null;
+  const windowed = preloaded ?? (wide && !stagedHomeReads() ? await sharedCalendarWindowInputs(tx, empIds[0], wide)
+    .then(inputs => inputs.presence && inputs.answers(tx, empIds[0], from, to) ? inputs.presence[status] : null).catch(() => null) : null);
+  const all = windowed ?? (wide ? await sharedSnapshotValue(tx, 'leaveCalendarPresence|' + empIds[0] + '|' + wide.from + '|' + wide.to,
+    () => leaveCalendarPresenceWindowRows(tx, empIds[0], wide.from, wide.to)).then(rows => rows[status]).catch(() => null) : null);
   const rows = all ? all.filter(row => row.date >= from && row.date <= to && (!fullDayOnly || row.presence === 'full_day'))
     : await leaveCalendarPresenceRows(tx, empIds, from, to, fullDayOnly, status);
   for(const row of rows){
@@ -6264,19 +6271,20 @@ async function approvedLeaveDates(tx: Tx, empIds: string[], from: string, to: st
   return new Map([...presence].map(([id, dates]) => [id, new Set(dates.keys())]));
 }
 
-/** Privacy-minimal calendar presence, including partial days. No leave type, reason or medical facts. */
-export function approvedLeavePresenceByEmploymentTx(tx: Tx, employmentIds: string[], from: string, to: string) {
-  return approvedLeaveCalendarPresence(tx, employmentIds, from, to, false);
+/** Privacy-minimal calendar presence, including partial days. No leave type, reason or medical facts. `pre`: the
+ *  calendar window a Home card already read for this transaction and employment (core/calendar-window-inputs.ts). */
+export function approvedLeavePresenceByEmploymentTx(tx: Tx, employmentIds: string[], from: string, to: string, pre?: CalendarWindowInputs | null) {
+  return approvedLeaveCalendarPresence(tx, employmentIds, from, to, false, 'approved', pre);
 }
 
 /** Bounded calendar statuses through the same child-date/span semantics as approved absence.
  * Pending dates never relieve absence. No reason, type, medical fact or approval body is selected.
  * The caller must establish the permitted subjects before entering this transaction helper. */
-export async function leaveCalendarPresenceByEmploymentTx(tx:Tx,employmentIds:string[],from:string,to:string){
+export async function leaveCalendarPresenceByEmploymentTx(tx:Tx,employmentIds:string[],from:string,to:string,pre?:CalendarWindowInputs|null){
  calendarWindowDates(from,to);
  const [approved,pending]=await Promise.all([
-  approvedLeaveCalendarPresence(tx,employmentIds,from,to,false),
-  approvedLeaveCalendarPresence(tx,employmentIds,from,to,false,'pending'),
+  approvedLeaveCalendarPresence(tx,employmentIds,from,to,false,'approved',pre),
+  approvedLeaveCalendarPresence(tx,employmentIds,from,to,false,'pending',pre),
  ]);
  return {approved,pending};
 }

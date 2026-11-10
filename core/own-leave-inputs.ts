@@ -16,8 +16,11 @@
  * to every row, so this can never return a row the staged statements could not. */
 import {sql,type Column,type Table} from 'drizzle-orm';
 import type {Tx} from '../db/client';
-import {company,employment,entitlementTemplate,leaveLedger,leaveRequest,leaveSharedGroup,leaveSharedGroupMember,leaveType,person} from '../db/schema';
+import {company,employment,entitlementEligibilityRule,entitlementTemplate,leaveLedger,leaveRequest,leaveSharedGroup,leaveSharedGroupMember,leaveType,person} from '../db/schema';
 import {columnRefSql,decodeJsonColumns,decodeJsonRow,jsonColumnsSql,jsonRowSql,projectFields} from '../db/json-row';
+import {sharedSnapshotValue} from '../db/shared-read';
+import {stagedHomeReads} from './calendar-window-inputs';
+import type {RuleSelect,TemplateResolverInputs,TemplateSelect} from './entitlement-template';
 import {coalescedNegatedSumText,coalescedSumText,compareNumeric,NUMERIC_ZERO,numericText,parseNumeric,sqlLike,subtractNumeric,
  sumNumeric,type PgNumeric} from '../lib/pg-numeric';
 import {A2C_RECALC_REASON_PREFIX,AGED_FORFEIT_REASON,POLICY_RECALC_REASON_PREFIX,PROFILE_RECALC_REASON_PREFIX,
@@ -41,7 +44,7 @@ export type OwnLeaveRequestRow={id:string;employmentId:string;leaveTypeId:string
 type LeaveTypeRow=typeof leaveType.$inferSelect;
 type Raw={types:Record<string,unknown>[];employment:Record<string,unknown>|null;person:Record<string,unknown>|null;
  company:Record<string,unknown>|null;ledger:Record<string,unknown>[];requests:Record<string,unknown>[];
- groupMembers:{leaveTypeId:string;placement:string}[];templates:{leaveTypeId:string;validFrom:string;validTo:string|null}[];
+ groupMembers:{leaveTypeId:string;placement:string}[];templates:Record<string,unknown>[];rules:Record<string,unknown>[];
  nextApproved:{requestId:string;date:string;duration:'full_day'|'part_day'}|null};
 
 const a=(alias:string,column:Column)=>columnRefSql(alias,column);
@@ -57,8 +60,11 @@ function groupBy<T>(rows:readonly T[],key:(row:T)=>string){
  return groups;
 }
 
-export class OwnLeaveInputs{
+export class OwnLeaveInputs implements TemplateResolverInputs{
  readonly types:LeaveTypeRow[];
+ /** Every entitlement table version and eligibility rule this login may read; rules in (created_at, id) order. */
+ private readonly templates:TemplateSelect[];
+ private readonly rules:RuleSelect[];
  readonly ledger:OwnLeaveLedgerRow[];
  readonly requests:OwnLeaveRequestRow[];
  readonly nextApproved:Raw['nextApproved'];
@@ -67,6 +73,8 @@ export class OwnLeaveInputs{
  private readonly sources:Map<Table,Record<string,unknown>|null>;
  constructor(private readonly tx:Tx,readonly employmentId:string,private readonly raw:Raw){
   this.types=raw.types.map(row=>decodeJsonRow(leaveType,row));
+  this.templates=raw.templates.map(row=>decodeJsonRow(entitlementTemplate,row));
+  this.rules=raw.rules.map(row=>decodeJsonRow(entitlementEligibilityRule,row));
   this.ledger=raw.ledger.map(row=>decodeJsonColumns(LEDGER_COLUMNS,row) as OwnLeaveLedgerRow);
   this.requests=raw.requests.map(row=>decodeJsonColumns(REQUEST_COLUMNS,row) as OwnLeaveRequestRow);
   // jsonb orders object keys by length; the statement's own row is (requestId, date, duration).
@@ -129,9 +137,27 @@ export class OwnLeaveInputs{
  }
 
  /** buildTemplateEntitlementResolver's first read: is any entitlement table version in force on `asOf`? */
- templatesInForce(asOf:string,leaveTypeIds:readonly string[]){
+ templatesInForce(asOf:string,leaveTypeIds:readonly string[]){return this.templatesAt(asOf,leaveTypeIds).length>0;}
+ /** activeTemplatesAt: `select * from entitlement_template where leave_type_id in (…) and valid_from <= asOf and
+  *  (valid_to is null or valid_to > asOf)`. Unordered there; its lineage map does not depend on the order. */
+ templatesAt(asOf:string,leaveTypeIds:readonly string[]):TemplateSelect[]{
   const ids=new Set(leaveTypeIds);
-  return this.raw.templates.some(row=>ids.has(row.leaveTypeId)&&row.validFrom<=asOf&&(row.validTo===null||row.validTo>asOf));
+  return this.templates.filter(row=>ids.has(row.leaveTypeId)&&row.validFrom<=asOf&&(row.validTo===null||row.validTo>asOf)).map(row=>structuredClone(row));
+ }
+ /** leaveTypeIdsWithEligibilityRulesAt: the distinct leave types of every table version (any date) whose lineage a rule
+  *  in force on `asOf` names, among `leaveTypeIds`. */
+ leaveTypeIdsWithRulesAt(asOf:string,leaveTypeIds:readonly string[]):Set<string>{
+  const ids=new Set(leaveTypeIds),lineages=new Set(this.rulesAt(asOf).map(rule=>rule.templateLineageId));
+  return new Set(this.templates.filter(row=>ids.has(row.leaveTypeId)&&lineages.has(row.lineageId)).map(row=>row.leaveTypeId));
+ }
+ /** The resolver's default-table select: `select id, default_entitlement_template_lineage_id from leave_type where id in (…)`. */
+ defaultLineages(leaveTypeIds:readonly string[]){
+  const ids=new Set(leaveTypeIds);
+  return this.types.filter(type=>ids.has(type.id)).map(type=>({id:type.id,lineageId:type.defaultEntitlementTemplateLineageId}));
+ }
+ /** The rules in force on `asOf`, `order by created_at, id`: the statement's order is the rows' order here. */
+ rulesAt(asOf:string):RuleSelect[]{
+  return this.rules.filter(rule=>rule.validFrom<=asOf&&(rule.validTo===null||rule.validTo>asOf)).map(rule=>structuredClone(rule));
  }
  /** leaveEntitlementBreakdownTx `agg`: one type's ledger to `asOf`, split at the cycle start. */
  breakdownTotals(leaveTypeId:string,asOf:string,cycleStart:string){
@@ -186,6 +212,18 @@ export class OwnLeaveInputs{
 
 /** The single statement. Every subselect is the owner's own predicate; RLS applies to each table it reads. */
 export async function readOwnLeaveInputsTx(tx:Tx,employmentId:string,today:string):Promise<OwnLeaveInputs>{
+ return new OwnLeaveInputs(tx,employmentId,await readRawOwnLeaveInputsTx(tx,employmentId,today));
+}
+/** One Home response's own leave inputs, shared by its cards: inside a shared read carrier (db/shared-read.ts) the
+ *  statement is read once per employment and date and each card receives its own copy, so Time Off and the Summary
+ *  answer from the same rows of the same snapshot. Outside a carrier (any other request), and under
+ *  `withStagedHomeReads`, every call reads its own. */
+export async function sharedOwnLeaveInputsTx(tx:Tx,employmentId:string,today:string):Promise<OwnLeaveInputs>{
+ if(stagedHomeReads())return readOwnLeaveInputsTx(tx,employmentId,today);
+ const raw=await sharedSnapshotValue(tx,'ownLeaveInputs|'+employmentId+'|'+today,()=>readRawOwnLeaveInputsTx(tx,employmentId,today));
+ return new OwnLeaveInputs(tx,employmentId,structuredClone(raw));
+}
+async function readRawOwnLeaveInputsTx(tx:Tx,employmentId:string,today:string):Promise<Raw>{
  const id=sql`${employmentId}::uuid`;
  const [row]=await tx.execute<{inputs:Raw}>(sql`select jsonb_build_object(
   'types',(select coalesce(jsonb_agg(${jsonRowSql(leaveType,'t')} order by t.ctid),'[]'::jsonb) from ${leaveType} t),
@@ -202,11 +240,12 @@ export async function readOwnLeaveInputsTx(tx:Tx,employmentId:string,today:strin
   'groupMembers',(select coalesce(jsonb_agg(jsonb_build_object('leaveTypeId',${a('m',leaveSharedGroupMember.leaveTypeId)},
    'placement',${a('g',leaveSharedGroup.essPlacement)}) order by m.ctid),'[]'::jsonb)
    from ${leaveSharedGroupMember} m join ${leaveSharedGroup} g on ${a('g',leaveSharedGroup.id)}=${a('m',leaveSharedGroupMember.groupId)}),
-  'templates',(select coalesce(jsonb_agg(jsonb_build_object('leaveTypeId',${a('x',entitlementTemplate.leaveTypeId)},
-   'validFrom',${a('x',entitlementTemplate.validFrom)},'validTo',${a('x',entitlementTemplate.validTo)})),'[]'::jsonb) from ${entitlementTemplate} x),
+  'templates',(select coalesce(jsonb_agg(${jsonRowSql(entitlementTemplate,'x')} order by x.ctid),'[]'::jsonb) from ${entitlementTemplate} x),
+  'rules',(select coalesce(jsonb_agg(${jsonRowSql(entitlementEligibilityRule,'y')} order by ${a('y',entitlementEligibilityRule.createdAt)},${a('y',entitlementEligibilityRule.id)}),'[]'::jsonb)
+   from ${entitlementEligibilityRule} y),
   'nextApproved',(select jsonb_build_object('requestId',q."requestId",'date',q.date,'duration',q.duration)
    from (${nextApprovedLeavePresenceSql(employmentId,today)}) q)
  ) as inputs`);
  if(!row?.inputs)throw new Error('Own leave inputs are unavailable.');
- return new OwnLeaveInputs(tx,employmentId,row.inputs);
+ return row.inputs;
 }

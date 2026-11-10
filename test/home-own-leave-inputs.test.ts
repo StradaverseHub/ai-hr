@@ -6,8 +6,9 @@
  * Anniversary-to-Calendar recalculations (and a reason that only a SQL LIKE wildcard matches); an aged forfeit; a
  * borrower that spends Annual's pool, approved and pending; a shared leave group; hidden, archived and
  * gender-restricted types with history; an anniversary-cycle type; approved, pending, rejected, half-day and part-unpaid
- * requests; a working-days request across a company holiday; entitlement tables (which keep their live resolver) and
- * a second tenant with none (which the bundle answers); a terminated employment and an employee with nothing. */
+ * requests; a working-days request across a company holiday; entitlement tables with rules that match and rules that do
+ * not (whose resolver the bundle answers, the rules' organisation matches in one statement) and a second tenant with
+ * none; a terminated employment and an employee with nothing. */
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
@@ -20,6 +21,8 @@ import {decideLeave,requestLeave,leaveTypeApplySummaries,nextApprovedLeavePresen
  setToilPolicy,createEntitlementTemplate,CARRY_FORFEIT_REASON_CAP,AGED_FORFEIT_REASON} from '../packs/leave/service';
 import {hasEligibleLeaveTypeForTx,hasEligibleLeaveTypeFrom,leaveBalancesTx,leaveEntitlementBreakdowns} from '../core/read';
 import {readOwnLeaveInputsTx,type OwnLeaveInputs} from '../core/own-leave-inputs';
+import {buildTemplateEntitlementResolver,createEligibilityRule,type TemplateEntitlementResolver} from '../core/entitlement-template';
+import {withStagedHomeReads} from '../core/calendar-window-inputs';
 import {readEmployeeHomeTimeOff} from '../core/employee-home-time-off';
 import {coalescedNegatedSumText,coalescedSumText,parseNumeric,sqlLike} from '../lib/pg-numeric';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -81,6 +84,16 @@ beforeAll(async()=>{
  types.sole=await leaveType(b,{code:'HOSP',name:'Hospitalisation Leave'});
  await createEntitlementTemplate(adminCtx(b),{leaveTypeId:types.sole,name:'Hospitalisation table',serviceBands:[{fromYears:0,toYears:null,days:60}],validFrom:`${YEAR-3}-01-01`});
  await seedEntitlement(adminCtx(b),{leaveTypeId:types.sick,annualDays:14,validFrom:`${YEAR-3}-01-01`});
+ // Two tables on Annual Leave with rules on the company and employment type (a dated assignment axis) that every
+ // employment here matches while employed, and rules on employment type, gender and service length that none does: the
+ // resolver's tables, rules and defaults come from the bundle and their organisation matches from one statement.
+ const companyTable=await createEntitlementTemplate(adminCtx(b),{leaveTypeId:types.annual,name:'Fictional company annual',
+  serviceBands:[{fromYears:0,toYears:2,days:14},{fromYears:2,toYears:null,days:18}],validFrom:`${YEAR-3}-01-01`});
+ const otherTable=await createEntitlementTemplate(adminCtx(b),{leaveTypeId:types.annual,name:'Fictional other annual',serviceBands:[{fromYears:0,toYears:null,days:8}],validFrom:`${YEAR-3}-01-01`});
+ for(const [name,lineage,criteria] of [['Fictional company rule',companyTable.lineageId,{companyIds:[b.companyId],employmentTypes:['full_time']}],
+  ['Fictional part-time rule',otherTable.lineageId,{employmentTypes:['part_time']}],['Fictional women rule',otherTable.lineageId,{genders:['female']}],
+  ['Fictional long service rule',otherTable.lineageId,{minYearsOfService:10}]] as const)
+  await createEligibilityRule(adminCtx(b),{name,templateLineageId:lineage,criteria:{...criteria} as never,validFrom:`${YEAR-3}-01-01`});
  const [group]=await owner.db.insert(schema.leaveSharedGroup).values({tenantId:b.tenantId,name:'Special Leave',totalLimitDays:'5.00',maxDaysPerApplication:'3.00',essPlacement:'secondary'} as never)
   .returning({id:schema.leaveSharedGroup.id});
  await owner.db.insert(schema.leaveSharedGroupMember).values([{tenantId:b.tenantId,groupId:group.id,leaveTypeId:types.sg1},{tenantId:b.tenantId,groupId:group.id,leaveTypeId:types.sg2}]);
@@ -210,6 +223,27 @@ describe('every leave calculator answers identically from the bundled own leave 
    });
   },120_000);
  }
+ it('builds every entitlement resolver from the bundle exactly as live, asking the rules\' matches in one statement',async()=>{
+  const winners:Record<string,unknown>={};
+  for(const subject of subjects){
+   await inSnapshot(subject,async(tx,inputs)=>{
+    const typeIds=inputs.types.map(type=>type.id),id=subject.employmentId;
+    const describe=(resolver:TemplateEntitlementResolver)=>({isEmpty:resolver.isEmpty,types:typeIds.map(type=>({type,has:resolver.hasTemplatesFor(type),
+     winner:resolver.winnerFor(id,type),bands:[0,1,3,12].map(years=>resolver.bandFor(id,type,years))}))});
+    for(const asOf of [TODAY,`${YEAR}-12-31`,`${YEAR-1}-12-31`,`${YEAR-3}-01-01`,`${YEAR-4}-12-31`]){
+     const live=describe(await buildTemplateEntitlementResolver(tx,{employmentIds:[id],leaveTypeIds:typeIds,asOf}));
+     const {result,sent}=await statements(async()=>describe(await buildTemplateEntitlementResolver(tx,{employmentIds:[id],leaveTypeIds:typeIds,asOf},inputs)));
+     same(result,live,`${subject.name} resolver ${asOf}`);
+     expect(sent.length,`${subject.name} resolver ${asOf} statements`).toBeLessThanOrEqual(1);
+     if(asOf===TODAY)winners[subject.name]=live.types.find(type=>type.type===types.annual)?.winner?.ruleName??null;
+    }
+   });
+  }
+  console.info('[home-entitlement-resolver] '+JSON.stringify(winners));
+  // Non-vacuity: the tenant with tables resolves Annual Leave through the matching rule; a terminated employment and the
+  // tenant without tables resolve to nothing.
+  expect(winners).toMatchObject({rich:'Fictional company rule',rehired:'Fictional company rule',empty:'Fictional company rule',terminated:null,noTemplates:null});
+ },120_000);
  it('the rich fixture really carries what it claims',async()=>{
   const rich=subjects.find(s=>s.name==='rich')!;
   await inSnapshot(rich,async(tx,inputs)=>{
@@ -239,7 +273,14 @@ describe('Home Time Off from one bundled read',()=>{
    // Without an entitlement table in force, the one bundled statement is the only leave read: the rest are the
    // transaction, identity and principal proofs (which a Home stream's shared snapshot answers once).
    const leaveReads=bundled.sent.filter(text=>/leave_ledger|leave_request|leave_type|entitlement_template/.test(text));
-   if(subject.name==='noTemplates')expect(leaveReads).toHaveLength(1);
+   expect(leaveReads).toHaveLength(1);
+   // With entitlement tables in force, the rules' organisation matches are the one further statement.
+   expect(bundled.sent.filter(text=>text.includes('jsonb_build_array((select coalesce(jsonb_agg("employment"."id"')).length).toBeLessThanOrEqual(1);
+   // Under withStagedHomeReads the card resolves every table live, as before, to the same result.
+   const live=await statements(()=>withStagedHomeReads(()=>readEmployeeHomeTimeOff(subject.ctx,subject.employmentId,'en')));
+   same(live.result,staged.result,subject.name+' staged reads');
+   console.info('[home-time-off-resolver] '+JSON.stringify({subject:subject.name,liveResolverStatements:live.sent.length,bundledStatements:bundled.sent.length}));
+   if(subject.name!=='noTemplates')expect(bundled.sent.length).toBeLessThan(live.sent.length);
   }
  },120_000);
  it('refuses a terminated or foreign employment before reading any leave figure',async()=>{

@@ -16,12 +16,14 @@ export async function readEmployeeHomeToday(ctx:SessionContext,employmentId:stri
   signal?.throwIfAborted();
   const attendanceEnabled=isModuleEnabled(ctx,'attendance'),payrollEnabled=isModuleEnabled(ctx,'payroll');
   if(!attendanceEnabled)return {subjectId,attendanceEnabled,payrollEnabled,attendance:null};
-  // The own clock summary and the work location names come from one bundled read of the clock day (draft 9870);
-  // approved leave presence keeps its own date-local read, which a Home stream answers from its shared window.
-  const {clock,workLocations}=await ownClockTodayHomeTx(tx,ctx,subjectId);
+  // The own clock summary, the work location names and the calendar window of yesterday and today (holidays,
+  // replacement days, leave presence) come from one bundled read of the clock day (draft 9870 and
+  // core/calendar-window-inputs.ts); inside a Home stream the stream's one calendar window answers the calendar part.
+  // The approved leave presence of the business date is the presence owner's own answer over those rows.
+  const {clock,workLocations,calendar}=await ownClockTodayHomeTx(tx,ctx,subjectId);
   signal?.throwIfAborted();
   const {businessDate,dayKind}=clock;
-  const presence=await approvedLeavePresenceByEmploymentTx(tx,[subjectId],businessDate,businessDate);
+  const presence=await approvedLeavePresenceByEmploymentTx(tx,[subjectId],businessDate,businessDate,calendar);
   return {subjectId,attendanceEnabled,payrollEnabled,
    attendance:{clock,businessDate,dayKind,leavePresence:presence.get(subjectId)?.get(businessDate)??null,workLocations}};
  },{readOnlySnapshot:true,readSignal:signal});

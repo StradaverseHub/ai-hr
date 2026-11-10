@@ -23,6 +23,7 @@ import {readEmployeeHomeToday} from '../core/employee-home-today';
 import {clockCommandContext} from '../lib/clock-command-context';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {stagedHomeToday} from './helpers/home-staged-cards';
+import {withStagedHomeReads} from '../core/calendar-window-inputs';
 import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import {installOfflineDraftForWorker} from './helpers/mobile-offline-draft';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,type Base} from './harness';
@@ -175,6 +176,13 @@ describe('the own clock day from one bundled statement',()=>{
     console.info('[home-today-bundle] '+JSON.stringify({subject:subject.name,stagedStatements:staged.sent.length,bundledStatements:bundled.sent.length}));
     expect(bundled.sent.length).toBeLessThan(staged.sent.length);
     expect(bundled.sent.filter(text=>/from "attendance"|"attendance_punch"|"roster_assignment"|"attendance_rule"|"employee_clocking_location"/.test(text))).toEqual([]);
+    // The holiday calendar, replacement days and leave presence ride in the clock day statement (core/calendar-window-inputs.ts).
+    expect(bundled.sent.filter(text=>/"holiday"|"employment_holiday_calendar"|"replacement_holiday"|leave_calendar_presence/.test(text)
+     &&!text.includes('app.home_own_clock_day'))).toEqual([]);
+    // Under withStagedHomeReads the bundled clock day keeps those owners' own reads, to the same card.
+    const unbundled=await statements(()=>withStagedHomeReads(()=>readEmployeeHomeToday(subject.ctx,subject.employmentId)));
+    same(unbundled.result,staged.result,subject.name+' staged calendar');
+    expect(bundled.sent.length).toBeLessThan(unbundled.sent.length);
    }
    const leave=await readEmployeeHomeToday(subjects.find(s=>s.name==='on leave')!.ctx,subjects.find(s=>s.name==='on leave')!.employmentId);
    expect(leave.leavePresence).toBe('full_day');
@@ -192,6 +200,7 @@ describe('the own clock day from one bundled statement',()=>{
   await withTenant(own.ctx,async tx=>{
    const pre=await readOwnClockDayInputsTx(tx,foreign.employmentId,new Date());
    expect({openDay:pre.openDay,days:pre.days,punches:pre.punches}).toEqual({openDay:null,days:[],punches:[]});
+   expect({employment:pre.calendar?.employment,presence:pre.calendar?.presence}).toEqual({employment:null,presence:{approved:[],pending:[]}});
   },{readOnlySnapshot:true});
  });
 });
