@@ -49,6 +49,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   }
   return rows;
  };
+ // The combined block adds the staged-import marker column (5010, 5070) to some of these tables. It is null on every
+ // row no import staged, and only then is the row compared without it.
+ const withoutImportMarker=(rows:Record<string,unknown>)=>Object.fromEntries(Object.entries(rows).map(([table,list])=>[table,
+  (list as {row:Record<string,unknown>}[]).map(({row})=>{
+   if(!('import_pending_attempt_id' in row))return {row};
+   expect(row.import_pending_attempt_id,table+' staged-import marker').toBeNull();
+   const rest={...row};delete rest.import_pending_attempt_id;return {row:rest};
+  })]));
  // Everything a grant or policy could change, except the one function ACL 2100 deliberately narrows.
  const privileges=async()=>({
   relations:await storage.client`select c.oid::regclass::text as rel,c.relacl::text as acl,c.relrowsecurity as rls,c.relforcerowsecurity as force
@@ -485,7 +493,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));
-  expect(await native()).toEqual(beforeRerun);
+  expect(withoutImportMarker(await native())).toEqual(beforeRerun);
   // The final 2211 expansion adds validated tenant matches beside the original NO ACTION keys.
   const expansionRelations = [
    'company_registration_classification', 'job_architecture_import_preview', 'job_architecture_jd_publication',
@@ -502,7 +510,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(await asAdmin(tx=>tx`select app.can_admin_employment(${employmentA}::uuid) own,app.can_admin_employment(${employmentB}::uuid) foreign`)).toEqual([{own:true,foreign:false}]);
   const terminalPrivileges=await privileges();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  expect(await ledger()).toEqual(complete);expect(await native()).toEqual(beforeRerun);expect(await privileges()).toEqual(terminalPrivileges);expect(await keys()).toEqual(completeKeys);
+  expect(await ledger()).toEqual(complete);expect(withoutImportMarker(await native())).toEqual(beforeRerun);expect(await privileges()).toEqual(terminalPrivileges);expect(await keys()).toEqual(completeKeys);
  }finally{
   await application.client.end();await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`);await admin.end();rmSync(folder,{recursive:true,force:true});
  }
