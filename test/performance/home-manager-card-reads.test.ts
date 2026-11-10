@@ -570,10 +570,218 @@ async function calendarWindowEntitlementTrips(subjects:[string,Actor][],month:st
 }
 // ── end of the calendar window block ──
 
+// ── Decision 13: the greeting's own facts, the notices card, Needs you's statement, the assigned-performance check and At a
+// glance's "Coming up" as single statements (core/home-owner-reads.ts, core/needs-you-bundle.ts). Traces (owners against
+// the shipped path in the same shared snapshots), fixture rows added after the traces, and the comparisons; each helper is
+// called from one line. ──────────────────────────────────────────────────────────────────────────────────────────────
+type CardsSectionsRow={before:number;after:number;beforeStatements:unknown;afterStatements:unknown;afterOrdered:string[];beforeOrdered:string[];shared:SharedSummary;failure:unknown};
+async function cardsSectionsTraces(label:string,actor:Actor,month:string,targets:Record<string,()=>Promise<unknown>>,pageRendered:()=>Promise<unknown>){
+ const {withOwnerCardSectionReads}=await import('../../core/home-owner-reads');
+ const trace=async(work:()=>Promise<unknown>):Promise<CardsSectionsRow>=>{
+  await work().catch(()=>undefined);
+  sharedStats.length=0;const old=await traceStatements(()=>withOwnerCardSectionReads(work));sharedStats.length=0;
+  const fresh=await traceStatements(work);
+  return {before:old.trace.trips,after:fresh.trace.trips,beforeStatements:old.trace.statements,afterStatements:fresh.trace.statements,
+   afterOrdered:fresh.trace.ordered,beforeOrdered:old.trace.ordered,shared:sharedSummary(sharedStats.splice(0)),failure:fresh.failure??old.failure};
+ };
+ const read=(card:Card)=>()=>withSharedReadSnapshot(actor.ctx,()=>readers(actor.ctx,actor.employmentId,month)[card]());
+ const rows:Record<string,CardsSectionsRow>={
+  'cardsSections:card:greeting':await trace(read('greeting')),
+  'cardsSections:card:notices':await trace(read('notices')),
+  'cardsSections:section:needsYou':await trace(targets.needsYou),
+  'cardsSections:section:atAGlance':await trace(targets.atAGlance),
+  'cardsSections:section:page.assignedPerformance':await trace(targets['page.assignedPerformance']),
+  'cardsSections:section:page.greetingIdentity':await trace(targets['page.greetingIdentity']),
+  'cardsSections:stream':await trace(()=>streamHome(actor,month,null)),
+  'cardsSections:page':await trace(pageRendered),
+ };
+ const trips=Object.fromEntries(Object.entries(rows).map(([name,row])=>[name.slice('cardsSections:'.length),[row.before,row.after]]));
+ print('cards-sections-trips',{label,trips,greetingStatements:rows['cardsSections:card:greeting'].afterOrdered,noticeStatements:rows['cardsSections:card:notices'].afterOrdered,
+  needsYouStatements:rows['cardsSections:section:needsYou'].afterOrdered,atAGlanceStatements:rows['cardsSections:section:atAGlance'].afterOrdered,
+  assignedPerformanceStatements:rows['cardsSections:section:page.assignedPerformance'].afterOrdered});
+ return rows;
+}
+/** Rows every decision-13 path reads, added after the traces. Each insert is fictional and stands alone: one the schema
+ * or an owner refuses is recorded and skipped. Notices and letter requests go through their owners' own writers. */
+async function cardsSectionsFixtures(actors:readonly Actor[],others:readonly Actor[],today:string){
+ const seeded:string[]=[],refused:Record<string,string>={};
+ const step=async(name:string,work:()=>Promise<unknown>)=>{try{await work();seeded.push(name);}catch(error){refused[name]=String((error as Error)?.message??error).slice(0,200);}};
+ const day=(offset:number)=>shiftDays(today,offset),at=(index:number)=>actors.find(a=>a.index===index)!;
+ const group=actors.find(a=>a.role==='groupHR')!,reviewer=actors.find(a=>a.role==='companyHR'&&a.company===0)!;
+ const [manager,secondManager,employee,peer,onLeave]=[at(2),at(3),at(4),at(5),at(54)],tenantId=group.ctx.tenantId;
+ const [{leaveTypeId}]=await owner.client<{leaveTypeId:string}[]>`select leave_type_id as "leaveTypeId" from leave_request where tenant_id=${tenantId}::uuid limit 1`;
+ // Greeting: a recorded preferred name, two photos, a birthday today (28 years back keeps a 29 February) and an approved
+ // full-day leave yesterday, so the return-from-leave lookback has a candidate and its workday checks run.
+ await step('greeting:preferredName',()=>owner.db.update(s.person).set({preferredName:'Fictional Preferred'}).where(eq(s.person.id,employee.ctx.personId!)));
+ await step('greeting:photos',()=>owner.db.insert(s.personPhoto).values([employee,manager].map(a=>({tenantId,personId:a.ctx.personId!,
+  content:Buffer.from([137,80,78,71,13,10,26,10]),fileName:'fictional.png',mimeType:'image/png',sizeBytes:8}))));
+ await step('greeting:birthday',()=>owner.db.update(s.person).set({dateOfBirth:String(Number(today.slice(0,4))-28)+today.slice(4)}).where(eq(s.person.id,manager.ctx.personId!)));
+ await step('greeting:returnFromLeave',()=>owner.db.insert(s.leaveRequest).values({tenantId,employmentId:secondManager.employmentId,leaveTypeId,startDate:day(-1),endDate:day(-1),days:'1',status:'approved'}));
+ // Notices through the owner's publish path: one requiring acknowledgement (acknowledged by the employee), one pinned
+ // and one plain (read by the employee).
+ await step('notices',async()=>{
+  const {createNotice,publishNotice,markNoticeViewed,acknowledgeNotice}=await import('../../core/notice');
+  const audience=[employee,manager,secondManager].map(a=>a.employmentId);
+  const publish=async(title:string,extra:Record<string,unknown>)=>{
+   const created=await createNotice(group.ctx,{title,summary:'Fictional summary',body:'Fictional untransported body',startOn:day(-1),endOn:day(5),targetMode:'individual',employmentIds:audience,...extra});
+   await publishNotice(group.ctx,created.id);return created.id;
+  };
+  const required=await publish('Fictional acknowledgement notice',{requiresAcknowledgement:true,category:'Policy'});
+  await publish('Fictional pinned notice',{pinned:true});
+  const plain=await publish('Fictional plain notice',{});
+  await markNoticeViewed(employee.ctx,plain,employee.employmentId);
+  await acknowledgeNotice(employee.ctx,required,employee.employmentId,1);
+  await markNoticeViewed(manager.ctx,required,manager.employmentId);
+ });
+ // Loops on (through the owner's switch), the recommender on, an active AI Centre generation here and a stopped one in
+ // the other tenant.
+ const {setWorkerSwitch}=await import('../../core/agent-registry/controls');
+ for(const workerId of ['loop_missed_clock_outs','loop_missing_employee_data','loop_document_expiry','loop_probation_ending','loop_payroll_inputs','approver_recommendation'])
+  await step('switch:'+workerId,()=>setWorkerSwitch(group.ctx,{workerId,enabled:true}));
+ const teras=await import('../../db/teras-schema'),autonomy=await import('../../db/teras-autonomy-schema');
+ await step('aiCentre:running',()=>owner.db.insert(teras.terasMandateControl).values({tenantId,stopped:false,version:4,changedByUserId:group.ctx.userId!})
+  .onConflictDoUpdate({target:teras.terasMandateControl.tenantId,set:{stopped:false,version:4}}));
+ const otherGroup=others.find(a=>a.role==='groupHR')!;
+ await step('aiCentre:stopped',()=>owner.db.insert(teras.terasMandateControl).values({tenantId:otherGroup.ctx.tenantId,stopped:true,version:2,changedByUserId:otherGroup.ctx.userId!})
+  .onConflictDoUpdate({target:teras.terasMandateControl.tenantId,set:{stopped:true,version:2}}));
+ // Open cases of several kinds: own clock-outs, a record gap and a passport for the employee; two clock-outs for the
+ // manager; two clock-outs whose order key ties for the second manager (the owner reads); HR cards; and own cases in a
+ // company where one loop is paused and another at Watch.
+ const run=randomUUID(),companyOne=actors.find(a=>a.company===1)!.companyId;
+ const kase=(a:Actor,workerId:string,key:string,recipient:'employee'|'hr',facts:Record<string,unknown>)=>({tenantId,workerId:workerId as 'loop_missed_clock_outs',companyId:a.companyId,
+  employmentId:a.employmentId,subjectKey:key+':'+a.employmentId,recipient,state:'open' as const,facts,openedRunId:run,checkedRunId:run});
+ let cases:{id:string;subjectKey:string;employmentId:string|null}[]=[];
+ await step('loops:cases',async()=>{cases=await owner.db.insert(teras.terasLoopCase).values([
+  kase(employee,'loop_missed_clock_outs','clockout:'+day(-2),'employee',{date:day(-2),checkIn:'09:00',proposedCheckOut:'18:00'}),
+  kase(employee,'loop_missing_employee_data','record','employee',{gaps:['bankAccount'],tabs:['bankStatutory']}),
+  kase(employee,'loop_document_expiry','passport','employee',{expiresOn:day(40)}),
+  kase(manager,'loop_missed_clock_outs','clockout:'+day(-3),'employee',{date:day(-3),checkIn:'09:05',proposedCheckOut:'18:00'}),
+  kase(manager,'loop_missed_clock_outs','clockout:'+day(-4),'employee',{date:day(-4),checkIn:'09:05',proposedCheckOut:'17:30'}),
+  kase(secondManager,'loop_missed_clock_outs','clockout:a','employee',{date:day(-2),checkIn:'09:00',proposedCheckOut:'18:00'}),
+  kase(secondManager,'loop_missed_clock_outs','clockout:b','employee',{date:day(-2),checkIn:'10:00',proposedCheckOut:'19:00'}),
+  kase(at(10),'loop_probation_ending','probation','hr',{endDate:day(10),stage:'none'}),
+  kase(at(11),'loop_document_expiry','passport','hr',{expiresOn:day(20)}),
+  kase(onLeave,'loop_document_expiry','passport','employee',{expiresOn:day(30)}),
+  kase(onLeave,'loop_missing_employee_data','record','employee',{gaps:['bankAccount'],tabs:['bankStatutory']}),
+ ]).returning({id:teras.terasLoopCase.id,subjectKey:teras.terasLoopCase.subjectKey,employmentId:teras.terasLoopCase.employmentId});});
+ await step('loops:pause',()=>owner.db.insert(teras.terasLoopPause).values({tenantId,workerId:'loop_document_expiry',companyId:companyOne,paused:true,changedByUserId:group.ctx.userId!}));
+ await step('loops:watch',()=>owner.db.insert(autonomy.terasLoopLevel).values({tenantId,workerId:'loop_missing_employee_data',companyId:companyOne,level:0,changedBy:'administrator',changedByUserId:group.ctx.userId!}));
+ // Open undo windows on own days: one for the employee, one for the manager, and two created at the same instant for the
+ // second manager (a tie on the owner's order key: the owner reads).
+ const caseOf=(a:Actor,key:string)=>cases.find(row=>row.subjectKey===key+':'+a.employmentId)?.id;
+ const action=(a:Actor,caseId:string|undefined,date:string,createdAt?:Date)=>({tenantId,workerId:'loop_missed_clock_outs' as const,companyId:a.companyId,caseId:caseId!,employmentId:a.employmentId,
+  runId:run,level:2 as const,state:'applied' as const,ruleVersion:'loop_missed_clock_outs.act@v1',sponsorUserId:group.ctx.userId!,agentPrincipalId:randomUUID(),checks:[],
+  facts:{date,checkIn:'09:00',checkOut:'18:00'},appliedAt:new Date(),undoUntil:new Date(Date.now()+86400000),...(createdAt?{createdAt}:{})});
+ await step('loops:autonomy',async()=>{
+  const tie=new Date(Date.now()-60000);
+  await owner.db.insert(autonomy.terasLoopAction).values([action(employee,caseOf(employee,'clockout:'+day(-2)),day(-2)),action(manager,caseOf(manager,'clockout:'+day(-3)),day(-3)),
+   action(secondManager,caseOf(secondManager,'clockout:a'),day(-2),tie),action(secondManager,caseOf(secondManager,'clockout:b'),day(-2),tie)]);
+ });
+ // Letter requests through the owners: a template approved by a second HR administrator, opened for requests, and two
+ // employees' requests waiting in company 0.
+ await step('letterRequests',async()=>{
+  const letters=await import('../../core/letters'),requests=await import('../../core/letter-requests'),companyId=employee.companyId;
+  const field=await letters.saveLetterField(group.ctx,{companyId,definition:{key:'employeeName',label:'Employee name',description:'Canonical name',kind:'text',source:'employee.name',required:true,editable:false,sensitive:false},active:true});
+  const template=await letters.saveLetterTemplate(group.ctx,{companyId,code:'PERFCONF',name:'Fictional Employment Confirmation Letter',category:'confirmation',effectiveFrom:today,
+   document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:'This confirms that '},{type:'field',key:'employeeName'},{type:'text',text:' is employed.'}]}]},fieldVersionIds:[field.id]});
+  await letters.decideLetterTemplate(group.ctx,{versionId:template.versionId,expectedStatus:'draft',action:'submit'});
+  await letters.decideLetterTemplate(reviewer.ctx,{versionId:template.versionId,expectedStatus:'submitted',action:'approve'});
+  await requests.saveLetterRequestOptions(group.ctx,{companyId,changes:[{templateId:template.templateId,requestable:true}]});
+  for(const a of [employee,peer])await requests.submitLetterRequest(a.ctx,{templateId:template.templateId});
+ });
+ // Review index rows of all three kinds (terminal, so no reopen runs) for the employee and the manager.
+ for(const a of [employee,manager])await step('reviewIndex:'+a.index,async()=>{
+  const created=new Date(Date.now()-120000),expires=new Date(created.getTime()+600000);
+  await owner.db.execute(sql`insert into app.assistant_own_leave_review(id,tenant_id,user_id,person_id,employment_id,company_id,intent_digest,reviewed_digest,state,created_at,expires_at)
+   values(${randomUUID()}::uuid,${tenantId}::uuid,${a.ctx.userId!}::uuid,${a.ctx.personId!}::uuid,${a.employmentId}::uuid,${a.companyId}::uuid,NULL,NULL,'discarded',${created.toISOString()}::timestamptz,${expires.toISOString()}::timestamptz)`);
+  await owner.db.execute(sql`insert into app.assistant_own_leave_review(action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,state,created_at,expires_at,receipt_subject_kind,receipt_subject_id)
+   values('leave.cancel',${randomUUID()}::uuid,${tenantId}::uuid,${a.ctx.userId!}::uuid,${a.ctx.personId!}::uuid,${a.employmentId}::uuid,${a.companyId}::uuid,'discarded',${created.toISOString()}::timestamptz,${expires.toISOString()}::timestamptz,'leave_request',${randomUUID()}::uuid)`);
+  await owner.db.execute(sql`insert into app.assistant_own_leave_review(action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,state,created_at,expires_at,decision_request_id,decision_subject_person_id)
+   values('approvals.leave.decide',${randomUUID()}::uuid,${tenantId}::uuid,${a.ctx.userId!}::uuid,${a.ctx.personId!}::uuid,${a.employmentId}::uuid,${a.companyId}::uuid,'expired',${created.toISOString()}::timestamptz,${expires.toISOString()}::timestamptz,${randomUUID()}::uuid,${peer.ctx.personId!}::uuid)`);
+ });
+ return {seeded,refused};
+}
+/** Every decision-13 path against its owners for one subject: each read alone and inside one shared snapshot, each
+ * Needs you section against its owner, the stream and the page render. */
+async function cardsSectionsEquivalence(subject:string,actor:Actor,today:string,month:string,pageRender:<T>(work:()=>Promise<T>)=>Promise<T>,
+ compare:(subject:string,target:string,old:unknown,fresh:unknown)=>void){
+ const {withOwnerCardSectionReads}=await import('../../core/home-owner-reads');
+ const reads=await import('../../components/today/reads'),{todayAudience}=await import('../../lib/today/audience'),{allowedCompanies,reportingLinesFor}=await import('../../core/read');
+ const home=await import('../../core/employee-home'),homeNotices=await import('../../core/employee-home-notices'),performanceService=await import('../../packs/performance/service');
+ const tasks=await import('../../packs/performance/onehr/tasks'),reviews=await import('../../core/home-leave-review-presentation'),needs=await import('../../core/needs-you-bundle');
+ const loops=await import('../../core/loops/cards'),letters=await import('../../core/letter-requests'),controls=await import('../../core/agent-registry/controls');
+ const {RECOMMENDER_WORKER}=await import('../../core/recommenders/leave-decision'),sharing=await import('../../core/employee-home-sharing');
+ const {isModuleEnabled}=await import('../../core/entitlements'),{addHrDays}=await import('../../lib/today/audience');
+ const ctx=actor.ctx,id=actor.employmentId,scopeIds=(await allowedCompanies(ctx)).map(company=>company.id),audience=todayAudience(ctx);
+ const admin=audience.layout==='administrator',now=new Date(),noon=Date.parse(today+'T12:00:00+08:00');
+ const both=async(name:string,read:()=>Promise<unknown>)=>{
+  compare(subject,'cardsSections:'+name,await outcome(()=>withOwnerCardSectionReads(read)),await outcome(read));
+  compare(subject,'cardsSections:'+name+':shared',await outcome(()=>withOwnerCardSectionReads(()=>withSharedReadSnapshot(ctx,read))),await outcome(()=>withSharedReadSnapshot(ctx,read)));
+ };
+ const full:Record<string,()=>Promise<unknown>>={
+  greeting:()=>readEmployeeHomeGreeting(ctx,id,'en',now),
+  greetingNoon:()=>readEmployeeHomeGreeting(ctx,id,'en',new Date(noon)),
+  greetingIdentity:()=>home.readEmployeeHomeGreetingIdentity(ctx,id),
+  greetingIdentityDefault:()=>home.readEmployeeHomeGreetingIdentity(ctx),
+  notices:()=>homeNotices.readEmployeeHomeNotices(ctx,id),
+  noticeBoard:()=>homeNotices.readOwnNoticeBoard(ctx,id,{page:1,pageSize:5}),
+  noticeBoardWide:()=>homeNotices.readOwnNoticeBoard(ctx,id,{pageSize:20}),
+  noticeBoardQuery:()=>homeNotices.readOwnNoticeBoard(ctx,id,{query:'Fictional'}),
+  noticeBoardCategory:()=>homeNotices.readOwnNoticeBoard(ctx,id,{category:'Policy'}),
+  noticeBoardSecondPage:()=>homeNotices.readOwnNoticeBoard(ctx,id,{page:2,pageSize:1}),
+  needsYou:()=>reads.readNeedsYou(ctx,{scopeIds,audience,today,locale:'en',now:noon}),
+  atAGlance:()=>reads.readAtAGlance(ctx,{locale:'en',today}),
+  atAGlanceEmployment:()=>reads.readAtAGlance(ctx,{locale:'en',today,employmentId:id}),
+  assignedPerformance:()=>performanceService.hasAssignedPerformanceWork(ctx,scopeIds),
+  assignedPerformanceAccount:()=>performanceService.hasAssignedPerformanceWork(ctx,undefined),
+  ownLeaveIndex:()=>reviews.readHomeOwnLeaveReviewIndex(ctx),
+ };
+ for(const [name,read] of Object.entries(full))await both(name,read);
+ // Each Needs you section the statement answered against its owner reading alone.
+ const bundle=await withSharedReadSnapshot(ctx,()=>needs.readNeedsYouBundle(ctx,{scopeIds,admin,leave:isModuleEnabled(ctx,'leave'),recommender:RECOMMENDER_WORKER}));
+ const answered:string[]=[],deferred:string[]=[];
+ const section=async(name:string,answer:{value:unknown}|{refused:true}|null|undefined,owner:()=>Promise<unknown>,view:(value:unknown)=>unknown=value=>value)=>{
+  if(!answer){deferred.push(name);return;}
+  answered.push(name+('refused' in answer?':refused':''));
+  const fresh='refused' in answer?{ok:false,error:{name:'Error',code:null}}:{ok:true,value:view(answer.value)};
+  const old=await outcome(async()=>view(await withIndependentTransactions(owner)));
+  compare(subject,'cardsSections:needsYou:'+name,old,fresh);
+ };
+ await section('cancellations',bundle?.cancellations,()=>reviews.readHomeLeaveCancellationReviewIndex(ctx));
+ await section('decisions',bundle?.decisions,()=>reviews.readHomeLeaveDecisionReviewIndex(ctx));
+ await section('loops',bundle?.loops,()=>loops.readLoopCards(ctx,{scopeIds,admin}));
+ await section('letterRequests',bundle?.letterRequests,()=>letters.countWaitingLetterRequests(ctx,scopeIds));
+ // Needs you reads only whether the gate lets the recommender run.
+ await section('recommender',bundle?.recommender,()=>controls.workerRunGate(ctx,RECOMMENDER_WORKER),value=>(value as {run:boolean}).run);
+ // The performance projection's one statement against its owner, for the page's company scope and the whole account.
+ for(const [name,ids] of [['performance',scopeIds],['performanceAccount',undefined]] as const){
+  const value=await withSharedReadSnapshot(ctx,()=>tasks.pendingPerformanceTasksFromStatement(ctx,ids===undefined?undefined:[...ids]));
+  if(value===null){deferred.push(name);continue;}
+  answered.push(name);
+  compare(subject,'cardsSections:'+name,await outcome(()=>withIndependentTransactions(()=>tasks.pendingPerformanceTasks(ctx,ids===undefined?undefined:[...ids]))),{ok:true,value});
+ }
+ // Coming up: the calendar and the managers' ids against the two owners.
+ const to=addHrDays(today,13),sorted=(ids:string[])=>[...new Set(ids)].sort();
+ const away=await outcome(async()=>{const value=await withSharedReadSnapshot(ctx,()=>sharing.readHomeTeamCalendarAndManagers(ctx,id,today,to));return value&&{calendar:value.calendar,managers:sorted(value.managerEmploymentIds)};});
+ compare(subject,'cardsSections:comingUp',await outcome(()=>withIndependentTransactions(async()=>{const [lines,calendar]=await Promise.all([reportingLinesFor(ctx,id),sharing.readHomeTeamCalendar(ctx,id,today,to)]);
+  return {calendar,managers:sorted(lines.managers.map(line=>line.employmentId))};})),away);
+ // The stream's frames, and every page owner at once in one render's request scope.
+ const oldFrames:Record<string,unknown>={},newFrames:Record<string,unknown>={};
+ await withOwnerCardSectionReads(()=>streamHome(actor,month,null,GET,oldFrames));
+ await streamHome(actor,month,null,GET,newFrames);
+ const byCard=(frames:Record<string,unknown>)=>Object.fromEntries(Object.entries(frames).sort(([a],[b])=>a.localeCompare(b)));
+ compare(subject,'cardsSections:stream',byCard(oldFrames),byCard(newFrames));
+ const page=()=>pageRender(async()=>Object.fromEntries(await Promise.all(Object.entries(full).map(async([name,read])=>[name,await outcome(read)] as const))));
+ compare(subject,'cardsSections:pageRender',await withOwnerCardSectionReads(page),await page());
+ return {subject,answered,deferred};
+}
+// ── end of the decision 13 block ──
+
 type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[]};
 const sharedStats:SharedReadStats[]=[];
 (globalThis as {__aihrPerfSharedRead?:(stats:SharedReadStats)=>void}).__aihrPerfSharedRead=stats=>{sharedStats.push(stats);};
-const sharedSummary=(rows:SharedReadStats[])=>({sessions:rows.length,joins:rows.reduce((n,row)=>n+row.joins,0),fallbacks:rows.reduce((n,row)=>n+row.fallbacks,0),
+type SharedSummary={sessions:number;joins:number;fallbacks:number;sharedStatements:number;memoHits:number;flights:number;carriers:number;refused:Record<string,number>};
+const sharedSummary=(rows:SharedReadStats[]):SharedSummary=>({sessions:rows.length,joins:rows.reduce((n,row)=>n+row.joins,0),fallbacks:rows.reduce((n,row)=>n+row.fallbacks,0),
  sharedStatements:rows.reduce((n,row)=>n+row.statements,0),memoHits:rows.reduce((n,row)=>n+row.memoHits,0),
  // Idle-to-busy transitions of the carrier connection: the driver pipelines statements sent while others are outstanding.
  flights:rows.reduce((n,row)=>n+(row.flights??0),0),carriers:rows.reduce((n,row)=>n+row.carriers,0),
@@ -810,6 +1018,7 @@ it('completes every manager Home card and Today section read without a handled f
   rows['ownerReads:stream']=await traceOwnerReads(stream);
   rows['ownerReads:page']=await traceOwnerReads(pageRendered);
   Object.assign(rows,await beforePayrollTraces(label,actor,today,traceBoth));
+  Object.assign(rows,await cardsSectionsTraces(label,actor,month,targets,pageRendered));
   print('statement-trace',{label,trips:Object.fromEntries(Object.entries(rows).map(([name,row])=>[name,[row.before,row.after]])),
    shared:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.shared.sessions>0).map(([name,row])=>[name,row.shared])),
    failures:Object.fromEntries(Object.entries(rows).filter(([,row])=>row.failure).map(([name,row])=>[name,row.failure]))});
@@ -859,6 +1068,9 @@ it('completes every manager Home card and Today section read without a handled f
  await calendarWindowEntitlementTrips([['manager',manager],['employee',employee],['companyHR',actors.find(a=>a.role==='companyHR'&&a.company===1)!]],month);
  // Before payroll's owners get rows of their own, after the traces (decision 11).
  report.beforePayrollFixtures=await seedBeforePayrollFixtures([...tenants[0],...tenants[1]],today);
+ report.cardsSectionsFixtures=await cardsSectionsFixtures(actors,others,today);
+ print('cards-sections-fixtures',report.cardsSectionsFixtures);
+ const cardsSectionsAnswers:unknown[]=[];report.cardsSections=cardsSectionsAnswers;
  print('before-payroll-fixtures',report.beforePayrollFixtures);
  const beforePayrollSections:unknown[]=[];report.beforePayrollSections=beforePayrollSections;
  const bundleSections:unknown[]=[];report.bundleSections=bundleSections;
@@ -993,6 +1205,7 @@ it('completes every manager Home card and Today section read without a handled f
     await outcome(()=>withSharedReadSnapshot(ctx,()=>claimsService.claimTypeReceiptRules(ctx))));
   }
   beforePayrollSections.push(await beforePayrollEquivalence(subject,actor,today,compare));
+  cardsSectionsAnswers.push(await cardsSectionsEquivalence(subject,actor,today,month,todayTargets.pageRender,compare));
  }
  // Isolation: a foreign identity inside a session, and two identities' sessions at once across tenants.
  const isolation:Record<string,unknown>={};report.isolation=isolation;
@@ -1028,6 +1241,7 @@ it('completes every manager Home card and Today section read without a handled f
  const mismatches=equivalence.filter(row=>!row.equal);
  print('bundle-sections',bundleSections);
  print('before-payroll-sections',beforePayrollSections);
+ print('cards-sections',cardsSectionsAnswers);
  print('equivalence',{compared:equivalence.length,mismatches:mismatches.length,isolation,first:mismatches.slice(0,6)});
  evidence();
  // The browser renders Today sections and starts the card stream on the same worker pool.

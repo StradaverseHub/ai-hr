@@ -6254,6 +6254,27 @@ async function leaveCalendarPresenceRows(tx: Tx, empIds: string[], from: string,
    WHERE (${!fullDayOnly} OR presence='full_day') ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;presence:'full_day'|'part_day'}[];
 }
 
+/** leaveCalendarPresenceRows as one jsonb array inside a bundled statement (the Home greeting's own facts,
+ *  docs/adr/2026-11-10-home-request-read-scope.md decision 13): the same reader call, filter, projection and order. */
+export function leaveCalendarPresenceRowsJsonSql(empIds: string[], from: string, to: string, fullDayOnly: boolean, status: 'approved' | 'pending' = 'approved'): SQL {
+  return sql`(SELECT coalesce(jsonb_agg(jsonb_build_object('employmentId',employment_id::text,'date',on_date::text,'presence',presence) ORDER BY employment_id,on_date),'[]'::jsonb)
+   FROM app.leave_calendar_presence(${JSON.stringify(empIds)}::jsonb,${from}::date,${to}::date,${status})
+   WHERE (${!fullDayOnly} OR presence='full_day'))`;
+}
+/** approvedLeavePresenceByEmploymentTx's map over rows read by leaveCalendarPresenceRowsJsonSql (fullDayOnly false,
+ *  approved), built by the same loop. A row in another form refuses rather than decoding to a nearby value. */
+export function approvedLeavePresenceFromRows(value: unknown): Map<string, Map<string, 'full_day' | 'part_day'>> {
+  if (!Array.isArray(value)) throw new Error('Bundled leave presence is not a row array.');
+  const out = new Map<string, Map<string, 'full_day' | 'part_day'>>();
+  for (const raw of value as { employmentId: unknown; date: unknown; presence: unknown }[]) {
+    if (typeof raw.employmentId !== 'string' || typeof raw.date !== 'string' || (raw.presence !== 'full_day' && raw.presence !== 'part_day'))
+      throw new Error('A bundled leave presence row is malformed.');
+    let dates = out.get(raw.employmentId); if (!dates) out.set(raw.employmentId, (dates = new Map()));
+    dates.set(raw.date, raw.presence);
+  }
+  return out;
+}
+
 async function leaveCalendarPresenceWindowRows(tx: Tx, employmentId: string, from: string, to: string) {
   const ids = JSON.stringify([employmentId]);
   const rows = await tx.execute(sql`SELECT status,employment_id::text AS "employmentId",on_date::text AS date,presence FROM (

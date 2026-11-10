@@ -223,6 +223,14 @@ export async function hasPersonPhotoSnapshotTx(tx:Tx,ctx:SessionContext,personId
   await assertAiPresentationPrincipalTx(tx,ctx);
   return photoExistsTx(tx,personId,await photoReadPredicateTx(tx,ctx,{presentationSnapshot:true}));
 }
+/** hasPersonPhotoSnapshotTx as one SQL boolean inside a bundled presentation statement (the Home greeting's own facts,
+ * docs/adr/2026-11-10-home-request-read-scope.md decision 13): the same admission proof and visibility policy, read first
+ * exactly as that owner reads them, then the same existence predicate as a value of the caller's statement. */
+export async function personPhotoSnapshotExistsSql(tx:Tx,ctx:SessionContext,personId:string):Promise<SQL>{
+  await assertAiPresentationPrincipalTx(tx,ctx);
+  const visible=await photoReadPredicateTx(tx,ctx,{presentationSnapshot:true});
+  return sql`exists(select 1 from ${personPhoto} where ${and(eq(personPhoto.personId,personId),visible)})`;
+}
 async function photoExistsTx(tx:Tx,personId:string,visible:SQL){
   const [row] = await tx
     .select({ id: personPhoto.id })
