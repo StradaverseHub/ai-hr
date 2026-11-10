@@ -98,7 +98,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET e
    FROM public.employment e
    JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
    WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
-     AND e.company_id=ANY(p_scope) AND e.company_id=ANY((SELECT ids FROM permitted))
+     AND e.company_id=ANY(p_scope) AND e.company_id=ANY((SELECT ids FROM permitted)::uuid[])
  ),
  future_correction_presence AS MATERIALIZED (
    SELECT EXISTS (
@@ -177,7 +177,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET e
           CASE WHEN b.tag_status IN ('ready','pending') THEN b.tag_business_unit::uuid
             ELSE b.legacy_business_unit_id END AS dated_bu_id
    FROM tagged b
-   WHERE COALESCE(b.tag_company::uuid,b.company_id)=ANY((SELECT ids FROM permitted))
+   WHERE COALESCE(b.tag_company::uuid,b.company_id)=ANY((SELECT ids FROM permitted)::uuid[])
  ),
  -- The dated administrative lines of the candidates, once.
  current_lines AS MATERIALIZED (
@@ -194,7 +194,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET e
    FROM current_lines l
    JOIN public.employment me ON me.id=l.manager_employment_id AND me.tenant_id=app.current_tenant_id() AND me.voided_at IS NULL
    JOIN public.person mp ON mp.id=me.person_id AND mp.tenant_id=me.tenant_id
-   WHERE me.company_id=ANY((SELECT ids FROM permitted))
+   WHERE me.company_id=ANY((SELECT ids FROM permitted)::uuid[])
    ORDER BY l.subordinate_employment_id,l.valid_from DESC,l.id
  ),
  -- app.employment_organisation_quality_flags' direct-superior test: any dated administrative line, or
@@ -209,8 +209,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET e
    v.resignation_date,v.last_working_date,v.terminated_on,v.blacklisted_at,
    v.dated_company_id,co.legal_name,v.department_id,COALESCE(NULLIF(btrim(d.label),''),d.name),v.employment_type::text,
    v.dated_bu_id,bu.name,v.position_id,COALESCE(NULLIF(btrim(pos.label),''),pos.title),
-   CASE WHEN v.tag_parent::uuid=ANY((SELECT ids FROM permitted)) THEN v.tag_parent::uuid END,
-   CASE WHEN v.tag_group::uuid=ANY((SELECT ids FROM permitted)) THEN v.tag_group::uuid END,
+   CASE WHEN v.tag_parent::uuid=ANY((SELECT ids FROM permitted)::uuid[]) THEN v.tag_parent::uuid END,
+   CASE WHEN v.tag_group::uuid=ANY((SELECT ids FROM permitted)::uuid[]) THEN v.tag_group::uuid END,
    g.name,g.code,v.hired_on,v.join_date,cc.name,loc.name,m.full_name,
    CASE WHEN COALESCE(v.final_confirmation_date,v.confirmation_date)<=p_as_of THEN 'confirmed' ELSE 'unconfirmed' END,
    CASE WHEN v.tag_company IS NOT NULL THEN v.hired_on<=p_as_of AND v.dated_bu_id IS NULL END,
@@ -263,7 +263,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET e
    FROM public.employment e
    JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
    WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
-     AND e.company_id=ANY(p_scope) AND e.company_id=ANY((SELECT ids FROM permitted))
+     AND e.company_id=ANY(p_scope) AND e.company_id=ANY((SELECT ids FROM permitted)::uuid[])
  ),
  future_correction_presence AS MATERIALIZED (
    SELECT EXISTS (
@@ -337,7 +337,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET e
           CASE WHEN b.tag_status IN ('ready','pending') THEN b.tag_business_unit::uuid
             ELSE b.legacy_business_unit_id END AS dated_bu_id
    FROM tagged b
-   WHERE COALESCE(b.tag_company::uuid,b.company_id)=ANY((SELECT ids FROM permitted))
+   WHERE COALESCE(b.tag_company::uuid,b.company_id)=ANY((SELECT ids FROM permitted)::uuid[])
  )
  SELECT v.id,v.name,v.email,v.employee_code,
    v.final_confirmation_date,v.confirmation_date,v.probation_end_date,v.provisional_end_on,
