@@ -47,6 +47,7 @@ import { breakRowMinutes, checkBreakRow, findBreakOverlaps } from './shift-break
 import { holidayCalendarFactsByEmployment } from './holidays';
 import { approvedLeavePresenceByEmploymentTx, lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {chunkDeadline} from './operator-chunks';
 import { approvedLeaveDates } from './leave';
 import {workingShiftSchedule, rotationLookupTx, assertRotationPoolWriteTx} from '../packs/attendance/service';
 import type { RotationCycle } from './week-pattern';
@@ -2098,23 +2099,38 @@ export async function backfillBackupShift(
   const target = matches[0];
   const ids=before.map(row=>row.employmentId),completed=new Set<string>();
   const image=(rows:UncoveredEmployment[])=>JSON.stringify(rows.slice().sort((a,b)=>a.employmentId.localeCompare(b.employmentId)));
-  for (const row of before) {
-    // The arrangement is stamped FIXED, not left alone, and that is deliberate. Migration 0162 defaulted
-    // shift_type to 'roster' for everyone who had no default shift — which is precisely this population —
-    // so preserving it would leave 30 profiles reading "Roster shift" for people nobody rosters. Fixed is
-    // the truthful label for "works this shift every working day, roster the exceptions", and it is one
-    // click to change per employee afterwards. Nothing in the engine branches on shift_type either way.
-    // One call per row on purpose — each needs its own DomainEvent to be individually reversible.
+  if(!before.length)return { before, after: await employmentsWithoutBackupShift(ctx), assignedShiftId: target.id, applied: true };
+  // The whole nominated cohort's leave sources must be free before the first profile write, as before: a held
+  // subject refuses the run with nothing written. This check holds no Access lock and writes nothing.
+  await withTenant(ctx,tx=>lockLeaveDependenciesTx(tx,ctx.tenantId,ids));
+  // Bounded transactions (core/operator-chunks.ts): rows in nomination order, about OPERATOR_CHUNK_BUDGET_MS per
+  // transaction instead of one transaction per row that each re-read the tenant-wide image and re-locked every
+  // subject. Under the writer lock nothing else can change coverage or the shift catalogue, so one image and one
+  // fresh shift match at the start of a chunk prove what the old per-row checks proved for every row in it.
+  while (completed.size < before.length) {
     await withTenant(ctx,async tx=>{
       await tx.execute(sql`select app.access_workforce_write_lock()`);
-      await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
+      const overBudget=chunkDeadline();
       const current=await employmentsWithoutBackupShift(ctx,undefined,tx);
       if(image(current)!==image(before.filter(row=>!completed.has(row.employmentId))))throw new LeaveDependencyUnavailable();
       const freshMatches=(await listShiftsForTenant(ctx,undefined,tx)).filter(sh=>(sh.code??'').trim().toLowerCase()===wanted);
       if(freshMatches.length!==1||freshMatches[0].id!==target.id)throw new LeaveDependencyUnavailable();
-      await assignEmployeeShift(ctx,{employmentId:row.employmentId,shiftType:'fixed',shiftId:target.id},tx);
-    });
-    completed.add(row.employmentId);
+      const done:string[]=[];
+      for (const row of before) {
+        if(completed.has(row.employmentId))continue;
+        if(done.length>0&&overBudget())break;
+        // The arrangement is stamped FIXED, not left alone, and that is deliberate. Migration 0162 defaulted
+        // shift_type to 'roster' for everyone who had no default shift — which is precisely this population —
+        // so preserving it would leave 30 profiles reading "Roster shift" for people nobody rosters. Fixed is
+        // the truthful label for "works this shift every working day, roster the exceptions", and it is one
+        // click to change per employee afterwards. Nothing in the engine branches on shift_type either way.
+        // One call per row on purpose — each needs its own DomainEvent to be individually reversible. The
+        // row's own subject lock is taken by assignEmployeeShift, as every ordinary assignment does.
+        await assignEmployeeShift(ctx,{employmentId:row.employmentId,shiftType:'fixed',shiftId:target.id},tx);
+        done.push(row.employmentId);
+      }
+      return done;
+    }).then(done=>{for(const id of done)completed.add(id);}); // only a committed chunk counts as completed
   }
   return { before, after: await employmentsWithoutBackupShift(ctx), assignedShiftId: target.id, applied: true };
 }
