@@ -161,3 +161,22 @@ credits' events), where an uninterrupted run's marker states the whole; (2) the 
 is created before the batches and stays even if every batch fails. Keeping all-or-nothing would need staged states for
 the credit status, the settlement link and the per-credit events (a schema change of the 9001/9004 kind); no schema
 change is made here.
+
+## Rehearsal, round 2 (3,000 fictional employees, disposable local cluster, shared loaded host)
+
+`scripts/performance/leave-bulk-rehearsal.ts` against the real protected worker process, probes running throughout,
+every tenant-wide lock sampled (Access, leave configuration, audit chain). Runs 6, 8 and 9 (evidence in the worker's
+scratch directory); Personnel is slow on this host with no job running (idle baseline 2.8-7.3 s), so it is not
+attributed to the jobs. No run had an error from a job, a Busy refusal or a broken audit chain (`verifyTenantChain`
+valid).
+
+| Operation | Longest chunk / release transaction | Longest sampled tenant-lock hold by the job | Clock-in max | Access writer max |
+|---|---|---|---|---|
+| Generate Entitlement preview (snapshot) | none (no tenant lock) | 0 ms | 277 ms | 261 ms |
+| Generate Entitlement (staged, 3,000 + earned) | 372 ms / release 128 ms | 262 ms | 557 ms | 542 ms |
+| Run Earned Accrual (run 8 / run 9) | 435 ms / 1,679 ms (a host stall that held the probes' own transactions 1.4-1.8 s) | 371 / 441 ms | 284 / 1,815 ms | 459 / 1,683 ms |
+| Entitlement recalculation (3,000) | 669 ms | 475 ms | 1,002 ms | 941 ms |
+| A2C re-projection (756 first-year) | 322 ms / release 42 ms | 262 ms | | |
+| Leave ledger import (3,000 rows) | 331 ms | 148 ms | 288 ms | 230 ms |
+| TOIL expiry (3,000 credits, half converted to pay) | 366 ms | 250 ms | 342 ms | 321 ms |
+| Replacement-leave year close (1,500 settled, 1,500 carried) | 282 ms | 118 ms | 276 ms | 208 ms |
