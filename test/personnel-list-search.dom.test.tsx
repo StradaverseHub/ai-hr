@@ -67,7 +67,7 @@ it('clearing the box posts an empty term and keeps every other criterion',async(
 it('pressing Enter applies at once without a full-page form post',async()=>{
  mount();
  fireEvent.change(box(),{target:{value:'Tan'}});
- const event=new Event('submit',{bubbles:true,cancelable:true});box().form!.dispatchEvent(event);
+ const event=new Event('submit',{bubbles:true,cancelable:true});(box() as HTMLInputElement).form!.dispatchEvent(event);
  expect(event.defaultPrevented).toBe(true);
  await waitFor(()=>expect(fetchMock).toHaveBeenCalledTimes(1));
  expect((fetchMock.mock.calls[0][1].body as URLSearchParams).get('term')).toBe('Tan');
