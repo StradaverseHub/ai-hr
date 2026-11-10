@@ -46,8 +46,12 @@ CREATE TRIGGER payroll_retired_attendance_formula_status BEFORE UPDATE OF status
 --    jobs) introduced and the roster extension kept beside tenant_queue; its key is 'job:'||the job's own id, so the
 --    one-active index never refuses. This migration therefore changes neither the constraint nor app.bulk_job_admit.
 -- 4. The kind. No Import History scope: the creator reads the job while their captured grants stay current; every
---    payroll operator sees the run's own 'processing' status through payroll_batch.
-INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES('payroll_process',NULL,'none');
+--    payroll operator sees the run's own 'processing' status through payroll_batch. Its admission input (5013
+--    input_shape) is the run and, for a wizard run of several companies, the earlier companies' jobs it waits for.
+--    Finalize runs as the application role only (finalize_owner false); the worker writes its plan through the
+--    kernel's sealed definers, so this kind needs no grant on the job store.
+INSERT INTO bulk_job_kind(kind,scope_kind,exclusive,input_shape,finalize_owner)
+ VALUES('payroll_process',NULL,'none','{"batchId":"string","after":"array?"}'::jsonb,false);
 --> statement-breakpoint
 -- 5. The effective-batch view (0660) projects every payroll_batch column, listed when it was created; the readers'
 --    projection (db/schema.ts payrollHistoryBatchView) now includes the two lease columns. Rebuilt with 0660's own

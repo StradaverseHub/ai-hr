@@ -26,7 +26,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {payrollBatch} from '../db/schema';
 import {bulkJobId,bulkJobProgress,bulkJobWorkerStatusTx,enqueueBulkJobTx,type BulkJobRow} from './bulk-job';
-import {isTransientBulkJobError,type BulkJobHandler,type BulkJobPrepared,type BulkJobRefused,type BulkJobStep,type BulkJobStepInput,type BulkJobUnit} from './bulk-job-worker';
+import {isTransientBulkJobError,type BulkJobDiscardUnit,type BulkJobHandler,type BulkJobPrepared,type BulkJobRefused,type BulkJobStep,type BulkJobStepInput,type BulkJobUnit} from './bulk-job-worker';
 import {publicErrorMessage} from '../lib/public-error';
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {lockNativePayrollBatchPeriodTx} from './payroll-period-lock';
@@ -156,12 +156,13 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
  async discard(job,unit){
   return discardRun(job,unit);
  },
- // The reason the synchronous wizard's catch gave this error, kept on the plan for the run group's outcome.
- async describeFailure(job,error,_step,owner){
-  await owner`update bulk_job set plan=coalesce(plan,'{}'::jsonb)||${JSON.stringify({failureReason:reasonForPayrollError(error)})}::jsonb where id=${job.id}::uuid`;
-  return{error:publicErrorMessage(error)};
+ // The reason the synchronous wizard's catch gave this error, kept on the plan for the run group's outcome. The
+ // kernel merges it into the plan with the failure (describeFailure itself is read only).
+ async describeFailure(_job,error){
+  return{error:publicErrorMessage(error),planMerge:{failureReason:reasonForPayrollError(error)}};
  },
  // A wizard run group waiting for this run settles when its last job finishes (core/payroll-run-group-store.ts).
+ // The plan stays: it keeps the run id and the failure reason the run screen and the run group read afterwards.
  async afterTerminal(ctx,job){
   if(ctx)await settleRunGroupsForJob(ctx,job.id);
  },
@@ -207,8 +208,9 @@ async function applyRunStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJ
 
 /** Finalize in two bounded units. First the flip, under the run's keys: status, totals, ledgers, claims and events,
  * exactly the full generation's tail. Then, with no run key held, the audit loop's input capture, which reads every
- * owner row of the run and grows with it. Each unit records itself on the job plan in its own transaction, so a
- * unit that committed is never repeated after a worker restart. */
+ * owner row of the run and grows with it. Each unit records itself on the job plan in its own fenced transaction
+ * (unit.set: the application role does not write the job store), so a unit that committed is never repeated after a
+ * worker restart. */
 async function finalizeRun(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit):Promise<'more'|{result:unknown}>{
   const plan=planOf(job);const {batchId}=inputOf(job);
   if(!plan)throw new Error('Payroll processing plan unavailable.');
@@ -224,7 +226,7 @@ async function finalizeRun(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit):P
     const rows=await tx.execute<{result:PayrollProcessingChunkResult}>(sql`select result from bulk_job_step where job_id=${job.id}::uuid and kind='employees' and state='applied' order by seq`);
     const done=await completePayrollProcessingTx(tx,ctx,{batchId,jobId:job.id,plannedEmploymentIds:plan.employmentIds,prefillOvertime:plan.prefillOvertime,chunks:rows.map(r=>r.result)});
     const finalized={payslips:done.payslips,totalNet:done.totalNet,skipped:done.skipped.length};
-    await tx.execute(sql`update bulk_job set plan=plan||${JSON.stringify({finalized})}::jsonb,updated_at=now() where id=${job.id}::uuid`);
+    await unit.set(tx,{planMerge:{finalized}});
    });
    unit.metric('finalizeTxMs',performance.now()-started);
    return 'more';
@@ -235,21 +237,20 @@ async function finalizeRun(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit):P
     await label(tx,'capture');
     await unit.fenceTx(tx);
     await capturePayrollProcessingInputsTx(tx,ctx,batchId);
-    await tx.execute(sql`update bulk_job set plan=plan||'{"captured":true}'::jsonb,updated_at=now() where id=${job.id}::uuid`);
+    await unit.set(tx,{planMerge:{captured:true}});
    });
    unit.metric('captureTxMs',performance.now()-started);
   }
   return{result:{batchId,...plan.finalized}};
 }
 
-/** Owner-only: undo what the job wrote in bounded batches, then return the run to draft and record it. */
-async function discardRun(job:BulkJobRow,unit:Omit<BulkJobUnit,'fenceTx'>):Promise<'more'|'done'>{
+/** Owner-only: undo what the job wrote in bounded batches, then return the run to draft and record it. Each unit is
+ * one transaction on the queue-owner connection that the kernel opens, attributes to this job and commits
+ * (unit.ownerTx), so the events written here carry the job (payload.bulkJob, migration 5014). */
+async function discardRun(job:BulkJobRow,unit:BulkJobDiscardUnit):Promise<'more'|'done'>{
   const {batchId}=inputOf(job);
   const started=performance.now();
-  // The reserved queue-owner connection has no begin(): one explicit transaction on it.
-  const owner=unit.owner;
-  const inTransaction=async<T,>(work:()=>Promise<T>)=>{await owner`begin`;try{const out=await work();await owner`commit`;return out;}catch(error){await owner`rollback`;throw error;}};
-  const outcome=await inTransaction(async()=>{
+  const outcome=await unit.ownerTx(async owner=>{
    const [batch]=await owner<{status:string;processing_job_id:string|null;tenant_id:string;needs_recalc_at:Date|null}[]>`select status,processing_job_id,tenant_id,needs_recalc_at from payroll_batch where id=${batchId}::uuid for update`;
    // Nothing of this job's is left on the run (it finalized, or never owned it).
    if(!batch||batch.status!=='processing'||batch.processing_job_id!==job.id)return'done' as const;
