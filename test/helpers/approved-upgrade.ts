@@ -256,6 +256,45 @@ export type ApprovedUpgradeWitness={events:Row[];eventsRaw:Row[];grants:Row[];ov
 const canonical=(row:unknown)=>JSON.stringify(row,(_key,value)=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b))):value);
 const ordered=(rows:Row[])=>rows.map(canonical).sort();
 async function table(db:Database,name:string):Promise<Row[]>{return (await db.client.unsafe('select to_jsonb(t) value from '+name+' t order by to_jsonb(t)::text')).map(row=>row.value as Row);}
+/** Every nullable column the combined release block (docs/MIGRATION-ALLOCATION.md, 5000-5090) appends to a table
+ * that already holds rows: its ALTER TABLE ... ADD COLUMN statements, by migration. No row that predates the block
+ * may hold a value there. migrateApprovedUpgrade proves each column present and null on every row once its
+ * migration is applied; a retained row is then compared without it (withoutCombinedReleaseNulls). */
+export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;columns:readonly string[]}[]=Object.freeze([
+ {tag:'5010_employee_import_staged_job',table:'employment',columns:['import_pending_attempt_id']},
+ {tag:'5010_employee_import_staged_job',table:'person',columns:['import_pending_attempt_id']},
+ {tag:'5012_import_release_visibility',table:'domain_event',columns:['import_pending_attempt_id']},
+ {tag:'5031_leave_ledger_stage',table:'leave_ledger',columns:['stage_id']},
+ {tag:'5036_leave_type_pending_year_cycle',table:'leave_type',columns:['pending_year_cycle_job_id']},
+ {tag:'5051_payroll_processing_job',table:'payroll_batch',columns:['processing_job_id','processing_started_at']},
+ ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
+  .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
+]);
+// Snapshot keys that name a widened table by another word.
+const SNAPSHOT_TABLE_ALIASES:Readonly<Record<string,string>>={audit:'domain_event',people:'person'};
+/** A retained row of a widened table, compared without the combined release's columns. Each one the row carries
+ * must be null; a row that lacks them (an original-column capture) is returned unchanged. */
+export function withoutCombinedReleaseNulls(name:string,row:Row):Row{
+ const tableName=name.replace(/^public\./,''),target=SNAPSHOT_TABLE_ALIASES[tableName]??tableName;
+ let normalized=row;
+ for(const entry of COMBINED_RELEASE_NULL_COLUMNS)if(entry.table===target)for(const column of entry.columns){
+  if(!Object.hasOwn(normalized,column))continue;
+  expect(normalized[column],tableName+'.'+column+' ('+entry.tag+') on a retained row').toBeNull();
+  const {[column]:_added,...original}=normalized;normalized=original;
+ }
+ return normalized;
+}
+/** After the complete migrate: each column whose migration the applied journal holds exists, and no row holds a value. */
+async function assertCombinedReleaseNulls(db:Database,migrationsFolder:string){
+ const applied=new Set((JSON.parse(readFileSync(join(migrationsFolder,'meta/_journal.json'),'utf8')).entries as {tag:string}[]).map(entry=>entry.tag));
+ for(const entry of COMBINED_RELEASE_NULL_COLUMNS){
+  if(!applied.has(entry.tag))continue;
+  for(const column of entry.columns){
+   expect(await db.client`select 1 as present from information_schema.columns where table_schema='public' and table_name=${entry.table} and column_name=${column}`,entry.table+'.'+column+' added by '+entry.tag).toEqual([{present:1}]);
+   expect(await db.client.unsafe('select count(*)::int as held from public."'+entry.table+'" where "'+column+'" is not null'),entry.table+'.'+column+' is null on every upgraded row').toEqual([{held:0}]);
+  }
+ }
+}
 /** Stage the complete ordinary prefix immediately before 2107, inspect exactly that transition,
  * then migrate every remaining journal entry. No SQL is installed outside the ordinary migrator. */
 export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db/migrations'):Promise<ApprovedUpgradeWitness>{
@@ -312,13 +351,10 @@ export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db
   await migrate(db.db,{migrationsFolder});
   expect(await db.client`select id from public.company where display_group_field is not null or display_group_option_id is not null`).toEqual([]);
   expect(await db.client`select user_id from public.reward_group_role_grant`).toEqual([]);
-  // 5012 appends the nullable staged-import marker to domain_event. Where the tail added it, every retained event
-  // holds null there, and only then is it compared without the column; any other change to an event still fails.
-  expect((await table(db,'public.domain_event')).map(row=>{
-   if(!Object.hasOwn(row,'import_pending_attempt_id'))return row;
-   expect(row.import_pending_attempt_id,'domain_event staged-import marker (5012) on a retained event').toBeNull();
-   const {import_pending_attempt_id:_marker,...original}=row;return original;
-  })).toEqual(eventsAfter);
+  // The combined release appends nullable columns (5012 adds the staged-import marker to domain_event). Each is
+  // present and null on every upgraded row, and only then is a retained event compared without it.
+  await assertCombinedReleaseNulls(db,migrationsFolder);
+  expect((await table(db,'public.domain_event')).map(row=>withoutCombinedReleaseNulls('domain_event',row))).toEqual(eventsAfter);
   expect(await table(db,'public.access_group_grant')).toEqual(groupAfter);expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
   expect(await table(db,'public.access_configuration')).toEqual(configsAfter);expect(await table(db,'app.access_profile_write_generation')).toEqual(generationsAfter);
   return {events,eventsRaw:eventsRaw.filter(row=>events.some(event=>event.id===row.id)),grants,overrides,configurations,generations:generationPairs};
@@ -333,7 +369,8 @@ export function retainedUpgradeRows(name:string,rows:unknown[],witness?:Approved
   const wrapper=parsed as Row;
   const field=wrapper&&typeof wrapper==='object'&&Object.keys(wrapper).length===1&&('row' in wrapper||'value' in wrapper)?('row' in wrapper?'row':'value'):null;
   const row=(field?wrapper[field]:parsed) as Row;
-  let normalized=row;
+  // A combined-release column must be null on the row before the row is compared without it.
+  let normalized=withoutCombinedReleaseNulls(tableName,row);
   if((tableName==='reward_unit'||tableName==='units')&&Object.hasOwn(row,'preparation_required')){
    expect(row.preparation_required,'historical reviews retain unrecorded preparation, never fabricated release proofs').toBe(false);
    const {preparation_required:_preparation,...original}=normalized;normalized=original;
@@ -343,19 +380,19 @@ export function retainedUpgradeRows(name:string,rows:unknown[],witness?:Approved
    const {applied_company_ids:_companies,...original}=normalized;normalized=original;
   }
   if(tableName==='company'&&row.display_group_field===null&&row.display_group_option_id===null){
-   const {display_group_field:_field,display_group_option_id:_option,...original}=row;
+   const {display_group_field:_field,display_group_option_id:_option,...original}=normalized;
    normalized=original;
   }
   if(witness){
    const additions=tableName==='domain_event'||tableName==='audit'?witness.events:tableName==='access_group_grant'?witness.grants:tableName==='access_user_override'?witness.overrides:[];
    const added=additions.find(value=>value.id===row.id);
-   if(added){const raw=witness.eventsRaw.find(value=>value.id===row.id);expect([canonical(added),...(raw?[canonical(raw)]:[])]).toContain(canonical(row));return [];}
+   if(added){const raw=witness.eventsRaw.find(value=>value.id===row.id);expect([canonical(added),...(raw?[canonical(raw)]:[])]).toContain(canonical(normalized));return [];}
    const pairs=name==='app.access_profile_write_generation'?witness.generations:tableName==='access_configuration'?witness.configurations:[];
    const pair=pairs.find(value=>value.after.tenant_id===row.tenant_id);
    if(pair){
     // Fixtures may compare only their original columns. Each present changed field must match
     // the fully validated transition before its original value is restored for comparison.
-    normalized={...row};
+    normalized={...normalized};
     for(const key of Object.keys(pair.before))if(key in row&&canonical(pair.before[key])!==canonical(pair.after[key])){expect(row[key]).toEqual(pair.after[key]);normalized[key]=pair.before[key];}
    }
   }

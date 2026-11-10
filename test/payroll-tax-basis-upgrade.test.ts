@@ -93,7 +93,10 @@ it('applies the pinned payroll and authentication successor tail through the ord
   const afterLedger=await target.db.execute<{hash:string;created_at:string}>(sql`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`);
   expect(afterLedger.slice(0,-tail.length)).toEqual(beforeLedger);expect(afterLedger).toHaveLength(beforeLedger.length+tail.length);
   expect(afterLedger.slice(-tail.length)).toEqual(tail.map(([tag,when])=>({hash:createHash('sha256').update(readFileSync(`db/migrations/${tag}.sql`)).digest('hex'),created_at:when})));
-  expect(await target.db.execute(sql`select tgname,tgenabled from pg_trigger where tgrelid='public.payroll_history_import_snapshot'::regclass and not tgisinternal order by tgname`)).toEqual(protectedBefore);
+  // Every protecting trigger stays exactly as it was. The combined release adds one: 5055's AFTER INSERT stage stamp,
+  // which registers a row inserted by a staged payroll history job (and does nothing otherwise).
+  expect(await target.db.execute(sql`select tgname,tgenabled from pg_trigger where tgrelid='public.payroll_history_import_snapshot'::regclass and not tgisinternal order by tgname`))
+   .toEqual([...protectedBefore,{tgname:'payroll_history_import_snapshot_history_stage_stamp',tgenabled:'O'}].sort((a,b)=>String(a.tgname)<String(b.tgname)?-1:1));
   expect((await target.db.execute(sql`select relrowsecurity as protected from pg_class where oid='public.payroll_tax_basis_revision'::regclass`))[0]).toEqual({protected:true});
   expect((await target.db.execute(sql`select has_table_privilege('ai_hr_app','public.payroll_tax_basis_revision','SELECT') as can_read,has_table_privilege('ai_hr_app','public.payroll_tax_basis_revision','INSERT') as can_insert,has_table_privilege('ai_hr_app','public.payroll_tax_basis_revision','DELETE') as can_delete`))[0]).toEqual({can_read:true,can_insert:true,can_delete:false});
   await expect(target.db.execute(sql`update payroll_history_import_snapshot set value_hash=value_hash`)).rejects.toThrow();
