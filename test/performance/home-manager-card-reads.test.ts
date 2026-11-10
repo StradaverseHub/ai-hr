@@ -427,8 +427,14 @@ async function explainTaskStatement(ctx:SessionContext,modules:import('../../cor
   await tx.execute(sql`set local jit=off`);
   const client=(tx as unknown as {session:{client:{unsafe:(query:string,params:unknown[])=>Promise<Record<string,unknown>[]>}}}).session.client;
   const [row]=await client.unsafe('explain (analyze, summary, format json) '+statement.query,statement.params);
-  const plan=(row['QUERY PLAN'] as {'Planning Time':number;'Execution Time':number}[])[0];
-  return {planningMs:Math.round(plan['Planning Time']),executionMs:Math.round(plan['Execution Time']),chars:statement.query.length,params:statement.params.length};
+  type Node={'Node Type':string;'Subplan Name'?:string;'Relation Name'?:string;'Function Name'?:string;'Actual Total Time'?:number;'Actual Loops'?:number;Plans?:Node[]};
+  const plan=(row['QUERY PLAN'] as {'Planning Time':number;'Execution Time':number;Plan:Node}[])[0];
+  const nodes:{node:string;ms:number;loops:number}[]=[];
+  const walk=(node:Node)=>{nodes.push({node:[node['Subplan Name'],node['Node Type'],node['Relation Name']??node['Function Name']].filter(Boolean).join(' '),
+   ms:Math.round((node['Actual Total Time']??0)*(node['Actual Loops']??1)*10)/10,loops:node['Actual Loops']??0});for(const child of node.Plans??[])walk(child);};
+  walk(plan.Plan);
+  return {planningMs:Math.round(plan['Planning Time']),executionMs:Math.round(plan['Execution Time']),chars:statement.query.length,params:statement.params.length,
+   top:nodes.filter(node=>node.node.startsWith('SubPlan')||node.node.startsWith('InitPlan')||node.node.startsWith('CTE')).sort((a,b)=>b.ms-a.ms).slice(0,12)};
  },{readOnlySnapshot:true});
 }
 
@@ -591,6 +597,18 @@ it('completes every manager Home card and Today section read without a handled f
   evidence();
  }
 
+ // TEMPORARY diagnostic (removed before review): the account task statement's own cost at this fixture size, then stop.
+ {
+  const {isModuleEnabled}=await import('../../core/entitlements'),probe:Record<string,unknown>={};
+  for(const [label,actor] of [['manager',manager],['employee',employee]] as const){
+   const flags={attendance:isModuleEnabled(actor.ctx,'attendance'),claims:isModuleEnabled(actor.ctx,'claims'),performance:isModuleEnabled(actor.ctx,'performance'),
+    rewards:isModuleEnabled(actor.ctx,'rewards'),lifecycle:isModuleEnabled(actor.ctx,'lifecycle')};
+   const runs=[];for(let attempt=0;attempt<3;attempt++)runs.push(await explainTaskStatement(actor.ctx,flags).catch(error=>errorFact(error)));
+   probe[label]=runs;
+  }
+  print('task-statement-probe',probe);
+  throw new Error('Task statement probe only');
+ }
  // 3. Four concurrent Home streams on one eight-connection worker pool.
  const concurrent=await sampleActivity(()=>Promise.all([manager,secondManager,employee,actors.find(a=>a.index===5)!].map(actor=>streamHome(actor,month,null))));
  report.concurrent={streams:concurrent.result,statements:concurrent.statements()};
