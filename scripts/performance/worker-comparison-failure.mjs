@@ -2,6 +2,7 @@
 import {driverErrorFact} from './driver-shutdown.mjs';
 
 export const workerDriverFailureFile='worker-driver-failure.json';
+export const workerDriverFailureBytes=3584;
 const kind='WORKER_COMPARISON_DRIVER_FAILURE_V1';
 const stages=new Set(['driver-initialization','pilot-http','browser-launch','browser-baseline',
  'sign-in-and-navigation','navigation-seal','ai-baseline','workflow-baseline','preflight-checks','steady-plan','preflight-lock-gate',
@@ -23,6 +24,15 @@ const advisoryFamilies=new Set(['access-configuration','ai-control','audit-chain
  'pay-component-catalog','leave-dependency-configuration','leave-dependency-employment','advisory-unclassified']);
 const nativeFamilies=new Set([...advisoryFamilies,'transaction','relation','tuple','unknown']);
 const homePhases=new Set(['baseline','loaded']);
+// Closed Home card inventory rendered by the personal and HR Home surfaces.
+export const homeFailureCards=Object.freeze(['calendar','celebrations','notices','summary','tasks','team','timeOff','today',
+ 'attendanceOverview','companies','headcount','headcountByCompany','latestPayroll','latestPayrollRun','noticeBoard','pendingLeave',
+ 'recentActivity','recentlyJoined','upcomingEvents']);
+const homeCardSet=new Set([...homeFailureCards,'outside-card']);
+const homeMarkers=new Set(['alert','today-unavailable','read-unavailable']);
+const homeMessageKey=/^(?:unrecognized|[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+){1,5})$/;
+const homeSection=/^(?:other|today-[a-z0-9-]{1,48})$/;
+const homeCardsPerGroup=3;
 const cohortLimit=10;
 const countKeys=['routeFailures','browserErrors','homeCardFailures','busyResponses','aiBaselineFailures','functionalErrors','transportErrors'];
 const fields=(row,keys)=>row!==null&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).length===keys.length
@@ -94,16 +104,52 @@ export function createWorkerLoadedDiagnostics(){
  };
 }
 
+/** Index rendered message text to its catalog key, so a failure names the message, never its text. */
+export function homeFailureMessageCatalog(catalogs){
+ const keys=new Map();
+ const walk=(value,path)=>{
+  if(typeof value==='string'){
+   const key=path.join('.'),text=value.trim();
+   if(text&&homeMessageKey.test(key)&&key.length<=80&&(!keys.has(text)||key.localeCompare(keys.get(text))<0))keys.set(text,key);
+  }else if(value&&typeof value==='object'&&!Array.isArray(value)&&path.length<6){
+   for(const [name,child] of Object.entries(value))walk(child,[...path,name]);
+  }
+ };
+ for(const catalog of catalogs)walk(catalog,[]);
+ return keys;
+}
+
+/** Closed facts for each rendered failure: owning card, marker, Today section and catalog message key. */
+export function homeCardFailureFacts(nodes,catalog){
+ if(!Array.isArray(nodes))return [];
+ return nodes.slice(0,64).map(node=>closedHomeFact({card:node?.card,marker:node?.marker,section:node?.section,
+  message:typeof node?.text==='string'?catalog?.get(node.text.trim()):undefined}));
+}
+const closedMessage=value=>typeof value==='string'&&value.length<=80&&homeMessageKey.test(value)?value:'unrecognized';
+function closedHomeFact(value){
+ const section=typeof value?.section==='string'?value.section:null;
+ return {card:homeCardSet.has(value?.card)?value.card:'outside-card',marker:homeMarkers.has(value?.marker)?value.marker:'alert',
+  section:section===null?null:homeSection.test(section)?section:'other',message:closedMessage(value?.message)};
+}
+
 function homeFailures(rows){
  if(!Array.isArray(rows)||rows.length>4096)return null;
  const groups=new Map();
  for(const row of rows){
   if(!roles.has(row?.role)||!homePhases.has(row.phase))continue;
   const key=row.role+':'+row.phase;
-  if(!groups.has(key))groups.set(key,{role:row.role,phase:row.phase,count:0});
-  groups.get(key).count++;
+  if(!groups.has(key))groups.set(key,{role:row.role,phase:row.phase,count:0,cards:new Map()});
+  const group=groups.get(key);
+  group.count++;
+  for(const fact of (Array.isArray(row.cards)?row.cards.slice(0,64):[]).map(closedHomeFact)){
+   const id=[fact.card,fact.marker,fact.section,fact.message].join(':');
+   const entry=group.cards.get(id)??{card:fact.card,marker:fact.marker,section:fact.section,message:fact.message,count:0};
+   entry.count++;group.cards.set(id,entry);
+  }
  }
- return [...groups.values()];
+ return [...groups.values()].map(group=>({role:group.role,phase:group.phase,count:group.count,
+  cards:[...group.cards.values()].sort((left,right)=>right.count-left.count||left.card.localeCompare(right.card)
+   ||left.message.localeCompare(right.message)).slice(0,homeCardsPerGroup)}));
 }
 const trafficGroup=value=>fields(value,['role','phase','module','outcome','count'])
  &&roles.has(value.role)&&trafficPhases.has(value.phase)&&modules.has(value.module)&&outcomes.has(value.outcome)
@@ -116,8 +162,12 @@ const validAdvisory=value=>value===null||fields(value,['activityWaitSamples','ap
  &&integer(value.activityWaitSamples,4097)&&integer(value.appAdvisorySamples,4097)
  &&integer(value.activityWithoutAdvisorySamples,value.activityWaitSamples)
  &&fields(value.families,[...advisoryFamilies])&&Object.values(value.families).every(count=>integer(count,value.appAdvisorySamples));
+const validHomeCard=value=>fields(value,['card','marker','section','message','count'])&&homeCardSet.has(value.card)&&homeMarkers.has(value.marker)
+ &&(value.section===null||typeof value.section==='string'&&homeSection.test(value.section))&&typeof value.message==='string'&&value.message.length<=80&&homeMessageKey.test(value.message)&&integer(value.count,4096)&&value.count>0;
 const validHome=value=>value===null||Array.isArray(value)&&value.length<=roles.size*homePhases.size
- &&value.every(row=>fields(row,['role','phase','count'])&&roles.has(row.role)&&homePhases.has(row.phase)&&integer(row.count,4096)&&row.count>0);
+ &&value.every(row=>fields(row,['role','phase','count','cards'])&&roles.has(row.role)&&homePhases.has(row.phase)&&integer(row.count,4096)&&row.count>0
+  &&Array.isArray(row.cards)&&row.cards.length<=homeCardsPerGroup&&row.cards.every(validHomeCard)
+  &&new Set(row.cards.map(card=>[card.card,card.marker,card.section,card.message].join(':'))).size===row.cards.length);
 
 export function projectWorkerNativeLockFailures(failures){
  if(!Array.isArray(failures)||failures.length>64)return null;
@@ -141,6 +191,15 @@ export function projectWorkerNativeLockFailures(failures){
 
 /** @param {ReturnType<ReturnType<typeof createWorkerLoadedDiagnostics>['facts']>|null} [loaded] */
 export function projectWorkerDriverFailure(stage,workload,report,loaded=null){
+ const result=projectDriverFailure(stage,workload,report,loaded);
+ // The runner reads at most 4,096 bytes. Card detail yields to the counts before that bound.
+ for(const keep of [homeCardsPerGroup-1,0]){
+  if(Buffer.byteLength(JSON.stringify(result))<=workerDriverFailureBytes||!result.homeFailures)break;
+  result.homeFailures=result.homeFailures.map(row=>({...row,cards:row.cards.slice(0,keep)}));
+ }
+ return result;
+}
+function projectDriverFailure(stage,workload,report,loaded){
  return {kind,stage:stages.has(stage)?stage:'unavailable',workload:workloads.has(workload)?workload:null,
   primary:errorFact(report.driverFailures?.primary),firstSecondary:errorFact(report.driverFailures?.secondary?.[0]),
   counts:{routeFailures:count(report.coverage,row=>row?.status==='failed'),browserErrors:count(report.browserErrors),
