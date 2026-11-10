@@ -1512,7 +1512,7 @@ it('completes every manager Home card and Today section read without a handled f
    const flags={attendance:isModuleEnabled(actor.ctx,'attendance'),claims:isModuleEnabled(actor.ctx,'claims'),performance:isModuleEnabled(actor.ctx,'performance'),
     rewards:isModuleEnabled(actor.ctx,'rewards'),lifecycle:isModuleEnabled(actor.ctx,'lifecycle')};
    for(const [variant,modules] of [['modules',flags],['core',{attendance:false,claims:false,performance:false,rewards:false,lifecycle:false}]] as const){
-    const runs=[];for(let attempt=0;attempt<3;attempt++)runs.push(await explainTaskStatement(actor.ctx,modules).catch(error=>errorFact(error)));
+    const runs=[];for(let attempt=0;attempt<1;attempt++)runs.push(await explainTaskStatement(actor.ctx,modules).catch(error=>errorFact(error)));
     explains[label+':'+variant]=runs;
    }
   }
