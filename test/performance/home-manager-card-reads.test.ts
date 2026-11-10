@@ -628,12 +628,13 @@ async function preambleSeedsAgainstOwners(ctx:SessionContext,employmentId?:strin
 /** A second own employment for one person, a Home configuration revision and a stored dashboard layout, added after the
  * traces so their counts stay comparable. */
 async function preambleFixtures(actors:Actor[]){
- const tenantId=actors[0].ctx.tenantId,at=(index:number)=>actors.find(a=>a.index===index)!;
+ const at=(index:number)=>actors.find(a=>a.index===index)!;
  const {defaultEmployeeHomeConfiguration}=await import('../../lib/employee-home-defaults');
- const author=at(0).ctx.userId!;
+ const {saveEmployeeHomeConfiguration}=await import('../../core/employee-home-configuration');
+ // The configuration writer itself, as the group HR administrator (its guard trigger admits only an administrator).
  for(const [actor,role] of [[at(2),'manager'],[at(4),'employee'],[at(54),'employee']] as const)
-  await owner.db.insert(s.employeeHomeConfigurationRevision).values({tenantId,companyId:actor.companyId,audienceRole:role,ordinal:1,
-   configuration:defaultEmployeeHomeConfiguration(),reason:'Fictional preamble fixture',createdByUserId:author}).onConflictDoNothing();
+  await saveEmployeeHomeConfiguration(at(0).ctx,{companyId:actor.companyId,audienceRole:role,expectedOrdinal:0,configuration:defaultEmployeeHomeConfiguration(),
+   reason:'Fictional preamble fixture'}).catch(error=>print('preamble-fixture-configuration',errorFact(error)));
  await owner.client`update app_user set dashboard_layout=${JSON.stringify({homeDisplay:{version:1,timeZone:'Asia/Kuala_Lumpur',weekStartsOn:1},
   employee:{selected:['summary','greeting','tasks'],order:['tasks','summary','greeting']}})}::jsonb where id=${at(2).ctx.userId!}::uuid`;
  let second:string|null=null;

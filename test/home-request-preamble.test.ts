@@ -10,11 +10,10 @@ import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,describe,expect,it} from 'vitest';
 import {client,declareSharedReadPreamble,withIndependentTransactions,withOwnerPreambleReads,withSharedReadSnapshot,withTenant,type SessionContext} from '../db/client';
 import type {SharedReadStats} from '../db/shared-read';
-import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {homeRequestPreamble} from '../core/home-request-preamble';
 import {readEmployeeHomeIdentity,requireOwnHomeSubject} from '../core/employee-home';
-import {readOwnEmployeeHomeConfiguration} from '../core/employee-home-configuration';
+import {readOwnEmployeeHomeConfiguration,saveEmployeeHomeConfiguration} from '../core/employee-home-configuration';
 import {isPrincipalSnapshotCurrentTx,isRepeatableReadOnlyTx} from '../core/read-only-snapshot';
 import {assertAssignedWorkPrincipalTx} from '../core/approvals';
 import {assertReadCompositionPrincipalTx} from '../core/read-composition-principal';
@@ -34,8 +33,8 @@ async function hire(name:string){
 beforeAll(async()=>{
  await migrateTestDb();await resetDb();base=await seedBase();
  employee=await hire('Fictional preamble employee');other=await hire('Fictional preamble colleague');
- await owner.db.insert(s.employeeHomeConfigurationRevision).values({tenantId:base.tenantId,companyId:base.companyId,audienceRole:'employee',ordinal:1,
-  configuration:defaultEmployeeHomeConfiguration(),reason:'Fictional preamble revision',createdByUserId:base.adminUserId});
+ await saveEmployeeHomeConfiguration(adminCtx(base),{companyId:base.companyId,audienceRole:'employee',expectedOrdinal:0,
+  configuration:defaultEmployeeHomeConfiguration(),reason:'Fictional preamble revision'});
  await owner.client`update app_user set dashboard_layout=${JSON.stringify({homeDisplay:{version:1,timeZone:'Asia/Kuala_Lumpur',weekStartsOn:1}})}::jsonb where id=${employee.ctx.userId!}::uuid`;
  hooks.__aihrPerfSharedRead=stats=>{sessions.push(stats);};
 });
