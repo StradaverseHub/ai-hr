@@ -1,5 +1,5 @@
 /**
- * The movement import Revert (ADR-0155) as a background job on the shared bulk-job kernel (draft 9913,
+ * The movement import Revert (ADR-0155) as a background job on the shared bulk-job kernel (draft 5078,
  * docs/adr/2026-11-10-movement-import-job.md). All or nothing, with the same refusals, rows, audit events and Import
  * History event as the synchronous revert (revertImport with movementRevertHandler), which stays the fallback.
  *
@@ -36,7 +36,7 @@ import type {ImportRevertJobProgress} from '../lib/import-revert-job';
 export const MOVEMENT_REVERT_KIND='movement_import_revert';
 type RevertInput={attemptId:string;previewHash:string;reason:string};
 type Row=Record<string,unknown>;
-/** One row write of the rehearsed compensation, in its order (draft 9914): the row's images before and after it. */
+/** One row write of the rehearsed compensation, in its order (draft 5079): the row's images before and after it. */
 type RowWrite={table:string;op:'INSERT'|'UPDATE'|'DELETE';id:string;old:Row|null;new:Row|null};
 /** What one employee's rehearsed compensation wrote, and what the release must find unchanged. */
 export type MovementRevertCapture={employmentId:string;day:string;
@@ -127,7 +127,7 @@ export async function captureMovementRevertTx(tx:Tx,ctx:SessionContext,employmen
  const before=await countsTx(tx);
  try{
   await tx.transaction(async rehearsal=>{
-   // Every row write of the movement-record tables is recorded, in order, inside this savepoint (draft 9914).
+   // Every row write of the movement-record tables is recorded, in order, inside this savepoint (draft 5079).
    await rehearsal.execute(sql`select set_config('app.movement_revert_capture','on',true)`);
    await applyMovementRevertTx(rehearsal,ctx,items,reason);
    await rehearsal.execute(sql`select set_config('app.movement_revert_capture','off',true)`);
@@ -194,7 +194,7 @@ async function releaseTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,unit:BulkJobUni
  }
  // Authority now: maintain for every employment (as the review's per-employment check) and administration of every
  // company an employment returns to (as the company transfer's own rollback asks).
- // Set-wise (9911): the same rows as app.access_workforce_employment(e.id,'workforce.maintain'), the company check once.
+ // Set-wise (5076): the same rows as app.access_workforce_employment(e.id,'workforce.maintain'), the company check once.
  const [maintained]=await tx.execute<{n:number}>(sql`select count(*)::int n from employment e where e.id=any(${pgUuids(employmentIds)}) and ${workforceEmploymentSetPredicate({tenantId:sql`e.tenant_id`,companyId:sql`e.company_id`,voidedAt:sql`e.voided_at`,importPendingAttemptId:sql`e.import_pending_attempt_id`},'maintain')}`);
  if(maintained?.n!==employmentIds.length)throw new ReleaseRefused('access');
  for(const company of new Set(captures.flatMap(c=>c.companies))){const [ok]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_for(${company}::uuid) as ok`);if(!ok?.ok)throw new ReleaseRefused('company');}

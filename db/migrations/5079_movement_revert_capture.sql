@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5079_movement_revert_capture, idx 4479, when 1793330004779.
+-- Draft name on its branch: 9914_movement_revert_capture. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-movement-20261110 (movement import Revert: capture of the rehearsed
 -- compensation): not a reservation, not an installation allocation. The journal position (idx 9914, when 1793330099914)
 -- exists only so this branch's schema is executable and reviewable; the integration owner assigns the final

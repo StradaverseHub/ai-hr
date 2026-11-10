@@ -173,6 +173,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5064_employee_import_revert_release_hash',
    '5070_system_label_import_staged_job',
    '5071_workforce_capability_tenant_publication',
+   '5075_bulk_job_movement_import',
+   '5076_workforce_employment_access_set',
+   '5077_bulk_job_movement_check',
+   '5078_bulk_job_movement_import_revert',
+   '5079_movement_revert_capture',
+   '5080_access_administrator_coalesced_assert',
    '5090_audit_chain_commit_seal',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);

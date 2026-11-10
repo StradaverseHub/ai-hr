@@ -2,9 +2,9 @@
 
 Status: source implementation on `claude/bulkjob-movement-20261110`; hosted verification and integration pending.
 Base: `claude/import-staged-job-20261110` @ `0143d761c` (shared bulk-job kernel, ADR 2026-11-10 employee import).
-Draft migrations (unallocated): 9910 `bulk_job_kind` row `movement_import` (scope `movement`, one active job per person),
-9911 set-wise manager-list authorization, 9912 `bulk_job_kind` row `movement_check` (scope `movement`, one per person),
-9913 `bulk_job_kind` row `movement_import_revert` (scope `movement`, one per person), 9914 the revert rehearsal's row-write
+Draft migrations (unallocated): 5075 `bulk_job_kind` row `movement_import` (scope `movement`, one active job per person),
+5076 set-wise manager-list authorization, 5077 `bulk_job_kind` row `movement_check` (scope `movement`, one per person),
+5078 `bulk_job_kind` row `movement_import_revert` (scope `movement`, one per person), 5079 the revert rehearsal's row-write
 capture.
 
 Confirming a checked movement import saved every chosen employee in the web request, one transaction per
@@ -47,8 +47,8 @@ administrator guard and the 4701 statement trigger the `org-reporting` lock on t
 
 **Integrated on the combined release (11 November 2026).** Merged onto the hardened kernel and the reader/writer Access
 lock (ADR 2026-11-10 employee import, "Hardened kernel"; ADR-0135 "Reader/writer Access lock"):
-- The three kind rows declare `input_shape` (9910 the confirmation: `attemptId`, `previewHash`, `employees`, the two
-  acknowledgements, `locale`, `sourceName`; 9912 `name`, `locale`, optional `operationKey`; 9913 `attemptId`,
+- The three kind rows declare `input_shape` (5075 the confirmation: `attemptId`, `previewHash`, `employees`, the two
+  acknowledgements, `locale`, `sourceName`; 5077 `name`, `locale`, optional `operationKey`; 5078 `attemptId`,
   `previewHash`, `reason`), all within the default 1 MiB, and `finalize_owner=false`: every movement write runs as the
   application role under the creator's authority, so no handler declares an owner finalize and no movement event is an
   owner-path event.
@@ -65,7 +65,7 @@ lock (ADR 2026-11-10 employee import, "Hardened kernel"; ADR-0135 "Reader/writer
 - Import History's revert control and `revert-jobs/[jobId]` serve both background reverts (employee import and
   movement import); the route answers by the job's kind.
 
-**Manager catalogue authorized set-wise (draft 9911).** The commit re-reads the movement catalogue about eight
+**Manager catalogue authorized set-wise (draft 5076).** The commit re-reads the movement catalogue about eight
 times, and its manager list called `app.access_workforce_employment` for every live employment (about 1 ms each:
 3.5 s per read at 3,140 employments; the check and confirmation refused employees on the 5 s statement and 15 s
 per-employee limits). The catalogue now filters with `app.access_workforce_employment_permitted`, an inlined
@@ -107,7 +107,7 @@ fingerprint computed three times. Now:
   writer's own and the leave reprojection's. `assembleCatalog` also evaluates today once per catalogue instead of twice
   per manager row, which the synchronous paths share.
 
-**The check runs on the job (draft 9912, kind `movement_check`).** It writes inside rolled-back rehearsals, so it cannot
+**The check runs on the job (draft 5077, kind `movement_check`).** It writes inside rolled-back rehearsals, so it cannot
 be a lock-free snapshot. The request now only stores the file on the job (`startMovementCheckJob`); the worker reads and
 plans it once with no tenant lock (`planMovementCheck`, the synchronous check's own reading), checks one employee per
 step in a savepoint of its chunk that always rolls back (`checkMovementEmployeeTx`: the synchronous check's per-employee
@@ -144,7 +144,7 @@ synchronous confirmation of the same file ran its 45 s request budget and failed
 `movement_import_timeout`, holding up to 1.37 s; under the load spike the synchronous check itself ran out of its
 45 s budget.
 
-**The whole-import revert runs on the job: a rehearsed plan and one verified set-based release (drafts 9913, 9914).**
+**The whole-import revert runs on the job: a rehearsed plan and one verified set-based release (drafts 5078, 5079).**
 The movement rollback is not a restore of before-images: an assignment, compensation or reporting-line leg marks the
 movement's own row superseded (it stays in Employment History) and reopens its predecessor, a grade leg writes through
 `setEmploymentGrade` with its own event, and the reversal events are composed from the movement's recorded legs. So the

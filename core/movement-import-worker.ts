@@ -1,4 +1,4 @@
-/** Movement import as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; kind row in draft 9910). The
+/** Movement import as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; kind row in draft 5075). The
  * job's own writes (its plan marker) go through unit.set in a fenced transaction; nothing here writes the job store.
  *
  * The synchronous confirmation saved each employee in its own transaction (all of that employee's movements or none;

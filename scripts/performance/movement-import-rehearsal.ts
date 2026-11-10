@@ -1,5 +1,5 @@
 /**
- * Fictional-data rehearsal of the background movement import (bulk-job kernel, draft 9910). Disposable database only:
+ * Fictional-data rehearsal of the background movement import (bulk-job kernel, draft 5075). Disposable database only:
  * refuses any URL not on the rehearsal port. Seeds a populated tenant (BASE_EMPLOYEES, default 3000) plus the
  * movement subjects, checks a full-size movement file (50 employees, ~130 rows: promotions with salary, transfers,
  * manager changes, exits of people with logins and company changes), then confirms it twice on separate subjects:

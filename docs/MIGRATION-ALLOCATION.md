@@ -1,9 +1,9 @@
 # Combined release block — 11 November 2026 MYT (unapplied allocation, one block)
 
 Branch `claude/combined-release-20261111` (base `claude/architecture-release-20261110` @ `6e4a883c2`) merges every
-accepted branch of the combined release and moves all of their draft migrations into one block: tags `5000`–`5090`,
+accepted branch of the combined release and moves all of their draft migrations into one block (43 migrations): tags `5000`–`5090`,
 idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when share one offset (tag 50NN, idx 44NN, when
-…47NN). The 772-entry journal of the base keeps its entries, order and SQL bytes; the 809-entry journal passes
+…47NN). The 772-entry journal of the base keeps its entries, order and SQL bytes; the 815-entry journal passes
 `node .github/ci/check-migration-order.mjs origin/main` (main `9cf69292a`, 729 entries ending at
 `4800_ai_shared_leave_groups_read`, idx 4200 / when 1793330004500).
 
@@ -45,6 +45,12 @@ idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when sh
 | `9934_employee_import_revert_release_hash` | 9934 / 1793330099340 | `5064_employee_import_revert_release_hash` | 4464 / 1793330004764 | `8862489275a2132ff64547b7e1641afd43c57a2cc4f1660ff9a3a8464d2ff568` |
 | `9961_system_label_import_staged_job` | 9961 / 1793330090961 | `5070_system_label_import_staged_job` | 4470 / 1793330004770 | `ba9f29643d13bbe4e69f169d004c698a393af6b639edf97f1d7dd835347e61ba` |
 | `9962_workforce_capability_tenant_publication` | 9962 / 1793330090962 | `5071_workforce_capability_tenant_publication` | 4471 / 1793330004771 | `4d22cd648ea0698c5ce230461862fc4c93e61cbc9196800e0317b680d694a311` |
+| `9910_bulk_job_movement_import` | 9910 / 1793330099910 | `5075_bulk_job_movement_import` | 4475 / 1793330004775 | `11a734038c4f7d7dd31e3f342a1d85103365f7b13f2936bd6c1348f7f30ce190` |
+| `9911_workforce_employment_access_set` | 9911 / 1793330099911 | `5076_workforce_employment_access_set` | 4476 / 1793330004776 | `0e1c2bce56e6ee1380bae2451d2d7ab83b6fff9b33a5eddba2d247595fbc995f` |
+| `9912_bulk_job_movement_check` | 9912 / 1793330099912 | `5077_bulk_job_movement_check` | 4477 / 1793330004777 | `3abc199fe1d6602b771e9c205d5b4f1be15133b10f9deec2f4b33e50d26a4dc1` |
+| `9913_bulk_job_movement_import_revert` | 9913 / 1793330099913 | `5078_bulk_job_movement_import_revert` | 4478 / 1793330004778 | `7c9cc1e2564400925acece3c05644e62eb87b31315cbc7b43d28eab9c0d7489f` |
+| `9914_movement_revert_capture` | 9914 / 1793330099914 | `5079_movement_revert_capture` | 4479 / 1793330004779 | `e5f5a468d2087067101ab6df786e682023952ab75251efdcb0799f2957b77139` |
+| `9990_access_administrator_coalesced_assert` | 9990 / 1793330099990 | `5080_access_administrator_coalesced_assert` | 4480 / 1793330004780 | `721af90b5e4554c36ce39ee8e8db2ae6b53bdfa2cabc0029b990bd0f78cfd1f2` |
 | `4700_audit_chain_commit_seal` | 4100 / 1793330004400 | `5090_audit_chain_commit_seal` | 4490 / 1793330004790 | `f6bf0e0f80ca6cb222c8ec10996d55e1bafdbe436809987d9d7b7cf9c11485f1` |
 
 Order and why:
@@ -69,7 +75,12 @@ Order and why:
   after the kernel and before any kind row, so every kind declares its `input_shape` when it is inserted.
   `5041_bulk_job_queue_and_watch` stamps `watched_at` through the definer `app.bulk_job_mark_watched` instead of a
   column grant.
-- **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069 and 5072–5089 are
+- **Movement import jobs (5075–5079) and the coalesced last-administrator assertion (5080).** Accepted after the
+  first allocation. The movement kinds follow the kernel (5011, 5013) and the employee import Revert (5062–5064)
+  whose screens they share. 5080 replaces `app.access_administrator_constraint()` from its 5000 body, so it runs
+  after the reader/writer Access lock migrations; it adds one private queue table and its deferred trigger and no
+  trigger on `domain_event`, so 5090's reviewed trigger set is unchanged.
+- **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069, 5072–5074 and 5081–5089 are
   left for branches accepted later; they are inserted before 5090 in journal order while the block is unapplied.
 
 Retired: `9002_leave_import_job` (phase 3's leave import proof). The leave ledger import runs on the shared kernel
@@ -81,7 +92,7 @@ Read-only survey, 11 November 2026: 7,316 refs (4,055 distinct heads, 556 distin
 parseable, one ref without a journal) and 250 readable journals among 265 registered worktrees (one unparseable:
 feedback-menu-operator-toggle-616263). Above idx 4243 / when 1793330004543 the peers hold `4900`–`4902` at idx
 4300–4302 / when 1793330004600–1793330004602 (staging board window 4 and the account-action fix), the Home drafts
-`9850`, `9870`, `9873`, and the pending drafts of this programme (`9910`–`9912`).
+`9850`, `9870`, `9873`, and the drafts of this programme now allocated here (`9910`–`9914`, `9990`).
 Nothing occupies tags 5000–5099, idx 4303–4600 or when 1793330004603–1793330004999. This block sits above
 4900–4902 on purpose. **The architecture block of this same release (idx 4201–4243 / when …4501–…4543) sits below
 them:** if 4900–4902 are installed anywhere before this release, those 43 entries would be skipped there and must

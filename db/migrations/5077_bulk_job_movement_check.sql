@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5077_bulk_job_movement_check, idx 4477, when 1793330004777.
+-- Draft name on its branch: 9912_bulk_job_movement_check. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-movement-20261110 (movement import check on the shared bulk-job kernel):
 -- not a reservation, not an installation allocation. The journal position (idx 9912, when 1793330099912) exists only
 -- so this branch's schema is executable and reviewable; the integration owner assigns the final tag/idx/when after the

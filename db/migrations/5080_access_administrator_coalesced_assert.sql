@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5080_access_administrator_coalesced_assert, idx 4480, when 1793330004780.
+-- Draft name on its branch: 9990_access_administrator_coalesced_assert. Any draft note below describes that unallocated branch position.
 -- Draft name 9990_access_administrator_coalesced_assert (idx 9990, when 1793330099990). The integrator allocates the
 -- final number; it runs after the reader/writer Access lock migrations (5000-5006).
 --

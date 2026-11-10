@@ -1,4 +1,4 @@
-/** Set-wise Workforce employment access (draft 9911) against its per-row owner, app.access_workforce_employment:
+/** Set-wise Workforce employment access (draft 5076) against its per-row owner, app.access_workforce_employment:
  * the same employment set for every actor shape (group, company-scoped and descendant-scoped administrators, super
  * administrator, explicit deny, employee role, stale grants, archived and date-blocked logins), both capabilities,
  * voided and staged employments, another tenant, at 340 and 3,000+ employments; and the movement import's manager
@@ -18,7 +18,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
-/** The per-row owner this set-wise function mirrors, as installed. A change to it must change 9911 too. */
+/** The per-row owner this set-wise function mirrors, as installed. A change to it must change 5076 too. */
 const PER_ROW_OWNER=`
  SELECT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id()
   AND e.voided_at IS NULL AND (app.import_marker_visible(e.import_pending_attempt_id) OR e.import_pending_attempt_id::text=current_setting('app.import_attempt',true))
@@ -86,7 +86,7 @@ beforeEach(async()=>{
 });
 afterAll(async()=>{try{await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id in ('workforce.view','workforce.maintain')`);}finally{await closeAll();}});
 
-describe('set-wise Workforce employment access (9911)',()=>{
+describe('set-wise Workforce employment access (5076)',()=>{
  it('mirrors the installed per-row owner',async()=>{
   const[row]=await owner.client<{body:string;definer:boolean;volatility:string}[]>`select prosrc as body,prosecdef as definer,provolatile as volatility from pg_proc where oid='app.access_workforce_employment(uuid,text)'::regprocedure`;
   expect(row).toEqual({body:PER_ROW_OWNER,definer:true,volatility:'s'});

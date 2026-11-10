@@ -13,7 +13,7 @@ export function workforceEmploymentPredicate(subject:SQL,operation:WorkforceOper
  if(companyIds?.length===0)return sql`false`;
  return sql`app.access_workforce_employment(${subject},${'workforce.'+operation})`;
 }
-/** Set-wise form of workforceEmploymentPredicate for a reader that scans employment rows (migration 9911): exactly
+/** Set-wise form of workforceEmploymentPredicate for a reader that scans employment rows (migration 5076): exactly
  * the same rows, with the company check run once per company (an InitPlan) instead of once per employment. Pass the
  * reader's own employment columns. */
 export type WorkforceEmploymentColumns={tenantId:SQL;companyId:SQL;voidedAt:SQL;importPendingAttemptId:SQL};

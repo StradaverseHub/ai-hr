@@ -1,5 +1,5 @@
 /** The CHECK of an uploaded movement file as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; kind row
- * in draft 9912).
+ * in draft 5077).
  *
  * The synchronous check (previewMovementUpload) rehearsed every employee in its own transaction that always rolled back,
  * under the exclusive Access lock, all inside the web request. Here the request only stores the file on the job; the

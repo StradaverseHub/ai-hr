@@ -1,3 +1,5 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5076_workforce_employment_access_set, idx 4476, when 1793330004776.
+-- Draft name on its branch: 9911_workforce_employment_access_set. Any draft note below describes that unallocated branch position.
 -- UNALLOCATED DRAFT on branch claude/bulkjob-movement-20261110 (movement import catalogue speed): not a reservation,
 -- not an installation allocation. The journal position (idx 9911, when 1793330099911) exists only so this branch's
 -- schema is executable and reviewable; the integration owner assigns the final tag/idx/when after the freshly

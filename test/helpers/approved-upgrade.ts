@@ -119,6 +119,12 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4464,when:1793330004764,tag:'5064_employee_import_revert_release_hash'},
  {idx:4470,when:1793330004770,tag:'5070_system_label_import_staged_job'},
  {idx:4471,when:1793330004771,tag:'5071_workforce_capability_tenant_publication'},
+ {idx:4475,when:1793330004775,tag:'5075_bulk_job_movement_import'},
+ {idx:4476,when:1793330004776,tag:'5076_workforce_employment_access_set'},
+ {idx:4477,when:1793330004777,tag:'5077_bulk_job_movement_check'},
+ {idx:4478,when:1793330004778,tag:'5078_bulk_job_movement_import_revert'},
+ {idx:4479,when:1793330004779,tag:'5079_movement_revert_capture'},
+ {idx:4480,when:1793330004780,tag:'5080_access_administrator_coalesced_assert'},
  {idx:4490,when:1793330004790,tag:'5090_audit_chain_commit_seal'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
@@ -226,6 +232,12 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5064_employee_import_revert_release_hash':'8862489275a2132ff64547b7e1641afd43c57a2cc4f1660ff9a3a8464d2ff568',
  '5070_system_label_import_staged_job':'ba9f29643d13bbe4e69f169d004c698a393af6b639edf97f1d7dd835347e61ba',
  '5071_workforce_capability_tenant_publication':'4d22cd648ea0698c5ce230461862fc4c93e61cbc9196800e0317b680d694a311',
+ '5075_bulk_job_movement_import':'11a734038c4f7d7dd31e3f342a1d85103365f7b13f2936bd6c1348f7f30ce190',
+ '5076_workforce_employment_access_set':'0e1c2bce56e6ee1380bae2451d2d7ab83b6fff9b33a5eddba2d247595fbc995f',
+ '5077_bulk_job_movement_check':'3abc199fe1d6602b771e9c205d5b4f1be15133b10f9deec2f4b33e50d26a4dc1',
+ '5078_bulk_job_movement_import_revert':'7c9cc1e2564400925acece3c05644e62eb87b31315cbc7b43d28eab9c0d7489f',
+ '5079_movement_revert_capture':'e5f5a468d2087067101ab6df786e682023952ab75251efdcb0799f2957b77139',
+ '5080_access_administrator_coalesced_assert':'721af90b5e4554c36ce39ee8e8db2ae6b53bdfa2cabc0029b990bd0f78cfd1f2',
  '5090_audit_chain_commit_seal':'f6bf0e0f80ca6cb222c8ec10996d55e1bafdbe436809987d9d7b7cf9c11485f1',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){

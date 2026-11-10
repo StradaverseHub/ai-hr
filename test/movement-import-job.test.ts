@@ -1,4 +1,4 @@
-/** Movement import on the shared bulk-job kernel (draft 9910): real PostgreSQL, real RLS, real worker ticks.
+/** Movement import on the shared bulk-job kernel (draft 5075): real PostgreSQL, real RLS, real worker ticks.
  * The job's end state equals the synchronous confirmation's for the same file (movements, positions, managers,
  * company, statutory rows, Import History items and events, audit events), each employee is still saved all or
  * nothing, a lock refusal is retried instead of failing the employee, and authority is checked again in the worker. */

@@ -1,5 +1,5 @@
 /**
- * Last-administrator rule asserted once per transaction (draft migration 9990). Real PostgreSQL through the
+ * Last-administrator rule asserted once per transaction (draft migration 5080). Real PostgreSQL through the
  * repository harness: real transactions on separate connections, the real row triggers, the real administrator guard.
  *
  * Counting, never timing. This file installs one observer trigger on the private queue table through the owner

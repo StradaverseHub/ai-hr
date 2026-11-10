@@ -1,5 +1,5 @@
 /** Durable admission and creator-scoped progress for background movement imports, as a client of the shared
- * bulk-job kernel (core/bulk-job.ts, migration 9003; kind row in draft 9910). The confirmation request runs the same
+ * bulk-job kernel (core/bulk-job.ts, migration 5011; kind row in draft 5075). The confirmation request runs the same
  * attempt checks the synchronous confirmation ran, then only enqueues; the protected import worker re-reads the
  * file and saves each employee in its own short chunk (core/movement-import-worker.ts). */
 import {sql} from 'drizzle-orm';
@@ -79,7 +79,7 @@ export function movementImportJobHttpError(error:unknown){
  return Response.json({error:'The import request could not be completed. Reopen its progress before retrying.'},{status:500,headers:{'Cache-Control':'private, no-store'}});
 }
 
-// ---- The check of an uploaded file (kind movement_check, draft 9912), core/movement-import-check-worker.ts.
+// ---- The check of an uploaded file (kind movement_check, draft 5077), core/movement-import-check-worker.ts.
 /** What the check worker reads back: the file's name, the screen's language (localized headers and refusal texts) and
  * the browser's operation key (one attempt per upload, as the synchronous check recorded it). The bytes are the job's
  * source content, removed when the job ends. */

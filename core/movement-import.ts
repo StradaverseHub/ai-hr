@@ -66,7 +66,7 @@ async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string,reads?:Moveme
  await assertCompany(tx,ctx,companyId,reads);
  return catalogRowsTx(tx,ctx,companyId,reads);
 }
-/** The live employments of the manager list: every one the actor may view, authorized set-wise (9911, the same rows
+/** The live employments of the manager list: every one the actor may view, authorized set-wise (5076, the same rows
  * as the per-row predicate). `only` narrows it to one employment with the very same columns and conditions. */
 function managerRowsTx(tx:Tx,ctx:SessionContext,only?:string){
  return tx.select({value:employment.id,label:employment.employeeCode,name:person.fullName,companyId:employment.companyId,isTestRecord:employment.isTestRecord,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate,blacklistedAt:employment.blacklistedAt}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),only?eq(employment.id,only):undefined,isNull(employment.terminatedOn),workforceEmploymentSetPredicate({tenantId:sql`${employment.tenantId}`,companyId:sql`${employment.companyId}`,voidedAt:sql`${employment.voidedAt}`,importPendingAttemptId:sql`${employment.importPendingAttemptId}`},'view'))).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
