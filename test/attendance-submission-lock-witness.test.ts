@@ -224,6 +224,9 @@ it('allows independent ordinary submissions to overlap before audit while retain
      if(result.observed)return;
      await new Promise(resolve=>setTimeout(resolve,25));
     }
+    const seen=await owner.client`select l.pid,l.mode,l.granted,(select string_agg(b::text,',') from unnest(pg_blocking_pids(l.pid)) b) as blockers from pg_locks l where l.locktype='advisory' order by 1,2`;
+    const types=await owner.client`select code,role,archived_at from leave_type where tenant_id=${base.tenantId}::uuid`;
+    console.log('WITDIAG locker '+lockerPid+' locks '+JSON.stringify(seen)+' leaveTypes '+JSON.stringify(types)+' modules '+JSON.stringify((second.ctx as {entitlements?:unknown}).entitlements));
     throw new Error('Standalone submission did not reach the workflow wait with expected Access mode '+mode);
    })()]));
   }finally{
