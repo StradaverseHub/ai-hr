@@ -20,8 +20,10 @@ export async function queueEmployeeLoopDigests(
 
  return connection.withTenant(ctx, async tx => {
   await assertNotificationSweepConnection(tx);
-  // Match appendEvent's lock order. The AI lock also serializes a second sweep's idempotency check.
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + ctx.tenantId},0))`);
+  // Match appendEvent's lock order: Access before the ai-control lock. Shared, because the digest changes
+  // no configuration: stop and loop-control writers hold Access exclusively, and the ai-control lock taken
+  // next (held to commit) serializes a second sweep's idempotency check, so it sees this one's digests.
+  await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + ctx.tenantId},0))`);
   const [state] = await tx.execute<{ generation: number | null }>(sql`select app.ai_centre_assert_running(${input.generation}::integer) as generation`);
   if (state?.generation == null) return 0;
 

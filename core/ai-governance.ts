@@ -1,4 +1,4 @@
-import {assertAiCentreRunningTx} from './ai-centre-control';
+import {assertAiCentreRunningSharedTx,assertAiCentreRunningTx,lockAccessForAiControlCheckTx} from './ai-centre-control';
 import {privateLocalData} from '../lib/ai/provider-policy-shape';
 import {privateTaskDescriptor} from '../lib/ai/provider-task-registry';
 import {adjudicateSnapshotAnalysis,SNAPSHOT_ANALYSIS_CONTRACT} from '../lib/ai/provider-snapshot-policy';
@@ -24,7 +24,7 @@ import { AI_FEATURES,isAiFeature,isTemplateOnlyAiFeature,type AiFeatureId } from
 import { resolveEntitlementsTx, getSetting } from './entitlements';
 import { assertAiProviderSnapshot, assertAiProviderSnapshotFeature, assertCurrentAiProviderSnapshotTx, type AiProviderSnapshot } from './ai-provider-snapshot';
 import type { AiAdmission,AiGovernance } from '../lib/ai/governance';
-import {lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from './access-configuration-lock';
 import {aiCentreActivity} from '../lib/ai/centre-activity';
 import {captureStrictAiSpendRoot,requiresAiTaskRoot,type StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 export type {StrictAiSpendRoot} from '../lib/ai/spend-allocation';
@@ -53,7 +53,8 @@ export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:
  // ai-control exclusively here upgrades its earlier shared holds, so two concurrent readers deadlock (40P01).
  const [carrier]=await tx.execute<{read_only:boolean}>(sql`select current_setting('transaction_read_only')='on' as read_only`);
  const sharedBarrier=carrier?.read_only===true&&aiCentreActivity(ctx.tenantId)===undefined;
- await (sharedBarrier?lockAccessConfigurationReadTx:lockAccessConfigurationWriteTx)(tx,ctx.tenantId);
+ // Otherwise a read of the pause controls: joins the mode this transaction holds (exclusive when it holds none).
+ if(sharedBarrier)await lockAccessConfigurationReadTx(tx,ctx.tenantId);else await lockAccessForAiControlCheckTx(tx,ctx.tenantId);
  await assertFeatureUnpausedTx(tx,ctx,feature);
  if(!sharedBarrier)await assertAiCentreRunningTx(tx,ctx);
  // WP12 (R8): inside an Assistant review-route command, that action's own pause key under hr_assistant (0696).
@@ -160,14 +161,17 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
   const scope=spendRoot&&spendEnvelope&&ctx.userId?createAiSpendReceiptScope({tenantId:ctx.tenantId,userId:ctx.userId,runId:admission.run_id,rootTaskId:spendRoot.rootTaskId,requestDigest:spendEnvelope.requestDigest,capabilityDigest:spendEnvelope.capabilityDigest,configurationDigest:aiSpendConfigurationDigest(outgoing)}):null;
   let succeeded=false;
   try{
-   await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx,preparedAdmission.generation));
-   const dispatch=()=>scope?scope.run(()=>call(record,accounting.observe)):call(record,accounting.observe);const result=await(spendEnvelope?withReviewedAiSpendDispatch(spendEnvelope,outgoing,capturedRequest,dispatch):dispatch());await withTenant(ctx,async tx=>{await assertAiCentreRunningTx(tx,ctx,preparedAdmission.generation);await assertAiActionUnpausedTx(tx,ctx,feature);});succeeded=true;return result;}
+   // Check-only transactions around the provider call hold Access shared; stop writes still exclude them.
+   await withTenant(ctx,tx=>assertAiCentreRunningSharedTx(tx,ctx,preparedAdmission.generation));
+   const dispatch=()=>scope?scope.run(()=>call(record,accounting.observe)):call(record,accounting.observe);const result=await(spendEnvelope?withReviewedAiSpendDispatch(spendEnvelope,outgoing,capturedRequest,dispatch):dispatch());await withTenant(ctx,async tx=>{await assertAiCentreRunningSharedTx(tx,ctx,preparedAdmission.generation);await assertAiActionUnpausedTx(tx,ctx,feature);});succeeded=true;return result;}
   finally{
    // A failed write is visible and leaves the reservation held; it must never erase unconfirmed usage.
    let breach=false;
    try { const observed=accounting.snapshot(actual),receipt=scope?.receipt();await withTenant(ctx,async tx=>{
     // Same order as admission. This is ownership only: role revocation must not erase actual usage.
-    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+    // Shared: role and AI control writers hold Access exclusively, and every accounting write below
+    // serialises on the tenant ai-control lock and the run's own row, so settlements may overlap.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     await tx.execute(sql`select app.ai_settle_observed(${admission.run_id}::uuid,${succeeded},${actual}::bigint,
     ${observed.providerObservationStatus},${observed.reportedInputTokens}::bigint,${observed.reportedOutputTokens}::bigint,${observed.reportedCachedInputTokens}::bigint,
     ${observed.openrouterAccountCostCredits}::numeric,${observed.observedRoundTripMs}::double precision)`);
@@ -176,7 +180,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
     if(lifecycle?.settled)await lifecycle.settled(tx,Object.freeze({runId:admission.run_id,succeeded,actualTokens:actual,accounting:observed}));}); }
    catch { throw new AiGatewayError('AI usage could not be confirmed. Its reservation remains held.'); }
    if(breach)throw new AiGatewayError('The AI inference charge exceeded its verified allocation ceiling. Further strict admissions are paused.');
-   if(succeeded)await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx,preparedAdmission.generation));
+   if(succeeded)await withTenant(ctx,tx=>assertAiCentreRunningSharedTx(tx,ctx,preparedAdmission.generation));
   }
  }})});
  if(observer)resolved=Object.freeze({...resolved,governance:Object.freeze({run:observeAiRun(resolved.governance!.run,observer)})});

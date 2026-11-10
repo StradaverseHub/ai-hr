@@ -68,7 +68,12 @@ export async function appendEvent(
   const activity=aiCentreActivity(e.tenantId);
   let aiGeneration:number|undefined;
   if(aiCentreEvent(e.eventType)||activity&&!['teras-mandate.stopped','teras-mandate.resumed','ai-centre.function-changed'].includes(e.eventType)){
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"access-configuration:"+e.tenantId},0))`);
+    // AI control check: keep the stop switch stable (its writers hold Access exclusively). A transaction
+    // already holding Access shared is a converted writer and joins shared instead of upgrading, which two
+    // such writers could deadlock on; one holding nothing or exclusive keeps the exclusive lock as before.
+    await tx.execute(sql`select case when app.access_lock_mode_held(${e.tenantId}::uuid)='S'
+      then pg_advisory_xact_lock_shared(hashtextextended(${"access-configuration:"+e.tenantId},0))
+      else pg_advisory_xact_lock(hashtextextended(${"access-configuration:"+e.tenantId},0)) end`);
     const [control]=await tx.execute<{generation:number}>(sql`select app.ai_centre_assert_running(${aiCentreActivity(e.tenantId)?.generation??null}::integer) as generation`);
     if(control?.generation==null)throw Error('AI activity stopped');
     for(const key of activity?.functions??[]){const [row]=await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_read_allowed(${key}) as allowed`);if(row?.allowed!==true)throw Error('AI function stopped');}

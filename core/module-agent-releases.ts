@@ -45,6 +45,7 @@ import {HUMAN_PLAN_HOLDOUTS,HUMAN_PLAN_SUITE_DIGEST} from '../lib/ai/human-plan-
 import { generateDraft } from '../lib/ai';
 import {isAgentPromotionScope,type AgentPromotionScope} from '../lib/ai/agent-promotion-scope';
 import { agentReleaseIntervalTx } from './agent-release-interval';
+import { waitAccessConfigurationExclusiveTx } from './access-exclusive-wait';
 import { maintainPromotionsTx, type ModuleAgentMaintenance } from './module-agent-maintenance';
 export { maintainModuleAgentReleasesAsScheduledAgent } from './module-agent-maintenance';
 export type { ModuleAgentMaintenance } from './module-agent-maintenance';
@@ -190,9 +191,11 @@ async function ownNativeCandidateSignalsTx(tx:Tx,ctx:SessionContext,ids:readonly
 export async function rollbackAssistantPromotion(ctx:SessionContext,input:{promotionId:string;reason:'human'|'security_regression'|'quality_regression'}) {
  const current=capture(ctx),p={...input};if(!exact(p,['promotionId','reason'])||!uuid(p.promotionId)||!['human','security_regression','quality_regression'].includes(p.reason))return fail();
  try{await withTenant(current,async tx=>{
-  // A running canonical reader owns Access before its shared release interval. Refuse contention
-  // before the principal guard's blocking reentrant acquisition; never wait behind an active job.
-  const [access]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'access-configuration:'+current.tenantId},0)) as owned`);if(access?.owned!==true)return fail();
+  // A running canonical reader owns Access before its shared release interval. Take exclusive Access
+  // first, before the principal guard's reentrant acquisition. A plain try never succeeds under steady
+  // shared traffic, which would refuse a security rollback indefinitely; each bounded attempt queues
+  // briefly with nothing else held and backs off from a long holder instead of waiting behind it.
+  if(!await waitAccessConfigurationExclusiveTx(tx,current.tenantId,{attempts:5}))return fail();
   await guard(tx,current,true,false);
   const [nominated]=await tx.execute<{id:string;owner_user_id:string}>(sql`select id,owner_user_id from public.ai_agent_promotion where id=${p.promotionId}::uuid and tenant_id=${current.tenantId}::uuid`);if(!nominated)return fail();
   await agentReleaseIntervalTx(tx,current,nominated.owner_user_id);
