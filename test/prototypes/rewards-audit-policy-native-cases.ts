@@ -360,7 +360,12 @@ export function registerRewardsAuditPolicyNativeCases(){
   },async()=>{finalize.resolve();},()=>context.signal.removeEventListener('abort',abort));
  });
  async function bankFirstFloorRace(context:TestContext,counterexample:boolean){
-  const f=await setup(),pack=requirePackFor('MY');
+  // The Bank owner's report-principal proof compares the session's explicit grants with the ACTUAL principal
+  // (core/employee-master-access.ts), so carry exactly the grants app.principal resolves for this login.
+  const fixture=await setup(),[principal]=await owner.client`select grants from app.principal(${fixture.ctx.userId!}::uuid)`;
+  const grants=Array.isArray(principal?.grants)?principal.grants.map((grant:{role:unknown;companyId:unknown})=>{if(typeof grant.role!=='string'||(grant.companyId!==null&&typeof grant.companyId!=='string'))throw Error('Actual principal grant required');return{role:grant.role,companyId:grant.companyId};}):[];
+  if(!grants.length)throw Error('Actual principal grants required');
+  const f={...fixture,ctx:{...fixture.ctx,grants}},pack=requirePackFor('MY');
   await pack.statutory.set(f.ctx,{personId:f.person.personId,icNumber:null,epfNumber:'FICTIONAL-RETAINED-EPF',socsoNumber:'FICTIONAL-RETAINED-SOCSO',taxNumber:'FICTIONAL-RETAINED-TAX',bankName:'Fictional legacy bank',bankAccountNo:'FLOOR-OLD'});
   await pack.statutory.setBank(f.ctx,{personId:f.person.personId,bankName:'Fictional legacy bank',bankAccountNo:'FLOOR-OLD',enableCustomHolderName:true,customHolderName:'Fictional old payee',enableCustomHolderId:true,customHolderId:'FICTIONAL-OLD-HOLDER'});
   const fields={bankName:pack.client.bankNames[0],bankAccountNo:'FLOOR-NEW',enableCustomHolderName:false,customHolderName:'discarded disabled name',enableCustomHolderId:false,customHolderId:'discarded disabled ID'};
@@ -416,7 +421,9 @@ export function registerRewardsAuditPolicyNativeCases(){
    const exercise=async()=>{
     // Transparent observation: every callback forwards unchanged arguments to
     // the real canonical owner; no owner result or authorization is fabricated.
-    const errors=vi.spyOn(nativeErrorOwner,'pgSqlState').mockImplementation(error=>{const code=actualSqlState(error);if(code){const native=actualErrorChain(error).find(link=>link.code===code);nativeRefusals.push({code,message:native?.message??''});}return code;});
+    // admin.ts classifies through a module-initialization alias of pgSqlState that a runtime spy cannot
+    // replace; its RLS-refusal check passes the SAME native error through the live pgErrorChain binding.
+    const errors=vi.spyOn(nativeErrorOwner,'pgErrorChain').mockImplementation(error=>{const chain=actualErrorChain(error),code=actualSqlState(error);if(code){const native=chain.find(link=>link.code===code);nativeRefusals.push({code,message:native?.message??''});}return chain;});
     const callback=vi.spyOn(adminOwner,'bulkSaveLabels').mockImplementation(async(...args:Parameters<typeof adminOwner.bulkSaveLabels>)=>{
      const [ctx,kind,,tx]=args;
      if(tx&&ctx.tenantId===f.b.tenantId&&kind==='position'){
