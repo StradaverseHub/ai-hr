@@ -35,6 +35,9 @@ async function ownPolicyWriteTx(tx:Tx,ctx:SessionContext,target:{companyId:strin
   if('employmentId' in target){
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockPayrollInputsTx(tx,{employmentIds:[target.employmentId]});
+    // A run a background processing job has already paid this employee on reads the old assignment: mark it.
+    const {markProcessingRunsForEmploymentsTx}=await import('./payroll');
+    await markProcessingRunsForEmploymentsTx(tx,ctx,{employmentIds:[target.employmentId]});
   }else await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const company='companyId' in target?sql`${target.companyId}::uuid`:'policyId' in target?
     sql`(select p.company_id from public.payroll_policy p where p.id=${target.policyId}::uuid and p.tenant_id=${ctx.tenantId}::uuid)`:

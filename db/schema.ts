@@ -6495,7 +6495,10 @@ export const employeeQualification = pgTable(
 );
 
 // ──────────────────────── Payroll (generic kernel) ────────────────────────
-export const payrollStatusEnum = pgEnum('payroll_status', ['draft', 'processed', 'closed']);
+// 'processing' (draft migration 9950/9951): a run the background payroll processing job owns. Visible to payroll
+// operators as in progress, never to employees (they read closed, released runs only); its payslips are written
+// in chunks and the run flips to 'processed' in one short finalize transaction.
+export const payrollStatusEnum = pgEnum('payroll_status', ['draft', 'processing', 'processed', 'closed']);
 
 // ─────────────── Multi-cycle payroll (Wave 2C, ADR-0024) — GATED ───────────────
 // GATED behind MULTI_CYCLE_PAYROLL_ENABLED: the schema + backfill exist, but the kernel still
@@ -6700,6 +6703,10 @@ export const payrollBatch = pgTable(
     // A null-cycle REGULAR run behaves exactly as it does today; a null-cycle NON-regular run can name no
     // cycle, so it collects no period-keyed rows at all — which is also exactly today's behaviour.
     payrollCycleId: uuid('payroll_cycle_id').references(() => payrollCycle.id),
+    // Run-level durable lease (draft 9951): the bulk job that owns a 'processing' run. Set exactly while
+    // status = 'processing' (CHECK payroll_batch_processing_lease); the job's chunks fence on it.
+    processingJobId: uuid('processing_job_id'),
+    processingStartedAt: timestamp('processing_started_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [

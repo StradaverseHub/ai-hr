@@ -10,7 +10,8 @@ import {
 export type ComparisonRun = {
   id: string; companyId: string; period: string;
   runType: 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
-  status: 'draft' | 'processed' | 'closed'; stale: boolean;
+  /** 'processing': the background job is still writing its payslips; compared like a draft (no partial money). */
+  status: 'draft' | 'processing' | 'processed' | 'closed'; stale: boolean;
 };
 export type ComparisonSource = {
   id: string; version: number; runId: string; employmentId: string;
@@ -79,7 +80,7 @@ export function payrollComparisonAvailability(
       for (const run of periodRuns) {
         const base = { period, companyId, runId: run.id };
         if (run.stale) issues.push({ ...base, code: 'stalePayroll' });
-        else if (run.status === 'draft') issues.push({ ...base, code: 'draftPayroll' });
+        else if (run.status === 'draft' || run.status === 'processing') issues.push({ ...base, code: 'draftPayroll' });
         else if (period === previousPeriod && run.status !== 'closed') issues.push({ ...base, code: 'previousNotClosed' });
       }
     }

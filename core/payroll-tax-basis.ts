@@ -203,7 +203,7 @@ async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:
    if(firstChanged){
     const impacted=await tx.execute<{id:string}>(sql`select distinct b.id from payroll_batch b join payslip p on p.batch_id=b.id join pay_period period on period.id=b.pay_period_id
      where b.tenant_id=${ctx.tenantId}::uuid and b.company_id=${opened.selection.companyId}::uuid and p.employment_id=${reviewed.id}::uuid
-      and b.status='processed' and period.status='open' and b.pay_period>=${firstChanged} and b.pay_period like ${opened.selection.year+'-%'} and b.history_import_attempt_id is null order by b.id`);
+      and b.status in ('processed','processing') and period.status='open' and b.pay_period>=${firstChanged} and b.pay_period like ${opened.selection.year+'-%'} and b.history_import_attempt_id is null order by b.id`);
     for(const target of impacted){await markBatchNeedsRecalc(tx,ctx,{batchId:target.id,employmentIds:[reviewed.id],category:'statutory'});await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-batch',aggregateId:target.id,eventType:'payroll-batch.tax-basis-recalc-required',actor:actorOf(ctx),subjectEmploymentId:reviewed.id,payload:{taxBasisBatchId:opened.id,employmentId:reviewed.id,sourcePeriod:firstChanged}});}
    }
    await recordEventTx(tx,ctx,opened.id,opened.selection.companyId,'employee_completed',reviewed,reviewed.id);await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-tax-basis',aggregateId:opened.id,eventType:'payroll.tax-basis.corrected',actor:actorOf(ctx),subjectEmploymentId:reviewed.id,payload:{companyId:opened.selection.companyId,year:opened.selection.year,upToMonth:opened.selection.upToMonth,recordCount:reviewed.recordCount,previewHash:input.previewHash}});

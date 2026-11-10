@@ -1980,6 +1980,7 @@ export function setEmploymentPayComponent(
     if (effectiveTo != null && effectiveTo < p.effectiveFrom) throw new FixedTransactionDateError();
     if (currency !== 'MYR') throw new UnsupportedFixedCurrencyError(currency);
     await lockFixedItemWriterTx(tx, ctx, p.employmentId);
+    await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
     const [component] = await tx.select({ code: payComponent.code, pendingInputKind: payComponent.pendingInputKind })
       .from(payComponent).where(eq(payComponent.id, p.componentId)).limit(1);
     if (component) assertPayComponentReady(component);
@@ -2275,6 +2276,7 @@ export function updateEmploymentPayComponent(
 ) {
   return withTenant(ctx, async (tx) => {
     await lockFixedItemWriterTx(tx, ctx, p.employmentId);
+    await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
     // Load the target row (RLS-confined to the tenant). Match the caller-supplied employmentId so the edit
     // can only touch a row the admin is actually looking at; a foreign/stale id yields no row.
     const [row] = await tx
@@ -2338,6 +2340,7 @@ export function endEmploymentPayComponent(
 ) {
   const run=async(tx:Tx)=>{
     await lockFixedItemWriterTx(tx, ctx, p.employmentId);
+    await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
     const [row] = await tx
       .select({ validFrom: employmentPayComponent.validFrom })
       .from(employmentPayComponent)
@@ -2488,6 +2491,13 @@ async function lockFixedItemWriterTx(tx:Tx,ctx:SessionContext,employmentId:strin
  await lockAccessConfigurationTx(tx,ctx.tenantId);
  await lockPayrollInputsTx(tx,{employmentIds:[employmentId]});
 }
+/** A fixed-item change for an employee a background payroll processing job has already paid marks that run for
+ * recalculation (an employee it has not reached yet reads the change). Called by each writer after its inputs key,
+ * inside the write (a rolled-back preview rolls the mark back with it). Lazy import: payroll imports this module. */
+async function markProcessingRunsForFixedItemTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ const {markProcessingRunsForEmploymentsTx}=await import('./payroll');
+ await markProcessingRunsForEmploymentsTx(tx,ctx,{employmentIds:[employmentId]});
+}
 /** Native archive and reviewed preview share one interval: the shared Access lock and the employee's
  * payroll inputs key, which every payroll create/close/process membership owner takes exclusively for
  * the company. History acquisition is TRY-only after Access; a busy source must abort the WHOLE caller
@@ -2532,6 +2542,7 @@ export function archiveEmploymentPayComponent(
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};p={...p};
   const run=async(tx:Tx)=>{
     await lockFixedItemArchiveIntervalTx(tx,ctx,p);
+    await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
     const [row] = await tx
       .select({
         id: employmentPayComponent.id,
