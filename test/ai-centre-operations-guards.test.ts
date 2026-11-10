@@ -25,6 +25,7 @@ import InventoryStub from '../app/control-tower/agents/inventory/page';
 import OrchestratorStub from '../app/control-tower/agents/orchestrator/page';
 import BuildListPage from '../app/control-tower/agents/build-list/page';
 import {requireAdmin} from '../lib/authz';
+import type {SessionContext} from '../db/client';
 
 const ROOT=path.resolve(__dirname,'..');
 const read=(rel:string)=>fs.readFileSync(path.join(ROOT,rel),'utf8');
@@ -64,15 +65,16 @@ describe('guards are unchanged by the merge',()=>{
 
  it('a session the caller already resolved for this request is re-checked, never trusted',async()=>{
   // 90377f8ca lets a route reuse the session it resolved; requireAdmin still applies isAdmin to that session.
+  const resolved=(role:keyof typeof SESSIONS)=>SESSIONS[role] as unknown as SessionContext;
   for(const role of ['employee','manager'] as const){
    state.session=SESSIONS.groupAdmin;
-   expect(await redirectOf(()=>requireAdmin(SESSIONS[role]))).toEqual({url:'/',status:'307'});
+   expect(await redirectOf(()=>requireAdmin(resolved(role)))).toEqual({url:'/',status:'307'});
    state.session=SESSIONS[role];
-   expect(await redirectOf(()=>requireAdmin(SESSIONS[role]))).toEqual({url:'/',status:'307'});
+   expect(await redirectOf(()=>requireAdmin(resolved(role)))).toEqual({url:'/',status:'307'});
   }
   for(const role of ['hrAdmin','groupAdmin'] as const){
    state.session=SESSIONS[role];
-   expect(await requireAdmin(SESSIONS[role])).toBe(SESSIONS[role]);
+   expect(await requireAdmin(resolved(role))).toBe(SESSIONS[role]);
   }
  });
 

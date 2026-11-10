@@ -7,6 +7,7 @@ import {assertAiActionUnpausedTx} from '../core/ai-governance';
  * These cases are authored, NOT executed, while Board 3 owns the shared runtime. */
 import { randomUUID } from 'node:crypto';
 import { pgSqlState } from '../lib/db-error';
+import { ACCESS_CONFIGURATION_MAX_WAITERS } from '../core/access-configuration-lock';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -204,8 +205,15 @@ describe('pending own-leave review custody', () => {
   });
 
   it('shares pending capacity across competing preparations rather than admitting each from an old count', async () => {
-    const attempts = await Promise.allSettled(Array.from({ length: 6 }, () => prepare()));
-    const prepared = attempts.flatMap(result => result.status === 'fulfilled' ? [result.value] : []);
+    // Preparation joins the exclusive Access lock, whose waits are bounded (core/access-configuration-lock.ts) to
+    // ACCESS_CONFIGURATION_MAX_WAITERS per process; a preparation beyond that bound is refused as busy. Fill the
+    // places up to the bound first, then race one holder plus the bounded waiters for the last places, so every
+    // racer competes for pending capacity rather than for a waiter slot.
+    const racers = ACCESS_CONFIGURATION_MAX_WAITERS + 1;
+    const earlier: Awaited<ReturnType<typeof prepare>>[] = [];
+    for (let index = 0; index < 6 - racers; index++) earlier.push(await prepare());
+    const attempts = await Promise.allSettled(Array.from({ length: racers }, () => prepare()));
+    const prepared = [...earlier, ...attempts.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])];
     const refused = attempts.flatMap(result => result.status === 'rejected' ? [result.reason] : []);
     expect(prepared).toHaveLength(5);
     expect(new Set(prepared.map(review => review.actionId)).size).toBe(5);
