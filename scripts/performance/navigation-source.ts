@@ -10,12 +10,12 @@ export const navigationSha256=(bytes:string|Uint8Array)=>createHash('sha256').up
 // Exact startup replay data, matching the protected history reader's four
 // whole Git objects. Other versions still use the ordinary source bounds.
 const startupHistory=[
- {path:'deploy/admission/next_bootstrap_session_inverse.json',size:3214186,
-  blob:'9b5d549f1f9ebc95186962ce8b807f82d6ecb453',sha256:'45266a6b0972304842ccec5095506a65255e183630e04b03c6451c2bcfdb3933'},
- {path:'deploy/admission/next_controller_admit_terminal_inverse.json',size:22906898,
-  blob:'4af22ef5b8dba44b4ce1ce41059777126afe20be',sha256:'8f86d7c2b60eb061c30a62d665ac37b1617deee5761b4b2aa41b858f7f8a89cf'},
- {path:'deploy/admission/next_controller_admit_timing_inverse.json',size:8085766,
-  blob:'6d3d23b7301b2728073b73a2422b9e693d24fc3a',sha256:'8c5a9a8255d19f182d4e88c6f7b0b9433065833009e6168f5e75137d8e09eee7'},
+ {path:'deploy/admission/next_bootstrap_session_inverse.json',size:3545489,
+  blob:'49f83e06f4569bf92d4c8892710f21f1811a91ee',sha256:'e5cc5b26fc5ef0d0d645fb52b108b411acad37767762761c66c8ddd4bb34389f'},
+ {path:'deploy/admission/next_controller_admit_terminal_inverse.json',size:24562318,
+  blob:'695731da0bdc99b71bc31c2c5155cf18cfdfae58',sha256:'eef1df2cdf4524df269773cc8cda3ca53cb4149c9430ffc349ac9c045cad8357'},
+ {path:'deploy/admission/next_controller_admit_timing_inverse.json',size:8971484,
+  blob:'1f5992d8d6399263e77ddc5aa7a17b81c99de6a5',sha256:'5dee72ab0c5ae1d7827dee99f7da92023fc82d8129bee3d4dd8457912a64879b'},
  {path:'deploy/admission/next_host_history_controller_inverse.json',size:39474867,
   blob:'4e64a7924aff4438fa4d2a3e4e6e5ac3c4c0c787',sha256:'7657c27da9d577e3c2d49db285439b37e6970a517250691af70f0f495c08cbe6'},
 ] as const;
