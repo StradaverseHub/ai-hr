@@ -632,6 +632,21 @@ the migrations and the catalog seed, without seeding demo data or restarting, fo
 manual step in between (see the entitlement-parity one-shot below); run it again with no arguments to
 finish.
 
+### Online post-migration step
+
+Drizzle applies all pending migrations in one transaction, so a migration must not scan or lock a populated
+table: anything it takes is held until the whole batch commits. Migrations therefore record that work and
+`deploy.sh` finishes it right after `pnpm db:migrate`, before the service restarts:
+
+    node --env-file=.env.production --import tsx scripts/post-migrate-online.ts
+
+It builds the indexes listed in `online_migration.deferred_index` with `CREATE INDEX CONCURRENTLY` (tables under 8 MB
+are built inside the migration instead) and writes `notification_event_processing` receipts for existing
+`domain_event` history in small physical-range transactions (150 table pages each), frozen against the notification cursors recorded at cutover.
+Neither blocks application reads or writes. It is idempotent and resumable: if it fails, the release stops with the
+previous build still serving, and re-running it continues where it stopped. It exits non-zero unless every event has
+its receipt. `AIHR_ONLINE_BACKFILL_PAGES` and `AIHR_ONLINE_BACKFILL_PAUSE_MS` tune the batch size and pacing.
+
 ### Asking the box what happened to its last deploy (r291 / readiness 7.1)
 
 A deploy takes minutes, and from outside the box a deploy that is RUNNING, one that FINISHED, and one

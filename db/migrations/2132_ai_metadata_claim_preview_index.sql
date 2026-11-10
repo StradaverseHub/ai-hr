@@ -44,4 +44,4 @@ BEGIN
  RETURN jsonb_build_object('kind','choices','truncated',jsonb_array_length(items)>20,'units',CASE WHEN jsonb_array_length(items)>20 THEN items-20 ELSE items END);
 END $$;
 --> statement-breakpoint
-CREATE INDEX claim_request_preview_order_idx ON public.claim_request(tenant_id,employment_id,status,created_at DESC,id);
+SELECT online_migration.index_or_defer('public.claim_request','claim_request_preview_order_idx','ON public.claim_request(tenant_id,employment_id,status,created_at DESC,id)');

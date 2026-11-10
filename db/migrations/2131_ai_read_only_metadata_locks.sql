@@ -1,7 +1,8 @@
 -- Shared revocation barriers only for native read-only AI metadata transactions.
 -- Read/write admission, confirmation and policy updates retain their exclusive locks.
 -- All original identity, policy audience, retention, ordering, owner and ACL contracts remain.
-CREATE OR REPLACE FUNCTION app._ai_control_context(wanted_feature text,forced_pause boolean)
+-- Replaces the inner owner only: app._ai_control_context remains the 3200 wrapper with the stop check.
+CREATE OR REPLACE FUNCTION app._ai_control_context_before_centre(wanted_feature text,forced_pause boolean)
  RETURNS TABLE(company_ids uuid[],feature_paused boolean) LANGUAGE plpgsql SECURITY DEFINER
  SET search_path=public,pg_temp AS $$
 DECLARE switch_key text;switch_on jsonb;tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();

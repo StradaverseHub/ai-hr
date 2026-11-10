@@ -1,6 +1,8 @@
 -- Retain the canonical visibility owner and its statement-local scalar InitPlan.
 -- A hashable positive membership replaces repeated UUID-array probes. No cache,
 -- grant, writer predicate, history rule or database setting changes.
+SET LOCAL lock_timeout='5s';
+--> statement-breakpoint
 DO $assignment_membership_initplan$
 DECLARE
   policy_row record;
@@ -45,3 +47,5 @@ BEGIN
   EXECUTE format('ALTER POLICY assignment_rls ON public.assignment USING (%s)',rewritten_qual);
 END;
 $assignment_membership_initplan$;
+--> statement-breakpoint
+SET LOCAL lock_timeout TO DEFAULT;

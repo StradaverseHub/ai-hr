@@ -1,10 +1,12 @@
 -- One canonical control owner. Pause prerequisites need company discovery only when a
 -- company policy can deny them. Admission/policy readers always retain full discovery.
 -- The necessary check remains under the same native ai-control barrier; no decision cache.
+-- The tenant-wide stop check lives in the purpose owner so every path through it keeps the stop switch;
+-- app._ai_control_context stays the 3200 wrapper around the inner owner replaced here.
 DO $$
 DECLARE c record;a record;
 BEGIN
- SELECT * INTO c FROM pg_proc WHERE oid=to_regprocedure('app._ai_control_context(text,boolean)');
+ SELECT * INTO c FROM pg_proc WHERE oid=to_regprocedure('app._ai_control_context_before_centre(text,boolean)');
  SELECT * INTO a FROM pg_proc WHERE oid=to_regprocedure('app.ai_action_unpaused(text,boolean)');
  IF c.oid IS NULL OR a.oid IS NULL
   OR md5(c.prosrc) IS DISTINCT FROM '19d4162a8d5ac5d108ec52594e80571f' OR md5(a.prosrc) IS DISTINCT FROM 'db91f23aa055f02e0f592fbd9c411003'
@@ -31,7 +33,7 @@ BEGIN
  IF current_setting('transaction_isolation')='read committed' AND current_setting('transaction_read_only')='on' THEN
   PERFORM pg_advisory_xact_lock_shared(hashtext('ai-control'),hashtext(tid::text));
  ELSE PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text)); END IF;
- feature_paused:=coalesce(forced_pause,false);
+ feature_paused:=coalesce(forced_pause,false) OR EXISTS(SELECT 1 FROM public.teras_mandate_control c WHERE c.tenant_id=tid AND c.stopped);
  IF pause_only IS DISTINCT FROM true OR EXISTS(SELECT 1 FROM ai_control_policy p WHERE p.tenant_id=tid AND p.kind='company' AND NOT p.enabled) THEN
  WITH navigation_visible AS MATERIALIZED(SELECT unnest(app.visible_employment_ids())AS id)
  SELECT coalesce(array_agg(c.id ORDER BY c.id),'{}') INTO company_ids FROM company c WHERE c.tenant_id=tid
@@ -62,7 +64,7 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-CREATE OR REPLACE FUNCTION app._ai_control_context(wanted_feature text,forced_pause boolean)
+CREATE OR REPLACE FUNCTION app._ai_control_context_before_centre(wanted_feature text,forced_pause boolean)
  RETURNS TABLE(company_ids uuid[],feature_paused boolean) LANGUAGE plpgsql SECURITY DEFINER
  SET search_path=public,pg_temp AS $$
 BEGIN

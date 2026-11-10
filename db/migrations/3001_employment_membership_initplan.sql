@@ -4,6 +4,8 @@
 -- trigger costly JIT optimization. No permission/result cache or JIT setting.
 -- Only the two positive Employment USING memberships change. WITH CHECK, the
 -- bank-import point branch, tenant/void guards and partner authority stay intact.
+SET LOCAL lock_timeout='5s';
+--> statement-breakpoint
 DO $employment_membership_initplan$
 DECLARE
   policy_row record;
@@ -47,3 +49,5 @@ BEGIN
   EXECUTE format('ALTER POLICY employment_rls ON public.employment USING (%s)',rewritten_qual);
 END;
 $employment_membership_initplan$;
+--> statement-breakpoint
+SET LOCAL lock_timeout TO DEFAULT;

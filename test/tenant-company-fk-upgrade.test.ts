@@ -278,7 +278,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const beforeClockTable=beforePerformancePrivileges.relations.find(row=>row.rel===clockTable);
   expect(beforeClockTable).toMatchObject({rls:true,force:true});
   expect(await clockTableAcl()).toEqual(beforeClockTableAcl.filter(row=>!clockSelectRevoked(row)));
-  const clockReadColumns=['company_id','effective_from','id','ordinal','policy','rule_id','tenant_id'];
+  const clockReadColumns=['company_id','effective_from','id','ordinal','policy','reason','rule_id','tenant_id'];
   expect(beforePerformancePrivileges.columns.filter(row=>row.rel===clockTable)).toEqual([]);
   expect(afterPerformancePrivileges.columns.filter(row=>row.rel===clockTable).map(row=>row.col)).toEqual(clockReadColumns);
   const clockReads=await storage.client`select a.attname::text as col,
@@ -286,7 +286,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    from pg_attribute a where a.attrelid='public.attendance_clock_policy_revision'::regclass
    and a.attnum>0 and not a.attisdropped order by 1`;
   expect(clockReads.filter(row=>row.allowed).map(row=>row.col)).toEqual(clockReadColumns);
-  expect(clockReads.filter(row=>!row.allowed).map(row=>row.col)).toEqual(['created_at','created_by_user_id','reason']);
+  expect(clockReads.filter(row=>!row.allowed).map(row=>row.col)).toEqual(['created_at','created_by_user_id']);
   const clockAuditPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'
    &&row.tablename==='domain_event'&&row.policyname==='attendance_clock_policy_audit_read';
   expect(beforePerformancePrivileges.policies.find(clockAuditPolicy)).toBeUndefined();

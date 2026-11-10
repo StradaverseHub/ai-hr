@@ -1,6 +1,7 @@
 -- Append-only reconciliation after the complete 709 + 36 journal prefix.
 -- Drizzle applies the pending batch atomically. Preserve every predecessor SQL byte.
--- Pin the actual final pending catalogue, then restore the installed centre wrappers.
+-- Pin the pending catalogue. 2124/2131/2133/2138 now edit only the inner owners and carry the
+-- stop check themselves, so these replacements re-assert the same bodies byte for byte.
 DO $guard$
 DECLARE expected record;p pg_proc;control_owner oid;
 BEGIN
@@ -8,12 +9,12 @@ BEGIN
  IF control_owner IS NULL OR control_owner IS DISTINCT FROM (SELECT relowner FROM pg_class WHERE oid=to_regclass('public.teras_mandate_control')) THEN
   RAISE EXCEPTION 'Unexpected AI Centre compatibility owner' USING ERRCODE='55000';END IF;
  FOR expected IN SELECT * FROM (VALUES
-  ('app._ai_control_context(text,boolean)','a9ea819594d4adbde182910b573287da','plpgsql','search_path=public, pg_temp',0,'wanted_feature text, forced_pause boolean','TABLE(company_ids uuid[], feature_paused boolean)',false,true,'v'),
-  ('app._ai_control_context_before_centre(text,boolean)','0d00bc269a9b69d02a8b42d70eba8cce','plpgsql','search_path=public, pg_temp',0,'wanted_feature text, forced_pause boolean','TABLE(company_ids uuid[], feature_paused boolean)',false,true,'v'),
-  ('app._ai_control_context_for_purpose(text,boolean,boolean)','5b8e33e202929d3bf676aa5ede19c60b','plpgsql','search_path=public, pg_temp',0,'wanted_feature text, forced_pause boolean, pause_only boolean','TABLE(company_ids uuid[], feature_paused boolean)',false,true,'v'),
+  ('app._ai_control_context(text,boolean)','6fed6382d06a984f065d4b5e45d82941','plpgsql','search_path=pg_catalog, public, pg_temp',0,'wanted_feature text, forced_pause boolean','TABLE(company_ids uuid[], feature_paused boolean)',false,true,'v'),
+  ('app._ai_control_context_before_centre(text,boolean)','a9ea819594d4adbde182910b573287da','plpgsql','search_path=public, pg_temp',0,'wanted_feature text, forced_pause boolean','TABLE(company_ids uuid[], feature_paused boolean)',false,true,'v'),
+  ('app._ai_control_context_for_purpose(text,boolean,boolean)','1ef73e989fb4a6132bbeb87da9d939a8','plpgsql','search_path=public, pg_temp',0,'wanted_feature text, forced_pause boolean, pause_only boolean','TABLE(company_ids uuid[], feature_paused boolean)',false,true,'v'),
   ('app.ai_action_unpaused(text,boolean)','ea9ffc3c72ab52761f6a2786aa2be521','plpgsql','search_path=public, pg_temp',1,'wanted_feature text, forced_pause boolean DEFAULT false','boolean',true,true,'v'),
-  ('app.ai_agent_action_unpaused(text)','4e4a28ce82612c9d3ef3531e58a92202','plpgsql','search_path=public, pg_temp',0,'wanted_action text','boolean',true,true,'v'),
-  ('app.ai_agent_action_unpaused_before_centre(text)','96a2c89c92efcad817c0777a0cd8ad83','plpgsql','search_path=public, pg_temp',0,'wanted_action text','boolean',false,true,'v'),
+  ('app.ai_agent_action_unpaused(text)','78c47da2aa44829087308d36d8cc66b1','plpgsql','search_path=pg_catalog, public, pg_temp',0,'wanted_action text','boolean',true,true,'v'),
+  ('app.ai_agent_action_unpaused_before_centre(text)','a1ae73ad6d4f47b598df29412507bccb','plpgsql','search_path=public, pg_temp',0,'wanted_action text','boolean',false,true,'v'),
   ('app.ai_centre_assert_running(integer)','8d360ee91d6f16d1633a7378afcb20f0','plpgsql','search_path=pg_catalog, public, pg_temp',1,'expected_generation integer DEFAULT NULL::integer','integer',true,true,'v'),
   ('app.ai_centre_control_lock()','5cb40550d7a210ee0a4c27a4fb3923c9','plpgsql','search_path=pg_catalog, public, pg_temp',0,'','trigger',false,false,'v'),
   ('app.ai_centre_control_state()','2245b81060d6103fb00a9447b862f478','plpgsql','search_path=pg_catalog, public, pg_temp',0,'','TABLE(stopped boolean, generation integer, pending integer)',true,true,'v'),

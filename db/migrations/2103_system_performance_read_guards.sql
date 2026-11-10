@@ -1,3 +1,48 @@
+-- Online index builds. A plain CREATE INDEX holds a write-blocking lock on its table until the
+-- whole Drizzle batch commits, so a table beyond the small-table bound is recorded here and built
+-- CONCURRENTLY after the batch by scripts/post-migrate-online.ts (deploy/deploy.sh runs it right
+-- after pnpm db:migrate). Small tables (fresh installs, tests) still build here atomically.
+-- A dedicated owner-only schema keeps this tooling out of the application schemas.
+CREATE SCHEMA online_migration;
+--> statement-breakpoint
+REVOKE ALL ON SCHEMA online_migration FROM PUBLIC;
+--> statement-breakpoint
+CREATE TABLE online_migration.deferred_index(
+ index_name text PRIMARY KEY,
+ table_name regclass NOT NULL,
+ definition text NOT NULL,
+ analyze_after boolean NOT NULL DEFAULT false,
+ built_at timestamptz
+);
+--> statement-breakpoint
+-- Idempotent, resumable work the batch transaction must not perform on populated tables.
+CREATE TABLE online_migration.step(
+ step text PRIMARY KEY,
+ position text,
+ completed_at timestamptz
+);
+--> statement-breakpoint
+ALTER TABLE online_migration.deferred_index ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+ALTER TABLE online_migration.step ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+REVOKE ALL ON TABLE online_migration.deferred_index,online_migration.step FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION online_migration.index_or_defer(p_table regclass,p_index text,p_definition text,p_analyze boolean DEFAULT false) RETURNS void
+LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS $online_index$
+BEGIN
+ IF pg_relation_size(p_table)<8388608 THEN
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I %s',p_index,p_definition);
+  IF p_analyze THEN EXECUTE format('ANALYZE %s',p_table); END IF;
+ ELSE
+  INSERT INTO online_migration.deferred_index(index_name,table_name,definition,analyze_after)
+  VALUES(p_index,p_table,p_definition,p_analyze) ON CONFLICT(index_name) DO NOTHING;
+ END IF;
+END;
+$online_index$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION online_migration.index_or_defer(regclass,text,text,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 -- Unapplied performance guards. Existing decision and privacy owners remain authoritative.
 -- A reporting edge is necessary, never sufficient, for the existing reports-derived Home role.
 -- For an unassigned employee, avoid evaluating visibility across unrelated employment/person rows.
@@ -161,18 +206,23 @@ CREATE FUNCTION app.attendance_frozen_actor_identity_keys(payload jsonb,shape te
 LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path=pg_catalog,pg_temp AS $keys$
 DECLARE result uuid[];
 BEGIN
+ -- Stored JSON has no shape CHECK. Malformed values never match a real actor, so they yield no
+ -- key instead of failing the index build or a writer's index insertion.
  IF shape='stages' THEN
-  SELECT array_agg(DISTINCT v.id::uuid) FILTER(WHERE v.id IS NOT NULL) INTO result
-  FROM jsonb_array_elements(payload)stage(value)
-  CROSS JOIN LATERAL jsonb_array_elements(stage.value->'approvers')actor(value)
-  CROSS JOIN LATERAL(VALUES(actor.value->>'userId'),(actor.value->>'personId'))v(id);
+  SELECT array_agg(DISTINCT v.id) FILTER(WHERE v.id IS NOT NULL) INTO result
+  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(payload)='array' THEN payload END)stage(value)
+  CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(stage.value->'approvers')='array' THEN stage.value->'approvers' END)actor(value)
+  CROSS JOIN LATERAL(SELECT CASE WHEN pg_input_is_valid(r.id,'uuid') THEN r.id::uuid END AS id
+   FROM(VALUES(actor.value->>'userId'),(actor.value->>'personId'))r(id))v;
  ELSIF shape='actors' THEN
-  SELECT array_agg(DISTINCT v.id::uuid) FILTER(WHERE v.id IS NOT NULL) INTO result
-  FROM jsonb_array_elements(payload)actor(value)
-  CROSS JOIN LATERAL(VALUES(actor.value->>'userId'),(actor.value->>'personId'))v(id);
+  SELECT array_agg(DISTINCT v.id) FILTER(WHERE v.id IS NOT NULL) INTO result
+  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(payload)='array' THEN payload END)actor(value)
+  CROSS JOIN LATERAL(SELECT CASE WHEN pg_input_is_valid(r.id,'uuid') THEN r.id::uuid END AS id
+   FROM(VALUES(actor.value->>'userId'),(actor.value->>'personId'))r(id))v;
  ELSIF shape='actor' THEN
-  SELECT array_agg(DISTINCT v.id::uuid) FILTER(WHERE v.id IS NOT NULL) INTO result
-  FROM(VALUES(payload->>'userId'),(payload->>'personId'))v(id);
+  SELECT array_agg(DISTINCT v.id) FILTER(WHERE v.id IS NOT NULL) INTO result
+  FROM(SELECT CASE WHEN pg_input_is_valid(r.id,'uuid') THEN r.id::uuid END AS id
+   FROM(VALUES(payload->>'userId'),(payload->>'personId'))r(id))v;
  ELSE RAISE EXCEPTION 'Unknown frozen actor shape'; END IF;
  RETURN coalesce(result,'{}'::uuid[]);
 END;
@@ -181,19 +231,15 @@ $keys$;
 REVOKE ALL ON FUNCTION app.attendance_frozen_actor_identity_keys(jsonb,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.attendance_frozen_actor_identity_keys(jsonb,text) TO ai_hr_app;
 --> statement-breakpoint
-CREATE INDEX attendance_workflow_frozen_actor_keys_idx ON public.attendance_workflow_request
- USING gin(app.attendance_frozen_actor_identity_keys(stages,'stages')) WHERE routing_version IN(2,3,4);
+-- Expression statistics prevent unknown-selectivity plans, so each build is followed by ANALYZE.
+SELECT online_migration.index_or_defer('public.attendance_workflow_request','attendance_workflow_frozen_actor_keys_idx',
+ $$ON public.attendance_workflow_request USING gin(app.attendance_frozen_actor_identity_keys(stages,'stages')) WHERE routing_version IN(2,3,4)$$,true);
 --> statement-breakpoint
-CREATE INDEX attendance_workflow_reassignment_actor_keys_idx ON public.attendance_workflow_reassignment
- USING gin(app.attendance_frozen_actor_identity_keys(approvers,'actors'));
+SELECT online_migration.index_or_defer('public.attendance_workflow_reassignment','attendance_workflow_reassignment_actor_keys_idx',
+ $$ON public.attendance_workflow_reassignment USING gin(app.attendance_frozen_actor_identity_keys(approvers,'actors'))$$,true);
 --> statement-breakpoint
-CREATE INDEX attendance_workflow_participant_actor_keys_idx ON public.attendance_workflow_participant_reassignment
- USING gin(app.attendance_frozen_actor_identity_keys(assigned,'actor'));
---> statement-breakpoint
--- Expression statistics prevent unknown-selectivity plans after index installation.
-ANALYZE public.attendance_workflow_request;
-ANALYZE public.attendance_workflow_reassignment;
-ANALYZE public.attendance_workflow_participant_reassignment;
+SELECT online_migration.index_or_defer('public.attendance_workflow_participant_reassignment','attendance_workflow_participant_actor_keys_idx',
+ $$ON public.attendance_workflow_participant_reassignment USING gin(app.attendance_frozen_actor_identity_keys(assigned,'actor'))$$,true);
 --> statement-breakpoint
 CREATE FUNCTION app.may_have_attendance_task_metadata() RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $possible$
