@@ -54,6 +54,7 @@ async function fixture():Promise<Fixture>{
  await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:beta.id,name:'Beta Finance'});
  const junior=(await createJobGrade(a,{code:'JUNIOR',name:'Junior',rank:2})).id;await createJobGrade(a,{code:'SENIOR',name:'Senior',rank:1});
  await createPosition(a,{companyId:b.companyId,title:'Senior Executive'});
+ await createPosition(a,{companyId:beta.id,title:'Beta Executive'});
  const ids:Record<string,string>={};
  for(const code of ['AC001','AC002','AC003','AC004','AC005','AC006']){
   const id=(await hireEmployee(a,{person:{fullName:'Fictional '+code,primaryEmail:`${code.toLowerCase()}@example.test`},companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:day(-400),employeeCode:code})).employmentId;
@@ -65,31 +66,38 @@ async function fixture():Promise<Fixture>{
  await createAppUser(b.tenantId,personId,'employee');
  return{b,a,ids};
 }
-/** One file covering every movement shape the brief names: grade, position and salary; department; manager;
- * an exit of a person with a login; a company change; an employee the check refused; one that fails at commit. */
-const FILE=[
+/** Two files covering every movement shape the brief names: grade, position and salary; department; manager; a
+ * company change; an employee the check refused; one that fails at commit; and an exit of a person with a login.
+ * The exit is its own file because an exit or company change alters the tenant's manager list, which every later
+ * employee's reviewed fingerprint covers (the synchronous confirmation refuses them as stale; so does the job). */
+const FILE_A=[
  ['ACME','AC001','',day(-1),'promotion','gradeId','JUNIOR','SENIOR'],
  ['ACME','AC001','',day(-1),'promotion','positionId','','Senior Executive'],
  ['ACME','AC001','',day(-1),'promotion','basicSalary','3000.00','3500'],
  ['ACME','AC002','',day(-1),'transfer','departmentId','','Operations'],
  ['ACME','AC002','',day(0),'reportingLineChange','managerEmploymentId','','AC001'],
  ['ACME','AC003','',day(-1),'transfer','departmentId','Operations','Operations'],
- ['ACME','AC004','',day(-2),'termination','endDate','',day(-2)],
- ['ACME','AC004','',day(-2),'termination','terminationReasonCode','','contract_expiry'],
+ ['ACME','AC006','',day(-1),'transfer','departmentId','','Operations'],
  ['ACME','AC005','',day(-1),'entityTransfer','companyId','','BETA'],
  ['ACME','AC005','',day(-1),'entityTransfer','departmentId','','Beta Finance'],
- ['ACME','AC006','',day(-1),'transfer','departmentId','','Operations'],
+ ['ACME','AC005','',day(-1),'entityTransfer','positionId','','Beta Executive'],
 ];
-/** Preview, then make AC006's reviewed state stale so its commit is refused (a row-level failure). */
-async function checked(f:Fixture,ctx:SessionContext=f.a){
- const preview=await previewMovementUpload(ctx,{name:'movements.csv',content:file(FILE),resolve});
+const FILE_B=[
+ ['ACME','AC004','',day(-2),'termination','endDate','',day(-2)],
+ ['ACME','AC004','',day(-2),'termination','terminationReasonCode','','contract_expiry'],
+];
+const FILE_A_SCOPED=FILE_A.filter(row=>row[1]!=='AC005');
+/** Preview a file; every named employee must be checked as expected. */
+async function checked(f:Fixture,rows:string[][]=FILE_A,expected:{valid:string[];invalid:string[]}={valid:['AC001','AC002','AC005','AC006'],invalid:['AC003']},ctx:SessionContext=f.a){
+ const preview=await previewMovementUpload(ctx,{name:'movements.csv',content:file(rows),resolve});
  const byCode=Object.fromEntries(preview.preview.employees.map(e=>[e.employeeCode,e]));
- for(const code of ['AC001','AC002','AC004','AC005','AC006'])expect(byCode[code]?.fingerprint,code+' checked without errors').toBeTruthy();
- expect(byCode.AC003.fingerprint).toBeNull();
- await createMovementEvent(f.a,{employmentId:f.ids.AC006,kind:'transfer',effectiveDate:day(-3),departmentId:f.b.deptB});
+ for(const code of expected.valid)expect(byCode[code]?.fingerprint,code+' checked without errors: '+JSON.stringify(byCode[code]?.rows.flatMap(r=>r.errors))).toBeTruthy();
+ for(const code of expected.invalid)expect(byCode[code]?.fingerprint).toBeNull();
  const keys=preview.preview.employees.filter(e=>e.fingerprint).map(e=>e.key!);
  return{preview,keys};
 }
+/** After review, AC006 gets a new Direct Superior elsewhere: its reviewed state is stale, so its commit is refused. */
+const makeStale=(f:Fixture)=>createMovementEvent(f.a,{employmentId:f.ids.AC006,kind:'reportingLineChange',effectiveDate:day(-3),managerEmploymentId:f.ids.AC003});
 
 // ---- End-state snapshot, canonical across two runs: entity ids become their natural names, other ids become
 // tokens in first-appearance order, timestamps become 'T' (null stays null), audit-chain bookkeeping is dropped.
@@ -141,41 +149,51 @@ afterAll(closeAll);
 
 describe('movement import background job (bulk-job kernel)',()=>{
  it('ends in the same state as the synchronous confirmation: movements, positions, managers, company, statutory, Import History and audit',async()=>{
-  // Run 1: the synchronous reference path.
-  const one=await checked(f);
-  const sync=await confirmMovementUpload(f.a,{attemptId:one.preview.attemptId,previewHash:one.preview.previewHash,employees:one.keys,acknowledgeExcluded:true,resolve});
-  expect(sync).toMatchObject({imported:6,failed:1,alreadyCommitted:false});
-  const syncChain=await verifyTenantChain(f.a);expect(syncChain).toMatchObject({valid:true});
-  const before=await snapshot(f.b.tenantId);const syncResult=comparable(sync,before.canon);
-  // Run 2: the same fixture and file, confirmed as a background job.
+  const failedRows=(r:MovementUploadResult)=>r.employees.flatMap(e=>e.rows.filter(x=>x.status==='failed').map(x=>e.employeeCode+':'+x.errors.join(',')));
+  // Run 1: the synchronous reference path, file A then (reviewed after A) file B.
+  const a1=await checked(f);await makeStale(f);
+  const syncA=await confirmMovementUpload(f.a,{attemptId:a1.preview.attemptId,previewHash:a1.preview.previewHash,employees:a1.keys,acknowledgeExcluded:true,resolve});
+  expect(failedRows(syncA)).toEqual(['AC006:preview_stale_revalidate']);
+  expect(syncA).toMatchObject({imported:4,failed:1,alreadyCommitted:false});
+  const b1=await checked(f,FILE_B,{valid:['AC004'],invalid:[]});
+  const syncB=await confirmMovementUpload(f.a,{attemptId:b1.preview.attemptId,previewHash:b1.preview.previewHash,employees:b1.keys,acknowledgeExcluded:true,resolve});
+  expect(syncB).toMatchObject({imported:1,failed:0,alreadyCommitted:false});
+  expect(await verifyTenantChain(f.a)).toMatchObject({valid:true});
+  const before=await snapshot(f.b.tenantId);const syncResults=[comparable(syncA,before.canon),comparable(syncB,before.canon)];
+  // Run 2: the same fixture and files, each confirmed as a background job.
   f=await fixture();
-  const two=await checked(f);
-  const started=await startMovementImportJob(f.a,{attemptId:two.preview.attemptId,previewHash:two.preview.previewHash,employees:two.keys,acknowledgeExcluded:true,locale:'en',operationKey:randomUUID()});
-  if(!('job' in started))throw new Error('expected a job');
-  expect(started.job).toMatchObject({state:'queued',attemptId:two.preview.attemptId});
-  // Nothing is written by the request itself.
-  expect((await getImportAttempt(f.a,two.preview.attemptId))!.items).toHaveLength(0);
-  const done=await ticks(started.job.id,terminal);
-  expect(done.state).toBe('completed');expect(done.steps_total).toBe(5);expect(done.steps_done).toBe(5);
-  // One employee per chunk: the Access lock is held for one employee's commit at a time.
-  expect(Number(done.metrics.chunks)).toBeGreaterThanOrEqual(5);expect(Number(done.metrics.chunkHoldMs)).toBeGreaterThan(0);
-  const progress=await getMovementImportJob(f.a,started.job.id);
-  expect(progress).toMatchObject({state:'completed',stepsDone:5,stepsTotal:5,imported:6,failed:1});
+  const job=async(c:Awaited<ReturnType<typeof checked>>,employees:number)=>{
+   const started=await startMovementImportJob(f.a,{attemptId:c.preview.attemptId,previewHash:c.preview.previewHash,employees:c.keys,acknowledgeExcluded:true,locale:'en',operationKey:randomUUID()});
+   if(!('job' in started))throw new Error('expected a job');
+   expect(started.job).toMatchObject({state:'queued',attemptId:c.preview.attemptId});
+   // Nothing is written by the request itself.
+   expect((await getImportAttempt(f.a,c.preview.attemptId))!.items).toHaveLength(0);
+   const done=await ticks(started.job.id,terminal);
+   expect(done).toMatchObject({state:'completed',steps_total:employees,steps_done:employees});
+   // One employee per chunk: the Access lock is held for one employee's commit at a time.
+   expect(Number(done.metrics.chunks)).toBeGreaterThanOrEqual(employees);expect(Number(done.metrics.chunkHoldMs)).toBeGreaterThan(0);
+   expect(done.notice_event_id).toBeTruthy();
+   const[notice]=await owner.client<{event_type:string;payload:{kind:string;outcome:string}}[]>`select event_type,payload from domain_event where id=${done.notice_event_id}::uuid`;
+   expect(notice).toMatchObject({event_type:'bulk-job.finished',payload:{kind:'movement_import',outcome:'completed'}});
+   const[residue]=await owner.client<{steps:number;input:unknown}[]>`select (select count(*)::int from bulk_job_step where job_id=${started.job.id}::uuid) steps,(select input from bulk_job where id=${started.job.id}::uuid) as input`;
+   expect(residue).toEqual({steps:0,input:null});
+   return getMovementImportJob(f.a,started.job.id);
+  };
+  const a2=await checked(f);await makeStale(f);
+  const jobA=await job(a2,4);
+  expect(jobA).toMatchObject({state:'completed',stepsDone:4,stepsTotal:4,imported:4,failed:1});
+  const b2=await checked(f,FILE_B,{valid:['AC004'],invalid:[]});
+  const jobB=await job(b2,1);
   expect(await verifyTenantChain(f.a)).toMatchObject({valid:true});
   const after=await snapshot(f.b.tenantId);
+  expect(Object.keys(after.tables).length).toBeGreaterThan(20);
   expect(after.tables).toEqual(before.tables);
-  expect(comparable(progress.result!,after.canon)).toEqual(syncResult);
-  // Row-level outcome as before: AC006 failed with the stale-preview refusal, AC003 was refused by the check.
-  const detail=(await getImportAttempt(f.a,two.preview.attemptId))!;
+  expect([comparable(jobA.result!,after.canon),comparable(jobB.result!,after.canon)]).toEqual(syncResults);
+  // Row-level outcome as before: AC006 failed at commit (stale review), AC003 was refused by the check.
+  const detail=(await getImportAttempt(f.a,a2.preview.attemptId))!;
   expect(detail.items.filter(i=>i.status==='failed').map(i=>i.label).sort()).toEqual(['AC003 · Fictional AC003','AC006 · Fictional AC006']);
-  expect(detail.events.find(e=>e.kind==='confirmed')?.detail).toEqual({succeeded:6,failed:2});
-  // The creator is told once, through the kernel notice.
-  expect(done.notice_event_id).toBeTruthy();
-  const[notice]=await owner.client<{event_type:string;payload:{kind:string;outcome:string}}[]>`select event_type,payload from domain_event where id=${done.notice_event_id}::uuid`;
-  expect(notice).toMatchObject({event_type:'bulk-job.finished',payload:{kind:'movement_import',outcome:'completed'}});
-  const[residue]=await owner.client<{steps:number;input:unknown}[]>`select (select count(*)::int from bulk_job_step where job_id=${started.job.id}::uuid) steps,(select input from bulk_job where id=${started.job.id}::uuid) as input`;
-  expect(residue).toEqual({steps:0,input:null});
- },240_000);
+  expect(detail.events.find(e=>e.kind==='confirmed')?.detail).toEqual({succeeded:4,failed:2});
+ },300_000);
 
  it('retries a lock refusal instead of failing the employee, and saves each employee once',async()=>{
   const{preview,keys}=await checked(f);
@@ -193,7 +211,7 @@ describe('movement import background job (bulk-job kernel)',()=>{
   const done=await ticks(started.job.id,terminal);
   expect(done.state).toBe('completed');
   const result=(await getMovementImportJob(f.a,started.job.id)).result!;
-  expect(result).toMatchObject({imported:6,failed:1});
+  expect(result).toMatchObject({imported:5,failed:0});
   const[counted]=await owner.client<{n:number}[]>`select count(*)::int n from domain_event where tenant_id=${f.b.tenantId}::uuid and event_type='movement-import.employee.applied'`;
   expect(counted.n).toBe(4);
  },180_000);
@@ -208,9 +226,9 @@ describe('movement import background job (bulk-job kernel)',()=>{
   expect((await listMovementImportJobs(f.a)).map(j=>j.id)).toEqual([first.job.id]);
   await ticks(first.job.id,terminal);
   const answered=await startMovementImportJob(f.a,{...input,operationKey:randomUUID()});
-  expect(answered).toEqual({already:expect.objectContaining({alreadyCommitted:true,imported:6,failed:2})});
+  expect(answered).toEqual({already:expect.objectContaining({alreadyCommitted:true,imported:5,failed:1})});
   // A stale review is refused at the request, and the refusal is recorded on the attempt as before.
-  const second=await previewMovementUpload(f.a,{name:'again.csv',content:file([FILE[3]]),resolve});
+  const second=await previewMovementUpload(f.a,{name:'again.csv',content:file(FILE_B),resolve});
   await expect(startMovementImportJob(f.a,{...input,attemptId:second.attemptId,previewHash:'0'.repeat(64),employees:[second.preview.employees[0].key!],operationKey:randomUUID()})).rejects.toThrow(/upload it again before saving/i);
   expect((await getImportAttempt(f.a,second.attemptId))!.events.map(e=>e.kind)).toContain('failed');
  },180_000);
@@ -220,8 +238,8 @@ describe('movement import background job (bulk-job kernel)',()=>{
   const userId=await createAppUser(f.b.tenantId,p.id,'hr_admin');
   await owner.db.update(s.roleAssignment).set({companyId:f.b.companyId}).where(eq(s.roleAssignment.appUserId,userId));
   const scoped:SessionContext={...f.a,userId,personId:p.id,grants:[{role:'hr_admin',companyId:f.b.companyId}]};
-  const{preview,keys}=await checked(f,scoped);
-  const started=await startMovementImportJob(scoped,{attemptId:preview.attemptId,previewHash:preview.previewHash,employees:keys.filter(k=>!k.endsWith('AC005')),acknowledgeExcluded:true,locale:'en'});
+  const{preview,keys}=await checked(f,FILE_A_SCOPED,{valid:['AC001','AC002','AC006'],invalid:['AC003']},scoped);
+  const started=await startMovementImportJob(scoped,{attemptId:preview.attemptId,previewHash:preview.previewHash,employees:keys,acknowledgeExcluded:true,locale:'en'});
   if(!('job' in started))throw new Error('expected a job');
   await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,userId));
   const done=await ticks(started.job.id,terminal);
@@ -229,7 +247,9 @@ describe('movement import background job (bulk-job kernel)',()=>{
   const[applied]=await owner.client<{n:number}[]>`select count(*)::int n from domain_event where tenant_id=${f.b.tenantId}::uuid and event_type='movement-import.employee.applied'`;
   expect(applied.n).toBe(0);
   const[events]=await owner.client<{kinds:string[]}[]>`select array_agg(kind order by created_at) kinds from import_attempt_event where attempt_id=${preview.attemptId}::uuid`;
-  expect(events.kinds).not.toContain('confirmed');
+  // As in the synchronous confirmation, an initiator who no longer sees the attempt cannot record on it either.
+  expect(events.kinds).toEqual(['previewed']);
+  expect(done.error).toBe('Your access to this job changed, so it was stopped.');
  },180_000);
 
  it('names its completion notice in all six catalogues',()=>{
