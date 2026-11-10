@@ -25,7 +25,7 @@ import type { PackTaskItem, PackTaskKind } from '../../../lib/assigned-work';
 import { pmBands, type PMBand, type Policy, type WindowCell } from './model';
 import { assessmentWorkWindowOpen, reviewWorkspaceParts, type ReviewWorkPart } from './workspace-model';
 import { getOnehrReview, pendingOnehrFeedbackTaskMetadata } from './service';
-import { pendingPerformanceTasks } from './tasks';
+import { pendingPerformanceTasks, pendingPerformanceTasksFromStatement } from './tasks';
 
 export type HomeStepKey = 'kpi' | 'kpiSetting' | 'feedback360' | 'competency' | 'careerPlan' | 'teamReview' | 'calibration' | 'results';
 /** The strip's state words. `waiting` carries a count ("12 waiting"); `yourTurn` may (colleagues owed feedback). */
@@ -273,8 +273,9 @@ export function leaderRailSteps(items: readonly { id: string; kind: 'review' | '
   return steps;
 }
 
-/** D-P1-03: has the viewer any performance work assigned — the bell's own projection, nothing wider? */
+/** D-P1-03: has the viewer any performance work assigned — the bell's own projection, nothing wider? The projection is
+ * read in one statement where that statement answers it exactly (decision 13), otherwise by its owner. */
 export async function hasAssignedPerformanceWork(ctx: SessionContext, scopeIds: string[] | undefined): Promise<boolean> {
   if (!isModuleEnabled(ctx, 'performance')) return false;
-  return (await pendingPerformanceTasks(ctx, scopeIds)).length > 0;
+  return ((await pendingPerformanceTasksFromStatement(ctx, scopeIds)) ?? (await pendingPerformanceTasks(ctx, scopeIds))).length > 0;
 }

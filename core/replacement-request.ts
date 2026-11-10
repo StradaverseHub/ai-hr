@@ -46,13 +46,14 @@ import {leaveCreditClaimReviewTx} from './toil';
  */
 import { and, desc, eq, inArray, isNull, ne,sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { lockLeaveDependencyConfigurationTx,lockLeaveDependencyReadConfigurationTx, lockLeaveDependenciesTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 import {scopeOf} from '../lib/delegation-scope';
 import {withDelegatedRequestEffectTx} from './delegated-request-effect';
 import { actorOf, appendEvent } from '../db/events';
-import { assertCanDecide,assertAssignedWorkPrincipalTx,decisionEmploymentAuthorityTx } from './approvals';
+import { assertCanDecide,assertAssignedWorkPrincipalTx,decisionEmploymentAuthorityTx,decisionEmploymentAuthoritySql } from './approvals';
 import {
   company,
   compensation,domainEvent,
@@ -1289,6 +1290,30 @@ function claimLineView(l: {
   };
 }
 
+const OWN_REPLACEMENT_REQUEST_ORDER = [desc(replacementLeaveRequest.submittedOn), desc(replacementLeaveRequest.createdAt)];
+const OWN_REPLACEMENT_CHECKLIST_FIELDS = { id: replacementLeaveRequest.id, status: replacementLeaveRequest.status, submittedOn: replacementLeaveRequest.submittedOn };
+const OWN_REPLACEMENT_LINE_CHECKLIST_FIELDS = { requestId: replacementLeaveRequestDate.requestId, workedDate: replacementLeaveRequestDate.workedDate };
+/** listReplacementLeaveRequests in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the
+ * same requests and lines (the owner's predicates and orders) with the fields the checklist reads. No figure is read. */
+export function ownReplacementChecklistBundleSql(employmentId: string) {
+  return sql`jsonb_build_object('heads',${jsonRowsSql({ row: jsonFieldsSql(OWN_REPLACEMENT_CHECKLIST_FIELDS), from: sql`${replacementLeaveRequest}`,
+    where: eq(replacementLeaveRequest.employmentId, employmentId), order: sql.join(OWN_REPLACEMENT_REQUEST_ORDER, sql`, `) })},
+   'lines',${jsonRowsSql({ row: jsonFieldsSql(OWN_REPLACEMENT_LINE_CHECKLIST_FIELDS), from: sql`${replacementLeaveRequestDate}`,
+    where: inArray(replacementLeaveRequestDate.requestId, sql`(select ${replacementLeaveRequest.id} from ${replacementLeaveRequest} where ${eq(replacementLeaveRequest.employmentId, employmentId)})`),
+    order: sql`${replacementLeaveRequestDate.workedDate}` })})`;
+}
+export type OwnReplacementChecklistRow = Pick<ReplacementRequestRow, 'id' | 'status' | 'submittedOn'> & { dates: { workedDate: string }[] };
+/** The owner's requests in its order, each with its lines' worked dates in the lines' order. */
+export function ownReplacementChecklistFromBundle(value: unknown): OwnReplacementChecklistRow[] {
+  const raw = value as { heads: unknown; lines: unknown };
+  // Non-null columns of the owner's own selects: each decoded row has the owner's own types.
+  const heads = decodeJsonFieldRows(OWN_REPLACEMENT_CHECKLIST_FIELDS, raw.heads) as Pick<ReplacementRequestRow, 'id' | 'status' | 'submittedOn'>[],
+    lines = decodeJsonFieldRows(OWN_REPLACEMENT_LINE_CHECKLIST_FIELDS, raw.lines) as { requestId: string; workedDate: string }[];
+  const byRequest = new Map<string, { workedDate: string }[]>();
+  for (const line of lines) { const list = byRequest.get(line.requestId) ?? []; list.push({ workedDate: line.workedDate }); byRequest.set(line.requestId, list); }
+  return heads.map((head) => ({ id: head.id, status: head.status, submittedOn: head.submittedOn, dates: byRequest.get(head.id) ?? [] }) as OwnReplacementChecklistRow);
+}
+
 export type PendingReplacementRequestRow = {
   id: string;
   employmentId: string;
@@ -1361,10 +1386,9 @@ function pendingReplacementHeads(tx: Tx, opts: { companyIds?: string[];requestId
       .limit(200);
 }
 
-export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{companyIds?:string[]}={}):Promise<{id:string;personId:string;employee:string|null;createdAt:Date}[]>{
- return withTenant(ctx,async tx=>{
-  await assertAssignedWorkPrincipalTx(tx,ctx);
-  const rows=await tx.execute<{id:string;employmentId:string;personId:string;employee:string|null;createdAt:Date|string}>(sql`
+/** listPendingReplacementLeaveTasks' candidate statement, shared with the one-statement Home task read. */
+function pendingReplacementLeaveCandidatesSql(ctx:SessionContext,opts:{companyIds?:string[]}){
+  return sql`
    with headers as materialized (
     select id,employment_id,created_at from public.replacement_leave_request
     where tenant_id=${ctx.tenantId}::uuid and status='pending'
@@ -1384,7 +1408,12 @@ export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{compan
     labels.employee,headers.created_at as "createdAt"
    from headers join labels using(employment_id)
    order by headers.created_at desc,headers.id
-  `);
+  `;
+}
+export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{companyIds?:string[]}={}):Promise<{id:string;personId:string;employee:string|null;createdAt:Date}[]>{
+ return withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const rows=await tx.execute<{id:string;employmentId:string;personId:string;employee:string|null;createdAt:Date|string}>(pendingReplacementLeaveCandidatesSql(ctx,opts));
   const {allowed}=await decisionEmploymentAuthorityTx(tx,ctx,rows.map(row=>row.employmentId),scopeOf('leave.replacement'));
   return rows.filter(row=>allowed.has(row.employmentId)).map(({id,personId,employee,createdAt})=>{
    const timestamp=createdAt instanceof Date?createdAt:replacementLeaveRequest.createdAt.mapFromDriverValue(createdAt);
@@ -1392,6 +1421,22 @@ export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{compan
    return {id,personId,employee,createdAt:timestamp};
   });
  });
+}
+
+/** listPendingReplacementLeaveTasks(ctx, {companyIds}) in one statement (core/account-task-bundle.ts): the same
+ * candidates in the same order, kept where decisionEmploymentAuthorityTx would allow their subject. */
+export function pendingReplacementLeaveTaskBundleSql(ctx:SessionContext,companyIds?:string[]){
+  return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',candidate.id,'personId',candidate."personId",'employee',candidate.employee,
+    'createdAt',candidate."createdAt") order by candidate."createdAt" desc,candidate.id),'[]'::jsonb)
+   from (${pendingReplacementLeaveCandidatesSql(ctx,{companyIds})}) candidate
+   where ${decisionEmploymentAuthoritySql(ctx,sql`candidate."employmentId"`,scopeOf('leave.replacement'))})`;
+}
+export function pendingReplacementLeaveTasksFromBundle(value:unknown):{id:string;personId:string;employee:string|null;createdAt:Date}[]{
+  return (value as {id:string;personId:string;employee:string|null;createdAt:string}[]).map(({id,personId,employee,createdAt})=>{
+   const timestamp=new Date(createdAt);
+   if(!Number.isFinite(timestamp.getTime()))throw new TypeError('Invalid Leave Credit task timestamp');
+   return {id,personId,employee,createdAt:timestamp};
+  });
 }
 
 export async function listPendingReplacementLeaveRequests(
@@ -1462,7 +1507,7 @@ export async function listReplacementLeaveRequests(
       .select()
       .from(replacementLeaveRequest)
       .where(eq(replacementLeaveRequest.employmentId, employmentId))
-      .orderBy(desc(replacementLeaveRequest.submittedOn), desc(replacementLeaveRequest.createdAt));
+      .orderBy(...OWN_REPLACEMENT_REQUEST_ORDER);
     if (heads.length === 0) return [];
     const lines = await tx
       .select()

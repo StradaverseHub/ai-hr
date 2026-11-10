@@ -14,6 +14,13 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 import { dayDate } from '../lib/onboarding-model';
 import { onboardingConfigSchema } from '../lib/onboarding-validation';
 import { readOnboardingTaskQueueInputsTx } from '../packs/lifecycle/onboarding/task-queue-read';
+/** The account task statement's onboarding section (core/account-task-bundle.ts) against the owner for the same viewer. */
+async function expectBundledOnboarding(ctx: SessionContext) {
+    const { readAccountTaskBundle } = await import('../core/account-task-bundle');
+    const bundle = await readAccountTaskBundle(ctx, { attendance: false, claims: false, performance: false, rewards: false, lifecycle: true });
+    expect(bundle?.onboarding).not.toBeNull();
+    expect(bundle!.onboarding).toEqual(await onboardingAssignedTaskMetadata(ctx));
+}
 describe('V3.1 onboarding database and authorization', () => {
     let b: Base, admin: SessionContext, tech: SessionContext, other: SessionContext;
     beforeEach(async () => {
@@ -141,6 +148,7 @@ describe('V3.1 onboarding database and authorization', () => {
         const itemId=row.case.requisitions[0]!.items[0]!.id;
         await onboardingCommand(tech,row.case.id,row.revision,{type:'fulfil',itemId,status:'progress'});
         expect((await onboardingTasks(tech)).find(task=>task.kind==='team'&&task.itemIds?.includes(itemId))).toMatchObject({claimedBy:'Kevin Tech',assigned:true});
+        await expectBundledOnboarding(tech);
     });
     it('projects only actual unlocked personal work for Home and removes a completed checklist task', async()=>{
         const row=await prepared(),tasks=await onboardingTasks(tech),assigned=await onboardingAssignedTaskMetadata(tech);
@@ -149,8 +157,10 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(assigned.every(item=>tasks.some(task=>task.id===item.id&&task.assigned&&!task.locked))).toBe(true);
         expect(await onboardingAssignedTaskMetadata(other)).toEqual([]);
         expect(JSON.stringify(assigned)).not.toContain('PRIVATE-IC');
+        await expectBundledOnboarding(tech);await expectBundledOnboarding(other);
         await onboardingCommand(tech,row.case.id,row.revision,{type:'task',taskId:'welcome',status:'done'});
         expect((await onboardingAssignedTaskMetadata(tech)).some(item=>item.id===welcome.id)).toBe(false);
+        await expectBundledOnboarding(tech);
     });
     it('profiles shared onboarding task output with real assignments and completed retained history', async () => {
         const active = await prepared();

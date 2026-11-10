@@ -3,6 +3,8 @@ import {Suspense,type ReactNode} from 'react';
 import {getLocale,getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
 import {mayUseAssistant} from '@/core/assistant-grant';
+import {withSharedReadSnapshot} from '@/db/client';
+import {requestReadScope} from '@/lib/request-read-scope';
 import {readEmployeeHomeGreetingIdentity} from '@/core/employee-home';
 import {viewerIdentity} from '@/lib/viewer';
 import {HR_LOCAL_TZ,todayInKualaLumpur} from '@/lib/hr-date';
@@ -73,7 +75,7 @@ export async function TodayPage({session,scopeIds,employmentId,notice,more,needs
  * name the top bar already shows. Never blocks the greeting: no name, or a failed read, keeps "Good morning". */
 async function GreetingWithName({session,employmentId,period}:{session:SessionContext;employmentId?:string;period:ReturnType<typeof greetingFor>}){
  const t=await getTranslations('today');
- const name=await readEmployeeHomeGreetingIdentity(session,employmentId).then(identity=>identity.name)
+ const name=await withSharedReadSnapshot(session,()=>readEmployeeHomeGreetingIdentity(session,employmentId),undefined,requestReadScope()).then(identity=>identity.name)
   .catch(()=>viewerIdentity(session).then(viewer=>viewer.name)).catch(()=>null);
  const first=greetingName(name);
  return first?t(`${period}Name`,{name:first}):t(period);
@@ -83,7 +85,7 @@ async function GreetingWithName({session,employmentId,period}:{session:SessionCo
 const LETTER_REQUEST_FORM='/me/letters?request=1';
 /** The Ask bar, offered only to someone the Assistant can answer (the same gate AI Centre Ask uses). */
 async function AskSlot({session,audience}:{session:SessionContext;audience:TodayAudience}){
- const access=await mayUseAssistant(session).catch(()=>({allowed:false as const}));
+ const access=await withSharedReadSnapshot(session,()=>mayUseAssistant(session),undefined,requestReadScope()).catch(()=>({allowed:false as const}));
  if(!access.allowed)return null;
  const t=await getTranslations('today');
  const personal=audience.layout==='personal';

@@ -27,7 +27,8 @@ import {checkIn,requestAttendanceCorrection} from '../core/attendance';
 import {assignDefaultShift,createShift} from '../core/roster';
 import {requestLeave} from '../packs/leave/service';
 import {runLoop} from '../core/loops/run';
-import {readMyPayrollReadiness} from '../core/pre-salary/person-items';
+import {beforePayrollBundleForProof,readMyPayrollReadiness,readMyPayrollReadinessFromOwners} from '../core/pre-salary/person-items';
+import {attendanceForEmploymentRange} from '../packs/attendance/service';
 import type {PayrollReadiness} from '../lib/pre-salary/items';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
 
@@ -101,6 +102,53 @@ describe('each person\'s own checklist',()=>{
  it('carries no pay figure',async()=>{
   const text=JSON.stringify(await read(aina));
   expect(text).not.toMatch(/5432|5,432/);
+ });
+});
+
+describe('the one-statement read of the owners (docs/adr/2026-11-10-home-request-read-scope.md decision 11)',()=>{
+ const both=async(ctx:SessionContext,p:{approvalPreview?:boolean}={})=>{
+  const owners=await readMyPayrollReadinessFromOwners(ctx,{today:TODAY,locale:'en',...p}),bundled=await readMyPayrollReadiness(ctx,{today:TODAY,locale:'en',...p});
+  return {owners,bundled};
+ };
+ const days=async(ctx:Login)=>{
+  const proof=await beforePayrollBundleForProof(ctx,{today:TODAY,locale:'en'});
+  const cutOff=proof?.bundle?.cutOff;
+  const range=cutOff?proof.read.windowsFor(cutOff.value).range:null;
+  if(!proof?.bundle||!range)throw Error('No bundled attendance range.');
+  const owner=(await attendanceForEmploymentRange(ctx,ctx.employmentId,range.from,range.to)).map(({formulaOvertime:_formula,...row})=>row);
+  const bundled=proof.bundle.days?.value.map(({formulaOvertime:_formula,...row})=>row);
+  return {owner,bundled,proof};
+ };
+ it('answers every login exactly as the owners reading on their own, with and without the approvals preview',async()=>{
+  for(const person of [aina,siti,ravi,mei,group]){
+   const plain=await both(person);expect(plain.bundled).toEqual(plain.owners);
+   const preview=await both(person,{approvalPreview:true});expect(preview.bundled).toEqual(preview.owners);
+  }
+ });
+ it('answers the person\'s own owners from the statement, the Attendance range day for day',async()=>{
+  const {owner,bundled,proof}=await days(aina);
+  for(const name of ['cutOff','corrections','overtimePlans','otCap','loopCards','days','leaveRequests','leaveTypes','readiness','tp3','tp3Answer','tp1','profile','dependents','letters','notices'] as const)
+   expect(proof.bundle![name],name).not.toBeNull();
+  expect(owner.length).toBeGreaterThan(0);
+  expect(bundled).toEqual(owner);
+ });
+ it('reads a day adjustment and a rostered rest day through the same schedule owner (draft 9873)',async()=>{
+  // The checklist's July range is 1 July only (yesterday): the adjustment and the roster row are on it.
+  await owner.db.insert(schema.attendanceDayAdjustment).values({tenantId:b.tenantId,employmentId:aina.employmentId,attendanceDate:YESTERDAY,dayKind:'rest_day',reason:'Fictional adjustment',updatedBy:'fixture'});
+  await owner.db.insert(schema.rosterAssignment).values({tenantId:b.tenantId,employmentId:siti.employmentId,shiftDate:YESTERDAY,isRestDay:true});
+  const {owner:live,bundled}=await days(aina);
+  expect(bundled).toEqual(live);
+  expect(live.find(row=>row.date===YESTERDAY)?.dayType).toBe('rest_day');
+  const theirs=await days(siti);expect(theirs.bundled).toEqual(theirs.owner);
+  const all=await both(aina);expect(all.bundled).toEqual(all.owners);
+ });
+ it('answers the loop\'s own clock-out card as the loop cards owner does',async()=>{
+  const principal=await ensureAgentPrincipal(owner.db,b.tenantId);
+  await setWorkerSwitch(group,{workerId:'loop_missed_clock_outs',enabled:true});
+  expect(await runLoop('loop_missed_clock_outs',{tenantId:b.tenantId,principalId:principal,entitlements:(await entitledCtx(b)).entitlements!,today:TODAY})).toMatchObject({status:'ran'});
+  const proof=await beforePayrollBundleForProof(aina,{today:TODAY,locale:'en'});
+  expect(proof?.bundle?.loopCards?.value.filter(card=>card.kind==='clockOut')).toHaveLength(1);
+  for(const person of [aina,siti]){const all=await both(person);expect(all.bundled).toEqual(all.owners);}
  });
 });
 

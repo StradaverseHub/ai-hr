@@ -50,13 +50,14 @@
  * either. One owner that fails is reported as that group's "could not check", never as done. Never writes. */
 import {sql} from 'drizzle-orm';
 import {withSharedReadSnapshot,withTenant,type SessionContext} from '../../db/client';
+import {requestReadScope} from '../../lib/request-read-scope';
 import {EntitlementsResolutionFailedError,isModuleEnabled} from '../entitlements';
 import {HomeAccessError,requireOwnHomeSubject} from '../employee-home';
 import {leaveRequestsFor,listEligibleLeaveTypesFor} from '../read';
 import {attendanceForEmploymentRange,classifyDay,myAttendanceCorrections,myOvertimePlans,otMonthToDateMinutes} from '../../packs/attendance/service';
 import {listReplacementLeaveRequests} from '../../packs/leave/service';
-import {getEmployeeClaimTypes,listOpenClaimsForEmployment} from '../../packs/claims/service';
-import {listMyTp1Declarations,myTp3Employments,myTp3History} from '../../packs/payroll/service';
+import {claimTypeReceiptRules,listOpenClaimsForEmployment} from '../../packs/claims/service';
+import {listMyTp1DeclarationsSnapshot,myTp3EmploymentsSnapshot,myTp3HistorySnapshot} from '../../packs/payroll/service';
 import {myReadinessActions} from '../readiness-actions';
 import {myProfile} from '../profile';
 import {eligibleChildReliefCount,listDependents} from '../dependents';
@@ -73,6 +74,11 @@ import {addHrDays} from '../../lib/today/audience';
 import {PAYROLL_ITEM_GROUPS,groupStatus,monthEnd,orderItems,periodOf,type GroupState,type PayrollItem,type PayrollItemGroup,
  type PayrollItemKind,type PayrollItemState,type PayrollPeriod,type PayrollReadiness,type PayrollTypeWindows,type TypeWindow} from '../../lib/pre-salary/items';
 import {upcomingPeriod,type CompanyCutOffs} from '../loops/payroll-inputs';
+import {readBeforePayrollBundle,withOwnerBeforePayrollReads,type BeforePayrollBundle,type BeforePayrollBundleRead,type BundleAnswer,type OwnCutOffRow} from './before-payroll-bundle';
+import type {OvertimePlanChecklistRow,OwnAttendanceRequestChecklistRow} from '../../packs/attendance/service';
+import type {OwnReplacementChecklistRow} from '../../packs/leave/service';
+import type {MyReviewChecklistRow} from '../../packs/performance/service';
+type LeaveRequestChecklistRow=ReturnType<typeof import('../read').leaveRequestsChecklistFromBundle>[number];
 
 /** A draft claim whose receipt-age window closes within this many days is "near its deadline". */
 export const CLAIM_DEADLINE_LEAD_DAYS=7;
@@ -81,6 +87,8 @@ const LETTER_LIMIT=100;
 
 type Read<T>=Readonly<{ok:true;value:T}>|Readonly<{ok:false}>;
 async function settle<T>(read:()=>Promise<T>):Promise<Read<T>>{try{return{ok:true,value:await read()};}catch{return{ok:false};}}
+/** The owner's result from the one-statement read when it answered, else the owner's own read (core/pre-salary/before-payroll-bundle.ts). */
+const sectionOr=<T,>(answer:BundleAnswer<T>|undefined,owner:()=>Promise<T>):Promise<Read<T>>=>answer?Promise.resolve({ok:true as const,value:answer.value}):settle(owner);
 /** Throwing module check (core/ code never uses the quiet reader, test/module-catalog-drift.test.ts); an entitlement
  * snapshot that cannot be resolved counts as "could not check", never as "not in use". */
 function moduleState(ctx:SessionContext,code:string,companyId?:string|null):'on'|'off'|'failed'{
@@ -103,14 +111,19 @@ export async function resolvePayrollPeriod(ctx:SessionContext,employmentId:strin
 }
 
 type PeriodAndWindows=Readonly<{period:PayrollPeriod;windows:PayrollTypeWindows|null}>;
+const calendarPeriod=(today:string):PeriodAndWindows=>Object.freeze({period:Object.freeze({payPeriod:periodOf(today),start:`${periodOf(today)}-01`,cutOff:null,source:'unavailable' as const}),windows:null});
+/** The period owner's own statement for the caller's own employment (also a section of the one-statement read). */
+const ownCutOffSql=(employmentId:string)=>sql`SELECT cut_off_day,attendance_cut_off_day,overtime_cut_off_day,claim_cut_off_day,unpaid_leave_cut_off_day
+  FROM app.own_payroll_cut_off_day(${employmentId}::uuid)`;
 /** The period, and each input type's own window for it (null when no cut-off is known: the calendar month is used). */
 async function resolvePeriodAndWindows(ctx:SessionContext,employmentId:string|null,today:string):Promise<PeriodAndWindows>{
- const calendar=():PeriodAndWindows=>Object.freeze({period:Object.freeze({payPeriod:periodOf(today),start:`${periodOf(today)}-01`,cutOff:null,source:'unavailable' as const}),windows:null});
- if(!employmentId)return calendar();
- const rows=await withTenant(ctx,tx=>tx.execute(sql`SELECT cut_off_day,attendance_cut_off_day,overtime_cut_off_day,claim_cut_off_day,unpaid_leave_cut_off_day
-  FROM app.own_payroll_cut_off_day(${employmentId}::uuid)`)) as unknown as {cut_off_day:number|null;attendance_cut_off_day:number|null;
-  overtime_cut_off_day:number|null;claim_cut_off_day:number|null;unpaid_leave_cut_off_day:number|null}[];
- if(!rows.length)return calendar();
+ if(!employmentId)return calendarPeriod(today);
+ const rows=await withTenant(ctx,tx=>tx.execute(ownCutOffSql(employmentId))) as unknown as OwnCutOffRow[];
+ return periodAndWindowsFrom(rows,today);
+}
+/** resolvePeriodAndWindows over the statement's rows. */
+function periodAndWindowsFrom(rows:readonly OwnCutOffRow[],today:string):PeriodAndWindows{
+ if(!rows.length)return calendarPeriod(today);
  const row=rows[0];
  const company:CompanyCutOffs={cutOffDay:row.cut_off_day??null,attendanceCutOffDay:row.attendance_cut_off_day??null,overtimeCutOffDay:row.overtime_cut_off_day??null,
   claimCutOffDay:row.claim_cut_off_day??null,unpaidLeaveCutOffDay:row.unpaid_leave_cut_off_day??null,payDay:null};
@@ -133,18 +146,24 @@ type GroupRead=Readonly<{items:readonly PayrollItem[];read:'ok'|'failed'|'off';t
 const off:GroupRead=Object.freeze({items:[],read:'off'});
 const failed:GroupRead=Object.freeze({items:[],read:'failed'});
 
-async function attendanceGroups(ctx:SessionContext,subject:Subject,period:PayrollPeriod,today:string):Promise<Readonly<{attendance:GroupRead;overtime:GroupRead}>>{
- const state=moduleState(ctx,'attendance',subject.companyId);
- if(state!=='on')return {attendance:state==='off'?off:failed,overtime:state==='off'?off:failed};
+/** The attendance and overtime windows the attendance group reads, shared with the one-statement read. */
+function attendanceWindows(period:PayrollPeriod,today:string){
  // Attendance runs to the attendance cut-off, overtime to the overtime cut-off: each item is due by its own.
  const att=typeWindow(period,'attendance'),ot=typeWindow(period,'overtime');
  const start=att.window.start,end=att.window.end,to=min(end,addHrDays(today,-1))!,due=att.due;
+ return {att,ot,start,end,to,due,capDate:min(ot.window.end,today)!};
+}
+const CORRECTIONS_READ={status:'pending',limit:200} as const;
+async function attendanceGroups(ctx:SessionContext,subject:Subject,period:PayrollPeriod,today:string,bundle:BeforePayrollBundle|null):Promise<Readonly<{attendance:GroupRead;overtime:GroupRead}>>{
+ const state=moduleState(ctx,'attendance',subject.companyId);
+ if(state!=='on')return {attendance:state==='off'?off:failed,overtime:state==='off'?off:failed};
+ const {ot,start,end,to,due,capDate}=attendanceWindows(period,today);
  const [days,requests,overtime,cap,loops]=await Promise.all([
-  to>=start?settle(()=>attendanceForEmploymentRange(ctx,subject.employmentId,start,to)):Promise.resolve<Read<Awaited<ReturnType<typeof attendanceForEmploymentRange>>>>({ok:true,value:[]}),
-  settle(()=>myAttendanceCorrections(ctx,subject.employmentId,{status:'pending',limit:200})),
-  settle(()=>myOvertimePlans(ctx,subject.employmentId,{status:'pending',from:ot.window.start,limit:200})),
-  settle(()=>otMonthToDateMinutes(ctx,subject.employmentId,min(ot.window.end,today)!)),
-  settle(()=>readLoopCards(ctx,{scopeIds:[],admin:false})),
+  to>=start?sectionOr(bundle?.days,()=>attendanceForEmploymentRange(ctx,subject.employmentId,start,to)):Promise.resolve<Read<Awaited<ReturnType<typeof attendanceForEmploymentRange>>>>({ok:true,value:[]}),
+  sectionOr<readonly OwnAttendanceRequestChecklistRow[]>(bundle?.corrections,()=>myAttendanceCorrections(ctx,subject.employmentId,CORRECTIONS_READ)),
+  sectionOr<readonly OvertimePlanChecklistRow[]>(bundle?.overtimePlans,()=>myOvertimePlans(ctx,subject.employmentId,{status:'pending',from:ot.window.start,limit:200})),
+  sectionOr(bundle?.otCap,()=>otMonthToDateMinutes(ctx,subject.employmentId,capDate)),
+  sectionOr(bundle?.loopCards,()=>readLoopCards(ctx,{scopeIds:[],admin:false})),
  ]);
  const attendance:PayrollItem[]=[],overtimeItems:PayrollItem[]=[];
  const waitingDays=new Set<string>();
@@ -181,10 +200,11 @@ async function attendanceGroups(ctx:SessionContext,subject:Subject,period:Payrol
  return {attendance:{items:attendance,read:days.ok&&requests.ok&&loops.ok?'ok':'failed'},overtime:{items:overtimeItems,read:overtime.ok&&cap.ok?'ok':'failed'}};
 }
 
-async function leaveGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod,locale:string):Promise<GroupRead>{
+async function leaveGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod,locale:string,bundle:BeforePayrollBundle|null):Promise<GroupRead>{
  const state=moduleState(ctx,'leave',subject.companyId);
  if(state!=='on')return state==='off'?off:failed;
- const [requests,types]=await Promise.all([settle(()=>leaveRequestsFor(ctx,subject.employmentId,locale)),settle(()=>listEligibleLeaveTypesFor(ctx,subject.employmentId,locale))]);
+ const [requests,types]=await Promise.all([sectionOr<readonly LeaveRequestChecklistRow[]>(bundle?.leaveRequests,()=>leaveRequestsFor(ctx,subject.employmentId,locale)),
+  sectionOr(bundle?.leaveTypes,()=>listEligibleLeaveTypesFor(ctx,subject.employmentId,locale))]);
  if(!requests.ok)return failed;
  // Leave runs to the unpaid-leave cut-off and is due by it.
  const own=typeWindow(period,'leave'),end=own.window.end,due=own.due,items:PayrollItem[]=[];
@@ -202,11 +222,15 @@ async function leaveGroup(ctx:SessionContext,subject:Subject,period:PayrollPerio
  return {items,read:types.ok?'ok':'failed'};
 }
 
-async function claimsGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod,today:string):Promise<GroupRead>{
+async function claimsGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod,today:string,bundle:BeforePayrollBundle|null):Promise<GroupRead>{
  const state=moduleState(ctx,'claims',subject.companyId);
  if(state!=='on')return state==='off'?off:failed;
  // Only pending and draft claims produce an item, so decided history is never loaded (same rows, same order).
- const [claims,types]=await Promise.all([settle(()=>listOpenClaimsForEmployment(ctx,subject.employmentId)),settle(()=>getEmployeeClaimTypes(ctx,subject.employmentId))]);
+ // The types' receipt rules are read without their limits and balances (core/claims.ts claimTypeReceiptRules).
+ // Of each claim's attachments only whether there is one is read.
+ const [claims,types]=await Promise.all([sectionOr(bundle?.claims,async()=>(await listOpenClaimsForEmployment(ctx,subject.employmentId))
+   .map(row=>({id:row.id,claimTypeId:row.claimTypeId,typeName:row.typeName,incurredOn:row.incurredOn,status:row.status,attachmentCount:row.attachments.length}))),
+  sectionOr(bundle?.claimRules,()=>claimTypeReceiptRules(ctx))]);
  if(!claims.ok)return failed;
  // Only the receipt rule and the receipt-age window are taken from each type; limits and balances are left behind.
  const rules=new Map((types.ok?types.value:[]).map(type=>[type.id,{requiresReceipt:type.requiresReceipt,window:type.maxReceiptAgeDays}]));
@@ -222,16 +246,16 @@ async function claimsGroup(ctx:SessionContext,subject:Subject,period:PayrollPeri
   const deadline=incurred&&rule&&Number.isFinite(rule.window)?addHrDays(incurred,rule.window):null;
   if(deadline&&deadline<today)continue;
   const near=deadline!==null&&deadline<=addHrDays(today,CLAIM_DEADLINE_LEAD_DAYS);
-  const kind=near?'claim_deadline' as const:rule?.requiresReceipt&&row.attachments.length===0?'claim_receipt_missing' as const:'claim_draft' as const;
+  const kind=near?'claim_deadline' as const:rule?.requiresReceipt&&row.attachmentCount===0?'claim_receipt_missing' as const:'claim_draft' as const;
   items.push(item({key:`${kind}:${row.id}`,group:'claims',kind,state:'todo',date:incurred,due:min(deadline,claimDue),label,href:`/claims?${new URLSearchParams({draft:row.id})}`}));
  }
  return {items,read:types.ok?'ok':'failed'};
 }
 
-async function toilGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod):Promise<GroupRead>{
+async function toilGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod,bundle:BeforePayrollBundle|null):Promise<GroupRead>{
  const state=moduleState(ctx,'toil',subject.companyId);
  if(state!=='on')return state==='off'?off:failed;
- const requests=await settle(()=>listReplacementLeaveRequests(ctx,subject.employmentId));
+ const requests=await sectionOr<readonly OwnReplacementChecklistRow[]>(bundle?.toil,()=>listReplacementLeaveRequests(ctx,subject.employmentId));
  if(!requests.ok)return failed;
  return {read:'ok',items:requests.value.filter(row=>row.status==='pending').map(row=>{
   const dates=row.dates.map(line=>day(line.workedDate)).filter((value):value is string=>value!==null).sort();
@@ -240,14 +264,19 @@ async function toilGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod
 }
 
 const GAP_KIND:Readonly<Record<string,PayrollItemKind>>={no_bank_account:'bank_missing',no_tax_number:'tax_number_missing',no_epf_number:'epf_number_missing',no_socso_number:'socso_number_missing',no_identity:'identity_missing'};
-async function detailsGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod,today:string):Promise<GroupRead>{
+async function detailsGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod,today:string,bundle:BeforePayrollBundle|null):Promise<GroupRead>{
  const payroll=moduleState(ctx,'payroll',subject.companyId);
+ // Each owner's answer from the one-statement read where it answered, else the owner's own read.
+ const answered=<T,>(answer:BundleAnswer<T>|undefined,owner:()=>Promise<T>):Promise<T>=>answer?Promise.resolve(answer.value):owner();
  const [gaps,tp3,extra]=await Promise.all([
-  settle(()=>myReadinessActions(ctx,subject.employmentId)),
-  payroll==='on'?settle(async()=>{const [employments,history,answer]=await Promise.all([myTp3Employments(ctx),myTp3History(ctx),
-   myTp3PreviousEmployerAnswer(ctx,Number(today.slice(0,4)))]);return{employments,history,answer};}):Promise.resolve(null),
+  sectionOr(bundle?.readiness,()=>myReadinessActions(ctx,subject.employmentId)),
+  // TP3 and TP1 each read one read-only snapshot without the payroll-history barrier (core/tp3.ts, core/tax-relief.ts).
+  payroll==='on'?settle(async()=>{const [snapshot,answer]=await Promise.all([
+   answered(bundle?.tp3,async()=>{const [employments,history]=await Promise.all([myTp3EmploymentsSnapshot(ctx),myTp3HistorySnapshot(ctx)]);return{employments,history};}),
+   answered(bundle?.tp3Answer,()=>myTp3PreviousEmployerAnswer(ctx,Number(today.slice(0,4))))]);return{employments:snapshot.employments,history:snapshot.history,answer};}):Promise.resolve(null),
   payroll==='on'&&ctx.personId?settle(async()=>{const personId=ctx.personId!;
-   const [tp1,profile,family]=await Promise.all([listMyTp1Declarations(ctx,{assessmentYear:Number(today.slice(0,4))}),myProfile(ctx),listDependents(ctx,{personId})]);
+   const [tp1,profile,family]=await Promise.all([answered(bundle?.tp1,()=>listMyTp1DeclarationsSnapshot(ctx,{assessmentYear:Number(today.slice(0,4))})),
+    answered<{statutory:{numChildren:number|null}|null}|null>(bundle?.profile,()=>myProfile(ctx)),answered(bundle?.dependents,()=>listDependents(ctx,{personId}))]);
    return{tp1,profile,family};}):Promise.resolve(null),
  ]);
  const items:PayrollItem[]=[];
@@ -292,10 +321,12 @@ async function detailsGroup(ctx:SessionContext,subject:Subject,period:PayrollPer
  return {items,read:gaps.ok&&(tp3===null||tp3.ok)&&(extra===null||extra.ok)?'ok':'failed'};
 }
 
-async function acknowledgeGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod):Promise<GroupRead>{
+async function acknowledgeGroup(ctx:SessionContext,subject:Subject,period:PayrollPeriod,bundle:BeforePayrollBundle|null):Promise<GroupRead>{
  const performance=moduleState(ctx,'performance',subject.companyId),lifecycle=moduleState(ctx,'lifecycle',subject.companyId);
- const [letters,notices,reviews,onboarding]=await Promise.all([settle(()=>listMyLetters(ctx,{limit:LETTER_LIMIT})),settle(()=>pendingNoticeAcknowledgementTasks(ctx)),
-  performance==='on'?settle(()=>myReviews(ctx)):Promise.resolve(null),lifecycle==='on'?settle(()=>onboardingMyAcknowledgements(ctx)):Promise.resolve(null)]);
+ const [letters,notices,reviews,onboarding]=await Promise.all([sectionOr(bundle?.letters,()=>listMyLetters(ctx,{limit:LETTER_LIMIT})),
+  sectionOr(bundle?.notices,()=>pendingNoticeAcknowledgementTasks(ctx)),
+  performance==='on'?sectionOr<readonly MyReviewChecklistRow[]>(bundle?.reviews,()=>myReviews(ctx)):Promise.resolve(null),
+  lifecycle==='on'?sectionOr(bundle?.onboarding,()=>onboardingMyAcknowledgements(ctx)):Promise.resolve(null)]);
  const items:PayrollItem[]=[];
  if(letters.ok)for(const row of letters.value.rows)if(row.state==='issued'&&!row.voidedAt&&row.acknowledgement!=='none'&&!row.confirmed)
   items.push(item({key:`letter_acknowledge:${row.id}`,group:'acknowledge',kind:'letter_acknowledge',state:'todo',date:day(row.issuedAt),due:period.cutOff,href:`/me/letters/${encodeURIComponent(row.id)}`}));
@@ -331,13 +362,69 @@ async function approvalsGroup(approvalsRead:ReturnType<typeof startApprovals>,pe
   ...(preview?{total:items.length+omittedClaims,claimTotal:tasks.value.claimTotal}:{})};
 }
 
+/** The one-statement read of every own owner for this subject, the period owner's cut-off day included, with the
+ * groups the checklist reads (core/pre-salary/before-payroll-bundle.ts). null: the owners read on their own. */
+function readOwnInputs(ctx:SessionContext,subject:Subject,payroll:'on'|'failed',today:string,locale:string):Promise<BeforePayrollBundle|null>{
+ return readBeforePayrollBundle(ctx,ownInputsRead(ctx,subject,payroll,today,locale));
+}
+/** The period (with its type windows) the checklist resolves from a period read; the calendar month when none. */
+function periodFrom(periodRead:Read<PeriodAndWindows>,today:string):PayrollPeriod{
+ const period:PayrollPeriod=periodRead.ok?periodRead.value.period:calendarPeriod(today).period;
+ // Each input type's own window travels with the period object to the group readers, not into the period's shape.
+ if(periodRead.ok&&periodRead.value.windows)windowsOf.set(period,periodRead.value.windows);
+ return period;
+}
+/** The first day of the month before `today`'s: no input type's window for this month's or next month's pay opens
+ * earlier (core/payroll-policy-config.ts anchorWindowFor: an anchor day D opens D of the month before the pay month). */
+const previousMonthStart=(today:string)=>{const [y,m]=[Number(today.slice(0,4)),Number(today.slice(5,7))];return m===1?`${y-1}-12-01`:`${y}-${String(m-1).padStart(2,'0')}-01`;};
+function ownInputsRead(ctx:SessionContext,subject:Subject,payroll:'on'|'failed',today:string,locale:string):BeforePayrollBundleRead{
+ const from=previousMonthStart(today),yesterday=addHrDays(today,-1);
+ return Object.freeze({employmentId:subject.employmentId,today,locale,
+  cutOff:payroll==='on'?ownCutOffSql(subject.employmentId):null,
+  // The exact windows for the cut-off row the statement returns (null: the calendar month, as without a payroll read).
+  windowsFor:(rows:readonly OwnCutOffRow[]|null)=>{
+   const period=periodFrom(rows===null?{ok:false}:{ok:true,value:periodAndWindowsFrom(rows,today)},today);
+   const {ot,start,to,capDate}=attendanceWindows(period,today);
+   return {range:to>=start?{from:start,to}:null,overtimeFrom:ot.window.start,capDate};
+  },
+  attendance:moduleState(ctx,'attendance',subject.companyId)==='on'?{covering:{from,to:yesterday},corrections:CORRECTIONS_READ,
+   overtime:{status:'pending' as const,from,limit:200},capMonths:[from.slice(0,7),today.slice(0,7)]}:null,
+  leave:moduleState(ctx,'leave',subject.companyId)==='on',claims:moduleState(ctx,'claims',subject.companyId)==='on',toil:moduleState(ctx,'toil',subject.companyId)==='on',
+  payroll:moduleState(ctx,'payroll',subject.companyId)==='on',assessmentYear:Number(today.slice(0,4)),letterLimit:LETTER_LIMIT,
+  performance:moduleState(ctx,'performance',subject.companyId)==='on',lifecycle:moduleState(ctx,'lifecycle',subject.companyId)==='on'});
+}
+/** The own employment readMyPayrollReadiness reads for (null without one: no own items). */
+async function resolveSubject(ctx:SessionContext,p:Readonly<{employmentId?:string}>):Promise<Subject|null>{
+ try{const own=await requireOwnHomeSubject(ctx,p.employmentId);return {employmentId:own.employmentId,companyId:own.companyProof.companyId??own.currentCompanyId??null};}
+ catch(error){if(!(error instanceof HomeAccessError))throw error;return null;}
+}
+/** The one-statement read readMyPayrollReadiness makes for its subject and period, with what it asked for: null where
+ * the checklist reads no own owner (no payroll, no login, no own employment). Equivalence proofs only. */
+export function beforePayrollBundleForProof(ctx:SessionContext,p:Readonly<{employmentId?:string;locale?:string;today?:string}>={}):
+ Promise<Readonly<{read:BeforePayrollBundleRead;bundle:BeforePayrollBundle|null}>|null>{
+ return withSharedReadSnapshot(ctx,async()=>{
+  if(!ctx.userId||ctx.agent)return null;
+  const payroll=moduleState(ctx,'payroll');
+  if(payroll==='off')return null;
+  const today=p.today??todayInKualaLumpur(),locale=p.locale??'en';
+  const subject=await resolveSubject(ctx,p);
+  if(!subject)return null;
+  const read=ownInputsRead(ctx,subject,payroll,today,locale);
+  return {read,bundle:await readBeforePayrollBundle(ctx,read)};
+ },undefined,requestReadScope());
+}
+
 /** The person's "Before payroll" checklist. `null` when payroll is not in use for the tenant: there is no payroll to be
  * ready for. Someone with no own employment (or several and none chosen) gets no own items, only their approvals.
  * `scopeIds`: the companies in the viewer's current scope, for the approvals owner's company filter (Today's own). */
 /** One read-only snapshot for the caller's own identity (db/shared-read.ts). Each owner keeps its own result and
  * failure; a barrier-locked or read-committed owner still reads in its own transaction. */
 export function readMyPayrollReadiness(ctx:SessionContext,p:Readonly<{employmentId?:string;scopeIds?:readonly string[];locale?:string;today?:string;approvalPreview?:boolean;includeApprovals?:false}>={}):Promise<PayrollReadiness|null>{
- return withSharedReadSnapshot(ctx,()=>payrollReadinessOwners(ctx,p));
+ return withSharedReadSnapshot(ctx,()=>payrollReadinessOwners(ctx,p),undefined,requestReadScope());
+}
+/** readMyPayrollReadiness with every own owner reading on its own, as before the one-statement read. Equivalence proofs only. */
+export function readMyPayrollReadinessFromOwners(ctx:SessionContext,p:Parameters<typeof readMyPayrollReadiness>[1]={}):Promise<PayrollReadiness|null>{
+ return withOwnerBeforePayrollReads(()=>readMyPayrollReadiness(ctx,p));
 }
 async function payrollReadinessOwners(ctx:SessionContext,p:Readonly<{employmentId?:string;scopeIds?:readonly string[];locale?:string;today?:string;approvalPreview?:boolean;includeApprovals?:false}>):Promise<PayrollReadiness|null>{
  if(!ctx.userId||ctx.agent)return null;
@@ -346,21 +433,22 @@ async function payrollReadinessOwners(ctx:SessionContext,p:Readonly<{employmentI
  const today=p.today??todayInKualaLumpur(),locale=p.locale??'en';
  // The approvals read depends on neither the subject nor the period, so it starts now and runs while they are resolved.
  const approvalsRead=p.includeApprovals===false?null:startApprovals(ctx,p.scopeIds,p.approvalPreview);
- let subject:Subject|null=null;
- try{const own=await requireOwnHomeSubject(ctx,p.employmentId);subject={employmentId:own.employmentId,companyId:own.companyProof.companyId??own.currentCompanyId??null};}
- catch(error){if(!(error instanceof HomeAccessError))throw error;}
- const periodRead=payroll==='on'?await settle(()=>resolvePeriodAndWindows(ctx,subject?.employmentId??null,today)):{ok:false as const};
- const period:PayrollPeriod=periodRead.ok?periodRead.value.period:Object.freeze({payPeriod:periodOf(today),start:`${periodOf(today)}-01`,cutOff:null,source:'unavailable' as const});
- // Each input type's own window travels with the period object to the group readers, not into the period's shape.
- if(periodRead.ok&&periodRead.value.windows)windowsOf.set(period,periodRead.value.windows);
+ const subject=await resolveSubject(ctx,p);
+ // Every own owner's rows, the cut-off day with them, in one statement; an owner it did not answer reads on its own.
+ const bundle=subject?await readOwnInputs(ctx,subject,payroll,today,locale):null;
+ const cutOff=bundle?.cutOff;
+ const periodRead:Read<PeriodAndWindows>=payroll==='on'
+  ?cutOff?await settle(async()=>periodAndWindowsFrom(cutOff.value,today)):await settle(()=>resolvePeriodAndWindows(ctx,subject?.employmentId??null,today))
+  :{ok:false};
+ const period=periodFrom(periodRead,today);
  const none=Promise.resolve(off);
  const [att,leave,claims,toil,details,acknowledge,approvals]=await Promise.all([
-  subject?attendanceGroups(ctx,subject,period,today):Promise.resolve({attendance:off,overtime:off}),
-  subject?leaveGroup(ctx,subject,period,locale):none,
-  subject?claimsGroup(ctx,subject,period,today):none,
-  subject?toilGroup(ctx,subject,period):none,
-  subject?detailsGroup(ctx,subject,period,today):none,
-  subject?acknowledgeGroup(ctx,subject,period):none,
+  subject?attendanceGroups(ctx,subject,period,today,bundle):Promise.resolve({attendance:off,overtime:off}),
+  subject?leaveGroup(ctx,subject,period,locale,bundle):none,
+  subject?claimsGroup(ctx,subject,period,today,bundle):none,
+  subject?toilGroup(ctx,subject,period,bundle):none,
+  subject?detailsGroup(ctx,subject,period,today,bundle):none,
+  subject?acknowledgeGroup(ctx,subject,period,bundle):none,
   approvalsRead?approvalsGroup(approvalsRead,period):none,
  ]);
  const reads:Readonly<Record<PayrollItemGroup,GroupRead>>={attendance:att.attendance,overtime:att.overtime,leave,claims,toil,details,acknowledge,approvals};

@@ -26,6 +26,7 @@
  */
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import * as schema from '../db/schema';
 
 /**
@@ -165,7 +166,18 @@ export async function recordReadiness(
 export async function readinessSnapshot(tx: Tx, peopleLimit = PEOPLE_PER_GAP, adminOnly = false,
   scope?: { employmentIds?: readonly string[]; personId?: string }) {
     const rows = await tx
-      .select({
+      .select(READINESS_ROW_FIELDS)
+      .from(schema.employment)
+      .innerJoin(schema.person, eq(schema.person.id, schema.employment.personId))
+      .innerJoin(schema.company, eq(schema.company.id, schema.employment.companyId))
+      .leftJoin(
+        schema.employeeStatutoryMy,
+        eq(schema.employeeStatutoryMy.personId, schema.employment.personId),
+      )
+      .where(readinessRowWhere(adminOnly, scope));
+    return summarizeReadiness(rows, peopleLimit);
+}
+const READINESS_ROW_FIELDS = {
         employmentId: schema.employment.id,
         name: schema.person.fullName,
         employeeCode: schema.employment.employeeCode,
@@ -185,21 +197,26 @@ export async function readinessSnapshot(tx: Tx, peopleLimit = PEOPLE_PER_GAP, ad
         hasComp: sql<boolean>`exists (
           select 1 from ${schema.compensation} c where c.employment_id = ${schema.employment.id}
         )`,
-      })
-      .from(schema.employment)
-      .innerJoin(schema.person, eq(schema.person.id, schema.employment.personId))
-      .innerJoin(schema.company, eq(schema.company.id, schema.employment.companyId))
-      .leftJoin(
-        schema.employeeStatutoryMy,
-        eq(schema.employeeStatutoryMy.personId, schema.employment.personId),
-      )
+};
+const readinessRowWhere = (adminOnly: boolean, scope?: { employmentIds?: readonly string[]; personId?: string }) =>
       // ACTIVE ONLY. A leaver with no SOCSO number is a historical record, not a thing to go and fix, and
       // listing them would bury the people whose next payslip actually depends on it.
-      .where(and(isNull(schema.employment.terminatedOn),
+      and(isNull(schema.employment.terminatedOn),
         scope?.employmentIds ? inArray(schema.employment.id, [...scope.employmentIds]) : undefined,
         scope?.personId ? eq(schema.employment.personId, scope.personId) : undefined,
-        adminOnly ? sql`app.can_admin_employment(${schema.employment.id})` : undefined));
-    return summarizeReadiness(rows, peopleLimit);
+        adminOnly ? sql`app.can_admin_employment(${schema.employment.id})` : undefined);
+/** readinessSnapshot(tx, Infinity, false, scope) as one JSON section of the one-statement Before payroll read
+ * (core/pre-salary/before-payroll-bundle.ts): the same rows, joins and predicate. */
+export function readinessSnapshotBundleSql(scope: { employmentIds: readonly string[]; personId: string }) {
+  return jsonRowsSql({ row: jsonFieldsSql(READINESS_ROW_FIELDS),
+    from: sql`${schema.employment} inner join ${schema.person} on ${eq(schema.person.id, schema.employment.personId)}
+     inner join ${schema.company} on ${eq(schema.company.id, schema.employment.companyId)}
+     left join ${schema.employeeStatutoryMy} on ${eq(schema.employeeStatutoryMy.personId, schema.employment.personId)}`,
+    where: readinessRowWhere(false, scope) });
+}
+/** readinessSnapshot over readinessSnapshotBundleSql's rows. */
+export function readinessSnapshotFromBundle(value: unknown, peopleLimit = PEOPLE_PER_GAP) {
+  return summarizeReadiness(decodeJsonFieldRows(READINESS_ROW_FIELDS, value) as Parameters<typeof summarizeReadiness>[0], peopleLimit);
 }
 
 /**

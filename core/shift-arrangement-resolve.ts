@@ -42,6 +42,25 @@ const PERIOD_COLS = {
   shiftId: employmentShiftArrangement.shiftId,
   validFrom: employmentShiftArrangement.validFrom,
 } as const;
+/** liveArrangementsTx's columns, predicate, order and grouping, shared with the Before payroll statement
+ * (core/attendance.ts attendanceRangeChecklistBundleSql), which reads the same rows as one JSON section. */
+export const ARRANGEMENT_PERIOD_FIELDS = PERIOD_COLS;
+export function liveArrangementsWhere(employmentIds: readonly string[]) {
+  return and(
+    rosterUuidSet(employmentShiftArrangement.employmentId,employmentIds),
+    isNull(employmentShiftArrangement.supersededAt),
+  );
+}
+export const LIVE_ARRANGEMENT_ORDER = [asc(employmentShiftArrangement.employmentId), asc(employmentShiftArrangement.validFrom)];
+export function groupArrangementPeriods(rows: readonly ArrangementPeriod[]): Map<string, ArrangementPeriod[]> {
+  const byEmp = new Map<string, ArrangementPeriod[]>();
+  for (const r of rows) {
+    const list = byEmp.get(r.employmentId);
+    if (list) list.push(r);
+    else byEmp.set(r.employmentId, [r]);
+  }
+  return byEmp;
+}
 
 /**
  * Every LIVE period of the given employments, ascending by (employment, valid_from). ONE query for the whole
@@ -51,24 +70,13 @@ export async function liveArrangementsTx(
   tx: Tx,
   employmentIds: string[],
 ): Promise<Map<string, ArrangementPeriod[]>> {
-  const byEmp = new Map<string, ArrangementPeriod[]>();
-  if (employmentIds.length === 0) return byEmp;
+  if (employmentIds.length === 0) return new Map<string, ArrangementPeriod[]>();
   const rows = await tx
     .select(PERIOD_COLS)
     .from(employmentShiftArrangement)
-    .where(
-      and(
-        rosterUuidSet(employmentShiftArrangement.employmentId,employmentIds),
-        isNull(employmentShiftArrangement.supersededAt),
-      ),
-    )
-    .orderBy(asc(employmentShiftArrangement.employmentId), asc(employmentShiftArrangement.validFrom));
-  for (const r of rows) {
-    const list = byEmp.get(r.employmentId);
-    if (list) list.push(r);
-    else byEmp.set(r.employmentId, [r]);
-  }
-  return byEmp;
+    .where(liveArrangementsWhere(employmentIds))
+    .orderBy(...LIVE_ARRANGEMENT_ORDER);
+  return groupArrangementPeriods(rows);
 }
 
 /** The live periods of ONE employment, ascending by valid_from. */

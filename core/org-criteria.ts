@@ -319,9 +319,35 @@ function sqlIn(expr: SQL<unknown>, values: string[]): SQL<boolean> {
  *
  * Returns employment ids ordered by id, so a resolution is deterministic and two runs are comparable.
  */
-export async function resolveOrgCriteriaTargets(
-  tx: Tx,
-  p: {
+export async function resolveOrgCriteriaTargets(tx: Tx, p: OrgCriteriaResolution): Promise<string[]> {
+  const rows = await tx
+    .select({ id: employment.id })
+    .from(employment)
+    .where(and(...orgCriteriaConditions(p)))
+    .orderBy(employment.id);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Several resolutions in ONE statement, for a caller that holds every criteria set up front (the entitlement resolver
+ * built from bundled own leave inputs, core/entitlement-template.ts). Each element is a sub-select with exactly
+ * `resolveOrgCriteriaTargets`' predicate (`orgCriteriaConditions`, the one builder both use) and its `order by
+ * employment.id`, read in the same transaction and snapshot, so element `i` is what the single call for `ps[i]` returns.
+ * jsonb_build_array takes at most 100 arguments, so longer lists are concatenated in chunks.
+ */
+export async function resolveOrgCriteriaTargetsBatch(tx: Tx, ps: readonly OrgCriteriaResolution[]): Promise<string[][]> {
+  if (ps.length === 0) return [];
+  const parts = ps.map((p) => sql`(select coalesce(jsonb_agg(${employment.id} order by ${employment.id}), '[]'::jsonb) from ${employment}
+    where ${and(...orgCriteriaConditions(p))})`);
+  const chunks: SQL[] = [];
+  for (let index = 0; index < parts.length; index += 50) chunks.push(sql`jsonb_build_array(${sql.join(parts.slice(index, index + 50), sql`, `)})`);
+  const [row] = await tx.execute<{ targets: string[][] }>(sql`select ${sql.join(chunks, sql` || `)} as targets`);
+  if (!row || !Array.isArray(row.targets) || row.targets.length !== ps.length) throw new Error('Organisation criteria resolution is unavailable.');
+  return row.targets;
+}
+
+/** One resolution's question: which employments match `criteria` as at `asOf`, optionally within `employmentIds`. */
+export type OrgCriteriaResolution = {
     criteria: OrgCriteria;
     asOf: string;
     /**
@@ -339,8 +365,10 @@ export async function resolveOrgCriteriaTargets(
      * object would let a saved rule pin itself to a hardcoded list of people.
      */
     employmentIds?: string[];
-  },
-): Promise<string[]> {
+};
+
+/** THE predicate of `resolveOrgCriteriaTargets` over `employment`, shared by the single and the batched resolution. */
+function orgCriteriaConditions(p: OrgCriteriaResolution): (SQL | undefined)[] {
   const c = (p.criteria ?? {}) as OrgCriteria & Record<string, string[] | undefined>;
   const conds = [
     // Active as of the date — hired by then, and not already gone.
@@ -435,13 +463,7 @@ export async function resolveOrgCriteriaTargets(
   if (typeof maxYears === 'number' && Number.isFinite(maxYears)) {
     conds.push(sql`${yearsOfServiceSql(p.asOf)} <= ${maxYears}`);
   }
-
-  const rows = await tx
-    .select({ id: employment.id })
-    .from(employment)
-    .where(and(...conds))
-    .orderBy(employment.id);
-  return rows.map((r) => r.id);
+  return conds;
 }
 
 /**

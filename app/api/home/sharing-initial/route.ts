@@ -6,15 +6,17 @@ import {OwnHomeConfigurationRead} from '@/core/employee-home-configuration';
 import {readEmployeeHomeGreeting} from '@/core/employee-home-greeting';
 import {readEmployeeHomeSummary} from '@/core/employee-home-summary';
 import {OwnHomeTaskSourceRead,readEmployeeHomeTasks} from '@/core/employee-home-tasks';
-import {validateEmployeeHomeSummary} from '@/lib/employee-home-summary';
+import {HOME_SUMMARY_LOOKAHEAD_DAYS,validateEmployeeHomeSummary} from '@/lib/employee-home-summary';
 import {
  DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,isHomeSharingCard,HOME_SHARING_STREAM,type HomeSharingCard,type HomeSharingFrame,
 } from '@/lib/employee-home-sharing-cohort';
 import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
 import {greetingProjection,tasksProjection,todayProjection,calendarProjection} from '../personal-projections';
 import {withDatabaseReadDeadline} from '@/db/workload';
-import {withSharedReadSnapshot} from '@/db/client';
+import {declareSharedReadPreamble,declareSharedReadWindow,withSharedReadSnapshot} from '@/db/client';
 import {runCappedHomeCardRead,startHomeCardReadCap} from '../read-cap';
+import {homeRequestPreamble} from '@/core/home-request-preamble';
+import {todayInKualaLumpur} from '@/lib/hr-date';
 import {readEmployeeHomeToday} from '@/core/employee-home-today';
 import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
 import {homeCalendarMonth} from '@/lib/employee-home-calendar';
@@ -22,6 +24,25 @@ import {OwnClockEmploymentUnavailableError} from '@/packs/attendance/service';
 import {OwnHomePayrollRead,OwnPayrollSubjectUnavailableError} from '@/packs/payroll/service';
 import {HomeAccessError} from '@/core/employee-home';
 import {markHomeRead} from '@/lib/home-read-timing';
+
+const addDays=(date:string,days:number)=>new Date(Date.parse(date+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
+/** The widest own date window this response's cards read: Today (yesterday's open overnight day and today), the
+ * Summary's lookahead, and any Calendar grid of the requested month (a grid starts up to six days before the month
+ * and ends up to six days after it). A card whose window falls outside it simply reads its own window. */
+function homeReadWindow(cards:readonly HomeSharingCard[],month:string|undefined){
+ const today=todayInKualaLumpur(),ranges:{from:string;to:string}[]=[];
+ if(cards.includes('today'))ranges.push({from:addDays(today,-1),to:today});
+ if(cards.includes('summary'))ranges.push({from:today,to:addDays(today,HOME_SUMMARY_LOOKAHEAD_DAYS)});
+ if(cards.includes('calendar')){
+  const {from,to}=homeCalendarMonth(month??today.slice(0,7));
+  ranges.push({from:addDays(from,-6),to:addDays(to,6)});
+ }
+ if(!ranges.length)return null;
+ const from=ranges.map(range=>range.from).sort()[0],to=ranges.map(range=>range.to).sort().at(-1)!;
+ // A distant calendar month keeps its own grid as the window instead of every month in between.
+ if((Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z'))/86400000>70)return cards.includes('calendar')?ranges.at(-1)!:null;
+ return {from,to};
+}
 
 /** One fresh web session and independent live reads for the requested Home cards. */
 export const GET = capacityAwareRoute(async function GET(request:Request){
@@ -114,8 +135,17 @@ export const GET = capacityAwareRoute(async function GET(request:Request){
     // Disconnect stops eligible readers at their next admission check and drops pending values.
     // The snapshot is installed under the same cap, so at the cap its shared carrier's running statement is
     // cancelled and its connection released, exactly as each card's own transaction would be (db/client.ts).
+    // The cards' own date-local reads for this employment (holidays, replacement days, leave presence, dated
+    // company proof) are read once for the widest window they need and sliced per card (db/shared-read.ts).
     const finish=()=>{cap.stop();stop();};
-    void withDatabaseReadDeadline(cap.signal,()=>withSharedReadSnapshot(session,()=>Promise.allSettled(cards.map(read)),signal)).then(finish,finish);
+    void withDatabaseReadDeadline(cap.signal,()=>withSharedReadSnapshot(session,()=>{
+     // An optimization only: a window that cannot be computed leaves every card reading its own.
+     try{const window=homeReadWindow(cards,month);if(window)declareSharedReadWindow(employmentId,window.from,window.to);}catch{/* own windows */}
+     // Every card's proofs, own identity and configuration reads for this login and employment, answered by the
+     // carrier's identity statement (decision 12); a card asking anything else reads it as before.
+     declareSharedReadPreamble(homeRequestPreamble(employmentId));
+     return Promise.allSettled(cards.map(read));
+    },signal)).then(finish,finish);
    },
    cancel(){detach();},
   });

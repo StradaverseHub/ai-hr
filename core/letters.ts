@@ -7,7 +7,8 @@ import {company,appUser,roleEnum,letterCapabilityGrant,letterAutomationRuleVersi
 import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationReadTx,lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
-import {isAiPresentationPrincipalCurrentTx} from './ai-principal';
+import {aiPresentationPrincipalSql,isAiPresentationPrincipalCurrentTx} from './ai-principal';
+import {decodeJsonFieldRows,jsonFieldsSql,jsonRowsSql} from '../db/json-fields';
 import {isModuleEnabled} from './entitlements';
 import {validateLetterFields,validateLetterDocument,usedLetterFields,renderLetterDocument,parseLetterValue,LetterModelError,type LetterField,type LetterValue,type LetterDocument} from '../lib/letter-model';
 import {letterDocumentFromEditor} from '../lib/letter-editor';
@@ -575,13 +576,35 @@ async function currentLetterArtifact(tx:Tx,record:typeof letterRecord.$inferSele
 }
 export function listMyLetters(ctx:SessionContext,input:{cursor?:string;limit?:number}={}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  const limit=input.limit??25;if(!Number.isInteger(limit)||limit<1||limit>100)throw new LetterWorkflowError('invalid','limit');if(input.cursor)await ownLetterTx(tx,input.cursor);
- const rows=await tx.select({id:letterRecord.id,reference:letterRecord.reference,state:letterRecord.state,issuedAt:letterRecord.issuedAt,voidedAt:letterRecord.voidedAt,employmentId:letterRecord.employmentId,companyId:letterRecord.companyId,
+ const rows=await tx.select(myLetterFields(ctx)).from(letterRecord).innerJoin(employment,MY_LETTER_EMPLOYMENT_JOIN).where(myLetterWhere(input.cursor)).orderBy(...MY_LETTER_ORDER).limit(limit+1);
+ return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
+});}
+const myLetterFields=(ctx:SessionContext)=>({id:letterRecord.id,reference:letterRecord.reference,state:letterRecord.state,issuedAt:letterRecord.issuedAt,voidedAt:letterRecord.voidedAt,employmentId:letterRecord.employmentId,companyId:letterRecord.companyId,
  acknowledgement:sql<'none'|'acknowledge'|'signature'>`app.letter_recipient_mode(${letterRecord.id})`,
  viewed:sql<boolean>`exists(select 1 from letter_recipient_event event join letter_artifact artifact on artifact.id=event.artifact_id where artifact.letter_id=${letterRecord.id} and artifact.revision_id=${letterRecord.currentRevisionId} and event.actor_id=${ctx.userId}::uuid and event.kind='viewed')`,
  confirmed:sql<string|null>`(select event.kind from letter_recipient_event event join letter_artifact artifact on artifact.id=event.artifact_id where artifact.letter_id=${letterRecord.id} and artifact.revision_id=${letterRecord.currentRevisionId} and event.actor_id=${ctx.userId}::uuid and event.kind in ('acknowledged','signed') order by event.created_at limit 1)`
- }).from(letterRecord).innerJoin(employment,and(eq(employment.id,letterRecord.employmentId),eq(employment.tenantId,letterRecord.tenantId))).where(and(inArray(letterRecord.state,['issued','void']),sql`app.is_self_person(${employment.personId})`,input.cursor?sql`(${letterRecord.issuedAt},${letterRecord.id})<(select c.issued_at,c.id from letter_record c where c.id=${input.cursor}::uuid)`:undefined)).orderBy(desc(letterRecord.issuedAt),desc(letterRecord.id)).limit(limit+1);
+});
+const MY_LETTER_EMPLOYMENT_JOIN=and(eq(employment.id,letterRecord.employmentId),eq(employment.tenantId,letterRecord.tenantId));
+const myLetterWhere=(cursor?:string)=>and(inArray(letterRecord.state,['issued','void']),sql`app.is_self_person(${employment.personId})`,cursor?sql`(${letterRecord.issuedAt},${letterRecord.id})<(select c.issued_at,c.id from letter_record c where c.id=${cursor}::uuid)`:undefined);
+const MY_LETTER_ORDER=[desc(letterRecord.issuedAt),desc(letterRecord.id)];
+/** listMyLetters(ctx, {limit}) in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the
+ * presentation proof letterPresentation runs first (the same statement, as a value) and the first page of rows (the
+ * owner's join, predicate, order and page; its order is total, so the page is the owner's page). null where the owner
+ * refuses before reading (an invalid page size, a proof that answers false without reading). */
+export function listMyLettersBundleSql(ctx:SessionContext,limit:number){
+ const proof=aiPresentationPrincipalSql(ctx);
+ if(!proof||!Number.isInteger(limit)||limit<1||limit>100)return null;
+ return sql`jsonb_build_object('principal',${proof},'rows',${jsonRowsSql({row:jsonFieldsSql(myLetterFields(ctx)),
+  from:sql`${letterRecord} inner join ${employment} on ${MY_LETTER_EMPLOYMENT_JOIN}`,where:myLetterWhere(),order:sql.join(MY_LETTER_ORDER,sql`, `),limit:limit+1})})`;
+}
+/** listMyLetters' {rows, nextCursor} over those rows, or null when the presentation proof failed (the owner refuses). */
+export function listMyLettersFromBundle(ctx:SessionContext,value:unknown,limit:number){
+ const raw=value as {principal:unknown;rows:unknown};
+ if(raw.principal!==true)return null;
+ const rows=decodeJsonFieldRows(myLetterFields(ctx),raw.rows) as {id:string;reference:string;state:string;issuedAt:Date|null;voidedAt:Date|null;employmentId:string;companyId:string;
+  acknowledgement:'none'|'acknowledge'|'signature';viewed:boolean;confirmed:string|null}[];
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
-});}
+}
 export function getMyLetter(ctx:SessionContext,id:string){return letterPresentation(ctx,id,async (tx,ctx,id)=>{
  const record=await ownLetterTx(tx,id),artifact=await currentLetterArtifact(tx,record);
  // Policy rows are staff configuration. Expose only the bound recipient mode through a narrow SQL helper.

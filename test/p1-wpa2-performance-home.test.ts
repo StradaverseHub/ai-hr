@@ -27,6 +27,13 @@ import framework from '../packs/performance/onehr/framework.json';
 import { PACK_TASK_KINDS } from '../lib/assigned-work';
 import { closeAll, createAppUser, entitledCtx, harnessSnapshot, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
+/** The account task statement's Performance section (core/account-task-bundle.ts), calibration included, against the provider. */
+async function expectBundledPerformance(ctx: SessionContext) {
+  const { readAccountTaskBundle } = await import('../core/account-task-bundle');
+  const bundle = await readAccountTaskBundle(ctx, { attendance: false, claims: false, performance: true, rewards: false, lifecycle: false });
+  expect(bundle?.performance).not.toBeNull();
+  expect(bundle!.performance).toEqual(await perf.pendingPerformanceTasks(ctx, undefined));
+}
 
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 const ALL: InboxModules = { attendance: false, claims: false, performance: true, rewards: false };
@@ -103,6 +110,7 @@ describe('the Performance block for a line manager and an employee (PM only)', (
     expect(projection.filter((t) => t.kind === 'performanceReview').length).toBe(4); // non-vacuous: every report awaits the manager
     expect(calibration.map((t) => t.id)).toEqual([sessionId]);
     expect(projection.filter((t) => t.kind === 'calibration').map((t) => t.id)).toEqual([sessionId]); // already inside the projection
+    await expectBundledPerformance(mgr);
 
     const blk = must(await block(mgr), 'manager block');
     const team = must(blk.team, 'team row');
@@ -123,6 +131,7 @@ describe('the Performance block for a line manager and an employee (PM only)', (
     });
     expect((await perf.pendingCalibrationTasks(mgr)).map((t) => t.id)).toEqual([sessionId]);
     expect(await perf.hasCalibrationAssignment(mgr)).toBe(true);
+    await expectBundledPerformance(mgr);
     const blk = must(await block(mgr), 'manager block');
     expect(stepOf(blk, 'calibration')).toEqual({ key: 'calibration', state: 'waiting', count: 1 });
     expect(must(blk.team, 'team row').chips).toContainEqual({ kind: 'calibration', count: 1 });

@@ -12,7 +12,7 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  * RLS (employment_review, mirrors resignation_request) scopes who can read/write; stage authorization
  * (manager-only stage 1, admin-only stage 2, never-self) lives here.
  */
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {assertWorkforceEmploymentTx} from './workforce-access';
 import {acquireBoundedAdvisoryLockTx,lockAccessConfigurationTx} from './access-configuration-lock';
@@ -30,7 +30,7 @@ import {
 } from '../db/schema';
 
 type EmploymentType = (typeof employmentTypeEnum.enumValues)[number];
-import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, canDecideSql, isApprovalDecisionRefusal, isCallerOwnEmploymentSql } from './approvals';
 import { currentAdminManager } from './performance';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -1140,6 +1140,28 @@ function pendingReviewHeadersQuery(tx:Tx,ctx:SessionContext,stage:'manager'|'hr'
 
 export function pendingReviewCandidatesExistSql(tx:Tx,ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[]){
   return sql<boolean>`exists (${pendingReviewHeadersQuery(tx,ctx,stage,companyIds).getSQL()})`;
+}
+/** pendingReviewTaskMetadata(ctx, stage, companyIds) in one statement for the account task read
+ * (core/account-task-bundle.ts): the owner's header query unchanged, kept where the stage's authority check returns. A
+ * manager review: an admin role, or the stored manager employment is the caller's own person (isPersonOfEmployment, the
+ * same row under the same RLS). An HR review: assertCanDecide (canDecideSql, no task scope), then an admin role. Every
+ * throw of both checks is a refusal the owner skips, so each header is decided exactly here. jsonb array of the owner's
+ * rows (with the due date, without the manager) in its order. */
+export function pendingReviewTaskBundleSql(tx:Tx,ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[],own?:SQL):SQL{
+  const roles=ctx.roles??[],admin=roles.includes('super_admin')||roles.includes('hr_admin'),person=ctx.personId??null;
+  const allowed=stage==='manager'
+    ?admin?sql`true`:person!=null?sql`(review_header.manager_employment_id is not null and ${isCallerOwnEmploymentSql(ctx,sql`review_header.manager_employment_id`,own)})`:sql`false`
+    :admin?canDecideSql(ctx,sql`review_header.employment_id`,undefined,undefined,own):sql`false`;
+  return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',review_header.id,'employmentId',review_header.employment_id,
+     'personId',review_header.person_id,'employee',review_header.employee,'createdAt',review_header.created_at,'dueDate',review_header.due_date)
+     order by review_header.created_at desc,review_header.id) filter(where decided.allowed),'[]'::jsonb)
+   from (${pendingReviewHeadersQuery(tx,ctx,stage,companyIds).getSQL()}) as review_header(id,employment_id,person_id,employee,created_at,due_date,manager_employment_id)
+   cross join lateral (select ${allowed} as allowed) decided)`;
+}
+type BundleReviewRow={id:string;employmentId:string;personId:string;employee:string|null;createdAt:string;dueDate:string};
+/** The review section's owner result: the owner's metadata keys in its order (the due date as the driver's date text). */
+export function pendingReviewTasksFromBundle(value:unknown):AssignedApprovalMetadata[]{
+  return (value as BundleReviewRow[]).map(row=>({id:row.id,employmentId:row.employmentId,personId:row.personId,employee:row.employee,createdAt:new Date(row.createdAt),dueDate:row.dueDate}));
 }
 
 export function pendingReviewTaskMetadata(ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{

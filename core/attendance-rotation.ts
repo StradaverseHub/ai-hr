@@ -18,6 +18,10 @@ export async function rotationLookupTx(tx: Tx) {
   const versions = await tx.select().from(attendanceRotation).orderBy(asc(attendanceRotation.ruleId), asc(attendanceRotation.effectiveFrom));
   const ids = [...new Set(versions.flatMap(v => v.allowedShiftIds))];
   const shifts = ids.length ? await tx.select().from(shift).where(inArray(shift.id, ids)) : [];
+  return rotationLookupFrom(versions, shifts);
+}
+/** rotationLookupTx over its two reads, for a caller that read every version and allowed shift in one statement. */
+export function rotationLookupFrom(versions: AttendanceRotationVersion[], shifts: RotationShift[]) {
   const byShift = new Map(shifts.map(s => [s.id, s]));
   const byRule = new Map<string, AttendanceRotationVersion[]>();
   for (const v of versions) { const rows = byRule.get(v.ruleId) ?? []; rows.push(v); byRule.set(v.ruleId, rows); }

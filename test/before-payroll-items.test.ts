@@ -20,6 +20,10 @@ const failing=(name:string)=>{if(fx.fail.has(name))throw new Error('Fictional ow
 
 // The only direct query is app.own_payroll_cut_off_day (migration 0967): one row for the person's own employment, or none.
 vi.mock('../db/client',()=>({withSharedReadSnapshot:async(_ctx:unknown,work:()=>unknown)=>work(),withTenant:async(_ctx:unknown,fn:(tx:unknown)=>unknown)=>fn({execute:async()=>{fx.calls.push(['ownCutOff']);return fx.cutOffRow?[{cut_off_day:fx.cutOffDay}]:[];}})}));
+// Every owner below reads on its own: the one-statement read of their rows (core/pre-salary/before-payroll-bundle.ts) answers
+// nothing here, and is compared with these owners over real rows in test/before-payroll-checklist.test.ts and the hosted
+// Home diagnostic.
+vi.mock('../core/pre-salary/before-payroll-bundle',()=>({readBeforePayrollBundle:async()=>null,withOwnerBeforePayrollReads:(work:()=>unknown)=>work()}));
 // Phase 2 hardening: the person's own answer to "Did you work for another employer earlier this year?" (core/pre-salary/tp3-answer.ts).
 vi.mock('../core/pre-salary/tp3-answer',()=>({myTp3PreviousEmployerAnswer:async(_ctx:unknown,year:number)=>{fx.calls.push(['tp3Answer',year]);return fx.tp3Answer;}}));
 vi.mock('../core/entitlements',()=>{
@@ -33,14 +37,14 @@ vi.mock('../core/employee-home',()=>{
   return {employmentId:'emp-own',currentCompanyId:'co-1',companyProof:{companyId:'co-1'}};}};
 });
 vi.mock('../packs/payroll/service',()=>({
- listMyTp1Declarations:async(_ctx:unknown,p:{assessmentYear?:number})=>{fx.calls.push(['listMyTp1Declarations',p]);return [
+ listMyTp1DeclarationsSnapshot:async(_ctx:unknown,p:{assessmentYear?:number})=>{fx.calls.push(['listMyTp1DeclarationsSnapshot',p]);return [
   {id:'tp1-draft',assessmentYear:2026,status:'draft',tp1Amount:2500.5,approvedAt:null,submittedAt:null},{id:'tp1-sent',assessmentYear:2026,status:'submitted',tp1Amount:1111.11,approvedAt:null,submittedAt:new Date()},
   {id:'tp1-approved',assessmentYear:2026,status:'submitted',tp1Amount:7777.77,approvedAt:new Date(),submittedAt:new Date()},{id:'tp1-last-year',assessmentYear:2025,status:'draft',tp1Amount:3,approvedAt:null,submittedAt:null}];},
  // The payroll owner's answer for the company's cut-off day; the service must use it as given.
  cutOffWindowFor:(type:string,policy:unknown,company:{cutOffDay:number|null},period:string)=>{fx.calls.push(['cutOffWindowFor',type,policy,company,period]);
   return company.cutOffDay===20?(period==='2026-11'?{start:'2026-10-20',end:'2026-11-19'}:{start:'2026-11-20',end:'2026-12-19'}):{start:`${period}-01`,end:period==='2026-11'?'2026-11-30':'2026-12-31'};},
- myTp3Employments:async()=>[{employmentId:'emp-own',company:'Fictional Ceria Sdn Bhd',employeeCode:'E-1',joinDate:'2026-03-02',hiredOn:'2026-03-02',terminatedOn:null,resignationDate:null,lastWorkingDate:null,blacklistedAt:null}],
- myTp3History:async()=>({records:[{assessmentYear:2025}],drafts:[{assessmentYear:2026,submittedAt:null}]}),
+ myTp3EmploymentsSnapshot:async()=>[{employmentId:'emp-own',company:'Fictional Ceria Sdn Bhd',employeeCode:'E-1',joinDate:'2026-03-02',hiredOn:'2026-03-02',terminatedOn:null,resignationDate:null,lastWorkingDate:null,blacklistedAt:null}],
+ myTp3HistorySnapshot:async()=>({records:[{assessmentYear:2025}],drafts:[{assessmentYear:2026,submittedAt:null}]}),
 }));
 const row=(over:Record<string,unknown>)=>({attendanceId:'att',status:'present',context:null,checkInAt:'09:00:00',checkOutAt:'18:00:00',dayType:'workday',workedMinutes:480,scheduledMinutes:480,
  lateMinutes:0,earlyOutMinutes:0,shiftStart:'09:00:00',shiftEnd:'18:00:00',isRosterRest:false,otMinutes:150,...over});
@@ -79,7 +83,7 @@ vi.mock('../packs/claims/service',()=>({
   return [claim('cl-near','ct-travel','Travel','draft','2026-10-01'),claim('cl-receipt','ct-parking','Parking','draft','2026-11-08'),
    claim('cl-draft','ct-meal','Meal','draft','2026-11-09'),claim('cl-has','ct-parking','Parking','draft','2026-11-09',[{id:'f',fileName:'r.pdf',sizeBytes:10}]),
    claim('cl-pending','ct-meal','Meal','pending','2026-11-03'),claim('cl-old','ct-meal','Meal','draft','2026-09-01')];},
- getEmployeeClaimTypes:async()=>[{id:'ct-travel',requiresReceipt:false,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}},{id:'ct-parking',requiresReceipt:true,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}},
+ claimTypeReceiptRules:async()=>[{id:'ct-travel',requiresReceipt:false,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}},{id:'ct-parking',requiresReceipt:true,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}},
   {id:'ct-meal',requiresReceipt:false,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}}],
 }));
 vi.mock('../packs/leave/service',()=>({listReplacementLeaveRequests:async()=>[{id:'toil-1',unit:'day',totalDays:1,totalHours:8,status:'pending',submittedOn:'2026-11-02',decidedAt:null,reason:'Fictional reason',
@@ -165,7 +169,7 @@ describe('the person\'s own items, every kind',()=>{
    ['tp1_pending','waiting',null,C,'/me/tax-relief'],
   ]);
   // TP1 is read for this year only.
-  expect(fx.calls).toContainEqual(['listMyTp1Declarations',{assessmentYear:2026}]);
+  expect(fx.calls).toContainEqual(['listMyTp1DeclarationsSnapshot',{assessmentYear:2026}]);
   // The leave and claim type names are the person's own; leave keeps its last day.
   expect(result.items.find(row=>row.kind==='leave_pending')).toMatchObject({label:'Annual Leave',date:'2026-11-12',endDate:'2026-11-13'});
   expect(result.items.find(row=>row.kind==='claim_receipt_missing')).toMatchObject({label:'Parking'});

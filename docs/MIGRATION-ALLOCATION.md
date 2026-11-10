@@ -3156,3 +3156,12 @@ indexes and `when` values are unchanged; only their bytes, so their hashes:
   live at every prefix. `3500` re-asserts the same final bodies.
 - `4342` keeps `SELECT(reason)` on `attendance_clock_policy_revision` for the previous application version. **Follow-up
   required:** the first release after this one, once no old build can run, must revoke that column grant.
+
+## Home round trips — 10 November 2026 (unallocated draft)
+
+Branch `claude/home-round-trips-20261110` journals `9850_reward_access_observation_due` at idx 3743 and when
+1793330009850 as an UNALLOCATED DRAFT from the owner-provided 9850–9859 block, so the focused suite applies it. It adds
+one read-only STABLE SECURITY DEFINER probe, `app.reward_access_observation_due(uuid)`, with EXECUTE for `ai_hr_app`
+only; no table, index, grant on data or existing function changes. Final tag, idx and `when` must be assigned above the
+freshly verified ledger at integration, and the approved upgrade tail pins (`test/helpers/approved-upgrade.ts`) updated
+then. This entry carries no allocation or deployment authority.

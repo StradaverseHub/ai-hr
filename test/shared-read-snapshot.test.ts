@@ -7,9 +7,10 @@
  * repeated identical reads are answered from the first execution as independent copies, within one request only. */
 import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,describe,expect,it} from 'vitest';
-import {withIndependentTransactions,withSharedReadSnapshot,withTenant,type SessionContext,type Tx} from '../db/client';
-import {classifySharedStatement,type SharedReadStats} from '../db/shared-read';
+import {declareSharedReadWindow,requestScopedReadStats,withIndependentTransactions,withSharedReadSnapshot,withTenant,type SessionContext,type Tx} from '../db/client';
+import {classifySharedStatement,sharedReadWindow,sharedSnapshotValue,type SharedReadStats} from '../db/shared-read';
 import {withDatabaseReadDeadline} from '../db/workload';
+import {requestReadScope,withRequestReadScope} from '../lib/request-read-scope';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 let a:Base,b:Base,ctxA:SessionContext,ctxB:SessionContext;
@@ -167,6 +168,69 @@ describe('shared read snapshot',()=>{
   expect(sessions[0].failures['57014']).toBe(1);
   // The snapshot settled only after its carrier finished, so its connection is free for an ordinary read.
   expect((await probe(ctxA,'after')).companies).toEqual([a.companyId]);
+ });
+
+ it('one request scope shares one session per identity across its compositions, then commits when idle',async()=>{
+  const scope={};
+  const compose=(ctx:SessionContext,tag:string)=>withSharedReadSnapshot(ctx,()=>probe(ctx,tag),undefined,scope);
+  const [one,two,foreign]=await Promise.all([compose(ctxA,'one'),compose(ctxA,'two'),compose(ctxB,'foreign')]);
+  expect(one.iso).toBe('repeatable read');
+  expect([two.at,two.pid]).toEqual([one.at,one.pid]);
+  expect(foreign.iso).toBe('repeatable read');
+  expect(foreign.pid).not.toBe(one.pid);
+  expect(foreign.companies).toEqual([b.companyId]);
+  expect(one.companies).toEqual([a.companyId]);
+  const stats=await requestScopedReadStats(scope);
+  expect(stats.map(row=>[row.carriers,row.joins])).toEqual([[1,2],[1,1]]);
+  // The idle carrier committed: a later composition of the same request opens a fresh snapshot.
+  const later=await compose(ctxA,'later');
+  expect(later.at).not.toBe(one.at);
+  expect((await requestScopedReadStats(scope))[0].carriers).toBe(2);
+  // Without a scope (no request is rendering) every composition keeps its own snapshot, exactly as before.
+  expect(requestReadScope()).toBeUndefined();
+  const supplied={};
+  expect(await withRequestReadScope(supplied,async()=>requestReadScope())).toBe(supplied);
+ });
+
+ it('a request-scoped composition under another hard read deadline keeps a snapshot of its own',async()=>{
+  const scope={},cap=new AbortController();
+  const compose=(tag:string)=>withSharedReadSnapshot(ctxA,()=>probe(ctxA,tag),undefined,scope);
+  // The first composition creates the request's session without a deadline; a carrier cancels at exactly one.
+  const plain=await compose('plain');
+  const capped=await withDatabaseReadDeadline(cap.signal,()=>compose('capped'));
+  expect([plain.iso,capped.iso]).toEqual(['repeatable read','repeatable read']);
+  expect(capped.companies).toEqual(plain.companies);
+  // The request's session served only the first; the capped one ran in its own snapshot, closed when it settled.
+  expect((await requestScopedReadStats(scope)).map(row=>[row.carriers,row.joins])).toEqual([[1,1]]);
+  expect(sessions.map(row=>[row.carriers,row.joins])).toEqual([[1,1]]);
+ });
+
+ it('serves a declared window only inside the carrier, and computes a snapshot value once per carrier',async()=>{
+  let computed=0;
+  const value=(tx:Tx)=>sharedSnapshotValue(tx,'k',async()=>{computed++;return {n:computed};});
+  const inside=await withSharedReadSnapshot(ctxA,async()=>{
+   declareSharedReadWindow('e','2026-01-01','2026-01-31');
+   return withTenant(ctxA,async tx=>({covered:sharedReadWindow(tx,'e','2026-01-05','2026-01-09'),wider:sharedReadWindow(tx,'e','2025-12-31','2026-01-09'),
+    other:sharedReadWindow(tx,'f','2026-01-05','2026-01-09'),values:[await value(tx),await value(tx)]}));
+  });
+  expect(inside).toEqual({covered:{from:'2026-01-01',to:'2026-01-31'},wider:null,other:null,values:[{n:1},{n:1}]});
+  const own=await withTenant(ctxA,async tx=>({window:sharedReadWindow(tx,'e','2026-01-05','2026-01-09'),values:[await value(tx),await value(tx)]}));
+  expect(own).toEqual({window:null,values:[{n:2},{n:3}]});
+ });
+
+ it('answers a carrier setting it already holds without sending it again',async()=>{
+  const owner=()=>withTenant(ctxA,async tx=>{
+   await tx.execute(sql`set local jit=off`);await tx.execute(sql`set local jit=off`);await tx.execute(sql`SET TRANSACTION READ ONLY`);
+   const [row]=await tx.execute(sql`select current_setting('jit') as jit,current_setting('transaction_read_only') as ro`) as unknown as {jit:string;ro:string}[];
+   await tx.execute(sql`set local jit=on`);
+   const [after]=await tx.execute(sql`select current_setting('jit') as later`) as unknown as {later:string}[];
+   return {...row,later:after.later};
+  });
+  const shared=await withSharedReadSnapshot(ctxA,owner);
+  expect(shared).toEqual({jit:'off',ro:'on',later:'on'});
+  expect(sessions[0].fallbacks).toBe(0);
+  // Sent: one jit=off, the first read, jit=on and the second read. The repeated jit=off and READ ONLY are held.
+  expect(sessions[0].statements).toBe(4);
  });
 
  it('classifies statements conservatively',()=>{

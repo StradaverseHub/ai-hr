@@ -1,6 +1,7 @@
 import {assertWorkforcePersonTx} from './workforce-access';
 import {createHash} from 'node:crypto';
 import {isAdmin} from '../lib/authz-model';
+import {isPrincipalSnapshotCurrentTx} from './read-only-snapshot';
 import {freshProfileEditPolicyTx,freshProfilePresentationPolicyTx,readProfilePresentationSnapshotPolicyTx,lockProfileEditPolicyTx} from './profile-edit-policy';
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {getSetting} from './entitlements';
@@ -178,8 +179,7 @@ export async function removePersonPhoto(ctx: SessionContext, p: { personId: stri
 /** Shared avatars retain their independent directory/self visibility. The actual login proves
  * ownership; a caller-supplied Person or old role claim cannot choose a different read course. */
 async function photoReadPredicateTx(tx:Tx,ctx:SessionContext,options?:{presentationSnapshot:true}){
-  const [principal]=await tx.execute<{current:boolean}>(sql`select app.principal_snapshot_current() as current`);
-  if(principal?.current!==true)return sql`false`;
+  if(!await isPrincipalSnapshotCurrentTx(tx))return sql`false`;
   if(!isAdmin(ctx)){
     const policy=await (options?.presentationSnapshot?readProfilePresentationSnapshotPolicyTx:freshProfilePresentationPolicyTx)(tx,ctx);
     if(!policy.visible.has('profile.personal_details.photo'))return sql`NOT app.is_self_person(${personPhoto.personId})`;
@@ -222,6 +222,14 @@ export async function hasPersonPhotoTx(tx: Tx, ctx: SessionContext, personId: st
 export async function hasPersonPhotoSnapshotTx(tx:Tx,ctx:SessionContext,personId:string):Promise<boolean>{
   await assertAiPresentationPrincipalTx(tx,ctx);
   return photoExistsTx(tx,personId,await photoReadPredicateTx(tx,ctx,{presentationSnapshot:true}));
+}
+/** hasPersonPhotoSnapshotTx as one SQL boolean inside a bundled presentation statement (the Home greeting's own facts,
+ * docs/adr/2026-11-10-home-request-read-scope.md decision 13): the same admission proof and visibility policy, read first
+ * exactly as that owner reads them, then the same existence predicate as a value of the caller's statement. */
+export async function personPhotoSnapshotExistsSql(tx:Tx,ctx:SessionContext,personId:string):Promise<SQL>{
+  await assertAiPresentationPrincipalTx(tx,ctx);
+  const visible=await photoReadPredicateTx(tx,ctx,{presentationSnapshot:true});
+  return sql`exists(select 1 from ${personPhoto} where ${and(eq(personPhoto.personId,personId),visible)})`;
 }
 async function photoExistsTx(tx:Tx,personId:string,visible:SQL){
   const [row] = await tx

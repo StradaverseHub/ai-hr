@@ -126,7 +126,7 @@ describe('0e276da0 — the resolver and the s.60D skip are untouched (ADR-0086: 
     expect(begin).toBeGreaterThanOrEqual(0);expect(end-begin).toBeGreaterThan(100);
     const custom=src.slice(begin,end);expect(custom).toContain('return uniqueOriginalHolidays([...adHocRows, ...chainExtras]);');expect(custom).not.toContain('gazetteRows');
     const dates=src.indexOf('export async function originalHolidayDatesFor('),datesEnd=src.indexOf('/** Effective holiday set:',dates);
-    expect(dates).toBeGreaterThanOrEqual(0);expect(datesEnd-dates).toBeGreaterThan(100);expect(src.slice(dates,datesEnd)).toContain('return new Set((await originalHolidayCalendarFor(tx,p)).map(h=>h.date));');
+    expect(dates).toBeGreaterThanOrEqual(0);expect(datesEnd-dates).toBeGreaterThan(100);expect(src.slice(dates,datesEnd)).toContain('return new Set((await originalHolidayCalendarFor(tx,p,pre)).map(h=>h.date));');
   });
 
   it('the coverage read appends no domain event — it is a pure read', () => {

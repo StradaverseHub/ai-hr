@@ -1,5 +1,5 @@
 import {rosterUuidSet} from './roster-write-batches';
-import { liveArrangementsTx, pickArrangementOn } from './shift-arrangement-resolve';
+import { liveArrangementsTx, pickArrangementOn, type ArrangementPeriod } from './shift-arrangement-resolve';
 /** Canonical group controls. Exception revisions are immutable and forward dated. */
 import { and, asc, eq, gte, lte, inArray, sql } from 'drizzle-orm';
 import { withTenant, type Tx, type SessionContext } from '../db/client';
@@ -12,20 +12,41 @@ import { isAdmin } from '../lib/authz-model';
 import { lockPayrollForAttendanceChange, markPayrollForAttendanceChange } from '../packs/payroll/service';
 export function scheduleGroupDisplayName(group:{name:string;label?:string|null}):string { return group.label?.trim()&&group.label.trim()!==group.name?`${group.label.trim()} — ${group.name}`:group.name; }
 export async function exceptionLookupTx(tx:Tx) {
- const rows=await tx.select().from(attendanceExceptionRevision).orderBy(asc(attendanceExceptionRevision.ruleId),asc(attendanceExceptionRevision.effectiveFrom));
+ const rows=await tx.select().from(attendanceExceptionRevision).orderBy(...EXCEPTION_REVISION_ORDER);
+ return exceptionLookupFrom(rows);
+}
+/** exceptionLookupTx over its rows (every revision, by rule then effective date). */
+export function exceptionLookupFrom(rows:readonly (typeof attendanceExceptionRevision.$inferSelect)[]){
  return (ruleId:string|null|undefined,date:string)=>{
   const applicable=rows.filter(r=>r.ruleId===ruleId && r.effectiveFrom<=date).reduce<typeof rows[number]|null>((a,b)=>!a||b.effectiveFrom>a.effectiveFrom?b:a,null);
   return {enabled:applicable?.enabled??false,revisionId:applicable?.id??null,effectiveFrom:applicable?.effectiveFrom??null};
  };
 }
+export const EXCEPTION_REVISION_ORDER=[asc(attendanceExceptionRevision.ruleId),asc(attendanceExceptionRevision.effectiveFrom)];
+/** scheduleGroupLookupTx's selects, shared with the Before payroll statement (core/attendance.ts
+ * attendanceRangeChecklistBundleSql), which reads the same rows as JSON sections. */
+export const SCHEDULE_GROUP_EMPLOYEE_FIELDS={id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId};
+export const SCHEDULE_GROUP_ROSTER_FIELDS={employmentId:rosterAssignment.employmentId,date:rosterAssignment.shiftDate,shiftId:rosterAssignment.shiftId,isRestDay:rosterAssignment.isRestDay};
+export const SCHEDULE_GROUP_SHIFT_FIELDS={id:shift.id,ruleId:shift.ruleId};
+export const scheduleGroupEmployeeWhere=(ids:readonly string[])=>rosterUuidSet(employment.id,ids);
+export const scheduleGroupRosterWhere=(ids:readonly string[],from:string,to:string)=>and(rosterUuidSet(rosterAssignment.employmentId,ids),gte(rosterAssignment.shiftDate,from),lte(rosterAssignment.shiftDate,to));
+type ScheduleGroupInputs={employees:readonly {id:string;groupId:string|null;defaultShiftId:string|null}[];
+ roster:readonly {employmentId:string;date:string;shiftId:string|null;isRestDay:boolean}[];arrangements:ReadonlyMap<string,ArrangementPeriod[]>};
+/** The shift ids scheduleGroupLookupTx reads the rule of: every default, rostered and arranged shift. */
+export const scheduleGroupShiftIds=({employees,roster,arrangements}:ScheduleGroupInputs)=>
+ [...new Set([...employees.flatMap(e=>e.defaultShiftId?[e.defaultShiftId]:[]),...roster.flatMap(r=>r.shiftId?[r.shiftId]:[]),...[...arrangements.values()].flatMap(rows=>rows.map(r=>r.shiftId))])];
 /** Same calculation precedence as scheduleFor: explicit employment group, dated shift default, Standard. */
 export async function scheduleGroupLookupTx(tx:Tx,ids:readonly string[],from:string,to:string){
- const employees=ids.length?await tx.select({id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId}).from(employment).where(rosterUuidSet(employment.id,ids)):[];
- const roster=ids.length?await tx.select({employmentId:rosterAssignment.employmentId,date:rosterAssignment.shiftDate,shiftId:rosterAssignment.shiftId,isRestDay:rosterAssignment.isRestDay}).from(rosterAssignment).where(and(rosterUuidSet(rosterAssignment.employmentId,ids),gte(rosterAssignment.shiftDate,from),lte(rosterAssignment.shiftDate,to))):[];
+ const employees=ids.length?await tx.select(SCHEDULE_GROUP_EMPLOYEE_FIELDS).from(employment).where(scheduleGroupEmployeeWhere(ids)):[];
+ const roster=ids.length?await tx.select(SCHEDULE_GROUP_ROSTER_FIELDS).from(rosterAssignment).where(scheduleGroupRosterWhere(ids,from,to)):[];
  const arrangements=await liveArrangementsTx(tx,[...ids]);
- const shiftIds=[...new Set([...employees.flatMap(e=>e.defaultShiftId?[e.defaultShiftId]:[]),...roster.flatMap(r=>r.shiftId?[r.shiftId]:[]),...[...arrangements.values()].flatMap(rows=>rows.map(r=>r.shiftId))])];
- const shifts=shiftIds.length?await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(rosterUuidSet(shift.id,shiftIds)):[];
+ const shiftIds=scheduleGroupShiftIds({employees,roster,arrangements});
+ const shifts=shiftIds.length?await tx.select(SCHEDULE_GROUP_SHIFT_FIELDS).from(shift).where(rosterUuidSet(shift.id,shiftIds)):[];
  const [standard]=await tx.select({id:attendanceRule.id}).from(attendanceRule).where(eq(attendanceRule.isDefault,true)).limit(1);
+ return scheduleGroupLookupFrom({employees,roster,arrangements},shifts,standard);
+}
+/** scheduleGroupLookupTx over its rows. `shifts` may hold any superset of the shifts it names (each is found by id). */
+export function scheduleGroupLookupFrom({employees,roster,arrangements}:ScheduleGroupInputs,shifts:readonly {id:string;ruleId:string|null}[],standard:{id:string}|undefined){
  return (employmentId:string,date:string)=>{
   const e=employees.find(e=>e.id===employmentId);if(!e)return null;
   if(e.groupId)return e.groupId;
@@ -39,6 +60,9 @@ export async function scheduleGroupLookupTx(tx:Tx,ids:readonly string[],from:str
 }
 export async function exceptionDecisionsTx(tx:Tx,ids:readonly string[],from:string,to:string){
  const groupOn=await scheduleGroupLookupTx(tx,ids,from,to),exceptionOn=await exceptionLookupTx(tx);
+ return exceptionDecisionsFrom(groupOn,exceptionOn);
+}
+export function exceptionDecisionsFrom(groupOn:ReturnType<typeof scheduleGroupLookupFrom>,exceptionOn:ReturnType<typeof exceptionLookupFrom>){
  return (employmentId:string,date:string)=>exceptionOn(groupOn(employmentId,date),date);
 }
 

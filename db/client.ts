@@ -7,7 +7,7 @@
  * isolation and ABAC are enforced by the database, not by app code.
  */
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import postgres from 'postgres';
 import {createDatabaseAdmission} from './admission';
 import {createBackgroundReadAdmission} from './background-read-admission';
@@ -17,7 +17,8 @@ import {cancelStatementsAtDeadline,currentDatabaseReadDeadline,currentDatabaseWo
 import {applicationDatabaseBudget,databaseAdmissionShares} from './capacity';
 import {applicationDatabaseUrl} from './pooling';
 import {markDatabaseCapacityFailure,retryIdempotentRead} from './read-retry';
-import {SharedReadSession,currentSharedRead,independentTransactionsRequired,runInSharedRead,sharedReadDriver,type SharedReadStats} from './shared-read';
+import {SharedReadSession,currentSharedRead,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
+export {declareSharedReadWindow,declareSharedReadPreamble,withOwnerPreambleReads} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
 const applicationBudget = applicationDatabaseBudget(process.env);
 /** The tenant whose transaction this code runs inside; a nested acquire must not wait on that tenant's own share. */
@@ -246,6 +247,11 @@ export function createDb(connectionString: string, options?: { max?: number; adm
   }
   const withTenantWriteWork=tenantWrites.run;
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+  /** Request-scoped shared read sessions of this client, keyed by the request's scope object and then by identity. A
+   * scope object lives only as long as its request (React `cache` per server render), so nothing outlives a request. */
+  const requestScopedSessions = new WeakMap<object, Map<string, SharedReadSession<Tx>>>();
+  /** How many carriers of each shared read session hold an admission permit now (fair admission, db/admission.ts). */
+  const carrierPermits = new WeakMap<SharedReadSession<Tx>, { held: number }>();
 
   /** For existing raw SQL owners only. This adds no transaction, GUC or authority.
    * The `authentication` pseudo-tenant runs in the authentication lane whatever the caller's workload.
@@ -332,7 +338,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
 
   /** The identity bootstrap every tenant transaction runs before its first read (r394: one statement), shared by
    * withTenant and the shared read snapshot so both establish exactly the same transaction-local identity. */
-  async function bootstrapTenantTx(tx: Tx, ctx: SessionContext, grants: Grant[], roleNames: string[]) {
+  async function bootstrapTenantTx(tx: Tx, ctx: SessionContext, grants: Grant[], roleNames: string[], extra?: SQL): Promise<Record<string, unknown> | undefined> {
       // The existing sticky fact only moves from unknown to on. An already known chain can
       // share the identity bootstrap statement; first activation still decides after this await.
       const auditAlreadyArmed = tenantHasChainedHistory(ctx.tenantId);
@@ -342,9 +348,12 @@ export function createDb(connectionString: string, options?: { max?: number; adm
       // before its first real query (measured: 145 of 366 statements on one employee navigation to
       // My Leave). The four are independent and all evaluated in this one row, so the outcome is the
       // same; test/r394-with-tenant-one-round-trip.test.ts pins both the values and the single statement.
-      await tx.execute(
-        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true), set_config('app.payroll_tax_basis_reader', '1', true)${auditBootstrap}`,
-      );
+      // `extra` (a shared carrier's request preamble only, decision 12) adds columns after every setting; the
+      // statement is otherwise unchanged.
+      const columns = extra ?? sql``;
+      const [identityRow] = (await tx.execute(
+        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true), set_config('app.payroll_tax_basis_reader', '1', true)${auditBootstrap}${columns}`,
+      )) as unknown as Record<string, unknown>[];
       // ADR-0030 Layer 2 gate: the domain_event hash-chain trigger only fires when this GUC is 'on'.
       // Off by default → chain columns stay NULL → byte-identical behaviour (deployment flag).
       //
@@ -409,23 +418,74 @@ export function createDb(connectionString: string, options?: { max?: number; adm
         // are SELECTs, which do not close the window for SET TRANSACTION.
         await tx.execute(sql`SET TRANSACTION READ ONLY`);
       }
+      return identityRow;
+  }
+
+  /** A carrier's request preamble as columns of its identity statement (db/shared-read.ts, decision 12). The
+   * preamble's owner statements are evaluated only inside a sub-select whose one-time filter requires every identity
+   * setting this statement sets to hold already: if PostgreSQL ever evaluated it before the settings, the column is
+   * null and every owner reads as before. JIT, when every joining owner may plan without it, is set in the same row. */
+  function preambleColumns(preamble: SharedReadPreambleRead, ctx: SessionContext, grants: Grant[], roleNames: string[]) {
+    const identityHolds = sql`current_setting('app.tenant_id', true) = ${ctx.tenantId} and current_setting('app.user_id', true) = ${ctx.userId ?? ''}
+      and current_setting('app.roles', true) = ${roleNames.join(',')} and current_setting('app.grants', true) = ${JSON.stringify(grants)}
+      and current_setting('app.agent_principal_id', true) = ${ctx.agent?.principalId ?? ''} and current_setting('app.payroll_tax_basis_reader', true) = '1'`;
+    return sql`${preamble.jitOff ? sql`, set_config('jit', 'off', true)` : sql``}, (select (${preamble.sql}) where ${identityHolds}) as request_preamble`;
   }
 
   /** One request's reads as ONE read-only snapshot (db/shared-read.ts). `work` is every read owner of that
    * request; each joins while the identity matches. BEGIN carries the isolation and access mode, so the whole
    * request pays BEGIN, one identity statement and COMMIT, instead of those per owner. Nothing outlives `work`. */
-  async function withSharedReadSnapshot<T>(ctx: SessionContext, work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  async function withSharedReadSnapshot<T>(ctx: SessionContext, work: () => Promise<T>, signal?: AbortSignal, scope?: object): Promise<T> {
     if (!ctx?.tenantId || !ctx.userId || ctx.agent || independentTransactionsRequired()) return work();
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
+    const identity = sharedReadIdentity(ctx, grants, roleNames);
     // The hard read deadline (Home cards, db/workload.ts) in force where the snapshot is installed bounds its carrier.
     const readDeadline = currentDatabaseReadDeadline();
     // A read already inside this identity's snapshot stays in it rather than opening a second one.
-    if (currentSharedRead()?.admits(client!, sharedReadIdentity(ctx, grants, roleNames), readDeadline)) return work();
-    // The carrier itself is this tenant's ordinary capped work unless the request was already inside a transaction.
-    const carrierNested = nestedInTenant(ctx.tenantId);
-    let carriersHeld = 0;
-    const session: SharedReadSession<Tx> = new SharedReadSession<Tx>(client!, sharedReadIdentity(ctx, grants, roleNames), () => {
+    if (currentSharedRead()?.admits(client!, identity, readDeadline)) return work();
+    // A request that is already inside this tenant's transaction or carrier holds the tenant's permit: neither this
+    // snapshot's carriers nor an owner that keeps its own transaction inside it may wait on the tenant's own share.
+    const nested = nestedInTenant(ctx.tenantId) !== undefined;
+    const inTenant = <R>(session: SharedReadSession<Tx>, run: () => Promise<R>): Promise<R> => {
+      const permits = carrierPermits.get(session)!;
+      return sharedReadTenant.run({ tenantId: ctx.tenantId, carrierHeld: () => nested || permits.held > 0 }, run);
+    };
+    // One request's independent read compositions (the Today sections and the shell's approvals of one page render)
+    // share one session per identity: overhead and identical statements are paid once while they overlap. A
+    // composition under another hard read deadline than that session's keeps a snapshot of its own below, because
+    // a carrier cancels its statements at exactly one deadline.
+    if (scope) {
+      let byIdentity = requestScopedSessions.get(scope);
+      if (!byIdentity) requestScopedSessions.set(scope, byIdentity = new Map());
+      let shared = byIdentity.get(identity);
+      if (!shared) {
+        byIdentity.set(identity, shared = newSession(ctx, grants, roleNames, identity, signal, readDeadline, true));
+        // The render's own request preamble (lib/request-read-scope.ts), read by each carrier of this session.
+        shared.preamble = scopePreamble();
+      }
+      if (shared.deadline === readDeadline) { const session = shared; return inTenant(session, () => session.track(work)); }
+    }
+    const session = newSession(ctx, grants, roleNames, identity, signal, readDeadline, false);
+    try {
+      return await inTenant(session, () => runInSharedRead(session as SharedReadSession<unknown>, work));
+    } finally {
+      await session.close();
+      globalForPg.__aihrPerfSharedRead?.(session.stats);
+    }
+  }
+
+  /** Diagnostics only: the request-scoped sessions of `scope` (their statistics), after their carriers settle. */
+  async function requestScopedReadStats(scope: object): Promise<SharedReadStats[]> {
+    const sessions = [...(requestScopedSessions.get(scope)?.values() ?? [])];
+    await Promise.all(sessions.map((session) => session.settled()));
+    return sessions.map((session) => session.stats);
+  }
+
+  function newSession(ctx: SessionContext, grants: Grant[], roleNames: string[], identity: string, signal: AbortSignal | undefined, readDeadline: AbortSignal | undefined, idleRelease: boolean): SharedReadSession<Tx> {
+    const permits = { held: 0 };
+    // The carrier factory runs only when the first owner joins, after `session` is assigned.
+    const session: SharedReadSession<Tx> = new SharedReadSession<Tx>(client!, identity, () => {
       let finish: () => void = () => {};
       const finished = new Promise<void>((resolve) => { finish = resolve; });
       let resolveTx: (tx: Tx) => void = () => {};
@@ -440,8 +500,12 @@ export function createDb(connectionString: string, options?: { max?: number; adm
         let stopDeadline: (() => void) | undefined;
         let held = false;
         try {
-          release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal, carrierNested);
-          held = true; carriersHeld++;
+          // The carrier is this tenant's ordinary capped work unless the request already holds the tenant's permit:
+          // it was inside a transaction or carrier when the snapshot was installed, or a carrier of this session
+          // holds one now (withSharedReadSnapshot installs that fact around every composition).
+          release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal, nestedInTenant(ctx.tenantId));
+          held = true; permits.held++;
+          const control: { current?: SharedReadCarrierControl } = {};
           const carrierClient = new Proxy(client!, { get(target, property, receiver) {
             if (property !== 'begin') return Reflect.get(target, property, receiver);
             return (fn: (sqlTx: postgres.TransactionSql) => Promise<unknown>) =>
@@ -449,14 +513,28 @@ export function createDb(connectionString: string, options?: { max?: number; adm
                 // As in withTenant's own transaction, the deadline cancels the carrier's running statement and
                 // refuses later ones. It is armed on the driver's own client, beneath the shared statement guard.
                 if (readDeadline) stopDeadline = cancelStatementsAtDeadline({ client: sqlTx } as unknown as Parameters<typeof cancelStatementsAtDeadline>[0], readDeadline);
-                return fn(sharedReadDriver(sqlTx, session as SharedReadSession<unknown>));
+                return fn(sharedReadDriver(sqlTx, session as SharedReadSession<unknown>, control));
               });
           } });
           await drizzle(carrierClient).transaction(async (carrierTx) => {
             timing?.acquired();
             readSignal?.throwIfAborted();
-            await bootstrapTenantTx(carrierTx, ctx, grants, roleNames);
+            // Decision 12: the request preamble rides this carrier's identity statement and answers its owner statements
+            // ahead, before any owner can join. Without one (or switched off) the statement is the plain bootstrap.
+            const preamble = session.openPreamble(ctx, carrierTx);
+            const identityRow = await bootstrapTenantTx(carrierTx, ctx, grants, roleNames, preamble ? preambleColumns(preamble, ctx, grants, roleNames) : undefined);
             session.bootstrapping = false;
+            if (preamble) {
+              if (preamble.jitOff) control.current?.hold('jit', 'off');
+              const value = identityRow?.request_preamble;
+              if (value !== null && value !== undefined) {
+                // A value of an unexpected shape answers nothing: every owner then reads its own statement.
+                let seeds: ReturnType<SharedReadPreambleRead['decode']> = [];
+                try { seeds = preamble.decode(value); } catch { seeds = []; }
+                if (control.current?.seed(seeds)) session.stats.preambles++;
+              }
+            }
+            markSharedCarrierTransaction(carrierTx);
             resolveTx(carrierTx);
             await finished;
           });
@@ -464,23 +542,18 @@ export function createDb(connectionString: string, options?: { max?: number; adm
           throw markDatabaseCapacityFailure(error);
         } finally {
           stopDeadline?.();
-          if (held) carriersHeld--;
+          if (held) permits.held--;
           release?.();
           timing?.finished();
         }
       })().catch((error) => { session.poison(); rejectTx(error); });
       return { tx, finish, done };
-    }, readDeadline);
-    try {
-      return await sharedReadTenant.run({ tenantId: ctx.tenantId, carrierHeld: () => carriersHeld > 0 },
-        () => runInSharedRead(session as SharedReadSession<unknown>, work));
-    } finally {
-      await session.close();
-      globalForPg.__aihrPerfSharedRead?.(session.stats);
-    }
+    }, readDeadline, idleRelease);
+    carrierPermits.set(session, permits);
+    return session;
   }
 
-  return { db, client, withTenant, withSharedReadSnapshot, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork };
+  return { db, client, withTenant, withSharedReadSnapshot, requestScopedReadStats, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork };
 }
 
 export type Db = ReturnType<typeof createDb>['db'];
@@ -491,4 +564,4 @@ if (!url) throw new Error('DATABASE_URL is not set');
 
 // App singleton (non-privileged role). Keep the default for deployments that do
 // not explicitly divide a connection budget among application workers.
-export const { db, client, withTenant, withSharedReadSnapshot, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork } = createDb(applicationDatabaseUrl(process.env).url, {max: applicationBudget.poolMax});
+export const { db, client, withTenant, withSharedReadSnapshot, requestScopedReadStats, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork } = createDb(applicationDatabaseUrl(process.env).url, {max: applicationBudget.poolMax});
