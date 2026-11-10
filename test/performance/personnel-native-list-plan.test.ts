@@ -10,7 +10,7 @@ import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../../lib/employee-se
 import {pgSqlState} from '../../lib/db-error';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {withPersonnelRead} from '../../core/personnel-read-bounds';
-import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx,lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
 import {withTenant} from '../../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner} from '../harness';
 import {personnelNativeAggregatePrototype} from './personnel-native-aggregate-prototype';
@@ -169,7 +169,7 @@ it('profiles initial/search/deep Personnel pages with fifty thousand native reta
   const pickerMeasurements:{mode:string;originalElapsedMs:number;elapsedMs:number;rows:number;targetMet:boolean}[]=[];
   // Frozen original query is an independent oracle. Only native purpose APIs are read under ai_hr_app.
   const originalSearch=(query:string)=>withTenant(ctx,async tx=>{
-   await lockAccessConfigurationTx(tx,ctx.tenantId);
+   await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
    const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query);
    const rank=sql`case
     when ${folded}<>'' and search_compact<>'' and search_compact=${folded} then 0
@@ -195,7 +195,7 @@ it('profiles initial/search/deep Personnel pages with fifty thousand native reta
   }
   const selectedIds=[...expectedFirst,expectedFirst[0],foreignEmployment,randomUUID()];
   const beforePoint=performance.now(),referencePoint=await withTenant(ctx,async tx=>{
-   await lockAccessConfigurationTx(tx,ctx.tenantId);
+   await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
    return tx.execute(sql`select (value->>'employmentId')::uuid as "employmentId",value->>'name'as name,value->>'employeeCode'as "employeeCode",
     (value->>'companyId')::uuid as "companyId",value->>'company'as company,value->>'department'as department,value->>'terminatedOn'as "terminatedOn"
     from app.access_workforce_list_rows()r(value)where (value->>'employmentId')::uuid=any(array[${sql.join(selectedIds.map(id=>sql`${id}::uuid`),sql`, `)}])order by (value->>'employmentId')::uuid`);

@@ -10,7 +10,7 @@ import { SETTING_CATALOG } from '../packs/catalog';
 import { readAiConfigPresentationTx } from './ai-config';
 import { readAiProviderPresentationTx } from './ai-provider-snapshot';
 import { grantAssistant, revokeAssistant } from './assistant-grant';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { setTenantSetting } from './tenant-settings';
 import { assertAiPresentationPrincipalTx, assertAiPrincipalTx } from './ai-principal';
 import { isZeroCapped } from './ai-zero-cap';
@@ -389,7 +389,7 @@ export async function applyBulkAssistantAccess(ctx: SessionContext, scopeValue: 
   if (typeof enabled !== 'boolean' || !Number.isSafeInteger(confirmedChanging) || confirmedChanging < 0) throw new AiControlError('Review the change again.');
   const scope = bulkScope(scopeValue);
   return withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await assertAiPrincipalTx(tx, ctx);
     const [group] = await tx.execute<{ allowed: boolean }>(sql`select app.is_group_admin() as allowed`);
     if (group?.allowed !== true) throw new AiControlError('Only a group administrator may change shared AI permissions.');

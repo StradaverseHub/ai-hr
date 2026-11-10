@@ -5,7 +5,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import {company,appUser,roleEnum,letterCapabilityGrant,letterAutomationRuleVersion,letterAsset,letterPolicyVersion,letterMergeFieldVersion,letterTemplate,letterTemplateVersion,letterTemplateField,employment,person,assignment,position,department,compensation,letterGenerationBatch,letterRecord,letterRevision,letterCounter,letterJob,letterApprovalDecision,letterArtifact,letterRecipientEvent,letterAccessToken} from '../db/schema';
 import {assertModuleGate} from './module-gate';
-import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
 import {isAiPresentationPrincipalCurrentTx} from './ai-principal';
 import {isModuleEnabled} from './entitlements';
@@ -35,7 +35,7 @@ async function contextTx(ctx:SessionContext,tx:Tx,mode:boolean|'shared-access-re
  if(!ctx.userId)throw new LetterWorkflowError('permission');
  await lockPayrollHistoryReadTx(tx,ctx.tenantId);
  if(mode==='shared-access-read')await lockAccessConfigurationReadTx(tx,ctx.tenantId);
- else await lockAccessConfigurationTx(tx,ctx.tenantId);
+ else await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  const [principal]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() as ok`);if(!principal?.ok)throw new LetterWorkflowError('permission');
  if(mode===true)await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
 }
@@ -337,7 +337,7 @@ async function newLetterRevision(tx:Tx,ctx:SessionContext,record:typeof letterRe
  * reuses the manual snapshot/reference/revision owners and never adopts a human session. */
 export async function createAutomaticLetterDraftTx(tx:Tx,ctx:SessionContext,jobId:string){
  if(ctx.userId)throw new LetterWorkflowError('permission');uuid(jobId);await assertLetterNotificationConnection(tx);
- await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
+ await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
  const [locked]=await tx.select().from(letterJob).where(and(eq(letterJob.id,jobId),eq(letterJob.tenantId,ctx.tenantId),eq(letterJob.kind,'eventDraft'))).for('update');if(!locked)throw new LetterWorkflowError('permission');
  const registered=await readRegisteredLetterAutomationSourceTx(tx,ctx,jobId);if(!registered)throw new LetterWorkflowError('permission');const {job,rule,intent}=registered;
  const [existing]=await tx.select({id:letterGenerationBatch.id}).from(letterGenerationBatch).where(and(eq(letterGenerationBatch.tenantId,ctx.tenantId),eq(letterGenerationBatch.operationKey,jobId),eq(letterGenerationBatch.createdBy,rule.createdBy)));if(existing){if(existing.id!==intent.batchId)throw new LetterWorkflowError('conflict','operationKey');return {batchId:existing.id,alreadyCreated:true,cancelled:false};}

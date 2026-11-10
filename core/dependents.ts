@@ -1,6 +1,6 @@
 import {dependentFieldApplies} from '../lib/dependent-vocabulary';
 import {familyGridComplete} from '../lib/family-child-relief-rule';
-import {lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockProfileSubjectTx,lockProfileValueSharedTx} from './access-configuration-lock';
 import {assertWorkforcePersonTx} from './workforce-access';
 import { dependentNaturalKey } from '../lib/dependent-identity';
 export { dependentNaturalKey } from '../lib/dependent-identity';
@@ -685,7 +685,8 @@ export async function addDependentTx(
   personId: string,
   p: DependentInput,
 ): Promise<{ id: string }> {
-  await lockProfileValueWritesTx(tx,ctx.tenantId);
+  await lockProfileValueSharedTx(tx,ctx.tenantId);
+  await lockProfileSubjectTx(tx,ctx.tenantId,personId);
   const normalized=await normaliseDependentPatchTx(tx,p);
   const [row] = await tx
     .insert(employeeDependent)
@@ -809,7 +810,8 @@ export async function materialiseDependents(
 ): Promise<{ created: string[]; skipped: number; childReliefSync: ChildReliefSyncResult }> {
   if (p.members.length === 0) return { created: [], skipped: 0, childReliefSync: NO_SYNC('unchanged') };
   const run=async(tx:Tx)=>{
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    await lockProfileSubjectTx(tx,ctx.tenantId,p.personId);
     const existing = await tx
       .select({
         fullName: employeeDependent.fullName,
@@ -963,7 +965,9 @@ export async function updateDependent(
   outerTx?:Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
   const run=async(tx:Tx)=>{
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    const nominated = await loadDependent(tx, p.id);
+    if (nominated) await lockProfileSubjectTx(tx,ctx.tenantId,nominated.personId);
     const existing = await loadDependent(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new DependentValidationError('Dependent record not found.');
@@ -1002,7 +1006,9 @@ export async function archiveDependent(
   outerTx?: Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
   const run = async (tx: Tx) => {
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    const nominated = await loadDependent(tx, p.id);
+    if (nominated) await lockProfileSubjectTx(tx,ctx.tenantId,nominated.personId);
     const existing = await loadDependent(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new DependentValidationError('Dependent record not found.');

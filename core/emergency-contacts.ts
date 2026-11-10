@@ -1,4 +1,4 @@
-import {lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockProfileSubjectTx,lockProfileValueSharedTx} from './access-configuration-lock';
 /**
  * Personnel — Emergency contacts (feedback 23ad620e). A per-PERSON register of who to call in an emergency:
  * name, relationship, mobile phone, home phone, address, remark and a priority. Replaces the five flat
@@ -228,7 +228,8 @@ export async function addEmergencyContact(
   outerTx?:Tx,
 ): Promise<{ id: string }> {
   const run=async(tx:Tx)=>{
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    await lockProfileSubjectTx(tx,ctx.tenantId,p.personId);
     const validated=await validateEmergencyContactInputTx(tx,p.personId,p);
     const fullName=validated.fullName!;
     const priority=validated.priority as EmergencyContactPriority;
@@ -289,7 +290,9 @@ export async function updateEmergencyContact(
   outerTx?:Tx,
 ): Promise<{ id: string }> {
   const run=async(tx:Tx)=>{
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    const nominated = await loadContact(tx, p.id);
+    if (nominated) await lockProfileSubjectTx(tx,ctx.tenantId,nominated.personId);
     const existing = await loadContact(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new EmergencyContactValidationError('Emergency contact not found.');
@@ -339,7 +342,9 @@ export async function archiveEmergencyContact(
   outerTx?: Tx,
 ): Promise<{ id: string }> {
   const run = async (tx: Tx) => {
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    const nominated = await loadContact(tx, p.id);
+    if (nominated) await lockProfileSubjectTx(tx,ctx.tenantId,nominated.personId);
     const existing = await loadContact(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new EmergencyContactValidationError('Emergency contact not found.');
@@ -377,7 +382,8 @@ export async function writeSingleEmergencyContactInTx(
   personId: string,
   p: Partial<PrimaryEmergencyContact>,
 ): Promise<{ id: string; created: boolean } | null> {
-  await lockProfileValueWritesTx(tx,ctx.tenantId);
+  await lockProfileValueSharedTx(tx,ctx.tenantId);
+  await lockProfileSubjectTx(tx,ctx.tenantId,personId);
   const touched = (Object.keys(p) as (keyof PrimaryEmergencyContact)[]).filter((k) => p[k] !== undefined);
   if (touched.length === 0) return null;
 

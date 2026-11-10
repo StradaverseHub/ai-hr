@@ -38,7 +38,7 @@
  * day, plus one `attendance-recompute.run` event carrying the whole per-day before/after array. That run
  * event is what lets the screen re-open a past run, and it is why the history needs no table of its own.
  */
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
@@ -228,7 +228,7 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
   const narrowed = p.employmentIds && p.employmentIds.length > 0 ? p.employmentIds : null;
 
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
     // The employment set, through the SAME current-assignment join attendanceForDate uses for its
     // department filter, so the two screens cannot disagree about who is in a department. RLS fences the

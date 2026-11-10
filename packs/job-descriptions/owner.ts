@@ -2,7 +2,7 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '@/db/client';
 import { actorOf, appendEvent } from '@/db/events';
 import { organisationChoiceLabel as label, organisationChoiceLabels } from '@/lib/organisation-choice-label';
-import { lockAccessConfigurationTx } from '@/core/access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from '@/core/access-configuration-lock';
 import { isAiPresentationPrincipalCurrentTx } from '@/core/ai-principal';
 import { businessUnit, company, department, jobGrade, location, position, profileOption } from '@/db/schema';
 import { labelCompanyIdsSql, labelUsableByCompany, lockLabelCriteriaTx, visibleLabelIdsCondition } from '@/core/system-labels';
@@ -94,7 +94,7 @@ function actor(ctx: SessionContext) { if (!ctx.userId || !UUID.test(ctx.userId) 
     throw new JobDocumentError('Job documentation requires an authorized HR user'); return ctx.userId; }
 /** Access decisions are read under the same configuration lock used by revocation writers. */
 async function jobTenant<T>(ctx:SessionContext, fn:(tx:Tx)=>Promise<T>):Promise<T>{
- return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return fn(tx);});
+ return withTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,ctx.tenantId);return fn(tx);});
 }
 /** Display roots own one native read-only snapshot. Login proof grants no document authority;
  * scope(), actor labels and the unchanged RLS policies still authorize every disclosed row.

@@ -1,7 +1,7 @@
 /** Dated calendar assignment owns its history; calendar, Attendance and Payroll retain their calculations. */
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx } from '../packs/leave/service';
 import { actorOf, appendEvent } from '../db/events';
 import { attendance, employment, employmentHolidayCalendar, holidayGroup, replacementHoliday, toilAccrual } from '../db/schema';
@@ -50,7 +50,7 @@ export async function saveEmploymentHolidayCalendarAssignment(ctx:SessionContext
   const validTo=p.endDate?add(p.endDate,1):null;
   if(!p.selection||!['none','state','group'].includes(p.selection.kind))fail('calendar');
   return withTenant(ctx,async tx=>{
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     const [access]=await tx.execute(sql`select app.can_admin_employment(${p.employmentId}::uuid) as allowed`) as unknown as {allowed:boolean}[];
     if(!access?.allowed)fail('scope');
     await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);

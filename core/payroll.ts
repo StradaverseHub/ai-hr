@@ -16,7 +16,7 @@ import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDo
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
 import {visibleLabelIdsCondition} from './system-labels';
 import {isDeepStrictEqual} from 'node:util';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {
@@ -2223,7 +2223,7 @@ export async function createAdditionalRunTx(tx:Tx,supplied:SessionContext,input:
 export async function withReviewedAdditionalRunIntervalTx<T>(tx:Tx,supplied:SessionContext,selection:{companyId:string;payPeriod:string;payrollCycleId:string},run:(ctx:SessionContext,source:{companyId:string;payPeriod:string;payrollCycleId:string})=>Promise<T>):Promise<T>{
  const p=structuredClone(selection),ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};assertModuleGate(ctx,'payroll');
  if(!isModuleEnabled(ctx,'multi_cycle_payroll'))throw new ModuleNotEnabledError('multi_cycle_payroll','Multiple payroll runs per month are not enabled.');
- await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  const [owned]=await lockPayrollPeriodsTx(tx,ctx,[{companyId:p.companyId,payPeriod:p.payPeriod}],true);
  // Reuse the actual canonical filing reader's company/Admin authority; filed=true is deliberately
  // not refused here. Only NEW pending creation calls refuseIfPeriodFiled below.
@@ -9126,7 +9126,7 @@ async function reviewedPayrollCloseAuthorityTx(tx:Tx,ctx:SessionContext,batchId:
  * authority before names. Unknown company budget refuses rather than implying extra permitted runs. */
 export async function reviewedPayrollCloseChoiceMetadataTx(tx:Tx,supplied:SessionContext){
  const ctx=capturePayrollCloseContext(supplied),grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null})),roles=ctx.roles??[...new Set(grants.map(g=>g.role))];
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  const [carrier]=await tx.execute<{allowed:boolean}>(sql`select app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id()=${ctx.userId??null}::uuid and app.principal_snapshot_current() and current_setting('transaction_isolation')='read committed' and current_setting('app.roles',true)=${roles.join(',')} and current_setting('app.grants',true)::jsonb=${JSON.stringify(grants)}::jsonb as allowed`);if(carrier?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.close');
  const nominees=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),sql`app.can_admin_payroll_for(${company.id})`)).orderBy(company.id).limit(129);if(nominees.length>128)throw new Error('Payroll close choices unavailable');
  const permitted:string[]=[];for(const row of nominees)if(await resolvePayrollPermission(tx,ctx,'payroll.close',row.id))permitted.push(row.id);
@@ -12803,7 +12803,7 @@ export async function readReviewedPayrollReopenReferenceTx(tx:Tx,ctx:SessionCont
  return {batchId:receipt.batchId,payPeriodId:receipt.payPeriodId,statusHistoryId:receipt.statusHistoryId,unlockedEventId:receipt.unlockedEventId,periodReopenedEventId:receipt.periodReopenedEventId,parentWasReopened:receipt.parentWasReopened,currentStatus:receipt.currentStatus,currentPeriodStatus:receipt.currentPeriodStatus};
 }
 export async function reviewedPayrollReopenChoiceMetadataTx(tx:Tx,ctx:SessionContext){
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  if(!ctx.userId||!settingEnabled(ctx,'payroll.unlock_enabled'))return [];
  const rows=await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(eq(payrollBatch.tenantId,ctx.tenantId),eq(payrollBatch.status,'closed'),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`)).orderBy(desc(payrollBatch.payPeriod),payrollBatch.id).limit(26);
  if(rows.length>25)throw new Error('Payroll reopening choices require native filtering');
@@ -12935,7 +12935,7 @@ export async function readReviewedPayrollResetReferenceTx(tx:Tx,ctx:SessionConte
  return row?.receipt?PayrollResetNativeReference.parse(row.receipt):null;
 }
 export async function reviewedPayrollResetChoiceMetadataTx(tx:Tx,ctx:SessionContext){
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  if(!ctx.userId||!settingEnabled(ctx,'payroll.reset_enabled'))return [];
  const rows=await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(eq(payrollBatch.tenantId,ctx.tenantId),eq(payrollBatch.status,'processed'),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`)).orderBy(desc(payrollBatch.payPeriod),payrollBatch.id).limit(26);
  if(rows.length>25)throw new Error('Payroll reset choices require native filtering');

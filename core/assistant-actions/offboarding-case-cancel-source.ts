@@ -4,7 +4,7 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {isAgentActionId} from '../../lib/ai/agent-action-registry';
-import {lockAccessConfigurationTx} from '../access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../access-configuration-lock';
 import {withAgentActionGuard} from './agent-action-guard';
 import {prepareOffboardingCaseCancellationTx,cancelCaseTx,offboardingCaseCancellationChoiceTx} from '../../packs/lifecycle/service';
 import {OffboardingCaseCancel as C,OffboardingCaseCancelPrepared as Prepared,OffboardingCaseCancelNativeReference as Native} from '../../lib/assistant-actions/offboarding-case-cancel-contract';
@@ -16,7 +16,7 @@ async function guard(tx:Tx,ctx:SessionContext){
  return withAgentActionGuard(tx,ctx,action);
 }
 export async function withOffboardingCaseCancelIntervalTx<T>(tx:Tx,ctx:SessionContext,caseId:string,work:(fresh:SessionContext,source:OffboardingCaseCancelSource)=>Promise<T>):Promise<T>{
- await lockAccessConfigurationTx(tx,ctx.tenantId);const fresh=await guard(tx,ctx);if(!fresh.userId)return offboardingCaseCancelUnavailable();
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);const fresh=await guard(tx,ctx);if(!fresh.userId)return offboardingCaseCancelUnavailable();
  const [row]=await tx.execute<{source:unknown}>(sql`select app.assistant_offboarding_case_cancel_source(${caseId}::uuid) as source`);
  return work(fresh,OffboardingCaseCancelSource.parse(row?.source));
 }
@@ -40,7 +40,7 @@ export async function reconcileOffboardingCaseCancelSourceTx(tx:Tx,ctx:SessionCo
 export async function readOffboardingCaseCancelChoices(supplied:SessionContext,value:unknown){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
  try{const pick=C.Selection.parse(structuredClone(value));return await withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);const fresh=await guard(tx,ctx);const selected=await offboardingCaseCancellationChoiceTx(tx,fresh,pick.caseNumber);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);const fresh=await guard(tx,ctx);const selected=await offboardingCaseCancellationChoiceTx(tx,fresh,pick.caseNumber);
   return C.Choices.parse({kind:'choices',cases:[selected],truncated:false});
  });}catch{return {kind:'unavailable' as const};}
 }

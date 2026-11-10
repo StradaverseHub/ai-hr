@@ -6,7 +6,7 @@
 import {eq,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {payrollBatch,payPeriod} from '../db/schema';
-import {lockAccessConfigurationTx,tryLockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx,tryLockAccessConfigurationTx} from './access-configuration-lock';
 import {isCarrierPrincipalCurrentTx} from './carrier-principal';
 /** Ordinary authenticated kernel owners may carry statutory/bootstrap metadata. Those markers
  * grant NOTHING here. AI source owners apply their stricter no-marker prerequisite separately.
@@ -31,7 +31,7 @@ export async function lockPayrollPeriodsTx(tx:Tx,supplied:SessionContext,selecti
  // UUID casts normalize EVERY spelling the database itself accepts, before any advisory resource.
  for(const p of captured){const [row]=await tx.execute<{companyId:string}>(sql`select ${p.companyId}::uuid::text as "companyId"`);normalized.push({companyId:row.companyId,payPeriod:p.payPeriod});}
  const ordered=[...new Map(normalized.map(p=>[payrollPeriodOwnerKey(ctx.tenantId,p),p] as const)).entries()].sort(([a],[b])=>a.localeCompare(b));
- await lockAccessConfigurationTx(tx,ctx.tenantId);await currentPayrollPeriodPrincipalTx(tx,ctx);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await currentPayrollPeriodPrincipalTx(tx,ctx);
  for(const [,p]of ordered){const [scope]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.company c where c.id=${p.companyId}::uuid and c.tenant_id=${ctx.tenantId}::uuid and app.can_admin_payroll_for(c.id)) as allowed`);if(scope?.allowed!==true)throw new PayrollPeriodOwnershipUnavailable();}
  for(const [key]of ordered){if(tryOnly){const [row]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${key},0)) as owned`);if(row?.owned!==true)throw new PayrollPeriodOwnershipUnavailable();}else await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key},0))`);}
  return ordered.map(([,p])=>p);
@@ -41,7 +41,7 @@ export async function lockPayrollPeriodsTx(tx:Tx,supplied:SessionContext,selecti
 export async function lockPayrollBatchPeriodTx(tx:Tx,supplied:SessionContext,batchId:string,tryOnly=false){
  const rawContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},id=batchId;
  const ctx=await canonicalPeriodContextTx(tx,rawContext);
- await lockAccessConfigurationTx(tx,ctx.tenantId);await currentPayrollPeriodPrincipalTx(tx,ctx);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await currentPayrollPeriodPrincipalTx(tx,ctx);
  const read=()=>tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod,payPeriodId:payrollBatch.payPeriodId}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1);
  const [nominee]=await read();if(!nominee)throw new PayrollPeriodOwnershipUnavailable();
  await lockPayrollPeriodsTx(tx,ctx,[nominee],tryOnly);
@@ -62,7 +62,7 @@ async function assertNativePeriodPrincipalTx(tx:Tx,ctx:SessionContext){
  if(ctx.userId&&!(await isCarrierPrincipalCurrentTx(tx,ctx)))throw new PayrollPeriodOwnershipUnavailable();
 }
 async function nativePeriodCarrierTx(tx:Tx,ctx:SessionContext){
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  await assertNativePeriodPrincipalTx(tx,ctx);
 }
 async function lockNativePeriodKeysTx(tx:Tx,ctx:SessionContext,selections:readonly PayrollPeriodSelection[]){

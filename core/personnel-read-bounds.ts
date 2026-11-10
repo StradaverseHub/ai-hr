@@ -1,6 +1,6 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { assertAiPrincipalTx, assertAiPresentationPrincipalTx } from './ai-principal';
 
 /** Keep tighter caller deadlines; a real database failure is never an empty result or Busy page. */
@@ -30,7 +30,7 @@ export async function withPersonnelPresentationReadTx<T>(
 export async function withPersonnelRead<T>(ctx: SessionContext, read: (tx: Tx) => Promise<T>, options: { existingTx?: Tx } = {}): Promise<T> {
   if (options.existingTx) {
     await assertAiPrincipalTx(options.existingTx, ctx);
-    await lockAccessConfigurationTx(options.existingTx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(options.existingTx, ctx.tenantId);
     // The command owner keeps its timeout through subsequent writes and COMMIT.
     return read(options.existingTx);
   }

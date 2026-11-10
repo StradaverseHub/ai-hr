@@ -5419,6 +5419,34 @@
       "when": 1793330004400,
       "tag": "4700_audit_chain_commit_seal",
       "breakpoints": true
+    },
+    {
+      "idx": 4100,
+      "version": "7",
+      "when": 1793330004400,
+      "tag": "4700_access_reader_writer_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 4101,
+      "version": "7",
+      "when": 1793330004401,
+      "tag": "4701_access_reader_writer_serialisers",
+      "breakpoints": true
+    },
+    {
+      "idx": 4102,
+      "version": "7",
+      "when": 1793330004402,
+      "tag": "4702_access_reader_writer_profile_values",
+      "breakpoints": true
+    },
+    {
+      "idx": 4103,
+      "version": "7",
+      "when": 1793330004403,
+      "tag": "4703_access_reader_writer_owner_writers",
+      "breakpoints": true
     }
   ]
 }

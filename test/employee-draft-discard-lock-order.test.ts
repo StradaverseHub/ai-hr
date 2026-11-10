@@ -1,7 +1,7 @@
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {withTenant} from '../db/client';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {discardEmployeeDraft,saveEmployeeDraft} from '../core/employee-draft';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -13,7 +13,7 @@ it('takes Workforce authority before Onboarding audit custody during native draf
  // This is the existing create/update order. Deletion must not hold audit while waiting
  // for this writer's authority lock, or the writer and deletion form a cycle.
  const holder=withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,b.tenantId);holding.resolve();await allowAudit.promise;
+  await lockAccessConfigurationWriteTx(tx,b.tenantId);holding.resolve();await allowAudit.promise;
   await tx.execute(sql`select set_config('lock_timeout','200ms',true)`);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${'audit-chain:'+b.tenantId}))`);
  }).then(()=>({ok:true}),()=>({ok:false}));

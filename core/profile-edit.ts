@@ -3,7 +3,8 @@ import {appendEvent,actorOf} from '../db/events';
 import {profileFieldApproval,profileLegacyPrimaryApprovalRequired} from '../lib/profile-edit-policy-value';
 import {splitProfileSubmission} from '../lib/profile-submission-policy';
 import {getSetting} from './entitlements';
-import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {lockLeaveDependencyConfigurationTx,lockPersonLeaveDependenciesWaitTx} from './leave-dependency-lock';
+import {lockAccessConfigurationTx,lockProfileSubjectTx} from './access-configuration-lock';
 import {projectEssVisible,essFactVisible} from '../lib/personnel-ess-visibility';
 import {createHash} from 'node:crypto';
 /** Own-profile edits compose canonical owners in ONE authenticated caller transaction. */
@@ -16,7 +17,7 @@ import {personnelField,PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {parseEssProfileProposal,sameEssScalar} from '../lib/personnel-ess-contract';
 import {EssProfileError,type EssProfileProposal,type EssFieldChange,type EssScalar,type EssRegisterChange} from '../lib/personnel-ess-model';
 import {isModuleEnabled} from './entitlements';
-import {freshProfileEditPolicyTx,freshProfilePresentationPolicyTx,type ProfilePresentationPolicy} from './profile-edit-policy';
+import {freshProfileEditPolicySharedTx,freshProfileEditPolicyTx,freshProfilePresentationPolicyTx,type ProfilePresentationPolicy} from './profile-edit-policy';
 import {packFor} from '../localization/registry';
 import {updatePersonProfilePartial,type PersonProfileFields} from './org';
 import {setPersonComplianceFields,requestProfileChange,updateOwnContact} from './profile';
@@ -151,11 +152,22 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
  return existingTx?run(existingTx):withTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return run(tx);});
 }
 
+/** An employee's own profile save: shared Access, the person's leave-dependency locks, then the per-person lock,
+ * all before the subject row locks, so a concurrent register writer for the same person cannot invert. */
+export async function lockOwnProfileValueSubjectTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockPersonLeaveDependenciesWaitTx(tx,ctx.tenantId,employmentId);
+ const [row]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,employmentId))).limit(1);
+ if(row)await lockProfileSubjectTx(tx,ctx.tenantId,row.personId);
+}
+
 /** Validation and baseline comparison run again at approval, never trusting the editor or stored JSON. */
 export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employmentId:string,raw:unknown,approval=false,storedLegacy=false){
  raw=structuredClone(raw); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
- await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
- let proposal=storedLegacy?null:parseEssProfileProposal(raw);const policy=await freshProfileEditPolicyTx(tx,ctx);
+ // Approval applies another person's proposal and stays exclusive; the employee's own save shares the locks.
+ if(approval){await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
+ else await lockOwnProfileValueSubjectTx(tx,ctx,employmentId);
+ let proposal=storedLegacy?null:parseEssProfileProposal(raw);const policy=await(approval?freshProfileEditPolicyTx(tx,ctx):freshProfileEditPolicySharedTx(tx,ctx));
  let subject:Awaited<ReturnType<typeof ownProfileSubjectTx>>['subject'],master:typeof person.$inferSelect;
  if(approval){
   if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new EssProfileError('permission');

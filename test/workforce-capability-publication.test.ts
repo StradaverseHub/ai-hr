@@ -81,7 +81,7 @@ it('fences an actual pre-pinned repeatable-read maintenance transaction after pu
  const outcome=db.transaction(async tx=>{
   await tx.execute(sql`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId!},true),set_config('app.roles','hr_admin',true),set_config('app.grants',${JSON.stringify(ctx.grants??[{role:'hr_admin',companyId:null}])},true)`);
   await tx.select({id:appUser.id}).from(appUser).where(eq(appUser.id,b.adminUserId));pinnedReached=true;pinned();await changed;
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);
  },{isolationLevel:'repeatable read'}).then(()=>null,error=>{pinned();return error;});
  await reached;try{expect(pinnedReached).toBe(true);await publishWorkforceCapabilities(owner.client);}finally{resume();}
  const error=await outcome;let code:string|undefined;for(let e=error;e&&typeof e==='object';e=e.cause){if(typeof e.code==='string'){code=e.code;break;}}

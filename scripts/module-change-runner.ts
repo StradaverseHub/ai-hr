@@ -26,7 +26,7 @@
 import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { createDb, type Tx } from '../db/client';
 import { appendEvent } from '../db/events';
-import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from '../core/access-configuration-lock';
 import { activatorsFor, mergeOutcomes, type ActivationOutcome } from '../core/module-activation';
 import { deactivationBlockers, unansweredBlockers } from '../core/module-deactivation';
 import { company, module_, moduleChangeRequest, subscriptionLine, tenantModule } from '../db/schema';
@@ -129,7 +129,7 @@ export async function applyModuleChange(tx: Tx, req: Request): Promise<Activatio
   req = structuredClone(req);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.tenantId))
     throw new ModuleChangeRefused('ownership', 'Module configuration ownership could not be confirmed.');
-  await lockAccessConfigurationTx(tx, req.tenantId);
+  await lockAccessConfigurationWriteTx(tx, req.tenantId);
   // This runner owns an injected migration-role transaction, not an app principal carrier. Do not
   // impersonate a customer or change app.tenant_id to satisfy an ordinary-command prerequisite.
   // Join the exact canonical configuration key before catalogue/blocker/seeding reads. Only the

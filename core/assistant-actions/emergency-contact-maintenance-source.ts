@@ -14,7 +14,7 @@ export class EmergencyContactMaintenanceUnavailable extends Error{constructor(){
 export const emergencyContactMaintenanceUnavailable=():never=>{throw new EmergencyContactMaintenanceUnavailable();};
 const fail=emergencyContactMaintenanceUnavailable,hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 type Subject=AssignedSubject&{employeeName:string;employeeCode:string|null;companyName:string;scopeDigest:string};
-export async function assertEmergencyContactMaintenanceActorTx(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();await tx.execute(sql`select app.access_workforce_write_lock()`);await lockProfileValueWritesTx(tx,fresh.tenantId);return fresh;}
+export async function assertEmergencyContactMaintenanceActorTx(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();await tx.execute(sql`select app.access_configuration_write_lock()`);await lockProfileValueWritesTx(tx,fresh.tenantId);return fresh;}
 /** Definer returns only a nomination and private scope fingerprint AFTER the same person's native
  * current authority and explicit denials across retained companies. Never require only the selected company. */
 async function subject(tx:Tx,ctx:SessionContext,id:string):Promise<Subject>{

@@ -34,7 +34,7 @@ import { type SessionContext, type Tx } from '../db/client';
 import { withPerformanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
 import { assertModuleEnabled } from './entitlements';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import {
   assignment,
   calibrationEntry,
@@ -702,7 +702,7 @@ export type ReviewedReviewAcknowledgementSource=Pick<Awaited<ReturnType<typeof r
  * refuse changed facts; it cannot supply a status, rating, actor, approval or replacement effect. */
 export async function acknowledgeReviewTx(tx:Tx,ctx:SessionContext,p:{reviewId:string},expected?:ReviewedReviewAcknowledgementSource){
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const reviewId=p.reviewId,checked=expected?{...expected}:undefined;
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const current=await readOwnReviewAcknowledgementSourceTx(tx,ctx,reviewId);
   if(checked&&(checked.reviewId!==current.reviewId||checked.employmentId!==current.employmentId||checked.cycleId!==current.cycleId||checked.reviewVersion!==current.reviewVersion||checked.cycleVersion!==current.cycleVersion))throw new PerfError('This review changed; review it again');
   if(!current.releasedAt)throw new PerfError('This review has not been released yet');
@@ -1175,7 +1175,7 @@ export async function enactCompAction(
   return withTenant(ctx, async (tx) => {
     // A merit enact reads compensation before the leaf write; own the full interval before review,
     // source/Payroll rows. Exclusive configuration also preserves transitive bonus/grade ordering.
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Lock the review row first so two concurrent enacts can't both read 'recommended'.
     await tx.select({ id: performanceReview.id }).from(performanceReview).where(eq(performanceReview.id, p.reviewId)).for('update');

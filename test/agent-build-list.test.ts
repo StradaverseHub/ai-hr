@@ -24,7 +24,7 @@ import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { agentBuildList } from '../core/agent-build-list';
 import { assertAiPresentationPrincipalTx, assertAiPrincipalTx } from '../core/ai-principal';
-import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from '../core/access-configuration-lock';
 import { withTenant } from '../db/client';
 import { assessProcesses } from '../core/process-assessment';
 import * as schema from '../db/schema';
@@ -81,7 +81,7 @@ describe('group-admin ranked build-list source',()=>{
   const ctx=await group(),expected=await agentBuildList(ctx,30);
   expect(expected.entries.some(row=>row.staffActionsPer30===2)).toBe(true);
   await owner.withTenant(ctx,async tx=>{
-   await lockAccessConfigurationTx(tx,ctx.tenantId);
+   await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
    let deadline:ReturnType<typeof setTimeout>|undefined;
    try{
     await expect(Promise.race([

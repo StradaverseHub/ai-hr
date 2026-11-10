@@ -1,5 +1,5 @@
 import type {Credential} from '../lib/internal-auth/credential';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -9,7 +9,7 @@ import { decryptRecord, encryptRecord } from '../lib/internal-auth/crypto';
 import { DEFAULT_PASSWORD_POLICY, passwordPolicyKey, validatePasswordPolicy, type PasswordPolicyState } from '../lib/password-policy';
 
 async function authorize(tx: Tx,tenantId:string) {
-  await lockAccessConfigurationTx(tx,tenantId);
+  await lockAccessConfigurationWriteTx(tx,tenantId);
   const [proof] = await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() as allowed`) as unknown as { allowed: boolean }[];
   if (!proof?.allowed) throw new Error('forbidden');
 }

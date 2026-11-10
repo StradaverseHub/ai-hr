@@ -9,7 +9,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {assistantExchange} from '../db/schema';
 import {assertAiPrincipalTx} from './ai-principal';
 import {mayUseAssistant} from './assistant-grant';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {resolveEntitlementsTx} from './entitlements';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 
@@ -119,7 +119,7 @@ export async function assertOwnAssistantConversationContextCurrentTx(tx:Tx,ctx:S
  const source=sources.get(context);
  if(!source||source.tenantId!==ctx.tenantId||source.userId!==ctx.userId||source.principal!==assistantConversationScopeDigest(ctx,source.conversationScope))return unavailable();
  try{
-  await lockAccessConfigurationTx(tx,source.tenantId);
+  await lockAccessConfigurationWriteTx(tx,source.tenantId);
   await assertConversationRowsCurrentTx(tx,source.tenantId,source.userId,source.rows,context.questions);
  }catch{return unavailable();}
 }

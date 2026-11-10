@@ -5,7 +5,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {assistantExchange} from '../db/schema';
 import {boundNativeOutcomeTransactionTx as boundClarificationReadTx} from './module-native-outcome-bounds';
 import {assertAiPrincipalTx} from './ai-principal';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {mayUseAssistant} from './assistant-grant';
 import {resolveEntitlementsTx} from './entitlements';
 import {assistantConversationScopeDigest} from './assistant-conversation-context';
@@ -102,7 +102,7 @@ export async function assertOwnAssistantClarificationCurrentTx(tx:Tx,ctx:Session
  if(!source||source.tenantId!==ctx.tenantId||source.userId!==ctx.userId||source.scopeDigest!==assistantConversationScopeDigest(ctx,source.conversationScope))throw new AssistantClarificationError();
  let current=false;
  try{
-  await lockAccessConfigurationTx(tx,source.tenantId);
+  await lockAccessConfigurationWriteTx(tx,source.tenantId);
   // Every carried row, not only the answered one: an earlier reply erased or retired since the read
   // refuses the whole continuation rather than reaching a provider.
   const found=await tx.select({id:assistantExchange.id,question:assistantExchange.question,answer:assistantExchange.answer,receipt:assistantExchange.disclosureReceipt}).from(assistantExchange)

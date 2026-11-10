@@ -11,7 +11,7 @@ import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce
 import {isCalendarDate} from '../lib/calendar-date';
 import {lockPayrollHistoryReadTx,tryLockPayrollHistoryReadTx} from './payroll-history-lock';
 import {ownPersonPredicate} from './own-person';
-import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx,lockAccessConfigurationReadTx} from './access-configuration-lock';
 import {withPersonnelRead,withPersonnelPresentationReadTx,withPersonnelOverviewRead,type PersonnelOverviewSnapshot} from './personnel-read-bounds';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
 import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
@@ -1014,7 +1014,7 @@ export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: strin
 }
 /** Resolve an explicit bounded identity set through the same current Workforce projection. */
 export async function readWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[]){
- return workforcePickRowsTx(ctx,tx,ids,lockAccessConfigurationTx);
+ return workforcePickRowsTx(ctx,tx,ids,lockAccessConfigurationWriteTx);
 }
 /** Display-only counterpart: native identity and rows belong to an enforced RR/RO snapshot. */
 export async function readPresentationWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[]){
@@ -1022,7 +1022,7 @@ export async function readPresentationWorkforcePickRowsTx(ctx:SessionContext,tx:
  await assertAiPresentationPrincipalTx(tx,ctx);
  return workforcePickRowsTx(ctx,tx,ids,async()=>{});
 }
-async function workforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[],lock:typeof lockAccessConfigurationTx){
+async function workforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[],lock:typeof lockAccessConfigurationWriteTx){
  if(ids.length>500||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new RangeError('Invalid workforce identity selection');
  if(!ids.length)return [];await lock(tx,ctx.tenantId);const columns=workforcePickerColumns();
  const source=sql`app.access_workforce_list_rows_for_ids(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as workforce_row(value)`;
@@ -1031,7 +1031,7 @@ async function workforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[],lock:ty
 type WorkforcePickPageInput={companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string};
 /** A caller-owned transaction can write, so keep its exclusive barrier. */
 export function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput){
- return workforcePickPageTx(ctx,tx,input,lockAccessConfigurationTx);
+ return workforcePickPageTx(ctx,tx,input,lockAccessConfigurationWriteTx);
 }
 
 /** The database must enforce read-only before this shared-barrier picker can run. */
@@ -1048,7 +1048,7 @@ export async function listPresentationWorkforcePickPageTx(ctx:SessionContext,tx:
 }
 
 /** Resolve a cursor only inside this exact authorized search. Equal names are ordered by employment ID. */
-async function workforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput,lock:typeof lockAccessConfigurationTx){
+async function workforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput,lock:typeof lockAccessConfigurationWriteTx){
   if(!Number.isInteger(input.limit)||input.limit<1||input.limit>100||(input.q?.length??0)>200||input.after&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.after))throw new RangeError('Invalid workforce picker');
   if((input.departmentSearch?.length??0)>200||(input.branch?.length??0)>200||input.departmentId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.departmentId)||input.hiredFrom&&!isCalendarDate(input.hiredFrom)||input.hiredTo&&!isCalendarDate(input.hiredTo)||input.hiredFrom&&input.hiredTo&&input.hiredFrom>input.hiredTo)throw new RangeError('Invalid workforce picker filters');
   await lock(tx,ctx.tenantId);
@@ -1069,11 +1069,11 @@ export function searchWorkforceEmployees(ctx:SessionContext,companyIds:string[],
 
 /** A borrowed transaction may later write, so keep its exclusive Access lock. */
 export function searchWorkforceEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string){
-  return searchWorkforceMatchesTx(ctx,tx,companyIds,query,lockAccessConfigurationTx);
+  return searchWorkforceMatchesTx(ctx,tx,companyIds,query,lockAccessConfigurationWriteTx);
 }
 
 /** This deliberately offers no continuation: the switcher is an eight-result jump control. */
-async function searchWorkforceMatchesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string,lock?:typeof lockAccessConfigurationTx){
+async function searchWorkforceMatchesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string,lock?:typeof lockAccessConfigurationWriteTx){
   if(query.length>200)throw new RangeError('Invalid employee search');
   const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query);
   if(!raw||!companyIds.length)return [];

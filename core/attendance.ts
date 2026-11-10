@@ -3,8 +3,8 @@ import {createDatabaseAdmission} from '../db/admission';
 import {applicationDatabaseBudget} from '../db/capacity';
 import { externalBreakBounds } from './shift-break-rules';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
-import { lockAccessConfigurationReadTx, lockAccessConfigurationTx, tryLockAccessConfigurationTx } from './access-configuration-lock';
-import { LeaveDependencyUnavailable, lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
+import { lockAccessConfigurationReadTx, lockAccessConfigurationWriteTx, lockAccessConfigurationTx, accessLockModeHeldTx } from './access-configuration-lock';
+import { LeaveDependencyUnavailable, lockLeaveDependenciesTx, lockLeaveDependenciesWaitTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {assessGeofence,type GeofenceAssessment} from '../lib/geofence-assessment';
 import {attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
@@ -113,7 +113,7 @@ import {
   liveArrangementsTx,
   pickArrangementOn,
 } from './shift-arrangement-resolve';
-import { extendedMinutesAfterShiftEnd, maybeAutoAccrueOnApprovalTx } from './toil';
+import { extendedMinutesAfterShiftEnd, findReplacementLeaveTypeIdTx, maybeAutoAccrueOnApprovalTx } from './toil';
 // r336 cbfa8b0b — the ONE double-claim predicate, shared with core/replacement-request.ts. See that file's
 // header for why a second copy of the rule here would have been the defect rather than the fix.
 import { assertNoCreditClaimForDatesTx } from './credit-ot-overlap';
@@ -2250,9 +2250,28 @@ function deriveDayFromPunchList(
  * This is dependency protection, not authority: original self/admin/device/workflow gates still run. */
 export async function lockAttendanceLeaveDependenciesTx(tx: Tx, ctx: SessionContext, employmentIds: readonly string[]) {
   const tenantId = ctx.tenantId, ids = [...new Set(employmentIds)].sort();
-  await lockAccessConfigurationTx(tx, tenantId);
+  await lockAccessConfigurationWriteTx(tx, tenantId);
   await lockLeaveDependencyConfigurationTx(tx, tenantId);
   if (ids.length) await lockLeaveDependenciesTx(tx, tenantId, ids);
+}
+/** TOIL may bank during check-out and the first banking creates the REPLACEMENT leave type, which is a
+ * catalogue write. A tenant with TOIL on and the type missing keeps today's exclusive path; everyone else
+ * clocks under the shared lock. Decided before any lock so no shared holder ever needs an upgrade. */
+async function attendanceMayCreateReplacementTypeTx(tx: Tx, ctx: SessionContext): Promise<boolean> {
+  try {
+    if (ctx.entitlements && !isModuleEnabled(ctx, 'toil')) return false;
+  } catch (error) {
+    if (!(error instanceof EntitlementError)) throw error;
+  }
+  return (await findReplacementLeaveTypeIdTx(tx, ctx.tenantId)) === null;
+}
+
+/** Clocking writes the employee's own day under the per-employment locks taken here and by the callers.
+ * It needs configuration stable, not a tenant-wide writer, so it joins both locks in shared mode. */
+export async function lockAttendanceClockDependenciesTx(tx: Tx, ctx: SessionContext, employmentIds: readonly string[]) {
+  if (await attendanceMayCreateReplacementTypeTx(tx, ctx)) return lockAttendanceLeaveDependenciesTx(tx, ctx, employmentIds);
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, employmentIds);
 }
 function captureAttendanceContext(ctx: SessionContext): SessionContext {
   return {...ctx, roles:ctx.roles?.slice(), grants:ctx.grants?.map(grant=>({...grant}))};
@@ -2265,7 +2284,7 @@ export async function checkInTx(
 ) {
   ctx = captureAttendanceContext(ctx); p = structuredClone(p);
   const perform = async (tx: Tx) => {
-    await lockAttendanceLeaveDependenciesTx(tx, ctx, [p.employmentId]);
+    await lockAttendanceClockDependenciesTx(tx, ctx, [p.employmentId]);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + p.employmentId}, 0))`);
     // Feedback 5249d43f: registered-device gate FIRST — when the company policy requires it, an absent /
     // unknown / revoked token throws the typed DeviceNotRegisteredError before anything is evaluated or
@@ -2412,7 +2431,7 @@ export async function checkOutTx(
 ) {
   ctx = captureAttendanceContext(ctx); p = structuredClone(p);
   const perform = async (tx: Tx) => {
-    await lockAttendanceLeaveDependenciesTx(tx, ctx, [p.employmentId]);
+    await lockAttendanceClockDependenciesTx(tx, ctx, [p.employmentId]);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + p.employmentId}, 0))`);
     // Feedback 5249d43f: same registered-device gate as checkInTx — see the comment there (r430: same
     // deviceGateExempt escape hatch).
@@ -3883,7 +3902,7 @@ function normalizeAttendanceCorrectionRequest(input:AttendanceCorrectionRequestI
 const retryAttendanceSubmissionExclusively = new Error('Attendance submission requires the exclusive configuration path.');
 
 async function prepareAttendanceCorrectionInputTx(
- tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput,access:'shared'|'exclusive'|'exclusive-held'='exclusive',
+ tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput,access:'shared'|'exclusive'|'held'='exclusive',
 ){
  ctx=captureAttendanceContext(ctx);assertModuleGate(ctx,'attendance');
  const {p,hasOt,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork}=normalizeAttendanceCorrectionRequest(input);
@@ -3892,7 +3911,7 @@ async function prepareAttendanceCorrectionInputTx(
   // Only this owned submission transaction shares Access. Native configuration writers
   // still conflict with it; the subject, workflow, policy epoch and audit fences remain.
   await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+ctx.tenantId},0))`);
- }else if(access==='exclusive')await lockAccessConfigurationTx(tx,ctx.tenantId);
+ }else if(access==='exclusive')await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  const [subject]=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment)
   .where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId),sharedAccess?and(
    eq(employment.personId,ctx.personId!),
@@ -3906,7 +3925,8 @@ async function prepareAttendanceCorrectionInputTx(
  }
  p.employmentId=subject.id; // Canonical UUID spelling owns every shared source/credit lock key.
  try{
-  await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+  if(access==='held')await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[p.employmentId]);
+  else await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
  }catch(error){
   if(sharedAccess&&error instanceof LeaveDependencyUnavailable&&error.reason==='busy')throw retryAttendanceSubmissionExclusively;
   throw error;
@@ -4069,7 +4089,7 @@ export async function requestAttendanceCorrection(ctx:SessionContext,p:Attendanc
  const current=captureAttendanceContext(ctx),captured=structuredClone(p);
  const normalized=normalizeAttendanceCorrectionRequest(captured);
  const options={workflowFingerprint:captured.workflowFingerprint};
- const run=async(tx:Tx,access:'exclusive'|'exclusive-held'='exclusive')=>{
+ const run=async(tx:Tx,access:'exclusive'|'held'='exclusive')=>{
   const data=await prepareAttendanceCorrectionInputTx(tx,current,captured,access);
   return insertAttendanceCorrectionRequestTx(tx,current,data,options);
  };
@@ -4092,7 +4112,7 @@ export async function requestAttendanceCorrection(ctx:SessionContext,p:Attendanc
     // The shared attempt has rolled back. Never upgrade Access or retry an effect failure.
    }
   }
-  return withOwnedExclusiveAttendanceWrite(current,'submission',tx=>run(tx,'exclusive-held')).catch(attendanceCorrectionSubmissionFailure);
+  return withAttendanceAccessWrite(current,'submission',tx=>run(tx,'held')).catch(attendanceCorrectionSubmissionFailure);
  });
 }
 
@@ -4298,15 +4318,17 @@ function isOrdinaryNonOvertimeRejection(row: Pick<typeof attendanceCorrection.$i
 }
 
 async function lockAttendanceApplicationTx(
-  tx: Tx, ctx: SessionContext, correctionId: string, rejectionSubject?: string, approvalAccess?: 'shared' | 'exclusive-held',
+  tx: Tx, ctx: SessionContext, correctionId: string, rejectionSubject?: string, approvalAccess?: 'shared' | 'held',
 ) {
   const sharedApproval = approvalAccess === 'shared';
   try {
     if (sharedApproval) {
       await lockAccessConfigurationReadTx(tx, ctx.tenantId);
       await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
-    } else if (approvalAccess === 'exclusive-held') {
-      await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+    } else if (approvalAccess === 'held') {
+      // The admission owner took the Access lock. Only an exclusive holder may take configuration exclusively.
+      if (await accessLockModeHeldTx(tx, ctx.tenantId) === 'X') await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+      else await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, []);
     } else if (rejectionSubject === undefined) {
       await lockAttendanceLeaveDependenciesTx(tx, ctx, []);
     } else {
@@ -4322,7 +4344,8 @@ async function lockAttendanceApplicationTx(
       .limit(1);
     if (rejectionSubject !== undefined && visible?.employmentId !== rejectionSubject) throw retryAttendanceRejectionExclusively;
     if (!visible) return undefined;
-    await lockLeaveDependenciesTx(tx, ctx.tenantId, [visible.employmentId]);
+    if (approvalAccess === 'held') await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, [visible.employmentId]);
+    else await lockLeaveDependenciesTx(tx, ctx.tenantId, [visible.employmentId]);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + visible.employmentId}, 0))`);
     const [locked] = await tx.select().from(attendanceCorrection)
       .where(and(eq(attendanceCorrection.id, correctionId), eq(attendanceCorrection.employmentId, visible.employmentId)))
@@ -4392,28 +4415,14 @@ const attendancePerformance = globalThis as typeof globalThis & {
   __aihrPerfAttendanceExclusiveAdmission?: (operation:'submission'|'approval'|'clockingImport',outcome:'immediate'|'miss'|'recovered'|'blockingFallback') => void;
 };
 
-const attendanceExclusiveAccessBusy = new Error('Attendance exclusive Access admission is busy.');
-
-/** A failed try rolls back before the retry delay, returning the connection to the pool.
- * Keep the original blocking lock after the bounded retry. */
-async function withOwnedExclusiveAttendanceWrite<T>(ctx: SessionContext, operation:'submission'|'approval'|'clockingImport', write: (tx: Tx) => Promise<T>): Promise<T> {
-  const record=attendancePerformance.__aihrPerfAttendanceExclusiveAdmission;
-  for (const delayMs of [0, 100]) {
-    if (delayMs) await new Promise<void>(resolve => setTimeout(resolve, delayMs));
-    try {
-      return await withTenant(ctx, async tx => {
-        if (!await tryLockAccessConfigurationTx(tx, ctx.tenantId)) throw attendanceExclusiveAccessBusy;
-        record?.(operation,delayMs?'recovered':'immediate');
-        return write(tx);
-      });
-    } catch (error) {
-      if (error !== attendanceExclusiveAccessBusy) throw error;
-      record?.(operation,'miss');
-    }
-  }
-  record?.(operation,'blockingFallback');
+/** Attendance writes share the Access lock with each other and only exclude configuration editors. The first
+ * banking of TOIL creates the REPLACEMENT leave type, a catalogue write, so that one case stays exclusive; the
+ * choice is made before any lock so a shared holder never needs to upgrade. */
+async function withAttendanceAccessWrite<T>(ctx: SessionContext, operation:'submission'|'approval', write: (tx: Tx) => Promise<T>): Promise<T> {
   return withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    if (await attendanceMayCreateReplacementTypeTx(tx, ctx)) await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+    else await lockAccessConfigurationTx(tx, ctx.tenantId);
+    attendancePerformance.__aihrPerfAttendanceExclusiveAdmission?.(operation,'immediate');
     return write(tx);
   });
 }
@@ -4439,7 +4448,10 @@ async function admitAttendanceWrite<T>(
 /** Imports own their transaction. Admit one per tenant per worker before checking out a connection. */
 export function withClockingImportWrite<T>(ctx: SessionContext, write: (tx: Tx) => Promise<T>): Promise<T> {
   return withBackgroundDatabaseWork(() => admitAttendanceWrite('clockingImport', ctx.tenantId, () =>
-    withOwnedExclusiveAttendanceWrite(ctx, 'clockingImport', async tx => {
+    withTenant(ctx, async tx => {
+      // A bulk file writer stays exclusive until it runs through the job framework in chunks.
+      await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+      attendancePerformance.__aihrPerfAttendanceExclusiveAdmission?.('clockingImport','immediate');
       await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
       return write(tx);
     })));
@@ -4452,7 +4464,7 @@ export async function decideAttendanceCorrection(
 ) {
   p = structuredClone(p); ctx = captureAttendanceContext(ctx);
   ctx = {...ctx, roles:ctx.roles ?? (ctx.grants ?? []).map(grant=>grant.role)};
-  const decide=async (tx:Tx, rejectionSubject?: string, approvalAccess?: 'shared' | 'exclusive-held') => {
+  const decide=async (tx:Tx, rejectionSubject?: string, approvalAccess?: 'shared' | 'held') => {
     const original = await lockAttendanceApplicationTx(tx, ctx, p.correctionId, rejectionSubject, approvalAccess);
     const cor=original?.adminAmendment?{...original,proposedCheckIn:original.adminAmendment.checkIn,proposedCheckOut:original.adminAmendment.checkOut}:original;
     if (!cor) throw new Error('correction request not found (or not visible)');
@@ -5060,7 +5072,7 @@ export async function decideAttendanceCorrection(
         }
       }
       // The shared attempt rolled back before any effect. Acquire exclusive Access in a fresh Tx.
-      return withOwnedExclusiveAttendanceWrite(ctx, 'approval', tx => decide(tx, undefined, 'exclusive-held'));
+      return withAttendanceAccessWrite(ctx, 'approval', tx => decide(tx, undefined, 'held'));
     }, attendancePerformance.__aihrPerfBeginAttendanceApproval?.());
   }
   if (p.decision !== 'rejected' || !ctx.userId || ctx.agent || !correctionIdIsCanonical) return withTenant(ctx, decide);
@@ -6883,7 +6895,7 @@ export async function setAttendancePolicy(
     throw new Error('Maximum location uncertainty must be a positive whole number of metres.');
 
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(attendancePolicy)

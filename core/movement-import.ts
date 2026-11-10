@@ -1,7 +1,7 @@
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx} from './company-organisation';
 import {organisationImportWarningsTx} from './derived-organisation-display';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
 import {isAiPresentationPrincipalCurrentTx} from './ai-principal';
 /** Bounded canonical Movement rehearsals and per-employee atomic application.
@@ -402,7 +402,7 @@ export async function previewMovementImport(ctx:SessionContext,p:{companyId?:str
   if(!companyId){employee={...employee,rows:employee.rows.map(row=>selection.includes(row.row)?{...row,status:'invalid',errors:row.errors.length?row.errors:['company_not_available']}:row)};result.employees.push(employee);continue;}
   try{
    await withTenant(ctx,async tx=>{
-    await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await limits(tx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,companyId);if(p.catalogueHash&&digest({version:2,types:(await catalogTx(tx,ctx,companyId)).types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');
     const subject=await subjectTx(tx,ctx,companyId,code);employee={...employee,employmentId:subject.id,name:subject.name,fingerprint:await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline)};
     const baseFingerprint=employee.fingerprint;const rows:MovementImportRow[]=[];const previous:RehearsedRow[]=[];const corrected:CorrectedRow[]=[];
@@ -453,14 +453,14 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId?:stri
   try{
    budget(deadline);if(!companyId)throw new Error('company_not_available');
    employee=await withTenant(ctx,async tx=>{
-    await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await limits(tx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,companyId);const catalog=await catalogTx(tx,ctx,companyId);if(p.catalogueHash&&digest({version:2,types:catalog.types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');const subject=await subjectTx(tx,ctx,companyId,code);
     employee={...employee,employmentId:subject.id,name:subject.name};
     const fingerprint=await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline);
     // Corrections act on recorded movements first, under the same lock order the create rehearsal takes.
     const corrections=employeeOrder(records).filter(isCorrection),corrected:CorrectedRow[]=[];
     if(corrections.length){
-     await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+     await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
      for(const record of corrections){budget(employeeDeadline);corrected.push(await applyCorrectionTx(tx,ctx,record,subject.id,companyId,p.acknowledgeClosedPayroll===true));}
     }
     const settled=corrected.length?await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline):fingerprint;
@@ -539,7 +539,7 @@ export type MovementImportFilters={departmentIds?:string[];businessUnitIds?:stri
 /** Server-only download projection. Internal identities never leave this owner in workbook metadata. */
 export async function movementImportDownloadData(ctx:SessionContext,p:{companyId:string;typeCode?:string;filters?:MovementImportFilters}){
  assertAdmin(ctx);return withTenant(ctx,async tx=>{
-  await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await limits(tx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const catalog=await catalogTx(tx,ctx,p.companyId);
   const [selectedCompany]=await tx.select({name:company.legalName}).from(company).where(and(eq(company.id,p.companyId),isNull(company.archivedAt))).limit(1);
   if(!selectedCompany)throw new Error('company_not_available');

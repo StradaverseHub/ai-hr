@@ -13,7 +13,7 @@ export const captureStatutorySourceContext=(ctx:SessionContext):SessionContext=>
  * own-identity checks stay the authority and keep their outcomes (not_found etc.). */
 export async function lockStatutorySourceTx(tx:Tx,ctx:SessionContext){
  ctx=captureStatutorySourceContext(ctx);
- await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);
  if(ctx.userId&&!(await isCarrierPrincipalCurrentTx(tx,ctx)))throw new Error('Statutory authority unavailable');
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
 }
@@ -21,7 +21,7 @@ export async function lockStatutorySourceTx(tx:Tx,ctx:SessionContext){
  * the actual current principal before any protected stored/default/epoch read. */
 export async function lockReviewedStatutorySourceTx(tx:Tx,ctx:SessionContext){
  ctx=captureStatutorySourceContext(ctx);
- await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);
  if(ctx.userId){const [principal]=await tx.execute<{ok:boolean}>(sql`select app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id()=${ctx.userId}::uuid and exists(select 1 from public.app_user u where u.id=${ctx.userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.person_id is not distinct from ${ctx.personId??null}::uuid and u.archived_at is null and not app.login_blocked(u.id)) and app.principal_snapshot_current() as ok`);if(principal?.ok!==true)throw new Error('Statutory authority unavailable');}
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
 }

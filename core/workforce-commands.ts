@@ -36,7 +36,7 @@ export async function setReportingLine(ctx:SessionContext,p:Parameters<typeof or
 export function setPersonComplianceFields(ctx:SessionContext,p:Parameters<typeof writeComplianceFields>[1],outerTx?:Tx){
  ctx=captureCommandContext(ctx);p=structuredClone(p);
  return maintain(ctx,p.employmentId,async tx=>{
-  await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
   if(!subject)throw new Error('Employment not found (or not visible).');
   await assertWorkforcePersonTx(tx,ctx,subject.personId,'maintain');

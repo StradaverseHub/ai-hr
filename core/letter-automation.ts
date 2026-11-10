@@ -6,13 +6,13 @@ import {appendEvent,actorOf} from '../db/events';
 import {letterAutomationRuleVersion,letterJob,letterGenerationBatch,letterRecord} from '../db/schema';
 import type {NotificationSweepConnection} from './notice-projection';
 import {assertLetterNotificationConnection} from './letter-notifications';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
 import {readLetterAutomationSourcesTx,readRegisteredLetterAutomationSourceTx} from './letter-automation-sources';
 import {createAutomaticLetterDraftTx} from './letters';
 async function locks(tx:Tx,ctx:SessionContext){
  await assertLetterNotificationConnection(tx);const [proof]=await tx.execute<{ok:boolean}>(sql`select app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id() is null as ok`);if(!proof?.ok)throw Error('Letter automation requires its tenant-bound maintenance connection.');
- await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
+ await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
 }
 async function invalidate(tx:Tx,ctx:SessionContext,jobId:string){
  await locks(tx,ctx);const source=await readRegisteredLetterAutomationSourceTx(tx,ctx,jobId);if(!source||source.job.status!=='completed')return 'skipped';

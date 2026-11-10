@@ -71,7 +71,7 @@ describe('Rewards authoritative immediate application and GR decisions',()=>{
   const requester=await user('Non-exempt requester','super_admin'),target=await user('Pending recipient'),checker=await user('Independent live GR');await seat(checker,'gr');
   const pending=await (await change(requester,target)).save();
   let unlock!:()=>void,ready!:(pid:number)=>void;const held=new Promise<void>(resolve=>{unlock=resolve;}),started=new Promise<number>(resolve=>{ready=resolve;});
-  const decision=withTenant(checker,async tx=>{await tx.execute(sql`select app.access_workforce_write_lock()`);const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);ready(backend.pid);await held;const [r]=await tx.execute<{status:string}>(sql`select app.reward_access_request_decide(${pending.requestId}::uuid,true,'Independently checked before archival') as status`);return r.status;}).then(value=>({ok:true as const,value}),error=>({ok:false as const,error}));
+  const decision=withTenant(checker,async tx=>{await tx.execute(sql`select app.access_configuration_write_lock()`);const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);ready(backend.pid);await held;const [r]=await tx.execute<{status:string}>(sql`select app.reward_access_request_decide(${pending.requestId}::uuid,true,'Independently checked before archival') as status`);return r.status;}).then(value=>({ok:true as const,value}),error=>({ok:false as const,error}));
   let archival:Promise<{ok:boolean;error?:unknown}>|undefined;
   try{
    const blocker=await started;

@@ -7,7 +7,8 @@ import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {client,withTenant,type SessionContext} from '../db/client';
 import {
-  ACCESS_CONFIGURATION_LOCK_WAIT_MS,lockAccessConfigurationReadTx,lockAccessConfigurationTx,
+  ACCESS_CONFIGURATION_LOCK_WAIT_MS,accessLockModeHeldTx,lockAccessConfigurationReadTx,lockAccessConfigurationTx,
+  lockAccessConfigurationWriteTx,tryLockAccessConfigurationReadTx,tryLockAccessConfigurationTx,
 } from '../core/access-configuration-lock';
 import {lockAttendanceLeaveDependenciesTx} from '../core/attendance';
 import {pgSqlState} from '../lib/db-error';
@@ -22,7 +23,7 @@ async function holder(mode:'exclusive'|'shared'='exclusive'){
   let ready!:(pid:number)=>void,release!:()=>void;
   const start=new Promise<number>(yes=>{ready=yes;}),finish=new Promise<void>(yes=>{release=yes;});
   const done=withTenant(ctx,async tx=>{
-    if(mode==='exclusive')await lockAccessConfigurationTx(tx,ctx.tenantId);else await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+    if(mode==='exclusive')await lockAccessConfigurationWriteTx(tx,ctx.tenantId);else await lockAccessConfigurationReadTx(tx,ctx.tenantId);
     const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);ready(row.pid);await finish;
   });
   return{pid:await start,release,done};
@@ -41,8 +42,8 @@ describe('bounded Access configuration lock',()=>{
   it('uncontended: acquires on the fast path and leaves lock_timeout unchanged',async()=>{
     const seen=await withTenant(ctx,async tx=>{
       await tx.execute(sql`select set_config('lock_timeout','2500ms',true)`);
-      await lockAccessConfigurationTx(tx,ctx.tenantId);
-      await lockAccessConfigurationTx(tx,ctx.tenantId); // re-entrant within one transaction
+      await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+      await lockAccessConfigurationWriteTx(tx,ctx.tenantId); // re-entrant within one transaction
       const [row]=await tx.execute<{v:string}>(sql`select current_setting('lock_timeout') as v`);return row.v;
     });
     expect(seen).toBe('2500ms');
@@ -51,7 +52,7 @@ describe('bounded Access configuration lock',()=>{
   it('a waiter gives up with the retryable 55P03 after the bound, and its connection returns to the pool',async()=>{
     const h=await holder();
     try{
-      const r=await timed(()=>withTenant(ctx,tx=>lockAccessConfigurationTx(tx,ctx.tenantId)));
+      const r=await timed(()=>withTenant(ctx,tx=>lockAccessConfigurationWriteTx(tx,ctx.tenantId)));
       expect(pgSqlState(r.error)).toBe('55P03');
       expect(r.ms).toBeGreaterThanOrEqual(ACCESS_CONFIGURATION_LOCK_WAIT_MS-250);
       expect(r.ms).toBeLessThan(ACCESS_CONFIGURATION_LOCK_WAIT_MS+3000);
@@ -62,7 +63,7 @@ describe('bounded Access configuration lock',()=>{
   it('keeps a tighter limit the caller already set',async()=>{
     const h=await holder();
     try{
-      const r=await timed(()=>withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('lock_timeout','800ms',true)`);await lockAccessConfigurationTx(tx,ctx.tenantId);}));
+      const r=await timed(()=>withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('lock_timeout','800ms',true)`);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);}));
       expect(pgSqlState(r.error)).toBe('55P03');
       expect(r.ms).toBeLessThan(ACCESS_CONFIGURATION_LOCK_WAIT_MS-1000);
     }finally{h.release();await h.done;}
@@ -73,7 +74,7 @@ describe('bounded Access configuration lock',()=>{
       const h=await holder();
       const waiting=withTenant(ctx,async tx=>{
         await tx.execute(sql`select set_config('lock_timeout',${prior},true)`);
-        await lockAccessConfigurationTx(tx,ctx.tenantId);
+        await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
         const [row]=await tx.execute<{v:string}>(sql`select current_setting('lock_timeout') as v`);return row.v;
       });
       await untilWaiters(h.pid,1);h.release();await h.done;
@@ -86,17 +87,86 @@ describe('bounded Access configuration lock',()=>{
     const holding=new Promise<void>(yes=>{ready=yes;}),finish=new Promise<void>(yes=>{release=yes;});
     let pid=0,reentered:{error:unknown;ms:number}|undefined;
     const holderTx=withTenant(ctx,async tx=>{
-      await lockAccessConfigurationTx(tx,ctx.tenantId);
+      await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
       [{pid}]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);ready();await finish;
       // Three exclusive callers are now queued behind this transaction.
       reentered=await timed(()=>lockAccessConfigurationReadTx(tx,ctx.tenantId));
     });
     await holding;
-    const queued=Array.from({length:3},()=>timed(()=>withTenant(ctx,tx=>lockAccessConfigurationTx(tx,ctx.tenantId))));
+    const queued=Array.from({length:3},()=>timed(()=>withTenant(ctx,tx=>lockAccessConfigurationWriteTx(tx,ctx.tenantId))));
     try{await untilWaiters(pid,3);}finally{release();}
     await holderTx;
     expect(reentered?.error).toBeUndefined();expect(reentered?.ms).toBeLessThan(1000);
     for(const r of await Promise.all(queued))expect(r.error).toBeUndefined();
+  },20_000);
+
+  it('an exclusive holder re-entering through an ordinary shared writer or a fail-fast shared try is admitted at once',async()=>{
+    // Reader/writer lock: every configuration editor calls ordinary writers, which ask for the lock shared.
+    let ready!:()=>void,release!:()=>void;
+    const holding=new Promise<void>(yes=>{ready=yes;}),finish=new Promise<void>(yes=>{release=yes;});
+    let pid=0,writer:{error:unknown;ms:number}|undefined,tried:{value?:boolean;error:unknown;ms:number}|undefined,again:boolean|undefined,mode:string|null|undefined;
+    const holderTx=withTenant(ctx,async tx=>{
+      await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+      [{pid}]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);ready();await finish;
+      // Three exclusive callers are now queued behind this transaction.
+      writer=await timed(()=>lockAccessConfigurationTx(tx,ctx.tenantId));
+      tried=await timed(()=>tryLockAccessConfigurationReadTx(tx,ctx.tenantId));
+      again=await tryLockAccessConfigurationTx(tx,ctx.tenantId);
+      mode=await accessLockModeHeldTx(tx,ctx.tenantId);
+    });
+    await holding;
+    const queued=Array.from({length:3},()=>timed(()=>withTenant(ctx,tx=>lockAccessConfigurationWriteTx(tx,ctx.tenantId))));
+    try{await untilWaiters(pid,3);}finally{release();}
+    await holderTx;
+    expect(writer?.error).toBeUndefined();expect(writer?.ms).toBeLessThan(1000);
+    expect(tried?.error).toBeUndefined();expect(tried?.value).toBe(true);expect(tried?.ms).toBeLessThan(1000);
+    expect(again).toBe(true);expect(mode).toBe('X');
+    for(const r of await Promise.all(queued))expect(r.error).toBeUndefined();
+  },20_000);
+
+  it('a fail-fast exclusive try by the only shared holder is granted ahead of the writer queued behind it',async()=>{
+    let ready!:()=>void,release!:()=>void;
+    const holding=new Promise<void>(yes=>{ready=yes;}),finish=new Promise<void>(yes=>{release=yes;});
+    let pid=0,tried:{value?:boolean;error:unknown;ms:number}|undefined,mode:string|null|undefined,timeout:string|undefined;
+    const holderTx=withTenant(ctx,async tx=>{
+      await tx.execute(sql`select set_config('lock_timeout','1h',true)`);
+      await lockAccessConfigurationTx(tx,ctx.tenantId);
+      [{pid}]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);ready();await finish;
+      // One writer is queued behind this shared hold, so PostgreSQL 16 refuses the plain no-wait request.
+      const [plain]=await tx.execute<{acquired:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'access-configuration:'+ctx.tenantId},0)) as acquired`);
+      tried=await timed(()=>tryLockAccessConfigurationTx(tx,ctx.tenantId));
+      mode=await accessLockModeHeldTx(tx,ctx.tenantId);
+      [{v:timeout}]=await tx.execute<{v:string}>(sql`select current_setting('lock_timeout') as v`);
+      return plain.acquired;
+    });
+    await holding;
+    const queued=timed(()=>withTenant(ctx,tx=>lockAccessConfigurationWriteTx(tx,ctx.tenantId)));
+    try{await untilWaiters(pid,1);}finally{release();}
+    const plainAcquired=await holderTx;
+    expect(tried?.error).toBeUndefined();expect(tried?.value).toBe(true);expect(tried?.ms).toBeLessThan(1000);
+    expect(mode).toBe('X');expect(timeout).toBe('1h');
+    // Whichever way this server answers the plain request, the queued writer runs once the holder commits.
+    expect(typeof plainAcquired).toBe('boolean');
+    expect((await queued).error).toBeUndefined();
+  },20_000);
+
+  it('a fail-fast exclusive try stays a miss while another transaction shares the lock, and keeps its transaction usable',async()=>{
+    const other=await holder('shared');
+    try{
+      const seen=await withTenant(ctx,async tx=>{
+        await tx.execute(sql`select set_config('lock_timeout','1h',true)`);
+        await lockAccessConfigurationTx(tx,ctx.tenantId);
+        const tried=await timed(()=>tryLockAccessConfigurationTx(tx,ctx.tenantId));
+        const mode=await accessLockModeHeldTx(tx,ctx.tenantId);
+        const [row]=await tx.execute<{v:string}>(sql`select current_setting('lock_timeout') as v`);
+        return{tried,mode,timeout:row.v};
+      });
+      expect(seen.tried.error).toBeUndefined();expect(seen.tried.value).toBe(false);expect(seen.tried.ms).toBeLessThan(1000);
+      expect(seen.mode).toBe('S');expect(seen.timeout).toBe('1h');
+      // A transaction that holds nothing is refused too, and the shared try still overlaps the holder.
+      expect(await withTenant(ctx,tx=>tryLockAccessConfigurationTx(tx,ctx.tenantId))).toBe(false);
+      expect(await withTenant(ctx,tx=>tryLockAccessConfigurationReadTx(tx,ctx.tenantId))).toBe(true);
+    }finally{other.release();await other.done;}
   },20_000);
 
   it('many waiters on a held lock each acquire or time out at the bound, and unrelated reads keep running',async()=>{
@@ -106,7 +176,7 @@ describe('bounded Access configuration lock',()=>{
     expect(many).toBeGreaterThanOrEqual(3);
     const longHolder=await holder();
     try{
-      const callers=Array.from({length:many},()=>timed(()=>withTenant(ctx,tx=>lockAccessConfigurationTx(tx,ctx.tenantId))));
+      const callers=Array.from({length:many},()=>timed(()=>withTenant(ctx,tx=>lockAccessConfigurationWriteTx(tx,ctx.tenantId))));
       await untilWaiters(longHolder.pid,many);
       const unrelated=await timed(()=>withTenant(ctx,async tx=>{const [row]=await tx.execute<{ok:number}>(sql`select 1 as ok`);return row.ok;}));
       expect(unrelated.error).toBeUndefined();expect(unrelated.value).toBe(1);expect(unrelated.ms).toBeLessThan(1000);
@@ -121,7 +191,7 @@ describe('bounded Access configuration lock',()=>{
     // The same number of waiters behind a short holder all acquire, with lock_timeout restored.
     const shortHolder=await holder();
     const acquired=Array.from({length:many},()=>timed(()=>withTenant(ctx,async tx=>{
-      await lockAccessConfigurationTx(tx,ctx.tenantId);
+      await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
       const [row]=await tx.execute<{v:string}>(sql`select current_setting('lock_timeout') as v`);return row.v;
     })));
     await untilWaiters(shortHolder.pid,many);shortHolder.release();await shortHolder.done;
@@ -141,7 +211,7 @@ describe('bounded Access configuration lock',()=>{
     const h=await holder('shared');
     try{
       // A writer queues behind the shared holder.
-      const writer=timed(()=>withTenant(ctx,tx=>lockAccessConfigurationTx(tx,ctx.tenantId)));
+      const writer=timed(()=>withTenant(ctx,tx=>lockAccessConfigurationWriteTx(tx,ctx.tenantId)));
       await untilWaiters(h.pid,1);
       // A later shared reader must queue behind that writer rather than take the free shared slot.
       const reader=timed(()=>withTenant(ctx,tx=>lockAccessConfigurationReadTx(tx,ctx.tenantId)));

@@ -719,7 +719,7 @@ export async function correctHireDetails(
   if (requested.departmentId === null) throw new HireCorrectionError('Department is required.');
 
   return withTenant(ctx, async (tx) => {
-    if (input.basicSalary !== undefined) await tx.execute(sql`select app.access_workforce_write_lock()`);
+    if (input.basicSalary !== undefined) await tx.execute(sql`select app.access_configuration_write_lock()`);
     await assertWorkforceEmploymentTx(tx,ctx,input.employmentId,'maintain');
     // Same lock order as every movement writer: the person's statutory owner, then the employment row.
     // Holding the employment row for the whole correction serialises two corrections of one hire.

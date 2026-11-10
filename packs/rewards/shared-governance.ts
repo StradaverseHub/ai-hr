@@ -3,6 +3,7 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext} from '../../db/client';
 import {withRewardsTenant} from '../../core/module-gate';
+import {lockAccessConfigurationWriteTx} from '../../core/access-configuration-lock';
 import {parseRewardPolicyGroupVersion,rewardPgUuid} from './policy-group-model';
 import {sharedRewardPolicyProjection} from './shared-policy-projection';
 export type RewardCompanyExclusion={id:string;companyId:string;company:string;year:number;awardType?:'no_awards'|'uploaded';reason:string;createdBy:string|null;createdAt:string;endedAt:string|null;endReason:string|null};
@@ -23,6 +24,8 @@ export function rewardCompanyExclusions(ctx:SessionContext,year?:number){
 export function changeRewardCompanyExclusion(ctx:SessionContext,raw:unknown){
  const p=z.object({companyId:rewardPgUuid,year:yearSchema,reason:z.string().trim().min(10).max(2000),endId:rewardPgUuid.nullable(),awardType:z.enum(['no_awards','uploaded']).default('no_awards')}).strict().parse(raw);
  return withRewardsTenant(ctx,async tx=>{
+  // Exclusions advance the participation generation, which only an exclusive holder may do.
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   if(!p.endId&&p.awardType==='uploaded'){const [row]=await tx.execute<{id:string}>(sql`select app.reward_uploaded_participation(${p.companyId}::uuid,${p.year},${p.reason}) as id`);return rewardPgUuid.parse(row?.id);}
   const [row]=await tx.execute<{id:string}>(sql`select app.reward_company_exclusion_change(${p.companyId}::uuid,${p.year},${p.reason},${p.endId}::uuid) as id`);
   return rewardPgUuid.parse(row?.id);

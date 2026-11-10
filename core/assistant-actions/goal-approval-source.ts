@@ -7,7 +7,7 @@ import {performanceGoal,employment,person,company} from '../../db/schema';
 import {GoalApproval as C,type GoalApprovalHuman as Human} from '../../lib/assistant-actions/goal-approval-contract';
 import {approveGoalTx,readGoalApprovalSourceTx} from '../../packs/performance/service';
 import {assertCanDecide} from '../approvals';
-import {lockAccessConfigurationTx} from '../access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../access-configuration-lock';
 import {withAgentActionGuard} from './agent-action-guard';
 import type {AssignedSubject} from './generic-assigned-review-store';
 export const goalApprovalUnavailable=():never=>{throw Error('Please reopen the goal approval review.');};
@@ -19,7 +19,7 @@ async function subject(tx:Tx,ctx:SessionContext,id:string):Promise<Subject>{
  if(ctx.personId!=null&&row.scope.subjectPersonId===ctx.personId)return fail();return row.scope;
 }
 export async function withGoalApprovalSubjectTx<T>(tx:Tx,ctx:SessionContext,id:string,_mode:'pending'|'recorded',work:(fresh:SessionContext,s:AssignedSubject)=>Promise<T>):Promise<T>{
- const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');await lockAccessConfigurationTx(tx,fresh.tenantId);return work(fresh,await subject(tx,fresh,id));
+ const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');await lockAccessConfigurationWriteTx(tx,fresh.tenantId);return work(fresh,await subject(tx,fresh,id));
 }
 async function review(tx:Tx,ctx:SessionContext,human:Human){
  const s=await subject(tx,ctx,human.subjectId);if(s.employmentId!==human.employmentId)return fail();

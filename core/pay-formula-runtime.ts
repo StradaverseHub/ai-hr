@@ -17,7 +17,7 @@ import {companyOnDate,companySegmentsForPeriodBulk,segmentForCompany} from './em
 import {employmentInformationAt} from './information-correction-history';
 import {employment,companyPayrollConfig} from '../db/schema';
 import {eq} from 'drizzle-orm';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {holidayDatesFor} from './holidays';
 import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic,payrollRoundAmount} from '../lib/payroll-basic';
 import {isModuleEnabled,settingEnabled} from './entitlements';
@@ -35,7 +35,7 @@ const requirements=(fields:string[],workforce?:boolean):FormulaReadRequirements=
  * are an additional requirement only when an expression actually reads that class of source. */
 async function financialSubjectTx(tx:Tx,ctx:SessionContext,companyId:string,employmentId:string){
  if(!uuid.test(companyId)||!uuid.test(employmentId)||!ctx.userId)throw new PayFormulaError('The payroll employee or permission is unavailable.','FORMULA_SOURCE_DENIED');
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  const [row]=await tx.execute<{companyId:string;allowed:boolean}>(sql`select e.company_id as "companyId",app.principal_snapshot_current() and app.can_admin_payroll_for(${companyId}::uuid) and app.can_admin_payroll_employment(e.id) as allowed from public.employment e join public.company paying on paying.id=${companyId}::uuid and paying.tenant_id=${ctx.tenantId}::uuid where e.id=${employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid`);
  if(!row?.allowed)throw new PayFormulaError('The payroll employee or permission is unavailable.','FORMULA_SOURCE_DENIED');return row;
 }
