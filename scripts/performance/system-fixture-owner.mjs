@@ -7,6 +7,7 @@ import {join} from 'node:path';
 import {fixtureAuditCounts,assertFixtureAudit} from './fixture-audit.ts';
 import {performanceFixtureCalendar,clockingFixtureText,wholeSystemOrgRoster} from './fixture-workload.mjs';
 import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
+import {isWorkerComparisonCourse} from './worker-comparison.mjs';
 import {attendanceRejectionProbeEnabled,attendanceRejectionSubjects} from './attendance-rejection-browser.mjs';
 export async function runDevelopmentSystemFixture(){
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.AUTH_PROVIDER,'internal');
@@ -17,7 +18,7 @@ const auditRequested=process.env.AUDIT_HASH_CHAIN_ENABLED==='true';
 assert(auditRequested,'the production workload requires audit chaining');
 const fullDevelopmentRoutes=fullDevelopmentBrowserRouteCourse(process.env);
 const includeOrgExplorerMember=fullDevelopmentRoutes||process.env.PERF_HTTP_SUITE==='whole-system';
-const establishedAttendance=fullDevelopmentRoutes||(process.env.AIHR_MEASURED_BROWSER_COURSE==='serial-2-4-8'
+const establishedAttendance=fullDevelopmentRoutes||(isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE)
  &&['whole-system','workflow-preflight'].includes(process.env.PERF_HTTP_SUITE));
 const {seedBase,entitledCtx,owner,closeAll,setModule}=await import('../../test/harness.ts');
 // The ordinary unit harness deliberately clears deployment gates. Restore this fixture's

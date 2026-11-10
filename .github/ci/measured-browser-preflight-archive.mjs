@@ -291,7 +291,8 @@ async function collectMeasuredPreflightArchive(mark) {
   const dispatch = inspectMeasuredWorkerDispatch(process.env, event);
   const { source, currentRunId, profile } = dispatch;
   const upstreamRunId = profile.upstreamRunId;
-  assert(profile.course === 'serial-2-4-8' && id(upstreamRunId), 'The serial course requires a prior preflight');
+  assert((profile.course === 'serial-2-4-8' || profile.course === 'parallel-2-4-8') && id(upstreamRunId),
+    'The serial and parallel comparison courses require a prior preflight');
   mark('controller-before');
   controllerHead(source, deadline);
 
@@ -323,7 +324,7 @@ async function collectMeasuredPreflightArchive(mark) {
     repository: get('repository-read', root),
     workflow: get('workflow-read', root + '/actions/workflows/' + workflowId),
     run: get('upstream-run-read', upstream),
-    jobInventory: get('upstream-jobs-read', upstream + '/jobs?filter=all&per_page=8&page=1'),
+    jobInventory: get('upstream-jobs-read', upstream + '/jobs?filter=all&per_page=16&page=1'),
     artifactInventory: get('upstream-artifacts-read', upstream + '/artifacts?per_page=2&page=1'),
   };
   mark('upstream-contract');

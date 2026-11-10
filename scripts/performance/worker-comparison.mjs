@@ -15,8 +15,38 @@ const course = Object.freeze([
     workers: 8, heapMiBPerWorker: 512, poolPerWorker: 2, claimsPerActor: 200, activeMinimumMs: 1390 * second,
     buildMode: 'comparison-copy', buildMs: null, driverMs: 600 * second, rampMs: null, holdMs: 30 * second, oversubscribed: true }),
 ]);
-export function workerComparisonCellName(suite, workers) {
-  return course.find(cell => cell.suite === suite && String(cell.workers) === workers)?.name;
+// Parallel courses run one cell per hosted runner. Every cell installs the one upstream
+// build artifact, so no cell pays for, or differs by, its own production build.
+const parallelCourse = Object.freeze(course.map(cell => Object.freeze({ ...cell, buildMode: 'comparison-artifact', buildMs: null,
+  activeMinimumMs: cell.suite === 'whole-system' ? 1660 * second : 1390 * second })));
+// Harness smoke: the same orchestration with the short functional preflight shape on every
+// cell. The 500-actor fixture is unchanged; only the measured driver is the 30-second shape.
+const smokeCourse = Object.freeze([2, 4, 8].map((workers, index) => Object.freeze({ ...profile, ordinal: index + 1,
+  name: 'smoke-' + workers, suite: 'workflow-preflight', scope: 'smoke-harness-only', workers,
+  heapMiBPerWorker: profile.totalHeapMiB / workers, poolPerWorker: profile.totalPool / workers, claimsPerActor: 200,
+  activeMinimumMs: 1390 * second, buildMode: 'comparison-artifact', buildMs: null, driverMs: 600 * second,
+  rampMs: null, holdMs: 30 * second, oversubscribed: workers > 4 })));
+const courses = Object.freeze({ 'serial-2-4-8': course, 'parallel-2-4-8': parallelCourse, 'parallel-smoke': smokeCourse });
+export const PARALLEL_WORKER_COMPARISON_COURSES = Object.freeze(['parallel-2-4-8', 'parallel-smoke']);
+export function isWorkerComparisonCourse(name) {
+  return typeof name === 'string' && Object.hasOwn(courses, name);
+}
+export function workerComparisonCourse(name) {
+  assert(isWorkerComparisonCourse(name), 'Unknown worker comparison course');
+  return courses[name];
+}
+const setupPhases = new Set(['postgres', 'migrate', 'organisation-admission-verifier', 'catalogs', 'fixture', 'build', 'certificate', 'cleanup']);
+/** Closed public fact for a failed setup phase. Raw process logs stay private. */
+export function workerSetupFailureFact({ label, code, timedOut, exitSignal, log }) {
+  const marker = typeof log === 'string' ? [...log.matchAll(/^AIHR_CI_POSTGRES_EXIT code=[0-9]{1,3} stage=([a-z-]{1,48})$/gm)].at(-1) : undefined;
+  return { kind: 'WORKER_COMPARISON_SETUP_FAILURE_V1', phase: setupPhases.has(label) ? label : 'unavailable',
+    exitCode: Number.isInteger(code) && code >= 0 && code <= 255 ? code : null, timedOut: timedOut === true,
+    exitSignal: typeof exitSignal === 'string' && /^SIG[A-Z0-9]{1,16}(?![\s\S])/.test(exitSignal) ? exitSignal : null,
+    postgresStage: marker ? marker[1] : null };
+}
+export function workerComparisonCellName(suite, workers, courseName = 'serial-2-4-8') {
+  if (!isWorkerComparisonCourse(courseName)) return undefined;
+  return courses[courseName].find(cell => cell.suite === suite && String(cell.workers) === workers)?.name;
 }
 
 const sameIdentity = (left, right) => left?.candidateSha === right.candidateSha && left.controllerSha === right.controllerSha
@@ -32,9 +62,25 @@ const sameSeal = (left, right) => left.buildId === right.buildId && left.entries
 const sealFields = ['buildId', 'entries', 'bytes', 'sha256'];
 const identityFields = ['candidateSha', 'controllerSha', 'runId', 'runAttempt'];
 
-function prerequisiteFor(identity, prerequisite, host) {
+function identityFor(identity) {
   assert(closed(identity, identityFields) && hex(identity.candidateSha, 40) && identity.controllerSha === identity.candidateSha
     && id(identity.runId) && identity.runAttempt === 1, 'Worker comparison identity refused');
+}
+
+function hostFor(host) {
+  assert(closed(host, ['effectiveCpus', 'memoryBytes', 'nodeVersion', 'postgresProfile'])
+    && host.effectiveCpus === 4 && Number.isSafeInteger(host.memoryBytes)
+    && host.memoryBytes >= 15 * 1024 ** 3 && host.memoryBytes <= 17 * 1024 ** 3
+    && host.nodeVersion === 'v24.22.1' && host.postgresProfile === 2, 'Worker comparison host profile refused');
+}
+
+function prerequisiteFor(identity, prerequisite, host) {
+  identityFor(identity);
+  upstreamFor(identity, prerequisite);
+  hostFor(host);
+}
+
+function upstreamFor(identity, prerequisite) {
   const ids = ['runId', 'resolveJobId', 'selectedJobId', 'artifactId'];
   const hashes = ['archiveSha256', 'captureSha256', 'renderedUnionSha256', 'harnessSha256', 'scenarioSha256'];
   assert(closed(prerequisite, ['kind', 'releaseEligible', 'source', ...ids, ...hashes])
@@ -42,10 +88,6 @@ function prerequisiteFor(identity, prerequisite, host) {
     && prerequisite.source === identity.candidateSha && ids.every(key => id(prerequisite[key]))
     && prerequisite.runId !== identity.runId && prerequisite.resolveJobId !== prerequisite.selectedJobId
     && hashes.every(key => hex(prerequisite[key], 64)), 'Worker comparison same-source full preflight required');
-  assert(closed(host, ['effectiveCpus', 'memoryBytes', 'nodeVersion', 'postgresProfile'])
-    && host.effectiveCpus === 4 && Number.isSafeInteger(host.memoryBytes)
-    && host.memoryBytes >= 15 * 1024 ** 3 && host.memoryBytes <= 17 * 1024 ** 3
-    && host.nodeVersion === 'v24.22.1' && host.postgresProfile === 2, 'Worker comparison host profile refused');
 }
 
 function validSeal(seal) {
@@ -198,6 +240,123 @@ export function createWorkerComparisonModel({ identity, prerequisite, host, anch
         frontiers, buildSeal: seal, seedSettlement, cells: Object.freeze(cells.map(row => Object.freeze(row))),
         complete: seedSettlement === 'settled' && cells.every(row => row.state === 'passed'),
         steadyPairPassed: seedSettlement === 'settled' && steadyPairPassed,
+      });
+    },
+  });
+}
+
+const runnerSpecFields = ['cpuModel', 'logicalCpus', 'kernel'];
+function runnerHostFor(host) {
+  assert(closed(host, ['effectiveCpus', 'memoryBytes', 'nodeVersion', 'postgresProfile', ...runnerSpecFields])
+    && typeof host.cpuModel === 'string' && /^[\x20-\x7e]{1,256}(?![\s\S])/.test(host.cpuModel)
+    && Number.isSafeInteger(host.logicalCpus) && host.logicalCpus >= host.effectiveCpus && host.logicalCpus <= 1024
+    && typeof host.kernel === 'string' && /^[0-9A-Za-z._+~-]{1,128}(?![\s\S])/.test(host.kernel),
+  'Worker comparison runner specification refused');
+  hostFor(Object.fromEntries(Object.entries(host).filter(([key]) => !runnerSpecFields.includes(key))));
+}
+
+/** Per-runner frontiers. The cell has no build phase, so it needs no build allowance. */
+export const PARALLEL_WORKER_CELL_FRONTIERS_MS = Object.freeze({ active: 3000 * second, settlement: 3360 * second,
+  final: 3480 * second, outer: 3600 * second });
+
+/**
+ * One cell of a parallel course on its own hosted runner. The aggregate job owns the
+ * 2-versus-4 fixture-day, build and runner comparability decisions across cells.
+ */
+export function createParallelWorkerCellModel({ courseName, workers, identity, prerequisite, host, transport, anchorMs, now,
+  observeCell, settledForReuse, verifySeed, retireSeed }) {
+  assert(PARALLEL_WORKER_COMPARISON_COURSES.includes(courseName), 'Parallel worker comparison course refused');
+  const cell = courses[courseName].find(row => String(row.workers) === workers);
+  assert(cell, 'Parallel worker comparison cell refused');
+  identityFor(identity);
+  if (courseName === 'parallel-smoke') assert(prerequisite === null, 'The harness smoke takes no preflight authority');
+  else upstreamFor(identity, prerequisite);
+  runnerHostFor(host);
+  assert(closed(transport, ['seal', 'archiveSha256']) && validSeal(transport.seal) && hex(transport.archiveSha256, 64),
+    'Parallel worker comparison build transport refused');
+  assert(Number.isFinite(anchorMs) && anchorMs >= 0 && anchorMs <= Number.MAX_SAFE_INTEGER - PARALLEL_WORKER_CELL_FRONTIERS_MS.outer
+    && [now, observeCell, settledForReuse, verifySeed, retireSeed].every(callback => typeof callback === 'function'),
+  'Worker comparison clock or observation owner refused');
+  const source = Object.freeze({ ...identity });
+  const upstream = prerequisite === null ? null : Object.freeze({ ...prerequisite });
+  const seal = Object.freeze({ ...transport.seal });
+  const limits = PARALLEL_WORKER_CELL_FRONTIERS_MS;
+  const frontiers = Object.freeze({ anchorMs, activeEndMs: anchorMs + limits.active, settlementEndMs: anchorMs + limits.settlement,
+    finalEndMs: anchorMs + limits.final, outerEndMs: anchorMs + limits.outer });
+  let used = false;
+  let lastTime = anchorMs;
+  let clockUsable = true;
+
+  function remaining(frontier) {
+    if (!clockUsable) return 0;
+    let sampled;
+    try {
+      sampled = now();
+    } catch {
+      clockUsable = false;
+      return 0;
+    }
+    if (!Number.isFinite(sampled) || sampled < lastTime) {
+      clockUsable = false;
+      return 0;
+    }
+    lastTime = sampled;
+    return Math.max(0, frontier - sampled);
+  }
+
+  async function observed(callback, input) {
+    try {
+      return await callback(input);
+    } catch {
+      return null;
+    }
+  }
+
+  return Object.freeze({
+    cell,
+    frontiers,
+    async run() {
+      assert(!used, 'Worker comparison model cannot reopen');
+      used = true;
+      let row;
+      let settledCell = false;
+      let buildSeal = null;
+      if (remaining(frontiers.activeEndMs) < cell.activeMinimumMs) {
+        row = { name: cell.name, scope: cell.scope, state: 'not-entered', reason: clockUsable ? 'budget' : 'clock', settlement: null };
+      } else {
+        const request = Object.freeze({ cell, identity: source, prerequisite: upstream, frontiers });
+        const result = await observed(observeCell, request);
+        const withinActive = remaining(frontiers.activeEndMs) > 0;
+        const resultShape = closed(result, ['kind', 'scope', 'passed', 'build', 'fixture'])
+          && result.kind === 'WORKER_COMPARISON_CELL_V1' && result.scope === cell.scope && typeof result.passed === 'boolean';
+        // The installed tree must reproduce the upstream seal exactly, not merely any valid seal.
+        const buildKnown = resultShape && buildBirth(result.build, source) !== null && sameSeal(result.build.seal, seal);
+        if (buildKnown) buildSeal = seal;
+        const fixtureKnown = resultShape && validFixture(result.fixture, cell);
+        const day = fixtureKnown ? result.fixture.day : null;
+        if (remaining(frontiers.settlementEndMs) > 0) {
+          const reuse = await observed(settledForReuse, request);
+          settledCell = remaining(frontiers.settlementEndMs) > 0 && settled(reuse, source, cell.ordinal);
+        }
+        let reason = !withinActive ? 'active-overrun' : !resultShape ? 'unknown-cell' : !buildKnown ? 'build-proof'
+          : !fixtureKnown ? 'fixture-proof' : result.passed ? null : 'measurement';
+        if (!settledCell) reason ??= 'settlement';
+        row = { name: cell.name, scope: cell.scope, state: reason === null ? 'passed' : 'failed',
+          reason, fixtureDay: day, settlement: settledCell ? 'settled' : 'unknown' };
+      }
+      let seedSettlement = buildSeal ? 'unknown' : null;
+      if (buildSeal && settledCell && remaining(frontiers.finalEndMs) > 0) {
+        const input = Object.freeze({ identity: source, seal: buildSeal, deadlineMs: frontiers.finalEndMs });
+        const seed = await observed(verifySeed, input);
+        if (remaining(frontiers.finalEndMs) > 0 && validSeal(seed) && sameSeal(seed, buildSeal)) {
+          const removal = await observed(retireSeed, input);
+          if (remaining(frontiers.finalEndMs) > 0 && seedRetired(removal, source)) seedSettlement = 'settled';
+        }
+      }
+      return Object.freeze({
+        kind: 'WORKER_COMPARISON_PARALLEL_CELL_MODEL_ONLY', releaseEligible: false, course: courseName, identity: source,
+        prerequisite: upstream, frontiers, buildSeal, transport: Object.freeze({ seal, archiveSha256: transport.archiveSha256 }),
+        seedSettlement, cell: Object.freeze(row), complete: seedSettlement === 'settled' && row.state === 'passed',
       });
     },
   });

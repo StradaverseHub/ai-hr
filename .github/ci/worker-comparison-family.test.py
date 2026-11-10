@@ -19,6 +19,15 @@ exec(compile(path.read_bytes(), str(path), 'exec', dont_inherit=True), owner.__d
 
 
 class FamilyTests(unittest.TestCase):
+    course = 'serial-2-4-8'
+    collected_modes = ('exited',)
+
+    def setUp(self):
+        course = patch.dict(os.environ, {'AIHR_MEASURED_BROWSER_COURSE': self.course})
+        course.start()
+        self.addCleanup(course.stop)
+        owner.ADOPTEES.update(live=0, exitedInSession=0, exitedOutsideSession=0, reapedOutsideSession=0)
+
     def test_exact_order_and_real_channel(self):
         parent, client = socket.socketpair()
         descriptor, finished = os.pipe()
@@ -185,7 +194,7 @@ os.close(release)
                         with self.assertRaises(ValueError):
                             owner.barrier(runner.pid, descriptor, birth)
                     with patch.object(owner.signal, 'pidfd_send_signal') as send:
-                        if mode == 'exited':
+                        if mode in self.collected_modes:
                             owner.barrier(runner.pid, descriptor, birth)
                             self.assertEqual(kernel.own_children(), [runner.pid])
                         else:
@@ -231,6 +240,146 @@ os.close(release)
                 with self.assertRaises(FileExistsError):
                     owner.publish(owner.clock(), 0, 4)
                 self.assertEqual(json.loads((out / 'summary.json').read_text()), final)
+
+
+class ParallelCellTests(FamilyTests):
+    """The parallel cell owner reuses every serial control, with exactly one cell barrier."""
+    course = 'parallel-smoke'
+    # An exited helper outside the session is collected; a live one in any session stays refused.
+    collected_modes = ('exited', 'escaped')
+
+    def test_exact_order_and_real_channel(self):
+        parent, client = socket.socketpair()
+        descriptor, finished = os.pipe()
+        responses = []
+
+        def child():
+            for frame in (b'H\n', b'B1\n'):
+                client.sendall(frame)
+                responses.append(client.recv(8))
+            # A second cell barrier must be refused; this runner owns exactly one cell.
+            client.sendall(b'B2\n')
+
+        with parent, client:
+            client.settimeout(2)
+            thread = threading.Thread(target=child)
+            thread.start()
+            try:
+                with patch.object(owner, 'barrier') as barrier:
+                    with self.assertRaises(ValueError):
+                        owner.exchange(parent, descriptor, 71, 951, owner.clock())
+                    self.assertEqual(barrier.call_count, 2)
+            finally:
+                thread.join(3)
+                os.close(descriptor)
+                os.close(finished)
+        self.assertEqual(responses, [b'A0\n', b'A1\n'])
+
+    def test_every_parallel_course_names_the_cell_job_and_entry(self):
+        for course in ('parallel-2-4-8', 'parallel-smoke'):
+            with patch.dict(os.environ, {'AIHR_MEASURED_BROWSER_COURSE': course}):
+                self.assertEqual((owner.mode()['job'], owner.mode()['entry'], owner.mode()['cells']),
+                                 ('worker-cell', '--parallel-cell', 1))
+        with patch.dict(os.environ, {'AIHR_MEASURED_BROWSER_COURSE': 'preflight-2'}):
+            with self.assertRaises(ValueError):
+                owner.mode()
+
+    def test_only_sealed_current_child_result_is_published(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            out = root / 'system-worker-comparison-evidence'
+            out.mkdir(mode=0o700)
+            pending = out / 'pending.json'
+            sha = '1' * 40
+            summary = {'kind': 'HOSTED_WORKER_COMPARISON_V1', 'releaseEligible': False, 'complete': True,
+                       'identity': {'candidateSha': sha, 'controllerSha': sha, 'runId': 17, 'runAttempt': 1}}
+            pending.write_text(json.dumps(summary))
+            pending.chmod(0o600)
+            with patch.dict(os.environ, {'RUNNER_TEMP': str(root), 'AIHR_CI_HEAD': sha, 'GITHUB_RUN_ID': '17'}):
+                # A serial summary kind is refused by the parallel cell owner.
+                with self.assertRaises(ValueError):
+                    owner.publish(owner.clock(), 0, 2)
+                pending.write_text(json.dumps({**summary, 'kind': 'HOSTED_WORKER_COMPARISON_CELL_V1'}))
+                with self.assertRaises(ValueError):
+                    owner.publish(owner.clock(), 0, 3)
+                owner.publish(owner.clock(), 0, 2)
+                final = json.loads((out / 'summary.json').read_text())
+                self.assertEqual(final['processOwner'], {'settled': True, 'cellBarriers': 1, 'runnerExitCode': 0,
+                                                         'exitedOutsideSession': 0})
+
+
+class ExitedOutsideSessionTests(unittest.TestCase):
+    runner, pid = 71, 997
+
+    def setUp(self):
+        self.addCleanup(owner.ADOPTEES.update, dict(owner.ADOPTEES))
+        owner.ADOPTEES.update(live=0, exitedInSession=0, exitedOutsideSession=0, reapedOutsideSession=0)
+
+    def row(self, **change):
+        return {'pid': self.pid, 'parent': os.getpid(), 'state': 'Z', 'session': 500, 'group': 500, 'start': 20, **change}
+
+    def reap(self, row, allow):
+        status = type('Status', (), {'si_pid': self.pid, 'si_signo': owner.signal.SIGCHLD, 'si_code': owner.os.CLD_EXITED})()
+        with patch.object(owner.KERNEL, 'identity', return_value=row), patch.object(owner.os, 'P_PIDFD', 5, create=True), \
+                patch.object(owner.os, 'pidfd_open', return_value=9, create=True), \
+                patch.object(owner.os, 'waitid', return_value=status, create=True), patch.object(owner.os, 'close'):
+            owner.reap_exited_adoptees(self.runner, [self.pid], allow)
+
+    def test_serial_owner_keeps_refusing_an_exited_helper_outside_the_session(self):
+        with self.assertRaises(ValueError):
+            self.reap(self.row(), False)
+        self.assertEqual(owner.ADOPTEES['reapedOutsideSession'], 0)
+
+    def test_one_cell_owner_collects_it_and_counts_it(self):
+        self.reap(self.row(), True)
+        self.assertEqual(owner.ADOPTEES['reapedOutsideSession'], 1)
+
+    def test_one_cell_owner_still_refuses_any_live_or_foreign_child(self):
+        for change in ({'state': 'S'}, {'state': 'R'}, {'parent': 100}):
+            with self.assertRaises(ValueError):
+                self.reap(self.row(**change), True)
+        self.assertEqual(owner.ADOPTEES['reapedOutsideSession'], 0)
+
+    def test_modes_bind_the_outside_session_allowance(self):
+        self.assertEqual({course: row['exited_outside_session'] for course, row in owner.MODES.items()},
+                         {'serial-2-4-8': False, 'parallel-2-4-8': True, 'parallel-smoke': True})
+
+    def test_classification_is_counts_only(self):
+        rows = {1: self.row(pid=1, state='S'), 2: self.row(pid=2, session=71, group=71), 3: self.row(pid=3)}
+        with patch.object(owner.KERNEL, 'identity', side_effect=rows.__getitem__):
+            self.assertEqual(owner.classify_adoptees(71, [1, 2, 3]),
+                             {'live': 1, 'exitedInSession': 1, 'exitedOutsideSession': 1})
+
+
+class FamilyExitWaitTests(unittest.TestCase):
+    def test_waits_for_exiting_adoptees_then_reaps_them_as_zombies(self):
+        states = iter(['S', 'S', 'Z', 'Z'])
+        with patch.object(owner.KERNEL, 'own_children', return_value=[71, 997]), \
+                patch.object(owner.KERNEL, 'identity', side_effect=lambda pid: {'state': next(states, 'Z')}), \
+                patch.object(owner, 'children_of', return_value=[]), patch.object(owner.time, 'sleep'):
+            self.assertTrue(owner.await_family_exit(71, owner.clock() + 5000))
+
+    def test_bounded_wait_keeps_a_live_family_refused(self):
+        with patch.object(owner.KERNEL, 'own_children', return_value=[71, 997]), \
+                patch.object(owner.KERNEL, 'identity', return_value={'state': 'S'}), \
+                patch.object(owner, 'children_of', return_value=[]):
+            self.assertFalse(owner.await_family_exit(71, owner.clock() + 60))
+        with patch.object(owner, 'exact_child'), patch.object(owner, 'await_family_exit', return_value=False) as wait, \
+                patch.object(owner.KERNEL, 'own_children', return_value=[71, 997]), \
+                patch.object(owner, 'children_of', return_value=[]), \
+                patch.object(owner, 'reap_exited_adoptees', side_effect=ValueError('live adoptee')):
+            with self.assertRaises(ValueError):
+                owner.barrier(71, 9, 951, deadline=owner.clock() + 60)
+            wait.assert_called_once()
+
+    def test_wait_is_bounded_by_the_frontier_and_fixed_ceiling(self):
+        with patch.object(owner.KERNEL, 'own_children', return_value=[71, 997]), \
+                patch.object(owner.KERNEL, 'identity', return_value={'state': 'R'}), \
+                patch.object(owner, 'children_of', return_value=[]):
+            started = owner.clock()
+            self.assertFalse(owner.await_family_exit(71, started))
+            self.assertLess(owner.clock() - started, 1000)
+        self.assertEqual(owner.FAMILY_EXIT_WAIT_MS, 20_000)
 
 
 if __name__ == '__main__':

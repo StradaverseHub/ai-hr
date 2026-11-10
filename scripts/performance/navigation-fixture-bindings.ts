@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {constants,openSync,closeSync,fstatSync,readSync,lstatSync,realpathSync} from 'node:fs';
 import {isAbsolute,join,resolve} from 'node:path';
 import {WORKER_COMPARISON_CELLS_DIRECTORY} from './worker-comparison-custody.mjs';
-import {workerComparisonCellName} from './worker-comparison.mjs';
+import {isWorkerComparisonCourse,workerComparisonCellName} from './worker-comparison.mjs';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {fixtureNavigationActor,type NavigationFixtureTextBindings} from './navigation-protocol';
 const UUID=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
@@ -54,8 +54,8 @@ export function readNavigationFixtureBindings():ReadonlyMap<number,Readonly<Navi
  const temporary=process.env.RUNNER_TEMP??'/missing';
  let directory=resolve(temporary,'system-performance-private');
  let cellsRoot;
- if(process.env.AIHR_MEASURED_BROWSER_COURSE==='serial-2-4-8'){
-  const cell=workerComparisonCellName(process.env.PERF_HTTP_SUITE,process.env.PERF_APP_WORKERS);
+ if(isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE)){
+  const cell=workerComparisonCellName(process.env.PERF_HTTP_SUITE,process.env.PERF_APP_WORKERS,process.env.AIHR_MEASURED_BROWSER_COURSE);
   assert(cell&&isAbsolute(temporary)&&realpathSync(temporary)===temporary,'Owned worker comparison fixture cell refused');
   cellsRoot=join(temporary,WORKER_COMPARISON_CELLS_DIRECTORY);
   directory=join(cellsRoot,cell);

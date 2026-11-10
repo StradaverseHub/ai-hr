@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
-import {mkdirSync,writeFileSync,readFileSync,copyFileSync,readdirSync,openSync,closeSync,lstatSync,realpathSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,copyFileSync,readdirSync,openSync,closeSync,lstatSync,realpathSync,constants,fstatSync,readSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import https from 'node:https';
 import http from 'node:http';
@@ -18,7 +18,8 @@ import {systemBuildEnvironment} from './build-environment.mjs';
 import {isolatedWorkerBudget,isolatedWorkerCpuAdmission} from './worker-budget.mjs';
 import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
 import {projectWorkerNativeLockFailures,validateWorkerDriverFailure,workerDriverFailureFile} from './worker-comparison-failure.mjs';
-import {createWorkerComparisonModel} from './worker-comparison.mjs';
+import {createParallelWorkerCellModel,createWorkerComparisonModel,isWorkerComparisonCourse,PARALLEL_WORKER_CELL_FRONTIERS_MS,
+ PARALLEL_WORKER_COMPARISON_COURSES,workerComparisonCourse,workerSetupFailureFact} from './worker-comparison.mjs';
 import {holdDevelopmentBuildSnapshot} from './worker-comparison-build.mjs';
 import {comparisonClock,holdWorkerComparisonFiles,openWorkerComparisonFamily,readComparisonJson} from './worker-comparison-custody.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
@@ -38,20 +39,27 @@ function processBirth(pid){
  return birth;
 }
 
+// One owner for the cell runtime environment. The upstream parallel build uses it too,
+// so the transported build sees the same variables a serial first cell would have built with.
+function cellRuntimeEnvironment(base,{out,privateDir,focusedEvidence}){
+ const authKey=randomBytes(32).toString('hex');
+ const env={...base,AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',AUTH_PROVIDER:'internal',AUTH_SESSION_KEY:authKey,AUTH_PUBLIC_ORIGIN:'https://localhost:3443',
+  AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',AUDIT_HASH_CHAIN_ENABLED:'true',
+  AI_CONFIG_SECRET:randomBytes(32).toString('hex'),PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:out,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
+  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
+  TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test'};
+ for(const key of Object.keys(env))if(key.startsWith('WORKOS_')||key==='SHARE_PASSWORD'||key==='DEV_USER_ID')delete env[key];
+ env.SHARE_PASSWORD='';env.DEV_USER_ID='';
+ return env;
+}
+
 async function runSystemCell(comparison=null){
 const base=comparison?.env??process.env;
 const out=comparison?.paths.out??join(base.RUNNER_TEMP,'system-performance-evidence');
 const privateDir=comparison?.paths.privateDir??join(base.RUNNER_TEMP,'system-performance-private');
 const focusedEvidence=comparison?.paths.focusedEvidence??join(base.RUNNER_TEMP,'aihr-focused');
 if(!comparison)for(const directory of [out,privateDir,focusedEvidence])mkdirSync(directory,{recursive:true,mode:0o700});
-const authKey=randomBytes(32).toString('hex');
-const env={...base,AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',AUTH_PROVIDER:'internal',AUTH_SESSION_KEY:authKey,AUTH_PUBLIC_ORIGIN:'https://localhost:3443',
- AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',AUDIT_HASH_CHAIN_ENABLED:'true',
- AI_CONFIG_SECRET:randomBytes(32).toString('hex'),PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:out,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
- DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
- TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test'};
-for(const key of Object.keys(env))if(key.startsWith('WORKOS_')||key==='SHARE_PASSWORD'||key==='DEV_USER_ID')delete env[key];
-env.SHARE_PASSWORD='';env.DEV_USER_ID='';
+const env=cellRuntimeEnvironment(base,{out,privateDir,focusedEvidence});
 const {workers,totalApplicationPool,poolPerWorker,heapPerWorker,totalHeapMiB}=isolatedWorkerBudget(
  env.PERF_APP_WORKERS,env.PERF_APP_POOL_CONNECTIONS,env.PERF_APP_TOTAL_HEAP_MIB);
 const host={cpus:os.availableParallelism(),memoryBytes:os.totalmem()};
@@ -164,6 +172,11 @@ async function run(label,command,args,childEnv=env,timeout=900000){
    if((lstatSync(path).mode&0o7777)===0o600)facts=validateWorkerDriverFailure(readComparisonJson(path,4096));
   }catch{}
   console.log('[system-perf] '+JSON.stringify(facts??{kind:'WORKER_COMPARISON_DRIVER_FAILURE_UNAVAILABLE'}));
+ }
+ if(comparison&&label!=='http-and-browser'&&(code!==0||timedOut)){
+  let log='';
+  try{log=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-4096);}catch{}
+  console.log('[system-perf] '+JSON.stringify(workerSetupFailureFact({label,code,timedOut,exitSignal,log})));
  }
  if(code!==0&&!comparison){const text=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>');writeFileSync(join(out,label+'-failure.txt'),text);}
  assert.equal(timedOut,false,label+' exceeded its unchanged process budget; retain incomplete evidence');
@@ -363,7 +376,7 @@ try{
    AIHR_CI_PG_DEVELOPMENT_LOCK_LOG:'1',GITHUB_JOB:env.GITHUB_JOB};
   for(const key of ['GITHUB_ACTIONS','CI','GITHUB_EVENT_NAME','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','AIHR_CI_UNIT',
    'AIHR_CI_PG_PROFILE','AIHR_CI_PG_CONFIGURED_CAP_BYTES','AIHR_CI_PG_PEAK_BUDGET_BYTES','AIHR_CI_PG_MEMORY_GIB',
-   'AIHR_CI_PG_JIT','AIHR_CI_PG_DURABLE','AIHR_CI_PG_STATEMENTS','AIHR_CI_PG_STATEMENTS_OWNER'])
+   'AIHR_CI_PG_JIT','AIHR_CI_PG_DURABLE','AIHR_CI_PG_STATEMENTS','AIHR_CI_PG_STATEMENTS_OWNER','AIHR_MEASURED_BROWSER_COURSE'])
    if(env[key]!==undefined)resetEnv[key]=env[key];
   developmentReset.admitted=true;
   await run('postgres','/usr/bin/bash',['--noprofile','--norc','-c',developmentResetCommand],resetEnv);
@@ -412,6 +425,12 @@ try{
  if(!comparison||comparison.cell.buildMode==='comparison-first'){
   await run('build',process.execPath,['.github/ci/build-heap.mjs','measure',join(out,'next-build-memory'),'--','pnpm','build'],buildEnv);
   if(comparison)build=comparison.snapshot.capture(comparison.frontiers.activeEndMs);
+ }else if(comparison.cell.buildMode==='comparison-artifact'){
+  // The upstream job built once; this runner installs its digest-verified, sealed transport.
+  const started=Date.now();
+  build=comparison.installArtifact(comparison.frontiers.activeEndMs);
+  report.phases.push({label:'build-artifact',elapsedMs:Date.now()-started,exitCode:0,timeoutMs:null,timedOut:false,exitSignal:null});save();
+  console.log('[system-perf] '+JSON.stringify(report.phases.at(-1)));
  }else{
   assert.equal(comparison.cell.buildMode,'comparison-copy');
   build=comparison.snapshot.install(comparison.frontiers.activeEndMs);
@@ -764,7 +783,8 @@ function comparisonPassed(result,telemetry,prerequisite){
  const {driver}=telemetry;
  const measurement=result.report.developmentMeasurement;
  return result.report.exitCode===0&&measurement?.complete===true&&driver?.busyResponses===0
-  &&driver.identity.harnessSha256===prerequisite.harnessSha256&&driver.identity.scenarioSha256===prerequisite.scenarioSha256
+  // Only the harness smoke has no upstream preflight; the aggregate then compares cells to each other.
+  &&(prerequisite===null||driver.identity.harnessSha256===prerequisite.harnessSha256&&driver.identity.scenarioSha256===prerequisite.scenarioSha256)
   &&driver.pageEvents.qualifiedCrashes===0&&telemetry.workerCrashes===0&&telemetry.renderedCaseCounts?.baseline===48
   &&driver.locks.preflight.pass===true
   &&(driver.suite==='workflow-preflight'||driver.locks.loaded.pass===true&&telemetry.roleLatency!==null
@@ -852,11 +872,220 @@ async function runWorkerComparison(){
  }
 }
 
-if(process.argv.length===2){
- assert(process.env.AIHR_MEASURED_BROWSER_COURSE!=='serial-2-4-8','Serial comparison requires the closed process owner');
+// ---- Parallel 2/4/8 course: one upstream build job, one runner per worker count. ----
+const workerBuildTransportName='aihr-worker-build-transport';
+const fixedToolEnvironment=Object.freeze({PATH:'/usr/bin:/bin',LANG:'C',LC_ALL:'C'});
+const hex64=value=>typeof value==='string'&&/^[a-f0-9]{64}(?![\s\S])/.test(value);
+
+/** Record the runner, never trust it: the aggregate decides 2-versus-4 comparability. */
+function runnerSpecification(){
+ const models=[...readFileSync('/proc/cpuinfo','utf8').matchAll(/^model name\s*:\s*(.+)$/gm)]
+  .map(match=>match[1].replace(/[^\x20-\x7e]/g,'?').replace(/\s+/g,' ').trim().slice(0,256));
+ assert(models.length>0&&models.every(model=>model.length>0)&&new Set(models).size===1,'Runner CPU model census refused');
+ return {cpuModel:models[0],logicalCpus:os.cpus().length,kernel:os.release()};
+}
+
+function parallelIdentity(env,job){
+ const course=env.AIHR_MEASURED_BROWSER_COURSE;
+ assert(PARALLEL_WORKER_COMPARISON_COURSES.includes(course)&&env.GITHUB_JOB===job&&env.GITHUB_RUN_ATTEMPT==='1'
+  &&env.GITHUB_EVENT_NAME==='workflow_dispatch'&&[env.AIHR_CI_CONTROL_HEAD,env.GITHUB_SHA,env.GITHUB_WORKFLOW_SHA].every(value=>value===sha)
+  &&/^[1-9][0-9]{0,15}$/.test(env.GITHUB_RUN_ID??'')&&Number.isSafeInteger(Number(env.GITHUB_RUN_ID))
+  &&realpathSync(env.RUNNER_TEMP)===env.RUNNER_TEMP,'Parallel worker comparison hosted identity refused');
+ assert(env.AIHR_CI_PG_PROFILE==='2'&&env.AIHR_CI_PG_CONFIGURED_CAP_BYTES==='2113929216'&&env.AIHR_CI_PG_PEAK_BUDGET_BYTES==='2147483648'
+  &&env.AIHR_CI_PG_JIT==='on'&&env.AIHR_CI_PG_MEMORY_GIB===undefined,'Worker comparison hosted database profile refused');
+ return {course,identity:Object.freeze({candidateSha:sha,controllerSha:sha,runId:Number(env.GITHUB_RUN_ID),runAttempt:1})};
+}
+
+function sealedFileDigest(path,maximum){
+ const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+ try{
+  const before=fstatSync(fd,{bigint:true});
+  const same=row=>row.dev===before.dev&&row.ino===before.ino&&row.size===before.size&&row.mtimeNs===before.mtimeNs&&row.ctimeNs===before.ctimeNs;
+  assert(before.isFile()&&before.uid===BigInt(process.getuid())&&before.nlink===1n&&(before.mode&0o7022n)===0n
+   &&before.size>0n&&before.size<=BigInt(maximum)&&same(lstatSync(path,{bigint:true})),'Worker build transport file refused');
+  const digest=createHash('sha256'),buffer=Buffer.alloc(1024*1024);
+  let total=0;
+  for(let count;(count=readSync(fd,buffer,0,buffer.length,null))>0;){digest.update(buffer.subarray(0,count));total+=count;}
+  assert(BigInt(total)===before.size&&same(fstatSync(fd,{bigint:true}))&&same(lstatSync(path,{bigint:true})),'Worker build transport file changed');
+  return {sha256:digest.digest('hex'),bytes:total};
+ }finally{closeSync(fd);}
+}
+
+function closedSeal(value){
+ assert(value!==null&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===4
+  &&typeof value.buildId==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value.buildId)
+  &&[value.entries,value.bytes].every(count=>Number.isSafeInteger(count)&&count>0)&&hex64(value.sha256),'Worker build seal refused');
+ return Object.freeze({buildId:value.buildId,entries:value.entries,bytes:value.bytes,sha256:value.sha256});
+}
+
+/** Build once for the whole parallel course and publish a sealed, digest-bound transport. */
+async function runWorkerBuild(){
+ const env=process.env,{course,identity}=parallelIdentity(env,'worker-build');
+ const temp=env.RUNNER_TEMP,root=join(temp,'aihr-worker-build'),transport=join(temp,workerBuildTransportName);
+ for(const directory of [root,transport])mkdirSync(directory,{mode:0o700});
+ const paths={privateDir:join(root,'private'),out:join(root,'evidence'),focusedEvidence:join(root,'focused')};
+ for(const directory of Object.values(paths))mkdirSync(directory,{mode:0o700});
+ // Same environment owner and the same first cell as the serial course's in-cell build.
+ const [first]=workerComparisonCourse(course);
+ const cellEnv=cellRuntimeEnvironment(comparisonEnvironment(first,paths),paths);
+ const host={effectiveCpus:os.availableParallelism(),memoryBytes:os.totalmem(),nodeVersion:process.version,...runnerSpecification()};
+ const snapshot=holdDevelopmentBuildSnapshot(cellEnv);
+ try{
+  const {buildEnv,admission}=systemBuildEnvironment(cellEnv,readFileSync('/proc/meminfo','utf8'));
+  const log=join(paths.privateDir,'build.log'),fd=openSync(log,'w',0o600);
+  const started=Date.now();
+  let code,signal;
+  try{
+   const child=spawn(process.execPath,['.github/ci/build-heap.mjs','measure',join(paths.out,'next-build-memory'),'--','pnpm','build'],
+    {env:buildEnv,stdio:['ignore',fd,fd]});
+   let killTimer;
+   const timer=setTimeout(()=>{child.kill('SIGTERM');killTimer=setTimeout(()=>child.kill('SIGKILL'),10000);},900000);
+   try{[code,signal]=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',(value,name)=>resolve([value,name]));});}
+   finally{clearTimeout(timer);clearTimeout(killTimer);}
+  }finally{closeSync(fd);}
+  console.log('[system-perf] '+JSON.stringify({label:'build',elapsedMs:Date.now()-started,exitCode:code,exitSignal:signal}));
+  if(code!==0||signal!==null){
+   console.error(readFileSync(log,'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>'));
+   throw Error('Worker comparison upstream build failed');
+  }
+  const view=snapshot.capture(comparisonClock()+180000);
+  assert.deepEqual(view.identity,identity,'Worker build identity differs');
+  const archive=join(transport,'next.tar');
+  execFileSync('/usr/bin/tar',['--create','--file',archive,'--directory',join(temp,'aihr-worker-comparison-next','seed'),
+   '--sort=name','--numeric-owner','--owner=0','--group=0','--format=gnu','.'],
+   {env:fixedToolEnvironment,timeout:300000,killSignal:'SIGKILL',stdio:['ignore','ignore','pipe'],maxBuffer:65536});
+  assert.deepEqual(snapshot.verify(comparisonClock()+180000),view.seal,'Worker build seed changed during transport');
+  const digest=sealedFileDigest(archive,4*1024**3);
+  let buildMemory=null;
+  try{
+   const memory=readComparisonJson(join(paths.out,'next-build-memory','build-memory.json'),32768);
+   buildMemory=Object.fromEntries(['peakRssKiB','minMemAvailableKiB','memTotalKiB','exitCode','verdict'].map(key=>[key,memory[key]??null]));
+  }catch{}
+  const receipt={kind:'WORKER_COMPARISON_BUILD_TRANSPORT_V1',releaseEligible:false,course,identity,seal:closedSeal(view.seal),
+   archive:digest,buildElapsedMs:Date.now()-started,buildHeap:{profile:admission.profile,memTotalKiB:admission.memTotalKiB},buildMemory,host};
+  writeFileSync(join(transport,'build.json'),JSON.stringify(receipt,null,2)+'\n',{flag:'wx',mode:0o600});
+  console.log('[system-perf] '+JSON.stringify({kind:receipt.kind,seal:receipt.seal,archive:digest,host}));
+  return 0;
+ }finally{snapshot.close();}
+}
+
+function readWorkerBuildTransport(env,course,identity){
+ const directory=join(env.RUNNER_TEMP,workerBuildTransportName),archivePath=join(directory,'next.tar');
+ assert(realpathSync(directory)===directory&&hex64(env.AIHR_WORKER_BUILD_ARCHIVE_SHA256),'Worker build transport location refused');
+ const seal=closedSeal(JSON.parse(env.AIHR_WORKER_BUILD_SEAL??'null'));
+ const receipt=readComparisonJson(join(directory,'build.json'),64*1024);
+ assert(receipt.kind==='WORKER_COMPARISON_BUILD_TRANSPORT_V1'&&receipt.releaseEligible===false&&receipt.course===course,
+  'Worker build transport receipt refused');
+ assert.deepEqual(receipt.identity,identity,'Worker build transport belongs to another run');
+ assert.deepEqual(closedSeal(receipt.seal),seal,'Worker build transport seal differs from the upstream job');
+ assert(receipt.archive?.sha256===env.AIHR_WORKER_BUILD_ARCHIVE_SHA256,'Worker build transport digest differs from the upstream job');
+ const observed=sealedFileDigest(archivePath,4*1024**3);
+ assert(observed.sha256===receipt.archive.sha256&&observed.bytes===receipt.archive.bytes,'Worker build archive bytes differ');
+ return {seal,archiveSha256:observed.sha256,archivePath,archiveBytes:observed.bytes};
+}
+
+/** One worker count on this runner. The Python owner holds the process family around it. */
+async function runParallelWorkerCell(){
+ const env=process.env,{course,identity}=parallelIdentity(env,'worker-cell');
+ assert(/^[1-9][0-9]{0,14}$/.test(env.AIHR_WORKER_COMPARISON_T0_MS??'')&&['2','4','8'].includes(env.AIHR_WORKER_COMPARISON_CELL_WORKERS),
+  'Parallel worker comparison cell admission missing');
+ const anchorMs=Number(env.AIHR_WORKER_COMPARISON_T0_MS),now=comparisonClock;
+ assert(now()>=anchorMs&&now()<anchorMs+PARALLEL_WORKER_CELL_FRONTIERS_MS.active,'Worker comparison admission deadline elapsed');
+ let prerequisite=null;
+ if(course==='parallel-smoke')assert(!env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256,'The harness smoke takes no preflight authority');
+ else{
+  assert(hex64(env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256),'Worker comparison sealed admission missing');
+  prerequisite=readComparisonJson(join(env.RUNNER_TEMP,'aihr-worker-comparison-admission.json'),4096,env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256);
+ }
+ const transport=readWorkerBuildTransport(env,course,identity);
+ const host={effectiveCpus:os.availableParallelism(),memoryBytes:os.totalmem(),nodeVersion:process.version,postgresProfile:2,...runnerSpecification()};
+ const family=openWorkerComparisonFamily(env);
+ let snapshot,files,current,receipt=null;
+ const sourceBuild=join(env.GITHUB_WORKSPACE,'source','.next');
+ try{
+  const model=createParallelWorkerCellModel({courseName:course,workers:env.AIHR_WORKER_COMPARISON_CELL_WORKERS,identity,prerequisite,host,
+   transport:{seal:transport.seal,archiveSha256:transport.archiveSha256},anchorMs,now,
+   async observeCell({cell,frontiers}){
+    const paths=files.openCell(cell);
+    current=null;
+    const result=await runSystemCell({cell,frontiers,paths,snapshot,env:comparisonEnvironment(cell,paths),
+     holdBuild:view=>files.holdBuild(cell.ordinal,view),
+     recordDatabase(){},
+     installArtifact(deadlineMs){
+      assert(sealedFileDigest(transport.archivePath,4*1024**3).sha256===transport.archiveSha256,'Worker build archive changed before install');
+      mkdirSync(sourceBuild,{mode:0o700});
+      execFileSync('/usr/bin/tar',['--extract','--file',transport.archivePath,'--directory',sourceBuild,'--no-same-owner','--preserve-permissions'],
+       {env:fixedToolEnvironment,timeout:Math.max(1,Math.min(300000,deadlineMs-comparisonClock())),killSignal:'SIGKILL',
+        stdio:['ignore','ignore','pipe'],maxBuffer:65536});
+      // Capture re-derives the tree seal from the installed bytes; it must equal the upstream seal.
+      const view=snapshot.capture(deadlineMs);
+      assert.deepEqual(closedSeal(view.seal),transport.seal,'Installed worker build differs from the upstream seal');
+      return view;
+     },
+    });
+    current={ordinal:cell.ordinal,result};
+    const telemetry=comparisonTelemetry({...result,scope:cell.scope},paths.out);
+    receipt=telemetry;
+    return {kind:'WORKER_COMPARISON_CELL_V1',scope:cell.scope,passed:comparisonPassed(result,telemetry,prerequisite),
+     build:result.build,fixture:result.fixture};
+   },
+   async settledForReuse({cell,frontiers}){
+    const deadline=frontiers.settlementEndMs;
+    assert(current?.ordinal===cell.ordinal,'Worker comparison cell completion missing');
+    const {report,directChildren}=current.result;
+    const childDeadline=Math.min(deadline,now()+5000);
+    while(directChildren.size&&now()<childDeadline)await pause(25);
+    assert(directChildren.size===0&&now()<deadline,'Worker comparison direct child closes incomplete');
+    const {postgres,postgresAbsent}=report.developmentMeasurement.settlement;
+    assert(postgres==='settled'&&postgresAbsent===true,'Worker comparison PostgreSQL birth removal incomplete');
+    for(const port of comparisonPorts){
+     assert(now()<deadline,'Worker comparison loopback deadline elapsed');
+     await assertPortFree(port);
+    }
+    await family.acknowledge(1,deadline);
+    files.retireCell(cell.ordinal,deadline);
+    current=null;
+    return {kind:'WORKER_COMPARISON_CELL_SETTLEMENT_V1',...identity,ordinal:cell.ordinal,settledForReuse:true,
+     directChildrenClosed:true,processFamilyEmpty:true,postgresBirthAbsent:true,portsAbsent:true,
+     runtimeBuildRetired:true,focusedDirectoryRetired:true};
+   },
+   verifySeed:({deadlineMs})=>snapshot.verify(deadlineMs),
+   retireSeed({deadlineMs}){
+    snapshot.close();
+    files.retireSeed(deadlineMs);
+    return {kind:'WORKER_COMPARISON_SEED_RETIREMENT_V1',...identity,retired:true,privateDirectoryRetired:true};
+   },
+  });
+  await family.acknowledge(0,model.frontiers.activeEndMs);
+  files=holdWorkerComparisonFiles(env,{ordinals:[model.cell.ordinal]});
+  snapshot=holdDevelopmentBuildSnapshot(env);
+  files.holdSeed();
+  const result=await model.run();
+  files.publish({...result,kind:'HOSTED_WORKER_COMPARISON_CELL_V1',host,productionEquivalent:false,
+   transport:{...result.transport,archiveBytes:transport.archiveBytes},
+   scope:course==='parallel-smoke'?'Harness smoke only: functional preflight shape on every cell. No comparison evidence.'
+    :model.cell.scope==='functional-diagnostic-only'?'Four-vCPU oversubscription diagnostic only. No steady load.'
+     :'Steady cell on its own runner. The aggregate job owns 2-versus-4 comparability.',
+   cell:{...result.cell,observation:receipt}},result.frontiers.finalEndMs);
+  return result.complete?0:1;
+ }finally{
+  family.close();
+  try{snapshot?.close();}finally{files?.close();}
+ }
+}
+
+const entry=process.argv.slice(2);
+if(entry.length===0){
+ assert(!isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE),'Worker comparison courses require their closed entry points');
  process.exitCode=(await runSystemCell()).report.exitCode;
+}else if(entry.length===1&&entry[0]==='--worker-build'){
+ try{process.exitCode=await runWorkerBuild();}
+ catch(error){console.error('[system-perf] Worker comparison upstream build refused: '+String(error?.message).slice(0,240));process.exitCode=1;}
+}else if(entry.length===1&&entry[0]==='--parallel-cell'){
+ try{process.exitCode=await runParallelWorkerCell();}
+ catch{console.error('[system-perf] Parallel worker comparison cell custody or publication refused');process.exitCode=1;}
 }else{
- assert(process.argv.length===3&&process.argv[2]==='--serial-2-4-8','Unknown system performance runner entry point');
+ assert(entry.length===1&&entry[0]==='--serial-2-4-8','Unknown system performance runner entry point');
  try{process.exitCode=await runWorkerComparison();}
  catch{console.error('[system-perf] Worker comparison custody or publication refused');process.exitCode=1;}
 }
