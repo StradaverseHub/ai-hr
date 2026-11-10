@@ -25,13 +25,13 @@ import {withTenant,type SessionContext} from '../db/client';
 import {aiCentreActivity} from '../lib/ai/centre-activity';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {assertModuleGate} from './module-gate';
-import {pendingLeaveTaskBundleSql,pendingLeaveTasksFromBundle,pendingLeaveCancellationCandidatesExistSql,
+import {pendingLeaveTaskBundleSql,pendingLeaveTasksFromBundle,pendingLeaveCancellationTaskBundleSql,
  pendingReplacementLeaveTaskBundleSql,pendingReplacementLeaveTasksFromBundle} from '../packs/leave/service';
 import {pendingClaimTaskPreviewBundleSql,pendingClaimTaskPreviewFromBundle} from '../packs/claims/service';
 import {pendingAttendanceTaskBundleSql,pendingAttendanceTasksFromBundle} from '../packs/attendance/service';
 import {pendingProfileTaskBundleSql,pendingProfileTasksFromBundle} from './profile';
-import {pendingResignationCandidatesExistSql} from './offboarding';
-import {pendingReviewCandidatesExistSql} from './employment-review';
+import {pendingResignationTaskBundleSql,pendingResignationTasksFromBundle} from './offboarding';
+import {pendingReviewTaskBundleSql,pendingReviewTasksFromBundle} from './employment-review';
 import {pendingNoticeAcknowledgementTaskBundleSql,pendingNoticeAcknowledgementTasksFromBundle} from './notice';
 import {pendingPerformanceTasksBundleSql,pendingPerformanceTasksFromBundle,pendingStandardFeedbackTaskBundleSql,
  pendingStandardFeedbackTasksFromBundle,pendingOnehrFeedbackCandidatesBundleSql} from '../packs/performance/service';
@@ -50,8 +50,11 @@ export type AccountTaskBundle=Readonly<{
  modules:AccountTaskModules;
  read:AccountTaskRead;
  leave:AssignedApprovalMetadata[]|null;
- /** The preview probe of core/approvals-inbox.ts loadDecisionHeaders: false is its empty answer. */
- decisionCandidates:boolean;
+ /** core/approvals-inbox.ts loadDecisionHeaders' four owners. */
+ cancellations:AssignedApprovalMetadata[]|null;
+ resignations:AssignedApprovalMetadata[]|null;
+ managerReviews:AssignedApprovalMetadata[]|null;
+ hrReviews:AssignedApprovalMetadata[]|null;
  replacement:{id:string;personId:string;employee:string|null;createdAt:Date}[]|null;
  attendance:AssignedApprovalMetadata[]|null;
  profile:AssignedApprovalMetadata[]|null;
@@ -89,10 +92,10 @@ export async function readAccountTaskBundle(ctx:SessionContext,modules:AccountTa
    await tx.execute(sql`set local jit=off`);
    const sections:[string,SQL][]=[
     ['leave',pendingLeaveTaskBundleSql(ctx,companyIds)],
-    ['decision_candidates',sql`(${pendingLeaveCancellationCandidatesExistSql(tx,ctx,companyIds)}
-     or ${pendingResignationCandidatesExistSql(tx,ctx,companyIds)}
-     or ${pendingReviewCandidatesExistSql(tx,ctx,'manager',companyIds)}
-     or ${pendingReviewCandidatesExistSql(tx,ctx,'hr',companyIds)})`],
+    ['cancellations',pendingLeaveCancellationTaskBundleSql(tx,ctx,companyIds)],
+    ['resignations',pendingResignationTaskBundleSql(tx,ctx,companyIds)],
+    ['manager_reviews',pendingReviewTaskBundleSql(tx,ctx,'manager',companyIds)],
+    ['hr_reviews',pendingReviewTaskBundleSql(tx,ctx,'hr',companyIds)],
     ['replacement',pendingReplacementLeaveTaskBundleSql(ctx,companyIds)],
     ['attendance',modules.attendance?pendingAttendanceTaskBundleSql(ctx,companyIds):none],
     ['profile',pendingProfileTaskBundleSql(ctx,companyIds)],
@@ -121,7 +124,10 @@ export async function readAccountTaskBundle(ctx:SessionContext,modules:AccountTa
  return Object.freeze({
   modules:Object.freeze({...modules}),read:Object.freeze({...read,...(companyIds?{companyIds:Object.freeze(companyIds)}:{})}),
   leave:decide(()=>pendingLeaveTasksFromBundle(result.leave)),
-  decisionCandidates:result.decision_candidates!==false,
+  cancellations:decide(()=>pendingLeaveTasksFromBundle(result.cancellations)),
+  resignations:decide(()=>pendingResignationTasksFromBundle(result.resignations)),
+  managerReviews:decide(()=>pendingReviewTasksFromBundle(result.manager_reviews)),
+  hrReviews:decide(()=>pendingReviewTasksFromBundle(result.hr_reviews)),
   replacement:decide(()=>pendingReplacementLeaveTasksFromBundle(result.replacement)),
   attendance:module(modules.attendance,true,()=>pendingAttendanceTasksFromBundle(result.attendance),[]),
   profile:decide(()=>pendingProfileTasksFromBundle(result.profile)),

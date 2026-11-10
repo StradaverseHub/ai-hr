@@ -310,6 +310,94 @@ async function bundleCalculatorPairs(actor:Actor,today:string){
  return pairs;
 }
 
+// ── Deferred task owners in the account task statement (core/account-task-bundle.ts, ADR decision 10) ────────────────
+/** Candidates for every task owner the statement now decides, seeded after the traces so their counts stay comparable.
+ * Tenant 0's two managers and HR get answered paths: copied cancellation chains with alternates, alternates sanitised
+ * and tried in order, manager's-manager lines and subject heads of several rows that agree, a resignation, manager and
+ * HR employment reviews, attendance applications (frozen workflow and legacy), a profile change request. The
+ * cross-company manager (position 6) gets the documented deferrals: lines and heads that disagree and an alternate whose
+ * named id the owner would trim. The other tenant's manager gets an unknown step kind and a named step naming nobody,
+ * which the owner refuses with a non-refusal error (only that tenant's actors see them). A step that fails is recorded
+ * instead of failing the run. */
+async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
+ const failures:{step:string;error:unknown}[]=[];
+ const step=async(name:string,work:()=>Promise<unknown>)=>{try{await work();}catch(error){failures.push({step:name,error:errorFact(error)});}};
+ const day=(offset:number)=>new Date(Date.parse(today+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
+ const on=day(12);
+ for(const [t,actors] of tenants.entries()){
+  const at=(position:number)=>actors.find(a=>a.index===t*250+position)!,tenantId=actors[0].ctx.tenantId;
+  const [{leaveTypeId}]=await owner.client<{leaveTypeId:string}[]>`select leave_type_id as "leaveTypeId" from leave_request where tenant_id=${tenantId}::uuid limit 1`;
+  const line=(subordinate:Actor,manager:Actor,validFrom='2025-01-01')=>owner.db.insert(s.reportingLine).values({tenantId,managerEmploymentId:manager.employmentId,
+   subordinateEmploymentId:subordinate.employmentId,lineType:'administrative',validFrom});
+  const leave=async(subject:Actor,steps:{kind:string;approver?:string|null;status?:'approved';alternates?:unknown}[],status:'pending'|'approved'='pending')=>{
+   const [request]=await owner.db.insert(s.leaveRequest).values({tenantId,employmentId:subject.employmentId,leaveTypeId,startDate:on,endDate:on,days:'1',status}).returning();
+   if(steps.length)await owner.db.insert(s.leaveApprovalStep).values(steps.map((step,stepIndex)=>({tenantId,leaveRequestId:request.id,subjectEmploymentId:subject.employmentId,
+    stepIndex,approverKind:step.kind,approverEmploymentId:step.approver??null,approverAlternates:step.alternates??null,status:step.status??'pending' as const})));
+   return request;
+  };
+  const cancellation=async(subject:Actor,steps:{kind:string;approver?:string|null;status?:'approved';alternates?:unknown}[])=>{
+   const approved=await leave(subject,[],'approved');
+   const [request]=await owner.db.insert(s.leaveCancellationRequest).values({tenantId,employmentId:subject.employmentId,leaveRequestId:approved.id,cancelDates:[on],requestedDays:'1'}).returning();
+   if(steps.length)await owner.db.insert(s.leaveCancellationStep).values(steps.map((step,stepIndex)=>({tenantId,cancellationRequestId:request.id,subjectEmploymentId:subject.employmentId,
+    stepIndex,approverKind:step.kind,approverEmploymentId:step.approver??null,approverAlternates:step.alternates??null,status:step.status??'pending' as const})));
+  };
+  // A second current assignment in a department headed by `head` (and, with `move`, the original one moved to another).
+  const headed=async(subject:Actor,head:Actor,move?:boolean)=>{
+   const [first,second]=await owner.db.insert(s.department).values([{tenantId,companyId:subject.companyId,name:'Fictional headed department A',headEmploymentId:head.employmentId},
+    {tenantId,companyId:subject.companyId,name:'Fictional headed department B',headEmploymentId:head.employmentId}]).returning();
+   if(move)await owner.client`update assignment set department_id=${first.id}::uuid where employment_id=${subject.employmentId}::uuid and valid_to is null and superseded_at is null`;
+   await owner.client`insert into assignment(tenant_id,employment_id,department_id,company_id,employment_type,valid_from)
+    select tenant_id,employment_id,${second.id}::uuid,company_id,employment_type,valid_from from assignment
+    where employment_id=${subject.employmentId}::uuid and valid_to is null and superseded_at is null limit 1`;
+  };
+  const manager=at(2),second=at(3);
+  if(t===0){
+   const cross=at(6);
+   await step('lines',async()=>{
+    await line(second,manager);await line(at(21),manager);await line(at(25),second);await line(at(25),second,day(-20));await line(at(27),second);
+    for(const position of [30,31,32,33,34])await line(at(position),cross);
+    await line(at(30),at(31));await line(at(34),at(31));
+   });
+   await step('leaveChains',async()=>{
+    await leave(at(17),[{kind:'hr_admin',alternates:[42,null,['direct_manager'],'mystery_kind',{kind:'specific_employee'},{kind:'specific_employee',employmentId:''},
+     'specific_employee',{kind:'specific_employee',employmentId:second.employmentId.toUpperCase()}]}]);
+    await leave(at(18),[{kind:'payroll',alternates:['manager_manager',{kind:'direct_manager',employmentId:'stray'}]}]);
+    await leave(at(21),[{kind:'manager_manager',alternates:['direct_manager']}]);
+    await leave(at(25),[{kind:'manager_manager'}]);
+    await headed(at(27),manager,true);await leave(at(27),[{kind:'department_head'}]);
+    // Disagreeing candidates and an alternate id the owner would trim: the cross-company manager's leave reads alone.
+    await leave(at(30),[{kind:'manager_manager'}]);
+    await headed(at(32),cross);await leave(at(32),[{kind:'department_head'}]);
+    await leave(at(33),[{kind:'custom_role',alternates:[{kind:'specific_employee',employmentId:' '+cross.employmentId+' '}]}]);
+   });
+   await step('cancellations',async()=>{
+    await cancellation(at(5),[]);
+    await cancellation(at(14),[{kind:'direct_manager',status:'approved'},{kind:'hr_admin',alternates:[{kind:'specific_employee',employmentId:second.employmentId}]}]);
+    await cancellation(at(7),[{kind:'direct_manager',status:'approved'}]);
+    await cancellation(at(34),[{kind:'manager_manager'}]);
+   });
+   await step('resignations',()=>owner.db.insert(s.resignationRequest).values([8,60].map(position=>({tenantId,employmentId:at(position).employmentId,personId:at(position).ctx.personId!,lastWorkingDay:day(30)}))));
+   await step('reviews',()=>owner.db.insert(s.employmentReview).values([
+    {tenantId,employmentId:at(9).employmentId,personId:at(9).ctx.personId!,managerEmploymentId:manager.employmentId,endDate:day(40),dueDate:day(10),reviewType:'contract' as const},
+    {tenantId,employmentId:at(10).employmentId,personId:at(10).ctx.personId!,managerEmploymentId:manager.employmentId,endDate:day(40),dueDate:day(11),reviewType:'contract' as const,status:'pending_hr' as const},
+    {tenantId,employmentId:at(61).employmentId,personId:at(61).ctx.personId!,managerEmploymentId:at(52).employmentId,endDate:day(40),dueDate:day(12),reviewType:'contract' as const,status:'pending_hr' as const},
+   ]));
+   const {requestAttendanceCorrection}=await import('../../core/attendance');
+   await step('attendanceWorkflow',()=>requestAttendanceCorrection(at(35).ctx,{employmentId:at(35).employmentId,date:day(-5),checkIn:'09:00',checkOut:'18:00',reason:'Fictional workflow correction'}));
+   await step('attendanceLegacy',()=>requestAttendanceCorrection(second.ctx,{employmentId:second.employmentId,date:day(-6),checkIn:'09:00',checkOut:'18:00',reason:'Fictional legacy correction'}));
+   await step('profile',()=>owner.db.insert(s.profileChangeRequest).values({tenantId,employmentId:at(11).employmentId,personId:at(11).ctx.personId!,proposed:{preferredName:'Fictional preferred name'}}));
+  }else{
+   // Only this tenant's manager (and its administrators, not compared) sees these: the owner throws a non-refusal error.
+   await step('errorChains',async()=>{
+    await leave(at(5),[{kind:'mystery_kind'}]);
+    await leave(at(6),[{kind:'specific_employee',approver:null}]);
+    await cancellation(at(7),[{kind:'mystery_kind'}]);
+   });
+  }
+ }
+ return failures;
+}
+
 type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[]};
 const sharedStats:SharedReadStats[]=[];
 (globalThis as {__aihrPerfSharedRead?:(stats:SharedReadStats)=>void}).__aihrPerfSharedRead=stats=>{sharedStats.push(stats);};
@@ -593,6 +681,26 @@ it('completes every manager Home card and Today section read without a handled f
     stepIndex,approverKind:step.kind,approverEmploymentId:step.approver??null,approverAlternates:step.alternates??null,status:step.status??'pending' as const})));
   }
  }
+ // Deferred task owners (core/account-task-bundle.ts, ADR decision 10): their candidates, then the Tasks and Summary
+ // cards and the stream with every task owner reading alone (before) and through the account task statement (after).
+ {
+  const failures=await seedTaskOwnerFixtures(tenants,today);report.taskOwnerFixtureFailures=failures;print('task-owner-fixtures',{failures});
+  const {withOwnerTaskReads}=await import('../../core/account-task-bundle'),trips:Record<string,[number,number]>={};
+  for(const [label,actor] of [['manager',manager],['secondManager',secondManager],['groupHR',actors.find(a=>a.role==='groupHR')!],
+   ['crossCompanyManager',actors.find(a=>a.index===6)!],['employee',employee]] as const){
+   const reads:Record<string,()=>Promise<unknown>>={
+    tasks:()=>withSharedReadSnapshot(actor.ctx,()=>readers(actor.ctx,actor.employmentId,month).tasks()),
+    summary:()=>withSharedReadSnapshot(actor.ctx,()=>readers(actor.ctx,actor.employmentId,month).summary()),
+    stream:()=>streamHome(actor,month,null),
+   };
+   for(const [name,read] of Object.entries(reads)){
+    await read().catch(()=>undefined);
+    const old=await traceStatements(()=>withOwnerTaskReads(read)),fresh=await traceStatements(read);
+    trips[label+':'+name]=[old.trace.trips,fresh.trace.trips];
+   }
+  }
+  report.taskOwnerTrips=trips;print('task-owner-trips',trips);evidence();
+ }
  const bundleSections:unknown[]=[];report.bundleSections=bundleSections;
  const {listClaimsForEmployment,listOpenClaimsForEmployment}=await import('../../packs/claims/service');
  for(const [subject,actor] of subjects){
@@ -653,6 +761,7 @@ it('completes every manager Home card and Today section read without a handled f
    const attendanceService=await import('../../packs/attendance/service'),performanceService=await import('../../packs/performance/service');
    const rewardsService=await import('../../packs/rewards/service'),lifecycleService=await import('../../packs/lifecycle/service');
    const {pendingProfileTaskMetadata}=await import('../../core/profile'),{pendingNoticeAcknowledgementTasks}=await import('../../core/notice');
+   const {pendingResignationTaskMetadata}=await import('../../core/offboarding'),{pendingReviewTaskMetadata}=await import('../../core/employment-review');
    const ctx=actor.ctx,inboxModules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
    const modules={...inboxModules,lifecycle:isModuleEnabled(ctx,'lifecycle')};
    const bundle=await withSharedReadSnapshot(ctx,()=>bundles.readAccountTaskBundle(ctx,modules));
@@ -663,6 +772,10 @@ it('completes every manager Home card and Today section read without a handled f
    compare(subject,'bundle:answered',proof?.ok===true,bundle!==null);
    const owners:Record<string,()=>Promise<unknown>>={
     leave:()=>leaveService.pendingLeaveTaskMetadata(ctx),
+    cancellations:()=>leaveService.pendingLeaveCancellationTaskMetadata(ctx),
+    resignations:()=>pendingResignationTaskMetadata(ctx),
+    managerReviews:()=>pendingReviewTaskMetadata(ctx,'manager'),
+    hrReviews:()=>pendingReviewTaskMetadata(ctx,'hr'),
     replacement:()=>leaveService.listPendingReplacementLeaveTasks(ctx,{}),
     attendance:async()=>modules.attendance?attendanceService.pendingAttendanceTaskMetadata(ctx):[],
     profile:()=>pendingProfileTaskMetadata(ctx),
@@ -681,7 +794,24 @@ it('completes every manager Home card and Today section read without a handled f
     answered[name]=Array.isArray(value)?value.length:(value as {total?:number}).total??-1;
     compare(subject,'bundle:'+name,await outcome(()=>withIndependentTransactions(read)),{ok:true,value});
    }
-   bundleSections.push({subject,deferred,answered,decisionCandidates:bundle?.decisionCandidates??null});
+   // The same sections under this subject's company filter (the scoped previews' statement), against each owner so filtered.
+   const scopedRead={companyIds:scopeIds,personal:false,notices:true},scopedModules={...modules,lifecycle:false};
+   const scopedBundle=await withSharedReadSnapshot(ctx,()=>bundles.readAccountTaskBundle(ctx,scopedModules,scopedRead));
+   const scopedOwners:Record<string,()=>Promise<unknown>>={
+    leave:()=>leaveService.pendingLeaveTaskMetadata(ctx,scopeIds),cancellations:()=>leaveService.pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
+    resignations:()=>pendingResignationTaskMetadata(ctx,scopeIds),managerReviews:()=>pendingReviewTaskMetadata(ctx,'manager',scopeIds),
+    hrReviews:()=>pendingReviewTaskMetadata(ctx,'hr',scopeIds),attendance:async()=>modules.attendance?attendanceService.pendingAttendanceTaskMetadata(ctx,scopeIds):[],
+    profile:()=>pendingProfileTaskMetadata(ctx,scopeIds),
+    performance:async()=>modules.performance?performanceService.pendingPerformanceTasks(ctx,scopeIds):[],
+    rewards:async()=>modules.rewards?rewardsService.pendingRewardTasks(ctx,scopeIds):[],
+   };
+   const scopedDeferred:string[]=[];
+   for(const [name,read] of Object.entries(scopedOwners)){
+    const value=(scopedBundle as Record<string,unknown>|null)?.[name];
+    if(value===null||value===undefined){scopedDeferred.push(name);continue;}
+    compare(subject,'bundle:scoped:'+name,await outcome(()=>withIndependentTransactions(read)),{ok:true,value});
+   }
+   bundleSections.push({subject,deferred,answered,scopedDeferred});
    const ownersOnly=<T,>(work:()=>Promise<T>)=>withIndependentTransactions(()=>bundles.withOwnerTaskReads(work));
    const withBundle=<T,>(work:(read:ReturnType<typeof bundles.readAccountTaskBundle>)=>Promise<T>)=>
     withSharedReadSnapshot(ctx,()=>work(bundles.readAccountTaskBundle(ctx,modules)));

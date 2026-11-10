@@ -6,11 +6,11 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  * Same request → approve rails as the profile-change / claims / leave flows.
  */
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employment, person, resignationRequest, resignationRequestAttachment } from '../db/schema';
-import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, canDecideSql, isApprovalDecisionRefusal } from './approvals';
 import { freezeOnResignationApprovalTx } from './leave-encashment';
 import { validateLeaveDocument } from './leave';
 import { terminateEmploymentTx } from './org';
@@ -367,6 +367,24 @@ function pendingResignationHeadersQuery(tx:Tx,ctx:SessionContext,companyIds?:str
 
 export function pendingResignationCandidatesExistSql(tx:Tx,ctx:SessionContext,companyIds?:string[]){
   return sql<boolean>`exists (${pendingResignationHeadersQuery(tx,ctx,companyIds).getSQL()})`;
+}
+/** pendingResignationTaskMetadata(ctx, companyIds) in one statement for the account task read (core/account-task-bundle.ts):
+ * the owner's header query unchanged, kept where assertResignationDecisionAuthorityTx returns: assertCanDecide (canDecideSql,
+ * no task scope, as the owner calls it), then an admin role. Both of its throws are refusals the owner skips, so every
+ * header is decided exactly here. jsonb array of the owner's rows in its order. */
+export function pendingResignationTaskBundleSql(tx:Tx,ctx:SessionContext,companyIds?:string[]):SQL{
+  const roles=ctx.roles??[],admin=roles.includes('super_admin')||roles.includes('hr_admin');
+  return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',resignation_header.id,'employmentId',resignation_header.employment_id,
+     'personId',resignation_header.person_id,'employee',resignation_header.employee,'createdAt',resignation_header.created_at)
+     order by resignation_header.created_at desc,resignation_header.id) filter(where decided.allowed),'[]'::jsonb)
+   from (${pendingResignationHeadersQuery(tx,ctx,companyIds).getSQL()}) as resignation_header(id,employment_id,person_id,employee,created_at)
+   cross join lateral (select case when not ${canDecideSql(ctx,sql`resignation_header.employment_id`)} then false
+     when ${admin?sql`false`:sql`true`} then false else true end as allowed) decided)`;
+}
+type BundleResignationRow={id:string;employmentId:string;personId:string;employee:string|null;createdAt:string};
+/** The resignation section's owner result. */
+export function pendingResignationTasksFromBundle(value:unknown):AssignedApprovalMetadata[]{
+  return (value as BundleResignationRow[]).map(row=>({id:row.id,employmentId:row.employmentId,personId:row.personId,employee:row.employee,createdAt:new Date(row.createdAt)}));
 }
 
 export function pendingResignationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{

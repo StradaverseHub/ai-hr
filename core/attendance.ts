@@ -63,7 +63,7 @@ import { assertModuleGate, withAttendanceTenant as withTenant } from './module-g
 import { EntitlementError, isModuleEnabled } from './entitlements';
 import { actorOf, appendEvent, appendEvents } from '../db/events';
 import { createHash, randomUUID } from 'node:crypto';
-import { filterDelegationOrgScopeTx, assertAssignedWorkPrincipalTx } from './approvals';
+import { filterDelegationOrgScopeTx, assertAssignedWorkPrincipalTx, decisionEmploymentAuthoritySql } from './approvals';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import { scopeOf } from '../lib/delegation-scope';
 import { enforceDeviceGateTx } from './attendance-device';
@@ -7949,21 +7949,43 @@ function pendingAttendanceCandidateSource(ctx:SessionContext,requestId?:string){
     return {source,otherPerson};
 }
 
-/** pendingAttendanceTaskMetadata(ctx, companyIds)'s empty answers in one statement (core/account-task-bundle.ts): jsonb
- * {possible, candidates}. An empty company list, no possible source, or no candidate row under the owner's company filter
- * is the owner's own empty result; any candidate still needs the owner's live decision proof, so the owner then runs. */
+/** pendingAttendanceTaskMetadata(ctx, companyIds) in one statement (core/account-task-bundle.ts): jsonb {possible, defer,
+ * rows}. An empty company list or no possible source is the owner's own empty result. Otherwise the owner's candidates
+ * (the same source, self exclusion and company filter, in its order) are kept where actionableAttendanceApplicationIdsTx
+ * allows them: a frozen workflow request of routing version 2, 3 or 4 by its own native decision function, every other
+ * candidate by decisionEmploymentAuthoritySql (the SQL twin of decisionEmploymentAuthorityTx) in the
+ * 'attendance.correction' scope. A request whose frozen subject differs from its candidate's is the owner's
+ * AttendanceWorkflowError: `defer` is then true and the owner runs (and throws) itself. */
 export function pendingAttendanceTaskBundleSql(ctx:SessionContext,companyIds?:string[]){
-  if(companyIds?.length===0)return sql`jsonb_build_object('possible',false,'candidates',false)`;
+  if(companyIds?.length===0)return sql`jsonb_build_object('possible',false,'section',null)`;
   const {source,otherPerson}=pendingAttendanceCandidateSource(ctx);
   const scoped=companyIds===undefined?sql`true`:
     sql`(pending_attendance.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(pending_attendance.id) IS NOT NULL)`;
-  return sql`(select jsonb_build_object('possible',attendance_probe.possible,'candidates',
-    case when attendance_probe.possible is false then false else exists(select 1 from ${source} where ${otherPerson} and ${scoped}) end)
+  const decision=sql`case
+    when attendance_flow.id is null or attendance_flow.routing_version not in (2,3,4)
+     then case when ${decisionEmploymentAuthoritySql(ctx,sql`pending_attendance.employment_id`,scopeOf('attendance.correction'))} then 'allow' else 'refuse' end
+    when attendance_flow.employment_id<>pending_attendance.employment_id then 'error'
+    when (case when attendance_flow.routing_version=2 then app.attendance_workflow_v2_decide(attendance_flow.correction_id)
+      when attendance_flow.routing_version in (3,4) then app.attendance_workflow_v3_decision_slot(attendance_flow.correction_id) is not null
+      else null end) then 'allow' else 'refuse' end`;
+  // The candidate read runs only when the probe allows it, as in the owner (a CASE evaluates its sub-select lazily).
+  return sql`(select jsonb_build_object('possible',attendance_probe.possible,'section',case when attendance_probe.possible is false then null else
+    (select jsonb_build_object('defer',coalesce(bool_or(decided.decision='error'),false),
+      'rows',coalesce(jsonb_agg(jsonb_build_object('id',pending_attendance.id,'employmentId',pending_attendance.employment_id,'personId',pending_attendance.person_id,
+       'employee',pending_attendance.employee,'createdAt',pending_attendance.created_at) order by pending_attendance.created_at desc,pending_attendance.id)
+       filter(where decided.decision='allow'),'[]'::jsonb))
+     from ${source}
+     left join public.attendance_workflow_request attendance_flow on attendance_flow.correction_id=pending_attendance.id
+     cross join lateral (select ${decision} as decision) decided
+     where ${otherPerson} and ${scoped}) end)
    from (select app.may_have_attendance_task_metadata() as possible) attendance_probe)`;
 }
-export function pendingAttendanceTasksFromBundle(value:unknown):[]|null{
-  const section=value as {possible:boolean|null;candidates:boolean};
-  return section.possible===false||!section.candidates?[]:null;
+type BundleAttendanceRow={id:string;employmentId:string;personId:string;employee:string|null;createdAt:string};
+export function pendingAttendanceTasksFromBundle(value:unknown):AssignedApprovalMetadata[]|null{
+  const {possible,section}=value as {possible:boolean|null;section:{defer:boolean;rows:BundleAttendanceRow[]}|null};
+  if(possible===false)return [];
+  if(!section||section.defer)return null;
+  return section.rows.map(row=>({id:row.id,employmentId:row.employmentId,personId:row.personId,employee:row.employee,createdAt:new Date(row.createdAt)}));
 }
 
 /** Native monthly measurement, reduced to local distinct-person membership. No raw measurement override. */
