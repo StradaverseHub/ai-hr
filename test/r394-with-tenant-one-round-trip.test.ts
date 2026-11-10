@@ -11,6 +11,7 @@ import path from 'node:path';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
+import { pgSqlState } from '../lib/db-error';
 import { closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -52,6 +53,38 @@ describe('r394 · withTenant session context in one round trip', () => {
       const [after] = await reserved`select coalesce(current_setting('app.tenant_id', true), '') as t`;
       expect(after.t).toBe('');
     } finally { reserved.release(); }
+  });
+
+  it('a read-only snapshot opens REPEATABLE READ / READ ONLY in BEGIN itself, then the same one session statement', async () => {
+    const ctx = { tenantId: b.tenantId, userId: b.adminUserId, roles: ['hr_admin'] } as SessionContext;
+    const { client } = await import('../db/client');
+    const options = client.options as { debug?: unknown };
+    const previous = options.debug;
+    const sent: string[] = [];
+    options.debug = (_connection: number, text: string) => { sent.push(text.replace(/\s+/g, ' ').trim().toLowerCase()); };
+    let mode: Record<string, string>;
+    try {
+      mode = await withTenant(ctx, async (tx) => (await tx.execute(sql`select current_setting('transaction_isolation') as isolation,
+        current_setting('transaction_read_only') as read_only, current_setting('app.tenant_id', true) as tenant`))[0] as Record<string, string>,
+      { readOnlySnapshot: true });
+    } finally { options.debug = previous; }
+    expect(mode).toEqual({ isolation: 'repeatable read', read_only: 'on', tenant: b.tenantId });
+    expect(sent[0]).toBe('begin isolation level repeatable read read only');
+    expect(sent.filter((text) => text.startsWith('set transaction'))).toEqual([]);
+    expect(sent.filter((text) => text.includes("set_config('app.tenant_id'"))).toHaveLength(1);
+    expect(sent.at(-1)).toBe('commit');
+    // Writes are refused in the snapshot, exactly as the separate SET TRANSACTION refused them.
+    await expect(withTenant(ctx, (tx) => tx.execute(sql`create temporary table r394_refused(id int)`), { readOnlySnapshot: true }))
+      .rejects.toSatisfy((error: unknown) => pgSqlState(error) === '25006');
+    // An ordinary transaction is unchanged: read committed, read write, no isolation in its BEGIN.
+    sent.length = 0;
+    options.debug = (_connection: number, text: string) => { sent.push(text.replace(/\s+/g, ' ').trim().toLowerCase()); };
+    try {
+      const plain = await withTenant(ctx, async (tx) => (await tx.execute(sql`select current_setting('transaction_isolation') as isolation,
+        current_setting('transaction_read_only') as read_only`))[0] as Record<string, string>);
+      expect(plain).toEqual({ isolation: 'read committed', read_only: 'off' });
+    } finally { options.debug = previous; }
+    expect(sent[0]).toBe('begin');
   });
 
   it('withTenant issues exactly ONE set_config statement for the four values', () => {

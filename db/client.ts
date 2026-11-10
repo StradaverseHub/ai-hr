@@ -191,6 +191,13 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   // Direct table-based select/insert/update/delete retain their own schema and types. Registering
   // every table here eagerly rebuilds unused db.query helpers in every transaction.
   const db = drizzle(client);
+  // A read-only snapshot names its isolation level and access mode in BEGIN itself: one statement where
+  // drizzle's transaction config sends BEGIN and then a separate SET TRANSACTION. Every other property is
+  // the pool's own (looked up at call time, so a test's spy on client.begin still sees each transaction).
+  const snapshotClient = Object.create(client, {
+    begin: {value: (...args: unknown[]) => (client.begin as (...a: unknown[]) => unknown)('isolation level repeatable read read only', ...args)},
+  }) as typeof client;
+  const snapshotDb = drizzle(snapshotClient);
   const configuredPoolMax = client.options.max;
   let admission = admissionByPool.get(client);
   if (!admission) {
@@ -230,7 +237,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
 
 
   /** Run `fn` in a transaction scoped to the session's tenant/user/roles.
-   * Explicit readOnlySnapshot starts REPEATABLE READ / READ ONLY at BEGIN, before session GUCs.
+   * Explicit readOnlySnapshot starts REPEATABLE READ / READ ONLY in its BEGIN statement, before session GUCs.
    * Owner readers must receive this tx explicitly; nested withTenant calls never auto-join.
    */
   async function withTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>, options?: { readOnlySnapshot?: true; readSignal?: AbortSignal }): Promise<T> {
@@ -251,7 +258,8 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     let release: (() => void) | undefined;
     try {
       release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal);
-      return await db.transaction(async (tx) => {
+      // readOnlySnapshot: REPEATABLE READ / READ ONLY from BEGIN, before the session settings below.
+      return await (options?.readOnlySnapshot ? snapshotDb : db).transaction(async (tx) => {
       timing?.acquired();
       // A queued read may have disconnected while waiting for a connection.
       readSignal?.throwIfAborted();
@@ -333,7 +341,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       }
       readSignal?.throwIfAborted();
       return fn(tx);
-    }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
+    });
     } finally {
       release?.();
       timing?.finished();
