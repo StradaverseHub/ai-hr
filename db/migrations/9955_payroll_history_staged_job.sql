@@ -155,8 +155,13 @@ $$;
 --> statement-breakpoint
 -- An imported snapshot binds to its closed imported batch, as before, or to the draft batch its own stage wrote: the
 -- staged batch closes in the release, after its snapshots (the single transaction closed it before them).
+-- The check is the same conjunction as 0660's, split in two statements: record, payslip and batch are each unique for
+-- the new snapshot, so its attempt is found first and only that attempt's planned rows are scanned. As one statement,
+-- the cached generic plan could expand the planned rows of every attempt of the tenant for each snapshot (about 250 ms
+-- per snapshot once a tenant holds a few large attempts, instead of about 5 ms).
 CREATE OR REPLACE FUNCTION app.payroll_history_bind_snapshot() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE attempt_ uuid; planned_rows jsonb;
 BEGIN
  -- Adoption of an ordinary processed payslip: the record's first snapshot, values are its own columns.
  IF EXISTS(SELECT 1 FROM public.payroll_history_import_record r JOIN public.payslip p ON p.id=NEW.id
@@ -170,7 +175,7 @@ BEGIN
    'overtimePay',p.overtime_pay::text,'bonus',p.bonus::text,'grossPay',p.gross_pay::text,'statutory',p.statutory,
    'otherDeductions',p.other_deductions::text,'totalDeductions',p.total_deductions::text,'netPay',p.net_pay::text,'employerCost',p.employer_cost::text))
  THEN RETURN NEW; END IF;
- IF NOT EXISTS(SELECT 1 FROM public.payroll_history_import_record r JOIN public.payslip p ON p.id=NEW.id
+ SELECT b.history_import_attempt_id INTO attempt_ FROM public.payroll_history_import_record r JOIN public.payslip p ON p.id=NEW.id
   JOIN public.payroll_batch b ON b.id=p.batch_id
   WHERE r.id=NEW.record_id AND r.tenant_id=NEW.tenant_id AND p.tenant_id=r.tenant_id AND b.tenant_id=r.tenant_id
   AND p.employment_id=r.employment_id AND b.company_id=r.company_id AND b.pay_period=r.period
@@ -179,12 +184,14 @@ BEGIN
    WHERE sr.relation='payroll_batch' AND sr.row_id=b.id AND st.state='staged' AND st.stage_id::text=current_setting('app.payroll_history_stage',true))))
   AND NEW."values"=jsonb_build_object('basicSalary',p.basic_salary::text,'allowance',p.allowance::text,
    'overtimePay',p.overtime_pay::text,'bonus',p.bonus::text,'grossPay',p.gross_pay::text,'statutory',p.statutory,
-   'otherDeductions',p.other_deductions::text,'totalDeductions',p.total_deductions::text,'netPay',p.net_pay::text,'employerCost',p.employer_cost::text)
-  AND EXISTS(SELECT 1 FROM public.payroll_history_import_attempt a, jsonb_array_elements(a.plan->'rows') planned
-   WHERE a.id=b.history_import_attempt_id AND a.tenant_id=r.tenant_id
-   AND planned->>'companyId'=r.company_id::text AND planned->>'employmentId'=r.employment_id::text
+   'otherDeductions',p.other_deductions::text,'totalDeductions',p.total_deductions::text,'netPay',p.net_pay::text,'employerCost',p.employer_cost::text);
+ IF attempt_ IS NOT NULL THEN
+  SELECT a.plan->'rows' INTO planned_rows FROM public.payroll_history_import_attempt a WHERE a.id=attempt_ AND a.tenant_id=NEW.tenant_id;
+ END IF;
+ IF attempt_ IS NULL OR planned_rows IS NULL OR NOT EXISTS(SELECT 1 FROM public.payroll_history_import_record r, jsonb_array_elements(planned_rows) planned
+   WHERE r.id=NEW.record_id AND planned->>'companyId'=r.company_id::text AND planned->>'employmentId'=r.employment_id::text
    AND planned->>'period'=r.period AND planned->>'cycleId'=r.cycle_id::text
-   AND planned->>'operation' IN ('create','replace') AND planned->'values'=NEW."values" AND planned->>'valueHash'=NEW.value_hash))
+   AND planned->>'operation' IN ('create','replace') AND planned->'values'=NEW."values" AND planned->>'valueHash'=NEW.value_hash)
  THEN RAISE EXCEPTION 'Payroll import snapshot identity mismatch'; END IF;
  RETURN NEW;
 END $$;
