@@ -32,11 +32,11 @@ vi.mock('next-intl/server',async()=>{
 vi.mock('../core/personnel-list-export-details',async importOriginal=>{
  const actual=await importOriginal<typeof import('../core/personnel-list-export-details')>();
  return {...actual,readPersonnelListExportDetails:async(...args:Parameters<typeof actual.readPersonnelListExportDetails>)=>{
-  if(state.mode==='oracle')return state.oracle!(...(args as never[]));
+  if(state.mode==='oracle')return state.oracle!(...(args as unknown as never[]));
   state.inDetails=true;
   let fresh:Awaited<ReturnType<typeof actual.readPersonnelListExportDetails>>;
   try{fresh=await actual.readPersonnelListExportDetails(...args);}finally{state.inDetails=false;}
-  if(state.mode==='compare')state.compared.push({rows:args[1],fresh,oracle:await state.oracle!(...(args as never[]))});
+  if(state.mode==='compare')state.compared.push({rows:args[1],fresh,oracle:await state.oracle!(...(args as unknown as never[]))});
   return fresh;
  }};
 });
