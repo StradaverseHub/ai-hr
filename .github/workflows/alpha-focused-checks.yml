@@ -242,7 +242,9 @@ jobs:
         if: ${{ always() && steps.build-heap.outcome == 'success' }}
         run: |
           python3 ../automation/.github/ci/build-size-attribution.py "$PWD/.next" "$RUNNER_TEMP/build-size"
-          mkdir -p "$RUNNER_TEMP/pack"
+          (cd .next && find server/app -name '*.js' ! -name '*.map' -print0 | tar --null -czf "$RUNNER_TEMP/build-size/server-app-entries.tar.gz" -T -)
+          (cd .next && find server/chunks -maxdepth 1 -name '*.js' -size -64k -print0 | tar --null -czf "$RUNNER_TEMP/build-size/server-chunk-small.tar.gz" -T -)
+          mkdir -m 700 -p "$RUNNER_TEMP/pack"
           python3 ../automation/.github/ci/build-bundle.py pack "$PWD" "$RUNNER_TEMP/pack/bytes" 2> "$RUNNER_TEMP/build-size/pack-stderr.txt" || echo "pack exit $?"
           ls -la "$RUNNER_TEMP/pack/bytes" || true
       - name: Publish diagnostic build size attribution
