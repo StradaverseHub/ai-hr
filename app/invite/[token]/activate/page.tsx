@@ -1,7 +1,7 @@
 import { ActionButton } from '@/components/ui/action-button';
 import { publicLoginPresentation } from '@/lib/login-presentation-server';
 import { internalSelected, internalIssuer } from '@/lib/internal-auth/config';
-import { client } from '@/db/client';
+import { client, withPoolWork } from '@/db/client';
 import { digest, validOpaque } from '@/lib/internal-auth/crypto';
 import { switchInvitationAccount } from './actions';
 import { InternalAuthForm } from '@/app/login/internal-form';
@@ -44,7 +44,7 @@ export default async function InviteActivatePage({
   if (internalSelected()) {
     const { currentInternalIdentity } = await import('@/lib/internal-auth/web-session');
     const identity = await currentInternalIdentity();
-    const rows = validOpaque(token) ? await client.unsafe('select * from app.internal_auth_invitation($1)', [digest(token)]) : [];
+    const rows = validOpaque(token) ? await withPoolWork('authentication', () => client.unsafe('select * from app.internal_auth_invitation($1)', [digest(token)]), undefined, {idempotent:true}) : [];
     const invitation = rows[0];
     if (!invitation) return <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 px-6"><h1 className="text-2xl font-semibold">{t('invite.invalidTitle')}</h1><p>{t('invite.invalidBody')}</p><a className="underline" href="/login">{t('reset.backToLogin')}</a></main>;
     if (identity && (identity.issuer !== internalIssuer(invitation.tenant_id) || identity.email?.toLowerCase() !== invitation.email.toLowerCase())) {

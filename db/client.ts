@@ -12,9 +12,13 @@ import postgres from 'postgres';
 import {createDatabaseAdmission} from './admission';
 import {createBackgroundReadAdmission} from './background-read-admission';
 import {createTenantWriteAdmission} from './tenant-write-admission';
-import {currentDatabaseWorkload,databaseReadSignal} from './workload';
-import {applicationDatabaseBudget} from './capacity';
+import {AsyncLocalStorage} from 'node:async_hooks';
+import {currentDatabaseWorkload,databaseReadSignal,inIdempotentDatabaseRead,withBackgroundDatabaseWork} from './workload';
+import {applicationDatabaseBudget,databaseAdmissionShares} from './capacity';
+import {markDatabaseCapacityFailure,retryIdempotentRead} from './read-retry';
 const applicationBudget = applicationDatabaseBudget(process.env);
+/** The tenant whose transaction this code runs inside; a nested acquire must not wait on that tenant's own share. */
+const transactionTenant = new AsyncLocalStorage<string>();
 import { chainArmingDecision } from '../core/audit-chain-arming';
 import type { EntitlementSnapshot, EntitlementsExemptReason } from '../core/entitlement-types';
 // Value import, and safe: core/entitlement-types.ts imports NOTHING, so there is no cycle back here.
@@ -182,10 +186,10 @@ function auditHashChainArmed(): boolean {
   return process.env.AUDIT_HASH_CHAIN_ENABLED === 'true';
 }
 
-export function createDb(connectionString: string, options?: { max?: number }) {
+export function createDb(connectionString: string, options?: { max?: number; admissionWaitMs?: number }) {
   let client = pgPools.get(connectionString);
   if (!client) {
-    client = postgres(connectionString, { max: options?.max ?? 10 });
+    client = postgres(connectionString, { max: options?.max ?? applicationBudget.poolMax });
     pgPools.set(connectionString, client);
   }
   // Direct table-based select/insert/update/delete retain their own schema and types. Registering
@@ -196,7 +200,8 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   if (!admission) {
     admission = createDatabaseAdmission({capacity: configuredPoolMax,
       backgroundCapacity: Math.max(1, Math.floor(configuredPoolMax / 4)), maxWaiting: applicationBudget.maxWaiting,
-      maxBackgroundWaiting:Math.floor(applicationBudget.maxWaiting/4),waitMs: applicationBudget.waitMs});
+      maxBackgroundWaiting:Math.floor(applicationBudget.maxWaiting/4),waitMs: options?.admissionWaitMs ?? applicationBudget.waitMs,
+      ...databaseAdmissionShares(configuredPoolMax,applicationBudget.maxWaiting,process.env,applicationBudget.role)});
     admissionByPool.set(client, admission);
   }
   const poolAdmission = admission;
@@ -216,16 +221,28 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   const withTenantWriteWork=tenantWrites.run;
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-  /** For existing raw SQL owners only. This adds no transaction, GUC, retry or authority.
+  /** For existing raw SQL owners only. This adds no transaction, GUC or authority.
+   * The `authentication` pseudo-tenant runs in the authentication lane whatever the caller's workload.
    * Open queries inside work; do not pass an already-running promise or nest withTenant here.
+   * `options.idempotent` retries capacity failures; pass it only for reads.
    */
-  async function withPoolWork<T>(tenant: string, work: () => PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+  async function withPoolWork<T>(tenant: string, work: () => PromiseLike<T>, signal?: AbortSignal, options?: { idempotent?: boolean }): Promise<T> {
     signal = databaseReadSignal(signal);
-    const timing=globalForPg.__aihrPerfBeginPoolWork?.(configuredPoolMax);let release:(()=>void)|undefined;
-    try {
-      release=await poolAdmission.acquire(tenant,currentDatabaseWorkload(),signal);timing?.acquired();
-      signal?.throwIfAborted();return await work();
-    }finally{release?.();timing?.finished();}
+    const workload = tenant === 'authentication' ? 'authentication' : currentDatabaseWorkload();
+    const attempt = async () => {
+      const timing=globalForPg.__aihrPerfBeginPoolWork?.(configuredPoolMax);let release:(()=>void)|undefined;
+      try {
+        release=await poolAdmission.acquire(tenant,workload,signal,transactionTenant.getStore()===tenant?{ignoreTenantCap:true}:undefined);timing?.acquired();
+        signal?.throwIfAborted();return await work();
+      }catch(error){throw markDatabaseCapacityFailure(error);}
+      finally{release?.();timing?.finished();}
+    };
+    return options?.idempotent ? retryIdempotentRead(attempt,signal) : attempt();
+  }
+
+  /** Raw work that belongs to no tenant and no login: mail delivery, public tokens, operator pages. */
+  function withSystemWork<T>(work: () => PromiseLike<T>, signal?: AbortSignal, options?: { idempotent?: boolean }): Promise<T> {
+    return withBackgroundDatabaseWork(() => withPoolWork('system', work, signal, options));
   }
 
 
@@ -247,10 +264,18 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
     readSignal?.throwIfAborted();
+    // Only declared reads retry: a READ ONLY transaction, or an operation verified to write nothing.
+    const attempt = () => tenantTransaction(ctx, grants, roleNames, fn, options, readSignal);
+    return options?.readOnlySnapshot || inIdempotentDatabaseRead() ? retryIdempotentRead(attempt, readSignal) : attempt();
+  }
+
+  async function tenantTransaction<T>(ctx: SessionContext, grants: Grant[], roleNames: string[], fn: (tx: Tx) => Promise<T>,
+    options: { readOnlySnapshot?: true; readSignal?: AbortSignal } | undefined, readSignal: AbortSignal | undefined): Promise<T> {
     const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
     let release: (() => void) | undefined;
     try {
-      release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal);
+      release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal,
+        transactionTenant.getStore() === ctx.tenantId ? { ignoreTenantCap: true } : undefined);
       return await db.transaction(async (tx) => {
       timing?.acquired();
       // A queued read may have disconnected while waiting for a connection.
@@ -332,15 +357,17 @@ export function createDb(connectionString: string, options?: { max?: number }) {
         await tx.execute(sql`SET TRANSACTION READ ONLY`);
       }
       readSignal?.throwIfAborted();
-      return fn(tx);
+      return transactionTenant.run(ctx.tenantId, () => fn(tx));
     }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
+    } catch (error) {
+      throw markDatabaseCapacityFailure(error);
     } finally {
       release?.();
       timing?.finished();
     }
   }
 
-  return { db, client, withTenant, withPoolWork, withBackgroundReadWork, withTenantWriteWork };
+  return { db, client, withTenant, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork };
 }
 
 export type Db = ReturnType<typeof createDb>['db'];
@@ -351,4 +378,4 @@ if (!url) throw new Error('DATABASE_URL is not set');
 
 // App singleton (non-privileged role). Keep the default for deployments that do
 // not explicitly divide a connection budget among application workers.
-export const { db, client, withTenant, withPoolWork, withBackgroundReadWork, withTenantWriteWork } = createDb(url, {max: applicationBudget.poolMax});
+export const { db, client, withTenant, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork } = createDb(url, {max: applicationBudget.poolMax});

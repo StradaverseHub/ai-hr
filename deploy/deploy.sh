@@ -280,6 +280,11 @@ echo "▸ Checking the sweep login can downgrade to ai_hr_app…"
 dstate phase notification-role
 node --env-file=.env.production --import tsx scripts/check-notification-role.ts
 
+# Same placement argument again: every process's connection budget against the server's real limit
+# (db/capacity.ts), refused here while nothing has been built, migrated or restarted.
+echo "▸ Checking the database connection budget…"
+node --env-file=.env.production --import tsx scripts/check-db-connection-budget.ts
+
 echo "▸ Building production server…"
 dstate phase build
 # Heap headroom for `next build`'s TypeScript pass. Node's default old-space cap (~2 GB on this box) was

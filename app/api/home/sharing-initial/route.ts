@@ -1,3 +1,4 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import {getSession} from '@/lib/session';
 import {getLocale,getTranslations} from 'next-intl/server';
 import {isLocale} from '@/i18n/config';
@@ -21,7 +22,7 @@ import {HomeAccessError} from '@/core/employee-home';
 import {markHomeRead} from '@/lib/home-read-timing';
 
 /** One fresh web session and independent live reads for the requested Home cards. */
-export async function GET(request:Request){
+export const GET = capacityAwareRoute(async function GET(request:Request){
  markHomeRead('handler');
  try{
   const session=await getSession();
@@ -111,4 +112,4 @@ export async function GET(request:Request){
   const {code,status}=sharingError(error);
   return Response.json({error:code},{status,headers:sharingHeaders});
  }
-}
+});

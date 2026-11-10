@@ -157,7 +157,7 @@ function perRequest<A extends readonly string[], R>(read: (...args: A) => Promis
  * (resolveEntitlementsTx inside their withTenant) are untouched: they are each owner's current check in its own
  * transaction, not this request snapshot. */
 const tenantSnapshotOnce = perRequest((tenantId: string) =>
-  withPoolWork(tenantId, () => client.begin((tx) => resolveEntitlementsInTenantTx((q, params) => tx.unsafe(q, params as never[]), tenantId))));
+  withPoolWork(tenantId, () => client.begin((tx) => resolveEntitlementsInTenantTx((q, params) => tx.unsafe(q, params as never[]), tenantId)), undefined, {idempotent:true}));
 
 /**
  * Attach the tenant's entitlement snapshot to a resolved session (ADR-0077 slice 2).
@@ -276,9 +276,9 @@ const internalIdentityOnce = perRequest(async () => (await import('./internal-au
 const keycloakIdentityOnce = perRequest(async () => (await import('./identity/session')).currentIdentitySession());
 const workosSessionOnce = perRequest(async () => (await import('./workos')).currentWorkosSession());
 const readPrincipalByIdentity = (issuer:string,subject:string) => withPoolWork('authentication',()=>
-  client<SubjectPrincipalRow[]>`select * from app.principal_by_identity(${issuer},${subject})`);
+  client<SubjectPrincipalRow[]>`select * from app.principal_by_identity(${issuer},${subject})`,undefined,{idempotent:true});
 const readPrincipalBySubject = (subject:string) => withPoolWork('authentication',()=>
-  client<SubjectPrincipalRow[]>`select app_user_id, tenant_id, person_id, grants from app.principal_by_subject(${subject})`);
+  client<SubjectPrincipalRow[]>`select app_user_id, tenant_id, person_id, grants from app.principal_by_subject(${subject})`,undefined,{idempotent:true});
 const principalByIdentityOnce = perRequest(async (issuer: string, subject: string) =>
   Array.from(await readPrincipalByIdentity(issuer,subject)));
 const principalBySubjectOnce = perRequest(async (subject: string) =>
@@ -286,9 +286,9 @@ const principalBySubjectOnce = perRequest(async (subject: string) =>
 const devPrincipalOnce = perRequest(async (id: string) =>
   Array.from(await withPoolWork('authentication',()=>client<PrincipalRow[]>`
         select tenant_id, person_id, grants from app.principal(${id}::uuid)
-      `)));
+      `,undefined,{idempotent:true})));
 const loginBlockedOnce = perRequest(async (id: string) => {
-  const [row] = await withPoolWork('authentication',()=>client<{ blocked: boolean }[]>`select app.login_blocked(${id}::uuid) as blocked`);
+  const [row] = await withPoolWork('authentication',()=>client<{ blocked: boolean }[]>`select app.login_blocked(${id}::uuid) as blocked`,undefined,{idempotent:true});
   return Boolean(row?.blocked);
 });
 

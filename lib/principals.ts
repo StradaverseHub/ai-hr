@@ -1,4 +1,4 @@
-import { client } from '../db/client';
+import { client, withPoolWork } from '../db/client';
 import { demoSwitcherEnabled } from './demo-mode';
 
 export type Principal = { userId: string; name: string; roles: string[] };
@@ -8,13 +8,13 @@ export type Principal = { userId: string; name: string; roles: string[] };
  *  developers' own machines). Mirrors the getSession() NODE_ENV !== 'production' dev-path predicate. */
 export async function listPrincipals(): Promise<Principal[]> {
   if (!demoSwitcherEnabled()) return []; // empty in a real deployment; populated in dev + the gated demo
-  const rows = await client<{ user_id: string; name: string; roles: string[] }[]>`
+  const rows = await withPoolWork('authentication', () => client<{ user_id: string; name: string; roles: string[] }[]>`
     select user_id, name, roles from app.dev_principals()
     order by case
       when 'hr_admin' = any(roles) then 0
       when 'manager' = any(roles) then 1
       else 2
     end, name
-  `;
+  `, undefined, {idempotent:true});
   return rows.map((r) => ({ userId: r.user_id, name: r.name, roles: r.roles }));
 }

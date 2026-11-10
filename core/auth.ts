@@ -20,7 +20,7 @@ import { keycloakSelected } from '../lib/identity/config';
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
-import { client, withTenant, type SessionContext, type Tx } from '../db/client';
+import { client, withPoolWork, withTenant, type SessionContext, type Tx } from '../db/client';
 import { appInvitation, appUser, roleAssignment, accountEmailDelivery } from '../db/schema';
 import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { InvalidInvitationError } from '../lib/auth-errors';
@@ -117,7 +117,7 @@ async function appendAuthEvent(args: {
   actorId: string | null;
   payload?: unknown;
 }): Promise<void> {
-  await client`
+  await withPoolWork('authentication', () => client`
     select app.append_auth_event(
       ${args.tenantId}::uuid,
       ${args.aggregateType},
@@ -127,7 +127,7 @@ async function appendAuthEvent(args: {
       ${args.actorId}::uuid,
       ${JSON.stringify(args.payload ?? null)}::jsonb
     )
-  `;
+  `);
 }
 
 // ─────────────────────────── Admin: invitations ───────────────────────────
@@ -351,11 +351,12 @@ export async function acceptInvitation(input: {
   issuer?: string;
   verifiedEmail?: string;
 }): Promise<{ userId: string; tenantId: string }> {
-  const rows = input.issuer ? await client<{ app_user_id: string; tenant_id: string }[]>`
+  // Consumes a single-use token, so it is never retried; admission only bounds the wait.
+  const rows = await withPoolWork('authentication', () => input.issuer ? client<{ app_user_id: string; tenant_id: string }[]>`
     select app_user_id, tenant_id from app.consume_identity_invitation(${input.token},${input.issuer},${input.subject},${input.verifiedEmail ?? null})
-  ` : await client<{ app_user_id: string; tenant_id: string }[]>`
+  ` : client<{ app_user_id: string; tenant_id: string }[]>`
     select app_user_id, tenant_id from app.consume_invitation(${input.token}, ${input.subject})
-  `;
+  `);
   const resolved = rows[0];
   if (!resolved) throw new InvalidInvitationError();
   await appendAuthEvent({
@@ -385,7 +386,7 @@ export async function requestPasswordReset(
   const parsed=recoveryEmailSchema.safeParse(input.email.trim());
   if(!parsed.success)return;
   const email=parsed.data;
-  const [delivery]=await client<{id:string;lease_token:string}[]>`select * from app.account_email_request_recovery(${email})`;
+  const [delivery]=await withPoolWork('authentication',()=>client<{id:string;lease_token:string}[]>`select * from app.account_email_request_recovery(${email})`);
   if(delivery)await attemptAccountEmail(delivery.id,delivery.lease_token,provider);
   await appendAuthEvent({
     tenantId: null,

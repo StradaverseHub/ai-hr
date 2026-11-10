@@ -4,8 +4,8 @@ import { withTenant, type SessionContext } from '../db/client';
 import { isOperator } from '../lib/authz-model';
 import { isDemoDeployment } from '../lib/demo-mode';
 import { readRecord } from '../lib/internal-auth/record-store';
+import { admittedAuthSql } from '../lib/internal-auth/store';
 import { internalSelected } from '../lib/internal-auth/config';
-import { client } from '../db/client';
 import type { Organization } from '../lib/internal-auth/service';
 import type { DeactivationBlocker } from './module-deactivation';
 
@@ -51,7 +51,7 @@ export async function listOperatorCustomers(ctx:SessionContext, tenantId?:string
   // Organization names are display snapshots. The encrypted namespace indexes remain the login owner;
   // legacy customers created before this UI are read from that same source, never guessed from a name.
   return Promise.all(rows.map(async row=>{
-    const org=internalSelected()?await readRecord<Organization>(client,`tenant:${row.tenant_id}`):null;
+    const org=internalSelected()?await readRecord<Organization>(admittedAuthSql,`tenant:${row.tenant_id}`):null;
     return {...row,organizationCode:org?.code??null};
   }));
 }

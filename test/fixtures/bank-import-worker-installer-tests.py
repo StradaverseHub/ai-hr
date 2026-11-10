@@ -40,7 +40,7 @@ class WorkerInstallerTests(unittest.TestCase):
             with self.assertRaises(ValueError): install.root_protected(file,regular=True)
     def test_rejects_service_override_before_start(self):
         release=Path('/opt/aihr-import/releases/'+'1'*40)
-        properties={'User':'aihr-import','Group':'aihr-import','WorkingDirectory':str(release),'FragmentPath':str(install.UNIT),'Environment':'NODE_ENV=production','EnvironmentFiles':str(install.ENV)+' (ignore_errors=no)'}
+        properties={'User':'aihr-import','Group':'aihr-import','WorkingDirectory':str(release),'FragmentPath':str(install.UNIT),'Environment':'NODE_ENV=production AIHR_DB_PROCESS_ROLE=worker AIHR_DB_POOL_MAX=2','EnvironmentFiles':str(install.ENV)+' (ignore_errors=no)'}
         for key in ['DropInPaths','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition','PassEnvironment','RootDirectory','RootImage','PAMName']: properties[key]=''
         install.validate_service(properties,release)
         for key,value in [('User','root'),('DropInPaths','/unreviewed.conf'),('ExecStartPre','+/bin/sh malicious')]:

@@ -1,6 +1,5 @@
-import { client } from '../../db/client';
 import { internalIssuer } from './config';
-import { readRecord } from './store';
+import { admittedAuthSql, readRecord } from './store';
 import { createDisabledCredential, updateDisabledCredential, InternalAuthError, type Credential } from './service';
 import { ManualIdentityError, type ManualIdentityEnrollment } from '../identity/manual-model';
 import type { ManualAccountProvider } from '../identity/manual-provider';
@@ -14,7 +13,7 @@ export function internalManualProvider(): ManualAccountProvider {
   }
   async function checked(e: ManualIdentityEnrollment, allowMissing = false) {
     if (e.issuer !== internalIssuer(e.tenant_id) || !e.subject) throw new ManualIdentityError('forbidden');
-    const c = await readRecord<Credential>(client, `credential:${e.subject}`);
+    const c = await readRecord<Credential>(admittedAuthSql, `credential:${e.subject}`);
     if (!c && allowMissing) return null;
     if (!c || c.issuer !== e.issuer || c.tenantId !== e.tenant_id || c.username !== e.username || c.email !== e.email || c.subject !== e.subject)
       throw new ManualIdentityError('conflict');
@@ -28,7 +27,7 @@ export function internalManualProvider(): ManualAccountProvider {
     async setPassword(e, password) { await checked(e); await translated(() => updateDisabledCredential(e.subject!, 'password', password)); },
     async enable(e) { await checked(e); await translated(() => updateDisabledCredential(e.subject!, 'enable')); },
     async cancel(e) {
-      const known = e.subject || (await readRecord<{ subject: string }>(client, `manual-intent:${e.id}`))?.subject;
+      const known = e.subject || (await readRecord<{ subject: string }>(admittedAuthSql, `manual-intent:${e.id}`))?.subject;
       if (!known) return;
       const c = await checked({ ...e, subject: known }, true);
       if (!c) return;

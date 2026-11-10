@@ -42,6 +42,7 @@ export function isDatabaseError(e: unknown): boolean {
   return pgErrorChain(e).some(
     (l) =>
       l.name === 'DrizzleQueryError' ||
+      l.name === 'DatabaseAdmissionError' ||
       (l.message ?? '').startsWith('Failed query:') ||
       /^E(CONNREFUSED|CONNRESET|TIMEDOUT|NOTFOUND|HOSTUNREACH|NETUNREACH|PIPE|AI_AGAIN)$/.test(l.code ?? ''),
   );

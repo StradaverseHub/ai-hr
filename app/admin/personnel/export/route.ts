@@ -1,3 +1,4 @@
+import {capacityAwareRead} from '@/lib/database-degraded';
 import { withTenant } from '@/db/client';
 import {workforceViewScope} from '@/core/workforce-access';
 import {getSession} from '@/lib/session';
@@ -67,7 +68,7 @@ const EMPLOYMENT_TYPE_KEY: Record<string, string> = {
  *  download must still be bounded. 10_000 is the same ceiling the leave-record export uses. */
 const ROW_CAP = 10_000;
 
-export async function GET(req: Request) {
+export const GET = capacityAwareRead(async function GET(req: Request) {
   try {
     return await exportPersonnel(req);
   } catch (error) {
@@ -78,7 +79,7 @@ export async function GET(req: Request) {
     }
     throw error;
   }
-}
+});
 
 async function exportPersonnel(req: Request) {
   const session=await getSession();

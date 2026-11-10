@@ -306,6 +306,14 @@
       "busy": "Sistem sedang sibuk dan perubahan tidak diselesaikan. Sila cuba lagi. Rujukan {ref}.",
       "nricDuplicate": "NRIC ini sudah wujud dalam rekod pekerja lain. NRIC pendua tidak dibenarkan di bawah Tetapan Umum Orang semasa. Rujukan {ref}."
     },
+    "degraded": {
+      "title": "Ini mengambil masa lebih lama daripada biasa",
+      "body": "Halaman tidak dapat dimuatkan sepenuhnya kerana sistem sedang menerima permintaan yang tinggi. Halaman akan dicuba semula secara automatik sebentar lagi.",
+      "retryNow": "Cuba lagi sekarang",
+      "unexpectedTitle": "Halaman ini tidak dapat dipaparkan",
+      "unexpectedBody": "Sesuatu yang tidak dijangka menghalang halaman ini daripada dimuatkan. Cuba lagi, dan jika masalah berterusan, hubungi pentadbir anda.",
+      "apiMessage": "Sistem sedang menerima permintaan yang tinggi. Sila cuba lagi sebentar."
+    },
     "moreActions": "Tindakan lain",
     "noSearchResults": "Tiada hasil sepadan dengan carian anda.",
     "sectionFilter": "Bahagian",

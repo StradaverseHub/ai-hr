@@ -15,6 +15,9 @@ WorkingDirectory=/opt/aihr-maintenance/current
 EnvironmentFile=/etc/aihr/retention.env
 Environment=PATH=/opt/node20/bin:/usr/local/bin:/usr/bin:/bin
 Environment=NODE_ENV=production
+# Connection budget (db/capacity.ts): counted in AIHR_DB_BACKGROUND_CONNECTIONS, not the web pool.
+Environment=AIHR_DB_PROCESS_ROLE=worker
+Environment=AIHR_DB_POOL_MAX=2
 ExecStart=/opt/node20/bin/node --import tsx /opt/aihr-maintenance/current/scripts/ai-retention-runner.ts
 TimeoutStartSec=120
 TimeoutStopSec=10

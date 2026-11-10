@@ -1,7 +1,6 @@
 import * as oidc from 'openid-client';
 import { createHash } from 'node:crypto';
-import { client } from '../../db/client';
-import { authTransaction, readRecord, writeRecord, deleteRecord } from '../internal-auth/store';
+import { admittedAuthSql, authTransaction, readRecord, writeRecord, deleteRecord } from '../internal-auth/store';
 import { opaque, digest, validOpaque } from '../internal-auth/crypto';
 import { internalConfig } from '../internal-auth/config';
 import { safeReturnTo } from '../identity/config';
@@ -28,7 +27,7 @@ export async function nativeLaunch(organization:string, native:Native) {
   nativeRedirect(native.redirect);
   if(!/^[A-Za-z0-9_-]{43}$/.test(native.challenge)||!/^[A-Za-z0-9_-]{16,128}$/.test(native.state))throw new EntraError('invalid');
   const config=await connectorByOrganization(organization), ticket=opaque();
-  await writeRecord(client,`entra-launch:${digest(ticket)}`,{tenantId:config.tenantId,revision:config.revision,native},null,Date.now()+120_000);
+  await writeRecord(admittedAuthSql,`entra-launch:${digest(ticket)}`,{tenantId:config.tenantId,revision:config.revision,native},null,Date.now()+120_000);
   return internalConfig().origin+'/login/entra/start?ticket='+ticket;
 }
 export async function startEntraLogin(organization:string,returnTo:string,ticket?:string) {
@@ -45,7 +44,7 @@ export async function startEntraLogin(organization:string,returnTo:string,ticket
   const library=await oidcConfiguration(config),handle=opaque();
   const flow:Flow={tenantId:config.tenantId,revision:config.revision,verifier:oidc.randomPKCECodeVerifier(),state:oidc.randomState(),nonce:oidc.randomNonce(),returnTo:safeReturnTo(returnTo),...(native?{native}: {})};
   const url=oidc.buildAuthorizationUrl(library,{redirect_uri:callbackUri(),scope:'openid profile',response_type:'code',state:flow.state,nonce:flow.nonce,code_challenge:await oidc.calculatePKCECodeChallenge(flow.verifier),code_challenge_method:'S256'});
-  await writeRecord(client,`entra-flow:${digest(handle)}`,flow,null,Date.now()+600_000);
+  await writeRecord(admittedAuthSql,`entra-flow:${digest(handle)}`,flow,null,Date.now()+600_000);
   return {handle,url:url.href};
 }
 export async function completeEntraLogin(handle:string|undefined,received:URL) {
@@ -65,7 +64,7 @@ export async function completeEntraLogin(handle:string|undefined,received:URL) {
   if(flow.native){
     const code=opaque();
     // Do not create a session until the native proof is consumed. No bearer tokens enter the deep link.
-    await writeRecord(client,`entra-completion:${digest(code)}`,{tenantId:config.tenantId,revision:config.revision,objectId:object.toLowerCase(),challenge:flow.native.challenge},null,Date.now()+60_000);
+    await writeRecord(admittedAuthSql,`entra-completion:${digest(code)}`,{tenantId:config.tenantId,revision:config.revision,objectId:object.toLowerCase(),challenge:flow.native.challenge},null,Date.now()+60_000);
     const redirect=new URL(nativeRedirect(flow.native.redirect));redirect.searchParams.set('code',code);redirect.searchParams.set('state',flow.native.state);
     return {native:true as const,redirect:redirect.href};
   }

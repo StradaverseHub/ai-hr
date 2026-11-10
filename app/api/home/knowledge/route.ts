@@ -1,3 +1,4 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import {getLocale} from 'next-intl/server';
 import {getSession} from '@/lib/session';
 import {AuthRequiredError} from '@/lib/auth-errors';
@@ -9,7 +10,7 @@ const headers={'Cache-Control':'private, no-store','Vary':'Cookie, Authorization
 /** Read-only library facet. Its identity and audience come from the authenticated session, never
  * company/person/tenant selectors. Forms/pages will join through their own permission-filtered owner.
  */
-export async function GET(request:Request){
+export const GET = capacityAwareRoute(async function GET(request:Request){
  try{
   const session=await getSession();
   const query=new URL(request.url).searchParams;
@@ -26,4 +27,4 @@ export async function GET(request:Request){
   const code=error instanceof AuthRequiredError?'authentication':error instanceof HomeSearchQueryError?'invalid':'unavailable';
   return Response.json({error:code},{status:code==='authentication'?401:code==='invalid'?400:503,headers});
  }
-}
+});

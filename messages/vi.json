@@ -306,6 +306,14 @@
       "busy": "Hệ thống đang bận và thay đổi chưa được hoàn tất. Vui lòng thử lại. Mã tham chiếu {ref}.",
       "nricDuplicate": "NRIC này đã tồn tại trong hồ sơ nhân viên khác. Cài đặt chung về nhân sự hiện tại không cho phép NRIC trùng lặp. Mã tham chiếu {ref}."
     },
+    "degraded": {
+      "title": "Quá trình này mất nhiều thời gian hơn bình thường",
+      "body": "Trang chưa thể tải xong vì hệ thống đang chịu tải cao. Hệ thống sẽ tự động thử lại sau giây lát.",
+      "retryNow": "Thử lại ngay",
+      "unexpectedTitle": "Không thể hiển thị trang này",
+      "unexpectedBody": "Đã xảy ra sự cố ngoài dự kiến khiến trang này không tải được. Hãy thử lại; nếu vẫn tiếp diễn, hãy liên hệ quản trị viên.",
+      "apiMessage": "Hệ thống đang chịu tải cao. Vui lòng thử lại sau giây lát."
+    },
     "moreActions": "Thao tác khác",
     "noSearchResults": "Không có kết quả phù hợp với tìm kiếm.",
     "sectionFilter": "Mục",

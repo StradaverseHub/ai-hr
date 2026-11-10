@@ -1,15 +1,22 @@
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
-import {afterAll,beforeAll,describe,expect,it} from 'vitest';
+import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 import {createDb} from '../db/client';
-import {withBackgroundDatabaseWork,withDatabaseReadCancellation} from '../db/workload';
+import {withBackgroundDatabaseWork,withDatabaseReadCancellation,withIdempotentDatabaseRead} from '../db/workload';
+import {takeRequestBudget} from '../lib/request-budget';
+import {pgSqlState} from '../lib/db-error';
+import postgres from 'postgres';
 import {adminCtx,closeAll,migrateTestDb,resetDb,seedBase,type Base} from './harness';
+const random31=()=>Math.floor(Math.random()*2_000_000_000)+1;
 const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r;});return{promise,resolve};};
 let base:Base;
 const url=new URL(process.env.TEST_DATABASE_URL!);url.searchParams.set('application_name','admission-'+randomUUID());
 const database=createDb(url.toString(),{max:4});
+const otherUrl=new URL(process.env.TEST_DATABASE_URL!);otherUrl.searchParams.set('application_name','admission-fair-'+randomUUID());
+const fair=createDb(otherUrl.toString(),{max:4,admissionWaitMs:300});
+const lockUrl=process.env.TEST_MIGRATION_DATABASE_URL!;
 beforeAll(async()=>{await migrateTestDb();await resetDb();base=await seedBase();});
-afterAll(async()=>{await database.client.end();await closeAll();});
+afterAll(async()=>{await database.client.end();await fair.client.end();await closeAll();});
 describe('physical pool admission with real tenant transactions',()=>{
  it('shares bounded tenant write ordering across handles without holding a connection while waiting',async()=>{
   const alias=createDb(url.toString(),{max:4}),ctx=adminCtx(base),entered=deferred(),finish=deferred();
@@ -109,5 +116,71 @@ describe('physical pool admission with real tenant transactions',()=>{
   await expect(database.withTenant(ctx,async tx=>{await tx.execute(sql`select 1/0`);})).rejects.toThrow();
   const [row]=await database.withTenant(ctx,tx=>tx.execute(sql`select app.current_tenant_id() as tenant`));
   expect(row.tenant).toBe(base.tenantId);
+ });
+});
+
+describe('fair admission with real PostgreSQL lock waiters',()=>{
+ it("does not let one tenant's lock waiters starve another tenant or login",async()=>{
+  const lockSql=postgres(lockUrl,{max:1,onnotice:()=>{}}),key=random31();
+  await lockSql`select pg_advisory_lock(${key})`;
+  const hot=randomUUID(),other=randomUUID(),events:string[]=[];
+  try{
+   // Pool of 4: formula gives this tenant 2 connections, keeps 1 for other tenants and 1 for login.
+   const waiters=Array.from({length:6},(_,i)=>fair.withTenant({tenantId:hot,userId:randomUUID()},async tx=>{
+    await tx.execute(sql`select pg_advisory_xact_lock(${key})`);events.push('hot'+i);return i;
+   }));
+   const waitingCount=async()=>Number((await lockSql`select count(*) from pg_locks where locktype='advisory' and objid=${key} and not granted`)[0].count);
+   await vi.waitFor(async()=>expect(await waitingCount()).toBe(2),{timeout:5000});
+   // Exactly two reached PostgreSQL; the other four wait in admission holding no connection.
+   const started=performance.now();
+   const [tenant]=await fair.withTenant({tenantId:other,userId:randomUUID()},tx=>tx.execute(sql`select app.current_tenant_id() as tenant`));
+   expect(tenant.tenant).toBe(other);
+   const [login]=await fair.withPoolWork('authentication',()=>fair.client`select current_user as role`);
+   expect(login.role).toBe('ai_hr_app');
+   expect(performance.now()-started).toBeLessThan(2500);
+   expect(await waitingCount()).toBe(2);
+   await lockSql`select pg_advisory_unlock(${key})`;
+   await Promise.all(waiters);
+   expect(events.length).toBe(6);
+  }finally{await lockSql`select pg_advisory_unlock_all()`;await lockSql.end({timeout:5});}
+ },20_000);
+ it('bounds a raw login query with a deadline instead of waiting in the driver queue',async()=>{
+  const finish=deferred(),entered=[deferred(),deferred()];
+  // Pool of 4 allows two authentication permits; hold both.
+  const held=entered.map(e=>fair.withPoolWork('authentication',async()=>{e.resolve();await finish.promise;}));
+  await Promise.all(entered.map(e=>e.promise));
+  const raw=fair.withPoolWork('authentication',()=>fair.client`select 1`);
+  await expect(raw).rejects.toMatchObject({name:'DatabaseAdmissionError',code:'queue-timeout'});
+  finish.resolve();await Promise.all(held);
+ });
+ it('admits the raw request-budget query on the reserved login permit while tenants hold the rest',async()=>{
+  const app=await import('../db/client');
+  const finish=deferred();
+  // Default pool of 10: 6 for one tenant, 2 for another, leaving only the 2 reserved login permits.
+  const holders=[...Array.from({length:6},()=>app.withPoolWork('hot-tenant',()=>finish.promise)),...Array.from({length:2},()=>app.withPoolWork('other-tenant',()=>finish.promise))];
+  try{await expect(takeRequestBudget(['admission-test',randomUUID()],5,60)).resolves.toBeUndefined();}
+  finally{finish.resolve();await Promise.all(holders);}
+ });
+ it('retries a cancelled read invisibly and never retries a write',async()=>{
+  const ctx=adminCtx(base);let reads=0;
+  const rows=await database.withTenant(ctx,async tx=>{
+   reads++;
+   if(reads===1){await tx.execute(sql`set local statement_timeout='50ms'`);await tx.execute(sql`select pg_sleep(3)`);}
+   return tx.execute(sql`select app.current_tenant_id() as tenant`);
+  },{readOnlySnapshot:true});
+  expect(reads).toBe(2);expect(rows[0].tenant).toBe(base.tenantId);
+  let writes=0;
+  const failure=await database.withTenant(ctx,async tx=>{writes++;await tx.execute(sql`set local statement_timeout='50ms'`);await tx.execute(sql`select pg_sleep(3)`);}).catch(error=>error);
+  expect(writes).toBe(1);expect(pgSqlState(failure)).toBe('57014');
+  expect((failure as {digest?:string}).digest).toBe('AIHR_DATABASE_CAPACITY');
+ });
+ it('retries a declared read operation but not an undeclared plain transaction',async()=>{
+  const ctx=adminCtx(base);let attempts=0;
+  const result=await withIdempotentDatabaseRead(()=>database.withTenant(ctx,async tx=>{
+   attempts++;
+   if(attempts===1){await tx.execute(sql`set local statement_timeout='50ms'`);await tx.execute(sql`select pg_sleep(3)`);}
+   return (await tx.execute(sql`select 1 as ok`))[0];
+  }));
+  expect(attempts).toBe(2);expect(result.ok).toBe(1);
  });
 });
