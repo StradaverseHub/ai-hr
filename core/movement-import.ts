@@ -1,7 +1,7 @@
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx} from './company-organisation';
 import {organisationImportWarningsTx} from './derived-organisation-display';
-import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
 import {isAiPresentationPrincipalCurrentTx} from './ai-principal';
 /** Bounded canonical Movement rehearsals and per-employee atomic application.
@@ -539,7 +539,8 @@ export type MovementImportFilters={departmentIds?:string[];businessUnitIds?:stri
 /** Server-only download projection. Internal identities never leave this owner in workbook metadata. */
 export async function movementImportDownloadData(ctx:SessionContext,p:{companyId:string;typeCode?:string;filters?:MovementImportFilters}){
  assertAdmin(ctx);return withTenant(ctx,async tx=>{
-  await limits(tx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+  // A read-only workbook projection: shared Access; the Workforce company check joins it.
+  await limits(tx);await lockAccessConfigurationReadTx(tx,ctx.tenantId);
   const catalog=await catalogTx(tx,ctx,p.companyId);
   const [selectedCompany]=await tx.select({name:company.legalName}).from(company).where(and(eq(company.id,p.companyId),isNull(company.archivedAt))).limit(1);
   if(!selectedCompany)throw new Error('company_not_available');

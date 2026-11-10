@@ -1,7 +1,7 @@
 import {setTimeout as delay} from 'node:timers/promises';
 import {pgSqlState} from '../lib/db-error';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
-import {lockAccessConfigurationWriteTx,tryLockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx,tryLockAccessConfigurationTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {assertWorkforceCompanyTx} from './workforce-access';
 import {hireEmployee,setEmploymentInfo} from './workforce-commands';
@@ -452,7 +452,9 @@ export async function saveEmployeeDraft(
   assertAdmin(ctx);
   const currentStep = Math.min(Math.max(Math.trunc(p.currentStep) || 1, 1), 20);
   const run=async(tx:Tx)=>{
-    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+    // One draft's values: shared Access (an activation holding the exclusive lock keeps it). The draft row lock
+    // serialises two saves of the same draft; a new draft is an insert. A held Employee ID is pinned, never claimed.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     const [existing]=p.id?await tx.select({id:employeeDraft.id,companyId:employeeDraft.companyId,reservedEmployeeCode:employeeDraft.reservedEmployeeCode,data:employeeDraft.data}).from(employeeDraft).where(and(eq(employeeDraft.id,p.id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update'):[];
     if(p.id&&!existing)throw new DraftActivationValidationError('draft_unavailable',[]);
     let data =
@@ -601,7 +603,12 @@ export async function createEmployeeDraftWithReservedCode(
   }
 
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+    // Shared Access; the Workforce check joins it. Exclusivity used to be the only thing serialising "is this
+    // Employee ID free across employments and drafts" with the reservation insert. The per-code claim lock from
+    // 4701 (taken inside findEmployeeCodeClaim and held to commit) now does: a concurrent claimer of the same ID
+    // waits, then sees this draft's reservation and gets the same refusal. A running number is issued under its
+    // counter row lock, so two creates never take the same number, and employee_draft_reserved_code_uq remains.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
     let code: string;
     let configId: string | null = null;

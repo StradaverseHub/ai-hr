@@ -3340,6 +3340,8 @@ const sequenceInputKey = (input: CreateMovementInput) => JSON.stringify(Object.e
 export async function rehearseMovementSequenceTx<T>(tx:Tx,ctx:SessionContext,prepare:(shadowTx:Tx,create:MovementSequenceCreate)=>Promise<T>){
   // Acquire in the OUTER transaction so rehearsal rollback cannot release dependency ownership
   // before the bounded replay. Access precedes configuration, including the callback's source reads.
+  // Reader/writer lock: stays exclusive. A sequence composes compensation, statutory and pay owners that still
+  // take the exclusive lock, and appends events between legs; exclusivity also covers its administrator effect.
   await tx.execute(sql`select app.access_configuration_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
   const contextKey=()=>JSON.stringify({tenantId:ctx.tenantId,userId:ctx.userId,roles:ctx.roles,grants:ctx.grants});

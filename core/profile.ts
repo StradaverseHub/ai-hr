@@ -480,6 +480,8 @@ export async function decideProfileChange(
   const reason = clean(p.reason);
   if (p.decision === 'rejected' && reason === null) throw new ProfileChangeReasonRequiredError();
   const run=async (tx:Tx) => {
+    // Stays exclusive: an approval applies the value through app.access_profile_value_begin, which takes the
+    // profile-policy lock exclusively in SQL, and through the photo and register owners of this course.
     await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Serialize the decision with configuration revocation before loading any proposal or master data.
     await lockAccessConfigurationWriteTx(tx,ctx.tenantId);

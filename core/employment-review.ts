@@ -15,6 +15,7 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {assertWorkforceEmploymentTx} from './workforce-access';
+import {acquireBoundedAdvisoryLockTx,lockAccessConfigurationTx} from './access-configuration-lock';
 import { actorOf, appendEvent } from '../db/events';
 import {
   assignment,
@@ -205,7 +206,11 @@ async function startReviewTx(
   ctx: SessionContext,
   p: { employmentId: string; auto?: boolean },
 ) {
-  await tx.execute(sql`select app.access_configuration_write_lock()`);
+  // Shared Access. "One review per (employment, type) for life" is a check-then-insert that exclusivity used
+  // to serialise; the per-employment review lock now does, so the loser sees the winner's row and gets the
+  // same refusal. The sweep calls this under its exclusive lock and simply adds the per-employment lock.
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await acquireBoundedAdvisoryLockTx(tx, `employment-review:${ctx.tenantId.toLowerCase()}:${p.employmentId.toLowerCase()}`, false);
   const live = await liveTypeAndDates(tx, p.employmentId);
   if (!live) throw new ReviewError('Employee has no active assignment.');
   const window = computeReviewWindow(live.employmentType, live.emp);
@@ -276,7 +281,8 @@ export async function submitManagerEvaluation(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
-    await tx.execute(sql`select app.access_configuration_write_lock()`);
+    // One review's stage: shared Access; the review row lock serialises concurrent submissions and decisions.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     const [rev] = await tx.select().from(employmentReview).where(eq(employmentReview.id, p.reviewId)).limit(1).for('update');
     if (!rev) throw new ReviewError('Review not found (or not visible).');
     await assertLegacyReviewOwnerTx(tx,rev);
@@ -326,7 +332,8 @@ export async function decideReview(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
-    await tx.execute(sql`select app.access_configuration_write_lock()`);
+    // One review's decision: shared Access; the review row lock serialises it.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     const [rev] = await tx.select().from(employmentReview).where(eq(employmentReview.id, p.reviewId)).limit(1).for('update');
     if (!rev) throw new ReviewError('Review not found (or not visible).');
     await assertLegacyReviewOwnerTx(tx,rev);
@@ -615,6 +622,8 @@ export async function sweepDueReviews(
 ): Promise<{ opened: number }> {
   const today = opts.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
+    // Stays exclusive: a tenant-wide batch over every employment, so a long holder. Flagged for the
+    // background-job conversion (phase 3) rather than run under the shared lock in one transaction.
     await tx.execute(sql`select app.access_configuration_write_lock()`);
     // Enumerate active employments left-joined to the current open assignment row.
     const rows = await tx
@@ -832,6 +841,8 @@ export async function sweepReviewReminders(
 ): Promise<{ reminders: number }> {
   const today = opts.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
+    // Stays exclusive: a tenant-wide batch whose pre-check then insert of reminder rows relies on being the only
+    // sweep, and a long holder. Flagged for the background-job conversion (phase 3).
     await tx.execute(sql`select app.access_configuration_write_lock()`);
     const rows = await tx
       .select({
@@ -962,12 +973,15 @@ export async function uploadReviewDocument(
   }
   assertValidReviewDocument(p.mimeType, p.content);
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_configuration_write_lock()`);
+    // Shared Access. "At most one system letter per review" is a check-then-insert that exclusivity used to
+    // serialise; the review row lock now does, so a concurrent second letter sees the first and is refused.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
     const [rev] = await tx
       .select({ id: employmentReview.id, employmentId: employmentReview.employmentId, reviewType:employmentReview.reviewType,status: employmentReview.status })
       .from(employmentReview)
       .where(eq(employmentReview.id, p.reviewId))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!rev) throw new ReviewError('Review not found (or not visible).');
     await assertLegacyReviewOwnerTx(tx,rev);
     if (rev.status !== 'completed') throw new ReviewError('Documents can only be added once the review is completed.');
