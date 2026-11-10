@@ -243,11 +243,14 @@ describe('7f6ca478 — dashboard filter arithmetic (pure)', () => {
   });
 });
 
-describe('7f6ca478 — the three statuses in the request that do not exist stay off the screen', () => {
-  const INVENTED = ['processing', 'failed', 'cancelled'] as const;
+describe('7f6ca478 — the statuses in the request that do not exist stay off the screen', () => {
+  // Owner decision 2026-11-10 (bulk-job plan, item 2): 'processing' is now a real status, the background
+  // payroll job's run lease (draft 9950/9951), so it is styled and labelled like the others. The other two
+  // invented states stay off the screen.
+  const INVENTED = ['failed', 'cancelled'] as const;
 
-  it('payrollStatusEnum is exactly draft/processed/closed', () => {
-    expect([...schema.payrollStatusEnum.enumValues].sort()).toEqual(['closed', 'draft', 'processed']);
+  it('payrollStatusEnum is exactly draft/processing/processed/closed', () => {
+    expect([...schema.payrollStatusEnum.enumValues].sort()).toEqual(['closed', 'draft', 'processed', 'processing']);
   });
 
   // 0b326d5f (r256) — UPDATED, NOT WEAKENED. The listing now renders a fourth PILL, "Reprocess

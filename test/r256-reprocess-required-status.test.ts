@@ -511,8 +511,10 @@ describe('0b326d5f — the new labels resolve in every locale', () => {
     expect(t('reprocessBadgeNote').length).toBeGreaterThan(0);
   });
 
-  it('payrollStatusEnum is STILL exactly the three stored values — this build added no fourth', () => {
-    expect([...schema.payrollStatusEnum.enumValues].sort()).toEqual(['closed', 'draft', 'processed']);
+  it('payrollStatusEnum is exactly the stored values — the derived Reprocess Required state is not one of them', () => {
+    // 'processing' (owner decision 2026-11-10, the background job's run lease) is a real status; the derived
+    // "Reprocess Required" still is not one.
+    expect([...schema.payrollStatusEnum.enumValues].sort()).toEqual(['closed', 'draft', 'processed', 'processing']);
     expect(schema.payrollStatusEnum.enumValues).not.toContain(REPROCESS_REQUIRED);
   });
 });
