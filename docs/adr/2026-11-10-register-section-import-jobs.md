@@ -79,6 +79,47 @@ section screen shows the employee import's progress panel pattern and hands the 
 result card; it rejoins a running import after navigation. Completion notices: `bulkJobs.notification.sectionImport`
 and `.registerImport` in all six catalogues, opening the import page whose history list shows the run.
 
+## Measured (populated rehearsal, `scripts/performance/register-import-rehearsal.ts`)
+
+Private PostgreSQL 16 cluster with durability on, 3,008 fictional employees each holding one live Highest
+qualification and one Primary contact, audit chain armed, the real protected worker process. The host was shared
+with other agents' clusters: load average 23 to 34 on 12 cores throughout, so every number is inflated; the baseline
+row is the same probes with no import running. 500-row files (the register cap). Holds are tenant-wide advisory
+keys sampled every 25 ms in the rehearsal's own database.
+
+| Phase | Longest import hold | Import chunk holds p50 / p95 / max | Clock-in max | Login max | Access writer max |
+|---|---|---|---|---|---|
+| Baseline (no import) | - | - | 0.81 s | 0.15 s | 0.63 s |
+| Synchronous register commit (before) | 30.4 s Access X (52.3 s in an earlier run) | one transaction | 29.6 s | 26.6 s | 30.2 s |
+| Register job, Qualifications | release 1.65 s | 0.14 / 0.35 / 0.66 s | 1.64 s | 1.13 s | 1.67 s |
+| Register job, Emergency Contacts | release 1.88 s | 0.13 / 0.25 / 0.55 s | 1.70 s | 1.17 s | 1.78 s |
+| Section job, Profile | 0.74 s | 0.17 / 0.34 / 0.74 s | 1.01 s | 0.23 s | 1.13 s |
+| Section job, Family | 0.54 s | 0.12 / 0.24 / 0.54 s | 1.21 s | 0.15 s | 1.17 s |
+| Register job, late refusal (row 490) | 0.62 s | 0.16 / 0.35 / 0.62 s | 1.46 s | 0.28 s | 1.83 s |
+| Employee import Revert, 500 hires (not converted) | 18.8 s Access and leave X | one transaction | 19.3 s | 5.5 s | 18.9 s |
+
+No errors and no Busy in any probe (the Personnel list probe is 9 to 15 s on this host with or without an import).
+A normal session saw a register file's rows jump from none to all (counts seen: 500 then 1,000; 0 then 500); after
+the late refusal it saw none. `verifyTenantChain` valid after every run. Release parts (Qualifications /
+Emergency): subject check 32 / 29 ms, apply 715 / 1,138 ms, COMMIT (deferred guards) 887 / 716 ms.
+
+Release cost is linear: about 2.3 ms per written row on this host (audit event with its row triggers about 0.9 ms,
+deferred profile value guard about 1.1 ms, keyed row write about 0.3 ms), measured at 100 to 500 rows.
+
+## The fallback was not taken
+
+The release is above the 1 s bar at the 500-row cap on this oversubscribed host (1.65 to 1.88 s); in the same window
+ordinary clock-ins held the same Access lock for up to 1.34 s. Its cost is the register writers' own per-row
+work (audit events and the authority guard), which no design can drop without changing audit or permission checks;
+staging events ahead of the release would leave phantom audit rows for imports that are later refused. The fallback
+(per-employee writes, then Revert) was not built because its Revert is, by ADR-0155, one all-or-nothing transaction
+running the same writers over the same rows: the measured synchronous shape of that is 30 to 52 s at 500 rows
+(compare the employee Revert, 18.8 s), so it moves the long hold to the undo path instead of removing it. Options for
+the owner: accept the bounded release (cap 500 rows, linear, projected well under 1 s on an uncontended database);
+lower the register file cap (200 rows measured about 0.5 s on this host); or the fallback with a chunked, not atomic,
+Revert. Phase 0 (commit seal) takes the audit-chain lock off the event inserts and phase 2 makes the Access lock
+shared, which leaves only the profile-policy lock exclusive during the release.
+
 ## Not changed here
 
 - `core/employee-import-history.ts:72`, the employee import **Revert**, still voids every employment of the attempt
