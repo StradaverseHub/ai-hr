@@ -38,7 +38,9 @@ it('refuses missing/unknown/defaulted or non-JSON metadata and preserves absent 
 });
 it('binds both complete qualified source contracts while refusing operational overflows without clipping',()=>{
  const projection=notificationRecipeSealBytes(notificationWorkerProjectionContract,2),assessment=notificationRecipeSealBytes(notificationWorkerAssessmentContract,3);
- expect(projection.recipeCount).toBe(66);expect(assessment.recipeCount).toBe(66);expect(projection.sha256).not.toBe(assessment.sha256);
+ // 70 canonical registry recipes: the original 66 plus the three Rewards preparation readers (894c99c77)
+ // and the employee loop digest reader (57b1a1f64), composed into core/notification-registry.ts by 0ed7d8472.
+ expect(projection.recipeCount).toBe(70);expect(assessment.recipeCount).toBe(70);expect(projection.sha256).not.toBe(assessment.sha256);
  expect(projection.byteLength).toBe(projection.bytes.length);expect(assessment.byteLength).toBe(assessment.bytes.length);expect(assessment.byteLength).toBeLessThan(notificationRecipeSealFormat.maximumBytes);
  expect(()=>notificationRecipeSealBytes([],2)).toThrow();
  expect(()=>notificationRecipeSealBytes([{...row,eventType:'x'.repeat(notificationRecipeSealFormat.maximumBytes)}],2)).toThrow('byte bound');

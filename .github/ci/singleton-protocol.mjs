@@ -42,7 +42,9 @@ const aiCentreHistoricalUpgradeArchives=Object.freeze({
 });
 const aiCentreUpgradeSourcePins=Object.freeze({
  [AI_CENTRE_CURRENT_UPGRADE_FILE]:'dab6c06e52ff261288ecb9f47008ec6e06034c999158b22a0e7bbc3f33498c62',
- 'test/fixtures/ai-centre-current-upgrade-source.ts':'3bb46a2fe1cc2e4c8db51502e2eec65af1012d19832cafc011db20ac8cbc7396',
+ // Re-pinned after the intended incoming-ledger refreshes 8e17be471, e0adc0ad0 and 41291e36e and the
+ // released-main 8d5254eb merge c98533de0; the current course and both archives are unchanged.
+ 'test/fixtures/ai-centre-current-upgrade-source.ts':'e8348de2308009410f547b842f4783627e1a7645d842208a04bc60f8b35f5ec1',
  'test/ai-centre-architecture-compatibility-upgrade.archive.ts.txt':'41034ea6f3d13e0001003e69e99d514b1a38f90a143ba24996837516f24c386a',
  'test/ai-centre-mandate-write-order-upgrade.archive.ts.txt':'32c773d04d67e1db720b0e78d9bb0af40d50eac9bac6f34ea9c54946149b085f',
 });

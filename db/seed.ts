@@ -12,8 +12,7 @@ import * as schema from './schema';
 import { assertAiCustodyResetAllowed } from './seed-ai-custody-guard';
 import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { checkIn, checkOut, requestAttendanceCorrection } from '../packs/attendance/service';
-import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled } from '../core/attendance-workflow';
+import { checkIn, checkOut, requestAttendanceCorrection, saveAttendanceWorkflow, setAttendanceWorkflowEnabled } from '../packs/attendance/service';
 import { requestLeave, decideLeave, addLeaveAttachment, accrueEarnedLeave } from '../core/leave';
 import { createJobGrade, setLeaveTypeRules } from '../core/admin';
 // 6e9a126e RELEASE THREE — the demo's entitlement is configured through the TEMPLATE layer now.

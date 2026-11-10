@@ -56,9 +56,12 @@ const expected=[
  "both Rewards jobs retain and hash the complete large Tamil dependency without a generic limit increase",
  "Rewards native policy and original read family retain complete isolated source-bound jobs",
  "only the exact five delegated entries may use the shared FIRST actual singleton admission owner",
- "shared module JIT diagnostic owns one unchanged controlled database and cannot omit any actual imported source"
+ "shared module JIT diagnostic owns one unchanged controlled database and cannot omit any actual imported source",
+ // 09d1d3f22 and f37f9d629, carried into the v21 trusted controller by cd08b6789.
+ "current AI Centre upgrade is mandatory with exact historical archives and a dedicated native unit",
+ "host cache conformance owns a distinct complete host-only source-bound singleton"
 ] as const;
-it('executes all52 exact singleton profile controller cases with no skipped or substituted source-admission control',()=>{
+it('executes all54 exact singleton profile controller cases with no skipped or substituted source-admission control',()=>{
  const child=spawnSync(process.execPath,['--test','--test-reporter=tap','.github/ci/singleton-profiles.test.mjs'],{
   cwd:root,encoding:'utf8',timeout:25000,maxBuffer:1024*1024,
  });
@@ -70,8 +73,8 @@ it('executes all52 exact singleton profile controller cases with no skipped or s
  expect([...output.matchAll(/^# Subtest: (.+)$/gm)].map(row=>row[1])).toEqual([...expected]);
  expect([...output.matchAll(/^ok ([0-9]+) - (.+)$/gm)].map(row=>({number:Number(row[1]),name:row[2]})))
   .toEqual(expected.map((name,index)=>({number:index+1,name})));
- expect(output.match(/^1\.\.52$/gm)).toHaveLength(1);
- for(const [key,value]of Object.entries({tests:52,suites:0,pass:52,fail:0,cancelled:0,skipped:0,todo:0})){
+ expect(output.match(/^1\.\.54$/gm)).toHaveLength(1);
+ for(const [key,value]of Object.entries({tests:54,suites:0,pass:54,fail:0,cancelled:0,skipped:0,todo:0})){
   const rows=[...output.matchAll(new RegExp('^# '+key+' ([0-9]+)$','gm'))];
   expect(rows).toHaveLength(1);expect(Number(rows[0][1])).toBe(value);
  }
