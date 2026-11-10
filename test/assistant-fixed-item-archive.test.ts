@@ -17,6 +17,7 @@ import {pgSqlState} from '../lib/db-error';
 import * as vault from '../lib/pii/vault';
 import {appendEvent} from '../db/events';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {expectCooperativeCloseAdmission,observeCloseAccessMisses} from './helpers/payroll-close-access-probe';
 let b:Base,target:{employmentId:string;personId:string},other:{employmentId:string;personId:string},hrPerson:{employmentId:string;personId:string},ctx:SessionContext,itemId:string,componentId:string;
 const root=()=>({...adminCtx(b),grants:[{role:'hr_admin' as const,companyId:null}]});
 const hire=(name:string,companyId=b.companyId,departmentId=b.deptA)=>hireEmployee(root(),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.invalid'},companyId,departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
@@ -66,10 +67,13 @@ it('retains physical source locks after preview rollback and releases them with 
 });
 it('refuses busy exclusive history without effects and aborts the whole review transaction',async()=>{const before=await business();await owner.db.transaction(async tx=>{await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'payroll-history:'+b.tenantId},0))`);await expect(store.prepare(ctx,human())).rejects.toThrow();});expect(await business()).toEqual(before);expect((await store.list(ctx)).reviews).toEqual([]);});
 it.each(['create','close'] as const)('native payroll %s cannot cross the SAME existing Access interval after preview rollback',async operation=>{
- const batchId=operation==='close'?await payroll():null;let release!:()=>void,ready!:()=>void;const gate=new Promise<void>(resolve=>release=resolve),started=new Promise<void>(resolve=>ready=resolve);
- const holding=withTenant(ctx,tx=>withFixedItemArchiveSubjectTx(tx,ctx,itemId,'pending',async()=>{await prepareFixedItemArchiveTx(tx,ctx,{id:itemId,employmentId:target.employmentId});ready();await gate;}));await started;
+ const batchId=operation==='close'?await payroll():null;let release!:()=>void,ready!:(pid:number)=>void;const gate=new Promise<void>(resolve=>release=resolve),started=new Promise<number>(resolve=>ready=resolve);
+ const holding=withTenant(ctx,tx=>withFixedItemArchiveSubjectTx(tx,ctx,itemId,'pending',async()=>{await prepareFixedItemArchiveTx(tx,ctx,{id:itemId,employmentId:target.employmentId});const [own]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);ready(own.pid);await gate;}));const holderPid=await started;
+ // 915d5a06 keeps Close out of the database wait queue: it retries an Access try-lock miss after returning its
+ // connection, so Close is witnessed by its completed misses with no native waiter; Create still waits natively.
+ const probe=operation==='close'?observeCloseAccessMisses(b.tenantId):null;
  let settled=false;const contender=(operation==='create'?createBatch(ctx,{companyId:b.companyId,payPeriod:'2098-11'}):closeBatch(ctx,{batchId:batchId!})).then(value=>{settled=true;return value;},error=>{settled=true;return error;});
- try{let waiting=false;for(let i=0;i<100&&!waiting;i++){const [row]=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_locks where locktype='advisory' and not granted and classid::bigint=((hashtextextended(${'access-configuration:'+b.tenantId},0)>>32)&4294967295) and objid::bigint=(hashtextextended(${'access-configuration:'+b.tenantId},0)&4294967295)) as waiting`);waiting=row.waiting;if(!waiting)await new Promise(resolve=>setTimeout(resolve,10));}expect(waiting).toBe(true);expect(settled).toBe(false);}finally{release();await holding;}await contender;expect(settled).toBe(true);
+ try{if(probe)await expectCooperativeCloseAdmission(probe,holderPid);else{let waiting=false;for(let i=0;i<100&&!waiting;i++){const [row]=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_locks where locktype='advisory' and not granted and classid::bigint=((hashtextextended(${'access-configuration:'+b.tenantId},0)>>32)&4294967295) and objid::bigint=(hashtextextended(${'access-configuration:'+b.tenantId},0)&4294967295)) as waiting`);waiting=row.waiting;if(!waiting)await new Promise(resolve=>setTimeout(resolve,10));}expect(waiting).toBe(true);}expect(settled).toBe(false);}finally{release();await holding;await contender;probe?.restore();}expect(settled).toBe(true);
  // Native close continues through its OWN readiness/permission validation after release; no success is fabricated.
 });
 

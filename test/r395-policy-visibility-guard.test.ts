@@ -14,7 +14,7 @@
  *      generated from pg_policies before and after 0515), each with the fixture's post-0515 USING text and
  *      its WITH CHECK text UNCHANGED from before 0515, except the explicitly pinned 0540 assessment-file, 0560 own-Profile and 0561 user-only Feedback extensions,
  *      the 0676 import-void narrowing (ADR-0157), the 0691 authorized Bank point-read arm,
- *      and the 3001 scalar-InitPlan positive Employment membership.
+ *      the 3001 scalar-InitPlan positive Employment membership and the 3102 one for Assignment.
  *   3. the migration file's ALTER POLICY statements name exactly those 57 and set no WITH CHECK.
  *   4. the set form really is planned as an InitPlan (the `(SELECT …)` wrapper is load-bearing).
  */
@@ -56,6 +56,18 @@ async function bankPointReadQual(original: string): Promise<string> {
   });
  } catch(error) {if(error!==rollback)throw error;}
  expect(normalized).not.toBe('');return normalized;
+}
+
+// 3102 (docs/adr/2026-11-07-assignment-membership-adoption.md) replaces ONLY Assignment's positive membership with
+// the same statement-local scalar InitPlan form 3001 gave Employment. Pinned as the exact reviewed body, and
+// independently derived from the immutable 0515 fixture so no other part of the predicate may drift.
+const assignmentMembershipQual='((tenant_id = app.current_tenant_id()) AND (employment_id IN ( SELECT unnest(( SELECT app.visible_employment_ids() AS visible_employment_ids)) AS unnest)))';
+function assignmentInitPlanQual(historical:string):string {
+ const old='(employment_id = ANY (( SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[]))';
+ expect(historical.split(old)).toHaveLength(2);
+ const derived=historical.replace(old,'(employment_id IN ( SELECT unnest(( SELECT app.visible_employment_ids() AS visible_employment_ids)) AS unnest))');
+ expect(derived).toBe(assignmentMembershipQual);
+ return derived;
 }
 
 function employmentInitPlanQual(historical:string):string {
@@ -116,7 +128,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
         const r = live.get(historicalKey);
         expect(r, `${historicalKey} exists`).toBeTruthy();
         const attachment=p.table==='performance_attachment'&&p.policy==='performance_attachment_rls';
-        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='employment.employment_rls'?bankEmploymentQual:historicalKey==='claim_request.claim_request_rls'?claimMembershipQual:importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
+        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='employment.employment_rls'?bankEmploymentQual:historicalKey==='claim_request.claim_request_rls'?claimMembershipQual:historicalKey==='assignment.assignment_rls'?assignmentInitPlanQual(p.newQual):importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
         expect(r!.qual, `${historicalKey} USING`).toBe(expectedQual);
         expect(r!.with_check ?? null, `${historicalKey} WITH CHECK`).toBe(attachment?assessmentAttachment.withCheck:p.withCheck);
       }

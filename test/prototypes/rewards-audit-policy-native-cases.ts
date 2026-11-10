@@ -82,9 +82,27 @@ export function registerRewardsAuditPolicyNativeCases(){
   expect(complete(await allFrames(tenant))).toEqual(complete([...before,...added]));
  }
 
+ // Migration 0622 revokes every app LOGIN privilege on Assistant custody rows, so the in-transaction
+ // phase/PRE witness cannot SELECT them directly. This case-owned, owner-only definer returns ONLY the
+ // caller's own row while ITS current transaction holds that row's native root; it is dropped before
+ // the case ends and never exists while another case runs.
+ async function withOwnCustodyWitness(work:()=>Promise<void>){
+  await owner.client.begin(async tx=>{
+   await tx.unsafe('create schema reward_audit_policy_witness');
+   await tx.unsafe(`create function reward_audit_policy_witness.own_custody(p_id uuid)returns table(phase text,catalogue_pre jsonb,bank_pre jsonb)
+    language sql stable security definer set search_path=pg_catalog,pg_temp as $body$
+    select r.catalogue_native_phase,r.catalogue_audit_preimage,r.bank_audit_preimage from app.assistant_own_leave_review r
+    where r.id=p_id and r.tenant_id=app.current_tenant_id() and r.user_id=app.current_user_id()
+     and pg_current_xact_id_if_assigned() in(r.catalogue_native_root,r.bank_retained_root_xid)$body$`);
+   await tx.unsafe('revoke all on function reward_audit_policy_witness.own_custody(uuid) from public');
+   await tx.unsafe('grant usage on schema reward_audit_policy_witness to ai_hr_app');
+   await tx.unsafe('grant execute on function reward_audit_policy_witness.own_custody(uuid) to ai_hr_app');
+  });
+  await controlledPolicyWait(ownership.poison).run(work,async()=>{await owner.client`drop schema reward_audit_policy_witness cascade`;});
+ }
  async function backend(connection:ReturnType<typeof postgres>){const [row]=await connection`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started`;if(!row||typeof row.pid!=='number'||typeof row.started!=='string')throw Error('Actual native session identity required');return{pid:row.pid,started:row.started};}
- async function blocking(context:TestContext,waiting:{pid:number;started:string},holder:{pid:number;started:string}){
-  const until=Date.now()+200;
+ async function blocking(context:TestContext,waiting:{pid:number;started:string},holder:{pid:number;started:string},budgetMs=200){
+  const until=Date.now()+budgetMs;
   do{context.signal.throwIfAborted();const [row]=await owner.client`select exists(select 1 from pg_stat_activity w,pg_stat_activity h where w.pid=${waiting.pid} and w.backend_start=${waiting.started}::text::timestamptz and h.pid=${holder.pid} and h.backend_start=${holder.started}::text::timestamptz and h.pid=any(pg_blocking_pids(w.pid)))as owned`;
    if(row.owned===true)return;await new Promise<void>(resolve=>setTimeout(resolve,5));
   }while(Date.now()<until);
@@ -256,16 +274,15 @@ export function registerRewardsAuditPolicyNativeCases(){
     expect((await tx`select current_user=session_user and current_user::regrole::oid=(select relowner from pg_class where oid='public.domain_event'::regclass)as native_owner,current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')as readonly,current_setting('statement_timeout')as statement,current_setting('lock_timeout')as lock`)[0]).toEqual({native_owner:true,isolation:mode,readonly:'off',statement:'20s',lock:'300ms'});
     const identity=await rootIdentity(tx);await tx`set constraints all immediate`;
     expect((await tx`select app._domain_event_next(${f.b.tenantId}::uuid)as pre`)[0].pre).toEqual({armed:false,priorSeq:null,priorHash:null});
-    await tx`savepoint observe_restored_marker_timing`;
-    await controlledPolicyWait(ownership.poison).run(async()=>{
-     // A leaked DEFERRED state would make THIS INSERT succeed, so the
-     // refusal assertion fails before any later SET CONSTRAINTS or COMMIT.
-     await refusal(tx`insert into reward_audit_policy_private.floor_marker(tenant_id,policy_version)values(${f.b.tenantId}::uuid,1)`,'55000');
-    },async()=>{
-     // Even the deliberately broken-state regression cannot commit a fake
-     // floor: always remove its row and queued trigger before the outer TX.
-     await tx`rollback to savepoint observe_restored_marker_timing`;await tx`release savepoint observe_restored_marker_timing`;
-    });
+    // postgres.js keeps the first failed query of a transaction scope and rethrows it at COMMIT,
+    // so the expected refusal runs in the driver's own savepoint scope. That scope ALWAYS rolls
+    // back: a leaked DEFERRED state would make THIS INSERT succeed, the sentinel then fails the
+    // refusal assertion before any later SET CONSTRAINTS or COMMIT, and the rollback removes its
+    // row and queued trigger, so even that broken-state regression cannot commit a fake floor.
+    await refusal(tx.savepoint(async probe=>{
+     await probe`insert into reward_audit_policy_private.floor_marker(tenant_id,policy_version)values(${f.b.tenantId}::uuid,1)`;
+     throw Error('A floor marker without a receipt was accepted under immediate constraints');
+    }),'55000');
     expect((await tx`select 1 as usable,not exists(select 1 from reward_audit_policy_private.floor_marker where tenant_id=${f.b.tenantId}::uuid)as no_marker`)[0]).toEqual({usable:1,no_marker:true});return identity;
    });
    await exactFrames(f.b.tenantId,ownedBefore,[ownRoot]);
@@ -329,9 +346,13 @@ export function registerRewardsAuditPolicyNativeCases(){
    await owned().fixture.withProbeBarrier(f.b.tenantId,async key=>{
     await control.run(async()=>{
      await holder`select pg_advisory_lock(${key}::text::bigint)`;
-     const command=control.start(()=>writer.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.probe-before-first-floor','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];}));
+     // finalize_read runs three complete native profile assertions before its marker INSERT can meet the
+     // probe tuple: hosted runs measured 148 ms and >250 ms of active, lock-free execution before the
+     // transactionid wait. The probe writer must outlast that path, so its own lock wait (not the
+     // reader's or any other session's) is bounded above the reader witness budget below.
+     const command=control.start(()=>writer.begin('isolation level repeatable read',async tx=>{await tx`set local lock_timeout='5s'`;await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.probe-before-first-floor','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];}));
      await blocking(context,writerIdentity,holderIdentity);finalize.resolve();
-     await blocking(context,readerIdentity,writerIdentity);
+     await blocking(context,readerIdentity,writerIdentity,2000);
      expect((await holder`select pg_advisory_unlock(${key}::text::bigint)as released`)[0].released).toBe(true);
      expect(await command.value()).toEqual({seq:null});expect((await receipt.value()).id).toBe(receiptId);
     },async()=>{finalize.resolve();await holder`select pg_advisory_unlock_all()`;});
@@ -343,7 +364,12 @@ export function registerRewardsAuditPolicyNativeCases(){
   },async()=>{finalize.resolve();},()=>context.signal.removeEventListener('abort',abort));
  });
  async function bankFirstFloorRace(context:TestContext,counterexample:boolean){
-  const f=await setup(),pack=requirePackFor('MY');
+  // The Bank owner's report-principal proof compares the session's explicit grants with the ACTUAL principal
+  // (core/employee-master-access.ts), so carry exactly the grants app.principal resolves for this login.
+  const fixture=await setup(),[principal]=await owner.client`select grants from app.principal(${fixture.ctx.userId!}::uuid)`;
+  const grants=Array.isArray(principal?.grants)?principal.grants.map((grant:{role:unknown;companyId:unknown})=>{if(typeof grant.role!=='string'||(grant.companyId!==null&&typeof grant.companyId!=='string'))throw Error('Actual principal grant required');return{role:grant.role,companyId:grant.companyId};}):[];
+  if(!grants.length)throw Error('Actual principal grants required');
+  const f={...fixture,ctx:{...fixture.ctx,grants}},pack=requirePackFor('MY');
   await pack.statutory.set(f.ctx,{personId:f.person.personId,icNumber:null,epfNumber:'FICTIONAL-RETAINED-EPF',socsoNumber:'FICTIONAL-RETAINED-SOCSO',taxNumber:'FICTIONAL-RETAINED-TAX',bankName:'Fictional legacy bank',bankAccountNo:'FLOOR-OLD'});
   await pack.statutory.setBank(f.ctx,{personId:f.person.personId,bankName:'Fictional legacy bank',bankAccountNo:'FLOOR-OLD',enableCustomHolderName:true,customHolderName:'Fictional old payee',enableCustomHolderId:true,customHolderId:'FICTIONAL-OLD-HOLDER'});
   const fields={bankName:pack.client.bankNames[0],bankAccountNo:'FLOOR-NEW',enableCustomHolderName:false,customHolderName:'discarded disabled name',enableCustomHolderId:false,customHolderId:'discarded disabled ID'};
@@ -360,7 +386,7 @@ export function registerRewardsAuditPolicyNativeCases(){
    const exercise=async()=>{
     const command=control.start(()=>database.withTenant(f.ctx,async tx=>{
      await tx.execute(sql`select app.assistant_bank_review_arm(${prepared.actionId}::uuid)`);
-     const [frame]=await tx.execute<{pid:number;started:string;pre:{armed:boolean;priorSeq:null;priorHash:null};history:boolean}>(sql`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started,bank_audit_preimage as pre,exists(select 1 from pg_locks where pid=pg_backend_pid()and locktype='advisory'and granted and mode='ExclusiveLock'and objsubid=1 and classid=((hashtext(${'audit-chain:'+f.b.tenantId})::bigint>>32)&4294967295)::oid and objid=(hashtext(${'audit-chain:'+f.b.tenantId})::bigint&4294967295)::oid)as history from app.assistant_own_leave_review where id=${prepared.actionId}::uuid`);
+     const [frame]=await tx.execute<{pid:number;started:string;pre:{armed:boolean;priorSeq:null;priorHash:null};history:boolean}>(sql`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started,w.bank_pre as pre,exists(select 1 from pg_locks where pid=pg_backend_pid()and locktype='advisory'and granted and mode='ExclusiveLock'and objsubid=1 and classid=((hashtext(${'audit-chain:'+f.b.tenantId})::bigint>>32)&4294967295)::oid and objid=(hashtext(${'audit-chain:'+f.b.tenantId})::bigint&4294967295)::oid)as history from reward_audit_policy_witness.own_custody(${prepared.actionId}::uuid)w`);
      // Derive both physical advisory-key halves natively, including sign.
      expect(frame.history).toBe(true);expect(frame.pre).toEqual({armed:false,priorSeq:null,priorHash:null});bankPid=frame.pid;bankStart=frame.started;bankEntered.resolve();await finishBank.promise;context.signal.throwIfAborted();
      const native=await pack.statutory.setBank(f.ctx,{personId:f.person.personId,...fields},tx);
@@ -378,7 +404,7 @@ export function registerRewardsAuditPolicyNativeCases(){
      }
     },async()=>{finalize.resolve();finishBank.resolve();});
    };
-   if(counterexample)await owned().fixture.withFreshFloorCounterexample(exercise);else await exercise();
+   await withOwnCustodyWitness(async()=>{if(counterexample)await owned().fixture.withFreshFloorCounterexample(exercise);else await exercise();});
    expect(await money(f.b.tenantId)).toEqual(financial);expect((await event(app(),f.ctx,'policy.after-bank-first-floor')).chain_seq).toBe(1);
   },async()=>{finalize.resolve();finishBank.resolve();},()=>context.signal.removeEventListener('abort',abort));
  }
@@ -399,11 +425,13 @@ export function registerRewardsAuditPolicyNativeCases(){
    const exercise=async()=>{
     // Transparent observation: every callback forwards unchanged arguments to
     // the real canonical owner; no owner result or authorization is fabricated.
-    const errors=vi.spyOn(nativeErrorOwner,'pgSqlState').mockImplementation(error=>{const code=actualSqlState(error);if(code){const native=actualErrorChain(error).find(link=>link.code===code);nativeRefusals.push({code,message:native?.message??''});}return code;});
+    // admin.ts classifies through a module-initialization alias of pgSqlState that a runtime spy cannot
+    // replace; its RLS-refusal check passes the SAME native error through the live pgErrorChain binding.
+    const errors=vi.spyOn(nativeErrorOwner,'pgErrorChain').mockImplementation(error=>{const chain=actualErrorChain(error),code=actualSqlState(error);if(code){const native=chain.find(link=>link.code===code);nativeRefusals.push({code,message:native?.message??''});}return chain;});
     const callback=vi.spyOn(adminOwner,'bulkSaveLabels').mockImplementation(async(...args:Parameters<typeof adminOwner.bulkSaveLabels>)=>{
      const [ctx,kind,,tx]=args;
      if(tx&&ctx.tenantId===f.b.tenantId&&kind==='position'){
-      const [frame]=await tx.execute<{phase:string|null;pre:unknown;pid:number;started:string;history:boolean}>(sql`select catalogue_native_phase as phase,catalogue_audit_preimage as pre,pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started,exists(select 1 from pg_locks where pid=pg_backend_pid()and locktype='advisory'and granted and mode='ExclusiveLock'and objsubid=1 and classid=((hashtext(${'audit-chain:'+f.b.tenantId})::bigint>>32)&4294967295)::oid and objid=(hashtext(${'audit-chain:'+f.b.tenantId})::bigint&4294967295)::oid)as history from app.assistant_own_leave_review where id=${prepared.actionId}::uuid`);
+      const [frame]=await tx.execute<{phase:string|null;pre:unknown;pid:number;started:string;history:boolean}>(sql`select w.phase,w.catalogue_pre as pre,pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started,exists(select 1 from pg_locks where pid=pg_backend_pid()and locktype='advisory'and granted and mode='ExclusiveLock'and objsubid=1 and classid=((hashtext(${'audit-chain:'+f.b.tenantId})::bigint>>32)&4294967295)::oid and objid=(hashtext(${'audit-chain:'+f.b.tenantId})::bigint&4294967295)::oid)as history from reward_audit_policy_witness.own_custody(${prepared.actionId}::uuid)w`);
       if(frame?.phase==='armed'){
        armedCallbacks++;expect(armedCallbacks).toBe(1);expect(frame.history).toBe(true);expect(frame.pre).toEqual({armed:false,priorSeq:null,priorHash:null});
        expect((await owner.client`select exists(select 1 from pg_stat_activity where pid=${frame.pid} and backend_start=${frame.started}::text::timestamptz and usename='ai_hr_app')as actual`)[0].actual).toBe(true);
@@ -426,7 +454,7 @@ export function registerRewardsAuditPolicyNativeCases(){
      expect(armedCallbacks).toBe(1);
     },async()=>{finalize.resolve();finish.resolve();},async()=>{await controlledPolicyWait(ownership.poison).run(async()=>{callback.mockRestore();},async()=>{errors.mockRestore();});});
    };
-   if(counterexample)await owned().fixture.withFreshFloorCounterexample(exercise);else await exercise();
+   await withOwnCustodyWitness(async()=>{if(counterexample)await owned().fixture.withFreshFloorCounterexample(exercise);else await exercise();});
    expect(await money(f.b.tenantId)).toEqual(financial);expect((await event(app(),f.ctx,'policy.after-catalogue-first-floor')).chain_seq).toBe(1);
   },async()=>{finalize.resolve();finish.resolve();},()=>context.signal.removeEventListener('abort',abort));
  }
