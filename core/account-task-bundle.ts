@@ -102,7 +102,7 @@ export function accountTaskStatementSections(tx:Tx,ctx:SessionContext,modules:Ac
   ['attendance',modules.attendance?pendingAttendanceTaskBundleSql(ctx,companyIds,own):none],
   ['profile',pendingProfileTaskBundleSql(tx,ctx,companyIds)],
   ['notices',read.notices?pendingNoticeAcknowledgementTaskBundleSql(ctx,today):none],
-  ['performance',modules.performance&&performance?pendingPerformanceTasksBundleSql(ctx):none],
+  ['performance',modules.performance&&performance?pendingPerformanceTasksBundleSql(ctx,own):none],
   ['rewards',modules.rewards&&rewards?pendingRewardTasksBundleSql(companyIds):none],
   ['claims',modules.claims?pendingClaimTaskPreviewBundleSql(ctx,ACCOUNT_TASK_CLAIM_PREVIEW,companyIds):none],
   ['standard_feedback',personal&&modules.performance?pendingStandardFeedbackTaskBundleSql(ctx):none],
@@ -112,7 +112,8 @@ export function accountTaskStatementSections(tx:Tx,ctx:SessionContext,modules:Ac
 }
 /** The caller's own employments (core/approvals.ts callerOwnEmploymentIdsSql), read once for every section that tests an
  * employment against the caller's person. */
-const ACCOUNT_TASK_OWN=sql`(select task_caller.own_ids from task_caller)`;
+// A cast, not `= any(sub-select)`: the sub-select's one row is the array itself.
+const ACCOUNT_TASK_OWN=sql`cast((select task_caller.own_ids from task_caller) as uuid[])`;
 export const accountTaskCallerSql=(ctx:SessionContext)=>sql`task_caller as materialized (select ${callerOwnEmploymentIdsSql(ctx)} as own_ids)`;
 /** The statement itself: the assigned-work principal proof, then every section. */
 export function accountTaskStatement(sections:readonly [string,SQL][],ctx:SessionContext):SQL{

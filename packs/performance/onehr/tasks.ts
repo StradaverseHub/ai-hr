@@ -158,11 +158,14 @@ const assessmentReviewColumns = [onehrReview.reviewId, onehrReview.employmentId,
  * rows; assessmentTasks' own employments, rows (the same columns, predicates and order) and the plans of those rows'
  * employments; and pendingCalibrationTasks' session rows with their work. The owners' TypeScript runs on them
  * (pendingPerformanceTasksFromBundle). */
-export function pendingPerformanceTasksBundleSql(ctx: SessionContext) {
+export function pendingPerformanceTasksBundleSql(ctx: SessionContext, own?: SQL) {
   const personId = ctx.personId;
-  const mine = sql`array(select mine.id::text from public.employment mine where mine.person_id=${personId}::uuid)`;
+  // assessmentTasks' own employments: the statement's one read of them when it passes `own` (core/approvals.ts
+  // callerOwnEmploymentIdsSql, the same rows under the same policy), otherwise the owner's own read.
+  const mine = own ? sql`array(select unnest(${own})::text)` : sql`array(select mine.id::text from public.employment mine where mine.person_id=${personId}::uuid)`;
+  const none = own ? sql`cardinality(${own})=0` : sql`not exists(select 1 from public.employment mine where mine.person_id=${personId}::uuid)`;
   const empty = sql`jsonb_build_object('mine','[]'::jsonb,'rows','[]'::jsonb,'plans','[]'::jsonb)`;
-  const assessment = personId ? sql`case when not exists(select 1 from public.employment mine where mine.person_id=${personId}::uuid) then ${empty} else
+  const assessment = personId ? sql`case when ${none} then ${empty} else
     (with assessment_row as materialized (select jsonb_build_object('review',${jsonColumnsSql(getTableName(onehrReview), assessmentReviewColumns)},
        'cycle',${jsonColumnsSql(getTableName(reviewCycle), [reviewCycle.periodEnd])},'config',${jsonColumnsSql(getTableName(onehrCycle), [onehrCycle.policy])},
        'header',app.onehr_review_header(${onehrReview.reviewId}),'manager',app.onehr_effective_reviewer(${onehrReview.reviewId})) as assessment_json,
