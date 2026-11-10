@@ -12,10 +12,10 @@ import {createCompany,createDepartment} from '../core/admin';
 import {setCompensation} from '../core/comp';
 import {setRestDay} from '../core/roster';
 import {grantAssistant} from '../core/assistant-grant';
-import {decisionEmploymentAuthorityTx} from '../core/approvals';
+import {assertCanDecide,decisionEmploymentAuthorityTx,isApprovalDecisionRefusal} from '../core/approvals';
 import {withApprovalDelegatesTx} from '../core/notifications';
 import {withDelegatedRequestEffectTx} from '../core/delegated-request-effect';
-import {createClaimType,setClaimPolicy,submitClaim,decideClaim,listPendingClaims,listPendingClaimsPage,pendingClaimTaskMetadata} from '../packs/claims/service';
+import {createClaimType,setClaimPolicy,submitClaim,decideClaim,listPendingClaims,listPendingClaimsPage,listPendingClaimSelection,pendingClaimTaskMetadata,pendingClaimTaskSummary,countPendingClaimTasks} from '../packs/claims/service';
 import {requestAttendanceCorrection,decideAttendanceCorrection,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
 import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequest,listPendingReplacementLeaveRequests,listPendingReplacementLeaveTasks} from '../packs/leave/service';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../core/assistant-actions/assigned-decision-review-store';
@@ -127,6 +127,41 @@ describe('request-bound delegated approval effects',()=>{
   expect((await pendingClaimTaskMetadata(delegate)).map(r=>r.id)).toContain(c);
   expect((await listPendingReplacementLeaveRequests(delegate)).map(r=>r.id)).toContain(t);
   expect((await listPendingReplacementLeaveTasks(delegate)).map(r=>r.id)).toContain(t);
+  await noPersonnel();
+ });
+ it('keeps the batched claim task preview equal to the scalar task list and decide guard for an org-scoped delegate',async()=>{
+  // A second report of the same delegator, outside the delegation's department coverage once it is narrowed.
+  const outside=await hire('Fictional Out-of-scope Claimant');
+  await setReportingLine(root,{subordinateEmploymentId:outside.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
+  const inScope=await claim();
+  const outOfScope=(await submitClaim(root,{employmentId:outside.employmentId,claimTypeId,amount:42,incurredOn:todayInKualaLumpur(),description:'Fictional taxi'})).id;
+  const claims={module:'claims',taskType:'claims.claim'};
+  const compare=async()=>{
+   const scalar=(await pendingClaimTaskMetadata(delegate)).map(r=>r.id).sort();
+   const batch=await pendingClaimTaskSummary(delegate,undefined,200);
+   expect(batch.items.map(r=>r.id).sort()).toEqual(scalar);
+   expect(batch.total).toBe(scalar.length);
+   expect(await countPendingClaimTasks(delegate)).toBe(scalar.length);
+   // The per-subject scalar decide guard is the independent oracle for both readers.
+   const guarded=await withTenant(delegate,async tx=>{
+    const allowed:string[]=[];
+    for(const [id,employmentId] of [[inScope,subject.employmentId],[outOfScope,outside.employmentId]]){
+     try{await assertCanDecide(tx,delegate,employmentId,'claim',claims);allowed.push(id);}catch(error){if(!isApprovalDecisionRefusal(error,'claim'))throw error;}
+    }
+    return allowed.sort();
+   });
+   expect(scalar).toEqual(guarded);
+   // The inbox page reads exactly the base inbox row set for the same delegate.
+   const page=await listPendingClaimsPage(delegate);
+   const inbox=(await listPendingClaims(delegate)).map(r=>r.id).sort();
+   expect(page.rows.map(r=>r.id).sort()).toEqual(inbox);
+   expect(page.page.total).toBe(inbox.length);
+   expect(await listPendingClaimSelection(delegate)).toEqual(inbox);
+   return scalar;
+  };
+  expect(await compare()).toEqual([inScope,outOfScope].sort());
+  await owner.db.update(schema.reportingLine).set({scopeDepartmentId:b.deptA}).where(eq(schema.reportingLine.id,lineId));
+  expect(await compare()).toEqual([inScope]);
   await noPersonnel();
  });
  it.each(['approved','rejected'] as const)('confirms the routed attendance delegate %s cell that WP8 declared narrower',async decision=>{

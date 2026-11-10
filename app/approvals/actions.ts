@@ -330,14 +330,15 @@ async function dispatchBulkItem(
   }
 }
 
-/** Re-read the current company selection from the session, then capture only
- * authorized pending identities. The decide action still reauthorizes each ID. */
+/** Capture the inbox's selectable claims across pages. The claims queue is not narrowed by the
+ * company switcher (same row set as listPendingClaims); the scope token only refuses a stale view
+ * rendered under a different session selection. The decide action still reauthorizes each ID. */
 export async function selectPendingClaimsAction(companyScope: string) {
   const { s, scopeIds } = await scopedSession();
   if ([...scopeIds].sort().join(',') !== companyScope || !isModuleEnabledOrFalse(s, 'claims')) {
     return { ok: false as const };
   }
-  return { ok: true as const, ids: await listPendingClaimSelection(s, scopeIds) };
+  return { ok: true as const, ids: await listPendingClaimSelection(s) };
 }
 
 export async function bulkDecideAction(formData: FormData) {

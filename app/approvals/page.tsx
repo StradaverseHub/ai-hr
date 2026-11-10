@@ -263,10 +263,11 @@ export default async function ApprovalsPage({
     // used rather than the throwing one for the reason its header gives — a resolver outage must degrade
     // one queue, not the whole inbox.
     attendanceOn&&include('attendance') ? listAttendanceCorrections(s, { companyIds: queueScope, status: 'pending',requestId:focusedId('attendance') }) : Promise.resolve([]),
+    // Claims: the same row set as listPendingClaims (no company-switcher filter), paged.
     claimsOn && !attendanceOnly&&include('claim')
       ? focus
         ? listPendingClaims(s,{requestId:focusedId('claim')}).then(rows=>({rows,page:pageState(parsePageQuery(),rows.length,rows.length)}))
-        : listPendingClaimsPage(s,{page:claimsPage,size:claimsSize,sort,companyIds:queueScope})
+        : listPendingClaimsPage(s,{page:claimsPage,size:claimsSize,sort})
       : Promise.resolve({rows:[],page:pageState(parsePageQuery(),0,0)}),
     admin&&include('resignation') ? listResignationRequests(s, { status: 'pending',requestId:focusedId('resignation') }) : Promise.resolve([]),
   ]);
