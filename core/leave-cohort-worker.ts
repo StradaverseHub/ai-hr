@@ -42,22 +42,25 @@ async function failedEmployeesTx(tx: Tx, job: BulkJobRow) {
   const [row] = await tx.execute<{n: number}>(sql`select coalesce(sum(jsonb_array_length(payload->'employmentIds')),0)::int as n from bulk_job_step where job_id=${job.id}::uuid and state='failed' and kind in ('employees','open')`);
   return Number(row?.n ?? 0);
 }
-/** Exactly once: the work in `write` commits with the job's own marker, under the creator's re-checked authority. */
-async function onceTx(ctx: SessionContext, job: BulkJobRow, unit: Pick<BulkJobUnit, 'fenceTx'> | null, marker: string, write: (tx: Tx) => Promise<void>) {
+/** Exactly once: the work in `write` commits with the job's own marker, under the creator's re-checked authority.
+ * In finalize the fence holds the job row's lock and the marker is written through unit.set. After a terminal state
+ * (`unit` null) nothing may write the job any more: the kernel calls afterTerminal at most once per job, and the
+ * committed marker read here still stops a second write after a finalize that already made it. */
+async function onceTx(ctx: SessionContext, job: BulkJobRow, unit: Pick<BulkJobUnit, 'fenceTx' | 'set'> | null, marker: string, write: (tx: Tx) => Promise<void>) {
   await withTenant(ctx, async tx => {
     await label(tx, job.kind, 'finalize');
     if (unit) await unit.fenceTx(tx);
     if (!isAdmin(ctx)) throw new Error(notAdmin);
-    const [row] = await tx.execute<{done: boolean}>(sql`select coalesce((plan->>${marker})::boolean,false) as done from bulk_job where id=${job.id}::uuid for update`);
+    const [row] = await tx.execute<{done: boolean}>(sql`select coalesce((plan->>${marker})::boolean,false) as done from bulk_job where id=${job.id}::uuid`);
     if (!row || row.done) return;
     await write(tx);
-    await tx.execute(sql`update bulk_job set plan=coalesce(plan,'{}'::jsonb)||jsonb_build_object(${marker}::text,true),updated_at=now() where id=${job.id}::uuid`);
+    if (unit) await unit.set(tx, {planMerge: {[marker]: true}});
   });
 }
 
 // ── Run Earned Accrual ─────────────────────────────────────────────────────────────────────────────────────────────
 type AccrualStepResult = Pick<AccrualBatchOutcome, 'summary' | 'granted' | 'forfeits'>;
-async function accrualSummaryOnce(ctx: SessionContext, job: BulkJobRow, unit: Pick<BulkJobUnit, 'fenceTx'> | null) {
+async function accrualSummaryOnce(ctx: SessionContext, job: BulkJobRow, unit: Pick<BulkJobUnit, 'fenceTx' | 'set'> | null) {
   await onceTx(ctx, job, unit, 'finalized', async tx => {
     const payload = earnedAccrualRunSummary(await appliedResults<AccrualStepResult>(tx, job), null);
     if (payload) await appendLeaveCohortSummaryTx(tx, ctx, 'leave.earned-accrual.run', payload);
@@ -123,13 +126,15 @@ export const earnedAccrualJobHandler: BulkJobHandler<Batch> = {
   async finalize(ctx, job, unit) {
     accrualRunInputs.delete(job.id);
     await accrualSummaryOnce(ctx, job, unit);
-    const failedEmployees = await withTenant(ctx, async tx => {
+    // The counter write and the read of the run's totals, as the creator on the lease (no owner finalize here).
+    const {failedEmployees, counters} = await withTenant(ctx, async tx => {
+      await unit.fenceTx(tx);
       const n = await failedEmployeesTx(tx, job);
-      await tx.execute(sql`update bulk_job set counters=counters||jsonb_build_object('failedEmployees',${n}::int) where id=${job.id}::uuid`);
-      return n;
+      await unit.set(tx, {countersMerge: {failedEmployees: n}});
+      const [row] = await tx.execute<{counters: Record<string, number>}>(sql`select counters from bulk_job where id=${job.id}::uuid`);
+      return {failedEmployees: n, counters: row.counters};
     });
-    const [row] = await unit.owner<{counters: Record<string, number>}[]>`select counters from bulk_job where id=${job.id}::uuid`;
-    return {result: {granted: Number(row.counters.granted ?? 0), forfeits: Number(row.counters.forfeits ?? 0)}, counters: {failedEmployees}};
+    return {result: {granted: Number(counters.granted ?? 0), forfeits: Number(counters.forfeits ?? 0)}, counters: {failedEmployees}};
   },
   /** Stopped or failed after some batches: their summary event is still written once (best effort). */
   async afterTerminal(ctx, job) {
@@ -204,8 +209,8 @@ async function accrueBatchTx(tx: Tx, ctx: SessionContext, plan: LeaveGenerationP
 }
 const stepRowsTx = async <R>(tx: Tx, job: BulkJobRow, kind: string) =>
   [...await tx.execute<{seq: number; payload: Batch; result: R}>(sql`select seq,payload,result from bulk_job_step where job_id=${job.id}::uuid and kind=${kind} order by seq`)];
-const setPlanTx = (tx: Tx, job: BulkJobRow, patch: Partial<GenerationStoredPlan>) =>
-  tx.execute(sql`update bulk_job set plan=coalesce(plan,'{}'::jsonb)||${JSON.stringify(patch)}::jsonb,updated_at=now() where id=${job.id}::uuid`);
+/** A plan merge through the kernel (sealed), in a transaction the caller has fenced. */
+const setPlanTx = (tx: Tx, unit: Pick<BulkJobUnit, 'set'>, patch: Partial<GenerationStoredPlan>) => unit.set(tx, {planMerge: {...patch}});
 
 /** One changed batch computed again: its staged rows dropped, its year-open and earned part re-run. */
 async function restageUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJobUnit, seq: number) {
@@ -221,7 +226,7 @@ async function restageUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJobUn
     const before = handoverKey(leaveGenerationHandover(plan, opens.flatMap(o => o.result.rows)).call);
     await dropLeaveStageRowsTx(tx, stagesOf(stage), batch);
     const fresh = await openBatchTx(tx, ctx, plan, stage, batch);
-    await tx.execute(sql`update bulk_job_step set result=${JSON.stringify(fresh)}::jsonb where job_id=${job.id}::uuid and seq=${seq}`);
+    await unit.step(tx, seq, {result: fresh});
     opens[index] = {...opens[index], result: fresh};
     const results = opens.map(o => o.result);
     const accrueSeq = opens.length + index;
@@ -232,9 +237,9 @@ async function restageUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJobUn
     }
     if (!await accrualFailedTx(tx, job)) {
       const acc = await accrueBatchTx(tx, ctx, plan, stage, results, batch);
-      await tx.execute(sql`update bulk_job_step set result=${JSON.stringify(acc)}::jsonb where job_id=${job.id}::uuid and seq=${accrueSeq}`);
+      await unit.step(tx, accrueSeq, {result: acc});
     }
-    await setPlanTx(tx, job, {restage});
+    await setPlanTx(tx, unit, {restage});
   });
 }
 
@@ -257,7 +262,7 @@ async function releaseUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJobUn
     if (restage.length) {
       const attempts = (stored.releaseAttempts ?? 0) + 1;
       if (attempts > LEAVE_STAGE_RELEASE_ATTEMPTS) throw new Error('Leave generation was stopped because the selected employees kept changing while it ran. Nothing was changed; run it again.');
-      await setPlanTx(tx, job, {restage, releaseAttempts: attempts});
+      await setPlanTx(tx, unit, {restage, releaseAttempts: attempts});
       return;
     }
     const accrueFailed = await accrualFailedTx(tx, job);
@@ -271,7 +276,7 @@ async function releaseUnit(ctx: SessionContext, job: BulkJobRow, unit: BulkJobUn
     const accrues = (await appliedResults<AccrueStepResult>(tx, job, 'accrue')).filter(isAccrued);
     const accrual = handover.call && !accrueFailed ? earnedAccrualRunSummary(accrues, handover.call.employmentIds) : null;
     if (accrual) await appendLeaveCohortSummaryTx(tx, ctx, 'leave.earned-accrual.run', accrual);
-    await setPlanTx(tx, job, {released: true, restage: []});
+    await setPlanTx(tx, unit, {released: true, restage: []});
   });
   unit.metric('releaseTxMs', performance.now() - started);
 }
@@ -283,6 +288,8 @@ export const leaveGenerationJobHandler: BulkJobHandler<Batch> = {
   maxStepsPerChunk: LEAVE_COHORT_STEPS_PER_CHUNK,
   stepRef: step => `${step.payload.employmentIds.length}`,
   phaseOf: kind => kind === 'open' ? 'entitlement' : 'earned_accrual',
+  // Settling the released stages clears their markers on the queue-owner connection (bulk_job_kind.finalize_owner, 5030).
+  finalizeOwner: true,
   /** ③ once, with no write transaction: who is selected, and the facts the earned hand-over needs. */
   async prepare(ctx, job): Promise<BulkJobPrepared | BulkJobRefused> {
     if (!isAdmin(ctx)) return {refused: notAdmin};
@@ -319,15 +326,26 @@ export const leaveGenerationJobHandler: BulkJobHandler<Batch> = {
   async finalize(ctx, job, unit) {
     const stored = generationPlanOf(job);
     if (stored.empty) return {result: stored.empty};
-    if (stored.finalized) return {result: (await unit.owner<{result: unknown}[]>`select result from bulk_job where id=${job.id}::uuid`)[0].result};
+    if (stored.finalized) {
+      const [done] = await withTenant(ctx, async tx => {
+        await unit.fenceTx(tx);
+        return tx.execute<{result: unknown}>(sql`select result from bulk_job where id=${job.id}::uuid`);
+      });
+      return {result: done.result};
+    }
     if (!stored.released) {
       if (stored.restage?.length) await restageUnit(ctx, job, unit, stored.restage[0]);
       else await releaseUnit(ctx, job, unit);
       return 'more';
     }
     if (!stored.settled) {
-      if (await settleLeaveStages(unit.owner, job.tenant_id, stagesOf(stored.stage!)) === 'more') return 'more';
-      await unit.owner`update bulk_job set plan=plan||'{"settled":true}'::jsonb where id=${job.id}::uuid`;
+      // One bounded owner transaction per unit, attributed to the job; the last batch commits with its plan marker.
+      const settled = await unit.ownerTx!(async owner => {
+        if (await settleLeaveStages(owner, job.tenant_id, stagesOf(stored.stage!)) === 'more') return false;
+        await unit.set(owner, {planMerge: {settled: true}});
+        return true;
+      });
+      if (!settled) return 'more';
     }
     const plan = stored.generation!;
     const {opens, accrues} = await withTenant(ctx, async tx => ({opens: await openRowsTx(tx, job), accrues: await appliedResults<AccrueStepResult>(tx, job, 'accrue')}));
@@ -352,7 +370,7 @@ export const leaveGenerationJobHandler: BulkJobHandler<Batch> = {
       await unit.fenceTx(tx);
       if (!isAdmin(ctx)) throw new Error(notAdmin);
       result = {...done, runId};
-      await tx.execute(sql`update bulk_job set result=${JSON.stringify(result)}::jsonb,plan=plan||'{"finalized":true}'::jsonb,updated_at=now() where id=${job.id}::uuid`);
+      await unit.set(tx, {result, planMerge: {finalized: true}});
     });
     return {result, counters: {failedEmployees: 0}};
   },
@@ -361,9 +379,12 @@ export const leaveGenerationJobHandler: BulkJobHandler<Batch> = {
   async discard(job, unit) {
     const stage = generationPlanOf(job).stage;
     if (!stage) return 'done';
-    const removed = await discardLeaveStageRows(unit.owner, job.tenant_id, stagesOf(stage));
-    unit.metric('discardedRows', removed);
-    if (removed) return 'more';
-    return settleLeaveStages(unit.owner, job.tenant_id, stagesOf(stage));
+    // One bounded owner transaction per unit: a batch of never-released rows, or (nothing left) a settle batch.
+    return unit.ownerTx<'more' | 'done'>(async owner => {
+      const removed = await discardLeaveStageRows(owner, job.tenant_id, stagesOf(stage));
+      unit.metric('discardedRows', removed);
+      if (removed) return 'more';
+      return settleLeaveStages(owner, job.tenant_id, stagesOf(stage));
+    });
   },
 };

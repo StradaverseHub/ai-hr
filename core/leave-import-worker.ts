@@ -34,15 +34,18 @@ export function leaveImportJobResult(job: Pick<BulkJobRow, 'counters' | 'errors'
     ...(plan.otherCompany === undefined ? {} : {otherCompany: plan.otherCompany}),
   };
 }
-/** The one summary event, exactly once: written with the job's own `finalized` marker in the same transaction. */
-async function appendSummaryTx(tx: Tx, ctx: SessionContext, job: BulkJobRow) {
-  const [row] = await tx.execute<{plan: LeaveImportStoredPlan; counters: Record<string, number>}>(sql`select plan,counters from bulk_job where id=${job.id}::uuid for update`);
+/** The one summary event, exactly once. In finalize the caller has fenced the transaction (unit.fenceTx holds the job
+ * row's lock) and the job's own `finalized` marker commits with the event through unit.set. After a terminal state
+ * (`unit` null) nothing may write the job any more: the kernel calls afterTerminal at most once per job, and the
+ * committed marker read here still stops a second event after a finalize that already wrote one. */
+async function appendSummaryTx(tx: Tx, ctx: SessionContext, job: BulkJobRow, unit: Pick<BulkJobUnit, 'set'> | null) {
+  const [row] = await tx.execute<{plan: LeaveImportStoredPlan; counters: Record<string, number>}>(sql`select plan,counters from bulk_job where id=${job.id}::uuid`);
   if (!row || row.plan.finalized) return;
   await appendLeaveImportCompletedTx(tx, ctx, row.plan.batchId, {
     imported: Number(row.counters.imported ?? 0), failed: Number(row.counters.failed ?? 0), skipped: Number(row.counters.skipped ?? 0),
     totalRows: row.plan.totalRows, source: inputOf(job)?.source ?? null,
   });
-  await tx.execute(sql`update bulk_job set plan=plan||'{"finalized":true}'::jsonb,updated_at=now() where id=${job.id}::uuid`);
+  if (unit) await unit.set(tx, {planMerge: {finalized: true}});
 }
 
 export const leaveImportJobHandler: BulkJobHandler<LeaveImportPlanRow> = {
@@ -79,10 +82,14 @@ export const leaveImportJobHandler: BulkJobHandler<LeaveImportPlanRow> = {
         await tx.execute(sql`select set_config('application_name','aihr-bulk:leave_ledger:finalize',true)`);
         await unit.fenceTx(tx);
         if (!isAdmin(ctx)) throw new Error(notAdmin);
-        await appendSummaryTx(tx, ctx, job);
+        await appendSummaryTx(tx, ctx, job, unit);
       });
     }
-    const [fresh] = await unit.owner<BulkJobRow[]>`select counters,errors,plan from bulk_job where id=${job.id}::uuid`;
+    // Counters, row refusals and plan as the creator (this kind has no owner finalize), on the lease.
+    const [fresh] = await withTenant(ctx, async tx => {
+      await unit.fenceTx(tx);
+      return tx.execute<Pick<BulkJobRow, 'counters' | 'errors' | 'plan'>>(sql`select counters,errors,plan from bulk_job where id=${job.id}::uuid`);
+    });
     return {result: leaveImportJobResult(fresh)};
   },
   /** A stopped or failed import that already processed rows still leaves its one summary event (best effort, as the
@@ -90,6 +97,6 @@ export const leaveImportJobHandler: BulkJobHandler<LeaveImportPlanRow> = {
   async afterTerminal(ctx, job) {
     if (!ctx || job.state === 'completed' || !job.plan || planOf(job).finalized || !isAdmin(ctx)) return;
     if (!Number(job.steps_done)) return;
-    await withTenant(ctx, tx => appendSummaryTx(tx, ctx, job));
+    await withTenant(ctx, tx => appendSummaryTx(tx, ctx, job, null));
   },
 };

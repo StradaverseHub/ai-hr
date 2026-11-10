@@ -117,7 +117,12 @@ describe('leave ledger import as a background job on the shared kernel',()=>{
   const first=await hire('Changed A'),second=await hire('Changed B');
   const job=await createLeaveImportJob(adminCtx(b),{records:[line(first.code,'1.00'),line(second.code,'2.00')]});
   await ticksUntil(job.id,['running']);
+  // The planned row goes stale. The hardened kernel seals every step (5013) and would stop the job on a bare payload
+  // edit, so the fixture reseals the step as the queue owner; the row then reaches the import's own re-check.
   await owner.client`update bulk_job_step set payload=jsonb_set(payload,'{dedupeKey}','"stale"') where job_id=${job.id}::uuid and seq=0`;
+  const resealed=await owner.client`update app.bulk_job_step_seal z set digest=app.bulk_job_step_digest(s.kind,s.row_num,s.payload,s.state,s.result,s.error)
+   from bulk_job_step s where s.job_id=z.job_id and s.seq=z.seq and z.job_id=${job.id}::uuid and z.seq=0 returning z.seq`;
+  expect(resealed).toHaveLength(1);
   await ticksUntil(job.id,['completed']);
   const result=(await readLeaveImportJob(adminCtx(b),job.id))?.result;
   expect(result).toMatchObject({imported:1,skipped:0});
