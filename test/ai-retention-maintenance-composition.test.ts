@@ -26,11 +26,16 @@ function carrier(script:Script){
  const log:Step[]=[];
  const execute=async(statement:SQL):Promise<unknown[]>=>{
   const query=dialect.sqlToQuery(statement),text=query.sql;log.push({text,params:query.params});
+  // The oldest tenant's bounded queued wait: a savepoint, a non-increasing lock_timeout, a blocking lock
+  // that a busy tenant refuses with 55P03, then rollback or release and restore.
+  if(/^(savepoint|release savepoint|rollback to savepoint) ai_retention_access_wait$/.test(text))return [];
+  if(text.includes(' as saved,'))return [{saved:'500ms',bounded:'250ms'}];
+  if(text.startsWith("select set_config('lock_timeout',"))return [{set_config:'500ms'}];
+  if(text.startsWith('select pg_advisory_xact_lock(')){const key=String(query.params[0]);if((script.busy??[]).some(id=>key==='access-configuration:'+id))throw Object.assign(Error('canceling statement due to lock timeout'),{code:'55P03'});return [{pg_advisory_xact_lock:''}];}
   if(text.includes('pg_catalog.pg_settings'))return [{name:'lock_timeout',value:'500'},{name:'statement_timeout',value:'5000'}];
   if(text.includes('pg_catalog.pg_roles')&&text.includes('current_user=session_user'))return [{allowed:script.allowed??true}];
   if(text.includes('group by tenant_id'))return (script.tenants??[]).map(tenant_id=>({tenant_id}));
   if(text.includes('pg_try_advisory_xact_lock')){const key=String(query.params[0]);return [{owned:!(script.busy??[]).some(id=>key==='access-configuration:'+id)}];}
-  if(text.includes('app.access_configuration_exclusive_wait(')){const tenant=String(query.params[0]);return [{owned:!(script.busy??[]).includes(tenant)}];}
   if(text.startsWith(TRANSCRIPT_CALL)){const reported=script.transcripts??{},key=String(query.params[0]);return [{retired:key in reported?reported[key]:0}];}
   if(text.includes('update app.assistant_own_leave_review r set state'))return [{retired:0,erased:0}];
   if(text.includes('delete from public.ai_assistant_answer_evaluation_intent'))return [{removed:script.intents??0}];
@@ -91,7 +96,7 @@ describe('AI custody maintenance composition (pure, fake carrier)',()=>{
  });
  it('retires raw transcripts first inside the owned Access interval, before every metadata expiry, with the fixed policy and bound',async()=>{
   const {tx,log}=carrier({tenants:[A],transcripts:{[A]:7}});const result=await retireExpiredAiCustodyTx(tx);expect(result.transcripts).toBe(7);
-  const lock=index(log,step=>step.text.includes('app.access_configuration_exclusive_wait(')),transcript=index(log,isTranscriptCall);
+  const lock=index(log,step=>step.text.startsWith('select pg_advisory_xact_lock(')),transcript=index(log,isTranscriptCall);
   const firstMutation=index(log,step=>mutated(step.text).length>0);
   expect(lock).toBeGreaterThan(0);expect(transcript).toBeGreaterThan(lock);expect(firstMutation).toBeGreaterThan(transcript);
   expect(log[transcript].params).toEqual([A,ASSISTANT_TRANSCRIPT_RETENTION_DAYS,100]);expect(ASSISTANT_TRANSCRIPT_RETENTION_DAYS).toBe(30);
@@ -106,8 +111,12 @@ describe('AI custody maintenance composition (pure, fake carrier)',()=>{
  it('gives only the oldest queue a bounded queued wait and only tries later tenants, so steady shared traffic cannot starve the head',async()=>{
   const {tx,log}=carrier({tenants:[A,B],busy:[A],transcripts:{[A]:5,[B]:2}});const result=await retireExpiredAiCustodyTx(tx);
   expect(result).toMatchObject({tenants:2,busy:1,transcripts:2});
-  const waits=log.filter(step=>step.text.includes('app.access_configuration_exclusive_wait('));
-  expect(waits.map(step=>step.params)).toEqual([[A,250]]);
+  // The head waits in the queue under a bounded lock_timeout inside a savepoint, and only the attempt rolls back.
+  const head=log.map(step=>step.text).filter(text=>/ai_retention_access_wait|^select pg_advisory_xact_lock\(| as saved,/.test(text));
+  expect(head.map(text=>text.startsWith('select pg_advisory_xact_lock(')?'lock':text.includes(' as saved,')?'bound':text)).toEqual([
+   'savepoint ai_retention_access_wait','bound','lock','rollback to savepoint ai_retention_access_wait','release savepoint ai_retention_access_wait']);
+  expect(log.find(step=>step.text.includes(' as saved,'))!.params).toEqual([250,250]);
+  expect(log.find(step=>step.text.startsWith('select pg_advisory_xact_lock('))!.params).toEqual(['access-configuration:'+A]);
   const tries=log.filter(step=>step.text.includes('pg_try_advisory_xact_lock'));
   expect(tries.map(step=>step.params[0])).toEqual(['access-configuration:'+B]);
   expect(log.filter(isTranscriptCall).map(step=>step.params[0])).toEqual([B]);
