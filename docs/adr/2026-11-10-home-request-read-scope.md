@@ -113,7 +113,8 @@ calculation, authority, ordering or failure changes.
      leaves a subject one current assignment.) The subject's self ban and assertCanDecide answer are read once per
      candidate (`leaveSubjectFactsSql`) and the session's roles choose each kind's branches when the text is built, as
      the TypeScript gate reads them from the session, so the statement plans each table once per section. A cancellation's copied steps use the same decision with its own
-     'leave.cancellation' task type over the owner's unchanged header query.
+     'leave.cancellation' task type over the owner's unchanged header query; both owners' candidates share one
+     sub-select and one copy of the decision (`pendingLeaveDecisionTasksBundleSql`).
    - *Resignations and employment reviews.* The owners' header queries unchanged, kept where their authority checks
      return (`canDecideSql`, the admin role, the stored manager's person): every throw of those checks is a refusal.
    - *Attendance.* The owner's candidates, a frozen workflow request of routing version 2, 3 or 4 decided by its own
@@ -125,6 +126,13 @@ calculation, authority, ordering or failure changes.
      `interpretOnboardingTasks`).
    - *Profile.* The owner's first transaction (probe and candidate query). No candidate is its empty result; candidates
      still pass its locked decision transaction (`pendingProfileTasksFromCandidates`).
+   - *One read of the caller's own employments.* Every test of an employment against the caller's person (the self ban,
+     the administrative manager, a named approver, a review's stored manager, assessment work's own employments) reads
+     one RLS-filtered set per statement (`callerOwnEmploymentIdsSql`, a materialised CTE); membership is exactly the row
+     test it replaces. Each employment reference otherwise evaluated the employment policy's visible-employment set on
+     its own: with ten more of them the statement took about 290 ms on the hosted fixture (55-70 ms before) and
+     concurrent Home reads exhausted the 2 GB test database. With the set read once the statement plans in about 45 ms
+     and executes in about 70 ms for the fixture's manager, and the Tasks card is back to its earlier time.
    Each remaining case leaves only that owner to read on its own, as before: a step whose `limit 1` rows disagree with no
    later allowing approver; an alternate whose named id is not plain UUID text (the owner trims it in JavaScript and
    casts it in PostgreSQL); an unknown step kind or a named-person step naming nobody, and an Attendance request whose
