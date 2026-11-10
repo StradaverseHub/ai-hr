@@ -31,7 +31,8 @@ export type AttendanceResolvedStage = {
     source?: import('./attendance-workflow-v3').AttendanceV3Source;
     hrAlternative?: boolean;
 };
-export type AttendanceWorkflowCriteria = {
+/** One AND group: every chosen field must match; any value within a field matches. */
+export type AttendanceCriteriaGroup = {
     departmentIds?: string[];
     businessUnitIds?: string[];
     gradeIds?: string[];
@@ -39,6 +40,35 @@ export type AttendanceWorkflowCriteria = {
     employmentTypes?: string[];
     employeeIds?: string[];
 } & Partial<Record<typeof ATTENDANCE_PROFILE_CRITERIA_KEYS[number], string[]>>;
+/**
+ * Stored assignment. The legacy flat object is exactly one group (read-compatible, never rewritten).
+ * Two or more OR groups are stored as {groups:[...]} and nothing else.
+ */
+export type AttendanceWorkflowCriteria = AttendanceCriteriaGroup & { groups?: AttendanceCriteriaGroup[] };
+export const ATTENDANCE_CRITERIA_GROUP_LIMIT = 10;
+/** The OR groups of an assignment; a flat legacy assignment is one group. */
+export function attendanceCriteriaGroups(criteria: AttendanceWorkflowCriteria | null | undefined): AttendanceCriteriaGroup[] {
+    if (criteria && Array.isArray(criteria.groups)) return criteria.groups;
+    const { groups: _groups, ...flat } = criteria ?? {};
+    return [flat];
+}
+/** Canonical storage: one group keeps the legacy flat shape. */
+export function attendanceCriteriaFromGroups(groups: AttendanceCriteriaGroup[]): AttendanceWorkflowCriteria {
+    return groups.length === 1 ? { ...groups[0] } : { groups: groups.map(group => ({ ...group })) };
+}
+/** Frozen at submission (routing version 4): a configured level that was not required. */
+export type AttendanceSkippedLevel = {
+    configuredLevel: number;
+    sources: import('./attendance-workflow-v3').AttendanceV3Source[];
+    reason: 'no_further_superior';
+    /** False when only some Direct Superior sources of a still-required level were dropped. */
+    levelSkipped: boolean;
+};
+/** Display number of a frozen stage: the configured "Level N" survives skipped levels. */
+export function attendanceStageLevelNumber(stage: { name?: string } | null | undefined, index: number): number {
+    const match = /^Level ([1-9]|10)$/.exec(stage?.name ?? '');
+    return match ? Number(match[1]) : index + 1;
+}
 export type AttendanceWorkflowInput = {
     companyId: string;
     /** Omission preserves legacy configured routing; new UI explicitly chooses version 2. */
@@ -92,23 +122,44 @@ export function validateAttendanceWorkflow(input: AttendanceWorkflowInput): Atte
             throw new AttendanceWorkflowError('invalid', 'Attendance supports the direct administrative manager and HR administrators; any one of the selected approvers can clear a stage.');
         return { name: routingVersion === 2 ? attendanceLevelName(index) : s.name.trim(), level };
     });
+    const criteria = validateAttendanceCriteria(input.criteria);
+    return { companyId: input.companyId, routingVersion, code: input.code.trim(), name: input.name.trim(), description: input.description?.trim() || '', applicationType: input.applicationType, priority: input.priority, criteria, stages, active: input.active === true };
+}
+function validateAttendanceCriteriaGroup(raw: unknown): AttendanceCriteriaGroup {
+    if (raw === null || raw === undefined) return {};
+    if (typeof raw !== 'object' || Array.isArray(raw)) throw new AttendanceWorkflowError('invalid', 'Unsupported organisational assignment.');
     const allowed: readonly string[] = ATTENDANCE_CRITERIA_KEYS;
-    const criteria: AttendanceWorkflowCriteria = {};
-    for (const [key, value] of Object.entries(input.criteria ?? {})) {
+    const criteria: AttendanceCriteriaGroup = {};
+    for (const [key, value] of Object.entries(raw)) {
         if (!allowed.includes(key) || !Array.isArray(value) || value.length > 1000 || value.some(v => typeof v !== 'string' || !v.trim() || v.length > 200))
             throw new AttendanceWorkflowError('invalid', 'Unsupported organisational assignment.');
         if (['departmentIds', 'businessUnitIds', 'gradeIds', 'positionIds', 'employeeIds'].includes(key) && value.some(id => !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)))
             throw new AttendanceWorkflowError('invalid', 'Select valid organisational assignments from the available options.');
         if (key === 'employmentTypes' && value.some(v => !['full_time', 'part_time', 'contract', 'intern'].includes(v))) throw new AttendanceWorkflowError('invalid', 'Choose a supported employment type.');
-        criteria[key as keyof AttendanceWorkflowCriteria] = [...new Set(value)];
+        criteria[key as keyof AttendanceCriteriaGroup] = [...new Set(value as string[])];
     }
-    return { companyId: input.companyId, routingVersion, code: input.code.trim(), name: input.name.trim(), description: input.description?.trim() || '', applicationType: input.applicationType, priority: input.priority, criteria, stages, active: input.active === true };
+    return criteria;
 }
-export function attendanceScopesOverlap(a: AttendanceWorkflowCriteria, b: AttendanceWorkflowCriteria): boolean {
+/** A flat object is one group; {groups:[...]} holds 1 to 10 OR groups, each validated by the same per-field rules. */
+export function validateAttendanceCriteria(raw: unknown): AttendanceWorkflowCriteria {
+    if (raw && typeof raw === 'object' && !Array.isArray(raw) && Object.hasOwn(raw, 'groups')) {
+        const value = raw as Record<string, unknown>;
+        if (Object.keys(value).length !== 1 || !Array.isArray(value.groups) || value.groups.length < 1 || value.groups.length > ATTENDANCE_CRITERIA_GROUP_LIMIT)
+            throw new AttendanceWorkflowError('invalid', 'Configure between one and ten assignment groups.');
+        return attendanceCriteriaFromGroups(value.groups.map(validateAttendanceCriteriaGroup));
+    }
+    return validateAttendanceCriteriaGroup(raw);
+}
+function attendanceGroupsOverlap(a: AttendanceCriteriaGroup, b: AttendanceCriteriaGroup): boolean {
     return ATTENDANCE_CRITERIA_KEYS.every(k => {
-        const x = a[k as keyof AttendanceWorkflowCriteria] ?? [], y = b[k as keyof AttendanceWorkflowCriteria] ?? [];
+        const x = a[k as keyof AttendanceCriteriaGroup] ?? [], y = b[k as keyof AttendanceCriteriaGroup] ?? [];
         return !x.length || !y.length || x.some(id => y.includes(id));
     });
+}
+/** Two assignments may cover the same employee when any group of one can overlap any group of the other. */
+export function attendanceScopesOverlap(a: AttendanceWorkflowCriteria, b: AttendanceWorkflowCriteria): boolean {
+    const left = attendanceCriteriaGroups(a), right = attendanceCriteriaGroups(b);
+    return left.some(x => right.some(y => attendanceGroupsOverlap(x, y)));
 }
 
 export type AttendanceWorkflowOptions = {
@@ -122,12 +173,12 @@ export type AttendanceWorkflowOptions = {
     employees?: { id: string; name: string; employeeCode?: string | null }[];
     approverEmployees?: { id: string; name: string; employeeCode?: string | null }[];
     approverAvailability?:'available'|'noEmployees'|'noActiveEmployees'|'noLinkedLogin'|'noEligible';
-    profileFields?: Partial<Record<keyof AttendanceWorkflowCriteria, { id: string; name: string }[]>>;
+    profileFields?: Partial<Record<keyof AttendanceCriteriaGroup, { id: string; name: string }[]>>;
 };
 /** One presentation descriptor for form, company list and View/Edit; values remain Personnel-owned. */
 export function attendanceWorkflowCriteriaFields(options: AttendanceWorkflowOptions, employmentTypeLabel: (key: string) => string) {
     const profileLabels: Record<typeof ATTENDANCE_PROFILE_CRITERIA_KEYS[number], string> = { orgDivision: 'division', orgBranch: 'branch', orgRegion: 'region', orgLine: 'line', orgSection: 'section', orgTeam: 'team', orgBase: 'base', employmentCategory: 'category' };
-    const fields: { key: keyof AttendanceWorkflowCriteria; label: string; options: { id: string; name: string }[] }[] = [
+    const fields: { key: keyof AttendanceCriteriaGroup; label: string; options: { id: string; name: string }[] }[] = [
         { key: 'departmentIds', label: 'department', options: options.departments },
         { key: 'businessUnitIds', label: 'businessUnit', options: options.businessUnits },
         { key: 'gradeIds', label: 'grade', options: options.grades },

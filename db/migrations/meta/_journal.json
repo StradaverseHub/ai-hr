@@ -5111,6 +5111,13 @@
       "when": 1793330004600,
       "tag": "4900_import_history_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 4301,
+      "version": "7",
+      "when": 1793330004601,
+      "tag": "4901_attendance_workflow_skipped_levels",
+      "breakpoints": true
     }
   ]
 }

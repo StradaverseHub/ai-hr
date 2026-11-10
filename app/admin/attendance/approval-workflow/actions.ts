@@ -8,19 +8,22 @@ import { unstable_rethrow } from 'next/navigation';
 import { pgSqlState } from '@/lib/db-error';
 import { isWorkflowId } from './navigation';
 import { scopedAdmin } from '@/lib/scope';
-import { saveAttendanceWorkflow, archiveAttendanceWorkflow, attendanceWorkflowWarningPage, retireAttendanceWorkflow, restoreAttendanceWorkflow, getAttendanceWorkflow, previewAttendanceWorkflow, AttendanceWorkflowError } from '@/packs/attendance/service';
+import { saveAttendanceWorkflow, archiveAttendanceWorkflow, attendanceWorkflowWarningPage, retireAttendanceWorkflow, restoreAttendanceWorkflow, getAttendanceWorkflow, previewAttendanceWorkflow, generateAttendanceWorkflowPreview, AttendanceWorkflowError, type AttendanceWorkflowCopySource } from '@/packs/attendance/service';
 const LIST = '/admin/attendance/approval-workflow';
 async function publicError(e: unknown) { if(e instanceof AttendanceCcError)return(await getTranslations('attendanceWorkflow.v4'))(e.code);if(e instanceof AttendanceWorkflowError&&e.code==='inUse')return(await getTranslations('attendanceWorkflow.v4'))('usedCannotDelete');if(e instanceof AttendanceWorkflowError&&e.code==='stale')return(await getTranslations('attendanceWorkflow.v4'))('deleteChanged'); if (e instanceof AttendanceLevelError) return (await getTranslations('attendanceWorkflow.v3'))(attendanceLevelProblemMessageKey(e.problem)); return e instanceof AttendanceWorkflowError ? e.message : 'The workflow could not be saved. Check the configuration and try again.'; }
-export async function saveAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput, autoPriority = false, saveRequestId?:string) {
+export async function saveAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput, autoPriority = false, saveRequestId?:string, copiedFrom?: AttendanceWorkflowCopySource) {
     let row: Awaited<ReturnType<typeof saveAttendanceWorkflow>>;
     try {
         const { s, scopeIds, allowedCompanyIds } = await scopedAdmin();
         if (lineageId!==null&&!isWorkflowId(lineageId)) throw new AttendanceWorkflowError('invalid','Reopen the workflow before saving.');
+        if (copiedFrom!==undefined&&(lineageId!==null||!copiedFrom||!isWorkflowId(String(copiedFrom.lineageId)))) throw new AttendanceWorkflowError('invalid','Reopen the copied workflow before saving.');
         const configuration=validateAnyAttendanceWorkflow({...input,active:true});
         const allowed=allowedCompanyIds??scopeIds;
         if ((configuration.companyIds??[configuration.companyId]).some(id=>!allowed.includes(id)))
             throw new AttendanceWorkflowError('scope','Select a company in your active access scope.');
-        row = await saveAttendanceWorkflow(s, configuration, lineageId ?? undefined, undefined, autoPriority === true, saveRequestId);
+        row = copiedFrom===undefined
+            ? await saveAttendanceWorkflow(s, configuration, lineageId ?? undefined, undefined, autoPriority === true, saveRequestId)
+            : await saveAttendanceWorkflow(s, configuration, undefined, undefined, autoPriority === true, saveRequestId, {lineageId:copiedFrom.lineageId,version:copiedFrom.version});
     }
     catch (error) {
         unstable_rethrow(error);
@@ -41,7 +44,7 @@ export async function saveAttendanceWorkflowAction(lineageId: string | null, inp
     } catch {
         console.warn('Attendance workflow saved, but its pages could not be revalidated.');
     }
-    return { ok: true as const, lineageId: row.lineageId, ...(row.warningCount?{warningCount:row.warningCount}:{}) };
+    return { ok: true as const, lineageId: row.lineageId };
 }
 export async function previewAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput) {
     const { s, scopeIds,allowedCompanyIds } = await scopedAdmin();
@@ -82,4 +85,15 @@ export async function archiveAttendanceWorkflowAction(lineageId:string,version:n
 export async function attendanceWorkflowWarningPageAction(lineageId:string,offset:number){
  const {s,scopeIds,allowedCompanyIds}=await scopedAdmin();
  try{return{ok:true as const,page:await attendanceWorkflowWarningPage(s,lineageId,allowedCompanyIds??scopeIds,offset)};}catch(error){return{ok:false as const,error:await publicError(error)};}
+}
+
+/** Generates and stores a Preview Assignment of the saved version. Administrator of every workflow company only. */
+export async function generateAttendanceWorkflowPreviewAction(lineageId:string,version:number){
+ const {s,scopeIds,allowedCompanyIds}=await scopedAdmin();
+ try{
+  if(!isWorkflowId(lineageId))throw new AttendanceWorkflowError('invalid','Reload the workflow before generating a preview.');
+  const result=await generateAttendanceWorkflowPreview(s,lineageId,version,allowedCompanyIds??scopeIds);
+  try{revalidatePath(`${LIST}/${lineageId}`);revalidatePath(`${LIST}/${lineageId}/previews`);}catch{console.warn('Attendance workflow preview stored, but its pages could not be revalidated.');}
+  return{ok:true as const,previewId:result.id};
+ }catch(error){unstable_rethrow(error);return{ok:false as const,error:await publicError(error)};}
 }

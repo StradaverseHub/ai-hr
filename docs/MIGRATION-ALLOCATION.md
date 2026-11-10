@@ -1,3 +1,13 @@
+# Attendance workflow skipped levels and preview history (4452ba3c) — 10 November 2026 MYT (unapplied)
+
+The board staging release moves the unapplied reservation `4501_attendance_workflow_skipped_levels` to `4901_attendance_workflow_skipped_levels`
+at idx 4301 / when 1793330004601, because main now ends at 4800 (idx 4200 / when
+1793330004500) and a lower timestamp would be silently skipped after it. The SQL bytes
+are unchanged and were never applied anywhere. A survey of main and the 150 most recently
+updated origin heads found no other claim between when 1793330004500 and 1793330009820;
+4902 (idx 4302) is PR 240's. Recheck peer claims and the installed ledger at admission;
+this grants no installation authority.
+
 # Import History section type (ccd3a65c) — 10 November 2026 MYT (unapplied)
 
 The board staging release moves the unapplied reservation `4500_import_history_kind` to `4900_import_history_kind`
