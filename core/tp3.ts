@@ -1088,7 +1088,7 @@ type MyTp3Storage = {draftId:string;revision:number};
 export async function saveTp3(ctx: SessionContext,p:Tp3WriteInput):Promise<{id:string;seed:Tp3SeedOutcome}> {
   ctx=captureStatutorySourceContext(ctx);p=structuredClone(p);
   const personId=requireAdminTarget(ctx,p.personId),prepared=prepareTp3(p);
-  return withTenant(ctx,async tx=>{await lockStatutorySourceTx(tx,ctx);return savePreparedTp3Tx(tx,ctx,personId,p,prepared);});
+  return withTenant(ctx,async tx=>{await lockStatutorySourceTx(tx,ctx,{personId});return savePreparedTp3Tx(tx,ctx,personId,p,prepared);});
 }
 async function savePreparedTp3Tx(tx:Tx,ctx:SessionContext,personId:string,p:Tp3WriteInput,prepared:PreparedTp3,self?:MyTp3Storage):Promise<{id:string;seed:Tp3SeedOutcome}> {
   const {assessmentYear,deductionMonth,previousEmployers,payload,remarks}=prepared;
@@ -1216,7 +1216,7 @@ export async function deleteTp3(ctx: SessionContext, p: { personId: string; asse
   const personId = requireAdminTarget(ctx, p.personId);
   const assessmentYear = validateYear(p.assessmentYear);
   await withTenant(ctx, async (tx) => {
-    await lockStatutorySourceTx(tx,ctx);
+    await lockStatutorySourceTx(tx,ctx,{personId});
     const [existing] = await tx
       .select()
       .from(employeeTp3)
@@ -1281,7 +1281,7 @@ export function myTp3Identity(ctx:SessionContext):Promise<Tp3Identity> {
 }
 export type MyTp3WriteInput=Omit<Tp3WriteInput,'personId'|'remarks'> & {employmentId:string;expectedRevision:number};
 async function saveMyTp3Tx(tx:Tx,ctx:SessionContext,input:MyTp3WriteInput,submit:boolean) {
-  ctx=captureStatutorySourceContext(ctx);input=structuredClone(input);await lockStatutorySourceTx(tx,ctx);
+  ctx=captureStatutorySourceContext(ctx);input=structuredClone(input);await lockStatutorySourceTx(tx,ctx,{personId:ctx.personId??null,employmentId:input.employmentId});
   if(!ctx.personId||!Number.isInteger(input.expectedRevision)||input.expectedRevision<0)throw new Tp3Error('Reload this TP3 draft before saving.');
   const [actual]=await tx.execute(sql`select u.id from public.app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${ctx.personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() and app.is_self_person(${ctx.personId}::uuid) for share`) as unknown as {id:string}[];
   if(!actual?.id)throw new Tp3Error('This account is not linked to this employee profile.');

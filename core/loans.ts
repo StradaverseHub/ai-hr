@@ -124,9 +124,22 @@ export async function createLoan(ctx: SessionContext, p: CreateLoanInput): Promi
   });
 }
 
+/**
+ * Every ledger writer reads the loan it changes with a row lock (reader/writer wave 4). The single mutable
+ * counter (outstanding_balance / instalments_paid) is a read-modify-write, and payroll runs of different
+ * months, a reset, and the admin actions below no longer serialise on the exclusive Access lock, so two
+ * of them must never both start from the same balance. A writer that touches several loans locks them in
+ * id order first (lockLoansForLedgerTx), so two writers cannot deadlock.
+ */
 async function loadLoan(tx: Tx, loanId: string) {
-  const [loan] = await tx.select().from(employeeLoan).where(eq(employeeLoan.id, loanId)).limit(1);
+  const [loan] = await tx.select().from(employeeLoan).where(eq(employeeLoan.id, loanId)).limit(1).for('update');
   return loan ?? null;
+}
+/** Row-lock a set of loans in id order before any of them is read for a ledger change. */
+export async function lockLoansForLedgerTx(tx: Tx, loanIds: readonly string[]): Promise<void> {
+  const ids = [...new Set(loanIds)].sort();
+  if (ids.length === 0) return;
+  await tx.select({ id: employeeLoan.id }).from(employeeLoan).where(inArray(employeeLoan.id, ids)).orderBy(asc(employeeLoan.id)).for('update');
 }
 
 /**
@@ -344,12 +357,17 @@ export async function prefillLoansForBatch(
         ),
       );
 
+    await lockLoansForLedgerTx(tx, activeLoans.map((loan) => loan.loanId));
     // C1 fix: NO blind pre-clamp here. The authoritative net≥0 clamp lives in generatePayslips, where the
     // full statutory + CP38 + unpaid + manual-deduction picture is known. Prefill reserves the FULL scheduled
     // instalment, capped only at the loan's outstanding balance (a legitimate final-instalment cap).
     for (const loan of activeLoans) {
       // The single next scheduled repayment (lowest sequenceNo). If the loan already has a reserved row,
       // the partial-unique index makes a second reservation impossible — skip it (no-op convergence).
+      // Locked before its schedule is read, so the cap below uses the current balance, never one a
+      // concurrent apply, reset or settlement is about to change.
+      const current = await loadLoan(tx, loan.loanId);
+      if (!current || current.status !== 'active') continue;
       const [reservedAlready] = await tx
         .select({ id: loanRepayment.id })
         .from(loanRepayment)
@@ -367,7 +385,7 @@ export async function prefillLoansForBatch(
 
       // Reserve the full scheduled instalment, capped only at the outstanding balance (final-instalment cap,
       // NOT a net-clamp). The net≥0 clamp is applied authoritatively in generatePayslips / applyLoansForBatch.
-      const takeCents = Math.min(toCents(Number(next.dueAmount)), toCents(Number(loan.outstanding)));
+      const takeCents = Math.min(toCents(Number(next.dueAmount)), toCents(Number(current.outstandingBalance)));
       if (takeCents <= 0) continue; // nothing recoverable (outstanding already 0)
 
       await tx
@@ -452,16 +470,19 @@ export async function applyLoansForBatch(
   onlyEmploymentIds?: string[],
 ): Promise<void> {
   if (onlyEmploymentIds && onlyEmploymentIds.length === 0) return;
+  const reservedFilter = and(
+    eq(loanRepayment.reservedBatchId, batchId),
+    eq(loanRepayment.status, 'reserved'),
+    onlyEmploymentIds ? inArray(loanRepayment.employmentId, onlyEmploymentIds) : undefined,
+  );
+  // Lock the loans first, then read the reservations again: a writer that waited for another apply
+  // of the same reservation then sees it already applied and leaves it, instead of deducting twice.
+  const nominated = await tx.select({ loanId: loanRepayment.loanId }).from(loanRepayment).where(reservedFilter);
+  await lockLoansForLedgerTx(tx, nominated.map((rep) => rep.loanId));
   const reserved = await tx
     .select()
     .from(loanRepayment)
-    .where(
-      and(
-        eq(loanRepayment.reservedBatchId, batchId),
-        eq(loanRepayment.status, 'reserved'),
-        onlyEmploymentIds ? inArray(loanRepayment.employmentId, onlyEmploymentIds) : undefined,
-      ),
-    );
+    .where(reservedFilter);
   // A mutable per-employment running budget (copy of the actual-applied cents) consumed in reservation order.
   const remaining = new Map<string, number>(appliedLoanCentsByEmp);
   for (const rep of reserved) {
@@ -603,7 +624,8 @@ export async function getLoanWithSchedule(
   loanId: string,
 ): Promise<{ loan: LoanRow; schedule: RepaymentRow[] } | null> {
   return withTenant(ctx, async (tx) => {
-    const loan = await loadLoan(tx, loanId);
+    // A read, possibly by the employee: no row lock.
+    const [loan] = await tx.select().from(employeeLoan).where(eq(employeeLoan.id, loanId)).limit(1);
     if (!loan) return null;
     const reps = await tx
       .select()

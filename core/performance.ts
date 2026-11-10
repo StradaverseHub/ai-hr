@@ -4,7 +4,7 @@ import { boundedNarrativeFacts, adjudicateNarrative } from '../lib/ai/evidence-s
 import {assertPerformanceProviderSourceTx} from './performance-provider-source';
 import {withAiAdmissionCheck} from './ai-governance';
 import {draftInputDigest} from '../lib/ai/draft-input';
-import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {lockLeaveDependenciesWaitTx} from './leave-dependency-lock';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { prepareAssessmentEvidenceFileTx, prepareAssessmentKpiFileTx, linkAssessmentAttachmentTx, configureAssessmentCycleTx, previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx } from '../packs/performance/service';
@@ -34,7 +34,7 @@ import { type SessionContext, type Tx } from '../db/client';
 import { withPerformanceTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
 import { assertModuleEnabled } from './entitlements';
-import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
+import { lockAccessConfigurationTx, lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import {
   assignment,
   calibrationEntry,
@@ -1174,9 +1174,13 @@ export async function enactCompAction(
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};p={...p};
   return withTenant(ctx, async (tx) => {
     // A merit enact reads compensation before the leaf write; own the full interval before review,
-    // source/Payroll rows. Exclusive configuration also preserves transitive bonus/grade ordering.
-    await tx.execute(sql`select app.access_configuration_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    // source/Payroll rows. Shared (reader/writer wave 4): grade, bonus and leave configuration editors
+    // hold the Access lock exclusively, so they still cannot change under an enact. The review row lock
+    // serialises two enacts of one review; the salary and payroll-input writers below take the
+    // employee's own and payroll inputs locks, so an enact during a payroll run waits for it.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[]);
     // Lock the review row first so two concurrent enacts can't both read 'recommended'.
     await tx.select({ id: performanceReview.id }).from(performanceReview).where(eq(performanceReview.id, p.reviewId)).for('update');
     const { review } = await loadReview(tx, p.reviewId);

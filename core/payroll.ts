@@ -16,7 +16,8 @@ import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDo
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
 import {visibleLabelIdsCondition} from './system-labels';
 import {isDeepStrictEqual} from 'node:util';
-import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockPayrollInputsTx} from './payroll-inputs-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {
@@ -157,7 +158,7 @@ import {
 // employee's own Form TP3 declares, and it must read that figure exactly as the form's screen and
 // `saveTp3` read it, or the gate would guard a different number from the one at risk.
 import { deriveAccumulatorSeed } from './tp3';
-import { applyLoansForBatch } from './loans';
+import { applyLoansForBatch, lockLoansForLedgerTx } from './loans';
 import { warnIfHolidaysIncomplete, holidayDatesFor, type HolidayCompletenessWarning } from './holidays';
 import type { ShiftDifferential, PayRule, PayrollPolicyConfig } from '../db/schema';
 import {
@@ -2706,6 +2707,11 @@ export async function setPayrollInput(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
+    // Reader/writer wave 4: a payroll input (manual OT, a performance bonus, TP1, zakat) written while
+    // the run is being processed would otherwise commit after the run read its inputs and be lost. The
+    // employee's payroll inputs key waits for that run; the status read below then sees 'processed'.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockPayrollInputsTx(tx, { employmentIds: [p.employmentId] });
     const [batch] = await tx
       .select({ status: payrollBatch.status })
       .from(payrollBatch)
@@ -9246,20 +9252,25 @@ async function unwindAppliedLoanRepayments(
   if (p.employmentIds != null && p.employmentIds.length === 0) return { reversed: 0, loansReopened: 0 };
   const toC = (v: unknown) => Math.round(Number(v) * 100);
   const fromC = (c: number) => (c / 100).toFixed(2);
+  const appliedFilter = and(
+    eq(loanRepayment.appliedBatchId, p.batchId),
+    eq(loanRepayment.status, 'applied'),
+    ...(p.employmentIds == null ? [] : [inArray(loanRepayment.employmentId, p.employmentIds)]),
+  );
+  // The balance is a read-modify-write: lock every affected loan, in id order, before reading any of them
+  // (core/loans.ts lockLoansForLedgerTx), so a concurrent apply or admin action cannot start from the same
+  // balance now that runs of different months no longer serialise on the exclusive Access lock. The
+  // repayments are read again after the locks, so a reversal that waited never reverses twice.
+  const nominated = await tx.select({ loanId: loanRepayment.loanId }).from(loanRepayment).where(appliedFilter);
+  await lockLoansForLedgerTx(tx, nominated.map((rep) => rep.loanId));
   const appliedReps = await tx
     .select()
     .from(loanRepayment)
-    .where(
-      and(
-        eq(loanRepayment.appliedBatchId, p.batchId),
-        eq(loanRepayment.status, 'applied'),
-        ...(p.employmentIds == null ? [] : [inArray(loanRepayment.employmentId, p.employmentIds)]),
-      ),
-    );
+    .where(appliedFilter);
   let loansReopened = 0;
   for (const rep of appliedReps) {
     if(p.cause==='payroll-reset')await tx.execute(sql`select set_config('app.payroll_reset_current_rep',${rep.id},true)`);
-    const [loan] = await tx.select().from(employeeLoan).where(eq(employeeLoan.id, rep.loanId)).limit(1);
+    const [loan] = await tx.select().from(employeeLoan).where(eq(employeeLoan.id, rep.loanId)).limit(1).for('update');
     if (!loan) continue;
     const appliedCents = toC(rep.appliedAmount);
     const dueCents = toC(rep.dueAmount);

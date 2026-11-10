@@ -12,12 +12,12 @@ import {PayFormulaError as FormulaLanguageError,evaluatePayFormula,analyzePayFor
 import {PAY_FORMULA_PROVIDER_VERSION} from '../lib/pay-formula-registry';
 import {PayFormulaError,type ActiveFormula,type PayFormulaContext,type FormulaReadRequirements} from '../lib/pay-formula-model';
 import {resolvePayrollPermission,loadActiveFormulaProgramTx,loadFormulaAccumulationGroupsTx,recordFormulaEvaluationTx,resolvePayComponentSet,resolveAssignedPolicy,resolveProrationSettings,prorationDivisorDays,usesWorkingDayProration,workingDayRoster,cutOffWindowFor,type PayRuleScope,type PayRuleFormulaRuntime,type ResolvablePayComponent,readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx,payRuleDependencies,payRuleReadsFixedAllowanceTotal,payItemFeedsOvertimeOrp,countsTowardFixedAllowances} from '../packs/payroll/service';
-import {assertWorkforceEmploymentTx} from './workforce-access';
+import {assertWorkforceEmploymentSharedTx} from './workforce-access-shared';
 import {companyOnDate,companySegmentsForPeriodBulk,segmentForCompany} from './employment-company';
 import {employmentInformationAt} from './information-correction-history';
 import {employment,companyPayrollConfig} from '../db/schema';
 import {eq} from 'drizzle-orm';
-import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {holidayDatesFor} from './holidays';
 import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic,payrollRoundAmount} from '../lib/payroll-basic';
 import {isModuleEnabled,settingEnabled} from './entitlements';
@@ -32,10 +32,12 @@ const unavailable=(name:string)=>new PayFormulaError('Formula source is unavaila
 const category=(s:string):FormulaReadRequirements['categories'][number]=>s==='payroll'?'compensation':s==='restricted'||s==='documents'?'confidential_hr':s==='identity'||s==='bank'||s==='statutory'?s:'personnel';
 const requirements=(fields:string[],workforce?:boolean):FormulaReadRequirements=>({fieldIds:[...new Set(fields)].sort(),categories:[...new Set(fields.map(id=>{const f=PERSONNEL_FIELDS.find(f=>f.id===id);if(!f)throw unavailable(id);return category(f.sensitivity);}))].sort(),...(workforce===undefined?{}:{workforce})});
 /** Financial source authority remains the Native financial owner. Workforce-record purposes
- * are an additional requirement only when an expression actually reads that class of source. */
+ * are an additional requirement only when an expression actually reads that class of source.
+ * A read of authority only: the shared Access lock keeps it stable, and a pay run (which holds the
+ * shared lock) must not ask for the exclusive one here. */
 async function financialSubjectTx(tx:Tx,ctx:SessionContext,companyId:string,employmentId:string){
  if(!uuid.test(companyId)||!uuid.test(employmentId)||!ctx.userId)throw new PayFormulaError('The payroll employee or permission is unavailable.','FORMULA_SOURCE_DENIED');
- await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
  const [row]=await tx.execute<{companyId:string;allowed:boolean}>(sql`select e.company_id as "companyId",app.principal_snapshot_current() and app.can_admin_payroll_for(${companyId}::uuid) and app.can_admin_payroll_employment(e.id) as allowed from public.employment e join public.company paying on paying.id=${companyId}::uuid and paying.tenant_id=${ctx.tenantId}::uuid where e.id=${employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid`);
  if(!row?.allowed)throw new PayFormulaError('The payroll employee or permission is unavailable.','FORMULA_SOURCE_DENIED');return row;
 }
@@ -45,7 +47,7 @@ export async function formulaReadRequirementsAllowedTx(tx:Tx,ctx:SessionContext,
  if(r.fieldIds.some(id=>!PERSONNEL_FIELDS.some(f=>f.id===id))||r.categories.some(c=>!valid.includes(c)))return false;
  const needed=new Set([...r.categories,...requirements(r.fieldIds).categories]),privateRecord=[...needed].some(c=>['identity','bank','statutory','confidential_hr'].includes(c));
  const workforce=privateRecord||(typeof r.workforce==='boolean'?r.workforce:[...needed].some(c=>c!=='compensation'));
- if(workforce){try{await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');}catch{return false;}}
+ if(workforce){try{await assertWorkforceEmploymentSharedTx(tx,ctx,employmentId,'view');}catch{return false;}}
  for(const c of needed){if(!await resolvePayrollPermission(tx,ctx,`report.read.${c}`,companyId))return false;
   if(workforce&&c!=='compensation'&&subject.companyId!==companyId&&!await resolvePayrollPermission(tx,ctx,`report.read.${c}`,subject.companyId))return false;
  }return true;
