@@ -6,7 +6,8 @@
 //   0 3 1 4 *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/expire-carry.ts
 import { createDb } from '../db/client';
 import { describeSkips, loadSweepScope } from '../core/sweep-scope';
-import { expireCarriedLeave, todayInKualaLumpur } from '../core/leave';
+import { todayInKualaLumpur } from '../core/leave';
+import { expireCarriedLeaveInBatches } from '../core/leave-cohort-run';
 import { recordJobRun } from '../core/job-run';
 
 async function main() {
@@ -36,7 +37,8 @@ async function main() {
     try {
       // SYSTEM context: no userId, so actorOf(ctx) records the event actor as `system`. expireCarriedLeave
       // runs through the app-role connection (RLS enforced); the hr_admin role authorizes the writes.
-      const { swept, forfeited } = await expireCarriedLeave({ tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' }, { today });
+      // Batched (core/leave-cohort-run.ts): one short transaction per batch of employees, one summary event.
+      const { swept, forfeited } = await expireCarriedLeaveInBatches({ tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' }, { today });
       totalSwept += swept;
       totalForfeited = Math.round((totalForfeited + forfeited) * 100) / 100;
       console.log(`  ✓ ${t.name} (${t.id}): ${swept} sweep(s), ${forfeited} day(s) forfeited`);

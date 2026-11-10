@@ -8,7 +8,8 @@ import type {LeaveImportResult} from '@/lib/leave-import-schema';
 
 const POLL_MS = 2000;
 
-/** Shows a running background leave import and hands the finished outcome to the existing result panel. */
+/** Shows a running background leave import (shared bulk-job kernel) and hands the finished outcome to the existing
+ * result panel. A queued import with no import service serving it says it is waiting, never that it is running. */
 export function LeaveImportJobPanel({job: initial, onFinished}: {job: LeaveImportJobProgress; onFinished: (result: LeaveImportResult | null) => void}) {
   const t = useTranslations('admin.leave.import.job');
   const [job, setJob] = useState(initial);
@@ -50,7 +51,7 @@ export function LeaveImportJobPanel({job: initial, onFinished}: {job: LeaveImpor
         <>
           <progress aria-label={stateText} value={leaveImportJobPercent(job)} max={100} className="h-2 w-full accent-primary" />
           <p className="text-xs text-muted-foreground">{t('progressCount', {done: job.done, total: job.total})}</p>
-          <p className="text-xs text-muted-foreground">{checkedAt - Date.parse(job.updatedAt) > 90_000 ? t('waiting') : t('backgroundHelp')}</p>
+          <p className="text-xs text-muted-foreground">{job.worker === 'unavailable' || checkedAt - Date.parse(job.updatedAt) > 90_000 ? t('waiting') : t('backgroundHelp')}</p>
         </>
       )}
     </Card>

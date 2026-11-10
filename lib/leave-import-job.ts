@@ -1,4 +1,4 @@
-/** Shape of a background leave ledger import, safe for the browser. */
+/** Shape of a background leave ledger import, safe for the browser (shared bulk-job kernel kind `leave_ledger`). */
 import type {LeaveImportResult} from './leave-import-schema';
 
 export type LeaveImportJobState = 'queued' | 'importing' | 'completed' | 'failed';
@@ -10,6 +10,8 @@ export type LeaveImportJobProgress = {
   updatedAt: string;
   /** Present once the job has finished. */
   result: LeaveImportResult | null;
+  /** `unavailable`: no import service is serving the queue right now, so a queued import is waiting for it. */
+  worker: 'running' | 'unavailable';
 };
 
 export const leaveImportJobActive = (state: LeaveImportJobState): boolean => state === 'queued' || state === 'importing';

@@ -1,13 +1,10 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
 import { parseCsvRecords } from '@/lib/csv';
 import {
   validateLeaveImport,
-  commitLeaveImport,
   type LeaveImportPreview,
-  type LeaveImportResult,
   type LeaveImportSource,
 } from '@/core/leave-import';
 import { createLeaveImportJob } from '@/core/leave-import-job';
@@ -21,18 +18,14 @@ export async function validateLeaveImportAction(csv: string): Promise<LeaveImpor
   return validateLeaveImport(s, { records });
 }
 
-/** Commit the valid rows. Re-validates server-side (authority + all rules), so a tampered client
- *  preview can't widen what gets written. Only good rows go in; bad rows are skipped. */
+/** Start the import of the valid rows as a background job (shared bulk-job kernel, kind `leave_ledger`). No ledger
+ *  row is written in this request: the import worker re-validates the whole file under the creator's authority, then
+ *  writes each row under its own locks, so a tampered client preview can't widen what gets written. */
 export async function commitLeaveImportAction(
   csv: string,
   source?: LeaveImportSource,
-): Promise<LeaveImportResult | { job: LeaveImportJobProgress }> {
+): Promise<{ job: LeaveImportJobProgress }> {
   const s = await requireAdmin();
   const { records } = parseCsvRecords(csv);
-  // The background path needs the leave import worker; an installation without it keeps importing inline.
-  if (process.env.LEAVE_IMPORT_BACKGROUND === 'true') return { job: await createLeaveImportJob(s, { records, source }) };
-  const result = await commitLeaveImport(s, { records, source });
-  revalidatePath('/admin/leave');
-  revalidatePath('/leave');
-  return result;
+  return { job: await createLeaveImportJob(s, { records, source }) };
 }

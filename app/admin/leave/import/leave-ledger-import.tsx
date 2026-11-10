@@ -122,14 +122,9 @@ export function LeaveLedgerImport() {
     startTransition(async () => {
       setError(null);
       try {
+        // The import runs in the background; the panel below follows it and hands over the result.
         const r = await commitLeaveImportAction(csv, source);
-        if ('job' in r) {
-          setJob(r.job);
-          return;
-        }
-        setResult(r);
-        setPhase('done');
-        router.refresh();
+        setJob(r.job);
       } catch (e) {
         setError((e as Error).message);
       }

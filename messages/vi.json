@@ -11348,7 +11348,25 @@
       "cancelApprovedReplacementNote": "Việc hủy Nghỉ bù luôn cần người duyệt phê duyệt lại, vì trả lại ngày nghỉ cũng trả lại tín chỉ của nó.",
       "cancelApprovedNotifyLabel": "Thông báo cho người duyệt và HR khi có yêu cầu hủy",
       "cancelApprovedNotifyHelp": "Người nhận thấy thông báo trong chuông của ứng dụng. Email còn cần danh mục được cho phép, sự đồng ý của người nhận và SMTP đang hoạt động.",
-      "generateOutcome_not_eligible": "Không đủ điều kiện — điều kiện của loại nghỉ phép này loại trừ nhân viên"
+      "generateOutcome_not_eligible": "Không đủ điều kiện — điều kiện của loại nghỉ phép này loại trừ nhân viên",
+      "processingJob": {
+        "title": {
+          "leave_generation": "Đang tạo quyền lợi nghỉ phép",
+          "leave_accrual": "Đang chạy tích lũy ngày nghỉ"
+        },
+        "progressCount": "Đã xử lý {done} trên {total} nhân viên",
+        "backgroundHelp": "Quá trình này chạy trong nền. Bạn có thể rời trang này và quay lại sau.",
+        "waiting": "Đang chờ dịch vụ nền tiếp tục. Bạn không cần làm gì.",
+        "state": {
+          "queued": "Đang chờ bắt đầu",
+          "running": "Đang chạy",
+          "completed": "Đã hoàn tất",
+          "failed": "Đã dừng"
+        },
+        "failed": "Quá trình đã dừng: {reason} Các nhân viên đã được xử lý giữ nguyên số liệu.",
+        "partial": "{count} nhân viên không thể xử lý và được giữ nguyên: {reason} Hãy chạy lại để hoàn tất.",
+        "alreadyRunning": "Một quản trị viên khác đang chạy tác vụ này. Hãy thử lại khi tác vụ đó hoàn tất."
+      }
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -37420,6 +37438,34 @@
         "cancelled": {
           "title": "Đã hủy việc nhập nhân viên",
           "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "Đã nhập dữ liệu nghỉ phép xong",
+          "body": "Các dòng đã nhập hiện đã có trong số dư nghỉ phép của nhân viên."
+        },
+        "failed": {
+          "title": "Việc nhập dữ liệu nghỉ phép đã dừng",
+          "body": "Các dòng đã lưu được giữ lại. Nhập lại cùng tệp sẽ bỏ qua các dòng đó."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc nhập dữ liệu nghỉ phép",
+          "body": "Các dòng đã lưu được giữ lại. Nhập lại cùng tệp sẽ bỏ qua các dòng đó."
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "Đã xử lý nghỉ phép xong",
+          "body": "Số liệu nghỉ phép đã được cập nhật."
+        },
+        "failed": {
+          "title": "Việc xử lý nghỉ phép đã dừng",
+          "body": "Các nhân viên đã được xử lý giữ nguyên số liệu. Hãy chạy lại để hoàn tất phần còn lại."
+        },
+        "cancelled": {
+          "title": "Đã hủy việc xử lý nghỉ phép",
+          "body": "Các nhân viên đã được xử lý giữ nguyên số liệu. Hãy chạy lại để hoàn tất phần còn lại."
         }
       }
     }

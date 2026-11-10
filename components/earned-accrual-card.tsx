@@ -1,9 +1,7 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { toCsv } from '@/lib/csv';
 import { Button, Field, inputCls } from './ui';
@@ -13,6 +11,8 @@ import { runEarnedAccrualAction } from '@/app/admin/actions';
 // reason; the COMMIT is unchanged and still posts through app/admin/actions.ts. See that file's header.
 import { previewEarnedAccrualWithReasonAction } from '@/app/admin/leave-config/earned-accrual/actions';
 import type { ArchivedLeaveTypeHint, EarnedAccrualEmptyReason, EarnedAccrualGroup } from '@/core/leave';
+import { LeaveCohortJobPanel } from './leave/leave-cohort-job-panel';
+import type { LeaveCohortJobProgress } from '@/lib/leave-cohort-job';
 
 export type EarnedScopeOption = { id: string; name: string };
 /**
@@ -72,7 +72,6 @@ export function EarnedAccrualCard({
 }) {
   const t = useTranslations('admin.leave');
   const locale = useLocale();
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [year, setYear] = useState<number>(defaultYear);
@@ -89,6 +88,16 @@ export function EarnedAccrualCard({
   const [earnedToDateTotal, setEarnedToDateTotal] = useState(0);
   // Once a real run commits, flip the table's Status column from Pending → Done (until the next preview).
   const [committed, setCommitted] = useState(false);
+  // The run happens in the background; a running one is rejoined when the card opens again.
+  const [job, setJob] = useState<LeaveCohortJobProgress | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch('/admin/leave/jobs?kind=leave_accrual', { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => { if (alive && payload?.job) setJob(payload.job); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const scope = useMemo(
     () => ({ year, companyIds: [...companyIds], gradeIds: [...gradeIds], leaveTypeIds: [...leaveTypeIds] }),
@@ -126,13 +135,12 @@ export function EarnedAccrualCard({
     start(async () => {
       setError(null);
       const res = await runEarnedAccrualAction(scope);
-      if (res.error) {
-        setError(res.error);
+      if (res.error || !res.job) {
+        setError(res.error ?? null);
         return;
       }
-      toast.success(t('earnedRunToast', { granted: res.granted ?? 0, forfeits: res.forfeits ?? 0 }));
-      setCommitted(true);
-      router.refresh();
+      // The panel below follows the job and shows the same toast when it finishes.
+      setJob(res.job);
     });
 
   const onCancel = () => {
@@ -435,7 +443,7 @@ export function EarnedAccrualCard({
 
           {/* Step 3 — Confirm / Cancel / Export. */}
           <div className="flex flex-wrap items-center gap-2">
-            <Button aria-busy={pending} type="button" size="sm" onClick={onRun} disabled={pending || committed || rows.length === 0}>
+            <Button aria-busy={pending} type="button" size="sm" onClick={onRun} disabled={pending || committed || job !== null || rows.length === 0}>
               {pending && rows !== null ? t('earnedRunningButton') : t('earnedRunButton')}
             </Button>
             <Button aria-busy={pending} type="button" variant="ghost" size="sm" onClick={onCancel} disabled={pending}>
@@ -453,6 +461,8 @@ export function EarnedAccrualCard({
           </div>
         </div>
       )}
+
+      {job && <LeaveCohortJobPanel job={job} onDone={(done) => { setJob(null); if (done.state === 'completed') setCommitted(true); }} />}
     </div>
   );
 }

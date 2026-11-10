@@ -1,65 +1,70 @@
-/** Durable leave ledger import jobs. The request only enqueues; core/leave-import-worker.ts writes. */
-import {sql} from 'drizzle-orm';
+/** Durable leave ledger imports on the shared bulk-job kernel (core/bulk-job.ts, kind `leave_ledger`, migration
+ * 9900). The request only checks authority and enqueues; core/leave-import-worker.ts writes, one row per step. */
 import {withTenant, type SessionContext, type Tx} from '../db/client';
-import {pgSqlState} from '../lib/db-error';
+import {isAdmin} from '../lib/authz-model';
+import {bulkJobActive, type BulkJobState} from '../lib/bulk-job';
 import type {LeaveImportJobProgress, LeaveImportJobState} from '../lib/leave-import-job';
 import type {LeaveImportRecord, LeaveImportResult, LeaveImportSource} from '../lib/leave-import-schema';
-import type {LeaveImportPlanRow} from '../packs/leave/service';
+import {BULK_JOB_ALREADY_RUNNING, BulkJobError, bulkJobTx, bulkJobWorkerStatusTx, enqueueBulkJobTx, isBulkJobId, listBulkJobsTx, type BulkJobRow} from './bulk-job';
 
-export type LeaveImportJobRow = {
-  id: string; tenant_id: string; created_by: string; context: SessionContext; records: LeaveImportRecord[];
-  source: LeaveImportSource | null; plan: LeaveImportPlanRow[]; state: LeaveImportJobState; batch_id: string;
-  total: number; next_index: number; imported: number; skipped: number;
-  failed: LeaveImportResult['failed']; retries: number; error: string | null; updated_at: string;
+export const LEAVE_LEDGER_IMPORT_KIND = 'leave_ledger';
+/** What the worker reads back. Removed from the job once it finishes. */
+export type LeaveImportJobInput = {records: LeaveImportRecord[]; source: LeaveImportSource | null; companyId?: string};
+
+const uiState: Record<BulkJobState, LeaveImportJobState> = {
+  queued: 'queued', preparing: 'importing', running: 'importing', finalizing: 'importing', discarding: 'importing',
+  completed: 'completed', failed: 'failed', cancelled: 'failed',
 };
-
-export function leaveImportJobProgress(job: LeaveImportJobRow): LeaveImportJobProgress {
-  const done = job.state === 'queued' ? 0 : job.next_index + job.total - job.plan.length;
+export function leaveImportJobProgress(row: BulkJobRow, worker: 'running' | 'unavailable' = 'running'): LeaveImportJobProgress {
+  const total = Number(row.counters?.total ?? 0);
+  // Rows that need no write (invalid, already imported) count as processed once the file is validated.
+  const planned = row.state === 'queued' || row.state === 'preparing' ? 0 : Math.max(0, total - row.steps_total) + row.steps_done;
   return {
-    id: job.id, state: job.state, total: job.total, done, updatedAt: new Date(job.updated_at).toISOString(),
-    result: job.state === 'completed'
-      ? {imported: job.imported, failed: job.failed, skipped: job.skipped, totalRows: job.total}
-      : null,
+    id: row.id, state: uiState[row.state], total, done: Math.min(total, planned), updatedAt: new Date(row.updated_at).toISOString(),
+    result: row.state === 'completed' ? (row.result as LeaveImportResult) : null,
+    worker: row.state === 'queued' ? worker : 'running',
   };
 }
-
-export async function leaveImportJobTx(tx: Tx, id: string, lock = false): Promise<LeaveImportJobRow | null> {
-  const [row] = await tx.execute<LeaveImportJobRow>(sql`select * from leave_import_job where id=${id}::uuid ${lock ? sql`for update` : sql``}`);
-  return row ?? null;
+async function progressTx(tx: Tx, row: BulkJobRow) {
+  return leaveImportJobProgress(row, row.state === 'queued' ? await bulkJobWorkerStatusTx(tx, LEAVE_LEDGER_IMPORT_KIND) : 'running');
+}
+async function activeTx(tx: Tx, ctx: SessionContext) {
+  return (await listBulkJobsTx(tx, ctx, LEAVE_LEDGER_IMPORT_KIND, 5)).find(row => bulkJobActive(row.state)) ?? null;
 }
 
-/** Enqueues the import. A person's second submission rejoins their running job. */
-export async function createLeaveImportJob(ctx: SessionContext, input: {records: LeaveImportRecord[]; source?: LeaveImportSource}): Promise<LeaveImportJobProgress> {
-  if (!ctx.userId) throw new Error('Sign in again to import leave.');
+/** Enqueues the import after the same authority check the synchronous import made. A person's second submission
+ * while one is running rejoins the running job instead of importing twice. */
+export async function createLeaveImportJob(ctx: SessionContext, input: {records: LeaveImportRecord[]; source?: LeaveImportSource; companyId?: string}): Promise<LeaveImportJobProgress> {
+  if (!ctx.userId) throw new BulkJobError('Sign in again to import leave.', 401);
+  if (!isAdmin(ctx)) throw new BulkJobError('Only HR administrators can import leave records.', 403);
+  const jobInput: LeaveImportJobInput = {records: input.records.map(record => ({...record})), source: input.source ?? null, ...(input.companyId ? {companyId: input.companyId} : {})};
   return withTenant(ctx, async tx => {
     try {
-      await tx.transaction(async nested => {
-        await nested.execute(sql`insert into leave_import_job(tenant_id,created_by,context,records,source)
-          values(${ctx.tenantId}::uuid,${ctx.userId!}::uuid,'{}'::jsonb,${JSON.stringify(input.records)}::jsonb,${input.source ? JSON.stringify(input.source) : null}::jsonb)`);
-      });
+      // A full scope returns no row (ON CONFLICT DO NOTHING), so this transaction stays usable for the rejoin read.
+      const {row} = await enqueueBulkJobTx(tx, ctx, {kind: LEAVE_LEDGER_IMPORT_KIND, input: jobInput});
+      return progressTx(tx, row);
     } catch (error) {
-      if (pgSqlState(error) !== '23505') throw error;
+      if (!(error instanceof BulkJobError) || error.message !== BULK_JOB_ALREADY_RUNNING) throw error;
+      const running = await activeTx(tx, ctx);
+      if (!running) throw error;
+      return progressTx(tx, running);
     }
-    const [job] = await tx.execute<LeaveImportJobRow>(sql`select * from leave_import_job
-      where created_by=${ctx.userId!}::uuid and state in ('queued','importing') order by created_at desc limit 1`);
-    return leaveImportJobProgress(job);
   });
 }
 
 /** Progress for the person who started the import; row security hides everyone else's. */
 export async function readLeaveImportJob(ctx: SessionContext, id: string): Promise<LeaveImportJobProgress | null> {
-  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) return null;
+  if (!isBulkJobId(id)) return null;
   return withTenant(ctx, async tx => {
-    const job = await leaveImportJobTx(tx, id);
-    return job ? leaveImportJobProgress(job) : null;
+    try { return await progressTx(tx, await bulkJobTx(tx, id, {kind: LEAVE_LEDGER_IMPORT_KIND})); }
+    catch (error) { if (error instanceof BulkJobError && error.status === 404) return null; throw error; }
   });
 }
 
 /** The person's running job, so the screen can rejoin it after a reload. */
 export async function activeLeaveImportJob(ctx: SessionContext): Promise<LeaveImportJobProgress | null> {
   return withTenant(ctx, async tx => {
-    const [job] = await tx.execute<LeaveImportJobRow>(sql`select * from leave_import_job
-      where created_by=${ctx.userId ?? null}::uuid and state in ('queued','importing') order by created_at desc limit 1`);
-    return job ? leaveImportJobProgress(job) : null;
+    const row = await activeTx(tx, ctx);
+    return row ? progressTx(tx, row) : null;
   });
 }

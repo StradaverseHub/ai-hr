@@ -11348,7 +11348,25 @@
       "cancelApprovedReplacementNote": "Replacement Leave cancellations always need the approver's re-approval, because giving the leave back returns its credit.",
       "cancelApprovedNotifyLabel": "Notify the approver and HR when a cancellation is requested",
       "cancelApprovedNotifyHelp": "Recipients see an alert in the in-app notification bell. Email also requires category permission, recipient consent and an active SMTP relay.",
-      "generateOutcome_not_eligible": "Not eligible — the leave type’s conditions exclude this employee"
+      "generateOutcome_not_eligible": "Not eligible — the leave type’s conditions exclude this employee",
+      "processingJob": {
+        "title": {
+          "leave_generation": "Generating entitlement",
+          "leave_accrual": "Running earned accrual"
+        },
+        "progressCount": "{done} of {total} employees processed",
+        "backgroundHelp": "This runs in the background. You can leave this page and come back.",
+        "waiting": "Waiting for the background service to continue. No action is needed.",
+        "state": {
+          "queued": "Waiting to start",
+          "running": "Running",
+          "completed": "Finished",
+          "failed": "Stopped"
+        },
+        "failed": "The run stopped: {reason} Employees already processed keep their figures.",
+        "partial": "{count} employee(s) could not be processed and were left unchanged: {reason} Run it again to complete them.",
+        "alreadyRunning": "Another administrator is already running this. Try again when it has finished."
+      }
     },
     "holidays": {
       "pageTitle": "Public holidays",
@@ -37420,6 +37438,34 @@
         "cancelled": {
           "title": "Employee import cancelled",
           "body": "No employees were added. Open Import History for details."
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "Leave import finished",
+          "body": "The imported rows are now in employees' leave balances."
+        },
+        "failed": {
+          "title": "Leave import stopped",
+          "body": "Rows already saved are kept. Importing the same file again skips them."
+        },
+        "cancelled": {
+          "title": "Leave import cancelled",
+          "body": "Rows already saved are kept. Importing the same file again skips them."
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "Leave processing finished",
+          "body": "The leave figures have been updated."
+        },
+        "failed": {
+          "title": "Leave processing stopped",
+          "body": "Employees already processed keep their figures. Run it again to complete the rest."
+        },
+        "cancelled": {
+          "title": "Leave processing cancelled",
+          "body": "Employees already processed keep their figures. Run it again to complete the rest."
         }
       }
     }

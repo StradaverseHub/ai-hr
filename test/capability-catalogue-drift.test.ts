@@ -67,6 +67,8 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/admin/pay-components/import/route.ts':'pay_codes',
  'app/admin/personnel/import/actions.ts':'employee_records',
  'app/admin/personnel/import/assistance-actions.ts':support('Header-mapping assistance of the employee import; its owner re-checks the caller.'),
+ 'app/admin/leave/import/jobs/[jobId]/route.ts':'leave_balances',
+ 'app/admin/leave/import/jobs/route.ts':'leave_balances',
  'app/admin/personnel/import/bank-statutory/jobs/[jobId]/errors/route.ts':'bank_statutory',
  'app/admin/personnel/import/bank-statutory/jobs/[jobId]/route.ts':'bank_statutory',
  'app/admin/personnel/import/bank-statutory/jobs/route.ts':'bank_statutory',

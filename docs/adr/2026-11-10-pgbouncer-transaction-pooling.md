@@ -35,7 +35,7 @@ Transaction pooling breaks anything that needs one connection to last beyond a t
 | `pg_backend_pid` in production | `packs/attendance/overtime-calculation.ts:86`, migrations `0548` and `0949` | Compatible; used only within one transaction |
 | `pg_backend_pid` and `pg_stat_activity` in tooling | `scripts/performance/measured-lock-observer.mjs:15`, `scripts/performance/lock-sample-attribution.mjs:129`, `scripts/performance/system-load-owner.mjs:348`, and tests | Direct. Behind a pooler a backend serves many clients, so the sampler still attributes each transaction correctly, but a backend count is no longer a client count |
 | Migrations | `scripts/migrate-with-focused-prerequisites.ts` via `MIGRATION_DATABASE_URL` | Direct. `check-customer-env.mjs` refuses a migration URL pointing at the pooler |
-| Import, timer and Entra workers, report renderer | `scripts/bank-import-runner.ts:10`, `scripts/leave-import-runner.ts:10`, `scripts/*-sweep.ts`, `lib/entra/worker.ts:9`, `deploy/identity-email/renderer-peer.py:29` | Direct, enforced by `AIHR_DB_PROCESS_ROLE=worker` |
+| Import, timer and Entra workers, report renderer | `scripts/bank-import-runner.ts:10`, `scripts/*-sweep.ts`, `lib/entra/worker.ts:9`, `deploy/identity-email/renderer-peer.py:29` | Direct, enforced by `AIHR_DB_PROCESS_ROLE=worker` |
 | Startup parameters | `deploy/identity-email/internal-report-agent.ts:10`, `scripts/account-email-retention.ts:5` | Direct. `db/client.ts` sends only what PgBouncer tracks |
 
 ## Consequences
