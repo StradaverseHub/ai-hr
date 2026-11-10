@@ -65,32 +65,32 @@ async function accrualSummaryOnce(ctx: SessionContext, job: BulkJobRow, unit: Pi
 }
 /**
  * The run's once-per-run reads (leave types, tables in force, the template resolver for every employee), made once
- * per worker and reused by every batch while they are still current, instead of again in every batch's lock hold.
+ * per run in `prepare` (its own READ ONLY snapshot, no transaction or tenant lock held; at 3,000 employees about a
+ * second) and reused by every batch while they are still current, instead of again in every batch's lock hold.
  * Before each batch, under the same first locks the engine takes (the tenant's Access lock, which every workforce
  * writer takes too, and the leave configuration shared), one statement re-checks the configuration and the batch's
- * employment and assignment rows against what the reads saw; anything changed and the batch reads for itself.
+ * employment and assignment rows against what the reads saw; anything changed and the batch reads for itself. Kept
+ * in this worker process: a batch run by another process (after a restart) simply reads for itself. Never built
+ * inside a chunk: a second transaction opened while the chunk holds its connection is refused by background
+ * admission, and the step would retry for ever.
  */
 type AccrualRunCache = {inputs: EarnedAccrualRunInputs; configFp: string; orgFp: Record<string, string>};
-async function accrualRunInputsTx(tx: Tx, ctx: SessionContext, job: BulkJobRow, input: EarnedAccrualRunInput, batch: string[], cache: Map<string, unknown>): Promise<EarnedAccrualRunInputs | undefined> {
-  // First batch on this worker, or the configuration changed since: read once for every employee the run may reach,
-  // in its own READ ONLY snapshot (one consistent read, no tenant lock), BEFORE this chunk takes any lock: at 3,000
-  // employees the reads take about a second and must not sit inside a lock hold.
-  let held = cache.get('runInputs') as AccrualRunCache | undefined;
-  if (!held || cache.get('runInputsStale')) {
-    held = await withTenant(ctx, async read => {
-      const all = (await read.execute<{id: string}>(sql`select jsonb_array_elements_text(payload->'employmentIds') as id from bulk_job_step where job_id=${job.id}::uuid order by seq`)).map(r => r.id);
-      const fresh = await leaveRunInputFingerprintsTx(read, all);
-      const inputs = await readEarnedAccrualRunInputsTx(read, {asOf: input.asOf, leaveTypeIds: input.leaveTypeIds, employmentIds: all, periodChecked: true});
-      return {inputs, configFp: fresh.configFp, orgFp: fresh.orgFp} satisfies AccrualRunCache;
-    }, {readOnlySnapshot: true});
-    cache.set('runInputs', held);
-    cache.delete('runInputsStale');
-  }
+const accrualRunInputs = new Map<string, AccrualRunCache>();
+async function readAccrualRunInputs(ctx: SessionContext, input: EarnedAccrualRunInput, employmentIds: string[]): Promise<AccrualRunCache> {
+  return withTenant(ctx, async read => {
+    const fresh = await leaveRunInputFingerprintsTx(read, employmentIds);
+    const inputs = await readEarnedAccrualRunInputsTx(read, {asOf: input.asOf, leaveTypeIds: input.leaveTypeIds, employmentIds, periodChecked: true});
+    return {inputs, configFp: fresh.configFp, orgFp: fresh.orgFp};
+  }, {readOnlySnapshot: true});
+}
+async function accrualRunInputsTx(tx: Tx, ctx: SessionContext, job: BulkJobRow, batch: string[]): Promise<EarnedAccrualRunInputs | undefined> {
+  const held = accrualRunInputs.get(job.id);
+  if (!held) return undefined;
   await lockAccessConfigurationTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
   const now = await leaveRunInputFingerprintsTx(tx, batch);
-  // The configuration moved: this batch reads for itself, and the next batch reads the run's inputs again.
-  if (held.configFp !== now.configFp) { cache.set('runInputsStale', true); return undefined; }
+  // The configuration moved: this batch and every later one read for themselves.
+  if (held.configFp !== now.configFp) { accrualRunInputs.delete(job.id); return undefined; }
   return batch.every(id => held.orgFp[id] !== undefined && held.orgFp[id] === now.orgFp[id]) ? held.inputs : undefined;
 }
 export const earnedAccrualJobHandler: BulkJobHandler<Batch> = {
@@ -110,16 +110,18 @@ export const earnedAccrualJobHandler: BulkJobHandler<Batch> = {
       ids = await leaveCohortEmploymentIdsTx(tx, input);
     }));
     if (refused) return {refused};
+    accrualRunInputs.set(job.id, await readAccrualRunInputs(ctx, input, ids));
     return {steps: batchesOf(ids).map((employmentIds, i) => ({kind: 'employees', rowNum: i + 1, payload: {employmentIds}})), counters: {employees: ids.length, granted: 0, forfeits: 0}, plan: {}};
   },
-  async applyStepTx(tx, ctx, job, step, cache) {
+  async applyStepTx(tx, ctx, job, step) {
     const input = job.input as EarnedAccrualRunInput;
-    const preload = await accrualRunInputsTx(tx, ctx, job, input, step.payload.employmentIds, cache);
+    const preload = await accrualRunInputsTx(tx, ctx, job, step.payload.employmentIds);
     const o = await earnedAccrualBatchTx(tx, ctx, input, step.payload.employmentIds, {preload});
     const result: AccrualStepResult = {summary: o.summary, granted: o.granted, forfeits: o.forfeits};
     return {result, counters: {granted: o.granted, forfeits: o.forfeits}};
   },
   async finalize(ctx, job, unit) {
+    accrualRunInputs.delete(job.id);
     await accrualSummaryOnce(ctx, job, unit);
     const failedEmployees = await withTenant(ctx, async tx => {
       const n = await failedEmployeesTx(tx, job);
@@ -131,6 +133,7 @@ export const earnedAccrualJobHandler: BulkJobHandler<Batch> = {
   },
   /** Stopped or failed after some batches: their summary event is still written once (best effort). */
   async afterTerminal(ctx, job) {
+    accrualRunInputs.delete(job.id);
     if (!ctx || job.state === 'completed' || !Number(job.steps_done) || !isAdmin(ctx)) return;
     await accrualSummaryOnce(ctx, job, null);
   },

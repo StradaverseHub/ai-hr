@@ -101,11 +101,14 @@ describe('entitlement recalculation after a save runs on the kernel and leaves e
   const [kinds]=await owner.client<{tenant:string;creator:string}[]>`select (select exclusive from bulk_job_kind where kind='leave_generation') as tenant,(select exclusive from bulk_job_kind where kind='leave_ledger') as creator`;
   expect(kinds).toEqual({tenant:'tenant',creator:'creator'});
   await drain();
-  // Converged: the second run found nothing left to correct.
+  // The two jobs interleave (the worker is fair across jobs); they converge: every employee is corrected once, by
+  // whichever job reached them first, and a further recalculation finds nothing left.
   const r1=(await readLeaveCohortJob(adminCtx(b),one.id))!.result as {affected:number};
   const r2=(await readLeaveCohortJob(adminCtx(b),two.id))!.result as {affected:number};
-  expect(r1.affected+r2.affected).toBeGreaterThan(0);
-  expect(Math.min(r1.affected,r2.affected)).toBe(0);
+  expect(r1.affected+r2.affected).toBeGreaterThan(5);
+  const twice=await owner.client<{n:number}[]>`select count(*)::int as n from (select employment_id,leave_type_id from leave_entitlement_recalc_audit where tenant_id=${b.tenantId}::uuid group by 1,2 having count(*)>1) x`;
+  expect(twice[0].n).toBe(0);
+  expect((await reprojectEntitlementForLeaveTypeCohort(adminCtx(b),{leaveTypeId:b.annualLeaveTypeId,trigger:'c',asOf:ASOF})).affected).toBe(0);
  },300_000);
 });
 

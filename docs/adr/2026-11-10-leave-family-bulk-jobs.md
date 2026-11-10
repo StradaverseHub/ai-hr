@@ -70,7 +70,8 @@ Entitlement, carry expiry and year-open the same shape or larger), and a busy em
   release, each against the synchronous run).
 - **Run Earned Accrual job: once-per-run reads.** The engine takes an optional preload (scoped active types, tables
   in force, the template resolver for every employee the run may reach, and the whole-scope protected-period check
-  `prepare` already made, which is when the synchronous run made it). Before each batch, under the engine's first
+  `prepare` already made, which is when the synchronous run made it), read once per worker in its own READ ONLY
+  snapshot before a chunk takes any lock (at 3,000 employees about a second). Before each batch, under the engine's first
   locks (the Access lock every workforce writer also takes, and the leave configuration shared), one statement
   re-checks the configuration and the batch's employment and assignment rows; anything changed and the batch reads
   for itself. Subject leave-dependency locks (configuration plus every employee) are one statement for every caller;
