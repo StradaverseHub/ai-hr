@@ -4,7 +4,7 @@ Status: source implementation on `claude/bulkjob-leave-20261110` (base `claude/i
 0143d761c); hosted verification and integration pending. Production and staging untouched.
 Draft migrations (unallocated): 9900 `leave_bulk_jobs` (three `bulk_job_kind` rows), 9901 `leave_ledger_stage`
 (staged ledger rows), 9902 `bulk_job_unbounded_kind` (KERNEL: exclusive 'none'), 9903 `leave_follow_up_jobs` (four
-`bulk_job_kind` rows).
+`bulk_job_kind` rows), 9905 `leave_stage_digests` (the release's per-employee digests).
 
 The leave cohort writers each ran as ONE transaction over the whole tenant, holding the tenant's Access lock and every
 employee's leave-dependency lock until commit (earned accrual measured 3.4 s for 1,207 employees; Generate
@@ -56,7 +56,9 @@ Entitlement, carry expiry and year-open the same shape or larger), and a busy em
   the employment and assignment rows, a frozen encashment balance) and a digest of the leave configuration with what
   each batch saw, and recomputes a changed batch (its staged rows dropped, the engine re-run) before trying again
   (40 attempts, then the job fails and keeps nothing). The released rows are what the old single transaction would
-  have written at the moment of release. A busy subject at release is a transient refusal, retried.
+  have written at the moment of release. A busy subject at release is a transient refusal, retried. The digests are
+  computed by one administrator-only definer (draft 9905) that reads the visible set once and applies the same stage
+  visibility: through row security they cost 0.5-0.7 s for 3,000 employees inside the release, now 28-46 ms.
 - **Generate Entitlement** (`leave_generation`) is now `atomic`: the year-open batches write under one stage, the
   earned Annual Leave batches under another, both visible to the job. A refused year-open batch discards both (the
   old run threw before writing: no ledger row, no event, no log). A refused earned batch fails the earned part as a
