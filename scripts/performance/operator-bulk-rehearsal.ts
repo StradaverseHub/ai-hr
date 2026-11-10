@@ -10,9 +10,13 @@
  *
  * REHEARSAL_CODE_ROOT selects the code under test (default: this checkout), so the same run can execute an exported
  * base commit for the old synchronous path. Env: DATABASE_URL, MIGRATION_DATABASE_URL, REHEARSAL_PORT,
- * REHEARSAL_MODE (prepare|run), REHEARSAL_OUT, UNCOVERED (300), RECONCILE_ITEMS (200), LABEL_ROWS (20 per category).
+ * REHEARSAL_MODE (prepare|run), REHEARSAL_OUT, UNCOVERED (300), RECONCILE_ITEMS (200), LABEL_ROWS (20 per category,
+ * 445 codes), REHEARSAL_PHASES (comma list; default all), PUBLICATION_TENANTS (tenants in the database when the
+ * capability publication runs; fictional empty tenants are added before its measured window).
+ * When the code under test has the staged System Labels job (core/system-label-import-job.ts) the import is started
+ * as the administrator would and the kernel's worker ticks run it (the worker loop of scripts/bank-import-runner.ts).
  */
-import {writeFileSync} from 'node:fs';
+import {existsSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import postgres from 'postgres';
@@ -26,6 +30,8 @@ const ROOT=resolve(process.env.REHEARSAL_CODE_ROOT||fileURLToPath(new URL('../..
 const MODE=process.env.REHEARSAL_MODE??'run';
 const TENANT='11111111-1111-1111-1111-111111111111',ADMIN='22222222-2222-2222-2222-222222222222';
 const UNCOVERED=Number(process.env.UNCOVERED??300),RECONCILE_ITEMS=Number(process.env.RECONCILE_ITEMS??200),LABEL_ROWS=Number(process.env.LABEL_ROWS??20);
+const PHASES=new Set((process.env.REHEARSAL_PHASES??'').split(',').map(x=>x.trim()).filter(Boolean)),PUBLICATION_TENANTS=Number(process.env.PUBLICATION_TENANTS??0);
+const wanted=(name:string)=>!PHASES.size||PHASES.has(name);
 const TODAY='2026-11-10',SHIFT_CODE='OPAM03';
 process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
@@ -106,10 +112,10 @@ async function main(){
  const runStart=(await obs`select now() as at`)[0].at as Date;
  const sweepCtx={tenantId:TENANT,roles:['hr_admin'],entitlements} as never;
  const {sweepDueReviews,sweepReviewReminders}=await load('core/employment-review');
- phases.push(await runPhase('sweepDueReviews',()=>sweepDueReviews(sweepCtx,{today:TODAY})));
- phases.push(await runPhase('sweepReviewReminders',()=>sweepReviewReminders(sweepCtx,{today:TODAY})));
+ if(wanted('sweepDueReviews'))phases.push(await runPhase('sweepDueReviews',()=>sweepDueReviews(sweepCtx,{today:TODAY})));
+ if(wanted('sweepReviewReminders'))phases.push(await runPhase('sweepReviewReminders',()=>sweepReviewReminders(sweepCtx,{today:TODAY})));
  const {backfillBackupShift}=await load('core/roster');
- phases.push(await runPhase('backfillBackupShift',async()=>{const r=await backfillBackupShift(admin,{shiftCode:SHIFT_CODE,apply:true});return{before:r.before.length,after:r.after.length,applied:r.applied};}));
+ if(wanted('backfillBackupShift'))phases.push(await runPhase('backfillBackupShift',async()=>{const r=await backfillBackupShift(admin,{shiftCode:SHIFT_CODE,apply:true});return{before:r.before.length,after:r.after.length,applied:r.applied};}));
  // System Labels import: LABEL_ROWS new codes in every category, through preview then apply (the admin's two steps).
  const {previewSystemLabelImport,applySystemLabelImport}=await load('core/system-label-import');
  const {buildSystemLabelWorkbook}=await load('lib/system-label-workbook');
@@ -117,20 +123,39 @@ async function main(){
  const rows=Object.fromEntries((LABEL_IMPORT_DEFINITIONS as {kind:string}[]).map((d,i)=>[d.kind,Array.from({length:d.kind==='grade_groups'?Math.min(LABEL_ROWS,5):LABEL_ROWS},(_,n)=>({Code:d.kind==='grades'?`OPG${i}_${n}`:`OP_${i}_${n}`,Name:`Fictional group ${i} ${n}`,Label:`Fictional ${i} ${n}`,Description:'Fictional rehearsal label',Company:companyId,Status:'Active'}))]));
  const bytes=await buildSystemLabelWorkbook({kinds:Object.keys(rows),rows,includeStatus:true,references:{companies:[],grades:[],employees:[]}});
  const preview=await previewSystemLabelImport(admin,bytes);
- phases.push(await runPhase('systemLabelImport',async()=>{const r=await applySystemLabelImport(admin,{bytes,token:preview.token});return{imported:r.imported,skipped:r.skipped,failed:r.failed};}));
+ const staged=existsSync(`${ROOT}/core/system-label-import-job.ts`);
+ if(wanted('systemLabelImport'))phases.push(await runPhase('systemLabelImport',async()=>{
+  if(!staged){const r=await applySystemLabelImport(admin,{bytes,token:preview.token});return{path:'single-transaction',imported:r.imported,skipped:r.skipped,failed:r.failed};}
+  // The administrator's request only enqueues; the kernel worker (the same tick loop the import service runs) does the rest.
+  const {startSystemLabelImportJob}=await load('core/system-label-import-job');
+  const {runBulkJobTick}=await load('core/bulk-job-worker');
+  const {BULK_JOB_HANDLERS}=await load('core/bulk-job-handlers');
+  const requested=Date.now();const {job}=await startSystemLabelImportJob(admin,{bytes,token:preview.token,fileName:'rehearsal.xlsx'});const requestMs=Date.now()-requested;
+  const worker=postgres(OWNER_URL,{max:2,onnotice:()=>{}});
+  try{
+   for(;;){
+    const [row]=await obs<{state:string;result:{imported:number;skipped:number;failed:number}|null;error:string|null;metrics:Record<string,number>;steps_total:number}[]>`select state,result,error,metrics,steps_total from bulk_job where id=${job.id}::uuid`;
+    if(['completed','failed','cancelled'].includes(row.state))return{path:'staged-job',state:row.state,error:row.error,requestMs,steps:row.steps_total,...(row.result??{}),metrics:row.metrics};
+    if(!await runBulkJobTick(worker,{handlers:BULK_JOB_HANDLERS}))await sleep(20);
+   }
+  }finally{await worker.end();}
+ }));
  // Information snapshot reconciliation on the private operator connection.
  const {reconcileInformationSnapshots}=await load('scripts/reconcile-information-snapshots');
  const {createDb}=await load('db/client');
  const storage=createDb(OWNER_URL,{max:1});
  const slips=await obs<{id:string;employment_id:string}[]>`select p.id,p.employment_id from payslip p where p.tenant_id=${TENANT}::uuid order by p.employment_id`;
  const manifest={version:1 as const,tenantId:TENANT,actorUserId:ADMIN,verifiedOriginals:true as const,items:slips.map(s=>({payslipId:s.id,employmentId:s.employment_id,companyId,original:{grade:null,employmentType:'full_time' as const,hiredOn:'2026-03-02',joinDate:null},evidence:[{path:'fictional.pdf',sha256:'a'.repeat(64),reference:'Fictional reviewed original'}]}))};
- if(manifest.items.length)phases.push(await runPhase('reconcileInformationSnapshots',()=>reconcileInformationSnapshots(storage,manifest,true)));
+ if(manifest.items.length&&wanted('reconcileInformationSnapshots'))phases.push(await runPhase('reconcileInformationSnapshots',()=>reconcileInformationSnapshots(storage,manifest,true)));
  // Module change runner (one pending request) and the capability publication (storage owner).
  const {runModuleChangeTick}=await load('scripts/module-change-runner');
- phases.push(await runPhase('moduleChangeRunner',()=>runModuleChangeTick(storage)));
+ if(wanted('moduleChangeRunner'))phases.push(await runPhase('moduleChangeRunner',()=>runModuleChangeTick(storage)));
  const {publishWorkforceCapabilities}=await load('deploy/access/publish-workforce-capabilities');
  const installer=postgres(OWNER_URL,{max:1,onnotice:()=>{}});
- phases.push(await runPhase('publishWorkforceCapabilities',()=>publishWorkforceCapabilities(installer)));
+ const [{tenants}]=await obs<{tenants:number}[]>`select count(*)::int tenants from tenant`;
+ for(let i=tenants;i<PUBLICATION_TENANTS;i++)await obs`insert into tenant(name,workos_org_id) values(${'Fictional publication tenant '+i},${'fictional-rehearsal-publication-'+i})`;
+ const tenantTx:number[]=[];
+ if(wanted('publishWorkforceCapabilities'))phases.push(await runPhase('publishWorkforceCapabilities',async()=>{const r=await publishWorkforceCapabilities(installer,{onTenant:(_id:string,ms:number)=>tenantTx.push(ms)});return{...r,tenants:Math.max(tenants,PUBLICATION_TENANTS),perTenantTx:stat(tenantTx)};}));
  await installer.end();await storage.client.end();
 
  // ── normalized end state ──
@@ -159,9 +184,12 @@ async function main(){
   toil:multiset(await obs`select company_id,enabled from toil_policy where tenant_id=${TENANT}::uuid`),
   moduleRequests:multiset(await obs`select module_code,action,status,current_step,error from module_change_request where tenant_id=${TENANT}::uuid`),
   capabilities:multiset(await obs`select id,supported,bindings from access_capability order by id`),
+  // Every tenant's publication fence: one changed preview revision, one generation step and one audit event each.
+  publication:multiset(await obs`select (select count(*) from domain_event d where d.tenant_id=t.id and d.event_type='access-configuration.capabilities-published')::int events,
+   g.generation from tenant t left join app.access_profile_write_generation g on g.tenant_id=t.id`),
   // Every event the run appended (probe events excluded): type, aggregate, subject and payload, ids as business keys.
   events:multiset(await obs`select event_type,aggregate_type,aggregate_id,subject_employment_id,actor_type,payload from domain_event where tenant_id=${TENANT}::uuid and occurred_at>=${runStart}
-    and aggregate_type not like 'attendance%' and aggregate_type<>'app-user' and (subject_employment_id is null or subject_employment_id<>${clockEmployment}::uuid)`),
+    and aggregate_type not like 'attendance%' and aggregate_type<>'app-user' and aggregate_type<>'bulk-job' and (subject_employment_id is null or subject_employment_id<>${clockEmployment}::uuid)`),
  };
  const chain=await verifyTenantChain(admin);
  const out=process.env.REHEARSAL_OUT;
