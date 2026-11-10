@@ -34,7 +34,9 @@ it('builds the complete explicit-demand template even when the screen address na
  expect(state.window.mock.calls[0][1]).toMatchObject({companyIds:[company],from:'2027-01-04',to:'2027-01-04'});expect(state.window.mock.calls[0][1]).not.toHaveProperty('limit');expect(state.page).not.toHaveBeenCalled();
 });
 it('uses freshly resolved team IDs instead of URL membership claims',async()=>{
- state.team.mockResolvedValue({scope:{companyIds:[company],employmentIds:[other]}});
- await choices(new Request(`https://example.invalid/roster/employee-choices?companyId=${company}&employmentIds=forged`));
+ // The real rosterTeamContext always returns the validated query next to the fresh scope.
+ state.team.mockResolvedValue({query:{view:'week',scope:'direct'},scope:{companyIds:[company],employmentIds:[other]}});
+ const result=await choices(new Request(`https://example.invalid/roster/employee-choices?companyId=${company}&employmentIds=forged`));
+ expect(result.status).toBe(200);
  expect(state.page.mock.calls[0][1].employmentIds).toEqual([other]);
 });
