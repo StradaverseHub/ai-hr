@@ -2967,6 +2967,20 @@
         "waiting": "Đang chờ trình xử lý nhập. Tiến độ đã được lưu; đừng tải tệp lên lần nữa.",
         "otherRunning": "Một lần nhập nhân viên khác vẫn đang chạy. Hãy chờ hoàn tất trước khi bắt đầu lần mới.",
         "workerUnavailable": "Dịch vụ nhập chưa chạy. Lần nhập của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy."
+      },
+      "movementJob": {
+        "queued": "Đang chờ bắt đầu",
+        "validating": "Đang kiểm tra lại tệp",
+        "importing": "Đang lưu biến động",
+        "finishing": "Đang ghi nhận việc nhập",
+        "completed": "Đã nhập xong",
+        "failed": "Việc nhập đã dừng",
+        "cancelled": "Việc nhập đã dừng",
+        "progressCount": "Đã xử lý {done}/{total} nhân viên",
+        "backgroundHelp": "Bạn có thể rời trang này. Các biến động của mỗi nhân viên được lưu cùng nhau ngay khi nhân viên đó được xử lý.",
+        "waiting": "Đang chờ trình xử lý nhập. Tiến độ đã được lưu; đừng xác nhận việc nhập lần nữa.",
+        "otherRunning": "Một lần nhập biến động khác do bạn bắt đầu vẫn đang chạy. Hãy chờ hoàn tất trước khi xác nhận lần mới.",
+        "workerUnavailable": "Dịch vụ nhập chưa chạy. Lần nhập của bạn đã được lưu và sẽ tự động bắt đầu ngay khi dịch vụ chạy."
       }
     },
     "wizard": {
@@ -37263,6 +37277,20 @@
         "cancelled": {
           "title": "Đã hủy việc nhập nhân viên",
           "body": "Không có nhân viên nào được thêm. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "Đã nhập biến động xong",
+          "body": "Mở Lịch sử nhập để xem các biến động đã được lưu và những nhân viên chưa lưu được."
+        },
+        "failed": {
+          "title": "Việc nhập biến động đã dừng",
+          "body": "Mở Lịch sử nhập để xem lý do. Nhân viên đã được lưu vẫn giữ các biến động của mình."
+        },
+        "cancelled": {
+          "title": "Việc nhập biến động đã dừng",
+          "body": "Nhân viên đã được lưu vẫn giữ các biến động của mình. Mở Lịch sử nhập để xem chi tiết."
         }
       }
     }

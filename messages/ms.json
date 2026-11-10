@@ -2967,6 +2967,20 @@
         "waiting": "Menunggu pekerja import. Kemajuan disimpan; jangan muat naik fail ini sekali lagi.",
         "otherRunning": "Satu lagi import pekerja masih berjalan. Tunggu sehingga selesai sebelum memulakan yang baharu.",
         "workerUnavailable": "Perkhidmatan import belum berjalan. Import anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
+      },
+      "movementJob": {
+        "queued": "Menunggu untuk bermula",
+        "validating": "Menyemak fail sekali lagi",
+        "importing": "Menyimpan pergerakan",
+        "finishing": "Merekodkan import",
+        "completed": "Import selesai",
+        "failed": "Import dihentikan",
+        "cancelled": "Import dihentikan",
+        "progressCount": "{done} daripada {total} pekerja diproses",
+        "backgroundHelp": "Anda boleh tinggalkan halaman ini. Pergerakan setiap pekerja disimpan bersama sebaik sahaja pekerja itu diproses.",
+        "waiting": "Menunggu pekerja import. Kemajuan disimpan; jangan sahkan import ini sekali lagi.",
+        "otherRunning": "Satu lagi import pergerakan yang anda mulakan masih berjalan. Tunggu sehingga selesai sebelum mengesahkan yang baharu.",
+        "workerUnavailable": "Perkhidmatan import belum berjalan. Import anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
       }
     },
     "wizard": {
@@ -37263,6 +37277,20 @@
         "cancelled": {
           "title": "Import pekerja dibatalkan",
           "body": "Tiada pekerja ditambah. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "Import pergerakan selesai",
+          "body": "Buka Sejarah Import untuk melihat pergerakan yang disimpan dan pekerja yang tidak dapat disimpan."
+        },
+        "failed": {
+          "title": "Import pergerakan dihentikan",
+          "body": "Buka Sejarah Import untuk melihat sebabnya. Pekerja yang telah disimpan mengekalkan pergerakan mereka."
+        },
+        "cancelled": {
+          "title": "Import pergerakan dihentikan",
+          "body": "Pekerja yang telah disimpan mengekalkan pergerakan mereka. Buka Sejarah Import untuk butiran."
         }
       }
     }

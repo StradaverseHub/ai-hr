@@ -437,25 +437,82 @@ export async function previewMovementImport(ctx:SessionContext,p:{companyId?:str
 /** ac6645ec — with `attemptId`, every movement an employee's transaction creates is recorded as an import
  * history item (its movement id, the values before and after) in that SAME transaction. */
 export type MovementCommitHistory={attemptId:string};
-/** 646355e5 slice C — `acknowledgeClosedPayroll` is the import's confirmation box. Without it, an Update or
- * Delete row behind closed payroll fails its employee with the closed-payroll message. */
-export async function commitMovementImport(ctx:SessionContext,p:{companyId?:string;csv:string;selection:number[];inputHash:string;fingerprints:Record<string,string>;acknowledgeExcluded:boolean;records?:MovementImportRecord[];sourceHash?:string;catalogueHash?:string;history?:MovementCommitHistory;acknowledgeClosedPayroll?:boolean}):Promise<MovementImportResult>{
+export type MovementCommitInput={companyId?:string;csv:string;selection:number[];inputHash:string;fingerprints:Record<string,string>;acknowledgeExcluded:boolean;records?:MovementImportRecord[];sourceHash?:string;catalogueHash?:string;history?:MovementCommitHistory;acknowledgeClosedPayroll?:boolean};
+/** Everything a commit settles before its first employee transaction: the checked selection and the employees in
+ * file order, each with every record of that employee (companies already resolved). The synchronous commit and
+ * the background job (core/movement-import-worker.ts) start from this, so both refuse the same inputs. */
+export type MovementCommitPlan={total:number;selection:number[];names:[string,string][];groups:{key:string;records:MovementImportRecord[]}[]};
+export async function planMovementCommit(ctx:SessionContext,p:MovementCommitInput):Promise<MovementCommitPlan>{
  assertAdmin(ctx);const parsed=p.records?{records:p.records,fileErrors:movementRecordLimits(p.records)}:parseMovementImport(p.csv);if(parsed.fileErrors.length)throw new Error(parsed.fileErrors.join('; '));const selection=selectionFor(parsed.records,p.selection);
  if(!selection.length)throw new Error('select_valid_rows');const inputHash=digest({companyId:p.companyId,csv:p.csv,records:p.records,sourceHash:p.sourceHash});if(inputHash!==p.inputHash)throw new Error('preview_changed');
  if(selection.length!==parsed.records.length&&p.acknowledgeExcluded!==true)throw new Error('confirm_excluded_rows');
  const {records:resolved,names}=await resolveRecordCompanies(ctx,parsed.records);
  for(const records of groupsFor(resolved).values()){const picked=records.filter(r=>selection.includes(r.row)).length;if(picked&&picked!==records.length)throw new Error('whole_employee_selection_required');}
- const result:MovementImportResult={employees:[],imported:0,failed:0,excluded:parsed.records.length-selection.length,byEventType:[],batchId:p.history?.attemptId??randomUUID(),...(p.history?{attemptId:p.history.attemptId}:{})};const deadline=Date.now()+MOVEMENT_IMPORT_LIMITS.requestMs;
- for(const [key,records] of groupsFor(resolved)){
-  const code=records[0].employeeCode,start=employeeFor(key,records,p.companyId,names),companyId=start.companyId;
-  const chosen=sortSequence(records.filter(row=>selection.includes(row.row)));if(!chosen.length){result.employees.push({...start.employee,rows:records.map(rowView)});continue;}
-  let employee:MovementImportEmployee=start.employee;
-  try{
-   budget(deadline);if(!companyId)throw new Error('company_not_available');
-   employee=await withTenant(ctx,async tx=>{
-    await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
+ return{total:parsed.records.length,selection,names:[...names],groups:[...groupsFor(resolved)].map(([key,records])=>({key,records}))};
+}
+/** One employee of a commit plan, as the commit loop handles it. */
+export type MovementCommitEmployee={key:string;records:MovementImportRecord[];companyId?:string;names:Map<string,string>;selection:number[];inputHash:string;fingerprints:Record<string,string>;catalogueHash?:string;history?:MovementCommitHistory;acknowledgeClosedPayroll?:boolean;batchId:string};
+export type MovementEmployeeOutcome={employee:MovementImportEmployee;status:'excluded'|'imported'|'failed';count:number};
+/** An employee whose file rows were all left out: its rows as read, nothing written. Null when rows were chosen. */
+export function movementExcludedEmployee(c:Pick<MovementCommitEmployee,'key'|'records'|'companyId'|'names'|'selection'>):MovementImportEmployee|null{
+ const start=employeeFor(c.key,c.records,c.companyId,c.names);
+ return c.records.some(row=>c.selection.includes(row.row))?null:{...start.employee,rows:c.records.map(rowView)};
+}
+/** The session limits and the Access lock every employee transaction of a commit starts with (the background job
+ * takes them once per chunk transaction, before its employees). */
+export async function beginMovementCommitTx(tx:Tx,ctx:SessionContext){await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);}
+/**
+ * One employee's movements, all or nothing, as the synchronous commit applies them. `run` opens the employee's
+ * own atomic unit (its transaction, or a savepoint inside a background chunk that already holds the session limits
+ * and the Access lock) and passes the body to it. A refusal becomes the employee's failed rows; `rethrow` lets the
+ * caller keep a transient database refusal for a retry instead.
+ */
+export async function commitMovementEmployee(ctx:SessionContext,c:MovementCommitEmployee,deadline:number,run:(body:(tx:Tx)=>Promise<MovementImportEmployee>)=>Promise<MovementImportEmployee>,rethrow?:(error:unknown)=>boolean):Promise<MovementEmployeeOutcome>{
+ const code=c.records[0].employeeCode,start=employeeFor(c.key,c.records,c.companyId,c.names),companyId=start.companyId,selection=c.selection;
+ const chosen=sortSequence(c.records.filter(row=>selection.includes(row.row)));if(!chosen.length)return{employee:{...start.employee,rows:c.records.map(rowView)},status:'excluded',count:0};
+ const held={employee:start.employee};
+ try{
+  budget(deadline);if(!companyId)throw new Error('company_not_available');
+  const employee=await run(tx=>commitEmployeeTx(tx,ctx,c,{code,companyId,chosen,deadline,held}));
+  return{employee,status:'imported',count:chosen.length};
+ }catch(error){
+  if(rethrow?.(error))throw error;
+  const employee=held.employee;
+  return{employee:{...employee,rows:employee.rows.map(row=>selection.includes(row.row)?{...row,status:'failed',errors:[message(error)]}:row)},status:'failed',count:chosen.length};
+ }
+}
+/** An employee whose commit never ran to an outcome (a background step that kept meeting transient refusals):
+ * reported exactly as a refused database change of that employee's transaction. */
+export function movementRefusedEmployee(c:Pick<MovementCommitEmployee,'key'|'records'|'companyId'|'names'|'selection'>):MovementEmployeeOutcome{
+ const start=employeeFor(c.key,c.records,c.companyId,c.names),count=c.records.filter(row=>c.selection.includes(row.row)).length;
+ return{employee:{...start.employee,rows:start.employee.rows.map(row=>c.selection.includes(row.row)?{...row,status:'failed',errors:['change_refused']}:row)},status:'failed',count};
+}
+/** By-event-type counts of a finished commit, in event type order. */
+export function movementCommitCounts(employees:MovementImportEmployee[]):MovementImportResult['byEventType']{
+ const counts=new Map<string,{eventType:string;imported:number;failed:number;excluded:number}>();
+ for(const employee of employees)for(const row of employee.rows){const count=counts.get(row.eventType)??{eventType:row.eventType,imported:0,failed:0,excluded:0};row.status==='imported'?count.imported++:row.status==='failed'?count.failed++:count.excluded++;counts.set(row.eventType,count);}
+ return [...counts.values()].sort((a,b)=>a.eventType.localeCompare(b.eventType));
+}
+/** 646355e5 slice C — `acknowledgeClosedPayroll` is the import's confirmation box. Without it, an Update or
+ * Delete row behind closed payroll fails its employee with the closed-payroll message. */
+export async function commitMovementImport(ctx:SessionContext,p:MovementCommitInput):Promise<MovementImportResult>{
+ const plan=await planMovementCommit(ctx,p),selection=plan.selection,names=new Map(plan.names);
+ const result:MovementImportResult={employees:[],imported:0,failed:0,excluded:plan.total-selection.length,byEventType:[],batchId:p.history?.attemptId??randomUUID(),...(p.history?{attemptId:p.history.attemptId}:{})};const deadline=Date.now()+MOVEMENT_IMPORT_LIMITS.requestMs;
+ for(const {key,records} of plan.groups){
+  const outcome=await commitMovementEmployee(ctx,{key,records,companyId:p.companyId,names,selection,inputHash:p.inputHash,fingerprints:p.fingerprints,catalogueHash:p.catalogueHash,history:p.history,acknowledgeClosedPayroll:p.acknowledgeClosedPayroll,batchId:result.batchId!},deadline,
+   body=>withTenant(ctx,async tx=>{await beginMovementCommitTx(tx,ctx);return body(tx);}));
+  if(outcome.status==='imported')result.imported+=outcome.count;else if(outcome.status==='failed')result.failed+=outcome.count;
+  result.employees.push(outcome.employee);
+ }
+ result.byEventType=movementCommitCounts(result.employees);return result;
+}
+/** The body of one employee's commit transaction (after the session limits and the Access lock). `held.employee`
+ * names the employee as soon as it is resolved, so a later refusal still reports who it was. */
+async function commitEmployeeTx(tx:Tx,ctx:SessionContext,p:MovementCommitEmployee,e:{code:string;companyId:string;chosen:MovementImportRecord[];deadline:number;held:{employee:MovementImportEmployee}}):Promise<MovementImportEmployee>{
+ const {key,records,selection,inputHash}=p,{code,companyId,chosen,deadline}=e;const result={batchId:p.batchId};
+ let employee=e.held.employee;
     const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,companyId);const catalog=await catalogTx(tx,ctx,companyId);if(p.catalogueHash&&digest({version:2,types:catalog.types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');const subject=await subjectTx(tx,ctx,companyId,code);
-    employee={...employee,employmentId:subject.id,name:subject.name};
+    employee={...employee,employmentId:subject.id,name:subject.name};e.held.employee=employee;
     const fingerprint=await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline);
     // Corrections act on recorded movements first, under the same lock order the create rehearsal takes.
     const corrections=employeeOrder(records).filter(isCorrection),corrected:CorrectedRow[]=[];
@@ -500,14 +557,6 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId?:stri
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'movement-import',aggregateId:result.batchId!,eventType:'movement-import.employee.applied',actor:actorOf(ctx),subjectEmploymentId:subject.id,payload:{companyId,eventCount:chosen.length,sourceRows:chosen.map(row=>({key:row.row,sheet:row.source?.sheet??'CSV',row:row.source?.row??row.row})),eventTypes:[...new Set(chosen.map(row=>row.cells.kind).filter(Boolean))],
      ...(corrected.length?{corrections:corrected.map(row=>({action:row.action,movementId:row.originalId,closedPayrollPeriods:row.closedPayrollPeriods})),closedPayrollAcknowledged:p.acknowledgeClosedPayroll===true}:{})}});
     return {...employee,employmentId:subject.id,name:subject.name,rows,fingerprint:combined};
-   });
-   result.imported+=chosen.length;
-  }catch(error){employee={...employee,rows:employee.rows.map(row=>selection.includes(row.row)?{...row,status:'failed',errors:[message(error)]}:row)};result.failed+=chosen.length;}
-  result.employees.push(employee);
- }
- const counts=new Map<string,{eventType:string;imported:number;failed:number;excluded:number}>();
- for(const employee of result.employees)for(const row of employee.rows){const count=counts.get(row.eventType)??{eventType:row.eventType,imported:0,failed:0,excluded:0};row.status==='imported'?count.imported++:row.status==='failed'?count.failed++:count.excluded++;counts.set(row.eventType,count);}
- result.byEventType=[...counts.values()].sort((a,b)=>a.eventType.localeCompare(b.eventType));return result;
 }
 /** What an applied movement item stores (before/after). `raw` holds the state values the movement left for
  * the fields it changed; a revert is blocked while any of them has since been changed again. */

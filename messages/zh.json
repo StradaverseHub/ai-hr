@@ -2967,6 +2967,20 @@
         "waiting": "正在等待导入进程。进度已保存；请勿再次上传文件。",
         "otherRunning": "另一项员工导入仍在进行。请等待其完成后再开始新的导入。",
         "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务一运行便会自动开始。"
+      },
+      "movementJob": {
+        "queued": "等待开始",
+        "validating": "正在重新检查文件",
+        "importing": "正在保存异动",
+        "finishing": "正在记录导入",
+        "completed": "导入已完成",
+        "failed": "导入已停止",
+        "cancelled": "导入已停止",
+        "progressCount": "已处理 {done}/{total} 名员工",
+        "backgroundHelp": "您可以离开此页面。每名员工的异动会在处理该员工时一并保存。",
+        "waiting": "正在等待导入进程。进度已保存；请勿再次确认导入。",
+        "otherRunning": "您发起的另一项异动导入仍在进行。请等待其完成后再确认新的导入。",
+        "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务一运行便会自动开始。"
       }
     },
     "wizard": {
@@ -37263,6 +37277,20 @@
         "cancelled": {
           "title": "员工导入已取消",
           "body": "未添加任何员工。打开导入历史查看详情。"
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "异动导入已完成",
+          "body": "打开导入历史，查看已保存的异动以及未能保存的员工。"
+        },
+        "failed": {
+          "title": "异动导入已停止",
+          "body": "打开导入历史查看原因。已保存的员工会保留其异动。"
+        },
+        "cancelled": {
+          "title": "异动导入已停止",
+          "body": "已保存的员工会保留其异动。打开导入历史查看详情。"
         }
       }
     }
