@@ -5,7 +5,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import {company,appUser,roleEnum,letterCapabilityGrant,letterAutomationRuleVersion,letterAsset,letterPolicyVersion,letterMergeFieldVersion,letterTemplate,letterTemplateVersion,letterTemplateField,employment,person,assignment,position,department,compensation,letterGenerationBatch,letterRecord,letterRevision,letterCounter,letterJob,letterApprovalDecision,letterArtifact,letterRecipientEvent,letterAccessToken} from '../db/schema';
 import {assertModuleGate} from './module-gate';
-import {lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
 import {isAiPresentationPrincipalCurrentTx} from './ai-principal';
 import {isModuleEnabled} from './entitlements';
@@ -24,22 +24,33 @@ import {letterVerificationUrl,letterVerificationWords} from '../lib/letter-verif
 import {isCalendarDate} from '../lib/calendar-date';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {compensationEffectiveOn} from './comp';
-import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePresentationEmploymentTx} from './workforce-access';
+import {assertWorkforceCompanyTx,assertWorkforcePresentationEmploymentTx} from './workforce-access';
+import {assertWorkforceEmploymentSharedTx} from './workforce-access-shared';
 import {listPresentationWorkforcePickPageTx,readPresentationWorkforcePickRowsTx} from './read';
 import {linkLetterRequestDraftTx,LetterRequestError} from './letter-requests';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function uuid(value:string){if(!UUID.test(value))throw new LetterWorkflowError('invalid','identity');return value;}
 function text(value:string,max:number){const result=value.trim();if(!result||result.length>max)throw new LetterWorkflowError('invalid','text');return result;}
 const hash=(value:Buffer|string)=>createHash('sha256').update(value).digest('hex');
-async function contextTx(ctx:SessionContext,tx:Tx,mode:boolean|'shared-access-read'){
+/** Letter lock modes (reader/writer wave 4, split):
+ * - 'configuration': letter permissions, assets, policies, fields, templates and automation rules are
+ *   configuration other letter writers read, so they keep the exclusive Access lock and the letters key;
+ * - true: letter workflow (drafts, approvals, issue, void, delivery, employee access and downloads) runs
+ *   under the SHARED Access lock. The tenant letters key, held to commit, still serialises letter state,
+ *   so only the Access-level exclusivity those writers never needed is dropped;
+ * - false: the exclusive Access lock without the letters key (no current caller);
+ * - 'shared-access-read': the shared Access lock only. */
+type LetterLockMode=boolean|'shared-access-read'|'configuration';
+async function contextTx(ctx:SessionContext,tx:Tx,mode:LetterLockMode){
  if(!ctx.userId)throw new LetterWorkflowError('permission');
  await lockPayrollHistoryReadTx(tx,ctx.tenantId);
  if(mode==='shared-access-read')await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+ else if(mode===true)await lockAccessConfigurationTx(tx,ctx.tenantId);
  else await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  const [principal]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() as ok`);if(!principal?.ok)throw new LetterWorkflowError('permission');
- if(mode===true)await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
+ if(mode===true||mode==='configuration')await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
 }
-function letters<T>(ctx:SessionContext,mode:boolean|'shared-access-read',work:(tx:Tx)=>Promise<T>):Promise<T>{
+function letters<T>(ctx:SessionContext,mode:LetterLockMode,work:(tx:Tx)=>Promise<T>):Promise<T>{
  assertModuleGate(ctx,'employees');return withTenant(ctx,async tx=>{await contextTx(ctx,tx,mode);return work(tx);});
 }
 /** Display reads linearize in one database-enforced snapshot. Sensitive command, audit,
@@ -82,7 +93,7 @@ export function listLetterSignatories(ctx:SessionContext,input:{companyId:string
  await anyPermission(tx,input.companyId,['read','template','settings']);const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);const search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':null;
  const rows=await tx.execute<{id:string;name:string}>(sql`select * from app.letter_signatory_choices(${input.companyId}::uuid,${input.cursor??null}::uuid,${needle},${limit+1})`);return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
-export function saveLetterPermission(ctx:SessionContext,input:{companyId:string;capability:LetterCapability;role:string;allowed:boolean;expectedAllowed?:boolean|null}){return letters(ctx,true,async tx=>{
+export function saveLetterPermission(ctx:SessionContext,input:{companyId:string;capability:LetterCapability;role:string;allowed:boolean;expectedAllowed?:boolean|null}){return letters(ctx,'configuration',async tx=>{
  await permission(tx,input.companyId,'settings');await lockCompany(tx,input.companyId);
  if(!LETTER_CAPABILITIES.includes(input.capability)||!(roleEnum.enumValues as readonly string[]).includes(input.role)||typeof input.allowed!=='boolean')throw new LetterWorkflowError('invalid','permission');
  const [before]=await tx.select().from(letterCapabilityGrant).where(and(eq(letterCapabilityGrant.companyId,input.companyId),eq(letterCapabilityGrant.capability,input.capability),eq(letterCapabilityGrant.role,input.role)));
@@ -90,7 +101,7 @@ export function saveLetterPermission(ctx:SessionContext,input:{companyId:string;
  const [saved]=await tx.insert(letterCapabilityGrant).values({tenantId:ctx.tenantId,companyId:input.companyId,capability:input.capability,role:input.role,allowed:input.allowed}).onConflictDoUpdate({target:[letterCapabilityGrant.tenantId,letterCapabilityGrant.companyId,letterCapabilityGrant.capability,letterCapabilityGrant.role],set:{allowed:input.allowed}}).returning({id:letterCapabilityGrant.id});
  await event(tx,ctx,saved.id,'permission.changed',{companyId:input.companyId,capability:input.capability,role:input.role,before:before?.allowed??null,allowed:input.allowed});return saved;
 });}
-export function addLetterAsset(ctx:SessionContext,input:{companyId:string;kind:'letterhead'|'signature';name:string;content:Buffer}){return letters(ctx,true,async tx=>{
+export function addLetterAsset(ctx:SessionContext,input:{companyId:string;kind:'letterhead'|'signature';name:string;content:Buffer}){return letters(ctx,'configuration',async tx=>{
  await permission(tx,input.companyId,input.kind==='signature'?'approve':'settings');await lockCompany(tx,input.companyId);
  if(!['letterhead','signature'].includes(input.kind)||input.content.length<24||input.content.length>2097152||input.content.subarray(0,8).toString('hex')!=='89504e470d0a1a0a')throw new LetterWorkflowError('invalid','png');
  const width=input.content.readUInt32BE(16),height=input.content.readUInt32BE(20);if(width<1||height<1||width>2048||height>2048)throw new LetterWorkflowError('invalid','imageSize');
@@ -112,7 +123,7 @@ export function readLetterAsset(ctx:SessionContext,id:string){return letters(ctx
  if(asset.kind==='signature'){if(asset.ownerUserId!==ctx.userId)throw new LetterWorkflowError('permission');await permission(tx,asset.companyId,'approve');}else await anyPermission(tx,asset.companyId,['read','template','settings']);
  if(hash(asset.content)!==asset.contentHash)throw new LetterWorkflowError('configuration','assetHash');await event(tx,ctx,asset.id,'asset.viewed',{companyId:asset.companyId,kind:asset.kind,contentHash:asset.contentHash});return {content:asset.content,mimeType:asset.mimeType};
 });}
-export function saveLetterPolicy(ctx:SessionContext,input:{companyId:string;category:string;enabled:boolean;policy:unknown;expectedOrdinal?:number},options:{transport?:NotificationEmailTransport}={}){return letters(ctx,true,async tx=>{
+export function saveLetterPolicy(ctx:SessionContext,input:{companyId:string;category:string;enabled:boolean;policy:unknown;expectedOrdinal?:number},options:{transport?:NotificationEmailTransport}={}){return letters(ctx,'configuration',async tx=>{
  await permission(tx,input.companyId,'settings');await lockCompany(tx,input.companyId);const policy=validateLetterPolicy(input.policy),category=text(input.category,100);
  if(typeof input.enabled!=='boolean')throw new LetterWorkflowError('invalid','enabled');
  if(input.enabled)try{letterVerificationUrl('A'.repeat(43),'en');}catch{throw new LetterWorkflowError('configuration','publicOrigin');}
@@ -144,7 +155,7 @@ export function readLetterSettingsReadiness(ctx:SessionContext,companyId:string,
 export function readLetterPermissions(ctx:SessionContext,companyId:string){return letterPresentation(ctx,companyId,async (tx,ctx,companyId)=>{
  await permission(tx,companyId,'settings');return tx.select({role:letterCapabilityGrant.role,capability:letterCapabilityGrant.capability,allowed:letterCapabilityGrant.allowed}).from(letterCapabilityGrant).where(eq(letterCapabilityGrant.companyId,companyId)).orderBy(asc(letterCapabilityGrant.role),asc(letterCapabilityGrant.capability));
 });}
-export function saveLetterField(ctx:SessionContext,input:{companyId:string;definition:unknown;active:boolean;expectedOrdinal?:number}){return letters(ctx,true,async tx=>{
+export function saveLetterField(ctx:SessionContext,input:{companyId:string;definition:unknown;active:boolean;expectedOrdinal?:number}){return letters(ctx,'configuration',async tx=>{
  await permission(tx,input.companyId,'template');await lockCompany(tx,input.companyId);const definition=validateLetterFields([input.definition])[0];if(typeof input.active!=='boolean')throw new LetterWorkflowError('invalid','active');
  if(definition.sensitive){const [financial]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_payroll_for(${input.companyId}::uuid) as allowed`);if(!financial?.allowed)throw new LetterWorkflowError('permission');}
  const versions=await tx.select({id:letterMergeFieldVersion.id,ordinal:letterMergeFieldVersion.ordinal}).from(letterMergeFieldVersion).where(and(eq(letterMergeFieldVersion.companyId,input.companyId),eq(letterMergeFieldVersion.key,definition.key))).orderBy(desc(letterMergeFieldVersion.ordinal));
@@ -167,7 +178,7 @@ async function templateFields(tx:Tx,ids:string[],co:string):Promise<{id:string;d
  if(rows.some(row=>row.definition.sensitive)){const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${co}::uuid) as ok`);if(!allowed?.ok)throw new LetterWorkflowError('permission');}return rows;
 }
 type LetterTemplateContent={document:unknown;editor?:never;language?:never}|{editor:unknown;language:LetterDocument['language'];document?:never};
-export function saveLetterTemplate(ctx:SessionContext,input:{companyId:string;templateId?:string;expectedRevision?:number;code:string;name:string;category:string;effectiveFrom:string;fieldVersionIds:string[];presentation?:unknown;submit?:boolean}&LetterTemplateContent){return letters(ctx,true,async tx=>{
+export function saveLetterTemplate(ctx:SessionContext,input:{companyId:string;templateId?:string;expectedRevision?:number;code:string;name:string;category:string;effectiveFrom:string;fieldVersionIds:string[];presentation?:unknown;submit?:boolean}&LetterTemplateContent){return letters(ctx,'configuration',async tx=>{
  await permission(tx,input.companyId,'template');await lockCompany(tx,input.companyId);if(!isCalendarDate(input.effectiveFrom))throw new LetterWorkflowError('invalid','effectiveFrom');
  if(('editor' in input&&'document' in input)||(input.submit!==undefined&&typeof input.submit!=='boolean'))throw new LetterWorkflowError('invalid','document');
  const presentation=input.presentation===undefined?null:validateLetterTemplatePresentation(input.presentation);
@@ -189,7 +200,7 @@ export function saveLetterTemplate(ctx:SessionContext,input:{companyId:string;te
  if(input.submit){await tx.update(letterTemplateVersion).set({status:'submitted'}).where(eq(letterTemplateVersion.id,version.id));await event(tx,ctx,root.id,'template.submitted',{versionId:version.id});}
  return {templateId:root.id,versionId:version.id,revision:root.revision+1};
 });}
-export function decideLetterTemplate(ctx:SessionContext,input:{versionId:string;expectedStatus:'draft'|'submitted';action:'submit'|'approve'|'reject';reason?:string}){return letters(ctx,true,async tx=>{
+export function decideLetterTemplate(ctx:SessionContext,input:{versionId:string;expectedStatus:'draft'|'submitted';action:'submit'|'approve'|'reject';reason?:string}){return letters(ctx,'configuration',async tx=>{
  if(!['submit','approve','reject'].includes(input.action))throw new LetterWorkflowError('invalid','action');
  const [version]=await tx.select().from(letterTemplateVersion).where(eq(letterTemplateVersion.id,uuid(input.versionId))).for('update');if(!version)throw new LetterWorkflowError('permission');await permission(tx,version.companyId,'template');
  if(version.status!==input.expectedStatus)throw new LetterWorkflowError('stale');
@@ -201,7 +212,7 @@ export function decideLetterTemplate(ctx:SessionContext,input:{versionId:string;
  const [saved]=await tx.update(letterTemplateVersion).set({status}).where(eq(letterTemplateVersion.id,version.id)).returning();
  await event(tx,ctx,version.templateId,'template.'+status,{versionId:version.id,reason:input.reason?.trim().slice(0,2000)??null});return saved;
 });}
-export function setLetterTemplateActive(ctx:SessionContext,input:{templateId:string;expectedRevision:number;active:boolean}){return letters(ctx,true,async tx=>{
+export function setLetterTemplateActive(ctx:SessionContext,input:{templateId:string;expectedRevision:number;active:boolean}){return letters(ctx,'configuration',async tx=>{
  if(typeof input.active!=='boolean')throw new LetterWorkflowError('invalid','active');
  const [root]=await tx.select().from(letterTemplate).where(eq(letterTemplate.id,uuid(input.templateId))).for('update');if(!root)throw new LetterWorkflowError('permission');await permission(tx,root.companyId,'template');if(root.revision!==input.expectedRevision)throw new LetterWorkflowError('stale');
  const [saved]=await tx.update(letterTemplate).set({deactivated:!input.active,revision:root.revision+1}).where(eq(letterTemplate.id,root.id)).returning();await event(tx,ctx,root.id,input.active?'template.activated':'template.deactivated',{revision:saved.revision});return saved;
@@ -219,7 +230,7 @@ export const LETTER_AUTOMATION_TRIGGERS=['probation_due','confirmation_applied',
 export type LetterAutomationTrigger=typeof LETTER_AUTOMATION_TRIGGERS[number];
 /** Rules delegate draft creation only. Each immutable save records its accountable owner
  * and receives a database-stamped event watermark, so enabling never requests replay. */
-export function saveLetterAutomationRule(ctx:SessionContext,input:{companyId:string;templateId:string;trigger:LetterAutomationTrigger;expectedOrdinal:number;enabled:boolean;startOn?:string;customValues?:Record<string,LetterValue|null>}){return letters(ctx,true,async tx=>{
+export function saveLetterAutomationRule(ctx:SessionContext,input:{companyId:string;templateId:string;trigger:LetterAutomationTrigger;expectedOrdinal:number;enabled:boolean;startOn?:string;customValues?:Record<string,LetterValue|null>}){return letters(ctx,'configuration',async tx=>{
  await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'settings');await lockCompany(tx,input.companyId);uuid(input.templateId);
  if(!LETTER_AUTOMATION_TRIGGERS.includes(input.trigger)||typeof input.enabled!=='boolean'||!Number.isInteger(input.expectedOrdinal)||input.expectedOrdinal<0)throw new LetterWorkflowError('invalid','automation');
  // The shared Letters lock serializes service edits; the insert binding locks and rechecks the root.
@@ -272,7 +283,7 @@ export function listLetterAutomationJobs(ctx:SessionContext,input:{companyId:str
 async function letterSources(tx:Tx,ctx:SessionContext,co:string,employmentId:string,fields:LetterField[],custom:Record<string,LetterValue|null>,referenceDate:string,mode:'command'|'presentation'='command'){
  const presentation=mode==='presentation';
  if(presentation)await assertWorkforcePresentationEmploymentTx(tx,ctx,uuid(employmentId));
- else await assertWorkforceEmploymentTx(tx,ctx,uuid(employmentId),'view');
+ else await assertWorkforceEmploymentSharedTx(tx,ctx,uuid(employmentId),'view');
  const employeeQuery=tx.select().from(employment).where(and(eq(employment.id,employmentId),eq(employment.companyId,co)));
  const [employee]=await (presentation?employeeQuery:employeeQuery.for('share'));if(!employee)throw new LetterWorkflowError('permission');
  const personQuery=tx.select().from(person).where(eq(person.id,employee.personId));
@@ -337,7 +348,7 @@ async function newLetterRevision(tx:Tx,ctx:SessionContext,record:typeof letterRe
  * reuses the manual snapshot/reference/revision owners and never adopts a human session. */
 export async function createAutomaticLetterDraftTx(tx:Tx,ctx:SessionContext,jobId:string){
  if(ctx.userId)throw new LetterWorkflowError('permission');uuid(jobId);await assertLetterNotificationConnection(tx);
- await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
+ await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
  const [locked]=await tx.select().from(letterJob).where(and(eq(letterJob.id,jobId),eq(letterJob.tenantId,ctx.tenantId),eq(letterJob.kind,'eventDraft'))).for('update');if(!locked)throw new LetterWorkflowError('permission');
  const registered=await readRegisteredLetterAutomationSourceTx(tx,ctx,jobId);if(!registered)throw new LetterWorkflowError('permission');const {job,rule,intent}=registered;
  const [existing]=await tx.select({id:letterGenerationBatch.id}).from(letterGenerationBatch).where(and(eq(letterGenerationBatch.tenantId,ctx.tenantId),eq(letterGenerationBatch.operationKey,jobId),eq(letterGenerationBatch.createdBy,rule.createdBy)));if(existing){if(existing.id!==intent.batchId)throw new LetterWorkflowError('conflict','operationKey');return {batchId:existing.id,alreadyCreated:true,cancelled:false};}
@@ -375,7 +386,7 @@ export function createLetterDraftBatch(ctx:SessionContext,input:{companyId:strin
  if(template.version.presentation&&template.version.presentation.signatoryUserId!==policy.signatoryUserId)throw new LetterWorkflowError('configuration','templateSignatory');
  await assertLetterChain(tx,input.companyId,policy,ctx.userId!,template.fields.some(field=>field.definition.sensitive));
  // Validate every selected identity before creating any draft; unknown and foreign identities are identical refusals.
- for(const id of ids){await assertWorkforceEmploymentTx(tx,ctx,id,'view');const [row]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,id),eq(employment.companyId,input.companyId))).for('share');if(!row)throw new LetterWorkflowError('permission');}
+ for(const id of ids){await assertWorkforceEmploymentSharedTx(tx,ctx,id,'view');const [row]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,id),eq(employment.companyId,input.companyId))).for('share');if(!row)throw new LetterWorkflowError('permission');}
  const confidential=template.fields.some(field=>field.definition.sensitive);if(confidential){const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${input.companyId}::uuid) as ok`);if(!allowed?.ok)throw new LetterWorkflowError('permission');}
  const [batch]=await tx.insert(letterGenerationBatch).values({tenantId:ctx.tenantId,companyId:input.companyId,templateVersionId:input.templateVersionId,policyVersionId:configured.id,selection,inputHash,createdBy:ctx.userId!,operationKey:input.operationKey}).returning();
  for(const employmentId of ids){

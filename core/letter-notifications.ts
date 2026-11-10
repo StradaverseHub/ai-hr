@@ -5,7 +5,7 @@ import {letterJob,letterRecord,letterPolicyVersion,letterGenerationBatch,letterA
 import type {NotificationSweepConnection} from './notice-projection';
 import {validateLetterPolicy} from '../lib/letter-workflow';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
-import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {letterStageEnteredAt} from './letter-stage-clock';
 import {resolveEntitlementsTx,isModuleEnabled} from './entitlements';
 
@@ -19,7 +19,7 @@ async function recipientEligible(tx:Tx,userId:string,companyId:string,confidenti
  return target?.ok===true;
 }
 async function projectJob(tx:Tx,ctx:SessionContext,id:string){
- await assertLetterNotificationConnection(tx);await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+ await assertLetterNotificationConnection(tx);await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);
  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'letters:'+ctx.tenantId},0))`);
  const [job]=await tx.select().from(letterJob).where(and(eq(letterJob.tenantId,ctx.tenantId),eq(letterJob.id,id),inArray(letterJob.status,['queued','failed']),lte(letterJob.dueAt,sql`now()`))).for('update');
  if(!job)return {created:0,cancelled:0,deferredEmail:0};
