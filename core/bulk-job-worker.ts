@@ -12,7 +12,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
 import {pgSqlState} from '../lib/db-error';
 import {publicErrorMessage} from '../lib/public-error';
-import {BULK_JOB_ACTIVE_STATES,BULK_JOB_FINISHED_EVENT,type BulkJobRowError,type BulkJobState} from '../lib/bulk-job';
+import {BULK_JOB_FINISHED_EVENT,type BulkJobRowError,type BulkJobState} from '../lib/bulk-job';
 import {LeaveDependencyUnavailable} from './leave-dependency-lock';
 import {freshImportContext} from './bank-import-worker';
 import type {BulkJobRow} from './bulk-job';
@@ -113,15 +113,22 @@ export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOpt
   if(!proof?.ok)throw new Error('The bulk job worker requires the physical queue owner connection.');
   await beatBulkJobWorker(connection,kinds,options.workerId??processWorker);
   const token=randomUUID();
-  const [job]=await connection<BulkJobRow[]>`update bulk_job set lease_token=${token}::uuid,lease_expires_at=now()+make_interval(secs=>${LEASE_SECONDS})
-   where id=(select id from bulk_job where kind=any(${kinds}) and (lease_expires_at is null or lease_expires_at<now()) and (not_before is null or not_before<=now())
-    and (state=any(${[...BULK_JOB_ACTIVE_STATES]}) or (state in ('completed','failed','cancelled') and notified_at is null and finished_at>now()-interval '1 day'))
+  // Active work first, through the partial queue index (literal state list so the index predicate applies); then a
+  // terminal job whose completion notice is still owed (its own partial index). History rows are never scanned.
+  let [job]=await connection<BulkJobRow[]>`update bulk_job set lease_token=${token}::uuid,lease_expires_at=now()+make_interval(secs=>${LEASE_SECONDS})
+   where id=(select id from bulk_job where state in ('queued','preparing','running','finalizing','discarding') and kind=any(${kinds})
+    and (lease_expires_at is null or lease_expires_at<now()) and (not_before is null or not_before<=now())
     order by updated_at,created_at limit 1 for update skip locked) returning *`;
+  if(!job)[job]=await connection<BulkJobRow[]>`update bulk_job set lease_token=${token}::uuid,lease_expires_at=now()+make_interval(secs=>${LEASE_SECONDS})
+   where id=(select id from bulk_job where notified_at is null and state in ('completed','failed','cancelled') and kind=any(${kinds})
+    and finished_at>now()-interval '1 day' and (lease_expires_at is null or lease_expires_at<now()) and (not_before is null or not_before<=now())
+    order by finished_at limit 1 for update skip locked) returning *`;
   if(!job)return false;
   const claimed:Claimed={job,token,metrics:{}};
   try{await withBackgroundDatabaseWork(()=>processClaimed(connection,handlers.get(job.kind)!,claimed));}
   finally{
-   await connection`update bulk_job set lease_token=null,lease_expires_at=null,
+   // updated_at moves on every unit, so the least recently touched job is always next (fair across tenants).
+   await connection`update bulk_job set lease_token=null,lease_expires_at=null,updated_at=now(),
      metrics=metrics||coalesce((select jsonb_object_agg(k,greatest(coalesce((metrics->>k)::numeric,0),v::numeric)) from jsonb_each_text(${JSON.stringify(claimed.metrics)}::text::jsonb) m(k,v)),'{}'::jsonb)
     where id=${job.id}::uuid and lease_token=${token}::uuid`;
   }
@@ -238,9 +245,11 @@ const pgUuidArray=(ids:readonly string[])=>ids.length?sql`ARRAY[${sql.join(ids.m
 async function chunkUnit(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,unit:BulkJobUnit,ctx:SessionContext){
  const job=c.job;const budget=handler.chunkBudgetMs??250;const max=handler.maxStepsPerChunk??64;
  const cache=cacheOf(job.id);
+ let lockedAt=0;
  const result=await jobTx(ctx,c,unit,'chunk',async tx=>{
   const started=performance.now();
   await handler.beginChunkTx?.(tx,ctx,job);
+  lockedAt=performance.now(); // the kind's writer locks are held from here until COMMIT returns
   const steps=await tx.execute<BulkJobStep>(sql`select seq,kind,row_num,payload from bulk_job_step where job_id=${job.id}::uuid and state='pending' order by seq limit ${max} for update`);
   if(!steps.length){
    await tx.execute(sql`update bulk_job set state=${handler.finalize?'finalizing':'completed'},updated_at=now()${handler.finalize?sql``:sql`,finished_at=now()`} where id=${job.id}::uuid and state='running'`);
@@ -279,7 +288,7 @@ async function chunkUnit(connection:postgres.ReservedSql,handler:BulkJobHandler,
   return{count,done:false,ms};
  });
  if(result.done)caches.delete(job.id);
- else{unit.metric('chunks',(Number(job.metrics?.chunks)||0)+1);unit.metric('maxChunkMs',result.ms);}
+ else{unit.metric('chunks',(Number(job.metrics?.chunks)||0)+1);unit.metric('maxChunkMs',result.ms);unit.metric('chunkHoldMs',performance.now()-lockedAt);}
  if(result.done&&!handler.finalize)await terminal(connection,handler,c,ctx);
 }
 
@@ -312,7 +321,8 @@ async function discardUnit(connection:postgres.ReservedSql,handler:BulkJobHandle
  const job=c.job;
  const outcome=handler.discard?await handler.discard(job,{owner:connection,metric:unit.metric}):'done';
  if(outcome==='more'){await connection`update bulk_job set updated_at=now() where id=${job.id}::uuid and lease_token=${c.token}::uuid`;return;}
- await connection`update bulk_job set state=${job.outcome??'failed'},finished_at=now(),updated_at=now(),input=null,source_content=null where id=${job.id}::uuid and lease_token=${c.token}::uuid and state='discarding'`;
+ // The kind's afterTerminal still reads its inputs (Import History); each kind clears its own data.
+ await connection`update bulk_job set state=${job.outcome??'failed'},finished_at=now(),updated_at=now() where id=${job.id}::uuid and lease_token=${c.token}::uuid and state='discarding'`;
  caches.delete(job.id);
  let ctx:SessionContext|null=null;try{ctx=await bulkJobContext(connection,job);}catch{ctx=null;}
  return terminal(connection,handler,c,ctx);
@@ -323,6 +333,9 @@ async function terminal(connection:postgres.ReservedSql,handler:BulkJobHandler,c
  if(!fresh||!TERMINAL.includes(fresh.state))return;
  caches.delete(fresh.id);
  try{await handler.afterTerminal?.(ctx,fresh);}catch{/* best effort, as the synchronous imports were */}
+ // Personal data the job no longer needs: the uploaded inputs and per-step payloads (outcomes stay on the job).
+ await connection`update bulk_job set input=null,source_content=null where id=${fresh.id}::uuid`;
+ await connection`delete from bulk_job_step where job_id=${fresh.id}::uuid`;
  await notifyFinished(connection,fresh);
 }
 /** The creator's in-app notice (registry event bulk-job.finished), appended under their own authority exactly once.

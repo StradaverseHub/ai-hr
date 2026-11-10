@@ -48,26 +48,72 @@ ALTER POLICY person_import_pending ON person
  USING (import_pending_attempt_id IS NULL OR import_pending_attempt_id::text = current_setting('app.import_attempt',true)
   OR import_pending_attempt_id = ANY((SELECT app.import_released_attempt_ids())::uuid[]));
 --> statement-breakpoint
-CREATE OR REPLACE FUNCTION app.import_pending_employment_ids() RETURNS uuid[]
+-- The attempts a session must not see: staged, not released, and not the session's own import. Found by a skip scan
+-- over the partial marker index (two probes per distinct attempt), so the import's own chunk statements, which see
+-- every staged row, no longer pay a scan of all staged rows per statement as the file grows.
+CREATE FUNCTION app.import_hidden_attempt_ids() RETURNS uuid[]
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT coalesce(array_agg(e.id),'{}'::uuid[]) FROM public.employment e WHERE e.tenant_id=app.current_tenant_id() AND e.import_pending_attempt_id IS NOT NULL
-  AND e.import_pending_attempt_id::text IS DISTINCT FROM current_setting('app.import_attempt',true)
-  AND NOT EXISTS(SELECT 1 FROM app.import_attempt_release r WHERE r.attempt_id=e.import_pending_attempt_id);
+ WITH RECURSIVE staged(id) AS (
+  (SELECT e.import_pending_attempt_id FROM public.employment e WHERE e.tenant_id=app.current_tenant_id() AND e.import_pending_attempt_id IS NOT NULL
+   ORDER BY e.import_pending_attempt_id LIMIT 1)
+  UNION ALL
+  SELECT (SELECT e.import_pending_attempt_id FROM public.employment e WHERE e.tenant_id=app.current_tenant_id() AND e.import_pending_attempt_id>s.id
+   ORDER BY e.import_pending_attempt_id LIMIT 1) FROM staged s WHERE s.id IS NOT NULL)
+ SELECT coalesce(array_agg(s.id),'{}'::uuid[]) FROM staged s WHERE s.id IS NOT NULL
+  AND s.id::text IS DISTINCT FROM current_setting('app.import_attempt',true)
+  AND NOT EXISTS(SELECT 1 FROM app.import_attempt_release r WHERE r.attempt_id=s.id);
 $$;
 --> statement-breakpoint
+REVOKE ALL ON FUNCTION app.import_hidden_attempt_ids() FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.import_hidden_attempt_ids() TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.import_pending_employment_ids() RETURNS uuid[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(array_agg(e.id),'{}'::uuid[]) FROM unnest(app.import_hidden_attempt_ids()) h(id)
+  JOIN public.employment e ON e.tenant_id=app.current_tenant_id() AND e.import_pending_attempt_id=h.id;
+$$;
+--> statement-breakpoint
+-- A staged person always belongs to a staged employment of the same attempt (one chunk transaction writes both).
 CREATE OR REPLACE FUNCTION app.import_pending_person_ids() RETURNS uuid[]
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT coalesce(array_agg(p.id),'{}'::uuid[]) FROM public.person p WHERE p.tenant_id=app.current_tenant_id() AND p.import_pending_attempt_id IS NOT NULL
-  AND p.import_pending_attempt_id::text IS DISTINCT FROM current_setting('app.import_attempt',true)
-  AND NOT EXISTS(SELECT 1 FROM app.import_attempt_release r WHERE r.attempt_id=p.import_pending_attempt_id);
+ SELECT coalesce(array_agg(p.id),'{}'::uuid[]) FROM unnest(app.import_hidden_attempt_ids()) h(id)
+  JOIN public.person p ON p.tenant_id=app.current_tenant_id() AND p.import_pending_attempt_id=h.id;
 $$;
+--> statement-breakpoint
+-- Child rows of staged hires (9001 policies). While a large import is staged an ordinary session's hidden-id array
+-- holds thousands of ids; "= ANY(array)" compared every row with every id. "IN (SELECT unnest(...))" lets the planner
+-- hash the set once per statement, and with no import staged it is still one empty probe.
+ALTER POLICY assignment_import_pending ON public.assignment USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY compensation_import_pending ON public.compensation USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY leave_ledger_import_pending ON public.leave_ledger USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY reporting_line_import_pending ON public.reporting_line USING (subordinate_employment_id IS NULL OR NOT (subordinate_employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY employment_tax_selection_my_import_pending ON public.employment_tax_selection_my USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY employment_tax_scheme_my_import_pending ON public.employment_tax_scheme_my USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY employee_qualification_import_pending ON public.employee_qualification USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY employment_cost_allocation_head_import_pending ON public.employment_cost_allocation_head USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY employee_statutory_my_import_pending ON public.employee_statutory_my USING (person_id IS NULL OR NOT (person_id IN (SELECT unnest(app.import_pending_person_ids()))));
+--> statement-breakpoint
+ALTER POLICY employee_dependent_import_pending ON public.employee_dependent USING (person_id IS NULL OR NOT (person_id IN (SELECT unnest(app.import_pending_person_ids()))));
+--> statement-breakpoint
+ALTER POLICY person_emergency_contact_import_pending ON public.person_emergency_contact USING (person_id IS NULL OR NOT (person_id IN (SELECT unnest(app.import_pending_person_ids()))));
+--> statement-breakpoint
+ALTER POLICY import_attempt_item_import_pending ON public.import_attempt_item USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
 --> statement-breakpoint
 -- The 9001 audit's definer readers filtered "marker IS NULL". Each is re-created with the release-aware predicate,
 -- from its installed definition, after checking the exact number of predicates the 9001 audit installed. The two
 -- trigger functions (import_pending_stamp, enqueue_replacement_holidays) keep "IS NULL": they react to row writes,
 -- and settle's marker clear re-fires them for every staged row.
 DO $$
-DECLARE r record; def text; found integer;
+DECLARE r record; def text; found integer; owner_ name;
 BEGIN
  FOR r IN SELECT * FROM (VALUES
   ('app._access_workforce_list_rows(uuid[])',2),('app._home_peer_cohort(uuid,text)',2),('app.access_workforce_employment(uuid,text)',1),
@@ -86,6 +132,12 @@ BEGIN
   SELECT count(*) INTO found FROM regexp_matches(def,'(\m[a-z_]+\.)?import_pending_attempt_id IS NULL','g');
   IF found<>r.expected THEN RAISE EXCEPTION 'import release predicate: % has % staged-marker filters, expected %',r.sig,found,r.expected; END IF;
   EXECUTE regexp_replace(def,'(\m[a-z_]+\.)?import_pending_attempt_id IS NULL','app.import_marker_visible(\1import_pending_attempt_id)','g');
+  -- A reader owned by a restricted role (for example a Rewards setup reader) runs the predicate as that owner.
+  SELECT o.rolname INTO owner_ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_roles o ON o.oid=p.proowner WHERE p.oid=r.sig::regprocedure;
+  IF owner_<>current_user THEN
+   EXECUTE format('GRANT EXECUTE ON FUNCTION app.import_marker_visible(uuid) TO %I',owner_);
+   EXECUTE format('GRANT SELECT ON app.import_attempt_release TO %I',owner_);
+  END IF;
  END LOOP;
 END $$;
 --> statement-breakpoint

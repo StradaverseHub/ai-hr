@@ -11705,7 +11705,8 @@ export const bulkJob=pgTable('bulk_job',{
  createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),finishedAt:timestamp('finished_at',{withTimezone:true}),
 },t=>[uniqueIndex('bulk_job_tenant_id_created_by_operation_key_key').on(t.tenantId,t.createdBy,t.operationKey),
  uniqueIndex('bulk_job_one_active').on(t.tenantId,t.kind,t.exclusiveKey).where(sql`${t.state} in ('queued','preparing','running','finalizing','discarding')`),
- index('bulk_job_queue').on(t.updatedAt).where(sql`${t.state} in ('queued','preparing','running','finalizing','discarding')`),index('bulk_job_creator').on(t.tenantId,t.createdBy,t.kind,t.createdAt)]);
+ index('bulk_job_queue').on(t.updatedAt).where(sql`${t.state} in ('queued','preparing','running','finalizing','discarding')`),index('bulk_job_creator').on(t.tenantId,t.createdBy,t.kind,t.createdAt),
+ index('bulk_job_unnotified').on(t.finishedAt).where(sql`${t.notifiedAt} is null and ${t.state} in ('completed','failed','cancelled')`)]);
 export const bulkJobStep=pgTable('bulk_job_step',{
  jobId:uuid('job_id').notNull().references(()=>bulkJob.id,{onDelete:'cascade'}),tenantId:tenantId(),seq:integer('seq').notNull(),kind:text('kind').notNull(),rowNum:integer('row_num'),
  state:text('state').notNull().default('pending').$type<'pending'|'applied'|'failed'>(),payload:jsonb('payload').notNull().$type<unknown>(),result:jsonb('result').$type<unknown>(),error:text('error'),

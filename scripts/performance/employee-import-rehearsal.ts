@@ -14,12 +14,15 @@ import postgres from 'postgres';
 import {sql} from 'drizzle-orm';
 import {startTenantLockSampler} from './tenant-lock-sampler';
 
-const required=(name:string)=>{const v=process.env[name];if(!v)throw new Error(`${name} is required`);return v;};
-const port=required('REHEARSAL_PORT');
-for(const name of ['DATABASE_URL','MIGRATION_DATABASE_URL'])if(new URL(required(name)).port!==port)throw new Error('Refusing: rehearsal runs only against the disposable cluster port.');
-const TENANT=required('REHEARSAL_TENANT'),ADMIN=required('REHEARSAL_ADMIN');
+// Literal reads only (test/module-catalog-drift.test.ts forbids computed process.env keys).
+const required=(name:string,v:string|undefined)=>{if(!v)throw new Error(`${name} is required`);return v;};
+const port=required('REHEARSAL_PORT',process.env.REHEARSAL_PORT);
+const OWNER_URL=required('MIGRATION_DATABASE_URL',process.env.MIGRATION_DATABASE_URL);
+for(const url of [required('DATABASE_URL',process.env.DATABASE_URL),OWNER_URL])if(new URL(url).port!==port)throw new Error('Refusing: rehearsal runs only against the disposable cluster port.');
+const TENANT=required('REHEARSAL_TENANT',process.env.REHEARSAL_TENANT),ADMIN=required('REHEARSAL_ADMIN',process.env.REHEARSAL_ADMIN);
 const BASE=Number(process.env.BASE_EMPLOYEES??3000),ROWS=Number(process.env.IMPORT_ROWS??500);
-process.env.AUDIT_HASH_CHAIN_ENABLED='true';
+// The rehearsal always runs with the audit chain armed, as production does.
+if(process.env.AUDIT_HASH_CHAIN_ENABLED === 'true'){/* already armed by the caller */}else process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 const stat=(values:number[])=>{const s=[...values].sort((a,b)=>a-b);return s.length?{n:s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.floor(s.length*.95)],max:s[s.length-1]}:{n:0,p50:0,p95:0,max:0};};
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -33,9 +36,10 @@ async function main(){
  const {listEmployeesPage}=await import('../../core/read');
  const {myProfile}=await import('../../core/profile');
  const {verifyTenantChain}=await import('../../core/audit-chain');
- const cat=await import('../../packs/catalog');
- const obs=postgres(required('MIGRATION_DATABASE_URL'),{max:4,onnotice:()=>{}});
- const entitlements={tenantId:TENANT,enabledModules:[...new Set(cat.legacyEnabledModulesIn(process.env))],scopedModules:{},settings:Object.fromEntries(cat.legacyEnabledSettingsIn(process.env).map((s:{key:string;value:unknown})=>[s.key,s.value])),tenantStatus:'active'};
+ // The tenant's own entitlement snapshot from the database, as the worker resolves it (freshImportContext).
+ const {freshImportContext}=await import('../../core/bank-import-worker');
+ const obs=postgres(OWNER_URL,{max:4,onnotice:()=>{}});
+ const {entitlements}=await freshImportContext({tenantId:TENANT,userId:ADMIN,roles:['hr_admin']} as never);
  const [{person_id:adminPerson}]=await obs`select person_id from app_user where id=${ADMIN}::uuid`;
  const admin={tenantId:TENANT,userId:ADMIN,personId:adminPerson??undefined,roles:['hr_admin'],entitlements} as never;
  const [{company_id:companyId}]=await obs`select company_id from department where name='Finance' and tenant_id=${TENANT}::uuid limit 1`;

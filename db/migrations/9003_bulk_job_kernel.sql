@@ -69,6 +69,9 @@ CREATE INDEX bulk_job_queue ON bulk_job(updated_at) WHERE state IN ('queued','pr
 --> statement-breakpoint
 CREATE INDEX bulk_job_creator ON bulk_job(tenant_id,created_by,kind,created_at DESC);
 --> statement-breakpoint
+-- Terminal jobs whose completion notice is still owed (normally none for longer than one worker tick).
+CREATE INDEX bulk_job_unnotified ON bulk_job(finished_at) WHERE notified_at IS NULL AND state IN ('completed','failed','cancelled');
+--> statement-breakpoint
 CREATE TABLE bulk_job_step (
  job_id uuid NOT NULL REFERENCES bulk_job(id) ON DELETE CASCADE,
  tenant_id uuid NOT NULL REFERENCES tenant(id),

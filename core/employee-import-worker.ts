@@ -135,7 +135,8 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   }
   const remaining=await ownerBatch(job,unit,'settle',async limit=>{const [r]=await unit.owner<{remaining:string}[]>`select app.import_settle(${job.tenant_id}::uuid,${job.attempt_id}::uuid,${limit}) as remaining`;return Number(r.remaining);});
   if(remaining>0)return'more';
-  await unit.owner`update bulk_job set plan=null,input=null,source_content=null where id=${job.id}::uuid`;
+  // The plan (company, rejected rows) stays until afterTerminal has recorded Import History.
+  await unit.owner`update bulk_job set input=null,source_content=null where id=${job.id}::uuid`;
   await unit.owner`delete from bulk_job_step where job_id=${job.id}::uuid`;
   batchSizes.delete(job.id);
   return'done';
@@ -145,8 +146,10 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   if(job.state==='completed'||!ctx)return;
   const plan=planOf(job);
   if(job.attempt_id)await recordImportFailure(ctx,job.attempt_id,'employee_full','failed',new ImportHistoryError(job.error??'Employee import stopped before activation.'));
-  await recordImportRun(ctx,{companyId:plan.companyId??inputOf(job)?.upload.companyId,fileName:job.source_name,totalRows:Number(job.counters?.total??0),imported:0,
+  const companyId=plan.companyId??inputOf(job)?.upload.companyId;
+  if(companyId)await recordImportRun(ctx,{companyId,fileName:job.source_name,totalRows:Number(job.counters?.total??0),imported:0,
    rejected:plan.rejected??[],failed:(job.errors??[]).map(e=>({rowNum:e.rowNum,email:e.ref,message:e.message}))});
+  await withTenant(ctx,tx=>tx.execute(sql`update bulk_job set plan=null,input=null,source_content=null where id=${job.id}::uuid`)).catch(()=>undefined);
  },
 };
 

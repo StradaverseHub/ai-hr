@@ -9,7 +9,6 @@ import type {BulkJobProgress,BulkJobRowError,BulkJobState,BulkJobWorkerStatus} f
 export class BulkJobError extends Error{constructor(message:string,readonly status=400){super(message);this.name='BulkJobError';}}
 /** Stable code, translated by the screen, for an admission refused because the kind's scope already runs a job. */
 export const BULK_JOB_ALREADY_RUNNING='bulk-job-already-running';
-export const BULK_JOB_ACTIVE_SQL=sql.raw(`('queued','preparing','running','finalizing','discarding')`);
 
 export type BulkJobRow={
  id:string;tenant_id:string;kind:string;created_by:string;context:SessionContext;operation_key:string;exclusive_key:string;
