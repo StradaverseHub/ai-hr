@@ -16,6 +16,7 @@
  */
 import {performance} from 'node:perf_hooks';
 import postgres from 'postgres';
+import {pooledClientOptions} from '../../db/pooled-types.mjs';
 
 function argument(name, fallback) {
   const index = process.argv.indexOf(`--${name}`);
@@ -34,6 +35,8 @@ const label = argument('label', 'run');
 // Clients spread their connections over rampMs and idle for about thinkMs between transactions.
 const rampMs = Number(argument('ramp-ms', '0'));
 const thinkMs = Number(argument('think-ms', '0'));
+// The application's pooled path: array types loaded once per process, not by every new connection.
+const pooledTypes = argument('pooled-types', 'false') === 'true';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const SCHEMA = 'pgb_load';
 const tenants = Array.from({length: tenantCount}, (_, index) => `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`);
@@ -85,7 +88,7 @@ function recordError(error) {
 async function runClient(index) {
   if (rampMs) await sleep(Math.random() * rampMs);
   // No idle timeout: like the application, a client keeps its connection open between transactions.
-  const sql = postgres(appUrl, {max: 1, prepare, connect_timeout: 120, onnotice: () => {}});
+  const sql = postgres(appUrl, {max: 1, prepare, connect_timeout: 120, onnotice: () => {}, ...(pooledTypes ? pooledClientOptions(appUrl) : {})});
   try {
     for (let t = 0; t < transactions; t++) {
       if (t && thinkMs) await sleep(thinkMs * (0.5 + Math.random()));
@@ -130,7 +133,7 @@ async function main() {
   await sampler.catch(() => {});
   latencies.sort((a, b) => a - b);
   const result = {
-    label, clients, transactions, prepare, tenants: tenantCount, rampMs, thinkMs,
+    label, clients, transactions, prepare, pooledTypes, tenants: tenantCount, rampMs, thinkMs,
     expected: clients * transactions, completed,
     failed: clients * transactions - completed,
     peakServerConnections: peakServers,

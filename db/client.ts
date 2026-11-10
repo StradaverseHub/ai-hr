@@ -15,7 +15,7 @@ import {createTenantWriteAdmission} from './tenant-write-admission';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {currentDatabaseWorkload,databaseReadSignal,inIdempotentDatabaseRead,withBackgroundDatabaseWork} from './workload';
 import {applicationDatabaseBudget,databaseAdmissionShares} from './capacity';
-import {applicationDatabaseUrl} from './pooling';
+import {applicationDatabaseUrl, pooledClientOptions} from './pooling';
 import {markDatabaseCapacityFailure,retryIdempotentRead} from './read-retry';
 const applicationBudget = applicationDatabaseBudget(process.env);
 /** The tenant whose transaction this code runs inside; a nested acquire must not wait on that tenant's own share. */
@@ -187,10 +187,10 @@ function auditHashChainArmed(): boolean {
   return process.env.AUDIT_HASH_CHAIN_ENABLED === 'true';
 }
 
-export function createDb(connectionString: string, options?: { max?: number; admissionWaitMs?: number }) {
+export function createDb(connectionString: string, options?: { max?: number; admissionWaitMs?: number; pooled?: boolean }) {
   let client = pgPools.get(connectionString);
   if (!client) {
-    client = postgres(connectionString, { max: options?.max ?? applicationBudget.poolMax });
+    client = postgres(connectionString, { max: options?.max ?? applicationBudget.poolMax, ...(options?.pooled ? pooledClientOptions(connectionString) : {}) });
     pgPools.set(connectionString, client);
   }
   // Direct table-based select/insert/update/delete retain their own schema and types. Registering
@@ -377,6 +377,7 @@ export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL is not set');
 
+const applicationConnection = applicationDatabaseUrl(process.env);
 // App singleton (non-privileged role). Keep the default for deployments that do
 // not explicitly divide a connection budget among application workers.
-export const { db, client, withTenant, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork } = createDb(applicationDatabaseUrl(process.env).url, {max: applicationBudget.poolMax});
+export const { db, client, withTenant, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork } = createDb(applicationConnection.url, {max: applicationBudget.poolMax, pooled: applicationConnection.pooled});

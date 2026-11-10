@@ -3,7 +3,7 @@ import {spawnSync} from 'node:child_process';
 import {describe, expect, it} from 'vitest';
 import {DATABASE_CAPACITY_DIGEST} from '../db/admission';
 import {assertFleetFitsServer} from '../db/capacity';
-import {applicationDatabaseUrl, fleetEnvForServerBudget, isPoolerCapacityError} from '../db/pooling';
+import {applicationDatabaseUrl, fleetEnvForServerBudget, isPoolerCapacityError, pooledClientOptions} from '../db/pooling';
 import {isDatabaseCapacityFailure, markDatabaseCapacityFailure} from '../db/read-retry';
 // @ts-expect-error plain deployment script, no declaration file
 import {customerEnvironmentErrors} from '../deploy/check-customer-env.mjs';
@@ -27,6 +27,26 @@ describe('which URL the application singleton uses', () => {
   });
   it('still requires DATABASE_URL', () => {
     expect(() => applicationDatabaseUrl({DATABASE_POOLED_URL: POOLED})).toThrow('DATABASE_URL is not set');
+  });
+});
+
+describe('driver options on the pooled path only', () => {
+  it('loads array types through the socket hook instead of on every connection', () => {
+    const options = pooledClientOptions(POOLED);
+    expect(options.fetch_types).toBe(false);
+    expect(typeof options.socket).toBe('function');
+  });
+  it('leaves a direct client exactly as postgres.js configures it by default', async () => {
+    process.env.DATABASE_URL ??= 'postgres://nobody:nothing@127.0.0.1:1/no_database';
+    const {createDb} = await import('../db/client');
+    const direct = createDb('postgres://nobody:nothing@127.0.0.1:1/direct_default_probe', {max: 1});
+    const pooled = createDb('postgres://nobody:nothing@127.0.0.1:1/pooled_probe', {max: 1, pooled: true});
+    try {
+      expect(direct.client.options.fetch_types).toBe(true);
+      expect(direct.client.options.socket).toBeUndefined();
+      expect(pooled.client.options.fetch_types).toBe(false);
+      expect(typeof pooled.client.options.socket).toBe('function');
+    } finally { await Promise.all([direct.client.end({timeout: 1}), pooled.client.end({timeout: 1})]); }
   });
 });
 

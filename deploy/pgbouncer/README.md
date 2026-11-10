@@ -16,7 +16,11 @@ Decision and compatibility audit: [ADR 2026-11-10](../../docs/adr/2026-11-10-pgb
 
 `AIHR_DB_PROCESS_ROLE=worker`, which every non-web unit already sets, forces the direct URL even if the process inherits `DATABASE_POOLED_URL`. Workers own session advisory locks and long single-tenant jobs, and they are already counted in the direct background budget.
 
-postgres.js fetches array types as the first query of each new connection. `patches/postgres@3.4.9.patch` makes a pooler refusal of that query an ordinary, handled capacity failure instead of an unhandled rejection.
+## Connection storms
+
+postgres.js normally runs a catalogue query for array types as the first statement of every new connection. Behind the pooler each of those needs a server connection, so a burst of new connections queued hundreds of them in front of real work and pushed clients past `query_wait_timeout`. On the pooled path only, `db/pooled-types.mjs` loads the array types once per process and gives every pooled connection the same parsers and serializers; `test/pgbouncer-transaction-pool.test.ts` checks that every enum, domain and built-in array parses exactly as it does on a direct connection. Direct clients keep postgres.js's default.
+
+`patches/postgres@3.4.9.patch` makes a failed type fetch an ordinary, handled capacity failure instead of an unhandled rejection, for the fallback and for direct clients.
 
 ## Where it runs
 

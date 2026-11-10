@@ -11,6 +11,9 @@
 import {pgErrorChain} from '../lib/db-error';
 import {databaseProcessRole} from './capacity';
 
+/** Pooled clients load array types once per process rather than once per connection (db/pooled-types.mjs). */
+export {pooledClientOptions} from './pooled-types.mjs';
+
 /**
  * Non-web processes ignore the pooled URL even when they inherit it from a shared environment file: they
  * hold session advisory locks and are counted in the direct background budget (deploy/pgbouncer/README.md).

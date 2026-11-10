@@ -20,7 +20,7 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
 const appPool = (target: PoolerTarget, max: number, admissionWaitMs?: number) => {
   const url = new URL(target.appUrl);
   url.searchParams.set('application_name', 'pooler-' + randomUUID());
-  return createDb(url.toString(), {max, ...(admissionWaitMs === undefined ? {} : {admissionWaitMs})});
+  return createDb(url.toString(), {max, pooled: true, ...(admissionWaitMs === undefined ? {} : {admissionWaitMs})});
 };
 
 let target: PoolerTarget | null = null;
@@ -179,6 +179,51 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
       await Promise.all([...holders, laterA]);
       expect(order).toEqual(['b', 'a']);
     } finally { release.forEach(gate => gate.resolve()); await pool.client.end({timeout: 5}); }
+  });
+
+  it('parses array types exactly as a direct connection does, enum and domain arrays included, without a per-connection type fetch', async () => {
+    const pool = appPool(target!, 2);
+    const directUrl = new URL(process.env.TEST_DATABASE_URL!);
+    directUrl.searchParams.set('application_name', 'direct-' + randomUUID());
+    const direct = createDb(directUrl.toString(), {max: 1});
+    const literal = (value: string) => `'${value.replace(/'/g, "''")}'`;
+    try {
+      const custom = await owner.client<{name: string; kind: string; sample: string | null}[]>`
+        select format('%I.%I', n.nspname, t.typname) as name, t.typtype as kind,
+          (select e.enumlabel from pg_enum e where e.enumtypid = t.oid order by e.enumsortorder limit 1) as sample
+        from pg_type t join pg_namespace n on n.oid = t.typnamespace
+        where t.typtype in ('e', 'd') and n.nspname in ('public', 'app') and t.typarray <> 0 order by 1`;
+      expect(custom.filter(row => row.kind === 'e').length).toBeGreaterThan(10);
+      const columns = [
+        `array['a', 'b,c', '{"q"}', '']::text[] as text_values`, `array[gen_random_uuid(), null]::uuid[] as uuid_values`,
+        `array[1, 2, null]::int4[] as int4_values`, `array[9007199254740993]::int8[] as int8_values`, `array[1.25, null]::numeric[] as numeric_values`,
+        `array[true, false, null]::bool[] as bool_values`, `array['2026-11-10'::date] as date_values`, `array['2026-11-10T01:02:03Z'::timestamptz] as timestamptz_values`,
+        `array['{"a":1}'::jsonb, '[2]'::jsonb] as jsonb_values`, `array['x'::varchar] as varchar_values`, `array[array[1, 2], array[3, 4]]::int4[] as nested_values`,
+        // Enums get two of their own labels; domains get an empty array, which still parses only with the domain's array type.
+        ...custom.map((row, index) => row.kind === 'e' && row.sample !== null
+          ? `array[${literal(row.sample)}, ${literal(row.sample)}]::${row.name}[] as custom_${index}`
+          : `array[]::${row.name}[] as custom_${index}`),
+      ];
+      const query = `select ${columns.join(', ')}`;
+      const [viaPool] = await pool.client.unsafe(query);
+      const [viaDirect] = await direct.client.unsafe(query);
+      // drizzle returns numeric, date and timestamp arrays as raw text on both paths (its own parsers).
+      const raw = new Set(['numeric_values', 'date_values', 'timestamptz_values']);
+      for (const [name, value] of Object.entries(viaPool)) {
+        expect(Array.isArray(value), name).toBe(!raw.has(name));
+        if (!name.startsWith('uuid')) expect(value, name).toEqual(viaDirect[name]);
+      }
+      expect(Object.keys(viaPool)).toEqual(Object.keys(viaDirect));
+      expect(viaPool.text_values).toEqual(['a', 'b,c', '{"q"}', '']);
+      expect(viaPool.nested_values).toEqual([[1, 2], [3, 4]]);
+      // Parameters serialize the same way, and the pooled client never ran postgres.js's per-connection type fetch.
+      const [sent] = await pool.client<{same: boolean}[]>`select ${pool.client.array(['x', 'y,z'])}::text[] = array['x', 'y,z'] as same`;
+      expect(sent.same).toBe(true);
+      expect(pool.client.options.fetch_types).toBe(false);
+      expect((pool.client.options.shared as {pooledTypesInstalled?: boolean}).pooledTypesInstalled).toBe(true);
+      expect(direct.client.options.fetch_types).toBe(true);
+      expect(direct.client.options.socket).toBeUndefined();
+    } finally { await Promise.all([pool.client.end({timeout: 5}), direct.client.end({timeout: 5})]); }
   });
 
   it('serves many more clients than server connections, all successfully', async () => {
