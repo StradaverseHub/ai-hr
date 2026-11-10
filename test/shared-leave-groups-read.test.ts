@@ -70,7 +70,7 @@ async function person(name:string,grants:readonly Grant[]):Promise<SessionContex
  return{...await entitledCtx(base,roles),userId:user.id,personId:hired.personId,roles,grants:[...grants]} as SessionContext;
 }
 async function leaveType(tenantId:string,name:string):Promise<string>{
- const [row]=await owner.db.insert(schema.leaveType).values({tenantId,code:'SLG'+randomUUID().slice(0,6),name,paid:true,counting:'calendar_days'}).returning({id:schema.leaveType.id});
+ const [row]=await owner.db.insert(schema.leaveType).values({tenantId,code:'SLG'+randomUUID().slice(0,6).toUpperCase(),name,paid:true,counting:'calendar_days'}).returning({id:schema.leaveType.id});
  return row.id;
 }
 const bound=async(ctx:SessionContext)=>(await nativeToolProvider(ctx,{companyId:base.companyId,locale:'en'},true)).bindings;

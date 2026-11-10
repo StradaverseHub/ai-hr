@@ -40,7 +40,7 @@ describe('harness spec',()=>{
 // as product_guidance topics (test/harness-spec-v22.test.ts), so main's version 9 and its digest 50ffa246… are not rows here.
 it('keeps the two public guides as v22 product_guidance topics while retaining every released digest and the exact prior policy',()=>{
  // Subsequent versions keep them; the v20 shape below is taken from the v22-shaped spec.
- expect(HARNESS_SPEC.version).toBe(28);
+ expect(HARNESS_SPEC.version).toBe(29);
  expect(Object.fromEntries(Object.entries(HARNESS_SPEC_DIGESTS).filter(([version])=>Number(version)<=8))).toEqual({
   1:'0589cb3e4beec5214c8b00b7869b06ae9065d387733c004820b2a66a25da0616',
   2:'57fd6ad641945084c2b8c4eb40af07cc99f3e24e2f8521631bd6230d12596ee0',
