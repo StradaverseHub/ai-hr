@@ -31,16 +31,28 @@ export class HomeCardReadTimeoutError extends Error {
   }
 }
 
-/** Focus and visibility can report the same tab activation separately, and an automatic refresh replaces
- * the card's current read. Allow another automatic refresh only after the previous one could have
- * reached the hard cap, so it is never cancelled and restarted while it is still within its limits. */
+/** Focus and visibility usually both report one tab activation. Automatic refreshes this close together
+ * count as one. It only removes that duplicate; it never delays a refresh of an idle card. */
+export const HOME_CARD_REFRESH_DEDUPE_MS = 1_000;
+
+/** What a card reports about its own reads, so automatic refreshes can respect them. */
+export type HomeCardReadActivity={start():void;settle():void};
+
+/** One card's automatic-refresh rule. An automatic refresh (focus, visibility, interval) replaces the
+ * card's current read, so it is skipped while a read is still in flight: that read is already fetching
+ * current data, and cancelling it would restart the wait. An idle card refreshes at once. */
 export function createHomeCardRefreshGate(now:()=>number=()=>performance.now()){
-  let lastRefresh=-Infinity;
-  return ()=>{
-    const at=now();
-    if(at-lastRefresh<HOME_CARD_READ_HARD_CAP_MS)return false;
-    lastRefresh=at;
-    return true;
+  let inFlight=0,lastRefresh=-Infinity;
+  return {
+    start(){inFlight++;},
+    settle(){inFlight=Math.max(0,inFlight-1);},
+    allow(){
+      if(inFlight>0)return false;
+      const at=now();
+      if(at-lastRefresh<HOME_CARD_REFRESH_DEDUPE_MS)return false;
+      lastRefresh=at;
+      return true;
+    },
   };
 }
 

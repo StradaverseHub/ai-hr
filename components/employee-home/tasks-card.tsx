@@ -15,7 +15,7 @@ export function HomeTasksCard({employmentId}:{employmentId:string}){
  const subscribe=useHomeInitialSharing();
  const [page,setPage]=React.useState(1);
  const [hasPaged,setHasPaged]=React.useState(false);
- const refresh=useHomeCardRefresh(30000);
+ const {refresh,activity}=useHomeCardRefresh(30000);
  function changePage(next:number){setHasPaged(true);setPage(next);}
  const read=React.useCallback(async(signal:AbortSignal,initial=false):Promise<EmployeeHomeTasks>=>{
   async function standalone():Promise<unknown>{
@@ -37,7 +37,7 @@ export function HomeTasksCard({employmentId}:{employmentId:string}){
  },[employmentId,page,subscribe]);
  const initialRead=React.useCallback((signal:AbortSignal)=>read(signal,true),[read]);
  const date=(day:string)=>new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(day+'T00:00:00Z'));
- return <IndependentHomeCard card="tasks" title={t('title')} labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}}
+ return <IndependentHomeCard card="tasks" activity={activity} title={t('title')} labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}}
   requestKey={`${employmentId}:${locale}:${page}:${refresh}`} read={read} initialRead={!hasPaged&&refresh===0?initialRead:undefined}>{value=><div className="space-y-4">
    <p className="text-xs leading-relaxed text-muted-foreground">{t('accountScope')}</p>
    {value.total===0?<p role="status" className="text-sm leading-relaxed text-muted-foreground">{t('empty')}</p>:<>

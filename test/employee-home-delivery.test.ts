@@ -1,7 +1,7 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {applicationDatabaseBudget} from '../db/capacity';
 import {
-  createHomeCardRefreshGate,deliverHomeCard,HOME_CARD_READ_HARD_CAP_MS,HOME_CARD_STREAM_STALL_MS,HomeCardReadTimeoutError,
+  createHomeCardRefreshGate,deliverHomeCard,HOME_CARD_READ_HARD_CAP_MS,HOME_CARD_REFRESH_DEDUPE_MS,HOME_CARD_STREAM_STALL_MS,HomeCardReadTimeoutError,
 } from '../lib/employee-home-delivery';
 
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();});
@@ -41,12 +41,22 @@ describe('independent employee Home read delivery',()=>{
     clock.mockReturnValue(1150);lateRejects[0](new Error('Fictional server refusal after its cap'));
     expect(await late).toEqual({state:'failed',reason:'timeout'});
   });
-  it('allows one automatic refresh per hard cap',()=>{
-    let now=1000;const allow=createHomeCardRefreshGate(()=>now);
-    expect(allow()).toBe(true);
-    now+=2800;expect(allow()).toBe(false);
-    now+=HOME_CARD_READ_HARD_CAP_MS-2801;expect(allow()).toBe(false);
-    now+=1;expect(allow()).toBe(true);
+  it('skips an automatic refresh while a read is in flight, refreshes an idle card at once and merges one activation',()=>{
+    let now=1000;const gate=createHomeCardRefreshGate(()=>now);
+    gate.start();
+    expect(gate.allow()).toBe(false);
+    now+=HOME_CARD_READ_HARD_CAP_MS*2;expect(gate.allow()).toBe(false);
+    gate.settle();
+    expect(gate.allow()).toBe(true);
+    // The paired focus and visibility events of one activation refresh once.
+    expect(gate.allow()).toBe(false);
+    now+=HOME_CARD_REFRESH_DEDUPE_MS-1;expect(gate.allow()).toBe(false);
+    // Idle again just past the de-duplication window: no longer gated by the read cap.
+    now+=1;expect(gate.allow()).toBe(true);
+    expect(HOME_CARD_REFRESH_DEDUPE_MS).toBeLessThanOrEqual(1000);
+    // Overlapping reads (a cancelled one settling after its replacement started) keep the card busy.
+    gate.start();gate.start();gate.settle();now+=5000;expect(gate.allow()).toBe(false);
+    gate.settle();expect(gate.allow()).toBe(true);
   });
   it('delivers a ready sibling while another reader is delayed, then times out only the delayed one',async()=>{
     vi.useFakeTimers();

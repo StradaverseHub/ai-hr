@@ -9,7 +9,7 @@ import type {EmployeeHomeNotices} from '@/lib/employee-home-read-model';
 
 export function HomeNoticesCard({employmentId,timeZone='Asia/Kuala_Lumpur'}:{employmentId:string;timeZone?:string}){
  const t=useTranslations('employeeHome.notices'),n=useTranslations('notices'),locale=useLocale();
- const refresh=useHomeCardRefresh(30000);
+ const {refresh,activity}=useHomeCardRefresh(30000);
  const subscribe=useHomeInitialSharing();
  const readResponse=React.useCallback(async(signal:AbortSignal):Promise<unknown>=>{
   const response=await fetch('/api/home/notices?'+new URLSearchParams({employmentId}),{signal,cache:'no-store',credentials:'same-origin'});
@@ -35,7 +35,7 @@ export function HomeNoticesCard({employmentId,timeZone='Asia/Kuala_Lumpur'}:{emp
   subscribe?parse(await subscribe('notices',signal,()=>readResponse(signal))):read(signal),[subscribe,parse,read,readResponse]);
  const date=(instant:string)=>new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',year:'numeric',timeZone}).format(new Date(instant));
  const stamp=(instant:string)=>new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone}).format(new Date(instant));
- return <IndependentHomeCard card="notices" title={n('myTitle')} labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}}
+ return <IndependentHomeCard card="notices" activity={activity} title={n('myTitle')} labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}}
   requestKey={`${employmentId}:${locale}:${timeZone}:${refresh}`} read={read} initialRead={refresh===0?initialRead:undefined}>{value=><div className="space-y-4">
    <p role="status" className="text-sm text-muted-foreground">{n('matchingCounts',{total:value.total,unread:value.unread,required:value.acknowledgementRequired})}</p>
    {value.total===0?<p className="text-sm leading-relaxed text-muted-foreground">{n('myEmpty')}</p>:
