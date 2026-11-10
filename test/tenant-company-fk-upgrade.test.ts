@@ -301,8 +301,16 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',with_check:null,
    qual:expect.stringContaining('attendance-rule.clock-policy.scheduled'),
   });
+  // The audit-chain commit seal's private queue tables: RLS on with no policy, and no grant to any client role.
+  const sealTables=['app.domain_event_chain_pending','app.domain_event_chain_seal'];
+  for(const rel of sealTables){
+   const row=afterPerformancePrivileges.relations.find(candidate=>candidate.rel===rel);
+   expect(row,rel).toMatchObject({rls:true,force:false});
+   expect(String(row?.acl??''),rel).not.toMatch(/(^|[{,])(ai_hr_app)?=/);
+   expect(afterPerformancePrivileges.policies.filter(policy=>'app.'+policy.tablename===rel)).toEqual([]);
+  }
   expect({
-   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable).map(row=>
+   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
