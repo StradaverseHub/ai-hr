@@ -1,15 +1,16 @@
 import {DATABASE_CAPACITY_DIGEST, DatabaseAdmissionError} from './admission';
 import {databaseReadSignal} from './workload';
 import {pgSqlState} from '../lib/db-error';
+import {isPoolerCapacityError} from './pooling';
 
-/** Admission did not start the work, or PostgreSQL cancelled the statement (57014). */
+/** Admission did not start the work, PostgreSQL cancelled the statement (57014), or PgBouncer had no capacity. */
 export function isDatabaseCapacityFailure(error: unknown): boolean {
-  return error instanceof DatabaseAdmissionError || pgSqlState(error) === '57014';
+  return error instanceof DatabaseAdmissionError || pgSqlState(error) === '57014' || isPoolerCapacityError(error);
 }
 
 /** Lets a client error boundary recognise the failure; only the digest crosses to the browser. */
 export function markDatabaseCapacityFailure(error: unknown): unknown {
-  if (pgSqlState(error) === '57014' && typeof error === 'object' && error !== null && Object.isExtensible(error)) {
+  if ((pgSqlState(error) === '57014' || isPoolerCapacityError(error)) && typeof error === 'object' && error !== null && Object.isExtensible(error)) {
     Object.assign(error, {digest: DATABASE_CAPACITY_DIGEST});
   }
   return error;

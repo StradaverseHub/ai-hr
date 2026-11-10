@@ -15,6 +15,7 @@ import {createTenantWriteAdmission} from './tenant-write-admission';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {cancelStatementsAtDeadline,currentDatabaseReadDeadline,currentDatabaseWorkload,databaseReadSignal,inIdempotentDatabaseRead,withBackgroundDatabaseWork} from './workload';
 import {applicationDatabaseBudget,databaseAdmissionShares} from './capacity';
+import {applicationDatabaseUrl} from './pooling';
 import {markDatabaseCapacityFailure,retryIdempotentRead} from './read-retry';
 import {SharedReadSession,currentSharedRead,independentTransactionsRequired,runInSharedRead,sharedReadDriver,type SharedReadStats} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
@@ -490,4 +491,4 @@ if (!url) throw new Error('DATABASE_URL is not set');
 
 // App singleton (non-privileged role). Keep the default for deployments that do
 // not explicitly divide a connection budget among application workers.
-export const { db, client, withTenant, withSharedReadSnapshot, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork } = createDb(url, {max: applicationBudget.poolMax});
+export const { db, client, withTenant, withSharedReadSnapshot, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork } = createDb(applicationDatabaseUrl(process.env).url, {max: applicationBudget.poolMax});

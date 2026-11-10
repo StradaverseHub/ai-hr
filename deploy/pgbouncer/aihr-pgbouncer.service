@@ -1,0 +1,50 @@
+# Transaction pooler for the AI HR web application. Installed by deploy/pgbouncer/install.sh.
+# Reloading re-reads pgbouncer.ini and userlist.txt without dropping clients.
+[Unit]
+Description=AI HR PgBouncer transaction pooler
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=aihr-pgbouncer
+Group=aihr-pgbouncer
+RuntimeDirectory=aihr-pgbouncer
+RuntimeDirectoryMode=0750
+ExecStart=/usr/sbin/pgbouncer /etc/aihr-pgbouncer/pgbouncer.ini
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+# Above max_client_conn + max_db_connections + PgBouncer's own descriptors. See README.md, "Sizing".
+LimitNOFILE=65536
+LimitCORE=0
+UMask=0077
+
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryHigh=512M
+MemoryMax=1G
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
