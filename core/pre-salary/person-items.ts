@@ -56,8 +56,8 @@ import {HomeAccessError,requireOwnHomeSubject} from '../employee-home';
 import {leaveRequestsFor,listEligibleLeaveTypesFor} from '../read';
 import {attendanceForEmploymentRange,classifyDay,myAttendanceCorrections,myOvertimePlans,otMonthToDateMinutes} from '../../packs/attendance/service';
 import {listReplacementLeaveRequests} from '../../packs/leave/service';
-import {getEmployeeClaimTypes,listOpenClaimsForEmployment} from '../../packs/claims/service';
-import {listMyTp1Declarations,myTp3Employments,myTp3History} from '../../packs/payroll/service';
+import {claimTypeReceiptRules,listOpenClaimsForEmployment} from '../../packs/claims/service';
+import {listMyTp1DeclarationsSnapshot,myTp3EmploymentsSnapshot,myTp3HistorySnapshot} from '../../packs/payroll/service';
 import {myReadinessActions} from '../readiness-actions';
 import {myProfile} from '../profile';
 import {eligibleChildReliefCount,listDependents} from '../dependents';
@@ -207,7 +207,8 @@ async function claimsGroup(ctx:SessionContext,subject:Subject,period:PayrollPeri
  const state=moduleState(ctx,'claims',subject.companyId);
  if(state!=='on')return state==='off'?off:failed;
  // Only pending and draft claims produce an item, so decided history is never loaded (same rows, same order).
- const [claims,types]=await Promise.all([settle(()=>listOpenClaimsForEmployment(ctx,subject.employmentId)),settle(()=>getEmployeeClaimTypes(ctx,subject.employmentId))]);
+ // The types' receipt rules are read without their limits and balances (core/claims.ts claimTypeReceiptRules).
+ const [claims,types]=await Promise.all([settle(()=>listOpenClaimsForEmployment(ctx,subject.employmentId)),settle(()=>claimTypeReceiptRules(ctx))]);
  if(!claims.ok)return failed;
  // Only the receipt rule and the receipt-age window are taken from each type; limits and balances are left behind.
  const rules=new Map((types.ok?types.value:[]).map(type=>[type.id,{requiresReceipt:type.requiresReceipt,window:type.maxReceiptAgeDays}]));
@@ -245,10 +246,11 @@ async function detailsGroup(ctx:SessionContext,subject:Subject,period:PayrollPer
  const payroll=moduleState(ctx,'payroll',subject.companyId);
  const [gaps,tp3,extra]=await Promise.all([
   settle(()=>myReadinessActions(ctx,subject.employmentId)),
-  payroll==='on'?settle(async()=>{const [employments,history,answer]=await Promise.all([myTp3Employments(ctx),myTp3History(ctx),
+  // TP3 and TP1 each read one read-only snapshot without the payroll-history barrier (core/tp3.ts, core/tax-relief.ts).
+  payroll==='on'?settle(async()=>{const [employments,history,answer]=await Promise.all([myTp3EmploymentsSnapshot(ctx),myTp3HistorySnapshot(ctx),
    myTp3PreviousEmployerAnswer(ctx,Number(today.slice(0,4)))]);return{employments,history,answer};}):Promise.resolve(null),
   payroll==='on'&&ctx.personId?settle(async()=>{const personId=ctx.personId!;
-   const [tp1,profile,family]=await Promise.all([listMyTp1Declarations(ctx,{assessmentYear:Number(today.slice(0,4))}),myProfile(ctx),listDependents(ctx,{personId})]);
+   const [tp1,profile,family]=await Promise.all([listMyTp1DeclarationsSnapshot(ctx,{assessmentYear:Number(today.slice(0,4))}),myProfile(ctx),listDependents(ctx,{personId})]);
    return{tp1,profile,family};}):Promise.resolve(null),
  ]);
  const items:PayrollItem[]=[];

@@ -15,7 +15,7 @@ import {assertReadCompositionPrincipalTx} from './read-composition-principal';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
-import { assertCanDecide, assertAssignedWorkPrincipalTx, decideByRoleForKnownSubject, isApprovalDecisionRefusal, subjectPersonIdsTx } from './approvals';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, canDecideSql, decideByRoleForKnownSubject, decideSelfSql, isApprovalDecisionRefusal, subjectPersonIdsTx } from './approvals';
 import {assertMyTeamSubjectTx} from './my-team-scope';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import { scopeOf } from '../lib/delegation-scope';
@@ -12298,13 +12298,10 @@ export async function pendingLeaveDecisionChoiceMetadataTx(tx:Tx,ctx:SessionCont
  return{tasks,truncated};
 }
 
-export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
- return withTenant(ctx,async tx=>{
-  await assertAssignedWorkPrincipalTx(tx,ctx);
-  // Resolve each native subject once per bounded batch, rather than once for every
-  // pending request. These are candidates only: all live current-step/alternate and
-  // decision checks below remain unchanged, including when the queue exceeds1000.
-  const source=sql`(
+/** pendingLeaveTaskMetadata's candidate source, shared with the one-statement Home task read. Resolve each native
+ * subject once per bounded batch, rather than once for every pending request. These are candidates only. */
+function pendingLeaveCandidateSource(ctx:SessionContext){
+  return sql`(
    with headers as materialized(select q.id,q.employment_id,q.created_at from public.leave_request q where q.tenant_id=${ctx.tenantId}::uuid and q.status='pending'),
    distinct_subjects as(select distinct employment_id from headers),
    numbered_subjects as(select employment_id,(row_number()over(order by employment_id)-1)/1000 as bucket from distinct_subjects),
@@ -12312,6 +12309,15 @@ export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]
    subject_rows as materialized(select r.* from subject_batches b cross join lateral app.delegated_approval_subjects(b.ids,'leave','leave.application')r)
    select h.id,h.employment_id,h.created_at,r.person_id,r.employee,r.company_id from headers h join subject_rows r on r.employment_id=h.employment_id
   ) as pending_leave`;
+}
+
+export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ return withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  // Resolve each native subject once per bounded batch, rather than once for every
+  // pending request. These are candidates only: all live current-step/alternate and
+  // decision checks below remain unchanged, including when the queue exceeds1000.
+  const source=pendingLeaveCandidateSource(ctx);
   const id=sql<string>`pending_leave.id`,createdAt=sql<Date>`pending_leave.created_at`.mapWith(leaveRequest.createdAt);
   const candidates=await tx.select({id,employmentId:sql<string>`pending_leave.employment_id`,personId:sql<string>`pending_leave.person_id`,employee:sql<string>`pending_leave.employee`,createdAt}).from(source)
    .where(and(sql`NOT app.is_self_person(pending_leave.person_id)`,companyIds===undefined?undefined:sql`pending_leave.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
@@ -12339,6 +12345,75 @@ export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]
  });
 }
 
+
+/** assertCanDecideAsApprover for ONE approver of a step, as SQL text: 'allow' where the gate returns, 'refuse' where it
+ * throws one of isLeaveDecisionRefusal's refusals, and 'defer' wherever the TypeScript gate could throw anything else
+ * or read an unordered `limit 1` among several rows (a manager's manager or a subject head that is not unique). A
+ * deferred answer is never used: the caller reruns the owner. Same branches, same order, the caller's own session. */
+export function leaveApproverDecisionSql(ctx:SessionContext,subject:SQL,kind:SQL,approver:SQL,taskType:LeaveDecisionTaskType):SQL{
+  const roles=ctx.roles??[],isSuper=roles.includes('super_admin'),isAdmin=isSuper||roles.includes('hr_admin');
+  const person=ctx.personId??null,scope=scopeOf(taskType),banSelf=decideSelfSql(ctx,subject),admin=isAdmin?sql`true`:sql`false`;
+  const personOf=(holder:SQL)=>person!=null?sql`exists(select 1 from public.employment approver_person where approver_person.id=${holder} and approver_person.person_id::text=${person}::text)`:sql`false`;
+  const grants=ctx.grants??[],payrollCompanies=grants.filter(g=>g.role==='payroll_partner'&&g.companyId!=null).map(g=>g.companyId as string);
+  const payroll=grants.some(g=>g.role==='payroll_partner'&&g.companyId==null)?sql`true`:payrollCompanies.length
+    ?sql`exists(select 1 from public.employment payroll_subject where payroll_subject.id=${subject} and payroll_subject.company_id::text=any(array[${sql.join(payrollCompanies.map(id=>sql`${id}::text`),sql`,`)}]::text[]))`:sql`false`;
+  const hr=sql`case when ${isAdmin?sql`false`:sql`true`} then 'refuse' when ${banSelf} then 'refuse' else 'allow' end`;
+  const managerManager=sql`(select case when manager_line.n>1 then 'defer'
+     when manager_line.manager is null then 'refuse'
+     when ${personOf(sql`manager_line.manager`)} then 'refuse'
+     when ${canDecideSql(ctx,sql`manager_line.manager`,scope)} then 'allow' else 'refuse' end
+    from (select count(*) as n,(array_agg(line.manager_employment_id))[1] as manager from public.reporting_line line
+     where line.subordinate_employment_id=${subject} and line.line_type='administrative' and line.valid_from<=current_date
+      and (line.valid_to is null or line.valid_to>current_date)) manager_line)`;
+  const head=(headKind:'department_head'|'business_unit_head')=>sql`(select case when subject_head.n>1 then 'defer'
+     when subject_head.head is not null and ${personOf(sql`subject_head.head`)} then 'allow'
+     when ${person!=null?sql`coalesce(app.can_decide_via_delegation_from(app.subject_head(${subject},${headKind}::text),${subject},'leave',${taskType}::text),false)`:sql`false`} then 'allow'
+     else 'refuse' end
+    from (select count(*) as n,(array_agg(${headKind==='department_head'?sql`head_department.head_employment_id`:sql`head_unit.head_employment_id`}))[1] as head
+     from public.assignment head_assignment join public.department head_department on head_department.id=head_assignment.department_id
+     ${headKind==='business_unit_head'?sql`join public.business_unit head_unit on head_unit.id=head_department.business_unit_id`:sql``}
+     where head_assignment.employment_id=${subject} and head_assignment.valid_to is null and head_assignment.superseded_at is null) subject_head)`;
+  return sql`case ${kind}
+    when 'direct_manager' then case when ${canDecideSql(ctx,subject,scope)} then 'allow' else 'refuse' end
+    when 'manager_manager' then case when ${banSelf} then 'refuse' when ${admin} then 'allow' else ${managerManager} end
+    when 'hr_admin' then ${hr} when 'hr_manager' then ${hr} when 'custom_role' then ${hr}
+    when 'payroll' then case when ${banSelf} then 'refuse' when ${admin} then 'allow' when ${payroll} then 'allow' else 'refuse' end
+    when 'specific_employee' then case when ${banSelf} then 'refuse' when ${approver} is null then 'defer'
+     when ${personOf(approver)} then 'allow' when ${admin} then 'allow' else 'refuse' end
+    when 'department_head' then case when ${banSelf} then 'refuse' when ${admin} then 'allow' else ${head('department_head')} end
+    when 'business_unit_head' then case when ${banSelf} then 'refuse' when ${admin} then 'allow' else ${head('business_unit_head')} end
+    else 'defer' end`;
+}
+
+/** pendingLeaveTaskMetadata(ctx, companyIds) in one statement for the account task read (core/account-task-bundle.ts),
+ * with the owner's own company filter. jsonb {defer, rows}: `rows` are the owner's result in its order; `defer` is true when
+ * any candidate's current step falls outside leaveApproverDecisionSql's exact answers (alternates included), and then
+ * the owner itself runs. A chain without a pending step is skipped; no chain is assertCanDecide, as in the owner. */
+export function pendingLeaveTaskBundleSql(ctx:SessionContext,companyIds?:string[]):SQL{
+  const scope=scopeOf('leave.application'),subject=sql`pending_leave.employment_id`;
+  const decision=sql`case
+    when leave_current.id is null and leave_chain.present then 'skip'
+    when leave_current.id is null then case when ${canDecideSql(ctx,subject,scope)} then 'allow' else 'refuse' end
+    when jsonb_typeof(leave_current.approver_alternates)='array' and jsonb_array_length(leave_current.approver_alternates)>0 then 'defer'
+    else ${leaveApproverDecisionSql(ctx,subject,sql`leave_current.approver_kind`,sql`leave_current.approver_employment_id`,'leave.application')} end`;
+  return sql`(select jsonb_build_object('defer',coalesce(bool_or(decided.decision='defer'),false),
+    'rows',coalesce(jsonb_agg(jsonb_build_object('id',pending_leave.id,'employmentId',pending_leave.employment_id,'personId',pending_leave.person_id,
+     'employee',pending_leave.employee,'createdAt',pending_leave.created_at) order by pending_leave.created_at desc,pending_leave.id) filter(where decided.decision='allow'),'[]'::jsonb))
+   from ${pendingLeaveCandidateSource(ctx)}
+   cross join lateral (select exists(select 1 from public.leave_approval_step chain where chain.leave_request_id=pending_leave.id) as present) leave_chain
+   left join lateral (select step.id,step.approver_kind,step.approver_employment_id,step.approver_alternates from public.leave_approval_step step
+     where step.leave_request_id=pending_leave.id and step.status='pending' order by step.step_index,step.id limit 1) leave_current on true
+   cross join lateral (select ${decision} as decision) decided
+   where not app.is_self_person(pending_leave.person_id)
+    ${companyIds===undefined?sql``:sql`and pending_leave.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`})`;
+}
+type BundleApprovalRow={id:string;employmentId:string;personId:string;employee:string|null;createdAt:string};
+/** The leave section's owner result, or null when the owner must run itself. */
+export function pendingLeaveTasksFromBundle(value:unknown):AssignedApprovalMetadata[]|null{
+  const section=value as {defer:boolean;rows:BundleApprovalRow[]};
+  if(section.defer)return null;
+  return section.rows.map(row=>({id:row.id,employmentId:row.employmentId,personId:row.personId,employee:row.employee,createdAt:new Date(row.createdAt)}));
+}
 
 function pendingLeaveCancellationHeadersQuery(tx:Tx,ctx:SessionContext,companyIds?:string[]){
   return tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId,personId:sql<string>`approval_subject.person_id`,

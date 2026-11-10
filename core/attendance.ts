@@ -7873,6 +7873,21 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
     // The hot Home/Approvals metadata query pays substantial JIT compile time, even
     // for an empty queue. Limit the setting to this owned read transaction.
     await tx.execute(sql`set local jit=off`);
+    const {source,otherPerson}=pendingAttendanceCandidateSource(ctx,requestId);
+    const id=sql<string>`pending_attendance.id`,employmentId=sql<string>`pending_attendance.employment_id`,
+      personId=sql<string>`pending_attendance.person_id`,employee=sql<string|null>`pending_attendance.employee`,
+      createdAt=sql<Date>`pending_attendance.created_at`.mapWith(attendanceCorrection.createdAt);
+    const rows=await tx.select({id,employmentId,personId,employee,createdAt}).from(source)
+      .where(and(otherPerson,companyIds===undefined?undefined:
+        sql`(pending_attendance.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(pending_attendance.id) IS NOT NULL)`))
+      .orderBy(desc(createdAt),id);
+    const allowed=await actionableAttendanceApplicationIdsTx(tx,ctx,rows);
+    return rows.filter(row=>allowed.has(row.id));
+  });
+}
+
+/** pendingAttendanceTaskMetadata's candidate source and self exclusion, shared with the one-statement Home task read. */
+function pendingAttendanceCandidateSource(ctx:SessionContext,requestId?:string){
     // The role hint chooses a query shape only. Every fast-path company is proved by
     // the existing native administrator owner; other subjects retain the exact scalar
     // frozen-workflow/delegation reader. RLS and the final decision owner remain live.
@@ -7925,22 +7940,30 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
       from headers h cross join lateral app.attendance_application_subject(h.id)s
       where not exists(select 1 from ordinary_subjects s where s.employment_id=h.employment_id)
     )as pending_attendance`;
-    const id=sql<string>`pending_attendance.id`,employmentId=sql<string>`pending_attendance.employment_id`,
-      personId=sql<string>`pending_attendance.person_id`,employee=sql<string|null>`pending_attendance.employee`,
-      createdAt=sql<Date>`pending_attendance.created_at`.mapWith(attendanceCorrection.createdAt);
     // Resolve the current person's binding once in this statement, including for sessions
     // without a person hint. A missing binding or a null subject has no self match.
     const otherPerson=sql`coalesce(pending_attendance.person_id <> (
       select p.person_id from app.principal(app.current_user_id()) p
       where p.tenant_id=app.current_tenant_id()
     ),true)`;
-    const rows=await tx.select({id,employmentId,personId,employee,createdAt}).from(source)
-      .where(and(otherPerson,companyIds===undefined?undefined:
-        sql`(pending_attendance.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(pending_attendance.id) IS NOT NULL)`))
-      .orderBy(desc(createdAt),id);
-    const allowed=await actionableAttendanceApplicationIdsTx(tx,ctx,rows);
-    return rows.filter(row=>allowed.has(row.id));
-  });
+    return {source,otherPerson};
+}
+
+/** pendingAttendanceTaskMetadata(ctx, companyIds)'s empty answers in one statement (core/account-task-bundle.ts): jsonb
+ * {possible, candidates}. An empty company list, no possible source, or no candidate row under the owner's company filter
+ * is the owner's own empty result; any candidate still needs the owner's live decision proof, so the owner then runs. */
+export function pendingAttendanceTaskBundleSql(ctx:SessionContext,companyIds?:string[]){
+  if(companyIds?.length===0)return sql`jsonb_build_object('possible',false,'candidates',false)`;
+  const {source,otherPerson}=pendingAttendanceCandidateSource(ctx);
+  const scoped=companyIds===undefined?sql`true`:
+    sql`(pending_attendance.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(pending_attendance.id) IS NOT NULL)`;
+  return sql`(select jsonb_build_object('possible',attendance_probe.possible,'candidates',
+    case when attendance_probe.possible is false then false else exists(select 1 from ${source} where ${otherPerson} and ${scoped}) end)
+   from (select app.may_have_attendance_task_metadata() as possible) attendance_probe)`;
+}
+export function pendingAttendanceTasksFromBundle(value:unknown):[]|null{
+  const section=value as {possible:boolean|null;candidates:boolean};
+  return section.possible===false||!section.candidates?[]:null;
 }
 
 /** Native monthly measurement, reduced to local distinct-person membership. No raw measurement override. */

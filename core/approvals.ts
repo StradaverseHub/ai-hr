@@ -8,7 +8,7 @@
  *   - only an admin or the subject's *active administrative* manager may decide.
  * Every decision is still evented with the real actor.
  */
-import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { employment, reportingLine } from '../db/schema';
 import {AssignedWorkPrincipalUnavailableError} from '../lib/assigned-work';
@@ -118,6 +118,43 @@ export async function assertCanDecide(
     if (ok) return;
   }
   throw new Error(`Only an admin or the administrative manager can decide this ${label}`);
+}
+
+/** SQL twins of the two guards above, for the one-statement Home task read (core/account-task-bundle.ts). Each is
+ * the same rule in the same order, evaluated in the caller's own session, so every table read keeps the caller's
+ * row-level security exactly as the TypeScript guard's statements do. A comparison the guard makes in JavaScript
+ * (the subject's person against ctx.personId) compares text here; one the guard sends to SQL stays a SQL comparison.
+ * The role facts come from ctx, as in the guards. test/performance/home-manager-card-reads.test.ts proves both
+ * equal per fixture person. */
+function decisionRoles(ctx:SessionContext){
+ const roles=ctx.roles??[],superAdmin=roles.includes('super_admin');
+ return {superAdmin,admin:superAdmin||roles.includes('hr_admin'),person:ctx.personId??null};
+}
+/** assertCanDecide's self ban: the RLS-visible subject row belongs to ctx.personId (never for a super_admin). */
+export function decideSelfSql(ctx:SessionContext,subject:SQL):SQL{
+ const {superAdmin,person}=decisionRoles(ctx);
+ return person!=null&&!superAdmin?sql`exists(select 1 from public.employment decide_self where decide_self.id=${subject} and decide_self.person_id::text=${person}::text)`:sql`false`;
+}
+const currentAdministrativeManagerSql=(subject:SQL,person:string)=>sql`exists(select 1 from public.reporting_line decide_line
+ join public.employment decide_manager on decide_manager.id=decide_line.manager_employment_id
+ where decide_line.subordinate_employment_id=${subject} and decide_line.line_type='administrative'
+  and decide_line.valid_from<=current_date and (decide_line.valid_to is null or decide_line.valid_to>current_date)
+  and decide_line.superseded_at is null and decide_manager.person_id=${person}::uuid)`;
+/** assertCanDecide as a boolean: true where the guard returns, false where it throws one of its two refusals. */
+export function canDecideSql(ctx:SessionContext,subject:SQL,scope?:{module:string;taskType:string}):SQL{
+ const {admin,person}=decisionRoles(ctx),self=decideSelfSql(ctx,subject);
+ if(admin)return sql`(not ${self})`;
+ if(!person)return sql`false`;
+ return sql`(not ${self} and (${currentAdministrativeManagerSql(subject,person)}
+  or coalesce(app.can_decide_via_delegation(${subject},${scope?.module??null}::text,${scope?.taskType??null}::text),false)))`;
+}
+/** decisionEmploymentAuthorityTx's `allowed` membership for one subject. The delegated set is one InitPlan per statement. */
+export function decisionEmploymentAuthoritySql(ctx:SessionContext,subject:SQL,scope?:{module:string;taskType:string}):SQL{
+ const {admin,person}=decisionRoles(ctx),self=decideSelfSql(ctx,subject);
+ if(admin)return sql`(not ${self})`;
+ if(!person)return sql`false`;
+ return sql`(not ${self} and (${currentAdministrativeManagerSql(subject,person)}
+  or ${subject}=any(cast((select app.delegated_subject_ids(${scope?.module??null}::text,${scope?.taskType??null}::text)) as uuid[]))))`;
 }
 
 /** Current authority for a bounded batch of read-only task subjects. */

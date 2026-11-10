@@ -69,18 +69,73 @@ calculation, authority, ordering or failure changes.
      match to the byte (test/home-own-leave-inputs.test.ts, test/home-own-clock-day.test.ts, and the hosted
      diagnostic's `bundle:*` comparisons).
 
+7. **Home's account tasks are one statement** (`core/account-task-bundle.ts`, branch
+   `claude/home-bundle-tasks-20261110`). The Tasks card and the Summary count read every workflow owner of
+   `core/approvals-inbox.ts` and Home's personal owners through one statement of sub-selects. Each sub-select is built
+   beside the owner it reproduces and shares that owner's SQL text, and it runs in the caller's own session, so
+   row-level security, delegation, organisation scope and the self-approval ban are the owner's own. Leave decides each
+   candidate's current step in SQL (`leaveApproverDecisionSql`, the branches and order of `assertCanDecideAsApprover`);
+   Leave Credit and the Claims preview with its exact count decide subjects with `decisionEmploymentAuthoritySql`, the
+   SQL twin of `decisionEmploymentAuthorityTx`; Notices, standard feedback and the performance review queue return the
+   owner's rows and the owner's TypeScript combines them. Every other owner contributes its own first probe, and an empty
+   probe is its empty result. Whatever the statement cannot answer exactly leaves that owner alone to read as before in
+   the same snapshot: an alternate approver, an unordered `limit 1` among several rows (a manager's manager, a subject
+   head), any candidate that needs a live decision proof (decision headers, Attendance, Profile, Rewards, assessment,
+   calibration, OneHR feedback, onboarding), a module gate that would refuse or an AI Centre activity. Without a login,
+   a failed principal proof or a failed statement, every owner reads as before. Module entitlements stay the caller's
+   decision. Every preview (`pendingTaskSummary`: Needs you, the shell badge, My tasks, Before payroll's approvals) reads
+   the same statement with each owner's own company filter, without the Notice owner where the list leaves it out, and
+   with a count-only Claims read answered by the same exact total. Full lists (`listPendingTasks`) still read the
+   owners.
+
+8. **Before payroll's payroll reads need no history barrier, and its claim rules no balances.** TP1 and the two TP3 reads
+   (`listMyTp1DeclarationsSnapshot`, `myTp3EmploymentsSnapshot`, `myTp3HistorySnapshot`) keep the Payroll module gate,
+   statements and projection and read one REPEATABLE READ READ ONLY snapshot without `lockPayrollHistoryReadTx`. The
+   barrier keeps a multi-statement READ COMMITTED read from straddling a history correction; a repeatable-read snapshot
+   is taken at the transaction's first statement, so every later statement, and any wait for the lock, sees the same
+   state, and the barrier could only delay the read (decision 3's reasoning, now for two statements). The TP1 owner check
+   reads the login without `FOR SHARE`: a read-only snapshot cannot take a row lock and needs none. They join the shared
+   snapshot instead of three transactions of their own. Calculations, reports, writers and every other caller keep the
+   barrier and the lock. The checklist used only each claim type's receipt rule and receipt-age window from
+   `getEmployeeClaimTypes`, which also computes every limit, balance, item and form field; `claimTypeReceiptRules` reads
+   those two facts for the same types in the same order behind the same Claims gate.
+
 ## Not done here
 
-Per-card set-based bundles for Tasks (one UNION ALL across workflow owners) and Before payroll (another branch).
-Within Time Off, a leave type with an entitlement table in force still builds its template resolver live (its
-eligibility rules and their organisation matches): the bundle could carry the rule rows and the dated assignment,
-but `resolveOrgCriteriaTargets` would first need the same preloaded-input refactor and equivalence proof.
+- **Before payroll as one read.** Its remaining owners still read separately: the attendance day chain
+  (`attendanceForEmploymentRange`, shared with Today), own corrections, overtime plans and cap, loop cards, own leave
+  requests and eligible types, open claims, Leave Credit requests, readiness gaps, profile and dependants, letters,
+  notices, reviews and onboarding acknowledgements. Each needs the treatment Tasks received: a section beside its owner
+  that shares the owner's SQL, a TypeScript projection fed from the preloaded rows, and an owner-against-section
+  equivalence comparison. The attendance chain follows the Today bundle.
+- **Deferred task owners.** Leave cancellations, resignations and employment reviews (behind their shared candidate
+  probe), Attendance, Profile, Rewards, assessment and calibration work, OneHR feedback and onboarding still read on
+  their own whenever they have a candidate. Cancellations can reuse `leaveApproverDecisionSql` with its own task type;
+  the others need their decision proofs as SQL beside their owners, or the assigned work index below.
+- **Entitlement tables in Time Off.** A leave type with an entitlement table in force still builds its template
+  resolver live (its eligibility rules and their organisation matches): the bundle could carry the rule rows and the
+  dated assignment, but `resolveOrgCriteriaTargets` would first need the same preloaded-input refactor and equivalence
+  proof.
 
 ## Read models worth maintaining
 
 - **Assigned work index**: one row per open decision and assignee, maintained by each workflow owner's writer and
   rechecked by the owner on open. Home's task count and first page, the shell badge and Needs you would read one
-  indexed statement instead of a dozen owner queries, at every queue size.
+  indexed statement instead of a dozen owner queries, at every queue size. It is the better long-term design: decision 7
+  still evaluates authority per candidate on every read (its cost grows with the queue, 20,000 pending Claims in the
+  fixture), and its exactness rests on SQL twins of TypeScript guards that must change together. Design:
+  - `assigned_work(tenant_id, owner, item_id, assignee_employment_id, subject_employment_id, company_id, created_at,
+    due_date, kind, revision)`, primary key `(tenant_id, owner, item_id, assignee_employment_id)`, indexed by
+    `(tenant_id, assignee_employment_id, created_at desc)`, RLS to the assignee's own person, no request body or amount.
+  - Written only inside each owner's own transaction: the request writer adds or removes the request's rows; the step
+    writer replaces them when the current step moves; and every fact authority derives from rewrites the rows it
+    touches: reporting lines, delegations and their scopes, role grants, department and business-unit heads, payroll
+    partner grants, attendance workflow participants. That last set is what makes it larger than a cache, and each of
+    those writers needs a test that the index matches the owner after the write.
+  - Readers trust it for counts and the first page; opening an item still runs the owner's decision guard, which stays
+    the authority. A nightly owner-against-index comparison per tenant reports drift instead of hiding it.
+  - Migrate one owner at a time behind decision 7's section for that owner, starting with Claims and Leave, which hold
+    most rows.
 - **Own leave balance snapshot**: per employment and leave type, the current cycle's balance, pending and Apply figures,
   rewritten by the ledger and request writers. Time Off and At a glance would read one row set; the calculators stay
   the writer-side owner. *Measured against the bundle (decision 6), it is not clearly better yet.* The bundle already

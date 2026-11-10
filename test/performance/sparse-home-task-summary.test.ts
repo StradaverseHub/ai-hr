@@ -9,6 +9,7 @@ import * as s from '../../db/schema';
 import {listPendingTasks,pendingTaskSummary,type InboxModules} from '../../core/approvals-inbox';
 import {hireEmployee,setReportingLine} from '../../core/org';
 import {AssignedWorkPrincipalUnavailableError} from '../../lib/assigned-work';
+import {withOwnerTaskReads} from '../../core/account-task-bundle';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();});
@@ -20,6 +21,8 @@ const candidate=async(ctx:SessionContext,scope?:string[])=>{
  expect(full.total).toBe(full.items.length);
  return full.items;
 };
+/** The same preview with every owner reading on its own (core/account-task-bundle.ts withOwnerTaskReads). */
+const owners=(ctx:SessionContext,scope?:string[])=>withOwnerTaskReads(()=>candidate(ctx,scope));
 const sqlState=async(p:Promise<unknown>)=>{try{await p;}catch(error){let e=error as {code?:string;cause?:unknown};while(e&&!e.code)e=e.cause as typeof e;return e?.code;}return undefined;};
 it('coalesces four sparse header owners without omitting any actual assigned work or error',async()=>{
  await resetDb();const b=await seedBase(),foreign=await seedBase(),group=adminCtx(b),today=todayInKualaLumpur();
@@ -42,15 +45,22 @@ it('coalesces four sparse header owners without omitting any actual assigned wor
  const measure=async(read:typeof original)=>{trips=0;transactions=0;active=true;const start=performance.now();try{
   const values=await Promise.all(Array.from({length:40},(_,i)=>read([group,managerCtx,otherCtx][i%3],scope)));expect(values.every(value=>value.length===0)).toBe(true);return{elapsedMs:performance.now()-start,trips,transactions};
  }finally{active=false;}};
- const phases={original:await measure(original),candidate:await measure(candidate),warm:await measure(candidate),restored:await measure(original)};
+ const phases={original:await measure(original),candidate:await measure(owners),warm:await measure(owners),restored:await measure(original),
+  statement:await measure(candidate),statementWarm:await measure(candidate)};
  expect(phases.original.transactions-phases.candidate.transactions).toBe(160);
  expect(phases.original.trips-phases.candidate.trips).toBe(400);
+ // Through the account task statement every owner here is answered: one read-only snapshot per read, whose four
+ // statements are drizzle's SET TRANSACTION (repeatable read, read only), the identity, the JIT setting and the statement.
+ expect(phases.statement).toMatchObject({transactions:40,trips:160});
  expect(await sqlState(original(group,['not-a-uuid']))).toBe('22P02');expect(await sqlState(candidate(group,['not-a-uuid']))).toBe('22P02');
+ expect(await sqlState(owners(group,['not-a-uuid']))).toBe('22P02');
  const [cancel]=await owner.db.insert(s.leaveCancellationRequest).values(cancellation).returning();
  const [resign]=await owner.db.insert(s.resignationRequest).values(resignation).returning();
  const [mgr]=await owner.db.insert(s.employmentReview).values({...review,reviewType:'probation'}).returning();
  const [hr]=await owner.db.insert(s.employmentReview).values({...review,reviewType:'contract',status:'pending_hr'}).returning();
- for(const [ctx,companies] of [[group,scope],[managerCtx,scope],[otherCtx,scope],[adminCtx(foreign),[foreign.companyId]],[group,[]],[group,[foreign.companyId]]] as [SessionContext,string[]][]){expect(await candidate(ctx,companies)).toEqual(await original(ctx,companies));}
+ for(const [ctx,companies] of [[group,scope],[managerCtx,scope],[otherCtx,scope],[adminCtx(foreign),[foreign.companyId]],[group,[]],[group,[foreign.companyId]]] as [SessionContext,string[]][]){
+  const expected=await original(ctx,companies);expect(await candidate(ctx,companies)).toEqual(expected);expect(await owners(ctx,companies)).toEqual(expected);
+ }
  const g=await candidate(group,scope),m=await candidate(managerCtx,scope);
  expect(g.filter(row=>row.kind==='leaveCancellation').map(row=>row.id)).toEqual([cancel.id]);
  expect(g.filter(row=>row.kind==='resignation').map(row=>row.id)).toEqual([resign.id]);

@@ -73,7 +73,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // (core/payroll.ts — itself payroll-bound — and localization/my/reports.ts's EA dataset, which
 // dynamic-imports them and runs its own query), and `TP1_FORM_CODE` / `TP1_ITEMS` / `TP1_REBATES`
 // (components/tp1-declaration-form.tsx, lib/tp1-form-input.ts). See core/module-gate.ts.
-import { withPayrollTenant as withTenant } from './module-gate';
+import { withPayrollSnapshotTenant, withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { isAdmin } from '../lib/authz-model';
 import {
@@ -848,8 +848,9 @@ function requirePerson(ctx: SessionContext): string {
 }
 
 /** Mine binds the actual login, not a caller-supplied Person, even when that login also administers Payroll. */
-async function assertMyTp1OwnerTx(tx:Tx,personId:string) {
-  const rows=await tx.execute(sql`select u.id from public.app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() and app.is_self_person(${personId}::uuid) for share`);
+async function assertMyTp1OwnerTx(tx:Tx,personId:string,lock=true) {
+  // A read-only snapshot (listMyTp1DeclarationsSnapshot) cannot take, and needs no, row lock: it reads the login as of its snapshot.
+  const rows=await tx.execute(sql`select u.id from public.app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() and app.is_self_person(${personId}::uuid)${lock?sql` for share`:sql``}`);
   if(!rows.length)throw new TaxReliefError('This account is not linked to this employee profile.');
 }
 
@@ -1330,11 +1331,32 @@ export function listMyTp1Declarations(
   return listTp1MonthDeclarations(ctx, requirePerson(ctx), p.assessmentYear, true);
 }
 
+/** listMyTp1Declarations for the read-only Before payroll checklist (core/pre-salary/person-items.ts): the same owner
+ * check, rows and projection behind the same Payroll module gate, read in ONE REPEATABLE READ READ ONLY snapshot without
+ * the payroll-history barrier (core/payroll-history-lock.ts). The barrier keeps a multi-statement READ COMMITTED read
+ * from straddling a history correction. Both statements here read one snapshot, taken at the transaction's first
+ * statement, so they are atomic against every writer transaction; the barrier could only delay this read until an
+ * in-flight writer committed (the reasoning of core/payroll-self-metadata.ts). Nothing is written; inside the
+ * request's shared snapshot (db/shared-read.ts) it needs no transaction of its own. Every other caller keeps the
+ * barrier and the row lock. */
+export function listMyTp1DeclarationsSnapshot(ctx: SessionContext, p: {assessmentYear?: number} = {}): Promise<Tp1MonthDeclaration[]> {
+  const personId = requirePerson(ctx);
+  const year = p.assessmentYear == null ? null : validateYear(p.assessmentYear);
+  return withPayrollSnapshotTenant(ctx, async (tx) => {
+    await assertMyTp1OwnerTx(tx, personId, false);
+    return tp1MonthDeclarationsTx(tx, personId, year);
+  });
+}
+
 function listTp1MonthDeclarations(ctx: SessionContext, personId: string, assessmentYear?: number, ownOnly=false): Promise<Tp1MonthDeclaration[]> {
   // Validated only when supplied: an absent year is "every year", not year zero.
   const year = assessmentYear == null ? null : validateYear(assessmentYear);
   return withTenant(ctx, async (tx) => {
     if(ownOnly)await assertMyTp1OwnerTx(tx,personId);
+    return tp1MonthDeclarationsTx(tx, personId, year);
+  });
+}
+async function tp1MonthDeclarationsTx(tx: Tx, personId: string, year: number | null): Promise<Tp1MonthDeclaration[]> {
     const rows = await tx
       .select({
         id: tp1Relief.id,
@@ -1379,7 +1401,6 @@ function listTp1MonthDeclarations(ctx: SessionContext, personId: string, assessm
       (a, b) =>
         b.assessmentYear - a.assessmentYear || (a.deductionMonth ?? 99) - (b.deductionMonth ?? 99),
     );
-  });
 }
 
 /**

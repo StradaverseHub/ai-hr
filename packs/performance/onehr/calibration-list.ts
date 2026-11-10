@@ -81,6 +81,25 @@ export async function hasCalibrationAssignment(ctx: SessionContext): Promise<boo
 /** A calibration task before the shared list drops its company (null for a group-wide session). */
 export type CalibrationTask = PackTaskItem & { kind: 'calibration'; companyId: string | null };
 
+
+function pendingCalibrationWhere() {
+  return and(
+    sql`app.onehr_calibration_reviewer(${onehrCalibration.id}, app.current_user_id())`,
+    ne(onehrCalibration.tier, 'final'),
+    ne(reviewCycle.status, 'closed'),
+    sql`coalesce((${onehrCycle.policy}->'modules'->>'calibration')::boolean,true)`,
+    sql`app.onehr_calibration_access(${onehrCalibration.id})`,
+  );
+}
+/** pendingCalibrationTasks' empty answer in the one-statement Home task read (core/account-task-bundle.ts): no session
+ * row is the owner's empty result. A session row needs the owner's window and work checks, so the owner then runs. */
+export function pendingCalibrationCandidatesBundleSql(ctx: SessionContext) {
+  if (!ctx.userId) return sql`false`;
+  return sql`exists(select 1 from ${onehrCalibration} inner join ${reviewCycle} on ${eq(reviewCycle.id, onehrCalibration.cycleId)}
+    inner join ${onehrCycle} on ${and(eq(onehrCycle.cycleId, onehrCalibration.cycleId), eq(onehrCycle.tenantId, onehrCalibration.tenantId))}
+    where ${pendingCalibrationWhere()})`;
+}
+
 /**
  * Calibration work awaiting the viewer, for the shared task list (packs/performance/onehr/tasks.ts).
  *
@@ -111,13 +130,7 @@ export async function pendingCalibrationTasks(ctx: SessionContext, now = new Dat
       .from(onehrCalibration)
       .innerJoin(reviewCycle, eq(reviewCycle.id, onehrCalibration.cycleId))
       .innerJoin(onehrCycle, and(eq(onehrCycle.cycleId, onehrCalibration.cycleId), eq(onehrCycle.tenantId, onehrCalibration.tenantId)))
-      .where(and(
-        sql`app.onehr_calibration_reviewer(${onehrCalibration.id}, app.current_user_id())`,
-        ne(onehrCalibration.tier, 'final'),
-        ne(reviewCycle.status, 'closed'),
-        sql`coalesce((${onehrCycle.policy}->'modules'->>'calibration')::boolean,true)`,
-        sql`app.onehr_calibration_access(${onehrCalibration.id})`,
-      ))
+      .where(pendingCalibrationWhere())
       .orderBy(asc(onehrCalibration.createdAt), asc(onehrCalibration.id));
     const out: CalibrationTask[] = [];
     for (const { session, policy: raw } of rows) {

@@ -21,7 +21,7 @@ import { visibleLabelIdsCondition } from '../../../core/system-labels';
 import type { EmployeeDraftData } from '../../../lib/employee-draft-schema';
 import * as M from '../../../lib/onboarding-model';
 import { recentOnboardingJoinerCountTx,recentOnboardingJoinerCandidates } from './navigation-count';
-import { readOnboardingTaskQueueInputsTx } from './task-queue-read';
+import { onboardingTaskCasesExistSql, readOnboardingTaskQueueInputsTx } from './task-queue-read';
 export type { Config as OnboardingConfig, Case as OnboardingCase, Note as OnboardingNote, Facts as OnboardingFacts, Actor as OnboardingActor } from '../../../lib/onboarding-model';
 export { effectiveFacts as onboardingFacts, matchChecklist as onboardingChecklist, matches as onboardingMatches, progress as onboardingProgress, currentReq as onboardingRequisition, requisitionStatus as onboardingRequisitionStatus, stepOpen as onboardingStepOpen, activeItem as onboardingActiveItem, inGroup as onboardingGroupMember } from '../../../lib/onboarding-model';
 const uid = (ctx: SessionContext) => ctx.userId ?? M.fail('Sign in to continue.', 'forbidden');
@@ -32,25 +32,30 @@ const jsonSize = (v: unknown) => {
 };
 type Row = typeof cases.$inferSelect;
 const rows = <T>(v: unknown) => v as T[];
+type V9ConfigRow = { data: M.Config; revision: number; projection: V9ChecklistProjection | null };
 async function configTx(tx: Tx, ctx: SessionContext): Promise<{
     config: M.Config;
     revision: number;
 }> {
     const [extension] = await tx.execute<{ available: boolean }>(sql`select to_regprocedure('app.onboarding_v9_checklists()') is not null as available`);
     if (extension?.available) {
-        const [row] = await tx.execute<{ data: M.Config; revision: number; projection: V9ChecklistProjection | null }>(sql`select data,revision,app.onboarding_v9_checklists() as projection from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
-        if (row?.projection) return { config: { ...row.data, checklists: onboardingV9Checklists(row.projection), v9ChecklistRevision: row.projection.revision, v9CaseFields: row.projection.caseFields ?? defaultV9CaseFields('onb') }, revision: row.revision };
-        return { config: row?.data ?? M.defaultConfig(''), revision: row?.revision ?? 0 };
+        const [row] = await tx.execute<V9ConfigRow>(sql`select data,revision,app.onboarding_v9_checklists() as projection from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
+        return configFromV9Row(row);
     }
     const [row] = await tx.select().from(configs).where(eq(configs.tenantId, ctx.tenantId));
     return { config: row?.data ?? M.defaultConfig(''), revision: row?.revision ?? 0 };
 }
+function configFromV9Row(row: V9ConfigRow | undefined): { config: M.Config; revision: number } {
+    if (row?.projection) return { config: { ...row.data, checklists: onboardingV9Checklists(row.projection), v9ChecklistRevision: row.projection.revision, v9CaseFields: row.projection.caseFields ?? defaultV9CaseFields('onb') }, revision: row.revision };
+    return { config: row?.data ?? M.defaultConfig(''), revision: row?.revision ?? 0 };
+}
+type ActorRow = { master: boolean; hr: boolean; name: string };
+const actorSql = (companyId?: string) => sql `select app.is_group_admin() as master, app.is_admin_for(${companyId ?? null}::uuid) as hr, coalesce(p.full_name,'User '||left(u.id::text,8)) as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and not app.login_blocked(u.id)`;
 async function actorTx(tx: Tx, ctx: SessionContext, config: M.Config, companyId?: string): Promise<M.Actor> {
-    const [row] = rows<{
-        master: boolean;
-        hr: boolean;
-        name: string;
-    }>(await tx.execute(sql `select app.is_group_admin() as master, app.is_admin_for(${companyId ?? null}::uuid) as hr, coalesce(p.full_name,'User '||left(u.id::text,8)) as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and not app.login_blocked(u.id)`));
+    const [row] = rows<ActorRow>(await tx.execute(actorSql(companyId)));
+    return actorFromRow(row, ctx, config);
+}
+function actorFromRow(row: ActorRow | undefined, ctx: SessionContext, config: M.Config): M.Actor {
     if (!row)
         M.fail('Your login is not available.', 'forbidden');
     const sections=joinerPageSections(config,uid(ctx)),module=config.access.onboarding.includes(uid(ctx));
@@ -1136,6 +1141,24 @@ export async function onboardingAssignedTaskMetadata(ctx:SessionContext):Promise
                 linkPath:'/tasks#'+encodeURIComponent('onboarding-'+item.id),...(dueDate?{dueDate}:{})}];
         });
     });
+}
+
+/** onboardingAssignedTaskMetadata's empty answer in the one-statement Home task read (core/account-task-bundle.ts): the
+ * owner's configuration and actor reads, and whether any case could reach its interpreter. With no such case the owner
+ * returns nothing after building the same configuration and actor (and refuses the same missing login); otherwise, or
+ * without the v9 projection function, the owner runs itself. */
+export function onboardingAssignedTasksBundleSql(ctx: SessionContext) {
+    return sql`jsonb_build_object('available',to_regprocedure('app.onboarding_v9_checklists()') is not null,
+     'config',(select jsonb_build_object('data',config_row.data,'revision',config_row.revision,'projection',config_row.projection)
+       from (select data,revision,app.onboarding_v9_checklists() as projection from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid) config_row),
+     'actor',(select to_jsonb(actor_row) from (${actorSql()}) actor_row),
+     'candidates',${onboardingTaskCasesExistSql(ctx.tenantId)})`;
+}
+export function onboardingAssignedTasksFromBundle(value: unknown, ctx: SessionContext): AssignedPersonalTaskMetadata[] | null {
+    const section = value as { available: boolean; config: V9ConfigRow | null; actor: ActorRow | null; candidates: boolean };
+    if (!section.available || section.candidates) return null;
+    actorFromRow(section.actor ?? undefined, ctx, configFromV9Row(section.config ?? undefined).config);
+    return [];
 }
 
 export type OnboardingNotice = {
