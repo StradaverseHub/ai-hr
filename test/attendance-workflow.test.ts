@@ -423,7 +423,7 @@ describe('live non-self approver validation', () => {
         const template = await enable(a, input(['hr_admin']));
         await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, b.adminUserId));
         await expect(submit(ownHr, worker.employmentId)).rejects.toMatchObject({ code: 'unresolved' });
-        await expect(saveAttendanceWorkflow(ownHr, input(['hr_admin']), template.lineageId)).resolves.toMatchObject({warningCount:expect.any(Number)});
+        await expect(saveAttendanceWorkflow(ownHr, input(['hr_admin']), template.lineageId)).resolves.toMatchObject({lineageId:template.lineageId});
         await expect(submit(ownHr, worker.employmentId)).rejects.toMatchObject({ code: 'unresolved' });
         const alternative = input(['direct_manager']);
         alternative.stages[0].level.alternates = [{ kind: 'hr_admin', employmentId: null }];

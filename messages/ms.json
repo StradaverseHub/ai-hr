@@ -27482,7 +27482,79 @@
     "approvalLevel": "Peringkat kelulusan",
     "warningIssue": "Isu",
     "legacyReadinessWarning": "Pelulus yang diperlukan tidak tersedia.",
-    "warningPage": "{from}–{to} daripada {total}"
+    "warningPage": "{from}–{to} daripada {total}",
+    "groups": {
+      "help": "Dalam satu kumpulan, setiap medan yang dipilih mesti sepadan. Pekerja yang sepadan dengan mana-mana kumpulan menggunakan aliran kerja ini.",
+      "or": "ATAU",
+      "groupNumber": "Kumpulan {number}",
+      "remove": "Buang kumpulan {number}",
+      "add": "+ Tambah kumpulan ATAU",
+      "everyone": "Semua pekerja syarikat yang dipilih"
+    },
+    "copy": {
+      "action": "Salin",
+      "rowLabel": "Salin aliran kerja {code}",
+      "help": "Cipta aliran kerja baharu daripada salinan. Aliran kerja asal tidak diubah.",
+      "banner": "Disalin daripada {code} (versi {version}). Masukkan Kod Aliran Kerja, Nama Aliran Kerja dan Keterangan yang baharu. Aliran kerja asal tidak diubah.",
+      "codePlaceholder": "Masukkan kod baharu",
+      "namePlaceholder": "Masukkan nama baharu"
+    },
+    "previewHistory": {
+      "action": "Sejarah Pratonton",
+      "rowLabel": "Sejarah pratonton untuk {code}",
+      "title": "Sejarah Pratonton",
+      "backToWorkflow": "Kembali ke aliran kerja",
+      "generate": "Jana pratonton baharu",
+      "generating": "Menjana pratonton…",
+      "failed": "Pratonton tidak dapat dijana. Cuba lagi.",
+      "latestTitle": "Pratonton terkini",
+      "summary": "Dijana {date} untuk versi {version}: {total} pekerja sepadan, {warnings} amaran konfigurasi.",
+      "olderVersion": "Pratonton ini dijana untuk versi {previewVersion}. Aliran kerja telah disimpan sejak itu dan kini versi {currentVersion}, jadi keputusan ini mungkin sudah lapuk.",
+      "none": "Belum ada pratonton dijana. Jana pratonton untuk menyemak pekerja yang sepadan dan amaran konfigurasi.",
+      "open": "Buka sejarah pratonton",
+      "savedHint": "Aliran kerja disimpan. Jana pratonton untuk menyemak pekerja yang sepadan dan amaran konfigurasi.",
+      "draftNotStored": "Pratonton draf bagi perubahan yang belum disimpan. Ia tidak disimpan; simpan aliran kerja untuk mengekalkan pratonton.",
+      "stats": {
+        "generatedAt": "Dijana",
+        "generatedBy": "Dijana oleh",
+        "workflowVersion": "Versi aliran kerja",
+        "matching": "Pekerja sepadan",
+        "warnings": "Amaran konfigurasi"
+      },
+      "earlier": "Pratonton",
+      "chip": "{date} · v{version}",
+      "warningsTitle": "Amaran Konfigurasi ({count})",
+      "approverSource": "Sumber pelulus",
+      "warning": "Amaran",
+      "noWarnings": "Tiada amaran konfigurasi.",
+      "warningsTruncated": "Menunjukkan {shown} pertama daripada {total} amaran.",
+      "employeesTitle": "Pekerja Sepadan ({count})",
+      "noEmployees": "Tiada pekerja sepadan dengan aliran kerja ini.",
+      "employeesTruncated": "Menunjukkan {shown} pertama daripada {total} pekerja. Jumlah keseluruhan adalah tepat.",
+      "seeWarning": "Lihat amaran",
+      "notRequired": "Tidak diperlukan - tiada Penyelia Langsung seterusnya",
+      "otherWorkflow": "Dihalakan oleh {code} (keutamaan lebih tinggi)",
+      "stoppedAt": "Garis pelaporan berhenti pada {level}.",
+      "problems": {
+        "tie": "Dua aliran kerja sepadan dengan pekerja ini pada keutamaan yang sama. Tukar keutamaan atau penetapan.",
+        "no_superior": "Tiada Penyelia Langsung ditetapkan. Tetapkan dalam Personel.",
+        "superior_inactive": "Penyelia Langsung tidak aktif. Kemas kini Penyelia Langsung dalam Personel.",
+        "no_login": "Tiada log masuk yang boleh digunakan. Minta HR mencipta atau mengaktifkan semula log masuk orang ini.",
+        "multiple_logins": "Mempunyai lebih daripada satu log masuk yang boleh digunakan. Minta HR mengekalkan satu sahaja.",
+        "login_wrong_company": "Log masuk mereka tidak meliputi syarikat pekerja ini. Minta HR meluaskan akses syarikat log masuk tersebut.",
+        "outside_company_scope": "Bekerja di luar syarikat pekerja ini dan syarikat induknya. Pilih penyelia dalam skop syarikat yang dibenarkan.",
+        "ambiguous_superior": "Lebih daripada satu Penyelia Langsung semasa direkodkan. Kekalkan satu sahaja dalam Personel.",
+        "cycle": "Garis pelaporan berpusing kembali kepada orang terdahulu. Betulkan dalam Personel.",
+        "duplicate_person": "Orang yang sama akan meluluskan lebih daripada sekali. Tukar tahap kelulusan atau garis pelaporan.",
+        "duplicate_login": "Dua pelulus berkongsi satu log masuk. Minta HR membetulkan log masuk.",
+        "missing_person": "Rekod peribadi penyelia tiada. Minta HR menyemak Personel.",
+        "cc_unavailable": "Penerima SK tiada, tidak aktif atau tiada log masuk unik yang boleh digunakan.",
+        "unresolved": "Laluan kelulusan tidak dapat ditentukan untuk pekerja ini.",
+        "hr_unavailable": "Tiada pentadbir HR boleh meluluskan untuk pekerja ini.",
+        "selected_unavailable": "Pelulus yang dipilih tidak aktif, tiada log masuk unik yang boleh digunakan, atau di luar skop syarikat yang dibenarkan. Gantikan pilihan.",
+        "login_unusable": "Pelulus tiada log masuk unik yang boleh digunakan untuk syarikat pekerja ini. Minta HR membetulkan log masuk mereka."
+      }
+    }
   },
   "attendanceHistory": {
     "title": "Sejarah Permohonan",
@@ -27701,7 +27773,10 @@
       "showWaiting": "Tunjuk yang menunggu sahaja",
       "showAll": "Tunjuk semua",
       "older": "Rekod lebih lama"
-    }
+    },
+    "skippedNoSuperior": "Dilangkau secara automatik - Tiada Penyelia Langsung seterusnya ({sources})",
+    "skippedDecidedAt": "Diputuskan semasa permohonan dihantar, {date}",
+    "skippedLabel": "Tidak diperlukan"
   },
   "scheduleDrafts": {
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",

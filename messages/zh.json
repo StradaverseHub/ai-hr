@@ -27482,7 +27482,79 @@
     "approvalLevel": "审批级别",
     "warningIssue": "问题",
     "legacyReadinessWarning": "必需的审批人不可用。",
-    "warningPage": "第 {from}–{to} 项，共 {total} 项"
+    "warningPage": "第 {from}–{to} 项，共 {total} 项",
+    "groups": {
+      "help": "同一组内，所选的每个字段都必须匹配。匹配任一组的员工都使用此审批流程。",
+      "or": "或",
+      "groupNumber": "第 {number} 组",
+      "remove": "删除第 {number} 组",
+      "add": "+ 添加“或”组",
+      "everyone": "所选公司的全部员工"
+    },
+    "copy": {
+      "action": "复制",
+      "rowLabel": "复制审批流程 {code}",
+      "help": "通过复制创建新的审批流程。原审批流程不会被更改。",
+      "banner": "复制自 {code}（版本 {version}）。请输入新的流程代码、流程名称和说明。原审批流程不会被更改。",
+      "codePlaceholder": "输入新代码",
+      "namePlaceholder": "输入新名称"
+    },
+    "previewHistory": {
+      "action": "预览记录",
+      "rowLabel": "{code} 的预览记录",
+      "title": "预览记录",
+      "backToWorkflow": "返回审批流程",
+      "generate": "生成新预览",
+      "generating": "正在生成预览…",
+      "failed": "无法生成预览，请重试。",
+      "latestTitle": "最新预览",
+      "summary": "于 {date} 为版本 {version} 生成：{total} 名匹配员工，{warnings} 条配置警告。",
+      "olderVersion": "此预览是为版本 {previewVersion} 生成的。此后审批流程已再次保存，当前为版本 {currentVersion}，因此结果可能已过时。",
+      "none": "尚未生成预览。请生成预览以检查匹配员工和配置警告。",
+      "open": "打开预览记录",
+      "savedHint": "审批流程已保存。请生成预览以检查匹配员工和配置警告。",
+      "draftNotStored": "未保存更改的草稿预览，不会被存储；保存审批流程后即可保留预览。",
+      "stats": {
+        "generatedAt": "生成时间",
+        "generatedBy": "生成人",
+        "workflowVersion": "流程版本",
+        "matching": "匹配员工",
+        "warnings": "配置警告"
+      },
+      "earlier": "预览",
+      "chip": "{date} · v{version}",
+      "warningsTitle": "配置警告（{count}）",
+      "approverSource": "审批人来源",
+      "warning": "警告",
+      "noWarnings": "没有配置警告。",
+      "warningsTruncated": "显示 {total} 条警告中的前 {shown} 条。",
+      "employeesTitle": "匹配员工（{count}）",
+      "noEmployees": "没有员工匹配此审批流程。",
+      "employeesTruncated": "显示 {total} 名员工中的前 {shown} 名。总数是准确的。",
+      "seeWarning": "查看警告",
+      "notRequired": "无需审批 - 没有更上一级直属上级",
+      "otherWorkflow": "由 {code} 处理（优先级更高）",
+      "stoppedAt": "汇报关系止于{level}。",
+      "problems": {
+        "tie": "有两个审批流程以相同优先级匹配此员工。请更改优先级或适用范围。",
+        "no_superior": "未设置直属上级。请在人事档案中设置。",
+        "superior_inactive": "直属上级已停用。请在人事档案中更新直属上级。",
+        "no_login": "没有可用的登录账号。请让人力资源部为此人创建或重新启用登录账号。",
+        "multiple_logins": "有多个可用的登录账号。请让人力资源部只保留一个。",
+        "login_wrong_company": "其登录账号未涵盖此员工的公司。请让人力资源部扩展该账号的公司权限。",
+        "outside_company_scope": "任职公司不属于此员工的公司或其母公司。请选择允许公司范围内的上级。",
+        "ambiguous_superior": "记录了多个当前直属上级。请在人事档案中只保留一个。",
+        "cycle": "汇报关系回到了之前的人员。请在人事档案中更正。",
+        "duplicate_person": "同一人将审批多次。请更改审批级别或汇报关系。",
+        "duplicate_login": "两名审批人共用一个登录账号。请让人力资源部更正登录账号。",
+        "missing_person": "上级的个人档案缺失。请让人力资源部检查人事档案。",
+        "cc_unavailable": "某抄送人缺失、已停用或没有唯一可用的登录账号。",
+        "unresolved": "无法为此员工确定审批路线。",
+        "hr_unavailable": "没有人力资源管理员可以为此员工审批。",
+        "selected_unavailable": "所选审批人已停用、没有唯一可用的登录账号，或不在允许的公司范围内。请更换所选人员。",
+        "login_unusable": "审批人没有可用于此员工公司的唯一登录账号。请让人力资源部更正其登录账号。"
+      }
+    }
   },
   "attendanceHistory": {
     "title": "申请历史",
@@ -27701,7 +27773,10 @@
       "showWaiting": "仅显示待审核",
       "showAll": "显示全部",
       "older": "更早的打卡"
-    }
+    },
+    "skippedNoSuperior": "已自动跳过 - 没有更上一级直属上级（{sources}）",
+    "skippedDecidedAt": "于提交申请时决定，{date}",
+    "skippedLabel": "无需审批"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",

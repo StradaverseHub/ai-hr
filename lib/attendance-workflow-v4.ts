@@ -114,3 +114,9 @@ export function attendanceV4LevelProgress(level:AttendanceV4FrozenLevel,evidence
  const complete=rejected||seen.has(hr)||(level.mode==='any_one'?evidence.length>0:slots.length>0&&evidence.length===slots.length),remaining=complete?[]:slots.filter(slot=>!seen.has(slot));
  return {complete,rejected,pendingSlots:complete?[]:[...(level.mode==='sequential'?remaining.slice(0,1):remaining),...(level.hrAlternative?[hr]:[])]};
 }
+
+/** A new Direct Superior source starts one step above the deepest earlier Direct Superior level (max 5). */
+export function nextAttendanceSuperiorDepth(previous:readonly AttendanceV4Level[]):number{
+ const depths=previous.flatMap(level=>level.sources.flatMap(source=>source.kind==='direct_manager'?[source.depth]:[]));
+ return Math.min(5,(depths.length?Math.max(...depths):0)+1);
+}
