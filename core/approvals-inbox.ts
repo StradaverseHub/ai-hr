@@ -175,7 +175,7 @@ export function countPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined
   return countTaskSources(ctx,scopeIds,modules);
 }
 
-async function countTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,common?:CommonTaskSources,claimTotal?:()=>ClaimTaskSource){
+async function countTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,common?:CommonTaskSources,claimTotal?:()=>Promise<{total:number}>){
   const options={preview:true,countOnly:true} as const;
   const [[leave,decisionHeaders,replacement,attendance,profile,notices,packTasks],claims]=await settleReadGroup([
     ()=>common??loadCommonTaskSources(ctx,scopeIds,modules,options),
@@ -194,9 +194,12 @@ export function createAccountTaskPreviewRead(ctx:SessionContext,modules:InboxMod
   let pending:CommonTaskSources|undefined,claimPreview:ClaimTaskSource|undefined;
   const common=()=>pending??=loadCommonTaskSources(ctx,undefined,modules,options);
   const preview=()=>claimPreview??=loadClaimTaskSource(ctx,undefined,modules,options);
+  const exactClaimTotal=async()=>{
+    try{return await preview();}
+    catch{return loadClaimTaskSource(ctx,undefined,modules,{preview:true,countOnly:true});}
+  };
   return {
-    count:()=>countTaskSources(ctx,undefined,modules,common(),
-      ()=>preview().catch(()=>loadClaimTaskSource(ctx,undefined,modules,{preview:true,countOnly:true}))),
+    count:()=>countTaskSources(ctx,undefined,modules,common(),exactClaimTotal),
     summary:()=>loadPendingTasks(ctx,undefined,modules,options,common(),preview()),
   };
 }
