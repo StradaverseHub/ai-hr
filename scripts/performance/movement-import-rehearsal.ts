@@ -70,6 +70,7 @@ async function main(){
  let [dest]=await obs`select id,company_label from company where tenant_id=${TENANT}::uuid and company_label='RHDEST'`;
  if(!dest){[dest]=await obs`insert into company(tenant_id,legal_name,company_label,registration_no,country,currency) values(${TENANT}::uuid,'Rehearsal Destination Sdn Bhd','RHDEST','202601009910','MY','MYR') returning id,company_label`;
   await obs`insert into department(tenant_id,company_id,name) values(${TENANT}::uuid,${dest.id}::uuid,'Destination Operations')`;}
+ const [destPos]=await obs`select id from position where tenant_id=${TENANT}::uuid and title='Destination Lead'`;if(!destPos)await createPosition(admin,{companyId:dest.id,title:'Destination Lead'});
  const subjects=async(prefix:string)=>{await hireRows(prefix,SUBJECTS,'2025-01-06');
   const rows=await obs<{id:string;code:string;person_id:string}[]>`select id,employee_code code,person_id from employment where tenant_id=${TENANT}::uuid and employee_code like ${prefix+tag+'%'} order by employee_code`;
   await obs`update employment set grade_id=(select id from job_grade where tenant_id=${TENANT}::uuid and code='RHJR') where id=any(${rows.map(r=>r.id)}::uuid[])`;
@@ -77,10 +78,12 @@ async function main(){
   for(const r of rows.slice(0,5)){const [u]=await obs`insert into app_user(tenant_id,workos_user_id,person_id) values(${TENANT}::uuid,${'user_'+randomUUID()},${r.person_id}::uuid) returning id`;await obs`insert into role_assignment(tenant_id,app_user_id,company_id,role) values(${TENANT}::uuid,${u.id}::uuid,null,'employee')`;}
   return rows;};
  const HEADER=['Company ID','Employee ID','Employee Name','Effective Date','Event Type','System Fields','Before','After'];
- const fileFor=(rows:{code:string}[])=>{const out:string[][]=[];const managerCode=rows[rows.length-1].code;
+ // Groups commit in file order. Regular employees first; then company changes and exits of login holders, which
+ // (as in the synchronous confirmation) alter the manager list every later reviewed fingerprint covers.
+ const fileFor=(rows:{code:string}[])=>{const out:string[][]=[];const managerCode=rows[0].code,exits=Math.min(5,Math.floor(rows.length/4)),moves=exits;
   rows.forEach((r,i)=>{
-   if(i<5){out.push([companyRef,r.code,'',day(-2),'termination','endDate','',day(-2)],[companyRef,r.code,'',day(-2),'termination','terminationReasonCode','','contract_expiry']);return;}
-   if(i<10){out.push([companyRef,r.code,'',day(-3),'entityTransfer','companyId','','RHDEST'],[companyRef,r.code,'',day(-3),'entityTransfer','departmentId','','Destination Operations']);return;}
+   if(i>=rows.length-exits){out.push([companyRef,r.code,'',day(-2),'termination','endDate','',day(-2)],[companyRef,r.code,'',day(-2),'termination','terminationReasonCode','','contract_expiry']);return;}
+   if(i>=rows.length-exits-moves){out.push([companyRef,r.code,'',day(-3),'entityTransfer','companyId','','RHDEST'],[companyRef,r.code,'',day(-3),'entityTransfer','departmentId','','Destination Operations'],[companyRef,r.code,'',day(-3),'entityTransfer','positionId','','Destination Lead']);return;}
    out.push([companyRef,r.code,'',day(-20),'promotion','gradeId','RHJR','RHSR'],[companyRef,r.code,'',day(-20),'promotion','basicSalary','','4700'],
     [companyRef,r.code,'',day(-10),'transfer','departmentId','','Operations']);
    if(r.code!==managerCode)out.push([companyRef,r.code,'',day(-1),'reportingLineChange','managerEmploymentId','',managerCode]);
