@@ -7404,7 +7404,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         const items: { kind: 'basic' | 'allowance' | 'earning' | 'unpaid' | 'deduction' | 'floor'; code?: string; name?: string; amount: number }[] = [];
         items.push({ kind: 'basic', amount: round2(basic) });
         let named = 0;
+        // A pay item that paid RM0 this month adds nothing to the HRDF wages, so it gets no line: the
+        // breakdown lists money, and a "+RM0.00" row would also make the typed path differ from the legacy one.
         for (const it of en.hrdfEarningItems) {
+          if (it.amount === 0) continue;
           named = round2(named + it.amount);
           items.push({ kind: 'earning', code: it.code, name: it.name, amount: it.amount });
         }
@@ -7412,7 +7415,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         const unnamed = round2(fixedAllowance - named);
         if (unnamed !== 0) items.push({ kind: 'allowance', amount: unnamed });
         if (unpaidDeduction !== 0) items.push({ kind: 'unpaid', amount: round2(-unpaidDeduction) });
-        for (const it of en.hrdfDeductionItems) items.push({ kind: 'deduction', code: it.code, name: it.name, amount: round2(-it.amount) });
+        for (const it of en.hrdfDeductionItems) if (it.amount !== 0) items.push({ kind: 'deduction', code: it.code, name: it.name, amount: round2(-it.amount) });
         const floor = round2(hrdfBase - items.reduce((sum, it) => round2(sum + it.amount), 0));
         if (floor !== 0) items.push({ kind: 'floor', amount: floor });
         return {
