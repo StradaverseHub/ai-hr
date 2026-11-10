@@ -12,9 +12,18 @@ export const privateSearchHash=(token:string)=>TOKEN.test(token)?createHash('sha
 export class PersonnelSearchLimitError extends Error{constructor(){super('Narrow the top company scope before searching this many records.');}}
 type SearchRow={employmentId:string;companyId:string;name:string;email:string;employeeCode:string|null;personRevision:string;employmentRevision:string;identityRevision:string|null;icNumber:string|null;passportNumber:string|null};
 async function privateCriteriaTx(tx:Tx,token:string,companyIds:string[]):Promise<PersonnelPrivateCriteria|null>{
+ const criteria=personnelPrivateCriteriaSql(token,companyIds);if(!criteria)return null;
+ const [row]=await tx.execute<{criteria:unknown}>(sql`select ${criteria} as criteria`);
+ return personnelPrivateCriteriaFrom(row?.criteria);
+}
+/** The sole criteria read seam as a scalar expression, for a reader that selects it in a statement it
+ * already spends in the same snapshot. Null when the token cannot name a private search. */
+export function personnelPrivateCriteriaSql(token:string,companyIds:string[]){
  const hash=privateSearchHash(token);if(!hash)return null;
- const [row]=await tx.execute<{criteria:unknown}>(sql`select app.personnel_column_search_criteria(${hash},ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as criteria`);
- if(!row?.criteria)return null;try{return normalizePersonnelPrivateCriteria(row.criteria);}catch{return null;}
+ return sql`app.personnel_column_search_criteria(${hash},ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`;
+}
+export function personnelPrivateCriteriaFrom(raw:unknown):PersonnelPrivateCriteria|null{
+ if(!raw)return null;try{return normalizePersonnelPrivateCriteria(raw);}catch{return null;}
 }
 export function readPersonnelPrivateCriteria(ctx:SessionContext,token:string,companyIds:string[]):Promise<PersonnelPrivateCriteria|null>{return withPersonnelRead(ctx,tx=>privateCriteriaTx(tx,token,companyIds));}
 export async function createPersonnelPrivateSearch(ctx:SessionContext,p:{text:string;companyIds:string[];columnFilters?:PersonnelColumnFilter[];previousToken?:string;replaceCriteria?:boolean}):Promise<string>{

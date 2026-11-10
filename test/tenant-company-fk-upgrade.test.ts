@@ -137,6 +137,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '4340_ai_management_presentation_snapshot',
    '4341_home_leave_presentation_snapshot',
    '4342_attendance_clock_policy_audit_scope',
+   '9880_personnel_overview_facts',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -166,7 +167,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()',
    'app._assistant_presentation_feature_unpaused_v1()',
    'app._assistant_rewards_return_choice_payload_v1()','app._assert_assistant_rewards_presentation_v1(text)',
-   'app._assistant_rewards_calendar_choice_payload_v1()','app._assistant_rewards_cancel_choice_payload_v1()'];
+   'app._assistant_rewards_calendar_choice_payload_v1()','app._assistant_rewards_cancel_choice_payload_v1()',
+   // 9880: the set-wise organisation resolver is owner-only.
+   'app._personnel_employment_tags(uuid[],date)'];
   const addedFunctions=[...privateFunctions,'app.access_editor_presentation_v1()','app.access_profile_policy_read_lock()','app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.attendance_frozen_actor_identity_keys(jsonb,text)','app.delegated_approval_subjects(uuid[],text,text)',
    'app.may_have_attendance_task_metadata()',
    'app.attendance_pending_visible_headers(uuid)',
@@ -180,6 +183,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.assistant_rewards_cancel_presentation_choices_v1()',
    'app.home_leave_presentation_index(text)',
    'app.attendance_clock_policy_history(uuid,uuid)',
+   // 9880: Personnel typed facts, search entries and the typed page rows.
+   'app.personnel_overview_facts(date,uuid[])','app.personnel_private_search_entries(text,uuid[])',
+   'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_list_rows_for_ids(date,uuid[],uuid[])',
   ].sort();
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);

@@ -5405,6 +5405,13 @@
       "when": 1793330004543,
       "tag": "4342_attendance_clock_policy_audit_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 3743,
+      "version": "7",
+      "when": 1793330004043,
+      "tag": "9880_personnel_overview_facts",
+      "breakpoints": true
     }
   ]
 }

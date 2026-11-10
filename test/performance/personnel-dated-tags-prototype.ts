@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {expect} from 'vitest';
 import {owner} from '../harness';
+import {predecessorStatement} from './personnel-scale-fixture';
 
 const originalTagged = ` tagged AS MATERIALIZED (
    SELECT b.*,app.employment_organisation_tags(b.id,p_as_of) AS tags
@@ -207,8 +208,11 @@ export async function personnelDatedTagsPrototype() {
  const signature='(date,uuid[],uuid[])';
  const scopeFence='   WHERE p_scope IS NULL OR pc.id=ANY(p_scope)';
  await owner.client.begin(async tx=>{
-  const [original]=await tx<{body:string;owner:string}[]>`select prosrc as body,proowner::regrole::text as owner
+  const [installed]=await tx<{body:string;owner:string}[]>`select prosrc as body,proowner::regrole::text as owner
    from pg_proc where oid=${canonical}::regprocedure`;
+  // 9880 replaces this owner in place; the prototype rewrites the body 2210 installed.
+  const statement=predecessorStatement('2210_personnel_projection_reuse','personnel_filter_rows');
+  const original={owner:installed.owner,body:statement.slice(statement.indexOf('AS $$')+5,statement.lastIndexOf('$$'))};
   expect(original.body.split(scopeFence)).toHaveLength(2);
   expect(original.body.split(originalTagged)).toHaveLength(2);
   // Only the disposable fixture accepts an explicit sample. It narrows the already authorized admission.

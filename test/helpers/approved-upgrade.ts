@@ -80,6 +80,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4241,when:1793330004541,tag:'4340_ai_management_presentation_snapshot'},
  {idx:4242,when:1793330004542,tag:'4341_home_leave_presentation_snapshot'},
  {idx:4243,when:1793330004543,tag:'4342_attendance_clock_policy_audit_scope'},
+ // Unallocated draft number 9880: Personnel overview typed facts (functions only).
+ {idx:3743,when:1793330004043,tag:'9880_personnel_overview_facts'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -150,6 +152,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '4340_ai_management_presentation_snapshot':'17973dd386f8fb1fda3a2773de3cd189055bed744730949912b2206a77c4e32c',
  '4341_home_leave_presentation_snapshot':'91ceea84de63aa91d8d5c559c0c7c4ee4cadd86ee14bb0d2c1300be580c2a664',
  '4342_attendance_clock_policy_audit_scope':'bc83887d91db94c2199d600a4ca5293d43d14662fb08c85818d35455ac28f67f',
+ '9880_personnel_overview_facts':'ebe4e9de76f137a577aaa555b22ec5afedaa8f06922860e03a5dbaacaba8302d',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);

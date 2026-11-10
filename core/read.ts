@@ -12,7 +12,7 @@ import {isCalendarDate} from '../lib/calendar-date';
 import {lockPayrollHistoryReadTx,tryLockPayrollHistoryReadTx} from './payroll-history-lock';
 import {ownPersonPredicate} from './own-person';
 import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from './access-configuration-lock';
-import {withPersonnelRead,withPersonnelPresentationReadTx} from './personnel-read-bounds';
+import {withPersonnelRead,withPersonnelPresentationReadTx,withPersonnelOverviewRead,type PersonnelOverviewSnapshot} from './personnel-read-bounds';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
 import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
 import {payrollPublicationState} from '../lib/payroll-publication';
@@ -705,69 +705,194 @@ async function workforcePersonnelPageQueryTx(
 
 type PersonnelOverviewInput = PersonnelListInput & { companyIds: string[] };
 
-const narrowPersonnelFilters = new Set([
-  'companyIds', 'companyId', 'filterCompanyIds', 'q', 'status', 'employmentStatuses',
-  'sort', 'sortDirection', 'limit', 'offset',
+const PERSONNEL_BOUNDED_ROW_LIMIT = 10_000, PERSONNEL_PAGE_ROWS_CHUNK = 2_000;
+/** Which typed fact relation the bounded overview reads: the 2701 projection, or the complete typed
+ * projection of migration 9880 (db/migrations/9880_personnel_overview_facts.sql) where it is installed. */
+type PersonnelFactSource = 'filter-fields' | 'facts';
+const personnelFactRelation: Record<PersonnelFactSource, SQL> = {
+  'filter-fields': sql`app.personnel_overview_filter_fields`, facts: sql`app.personnel_overview_facts`,
+};
+// Filters each typed relation evaluates with the canonical predicate. The route parser supplies empty
+// arrays when nothing is selected; those are no-op filters, not restrictions.
+const filterFieldsFilters = new Set<string>([
+  'companyIds', 'companyId', 'filterCompanyIds', 'q', 'status', 'employmentStatuses', 'sort', 'sortDirection',
+  'limit', 'offset', 'departmentId', 'departmentIds', 'employmentType', 'businessUnitIds', 'positionIds',
+  'confirmationState', 'probationEndFrom', 'probationEndTo', 'columnSort',
 ]);
-// The route parser supplies these arrays even when nothing is selected. The
-// exact Workforce predicate only applies them when they have at least one item.
-const optionalPersonnelMultiFilters = new Set([
-  'businessUnitIds', 'parentCompanyIds', 'businessGroupIds', 'jobGrades', 'positionIds', 'qualityFlags',
+const factsFilters = new Set<string>([
+  ...filterFieldsFilters, 'parentCompanyIds', 'businessGroupIds', 'jobGrades', 'joinedFrom', 'joinedTo',
+  'qualityFlags', 'privateSearch',
 ]);
+// Sorts whose JSON source key the 2701 relation carries as a typed column with the same value.
+const filterFieldsSorts = new Set<EmployeeColumnKey>([
+  'code', 'name', 'email', 'company', 'position', 'businessUnit', 'employmentType', 'status', 'confirmationDate',
+]);
+const typedQualityColumn: Record<Exclude<PersonnelQualityFlag, 'suspected_duplicate'>, string> = {
+  missing_business_unit: 'qualityMissingBusinessUnit', missing_job_grade: 'qualityMissingJobGrade',
+  missing_direct_superior: 'qualityMissingDirectSuperior', company_not_in_structure: 'qualityCompanyNotInStructure',
+};
+
+function personnelFactSource(
+  input: PersonnelOverviewInput, facets: EmployeeListFilters, snapshot: PersonnelOverviewSnapshot, asOf: string,
+): PersonnelFactSource | null {
+  // page_rows projects at most 2,000 subjects per call; larger pages (exports) are projected in chunks.
+  if (!Number.isSafeInteger(input.limit) || input.limit < 0 || input.limit > PERSONNEL_BOUNDED_ROW_LIMIT ||
+      !Number.isSafeInteger(input.offset) || input.offset < 0 || input.companyIds.length === 0) return null;
+  const active = (value: unknown) => value !== undefined && (!Array.isArray(value) || value.length > 0);
+  const supported = (allowed: Set<string>, sorts?: Set<EmployeeColumnKey>) => [input, facets].every(filters =>
+    Object.entries(filters).every(([key, value]) => !active(value) || allowed.has(key)) &&
+    (!sorts || !isEmployeeColumnKey(filters.columnSort) || sorts.has(filters.columnSort)));
+  if (supported(filterFieldsFilters, filterFieldsSorts)) return 'filter-fields';
+  // One token per statement: the page and its headcount facets read the same private membership.
+  if (input.privateSearch && facets.privateSearch && input.privateSearch !== facets.privateSearch) return null;
+  // The private filter's dated-company check is stated for the database's current Kuala Lumpur day.
+  const datedPrivate = !input.privateSearch && !facets.privateSearch || snapshot.databaseToday === asOf;
+  return snapshot.typedFacts && datedPrivate && supported(factsFilters) ? 'facts' : null;
+}
+
+/** workforceListWhere over typed facts. Its JSON-only arms (confirmation state, quality, private
+ * membership) are restated over the typed columns that carry the same values. */
+function personnelFactWhere(
+  p: EmployeeListFilters, asOf: string, source: PersonnelFactSource, duplicateIds: readonly string[],
+): SQL {
+  const read = typedWorkforceFieldAccess;
+  const { confirmationState, qualityFlags, privateSearch, ...ordinary } = p;
+  const confirmation = source === 'facts' ? read.value<string>('confirmationState')
+    : sql<string>`(case when coalesce(${read.date('finalConfirmationDate')},${read.date('confirmationDate')})<=${asOf}::date then 'confirmed' else 'unconfirmed' end)`;
+  // app.personnel_column_search_matches, set-wise: a verified token entry (identity entries only where
+  // identity search is permitted) and an entry whose filter fingerprint, if any, is still current. Each
+  // side is an uncorrelated set (search_members below), so it is hashed once rather than scanned per row.
+  const id = read.uuid('employmentId');
+  const member = sql`((${id} in (select employment_id from search_public)
+      or (${id} in (select employment_id from search_identity) and ${read.uuid('companyId')} in (select id from identity_companies)))
+    and ${id} in (select employment_id from search_current))`;
+  return and(
+    workforceListWhere(ordinary, workforceListColumns(asOf, read), [], read),
+    confirmationState ? eq(confirmation, confirmationState) : undefined,
+    qualityFlags?.length ? or(...qualityFlags.map(flag => flag === 'suspected_duplicate'
+      ? duplicateIds.length ? inArray(read.uuid('employmentId'), [...duplicateIds]) : sql`false`
+      : sql`${typedFieldValue(typedQualityColumn[flag])} is true`)) : undefined,
+    privateSearch ? member : undefined,
+  ) ?? sql`true`;
+}
+
+/** Caller-owned scalar expressions (and an administrator page-photo relation over the page's own
+ * employment ids) selected in the overview statement instead of separate statements. */
+export type PersonnelOverviewAttachments = { attach?: Record<string, SQL>; pagePhotos?: (employmentIds: SQL) => SQL | null };
+const attachedColumn = (attach: Record<string, SQL> | undefined) => attach && Object.keys(attach).length
+  ? sql`jsonb_build_object(${sql.join(Object.entries(attach).map(([key, value]) => sql`${key}::text, ${value}`), sql`, `)})`
+  : sql`'{}'::jsonb`;
 
 function personnelNarrowOverviewQuery(
-  input: PersonnelOverviewInput, facets: EmployeeListFilters, choiceIds: string[], asOf: string,
-): SQL | null {
-  if (!Number.isSafeInteger(input.limit) || input.limit < 0 || input.limit > 200 ||
-      !Number.isSafeInteger(input.offset) || input.offset < 0 ||
-      input.companyIds.length === 0 || input.companyIds.length !== choiceIds.length ||
-      !input.companyIds.every(id => choiceIds.includes(id)) ||
-      ![input, facets].every(filters => Object.entries(filters)
-        .every(([key, value]) => value === undefined || narrowPersonnelFilters.has(key) ||
-          (optionalPersonnelMultiFilters.has(key) && Array.isArray(value) && value.length === 0)))) return null;
-
-  const columns = workforceListColumns(asOf,typedWorkforceFieldAccess);
+  input: PersonnelOverviewInput, facets: EmployeeListFilters, asOf: string, source: PersonnelFactSource,
+  duplicateIds: readonly string[], extras: PersonnelOverviewAttachments = {}, typedPageRows = false,
+): SQL {
+  const photos = extras.pagePhotos?.(sql`array(select employment_id from page)`) ?? null;
+  // The complete typed draft ships the same page projection with the set-wise organisation resolver.
+  const pageRows = typedPageRows ? sql`app.personnel_overview_page_rows_typed` : sql`app.personnel_overview_page_rows`;
+  const read = typedWorkforceFieldAccess, columns = workforceListColumns(asOf, read);
   const scope = sql`array[${sql.join(input.companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
-  const order = input.sort === 'company'
-    ? sql`company_sort, name_sort, employment_id`
-    : sql`name_sort, employment_id`;
-  const pageWhere = workforceListWhere(input, columns,[],typedWorkforceFieldAccess) ?? sql`true`;
-  const facetWhere = workforceListWhere(facets, columns,[],typedWorkforceFieldAccess) ?? sql`true`;
+  const key = isEmployeeColumnKey(input.columnSort) ? input.columnSort : undefined;
+  const sortValue = key === 'status' ? columns.status
+    : key && PERSONNEL_DATE_COLUMNS.has(key) ? read.date(PERSONNEL_COLUMN_SOURCES[key])
+    : key ? sql`lower(${read.value(PERSONNEL_COLUMN_SOURCES[key])})` : undefined;
+  // The exact owner's order: the column sort (nulls last), else company then name, else name; then ID.
+  const order = sortValue ? sql`sort_value ${input.sortDirection === 'desc' ? sql`desc` : sql`asc`} nulls last, employment_id`
+    : input.sort === 'company' ? sql`company_sort, name_sort, employment_id` : sql`name_sort, employment_id`;
+  const privateHash = input.privateSearch ?? facets.privateSearch;
+  const privateSources = privateHash ? sql`
+    search_entries as materialized (
+      select * from app.personnel_private_search_entries(${privateSearchHash(privateHash) ?? ''}, ${scope})
+    ), identity_companies as materialized (
+      select id from companies where app.personnel_identity_search_permitted(id)
+    ), revision_subjects as materialized (
+      select coalesce(array_agg(distinct "employmentId"), '{}'::uuid[]) as ids, count(distinct "employmentId") as n
+      from search_entries where "hasFilterRevision"
+    ), search_revisions as materialized (
+      select (r.value->>'employmentId')::uuid as employment_id, r.value->>'filterRevision' as revision
+      from revision_subjects s cross join lateral app.personnel_list_rows_for_ids(${asOf}::date, ${scope}, s.ids) r(value)
+      where s.n between 1 and 2000
+      union all
+      select (r.value->>'employmentId')::uuid, r.value->>'filterRevision'
+      from app.personnel_list_rows(${asOf}::date, ${scope}) r(value) where (select n from revision_subjects) > 2000
+    ), search_public as materialized (
+      select "employmentId" as employment_id from search_entries where verified and kind = 'public'
+    ), search_identity as materialized (
+      select "employmentId" as employment_id from search_entries where verified and kind = 'identity'
+    ), search_current as materialized (
+      select "employmentId" as employment_id from search_entries where not "hasFilterRevision"
+      union
+      select x."employmentId" from search_entries x
+      join search_revisions r on r.employment_id = x."employmentId" and r.revision = x."filterRevision"
+      where x."hasFilterRevision"
+    ),` : sql``;
+  // personnelDuplicateAuthorityTx's predicate. Over the requested scope it equals the value over the
+  // admitted companies: the projection conjunct is false for every requested company that was not
+  // admitted, so it is evaluated once for both answers.
+  const duplicateAuthority = sql`select coalesce(bool_or(app.access_workforce_projection_company(id)
+    and app.is_admin_for(id) and app.personnel_identity_search_permitted(id)), false) as allowed from companies`;
   return sql`
-    with personnel_facts as materialized (
-      select ${typedWorkforceFieldAccess.uuid('employmentId')} as employment_id,
-        lower(${typedWorkforceFieldAccess.value('company')}) as company_sort,
+    with companies as materialized (
+      select c.* from app.personnel_filter_companies(${scope}, ${asOf}::date) with ordinality as
+        c(id, name, "parentCompanyId", "parentCompany", "businessGroupId", "businessGroup", "businessUnitId", "businessUnit", ordinality)
+    ), duplicate_authority as materialized (${duplicateAuthority}),
+    ${privateSources} personnel_facts as materialized (
+      select ${read.uuid('employmentId')} as employment_id,
+        ${sortValue ?? sql`null::text`} as sort_value,
+        lower(${read.value('company')}) as company_sort,
         ${input.sort === 'company' ? sql`lower(${columns.name})` : columns.name} as name_sort,
-        (${pageWhere}) as page_matches, (${facetWhere}) as facet_matches,
+        (${personnelFactWhere(input, asOf, source, duplicateIds)}) as page_matches,
+        (${personnelFactWhere(facets, asOf, source, duplicateIds)}) as facet_matches,
         ${columns.status} as status,
-        ${typedWorkforceFieldAccess.uuid('businessUnitId')} as "businessUnitId",
-        ${typedWorkforceFieldAccess.value('businessUnit')} as "businessUnit",
-        ${typedWorkforceFieldAccess.uuid('positionId')} as "positionId",
-        ${typedWorkforceFieldAccess.value('position')} as position
-      from app.personnel_overview_filter_fields(${asOf}::date, ${scope}) as workforce_row
-      where ${workforceListWhere({ companyIds: choiceIds }, columns,[],typedWorkforceFieldAccess) ?? sql`true`}
+        ${read.uuid('businessUnitId')} as "businessUnitId", ${read.value('businessUnit')} as "businessUnit",
+        ${read.uuid('positionId')} as "positionId", ${read.value('position')} as position
+      from ${personnelFactRelation[source]}(${asOf}::date, ${scope}) as workforce_row
+      where ${read.uuid('companyId')} in (select id from companies)
     ), page as materialized (
-      select employment_id, company_sort, name_sort from personnel_facts
+      -- A typed fact row is one employment: its key, at most one dated assignment (the reviewed
+      -- exclusion constraint both typed relations require) and one row per employment from each set.
+      -- The counts below are therefore counts of distinct employments.
+      select employment_id, sort_value, company_sort, name_sort from personnel_facts
       where page_matches order by ${order} limit ${input.limit} offset ${input.offset}
-    ), page_details as materialized (
+    ), page_details as materialized (${input.limit <= PERSONNEL_PAGE_ROWS_CHUNK ? sql`
       select page.*, details.value from page
-      join app.personnel_overview_page_rows(${asOf}::date, ${scope},
+      join ${pageRows}(${asOf}::date, ${scope},
         array(select employment_id from page)) as details(value)
-        on (details.value->>'employmentId')::uuid=page.employment_id
+        on (details.value->>'employmentId')::uuid=page.employment_id` : sql`
+      select page.*, details.value from (
+        select array_agg(employment_id) as ids from (
+          select employment_id, row_number() over (order by employment_id) as ordinal from page
+        ) as numbered group by (ordinal - 1) / ${PERSONNEL_PAGE_ROWS_CHUNK}
+      ) as chunk
+      cross join lateral ${pageRows}(${asOf}::date, ${scope}, chunk.ids) as details(value)
+      join page on (details.value->>'employmentId')::uuid=page.employment_id`}
     )
     select
       (select coalesce(jsonb_agg(value order by ${order}), '[]'::jsonb) from page_details) as rows,
-      (select count(distinct employment_id)::int from personnel_facts where page_matches) as total,
+      (select count(*)::int from personnel_facts where page_matches) as total,
       (select coalesce(jsonb_object_agg(status, count), '{}'::jsonb) from (
-        select status, count(distinct employment_id)::int as count from personnel_facts
+        select status, count(*)::int as count from personnel_facts
         where facet_matches group by status
       ) as counts) as "byStatus",
       (select coalesce(jsonb_agg(to_jsonb(choice)), '[]'::jsonb) from (
         select distinct "businessUnitId", "businessUnit", "positionId", position from personnel_facts
       ) as choice) as choices,
-      (select count(*) from page_details)=(select count(*) from page) as "pageDetailsComplete"
+      (select count(*) from page_details)=(select count(*) from page) as "pageDetailsComplete",
+      (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'parentCompanyId', "parentCompanyId",
+        'parentCompany', "parentCompany", 'businessGroupId', "businessGroupId", 'businessGroup', "businessGroup",
+        'businessUnitId', "businessUnitId", 'businessUnit', "businessUnit") order by ordinality), '[]'::jsonb)
+        from companies) as companies,
+      (select allowed from duplicate_authority) as "canInspectDuplicates",
+      (select allowed from duplicate_authority) as "duplicateAuthority",
+      ${attachedColumn(extras.attach)} as attached,
+      ${photos ? sql`(select coalesce(jsonb_agg(to_jsonb(photo)), '[]'::jsonb) from (${photos}) as photo)` : sql`null::jsonb`} as photos
   `;
 }
+
+type PersonnelNarrowResult = PersonnelPageResult & {
+  pageDetailsComplete: boolean; companies: PersonnelCompanyChoice[]; canInspectDuplicates: boolean; duplicateAuthority: boolean;
+  attached: Record<string, unknown>; photos: { employmentId: string; personId: string }[] | null;
+};
 
 async function personnelOverviewQueryTx(
   tx: Tx, ctx: SessionContext, input: PersonnelOverviewInput, headcount: Omit<EmployeeListFilters, 'companyIds'>,
@@ -803,33 +928,47 @@ export function readPersonnelOverview(
   headcount: Omit<EmployeeListFilters, 'companyIds'>,
   options?: { compareExact: true },
 ) {
-  return withPersonnelRead(ctx, async tx => {
-    const { choices, query, asOf } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
-    // The exact reader is also used as the oracle in hosted performance qualification.
-    const narrowQuery = options?.compareExact ? null : personnelNarrowOverviewQuery(
-      input, { ...headcount, companyIds: input.companyIds }, choices.companies.map(company => company.id), asOf,
-    );
-    let narrow: (PersonnelPageResult & { pageDetailsComplete: boolean }) | undefined;
-    if (narrowQuery) {
-      // The bounded overview's measured compile cost dominates the small page. Keep the
-      // setting local to this snapshot and restore it before the unqualified exact fallback.
-      const [jit] = await tx.execute<{ previous: string }>(sql`
-        with previous_setting as materialized (select current_setting('jit') as previous)
-        select previous, set_config('jit', 'off', true) from previous_setting
-      `);
-      [narrow] = await tx.execute<PersonnelPageResult & { pageDetailsComplete: boolean }>(narrowQuery);
-      if (!narrow?.pageDetailsComplete) await tx.execute(sql`select set_config('jit', ${jit.previous}, true)`);
-    }
-    const result = narrow?.pageDetailsComplete ? narrow : (await tx.execute<PersonnelPageResult>(query))[0];
-    return {
-      employees: { rows: result.rows, total: result.total },
-      headcount: { total: Object.values(result.byStatus).reduce((sum, count) => sum + count, 0), byStatus: result.byStatus },
-      duplicateFilterUnavailable: input.qualityFlags?.includes('suspected_duplicate')
-        ? !await personnelDuplicateAuthorityTx(tx, input.companyIds)
-        : false,
-      organisationChoices: { ...choices, rows: result.choices },
+  return withPersonnelOverviewRead(ctx, (tx, snapshot) => readPersonnelOverviewTx(tx, ctx, input, headcount, snapshot, options));
+}
+
+/** The overview inside a caller's Personnel overview snapshot (core/personnel-read-bounds.ts). */
+export async function readPersonnelOverviewTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelOverviewInput, headcount: Omit<EmployeeListFilters, 'companyIds'>,
+  snapshot: PersonnelOverviewSnapshot, options?: { compareExact?: true } & PersonnelOverviewAttachments,
+) {
+  const asOf = todayInKualaLumpur();
+  const facets = { ...headcount, companyIds: input.companyIds };
+  // The exact reader is also the oracle in equivalence and hosted performance qualification.
+  const source = options?.compareExact ? null : personnelFactSource(input, facets, snapshot, asOf);
+  if (source) {
+    const duplicateIds = [input, facets].some(filters => filters.qualityFlags?.includes('suspected_duplicate'))
+      ? await personnelDuplicateIdsTx(tx, ctx, { companyIds: input.companyIds, asOf }) : [];
+    const [narrow] = await tx.execute<PersonnelNarrowResult>(personnelNarrowOverviewQuery(input, facets, asOf, source, duplicateIds, options, snapshot.typedFacts));
+    if (narrow?.pageDetailsComplete) return {
+      employees: { rows: narrow.rows, total: narrow.total },
+      headcount: { total: Object.values(narrow.byStatus).reduce((sum, count) => sum + count, 0), byStatus: narrow.byStatus },
+      duplicateFilterUnavailable: input.qualityFlags?.includes('suspected_duplicate') ? !narrow.duplicateAuthority : false,
+      organisationChoices: { companies: narrow.companies, canInspectDuplicates: narrow.canInspectDuplicates, rows: narrow.choices },
+      attached: narrow.attached,
+      pagePhotos: narrow.photos ? new Map(narrow.photos.map(photo => [photo.employmentId, photo.personId])) : null,
     };
-  });
+  }
+  // The snapshot interprets the bounded statement; the exact owner keeps the session's JIT setting.
+  if (snapshot.previousJit !== 'off') await tx.execute(sql`select set_config('jit', ${snapshot.previousJit}, true)`);
+  const { choices, query } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
+  const [result] = await tx.execute<PersonnelPageResult>(query);
+  const attached = options?.attach && Object.keys(options.attach).length
+    ? (await tx.execute<{ attached: Record<string, unknown> }>(sql`select ${attachedColumn(options.attach)} as attached`))[0].attached : {};
+  return {
+    employees: { rows: result.rows, total: result.total },
+    headcount: { total: Object.values(result.byStatus).reduce((sum, count) => sum + count, 0), byStatus: result.byStatus },
+    duplicateFilterUnavailable: input.qualityFlags?.includes('suspected_duplicate')
+      ? !await personnelDuplicateAuthorityTx(tx, input.companyIds)
+      : false,
+    organisationChoices: { ...choices, rows: result.choices },
+    attached,
+    pagePhotos: null as Map<string, string> | null,
+  };
 }
 
 /** Hosted benchmark diagnostic for the exact overview query, under the same authorized snapshot. */
@@ -1149,12 +1288,26 @@ export async function personnelListPage(
  *  unpaginated `listEmployees` stays for callers that genuinely need the whole set (transfer
  *  target dropdowns, exports). */
 /** A presentation-only export may compose the same page projection with other reads. */
-export function listWorkforcePersonnelPresentationPageTx(ctx: SessionContext, input: PersonnelListInput, asOf: string, tx: Tx) {
+export function listWorkforcePersonnelPresentationPageTx(
+  ctx: SessionContext, input: PersonnelListInput, asOf: string, tx: Tx, overviewSnapshot?: PersonnelOverviewSnapshot,
+) {
   input = structuredClone(input);
   return withPersonnelPresentationReadTx(ctx, tx, async (snapshot, current) => {
+    // Inside a Personnel overview snapshot the bounded reader serves the same rows and total.
+    if (overviewSnapshot && input.companyIds) {
+      const { employees } = await readPersonnelOverviewTx(snapshot, current, { ...input, companyIds: input.companyIds }, {}, overviewSnapshot);
+      return employees;
+    }
     const { rows, total } = await workforcePersonnelPageTx(snapshot, current, input, asOf);
     return { rows, total };
   });
+}
+
+/** listEmployeesPage(…, 'workforce') inside a caller's Personnel overview snapshot. */
+export async function listWorkforcePersonnelPageTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelListInput & { companyIds: string[] }, overviewSnapshot: PersonnelOverviewSnapshot,
+) {
+  return (await readPersonnelOverviewTx(tx, ctx, input, {}, overviewSnapshot)).employees;
 }
 
 export function listEmployeesPage(
@@ -1417,7 +1570,7 @@ export function companyDeleteStatus(
 
 export function listDepartments(
   ctx: SessionContext,
-  opts: { includeArchived?: boolean; companyIds?: string[] } = {},
+  opts: { includeArchived?: boolean; companyIds?: string[]; usage?: false } = {},
  outerTx?:Tx) {
   const run=(tx:Tx)=>tx
       .select({
@@ -1436,7 +1589,9 @@ export function listDepartments(
         isGlobal: department.isGlobal,
         assignedCompanyIds: labelCompanyIdsSql(department, 'department'),
         archivedAt: department.archivedAt,
-        inUse: sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
+        // `usage: false` is for choice lists that never show it (the Personnel filters): without an
+        // assignment department index this is a scan of every assignment per department.
+        inUse: opts.usage === false ? sql<boolean>`null::boolean` : sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
       })
       .from(department)
       .where(

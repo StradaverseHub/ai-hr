@@ -1,7 +1,7 @@
 import {replayMyTaxBasis} from './tax-basis-replay';
 import {ocbcBankPaymentFiles} from './ocbc-payment';
 import {childReliefTableHeadCount} from './statutory-tables';
-import {getTaxSelectionMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,initializeTransferredTaxSelectionMYTx,resolveTaxSelectionMY} from './tax-selection';
+import {getTaxSelectionMY,getTaxSelectionsMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,initializeTransferredTaxSelectionMYTx,resolveTaxSelectionMY} from './tax-selection';
 import {listTaxSchemeDeclarationsMY,saveTaxSchemeDeclarationMY,revokeTaxSchemeDeclarationMY,resolveTaxSchemeMY} from './tax-scheme-declarations';
 import { MY_EA_REPORTING } from './ea-reporting';
 /**
@@ -11,7 +11,7 @@ import { MY_EA_REPORTING } from './ea-reporting';
 import { validateEpfElection } from './epf-election';
 import { convertLegacyEpfTopupsMY } from './epf-topup-conversion-db';
 import { legacyTopupConversionCsv } from './epf-topup-conversion';
-import { readReviewedTp3OpeningMYTx,prepareReviewedTp3OpeningMYTx,canMaintainPassportProfileMY,canMaintainBankProfileMY,readReviewedPassportMYTx,prepareReviewedPassportMYTx,prepareReviewedBankMYTx,readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, initializeHiredStatutoryMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
+import { readReviewedTp3OpeningMYTx,prepareReviewedTp3OpeningMYTx,canMaintainPassportProfileMY,canMaintainBankProfileMY,readReviewedPassportMYTx,prepareReviewedPassportMYTx,prepareReviewedBankMYTx,readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryProfilesMYTx, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, initializeHiredStatutoryMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import {
@@ -90,6 +90,8 @@ export const myPack: CountryPack = {
     withWrite:withStatutoryProfileWriteMY,
     reviewed:{readEditable:readReviewedStatutoryEditableMYTx,choices:reviewedStatutoryChoiceMetadataMYTx,labels:readReviewedStatutoryLabelsMYTx,lockSubject:lockReviewedStatutoryProfileMYTx,prepare:prepareReviewedStatutoryProfileMYTx,confirm:confirmReviewedStatutoryProfileMYTx,readReference:readReviewedStatutoryProfileReferenceMYTx},
     get: getStatutoryProfileMY,
+    // The set-wise form of `get`, for one caller-held snapshot over many people (the Personnel export).
+    getManyTx: getStatutoryProfilesMYTx,
     getEditSnapshot: getStatutoryEditSnapshotMY,
     // Partial save of only the four TP3 opening-balance columns (item a6a47698 — TP3 relocated to the
     // Payroll tab with its own save; the full statutory overwrite no longer carries these).
@@ -112,6 +114,7 @@ export const myPack: CountryPack = {
     validatePassport:validatePassportProfileMY,
     setTax: setTaxProfileMY,
     getTaxSelection:getTaxSelectionMY,
+    getTaxSelections:getTaxSelectionsMY,
     saveTaxSelection:saveTaxSelectionMY,
     initializeHiredTaxSelectionTx:initializeHiredTaxSelectionMYTx,
     initializeTransferredTaxSelectionTx:initializeTransferredTaxSelectionMYTx,
