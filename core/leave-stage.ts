@@ -33,12 +33,10 @@ export async function useLeaveStageTx(tx: Tx, write: string | null, visible: rea
  * Another job's released rows count whether or not their markers have been cleared yet. */
 export async function leaveStageFingerprintsTx(tx: Tx, employmentIds: readonly string[], ownStages: readonly string[]): Promise<Record<string, string>> {
   if (!employmentIds.length) return {};
-  const own = `{${ownStages.join(',')}}`;
-  const rows = await tx.execute<{id: string; fp: string}>(sql`select e.id::text as id, md5(concat_ws('|', e.hired_on, e.terminated_on, e.company_id, e.grade_id, e.voided_at,
-      (select string_agg(a.xmin::text, ',' order by a.id) from assignment a where a.employment_id=e.id),
-      (select string_agg(l.id::text||':'||l.days::text||':'||l.effective_on::text||':'||l.entry_type::text, ',' order by l.id) from leave_ledger l where l.employment_id=e.id and (l.stage_id is null or not (l.stage_id = any(${own}::uuid[])))),
-      (select string_agg(s.id::text||':'||s.leave_type_id::text, ',' order by s.id) from leave_encashment_snapshot s where s.employment_id=e.id and s.status='frozen'))) as fp
-    from employment e where e.id = any(${`{${employmentIds.join(',')}}`}::uuid[])`);
+  // Draft 9905: one definer digest per employment, the visible set hashed once (row security tested every scanned
+  // row against the whole visible-employment array: 0.5-0.7 s for 3,000 employees inside the release).
+  const rows = await tx.execute<{id: string; fp: string}>(sql`select employment_id::text as id, digest as fp
+    from app.leave_stage_digests(${`{${employmentIds.join(',')}}`}::uuid[], ${`{${ownStages.join(',')}}`}::uuid[], true)`);
   return Object.fromEntries(rows.map(r => [r.id, r.fp]));
 }
 /** The employments whose inputs differ from what their batch saw (or that are no longer visible). */
@@ -65,9 +63,7 @@ export async function leaveConfigFingerprintTx(tx: Tx): Promise<string> {
  * rows the template resolver matches on, in one statement (the accrual job's re-check of its once-per-run reads). */
 export async function leaveRunInputFingerprintsTx(tx: Tx, employmentIds: readonly string[] | null): Promise<{configFp: string; orgFp: Record<string, string>}> {
   const [row] = await tx.execute<{fp: string; org: Record<string, string> | null}>(sql`select ${configDigest} as fp,
-    ${employmentIds ? sql`(select jsonb_object_agg(e.id::text, md5(concat_ws('|', e.xmin::text,
-      (select string_agg(a.xmin::text, ',' order by a.id) from assignment a where a.employment_id=e.id))))
-     from employment e where e.id = any(${`{${employmentIds.join(',')}}`}::uuid[]))` : sql`null::jsonb`} as org`);
+    ${employmentIds ? sql`(select jsonb_object_agg(d.employment_id::text, d.digest) from app.leave_stage_digests(${`{${employmentIds.join(',')}}`}::uuid[], '{}'::uuid[], false) d)` : sql`null::jsonb`} as org`);
   return {configFp: row.fp, orgFp: row.org ?? {}};
 }
 /** Release: one row, under the job's own fenced transaction. Every reader sees the stage from its commit on. */
