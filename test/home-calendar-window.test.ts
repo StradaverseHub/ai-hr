@@ -7,7 +7,7 @@
  * company-subtree override inherited by a child company and another company's own override, an inheriting group whose
  * parent is extended, a custom group, a standard group, group-scoped extra days and ticked holidays, dated calendar
  * periods, a dated company change, and a tenure that starts and ends inside the window), retained replacement days
- * (covered and refused), approved and pending presence (whole span, per-date children, part days) and company proof.
+ * (covered, and refused after a dated company change), approved and pending presence (whole span, per-date children, part days) and company proof.
  * A group whose states are not all text, another transaction, another employment and a window outside the read fall
  * back to the owners' own statements. Inside a Home stream the declared window is read once by the one statement. */
 import {randomUUID} from 'node:crypto';
@@ -96,6 +96,13 @@ beforeAll(async()=>{
  await saveEmploymentHolidayCalendarAssignment(admin,{employmentId:dated.employmentId,startDate:`${Y1}-01-11`,selection:{kind:'group',groupId:standard}});
  // A dated company change inside the window: the parent company until 26 December, the other company from the 27th.
  const moved=await hire('company change');
+ // Replacement days recorded under the parent company: the plain employment's stays covered; the moved employment's
+ // replacement date falls after its dated company change and is refused coverage.
+ const [policy]=await owner.db.insert(s.replacementHolidayPolicy).values({tenantId:b.tenantId,companyId:b.companyId,effectiveFrom:now,regime:'MY_EA_60D',
+  confirmed:true,restMode:'scheduled_rest',searchDays:30,reason:'Fictional replacement policy',createdBy:'fixture'}).returning();
+ await owner.db.insert(s.replacementHoliday).values([plain.employmentId,moved.employmentId].map(employmentId=>({tenantId:b.tenantId,employmentId,companyId:b.companyId,
+  sourceHolidayId:national.id,policyId:policy.id,sourceDate:`${Y0}-12-25`,sourceName:national.name,inputDigest:'fictional',status:'allocated' as const,
+  replacementDate:`${Y0}-12-28`,reason:'Fictional replacement'})));
  const [current]=await owner.db.select().from(s.assignment).where(eq(s.assignment.employmentId,moved.employmentId));
  await owner.db.update(s.assignment).set({validTo:`${Y0}-12-27`}).where(eq(s.assignment.id,current.id));
  await owner.db.insert(s.assignment).values({tenantId:b.tenantId,employmentId:moved.employmentId,departmentId:otherDepartment,companyId:other.id,
@@ -107,16 +114,6 @@ beforeAll(async()=>{
   departmentId:b.deptA,employmentType:'full_time',hiredOn:`${Y0}-01-01`});oddGroupEmployment=odd.employmentId;
  const [oddGroup]=await owner.db.insert(s.holidayGroup).values({tenantId:b.tenantId,name:'Fictional odd calendar',states:['Selangor',7]}).returning();
  await owner.db.update(s.employment).set({holidayGroupId:oddGroup.id}).where(eq(s.employment.id,odd.employmentId));
- // Replacement days for the plain employment: one covered, one refused because its recorded company is another.
- const [policy]=await owner.db.insert(s.replacementHolidayPolicy).values({tenantId:b.tenantId,companyId:b.companyId,effectiveFrom:now,regime:'MY_EA_60D',
-  confirmed:true,restMode:'scheduled_rest',searchDays:30,reason:'Fictional replacement policy',createdBy:'fixture'}).returning();
- const [newYear]=await owner.db.select().from(s.holiday).where(eq(s.holiday.name,'Fictional new year'));
- await owner.db.insert(s.replacementHoliday).values([
-  {tenantId:b.tenantId,employmentId:plain.employmentId,companyId:b.companyId,sourceHolidayId:national.id,policyId:policy.id,sourceDate:`${Y0}-12-25`,
-   sourceName:national.name,inputDigest:'fictional',status:'allocated',replacementDate:`${Y0}-12-28`,reason:'Fictional replacement'},
-  {tenantId:b.tenantId,employmentId:plain.employmentId,companyId:other.id,sourceHolidayId:newYear.id,policyId:policy.id,sourceDate:`${Y1}-01-01`,
-   sourceName:newYear.name,inputDigest:'fictional',status:'allocated',replacementDate:`${Y1}-01-02`,reason:'Fictional refused replacement'},
- ]);
  const [withChildren]=await owner.db.insert(s.leaveRequest).values([
   {tenantId:b.tenantId,employmentId:plain.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:`${Y1}-01-05`,endDate:`${Y1}-01-07`,days:'3',status:'approved' as const},
   {tenantId:b.tenantId,employmentId:plain.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:`${Y0}-12-16`,endDate:`${Y0}-12-18`,days:'3',status:'approved' as const},
@@ -164,6 +161,7 @@ describe('the calendar window statement',()=>{
   expect(days('custom group')).toEqual([`${Y0}-12-17`]);
   expect(days('standard group')).toEqual(expect.arrayContaining([`${Y0}-12-11`,`${Y0}-12-12`,`${Y0}-12-18`]));
   expect(days('company change')).toEqual(expect.arrayContaining([`${Y0}-12-11`,`${Y1}-01-01`]));
+  expect(days('company change')).not.toContain(`${Y0}-12-28`);
   expect(days('short tenure')).not.toContain(`${Y0}-12-11`);
   expect(days('dated calendar')).toEqual(expect.arrayContaining([`${Y0}-12-11`,`${Y1}-01-08`]));
  },240_000);
