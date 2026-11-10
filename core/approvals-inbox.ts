@@ -29,7 +29,7 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,pendingLeaveCancellationCandidatesExistSql,listPendingReplacementLeaveTasks} from '../packs/leave/service';
 import {countPendingClaimTasks,pendingClaimTaskMetadata,pendingClaimTaskSummary} from '../packs/claims/service';
 import {pendingAttendanceTaskMetadata} from '../packs/attendance/service';
-import {pendingProfileTaskMetadata} from './profile';
+import {pendingProfileTaskMetadata,pendingProfileTasksFromCandidates} from './profile';
 import {pendingResignationCandidatesExistSql,pendingResignationTaskMetadata} from './offboarding';
 import {pendingNoticeAcknowledgementTasks} from './notice';
 import {pendingReviewCandidatesExistSql,pendingReviewTaskMetadata} from './employment-review';
@@ -137,10 +137,18 @@ export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefine
     loadBundledClaimTaskSource(ctx,scopeIds,modules,preview,bundle));
 }
 
-async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefined,preview?:true,knownCandidates?:boolean){
+type DecisionHeaders=Pick<AccountTaskBundle,'cancellations'|'resignations'|'managerReviews'|'hrReviews'>;
+async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefined,preview?:true,known?:DecisionHeaders){
+  // known: each owner the account task statement answered for this same read (core/account-task-bundle.ts); every
+  // other owner reads on its own, exactly as below.
+  if(known)return settleReadGroup([
+    ()=>known.cancellations??pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
+    ()=>known.resignations??pendingResignationTaskMetadata(ctx,scopeIds),
+    ()=>known.managerReviews??pendingReviewTaskMetadata(ctx,'manager',scopeIds),
+    ()=>known.hrReviews??pendingReviewTaskMetadata(ctx,'hr',scopeIds),
+  ]);
   if(preview){
-    // knownCandidates: this same probe, already answered by the account task statement (core/account-task-bundle.ts).
-    const candidates=knownCandidates??await withTenant(ctx,async tx=>{
+    const candidates=await withTenant(ctx,async tx=>{
       await assertAssignedWorkPrincipalTx(tx,ctx);
       const [row]=await tx.execute<{has_candidates:boolean}>(sql`
         select (
@@ -189,10 +197,11 @@ async function loadBundledCommonTaskSources(ctx:SessionContext,scopeIds:string[]
   const same=(module:keyof InboxModules)=>read.modules[module]===modules[module];
   const own=<T,>(value:T|null,owner:()=>Promise<T>)=>()=>value!==null?Promise.resolve(value):owner();
   return settleReadGroup([
-    own(read.leave,()=>pendingLeaveTaskMetadata(ctx,scopeIds)),()=>loadDecisionHeaders(ctx,scopeIds,true,read.decisionCandidates),
+    own(read.leave,()=>pendingLeaveTaskMetadata(ctx,scopeIds)),()=>loadDecisionHeaders(ctx,scopeIds,true,read),
     own(read.replacement,()=>listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds})),
     own(same('attendance')?read.attendance:null,()=>modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([])),
-    own(read.profile,()=>pendingProfileTaskMetadata(ctx,scopeIds)),
+    // Profile candidates from the statement still pass the owner's locked decision transaction.
+    ()=>read.profile!==null?Promise.resolve(read.profile):read.profileCandidates?pendingProfileTasksFromCandidates(ctx,read.profileCandidates):pendingProfileTaskMetadata(ctx,scopeIds),
     own(notices?read.notices:[],()=>pendingNoticeAcknowledgementTasks(ctx)),
     ()=>settleReadGroup(PACK_TASK_SOURCES.map(source=>own(same(source.module)?read[source.module]:null,
       ()=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([])))),

@@ -21,7 +21,7 @@ const state=vi.hoisted(()=>{
 });
 vi.mock('../../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>(key:string)=>key}));
-import {sql} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {client as applicationClient,withIndependentTransactions,withSharedReadSnapshot,withTenant,type SessionContext} from '../../db/client';
 import type {SharedReadStats} from '../../db/shared-read';
 import * as s from '../../db/schema';
@@ -671,6 +671,148 @@ async function calendarWindowEntitlementTrips(subjects:[string,Actor][],month:st
  report.entitlementTrips=out;print('entitlement-trips',out);
 }
 // ── end of the calendar window block ──
+// ── Deferred task owners in the account task statement (core/account-task-bundle.ts, ADR decision 10) ────────────────
+/** Candidates for every task owner the statement now decides, seeded after the traces so their counts stay comparable.
+ * Tenant 0's two managers and HR get answered paths: copied cancellation chains with alternates, alternates sanitised
+ * and tried in order, manager's-manager lines and subject heads of several rows that agree, a resignation, manager and
+ * HR employment reviews, attendance applications (frozen workflow and legacy), a profile change request. The
+ * cross-company manager (position 6) gets the documented deferrals: lines and heads that disagree and an alternate whose
+ * named id the owner would trim. The other tenant's manager gets an unknown step kind and a named step naming nobody,
+ * which the owner refuses with a non-refusal error (only that tenant's actors see them). A step that fails is recorded
+ * instead of failing the run. */
+async function seedTaskOwnerFixtures(tenants:Actor[][],today:string){
+ const failures:{step:string;error:unknown}[]=[];
+ const step=async(name:string,work:()=>Promise<unknown>)=>{try{await work();}catch(error){const cause=(error as {cause?:{message?:string;code?:string}})?.cause;
+  failures.push({step:name,error:errorFact(error),cause:cause?{code:cause.code??null,message:String(cause.message).slice(0,240)}:null});}};
+ const day=(offset:number)=>new Date(Date.parse(today+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
+ const on=day(12);
+ for(const [t,actors] of tenants.entries()){
+  const at=(position:number)=>actors.find(a=>a.index===t*250+position)!,tenantId=actors[0].ctx.tenantId;
+  const [{leaveTypeId}]=await owner.client<{leaveTypeId:string}[]>`select leave_type_id as "leaveTypeId" from leave_request where tenant_id=${tenantId}::uuid limit 1`;
+  const line=(subordinate:Actor,manager:Actor,validFrom='2025-01-01')=>owner.db.insert(s.reportingLine).values({tenantId,managerEmploymentId:manager.employmentId,
+   subordinateEmploymentId:subordinate.employmentId,lineType:'administrative',validFrom});
+  const leave=async(subject:Actor,steps:{kind:string;approver?:string|null;status?:'approved';alternates?:unknown}[],status:'pending'|'approved'='pending')=>{
+   const [request]=await owner.db.insert(s.leaveRequest).values({tenantId,employmentId:subject.employmentId,leaveTypeId,startDate:on,endDate:on,days:'1',status}).returning();
+   if(steps.length)await owner.db.insert(s.leaveApprovalStep).values(steps.map((step,stepIndex)=>({tenantId,leaveRequestId:request.id,subjectEmploymentId:subject.employmentId,
+    stepIndex,approverKind:step.kind,approverEmploymentId:step.approver??null,approverAlternates:step.alternates??null,status:step.status??'pending' as const})));
+   return request;
+  };
+  const cancellation=async(subject:Actor,steps:{kind:string;approver?:string|null;status?:'approved';alternates?:unknown}[])=>{
+   const approved=await leave(subject,[],'approved');
+   const [request]=await owner.db.insert(s.leaveCancellationRequest).values({tenantId,employmentId:subject.employmentId,leaveRequestId:approved.id,cancelDates:[on],requestedDays:'1'}).returning();
+   if(steps.length)await owner.db.insert(s.leaveCancellationStep).values(steps.map((step,stepIndex)=>({tenantId,cancellationRequestId:request.id,subjectEmploymentId:subject.employmentId,
+    stepIndex,approverKind:step.kind,approverEmploymentId:step.approver??null,approverAlternates:step.alternates??null,status:step.status??'pending' as const})));
+  };
+  // The subject's one current assignment (assignment_no_overlap admits no second) moved to a department headed by `head`.
+  const headed=async(subject:Actor,head:Actor)=>{
+   const [department]=await owner.db.insert(s.department).values({tenantId,companyId:subject.companyId,name:'Fictional headed department '+subject.index,label:'FHD'+subject.index,headEmploymentId:head.employmentId}).returning();
+   await owner.client`update assignment set department_id=${department.id}::uuid where employment_id=${subject.employmentId}::uuid and valid_to is null and superseded_at is null`;
+  };
+  const manager=at(2),second=at(3);
+  if(t===0){
+   const cross=at(6);
+   await step('lines',async()=>{
+    await line(second,manager);await line(at(21),manager);await line(at(25),second);await line(at(25),second,day(-20));await line(at(27),second);
+    for(const position of [32,33])await line(at(position),cross);
+    // Company 1: one employee (position 54) manages 55-58 and 56 also manages 55 and 57, so a manager's-manager step on
+    // 55 or 57 has two lines whose decisions disagree for 54. No other compared non-admin sees company 1's subjects.
+    const lone=at(54);
+    for(const position of [55,56,57,58])await line(at(position),lone);
+    await line(at(55),at(56));await line(at(57),at(56));
+   });
+   await step('leaveChains',async()=>{
+    await leave(at(17),[{kind:'hr_admin',alternates:[42,null,['direct_manager'],'mystery_kind',{kind:'specific_employee'},{kind:'specific_employee',employmentId:''},
+     'specific_employee',{kind:'specific_employee',employmentId:second.employmentId.toUpperCase()}]}]);
+    await leave(at(18),[{kind:'payroll',alternates:['manager_manager',{kind:'direct_manager',employmentId:'stray'}]}]);
+    await leave(at(21),[{kind:'manager_manager',alternates:['direct_manager']}]);
+    await leave(at(25),[{kind:'manager_manager'}]);
+    // Alternate ids padded with JavaScript whitespace, trimmed exactly as sanitizeApprover trims them.
+    await leave(at(33),[{kind:'custom_role',alternates:[{kind:'specific_employee',employmentId:' '+cross.employmentId+' '}]}]);
+    await leave(at(19),[{kind:'custom_role',alternates:[{kind:'specific_employee',employmentId:'\u00a0'+second.employmentId+'\t\u3000'}]}]);
+    // The documented fallbacks, for position 54 only: disagreeing manager's-manager lines, and an alternate id spelled
+    // as PostgreSQL but not plain UUID text accepts it (braces). That employee's leave owner reads alone. (A subject head
+    // cannot disagree: assignment_no_overlap leaves one current assignment.)
+    await leave(at(55),[{kind:'manager_manager'}]);
+    await leave(at(58),[{kind:'custom_role',alternates:[{kind:'specific_employee',employmentId:'{'+lone.employmentId+'}'}]}]);
+   });
+   await step('departmentHeads',async()=>{
+    await headed(at(27),manager);await leave(at(27),[{kind:'department_head'}]);
+    await headed(at(32),cross);await leave(at(32),[{kind:'department_head'}]);
+   });
+   await step('cancellations',async()=>{
+    await cancellation(at(5),[]);
+    await cancellation(at(14),[{kind:'direct_manager',status:'approved'},{kind:'hr_admin',alternates:[{kind:'specific_employee',employmentId:second.employmentId}]}]);
+    await cancellation(at(7),[{kind:'direct_manager',status:'approved'}]);
+    await cancellation(at(57),[{kind:'manager_manager'}]);
+   });
+   await step('resignations',()=>owner.db.insert(s.resignationRequest).values([8,60].map(position=>({tenantId,employmentId:at(position).employmentId,personId:at(position).ctx.personId!,lastWorkingDay:day(30)}))));
+   await step('reviews',()=>owner.db.insert(s.employmentReview).values([
+    {tenantId,employmentId:at(9).employmentId,personId:at(9).ctx.personId!,managerEmploymentId:manager.employmentId,endDate:day(40),dueDate:day(10),reviewType:'contract' as const},
+    {tenantId,employmentId:at(10).employmentId,personId:at(10).ctx.personId!,managerEmploymentId:manager.employmentId,endDate:day(40),dueDate:day(11),reviewType:'contract' as const,status:'pending_hr' as const},
+    {tenantId,employmentId:at(61).employmentId,personId:at(61).ctx.personId!,managerEmploymentId:at(52).employmentId,endDate:day(40),dueDate:day(12),reviewType:'contract' as const,status:'pending_hr' as const},
+   ]));
+   const {requestAttendanceCorrection}=await import('../../core/attendance');
+   await step('attendanceWorkflow',()=>requestAttendanceCorrection(at(35).ctx,{employmentId:at(35).employmentId,date:day(-5),checkIn:'09:00',checkOut:'18:00',reason:'Fictional workflow correction'}));
+   // A pending correction outside every workflow (a manager is in no criteria): decided by the legacy authority.
+   await step('attendanceLegacy',()=>owner.client`insert into attendance_correction(tenant_id,employment_id,attendance_date,proposed_check_in,proposed_check_out,reason)
+    values(${tenantId}::uuid,${second.employmentId}::uuid,${day(-6)}::date,'09:00','18:00','Fictional legacy correction')`);
+   await step('profile',()=>owner.db.insert(s.profileChangeRequest).values({tenantId,employmentId:at(11).employmentId,personId:at(11).ctx.personId!,proposed:{preferredName:'Fictional preferred name'}}));
+   // A current OneHR cycle for company 0: the managers' review queue and assessment rows, a OneHR feedback panel for the
+   // cross-company manager and a department calibration session naming the manager.
+   await step('performance',async()=>{
+    const perf=await import('../../packs/performance/service'),{defaultPolicy}=await import('../../packs/performance/onehr/model');
+    const framework=(await import('../../packs/performance/onehr/framework.json')).default;
+    const admin=at(0).ctx,companyId=at(0).companyId;
+    const [grade]=await owner.db.insert(s.jobGrade).values({tenantId,code:'17',name:'Fictional performance grade'}).returning();
+    await owner.client`update employment set grade_id=${grade.id}::uuid where tenant_id=${tenantId}::uuid and company_id=${companyId}::uuid`;
+    const {cycleId}=await perf.createCycle(admin,{name:'Fictional current assessment',companyId,periodStart:day(-30),periodEnd:day(30)});
+    await perf.configureOnehrCycle(admin,cycleId,null,defaultPolicy(framework));await perf.openCycle(admin,{cycleId});
+    const reviewOf=async(subject:Actor)=>(await owner.db.select({id:s.performanceReview.id}).from(s.performanceReview)
+     .where(and(eq(s.performanceReview.cycleId,cycleId),eq(s.performanceReview.employmentId,subject.employmentId))))[0].id;
+    const reviewId=await reviewOf(at(5)),view=await perf.getOnehrReview(admin,reviewId);
+    await perf.assignOnehrPanel(admin,reviewId,view!.revision,[{employmentId:at(6).employmentId,relationship:'peer'}]);
+    // Calibration writes are the performance administrator's (as test/p1-wpa2-performance-home.test.ts seeds them).
+    const entries=await Promise.all([5,7,8].map(async position=>({reviewId:await reviewOf(at(position)),employmentId:at(position).employmentId})));
+    await withTenant(admin,async tx=>{
+     const [session]=await tx.insert(s.onehrCalibration).values({tenantId,cycleId,companyId,name:'Fictional department calibration',tier:'hod',reviewerUserIds:[manager.ctx.userId!]}).returning();
+     for(const entry of entries)await tx.insert(s.onehrCalibrationEntry).values({tenantId,sessionId:session.id,...entry});
+    });
+   });
+  }else{
+   // Only this tenant's manager (and its administrators, not compared) sees these: the owner throws a non-refusal error.
+   await step('errorChains',async()=>{
+    await leave(at(5),[{kind:'mystery_kind'}]);
+    await leave(at(6),[{kind:'specific_employee',approver:null}]);
+    await cancellation(at(7),[{kind:'mystery_kind'}]);
+   });
+  }
+ }
+ return failures;
+}
+
+/** The account task statement's own planning and execution time: the statement the bundle sends (captured from the
+ * driver), explained under the subject's own session. Diagnostic only. */
+async function explainTaskStatement(ctx:SessionContext,modules:import('../../core/account-task-bundle').AccountTaskModules){
+ const {readAccountTaskBundle}=await import('../../core/account-task-bundle');
+ const options=applicationClient.options as {debug?:unknown},previous=options.debug;let captured:{query:string;params:unknown[]}|undefined;
+ options.debug=(_connection:number,query:string,params:unknown[])=>{if(query.includes(') as principal,'))captured={query,params:[...(params??[])]};};
+ try{await withSharedReadSnapshot(ctx,()=>readAccountTaskBundle(ctx,modules));}finally{options.debug=previous;}
+ const statement=captured;
+ if(!statement)return {captured:false};
+ return withTenant(ctx,async tx=>{
+  await tx.execute(sql`set local jit=off`);
+  const client=(tx as unknown as {session:{client:{unsafe:(query:string,params:unknown[])=>Promise<Record<string,unknown>[]>}}}).session.client;
+  const [row]=await client.unsafe('explain (analyze, summary, format json) '+statement.query,statement.params);
+  type Node={'Node Type':string;'Subplan Name'?:string;'Relation Name'?:string;'Function Name'?:string;'Actual Total Time'?:number;'Actual Loops'?:number;Plans?:Node[]};
+  const plan=(row['QUERY PLAN'] as {'Planning Time':number;'Execution Time':number;Plan:Node}[])[0];
+  const nodes:{node:string;ms:number;loops:number}[]=[];
+  const walk=(node:Node)=>{nodes.push({node:[node['Subplan Name'],node['Node Type'],node['Relation Name']??node['Function Name']].filter(Boolean).join(' '),
+   ms:Math.round((node['Actual Total Time']??0)*(node['Actual Loops']??1)*10)/10,loops:node['Actual Loops']??0});for(const child of node.Plans??[])walk(child);};
+  walk(plan.Plan);
+  return {planningMs:Math.round(plan['Planning Time']),executionMs:Math.round(plan['Execution Time']),chars:statement.query.length,params:statement.params.length,
+   top:nodes.filter(node=>node.node.startsWith('SubPlan')||node.node.startsWith('InitPlan')||node.node.startsWith('CTE')).sort((a,b)=>b.ms-a.ms).slice(0,12)};
+ },{readOnlySnapshot:true});
+}
 
 type Traced={trips:number;statements:{sql:string;count:number}[];ordered:string[]};
 const sharedStats:SharedReadStats[]=[];
@@ -966,7 +1108,51 @@ it('completes every manager Home card and Today section read without a handled f
  report.beforePayrollOwnerFixtures={seeded:beforePayrollOwners.seeded,refused:beforePayrollOwners.refused,joiner:beforePayrollOwners.joiner!==null};
  print('before-payroll-owner-fixtures',report.beforePayrollOwnerFixtures);
  const beforePayrollSections:unknown[]=[];report.beforePayrollSections=beforePayrollSections;
+ // Deferred task owners (core/account-task-bundle.ts, ADR decision 10): their candidates, then the Tasks and Summary
+ // cards and the stream with every task owner reading alone (before) and through the account task statement (after).
+ {
+  const failures=await seedTaskOwnerFixtures(tenants,today);report.taskOwnerFixtureFailures=failures;print('task-owner-fixtures',{failures});
+  const {withOwnerTaskReads}=await import('../../core/account-task-bundle'),trips:Record<string,[number,number]>={};
+  for(const [label,actor] of [['manager',manager],['secondManager',secondManager],['groupHR',actors.find(a=>a.role==='groupHR')!],
+   ['crossCompanyManager',actors.find(a=>a.index===6)!],['employee',employee]] as const){
+   const reads:Record<string,()=>Promise<unknown>>={
+    tasks:()=>withSharedReadSnapshot(actor.ctx,()=>readers(actor.ctx,actor.employmentId,month).tasks()),
+    summary:()=>withSharedReadSnapshot(actor.ctx,()=>readers(actor.ctx,actor.employmentId,month).summary()),
+    stream:()=>streamHome(actor,month,null),
+   };
+   for(const [name,read] of Object.entries(reads)){
+    await read().catch(()=>undefined);
+    const old=await traceStatements(()=>withOwnerTaskReads(read)),fresh=await traceStatements(read);
+    trips[label+':'+name]=[old.trace.trips,fresh.trace.trips];
+   }
+  }
+  report.taskOwnerTrips=trips;print('task-owner-trips',trips);evidence();
+  // Every leave and cancellation candidate the statement leaves to its owner, for the non-admin subjects: only the
+  // documented fallback fixtures (position 54's disagreeing lines and brace-spelled alternate id) may appear.
+  {
+   const bundles=await import('../../core/account-task-bundle'),leaveService=await import('../../packs/leave/service'),decisions:Record<string,unknown>={};
+   for(const [label,actor] of [['manager',manager],['secondManager',secondManager],['crossCompanyManager',actors.find(a=>a.index===6)!],['companyOneOnLeave',actors.find(a=>a.index===54)!]] as const){
+    decisions[label]=await withTenant(actor.ctx,async tx=>[...await tx.execute(sql`with ${bundles.accountTaskCallerSql(actor.ctx)}
+      select decision_candidate.section,decision_candidate.approver_kind as kind,(select users.index from (values ${sql.join(actors.map(a=>sql`(${a.employmentId}::uuid,${a.index}::int)`),sql`,`)}) users(id,index)
+       where users.id=decision_candidate.employment_id) as subject,decided.decision
+      ${leaveService.pendingLeaveDecisionCandidatesSql(tx,actor.ctx,undefined,sql`cast((select task_caller.own_ids from task_caller) as uuid[])`)}
+      where decided.decision in ('defer','error') order by 1,3,2`)],{readOnlySnapshot:true}).catch(error=>errorFact(error));
+   }
+   print('task-owner-leave-decisions',decisions);
+  }
+  const {isModuleEnabled}=await import('../../core/entitlements'),explains:Record<string,unknown>={};
+  for(const [label,actor] of [['manager',manager],['employee',employee],['groupHR',actors.find(a=>a.role==='groupHR')!]] as const){
+   const flags={attendance:isModuleEnabled(actor.ctx,'attendance'),claims:isModuleEnabled(actor.ctx,'claims'),performance:isModuleEnabled(actor.ctx,'performance'),
+    rewards:isModuleEnabled(actor.ctx,'rewards'),lifecycle:isModuleEnabled(actor.ctx,'lifecycle')};
+   for(const [variant,modules] of [['modules',flags],['core',{attendance:false,claims:false,performance:false,rewards:false,lifecycle:false}]] as const){
+    const runs=[];for(let attempt=0;attempt<3;attempt++)runs.push(await explainTaskStatement(actor.ctx,modules).catch(error=>errorFact(error)));
+    explains[label+':'+variant]=runs;
+   }
+  }
+  report.taskStatementExplain=explains;print('task-statement-explain',explains);evidence();
+ }
  const bundleSections:unknown[]=[];report.bundleSections=bundleSections;
+ const failurePrecedence:unknown[]=[];report.taskFailurePrecedence=failurePrecedence;
  const {listClaimsForEmployment,listOpenClaimsForEmployment}=await import('../../packs/claims/service');
  for(const [subject,actor] of subjects){
   const targets=await todayTargets(actor.ctx);
@@ -1026,7 +1212,8 @@ it('completes every manager Home card and Today section read without a handled f
    const leaveService=await import('../../packs/leave/service'),claimsService=await import('../../packs/claims/service');
    const attendanceService=await import('../../packs/attendance/service'),performanceService=await import('../../packs/performance/service');
    const rewardsService=await import('../../packs/rewards/service'),lifecycleService=await import('../../packs/lifecycle/service');
-   const {pendingProfileTaskMetadata}=await import('../../core/profile'),{pendingNoticeAcknowledgementTasks}=await import('../../core/notice');
+   const {pendingProfileTaskMetadata,pendingProfileTasksFromCandidates}=await import('../../core/profile'),{pendingNoticeAcknowledgementTasks}=await import('../../core/notice');
+   const {pendingResignationTaskMetadata}=await import('../../core/offboarding'),{pendingReviewTaskMetadata}=await import('../../core/employment-review');
    const ctx=actor.ctx,inboxModules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
    const modules={...inboxModules,lifecycle:isModuleEnabled(ctx,'lifecycle')};
    const bundle=await withSharedReadSnapshot(ctx,()=>bundles.readAccountTaskBundle(ctx,modules));
@@ -1037,6 +1224,10 @@ it('completes every manager Home card and Today section read without a handled f
    compare(subject,'bundle:answered',proof?.ok===true,bundle!==null);
    const owners:Record<string,()=>Promise<unknown>>={
     leave:()=>leaveService.pendingLeaveTaskMetadata(ctx),
+    cancellations:()=>leaveService.pendingLeaveCancellationTaskMetadata(ctx),
+    resignations:()=>pendingResignationTaskMetadata(ctx),
+    managerReviews:()=>pendingReviewTaskMetadata(ctx,'manager'),
+    hrReviews:()=>pendingReviewTaskMetadata(ctx,'hr'),
     replacement:()=>leaveService.listPendingReplacementLeaveTasks(ctx,{}),
     attendance:async()=>modules.attendance?attendanceService.pendingAttendanceTaskMetadata(ctx):[],
     profile:()=>pendingProfileTaskMetadata(ctx),
@@ -1049,13 +1240,42 @@ it('completes every manager Home card and Today section read without a handled f
     onboarding:async()=>modules.lifecycle?lifecycleService.onboardingAssignedTaskMetadata(ctx):[],
    };
    const deferred:string[]=[],answered:Record<string,number>={};
-   for(const [name,read] of Object.entries(owners)){
+   // Each owner alone, independently: its result, and the failure it raises for this subject (if any).
+   const ownerOutcomes:Record<string,Awaited<ReturnType<typeof outcome>>>={};
+   for(const [name,read] of Object.entries(owners))ownerOutcomes[name]=await outcome(()=>withIndependentTransactions(read));
+   const failureKey=(failure:unknown)=>JSON.stringify((failure as {error?:unknown})?.error??null);
+   const ownerFailures=new Set(Object.values(ownerOutcomes).filter(row=>!row.ok).map(failureKey));
+   for(const name of Object.keys(owners)){
     const value=(bundle as Record<string,unknown>|null)?.[name];
     if(value===null||value===undefined){deferred.push(name);continue;}
     answered[name]=Array.isArray(value)?value.length:(value as {total?:number}).total??-1;
-    compare(subject,'bundle:'+name,await outcome(()=>withIndependentTransactions(read)),{ok:true,value});
+    compare(subject,'bundle:'+name,ownerOutcomes[name],{ok:true,value});
    }
-   bundleSections.push({subject,deferred,answered,decisionCandidates:bundle?.decisionCandidates??null});
+   // The same sections under this subject's company filter (the scoped previews' statement), against each owner so filtered.
+   const scopedRead={companyIds:scopeIds,personal:false,notices:true},scopedModules={...modules,lifecycle:false};
+   const scopedBundle=await withSharedReadSnapshot(ctx,()=>bundles.readAccountTaskBundle(ctx,scopedModules,scopedRead));
+   const scopedOwners:Record<string,()=>Promise<unknown>>={
+    leave:()=>leaveService.pendingLeaveTaskMetadata(ctx,scopeIds),cancellations:()=>leaveService.pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
+    resignations:()=>pendingResignationTaskMetadata(ctx,scopeIds),managerReviews:()=>pendingReviewTaskMetadata(ctx,'manager',scopeIds),
+    hrReviews:()=>pendingReviewTaskMetadata(ctx,'hr',scopeIds),attendance:async()=>modules.attendance?attendanceService.pendingAttendanceTaskMetadata(ctx,scopeIds):[],
+    profile:()=>pendingProfileTaskMetadata(ctx,scopeIds),
+    performance:async()=>modules.performance?performanceService.pendingPerformanceTasks(ctx,scopeIds):[],
+    rewards:async()=>modules.rewards?rewardsService.pendingRewardTasks(ctx,scopeIds):[],
+   };
+   const scopedDeferred:string[]=[];
+   for(const [name,read] of Object.entries(scopedOwners)){
+    const value=(scopedBundle as Record<string,unknown>|null)?.[name];
+    if(value===null||value===undefined){scopedDeferred.push(name);continue;}
+    compare(subject,'bundle:scoped:'+name,await outcome(()=>withIndependentTransactions(read)),{ok:true,value});
+   }
+   // Profile candidates read by the statement, through the owner's own locked decision transaction.
+   for(const [name,read,candidates] of [['profileCandidates',()=>pendingProfileTaskMetadata(ctx),bundle?.profileCandidates],
+    ['scoped:profileCandidates',()=>pendingProfileTaskMetadata(ctx,scopeIds),scopedBundle?.profileCandidates]] as const){
+    if(!candidates?.length)continue;
+    answered[name]=candidates.length;
+    compare(subject,'bundle:'+name,await outcome(()=>withIndependentTransactions(read)),await outcome(()=>withIndependentTransactions(()=>pendingProfileTasksFromCandidates(ctx,candidates))));
+   }
+   bundleSections.push({subject,deferred,answered,scopedDeferred});
    const ownersOnly=<T,>(work:()=>Promise<T>)=>withIndependentTransactions(()=>bundles.withOwnerTaskReads(work));
    const withBundle=<T,>(work:(read:ReturnType<typeof bundles.readAccountTaskBundle>)=>Promise<T>)=>
     withSharedReadSnapshot(ctx,()=>work(bundles.readAccountTaskBundle(ctx,modules)));
@@ -1069,6 +1289,17 @@ it('completes every manager Home card and Today section read without a handled f
    compare(subject,'bundle:card:summary',await outcome(()=>ownersOnly(summary)),await outcome(()=>withSharedReadSnapshot(ctx,summary)));
    const {countEmployeeHomeTasks}=await import('../../core/employee-home-tasks');
    compare(subject,'bundle:homeCount',await outcome(()=>ownersOnly(()=>countEmployeeHomeTasks(ctx))),await outcome(()=>withSharedReadSnapshot(ctx,()=>countEmployeeHomeTasks(ctx))));
+   // Which failure a composed read surfaces when several of its owners refuse: lib/settle-read-group.ts keeps the FIRST
+   // OBSERVED failure (by time, not array order). Each read repeated: owners alone in independent transactions (the
+   // comparisons' reference), owners alone in one shared snapshot (the bundled read's scope) and through the statement.
+   if(ownerFailures.size>1){
+    const runs=async(read:()=>Promise<unknown>)=>{const seen=new Map<string,number>();
+     for(let attempt=0;attempt<6;attempt++){const key=failureKey(await outcome(read));seen.set(key,(seen.get(key)??0)+1);}return Object.fromEntries(seen);};
+    failurePrecedence.push({subject,ownerFailures:[...ownerFailures],
+     ownersIndependent:await runs(()=>ownersOnly(()=>countEmployeeHomeTasks(ctx))),
+     ownersShared:await runs(()=>withSharedReadSnapshot(ctx,()=>bundles.withOwnerTaskReads(()=>countEmployeeHomeTasks(ctx)))),
+     bundledShared:await runs(()=>withSharedReadSnapshot(ctx,()=>countEmployeeHomeTasks(ctx)))});
+   }
    const ownerFrames:Record<string,unknown>={},bundleFrames:Record<string,unknown>={};
    await ownersOnly(()=>streamHome(actor,month,null,GET,ownerFrames));
    await streamHome(actor,month,null,GET,bundleFrames);
@@ -1135,6 +1366,7 @@ it('completes every manager Home card and Today section read without a handled f
  const mismatches=equivalence.filter(row=>!row.equal);
  print('bundle-sections',bundleSections);
  print('before-payroll-sections',beforePayrollSections);
+ print('task-failure-precedence',failurePrecedence);
  print('equivalence',{compared:equivalence.length,mismatches:mismatches.length,isolation,first:mismatches.slice(0,6)});
  evidence();
  // The browser renders Today sections and starts the card stream on the same worker pool.

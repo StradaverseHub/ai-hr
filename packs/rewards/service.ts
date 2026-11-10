@@ -1536,12 +1536,19 @@ export async function pendingRewardTasks(ctx: SessionContext, scopeIds: string[]
     .where(rewardTaskUnitWhere()));
   if (!readable.length) return [];
   const atApproval = readable.filter((u) => u.status !== 'draft');
-  const createdAt = new Map(atApproval.map((u) => [u.id, u.createdAt]));
   const companyIds = scopeIds ?? [...new Set(atApproval.map((u) => u.companyId))];
   const [queue, returned] = await settleReadGroup([
     ()=>atApproval.length ? pendingRewardReviews(ctx, companyIds) : Promise.resolve([]),
     ()=>atApproval.length < readable.length ? returnedRewardUnits(ctx, scopeIds) : Promise.resolve([]),
   ]);
+  return combineRewardTasks(readable, queue, returned);
+}
+
+type RewardTaskUnit = { id: string; companyId: string; status: string; createdAt: Date };
+function combineRewardTasks(readable: readonly RewardTaskUnit[], queue: readonly { id: string; name: string; cycle: string }[],
+  returned: readonly { id: string; name: string; cycle: string; returnedAt: string }[]): PackTaskItem[] {
+  const atApproval = readable.filter((u) => u.status !== 'draft');
+  const createdAt = new Map(atApproval.map((u) => [u.id, u.createdAt]));
   // A unit that entered the queue between the two reads has no owner time here; it is left to the next
   // read rather than given a guessed age (lib/assigned-work.ts: never a guessed task age).
   const approvals: PackTaskItem[] = queue.flatMap((r) => {
@@ -1563,15 +1570,49 @@ function rewardTaskUnitWhere() {
     and(eq(rewardUnit.status, 'draft'), sql`${latestDecisionActionSql}='return'`),
   ));
 }
-/** pendingRewardTasks' empty answer in the one-statement Home task read (core/account-task-bundle.ts): the owner's
- * observation probe and its first read. With nothing to observe and no readable unit, the owner returns no task and
- * writes nothing; otherwise the owner runs itself (its observation write included). */
-export function pendingRewardTasksBundleSql() {
-  return sql`jsonb_build_object('due',app.reward_access_observation_due(NULL::uuid),'readable',exists(select 1 from ${rewardUnit} where ${rewardTaskUnitWhere()}))`;
+/** pendingRewardTasks(ctx, scopeIds) in the one-statement Home task read (core/account-task-bundle.ts), in the caller's
+ * session: the owner's observation probe, and when nothing is due (the owner then writes nothing) its readable units,
+ * pendingRewardReviews' queue under the owner's company list (the scope, or the companies of the readable units at an
+ * approval stage) and returnedRewardUnits' drafts with each one's latest decision, each read only where the owner reads
+ * it and with the owner's predicates and order. The owner's TypeScript combines them (combineRewardTasks). With an
+ * observation due the owner runs itself, its write first (decision 4). */
+export function pendingRewardTasksBundleSql(scopeIds?: readonly string[]) {
+  const scope = scopeIds === undefined ? null : sql`array[${sql.join(scopeIds.map((id) => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
+  const queueCompanies = scope ?? sql`array(select queue_unit.company_id from ${rewardUnit} queue_unit where queue_unit.id=any(reward_readable.approval_ids))`;
+  const queue = sql`(select coalesce(jsonb_agg(jsonb_build_object('id',${rewardUnit.id},'name',${businessUnitDisplayName},'cycle',${rewardCycle.name}) order by ${rewardUnit.createdAt},${rewardUnit.id}),'[]'::jsonb)
+    from ${rewardUnit} inner join ${rewardCycle} on ${eq(rewardCycle.id, rewardUnit.cycleId)} inner join ${businessUnit} on ${eq(businessUnit.id, rewardUnit.businessUnitId)}
+    where ${rewardUnit.companyId}=any(${queueCompanies}) and ${rewardUnit.status} in ('bg','gr','ctro','ec') and ${rewardUnit.status} in (select app.reward_roles(${rewardUnit.id})))`;
+  const returned = sql`(select coalesce(jsonb_agg(jsonb_build_object('id',${rewardUnit.id},'name',${businessUnitDisplayName},'cycle',${rewardCycle.name},'toSeat',${returnedSeatSql},
+      'latest',(select jsonb_build_object('action',${rewardDecision.action},'fromStage',${rewardDecision.fromStage},'toStage',${rewardDecision.toStage},'reason',${rewardDecision.reason},
+        'actorId',${rewardDecision.actorId},'createdAt',${rewardDecision.createdAt}) from ${rewardDecision} where ${eq(rewardDecision.unitId, rewardUnit.id)}
+       order by ${rewardDecision.createdAt} desc,${rewardDecision.id} desc limit 1)) order by ${rewardUnit.updatedAt},${rewardUnit.id}),'[]'::jsonb)
+    from ${rewardUnit} inner join ${rewardCycle} on ${eq(rewardCycle.id, rewardUnit.cycleId)} inner join ${businessUnit} on ${eq(businessUnit.id, rewardUnit.businessUnitId)}
+    where ${isNull(rewardUnit.deletedAt)} and ${rewardUnit.status}='draft' ${scope ? sql`and ${rewardUnit.companyId}=any(${scope})` : sql``}
+     and ${latestDecisionActionSql}='return'
+     and (case when ${rewardUnit.offcycle}->>'bgOrigin'='true' then 'bg' else 'bu' end) in (select app.reward_roles(${rewardUnit.id})))`;
+  return sql`(select jsonb_build_object('due',reward_probe.due,'readable',reward_readable.units,
+    'queue',case when reward_probe.due is distinct from false or cardinality(reward_readable.approval_ids)=0 then null else ${queue} end,
+    'returned',case when reward_probe.due is distinct from false or not reward_readable.drafts then null else ${returned} end)
+   from (select app.reward_access_observation_due(NULL::uuid) as due) reward_probe
+   cross join lateral (select case when reward_probe.due is distinct from false then null else coalesce(jsonb_agg(jsonb_build_object('id',${rewardUnit.id},'companyId',${rewardUnit.companyId},
+      'status',${rewardUnit.status},'createdAt',${rewardUnit.createdAt})),'[]'::jsonb) end as units,
+     coalesce(array_agg(${rewardUnit.id}) filter(where ${rewardUnit.status}<>'draft'),'{}'::uuid[]) as approval_ids,
+     coalesce(bool_or(${rewardUnit.status}='draft'),false) as drafts
+    from ${rewardUnit} where reward_probe.due is false and ${rewardTaskUnitWhere()}) reward_readable)`;
 }
+type BundleRewardUnit = { id: string; companyId: string; status: string; createdAt: string };
+type BundleReturnedUnit = { id: string; name: string; cycle: string; toSeat: string | null; latest: { action: string; fromStage: string; toStage: string; reason: string; actorId: string; createdAt: string } | null };
 export function pendingRewardTasksFromBundle(value: unknown): PackTaskItem[] | null {
-  const section = value as { due: boolean | null; readable: boolean };
-  return section.due === false && !section.readable ? [] : null;
+  const section = value as { due: boolean | null; readable: BundleRewardUnit[] | null; queue: { id: string; name: string; cycle: string }[] | null; returned: BundleReturnedUnit[] | null };
+  if (section.due !== false || !section.readable) return null;
+  const readable = section.readable.map((u) => ({ id: u.id, companyId: u.companyId, status: u.status, createdAt: new Date(u.createdAt) }));
+  if (!readable.length) return [];
+  // returnedRewardUnits' own projection of each draft's latest decision.
+  const returned = (section.returned ?? []).flatMap((row) => {
+    const state = returnedState('draft', row.latest, row.toSeat === 'bg');
+    return state ? [{ id: row.id, name: row.name, cycle: row.cycle, returnedAt: state.at }] : [];
+  });
+  return combineRewardTasks(readable, section.queue ?? [], returned);
 }
 
 // ── Reward calendar (migration 0646) ────────────────────────────────────────────────────────────────────

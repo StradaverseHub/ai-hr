@@ -130,30 +130,52 @@ function decisionRoles(ctx:SessionContext){
  const roles=ctx.roles??[],superAdmin=roles.includes('super_admin');
  return {superAdmin,admin:superAdmin||roles.includes('hr_admin'),person:ctx.personId??null};
 }
-/** assertCanDecide's self ban: the RLS-visible subject row belongs to ctx.personId (never for a super_admin). */
-export function decideSelfSql(ctx:SessionContext,subject:SQL):SQL{
- const {superAdmin,person}=decisionRoles(ctx);
- return person!=null&&!superAdmin?sql`exists(select 1 from public.employment decide_self where decide_self.id=${subject} and decide_self.person_id::text=${person}::text)`:sql`false`;
+/** The caller's own employments visible under the caller's row-level security: the one set every "is this employment
+ * the caller's person" test below reads (assertCanDecide's subject lookup, the administrative manager's person). A
+ * statement reads it once (core/account-task-bundle.ts passes it to every section as `own`); without `own` each test
+ * reads the employment row itself, as before. Membership in this set is exactly that row test: the same rows, the same
+ * policy, the same person comparison. */
+export function callerOwnEmploymentIdsSql(ctx:SessionContext):SQL{
+ const person=ctx.personId??null;
+ return person!=null?sql`array(select caller_own.id from public.employment caller_own where caller_own.person_id::text=${person}::text)`:sql`array[]::uuid[]`;
 }
-const currentAdministrativeManagerSql=(subject:SQL,person:string)=>sql`exists(select 1 from public.reporting_line decide_line
+/** Whether `employment` is one of the caller's own (see callerOwnEmploymentIdsSql), never null. */
+export function isCallerOwnEmploymentSql(ctx:SessionContext,employment:SQL,own?:SQL):SQL{
+ const person=ctx.personId??null;
+ if(person==null)return sql`false`;
+ return own?sql`coalesce(${employment}=any(${own}),false)`
+  :sql`exists(select 1 from public.employment caller_person where caller_person.id=${employment} and caller_person.person_id::text=${person}::text)`;
+}
+/** assertCanDecide's self ban: the RLS-visible subject row belongs to ctx.personId (never for a super_admin). */
+export function decideSelfSql(ctx:SessionContext,subject:SQL,own?:SQL):SQL{
+ const {superAdmin,person}=decisionRoles(ctx);
+ if(person==null||superAdmin)return sql`false`;
+ return own?isCallerOwnEmploymentSql(ctx,subject,own)
+  :sql`exists(select 1 from public.employment decide_self where decide_self.id=${subject} and decide_self.person_id::text=${person}::text)`;
+}
+const currentAdministrativeManagerSql=(subject:SQL,person:string,own?:SQL)=>own?sql`exists(select 1 from public.reporting_line decide_line
+ where decide_line.subordinate_employment_id=${subject} and decide_line.line_type='administrative'
+  and decide_line.valid_from<=current_date and (decide_line.valid_to is null or decide_line.valid_to>current_date)
+  and decide_line.superseded_at is null and decide_line.manager_employment_id=any(${own}))`:sql`exists(select 1 from public.reporting_line decide_line
  join public.employment decide_manager on decide_manager.id=decide_line.manager_employment_id
  where decide_line.subordinate_employment_id=${subject} and decide_line.line_type='administrative'
   and decide_line.valid_from<=current_date and (decide_line.valid_to is null or decide_line.valid_to>current_date)
   and decide_line.superseded_at is null and decide_manager.person_id=${person}::uuid)`;
-/** assertCanDecide as a boolean: true where the guard returns, false where it throws one of its two refusals. */
-export function canDecideSql(ctx:SessionContext,subject:SQL,scope?:{module:string;taskType:string}):SQL{
- const {admin,person}=decisionRoles(ctx),self=decideSelfSql(ctx,subject);
- if(admin)return sql`(not ${self})`;
+/** assertCanDecide as a boolean: true where the guard returns, false where it throws one of its two refusals. `self`: the
+ * subject's decideSelfSql, when the caller has already read it once for this subject; `own`: callerOwnEmploymentIdsSql. */
+export function canDecideSql(ctx:SessionContext,subject:SQL,scope?:{module:string|SQL;taskType:string|SQL},self?:SQL,own?:SQL):SQL{
+ const {admin,person}=decisionRoles(ctx),selfSql=self??decideSelfSql(ctx,subject,own);
+ if(admin)return sql`(not ${selfSql})`;
  if(!person)return sql`false`;
- return sql`(not ${self} and (${currentAdministrativeManagerSql(subject,person)}
+ return sql`(not ${selfSql} and (${currentAdministrativeManagerSql(subject,person,own)}
   or coalesce(app.can_decide_via_delegation(${subject},${scope?.module??null}::text,${scope?.taskType??null}::text),false)))`;
 }
 /** decisionEmploymentAuthorityTx's `allowed` membership for one subject. The delegated set is one InitPlan per statement. */
-export function decisionEmploymentAuthoritySql(ctx:SessionContext,subject:SQL,scope?:{module:string;taskType:string}):SQL{
- const {admin,person}=decisionRoles(ctx),self=decideSelfSql(ctx,subject);
+export function decisionEmploymentAuthoritySql(ctx:SessionContext,subject:SQL,scope?:{module:string;taskType:string},own?:SQL):SQL{
+ const {admin,person}=decisionRoles(ctx),self=decideSelfSql(ctx,subject,own);
  if(admin)return sql`(not ${self})`;
  if(!person)return sql`false`;
- return sql`(not ${self} and (${currentAdministrativeManagerSql(subject,person)}
+ return sql`(not ${self} and (${currentAdministrativeManagerSql(subject,person,own)}
   or ${subject}=any(cast((select app.delegated_subject_ids(${scope?.module??null}::text,${scope?.taskType??null}::text)) as uuid[]))))`;
 }
 

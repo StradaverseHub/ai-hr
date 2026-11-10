@@ -11,7 +11,8 @@
  * the people still awaiting this tier's decision in a part that is not yet submitted/locked, excluding the
  * viewer's own entry. It is a count of people, never a judgement.
  */
-import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableName, ne, sql } from 'drizzle-orm';
+import { decodeJsonRow, jsonRowSql } from '../../../db/json-row';
 import type { SessionContext } from '../../../db/client';
 import { company, onehrCalibration, onehrCycle, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
@@ -91,13 +92,54 @@ function pendingCalibrationWhere() {
     sql`app.onehr_calibration_access(${onehrCalibration.id})`,
   );
 }
-/** pendingCalibrationTasks' empty answer in the one-statement Home task read (core/account-task-bundle.ts): no session
- * row is the owner's empty result. A session row needs the owner's window and work checks, so the owner then runs. */
-export function pendingCalibrationCandidatesBundleSql(ctx: SessionContext) {
-  if (!ctx.userId) return sql`false`;
-  return sql`exists(select 1 from ${onehrCalibration} inner join ${reviewCycle} on ${eq(reviewCycle.id, onehrCalibration.cycleId)}
+/** pendingCalibrationTasks in the one-statement Home task read (core/account-task-bundle.ts): the owner's session rows in its
+ * order, each with its policy and app.assessment_calibration_work (read for every row; the owner reads it only for a row
+ * whose window is open, and the function reads nothing else). pendingCalibrationTasksFromBundle runs the owner's checks. */
+export function pendingCalibrationTasksBundleSql(ctx: SessionContext) {
+  if (!ctx.userId) return sql`'[]'::jsonb`;
+  return sql`(select coalesce(jsonb_agg(jsonb_build_object('session',${jsonRowSql(onehrCalibration, getTableName(onehrCalibration))},'policy',${onehrCycle.policy},
+      'work',app.assessment_calibration_work(${onehrCalibration.id})) order by ${onehrCalibration.createdAt},${onehrCalibration.id}),'[]'::jsonb)
+    from ${onehrCalibration} inner join ${reviewCycle} on ${eq(reviewCycle.id, onehrCalibration.cycleId)}
     inner join ${onehrCycle} on ${and(eq(onehrCycle.cycleId, onehrCalibration.cycleId), eq(onehrCycle.tenantId, onehrCalibration.tenantId))}
     where ${pendingCalibrationWhere()})`;
+}
+export function pendingCalibrationTasksFromBundle(ctx: SessionContext, value: unknown, now = new Date()): CalibrationTask[] {
+  const rows = (value as { session: Record<string, unknown>; policy: unknown; work: CalibrationWorkEntry[] | null }[]).map((row) => ({
+    session: decodeJsonRow(onehrCalibration, row.session), policy: row.policy, work: row.work }));
+  const out: CalibrationTask[] = [];
+  for (const { session, policy, work } of rows) {
+    const task = calibrationTaskOf(ctx, session, policy, now, () => work);
+    if (task) out.push(task);
+  }
+  return out;
+}
+/** pendingCalibrationTasks' decision for one session row: null where the owner skips it. `work` is read only past the window. */
+function calibrationTaskOf(ctx: SessionContext, session: typeof onehrCalibration.$inferSelect, raw: unknown, now: Date, work: () => CalibrationWorkEntry[] | null): CalibrationTask | null;
+function calibrationTaskOf(ctx: SessionContext, session: typeof onehrCalibration.$inferSelect, raw: unknown, now: Date, work: () => Promise<CalibrationWorkEntry[] | null>): Promise<CalibrationTask | null>;
+function calibrationTaskOf(ctx: SessionContext, session: typeof onehrCalibration.$inferSelect, raw: unknown, now: Date, work: () => CalibrationWorkEntry[] | null | Promise<CalibrationWorkEntry[] | null>) {
+  // This runs from the root layout: a policy the canonical schema rejects yields no task rather than a
+  // 500 on every route. The Calibration page still reports the defect.
+  const parsed = policySchema.safeParse(raw);
+  if (!parsed.success) return null;
+  const policy = parsed.data, tier = session.tier as Tier;
+  if (calibrationWindowState(policy, tier, false, now).window !== 'open') return null;
+  const decide = (read: CalibrationWorkEntry[] | null): CalibrationTask | null => {
+    const entries = (read ?? []).filter((entry) => entry.personId !== ctx.personId);
+    if (calibrationToDo(policy, tier, session, entries) <= 0) return null;
+    const opened = calibrationWindowCells(policy, tier)
+      .filter((cell) => assessmentWorkWindowOpen(policy, cell, now))
+      .map((cell) => policy.windows[cell]?.opensAt)
+      .filter((at): at is string => !!at)
+      .map((at) => Date.parse(at))
+      .sort((x, y) => x - y)[0];
+    const since = opened !== undefined && opened > session.createdAt.getTime() ? new Date(opened) : session.createdAt;
+    return {
+      id: session.id, kind: 'calibration', subjectName: session.name, createdAt: since.toISOString(),
+      linkPath: `/performance/assessment/calibration/${session.id}`, companyId: session.companyId,
+    };
+  };
+  const read = work();
+  return read instanceof Promise ? read.then(decide) : decide(read);
 }
 
 /**
@@ -134,26 +176,11 @@ export async function pendingCalibrationTasks(ctx: SessionContext, now = new Dat
       .orderBy(asc(onehrCalibration.createdAt), asc(onehrCalibration.id));
     const out: CalibrationTask[] = [];
     for (const { session, policy: raw } of rows) {
-      // This runs from the root layout: a policy the canonical schema rejects yields no task rather than a
-      // 500 on every route. The Calibration page still reports the defect.
-      const parsed = policySchema.safeParse(raw);
-      if (!parsed.success) continue;
-      const policy = parsed.data, tier = session.tier as Tier;
-      if (calibrationWindowState(policy, tier, false, now).window !== 'open') continue;
-      const [work] = await tx.execute<{ entries: CalibrationWorkEntry[] | null }>(sql`select app.assessment_calibration_work(${session.id}::uuid) as entries`);
-      const entries = (work?.entries ?? []).filter((entry) => entry.personId !== ctx.personId);
-      if (calibrationToDo(policy, tier, session, entries) <= 0) continue;
-      const opened = calibrationWindowCells(policy, tier)
-        .filter((cell) => assessmentWorkWindowOpen(policy, cell, now))
-        .map((cell) => policy.windows[cell]?.opensAt)
-        .filter((at): at is string => !!at)
-        .map((at) => Date.parse(at))
-        .sort((x, y) => x - y)[0];
-      const since = opened !== undefined && opened > session.createdAt.getTime() ? new Date(opened) : session.createdAt;
-      out.push({
-        id: session.id, kind: 'calibration', subjectName: session.name, createdAt: since.toISOString(),
-        linkPath: `/performance/assessment/calibration/${session.id}`, companyId: session.companyId,
+      const task = await calibrationTaskOf(ctx, session, raw, now, async () => {
+        const [work] = await tx.execute<{ entries: CalibrationWorkEntry[] | null }>(sql`select app.assessment_calibration_work(${session.id}::uuid) as entries`);
+        return work?.entries ?? null;
       });
+      if (task) out.push(task);
     }
     return out;
   });

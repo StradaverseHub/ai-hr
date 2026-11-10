@@ -16,7 +16,7 @@ import {assertReadCompositionPrincipalTx} from './read-composition-principal';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
-import { assertCanDecide, assertAssignedWorkPrincipalTx, canDecideSql, decideByRoleForKnownSubject, decideSelfSql, isApprovalDecisionRefusal, subjectPersonIdsTx } from './approvals';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, canDecideSql, decideByRoleForKnownSubject, decideSelfSql, isApprovalDecisionRefusal, isCallerOwnEmploymentSql, subjectPersonIdsTx } from './approvals';
 import {assertMyTeamSubjectTx} from './my-team-scope';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import { scopeOf } from '../lib/delegation-scope';
@@ -29,6 +29,8 @@ import { decidePayrollPermission } from '../lib/payroll-permissions';
 import {calendarWindowDates} from '../lib/calendar-window';
 import {
   approversOf,
+  FIXED_LEVEL_KINDS,
+  LEVEL_KINDS,
   resolveApprovalDecision,
   sanitizeApprovalLevels,
   type ApprovalApprover,
@@ -12354,69 +12356,161 @@ export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]
 }
 
 
-/** assertCanDecideAsApprover for ONE approver of a step, as SQL text: 'allow' where the gate returns, 'refuse' where it
- * throws one of isLeaveDecisionRefusal's refusals, and 'defer' wherever the TypeScript gate could throw anything else
- * or read an unordered `limit 1` among several rows (a manager's manager or a subject head that is not unique). A
- * deferred answer is never used: the caller reruns the owner. Same branches, same order, the caller's own session. */
-export function leaveApproverDecisionSql(ctx:SessionContext,subject:SQL,kind:SQL,approver:SQL,taskType:LeaveDecisionTaskType):SQL{
+/** The subject facts every approver of a step starts from, read once per candidate in its lateral row:
+ * assertCanDecide's self ban (`self`) and assertCanDecide's whole answer for the subject in this task's scope (`can_decide`). */
+export function leaveSubjectFactsSql(ctx:SessionContext,subject:SQL,taskType:SQL,own?:SQL):SQL{
+  return sql`(select subject_self.self,${canDecideSql(ctx,subject,{module:'leave',taskType},sql`subject_self.self`,own)} as can_decide
+    from (select ${decideSelfSql(ctx,subject,own)} as self) subject_self)`;
+}
+type LeaveSubjectFacts={self:SQL;canDecide:SQL};
+
+/** assertCanDecideAsApprover for ONE approver of a step, as SQL text, in assertCanDecideLeaveStep's terms: 'allow' where
+ * the gate returns, 'refuse' where it throws one of isLeaveDecisionRefusal's refusals, 'error' where it throws anything
+ * else (an unknown kind, a named-person step naming nobody), and 'ambiguous' where the gate takes an unordered `limit 1`
+ * among several rows (a manager's manager line, or the head of one of several current assignments) and those rows'
+ * decisions disagree. Every candidate row is decided; when all agree the answer is exact whichever row the owner's
+ * `limit 1` returns. Same branches, same order, the caller's own session. The subject's self ban and assertCanDecide
+ * answer come from leaveSubjectFactsSql, and a role the session holds or lacks selects its branches when the text is
+ * built (the TypeScript gate reads the same roles from ctx), so each table appears once per section. */
+export function leaveApproverDecisionSql(ctx:SessionContext,facts:LeaveSubjectFacts,subject:SQL,kind:SQL,approver:SQL,taskType:SQL,own?:SQL):SQL{
   const roles=ctx.roles??[],isSuper=roles.includes('super_admin'),isAdmin=isSuper||roles.includes('hr_admin');
-  const person=ctx.personId??null,scope=scopeOf(taskType),banSelf=decideSelfSql(ctx,subject),admin=isAdmin?sql`true`:sql`false`;
-  const personOf=(holder:SQL)=>person!=null?sql`exists(select 1 from public.employment approver_person where approver_person.id=${holder} and approver_person.person_id::text=${person}::text)`:sql`false`;
+  // Both leave decision task types are the 'leave' module's (lib/delegation-scope.ts scopeOf).
+  const person=ctx.personId??null,scope={module:'leave',taskType},self=facts.self;
+  const personOf=(holder:SQL)=>isCallerOwnEmploymentSql(ctx,holder,own);
   const grants=ctx.grants??[],payrollCompanies=grants.filter(g=>g.role==='payroll_partner'&&g.companyId!=null).map(g=>g.companyId as string);
   const payroll=grants.some(g=>g.role==='payroll_partner'&&g.companyId==null)?sql`true`:payrollCompanies.length
     ?sql`exists(select 1 from public.employment payroll_subject where payroll_subject.id=${subject} and payroll_subject.company_id::text=any(array[${sql.join(payrollCompanies.map(id=>sql`${id}::text`),sql`,`)}]::text[]))`:sql`false`;
-  const hr=sql`case when ${isAdmin?sql`false`:sql`true`} then 'refuse' when ${banSelf} then 'refuse' else 'allow' end`;
-  const managerManager=sql`(select case when manager_line.n>1 then 'defer'
-     when manager_line.manager is null then 'refuse'
-     when ${personOf(sql`manager_line.manager`)} then 'refuse'
-     when ${canDecideSql(ctx,sql`manager_line.manager`,scope)} then 'allow' else 'refuse' end
-    from (select count(*) as n,(array_agg(line.manager_employment_id))[1] as manager from public.reporting_line line
+  // assertIsHrAdmin: a non-admin is refused before the self ban.
+  const hr=isAdmin?sql`case when ${self} then 'refuse' else 'allow' end`:sql`'refuse'`;
+  // The line the owner's `limit 1` returns, decided for every line it could return: no line refuses; the manager
+  // themself refuses; otherwise assertCanDecide about that manager.
+  const managerManager=sql`(select case when count(*)=0 then 'refuse'
+     when bool_and(manager_line.outcome='allow') then 'allow' when bool_and(manager_line.outcome='refuse') then 'refuse' else 'ambiguous' end
+    from (select case when line.manager_employment_id is null then 'refuse'
+      when ${personOf(sql`line.manager_employment_id`)} then 'refuse'
+      when ${canDecideSql(ctx,sql`line.manager_employment_id`,scope,undefined,own)} then 'allow' else 'refuse' end as outcome
+     from public.reporting_line line
      where line.subordinate_employment_id=${subject} and line.line_type='administrative' and line.valid_from<=current_date
       and (line.valid_to is null or line.valid_to>current_date)) manager_line)`;
-  const head=(headKind:'department_head'|'business_unit_head')=>sql`(select case when subject_head.n>1 then 'defer'
-     when subject_head.head is not null and ${personOf(sql`subject_head.head`)} then 'allow'
-     when ${person!=null?sql`coalesce(app.can_decide_via_delegation_from(app.subject_head(${subject},${headKind}::text),${subject},'leave',${taskType}::text),false)`:sql`false`} then 'allow'
-     else 'refuse' end
-    from (select count(*) as n,(array_agg(${headKind==='department_head'?sql`head_department.head_employment_id`:sql`head_unit.head_employment_id`}))[1] as head
-     from public.assignment head_assignment join public.department head_department on head_department.id=head_assignment.department_id
-     ${headKind==='business_unit_head'?sql`join public.business_unit head_unit on head_unit.id=head_department.business_unit_id`:sql``}
-     where head_assignment.employment_id=${subject} and head_assignment.valid_to is null and head_assignment.superseded_at is null) subject_head)`;
-  return sql`case ${kind}
-    when 'direct_manager' then case when ${canDecideSql(ctx,subject,scope)} then 'allow' else 'refuse' end
-    when 'manager_manager' then case when ${banSelf} then 'refuse' when ${admin} then 'allow' else ${managerManager} end
-    when 'hr_admin' then ${hr} when 'hr_manager' then ${hr} when 'custom_role' then ${hr}
-    when 'payroll' then case when ${banSelf} then 'refuse' when ${admin} then 'allow' when ${payroll} then 'allow' else 'refuse' end
-    when 'specific_employee' then case when ${banSelf} then 'refuse' when ${approver} is null then 'defer'
-     when ${personOf(approver)} then 'allow' when ${admin} then 'allow' else 'refuse' end
-    when 'department_head' then case when ${banSelf} then 'refuse' when ${admin} then 'allow' else ${head('department_head')} end
-    when 'business_unit_head' then case when ${banSelf} then 'refuse' when ${admin} then 'allow' else ${head('business_unit_head')} end
-    else 'defer' end`;
+  // The head the owner's `limit 1` returns: the caller holding it allows; otherwise the head handover delegation, which
+  // re-resolves the head inside its definer function and so does not depend on the row; otherwise a refusal.
+  const head=(headKind:'department_head'|'business_unit_head')=>{
+    const holder=headKind==='department_head'?sql`head_department.head_employment_id`:sql`head_unit.head_employment_id`;
+    const delegated=person!=null?sql`coalesce(app.can_decide_via_delegation_from(app.subject_head(${subject},${headKind}::text),${subject},'leave',${taskType}::text),false)`:sql`false`;
+    return sql`(select case when bool_and(subject_head.mine) then 'allow' when ${delegated} then 'allow'
+      when coalesce(bool_or(subject_head.mine),false) then 'ambiguous' else 'refuse' end
+     from (select (${holder} is not null and ${personOf(holder)}) as mine
+      from public.assignment head_assignment join public.department head_department on head_department.id=head_assignment.department_id
+      ${headKind==='business_unit_head'?sql`join public.business_unit head_unit on head_unit.id=head_department.business_unit_id`:sql``}
+      where head_assignment.employment_id=${subject} and head_assignment.valid_to is null and head_assignment.superseded_at is null) subject_head)`;
+  };
+  // An admin clears every kind but a named step after its self ban (and after the named person); a non-admin reads on.
+  const afterSelf=(rest:SQL)=>isAdmin?sql`case when ${self} then 'refuse' else 'allow' end`:sql`case when ${self} then 'refuse' else ${rest} end`;
+  return sql`case
+    when ${kind}='direct_manager' then case when ${facts.canDecide} then 'allow' else 'refuse' end
+    when ${kind}='manager_manager' then ${afterSelf(managerManager)}
+    when ${kind} in ('hr_admin','hr_manager','custom_role') then ${hr}
+    when ${kind}='payroll' then ${afterSelf(sql`case when ${payroll} then 'allow' else 'refuse' end`)}
+    when ${kind}='specific_employee' then case when ${self} then 'refuse' when ${approver} is null then 'error'
+     when ${personOf(approver)} then 'allow' when ${isAdmin?sql`true`:sql`false`} then 'allow' else 'refuse' end
+    when ${kind}='department_head' then ${afterSelf(head('department_head'))}
+    when ${kind}='business_unit_head' then ${afterSelf(head('business_unit_head'))}
+    else 'error' end`;
 }
 
-/** pendingLeaveTaskMetadata(ctx, companyIds) in one statement for the account task read (core/account-task-bundle.ts),
- * with the owner's own company filter. jsonb {defer, rows}: `rows` are the owner's result in its order; `defer` is true when
- * any candidate's current step falls outside leaveApproverDecisionSql's exact answers (alternates included), and then
- * the owner itself runs. A chain without a pending step is skipped; no chain is assertCanDecide, as in the owner. */
-export function pendingLeaveTaskBundleSql(ctx:SessionContext,companyIds?:string[]):SQL{
-  const scope=scopeOf('leave.application'),subject=sql`pending_leave.employment_id`;
+const levelKindsSql=(kinds:readonly string[])=>sql.raw(`array[${kinds.map(kind=>{if(!/^[a-z_]+$/.test(kind))throw new Error('Unexpected leave approver kind');return `'${kind}'`;}).join(',')}]::text[]`);
+/** A step's stored alternates exactly as assertCanDecideLeaveStep reads them (sanitizeApprovalLevels over an array, none
+ * otherwise), in order: a known dynamic kind as a bare string, or an object whose `kind` is a known kind, with the
+ * employment id of a fixed kind (a level naming nobody is dropped; a dynamic kind's id is cleared). A fixed kind's id that
+ * is trimmed exactly as sanitizeApprover trims it; trimmed text that is not plain UUID text (the gate would cast it in
+ * PostgreSQL: another accepted spelling, or a cast error) is `unsupported`. */
+/** String.prototype.trim's whitespace (WhiteSpace and LineTerminator: tab to carriage return, space, no-break space,
+ * ogham space, en quad to hair space, line and paragraph separators, narrow no-break, medium mathematical and
+ * ideographic spaces, and the byte order mark) at either end, as a PostgreSQL regular expression. */
+const JS_TRIM_CLASS='[\\u0009-\\u000d\\u0020\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]';
+const JS_TRIM_PATTERN=`^${JS_TRIM_CLASS}+|${JS_TRIM_CLASS}+$`;
+function leaveStepAlternatesSql(alternates:SQL):SQL{
+  const known=levelKindsSql(LEVEL_KINDS),fixed=levelKindsSql(FIXED_LEVEL_KINDS);
+  return sql`select entry.ord,entry.kind,case when entry.fixed and entry.named~'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' then entry.named::uuid end as employment_id,
+     entry.fixed and not entry.named~'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' as unsupported
+    from (select raw.ord,raw.kind,raw.kind=any(${fixed}) as fixed,raw.shape,
+      case when jsonb_typeof(raw.value->'employmentId')='string' then regexp_replace(raw.value->>'employmentId',${sql.raw(`'${JS_TRIM_PATTERN}'`)},'','g') end as named
+     from (select item.ord,item.value,jsonb_typeof(item.value) as shape,
+       case jsonb_typeof(item.value) when 'string' then item.value#>>'{}'
+        when 'object' then case when jsonb_typeof(item.value->'kind')='string' then item.value->>'kind' end end as kind
+      from jsonb_array_elements(case when jsonb_typeof(${alternates})='array' then ${alternates} else '[]'::jsonb end) with ordinality as item(value,ord)) raw
+     where raw.kind=any(${known})) entry
+    where not entry.fixed or (entry.shape='object' and entry.named is not null and entry.named<>'')`;
+}
+/** assertCanDecideLeaveStep for one current step as SQL: its primary approver, then its alternates, tried in order. The
+ * first approver that allows decides 'allow', a non-refusal error decides 'error' and refusals are skipped ('refuse' when
+ * all refuse). An unsupported alternate reached first is 'defer'. An ambiguous approver (allow or refuse) is exact only
+ * when every way it can resolve gives one answer, which is when the first later approver that does not refuse allows;
+ * otherwise the step is 'defer'. A 'defer' or 'error' step is never answered here: the owner reads and decides (or
+ * throws) itself. */
+export function leaveStepDecisionSql(ctx:SessionContext,facts:LeaveSubjectFacts,subject:SQL,step:{kind:SQL;approver:SQL;alternates:SQL},taskType:SQL,own?:SQL):SQL{
+  return sql`(select case
+     when folded.ambiguous_ord is not null and (folded.definite_ord is null or folded.ambiguous_ord<folded.definite_ord)
+      then case when folded.definite='allow' then 'allow' else 'defer' end
+     when folded.definite='unsupported' then 'defer'
+     else coalesce(folded.definite,'refuse') end
+    from (select min(outcome.ord) filter(where outcome.decision in ('allow','error','unsupported')) as definite_ord,
+      (array_agg(outcome.decision order by outcome.ord) filter(where outcome.decision in ('allow','error','unsupported')))[1] as definite,
+      min(outcome.ord) filter(where outcome.decision='ambiguous') as ambiguous_ord
+     from (select approver.ord,case when approver.unsupported then 'unsupported'
+       else ${leaveApproverDecisionSql(ctx,facts,subject,sql`approver.kind`,sql`approver.employment_id`,taskType,own)} end as decision
+      from (select 0::bigint as ord,${step.kind}::text as kind,${step.approver}::uuid as employment_id,false as unsupported
+       union all ${leaveStepAlternatesSql(step.alternates)}) approver) outcome) folded)`;
+}
+
+/** pendingLeaveTaskMetadata(ctx, companyIds) and pendingLeaveCancellationTaskMetadata(ctx, companyIds) in one sub-select
+ * for the account task read (core/account-task-bundle.ts), each with the owner's own company filter: the leave owner's
+ * candidates and the cancellation owner's unchanged header query (actionableLeaveCancellationIds decides the same
+ * pending requests under the same RLS), each with its chain's current step, decided by one leaveStepDecisionSql with the
+ * candidate's own task type. A chain without a pending step is skipped; no chain is assertCanDecide in that task's
+ * scope, as in the owners. jsonb {leave, cancellations}, each {defer, rows}: `rows` are the owner's result in its order;
+ * `defer` is true when any of that owner's candidates is 'defer' or 'error', and then that owner itself runs (and
+ * throws its own error). */
+/** pendingLeaveDecisionTasksBundleSql's decided candidates: `from` text yielding decision_candidate (section, id,
+ * employment_id, person_id, employee, created_at, task_type, step kind) and decided.decision. */
+export function pendingLeaveDecisionCandidatesSql(tx:Tx,ctx:SessionContext,companyIds?:string[],own?:SQL):SQL{
+  const candidate=sql`decision_candidate`,subject=sql`${candidate}.employment_id`;
+  const facts={self:sql`decision_subject.self`,canDecide:sql`decision_subject.can_decide`};
   const decision=sql`case
-    when leave_current.id is null and leave_chain.present then 'skip'
-    when leave_current.id is null then case when ${canDecideSql(ctx,subject,scope)} then 'allow' else 'refuse' end
-    when jsonb_typeof(leave_current.approver_alternates)='array' and jsonb_array_length(leave_current.approver_alternates)>0 then 'defer'
-    else ${leaveApproverDecisionSql(ctx,subject,sql`leave_current.approver_kind`,sql`leave_current.approver_employment_id`,'leave.application')} end`;
-  return sql`(select jsonb_build_object('defer',coalesce(bool_or(decided.decision='defer'),false),
-    'rows',coalesce(jsonb_agg(jsonb_build_object('id',pending_leave.id,'employmentId',pending_leave.employment_id,'personId',pending_leave.person_id,
-     'employee',pending_leave.employee,'createdAt',pending_leave.created_at) order by pending_leave.created_at desc,pending_leave.id) filter(where decided.decision='allow'),'[]'::jsonb))
-   from ${pendingLeaveCandidateSource(ctx)}
-   cross join lateral (select exists(select 1 from public.leave_approval_step chain where chain.leave_request_id=pending_leave.id) as present) leave_chain
-   left join lateral (select step.id,step.approver_kind,step.approver_employment_id,step.approver_alternates from public.leave_approval_step step
-     where step.leave_request_id=pending_leave.id and step.status='pending' order by step.step_index,step.id limit 1) leave_current on true
-   cross join lateral (select ${decision} as decision) decided
-   where not app.is_self_person(pending_leave.person_id)
-    ${companyIds===undefined?sql``:sql`and pending_leave.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`})`;
+    when ${candidate}.step_id is null and ${candidate}.present then 'skip'
+    when ${candidate}.step_id is null then case when ${facts.canDecide} then 'allow' else 'refuse' end
+    else ${leaveStepDecisionSql(ctx,facts,subject,{kind:sql`${candidate}.approver_kind`,approver:sql`${candidate}.approver_employment_id`,
+      alternates:sql`${candidate}.approver_alternates`},sql`${candidate}.task_type`,own)} end`;
+  return sql`from (select 'leave'::text as section,pending_leave.id,pending_leave.employment_id,pending_leave.person_id,pending_leave.employee,pending_leave.created_at,
+      'leave.application'::text as task_type,leave_chain.present,leave_current.id as step_id,leave_current.approver_kind,leave_current.approver_employment_id,leave_current.approver_alternates
+     from ${pendingLeaveCandidateSource(ctx)}
+     cross join lateral (select exists(select 1 from public.leave_approval_step chain where chain.leave_request_id=pending_leave.id) as present) leave_chain
+     left join lateral (select step.id,step.approver_kind,step.approver_employment_id,step.approver_alternates from public.leave_approval_step step
+       where step.leave_request_id=pending_leave.id and step.status='pending' order by step.step_index,step.id limit 1) leave_current on true
+     where not app.is_self_person(pending_leave.person_id)
+      ${companyIds===undefined?sql``:sql`and pending_leave.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}
+    union all
+    select 'cancellations'::text,cancel_header.id,cancel_header.employment_id,cancel_header.person_id,cancel_header.employee,cancel_header.created_at,
+      'leave.cancellation'::text,cancel_chain.present,cancel_current.id,cancel_current.approver_kind,cancel_current.approver_employment_id,cancel_current.approver_alternates
+     from (${pendingLeaveCancellationHeadersQuery(tx,ctx,companyIds).getSQL()}) as cancel_header(id,employment_id,person_id,employee,created_at)
+     cross join lateral (select exists(select 1 from public.leave_cancellation_step chain where chain.cancellation_request_id=cancel_header.id) as present) cancel_chain
+     left join lateral (select step.id,step.approver_kind,step.approver_employment_id,step.approver_alternates from public.leave_cancellation_step step
+       where step.cancellation_request_id=cancel_header.id and step.status='pending' order by step.step_index,step.id limit 1) cancel_current on true
+   ) ${candidate}
+   cross join lateral ${leaveSubjectFactsSql(ctx,subject,sql`${candidate}.task_type`,own)} decision_subject
+   cross join lateral (select ${decision} as decision) decided`;
+}
+export function pendingLeaveDecisionTasksBundleSql(tx:Tx,ctx:SessionContext,companyIds?:string[],own?:SQL):SQL{
+  const candidate=sql`decision_candidate`;
+  const owner=(section:'leave'|'cancellations')=>sql`jsonb_build_object('defer',coalesce(bool_or(decided.decision in ('defer','error')) filter(where ${candidate}.section=${section}),false),
+    'rows',coalesce(jsonb_agg(jsonb_build_object('id',${candidate}.id,'employmentId',${candidate}.employment_id,'personId',${candidate}.person_id,
+     'employee',${candidate}.employee,'createdAt',${candidate}.created_at) order by ${candidate}.created_at desc,${candidate}.id)
+     filter(where ${candidate}.section=${section} and decided.decision='allow'),'[]'::jsonb))`;
+  return sql`(select jsonb_build_object('leave',${owner('leave')},'cancellations',${owner('cancellations')})
+   ${pendingLeaveDecisionCandidatesSql(tx,ctx,companyIds,own)})`;
 }
 type BundleApprovalRow={id:string;employmentId:string;personId:string;employee:string|null;createdAt:string};
-/** The leave section's owner result, or null when the owner must run itself. */
+/** The leave (or cancellation) section's owner result, or null when the owner must run itself. */
 export function pendingLeaveTasksFromBundle(value:unknown):AssignedApprovalMetadata[]|null{
   const section=value as {defer:boolean;rows:BundleApprovalRow[]};
   if(section.defer)return null;
@@ -12435,7 +12529,6 @@ function pendingLeaveCancellationHeadersQuery(tx:Tx,ctx:SessionContext,companyId
 export function pendingLeaveCancellationCandidatesExistSql(tx:Tx,ctx:SessionContext,companyIds?:string[]){
   return sql<boolean>`exists (${pendingLeaveCancellationHeadersQuery(tx,ctx,companyIds).getSQL()})`;
 }
-
 export async function pendingLeaveCancellationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);

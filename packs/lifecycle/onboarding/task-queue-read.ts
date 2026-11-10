@@ -18,9 +18,26 @@ function onboardingTaskCaseWhere(tenantId: string, module: boolean) {
     when ${data}->>'state' = 'pending' then ${module}::boolean
     else ${data}->>'state' = 'submitted' end`);
 }
-/** Whether any case could reach the interpreter for an actor with module access, the wider of the two queue predicates. */
-export function onboardingTaskCasesExistSql(tenantId: string) {
-  return sql`exists(select 1 from ${cases} where ${onboardingTaskCaseWhere(tenantId, true)})`;
+/** readOnboardingTaskQueueInputsTx's reads in one statement (core/account-task-bundle.ts), plus the owner's later
+ * update-time read: the queue under the wider of its two predicates (module access), each row marked with the narrower
+ * one, in the queue's order; the candidate notes of every plain-UUID case JSON id under the original note RLS, in the
+ * notes' order; each case's recorded update time by its JSON id, as onboardingAssignedTaskMetadata reads it; and whether
+ * any requisition item carries a claim (the interpreter then reads the claimant directory). */
+export function onboardingTaskQueueBundleSql(tenantId: string, actorId: string | null) {
+  const data = cases.data, mentions = sql`${notes.data}->'mentions'`;
+  const caseIds = sql`array(select ${data}->>'id' from ${cases} where ${onboardingTaskCaseWhere(tenantId, true)}
+    and jsonb_typeof(${data}->'id')='string' and ${data}->>'id' ~ '^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$')`;
+  return {
+    cases: sql`(select coalesce(jsonb_agg(jsonb_build_object('revision',${cases.revision},'data',${data},'narrow',${onboardingTaskCaseWhere(tenantId, false)},
+      'updatedAt',(select updated_case.updated_at::text from ${cases} updated_case where updated_case.tenant_id=${tenantId}::uuid
+        and updated_case.id=case when ${data}->>'id' ~ '^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$' then (${data}->>'id')::uuid end)) order by ${cases.id}),'[]'::jsonb)
+     from ${cases} where ${onboardingTaskCaseWhere(tenantId, true)})`,
+    notes: actorId === null ? sql`'[]'::jsonb` : sql`(select coalesce(jsonb_agg(jsonb_build_object('caseId',${notes.caseId},'data',${notes.data}) order by ${notes.createdAt},${notes.id}),'[]'::jsonb)
+     from ${notes} where ${and(eq(notes.tenantId, tenantId), sql`${notes.caseId}::text = any(${caseIds})`,
+      sql`(jsonb_typeof(${mentions}) is distinct from 'array' or ${mentions} ? ${actorId})`)})`,
+    claimed: sql`exists(select 1 from ${cases} where ${onboardingTaskCaseWhere(tenantId, true)}
+      and jsonb_path_exists(${data}, 'lax $.requisitions[*].items[*] ? (exists(@.claim) && !(@.claim == null))'))`,
+  };
 }
 
 export async function readOnboardingTaskQueueInputsTx(tx: Tx, tenantId: string, actor: { id: string; module: boolean }) {

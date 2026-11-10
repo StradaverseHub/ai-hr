@@ -934,36 +934,56 @@ export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:
   // Workforce projections in that case; positives retain the full reader below.
   // Bind scope UUIDs here too, preserving malformed-input errors for an empty queue.
   const [pending]=await tx.select({id:profileChangeRequest.id}).from(profileChangeRequest)
-   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),
-    companyIds===undefined?undefined:sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[] is not null`)).limit(1);
+   .where(pendingProfileProbeWhere(ctx,companyIds)).limit(1);
   if(!pending)return [];
   // The native reader predicate and RLS already evaluate current routing/access facts.
   // This first transaction only finds candidates: resolving edit settings here took
   // the exclusive profile-write barrier on every shell read, even for an empty queue.
   // Nonempty candidates still pass the locked current-policy decision check below.
-  return tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
+  return pendingProfileCandidatesQuery(tx,ctx,companyIds);
+ });
+ return pendingProfileTasksFromCandidates(ctx,candidates);
+}
+function pendingProfileProbeWhere(ctx:SessionContext,companyIds?:string[]){
+ return and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),
+  companyIds===undefined?undefined:sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[] is not null`);
+}
+function pendingProfileCandidatesQuery(tx:Tx,ctx:SessionContext,companyIds?:string[]){
+ return tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
    employee:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest)
    .innerJoin(employment,and(eq(employment.id,profileChangeRequest.employmentId),eq(employment.tenantId,profileChangeRequest.tenantId)))
    .leftJoin(person,and(eq(person.id,profileChangeRequest.personId),eq(person.tenantId,profileChangeRequest.tenantId)))
    .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(ctx),
     sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
    .orderBy(desc(profileChangeRequest.createdAt),profileChangeRequest.id);
- });
- // The first transaction has already checked the current principal and native reader. With no
- // candidates there is no decision authority to resolve in a second locked transaction.
+}
+/** pendingProfileTaskMetadata's second, locked step for the candidates its first transaction (or the account task
+ * statement) read. The first transaction has already checked the current principal and native reader. With no
+ * candidates there is no decision authority to resolve in a second locked transaction. */
+export async function pendingProfileTasksFromCandidates(ctx:SessionContext,candidates:readonly AssignedApprovalMetadata[]):Promise<AssignedApprovalMetadata[]>{
  if(candidates.length===0)return [];
  const allowed=new Set(await actionableProfileChangeIds(ctx,candidates.map(row=>row.id)));
  return candidates.filter(row=>allowed.has(row.id));
 }
 
-/** pendingProfileTaskMetadata's empty-queue answer in the one-statement account task read (core/account-task-bundle.ts):
- * the owner's own first probe, with its company binding. No pending request is the owner's empty result; any pending
- * request still needs the owner's reader predicate and locked decision check, so the owner then runs itself. */
-export function pendingProfileTaskBundleSql(ctx:SessionContext,companyIds?:string[]){
- return sql`exists(select 1 from ${profileChangeRequest} where ${and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),
-  companyIds===undefined?undefined:sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[] is not null`)})`;
+/** pendingProfileTaskMetadata's first transaction in the one-statement account task read (core/account-task-bundle.ts):
+ * its probe with the company binding, then its candidate query unchanged. jsonb {pending, candidates}. No pending request,
+ * or no candidate, is the owner's empty result; candidates still need actionableProfileChangeIds, which takes the
+ * exclusive profile-write barrier, re-resolves the policy after it and locks routed subjects FOR UPDATE, so that locked
+ * transaction still runs for them (pendingProfileTasksFromCandidates). */
+export function pendingProfileTaskBundleSql(tx:Tx,ctx:SessionContext,companyIds?:string[]){
+ return sql`(select jsonb_build_object('pending',profile_probe.pending,'candidates',case when profile_probe.pending then
+   (select coalesce(jsonb_agg(jsonb_build_object('id',profile_candidate.id,'employmentId',profile_candidate.employment_id,'personId',profile_candidate.person_id,
+     'employee',profile_candidate.employee,'createdAt',profile_candidate.created_at) order by profile_candidate.created_at desc,profile_candidate.id),'[]'::jsonb)
+    from (${pendingProfileCandidatesQuery(tx,ctx,companyIds).getSQL()}) as profile_candidate(id,employment_id,person_id,employee,created_at)) end)
+  from (select exists(select 1 from ${profileChangeRequest} where ${pendingProfileProbeWhere(ctx,companyIds)}) as pending) profile_probe)`;
 }
-export function pendingProfileTasksFromBundle(pending:unknown):AssignedApprovalMetadata[]|null{return pending===false?[]:null;}
+type BundleProfileCandidate={id:string;employmentId:string;personId:string;employee:string|null;createdAt:string};
+/** The owner's candidates from the statement: [] is its empty result. */
+export function pendingProfileCandidatesFromBundle(value:unknown):AssignedApprovalMetadata[]{
+ const section=value as {pending:boolean;candidates:BundleProfileCandidate[]|null};
+ return (section.pending?section.candidates??[]:[]).map(row=>({id:row.id,employmentId:row.employmentId,personId:row.personId,employee:row.employee,createdAt:new Date(row.createdAt)}));
+}
 
 export function actionableProfileChangeIds(ctx:SessionContext,requestIds:readonly string[]){
  return withTenant(ctx,async tx=>{

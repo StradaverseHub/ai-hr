@@ -131,6 +131,52 @@ calculation, authority, ordering or failure changes.
      test/home-read-window.test.ts, test/home-own-clock-day.test.ts and test/home-own-leave-inputs.test.ts compare the
      two paths to the byte.
 
+10. **The deferred task owners are decided in the account task statement** (`claude/home-bundles-task-owners-20261110`).
+   Every owner decision 7 left to read whenever it had a candidate is now a section beside that owner, sharing its SQL
+   text and run in the caller's session, so its result is the owner's own:
+   - *Leave and leave cancellations.* `leaveStepDecisionSql` (core/leave.ts) decides the current step as
+     `assertCanDecideLeaveStep` does: the primary approver, then the stored alternates kept exactly as
+     `sanitizeApprovalLevels` keeps them (known kinds only, a fixed kind with its named employment, a dynamic kind's id
+     cleared), tried in order; the first approver that allows decides, refusals are skipped and a non-refusal error
+     stops. An unordered `limit 1` (the manager's manager line, the head of a subject's current assignment) is decided
+     for every row it could return, and rows that agree answer exactly; an approver whose rows disagree is still exact
+     when a later approver allows. (Only the manager's-manager lines can disagree in valid data: `assignment_no_overlap`
+     leaves a subject one current assignment.) The subject's self ban and assertCanDecide answer are read once per
+     candidate (`leaveSubjectFactsSql`) and the session's roles choose each kind's branches when the text is built, as
+     the TypeScript gate reads them from the session, so the statement plans each table once per section. A cancellation's copied steps use the same decision with its own
+     'leave.cancellation' task type over the owner's unchanged header query; both owners' candidates share one
+     sub-select and one copy of the decision (`pendingLeaveDecisionTasksBundleSql`).
+   - *Resignations and employment reviews.* The owners' header queries unchanged, kept where their authority checks
+     return (`canDecideSql`, the admin role, the stored manager's person): every throw of those checks is a refusal.
+   - *Attendance.* The owner's candidates, a frozen workflow request of routing version 2, 3 or 4 decided by its own
+     native function, every other candidate by `decisionEmploymentAuthoritySql`.
+   - *Rewards* (when no access observation is due, decision 4), *assessment and calibration work*, *OneHR feedback* and
+     *onboarding*: the owner's own rows (with a calibration session's routing work, each onboarding case's update time by
+     its JSON id, and the claimant directory when an item carries a claim), and the owner's TypeScript runs on them
+     (`combineRewardTasks`, `parseAssessmentRows`/`assessmentSources`, `calibrationTaskOf`, the cycle and window checks,
+     `interpretOnboardingTasks`).
+   - *Profile.* The owner's first transaction (probe and candidate query). No candidate is its empty result; candidates
+     still pass its locked decision transaction (`pendingProfileTasksFromCandidates`).
+   - *One read of the caller's own employments.* Every test of an employment against the caller's person (the self ban,
+     the administrative manager, a named approver, a review's stored manager, assessment work's own employments) reads
+     one RLS-filtered set per statement (`callerOwnEmploymentIdsSql`, a materialised CTE); membership is exactly the row
+     test it replaces. Each employment reference otherwise evaluated the employment policy's visible-employment set on
+     its own: with ten more of them the statement took about 290 ms on the hosted fixture (55-70 ms before) and
+     concurrent Home reads exhausted the 2 GB test database. With the set read once the statement plans in about 45 ms
+     and executes in about 70 ms for the fixture's manager, and the Tasks card is back to its earlier time.
+   Each remaining case leaves only that owner to read on its own, as before: a step whose `limit 1` rows disagree with no
+   later allowing approver; an alternate whose named id, trimmed exactly as `sanitizeApprover` trims it, is not plain UUID text (the gate would
+   cast another spelling, such as braces, or fail the cast); an unknown step kind or a named-person step naming nobody, and an Attendance request whose
+   frozen subject differs from its candidate (the owner throws its own non-refusal error, which a statement cannot
+   reproduce as the same error object from inside the owner's transaction); a Rewards observation that is due (a write
+   that must commit first); Profile candidates (the decision takes the exclusive profile-write barrier, re-resolves the
+   policy after it and locks routed subjects FOR UPDATE, which a read-only statement can neither take nor reproduce); a
+   cycle, policy or case id the owner's own parse would refuse, a claimed onboarding item without a preloaded directory, a
+   module gate that refuses or an AI Centre activity. test/performance/home-manager-card-reads.test.ts seeds candidates
+   for each section after its traces and compares every section, scoped and unscoped, and every composed result with the
+   owners; the focused Performance, Rewards, onboarding and OneHR feedback tests compare their sections on real
+   fixtures.
+
 11. **Before payroll reads its own owners in one statement** (`core/pre-salary/before-payroll-bundle.ts`, branch
    `claude/home-bundles-before-payroll-20261110`). The checklist (`readMyPayrollReadiness`) read about fifteen owners in
    some fifty-five statements. After the own-subject proof (unchanged) it now sends one statement of sections, each built
@@ -191,13 +237,13 @@ calculation, authority, ordering or failure changes.
 ## Not done here
 
 - **Before payroll's remaining reads** (decision 11). The own-subject proof and company date proof
-  (`requireOwnHomeSubject`) and the approvals preview (decision 7) read as before. The letters' and onboarding
-  fixtures need a letter batch chain and a complete onboarding case that the diagnostic does not build, so those two
-  sections are compared on their owners' empty rows there.
-- **Deferred task owners.** Leave cancellations, resignations and employment reviews (behind their shared candidate
-  probe), Attendance, Profile, Rewards, assessment and calibration work, OneHR feedback and onboarding still read on
-  their own whenever they have a candidate. Cancellations can reuse `leaveApproverDecisionSql` with its own task type;
-  the others need their decision proofs as SQL beside their owners, or the assigned work index below.
+  (`requireOwnHomeSubject`) and the approvals preview (decision 7) read as before. Leave Credit (Time Off In Lieu on),
+  letters, notices and onboarding are compared with real rows only for the fixture subjects that hold them (the employee,
+  the manager and an onboarding joiner); the other tenant has Time Off In Lieu off.
+- **Deferred task owners.** Decision 10 brought them into the account task statement. Still reading on their own: Profile
+  candidates' locked decision transaction, Rewards while an access observation is due, and decision 10's exact-or-owner
+  cases (disagreeing `limit 1` rows, an alternate id spelled other than plain UUID text, the owners' own non-refusal errors, parse refusals). The
+  full lists (`listPendingTasks`) still read the owners; the assigned work index below would answer them too.
 - **The entitlement explanation in Time Off.** The resolver now reads from the bundle (decision 9), but an employee whom
   no rule, sole table or default reaches still gets the "no eligibility match" explanation from
   `explainEntitlementEligibility` live: every table version and rule of that type, the membership per rule and the first

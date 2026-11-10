@@ -41,6 +41,17 @@ async function nativeDocument(ctx:SessionContext,kind:string,id:string,attachmen
 async function nativeRead(ctx:SessionContext,kind:string,id:string){mobileCaller=ctx;const r=await mobileRead.GET(new Request(`https://hr.test/api/mobile/v2/pack-workspaces/${kind}/${id}`));expect(r.status).toBe(200);return r.json();}
 async function nativeDecision(ctx:SessionContext,kind:string,id:string,body:unknown){mobileCaller=ctx;const r=await mobileDecide.POST(new Request(`https://hr.test/api/mobile/v2/pack-workspaces/${kind}/${id}/decision`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));expect(r.status).toBe(200);return r.json();}
 const nativeValues=(a:{fields:{key:string;value:unknown}[]})=>Object.fromEntries(a.fields.map(f=>[f.key,f.value]));
+/** The account task statement's Performance and Rewards sections (core/account-task-bundle.ts) against the providers
+ * themselves for the same viewer and company filter: an answered section equals its owner exactly. */
+async function expectBundledPackTasks(ctx:SessionContext,scopeIds?:string[]){
+  const {readAccountTaskBundle}=await import('../core/account-task-bundle');
+  const bundle=await readAccountTaskBundle(ctx,{attendance:false,claims:false,performance:true,rewards:true,lifecycle:false},
+    scopeIds?{companyIds:scopeIds,personal:false,notices:false}:undefined);
+  expect(bundle).not.toBeNull();
+  if(bundle!.performance!==null)expect(bundle!.performance).toEqual(await perf.pendingPerformanceTasks(ctx,scopeIds));
+  if(bundle!.rewards!==null)expect(bundle!.rewards).toEqual(await pendingRewardTasks(ctx,scopeIds));
+  return bundle!;
+}
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 const ALL: InboxModules = { attendance: false, claims: false, performance: true, rewards: true };
 const packKinds = new Set<string>(PACK_TASK_KINDS);
@@ -171,6 +182,7 @@ describe('performance work in the shared task list', () => {
     expect(await pendingApprovalsCount(mgr, undefined, ALL)).toBe(tasks.filter((t) => t.kind !== 'noticeAcknowledgement').length);
     // The subject's own review is never their own task, and an unrelated employee has none.
     expect(packItems(await listPendingTasks(self, undefined, ALL))).toEqual([]);
+    expect((await expectBundledPackTasks(mgr)).performance).not.toBeNull();await expectBundledPackTasks(self);
   });
 
   it('a module the caller resolved as off contributes nothing — including a tenant that declined Performance', async () => {
@@ -203,6 +215,8 @@ describe('performance work in the shared task list', () => {
     expect(ofKind(managerTasks, 'careerPlan')).toEqual([expect.objectContaining({ id: plan!.id, linkPath: `/performance/review/${reviewId}`, subjectName: 'Assessment subject' })]);
     // The subject shares their own plan; it is not their task.
     expect(packItems(await listPendingTasks(self, undefined, ALL))).toEqual([]);
+    // Assessment work and the career plan through the account task statement, exactly as the provider reads them.
+    for(const viewer of [matrix.ctx,mgr,self])expect((await expectBundledPackTasks(viewer)).performance).not.toBeNull();
 
     // Exactly five keys on every projected item; nothing that looks like a band, rating, score or pay.
     for (const item of packItems([...matrixTasks, ...managerTasks])) {
@@ -220,6 +234,7 @@ describe('performance work in the shared task list', () => {
     expect(all.length).toBeGreaterThan(0);
     expect(ofKind(await listPendingTasks(mgr, [b.companyId], ALL), 'performanceReview').map((t) => t.id).sort()).toEqual(all.map((t) => t.id).sort());
     expect(packItems(await listPendingTasks(mgr, [other.id], ALL))).toEqual([]);
+    await expectBundledPackTasks(mgr,[b.companyId]);await expectBundledPackTasks(mgr,[other.id]);
 
     const foreign = await seedBase();
     await setModule(foreign.tenantId, 'performance', 'active'); await setModule(foreign.tenantId, 'rewards', 'active');
@@ -263,6 +278,7 @@ describe('Rewards work in the shared task list', () => {
     await saveRewardEntry(a, unitId, v2.unit.revision, v2.rows[0].id, v2.rows[0].recommendation, { ...emptyFacts(), reviewed: true, talent: 'SCORE', performance: 'ME' });
     await refreshRewardFixtureBudget(a,unitId);
     expect(packItems(await listPendingTasks(actors.bg, undefined, ALL))).toEqual([]); // draft: nobody's approval yet
+    await expectBundledPackTasks(actors.bg);await expectBundledPackTasks(actors.bu);
     expect(await decideRewardUnit(actors.bu, unitId, (await view()).unit.revision, 'submit', 'Reviewed recommendations')).toBe('bg');
 
     const bgTasks = ofKind(await listPendingTasks(actors.bg, undefined, ALL), 'rewardReview');
@@ -276,6 +292,10 @@ describe('Rewards work in the shared task list', () => {
     const [other] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Other Sdn Bhd' }).returning({ id: schema.company.id });
     expect(packItems(await listPendingTasks(actors.bg, [other.id], ALL))).toEqual([]);
     expect(ofKind(await listPendingTasks(actors.bg, [b.companyId], ALL), 'rewardReview').map((t) => t.id)).toEqual([unitId]);
+    // The BG member's queue through the account task statement once its access observation has been recorded.
+    expect((await expectBundledPackTasks(actors.bg)).rewards).not.toBeNull();
+    for(const scope of [[b.companyId],[other.id]])await expectBundledPackTasks(actors.bg,scope);
+    for(const role of ['bu','pbp'] as const)await expectBundledPackTasks(actors[role]);
     const read=await nativeRead(actors.bg,'rewardReview',unitId);expect(read.outcome).toBe('found');expect(JSON.stringify(read)).toContain('Reward Employee');
     expect(await nativeRead(actors.pbp,'rewardReview',unitId)).toMatchObject({code:'not_assigned'});
     const cmd={requestId:randomUUID(),action:'approve',values:{reason:'Reviewed recommendations'},expected:read.workspace.expected};
