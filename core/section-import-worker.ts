@@ -1,5 +1,4 @@
-/** Profile and Family section imports as a per-row client of the shared bulk-job kernel (ADR 2026-11-10 "Register and
- * section imports"). The synchronous commit already wrote one row per transaction and let other rows continue when one
+/** Profile and Family section imports as a per-row client of the shared bulk-job kernel (docs/adr/2026-11-10-register-section-import-jobs.md). The synchronous commit already wrote one row per transaction and let other rows continue when one
  * was refused; the job keeps exactly that: one step per row, each step running the same row applier
  * (applySectionRowTx) as the synchronous commit, so the validation, writers, refusal messages, history row and audit
  * are unchanged. What moves is where it runs: off the web request, in short chunk transactions, with the row's

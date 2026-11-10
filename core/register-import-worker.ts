@@ -1,5 +1,5 @@
 /** Personnel register imports (Qualifications, Emergency Contacts) as an ALL-OR-NOTHING client of the shared bulk-job
- * kernel (ADR 2026-11-10 "Register and section imports"). A register file changes EXISTING records, so the staged-row
+ * kernel (docs/adr/2026-11-10-register-section-import-jobs.md). A register file changes EXISTING records, so the staged-row
  * visibility of the employee import cannot hide it. Instead each chunk step runs the unchanged register writers for
  * one employee (the employment for qualifications, the person for contacts) inside a savepoint, CAPTURES exactly what
  * they wrote — that employee's register rows before and after, and the audit events — and rolls the savepoint back.
@@ -19,6 +19,7 @@ import type {SectionImportResult} from '../lib/import-sections';
 import {REGISTER_IMPORT_KIND} from '../lib/section-import-job';
 import {lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import {analyzeRegisterImportTx,loadSubjectsTx,validateRegisterImport,writeRegisterRowsTx,type RegisterResolvedRow,type RegisterSubject} from './personnel-register-import';
+import {deriveEmploymentStatus} from './employment-status';
 import {recordSectionRun} from './import-sections';
 import type {BulkJobHandler,BulkJobUnit} from './bulk-job-worker';
 import type {BulkJobRow} from './bulk-job';
@@ -147,20 +148,36 @@ const sameSubjects=(refs:SubjectRef[],subjects:RegisterSubject[])=>refs.every(re
  const match=subjects.filter(s=>s.employeeCode===normalizeEmployeeCode(ref.code));
  return match.length===1&&match[0].valid&&match[0].employmentId===ref.employmentId&&match[0].personId===ref.personId;
 });
+/** The release's subject check, by the captured employment ids (primary key, row-locked): still the same code and
+ * person, still an active employment of a live company the creator administers. Workforce maintain authority over
+ * each written record is re-checked by the database itself, per row, when the release commits (the profile value
+ * guard and the tables' row security), exactly as for the synchronous write. */
+async function currentSubjectsTx(tx:Tx,captures:RegisterCapture[]):Promise<RegisterSubject[]>{
+ const ids=[...new Set(captures.flatMap(c=>c.subjects.map(s=>s.employmentId)))];
+ if(!ids.length)return[];
+ const rows=await tx.execute<{employment_id:string;person_id:string;company_id:string;employee_code:string|null;archived:boolean;admin:boolean;resignation_date:string|null;last_working_date:string|null;terminated_on:string|null;blacklisted_at:Date|null}>(sql`
+  select e.id as employment_id,e.person_id,e.company_id,e.employee_code,c.archived_at is not null as archived,app.is_admin_for(e.company_id) as admin,
+   e.resignation_date::text as resignation_date,e.last_working_date::text as last_working_date,e.terminated_on::text as terminated_on,e.blacklisted_at
+  from employment e join company c on c.id=e.company_id where e.id=any(${`{${ids.join(',')}}`}::uuid[]) order by e.id for update of e`);
+ return rows.map(r=>({employmentId:r.employment_id,personId:r.person_id,companyId:r.company_id,employeeCode:normalizeEmployeeCode(r.employee_code??''),employeeName:'',
+  valid:r.admin&&!r.archived&&!['resigned','blacklisted'].includes(deriveEmploymentStatus({resignationDate:r.resignation_date,lastWorkingDate:r.last_working_date,terminatedOn:r.terminated_on,blacklistedAt:r.blacklisted_at}))}));
+}
 
 /** The visibility flip. Captures are read first without locks; then one transaction under the register writers' locks
  * re-checks the creator's authority over every employee (the commit's own subject read), compares fingerprints and
  * applies everything, or sends changed employees back for a fresh capture. */
 async function release(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,plan:RegisterStoredPlan){
- const {section,records}=inputOf(job);
+ const {section}=inputOf(job);
  const steps=await withTenant(ctx,tx=>tx.execute<{seq:number;result:RegisterCapture}>(sql`select seq,result from bulk_job_step where job_id=${job.id}::uuid and state='applied' order by seq`));
- const started=performance.now();
+ const started=performance.now();let committing=0;
  await withTenant(ctx,async tx=>{
   await tx.execute(sql`select set_config('application_name','aihr-bulk:register_import:release',true)`);
   await unit.fenceTx(tx);
   await lockProfileValueWritesTx(tx,ctx.tenantId);
-  const subjects=await loadSubjectsTx(tx,records,true);
+  const locked=performance.now();
+  const subjects=await currentSubjectsTx(tx,steps.map(s=>s.result));
   const fingerprints=await fingerprintsTx(tx,section,steps.map(s=>s.result.key));
+  unit.metric('releaseCheckMs',performance.now()-locked);
   const stale=steps.filter(s=>!sameSubjects(s.result.subjects,subjects)||fingerprints.get(s.result.key)!==s.result.fingerprint);
   if(stale.length){
    const rounds=(plan.rounds??0)+1;
@@ -170,10 +187,15 @@ async function release(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,plan:R
    unit.metric('recaptured',stale.length);
    return;
   }
+  const applying=performance.now();
   await applyCapturesTx(tx,ctx,section,steps.map(s=>s.result));
+  unit.metric('releaseApplyMs',performance.now()-applying);
   const updated=steps.reduce((n,s)=>n+s.result.rows,0);
   await tx.execute(sql`update bulk_job set plan=${JSON.stringify({...plan,released:true,updated})}::jsonb,updated_at=now() where id=${job.id}::uuid`);
+  committing=performance.now();
  });
+ // COMMIT runs every written row's deferred profile value guard (the per-row authority re-check).
+ if(committing)unit.metric('releaseCommitMs',performance.now()-committing);
  unit.metric('releaseTxMs',performance.now()-started);
 }
 

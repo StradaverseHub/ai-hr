@@ -1,6 +1,6 @@
 /** Section and register imports as background jobs on the shared bulk-job kernel: browser-safe kinds, progress shape
  * and states. Profile and Family files run one employee row per step (rows succeed or fail on their own, as before);
- * Qualification and Emergency Contact files stay all-or-nothing (ADR 2026-11-10 "Register and section imports"). */
+ * Qualification and Emergency Contact files stay all-or-nothing (docs/adr/2026-11-10-register-section-import-jobs.md). */
 import {bulkJobActive,type BulkJobState} from './bulk-job';
 import type {ImportSection,SectionImportResult} from './import-sections';
 
