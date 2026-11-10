@@ -78,14 +78,14 @@ async function main(){
  const [{n:withRegisters}]=await obs`select count(*)::int n from employee_qualification q join employment e on e.id=q.employment_id where e.employee_code like 'RB%' and q.archived_at is null`;
  console.log(JSON.stringify({baseEmployees:base,baseQualifications:withRegisters,rows:ROWS}));
  const tag=Date.now().toString(36).toUpperCase();
- const records=async(kind:'qualification'|'emergency',offset:number)=>{
+ const records=async(kind:'qualification'|'emergency',offset:number):Promise<Record<string,string>[]>=>{
   // Half the rows update an existing record by its ID, half add a new one (every second new one takes the exclusive
   // flag from the existing holder), one row per employee.
   const ids=kind==='qualification'
    ?await obs<{code:string;id:string}[]>`select e.employee_code as code,q.id from employee_qualification q join employment e on e.id=q.employment_id where e.tenant_id=${TENANT}::uuid and q.archived_at is null and e.employee_code=any(${Array.from({length:ROWS},(_,i)=>code(offset+i))})`
    :await obs<{code:string;id:string}[]>`select e.employee_code as code,c.id from person_emergency_contact c join employment e on e.person_id=c.person_id where e.tenant_id=${TENANT}::uuid and c.archived_at is null and e.employee_code=any(${Array.from({length:ROWS},(_,i)=>code(offset+i))})`;
   const byCode=new Map(ids.map(r=>[r.code,r.id]));
-  return Array.from({length:ROWS},(_,i)=>{
+  return Array.from({length:ROWS},(_,i):Record<string,string>=>{
    const c=code(offset+i),update=i%2===0,flag=i%4===1;
    return kind==='qualification'
     ?{employee_code:c,record_id:update?byCode.get(c)!:'',qualification:update?'':'Bachelor',institute:`Rehearsal ${tag} ${i}`,from_ym:'',to_ym:'',graduation_date:'',major:'',result:'',description:'',is_highest:flag?'Yes':''}

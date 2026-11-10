@@ -180,7 +180,8 @@ export async function detectSalaryPayroll(sponsor:SessionContext,input:LoopDetec
   netTotal:sql<unknown>`${payrollBatch.totals}->'net'`})
   .from(payrollBatch).where(and(inArray(payrollBatch.companyId,companies),isNull(payrollBatch.historyImportAttemptId),
    sql`(${inArray(payrollBatch.payPeriod,wanted)} or ${tracked.runs.size?inArray(payrollBatch.id,[...tracked.runs.keys()]):sql`false`})`))))
-  .map(row=>({id:row.id,companyId:row.companyId,payPeriod:row.payPeriod,runType:row.runType,runSeq:row.runSeq,status:row.status,employeeCount:row.employeeCount,
+  // A run the background payroll job is still processing has no final figures: the loop treats it as not processed yet.
+  .map(row=>({id:row.id,companyId:row.companyId,payPeriod:row.payPeriod,runType:row.runType,runSeq:row.runSeq,status:row.status==='processing'?'draft' as const:row.status,employeeCount:row.employeeCount,
    stale:row.needsRecalcAt!=null,batchDate:row.batchDate,netTotal:row.netTotal}))
   .filter(row=>{const p=periodsOf.get(row.companyId);return !!p&&(row.payPeriod===p.active||row.payPeriod===p.current||tracked.runs.has(row.id));});
  const observations:LoopObservation[]=[];
