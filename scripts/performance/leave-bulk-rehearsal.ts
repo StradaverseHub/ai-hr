@@ -135,7 +135,7 @@ async function main(){
    if(op==='toil_expiry')await measure(op,async()=>({...await job(await createToilExpiryJob(admin,{today:process.env.TOIL_TODAY??'2026-11-11'}))}));
    else await measure(op,async()=>({...await job(await createReplacementYearCloseJob(admin,{asOf:process.env.TOIL_CLOSE_ASOF??'2026-12-31'}))}));
   }else if(op==='accrual_job'){
-   await measure(op,async()=>job(await createEarnedAccrualJob(admin,{asOf:'2026-12-31'})));
+   await measure(op,async()=>job(await createEarnedAccrualJob(admin,{asOf:process.env.ACCRUAL_ASOF??'2026-12-31'})));
   }else if(op==='expiry_timer'){
    let longest=0;await measure(op,async()=>({...await expireCarriedLeaveInBatches(system,{today:process.env.EXPIRY_TODAY??'2027-04-01'},{onBatch:ms=>{longest=Math.max(longest,ms);}}),longestBatchTxMs:Math.round(longest)}));
   }else if(op==='accrual_timer'){

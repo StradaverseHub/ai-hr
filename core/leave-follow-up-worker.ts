@@ -81,7 +81,7 @@ type A2cPlan = {stage?: string; released?: boolean; settled?: boolean; restage?:
 const a2cPlanOf = (job: BulkJobRow) => (job.plan ?? {}) as A2cPlan;
 export const LEAVE_A2C_RELEASE_ATTEMPTS = 40;
 /** History rows and events written per follow-up transaction after the release. */
-const A2C_HISTORY_PER_UNIT = 200;
+const A2C_HISTORY_PER_UNIT = 100;
 const setA2cPlanTx = (tx: Tx, job: BulkJobRow, patch: Partial<A2cPlan>) =>
   tx.execute(sql`update bulk_job set plan=coalesce(plan,'{}'::jsonb)||${JSON.stringify(patch)}::jsonb,updated_at=now() where id=${job.id}::uuid`);
 const a2cStepsTx = async (tx: Tx, job: BulkJobRow) =>

@@ -72,17 +72,26 @@ async function accrualSummaryOnce(ctx: SessionContext, job: BulkJobRow, unit: Pi
  */
 type AccrualRunCache = {inputs: EarnedAccrualRunInputs; configFp: string; orgFp: Record<string, string>};
 async function accrualRunInputsTx(tx: Tx, ctx: SessionContext, job: BulkJobRow, input: EarnedAccrualRunInput, batch: string[], cache: Map<string, unknown>): Promise<EarnedAccrualRunInputs | undefined> {
+  // First batch on this worker, or the configuration changed since: read once for every employee the run may reach,
+  // in its own READ ONLY snapshot (one consistent read, no tenant lock), BEFORE this chunk takes any lock: at 3,000
+  // employees the reads take about a second and must not sit inside a lock hold.
+  let held = cache.get('runInputs') as AccrualRunCache | undefined;
+  if (!held || cache.get('runInputsStale')) {
+    held = await withTenant(ctx, async read => {
+      const all = (await read.execute<{id: string}>(sql`select jsonb_array_elements_text(payload->'employmentIds') as id from bulk_job_step where job_id=${job.id}::uuid order by seq`)).map(r => r.id);
+      const fresh = await leaveRunInputFingerprintsTx(read, all);
+      const inputs = await readEarnedAccrualRunInputsTx(read, {asOf: input.asOf, leaveTypeIds: input.leaveTypeIds, employmentIds: all, periodChecked: true});
+      return {inputs, configFp: fresh.configFp, orgFp: fresh.orgFp} satisfies AccrualRunCache;
+    }, {readOnlySnapshot: true});
+    cache.set('runInputs', held);
+    cache.delete('runInputsStale');
+  }
   await lockAccessConfigurationTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
-  const held = cache.get('runInputs') as AccrualRunCache | undefined;
-  const now = await leaveRunInputFingerprintsTx(tx, held ? batch : null);
-  if (held && held.configFp === now.configFp) return batch.every(id => held.orgFp[id] !== undefined && held.orgFp[id] === now.orgFp[id]) ? held.inputs : undefined;
-  // First batch on this worker, or the configuration changed: read once for every employee the run may reach.
-  const all = (await tx.execute<{id: string}>(sql`select jsonb_array_elements_text(payload->'employmentIds') as id from bulk_job_step where job_id=${job.id}::uuid order by seq`)).map(r => r.id);
-  const fresh = await leaveRunInputFingerprintsTx(tx, all);
-  const inputs = await readEarnedAccrualRunInputsTx(tx, {asOf: input.asOf, leaveTypeIds: input.leaveTypeIds, employmentIds: all, periodChecked: true});
-  cache.set('runInputs', {inputs, configFp: fresh.configFp, orgFp: fresh.orgFp} satisfies AccrualRunCache);
-  return inputs;
+  const now = await leaveRunInputFingerprintsTx(tx, batch);
+  // The configuration moved: this batch reads for itself, and the next batch reads the run's inputs again.
+  if (held.configFp !== now.configFp) { cache.set('runInputsStale', true); return undefined; }
+  return batch.every(id => held.orgFp[id] !== undefined && held.orgFp[id] === now.orgFp[id]) ? held.inputs : undefined;
 }
 export const earnedAccrualJobHandler: BulkJobHandler<Batch> = {
   kind: LEAVE_ACCRUAL_JOB_KIND,
