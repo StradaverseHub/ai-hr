@@ -1,14 +1,21 @@
-/** Hosted diagnostic: manager Home card reads at the fictional worker-comparison fixture size.
- * 500 fictional actors, 2,000 pending Claims each and 180 attendance days, mirroring
- * scripts/performance/system-fixture-owner.mjs. It never changes an installation. */
+/** Hosted diagnostic: manager Home card and Today section reads at the fictional worker-comparison
+ * fixture size. 500 fictional actors, 2,000 pending Claims each, 180 attendance days and one closed
+ * historical payroll run per company, mirroring scripts/performance/system-fixture-owner.mjs.
+ * It runs only when the hosted focused controller selects this file; every other Vitest run skips it.
+ * It never changes an installation and supplies no release evidence. */
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join,relative} from 'node:path';
-import {afterAll,beforeAll,expect,it,vi} from 'vitest';
+import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 const state=vi.hoisted(()=>{
+ const file='test/performance/home-manager-card-reads.test.ts';
+ let selected=false;
+ try{selected=(JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]') as unknown[]).includes(file);}catch{selected=false;}
+ const hostedFocused=selected&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
+  &&process.env.GITHUB_WORKFLOW==='alpha-focused-checks'&&Boolean(process.env.AIHR_FOCUSED_EVIDENCE_DIR);
  // The comparison's two-worker cell gives each application worker eight connections.
- process.env.AIHR_DB_POOL_MAX='8';
- return {session:undefined as unknown,run:null as string|null};
+ if(hostedFocused)process.env.AIHR_DB_POOL_MAX='8';
+ return {hostedFocused,session:undefined as unknown,run:null as string|null};
 });
 vi.mock('../../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>(key:string)=>key}));
@@ -48,9 +55,18 @@ const print=(label:string,value:unknown)=>console.info('[home-card-diagnostic] '
 // Closed observation hooks already present in the application. They receive no identity or values.
 type Stage={run:string|null;stage:string;card?:string;at:number};
 const stages:Stage[]=[];
-(globalThis as {__aihrPerfHomeStage?:(stage:string,card?:string)=>void}).__aihrPerfHomeStage=(stage,card)=>{
- stages.push({run:state.run,stage,card,at:performance.now()});
-};
+function installObservers(){
+ (globalThis as {__aihrPerfHomeStage?:(stage:string,card?:string)=>void}).__aihrPerfHomeStage=(stage,card)=>{
+  stages.push({run:state.run,stage,card,at:performance.now()});
+ };
+ (globalThis as {__aihrPerfBeginTransaction?:(poolMax:number)=>{acquired:()=>void;finished:()=>void}}).__aihrPerfBeginTransaction=()=>{
+  const startedAt=performance.now(),run=state.run,ownerFrames=transactionOwner();let acquiredAt:number|undefined;
+  return {acquired(){acquiredAt=performance.now();},finished(){
+   const now=performance.now();
+   transactions.push({run,owner:ownerFrames,startedAt,waitMs:(acquiredAt??now)-startedAt,totalMs:now-startedAt});
+  }};
+ };
+}
 type Transaction={run:string|null;owner:string;startedAt:number;waitMs:number;totalMs:number};
 const transactions:Transaction[]=[];
 function transactionOwner(){
@@ -67,19 +83,6 @@ function transactionOwner(){
  }
  return frames.join(' < ');
 }
-(globalThis as {__aihrPerfBeginTransaction?:(poolMax:number)=>{acquired:()=>void;finished:()=>void}}).__aihrPerfBeginTransaction=()=>{
- const startedAt=performance.now(),run=state.run,ownerFrames=transactionOwner();let acquiredAt:number|undefined;
- return {acquired(){acquiredAt=performance.now();},finished(){
-  const now=performance.now();
-  transactions.push({run,owner:ownerFrames,startedAt,waitMs:(acquiredAt??now)-startedAt,totalMs:now-startedAt});
- }};
-};
-
-beforeAll(migrateTestDb,120_000);
-afterAll(async()=>{
- await owner.client`select 1`.catch(()=>undefined);
- await closeAll();
-},120_000);
 
 async function seedTenant(t:number,today:string){
  const b=await seedBase();
@@ -263,7 +266,11 @@ async function sampleActivity<T>(work:()=>Promise<T>){
  finally{running=false;await sampler;}
 }
 
-it('measures every manager Home card read at the worker fixture size',async()=>{
+describe.skipIf(!state.hostedFocused)('manager Home at the worker fixture size',()=>{
+beforeAll(migrateTestDb,120_000);
+afterAll(closeAll,120_000);
+it('completes every manager Home card and Today section read without a handled failure',async()=>{
+ installObservers();
  await resetDb();
  const today=todayInKualaLumpur(),month=today.slice(0,7);
  const seedStarted=performance.now();
@@ -406,6 +413,15 @@ it('measures every manager Home card read at the worker fixture size',async()=>{
  report.plans=notices.slice(0,30);evidence();
  for(const notice of notices.slice(0,14))console.info('[home-card-diagnostic] plan '+notice.durationMs+'ms\n'+notice.plan.slice(0,7000));
 
- const failed=(streams as {frames:{status:number}[]}[]).flatMap(row=>row.frames.filter(frame=>frame.status!==200));
- expect(failed).toEqual([]);
+ // Every stream frame, Today section and page owner completed. Timings stay diagnostic evidence.
+ const failedFrames=(streams as {run:string;frames:{card:string;status:number}[]}[]).flatMap(row=>row.frames.filter(frame=>frame.status!==200).map(frame=>row.run+':'+frame.card));
+ expect(failedFrames).toEqual([]);
+ const failedSections=Object.entries(todaySolo).flatMap(([label,rows])=>Object.entries(rows as Record<string,{failure:unknown;result:unknown}>)
+  .filter(([,row])=>row.failure!==null||(row.result as {failed?:unknown}|null)?.failed===true||(row.result as {ok?:unknown}|null)?.ok===false).map(([name])=>label+':'+name));
+ expect(failedSections).toEqual([]);
+ const overlapped=[...pageRuns as {frames:[string,number,number][];sections:Record<string,{failure?:unknown;value?:unknown}>}[],
+  ...triple.result as unknown as {frames:[string,number,number][];sections:Record<string,{failure?:unknown;value?:unknown}>}[]];
+ expect(overlapped.flatMap(row=>[...row.frames.filter(([,status])=>status!==200).map(([card])=>card),
+  ...Object.entries(row.sections).filter(([,section])=>section.failure!==undefined||(section.value as {failed?:unknown}|null)?.failed===true).map(([name])=>name)])).toEqual([]);
 },900_000);
+});
