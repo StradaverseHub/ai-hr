@@ -644,6 +644,10 @@ it('completes every manager Home card and Today section read without a handled f
     await outcome(()=>withBundle(read=>inbox.createAccountTaskPreviewRead(ctx,inboxModules,read).count())));
    const card=()=>readEmployeeHomeTasks(ctx,actor.employmentId,1,new OwnHomeConfigurationRead(ctx,actor.employmentId,new AbortController().signal));
    compare(subject,'bundle:card:tasks',await outcome(()=>ownersOnly(card)),await outcome(()=>withSharedReadSnapshot(ctx,card)));
+   const summary=()=>readEmployeeHomeSummary(ctx,actor.employmentId,'en','replacement',new OwnHomeConfigurationRead(ctx,actor.employmentId,new AbortController().signal));
+   compare(subject,'bundle:card:summary',await outcome(()=>ownersOnly(summary)),await outcome(()=>withSharedReadSnapshot(ctx,summary)));
+   const {countEmployeeHomeTasks}=await import('../../core/employee-home-tasks');
+   compare(subject,'bundle:homeCount',await outcome(()=>ownersOnly(()=>countEmployeeHomeTasks(ctx))),await outcome(()=>withSharedReadSnapshot(ctx,()=>countEmployeeHomeTasks(ctx))));
    const ownerFrames:Record<string,unknown>={},bundleFrames:Record<string,unknown>={};
    await ownersOnly(()=>streamHome(actor,month,null,GET,ownerFrames));
    await streamHome(actor,month,null,GET,bundleFrames);

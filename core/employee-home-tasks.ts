@@ -3,7 +3,7 @@ import type {SessionContext} from '../db/client';
 import {settleReadGroup} from '../lib/settle-read-group';
 import {HomeAccessError} from './employee-home';
 import {readOwnEmployeeHomeConfiguration,type OwnHomeConfigurationRead} from './employee-home-configuration';
-import {countPendingTasks,createAccountTaskPreviewRead,listPendingTasks} from './approvals-inbox';
+import {createAccountTaskPreviewRead,listPendingTasks} from './approvals-inbox';
 import {readAccountTaskBundle,type AccountTaskBundle} from './account-task-bundle';
 import {pendingStandardFeedbackTaskMetadata,pendingOnehrFeedbackTaskMetadata} from '../packs/performance/service';
 import {onboardingAssignedTaskMetadata} from '../packs/lifecycle/service';
@@ -37,9 +37,11 @@ function startAccountTaskBundle(ctx:SessionContext,modules:ReturnType<typeof tas
 
 /** Summary needs the exact account total, without materializing the full Claims queue. */
 export async function countEmployeeHomeTasks(ctx:SessionContext):Promise<number>{
- const modules=taskModules(ctx);
+ const modules=taskModules(ctx),bundle=startAccountTaskBundle(ctx,modules);
+ // The account preview's exact count (core/approvals-inbox.ts createAccountTaskPreviewRead) is countPendingTasks' total;
+ // with the account task statement both read the same one statement.
  const [inboxCount,[standardFeedback,onehrFeedback,onboarding]]=await settleReadGroup([
-  ()=>countPendingTasks(ctx,undefined,modules),()=>loadAdditionalTasks(ctx,modules.performance),
+  ()=>createAccountTaskPreviewRead(ctx,modules,bundle).count(),()=>loadAdditionalTasks(ctx,modules.performance,bundle),
  ]);
  return inboxCount+standardFeedback.length+onehrFeedback.length+onboarding.length;
 }
