@@ -382,12 +382,16 @@ async function analyze(
 
   for(const row of resolved)if(row.result.ok && row.operations?.cardId && resolved.some(other=>other!==row && other.operations?.cardId?.toLowerCase()===row.operations!.cardId!.toLowerCase())) {row.result.ok=false;row.result.errors.push('Duplicate card_id in this file.');}
 
-  for(const row of resolved)if(row.result.ok && row.subject && row.operations?.cardId) {
+  // A commit re-analysis of ONE row (focusRowNum) runs the per-row database checks for that row only: they decide
+  // only their own row's verdict, and repeating them for every row of the file inside every row's locked
+  // transaction made each write cost the whole file.
+  const checked=(row:ResolvedSectionRow)=>focusRowNum===undefined||row.result.rowNum===focusRowNum;
+  for(const row of resolved)if(checked(row) && row.result.ok && row.subject && row.operations?.cardId) {
     try {await (suppliedTx?assertCardIdFree(suppliedTx,row.subject!.employmentId,row.operations!.cardId!):withTenant(ctx,tx=>assertCardIdFree(tx,row.subject!.employmentId,row.operations!.cardId!)));}
     catch {row.result.ok=false;row.result.errors.push('card_id already identifies another employee; choose an unused card ID.');}
   }
 
-  for(const row of resolved)if(row.result.ok && row.dependent) {
+  for(const row of resolved)if(checked(row) && row.result.ok && row.dependent) {
     try { await assertDependentsValid(ctx,[row.dependent],suppliedTx); }
     catch(error) { row.result.ok=false;row.result.errors.push(error instanceof Error?error.message:'Invalid Family values'); }
   }
@@ -910,6 +914,92 @@ export async function validateSectionImport(
   return preview;
 }
 
+/** One row of a commit as the dry run saw it: the subject and a hash of everything the row will write (no values). */
+export type SectionRowNomination={rowNum:number;employeeCode:string;subject:{employmentId:string;personId:string;companyId:string;employeeCode:string;country:string};binding:string};
+function nominate(row:ResolvedSectionRow):SectionRowNomination {
+ const s=row.subject!;
+ return {rowNum:row.result.rowNum,employeeCode:row.result.employeeCode,subject:{employmentId:s.employmentId,personId:s.personId,companyId:s.companyId,employeeCode:s.employeeCode,country:s.country},binding:sectionBinding(row)};
+}
+/**
+ * Apply ONE nominated row inside the caller's transaction: the writer locks, a fresh re-analysis of that row against
+ * locked current records, the binding check, then every owner writer. Both the synchronous commit (one transaction per
+ * row) and the background section job (one step per row) run exactly this. `state.step` names the writer reached, for
+ * the column-only failure message; `appliedPeople` holds the persons earlier rows of the same commit wrote.
+ */
+export async function applySectionRowTx(tx:Tx,ctx:SessionContext,p:{section:ImportSection;records:ImportRecord[];history?:{attemptId:string}},nominated:SectionRowNomination,
+ state:{appliedPeople:ReadonlySet<string>;step:{current:WriteStep}}):Promise<{wrote:boolean;personId:string;dependent:boolean}>{
+ await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ // Writer locks first, then the attempt row: the same order as a revert, so the two cannot deadlock.
+ if(p.history)await lockImportAttemptHeaderTx(tx,ctx,p.history.attemptId,'bank_statutory');
+ const current=await analyze(ctx,p.section,p.records,tx,nominated.rowNum);
+ const fresh=current.resolved[nominated.rowNum-1];
+ if(current.preview.fileErrors.length||!fresh?.subject||fresh.subject.employmentId!==nominated.subject.employmentId||fresh.subject.personId!==nominated.subject.personId||fresh.subject.companyId!==nominated.subject.companyId||fresh.subject.employeeCode!==nominated.subject.employeeCode||fresh.subject.pack!==requirePackFor(nominated.subject.country))throw new Error('Section import inputs changed; preview the original file again.');
+ if(fresh.result.errors.length)throw new Error('Section import inputs changed; preview the original file again.');
+ // A later row naming a Person that an EARLIER row of this same commit already wrote re-analyses as
+ // 'skip' only because of that write. The preview counted it as an update and the native owner applies
+ // it exactly as previewed (each row its own write); an independent no-op still stays a skip.
+ const afterOwnEarlierRow=fresh.result.verdict==='skip'&&state.appliedPeople.has(fresh.subject.personId);
+ if(fresh.result.verdict==='skip'&&!afterOwnEarlierRow)return {wrote:false,personId:fresh.subject.personId,dependent:false};
+ if(!(fresh.result.ok||afterOwnEarlierRow)||sectionBinding(fresh)!==nominated.binding)throw new Error('Section import inputs changed; preview the original file again.');
+ const row=fresh,s=fresh.subject;
+ await assertWorkforceEmploymentTx(tx,ctx,s.employmentId,'maintain');
+ await assertWorkforcePersonTx(tx,ctx,s.personId,'maintain');
+ state.step.current='person';
+ // Lock shared records before carrying forward absent cells. Preview snapshots never supply
+ // values for blank columns at apply time; a concurrent unrelated edit must survive.
+ const [freshPerson]=await tx.select().from(person).where(eq(person.id,s.personId)).for('update');
+ if(!freshPerson)throw new Error('Personnel record is no longer available.');
+ const [freshStat]=await tx.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,s.personId)).for('update');
+ const historySubject={employmentId:s.employmentId,personId:s.personId,pack:s.pack,country:s.country};
+ const historyBefore=p.history?(await readBankStatutoryStateTx(tx,ctx,historySubject)).state:null;
+ if (row.personPatch) {
+   await updatePerson(ctx, {
+     personId: s.personId,
+     fullName: row.personPatch.fullName ?? freshPerson.fullName,
+     primaryEmail: row.personPatch.primaryEmail ?? freshPerson.primaryEmail,
+     phone: row.personPatch.phone ?? freshPerson.phone,
+     via: 'section-import',
+     ...row.personPatch.fields,
+   }, tx);
+ }
+ if(row.compliance)await setPersonComplianceFields(ctx,{employmentId:s.employmentId,...row.compliance}, tx);
+ state.step.current='ic';
+ if (row.ic) await s.pack.statutory.setIc(ctx, { personId: s.personId, icNumber:row.ic.icNumber??freshStat?.icNumber??'',oldIcNumber:row.ic.oldIcNumber??freshStat?.oldIcNumber??null }, tx);
+ state.step.current='passport';
+ if (row.passport) {
+   const passport={...row.passport};
+   for(const key of Object.keys(passport) as (keyof PassportPatch)[])if(!row.passportSupplied?.includes(key))passport[key]=freshStat?.[key]??null;
+   await s.pack.statutory.setPassport(ctx,{personId:s.personId,...passport},tx);
+ }
+ state.step.current='bank';
+ if(row.bank) {
+   const latest=freshStat;if(!latest)throw new Error('Statutory setup is unavailable.');
+   const bank={...row.bank};
+   for(const field of PERSONNEL_BANK_FIELDS) {const key=field.import.writerField! as keyof PersonnelBankValues;if(!row.bankSupplied?.includes(key))(bank as unknown as Record<string,unknown>)[key]=(latest as unknown as Record<string,unknown>)[key]??(field.type==='boolean'?false:null);}
+   await s.pack.statutory.setBank(ctx,{personId:s.personId,...bank},tx);
+ }
+ state.step.current='registrations';
+ if(row.registrations) {
+   const setter=s.pack.statutory.setRegistrationNumbers;if(!setter)throw new Error('Registration-number updates are unavailable for this country pack.');
+   await setter(ctx,{personId:s.personId,...row.registrations},tx);
+ }
+ state.step.current='statutory';
+ if(row.statutoryPatch) {
+   if(!freshStat)throw new Error('Statutory setup is unavailable.');
+   await applyBankStatutoryPatchTx(tx,ctx,historySubject,row.statutoryPatch);
+ }
+ state.step.current='operations';
+ if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,s.employmentId,row.operations);
+ state.step.current='dependent';
+ if (row.dependent) await addDependentTx(tx,ctx,s.personId,row.dependent);
+ if(p.history && historyBefore) {
+   const diff=bankStatutoryDiff(historyBefore,(await readBankStatutoryStateTx(tx,ctx,historySubject)).state);
+   if(diff.changed.length)await recordImportItemTx(tx,ctx,{attemptId:p.history.attemptId,companyId:s.companyId,employmentId:s.employmentId,itemKey:`row-${row.result.rowNum}`,label:historyLabel(row.result),ordinal:row.result.rowNum,status:'applied',
+     before:{employeeCode:s.employeeCode,fields:diff.before} satisfies BankStatutoryItemState,after:{employeeCode:s.employeeCode,fields:diff.after} satisfies BankStatutoryItemState});
+ }
+ return {wrote:true,personId:s.personId,dependent:Boolean(row.dependent)};
+}
+
 /**
  * Apply the rows that passed. Re-validates from the records, so a tampered client preview cannot widen
  * what gets written, and refuses the whole file when the fence (or a missing key column) says so.
@@ -951,87 +1041,15 @@ export async function commitSectionImport(
   for (const row of resolved) {
     if (!row.result.ok || !row.subject) continue;
     const s = row.subject;
-    const nominatedRow=row;
-    let step: WriteStep = 'person';
+    const progress:{current:WriteStep}={current:'person'};
     try {
-      const wrote=await withTenant(ctx,async tx=>{
-      await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-      // Writer locks first, then the attempt row: the same order as a revert, so the two cannot deadlock.
-      if(p.history)await lockImportAttemptHeaderTx(tx,ctx,p.history.attemptId,'bank_statutory');
-      const current=await analyze(ctx,p.section as ImportSection,p.records,tx,nominatedRow.result.rowNum);
-      const fresh=current.resolved[nominatedRow.result.rowNum-1];
-      if(current.preview.fileErrors.length||!fresh?.subject||fresh.subject.employmentId!==nominatedRow.subject!.employmentId||fresh.subject.personId!==nominatedRow.subject!.personId||fresh.subject.companyId!==nominatedRow.subject!.companyId||fresh.subject.employeeCode!==nominatedRow.subject!.employeeCode||fresh.subject.pack!==nominatedRow.subject!.pack)throw new Error('Section import inputs changed; preview the original file again.');
-      if(fresh.result.errors.length)throw new Error('Section import inputs changed; preview the original file again.');
-      // A later row naming a Person that an EARLIER row of this same commit already wrote re-analyses as
-      // 'skip' only because of that write. The preview counted it as an update and the native owner applies
-      // it exactly as previewed (each row its own write); an independent no-op still stays a skip.
-      const afterOwnEarlierRow=fresh.result.verdict==='skip'&&appliedPeople.has(fresh.subject.personId);
-      if(fresh.result.verdict==='skip'&&!afterOwnEarlierRow)return false;
-      const binding=(value:ResolvedSectionRow)=>JSON.stringify({...value,result:undefined,subject:undefined});
-      if(!(fresh.result.ok||afterOwnEarlierRow)||binding(fresh)!==binding(nominatedRow))throw new Error('Section import inputs changed; preview the original file again.');
-      const row=fresh,s=fresh.subject;
-      await assertWorkforceEmploymentTx(tx,ctx,s.employmentId,'maintain');
-      await assertWorkforcePersonTx(tx,ctx,s.personId,'maintain');
-      step = 'person';
-      // Lock shared records before carrying forward absent cells. Preview snapshots never supply
-      // values for blank columns at apply time; a concurrent unrelated edit must survive.
-      const [freshPerson]=await tx.select().from(person).where(eq(person.id,s.personId)).for('update');
-      if(!freshPerson)throw new Error('Personnel record is no longer available.');
-      const [freshStat]=await tx.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,s.personId)).for('update');
-      const historySubject={employmentId:s.employmentId,personId:s.personId,pack:s.pack,country:s.country};
-      const historyBefore=p.history?(await readBankStatutoryStateTx(tx,ctx,historySubject)).state:null;
-      if (row.personPatch) {
-        await updatePerson(ctx, {
-          personId: s.personId,
-          fullName: row.personPatch.fullName ?? freshPerson.fullName,
-          primaryEmail: row.personPatch.primaryEmail ?? freshPerson.primaryEmail,
-          phone: row.personPatch.phone ?? freshPerson.phone,
-          via: 'section-import',
-          ...row.personPatch.fields,
-        }, tx);
-      }
-      if(row.compliance)await setPersonComplianceFields(ctx,{employmentId:s.employmentId,...row.compliance}, tx);
-      step = 'ic';
-      if (row.ic) await s.pack.statutory.setIc(ctx, { personId: s.personId, icNumber:row.ic.icNumber??freshStat?.icNumber??'',oldIcNumber:row.ic.oldIcNumber??freshStat?.oldIcNumber??null }, tx);
-      step = 'passport';
-      if (row.passport) {
-        const passport={...row.passport};
-        for(const key of Object.keys(passport) as (keyof PassportPatch)[])if(!row.passportSupplied?.includes(key))passport[key]=freshStat?.[key]??null;
-        await s.pack.statutory.setPassport(ctx,{personId:s.personId,...passport},tx);
-      }
-      step = 'bank';
-      if(row.bank) {
-        const latest=freshStat;if(!latest)throw new Error('Statutory setup is unavailable.');
-        const bank={...row.bank};
-        for(const field of PERSONNEL_BANK_FIELDS) {const key=field.import.writerField! as keyof PersonnelBankValues;if(!row.bankSupplied?.includes(key))(bank as unknown as Record<string,unknown>)[key]=(latest as unknown as Record<string,unknown>)[key]??(field.type==='boolean'?false:null);}
-        await s.pack.statutory.setBank(ctx,{personId:s.personId,...bank},tx);
-      }
-      step='registrations';
-      if(row.registrations) {
-        const setter=s.pack.statutory.setRegistrationNumbers;if(!setter)throw new Error('Registration-number updates are unavailable for this country pack.');
-        await setter(ctx,{personId:s.personId,...row.registrations},tx);
-      }
-      step = 'statutory';
-      if(row.statutoryPatch) {
-        if(!freshStat)throw new Error('Statutory setup is unavailable.');
-        await applyBankStatutoryPatchTx(tx,ctx,historySubject,row.statutoryPatch);
-      }
-      step='operations';
-      if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,s.employmentId,row.operations);
-      step = 'dependent';
-      if (row.dependent) await addDependentTx(tx,ctx,s.personId,row.dependent);
-      if(p.history && historyBefore) {
-        const diff=bankStatutoryDiff(historyBefore,(await readBankStatutoryStateTx(tx,ctx,historySubject)).state);
-        if(diff.changed.length)await recordImportItemTx(tx,ctx,{attemptId:p.history.attemptId,companyId:s.companyId,employmentId:s.employmentId,itemKey:`row-${row.result.rowNum}`,label:historyLabel(row.result),ordinal:row.result.rowNum,status:'applied',
-          before:{employeeCode:s.employeeCode,fields:diff.before} satisfies BankStatutoryItemState,after:{employeeCode:s.employeeCode,fields:diff.after} satisfies BankStatutoryItemState});
-      }
-      return true;
-      });
-      if(!wrote)continue;
+      const out=await withTenant(ctx,tx=>applySectionRowTx(tx,ctx,{section:p.section as ImportSection,records:p.records,history:p.history},nominate(row),{appliedPeople,step:progress}));
+      if(!out.wrote)continue;
       appliedPeople.add(s.personId);
       updated++;
       if(row.dependent) {try {await syncChildReliefFromFamily(ctx,s.personId);}catch{warnings.push(`Row ${row.result.rowNum} was saved; review the child-relief refresh on Personnel.`);}}
     } catch (e) {
+      const step=progress.current;
       // NEVER THE DRIVER'S OWN WORDS. A failed write throws a Drizzle error whose message carries the
       // whole statement AND its bound parameters — an NRIC, a bank account, a tax reference. That text
       // was being rendered to the admin and PERSISTED into `employee_import_run.errors`, in a product
@@ -1105,6 +1123,15 @@ export async function analyzeBankImportBatch(ctx:SessionContext,records:ImportRe
  const {preview,resolved}=await analyze(ctx,'bank_statutory',records);
  return{fileErrors:preview.fileErrors,rows:resolved.map(row=>({preview:row.result,companyId:row.subject?.companyId??null,employmentId:row.subject?.employmentId??null,binding:sectionBinding(row)}))};
 }
+/** The background section job's validation (core/section-import-worker.ts): the same dry run the synchronous commit
+ * starts with, reduced to what the job keeps — one nomination per row to write (a hash of its payload, never values),
+ * the dry-run refusals for the history row, and the company the history row names. */
+export async function planSectionImport(ctx:SessionContext,section:ImportSection,records:ImportRecord[]){
+ const {preview,resolved}=await analyze(ctx,section,records);
+ return{fileErrors:preview.fileErrors,total:resolved.length,nominations:resolved.filter(row=>row.result.ok&&row.subject).map(nominate),
+  rejected:resolved.filter(row=>!row.result.ok).map(row=>({rowNum:row.result.rowNum,employeeCode:row.result.employeeCode,employeeName:row.result.employeeName,errors:row.result.errors})),
+  companyId:resolved.find(row=>row.subject)?.subject?.companyId??null};
+}
 /** Only a deterministic row rejection may be counted as bad import data. */
 export class BankImportRowRejectedError extends Error {}
 /** Caller commits the HR mutation, history item and queue checkpoint in ONE transaction. */
@@ -1144,14 +1171,14 @@ export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{recor
  * A section run is stored in the SAME table as a wide one — an admin asking "what has been loaded into
  * this system, and what did not go in?" is asking one question, and two histories would be two answers.
  */
-async function recordSectionRun(
+export async function recordSectionRun(
   ctx: SessionContext,
   p: {
     companyId: string | null;
     fileName: string;
     totalRows: number;
     updated: number;
-    rejected: SectionRowResult[];
+    rejected: Pick<SectionRowResult,'rowNum'|'employeeCode'|'employeeName'|'errors'>[];
     failed: SectionImportResult['failed'];
   },
 ): Promise<string | null> {

@@ -2967,6 +2967,22 @@
         "waiting": "Waiting for the import worker. Progress is saved; do not upload the file again.",
         "otherRunning": "Another employee import is still running. Wait for it to finish before starting a new one.",
         "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is."
+      },
+      "sectionJob": {
+        "queued": "Waiting to start",
+        "preparing": "Checking the file",
+        "running": "Saving the rows",
+        "finalizing": "Finishing the import",
+        "discarding": "Stopping the import",
+        "completed": "Import finished",
+        "failed": "Import stopped",
+        "cancelled": "Import cancelled",
+        "progressCount": "{done} of {total} steps complete",
+        "backgroundHelp": "You can leave this page. Each row is saved on its own as the import runs.",
+        "backgroundHelpRegister": "You can leave this page. Nobody sees these register changes until the whole file is saved.",
+        "waiting": "Waiting for the import worker. Progress is saved; do not upload the file again.",
+        "otherRunning": "Another import of this kind that you started is still running. Wait for it to finish before starting a new one.",
+        "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is."
       }
     },
     "wizard": {
@@ -37263,6 +37279,34 @@
         "cancelled": {
           "title": "Employee import cancelled",
           "body": "No employees were added. Open Import History for details."
+        }
+      },
+      "sectionImport": {
+        "completed": {
+          "title": "Section import finished",
+          "body": "Open Import to see the rows that were updated."
+        },
+        "failed": {
+          "title": "Section import stopped",
+          "body": "Rows saved before it stopped were kept. Open Import to see why."
+        },
+        "cancelled": {
+          "title": "Section import cancelled",
+          "body": "Rows saved before it stopped were kept. Open Import for details."
+        }
+      },
+      "registerImport": {
+        "completed": {
+          "title": "Register import finished",
+          "body": "Open Import to see the register records that were saved."
+        },
+        "failed": {
+          "title": "Register import stopped",
+          "body": "No register records were saved. Open Import to see why."
+        },
+        "cancelled": {
+          "title": "Register import cancelled",
+          "body": "No register records were saved. Open Import for details."
         }
       }
     }

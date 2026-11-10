@@ -17,13 +17,20 @@ vi.mock('../app/admin/personnel/import/section-actions',()=>({validateSectionAct
 const reference:ImportReference={departments:[],positions:[],costCenters:[],states:[],countries:[],nationalities:[],relationships:[],familyRelationships:[]};
 const sectionPreview:SectionImportPreview={section:'qualification',total:1,updateCount:1,skipCount:0,createCount:0,missingColumns:[],fileErrors:[],rows:[{rowNum:1,employeeCode:'FIX-1',employeeName:'Fictional Employee',verdict:'update',ok:true,errors:[],warnings:[],changes:['from_ym','is_highest'],proposed:[{column:'from_ym',value:'2018-02'},{column:'is_highest',value:'true'}]}]};
 const employeePreview:ImportPreview={companyId:'c1',total:1,validCount:1,missingColumns:[],fileErrors:[],rows:[{rowNum:1,fullName:'Fictional Employee',email:'fictional@demo.test',ok:true,errors:[],warnings:[],company:'Fixture'}],dependents:{total:0,validCount:0,missingColumns:[],rows:[]}};
+/** A section file starts a background job; the panel polls it until it reports the synchronous import's result. */
+const sectionJob:{finished:unknown}={finished:null};
+const runningSectionJob=(section:string)=>({id:'00000000-0000-4000-8000-000000000001',kind:'register_import',section,sourceName:'submitted.csv',state:'running',stepsTotal:1,stepsDone:0,result:null,updatedAt:new Date().toISOString(),createdAt:new Date().toISOString(),worker:'running'});
 function deferred<T>(){let resolve!:(v:T)=>void;let reject!:(e:Error)=>void;const promise=new Promise<T>((r,j)=>{resolve=r;reject=j});return{promise,resolve,reject};}
 function pick(name:string){fireEvent.change(document.querySelector('input[type="file"]')!,{target:{files:[new File(['fixture'],name,{type:'text/csv'})]}});}
 function mount(kind:'section'|'employee') {render(<NextIntlClientProvider locale="en" messages={messages}>{kind==='section'?<SectionImport section="qualification" reference={reference}/>:<EmployeeImport companies={[{id:'c1',name:'Fixture'}]} defaultCompanyId="c1" reference={reference}/>}</NextIntlClientProvider>);}
 beforeEach(()=>{vi.resetAllMocks();mocks.read.mockImplementation(async(file:File)=>({name:file.name,text:file.name,dependentsText:'',extraTexts:{}}));
   // 524303d9 — an employee file upload posts its original bytes to the Import History upload route; the
   // fixture answers that route with the same commit mock, so success and failure stay the commit's own.
-  vi.stubGlobal('fetch',vi.fn(async()=>{const result=await mocks.commit();return new Response(JSON.stringify(result),{status:result&&'error' in result?400:200});}));});
+  // Background imports: the screens' job list and a section job's progress are answered here; neither is a commit.
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
+    if(/\/import\/(section|employee)\/jobs$/.test(String(url)))return new Response(JSON.stringify({jobs:[]}),{status:200});
+    if(/\/import\/section\/jobs\//.test(String(url)))return new Response(JSON.stringify({job:sectionJob.finished}),{status:200});
+    const result=await mocks.commit();return new Response(JSON.stringify(result),{status:result&&'error' in result?400:200});}));});
 describe.each(['section','employee'] as const)('%s import input ownership',kind=>{
   const preview=kind==='section'?sectionPreview:employeePreview;
   it('removes an old ready preview while reading a replacement and after its server validation refuses',async()=>{
@@ -60,7 +67,8 @@ describe.each(['section','employee'] as const)('%s import input ownership',kind=
     expect(mocks.read).toHaveBeenCalledOnce();expect(mocks.validate).toHaveBeenCalledOnce();expect(screen.getByText('submitted.csv loaded')).toBeInTheDocument();expect(screen.getByLabelText('CSV data')).toHaveValue('submitted.csv');
     if(outcome==='success'){
       const result=kind==='section'?{section:'qualification',updated:1,skipped:0,failed:[],fileErrors:[],runId:null}:{companyId:'c1',imported:1,failed:[],skipped:0,dependentsImported:0,superiorFailed:[],fileErrors:[],runId:null};
-      await act(async()=>saving.resolve(result));await screen.findByText(kind==='section'?'1 register record saved':'Imported 1 employee');
+      if(kind==='section')sectionJob.finished={...runningSectionJob('qualification'),state:'completed',stepsDone:1,result};
+      await act(async()=>saving.resolve(kind==='section'?{job:runningSectionJob('qualification'),existing:false}:result));await screen.findByText(kind==='section'?'1 register record saved':'Imported 1 employee');
     }else{await act(async()=>kind==='employee'?saving.resolve({error:'Fixture save failed.'}):saving.reject(new Error('Fixture save failed.')));await screen.findByText('Fixture save failed.');expect(screen.queryByText(/register record saved|Imported 1 employee/)).toBeNull();}
     expect(screen.getByText('submitted.csv loaded')).toBeInTheDocument();expect(screen.queryByText('replacement.csv loaded')).toBeNull();expect(screen.getByLabelText('CSV data')).toBeEnabled();for(const radio of screen.getAllByRole('radio'))expect(radio).toBeEnabled();
   });
