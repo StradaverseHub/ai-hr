@@ -875,6 +875,8 @@ export const person = pgTable(
     // read through `person_rls`, which releases the work email; the statutory IC moves to `voidedIcNumber`.
     voidedAt: timestamp('voided_at', { withTimezone: true }),
     voidedIcNumber: text('voided_ic_number'),
+    // Staged import (9001): non-null while a background import owns this row; hidden from every normal session.
+    importPendingAttemptId: uuid('import_pending_attempt_id'),
     createdAt: createdAt(),
   },
   (t) => [index('person_tenant_idx').on(t.tenantId)],
@@ -1267,6 +1269,8 @@ export const employment = pgTable(
     // Final and one-way (trigger `employment_void_guard`); a voided row leaves every ordinary read through
     // `employment_rls`. `employeeCode` is cleared (the original kept in `voidedEmployeeCode`) so the ID re-imports.
     voidedAt: timestamp('voided_at', { withTimezone: true }),
+    // Staged import (9001): see person.importPendingAttemptId.
+    importPendingAttemptId: uuid('import_pending_attempt_id'),
     voidedBy: uuid('voided_by'),
     voidReason: text('void_reason'),
     voidedImportAttemptId: uuid('voided_import_attempt_id'),
@@ -11683,6 +11687,22 @@ const agentPrincipalPrivate=pgSchema('app');
 export const aiAgentPrincipal=agentPrincipalPrivate.table('ai_agent_principal',{
  id:id(),tenantId:uuid('tenant_id').notNull().unique().references(()=>tenant.id),createdAt:createdAt(),
 });
+
+/** Staged employee import job (migration 9001). Same durable queue shape as bank_import_job; the plan is persisted before any write. */
+export const employeeImportJob=pgTable('employee_import_job',{
+ id:id(),tenantId:tenantId(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),context:jsonb('context').notNull().$type<Record<string,unknown>>(),operationKey:uuid('operation_key').notNull(),
+ companyId:uuid('company_id').notNull().references(()=>company.id),companyIds:uuid('company_ids').array().notNull().default(sql`'{}'`),
+ sourceName:text('source_name').notNull(),sourceHash:text('source_hash').notNull(),sourceBytes:integer('source_bytes').notNull(),sourceContent:bytea('source_content'),input:jsonb('input').$type<Record<string,unknown>>(),
+ attemptId:uuid('attempt_id').references(()=>importAttempt.id),state:text('state').notNull().default('queued').$type<import('../lib/employee-import-job').EmployeeImportState>(),phase:text('phase').$type<import('../lib/employee-import-job').EmployeeImportPhase>(),
+ total:integer('total').notNull().default(0),valid:integer('valid').notNull().default(0),invalid:integer('invalid').notNull().default(0),stepsTotal:integer('steps_total').notNull().default(0),stepsDone:integer('steps_done').notNull().default(0),imported:integer('imported').notNull().default(0),
+ transientRetries:integer('transient_retries').notNull().default(0),chunks:integer('chunks').notNull().default(0),maxChunkMs:integer('max_chunk_ms').notNull().default(0),activationMs:integer('activation_ms'),
+ plan:jsonb('plan').$type<Record<string,unknown>>(),result:jsonb('result').$type<Record<string,unknown>>(),error:text('error'),errors:jsonb('errors').notNull().default([]).$type<unknown[]>(),
+ createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('employee_import_job_operation').on(t.tenantId,t.createdBy,t.operationKey),uniqueIndex('employee_import_job_one_active').on(t.tenantId).where(sql`${t.state} in ('queued','validating','importing','activating','discarding')`),index('employee_import_job_queue').on(t.updatedAt,t.createdAt).where(sql`${t.state} in ('queued','validating','importing','activating','discarding')`)]);
+export const employeeImportStep=pgTable('employee_import_step',{
+ jobId:uuid('job_id').notNull().references(()=>employeeImportJob.id,{onDelete:'cascade'}),tenantId:tenantId(),seq:integer('seq').notNull(),kind:text('kind').notNull().$type<'employee'|'superior'|'register'>(),rowNum:integer('row_num'),
+ state:text('state').notNull().default('pending').$type<'pending'|'applied'>(),payload:jsonb('payload').notNull().$type<Record<string,unknown>>(),employmentId:uuid('employment_id'),personId:uuid('person_id'),error:text('error'),
+},t=>[primaryKey({columns:[t.jobId,t.seq]}),index('employee_import_step_pending').on(t.jobId,t.seq).where(sql`${t.state}='pending'`)]);
 
 /** Canonical row meaning approved by the import preview; codes and names are only lookup inputs. */
 export type PayrollTxnImportBinding={employmentId:string;companyId:string;departmentId:string|null;componentId:string;intendedCycleId:string|null;targetBatchId:string|null;targetCycle:string;payPeriod:string;txnDate:string;kind:string;quantity:number|null;unit:string|null;sourceRef:string;notes:string|null};
