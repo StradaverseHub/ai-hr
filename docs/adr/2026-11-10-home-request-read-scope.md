@@ -102,9 +102,16 @@ calculation, authority, ordering or failure changes.
 
 11. **Before payroll reads its own owners in one statement** (`core/pre-salary/before-payroll-bundle.ts`, branch
    `claude/home-bundles-before-payroll-20261110`). The checklist (`readMyPayrollReadiness`) read about fifteen owners in
-   some fifty-five statements. After the own-subject proof and the cut-off day (both unchanged) it now sends one statement
-   of sections, each built beside its owner and sharing that owner's select, joins, predicate, order and page, evaluated
-   in the caller's own session, so row-level security is the owner's own. Each owner's own proof is a value of the same
+   some fifty-five statements. After the own-subject proof (unchanged) it now sends one statement of sections, each built
+   beside its owner and sharing that owner's select, joins, predicate, order and page, evaluated in the caller's own
+   session, so row-level security is the owner's own. The period owner's cut-off day (`app.own_payroll_cut_off_day`) is
+   one of them; because it decides the Attendance windows, those sections are read for windows covering every window the
+   period owner can choose (a pay period is this month or the next, and `anchorWindowFor` opens every input type's window
+   on or after the first of the previous month; the checklist reads no day after yesterday), and are then narrowed to the
+   exact windows computed from the returned row by the same lines as before: the range's dated rows filtered to the
+   window, the OT plans to their own lower bound (those rows lead the owner's newest-first order, so the filtered page is
+   the owner's page), the overtime cap taken from the cap date's month. A window outside what was covered reads its
+   owner. Each owner's own proof is a value of the same
    statement: the TP1 owner check, the letters' presentation proof (`aiPresentationPrincipalSql`, the statement
    `isAiPresentationPrincipalCurrentTx` sends) and the profile's own-person check. The checklist then runs each owner's
    TypeScript on its section:
@@ -145,8 +152,7 @@ calculation, authority, ordering or failure changes.
 ## Not done here
 
 - **Before payroll's remaining reads** (decision 11). The own-subject proof and company date proof
-  (`requireOwnHomeSubject`), the cut-off day (`app.own_payroll_cut_off_day`, whose answer sets every window the
-  statement reads) and the approvals preview (decision 7) read as before. Approved leave presence and the holiday
+  (`requireOwnHomeSubject`) and the approvals preview (decision 7) read as before. Approved leave presence and the holiday
   calendar of the Attendance range read through `AttendanceRangeDatedFacts` until their one-statement reader replaces
   `LIVE_ATTENDANCE_RANGE_DATED_FACTS`. The letters' fixture needs a letter batch chain the diagnostic does not build.
 - **Deferred task owners.** Leave cancellations, resignations and employment reviews (behind their shared candidate
