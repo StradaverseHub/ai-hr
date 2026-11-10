@@ -41,16 +41,26 @@ sites exclusive (`lockAccessConfigurationWriteTx`, `app.access_configuration_wri
 inside `beginMovementCommitTx` and in `rehearseMovementSequenceTx`. Its employment trigger then takes the
 administrator guard and the 4701 statement trigger the `org-reporting` lock on their own.
 
-**Not yet meeting the 1 s bar (measured, scripts/performance/movement-import-rehearsal.ts, loaded local host).** One
-employee's commit is one transaction and holds the exclusive Access lock throughout, job or not. It re-reads the
-movement catalogue about seven times, and the catalogue's manager list authorizes every live employment with
-`app.access_workforce_employment` (about 1 ms per row). On 340 employees a chunk held the lock for up to 10.8 s
-(synchronous path 9.1 s); that one query was 60% of the job's time. On 3,140 employees one read takes about 3.5 s,
-and the check and confirmation already refuse employees on the 5 s statement and 15 s per-employee limits. Meeting
-the bar needs the catalogue cost removed from the locked transaction (for example a set-based manager list per
-company from the Access owner, or one catalogue read per employee with an explicit invalidation rule), or the
-shared Access lock with the administrator guard once phase 2's (M) serialisers for compensation and statutory
-writers exist. Both need an owner decision.
+**Manager catalogue authorized set-wise (draft 9911).** The commit re-reads the movement catalogue about eight
+times, and its manager list called `app.access_workforce_employment` for every live employment (about 1 ms each:
+3.5 s per read at 3,140 employments; the check and confirmation refused employees on the 5 s statement and 15 s
+per-employee limits). The catalogue now filters with `app.access_workforce_employment_permitted`, an inlined
+expression over the reader's row with the company set from `app.access_workforce_permitted_companies` (the company
+check once per distinct company, an InitPlan). The per-row owner and its other callers are unchanged.
+`test/workforce-employment-access-set.test.ts` pins the per-row owner and proves the same set for every actor shape
+(group, company and descendant scope, other company, super administrator, explicit deny, employee role, stale
+grants, archived and date-blocked logins), both capabilities, voided, staged, released and another tenant's rows,
+at 340 and 3,100 employments, the same catalogue managers, the existing refusal of a manager outside the actor's
+companies, and a plan that stays a scan filter whatever the statistics. A catalogue read at 3,100 employments fell
+from about 3.5 s to 15 ms. The catalogue is not cached across reads: the commit's own writes (an exit, a company
+change) and the actor's own login state change it between reads, and the fingerprints depend on seeing that.
+
+**Measured after the fix** (3,100 employments, 50-employee file of 129 movement rows, local host at load 8-13, two
+samples): the check completes in 33-41 s with every employee valid (before: four employees refused); a chunk holds
+the Access lock for 1.8-3.0 s at most (mean 1.4-1.8 s), down from 10.8 s at 340 employments. What remains is the
+fixed cost of one employee's commit: about 370 statements (rehearsal and apply), about 0.6 s of database time, and
+no statement over 20 ms except lock waits. The synchronous confirmation of the same file ran out of its 45 s request
+budget and failed 70 of 129 movements as `movement_import_timeout`; the job saved 120 (9 refused as stale, below).
 
 Known limits, unchanged from the synchronous path and left for follow-up decisions:
 - An exit or company change alters the tenant's manager list, which every later employee's reviewed fingerprint
