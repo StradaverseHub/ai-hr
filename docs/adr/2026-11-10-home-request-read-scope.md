@@ -109,7 +109,10 @@ calculation, authority, ordering or failure changes.
      cleared), tried in order; the first approver that allows decides, refusals are skipped and a non-refusal error
      stops. An unordered `limit 1` (the manager's manager line, the head of a subject's current assignment) is decided
      for every row it could return, and rows that agree answer exactly; an approver whose rows disagree is still exact
-     when a later approver allows. A cancellation's copied steps use the same decision with its own
+     when a later approver allows. (Only the manager's-manager lines can disagree in valid data: `assignment_no_overlap`
+     leaves a subject one current assignment.) The subject's self ban and assertCanDecide answer are read once per
+     candidate (`leaveSubjectFactsSql`) and the session's roles choose each kind's branches when the text is built, as
+     the TypeScript gate reads them from the session, so the statement plans each table once per section. A cancellation's copied steps use the same decision with its own
      'leave.cancellation' task type over the owner's unchanged header query.
    - *Resignations and employment reviews.* The owners' header queries unchanged, kept where their authority checks
      return (`canDecideSql`, the admin role, the stored manager's person): every throw of those checks is a refusal.

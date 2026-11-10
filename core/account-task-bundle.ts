@@ -5,7 +5,7 @@
  * for someone with no work at all. Here every owner's section is one sub-select of a single statement, built next to
  * the owner it reproduces (the owner and the section share their SQL text), and evaluated in the caller's own session,
  * so row-level security, delegation, organisation scope and the self-approval ban are the owner's own:
- *  - decided in SQL: Leave and leave cancellations (the current step's approvers in order, leaveStepDecisionSql), the
+ *  - decided in SQL: Leave and leave cancellations (one sub-select; the current step's approvers in order, leaveStepDecisionSql), the
  *    resignation and employment review headers, Attendance (frozen workflow decision functions, or
  *    decisionEmploymentAuthoritySql), Leave Credit and the Claims preview with its exact count;
  *  - the owner's rows, with the owner's TypeScript run on them: Notice acknowledgements, standard and OneHR feedback,
@@ -24,11 +24,11 @@
  * section with its owner for each fixture person. Read only; never cached beyond one Home response. */
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {sql,type SQL} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {aiCentreActivity} from '../lib/ai/centre-activity';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {assertModuleGate} from './module-gate';
-import {pendingLeaveTaskBundleSql,pendingLeaveTasksFromBundle,pendingLeaveCancellationTaskBundleSql,
+import {pendingLeaveDecisionTasksBundleSql,pendingLeaveTasksFromBundle,
  pendingReplacementLeaveTaskBundleSql,pendingReplacementLeaveTasksFromBundle} from '../packs/leave/service';
 import {pendingClaimTaskPreviewBundleSql,pendingClaimTaskPreviewFromBundle} from '../packs/claims/service';
 import {pendingAttendanceTaskBundleSql,pendingAttendanceTasksFromBundle} from '../packs/attendance/service';
@@ -85,39 +85,50 @@ export function withOwnerTaskReads<T>(work:()=>Promise<T>):Promise<T>{return own
 
 const gateOpen=(ctx:SessionContext,code:string)=>{try{assertModuleGate(ctx,code);return true;}catch{return false;}};
 
+/** The account task statement's sections for one read: [name, sub-select] pairs, in the statement's order. A module
+ * the caller did not enable, or whose gate or AI Centre check refuses, contributes no sub-select. */
+export function accountTaskStatementSections(tx:Tx,ctx:SessionContext,modules:AccountTaskModules,read:AccountTaskRead=HOME_ACCOUNT_TASK_READ):[string,SQL][]{
+ const companyIds=read.companyIds===undefined?undefined:[...read.companyIds],personal=read.personal;
+ const {performance,rewards,lifecycle}=sectionGates(ctx);
+ const none=sql`null::jsonb`,today=todayInKualaLumpur();
+ return [
+  ['leave_decisions',pendingLeaveDecisionTasksBundleSql(tx,ctx,companyIds)],
+  ['resignations',pendingResignationTaskBundleSql(tx,ctx,companyIds)],
+  ['manager_reviews',pendingReviewTaskBundleSql(tx,ctx,'manager',companyIds)],
+  ['hr_reviews',pendingReviewTaskBundleSql(tx,ctx,'hr',companyIds)],
+  ['replacement',pendingReplacementLeaveTaskBundleSql(ctx,companyIds)],
+  ['attendance',modules.attendance?pendingAttendanceTaskBundleSql(ctx,companyIds):none],
+  ['profile',pendingProfileTaskBundleSql(tx,ctx,companyIds)],
+  ['notices',read.notices?pendingNoticeAcknowledgementTaskBundleSql(ctx,today):none],
+  ['performance',modules.performance&&performance?pendingPerformanceTasksBundleSql(ctx):none],
+  ['rewards',modules.rewards&&rewards?pendingRewardTasksBundleSql(companyIds):none],
+  ['claims',modules.claims?pendingClaimTaskPreviewBundleSql(ctx,ACCOUNT_TASK_CLAIM_PREVIEW,companyIds):none],
+  ['standard_feedback',personal&&modules.performance?pendingStandardFeedbackTaskBundleSql(ctx):none],
+  ['onehr_feedback',personal&&modules.performance&&performance?pendingOnehrFeedbackTaskBundleSql(ctx):none],
+  ['onboarding',personal&&modules.lifecycle&&lifecycle?onboardingAssignedTasksBundleSql(ctx):none],
+ ];
+}
+/** The statement itself: the assigned-work principal proof, then every section. */
+export function accountTaskStatement(sections:readonly [string,SQL][],ctx:SessionContext):SQL{
+ const person=ctx.personId??null;
+ return sql`select (app.principal_snapshot_current()
+     and (${person}::uuid is null or app.is_self_person(${person}::uuid))) as principal,
+    ${sql.join(sections.map(([name,section])=>sql`${section} as ${sql.raw(name)}`),sql`,\n`)}`;
+}
+// A gate or AI Centre check that the owner itself would run decides only that owner: it reads on its own.
+const sectionGates=(ctx:SessionContext)=>({performance:gateOpen(ctx,'performance')&&!aiCentreActivity(ctx.tenantId),rewards:gateOpen(ctx,'rewards'),lifecycle:gateOpen(ctx,'lifecycle')});
+
 /** One Home response's account task statement. Resolves null when the owners must read on their own. */
 export async function readAccountTaskBundle(ctx:SessionContext,modules:AccountTaskModules,read:AccountTaskRead=HOME_ACCOUNT_TASK_READ):Promise<AccountTaskBundle|null>{
  if(ownerReads.getStore()||!ctx.userId||ctx.agent)return null;
  const companyIds=read.companyIds===undefined?undefined:[...read.companyIds],personal=read.personal;
- // A gate or AI Centre check that the owner itself would run decides only that owner: it reads on its own.
- const performance=gateOpen(ctx,'performance')&&!aiCentreActivity(ctx.tenantId),rewards=gateOpen(ctx,'rewards'),lifecycle=gateOpen(ctx,'lifecycle');
- const none=sql`null::jsonb`,today=todayInKualaLumpur();
- const person=ctx.personId??null;
+ const {performance,rewards,lifecycle}=sectionGates(ctx);
  let row:Record<string,unknown>|undefined;
  try{
   row=await withTenant(ctx,async tx=>{
    // The Claims and Attendance owners scope this setting to their read for the same reason: JIT compile time.
    await tx.execute(sql`set local jit=off`);
-   const sections:[string,SQL][]=[
-    ['leave',pendingLeaveTaskBundleSql(ctx,companyIds)],
-    ['cancellations',pendingLeaveCancellationTaskBundleSql(tx,ctx,companyIds)],
-    ['resignations',pendingResignationTaskBundleSql(tx,ctx,companyIds)],
-    ['manager_reviews',pendingReviewTaskBundleSql(tx,ctx,'manager',companyIds)],
-    ['hr_reviews',pendingReviewTaskBundleSql(tx,ctx,'hr',companyIds)],
-    ['replacement',pendingReplacementLeaveTaskBundleSql(ctx,companyIds)],
-    ['attendance',modules.attendance?pendingAttendanceTaskBundleSql(ctx,companyIds):none],
-    ['profile',pendingProfileTaskBundleSql(tx,ctx,companyIds)],
-    ['notices',read.notices?pendingNoticeAcknowledgementTaskBundleSql(ctx,today):none],
-    ['performance',modules.performance&&performance?pendingPerformanceTasksBundleSql(ctx):none],
-    ['rewards',modules.rewards&&rewards?pendingRewardTasksBundleSql(companyIds):none],
-    ['claims',modules.claims?pendingClaimTaskPreviewBundleSql(ctx,ACCOUNT_TASK_CLAIM_PREVIEW,companyIds):none],
-    ['standard_feedback',personal&&modules.performance?pendingStandardFeedbackTaskBundleSql(ctx):none],
-    ['onehr_feedback',personal&&modules.performance&&performance?pendingOnehrFeedbackTaskBundleSql(ctx):none],
-    ['onboarding',personal&&modules.lifecycle&&lifecycle?onboardingAssignedTasksBundleSql(ctx):none],
-   ];
-   const [result]=await tx.execute<Record<string,unknown>>(sql`select (app.principal_snapshot_current()
-     and (${person}::uuid is null or app.is_self_person(${person}::uuid))) as principal,
-    ${sql.join(sections.map(([name,section])=>sql`${section} as ${sql.raw(name)}`),sql`,\n`)}`);
+   const [result]=await tx.execute<Record<string,unknown>>(accountTaskStatement(accountTaskStatementSections(tx,ctx,modules,read),ctx));
    return result;
   },{readOnlySnapshot:true});
  }catch{
@@ -137,8 +148,8 @@ export async function readAccountTaskBundle(ctx:SessionContext,modules:AccountTa
  }
  return Object.freeze({
   modules:Object.freeze({...modules}),read:Object.freeze({...read,...(companyIds?{companyIds:Object.freeze(companyIds)}:{})}),
-  leave:decide(()=>pendingLeaveTasksFromBundle(result.leave)),
-  cancellations:decide(()=>pendingLeaveTasksFromBundle(result.cancellations)),
+  leave:decide(()=>pendingLeaveTasksFromBundle((result.leave_decisions as {leave:unknown}).leave)),
+  cancellations:decide(()=>pendingLeaveTasksFromBundle((result.leave_decisions as {cancellations:unknown}).cancellations)),
   resignations:decide(()=>pendingResignationTasksFromBundle(result.resignations)),
   managerReviews:decide(()=>pendingReviewTasksFromBundle(result.manager_reviews)),
   hrReviews:decide(()=>pendingReviewTasksFromBundle(result.hr_reviews)),
