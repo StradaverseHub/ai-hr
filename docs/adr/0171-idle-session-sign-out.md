@@ -63,3 +63,28 @@ appears for it.
 - A tab with JavaScript disabled or a failed activity report is signed out at the server limit even while the
   person is working; the failure direction is the secure one.
 - The setting appears under System Configuration → Login. Translations other than English need native review.
+
+## Amendment, 2026-11-10: the editor moves to Security Center → Password Policy
+
+Board item f3edc521 (approved plan, revision 1). Decision. The Automatic sign-out editor is shown on
+**Security Center → Password Policy** (`/admin/security-center/password-policy`), as the third section after
+the password rules and the authenticator code frequency, with its own Save button. It is removed from
+**System Configuration → Login & browser appearance** (`/admin/settings/login`), which keeps only the sign-in
+page look. This supersedes "The setting appears under System Configuration → Login" above.
+
+Unchanged: the owner (`core/session-policy`), the `session_policy` row and its revision, the 5–480 minute
+bounds and 15-minute default, the `session-policy.updated` audit event with the previous value, RLS
+(`app.is_group_admin()` and tenant), and the editor set: super administrators and organization-wide HR
+administrators. A company-scoped HR administrator is refused by the page guard, the service and RLS on both
+the old and the new page. No data moves; the saved value appears in the new place as it is. The form and its
+save action keep their files under `app/admin/settings/login/` (the same placement precedent as the
+authenticator code frequency), so the agent capability inventory is unchanged; the action now refreshes the
+Password Policy page.
+
+Consequence for compatibility providers: Password Policy is offered only with the embedded sign-in, so under a
+WorkOS/Keycloak adapter the setting is no longer shown at all (previously it was shown with a note that it is
+not applied). This supersedes "Legacy WorkOS/Keycloak adapters show the setting with a note that it is not
+applied" above. The limit was never enforced there; the stored value is kept and takes effect when the
+installation moves to the embedded sign-in (ADR-0117). The `sessionTimeout.notEnforced` message is no longer
+rendered; it is left in the dictionaries because they are part of the owner-approved provider-data source
+closure and retiring an unused string does not justify a re-binding.
