@@ -16,7 +16,8 @@ import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDo
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
 import {visibleLabelIdsCondition} from './system-labels';
 import {isDeepStrictEqual} from 'node:util';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockPayrollInputsTx} from './payroll-inputs-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {
@@ -157,7 +158,7 @@ import {
 // employee's own Form TP3 declares, and it must read that figure exactly as the form's screen and
 // `saveTp3` read it, or the gate would guard a different number from the one at risk.
 import { deriveAccumulatorSeed } from './tp3';
-import { applyLoansForBatch } from './loans';
+import { applyLoansForBatch, lockLoansForLedgerTx } from './loans';
 import { warnIfHolidaysIncomplete, holidayDatesFor, type HolidayCompletenessWarning } from './holidays';
 import type { ShiftDifferential, PayRule, PayrollPolicyConfig } from '../db/schema';
 import {
@@ -2223,7 +2224,7 @@ export async function createAdditionalRunTx(tx:Tx,supplied:SessionContext,input:
 export async function withReviewedAdditionalRunIntervalTx<T>(tx:Tx,supplied:SessionContext,selection:{companyId:string;payPeriod:string;payrollCycleId:string},run:(ctx:SessionContext,source:{companyId:string;payPeriod:string;payrollCycleId:string})=>Promise<T>):Promise<T>{
  const p=structuredClone(selection),ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};assertModuleGate(ctx,'payroll');
  if(!isModuleEnabled(ctx,'multi_cycle_payroll'))throw new ModuleNotEnabledError('multi_cycle_payroll','Multiple payroll runs per month are not enabled.');
- await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  const [owned]=await lockPayrollPeriodsTx(tx,ctx,[{companyId:p.companyId,payPeriod:p.payPeriod}],true);
  // Reuse the actual canonical filing reader's company/Admin authority; filed=true is deliberately
  // not refused here. Only NEW pending creation calls refuseIfPeriodFiled below.
@@ -2706,6 +2707,11 @@ export async function setPayrollInput(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
+    // Reader/writer wave 4: a payroll input (manual OT, a performance bonus, TP1, zakat) written while
+    // the run is being processed would otherwise commit after the run read its inputs and be lost. The
+    // employee's payroll inputs key waits for that run; the status read below then sees 'processed'.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockPayrollInputsTx(tx, { employmentIds: [p.employmentId] });
     const [batch] = await tx
       .select({ status: payrollBatch.status })
       .from(payrollBatch)
@@ -9047,7 +9053,7 @@ async function reviewedPayrollCloseAuthorityTx(tx:Tx,ctx:SessionContext,batchId:
  * authority before names. Unknown company budget refuses rather than implying extra permitted runs. */
 export async function reviewedPayrollCloseChoiceMetadataTx(tx:Tx,supplied:SessionContext){
  const ctx=capturePayrollCloseContext(supplied),grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null})),roles=ctx.roles??[...new Set(grants.map(g=>g.role))];
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  const [carrier]=await tx.execute<{allowed:boolean}>(sql`select app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id()=${ctx.userId??null}::uuid and app.principal_snapshot_current() and current_setting('transaction_isolation')='read committed' and current_setting('app.roles',true)=${roles.join(',')} and current_setting('app.grants',true)::jsonb=${JSON.stringify(grants)}::jsonb as allowed`);if(carrier?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.close');
  const nominees=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),sql`app.can_admin_payroll_for(${company.id})`)).orderBy(company.id).limit(129);if(nominees.length>128)throw new Error('Payroll close choices unavailable');
  const permitted:string[]=[];for(const row of nominees)if(await resolvePayrollPermission(tx,ctx,'payroll.close',row.id))permitted.push(row.id);
@@ -9167,20 +9173,25 @@ async function unwindAppliedLoanRepayments(
   if (p.employmentIds != null && p.employmentIds.length === 0) return { reversed: 0, loansReopened: 0 };
   const toC = (v: unknown) => Math.round(Number(v) * 100);
   const fromC = (c: number) => (c / 100).toFixed(2);
+  const appliedFilter = and(
+    eq(loanRepayment.appliedBatchId, p.batchId),
+    eq(loanRepayment.status, 'applied'),
+    ...(p.employmentIds == null ? [] : [inArray(loanRepayment.employmentId, p.employmentIds)]),
+  );
+  // The balance is a read-modify-write: lock every affected loan, in id order, before reading any of them
+  // (core/loans.ts lockLoansForLedgerTx), so a concurrent apply or admin action cannot start from the same
+  // balance now that runs of different months no longer serialise on the exclusive Access lock. The
+  // repayments are read again after the locks, so a reversal that waited never reverses twice.
+  const nominated = await tx.select({ loanId: loanRepayment.loanId }).from(loanRepayment).where(appliedFilter);
+  await lockLoansForLedgerTx(tx, nominated.map((rep) => rep.loanId));
   const appliedReps = await tx
     .select()
     .from(loanRepayment)
-    .where(
-      and(
-        eq(loanRepayment.appliedBatchId, p.batchId),
-        eq(loanRepayment.status, 'applied'),
-        ...(p.employmentIds == null ? [] : [inArray(loanRepayment.employmentId, p.employmentIds)]),
-      ),
-    );
+    .where(appliedFilter);
   let loansReopened = 0;
   for (const rep of appliedReps) {
     if(p.cause==='payroll-reset')await tx.execute(sql`select set_config('app.payroll_reset_current_rep',${rep.id},true)`);
-    const [loan] = await tx.select().from(employeeLoan).where(eq(employeeLoan.id, rep.loanId)).limit(1);
+    const [loan] = await tx.select().from(employeeLoan).where(eq(employeeLoan.id, rep.loanId)).limit(1).for('update');
     if (!loan) continue;
     const appliedCents = toC(rep.appliedAmount);
     const dueCents = toC(rep.dueAmount);
@@ -12724,7 +12735,7 @@ export async function readReviewedPayrollReopenReferenceTx(tx:Tx,ctx:SessionCont
  return {batchId:receipt.batchId,payPeriodId:receipt.payPeriodId,statusHistoryId:receipt.statusHistoryId,unlockedEventId:receipt.unlockedEventId,periodReopenedEventId:receipt.periodReopenedEventId,parentWasReopened:receipt.parentWasReopened,currentStatus:receipt.currentStatus,currentPeriodStatus:receipt.currentPeriodStatus};
 }
 export async function reviewedPayrollReopenChoiceMetadataTx(tx:Tx,ctx:SessionContext){
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  if(!ctx.userId||!settingEnabled(ctx,'payroll.unlock_enabled'))return [];
  const rows=await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(eq(payrollBatch.tenantId,ctx.tenantId),eq(payrollBatch.status,'closed'),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`)).orderBy(desc(payrollBatch.payPeriod),payrollBatch.id).limit(26);
  if(rows.length>25)throw new Error('Payroll reopening choices require native filtering');
@@ -12856,7 +12867,7 @@ export async function readReviewedPayrollResetReferenceTx(tx:Tx,ctx:SessionConte
  return row?.receipt?PayrollResetNativeReference.parse(row.receipt):null;
 }
 export async function reviewedPayrollResetChoiceMetadataTx(tx:Tx,ctx:SessionContext){
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  if(!ctx.userId||!settingEnabled(ctx,'payroll.reset_enabled'))return [];
  const rows=await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(eq(payrollBatch.tenantId,ctx.tenantId),eq(payrollBatch.status,'processed'),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`)).orderBy(desc(payrollBatch.payPeriod),payrollBatch.id).limit(26);
  if(rows.length>25)throw new Error('Payroll reset choices require native filtering');

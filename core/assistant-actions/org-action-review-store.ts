@@ -25,7 +25,7 @@ const Body=z.object({reviewNonce:PrivateReviewNonce,content:Human,review:Review,
 type Stored=z.infer<typeof Stored>;
 type Source={subjectId:string};
 type NativePrepared=Awaited<ReturnType<typeof prepareReviewedReportingLineSourceTx>>&{targetPersonId:string;targetCompanyId:string;managerPersonId:string;previousManagerPersonId:string|null};
-async function ownInterval(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,ACTION,'approve');await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,fresh.tenantId);return fresh;}
+async function ownInterval(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,ACTION,'approve');await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,fresh.tenantId);return fresh;}
 async function nativePrepare(tx:Tx,ctx:SessionContext,human:z.infer<typeof Human>):Promise<NativePrepared>{
  const native=await prepareReviewedReportingLineSourceTx(tx,ctx,human);
  // The native preflight has already established subordinate maintenance and both manager views.

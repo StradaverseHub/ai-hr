@@ -1,7 +1,7 @@
 /** Workforce-purpose adapter. Existing record, financial, self-service and approval owners remain independent. */
 import {sql,type SQL} from 'drizzle-orm';
 import {type SessionContext,type Tx} from '../db/client';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {withPersonnelRead} from './personnel-read-bounds';
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 export type WorkforceOperation='view'|'maintain';
@@ -14,8 +14,8 @@ export function workforceEmploymentPredicate(subject:SQL,operation:WorkforceOper
  return sql`app.access_workforce_employment(${subject},${'workforce.'+operation})`;
 }
 async function lockWorkforceOperationTx(tx:Tx,ctx:SessionContext,operation:WorkforceOperation){
- if(operation==='maintain')await tx.execute(sql`select app.access_workforce_write_lock()`);
- else await lockAccessConfigurationTx(tx,ctx.tenantId);
+ if(operation==='maintain')await tx.execute(sql`select app.access_configuration_write_lock()`);
+ else await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
 }
 export async function assertWorkforceCompanyTx(tx:Tx,ctx:SessionContext,companyId:string,operation:WorkforceOperation){
  await lockWorkforceOperationTx(tx,ctx,operation);

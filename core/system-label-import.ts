@@ -269,7 +269,7 @@ export function applySystemLabelImport(ctx:SessionContext,p:{bytes:Buffer;mode?:
   p={...p,bytes:Buffer.from(p.bytes),selectedKeys:p.selectedKeys?.slice()};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const rows=readSystemLabelWorkbook(p.bytes);
   return withTenant(ctx,async tx=>{
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Same lock order as the canonical owners; an unexpected writer refusal rolls back all additions.
     await tx.execute(sql`LOCK TABLE profile_option, job_grade, grade_group, grade_group_member IN SHARE ROW EXCLUSIVE MODE`);

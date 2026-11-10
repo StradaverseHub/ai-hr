@@ -38,7 +38,7 @@ export async function reconcileInformationSnapshots(storage:ReturnType<typeof cr
  const ctx:SessionContext={tenantId:manifest.tenantId,userId:user.id,personId:user.personId,roles:[...new Set(grants.map(g=>g.role))],grants};
  return storage.withTenant(ctx,async tx=>{
   const [database]=await tx.execute<{role:string}>(sql`select current_user as role`);if(database.role==='ai_hr_app')throw new Error('Use the private operator connection for reconciliation.');
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);
   let missing=0;const evidenceRecords:unknown[]=[];
   for(const item of [...manifest.items].sort((a,b)=>a.employmentId.localeCompare(b.employmentId)||a.payslipId.localeCompare(b.payslipId))){
    await lockEmploymentStatutoryOwnerTx(tx,item.employmentId);

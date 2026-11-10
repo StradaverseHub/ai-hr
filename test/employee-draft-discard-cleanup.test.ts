@@ -105,7 +105,7 @@ it('isolates same-tenant storage-owner TRY refusal with an owner-only rollback f
  await withTenant(ctx,async app=>{
   // The blocker owns ONLY canonical Access, no draft relation/tuple locks. Normal canonical owner
   // DELETE already takes Access before its rows, so this explicitly isolates defensive cleanup.
-  await app.execute(sql`select app.access_workforce_write_lock()`);
+  await app.execute(sql`select app.access_configuration_write_lock()`);
   try{await owner.db.transaction(async raw=>{
    const [trusted]=await raw.execute<{trusted:boolean}>(sql`select app.access_workforce_storage_owner() trusted`);expect(trusted.trusted).toBe(true);
    await raw.execute(sql`select set_config('app.tenant_id',${b.tenantId},true)`);

@@ -18,7 +18,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { companyPayrollConfig, payrollPolicy, type PayslipRelease } from '../db/schema';
 import { cleanPayslipRelease } from './payroll-policy-config';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 
 /** Thrown when the chosen company-default payroll policy is not a valid (same-company, active) policy. */
 export class InvalidDefaultPolicyError extends Error {
@@ -65,7 +65,7 @@ export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInpu
     payslipRelease,
   };
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
       where u.id=${ctx.userId??null}::uuid and u.tenant_id=${ctx.tenantId}::uuid
        and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()

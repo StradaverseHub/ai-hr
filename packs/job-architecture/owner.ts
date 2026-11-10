@@ -6,7 +6,7 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {appendEvent,actorOf} from '../../db/events';
-import {lockAccessConfigurationTx} from '../../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../../core/access-configuration-lock';
 import {isAiPresentationPrincipalCurrentTx} from '../../core/ai-principal';
 import {labelUsableByCompany,lockLabelCriteriaTx} from '../../core/system-labels';
 import {todayInKualaLumpur} from '../../lib/hr-date';
@@ -15,7 +15,7 @@ const uuid=z.uuid(),reason=z.string().trim().min(10).max(4000);
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export type Proposal={id:string;company_id:string|null;kind:'catalogue'|'positions'|'outlier_resolution';base_revision:number;payload:Record<string,unknown>;reason:string;created_by:string;created_person_id:string|null;created_at:string;status:'pending'|'approved'|'rejected';checked_by:string|null};
 export type ArchitectureOutlierRow={id:string;fingerprint:string;company_ids:string[];detail:ReturnType<typeof scanArchitectureOutliers>[number];state:'new'|'open'|'partial'|'resolved';owner_id:string|null;due_on:string|null;resolution:string|null;revision:number;description:string;proposed_fix:string;manual:boolean;business_unit_id?:string|null;source_id:string|null;resolved_by:string|null;checked_by:string|null};
-async function tenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){if(!ctx.userId)throw new ArchitectureError('forbidden','Sign in to continue.');return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);if(aiCentreActivity(ctx.tenantId))await assertAiCentreRunningTx(tx,ctx);return fn(tx);});}
+async function tenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){if(!ctx.userId)throw new ArchitectureError('forbidden','Sign in to continue.');return withTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,ctx.tenantId);if(aiCentreActivity(ctx.tenantId))await assertAiCentreRunningTx(tx,ctx);return fn(tx);});}
 /** Ordinary display reads own an enforced snapshot; the borrowed workspaceTx query also
  * serves command/source contracts, whose tenant() owner must retain its Access barrier. */
 async function presentation<T>(supplied:SessionContext,fn:(tx:Tx,ctx:SessionContext)=>Promise<T>){

@@ -18,7 +18,7 @@ import {setPayrollConfig} from '../core/payroll-config';
 import {setCompensation} from '../core/comp';
 import {assignRole} from '../core/admin';
 import {requirePackFor} from '../localization/registry';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {payrollPeriodOwnerKey} from '../core/payroll-period-lock';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {createBatch,createAdditionalRun,generatePayslips,closeBatch,BatchSwingTooLargeError,unlockClosedBatch,setPayrollInput,setPayrollPermissionGrant} from '../packs/payroll/service';

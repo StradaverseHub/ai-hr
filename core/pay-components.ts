@@ -3,7 +3,8 @@ import { payComponentAppliesToCompany } from '../lib/pay-component-company';
 import {normalizeFormulaDecimal} from '../lib/pay-formula-language';
 import {createHash} from 'node:crypto';
 import {bindPayFormulaRuleTx,recordPayFormulaLinkTx} from './pay-formula';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockPayrollInputsTx} from './payroll-inputs-lock';
 import {tryLockPayrollHistoryReadTx} from './payroll-history-lock';
 import {isCarrierPrincipalCurrentTx} from './carrier-principal';
 import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
@@ -670,7 +671,7 @@ async function assertReviewedPayCatalogPrincipalTx(tx:Tx,ctx:SessionContext){
 }
 async function reviewedPayComponentPreflightTx(tx:Tx,supplied:SessionContext,input:PayComponentInput){
  const ctx=capturePayCatalogContext(supplied),captured=structuredClone(input);
- await lockAccessConfigurationTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
  if(captured.pendingInputKind!==undefined&&captured.pendingInputKind!==null)throw new PayComponentInputError([{field:'inputKind',code:'invalidPendingCalculation'}]);
  const p=await preparePayComponentCreateInputTx(tx,ctx,captured),prepared=await preparePayComponentWriteTx(tx,ctx,p,{createOnly:true});
  const storage=payComponentCreateValues(ctx,p,prepared,{});
@@ -687,7 +688,7 @@ async function reviewedPayComponentPreflightTx(tx:Tx,supplied:SessionContext,inp
 /** Same-Tx reviewed catalogue vocabulary, never employee data. A large catalogue refuses honestly
  * rather than presenting a silently incomplete reference picker. Native save still owns graph checks. */
 export async function reviewedPayComponentReferenceChoicesTx(tx:Tx,supplied:SessionContext){
- const ctx=capturePayCatalogContext(supplied);await lockAccessConfigurationTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
+ const ctx=capturePayCatalogContext(supplied);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
  const rows=await tx.select({code:payComponent.code,name:payComponent.name,label:payComponent.label,kind:payComponent.kind}).from(payComponent)
   .where(and(eq(payComponent.tenantId,ctx.tenantId),isNull(payComponent.archivedAt),isNull(payComponent.pendingInputKind))).orderBy(payComponent.code).limit(257);
  if(rows.length>256)throw new Error('Pay catalogue choices unavailable');
@@ -708,7 +709,7 @@ export async function createReviewedPayComponentTx(tx:Tx,ctx:SessionContext,inpu
 /** Historical exact original-actor native creation, plus explicitly CURRENT catalogue metadata.
  * No old description/rule/rate is retained or claimed to remain current after a native update. */
 export async function readReviewedPayComponentReferenceTx(tx:Tx,supplied:SessionContext,reference:{componentId:string;createdEventId:string}){
- const ctx=capturePayCatalogContext(supplied),p={...reference};await lockAccessConfigurationTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
+ const ctx=capturePayCatalogContext(supplied),p={...reference};await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
  const [row]=await tx.execute<{componentId:string;createdEventId:string;code:string;name:string;label:string|null;kind:PayComponentInput['kind'];archived:boolean}>(sql`select c.id as "componentId",d.id as "createdEventId",c.code,c.name,c.label,c.kind,(c.archived_at is not null) as archived
   from public.pay_component c join public.domain_event d on d.aggregate_id=c.id and d.tenant_id=c.tenant_id
   where c.id=${p.componentId}::uuid and c.tenant_id=${ctx.tenantId}::uuid and d.id=${p.createdEventId}::uuid
@@ -1978,6 +1979,7 @@ export function setEmploymentPayComponent(
     // uniform contract. Both checks still run before any write.
     if (effectiveTo != null && effectiveTo < p.effectiveFrom) throw new FixedTransactionDateError();
     if (currency !== 'MYR') throw new UnsupportedFixedCurrencyError(currency);
+    await lockFixedItemWriterTx(tx, ctx, p.employmentId);
     const [component] = await tx.select({ code: payComponent.code, pendingInputKind: payComponent.pendingInputKind })
       .from(payComponent).where(eq(payComponent.id, p.componentId)).limit(1);
     if (component) assertPayComponentReady(component);
@@ -2272,6 +2274,7 @@ export function updateEmploymentPayComponent(
   },
 ) {
   return withTenant(ctx, async (tx) => {
+    await lockFixedItemWriterTx(tx, ctx, p.employmentId);
     // Load the target row (RLS-confined to the tenant). Match the caller-supplied employmentId so the edit
     // can only touch a row the admin is actually looking at; a foreign/stale id yields no row.
     const [row] = await tx
@@ -2334,6 +2337,7 @@ export function endEmploymentPayComponent(
   outerTx?:Tx,
 ) {
   const run=async(tx:Tx)=>{
+    await lockFixedItemWriterTx(tx, ctx, p.employmentId);
     const [row] = await tx
       .select({ validFrom: employmentPayComponent.validFrom })
       .from(employmentPayComponent)
@@ -2476,12 +2480,20 @@ async function assertNoClosedRunCovers(
  * payroll, no longer shown" semantics (ticket point #11). No hard delete: the row is preserved for audit /
  * replay, consistent with the effective-dated log design.
  */
-/** Native archive and reviewed preview share the existing EXCLUSIVE tenant Access phase:
- * payroll create/close/process membership owners use this exact access-configuration:<tenant> key/mode.
- * History acquisition is TRY-only after Access; a busy source must abort the WHOLE caller transaction.
- * Locks are acquired BEFORE any preview savepoint and survive its rollback. No table/global locks. */
-export async function lockFixedItemArchiveIntervalTx(tx:Tx,ctx:SessionContext,p:{id:string;employmentId:string}){
+/** Fixed-item writers (set, edit, end, archive) under the SHARED Access lock (reader/writer wave 4):
+ * the employee's payroll inputs key makes the change wait for an in-flight run of the employee's
+ * company, so that run either reads it or has already committed and the change is a post-run edit.
+ * Writers for different employees overlap. Taken before any fixed-item, catalogue or payroll row. */
+async function lockFixedItemWriterTx(tx:Tx,ctx:SessionContext,employmentId:string){
  await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockPayrollInputsTx(tx,{employmentIds:[employmentId]});
+}
+/** Native archive and reviewed preview share one interval: the shared Access lock and the employee's
+ * payroll inputs key, which every payroll create/close/process membership owner takes exclusively for
+ * the company. History acquisition is TRY-only after Access; a busy source must abort the WHOLE caller
+ * transaction. Locks are acquired BEFORE any preview savepoint and survive its rollback. */
+export async function lockFixedItemArchiveIntervalTx(tx:Tx,ctx:SessionContext,p:{id:string;employmentId:string}){
+ await lockFixedItemWriterTx(tx,ctx,p.employmentId);
  if(ctx.userId&&!(await isCarrierPrincipalCurrentTx(tx,ctx)))throw new FixedTransactionNotFoundError();
  await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);
  const rows=await tx.execute<{componentId:string;companyId:string}>(sql`select q.component_id as "componentId",e.company_id as "companyId" from employment_pay_component q join employment e on e.id=q.employment_id and e.tenant_id=q.tenant_id where q.id=${p.id}::uuid and q.employment_id=${p.employmentId}::uuid and q.tenant_id=${ctx.tenantId}::uuid for update of q,e nowait`);
@@ -2489,7 +2501,7 @@ export async function lockFixedItemArchiveIntervalTx(tx:Tx,ctx:SessionContext,p:
  await tx.execute(sql`select p.id from person p join employment e on e.person_id=p.id and e.tenant_id=p.tenant_id where e.id=${p.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid for share of p nowait`);
  await tx.execute(sql`select id from company where id=${rows[0].companyId}::uuid and tenant_id=${ctx.tenantId}::uuid for share nowait`);
  await tx.execute(sql`select id from pay_component where id=${rows[0].componentId}::uuid and tenant_id=${ctx.tenantId}::uuid for share nowait`);
- // Access prevents new native drafts, close/create/process/reset/delete membership changes. These
+ // The inputs key prevents new native drafts, close/create/process/reset/delete membership changes. These
  // physical locks additionally retain existing relevant payroll tuples against direct competing writes.
  const batches=await tx.execute(sql`select b.id from payroll_batch b join employment_pay_component q on q.id=${p.id}::uuid and q.tenant_id=b.tenant_id where (b.company_id=${rows[0].companyId}::uuid or exists(select 1 from payslip subject_slip where subject_slip.batch_id=b.id and subject_slip.tenant_id=b.tenant_id and subject_slip.employment_id=${p.employmentId}::uuid)) and b.tenant_id=${ctx.tenantId}::uuid and b.pay_period>=left(q.valid_from::text,7) and (q.valid_to is null or b.pay_period<=left(q.valid_to::text,7)) order by b.id limit 2001 for share of b nowait`);
  if(batches.length>2000)throw Error('Fixed item payroll history is too large for review.');

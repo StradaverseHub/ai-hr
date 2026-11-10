@@ -9,7 +9,7 @@ import * as schema from '../db/schema';
 import {aiManagementPageView,aiManagementView,setAiAllowance,setGroupAllowance,setAiFeature} from '../core/ai-management';
 import {aiManagementAlerts,aiInventoryView,aiRunHistory} from '../core/ai-inventory';
 import {getAiConfigView,saveAiProviderConfig} from '../core/ai-config';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {assistantLauncherFor,assistantShellFor,setAssistantLauncher} from '../core/assistant-launcher';
 import {agentStatuses} from '../core/control-domains';
@@ -145,7 +145,7 @@ it('completes group and scoped AI presentation while the tenant Access write loc
  let reads:Promise<unknown>|undefined;
  try{
   await withTenant(group,async tx=>{
-   await lockAccessConfigurationTx(tx,b.tenantId);
+   await lockAccessConfigurationWriteTx(tx,b.tenantId);
    reads=Promise.all([aiManagementPageView(group,'overview'),aiManagementPageView(scoped,'allowances'),getAiConfigView(group)]);
    const timeout=new Promise<never>((_,reject)=>{
     deadline=setTimeout(()=>reject(new Error('AI presentation waited for the held Access lock')),4000);
@@ -181,7 +181,7 @@ it('loads Worker diagnostics and registry while Access configuration is locked',
  let deadline:ReturnType<typeof setTimeout>|undefined;
  try{
   await withTenant(group,async tx=>{
-   await lockAccessConfigurationTx(tx,b.tenantId);
+   await lockAccessConfigurationWriteTx(tx,b.tenantId);
    reads=read();
    const timeout=new Promise<never>((_,reject)=>{
     deadline=setTimeout(()=>reject(new Error('Worker diagnostics waited for the held Access lock')),4000);
@@ -218,7 +218,7 @@ it('loads an enabled shell launcher while Access is locked and preserves visibil
  let deadline:ReturnType<typeof setTimeout>|undefined;
  try{
   await withTenant(admin,async tx=>{
-   await lockAccessConfigurationTx(tx,b.tenantId);
+   await lockAccessConfigurationWriteTx(tx,b.tenantId);
    reads=Promise.all([assistantShellFor(ctx),assistantLauncherFor(ctx)]);
    const timeout=new Promise<never>((_,reject)=>{
     deadline=setTimeout(()=>reject(new Error('Assistant launcher waited for the held Access lock')),4000);

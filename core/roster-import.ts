@@ -32,7 +32,7 @@
 import { parseCsvRecords } from '../lib/csv';
 import { isIsoDate, monthOf } from '../lib/roster-month';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx,LeaveDependencyUnavailable} from '../packs/leave/service';
 import { listEmployees } from './read';
 import {
@@ -113,7 +113,7 @@ export async function analyzeRosterImport(ctx:SessionContext,p:RosterImportInput
   // Read-only nomination/preview under configuration ownership. Each actual group below replays
   // this SAME original raw file after its complete subject ownership; no client preview is trusted.
   const plan=await withTenant(ctx,async tx=>{
-    await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
     return planRosterImport(ctx,p,tx);
   });
   if(p.dryRun)return plan.result;
@@ -275,7 +275,7 @@ async function commitRosterCells(ctx: SessionContext, cells: Cell[], companyId: 
   const image=(rows:Cell[])=>JSON.stringify(rows.slice().sort((a,b)=>a.sourceRow-b.sourceRow||a.date.localeCompare(b.date)));
   const writeGroup=async(group:Cell[],write:(tx:Tx)=>Promise<unknown>)=>withTenant(ctx,async tx=>{
     const ids=[...new Set(group.map(cell=>cell.employmentId))].sort();
-    await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
     const fresh=await planRosterImport(ctx,input,tx),keys=new Set(group.map(sourceKey));
     const expected=nomination.accepted.filter(cell=>keys.has(sourceKey(cell)));

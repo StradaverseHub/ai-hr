@@ -33,7 +33,7 @@ import {resolveEntitlementsTx,assertModuleEnabled} from './entitlements';
 import { and, eq, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { recordDecision } from './agent-proposal';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import { appendEvent, actorOf } from '../db/events';
 import * as schema from '../db/schema';
 import { packFor } from '../localization/registry';
@@ -567,7 +567,7 @@ export async function evaluateBatchAnomalies(
 ): Promise<BatchEvaluation> {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     // Existing server-owned scripts/anomaly-sweep.ts deliberately uses a null-user SYSTEM carrier.
     // Preserve its original RLS/actor semantics; this does NOT verify those roles as USER authority,
     // introduce a bypass marker, or admit any AI/provider action. Reviewed close requires real USER.
@@ -827,7 +827,7 @@ export async function resolveAnomalyVerdict(
 ): Promise<void> {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   const toStamp = await withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
       where u.id=${ctx.userId??null}::uuid and u.tenant_id=${ctx.tenantId}::uuid
        and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()

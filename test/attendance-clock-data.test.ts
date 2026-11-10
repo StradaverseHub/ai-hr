@@ -203,7 +203,7 @@ describe('approved attendance clock-data corrections', () => {
     ));
     expect(events).toHaveLength(1);
   });
-  it.each(['submission', 'approval'] as const)('releases the native pool connection between exclusive %s admission attempts', async operation => {
+  it.each(['submission', 'approval'] as const)('waits once on the Access lock for %s rather than trying, rolling back and retrying', async operation => {
     const { a, employmentId } = await fixture();
     const input = { employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Fictional exclusive admission' };
     const approval = operation === 'approval'
@@ -238,22 +238,19 @@ describe('approved attendance clock-data corrections', () => {
           ? decideAttendanceCorrection(actor, { expectedStageIndex: 0, correctionId: approval.correctionId, decision: 'approved' })
           : requestAttendanceCorrection(actor, input);
         void command.catch(() => {});
-        // The blocking fallback appears only after the two distinct try transactions ended.
+        // One transaction waits on the Access lock instead of trying, rolling back and retrying.
         await expect.poll(async () => {
           const [row] = await tx.execute<{ n: number }>(sql`select count(*)::int as n from pg_locks l
             where l.locktype = 'advisory' and not l.granted and ${holder.pid}::int = any(pg_blocking_pids(l.pid))`);
           return row.n;
         }, { timeout: 5000 }).toBe(1);
-        expect(attempts).toHaveLength(3);
+        expect(attempts).toHaveLength(1);
         expect(attempts[0].acquired).toBeDefined();
-        expect(attempts[0].finished).toBeDefined();
-        expect(attempts[1].started - attempts[0].finished!).toBeGreaterThanOrEqual(75);
-        expect(attempts[1].finished).toBeDefined();
-        expect(attempts[2].started).toBeGreaterThanOrEqual(attempts[1].finished!);
-        expect(attempts[2].finished).toBeUndefined();
-        expect(admissions).toEqual([[operation, 'miss'], [operation, 'miss'], [operation, 'blockingFallback']]);
+        expect(attempts[0].finished).toBeUndefined();
+        expect(admissions).toEqual([]);
       });
       await command;
+      expect(admissions).toEqual([[operation, 'immediate']]);
     } finally {
       timings.__aihrPerfBeginTransaction = previousTiming;
       timings.__aihrPerfAttendanceExclusiveAdmission = previousAdmission;

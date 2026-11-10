@@ -2,7 +2,7 @@
 /** One locked fresh read for the page; only the minimized result is eligible for client props. */
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
-import {lockAccessConfigurationTx} from '../../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../../core/access-configuration-lock';
 import {accessConfigurationStore} from '../../core/access-configuration-store';
 import {parseAccessEditorMetadata} from '../../lib/access-editor-data';
 export const accessConfigurationNavigationAllowedSql=sql`app.access_capability_allowed('access.configure',NULL)`;
@@ -16,7 +16,7 @@ export function canConfigureAccess(ctx:SessionContext){
 }
 export function readAccessConfigurationEditor(ctx:SessionContext){
  return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const current=await accessConfigurationStore.loadCurrent(tx,ctx);
   const [row]=await tx.execute<{metadata:unknown}>(sql`select app.access_configuration_editor_metadata() as metadata`);
   const metadata=parseAccessEditorMetadata(row?.metadata,current.snapshot,current.evidence.knownCompanyIds);

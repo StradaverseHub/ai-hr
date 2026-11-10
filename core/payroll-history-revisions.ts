@@ -6,7 +6,7 @@ import {company,employment,person,payrollCycle,payrollBatch,payPeriod,payslip,st
  payrollHistoryImportRevision as revision,payrollHistoryImportEvent as historyEvent} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
 import {assertModuleGate} from './module-gate';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx,lockPayrollHistoryWriteTx} from './payroll-history-lock';
 import {resolvePayrollPermission,batchDownstreamWarnings} from './payroll';
 import {preparePayrollHistoryRevisionTx,toIsoPeriod} from './payroll-history-import';
@@ -261,7 +261,7 @@ async function failureEvent(ctx:SessionContext,id:string,kind:'failed'|'revert_f
 export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string;confirmReplacement:boolean;skipReplacements?:boolean;selectedRecordKeys?:string[];acknowledgeWarnings?:boolean;expectedCompanyId?:string}){
  assertModuleGate(ctx,'payroll');if(!uuid.test(input.attemptId))fail('Import attempt unavailable.');
  try{return await withTenant(ctx,async tx=>{
-  await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await principal(tx,ctx);
+  await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await principal(tx,ctx);
   const [source]=await tx.select().from(attempt).where(eq(attempt.id,input.attemptId)).for('update');if(!source)fail('Import attempt unavailable.');
   for(const id of source.companyIds)await permission(tx,ctx,id,'import');
   if(input.expectedCompanyId&&(!uuid.test(input.expectedCompanyId)||source.companyIds.some(id=>id!==input.expectedCompanyId)))fail('This record-based import is restricted to its selected company. Use the original-file workflow for a multi-company import.');
@@ -355,7 +355,7 @@ async function revertTargetsTx(tx:Tx,ctx:SessionContext,source:RevertSource,lock
 /** User-requested read-only eligibility review. No recovery event or money changes occur here. */
 export async function previewPayrollHistoryRevert(ctx:SessionContext,id:string){
  assertModuleGate(ctx,'payroll');if(!uuid.test(id))fail('Import attempt unavailable.');return withTenant(ctx,async tx=>{
-  await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await principal(tx,ctx);
+  await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await principal(tx,ctx);
   const [source]=await tx.select({id:attempt.id,companyIds:attempt.companyIds}).from(attempt).where(eq(attempt.id,id));if(!source)fail('Import attempt unavailable.');const plan=await revertTargetsTx(tx,ctx,source,false);
   return {attemptId:id,count:plan.targets.length,previewHash:plan.previewHash};
  });
@@ -363,7 +363,7 @@ export async function previewPayrollHistoryRevert(ctx:SessionContext,id:string){
 export async function revertPayrollHistoryUpload(ctx:SessionContext,id:string,expectedPreviewHash:string){
  assertModuleGate(ctx,'payroll');if(!uuid.test(id)||typeof expectedPreviewHash!=='string'||!/^([0-9a-f]{64})$/.test(expectedPreviewHash))fail('Review the current revert eligibility before confirming.');
  try{return await withTenant(ctx,async tx=>{
-  await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await principal(tx,ctx);
+  await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await principal(tx,ctx);
   const [source]=await tx.select({id:attempt.id,companyIds:attempt.companyIds}).from(attempt).where(eq(attempt.id,id)).for('update');if(!source)fail('Import attempt unavailable.');const plan=await revertTargetsTx(tx,ctx,source,true);if(plan.previewHash!==expectedPreviewHash)fail('The revert preview changed. Review eligibility again before confirming.');
   const changes:HistoryRevisionChange[]=[];for(const {identity,current,previous}of plan.targets){
    const [compensation]=await tx.insert(revision).values({tenantId:ctx.tenantId,recordId:identity.id,ordinal:current.ordinal+1,attemptId:id,snapshotId:previous?.snapshotId??null,previousRevisionId:current.id,kind:'revert',cycleName:previous?.cycleName??current.cycleName}).returning({id:revision.id});changes.push({recordId:identity.id,revisionId:compensation.id,previousRevisionId:current.id,snapshotId:previous?.snapshotId??null});

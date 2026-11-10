@@ -3,13 +3,13 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {withRewardsTenant} from '../../core/module-gate';
-import {lockAccessConfigurationTx} from '../../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../../core/access-configuration-lock';
 import {appendEvent,actorOf} from '../../db/events';
 import {RewardSetupError} from './setup-model';
 export async function setupAuthority(tx:Tx,companyId:string|null,operation:'library_view'|'manage'){
  const[r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_setup_allowed(${companyId}::uuid,${operation}) as allowed`);if(!r?.allowed)throw new RewardSetupError('forbidden','This Rewards configuration is not available to you.');
 }
-export async function setupTenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){if(!ctx.userId)throw new RewardSetupError('forbidden','Sign in to continue.');return withRewardsTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return fn(tx);});}
+export async function setupTenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){if(!ctx.userId)throw new RewardSetupError('forbidden','Sign in to continue.');return withRewardsTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,ctx.tenantId);return fn(tx);});}
 /** Pure setup presentation owns one database-enforced snapshot. Commands and audited
  * views must keep setupTenant: their Access lock and History append are intentional.
  * Authority is rechecked from native rows on every call; no cached grant or person

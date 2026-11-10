@@ -69,7 +69,7 @@ export async function voidImportedEmploymentsTx(tx:Tx,ctx:SessionContext,p:{atte
 
 const itemState=(value:unknown)=>(value??{}) as Partial<EmployeeFullItemState>;
 /** Same writer locks as the import transaction, always before the attempt row lock. */
-async function lockEmployeeImportWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
+async function lockEmployeeImportWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
 
 export const employeeFullRevertHandler:ImportRevertHandler={
  kind:'employee_full',

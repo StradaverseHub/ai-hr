@@ -14,7 +14,7 @@ import {eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import {aiModelRun,aiProviderConfig,roleAssignment} from '../db/schema';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {isAiPrincipalCurrentTx} from '../core/ai-principal';
 import {resolveActiveAiConfig} from '../core/ai-config';
 import {withAiAdmissionLifecycle} from '../core/ai-governance';
@@ -52,7 +52,7 @@ it('waits for Access without holding ai-control, then settles once after the int
  let holder:Promise<void>|undefined,probe!:()=>Promise<boolean>;
  try{
   await Promise.race([entered,outcome.then(()=>{throw Error('The fictional provider was not reached.');})]);
-  holder=withTenant(ctx(),async tx=>{await lockAccessConfigurationTx(tx,base.tenantId);probe=async()=>{const [row]=await tx.execute<{available:boolean}>(sql`select pg_try_advisory_xact_lock(hashtext('ai-control'),hashtext(${base.tenantId}::text)) as available`);return row.available;};accessEntered();await resumeAccess;});
+  holder=withTenant(ctx(),async tx=>{await lockAccessConfigurationWriteTx(tx,base.tenantId);probe=async()=>{const [row]=await tx.execute<{available:boolean}>(sql`select pg_try_advisory_xact_lock(hashtext('ai-control'),hashtext(${base.tenantId}::text)) as available`);return row.available;};accessEntered();await resumeAccess;});
   await Promise.race([held,holder.then(()=>{throw Error('The held interval was not reached.');})]);releaseProvider();
   expect(await waitingOnAccess()).toBe(true);expect(await probe()).toBe(true);
  }finally{releaseProvider();releaseAccess();await holder;await outcome;spy.mockRestore();}

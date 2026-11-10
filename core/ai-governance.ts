@@ -24,7 +24,7 @@ import { AI_FEATURES,isAiFeature,isTemplateOnlyAiFeature,type AiFeatureId } from
 import { resolveEntitlementsTx, getSetting } from './entitlements';
 import { assertAiProviderSnapshot, assertAiProviderSnapshotFeature, assertCurrentAiProviderSnapshotTx, type AiProviderSnapshot } from './ai-provider-snapshot';
 import type { AiAdmission,AiGovernance } from '../lib/ai/governance';
-import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {aiCentreActivity} from '../lib/ai/centre-activity';
 import {captureStrictAiSpendRoot,requiresAiTaskRoot,type StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 export type {StrictAiSpendRoot} from '../lib/ai/spend-allocation';
@@ -48,7 +48,7 @@ async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promi
  */
 export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  await assertFeatureUnpausedTx(tx,ctx,feature);
  await assertAiCentreRunningTx(tx,ctx);
  // WP12 (R8): inside an Assistant review-route command, that action's own pause key under hr_assistant (0696).
@@ -162,7 +162,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
    let breach=false;
    try { const observed=accounting.snapshot(actual),receipt=scope?.receipt();await withTenant(ctx,async tx=>{
     // Same order as admission. This is ownership only: role revocation must not erase actual usage.
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await tx.execute(sql`select app.ai_settle_observed(${admission.run_id}::uuid,${succeeded},${actual}::bigint,
     ${observed.providerObservationStatus},${observed.reportedInputTokens}::bigint,${observed.reportedOutputTokens}::bigint,${observed.reportedCachedInputTokens}::bigint,
     ${observed.openrouterAccountCostCredits}::numeric,${observed.observedRoundTripMs}::double precision)`);

@@ -955,7 +955,7 @@ export async function commitSectionImport(
     let step: WriteStep = 'person';
     try {
       const wrote=await withTenant(ctx,async tx=>{
-      await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+      await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
       // Writer locks first, then the attempt row: the same order as a revert, so the two cannot deadlock.
       if(p.history)await lockImportAttemptHeaderTx(tx,ctx,p.history.attemptId,'bank_statutory');
       const current=await analyze(ctx,p.section as ImportSection,p.records,tx,nominatedRow.result.rowNum);
@@ -1109,7 +1109,7 @@ export async function analyzeBankImportBatch(ctx:SessionContext,records:ImportRe
 export class BankImportRowRejectedError extends Error {}
 /** Caller commits the HR mutation, history item and queue checkpoint in ONE transaction. */
 export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{record:ImportRecord;binding:string;employmentId:string;companyId:string;attemptId:string;ordinal:number}){
- await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  await lockImportAttemptHeaderTx(tx,ctx,input.attemptId,'bank_statutory');
  const current=await analyze(ctx,'bank_statutory',[input.record],tx);

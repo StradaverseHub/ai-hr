@@ -3,7 +3,7 @@ import { liveArrangementsTx, pickArrangementOn } from './shift-arrangement-resol
 /** Canonical group controls. Exception revisions are immutable and forward dated. */
 import { and, asc, eq, gte, lte, inArray, sql } from 'drizzle-orm';
 import { withTenant, type Tx, type SessionContext } from '../db/client';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockLeaveDependenciesTx,lockLeaveDependencyConfigurationTx} from '../packs/leave/service';
 import { attendanceExceptionRevision, attendanceRule, employment, shift, rosterAssignment } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
@@ -54,7 +54,7 @@ export function saveScheduleGroupControl(ctx:SessionContext,p:{ruleId:string;kin
  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!isAdmin(ctx))throw new Error('Only an HR administrator can change Schedule Group controls.');
  return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [rule]=await tx.select().from(attendanceRule).where(eq(attendanceRule.id,p.ruleId)).for('update');
   if(!rule)throw new Error('Schedule Group not found.');
@@ -83,7 +83,7 @@ export async function assertDutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:r
  if(!isAdmin(ctx))throw new DutyRosterWriteRefusal('permission','Only an HR administrator can change the roster.');
  changes=changes.map(change=>({...change}));
  const ids=[...new Set(changes.map(c=>c.employmentId))];if(!ids.length)return;
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
  const employees=await tx.select({id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId}).from(employment).where(rosterUuidSet(employment.id,ids)).orderBy(asc(employment.id)).for('update');
  if(employees.length!==ids.length)throw new DutyRosterWriteRefusal('permission','An employee is unavailable in your company scope.');

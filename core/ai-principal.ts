@@ -3,7 +3,7 @@
 import { sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { AiGatewayError } from '../lib/ai/types';
-import { lockAccessConfigurationTx,lockAccessConfigurationReadTx } from './access-configuration-lock';
+import { accessLockModeHeldTx,lockAccessConfigurationWriteTx,lockAccessConfigurationReadTx } from './access-configuration-lock';
 /** False is an actual identity/snapshot refusal. SQL failures propagate and require rollback;
  * accounting may skip a private projection on false without pretending an aborted query succeeded. */
 export function isAiPrincipalCurrentTx(tx:Tx,supplied:SessionContext):Promise<boolean>{
@@ -23,8 +23,11 @@ async function readAiPrincipalTx(tx:Tx,supplied:SessionContext,isolation:'read c
      and app.current_user_id()=${ctx.userId}::uuid and current_setting('transaction_isolation')='read committed' as matches,
      current_setting('transaction_read_only')='on' as read_only`);
   if(carrier?.matches!==true)return false;
-  // Only read-only carriers whose callers do not require exclusive Access may share the barrier.
-  await (!requireExclusive&&carrier.read_only===true?lockAccessConfigurationReadTx:lockAccessConfigurationTx)(tx,ctx.tenantId);
+  // Only read-only carriers whose callers do not require exclusive Access may share the barrier. A write
+  // carrier that already holds the shared lock is an ordinary writer under the reader/writer lock: it never
+  // takes the exclusive lock later, so joining shared here cannot strand it waiting to upgrade.
+  const shared=!requireExclusive&&(carrier.read_only===true||await accessLockModeHeldTx(tx,ctx.tenantId)==='S');
+  await (shared?lockAccessConfigurationReadTx:lockAccessConfigurationWriteTx)(tx,ctx.tenantId);
  }
  const requiredMode=isolation==='read committed'
   ? sql`current_setting('transaction_isolation')='read committed'`

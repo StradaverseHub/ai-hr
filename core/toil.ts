@@ -18,7 +18,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { earnedCycleStart } from './leave';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx, accessLockModeHeldTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import {
   appUser,
@@ -329,6 +329,9 @@ async function ensureReplacementLeaveType(tx: Tx, tenantId: string): Promise<str
   const find = () => findReplacementLeaveTypeIdTx(tx, tenantId);
   const existing = await find();
   if (existing) return existing;
+  // Creating the type is a catalogue write. A clocking transaction runs on the shared lock only after
+  // finding the type present; if it has since been removed, refuse for a retry instead of writing here.
+  if (await accessLockModeHeldTx(tx, tenantId) === 'S') throw new LeaveDependencyUnavailable('busy');
   const [created] = await tx
     .insert(leaveType)
     // ADR-0077 slice 5 — `country` is left to the column default ON PURPOSE, and this is a known seam.
@@ -490,7 +493,7 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
   // (NULL), and a criteria object that is all-empty lists cannot masquerade as a restriction.
   const requestEligibility = cleanReplacementEligibility(p.requestEligibility);
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [row] = await tx
       .insert(toilPolicy)
@@ -1326,7 +1329,7 @@ export async function accrueToil(
     approvedOn: p.approvedOn ? new Date(p.approvedOn.getTime()) : undefined };
   if (!toilEnabled(ctx)) throw new ToilDisabledError();
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
     const [credit] = await tx.execute<{ acquired: boolean }>(sql`select pg_try_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + p.employmentId},0)) as acquired`);
@@ -2424,7 +2427,7 @@ export async function grantLeaveCredit(
   }
 
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
     // This command can create the replacement catalogue type as well as bank credit.
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
@@ -2805,7 +2808,7 @@ export async function grantLeaveCreditRowsTx(
   const approvedOn = p.approvedOn ?? new Date();
 
   {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
     // This command can create the replacement catalogue type as well as bank credit.
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
@@ -3005,7 +3008,7 @@ export async function reverseLeaveCredit(
   const today = p.today ?? todayInKualaLumpur();
 
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     // Legacy fallback may create the replacement catalogue type. Own configuration first.
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [initial] = await tx.select({id:toilAccrual.id,employmentId:toilAccrual.employmentId}).from(toilAccrual).where(eq(toilAccrual.id, p.accrualId)).limit(1);
@@ -3887,7 +3890,7 @@ export async function runToilExpiry(ctx: SessionContext, p: { today: string }): 
   p = { today: p.today };
   if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError();
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     // The shared executor may create the replacement catalogue entry, so this owner is exclusive.
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const nominated = await tx.select({ id: toilAccrual.id, employmentId: toilAccrual.employmentId }).from(toilAccrual)
@@ -3991,7 +3994,7 @@ export async function closeReplacementLeaveYear(
   p = { asOf: p.asOf };
   if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError();
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const empty: CloseReplacementYearResult = {
       processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0, skippedOutOfScope: 0,

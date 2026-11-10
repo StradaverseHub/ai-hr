@@ -12,7 +12,7 @@ import {saveProfileRoutingPolicy} from '../core/profile-routing';
 import {EMPTY_PROFILE_ROUTING} from '../lib/profile-routing-policy';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {setAiAllowance} from '../core/ai-management';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {prepareOwnProfileChangeSourceTx,confirmOwnProfileChangeSourceTx,reconcileOwnProfileChangeSourceTx,OwnProfileChangeSourceUnavailable} from '../core/assistant-actions/own-profile-change-source';
 import {OWN_PROFILE_CHANGE_ACTION,OwnProfileChangeNomination,OwnProfileChangeHumanContent,OwnProfileChangeConfirmation,type OwnProfileChangePreparedSource} from '../lib/assistant-actions/own-profile-change-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -71,7 +71,7 @@ describe('unmounted own ESS canonical approval-request source',()=>{
   let ready!:()=>void,failReady!:(error:unknown)=>void,release!:()=>void,pidReady!:(pid:number)=>void,pidFail!:(error:unknown)=>void;
   const start=new Promise<void>((yes,no)=>{ready=yes;failReady=no;}),finish=new Promise<void>(yes=>{release=yes;}),pidPromise=new Promise<number>((yes,no)=>{pidReady=yes;pidFail=no;});void pidPromise.catch(()=>{});
   const timeout=setTimeout(()=>{const failure=Error('profile source handshake timed out');failReady(failure);pidFail(failure);release();},10000);
-  const holder=withTenant(group(),async tx=>{await lockAccessConfigurationTx(tx,b.tenantId);ready();await finish;});void holder.catch(failReady);
+  const holder=withTenant(group(),async tx=>{await lockAccessConfigurationWriteTx(tx,b.tenantId);ready();await finish;});void holder.catch(failReady);
   let request:ReturnType<typeof confirm>|undefined;
   try{await start;request=withTenant(retainedCtx,async tx=>{const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);pidReady(row.pid);return confirmOwnProfileChangeSourceTx(tx,retainedCtx,retained,{action:OWN_PROFILE_CHANGE_ACTION,contractVersion:1,reviewedDigest:review.reviewedDigest});});void request.catch(pidFail);
    const pid=await pidPromise;let waiting=false;for(let tries=0;tries<100;tries++){const [row]=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_locks where pid=${pid} and locktype='advisory' and not granted) as waiting`);if(row.waiting){waiting=true;break;}await new Promise(yes=>setTimeout(yes,10));}

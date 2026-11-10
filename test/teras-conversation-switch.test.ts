@@ -17,7 +17,7 @@ import {terasOutcomeRecord,terasWorkerControl} from '../db/teras-schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {setWorkerSwitch,workerRunGate,WORKER_SWITCH_IDENTITY} from '../core/agent-registry/controls';
 import {setMandateStopSwitch} from '../core/mandates/mandates';
 import {conversationHarnessAvailableForPresentation,conversationRoute} from '../core/teras-wiring/switch';
@@ -105,7 +105,7 @@ describe('the Noveri conversation switch',()=>{
   const watchdog=setTimeout(()=>{expired=true;fail(Error('Access holder exceeded its fixture interval'));release();},8000);
   const holder=owner.db.transaction(async tx=>{
    await tx.execute(sql`set local lock_timeout='3s'`);
-   await lockAccessConfigurationTx(tx,b.tenantId);
+   await lockAccessConfigurationWriteTx(tx,b.tenantId);
    const [identity]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
    ready(identity.pid);
    await held;

@@ -8,13 +8,13 @@ import {DocumentMetadata as C,type DocumentMetadataHuman as Human} from '../../l
 import {withAgentActionGuard} from './agent-action-guard';
 import type {AssignedSubject} from './generic-assigned-review-store';
 import {assertWorkforceEmploymentTx} from '../workforce-access';
-import {lockAccessConfigurationTx} from '../access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../access-configuration-lock';
 import {prepareEmployeeDocumentMetadataTx,updateEmployeeDocumentMeta} from '../employee-documents';
 export class DocumentMetadataUnavailable extends Error{constructor(){super('Please reopen document details on the Personnel screen.');this.name='DocumentMetadataUnavailable';}}
 export const documentMetadataUnavailable=():never=>{throw new DocumentMetadataUnavailable();};
 const fail=documentMetadataUnavailable,hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 type Subject=AssignedSubject&{employeeName:string;employeeCode:string|null;companyName:string;scopeDigest:string};
-async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();await lockAccessConfigurationTx(tx,fresh.tenantId);return fresh;}
+async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();await lockAccessConfigurationWriteTx(tx,fresh.tenantId);return fresh;}
 async function subject(tx:Tx,ctx:SessionContext,id:string):Promise<Subject>{
  const [nomination]=await tx.execute<{scope:{employmentId:string;personId:string;companyId:string;scopeDigest:string}|null}>(sql`select app.assistant_document_metadata_scope(${id}::uuid) as scope`);const scope=nomination?.scope;if(!scope||scope.personId===ctx.personId)return fail();
  await assertWorkforceEmploymentTx(tx,ctx,scope.employmentId,'maintain');

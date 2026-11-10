@@ -10,8 +10,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {assertReadCompositionPrincipalTx} from './read-composition-principal';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
-import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
+import { lockAccessConfigurationTx, lockAccessConfigurationWriteTx } from './access-configuration-lock';
+import { lockLeaveDependenciesTx, lockLeaveDependenciesWaitTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
 import { assertCanDecide, assertAssignedWorkPrincipalTx, decideByRoleForKnownSubject, isApprovalDecisionRefusal, subjectPersonIdsTx } from './approvals';
 import {assertMyTeamSubjectTx} from './my-team-scope';
@@ -3409,12 +3409,10 @@ export async function requestLeave(
   const perform = async (tx: Tx, sharedAccess = false) => {
     // Rights first, then shared source configuration. An unauthorized subject is refused by the
     // original gate before acquiring any employment lock or reading leave policy/balance facts.
-    if (sharedAccess) {
-      await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + ctx.tenantId},0))`);
-    } else {
-      await lockAccessConfigurationTx(tx, ctx.tenantId);
-    }
-    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+    // Applying leave only needs configuration stable. The employment lock below serialises the balance,
+    // duplicate and borrowing checks, so both courses share the Access lock and wait for short holders.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, []);
     if (p.document) p = { ...p, hasDocument: true };
     // ── On-behalf gate (5206539f) — THE FIRST THING THIS FUNCTION DOES, and deliberately ────────────────
     // Submitting leave for an employment that is not the caller's own requires `leave.apply_on_behalf`.
@@ -3466,7 +3464,7 @@ export async function requestLeave(
       throw new LeaveOnBehalfNotAllowedError();
     }
 
-    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+    await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, [p.employmentId]);
     const [currentSubject] = await readSubject();
     // The initial row nominated/authorized a subject; use it only if the same canonical projection
     // still holds after acquiring ownership. All selected facts are scalar/date values, fixed order.
@@ -5962,7 +5960,7 @@ async function assertInformationLeavePeriodTx(tx:Tx,asOf:string,scope:{employmen
 async function lockLeaveCohortDependenciesTx(tx: Tx, ctx: SessionContext, scope: {
   employmentIds?: readonly string[]; companyIds?: readonly string[]; gradeIds?: readonly string[];
 }, writes = true): Promise<void> {
-  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
   if (!writes) return;
   const ids = scope.employmentIds?.slice(), companies = scope.companyIds?.slice(), grades = scope.gradeIds?.slice();
@@ -5992,7 +5990,7 @@ async function readLeaveRequestWithDependenciesTx<T extends { employmentId: stri
   tx: Tx, ctx: SessionContext, requestId: string, readCurrent: () => PromiseLike<readonly T[]>,
   sharedAccessHeld = false,
 ): Promise<T> {
-  if (!sharedAccessHeld) await lockAccessConfigurationTx(tx, ctx.tenantId);
+  if (!sharedAccessHeld) await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
   const [nominated] = await tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
     .where(eq(leaveRequest.id, requestId)).limit(1);
@@ -6108,7 +6106,7 @@ const captureLeaveDecisionContext = (ctx: SessionContext): SessionContext => ({ 
  roles: ctx.roles?.slice(), grants: ctx.grants?.map(g => ({ ...g })) });
 export async function lockReviewedLeaveDecisionSourceTx(tx: Tx, supplied: SessionContext, selection: {leaveRequestId:string;currentStepId:string|null}, mode:'pending'|'recorded') {
  const ctx = captureLeaveDecisionContext(supplied), p = structuredClone(selection);
- await lockAccessConfigurationTx(tx, ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
  await assertAssignedWorkPrincipalTx(tx, ctx);
  await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
  const nominate = async () => {
@@ -7065,7 +7063,7 @@ export async function decideLeaveCancellation(
   existingTx?: Tx,
 ) {
   return withLeaveTx(ctx, existingTx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     // r301 hand-fix (verifier defect 1) — LOCKS, leave row first, then the cancellation: the order
     // requestLeaveCancellation and adminCancelLeave take them in, so the three cannot deadlock. Two approvers
@@ -11351,7 +11349,7 @@ export async function reprojectEntitlementForEmployment(
   const asOf = p.asOf ?? todayInKualaLumpur();
   const none = { affected: 0, totalDelta: 0 };
   const run=async(tx:Tx)=>{
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     // 1. Resolve the employment + its company's country/leave-cycle context.
     const readEmployment = () => tx

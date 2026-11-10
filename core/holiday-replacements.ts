@@ -2,7 +2,7 @@
 import {createHash} from 'node:crypto';
 import {and,asc,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockLeaveDependenciesTx,lockLeaveDependencyConfigurationTx} from '../packs/leave/service';
 import {actorOf,appendEvent} from '../db/events';
 import {attendance,company,employment,holiday,replacementHoliday,replacementHolidayPolicy,replacementHolidayRevision,replacementHolidayQueue} from '../db/schema';
@@ -30,7 +30,7 @@ export function saveReplacementHolidayPolicy(ctx:SessionContext,p:{companyId:str
  if(p.reason.trim().length<3||p.reason.trim().length>2000)throw new Error('Record the policy basis in 3 to 2000 characters.');
  if(p.regime==='MY_EA_60D'&&(p.restMode!=='last_weekly_rest'||!p.halfEligible))throw new Error('The Employment Act policy uses the designated last weekly rest day and includes half working days. Use an explicitly confirmed company rule for a different policy.');
  return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const [permission]=await tx.execute(sql`select app.is_admin_for(${p.companyId}::uuid) as allowed`) as unknown as {allowed:boolean}[];
   if(!permission?.allowed)throw new Error('You cannot administer this company.');
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
@@ -48,7 +48,7 @@ async function saveRevision(tx:Tx,ctx:SessionContext,row:typeof replacementHolid
 export async function reconcileReplacementHolidaysTx(tx:Tx,ctx:SessionContext,employmentId:string,options?:{sourceWindow:{from:string;to:string}}){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  options=options?.sourceWindow?{sourceWindow:{...options.sourceWindow}}:options;
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  await authority(tx,employmentId);
  await lockLeaveDependenciesTx(tx,ctx.tenantId,[employmentId]);
  const [emp]=await tx.select().from(employment).where(eq(employment.id,employmentId)).for('update');if(!emp)throw new Error('Employee unavailable.');
@@ -154,7 +154,7 @@ export function adjustReplacementHoliday(ctx:SessionContext,p:{allocationId:stri
  if(p.reason.trim().length<3||p.reason.trim().length>2000)throw new Error('Record an adjustment reason in 3 to 2000 characters.');
  if(p.date&&!isoDate(p.date))throw new Error('Choose a valid replacement date.');
  return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const [found]=await tx.select().from(replacementHoliday).where(eq(replacementHoliday.id,p.allocationId));if(!found)throw new Error('Replacement unavailable.');
   await authority(tx,found.employmentId);
   await lockLeaveDependenciesTx(tx,ctx.tenantId,[found.employmentId]);

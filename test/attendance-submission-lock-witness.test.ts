@@ -17,7 +17,8 @@ beforeAll(migrateTestDb);
 afterAll(closeAll);
 
 const dialect=new PgDialect();
-const lockStatement='select pg_advisory_xact_lock(hashtextextended($1,0))';
+// The bounded Access lock first tries without waiting, in one statement.
+const lockStatement='select pg_try_advisory_xact_lock(hashtextextended($1,0)) as acquired';
 const sharedLockStatement='select pg_advisory_xact_lock_shared(hashtextextended($1,0))';
 
 function observedCarrier(tx:Tx,tenantId:string,companyId:string,shared:boolean,afterEpoch?:()=>Promise<void>){
@@ -30,7 +31,7 @@ function observedCarrier(tx:Tx,tenantId:string,companyId:string,shared:boolean,a
    const key=query.params.length===1?query.params[0]:undefined;
    if(statementText===lockStatement&&key==='access-configuration:'+tenantId){
     access++;
-    if(shared)return target.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`);
+    if(shared)return target.execute(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) as acquired`);
    }
    const result=await target.execute(statement);
    // The one application snapshot follows correction INSERT, which already froze the epoch.

@@ -3,7 +3,7 @@ import {asc,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {appUser,assignment,compensation,domainEvent,employment} from '../db/schema';
 import {withTenant} from '../db/client';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {WorkforceAccessError} from '../core/workforce-access';
 import {hireEmployee,setEmploymentGrade,setEmploymentAssignment} from '../core/org';
 import {setCompensation} from '../core/comp';
@@ -42,7 +42,7 @@ it('reads the exact Movement History through a held Access lock and refuses arch
  const expected=await movementHistoryWithTypes(ctx,id,{includeResignation:true});
  expect(expected.movements.some(row=>row.kind==='hired')).toBe(true);
  await owner.withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   let deadline:ReturnType<typeof setTimeout>|undefined;
   try{
    await expect(Promise.race([

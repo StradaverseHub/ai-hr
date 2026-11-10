@@ -46,7 +46,7 @@ import {leaveCreditClaimReviewTx} from './toil';
  */
 import { and, desc, eq, inArray, isNull, ne,sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { lockLeaveDependencyConfigurationTx,lockLeaveDependencyReadConfigurationTx, lockLeaveDependenciesTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 import {scopeOf} from '../lib/delegation-scope';
@@ -543,7 +543,7 @@ export async function prepareReplacementLeaveRequestTx(tx:Tx,ctx:SessionContext,
   // validate — it is derived inside the transaction below, from the attendance record.
   const aTotals = totalsFor(p.unit, aLines);
 
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
     const [visible]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
     if(!visible)throw new ReplacementRequestInvalidError('No employment on record for this request.');
@@ -998,7 +998,7 @@ export async function decideReplacementLeaveRequestTx(
   p = { requestId: p.requestId, decision: p.decision, note: p.note,
     decidedAt: p.decidedAt ? new Date(p.decidedAt.getTime()) : undefined };
   {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     // Approval may create the shared replacement catalogue entry; own the exclusive phase first.
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [nominated] = await tx.select({ employmentId: replacementLeaveRequest.employmentId }).from(replacementLeaveRequest)

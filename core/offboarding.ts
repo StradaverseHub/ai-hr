@@ -119,7 +119,7 @@ export async function decideResignation(
     if (p.decision === 'accepted') {
       // Acceptance changes employment/assignment/reporting dependencies as well as leave state.
       // Preserve Access-before-dependency order: the existing consequence guard repeats this lock.
-      await tx.execute(sql`select app.access_workforce_write_lock()`);
+      await tx.execute(sql`select app.access_configuration_write_lock()`);
       await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
       const [nominated] = await tx.select({ employmentId: resignationRequest.employmentId })
         .from(resignationRequest).where(eq(resignationRequest.id, p.requestId)).limit(1);

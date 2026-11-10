@@ -1,4 +1,4 @@
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {AiAllowanceError,AiGatewayError} from '../lib/ai/types';
@@ -6,7 +6,7 @@ import {aiCentreActivity,runAiCentreActivity,trackAiCentreFunctions} from '../li
 
 /** The SQL owner serialises this check with stop writes; hold tx through a native effect. */
 export async function assertAiCentreRunningTx(tx:Tx,ctx:Pick<SessionContext,'tenantId'>,expected?:number,additionalFunctions:readonly string[]=[]):Promise<number>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const [row]=await tx.execute<{generation:number}>(sql`select app.ai_centre_assert_running(${expected??aiCentreActivity(ctx.tenantId)?.generation??null}::integer) as generation`);
   if(row?.generation===null)throw new AiAllowanceError('paused');
   if(!Number.isSafeInteger(row?.generation)||row.generation<0)throw new AiGatewayError('AI controls could not be confirmed.');

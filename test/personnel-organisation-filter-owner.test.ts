@@ -6,7 +6,7 @@ import * as s from '../db/schema';
 import {hireEmployee,setEmploymentAssignment} from '../core/org';
 import {listEmployeesPage,countEmployeesByStatus,personnelFilterChoices,readPersonnelOverview} from '../core/read';
 import {createPersonnelPrivateSearch,readPersonnelPrivateCriteria,personnelPrivateSearchAvailable,privateSearchHash} from '../core/personnel-private-search';
-import {lockAccessConfigurationReadTx,lockAccessConfigurationTx,tryLockAccessConfigurationReadTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx,tryLockAccessConfigurationReadTx} from '../core/access-configuration-lock';
 import {canOpenWorkforce,personnelMaintenanceCompanyIds,workforceViewScope} from '../core/workforce-access';
 import {canConfigureAccess} from '../core/access-configuration-editor';
 import {readShellNavigationAccess} from '../core/shell-navigation-access';
@@ -111,7 +111,7 @@ it('completes authorized Personnel scope, list, export and private search while 
   const employee=await hire('Fictional nonblocking reader');
   const input = { companyIds: [b.companyId], limit: 1, offset: 0 };
   await owner.withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     let timer:ReturnType<typeof setTimeout>|undefined;
     try {
       await Promise.race([
@@ -165,7 +165,7 @@ it('batches current shell navigation permissions and onboarding status in one tr
 it('reads the shared navigation hints while an Access writer holds the tenant lock', async () => {
   const expected = await readShellNavigationAccess(ctx, true);
   await owner.withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
       await expect(Promise.race([
@@ -183,7 +183,7 @@ it('reads the shared navigation hints while an Access writer holds the tenant lo
 it('recovers a standalone Personnel read when a brief Access writer releases its lock', async () => {
   let read: ReturnType<typeof workforceViewScope> | undefined;
   await owner.withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     read = workforceViewScope(ctx, { personnelList: true });
     // The standalone snapshot can finish while the writer still holds its lock.
     await new Promise(resolve => setTimeout(resolve, 80));

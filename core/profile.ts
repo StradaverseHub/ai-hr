@@ -5,16 +5,16 @@ import {createHash} from 'node:crypto';
 import {profileVisibilityFingerprint} from '../lib/profile-policy-fingerprint';
 import {getSetting} from './entitlements';
 import {assertAiPrincipalTx} from './ai-principal';
-import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {lockLeaveDependencyConfigurationTx,lockPersonLeaveDependenciesWaitTx} from './leave-dependency-lock';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {pgSqlState} from '../lib/db-error';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
-import {lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx,lockProfileSubjectTx,lockProfileValueSharedTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import {isProfilePhotoProposal} from '../lib/profile-photo-proposal';
 import {readProfileRoutingPolicy,resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate,ProfileRoutingError,type ProfileRouteDecisionSubject} from './profile-routing';
 import type {ProfilePresentationPolicy} from './profile-edit-policy';
 import {projectOwnProfileProposal,ownProfileProposalIsIntact} from '../lib/personnel-ess-visibility';
-import {freshProfileEditPolicyTx,freshProfilePresentationPolicyTx} from './profile-edit-policy';
+import {freshProfileEditPolicySharedTx,freshProfileEditPolicyTx,freshProfilePresentationPolicyTx} from './profile-edit-policy';
 import {EssProfileError,type EssProfileProposal} from '../lib/personnel-ess-model';
 import {personnelField,PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import { isCalendarDate } from '../lib/calendar-date';
@@ -364,9 +364,10 @@ export async function updateOwnContact(
  */
 type OwnProfileChangeInput={employmentId:string;proposed:ProfileChangeProposed|EssProfileProposal;attachments?:import('../lib/profile-attachment').ProfileAttachmentInput[]};
 async function prepareProfileChangeRequestTx(tx:Tx,ctx:SessionContext,p:OwnProfileChangeInput){
-  await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-  const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
-  const {ownProfileSubjectTx,prepareProfileProposalTx}=await import('./profile-edit');
+  const {lockOwnProfileValueSubjectTx,ownProfileSubjectTx,prepareProfileProposalTx}=await import('./profile-edit');
+  // A change request stores a proposal and writes no master value; it joins every lock in shared mode.
+  await lockOwnProfileValueSubjectTx(tx,ctx,p.employmentId);
+  const policy=await freshProfileEditPolicySharedTx(tx,ctx);ctx=policy.ctx;
   await ownProfileSubjectTx(tx,ctx,p.employmentId);
   // Legacy rows remain decidable/readable; no new request may bypass the versioned owner.
   if(!p.proposed||typeof p.proposed!=='object'||Array.isArray(p.proposed)||!('v' in p.proposed)||p.proposed.v!==2)throw new EssProfileError('invalid');
@@ -479,9 +480,9 @@ export async function decideProfileChange(
   const reason = clean(p.reason);
   if (p.decision === 'rejected' && reason === null) throw new ProfileChangeReasonRequiredError();
   const run=async (tx:Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Serialize the decision with configuration revocation before loading any proposal or master data.
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     ctx=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
     const [req] = await tx
       .select()
@@ -595,7 +596,7 @@ export async function decideProfileChange(
 /** Bounded decision metadata for the existing Personnel rejection workflow. Values never leave this
  * owner. Photo/evidence/register proposals remain on the native queue. This is not new authority. */
 export async function profileRequestRejectionContextTx(tx:Tx,ctx:SessionContext,requestId:string,mode:'pending'|'recorded'='pending'){
- await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
  const [req]=await tx.select().from(profileChangeRequest).where(and(eq(profileChangeRequest.id,requestId),eq(profileChangeRequest.tenantId,ctx.tenantId),sql`octet_length(${profileChangeRequest.proposed}::text)<=65536`)).limit(1).for('update');
  if(!req||req.status!==(mode==='pending'?'pending':'rejected')||mode==='pending'&&(req.decisionReason!==null||req.decidedAt!==null)||req.personId===ctx.personId)throw new EssProfileError('unavailable');
@@ -675,9 +676,11 @@ export async function setPersonComplianceFields(
   if (Object.keys(personSet).length === 0) throw new Error('Nothing to change.');
 
   const run = async (tx:Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    // Gender, marital status and date of birth feed leave cohorts, so serialise with leave on this person's
+    // employments rather than taking the tenant-wide configuration lock exclusively.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockPersonLeaveDependenciesWaitTx(tx,ctx.tenantId,p.employmentId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
     if(!administrator){const [direct]=await tx.execute<{allowed:boolean}>(sql`select app.profile_direct_subject(${p.employmentId}::uuid) as allowed`);if(!direct?.allowed)throw new EssProfileError('permission');}
     // Resolve the person through the authenticated subject or existing administrator scope.
     const [emp] = await tx
@@ -687,6 +690,7 @@ export async function setPersonComplianceFields(
       .limit(1);
     if (!emp) throw new Error('Employment not found (or not visible).');
     const personId = emp.personId;
+    await lockProfileSubjectTx(tx,ctx.tenantId,personId);
 
     const [before] = await tx
       .select({ gender: person.gender, maritalStatus: person.maritalStatus, dateOfBirth: person.dateOfBirth })
