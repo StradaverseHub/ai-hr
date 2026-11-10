@@ -20,8 +20,10 @@ import {createLoan,prefillLoansForBatch} from '../core/loans';
 import {listPayComponents,seedPayComponentCatalog,setEmploymentPayComponent} from '../core/pay-components';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
-/** sha256 of the canonical document produced by the base commit for this exact fixture. */
-const GOLDEN='unset';
+/** sha256 of the canonical document the base commit produced for this exact fixture: focused CI run
+ * 42812523075 on 9b94dafef plus this file only (Chen's payroll-input bonus and overtime are recorded but
+ * not paid, because the typed pay component path pays from items). */
+const GOLDEN='13f356722b8a12c17c3f6c716f4f1760785e93172519bbeefa98318d3e2da142';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T/;

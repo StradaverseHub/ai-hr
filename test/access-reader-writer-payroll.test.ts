@@ -191,6 +191,8 @@ describe('(M) compensation against an in-flight payroll run',()=>{
 });
 
 describe('(M) bonus payroll input against a running process',()=>{
+ // The payroll-input bonus is paid on the classic earnings path; the typed item path pays from items.
+ beforeEach(async()=>{await setModule(b.tenantId,'typed_pay_components',null);});
  it('refuses a bonus written while the run is processing instead of losing it',async()=>{
   const a=await entitledCtx(b);
   const e=await worker('Bonus',3900);
