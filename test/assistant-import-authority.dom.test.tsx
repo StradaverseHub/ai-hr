@@ -16,6 +16,8 @@ beforeEach(()=>{vi.resetAllMocks();m.admission=null;
  // Explicit transaction double for the real control boundary. This fixture still tests native
  // authority/dispatch; real off/stop behavior is covered by ai-centre-operation-boundaries.test.ts.
  m.tx.execute.mockImplementation(async(query:SQL)=>{const {sql,params}=new PgDialect().sqlToQuery(query);
+  // 11c4b5407 bounds Access waits: the uncontended lock is one try-lock round trip that reports it acquired.
+  if(sql.includes('pg_try_advisory_xact_lock('))return [{acquired:true}];
   if(sql.includes('pg_advisory_xact_lock'))return [];
   if(sql.includes('app.ai_centre_assert_running('))return [{generation:0}];
   if(sql.includes('app.ai_centre_read_allowed(')&&['read:operation_assistant_import','read:operation_assistant_import_employee'].includes(String(params[0])))return [{allowed:true}];

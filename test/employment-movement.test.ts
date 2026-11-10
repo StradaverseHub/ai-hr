@@ -36,7 +36,6 @@ import { createMovementEvent, movementCurrentState, movementDetail, movementHist
 import { sweepDueMovements } from '../core/movement-apply';
 import * as schema from '../db/schema';
 import * as database from '../db/client';
-import { pgSqlState } from '../lib/db-error';
 import { expectNoLeakedValue } from './helpers/leaf-values';
 
 let b: Base;
@@ -80,12 +79,28 @@ async function openAssignment(employmentId: string) {
 }
 
 describe('movementHistory — projection over the domain_event ledger', () => {
-  it('shares the Access lock with readers and waits for exclusive owners', async () => {
+  // d584bb946 moved the standalone Movement History onto the authorized Personnel snapshot
+  // (docs/adr/2026-11-06-personnel-read-snapshots.md): it linearizes at snapshot admission and does
+  // not take the tenant Access mutex, so neither a shared nor an exclusive Access owner delays it.
+  // Every withTenant transaction still carries a 500 ms lock_timeout, so any Access wait would fail
+  // with 55P03 rather than pass, and the 2 s deadline refuses a wait outside that transaction.
+  it('reads from its Personnel snapshot without waiting for shared or exclusive Access owners', async () => {
     const employee = await hireOne();
     const ctx = adminCtx(b);
     const read = () => movementHistory(ctx, employee.employmentId);
     const expected = await read();
     expect(expected.some(row => row.kind === 'hired')).toBe(true);
+    const withoutWaiting = async () => {
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          read(),
+          new Promise<never>((_, reject) => { deadline = setTimeout(() => reject(new Error('Movement History waited for Access')), 2000); }),
+        ]);
+      } finally {
+        clearTimeout(deadline);
+      }
+    };
 
     const key = 'access-configuration:' + b.tenantId;
     const withTenant = database.withTenant;
@@ -99,11 +114,11 @@ describe('movementHistory — projection over the domain_event ledger', () => {
     try {
       await owner.client.begin(async holder => {
         await holder`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`;
-        expect(await read()).toEqual(expected);
+        expect(await withoutWaiting()).toEqual(expected);
       });
       await owner.client.begin(async holder => {
         await holder`select pg_advisory_xact_lock(hashtextextended(${key},0))`;
-        await expect(read()).rejects.toSatisfy(error => pgSqlState(error) === '55P03');
+        expect(await withoutWaiting()).toEqual(expected);
       });
     } finally {
       spy.mockRestore();

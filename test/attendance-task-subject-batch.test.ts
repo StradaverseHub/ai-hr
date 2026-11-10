@@ -8,6 +8,7 @@ import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import {client,withTenant,type SessionContext} from '../db/client';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {pendingAttendanceTaskMetadata,requestAttendanceCorrection} from '../core/attendance';
+import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 import {comparePendingHeaderPrototype} from './helpers/attendance-task-header-prototype';
@@ -63,6 +64,12 @@ it('keeps the exact uncapped actionable queue while reducing repeated administra
  const hire=(name:string)=>hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const subject=await hire('Fictional retained metadata subject'),manager=await hire('Fictional metadata manager');
  await setReportingLine(admin,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
+ // 28c8b1348: a new application needs a saved, enabled route. Configure the same direct-manager (HR
+ // administrator alternate) route an HR administrator saves for the demo company (a74b231e6), so the
+ // 211 applications keep the administrator and manager decision audience this comparison measures.
+ await saveAttendanceWorkflow(admin,{companyId:b.companyId,code:'SUBJECT_BATCH',name:'Fictional corrections route',applicationType:'irregularity',priority:100,criteria:{},
+  stages:[{name:'Manager review',level:{kind:'direct_manager',employmentId:null,alternates:[{kind:'hr_admin',employmentId:null}]}}],active:true});
+ await setAttendanceWorkflowEnabled(admin,b.companyId,'irregularity',true);
  const login=async(personId:string,role:'employee'|'manager'):Promise<SessionContext>=>({...admin,userId:await createAppUser(b.tenantId,personId,role),personId,roles:[role],grants:[{role,companyId:b.companyId}]});
  const self=await login(subject.personId,'employee'),reviewer=await login(manager.personId,'manager');
  const ids:string[]=[];const today=todayInKualaLumpur(),fixtureStarted=performance.now();
