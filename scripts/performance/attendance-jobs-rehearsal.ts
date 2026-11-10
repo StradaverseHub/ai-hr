@@ -11,7 +11,7 @@
  * Before each, the synchronous path it replaces runs on SYNC_EMPLOYEES employees (another day) under the same probes,
  * so the before / after holds are measured on the same host.
  * Env: DATABASE_URL (app), MIGRATION_DATABASE_URL (owner), REHEARSAL_PORT, BASE_EMPLOYEES (3000), HISTORY_DAYS (20),
- * MULTI_EMPLOYEES (600), MULTI_DAYS (10), SYNC_EMPLOYEES (1200), BASELINE_SECONDS (15).
+ * MULTI_EMPLOYEES (600), MULTI_DAYS (10), SYNC_EMPLOYEES (1200), JOB_EMPLOYEES (the one-day file, default all), BASELINE_SECONDS (15).
  */
 import '../lib/stub-server-only';
 import {spawn,type ChildProcess} from 'node:child_process';
@@ -25,7 +25,7 @@ const port=required('REHEARSAL_PORT',process.env.REHEARSAL_PORT);
 const OWNER_URL=required('MIGRATION_DATABASE_URL',process.env.MIGRATION_DATABASE_URL);
 for(const url of [required('DATABASE_URL',process.env.DATABASE_URL),OWNER_URL])if(new URL(url).port!==port)throw new Error('Refusing: rehearsal runs only against the disposable cluster port.');
 const BASE=Number(process.env.BASE_EMPLOYEES??3000),HISTORY=Number(process.env.HISTORY_DAYS??20);
-const MULTI_EMPLOYEES=Number(process.env.MULTI_EMPLOYEES??600),MULTI_DAYS=Number(process.env.MULTI_DAYS??10),SYNC_EMPLOYEES=Number(process.env.SYNC_EMPLOYEES??1200);
+const MULTI_EMPLOYEES=Number(process.env.MULTI_EMPLOYEES??600),MULTI_DAYS=Number(process.env.MULTI_DAYS??10),SYNC_EMPLOYEES=Number(process.env.SYNC_EMPLOYEES??1200),JOB_EMPLOYEES=Number(process.env.JOB_EMPLOYEES??BASE);
 if(process.env.AUDIT_HASH_CHAIN_ENABLED === 'true'){/* already armed by the caller */}else process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 // The harness seed writes through the owner connection named here (the rehearsal database's owner).
@@ -128,7 +128,7 @@ async function main(){
  const syncFile=['staff,time',...codes.slice(0,SYNC_EMPLOYEES).flatMap((e,i)=>[`${e.code},${syncDay} ${hm(8*60+30+i%45)}`,`${e.code},${syncDay} ${hm(17*60+30+i%61)}`])].join('\n');
  await measuredSync('clockingSynchronousBefore',()=>commitClockingImport(admin,{mappingId:BUILTIN_MAPPING_ID,text:syncFile,fileName:'sync.csv',fileBytes:Buffer.byteLength(syncFile)}));
  // 1 · one day, every employee, in and out (cards for half, codes for the rest).
- const oneDay=['staff,time',...codes.flatMap((e,i)=>[`${i%2?e.card:e.code},${importDay} ${hm(8*60+30+i%45)}`,`${i%2?e.card:e.code},${importDay} ${hm(17*60+30+i%61)}`])].join('\n');
+ const oneDay=['staff,time',...codes.slice(0,JOB_EMPLOYEES).flatMap((e,i)=>[`${i%2?e.card:e.code},${importDay} ${hm(8*60+30+i%45)}`,`${i%2?e.card:e.code},${importDay} ${hm(17*60+30+i%61)}`])].join('\n');
  await measured('clockingOneDay',async()=>(await startClockingImportJob(admin,{mappingId:BUILTIN_MAPPING_ID,text:oneDay,fileName:'one-day.csv',fileBytes:Buffer.byteLength(oneDay),operationKey:randomUUID()})).job.id);
  // 2 · several days for fewer employees: the largest steps.
  const multiFrom=addDays(importDay,1);

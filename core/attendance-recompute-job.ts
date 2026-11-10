@@ -44,7 +44,7 @@ type StepPayload={windows:Window[]};
 type Day={employmentId:string;date:string};
 /** Stored days re-worked per step. One day costs a schedule and calculation of its own (tens of milliseconds), so a
  * long range splits one employee into several windows and a one-day scope packs several employees together. */
-export const ATTENDANCE_RECOMPUTE_STEP_DAYS=Number(process.env.ATTENDANCE_RECOMPUTE_STEP_DAYS??4);
+export const ATTENDANCE_RECOMPUTE_STEP_DAYS=Number(process.env.ATTENDANCE_RECOMPUTE_STEP_DAYS??2);
 const STEP_WINDOWS=8;
 const nextDay=(date:string)=>new Date(Date.parse(`${date}T00:00:00Z`)+86_400_000).toISOString().slice(0,10);
 /** Steps of windows in employment-id order: an employee's days split into windows of at most `perStep` days, and

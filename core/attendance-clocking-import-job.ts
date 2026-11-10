@@ -45,9 +45,11 @@ export const CLOCKING_IMPORT_CHUNK_BUDGET_MS=Number(process.env.CLOCKING_IMPORT_
 /** Log lines written per finalize transaction (no tenant-wide lock is taken for them). */
 const LINE_BATCH=2000;
 /** Employees packed into one step, bounded by their lines: each call to the day writer has a fixed cost (schedule,
- * policy and payroll reads), so a one-day file packs several employees, while an employee with many days is alone. */
-export const CLOCKING_IMPORT_STEP_LINES=Number(process.env.CLOCKING_IMPORT_STEP_LINES??24);
-const STEP_EMPLOYEES=8;
+ * policy and payroll reads), so a one-day file packs two employees, while an employee with more days is alone. The
+ * 3,000-employee rehearsal on a heavily loaded host held the tenant locks up to 2.7 s with eight one-day employees per
+ * step; one or two keep a step near one clock-in transaction there (and well under 100 ms on a quiet host). */
+export const CLOCKING_IMPORT_STEP_LINES=Number(process.env.CLOCKING_IMPORT_STEP_LINES??4);
+const STEP_EMPLOYEES=2;
 /** Detail of a line whose employee was not imported because the job stopped or that employee's step was refused. */
 export const CLOCKING_NOT_IMPORTED='not_imported';
 
