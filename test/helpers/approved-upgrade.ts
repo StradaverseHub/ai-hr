@@ -202,7 +202,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5035_leave_stage_digests':'494012354aa83806eee58e6c4476016cc2534ec255b58feacd523b0f784638d1',
  '5036_leave_type_pending_year_cycle':'451ac2eefb07ca27865ea92f60bd7819f9882156c7dda88b1686ef4eace69324',
  '5040_roster_bulk_jobs':'2c53adf60304ed9135c24242c6e7b3165459618f2d60f35ecf09ad0d1004e5cb',
- '5041_bulk_job_queue_and_watch':'04622440b5568f374fe6ab0e7260351114464253fbbc74b86daaf185b1b427c0',
+ '5041_bulk_job_queue_and_watch':'2597d98df5afbbcb1d7dea7a31c1d09c5902753ebc04a40003992dbc8b9d4e2d',
  '5045_attendance_bulk_jobs':'94efcd4b24a895146afa3d8d6da9283648b1f5c85d41ed197bf6f25b7e089f7f',
  '5050_payroll_processing_status':'1e9ca4115879eff695e815bc7e83ce18eef78ce0982da05a8d292eb5a08bc7d1',
  '5051_payroll_processing_job':'51b0c09b5590db921f1fbc0267f43a80b82849edc39eaf230bb711156c1a85cb',

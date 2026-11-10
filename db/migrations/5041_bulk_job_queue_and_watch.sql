@@ -9,7 +9,7 @@
 --     and waits in 'queued' until every earlier active job of its kind has ended; the worker then starts it by
 --     itself (core/bulk-job-worker.ts claim). No admission is refused, so a second administrator never sees a
 --     "busy" refusal. app.bulk_job_waiting tells the creator's screen that its own job is waiting behind another.
---  2. bulk_job.watched_at: the creator's progress screen stamps it while it polls, so a short job the creator
+--  2. bulk_job.watched_at: the creator's progress screen stamps it (app.bulk_job_mark_watched) while it polls, so a short job the creator
 --     watched to its end can skip its completion notice (BulkJobHandler.quietNotice).
 -- Roster bulk operations and Schedule Group bulk assignment move from 'tenant' to 'tenant_queue'.
 ALTER TABLE bulk_job_kind DROP CONSTRAINT bulk_job_kind_exclusive_check;
@@ -40,7 +40,16 @@ END $$;
 --> statement-breakpoint
 ALTER TABLE bulk_job ADD COLUMN watched_at timestamptz;
 --> statement-breakpoint
-GRANT UPDATE(watched_at) ON bulk_job TO ai_hr_app;
+-- Hardened kernel (5013): the application role only reads the job store, so the creator's progress screen stamps
+-- watched_at through this definer instead of a column grant. It never waits on the worker's row lock.
+CREATE FUNCTION app.bulk_job_mark_watched(p_job uuid) RETURNS void LANGUAGE sql VOLATILE SECURITY DEFINER
+ SET search_path=pg_catalog,public,pg_temp AS $$
+ UPDATE public.bulk_job SET watched_at=now() WHERE id IN (SELECT id FROM public.bulk_job WHERE id=p_job AND app.bulk_job_access(id) FOR UPDATE SKIP LOCKED);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.bulk_job_mark_watched(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.bulk_job_mark_watched(uuid) TO ai_hr_app;
 --> statement-breakpoint
 UPDATE bulk_job_kind SET exclusive='tenant_queue' WHERE kind IN ('roster_bulk','schedule_group_bulk');
 --> statement-breakpoint

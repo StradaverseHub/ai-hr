@@ -172,6 +172,14 @@ describe('staged employee import job',()=>{
    // ADR-0157 void trail: hired then voided for every discarded hire, readable by an auditor once discarded.
    const audit=await withTenant(ctx,tx=>tx.execute<{type:string;n:number}>(sql`select event_type as type,count(*)::int n from domain_event where event_type in ('employment.hired','employment.voided') and subject_employment_id = any(${`{${staged.map(s=>s.id).join(',')}}`}::uuid[]) group by 1`));
    const byType=Object.fromEntries(audit.map(e=>[e.type,e.n]));expect(byType['employment.hired']).toBe(staged.length);expect(byType['employment.voided']).toBe(staged.length);
+   // The voids were written on the owner path (discard batches): each records the job (5014). The hires were the
+   // creator's own chunk transactions and carry no job attribution.
+   const attributed=await owner.client<{type:string;job:string|null;kind:string|null}[]>`select event_type as type,payload->'bulkJob'->>'id' as job,payload->'bulkJob'->>'kind' as kind from domain_event where event_type in ('employment.hired','employment.voided') and subject_employment_id = any(${staged.map(s=>s.id)}::uuid[])`;
+   expect(attributed.filter(e=>e.type==='employment.voided').every(e=>e.job===job.id&&e.kind==='employee_import')).toBe(true);
+   expect(attributed.filter(e=>e.type==='employment.hired').every(e=>e.job===null)).toBe(true);
+   // Import History has the rejected rows; the job keeps no plan, input, file or steps.
+   const [cleared]=await owner.client<{plan:unknown;input:unknown;source:boolean;steps:number}[]>`select plan,input,source_content is not null as source,(select count(*)::int from bulk_job_step where job_id=${job.id}::uuid) steps from bulk_job where id=${job.id}::uuid`;
+   expect(cleared).toEqual({plan:null,input:null,source:false,steps:0});
    const again=await withTenant(ctx,tx=>tx.execute(sql`select app.employee_code_claim(${b.tenantId}::uuid,${'STGDSC000'},null::uuid,null::uuid) as claim`));
    expect(again[0].claim).toBeNull();
    const [occupied]=await owner.client<{n:number}[]>`select count(*)::int n from people_nric_admission where tenant_id=${b.tenantId}::uuid and occupants>0 and normalized_nric like ${`880101${NRIC_MIDDLE}%`}`;

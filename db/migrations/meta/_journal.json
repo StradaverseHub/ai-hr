@@ -5477,6 +5477,20 @@
       "breakpoints": true
     },
     {
+      "idx": 4413,
+      "version": "7",
+      "when": 1793330004713,
+      "tag": "5013_bulk_job_least_privilege",
+      "breakpoints": true
+    },
+    {
+      "idx": 4414,
+      "version": "7",
+      "when": 1793330004714,
+      "tag": "5014_bulk_job_owner_attribution",
+      "breakpoints": true
+    },
+    {
       "idx": 4420,
       "version": "7",
       "when": 1793330004720,
