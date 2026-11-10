@@ -10,7 +10,11 @@
 -- codes). It stays all-or-nothing: the worker writes the new codes in short chunk transactions through the ordinary
 -- writers, every row it writes stays invisible (the 5010/5012 staged-attempt marker), and one short transaction
 -- releases them all at once. A refused or stopped import deletes its staged rows; nobody ever saw them.
-INSERT INTO bulk_job_kind(kind,scope_kind,exclusive) VALUES('system_label_import',NULL,'tenant');
+-- Admission input (5013): the preview token and the optional row selection (at most 7,000 row keys, far below the
+-- default 1 MiB input limit); the workbook travels as the job's source file. The release runs under the creator's
+-- authority in an app-role transaction and nothing is settled afterwards, so finalize needs no owner connection.
+INSERT INTO bulk_job_kind(kind,scope_kind,exclusive,input_shape,finalize_owner)
+ VALUES('system_label_import',NULL,'tenant','{"token":"string","selectedKeys":"array?"}'::jsonb,false);
 --> statement-breakpoint
 -- The nine catalogue tables the import writes. Every row inserted while app.import_attempt is set (only the worker's
 -- chunk transactions set it) is stamped by the database; the 5010 guard refuses any other writer of the column.

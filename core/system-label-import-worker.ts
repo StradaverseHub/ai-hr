@@ -1,9 +1,11 @@
 /** Staged System Labels import as a client of the shared bulk-job kernel (core/bulk-job-worker.ts; migrations 5011,
- * 5012, 5070). All-or-nothing, as the single-transaction import was: the worker validates once with no writer lock
+ * 5012, 5013, 5070). All-or-nothing, as the single-transaction import was: the worker validates once with no writer lock
  * (refusing unless the preview token still matches), writes each new code through its ordinary writer in chunk
  * transactions of about 100 ms that hold the import's usual locks, and every staged row and audit event stays
  * invisible until one short release transaction makes the whole import visible. A refusal or a stop deletes the
- * staged rows in bounded owner batches; the release record keeps their chunk events hidden for good. */
+ * staged rows in bounded owner batches; the release record keeps their chunk events hidden for good. The release
+ * runs under the creator's authority (app role), so this kind declares no owner finalize; its one write to the job
+ * itself goes through unit.set (sealed), and the discard runs in unit.ownerTx, attributed to the job. */
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -95,9 +97,13 @@ export const systemLabelImportJobHandler:BulkJobHandler<SystemLabelWrite>={
   const attemptId=attemptOf(job);
   if(!attemptId)return'done';
   const started=performance.now();
-  const [r]=await unit.owner<{remaining:string}[]>`select app.system_label_import_discard_batch(${job.tenant_id}::uuid,${attemptId}::uuid,${job.id}::uuid,${job.created_by}::uuid,${DISCARD_BATCH}) as remaining`;
+  // One bounded owner transaction per unit, attributed to the job (app.bulk_job); the definer checks the attempt itself.
+  const remaining=await unit.ownerTx(async owner=>{
+   const [r]=await owner<{remaining:string}[]>`select app.system_label_import_discard_batch(${job.tenant_id}::uuid,${attemptId}::uuid,${job.id}::uuid,${job.created_by}::uuid,${DISCARD_BATCH}) as remaining`;
+   return Number(r.remaining);
+  });
   unit.metric('discardTxMs',performance.now()-started);
-  return Number(r.remaining)>0?'more':'done';
+  return remaining>0?'more':'done';
  },
 };
 
@@ -116,7 +122,7 @@ async function release(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,plan:S
   await appendSystemLabelImportAppliedTx(tx,ctx,plan.summary,plan.eventRows);
   const result:SystemLabelImportResult={...plan.summary,...systemLabelImportErrorReport(plan.blocked)};
   const next:SystemLabelImportStoredPlan={summary:plan.summary,eventRows:[],blocked:[],attemptId:plan.attemptId,released:true,result};
-  await tx.execute(sql`update bulk_job set plan=${JSON.stringify(next)}::jsonb,updated_at=now() where id=${job.id}::uuid`);
+  await unit.set(tx,{plan:next});
  });
  unit.metric('releaseTxMs',performance.now()-started);
 }
