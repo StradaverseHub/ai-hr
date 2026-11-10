@@ -32,7 +32,7 @@ EXTRA_PROPERTIES = ('ProtectSystem', 'ProtectHome', 'PrivateMounts', 'NoNewPrivi
                     'RestrictNamespaces', 'BindPaths', 'BindReadOnlyPaths', 'ReadWritePaths',
                     'ReadOnlyPaths', 'Slice', 'CPUWeight', 'CPUQuotaPerSecUSec', 'MemoryHigh', 'MemoryMax')
 APP_ENVIRONMENT = frozenset({'NODE_ENV', 'HOME', 'PATH', 'NEXT_TELEMETRY_DISABLED', 'AUTH_PROVIDER',
-    'ALLOW_DEMO_SESSION', 'DATABASE_URL', 'AUTH_PUBLIC_ORIGIN', 'AUTH_SESSION_KEY',
+    'ALLOW_DEMO_SESSION', 'DATABASE_URL', 'DATABASE_POOLED_URL', 'AIHR_DB_POOLER_SERVER_CONNECTIONS', 'AUTH_PUBLIC_ORIGIN', 'AUTH_SESSION_KEY',
     'AUTH_DEFAULT_ORGANIZATION', 'AUDIT_HASH_CHAIN_ENABLED', 'AI_CONFIG_SECRET'})
 FLEET_ENVIRONMENT = frozenset({'PORT', 'AIHR_APP_WORKERS', 'AIHR_DB_TOTAL_CONNECTIONS', 'AIHR_DB_POOL_MAX'})
 SYSTEMD_ENVIRONMENT = frozenset({'INVOCATION_ID', 'SYSTEMD_EXEC_PID', 'JOURNAL_STREAM', 'USER',
@@ -42,6 +42,27 @@ SYSTEMD_ENVIRONMENT = frozenset({'INVOCATION_ID', 'SYSTEMD_EXEC_PID', 'JOURNAL_S
 def canonical(value: Any) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True,
                        allow_nan=False) + '\n').encode()
+
+
+def pooled_database_environment(environment: dict[str, str]) -> bool:
+    """Optional PgBouncer route (deploy/pgbouncer/README.md): both names or neither.
+
+    The pooled URL may differ from DATABASE_URL only by its loopback port, so it reaches the same
+    owned app-role database through a pooler and never a different role, database or host.
+    """
+    pooled, ceiling = environment.get('DATABASE_POOLED_URL'), environment.get('AIHR_DB_POOLER_SERVER_CONNECTIONS')
+    if pooled is None and ceiling is None:
+        return True
+    if pooled is None or ceiling is None or re.fullmatch(r'[1-9][0-9]{0,2}|1000', ceiling) is None:
+        return False
+    database, route = urlsplit(environment.get('DATABASE_URL', '')), urlsplit(pooled)
+    try:
+        port = route.port
+    except ValueError:
+        return False
+    return (route.scheme == database.scheme and route.username == database.username and route.password == database.password
+            and route.hostname == '127.0.0.1' and port is not None and port != database.port
+            and route.path == database.path and not route.query and not route.fragment)
 
 
 def closed(value: Any, keys: set[str], require) -> None:
@@ -190,6 +211,7 @@ class NextRuntime:
                 and database.hostname == '127.0.0.1' and database.port == 5433
                 and database.path == '/ai_hr_test_w1' and not database.query and not database.fragment,
                 'Owned hosted app-role database required')
+        require(pooled_database_environment(environment), 'Owned hosted app-role pooler required')
         secure_path(pathlib.Path(environment['HOME']), uid, directory=True)
         require(not any((pathlib.Path(environment['HOME']) / name).exists()
                         or (pathlib.Path(environment['HOME']) / name).is_symlink()
