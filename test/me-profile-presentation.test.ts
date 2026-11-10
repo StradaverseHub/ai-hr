@@ -28,7 +28,8 @@ const account='1234567890';
 
 it('loads nonempty own profile data in one lock-free authorized snapshot with unchanged masking and history',async()=>{
  await resetDb();
- const b=await seedBase(),admin=adminCtx(b);
+ const b=await seedBase();
+ const admin:SessionContext={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
  await setModule(b.tenantId,'payroll','active');
  await setModule(b.tenantId,'attendance','active');
  const hired=async(fullName:string)=>hireEmployee(admin,{person:{fullName,primaryEmail:randomUUID()+'@example.invalid'},
