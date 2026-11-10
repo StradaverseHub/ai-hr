@@ -26,6 +26,7 @@ import {isTransientBulkJobError,type BulkJobHandler,type BulkJobUnit} from './bu
 import {ImportHistoryError,importAttemptEventsTx,importAttemptItemsTx,lockImportAttemptTx,planImportRevert,recordImportEventTx,recordImportFailure,revertImport,type ImportAttemptItemRow,type ImportRevertBlocker} from './import-history';
 import {applyMovementRevertTx,movementRevertEmployments,movementRevertHandler,movementRevertReviewWritesTx} from './movement-import-history';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {workforceEmploymentSetPredicate} from './workforce-access';
 import {normalizeImportRevertReason} from '../lib/import-history';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {publicErrorMessage} from '../lib/public-error';
@@ -165,6 +166,7 @@ class ReleaseRefused extends Error{constructor(readonly why:string){super('movem
 /** The release (see the header). Throws ReleaseRefused for anything that sends the revert to the fallback. */
 async function releaseTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,captures:MovementRevertCapture[]):Promise<{restored:number}>{
  const {attemptId,reason}=inputOf(job),plan=planOf(job),tenantId=ctx.tenantId;
+ let mark=performance.now();const phase=(name:string)=>{const t=performance.now();unit.metric('release'+name+'Ms',t-mark);mark=t;};
  await tx.execute(sql`select set_config('application_name','aihr-bulk:movement_import_revert:release',true)`);
  await unit.fenceTx(tx);
  // The synchronous revert's locks, in its order (writers before the attempt row).
@@ -189,9 +191,11 @@ async function releaseTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,unit:BulkJobUni
  }
  // Authority now: maintain for every employment (as the review's per-employment check) and administration of every
  // company an employment returns to (as the company transfer's own rollback asks).
- const [maintained]=await tx.execute<{n:number}>(sql`select count(*)::int n from employment e where e.id=any(${pgUuids(employmentIds)}) and app.access_workforce_employment(e.id,'workforce.maintain')`);
+ // Set-wise (9911): the same rows as app.access_workforce_employment(e.id,'workforce.maintain'), the company check once.
+ const [maintained]=await tx.execute<{n:number}>(sql`select count(*)::int n from employment e where e.id=any(${pgUuids(employmentIds)}) and ${workforceEmploymentSetPredicate({tenantId:sql`e.tenant_id`,companyId:sql`e.company_id`,voidedAt:sql`e.voided_at`,importPendingAttemptId:sql`e.import_pending_attempt_id`},'maintain')}`);
  if(maintained?.n!==employmentIds.length)throw new ReleaseRefused('access');
  for(const company of new Set(captures.flatMap(c=>c.companies))){const [ok]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_for(${company}::uuid) as ok`);if(!ok?.ok)throw new ReleaseRefused('company');}
+ phase('Checks');
  const [{now}]=await tx.execute<{now:string}>(sql`select to_jsonb(now())#>>'{}' as now`);
  const before=await countsTx(tx);
  // The recorded writes, set-based: one statement per group of writes of the same table, kind and changed columns (and
@@ -225,13 +229,17 @@ async function releaseTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,unit:BulkJobUni
   else if(op==='INSERT')await tx.execute(sql`insert into ${ident(table)}(${sql.join(columns.map(ident),sql`, `)}) select ${sql.join(columns.map(c=>sql`v.${ident(c)}`),sql`, `)} from jsonb_populate_recordset(null::${ident(table)},${json}::jsonb) with ordinality v order by v.ordinality`);
   else await tx.execute(sql`delete from ${ident(table)} where id=any(${pgUuids(rows.map(r=>String(r.id)))})`);
   add(table,op==='INSERT'?[rows.length,0,0]:op==='UPDATE'?[0,rows.length,0]:[0,0,rows.length]);
+  if(process.env.MOVEMENT_REVERT_PROFILE)console.log('[revert release]',key,rows.length,Math.round(performance.now()-mark));
  }
+ phase('Writes');
  const eventRows=captures.flatMap(c=>c.events.map(e=>Object.fromEntries(Object.entries(e).filter(([k])=>!EVENT_ASSIGNED.has(k)))));
  if(eventRows.length){
   const columns=Object.keys(eventRows[0]);
   await tx.execute(sql`insert into domain_event(${sql.join(columns.map(ident),sql`, `)}) select ${sql.join(columns.map(c=>sql`v.${ident(c)}`),sql`, `)} from jsonb_populate_recordset(null::domain_event,${JSON.stringify(eventRows)}::jsonb) with ordinality v order by v.ordinality`);
   add('domain_event',[eventRows.length,0,0]);
  }
+ phase('Events');
+ if(process.env.MOVEMENT_REVERT_PROFILE){await tx.execute(sql`set constraints all immediate`);phase('Deferred');}
  // The result must be what the rehearsal left: every written row, the events and their order, and the write counts.
  for(const {table} of SCOPED){
   const finals=[...expected.values()].filter(e=>e.table===table);if(!finals.length)continue;
@@ -253,6 +261,7 @@ async function releaseTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,unit:BulkJobUni
   // A table the database maintains: the replay writes it through the same triggers exactly as often as the rehearsal.
   if(!same(w,planned[table]??[0,0,0]))throw new ReleaseRefused('count:'+table);
  }
+ phase('Verify');
  await recordImportEventTx(tx,ctx,{attemptId,kind:'reverted',importKind:'movement',reason,detail:{restored:items.length,...plan.detail}});
  const released={restored:items.length,path:'release' as const};
  await tx.execute(sql`update bulk_job set plan=plan||${JSON.stringify({released})}::jsonb where id=${job.id}::uuid`);
