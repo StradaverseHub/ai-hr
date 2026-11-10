@@ -224,7 +224,9 @@ describe('4c63b37e · (a) the column is on the screen and in the export, immedia
     // The no-tx entry point still opens its own tenant transaction; the explicit-tx seam added for
     // canonical AI readers delegates to the SAME owner after re-checking the principal, never a copy.
     const read = code('core/read.ts');
-    expect(read).toContain('return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts),{presentationSnapshot:true});');
+    // Home's per-card reads (docs/adr/2026-11-10-home-request-read-scope.md) pass the caller's already-read own leave
+    // inputs through both entries to that same owner; without them it reads exactly as before.
+    expect(read).toContain('return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts, inputs),{presentationSnapshot:true});');
     expect(read).toContain('if (!existingTx) return withTenant(ctx, read);');
     // 4edf8b71b (docs/adr/2026-11-07-home-initial-read-cohort.md) lets a pure presentation snapshot
     // re-check the principal through the read-composition owner. Either branch still re-checks it

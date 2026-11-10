@@ -75,7 +75,9 @@ describe('Rewards authoritative immediate application and GR decisions',()=>{
   let archival:Promise<{ok:boolean;error?:unknown}>|undefined;
   try{
    const blocker=await started;
-   archival=withTenant(admin,tx=>tx.execute(sql`update app_user set archived_at=now() where tenant_id=${b.tenantId}::uuid and id=${target.userId}::uuid`)).then(()=>({ok:true}),error=>({ok:false,error}));
+   // 5003: only an owner or maintenance session still waits at the barrier (app.access_lock_legacy_writer); a
+   // request session is refused as busy at once instead of queueing, so the waiting archival is an owner's.
+   archival=owner.db.execute(sql`update app_user set archived_at=now() where tenant_id=${b.tenantId}::uuid and id=${target.userId}::uuid`).then(()=>({ok:true}),error=>({ok:false,error}));
    let blocked=false;const deadline=Date.now()+3000;
    while(Date.now()<deadline){const [wait]=await owner.db.execute<{blocked:boolean}>(sql`select exists(select 1 from pg_locks l where l.locktype='advisory' and not l.granted and ${blocker}::integer=any(pg_blocking_pids(l.pid))) as blocked`);if(wait.blocked){blocked=true;break;}await new Promise(resolve=>setTimeout(resolve,10));}
    expect(blocked).toBe(true);unlock();
