@@ -1,7 +1,5 @@
 -- Complete a scoped reminder only with native cycle authority, not broad audit-event visibility.
 -- Earlier receipt, retention and least-privilege SQL bytes remain immutable.
-SET LOCAL lock_timeout = '5s';
---> statement-breakpoint
 ALTER POLICY notification_event_processing_read ON public.notification_event_processing
  USING (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND
    (app.is_group_admin() OR consumer='assessment-reminders' AND app.is_admin() AND

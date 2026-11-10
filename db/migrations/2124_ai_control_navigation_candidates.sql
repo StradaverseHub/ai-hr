@@ -2,7 +2,8 @@
 -- Every positive retains app.can_see_employment; admin-only empty companies are preserved.
 -- No decision/result cache, admission, quota, policy, ACL, owner or lock change.
 -- Keep the exclusive ai-control lock: the same owner participates in budget admission.
-CREATE OR REPLACE FUNCTION app._ai_control_context(wanted_feature text,forced_pause boolean)
+-- Replaces the inner owner only: app._ai_control_context remains the 3200 wrapper with the stop check.
+CREATE OR REPLACE FUNCTION app._ai_control_context_before_centre(wanted_feature text,forced_pause boolean)
  RETURNS TABLE(company_ids uuid[],feature_paused boolean) LANGUAGE plpgsql SECURITY DEFINER
  SET search_path=public,pg_temp AS $$
 DECLARE switch_key text;switch_on jsonb;tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();

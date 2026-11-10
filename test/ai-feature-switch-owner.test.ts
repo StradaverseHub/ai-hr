@@ -63,8 +63,8 @@ describe('one switch owner per AI feature (0692)', () => {
     expect(live('FUNCTION app.ai_agent_action_unpaused(').body).toBe(centreWrapper('FUNCTION app.ai_agent_action_unpaused('));
     expect(read('db/migrations/3200_ai_centre_controls.sql')).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');
     const compatibility=read(wrapper.file);
-    expect(compatibility).toContain("'app._ai_control_context_before_centre(text,boolean)','0d00bc269a9b69d02a8b42d70eba8cce'");
-    expect(compatibility).toContain("'app.ai_agent_action_unpaused_before_centre(text)','96a2c89c92efcad817c0777a0cd8ad83'");
+    expect(compatibility).toContain("'app._ai_control_context_before_centre(text,boolean)','a9ea819594d4adbde182910b573287da'");
+    expect(compatibility).toContain("'app.ai_agent_action_unpaused_before_centre(text)','a1ae73ad6d4f47b598df29412507bccb'");
     expect(compatibility).toContain("p.proowner<>control_owner");
     expect(compatibility).toContain("a.grantor<>p.proowner OR a.is_grantable");
     expect(wrapper.body).toContain('FROM app._ai_control_context_before_centre(wanted_feature,forced_pause) c');

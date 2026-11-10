@@ -12,5 +12,7 @@ BEGIN
 END;
 $claim_visibility_baseline$;
 --> statement-breakpoint
+SET LOCAL lock_timeout='5s';
 ALTER POLICY claim_request_rls ON public.claim_request
  USING (tenant_id=app.current_tenant_id() AND employment_id IN (SELECT unnest(app.visible_employment_ids())));
+SET LOCAL lock_timeout TO DEFAULT;

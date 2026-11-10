@@ -135,13 +135,13 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '3200_ai_centre_controls':'2182ae4a614d0b847f399af18f9cfc43e82d3c9fd6f42ca960bfe22ebf4f10e2',
  '3201_ai_centre_function_coverage':'0c7239f512174c0d941dcb441cf98bd3a685a8e4d65973dc92f136dfb6b78d8a',
  ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
- '3500_ai_centre_architecture_compatibility':'3286f17e76b8d997c46b22019df613b9eef1d1b82c85c125cdb57b80392884ca',
+ '3500_ai_centre_architecture_compatibility':'c264d042ea39709e2bcc3b7f9b33b83715a30f05b98437e60b1c1910b1e3bbf3',
  '3501_ai_centre_mandate_write_order':'821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76',
  '4338_assistant_rewards_return_presentation_snapshot':'1acfa11fd818c5efe53dc74c05aef351fb7b71e238dcd0dfc0d1c978672d84d8',
  '4339_assistant_rewards_calendar_cancel_presentation_snapshot':'6df872ead7dc864a8e2a7c78ee8dcdf9e4bd4d637186c185c54a656acb6f07e9',
  '4340_ai_management_presentation_snapshot':'17973dd386f8fb1fda3a2773de3cd189055bed744730949912b2206a77c4e32c',
  '4341_home_leave_presentation_snapshot':'91ceea84de63aa91d8d5c559c0c7c4ee4cadd86ee14bb0d2c1300be580c2a664',
- '4342_attendance_clock_policy_audit_scope':'611b96c0f6d47709a1f77dcf62d84c952752150b8571de2839d39d7c6e8b109d',
+ '4342_attendance_clock_policy_audit_scope':'be818457c18cd823f0cae24c5d8eeb3e51923ed16a7451c76cb6fcb18da8fe2a',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);

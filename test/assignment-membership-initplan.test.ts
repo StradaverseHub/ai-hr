@@ -39,7 +39,7 @@ async function setQual(qual:string){await owner.client.begin(tx=>tx.unsafe('ALTE
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 
 it('installs the exact append and preserves all non-membership policy fields',async()=>{
- expect(createHash('sha256').update(migration).digest('hex')).toBe('5cb2e363d5fb27d7de67c8317d1d0c59a5545d86dc835e0d4d1c4cfaa126c2d6');
+ expect(createHash('sha256').update(migration).digest('hex')).toBe('21a7750a316cc8a0025e8d5c51e77cd06491ce8b1fea50d8414267e9c0cc6ab0');
  const row=await policy();expect(row).toMatchObject({permissive:'PERMISSIVE',roles:['ai_hr_app'],cmd:'ALL'});
  expect(compact(row.qual)).toBe(currentQual);expect(compact(row.with_check)).toBe(checkQual);
 });

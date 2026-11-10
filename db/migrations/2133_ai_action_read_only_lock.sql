@@ -1,7 +1,9 @@
 -- Keep both native read-only pause checks on the same shared ai-control barrier.
 -- Prevent an action check upgrading a shared feature-policy lock into an exclusive lock.
 -- Commands, admission and pause writers retain their existing exclusive lock and predicates.
-CREATE OR REPLACE FUNCTION app.ai_agent_action_unpaused(wanted_action text)
+-- Replaces the inner owner only: app.ai_agent_action_unpaused remains the 3200 wrapper, and this body
+-- carries the tenant-wide stop check itself, so no intermediate state can run without it.
+CREATE OR REPLACE FUNCTION app.ai_agent_action_unpaused_before_centre(wanted_action text)
  RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();
 BEGIN
@@ -10,5 +12,5 @@ BEGIN
  IF current_setting('transaction_read_only')='on' THEN
   PERFORM pg_advisory_xact_lock_shared(hashtext('ai-control'),hashtext(tid::text));
  ELSE PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text)); END IF;
- RETURN NOT EXISTS(SELECT 1 FROM app.ai_agent_action_pause p WHERE p.tenant_id=tid AND p.action_id=wanted_action AND p.paused);
+ RETURN NOT EXISTS(SELECT 1 FROM app.ai_agent_action_pause p WHERE p.tenant_id=tid AND p.action_id=wanted_action AND p.paused) AND NOT EXISTS(SELECT 1 FROM public.teras_mandate_control c WHERE c.tenant_id=tid AND c.stopped);
 END $$;
