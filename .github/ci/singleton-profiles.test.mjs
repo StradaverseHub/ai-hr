@@ -1,6 +1,6 @@
 import test from 'node:test';
 import {realpathSync} from 'node:fs';
-import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {controllerRegressionRoots,candidateCarriesSingletonFixtures,SINGLETON_FREE_CANDIDATE} from './controller-regression-roots.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync,lstatSync,readdirSync,mkdtempSync,mkdirSync,writeFileSync,rmSync,rmdirSync,unlinkSync,symlinkSync,copyFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -19,6 +19,8 @@ import {NATIVE_WORKLOAD_DATABASE_CASE,NATIVE_WORKLOAD_DATABASE_FILE,NATIVE_WORKL
 import {prepareNativeWorkloadPostgres} from './native-workload-postgres.mjs';
 import {requiredHostedSingletons} from '../../scripts/gate-singleton-scope.mjs';
 const {candidate:candidateRoot}=controllerRegressionRoots();
+// Fixtures below are built from the candidate's own singleton closure; see candidateCarriesSingletonFixtures.
+const singletonFree=candidateCarriesSingletonFixtures(candidateRoot)?false:SINGLETON_FREE_CANDIDATE;
 const journalPath='db/migrations/meta/_journal.json';
 const journalHash=createHash('sha256').update(readFileSync(join(candidateRoot,journalPath))).digest('hex');
 const browser=['test/fictional.browser.test.tsx'];
@@ -38,7 +40,7 @@ function fixture(file='test/runtime-ready-admission-native.test.ts'){
  const layout={platform:'linux',workspace:'/fixture',temp:'/tmp/fixture',source:'/fixture/source',automation:nativeNextUnit(unit)?'/var/lib/aihr-native-controller/123/automation':'/fixture/automation',cwd:'/fixture/source',evidence:'/tmp/fixture/aihr-ci',sourceHead:plan.sha,controllerHead:plan.controller,sourceClean:true,controllerClean:true};
  return {plan,unit,witness,binding,env,event,layout};
 }
-test('every registered infrastructure file remains exactly once in its native class and a dedicated bounded job',()=>{
+test('every registered infrastructure file remains exactly once in its native class and a dedicated bounded job',{skip:singletonFree},()=>{
  const native=Object.keys(SINGLETON_FILES),ordinary=['test/ordinary-db.test.ts','test/ordinary-nodb.test.ts'];
  const db=native.filter(f=>singletonKind(singletonDescriptor(f).profile)==='db').concat(ordinary[0]),nodb=native.filter(f=>!db.includes(f)).concat(ordinary[1]),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browser),special=units.filter(u=>u.singleton);
@@ -124,12 +126,12 @@ test('every registered infrastructure file remains exactly once in its native cl
   process.env.AIHR_CI_HEAD='f'.repeat(40);assert.throws(()=>createPlan(repository),/checkout does not match requested HEAD/);
  }finally{for(const[key,value]of saved){if(value===undefined)delete process.env[key];else process.env[key]=value;}rmSync(repository,{recursive:true,force:true});}
 });
-test('actual full-CI host context, complete plan and closed native prerequisites admit',()=>{
+test('actual full-CI host context, complete plan and closed native prerequisites admit',{skip:singletonFree},()=>{
  for(const file of ['test/runtime-ready-admission-native.test.ts','test/notification-worker-lifecycle.test.ts','test/analytics-termination-lateral.test.ts','test/runtime-next-admission-native.test.ts','test/access-editor-native-owner-presentation.test.ts','test/notification-worker-native-plan-diagnostic.test.ts']){
   const f=fixture(file);validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
  }
 });
-test('native workload DB custody refuses focused intent, foreign role URLs and incomplete durable custody',()=>{
+test('native workload DB custody refuses focused intent, foreign role URLs and incomplete durable custody',{skip:singletonFree},()=>{
  const f=fixture(NATIVE_WORKLOAD_DATABASE_FILE),boot=fixture('test/runtime-next-admission-native.test.ts');
  assert(nativeWorkloadDatabaseUnit(f.unit)&&nativeNextUnit(f.unit));
  assert(!nativeWorkloadDatabaseUnit(boot.unit));
@@ -238,7 +240,7 @@ for(const [name,mutate]of [
  ['foreign evidence path',f=>f.layout.evidence='/tmp/unowned'],['wrong actual source',f=>f.layout.sourceHead='f'.repeat(40)],
  ['wrong event source',f=>f.event.inputs.expected_sha='f'.repeat(40)],['foreign event repository',f=>f.event.repository.id=1],['unsupported event',f=>f.env.GITHUB_EVENT_NAME='schedule'],
 ])test('refuses singleton host: '+name,()=>{const f=fixture();mutate(f);assert.throws(()=>validateSingletonHost(f));});
-test('cluster receipt is bound to the physical job/run/attempt/unit, not a worker database namespace',()=>{
+test('cluster receipt is bound to the physical job/run/attempt/unit, not a worker database namespace',{skip:singletonFree},()=>{
  const f=fixture('test/notification-worker-lifecycle.test.ts');f.binding.prerequisites.database.name='aihr-ci-123-1-db-other';assert.throws(()=>validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot));
  assertNoSingletonHints({});for(const env of [{AIHR_CI_SINGLETON_BINDING:'/tmp/forged'},{AIHR_CI_SINGLETON_UNKNOWN:''}])assert.throws(()=>assertNoSingletonHints(env));
 });
@@ -253,7 +255,7 @@ test('strict unit verifier requires the complete source-bound singleton invocati
  for(const mutate of [r=>delete r.singleton,r=>r.batches.push(r.batches[0]),r=>r.batches[0].result.numPendingTests=1,r=>r.batches[0].result.testResults[0].assertionResults[0].status='skipped']){const changed=structuredClone(report);mutate(changed);assert.throws(()=>verifyUnitReport(f.plan,changed,f.witness,candidateRoot));}
  assert.throws(()=>verifyUnitReport(f.plan,report));
 });
-test('source admissions and full workflow never manufacture focused variables or omit controlled cases',()=>{
+test('source admissions and full workflow never manufacture focused variables or omit controlled cases',{skip:singletonFree},()=>{
  const run=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8'),admission=readFileSync(join(candidateRoot,'test/helpers/ci-singleton-admission.ts'),'utf8');
  assert(run.includes('env.AIHR_CI_SINGLETON_BINDING=singleton.path'));assert(!/env\.AIHR_FOCUSED_[A-Z_]+\s*=/.test(run));assert(admission.includes('execFileSync(process.execPath,[script]'));
  const root=candidateRoot,tracked=new Set(execFileSync('git',['ls-files','test'],{cwd:root,encoding:'utf8'}).trim().split('\n'));
@@ -282,7 +284,7 @@ test('the real local scope guard refuses a complete native inventory rather than
  const scriptSource=readFileSync(join(candidateRoot,'scripts/gate-chunked.sh'),'utf8');assert(scriptSource.indexOf('node scripts/gate-singleton-scope.mjs')<scriptSource.indexOf('node --import tsx scripts/gate-db-classify.ts'));
 });
 
-test('hybrid capability binds the conjunction of actual host, owned database and identical same-run build',()=>{
+test('hybrid capability binds the conjunction of actual host, owned database and identical same-run build',{skip:singletonFree},()=>{
  const f=fixture('test/runtime-next-admission-native.test.ts');
  assert.equal(f.unit.kind,'db');assert.equal(f.unit.singleton.isolation,'job-host-and-postgres-cluster');
  assert.equal(singletonJobName(f.unit),`native-test (${f.unit.id})`);
@@ -299,7 +301,7 @@ test('hybrid capability binds the conjunction of actual host, owned database and
  const ordinary=fixture();ordinary.env.GITHUB_JOB='native-test';assert.throws(()=>validateSingletonHost(ordinary));
 });
 
-test('final independent build verification refuses a native unit that exercised different compiled bytes',()=>{
+test('final independent build verification refuses a native unit that exercised different compiled bytes',{skip:singletonFree},()=>{
  const f=fixture('test/runtime-next-admission-native.test.ts'),p=f.binding.prerequisites.build;
  const packet={kind:'AUTHENTICATED_CI_BUILD_PACKET_NOT_DEPLOYMENT',canonicalCandidateInputsVerified:true,source:f.plan.sha,controller:f.plan.controller,runId:123,
   ...Object.fromEntries(['nextBuildId','archiveSha256','manifestSha256','provenanceSha256'].map(k=>[k,p[k]]))};
@@ -313,7 +315,7 @@ test('final independent build verification refuses a native unit that exercised 
  assert.throws(()=>assertNativeBuildMatches(f.plan,reports,packet,artifact,999));
 });
 
-test('Access native-owner and paired notification diagnostics retain isolated authenticated jobs and their exact owned source closure',()=>{
+test('Access native-owner and paired notification diagnostics retain isolated authenticated jobs and their exact owned source closure',{skip:singletonFree},()=>{
  const cases=[['test/access-editor-native-owner-presentation.test.ts','controlled-database-v1',[
   'db/migrations/3211_access_editor_native_owner_presentation.sql','test/fixtures/access-editor-native-owner.ts','test/fixtures/historical-migrations/source-path.ts','test/fixtures/access-editor-cleanup-lifetime.ts','test/fixtures/access-editor-catalogue-diagnostic.ts','test/fixtures/access-editor-owner-dependencies.ts','test/fixtures/access-editor-owned-work.ts','test/fixtures/access-editor-original739-journal.json','test/fixtures/access-editor-locked-baseline.ts',
  ]],['test/notification-worker-native-plan-diagnostic.test.ts','notification-cluster-v1',[
@@ -336,7 +338,7 @@ test('Access native-owner and paired notification diagnostics retain isolated au
  const access=readFileSync(join(candidateRoot,'test/fixtures/access-editor-native-owner.ts'),'utf8');assert(access.includes("readFileSync('test/fixtures/access-editor-original739-journal.json'"));assert(!access.includes("readFileSync('db/migrations/meta/_journal.json'"));
 });
 
-test('Attendance owned child and pidfd proof cannot share a job or omit its actual Python/SQL/source owners',()=>{
+test('Attendance owned child and pidfd proof cannot share a job or omit its actual Python/SQL/source owners',{skip:singletonFree},()=>{
  const file='test/attendance-shared-submission-bridge.test.ts',f=fixture(file);
  assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
  assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness,candidateRoot);
@@ -365,7 +367,7 @@ test('Attendance owned child and pidfd proof cannot share a job or omit its actu
 });
 
 
-test('singleton source limits grant only the exact Tamil member a bounded 8 MiB read',()=>{
+test('singleton source limits grant only the exact Tamil member a bounded 8 MiB read',{skip:singletonFree},()=>{
  const ordinary=4*1024*1024,tamil=8*1024*1024;
  assert.equal(singletonSourceMaximum('messages/ta.json'),tamil);
  for(const file of ['messages/en.json','unknown/source.json','messages/ta.json/child','messages/ta.json.backup',
@@ -383,7 +385,7 @@ test('singleton source limits grant only the exact Tamil member a bounded 8 MiB 
  assert(admission.includes('regular(join(source,path),singletonSourceMaximum(path))'));
  assert(!planner.includes('size>4194304'));assert(!admission.includes('regular(join(source,path),4194304)'));
 });
-test('both Rewards jobs retain and hash the complete large Tamil dependency without a generic limit increase',()=>{
+test('both Rewards jobs retain and hash the complete large Tamil dependency without a generic limit increase',{skip:singletonFree},()=>{
  const root=candidateRoot,file='messages/ta.json';
  const raw=readFileSync(join(candidateRoot,file)),info=lstatSync(join(candidateRoot,file));
  assert(info.isFile()&&!info.isSymbolicLink());assert.equal(raw.length,info.size);
@@ -397,7 +399,7 @@ test('both Rewards jobs retain and hash the complete large Tamil dependency with
   for(const path of sources)assert(lstatSync(join(candidateRoot,path)).size<=singletonSourceMaximum(path),path);
  }
 });
-test('Rewards native policy and original read family retain complete isolated source-bound jobs',()=>{
+test('Rewards native policy and original read family retain complete isolated source-bound jobs',{skip:singletonFree},()=>{
  const files=['test/rewards-audit-policy-native.test.ts','test/rewards-audited-read-prototype.test.ts'];
  const critical=[
   '.github/ci/rewards-native-sources.mjs','test/prototypes/rewards-audit-policy-native-cases.ts',
@@ -492,7 +494,7 @@ test('Rewards native policy and original read family retain complete isolated so
  assert(existing.indexOf("admitSingletonTest('")<existing.indexOf('beforeAll(async()=>'));
 });
 
-test('only the exact five delegated entries may use the shared FIRST actual singleton admission owner',async()=>{
+test('only the exact five delegated entries may use the shared FIRST actual singleton admission owner',{skip:singletonFree},async()=>{
  const {EMPLOYEE_LIFECYCLE_PROFILE}=await import('./employee-lifecycle-profile.mjs');
  const helper='test/performance/employee-choice-lifecycle-admission.ts',read=path=>readFileSync(join(candidateRoot,path),'utf8');
  for(const {file}of EMPLOYEE_LIFECYCLE_PROFILE.files){
@@ -514,7 +516,7 @@ test('only the exact five delegated entries may use the shared FIRST actual sing
 });
 
 
-test('shared module JIT diagnostic owns one unchanged controlled database and cannot omit any actual imported source',()=>{
+test('shared module JIT diagnostic owns one unchanged controlled database and cannot omit any actual imported source',{skip:singletonFree},()=>{
  const file='test/module-read-jit-diagnostic.test.ts',f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
  assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
  assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);assert.equal(new Set(sources).size,sources.length);
@@ -567,7 +569,7 @@ test('shared module JIT diagnostic owns one unchanged controlled database and ca
 });
 
 
-test('current AI Centre upgrade is mandatory with exact historical archives and a dedicated native unit',()=>{
+test('current AI Centre upgrade is mandatory with exact historical archives and a dedicated native unit',{skip:singletonFree},()=>{
  const file=AI_CENTRE_CURRENT_UPGRADE_FILE,f=fixture(file),sources=singletonSources(f.unit,candidateRoot);
  const originals=['test/ai-centre-architecture-compatibility-upgrade.test.ts','test/ai-centre-mandate-write-order-upgrade.test.ts'];
  const archives=originals.map(original=>original.replace(/\.test\.ts$/,'.archive.ts.txt'));
@@ -625,7 +627,7 @@ test('current AI Centre upgrade is mandatory with exact historical archives and 
  assertSingletonCoverage([file],path=>read(path).toString('utf8'));
 });
 
-test('host cache conformance owns a distinct complete host-only source-bound singleton',()=>{
+test('host cache conformance owns a distinct complete host-only source-bound singleton',{skip:singletonFree},()=>{
  const file='test/runtime-next-host-view-native.test.ts',f=fixture(file);
  assert.equal(f.unit.kind,'nodb');assert.deepEqual(f.unit.files,[file]);
  assert.deepEqual(f.unit.singleton,{version:1,profile:'linux-systemd-nginx-v1',workers:1,isolation:'job-host'});

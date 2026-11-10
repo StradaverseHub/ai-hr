@@ -3,7 +3,7 @@ import {mkdtempSync as modelMkdtemp,mkdirSync as modelMkdir,readdirSync as model
 import {tmpdir as modelTmpdir} from 'node:os';
 
 import {realpathSync,readFileSync as readModelSource} from 'node:fs';
-import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {controllerRegressionRoots,candidateCarriesSingletonFixtures,SINGLETON_FREE_CANDIDATE} from './controller-regression-roots.mjs';
 import {createHash as modelCreateHash} from 'node:crypto';
 import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
 import {singletonSources} from './singleton-protocol.mjs';
@@ -36,7 +36,7 @@ function differentDatabaseRoot(){
  modelWrite(modelJoin(root,journal),JSON.stringify(data));modelWrite(modelJoin(root,'db/migrations/9999_distinct_current_model.sql'),'-- fictional new source input\n');return root;
 }
 // Source-data model only: actual hosted/source authentication belongs to the real adapters.
-const {candidate:modelRoot}=controllerRegressionRoots();
+const {candidate:modelRoot}=controllerRegressionRoots(),singletonFixtures=candidateCarriesSingletonFixtures(modelRoot);
 function databaseModel(f,root=modelRoot){
  const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
  const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
@@ -72,13 +72,15 @@ function input(root){
  const buildJobs=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','commission-summary','deployment-hold'].map((name,i)=>({id:600+i,name,run_id:500,head_sha:buildRun.head_sha,head_branch:buildRun.head_branch,run_attempt:1,status:'completed',conclusion:['resolve','build','deployment-hold'].includes(name)?'success':'skipped',started_at:time(3),completed_at:time(2)}));
  return {sourcePlan,plan,assessment,sourceRun:f.run,reports:f.reports,focused:[{run,jobs,artifact,producer:jobs[1],compiler:{runId:200,jobId:302,controller:run.head_sha},report,result}],impactContext,classifierHash:'classifier',verificationController,verificationDiagnostic:{controller:verificationController,runId:900},reviewedController:verificationController,buildRun,buildJobs,build:{canonicalCandidateInputsVerified:true,source:candidate,controller:plan.controller,runId:500},history:{kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:f.run.id,runIds:[200,500]}};
 }
-test('v2 preserves failed source and retained report identities while replacing compiler/build and whole failed process',()=>{
+test('v2 preserves failed source and retained report identities while replacing compiler/build and whole failed process',t=>{
  const f=input(),original=structuredClone(f.reports),c=verifyRepairRecovery(f);assert.deepEqual(f.reports,original);assert.equal(c.originalConclusion,'failure');assert.equal(c.originalSha,f.sourcePlan.sha);assert.equal(c.sha,f.plan.sha);assert.equal(c.runId,500);assert.equal(c.tests,5);assert.equal(c.units.filter(u=>u.kind==='retained').length,4);assert.equal(c.units.find(u=>u.kind==='retained').originalSha,f.sourcePlan.sha);
+ if(!singletonFixtures)t.diagnostic(SINGLETON_FREE_CANDIDATE);else{
  const current=differentDatabaseRoot();try{
   const db=input(modelRoot),fresh=databaseModel(fixture(),current).expectedPlan,{fingerprint,...body}={...fresh,sha:db.plan.sha};db.plan={...body,fingerprint:hash(body)};
   assert.notDeepEqual(db.plan.singletonSources,db.sourcePlan.singletonSources);assert.throws(()=>verifyRepairRecovery(db));assert.throws(()=>verifyRepairRecovery({...db,sourceCandidateRoot:modelRoot}));
   assert.equal(verifyRepairRecovery(db,modelRoot).tests,5);assert.throws(()=>verifyRepairRecovery(db,current),{code:'ERR_ASSERTION',message:/^Singleton source membership differs$/});
  }finally{modelRemove(current,{recursive:true,force:true});}
+ }
 });
 for(const [name,change] of [
  ['unfinished original',f=>f.sourceRun.status='in_progress'],['source run relabelled',f=>f.sourceRun.conclusion='success'],['old assessment',f=>f.assessment.sha='f'.repeat(40)],

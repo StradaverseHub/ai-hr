@@ -1,6 +1,6 @@
 import test from 'node:test';
 import {readFileSync as readModelSource} from 'node:fs';
-import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {controllerRegressionRoots,candidateCarriesSingletonFixtures,SINGLETON_FREE_CANDIDATE} from './controller-regression-roots.mjs';
 import {createHash as modelCreateHash} from 'node:crypto';
 import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
 import {singletonSources} from './singleton-protocol.mjs';
@@ -12,7 +12,7 @@ import {buildUnits,hash,CI_EXECUTION} from './manifest.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 
 // Source-data model only: actual hosted/source authentication belongs to the real adapters.
-const {candidate:modelRoot}=controllerRegressionRoots();
+const {candidate:modelRoot}=controllerRegressionRoots(),singletonFixtures=candidateCarriesSingletonFixtures(modelRoot);
 function databaseModel(f,root=modelRoot){
  const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
  const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
@@ -38,8 +38,10 @@ function fixture(){
  const reports=units.map(u=>({schemaVersion:1,id:u.id,sha:expected.candidate,fingerprint:expectedPlan.fingerprint,cwd:'/candidate',files:u.files,exitCode:0,...(u.kind==='db'?{databaseTerminalEvidence:resource()}:{}),batches:[{exitCode:0,...(u.kind==='db'?{databaseEvidence:resource()}:{}),result:{success:true,numTotalTests:1,numPassedTests:1,numFailedTests:0,numFailedTestSuites:0,testResults:[{name:'/candidate/'+u.files[0],status:'passed',assertionResults:[{status:'passed'}]}]}}]}));
  return {expectedPlan,reports,expected};
 }
-test('All green unit assessment is explicitly not release evidence and still requires fresh prerequisites',()=>{const f=fixture(),r=assessResumeCoverage(f);assert.equal(r.reusable.length,5);assert.equal(r.rerun.length,0);assert.equal(r.releaseAuthorized,false);assert.equal(r.requiresAuthenticatedArchives,true);assert.equal(r.requiresVersionedResumeWorkflowAndIndependentReleaseValidation,true);assert.equal(r.finalVerificationRequired,true);assert(r.freshPrerequisites.includes('build'));assert(r.freshPrerequisites.includes('typecheck'));assert.equal(r.result,undefined);assert.equal(r.tier,undefined);assert.equal(verifyReports(f.expectedPlan,f.reports).result,'PASS');
+test('All green unit assessment is explicitly not release evidence and still requires fresh prerequisites',t=>{const f=fixture(),r=assessResumeCoverage(f);assert.equal(r.reusable.length,5);assert.equal(r.rerun.length,0);assert.equal(r.releaseAuthorized,false);assert.equal(r.requiresAuthenticatedArchives,true);assert.equal(r.requiresVersionedResumeWorkflowAndIndependentReleaseValidation,true);assert.equal(r.finalVerificationRequired,true);assert(r.freshPrerequisites.includes('build'));assert(r.freshPrerequisites.includes('typecheck'));assert.equal(r.result,undefined);assert.equal(r.tier,undefined);assert.equal(verifyReports(f.expectedPlan,f.reports).result,'PASS');
+ if(!singletonFixtures)t.diagnostic(SINGLETON_FREE_CANDIDATE);else{
  const db=databaseModel(fixture());assert.throws(()=>assessResumeCoverage(db),/Explicit candidate root/);assert.throws(()=>assessResumeCoverage({...db,candidateRoot:modelRoot}),/Explicit candidate root/);assert.equal(assessResumeCoverage(db,modelRoot).reusable.length,5);assert.equal(assessResumeCoverage({...db,reports:[]}).rerun.length,5);assert.throws(()=>assessResumeCoverage(db,''),/Explicit candidate root/);const omitted=structuredClone(db);delete omitted.reports.find(report=>report.singleton).singleton;assert.equal(assessResumeCoverage(omitted).rerun.length,1);
+ }
 });
 test('A failed database unit is rerun while every passing unit remains visible in complete coverage',()=>{const f=fixture(),bad=f.reports.find(r=>r.id.startsWith('db-'));bad.exitCode=1;const r=assessResumeCoverage(f);assert.equal(r.rerun.length,1);assert.equal(r.rerun[0].id,bad.id);assert.equal(r.reusable.length,4);assert.equal(r.completeRequiredUnits.length,5);assert.equal(r.retainedFailuresMustRemainVisible,true);assert.throws(()=>verifyReports(f.expectedPlan,f.reports));});
 test('Missing evidence is scheduled fresh; it never disappears from the complete manifest',()=>{const f=fixture(),removed=f.reports.pop();const r=assessResumeCoverage(f);assert.deepEqual(r.rerun,[{id:removed.id,reason:'Missing completed evidence'}]);assert.equal(r.completeRequiredUnits.length,5);assert.throws(()=>verifyReports(f.expectedPlan,f.reports));});

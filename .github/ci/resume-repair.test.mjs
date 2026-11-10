@@ -3,7 +3,7 @@ import {mkdtempSync as modelMkdtemp,mkdirSync as modelMkdir,readdirSync as model
 import {tmpdir as modelTmpdir} from 'node:os';
 
 import {realpathSync,readFileSync as readModelSource} from 'node:fs';
-import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {controllerRegressionRoots,candidateCarriesSingletonFixtures,SINGLETON_FREE_CANDIDATE} from './controller-regression-roots.mjs';
 import {createHash as modelCreateHash} from 'node:crypto';
 import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
 import {singletonSources} from './singleton-protocol.mjs';
@@ -28,7 +28,7 @@ function differentDatabaseRoot(){
  modelWrite(modelJoin(root,journal),JSON.stringify(data));modelWrite(modelJoin(root,'db/migrations/9999_distinct_current_model.sql'),'-- fictional new source input\n');return root;
 }
 // Source-data model only: actual hosted/source authentication belongs to the real adapters.
-const {candidate:modelRoot}=controllerRegressionRoots();
+const {candidate:modelRoot}=controllerRegressionRoots(),singletonFixtures=candidateCarriesSingletonFixtures(modelRoot);
 function databaseModel(f,root=modelRoot){
  const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
  const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
@@ -66,7 +66,7 @@ function alterPlan(f, mutate) {
   const {fingerprint: unused, ...body} = f.candidatePlan; mutate(body);
   f.candidatePlan = {...body, fingerprint: hash(body)};
 }
-test('Unaffected units retain their original SHA/report hash and new candidate binding without rewriting reports', () => {
+test('Unaffected units retain their original SHA/report hash and new candidate binding without rewriting reports', t => {
   const f = repair(), before = structuredClone(f.sourceEvidence.reports), result = assessRepairCoverage(f);
   assert.equal(result.carry.length, 4); assert.equal(result.fresh.length, 1);
   assert(result.fresh[0].id.startsWith('nodb-'));
@@ -80,6 +80,7 @@ test('Unaffected units retain their original SHA/report hash and new candidate b
   assert.equal(result.requiresGitAncestryAndInputRevalidation, true);
   assert.equal(result.requiresFreshGitHubApiAndLatestFailureHistoryValidation, true);
   assert(result.freshPrerequisites.includes('typecheck')); assert(result.freshPrerequisites.includes('build'));
+ if(!singletonFixtures)t.diagnostic(SINGLETON_FREE_CANDIDATE);else{
   const current=differentDatabaseRoot();try{
    const db=repair(modelRoot),unit=db.sourceEvidence.expectedPlan.units.find(unit=>unit.singleton),fresh=databaseModel(fixture(),current).expectedPlan;
    const {fingerprint,...body}={...fresh,sha:db.candidate};db.candidatePlan={...body,fingerprint:hash(body)};
@@ -87,6 +88,7 @@ test('Unaffected units retain their original SHA/report hash and new candidate b
    assert.throws(()=>assessRepairCoverage(db),/Explicit candidate root/);assert.throws(()=>assessRepairCoverage({...db,sourceCandidateRoot:modelRoot}),/Explicit candidate root/);
    assert(assessRepairCoverage(db,modelRoot).carry.some(row=>row.id===unit.id));assert(assessRepairCoverage(db,current).fresh.some(row=>row.id===unit.id));
   }finally{modelRemove(current,{recursive:true,force:true});}
+ }
 });
 test('High-risk deployment/database/verification work keeps all coverage fresh', () => {
   const f = repair(); alterImpact(f, plan => {

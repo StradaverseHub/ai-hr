@@ -1,4 +1,4 @@
-import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {controllerRegressionRoots,candidateCarriesSingletonFixtures,SINGLETON_FREE_CANDIDATE} from './controller-regression-roots.mjs';
 import test from 'node:test';
 import {realpathSync} from 'node:fs';
 import assert from 'node:assert/strict';
@@ -13,6 +13,8 @@ import {protocolHash,singletonDescriptor,singletonKind,singletonSources} from '.
 import {EMPLOYEE_LIFECYCLE_PROFILE,employeeLifecycleMatrixRow} from './employee-lifecycle-profile.mjs';
 import {COMMISSION_TITLE,commissioningIntent,selectCommissioning,summarizeCommissioning} from './singleton-commissioning.mjs';
 const {candidate:candidateRoot}=controllerRegressionRoots();
+// Fixtures below are built from the candidate's own singleton closure; see candidateCarriesSingletonFixtures.
+const singletonFree=candidateCarriesSingletonFixtures(candidateRoot)?false:SINGLETON_FREE_CANDIDATE;
 const journalPath='db/migrations/meta/_journal.json';
 const journalHash=createHash('sha256').update(readFileSync(join(candidateRoot,journalPath))).digest('hex');
 const browser=['test/fictional.browser.test.tsx'];
@@ -48,14 +50,14 @@ test('selection is scheduling-only over the complete plan, never a shortened pla
  assert.throws(()=>selectCommissioning(f.plan,['db-'+'f'.repeat(16)]));assert.throws(()=>selectCommissioning(f.plan,['browser-chromium']));
  for(const mutate of [p=>p.units.push(p.units[0]),p=>delete p.units[0].singleton,p=>p.units[0].singleton.workers=2,p=>p.units[0].files.push('test/ordinary.test.ts')]){const plan=structuredClone(f.plan);mutate(plan);assert.throws(()=>selectCommissioning(plan,[f.unit.id]));}
 });
-test('selected host and database reports retain actual native/source/run proofs but produce no release receipt',()=>{
+test('selected host and database reports retain actual native/source/run proofs but produce no release receipt',{skip:singletonFree},()=>{
  for(const file of ['test/runtime-ready-admission-native.test.ts','test/leave-inquiry-read-cost.test.ts']){
   const f=selectedFixture(file),summary=summarizeCommissioning(f.plan,f.selection,f.entries,f.witness,candidateRoot);
   if(f.unit.kind==='db'){assert.throws(()=>summarizeCommissioning(f.plan,f.selection,f.entries,f.witness),/Explicit candidate root/);assert.throws(()=>summarizeCommissioning(f.plan,f.selection,f.entries,f.witness,''),/Explicit candidate root/);assert.equal(summarizeCommissioning(f.plan,f.selection,[],f.witness).outcomes[0].outcome,'missing');}
   assert.equal(summary.selectedProfilesVerified,true);assert.equal(summary.completeSuite,false);assert.equal(summary.releaseAuthorized,false);assert.equal(summary.outcomes[0].tests,1);assert.match(summary.outcomes[0].reportHash,/^[0-9a-f]{64}$/);assert.equal(summary.result,undefined);assert.equal(summary.tier,undefined);assert(summary.omitted.length>0);
  }
 });
-test('native failures, skipped assertions, omitted or stale reports cannot be counted as verified',()=>{
+test('native failures, skipped assertions, omitted or stale reports cannot be counted as verified',{skip:singletonFree},()=>{
  for(const change of [f=>f.entries=[],f=>f.entries[0].report.exitCode=1,f=>f.entries[0].report.sha='f'.repeat(40),f=>f.entries[0].report.fingerprint='f'.repeat(64),f=>f.entries[0].report.batches[0].result.numPendingTests=1,f=>f.entries[0].report.batches[0].result.testResults[0].assertionResults[0].status='skipped',f=>f.entries[0].report.singleton.prerequisites.pid1='init',f=>f.entries[0].report.singleton.sourceHashes={},f=>f.entries[0].report.singleton.controller='f'.repeat(40),f=>f.witness.runId=999]){
   const f=selectedFixture();change(f);for(const e of f.entries)e.bytes=JSON.stringify(e.report);assert.equal(summarizeCommissioning(f.plan,f.selection,f.entries,f.witness,candidateRoot).selectedProfilesVerified,false);
  }
@@ -91,7 +93,7 @@ test('the real matrix command retains the full input plan and writes a separate 
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
 
-test('actual matrix subprocess keeps hybrid, ordinary and mixed selections separate without dropping the frozen plan',()=>{
+test('actual matrix subprocess keeps hybrid, ordinary and mixed selections separate without dropping the frozen plan',{skip:singletonFree},()=>{
  const ordinary=fixture(),native=fixture('test/runtime-next-admission-native.test.ts');
  const units=[ordinary.unit,native.unit],body={...ordinary.plan,suite:units.flatMap(u=>u.files),units,
   singletonSources:{...ordinary.plan.singletonSources,...native.plan.singletonSources}};
@@ -150,7 +152,7 @@ test('native hybrid commissioning consumes one canonical build while ordinary un
  assert(owner.includes("nativeNextUnit(unit)?'native-test':'test'"));
 });
 
-test('the real matrix subprocess derives every one of the five lifecycle hints from complete registered units',()=>{
+test('the real matrix subprocess derives every one of the five lifecycle hints from complete registered units',{skip:singletonFree},()=>{
  const files=EMPLOYEE_LIFECYCLE_PROFILE.files.map(row=>row.file),suite=[...files,'test/ordinary.test.ts'],units=buildUnits(suite,{db:files,nodb:['test/ordinary.test.ts']},browser),ordinary=fixture();
  const body={...ordinary.plan,suite,units,singletonSources:Object.fromEntries(units.filter(unit=>unit.singleton).map(unit=>[unit.id,Object.fromEntries(singletonSources(unit,candidateRoot).map(file=>[file,file===journalPath?journalHash:'e'.repeat(64)]))]))};delete body.fingerprint;const planValue={...body,fingerprint:protocolHash(body)};
  const directory=mkdtempSync(join(tmpdir(),'employee-matrix-model-'));try{
