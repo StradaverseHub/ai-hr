@@ -262,11 +262,15 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
     'id=any((select app.visible_employment_ids())::uuid[])',
     'id in(select unnest((select app.visible_employment_ids())))',
    ],qualifiers:string[]=[];
-   for(const membership of memberships){
+   // The third shape is 5054's reviewed rewrite of the 3001 policy: the point-read arm also answers for a payroll
+   // partner (app.can_admin_payroll_for), which the original predicate already admitted.
+   const shapes:[string,string][]=[[memberships[0],'app.is_admin_for(company_id)'],[memberships[1],'app.is_admin_for(company_id)'],
+    [memberships[1],'(app.is_admin_for(company_id) or app.can_admin_payroll_for(company_id))']];
+   for(const [membership,administratorArm] of shapes){
     const inherited=`(voided_at is null) and ((tenant_id=app.current_tenant_id()) and ((${membership}) or app.can_admin_payroll_for(company_id) or app.can_admin_perfcomp_for(company_id)))`;
     const expression=`(voided_at is null) and (tenant_id=app.current_tenant_id()) and case
      when (select current_setting('app.bank_import_point_read',true))='on'
-     then case when app.is_admin_for(company_id) then true else (${inherited}) end
+     then case when ${administratorArm} then true else (${inherited}) end
      else (${inherited}) end`;
     await tx.unsafe('create policy performance_expected_employment_membership on public.employment for select to ai_hr_app using ('+expression+')');
     const [row]=await tx<{qual:string}[]>`select qual from pg_policies where schemaname='public' and tablename='employment' and policyname='performance_expected_employment_membership'`;
@@ -277,7 +281,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const isEmploymentPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='employment'&&row.policyname==='employment_rls';
   const beforeEmployment=beforePerformancePrivileges.policies.find(isEmploymentPolicy),afterEmployment=afterPerformancePrivileges.policies.find(isEmploymentPolicy);
   expect(beforeEmployment?.qual).toBe(expectedEmploymentQuals[0]);
-  expect(afterEmployment?.qual).toBe(expectedEmploymentQuals[1]);
+  expect(afterEmployment?.qual).toBe(expectedEmploymentQuals[2]);
   const wrappedMembership='(id IN ( SELECT unnest(( SELECT app.visible_employment_ids() AS visible_employment_ids)) AS unnest))';
   expect(afterEmployment?.qual?.split(wrappedMembership)).toHaveLength(3);
   expect(beforeEmployment).toMatchObject({permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'ALL',with_check:'((tenant_id = app.current_tenant_id()) AND app.is_admin_for(company_id))'});
