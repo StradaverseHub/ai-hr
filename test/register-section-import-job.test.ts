@@ -1,6 +1,8 @@
 /** Register and section imports as background jobs on the shared bulk-job kernel: real PostgreSQL, real RLS, real
  * worker ticks. Equivalence is proven against the synchronous path on an identical second tenant: the same rows, the
- * same audit events in the same order, the same result and the same history row. */
+ * same audit events in the same order, the same result and the same history row. The one difference the hardened
+ * kernel adds is asserted on its own: the events the register release writes on the owner connection carry their job
+ * (payload.bulkJob, migration 5014). */
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -98,8 +100,25 @@ async function endState(f:Fixture){
  return{
   qualifications:quals.map(strip).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),
   contacts:contacts.map(strip).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),
-  events:events.map(e=>relabel(e)),runs,
+  events:events.map(e=>relabel({...e,payload:withoutJob(e.payload)})),runs,
  };
+}
+/** Owner-path events carry their job (5014). endState leaves that key out so the rest compares with the synchronous
+ * path; eventJobs reports it for every register event, in order (null: written outside an owner transaction). */
+const withoutJob=(payload:unknown)=>{
+ if(!payload||typeof payload!=='object'||Array.isArray(payload))return payload;
+ const {bulkJob:_bulkJob,...rest}=payload as Record<string,unknown>;return rest;
+};
+async function eventJobs(f:Fixture){
+ return(await owner.client<{job:{id:string;kind:string}|null}[]>`select payload->'bulkJob' as job from domain_event
+  where tenant_id=${f.b.tenantId}::uuid and aggregate_type in ('employee-qualification','person-emergency-contact') order by sequence`).map(e=>e.job);
+}
+/** The seal recomputed over the job's stored steps, as only the queue owner can (the application role cannot write the
+ * job store, 5013). Without it the kernel's integrity check stops a changed step before the release ever runs; with
+ * it the release has to refuse the forged capture on its own checks. */
+async function resealSteps(jobId:string){
+ await owner.client`update app.bulk_job_step_seal z set digest=app.bulk_job_step_digest(s.kind,s.row_num,s.payload,s.state,s.result,s.error)
+  from bulk_job_step s where s.job_id=z.job_id and s.seq=z.seq and z.job_id=${jobId}::uuid`;
 }
 const comparable=(r:SectionImportResult)=>({...r,runId:r.runId?'run':null});
 
@@ -123,6 +142,12 @@ describe('register import job (all-or-nothing)',()=>{
   expect(after.events.slice(-6).map(e=>[(e as {event_type:string}).event_type,(e as {subject_employment_id:string}).subject_employment_id,(e as {visible:boolean}).visible])).toEqual([
    ['qualification.updated','REG0',true],['qualification.added','REG0',true],['qualification.added','REG1',true],['qualification.updated','REG2',true],['qualification.added','REG3',true],['qualification.added','REG3',true]]);
   expect((after.events.at(-5) as {payload:unknown}).payload).toEqual({qualification:'Master',isHighest:true,clearedHighestId:'q:REG0:Renamed institute 0'});
+  // The release's six events, and only they, carry the job that wrote them on the owner connection.
+  const attributed=await eventJobs(job);
+  expect(attributed.slice(-6)).toEqual(Array.from({length:6},()=>({id:started.id,kind:'register_import'})));
+  expect(attributed.slice(0,-6).length).toBeGreaterThan(0);
+  expect(attributed.slice(0,-6).every(j=>j===null)).toBe(true);
+  expect((await eventJobs(sync)).every(j=>j===null)).toBe(true);
   expect(after.qualifications.filter(q=>q.who==='REG0')).toEqual([
    {who:'REG0',qualification:'Diploma',institute:'Renamed institute 0',major:null,from_ym:null,to_ym:null,is_highest:false,archived:false},
    {who:'REG0',qualification:'Master',institute:'New institute 0',major:'Fictional major',from_ym:'2019-01',to_ym:'2020-12',is_highest:true,archived:false}]);
@@ -141,6 +166,7 @@ describe('register import job (all-or-nothing)',()=>{
   const progress=await runJob(job,'emergency',await emergencyFile(job),'Fixture · contacts.csv');
   expect(comparable(progress.result!)).toEqual(comparable(expected));
   expect(await endState(job)).toEqual(await endState(sync));
+  expect((await eventJobs(job)).slice(-3)).toEqual(Array.from({length:3},()=>({id:progress.id,kind:'register_import'})));
  });
 
  it('refuses an invalid file with the synchronous file error and writes nothing',async()=>{
@@ -207,8 +233,9 @@ describe('register import job (all-or-nothing)',()=>{
   const before=await endState(job);
   const {job:started}=await createSectionImportJob(job.ctx,{section:'qualification',records:await qualificationFile(job),fileName:'f.csv',csv:'x',operationKey:randomUUID()});
   await ticks(started.id,j=>j.state==='finalizing');
-  // A tampered capture: a new row re-pointed at another employee.
+  // A tampered capture: a new row re-pointed at another employee, resealed so the release itself must refuse it.
   await owner.client`update bulk_job_step set result=jsonb_set(result,'{created,0,employment_id}',to_jsonb(${job.employments.REG2}::text)) where job_id=${started.id}::uuid and result->'created'->0 is not null and seq=(select min(seq) from bulk_job_step where job_id=${started.id}::uuid and jsonb_array_length(result->'created')>0)`;
+  await resealSteps(started.id);
   await expect(withTenant(job.ctx,tx=>tx.execute(sql`select app.register_import_release(${started.id}::uuid,false)`))).rejects.toThrow();
   await ticks(started.id);
   const progress=await getSectionImportJob(job.ctx,started.id);
@@ -218,13 +245,16 @@ describe('register import job (all-or-nothing)',()=>{
  });
 
 describe('register release trusts nothing in the job\'s steps for authority',()=>{
- /** Runs a qualification job to its release with `forge` rewriting the first applied capture as the app role could. */
+ /** Runs a qualification job to its release with `forge` rewriting the first applied capture. The application role can
+  * no longer write a step (5013) and an unsealed change is stopped by the kernel's integrity check, so the forgery is
+  * resealed as the queue owner could: the release must still refuse it on its own. */
  async function forged(f:Fixture,forge:(capture:Record<string,unknown>)=>Record<string,unknown>,as:SessionContext=f.ctx){
   const before=await endState(f);
   const {job:started}=await createSectionImportJob(as,{section:'qualification',records:await qualificationFile(f),fileName:'f.csv',csv:'x',operationKey:randomUUID()});
   await ticks(started.id,j=>j.state==='finalizing');
   const [step]=await owner.client<{seq:number;result:Record<string,unknown>}[]>`select seq,result from bulk_job_step where job_id=${started.id}::uuid and state='applied' order by seq limit 1`;
   await owner.client`update bulk_job_step set result=${JSON.stringify(forge(step.result))}::jsonb where job_id=${started.id}::uuid and seq=${step.seq}`;
+  await resealSteps(started.id);
   await ticks(started.id);
   const progress=await getSectionImportJob(as,started.id);
   expect(progress.state).toBe('failed');

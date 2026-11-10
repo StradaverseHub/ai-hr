@@ -6,7 +6,9 @@
  * Nothing is visible until the release: one set-based statement (migration 5061), under the writers' own locks and
  * the creator's captured authority, that checks every captured employee is still the same, still maintainable and
  * unchanged since capture, then applies every captured row and event. An employee whose register changed meanwhile is captured again;
- * after a few rounds the import stops with nothing written. */
+ * after a few rounds the import stops with nothing written. The release runs on the owner connection, so the kind
+ * declares an owner finalize (finalizeOwner here, bulk_job_kind.finalize_owner in 5060); every write to the job and its
+ * steps goes through unit.set/unit.step (sealed, migration 5013). */
 import {sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -117,7 +119,9 @@ const sameSubjects=(refs:SubjectRef[],subjects:RegisterSubject[])=>refs.every(re
  * captured session it re-checks the creator, every employee's identity, status and workforce maintain authority, the
  * tables' row security and every employee's register fingerprint, once per statement rather than once per row, then
  * applies every captured row and the writers' audit events in file order. Changed employees go back for a fresh
- * capture. A read-only organisation refuses first, through the creator's own transaction, as a write there would. */
+ * capture. A read-only organisation refuses first, through the creator's own transaction, as a write there would.
+ * The release decides from the captured steps, so the whole seal is verified immediately before it; the release and
+ * its plan marker commit in one owner transaction attributed to the job (unit.ownerTx). */
 async function release(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,plan:RegisterStoredPlan){
  // The audit chain is armed exactly as the creator's own session arms it now (withTenant's decision), never from
  // anything stored on the job.
@@ -125,18 +129,23 @@ async function release(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,plan:R
   await unit.fenceTx(tx);await tx.execute(sql`select pg_current_xact_id()`);
   return tx.execute<{chained:boolean}>(sql`select coalesce(current_setting('app.audit_hash_chain',true),'')='on' as chained`);
  });
+ await unit.verifySeal();
  const started=performance.now();
- const [row]=await unit.owner<{r:{released:boolean;stale?:number[];updated?:number}}[]>`select app.register_import_release(${job.id}::uuid,${chain?.chained===true}) as r`;
+ const out=await unit.ownerTx!(async owner=>{
+  const [row]=await owner<{r:{released:boolean;stale?:number[];updated?:number}}[]>`select app.register_import_release(${job.id}::uuid,${chain?.chained===true}) as r`;
+  // The routine no longer writes the job itself: the worker records the release through the sealed job update.
+  if(row.r.released)await unit.set(owner,{planMerge:{released:true,updated:row.r.updated??0}});
+  return row.r;
+ });
  unit.metric('releaseTxMs',performance.now()-started);
- const out=row.r;
  if(out.released)return;
  const stale=out.stale??[];
  const rounds=(plan.rounds??0)+1;
  if(rounds>MAX_RECAPTURE_ROUNDS)throw new RegisterImportStopped(REGISTER_IMPORT_CHANGED);
  await withTenant(ctx,async tx=>{
   await unit.fenceTx(tx);
-  await tx.execute(sql`update bulk_job_step set state='pending',result=null where job_id=${job.id}::uuid and seq=any(${`{${stale.join(',')}}`}::int[])`);
-  await tx.execute(sql`update bulk_job set state='running',steps_done=steps_done-${stale.length},plan=${JSON.stringify({...plan,rounds})}::jsonb,updated_at=now() where id=${job.id}::uuid and state='finalizing'`);
+  await unit.step(tx,stale,{state:'pending',result:null,error:null});
+  await unit.set(tx,{state:'running',expectState:['finalizing'],stepsDoneAdd:-stale.length,plan:{...plan,rounds}});
  });
  unit.metric('recaptured',stale.length);
 }
@@ -147,6 +156,7 @@ export const registerImportJobHandler:BulkJobHandler<RegisterStepPayload>={
  chunkBudgetMs:REGISTER_IMPORT_CHUNK_BUDGET_MS,
  maxStepsPerChunk:16,
  phaseOf:()=>'registers',
+ finalizeOwner:true,
  stepRef:step=>step.payload.subjects[0]?.code??'',
  /** The commit's whole-file analysis, on one snapshot with no tenant lock: any invalid row refuses the file. */
  async prepare(ctx,job){
@@ -189,8 +199,12 @@ export const registerImportJobHandler:BulkJobHandler<RegisterStepPayload>={
  },
  /** Nothing is staged before the release, so a stopped import has nothing to undo. */
  async discard(){return'done';},
- async describeFailure(_job,error){
-  if(error instanceof RegisterImportStopped)return{error:error.message};
-  return{error:`No register rows were written. ${publicErrorMessage(error)}`};
+ async describeFailure(job,error){
+  // There is no admission plan any more: a failure before prepare committed keeps the section and row count the
+  // result needs (the kernel clears the input at the end), returned as a plan merge, never written here.
+  const input=inputOf(job);
+  const seed=!job.plan&&input?{planMerge:{section:input.section,total:input.records.length}}:{};
+  if(error instanceof RegisterImportStopped)return{error:error.message,...seed};
+  return{error:`No register rows were written. ${publicErrorMessage(error)}`,...seed};
  },
 };
