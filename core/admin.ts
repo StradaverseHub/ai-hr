@@ -35,6 +35,7 @@ import { configReferrers, historyReferrers } from './leave-type-refs';
 import { cascadedReferrers, companyDeleteBlockSqlText } from './company-refs';
 import { isCompanyDeleteBlock, type CompanyDeleteBlock } from '../lib/company-delete';
 import { isLoginBlocked } from './employment-status';
+import { currentEmployeeCode } from '../lib/current-employee-code';
 import {
   isValidMonthDay,
   // 6e9a126e — the write-time band validator, moved into the pure module (beside `isWellFormedBands`, the
@@ -2597,15 +2598,19 @@ export function listUsers(ctx: SessionContext, opts: { includeArchived?: boolean
             lastWorkingDate: employment.lastWorkingDate,
             terminatedOn: employment.terminatedOn,
             blacklistedAt: employment.blacklistedAt,
+            employeeCode: employment.employeeCode,
+            hiredOn: employment.hiredOn,
           })
           .from(employment)
           .where(inArray(employment.personId, personIds))
       : [];
+    const today = todayInKualaLumpur();
     const rows = users.map((u) => {
       const mine = u.personId ? emps.filter((e) => e.personId === u.personId) : [];
       return {
         ...u,
         hasEmployment: mine.length>0,
+        employeeCode: currentEmployeeCode(mine, today),
         roles: roles.filter((r) => r.appUserId === u.id),
         // Blocked purely by the employment dates — archivedAt is reported separately so the UI can
         // tell the two causes apart and only offer Restore for the manual one.

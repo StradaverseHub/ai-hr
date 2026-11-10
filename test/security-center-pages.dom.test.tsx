@@ -23,6 +23,7 @@ vi.mock('../lib/identity/config',()=>({keycloakSelected:()=>false}));
 vi.mock('../app/admin/actions',()=>({inviteUserAction:vi.fn(),archiveUserAction:vi.fn(),assignRoleAction:vi.fn(),revokeRoleAction:vi.fn(),revokeInvitationAction:vi.fn(),setAssistantGrantAction:vi.fn()}));
 vi.mock('../app/admin/users/password-unlock-actions',()=>({unlockPasswordAccountAction:vi.fn()}));
 vi.mock('../app/admin/users/manual-actions',()=>({createManualAccountAction:vi.fn(),resumeManualAccountAction:vi.fn(),cancelManualAccountAction:vi.fn()}));
+vi.mock('../app/admin/users/[userId]/account/actions',()=>({accountAction:vi.fn(),generatePasswordAction:vi.fn(),accountHistoryAction:vi.fn()}));
 import Hub from '../app/admin/security-center/page';
 import Directory from '../app/admin/users/page';
 import Create from '../app/admin/users/create/page';

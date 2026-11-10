@@ -1,4 +1,5 @@
-import {accountAvailable,type RecoveryExemption} from './account-state';
+import {accountAvailable} from './account-state';
+import {settleRecoveryExemption,consumeRecoveryExemption} from './recovery-exemption';
 import { replacePassword,effectivePasswordPolicy } from './password-policy';
 import { randomUUID } from 'node:crypto';
 import {emailLocale,type EmailLocale} from '../email-design/model';
@@ -78,19 +79,13 @@ export async function completeRecovery(raw: string, password: string, code: stri
     const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
     if (principal[0]?.tenant_id !== c.tenantId) throw new InternalAuthError('invalidChallenge');
     const requireVerification=(await effectivePasswordPolicy(tx,c.tenantId)).requirements?.firstResetVerification;
-    const exemptionKey=`recovery-exemption:${c.subject}`;
-    const exemption=await readRecord<RecoveryExemption>(tx,exemptionKey,true);
-    const exempt=exemption?.purpose==='password-reset'&&exemption.expiresAt>Date.now();
-    if (!exempt && (requireVerification&&!c.totpSecret || c.totpSecret && !await verifyCredentialFactor(c, code))) return false;
+    // An ended pause is settled (deleted and audited as expired) and never admits the reset.
+    const exemption=await settleRecoveryExemption(tx,c);
+    if (!exemption && (requireVerification&&!c.totpSecret || c.totpSecret && !await verifyCredentialFactor(c, code))) return false;
     await replacePassword(tx, c, password); c.version = randomUUID(); c.mustChange = false; delete c.temporaryPasswordExpiresAt; delete c.temporaryPasswordUsed;
-    if(exempt) {
-      // A verified, one-use administrator recovery grant retires the lost factor only after the
-      // replacement password passes policy. Next sign-in must enroll a fresh authenticator.
-      c.totpSecret=null;c.lastStep=-1;c.recoveryHashes=[];
-      await deleteRecord(tx,exemptionKey);
-      const [subject]=await tx.unsafe('select app_user_id from app.principal_by_identity($1,$2)',[c.issuer,c.subject]);
-      if(subject)await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'app-user.recovery-exemption-consumed','user',$2::uuid,NULL)",[c.tenantId,subject.app_user_id]);
-    }
+    // A verified, one-use administrator pause retires the lost factor only after the replacement
+    // password passes policy. Next sign-in must enrol a fresh authenticator.
+    if(exemption) await consumeRecoveryExemption(tx,c,exemption,'password-reset');
     await revokeCredentialsSessions(tx, c.subject);
     await writeRecord(tx, `credential:${c.subject}`, c, c.subject);
     await deleteRecord(tx, key);

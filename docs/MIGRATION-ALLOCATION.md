@@ -1,3 +1,13 @@
+# Security Center Last Login index — 10 November 2026 MYT (unapplied)
+
+Branch claude/fb-07c98c36-users-account-actions holds the coordinator's
+reservation `4601_last_login_event_index` at idx 4001 / when 1793330004301,
+above the peer reservations through 4502 (idx 3902 / when 1793330004202) and
+the Schedule Group builder's 4600. The SQL adds one partial index on
+domain_event for app-user.logged-in reads; no data changes. Recheck peer claims,
+the published baseline and the ordered applied ledger at admission; this
+reservation grants no installation authority.
+
 # Schedule Group clock policy — 10 November 2026 MYT (unapplied)
 
 Reserve `4202_attendance_clock_policy_revisions` at idx 3602 and when
