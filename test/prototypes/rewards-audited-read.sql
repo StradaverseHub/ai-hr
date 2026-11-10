@@ -28,7 +28,7 @@ BEGIN
   ('app.reward_private_pat_history(uuid,integer)','d1913b119fe830fd51dc6c10c30e29bc','ai_hr_reward_setup_reader','plpgsql','s','search_path=pg_catalog, public, app','SETOF jsonb',ARRAY['wanted_company','wanted_year']::text[],true,2,0),
   ('app.reward_company_structure(uuid,date)','cbd10859b7b4dec0c034dedb8a54ac96','ai_hr_reward_setup_reader','plpgsql','s','search_path=pg_catalog, public, app','jsonb',ARRAY['wanted_company','wanted_date']::text[],false,2,0),
   ('app.principal_snapshot_current()','4eac75e69dbb1793bb23c2b1f28a38f4','native','plpgsql','s','search_path=pg_catalog, public, pg_temp','boolean',NULL::text[],false,0,0),
-  ('app.domain_event_chain_tg()','67c5ccec77df9b5690b086c206d0166a','native','plpgsql','v','search_path=pg_catalog, public, pg_temp','trigger',NULL::text[],false,0,0),
+  ('app.domain_event_chain_tg()','aeecd386c91435bd6d5f553e96da5edd','native','plpgsql','v','search_path=pg_catalog, public, pg_temp','trigger',NULL::text[],false,0,0),
   ('app._domain_event_next(uuid,boolean)','e045132f89b378e39a8ecebce70da078','native','plpgsql','v','search_path=pg_catalog, public, pg_temp','jsonb',ARRAY['p_tenant','p_try']::text[],false,2,1)
  )v(signature,body_md5,owner_name,language,volatility,configuration,result,names,returns_set,input_count,default_count)LOOP
   SELECT * INTO p FROM pg_proc WHERE oid=to_regprocedure(expected.signature);
@@ -303,6 +303,8 @@ BEGIN
   IF EXISTS(SELECT 1 FROM reward_audit_private.projection p WHERE p.receipt_id=r.id)THEN CONTINUE;END IF;
   IF r.version<>1 OR NOT EXISTS(SELECT 1 FROM public.domain_event WHERE tenant_id=r.tenant_id AND chain_seq IS NOT NULL)THEN RAISE EXCEPTION 'Supported armed-chain audit receipt required' USING ERRCODE='55000';END IF;
   appended:=clock_timestamp();
+  -- Chained in this frame: the canonical append below is checked before this transaction commits.
+  PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||r.tenant_id::text));
   INSERT INTO public.domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload,occurred_at)
   VALUES(r.event_id,r.tenant_id,'rewards-setup',r.aggregate_id,'rewards-setup.'||CASE WHEN r.operation='libraries'THEN 'libraries.viewed'ELSE 'pat.viewed'END,'user',r.actor_id,NULL,
    CASE WHEN r.operation='libraries'THEN jsonb_build_object('kind',r.kind,'year',r.year)ELSE jsonb_build_object('year',r.year)END

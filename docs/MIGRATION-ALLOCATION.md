@@ -1,3 +1,37 @@
+# Audit chain commit seal — 10 November 2026 (provisional, unapplied)
+
+Branch `claude/audit-commit-seal-20261110`, based on candidate
+`7b585515d67885045d79ebb3dce4ef6c5e7b1bd8`, proposes
+`4700_audit_chain_commit_seal` at idx 4100 and when 1793330004400, after that
+candidate's 769-entry journal ending at `4342_attendance_clock_policy_audit_scope`
+(idx 3742 / when 1793330004042). All 769 preceding entries and their SQL bytes are
+unchanged.
+
+The read-only peer survey on 10 November 2026 covered 7,141 refs, 529 distinct
+committed journal blobs, 589 allocation documents and 244 readable journals among
+1,243 registered worktrees. One ref has no journal and one journal needed a raw
+tuple scan. The peer maximum was tag `4601_last_login_event_index`, idx 4001 and
+when 1793330004301. No peer claimed 4700, idx 4100 or when 1793330004400. Unreadable
+worktrees and any reservation made after the survey are not covered, and the
+integration owner has not confirmed the pending union.
+
+This is a provisional source proposal. Refresh peer allocations, the accepted source
+and the installed ordered ledger before release admission. It carries no reservation
+authority beyond this branch, and no deployment authority.
+
+**Collision, for the integration owner:** the phase 2 branch
+`claude/access-reader-writer-20261110` also claims 4700–4703 (idx 4100 onwards). As
+instructed, this branch keeps 4700 and the integration step renumbers all new migrations
+in one pass. Nothing in the migration, its tests or the code depends on the number: the
+test finds the entry by its `_audit_chain_commit_seal` suffix.
+
+Ordering: apply it last in its batch. Its only lock on a populated table is the SHARE ROW
+EXCLUSIVE that `CREATE OR REPLACE TRIGGER` takes on `public.domain_event` (blocking event
+writes, not reads). That is its final statement, acquired under a statement-scoped 5-second
+`lock_timeout` and held until the batch commits. It follows the online-migration rules on
+`claude/candidate-migrations-online-20261110`: no scan, rewrite or index build on a populated
+table, and a bounded, scoped lock wait.
+
 # Personnel overview typed facts — 10 November 2026 (unallocated draft number)
 
 Branch `claude/personnel-speed-20261110` journals `9880_personnel_overview_facts` at idx 3743 and when

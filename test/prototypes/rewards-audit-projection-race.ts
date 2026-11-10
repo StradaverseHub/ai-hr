@@ -11,9 +11,9 @@ const recheck="  -- The cursor snapshot can predate another projector's COMMIT w
 const sqlSource=readFileSync('test/prototypes/rewards-audited-read.sql','utf8');
 const fixedBody=sqlSource.slice(sqlSource.indexOf('CREATE FUNCTION reward_audit_projection.materialize')).split('AS $body$')[1].split('$body$;')[0];
 const md5=(text:string)=>createHash('md5').update(text).digest('hex');
-if(md5(fixedBody)!=='4963dbd09d8ed17b35521600cac4fe06'||fixedBody.split(recheck).length!==2)throw Error('Exact fixed native projector owner required');
+if(md5(fixedBody)!=='0b6350855c3d310ec0dde1f02ae139bf'||fixedBody.split(recheck).length!==2)throw Error('Exact fixed native projector owner required');
 const oldBody=fixedBody.replace(recheck,'');
-if(md5(oldBody)!=='f313c19ebaa565960dfe32ababc092d6')throw Error('Exact frozen9e projector counterexample required');
+if(md5(oldBody)!=='2358886bf56aa35f22f7f5e09ad6d65f')throw Error('Exact frozen9e projector counterexample required');
 function deferred(){let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return{promise,resolve};}
 async function definition(){const [row]=await owner.client`select pg_get_functiondef(p.oid)as definition,p.prosrc as body,to_jsonb(p)as details from pg_proc p where p.oid=${signature}::regprocedure`;return row;}
 async function replaceOwned(expected:Awaited<ReturnType<typeof definition>>,body:string){

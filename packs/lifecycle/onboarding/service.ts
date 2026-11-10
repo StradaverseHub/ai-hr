@@ -665,19 +665,17 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
 }
 /** Called by Personnel while its original transaction is still open; optional module stays optional. */
 /**
- * d839ff30 — THE ONE LOCK ORDER FOR ONBOARDING: the tenant's audit-chain lock, THEN the onboarding lock.
+ * d839ff30 — THE ONE LOCK ORDER FOR ONBOARDING: the onboarding lock, then the audit chain at commit.
  *
- * Every domain_event insert takes the tenant's audit-chain advisory lock in its BEFORE INSERT trigger
- * (db/migrations/0534_persisted_audit_chain.sql) and holds it to commit. A Personnel save appends its event
- * and only then reaches onboardingSyncDraftTx (audit-chain, then onboarding), while the Personnel backfill
- * took the onboarding lock and then appended onboarding-case events (onboarding, then audit-chain). Run
- * together, that is a deadlock and Postgres rolls one of them back (40P01). Taking the audit-chain lock
- * first wherever the onboarding lock is taken puts every path in the same order, whatever it did before.
- * The audit-chain key must stay byte-identical to the trigger's; test/onboarding-v31-db.test.ts forces the
- * interleaving and fails if the two ever drift apart.
+ * Until the audit chain was sealed at commit, every domain_event insert took the tenant's audit-chain advisory lock in its BEFORE
+ * INSERT trigger and held it to commit, so a Personnel save (event, then onboarding) and the Personnel
+ * backfill (onboarding, then event) deadlocked (40P01) until every path took the audit-chain lock first.
+ * Now the chain is sealed at commit instead: an insert takes no lock, and the seal takes the audit-chain key
+ * last and waits on nothing else. Taking that key here would make this path a long key holder that every
+ * seal waits on, and a key holder waiting on a sealing transaction's row lock is a deadlock, so the
+ * onboarding lock alone orders these writers. test/onboarding-v31-db.test.ts forces the interleaving.
  */
 async function lockOnboardingTx(tx: Tx, tenantId: string) {
-    await tx.execute(sql `select pg_advisory_xact_lock(hashtext('audit-chain:' || ${tenantId}::uuid::text))`);
     await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${tenantId + ':onboarding'},0))`);
 }
 /** Read-only activation dependency metadata under the SAME owner lock. The first Personnel review

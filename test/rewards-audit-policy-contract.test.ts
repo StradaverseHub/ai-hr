@@ -22,7 +22,7 @@ it('changes only the explicit four native bodies, retaining fresh canonical head
 it('keeps SQL guard/private frame/receipt ownership closed without claiming fixture fallback is installed configuration',()=>{
  const sql=readFileSync('test/prototypes/rewards-audit-policy.sql','utf8');
  expect(sql).toContain("_domain_event_next(uuid,boolean)','e045132f89b378e39a8ecebce70da078'");
- expect(sql).toContain("domain_event_chain_tg()','67c5ccec77df9b5690b086c206d0166a'");
+ expect(sql).toContain("domain_event_chain_tg()','aeecd386c91435bd6d5f553e96da5edd'");
  expect(sql).toContain("_bank_audit_owner_frame_guard()','f70f12b5a66a6a99a5f01a266b591a30'");
  expect(sql).toContain("_assistant_catalogue_audit_owner_frame_guard()','c567cb10896020af14486b31d72b539c'");
  expect(sql).toContain('PRIMARY KEY(tenant_id,root_xid)');expect(sql).toContain('root_xid<>pg_current_xact_id()');expect(sql).toContain('FOR UPDATE SKIP LOCKED LIMIT p_limit');

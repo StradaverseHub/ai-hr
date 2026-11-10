@@ -50,7 +50,8 @@ import {auditLoopDetail,auditLoopSummary} from '../core/payroll-audit/status';
 import {runPayrollAuditLoop} from '../core/payroll-audit/run';
 import {INPUT_COMPONENTS,captureRunInputsAtProcessingTx} from '../core/payroll-audit/inputs';
 import {AUDIT_CAPTURE_KINDS,AUDIT_CONTROL_IDS,AUDIT_DISPOSITIONS,AUDIT_ROOT_CAUSES} from '../core/payroll-audit/types';
-import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {actorOf,appendEvent} from '../db/events';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
 const PERIOD='2026-01',TODAY='2026-02-10';
 let b:Base;
@@ -183,6 +184,34 @@ describe('capture, end to end',()=>{
   const latest=(await capturesOf(f.hr,b.companyId)).at(-1)!;
   expect(latest).toMatchObject({kind:'access',seq:rows.length+1,prevHash:rows.at(-1)!.chainHash});
   expect((latest.content as {entry:Record<string,unknown>}).entry).toEqual({surface:'register',action:'view',companyId:b.companyId,payPeriod:PERIOD,batchId:f.batch1});
+ });
+
+ it('captures each event with its committed chain values when the audit chain is sealed at commit',async()=>{
+  await setSetting(b.tenantId,'audit.hash_chain_enabled',true);
+  const f=await fixture();
+  const chainOf=async(ids:string[])=>new Map((await owner.client<{id:string;chain_seq:string|null;hash:string|null}[]>`select id,chain_seq::text,hash
+   from public.domain_event where id=any(${ids}::uuid[])`).map(row=>[row.id,{chainSeq:row.chain_seq,chainHash:row.hash}]));
+  await capturePayrollPeriod(f.hr,{companyId:b.companyId,payPeriod:PERIOD});
+  const changes=(await capturesOf(f.hr,b.companyId)).filter(row=>row.kind==='change'&&row.sourceKey.startsWith('event:'))
+   .map(row=>row.content as {eventId:string;chainSeq:string|number|null;chainHash:string|null});
+  expect(changes.length).toBeGreaterThanOrEqual(2);
+  const committed=await chainOf(changes.map(change=>change.eventId));
+  for(const change of changes){
+   expect(change.chainSeq,change.eventId).not.toBeNull();
+   expect({chainSeq:String(change.chainSeq),chainHash:change.chainHash}).toEqual(committed.get(change.eventId));
+  }
+  // An event appended earlier in the capturing transaction itself is captured chained, exactly as when the
+  // chain was assigned at insert: the capture seals it first, and the values are the ones that commit.
+  const appended=await withTenant(f.hr,async tx=>{
+   const eventId=await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'payroll-batch',aggregateId:f.batch1,eventType:'payroll-batch.fictional-note',
+    actor:actorOf(f.hr),payload:{batchId:f.batch1}},{returnId:true}) as string;
+   const event={id:eventId};
+   const artefacts=await collectPayrollPeriodArtefactsTx(tx,f.hr,{companyId:b.companyId,payPeriod:PERIOD});
+   const own=artefacts.find(item=>item.sourceKey==='event:'+event.id)?.content as {chainSeq:string|number|null;chainHash:string|null}|undefined;
+   return {id:event.id,own};
+  });
+  expect(appended.own?.chainSeq).not.toBeNull();
+  expect({chainSeq:String(appended.own?.chainSeq),chainHash:appended.own?.chainHash}).toEqual((await chainOf([appended.id])).get(appended.id));
  });
 
  it('refuses an append-only change through the application role, and the writer cannot choose its own hashes',async()=>{

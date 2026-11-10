@@ -6,6 +6,7 @@ import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import {appUser,person,roleAssignment} from '../db/schema';
 import {rewardLibraries,rewardLibraryPageAccess} from '../packs/rewards/libraries';
+import {pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 beforeAll(migrateTestDb);beforeEach(resetDb);afterEach(()=>vi.restoreAllMocks());afterAll(closeAll);
@@ -55,7 +56,8 @@ it('finishes preflight while real Access and audit-chain writers remain held; th
  for(const kind of ['access','history'] as const)await held(f.b.tenantId,kind,context.signal,async pid=>{
   expect(await rewardLibraryPageAccess(f.gr.ctx)).toEqual({canManage:true});expect(await rewardLibraryPageAccess(f.ctro.ctx)).toEqual({canManage:false});
   const [proof]=await owner.client`select exists(select 1 from pg_locks where pid=${pid} and locktype='advisory' and granted) as held`;if(!proof)throw Error('Missing actual held-lock proof');expect(proof.held).toBe(true);
-  await expect(rewardLibraries(f.gr.ctx,'salary')).rejects.toMatchObject({cause:{code:'55P03'}});
+  // Behind the audit-chain key the refusal now comes from the commit-time seal, not the insert.
+  expect(pgSqlState(await rewardLibraries(f.gr.ctx,'salary').then(()=>undefined,(error:unknown)=>error))).toBe('55P03');
  });
  expect(await audit(f.b.tenantId)).toEqual(before);
  expect(await rewardLibraries(f.gr.ctx,'salary')).toEqual([]);

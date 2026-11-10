@@ -1,5 +1,6 @@
 /** Native presentation/command separation; no returned authority or money is mocked. */
 import {randomUUID} from 'node:crypto';
+import {pgSqlState} from '../lib/db-error';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import * as database from '../db/client';
@@ -85,7 +86,8 @@ it('enforces native RR/RO and retains command/audited-view barriers and durable 
   expect(mode).toEqual({isolation:'repeatable read',readonly:'on',user:f.ctx.userId,tenant:f.b.tenantId});
   await expect(setupReadTenant(f.ctx,tx=>tx.execute(sql`update reward_library_version set reason='A presentation must never mutate' where id=${f.binding.salary_version_id}::uuid`))).rejects.toMatchObject({cause:{code:'25006'}});
   await held(f.b.tenantId,'access',context.signal,async()=>{expect(await previewRewardPlanSplit(f.ctx,draft)).toEqual(split);await expect(saveRewardPlanSettings(f.ctx,command)).rejects.toMatchObject({cause:{code:'55P03'}});await expect(rewardLibraries(f.ctx,'salary',f.year)).rejects.toMatchObject({cause:{code:'55P03'}});});
-  await held(f.b.tenantId,'history',context.signal,async()=>{await expect(rewardPatInputs(f.ctx,f.year)).rejects.toMatchObject({cause:{code:'55P03'}});});
+  // Behind the audit-chain key the refusal now comes from the commit-time seal, not the insert.
+  await held(f.b.tenantId,'history',context.signal,async()=>{expect(pgSqlState(await rewardPatInputs(f.ctx,f.year).then(()=>undefined,(error:unknown)=>error))).toBe('55P03');});
   const before=await events(f.b.tenantId);expect(await rewardLibraries(f.ctx,'salary',f.year)).toHaveLength(1);expect(await rewardPatInputs(f.ctx,f.year)).toHaveLength(1);
   const after=await events(f.b.tenantId);expect(after).toHaveLength(before.length+2);expect(after.filter(row=>!before.some(old=>old.id===row.id)).map(row=>row.event_type).sort()).toEqual(['rewards-setup.libraries.viewed','rewards-setup.pat.viewed']);
  }finally{spy.mockRestore();}

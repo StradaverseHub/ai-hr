@@ -35,18 +35,24 @@ it.each(['pending','cancelled','completed'])('refuses ANY hidden linked %s case 
  expect(await withTenant(ctx,tx=>tx.select({id:s.lcOnboardingCase.id}).from(s.lcOnboardingCase))).toEqual([]);await denied(run());expect(await tryKeys()).toEqual({access:true,audit:true,onboarding:true});
 });
 it('holds actual Access/audit/onboarding, case-membership and draft locks through COMMIT then releases them',async()=>{
- await withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);expect(await onboardingDraftDiscardContextTx(ctx,tx,subject(),{tryOnly:true})).toEqual({noLinkedCase:true});expect(await tryKeys()).toEqual({access:false,audit:false,onboarding:false});
+ await withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);expect(await onboardingDraftDiscardContextTx(ctx,tx,subject(),{tryOnly:true})).toEqual({noLinkedCase:true});expect(await tryKeys()).toEqual({access:false,audit:true,onboarding:false});
   let tableError:unknown;try{await owner.db.transaction(other=>other.execute(sql`lock table lc_onboarding_case in row exclusive mode nowait`));}catch(e){tableError=e;}expect(pgSqlState(tableError)).toBe('55P03');
   let draftError:unknown;try{await owner.db.transaction(other=>other.select({id:s.employeeDraft.id}).from(s.employeeDraft).where(eq(s.employeeDraft.id,draftId)).for('update',{noWait:true}));}catch(e){draftError=e;}expect(pgSqlState(draftError)).toBe('55P03');
  });expect(await tryKeys()).toEqual({access:true,audit:true,onboarding:true});await withTenant(writer,tx=>linked(tx));await denied(run());
 });
-it.each(['audit','onboarding','case_table','draft_row'] as const)('fails fast on %s contention and rolls back every acquired lock',async lock=>{
+// Audit chain sealed at commit: the context no longer takes the audit-chain key; the chain is sealed when the caller commits.
+it('is not refused by a held audit-chain key, which it no longer takes',async()=>{
  await owner.db.transaction(async held=>{
-  if(lock==='audit')await held.execute(sql`select pg_advisory_xact_lock(hashtext(${'audit-chain:'+b.tenantId}))`);
-  else if(lock==='onboarding')await held.execute(sql`select pg_advisory_xact_lock(hashtextextended(${b.tenantId+':onboarding'},0))`);
+  await held.execute(sql`select pg_advisory_xact_lock(hashtext(${'audit-chain:'+b.tenantId}))`);
+  expect(await run()).toEqual({noLinkedCase:true});
+ });
+});
+it.each(['onboarding','case_table','draft_row'] as const)('fails fast on %s contention and rolls back every acquired lock',async lock=>{
+ await owner.db.transaction(async held=>{
+  if(lock==='onboarding')await held.execute(sql`select pg_advisory_xact_lock(hashtextextended(${b.tenantId+':onboarding'},0))`);
   else if(lock==='case_table')await held.execute(sql`lock table lc_onboarding_case in row exclusive mode nowait`);
   else await held.select({id:s.employeeDraft.id}).from(s.employeeDraft).where(eq(s.employeeDraft.id,draftId)).for('update');
-  await denied(run());const keys=await tryKeys();expect(keys.access).toBe(true);if(lock!=='audit')expect(keys.audit).toBe(true);if(lock!=='onboarding')expect(keys.onboarding).toBe(true);
+  await denied(run());const keys=await tryKeys();expect(keys.access).toBe(true);expect(keys.audit).toBe(true);if(lock!=='onboarding')expect(keys.onboarding).toBe(true);
  });expect(await run()).toEqual({noLinkedCase:true});
 });
 it('refuses direct app-role entry when Access is held elsewhere',async()=>{await owner.db.transaction(async held=>{await held.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`);await denied(withTenant(ctx,tx=>onboardingDraftDiscardContextTx(ctx,tx,subject(),{tryOnly:true})));});expect(await run()).toEqual({noLinkedCase:true});});
