@@ -6,6 +6,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Tx } from '../db/client';
 import { acquireBoundedAdvisoryLockTx } from './access-configuration-lock';
+import { pgSqlState } from '../lib/db-error';
 
 /** `busy`: another writer holds a dependency lock right now, so retrying shortly can succeed.
  * `changed` (default): the nominated source changed between reads or is malformed, so the same request
@@ -83,8 +84,14 @@ export async function lockLeaveDependenciesWaitTx(tx: Tx, tenantId: string, empl
     and current_setting('transaction_isolation')='read committed'
     and current_setting('transaction_read_only')='off' as acquired`);
   if (row?.acquired !== true) throw new LeaveDependencyUnavailable('busy');
-  await acquireBoundedAdvisoryLockTx(tx, `leave-dependency-configuration:${tenantId}`, true);
-  for (const id of subjects) await acquireBoundedAdvisoryLockTx(tx, `leave-dependency-employment:${tenantId}:${id}`, false);
+  try {
+    await acquireBoundedAdvisoryLockTx(tx, `leave-dependency-configuration:${tenantId}`, true);
+    for (const id of subjects) await acquireBoundedAdvisoryLockTx(tx, `leave-dependency-employment:${tenantId}:${id}`, false);
+  } catch (error) {
+    // A bound reached is the same outcome callers already handle: nothing written, retry shortly.
+    if (pgSqlState(error) === '55P03') throw new LeaveDependencyUnavailable('busy');
+    throw error;
+  }
 }
 
 /** Explicit SOURCE-READ interval for an actual READ COMMITTED READ ONLY transaction. Same physical

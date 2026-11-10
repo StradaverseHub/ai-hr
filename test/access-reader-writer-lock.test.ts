@@ -10,13 +10,14 @@ import {eq,sql as dsql} from 'drizzle-orm';
 import postgres from 'postgres';
 import {randomUUID} from 'node:crypto';
 import {withTenant} from '../db/client';
-import {appUser,employment,person,roleAssignment} from '../db/schema';
+import {appUser,employment,leaveRequest,leaveType,person,roleAssignment} from '../db/schema';
 import {lockAccessAdministratorSetTx,lockAccessConfigurationReadTx,lockAccessConfigurationTx,lockAccessConfigurationWriteTx,tryLockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {hireEmployee} from '../core/org';
 import {revokeRole} from '../core/admin';
 import {checkIn,checkOut} from '../core/attendance';
-import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {requestLeave} from '../core/leave';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 
 const barrier=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};};
@@ -381,6 +382,41 @@ describe('wave 3: clocking under the shared lock',()=>{
   release.resolve();await editor;
   await expect(clocking).resolves.toBeDefined();
  },60000);
+});
+
+describe('wave 3: leave apply under the shared lock',()=>{
+ const today=todayInKualaLumpur(),year=today.slice(0,4);
+ async function worker(label:string){
+  const ctx=adminCtx(b);
+  await seedEntitlement(ctx,{leaveTypeId:b.annualLeaveTypeId,annualDays:12,validFrom:`${year}-01-01`,name:`Fictional entitlement ${label}`});
+  await owner.db.update(leaveType).set({counting:'calendar_days'}).where(eq(leaveType.id,b.annualLeaveTypeId));
+  const hired=await hireEmployee(ctx,{person:{fullName:`Fictional leave ${label}`,primaryEmail:`leave-${label}-${randomUUID()}@example.invalid`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year}-01-01`,grantLeaveTypes:[{id:b.annualLeaveTypeId,code:'ANNUAL'}]});
+  return hired.employmentId;
+ }
+ const apply=(employmentId:string)=>requestLeave(adminCtx(b),{employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:today,endDate:today,durationType:'full_day',reason:'Fictional reader writer request',today});
+ it('completes while another writer holds the shared lock',async()=>{
+  const employmentId=await worker('solo'),held=barrier(),release=barrier();
+  const other=raw.begin(async tx=>{await tx.unsafe(`select pg_advisory_xact_lock_shared(${lockKey(b.tenantId)})`);held.resolve();await release.promise;});
+  await held.promise;
+  await expect(settled(apply(employmentId),30000)).resolves.not.toBe('timeout');
+  release.resolve();await other;
+ },70000);
+ it('serialises two identical requests for one employee into one request and an ordinary refusal',async()=>{
+  const employmentId=await worker('twice');
+  // The duplicate rule is the check-then-write that the employment lock has to serialise.
+  await owner.db.update(leaveType).set({duplicateApplicationPolicy:'restrict_same'}).where(eq(leaveType.id,b.annualLeaveTypeId));
+  const results=await Promise.allSettled([apply(employmentId),apply(employmentId)]);
+  expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+  const refused=results.filter((result):result is PromiseRejectedResult=>result.status==='rejected').map(result=>String(result.reason?.name));
+  expect(refused).toEqual(['DuplicateLeaveApplicationError']);
+  const rows=await owner.db.select({id:leaveRequest.id}).from(leaveRequest).where(eq(leaveRequest.employmentId,employmentId));
+  expect(rows).toHaveLength(1);
+ },70000);
+ it('lets two employees apply at the same moment',async()=>{
+  const [first,second]=[await worker('a'),await worker('b')];
+  const results=await Promise.allSettled([apply(first),apply(second)]);
+  expect(results.map(result=>result.status)).toEqual(['fulfilled','fulfilled']);
+ },70000);
 });
 
 describe('authority writers never block in a trigger',()=>{

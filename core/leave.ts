@@ -10,8 +10,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {assertReadCompositionPrincipalTx} from './read-composition-principal';
-import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
-import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
+import { lockAccessConfigurationTx, lockAccessConfigurationWriteTx } from './access-configuration-lock';
+import { lockLeaveDependenciesTx, lockLeaveDependenciesWaitTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
 import { assertCanDecide, assertAssignedWorkPrincipalTx, decideByRoleForKnownSubject, isApprovalDecisionRefusal, subjectPersonIdsTx } from './approvals';
 import {assertMyTeamSubjectTx} from './my-team-scope';
@@ -3409,12 +3409,10 @@ export async function requestLeave(
   const perform = async (tx: Tx, sharedAccess = false) => {
     // Rights first, then shared source configuration. An unauthorized subject is refused by the
     // original gate before acquiring any employment lock or reading leave policy/balance facts.
-    if (sharedAccess) {
-      await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + ctx.tenantId},0))`);
-    } else {
-      await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
-    }
-    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+    // Applying leave only needs configuration stable. The employment lock below serialises the balance,
+    // duplicate and borrowing checks, so both courses share the Access lock and wait for short holders.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, []);
     if (p.document) p = { ...p, hasDocument: true };
     // ── On-behalf gate (5206539f) — THE FIRST THING THIS FUNCTION DOES, and deliberately ────────────────
     // Submitting leave for an employment that is not the caller's own requires `leave.apply_on_behalf`.
@@ -3466,7 +3464,7 @@ export async function requestLeave(
       throw new LeaveOnBehalfNotAllowedError();
     }
 
-    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+    await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, [p.employmentId]);
     const [currentSubject] = await readSubject();
     // The initial row nominated/authorized a subject; use it only if the same canonical projection
     // still holds after acquiring ownership. All selected facts are scalar/date values, fixed order.
