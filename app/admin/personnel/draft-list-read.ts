@@ -1,11 +1,11 @@
-import type { SessionContext } from '@/db/client';
+import type { SessionContext, Tx } from '@/db/client';
 import { countEmployeeDrafts, listEmployeeDrafts, type DraftListScope, type EmployeeDraftRow } from '@/core/employee-draft';
 import { draftFiltersPermitRows, draftMatchesQuery, type PersonnelListQuery } from './list-query';
 
 /** The Draft card replaces the employment bucket. Keep its exact count while reading full draft
  * details only when the current view actually renders those drafts. */
 export async function readPersonnelDraftList(
-  ctx: SessionContext, scope: DraftListScope, query: PersonnelListQuery, renderRows: boolean,
+  ctx: SessionContext, scope: DraftListScope, query: PersonnelListQuery, renderRows: boolean, existingTx?: Tx,
 ): Promise<{ rows: EmployeeDraftRow[]; count: number }> {
   const cardQuery = { ...query, bucket: undefined };
   if (!draftFiltersPermitRows(cardQuery)) return { rows: [], count: 0 };
@@ -20,8 +20,8 @@ export async function readPersonnelDraftList(
     : scope;
   const matches = query.q ? (row: Parameters<typeof draftMatchesQuery>[0]) => draftMatchesQuery(row, cardQuery) : undefined;
   if (renderRows && draftFiltersPermitRows(query)) {
-    const rows = await listEmployeeDrafts(ctx, narrowed, matches);
+    const rows = await listEmployeeDrafts(ctx, narrowed, matches, existingTx);
     return { rows, count: rows.length };
   }
-  return { rows: [], count: await countEmployeeDrafts(ctx, narrowed, matches) };
+  return { rows: [], count: await countEmployeeDrafts(ctx, narrowed, matches, existingTx) };
 }

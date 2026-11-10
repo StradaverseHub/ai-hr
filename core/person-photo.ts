@@ -271,12 +271,33 @@ export async function employmentPhotoIds(
   if (ids.length === 0) return new Map();
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`SET TRANSACTION READ ONLY`);
-    const visible=await photoReadPredicateTx(tx,ctx);
-    const rows = await tx
-      .select({ employmentId: employment.id, personId: personPhoto.personId })
-      .from(employment)
-      .innerJoin(personPhoto, eq(personPhoto.personId, employment.personId))
-      .where(and(inArray(employment.id, ids),visible));
-    return new Map(rows.map((r) => [r.employmentId, r.personId]));
+    return employmentPhotoRowsTx(tx, ctx, ids);
   });
+}
+
+/** employmentPhotoIds inside a caller's read-only snapshot (the Personnel page). */
+export async function employmentPhotoIdsTx(tx: Tx, ctx: SessionContext, employmentIds: readonly string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(employmentIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
+  if (ids.length === 0) return new Map();
+  return employmentPhotoRowsTx(tx, ctx, ids);
+}
+
+async function employmentPhotoRowsTx(tx: Tx, ctx: SessionContext, ids: string[]) {
+  const visible=await photoReadPredicateTx(tx,ctx);
+  const rows = await tx
+    .select({ employmentId: employment.id, personId: personPhoto.personId })
+    .from(employment)
+    .innerJoin(personPhoto, eq(personPhoto.personId, employment.personId))
+    .where(and(inArray(employment.id, ids),visible));
+  return new Map(rows.map((r) => [r.employmentId, r.personId]));
+}
+
+/** For an administrator, employmentPhotoIds' rows as a relation over a caller-bounded employment-id
+ * array: the same join, RLS and current-principal predicate, so a page read can select it in a
+ * statement it already spends. Null for any other reader, whose predicate needs the profile policy. */
+export function administratorPhotoRowsSql(ctx: SessionContext, employmentIds: SQL): SQL | null {
+  if (!isAdmin(ctx)) return null;
+  return sql`select e.id as "employmentId", pp.person_id as "personId"
+    from employment e join person_photo pp on pp.person_id = e.person_id
+    where e.id = any(${employmentIds}) and (select app.principal_snapshot_current())`;
 }

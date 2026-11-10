@@ -705,6 +705,7 @@ async function workforcePersonnelPageQueryTx(
 
 type PersonnelOverviewInput = PersonnelListInput & { companyIds: string[] };
 
+const PERSONNEL_BOUNDED_ROW_LIMIT = 10_000, PERSONNEL_PAGE_ROWS_CHUNK = 2_000;
 /** Which typed fact relation the bounded overview reads: the installed 2701 projection, or the complete
  * typed projection of db/migration-drafts/personnel_overview_facts.sql once that is installed. */
 type PersonnelFactSource = 'filter-fields' | 'facts';
@@ -734,8 +735,8 @@ const typedQualityColumn: Record<Exclude<PersonnelQualityFlag, 'suspected_duplic
 function personnelFactSource(
   input: PersonnelOverviewInput, facets: EmployeeListFilters, snapshot: PersonnelOverviewSnapshot, asOf: string,
 ): PersonnelFactSource | null {
-  // page_rows projects at most 2,000 subjects; larger pages keep the exact owner.
-  if (!Number.isSafeInteger(input.limit) || input.limit < 0 || input.limit > ALL_ROW_CEILING ||
+  // page_rows projects at most 2,000 subjects per call; larger pages (exports) are projected in chunks.
+  if (!Number.isSafeInteger(input.limit) || input.limit < 0 || input.limit > PERSONNEL_BOUNDED_ROW_LIMIT ||
       !Number.isSafeInteger(input.offset) || input.offset < 0 || input.companyIds.length === 0) return null;
   const active = (value: unknown) => value !== undefined && (!Array.isArray(value) || value.length > 0);
   const supported = (allowed: Set<string>, sorts?: Set<EmployeeColumnKey>) => [input, facets].every(filters =>
@@ -774,10 +775,18 @@ function personnelFactWhere(
   ) ?? sql`true`;
 }
 
+/** Caller-owned scalar expressions (and an administrator page-photo relation over the page's own
+ * employment ids) selected in the overview statement instead of separate statements. */
+export type PersonnelOverviewAttachments = { attach?: Record<string, SQL>; pagePhotos?: (employmentIds: SQL) => SQL | null };
+const attachedColumn = (attach: Record<string, SQL> | undefined) => attach && Object.keys(attach).length
+  ? sql`jsonb_build_object(${sql.join(Object.entries(attach).map(([key, value]) => sql`${key}::text, ${value}`), sql`, `)})`
+  : sql`'{}'::jsonb`;
+
 function personnelNarrowOverviewQuery(
   input: PersonnelOverviewInput, facets: EmployeeListFilters, asOf: string, source: PersonnelFactSource,
-  duplicateIds: readonly string[],
+  duplicateIds: readonly string[], extras: PersonnelOverviewAttachments = {},
 ): SQL {
+  const photos = extras.pagePhotos?.(sql`array(select employment_id from page)`) ?? null;
   const read = typedWorkforceFieldAccess, columns = workforceListColumns(asOf, read);
   const scope = sql`array[${sql.join(input.companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
   const key = isEmployeeColumnKey(input.columnSort) ? input.columnSort : undefined;
@@ -826,11 +835,18 @@ function personnelNarrowOverviewQuery(
     ), page as materialized (
       select employment_id, sort_value, company_sort, name_sort from personnel_facts
       where page_matches order by ${order} limit ${input.limit} offset ${input.offset}
-    ), page_details as materialized (
+    ), page_details as materialized (${input.limit <= PERSONNEL_PAGE_ROWS_CHUNK ? sql`
       select page.*, details.value from page
       join app.personnel_overview_page_rows(${asOf}::date, ${scope},
         array(select employment_id from page)) as details(value)
-        on (details.value->>'employmentId')::uuid=page.employment_id
+        on (details.value->>'employmentId')::uuid=page.employment_id` : sql`
+      select page.*, details.value from (
+        select array_agg(employment_id) as ids from (
+          select employment_id, row_number() over (order by employment_id) as ordinal from page
+        ) as numbered group by (ordinal - 1) / ${PERSONNEL_PAGE_ROWS_CHUNK}
+      ) as chunk
+      cross join lateral app.personnel_overview_page_rows(${asOf}::date, ${scope}, chunk.ids) as details(value)
+      join page on (details.value->>'employmentId')::uuid=page.employment_id`}
     )
     select
       (select coalesce(jsonb_agg(value order by ${order}), '[]'::jsonb) from page_details) as rows,
@@ -847,13 +863,16 @@ function personnelNarrowOverviewQuery(
         'parentCompany', "parentCompany", 'businessGroupId', "businessGroupId", 'businessGroup', "businessGroup",
         'businessUnitId', "businessUnitId", 'businessUnit', "businessUnit") order by ordinality), '[]'::jsonb)
         from companies) as companies,
-      (select ${duplicateAuthority(sql`companies`)}) as "canInspectDuplicates",
-      (select ${duplicateAuthority(sql`unnest(${scope}) as id`)}) as "duplicateAuthority"
+      (${duplicateAuthority(sql`companies`)}) as "canInspectDuplicates",
+      (${duplicateAuthority(sql`unnest(${scope}) as id`)}) as "duplicateAuthority",
+      ${attachedColumn(extras.attach)} as attached,
+      ${photos ? sql`(select coalesce(jsonb_agg(to_jsonb(photo)), '[]'::jsonb) from (${photos}) as photo)` : sql`null::jsonb`} as photos
   `;
 }
 
 type PersonnelNarrowResult = PersonnelPageResult & {
   pageDetailsComplete: boolean; companies: PersonnelCompanyChoice[]; canInspectDuplicates: boolean; duplicateAuthority: boolean;
+  attached: Record<string, unknown>; photos: { employmentId: string; personId: string }[] | null;
 };
 
 async function personnelOverviewQueryTx(
@@ -896,7 +915,7 @@ export function readPersonnelOverview(
 /** The overview inside a caller's Personnel overview snapshot (core/personnel-read-bounds.ts). */
 export async function readPersonnelOverviewTx(
   tx: Tx, ctx: SessionContext, input: PersonnelOverviewInput, headcount: Omit<EmployeeListFilters, 'companyIds'>,
-  snapshot: PersonnelOverviewSnapshot, options?: { compareExact: true },
+  snapshot: PersonnelOverviewSnapshot, options?: { compareExact?: true } & PersonnelOverviewAttachments,
 ) {
   const asOf = todayInKualaLumpur();
   const facets = { ...headcount, companyIds: input.companyIds };
@@ -905,18 +924,22 @@ export async function readPersonnelOverviewTx(
   if (source) {
     const duplicateIds = [input, facets].some(filters => filters.qualityFlags?.includes('suspected_duplicate'))
       ? await personnelDuplicateIdsTx(tx, ctx, { companyIds: input.companyIds, asOf }) : [];
-    const [narrow] = await tx.execute<PersonnelNarrowResult>(personnelNarrowOverviewQuery(input, facets, asOf, source, duplicateIds));
+    const [narrow] = await tx.execute<PersonnelNarrowResult>(personnelNarrowOverviewQuery(input, facets, asOf, source, duplicateIds, options));
     if (narrow?.pageDetailsComplete) return {
       employees: { rows: narrow.rows, total: narrow.total },
       headcount: { total: Object.values(narrow.byStatus).reduce((sum, count) => sum + count, 0), byStatus: narrow.byStatus },
       duplicateFilterUnavailable: input.qualityFlags?.includes('suspected_duplicate') ? !narrow.duplicateAuthority : false,
       organisationChoices: { companies: narrow.companies, canInspectDuplicates: narrow.canInspectDuplicates, rows: narrow.choices },
+      attached: narrow.attached,
+      pagePhotos: narrow.photos ? new Map(narrow.photos.map(photo => [photo.employmentId, photo.personId])) : null,
     };
   }
   // The snapshot interprets the bounded statement; the exact owner keeps the session's JIT setting.
   if (snapshot.previousJit !== 'off') await tx.execute(sql`select set_config('jit', ${snapshot.previousJit}, true)`);
   const { choices, query } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
   const [result] = await tx.execute<PersonnelPageResult>(query);
+  const attached = options?.attach && Object.keys(options.attach).length
+    ? (await tx.execute<{ attached: Record<string, unknown> }>(sql`select ${attachedColumn(options.attach)} as attached`))[0].attached : {};
   return {
     employees: { rows: result.rows, total: result.total },
     headcount: { total: Object.values(result.byStatus).reduce((sum, count) => sum + count, 0), byStatus: result.byStatus },
@@ -924,6 +947,8 @@ export async function readPersonnelOverviewTx(
       ? !await personnelDuplicateAuthorityTx(tx, input.companyIds)
       : false,
     organisationChoices: { ...choices, rows: result.choices },
+    attached,
+    pagePhotos: null as Map<string, string> | null,
   };
 }
 
@@ -1244,12 +1269,26 @@ export async function personnelListPage(
  *  unpaginated `listEmployees` stays for callers that genuinely need the whole set (transfer
  *  target dropdowns, exports). */
 /** A presentation-only export may compose the same page projection with other reads. */
-export function listWorkforcePersonnelPresentationPageTx(ctx: SessionContext, input: PersonnelListInput, asOf: string, tx: Tx) {
+export function listWorkforcePersonnelPresentationPageTx(
+  ctx: SessionContext, input: PersonnelListInput, asOf: string, tx: Tx, overviewSnapshot?: PersonnelOverviewSnapshot,
+) {
   input = structuredClone(input);
   return withPersonnelPresentationReadTx(ctx, tx, async (snapshot, current) => {
+    // Inside a Personnel overview snapshot the bounded reader serves the same rows and total.
+    if (overviewSnapshot && input.companyIds) {
+      const { employees } = await readPersonnelOverviewTx(snapshot, current, { ...input, companyIds: input.companyIds }, {}, overviewSnapshot);
+      return employees;
+    }
     const { rows, total } = await workforcePersonnelPageTx(snapshot, current, input, asOf);
     return { rows, total };
   });
+}
+
+/** listEmployeesPage(…, 'workforce') inside a caller's Personnel overview snapshot. */
+export async function listWorkforcePersonnelPageTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelListInput & { companyIds: string[] }, overviewSnapshot: PersonnelOverviewSnapshot,
+) {
+  return (await readPersonnelOverviewTx(tx, ctx, input, {}, overviewSnapshot)).employees;
 }
 
 export function listEmployeesPage(

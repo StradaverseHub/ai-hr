@@ -88,6 +88,20 @@ export function canOpenWorkforce(ctx:SessionContext){
  });
 }
 
+/** workforceViewScope and personnelMaintenanceCompanyIds as one scalar jsonb expression, for a page
+ * that selects them inside a statement it already spends in its own read-only snapshot. */
+export const personnelPageAccessSql = sql`jsonb_build_object(
+  'companyIds', coalesce((select jsonb_agg(id order by id) from company
+    where tenant_id = app.current_tenant_id() and app.access_workforce_projection_company(id)), '[]'::jsonb),
+  'unassigned', app.access_workforce_unassigned('workforce.view'),
+  'maintainIds', coalesce((select jsonb_agg(id order by id) from company
+    where tenant_id = app.current_tenant_id() and app.access_workforce_company(id, 'workforce.maintain')), '[]'::jsonb))`;
+export type PersonnelPageAccess = {companyIds: string[]; unassigned: boolean; maintainIds: string[]};
+export function personnelPageAccessFrom(value: unknown): PersonnelPageAccess & {canOpen: boolean} {
+  const access = value as PersonnelPageAccess;
+  return {...access, canOpen: access.companyIds.length > 0 || access.unassigned === true};
+}
+
 /** Page-scope metadata only. This does not widen the shared company switcher or other modules' scope. */
 export function workforceViewScope(ctx: SessionContext, options?: { personnelList: true }) {
  const read=async (tx: Tx)=>{

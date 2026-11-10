@@ -302,6 +302,10 @@ export type DraftListScope = {
   includeWithoutCompany: boolean;
 };
 
+function withExistingOrTenant<T>(ctx: SessionContext, existingTx: Tx | undefined, read: (tx: Tx) => Promise<T>): Promise<T> {
+  return existingTx ? read(existingTx) : withTenant(ctx, read);
+}
+
 /** Drafts visible to the caller inside `scope`, most recently touched first.
  *
  *  TWO FENCES, and they answer different questions. `scope` is the VIEW: the companies picked at the top of
@@ -310,11 +314,12 @@ export type DraftListScope = {
  *  no company only when they administer every company, and an author always sees their own. The scope can
  *  only ever be narrower than RLS; it never grants anything. */
 export function listEmployeeDrafts(
-  ctx: SessionContext, scope: DraftListScope, matches?: (row: EmployeeDraftSearchFields) => boolean,
+  ctx: SessionContext, scope: DraftListScope, matches?: (row: EmployeeDraftSearchFields) => boolean, existingTx?: Tx,
 ): Promise<EmployeeDraftRow[]> {
   const where = employeeDraftScopeWhere(scope);
   if (!where) return Promise.resolve([]);
-  return withTenant(ctx, async (tx) => {
+  // A caller's read snapshot (the Personnel page) composes this read; RLS still decides the rows.
+  return withExistingOrTenant(ctx, existingTx, async (tx) => {
     const rows = await tx
       .select({
         ...draftSearchFields,
@@ -355,11 +360,11 @@ function employeeDraftScopeWhere(scope: DraftListScope) {
 /** Count without fetching draft forms or creator details. A literal search reuses the caller's
  * existing JavaScript predicate over four small fields, including company labels from the same RLS join. */
 export function countEmployeeDrafts(
-  ctx: SessionContext, scope: DraftListScope, matches?: (row: EmployeeDraftSearchFields) => boolean,
+  ctx: SessionContext, scope: DraftListScope, matches?: (row: EmployeeDraftSearchFields) => boolean, existingTx?: Tx,
 ): Promise<number> {
   const where = employeeDraftScopeWhere(scope);
   if (!where) return Promise.resolve(0);
-  return withTenant(ctx, async (tx) => {
+  return withExistingOrTenant(ctx, existingTx, async (tx) => {
     if (matches) {
       const rows = await tx.select(draftSearchFields).from(employeeDraft)
         .leftJoin(company, eq(company.id, employeeDraft.companyId)).where(where);
