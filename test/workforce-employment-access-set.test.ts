@@ -46,21 +46,30 @@ async function populate(count:number,prefix:string,companies:string[]){
   insert into employment(tenant_id,person_id,company_id,employee_code,hired_on,terminated_on)
   select $1::uuid,n.id,($3::uuid[])[1+(n.k % array_length($3::uuid[],1))::int],'${prefix}'||lpad(n.k::text,5,'0'),'2025-01-06',case when n.k % 17=0 then current_date-30 end from n`,[b.tenantId,count,`{${companies.join(',')}}`]);
 }
-async function allEmploymentIds(){return(await owner.client<{id:string}[]>`select id from employment`).map(r=>r.id);}
 type Sets={perRow:string[];setWise:string[];readerPerRow:string[];readerSetWise:string[]};
-/** Both forms in ONE statement of one snapshot: raw over every employment id of every tenant, and as a reader query. */
-function compare(ctx:SessionContext,capability:'view'|'maintain'|'other',attempt?:string):Promise<Sets>{
+const rowColumns={tenantId:sql`e.tenant_id`,companyId:sql`e.company_id`,voidedAt:sql`e.voided_at`,importPendingAttemptId:sql`e.import_pending_attempt_id`};
+/** Both forms over every employment row of every tenant (owner, no row security, the actor's session settings), and
+ * both forms as the actor's own reader query (row security applies), each pair in ONE statement of one snapshot. */
+async function compare(ctx:SessionContext,capability:'view'|'maintain'|'other',attempt?:string):Promise<Sets>{
  const cap='workforce.'+capability;
- return withTenant(ctx,async tx=>{
-  if(attempt)await tx.execute(sql`select set_config('app.import_attempt',${attempt},true)`);
-  const ids=await allEmploymentIds();
-  const[r]=await tx.execute<Sets>(sql`select
-   coalesce((select array_agg(x order by x) from unnest(${`{${ids.join(',')}}`}::uuid[]) x where app.access_workforce_employment(x,${cap})),'{}') as "perRow",
-   coalesce((select array_agg(x order by x) from app.access_workforce_employment_ids(${cap}) x),'{}') as "setWise",
-   coalesce((select array_agg(e.id order by e.id) from employment e where app.access_workforce_employment(e.id,${cap})),'{}') as "readerPerRow",
-   coalesce((select array_agg(e.id order by e.id) from employment e where ${workforceEmploymentSetPredicate(sql`e.id`,capability as 'view')}),'{}') as "readerSetWise"`);
+ const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
+ const raw=await owner.client.begin(async tx=>{
+  await tx`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId??''},true),set_config('app.roles',${(ctx.roles??[]).join(',')},true),
+   set_config('app.grants',${JSON.stringify(grants)},true),set_config('app.import_attempt',${attempt??''},true)`;
+  const[r]=await tx<{perRow:string[];setWise:string[]}[]>`select
+   coalesce(array_agg(e.id order by e.id) filter (where app.access_workforce_employment(e.id,${cap})),'{}') as "perRow",
+   coalesce(array_agg(e.id order by e.id) filter (where app.access_workforce_employment_permitted(e.tenant_id,e.company_id,e.voided_at,e.import_pending_attempt_id,(select app.access_workforce_permitted_companies(${cap})))),'{}') as "setWise"
+   from employment e`;
   return r;
  });
+ const reader=await withTenant(ctx,async tx=>{
+  if(attempt)await tx.execute(sql`select set_config('app.import_attempt',${attempt},true)`);
+  const[r]=await tx.execute<{readerPerRow:string[];readerSetWise:string[]}>(sql`select
+   coalesce((select array_agg(e.id order by e.id) from employment e where app.access_workforce_employment(e.id,${cap})),'{}') as "readerPerRow",
+   coalesce((select array_agg(e.id order by e.id) from employment e where ${workforceEmploymentSetPredicate(rowColumns,capability as 'view')}),'{}') as "readerSetWise"`);
+  return r;
+ });
+ return{...raw,...reader};
 }
 const expectSame=(r:Sets,label:string)=>{expect(r.setWise,label).toEqual(r.perRow);expect(r.readerSetWise,label+' (reader)').toEqual(r.readerPerRow);};
 
@@ -81,11 +90,15 @@ describe('set-wise Workforce employment access (9911)',()=>{
  it('mirrors the installed per-row owner',async()=>{
   const[row]=await owner.client<{body:string;definer:boolean;volatility:string}[]>`select prosrc as body,prosecdef as definer,provolatile as volatility from pg_proc where oid='app.access_workforce_employment(uuid,text)'::regprocedure`;
   expect(row).toEqual({body:PER_ROW_OWNER,definer:true,volatility:'s'});
-  const[set]=await owner.client<{definer:boolean;volatility:string;app:boolean;public:boolean}[]>`select prosecdef as definer,provolatile as volatility,
-   has_function_privilege('ai_hr_app','app.access_workforce_employment_ids(text)','execute') as app,
-   exists(select 1 from aclexplode((select proacl from pg_proc where oid='app.access_workforce_employment_ids(text)'::regprocedure)) a where a.grantee=0) as public
-   from pg_proc where oid='app.access_workforce_employment_ids(text)'::regprocedure`;
-  expect(set).toEqual({definer:true,volatility:'s',app:true,public:false});
+  const fns=await owner.client<{name:string;definer:boolean;volatility:string;app:boolean;public:boolean}[]>`select p.proname as name,p.prosecdef as definer,p.provolatile as volatility,
+   has_function_privilege('ai_hr_app',p.oid,'execute') as app,exists(select 1 from aclexplode(p.proacl) a where a.grantee=0) as public
+   from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.proname in ('access_workforce_permitted_companies','access_workforce_employment_permitted') order by 1`;
+  expect(fns).toEqual([{name:'access_workforce_employment_permitted',definer:true,volatility:'s',app:true,public:false},{name:'access_workforce_permitted_companies',definer:true,volatility:'s',app:true,public:false}]);
+  // The row predicate is a filter on the reader's own scan and the company set is computed once (an InitPlan), so the
+  // plan keeps the per-row owner's shape whatever the statistics: no join on a set, no company check per row.
+  const plan=await withTenant(group(),tx=>tx.execute<{'QUERY PLAN':string}>(sql`explain (verbose,costs off) select e.id from employment e where ${workforceEmploymentSetPredicate(rowColumns,'view')}`));
+  const text=plan.map(r=>r['QUERY PLAN']).join('\n');
+  expect(text).toMatch(/Filter: .*app\.access_workforce_employment_permitted\(/);expect(text).toMatch(/InitPlan[\s\S]*access_workforce_permitted_companies/);expect(text).not.toMatch(/Join|Function Scan/);
  });
 
  for(const size of [340,3100])it(`returns exactly the per-row set for every actor shape at ${size} employments`,async()=>{
@@ -119,7 +132,7 @@ describe('set-wise Workforce employment access (9911)',()=>{
   const report:Record<string,number>={};
   for(const [label,ctx] of actors)for(const capability of ['view','maintain','other'] as const){
    const r=await compare(ctx,capability);expectSame(r,`${label} ${capability}`);report[`${label} ${capability}`]=r.setWise.length;
-   for(const id of otherTenantIds)expect(r.setWise).not.toContain(id);
+   for(const id of otherTenantIds){expect(r.setWise).not.toContain(id);expect(r.readerSetWise).not.toContain(id);}
    expect(r.setWise).not.toContain(voided.id);expect(r.setWise).not.toContain(stagedRow.id);
   }
   // The staged employment is visible only to its own attempt's session, in both forms.

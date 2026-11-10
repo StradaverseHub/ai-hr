@@ -13,10 +13,12 @@ export function workforceEmploymentPredicate(subject:SQL,operation:WorkforceOper
  if(companyIds?.length===0)return sql`false`;
  return sql`app.access_workforce_employment(${subject},${'workforce.'+operation})`;
 }
-/** Set-wise form of workforceEmploymentPredicate for a reader that scans every employment of the tenant (migration
- * 9911): exactly the same rows, with the company check run once per company instead of once per employment. */
-export function workforceEmploymentSetPredicate(subject:SQL,operation:WorkforceOperation='view'){
- return sql`${subject} in (select app.access_workforce_employment_ids(${'workforce.'+operation}))`;
+/** Set-wise form of workforceEmploymentPredicate for a reader that scans employment rows (migration 9911): exactly
+ * the same rows, with the company check run once per company (an InitPlan) instead of once per employment. Pass the
+ * reader's own employment columns. */
+export type WorkforceEmploymentColumns={tenantId:SQL;companyId:SQL;voidedAt:SQL;importPendingAttemptId:SQL};
+export function workforceEmploymentSetPredicate(row:WorkforceEmploymentColumns,operation:WorkforceOperation='view'){
+ return sql`app.access_workforce_employment_permitted(${row.tenantId},${row.companyId},${row.voidedAt},${row.importPendingAttemptId},(select app.access_workforce_permitted_companies(${'workforce.'+operation})))`;
 }
 async function lockWorkforceOperationTx(tx:Tx,ctx:SessionContext,operation:WorkforceOperation){
  if(operation==='maintain')await tx.execute(sql`select app.access_workforce_write_lock()`);
