@@ -11,7 +11,7 @@ import {
 } from '@/lib/employee-home-sharing-cohort';
 import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
 import {greetingProjection,tasksProjection,todayProjection,calendarProjection} from '../personal-projections';
-import {withDatabaseReadCancellation} from '@/db/workload';
+import {runCappedHomeCardRead,startHomeCardReadCap} from '../read-cap';
 import {readEmployeeHomeToday} from '@/core/employee-home-today';
 import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
 import {homeCalendarMonth} from '@/lib/employee-home-calendar';
@@ -84,11 +84,15 @@ export async function GET(request:Request){
     detach=()=>{readLifetime.abort();open=false;request.signal.removeEventListener('abort',disconnect);};
     if(request.signal.aborted){disconnect();return;}
     request.signal.addEventListener('abort',disconnect,{once:true});
+    // Every card read starts below, together, so one cap bounds each of them. It stays armed after a
+    // disconnect: until it fires an executing statement keeps its normal completion boundary.
+    const cap=startHomeCardReadCap();
+    cap.signal.addEventListener('abort',()=>readLifetime.abort(cap.signal.reason),{once:true});
     const reads=cards.map(async card=>{
      markHomeRead('read-start',card);
      let encoded:Uint8Array;
      try{
-      const value=await withDatabaseReadCancellation(signal,readers[card]);
+      const value=await runCappedHomeCardRead(signal,cap.signal,readers[card]);
       const frame:HomeSharingFrame={version:1,card,status:200,value};
       encoded=encoder.encode(JSON.stringify(frame)+'\n');
       if(encoded.byteLength>HOME_SHARING_MAX_FRAME_BYTES)throw new Error('Home sharing frame too large');
@@ -102,7 +106,7 @@ export async function GET(request:Request){
      if(open)controller.enqueue(encoded);
     });
     // Disconnect stops eligible readers at their next admission check and drops pending values.
-    void Promise.allSettled(reads).then(stop);
+    void Promise.allSettled(reads).then(()=>{cap.stop();stop();});
    },
    cancel(){detach();},
   });

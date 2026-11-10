@@ -1,11 +1,53 @@
 import * as React from 'react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {IndependentHomeCard} from '../components/employee-home/home-card';
+import {HOME_CARD_READ_HARD_CAP_MS} from '../lib/employee-home-delivery';
 
 const labels={loading:'Loading',failed:'This card could not load. Try again.',timeout:'This card took too long. Try again.',retry:'Retry',refresh:'Refresh'};
-afterEach(()=>{cleanup();vi.restoreAllMocks();});
+afterEach(()=>{cleanup();vi.useRealTimers();vi.restoreAllMocks();});
 describe('independent Home card experience',()=>{
+  const advance=(ms:number)=>act(async()=>{await vi.advanceTimersByTimeAsync(ms);});
+  it('keeps a slow card in its loading state past 2.8 s, then renders it without any alert',async()=>{
+    vi.useFakeTimers();
+    let release:((value:string)=>void)|undefined,seen:AbortSignal|undefined;
+    const read=vi.fn((signal:AbortSignal)=>{seen=signal;return new Promise<string>(resolve=>{release=resolve;});});
+    render(<IndependentHomeCard card="team" title="Team" labels={labels} requestKey="team:own" read={read}>{value=><p>{value}</p>}</IndependentHomeCard>);
+    const region=screen.getByRole('region',{name:'Team'});
+    await advance(2800);await advance(9000);
+    expect(region).toHaveAttribute('aria-busy','true');
+    expect(within(region).getByRole('status')).toHaveTextContent(labels.loading);
+    expect(screen.queryByRole('alert')).toBeNull();expect(seen?.aborted).toBe(false);
+    await act(async()=>{release!('Team status recorded');await vi.advanceTimersByTimeAsync(0);});
+    expect(within(region).getByText('Team status recorded')).toBeVisible();
+    expect(region).toHaveAttribute('aria-busy','false');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(read).toHaveBeenCalledOnce();
+  });
+  it('shows the existing timeout alert only at the hard cap, aborts that read and never retries it',async()=>{
+    vi.useFakeTimers();
+    let seen:AbortSignal|undefined;
+    const read=vi.fn((signal:AbortSignal)=>{seen=signal;return new Promise<string>(()=>{});});
+    render(<IndependentHomeCard card="tasks" title="Waiting for You" labels={labels} requestKey="tasks:own" read={read}>{value=><p>{value}</p>}</IndependentHomeCard>);
+    const region=screen.getByRole('region',{name:'Waiting for You'});
+    await advance(HOME_CARD_READ_HARD_CAP_MS-1);
+    expect(within(region).queryByRole('alert')).toBeNull();expect(seen?.aborted).toBe(false);
+    await advance(1);
+    expect(within(region).getByRole('alert')).toHaveTextContent(labels.timeout);
+    expect(seen?.aborted).toBe(true);
+    await advance(HOME_CARD_READ_HARD_CAP_MS*3);
+    expect(read).toHaveBeenCalledOnce();
+    expect(within(region).getByRole('button',{name:'Retry: Waiting for You'})).toBeEnabled();
+  });
+  it('still shows a real read error or refusal at once, with the failed message rather than the timeout',async()=>{
+    const read=vi.fn(async(_signal:AbortSignal):Promise<string>=>{throw new Error('Fictional permission refusal');});
+    render(<IndependentHomeCard card="notices" title="Notices" labels={labels} requestKey="notices:own" read={read}>{value=><p>{value}</p>}</IndependentHomeCard>);
+    const region=screen.getByRole('region',{name:'Notices'});
+    await waitFor(()=>expect(within(region).getByRole('alert')).toHaveTextContent(labels.failed));
+    expect(within(region).getByRole('alert')).not.toHaveTextContent(labels.timeout);
+    expect(screen.queryByText('Fictional permission refusal')).not.toBeInTheDocument();
+    expect(read).toHaveBeenCalledOnce();
+  });
   it('keeps a ready sibling usable and retries only the failed card',async()=>{
     const calendar=vi.fn(async(_signal:AbortSignal):Promise<string>=>'Calendar recovered')
       .mockRejectedValueOnce(new Error('Fictional private query detail'));

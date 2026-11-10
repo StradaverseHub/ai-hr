@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
 import {useNavIndex} from '@/components/nav-index-context';
-import {deliverHomeCard,type HomeCardDelivery} from '@/lib/employee-home-delivery';
+import {createHomeCardRefreshGate,deliverHomeCard,type HomeCardDelivery} from '@/lib/employee-home-delivery';
 import {homeQuickActionHref,homeSummaryHref,validateEmployeeHomeSummary,type EmployeeHomeSummary} from '@/lib/employee-home-summary';
 import {useHomeInitialSharing} from './sharing-cohort';
 
@@ -20,7 +20,8 @@ export function HomeSummaryOverview({employmentId}:{employmentId:string}){
  const [view,setView]=React.useState<{key:string;result:HomeCardDelivery<EmployeeHomeSummary>|{state:'loading'}}>({key,result:{state:'loading'}});
  const result=view.key===key?view.result:{state:'loading' as const};
  React.useEffect(()=>{
-  const update=()=>{if(document.visibilityState==='visible')setRefresh(value=>value+1);};
+  const allowRefresh=createHomeCardRefreshGate();
+  const update=()=>{if(document.visibilityState==='visible'&&allowRefresh())setRefresh(value=>value+1);};
   window.addEventListener('focus',update);document.addEventListener('visibilitychange',update);
   const timer=window.setInterval(update,60000);
   return ()=>{window.removeEventListener('focus',update);document.removeEventListener('visibilitychange',update);window.clearInterval(timer);};

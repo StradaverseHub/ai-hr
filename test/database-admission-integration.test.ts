@@ -2,8 +2,8 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {createDb} from '../db/client';
-import {withBackgroundDatabaseWork,withDatabaseReadCancellation} from '../db/workload';
-import {adminCtx,closeAll,migrateTestDb,resetDb,seedBase,type Base} from './harness';
+import {withBackgroundDatabaseWork,withDatabaseReadCancellation,withDatabaseReadDeadline} from '../db/workload';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 const deferred=()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r;});return{promise,resolve};};
 let base:Base;
 const url=new URL(process.env.TEST_DATABASE_URL!);url.searchParams.set('application_name','admission-'+randomUUID());
@@ -68,6 +68,39 @@ describe('physical pool admission with real tenant transactions',()=>{
   }));
   await activeEntered.promise;activeController.abort(reason);release.resolve();
   expect((await active).tenant).toBe(base.tenantId);
+ });
+ it('cancels a stuck statement at a Home read deadline, then frees its connection for the pool',async()=>{
+  const ctx=adminCtx(base),deadline=new AbortController(),reason=new Error('Home card hard cap');
+  const name=url.searchParams.get('application_name')!;
+  const sleeping=async()=>(await owner.client`select count(*)::int as n from pg_stat_activity
+   where application_name=${name} and state='active' and query like '%pg_sleep(60)%'`)[0].n as number;
+  const started=performance.now();
+  const stuck=withDatabaseReadDeadline(deadline.signal,()=>database.withTenant(ctx,tx=>tx.execute(sql`select pg_sleep(60)`)));
+  const outcome=stuck.then(()=>'completed',(error:unknown)=>error);
+  while(await sleeping()===0){
+   expect(performance.now()-started).toBeLessThan(20000);
+   await new Promise(resolve=>setTimeout(resolve,25));
+  }
+  deadline.abort(reason);
+  expect(await outcome).toMatchObject({code:'57014'});
+  expect(performance.now()-started).toBeLessThan(30000);
+  expect(await sleeping()).toBe(0);
+  // Every slot of the four-connection pool is usable again, each on its own backend.
+  const entered=Array.from({length:4},deferred),release=deferred();
+  const pages=entered.map(entry=>database.withTenant(ctx,async tx=>{
+   const [row]=await tx.execute(sql`select app.current_tenant_id() as tenant,pg_backend_pid() as pid`);entry.resolve();await release.promise;return row;}));
+  await Promise.all(entered.map(entry=>entry.promise));release.resolve();
+  const rows=await Promise.all(pages);
+  expect(new Set(rows.map(row=>row.pid)).size).toBe(4);expect(rows.every(row=>row.tenant===base.tenantId)).toBe(true);
+
+  // A statement requested after the deadline never reaches the connection.
+  const late=new AbortController(),between=deferred(),resume=deferred();let secondRan=false;
+  const pending=withDatabaseReadDeadline(late.signal,()=>database.withTenant(ctx,async tx=>{
+   await tx.execute(sql`select 1`);between.resolve();await resume.promise;
+   const row=await tx.execute(sql`select 2 as n`);secondRan=true;return row;}));
+  await between.promise;late.abort(reason);resume.resolve();
+  await expect(pending).rejects.toBe(reason);expect(secondRan).toBe(false);
+  expect((await database.withTenant(ctx,tx=>tx.execute(sql`select app.current_tenant_id() as tenant`)))[0].tenant).toBe(base.tenantId);
  });
  it('allows three independent interactive transactions while background work waits outside the four-slot pool',async()=>{
   const ctx=adminCtx(base),entered=deferred(),finish=deferred();

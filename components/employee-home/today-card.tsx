@@ -8,6 +8,7 @@ import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
 import {IndependentHomeCard} from './home-card';
 import {useHomeInitialSharing} from './sharing-cohort';
+import {createHomeCardRefreshGate} from '@/lib/employee-home-delivery';
 import {validateEmployeeHomeToday,type EmployeeHomeToday} from '@/lib/employee-home-today';
 import {liveClockSeconds} from '@/lib/clock-elapsed';
 import type {ClockingConfirmation} from '@/app/attendance/clock/clock-client';
@@ -32,7 +33,8 @@ export function HomeTodayCard({employmentId,employmentLabel,timeZone}:{employmen
  const initialRead=React.useCallback(async(signal:AbortSignal)=>subscribe
   ?validateEmployeeHomeToday(await subscribe('today',signal,()=>read(signal)) as EmployeeHomeToday,employmentId):read(signal),[subscribe,read,employmentId]);
  React.useEffect(()=>{
-  const refresh=()=>{if(document.visibilityState==='visible'&&intent===null)setRevision(value=>value+1);};
+  const allowRefresh=createHomeCardRefreshGate();
+  const refresh=()=>{if(document.visibilityState==='visible'&&intent===null&&allowRefresh())setRevision(value=>value+1);};
   const timer=setInterval(refresh,60000);window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
   return()=>{clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
  },[intent]);

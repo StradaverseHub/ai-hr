@@ -4,7 +4,7 @@ import * as React from 'react';
 import {Button} from '@/components/ui';
 import {Card,CardContent,CardHeader} from '@/components/ui/card';
 import type {EmployeeHomeCard} from '@/lib/employee-home';
-import {HOME_CARD_READ_TIMEOUT_MS,deliverHomeCard,type HomeCardDelivery,type HomeCardReader} from '@/lib/employee-home-delivery';
+import {createHomeCardRefreshGate,deliverHomeCard,type HomeCardDelivery,type HomeCardReader} from '@/lib/employee-home-delivery';
 
 type Labels={loading:string;failed:string;timeout:string;retry:string;refresh:string};
 type View<T>={key:string;result:HomeCardDelivery<T>|{state:'loading'}};
@@ -22,16 +22,13 @@ function DeliveredBody<T>({value,render}:{value:T;render:(value:T)=>React.ReactN
 }
 
 /** Focus and visibility can report the same tab activation separately. Let the first automatic
- * refresh reach its deadline before a second signal can cancel it and start another request. */
+ * refresh reach its hard cap before a second signal can cancel it and start another request. */
 export function useHomeCardRefresh(intervalMs:number){
   const [refresh,setRefresh]=React.useState(0);
   React.useEffect(()=>{
-    let lastRefresh=-Infinity;
+    const allowRefresh=createHomeCardRefreshGate();
     const update=()=>{
-      if(document.visibilityState!=='visible')return;
-      const now=performance.now();
-      if(now-lastRefresh<HOME_CARD_READ_TIMEOUT_MS)return;
-      lastRefresh=now;
+      if(document.visibilityState!=='visible'||!allowRefresh())return;
       setRefresh(value=>value+1);
     };
     window.addEventListener('focus',update);

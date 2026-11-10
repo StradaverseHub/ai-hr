@@ -12,7 +12,7 @@ import postgres from 'postgres';
 import {createDatabaseAdmission} from './admission';
 import {createBackgroundReadAdmission} from './background-read-admission';
 import {createTenantWriteAdmission} from './tenant-write-admission';
-import {currentDatabaseWorkload,databaseReadSignal} from './workload';
+import {cancelStatementsAtDeadline,currentDatabaseReadDeadline,currentDatabaseWorkload,databaseReadSignal} from './workload';
 import {applicationDatabaseBudget} from './capacity';
 const applicationBudget = applicationDatabaseBudget(process.env);
 import { chainArmingDecision } from '../core/audit-chain-arming';
@@ -235,6 +235,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
    */
   async function withTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>, options?: { readOnlySnapshot?: true; readSignal?: AbortSignal }): Promise<T> {
     const readSignal = databaseReadSignal(options?.readSignal);
+    const readDeadline = currentDatabaseReadDeadline();
     // Fail fast with a clear, diagnosable error rather than a cryptic "reading 'grants'/'tenantId'"
     // TypeError if a caller ever passes an unresolved session (e.g. a swallowed getSession failure).
     if (!ctx || !ctx.tenantId) {
@@ -249,9 +250,12 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     readSignal?.throwIfAborted();
     const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
     let release: (() => void) | undefined;
+    let stopDeadline: (() => void) | undefined;
     try {
       release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal);
       return await db.transaction(async (tx) => {
+      // A hard read deadline (Home cards) cancels this transaction's running statement; see db/workload.ts.
+      if (readDeadline) stopDeadline = cancelStatementsAtDeadline((tx as unknown as { session: Parameters<typeof cancelStatementsAtDeadline>[0] }).session, readDeadline);
       timing?.acquired();
       // A queued read may have disconnected while waiting for a connection.
       readSignal?.throwIfAborted();
@@ -335,6 +339,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       return fn(tx);
     }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
     } finally {
+      stopDeadline?.();
       release?.();
       timing?.finished();
     }
