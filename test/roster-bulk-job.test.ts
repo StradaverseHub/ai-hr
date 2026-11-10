@@ -144,11 +144,27 @@ describe('Generate', ()=>{
   expect(new URL(view.href!,'http://x').searchParams.get('companyId')).toBe(b.companyId);
  });
 
- it('keeps going when someone else changes one employee while it runs, saving the others and naming the refused one',async()=>{
+ it('refuses the whole grid when someone else changes one employee before the checks have run',async()=>{
+  const S=await mkShift('Day','DAY');
+  const {B,mapB}=await groups(3);
+  const job=await enqueueRosterGenerateJob(ctx,{companyId:b.companyId,input:{shiftId:S.id,employmentIds:B.map(e=>e.id),from:FROM,to:TO}});
+  expect(await runJob(job.id,state=>state==='running')).toBe('running');
+  await groupAllowing('Moved before the checks',[B[2].id]);
+  expect(await runJob(job.id)).toBe('failed');
+  expect(await rosterRows(B.map(e=>e.id),mapB)).toEqual([]);
+  expect((await jobRow(job.id)).error).toContain('is not allowed by the Schedule Group');
+ });
+
+ it('keeps going when someone else changes one employee after the checks, saving the others and naming the refused one',async()=>{
   const S=await mkShift('Day','DAY');
   const {B}=await groups(5);
   const job=await enqueueRosterGenerateJob(ctx,{companyId:b.companyId,input:{shiftId:S.id,employmentIds:B.map(e=>e.id),from:FROM,to:TO}});
-  expect(await runJob(job.id,state=>state==='running')).toBe('running');
+  // Run until every check has passed and the first row has been written.
+  for(let i=0;i<2000;i++){
+   const [w]=await owner.client<{n:number}[]>`select count(*)::int n from bulk_job_step where job_id=${job.id}::uuid and kind in ('working','rest') and state='applied'`;
+   if(w.n>0)break;
+   if(!await runBulkJobTick(owner.client,{handlers}))await new Promise(resolve=>setTimeout(resolve,20));
+  }
   const late=B[4];
   await groupAllowing('Moved meanwhile',[late.id]);
   expect(await runJob(job.id)).toBe('failed');

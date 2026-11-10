@@ -1,19 +1,22 @@
 /** Roster bulk operations on the shared bulk-job kernel (core/bulk-job-worker.ts; draft migration 9920), worker side.
  *
  * Every operation used to run in one transaction that held the tenant's Access lock (and the audit chain) for the
- * whole grid: about 26 s for a 1,200-employee month. Here each employee's rows are one step, written in short chunk
- * transactions through the SAME writers, guards and events the synchronous path used:
+ * whole grid: about 26 s for a 1,200-employee month. Here each employee's rows are one step (Generate: one per half
+ * of the generator), written in short chunk transactions through the SAME writers, guards and events the
+ * synchronous path used:
  *  - per employee: the duty-roster guard (its roster.manual-changes event), the Schedule Group check, the upserts;
  *  - once per operation: the same thin summary event (roster.bulk.assigned / roster.bulk.rest-day.set /
  *    roster.copied, or the upload's per-group events and its roster.bulk.uploaded history entry).
  *
- * ALL-OR-NOTHING IS KEPT WHERE IT WAS PROMISED. Generate, Copy, the grid's shift brush and each upload group refused
- * the whole grid before writing anything. Their prepare step runs the same guards first, in the same order, in
- * short rolled-back transactions ("validate"): a refusal ends the job before any row is written, with the same
- * sentence. The upload's groups and the grid's rest/clear loop committed one by one and stopped at the first
- * refusal; the job writes exactly what that run would have written (earlier groups, earlier cells), then fails with
- * the same sentence. Each step still re-checks its own employee, so a change made by someone else while the job
- * runs is refused for that employee (recorded on the job), never written past.
+ * ALL-OR-NOTHING IS KEPT WHERE IT WAS PROMISED. Generate, Copy, the grid's shift brush, each upload group and the
+ * Schedule Group batch refused the whole grid before writing anything. Their first steps are CHECK steps: the same
+ * guards, in the same order (visibility, the duty guard by employment id, the Schedule Group check in employment
+ * order, the rest half), each inside a savepoint that is always rolled back, so a check commits nothing but its own
+ * applied marker. The first refused check ends the job before any row is written, with the same sentence. The
+ * upload's groups and the grid's rest/clear loop committed one by one and stopped at the first refusal; the job
+ * writes exactly what that run would have written (earlier groups, earlier cells), then fails with the same sentence.
+ * Every write step still re-checks its own employee, so a change made by someone else while the job runs is refused
+ * for that employee (recorded on the job), never written past.
  */
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -40,28 +43,27 @@ import {eq} from 'drizzle-orm';
 import {ROSTER_BULK_KIND,ROSTER_WRITE_FAILED,SCHEDULE_GROUP_BULK_KIND,SCHEDULE_GROUP_BULK_UNEXPECTED,rosterReadableError} from '../lib/roster-bulk-job';
 import type {RosterBulkInput,RosterBulkResult,ScheduleGroupBulkInput,ScheduleGroupBulkResult} from './roster-bulk-job';
 
-/** Step work per chunk transaction before it commits. One employee-month costs about 20–40 ms. */
+/** Step work per chunk transaction before it commits. One employee-month half costs about 10–40 ms on a quiet host. */
 export const ROSTER_BULK_CHUNK_BUDGET_MS=Number(process.env.ROSTER_BULK_CHUNK_BUDGET_MS??150);
-/** Target wall time of one rolled-back validation transaction. */
-const VALIDATE_TARGET_MS=Number(process.env.ROSTER_BULK_VALIDATE_TARGET_MS??150);
 
 type EmployeeStep={employmentId:string;ref:string};
 type CellStep={employmentId:string;ref:string;date:string};
 type ImportCellsStep={group:number;employmentId:string;ref:string;cells:RosterImportCell[]};
 type ImportSummaryStep={group:number};
 type ImportClearStep={cell:RosterImportCell;ref:string};
+/** A rolled-back check. `group` is the upload group it belongs to (absent for single-brush operations). */
+type CheckStep={ids?:string[];employmentId?:string;ref?:string;half?:'working'|'rest';group?:number};
 type GeneratePlan={op:'generate';companyId:string;month:string;shiftId:string;templateCompanyId:string|null;workingDates:string[];restDates:string[];
  reviewed?:ReviewedRosterDepartment;departmentId?:string;employments:number;summarized?:boolean};
 type CopyPlan={op:'copy';companyId:string;month:string;sourceFrom:string;sourceTo:string;targetFrom:string;offsetDays:number;employmentScope:number|'all-visible';summarized?:boolean};
 type AssignPlan={op:'assign';companyId:string|null;brush:string;shiftDates:string[];employments:number;summarized?:boolean};
 type ImportPlan={op:'import';companyId:string;month:string;fileName:string;result:RosterImportResult;
- groups:{brush:string;dates:string[]}[];refusal?:string|null;summarized?:boolean};
+ groups:{brush:string;dates:string[]}[];summarized?:boolean};
 type RosterPlan=GeneratePlan|CopyPlan|AssignPlan|ImportPlan;
+type Steps=BulkJobPrepared['steps'];
 
-/** Thrown to roll back a validation transaction after its checks passed. */
-class ValidateRollback extends Error{constructor(){super('roster bulk validation rollback');this.name='ValidateRollback';}}
-const ROLLBACK=new ValidateRollback();
-const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
+/** Thrown to roll back a check's savepoint after its guards passed. */
+class CheckRollback extends Error{constructor(){super('roster bulk check rollback');this.name='CheckRollback';}}
 async function label(tx:Tx,kind:string,phase:string){await tx.execute(sql`select set_config('application_name',${`aihr-bulk:${kind}:${phase}`},true)`);}
 /** The roster's own wording for a refusal, as the synchronous actions showed it (app/roster/actions.ts
  * readableError): a domain refusal speaks for itself, and any database failure is the roster's own sentence. */
@@ -69,30 +71,18 @@ const rosterMessage=(error:unknown)=>{
  if(isDatabaseError(error)){publicErrorMessage(error);return ROSTER_WRITE_FAILED;} // logged under a reference
  return rosterReadableError(error).slice(0,4000);
 };
-
-/**
- * Runs the synchronous path's guards over `items` in short transactions that always roll back. Adaptive chunks of
- * about VALIDATE_TARGET_MS; a busy refusal waits and retries the chunk (never surfaced). The first refusal is thrown.
- */
-async function validate<T>(ctx:SessionContext,kind:string,items:readonly T[],begin:(tx:Tx)=>Promise<void>,check:(tx:Tx,chunk:readonly T[])=>Promise<void>,initial=4){
- let size=initial;
- for(let start=0;start<items.length;){
-  const chunk=items.slice(start,start+size);let ms=0;
-  for(let attempt=0;;attempt++){
-   const began=performance.now();
-   try{await withTenant(ctx,async tx=>{await label(tx,kind,'validate');await begin(tx);await check(tx,chunk);throw ROLLBACK;});}
-   catch(error){
-    if(error===ROLLBACK){ms=performance.now()-began;break;}
-    if(isTransientBulkJobError(error)&&attempt<40){await sleep(Math.min(2000,50*2**Math.min(attempt,6)));continue;}
-    throw error;
-   }
-  }
-  start+=chunk.length;
-  size=Math.max(1,Math.min(200,Math.round(size*Math.min(2,Math.max(0.25,VALIDATE_TARGET_MS/Math.max(ms,1))))));
- }
+/** A non-transient database failure inside a step becomes the roster's own sentence (transient ones are retried). */
+async function asRosterRefusal<T>(run:()=>Promise<T>):Promise<T>{
+ try{return await run();}
+ catch(error){if(!isTransientBulkJobError(error)&&isDatabaseError(error))throw new Error(rosterMessage(error));throw error;}
 }
-const rosterLocks=(ctx:SessionContext)=>async(tx:Tx)=>{await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);};
+/** Runs `check` in a savepoint that is always rolled back: the guards run for real, nothing they write survives. */
+async function rolledBack(tx:Tx,check:(tx:Tx)=>Promise<unknown>){
+ try{await tx.transaction(async sp=>{await check(sp);throw new CheckRollback();});}
+ catch(error){if(error instanceof CheckRollback)return;throw error;}
+}
 const sortedIds=(ids:readonly string[])=>[...new Set(ids)].sort();
+const isCheck=(kind:string)=>kind.startsWith('check_');
 /** assertDutyRosterWriteTx's first refusal covers every employment at once, before any per-employee check. */
 async function assertVisibleTx(tx:Tx,ids:readonly string[]){
  if(!ids.length)return;
@@ -104,35 +94,60 @@ async function refsTx(tx:Tx,ids:readonly string[]){
  return new Map([...rows].map(row=>[row.id,row.code??'']));
 }
 /**
- * The guards of one shift brush (assignShiftBulk) and/or one rest brush (setRestDayBulk) over these employments,
- * in the synchronous order: visibility, the shift half's duty guard (ascending id), its Schedule Group check
- * (employment order), then the rest half's duty guard.
+ * The check steps of one shift brush (assignShiftBulk) and/or one rest brush (setRestDayBulk) over these employments,
+ * in the synchronous order: visibility of all, the shift half's duty guard (ascending id), its Schedule Group check
+ * (employment order), then the rest half's duty guard (ascending id).
  */
-async function validateBrushes(ctx:SessionContext,kind:string,ids:readonly string[],shift:{dates:readonly string[];shiftId:string}|null,rest:{dates:readonly string[]}|null){
- const begin=rosterLocks(ctx),sorted=sortedIds(ids);
- if(!ids.length||(!shift?.dates.length&&!rest?.dates.length))return;
- await validate(ctx,kind,[sorted],begin,(tx,[all])=>assertVisibleTx(tx,all),1);
- if(shift?.dates.length){
-  await validate(ctx,kind,sorted,begin,(tx,chunk)=>assertDutyRosterWriteTx(tx,ctx,chunk.flatMap(employmentId=>shift.dates.map(shiftDate=>({employmentId,shiftDate,shiftId:shift.shiftId,isRestDay:false})))));
-  await validate(ctx,kind,ids,begin,(tx,chunk)=>assertShiftsAllowedForEmploymentsTx(tx,chunk.flatMap(employmentId=>shift.dates.map(shiftDate=>({employmentId,shiftId:shift.shiftId,shiftDate})))),16);
+function brushChecks(ids:readonly string[],refs:Map<string,string>,halves:{working:boolean;rest:boolean},group?:number):Steps{
+ if(!ids.length||(!halves.working&&!halves.rest))return [];
+ const g=group===undefined?{}:{group};const sorted=sortedIds(ids);
+ const one=(kind:string,employmentId:string,half?:'working'|'rest')=>({kind,rowNum:null,payload:{employmentId,ref:refs.get(employmentId)??'',...(half?{half}:{}),...g} satisfies CheckStep});
+ return [
+  {kind:'check_visible',rowNum:null,payload:{ids:sorted,...g} satisfies CheckStep},
+  ...(halves.working?sorted.map(id=>one('check_duty',id,'working')):[]),
+  ...(halves.working?ids.map(id=>one('check_allowed',id)):[]),
+  ...(halves.rest?sorted.map(id=>one('check_duty',id,'rest')):[]),
+ ];
+}
+/** The values one employee's check covers, exactly as the synchronous writer built them. */
+async function checkValuesTx(tx:Tx,plan:RosterPlan,step:CheckStep){
+ const id=step.employmentId!;
+ if(plan.op==='copy'){
+  const read=await tx.execute<{shift_date:string;shift_id:string|null;is_rest_day:boolean;note:string|null}>(sql`select shift_date::text,shift_id,is_rest_day,note
+   from roster_assignment where employment_id=${id}::uuid and shift_date between ${plan.sourceFrom}::date and ${plan.sourceTo}::date`);
+  return [...read].map(r=>({employmentId:id,shiftDate:new Date(Date.parse(`${r.shift_date}T00:00:00Z`)+plan.offsetDays*86_400_000).toISOString().slice(0,10),shiftId:r.shift_id,isRestDay:r.is_rest_day,note:r.note}));
  }
- if(rest?.dates.length)await validate(ctx,kind,sorted,begin,(tx,chunk)=>assertDutyRosterWriteTx(tx,ctx,chunk.flatMap(employmentId=>rest.dates.map(shiftDate=>({employmentId,shiftDate,shiftId:null,isRestDay:true})))));
+ const brush=plan.op==='generate'?{shiftId:plan.shiftId,working:plan.workingDates,rest:plan.restDates}
+  :plan.op==='assign'?{shiftId:plan.brush,working:plan.shiftDates,rest:[] as string[]}
+  :(()=>{const g=(plan as ImportPlan).groups[step.group!];return g.brush==='rest'?{shiftId:'',working:[] as string[],rest:g.dates}:{shiftId:g.brush,working:g.dates,rest:[] as string[]};})();
+ return step.half==='rest'
+  ?brush.rest.map(shiftDate=>({employmentId:id,shiftDate,shiftId:null,isRestDay:true}))
+  :brush.working.map(shiftDate=>({employmentId:id,shiftDate,shiftId:brush.shiftId,isRestDay:false}));
 }
 
-/** Per chunk: the Access and leave-configuration locks the synchronous writer took first, plus caches that are only
- * valid inside this one transaction (the reviewed department's company scope and team, the upload's directory). */
-const chunkState=new Map<string,{companies?:Set<string>;team?:Set<string>|null;directory?:RosterImportDirectory;failed?:boolean}>();
-async function priorFailureTx(tx:Tx,job:BulkJobRow){
- const state=chunkState.get(job.id);if(state?.failed)return true;
- const [row]=await tx.execute<{failed:boolean}>(sql`select exists(select 1 from bulk_job_step where job_id=${job.id}::uuid and state='failed') as failed`);
- if(row?.failed&&state)state.failed=true;
- return Boolean(row?.failed);
+/** The first refused check, once all checks have run (checks always precede writes): its upload group, if any. */
+type CheckOutcome={failed:boolean;group:number|null};
+async function checkOutcomeTx(tx:Tx,job:BulkJobRow,cache:Map<string,unknown>):Promise<CheckOutcome>{
+ const cached=cache.get('checks') as CheckOutcome|undefined;if(cached)return cached;
+ const [row]=await tx.execute<{seq:number|null;grp:number|null}>(sql`select seq,(payload->>'group')::int grp from bulk_job_step
+  where job_id=${job.id}::uuid and state='failed' and kind like 'check\\_%' order by seq limit 1`);
+ const outcome={failed:row?.seq!==undefined&&row?.seq!==null,group:row?.grp??null};
+ cache.set('checks',outcome);return outcome;
 }
+/** Whether an earlier write step was refused (the sequential loops stop there). */
+async function writeStoppedTx(tx:Tx,job:BulkJobRow,cache:Map<string,unknown>){
+ if(cache.get('stopped')===true)return true;
+ if(cache.get('stopped')===false)return false;
+ const [row]=await tx.execute<{failed:boolean}>(sql`select exists(select 1 from bulk_job_step where job_id=${job.id}::uuid and state='failed' and kind not like 'check\\_%') as failed`);
+ cache.set('stopped',Boolean(row?.failed));return Boolean(row?.failed);
+}
+/** Per chunk: the upload's code directory, read once per chunk transaction under the chunk's locks. */
+const chunkState=new Map<string,{directory?:RosterImportDirectory}>();
 async function stepTotalsTx(tx:Tx,job:BulkJobRow){
  const [row]=await tx.execute<{applied:number;employees:number;workingSteps:number;restSteps:number;failed:number;working:number;rest:number;rows:number;source:number;error:string|null}>(sql`select
    count(*) filter (where state='applied' and not coalesce((result->>'skipped')::boolean,false))::int applied,
    count(distinct payload->>'employmentId') filter (where state='applied' and not coalesce((result->>'skipped')::boolean,false))::int employees,
-   count(*) filter (where kind='working' and state='applied')::int "workingSteps",
+   count(*) filter (where kind='working' and state='applied' and not coalesce((result->>'skipped')::boolean,false))::int "workingSteps",
    count(*) filter (where kind='rest' and state='applied' and not coalesce((result->>'skipped')::boolean,false))::int "restSteps",
    count(*) filter (where state='failed')::int failed,
    coalesce(sum((result->>'workingRows')::int) filter (where state='applied'),0)::int working,
@@ -140,8 +155,9 @@ async function stepTotalsTx(tx:Tx,job:BulkJobRow){
    coalesce(sum((result->>'rows')::int) filter (where state='applied'),0)::int "rows",
    coalesce(sum((result->>'sourceRows')::int) filter (where state='applied'),0)::int source,
    (select error from bulk_job_step f where f.job_id=${job.id}::uuid and f.state='failed' order by f.seq limit 1) error
-  from bulk_job_step where job_id=${job.id}::uuid`);
- return row;
+  from bulk_job_step where job_id=${job.id}::uuid and kind not like 'check\\_%'`);
+ const [check]=await tx.execute<{error:string|null}>(sql`select error from bulk_job_step where job_id=${job.id}::uuid and state='failed' and kind like 'check\\_%' order by seq limit 1`);
+ return {...row,checkError:check?.error??null};
 }
 /** The job stops on the first refused row's own sentence (or the upload's first refused group). */
 class RosterBulkStopped extends Error{constructor(message:string){super(message);this.name='RosterBulkStopped';}}
@@ -150,12 +166,13 @@ async function fencedTx<T>(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,fn
  return withTenant(ctx,async tx=>{await label(tx,job.kind,'finalize');await unit.fenceTx(tx);return fn(tx);});
 }
 const markSummarizedTx=(tx:Tx,job:BulkJobRow)=>tx.execute(sql`update bulk_job set plan=coalesce(plan,'{}'::jsonb)||'{"summarized":true}'::jsonb where id=${job.id}::uuid`);
+const rosterLocks=async(tx:Tx,ctx:SessionContext)=>{await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);};
 
+/** Nominate once (short read transactions); every guard runs later in the chunked check and write steps. */
 async function prepareRoster(ctx:SessionContext,job:BulkJobRow):Promise<BulkJobPrepared|BulkJobRefused>{
  const input=job.input as RosterBulkInput;
  const kind=job.kind;
  let plan:RosterPlan|null=null;
- const refused=(error:unknown):BulkJobRefused=>({refused:rosterMessage(error),plan:plan??basePlan(input)});
  try{
   assertRosterAdmin(ctx);
   if(input.op==='generate'){
@@ -169,33 +186,28 @@ async function prepareRoster(ctx:SessionContext,job:BulkJobRow):Promise<BulkJobP
    });
    const {workingDates,restDates}=rosterGenerationDates(nominated.tpl,p);
    plan={...plan,templateCompanyId:nominated.tpl.companyId,workingDates,restDates,employments:nominated.ids.length};
-   await validateBrushes(ctx,kind,nominated.ids,{dates:workingDates,shiftId:p.shiftId},{dates:restDates});
-   // Two steps per employee, one per half of the generator (assignShiftBulk, then setRestDayBulk): each half is the
-   // employee's own duty-guard event in the synchronous run too, so the audit is the same and a step is half as long.
+   // Two write steps per employee, one per half of the generator (assignShiftBulk, then setRestDayBulk): each half
+   // is the employee's own duty-guard event in the synchronous run too, so the audit is the same and a step is half
+   // as long.
    const halves=[...(workingDates.length?['working']:[]),...(restDates.length?['rest']:[])];
-   return{plan,counters:{employees:nominated.ids.length},steps:nominated.ids.flatMap((employmentId,i)=>halves.map(kind=>({kind,rowNum:i+1,payload:{employmentId,ref:nominated.refs.get(employmentId)??''} satisfies EmployeeStep})))};
+   return{plan,counters:{employees:nominated.ids.length},steps:[
+    ...brushChecks(nominated.ids,nominated.refs,{working:workingDates.length>0,rest:restDates.length>0}),
+    ...nominated.ids.flatMap((employmentId,i)=>halves.map(half=>({kind:half,rowNum:i+1,payload:{employmentId,ref:nominated.refs.get(employmentId)??''} satisfies EmployeeStep}))),
+   ]};
   }
   if(input.op==='copy'){
    const c=input.copy;const {offsetDays}=validateRosterCopyRange(c);
    plan={op:'copy',companyId:input.companyId,month:c.targetFrom.slice(0,7),sourceFrom:c.sourceFrom,sourceTo:c.sourceTo,targetFrom:c.targetFrom,offsetDays,
     employmentScope:c.employmentIds.length>0?c.employmentIds.length:'all-visible'};
    const nominated=await withTenant(ctx,async tx=>{
-    await label(tx,kind,'prepare');await rosterLocks(ctx)(tx);
+    await label(tx,kind,'prepare');await rosterLocks(tx,ctx);
     const ids=await rosterCopyNomineesTx(tx,c);
     return{ids,refs:await refsTx(tx,ids)};
    });
-   if(nominated.ids.length){
-    const begin=rosterLocks(ctx);
-    await validate(ctx,kind,[nominated.ids],begin,(tx,[all])=>assertVisibleTx(tx,all),1);
-    const rowsFor=async(tx:Tx,ids:readonly string[])=>{
-     const read=await tx.execute<{employment_id:string;shift_date:string;shift_id:string|null;is_rest_day:boolean;note:string|null}>(sql`select employment_id,shift_date::text,shift_id,is_rest_day,note
-      from roster_assignment where shift_date between ${c.sourceFrom}::date and ${c.sourceTo}::date and employment_id=any(${'{'+ids.join(',')+'}'}::uuid[])`);
-     return [...read].map(r=>({employmentId:r.employment_id,shiftDate:new Date(Date.parse(`${r.shift_date}T00:00:00Z`)+offsetDays*86_400_000).toISOString().slice(0,10),shiftId:r.shift_id,isRestDay:r.is_rest_day,note:r.note}));
-    };
-    await validate(ctx,kind,sortedIds(nominated.ids),begin,async(tx,chunk)=>{const values=await rowsFor(tx,chunk);if(values.length)await assertDutyRosterWriteTx(tx,ctx,values);});
-    await validate(ctx,kind,nominated.ids,begin,async(tx,chunk)=>assertShiftsAllowedForEmploymentsTx(tx,(await rowsFor(tx,chunk)).map(v=>({employmentId:v.employmentId,shiftId:v.shiftId,shiftDate:v.shiftDate}))),16);
-   }
-   return{plan,counters:{employees:nominated.ids.length},steps:nominated.ids.map((employmentId,i)=>({kind:'employee',rowNum:i+1,payload:{employmentId,ref:nominated.refs.get(employmentId)??''} satisfies EmployeeStep}))};
+   return{plan,counters:{employees:nominated.ids.length},steps:[
+    ...brushChecks(nominated.ids,nominated.refs,{working:true,rest:false}),
+    ...nominated.ids.map((employmentId,i)=>({kind:'employee',rowNum:i+1,payload:{employmentId,ref:nominated.refs.get(employmentId)??''} satisfies EmployeeStep})),
+   ]};
   }
   if(input.op==='assign'){
    const a=input.assign;
@@ -208,38 +220,35 @@ async function prepareRoster(ctx:SessionContext,job:BulkJobRow):Promise<BulkJobP
     return{plan,counters:{cells:cells.length},steps:cells.map((payload,i)=>({kind:'cell',rowNum:i+1,payload}))};
    }
    if(!a.employmentIds.length||!a.shiftDates.length)return{plan,counters:{},steps:[]};
-   await validateBrushes(ctx,kind,a.employmentIds,{dates:a.shiftDates,shiftId:a.brush},null);
-   return{plan,counters:{employees:a.employmentIds.length},steps:a.employmentIds.map((employmentId,i)=>({kind:'employee',rowNum:i+1,payload:{employmentId,ref:refs.get(employmentId)??''} satisfies EmployeeStep}))};
+   return{plan,counters:{employees:a.employmentIds.length},steps:[
+    ...brushChecks(a.employmentIds,refs,{working:true,rest:false}),
+    ...a.employmentIds.map((employmentId,i)=>({kind:'employee',rowNum:i+1,payload:{employmentId,ref:refs.get(employmentId)??''} satisfies EmployeeStep})),
+   ]};
   }
   // Upload Shift Roster: the same planner as the preview, from the job's stored file.
   const u=input.import;
   const csvText=(job.source_content??Buffer.alloc(0)).toString('utf8');
   const nomination=await rosterImportPlan(ctx,{csvText,month:u.month,companyId:input.companyId,fileName:u.fileName,dryRun:false});
   const {groups,clears}=rosterImportWriteGroups(nomination.changes);
-  const importPlan:ImportPlan={op:'import',companyId:input.companyId,month:u.month,fileName:u.fileName,result:nomination.result,groups:groups.map(g=>({brush:g.brush,dates:g.dates})),refusal:null};
+  const importPlan:ImportPlan={op:'import',companyId:input.companyId,month:u.month,fileName:u.fileName,result:nomination.result,groups:groups.map(g=>({brush:g.brush,dates:g.dates}))};
   plan=importPlan;
   assertRosterDatesWritable(ctx,[...new Set(nomination.changes.map(cell=>cell.date))]);
-  // Each group was one transaction that committed before the next began: the first refused group ends the upload
-  // with the earlier groups saved and no history entry.
-  let writable=groups.length;
-  for(let g=0;g<groups.length;g++){
-   const group=groups[g];
-   try{await validateBrushes(ctx,kind,group.employmentIds,group.brush==='rest'?null:{dates:group.dates,shiftId:group.brush},group.brush==='rest'?{dates:group.dates}:null);}
-   catch(error){if(!isRefusal(error))throw error;importPlan.refusal=rosterMessage(error);writable=g;break;}
-  }
-  const steps:BulkJobPrepared['steps']=[];
-  for(let g=0;g<writable;g++){
-   for(const employmentId of groups[g].employmentIds){
-    const cells=groups[g].cells.filter(cell=>cell.employmentId===employmentId);
-    steps.push({kind:'cells',rowNum:cells[0]?.sourceRow??null,payload:{group:g,employmentId,ref:cells[0]?.employeeCode??'',cells} satisfies ImportCellsStep});
+  const refs=new Map(nomination.changes.map(cell=>[cell.employmentId,cell.employeeCode]));
+  // Each group was one transaction that committed before the next began: all groups' checks run first, and the first
+  // refused group ends the upload with the earlier groups written and no history entry.
+  const steps:Steps=groups.flatMap((g,i)=>brushChecks(g.employmentIds,refs,{working:g.brush!=='rest',rest:g.brush==='rest'},i));
+  groups.forEach((g,i)=>{
+   for(const employmentId of g.employmentIds){
+    const cells=g.cells.filter(cell=>cell.employmentId===employmentId);
+    steps.push({kind:'cells',rowNum:cells[0]?.sourceRow??null,payload:{group:i,employmentId,ref:cells[0]?.employeeCode??'',cells} satisfies ImportCellsStep});
    }
-   steps.push({kind:'summary',rowNum:null,payload:{group:g} satisfies ImportSummaryStep});
-  }
-  if(importPlan.refusal===null)for(const cell of clears)steps.push({kind:'clear',rowNum:cell.sourceRow,payload:{cell,ref:cell.employeeCode} satisfies ImportClearStep});
+   steps.push({kind:'summary',rowNum:null,payload:{group:i} satisfies ImportSummaryStep});
+  });
+  for(const cell of clears)steps.push({kind:'clear',rowNum:cell.sourceRow,payload:{cell,ref:cell.employeeCode} satisfies ImportClearStep});
   return{plan:importPlan,counters:{cells:nomination.changes.length},steps};
  }catch(error){
   if(!isRefusal(error))throw error;
-  return refused(error);
+  return{refused:rosterMessage(error),plan:plan??basePlan(input)};
  }
 }
 function basePlan(input:RosterBulkInput):Partial<RosterPlan>{
@@ -248,10 +257,34 @@ function basePlan(input:RosterBulkInput):Partial<RosterPlan>{
  return{op:input.op,companyId:input.companyId} as Partial<RosterPlan>;
 }
 
-async function applyRosterStep(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep):Promise<BulkJobStepOutcome>{
+async function applyCheckStep(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep,cache:Map<string,unknown>):Promise<BulkJobStepOutcome>{
+ // After the first refused check the outcome is decided; the remaining checks are not needed.
+ if(cache.get('checkFailed')===true)return{result:{skipped:true}};
+ const plan=job.plan as RosterPlan;const p=step.payload as CheckStep;
+ try{
+  await asRosterRefusal(()=>rolledBack(tx,async sp=>{
+   if(step.kind==='check_visible')return assertVisibleTx(sp,p.ids??[]);
+   const values=await checkValuesTx(sp,plan,p);
+   if(step.kind==='check_duty'){if(values.length)await assertDutyRosterWriteTx(sp,ctx,values);return;}
+   await assertShiftsAllowedForEmploymentsTx(sp,values.map(v=>({employmentId:v.employmentId,shiftId:v.shiftId,shiftDate:v.shiftDate})));
+  }));
+ }catch(error){if(!isTransientBulkJobError(error))cache.set('checkFailed',true);throw error;}
+ return{result:{checked:true}};
+}
+
+async function applyRosterStep(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep,cache:Map<string,unknown>):Promise<BulkJobStepOutcome>{
  assertRosterAdmin(ctx);
+ if(isCheck(step.kind))return applyCheckStep(tx,ctx,job,step,cache);
  const plan=job.plan as RosterPlan;
- const state=chunkState.get(job.id)??{};chunkState.set(job.id,state);
+ const checks=await checkOutcomeTx(tx,job,cache);
+ const sequential=plan.op==='import'||step.kind==='cell';
+ // All-or-nothing: a refused check means no row of the grid (or of that upload group onwards) is written.
+ if(checks.failed&&(plan.op!=='import'||checks.group===null||step.kind==='clear'||(step.payload as {group?:number}).group!>=checks.group))return{result:{skipped:true},counters:{skipped:1}};
+ if(sequential&&await writeStoppedTx(tx,job,cache))return{result:{skipped:true},counters:{skipped:1}};
+ try{return await asRosterRefusal(()=>applyWrite(tx,ctx,job,plan,step));}
+ catch(error){if(sequential&&!isTransientBulkJobError(error))cache.set('stopped',true);throw error;}
+}
+async function applyWrite(tx:Tx,ctx:SessionContext,job:BulkJobRow,plan:RosterPlan,step:BulkJobStep):Promise<BulkJobStepOutcome>{
  if(plan.op==='generate'){
   const {employmentId}=step.payload as EmployeeStep;
   if(plan.reviewed){
@@ -280,7 +313,6 @@ async function applyRosterStep(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:Bulk
  }
  if(plan.op==='assign'){
   if(step.kind==='cell'){
-   if(await priorFailureTx(tx,job))return{result:{skipped:true},counters:{skipped:1}};
    const {employmentId,date}=step.payload as CellStep;
    if(plan.brush==='rest')await setRestDay(ctx,{employmentId,shiftDate:date},tx);
    else await clearRoster(ctx,{employmentId,shiftDate:date},tx);
@@ -290,8 +322,7 @@ async function applyRosterStep(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:Bulk
   const rows=await writeRosterShiftRowsTx(tx,ctx,{employmentIds:[employmentId],shiftDates:plan.shiftDates,shiftId:plan.brush});
   return{result:{rows},counters:{saved:1}};
  }
- // Upload: the synchronous commit stopped at its first refusal, so nothing after a refused step is written.
- if(await priorFailureTx(tx,job))return{result:{skipped:true},counters:{skipped:1}};
+ const state=chunkState.get(job.id)??{};chunkState.set(job.id,state);
  state.directory??=await rosterImportDirectoryTx(ctx,plan.companyId,tx);
  if(step.kind==='cells'){
   const {group,employmentId,cells}=step.payload as ImportCellsStep;const g=plan.groups[group];
@@ -331,7 +362,7 @@ async function finalizeRoster(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit
     await appendRosterCopiedTx(tx,ctx,{sourceFrom:plan.sourceFrom,sourceTo:plan.sourceTo,targetFrom:plan.targetFrom,offsetDays:plan.offsetDays,rows:t.rows,employmentScope:plan.employmentScope});
    }else if(plan.op==='assign'&&plan.brush!=='rest'&&plan.brush!=='clear'&&t.applied>0){
     await appendRosterBulkAssignedTx(tx,ctx,{shiftId:plan.brush,employmentCount:t.applied,dateCount:plan.shiftDates.length,rows:t.rows});
-   }else if(plan.op==='import'&&!plan.refusal&&t.failed===0){
+   }else if(plan.op==='import'&&!t.checkError&&t.failed===0){
     const r=plan.result;
     await recordRosterUploadTx(tx,ctx,{companyId:plan.companyId,month:plan.month,fileName:plan.fileName,employees:r.employees,rowsRead:r.rowsRead,changed:r.changed,rejected:r.rejects.length});
    }
@@ -339,7 +370,7 @@ async function finalizeRoster(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit
   }
   return t;
  });
- if(plan.op==='import'&&plan.refusal)throw new RosterBulkStopped(plan.refusal);
+ if(totals.checkError!==null)throw new RosterBulkStopped(totals.checkError);
  if(totals.failed>0)throw new RosterBulkStopped(totals.error??'');
  if(plan.op==='generate')return{result:{op:'generate',employments:totals.employees,workingDates:plan.workingDates.length,restDates:plan.restDates.length,workingRows:totals.working,restRows:totals.rest}};
  if(plan.op==='copy')return{result:{op:'copy',copied:totals.source>0?totals.rows:0,sourceRows:totals.source}};
@@ -355,6 +386,7 @@ export const rosterBulkJobHandler:BulkJobHandler={
  // A row another writer keeps locked is retried, then recorded as not saved instead of holding up the job.
  transientStepLimit:100,
  stepRef:step=>String((step.payload as {ref?:string}).ref??''),
+ phaseOf:kind=>isCheck(kind)?'checking':'writing',
  prepare:prepareRoster,
  async beginChunkTx(tx,ctx,job){
   chunkState.set(job.id,{});
@@ -364,7 +396,7 @@ export const rosterBulkJobHandler:BulkJobHandler={
   if(plan?.op==='generate'&&plan.reviewed&&!await isAiPrincipalCurrentTx(tx,ctx))throw new RosterCommandRefusal('permission','Current calling authority could not be confirmed.');
   await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
  },
- applyStepTx:(tx,ctx,job,step)=>applyRosterStep(tx,ctx,job,step),
+ applyStepTx:(tx,ctx,job,step,cache)=>applyRosterStep(tx,ctx,job,step,cache),
  finalize:finalizeRoster,
  async describeFailure(job,error){return{error:rosterMessage(error),errors:job.errors??[]};},
  async afterTerminal(_ctx,job){chunkState.delete(job.id);},
@@ -393,8 +425,10 @@ export const scheduleGroupBulkJobHandler:BulkJobHandler<EmployeeStep>={
  maxStepsPerChunk:32,
  transientStepLimit:100,
  stepRef:step=>step.payload.ref,
- /** All or nothing, as setEmploymentScheduleGroupBulk: the same per-employment writer and reverse check over every
-  * employment in ascending id order, rolled back; the first refusal names the employee and nobody is moved. */
+ phaseOf:kind=>isCheck(kind)?'checking':'writing',
+ /** All or nothing, as setEmploymentScheduleGroupBulk: first a check step per employment, in ascending id order, that
+  * runs the same per-employment writer and reverse check and is rolled back; the first refusal names the employee
+  * and nobody is moved. Then the writes, one employment each. */
  async prepare(ctx,job){
   const input=job.input as ScheduleGroupBulkInput;
   const plan:SchedulePlan={returnQuery:input.returnQuery,attendanceRuleId:input.attendanceRuleId,requested:0};
@@ -403,27 +437,37 @@ export const scheduleGroupBulkJobHandler:BulkJobHandler<EmployeeStep>={
    const ids=sortedIds(input.employmentIds.map(v=>v.trim()).filter(Boolean));
    if(ids.length===0)throw new NoEmploymentsSelectedError();
    plan.requested=ids.length;
-   const begin=async(tx:Tx)=>{await tx.execute(sql`select app.access_workforce_write_lock()`);};
-   await validate(ctx,job.kind,ids,begin,async(tx,chunk)=>{
-    await lockLeaveDependenciesTx(tx,ctx.tenantId,chunk);
-    for(const employmentId of chunk){
-     try{await setEmploymentScheduleGroupTx(tx,ctx,{employmentId,attendanceRuleId:input.attendanceRuleId});}
-     catch(e){
-      if(e instanceof ShiftNotInScheduleGroupError){const who=await whoTx(tx,employmentId);throw new ScheduleGroupBulkRefusedError(who?.name??employmentId,who?.code??null,e);}
-      throw e;
-     }
-    }
-   },8);
    const refs=await withTenant(ctx,tx=>refsTx(tx,ids));
-   return{plan,counters:{requested:ids.length},steps:ids.map((employmentId,i)=>({kind:'employee',rowNum:i+1,payload:{employmentId,ref:refs.get(employmentId)??''}}))};
+   const payload=(employmentId:string)=>({employmentId,ref:refs.get(employmentId)??''});
+   return{plan,counters:{requested:ids.length},steps:[
+    ...ids.map(employmentId=>({kind:'check_group',rowNum:null,payload:payload(employmentId)})),
+    ...ids.map((employmentId,i)=>({kind:'employee',rowNum:i+1,payload:payload(employmentId)})),
+   ]};
   }catch(error){
    if(!isRefusal(error))throw error;
    return{refused:scheduleGroupMessage(error),plan};
   }
  },
  async beginChunkTx(tx,ctx){assertScheduleAdmin(ctx);await tx.execute(sql`select app.access_workforce_write_lock()`);},
- async applyStepTx(tx,ctx,job,step){
+ async applyStepTx(tx,ctx,job,step,cache){
   const plan=job.plan as SchedulePlan;const {employmentId}=step.payload;
+  if(step.kind==='check_group'){
+   if(cache.get('checkFailed')===true)return{result:{skipped:true}};
+   try{
+    await rolledBack(tx,async sp=>{
+     try{await setEmploymentScheduleGroupTx(sp,ctx,{employmentId,attendanceRuleId:plan.attendanceRuleId});}
+     catch(e){
+      if(e instanceof ShiftNotInScheduleGroupError){const who=await whoTx(sp,employmentId);throw new ScheduleGroupBulkRefusedError(who?.name??employmentId,who?.code??null,e);}
+      throw e;
+     }
+    });
+   }catch(e){
+    if(isTransientBulkJobError(e))throw e;
+    cache.set('checkFailed',true);throw new Error(scheduleGroupMessage(e));
+   }
+   return{result:{checked:true}};
+  }
+  if(await checkOutcomeTx(tx,job,cache).then(c=>c.failed))return{result:{skipped:true},counters:{skipped:1}};
   try{
    const r=await setEmploymentScheduleGroupTx(tx,ctx,{employmentId,attendanceRuleId:plan.attendanceRuleId});
    const counters:Record<string,number>=r.changed?{changed:1}:{unchanged:1};
@@ -440,8 +484,8 @@ export const scheduleGroupBulkJobHandler:BulkJobHandler<EmployeeStep>={
   const plan=job.plan as SchedulePlan;
   const t=await fencedTx(ctx,job,unit,async tx=>{
    const [row]=await tx.execute<{changed:number;unchanged:number;failed:number;error:string|null}>(sql`select
-     count(*) filter (where state='applied' and (result->>'changed')::boolean)::int changed,
-     count(*) filter (where state='applied' and not (result->>'changed')::boolean)::int unchanged,
+     count(*) filter (where kind='employee' and state='applied' and (result->>'changed')::boolean)::int changed,
+     count(*) filter (where kind='employee' and state='applied' and not coalesce((result->>'skipped')::boolean,false) and not (result->>'changed')::boolean)::int unchanged,
      count(*) filter (where state='failed')::int failed,
      (select error from bulk_job_step f where f.job_id=${job.id}::uuid and f.state='failed' order by f.seq limit 1) error
     from bulk_job_step where job_id=${job.id}::uuid`);

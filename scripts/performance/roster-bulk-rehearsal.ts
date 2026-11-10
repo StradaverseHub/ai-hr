@@ -5,7 +5,7 @@
  * Access writer, clock-in, My Profile, Home, Personnel), samples every tenant-wide lock, and reports per operation:
  * wall time, chunk metrics, the longest tenant-lock holds, probe maxima, errors and Busy refusals.
  *
- * Operations (OPS, comma separated): baseline (probes only), sync (today's single-transaction generateRosterFromTemplate, for comparison),
+ * Operations (OPS, comma separated): baseline (probes only), plan (the upload's plan transaction alone), sync (today's single-transaction generateRosterFromTemplate, for comparison),
  * generate, copy, import, group. Env: DATABASE_URL (app), MIGRATION_DATABASE_URL (owner), REHEARSAL_PORT,
  * REHEARSAL_TENANT, REHEARSAL_ADMIN, BASE_EMPLOYEES (3000), ROSTER_EMPLOYEES (all), IMPORT_EMPLOYEES (1200),
  * SYNC_EMPLOYEES (1200), MONTH (2027-01).
@@ -113,13 +113,15 @@ async function main(){
  startWorker();await sleep(3000);
  if(OPS.includes('generate'))await measure(`job-generate-${rosterIds.length}x${days.length}`,async()=>({id:(await jobs.enqueueRosterGenerateJob(admin,{companyId,input:{shiftId:day.id,employmentIds:rosterIds,from:days[0],to:days[days.length-1]}})).id}));
  if(OPS.includes('copy'))await measure(`job-copy-${rosterIds.length}x${days.length}`,async()=>({id:(await jobs.enqueueRosterCopyJob(admin,{companyId,employmentIds:rosterIds,sourceFrom:days[0],sourceTo:days[days.length-1],targetFrom:`${next}-01`})).id}));
- if(OPS.includes('import')){
-  const sample=population.slice(0,Number(process.env.IMPORT_EMPLOYEES??1200));
-  const header=['employee_no',...days].join(',');
-  const lines=sample.map((e,i)=>[e.code,...days.map((d,j)=>(i+j)%7===5?'RD':(i+j)%7===6?'OFF':(i%2?nightCode:dayCode))].join(','));
-  const csvText=[header,...lines].join('\n')+'\n';
-  await measure(`job-import-${sample.length}x${days.length}`,async()=>({id:(await jobs.enqueueRosterImportJob(admin,{csvText,month:MONTH,companyId,fileName:'rehearsal.csv'})).id}));
+ const importSample=population.slice(0,Number(process.env.IMPORT_EMPLOYEES??1200));
+ const importCsv=()=>[['employee_no',...days].join(','),...importSample.map((e,i)=>[e.code,...days.map((d,j)=>(i+j)%7===5?'RD':(i+j)%7===6?'OFF':(i%2?nightCode:dayCode))].join(','))].join('\n')+'\n';
+ // The upload's read-only plan transaction (Access lock, then the whole file planned): the web preview runs it
+ // synchronously and the background upload once in prepare.
+ if(OPS.includes('plan')){
+  const {rosterImportPlan}=await import('../../core/roster-import');
+  await measure(`plan-import-${importSample.length}x${days.length}`,async()=>{const t0=Date.now();const r=await rosterImportPlan(admin,{csvText:importCsv(),month:MONTH,companyId,fileName:'rehearsal.csv',dryRun:true});return{detail:{ms:Date.now()-t0,changed:r.result.changed,employees:r.result.employees}};});
  }
+ if(OPS.includes('import'))await measure(`job-import-${importSample.length}x${days.length}`,async()=>({id:(await jobs.enqueueRosterImportJob(admin,{csvText:importCsv(),month:MONTH,companyId,fileName:'rehearsal.csv'})).id}));
  if(OPS.includes('group')){
   const rule=await createAttendanceRule(admin,{name:`Rehearsal Group ${tag}`,status:'active',lateGracePeriodMinutes:0,lateAfterMinutes:0,lateDeductMinutes:0,includeGraceInLateness:false,
    earlyGracePeriodMinutes:0,earlyAfterMinutes:0,earlyDeductMinutes:0,includeGraceInEarlyOut:false,applyToEarlyOt:false,otRows:[]});
