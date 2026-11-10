@@ -17,6 +17,8 @@ import {withTenant,type SessionContext} from '../../db/client';
 import * as s from '../../db/schema';
 import {hireEmployee} from '../../core/org';
 import {createClaimType} from '../../packs/claims/service';
+import {closeBatch,createBatch,generatePayslips} from '../../packs/payroll/service';
+import {performanceFixtureCalendar} from '../../scripts/performance/fixture-workload.mjs';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../../core/attendance-workflow';
 import {ensureStandardRule} from '../../core/attendance-rule';
 import {MODULE_CATALOG} from '../../packs/catalog';
@@ -122,6 +124,13 @@ async function seedTenant(t:number,today:string){
   from unnest(${users.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(0,${attendanceDays-1}::integer)n
   order by e.id,n desc`;
  await owner.db.insert(s.compensation).values(users.map(u=>({tenantId:b.tenantId,employmentId:u.employmentId,basicSalary:'5000',validFrom:hiredOn})));
+ // Same payroll state as the fixture: a current draft and a closed historical run per company.
+ const {historicalMonth}=performanceFixtureCalendar(today);
+ for(const company of companies){
+  await createBatch(ctx,{companyId:company.companyId,payPeriod:today.slice(0,7)});
+  const {batchId}=await createBatch(ctx,{companyId:company.companyId,payPeriod:historicalMonth});
+  await generatePayslips(ctx,{batchId});await closeBatch(ctx,{batchId});
+ }
  for(const company of companies){
   const approver=users.find(u=>u.companyId===company.companyId&&['companyHR','groupHR'].includes(u.role))!;
   await saveAttendanceWorkflow(ctx,{companyId:company.companyId,applicationType:'irregularity',routingVersion:4,code:'PERF',name:'Fictional performance approval',priority:100,active:true,
@@ -153,6 +162,46 @@ function readers(ctx:SessionContext,employmentId:string,month:string):Record<Car
   tasks:()=>readEmployeeHomeTasks(ctx,employmentId,1,configurationRead),
   today:()=>readEmployeeHomeToday(ctx,employmentId,signal),
   calendar:()=>readEmployeeHomeCalendar(ctx,employmentId,month,undefined,signal),
+ };
+}
+
+const errorFact=(error:unknown)=>({name:(error as Error)?.name??typeof error,code:(error as {code?:string})?.code??null,
+ reason:(error as {reason?:string})?.reason??null,message:String((error as Error)?.message??error).slice(0,240)});
+
+/** The owners the server-rendered Today page combines for a personal (employee or manager) layout. */
+async function todayReaders(today:string){
+ const reads=await import('../../components/today/reads');
+ const {todayAudience}=await import('../../lib/today/audience');
+ const {readMyPayrollReadiness}=await import('../../core/pre-salary/person-items');
+ const {allowedCompanies}=await import('../../core/read');
+ const {isModuleEnabled}=await import('../../core/entitlements');
+ const inbox=await import('../../core/approvals-inbox');
+ const loops=await import('../../core/loops/cards');
+ const letters=await import('../../core/letter-requests');
+ const reviews=await import('../../core/home-leave-review-presentation');
+ const performanceService=await import('../../packs/performance/service');
+ const home=await import('../../core/employee-home');
+ const assistant=await import('../../core/assistant-grant');
+ return async(ctx:SessionContext):Promise<Record<string,()=>Promise<unknown>>>=>{
+  const scopeIds=(await allowedCompanies(ctx)).map(company=>company.id),audience=todayAudience(ctx);
+  const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
+  return {
+   needsYou:()=>reads.readNeedsYou(ctx,{scopeIds,audience,today,locale:'en'}).then(value=>({failed:value.failed,tasks:value.tasks.length,taskTotal:value.taskTotal,loops:value.loops.length})),
+   doneForYou:()=>reads.readDoneForYou(ctx,{scopeIds,today}).then(value=>value.ok?{ok:true}:{ok:false,error:errorFact(value.error)}),
+   atAGlance:()=>reads.readAtAGlance(ctx,{locale:'en',today}).then(value=>({failed:value.failed})),
+   beforePayroll:()=>readMyPayrollReadiness(ctx,{scopeIds,locale:'en',today,includeApprovals:false}).then(value=>({present:value!==null,failed:value?.failed??null,items:value?.items.length??null})),
+   'needs.pendingTaskSummary':()=>inbox.pendingTaskSummary(ctx,scopeIds,modules).then(value=>({items:value.items.length,total:value.total})),
+   'needs.loopCards':()=>loops.readLoopCards(ctx,{scopeIds,admin:false}).then(value=>({cards:value.length})),
+   'needs.letterRequests':()=>letters.countWaitingLetterRequests(ctx,scopeIds),
+   'needs.ownLeaveReviews':()=>reviews.readHomeOwnLeaveReviewIndex(ctx).then(()=>'ok'),
+   'needs.cancellationReviews':()=>reviews.readHomeLeaveCancellationReviewIndex(ctx).then(()=>'ok'),
+   'needs.decisionReviews':()=>reviews.readHomeLeaveDecisionReviewIndex(ctx).then(()=>'ok'),
+   'page.identity':()=>home.readEmployeeHomeIdentity(ctx).then(()=>'ok'),
+   'page.greetingIdentity':()=>home.readEmployeeHomeGreetingIdentity(ctx).then(()=>'ok'),
+   'page.performanceBlock':()=>performanceService.getPerformanceHomeBlock(ctx,scopeIds).then(value=>value===null?'none':'block'),
+   'page.assignedPerformance':()=>performanceService.hasAssignedPerformanceWork(ctx,scopeIds),
+   'page.assistant':()=>assistant.mayUseAssistant(ctx).then(value=>value.allowed),
+  };
  };
 }
 
@@ -227,6 +276,8 @@ it('measures every manager Home card read at the worker fixture size',async()=>{
  const [counts]=await owner.client<{claims:number;attendance:number;lines:number}[]>`select (select count(*)::int from claim_request) as claims,
   (select count(*)::int from attendance) as attendance,(select count(*)::int from reporting_line) as lines`;
  expect(counts).toEqual({claims:500*claimsPerEmployee,attendance:500*attendanceDays,lines:2*10*10});
+ const [{payslips}]=await owner.client<{payslips:number}[]>`select count(*)::int as payslips from payslip`;
+ expect(payslips).toBe(500);
  report.counts=counts;
  const [settings]=await owner.client<{jit:string;version:string;shared_buffers:string;work_mem:string}[]>`select current_setting('jit') as jit,
   current_setting('server_version') as version,current_setting('shared_buffers') as shared_buffers,current_setting('work_mem') as work_mem`;
@@ -271,6 +322,48 @@ it('measures every manager Home card read at the worker fixture size',async()=>{
  print('concurrent',concurrent.result.map(row=>({elapsedMs:row.elapsedMs,frames:row.frames.map(f=>[f.card,f.status,f.ms])})));
  evidence();
 
+ // 5. The server-rendered Today sections on the same page also count: their failure marker is
+ // `data-today-unavailable` inside main. Measure each section and each owner they combine.
+ const todayTargets=await todayReaders(today);
+ const todaySolo:Record<string,unknown>={};report.todaySolo=todaySolo;
+ for(const [label,actor] of [['manager',manager],['employee',employee],['secondManager',secondManager]] as const){
+  const targets=await todayTargets(actor.ctx),rows:Record<string,unknown>={};todaySolo[label]=rows;
+  for(const [name,read] of Object.entries(targets)){
+   const timesMs:number[]=[];let result:unknown=null,failure:unknown=null;
+   for(let attempt=0;attempt<3;attempt++){
+    const run='today:'+label+':'+name+':'+attempt;state.run=run;const started=performance.now();
+    try{result=await read();}catch(error){failure=errorFact(error);}
+    timesMs.push(Math.round(performance.now()-started));state.run=null;
+   }
+   rows[name]={timesMs,result,failure,transactions:cardTransactions('today:'+label+':'+name+':2')};
+  }
+  print('today-solo',{label,sections:Object.fromEntries(Object.entries(rows).map(([name,row])=>{
+   const value=row as {timesMs:number[];result:unknown;failure:unknown};return [name,{ms:value.timesMs,result:value.result,failure:value.failure}];
+  }))});
+  evidence();
+ }
+ // The browser renders Today sections and starts the card stream on the same worker pool.
+ const pageRuns:unknown[]=[];report.pageRuns=pageRuns;
+ for(const [label,actor] of [['manager',manager],['employee',employee],['manager',manager]] as const){
+  const targets=await todayTargets(actor.ctx),started=performance.now(),sectionMs:Record<string,unknown>={};
+  const {result,statements}=await sampleActivity(()=>Promise.all([
+   ...['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.performanceBlock','page.assignedPerformance','page.assistant'].map(name=>
+    targets[name]().then(value=>{sectionMs[name]={ms:Math.round(performance.now()-started),value};},error=>{sectionMs[name]={ms:Math.round(performance.now()-started),failure:errorFact(error)};})),
+   streamHome(actor,month,null),
+  ]));
+  const stream=result.at(-1) as Awaited<ReturnType<typeof streamHome>>;
+  const row={label,elapsedMs:Math.round(performance.now()-started),sections:sectionMs,frames:stream.frames.map(f=>[f.card,f.status,f.ms]),statements:statements().filter(s=>s.maxMs>=50).slice(0,10)};
+  pageRuns.push(row);print('page',row);evidence();
+ }
+ // Three Home pages at once, as the baseline sweep's employee, manager and other-tenant employee lanes do.
+ const triple=await sampleActivity(()=>Promise.all([manager,employee,secondManager].map(async actor=>{
+  const targets=await todayTargets(actor.ctx),started=performance.now(),sectionMs:Record<string,unknown>={};
+  const [stream]=await Promise.all([streamHome(actor,month,null),...['needsYou','doneForYou','atAGlance','beforePayroll'].map(name=>targets[name]().then(
+   value=>{sectionMs[name]={ms:Math.round(performance.now()-started),value};},error=>{sectionMs[name]={ms:Math.round(performance.now()-started),failure:errorFact(error)};}))]);
+  return {role:actor.role,index:actor.index,elapsedMs:Math.round(performance.now()-started),sections:sectionMs,frames:stream.frames.map(f=>[f.card,f.status,f.ms])};
+ })));
+ report.triplePages={pages:triple.result,statements:triple.statements()};print('triple-pages',triple.result);evidence();
+
  // 4. Plans of statements above 100 ms, nested inside functions, for the manager stream.
  const [{db}]=await owner.client<{db:string}[]>`select current_database() as db`;
  const notices:{durationMs:number;plan:string}[]=[];
@@ -297,6 +390,12 @@ it('measures every manager Home card read at the worker fixture size',async()=>{
   for(let attempt=0;attempt<2;attempt++){
    const result=await streamHome(manager,month,'explain:'+attempt);
    print('explain-stream',{attempt,elapsedMs:result.elapsedMs,frames:result.frames.map(f=>[f.card,f.status,f.ms])});
+  }
+  const targets=await todayTargets(manager.ctx);
+  for(const name of ['needsYou','doneForYou','atAGlance','beforePayroll','page.performanceBlock','page.assignedPerformance']){
+   const started=performance.now();let failure:unknown=null;
+   try{await targets[name]();}catch(error){failure=errorFact(error);}
+   print('explain-today',{name,ms:Math.round(performance.now()-started),failure});
   }
  }finally{
   spy.mockRestore();
