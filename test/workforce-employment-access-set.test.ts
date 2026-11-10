@@ -92,13 +92,16 @@ describe('set-wise Workforce employment access (9911)',()=>{
   expect(row).toEqual({body:PER_ROW_OWNER,definer:true,volatility:'s'});
   const fns=await owner.client<{name:string;definer:boolean;volatility:string;app:boolean;public:boolean}[]>`select p.proname as name,p.prosecdef as definer,p.provolatile as volatility,
    has_function_privilege('ai_hr_app',p.oid,'execute') as app,exists(select 1 from aclexplode(p.proacl) a where a.grantee=0) as public
-   from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.proname in ('access_workforce_permitted_companies','access_workforce_employment_permitted') order by 1`;
-  expect(fns).toEqual([{name:'access_workforce_employment_permitted',definer:true,volatility:'s',app:true,public:false},{name:'access_workforce_permitted_companies',definer:true,volatility:'s',app:true,public:false}]);
-  // The row predicate is a filter on the reader's own scan and the company set is computed once (an InitPlan), so the
-  // plan keeps the per-row owner's shape whatever the statistics: no join on a set, no company check per row.
+   from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.proname in ('access_workforce_permitted_companies','access_workforce_employment_permitted','import_marker_released') order by 1`;
+  expect(fns).toEqual([{name:'access_workforce_employment_permitted',definer:false,volatility:'s',app:true,public:false},{name:'access_workforce_permitted_companies',definer:true,volatility:'s',app:true,public:false},{name:'import_marker_released',definer:true,volatility:'s',app:true,public:false}]);
+  // The visibility helpers the row predicate restates, as installed.
+  const helpers=await owner.client<{name:string;body:string}[]>`select proname as name,prosrc as body from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and proname in ('import_marker_visible') order by 1`;
+  expect(helpers).toEqual([{name:'import_marker_visible',body:"\n SELECT p_attempt IS NULL OR EXISTS(SELECT 1 FROM app.import_attempt_release r WHERE r.attempt_id=p_attempt);\n"}]);
+  // The row predicate is inlined into the reader's own scan and the company set is computed once (an InitPlan), so the
+  // plan keeps the per-row owner's shape whatever the statistics: no function call per row, no join on a set.
   const plan=await withTenant(group(),tx=>tx.execute<{'QUERY PLAN':string}>(sql`explain (verbose,costs off) select e.id from employment e where ${workforceEmploymentSetPredicate(rowColumns,'view')}`));
   const text=plan.map(r=>r['QUERY PLAN']).join('\n');
-  expect(text).toMatch(/Filter: .*app\.access_workforce_employment_permitted\(/);expect(text).toMatch(/InitPlan[\s\S]*access_workforce_permitted_companies/);expect(text).not.toMatch(/Join|Function Scan/);
+  expect(text).not.toContain('access_workforce_employment_permitted');expect(text).toContain('import_marker_released');expect(text).toMatch(/InitPlan[\s\S]*access_workforce_permitted_companies/);expect(text).not.toMatch(/Join|Function Scan/);
  });
 
  for(const size of [340,3100])it(`returns exactly the per-row set for every actor shape at ${size} employments`,async()=>{
@@ -137,6 +140,10 @@ describe('set-wise Workforce employment access (9911)',()=>{
   }
   // The staged employment is visible only to its own attempt's session, in both forms.
   const own=await compare(group(),'view',staged);expectSame(own,'own staged attempt');expect(own.setWise).toContain(stagedRow.id);
+  // Released (before its markers are settled): visible to everyone the company check admits, in both forms.
+  await owner.client`insert into app.import_attempt_release(attempt_id,tenant_id,outcome,released_at) values(${attempt.id}::uuid,${b.tenantId}::uuid,'activated',now())`;
+  const released=await compare(group(),'view');expectSame(released,'released staged attempt');expect(released.setWise).toContain(stagedRow.id);
+  await owner.client`delete from app.import_attempt_release where attempt_id=${attempt.id}::uuid`;
   // Explicit deny of view on the parent company, with the capability enforced.
   await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"draft-workforce-consumer-fixture","operation":"read-write"}]'::jsonb where id in ('workforce.view','workforce.maintain')`);
   const allowedBefore=await compare(group(),'view');expectSame(allowedBefore,'capability enforced');
