@@ -437,3 +437,13 @@ source/header proof also refuses. It grants no new table or function authority; 
 retain the existing owner guard and legacy sources retain their current behavior. This temporary
 boundary must be replaced by the complete verified execution/receipt/replay contract before policy
 settlement is enabled. Prepared SQL/owner boundary and legacy consumer probes remain runtime-unrun.
+
+## Owner decision, 11 November 2026: All Companies clock-policy audit reads
+
+Asked "Should HR admins who manage group-wide clock policy see the audit history of 'All Companies'
+clock-policy changes? Read-only, and only for people who can already make those changes.", the owner
+answered yes. The unapplied migration 4342 therefore reads group-wide (company_id NULL) clock-policy
+revisions and their `attendance-rule.clock-policy.scheduled` events under the group-wide writer's own
+check from 4600: a current principal who is a group administrator (`app.is_group_admin()`). Company
+revisions and events still require that company's administrator; employees and other tenants gain
+nothing, and no write path changes. See [migration allocation](../MIGRATION-ALLOCATION.md).

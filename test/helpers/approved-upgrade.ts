@@ -149,7 +149,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '4339_assistant_rewards_calendar_cancel_presentation_snapshot':'6df872ead7dc864a8e2a7c78ee8dcdf9e4bd4d637186c185c54a656acb6f07e9',
  '4340_ai_management_presentation_snapshot':'17973dd386f8fb1fda3a2773de3cd189055bed744730949912b2206a77c4e32c',
  '4341_home_leave_presentation_snapshot':'91ceea84de63aa91d8d5c559c0c7c4ee4cadd86ee14bb0d2c1300be580c2a664',
- '4342_attendance_clock_policy_audit_scope':'e517de07fd7f1d536374ade1a23895b5064e459dcf3af30652b23c85554fe303',
+ '4342_attendance_clock_policy_audit_scope':'bc83887d91db94c2199d600a4ca5293d43d14662fb08c85818d35455ac28f67f',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);

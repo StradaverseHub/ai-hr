@@ -1,3 +1,17 @@
+# 4342 All Companies clock-policy audit reads — 11 November 2026 MYT (unapplied, edited in place)
+
+Owner decision, 11 November 2026: HR administrators who may make group-wide ("All Companies")
+clock-policy changes may read their audit history, read-only. `4342_attendance_clock_policy_audit_scope`
+has never been applied, so it is edited in place; its tag, idx 4243 and when 1793330004543 are unchanged.
+`app.attendance_clock_policy_history(NULL, rule)` now returns the group-wide chain, and
+`attendance_clock_policy_audit_read` now shows a group-wide revision's
+`attendance-rule.clock-policy.scheduled` event (payload `companyId` JSON null and `scope` `group`).
+Both use the group-wide writer's own check from 4600: a current principal and `app.is_group_admin()`.
+Company rows keep their `app.is_admin_for(company)` check. Grants, the insert policy and the guard are
+unchanged. SHA256 `e517de07fd7f1d536374ade1a23895b5064e459dcf3af30652b23c85554fe303` becomes
+`bc83887d91db94c2199d600a4ca5293d43d14662fb08c85818d35455ac28f67f` (also pinned in
+`test/helpers/approved-upgrade.ts`). This grants no installation authority.
+
 # Architecture candidate above released 8d5254eb — 10 November 2026 MYT (unapplied reallocation)
 
 Main, alpha and staging carry `8d5254eb286b3dd1815253435001c02d01888856`, whose
