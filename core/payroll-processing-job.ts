@@ -35,6 +35,8 @@ import {
  type PayrollProcessingChunkResult,type PayrollProcessingInputSnapshot,type PayrollProcessingPlan,
 } from './payroll';
 import {PAYROLL_PROCESS_JOB_KIND,type PayrollProcessingStatus} from '../lib/payroll-processing-job';
+import {reasonForPayrollError} from './payroll-run-group-result';
+import {settleRunGroupsForJob} from './payroll-run-group-store';
 
 export {PAYROLL_PROCESS_JOB_KIND};
 /** Employees per step. A step is one pass of the full generation's compute path (its run-wide reads once, then each
@@ -46,8 +48,13 @@ const payrollProcessChunkBudgetMs=()=>Math.max(1,Number(process.env.PAYROLL_PROC
 /** Payslips deleted per discard transaction. */
 const DISCARD_BATCH=500;
 
-type JobInput={batchId:string};
-type JobPlan=PayrollProcessingPlan&{batchId:string;finalized?:{payslips:number;totalNet:number;skipped:number};captured?:boolean};
+/** `after`: the processing jobs of the same wizard run admitted before this one. The synchronous wizard generated
+ * its companies one after another, so this run waits for theirs (a cross-company transfer's coverage marks read
+ * the earlier company's run as processed, exactly as before). */
+type JobInput={batchId:string;after?:string[]};
+type JobPlan=PayrollProcessingPlan&{batchId:string;finalized?:{payslips:number;totalNet:number;skipped:number};captured?:boolean;
+ /** A failed run's reason code (core/payroll-run-group-result.ts), for the wizard's result screen. */
+ failureReason?:string};
 type EmployeesStep={employmentIds:string[]};
 const inputOf=(job:BulkJobRow)=>job.input as JobInput;
 const planOf=(job:BulkJobRow)=>job.plan as JobPlan|null;
@@ -77,7 +84,7 @@ async function pointReadTx(tx:Tx){await tx.execute(sql`select set_config('app.ba
 
 /** Web side: validate the run and the caller's authority, admit the job and move the run to 'processing'. Short:
  * no figure is read. A repeated request while the run processes returns the running job. */
-export async function requestPayrollProcessing(ctx:SessionContext,p:{batchId:string;operationKey?:string}):Promise<{jobId:string;existing:boolean}>{
+export async function requestPayrollProcessing(ctx:SessionContext,p:{batchId:string;operationKey?:string;after?:readonly string[]}):Promise<{jobId:string;existing:boolean}>{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  const batchId=bulkJobId(p.batchId);
  return withTenant(ctx,async tx=>{
@@ -88,7 +95,7 @@ export async function requestPayrollProcessing(ctx:SessionContext,p:{batchId:str
   await assertRunAuthorityTx(tx,batch.companyId);
   if(batch.status==='processing'&&batch.processingJobId)return{jobId:batch.processingJobId,existing:true};
   if(batch.status!=='draft')throw new BatchNotDraftError();
-  const {row:job}=await enqueueBulkJobTx(tx,ctx,{kind:PAYROLL_PROCESS_JOB_KIND,operationKey:p.operationKey,companyIds:[batch.companyId],input:{batchId} satisfies JobInput});
+  const {row:job}=await enqueueBulkJobTx(tx,ctx,{kind:PAYROLL_PROCESS_JOB_KIND,operationKey:p.operationKey,companyIds:[batch.companyId],input:{batchId,...(p.after?.length?{after:p.after.map(bulkJobId)}:{})} satisfies JobInput});
   // The retired Attendance Formula guard fires on this transition, exactly as on draft -> processed.
   await tx.update(payrollBatch).set({status:'processing',processingJobId:job.id,processingStartedAt:new Date()}).where(eq(payrollBatch.id,batchId));
   // A full generation clears the run's recalculation mark when it finishes (a draft is never marked). Cleared here
@@ -130,7 +137,8 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
   try{return await prepareRun(ctx,job,batchId);}
   catch(error){
    if(error instanceof PayrollRunQueuedError||isTransientBulkJobError(error))throw error;
-   return{refused:publicErrorMessage(error),plan:{batchId}};
+   // The wizard's result screen names the reason exactly as the synchronous run's catch mapped this error.
+   return{refused:publicErrorMessage(error),plan:{batchId,failureReason:reasonForPayrollError(error)}};
   }
  },
  async commitPrepareTx(tx,_ctx,job,prepared){
@@ -148,6 +156,15 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
  async discard(job,unit){
   return discardRun(job,unit);
  },
+ // The reason the synchronous wizard's catch gave this error, kept on the plan for the run group's outcome.
+ async describeFailure(job,error,_step,owner){
+  await owner`update bulk_job set plan=coalesce(plan,'{}'::jsonb)||${JSON.stringify({failureReason:reasonForPayrollError(error)})}::jsonb where id=${job.id}::uuid`;
+  return{error:publicErrorMessage(error)};
+ },
+ // A wizard run group waiting for this run settles when its last job finishes (core/payroll-run-group-store.ts).
+ async afterTerminal(ctx,job){
+  if(ctx)await settleRunGroupsForJob(ctx,job.id);
+ },
 };
 
 async function prepareRun(ctx:SessionContext,job:BulkJobRow,batchId:string):Promise<BulkJobPrepared|BulkJobRefused>{
@@ -158,6 +175,11 @@ async function prepareRun(ctx:SessionContext,job:BulkJobRow,batchId:string):Prom
    const [earlier]=await tx.execute<{id:string}>(sql`select id from payroll_batch where tenant_id=${ctx.tenantId}::uuid and company_id=${batch.companyId}::uuid
     and processing_job_id is not null and id<>${batchId}::uuid and (processing_started_at,id)<(${batch.processingStartedAt?.toISOString()??null}::timestamptz,${batchId}::uuid) limit 1`);
    if(earlier)throw new PayrollRunQueuedError();
+   const after=inputOf(job).after??[];
+   if(after.length){
+    const [waiting]=await tx.execute<{id:string}>(sql`select id from payroll_batch where tenant_id=${ctx.tenantId}::uuid and processing_job_id in (${sql.join(after.map(id=>sql`${id}::uuid`),sql`, `)}) limit 1`);
+    if(waiting)throw new PayrollRunQueuedError();
+   }
    const unit=await runPayrollProcessingUnitTx(tx,ctx,batchId,{jobId:job.id,phase:'plan',employmentIds:[],order:{},prefillOvertime:false});
    if(!('processingPlan' in unit)||!unit.processingPlan)throw new Error('Payroll processing plan unavailable.');
    const plan=unit.processingPlan;

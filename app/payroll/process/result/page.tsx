@@ -6,7 +6,9 @@ import { listEmployeesForPayrollRun } from '@/core/read';
 // r227 — the skipped are read from the run's own durable event, not carried in the redirect. See below.
 import { listSkippedEmployees } from '@/core/payroll-view';
 import { decodeRunGroupResult, type RunGroupReasonCode } from '@/core/payroll-run-group';
+import { readRunGroup } from '@/core/payroll-run-group-store';
 import { payrollProcessBack } from '../../back';
+import { RunGroupProgressPanel } from './run-group-progress';
 
 /**
  * Payroll Process — Step 3 result summary (feedback 3653d14b, Phase 1).
@@ -35,16 +37,29 @@ import { payrollProcessBack } from '../../back';
 export default async function PayrollProcessResultPage({
   searchParams,
 }: {
-  searchParams: Promise<{ r?: string; from?: string }>;
+  searchParams: Promise<{ r?: string; g?: string; from?: string }>;
 }) {
   const { s } = await scopedAdmin();
   const t = await getTranslations('payroll.process');
-  const { r, from } = await searchParams;
+  const { r, g, from } = await searchParams;
   // 9066bd6c — this screen is the terminal step of the run flow and had no way back at all: the only
   // exit was the browser's own. Back returns the Payroll Process list as it was left. The label and the
   // `payroll.list` lookup live in the shared helper so this page keeps ONE namespace (see app/payroll/back.ts).
   const back = await payrollProcessBack(from);
-  const result = decodeRunGroupResult(r);
+  // A run (`?g=`) processes in the background: its run group shows each company's progress until every job has
+  // finished, then the same result the synchronous run carried on `?r=` (which saved drafts still use). The group
+  // is durable, so this screen now survives a refresh.
+  const group = g ? await readRunGroup(s, g).catch(() => null) : null;
+  if (group && !group.done) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6">
+        <PageHeader back={back} title={t('resultTitle')} description={t('resultSubtitle')} />
+        <Card className="p-4"><p>{t('resultForPeriod', { period: group.payPeriod })}</p></Card>
+        <RunGroupProgressPanel groupId={group.id} initial={{ done: group.done, companies: group.companies, worker: group.worker }} />
+      </div>
+    );
+  }
+  const result = group ? group.result : decodeRunGroupResult(r);
 
   if (!result) {
     return (
