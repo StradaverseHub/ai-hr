@@ -60,7 +60,7 @@
     ".github/ci/resolve.mjs": "c6d181392132d00f996f1c7ee03464394549e84d77ffec2b5a166d257dc52da9",
     ".github/ci/restricted-port-qualification.mjs": "6318059f63224b7b26c118f5e185ec0d0bda147085f3c3fe1ef29dad69218724",
     ".github/ci/runner-capacity.mjs": "1233fef94e646fbd29d164e69df76aadc48525206239fb3ddcedcb6cce216c1c",
-    ".github/ci/singleton-protocol.mjs": "dc402974fb1439cc03c8d8f4adfd75a330e50099446123eb2b11efe03b14b163",
+    ".github/ci/singleton-protocol.mjs": "f588944d9015af0ac4490ab721900928753de76bad88181090f5d0cff07359e7",
     ".github/workflows/alpha-focused-checks.yml": "aa8f3ec816efcbbf068b46e5225b4ee61b06f78c643cc58972f08771695be33c",
     ".github/workflows/alpha-staging-diagnostics.yml": "52c18222811f9ec289cc4fdbe01a58bcca70a671dad4209cd1cab7ae032c43cd",
     "docs/qualification/compiler-full-native-inventory-design-20261108.md": "d1035d9913c8a477f64876662d7a2608b08b4c7f82f8805532cd50c328a27598",

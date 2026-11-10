@@ -44,7 +44,7 @@ class NativeNavigationHistoryModel(unittest.TestCase):
         declared = re.search(rb'NAVIGATION_HARNESS_ROOTS=\[(.*?)\]', old_protocol).group(1)
         self.assertEqual(tuple(x.decode('ascii') for x in re.findall(rb"'([^']+)'", declared)), H.HARNESS_ROOTS)
         self.assertEqual(len(H.HISTORY_PINS), 4)
-        self.assertEqual(sum(pin.size for pin in H.HISTORY_PINS), 76554158)
+        self.assertEqual(sum(pin.size for pin in H.HISTORY_PINS), 76557008)
         self.assertEqual(len({pin.path for pin in H.HISTORY_PINS}), 4)
         with I.PinnedTree(ROOT) as tree:
             facts = H.capture_navigation_history(tree, INVENTORY, tick)
