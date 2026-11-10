@@ -16,6 +16,8 @@ it('checks the closed ASCII runtime selection, independent compiled source and c
   'refuses altered omitted duplicated or already compiled template bytes before native log replay',
   'refuses a swapped or candidate-claimed compiled source identity independently of correct committed template bytes',
   'all five source-registered units retain the actual canonical SQL history and one complete source owner',
+  // cd08b6789 (v21 trusted controller) added the archived pre-retirement closure restoration control.
+  'historical restoration still reconstructs the exact predecessor from its archived source',
   'coherently rehashed missing critical owners or canonical SQL still refuse independently',
   'duplicated sources and malformed/duplicated native history cannot redefine the complete closure',
  ];
@@ -27,11 +29,11 @@ it('checks the closed ASCII runtime selection, independent compiled source and c
  process.stdout.write(stdout);process.stderr.write(stderr);
  expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status).toBe(0);
  const output=stdout.toString('utf8'),subtests=[...output.matchAll(/^# Subtest: (.+)$/gm)].map(match=>match[1]);
- expect(subtests).toHaveLength(13);expect(new Set(subtests).size).toBe(13);expect(subtests.slice().sort()).toEqual(names.slice().sort());
+ expect(subtests).toHaveLength(14);expect(new Set(subtests).size).toBe(14);expect(subtests.slice().sort()).toEqual(names.slice().sort());
  const passed=[...output.matchAll(/^ok (\d+) - (.+)$/gm)];
- expect(passed).toHaveLength(13);expect(passed.map(match=>Number(match[1]))).toEqual(Array.from({length:13},(_,index)=>index+1));
+ expect(passed).toHaveLength(14);expect(passed.map(match=>Number(match[1]))).toEqual(Array.from({length:14},(_,index)=>index+1));
  expect(passed.map(match=>match[2]).sort()).toEqual(names.slice().sort());
- for(const line of ['1..13','# tests 13','# suites 0','# pass 13','# fail 0','# cancelled 0','# skipped 0','# todo 0']){
+ for(const line of ['1..14','# tests 14','# suites 0','# pass 14','# fail 0','# cancelled 0','# skipped 0','# todo 0']){
   expect(output.split(/\r?\n/).filter(value=>value===line),line).toHaveLength(1);
  }
  expect(output).not.toMatch(/^not ok\b|^Bail out!|^(?:ok|not ok)\b[^\n]*#\s*(?:SKIP|TODO)\b/gmi);

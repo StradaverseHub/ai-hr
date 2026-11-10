@@ -17,7 +17,7 @@ Use [Reports](/reports?cat=performance) for the available performance reporting 
 
 ## Rewards handoff
 
-If Rewards is enabled, set up its cycle, policy, membership and reviewed employee facts separately under [Rewards configuration](/admin/rewards). A performance rating does not automatically approve a salary increase, promotion or payroll payment. Assigned reviewers must complete the Rewards route, then an authorized payroll reviewer posts the approved result.
+If Rewards is enabled, set up its cycle, policy, membership and reviewed employee facts separately under [Rewards configuration](/admin/rewards/plans). A performance rating does not automatically approve a salary increase, promotion or payroll payment. Assigned reviewers must complete the Rewards route, then an authorized payroll reviewer posts the approved result.
 
 ## Troubleshooting
 

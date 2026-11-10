@@ -1,4 +1,4 @@
-Rewards handles salary, promotion and bonus reviews when enabled. [Rewards configuration](/admin/rewards) belongs to authorized administrators; [Rewards reviews](/rewards) is the workspace for explicitly assigned participants. The steps below apply where the relevant controls are available in your installation. If a required control is unavailable, ask the installation administrator to check its availability before proceeding.
+Rewards handles salary, promotion and bonus reviews when enabled. [Rewards configuration](/admin/rewards/plans) belongs to authorized administrators; [Rewards reviews](/rewards) is the workspace for explicitly assigned participants. The steps below apply where the relevant controls are available in your installation. If a required control is unavailable, ask the installation administrator to check its availability before proceeding.
 
 ## Set up a review
 
