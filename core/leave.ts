@@ -12457,7 +12457,9 @@ export function leaveStepDecisionSql(ctx:SessionContext,facts:LeaveSubjectFacts,
  * scope, as in the owners. jsonb {leave, cancellations}, each {defer, rows}: `rows` are the owner's result in its order;
  * `defer` is true when any of that owner's candidates is 'defer' or 'error', and then that owner itself runs (and
  * throws its own error). */
-export function pendingLeaveDecisionTasksBundleSql(tx:Tx,ctx:SessionContext,companyIds?:string[],own?:SQL):SQL{
+/** pendingLeaveDecisionTasksBundleSql's decided candidates: `from` text yielding decision_candidate (section, id,
+ * employment_id, person_id, employee, created_at, task_type, step kind) and decided.decision. */
+export function pendingLeaveDecisionCandidatesSql(tx:Tx,ctx:SessionContext,companyIds?:string[],own?:SQL):SQL{
   const candidate=sql`decision_candidate`,subject=sql`${candidate}.employment_id`;
   const facts={self:sql`decision_subject.self`,canDecide:sql`decision_subject.can_decide`};
   const decision=sql`case
@@ -12465,12 +12467,7 @@ export function pendingLeaveDecisionTasksBundleSql(tx:Tx,ctx:SessionContext,comp
     when ${candidate}.step_id is null then case when ${facts.canDecide} then 'allow' else 'refuse' end
     else ${leaveStepDecisionSql(ctx,facts,subject,{kind:sql`${candidate}.approver_kind`,approver:sql`${candidate}.approver_employment_id`,
       alternates:sql`${candidate}.approver_alternates`},sql`${candidate}.task_type`,own)} end`;
-  const owner=(section:'leave'|'cancellations')=>sql`jsonb_build_object('defer',coalesce(bool_or(decided.decision in ('defer','error')) filter(where ${candidate}.section=${section}),false),
-    'rows',coalesce(jsonb_agg(jsonb_build_object('id',${candidate}.id,'employmentId',${candidate}.employment_id,'personId',${candidate}.person_id,
-     'employee',${candidate}.employee,'createdAt',${candidate}.created_at) order by ${candidate}.created_at desc,${candidate}.id)
-     filter(where ${candidate}.section=${section} and decided.decision='allow'),'[]'::jsonb))`;
-  return sql`(select jsonb_build_object('leave',${owner('leave')},'cancellations',${owner('cancellations')})
-   from (select 'leave'::text as section,pending_leave.id,pending_leave.employment_id,pending_leave.person_id,pending_leave.employee,pending_leave.created_at,
+  return sql`from (select 'leave'::text as section,pending_leave.id,pending_leave.employment_id,pending_leave.person_id,pending_leave.employee,pending_leave.created_at,
       'leave.application'::text as task_type,leave_chain.present,leave_current.id as step_id,leave_current.approver_kind,leave_current.approver_employment_id,leave_current.approver_alternates
      from ${pendingLeaveCandidateSource(ctx)}
      cross join lateral (select exists(select 1 from public.leave_approval_step chain where chain.leave_request_id=pending_leave.id) as present) leave_chain
@@ -12487,7 +12484,16 @@ export function pendingLeaveDecisionTasksBundleSql(tx:Tx,ctx:SessionContext,comp
        where step.cancellation_request_id=cancel_header.id and step.status='pending' order by step.step_index,step.id limit 1) cancel_current on true
    ) ${candidate}
    cross join lateral ${leaveSubjectFactsSql(ctx,subject,sql`${candidate}.task_type`,own)} decision_subject
-   cross join lateral (select ${decision} as decision) decided)`;
+   cross join lateral (select ${decision} as decision) decided`;
+}
+export function pendingLeaveDecisionTasksBundleSql(tx:Tx,ctx:SessionContext,companyIds?:string[],own?:SQL):SQL{
+  const candidate=sql`decision_candidate`;
+  const owner=(section:'leave'|'cancellations')=>sql`jsonb_build_object('defer',coalesce(bool_or(decided.decision in ('defer','error')) filter(where ${candidate}.section=${section}),false),
+    'rows',coalesce(jsonb_agg(jsonb_build_object('id',${candidate}.id,'employmentId',${candidate}.employment_id,'personId',${candidate}.person_id,
+     'employee',${candidate}.employee,'createdAt',${candidate}.created_at) order by ${candidate}.created_at desc,${candidate}.id)
+     filter(where ${candidate}.section=${section} and decided.decision='allow'),'[]'::jsonb))`;
+  return sql`(select jsonb_build_object('leave',${owner('leave')},'cancellations',${owner('cancellations')})
+   ${pendingLeaveDecisionCandidatesSql(tx,ctx,companyIds,own)})`;
 }
 type BundleApprovalRow={id:string;employmentId:string;personId:string;employee:string|null;createdAt:string};
 /** The leave (or cancellation) section's owner result, or null when the owner must run itself. */

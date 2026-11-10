@@ -743,17 +743,17 @@ it('completes every manager Home card and Today section read without a handled f
    }
   }
   report.taskOwnerTrips=trips;print('task-owner-trips',trips);evidence();
-  // The leave and cancellation decision sub-select's own flags for the subjects whose owners still read.
+  // The leave and cancellation decisions, candidate by candidate, for the subjects whose owners still read.
   {
-   const bundles=await import('../../core/account-task-bundle'),flags:Record<string,unknown>={};
+   const bundles=await import('../../core/account-task-bundle'),leaveService=await import('../../packs/leave/service'),decisions:Record<string,unknown>={};
    for(const [label,actor] of [['manager',manager],['secondManager',secondManager],['crossCompanyManager',actors.find(a=>a.index===6)!]] as const){
-    flags[label]=await withTenant(actor.ctx,async tx=>{
-     const section=bundles.accountTaskStatementSections(tx,actor.ctx,{attendance:false,claims:false,performance:false,rewards:false,lifecycle:false}).find(([name])=>name==='leave_decisions')![1];
-     const [row]=await tx.execute<{value:{leave:{defer:boolean;rows:unknown[]};cancellations:{defer:boolean;rows:unknown[]}}}>(sql`with ${bundles.accountTaskCallerSql(actor.ctx)} select ${section} as value`);
-     return {leave:{defer:row.value.leave.defer,rows:row.value.leave.rows.length},cancellations:{defer:row.value.cancellations.defer,rows:row.value.cancellations.rows.length}};
-    },{readOnlySnapshot:true}).catch(error=>errorFact(error));
+    decisions[label]=await withTenant(actor.ctx,async tx=>[...await tx.execute(sql`with ${bundles.accountTaskCallerSql(actor.ctx)}
+      select decision_candidate.section,decision_candidate.approver_kind as kind,(select users.index from (values ${sql.join(actors.map(a=>sql`(${a.employmentId}::uuid,${a.index}::int)`),sql`,`)}) users(id,index)
+       where users.id=decision_candidate.employment_id) as subject,decided.decision
+      ${leaveService.pendingLeaveDecisionCandidatesSql(tx,actor.ctx,undefined,sql`cast((select task_caller.own_ids from task_caller) as uuid[])`)}
+      order by 1,3,2`)],{readOnlySnapshot:true}).catch(error=>errorFact(error));
    }
-   print('task-owner-leave-flags',flags);
+   print('task-owner-leave-decisions',decisions);
   }
   const {isModuleEnabled}=await import('../../core/entitlements'),explains:Record<string,unknown>={};
   for(const [label,actor] of [['manager',manager],['employee',employee],['groupHR',actors.find(a=>a.role==='groupHR')!]] as const){
