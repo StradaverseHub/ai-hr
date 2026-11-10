@@ -29,7 +29,8 @@ async function expectPrivateClockAuditColumnsDenied(ctx:SessionContext,revisionI
   select current_user::text as "role",session_user::text as "session",
    app.principal_snapshot_current() as "current",app.is_admin_for(${base.companyId}::uuid) as admin`));
  expect(carrier).toEqual({role:'ai_hr_app',session:'ai_hr_app',current:true,admin:false});
- const calls=['reason','created_by_user_id','created_at'].map(column=>
+ // `reason` stays readable for the previous application version until the follow-up revoke migration.
+ const calls=['created_by_user_id','created_at'].map(column=>
   withTenant(ctx,tx=>tx.execute(sql`select ${sql.identifier(column)}
    from public.attendance_clock_policy_revision where id=${revisionId}::uuid`)));
  await Promise.all(calls.map(call=>expect(call).rejects.toMatchObject({cause:{code:'42501'}})));
