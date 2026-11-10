@@ -34,6 +34,7 @@ import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefus
 import { currentAdminManager } from './performance';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { chunkDeadline, chunkRows, lockOperatorChunkTx } from './operator-chunks';
 
 export class ReviewError extends Error {
   constructor(message: string) {
@@ -615,85 +616,110 @@ export function pendingManagerReviewsFor(
  * §2.6 — open a review for every active employment whose computed due_date <= today AND that has no open
  * review for that type. Excludes leavers (terminated / open resignation / future-dated termination) so we
  * don't auto-open + notify for someone on their way out. Idempotent on re-run. Returns { opened }.
+ *
+ * Bounded transactions (core/operator-chunks.ts): the sweep walks the employments in id order, a chunk of about
+ * OPERATOR_CHUNK_BUDGET_MS per transaction under the same writer lock, instead of holding the tenant's lock for
+ * every employment at once. Each employment is judged exactly as before, under the lock, on fresh reads. A failure
+ * keeps the reviews opened by earlier chunks; the next run (idempotent) carries on from there.
  */
 export async function sweepDueReviews(
   ctx: SessionContext,
-  opts: { today?: string } = {},
+  opts: { today?: string; chunkRows?: number } = {},
 ): Promise<{ opened: number }> {
   const today = opts.today ?? todayInKualaLumpur();
-  return withTenant(ctx, async (tx) => {
-    // Stays exclusive: a tenant-wide batch over every employment, so a long holder. Flagged for the
-    // background-job conversion (phase 3) rather than run under the shared lock in one transaction.
-    await tx.execute(sql`select app.access_configuration_write_lock()`);
-    // Enumerate active employments left-joined to the current open assignment row.
-    const rows = await tx
-      .select({
-        employmentId: employment.id,
-        terminatedOn: employment.terminatedOn,
-        employmentType: assignment.employmentType,
-        probationEndDate: employment.probationEndDate,
-        contractEndDate: employment.contractEndDate,
-        internshipEndDate: employment.internshipEndDate,
-        provisionalEndOn: employment.provisionalEndOn,
-      })
-      .from(employment)
-      .innerJoin(
-        assignment,
-        and(
-          eq(assignment.employmentId, employment.id),
-          isNull(assignment.validTo),
-          isNull(assignment.supersededAt),
-        ),
-      )
-      .where(isNull(employment.terminatedOn)); // skip already-terminated (future-dated terminatedOn also excluded)
-
-    let opened = 0;
-    for (const r of rows) {
-      const window = computeReviewWindow(r.employmentType, r);
-      if (!window || !window.endDate || !window.dueDate) continue;
-      if(window.reviewType==='probation'){const[owned]=await tx.execute<{owned:boolean}>(sql`select app.probation_owns_legacy(${r.employmentId}::uuid) as owned`);if(owned?.owned)continue;}
-      if (window.dueDate > today) continue; // not due yet
-
-      // Exclude leavers with an open resignation (pending) — on their way out.
-      const [resign] = await tx
-        .select({ id: resignationRequest.id })
-        .from(resignationRequest)
-        .where(
+  const limit = chunkRows(opts.chunkRows);
+  let opened = 0;
+  type Cursor = { employmentId: string; assignmentId: string };
+  let after: Cursor | null = null;
+  for (;;) {
+    const cursor: Cursor | null = after;
+    const chunk = await withTenant(ctx, async (tx): Promise<{ opened: number; last: Cursor | null; done: boolean }> => {
+      await lockOperatorChunkTx(tx, ctx.tenantId);
+      const overBudget = chunkDeadline();
+      // Enumerate active employments left-joined to the current open assignment row, the next chunk in id order.
+      const rows = await tx
+        .select({
+          employmentId: employment.id,
+          assignmentId: assignment.id,
+          terminatedOn: employment.terminatedOn,
+          employmentType: assignment.employmentType,
+          probationEndDate: employment.probationEndDate,
+          contractEndDate: employment.contractEndDate,
+          internshipEndDate: employment.internshipEndDate,
+          provisionalEndOn: employment.provisionalEndOn,
+        })
+        .from(employment)
+        .innerJoin(
+          assignment,
           and(
-            eq(resignationRequest.employmentId, r.employmentId),
-            eq(resignationRequest.status, 'pending'),
+            eq(assignment.employmentId, employment.id),
+            isNull(assignment.validTo),
+            isNull(assignment.supersededAt),
           ),
         )
-        .limit(1);
-      if (resign) continue;
+        .where(and(
+          isNull(employment.terminatedOn), // skip already-terminated (future-dated terminatedOn also excluded)
+          cursor ? sql`(${employment.id}, ${assignment.id}) > (${cursor.employmentId}::uuid, ${cursor.assignmentId}::uuid)` : undefined,
+        ))
+        .orderBy(employment.id, assignment.id)
+        .limit(limit);
 
-      // Gate on "no review at all for this type" — open OR completed. due_date derives from the unchanged
-      // *_end_date, so a completed review keeps dueDate <= today; gating only on OPEN reviews would re-open a
-      // fresh duplicate every cron run forever (H5). v1 has no legitimate re-trigger, so one review per
-      // (employment, type) is the lifetime cap.
-      const [existing] = await tx
-        .select({ id: employmentReview.id })
-        .from(employmentReview)
-        .where(
-          and(
-            eq(employmentReview.employmentId, r.employmentId),
-            eq(employmentReview.reviewType, window.reviewType),
-          ),
-        )
-        .limit(1);
-      if (existing) continue;
+      let opened = 0, handled = 0;
+      let last: Cursor | null = null;
+      for (const r of rows) {
+        if (handled > 0 && overBudget()) break;
+        handled += 1;
+        last = { employmentId: r.employmentId, assignmentId: r.assignmentId };
+        const window = computeReviewWindow(r.employmentType, r);
+        if (!window || !window.endDate || !window.dueDate) continue;
+        if(window.reviewType==='probation'){const[owned]=await tx.execute<{owned:boolean}>(sql`select app.probation_owns_legacy(${r.employmentId}::uuid) as owned`);if(owned?.owned)continue;}
+        if (window.dueDate > today) continue; // not due yet
 
-      try {
-        await startReviewTx(tx, ctx, { employmentId: r.employmentId, auto: true });
-        opened += 1;
-      } catch (e) {
-        // A concurrent insert (the startReviewTx existing-review gate / partial-unique backstop) is
-        // benign — keep sweeping.
-        if (!/already/i.test((e as Error).message)) throw e;
+        // Exclude leavers with an open resignation (pending) — on their way out.
+        const [resign] = await tx
+          .select({ id: resignationRequest.id })
+          .from(resignationRequest)
+          .where(
+            and(
+              eq(resignationRequest.employmentId, r.employmentId),
+              eq(resignationRequest.status, 'pending'),
+            ),
+          )
+          .limit(1);
+        if (resign) continue;
+
+        // Gate on "no review at all for this type" — open OR completed. due_date derives from the unchanged
+        // *_end_date, so a completed review keeps dueDate <= today; gating only on OPEN reviews would re-open a
+        // fresh duplicate every cron run forever (H5). v1 has no legitimate re-trigger, so one review per
+        // (employment, type) is the lifetime cap.
+        const [existing] = await tx
+          .select({ id: employmentReview.id })
+          .from(employmentReview)
+          .where(
+            and(
+              eq(employmentReview.employmentId, r.employmentId),
+              eq(employmentReview.reviewType, window.reviewType),
+            ),
+          )
+          .limit(1);
+        if (existing) continue;
+
+        try {
+          await startReviewTx(tx, ctx, { employmentId: r.employmentId, auto: true });
+          opened += 1;
+        } catch (e) {
+          // A concurrent insert (the startReviewTx existing-review gate / partial-unique backstop) is
+          // benign — keep sweeping.
+          if (!/already/i.test((e as Error).message)) throw e;
+        }
       }
-    }
-    return { opened };
-  });
+      return { opened, last, done: handled === rows.length && rows.length < limit };
+    });
+    opened += chunk.opened;
+    if (chunk.done || !chunk.last) break;
+    after = chunk.last;
+  }
+  return { opened };
 }
 
 // ─── AI v2 W8: the probation-ending loop's facts ────────────────────────────────────────────────────
@@ -837,96 +863,60 @@ export function subtractDays(isoDate: string, days: number): string {
  */
 export async function sweepReviewReminders(
   ctx: SessionContext,
-  opts: { today?: string } = {},
+  opts: { today?: string; chunkRows?: number } = {},
 ): Promise<{ reminders: number }> {
   const today = opts.today ?? todayInKualaLumpur();
-  return withTenant(ctx, async (tx) => {
-    // Stays exclusive: a tenant-wide batch whose pre-check then insert of reminder rows relies on being the only
-    // sweep, and a long holder. Flagged for the background-job conversion (phase 3).
-    await tx.execute(sql`select app.access_configuration_write_lock()`);
-    const rows = await tx
-      .select({
-        reviewId: employmentReview.id,
-        employmentId: employmentReview.employmentId,
-        reviewType: employmentReview.reviewType,
-        endDate: employmentReview.endDate,
-        terminatedOn: employment.terminatedOn,
-        // r79a (4fb8b75a step 3) — the cadence moved off company_payroll_config (a payroll table it never
-        // belonged to) onto `company` in migration 0324. Same value, same resolveReminderDays fallback.
-        reminderDays: company.reviewReminderDays,
-      })
-      .from(employmentReview)
-      .innerJoin(employment, eq(employment.id, employmentReview.employmentId))
-      .leftJoin(company, eq(company.id, employment.companyId))
-      .where(or(eq(employmentReview.status, 'pending_manager'), eq(employmentReview.status, 'pending_hr')));
-
-    let reminders = 0;
-    for (const r of rows) {
-      if(r.reviewType==='probation'){const[owned]=await tx.execute<{owned:boolean}>(sql`select app.probation_owns_legacy(${r.employmentId}::uuid) as owned`);if(owned?.owned)continue;}
-      if (r.terminatedOn != null) continue; // leaver — already terminated
-      // Leaver with an open resignation — on their way out (mirrors sweepDueReviews).
-      const [resign] = await tx
-        .select({ id: resignationRequest.id })
-        .from(resignationRequest)
-        .where(and(eq(resignationRequest.employmentId, r.employmentId), eq(resignationRequest.status, 'pending')))
-        .limit(1);
-      if (resign) continue;
-
-      // Offsets whose window has arrived (end_date − offset <= today) and that haven't fired.
-      const offsets = resolveReminderDays(r.reminderDays);
-      const eligible: number[] = [];
-      for (const offsetDays of offsets) {
-        if (subtractDays(r.endDate, offsetDays) > today) continue; // window not reached yet
-        const [sent] = await tx
-          .select({ id: employmentReviewReminder.id })
-          .from(employmentReviewReminder)
-          .where(
-            and(
-              eq(employmentReviewReminder.reviewId, r.reviewId),
-              eq(employmentReviewReminder.offsetDays, offsetDays),
-            ),
-          )
-          .limit(1);
-        if (!sent) eligible.push(offsetDays);
+  const limit = chunkRows(opts.chunkRows);
+  // Bounded transactions (core/operator-chunks.ts), as sweepDueReviews: open reviews in id order, about
+  // OPERATOR_CHUNK_BUDGET_MS per transaction under the same writer lock, each review judged exactly as before.
+  let reminders = 0;
+  let after: string | null = null;
+  for (;;) {
+    const cursor: string | null = after;
+    const chunk = await withTenant(ctx, async (tx): Promise<{ reminders: number; last: string | null; done: boolean }> => {
+      await lockOperatorChunkTx(tx, ctx.tenantId);
+      const overBudget = chunkDeadline();
+      const rows = await tx
+        .select({
+          reviewId: employmentReview.id,
+          employmentId: employmentReview.employmentId,
+          reviewType: employmentReview.reviewType,
+          endDate: employmentReview.endDate,
+          terminatedOn: employment.terminatedOn,
+          // r79a (4fb8b75a step 3) — the cadence moved off company_payroll_config (a payroll table it never
+          // belonged to) onto `company` in migration 0324. Same value, same resolveReminderDays fallback.
+          reminderDays: company.reviewReminderDays,
+        })
+        .from(employmentReview)
+        .innerJoin(employment, eq(employment.id, employmentReview.employmentId))
+        .leftJoin(company, eq(company.id, employment.companyId))
+        .where(and(
+          or(eq(employmentReview.status, 'pending_manager'), eq(employmentReview.status, 'pending_hr')),
+          cursor ? sql`${employmentReview.id} > ${cursor}::uuid` : undefined,
+        ))
+        .orderBy(employmentReview.id)
+        .limit(limit);
+      let reminders = 0, handled = 0;
+      let last: string | null = null;
+      for (const r of rows) {
+        if (handled > 0 && overBudget()) break;
+        handled += 1;
+        last = r.reviewId;
+        if (await remindTx(tx, r)) reminders += 1;
       }
-      if (eligible.length === 0) continue;
+      return { reminders, last, done: handled === rows.length && rows.length < limit };
+    });
+    reminders += chunk.reminders;
+    if (chunk.done || !chunk.last) break;
+    after = chunk.last;
+  }
 
-      const fireOffset = Math.min(...eligible); // most urgent
-      let fired = false;
-      for (const offsetDays of eligible) {
-        try {
-          await tx.insert(employmentReviewReminder).values({
-            tenantId: ctx.tenantId,
-            reviewId: r.reviewId,
-            employmentId: r.employmentId,
-            offsetDays,
-            sentOn: today,
-          });
-        } catch (e) {
-          // Concurrent sweep raced past the pre-check — the unique index makes this (review, offset) a no-op.
-          if (/employment_review_reminder_uq|duplicate key/i.test((e as Error).message)) continue;
-          throw e;
-        }
-        if (offsetDays !== fireOffset) continue; // superseded catch-up offset: dedup row only (plumbing skip)
-        // SUBSTRATE: the reminder itself — the notification registry projects this to manager + HR.
-        await appendEvent(tx, {
-          tenantId: ctx.tenantId,
-          aggregateType: 'employment-review',
-          aggregateId: r.reviewId,
-          eventType: 'employment-review.reminder-due',
-          actor: actorOf(ctx),
-          subjectEmploymentId: r.employmentId,
-          payload: { reviewType: r.reviewType, offsetDays, dueOn: r.endDate },
-        });
-        fired = true;
-      }
-      if (fired) reminders += 1;
-    }
-
-    // One summary event per run that did work (per-item events above are the fan-out source; the summary
-    // is the cron audit line, mirroring leave.aged.swept). Zero-work runs append nothing — deliberate,
-    // the sweep is daily and an empty run is not a state change.
-    if (reminders > 0) {
+  // One summary event per run that did work (per-item events above are the fan-out source; the summary
+  // is the cron audit line, mirroring leave.aged.swept). Zero-work runs append nothing — deliberate,
+  // the sweep is daily and an empty run is not a state change. Appended after the last chunk, as before.
+  if (reminders > 0) {
+    await withTenant(ctx, async (tx) => {
+      await lockOperatorChunkTx(tx, ctx.tenantId);
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'employment-review-reminder-sweep',
@@ -935,9 +925,72 @@ export async function sweepReviewReminders(
         actor: actorOf(ctx),
         payload: { today, reminders },
       });
+    });
+  }
+  return { reminders };
+
+  /** One open review: true when its reminder fired. Unchanged from the single-transaction sweep. */
+  async function remindTx(tx: Tx, r: { reviewId: string; employmentId: string; reviewType: string; endDate: string; terminatedOn: string | null; reminderDays: number[] | null }): Promise<boolean> {
+    if(r.reviewType==='probation'){const[owned]=await tx.execute<{owned:boolean}>(sql`select app.probation_owns_legacy(${r.employmentId}::uuid) as owned`);if(owned?.owned)return false;}
+    if (r.terminatedOn != null) return false; // leaver — already terminated
+    // Leaver with an open resignation — on their way out (mirrors sweepDueReviews).
+    const [resign] = await tx
+      .select({ id: resignationRequest.id })
+      .from(resignationRequest)
+      .where(and(eq(resignationRequest.employmentId, r.employmentId), eq(resignationRequest.status, 'pending')))
+      .limit(1);
+    if (resign) return false;
+
+    // Offsets whose window has arrived (end_date − offset <= today) and that haven't fired.
+    const offsets = resolveReminderDays(r.reminderDays);
+    const eligible: number[] = [];
+    for (const offsetDays of offsets) {
+      if (subtractDays(r.endDate, offsetDays) > today) continue; // window not reached yet
+      const [sent] = await tx
+        .select({ id: employmentReviewReminder.id })
+        .from(employmentReviewReminder)
+        .where(
+          and(
+            eq(employmentReviewReminder.reviewId, r.reviewId),
+            eq(employmentReviewReminder.offsetDays, offsetDays),
+          ),
+        )
+        .limit(1);
+      if (!sent) eligible.push(offsetDays);
     }
-    return { reminders };
-  });
+    if (eligible.length === 0) return false;
+
+    const fireOffset = Math.min(...eligible); // most urgent
+    let fired = false;
+    for (const offsetDays of eligible) {
+      try {
+        await tx.insert(employmentReviewReminder).values({
+          tenantId: ctx.tenantId,
+          reviewId: r.reviewId,
+          employmentId: r.employmentId,
+          offsetDays,
+          sentOn: today,
+        });
+      } catch (e) {
+        // Concurrent sweep raced past the pre-check — the unique index makes this (review, offset) a no-op.
+        if (/employment_review_reminder_uq|duplicate key/i.test((e as Error).message)) continue;
+        throw e;
+      }
+      if (offsetDays !== fireOffset) continue; // superseded catch-up offset: dedup row only (plumbing skip)
+      // SUBSTRATE: the reminder itself — the notification registry projects this to manager + HR.
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'employment-review',
+        aggregateId: r.reviewId,
+        eventType: 'employment-review.reminder-due',
+        actor: actorOf(ctx),
+        subjectEmploymentId: r.employmentId,
+        payload: { reviewType: r.reviewType, offsetDays, dueOn: r.endDate },
+      });
+      fired = true;
+    }
+    return fired;
+  }
 }
 
 // ─── Letter document management (6522d26a Fn 5 + Fn 6) ─────────────────────────────────────────────

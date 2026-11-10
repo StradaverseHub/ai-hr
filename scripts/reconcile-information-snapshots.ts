@@ -10,7 +10,7 @@ import {createDb,type SessionContext} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import {appUser,roleAssignment,informationPayslipSnapshot} from '../db/schema';
 import {lockEmploymentStatutoryOwnerTx} from '../core/org';
-import {waitAccessConfigurationExclusiveTx} from '../core/access-exclusive-wait';
+import {chunkDeadline,lockOperatorChunkTx} from '../core/operator-chunks';
 import {isCalendarDate} from '../lib/calendar-date';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
 import {pgSqlState} from '../lib/db-error';
@@ -37,35 +37,51 @@ export async function reconcileInformationSnapshots(storage:ReturnType<typeof cr
  if(!user)throw new Error('The named operator is not a user of this tenant.');
  const grants=await storage.db.select({role:roleAssignment.role,companyId:roleAssignment.companyId}).from(roleAssignment).where(and(eq(roleAssignment.tenantId,manifest.tenantId),eq(roleAssignment.appUserId,user.id)));
  const ctx:SessionContext={tenantId:manifest.tenantId,userId:user.id,personId:user.personId,roles:[...new Set(grants.map(g=>g.role))],grants};
- return storage.withTenant(ctx,async tx=>{
-  const [database]=await tx.execute<{role:string}>(sql`select current_user as role`);if(database.role==='ai_hr_app')throw new Error('Use the private operator connection for reconciliation.');
-  // Operator tool holding exclusive Access to commit (flagged for chunking). Queue briefly and back off from a
-  // long holder rather than waiting unbounded, which would stop every later clock-in behind it.
-  if(!await waitAccessConfigurationExclusiveTx(tx,manifest.tenantId,{attempts:12,maxBackoffMs:5000}))throw new Error('Access configuration is busy. Nothing was reconciled; retry the reconciliation.');
-  await tx.execute(sql`select app.access_configuration_write_lock()`);
-  let missing=0;const evidenceRecords:unknown[]=[];
-  for(const item of [...manifest.items].sort((a,b)=>a.employmentId.localeCompare(b.employmentId)||a.payslipId.localeCompare(b.payslipId))){
-   await lockEmploymentStatutoryOwnerTx(tx,item.employmentId);
-   const [subject]=await tx.execute<{id:string}>(sql`select p.id from payslip p join payroll_batch b on b.id=p.batch_id join employment e on e.id=p.employment_id
-    where p.id=${item.payslipId}::uuid and p.employment_id=${item.employmentId}::uuid and b.company_id=${item.companyId}::uuid
-    and p.tenant_id=${manifest.tenantId}::uuid and b.tenant_id=p.tenant_id and e.tenant_id=p.tenant_id
-    and app.principal_snapshot_current() and app.is_admin_for(b.company_id) and app.is_admin_for(e.company_id)
-    and app.access_workforce_employment(e.id,'workforce.maintain') for update of p,e`);
-   if(!subject)throw new Error('A payslip binding or operator permission changed. Nothing was reconciled.');
-   const [existing]=await tx.select().from(informationPayslipSnapshot).where(eq(informationPayslipSnapshot.payslipId,item.payslipId));
-   if(existing){
-    for(const field of ['grade','employmentType','hiredOn','joinDate'] as const)if(existing[field]!==item.original[field])throw new Error('A retained original snapshot differs from the manifest. It cannot be overwritten.');
-    continue;
-   }
-   missing++;
-   const [metadata]=await tx.execute<{value:Record<string,unknown>}>(sql`select app.information_document_metadata(${item.payslipId}::uuid) as value`);
-   if(!metadata?.value)throw new Error('The document identity could not be preserved.');
-   if(apply)await tx.insert(informationPayslipSnapshot).values({tenantId:manifest.tenantId,payslipId:item.payslipId,employmentId:item.employmentId,companyId:item.companyId,...item.original,documentMetadata:{...metadata.value,jobGrade:item.original.grade,employmentType:item.original.employmentType},recordedBy:user.id});
-   evidenceRecords.push({payslipId:item.payslipId,employmentId:item.employmentId,companyId:item.companyId,original:item.original,evidence:item.evidence.map(e=>({reference:e.reference,sha256:e.sha256}))});
+ const items=[...manifest.items].sort((a,b)=>a.employmentId.localeCompare(b.employmentId)||a.payslipId.localeCompare(b.payslipId));
+ // Bounded transactions (core/operator-chunks.ts): about OPERATOR_CHUNK_BUDGET_MS of items per transaction under the
+ // same writer lock, instead of one exclusive Access hold for the whole manifest. Applying first checks the whole
+ // manifest without writing, so a refused item still leaves nothing reconciled. Each written chunk commits its
+ // snapshots with their own evidence record (the same event, listing that chunk's snapshots), so no committed
+ // snapshot is ever without its evidence and a stopped run is completed by running it again.
+ const pass=async(write:boolean)=>{
+  let missing=0,start=0;
+  while(start<items.length){
+   const chunk=await storage.withTenant(ctx,async tx=>{
+    const [database]=await tx.execute<{role:string}>(sql`select current_user as role`);if(database.role==='ai_hr_app')throw new Error('Use the private operator connection for reconciliation.');
+    await lockOperatorChunkTx(tx,manifest.tenantId);
+    const overBudget=chunkDeadline();
+    let missing=0,handled=0;const evidenceRecords:unknown[]=[];
+    for(const item of items.slice(start)){
+     if(handled>0&&overBudget())break;
+     handled++;
+     await lockEmploymentStatutoryOwnerTx(tx,item.employmentId);
+     const [subject]=await tx.execute<{id:string}>(sql`select p.id from payslip p join payroll_batch b on b.id=p.batch_id join employment e on e.id=p.employment_id
+      where p.id=${item.payslipId}::uuid and p.employment_id=${item.employmentId}::uuid and b.company_id=${item.companyId}::uuid
+      and p.tenant_id=${manifest.tenantId}::uuid and b.tenant_id=p.tenant_id and e.tenant_id=p.tenant_id
+      and app.principal_snapshot_current() and app.is_admin_for(b.company_id) and app.is_admin_for(e.company_id)
+      and app.access_workforce_employment(e.id,'workforce.maintain') for update of p,e`);
+     if(!subject)throw new Error('A payslip binding or operator permission changed. Nothing was reconciled.');
+     const [existing]=await tx.select().from(informationPayslipSnapshot).where(eq(informationPayslipSnapshot.payslipId,item.payslipId));
+     if(existing){
+      for(const field of ['grade','employmentType','hiredOn','joinDate'] as const)if(existing[field]!==item.original[field])throw new Error('A retained original snapshot differs from the manifest. It cannot be overwritten.');
+      continue;
+     }
+     missing++;
+     const [metadata]=await tx.execute<{value:Record<string,unknown>}>(sql`select app.information_document_metadata(${item.payslipId}::uuid) as value`);
+     if(!metadata?.value)throw new Error('The document identity could not be preserved.');
+     if(write)await tx.insert(informationPayslipSnapshot).values({tenantId:manifest.tenantId,payslipId:item.payslipId,employmentId:item.employmentId,companyId:item.companyId,...item.original,documentMetadata:{...metadata.value,jobGrade:item.original.grade,employmentType:item.original.employmentType},recordedBy:user.id});
+     evidenceRecords.push({payslipId:item.payslipId,employmentId:item.employmentId,companyId:item.companyId,original:item.original,evidence:item.evidence.map(e=>({reference:e.reference,sha256:e.sha256}))});
+    }
+    if(write&&missing)await appendEvent(tx,{tenantId:manifest.tenantId,aggregateType:'information-reconciliation',aggregateId:manifest.items[0].payslipId,eventType:'employment.information.snapshot-reconciled',actor:actorOf(ctx),payload:{verifiedOriginals:true,snapshots:evidenceRecords}});
+    return {handled,missing};
+   });
+   missing+=chunk.missing;start+=chunk.handled;
   }
-  if(apply&&missing)await appendEvent(tx,{tenantId:manifest.tenantId,aggregateType:'information-reconciliation',aggregateId:manifest.items[0].payslipId,eventType:'employment.information.snapshot-reconciled',actor:actorOf(ctx),payload:{verifiedOriginals:true,snapshots:evidenceRecords}});
-  return {mode:apply?'applied':'dry-run',checked:manifest.items.length,missing,alreadyPreserved:manifest.items.length-missing};
- });
+  return missing;
+ };
+ if(apply)await pass(false);
+ const missing=await pass(apply);
+ return {mode:apply?'applied':'dry-run',checked:manifest.items.length,missing,alreadyPreserved:manifest.items.length-missing};
 }
 async function main(){
  const file=process.argv[2];if(!file)throw new Error('Usage: reconcile-information-snapshots.ts manifest.json [--apply --acknowledge-verified-originals --expected-database NAME]');
@@ -77,4 +93,4 @@ async function main(){
  try{const [database]=await storage.client`select current_database() as name`;if(expected&&database.name!==expected)throw new Error('The actual database does not match the expected target.');console.log(JSON.stringify(await reconcileInformationSnapshots(storage,manifest,apply)));}
  finally{await storage.client.end();}
 }
-if(process.argv[1]?.endsWith('/reconcile-information-snapshots.ts'))main().catch(error=>{const code=pgSqlState(error);console.error(code?'Reconciliation failed; the transaction was rolled back. Database code '+code:error instanceof Error?error.message:'Reconciliation failed.');process.exitCode=1;});
+if(process.argv[1]?.endsWith('/reconcile-information-snapshots.ts'))main().catch(error=>{const code=pgSqlState(error);console.error(code?'Reconciliation stopped; its current chunk was rolled back and earlier chunks keep their evidence. Run it again to complete. Database code '+code:error instanceof Error?error.message:'Reconciliation failed.');process.exitCode=1;});
