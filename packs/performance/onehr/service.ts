@@ -36,7 +36,7 @@ import { actorOf, appendEvent } from '../../../db/events';
 import { appUser, company, department, position, assignment, employment, jobGrade, person, reviewCycle, performanceReview, peerFeedbackRequest, onehrCycle, onehrReview, onehrPanel, onehrCalibration, onehrCalibrationEntry, onehrPlan, onehrEvidence, onehrResult, performanceAttachment, assessmentDraft, assessmentConversation, calibrationConversation, assessmentAttachmentLink, performanceKpiLibrary, assessmentCareerProfile, assessmentRelease, assessmentReviewerRemark, assessmentTalentRemark } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import {assertAiPrincipalTx} from '../../../core/ai-principal';
-import {lockAccessConfigurationWriteTx} from '../../../core/access-configuration-lock';
+import {lockAccessConfigurationTx} from '../../../core/access-configuration-lock';
 import {assertAssignedWorkPrincipalTx} from '../../../core/approvals';
 import type {AssignedPersonalTaskMetadata} from '../../../lib/assigned-work';
 import { assessmentAiStateTx } from './ai-settings';
@@ -1205,7 +1205,9 @@ export type ReviewedOnehrPlanAcknowledgement={employmentId:string;planVersion:st
  * carries safe revision/time metadata and own subject, enabling exact terminal reconciliation. */
 export async function acknowledgeOnehrPlanTx(tx:Tx,ctx:SessionContext,planId:string,expected:number,reviewed?:ReviewedOnehrPlanAcknowledgement){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const id=planId,expectedRevision=expected,checked=reviewed?{...reviewed}:undefined;
- await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+ // An employee's own acknowledgement changes no configuration: shared Access. The plan row lock and its
+ // revision check serialise two acknowledgements of the same plan; Access editors still exclude it.
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
  const plan=await ownOnehrPlanAcknowledgementSourceTx(tx,ctx,id,Boolean(checked));revision(plan.planRevision,expectedRevision);
  if(checked&&(checked.employmentId!==plan.employmentId||checked.planVersion!==plan.planVersion||plan.acknowledgedAt!==null))throw Error('This record changed. Reload before saving.');
  if(plan.status!=='closed')throw Error('A recorded career conversation is required.');

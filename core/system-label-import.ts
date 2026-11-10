@@ -1,5 +1,7 @@
 import {resolveLabelAssignment,LabelAssignmentError} from '../lib/system-label-assignment';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {AccessConfigurationBusyError} from './access-configuration-lock';
+import {waitAccessConfigurationExclusiveTx} from './access-exclusive-wait';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, eq, sql, isNull, inArray, getTableName } from 'drizzle-orm';
@@ -269,6 +271,10 @@ export function applySystemLabelImport(ctx:SessionContext,p:{bytes:Buffer;mode?:
   p={...p,bytes:Buffer.from(p.bytes),selectedKeys:p.selectedKeys?.slice()};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const rows=readSystemLabelWorkbook(p.bytes);
   return withTenant(ctx,async tx=>{
+    // Creating labels edits the catalogue, so this holds exclusive Access to commit (a long holder: flagged
+    // for chunking). Queue for it briefly and back off from a long holder instead of waiting unbounded,
+    // which would stop every later clock-in behind this request. The editor lock below then re-enters.
+    if(!await waitAccessConfigurationExclusiveTx(tx,ctx.tenantId,{attempts:6}))throw new AccessConfigurationBusyError();
     await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Same lock order as the canonical owners; an unexpected writer refusal rolls back all additions.

@@ -5,6 +5,7 @@ import { sql,type SQL } from 'drizzle-orm';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {ASSISTANT_TRANSCRIPT_RETENTION_DAYS,expiredAssistantHistoryQueueSql,retireExpiredAssistantHistoryTx} from './assistant-history-expiry';
 import type { Tx } from '../db/client';
+import { ACCESS_EXCLUSIVE_WAIT_MS } from './access-exclusive-wait';
 
 /** `transcripts` counts exchanges whose raw content (question/answer/tool inputs/disclosure receipt/error)
  * was retired this pass. Their linked feedback, completed strategy marker and original-identity custody
@@ -51,7 +52,10 @@ const count = (value: unknown, max: number): number => {
 /** Fixed bounds: ten oldest tenant queues, at most100 direct rows of each custody class per tenant; declared child cascades also retire dependent metadata.
  * Raw transcript content retires FIRST inside each owned Access interval, before any metadata expiry,
  * through the owner-only 30-day helper (at most100 exchanges per tenant).
- * Expiry is database-owned. Busy Access intervals are skipped, never stolen or waited upon.
+ * Expiry is database-owned. Busy Access intervals are never stolen. The oldest queue waits its turn for a
+ * bounded moment, holding nothing else yet, so continuous shared traffic cannot starve it; later tenants
+ * only try, because this tick already holds earlier tenants' exclusive Access. A skipped tenant keeps its
+ * oldest expiry and so comes first, with the bounded wait, in a later tick.
  * Completion references remain; expired ciphertext and dictionary-checkable intent hashes do not.
  * No claim of a maximum cleanup lag follows without scheduling/capacity/rollback verification.
  */
@@ -76,9 +80,13 @@ export async function retireExpiredAiCustodyTx(tx: Tx): Promise<AiRetentionResul
     if (tenants.length > 10) return unavailable();
     let busy = 0, reviews = 0, feedback = 0, transcripts = 0;
     const removed={jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0};
-    for (const tenant of tenants) {
+    for (const [position, tenant] of tenants.entries()) {
       if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(tenant.tenant_id)) return unavailable();
-      const [lock] = await tx.execute<{ owned: boolean }>(sql`select pg_try_advisory_xact_lock(
+      // Exclusive Access excludes in-flight conversation turns and every other Access holder. A plain try
+      // fails whenever any shared writer is open, so under steady traffic it would never retire anything.
+      const [lock] = await tx.execute<{ owned: boolean }>(position === 0
+        ? sql`select app.access_configuration_exclusive_wait(${tenant.tenant_id}::uuid,${ACCESS_EXCLUSIVE_WAIT_MS}::integer) as owned`
+        : sql`select pg_try_advisory_xact_lock(
         hashtextextended(${'access-configuration:' + tenant.tenant_id},0)) as owned`);
       if (lock?.owned !== true) { busy++; continue; }
       // Raw chat content first, under this same exclusive Access interval and BEFORE metadata expiry.

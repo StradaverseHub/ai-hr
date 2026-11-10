@@ -19,6 +19,13 @@ shared-to-exclusive upgrade. Employment writes no longer advance the configurati
 shared lock. A change touching a person with a login takes the `app.access_administrator_guard` row, so
 two concurrent removals of the last administrators cannot both commit.
 
+Exclusive work that must run under all-day shared traffic (AI retention, promotion rollback, the module
+runner, capability publication, the System Labels import) neither try-locks, which starves, nor waits
+unbounded, which queues every later shared writer behind it for as long as the oldest holder runs. It
+queues for a short bounded moment (`app.access_configuration_exclusive_wait`) and backs off from a long
+holder. AI Centre checks join the mode a transaction already holds, so a shared writer never upgrades;
+a check-only transaction holds the lock shared. Stop and control writers remain exclusive.
+
 ### Explicit installation publication
 
 The three bounded Workforce/view, Workforce/maintenance and Profile/review capabilities are published

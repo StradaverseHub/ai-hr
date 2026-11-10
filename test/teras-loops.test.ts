@@ -472,4 +472,34 @@ describe('employee action digest',()=>{
   expect(await target()).toBe(false);
   expect(await readEmployeeLoopCards(recipient)).toEqual([]);
  });
+ it('queues one digest from two concurrent sweeps under the shared Access lock, beside another shared writer',async()=>{
+  await setModule(b.tenantId,'notifications','active');
+  const recipient=await login(b,'Fictional Concurrent Digest Recipient','employee');
+  const today=todayInKualaLumpur();
+  await owner.db.insert(schema.employeeStatutoryMy).values({tenantId:b.tenantId,personId:recipient.personId,
+   passportNumber:randomUUID(),passportExpiryDate:addHrDays(today,40),epfNumber:'EPF',socsoNumber:'SOCSO',taxNumber:'TAX'});
+  await on('loop_missing_employee_data');
+  await on('loop_document_expiry');
+  const snapshot=await entitlements();
+  const maintenance:SessionContext={tenantId:b.tenantId,roles:['hr_admin'],entitlements:snapshot};
+  const [control]=await owner.withTenant(maintenance,tx=>tx.execute<{generation:number}>(sql`select app.ai_centre_assert_running() as generation`));
+  const runs=await runLoopsForTenant({tenantId:b.tenantId,principalId,entitlements:snapshot,today});
+  const input={principalId,today,generation:control.generation,runs};
+  // Another ordinary writer holds Access shared throughout: the digest no longer waits for it.
+  let held!:()=>void,release!:()=>void;
+  const entered=new Promise<void>(yes=>{held=yes;}),finish=new Promise<void>(yes=>{release=yes;});
+  const writer=owner.client.begin(async tx=>{await tx`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;held();await finish;});
+  try{
+   await entered;
+   let timer:ReturnType<typeof setTimeout>|undefined;
+   const counts=await Promise.race([Promise.all([queueEmployeeLoopDigests(maintenance,owner,input),queueEmployeeLoopDigests(maintenance,owner,input)]),
+    new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Digest waited for a shared Access writer')),10000);})]).finally(()=>clearTimeout(timer));
+   // The ai-control lock serialises the idempotency check: one sweep queues, the other finds it queued.
+   expect(Math.min(...counts)).toBe(0);expect(Math.max(...counts)).toBeGreaterThan(0);
+  }finally{release();await writer;}
+  const digests=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(
+   eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.subjectEmploymentId,recipient.employmentId),
+   eq(schema.domainEvent.eventType,'teras-loop.employee-digest-queued')));
+  expect(digests).toHaveLength(1);
+ },60000);
 });

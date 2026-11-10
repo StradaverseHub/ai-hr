@@ -60,7 +60,27 @@ function exactBindings(actual:unknown,expected:readonly {owner:string;operation:
  * superuser/BYPASSRLS/role inheritance. There is no ai_hr_app definer, new grant or runtime route.
  * One transaction publishes an exact version, invalidates previews and fences pre-pinned writers.
  */
-export async function publishWorkforceCapabilities(owner:Sql){
+/**
+ * Fencing needs every tenant's exclusive Access lock while employees keep the lock shared all day. An
+ * unbounded wait in the queue would hold every later clock-in of that tenant behind it for as long as
+ * its oldest shared holder runs. Each tenant gets a short queued wait instead; a long holder costs the
+ * attempt, the whole transaction rolls back with nothing published or held, and the publication is
+ * retried after a back-off. The publication is idempotent, so a retry repeats the same exact checks.
+ * Known limit: the locks are still held to one commit across all tenants (flagged for chunking).
+ */
+export const PUBLICATION_TENANT_LOCK_WAIT_MS=250;
+export async function publishWorkforceCapabilities(owner:Sql,options:{attempts?:number;backoffMs?:number}={}){
+ const attempts=options.attempts??8,firstBackoff=options.backoffMs??500;
+ for(let attempt=1;;attempt++){
+  try{return await publishWorkforceCapabilitiesOnce(owner);}
+  catch(error){
+   if((error as {code?:unknown})?.code!=='55P03'||attempt>=attempts)throw error;
+   const ceiling=Math.min(15_000,firstBackoff*2**(attempt-1));
+   await new Promise(resolve=>setTimeout(resolve,Math.round(ceiling/2+Math.random()*ceiling/2)));
+  }
+ }
+}
+async function publishWorkforceCapabilitiesOnce(owner:Sql){
  return owner.begin(async tx=>{
   await tx`set local lock_timeout='10s'`;await tx`set local statement_timeout='60s'`;
   const [authority]=await tx<{actual:boolean}[]>`select current_user=session_user
@@ -88,10 +108,13 @@ export async function publishWorkforceCapabilities(owner:Sql){
   requireInstallation(functions[0]?.count===REQUIRED_FUNCTIONS.length&&functions[0].owners);
   if(already)return {version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,changed:false,capabilities:3,tenantsFenced:0};
   const tenants=await tx<{id:string}[]>`select id from public.tenant order by id`;
+  // Short queued waits only for the fencing locks; a timeout (55P03) retries the whole publication.
+  await tx`select set_config('lock_timeout',${PUBLICATION_TENANT_LOCK_WAIT_MS+'ms'},true)`;
   for(const tenant of tenants){
    await tx`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + tenant.id},0))`;
    await tx`select pg_advisory_xact_lock(hashtextextended(${'profile-edit-policy:' + tenant.id},0))`;
   }
+  await tx`set local lock_timeout='10s'`;
   const [readiness]=await tx<{ready:boolean}[]>`select not exists(
    select 1 from public.app_user u where u.archived_at is null and not app.login_blocked(u.id) and not exists(select 1 from public.access_configuration s
     where s.tenant_id=u.tenant_id and s.initialized)

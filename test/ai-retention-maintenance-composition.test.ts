@@ -30,6 +30,7 @@ function carrier(script:Script){
   if(text.includes('pg_catalog.pg_roles')&&text.includes('current_user=session_user'))return [{allowed:script.allowed??true}];
   if(text.includes('group by tenant_id'))return (script.tenants??[]).map(tenant_id=>({tenant_id}));
   if(text.includes('pg_try_advisory_xact_lock')){const key=String(query.params[0]);return [{owned:!(script.busy??[]).some(id=>key==='access-configuration:'+id)}];}
+  if(text.includes('app.access_configuration_exclusive_wait(')){const tenant=String(query.params[0]);return [{owned:!(script.busy??[]).includes(tenant)}];}
   if(text.startsWith(TRANSCRIPT_CALL)){const reported=script.transcripts??{},key=String(query.params[0]);return [{retired:key in reported?reported[key]:0}];}
   if(text.includes('update app.assistant_own_leave_review r set state'))return [{retired:0,erased:0}];
   if(text.includes('delete from public.ai_assistant_answer_evaluation_intent'))return [{removed:script.intents??0}];
@@ -90,7 +91,7 @@ describe('AI custody maintenance composition (pure, fake carrier)',()=>{
  });
  it('retires raw transcripts first inside the owned Access interval, before every metadata expiry, with the fixed policy and bound',async()=>{
   const {tx,log}=carrier({tenants:[A],transcripts:{[A]:7}});const result=await retireExpiredAiCustodyTx(tx);expect(result.transcripts).toBe(7);
-  const lock=index(log,step=>step.text.includes('pg_try_advisory_xact_lock')),transcript=index(log,isTranscriptCall);
+  const lock=index(log,step=>step.text.includes('app.access_configuration_exclusive_wait(')),transcript=index(log,isTranscriptCall);
   const firstMutation=index(log,step=>mutated(step.text).length>0);
   expect(lock).toBeGreaterThan(0);expect(transcript).toBeGreaterThan(lock);expect(firstMutation).toBeGreaterThan(transcript);
   expect(log[transcript].params).toEqual([A,ASSISTANT_TRANSCRIPT_RETENTION_DAYS,100]);expect(ASSISTANT_TRANSCRIPT_RETENTION_DAYS).toBe(30);
@@ -101,6 +102,15 @@ describe('AI custody maintenance composition (pure, fake carrier)',()=>{
   expect(result).toEqual({tenants:2,busy:1,reviews:0,feedback:0,transcripts:3,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:2});
   expect(log.filter(isTranscriptCall).map(step=>step.params[0])).toEqual([A]);
   for(const id of [A,B])expect(JSON.stringify(result)).not.toContain(id);
+ });
+ it('gives only the oldest queue a bounded queued wait and only tries later tenants, so steady shared traffic cannot starve the head',async()=>{
+  const {tx,log}=carrier({tenants:[A,B],busy:[A],transcripts:{[A]:5,[B]:2}});const result=await retireExpiredAiCustodyTx(tx);
+  expect(result).toMatchObject({tenants:2,busy:1,transcripts:2});
+  const waits=log.filter(step=>step.text.includes('app.access_configuration_exclusive_wait('));
+  expect(waits.map(step=>step.params)).toEqual([[A,250]]);
+  const tries=log.filter(step=>step.text.includes('pg_try_advisory_xact_lock'));
+  expect(tries.map(step=>step.params[0])).toEqual(['access-configuration:'+B]);
+  expect(log.filter(isTranscriptCall).map(step=>step.params[0])).toEqual([B]);
  });
  it.each([101,-1,1.5,'1',null,undefined])('refuses the whole tick when transcript retirement reports %s',async retired=>{
   const {tx}=carrier({tenants:[A],transcripts:{[A]:retired}});await expect(retireExpiredAiCustodyTx(tx)).rejects.toThrow(MAINTENANCE_REFUSAL);
