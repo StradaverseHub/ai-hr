@@ -52,8 +52,11 @@ const PERSONNEL_TYPED_FACTS = [
 export async function personnelOverviewSnapshotTx(tx: Tx, extra?: SQL): Promise<PersonnelOverviewSnapshot> {
   // The bounded overview's measured compile cost dominates the small page, so it is interpreted. The
   // previous value is captured first; readers that fall back to the exact owner restore it.
+  // It is the session's own JIT setting (pg_settings.reset_val: what RESET restores, from the server, role or
+  // connection), not current_setting('jit'): every tenant transaction now starts with JIT off (db/client.ts
+  // bootstrapTenantTx), and the exact owner keeps the JIT it had before that, as measured (test/with-tenant-jit-off.test.ts).
   const [row] = await tx.execute<{ jit: string; typed: boolean; today: string; extra: unknown }>(sql`
-    with previous as materialized (select current_setting('jit') as jit)
+    with previous as materialized (select reset_val as jit from pg_catalog.pg_settings where name = 'jit')
     select previous.jit,
       set_config('statement_timeout', least(coalesce(nullif(s.setting::int, 0), 20000), 20000)::text, true) as timeout,
       set_config('jit', 'off', true) as interpreted,
