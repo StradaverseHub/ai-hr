@@ -26,3 +26,28 @@ export function normalizePersonnelPrivateCriteria(raw:unknown):PersonnelPrivateC
  for(const rawFilter of value.filters){if(!rawFilter||typeof rawFilter!=='object'||Array.isArray(rawFilter))throw new Error('Private filters unavailable.');const f=rawFilter as Record<string,unknown>;if(typeof f.field!=='string'||typeof f.operator!=='string'||typeof f.value!=='string'||seen.has(f.field))throw new Error('Private filters unavailable.');seen.add(f.field);form.set('field.'+f.field,f.value);form.set('operator.'+f.field,f.operator);}
  return {term:value.term.trim(),filters:parsePersonnelColumnFilters(form)};
 }
+
+/**
+ * aa045103 — the header filters of the Personnel list write the ORDINARY params the Filter dialog already
+ * owns (one owner per fact), never a second multi-value mechanism inside the private criteria.
+ * Choice columns: any of the ticked values (comma list), `__blank` for "Blank / unassigned" where a field
+ * can be empty. Date columns: an inclusive From/To pair.
+ */
+export const PERSONNEL_BLANK_VALUE='__blank';
+export const PERSONNEL_CHOICE_COLUMN_PARAMS={company:'companies',businessUnit:'bu',department:'dept',position:'position',jobGrade:'grade',status:'bucket',employmentType:'type'} as const satisfies Partial<Record<EmployeeColumnKey,string>>;
+export const PERSONNEL_BLANKABLE_CHOICE_PARAMS:readonly string[]=['bu','dept','position','grade','type'];
+export const PERSONNEL_DATE_COLUMN_PARAMS={joinDate:['joinedFrom','joinedTo'],groupJoinDate:['hiredFrom','hiredTo'],confirmationDate:['confirmedFrom','confirmedTo']} as const satisfies Partial<Record<EmployeeColumnKey,readonly [string,string]>>;
+export type PersonnelChoiceColumn=keyof typeof PERSONNEL_CHOICE_COLUMN_PARAMS;
+export type PersonnelDateColumn=keyof typeof PERSONNEL_DATE_COLUMN_PARAMS;
+export const isPersonnelChoiceColumn=(key:string):key is PersonnelChoiceColumn=>Object.hasOwn(PERSONNEL_CHOICE_COLUMN_PARAMS,key);
+export const isPersonnelDateColumn=(key:string):key is PersonnelDateColumn=>Object.hasOwn(PERSONNEL_DATE_COLUMN_PARAMS,key);
+
+/** The listing URL after one header filter changes: every other ordinary param kept, `page` dropped (a new
+ *  narrowing starts on page one), the page size kept. Empty values remove the param. */
+export function personnelFilterHref(parameters:readonly (readonly [string,string])[],changes:Record<string,readonly string[]>,pageSize?:string):string{
+ const next=new URLSearchParams();
+ for(const [key,value] of parameters)if(key!=='page'&&key!=='size'&&!Object.hasOwn(changes,key))next.append(key,value);
+ for(const [key,values] of Object.entries(changes)){const kept=[...new Set(values.map(value=>value.trim()).filter(Boolean))];if(kept.length)next.set(key,kept.join(','));}
+ if(pageSize)next.set('size',pageSize);
+ return '/admin/personnel'+(next.size?'?'+next.toString():'');
+}

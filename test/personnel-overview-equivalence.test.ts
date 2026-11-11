@@ -93,6 +93,12 @@ function cases(f:PersonnelScaleFixture,tokens:{term:string;filtered:string}):[st
   ['department-active',{dept:deptB,bucket:'active'}],['department-sorted-desc',{dept:deptB,sort:'joinDate',direction:'desc'},{offset:5}],
   ['parent-sorted-reporting',{parent:b,sort:'reportingTo',direction:'desc'},{offset:3}],
   ['grade-superior-page',{grade:'13,H',quality:'missing_direct_superior'},{offset:2,limit:10}],
+  // aa045103 — header multi-select (any of), Blank / unassigned, and From/To ranges, over ordinary params.
+  ['departments-multi',{dept:[deptB,f.departments.a[0]]}],['department-blank',{dept:'__blank'}],['department-or-blank',{dept:deptB+',__blank'}],
+  ['types-multi',{type:'contract,intern'}],['type-blank',{type:'__blank'}],['buckets-multi',{bucket:'active,probation'}],['buckets-with-draft',{bucket:'resigned,draft'}],
+  ['business-unit-or-blank',{bu:f.businessUnits[2]+',__blank'}],['position-blank',{position:'__blank'}],['grade-or-blank',{grade:'H,__blank'}],
+  ['group-join-range',{hiredFrom:'2019-01-01',hiredTo:'2023-06-30'}],['confirmation-range',{confirmedFrom:'2020-01-01',confirmedTo:'2024-12-31'}],
+  ['multi-combined',{companies:b,dept:f.departments.b.slice(0,3),type:'full_time,contract',bucket:'active,probation',sort:'department'},{offset:2}],
   ...sorts,
   ['private-term',{search:tokens.term}],['private-term-second-page',{search:tokens.term},{offset:25}],
   ['private-term-sorted',{search:tokens.term,sort:'costCenter',direction:'asc'}],

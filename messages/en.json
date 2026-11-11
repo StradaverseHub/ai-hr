@@ -870,7 +870,21 @@
         "privateExpired": "Private filters expired or unavailable. Apply them again.",
         "superiorId": "Direct Superior · Employee ID",
         "superiorName": "Direct Superior · Name",
-        "removeCriterion": "Remove {name} filter"
+        "removeCriterion": "Remove {name} filter",
+        "choiceAll": "All",
+        "choiceSelected": "{count} selected",
+        "findOption": "Find a value in {name}",
+        "noOptions": "No matching values",
+        "selectAllOptions": "Select all",
+        "clearSelection": "Clear selection",
+        "applyChoice": "Apply",
+        "clearChoice": "Clear",
+        "dateFrom": "From",
+        "dateTo": "To",
+        "dateFromLabel": "{name} from",
+        "dateToLabel": "{name} to",
+        "choicePending": "Updating the list…",
+        "choiceFailed": "Could not update the list. Try again."
       }
     },
     "switcher": {
@@ -879,7 +893,10 @@
       "resultsLabel": "Employee search results",
       "noMatches": "No employee matches that.",
       "currentTag": "Current",
-      "loadFailed": "Employee search could not be loaded. Try again."
+      "loadFailed": "Employee search could not be loaded. Try again.",
+      "matchingHeading": "Matching employees",
+      "showAll": "Show all {count} matches in the list (Enter)",
+      "showAllMore": "Show all matches in the list (Enter)"
     },
     "detail": {
       "incentiveDeclarations": {
@@ -37179,7 +37196,11 @@
     "notTerminated": "Not terminated",
     "terminated": "Terminated",
     "duplicateHint": "Duplicate checks cover only companies with administrator and identity-data access.",
-    "duplicateUnavailable": "Duplicate evidence is unavailable in this scope. Remove this filter or choose an authorised scope."
+    "duplicateUnavailable": "Duplicate evidence is unavailable in this scope. Remove this filter or choose an authorised scope.",
+    "hiredFrom": "Group join date from",
+    "hiredTo": "Group join date to",
+    "confirmedFrom": "Confirmation date from",
+    "confirmedTo": "Confirmation date to"
   },
   "rewardSetupAccess": {
     "title": "Rewards setup authority",
