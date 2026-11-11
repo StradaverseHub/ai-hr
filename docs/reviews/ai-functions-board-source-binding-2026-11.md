@@ -114,3 +114,11 @@ The same 28 approvals carry forward to the new fingerprint. Historical review me
 This binding follows the rc3 binding above. It is applied under the same 12 November 2026 owner approval, quoted above. The candidate merged alpha `05c4aa0348700a08de6723e88a67f2cbd43689d4`, which is rc3 as installed on staging. Re-binding on top of rc3's fingerprint `3baa446f…` (1,558 files) gives the exact fingerprint `80f49217133642f005e14d21bf76644de7a06f64a7d721b78bb43db45d2235fe` over 1,559 files. The earlier `2b50c198…` binding is superseded.
 
 The covered files that differ from that alpha are the same twelve detectors-branch files listed above. In `core/payroll-anomaly.ts`, rc3's SQL paging of the cross-run exceptions queue merged cleanly with the detectors branch's batch resolve. Neither change adds data to any provider payload. The same 28 approvals carry forward to the new fingerprint. Both pending records and the retired Attendance Formula contract keep their original values. This binding grants no production authority.
+
+### Re-binding after the first full gate's repair (12 November 2026)
+
+Full gate 43120033983, attempt 1 at `7353338ba`, failed in one no-database unit. `test/agent-capability-inventory.test.ts` found that the exceptions page's new bulk "Mark as expected" action (`app/control-tower/exceptions/actions.ts` `markGroupExpectedAction`) was not classified.
+
+It is now classified `backlog:approve`, the same ceiling as the single-exception resolve `resolveAnomalyAction`. It stays a human action on that screen, and the agent cannot prepare it. `lib/ai/agent-capability-inventory.ts` is the only covered file changed since `80f49217…`. No provider contract, outbound field, approved purpose or transport changes.
+
+Under the same 12 November 2026 owner approval, the same 28 approvals carry forward to the exact fingerprint `def82461e55bc63977b0bbe0be16bec688bb025777019c8c9349777cdbf2ae1c` over 1,559 files. Both pending records and the retired Attendance Formula contract keep their original values. This binding grants no production authority.
