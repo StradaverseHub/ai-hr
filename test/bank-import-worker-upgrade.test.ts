@@ -4,5 +4,5 @@ import {expect,it} from 'vitest';
 it('preserves managed drain, production first activation, immutable bytes and privileged refusal boundaries',()=>{
  const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-upgrade-tests.py'],{encoding:'utf8',maxBuffer:1024**2});
  expect(result.status,result.stdout+'\n'+result.stderr).toBe(0);
- expect(result.stderr).toContain('Ran 50 tests');
+ expect(result.stderr).toContain('Ran 51 tests');
 });

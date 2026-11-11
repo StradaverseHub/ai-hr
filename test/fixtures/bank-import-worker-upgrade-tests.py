@@ -511,6 +511,7 @@ class ProductionFixture:
     def __init__(self,root,omit_empty=False):
         self.root=root;self.events=[];self.fault=None;self.used_fault=False;self.omit_empty=omit_empty
         self.source='2'*40;self.build='Pbuild_fictional-1';self.uid=998;self.gid=998;self.live=[];self.port=3000
+        self.external=set() # Production paths outside the fixture root, modelled as root-protected regular files.
         self.health_status=200;self.health_body=b'{"status":"ok"}';self.stdout='';self.stderr=''
         self.web_app=root/'opt-ai-hr';(self.web_app/'.next').mkdir(parents=True);(self.web_app/'.next'/'BUILD_ID').write_text(self.build+'\n')
         self.web={'ActiveState':'active','SubState':'running','MainPID':'321','User':'aihr','WorkingDirectory':str(self.web_app)}
@@ -550,7 +551,9 @@ class ProductionFixture:
     def write_manifest(self,manifest):
         self.manifest_path.write_text(json.dumps(manifest));self.manifest_hash=update.digest(self.manifest_path.read_bytes())
     def protected(self,path,regular=False):
-        path=Path(path);check(path.is_relative_to(self.root) and path.exists() and not path.is_symlink(),'unsafe fixture path')
+        path=Path(path)
+        if path in self.external:return
+        check(path.is_relative_to(self.root) and path.exists() and not path.is_symlink(),'unsafe fixture path')
         if regular:check(path.is_file(),'fixture regular file required')
     def write_new(self,path,raw,mode):
         if self.fault=='receipt' and Path(path).name=='worker-install-v2.json':raise OSError('fictional receipt persistence failure')
@@ -586,6 +589,7 @@ class ProductionFixture:
         if not (process/'cwd').is_symlink():(process/'cwd').symlink_to(Path(self.state['WorkingDirectory']),target_is_directory=True)
         (process/'cmdline').write_bytes(b'\0'.join([str(self.node).encode(),b'--import',b'tsx',b'scripts/bank-import-runner.ts'])+b'\0')
         values={**self.values,**({'DATABASE_URL':'postgresql://drifted'} if self.fault=='env-drift' else {})}
+        if self.fault=='quoted-env':values={key:'"'+value+'"' for key,value in values.items()}
         environment={'PATH':'/usr/bin','NODE_ENV':'production','AIHR_DB_PROCESS_ROLE':'worker','AIHR_DB_POOL_MAX':'2',**values}
         (process/'environ').write_bytes(b''.join((key+'='+value).encode()+b'\0' for key,value in environment.items()))
         if self.fault=='restart':self.state['NRestarts']='1'
@@ -596,7 +600,7 @@ class ProductionFixture:
         if argv[0]=='/usr/sbin/runuser':
             check(argv[1:4]==['--user','aihr-import','--'] and argv[4]=='/usr/bin/test' and argv[5] in ('-r','-x'),'unexpected identity probe')
             if self.fault=='unreadable' and Path(argv[6])==self.ca:raise ValueError('Worker installation refused: administrator/runtime command failed (credentials suppressed)')
-            check(Path(argv[6]).exists(),'fixture path absent');return out()
+            check(Path(argv[6]) in self.external or Path(argv[6]).exists(),'fixture path absent');return out()
         if argv[0]==production.PSQL:
             check(env['PGPASSFILE']=='/dev/null' and env['PGSSLMODE']=='verify-full' and env['PGSSLROOTCERT']==str(self.ca) and env['PGHOST']=='db.internal.invalid' and env['PGDATABASE']=='ai_hr','unexpected libpq settings')
             check('read_only=on' in env['PGOPTIONS'] and input==production.ROLE_PROOF_SQL,'unexpected role proof')
@@ -712,6 +716,38 @@ class ProductionFirstInstallTests(unittest.TestCase):
             self.assertEqual(f.state['ActiveState'],'active');self.assertEqual(f.state['UnitFileState'],'enabled')
             self.assertTrue((f.release/'worker-install-v2.json').exists())
             shown=f.show(f.state,['ExecStartPre','DropInPaths','PassEnvironment']);self.assertEqual(shown,'\n')
+    def test_adopts_the_production_shaped_environment_file_and_observes_unquoted_values(self):
+        # Read-only production observation (12 Nov): 0600 root:root; exactly these five keys in this order; every value
+        # double-quoted with no $, backslash, space or inner quote; no comments or blank lines; remote host, verify-full;
+        # both CA paths under /etc/ssl/certs. systemd strips the quotes, so the live process sees unquoted values.
+        order=['AUDIT_HASH_CHAIN_ENABLED','DATABASE_URL','MIGRATION_DATABASE_URL','NODE_EXTRA_CA_CERTS','PGSSLROOTCERT']
+        ca=Path('/etc/ssl/certs/aihr-db-ca.pem')
+        def production_shaped(f):
+            f.external={ca};f.ca=ca;f.values.update(NODE_EXTRA_CA_CERTS=str(ca),PGSSLROOTCERT=str(ca))
+            text=''.join(key+'="'+f.values[key]+'"\n' for key in order)
+            self.assertEqual([line.split('=',1)[0] for line in text.splitlines()],order);self.assertEqual(text.count('"'),10)
+            self.assertNotIn('#',text);self.assertNotIn('\n\n',text);self.assertTrue(text.startswith('AUDIT_HASH_CHAIN_ENABLED="true"\n'))
+            for key in ('DATABASE_URL','MIGRATION_DATABASE_URL'):self.assertIn(key+'="postgresql://',text)
+            self.assertEqual(text.count('@db.internal.invalid:5432/ai_hr?sslmode=verify-full"\n'),2)
+            f.write_env(text);self.assertEqual(f.env.stat().st_mode&0o777,0o600)
+            return f.env.read_bytes()
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);env_bytes=production_shaped(f);accepted=f.invoke()
+            environ=dict(item.split(b'=',1) for item in (f.proc/'456'/'environ').read_bytes().split(b'\0') if item)
+            for key in order:
+                self.assertEqual(environ[key.encode()],f.values[key].encode());self.assertNotIn(b'"',environ[key.encode()])
+            self.assertEqual(f.env.read_bytes(),env_bytes);self.assertEqual(accepted['selectedEnvironmentSha256'],update.digest(env_bytes))
+            self.assertEqual(f.mutations(),[['/usr/bin/systemctl','daemon-reload'],['/usr/bin/systemctl','start','aihr-bank-import.service'],['/usr/bin/systemctl','enable','aihr-bank-import.service']])
+            self.assertIn(['/usr/sbin/runuser','--user','aihr-import','--','/usr/bin/test','-r',str(ca)],f.events)
+            preflight=json.loads((f.operation/'preflight.json').read_text())
+            self.assertEqual(preflight['environmentKeys'],sorted(order));self.assertTrue(preflight['remoteDatabaseTls'])
+            self.assert_no_secret(f,*(path.read_text() for path in f.operation.iterdir() if path.suffix=='.json'))
+        # The observation compares unquoted values: a process that received the quote characters is not accepted.
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp);env_bytes=production_shaped(f);f.fault='quoted-env'
+            with self.assertRaisesRegex(RuntimeError,'activation failed'):f.invoke()
+            self.assertFalse((f.release/'worker-install-v2.json').exists());self.assertIn('SendSIGKILL=no',f.unit.read_text())
+            self.assert_prior_preserved(f,env_bytes);self.assert_no_secret(f)
     def test_refuses_existing_unit_drop_in_or_link(self):
         defects=['unit','drop-in','template','wants-link','loaded','masked','tracked-cgroup']
         for defect in defects:
