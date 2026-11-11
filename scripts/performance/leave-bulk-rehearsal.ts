@@ -21,7 +21,7 @@ for(const url of [required('DATABASE_URL',process.env.DATABASE_URL),OWNER_URL])i
 const TENANT=required('REHEARSAL_TENANT',process.env.REHEARSAL_TENANT),ADMIN=required('REHEARSAL_ADMIN',process.env.REHEARSAL_ADMIN);
 const BASE=Number(process.env.BASE_EMPLOYEES??3000);
 const OPS=(process.env.OPS??'idle_baseline,generation_preview,generation,accrual_job,recalc_job,a2c_job,leave_import,expiry_timer,accrual_timer').split(',').map(s=>s.trim()).filter(Boolean);
-if(process.env.AUDIT_HASH_CHAIN_ENABLED!=='true')process.env.AUDIT_HASH_CHAIN_ENABLED='true';
+if(process.env.AUDIT_HASH_CHAIN_ENABLED === 'true'){/* already armed by the caller */}else process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 const stat=(values:number[])=>{const s=[...values].sort((a,b)=>a-b);return s.length?{n:s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.floor(s.length*.95)],max:s[s.length-1]}:{n:0,p50:0,p95:0,max:0};};
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));

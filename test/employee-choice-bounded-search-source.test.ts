@@ -19,7 +19,9 @@ function inverse(value:string){
 // bounded native controls now execute against. Each change is an intended later commit:
 // core/employee-choice.ts ba36e359f, fb5710607, e52a55f4c, 9e32ad8ec, bd5f6dffc, ea84770aa;
 // core/personnel-private-search.ts 47f1434e0, 129ea7ecf, the 9e04300eb Board 3 composition and 1a699e8a9 (the
-// criteria read exposed as a scalar expression for the one-snapshot Personnel read; same function, same arguments);
+// criteria read exposed as a scalar expression for the one-snapshot Personnel read; same function, same arguments)
+// and main's 7408b41e5 (eaa7697c: Employee ID and name match through the one shared lib/employee-search rule; work
+// email and identity matching unchanged);
 // exact-ASCII purpose SQL, owner factory and runtime ba36e359f; native purpose owner factory 30176ff6d;
 // core/ai-principal.ts f283c2e7b, d9dfbaf15 and 4861dad35 (reader/writer Access lock), 2f007d566 and e1993ebea (the
 // same proof exposed as an SQL boolean for Home's bundled reads). The successor and classic reader bytes themselves
