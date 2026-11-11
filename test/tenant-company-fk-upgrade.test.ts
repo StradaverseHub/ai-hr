@@ -191,16 +191,18 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5082_home_own_clock_day',
    '5083_home_own_schedule_range',
    '5090_audit_chain_commit_seal',
-   // Board staging window 3 (ccd3a65c), after the combined release block.
-   '5100_import_history_kind',
+   '5120_access_review_custody_held_mode',
+   '5121_personnel_search_set_mapping',
+   // Board staging window 3 (ccd3a65c), renumbered above release candidate 3 and PR 240's 5122.
+   '5123_import_history_kind',
    // Board staging window 4 (4452ba3c).
-   '5101_attendance_workflow_skipped_levels',
-   // Board item 792053e5, allocated at the Irwin board integration.
-   '5110_individual_txn_pricing_marker',
-   // Board item 2260a06b, allocated at the Irwin board integration.
-   '5111_contract_internship_end_dates',
-   // Board item 8d02748a, allocated at the Irwin board integration.
-   '5112_import_log_actor_labels',
+   '5124_attendance_workflow_skipped_levels',
+   // Board item 792053e5, renumbered at the Irwin board integration onto release candidate 3.
+   '5125_individual_txn_pricing_marker',
+   // Board item 2260a06b, renumbered at the Irwin board integration onto release candidate 3.
+   '5126_contract_internship_end_dates',
+   // Board item 8d02748a, renumbered at the Irwin board integration onto release candidate 3.
+   '5127_import_log_actor_labels',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -229,13 +231,13 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
-   // Board window 4 (5101): a trigger function, never granted to the application role.
+   // Board window 4 (5124): a trigger function, never granted to the application role.
    'app.attendance_workflow_preview_bind()',
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
    'app._assistant_rewards_cancel_choice_payload_v1()','app._assistant_rewards_return_choice_payload_v1()','app._domain_event_chain_key_held(uuid)',
-   'app._domain_event_chain_seal_tenant(uuid)','app._personnel_employment_tags(uuid[],date)','app.access_administrator_assert_run()',
+   'app._domain_event_chain_seal_tenant(uuid)','app._personnel_company_tags(uuid[],date)','app._personnel_employment_tags(uuid[],date)','app.access_administrator_assert_run()',
    'app.access_administrator_guard_tenant()','app.access_capability_effective(uuid)','app.access_lock_assert_strict(uuid,text,text)',
    'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.attendance_workflow_preview_bind()','app.bulk_job_capability_held(uuid)',
    'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_event_attribution()','app.bulk_job_held(uuid)',
@@ -253,7 +255,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
    'app._assistant_rewards_cancel_choice_payload_v1()','app._assistant_rewards_return_choice_payload_v1()','app._domain_event_chain_key_held(uuid)',
-   'app._domain_event_chain_seal_tenant(uuid)','app._personnel_employment_tags(uuid[],date)','app.access_administrator_assert_run()',
+   'app._domain_event_chain_seal_tenant(uuid)','app._personnel_company_tags(uuid[],date)','app._personnel_employment_tags(uuid[],date)','app.access_administrator_assert_run()',
    'app.access_administrator_guard_tenant()','app.access_administrator_set_lock(uuid)','app.access_capability_effective(uuid)',
    'app.access_configuration_exclusive_wait(uuid,integer)','app.access_configuration_write_lock()','app.access_editor_presentation_v1()',
    'app.access_lock_assert_strict(uuid,text,text)','app.access_lock_mode_held(uuid)','app.access_profile_policy_read_lock()',
@@ -262,7 +264,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.assistant_rewards_calendar_presentation_choices_v1()',
    'app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()','app.attendance_clock_policy_history(uuid,uuid)',
    'app.attendance_frozen_actor_identity_keys(jsonb,text)','app.attendance_pending_visible_headers(uuid)',
-   // Board window 4 (5101): the preview binding trigger (owner only) and the superior diagnostic.
+   // Board window 4 (5124): the preview binding trigger (owner only) and the superior diagnostic.
    'app.attendance_workflow_preview_bind()','app.attendance_workflow_superior_diagnostic(uuid,integer)',
    'app.bulk_job_access(uuid)',
    'app.bulk_job_admit()','app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)',
@@ -288,7 +290,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.payroll_history_stage_open(uuid,uuid,text)','app.payroll_history_stage_release(uuid)','app.payroll_history_stage_stamp()',
    'app.payroll_input_lock_keys(uuid[],uuid)','app.personnel_list_rows_for_ids(date,uuid[],uuid[])','app.personnel_overview_facts(date,uuid[])',
    'app.personnel_overview_filter_fields(date,uuid[])','app.personnel_overview_narrow_rows(date,uuid[])','app.personnel_overview_page_rows(date,uuid[],uuid[])',
-   'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_private_search_entries(text,uuid[])','app.register_import_release(uuid,boolean)',
+   'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_private_search_entries(text,uuid[])',
+   'app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])','app.register_import_release(uuid,boolean)',
    'app.reward_access_observation_due(uuid)','app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
    'app.system_label_import_release_attempt(uuid,uuid)',
   ];
@@ -423,7 +426,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const ownerAcl=(acl:string|null)=>acl===null?null:acl.split(ownerRole).join('OWNER');
   const digest=(text:string|null)=>text===null?null:createHash('md5').update(text).digest('hex');
   const combinedRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
-   // Board window 4 (5101): stored Preview Assignment snapshots, append-only and forced RLS.
+   // Board window 4 (5124): stored Preview Assignment snapshots, append-only and forced RLS.
    'attendance_workflow_preview':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    'app.access_administrator_assert_pending':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_administrator_guard':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},

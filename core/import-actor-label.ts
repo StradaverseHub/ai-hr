@@ -5,7 +5,7 @@ import {importActorFromFacts, type ImportActor, type ImportActorEmployment} from
 /**
  * Board 8d02748a — "Imported by" for every import log, resolved in ONE set-wise read per page.
  *
- * `app.import_log_actor_facts` (migration 5112) is the authority: it returns facts only for log rows the
+ * `app.import_log_actor_facts` (migration 5127) is the authority: it returns facts only for log rows the
  * caller may already see under that log's own read rule, and only for people recorded on those rows
  * (creator, reverter, audit actor). There is no directory lookup and no per-row function call.
  */

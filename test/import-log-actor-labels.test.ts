@@ -1,5 +1,5 @@
 /**
- * Board 8d02748a — readable "Imported by" on import logs (migration 5112, app.import_log_actor_facts).
+ * Board 8d02748a — readable "Imported by" on import logs (migration 5127, app.import_log_actor_facts).
  * Real database, real RLS, fictional people. The function must only label people recorded on log rows the
  * caller can already see, in one set-wise read, including importers outside a company-scoped viewer's scope.
  */

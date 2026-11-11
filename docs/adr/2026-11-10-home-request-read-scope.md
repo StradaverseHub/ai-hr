@@ -169,8 +169,9 @@ calculation, authority, ordering or failure changes.
    cast another spelling, such as braces, or fail the cast); an unknown step kind or a named-person step naming nobody, and an Attendance request whose
    frozen subject differs from its candidate (the owner throws its own non-refusal error, which a statement cannot
    reproduce as the same error object from inside the owner's transaction); a Rewards observation that is due (a write
-   that must commit first); Profile candidates (the decision takes the exclusive profile-write barrier, re-resolves the
-   policy after it and locks routed subjects FOR UPDATE, which a read-only statement can neither take nor reproduce); a
+   that must commit first); Profile candidates (the decision-authority read takes the shared Access and profile-policy
+   locks and re-resolves the policy after them, which a read-only statement can neither take nor reproduce; since the
+   11 November 2026 staging fix it no longer takes the exclusive profile-write barrier or FOR UPDATE row locks); a
    cycle, policy or case id the owner's own parse would refuse, a claimed onboarding item without a preloaded directory, a
    module gate that refuses or an AI Centre activity. test/performance/home-manager-card-reads.test.ts seeds candidates
    for each section after its traces and compares every section, scoped and unscoped, and every composed result with the

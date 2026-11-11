@@ -9,7 +9,7 @@
  * Read only, as the viewer: HR or group administrators only (the page's requireAdmin, and checked again here), under the
  * viewer's row-level security on teras_loop_case (migration 0960), so an HR administrator of one company sees that
  * company's cases only. No figure is computed and nothing is written. */
-import {and,eq,inArray} from 'drizzle-orm';
+import {and,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {terasLoopCase} from '../../db/teras-schema';
 import {isAdmin} from '../../lib/authz-model';
@@ -26,6 +26,9 @@ export async function readinessLoopAsks(ctx:SessionContext,employmentIds:readonl
  const ids=[...new Set(employmentIds.filter(id=>/^[0-9a-f-]{36}$/i.test(id)))];
  if(!ids.length)return new Map();
  return withTenant(ctx,async tx=>{
+  // Planned without JIT, as the readiness screen's other reads are (core/record-readiness.ts planWithoutJit): the
+  // admin policy checks each case row. Same answer.
+  await tx.execute(sql`set local jit=off`);
   const out=new Map<string,ReadinessAsk>();
   for(let offset=0;offset<ids.length;offset+=BATCH){
    const rows=await tx.select({employmentId:terasLoopCase.employmentId,state:terasLoopCase.state,openedAt:terasLoopCase.openedAt,facts:terasLoopCase.facts})

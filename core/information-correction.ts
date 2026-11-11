@@ -14,8 +14,9 @@ import {EMPLOYMENT_PERIOD_UNITS} from '../lib/employment-period';
 import {lockLeaveDependenciesTx,lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {lockEmploymentStatutoryOwnerTx,wouldCreateAdminCycle} from './org';
 import {assertWorkforceEmploymentTx,assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
+import {withAccessDisplayRead} from './access-configuration-lock';
 import {allocationCompanyCode} from './cost-allocation-import';
-import {labelUsableByCompany,visibleLabelIdsCondition} from './system-labels';
+import {labelCompanyIdsSql,labelUsableByCompany,visibleLabelIdsCondition} from './system-labels';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {contractPeriodIssues} from '../lib/contract-period';
 import {isCalendarDate} from '../lib/calendar-date';
@@ -51,24 +52,31 @@ async function stateTx(tx:Tx,ctx:SessionContext,id:string){
  const [line]=await tx.select({id:reportingLine.id,managerEmploymentId:reportingLine.managerEmploymentId,validFrom:reportingLine.validFrom}).from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.subordinateEmploymentId,id),eq(reportingLine.lineType,'administrative'),isNull(reportingLine.validTo),isNull(reportingLine.supersededAt))).orderBy(desc(reportingLine.validFrom),asc(reportingLine.id)).limit(1);
  return {emp,current:current[0],assignments,line:line??null,name:identity.name,fingerprint:hash({emp,assignments,line:line??null,marker:marker?.sequence??0})};
 }
-export async function informationCorrectionOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
+/** Presentation for the correction form, the template and the import preview: it takes no Access lock of its own, and
+ * any Workforce helper reached inside joins the lock shared (withAccessDisplayRead, SCALE rule 1). */
+export async function informationCorrectionOptions(ctx:SessionContext){return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{
  if(!ctx.userId)fail('Sign in before reviewing employment corrections.');
  const [principal]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.is_admin() as ok`);if(!principal?.ok)fail('Only an authorised HR administrator can review employment corrections.');
  const companies=await tx.select({id:company.id,label:company.companyLabel,registration:company.registrationNo,name:company.legalName}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.principal_snapshot_current() and app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.maintain')`));
  const grades=await tx.select({id:jobGrade.id,code:jobGrade.code,name:jobGrade.name}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),isNull(jobGrade.archivedAt)));
  const coded=companies.map(c=>({id:c.id,name:c.name,code:allocationCompanyCode(c)}));
  // ccd3a65c — the options usable by each company (the same visibility owner the Movement import catalog uses).
+ // One statement per kind for every company at once (SCALE rule 2): the labels usable by any of them, with their
+ // Global flag and saved company criteria, expanded per company here. A label is usable by a company exactly when
+ // visibleLabelIdsCondition(table,kind,[company]) holds: Global, or assigned to that company. Order is unchanged:
+ // company, then department/position/business unit, then code and id.
+ const companyIds=coded.map(c=>c.id);
+ const departments=await tx.select({id:department.id,code:department.name,label:department.label,isGlobal:department.isGlobal,companyIds:labelCompanyIdsSql(department,'department')}).from(department).where(and(eq(department.tenantId,ctx.tenantId),isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',companyIds))).orderBy(asc(department.name),asc(department.id));
+ const positions=await tx.select({id:position.id,code:position.title,label:position.label,isGlobal:position.isGlobal,companyIds:labelCompanyIdsSql(position,'position')}).from(position).where(and(eq(position.tenantId,ctx.tenantId),isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',companyIds))).orderBy(asc(position.title),asc(position.id));
+ const units=await tx.select({id:businessUnit.id,code:businessUnit.code,label:businessUnit.name,isGlobal:businessUnit.isGlobal,companyIds:labelCompanyIdsSql(businessUnit,'business_unit')}).from(businessUnit).where(and(eq(businessUnit.tenantId,ctx.tenantId),isNull(businessUnit.archivedAt),visibleLabelIdsCondition(businessUnit,'business_unit',companyIds))).orderBy(asc(businessUnit.name),asc(businessUnit.id));
+ const kinds=[['department',departments],['position',positions],['business_unit',units]] as const,assigned=new Map<string,ReadonlySet<string>>();
+ for(const [kind,rows] of kinds)for(const row of rows)assigned.set(`${kind}:${row.id}`,new Set(row.companyIds));
  const organisation:NonNullable<InformationOptions['organisation']>=[];
- for(const co of coded){
-  const departments=await tx.select({id:department.id,code:department.name,label:department.label}).from(department).where(and(eq(department.tenantId,ctx.tenantId),isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',[co.id]))).orderBy(asc(department.name),asc(department.id));
-  const positions=await tx.select({id:position.id,code:position.title,label:position.label}).from(position).where(and(eq(position.tenantId,ctx.tenantId),isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',[co.id]))).orderBy(asc(position.title),asc(position.id));
-  const units=await tx.select({id:businessUnit.id,code:businessUnit.code,label:businessUnit.name}).from(businessUnit).where(and(eq(businessUnit.tenantId,ctx.tenantId),isNull(businessUnit.archivedAt),visibleLabelIdsCondition(businessUnit,'business_unit',[co.id]))).orderBy(asc(businessUnit.name),asc(businessUnit.id));
-  for(const [kind,rows] of [['department',departments],['position',positions],['business_unit',units]] as const)for(const row of rows)if(row.code)organisation.push({companyId:co.id,companyCode:co.code,kind,id:row.id,code:row.code,name:row.label?.trim()||row.code});
- }
+ for(const co of coded)for(const [kind,rows] of kinds)for(const row of rows)if(row.code&&(row.isGlobal||assigned.get(`${kind}:${row.id}`)?.has(co.id)))organisation.push({companyId:co.id,companyCode:co.code,kind,id:row.id,code:row.code,name:row.label?.trim()||row.code});
  const labels=(await tx.select({category:profileOption.category,value:profileOption.value,label:profileOption.label}).from(profileOption).where(and(eq(profileOption.tenantId,ctx.tenantId),eq(profileOption.isActive,true),inArray(profileOption.category,Object.values(LABEL_CATEGORY)))).orderBy(asc(profileOption.category),asc(profileOption.sortOrder),asc(profileOption.value)))
   .flatMap(row=>{const field=(Object.keys(LABEL_CATEGORY) as (keyof typeof LABEL_CATEGORY)[]).find(key=>LABEL_CATEGORY[key]===row.category);return field?[{field,value:row.value,label:row.label}]:[];});
  return {companies:coded,grades,employmentTypes:[...PERSONNEL_EMPLOYMENT_TYPES],organisation,labels} satisfies InformationOptions;
- });}
+ }));}
 const text=(value:number|string|null|undefined)=>value==null?null:String(value);
 function values(s:Awaited<ReturnType<typeof stateTx>>):InformationValues{const e=s.emp;return {companyId:e.companyId,hiredOn:e.hiredOn,joinDate:e.joinDate,gradeId:e.gradeId,employmentType:s.current.employmentType,contractEndDate:e.contractEndDate,internshipEndDate:e.internshipEndDate,
  businessUnitId:s.current.businessUnitId,departmentId:s.current.departmentId,positionId:s.current.positionId,
@@ -287,4 +295,4 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
  await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:s.emp.id,companyId:p.after.companyId!,asOf:effectiveOn,trigger:'correction'});
 }
 export function correctInformation(ctx:SessionContext,input:Parameters<typeof correctInformationTx>[2]){return withTenant(ctx,tx=>correctInformationTx(tx,ctx,input));}
-export function informationCorrectionHistory(ctx:SessionContext,employmentId:string){return withTenant(ctx,async tx=>{await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');const [allowed]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from employment where id=${employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and app.principal_snapshot_current() and app.is_admin_for(company_id)) as ok`);if(!allowed?.ok)fail('You do not have permission to review this correction history.');return tx.select({id:domainEvent.id,at:domainEvent.occurredAt,actorId:domainEvent.actorId,actorName:correctionActor.fullName,payload:domainEvent.payload}).from(domainEvent).leftJoin(correctionAccount,and(eq(correctionAccount.id,domainEvent.actorId),eq(correctionAccount.tenantId,ctx.tenantId))).leftJoin(correctionActor,and(eq(correctionActor.id,correctionAccount.personId),eq(correctionActor.tenantId,ctx.tenantId))).where(and(eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,INFORMATION_CORRECTED_EVENT))).orderBy(desc(domainEvent.sequence)).limit(100);});}
+export function informationCorrectionHistory(ctx:SessionContext,employmentId:string){return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');const [allowed]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from employment where id=${employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and app.principal_snapshot_current() and app.is_admin_for(company_id)) as ok`);if(!allowed?.ok)fail('You do not have permission to review this correction history.');return tx.select({id:domainEvent.id,at:domainEvent.occurredAt,actorId:domainEvent.actorId,actorName:correctionActor.fullName,payload:domainEvent.payload}).from(domainEvent).leftJoin(correctionAccount,and(eq(correctionAccount.id,domainEvent.actorId),eq(correctionAccount.tenantId,ctx.tenantId))).leftJoin(correctionActor,and(eq(correctionActor.id,correctionAccount.personId),eq(correctionActor.tenantId,ctx.tenantId))).where(and(eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,INFORMATION_CORRECTED_EVENT))).orderBy(desc(domainEvent.sequence)).limit(100);}));}

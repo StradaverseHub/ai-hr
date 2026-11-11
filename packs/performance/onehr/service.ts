@@ -1529,6 +1529,18 @@ export async function onehrRewardResultTx(tx:Tx,employmentId:string,year:number,
   return r?.value??null;
 }
 
+/** onehrRewardResultTx for every listed employment of one review in one statement: the same native projection per
+ * employment, keyed by employment id (Rewards review creation, staging 11 November 2026). */
+export async function onehrRewardResultsTx(tx:Tx,employmentIds:readonly string[],year:number,rewardUnitId:string) {
+  const out=new Map<string,{id:string;reviewId:string;cycleId:string;digest:string;frozenAt:string;performance:PMBand|null;potential:PotentialBand|null;talent:FrozenResult['talent'];pip:boolean;promotion:boolean;specialReward:boolean;policyDigest:string;confirmedGrade?:string;confirmedTitle?:string;pipReason?:string;promotionReason?:string;specialRewardReason?:string}|null>();
+  if(!employmentIds.length)return out;
+  const rows=await tx.execute<{employment_id:string;value:{id:string;reviewId:string;cycleId:string;digest:string;frozenAt:string;performance:PMBand|null;potential:PotentialBand|null;talent:FrozenResult['talent'];pip:boolean;promotion:boolean;specialReward:boolean;policyDigest:string;confirmedGrade?:string;confirmedTitle?:string;pipReason?:string;promotionReason?:string;specialRewardReason?:string}|null}>(sql`select x.employment_id::text as employment_id,
+    app.reward_onehr_source(${rewardUnitId}::uuid,x.employment_id,${year}) as value
+    from unnest(${`{${employmentIds.join(',')}}`}::uuid[]) as x(employment_id)`);
+  for(const row of rows)out.set(row.employment_id,row.value??null);
+  return out;
+}
+
 export async function reassignOnehrReviewer(ctx:SessionContext,reviewId:string,expected:number,reviewerEmploymentId:string) {
  uuid.parse(reviewerEmploymentId);
  return withPerformanceTenant(ctx,async tx=>{

@@ -172,6 +172,9 @@ export async function runAutomaticChasers(ctx: SessionContext, opts: ChaserRunOp
 export async function orchestrationQueue(ctx: SessionContext) {
   assertAdmin(ctx);
   return withTenant(ctx, async tx => {
+    // Read by the readiness screen only. Its case read checks row-level security per case (app.can_admin_employment);
+    // planned without JIT, as the screen's other reads are (core/record-readiness.ts planWithoutJit). Same answer.
+    await tx.execute(sql`set local jit=off`);
     const rows = await tx.select({
       id: schema.hrOrchestrationCase.id, employmentId: schema.hrOrchestrationCase.employmentId,
       gap: schema.hrOrchestrationCase.gap, state: schema.hrOrchestrationCase.state,

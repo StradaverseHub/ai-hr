@@ -2,7 +2,7 @@ import {assertWorkforcePersonTx} from './workforce-access';
 import {createHash} from 'node:crypto';
 import {isAdmin} from '../lib/authz-model';
 import {isPrincipalSnapshotCurrentTx} from './read-only-snapshot';
-import {freshProfileEditPolicyTx,freshProfilePresentationPolicyTx,readProfilePresentationSnapshotPolicyTx,lockProfileEditPolicyTx} from './profile-edit-policy';
+import {freshProfileEditPolicySharedTx,freshProfileEditPolicyTx,freshProfilePresentationPolicyTx,readProfilePresentationSnapshotPolicyTx,lockProfileEditPolicyTx} from './profile-edit-policy';
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {getSetting} from './entitlements';
 import {EssProfileError} from '../lib/personnel-ess-model';
@@ -141,15 +141,17 @@ export async function applyProfilePhotoProposalTx(tx:Tx,ctx:SessionContext,reque
  if(!photo)throw new EssProfileError('unavailable');assertValidPhoto(photo.mimeType,photo.content);
  return setPersonPhotoTx(tx,ctx,{personId:request.personId,content:photo.content,mimeType:photo.mimeType,sizeBytes:photo.content.byteLength,fileName:'profile-photo'+(photo.mimeType==='image/png'?'.png':'.jpg')});
 }
-/** Pending proposal bytes have their own request visibility; no extra master/Personnel authority. */
+/** Pending proposal bytes have their own request visibility; no extra master/Personnel authority. A read (the photo
+ * route and the mobile request workspace): the shared Access and profile-policy locks, and no row lock on the routed
+ * subject (staging, 11 November 2026). The decision that applies the photo keeps the exclusive barrier. */
 export function getProfilePhotoProposal(ctx:SessionContext,requestId:string){
  return withTenant(ctx,async tx=>{
-  const policy=await freshProfileEditPolicyTx(tx,ctx);
+  const policy=await freshProfileEditPolicySharedTx(tx,ctx);
   const [request]=await tx.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId)).limit(1);
   if(!request||request.status!=='pending'||!isProfilePhotoProposal(request.proposed))return null;
   const own=request.personId===ctx.personId&&await isOwnPersonTx(tx,policy.ctx);
   if(own&&!policy.visible.has(PROFILE_PHOTO_FIELD))return null;
-  if(!own){try{await assertProfileRouteDecisionTx(tx,policy.ctx,request);}catch{return null;}}
+  if(!own){try{await assertProfileRouteDecisionTx(tx,policy.ctx,request,{lockRows:false});}catch{return null;}}
   const [row]=await tx.select({content:profilePhotoProposal.content,mimeType:profilePhotoProposal.mimeType}).from(profilePhotoProposal).where(and(eq(profilePhotoProposal.requestId,requestId),own?ownPersonPredicate(policy.ctx):undefined)).limit(1);
   return row??null;
  });

@@ -145,7 +145,7 @@ function runVisibleSql(ctx:SessionContext){
   or (${run.companyId} is null and (${run.createdByUserId}=${ctx.userId??''}::text or not exists(select 1 from company c where c.tenant_id=app.current_tenant_id() and c.archived_at is null
    and not (app.is_admin_for(c.id) and app.access_workforce_company(c.id,'workforce.view'))))))`;
 }
-/** Listed run types: section runs plus runs recorded before migration 4500 (type not recorded). */
+/** Listed run types: section runs plus runs recorded before migration 5123 (type not recorded). */
 function listedRunSql(kind?:ImportRunKind){
  return kind?sql`${run.importSection}=${kind}`:sql`(${run.importSection} is null or ${run.importSection} in (${sql.join(IMPORT_RUN_KINDS.map(k=>sql`${k}`),sql`,`)}))`;
 }

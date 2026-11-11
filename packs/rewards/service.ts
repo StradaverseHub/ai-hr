@@ -1,7 +1,7 @@
 import { emptyRewardPreparation, REWARD_PREPARATION_STEPS, rewardPreparationStatus } from './preparation-model';
 import {aiCentreActivity} from '../../lib/ai/centre-activity';
 import {assertAiCentreRunningTx} from '../../core/ai-centre-control';
-import {rewardArchitectureForSourceTx} from './architecture-source';
+import {rewardArchitectureForSourceTx,rewardArchitectureForSourcesTx} from './architecture-source';
 import {settleReadGroup} from '../../lib/settle-read-group';
 import {advisorNeedsOverrideReason} from './advisor-model';
 import {calculateUploadedRewards} from './uploaded-awards-model';
@@ -36,7 +36,7 @@ import {setupAuthority,setupLock} from './setup-data';
 import {setupYear} from './setup-model';
 import { emptyGovernance, effectiveRewardPolicy, poolStatus, unitInputSchema, confirmedSeniorAwards, seniorGrade, maySeeSeniorAmounts, redactPatPolicy, seniorAwardSchema, governanceBasis,governanceHistoryProjection,seniorSourceFingerprint,type RewardPublicGovernance,type RewardGovernance, type SeniorAward } from './governance-model';
 import { assertRewardPolicyGrids } from './policy-grid-validation';
-import { onehrRewardResultTx } from '../performance/service';
+import { onehrRewardResultTx, onehrRewardResultsTx } from '../performance/service';
 import { decisionActorRole, factsFromOnehr, isSeniorPlanMember, returnedState } from './model';
 import {rewardPolicyForReviewTx} from './policy-groups';
 import { deriveConfidentialityTx, sourceWithFloor } from './confidentiality';
@@ -651,6 +651,8 @@ export async function createRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitI
  return withRewardsTenant(ctx,tx=>createRewardUnitTx(tx,ctx,raw));
 }
 /** Internal transaction seam used by approved bulk creation; SQL rechecks all authority and frozen bindings. */
+/** Entries written per statement when a planned review is created. */
+const PLANNED_ENTRY_WRITE_BATCH=500;
 export async function createRewardUnitTx(tx:Tx,ctx:SessionContext,raw:PlannedRewardUnitInput){
  const version=idSchema.parse(raw.approvedPlanVersionId),companyId=idSchema.parse(raw.companyId),businessUnitId=idSchema.parse(raw.businessUnitId);
  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
@@ -663,13 +665,22 @@ export async function createRewardUnitTx(tx:Tx,ctx:SessionContext,raw:PlannedRew
  const [unit]=await tx.select().from(rewardUnit).where(eq(rewardUnit.id,created.id));if(!unit)throw new RewardError('The approved review could not be loaded.');
  const entries=await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId,unit.id));
  const floors=await deriveConfidentialityTx(tx,unit.id,entries.map(e=>e.employmentId),unit.snapshotDate);
- for(const entry of entries){
-  const [onehr,architecture]=await Promise.all([
-   onehrRewardResultTx(tx,entry.employmentId,unit.policy.year,unit.id),
-   rewardArchitectureForSourceTx(tx,unit.id,entry.employmentId,entry.source.positionId??null,unit.snapshotDate),
-  ]);
-  const source=sourceWithFloor({...entry.source,onehr,architecture},floors.get(entry.employmentId));
-  await tx.update(rewardEntry).set({source,facts:{...entry.facts,confidentiality:source.confidentialityFloor??'standard'}}).where(eq(rewardEntry.id,entry.id));
+ // Every entry's OneHR result and architecture from the same SQL owners, one statement each for the whole review, and
+ // the entries written in bounded multi-row statements: the exclusive hold no longer grows by three round trips per
+ // employee (staging, 11 November 2026). The values written are exactly the per-entry loop's.
+ const [onehr,architecture]=await Promise.all([
+  onehrRewardResultsTx(tx,entries.map(e=>e.employmentId),unit.policy.year,unit.id),
+  rewardArchitectureForSourcesTx(tx,unit.id,entries.map(e=>({employmentId:e.employmentId,positionId:e.source.positionId??null})),unit.snapshotDate),
+ ]);
+ const enriched=entries.map(entry=>{
+  const source=sourceWithFloor({...entry.source,onehr:onehr.get(entry.employmentId)??null,architecture:architecture.get(entry.employmentId)??null},floors.get(entry.employmentId));
+  return {id:entry.id,source,facts:{...entry.facts,confidentiality:source.confidentialityFloor??'standard'}};
+ });
+ for(let offset=0;offset<enriched.length;offset+=PLANNED_ENTRY_WRITE_BATCH){
+  const batch=enriched.slice(offset,offset+PLANNED_ENTRY_WRITE_BATCH);
+  await tx.execute(sql`update ${rewardEntry} as entry set source=batch.source,facts=batch.facts
+   from jsonb_to_recordset(${JSON.stringify(batch)}::text::jsonb) as batch(id uuid,source jsonb,facts jsonb)
+   where entry.id=batch.id`);
  }
  const inputs=resolved.pat.inputs,state:RewardGovernance={...emptyGovernance(),inputs:{...inputs,multiplierBp:unit.policy.bonusStructure==='branch'?10000:null,branchRatings:{}},selection:{employmentIds:[],proposedBy:idSchema.parse(ctx.userId),confirmedBy:null,confirmedAt:null}};
  await tx.insert(rewardGovernance).values({tenantId:ctx.tenantId,unitId:unit.id,state});

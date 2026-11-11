@@ -6,6 +6,7 @@ import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
 import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
+import {withAccessDisplayRead} from './access-configuration-lock';
 import {withPersonnelRead} from './personnel-read-bounds';
 import {ownPersonPredicate} from './own-person';
 /**
@@ -1858,7 +1859,8 @@ export async function movementAttachments(
   movementId: string,
 ): Promise<MovementAttachmentSummary[]> {
   assertMovementAdmin(ctx, 'view movement documents');
-  return withTenant(ctx, async (tx) => {
+  // A page read: its Workforce check holds the Access lock shared (withAccessDisplayRead).
+  return withAccessDisplayRead(() => withTenant(ctx, async (tx) => {
     await assertWorkforceEmploymentTx(tx, ctx, employmentId, 'view');
     const { rows } = await projectRows(tx, ctx.tenantId, employmentId);
     const row = rows.find((r) => r.id === movementId);
@@ -1866,21 +1868,21 @@ export async function movementAttachments(
     return (await listMovementAttachmentsTx(tx, ctx.tenantId, employmentId, [row.groupId])).map(
       ({ movementGroupId: _group, ...summary }) => summary,
     );
-  });
+  }));
 }
 
 /** One document's bytes, under the same three checks as movementAttachments. Refuses with one message
  *  whether the document does not exist or the caller may not see it, so the refusal discloses nothing. */
 export async function readMovementAttachment(ctx: SessionContext, employmentId: string, attachmentId: string) {
   assertMovementAdmin(ctx, 'view movement documents');
-  return withTenant(ctx, async (tx) => {
+  return withAccessDisplayRead(() => withTenant(ctx, async (tx) => {
     await assertWorkforceEmploymentTx(tx, ctx, employmentId, 'view');
     const file = await readMovementAttachmentRowTx(tx, ctx.tenantId, employmentId, attachmentId);
     if (!file) throw new MovementDocumentError('Document not found.');
     const { rows } = await projectRows(tx, ctx.tenantId, employmentId);
     if (!rows.some((r) => r.groupId === file.movementGroupId)) throw new MovementDocumentError('Document not found.');
     return { fileName: file.fileName, mimeType: file.mimeType, content: file.content };
-  });
+  }));
 }
 
 /** Edit reads recorded picker values under current RLS. Applied movements use their original legs;
@@ -4896,10 +4898,10 @@ export type ResignationInformation = Record<typeof RESIGNATION_INFO_FIELDS[numbe
 /** View-only current owner effects with per-field provenance. Pending/reversed rows never win.
  * Untagged imported/history values stay visible as legacy; no event is fabricated for them. */
 export function resignationInformation(ctx:SessionContext,employmentId:string):Promise<ResignationInformation>{
-  return withTenant(ctx,async tx=>{
+  return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{
     await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
     return resignationInformationFromProjection(tx,employmentId,await projectRows(tx,ctx.tenantId,employmentId));
-  });
+  }));
 }
 
 async function resignationInformationFromProjection(

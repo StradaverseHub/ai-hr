@@ -39,6 +39,15 @@ export async function loopLevelsTx(tx:Tx,tenantId:string,workerId:LoopId):Promis
  const rows=await tx.select().from(terasLoopLevel).where(and(eq(terasLoopLevel.tenantId,tenantId),eq(terasLoopLevel.workerId,workerId)));
  return new Map(rows.map(row=>[row.companyId,toRow(row)]));
 }
+/** loopLevelsTx for several loops in ONE statement (the Loops overview shows every loop's levels): each loop's map holds
+ * exactly the rows loopLevelsTx returns for it; a loop with no stored level has an empty map. */
+export async function loopLevelsByLoopTx(tx:Tx,tenantId:string,workerIds:readonly LoopId[]):Promise<Map<LoopId,Map<string,LoopLevelRow>>>{
+ const out=new Map(workerIds.map(id=>[id,new Map<string,LoopLevelRow>()]));
+ if(!workerIds.length)return out;
+ const rows=await tx.select().from(terasLoopLevel).where(and(eq(terasLoopLevel.tenantId,tenantId),inArray(terasLoopLevel.workerId,[...new Set(workerIds)])));
+ for(const row of rows)out.get(row.workerId)?.set(row.companyId,toRow(row));
+ return out;
+}
 export const levelIn=(levels:ReadonlyMap<string,LoopLevelRow>,companyId:string):AutonomyLevel=>levels.get(companyId)?.level??1;
 
 export type PromotionEvidence=Readonly<{windowDays:number;since:Date;currentLevel:AutonomyLevel;prepared:number;asPrepared:number;changed:number;

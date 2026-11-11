@@ -9886,8 +9886,8 @@ export const employeeImportRun = pgTable(
     /** True when more rows failed than `errors` holds (IMPORT_RUN_ERROR_CAP). The screen says so rather
      *  than letting HR believe a truncated report is the whole story. */
     errorsTruncated: boolean('errors_truncated').notNull().default(false),
-    /** ccd3a65c (migration 4500) — which import wrote the run: 'full' or a section key. NULL for runs
-     *  recorded before 4500 ("Not recorded"). Import History lists section runs by this type. */
+    /** ccd3a65c (migration 5123) — which import wrote the run: 'full' or a section key. NULL for runs
+     *  recorded before 5123 ("Not recorded"). Import History lists section runs by this type. */
     importSection: text('import_section'),
     createdAt: createdAt(),
   },
