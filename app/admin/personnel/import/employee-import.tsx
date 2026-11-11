@@ -24,6 +24,7 @@ import { Fragment, useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { employeeUploadErrorMessage } from '@/lib/employee-import-upload-errors';
 import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { DownloadTemplate } from '@/components/download-template';
@@ -188,12 +189,16 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   const inputRevision = useRef(0);
   const fileReadRevision = useRef(0);
   const commitPending = useRef(false);
+  // Item 1859cce0 — one upload operation per checked preview: sending the same preview again after a lost response
+  // reaches the same import (the job's operation key), never a second one. Any edit starts a new operation.
+  const uploadOperation = useRef<string|null>(null);
   // Keep the submitted file fixed until the real write reports its outcome; never discard success.
   const [committing, setCommitting] = useState(false);
 
   // Any edit invalidates a stale preview/result — force a fresh validate before importing.
   const reset = () => {
     inputRevision.current++;
+    uploadOperation.current = null;
     setPreview(null);
     setResult(null);
     setPhase('idle');
@@ -472,10 +477,14 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
             const body=new FormData();
             body.append('file',original,original.name);
             body.append('payload',JSON.stringify({companyId,csv,fileName:fileName??'',dependentsCsv,registers:registerTexts,allocationsCsv,allocationToken:preview.allocations?.token}));
-            const response=await fetch('/admin/personnel/import/employee/upload',{method:'POST',body,headers:{'x-upload-operation':crypto.randomUUID()}});
-            const payload=await response.json().catch(()=>({error:null}));
-            if(!response.ok){setError(response.status===413?t('fileTooLarge'):payload.error===EMPLOYEE_IMPORT_ALREADY_RUNNING?t('employeeJob.otherRunning'):payload.error??t('employeeUploadFailed'));return;}
-            started=payload as {job:EmployeeImportProgress};
+            uploadOperation.current??=crypto.randomUUID();
+            let response:Response;
+            // A network failure is told apart from a slow or unavailable server: none of them claims "nothing changed".
+            try{response=await fetch('/admin/personnel/import/employee/upload',{method:'POST',body,headers:{'x-upload-operation':uploadOperation.current}});}
+            catch(cause){setError(employeeUploadErrorMessage({thrown:cause},t));return;}
+            const payload=await response.json().catch(()=>null) as {error?:string|null}|null;
+            if(!response.ok){setError(payload?.error===EMPLOYEE_IMPORT_ALREADY_RUNNING?t('employeeJob.otherRunning'):employeeUploadErrorMessage({status:response.status,error:payload?.error},t));return;}
+            started=payload as unknown as {job:EmployeeImportProgress};
           }
         }catch(cause){if(binding)evaluation.current?.commitUncertain();throw cause;}
         if(started){boundJob.current=binding?{jobId:started.job.id,binding,companyId}:null;setImportJob(started.job);setPhase('done');return;}
@@ -484,7 +493,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         setPhase('done');
         router.refresh();
       } catch {
-        setError(evaluationStatus.tracked?t('measurement.commitUncertain'):'The import result could not be confirmed. Check Import History before trying again.');
+        setError(evaluationStatus.tracked?t('measurement.commitUncertain'):t('uploadErrors.unknown'));
       } finally {
         commitPending.current = false;
         setCommitting(false);

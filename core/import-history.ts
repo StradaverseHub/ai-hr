@@ -93,12 +93,13 @@ export async function recordImportEventTx(tx:Tx,ctx:SessionContext,input:{attemp
  return id;
 }
 /** Best effort, in its own transaction: the failed operation's transaction has already rolled back. */
-export async function recordImportFailure(ctx:SessionContext,attemptId:string,importKind:ImportKind,kind:'failed'|'revert_failed',error:unknown){
+/** `extra` adds kind-specific detail (for example the employee import's save report rows, item 1859cce0). */
+export async function recordImportFailure(ctx:SessionContext,attemptId:string,importKind:ImportKind,kind:'failed'|'revert_failed',error:unknown,extra?:Record<string,unknown>){
  if(!uuid.test(attemptId)||!ctx.userId)return;
  const reason=error instanceof ImportHistoryError?error.message:'The operation failed; no changes were committed.';
  try{await withTenant(ctx,async tx=>{
   const[found]=await tx.select({id:attempt.id}).from(attempt).where(and(eq(attempt.id,attemptId),eq(attempt.kind,importKind)));if(!found)return;
-  await recordImportEventTx(tx,ctx,{attemptId,kind,importKind,detail:{message:reason,...(error instanceof ImportHistoryError&&error.blockers.length?{blockers:error.blockers.slice(0,200)}:{})}});
+  await recordImportEventTx(tx,ctx,{attemptId,kind,importKind,detail:{...(extra??{}),message:reason,...(error instanceof ImportHistoryError&&error.blockers.length?{blockers:error.blockers.slice(0,200)}:{})}});
  });}catch(recordError){console.error('[import history failure audit]',recordError);}
 }
 

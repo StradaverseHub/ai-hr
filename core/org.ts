@@ -57,6 +57,7 @@ import { writeSingleEmergencyContactInTx } from './emergency-contacts';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addEmploymentPeriod, EMPLOYMENT_PERIOD_UNITS } from '../lib/employment-period';
 import { PAYMENT_METHODS, bankTransferLacksBank, type PaymentMethod } from '../lib/payment-methods';
+import { contractPeriodIssues } from '../lib/contract-period';
 import {
   domainEvent,
   person,
@@ -3382,12 +3383,9 @@ export async function setEmploymentInfo(
     const contractStart =
       'contractStartDate' in set ? (set.contractStartDate as string | null) : before.contractStartDate;
     const contractEnd = 'contractEndDate' in set ? (set.contractEndDate as string | null) : before.contractEndDate;
-    if (contractStart && hire && contractStart < hire) {
-      throw new Error('Contract start date cannot be earlier than the hire date.');
-    }
-    if (contractStart && contractEnd && contractEnd <= contractStart) {
-      throw new Error('Contract end date must be later than the contract start date.');
-    }
+    // 1859cce0 — the rule lives in lib/contract-period.ts so the employee import's file check applies it too.
+    const contractOrder = contractPeriodIssues({ contract: false, requireBoth: false, hiredOn: hire, start: contractStart, end: contractEnd });
+    if (contractOrder.length) throw new Error(contractOrder[0].message);
     // Both dates are mandatory FOR A CONTRACT EMPLOYEE — but only when the submit actually carries the
     // contract block. Two reasons this is gated rather than unconditional:
     //   1. It must never retro-block a save that only touches probation or notice. Those submits do not
@@ -3409,9 +3407,8 @@ export async function setEmploymentInfo(
           ),
         )
         .limit(1);
-      if (live?.employmentType === 'contract' && !(contractStart && contractEnd)) {
-        throw new Error('Contract start date and contract end date are required for a contract employee.');
-      }
+      const missing = contractPeriodIssues({ contract: live?.employmentType === 'contract', requireBoth: true, start: contractStart, end: contractEnd });
+      if (missing.length) throw new Error(missing[0].message);
     }
 
     // finalConfirmationDate is DERIVED, never accepted from the caller: = extendedConfirmation ?? confirmation.

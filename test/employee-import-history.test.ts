@@ -124,8 +124,15 @@ describe('cf43c909 · employee import history', () => {
       'email',
       'errors',
       'fullName',
+      'issues',
+      'outcome',
       'rowNum',
+      'stage',
     ]);
+    // Item 1859cce0 — the problem names the column to correct; the issue text is the same reason, nothing more.
+    expect((row.errors as { issues: { column?: string; message: string }[]; stage: string; outcome: string }[])[0]).toMatchObject({
+      stage: 'check', outcome: 'refused', issues: [{ column: 'department', message: expect.stringMatching(/unknown department/i) }],
+    });
     expect(raw).not.toContain('920101013456'); // IC
     expect(raw).not.toContain('5566778899'); // bank account
     expect(raw).not.toContain('Maybank');
@@ -133,7 +140,7 @@ describe('cf43c909 · employee import history', () => {
     expect(row.fileName).toBe('x.csv');
   });
 
-  it('records every unwritten row after atomic rollback, alongside a validation rejection', async () => {
+  it('names the row refused while saving and calls every other unwritten row cancelled, alongside a validation rejection', async () => {
     const a = adminCtx(b);
     // A row that passes validation and then cannot be WRITTEN. Reaching that leg needs a failure the dry
     // run cannot foresee, because commitEmployeeImport RE-VALIDATES server-side (it never trusts a client
@@ -158,9 +165,15 @@ describe('cf43c909 · employee import history', () => {
       expect(result.imported).toBe(0);
       expect(result.skipped).toBe(1); // row 3 was rejected before the write
       expect(result.failed.map(row => row.rowNum)).toEqual([1, 2]);
-      expect(result.failed[0].message).toMatch(/Not written because the import was rolled back/);
+      // Item 1859cce0 — no generic "rolled back" text: row 2 is named with its real reason (and a reference),
+      // and row 1 says it has no problem and was not saved only because the file was cancelled at row 2.
+      expect(result.failed[0]).toMatchObject({ rowNum: 1, outcome: 'cancelled', stoppedBy: [2] });
+      expect(result.failed[0].message).toMatch(/cancelled because row 2 could not be saved.*no problem/);
+      expect(result.failed[1]).toMatchObject({ rowNum: 2, outcome: 'stopped', fullName: 'Doomed' });
+      expect(result.failed[1].message).toMatch(/Reference/);
+      expect(result.failed.some((row) => /rolled back/.test(row.message))).toBe(false);
       expect(result.fileErrors).toHaveLength(1);
-      expect(result.fileErrors[0]).toMatch(/No employee rows were written.*rolled back.*row 2/);
+      expect(result.fileErrors[0]).toMatch(/No employee was saved\. Row 2 could not be saved, so the whole file was cancelled/);
       expect(await owner.db.select({ id: schema.person.id }).from(schema.person).orderBy(schema.person.id)).toEqual(beforePeople);
       expect(await owner.db.select({ id: schema.employment.id }).from(schema.employment).orderBy(schema.employment.id)).toEqual(beforeEmployments);
       expect(await eventTypesFor(b.tenantId, b.companyId)).not.toContain('employee-import.completed');
@@ -172,7 +185,9 @@ describe('cf43c909 · employee import history', () => {
       expect(run.failedRows).toBe(3);
       expect(run.errors.map((e) => e.rowNum)).toEqual([1, 2, 3]);
       expect(run.errors.map((e) => e.email)).toEqual(['person1@acme.test', 'doomed@acme.test', 'rejected@acme.test']);
-      expect(run.errors[0].errors[0]).toMatch(/rolled back/);
+      expect(run.errors[0].errors[0]).toMatch(/file was cancelled/);
+      expect(run.errors[0].outcome).toBe('cancelled');
+      expect(run.errors[1].outcome).toBe('stopped');
       expect(run.errors[1].errors[0]).toBeTruthy();
       expect(run.errors[2].errors.join('; ')).toMatch(/unknown department/i);
       expect(importRunOutcome(run)).toBe('failed');

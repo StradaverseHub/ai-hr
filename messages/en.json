@@ -3021,7 +3021,14 @@
         "otherRunning": "Another movement check you started is still running. Wait for it to finish before checking a new file.",
         "workerUnavailable": "The import service is not running yet. Your file is kept and the check starts automatically as soon as it is."
       },
-      "historyButton": "Import History"
+      "historyButton": "Import History",
+      "uploadErrors": {
+        "unreachable": "The server could not be reached. Check your connection and try again; sending the same file again will not import it twice.",
+        "unavailable": "The system is unavailable at the moment. Open Import History to check whether this import was received before you try again.",
+        "timeout": "This is taking longer than expected. The import may still be running: check Import History and do not upload the file again until it shows a result.",
+        "unknown": "The import result could not be confirmed. Check Import History before trying again.",
+        "progressUnreachable": "The server could not be reached to check progress. The import continues in the background, and this page keeps checking."
+      }
     },
     "wizard": {
       "deleteRecord": "Delete Record",
@@ -3466,6 +3473,53 @@
         "noDetail": "No row detail was recorded for this import.",
         "none": "Every row was saved.",
         "reasonColumn": "Reason"
+      },
+      "errorReport": {
+        "title": "Error report",
+        "hint": "One line for every problem: the row, the employee, the column to correct and what is wrong.",
+        "download": "Download error report",
+        "filterLabel": "Show rows",
+        "problemRows": "Rows with a problem ({count})",
+        "allRows": "All rows ({count})",
+        "saved": "Employees saved",
+        "toFix": "Rows with a problem to fix",
+        "cancelled": "Rows with no problem, not saved because the file was cancelled",
+        "cancelledTitle": "This file was cancelled while saving, so no employee was created.",
+        "cancelledBody": "Row {rows} could not be saved (see below). A file is saved all together or not at all, so the rows with no problem were not saved either. Fix the rows listed and upload the whole file again.",
+        "stoppedBody": "The import stopped before it finished, so nothing was saved. The reason is in the audit trail below. Upload the whole file again.",
+        "restricted": "Only rows of companies you can view are shown.",
+        "noProblems": "No problems were found in this file.",
+        "noRows": "This import has no rows to show.",
+        "colRow": "Row",
+        "colCode": "Employee ID",
+        "colName": "Name",
+        "colColumn": "Column",
+        "colProblem": "Problem",
+        "colResult": "Result",
+        "stage": {
+          "check": "Found in the file check",
+          "save": "Found while saving — this stopped the file"
+        },
+        "outcome": {
+          "refused": "Not saved",
+          "stopped": "Stopped the save",
+          "cancelled": "Not saved — file cancelled",
+          "saved": "Saved",
+          "pending": "Not finished"
+        },
+        "cancelledRow": "No problem. Not saved because row {rows} stopped the file.",
+        "cancelledRowUnnamed": "No problem. Not saved because the file was cancelled.",
+        "contract": {
+          "required": "Required when Employment Type is Contract.",
+          "before_hire": "Cannot be earlier than the Group Join Date.",
+          "end_not_after_start": "Must be later than the Contract Start Date."
+        },
+        "csvBatch": "Batch reference",
+        "csvFile": "File name",
+        "csvStatus": "Final status",
+        "csvStage": "Found",
+        "rowsHint": "Row numbers count the employee rows of the file, as in the import preview.",
+        "truncated": "Showing the first {shown} of {total} lines. Download the error report for all of them."
       }
     },
     "informationCorrection": {

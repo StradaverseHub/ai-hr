@@ -3021,7 +3021,14 @@
         "otherRunning": "Satu lagi semakan pergerakan yang anda mulakan masih berjalan. Tunggu sehingga selesai sebelum menyemak fail baharu.",
         "workerUnavailable": "Perkhidmatan import belum berjalan. Fail anda disimpan dan semakan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
       },
-      "historyButton": "Sejarah Import"
+      "historyButton": "Sejarah Import",
+      "uploadErrors": {
+        "unreachable": "Pelayan tidak dapat dihubungi. Semak sambungan anda dan cuba lagi; menghantar fail yang sama sekali lagi tidak akan mengimportnya dua kali.",
+        "unavailable": "Sistem tidak tersedia buat masa ini. Buka Sejarah Import untuk menyemak sama ada import ini telah diterima sebelum anda cuba lagi.",
+        "timeout": "Ini mengambil masa lebih lama daripada dijangka. Import mungkin masih berjalan: semak Sejarah Import dan jangan muat naik fail semula sehingga ia menunjukkan keputusan.",
+        "unknown": "Keputusan import tidak dapat disahkan. Semak Sejarah Import sebelum mencuba lagi.",
+        "progressUnreachable": "Pelayan tidak dapat dihubungi untuk menyemak kemajuan. Import diteruskan di latar belakang, dan halaman ini terus menyemak."
+      }
     },
     "wizard": {
       "deleteRecord": "Padam Rekod",
@@ -3466,6 +3473,53 @@
         "noDetail": "Tiada butiran baris direkodkan untuk import ini.",
         "none": "Semua baris telah disimpan.",
         "reasonColumn": "Sebab"
+      },
+      "errorReport": {
+        "title": "Laporan ralat",
+        "hint": "Satu baris untuk setiap masalah: baris, pekerja, lajur yang perlu dibetulkan dan apa yang salah.",
+        "download": "Muat turun laporan ralat",
+        "filterLabel": "Tunjukkan baris",
+        "problemRows": "Baris dengan masalah ({count})",
+        "allRows": "Semua baris ({count})",
+        "saved": "Pekerja disimpan",
+        "toFix": "Baris dengan masalah untuk dibetulkan",
+        "cancelled": "Baris tanpa masalah, tidak disimpan kerana fail dibatalkan",
+        "cancelledTitle": "Fail ini dibatalkan semasa menyimpan, jadi tiada pekerja dicipta.",
+        "cancelledBody": "Baris {rows} tidak dapat disimpan (lihat di bawah). Fail disimpan sekali gus atau tidak langsung, jadi baris tanpa masalah juga tidak disimpan. Betulkan baris yang disenaraikan dan muat naik semula keseluruhan fail.",
+        "stoppedBody": "Import berhenti sebelum selesai, jadi tiada apa-apa disimpan. Sebabnya ada dalam jejak audit di bawah. Muat naik semula keseluruhan fail.",
+        "restricted": "Hanya baris syarikat yang boleh anda lihat ditunjukkan.",
+        "noProblems": "Tiada masalah ditemui dalam fail ini.",
+        "noRows": "Import ini tiada baris untuk ditunjukkan.",
+        "colRow": "Baris",
+        "colCode": "ID Pekerja",
+        "colName": "Nama",
+        "colColumn": "Lajur",
+        "colProblem": "Masalah",
+        "colResult": "Keputusan",
+        "stage": {
+          "check": "Ditemui dalam semakan fail",
+          "save": "Ditemui semasa menyimpan — ini menghentikan fail"
+        },
+        "outcome": {
+          "refused": "Tidak disimpan",
+          "stopped": "Menghentikan simpanan",
+          "cancelled": "Tidak disimpan — fail dibatalkan",
+          "saved": "Disimpan",
+          "pending": "Belum selesai"
+        },
+        "cancelledRow": "Tiada masalah. Tidak disimpan kerana baris {rows} menghentikan fail.",
+        "cancelledRowUnnamed": "Tiada masalah. Tidak disimpan kerana fail dibatalkan.",
+        "contract": {
+          "required": "Wajib apabila Jenis Pekerjaan ialah Kontrak.",
+          "before_hire": "Tidak boleh lebih awal daripada Tarikh Sertai Kumpulan.",
+          "end_not_after_start": "Mesti lebih lewat daripada Tarikh Mula Kontrak."
+        },
+        "csvBatch": "Rujukan kelompok",
+        "csvFile": "Nama fail",
+        "csvStatus": "Status akhir",
+        "csvStage": "Ditemui",
+        "rowsHint": "Nombor baris mengira baris pekerja dalam fail, seperti dalam pratonton import.",
+        "truncated": "Menunjukkan {shown} baris pertama daripada {total}. Muat turun laporan ralat untuk kesemuanya."
       }
     },
     "informationCorrection": {

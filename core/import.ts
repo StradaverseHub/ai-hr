@@ -7,7 +7,10 @@ import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric
 import {previewCostAllocationImportTx,writeNewEmployeeCostAllocationsTx} from './cost-allocation-import';
 import type {AllocationImportRecords,AllocationImportPreview} from '../lib/cost-allocation-import';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
-import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {lockLeaveDependencyConfigurationTx,LeaveDependencyUnavailable} from './leave-dependency-lock';
+import {DatabaseAdmissionError} from '../db/admission';
+import {pgSqlState} from '../lib/db-error';
+import {cancelledFileMessage,cancelledRowMessage,ownerRefusalColumn,EMPLOYEE_IMPORT_SAVE_REPORT_LIMIT,type EmployeeImportSaveReportRow} from '../lib/employee-import-report';
 import {workforceCompanies,workforceEmploymentPredicate,assertWorkforceCompanyTx,WorkforceAccessError} from './workforce-access';
 import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import { personnelOperationalValues,type PersonnelOperationalPatch } from '../lib/personnel-operational-import';
@@ -22,6 +25,7 @@ import { personnelBankValues, type PersonnelBankValues } from '../lib/personnel-
 import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/personnel-family-import';
 import { personnelImportProposedValues, PERSONNEL_EMPLOYMENT_IMPORT_FIELDS, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
+import { contractPeriodIssues } from '../lib/contract-period';
 // 524303d9 — the "Everything — new employees" template adopts every Bank & Statutory setting through the SAME
 // parser, cross-field rules and merged writer as the Bank & Statutory import, inside the hire transaction.
 import {buildBankStatutoryPatch,applyBankStatutoryPatchTx,bankStatutoryRefusal} from './bank-statutory-import';
@@ -117,6 +121,16 @@ export const IMPORT_RUN_ERROR_CAP = 200;
 
 /** How many past runs the history screen reads. */
 export const IMPORT_RUN_HISTORY_LIMIT = 50;
+
+/** Item 1859cce0 — a busy or unreachable database (retry the whole file) as opposed to a refusal of one row. */
+export function isTransientImportError(error: unknown) {
+  if (error instanceof LeaveDependencyUnavailable) return error.reason === 'busy';
+  if (error instanceof DatabaseAdmissionError) return true;
+  const code = pgSqlState(error);
+  return code === '40P01' || code === '40001' || code === '55P03' || code === '53300' || code === '57P03' || code === '57014' || Boolean(code?.startsWith('08'));
+}
+/** Every validated row ran; at least one was refused while saving, so the whole file is rolled back. */
+class ImportSaveRefused extends Error { constructor() { super('One or more rows could not be saved.'); } }
 
 const EMPLOYMENT_TYPES = new Set(['full_time', 'part_time', 'contract', 'intern']);
 const STANDING_GRANTS = new Set(['ANNUAL', 'SICK', 'HOSPITALIZATION']);
@@ -245,6 +259,11 @@ export type ResolvedDependent = {
 };
 
 const norm = (s: string | undefined) => (s ?? '').trim();
+/** Item 1859cce0 — a problem found after the row loop, recorded on both the plain list and the issue list. */
+function rowIssue(result: RowResult, column: string, message: string) {
+  result.errors.push(message);
+  (result.issues ??= []).push({ column, message });
+}
 const lc = (s: string | undefined) => norm(s).toLowerCase();
 /** Enum-ish cell: lowercased with spaces and dashes folded to underscores, the way every other coded
  *  column on this sheet is already read (`employment_type`, `pay_mode`, `epf_citizenship`). */
@@ -505,17 +524,22 @@ async function analyze(
   records.forEach((rawRecord, idx) => {
     const {record:rec,errors}=normalizePersonnelCatalogRecord(rawRecord,'employee',catalog);
     const warnings: string[] = [...(derivedOrganisationRows.get(idx)?.warnings??[])];
+    // Item 1859cce0 — every problem found below is pushed with the column it is about, so the error report
+    // can name the cell to correct without parsing the message back. Helpers that return plain messages
+    // (catalog normalisation, operational, bank, Bank & Statutory parsers) keep no column.
+    const columnOf=new Map<string,{column:string;code?:string}>();
+    const fail=(column:string,message:string,code?:string)=>{errors.push(message);if(!columnOf.has(message))columnOf.set(message,{column,code});};
     const operations=personnelOperationalValues(rec);errors.push(...operations.errors);
-    if(operations.values.paymentMethod==='bank_transfer' && bankTransferLacksBank({bankName:rec.bank_name,bankAccountNo:rec.bank_account_no}))errors.push('Bank Transfer requires bank_name and bank_account_no.');
+    if(operations.values.paymentMethod==='bank_transfer' && bankTransferLacksBank({bankName:rec.bank_name,bankAccountNo:rec.bank_account_no}))fail('bank_name', 'Bank Transfer requires bank_name and bank_account_no.');
     const fullName = norm(rec.full_name);
     const email = norm(rec.email);
 
     // PASS 2 begins with the company: every catalog lookup below is against THIS row's company, which
     // is what makes the reporter's "Department does not belong to selected company" a real check.
     const rc = rowCompanies[idx];
-    if(rc.ambiguous)errors.push(`Ambiguous company "${rc.raw}" — use its exact company ID or registration number`);
-    else if (rc.unknown) errors.push(`Unknown company "${rc.raw}"`);
-    else if (!rc.co) errors.push('Missing company');
+    if(rc.ambiguous)fail('company', `Ambiguous company "${rc.raw}" — use its exact company ID or registration number`);
+    else if (rc.unknown) fail('company', `Unknown company "${rc.raw}"`);
+    else if (!rc.co) fail('company', 'Missing company');
     const cctx = rc.co ? contexts.get(rc.co.id) : undefined;
     const { deptByName, posByName, ccByName, buByName, gradeByName } = cctx ?? {
       deptByName: new PersonnelImportLookup<string>(),
@@ -533,92 +557,92 @@ async function analyze(
     const codeRaw = norm(rec.employee_code);
     const codeNorm = normalizeEmployeeCode(codeRaw);
     if (codeRaw && !isValidEmployeeCode(codeRaw))
-      errors.push(`Invalid employee_code "${codeRaw}" (letters/numbers/dash, max ${EMPLOYEE_CODE_MAX_LEN})`);
-    else if (codeRaw && seenCodes.has(codeNorm)) errors.push('Duplicate employee_code in this file');
-    else if (codeRaw && existingCodes.has(codeNorm)) errors.push(`Employee ID "${codeNorm}" is already in use`);
+      fail('employee_code', `Invalid employee_code "${codeRaw}" (letters/numbers/dash, max ${EMPLOYEE_CODE_MAX_LEN})`);
+    else if (codeRaw && seenCodes.has(codeNorm)) fail('employee_code', 'Duplicate employee_code in this file');
+    else if (codeRaw && existingCodes.has(codeNorm)) fail('employee_code', `Employee ID "${codeNorm}" is already in use`);
     // Named differently from "already in use" (item 06f0cb8f): nobody is employed under this ID — an
     // unfinished draft is holding it, and the way out is to finish or discard that draft.
     else if (codeRaw && reservedCodes.has(codeNorm))
-      errors.push(`Employee ID "${codeNorm}" is reserved by a draft employee record`);
+      fail('employee_code', `Employee ID "${codeNorm}" is reserved by a draft employee record`);
     if (codeRaw && isValidEmployeeCode(codeRaw)) seenCodes.add(codeNorm);
 
-    if (!fullName) errors.push('Missing full_name');
-    if (!email) errors.push('Missing email');
-    else if (!EMAIL_RE.test(email)) errors.push(`Invalid email "${email}"`);
+    if (!fullName) fail('full_name', 'Missing full_name');
+    if (!email) fail('email', 'Missing email');
+    else if (!EMAIL_RE.test(email)) fail('email', `Invalid email "${email}"`);
     // 5e0b2154 — with Allow Duplicated Work Email or Personal Email ON, a shared email is reported, not refused.
-    else if (seenEmails.has(email.toLowerCase())) (allowDuplicatedEmail ? warnings : errors).push(allowDuplicatedEmail ? 'This email is also used by another row in this file' : 'Duplicate email in this file');
+    else if (seenEmails.has(email.toLowerCase())) { if (allowDuplicatedEmail) warnings.push('This email is also used by another row in this file'); else fail('email', 'Duplicate email in this file'); }
     // 524303d9 — the duplicate policy applies in full, exactly like NRIC: with "Allow Duplicated Work Email or
     // Personal Email" OFF an email another person already holds is refused; ON it is reported.
-    else if (existingEmails.has(email.toLowerCase())) (allowDuplicatedEmail ? warnings : errors).push(allowDuplicatedEmail ? 'A person with this email already exists' : `Email "${email}" is already used by another employee (Allow Duplicated Work Email is off)`);
+    else if (existingEmails.has(email.toLowerCase())) { if (allowDuplicatedEmail) warnings.push('A person with this email already exists'); else fail('email', `Email "${email}" is already used by another employee (Allow Duplicated Work Email is off)`); }
     if (email) seenEmails.add(email.toLowerCase());
 
     // Department (required, canonical code before an unambiguous legacy label)
     const deptName = norm(rec.department);
     const departmentId = deptByName.get(deptName.toLowerCase());
-    if (!deptName) errors.push('Missing department');
-    else if (deptByName.isAmbiguous(deptName))errors.push(`Ambiguous department "${deptName}" — choose a distinct label or code`);
-    else if (!departmentId) errors.push(`Unknown department "${deptName}"`);
+    if (!deptName) fail('department', 'Missing department');
+    else if (deptByName.isAmbiguous(deptName))fail('department', `Ambiguous department "${deptName}" — choose a distinct label or code`);
+    else if (!departmentId) fail('department', `Unknown department "${deptName}"`);
 
     // Position / cost-center (optional; code first, unknown = error so it is never dropped silently)
     const posName = norm(rec.position);
     let positionId: string | undefined;
     if (posName) {
       positionId = posByName.get(posName.toLowerCase());
-      if(posByName.isAmbiguous(posName))errors.push(`Ambiguous position "${posName}" — choose a distinct label or code`);
-      else if (!positionId) errors.push(`Unknown position "${posName}"`);
+      if(posByName.isAmbiguous(posName))fail('position', `Ambiguous position "${posName}" — choose a distinct label or code`);
+      else if (!positionId) fail('position', `Unknown position "${posName}"`);
     }
     const ccName = norm(rec.cost_center);
     let costCenterId: string | undefined;
     if (ccName) {
       costCenterId = ccByName.get(ccName.toLowerCase());
-      if(ccByName.isAmbiguous(ccName))errors.push(`Ambiguous cost_center "${ccName}" — choose a distinct label or code`);
-      else if (!costCenterId) errors.push(`Unknown cost_center "${ccName}"`);
+      if(ccByName.isAmbiguous(ccName))fail('cost_center', `Ambiguous cost_center "${ccName}" — choose a distinct label or code`);
+      else if (!costCenterId) fail('cost_center', `Unknown cost_center "${ccName}"`);
     }
 
     const organisationChoice=(column:string,lookup:PersonnelImportLookup<string>)=>{
       const raw=norm(rec[column]);if(!raw)return undefined;
       const id=lookup.get(raw);
-      if(lookup.isAmbiguous(raw))errors.push(`Ambiguous ${column} "${raw}" for ${cctx?.name??'the selected company'} — choose a distinct label or code`);
-      else if(!id)errors.push(`Unavailable ${column} "${raw}" for ${cctx?.name??'the selected company'}`);
+      if(lookup.isAmbiguous(raw))fail(column, `Ambiguous ${column} "${raw}" for ${cctx?.name??'the selected company'} — choose a distinct label or code`);
+      else if(!id)fail(column, `Unavailable ${column} "${raw}" for ${cctx?.name??'the selected company'}`);
       return id;
     };
     const tags=derivedOrganisationRows.get(idx)?.tags;
     const businessUnitId=tags&&(derivedOrganisationRows.get(idx)?.managed||tags.status!=='legacy')?(tags.businessUnitId??undefined):organisationChoice('business_unit',buByName);
     const gradeId=organisationChoice('job_grade',gradeByName);
     const departmentUnit=departmentId?cctx?.departmentBusinessUnits.get(departmentId):undefined;
-    if(businessUnitId && departmentUnit && businessUnitId!==departmentUnit)errors.push('department: unavailable under the selected business_unit');
+    if(businessUnitId && departmentUnit && businessUnitId!==departmentUnit)fail('department', 'department: unavailable under the selected business_unit');
 
     // Hire date
     const hiredOn = norm(rec.hired_on);
-    if (!hiredOn) errors.push('Missing hired_on');
-    else if (!isCalendarDate(hiredOn)) errors.push(`hired_on must be YYYY-MM-DD (got "${hiredOn}")`);
+    if (!hiredOn) fail('hired_on', 'Missing hired_on');
+    else if (!isCalendarDate(hiredOn)) fail('hired_on', `hired_on must be YYYY-MM-DD (got "${hiredOn}")`);
 
     // Employment type
     let employmentType: 'full_time' | 'part_time' | 'contract' | 'intern' = 'full_time';
     const etRaw = lc(rec.employment_type).replace(/[\s-]+/g, '_');
     if (etRaw) {
-      if (EMPLOYMENT_TYPES.has(etRaw)) employmentType = etRaw as typeof employmentType;
-      else errors.push(`Unknown employment_type "${rec.employment_type}"`);
+      if (EMPLOYMENT_TYPES.has(etRaw)) employmentType = etRaw as 'full_time' | 'part_time' | 'contract' | 'intern';
+      else fail('employment_type', `Unknown employment_type "${rec.employment_type}"`);
     }
 
     // Optional NRIC: format is unconditional; duplication follows the current tenant policy.
     const icRaw = norm(rec.ic_number);
     const icNorm = pack.statutory.normalizeIC(icRaw);
-    if (icRaw && !pack.statutory.validateIC(icRaw)) errors.push(`Invalid IC "${icRaw}" (expected 12 digits)`);
-    else if (!allowDuplicatedNric && icRaw && seenIcs.has(icNorm)) errors.push(NRIC_FILE_DUPLICATE_MESSAGE);
-    else if (!allowDuplicatedNric && icRaw && existingIcs.has(icNorm)) errors.push(NRIC_DUPLICATE_MESSAGE);
+    if (icRaw && !pack.statutory.validateIC(icRaw)) fail('ic_number', `Invalid IC "${icRaw}" (expected 12 digits)`);
+    else if (!allowDuplicatedNric && icRaw && seenIcs.has(icNorm)) fail('ic_number', NRIC_FILE_DUPLICATE_MESSAGE);
+    else if (!allowDuplicatedNric && icRaw && existingIcs.has(icNorm)) fail('ic_number', NRIC_DUPLICATE_MESSAGE);
     if (icRaw && pack.statutory.validateIC(icRaw)) seenIcs.add(icNorm);
 
     // Salary
     const salaryRaw = norm(rec.basic_salary).replace(/[,_]/g, '');
     const basicSalary = Number(salaryRaw);
-    if (!Number.isFinite(basicSalary) || basicSalary < 0) errors.push(`Invalid basic_salary "${rec.basic_salary}"`);
+    if (!Number.isFinite(basicSalary) || basicSalary < 0) fail('basic_salary', `Invalid basic_salary "${rec.basic_salary}"`);
     const allowanceRaw = norm(rec.monthly_allowance).replace(/[,_]/g, '');
     let monthlyAllowance = 0;
     if (allowanceRaw) {
       monthlyAllowance = Number(allowanceRaw);
       if (!Number.isFinite(monthlyAllowance) || monthlyAllowance < 0) {
-        errors.push(`Invalid monthly_allowance "${rec.monthly_allowance}"`);
+        fail('monthly_allowance', `Invalid monthly_allowance "${rec.monthly_allowance}"`);
         monthlyAllowance = 0;
       }
     }
@@ -628,13 +652,13 @@ async function analyze(
     const tcRaw = norm(rec.tax_category);
     if (tcRaw) {
       taxCategory = Number(tcRaw);
-      if (![1, 2, 3].includes(taxCategory)) errors.push('tax_category must be 1, 2 or 3');
+      if (![1, 2, 3].includes(taxCategory)) fail('tax_category', 'tax_category must be 1, 2 or 3');
     }
     let numChildren: number | undefined;
     const ncRaw = norm(rec.num_children);
     if (ncRaw) {
       numChildren = Number(ncRaw);
-      if (!Number.isInteger(numChildren) || numChildren < 0) errors.push(`Invalid num_children "${ncRaw}"`);
+      if (!Number.isInteger(numChildren) || numChildren < 0) fail('num_children', `Invalid num_children "${ncRaw}"`);
     }
 
     // Boolean flags (default true)
@@ -643,7 +667,7 @@ async function analyze(
       if (v === '') return undefined;
       if (TRUTHY.has(v)) return true;
       if (FALSY.has(v)) return false;
-      errors.push(`Invalid ${label} "${raw}" (use yes/no)`);
+      fail(label, `Invalid ${label} "${raw}" (use yes/no)`);
       return undefined;
     };
     const eisEligible = boolField(rec.eis_eligible, 'eis_eligible');
@@ -656,14 +680,14 @@ async function analyze(
       if (c === 'malaysian') return 'citizen';
       if (c === 'permanent_resident') return 'pr';
       if (['noncitizen', 'foreign', 'foreigner', 'foreign_worker'].includes(c)) return 'non_citizen';
-      errors.push(`Invalid epf_citizenship "${rec.epf_citizenship}" (use citizen / pr / non_citizen)`);
+      fail('epf_citizenship', `Invalid epf_citizenship "${rec.epf_citizenship}" (use citizen / pr / non_citizen)`);
       return undefined;
     })();
 
     // Bank: both or neither (mirrors the ESS validation)
     const bankName = norm(rec.bank_name) || undefined;
     const bankAccountNo = norm(rec.bank_account_no) || undefined;
-    if (!!bankName !== !!bankAccountNo) errors.push('bank_name and bank_account_no must be provided together');
+    if (!!bankName !== !!bankAccountNo) fail('bank_account_no', 'bank_name and bank_account_no must be provided together');
 
     // ADR-0078 — employee-specific salary structure (all optional; blank = monthly / monthly / no rate,
     // the setCompensation defaults). Mirrors the service validation so a bad row fails the DRY RUN, not
@@ -672,7 +696,7 @@ async function analyze(
       const m = lc(rec.pay_mode).replace(/[\s-]+/g, '_');
       if (!m) return undefined;
       if ((PERSONNEL_PAY_MODES as readonly string[]).includes(m)) return m as (typeof PERSONNEL_PAY_MODES)[number];
-      errors.push(`Invalid pay_mode "${rec.pay_mode}" (use monthly / daily / hourly / custom_period)`);
+      fail('pay_mode', `Invalid pay_mode "${rec.pay_mode}" (use monthly / daily / hourly / custom_period)`);
       return undefined;
     })();
     const paymentTerm = ((): 'monthly' | 'weekly' | 'biweekly' | undefined => {
@@ -680,7 +704,7 @@ async function analyze(
       if (!f) return undefined;
       if ((PERSONNEL_PAYMENT_TERMS as readonly string[]).includes(f)) return f as (typeof PERSONNEL_PAYMENT_TERMS)[number];
       if (f === 'bi_weekly') return 'biweekly';
-      errors.push(`Invalid payment_term "${rec.payment_term}" (use monthly / weekly / biweekly)`);
+      fail('payment_term', `Invalid payment_term "${rec.payment_term}" (use monthly / weekly / biweekly)`);
       return undefined;
     })();
     let rateAmount: number | undefined;
@@ -688,12 +712,12 @@ async function analyze(
     if (rateRaw) {
       rateAmount = Number(rateRaw);
       if (!Number.isFinite(rateAmount) || rateAmount < 0) {
-        errors.push(`Invalid rate_amount "${rec.rate_amount}"`);
+        fail('rate_amount', `Invalid rate_amount "${rec.rate_amount}"`);
         rateAmount = undefined;
       }
     }
     if ((payMode === 'daily' || payMode === 'hourly') && !(rateAmount !== undefined && rateAmount > 0)) {
-      errors.push(`pay_mode "${payMode}" requires a positive rate_amount`);
+      fail('rate_amount', `pay_mode "${payMode}" requires a positive rate_amount`);
     }
 
     // r369 (item eb949191) — A BASIC SALARY OF 0 IMPORTS, ONCE THE ROW SAYS WHY.
@@ -720,7 +744,7 @@ async function analyze(
       unpayableSalaryLeg(payMode ?? 'monthly', basicSalary, rateAmount ?? null) === 'no_monthly_basic' &&
       !salaryRemarks
     ) {
-      errors.push(
+      fail('salary_remarks', 
         'basic_salary is 0, so salary_remarks must say why (for example: paid by quarterly ' +
           "director's fees). Payroll will leave this employee out of any month with nothing payable.",
       );
@@ -736,7 +760,7 @@ async function analyze(
       const v = norm(raw);
       if (!v) return undefined;
       if (!isCalendarDate(v)) {
-        errors.push(`${label} must be YYYY-MM-DD (got "${v}")`);
+        fail(label, `${label} must be YYYY-MM-DD (got "${v}")`);
         return undefined;
       }
       return v;
@@ -747,7 +771,7 @@ async function analyze(
       if (!v) return undefined;
       const n = Number(v);
       if (!Number.isInteger(n) || n < 0) {
-        errors.push(`Invalid ${label} "${raw}" (whole number, 0 or more)`);
+        fail(label, `Invalid ${label} "${raw}" (whole number, 0 or more)`);
         return undefined;
       }
       return String(n);
@@ -757,7 +781,7 @@ async function analyze(
     const catalogField = (raw: string | undefined, category: string, label: string): CatalogCell => {
       const cell = classifyCatalogCell(raw, (v) => catalogAllows(category, v,rc.co?.id));
       if (cell.kind === 'refused') {
-        errors.push(
+        fail(label, 
           `"${cell.value}" is not an active ${category} option (see the Reference sheet) — column ${label}`,
         );
       }
@@ -790,9 +814,9 @@ async function analyze(
       norm(rec.passport_issuing_country) !== '' || norm(rec.passport_issuing_country_code)!=='' || norm(rec.passport_remark)!=='';
     let passport: ResolvedRow['passport'];
     const passportValues={passportNumber:passportNumber||undefined,passportIssueDate:passportIssue,passportExpiryDate:passportExpiry,passportIssuingCountry:passportCountry.kind==='ok'?passportCountry.value:undefined,passportIssuingCountryCode:norm(rec.passport_issuing_country_code)||undefined,passportRemark:norm(rec.passport_remark)||undefined};
-    if(passportIssue&&passportExpiry&&passportExpiry<passportIssue)errors.push('passport_expiry_date must be on or after passport_issue_date');
+    if(passportIssue&&passportExpiry&&passportExpiry<passportIssue)fail('passport_expiry_date', 'passport_expiry_date must be on or after passport_issue_date');
     if(passportTouched||norm(rec.nationality)) {
-      if(!pack.statutory.validatePassport({personId:'00000000-0000-0000-0000-000000000000',...passportValues},norm(rec.nationality)))errors.push('passport_number is required for non-Malaysian employees; check supplied passport dates and country code');
+      if(!pack.statutory.validatePassport({personId:'00000000-0000-0000-0000-000000000000',...passportValues},norm(rec.nationality)))fail('passport_number', 'passport_number is required for non-Malaysian employees; check supplied passport dates and country code');
       else if(passportTouched&&passportNumber)passport={...passportValues,passportNumber};
     }
 
@@ -815,16 +839,16 @@ async function analyze(
     for(const field of PERSONNEL_COMPLIANCE_IMPORT_FIELDS) {
       const column=field.import.column!; const value=norm(rec[column]);if(!value)continue;
       const issue=personnelScalarIssue(field,value);
-      if(issue)errors.push(`${column}: invalid ${issue} value`);
+      if(issue)fail(column, `${column}: invalid ${issue} value`);
       else (compliance as Record<string,string>)[field.ownerField]=value;
     }
-    if(profile.personalEmail && !EMAIL_RE.test(profile.personalEmail))errors.push('Invalid personal_email');
+    if(profile.personalEmail && !EMAIL_RE.test(profile.personalEmail))fail('personal_email', 'Invalid personal_email');
     // 524303d9 — "Same as permanent address": Yes copies the permanent block into the correspondence block
     // through the same writer, exactly as draft completion does (`copyPermanentToCorrespondence`).
     const sameAsPermanent = boolField(rec.correspondence_same_as_permanent ?? '', 'correspondence_same_as_permanent');
     if (sameAsPermanent === true) {
       if (Object.keys(rec).some((column) => /^correspondence_(address_line_[123]|postcode|city|state|country)$/.test(column) && norm(rec[column]) !== ''))
-        errors.push('correspondence_same_as_permanent: leave the correspondence address columns blank when this is Yes');
+        fail('correspondence_same_as_permanent', 'correspondence_same_as_permanent: leave the correspondence address columns blank when this is Yes');
       else for (const [key, value] of Object.entries(copyPermanentToCorrespondence(profile))) if (value !== undefined && value !== null) profile[key] = value as string;
     }
 
@@ -835,10 +859,10 @@ async function analyze(
     if (policyRaw && cctx) {
       const wanted = policyRaw.toLowerCase();
       const hits = policies.filter((policy) => policy.companyId === cctx.id && (policy.name.toLowerCase() === wanted || (policy.code ?? '').toLowerCase() === wanted));
-      if (!isModuleEnabled(ctx, 'payroll', cctx.id)) errors.push(`payroll_policy: Payroll is not switched on for ${cctx.name}`);
-      else if (hits.length > 1) errors.push(`Ambiguous payroll_policy "${policyRaw}" — use its policy code`);
-      else if (!hits.length) errors.push(`Unknown payroll_policy "${policyRaw}" for ${cctx.name}`);
-      else if (hits[0].status !== 'active') errors.push(`payroll_policy "${policyRaw}" is inactive`);
+      if (!isModuleEnabled(ctx, 'payroll', cctx.id)) fail('payroll_policy', `payroll_policy: Payroll is not switched on for ${cctx.name}`);
+      else if (hits.length > 1) fail('payroll_policy', `Ambiguous payroll_policy "${policyRaw}" — use its policy code`);
+      else if (!hits.length) fail('payroll_policy', `Unknown payroll_policy "${policyRaw}" for ${cctx.name}`);
+      else if (hits[0].status !== 'active') fail('payroll_policy', `payroll_policy "${policyRaw}" is inactive`);
       else payrollPolicyId = hits[0].id;
     }
     let scheduleGroupId: string | undefined;
@@ -846,9 +870,9 @@ async function analyze(
     if (groupRaw) {
       const wanted = groupRaw.toLowerCase();
       const hits = scheduleGroups.filter((group) => group.name.toLowerCase() === wanted || (group.label ?? '').toLowerCase() === wanted);
-      if (hits.length > 1) errors.push(`Ambiguous schedule_group "${groupRaw}"`);
-      else if (!hits.length) errors.push(`Unknown schedule_group "${groupRaw}"`);
-      else if (hits[0].status !== 'active') errors.push(`schedule_group "${groupRaw}" is inactive`);
+      if (hits.length > 1) fail('schedule_group', `Ambiguous schedule_group "${groupRaw}"`);
+      else if (!hits.length) fail('schedule_group', `Unknown schedule_group "${groupRaw}"`);
+      else if (hits[0].status !== 'active') fail('schedule_group', `schedule_group "${groupRaw}" is inactive`);
       else scheduleGroupId = hits[0].id;
     }
 
@@ -874,9 +898,9 @@ async function analyze(
     const built = buildBankStatutoryPatch(statutoryCell, { pack, country: cctx?.country ?? '' }, expected);
     errors.push(...built.errors);
     if (isResident !== undefined && built.patch.tax_residency && (isResident === false) !== (built.patch.tax_residency === 'non_resident'))
-      errors.push('is_resident disagrees with tax_residency; keep one of the two columns');
+      fail('is_resident', 'is_resident disagrees with tax_residency; keep one of the two columns');
     if (eisEligible !== undefined && built.patch.eis_category && (eisEligible === false) !== (built.patch.eis_category === 'none'))
-      errors.push('eis_eligible disagrees with eis_category; keep one of the two columns');
+      fail('eis_eligible', 'eis_eligible disagrees with eis_category; keep one of the two columns');
     const statutoryPatch = Object.fromEntries(Object.entries(built.patch).filter(([column, value]) =>
       MERGED_STATUTORY_COLUMNS.includes(column) && column !== 'tax_category' && !(column === 'tax_residency' && value === initialTaxScheme)));
 
@@ -886,16 +910,16 @@ async function analyze(
     // with the reason instead.
     const probationEnd = dateField(rec.probation_end_date, 'probation_end_date');
     if (probationEnd && employmentType !== 'full_time') {
-      errors.push(
+      fail('probation_end_date', 
         `probation_end_date applies to full_time employees only (this row is ${employmentType}; for a fixed term use the contract dates on the employee's record)`,
       );
     }
     if (probationEnd && hiredOn && isCalendarDate(hiredOn) && probationEnd < hiredOn) {
-      errors.push('probation_end_date must be on or after hired_on');
+      fail('probation_end_date', 'probation_end_date must be on or after hired_on');
     }
     const confirmationDate = dateField(rec.confirmation_date, 'confirmation_date');
     if (confirmationDate && hiredOn && isCalendarDate(hiredOn) && confirmationDate < hiredOn) {
-      errors.push('confirmation_date must be on or after hired_on');
+      fail('confirmation_date', 'confirmation_date must be on or after hired_on');
     }
     const employmentInfo: Record<string, string> = {};
     const period = (column: string, field: string) => {
@@ -910,15 +934,25 @@ async function analyze(
 
     for(const field of PERSONNEL_EMPLOYMENT_IMPORT_FIELDS) {
       const {column,writerField,catalog:category}=field.import;const value=norm(rec[column!]);if(!value)continue;
-      const issue=personnelScalarIssue(field,value);if(issue){errors.push(`${column}: invalid ${issue} value`);continue;}
+      const issue=personnelScalarIssue(field,value);if(issue){fail(column!, `${column}: invalid ${issue} value`);continue;}
       const checked=category?catalogField(value,category,column!):undefined;
       if(checked?.kind==='refused')continue;
       employmentInfo[writerField!]=checked?.kind==='ok'?checked.value:value;
     }
+    // Item 1859cce0 — the contract period, by the same rule setEmploymentInfo enforces while saving
+    // (lib/contract-period.ts). A Contract row needs both dates, the start on or after hired_on and the end
+    // after the start; each problem is reported against its own column.
+    if (employmentType === 'contract' || employmentInfo.contractStartDate || employmentInfo.contractEndDate) {
+      const contractHire = hiredOn && isCalendarDate(hiredOn) ? hiredOn : null;
+      for (const issue of contractPeriodIssues({ contract: employmentType === 'contract', requireBoth: true, hiredOn: contractHire,
+        start: employmentInfo.contractStartDate, end: employmentInfo.contractEndDate }))
+        // A cell that was filled but not a valid date already carries its own problem; "required" would be noise.
+        if (!(issue.code === 'required' && norm(rec[issue.column]))) fail(issue.column, issue.code === 'required' ? `${issue.column === 'contract_start_date' ? 'Contract Start Date' : 'Contract End Date'} is required when Employment Type is Contract.` : issue.message, `contract.${issue.code}`);
+    }
     for(const [legacyA,legacyB,valueColumn,unitColumn] of [
       ['probation_months','probation_days','probation_value','probation_unit'],
       ['resignation_notice_months','resignation_notice_days','notice_before_confirmation_value','notice_before_confirmation_unit'],
-    ]) if((norm(rec[legacyA])||norm(rec[legacyB])) && (norm(rec[valueColumn])||norm(rec[unitColumn])))errors.push(`Use the current ${valueColumn}/${unitColumn} columns or the older month/day columns, not both`);
+    ]) if((norm(rec[legacyA])||norm(rec[legacyB])) && (norm(rec[valueColumn])||norm(rec[unitColumn])))fail(valueColumn, `Use the current ${valueColumn}/${unitColumn} columns or the older month/day columns, not both`);
 
     // DIRECT SUPERIOR — recorded now, RESOLVED LATER (see the pass after this loop). Resolving here would
     // fail a perfectly valid file purely because the manager's row happens to come after the subordinate's.
@@ -938,6 +972,7 @@ async function analyze(
       email,
       ok,
       errors,
+      issues: errors.map((message) => ({ message, ...(columnOf.get(message) ?? {}) })),
       warnings,
       company: rc.co?.name ?? '',
     };
@@ -996,10 +1031,10 @@ async function analyze(
   // Operational card assignments resolve against current canonical identities before any employee is written.
   for(const [index,row] of resolved.entries())if(row.result.ok && row.operations?.cardId) {
     try {await read(tx=>assertCardIdFreeForCompany(tx,row.hire.companyId,row.operations!.cardId!));}
-    catch {row.result.errors.push('card_id already identifies another employee; choose an unused card ID.');row.result.ok=false;}
+    catch {rowIssue(row.result,'card_id','card_id already identifies another employee; choose an unused card ID.');row.result.ok=false;}
     const wanted=row.operations.cardId.toLowerCase(),digits=wanted.replace(/\D/g,'');
     if(resolved.some((other,otherIndex)=>otherIndex!==index && (other.operations?.cardId?.toLowerCase()===wanted || other.hire.employeeCode?.toLowerCase()===wanted || Boolean(digits && other.statutory.icNumber?.replace(/\D/g,'')===digits)))) {
-      row.result.errors.push('card_id conflicts with another employee identity in this file.');row.result.ok=false;
+      rowIssue(row.result,'card_id','card_id conflicts with another employee identity in this file.');row.result.ok=false;
     }
   }
 
@@ -1028,11 +1063,11 @@ async function analyze(
     if (!raw) return;
     const row = resolved[idx];
     const found = findSuperior(raw);
-    if(found==='ambiguous')row.result.errors.push('Ambiguous direct_superior email — use the exact Employee ID for the intended employment');
+    if(found==='ambiguous')rowIssue(row.result,'direct_superior','Ambiguous direct_superior email — use the exact Employee ID for the intended employment');
     else if (found === 'unknown') {
-      row.result.errors.push(`Unknown direct_superior "${raw}" (no employee with that Employee ID or email)`);
+      rowIssue(row.result,'direct_superior',`Unknown direct_superior "${raw}" (no employee with that Employee ID or email)`);
     } else if (found.kind === 'row' && found.index === idx) {
-      row.result.errors.push('direct_superior cannot be the employee themselves');
+      rowIssue(row.result,'direct_superior','direct_superior cannot be the employee themselves');
     } else {
       // "The manager is on this file but is not going to be created" is decided AFTER this loop, not
       // inside it — see the propagation below.
@@ -1048,7 +1083,7 @@ async function analyze(
     let at: number | undefined = row.superior.index;
     while (at !== undefined) {
       if (seen.has(at)) {
-        row.result.errors.push('direct_superior forms a reporting cycle within this file');
+        rowIssue(row.result,'direct_superior','direct_superior forms a reporting cycle within this file');
         break;
       }
       seen.add(at);
@@ -1074,7 +1109,7 @@ async function analyze(
     resolved.forEach((row, idx) => {
       if (!row.result.ok || row.superior?.kind !== 'row') return;
       if (resolved[row.superior.index].result.ok) return;
-      row.result.errors.push(
+      rowIssue(row.result,'direct_superior',
         `direct_superior "${superiorRaw[idx]}" is on row ${row.superior.index + 1} of this file, which has errors and will not be imported`,
       );
       row.result.ok = false;
@@ -1463,8 +1498,10 @@ export async function commitEmployeeImport(
     // Per-ROW pack (d8471481): a file may span companies, and a company's statutory writer is its
     // own country's. Reading it off the row rather than the batch is what keeps that honest.
     const pack = row.pack;
+    // Item 1859cce0 — each row in a savepoint: a refusal is recorded and the remaining rows still run, so every
+    // problem is reported together. A busy database stops the file at once. Anything refused rolls the file back.
     try {
-      const saved = await applyEmployeeImportRowTx(tx,ctx,{row,pack,index,allocationPreview,family:familyByRow.get(index)??[],attemptId});
+      const saved = await tx.transaction(savepoint=>applyEmployeeImportRowTx(savepoint,ctx,{row,pack,index,allocationPreview,family:familyByRow.get(index)??[],attemptId}));
       employmentByRow.set(index,saved.employmentId);
       outcomeEmployment(saved.employmentId);outcomePerson(saved.personId);
       if(row.hire.employeeCode)registerSubjects.set(row.hire.employeeCode,{employmentId:saved.employmentId,personId:saved.personId});
@@ -1472,8 +1509,9 @@ export async function commitEmployeeImport(
       if(saved.familyCount)familySyncPersonIds.add(saved.personId);
       imported++;
     } catch (e) {
-      failed.push({ rowNum: row.result.rowNum, email: row.result.email, message: publicErrorMessage(e) });
-      throw e;
+      if (isTransientImportError(e)) throw e;
+      const message = publicErrorMessage(e);
+      failed.push({ rowNum: row.result.rowNum, email: row.result.email, message, fullName: row.result.fullName, employeeCode: row.hire.employeeCode ?? '', companyId: row.hire.companyId, column: ownerRefusalColumn(message), outcome: 'stopped' });
     }
   }
 
@@ -1487,35 +1525,30 @@ export async function commitEmployeeImport(
   for (const [index, row] of resolved.entries()) {
     if (!row.superior) continue;
     const subordinate = employmentByRow.get(index);
-    if (!subordinate) continue; // the employee itself failed to import; nothing to attach a manager to
+    if (!subordinate) continue; // the employee itself was refused; its own problem is already listed
     const manager =
       row.superior.kind === 'existing' ? row.superior.employmentId : employmentByRow.get(row.superior.index);
+    const stop = (message: string, column?: string) => failed.push({ rowNum: row.result.rowNum, email: row.result.email, message, fullName: row.result.fullName, employeeCode: row.hire.employeeCode ?? '', companyId: row.hire.companyId, column, outcome: 'stopped' });
     if (!manager) {
-      superiorFailed.push({
-        rowNum: row.result.rowNum,
-        email: row.result.email,
-        message: 'the direct superior named on this row was not imported',
-      });
-      throw new Error('The direct superior named on this row was not imported.');
+      const managerRow = row.superior.kind === 'row' ? resolved[row.superior.index]?.result.rowNum : undefined;
+      stop(managerRow ? `The direct superior on row ${managerRow} could not be saved, so this reporting line was not set.` : 'The direct superior named on this row was not imported.', 'direct_superior');
+      continue;
     }
     try {
-      await setReportingLine(ctx, {
+      await tx.transaction(savepoint=>setReportingLine(ctx, {
         subordinateEmploymentId: subordinate,
         managerEmploymentId: manager,
         lineType: 'administrative',
         validFrom: row.hire.hiredOn,
-      },tx);
+      },savepoint));
       outcomeEmployment(subordinate);outcomeEmployment(manager);
     } catch (e) {
-      // A reporting-link refusal aborts the enclosing import transaction as well.
-      superiorFailed.push({
-        rowNum: row.result.rowNum,
-        email: row.result.email,
-        message: publicErrorMessage(e),
-      });
-      throw e;
+      if (isTransientImportError(e)) throw e;
+      // A reporting-link refusal is reported against the row and cancels the file with the others.
+      stop(publicErrorMessage(e), 'direct_superior');
     }
   }
+  if (failed.length) throw new ImportSaveRefused();
 
   for(const register of registers){
     registersImported[register.preview.kind]=await writeRegisterRowsTx(tx,ctx,register.preview.kind,register.resolved,registerSubjects);
@@ -1552,14 +1585,21 @@ export async function commitEmployeeImport(
     });
   } catch(error) {
     evaluationReceipt=undefined;replayedEvaluation=false;
-    const first=failed[0]??superiorFailed[0];
-    const reason=first?.message??publicErrorMessage(error);
-    writeFileErrors.push(`No employee rows were written. The import was rolled back${first?` after row ${first.rowNum} was refused`:''}. ${reason}`);
-    failed.splice(0,failed.length,...valid.map(row=>({rowNum:row.result.rowNum,email:row.result.email,message:first?.rowNum===row.result.rowNum?reason:'Not written because the import was rolled back.'})));
+    // Item 1859cce0 — name every row refused while saving; every other valid row was not saved only because the
+    // file was cancelled, and says so. A busy database or an unexpected stop names no row and gives its reference.
+    const stops=error instanceof ImportSaveRefused?failed.filter(f=>f.outcome==='stopped').sort((x,y)=>x.rowNum-y.rowNum):[];
+    const stoppedBy=[...new Set(stops.map(f=>f.rowNum))];
+    writeFileErrors.push(cancelledFileMessage(stoppedBy,publicErrorMessage(error)));
+    failed.splice(0,failed.length,...stops,...valid.filter(row=>!stoppedBy.includes(row.result.rowNum)).map(row=>({rowNum:row.result.rowNum,email:row.result.email,message:cancelledRowMessage(stoppedBy),
+      fullName:row.result.fullName,employeeCode:row.hire.employeeCode??'',companyId:row.hire.companyId,outcome:'cancelled' as const,stoppedBy})));
+    failed.sort((x,y)=>x.rowNum-y.rowNum);
     superiorFailed.splice(0);imported=0;dependentsImported=0;registersImported.qualification=0;registersImported.emergency=0;employmentByRow.clear();
   }
 
-  if(writeFileErrors.length&&attemptId)await recordImportFailure(ctx,attemptId,'employee_full','failed',new ImportHistoryError(writeFileErrors.join(' ')));
+  if(writeFileErrors.length&&attemptId){
+    const rows:EmployeeImportSaveReportRow[]=failed.filter(f=>f.outcome==='stopped').slice(0,EMPLOYEE_IMPORT_SAVE_REPORT_LIMIT).map(f=>({rowNum:f.rowNum,employeeCode:f.employeeCode??'',fullName:f.fullName??'',companyId:f.companyId??p.companyId,outcome:'stopped' as const,message:f.message,...(f.column?{column:f.column}:{})}));
+    await recordImportFailure(ctx,attemptId,'employee_full','failed',new ImportHistoryError(writeFileErrors.join(' ')),{rows});
+  }
   if(replayedEvaluation&&evaluationReceipt){
     if(attemptId)await recordImportFailure(ctx,attemptId,'employee_full','failed',new ImportHistoryError('This import was already completed; nothing new was written.'));
     return measuredImportReplay(p.companyId,evaluationReceipt);
@@ -1616,7 +1656,7 @@ type EmployeeImportAttemptInput={companyId:string;records:ImportRecord[];fileNam
 export async function recordEmployeeImportAttemptTx(tx:Tx,ctx:SessionContext,p:EmployeeImportAttemptInput,preview:ImportPreview,resolved:ResolvedRow[]){
   const name=p.source?.name||p.fileName||'pasted-employees.csv';
   const content=p.source?.content??Buffer.from(recordsAsCsv(p.records),'utf8');
-  const rows=resolved.map(row=>({rowNum:row.result.rowNum,fullName:row.result.fullName,employeeCode:row.hire.employeeCode??'',company:row.result.company,ok:row.result.ok,errors:row.result.errors}));
+  const rows=resolved.map(row=>({rowNum:row.result.rowNum,fullName:row.result.fullName,employeeCode:row.hire.employeeCode??'',company:row.result.company,companyId:row.hire.companyId,ok:row.result.ok,errors:row.result.errors,issues:row.result.issues??[]}));
   const plan=sealImportPlan<EmployeeFullImportPlan>({version:1,kind:'employee_full',companyId:p.companyId,rows,counts:{total:rows.length,valid:preview.validCount,invalid:rows.length-preview.validCount},
     issues:[...preview.fileErrors.map(reason=>({rowNum:0,reason})),...rows.filter(row=>!row.ok).map(row=>({rowNum:row.rowNum,reason:`Row ${row.rowNum} (${row.fullName||row.employeeCode||'no name'}): ${row.errors.join('; ')}`}))],previewHash:''});
   const companyIds=[...new Set(resolved.filter(row=>row.result.ok).map(row=>row.hire.companyId))];
@@ -1707,8 +1747,11 @@ export async function recordImportRun(
   // Identity + reason only — never the row's IC, bank account, statutory numbers or salary. The uploaded
   // file is not stored at all (see migration 0341's header); this is what a correction actually needs.
   const errors: ImportRunError[] = [
-    ...p.rejected.map((r) => ({ rowNum: r.rowNum, fullName: r.fullName, email: r.email, errors: r.errors })),
-    ...p.failed.map((f) => ({ rowNum: f.rowNum, fullName: '', email: f.email, errors: [f.message] })),
+    // 1859cce0 — with the column of each problem and where it was found, so the run log can say what to fix.
+    ...p.rejected.map((r) => ({ rowNum: r.rowNum, fullName: r.fullName, email: r.email, errors: r.errors, issues: r.issues ?? r.errors.map((message) => ({ message })), stage: 'check' as const, outcome: 'refused' as const })),
+    ...p.failed.map((f) => ({ rowNum: f.rowNum, fullName: f.fullName ?? '', email: f.email, errors: [f.message],
+      ...(f.employeeCode ? { employeeCode: f.employeeCode } : {}), ...(f.companyId ? { companyId: f.companyId } : {}),
+      issues: [{ message: f.message, ...(f.column ? { column: f.column } : {}) }], stage: 'save' as const, ...(f.outcome ? { outcome: f.outcome } : {}) })),
   ].sort((a, b) => a.rowNum - b.rowNum);
   const failedRows = errors.length;
   try {
