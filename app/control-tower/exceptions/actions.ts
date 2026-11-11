@@ -21,7 +21,7 @@ export async function markGroupExpectedAction(formData: FormData) {
     params.set('expectedSkipped', String(result.skipped));
   } catch (e) {
     if (e instanceof BulkExpectInterrupted) {
-      // Interrupted part-way: say how many were closed, and ask for another try. Nothing is reported as skipped.
+      // The batch failed as a whole (nothing written): ask for another try. Nothing is reported as skipped.
       params.set('expected', String(e.resolved));
       params.set('bulkError', 'retry');
     } else {

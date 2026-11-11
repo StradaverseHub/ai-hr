@@ -11,8 +11,8 @@
  *  - anything already decided, superseded or not in the requested group.
  * Only exceptions that were on the person's screen are ever closed: the request names them, never a filter.
  *
- * The closing itself goes, one exception at a time, through the anomaly owner's existing resolve (attributed, audited
- * and permission-checked for each one): app/control-tower/exceptions/bulk.ts.
+ * The closing itself goes through the anomaly owner's batch resolve (one access lock; attributed, audited and
+ * permission-checked for each one, with an outcome per exception): app/control-tower/exceptions/bulk.ts.
  */
 import { isBlocking } from './classify';
 import { mayBulkExpect, sameGroup, type GroupIdentity } from './groups';
@@ -40,8 +40,8 @@ export class BulkExpectRefused extends Error {
   }
 }
 
-/** The run stopped part-way for a reason that is not a decision about one exception (a lock, a lost connection): the
- * ones already closed stay closed, and the person is asked to try again. Never counted as a skip. */
+/** The batch failed for a reason that is not a decision about one exception (a lock timeout, a lost connection): it is
+ * one transaction, so nothing was written, and the person is asked to try again. Never counted as a skip. */
 export class BulkExpectInterrupted extends Error {
   constructor(readonly resolved: number, readonly cause?: unknown) {
     super('Bulk mark as expected interrupted after ' + resolved);

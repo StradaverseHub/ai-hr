@@ -40,7 +40,7 @@ const SAMPLE = {
   total: 135, blocking: 38, groups: 6, people: 31, exceptions: 33, runs: 9, names: 'Demo Sdn Bhd, Fictional Bhd', more: 6, count: 9,
   page: 2, pages: 4, date: '28 Oct 2026', checks: 'No tax profile', component: 'Bonus', grossPay: 'MYR 100.00', totalDeductions: 'MYR 400.00',
   netPay: 'MYR 1,200.00', actual: 'MYR 300.00', cap: 'MYR 250.00', excess: 'MYR 50.00', pcb: 'MYR 12.00', daysWorked: 20, periodDays: 31,
-  others: 2, direction: 'down', pct: 82.3, causes: 'a salary change, overtime', priorNetPay: 'MYR 6,386.55', amount: 'MYR 5,000.00', priorAmount: 'MYR 200.00',
+  others: 2, direction: 'down', pct: 82.3, causes: 'a salary change, overtime', shown: 50, priorNetPay: 'MYR 6,386.55', amount: 'MYR 5,000.00', priorAmount: 'MYR 200.00',
 };
 /** What must never be rendered on this page. */
 const JARGON = [/\b[a-z]+[A-Z][A-Za-z]*\b/, /verdict/i, /detector/i, /[0-9a-f]{8}-[0-9a-f]{4}-/i, /_/, /\{|\}/,

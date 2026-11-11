@@ -2117,7 +2117,7 @@
             "too_many": "Itu melebihi had yang boleh ditanda sekali gus. Cuba lagi daripada senarai.",
             "nothing": "Tiada apa-apa dipilih.",
             "failed": "Itu tidak berjaya, dan tiada apa-apa diubah. Sila cuba lagi.",
-            "retry": "Sesuatu telah mengganggu proses ini, jadi ia terhenti separuh jalan. Apa-apa yang sudah ditanda kekal ditanda. Sila cuba lagi untuk selebihnya."
+            "retry": "Sesuatu telah mengganggu proses ini, dan tiada apa-apa diubah. Sila cuba lagi."
           }
         },
         "footer": "Pengumpulan hanya mengubah cara pengecualian dipaparkan. Ralat yang menyekat tidak pernah dikosongkan secara pukal, setiap keputusan tetap direkodkan bagi setiap orang, dan tiada angka gaji diubah di sini.",

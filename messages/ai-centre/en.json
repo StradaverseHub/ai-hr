@@ -2117,7 +2117,7 @@
             "too_many": "That is more than can be marked in one go. Try again from the list.",
             "nothing": "Nothing was selected.",
             "failed": "That didn’t work, and nothing was changed. Please try again.",
-            "retry": "Something interrupted this, so it stopped part-way. Anything already marked stays marked. Please try again for the rest."
+            "retry": "Something interrupted this, and nothing was changed. Please try again."
           }
         },
         "footer": "Grouping only changes how exceptions are shown. Blocking errors are never cleared in bulk, every decision is still recorded per person, and no pay figure is changed here.",
