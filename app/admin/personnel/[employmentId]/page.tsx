@@ -3333,6 +3333,15 @@ export default async function EmployeePage({
           const c = movementDetailData.flatChanges.find((x) => x.field === f);
           return c ? [{ key: f, label: t(`movement.field.${f}` as 'movement.field.orgDivision'), before: c.before, after: c.after }] : [];
         }),
+        // 2260a06b — the contract period / internship end this movement set, from its own recorded diff.
+        ...([
+          ['contractStartDate', 'employment.employment_dates_and_service.contractstartdate'],
+          ['contractEndDate', 'employment.employment_dates_and_service.contractenddate'],
+          ['internshipEndDate', 'employment.draft_only_employment_fields.internshipenddate'],
+        ] as const).flatMap(([f, id]) => {
+          const c = movementDetailData.flatChanges.find((x) => x.field === f);
+          return c ? [{ key: f, label: personnelLabel(id), before: c.before ? formatDmy(c.before) : null, after: c.after ? formatDmy(c.after) : null }] : [];
+        }),
       ]
     : [];
   const movementInformationAudit=movementDetailData?.informationCorrections?.length

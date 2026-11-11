@@ -2950,6 +2950,8 @@ export type EmploymentInfoInput = {
   /** 2260a06b — the internship end date (pre-existing 0110 review column). Shown and maintained for an Intern
    *  employee; required for one whenever a save carries it, and later than the join date. */
   internshipEndDate?: string | null;
+  /** 2260a06b — honoured ONLY inside withEndDateRestoreTx (a Movement rollback); ignored everywhere else. */
+  provisionalEndOn?: string | null;
   orgBranch?: string | null;
   orgDivision?: string | null;
   orgRegion?: string | null;
@@ -3127,6 +3129,24 @@ function earliestEmploymentDate(...dates: (string | null | undefined)[]): string
   return present.length === 0 ? null : present.reduce((a, b) => (a < b ? a : b));
 }
 
+/**
+ * 2260a06b — transaction-bound authority for a Movement ROLLBACK that puts the Employee Type end dates back.
+ * Undoing a movement restores the exact values it replaced, which may be the empty dates of a type the employee
+ * no longer has (the assignment leg is undone separately). The per-type requirement checks therefore do not
+ * apply to that restore, and only that restore may put provisional_end_on back. Held only by core/movement.ts's
+ * reverse leg for the duration of its own setEmploymentInfo call; a form or import cannot reach it.
+ */
+const endDateRestoreTx = new WeakSet<object>();
+export async function withEndDateRestoreTx<T>(tx: Tx, run: () => Promise<T>): Promise<T> {
+  if (endDateRestoreTx.has(tx)) throw new Error('An end-date restore is already active.');
+  endDateRestoreTx.add(tx);
+  try {
+    return await run();
+  } finally {
+    endDateRestoreTx.delete(tx);
+  }
+}
+
 export async function setEmploymentInfo(
   ctx: SessionContext,
   p: EmploymentInfoInput,
@@ -3292,6 +3312,8 @@ export async function setEmploymentInfo(
         contractEndDate: employment.contractEndDate,
         contractRemark: employment.contractRemark,
         internshipEndDate: employment.internshipEndDate,
+        // The at-hire copy the internship date keeps aligned (see below); in the diff so a rollback can restore it.
+        provisionalEndOn: employment.provisionalEndOn,
         orgBranch: employment.orgBranch,
         orgDivision: employment.orgDivision,
         orgRegion: employment.orgRegion,
@@ -3412,7 +3434,13 @@ export async function setEmploymentInfo(
     // than the day the employee joined the current company (join date, else the group join date).
     const internshipEnd =
       'internshipEndDate' in set ? (set.internshipEndDate as string | null) : before.internshipEndDate;
-    if ('internshipEndDate' in set && internshipEnd && internshipEnd <= (join ?? hire)) {
+    const restoring = endDateRestoreTx.has(tx);
+    if (restoring && p.provisionalEndOn !== undefined) {
+      const v = p.provisionalEndOn == null ? null : String(p.provisionalEndOn).trim();
+      if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
+      set.provisionalEndOn = v || null;
+    }
+    if (!restoring && 'internshipEndDate' in set && internshipEnd && internshipEnd <= (join ?? hire)) {
       throw new Error('Internship end date must be later than the join date.');
     }
     if ('contractStartDate' in set || 'contractEndDate' in set || 'internshipEndDate' in set) {
@@ -3430,18 +3458,20 @@ export async function setEmploymentInfo(
         )
         .limit(1);
       if (
+        !restoring &&
         ('contractStartDate' in set || 'contractEndDate' in set) &&
         live?.employmentType === 'contract' &&
         !(contractStart && contractEnd)
       ) {
         throw new Error('Contract start date and contract end date are required for a contract employee.');
       }
-      if ('internshipEndDate' in set && live?.employmentType === 'intern' && !internshipEnd) {
+      if (!restoring && 'internshipEndDate' in set && live?.employmentType === 'intern' && !internshipEnd) {
         throw new Error('Internship end date is required for an intern employee.');
       }
       // The internship end date belongs to an Intern. A changed, non-empty date for any other type is refused
       // (imports and corrections included) rather than stored as a fact that no screen shows.
       if (
+        !restoring &&
         'internshipEndDate' in set &&
         internshipEnd &&
         internshipEnd !== (before.internshipEndDate ?? null) &&
@@ -3472,17 +3502,13 @@ export async function setEmploymentInfo(
       // still the internship's own date (equal to it, or the internship column was never filled), it follows
       // the change so the two can never disagree. A full-time provisional (probation) date is left alone.
       if (
+        !restoring &&
         'internshipEndDate' in set &&
         internshipEnd &&
         internshipEnd !== (before.internshipEndDate ?? null) &&
         live?.employmentType === 'intern'
       ) {
-        const [provisional] = await tx
-          .select({ provisionalEndOn: employment.provisionalEndOn })
-          .from(employment)
-          .where(eq(employment.id, p.employmentId))
-          .limit(1);
-        const prior = provisional?.provisionalEndOn ?? null;
+        const prior = before.provisionalEndOn ?? null;
         if (prior !== internshipEnd && (prior === (before.internshipEndDate ?? null) || before.internshipEndDate == null)) {
           set.provisionalEndOn = internshipEnd;
         }

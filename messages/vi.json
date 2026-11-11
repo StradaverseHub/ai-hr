@@ -1790,6 +1790,8 @@
           "position": "Chức vụ",
           "grade": "Cấp bậc",
           "employmentType": "Loại hình lao động",
+          "contractEndDate": "Ngày kết thúc hợp đồng",
+          "internshipEndDate": "Ngày kết thúc thực tập",
           "manager": "Quản lý trực tiếp",
           "salary": "Lương",
           "orgDivision": "Khối",
@@ -1881,6 +1883,8 @@
           "closedPayrollBody": "Việc điều chỉnh này cập nhật hồ sơ nhân viên và các lần xử lý sau. Bảng lương đã khóa, phiếu lương đã phát hành và các hồ sơ nộp theo luật định giữ nguyên số liệu cuối cùng và sẽ không được tính lại. Nếu cần điều chỉnh số tiền, hãy dùng quy trình điều chỉnh lương. Mức lương đã điều chỉnh có hiệu lực từ tháng đầu tiên sau kỳ lương đã khóa.",
           "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã khóa sẽ không thay đổi.",
           "mustChange": "Bắt buộc thay đổi",
+          "endDateRequiredContract": "Bắt buộc vì Loại nhân viên mới là Hợp đồng. Hợp đồng bắt đầu từ ngày hiệu lực và phải kết thúc sau ngày đó.",
+          "endDateRequiredIntern": "Bắt buộc vì Loại nhân viên mới là Thực tập. Kỳ thực tập phải kết thúc sau ngày hiệu lực.",
           "mustChangeRefused": "Loại sự kiện này yêu cầu {field} phải thay đổi. Hãy nhập giá trị mới.",
           "documentOptional": "Tài liệu hỗ trợ (tùy chọn)",
           "documentRequired": "Tài liệu hỗ trợ (bắt buộc khi trường này thay đổi)"

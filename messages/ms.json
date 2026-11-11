@@ -1790,6 +1790,8 @@
           "position": "Jawatan",
           "grade": "Gred Jawatan",
           "employmentType": "Jenis Pekerjaan",
+          "contractEndDate": "Tarikh Tamat Kontrak",
+          "internshipEndDate": "Tarikh Tamat Latihan",
           "manager": "Pengurus Laporan",
           "salary": "Gaji",
           "orgDivision": "Bahagian",
@@ -1881,6 +1883,8 @@
           "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang telah ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Jika sesuatu amaun perlu diselaraskan, gunakan proses pembetulan gaji. Gaji yang dibetulkan berkuat kuasa mulai bulan pertama selepas gaji yang telah ditutup.",
           "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah.",
           "mustChange": "Wajib diubah",
+          "endDateRequiredContract": "Diperlukan kerana Jenis Pekerja baharu ialah Kontrak. Kontrak bermula pada tarikh berkuat kuasa dan mesti tamat selepasnya.",
+          "endDateRequiredIntern": "Diperlukan kerana Jenis Pekerja baharu ialah Pelatih. Latihan mesti tamat selepas tarikh berkuat kuasa.",
           "mustChangeRefused": "{field} mesti diubah untuk jenis peristiwa ini. Masukkan nilai baharu.",
           "documentOptional": "Dokumen sokongan (pilihan)",
           "documentRequired": "Dokumen sokongan (wajib apabila ini berubah)"

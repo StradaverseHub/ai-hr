@@ -1790,6 +1790,8 @@
           "position": "Position",
           "grade": "Job Grade",
           "employmentType": "Employment Type",
+          "contractEndDate": "Contract End Date",
+          "internshipEndDate": "Internship End Date",
           "manager": "Reporting Manager",
           "salary": "Salary",
           "orgDivision": "Division",
@@ -1881,6 +1883,8 @@
           "closedPayrollBody": "This correction updates the employee's record and future processing. The closed payroll, released payslips and statutory submissions keep their finalised figures and will not be recalculated. If an amount needs adjusting, use the payroll correction process. A corrected salary takes effect from the first month after the closed payroll.",
           "closedPayrollAcknowledge": "I understand that closed payroll will not change.",
           "mustChange": "Required to change",
+          "endDateRequiredContract": "Required because the new Employee Type is Contract. The contract starts on the effective date and must end after it.",
+          "endDateRequiredIntern": "Required because the new Employee Type is Intern. The internship must end after the effective date.",
           "mustChangeRefused": "{field} must change for this event type. Enter the new value.",
           "documentOptional": "Supporting document (optional)",
           "documentRequired": "Supporting document (required when this changes)"

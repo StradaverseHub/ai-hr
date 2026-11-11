@@ -265,7 +265,7 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
   if(field==='businessUnitId'&&(managed||tags.status!=='legacy'))continue;
   if(field==='companyId')input.companyId=targetCompanyId;
   else if(field==='departmentId'||field==='positionId'||field==='businessUnitId'||field==='locationId'||field==='gradeId'||field==='managerEmploymentId')input[field]=lookup(raw,(catalog.fields[field]??[]).map(option=>({...option,aliases:[...(option.aliases??[]),...(source.companies.find(c=>c.value===targetCompanyId)?[option.label,...option.codes??[],...option.aliases??[]].map(alias=>source.companies.find(c=>c.value===targetCompanyId)!.label+' · '+alias):[])]})),field);
-  else if(field==='endDate'||field==='resignationDate'||field==='tenderResignationDate'||field==='resignationEffectiveDate')input[field]=movementImportDate(raw)!;
+  else if(field==='endDate'||field==='resignationDate'||field==='tenderResignationDate'||field==='resignationEffectiveDate'||field==='contractEndDate'||field==='internshipEndDate')input[field]=movementImportDate(raw)!;
   else if(field==='basicSalary'||field==='terminationNoticeDays'){
    if(!/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(raw)||!Number.isFinite(Number(raw)))throw new Error('invalid_number:'+field);
    input[field]=Number(raw);

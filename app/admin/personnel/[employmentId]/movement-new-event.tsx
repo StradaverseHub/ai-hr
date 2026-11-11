@@ -69,6 +69,9 @@ export type MovementCurrentValues = {
   orgSection: string | null;
   orgLine: string | null;
   orgBase: string | null;
+  /** 2260a06b — the Employee Type end dates (optional: older callers may not supply them). */
+  contractEndDate?: string | null;
+  internshipEndDate?: string | null;
 };
 
 // Literal styling tokens (documents-manager precedent — never import a server module into this bundle).
@@ -239,6 +242,10 @@ export function MovementNewEvent({
   ])].sort() : [];
   const saved = edit?.pendingInput;
   const after = {...current,...saved};
+  // 2260a06b — the end-date row follows the Employee Type picked in this form (Contract → Contract End Date,
+  // Intern → Internship End Date, Full-Time / Part-Time → neither), so the select is tracked here.
+  const [afterType, setAfterType] = useState<string>(after.employmentType ?? '');
+  const typeChanges = afterType !== (current.employmentType ?? '');
   const initialFields=useRef<Map<string,string>|null>(null);
   const touched=useRef(new Set<string>());
   const [pageError,pageAction,pagePending]=useActionState(async(previous:string|null,data:FormData)=>{
@@ -499,13 +506,25 @@ export function MovementNewEvent({
       select('locationId', after.locationId, scoped.locations, t('form.none'))),
     row('employmentType', 'employmentType', label(movementField('employmentType')),
       employmentTypes.find((o) => o.value === current.employmentType)?.label ?? null,
-      <select {...personnelWorkflowControl(movementField('employmentType'), 'movement', 'edit')} defaultValue={after.employmentType ?? ''} className={inputCls}>
+      <select {...personnelWorkflowControl(movementField('employmentType'), 'movement', 'edit')} defaultValue={after.employmentType ?? ''} onChange={(e) => setAfterType(e.target.value)} className={inputCls}>
         {employmentTypes.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
           </option>
         ))}
       </select>),
+    afterType === 'contract' ? row('contractEndDate', 'contractEndDate', label(movementField('contractEndDate')), current.contractEndDate ?? null,
+      <>
+        <input key={`contractEndDate-${typeChanges}`} {...personnelWorkflowInput(movementField('contractEndDate'), 'movement', 'edit')}
+          defaultValue={typeChanges ? (saved?.contractEndDate ?? '') : (after.contractEndDate ?? '')} className={inputCls} />
+        {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredContract')}</p>}
+      </>) : null,
+    afterType === 'intern' ? row('internshipEndDate', 'internshipEndDate', label(movementField('internshipEndDate')), current.internshipEndDate ?? null,
+      <>
+        <input key={`internshipEndDate-${typeChanges}`} {...personnelWorkflowInput(movementField('internshipEndDate'), 'movement', 'edit')}
+          defaultValue={typeChanges ? (saved?.internshipEndDate ?? '') : (after.internshipEndDate ?? '')} className={inputCls} />
+        {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredIntern')}</p>}
+      </>) : null,
     row('managerEmploymentId', 'manager', label(movementField('managerEmploymentId')), nameOf(managers, current.managerEmploymentId),
       select('managerEmploymentId', after.managerEmploymentId, scopedManagers, t('form.none'))),
     row('basicSalary', 'basicSalary', label(movementField('basicSalary')), current.basicSalary,

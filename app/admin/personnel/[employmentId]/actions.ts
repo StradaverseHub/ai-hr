@@ -447,6 +447,9 @@ function parseMovementForm(formData: FormData, mode: 'create' | 'edit' = 'create
     paymentTerm: optional('paymentTerm') ?? undefined,
     // The flat, non-dated org columns the comparison screen now carries (Division … Category).
     ...Object.fromEntries(MOVEMENT_FLAT_FIELDS.map((f) => [f, optional(f)])),
+    // 2260a06b — the end date of the Employee Type the movement leaves the employee with (only that row renders).
+    contractEndDate: optional('contractEndDate'),
+    internshipEndDate: optional('internshipEndDate'),
     // ae9350f2 — the Termination movement's structured exit fields. The reason CODE is the only thing the
     // form posts for classification: core/movement.ts validates it against the built-in catalogue and
     // derives `terminationType` from it, so the two can never be submitted in contradiction.
