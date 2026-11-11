@@ -147,7 +147,7 @@ export async function correctInformationTx(tx:Tx,ctx:SessionContext,input:{emplo
  }
  // 2260a06b — the type end dates live on employment. provisional_end_on follows the internship date while it is
  // still that date's copy (setEmploymentInfo applies the same rule), so the review and status fallbacks agree.
- const internshipProvisional=p.changed.includes('internshipEndDate')&&p.after.internshipEndDate&&(s.emp.provisionalEndOn===s.emp.internshipEndDate||s.emp.internshipEndDate==null)?{provisionalEndOn:p.after.internshipEndDate}:{};
+ const internshipProvisional=p.changed.includes('internshipEndDate')&&p.after.internshipEndDate&&s.emp.provisionalEndOn!=null&&s.emp.provisionalEndOn===s.emp.internshipEndDate?{provisionalEndOn:p.after.internshipEndDate}:{};
  await tx.update(employment).set({companyId:p.after.companyId!,hiredOn:p.after.hiredOn!,joinDate:p.after.joinDate,gradeId:p.after.gradeId,contractStartDate,contractEndDate:p.after.contractEndDate,internshipEndDate:p.after.internshipEndDate,...internshipProvisional}).where(eq(employment.id,s.emp.id));
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:s.emp.id,eventType:INFORMATION_CORRECTED_EVENT,actor:actorOf(ctx),subjectEmploymentId:s.emp.id,payload:{employeeCode:p.employeeCode,before:p.before,after:p.after,beforeLabels:p.beforeLabels,afterLabels:p.afterLabels,fields:p.changed,reason:p.reason,effectiveOn,method:input.method,batchId:input.batchId??null,filename:input.filename??null,snapshotCount:preserved.count,assignmentVersionId,previousAssignmentId:s.current.id}});
  await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:s.emp.id,companyId:p.after.companyId!,asOf:effectiveOn,trigger:'correction'});

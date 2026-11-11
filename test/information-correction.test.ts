@@ -186,7 +186,7 @@ describe('8550b282 information-only corrections',()=>{
  });
  it('saves valid Excel rows, retains errors and unchanged rows, and retries only once',async()=>{
   const id=await fixture();await fixture('EMP-002');
-  const file=workbook([['DEMO','EMP-001','','','2025-01-01','','','','Correct signed record'],['DEMO','EMP-002','','','','','UNKNOWN','','Correct grade'],['DEMO','MISSING','','','','','','','Unknown employee']]);
+  const file=workbook([['DEMO','EMP-001','','','2025-01-01','','','','','','Correct signed record'],['DEMO','EMP-002','','','','','UNKNOWN','','','','Correct grade'],['DEMO','MISSING','','','','','','','','','Unknown employee']]);
   const preview=await previewInformationUpload(ctx(),{name:'corrections.xlsx',content:file,operationKey:randomUUID()});expect(preview.plan.counts).toEqual({total:3,valid:1,invalid:2});
   const result=await confirmInformationUpload(ctx(),{attemptId:preview.attemptId,previewHash:preview.plan.previewHash});expect(result).toMatchObject({succeeded:1,failed:2,unchanged:0});
   expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0]).toMatchObject({hiredOn:'2025-01-01',gradeId:null});
@@ -195,7 +195,7 @@ describe('8550b282 information-only corrections',()=>{
   const [history]=await informationCorrectionHistory(ctx(),id);expect(history.payload).toMatchObject({method:'excel',batchId:preview.attemptId,filename:'corrections.xlsx'});
  });
  it('refuses duplicate target rows, invalid reasons and formula cells at preview',async()=>{
-  await fixture();const content=workbook([['DEMO','EMP-001','','','2025-01-01','','','','Correct record'],['DEMO','EMP-001','','','2025-01-02','','','','']]);
+  await fixture();const content=workbook([['DEMO','EMP-001','','','2025-01-01','','','','','','Correct record'],['DEMO','EMP-001','','','2025-01-02','','','','','','']]);
   const p=await previewInformationUpload(ctx(),{name:'duplicates.xlsx',content,operationKey:randomUUID()});expect(p.plan.counts.valid).toBe(0);expect(p.plan.rows.every(r=>r.errors.length>0)).toBe(true);
   const book=XLSX.read(content,{type:'buffer'});book.Sheets.Corrections.E2={t:'n',f:'1+1',v:2};const rows=parseInformationWorkbook(XLSX.write(book,{type:'buffer',bookType:'xlsx'}));expect(rows[0].errors.join(' ')).toContain('formulas');
  });
@@ -203,7 +203,7 @@ describe('8550b282 information-only corrections',()=>{
   const file=informationWorkbook(await informationCorrectionOptions(ctx()));const book=XLSX.read(file,{type:'array'});expect(book.SheetNames).toEqual(['Corrections','Instructions','Companies','Job Grades','Employment Types']);expect(book.Sheets.Companies.A2.v).toBe('DEMO');expect(book.Sheets.Corrections.I1.v).toBe('Correction Reason');
  });
  it('preserves leading zeros and accepts actual Excel dates; blank cells stay absent',()=>{
-  const rows=parseInformationWorkbook(workbook([['DEMO','00001','','',45658,'','','','Correct record']]));expect(rows[0].employeeCode).toBe('00001');expect(rows[0].values['Group Join Date']).toBe('2025-01-01');expect(rows[0].values['Job Grade']).toBeUndefined();
+  const rows=parseInformationWorkbook(workbook([['DEMO','00001','','',45658,'','','','','','Correct record']]));expect(rows[0].employeeCode).toBe('00001');expect(rows[0].values['Group Join Date']).toBe('2025-01-01');expect(rows[0].values['Job Grade']).toBeUndefined();
  });
  it('serializes competing manual confirmations and records only the winning correction',async()=>{
   const id=await fixture(),reason='Correct verified record';const first={hiredOn:'2025-01-01'},second={hiredOn:'2025-01-02'};
@@ -212,7 +212,7 @@ describe('8550b282 information-only corrections',()=>{
   expect(outcomes.filter(result=>result.status==='fulfilled')).toHaveLength(1);expect(outcomes.filter(result=>result.status==='rejected')).toHaveLength(1);expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(1);
  });
  it('rolls back every field of a failed Excel employee while retaining earlier successful rows',async()=>{
-  const first=await fixture(),second=await fixture('EMP-002');const file=workbook([['DEMO','EMP-001','','','2025-01-01','','','','Correct first record'],['DEMO','EMP-002','','','2025-01-02','','','','Correct second record']]);
+  const first=await fixture(),second=await fixture('EMP-002');const file=workbook([['DEMO','EMP-001','','','2025-01-01','','','','','','Correct first record'],['DEMO','EMP-002','','','2025-01-02','','','','','','Correct second record']]);
   const preview=await previewInformationUpload(ctx(),{name:'partial.xlsx',content:file,operationKey:randomUUID()});expect(preview.plan.counts.valid).toBe(2);
   await owner.db.update(schema.employment).set({orgBranch:'Changed after preview'}).where(eq(schema.employment.id,second));
   const result=await confirmInformationUpload(ctx(),{attemptId:preview.attemptId,previewHash:preview.plan.previewHash});expect(result).toMatchObject({succeeded:1,failed:1});
@@ -221,7 +221,7 @@ describe('8550b282 information-only corrections',()=>{
  it('does not disclose a source/destination import plan to an administrator of only the source company',async()=>{
   const id=await fixture();const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Private destination',companyLabel:'DEST'}).returning();
   await assignLabelToCompanies(ctx(),{kind:'department',labelId:b.deptA,companyIds:[b.companyId,destination.id]});await assignLabelToCompanies(ctx(),{kind:'position',labelId:b.positionId,companyIds:[b.companyId,destination.id]});
-  const preview=await previewInformationUpload(ctx(),{name:'companies.xlsx',content:workbook([['DEMO','EMP-001','','DEST','','','','','Correct source company']]),operationKey:randomUUID()});expect(preview.plan.counts.valid).toBe(1);
+  const preview=await previewInformationUpload(ctx(),{name:'companies.xlsx',content:workbook([['DEMO','EMP-001','','DEST','','','','','','','Correct source company']]),operationKey:randomUUID()});expect(preview.plan.counts.valid).toBe(1);
   const [emp]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id));const userId=await createAppUser(b.tenantId,emp.personId,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,userId));
   const restricted={...ctx(),userId,personId:emp.personId,grants:[{role:'hr_admin',companyId:b.companyId}]};
   expect(await getImportAttempt(restricted,preview.attemptId)).toBeNull();expect(await importAttemptSource(restricted,preview.attemptId)).toBeNull();

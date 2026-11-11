@@ -13,7 +13,7 @@ vi.mock('../app/admin/personnel/information-correction-actions',()=>({informatio
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:actions.refresh})}));
 const {HireCorrectionModes,InformationChangesTable}=await import('../app/admin/personnel/information-correction-form');
 const {InformationCorrectionImport}=await import('../app/admin/personnel/import/information-correction-import');
-const values={companyId:'co-a',hiredOn:'2025-01-15',joinDate:'2025-01-15',gradeId:null,employmentType:'full_time'};
+const values={companyId:'co-a',hiredOn:'2025-01-15',joinDate:'2025-01-15',gradeId:null,employmentType:'full_time',contractEndDate:null,internshipEndDate:null};
 const preview:InformationPreview={effectiveOn:'2026-10-30',employmentId:'synthetic-employee',employeeCode:'EMP-001',name:'Aisha Fixture',fingerprint:'review-fingerprint',before:values,after:{...values,hiredOn:'2025-01-01'},beforeLabels:{...values,companyId:'DEMO · Demo Company'},afterLabels:{...values,companyId:'DEMO · Demo Company',hiredOn:'2025-01-01'},reason:'Correct signed employment record',changed:['hiredOn']};
 const context=()=>({preview:{...preview,changed:[],after:values},options:{companies:[{id:'co-a',code:'DEMO',name:'Demo Company'}],grades:[],employmentTypes:['full_time','part_time']},history:[]});
 afterEach(()=>{cleanup();vi.clearAllMocks();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');});

@@ -3499,8 +3499,9 @@ export async function setEmploymentInfo(
       // 2260a06b — ONE DATE, ONE HOME for interns. hireEmployee wrote the internship end into provisional_end_on
       // as well, and the review/status fallbacks (core/employment-review.ts computeReviewWindow,
       // core/employment-status.ts) read that copy when the typed column is empty. When the provisional date is
-      // still the internship's own date (equal to it, or the internship column was never filled), it follows
-      // the change so the two can never disagree. A full-time provisional (probation) date is left alone.
+      // still the internship's own copy (equal to the stored internship date) it follows the change, so the two
+      // never disagree. Any other provisional date (a former full-time probation end, or a pre-release intern
+      // the backfill has not reached) is left alone, so the status fallback keeps its existing behaviour.
       if (
         !restoring &&
         'internshipEndDate' in set &&
@@ -3509,7 +3510,7 @@ export async function setEmploymentInfo(
         live?.employmentType === 'intern'
       ) {
         const prior = before.provisionalEndOn ?? null;
-        if (prior !== internshipEnd && (prior === (before.internshipEndDate ?? null) || before.internshipEndDate == null)) {
+        if (prior !== internshipEnd && prior != null && prior === (before.internshipEndDate ?? null)) {
           set.provisionalEndOn = internshipEnd;
         }
       }
