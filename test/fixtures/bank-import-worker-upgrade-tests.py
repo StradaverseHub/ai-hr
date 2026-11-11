@@ -106,11 +106,15 @@ class WorkerUpgradeTests(unittest.TestCase):
             output=Path(tmp)/'helper.py'
             result=subprocess.run([sys.executable,'-I','-B',str(ROOT/'scripts/bank-import-worker-upgrade-bundle.py'),str(output)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(json.loads(result.stdout)['phases'],['drain','activate','adopt-stopped'])
             body=output.read_text();self.assertNotIn('spec_from_file_location',body)
             self.assertIn('types.ModuleType',body);self.assertEqual(output.stat().st_mode&0o777,0o600)
             result=subprocess.run([sys.executable,'-I','-B',str(output),'--help'],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
-            for flag in ['previous-web-source','previous-web-build','previous-worker-source']:self.assertIn(flag,result.stdout)
+            for flag in ['previous-web-source','previous-web-build','previous-worker-source','adopt-stopped','observed-unit-sha256']:self.assertIn(flag,result.stdout)
+            self.assertIn('{drain,activate,adopt-stopped}',result.stdout)
+            refused=subprocess.run([sys.executable,'-I','-B',str(output),'adopt-stopped','--unit-sha256','e'*64],capture_output=True,text=True)
+            self.assertNotEqual(refused.returncode,0);self.assertIn('is required for adopt-stopped',refused.stderr)
             duplicate=subprocess.run([sys.executable,'-I','-B',str(ROOT/'scripts/bank-import-worker-upgrade-bundle.py'),str(output)],capture_output=True,text=True)
             self.assertNotEqual(duplicate.returncode,0)
 
@@ -198,7 +202,9 @@ class UpgradeFlowFixture:
             stack.enter_context(patch.object(update,'HTTPConnection',side_effect=self.health_connection))
             stack.enter_context(patch.object(update,'validate_process',side_effect=lambda _,report,source:int(report['MainPID'])))
             stack.enter_context(patch.object(update.time,'sleep'))
+            for item in self.extra_patches():stack.enter_context(item)
             update.upgrade(self.args(phase,overrides),self.fmt,self.base)
+    def extra_patches(self):return []
     @property
     def operation(self):return self.app/'upgrades'/self.source
 
@@ -293,11 +299,178 @@ class WorkerUpgradeFlowTests(unittest.TestCase):
             observed=update.quiesce_failed_activation(f.base,f.operation,f.source)
             self.assertFalse(observed['stopped']);self.assertTrue(observed['quiescenceUnconfirmed']);self.assertEqual(f.events,[])
             self.assertEqual(f.unit.read_text(),'foreign unit')
+    def test_missing_receipt_refuses_drain_and_activate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=UpgradeFlowFixture(Path(tmp));(f.old_release/'worker-install-v2.json').unlink()
+            with self.assertRaises(ValueError):f.invoke('drain')
+            self.assertFalse(f.operation.exists());self.assertFalse(any(isinstance(event,list) and 'kill' in event for event in f.events))
+        with tempfile.TemporaryDirectory() as tmp:
+            f=UpgradeFlowFixture(Path(tmp));f.invoke('drain');(f.old_release/'worker-install-v2.json').unlink();f.web=f.source
+            with self.assertRaises(ValueError):f.invoke('activate')
+            self.assertEqual(f.unit.read_text(),f.service_unit(f.previous_worker));self.assertFalse((f.app/'releases'/f.source).exists())
     def test_failed_quarantine_reload_never_arms_an_unprotected_stop(self):
         with tempfile.TemporaryDirectory() as tmp:
             f=UpgradeFlowFixture(Path(tmp));f.operation.mkdir(parents=True);f.unit.write_text(f.service_unit(f.source));f.fault='reload'
             observed=update.quiesce_failed_activation(f.base,f.operation,f.source)
             self.assertFalse(observed['stopped']);self.assertTrue(observed['quiescenceUnconfirmed'])
             self.assertFalse(any(isinstance(event,list) and 'stop' in event for event in f.events))
+
+PROCESS_FIELDS=('User','Group','WorkingDirectory','FragmentPath','EnvironmentFiles')
+
+class AdoptFlowFixture(UpgradeFlowFixture):
+    """A prior worker from an earlier ad-hoc procedure: legacy unit bytes, no receipt, cleanly stopped."""
+    def __init__(self,root):
+        super().__init__(root);self.web=self.source;self.uid=4242;self.live=[];self.cgroup=''
+        (self.old_release/'worker-install-v2.json').unlink()
+        self.unit.write_text(self.legacy_unit());self.observed=update.digest(self.unit.read_bytes())
+        self.report.update(MainPID='0',ActiveState='inactive',SubState='dead',User='fictional',Group='fictional',
+            WorkingDirectory=str(self.old_release),FragmentPath=str(self.unit),EnvironmentFiles=str(self.env)+' (ignore_errors=no)',
+            **{key:'' for key in update.OVERRIDE_KEYS})
+    def legacy_unit(self):return 'WorkingDirectory='+str(self.old_release)+'\nEnvironment=NODE_ENV=production\nRestart=on-failure\n'
+    def command(self,argv):
+        if 'show' in argv:
+            self.events.append(list(argv));return SimpleNamespace(stdout='ControlGroup='+self.cgroup+'\nExecMainPID=123\nExecMainExitTimestamp=fictional\nInactiveEnterTimestamp=fictional\n',returncode=0)
+        return super().command(argv)
+    def extract(self,archive,destination,*rest):
+        manifest=super().extract(archive,destination,*rest)
+        if self.fault=='prepare-prior-started':self.report.update(MainPID='789',ActiveState='active',SubState='running')
+        if self.fault=='prepare-prior-process':self.live=[789]
+        if self.fault=='prepare-unit-changed':self.unit.write_text('changed unit')
+        if self.fault=='prepare-env-changed':self.env.write_text('changed')
+        return manifest
+    def args(self,phase,overrides=None):
+        values={'previous-worker-source':self.previous_worker,'source':self.source,'build-id':self.new_build,'archive':str(self.archive),'archive-sha256':update.digest(self.archive.read_bytes()),'lock-sha256':'a'*64,'package-sha256':'b'*64,'observed-unit-sha256':self.observed,'worker-env-sha256':self.env_hash}
+        values.update(overrides or {})
+        return [phase,*[part for key,value in values.items() if value is not None for part in ('--'+key,value)]]
+    def extra_patches(self):
+        return [patch.object(update.pwd,'getpwnam',return_value=SimpleNamespace(pw_uid=self.uid)),
+                patch.object(update,'unit_or_identity_processes',side_effect=lambda uid:(check(uid==self.uid,'scanned wrong identity'),list(self.live))[1])]
+    def mutations(self):return [event for event in self.events if isinstance(event,list) and any(word in event for word in ('kill','stop','start','disable','daemon-reload'))]
+
+class AdoptStoppedFlowTests(unittest.TestCase):
+    def test_adopts_cleanly_stopped_prior_with_current_template_and_fresh_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=AdoptFlowFixture(Path(tmp));before=f.env.read_bytes();legacy=f.unit.read_bytes();f.invoke('adopt-stopped')
+            commands=f.mutations()
+            self.assertEqual(commands,[['/usr/bin/systemctl','daemon-reload'],['/usr/bin/systemctl','start','aihr-bank-import.service']])
+            self.assertEqual(f.unit.read_text(),f.service_unit(f.source));self.assertEqual(f.report['ActiveState'],'active')
+            self.assertTrue(f.old_release.is_dir());self.assertEqual(f.env.read_bytes(),before)
+            self.assertEqual((f.operation/'prior-unit.service').read_bytes(),legacy)
+            observed=json.loads((f.operation/'stopped-prior.json').read_text())
+            self.assertEqual(observed['prior']['state'],'stopped');self.assertFalse(observed['prior']['forcedKill']);self.assertEqual(observed['prior']['livePids'],[])
+            self.assertEqual(observed['prior']['properties']['Result'],'success');self.assertEqual(observed['prior']['runtime']['ControlGroup'],'')
+            self.assertEqual(observed['identity']['observed_unit_sha256'],f.observed);self.assertNotIn('unit_sha256',observed['identity'])
+            receipt=json.loads((f.app/'releases'/f.source/'worker-install-v2.json').read_text())
+            self.assertEqual(receipt,json.loads((f.operation/'activated.json').read_text()))
+            self.assertEqual(receipt['mode'],'adopt-stopped');self.assertEqual(receipt['previousUnitSha256'],f.observed)
+            self.assertEqual(receipt['previousWorkerSource'],f.previous_worker);self.assertEqual(receipt['unitSha256'],update.digest(f.service_unit(f.source).encode()))
+            self.assertEqual(receipt['selectedEnvironmentSha256'],f.env_hash);self.assertEqual(receipt['workerPid'],456)
+            self.assertTrue(receipt['serviceStable']);self.assertFalse(receipt['journeyVerified'])
+            self.assertEqual(receipt['priorObservationSha256'],update.digest(f.fmt.canonical(observed['prior'])))
+            # The fresh receipt is exactly what a later managed drain validates.
+            self.assertEqual(receipt['source'],f.source);self.assertNotIn('previousWebSource',receipt)
+    def assert_refused_without_change(self,f,legacy):
+        self.assertEqual(f.unit.read_bytes(),legacy);self.assertEqual(f.mutations(),[])
+        self.assertFalse((f.app/'releases'/f.source).exists())
+    def test_refuses_active_failed_restarting_or_live_prior_before_any_change(self):
+        defects={'active':{'MainPID':'123','ActiveState':'active','SubState':'running'},'activating':{'ActiveState':'activating','SubState':'start'},
+                 'failed':{'ActiveState':'failed','SubState':'failed','Result':'exit-code','ExecMainStatus':'1'},
+                 'nonzero-exit':{'ExecMainStatus':'1'},'unsuccessful-result':{'Result':'signal'},'main-pid':{'MainPID':'123'},
+                 'reload-pending':{'NeedDaemonReload':'yes'},'disabled':{'UnitFileState':'disabled'},'drop-in':{'DropInPaths':'/etc/x.conf'},
+                 'other-directory':{'WorkingDirectory':'/elsewhere'},'live-process':'live','control-group':'cgroup','receipt':'receipt','identity':'identity'}
+        for defect,change in defects.items():
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=AdoptFlowFixture(Path(tmp));legacy=f.unit.read_bytes()
+                if change=='live':f.live=[777]
+                elif change=='cgroup':f.cgroup='/system.slice/aihr-bank-import.service'
+                elif change=='receipt':(f.old_release/'worker-install-v2.json').write_text(json.dumps(f.old_receipt))
+                elif change=='identity':f.extra_patches=lambda:[patch.object(update.pwd,'getpwnam',side_effect=KeyError('fictional'))]
+                else:f.report.update(change)
+                with self.assertRaises(ValueError):f.invoke('adopt-stopped')
+                self.assertFalse(f.operation.exists());self.assert_refused_without_change(f,legacy)
+                if change=='receipt':self.assertTrue((f.old_release/'worker-install-v2.json').exists())
+    def test_refuses_unit_or_environment_hash_mismatch(self):
+        for defect in ['observed-pin','unit-bytes','env-pin','env-bytes']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=AdoptFlowFixture(Path(tmp));overrides={}
+                if defect=='observed-pin':overrides['observed-unit-sha256']='c'*64
+                if defect=='unit-bytes':f.unit.write_text(f.service_unit(f.previous_worker))
+                if defect=='env-pin':overrides['worker-env-sha256']='d'*64
+                if defect=='env-bytes':f.env.write_text('changed')
+                legacy=f.unit.read_bytes()
+                with self.assertRaisesRegex(ValueError,'unit differs|environment differs'):f.invoke('adopt-stopped',overrides)
+                self.assertFalse(f.operation.exists());self.assert_refused_without_change(f,legacy)
+    def test_refuses_unhealthy_or_different_current_web(self):
+        for defect in ['stopped','unhealthy','wrong-body','previous-web','wrong-build','changes-after-extract']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=AdoptFlowFixture(Path(tmp));legacy=f.unit.read_bytes();overrides={}
+                if defect=='stopped':f.web_active=False
+                if defect=='unhealthy':f.health_status=503
+                if defect=='wrong-body':f.health_body=b'{"status":"degraded"}'
+                if defect=='previous-web':f.web=f.previous_worker
+                if defect=='wrong-build':overrides['build-id']='other-build'
+                if defect=='changes-after-extract':f.fault='prepare-web-stopped'
+                with self.assertRaises(ValueError):f.invoke('adopt-stopped',overrides)
+                self.assertEqual(f.unit.read_bytes(),legacy);self.assertEqual(f.mutations(),[]);self.assertFalse((f.operation/'activated.json').exists())
+    def test_rechecks_pinned_prior_immediately_before_replacement(self):
+        for fault in ['prepare-prior-started','prepare-prior-process','prepare-unit-changed','prepare-env-changed']:
+            with self.subTest(fault=fault),tempfile.TemporaryDirectory() as tmp:
+                f=AdoptFlowFixture(Path(tmp));f.fault=fault;legacy=f.unit.read_bytes()
+                with self.assertRaises(ValueError):f.invoke('adopt-stopped')
+                if fault!='prepare-unit-changed':self.assertEqual(f.unit.read_bytes(),legacy)
+                self.assertEqual(f.mutations(),[]);self.assertTrue((f.operation/'stopped-prior.json').exists())
+                self.assertFalse((f.operation/'activated.json').exists());self.assertTrue(f.old_release.is_dir())
+    def test_argument_surface_keeps_adopt_and_managed_pins_separate(self):
+        cases=[('adopt-stopped',{'observed-unit-sha256':None}),('adopt-stopped',{'unit-sha256':'e'*64}),('adopt-stopped',{'previous-web-source':'1'*40}),
+               ('adopt-stopped',{'previous-web-build':'old-build'}),('adopt-stopped',{'source':'1'*40}),('adopt-stopped',{'observed-unit-sha256':'short'})]
+        for phase,overrides in cases:
+            with self.subTest(overrides=overrides),tempfile.TemporaryDirectory() as tmp:
+                f=AdoptFlowFixture(Path(tmp));legacy=f.unit.read_bytes()
+                with self.assertRaises(ValueError):f.invoke(phase,overrides)
+                self.assertFalse((f.app/'upgrades').exists());self.assert_refused_without_change(f,legacy)
+        with tempfile.TemporaryDirectory() as tmp:
+            f=UpgradeFlowFixture(Path(tmp))
+            with self.assertRaisesRegex(ValueError,'not part of drain'):f.invoke('drain',{'observed-unit-sha256':'e'*64})
+            self.assertFalse(f.operation.exists());self.assertFalse(any(isinstance(event,list) and 'kill' in event for event in f.events))
+    def test_existing_attempt_refuses_a_second_adoption(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=AdoptFlowFixture(Path(tmp));f.operation.mkdir(parents=True);legacy=f.unit.read_bytes()
+            with self.assertRaisesRegex(ValueError,'existing update attempt'):f.invoke('adopt-stopped')
+            self.assert_refused_without_change(f,legacy)
+    def test_failures_after_replacement_quarantine_without_restoring_prior(self):
+        for fault in ['reload','start','restart','final-web','install-receipt','activation-receipt']:
+            with self.subTest(fault=fault),tempfile.TemporaryDirectory() as tmp:
+                f=AdoptFlowFixture(Path(tmp));legacy=f.unit.read_bytes();f.fault=fault
+                with self.assertRaisesRegex(RuntimeError,'activation failed'):f.invoke('adopt-stopped')
+                self.assertTrue(f.old_release.is_dir());self.assertTrue((f.app/'releases'/f.source).is_dir())
+                self.assertEqual((f.operation/'prior-unit.service').read_bytes(),legacy);self.assertTrue((f.operation/'stopped-prior.json').exists())
+                self.assertTrue((f.operation/'activation-failed.json').exists());self.assertFalse((f.operation/'activated.json').exists())
+                observed=json.loads((f.operation/'activation-failure-observation.json').read_text())
+                self.assertTrue(observed['stopped']);self.assertTrue(observed['disabled']);self.assertFalse(observed['accepted']);self.assertFalse(observed['forcedKill'])
+                self.assertIn('Restart=no',f.unit.read_text());self.assertIn('SendSIGKILL=no',f.unit.read_text());self.assertNotEqual(f.unit.read_bytes(),legacy)
+                self.assertFalse(any(isinstance(event,list) and 'kill' in event for event in f.events))
+                with self.assertRaises(ValueError):f.invoke('adopt-stopped')
+
+class ProcessScanTests(unittest.TestCase):
+    def scan(self,proc,uid=4242):
+        with patch.object(update,'Path',side_effect=lambda value:proc if value=='/proc' else Path(value)):return update.unit_or_identity_processes(uid)
+    def write(self,proc,pid,uid,cgroup):
+        entry=proc/str(pid);entry.mkdir(parents=True)
+        (entry/'status').write_bytes(b'Name:\tfictional\nUid:\t'+'\t'.join(uid).encode()+b'\n');(entry/'cgroup').write_bytes(cgroup)
+    def test_finds_identity_and_unit_cgroup_processes_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc=Path(tmp);(proc/'self').mkdir()
+            self.write(proc,10,['0','0','0','0'],b'0::/system.slice/aihr.service\n')
+            self.write(proc,11,['1000','4242','1000','1000'],b'0::/user.slice\n')
+            self.write(proc,12,['0','0','0','0'],b'0::/system.slice/aihr-bank-import.service\n')
+            self.write(proc,13,['0','0','0','0'],b'1:name=systemd:/system.slice/aihr-bank-import.service/child\n')
+            self.write(proc,14,['0','0','0','0'],b'0::/system.slice/aihr-bank-import.service-other.scope\n')
+            (proc/'15').mkdir()
+            self.assertEqual(self.scan(proc),[11,12,13])
+            self.assertEqual(self.scan(proc,uid=0),[10,12,13,14])
+    def test_refuses_unreadable_process_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc=Path(tmp);entry=proc/'20';entry.mkdir();(entry/'status').write_bytes(b'Name:\tfictional\n');(entry/'cgroup').write_bytes(b'0::/\n')
+            with self.assertRaisesRegex(ValueError,'unreadable'):self.scan(proc)
 
 unittest.main()

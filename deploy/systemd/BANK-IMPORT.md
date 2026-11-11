@@ -142,7 +142,7 @@ authority. Production is not supported or authorized by this helper.
    The receipt intentionally keeps `journeyVerified:false`: it is process evidence,
    not human staging acceptance or rendered journey proof.
 
-The helper takes `drain|activate` plus `--previous-web-source`, `--previous-web-build`,
+The helper takes `drain|activate` (or `adopt-stopped`, below) plus `--previous-web-source`, `--previous-web-build`,
 `--previous-worker-source`,
 `--source`, `--build-id`, `--archive`, `--archive-sha256`, `--lock-sha256`,
 `--package-sha256`, `--unit-sha256` and `--worker-env-sha256`. All values must come
@@ -169,3 +169,46 @@ it does not restore the old worker. Failure records and observations remain unde
 or process exit is unconfirmed, it reports uncertainty and requires administrator
 recovery; it never claims a completed stop or accepted release. An incomplete
 activation cannot be retried by deleting records or overwriting an immutable path.
+
+### Adopting a cleanly stopped worker without a managed receipt (`adopt-stopped`)
+
+Use `adopt-stopped` only on staging, and only when the installed worker came from a procedure before
+`installer_v2`/`upgrade_v1`, so its release has no `worker-install-v2.json`, and it is already cleanly stopped.
+In that state `drain` cannot run, because nothing is running to drain. It also cannot validate the unit, because
+that unit predates the current template. `adopt-stopped` replaces `drain` plus `activate` for this one case.
+The web must already run the new exact source/build. Hold the shared staging lease throughout.
+
+As root, read the prior unit and the protected environment and independently record both sha256 values
+(`sha256sum /etc/systemd/system/aihr-bank-import.service /etc/aihr/import-worker.env`). Also record the
+unit's `WorkingDirectory` source. Pin the package exactly as for `activate`, then build, hash-pin and copy the
+bundle as in step 2 above.
+
+```bash
+python3 -I -B /ROOT-PROTECTED/helper.py adopt-stopped \
+  --previous-worker-source <WorkingDirectory source> --source <new source> --build-id <new web build> \
+  --archive /ROOT-PROTECTED/worker-package.zip --archive-sha256 <zip> --lock-sha256 <lock> --package-sha256 <package> \
+  --observed-unit-sha256 <root-read unit sha256> --worker-env-sha256 <root-read env sha256>
+```
+
+The mode does not accept `--previous-web-source`, `--previous-web-build` or `--unit-sha256`, and `drain`/`activate`
+do not accept `--observed-unit-sha256`. It refuses, before writing anything, when:
+- the current web is not the exact healthy source/build (the same `aihr` service, loopback `/health` and
+  unchanged-deployment-record check as `activate`);
+- the unit or environment bytes differ from the two pins;
+- the prior release already has a managed receipt (use `drain`/`activate` instead);
+- the loaded unit differs from the installation: user/group `aihr-import`, the prior `WorkingDirectory`, the
+  fixed unit and environment paths, no drop-in or override, `Restart=on-failure`, enabled, no pending reload;
+- the worker identity is missing;
+- the unit is not `inactive`/`dead` with `MainPID=0`, `Result=success` and `ExecMainStatus=0` (so an active,
+  activating, failed or non-zero exit refuses);
+- systemd still tracks a control group, or any live process runs as `aihr-import` or inside the unit's cgroup;
+- an attempt for this source already exists under `/opt/aihr-import/upgrades/`.
+
+After those checks it creates `/opt/aihr-import/upgrades/<source>/`. There it keeps the exact prior unit bytes
+(`prior-unit.service`) and the recorded stopped observation (`stopped-prior.json`). It then authenticates the
+archive, extracts it into the new immutable release, and re-checks the web. Immediately before replacing the
+unit, it re-verifies both pins and the full stopped observation. From that point it is identical to `activate`:
+the current template, atomic replacement, `daemon-reload`, start, three stable live observations and a fresh
+`worker-install-v2.json`. That receipt carries `mode: adopt-stopped`, `previousUnitSha256` and the observation
+digest, and a later managed `drain` can validate it. A failure after replacement enters the same protected
+quarantine. The mode never signals, kills, restores or deletes the prior worker, its release or any record.
