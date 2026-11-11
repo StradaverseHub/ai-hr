@@ -79,3 +79,24 @@ The same owner approval ("i fully approve carrying the existing approvals forwar
 No provider contract, outbound field or transport is added or widened. The five covered files changed since `2977f22b…` are: `core/claims.ts`, where the Approvals claim queue resolves approval subjects once per employment and pages in SQL with the same results, proven by an equivalence test against the previous queue; `db/admission.ts`, `db/client.ts` and `db/read-retry.ts`, where a draining admission queue is served instead of refused at a fixed deadline and a refused permit, which started no work, is requested again; and a comment in `lib/internal-auth/store.ts`. None of them adds data to any provider payload.
 
 The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority.
+
+## AI-native exceptions and Today release binding (12 November 2026)
+
+On 12 November 2026 MYT the repository owner approved re-binding the provider approvals for the payroll anomaly and net-swing source changed by the exceptions detectors branch (session handoff `ainative-handoff-20261111` §5 item 1). The owner then widened that approval the same day, relayed by the release coordinator: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision". The approval is applied to the release candidate on `claude/ainative-release-20261112`, based on alpha `f7ee5177feb1ca37a11847bf9fe349c3deab0b0d`, which merges:
+
+- `claude/ainative-exc-detectors-20261111` at `7b3170c7c7a753080978ddd56499e4ceee40fe2e`;
+- `claude/ainative-exc-page-20261111` at `ea17cbdd1da4641fe0ece5871403a3aec5ece367` (it contains the detectors branch);
+- `claude/ainative-today-employee-20261111` at `c35038453b712d3ff1374d713f3d72f4f959dd4f`.
+
+The exact fingerprint is `2b50c1986a7aaa8e21d3c68e4a333c0972ea67674a28e304151e4d296d65a434` over 1,559 files. The previous fingerprint was `5e631303…`, over 1,558 files.
+
+Twelve covered files changed, all from the detectors branch. The exceptions page and Today branches change no covered source.
+
+- `core/payroll-anomaly.ts` and `core/payroll-anomaly-detectors.ts`: anomaly detection and batch resolution of open exceptions.
+- `core/loops/net-swing.ts`, `core/loops/salary-payroll.ts` and the new `core/loops/swing-rows.ts`: the net-swing explanation rows. The new file is the one added to the closure.
+- `core/pay-difference.ts`: pay difference.
+- `messages/{en,ms,ta,th,vi,zh}.json`: translations.
+
+They are in the closure through the payroll hypothesis and anomaly narration roots (`core/payroll-hypothesis.ts` imports `core/payroll-anomaly.ts`). No provider contract, outbound field, approved purpose or transport is added or widened.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority.
