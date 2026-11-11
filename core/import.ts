@@ -915,6 +915,14 @@ async function analyze(
       if(checked?.kind==='refused')continue;
       employmentInfo[writerField!]=checked?.kind==='ok'?checked.value:value;
     }
+    // 2260a06b — internship_end_date is the Intern's end date, refused for any other type exactly like
+    // probation_end_date above; setEmploymentInfo then checks it is later than the join date.
+    if (employmentInfo.internshipEndDate && employmentType !== 'intern') {
+      errors.push(`internship_end_date applies to intern employees only (this row is ${employmentType})`);
+    }
+    if (employmentInfo.internshipEndDate && hiredOn && isCalendarDate(hiredOn) && employmentInfo.internshipEndDate <= hiredOn) {
+      errors.push('internship_end_date must be after hired_on');
+    }
     for(const [legacyA,legacyB,valueColumn,unitColumn] of [
       ['probation_months','probation_days','probation_value','probation_unit'],
       ['resignation_notice_months','resignation_notice_days','notice_before_confirmation_value','notice_before_confirmation_unit'],

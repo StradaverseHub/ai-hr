@@ -3439,6 +3439,16 @@ export async function setEmploymentInfo(
       if ('internshipEndDate' in set && live?.employmentType === 'intern' && !internshipEnd) {
         throw new Error('Internship end date is required for an intern employee.');
       }
+      // The internship end date belongs to an Intern. A changed, non-empty date for any other type is refused
+      // (imports and corrections included) rather than stored as a fact that no screen shows.
+      if (
+        'internshipEndDate' in set &&
+        internshipEnd &&
+        internshipEnd !== (before.internshipEndDate ?? null) &&
+        live?.employmentType !== 'intern'
+      ) {
+        throw new Error('Internship end date applies only to Intern employees.');
+      }
       // 2260a06b — Contract Management owns the contract dates while one of its cases is open for this
       // employment (its accepted renewal writes them under the protected intent checked above). Any other writer
       // — the profile, a movement, a correction or an import — is refused only when it would actually MOVE a

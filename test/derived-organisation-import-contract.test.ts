@@ -20,7 +20,7 @@ describe('derived organisation import transport',()=>{
   expect(parsed.records[0].cells).not.toHaveProperty('parentCompanyId');
  });
  it('accepts only the two explicit ignored optional Information columns and refuses duplicate or arbitrary columns',()=>{
-  const workbook=(headers:string[])=>{const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([headers,['DEMO','EMP001','Fictional Employee','','','','','','Reviewed correction','Manual BU','Manual Parent']]),'Corrections');return Buffer.from(XLSX.write(book,{type:'buffer',bookType:'xlsx'}));};
+  const workbook=(headers:string[])=>{const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([headers,['DEMO','EMP001','Fictional Employee','','','','','','','','Reviewed correction','Manual BU','Manual Parent']]),'Corrections');return Buffer.from(XLSX.write(book,{type:'buffer',bookType:'xlsx'}));};
   const rows=parseInformationWorkbook(workbook([...INFORMATION_HEADERS,'Business Unit','Parent company']));expect(rows[0]).toMatchObject({ignoredOrganisation:{businessUnit:'Manual BU',parentCompany:'Manual Parent'},errors:[]});expect(rows[0].values).not.toHaveProperty('Business Unit');
   expect(()=>parseInformationWorkbook(workbook([...INFORMATION_HEADERS,'Business Unit','Business Unit']))).toThrow('repeats');expect(()=>parseInformationWorkbook(workbook([...INFORMATION_HEADERS,'Arbitrary field']))).toThrow('columns changed');
  });
