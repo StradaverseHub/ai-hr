@@ -41,10 +41,16 @@ const QUALITY = ['aiCentre.quality.proposals.where', 'aiCentre.quality.areas.ai'
 // AI v2 Phase 2 hardening: a grouped swing's member line is only its arguments and punctuation ("{name}: {change} ({causes})").
 const HARDENING = ['aiCentre.payrollCycle.groups.member'];
 const PHASE2 = [...ARGUMENTS_ONLY, ...BODIES, ...HANDBOOK, ...QUALITY, ...HARDENING];
+// AI-native batch (Exceptions grouped): SKBBK (Lindung 24 Jam) is the scheme's own name in every language.
+const SKBBK = 'aiCentre.exceptions.grouped.component.skbbk';
 const SAME_AS_ENGLISH_ALLOWED: Readonly<Record<string, readonly string[]>> = { ms: ['aiCentre.how.layers.model', LOOP_STEP, 'aiCentre.loops.cases.columns.status', ...PHASE2,
   'aiCentre.autonomy.actions.columns.status', 'aiCentre.payrollCycle.salaryPage.columns.status', 'aiCentre.payrollCycle.runType.bonus', 'aiCentre.payrollCycle.byCompany.columns.audit',
-  'aiCentre.quality.gaps.status'],
-  zh: [LOOP_STEP, ...PHASE2], vi: [LOOP_STEP, ...PHASE2], ta: [LOOP_STEP, ...PHASE2], th: [LOOP_STEP, ...PHASE2] };
+  'aiCentre.quality.gaps.status',
+  // AI-native batch (Exceptions grouped): Malay writes Bonus and Zakat as English does.
+  'aiCentre.exceptions.grouped.component.bonus', 'aiCentre.exceptions.grouped.component.zakat', SKBBK],
+  zh: [LOOP_STEP, ...PHASE2],
+  // AI-native batch (Exceptions grouped): Vietnamese keeps Zakat as the loanword.
+  vi: [LOOP_STEP, ...PHASE2, 'aiCentre.exceptions.grouped.component.zakat', SKBBK], ta: [LOOP_STEP, ...PHASE2, SKBBK], th: [LOOP_STEP, ...PHASE2, SKBBK] };
 
 function flat(d: Dict, prefix = ''): Record<string, string> {
   const out: Record<string, string> = {};
@@ -139,7 +145,12 @@ describe('AI centre catalogue completeness', () => {
       quote: 'RM 0.60 per km', enforced: 'RM 0.55 per km',
       // Payroll history learning (P2): the usual range of an evidence line (aiCentre.payrollLearning.range) and the learning
       // mode on the settings page (aiCentre.payrollLearning.settings.*).
-      low: '4,000.00', high: '4,200.00', mode: 'Evidence lines' };
+      low: '4,000.00', high: '4,200.00', mode: 'Evidence lines',
+      // AI-native batch: arguments of the grouped Exceptions page (aiCentre.exceptions.grouped.*). Amounts arrive formatted.
+      blocking: 2, groups: 6, exceptions: 33, names: 'Fictional Ceria Sdn Bhd', more: 6, page: 1, pages: 3, checks: 'No tax profile',
+      component: 'Bonus', grossPay: 'MYR 100.00', totalDeductions: 'MYR 400.00', netPay: 'MYR 1,200.00', actual: 'MYR 300.00',
+      excess: 'MYR 50.00', pcb: 'MYR 12.00', daysWorked: 20, periodDays: 31, others: 2, direction: 'down', pct: 82.3,
+      priorNetPay: 'RM 6,386.55', priorAmount: 'RM 200.00', shown: 50 };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

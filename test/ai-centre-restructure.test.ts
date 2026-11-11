@@ -25,7 +25,13 @@ describe('one place per fact',()=>{
 
  it('Today fix d: Today counts exceptions with the same read and arguments as Exceptions',()=>{
   expect(code('components/today/reads.ts')).toContain('openExceptionsAcrossRuns(s)');
-  expect(code('app/control-tower/exceptions/page.tsx')).toContain('openExceptionsAcrossRuns(s)');
+  // Since the AI-native batch Exceptions reads the same population grouped in the database (its reader names the
+  // same three predicates and inner joins; test/payroll-exceptions-groups.test.ts proves the counts equal on a group-sized
+  // fixture), and its page no longer lists the capped rows itself.
+  const reader=code('app/control-tower/exceptions/data.ts');
+  for(const clause of ['v.superseded_at is null','v.resolved_at is null',"v.disposition <> 'auto_clear'",'join public.employment e on e.id = v.employment_id',
+   'join public.person p on p.id = e.person_id','join public.payroll_batch b on b.id = v.batch_id'])expect(reader).toContain(clause);
+  expect(code('app/control-tower/exceptions/page.tsx')).toContain('groupedExceptions(s, { focus: focusKey, page: pageNo })');
  });
 
  it('decision 28: an exception is resolved on Exceptions only; the Salary payroll and run pages link there',()=>{
