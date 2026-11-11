@@ -15,10 +15,10 @@ const database=createDb(url.toString(),{max:4});
 const otherUrl=new URL(process.env.TEST_DATABASE_URL!);otherUrl.searchParams.set('application_name','admission-fair-'+randomUUID());
 const fair=createDb(otherUrl.toString(),{max:4,admissionWaitMs:15000});
 const pool=(name:string,max:number,admissionWaitMs?:number)=>{const u=new URL(process.env.TEST_DATABASE_URL!);u.searchParams.set('application_name',name+'-'+randomUUID());return createDb(u.toString(),{max,admissionWaitMs});};
-const five=pool('admission-five',5),eight=pool('admission-eight',8,15000),deadline=pool('admission-deadline',4,300);
+const five=pool('admission-five',5),eight=pool('admission-eight',8,15000),deadline=pool('admission-deadline',4,300),retrying=pool('admission-retry',4,300);
 const lockUrl=process.env.TEST_MIGRATION_DATABASE_URL!;
 beforeAll(async()=>{await migrateTestDb();await resetDb();base=await seedBase();});
-afterAll(async()=>{await Promise.all([database,fair,five,eight,deadline].map(db=>db.client.end()));await closeAll();});
+afterAll(async()=>{await Promise.all([database,fair,five,eight,deadline,retrying].map(db=>db.client.end()));await closeAll();});
 describe('physical pool admission with real tenant transactions',()=>{
  it('shares bounded tenant write ordering across handles without holding a connection while waiting',async()=>{
   const alias=createDb(url.toString(),{max:4}),ctx=adminCtx(base),entered=deferred(),finish=deferred();
@@ -145,6 +145,29 @@ describe('physical pool admission with real tenant transactions',()=>{
   }finally{finish.resolve();await holding;}
   await expect(database.withPoolWork(ctx.tenantId,()=>database.client`select 1/0`)).rejects.toMatchObject({code:'22012'});
   expect(await database.withPoolWork(ctx.tenantId,()=>Promise.resolve('released'))).toBe('released');
+ });
+ it('asks again for a refused permit, so a top-level write runs once instead of failing, but never retries nested work',async()=>{
+  const ctx=adminCtx(base),finish=deferred(),entered=Array.from({length:3},deferred);
+  // A pool of four keeps one permit for login, so these three hold every permit this tenant's work may use.
+  const held=entered.map(entry=>retrying.withTenant(ctx,async()=>{entry.resolve();await finish.promise;}));
+  await Promise.all(entered.map(entry=>entry.promise));
+  let writes=0;
+  const write=retrying.withTenant(ctx,async tx=>{writes++;return (await tx.execute(sql`select app.current_tenant_id() as tenant`))[0];});
+  // The first request is refused at the 300 ms stall budget, which started nothing; the retry gets the freed permit.
+  const freed=new Promise(resolve=>setTimeout(resolve,500)).then(()=>finish.resolve());
+  expect((await write).tenant).toBe(base.tenantId);expect(writes).toBe(1);
+  await freed;await Promise.all(held);
+
+  // Code that already holds a permit keeps its single wait: a retry would keep that permit through the retry.
+  const finishNested=deferred(),enteredNested=Array.from({length:2},deferred);
+  const heldNested=enteredNested.map(entry=>retrying.withTenant(ctx,async()=>{entry.resolve();await finishNested.promise;}));
+  await Promise.all(enteredNested.map(entry=>entry.promise));
+  const started=performance.now();
+  const nested=await retrying.withPoolWork(randomUUID(),()=>retrying.withTenant(ctx,async()=>'nested')).then(()=>'served',(error:{code?:string})=>error.code);
+  const elapsed=performance.now()-started;
+  finishNested.resolve();await Promise.all(heldNested);
+  // One 300 ms wait; three retried requests would take at least 300 + 150 + 300 + 300 + 300 ms before the last refusal.
+  expect(nested).toBe('queue-timeout');expect(elapsed).toBeLessThan(1200);
  });
  it('does not start an abandoned queued read and frees admission after rollback',async()=>{
   const ctx=adminCtx(base),finish=deferred(),entered=Array.from({length:4},deferred);

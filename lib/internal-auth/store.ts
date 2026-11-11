@@ -4,7 +4,8 @@ import {readRecord,readRecordPair} from './record-store';
 export { readRecord, readRecordPair, writeRecord, deleteRecord, revokeCredentialsSessions } from './record-store';
 export type { AuthSql } from './record-store';
 /** An admitted AuthSql for pool-owned leaf reads and writes, so a raw call never waits unbounded in the
- * driver queue. Transaction owners keep passing their own tx. This facade never retries. */
+ * driver queue. Transaction owners keep passing their own tx. This facade never re-runs a statement; only a
+ * refused admission, which started nothing, is asked for again (db/client.ts withPoolWork). */
 export const admittedAuthSql = { unsafe: (query: string, parameters?: never[]) => withPoolWork('authentication', () => client.unsafe(query, parameters)) } as unknown as AuthSql;
 /** Pool-owned non-locking reads. Caller-owned transactions keep the explicit leaf
  * functions above and never acquire a second pool admission. No SQL/result cache. */

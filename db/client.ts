@@ -9,14 +9,14 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql, type SQL } from 'drizzle-orm';
 import postgres from 'postgres';
-import {createDatabaseAdmission} from './admission';
+import {createDatabaseAdmission,type DatabaseWorkload} from './admission';
 import {createBackgroundReadAdmission} from './background-read-admission';
 import {createTenantWriteAdmission} from './tenant-write-admission';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {cancelStatementsAtDeadline,currentDatabaseReadDeadline,currentDatabaseWorkload,databaseReadSignal,inIdempotentDatabaseRead,withBackgroundDatabaseWork} from './workload';
 import {applicationDatabaseBudget,databaseAdmissionShares} from './capacity';
 import {applicationDatabaseUrl} from './pooling';
-import {markDatabaseCapacityFailure,retryIdempotentRead} from './read-retry';
+import {markDatabaseCapacityFailure,retryAdmissionRefusal,retryIdempotentRead} from './read-retry';
 import {SharedReadSession,currentSharedRead,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
 export {declareSharedReadWindow,declareSharedReadPreamble,withOwnerPreambleReads} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
@@ -31,6 +31,19 @@ function nestedInTenant(tenantId: string): { ignoreTenantCap: true } | undefined
   if (transactionTenant.getStore() === tenantId) return { ignoreTenantCap: true };
   const shared = sharedReadTenant.getStore();
   return shared?.tenantId === tenantId && shared.carrierHeld() ? { ignoreTenantCap: true } : undefined;
+}
+/** Set while raw pool work (withPoolWork) runs: that work holds a permit. */
+const poolWorkHeld = new AsyncLocalStorage<true>();
+/** Does this code already hold a permit: inside a tenant transaction, raw pool work, or a shared read carrier? */
+function holdsPermit(): boolean {
+  return transactionTenant.getStore() !== undefined || poolWorkHeld.getStore() === true || sharedReadTenant.getStore()?.carrierHeld() === true;
+}
+/** Whether a refused admission is asked for again (db/read-retry.ts retryAdmissionRefusal). A refusal means the work
+ * never started, so pages, commands such as clock-in, and login retry it invisibly. Background work keeps its
+ * deferral (an import yields and resumes from its checkpoints), and code that already holds a permit keeps its single
+ * wait, so a held connection is never kept through a retry. */
+function retriesAdmission(workload: DatabaseWorkload): boolean {
+  return workload !== 'background' && !holdsPermit();
 }
 import { chainArmingDecision } from '../core/audit-chain-arming';
 import type { EntitlementSnapshot, EntitlementsExemptReason } from '../core/entitlement-types';
@@ -232,6 +245,11 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     admissionByPool.set(client, admission);
   }
   const poolAdmission = admission;
+  /** This pool's permit for one unit of work, asked for again after a refusal where retriesAdmission allows it. */
+  function admit(tenant: string, workload: DatabaseWorkload, signal?: AbortSignal, options?: { ignoreTenantCap?: boolean }): Promise<() => void> {
+    const acquire = () => poolAdmission.acquire(tenant, workload, signal, options);
+    return retriesAdmission(workload) ? retryAdmissionRefusal(acquire, signal) : acquire();
+  }
   let backgroundReads=backgroundReadsByPool.get(client);
   if(!backgroundReads){
     backgroundReads=createBackgroundReadAdmission({capacity:Math.max(1,Math.floor(configuredPoolMax/4)),
@@ -264,8 +282,8 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     const attempt = async () => {
       const timing=globalForPg.__aihrPerfBeginPoolWork?.(configuredPoolMax);let release:(()=>void)|undefined;
       try {
-        release=await poolAdmission.acquire(tenant,workload,signal,nestedInTenant(tenant));timing?.acquired();
-        signal?.throwIfAborted();return await work();
+        release=await admit(tenant,workload,signal,nestedInTenant(tenant));timing?.acquired();
+        signal?.throwIfAborted();return await poolWorkHeld.run(true,work);
       }catch(error){throw markDatabaseCapacityFailure(error);}
       finally{release?.();timing?.finished();}
     };
@@ -302,7 +320,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     let release: (() => void) | undefined;
     let stopDeadline: (() => void) | undefined;
     try {
-      release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal, nestedInTenant(ctx.tenantId));
+      release = await admit(ctx.tenantId, currentDatabaseWorkload(), readSignal, nestedInTenant(ctx.tenantId));
       // readOnlySnapshot: REPEATABLE READ / READ ONLY from BEGIN, before the session settings below.
       return await (options?.readOnlySnapshot ? snapshotDb : db).transaction(async (tx) => {
       // A hard read deadline (Home cards) cancels this transaction's running statement; see db/workload.ts.

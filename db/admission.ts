@@ -11,11 +11,14 @@ export class DatabaseAdmissionError extends Error {
     this.name = 'DatabaseAdmissionError';
   }
 }
+/** Waiters of one workload lane and one tenant, which are admitted in FIFO order (nested work may go first). */
+type WaitQueue = {waiting: number; admitted: number};
 type Waiter = {
   workload: DatabaseWorkload;
   tenant: string;
   /** Nested in a transaction this tenant already holds; never waits on the tenant's own share. */
   uncapped: boolean;
+  queue: WaitQueue;
   resolve: (release: () => void) => void;
   reject: (error: unknown) => void;
   clean: () => void;
@@ -27,7 +30,17 @@ export function createDatabaseAdmission(options: {
   backgroundCapacity: number;
   maxWaiting: number;
   maxBackgroundWaiting?: number;
+  /**
+   * The stall budget. A waiter is refused only once its own queue (its lane and tenant) has admitted no work for this
+   * long, so a burst that is draining is served however long the drain takes: a 9 am Home burst of one large employer
+   * must queue, not fail. It still refuses within this budget when the work ahead of it is stuck.
+   */
   waitMs: number;
+  /**
+   * The longest any waiter is kept, progress or not (default four stall budgets). It is far above every proxy and
+   * client timeout, so it only sheds queued work that nobody is still waiting for under sustained overload.
+   */
+  maxWaitMs?: number;
   /** Hard ceiling per tenant, whatever else is idle. Tenant write admission uses 1 to serialise writes. */
   perTenantCapacity?: number;
   /**
@@ -54,6 +67,11 @@ export function createDatabaseAdmission(options: {
     || capacity < 1 || backgroundCapacity < 1 || backgroundCapacity > capacity || maxWaiting < 0 || waitMs < 1) {
     throw new Error('Invalid database admission budget.');
   }
+  const maxWaitMs = options.maxWaitMs ?? waitMs * 4;
+  if (!Number.isSafeInteger(maxWaitMs) || maxWaitMs < waitMs) throw new Error('Invalid database admission budget.');
+  // The stall check runs in quarter steps, so a stalled waiter is refused between one and 1.25 stall budgets after
+  // its queue last moved, and exactly at the budget when its queue never moved.
+  const stallStepMs = Math.max(1, Math.ceil(waitMs / 4));
   const perTenantCapacity = options.perTenantCapacity ?? capacity;
   if (!Number.isSafeInteger(maxBackgroundWaiting) || maxBackgroundWaiting < 0 || maxBackgroundWaiting > maxWaiting)
     throw new Error('Invalid background waiting budget.');
@@ -78,6 +96,8 @@ export function createDatabaseAdmission(options: {
   const waiting: Waiter[] = [];
   const activeByTenant = new Map<string, number>();
   const waitingByTenant = new Map<string, number>();
+  /** Each lane-and-tenant queue that has waiters, and how many of its waiters were admitted so far. */
+  const queues = new Map<string, WaitQueue>();
   function accountOccupiedTime(){
     const at=now(),elapsed=Math.max(0,at-accountedAt);accountedAt=at;
     // Only contended time matters. Account both lanes together so completion
@@ -88,6 +108,7 @@ export function createDatabaseAdmission(options: {
   function dequeue(index: number) {
     accountOccupiedTime();
     const [waiter] = waiting.splice(index, 1);
+    if (--waiter.queue.waiting === 0) queues.delete(waiter.workload + '\u0000' + waiter.tenant);
     if (waiter.workload === 'background') backgroundWaiting--;
     if (waiter.workload === 'authentication') authenticationWaiting--;
     else {
@@ -113,6 +134,8 @@ export function createDatabaseAdmission(options: {
   function grant(waiter: Waiter) {
     waiter.clean();
     accountOccupiedTime();
+    // Progress for everyone still waiting behind this waiter in its queue.
+    waiter.queue.admitted++;
     active++;
     if (waiter.workload === 'background') {
       background++; interactiveTurns = 0;
@@ -181,7 +204,9 @@ export function createDatabaseAdmission(options: {
       throw new DatabaseAdmissionError('queue-full');
     return new Promise((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const waiter: Waiter = {tenant: tenant.toLowerCase(), workload, uncapped, resolve, reject, clean: () => {
+      const key = workload + '\u0000' + tenant;
+      const queue = immediate ? {waiting: 0, admitted: 0} : queues.get(key) ?? {waiting: 0, admitted: 0};
+      const waiter: Waiter = {tenant, workload, uncapped, queue, resolve, reject, clean: () => {
         if (timer !== undefined) clearTimeout(timer);
         signal?.removeEventListener('abort', abort);
       }};
@@ -196,10 +221,22 @@ export function createDatabaseAdmission(options: {
       function abort() { remove(signal!.reason); }
       if (immediate) { grant(waiter); return; }
       waiting.push(waiter);
+      queue.waiting++;
+      queues.set(key, queue);
       if (workload === 'background') backgroundWaiting++;
       if (workload === 'authentication') authenticationWaiting++;
       else waitingByTenant.set(waiter.tenant, (waitingByTenant.get(waiter.tenant) ?? 0) + 1);
-      timer = setTimeout(() => remove(new DatabaseAdmissionError('queue-timeout')), waitMs);
+      // Refuse only a stalled waiter: one whose queue admitted nobody for a whole stall budget, or one kept for the
+      // absolute ceiling. Each step compares the queue's admissions with the previous step, so this needs no clock.
+      let seen = queue.admitted, idleSteps = 0, steps = 0;
+      const maxSteps = Math.ceil(maxWaitMs / stallStepMs);
+      const step = () => {
+        steps++;
+        if (queue.admitted !== seen) { seen = queue.admitted; idleSteps = 0; } else idleSteps++;
+        if (idleSteps >= 4 || steps >= maxSteps) remove(new DatabaseAdmissionError('queue-timeout'));
+        else timer = setTimeout(step, stallStepMs);
+      };
+      timer = setTimeout(step, stallStepMs);
       signal?.addEventListener('abort', abort, {once: true});
       if (signal?.aborted) abort();
       else drain();
@@ -209,7 +246,7 @@ export function createDatabaseAdmission(options: {
     acquire,
     snapshot: () => {
       accountOccupiedTime();
-      return {active, background, authentication, waiting: waiting.length, backgroundWaiting, authenticationWaiting, backgroundDebtMs, capacity, backgroundCapacity, maxWaiting, maxBackgroundWaiting, perTenantCapacity, tenantFairShare, maxWaitingPerTenant, authenticationReserve, authenticationCapacity, maxAuthenticationWaiting};
+      return {active, background, authentication, waiting: waiting.length, backgroundWaiting, authenticationWaiting, backgroundDebtMs, capacity, backgroundCapacity, maxWaiting, maxBackgroundWaiting, perTenantCapacity, tenantFairShare, maxWaitingPerTenant, authenticationReserve, authenticationCapacity, maxAuthenticationWaiting, waitMs, maxWaitMs};
     },
   };
 }

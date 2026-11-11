@@ -73,6 +73,40 @@ describe('database work admission',()=>{
   expect(q.snapshot()).toMatchObject({active:1,waiting:0});first();
   expect(vi.getTimerCount()).toBe(0);
  });
+ it('serves a same-tenant burst whose drain outlasts the stall budget, because its queue keeps moving',async()=>{
+  vi.useFakeTimers();
+  // Two permits, a one-second budget and twelve 400 ms reads: the last read waits 2.4 s, all of it in a queue that
+  // admits someone every 200 ms. Under a fixed one-second deadline the last seven would have been refused.
+  const q=gate({capacity:2,backgroundCapacity:1,maxWaiting:16}),served:number[]=[],refused:string[]=[];
+  const reads=Array.from({length:12},(_,i)=>q.acquire('employer','interactive').then(release=>{served.push(i);setTimeout(release,400);},(error:{code:string})=>{refused.push(error.code);}));
+  await vi.advanceTimersByTimeAsync(2400);await Promise.all(reads);
+  expect(refused).toEqual([]);expect(served).toEqual(Array.from({length:12},(_,i)=>i));
+  await vi.advanceTimersByTimeAsync(400);
+  expect(q.snapshot()).toMatchObject({active:0,waiting:0});expect(vi.getTimerCount()).toBe(0);
+ });
+ it('still refuses within the budget a waiter whose own queue is stuck, while other tenants keep moving',async()=>{
+  vi.useFakeTimers();
+  const q=gate({capacity:3,backgroundCapacity:1,maxWaiting:16,perTenantCapacity:1});
+  const stuck=await q.acquire('stuck','interactive');
+  const queued=q.acquire('stuck','interactive'),rejected=expect(queued).rejects.toMatchObject({name:'DatabaseAdmissionError',code:'queue-timeout'});
+  // Another tenant's short reads flow through the other permits the whole time.
+  let flowing=0;const flow=(async()=>{for(let i=0;i<20;i++){const release=await q.acquire('busy','interactive');flowing++;await new Promise(r=>setTimeout(r,100));release();}})();
+  await vi.advanceTimersByTimeAsync(999);expect(q.snapshot().waiting).toBe(1);
+  await vi.advanceTimersByTimeAsync(1);await rejected;
+  await vi.advanceTimersByTimeAsync(1000);await flow;expect(flowing).toBe(20);
+  stuck();expect(q.snapshot()).toMatchObject({active:0,waiting:0});expect(vi.getTimerCount()).toBe(0);
+ });
+ it('sheds a waiter kept for the absolute ceiling even while its queue moves',async()=>{
+  vi.useFakeTimers();
+  const q=gate({capacity:1,backgroundCapacity:1,maxWaiting:16,maxWaitMs:2000}),served:number[]=[],refused:number[]=[];
+  const first=await q.acquire('employer','interactive');setTimeout(first,300);
+  // One permit and 300 ms holds: the sixth waiter starts at 1.8 s, the seventh would start at 2.1 s.
+  const waiters=Array.from({length:9},(_,i)=>q.acquire('employer','interactive').then(release=>{served.push(i);setTimeout(release,300);},()=>{refused.push(i);}));
+  await vi.advanceTimersByTimeAsync(3000);await Promise.all(waiters);
+  expect(served).toEqual([0,1,2,3,4,5]);expect(refused).toEqual([6,7,8]);
+  expect(q.snapshot()).toMatchObject({active:0,waiting:0,maxWaitMs:2000});expect(vi.getTimerCount()).toBe(0);
+  expect(()=>gate({maxWaitMs:999})).toThrow(/budget/);
+ });
  it('prefers a tenant without active work while preserving FIFO within that tenant',async()=>{
   const q=gate({capacity:2}),a1=await q.acquire('a','interactive'),a2=await q.acquire('a','interactive');
   const order:string[]=[];
