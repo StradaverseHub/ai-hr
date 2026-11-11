@@ -24,7 +24,7 @@ import {listPayComponents} from '../../packs/payroll/service';
 import {PAY_CAUSE_KINDS,type PayCauseKind} from '../pay-difference';
 import {decodeCheck,type PreSalaryCheck} from './pre-salary-checks';
 import {daysBetween,nextPeriod,preSalaryWindows,previousPeriod,payrollKey,type CompanyCutOffs} from './payroll-inputs';
-import {payrollLoopSettingHistoryTx,payrollLoopSettingsTx,thresholdProposalsTx,type PayrollLoopSetting} from './payroll-loop-settings';
+import {payrollLoopSettingHistoryTx,payrollLoopSettingsTx,thresholdProposalsByCompanyTx,type PayrollLoopSetting} from './payroll-loop-settings';
 import {startKey,type BankCheck} from './salary-payroll';
 import {AuditViewRefused,auditLoopSummary,type AuditLoopSummary} from '../payroll-audit/status';
 import type {SwingProposal} from './swing-proposals';
@@ -310,8 +310,10 @@ export async function payrollLoopSettingsPage(ctx:SessionContext,options:Readonl
   const rules=await ruleProposalsTx(tx,ctx.tenantId,[...payroll]).catch(()=>[] as readonly RuleProposal[]);
   const ruleNames=rules.length?new Map((await tx.select({id:employment.id,name:person.fullName}).from(employment).leftJoin(person,eq(person.id,employment.personId))
    .where(inArray(employment.id,[...new Set(rules.map(rule=>rule.employmentId))]))).map(row=>[row.id,row.name??null])):new Map<string,string|null>();
+  // Every company's setting and proposals in three statements, whatever the number of companies.
+  const proposalsByCompany=await thresholdProposalsByCompanyTx(tx,ctx.tenantId,ids,now);
   for(const ref of allowed){
-   const {setting,proposals}=await thresholdProposalsTx(tx,ctx.tenantId,ref.companyId,now);
+   const {setting,proposals}=proposalsByCompany.get(ref.companyId)!;
    companies.push(Object.freeze({...ref,setting,proposals,
     acknowledgements:Object.freeze(acknowledgements.filter(item=>item.companyId===ref.companyId)),
     ruleProposals:Object.freeze(rules.filter(rule=>rule.companyId===ref.companyId).map(rule=>Object.freeze({...rule,personName:ruleNames.get(rule.employmentId)??null}))),

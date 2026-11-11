@@ -8,33 +8,40 @@
  * of the page ran for many minutes; repeated opens filled the two-CPU database host and the pooled server connections.
  *
  * Pinned here on fictional data:
- *  - the reads send the same statements and transactions for a group of 3 companies as for one of 30, never hold two
+ *  - the reads (and the Payroll loop settings page and the repeat issues the Pre-salary loop reads) send the same
+ *    statements and transactions for a group of 3 companies as for one of 30, never hold two
  *    transactions open at once, and plan without JIT (on staging one row-secured audit-log count took 1,270 ms with JIT
  *    compilation and 11 ms without);
  *  - a 72-company group with a staging-sized audit log (36,000 events) reads within the page's two-second budget;
  *  - the values, written out from the fixture: each company's Audit status (runs, payslips released and opened, statutory
  *    files, findings open, carried, disposed and acknowledged, repeat issues, captures, settings), the history's issues
- *    caught (live anomaly verdicts to review or block) and the Audit loop page's findings and acknowledgements. */
+ *    caught (live anomaly verdicts to review or block) and the Audit loop page's findings and acknowledgements;
+ *  - the settings page's proposals and the repeat issues equal what the per-company reads they replaced return (kept
+ *    below as the oracle), with a rejected proposal withheld and an acknowledged repeat left out. */
 import {randomUUID} from 'node:crypto';
-import {sql} from 'drizzle-orm';
+import {and,eq,gte,inArray,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import * as schema from '../db/schema';
 import {payrollAuditDisposition,payrollAuditFinding} from '../db/payroll-audit-schema';
-import {payrollCheckAcknowledgement} from '../db/teras-payroll-cycle-schema';
-import {client,type SessionContext} from '../db/client';
+import {payrollCheckAcknowledgement,terasPayrollSwingDisposition,terasPayrollThresholdDecision} from '../db/teras-payroll-cycle-schema';
+import {terasLoopCase} from '../db/teras-schema';
+import {client,withTenant,type SessionContext,type Tx} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {closeBatch,createBatch,generatePayslips} from '../core/payroll';
-import {payrollCycleOverview} from '../core/loops/payroll-cycle-views';
-import {auditLoopDetail} from '../core/payroll-audit/status';
+import {payrollCycleOverview,payrollLoopSettingsPage} from '../core/loops/payroll-cycle-views';
+import {payrollLoopSettingsTx} from '../core/loops/payroll-loop-settings';
+import {PROPOSAL_WINDOW_DAYS,deriveSwingProposals} from '../core/loops/swing-proposals';
+import {acknowledgementFor,acknowledgementsTx,currentDepartmentsTx,type Acknowledgement} from '../core/loops/acknowledgements';
+import {auditLoopDetail,repeatAuditIssues} from '../core/payroll-audit/status';
 import {PAYROLL_ACCESS_EVENT,PAYSLIP_OPENED_EVENT} from '../core/payroll-audit/types';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 const PERIOD='2026-01',PREVIOUS='2025-12',TODAY='2026-01-20';
 let b:Base;
 let hr:SessionContext;
-let paid:string,second:string;
+let paid:string,second:string,thirdCompany:string;
 const ids={carried:'',current:'',acknowledged:'',disposed:''};
 
 type Trace={statements:number;begins:number;maxOpen:number;jitOff:number};
@@ -63,6 +70,51 @@ async function addCompanies(count:number){
  if(rows.length)await owner.db.insert(schema.company).values(rows);
 }
 const read=()=>payrollCycleOverview(hr,{period:PERIOD,today:TODAY});
+const allIds=async()=>(await owner.db.select({id:schema.company.id}).from(schema.company).where(eq(schema.company.tenantId,b.tenantId))).map(row=>row.id);
+
+/** The per-company reads as they were before 11 Nov 2026 (core/loops/payroll-loop-settings.ts thresholdProposalsTx and
+ * core/payroll-audit/status.ts repeatAuditIssues), kept here as the oracle for the set-based reads. */
+async function oldThresholdProposalsTx(tx:Tx,tenantId:string,companyId:string,now:Date){
+ const setting=(await payrollLoopSettingsTx(tx,tenantId,[companyId])).get(companyId)!;
+ const since=new Date(now.getTime()-PROPOSAL_WINDOW_DAYS*86_400_000);
+ const rows=await tx.select({pattern:terasPayrollSwingDisposition.pattern,swingBp:terasPayrollSwingDisposition.swingBp,disposition:terasPayrollSwingDisposition.disposition})
+  .from(terasPayrollSwingDisposition).where(and(eq(terasPayrollSwingDisposition.tenantId,tenantId),eq(terasPayrollSwingDisposition.companyId,companyId),
+   gte(terasPayrollSwingDisposition.decidedAt,since)));
+ const rejected=await tx.select({key:terasPayrollThresholdDecision.proposalKey}).from(terasPayrollThresholdDecision)
+  .where(and(eq(terasPayrollThresholdDecision.tenantId,tenantId),eq(terasPayrollThresholdDecision.companyId,companyId),eq(terasPayrollThresholdDecision.decision,'rejected')));
+ return {setting,proposals:deriveSwingProposals(rows,setting,new Set(rejected.map(row=>row.key)))};
+}
+async function oldAcknowledgedFindingsTx(tx:Tx,tenantId:string,companyId:string,findings:readonly {id:string;controlId:string;employmentId:string|null}[]){
+ const out=new Map<string,Acknowledgement>();
+ if(!findings.length)return out;
+ const list=await acknowledgementsTx(tx,tenantId,[companyId]).catch(()=>[] as Acknowledgement[]);
+ if(!list.length)return out;
+ const departments=await currentDepartmentsTx(tx,findings.flatMap(row=>row.employmentId?[row.employmentId]:[]));
+ for(const row of findings){
+  const ack=acknowledgementFor(list,{companyId,checkId:`audit:${row.controlId}`,employmentId:row.employmentId,departmentId:row.employmentId?departments.get(row.employmentId)??null:null});
+  if(ack)out.set(row.id,ack);
+ }
+ return out;
+}
+function oldRepeatAuditIssues(ctx:SessionContext,payPeriod:string,companyIds:readonly string[]){
+ return withTenant(ctx,async tx=>{
+  const all=await tx.select({id:payrollAuditFinding.id,companyId:payrollAuditFinding.companyId,controlId:payrollAuditFinding.controlId,
+   payPeriod:payrollAuditFinding.payPeriod,employmentId:payrollAuditFinding.employmentId})
+   .from(payrollAuditFinding).where(and(eq(payrollAuditFinding.tenantId,ctx.tenantId),inArray(payrollAuditFinding.companyId,[...companyIds]),
+    inArray(payrollAuditFinding.payPeriod,[payPeriod,PREVIOUS])));
+  const covered=new Set<string>();
+  for(const companyId of companyIds)for(const id of (await oldAcknowledgedFindingsTx(tx,ctx.tenantId,companyId,all.filter(row=>row.companyId===companyId))).keys())covered.add(id);
+  const found=all.filter(row=>!covered.has(row.id));
+  const out=new Map<string,string[]>();
+  for(const companyId of companyIds){
+   const now=new Set(found.filter(row=>row.companyId===companyId&&row.payPeriod===payPeriod).map(row=>row.controlId));
+   const then=new Set(found.filter(row=>row.companyId===companyId&&row.payPeriod!==payPeriod).map(row=>row.controlId));
+   const repeat=[...now].filter(id=>then.has(id)).sort();
+   if(repeat.length)out.set(companyId,repeat);
+  }
+  return out;
+ });
+}
 async function finding(companyId:string,payPeriod:string,controlId:'shared_bank_account'|'preparer_closed_run',employmentId:string|null){
  const [row]=await owner.db.insert(payrollAuditFinding).values({tenantId:b.tenantId,companyId,payPeriod,controlId,employmentId,subjectKey:`fixture:${randomUUID()}`,
   evidence:{fixture:true},evidenceHash:'f'.repeat(64),detectedAt:new Date(`${payPeriod}-15T02:00:00Z`),writer:'user',writerId:b.adminUserId}).returning({id:payrollAuditFinding.id});
@@ -121,17 +173,53 @@ beforeAll(async()=>{
  ids.acknowledged=await finding(second,PERIOD,'preparer_closed_run',null);
  await owner.db.insert(payrollCheckAcknowledgement).values({tenantId:b.tenantId,companyId:second,checkId:'audit:preparer_closed_run',scope:'company',
   reason:'Fixture: one payroll officer.',createdByUserId:b.adminUserId});
+ // December's preparer-and-closer finding of the second company is acknowledged too, so it is no repeat issue; a third
+ // company finds a pay-after-last-day issue in both months, which is one.
+ await finding(second,PREVIOUS,'preparer_closed_run',null);
+ const [third]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Third Sdn Bhd'}).returning({id:schema.company.id});
+ thirdCompany=third!.id;
+ await owner.db.insert(payrollAuditFinding).values([PERIOD,PREVIOUS].map(payPeriod=>({tenantId:b.tenantId,companyId:thirdCompany,payPeriod,controlId:'pay_after_last_day',employmentId:null,
+  subjectKey:`fixture:${randomUUID()}`,evidence:{fixture:true},evidenceHash:'f'.repeat(64),detectedAt:new Date(`${payPeriod}-15T02:00:00Z`),writer:'user' as const,writerId:b.adminUserId})));
+ // Net-swing dispositions for the Payroll loop settings page's proposals: the paid company's salary-change flags (five
+ // expected, one a problem) and the second company's overtime flags (six expected), one of whose proposals was rejected.
+ const [dept2]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:second,name:'Fictional Second Ops'}).returning({id:schema.department.id});
+ const secondHire=await hireEmployee(hr,{person:{fullName:'Scale Fictional Second',primaryEmail:`${randomUUID()}@fixture.test`},companyId:second,departmentId:dept2!.id,
+  employmentType:'full_time',hiredOn:'2025-01-01'});
+ const dispose=async(companyId:string,employmentId:string,pattern:string,swingBp:number,disposition:'expected'|'problem',n:number)=>{
+  const payPeriod=`2025-${String(n+1).padStart(2,'0')}`;
+  const [kase]=await owner.db.insert(terasLoopCase).values({tenantId:b.tenantId,workerId:'loop_salary_payroll',companyId,employmentId,subjectKey:`swing:${employmentId}:${payPeriod}`,
+   recipient:'hr',state:'open',facts:{payPeriod,swingBp,direction:'up',pattern,thresholdBp:1500,causes:['salary_change']},openedRunId:randomUUID(),checkedRunId:randomUUID()} as never).returning({id:terasLoopCase.id});
+  await owner.db.insert(terasPayrollSwingDisposition).values({tenantId:b.tenantId,caseId:kase!.id,companyId,employmentId,payPeriod,pattern,swingBp,thresholdBp:1500,disposition,
+   decidedByUserId:b.adminUserId});
+ };
+ for(let n=0;n<6;n++)await dispose(paid,people[n%2]!.employmentId,'cause:salary_change',1800+n*100,n===5?'problem':'expected',n);
+ for(let n=0;n<6;n++)await dispose(second,secondHire.employmentId,'cause:overtime_hours',2000+n*50,'expected',n);
+ const proposed=await withTenant(hr,tx=>oldThresholdProposalsTx(tx,b.tenantId,second,new Date()));
+ expect(proposed.proposals.length).toBeGreaterThan(1);
+ const refusedProposal=proposed.proposals[0]!;
+ await owner.db.insert(terasPayrollThresholdDecision).values({tenantId:b.tenantId,companyId:second,proposalKey:refusedProposal.key,kind:refusedProposal.kind,
+  fromThresholdBp:refusedProposal.fromThresholdBp,toThresholdBp:refusedProposal.toThresholdBp,pattern:refusedProposal.pattern,evidence:{...refusedProposal.evidence},
+  decision:'rejected',decidedByUserId:b.adminUserId});
 },180_000);
 afterAll(closeAll);
 
 describe('payroll cycle page reads at group scale', ()=>{
  it('sends the same statements for 3 companies as for 30, one transaction at a time', async()=>{
-  await addCompanies(1);
   const small=await traced(read);
   expect(small.value.companies).toHaveLength(3);
+  const settingsSmall=await traced(()=>payrollLoopSettingsPage(hr));
+  const repeatSmall=await traced(async()=>repeatAuditIssues(hr,{payPeriod:PERIOD,companyIds:await allIds()}));
   await addCompanies(27);
   const large=await traced(read);
   expect(large.value.companies).toHaveLength(30);
+  // The Payroll loop settings page and the repeat issues the Pre-salary loop reads are set-based too.
+  const settingsLarge=await traced(()=>payrollLoopSettingsPage(hr));
+  const repeatLarge=await traced(async()=>repeatAuditIssues(hr,{payPeriod:PERIOD,companyIds:await allIds()}));
+  expect(settingsLarge.value.companies).toHaveLength(30);
+  expect(settingsLarge.trace.statements).toBe(settingsSmall.trace.statements);
+  expect(settingsLarge.trace.maxOpen).toBe(1);
+  expect(repeatLarge.trace.statements).toBe(repeatSmall.trace.statements);
+  expect(repeatLarge.trace.maxOpen).toBe(1);
   expect(small.trace.statements).toBeGreaterThan(0);
   expect(large.trace.statements).toBe(small.trace.statements);
   expect(large.trace.begins).toBe(small.trace.begins);
@@ -176,14 +264,32 @@ describe('payroll cycle page reads at group scale', ()=>{
   expect(bare.statutory.map(f=>[f.form,f.required,f.prepared])).toEqual([['epf',true,false],['socso_eis',true,false],['pcb_cp39',false,false],['hrd',false,false]]);
   expect(bare.findings).toEqual({open:0,disposed:0,acknowledged:0});
   expect(bare.captures).toEqual({count:0,lastAt:null,head:null});
-  expect(view.audit!.totals.openFindings).toBe(2);
+  expect(byId.get(thirdCompany)!.findings).toEqual({open:1,disposed:0,acknowledged:0});
+  expect(view.audit!.totals.openFindings).toBe(3);
   expect(view.audit!.totals.payslips).toBe(2);
   // The Audit loop page: January's own findings and December's carried one, each with its acknowledgement.
   const detail=await auditLoopDetail(hr,{payPeriod:PERIOD});
-  expect(detail.findings.map(f=>f.id).sort()).toEqual([ids.acknowledged,ids.carried,ids.current].sort());
+  expect(detail.findings.filter(f=>f.companyId!==thirdCompany).map(f=>f.id).sort()).toEqual([ids.acknowledged,ids.carried,ids.current].sort());
+  expect(detail.findings.filter(f=>f.companyId===thirdCompany).map(f=>f.controlId)).toEqual(['pay_after_last_day']);
   expect(detail.findings.find(f=>f.id===ids.acknowledged)!.acknowledgement).toMatchObject({scope:'company',reason:'Fixture: one payroll officer.'});
-  expect(detail.findings.filter(f=>f.id!==ids.acknowledged).map(f=>f.acknowledgement)).toEqual([null,null]);
+  expect(detail.findings.filter(f=>f.id!==ids.acknowledged).map(f=>f.acknowledgement)).toEqual([null,null,null]);
   expect(detail.corrections).toEqual([]);
+ },120_000);
+
+ it('the settings page and the repeat issues match the per-company reads they replace', async()=>{
+  const now=new Date();
+  const page=await payrollLoopSettingsPage(hr,{now});
+  const expected=await withTenant(hr,async tx=>{const out=[];for(const c of page.companies)out.push(await oldThresholdProposalsTx(tx,b.tenantId,c.companyId,now));return out;});
+  expect(page.companies.map(c=>({setting:c.setting,proposals:c.proposals}))).toEqual(expected);
+  // Written out from the fixture: both companies with flags propose, and the second company's rejected proposal is gone.
+  const proposals=(companyId:string)=>page.companies.find(c=>c.companyId===companyId)!.proposals;
+  expect(proposals(paid).map(p=>[p.kind,p.pattern])).toContainEqual(['exclusion','cause:salary_change']);
+  expect(proposals(second).length).toBeGreaterThan(0);
+  expect(page.companies.filter(c=>c.companyId!==paid&&c.companyId!==second).every(c=>c.proposals.length===0)).toBe(true);
+  const ids=await allIds();
+  const repeat=await repeatAuditIssues(hr,{payPeriod:PERIOD,companyIds:ids});
+  expect(repeat).toEqual(await oldRepeatAuditIssues(hr,PERIOD,ids));
+  expect([...repeat].sort()).toEqual([[paid,['shared_bank_account']],[thirdCompany,['pay_after_last_day']]].sort());
  },120_000);
 
  it('reads a 72-company group with a staging-sized audit log within the page budget', async()=>{

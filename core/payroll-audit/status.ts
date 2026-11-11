@@ -299,9 +299,9 @@ export async function repeatAuditIssues(ctx:SessionContext,input:Readonly<{payPe
    payPeriod:payrollAuditFinding.payPeriod,employmentId:payrollAuditFinding.employmentId})
    .from(payrollAuditFinding).where(and(eq(payrollAuditFinding.tenantId,ctx.tenantId),inArray(payrollAuditFinding.companyId,[...input.companyIds]),
     inArray(payrollAuditFinding.payPeriod,[payPeriod,prevMonth(payPeriod)])));
-  // A finding a standing acknowledgement covers is expected: it is no repeat issue (Phase 2 hardening).
-  const covered=new Set<string>();
-  for(const companyId of input.companyIds)for(const id of (await acknowledgedFindingsTx(tx,ctx.tenantId,companyId,all.filter(row=>row.companyId===companyId))).keys())covered.add(id);
+  // A finding a standing acknowledgement covers is expected: it is no repeat issue (Phase 2 hardening). One read for
+  // every company's findings; each is still covered only by an acknowledgement of its own company.
+  const covered=new Set((await acknowledgedAcrossTx(tx,ctx.tenantId,all)).keys());
   const found=all.filter(row=>!covered.has(row.id));
   const out=new Map<string,AuditControlId[]>();
   for(const companyId of input.companyIds){
