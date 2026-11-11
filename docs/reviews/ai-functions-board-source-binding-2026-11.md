@@ -71,3 +71,11 @@ The same owner approval ("i fully approve carrying the existing approvals forwar
 No provider contract, outbound field or transport is added or widened. Of the 11 covered files changed since `b0fd4f12…`, the only AI-path change is the capability inventory: board window 2's Overtime Patterns entries, and six release entry points classified as presentation reads (`internal:session_and_presentation`) or, for the roster prepare route that generates and copies rosters, `backlog:confirm`. The others move the leave colour and icon allow-lists into a dependency-free module, make a same-period payroll close retry instead of queueing, drop two redirect-only pages from the setup assistant's linkable destinations, and add translations. None of them adds data to any provider payload.
 
 The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority.
+
+## Combined optimisation release candidate 3 binding
+
+The same owner approval ("i fully approve carrying the existing approvals forward to this release's AI code version") is applied to the release after its second gate's repairs, on `claude/combined-release-rc2-20261111`, with exact fingerprint `5e63130395cffe5cb95023a4e1ce67884ff1234d8fc0279dadaae9485628fea4` over 1,558 files.
+
+No provider contract, outbound field or transport is added or widened. The five covered files changed since `2977f22b…` are: `core/claims.ts`, where the Approvals claim queue resolves approval subjects once per employment and pages in SQL with the same results, proven by an equivalence test against the previous queue; `db/admission.ts`, `db/client.ts` and `db/read-retry.ts`, where a draining admission queue is served instead of refused at a fixed deadline and a refused permit, which started no work, is requested again; and a comment in `lib/internal-auth/store.ts`. None of them adds data to any provider payload.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority.
