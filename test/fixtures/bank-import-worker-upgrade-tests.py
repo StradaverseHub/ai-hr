@@ -369,6 +369,20 @@ class AdoptStoppedFlowTests(unittest.TestCase):
             self.assertEqual(receipt['priorObservationSha256'],update.digest(f.fmt.canonical(observed['prior'])))
             # The fresh receipt is exactly what a later managed drain validates.
             self.assertEqual(receipt['source'],f.source);self.assertNotIn('previousWebSource',receipt)
+    def test_adopts_when_systemd_omits_unset_override_properties(self):
+        # systemd 255 prints no line at all for an unset ExecStartPre/ExecStop/... property (staging, 11 Nov 2026).
+        with tempfile.TemporaryDirectory() as tmp:
+            f=AdoptFlowFixture(Path(tmp))
+            for key in ('ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition'):f.report.pop(key,None)
+            f.invoke('adopt-stopped');self.assertEqual(f.report['ActiveState'],'active')
+            self.assertEqual(f.unit.read_text(),f.service_unit(f.source))
+    def test_refuses_a_set_override_even_when_others_are_omitted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=AdoptFlowFixture(Path(tmp));legacy=f.unit.read_bytes()
+            for key in ('ExecStartPost','ExecStop','ExecStopPost','ExecCondition'):f.report.pop(key,None)
+            f.report['ExecStartPre']='{ path=/bin/sh ; argv[]=/bin/sh -c fictional }'
+            with self.assertRaises(ValueError):f.invoke('adopt-stopped')
+            self.assertFalse(f.operation.exists());self.assert_refused_without_change(f,legacy)
     def assert_refused_without_change(self,f,legacy):
         self.assertEqual(f.unit.read_bytes(),legacy);self.assertEqual(f.mutations(),[])
         self.assertFalse((f.app/'releases'/f.source).exists())

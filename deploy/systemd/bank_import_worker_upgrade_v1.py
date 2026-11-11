@@ -116,7 +116,8 @@ def validate_stopped_prior(base, source, unit_hash, env_hash):
                         'EnvironmentFiles': str(base.ENV) + ' (ignore_errors=no)'}.items():
         base.check(report.get(key) == wanted, 'prior worker service configuration differs: ' + key)
     for key in OVERRIDE_KEYS:
-        base.check(report.get(key) == '', 'unreviewed prior service override: ' + key)
+        # systemd 255 omits an unset Exec*/override property from `systemctl show --property=`; absent means unset.
+        base.check(report.get(key, '') == '', 'unreviewed prior service override: ' + key)
     base.check(report.get('Restart') == 'on-failure' and report.get('NeedDaemonReload') == 'no' and
                report.get('UnitFileState') == 'enabled', 'loaded prior service is not the observed configuration')
     base.check(report.get('ActiveState') == 'inactive' and report.get('SubState') == 'dead' and report.get('MainPID') == '0',
