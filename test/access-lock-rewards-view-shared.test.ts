@@ -27,6 +27,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {person,profileChangeRequest} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {pendingProfileTaskMetadata} from '../core/profile';
+import * as profilePolicy from '../core/profile-edit-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {pgSqlState} from '../lib/db-error';
@@ -65,13 +66,17 @@ async function populatedRewards(){
  return {b,ctx,confirmed};
 }
 
-/** The viewer's own transactions on a starved box: every statement, the Access lock request included, waits first.
+/** The viewer's own transactions on a starved box: every statement, the Access lock request included, waits first
+ * (the transaction's own drizzle session, which db/workload.ts also instruments to cancel statements).
  * Each transaction also records the Access lock mode it ended with. */
 function starvedViewer(userId:string,modes:string[]){
  const native=database.withTenant;
  return vi.spyOn(database,'withTenant').mockImplementation(<T,>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>native(ctx,ctx.userId!==userId?fn:async tx=>{
-  const execute=tx.execute.bind(tx) as (query:unknown)=>Promise<unknown>;
-  (tx as unknown as {execute:(query:unknown)=>Promise<unknown>}).execute=async query=>{await pause(STATEMENT_DELAY_MS);return execute(query);};
+  // Every statement of this transaction, raw SQL and query builders alike, goes through its session's prepared queries.
+  type Prepared={execute:(...args:unknown[])=>Promise<unknown>};
+  const session=(tx as unknown as {session:{prepareQuery:(...args:unknown[])=>Prepared}}).session,prepare=session.prepareQuery.bind(session);
+  session.prepareQuery=(...args)=>{const prepared=prepare(...args),execute=prepared.execute.bind(prepared);
+   prepared.execute=async(...values)=>{await pause(STATEMENT_DELAY_MS);return execute(...values);};return prepared;};
   const result=await fn(tx);
   const [mode]=await tx.execute<{mode:string|null}>(sql`select app.access_lock_mode_held(${ctx.tenantId}::uuid) as mode`);
   modes.push(mode?.mode??'none');
@@ -192,4 +197,12 @@ it('keeps the shell bell profile owner on the shared Access lock while starved t
  // The same actionable tasks as before, for both renders.
  expect(new Set(first.map(row=>row.id))).toEqual(new Set(requests.map(row=>row.id)));
  expect(second.map(row=>row.id)).toEqual(first.map(row=>row.id));
+ // Sensitivity control: one render with the previous exclusive profile-write barrier must break the bound under the same
+ // starved model, so this case cannot pass vacuously.
+ vi.spyOn(profilePolicy,'freshProfileEditPolicySharedTx').mockImplementation(profilePolicy.freshProfileEditPolicyTx);
+ const stopControl=accessLockSampler(b.tenantId),control=await pendingProfileTaskMetadata(viewer),controlLocks=await stopControl();
+ console.log('[access-lock-shell-bell-control]',JSON.stringify({...controlLocks,bellModes:modes.slice(-2)}));
+ expect(control.map(row=>row.id)).toEqual(first.map(row=>row.id));
+ expect(modes.at(-1)).toBe('X');
+ expect(controlLocks.maxExclusiveMs).toBeGreaterThan(MAX_EXCLUSIVE_HOLD_MS);
 },120_000);
