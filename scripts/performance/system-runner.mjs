@@ -41,6 +41,18 @@ function processBirth(pid){
 
 // One owner for the cell runtime environment. The upstream parallel build uses it too,
 // so the transported build sees the same variables a serial first cell would have built with.
+// Public diagnostic lines carry only the fictional fixture: origins (scheme, credentials, host, port), key=value
+// credentials, addresses, hosts, e-mails, UUIDs and long token-like runs are redacted; lowercase paths are kept.
+function redactDiagnostic(text){
+ return String(text)
+  .replace(/\\n/g,'\n').replace(/\b(?!file:\/\/)[a-z][a-z0-9+.-]*:\/\/[^/\s"'`]*/gi,'<ORIGIN>')
+  .replace(/\b(?:password|passwd|pwd|secret|token|key|authorization|cookie|session|user|username|host|hostname|hostaddr|dbname|port)\b\s*[=:]\s*\S+/gi,'<REDACTED>')
+  .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b/g,'<IP>').replace(/\[[0-9a-f:]{2,39}\](?::\d{1,5})?/gi,'<IP>')
+  .replace(/\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:internal|local|net|com|io|cloud|azure))(?::\d{1,5})?\b/gi,'<HOST>')
+  .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\b/g,'<EMAIL>')
+  .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,'<UUID>')
+  .replace(/[A-Za-z0-9_+/=.-]{20,}/g,run=>/^[a-z/_.-]+$/.test(run)?run:'<REDACTED>');
+}
 function cellRuntimeEnvironment(base,{out,privateDir,focusedEvidence}){
  const authKey=randomBytes(32).toString('hex');
  const env={...base,AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',AUTH_PROVIDER:'internal',AUTH_SESSION_KEY:authKey,AUTH_PUBLIC_ORIGIN:'https://localhost:3443',
@@ -183,15 +195,7 @@ async function run(label,command,args,childEnv=env,timeout=900000){
  // private log, with origins (scheme, credentials, host, port), addresses and long tokens redacted, so a
  // failed phase names its cause and route path in the job log.
  // The browser phase keeps its reasons in the driver's private failure record, so read that as well.
- const redact=text=>String(text)
-  .replace(/\\n/g,'\n').replace(/\b(?!file:\/\/)[a-z][a-z0-9+.-]*:\/\/[^/\s"'`]*/gi,'<ORIGIN>')
-  .replace(/\b(?:password|passwd|pwd|secret|token|key|authorization|cookie|session|user|username|host|hostname|hostaddr|dbname|port)\b\s*[=:]\s*\S+/gi,'<REDACTED>')
-  .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b/g,'<IP>').replace(/\[[0-9a-f:]{2,39}\](?::\d{1,5})?/gi,'<IP>')
-  .replace(/\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:internal|local|net|com|io|cloud|azure))(?::\d{1,5})?\b/gi,'<HOST>')
-  .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\b/g,'<EMAIL>')
-  .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,'<UUID>')
-  // Keep lowercase words and source paths; redact every other long run (hex, base32, base64 or mixed tokens).
-  .replace(/[A-Za-z0-9_+/=.-]{20,}/g,run=>/^[a-z/_.-]+$/.test(run)?run:'<REDACTED>');
+ const redact=redactDiagnostic;
  if(code!==0||timedOut)for(const file of [label+'.log',...(label==='http-and-browser'?['driver-failures.log','bulk-job-worker.log']:[])])try{
   const lines=redact(readFileSync(join(privateDir,file),'utf8').slice(-16000)).split('\n')
    .filter(line=>/error|code|constraint|column|relation|violat|denied|permission|must|refus|assert|expected|actual|detail|hint|where|routine|severity|timeout|exceeded|waiting|navigat|locator|selector|stage|route|\bat .*\.(?:ts|mts|mjs|js):\d+/i.test(line))
@@ -666,6 +670,15 @@ finally{
     {encoding:'utf8',timeout:timeBudget(10000),maxBuffer:8*1024*1024,...(logContext?{env:logContext.env,killSignal:'SIGKILL'}:{})});
    assert.equal(logs.status,0);
    const log=measureDevelopment?(logs.stderr??''):(logs.stdout??'')+'\n'+(logs.stderr??'');
+   // Diagnostic only: a crashed or restarted server names its signal, exit and the statement it was running.
+   try{
+    const lines=redactDiagnostic(log).split('\n').filter(line=>/terminated by signal|was terminated|exited with exit code|out of memory|failed process was running|terminating any other active server|all server processes terminated|database system was (?:interrupted|not properly)|PANIC|could not (?:fork|resize|allocate)|too many connections/i.test(line))
+     .slice(0,60).map(line=>line.slice(0,400));
+    let memory=null;
+    try{if(developmentPostgresBirth){const p=observeComparisonPostgres(developmentPostgresBirth);
+     memory={capBytes:p.capBytes,peakBytes:p.peakBytes,currentBytes:p.currentBytes,oom:p.oom,oomKill:p.oomKill};}}catch{}
+    console.log('[system-perf] '+JSON.stringify({kind:'POSTGRES_SERVER_FAULT_LOG_V1',memory,lines}));
+   }catch{}
    const advisoryKeys=new Map();
    if(measureDevelopment)try{
     const path=join(privateDir,'diagnostic-lock-families.json'),state=lstatSync(path);
