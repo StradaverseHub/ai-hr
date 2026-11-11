@@ -342,7 +342,7 @@ class ExitedOutsideSessionTests(unittest.TestCase):
 
     def test_modes_bind_the_outside_session_allowance(self):
         self.assertEqual({course: row['exited_outside_session'] for course, row in owner.MODES.items()},
-                         {'serial-2-4-8': False, 'parallel-2-4-8': True, 'parallel-smoke': True, 'parallel-control': True})
+                         {'serial-2-4-8': False, 'parallel-2-4-8': True, 'parallel-smoke': True, 'parallel-control': True, 'parallel-control-50': True, 'parallel-control-100': True})
 
     def test_classification_is_counts_only(self):
         rows = {1: self.row(pid=1, state='S'), 2: self.row(pid=2, session=71, group=71), 3: self.row(pid=3)}

@@ -11,7 +11,7 @@ const buildName='.next',privateName='aihr-worker-comparison-next',seedName='seed
 const aliasVerifier=fileURLToPath(new URL('../../.github/ci/worker-comparison-build-aliases.py',import.meta.url));
 const aliasEnvironment=Object.freeze({PATH:'/usr/bin:/bin',LANG:'C',LC_ALL:'C'});
 // One upstream job builds and seals; each parallel cell job installs that sealed transport.
-const parallelJobs=new Set(['worker-build','worker-cell']),parallelCourses=new Set(['parallel-2-4-8','parallel-smoke','parallel-control']);
+const parallelJobs=new Set(['worker-build','worker-cell']),parallelCourses=new Set(['parallel-2-4-8','parallel-smoke','parallel-control','parallel-control-50','parallel-control-100']);
 const maxEntries=100000,maxBytes=3*1024**3,maxWorkMs=180000;
 const readFlags=flags.O_RDONLY|flags.O_NOFOLLOW|flags.O_NONBLOCK;
 const fdPath=fd=>`/proc/self/fd/${fd}`;

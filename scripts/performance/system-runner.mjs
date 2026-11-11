@@ -210,7 +210,7 @@ async function run(label,command,args,childEnv=env,timeout=900000){
    if(control.length<=900000)console.log('[system-perf] '+redactDiagnostic(control).replace(/[\u0000-\u001f]/g,' '));
    else console.log('[system-perf] '+JSON.stringify({kind:'CONTROL_LOAD_RESULT_V1',unavailable:'oversize',bytes:control.length}));
   }catch(error){
-   if(env.AIHR_MEASURED_BROWSER_COURSE==='parallel-control'){
+   if(String(env.AIHR_MEASURED_BROWSER_COURSE).startsWith('parallel-control')){
     console.log('[system-perf] '+JSON.stringify({kind:'CONTROL_LOAD_RESULT_V1',unavailable:String(error?.code??error?.name??'error').slice(0,40)}));
     // The control driver's own log tail, redacted, so a missing result names its cause.
     try{console.log('[system-perf] '+JSON.stringify({kind:'CONTROL_DRIVER_LOG_TAIL_V1',
@@ -471,7 +471,7 @@ try{
  if(comparison){
   comparison.recordDatabase(developmentPostgresBirth);
   postgresProfile=observeComparisonPostgres(developmentPostgresBirth);
-  assert.equal(postgresProfile.capBytes,env.AIHR_MEASURED_BROWSER_COURSE==='parallel-control'?6442450944:2113929216,'Worker comparison native PostgreSQL memory cap refused');
+  assert.equal(postgresProfile.capBytes,String(env.AIHR_MEASURED_BROWSER_COURSE).startsWith('parallel-control')?6442450944:2113929216,'Worker comparison native PostgreSQL memory cap refused');
   assert.equal(postgresProfile.swapMaxBytes,0,'Worker comparison PostgreSQL swap refused');
  }
  await run('migrate','pnpm',['db:migrate']);
@@ -596,7 +596,7 @@ try{
  if(comparison)assert.equal(driverTimeoutMs,comparison.cell.driverMs,'Worker comparison driver budget differs');
  const clockTicks=execFileSync('getconf',['CLK_TCK'],{encoding:'utf8',...(comparison?{env,timeout:timeBudget(5000),killSignal:'SIGKILL'}:{})}).trim();
  // The load-only control course (release versus main) has its own driver; every other course keeps system-load.
- await run('http-and-browser',process.execPath,['--import','tsx',env.AIHR_MEASURED_BROWSER_COURSE==='parallel-control'?'scripts/performance/control-load.mjs':'scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_PROXY_PID:String(process.pid),PERF_POSTGRES_CONTAINER:container,...(measureDevelopment?{PERF_POSTGRES_CONTAINER_ID:developmentPostgresBirth.id}:{}),PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:clockTicks,NODE_OPTIONS:'--max-old-space-size=2048'},driverTimeoutMs);
+ await run('http-and-browser',process.execPath,['--import','tsx',String(env.AIHR_MEASURED_BROWSER_COURSE).startsWith('parallel-control')?'scripts/performance/control-load.mjs':'scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_PROXY_PID:String(process.pid),PERF_POSTGRES_CONTAINER:container,...(measureDevelopment?{PERF_POSTGRES_CONTAINER_ID:developmentPostgresBirth.id}:{}),PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:clockTicks,NODE_OPTIONS:'--max-old-space-size=2048'},driverTimeoutMs);
  if(comparison)report.comparisonWorkerMemory.terminal=comparisonWorkerMemory(apps,appBirths);
  summarizeNativeFailures();
  assert(report.workerFatalDiagnostics.every(worker=>worker.logMarkers.passiveReadUnavailable===0),'passive shell approval read failures must be fixed before acceptance');
@@ -678,7 +678,7 @@ finally{
    writeFileSync(join(out,'postgres-resources.txt'),stats+'\n');
    if(comparison){
     postgresProfile=observeComparisonPostgres(developmentPostgresBirth);
-    assert(postgresProfile.capBytes===(env.AIHR_MEASURED_BROWSER_COURSE==='parallel-control'?6442450944:2113929216)&&postgresProfile.swapMaxBytes===0
+    assert(postgresProfile.capBytes===(String(env.AIHR_MEASURED_BROWSER_COURSE).startsWith('parallel-control')?6442450944:2113929216)&&postgresProfile.swapMaxBytes===0
      &&postgresProfile.oom===0&&postgresProfile.oomKill===0,'Worker comparison PostgreSQL resource evidence refused');
    }
   }catch{report.postgresResourceSummaryUnavailable=true;report.exitCode=1;}
@@ -838,7 +838,8 @@ function comparisonEnvironment(cell,paths){
  return Object.freeze({...base,TMPDIR:temp,NEXT_TELEMETRY_DISABLED:'1',
   PERF_HTTP_SUITE:cell.suite,PERF_HTTP_THINK_MS:String(cell.thinkMs),PERF_HTTP_HOLD_MS:String(cell.holdMs),
   PERF_APP_WORKERS:String(cell.workers),PERF_APP_POOL_CONNECTIONS:String(cell.totalPool),PERF_APP_TOTAL_HEAP_MIB:String(cell.totalHeapMiB),
-  PERF_ATTENDANCE_DAYS:String(cell.attendanceDays),...(cell.oversubscribed?{PERF_ALLOW_CPU_OVERSUBSCRIPTION_DIAGNOSTIC:'true'}:{})});
+  PERF_ATTENDANCE_DAYS:String(cell.attendanceDays),...(cell.oversubscribed?{PERF_ALLOW_CPU_OVERSUBSCRIPTION_DIAGNOSTIC:'true'}:{}),
+  ...(Number.isSafeInteger(cell.controlActors)?{PERF_CONTROL_ACTORS:String(cell.controlActors)}:{})});
 }
 function comparisonTelemetry(result,out){
  const {report,postgresProfile,fixture}=result;
@@ -891,6 +892,9 @@ function comparisonTelemetry(result,out){
      return {worker,peakPending:data.peakPending??null,peakHolding:data.peakHolding??null,failedBeforeCallback:data.failedBeforeCallback??null,
       windows:windows.length,startDelayP95MaxMs:ms(worst(row=>row.startDelay?.p95Ms)),startDelayP99MaxMs:ms(worst(row=>row.startDelay?.p99Ms)),
       windowsStartDelayP99Over1s:windows.filter(row=>(row.startDelay?.p99Ms??0)>1000).length,
+      windowsStartDelayP95Over5s:windows.filter(row=>(row.startDelay?.p95Ms??0)>5000).length,
+      windowsStartDelayP99Over10s:windows.filter(row=>(row.startDelay?.p99Ms??0)>10000).length,
+      eventLoopP95MaxMs:ms(worst(row=>row.eventLoopDelay?.p95Ms)),
       windowsStartDelayP99Over30s:windows.filter(row=>(row.startDelay?.p99Ms??0)>30000).length,
       heldP99MaxMs:ms(worst(row=>row.held?.p99Ms)),rawPoolQueueP99MaxMs:ms(worst(row=>row.rawPoolWork?.queueWait?.p99Ms)),
       eventLoopMaxMs:ms(worst(row=>row.eventLoopDelay?.maxMs)),maxPendingInWindow:worst(row=>row.pending)};
@@ -1157,7 +1161,7 @@ async function runParallelWorkerCell(){
  const anchorMs=Number(env.AIHR_WORKER_COMPARISON_T0_MS),now=comparisonClock;
  assert(now()>=anchorMs&&now()<anchorMs+PARALLEL_WORKER_CELL_FRONTIERS_MS.active,'Worker comparison admission deadline elapsed');
  let prerequisite=null;
- if(course==='parallel-smoke'||course==='parallel-control')assert(!env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256,'The harness smoke takes no preflight authority');
+ if(course==='parallel-smoke'||course.startsWith('parallel-control'))assert(!env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256,'The harness smoke takes no preflight authority');
  else{
   assert(hex64(env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256),'Worker comparison sealed admission missing');
   prerequisite=readComparisonJson(join(env.RUNNER_TEMP,'aihr-worker-comparison-admission.json'),4096,env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256);

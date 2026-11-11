@@ -15,6 +15,24 @@ const base='https://localhost:3443';
 const out=process.env.PERF_EVIDENCE_DIR,privateDir=process.env.PERF_PRIVATE_DIR;
 const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
 const users=fixture.users;
+// Realistic-load variants pace only N of the 500 fictional actors. The selection is deterministic and keeps the
+// 500-actor role mix (about 4% HR, 4% managers, the rest employees) across both tenants and all ten companies,
+// always including the four primary actors that the key-page probes and baseline sign-ins use.
+const requestedActors=Number(process.env.PERF_CONTROL_ACTORS||users.length);
+function selectActors(count){
+ if(!(count>0&&count<users.length))return users;
+ const primaryIndexes=new Set([0,1,2,4]);
+ const byRole=role=>users.filter(user=>user.role===role&&!primaryIndexes.has(user.index));
+ const spread=(list,n)=>{const out=[];const groups=new Map();for(const user of list){const key=user.tenant+':'+user.company;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(user);}
+  const queues=[...groups.values()];for(let i=0;out.length<n&&queues.some(q=>q.length);i++){const q=queues[i%queues.length];if(q.length)out.push(q.shift());}return out;};
+ const hr=Math.max(2,Math.round(count*0.04)),managers=Math.max(2,Math.round(count*0.04));
+ const chosen=[...users.filter(user=>primaryIndexes.has(user.index))];
+ chosen.push(...spread([...byRole('companyHR'),...byRole('groupHR')],Math.max(0,hr-2)));
+ chosen.push(...spread(byRole('manager'),Math.max(0,managers-1)));
+ chosen.push(...spread(byRole('employee'),Math.max(0,count-chosen.length)));
+ return chosen.slice(0,count);
+}
+const activeUsers=selectActors(requestedActors);
 const holdMs=Number(process.env.PERF_HTTP_HOLD_MS||300000),thinkMs=Number(process.env.PERF_HTTP_THINK_MS||1000),rampMs=10000;
 const workers=Number(process.env.PERF_APP_WORKERS||0);
 const requestDeadlineMs=90000,browserStepMs=30000,pilotBudgetMs=90000,baselineBudgetMs=60000,stuckMs=30000,writeEvery=8,probePauseMs=2000;
@@ -86,9 +104,11 @@ const lockTimer=setInterval(()=>{
   }).catch(()=>{lock.failures++;}).finally(()=>{probeRunning=false;});
 },250);
 const browserInflight=new Map();
-const stuck={http:new Set(),browser:new Set(),diagnostics:[]};let activityProbe=null;
+const stuck={http:new Set(),browser:new Set(),diagnostics:[],over10s:{http:new Set(),browser:new Set()}};let activityProbe=null;
 const stuckTimer=setInterval(()=>{
  const at=now(),rows=[];
+ for(const row of inflight.values())if(at-row.startedMs>10000)stuck.over10s.http.add(row.id);
+ for(const [key,row] of browserInflight)if(at-row.startedMs>10000)stuck.over10s.browser.add(key);
  for(const row of inflight.values())if(at-row.startedMs>stuckMs){stuck.http.add(row.id);rows.push({source:'http',method:row.method,route:row.route,role:row.role,elapsedMs:round(at-row.startedMs)});}
  for(const [key,row] of browserInflight)if(at-row.startedMs>stuckMs){stuck.browser.add(key);rows.push({source:'browser',method:row.method,route:row.route,role:row.role,elapsedMs:round(at-row.startedMs)});}
  if(!rows.length||activityProbe||stuck.diagnostics.length>=24)return;
@@ -110,12 +130,12 @@ const stuckTimer=setInterval(()=>{
 const primary={employee:users[4],manager:users[2],companyHR:users[1],groupHR:users[0]};
 const keyPages={employee:['/','/me'],manager:['/','/approvals'],companyHR:['/','/admin/personnel'],groupHR:['/','/admin/personnel']};
 const result={kind:'CONTROL_LOAD_RESULT_V1',version:1,scope:'Load-only control; recorded, not a release gate',topology,
- holdMs,thinkMs,actors:users.length,pilot:{rows:[],skipped:0},browser:{baseline:[],loaded:[]},steady:null,lockSampler:lock,
+ holdMs,thinkMs,actors:activeUsers.length,actorRoles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,activeUsers.filter(user=>user.role===role).length])),pilot:{rows:[],skipped:0},browser:{baseline:[],loaded:[]},steady:null,lockSampler:lock,
  pendingOver30s:null,phases:{},failures:[]};
 function save(){
  try{writeFileSync(join(out,'control-load.json'),JSON.stringify({...result,partial:true,elapsedMs:round(now()-started),
   steady:result.steady??summarizeSteady(),keyProbes:result.keyProbes??summarizeProbes(),
-  pendingOver30s:{httpRequests:stuck.http.size,browserRequests:stuck.browser.size,diagnostics:stuck.diagnostics}}));}
+  pendingOver30s:{httpRequests:stuck.http.size,browserRequests:stuck.browser.size,over10s:{httpRequests:stuck.over10s.http.size,browserRequests:stuck.over10s.browser.size},diagnostics:stuck.diagnostics}}));}
  catch(error){console.error('[control-load] partial save failed: '+(error?.code??error?.message));}
 }
 const saveTimer=setInterval(save,30000);saveTimer.unref();
@@ -205,8 +225,8 @@ async function steady(){
   if(row.errorPage)totals.errorPages++;
  };
  steadyStart=now()+rampMs;steadyEnd=steadyStart+holdMs;
- await Promise.all(users.map(async(user,index)=>{
-  await pause(Math.floor(index*rampMs/users.length));live.launched++;
+ await Promise.all(activeUsers.map(async(user,index)=>{
+  await pause(Math.floor(index*rampMs/activeUsers.length));live.launched++;
   const pool=routePools[user.role],writer=['employee','manager'].includes(user.role);
   let step=index,action='in';
   while(now()<steadyEnd){
@@ -271,7 +291,7 @@ async function main(){
   const [load]=await Promise.all([steady(),loadedBrowser().catch(error=>note('loaded-browser',error)),keyProbes().catch(error=>note('key-probes',error))]);
   result.steady=load;result.keyProbes=summarizeProbes();
  });
- result.pendingOver30s={httpRequests:stuck.http.size,browserRequests:stuck.browser.size,diagnostics:stuck.diagnostics};
+ result.pendingOver30s={httpRequests:stuck.http.size,browserRequests:stuck.browser.size,over10s:{httpRequests:stuck.over10s.http.size,browserRequests:stuck.over10s.browser.size},diagnostics:stuck.diagnostics};
 }
 
 try{await main();}

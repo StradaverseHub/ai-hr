@@ -22,7 +22,7 @@ on:
       measured_browser_course:
         description: Full role-route preflight, same-source 2, 4 and 8 worker comparison (serial on one host, or parallel one runner per cell), or the parallel harness smoke
         type: choice
-        options: ['off', 'preflight-2', 'serial-2-4-8', 'parallel-2-4-8', 'parallel-smoke', 'parallel-control']
+        options: ['off', 'preflight-2', 'serial-2-4-8', 'parallel-2-4-8', 'parallel-smoke', 'parallel-control', 'parallel-control-50', 'parallel-control-100']
         default: 'off'
       measured_browser_preflight_run:
         description: Successful full browser preflight run ID on the same immutable source
@@ -194,7 +194,7 @@ jobs:
       - name: Admit the parallel worker harness smoke
         # Harness smoke only: no preflight authority, no secrets, no comparison or release evidence.
         # The load-only control course (release versus main) takes the same self-source admission as the smoke.
-        if: ${{ inputs.measured_browser_course == 'parallel-smoke' || inputs.measured_browser_course == 'parallel-control' }}
+        if: ${{ inputs.measured_browser_course == 'parallel-smoke' || startsWith(inputs.measured_browser_course, 'parallel-control') }}
         env:
           STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
           PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
