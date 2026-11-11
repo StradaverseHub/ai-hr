@@ -348,6 +348,7 @@
     "attendance": "考勤记录",
     "attendanceSettings": "考勤",
     "attendanceSettingsPage": "设置",
+    "peopleSettings": "设置",
     "employeeAttendance": "员工考勤",
     "myAttendance": "我的考勤",
     "manage": "管理",
@@ -1287,7 +1288,7 @@
         "deleteConfirmTitle": "删除资历",
         "deleteConfirmBody": "移除此资历记录？它将不再显示在该员工的资历历史中。",
         "none": "暂无资历记录。",
-        "hint": "这些记录由 HR 维护。资历类型在 系统设置 > 系统标签 > 档案选项 中管理。",
+        "hint": "这些记录由 HR 维护。资历类型在 人员 > 配置 > 设置 > 系统标签 > 档案选项 中管理。",
         "level": "资历",
         "levelPlaceholder": "选择资历",
         "institute": "院校",
@@ -23931,6 +23932,44 @@
       "desc": "配置并测试关联薪资项目的考勤计算。",
       "cta": "打开公式构建器"
     }
+  },
+  "peopleSettingsHub": {
+    "title": "人员设置",
+    "subtitle": "管理人员设置的中心。打开某个部分进行配置；仅显示您有权访问的部分。",
+    "employeeId": {
+      "title": "员工编号规则",
+      "desc": "新员工编号的生成方式：前缀、起始号码、位数和适用范围。",
+      "cta": "打开员工编号规则"
+    },
+    "general": {
+      "title": "常规",
+      "desc": "适用于整个组织的员工资料录入规则，例如重复身份证号码和电子邮件检查。",
+      "cta": "打开常规设置"
+    },
+    "systemLabels": {
+      "title": "系统标签",
+      "desc": "所有人共用的选项列表：部门、职位、成本中心、业务单位、职级和档案选项。",
+      "cta": "打开系统标签"
+    },
+    "movement": {
+      "title": "异动设置",
+      "desc": "HR 可为员工记录的职业异动类型，以及其提供的离职原因。",
+      "cta": "打开异动设置"
+    },
+    "hiringDefaults": {
+      "title": "入职默认设置",
+      "desc": "HR 创建员工时套用的各公司试用期长度和评核提醒频率。",
+      "cta": "打开入职默认设置"
+    },
+    "changeRequests": {
+      "title": "员工变更申请设置",
+      "desc": "员工在“我的档案”中可查看和更改的内容、照片编辑，以及由谁审批其申请。",
+      "cta": "打开变更申请设置"
+    },
+    "empty": "您无权访问任何人员设置。",
+    "backToSettings": "返回设置",
+    "leaveUnsaved": "离开此页面并放弃未保存的更改？",
+    "leaveOtherUnsaved": "保存此表单会离开另一表单的未保存更改。放弃这些更改？"
   },
   "rewards": {
     "promotionNominationsHelp": "查看您有权访问的年度奖励评审中的提名。",

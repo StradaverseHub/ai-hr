@@ -522,9 +522,9 @@ describe('476f23ed — the settings screen', () => {
   });
 
   it('the nav row exists and is labelled in all six locales', () => {
-    const sidebar = fs.readFileSync(path.resolve(__dirname, '../lib/navigation/shell-inventory.ts'), 'utf8');
-    expect(sidebar).toContain("href: '/admin/settings/movement'");
-    expect(sidebar).toContain("labelKey: 'movementSettings'");
+    // 82748f92: the row became a People › Settings card (still searchable by this label in the command bar).
+    const sections = fs.readFileSync(path.resolve(__dirname, '../lib/navigation/people-settings.ts'), 'utf8');
+    expect(sections).toContain("href: '/admin/settings/movement', labelKey: 'movementSettings'");
     expect(
       fs.existsSync(path.resolve(__dirname, '../app/admin/settings/movement/page.tsx')),
       'the route the nav row points at exists',

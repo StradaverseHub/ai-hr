@@ -348,6 +348,7 @@
     "attendance": "Hồ sơ chấm công",
     "attendanceSettings": "Chấm công",
     "attendanceSettingsPage": "Cài đặt",
+    "peopleSettings": "Cài đặt",
     "employeeAttendance": "Chấm công nhân viên",
     "myAttendance": "Chấm công của tôi",
     "manage": "Quản lý",
@@ -1287,7 +1288,7 @@
         "deleteConfirmTitle": "Xóa bằng cấp",
         "deleteConfirmBody": "Xóa bản ghi bằng cấp này? Nó sẽ không còn hiển thị trong lịch sử bằng cấp của nhân viên này.",
         "none": "Chưa có bản ghi bằng cấp.",
-        "hint": "Bộ phận nhân sự quản lý các bản ghi này. Loại bằng cấp được quản lý tại Cài đặt hệ thống > Nhãn hệ thống > Tùy chọn hồ sơ.",
+        "hint": "Bộ phận nhân sự quản lý các bản ghi này. Loại bằng cấp được quản lý tại Nhân sự > Cấu hình > Cài đặt > Nhãn hệ thống > Tùy chọn hồ sơ.",
         "level": "Bằng cấp",
         "levelPlaceholder": "Chọn bằng cấp",
         "institute": "Cơ sở đào tạo",
@@ -23931,6 +23932,44 @@
       "desc": "Cấu hình và thử phép tính chấm công liên kết khoản lương.",
       "cta": "Mở trình tạo công thức"
     }
+  },
+  "peopleSettingsHub": {
+    "title": "Cài đặt nhân sự",
+    "subtitle": "Nơi trung tâm để quản lý cài đặt nhân sự. Mở một mục để cấu hình; chỉ hiển thị các mục bạn có quyền truy cập.",
+    "employeeId": {
+      "title": "Đánh số mã nhân viên",
+      "desc": "Cách tạo mã nhân viên mới: tiền tố, số bắt đầu, số chữ số và phạm vi.",
+      "cta": "Mở đánh số mã nhân viên"
+    },
+    "general": {
+      "title": "Chung",
+      "desc": "Quy tắc toàn tổ chức cho việc nhập dữ liệu nhân viên, như kiểm tra trùng NRIC và email.",
+      "cta": "Mở cài đặt chung"
+    },
+    "systemLabels": {
+      "title": "Nhãn hệ thống",
+      "desc": "Các danh sách dùng chung mà mọi người chọn: phòng ban, vị trí, trung tâm chi phí, đơn vị kinh doanh, ngạch bậc và tùy chọn hồ sơ.",
+      "cta": "Mở nhãn hệ thống"
+    },
+    "movement": {
+      "title": "Cài đặt biến động",
+      "desc": "Các loại sự kiện nghề nghiệp mà nhân sự có thể ghi nhận cho nhân viên, và các lý do nghỉ việc đi kèm.",
+      "cta": "Mở cài đặt biến động"
+    },
+    "hiringDefaults": {
+      "title": "Mặc định tuyển dụng",
+      "desc": "Thời gian thử việc và tần suất nhắc đánh giá theo từng công ty, áp dụng khi nhân sự tạo nhân viên.",
+      "cta": "Mở mặc định tuyển dụng"
+    },
+    "changeRequests": {
+      "title": "Yêu cầu thay đổi của nhân viên",
+      "desc": "Những gì nhân viên có thể xem và thay đổi trong Hồ sơ của tôi, chỉnh sửa ảnh, và ai duyệt yêu cầu của họ.",
+      "cta": "Mở cài đặt yêu cầu thay đổi"
+    },
+    "empty": "Bạn không có quyền truy cập cài đặt nhân sự nào.",
+    "backToSettings": "Về Cài đặt",
+    "leaveUnsaved": "Rời trang này và bỏ các thay đổi chưa lưu?",
+    "leaveOtherUnsaved": "Lưu biểu mẫu này sẽ rời các thay đổi chưa lưu ở biểu mẫu khác. Bỏ các thay đổi đó?"
   },
   "rewards": {
     "promotionNominationsHelp": "Xem các đề cử từ những đợt xét đãi ngộ hằng năm trong phạm vi của bạn.",

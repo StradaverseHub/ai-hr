@@ -348,6 +348,7 @@
     "attendance": "Rekod Kehadiran",
     "attendanceSettings": "Kehadiran",
     "attendanceSettingsPage": "Tetapan",
+    "peopleSettings": "Tetapan",
     "employeeAttendance": "Kehadiran Pekerja",
     "myAttendance": "Kehadiran Saya",
     "manage": "Urus",
@@ -1287,7 +1288,7 @@
         "deleteConfirmTitle": "Padam kelayakan",
         "deleteConfirmBody": "Buang rekod kelayakan ini? Ia tidak akan dipaparkan lagi dalam sejarah kelayakan pekerja ini.",
         "none": "Tiada rekod kelayakan.",
-        "hint": "HR menyelenggara rekod ini. Jenis kelayakan diurus di Tetapan Sistem > Label Sistem > Pilihan Profil.",
+        "hint": "HR menyelenggara rekod ini. Jenis kelayakan diurus di Kakitangan > Konfigurasi > Tetapan > Label Sistem > Pilihan Profil.",
         "level": "Kelayakan",
         "levelPlaceholder": "Pilih kelayakan",
         "institute": "Institusi",
@@ -23931,6 +23932,44 @@
       "desc": "Konfigurasi dan uji pengiraan kehadiran yang dipautkan ke Item Gaji.",
       "cta": "Buka pembina formula"
     }
+  },
+  "peopleSettingsHub": {
+    "title": "Tetapan Kakitangan",
+    "subtitle": "Tempat utama untuk mengurus tetapan kakitangan. Buka bahagian untuk mengkonfigurasinya; hanya bahagian yang anda boleh akses ditunjukkan.",
+    "employeeId": {
+      "title": "Penomboran ID Pekerja",
+      "desc": "Cara ID Pekerja baharu dijana: awalan, nombor permulaan, bilangan digit dan skop.",
+      "cta": "Buka penomboran ID pekerja"
+    },
+    "general": {
+      "title": "Umum",
+      "desc": "Peraturan seluruh organisasi untuk kemasukan data pekerja, seperti semakan NRIC dan e-mel berganda.",
+      "cta": "Buka tetapan umum"
+    },
+    "systemLabels": {
+      "title": "Label Sistem",
+      "desc": "Senarai kongsi yang dipilih oleh semua: jabatan, jawatan, pusat kos, unit perniagaan, gred dan pilihan profil.",
+      "cta": "Buka label sistem"
+    },
+    "movement": {
+      "title": "Tetapan Pergerakan",
+      "desc": "Jenis peristiwa kerjaya yang boleh direkodkan oleh HR bagi pekerja, dan sebab penamatan yang ditawarkan.",
+      "cta": "Buka tetapan pergerakan"
+    },
+    "hiringDefaults": {
+      "title": "Tetapan Lalai Pengambilan",
+      "desc": "Tempoh percubaan dan kekerapan peringatan semakan bagi setiap syarikat yang digunakan apabila HR mencipta pekerja.",
+      "cta": "Buka tetapan lalai pengambilan"
+    },
+    "changeRequests": {
+      "title": "Permohonan Perubahan Pekerja",
+      "desc": "Apa yang pekerja boleh lihat dan ubah dalam Profil Saya, penyuntingan foto, dan siapa yang meluluskan permohonan mereka.",
+      "cta": "Buka tetapan permohonan perubahan"
+    },
+    "empty": "Anda tidak mempunyai akses kepada mana-mana tetapan kakitangan.",
+    "backToSettings": "Kembali ke Tetapan",
+    "leaveUnsaved": "Tinggalkan halaman ini dan buang perubahan yang belum disimpan?",
+    "leaveOtherUnsaved": "Menyimpan borang ini akan meninggalkan perubahan belum disimpan dalam borang lain. Buang perubahan tersebut?"
   },
   "rewards": {
     "promotionNominationsHelp": "Semak pencalonan daripada semakan ganjaran tahunan dalam skop anda.",

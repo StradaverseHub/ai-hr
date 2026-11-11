@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import en from '../messages/en.json';
 import PeopleGeneralPage from '../app/admin/settings/people-general/page';
 const mocks=vi.hoisted(()=>({policy:{allowDuplicatedNric:false,allowDuplicatedEmail:false,revision:null as string|null},allowed:true}));
+// 82748f92: the unsaved-changes check is a client island needing the intl provider; its behaviour is test/people-settings-navigation.dom.test.tsx.
+vi.mock('../components/people-settings-navigation',()=>({PeopleSettingsNavigation:()=>null}));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture'})}));
 vi.mock('../core/people-general',()=>({canConfigurePeopleGeneral:async()=>mocks.allowed,getPeopleGeneral:async()=>mocks.policy}));
 vi.mock('../app/admin/settings/people-general/actions',()=>({savePeopleGeneralAction:async()=>{}}));

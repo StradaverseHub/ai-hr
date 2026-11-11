@@ -8,7 +8,6 @@ import {
   CalendarDays,
   Clock,
   FileBarChart,
-  Hash,
   FlaskConical,
   Sparkles,
   LayoutDashboard,
@@ -27,16 +26,14 @@ import {
   Timer,
   ShieldCheck,
   Smartphone,
-  Tags,
   Target,
   UserRound,
-  UserRoundCog,
-  UserRoundPlus,
   Users,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
 import '@/packs/register-all';
+import { PEOPLE_SETTINGS_SECTIONS, type PeopleSettingsGate } from '@/lib/navigation/people-settings';
 import { modulePackById } from '@/packs/registry';
 import { LETTER_NAV_ITEMS } from '@/lib/letter-navigation';
 import { SECURITY_CENTER, SECURITY_PAGES } from '@/lib/security-center-navigation';
@@ -58,6 +55,10 @@ export type ChildItem = Item & {
   // A destination the viewer holds but may not open yet (the locked Development plan): rendered as a
   // non-link and never the owner of the current route or a command-bar entry.
   disabled?: boolean;
+  // 82748f92 — extra command-bar ("Go to") entries published with this row when the row is visible. Not rows:
+  // never rendered in the rail and never catalogue declarations. `gate` narrows one alias further so the
+  // palette never offers a destination the viewer cannot open (see components/sidebar.tsx).
+  searchAliases?: { href: string; labelKey: string; gate: PeopleSettingsGate }[];
 };
 export type CollapsibleGroupItem = {
   tour?: string;
@@ -282,26 +283,19 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
   labelKey: 'systemSettings',
   icon: Settings2,
   children: [
-    // Employee ID Auto Running Number Setup (feedback 3d0031e6): configurable auto-numbered employee codes.
-    { href: '/admin/settings/employee-id', labelKey: 'employeeIdConfig', icon: Hash, adminOnly: true },
-    { href: '/admin/settings/people-general', labelKey: 'peopleGeneral', icon: Settings2, adminOnly: true },
+    // 82748f92: People › Configuration › Settings. One card page (app/admin/settings/people) replaces the six
+    // rows that used to sit here and below: Employee ID numbering (3d0031e6), General, System Labels
+    // (fbdeee87), Movement Settings (476f23ed), Hiring Defaults (7b5f18c3) and Employee Change Requests
+    // (r261 / 9583deac). Navigation only: every section keeps its address, page guard and lib/permissions.ts
+    // column. `ownedSubpaths` keeps this row lit (and the breadcrumb on People › Settings) on every section
+    // and its sub-routes; `searchAliases` keeps each section findable by its own name in the command bar.
+    // Placed first so it renders right after Organization under People › Configuration.
+    { href: '/admin/settings/people', labelKey: 'peopleSettings', icon: Settings2, adminOnly: true,
+      ownedSubpaths: PEOPLE_SETTINGS_SECTIONS.map((section) => section.href),
+      searchAliases: PEOPLE_SETTINGS_SECTIONS.map(({ href, labelKey, gate }) => ({ href, labelKey, gate })) },
     // HR-Admin Dashboard Card Master (feedback 1586d2f5): configurable employee-dashboard card catalog.
     { href: '/admin/settings/dashboard', labelKey: 'dashboardCardConfig', icon: LayoutDashboard, adminOnly: true },
-    // fbdeee87: Profile Options was folded into the System Labels surface as a tab, so the two adjacent
-    // admin entries collapse into this single "System Labels" entry (profile options now live at
-    // /admin/settings/system-labels/profile-options).
-    { href: '/admin/settings/system-labels', labelKey: 'systemLabels', icon: Tags, adminOnly: true },
     { href: '/admin/system-settings/approval-delegation', labelKey: 'delegations', icon: ArrowLeftRight, adminOnly: true },
-    // 476f23ed: Movement Settings — the configurable catalogue of career event types (rename / switch off /
-    // add your own). A system-wide setup screen like its three siblings, so it lands here rather than as a
-    // loose row; the types it governs are recorded from Personnel > Employment History > New Event.
-    { href: '/admin/settings/movement', labelKey: 'movementSettings', icon: ArrowLeftRight, adminOnly: true },
-    // 7b5f18c3: Hiring Defaults — the per-company probation length and review-reminder cadence applied
-    // when HR creates an employee. It was a button in the top-right corner of the Personnel list, which
-    // is not where anyone looks for a system setup; this row is the OTHER HALF of its lib/permissions.ts
-    // registration and neither ships without the other (a row whose route is unregistered is refused by
-    // our own access check; a registered route with no row cannot be found).
-    { href: '/admin/settings/hiring-defaults', labelKey: 'hiringDefaults', icon: UserRoundPlus, adminOnly: true },
     // 4509d2b8: Holidays. The row MOVED here from the Attendance settings node (packs/attendance/index.ts)
     // — nav placement only. Nothing about the screen changed: same URL (/admin/holidays, so bookmarks keep
     // working), same Holiday / Holiday Group tabs, same requireAdmin guard, same lib/permissions.ts
@@ -318,17 +312,6 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // CalendarDays is already imported (REPORTS_NODE's Leave report uses it) and no sibling in THIS node
     // carries it, so the collapsed rail has no glyph collision.
     { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
-    // r261 (board item 9583deac, stage three): Employee Change Requests — the two settings that decide
-    // which fields of their own record an employee may ask to change, and who signs one off. It belongs
-    // in System Settings for the same reason Hiring Defaults does: it is company-wide setup an
-    // administrator configures once, not a daily HR task, and there is nowhere on the Personnel record or
-    // on /approvals where a reader would look for a policy about every employee at once. This row is the
-    // OTHER HALF of its lib/permissions.ts registration and neither ships without the other.
-    //
-    // Placed after Holidays and before System Analysis, which stays last (it is a reference screen, not a
-    // setup step). UserRoundCog is unused elsewhere in this node, so the collapsed rail has no glyph
-    // collision with UserRoundPlus (Hiring Defaults).
-    { href: '/admin/settings/profile-requests', labelKey: 'profileRequestSettings', icon: UserRoundCog, adminOnly: true },
     // Admins can inspect SMTP setup; only an enrolled installation identity can change it.
     { href: '/admin/settings/entra', labelKey: 'entra', icon: Settings2, adminOnly: true, loginPresentationOnly: true },
     { href: '/admin/settings/login', labelKey: 'loginPresentation', icon: Settings2, adminOnly: true, loginPresentationOnly: true },

@@ -1,5 +1,7 @@
 import { SystemLabelImportTools } from '@/components/system-label-import-tools';
 import { getTranslations } from 'next-intl/server';
+import { peopleSettingsBack } from '@/app/admin/settings/people/back';
+import { PeopleSettingsNavigation } from '@/components/people-settings-navigation';
 import {requireAdmin} from '@/lib/authz';
 import { isGroupAdmin } from '@/lib/authz';
 import { listJobGrades } from '@/core/read';
@@ -237,7 +239,8 @@ export default async function SystemLabelsPage({
 
   return (
     <div className="w-full min-w-0 space-y-6">
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <PageHeader title={t('pageTitle')} description={t('pageDescription')} back={await peopleSettingsBack()} />
+      <PeopleSettingsNavigation />
       <p className="text-sm text-muted-foreground">{t('criteriaHelp')}</p>
       <SystemLabelsTabs active="organisation" />
       <SystemLabelImportTools />

@@ -31,6 +31,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { countQuoted, nodeBlock } from './helpers/sidebar-source';
 import { navigationPlacement } from '../lib/navigation-workspaces';
+import { PEOPLE_SETTINGS_SECTIONS } from '../lib/navigation/people-settings';
 
 const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../lib/navigation/shell-inventory.ts'), 'utf8');
 const LAYOUT = fs.readFileSync(path.resolve(__dirname, '../app/layout.tsx'), 'utf8');
@@ -60,20 +61,15 @@ const TICKET_HREFS = [
  * quietly wedged between the setup rows and these two.
  */
 const SYSTEM_SETTINGS_CHILD_HREFS = [
-  '/admin/settings/employee-id',
-  '/admin/settings/people-general',
+  // 82748f92 — People › Settings. Employee ID numbering, General, System Labels, Movement Settings, Hiring
+  // Defaults and Employee Change Requests LEFT this node as rows and are the cards of this one page
+  // (lib/navigation/people-settings.ts, pinned below). DECLARED here, for the reason above.
+  '/admin/settings/people',
   '/admin/settings/dashboard',
-  '/admin/settings/system-labels',
   '/admin/system-settings/approval-delegation',
-  '/admin/settings/movement',
-  '/admin/settings/hiring-defaults',
   // 4509d2b8 — moved out of the Attendance settings node (packs/attendance/index.ts). It is company-wide
   // setup, not attendance config: one holiday list, read by leave, attendance and payroll alike.
   '/admin/holidays',
-  // r261 (9583deac stage three) — Employee Change Requests: which fields an employee may ask to change,
-  // and who approves. DECLARED here rather than tolerated, which is the whole point of asserting the
-  // full list: a row spliced into the middle of this node is exactly where a neighbour gets clipped.
-  '/admin/settings/profile-requests',
   // Microsoft identity configuration is a declared setup destination.
   '/admin/settings/entra',
   '/admin/settings/login',
@@ -148,9 +144,13 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
   });
 
   it('retains the original setup destinations and places employee configuration separately from shared system settings', () => {
+    // 82748f92: Employee ID numbering and System Labels are People › Settings cards; Dashboard stays a row.
+    const cards: readonly string[] = PEOPLE_SETTINGS_SECTIONS.map((section) => section.href);
     for (const href of TICKET_HREFS) {
-      expect(node!.indexOf(`'${href}'`), `${href} retains its authorized source descriptor`).toBeGreaterThan(-1);
+      expect(node!.indexOf(`'${href}'`) > -1 || cards.includes(href), `${href} retains its authorized source descriptor`).toBe(true);
     }
+    expect(node!).toContain("href: '/admin/settings/people', labelKey: 'peopleSettings'");
+    expect(navigationPlacement('/admin/settings/people')).toEqual({area:'ops',module:'people',section:'config'});
     expect(navigationPlacement('/admin/settings/employee-id')).toEqual({area:'ops',module:'people',section:'config'});
     expect(navigationPlacement('/admin/settings/dashboard')).toEqual({area:'system'});
     expect(navigationPlacement('/admin/settings/system-labels')).toEqual({area:'ops',module:'people',section:'config'});
@@ -187,15 +187,17 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
     expect(source('app/admin/privacy/page.tsx')).toContain('await requireAdmin()');
   });
 
-  it('4509d2b8: the Holidays row sits between Hiring Defaults and System Analysis', () => {
+  it('4509d2b8: the Holidays row sits between the setup rows and System Analysis', () => {
     // Position is the ticket's actual ask (found where a business user looks for company-wide setup), and
     // "last" is reserved for System Analysis. Asserted here as well as in the full-order case above,
     // because the full list would also be satisfied by a wholesale reordering that happens to match.
-    const hiring = node!.indexOf(`'/admin/settings/hiring-defaults'`);
+    // 82748f92: Hiring Defaults is a People › Settings card now; Holidays follows the last setup row left here.
+    const hiring = node!.indexOf(`'/admin/system-settings/approval-delegation'`);
     const holidays = node!.indexOf(`'/admin/holidays'`);
     const explorer = node!.indexOf(`'/admin/system-explorer'`);
     expect(holidays, 'Holidays is a child of the System Settings node').toBeGreaterThan(-1);
-    expect(holidays, 'after Hiring Defaults').toBeGreaterThan(hiring);
+    expect(hiring).toBeGreaterThan(-1);
+    expect(holidays, 'after the setup rows').toBeGreaterThan(hiring);
     expect(holidays, 'before System Analysis, which stays last among the setup rows').toBeLessThan(explorer);
     // e6be5a3b (r330) — the reference PAIR sits at the end, in this order, and nothing comes after it.
     // Without this the two could be reordered, or a setup row appended past them, and the full-list
@@ -216,8 +218,11 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
   });
 
   it('lists each of the three hrefs exactly once across the whole sidebar (old flat rows removed, not duplicated)', () => {
+    const cards: readonly string[] = PEOPLE_SETTINGS_SECTIONS.map((section) => section.href);
     for (const href of TICKET_HREFS) {
-      expect(countQuoted(SIDEBAR, href), `${href} appears exactly once in sidebar.tsx`).toBe(1);
+      // 82748f92: a People › Settings card is no longer a literal row (0); every other screen is exactly one row.
+      expect(countQuoted(SIDEBAR, href), `${href} appears at most once in sidebar.tsx`).toBe(cards.includes(href) ? 0 : 1);
+      expect(cards.filter((card) => card === href)).toHaveLength(cards.includes(href) ? 1 : 0);
     }
   });
 
