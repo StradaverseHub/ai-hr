@@ -151,11 +151,11 @@ describe('what the loops did, from their own ledger',()=>{
  it('counts cases opened and cases resolved in the window per loop, for the companies in view the caller may see',async()=>{
   const run=randomUUID(),since=new Date(Date.parse(`${addCalendarDays(today,-6)}T00:00:00+08:00`)),old=new Date(since.getTime()-86_400_000*10);
   await owner.db.insert(terasLoopCase).values(companies.flatMap((companyId,i)=>[
-   {tenantId:b.tenantId,workerId:'loop_missing_employee_data' as const,companyId,subjectKey:`handled-open:${companyId}`,recipient:'hr' as const,state:'open' as const,facts:{},openedRunId:run,checkedRunId:run},
-   ...(i%2===0?[{tenantId:b.tenantId,workerId:'loop_missing_employee_data' as const,companyId,subjectKey:`handled-done:${companyId}`,recipient:'hr' as const,state:'closed' as const,
+   {tenantId:b.tenantId,workerId:'loop_missing_employee_data' as const,companyId,subjectKey:`opened:${companyId}`,recipient:'payroll' as const,state:'open' as const,facts:{},openedRunId:run,checkedRunId:run},
+   ...(i%2===0?[{tenantId:b.tenantId,workerId:'loop_missing_employee_data' as const,companyId,subjectKey:`resolved:${companyId}`,recipient:'payroll' as const,state:'closed' as const,
     closeReason:'done' as const,facts:{},openedRunId:run,checkedRunId:run,firstOpenedAt:old,openedAt:old,closedAt:new Date()}]:[]),
    // Opened and closed before the window: not counted.
-   {tenantId:b.tenantId,workerId:'loop_document_expiry' as const,companyId,subjectKey:`handled-old:${companyId}`,recipient:'hr' as const,state:'closed' as const,closeReason:'done' as const,
+   {tenantId:b.tenantId,workerId:'loop_document_expiry' as const,companyId,subjectKey:`earlier:${companyId}`,recipient:'payroll' as const,state:'closed' as const,closeReason:'done' as const,
     facts:{},openedRunId:run,checkedRunId:run,firstOpenedAt:old,openedAt:old,closedAt:old},
   ]));
   const all=await readAdminLoopHandled(group,{scopeIds:companies,since});
@@ -180,10 +180,12 @@ describe('bounded, authorize-first and shared-locked',()=>{
    (scope:string[])=>readAdminLoopHandled(group,{scopeIds:scope,since:new Date(Date.parse(`${today}T00:00:00+08:00`))}),
   ]){
    const many=await statements(()=>read(companies)),few=await statements(()=>read([companies[4]]));
-   expect(many.length).toBe(few.length);
-   expect(many.length).toBeLessThanOrEqual(10);
-   expect(many.some(text=>/advisory_xact_lock_shared\(/.test(text))).toBe(true);
-   expect(many.some(text=>/pg_(try_)?advisory_xact_lock\(/.test(text))).toBe(false);
+   const seen=JSON.stringify(many.map(text=>text.slice(0,120)));
+   expect(many.length,seen).toBe(few.length);
+   expect(many.length,seen).toBeGreaterThan(0);
+   expect(many.length,seen).toBeLessThanOrEqual(10);
+   expect(many.some(text=>/advisory_xact_lock_shared\(/.test(text)),seen).toBe(true);
+   expect(many.some(text=>/pg_(try_)?advisory_xact_lock\(/.test(text)),seen).toBe(false);
   }
  });
  it('refuses anyone but an administrator with a login before it reads, and reads nothing for an empty scope',async()=>{

@@ -16,7 +16,7 @@ import {PanelBoundary} from '../employee/panel-boundary';
  * so the list itself never waits for a recommendation. */
 const readRecommendations=cache((session:SessionContext,key:string)=>readApprovalRecommendations(session,key.split(',').filter(Boolean)));
 
-export function DecisionRecommendation({session,leaveRequestId,leaveIds,checking}:{session:SessionContext;leaveRequestId:string;leaveIds:readonly string[];checking:string}){
+export async function DecisionRecommendation({session,leaveRequestId,leaveIds,checking}:{session:SessionContext;leaveRequestId:string;leaveIds:readonly string[];checking:string}){
  return <PanelBoundary fallback={null}>
   <Suspense fallback={<p aria-busy="true" data-recommendation-pending className="m-0 mt-2 text-xs text-muted-foreground">{checking}</p>}>
    <Recommendation session={session} leaveRequestId={leaveRequestId} leaveIds={leaveIds}/>
