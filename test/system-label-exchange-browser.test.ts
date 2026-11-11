@@ -138,9 +138,11 @@ describe('System Labels authenticated Excel browser journey',()=>{
   stream.once('error',()=>{logFailed=true;});
   const port=3149,origin=`http://127.0.0.1:${port}`;
   // next dev restarts itself once its used heap passes 80% of the limit, and the page request after that restart never
-  // completed on the hosted runner. With the background import's job routes compiled too, an 8 GiB limit was crossed
-  // during the six-language loop. The 16 GB hosted runner (15.6 GiB reported) holds a 12 GiB limit beside PostgreSQL's
-  // 2 GiB cap and the unit's second worker; this is the only dev-server test, one per unit. Peaks are recorded per process.
+  // completed on the hosted runner. With the background import's job routes compiled too, the 8 GiB limit's threshold
+  // (6.9 GB) was crossed during the six-language loop. Measured with a 12 GiB limit (run 42949281523): the dev server's
+  // peak used heap was 7.61 GB against a 10.35 GB restart threshold, peak RSS 11.75 GB. Only this test starts a dev server,
+  // and the gate gives it one unit (two workers) on a 16 GB runner. Each run records the peaks and the runner's least
+  // available memory under system-label-dev-server-heap/ in its evidence.
   const memory=totalmem(),heapMiB=memory>=15*1024**3?12288:memory>=12*1024**3?8192:4096;
   const heapEvidence=join(evidence,'system-label-dev-server-heap');mkdirSync(heapEvidence,{recursive:true});
   writeFileSync(join(evidence,'system-label-browser-resources.json'),JSON.stringify({memoryBytes:memory,cpus:availableParallelism(),heapMiB,runner:process.env.RUNNER_ENVIRONMENT??'local'}));

@@ -9,13 +9,26 @@ if (dir) {
   const fs = require('node:fs');
   const path = require('node:path');
   const file = path.join(dir, `heap-${process.pid}.json`);
-  let peakUsedHeap = 0, peakRss = 0, heapLimit = 0;
+  let peakUsedHeap = 0, peakRss = 0, heapLimit = 0, minAvailable = null, swapTotal = null, minSwapFree = null;
+  // The runner's own headroom while this process runs (Linux only): the least memory the kernel reported available.
+  const meminfo = () => {
+    if (process.platform !== 'linux') return;
+    try {
+      const text = fs.readFileSync('/proc/meminfo', 'utf8');
+      const field = (name) => { const match = new RegExp('^' + name + ':\\s+(\\d+) kB', 'm').exec(text); return match ? Number(match[1]) * 1024 : null; };
+      const available = field('MemAvailable'), free = field('SwapFree');
+      if (available !== null && (minAvailable === null || available < minAvailable)) minAvailable = available;
+      swapTotal = field('SwapTotal');
+      if (free !== null && (minSwapFree === null || free < minSwapFree)) minSwapFree = free;
+    } catch { /* Evidence only. */ }
+  };
   const sample = () => {
     const heap = v8.getHeapStatistics();
     if (heap.used_heap_size > peakUsedHeap) peakUsedHeap = heap.used_heap_size;
     heapLimit = heap.heap_size_limit;
     const rss = process.memoryUsage.rss();
     if (rss > peakRss) peakRss = rss;
+    meminfo();
   };
   const write = () => {
     try {
@@ -23,7 +36,8 @@ if (dir) {
       fs.writeFileSync(file, JSON.stringify({
         pid: process.pid, ppid: process.ppid, script: process.argv[1] ?? null,
         peakUsedHeapBytes: peakUsedHeap, heapSizeLimitBytes: heapLimit, peakRssBytes: peakRss,
-        restartThresholdBytes: Math.floor(heapLimit * 0.8), sampledAt: new Date().toISOString(),
+        restartThresholdBytes: Math.floor(heapLimit * 0.8), minMemAvailableBytes: minAvailable,
+        swapTotalBytes: swapTotal, minSwapFreeBytes: minSwapFree, sampledAt: new Date().toISOString(),
       }));
     } catch { /* Evidence only: never disturb the process it observes. */ }
   };
