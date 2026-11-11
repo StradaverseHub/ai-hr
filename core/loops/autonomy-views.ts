@@ -18,9 +18,9 @@ import {isAdmin,isGroupAdmin} from '../../lib/authz-model';
 import {isLoopId,type LoopCaseState,type LoopCloseReason,type LoopFacts,type LoopId,type LoopResolution} from './types';
 import {DEFAULT_LIMITS,SITE_EXIT_RECORDED,type AutonomyLevel,type LevelChangeKind,type LoopActionFacts,type LoopActionReason,type LoopActionState,type LoopLimits,type UndoneBy} from './autonomy-types';
 import {PROMOTION_RULES,isCappedLoop,maxLevel,promotableTo,usesCondition,LOOP_AUTONOMY,type Certificate} from './autonomy';
-import {currentWeekStart,weeklySampleTx} from './samples';
+import {currentWeekStart,weeklySamplesTx} from './samples';
 import {LOOP_IDS} from './types';
-import {certificateFor,latestLevelChangesTx,levelIn,loopLevelsTx,promotionEvidenceTx,type PromotionEvidence} from './levels';
+import {certificateFor,latestLevelChangesTx,levelIn,loopLevelsByLoopTx,loopLevelsTx,promotionEvidenceTx,type PromotionEvidence} from './levels';
 import {LoopViewRefused} from './views';
 
 const DAY_MS=86_400_000;
@@ -75,13 +75,20 @@ export async function loopAutonomyDetail(ctx:SessionContext,workerId:unknown,opt
     ...(workerId==='loop_missed_clock_outs'&&row.admin===true&&typeof row.facts.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(row.facts.date)?{reviewHref:`/attendance/individual/${row.facts.date}?emp=${encodeURIComponent(row.employmentId)}`} : {}),
     canUndo:workerId!=='loop_missed_clock_outs'&&row.state==='applied'&&!undo&&now.getTime()<=row.undoUntil.getTime()&&row.admin===true&&!own});
   };
-  // Level 3: each company's weekly sample, for HR to review instead of every action.
+  // Level 3: each company's weekly sample, for HR to review instead of every action. Every Level 3 company's sample, its
+  // sampled actions and its reviewers' names are read together (four statements however many companies), each company's
+  // exactly as weeklySampleTx, the sampled-action select and namesTx answer it one company at a time.
   const weekStart=currentWeekStart(now),samples:AutonomySample[]=[];
-  for(const item of companies.filter(entry=>levelIn(levels,entry.id)===3)){
-   const sample=await weeklySampleTx(tx,ctx.tenantId,workerId,item.id,weekStart);
-   const sampled=sample.actionIds.length?await select().where(and(eq(terasLoopAction.tenantId,ctx.tenantId),inArray(terasLoopAction.id,[...sample.actionIds]))):[];
+  const third=companies.filter(entry=>levelIn(levels,entry.id)===3);
+  const weekly=await weeklySamplesTx(tx,ctx.tenantId,workerId,third.map(item=>item.id),weekStart);
+  const sampledIds=[...new Set([...weekly.values()].flatMap(sample=>sample.actionIds))];
+  const sampledRows=sampledIds.length?await select().where(and(eq(terasLoopAction.tenantId,ctx.tenantId),inArray(terasLoopAction.id,sampledIds))):[];
+  const reviewers=await namesTx(tx,[...new Set([...weekly.values()].flatMap(sample=>sample.reviewed?[sample.reviewed.byUserId]:[]))]);
+  for(const item of third){
+   const sample=weekly.get(item.id)!,mine=new Set(sample.actionIds);
+   const sampled=sampledRows.filter(row=>mine.has(row.id));
    const order=new Map(sample.actionIds.map((id,index)=>[id,index]));
-   const reviewer=sample.reviewed?(await namesTx(tx,[sample.reviewed.byUserId])).get(sample.reviewed.byUserId)??null:null;
+   const reviewer=sample.reviewed?reviewers.get(sample.reviewed.byUserId)??null:null;
    samples.push(Object.freeze({companyId:item.id,companyName:item.legal_name,weekStart,total:sample.total,
     actions:Object.freeze(sampled.sort((a,b)=>(order.get(a.id)??0)-(order.get(b.id)??0)).map(view)),
     reviewed:sample.reviewed?Object.freeze({byName:reviewer,at:sample.reviewed.at,covered:sample.reviewed.actionIds.length}):null,canReview:sample.actionIds.length>0}));
@@ -140,8 +147,10 @@ export async function loopLevelSummaries(ctx:SessionContext):Promise<Readonly<Re
  return withTenant(ctx,async tx=>{
   const companies=Array.from(await tx.execute(sql`select c.id from public.company c where c.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(c.id)`) as unknown as {id:string}[]);
   const out={} as Record<LoopId,readonly LoopLevelSummary[]>;
+  // Every loop's levels in one statement, not one per loop.
+  const byLoop=await loopLevelsByLoopTx(tx,ctx.tenantId,LOOP_IDS);
   for(const id of LOOP_IDS){
-   const levels=await loopLevelsTx(tx,ctx.tenantId,id),counts=new Map<AutonomyLevel,number>();
+   const levels=byLoop.get(id)!,counts=new Map<AutonomyLevel,number>();
    for(const item of companies){const level=levelIn(levels,item.id);counts.set(level,(counts.get(level)??0)+1);}
    out[id]=Object.freeze([...counts].sort((a,b)=>b[0]-a[0]).map(([level,count])=>Object.freeze({level,count})));
   }
@@ -158,8 +167,9 @@ export async function loopCompanyLevels(ctx:SessionContext):Promise<Readonly<Rec
  return withTenant(ctx,async tx=>{
   const companies=Array.from(await tx.execute(sql`select c.id,c.legal_name from public.company c where c.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(c.id) order by c.legal_name,c.id`) as unknown as {id:string;legal_name:string}[]);
   const out={} as Record<LoopId,readonly LoopCompanyLevel[]>;
+  const byLoop=await loopLevelsByLoopTx(tx,ctx.tenantId,LOOP_IDS);
   for(const id of LOOP_IDS){
-   const levels=await loopLevelsTx(tx,ctx.tenantId,id);
+   const levels=byLoop.get(id)!;
    out[id]=Object.freeze(companies.map(item=>Object.freeze({companyName:item.legal_name,level:levelIn(levels,item.id)})));
   }
   return Object.freeze(out);

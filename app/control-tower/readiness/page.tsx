@@ -32,7 +32,7 @@ export default async function ReadinessPage({ searchParams }: { searchParams?: P
   const s = await requireAdmin();
   const [t, to, tc, f, sp, view, queue] = await Promise.all([getTranslations('controlTower.readinessScreen'), getTranslations('controlTower.orchestrator'),
     getTranslations('controlTower.corrections'), getFormatter(), searchParams ?? Promise.resolve({} as { refresh?: string }),
-    recordReadiness(s), orchestrationQueue(s).catch(() => null)]);
+    recordReadiness(s, { planWithoutJit: true }), orchestrationQueue(s).catch(() => null)]);
   const ta = await getTranslations('aiCentre.readiness');
   const people = [...new Set(view.gaps.flatMap(g => g.people.map(p => p.employmentId)))];
   const asks: ReadonlyMap<string, ReadinessAsk> | null = await readinessLoopAsks(s, people).catch(() => null);
