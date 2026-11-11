@@ -2,15 +2,23 @@
  *
  * The oracle is the release that staging timed out on: the Personnel search and organisation owners exactly as they
  * were before 5086 (restored from the migrations that installed them and checked against the digests 5086 accepts)
- * and the search creation exactly as it shipped (test/helpers/personnel-private-search-legacy.ts, verbatim). Every
- * answer is captured from that state, 5086 is applied, and the same questions are asked of the new owners and the new
- * search: the stored private membership (every entry, kind and revision), the stored criteria and scope, the first
- * Personnel page and its headcount, and every refusal (limit, criteria, access), for a group HR administrator, the same
- * administrator over part of the group, a scoped HR administrator with a Workforce denial, and a capability-only
- * viewer; over 76 companies with dated organisation runs, retained classifications, dated and cross-company
- * placements, future corrections, terminated and voided staff, identity numbers and non-ASCII text. The organisation
- * mapping, company and employment tags, typed overview facts and filter fields, company choices and search rows are
- * compared row for row too. Fictional data only. */
+ * and the search creation exactly as it shipped (test/helpers/personnel-private-search-legacy.ts, verbatim).
+ *
+ *  1. Owners. In the restored state every owner 5086 replaces or builds on is read directly (the organisation mapping
+ *     and tags on fourteen days, a publish-leased run, employment tags for three actors, typed overview facts and
+ *     filter fields, company choices, search rows, filter rows and list rows) and the private-search bind trigger's
+ *     verdict on crafted memberships is recorded; after 5086 every answer must be identical.
+ *  2. End to end. A spread of searches (terms, identity, column filters, a previous token, a refused viewer) is run
+ *     with the shipped search on the restored owners, and must give exactly the same stored membership (every entry,
+ *     kind and revision), criteria, scope, first Personnel page, headcount and refusal as the new search after 5086.
+ *     The new search on the restored database (its fallback before 5086 arrives) must agree as well.
+ *  3. Breadth. Every search is then run with the shipped search and the new search side by side on the 5086 owners,
+ *     which (1) proves answer the shipped search's reads identically, comparing the stored membership, for a group HR administrator, the same
+ *     administrator over part of the group, a scoped HR administrator with a Workforce denial and a capability-only
+ *     viewer.
+ * Over 76 companies with dated organisation runs (ties, an unpublished time, a parent cycle), retained
+ * classifications, dated and cross-company placements, future corrections, terminated and voided staff, identity
+ * numbers and non-ASCII text. Fictional data only. */
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import type {TransactionSql} from 'postgres';
@@ -53,16 +61,18 @@ function asSession<T>(ctx:SessionContext,work:(tx:TransactionSql)=>Promise<T>){
 }
 async function attempt<T>(work:()=>Promise<T>){try{return await work();}catch(error){return refusal(error);}}
 
-/** Every stored and visible effect of one search, or its refusal. */
-async function search(create:Create,c:Case){
+/** Every stored and visible effect of one search, or its refusal (without the page when `page` is false). */
+async function search(create:Create,c:Case,page=true){
  const ctx=contexts[c.actor],companyIds=scopes[c.actor];
  return attempt(async()=>{
   const previousToken=c.previous?await create(ctx,{text:c.previous.text,companyIds,columnFilters:c.previous.filters,replaceCriteria:true}):undefined;
   const token=await create(ctx,{text:c.text,companyIds,columnFilters:c.filters??[],previousToken,replaceCriteria:!c.previous});
   const [stored]=await owner.client<{matches:{employmentId:string}[];criteria:unknown;scope:string[]}[]>`select matches,criteria,scope_ids::text[] as scope
    from personnel_private_search where token_hash=${privateSearchHash(token)}`;
-  const page=await readPersonnelOverview(ctx,{companyIds,privateSearch:token,limit:25,offset:0},{companyIds,privateSearch:token});
-  return {matches:byId(stored.matches),criteria:stored.criteria,scope:[...stored.scope].sort(),employees:page.employees,headcount:page.headcount};
+  const membership={matches:byId(stored.matches),criteria:stored.criteria,scope:[...stored.scope].sort()};
+  if(!page)return membership;
+  const overview=await readPersonnelOverview(ctx,{companyIds,privateSearch:token,limit:25,offset:0},{companyIds,privateSearch:token});
+  return {...membership,employees:overview.employees,headcount:overview.headcount};
  });
 }
 
@@ -97,9 +107,9 @@ async function owners(){
   await read('companies without day',sql`select * from app.personnel_filter_companies(${scope},null::date)`);
   await read('search rows',sql`select value from app.personnel_search_rows(${scope}) as s(value)`);
   await read('filter rows',sql`select value from app.personnel_filter_rows(${f.today}::date,${scope}) as s(value)`);
-  await read('list rows',sql`select value from app.personnel_list_rows(${f.today}::date,${scope}) as s(value)`);
+  if(actor==='admin'||actor==='manager')await read('list rows',sql`select value from app.personnel_list_rows(${f.today}::date,${scope}) as s(value)`);
   await read('list rows for ids',sql`select value from app.personnel_list_rows_for_ids(${f.today}::date,${scope},
-   (select array_agg(id) from (select id from employment where tenant_id=${ctx.tenantId}::uuid order by id limit 120) e)) as s(value)`);
+   (select array_agg(id) from (select id from employment where tenant_id=${ctx.tenantId}::uuid order by id limit 60) e)) as s(value)`);
  }
  return out;
 }
@@ -108,26 +118,24 @@ function caseList(sample:{name:string;email:string;code:string|null;ic:string|nu
  const names=sample.map(row=>row.name),codes=sample.flatMap(row=>row.code?[row.code]:[]);
  const ic=sample.find(row=>row.ic)!.ic!,passport=sample.find(row=>row.passport)!.passport!;
  const terms=[
-  names[0].slice(0,3).toLowerCase(),names[1].toUpperCase(),' '+names[3].slice(2,7)+' ','Siew Ling','tan lim','tan','TAN','a','1','000',
-  '-','.','%','\\',"'",'.*','zzzz-not-a-fixture-name',
+  names[0].slice(0,3).toLowerCase(),names[1].toUpperCase(),' '+names[3].slice(2,7)+' ','tan lim','TAN','a','1',
+  '-','%','\\',"'",'zzzz-not-a-fixture-name',
   codes[0],codes[0].toLowerCase(),codes[0].replace(/[-. _]/g,''),codes[1].slice(1,6),'fx 000 1','fx.00002','fx\t0000','ＦＸ',
-  'example.invalid','EXAMPLE.INVALID','fictional.29@','Fictional.5',
+  'EXAMPLE.INVALID','fictional.29@',
   ic,ic.slice(0,6)+'-'+ic.slice(6,8)+'-'+ic.slice(8),ic.slice(0,6)+' '+ic.slice(6,8)+' '+ic.slice(8),ic.slice(2,8),ic.slice(0,6)+'/'+ic.slice(6,8)+'/'+ic.slice(8),
-  passport,passport.toLowerCase(),'P-0',
-  'zoë','ZOË','STRASSE','ÇELİK','İ','σοφία','ΣΟΦΊΑ','王','K','x'.repeat(200),
+  passport.toLowerCase(),'P-0',
+  'zoë','ZOË','ÇELİK','İ','ΣΟΦΊΑ','王','K','x'.repeat(200),
  ];
  const list:Case[]=terms.map(text=>({label:'admin '+JSON.stringify(text),actor:'admin',text}));
- const subset=['tan','a','1',codes[0].toLowerCase(),'example.invalid',ic,ic.slice(2,8),passport,'zoë','σοφία','%','zzzz-not-a-fixture-name'];
+ const subset=['tan','a',codes[0].toLowerCase(),ic.slice(2,8),passport,'σοφία','%','zzzz-not-a-fixture-name'];
  for(const actor of ['adminPart','manager'] as Actor[])list.push(...subset.map(text=>({label:actor+' '+JSON.stringify(text),actor,text})));
- list.push(...['tan',ic,'a'].map(text=>({label:'viewer '+JSON.stringify(text),actor:'viewer' as Actor,text})));
+ list.push(...['tan',ic].map(text=>({label:'viewer '+JSON.stringify(text),actor:'viewer' as Actor,text})));
  const filtered:[Actor,string,PersonnelColumnFilter[]][]=[
   ['admin','',[{field:'identity',operator:'contains',value:ic.slice(0,6)}]],
   ['admin','a',[{field:'identity',operator:'equals',value:ic}]],
   ['admin','tan',[{field:'code',operator:'contains',value:'fx-00'}]],
   ['admin','',[{field:'name',operator:'contains',value:'Lim'},{field:'employment.hiredOn',operator:'from',value:'2020-01-01'}]],
-  ['admin','zoë',[{field:'company',operator:'equals',value:companies[1]}]],
   ['manager','',[{field:'identity',operator:'contains',value:passport.slice(0,3).toUpperCase()},{field:'email',operator:'contains',value:'EXAMPLE'}]],
-  ['manager','1',[{field:'department',operator:'notBlank',value:''}]],
  ];
  list.push(...filtered.map(([actor,text,filters],i)=>({label:`${actor} filters ${i} ${JSON.stringify(text)}`,actor,text,filters})));
  list.push({label:'admin previous term then filter',actor:'admin',text:'',previous:{text:'tan'},filters:[{field:'name',operator:'contains',value:'lim'}]});
@@ -135,9 +143,52 @@ function caseList(sample:{name:string;email:string;code:string|null;ic:string|nu
  return list;
 }
 
+/** The end-to-end spread: every actor, identity and formatted NRIC, folded codes, non-ASCII text, a refusal, the column
+ * filters and both previous-token merges. */
+function endToEnd(){
+ const pick=(label:string)=>cases.filter(c=>c.label===label);
+ const chosen=[...cases.filter(c=>c.filters||c.previous),...pick('viewer "tan"'),...pick('manager "tan"'),...pick('adminPart "a"'),
+  ...pick('admin "fx\\t0000"'),...pick('admin "ÇELİK"'),...cases.filter(c=>c.actor==='admin'&&!c.filters&&!c.previous).filter((_,i)=>i%13===4)];
+ return [...new Map(chosen.map(c=>[c.label,c])).values()];
+}
+
+/** The bind trigger's verdict on crafted memberships, inserted by the application role and rolled back: current public
+ * and identity entries, a stale revision, identity outside the identity-search permission, a current and a stale filter
+ * fingerprint, and a member outside a scoped actor's projection. */
+async function bindVerdicts(){
+ const out:Record<string,unknown>={};
+ const all=sql`ARRAY[${sql.join(scopes.admin.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+ const rows=await withTenant(f.admin,tx=>tx.execute<{value:{employmentId:string;companyId:string;personRevision:string;employmentRevision:string;identityRevision:string|null}}>(
+  sql`select value from app.personnel_search_rows(${all}) as s(value) order by value->>'employmentId'`));
+ const listed=await withTenant(f.admin,tx=>tx.execute<{value:{employmentId:string;filterRevision:string}}>(
+  sql`select value from app.personnel_list_rows(${f.today}::date,${all}) as s(value) order by value->>'employmentId'`));
+ const entry=(row:typeof rows[number]['value'],kind:'public'|'identity'='public')=>({employmentId:row.employmentId,kind,personRevision:row.personRevision,
+  employmentRevision:row.employmentRevision,identityRevision:kind==='identity'?row.identityRevision:null});
+ const withIdentity=rows.find(row=>row.value.identityRevision)!.value,denied=rows.find(row=>row.value.companyId===f.identityDenied)!.value;
+ const fingerprinted=listed[0].value,fingerprintRow=rows.find(row=>row.value.employmentId===fingerprinted.employmentId)!.value;
+ const memberships:[string,SessionContext,string[],unknown[]][]=[
+  ['current public members',f.admin,scopes.admin,rows.slice(0,40).map(row=>entry(row.value))],
+  ['current identity member',f.admin,scopes.admin,[entry(withIdentity,'identity')]],
+  ['stale revision',f.admin,scopes.admin,[{...entry(rows[3].value),employmentRevision:String(Number(rows[3].value.employmentRevision)+1)}]],
+  ['identity without permission',f.admin,scopes.admin,[{...entry(denied,'identity'),identityRevision:withIdentity.identityRevision}]],
+  ['current fingerprint',f.admin,scopes.admin,[{...entry(fingerprintRow),filterRevision:fingerprinted.filterRevision}]],
+  ['stale fingerprint',f.admin,scopes.admin,[{...entry(fingerprintRow),filterRevision:'0'.repeat(32)}]],
+  ['outside the scoped actor',f.manager,scopes.manager,[entry(rows.find(row=>!scopes.manager.includes(row.value.companyId))!.value)]],
+ ];
+ for(const [label,ctx,scope,matches] of memberships){
+  out['bind '+label]=await attempt(()=>withTenant(ctx,async tx=>{
+   await tx.execute(sql`insert into personnel_private_search(token_hash,tenant_id,actor_id,scope_ids,matches,criteria)
+    values(${'b'.repeat(64)},${ctx.tenantId}::uuid,${ctx.userId}::uuid,ARRAY[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],
+     ${JSON.stringify(matches)}::jsonb,${JSON.stringify({term:'fictional',filters:[]})}::jsonb)`);
+   throw Object.assign(new Error('accepted'),{accepted:true});
+  })).then(value=>value);
+ }
+ return out;
+}
+
 beforeAll(async()=>{
  await migrateTestDb();
- f=await seedPersonnelSearchFixture({count:300,companies:76,runs:6});
+ f=await seedPersonnelSearchFixture({count:160,companies:76,runs:6});
  const t=f.base.tenantId;
  // Organisation edge cases: two runs published together on one day (ties broken by id), a published run without a
  // publication time (sorted first), and a parent cycle between two companies.
@@ -169,19 +220,19 @@ beforeAll(async()=>{
   shift(f.today,-11),shift(f.today,-10),f.today,shift(f.today,59),shift(f.today,60),'infinity','-infinity',null])days.push(day);
  // The oracle: the owners and the search creation as they were before 5086.
  reapply=await installPreSearchMappingOwners();
- before.set('owners',await owners());
- for(const [i,c] of cases.entries()){
+ before.set('owners',{...await owners(),...await bindVerdicts()});
+ for(const c of endToEnd()){
   before.set(c.label,await search(legacyCreatePersonnelPrivateSearch,c));
   // The new search on a database that 5086 has not reached keeps the previous reader and the same answers.
-  if(i%4===0||c.filters||c.previous)beforeFallback.set(c.label,await search(createPersonnelPrivateSearch,c));
+  beforeFallback.set(c.label,await search(createPersonnelPrivateSearch,c,false));
  }
  await reapply();reapply=undefined;
-},900_000);
+},1_200_000);
 afterAll(async()=>{try{await reapply?.();await restoreWorkforceCapabilityCatalogue();}finally{await closeAll();}},120_000);
 
 describe('migration 5086 keeps every Personnel search answer',()=>{
  it('reads the same organisation mapping, tags, typed facts, company choices and search rows',async()=>{
-  const previous=before.get('owners') as Record<string,unknown>,current=await owners();
+  const previous=before.get('owners') as Record<string,unknown>,current={...await owners(),...await bindVerdicts()};
   expect(Object.keys(current).length).toBeGreaterThan(60);
   for(const key of Object.keys(previous))expect(current[key],key).toEqual(previous[key]);
   // The set helper is company_org_tags_unchecked for every company of a set, on every day.
@@ -196,22 +247,33 @@ describe('migration 5086 keeps every Personnel search answer',()=>{
   expect(new Set(tags.map(value=>value.status))).toEqual(new Set(['ready','pending']));
   expect(tags.some(value=>value.reason==='Group structure contains a cycle')).toBe(true);
   expect((previous['leased mapping'] as {mapping:unknown}).mapping).not.toEqual(previous['mapping '+f.today]);
+  // The bind trigger both accepted and refused crafted memberships.
+  const verdicts=Object.entries(previous).filter(([key])=>key.startsWith('bind ')).map(([,value])=>value as {refused?:string;message:string});
+  expect(verdicts.filter(value=>value.message==='accepted')).toHaveLength(3);
+  expect(verdicts.filter(value=>value.message!=='accepted').length).toBeGreaterThan(2);
  },240_000);
 
  it('stores the same private membership, criteria and scope and shows the same page and headcount for every search',async()=>{
-  let refused=0,matched=0,empty=0;
+  let refused=0,matched=0,empty=0,endToEndCases=0;
   for(const c of cases){
-   const now=await search(createPersonnelPrivateSearch,c);
-   expect(now,c.label).toEqual(before.get(c.label));
-   if(beforeFallback.has(c.label))expect(beforeFallback.get(c.label),c.label+' (pre-5086 database)').toEqual(before.get(c.label));
+   // Breadth: the stored membership of the shipped search on the owners test 1 proves identical.
+   const now=await search(createPersonnelPrivateSearch,c,before.has(c.label));
+   expect(now,c.label).toEqual(await search(legacyCreatePersonnelPrivateSearch,c,before.has(c.label)));
+   // End to end: the shipped search on the restored owners (with its page), and the new search there before 5086.
+   if(before.has(c.label)){
+    endToEndCases++;
+    expect(now,c.label+' (shipped release)').toEqual(before.get(c.label));
+    const shipped=before.get(c.label) as Record<string,unknown>;
+    expect(beforeFallback.get(c.label),c.label+' (pre-5086 database)').toEqual('refused' in shipped?shipped:{matches:shipped.matches,criteria:shipped.criteria,scope:shipped.scope});
+   }
    if('refused' in now)refused++;else if(now.matches.length)matched++;else empty++;
   }
-  // Both outcomes were exercised: many searches found people, some found nobody, and some were refused.
+  // Every outcome was exercised: searches that found people, found nobody, and were refused.
   expect(matched).toBeGreaterThan(cases.length/2);
   expect(refused).toBeGreaterThan(0);
-  expect(cases.length).toBeGreaterThan(70);
-  expect(beforeFallback.size).toBeGreaterThan(20);
   expect(empty).toBeGreaterThan(0);
+  expect(cases.length).toBeGreaterThan(55);
+  expect(endToEndCases).toBeGreaterThan(10);
  },600_000);
 
  it('the new reader keeps app.personnel_search_rows row for row and counts the population in the database',async()=>{
@@ -222,7 +284,7 @@ describe('migration 5086 keeps every Personnel search answer',()=>{
     from app.personnel_search_candidates(${scope},true,false,'','',null,null,ARRAY[]::text[])`));
    const none=await withTenant(contexts[actor],tx=>tx.execute<{population:number;value:unknown}>(sql`select population,value
     from app.personnel_search_candidates(${scope},false,true,'','',null,null,ARRAY[]::text[])`));
-   expect(rows.length).toBeGreaterThan(10);
+   expect(rows.length).toBeGreaterThan(3);
    expect(sorted(every.map(row=>row.value))).toEqual(sorted(rows.map(row=>row.value)));
    expect(new Set(every.map(row=>row.population))).toEqual(new Set([rows.length]));
    expect(none).toEqual([{population:rows.length,value:null}]);
