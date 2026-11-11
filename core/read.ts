@@ -518,11 +518,28 @@ export type EmployeeListFilters = {
   businessUnitIds?: string[]; parentCompanyIds?: string[]; businessGroupIds?: string[];
   jobGrades?: string[]; positionIds?: string[]; confirmationState?: 'confirmed'|'unconfirmed';
   probationEndFrom?: string; probationEndTo?: string; joinedFrom?: string; joinedTo?: string;
+  /** aa045103 — multi-select Employment Type (any of), the Personnel header and Filter dialog `type` param. */
+  employmentTypes?: string[];
+  /** aa045103 — "Blank / unassigned" ticked in a choice filter: that field may also be empty. With no ids
+   *  selected for the same field it narrows to the empty rows alone. */
+  blankChoices?: PersonnelBlankChoice[];
+  /** aa045103 — From/To ranges for the Group Join Date and Confirmation Date columns (inclusive). */
+  hiredFrom?: string; hiredTo?: string; confirmationFrom?: string; confirmationTo?: string;
   qualityFlags?: PersonnelQualityFlag[];
   /** Opaque, principal-bound five-minute result membership; never raw identity text. */
   privateSearch?: string;
   columnSort?: EmployeeColumnKey; sortDirection?: 'asc'|'desc';
 };
+
+/** Choice fields whose "Blank / unassigned" option the Personnel listing can combine with chosen values. */
+export const PERSONNEL_BLANK_CHOICES = ['department', 'businessUnit', 'position', 'jobGrade', 'employmentType'] as const;
+export type PersonnelBlankChoice = (typeof PERSONNEL_BLANK_CHOICES)[number];
+/** "Any of these values, or (when Blank is ticked) none at all". Undefined when the field is not narrowed. */
+function anyOfOrBlank<T>(column: SQL<T>, values: readonly NonNullable<T>[] | undefined, blank: boolean, text = false) {
+  const chosen = values?.length ? inArray(column, [...values]) : undefined;
+  const empty = blank ? (text ? sql`coalesce(${column}::text,'') = ''` : isNull(column)) : undefined;
+  return chosen && empty ? or(chosen, empty) : chosen ?? empty;
+}
 
 /** The current-assignment join (≤1 row per employment) — shared by every employee-listing query so the
  *  department / employment-type filters apply identically to the rows, the pager total and the cards. */
@@ -554,10 +571,11 @@ function employeeListWhere(p: EmployeeListFilters, c: EmployeeListColumns = empl
     p.companyId ? eq(c.companyId, p.companyId) : undefined,
     p.filterCompanyIds && p.filterCompanyIds.length ? inArray(c.companyId, p.filterCompanyIds) : undefined,
     p.departmentId ? eq(c.departmentId, p.departmentId) : undefined,
-    p.departmentIds && p.departmentIds.length ? inArray(c.departmentId, p.departmentIds) : undefined,
+    anyOfOrBlank(c.departmentId, p.departmentIds, !!p.blankChoices?.includes('department')),
     p.employmentStatuses && p.employmentStatuses.length ? inArray(c.status, p.employmentStatuses) : undefined,
     p.status === 'terminated' ? isNotNull(c.terminatedOn) : p.status === 'active' ? isNull(c.terminatedOn) : undefined,
     p.employmentType ? eq(c.employmentType, p.employmentType) : undefined,
+    anyOfOrBlank(c.employmentType, p.employmentTypes, !!p.blankChoices?.includes('employmentType'), true),
     q ? sql`(${c.name} ilike ${'%' + q.replace(/[\\%_]/g,'\\$&') + '%'} or ${c.email} ilike ${'%' + q.replace(/[\\%_]/g,'\\$&') + '%'} or ${c.employeeCode} ilike ${'%' + q.replace(/[\\%_]/g,'\\$&') + '%'})` : undefined,
   );
 }
@@ -600,14 +618,18 @@ function workforceListColumns(asOf=todayInKualaLumpur(),read=workforceFieldAcces
 }
 const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns,duplicateIds:readonly string[]=[],read=workforceFieldAccess) =>
   and(p.companyIds?.length === 0 ? sql`false` : undefined, employeeListWhere(p, columns),
-   p.businessUnitIds?.length?inArray(read.uuid('businessUnitId'),p.businessUnitIds):undefined,
+   anyOfOrBlank(read.uuid('businessUnitId'),p.businessUnitIds,!!p.blankChoices?.includes('businessUnit')),
    p.parentCompanyIds?.length?inArray(read.uuid('parentCompanyId'),p.parentCompanyIds):undefined,
    p.businessGroupIds?.length?inArray(read.uuid('businessGroupId'),p.businessGroupIds):undefined,
-   p.jobGrades?.length?inArray(read.value<string>('jobGradeCode'),p.jobGrades):undefined,
-   p.positionIds?.length?inArray(read.uuid('positionId'),p.positionIds):undefined,
+   anyOfOrBlank(read.value<string>('jobGradeCode'),p.jobGrades,!!p.blankChoices?.includes('jobGrade'),true),
+   anyOfOrBlank(read.uuid('positionId'),p.positionIds,!!p.blankChoices?.includes('position')),
    p.confirmationState?eq(read.value<string>('confirmationState'),p.confirmationState):undefined,
    p.joinedFrom?gte(read.date('joinDate'),p.joinedFrom):undefined,
    p.joinedTo?lte(read.date('joinDate'),p.joinedTo):undefined,
+   p.hiredFrom?gte(read.date('hiredOn'),p.hiredFrom):undefined,
+   p.hiredTo?lte(read.date('hiredOn'),p.hiredTo):undefined,
+   p.confirmationFrom?gte(read.date('confirmationDate'),p.confirmationFrom):undefined,
+   p.confirmationTo?lte(read.date('confirmationDate'),p.confirmationTo):undefined,
    p.probationEndFrom?gte(read.date('probationEndDate'),p.probationEndFrom):undefined,
    p.probationEndTo?lte(read.date('probationEndDate'),p.probationEndTo):undefined,
    p.qualityFlags?.length?or(...p.qualityFlags.map(flag=>flag==='suspected_duplicate'?(duplicateIds.length?inArray(read.uuid('employmentId'),[...duplicateIds]):sql`false`):sql`(workforce_row.value->'quality'->>${flag})::boolean is true`)):undefined,
@@ -722,10 +744,14 @@ const filterFieldsFilters = new Set<string>([
   'companyIds', 'companyId', 'filterCompanyIds', 'q', 'status', 'employmentStatuses', 'sort', 'sortDirection',
   'limit', 'offset', 'departmentId', 'departmentIds', 'employmentType', 'businessUnitIds', 'positionIds',
   'confirmationState', 'probationEndFrom', 'probationEndTo', 'columnSort',
+  // aa045103: both typed relations carry employmentType and confirmationDate.
+  'employmentTypes', 'confirmationFrom', 'confirmationTo',
 ]);
 const factsFilters = new Set<string>([
   ...filterFieldsFilters, 'parentCompanyIds', 'businessGroupIds', 'jobGrades', 'joinedFrom', 'joinedTo',
   'qualityFlags', 'privateSearch',
+  // aa045103: the 5020 facts carry hiredOn and every blank-able choice column (jobGradeCode included).
+  'blankChoices', 'hiredFrom', 'hiredTo',
 ]);
 // Sorts whose JSON source key the 2701 relation carries as a typed column with the same value.
 const filterFieldsSorts = new Set<EmployeeColumnKey>([
@@ -1194,6 +1220,7 @@ const personnelFactFilterSupport = {
   businessUnitIds:false,parentCompanyIds:false,businessGroupIds:false,jobGrades:false,positionIds:false,
   confirmationState:false,probationEndFrom:false,probationEndTo:false,joinedFrom:false,joinedTo:false,
   qualityFlags:false,privateSearch:false,columnSort:false,sortDirection:true,
+  employmentTypes:false,blankChoices:false,hiredFrom:false,hiredTo:false,confirmationFrom:false,confirmationTo:false,
 } satisfies Record<keyof EmployeeListFilters, boolean>;
 const personnelFactFilterKeys = Object.keys(personnelFactFilterSupport) as (keyof EmployeeListFilters)[];
 

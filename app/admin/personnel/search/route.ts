@@ -23,7 +23,9 @@ async function searchPersonnel(request: Request) {
  const decoder=new TextDecoder(),parts:string[]=[];let bytes=0;
  try{for(;;){const chunk=await reader.read();if(chunk.done)break;bytes+=chunk.value.byteLength;if(bytes>131072){await reader.cancel();return new Response('Search unavailable.',{status:413});}parts.push(decoder.decode(chunk.value,{stream:true}));}parts.push(decoder.decode());}finally{reader.releaseLock();}
  const form=new URLSearchParams(parts.join('')),params:PersonnelSearchParams={};
- for(const key of ['companies','bu','parent','group','grade','position','quality','dept','type','bucket','status','company','confirmation','joinedFrom','joinedTo','probationFrom','probationTo','sort','direction'] as const){const values=form.getAll(key).filter((value):value is string=>typeof value==='string');if(values.length)Object.assign(params,{[key]:['companies','bu','parent','group','grade','position','quality'].includes(key)&&values.length>1?values:values[0]});}
+ // aa045103: Department, Employment Type and Status are multi-select like the organisation fields.
+ const multi=['companies','bu','parent','group','grade','position','quality','dept','type','bucket'];
+ for(const key of ['companies','bu','parent','group','grade','position','quality','dept','type','bucket','status','company','confirmation','joinedFrom','joinedTo','probationFrom','probationTo','hiredFrom','hiredTo','confirmedFrom','confirmedTo','sort','direction'] as const){const values=form.getAll(key).filter((value):value is string=>typeof value==='string');if(values.length)Object.assign(params,{[key]:multi.includes(key)&&values.length>1?values:values[0]});}
  let filters:ReturnType<typeof parsePersonnelColumnFilters>;
  try{filters=parsePersonnelColumnFilters(form).filter(filter=>filter.field!==form.get('removeField'));}
  catch(error){return searchFailure(error instanceof Error&&error.constructor===Error?400:500);}

@@ -870,7 +870,21 @@
         "privateExpired": "Bộ lọc riêng tư hết hạn hoặc không khả dụng. Hãy áp dụng lại.",
         "superiorId": "Cấp trên trực tiếp · Mã nhân viên",
         "superiorName": "Cấp trên trực tiếp · Tên",
-        "removeCriterion": "Xóa bộ lọc {name}"
+        "removeCriterion": "Xóa bộ lọc {name}",
+        "choiceAll": "Tất cả",
+        "choiceSelected": "Đã chọn {count}",
+        "findOption": "Tìm giá trị trong {name}",
+        "noOptions": "Không có giá trị phù hợp",
+        "selectAllOptions": "Chọn tất cả",
+        "clearSelection": "Bỏ chọn",
+        "applyChoice": "Áp dụng",
+        "clearChoice": "Xóa",
+        "dateFrom": "Từ",
+        "dateTo": "Đến",
+        "dateFromLabel": "{name} từ",
+        "dateToLabel": "{name} đến",
+        "choicePending": "Đang cập nhật danh sách…",
+        "choiceFailed": "Không thể cập nhật danh sách. Hãy thử lại."
       }
     },
     "switcher": {
@@ -879,7 +893,10 @@
       "resultsLabel": "Kết quả tìm nhân viên",
       "noMatches": "Không có nhân viên nào khớp.",
       "currentTag": "Hiện tại",
-      "loadFailed": "Không thể tải tìm kiếm nhân viên. Vui lòng thử lại."
+      "loadFailed": "Không thể tải tìm kiếm nhân viên. Vui lòng thử lại.",
+      "matchingHeading": "Nhân viên phù hợp",
+      "showAll": "Hiện tất cả {count} kết quả trong danh sách (Enter)",
+      "showAllMore": "Hiện tất cả kết quả trong danh sách (Enter)"
     },
     "detail": {
       "incentiveDeclarations": {
@@ -37412,7 +37429,11 @@
     "notTerminated": "Chưa chấm dứt việc làm",
     "terminated": "Đã chấm dứt việc làm",
     "duplicateHint": "Chỉ kiểm tra trùng lặp tại các công ty có quyền quản trị và truy cập dữ liệu định danh.",
-    "duplicateUnavailable": "Không có quyền xem bằng chứng trùng lặp trong phạm vi này. Hãy bỏ bộ lọc hoặc chọn phạm vi được phép."
+    "duplicateUnavailable": "Không có quyền xem bằng chứng trùng lặp trong phạm vi này. Hãy bỏ bộ lọc hoặc chọn phạm vi được phép.",
+    "hiredFrom": "Ngày vào tập đoàn từ",
+    "hiredTo": "Ngày vào tập đoàn đến",
+    "confirmedFrom": "Ngày xác nhận chính thức từ",
+    "confirmedTo": "Ngày xác nhận chính thức đến"
   },
   "rewardSetupAccess": {
     "title": "Quyền cấu hình đãi ngộ",

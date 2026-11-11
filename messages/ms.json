@@ -870,7 +870,21 @@
         "privateExpired": "Penapis peribadi tamat atau tidak tersedia. Terapkan semula.",
         "superiorId": "Penyelia Langsung · ID Pekerja",
         "superiorName": "Penyelia Langsung · Nama",
-        "removeCriterion": "Buang penapis {name}"
+        "removeCriterion": "Buang penapis {name}",
+        "choiceAll": "Semua",
+        "choiceSelected": "{count} dipilih",
+        "findOption": "Cari nilai dalam {name}",
+        "noOptions": "Tiada nilai yang sepadan",
+        "selectAllOptions": "Pilih semua",
+        "clearSelection": "Kosongkan pilihan",
+        "applyChoice": "Guna",
+        "clearChoice": "Kosongkan",
+        "dateFrom": "Dari",
+        "dateTo": "Hingga",
+        "dateFromLabel": "{name} dari",
+        "dateToLabel": "{name} hingga",
+        "choicePending": "Mengemas kini senarai…",
+        "choiceFailed": "Senarai tidak dapat dikemas kini. Cuba lagi."
       }
     },
     "switcher": {
@@ -879,7 +893,10 @@
       "resultsLabel": "Hasil carian pekerja",
       "noMatches": "Tiada pekerja yang sepadan.",
       "currentTag": "Semasa",
-      "loadFailed": "Carian pekerja tidak dapat dimuatkan. Cuba lagi."
+      "loadFailed": "Carian pekerja tidak dapat dimuatkan. Cuba lagi.",
+      "matchingHeading": "Pekerja yang sepadan",
+      "showAll": "Tunjukkan kesemua {count} padanan dalam senarai (Enter)",
+      "showAllMore": "Tunjukkan semua padanan dalam senarai (Enter)"
     },
     "detail": {
       "incentiveDeclarations": {
@@ -37412,7 +37429,11 @@
     "notTerminated": "Belum ditamatkan",
     "terminated": "Ditamatkan",
     "duplicateHint": "Semakan pendua hanya meliputi syarikat dengan akses pentadbir dan data identiti.",
-    "duplicateUnavailable": "Bukti pendua tidak tersedia dalam skop ini. Buang penapis ini atau pilih skop yang dibenarkan."
+    "duplicateUnavailable": "Bukti pendua tidak tersedia dalam skop ini. Buang penapis ini atau pilih skop yang dibenarkan.",
+    "hiredFrom": "Tarikh menyertai kumpulan dari",
+    "hiredTo": "Tarikh menyertai kumpulan hingga",
+    "confirmedFrom": "Tarikh pengesahan dari",
+    "confirmedTo": "Tarikh pengesahan hingga"
   },
   "rewardSetupAccess": {
     "title": "Kuasa persediaan Rewards",

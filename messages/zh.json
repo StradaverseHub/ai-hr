@@ -870,7 +870,21 @@
         "privateExpired": "私密筛选已到期或不可用。请重新应用。",
         "superiorId": "直属上司 · 员工编号",
         "superiorName": "直属上司 · 姓名",
-        "removeCriterion": "移除{name}筛选"
+        "removeCriterion": "移除{name}筛选",
+        "choiceAll": "全部",
+        "choiceSelected": "已选 {count} 项",
+        "findOption": "在{name}中查找",
+        "noOptions": "没有匹配的值",
+        "selectAllOptions": "全选",
+        "clearSelection": "清除选择",
+        "applyChoice": "应用",
+        "clearChoice": "清除",
+        "dateFrom": "起",
+        "dateTo": "止",
+        "dateFromLabel": "{name}起",
+        "dateToLabel": "{name}止",
+        "choicePending": "正在更新列表…",
+        "choiceFailed": "无法更新列表，请重试。"
       }
     },
     "switcher": {
@@ -879,7 +893,10 @@
       "resultsLabel": "员工搜索结果",
       "noMatches": "没有匹配的员工。",
       "currentTag": "当前",
-      "loadFailed": "无法加载员工搜索，请重试。"
+      "loadFailed": "无法加载员工搜索，请重试。",
+      "matchingHeading": "匹配的员工",
+      "showAll": "在列表中显示全部 {count} 个匹配项（Enter）",
+      "showAllMore": "在列表中显示所有匹配项（Enter）"
     },
     "detail": {
       "incentiveDeclarations": {
@@ -37412,7 +37429,11 @@
     "notTerminated": "未离职",
     "terminated": "已离职",
     "duplicateHint": "重复检查仅涵盖您拥有管理员权限及身份资料访问权的公司。",
-    "duplicateUnavailable": "此范围内无法查看重复证据。请移除此筛选或选择获准范围。"
+    "duplicateUnavailable": "此范围内无法查看重复证据。请移除此筛选或选择获准范围。",
+    "hiredFrom": "集团入职日期起",
+    "hiredTo": "集团入职日期止",
+    "confirmedFrom": "转正日期起",
+    "confirmedTo": "转正日期止"
   },
   "rewardSetupAccess": {
     "title": "薪酬配置权限",
