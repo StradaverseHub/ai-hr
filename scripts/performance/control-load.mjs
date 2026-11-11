@@ -17,7 +17,9 @@ const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
 const users=fixture.users;
 const holdMs=Number(process.env.PERF_HTTP_HOLD_MS||300000),thinkMs=Number(process.env.PERF_HTTP_THINK_MS||1000),rampMs=10000;
 const workers=Number(process.env.PERF_APP_WORKERS||0);
-const requestDeadlineMs=90000,pilotBudgetMs=240000,stuckMs=30000,writeEvery=8;
+const requestDeadlineMs=90000,browserStepMs=30000,pilotBudgetMs=240000,baselineBudgetMs=150000,stuckMs=30000,writeEvery=8;
+// The runner kills the driver at 870 s; save what was measured before that, whatever is still running.
+const driverDeadlineMs=Number(process.env.PERF_HTTP_HOLD_MS||300000)+480000;
 const agent=new https.Agent({keepAlive:true,maxSockets:4000,rejectUnauthorized:false});
 const started=performance.now();
 const now=()=>performance.now();
@@ -110,6 +112,14 @@ const keyPages={employee:['/','/me'],manager:['/','/approvals'],companyHR:['/','
 const result={kind:'CONTROL_LOAD_RESULT_V1',version:1,scope:'Load-only control; recorded, not a release gate',topology,
  holdMs,thinkMs,actors:users.length,pilot:{rows:[],skipped:0},browser:{baseline:[],loaded:[]},steady:null,lockSampler:lock,
  pendingOver30s:null,phases:{},failures:[]};
+function save(){
+ try{writeFileSync(join(out,'control-load.json'),JSON.stringify({...result,partial:true,elapsedMs:round(now()-started),
+  pendingOver30s:{httpRequests:stuck.http.size,browserRequests:stuck.browser.size,diagnostics:stuck.diagnostics}}));}
+ catch(error){console.error('[control-load] partial save failed: '+(error?.code??error?.message));}
+}
+const saveTimer=setInterval(save,30000);saveTimer.unref();
+const watchdog=setTimeout(async()=>{note('driver',{code:'driver-deadline'});save();console.error('[control-load] driver deadline: partial result saved');
+ await Promise.race([browser?.close().catch(()=>{}),pause(5000)]);process.exit(0);},driverDeadlineMs);watchdog.unref();
 const note=(stage,error)=>{if(result.failures.length<40)result.failures.push({stage,error:String(error?.code??error?.name??'error').slice(0,40)});};
 
 async function pilot(){
@@ -133,7 +143,7 @@ async function signedInVisit(role,user,phase){
   const page=await context.newPage();
   page.on('request',request=>{const url=new URL(request.url());if(url.origin===base)browserInflight.set(request,{method:request.method(),route:label(url.pathname+url.search),role,startedMs:now()});});
   for(const event of ['requestfinished','requestfailed'])page.on(event,request=>browserInflight.delete(request));
-  await page.goto(base+'/login?returnTo=%2F',{waitUntil:'domcontentloaded',timeout:requestDeadlineMs});
+  await page.goto(base+'/login?returnTo=%2F',{waitUntil:'domcontentloaded',timeout:browserStepMs});
   const username=page.locator('input[name="username"]');
   if(!await username.isVisible()){
    const workspace=page.locator('input[name="organization"]:visible');
@@ -144,15 +154,16 @@ async function signedInVisit(role,user,phase){
   const password=page.locator('input[name="password"]');await password.fill(user.password);
   const submitted=now();
   await page.locator('form').filter({has:password}).locator('button[type="submit"]').click();
-  const code=page.locator('input[name="code"]');await code.waitFor({state:'visible',timeout:requestDeadlineMs});
+  const code=page.locator('input[name="code"]');await code.waitFor({state:'visible',timeout:browserStepMs});
   await code.fill(await generate({strategy:'totp',secret:user.secret}));
   await page.locator('form').filter({has:code}).locator('button[type="submit"]').click();
   await page.waitForURL(url=>url.origin===base&&url.pathname==='/',{timeout:requestDeadlineMs});
-  await page.waitForLoadState('load',{timeout:requestDeadlineMs});
+  await page.waitForLoadState('load',{timeout:browserStepMs});
   row.login=round(now()-submitted);
   for(const path of keyPages[role]){
    const at=now();
    const response=await page.goto(base+path,{waitUntil:'load',timeout:requestDeadlineMs}).catch(error=>{note(phase+':'+path,error);return null;});
+   save();
    row.pages.push([path,response?round(now()-at):null,response?.status()??null]);
   }
  }catch(error){note(phase+':sign-in:'+role,error);}
@@ -218,10 +229,10 @@ async function loadedBrowser(){
 async function main(){
  const phase=async(name,work)=>{const at=now();console.error('[control-load] phase '+name+' started');try{await work();}catch(error){note(name,error);console.error('[control-load] phase '+name+' failed: '+(error?.message??error));}
   result.phases[name]=round(now()-at);console.error('[control-load] phase '+name+' finished ms='+result.phases[name]);};
- await phase('pilot-http',pilot);
+ await phase('pilot-http',pilot);save();
  browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined,
   args:['--host-resolver-rules=MAP localhost 127.0.0.1']});
- await phase('browser-baseline',async()=>{for(const [role,user] of Object.entries(primary))result.browser.baseline.push(await signedInVisit(role,user,'baseline'));});
+ await phase('browser-baseline',async()=>{const deadline=now()+baselineBudgetMs;for(const [role,user] of Object.entries(primary)){if(now()>deadline){note('browser-baseline:'+role,{code:'budget'});continue;}result.browser.baseline.push(await signedInVisit(role,user,'baseline'));}});
  await phase('steady',async()=>{
   const [load]=await Promise.all([steady(),loadedBrowser().catch(error=>note('loaded-browser',error))]);
   result.steady=load;
@@ -232,7 +243,7 @@ async function main(){
 try{await main();}
 catch(error){note('driver',error);}
 finally{
- clearInterval(lockTimer);clearInterval(stuckTimer);
+ clearInterval(lockTimer);clearInterval(stuckTimer);clearInterval(saveTimer);clearTimeout(watchdog);
  await activityProbe?.catch(()=>{});
  result.elapsedMs=round(now()-started);
  let serialized;
