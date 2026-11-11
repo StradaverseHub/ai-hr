@@ -183,7 +183,14 @@ async function run(label,command,args,childEnv=env,timeout=900000){
  // private log, with URLs and long tokens redacted, so a setup failure names its cause in the job log.
  if(label!=='http-and-browser'&&(code!==0||timedOut))try{
   const lines=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-16000)
-   .replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi,'<URL>').replace(/[A-Za-z0-9_+/=-]{32,}/g,'<REDACTED>').split('\n')
+   .replace(/\b(?!file:\/\/)[a-z][a-z0-9+.-]*:\/\/\S+/gi,'<URL>')
+   .replace(/\b(?:password|passwd|pwd|secret|token|key|authorization|cookie|session|user|username|host|hostname|hostaddr|dbname|port)\b\s*[=:]\s*\S+/gi,'<REDACTED>')
+   .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b/g,'<IP>').replace(/\[[0-9a-f:]{2,39}\](?::\d{1,5})?/gi,'<IP>')
+   .replace(/\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:internal|local|net|com|io|cloud|azure))(?::\d{1,5})?\b/gi,'<HOST>')
+   .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\b/g,'<EMAIL>')
+   .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,'<UUID>')
+   // Keep lowercase words and source paths; redact every other long run (hex, base32, base64 or mixed tokens).
+   .replace(/[A-Za-z0-9_+/=.-]{20,}/g,run=>/^[a-z/_.-]+$/.test(run)?run:'<REDACTED>').split('\n')
    .filter(line=>/error|code|constraint|column|relation|violat|denied|permission|must|refus|assert|expected|actual|detail|hint|where|routine|severity|\bat .*\.(?:ts|mts|mjs|js):\d+/i.test(line))
    .slice(-80).map(line=>line.slice(0,300));
   console.log('[system-perf] '+JSON.stringify({kind:'SETUP_PHASE_FAILURE_EXCERPT_V1',label,lines}));
@@ -745,7 +752,8 @@ function comparisonTelemetry(result,out){
  // evidence and never changes a cell verdict: per-route steady latency, rendered and sign-in timings, load phases.
  try{
   const ms=value=>Number.isFinite(value)&&value>=0?Math.round(value*10)/10:null;
-  const label=value=>typeof value==='string'&&/^[\x20-\x7e]{1,160}$/.test(value)?value:null;
+  const label=value=>typeof value==='string'&&/^[\x20-\x7e]{1,160}$/.test(value)?value.replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi,'<URL>')
+   .replace(/[A-Za-z0-9_+/=.-]{20,}/g,run=>/^[a-z/_.?=&-]+$/.test(run)?run:'<REDACTED>'):null;
   const rows=(value,limit,map)=>Array.isArray(value)?value.slice(0,limit).filter(row=>row!==null&&typeof row==='object').map(map):null;
   const signIn=row=>[label(row.phase),label(row.role),ms(row.passwordSubmitToCardsCheckedMs),ms(row.mfaSubmitToHomeUrlMs),ms(row.mfaSubmitToCardsCheckedMs),ms(row.elapsedMs),row.cardFailures??null];
   const summaryOf=value=>value&&typeof value==='object'?[value.samples??null,ms(value.p50Ms),ms(value.p95Ms),ms(value.maxMs)]:null;
