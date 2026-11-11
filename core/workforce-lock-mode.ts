@@ -1,6 +1,6 @@
 import {sql} from 'drizzle-orm';
 import type {Tx} from '../db/client';
-import {accessLockModeHeldTx,acquireBoundedAdvisoryLockTx,lockAccessConfigurationTx,lockAccessConfigurationWriteTx,lockProfileSubjectTx,lockProfileValueSharedTx,lockProfileValueWritesTx} from './access-configuration-lock';
+import {accessLockModeHeldTx,acquireBoundedAdvisoryLockTx,inAccessDisplayRead,lockAccessConfigurationTx,lockAccessConfigurationWriteTx,lockProfileSubjectTx,lockProfileValueSharedTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import {LeaveDependencyUnavailable,lockLeaveDependenciesTx,lockLeaveDependenciesWaitTx,lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {pgSqlState} from '../lib/db-error';
 
@@ -15,7 +15,9 @@ import {pgSqlState} from '../lib/db-error';
  * want shared mode take lockAccessConfigurationTx first; nothing here makes an unconverted caller shared.
  */
 export async function joinAccessConfigurationTx(tx:Tx,tenantId:string):Promise<'S'|'X'>{
- if(await accessLockModeHeldTx(tx,tenantId)==='S'){await lockAccessConfigurationTx(tx,tenantId);return 'S';}
+ // A display read never needs the exclusive lock (staging, 11 November 2026, core/access-configuration-lock.ts).
+ const mode=await accessLockModeHeldTx(tx,tenantId);
+ if(mode==='S'||mode!=='X'&&inAccessDisplayRead()){await lockAccessConfigurationTx(tx,tenantId);return 'S';}
  await lockAccessConfigurationWriteTx(tx,tenantId);
  return 'X';
 }

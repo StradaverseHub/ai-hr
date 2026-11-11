@@ -101,9 +101,25 @@ Order and why:
   `5012_import_release_visibility`: the same two leave its release-aware rewrite list (was `3885cb0c5eb07a9c09eca297a4bcb18e1253e2fa5269b9d6c3dc1de8005ac190`).
   `5070_system_label_import_staged_job`: the grade choice list and the uploaded-award validation leave its rewrite list and are verified instead (was `6ed0f9b6bf699fb05d21c920ef2a11f7fedb03308dac3a166b7031dbd2ab7ffb`).
   `test/restricted-owner-release-upgrade.test.ts` applies every migration above main as the literal `ai_hr_owner` login on the installed role topology.
+- **5091 (Access lock restart fix, 12 November 2026).** Branch `claude/access-lock-restart-20261111` takes
+  `5091_access_review_custody_held_mode` at idx 4491 / when 1793330004791, appended after 5090 because staging has
+  already applied 5090 (watermark 1793330004790) and Drizzle skips a migration whose `when` is at or below the applied
+  watermark (it was first drafted as 5088 before 5090). SHA256 `32e2a479db86feaa32b2bd9ed9e34c127f4269498ef9d58f8da60ded98ef37c9`. A fresh survey of
+  the 888 origin refs updated in the last four days found no other claim at or above 5091. It re-creates six
+  review-custody functions owned by the migration owner (`app._assistant_own_leave_review_identity`,
+  `app.assistant_own_leave_review_subject`, `app.assistant_own_leave_review_read` from 0622,
+  `app.assistant_generic_review_subject`, `app.assistant_generic_review_read` from 0670 and
+  `app._assistant_leave_decision_login` from 0622) with one change each: the Access lock is taken in the mode the
+  transaction already holds (shared when it holds shared, exclusive otherwise). No purpose-owned object is replaced.
+  Where 5090 is still unapplied (production), 5091 runs in the same batch after it; it only replaces function bodies.
+  `test/migration-installed-watermark.test.ts` records staging's installed ledger and fails when any other entry sits
+  at or below its watermark.
 <!-- combined-release-fixes:end -->
 - **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069, 5072–5074 and 5084–5089 are
   left for branches accepted later; they are inserted before 5090 in journal order while the block is unapplied.
+  Staging has now applied the block through 5090, so a gap number journalled before 5090 would be skipped there: a
+  branch that ships to staging takes a number above 5091 and is journalled after it
+  (`test/migration-installed-watermark.test.ts` fails otherwise).
 
 Retired: `9002_leave_import_job` (phase 3's leave import proof). The leave ledger import runs on the shared kernel
 (kind `leave_ledger`, 5030), so the proof's table, runner and systemd unit were removed with it; it was never applied.

@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
-import {setupPersonTx,setupAuthority,setupTenant,setupReadTenant,setupLock,setupEvent} from './setup-data';
+import {setupPersonTx,setupAuthority,setupTenant,setupAuditedReadTenant,setupReadTenant,setupLock,setupEvent} from './setup-data';
 import {validateRewardLibrary,gradeCodeForLibrary,setupUuid,setupYear,setupReason,RewardSetupError,type RewardLibrary,type LibraryCandidate} from './setup-model';
 export type {RewardLibraryVersion} from './setup-query-owner';
 import {libraryVersionQueryTx,rewardLibrariesQueryTx,rewardPlanLibraryChoicesQueryTx,type RewardLibraryVersion} from './setup-query-owner';
@@ -22,7 +22,7 @@ export async function libraryVersionTx(tx:Tx,ctx:SessionContext,id:string,requir
 async function checkGradeIds(tx:Tx,_ctx:SessionContext,data:RewardLibrary){const grades=await tx.execute<{id:string;code:string}>(sql`select id,code from app.reward_setup_grade_choices()`);for(const g of data.rows)if(!grades.some(row=>row.id===g.gradeId&&gradeCodeForLibrary(row.code)===g.grade))throw new RewardSetupError('invalid','A library grade must match the active Grade Ladder identity.');}
 function auditedLibraryRead<T>(ctx:SessionContext,kind:'salary'|'bonus'|undefined,year:number|undefined,read:(tx:Tx)=>Promise<T>){
  if(year!==undefined)setupYear.parse(year);
- return setupTenant(ctx,async tx=>{
+ return setupAuditedReadTenant(ctx,async tx=>{
   const result=await read(tx);
   await setupEvent(tx,ctx,'libraries.viewed',null,{kind:kind??null,year:year??null});
   return result;
@@ -44,7 +44,7 @@ export function saveRewardLibrary(ctx:SessionContext,raw:unknown){const p=z.obje
 export function submitRewardLibrary(ctx:SessionContext,id:string,expectedLock:number){setupUuid.parse(id);return setupTenant(ctx,async tx=>{await setupAuthority(tx,null,'manage');await setupPersonTx(tx);await setupLock(tx,ctx,'library');const v=await libraryVersionTx(tx,ctx,id);if(v.state!=='draft'||v.lockVersion!==expectedLock)throw new RewardSetupError('changed','Reopen the current draft.');validateRewardLibrary(v.data);await checkGradeIds(tx,ctx,v.data);await tx.execute(sql`update reward_library_version set state='pending',lock_version=lock_version+1,updated_at=now() where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);await setupEvent(tx,ctx,'library.submitted',id,{libraryId:v.libraryId});});}
 export function confirmRewardLibrary(ctx:SessionContext,id:string,expectedLock:number){setupUuid.parse(id);return setupTenant(ctx,async tx=>{await setupAuthority(tx,null,'manage');await setupPersonTx(tx);await setupLock(tx,ctx,'library');const v=await libraryVersionTx(tx,ctx,id);if(v.state!=='pending'||v.lockVersion!==expectedLock)throw new RewardSetupError('changed','Reopen the current pending version.');if(v.contributors.includes(ctx.userId!)||(v.contributorPersonIds??[]).includes(await setupPersonTx(tx)))throw new RewardSetupError('independent','A different Group Rewards user must confirm this version.');validateRewardLibrary(v.data);await checkGradeIds(tx,ctx,v.data);await tx.execute(sql`update reward_library_version set state='confirmed',confirmed_by=${ctx.userId}::uuid,confirmed_at=now(),lock_version=lock_version+1,updated_at=now() where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);await setupEvent(tx,ctx,'library.confirmed',id,{libraryId:v.libraryId,version:v.version});});}
 export function libraryCandidates(rows:readonly RewardLibraryVersion[]):LibraryCandidate[]{return rows.filter(r=>r.state==='confirmed').map(r=>({id:r.id,libraryId:r.libraryId,name:r.name,year:r.year,version:r.version,kind:r.kind,tags:r.tags,groupDefault:r.groupDefault,previousLibraryId:r.previousLibraryId,...(r.data.kind==='bonus'?{type:r.data.type}:{})}));}
-export function rewardLibraryForExport(ctx:SessionContext,id:string){return setupTenant(ctx,async tx=>{const v=await libraryVersionTx(tx,ctx,id);await setupEvent(tx,ctx,'library.exported',id,{libraryId:v.libraryId,version:v.version});return v;});}
+export function rewardLibraryForExport(ctx:SessionContext,id:string){return setupAuditedReadTenant(ctx,async tx=>{const v=await libraryVersionTx(tx,ctx,id);await setupEvent(tx,ctx,'library.exported',id,{libraryId:v.libraryId,version:v.version});return v;});}
 export function rewardLibraryGradeChoices(ctx:SessionContext){return setupReadTenant(ctx,async tx=>{await setupAuthority(tx,null,'library_view');const rows=await tx.execute<{id:string;code:string;name:string}>(sql`select * from app.reward_setup_grade_choices()`);return rows.map(r=>({gradeId:r.id,grade:gradeCodeForLibrary(r.code),name:r.name}));});}
 
 export function rewardLibraryHistory(ctx:SessionContext,id:string){

@@ -1,3 +1,4 @@
+import {AsyncLocalStorage} from 'node:async_hooks';
 import {sql} from 'drizzle-orm';
 import type {Tx} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
@@ -113,6 +114,20 @@ export async function lockAccessConfigurationWriteTx(tx:Tx,tenantId:string){
   }
   await acquireBounded(tx, tenantId, false);
 }
+
+const accessDisplayRead = new AsyncLocalStorage<true>();
+/**
+ * A page section or card that only displays what an owner returns (staging, 11 November 2026). Inside it, the
+ * mode-joining helpers (joinAccessConfigurationTx, the AI control check, the AI principal read) take the shared Access
+ * lock when their transaction holds none, instead of the exclusive lock they keep for callers that may write later.
+ * Use it only around an owner call whose result is presentation and whose SQL owners take no exclusive Access lock of
+ * their own (a shared holder asking for it would have to upgrade); an explicit lockAccessConfigurationWriteTx inside is
+ * unchanged.
+ */
+export function withAccessDisplayRead<T>(read: () => Promise<T>): Promise<T> {
+  return accessDisplayRead.run(true, read);
+}
+export const inAccessDisplayRead = (): boolean => accessDisplayRead.getStore() === true;
 
 /** Navigation reads may wait for an access edit and can overlap other readers. */
 export async function lockAccessConfigurationReadTx(tx: Tx, tenantId: string) {

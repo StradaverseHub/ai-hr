@@ -73,9 +73,15 @@ async function setupRewardLibrariesFixture(ctx:SessionContext,year:number,basePo
 /** Existing versions are retained exactly; no replacement policy is invented for provenance tests. */
 async function createApprovedRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitInput,fixturePolicy?:RewardPolicy,fixtureTargets?:{companyId:string;businessUnitId:string}[]){
  const {createRewardUnit}=await import('../../packs/rewards/service');
+ const plan=await createApprovedRewardPlan(ctx,raw,fixturePolicy,fixtureTargets);
+ return createRewardUnit(ctx,{...raw,name:plan.name,cycleId:undefined,approvedPlanVersionId:plan.versionId});
+}
+/** The independently approved shared plan (and its checked company structure, libraries and PAT) that
+ * createApprovedRewardUnit creates one review from; plan-level review creation tests use it directly. */
+async function createApprovedRewardPlan(ctx:SessionContext,raw:PlannedRewardUnitInput,fixturePolicy?:RewardPolicy,fixtureTargets?:{companyId:string;businessUnitId:string}[]):Promise<{versionId:string;name:string}>{
  await ensureFixtureSetupGrant(ctx);
  const existing=raw.sharedPolicyVersionId?await rewardSetupPlan(ctx,raw.sharedPolicyVersionId):null;
- if(existing?.setup?.state==='approved')return createRewardUnit(ctx,{...raw,name:existing.setup.cycleName,cycleId:undefined,approvedPlanVersionId:existing.source.versionId});
+ if(existing?.setup?.state==='approved')return {versionId:existing.source.versionId,name:existing.setup.cycleName};
  const checker=await setupChecker(ctx),why='Reviewed fixture configuration';
  const name=raw.name||'Approved fixture '+randomUUID().slice(0,8);
  const targets=existing?.source.targets??fixtureTargets??[{companyId:raw.companyId,businessUnitId:raw.businessUnitId}];
@@ -89,7 +95,7 @@ async function createApprovedRewardUnit(ctx:SessionContext,raw:PlannedRewardUnit
  const version=existing?.source??await saveRewardPlanConfiguration(ctx,{groupId:null,expectedRevision:0,name,policy,targets});
  const revision=await saveRewardSetupPlan(ctx,{versionId:version.versionId,expectedRevision:existing?.setup?.revision??0,cycleName:name,snapshotDate:raw.snapshotDate,bindings:targets.map(t=>({...t,salaryVersionId:salary,bonusVersionId:bonus,branchAcknowledged:policy.bonusStructure==='branch'})),reason:why});
  await submitRewardSetupPlan(ctx,version.versionId,revision);await approveRewardSetupPlan(checker,version.versionId,revision+1);
- return createRewardUnit(ctx,{...raw,name,cycleId:undefined,approvedPlanVersionId:version.versionId});
+ return {versionId:version.versionId,name};
 }
- return {setupChecker,setupGrades,setupCompanyStructureFixture,confirmFixturePat,setupRewardLibrariesFixture,createApprovedRewardUnit};
+ return {setupChecker,setupGrades,setupCompanyStructureFixture,confirmFixturePat,setupRewardLibrariesFixture,createApprovedRewardUnit,createApprovedRewardPlan};
 }

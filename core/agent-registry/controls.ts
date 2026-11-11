@@ -1,4 +1,4 @@
-import {assertAiCentreRunningTx} from '../ai-centre-control';
+import {assertAiCentreRunningSharedTx,assertAiCentreRunningTx} from '../ai-centre-control';
 /** ADR-0170 §3.13 step 5 — the per-tenant worker switches and the run gate.
  *
  * Each registered worker's switch is read from the owner that already holds it (./workers.ts): the tenant
@@ -90,19 +90,23 @@ export function workerGateFromState(on:boolean,stopped:boolean):WorkerGate{
  if(stopped)reasons.push('stopped');
  return Object.freeze({run:reasons.length===0,reasons:Object.freeze(reasons)});
 }
-/** Registered, switched on and not stopped, all read in the caller's transaction. */
-export async function workerRunGateTx(tx:Tx,ctx:SessionContext,workerId:string):Promise<WorkerGate>{
+/** Registered, switched on and not stopped, all read in the caller's transaction. `shared` is for a transaction that
+ * only reads the gate (a page offer, a capability list): it holds the Access lock shared, so stop writes still exclude
+ * it, and it never stops other work in the tenant. A worker's own execution path keeps the default. */
+export async function workerRunGateTx(tx:Tx,ctx:SessionContext,workerId:string,options:{shared?:true}={}):Promise<WorkerGate>{
  const worker=registeredWorker(workerId);
  if(!worker)return Object.freeze({run:false,reasons:Object.freeze(['not_registered' as const])});
  // Serialize with the stop writer and reject work from an older generation.
- try{await assertAiCentreRunningTx(tx,ctx);}catch(error){
+ try{await (options.shared?assertAiCentreRunningSharedTx:assertAiCentreRunningTx)(tx,ctx);}catch(error){
   if(error instanceof Error&&error.name==='AiAllowanceError')return Object.freeze({run:false,reasons:Object.freeze(['stopped' as const])});
   throw error;
  }
  const {on}=await workerSwitchStateTx(tx,ctx,worker);
  return workerGateFromState(on,await tenantStoppedTx(tx,ctx.tenantId));
 }
-export const workerRunGate=(ctx:SessionContext,workerId:string)=>withTenant(ctx,tx=>workerRunGateTx(tx,ctx,workerId));
+/** One worker's gate in its own transaction, which reads it and nothing else: the Home and Approvals offers and the
+ * explainer capability list (staging, 11 November 2026: this took the exclusive Access lock on page renders). */
+export const workerRunGate=(ctx:SessionContext,workerId:string)=>withTenant(ctx,tx=>workerRunGateTx(tx,ctx,workerId,{shared:true}));
 /** One worker's gate as workerRunGatesTx reads it: the gate, its switch, and (a teras_worker_control switch that is on)
  * the user who last changed it, the loop's sponsor. */
 export type WorkerGateState=Readonly<{gate:WorkerGate;on:boolean;changedByUserId:string|null}>;
