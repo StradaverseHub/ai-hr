@@ -46,10 +46,11 @@ const otItem = (rule: PayRule): PayComponentInput => ({
   includedInPcb: false, includedInHrdfBase: false, isNonPayable: false, prorates: false, roundingMethod: 'none', rule,
 });
 
+beforeAll(migrateTestDb);
+afterAll(closeAll);
+
 describe('792053e5 reprocess picks up the updated Pay Item formula', () => {
   let base: Base, ctx: SessionContext, employee: string, componentId: string;
-  beforeAll(migrateTestDb);
-  afterAll(closeAll);
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
@@ -102,7 +103,7 @@ describe('792053e5 reprocess picks up the updated Pay Item formula', () => {
     expect(entered.every(r => r.pricingRef?.startsWith('rule:') && r.pricedAt)).toBe(true);
     const batchId = await processed();
     const v1 = await slip(batchId), runV1 = await batchRow(batchId);
-    expect(Number(v1.gross)).toBe(2697.5);
+    expect(Number(v1.grossPay)).toBe(2697.5);
 
     // Unchanged formula: a reprocess writes no ledger row and no repriced event.
     const unchanged = await reprocess(batchId);
@@ -124,8 +125,8 @@ describe('792053e5 reprocess picks up the updated Pay Item formula', () => {
     expect(after.every(r => r.pricingRef !== entered[0].pricingRef && r.pricingRef?.startsWith('rule:'))).toBe(true);
 
     const v2 = await slip(batchId), runV2 = await batchRow(batchId);
-    expect(Number(v2.gross)).toBe(2712.5);
-    expect(Math.round((Number(v2.gross) - Number(v1.gross)) * 100) / 100).toBe(15);
+    expect(Number(v2.grossPay)).toBe(2712.5);
+    expect(Math.round((Number(v2.grossPay) - Number(v1.grossPay)) * 100) / 100).toBe(15);
     const gross = (t: unknown) => Number((t as Record<string, number>).gross);
     expect(Math.round((gross(runV2.totals) - gross(runV1.totals)) * 100) / 100).toBe(15);
 
@@ -144,7 +145,7 @@ describe('792053e5 reprocess picks up the updated Pay Item formula', () => {
     await upsertPayComponent(ctx, otItem(formulaRule(26)));
     const batchId = await processed();
     expect((await ledger()).map(r => r.amount)).toEqual(['187.50']);
-    expect(Number((await slip(batchId)).gross)).toBe(2787.5);
+    expect(Number((await slip(batchId)).grossPay)).toBe(2787.5);
   });
 
   it('a typed amount on a calculating Pay Item is never mistaken for a calculated one and is never re-priced', async () => {
@@ -226,8 +227,6 @@ describe('792053e5 reprocess picks up the updated Pay Item formula', () => {
 describe('792053e5 Pay Formula Builder rows keyed by quantity', () => {
   let base: Base, ctx: SessionContext, employee: string, componentId: string, cycleId: string;
   const period = '2026-05', date = '2026-05-10';
-  beforeAll(migrateTestDb);
-  afterAll(closeAll);
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
