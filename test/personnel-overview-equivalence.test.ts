@@ -111,9 +111,14 @@ const scopeOf=async(ctx:SessionContext)=>(await workforceViewScope(ctx,{personne
 const roles=()=>({admin:fixture.admin,manager:fixture.manager});
 /** Private search tokens, created once per phase by the phase's own search projection and bind trigger. */
 async function tokensFor(ctx:SessionContext,scope:string[]){
+ let started=performance.now();
  const term=await createPersonnelPrivateSearch(ctx,{text:'Tan',companyIds:scope,replaceCriteria:true});
+ const termMs=performance.now()-started;started=performance.now();
  const filtered=await createPersonnelPrivateSearch(ctx,{text:'',companyIds:scope,replaceCriteria:true,
   columnFilters:[{field:'department',operator:'contains',value:'department 2'}]});
+ const filteredMs=performance.now()-started;started=performance.now();
+ await withTenant(ctx,tx=>tx.execute(sql`select count(*) from app.personnel_list_rows(${todayInKualaLumpur()}::date,ARRAY[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) r(value)`));
+ console.info('AA045103_TOKEN_TIMING',JSON.stringify({user:ctx.userId,termMs:Math.round(termMs),filteredMs:Math.round(filteredMs),listRowsMs:Math.round(performance.now()-started)}));
  return {term,filtered};
 }
 /** A token's stored entries, as the bind trigger admitted them. */
