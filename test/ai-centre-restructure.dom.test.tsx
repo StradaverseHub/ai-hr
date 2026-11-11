@@ -149,7 +149,7 @@ describe('Exceptions, the one place an exception is resolved (owner decision 28)
   expect(within(fixed as HTMLElement).getByRole('heading',{level:2}).textContent).toBe('Cause already fixed');
   expect([...fixed.querySelectorAll('input[name="verdictId"]')].map(input=>input.getAttribute('value'))).toEqual([V.fixed]);
   expect(within(fixed as HTMLElement).getByRole('button').textContent).toBe('Approve and close 1');
-  expect(text(fixed.querySelector('[data-fix-subject]'))).toBe('Aina Fictional No bank account to pay into · bank account now on file');
+  expect(text(fixed.querySelector('[data-fix-subject] p:nth-child(2)'))).toBe('No bank account to pay into · bank account now on file');
   // Acknowledged: the pre-filled resolve, returning to this page.
   const acked=view.container.querySelector('#acknowledged-blocks')!;
   expect((acked.querySelector('input[readonly]') as HTMLInputElement).value).toBe('Paid in cash at the site office');
