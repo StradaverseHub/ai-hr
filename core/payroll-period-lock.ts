@@ -77,11 +77,16 @@ async function nativePeriodCarrierTx(tx:Tx,ctx:SessionContext){
  await lockAccessConfigurationTx(tx,ctx.tenantId);
  await assertNativePeriodPrincipalTx(tx,ctx);
 }
-async function lockNativePeriodKeysTx(tx:Tx,ctx:SessionContext,selections:readonly PayrollPeriodSelection[]){
+/** `tryOnly` asks for every key without waiting and reports a miss as false; the caller then gives the whole
+ * transaction back (it holds no row lock and wrote nothing yet). */
+async function lockNativePeriodKeysTx(tx:Tx,ctx:SessionContext,selections:readonly PayrollPeriodSelection[],tryOnly=false):Promise<boolean>{
  const captured=selections.filter(p=>typeof p?.companyId==='string'&&typeof p?.payPeriod==='string').map(p=>({companyId:p.companyId,payPeriod:p.payPeriod})),keys:string[]=[],companies:string[]=[];
  for(const p of captured){const [row]=await tx.execute<{companyId:string}>(sql`select ${p.companyId}::uuid::text as "companyId"`);keys.push(periodOwnerKey(ctx.tenantId,row.companyId,p.payPeriod));companies.push(row.companyId);}
- for(const key of [...new Set(keys)].sort((a,b)=>a.localeCompare(b)))await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key},0))`);
- await lockPayrollRunInputsTx(tx,ctx.tenantId,companies);
+ for(const key of [...new Set(keys)].sort((a,b)=>a.localeCompare(b))){
+  if(tryOnly){const [row]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${key},0)) as owned`);if(row?.owned!==true)return false;}
+  else await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key},0))`);
+ }
+ return lockPayrollRunInputsTx(tx,ctx.tenantId,companies,tryOnly);
 }
 export async function lockNativePayrollPeriodsTx(tx:Tx,supplied:SessionContext,selections:readonly PayrollPeriodSelection[]):Promise<void>{
  const rawContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
@@ -97,12 +102,16 @@ export async function lockNativePayrollBatchPeriodTx(tx:Tx,supplied:SessionConte
  const rawContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},id=batchId;
  if(typeof id!=='string')return null;
  const ctx=await canonicalPeriodContextTx(tx,rawContext);await nativePeriodCarrierTx(tx,ctx);
- return lockOwnedNativePayrollBatchPeriodTx(tx,ctx,id);
+ const owned=await lockOwnedNativePayrollBatchPeriodTx(tx,ctx,id);
+ if(owned===false)throw new PayrollPeriodOwnershipUnavailable(); // Waiting acquisition: never a miss.
+ return owned;
 }
 
-/** Close can give back the connection on an Access miss before any payroll reads or effects.
- * A missing or invisible batch still reaches the existing Close validation. Shared like every native
- * owner: only an access configuration editor makes it miss. */
+/** Close can give back the connection on a miss before any payroll reads or effects. A missing or invisible
+ * batch still reaches the existing Close validation. Shared Access like every native owner, so only an access
+ * configuration editor makes that part miss. Under the shared lock the Access key no longer keeps two closes of
+ * one company/month apart, so the period and payroll inputs keys are tried too: a sibling close or a run owner
+ * of the same company holding them is a miss and a retry, never a wait in PostgreSQL's queue (915d5a06c). */
 export async function tryLockNativePayrollClosePeriodTx(tx:Tx,supplied:SessionContext,batchId:string):Promise<boolean>{
  if(typeof batchId!=='string')return true;
  const ctx=await canonicalPeriodContextTx(tx,supplied);
@@ -110,14 +119,13 @@ export async function tryLockNativePayrollClosePeriodTx(tx:Tx,supplied:SessionCo
  if(acquired===false)return false;
  if(acquired!==true)throw new PayrollPeriodOwnershipUnavailable();
  await assertNativePeriodPrincipalTx(tx,ctx);
- await lockOwnedNativePayrollBatchPeriodTx(tx,ctx,batchId);
- return true;
+ return (await lockOwnedNativePayrollBatchPeriodTx(tx,ctx,batchId,true))!==false;
 }
 
-async function lockOwnedNativePayrollBatchPeriodTx(tx:Tx,ctx:SessionContext,id:string){
+async function lockOwnedNativePayrollBatchPeriodTx(tx:Tx,ctx:SessionContext,id:string,tryOnly=false){
  const read=()=>tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod,payPeriodId:payrollBatch.payPeriodId}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1);
  const [nominee]=await read();if(!nominee)return null;
- await lockNativePeriodKeysTx(tx,ctx,[nominee]);
+ if(!await lockNativePeriodKeysTx(tx,ctx,[nominee],tryOnly))return false;
  const [current]=await read();if(!current)return null;
  if(JSON.stringify(current)!==JSON.stringify(nominee))throw new PayrollPeriodOwnershipUnavailable();
  return current;

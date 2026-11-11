@@ -60,7 +60,17 @@ it('isolates Home role and reporting-visibility query planning with fresh native
  // The measured guard phase applies the exact proposed DDL to the populated fixture.
  // This proves function behavior/attributes, not installed-ledger or release admission.
  expect(guardedRole).toContain(guardedBody.trim());
- expect([body.trim(),guardedBody.trim()]).toContain(roleDefinition.installedBody.trim());
+ // 9b274b7b3 (staged employee import, migration 5010) re-created the installed guarded reader with the staged-row
+ // filter on its three employment/person sources, and 5012 rewrote that filter to the release-aware predicate, exactly
+ // as 5012 does here. The installed body may be that release body; it differs from the guard only by those wrappers.
+ const staged=readFileSync(new URL('../../db/migrations/5010_employee_import_staged_job.sql',import.meta.url),'utf8');
+ const stagedStart=staged.indexOf('CREATE OR REPLACE FUNCTION app.own_home_dashboard_role('),stagedEnd=staged.indexOf('$function$;',stagedStart);
+ expect(stagedStart).toBeGreaterThan(0);expect(stagedEnd).toBeGreaterThan(stagedStart);
+ const releaseBody=staged.slice(stagedStart,stagedEnd).split('AS $function$')[1]
+  .replace(/(\b[a-z_]+\.)?import_pending_attempt_id IS NULL/g,(_,qualifier='')=>'app.import_marker_visible('+qualifier+'import_pending_attempt_id)');
+ expect(releaseBody.match(/app\.import_marker_visible\(import_pending_attempt_id\)/g)).toHaveLength(3);
+ expect(releaseBody.replace(/\(SELECT \* FROM (public\.(?:employment|person)) WHERE app\.import_marker_visible\(import_pending_attempt_id\)\)/g,'$1').trim()).toBe(guardedBody.trim());
+ expect([body.trim(),guardedBody.trim(),releaseBody.trim()]).toContain(roleDefinition.installedBody.trim());
  const phases:Record<string,unknown>={},probes=users.slice(0,100);
  try{
   for(const phase of ['baseline','guarded-role','baseline-after']){
@@ -84,7 +94,7 @@ it('isolates Home role and reporting-visibility query planning with fresh native
    expect(await read(context(users[2]),users[2].employmentId)).toBe('manager');
    phases[phase]={principalInventory:500,activeProbes:100,elapsedMs,p50Ms:times[49],p95Ms:times[94],maxMs:times.at(-1),errors,liveBoundaryChecks:true};
    const evidenceDir=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
-   if(evidenceDir)writeFileSync(join(evidenceDir,'home-role-query.json'),JSON.stringify({kind:'REVERSIBLE_HOME_ROLE_PLAN_EXPERIMENT',releaseEligible:false,roleBaseline:'0584_employee_home_sharing.sql',installedRoleGuarded:roleDefinition.installedBody.trim()===guardedBody.trim(),phases},null,2));
+   if(evidenceDir)writeFileSync(join(evidenceDir,'home-role-query.json'),JSON.stringify({kind:'REVERSIBLE_HOME_ROLE_PLAN_EXPERIMENT',releaseEligible:false,roleBaseline:'0584_employee_home_sharing.sql',installedRoleGuarded:[guardedBody.trim(),releaseBody.trim()].includes(roleDefinition.installedBody.trim()),phases},null,2));
    expect(errors).toEqual([]);
   }
  }finally{for(const definition of definitions)await owner.client.unsafe(definition.installed);}

@@ -8,7 +8,7 @@ const refresh=vi.fn();
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh,push:vi.fn(),replace:vi.fn()})}));
 const success=vi.fn(),failure=vi.fn();
 vi.mock('sonner',()=>({toast:{success:(m:string)=>success(m),error:(m:string)=>failure(m)}}));
-import {LeaveCohortJobPanel} from '../components/leave/leave-cohort-job-panel';
+import {LeaveCohortJobPanel} from '../components/leave-cohort-job-panel';
 
 afterEach(()=>{cleanup();vi.unstubAllGlobals();success.mockReset();failure.mockReset();refresh.mockReset();});
 const running:LeaveCohortJobProgress={id:'00000000-0000-4000-8000-000000000002',kind:'leave_accrual',state:'running',total:3000,done:600,failedEmployees:0,error:null,

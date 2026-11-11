@@ -11,6 +11,8 @@ import {chromium,type Browser,type ConsoleMessage,type Page,type Request,type Re
 import {eq} from 'drizzle-orm';
 import {adminCtx,migrateTestDb,resetDb,seedBase,owner,closeAll} from './harness';
 import {createCompany} from '../core/admin';
+import {runBulkJobTick} from '../core/bulk-job-worker';
+import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
 import * as s from '../db/schema';
 import {buildSystemLabelWorkbook,readSystemLabelWorkbook} from '../lib/system-label-workbook';
 import {LOCALE_COOKIE,locales} from '../i18n/config';
@@ -135,7 +137,14 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const log=join(evidence,'system-label-browser-server.log'),stream=createWriteStream(log);serverLog=stream;
   stream.once('error',()=>{logFailed=true;});
   const port=3149,origin=`http://127.0.0.1:${port}`;
-  const memory=totalmem(),heapMiB=memory>=12*1024**3?8192:4096;
+  // next dev restarts itself once its used heap passes 80% of the limit, and the page request after that restart never
+  // completed on the hosted runner. With the background import's job routes compiled too, the 8 GiB limit's threshold
+  // (6.9 GB) was crossed during the six-language loop. Measured with a 12 GiB limit (run 42949281523): the dev server's
+  // peak used heap was 7.61 GB against a 10.35 GB restart threshold, peak RSS 11.75 GB. Only this test starts a dev server,
+  // and the gate gives it one unit (two workers) on a 16 GB runner. Each run records the peaks and the runner's least
+  // available memory under system-label-dev-server-heap/ in its evidence.
+  const memory=totalmem(),heapMiB=memory>=15*1024**3?12288:memory>=12*1024**3?8192:4096;
+  const heapEvidence=join(evidence,'system-label-dev-server-heap');mkdirSync(heapEvidence,{recursive:true});
   writeFileSync(join(evidence,'system-label-browser-resources.json'),JSON.stringify({memoryBytes:memory,cpus:availableParallelism(),heapMiB,runner:process.env.RUNNER_ENVIRONMENT??'local'}));
   const labelsPath='/admin/settings/system-labels',profilePath='/admin/settings/system-labels/profile-options';
   type LabelsPath=typeof labelsPath|typeof profilePath;
@@ -231,7 +240,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   // No production credentials or identity provider. This is the existing explicit developer identity route.
   signal.throwIfAborted();
   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
-   detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:`--max-old-space-size=${heapMiB}`},stdio:['ignore','pipe','pipe']});
+   detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
   const nextChild=server;
   nextChild.once('spawn',()=>{serverStartTicks=detachedLeaderStart(nextChild);});
   nextChild.once('error',()=>{serverSpawnFailed=true;});
@@ -280,7 +289,15 @@ describe('System Labels authenticated Excel browser journey',()=>{
   expect(await page.getByRole('dialog').innerText()).toContain('BROWSER_GROUP_LABEL');
   await page.screenshot({path:join(evidence,'system-label-preview-en-desktop.png'),fullPage:true});
   await page.getByRole('button',{name:'Import 3 new codes',exact:true}).click();
-  await expect.poll(async()=>page.getByRole('dialog').innerText()).toContain('Failed rows: 1');
+  // 44810ec04 runs the confirmed import as a background job on the shared bulk-job kernel, and the wizard follows the
+  // job to the summary the synchronous import showed. This disposable runner has no worker process, so the test runs
+  // the worker's own tick (the call scripts/bank-import-runner.ts makes) until the wizard shows that outcome.
+  await expect.poll(async()=>{
+   await runBulkJobTick(owner.client,{handlers:BULK_JOB_HANDLERS});
+   return page.getByRole('dialog').innerText();
+  },{timeout:120000,interval:250}).toContain('Failed rows: 1');
+  const [labelJob]=await owner.client<{state:string}[]>`select state from bulk_job where tenant_id=${b.tenantId}::uuid and kind='system_label_import' order by created_at desc limit 1`;
+  expect(labelJob).toEqual({state:'completed'});
   const [global]=await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_GLOBAL_LABEL'));
   expect(global).toMatchObject({tenantId:b.tenantId,isGlobal:true});
   const [scoped]=await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'BROWSER_COMPANY_LABEL'));

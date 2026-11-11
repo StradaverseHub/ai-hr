@@ -82,6 +82,10 @@ export async function commitImportAction(
   const s = await requireAdmin();
   try {
     if(Buffer.byteLength([csv,dependentsCsv??'',allocationsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
+    // The synchronous import parsed every sheet here, in this order, before any owner ran: a whole-sheet refusal
+    // (a blank or removed heading, an unknown register sheet, a malformed allocation file) came straight back with
+    // the guidance below. Parse with the same parsers before enqueueing, so it still never becomes a job.
+    parseEmployee(csv);familyRecords(dependentsCsv);registerRecords(registers);parseCostAllocationCsv(allocationsCsv??'');
     const source=pastedSource(csv,fileName);
     const started=await createEmployeeImportJob(s,{companyId,csv,fileName:fileName??'',dependentsCsv:dependentsCsv??'',registers:registers??{},allocationsCsv:allocationsCsv??'',allocationToken},source);
     revalidatePath('/admin/personnel/import');

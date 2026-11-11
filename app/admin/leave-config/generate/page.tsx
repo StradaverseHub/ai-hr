@@ -10,7 +10,7 @@ import { buildOrgCriteriaSections } from '@/core/org-criteria-form';
 import { listLeaveGenerationRuns } from '@/packs/leave/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { GenerateForm } from '@/components/leave/generate-form';
-import { LeaveCohortJobPanel } from '@/components/leave/leave-cohort-job-panel';
+import { LeaveCohortJobPanel } from '@/components/leave-cohort-job-panel';
 import { activeLeaveCohortJob, readLeaveCohortJob } from '@/core/leave-cohort-job';
 import { LEAVE_GENERATION_JOB_KIND, leaveCohortJobActive } from '@/lib/leave-cohort-job';
 import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
