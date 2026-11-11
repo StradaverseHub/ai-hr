@@ -30,52 +30,55 @@ last-resort guard with automatic retry.
    transaction mode). Every non-web process (timers, cron jobs, workers) sets `AIHR_DB_PROCESS_ROLE=worker` so it
    connects directly. Measured on 4-vCPU runners: about one web worker per 2 vCPU and a shared pool of about
    16 connections; more workers added stalls, not throughput (8 workers ran out of memory on `/assistant`).
-6. **Server module graphs stay free of UI libraries.** Code loaded under `--conditions=react-server` (email sweep,
+6. **Row-secured reads run with PostgreSQL JIT off.** JIT compilation cost 1.3 s on an audit count that runs in 11 ms,
+   680 ms on every Approvals leave list and 18.8 s on one Home statement. Web and worker tenant transactions set
+   `jit=off` transaction-locally in their setup (`db/client.ts`); never re-enable it in a request path.
+7. **Server module graphs stay free of UI libraries.** Code loaded under `--conditions=react-server` (email sweep,
    probation runtime, payroll service, workers) must not import client UI packages such as lucide-react. Keep shared
    constants in dependency-free modules (`lib/leave-visual-keys.ts`). `test/react-server-entry-graphs.test.ts` guards it.
 
 ## Migrations
 
-7. **Migrations must apply as the restricted `ai_hr_owner`, not as a superuser.** CI applies migrations as a superuser
+8. **Migrations must apply as the restricted `ai_hr_owner`, not as a superuser.** CI applies migrations as a superuser
    and hid a staging failure. `test/restricted-owner-release-upgrade.test.ts` applies every migration above main as the
    literal `ai_hr_owner` with production ownership. Keep it green.
-8. **Never replace or alter an object owned by a purpose role** (for example `ai_hr_reward_setup_reader`,
+9. **Never replace or alter an object owned by a purpose role** (for example `ai_hr_reward_setup_reader`,
    `ai_hr_reward_upload_reader`). The migration owner is NOCREATEROLE and cannot become them. Rely on row security, or
    restructure so the object does not need replacing. This includes statements built at run time in loops.
-9. **A new column on a populated table** must be nullable or defaulted, and the populated upgrade tests must prove it
+10. **A new column on a populated table** must be nullable or defaulted, and the populated upgrade tests must prove it
    is present and null (see `test/helpers/approved-upgrade.ts` and `test/helpers/prefix-seed.ts`). Upgrade fixtures
    seed only the columns that exist at their prefix.
-10. **Diagnosing on staging:** as `ai_hr_owner`, `pg_stat_activity` shows application rows as
+11. **Diagnosing on staging:** as `ai_hr_owner`, `pg_stat_activity` shows application rows as
     "&lt;insufficient privilege&gt;" with NULL state, so a `state<>'idle'` filter hides them. Use `ps` (backend state
     and CPU) and `pg_locks` instead.
 
 ## The v17 release gate
 
-11. **Every `test/**/*.test.ts` and `*.dom.test.tsx` file runs in the gate, and a skipped test fails `verify`.** Never use
+12. **Every `test/**/*.test.ts` and `*.dom.test.tsx` file runs in the gate, and a skipped test fails `verify`.** Never use
     `skipIf`, `skip` or `todo` for hosted-only measurements. Name them `*.hosted-diagnostic.ts`
     (see `test/performance/HOSTED-DIAGNOSTICS.md`).
-12. **Unit artifacts are flat JSON.** The operator extractor refuses subfolders and binary files under
+13. **Unit artifacts are flat JSON.** The operator extractor refuses subfolders and binary files under
     `$RUNNER_TEMP/aihr-ci`. Write extra evidence bundles beside it.
-13. **Give slow cases headroom.** A case that runs 15 s or more needs an explicit timeout of about 3× its worst gate
+14. **Give slow cases headroom.** A case that runs 15 s or more needs an explicit timeout of about 3× its worst gate
     duration, with a comment naming the measurement. The global limit is 30 s.
-14. **Do not edit files pinned by `.github/ci/*.test.mjs`** (for example `test/r395-org.ts`). Put new setup in a
+15. **Do not edit files pinned by `.github/ci/*.test.mjs`** (for example `test/r395-org.ts`). Put new setup in a
     new helper.
-15. **Focused runs:** dispatch `alpha-focused-checks.yml` from main. A job is cancelled at 20 minutes, so keep each run to
+16. **Focused runs:** dispatch `alpha-focused-checks.yml` from main. A job is cancelled at 20 minutes, so keep each run to
     about 25 database files. Runs on the same `candidate_ref` queue, and a newer pending run cancels the older one.
     Use alias branches for parallel runs, and never push to a branch with a run pending. The split typecheck
     (test files included) only runs when dispatched from the candidate branch itself.
-16. **Never `gh run rerun` a gate.** A database-unit failure needs a fresh full gate; only no-database failures can use
+17. **Never `gh run rerun` a gate.** A database-unit failure needs a fresh full gate; only no-database failures can use
     focused recovery.
 
 ## AI approvals
 
-17. Any change to covered AI source (check `node scripts/ai-provider-data-source-manifest.mjs --check --list`) needs
+18. Any change to covered AI source (check `node scripts/ai-provider-data-source-manifest.mjs --check --list`) needs
     both manifests regenerated and the provider approvals re-bound in `lib/ai/provider-data-approvals.ts`. Only the
     release coordinator re-binds, under a recorded owner approval, with a dated note in
     `docs/reviews/ai-functions-board-source-binding-2026-11.md`.
 
 ## Staging
 
-18. Follow docs/STAGING-RELEASE-QUEUE.md. The staging box is small (2 CPUs, 3.9 GB). Staging runs PgBouncer
+19. Follow docs/STAGING-RELEASE-QUEUE.md. The staging box is small (2 CPUs, 3.9 GB). Staging runs PgBouncer
     (`DATABASE_POOLED_URL`) and the bulk-job worker. A worker that predates managed install receipts is taken over with
     the reviewed `adopt-stopped` mode of `bank_import_worker_upgrade_v1.py` (deploy/systemd/BANK-IMPORT.md).
