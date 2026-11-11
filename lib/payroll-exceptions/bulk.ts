@@ -5,17 +5,17 @@
  * WHAT IS NEVER BULK-CLOSED:
  *  - any group that blocks a run, or that is not a set-up pattern (groups.ts `mayBulkExpect`);
  *  - any exception whose verdict blocks a run, or that has a blocking finding;
- *  - any exception with a finding of another check: closing a verdict closes all of its findings, so one that was also
- *    flagged for something else is decided on its own, where that other finding is in front of the person;
+ *  - any exception with a finding outside this exact group (another check, severity or variant, e.g. an EIS finding
+ *    beside an EPF one): closing a verdict closes all of its findings, so one that was also flagged for something else
+ *    is decided on its own, where that other finding is in front of the person;
  *  - anything already decided, superseded or not in the requested group.
  * Only exceptions that were on the person's screen are ever closed: the request names them, never a filter.
  *
  * The closing itself goes, one exception at a time, through the anomaly owner's existing resolve (attributed, audited
  * and permission-checked for each one): app/control-tower/exceptions/bulk.ts.
  */
-import { variantOf } from './catalogue';
 import { isBlocking } from './classify';
-import { mayBulkExpect, type GroupIdentity } from './groups';
+import { mayBulkExpect, sameGroup, type GroupIdentity } from './groups';
 
 /** The most exceptions one press may close. Each is its own audited transaction through the owner's resolve. */
 export const BULK_EXPECT_MAX = 25;
@@ -25,7 +25,8 @@ export type BulkCandidate = Readonly<{
   disposition: string;
   resolved: boolean;
   superseded: boolean;
-  findings: readonly Readonly<{ checkId: string; severity: string; facts: Readonly<Record<string, unknown>> | null }>[];
+  /** Every finding of the verdict, with its variant (catalogue.ts `variantOf`). */
+  findings: readonly GroupIdentity[];
 }>;
 
 export type BulkSkipReason = 'not_found' | 'closed' | 'blocking' | 'other_checks' | 'not_in_group';
@@ -36,6 +37,15 @@ export class BulkExpectRefused extends Error {
   constructor(readonly reason: 'not_administrator' | 'invalid' | 'blocking' | 'too_many' | 'nothing') {
     super('Bulk mark as expected refused: ' + reason);
     this.name = 'BulkExpectRefused';
+  }
+}
+
+/** The run stopped part-way for a reason that is not a decision about one exception (a lock, a lost connection): the
+ * ones already closed stay closed, and the person is asked to try again. Never counted as a skip. */
+export class BulkExpectInterrupted extends Error {
+  constructor(readonly resolved: number, readonly cause?: unknown) {
+    super('Bulk mark as expected interrupted after ' + resolved);
+    this.name = 'BulkExpectInterrupted';
   }
 }
 
@@ -55,9 +65,8 @@ export function skipReason(group: GroupIdentity, candidate: BulkCandidate | unde
   if (!candidate) return 'not_found';
   if (candidate.resolved || candidate.superseded) return 'closed';
   if (candidate.disposition === 'block' || candidate.findings.some(f => isBlocking(f.severity))) return 'blocking';
-  if (candidate.findings.length === 0) return 'not_in_group';
-  if (candidate.findings.some(f => f.checkId !== group.checkId)) return 'other_checks';
-  if (!candidate.findings.some(f => f.severity === group.severity && variantOf(f.checkId, f.facts) === group.variant)) return 'not_in_group';
+  if (!candidate.findings.some(f => sameGroup(f, group))) return 'not_in_group';
+  if (!candidate.findings.every(f => sameGroup(f, group))) return 'other_checks';
   return null;
 }
 

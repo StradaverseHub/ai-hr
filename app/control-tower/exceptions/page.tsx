@@ -10,15 +10,15 @@ import { cn } from '@/lib/utils';
 import { formatMoney } from '@/lib/money';
 import { HR_LOCAL_TZ, formatPayPeriodMonth } from '@/lib/hr-date';
 import {
-  BUCKETS, bulkEligible, checkCopy, findingDetail, parseGroupKey, parseSignature,
-  type BulkCandidate, type ExceptionGroup,
+  BUCKETS, bulkEligible, checkCopy, findingDetail, parseGroupKey, parseItemSignature, sameGroup,
+  type BulkCandidate, type ExceptionGroup, type GroupIdentity,
 } from '@/lib/payroll-exceptions';
 import { OperationsTabs } from '../operations-tabs';
 import { resolveAnomalyAction } from '@/app/payroll/actions';
 import { approveAgentActionAction } from '../actions/actions';
 import { resolveAcknowledgedBlockAction } from '../loops/payroll-cycle/actions';
 import { markGroupExpectedAction } from './actions';
-import { GROUP_PAGE_SIZE, groupedExceptions, pageReadAdmission, type ExceptionItem } from './data';
+import { GROUP_PAGE_SIZE, groupedExceptions, pageReadAdmission, payPeriodsOf, type ExceptionItem } from './data';
 
 /**
  * ADR-0074 — THE EXCEPTIONS QUEUE ACROSS EVERY RUN, the one place a payroll exception is resolved (AI Centre restructure,
@@ -45,7 +45,12 @@ import { GROUP_PAGE_SIZE, groupedExceptions, pageReadAdmission, type ExceptionIt
  */
 const FIX_ERRORS = ['unknown_type', 'blast_radius', 'nothing_to_do', 'failed'] as const;
 const ACK_ERRORS = ['invalid', 'refused', 'changed', 'already', 'failed', 'own'] as const;
-const BULK_ERRORS = ['not_administrator', 'invalid', 'blocking', 'too_many', 'nothing', 'failed'] as const;
+const BULK_ERRORS = ['not_administrator', 'invalid', 'blocking', 'too_many', 'nothing', 'failed', 'retry'] as const;
+/** Months whose acknowledged blocks are read, newest first, and how many acknowledged blocks are listed. */
+const ACK_PERIODS = 6;
+const ACK_SHOWN = 50;
+/** A payroll figure reads the same for everyone: the shared formatter, with ringgit labelled as people write it. */
+const money = (amount: number, currency: string | null) => formatMoney(amount, currency === 'MYR' ? 'RM' : currency);
 const target = 'pointer-coarse:min-h-11';
 const HOME = '/control-tower/exceptions';
 
@@ -64,11 +69,11 @@ type Search = {
 
 const focusHref = (key: string, page = 1) => `${HOME}?${new URLSearchParams({ group: key, ...(page > 1 ? { page: String(page) } : {}) })}#exceptions-group`;
 
-/** The page's own reading of an exception for the bulk guard: its finding in this group, and the rest of its checks. */
+/** The page's own reading of an exception for the bulk guard: every finding, with its variant, as the server reads it. */
 function candidateOf(item: ExceptionItem): BulkCandidate {
-  const others = parseSignature(item.signature).filter(f => !(f.checkId === item.checkId && f.severity === item.severity));
+  const findings = parseItemSignature(item.signature);
   return { verdictId: item.verdictId, disposition: item.disposition, resolved: false, superseded: false,
-    findings: [{ checkId: item.checkId, severity: item.severity, facts: item.facts }, ...others.map(f => ({ ...f, facts: null }))] };
+    findings: findings.length ? findings : [{ checkId: item.checkId, severity: item.severity, variant: item.variant }] };
 }
 
 export default async function CrossRunExceptionsPage({ searchParams }: { searchParams: Promise<Search> }) {
@@ -79,18 +84,24 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
   const [t, tx, ta, tc, te, tg, f, locale] = await Promise.all([getTranslations('anomaly'), getTranslations('payroll.controlTower.exceptions'),
     getTranslations('controlTower.actions'), getTranslations('aiCentre.payrollCycle'), getTranslations('aiCentre.exceptions'),
     getTranslations('aiCentre.exceptions.grouped'), getFormatter(), getLocale()]);
-  // The independent reads share one passive admission; each keeps its own checks and the viewer's row-level security.
-  const [view, proposals, companies] = await pageReadAdmission(s, () => Promise.all([
-    groupedExceptions(s, { focus: focusKey, page: pageNo }),
-    proposeActions(s),
-    allowedCompanies(s).then(rows => rows.map(row => row.id)).catch(() => [] as string[]),
-  ]));
-  // The acknowledged blocks of each month that has an open block (at most BLOCK_PERIODS_LIMIT months), for the
-  // companies the viewer may see.
-  const acknowledged: AckRow[] = companies.length
-    ? (await Promise.all(view.blockPeriods.map(payPeriod => acknowledgedBlocks(s, { companyIds: companies, payPeriod })
-      .then(list => list.map(block => ({ ...block, payPeriod })))))).flat()
-    : [];
+  // Every read shares one passive admission; each keeps its own checks and the viewer's row-level security.
+  const { view, proposals, acknowledged, periodOf } = await pageReadAdmission(s, async () => {
+    const [view, proposals, companies] = await Promise.all([
+      groupedExceptions(s, { focus: focusKey, page: pageNo }),
+      proposeActions(s),
+      allowedCompanies(s).then(rows => rows.map(row => row.id)).catch(() => [] as string[]),
+    ]);
+    // The acknowledged blocks of the newest ACK_PERIODS months with an open block, for the companies the viewer may see
+    // (the owner reads one month at a time; core/loops/grouped-dispositions.ts), and the month of each fixed-cause row.
+    const [acknowledged, periodOf] = await Promise.all([
+      companies.length
+        ? Promise.all(view.blockPeriods.slice(0, ACK_PERIODS).map(payPeriod => acknowledgedBlocks(s, { companyIds: companies, payPeriod })
+          .then(list => list.map((block): AckRow => ({ ...block, payPeriod }))))).then(lists => lists.flat())
+        : Promise.resolve([] as AckRow[]),
+      payPeriodsOf(s, proposals.flatMap(p => p.subjects.map(sub => sub.verdictId))),
+    ]);
+    return { view, proposals, acknowledged, periodOf };
+  });
   // Offered above: the person closes these there, in one step, rather than deciding them a second time below.
   const offeredAbove = new Set([...proposals.flatMap(p => p.subjects.map(sub => sub.verdictId)), ...acknowledged.map(block => block.verdictId)]);
   const fixError = FIX_ERRORS.find(code => code === sp.fixError);
@@ -105,7 +116,7 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
   const detailOf = (item: ExceptionItem) => {
     const d = findingDetail(item.checkId, item.facts);
     const values: Record<string, string | number> = { ...d.numbers };
-    for (const [name, amount] of Object.entries(d.money)) values[name] = formatMoney(amount, item.currency);
+    for (const [name, amount] of Object.entries(d.money)) values[name] = money(amount, item.currency);
     if (d.component) values.component = tg(d.component);
     if (d.direction) values.direction = d.direction;
     const line = tg(d.key, values);
@@ -115,8 +126,9 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
     }
     return line;
   };
-  const alsoFlagged = (item: ExceptionItem) => [...new Set(parseSignature(item.signature).filter(x => x.checkId !== item.checkId)
-    .map(x => tg(checkCopy(x.checkId, null).title)))];
+  const titleOfFinding = (x: GroupIdentity) => titleOf({ copy: checkCopy(x.checkId, x.variant) });
+  // Every other finding of the exception, by its own group: an EIS finding beside an EPF one is "also flagged".
+  const alsoFlagged = (item: ExceptionItem) => [...new Set(parseItemSignature(item.signature).filter(x => !sameGroup(x, item)).map(titleOfFinding))];
   // A blocking check whose runs are all closed holds nothing up any more (the queue keeps old runs' exceptions), so its
   // tag says so rather than "Blocks payroll".
   const tagOf = (group: ExceptionGroup) => group.blocking ? (group.closedRunsOnly ? 'blocksClosed' : 'blocks') : group.bucket === 'setup' ? 'setup' : 'review';
@@ -175,6 +187,7 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
           return (
             <div key={item.verdictId} data-exception-preview={item.verdictId} className="flex flex-wrap items-center gap-3 border-t border-border py-2.5 text-[13px]">
               {itemLine(group, item)}
+              {item.runClosed && item.disposition === 'block' && <span data-run-closed className="text-xs text-muted-foreground">{tg('list.runClosedShort')}</span>}
               {record
                 ? <Link href={record} className="font-semibold text-primary hover:underline">{tg(`action.fixTab.${group.fixTab}`)}</Link>
                 : <Link href={`/payroll/${item.batchId}/anomalies`} className="font-semibold text-primary hover:underline">{tg('action.openRun')}</Link>}
@@ -313,7 +326,7 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
               <ul className="mt-3 divide-y divide-border rounded-md border border-border">
                 {p.subjects.map(sub => (
                   <li key={sub.verdictId} data-fix-subject={sub.verdictId} className="px-3 py-2 text-sm">
-                    <p className="font-medium">{sub.name}</p>
+                    <p className="font-medium">{sub.name}{periodOf.get(sub.verdictId) && <span className="ml-2 text-xs font-normal text-muted-foreground">{month(periodOf.get(sub.verdictId)!)}</span>}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">{tg(checkCopy(sub.detectorId, null).title)} · {ta(`cause.${sub.cause}`)}</p>
                   </li>
                 ))}
@@ -339,7 +352,7 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
         {acknowledged.length > 0 && <Card className="overflow-hidden" data-acknowledged-blocks>
           <p className="px-4 pt-4 text-xs text-muted-foreground">{tc('acknowledgedBlocks.help')}</p>
           <ul className="m-0 mt-3 flex list-none flex-col divide-y divide-border border-t border-border p-0">
-            {acknowledged.map(block => (
+            {acknowledged.slice(0, ACK_SHOWN).map(block => (
               <li key={block.verdictId} data-acknowledged-block={block.verdictId} className="flex flex-col gap-2 px-4 py-3 text-sm">
                 <p className="m-0 font-medium">{block.personName ?? tc('flags.unnamed')}
                   <span className="ml-2 text-xs font-normal text-muted-foreground">{block.detectors.map(id => tg(checkCopy(id, null).title)).join(', ')}</span></p>
@@ -353,6 +366,7 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
               </li>
             ))}
           </ul>
+          {acknowledged.length > ACK_SHOWN && <p className="px-4 pb-3 text-xs text-muted-foreground">{tg('list.ackCapped', { shown: ACK_SHOWN, total: acknowledged.length })}</p>}
         </Card>}
       </section>
 

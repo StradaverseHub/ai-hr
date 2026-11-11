@@ -44,7 +44,7 @@ vi.mock('../app/control-tower/exceptions/actions',()=>({markGroupExpectedAction:
 const MISSING='missing-bank-profile.block.payment-method-not-set',SETUP='pay-without-attendance.review.-';
 const item=(verdictId:string,name:string,checkId:string,severity:string,variant:string|null,facts:Record<string,unknown>)=>({verdictId,employmentId:'e-'+verdictId.slice(-2),
  batchId:'b-1',disposition:severity==='block'?'block':'review',computedAt:new Date('2026-10-28T02:00:00Z'),payPeriod:'2026-10',checkId,severity,variant,facts,narrative:null,
- name,employeeCode:null,currency:'MYR',signature:[`${checkId}:${severity}`],runClosed:false});
+ name,employeeCode:null,currency:'MYR',signature:[`${checkId}:${severity}:${variant??'-'}`],runClosed:false});
 vi.mock('../app/control-tower/exceptions/data',async()=>{
  const {buildGroups,groupKey}=await import('../lib/payroll-exceptions');
  // Built when the page reads, not when the mock is hoisted: the fixture constants exist by then.
@@ -55,7 +55,7 @@ vi.mock('../app/control-tower/exceptions/data',async()=>{
  items:[item(V.fixed,'Aina Fictional','missing-bank-profile','block','payment-method-not-set',{netPay:1200,paymentMethod:'unset',reason:'payment-method-not-set'}),
   item(V.acked,'Ben Fictional','missing-bank-profile','block','payment-method-not-set',{netPay:900,paymentMethod:'unset',reason:'payment-method-not-set'}),
   item(V.open,'Chong Fictional','pay-without-attendance','review',null,{netPay:2500,attendanceDays:0,approvedLeaveDays:0})]});
- return {GROUP_PAGE_SIZE:25,pageReadAdmission:(_s:unknown,read:()=>Promise<unknown>)=>read(),
+ return {GROUP_PAGE_SIZE:25,payPeriodsOf:async(_s:unknown,ids:string[])=>new Map(ids.map(id=>[id,'2026-10'])),pageReadAdmission:(_s:unknown,read:()=>Promise<unknown>)=>read(),
   groupedExceptions:async(_s:unknown,p:{focus?:{checkId:string;severity:string;variant:string|null}|null})=>{
    state.reads.push(p.focus?`exceptions:${groupKey(p.focus)}`:'exceptions');
    const {groups,items}=fixture();
@@ -149,6 +149,7 @@ describe('Exceptions, the one place an exception is resolved (owner decision 28)
   expect(within(fixed as HTMLElement).getByRole('heading',{level:2}).textContent).toBe('Cause already fixed');
   expect([...fixed.querySelectorAll('input[name="verdictId"]')].map(input=>input.getAttribute('value'))).toEqual([V.fixed]);
   expect(within(fixed as HTMLElement).getByRole('button').textContent).toBe('Approve and close 1');
+  expect(text(fixed.querySelector('[data-fix-subject] p:nth-child(1)'))).toBe('Aina FictionalOctober 2026');
   expect(text(fixed.querySelector('[data-fix-subject] p:nth-child(2)'))).toBe('No bank account to pay into · bank account now on file');
   // Acknowledged: the pre-filled resolve, returning to this page.
   const acked=view.container.querySelector('#acknowledged-blocks')!;
@@ -165,14 +166,14 @@ describe('Exceptions, the one place an exception is resolved (owner decision 28)
    ['Set how they’re paid','/admin/personnel/e-a1?tab=payroll'],['Set how they’re paid','/admin/personnel/e-a2?tab=payroll'],
    ['See who has been asked for details','/control-tower/readiness']]);
   expect(text(missing.querySelector(`[data-exception-preview="${V.fixed}"] > span`)))
-   .toBe('Aina Fictional · October 2026 · Their record doesn’t say how they’re paid. Take-home pay: MYR 1,200.00.');
+   .toBe('Aina Fictional · October 2026 · Their record doesn’t say how they’re paid. Take-home pay: RM 1,200.00.');
   // A blocking pattern offers no bulk decision and no resolution form on the overview.
   expect(missing.querySelector('form')).toBeNull();
   const setup=view.container.querySelector(`[data-exceptions-pattern="${SETUP}"]`)!;
   expect(text(setup.querySelector('[data-group-tag]'))).toBe('Looks like setup');
   expect(within(setup as HTMLElement).getAllByRole('link')[0].textContent).toBe('Review and mark as expected');
   expect(text(setup)).toContain('Companies: Fictional Sdn Bhd');
-  expect(text(setup)).toContain('Chong Fictional · October 2026 · Paid MYR 2,500.00, with no attendance and no approved leave this month.');
+  expect(text(setup)).toContain('Chong Fictional · October 2026 · Paid RM 2,500.00, with no attendance and no approved leave this month.');
   // Plain words only: no check ids, field names or internal terms on the page.
   expect(text(view.container)).not.toMatch(/missing-bank-profile|pay-without-attendance|paymentMethod|netPay|verdict|detector|[0-9a-f]{8}-[0-9a-f]{4}-/i);
   // No staffing figure on the page, and nothing names the retired overview.

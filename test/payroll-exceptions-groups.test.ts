@@ -22,7 +22,7 @@ import type { SessionContext } from '../db/client';
 import { openExceptionsAcrossRuns } from '../core/payroll-anomaly';
 import { GROUP_PAGE_SIZE, ExceptionsReadRefused, groupedExceptions, type ExceptionItem } from '../app/control-tower/exceptions/data';
 import { markGroupExpected } from '../app/control-tower/exceptions/bulk';
-import { BulkExpectRefused, bucketCounts, groupKey, parseGroupKey, type GroupIdentity } from '../lib/payroll-exceptions';
+import { BulkExpectRefused, bucketCounts, groupKey, parseGroupKey, variantOf, type GroupIdentity } from '../lib/payroll-exceptions';
 import { closeAll, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const COMPANIES = 72;
@@ -38,11 +38,20 @@ function patternOf(i: number): { disposition: 'block' | 'review' | 'auto_clear';
     case 0: return { disposition: 'block', findings: [{ checkId: 'negative-net', severity: 'block', variant: null, facts: { netPay: -300, grossPay: 100, totalDeductions: 400 } }] };
     case 1: return { disposition: 'block', findings: [{ checkId: 'missing-bank-profile', severity: 'block', variant: 'payment-method-not-set', facts: { netPay: 900, paymentMethod: 'unset', reason: 'payment-method-not-set' } }] };
     case 2: return { disposition: 'block', findings: [{ checkId: 'missing-bank-profile', severity: 'block', variant: 'bank-details-missing', facts: { netPay: 900, paymentMethod: 'bank_transfer', reason: 'bank-details-missing' } }] };
-    case 3: return { disposition: 'block', findings: [{ checkId: 'missing-bank-profile', severity: 'block', variant: null, facts: { netPay: 900, paymentMethod: 'unset' } }] };
+    // Older findings with no reason: the payment method they recorded decides the sub-group, and with neither, generic.
+    case 3: return { disposition: 'block', findings: [[
+      { checkId: 'missing-bank-profile', severity: 'block', variant: 'payment-method-not-set', facts: { netPay: 900, paymentMethod: 'unset' } },
+      { checkId: 'missing-bank-profile', severity: 'block', variant: 'bank-details-missing', facts: { netPay: 900, paymentMethod: 'bank_transfer' } },
+      { checkId: 'missing-bank-profile', severity: 'block', variant: null, facts: { netPay: 900 } },
+    ][Math.floor(i / 12) % 3] as F] };
     case 4: return { disposition: 'review', findings: [tax] };
     case 5: return { disposition: 'review', findings: [attendance] };
     case 6: return { disposition: 'review', findings: [attendance, tax] };
-    case 7: return { disposition: 'review', findings: [{ checkId: 'component-appeared', severity: 'review', variant: 'hrdf', facts: { component: 'hrdf', amount: 12 } }] };
+    // Every other one carries two pay items (EIS and EPF): it may never be closed with either one's group.
+    case 7: return { disposition: 'review', findings: i % 24 === 7
+      ? [{ checkId: 'component-appeared', severity: 'review', variant: 'eisEmployee', facts: { component: 'eisEmployee', amount: 4 } },
+        { checkId: 'component-appeared', severity: 'review', variant: 'epfEmployee', facts: { component: 'epfEmployee', amount: 40 } }]
+      : [{ checkId: 'component-appeared', severity: 'review', variant: 'hrdf', facts: { component: 'hrdf', amount: 12 } }] };
     case 8: return { disposition: 'review', findings: [{ checkId: 'component-appeared', severity: 'review', variant: 'other', facts: { component: 'mysteryItem', amount: 3 } }] };
     case 9: return { disposition: 'review', findings: [{ checkId: 'net-swing', severity: 'review', variant: null, facts: { netPay: 2000, priorNetPay: 1000, movementPct: 100, thresholdPct: 30 } }] };
     case 10: return { disposition: 'auto_clear', findings: [] };
@@ -153,7 +162,8 @@ describe.each([['All companies', () => all, null], ['one company', () => one, ()
     const expected = expectedGroups(scope);
     expect(new Map(view.groups.map(g => [g.key, { exceptions: g.exceptions, people: g.people, companies: g.companies, runs: g.runs }]))).toEqual(expected);
     if (!scope) {
-      expect([...expected.keys()].sort()).toEqual(['component-appeared.review.hrdf', 'component-appeared.review.other', 'missing-bank-profile.block.-',
+      expect([...expected.keys()].sort()).toEqual(['component-appeared.review.eisEmployee', 'component-appeared.review.epfEmployee',
+        'component-appeared.review.hrdf', 'component-appeared.review.other', 'missing-bank-profile.block.-',
         'missing-bank-profile.block.bank-details-missing', 'missing-bank-profile.block.payment-method-not-set', 'missing-tax-profile.review.-',
         'negative-net.block.-', 'net-swing.review.-', 'pay-without-attendance.review.-']);
       // 72 companies; the set-up group names three and counts the rest.
@@ -185,13 +195,31 @@ describe.each([['All companies', () => all, null], ['one company', () => one, ()
       const rows = await allPages(ctx, parseGroupKey(group.key)!);
       expect(rows.length, group.key).toBe(group.exceptions);
       const expectedOrder = old.rows.filter(r => r.findings.some(f => groupKey({ checkId: f.detectorId, severity: f.severity,
-        variant: specs.find(s => s.verdictId === r.verdictId)!.findings.find(x => x.checkId === f.detectorId)!.variant }) === group.key)).map(r => r.verdictId);
+        variant: variantOf(f.detectorId, f.facts) }) === group.key)).map(r => r.verdictId);
       expect(rows.map(r => r.verdictId), group.key).toEqual(expectedOrder);
       for (const r of rows) { listed.add(r.verdictId); expect(r.runClosed, r.verdictId).toBe(r.batchId === closedBatch); }
     }
     expect([...listed].sort()).toEqual(old.rows.map(r => r.verdictId).sort());
     // The overview's previews are the first rows of each group, bounded.
     for (const group of view.groups) expect((view.items.get(group.key) ?? []).length, group.key).toBe(Math.min(3, group.exceptions));
+  }, 120_000);
+});
+
+describe('the other administrator role that may open the page (requireAdmin: hr_admin and super_admin)', () => {
+  it('super_admin, All companies: the same totals and the same rows, in the same order within each group, as the previous reader', async () => {
+    const ctx: SessionContext = { ...all, roles: ['super_admin'], grants: [{ role: 'super_admin', companyId: null }] };
+    const view = await groupedExceptions(ctx);
+    const old = await openExceptionsAcrossRuns(ctx, { limit: 100_000 });
+    expect([view.total, view.blocking]).toEqual([old.total, old.blocking]);
+    const listed: string[] = [];
+    for (const group of view.groups) {
+      const rows = await allPages(ctx, parseGroupKey(group.key)!);
+      const expectedOrder = old.rows.filter(r => r.findings.some(f => groupKey({ checkId: f.detectorId, severity: f.severity,
+        variant: variantOf(f.detectorId, f.facts) }) === group.key)).map(r => r.verdictId);
+      expect(rows.map(r => r.verdictId), group.key).toEqual(expectedOrder);
+      listed.push(...rows.map(r => r.verdictId));
+    }
+    expect([...new Set(listed)].sort()).toEqual(old.rows.map(r => r.verdictId).sort());
   }, 120_000);
 });
 
@@ -218,6 +246,26 @@ describe('bulk "Mark as expected"', () => {
     await expect(markGroupExpected({ ...all, roles: ['employee'], grants: [{ role: 'employee', companyId: b.companyId }] },
       { group: 'pay-without-attendance.review.-', verdictIds: blocked, note: 'Fixture' })).rejects.toBeInstanceOf(BulkExpectRefused);
     await expect(markGroupExpected(all, { group: 'pay-without-attendance.review.-', verdictIds: blocked, note: '  ' })).rejects.toMatchObject({ reason: 'invalid' });
+  });
+
+  it('never closes an exception with two pay items through either one\'s group', async () => {
+    const eis = { checkId: 'component-appeared', severity: 'review', variant: 'eisEmployee' };
+    const ids = specs.filter(s => s.open && s.findings.some(f => f.variant === 'eisEmployee')).map(s => s.verdictId).slice(0, 25);
+    expect(ids.length).toBeGreaterThan(0);
+    const page = await groupedExceptions(all, { focus: eis, page: 1 });
+    for (const item of page.items.get(groupKey(eis)) ?? []) expect(item.signature, item.verdictId)
+      .toEqual(['component-appeared:review:eisEmployee', 'component-appeared:review:epfEmployee']);
+    expect(await markGroupExpected(all, { group: groupKey(eis), verdictIds: ids, note: 'Fixture' })).toEqual({ resolved: 0, skipped: ids.length });
+    expect((await state(ids)).every(r => r.resolution === null)).toBe(true);
+  });
+
+  it('a company-scoped administrator posting another company\'s exceptions closes nothing', async () => {
+    const elsewhere = specs.filter(s => s.open && s.companyId === companyIds[5] && s.findings.length === 1 && s.findings[0].checkId === 'pay-without-attendance')
+      .map(s => s.verdictId);
+    expect(elsewhere.length).toBeGreaterThan(0);
+    expect(await markGroupExpected(one, { group: 'pay-without-attendance.review.-', verdictIds: elsewhere, note: 'Fixture' }))
+      .toEqual({ resolved: 0, skipped: elsewhere.length });
+    expect((await state(elsewhere)).every(r => r.resolution === null)).toBe(true);
   });
 
   it('closes the requested single-check exceptions through the owner\'s resolve, and skips mixed and smuggled blocking ones', async () => {

@@ -49,7 +49,7 @@ export type ExceptionItem = Readonly<{
   name: string;
   employeeCode: string | null;
   currency: string | null;
-  /** Every finding of the verdict, as `<check>:<severity>`. */
+  /** Every finding of the verdict, as `<check>:<severity>:<variant or ->` (itemSignature in lib/payroll-exceptions). */
   signature: readonly string[];
   /** Its payroll run is already closed: a blocking finding no longer holds anything up (the queue has no run-status filter). */
   runClosed: boolean;
@@ -87,15 +87,21 @@ const OPEN = sql`open_v as (
   join public.payroll_batch b on b.id = v.batch_id
   where v.superseded_at is null and v.resolved_at is null and v.disposition <> 'auto_clear')`;
 
-/** The sub-group of a finding, generated from the catalogue so it cannot drift from `variantOf`. */
-export function variantSql(): SQL {
+/** The sub-group of a finding (table alias `f`), generated from the catalogue so it cannot drift from `variantOf`. */
+export function variantSql(alias = 'f'): SQL {
+  const f = sql.raw(alias);
   const whens: SQL[] = [];
   for (const [checkId, entry] of Object.entries(CATALOGUE)) {
     const variant = entry.variant;
     if (!variant) continue;
     const values = sql.join(variant.values.map(value => sql`${value}`), sql`, `);
     const otherwise = variant.otherwise === 'other' ? sql`${OTHER_COMPONENT}::text` : sql`null::text`;
-    whens.push(sql`when f.detector_id = ${checkId} then case when f.facts->>${variant.fact}::text in (${values}) then f.facts->>${variant.fact}::text else ${otherwise} end`);
+    const legacy = variant.legacy;
+    const fromLegacy = legacy ? sql.join([
+      ...Object.entries(legacy.map).map(([from, to]) => sql`when ${f}.facts->>${legacy.fact}::text = ${from}::text then ${to}::text`),
+      ...(legacy.nullAs ? [sql`when ${f}.facts->${legacy.fact}::text = 'null'::jsonb then ${legacy.nullAs}::text`] : []),
+    ], sql` `) : sql``;
+    whens.push(sql`when ${f}.detector_id = ${checkId} then case when ${f}.facts->>${variant.fact}::text in (${values}) then ${f}.facts->>${variant.fact}::text ${fromLegacy} else ${otherwise} end`);
   }
   return sql`(case ${sql.join(whens, sql` `)} else null::text end)`;
 }
@@ -129,7 +135,8 @@ function itemsQuery(where: { group: GroupIdentity; offset: number; limit: number
       order by case disposition when 'block' then 0 when 'review' then 1 else 2 end, computed_at, verdict_id) as rn from per)
     select r.verdict_id, r.employment_id, r.batch_id, r.disposition, r.computed_at, r.pay_period, r.batch_status, r.check_id, r.severity, r.variant,
       r.facts, r.narrative, p.full_name, e.employee_code, c.currency,
-      (select array_agg(distinct f2.detector_id || ':' || f2.severity) from public.payroll_anomaly_finding f2 where f2.verdict_id = r.verdict_id) as signature
+      (select array_agg(distinct f2.detector_id || ':' || f2.severity || ':' || coalesce(${variantSql('f2')}, '-')) from public.payroll_anomaly_finding f2
+        where f2.verdict_id = r.verdict_id) as signature
     from ranked r
     join public.employment e on e.id = r.employment_id
     join public.person p on p.id = e.person_id
@@ -206,4 +213,18 @@ export async function groupedExceptions(s: SessionContext, p: { focus?: GroupIde
       items, blockPeriods: Object.freeze(periods.map(row => row.pay_period)),
     });
   });
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The most exceptions whose month one call names (the "cause already fixed" rows are capped well below it). */
+const PERIODS_OF_LIMIT = 200;
+
+/** The month of each named exception, as the viewer may see it: one bounded statement, for rows listed elsewhere. */
+export async function payPeriodsOf(s: SessionContext, verdictIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+  if (!s.userId || !isAdmin(s)) throw new ExceptionsReadRefused();
+  const ids = [...new Set(verdictIds.filter(id => UUID.test(id)))].slice(0, PERIODS_OF_LIMIT);
+  if (!ids.length) return new Map();
+  return withTenant(s, async tx => new Map((await rows<{ id: string; pay_period: string }>(tx, sql`select v.id, b.pay_period
+    from public.payroll_anomaly_verdict v join public.payroll_batch b on b.id = v.batch_id
+    where v.id in (${sql.join(ids.map(id => sql`${id}::uuid`), sql`, `)})`)).map(row => [row.id, row.pay_period])));
 }

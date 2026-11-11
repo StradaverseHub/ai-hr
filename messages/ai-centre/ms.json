@@ -2097,7 +2097,9 @@
           "previous": "Sebelumnya",
           "next": "Seterusnya",
           "unnamed": "Orang tanpa nama",
-          "runClosed": "Larian gaji ini sudah ditutup, jadi tiada apa-apa yang tertangguh. Memutuskannya memastikan rekod kekal tepat."
+          "runClosed": "Larian gaji ini sudah ditutup, jadi tiada apa-apa yang tertangguh. Memutuskannya memastikan rekod kekal tepat.",
+          "runClosedShort": "Larian sudah ditutup",
+          "ackCapped": "Memaparkan {shown} daripada {total}. Selesaikan sebahagian dan selebihnya akan dipaparkan."
         },
         "bulk": {
           "title": "Tandakan ini sebagai dijangka",
@@ -2114,7 +2116,8 @@
             "blocking": "Pengecualian yang menyekat larian tidak pernah dikosongkan sekali gus. Semak setiap satu.",
             "too_many": "Itu melebihi had yang boleh ditanda sekali gus. Cuba lagi daripada senarai.",
             "nothing": "Tiada apa-apa dipilih.",
-            "failed": "Itu tidak berjaya, dan tiada apa-apa diubah. Sila cuba lagi."
+            "failed": "Itu tidak berjaya, dan tiada apa-apa diubah. Sila cuba lagi.",
+            "retry": "Sesuatu telah mengganggu proses ini, jadi ia terhenti separuh jalan. Apa-apa yang sudah ditanda kekal ditanda. Sila cuba lagi untuk selebihnya."
           }
         },
         "footer": "Pengumpulan hanya mengubah cara pengecualian dipaparkan. Ralat yang menyekat tidak pernah dikosongkan secara pukal, setiap keputusan tetap direkodkan bagi setiap orang, dan tiada angka gaji diubah di sini.",
@@ -2233,7 +2236,8 @@
           "pcb": "Cukai pendapatan (PCB)",
           "hrdf": "Levi HRD",
           "zakat": "Zakat",
-          "other": "Item gaji lain"
+          "other": "Item gaji lain",
+          "skbbk": "SKBBK (Lindung 24 Jam)"
         },
         "cause": {
           "additional_run": "larian bonus atau larian tambahan",

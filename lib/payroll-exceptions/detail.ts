@@ -6,7 +6,7 @@
  * only picks them out by name and says which are money, so the page can format them with the shared money formatter.
  * A finding missing a figure its sentence needs gets the generic sentence instead of a blank or a raw field name.
  */
-import { KNOWN_COMPONENTS, OTHER_COMPONENT, entryOf } from './catalogue';
+import { KNOWN_COMPONENTS, OTHER_COMPONENT, entryOf, variantOf } from './catalogue';
 
 export type FindingDetail = Readonly<{
   /** Message key under `aiCentre.exceptions.grouped`. */
@@ -76,8 +76,10 @@ export function findingDetail(checkId: string, rawFacts: Readonly<Record<string,
       return m ? { key: 'detail.statutoryOverCap', money: m, numbers: {}, component: componentKey(facts.component) } : GENERIC;
     }
     case 'missing-bank-profile': {
-      const reason = facts.reason === 'payment-method-not-set' ? 'detail.missingBankProfile.paymentMethodNotSet'
-        : facts.reason === 'bank-details-missing' ? 'detail.missingBankProfile.bankDetailsMissing' : 'detail.missingBankProfile.generic';
+      // The reason, or for older findings the payment method the check recorded (catalogue.ts `variantOf`).
+      const variant = variantOf(checkId, facts);
+      const reason = variant === 'payment-method-not-set' ? 'detail.missingBankProfile.paymentMethodNotSet'
+        : variant === 'bank-details-missing' ? 'detail.missingBankProfile.bankDetailsMissing' : 'detail.missingBankProfile.generic';
       return money(['netPay'], reason);
     }
     case 'missing-tax-profile': {

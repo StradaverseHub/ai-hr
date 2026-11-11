@@ -2097,7 +2097,9 @@
           "previous": "Trước",
           "next": "Tiếp",
           "unnamed": "Người chưa có tên",
-          "runClosed": "Kỳ lương này đã đóng, nên không có gì bị trì hoãn. Quyết định mục này giúp hồ sơ luôn chính xác."
+          "runClosed": "Kỳ lương này đã đóng, nên không có gì bị trì hoãn. Quyết định mục này giúp hồ sơ luôn chính xác.",
+          "runClosedShort": "Kỳ lương đã đóng",
+          "ackCapped": "Đang hiển thị {shown} trên {total}. Xử lý một số mục thì các mục còn lại sẽ hiện ra."
         },
         "bulk": {
           "title": "Đánh dấu các mục này là bình thường",
@@ -2114,7 +2116,8 @@
             "blocking": "Các ngoại lệ chặn kỳ lương không bao giờ được xóa cùng lúc. Hãy kiểm tra từng mục.",
             "too_many": "Số lượng vượt quá mức có thể đánh dấu cùng lúc. Hãy thử lại từ danh sách.",
             "nothing": "Chưa chọn mục nào.",
-            "failed": "Thao tác không thành công và không có gì thay đổi. Vui lòng thử lại."
+            "failed": "Thao tác không thành công và không có gì thay đổi. Vui lòng thử lại.",
+            "retry": "Thao tác bị gián đoạn nên chỉ hoàn thành một phần. Các mục đã đánh dấu vẫn giữ nguyên. Vui lòng thử lại cho các mục còn lại."
           }
         },
         "footer": "Việc nhóm chỉ thay đổi cách hiển thị ngoại lệ. Lỗi chặn kỳ lương không bao giờ được xóa hàng loạt, mỗi quyết định vẫn được ghi lại cho từng người, và không có con số lương nào bị thay đổi ở đây.",
@@ -2233,7 +2236,8 @@
           "pcb": "Thuế thu nhập (PCB)",
           "hrdf": "Phí HRD",
           "zakat": "Zakat",
-          "other": "Một khoản lương khác"
+          "other": "Một khoản lương khác",
+          "skbbk": "SKBBK (Lindung 24 Jam)"
         },
         "cause": {
           "additional_run": "một kỳ thưởng hoặc kỳ lương bổ sung",

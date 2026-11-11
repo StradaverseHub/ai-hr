@@ -17,12 +17,14 @@ import { withTenant, type SessionContext } from '@/db/client';
 import { isAdmin } from '@/lib/authz-model';
 import { resolveAnomalyVerdict } from '@/core/payroll-anomaly';
 import {
-  BulkExpectRefused, mayBulkExpect, parseGroupKey, planBulkExpect, requestedIds, type BulkCandidate,
+  BulkExpectInterrupted, BulkExpectRefused, mayBulkExpect, parseGroupKey, planBulkExpect, requestedIds, variantOf, type BulkCandidate,
 } from '@/lib/payroll-exceptions';
 
 export type BulkExpectResult = Readonly<{ resolved: number; skipped: number }>;
 
 const NOTE_MAX = 400;
+/** The anomaly owner's per-exception refusals (core/payroll-anomaly.ts resolveAnomalyVerdict). */
+const OWNER_REFUSALS = new Set(['Payroll anomaly unavailable.', 'verdict not found', 'cannot resolve a superseded verdict']);
 
 export async function markGroupExpected(supplied: SessionContext, input: Readonly<{ group: unknown; verdictIds: readonly unknown[]; note: unknown }>):
 Promise<BulkExpectResult> {
@@ -47,8 +49,9 @@ Promise<BulkExpectResult> {
     left join public.payroll_anomaly_finding f on f.verdict_id = v.id
     where v.id in (${sql.join(ids.map(id => sql`${id}::uuid`), sql`, `)})
     group by v.id, v.disposition, v.resolved_at, v.superseded_at`)) as unknown as
-    { id: string; disposition: string; resolved: boolean; superseded: boolean; findings: BulkCandidate['findings'] }[])
-    .map((row): BulkCandidate => ({ verdictId: row.id, disposition: row.disposition, resolved: row.resolved, superseded: row.superseded, findings: row.findings })));
+    { id: string; disposition: string; resolved: boolean; superseded: boolean; findings: { checkId: string; severity: string; facts: Record<string, unknown> | null }[] }[])
+    .map((row): BulkCandidate => ({ verdictId: row.id, disposition: row.disposition, resolved: row.resolved, superseded: row.superseded,
+      findings: row.findings.map(f => ({ checkId: f.checkId, severity: f.severity, variant: variantOf(f.checkId, f.facts) })) })));
 
   const plan = planBulkExpect(group, ids, candidates);
   let resolved = 0, skipped = plan.skipped.length;
@@ -56,9 +59,11 @@ Promise<BulkExpectResult> {
     try {
       await resolveAnomalyVerdict(ctx, { verdictId, resolution: 'accepted', note: `Expected (marked with its group): ${note}`.slice(0, 500) });
       resolved++;
-    } catch {
-      // Refused by the owner for this one (not the caller's payroll, superseded meanwhile): left open, counted.
-      skipped++;
+    } catch (error) {
+      // The owner refused THIS one (not the caller's payroll, gone, superseded meanwhile): left open and counted. Anything
+      // else (a lock or connection failure) stops the run and asks the person to try again; it is never a skip.
+      if (error instanceof Error && OWNER_REFUSALS.has(error.message)) { skipped++; continue; }
+      throw new BulkExpectInterrupted(resolved, error);
     }
   }
   return Object.freeze({ resolved, skipped });

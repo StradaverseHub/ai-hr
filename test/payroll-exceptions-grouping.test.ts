@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { DETECTORS, HYPOTHESIS_DETECTOR_ID } from '../core/payroll-anomaly-detectors';
 import {
-  BULK_EXPECT_MAX, BulkExpectRefused, CATALOGUE, bucketCounts, bucketOf, buildGroups, describeGroup, findingDetail, groupKey, mayBulkExpect,
+  BULK_EXPECT_MAX, BulkExpectRefused, CATALOGUE, bulkEligible, parseItemSignature, bucketCounts, bucketOf, buildGroups, describeGroup, findingDetail, groupKey, mayBulkExpect,
   parseGroupKey, parseSignature, planBulkExpect, requestedIds, skipReason, variantOf, verdictBucket, type BulkCandidate, type GroupAggregateRow,
 } from '../lib/payroll-exceptions';
 
@@ -63,7 +63,13 @@ describe('groups', () => {
   it('splits by the bank reason and by the pay item, and falls back without one', () => {
     expect(variantOf('missing-bank-profile', { reason: 'payment-method-not-set' })).toBe('payment-method-not-set');
     expect(variantOf('missing-bank-profile', { reason: 'bank-details-missing' })).toBe('bank-details-missing');
-    expect(variantOf('missing-bank-profile', { paymentMethod: 'unset' })).toBeNull();
+    // Older findings carry no reason: read from the payment method the check recorded.
+    expect(variantOf('missing-bank-profile', { netPay: 1, paymentMethod: 'unset' })).toBe('payment-method-not-set');
+    expect(variantOf('missing-bank-profile', { netPay: 1, paymentMethod: null })).toBe('payment-method-not-set');
+    expect(variantOf('missing-bank-profile', { netPay: 1, paymentMethod: 'bank_transfer' })).toBe('bank-details-missing');
+    expect(variantOf('missing-bank-profile', { netPay: 1 })).toBeNull();
+    expect(variantOf('missing-bank-profile', { netPay: 1, paymentMethod: 'toString' })).toBeNull();
+    expect(describeGroup(agg('missing-bank-profile', 'block', variantOf('missing-bank-profile', { paymentMethod: 'unset' }), 1)).fixTab).toBe('payroll');
     expect(variantOf('missing-bank-profile', { reason: 'something-new' })).toBeNull();
     expect(variantOf('component-appeared', { component: 'hrdf' })).toBe('hrdf');
     expect(variantOf('component-appeared', { component: 'formulaEvaluations' })).toBe('other');
@@ -117,7 +123,7 @@ describe('groups', () => {
 describe('the bulk "Mark as expected" guard', () => {
   const SETUP = { checkId: 'pay-without-attendance', severity: 'review', variant: null };
   const cand = (n: number, over: Partial<BulkCandidate> = {}): BulkCandidate => ({ verdictId: uuid(n), disposition: 'review', resolved: false, superseded: false,
-    findings: [{ checkId: 'pay-without-attendance', severity: 'review', facts: { netPay: 100 } }], ...over });
+    findings: [{ checkId: 'pay-without-attendance', severity: 'review', variant: null }], ...over });
 
   it('refuses a blocking or non-set-up group outright', () => {
     for (const group of [{ checkId: 'negative-net', severity: 'block', variant: null }, { checkId: 'missing-bank-profile', severity: 'block', variant: 'payment-method-not-set' },
@@ -132,25 +138,37 @@ describe('the bulk "Mark as expected" guard', () => {
     const plan = planBulkExpect(SETUP, [1, 2, 3, 4, 5, 6, 7, 8].map(uuid), [
       cand(1),
       cand(2, { disposition: 'block' }),
-      cand(3, { findings: [{ checkId: 'pay-without-attendance', severity: 'review', facts: null }, { checkId: 'negative-net', severity: 'block', facts: null }] }),
-      cand(4, { findings: [{ checkId: 'pay-without-attendance', severity: 'review', facts: null }, { checkId: 'missing-tax-profile', severity: 'review', facts: null }] }),
+      cand(3, { findings: [{ checkId: 'pay-without-attendance', severity: 'review', variant: null }, { checkId: 'negative-net', severity: 'block', variant: null }] }),
+      cand(4, { findings: [{ checkId: 'pay-without-attendance', severity: 'review', variant: null }, { checkId: 'missing-tax-profile', severity: 'review', variant: null }] }),
       cand(5, { resolved: true }),
       cand(6, { superseded: true }),
-      cand(7, { findings: [{ checkId: 'component-appeared', severity: 'review', facts: { component: 'bonus' } }] }),
+      cand(7, { findings: [{ checkId: 'component-appeared', severity: 'review', variant: 'bonus' }] }),
     ]);
     expect(plan.resolve).toEqual([uuid(1)]);
     expect(plan.skipped).toEqual([
       { verdictId: uuid(2), reason: 'blocking' }, { verdictId: uuid(3), reason: 'blocking' }, { verdictId: uuid(4), reason: 'other_checks' },
-      { verdictId: uuid(5), reason: 'closed' }, { verdictId: uuid(6), reason: 'closed' }, { verdictId: uuid(7), reason: 'other_checks' },
+      { verdictId: uuid(5), reason: 'closed' }, { verdictId: uuid(6), reason: 'closed' }, { verdictId: uuid(7), reason: 'not_in_group' },
       { verdictId: uuid(8), reason: 'not_found' },
     ]);
   });
 
   it('matches the pay item of a pay-item group', () => {
     const hrdf = { checkId: 'component-appeared', severity: 'review', variant: 'hrdf' };
-    const c = (n: number, component: string) => cand(n, { findings: [{ checkId: 'component-appeared', severity: 'review', facts: { component } }] });
+    const c = (n: number, ...variants: string[]) => cand(n, { findings: variants.map(variant => ({ checkId: 'component-appeared', severity: 'review', variant })) });
     expect(skipReason(hrdf, c(1, 'hrdf'))).toBeNull();
     expect(skipReason(hrdf, c(2, 'bonus'))).toBe('not_in_group');
+    // Two pay items on one exception: closing it would close the one not on screen, so it is decided on its own.
+    expect(skipReason(hrdf, c(3, 'hrdf', 'bonus'))).toBe('other_checks');
+  });
+
+  it('the page reads the same findings, variants included, as the server', () => {
+    const eis = { checkId: 'component-appeared', severity: 'review', variant: 'eisEmployee' };
+    const signature = parseItemSignature(['component-appeared:review:eisEmployee', 'component-appeared:review:epfEmployee']);
+    expect(signature).toEqual([eis, { ...eis, variant: 'epfEmployee' }]);
+    const both = { verdictId: uuid(1), disposition: 'review', resolved: false, superseded: false, findings: signature };
+    expect(bulkEligible(eis, both)).toBe(false);
+    expect(bulkEligible(eis, { ...both, findings: [eis] })).toBe(true);
+    expect(parseItemSignature(['pay-without-attendance:review:-', 'broken', 'x:y'])).toEqual([{ checkId: 'pay-without-attendance', severity: 'review', variant: null }]);
   });
 
   it('takes 1 to BULK_EXPECT_MAX distinct ids, nothing else', () => {
@@ -181,7 +199,8 @@ describe('each exception\'s line of evidence', () => {
     expect([plain.causes, plain.unexplainedPct]).toEqual([undefined, undefined]);
     expect(findingDetail('missing-bank-profile', { netPay: 900, paymentMethod: 'unset', reason: 'payment-method-not-set' }).key).toBe('detail.missingBankProfile.paymentMethodNotSet');
     expect(findingDetail('missing-bank-profile', { netPay: 900, paymentMethod: 'bank_transfer', reason: 'bank-details-missing' }).key).toBe('detail.missingBankProfile.bankDetailsMissing');
-    expect(findingDetail('missing-bank-profile', { netPay: 900, paymentMethod: 'unset' }).key).toBe('detail.missingBankProfile.generic');
+    expect(findingDetail('missing-bank-profile', { netPay: 900, paymentMethod: 'unset' }).key).toBe('detail.missingBankProfile.paymentMethodNotSet');
+    expect(findingDetail('missing-bank-profile', { netPay: 900 }).key).toBe('detail.missingBankProfile.generic');
     expect(findingDetail('missing-tax-profile', { pcb: 0 }).key).toBe('detail.missingTaxProfile.noTax');
     expect(findingDetail('missing-tax-profile', { pcb: 12 })).toEqual({ key: 'detail.missingTaxProfile.withTax', money: { pcb: 12 }, numbers: {} });
     expect(findingDetail('statutory-over-cap', { component: 'eisEmployee', actual: 10, cap: 7.9, excess: 2.1 }).component).toBe('component.eisEmployee');

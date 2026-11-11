@@ -13,8 +13,9 @@
  * catalogue's generic copy, never its raw id.
  *
  * VARIANTS. Two checks carry a fact that changes what a person must do:
- *  - `missing-bank-profile` may carry `reason` (`payment-method-not-set` or `bank-details-missing`). Without it, older
- *    findings get the generic copy;
+ *  - `missing-bank-profile` may carry `reason` (`payment-method-not-set` or `bank-details-missing`). Older findings
+ *    without it are read from the payment method the check recorded (`paymentMethod`: `unset` or null means none was
+ *    set, `bank_transfer` means the bank details are missing); with neither, the generic copy;
  *  - `component-appeared` / `component-vanished` carry `component`, the pay item that appeared or disappeared. A known
  *    pay item has its own plain label; anything else is "another pay item".
  */
@@ -30,7 +31,9 @@ export type CatalogueEntry = Readonly<{
   key: string;
   natural: NaturalBucket;
   /** Which fact splits this check into sub-groups, and the values that get their own copy. */
-  variant?: Readonly<{ fact: 'reason' | 'component'; values: readonly string[]; otherwise: 'generic' | 'other' }>;
+  variant?: Readonly<{ fact: 'reason' | 'component'; values: readonly string[]; otherwise: 'generic' | 'other';
+    /** For findings written before `fact` existed: the variant read from another stored fact. */
+    legacy?: Readonly<{ fact: string; map: Readonly<Record<string, string>>; nullAs?: string }> }>;
   /** The record tab a person fixes it on (missing details only), per variant where it differs. */
   fixTab?: Readonly<Record<string, RecordTab>>;
 }>;
@@ -42,7 +45,7 @@ export const BANK_REASONS = ['payment-method-not-set', 'bank-details-missing'] a
 /** Pay items a person recognises by name. The component facts are the payslip's own item names. */
 export const KNOWN_COMPONENTS = [
   'allowance', 'overtimePay', 'bonus', 'epfEmployee', 'epfEmployer', 'socsoEmployee', 'socsoEmployer',
-  'eisEmployee', 'eisEmployer', 'pcb', 'hrdf', 'zakat',
+  'eisEmployee', 'eisEmployer', 'pcb', 'hrdf', 'zakat', 'skbbk',
 ] as const;
 export const OTHER_COMPONENT = 'other';
 
@@ -53,7 +56,8 @@ export const CATALOGUE: Readonly<Record<string, CatalogueEntry>> = Object.freeze
   'statutory-over-cap': { key: 'statutoryOverCap', natural: 'check' },
   'missing-bank-profile': {
     key: 'missingBankProfile', natural: 'missing',
-    variant: { fact: 'reason', values: BANK_REASONS, otherwise: 'generic' },
+    variant: { fact: 'reason', values: BANK_REASONS, otherwise: 'generic',
+      legacy: { fact: 'paymentMethod', map: { unset: 'payment-method-not-set', bank_transfer: 'bank-details-missing' }, nullAs: 'payment-method-not-set' } },
     fixTab: { 'payment-method-not-set': 'payroll', 'bank-details-missing': 'bankStatutory', '': 'bankStatutory' },
   },
   'duplicate-employment-pay': { key: 'duplicateEmploymentPay', natural: 'check' },
@@ -85,6 +89,12 @@ export function variantOf(checkId: string, facts: Readonly<Record<string, unknow
   if (!variant) return null;
   const value = facts?.[variant.fact];
   if (typeof value === 'string' && variant.values.includes(value)) return value;
+  const legacy = variant.legacy;
+  if (legacy && facts && Object.prototype.hasOwnProperty.call(facts, legacy.fact)) {
+    const old = facts[legacy.fact];
+    if (old === null && legacy.nullAs) return legacy.nullAs;
+    if (typeof old === 'string' && Object.prototype.hasOwnProperty.call(legacy.map, old)) return legacy.map[old];
+  }
   return variant.otherwise === 'other' ? OTHER_COMPONENT : null;
 }
 

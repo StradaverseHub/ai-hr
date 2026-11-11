@@ -56,6 +56,18 @@ export function parseGroupKey(value: unknown): GroupIdentity | null {
   return { checkId, severity, variant: variant === '-' ? null : variant };
 }
 
+/** One listed exception's findings, stored as `<check>:<severity>:<variant or ->` (app/control-tower/exceptions/data.ts). */
+export function parseItemSignature(signature: readonly string[]): GroupIdentity[] {
+  return signature.flatMap(entry => {
+    const parts = entry.split(':');
+    if (parts.length !== 3 || !parts[0] || !parts[1]) return [];
+    return [{ checkId: parts[0], severity: parts[1], variant: parts[2] === '-' || parts[2] === '' ? null : parts[2] }];
+  });
+}
+
+/** The same finding group? */
+export const sameGroup = (a: GroupIdentity, b: GroupIdentity) => a.checkId === b.checkId && a.severity === b.severity && a.variant === b.variant;
+
 /** May this group be marked as expected in bulk? Never when it blocks a run, never outside the set-up bucket. */
 export function mayBulkExpect(g: GroupIdentity): boolean {
   return !isBlocking(g.severity) && bucketOf(g.checkId, g.severity) === 'setup';

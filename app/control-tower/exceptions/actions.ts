@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { BulkExpectRefused } from '@/lib/payroll-exceptions';
+import { BulkExpectInterrupted, BulkExpectRefused } from '@/lib/payroll-exceptions';
 import { markGroupExpected } from './bulk';
 
 /** Closed result codes the page knows how to say; nothing from an error's text reaches the address bar. */
@@ -20,8 +20,13 @@ export async function markGroupExpectedAction(formData: FormData) {
     params.set('expected', String(result.resolved));
     params.set('expectedSkipped', String(result.skipped));
   } catch (e) {
-    const code = e instanceof BulkExpectRefused && (CODES as readonly string[]).includes(e.reason) ? e.reason : 'failed';
-    params.set('bulkError', code);
+    if (e instanceof BulkExpectInterrupted) {
+      // Interrupted part-way: say how many were closed, and ask for another try. Nothing is reported as skipped.
+      params.set('expected', String(e.resolved));
+      params.set('bulkError', 'retry');
+    } else {
+      params.set('bulkError', e instanceof BulkExpectRefused && (CODES as readonly string[]).includes(e.reason) ? e.reason : 'failed');
+    }
   }
   revalidatePath('/control-tower/exceptions');
   revalidatePath('/control-tower');

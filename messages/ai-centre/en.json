@@ -2097,7 +2097,9 @@
           "previous": "Previous",
           "next": "Next",
           "unnamed": "Unnamed person",
-          "runClosed": "This payroll run is already closed, so nothing is held up. Deciding it keeps the record straight."
+          "runClosed": "This payroll run is already closed, so nothing is held up. Deciding it keeps the record straight.",
+          "runClosedShort": "Run already closed",
+          "ackCapped": "Showing {shown} of {total}. Resolve some and the rest appear."
         },
         "bulk": {
           "title": "Mark these as expected",
@@ -2114,7 +2116,8 @@
             "blocking": "Exceptions that block a run are never cleared in one go. Check each one.",
             "too_many": "That is more than can be marked in one go. Try again from the list.",
             "nothing": "Nothing was selected.",
-            "failed": "That didn’t work, and nothing was changed. Please try again."
+            "failed": "That didn’t work, and nothing was changed. Please try again.",
+            "retry": "Something interrupted this, so it stopped part-way. Anything already marked stays marked. Please try again for the rest."
           }
         },
         "footer": "Grouping only changes how exceptions are shown. Blocking errors are never cleared in bulk, every decision is still recorded per person, and no pay figure is changed here.",
@@ -2233,7 +2236,8 @@
           "pcb": "Income tax (PCB)",
           "hrdf": "HRD levy",
           "zakat": "Zakat",
-          "other": "Another pay item"
+          "other": "Another pay item",
+          "skbbk": "SKBBK (Lindung 24 Jam)"
         },
         "cause": {
           "additional_run": "a bonus or additional run",
