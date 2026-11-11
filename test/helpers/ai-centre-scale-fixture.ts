@@ -50,7 +50,7 @@ export async function buildScaleFixture(b:Base,opts:Readonly<{employments?:numbe
  }
  // Statutory rows for ~62%, with every field blank somewhere; some EPF exemptions and SOCSO/EIS exemptions.
  const statutory=employments.flatMap((e,i)=>rand(i)<0.62?[{tenantId:b.tenantId,personId:e.personId,
-  icNumber:i%9===0?null:i%17===0?'  ':`90${String(100000+i)}`,passportNumber:i%9===0&&i%2===0?`A${String(5000000+i)}`:null,
+  icNumber:i%9===0?null:i%17===0?'  ':`900101${String(100000+i)}`,passportNumber:i%9===0&&i%2===0?`A${String(5000000+i)}`:null,
   taxNumber:i%5===0?null:`SG${String(1000000+i)}`,epfNumber:i%7===0?null:`EPF${String(i)}`,socsoNumber:i%6===0?null:`SOC${String(i)}`,
   bankAccountNo:i%4===0?null:`5140${String(100000+i)}`,epfMode:(i%21===0?'exempt':'auto') as 'exempt'|'auto',
   subjectToSocso:i%33!==0,eisEligible:i%33!==0}]:[]);

@@ -22,6 +22,22 @@ import {loopsOverview,loopDetail} from '../core/loops/views';
 import {loopLevelSummaries,loopAutonomyDetail} from '../core/loops/autonomy-views';
 import {payrollCycleOverview} from '../core/loops/payroll-cycle-views';
 import {LOOP_IDS} from '../core/loops/types';
+import {openExceptionsAcrossRuns} from '../core/payroll-anomaly';
+import {proposeActions} from '../core/agent-actions';
+import {acknowledgedBlocks} from '../core/loops/grouped-dispositions';
+import {allowedCompanies} from '../core/read';
+import {aiManagementPageView} from '../core/ai-management';
+import {aiInventoryView,aiManagementAlerts,aiRunHistory} from '../core/ai-inventory';
+import {bulkAssistantDepartments} from '../core/ai-management';
+import {loadAiGovernance} from '../core/ai-workspace';
+import {readChatRetention} from '../core/teras-chats';
+import {getAiConfigView} from '../core/ai-config';
+import {agentBuildList} from '../core/agent-build-list';
+import {agentStatuses} from '../core/control-domains';
+import {listWorkers} from '../core/agent-registry/views';
+import {outcomeSummary} from '../core/agent-registry/export';
+import {aiCentreControlReads} from '../app/control-tower/agents/centre-controls';
+import {isGroupAdmin} from '../lib/authz-model';
 import {closeAll,migrateTestDb,resetDb,seedBase,setModule} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {explainStatements,observeStatements,type ExplainedStatement} from './helpers/statement-observer';
@@ -49,7 +65,36 @@ const loopPages:Page[]=LOOP_IDS.filter(id=>id!=='loop_payroll_audit').map(id=>({
  {label:'loopDetail',stage:0,run:ctx=>loopDetail(ctx,id)},
  {label:'loopAutonomyDetail',stage:1,run:ctx=>loopAutonomyDetail(ctx,id)},
 ]}));
-const PAGES:readonly Page[]=[readiness,loops,...loopPages];
+const exceptions:Page={id:'control-tower.exceptions',reads:[
+ {label:'openExceptionsAcrossRuns',stage:0,run:ctx=>openExceptionsAcrossRuns(ctx)},
+ {label:'proposeActions',stage:0,run:ctx=>proposeActions(ctx)},
+ {label:'allowedCompanies',stage:0,run:ctx=>allowedCompanies(ctx).then(rows=>rows.map(row=>row.id)).catch(()=>[] as string[])},
+ {label:'acknowledgedBlocks',stage:1,run:async(ctx,got)=>{
+  const queue=got.get('openExceptionsAcrossRuns') as Awaited<ReturnType<typeof openExceptionsAcrossRuns>>,companies=got.get('allowedCompanies') as string[];
+  const periods=[...new Set(queue.rows.filter(row=>row.disposition==='block').map(row=>row.payPeriod))].sort();
+  return companies.length?Promise.all(periods.map(payPeriod=>acknowledgedBlocks(ctx,{companyIds:companies,payPeriod}))):[];}},
+]};
+type View=Awaited<ReturnType<typeof aiManagementPageView>>;
+/** AiManagementScreen (app/control-tower/agents/screen.tsx): its reads in order for one section, after the page's own. */
+const screen=(section:'overview'|'features'|'runs'|'allowances'|'spending'|'assistant'|'provider',before:readonly Read[]=[]):Page=>{
+ const at=before.length?Math.max(...before.map(r=>r.stage))+1:0;
+ return{id:`control-tower.agents.${section}`,reads:[...before,
+  {label:'aiManagementPageView',stage:at,run:ctx=>aiManagementPageView(ctx,section,'',{})},
+  ...(section==='features'?[{label:'aiInventoryView',stage:at+1,run:(ctx:SessionContext,got:Map<string,unknown>)=>aiInventoryView(ctx,got.get('aiManagementPageView') as View).catch(()=>null)}]:[]),
+  {label:'aiManagementAlerts',stage:at+2,run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementPageView') as View)},
+  ...(section==='runs'?[{label:'aiRunHistory',stage:at+3,run:(ctx:SessionContext)=>isGroupAdmin(ctx)?aiRunHistory(ctx,{}, {}):Promise.resolve(null)}]:[]),
+  ...(section==='allowances'?[{label:'bulkAssistantDepartments',stage:at+3,run:(ctx:SessionContext,got:Map<string,unknown>)=>(got.get('aiManagementPageView') as View).mayWriteUsers?bulkAssistantDepartments(ctx).catch(()=>[]):Promise.resolve([])}]:[]),
+ ]};
+};
+const agents:Page[]=[screen('overview'),screen('runs'),screen('allowances'),screen('spending'),
+ screen('assistant',[{label:'loadAiGovernance',stage:0,run:ctx=>loadAiGovernance(ctx)},{label:'readChatRetention',stage:1,run:ctx=>readChatRetention(ctx).catch(()=>null)}]),
+ screen('provider',[{label:'getAiConfigView',stage:0,run:ctx=>isGroupAdmin(ctx)?getAiConfigView(ctx).catch(()=>null):Promise.resolve(null)}]),
+ screen('features',[{label:'agentStatuses',stage:0,run:ctx=>agentStatuses(ctx).catch(()=>null)},
+  {label:'registry',stage:1,run:ctx=>isGroupAdmin(ctx)?Promise.all([listWorkers(ctx),outcomeSummary(ctx).catch(()=>null)]).catch(()=>null):Promise.resolve(null)},
+  {label:'aiCentreControlReads',stage:2,run:ctx=>isGroupAdmin(ctx)?aiCentreControlReads(ctx):Promise.resolve(null)}]),
+ {id:'control-tower.agents.build-list',reads:[{label:'agentBuildList',stage:0,run:ctx=>isGroupAdmin(ctx)?agentBuildList(ctx,90):Promise.resolve(null)}]},
+];
+const PAGES:readonly Page[]=[readiness,loops,...loopPages,exceptions,...agents];
 
 let fixture:ScaleFixture;
 beforeAll(async()=>{
@@ -63,6 +108,7 @@ afterAll(closeAll);
 const median=(values:readonly number[])=>{const s=[...values].sort((x,y)=>x-y),m=(s.length-1)/2;return Math.round(((s[Math.floor(m)]+s[Math.ceil(m)])/2)*10)/10;};
 
 type ReadResult={ms:number[];statements:number;transactions:number};
+const errors:string[]=[];
 async function runPage(page:Page,ctx:SessionContext,explain:boolean){
  const got=new Map<string,unknown>(),reads:Record<string,{ms:number;statements:number;transactions:number}>={},captured:{label:string;statements:Awaited<ReturnType<typeof observeStatements>>['statements']}[]=[];
  const stages=[...new Set(page.reads.map(r=>r.stage))].sort((a,b)=>a-b);
@@ -70,7 +116,9 @@ async function runPage(page:Page,ctx:SessionContext,explain:boolean){
  for(const stage of stages){
   // A stage the page already runs with Promise.all runs together here too.
   await Promise.all(page.reads.filter(r=>r.stage===stage).map(async read=>{
-   const observed=await observeStatements(()=>read.run(ctx,got));
+   // A read that refuses or fails is recorded with its error rather than hiding every other measurement.
+   const observed=await observeStatements(()=>read.run(ctx,got).catch(error=>({readFailed:String(error).slice(0,300)})));
+   if(observed.result&&typeof observed.result==='object'&&'readFailed' in observed.result)errors.push(`${page.id}|${read.label}: ${(observed.result as {readFailed:string}).readFailed}`);
    got.set(read.label,observed.result);
    reads[read.label]={ms:observed.ms,statements:observed.statements.length,transactions:observed.transactions};
    if(explain)captured.push({label:read.label,statements:observed.statements});
@@ -88,7 +136,8 @@ describe('AI Centre pages at group scale (71 companies, ~1,000 employments)',()=
     const samples:Record<string,ReadResult>={};const pageMs:number[]=[];let explained:Record<string,ExplainedStatement[]>={};
     for(let run=0;run<RUNS+WARMUP;run++){
      const result=await runPage(page,ctx,run===0);
-     if(run===0)for(const item of result.captured)explained[item.label]=(await explainStatements(item.statements))
+     if(run===0)for(const item of result.captured)explained[item.label]=(await explainStatements(item.statements)
+      .catch(error=>[{ordinal:0,sql:'(replay)',executionMs:null,planningMs:null,hotspots:[],error:String(error).slice(0,300)}] as ExplainedStatement[]))
       .filter(s=>s.executionMs!==null||s.error).sort((a,b)=>(b.executionMs??0)-(a.executionMs??0)).slice(0,4);
      if(run<WARMUP)continue;
      pageMs.push(result.pageMs);
@@ -109,9 +158,10 @@ describe('AI Centre pages at group scale (71 companies, ~1,000 employments)',()=
   const dir=process.env.RUNNER_TEMP?join(process.env.RUNNER_TEMP,'aihr-focused'):join(process.cwd(),'.review-evidence');mkdirSync(dir,{recursive:true});
   writeFileSync(join(dir,'ai-centre-scale-timing.json'),JSON.stringify({kind:'ai-centre.scale-timing',version:1,runs:RUNS,warmup:WARMUP,
    fixture:{companies:fixture.companyIds.length,employments:fixture.employmentIds.length,active:fixture.activeEmploymentIds.length},
-   ...(process.env.GITHUB_RUN_ID?{runId:process.env.GITHUB_RUN_ID}:{}),report},null,1));
+   ...(process.env.GITHUB_RUN_ID?{runId:process.env.GITHUB_RUN_ID}:{}),failures,readErrors:[...new Set(errors)],report},null,1));
   process.stdout.write(lines.join('\n')+'\n');
   process.stdout.write('AIHR_AI_CENTRE_SCALE_FAILURES '+JSON.stringify(failures)+'\n');
+  process.stdout.write('AIHR_AI_CENTRE_SCALE_READ_ERRORS '+JSON.stringify([...new Set(errors)])+'\n');
   expect(Object.keys(report).length).toBe(PAGES.length*3);
  },600_000);
 });
