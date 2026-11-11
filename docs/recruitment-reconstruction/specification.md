@@ -470,3 +470,87 @@ A slow report must never block writes.
 33. Team dashboard: administrators only; per-recruiter counts match.
 34. Periods over 24 months are refused; trends bucket correctly across month and week boundaries; removed candidates
     are counted without any personal data; every query runs read-only.
+
+## Slice 7 — Employee referrals (owner choice 2026-11-11; EV-031, EV-035…EV-038)
+
+Moka verifies referrers by company e-mail domain or mobile code and runs a separate referral website (EV-035,
+EV-036). AI HR already knows who its employees are, so the referrer is the signed-in user and the portal lives in the
+employee's own area. Rewards, notifications, posters and sharing links are not built (D-021, D-022).
+
+### Actors and access
+
+- Referrer (D): a signed-in user whose person has an **active employment** in a company where Recruitment is enabled.
+  Active uses the repository's employment rule: not voided or blacklisted, started on or before today (Kuala Lumpur),
+  and not ended (the earliest of resignation, last working date and termination). "Enabled" is the same tenant-wide
+  Recruitment grant the HR pages require, so a referral can never land where no HR user can see it. Nothing else is needed: no e-mail-domain list or mobile code (EV-035 replaced by the employment record, D-020).
+- Recruitment administrators and the job's operating team (slice 2) see who referred an application. Reviewers and
+  interviewers see that it is an employee referral, with the referrer's name, like any other source (EV-036 shows the
+  referrer on the recruiter-facing records page).
+- A referrer never gains any other Recruitment access by referring: they cannot open the application, the candidate,
+  the job record or any HR page.
+
+### Job visibility on the portal (EV-037)
+
+- O: each job has "Displayed on referral portal" in its sourcing channels.
+- D: a job setting **Show on the referral portal**, default off, changed only by a recruitment administrator for the
+  job's company (service and database). The portal lists a job only while it is Open (not On hold or Closed) and the
+  setting is on.
+- The portal shows, per job: title, job number, company, work location, employment type, recruitment type, job level
+  and the job description text if recorded. Never: salary, hiring team, application counts, requisition details.
+
+### Referring a candidate (EV-038)
+
+- Fields: candidate full name (required); e-mail and mobile (at least one required); resume file (optional, same type
+  and size rules as slice 5); referral reason (required, at most 1,000 characters); a required confirmation that the
+  candidate agreed to be referred and to be contacted by HR (stored with the referral as the time it was given).
+- On success: a candidate and an application at the job's first enabled stage, source "Employee referral", and a
+  referral record (referrer person and user, job, application, reason, confirmation time, created time) in one
+  transaction, audited. The slice 5 duplicate check runs as for any new application and may flag it for HR. The
+  candidate's consent status stays "not recorded" until HR records it (slice 5).
+- Refused (one generic message to the referrer, the specific reason in the audit event for HR, D-023):
+  - the job is not Open or not on the portal, or the company does not have Recruitment, or the referrer has no active
+    employment there;
+  - the candidate (matched on normalised e-mail or mobile, as in slice 5) already has an application for this job
+    that is not archived ("similar application in the system");
+  - within the company's **referral protection period** another employee referred the same candidate (any job in the
+    company): the first referrer keeps the credit ("already referred internally"). The period is a per-company
+    setting, default 180 days (EV-031, EV-035), 0 switches it off. The same referrer may refer the same person to a
+    different job;
+  - the referrer has made 20 referral attempts today, accepted or refused (Kuala Lumpur date): a stop against mass
+    entry and against using refusals to probe who has applied (D-023, D-024).
+- Concurrency: two referrals of the same person at the same time result in exactly one accepted (lock on company and
+  normalised identity).
+
+### My referrals (EV-036 "recommend records", EV-038 "No referral history")
+
+- The referrer sees only their own referrals: candidate name as entered, job title, referral date, and a coarse
+  status derived from the application: In review (screening stages), Interviewing, Offer, Hired, Not progressing
+  (archived). Never: stage names, rejection reasons, interview times, scores, feedback or offer terms.
+- If the candidate was removed under slice 5 retention or a removal request, the row keeps only job and date and
+  reads "Removed"; the referral record holds no personal data of its own beyond what the candidate record holds.
+
+### Settings
+
+- Per company, administrators: referral protection period in days (0–730, default 180).
+
+### Slice 7 acceptance cases
+
+35. The portal lists exactly the Open jobs with the portal setting on, in the companies where the user has an active
+    employment and Recruitment is enabled; nothing for a user without one; another company's or tenant's jobs never.
+36. Only a recruitment administrator can change a job's portal setting (service refusal and direct-database refusal).
+37. A referral creates the candidate, the application at the first enabled stage with source "Employee referral", and
+    the referral record, in one transaction with an audit event; the referrer cannot read any of those rows directly.
+38. Missing name, missing both e-mail and mobile, missing reason, a reason over 1,000 characters, a missing
+    confirmation or a bad file are refused by the service; a closed, on-hold or hidden job is refused by the database.
+39. An active application for the same job refuses the referral with the generic message; the audit event names the
+    reason; nothing is created.
+40. Another employee's referral within the protection period refuses; after the period, or with the period set to 0,
+    it is accepted; the same referrer may refer the same person to a second job.
+41. Two concurrent referrals of the same person: exactly one is accepted.
+42. The 21st referral attempt on one Kuala Lumpur day (refused attempts included) is refused, with the day boundary at
+    Kuala Lumpur midnight.
+43. My referrals shows only the user's own rows with the coarse status; no reason, stage name, score or offer field is
+    in the page data (sentinel check); a removed candidate shows "Removed".
+44. HR sees "Employee referral" and the referrer on the application; a company without Recruitment hides the portal
+    and refuses the submission.
+45. Slice 5 removal deletes the referral's personal data with the candidate and leaves no orphan rows.

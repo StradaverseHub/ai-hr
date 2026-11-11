@@ -581,6 +581,7 @@ export function Sidebar({
   assistantAccess = true,
   feedbackAccess = true,
   privateCaseHandler = false,
+  referralPortal = false,
   defaultCollapsed,
   viewerName = null,
   viewerCode = null,
@@ -641,6 +642,8 @@ export function Sidebar({
   /** AI v2 W11 — the login handles private cases (a current handler grant, or a case it may handle). Only then is the
    * "Private cases" queue row offered; /cases still shows each login only what row security returns. */
   privateCaseHandler?: boolean;
+  /** Recruitment slice 7: the viewer may refer candidates (an active employment in a company with Recruitment). */
+  referralPortal?: boolean;
   /** Pending items awaiting THIS viewer's decision (feedback 836118c4) — badge on the
    *  "Approval Items" row. Computed once in app/layout.tsx as listPendingTasks(...).length; the rail
    *  never queries. 0 (or a viewer without the row) renders no badge. */
@@ -752,7 +755,7 @@ export function Sidebar({
   // administrator (whose requireAdmin pages those are) keeps it without the Assistant grant or module; /assistant
   // then shows its unavailable home with the centre's tabs, and every page still checks for itself.
   const canSeeChild = (c: ChildItem) => (c.href === '/assistant' && canAdministerAi) ||
-    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (c.href !== '/cases' || privateCaseHandler) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === RECRUITMENT_ROW.href ? canAdministerRecruitment : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
+    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (c.href !== '/cases' || privateCaseHandler) && (c.href !== '/me/referrals' || referralPortal) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === RECRUITMENT_ROW.href ? canAdministerRecruitment : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS
@@ -778,6 +781,9 @@ export function Sidebar({
     {href:'/admin/personnel/profile-changes',labelKey:'profileChanges',icon:ListChecks,adminOnly:true},
     {href:'/me/payslip',labelKey:'myPayslips',icon:Wallet,ownedSubpaths:['/me/payslip']},
     {href:'/me/letters',labelKey:'myLetters',icon:FileBarChart,ownedSubpaths:['/me/letters']},
+    // Recruitment slice 7: Refer a candidate, for a person with an active employment in a company with Recruitment
+    // (canSeeChild reads referralPortal from app/layout.tsx, answered by app.recruitment_referral_eligible).
+    {href:'/me/referrals',labelKey:'myReferrals',icon:UserRoundPlus,ownedSubpaths:['/me/referrals']},
     {href:'/me/tax-relief',labelKey:'taxRelief',icon:Receipt},
     {href:'/me/tp3',labelKey:'myTp3',icon:Receipt},
     {href:'/me/ea',labelKey:'myEa',icon:Receipt,ownedSubpaths:['/me/ea']},

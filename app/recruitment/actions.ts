@@ -17,7 +17,7 @@ import {
   updateRequisition, updateStage, withdrawOffer, withdrawRequisition, RecruitmentError,
   addCandidateEntry, addCandidateTag, deleteCandidateFile, destroyCandidates, recordConsent, removeCandidateEntry, removeCandidateTag,
   saveCandidateRestricted, saveTag, saveTagGroup, updateCandidateProfile, updatePrivacySettings, uploadCandidateFile, CANDIDATE_FILE_MAX_BYTES,
-  checkDuplicateCandidate, RECRUITMENT_ERROR_CODES, type DuplicateCheck,
+  checkDuplicateCandidate, RECRUITMENT_ERROR_CODES, type DuplicateCheck, setJobReferralPortal, updateReferralSettings,
 } from '@/packs/recruitment/service';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -75,6 +75,12 @@ export async function updateJobAction(f: FormData) {
 export async function changeJobStatusAction(f: FormData) {
   const jobId = str(f, 'jobId');
   return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}`), (s) => changeJobStatus(s, jobId, str(f, 'status')));
+}
+
+/** Slice 7: the job's "Show on the referral portal" setting (recruitment administrators; the service and 4407 refuse others). */
+export async function setJobReferralPortalAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobReferralPortal(s, jobId, f.get('showOnReferralPortal') === 'on'));
 }
 
 export async function addJobMemberAction(f: FormData) {
@@ -347,6 +353,10 @@ export async function updatePrivacySettingsAction(f: FormData) {
   return run(back(f, '/recruitment/settings?section=privacy'), (s) => updatePrivacySettings(s, str(f, 'companyId'), {
     monthsWithoutConsent: str(f, 'monthsWithoutConsent'), monthsWithConsent: str(f, 'monthsWithConsent'), repeatWindowMonths: str(f, 'repeatWindowMonths'),
   }));
+}
+/** Slice 7: the company's referral protection period in days (0 switches it off). */
+export async function updateReferralSettingsAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=referrals'), (s) => updateReferralSettings(s, str(f, 'companyId'), { protectionDays: str(f, 'protectionDays') }));
 }
 /** Destruction: the administrator's selection and explicit confirmation; the service re-checks every candidate is due. */
 export async function destroyCandidatesAction(f: FormData) {

@@ -180,6 +180,10 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/recruitment/talent-pool',
  '/recruitment/approvals',
  '/recruitment/reports',
+ // Recruitment slice 7 — referrals admit a person by their own active employment in a company with Recruitment
+ // (app.recruitment_referral_eligible); no role or tenant-wide module says who that is.
+ '/me/referrals',
+ '/me/referrals/mine',
 ]);
 export function classifyPage(route:string,source:string):Readonly<{audience:DestinationAudience;module:string|null}>|null{
  if(NOT_LINKABLE.some(area=>under(route,area))||FORWARD_STUBS.has(route)||NATIVE_SCOPE_ONLY_PAGES.has(route))return null;

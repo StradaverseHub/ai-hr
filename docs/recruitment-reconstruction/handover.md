@@ -79,6 +79,13 @@ Decisions D-017…D-019 wait for the owner.
 than this branch's 4400–4406. Bring the branch up to date with `main`, then renumber 4400–4406 into a free block above
 the highest applied and claimed timestamps (peer survey first), or the recruitment migrations will be skipped.
 
+## Update — slice 7 employee referrals built, reviewed and rendered (uncommitted, 2026-11-11)
+
+Employee portal under /me/referrals, the refer form, My referrals, the per-job portal setting and the per-company
+protection period (4407, idx 3807). The whole-repo type check is fixed on this branch by the combined release line's
+compiler split (cherry-picked). Decisions D-020…D-024 wait for the owner (no rewards, no notifications, generic
+refusals with an attempt cap, 20 attempts a day). The migration renumber warning above now covers 4400–4407.
+
 ## Next actions, in order (original plan)
 
 1. Resolve B-001: the owner signs in to a Moka **test tenant** in the built-in browser pane. Then use read-only observation (`read_page`, screenshots, network list) per role and journey, recording EV-0xx entries.

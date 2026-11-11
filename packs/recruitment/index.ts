@@ -24,6 +24,10 @@
  * - Reports (slice 6, ./reports and ./report-model): four fixed dashboards (Overview, Positions, Interviews, Team) of
  *   aggregates only, each in one read-only snapshot with a local statement timeout; administrators see their companies,
  *   a job's recruiter, assistants and hiring managers only their jobs; Team is administrator-only. Indexes: 4406.
+ * - Employee referrals (slice 7, ./referrals and ./referral-model): the portal, the refer form and My referrals live under
+ *   app/me/referrals for any person with an active employment in a company with Recruitment; they reach the pack only through
+ *   4407's definer functions (the referrer holds no grant on a recruitment table). HR sets "Show on the referral portal" per
+ *   job and the protection period per company, and sees the referrer on the application. No rewards or notifications.
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (4402); the menu shows for team members, interviewers and pending approvers.
  */
@@ -73,6 +77,8 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_tag', note: 'manual tags, unique within a group; disabled tags stay on candidates' },
     { table: 'recruitment_candidate_tag', note: 'tags on candidates: reviewers read, operators write' },
     { table: 'recruitment_candidate_consent', note: 'append-only consent history entered by people' },
+    // Slice 7 (4407)
+    { table: 'recruitment_referral', note: 'employee referrals: referrer, job, application, reason and agreement time; no candidate data of its own' },
   ],
 };
 registerPack(recruitmentPack);

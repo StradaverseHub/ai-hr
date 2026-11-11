@@ -62,6 +62,18 @@ export {
   REPORT_KINDS, REPORT_MAX_MONTHS, REPORT_JOB_LIMIT, REPORT_RECRUITER_LIMIT, NO_VALUE, formatPercent, formatNumber, formatDelta, barPercent,
 } from './report-model';
 export type { ReportKind, ReportPeriod, Granularity, Bucket, ReportFilterInput } from './report-model';
+// Slice 7 — employee referrals: the portal, the refer form and My referrals (the referrer); the portal setting, the
+// protection period and the referral on an application (HR).
+export {
+  referralEligible, referralPortal, referralPortalJob, submitReferral, myReferrals, setJobReferralPortal, referralSettings, updateReferralSettings,
+  applicationReferral,
+} from './referrals';
+export type { ReferralPortalJob, ReferralInput, MyReferralRow, ReferralSettings, ApplicationReferral } from './referrals';
+export {
+  REFERRAL_REASON_MAX, REFERRAL_DAILY_LIMIT, REFERRAL_PROTECTION_DEFAULT_DAYS, REFERRAL_PROTECTION_MAX_DAYS, REFERRAL_STATUSES, REFERRAL_REFUSALS,
+  validateReferralInput, validateProtectionDays, referralStatus,
+} from './referral-model';
+export type { ReferralStatus, ReferralRefusal, ReferralProgress } from './referral-model';
 export {
   RecruitmentError, RECRUITMENT_ERROR_CODES, JOB_STATUSES, JOB_STATUS_TRANSITIONS, JOB_MEMBER_ROLES, POSITION_ATTRIBUTES, RECRUITMENT_TYPES,
   JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab,

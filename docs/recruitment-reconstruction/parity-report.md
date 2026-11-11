@@ -227,7 +227,77 @@ feedback rate, results), Team (recruiter work counts with the credit note) for H
 tab and is sent back to Candidates; a 0099–9999 period is refused without an error page (its message still says the
 start is after the end — wording nit). Server log: no errors.
 
+## GitHub Actions focused runs 42877080472 and 42880744657 (commit 1323e3489, slices 1–6, 2026-11-11)
+
+| Job | Result |
+| --- | --- |
+| `linux-build` (production build) | PASS |
+| Selected tests, no-DB batch (31 files, 567 tests) | 30 files PASS; `provider-analysis-policy` 9 FAIL (stale owner approval, expected) |
+| Selected tests, DB batch (21 files, 422 tests) | 16 files PASS, including `recruitment-reports` and every other recruitment file; the same 5 AI files FAIL with the same 44 tests and causes as runs 42792007535 and 42831274035 |
+| Whole-repo `typecheck` | FAIL twice: the compiler ran out of its fixed 12 GB heap (`.github/ci/typecheck.sh`, `--max-old-space-size=12288`) after about 11 minutes; no type error was reported. Commit 16ed2b44e passed the same job |
+
+Diagnosis: the new report files cost the same to type-check as existing recruitment files (≈8.8 million
+instantiations each, scoped `--extendedDiagnostics`), and the scoped check passes with 0 errors. The whole program
+has grown past the CI compiler heap; this slice tipped it. Raising the heap or switching the type check to a bounded
+compiler profile is a shared-workflow change that needs the owner's review. Until then the whole-repo type check for
+slice 6 is NOT VERIFIED.
+
 ## Not verified
 
 The whole-repo type check and production build for slices 2–4, the DB-backed AI Centre tests, every screen in a
 language other than English, mobile widths, and any reference write-path behaviour (U-003).
+
+### Type-check memory fix — runs 42937473282 and 42938942472 (2026-11-11)
+
+The out-of-memory failure is repository-wide: two other candidates hit it on 2026-11-10. Owner-authored commits
+a921293e6 and 5e7d80ff6 on the combined release line split the check into three compilers (product without `test/`,
+noCheck declarations, tests against the declarations). They were cherry-picked unchanged as f6ecc044e and 2c528fc0f;
+the Playwright type import from ee659f43d (Codex) followed as 21521d536, because the split test project no longer saw
+`vitest.browser.config.ts`. The workflow was dispatched from this branch so the candidate's own `typecheck.sh` ran.
+
+| Run | Commit | Product `tsc` | Declarations | Tests | Result |
+| --- | --- | --- | --- | --- | --- |
+| 42937473282 | 2c528fc0f | PASS, 9.3 GB peak | PASS, 6.0 GB | FAIL: 15 TS2769 in 12 `*.browser.test.tsx` files (`animations` unknown on `ScreenshotOptions`); no recruitment file | FAIL |
+| 42938942472 | 21521d536 | PASS, 8.6 GB peak | PASS, 6.1 GB | PASS, 7.8 GB | **PASS** |
+
+The whole-repository type check is therefore **PASS** for this branch's code as of 21521d536 (slices 1–6). The three
+commits are identical in content to the combined release line's, so they merge cleanly when that line reaches `main`.
+
+## Slice 7 — Employee referrals (2026-11-11, uncommitted)
+
+Observed read-only first (EV-035…EV-038; the tenant's e-mail domains on the referral settings page were not recorded).
+Built by a builder agent, reviewed by a separate reviewer agent, fixed, and rendered by the lead.
+
+Review findings fixed before commit: referrals accepted under a company-only Recruitment grant that no HR page could
+reach (now the same tenant-wide rule as HR); submission did not itself check employment in the job's company (it
+relied on row security, which the superuser-owned test database bypasses); voided, blacklisted and resigned
+employments counted as active; the marker-bound owner policies were never exercised by any test; refusals could be used
+to probe who applied without limit (now counted in the daily attempt cap); interviewers could read the referral reason
+directly (column grants); a full-scan protection-period query; no lock against a concurrent job close; a UTC-unsafe
+day-cap test and a timing-dependent concurrency test.
+
+| Check | Result |
+| --- | --- |
+| DB + no-DB tests on the private Postgres 16 cluster (fresh template): recruitment-referrals (18), referral-rules (7), candidate-privacy, slices-service, recruitment-service, recruitment-reports, module-gate, module-catalog-drift, partner-roles, pack-drift, i18n-coverage, migration-journal-ordering, navigation-workspaces, function-access, setup-copilot-destinations | PASS, 15 files, 270 tests (builder-reported; the reviewer independently ran 5 files, 59 tests, PASS on the first version) |
+| Production-like owner test: tables and definer functions owned by the NOSUPERUSER, NOBYPASSRLS `ai_hr_owner` in a rolled-back transaction; fails if the referral policies are dropped | PASS |
+| Scoped `tsc` over 26 touched files | PASS except a pre-existing missing `fontkit` declaration in `lib/payslip-pdf-fonts.ts` |
+| ESLint on changed files | Clean; remaining errors in `components/sidebar.tsx`, `app/layout.tsx`, `lib/product-context/destinations.ts` are identical at HEAD |
+| AI source manifests | Regenerated; both `--check` PASS. The owner's provider-data approval must be re-recorded |
+| Whole-repo type check, build, CI | NOT RUN for slice 7 yet |
+
+Rendered on the private render database (fictional people), as HR admin and as an employee:
+
+- HR turns on "Show on the referral portal" for a job; the database refuses the same change without an administrator
+  (even from a superuser connection).
+- The employee portal lists the job with location, employment type, recruitment type and job level; the page data
+  has no salary, team or counts.
+- A referral without e-mail or mobile is refused with an alert beside Send, keeping the typed values; a valid one
+  appears under My referrals as "In Review"; referring the same person again (e-mail in different case, trailing
+  space) shows only the generic refusal while the audit event records `similar_application`.
+- HR sees "Referred by … on …" and the reason on the application. The employee gets a 404 on the HR application page
+  with none of its data in the response.
+- A user with no employment sees "Referrals are open to current employees of companies that use Recruitment" on every
+  referral page, with no job data.
+- The referral protection period saves from Recruitment settings.
+
+Open: the last working day counts as employed (matches login blocking; the employee record shows "Resigned" that day).

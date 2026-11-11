@@ -1,6 +1,6 @@
 /**
  * The Recruitment pack's satellite tables (ADR-0080 D5/D11) as the service reads and writes them. The DDL,
- * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4404; these
+ * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4407; these
  * declarations carry no references or checks of their own so they can never disagree with it.
  */
 import { boolean, customType, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
@@ -84,6 +84,8 @@ export const recruitmentJobOpening = pgTable('recruitment_job_opening', {
   processId: uuid('process_id').notNull(),
   autoArchiveAfterReject: boolean('auto_archive_after_reject').notNull().default(false),
   statusChangedAt: ts('status_changed_at').notNull().defaultNow(),
+  /** Slice 7 (4407): listed on the employee referral portal while Open. Changed by recruitment administrators only. */
+  showOnReferralPortal: boolean('show_on_referral_portal').notNull().default(false),
   ...audit,
 });
 
@@ -167,6 +169,8 @@ export const recruitmentCompanySetting = pgTable('recruitment_company_setting', 
   retentionMonthsWithoutConsent: integer('retention_months_without_consent').notNull().default(6),
   retentionMonthsWithConsent: integer('retention_months_with_consent').notNull().default(24),
   repeatWindowMonths: integer('repeat_window_months').notNull().default(3),
+  // Slice 7 (4407): days a referral of a candidate keeps the first referrer's credit; 0 = off.
+  referralProtectionDays: integer('referral_protection_days').notNull().default(180),
   ...audit,
 });
 
@@ -475,4 +479,24 @@ export const recruitmentCandidateConsent = pgTable('recruitment_candidate_consen
   noticeReference: text('notice_reference'),
   recordedAt: ts('recorded_at').notNull().defaultNow(),
   recordedByUserId: uuid('recorded_by_user_id').notNull(),
+});
+
+// ── Slice 7 (db/migrations/4407_recruitment_referrals.sql) ────────────────────────────────────────────────────
+
+/**
+ * One row per referred application. Written only by app.recruitment_submit_referral; read by the application's readers
+ * (HR). Holds no candidate personal data of its own: the reason is cleared when the candidate is removed (slice 5).
+ */
+export const recruitmentReferral = pgTable('recruitment_referral', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  jobId: uuid('job_id').notNull(),
+  applicationId: uuid('application_id').notNull(),
+  candidateId: uuid('candidate_id').notNull(),
+  referrerPersonId: uuid('referrer_person_id').notNull(),
+  referrerUserId: uuid('referrer_user_id').notNull(),
+  reason: text('reason'),
+  confirmedAt: ts('confirmed_at').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
 });

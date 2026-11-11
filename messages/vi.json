@@ -569,7 +569,8 @@
     "probationTracker": "Theo dõi thử việc",
     "myPayrollReadiness": "Mức sẵn sàng cho kỳ lương của tôi",
     "attendanceFormulaBuilder": "Công thức chấm công",
-    "recruitment": "Tuyển dụng"
+    "recruitment": "Tuyển dụng",
+    "myReferrals": "Giới thiệu ứng viên"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -11545,7 +11546,8 @@
         "rewardsAccess": "Phân công Rewards đang có hiệu lực và quyền quản trị HR theo phạm vi quyết định quyền truy cập; chỉ có vai trò hệ thống không cho phép mọi hành động.",
         "myPrivateCases": "Chỉ các hồ sơ riêng tư của chính người đăng nhập. Vai trò đặc quyền không mở rộng phạm vi; quản trị viên không thể đọc hồ sơ của người khác tại đây.",
         "privateCaseHandling": "Mọi người đều truy cập được, nhưng chỉ hiển thị hồ sơ cho người xử lý được chỉ định của công ty liên quan (hoặc quản trị viên tập đoàn khi không còn người xử lý phù hợp), không bao giờ cho người gửi hoặc người bị người gửi loại trừ. Vai trò không cấp quyền gì tại đây.",
-        "recruitment": "Phải bật mô-đun Tuyển dụng. Quản trị viên nhân sự và Đối tác Tuyển dụng xem được vị trí, ứng viên và cài đặt của các công ty họ quản trị; quản lý tuyển dụng và người phỏng vấn chưa có quyền truy cập."
+        "recruitment": "Phải bật mô-đun Tuyển dụng. Quản trị viên nhân sự và Đối tác Tuyển dụng xem được vị trí, ứng viên và cài đặt của các công ty họ quản trị; quản lý tuyển dụng và người phỏng vấn chưa có quyền truy cập.",
+        "myReferrals": "Chỉ những người có quan hệ lao động đang hiệu lực tại công ty dùng Tuyển dụng. Họ chỉ thấy các vị trí HR đưa lên cổng giới thiệu và các lượt giới thiệu của chính mình; việc giới thiệu không mang lại quyền Tuyển dụng nào khác."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -37243,7 +37245,8 @@
       "tag_disabled": "Thẻ này đã bị tắt và không thể thêm nữa.",
       "period_invalid": "Hãy chọn khoảng thời gian hợp lệ: ngày bắt đầu phải trước hoặc bằng ngày kết thúc.",
       "period_too_long": "Một báo cáo bao gồm tối đa 24 tháng. Hãy chọn khoảng thời gian ngắn hơn.",
-      "report_too_slow": "Báo cáo này mất quá nhiều thời gian. Hãy thu hẹp khoảng thời gian hoặc chọn một vị trí rồi thử lại."
+      "report_too_slow": "Báo cáo này mất quá nhiều thời gian. Hãy thu hẹp khoảng thời gian hoặc chọn một vị trí rồi thử lại.",
+      "referral_refused": "Không thể nhận lượt giới thiệu này."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -37384,7 +37387,14 @@
       "candidates": "Ứng viên",
       "requisition": "Yêu cầu tuyển dụng",
       "readOnly": "Bạn thuộc nhóm tuyển dụng của vị trí này. Quản trị viên thay đổi thông tin và nhóm.",
-      "fromRequisition": "Điền sẵn từ yêu cầu {number}. Vị trí mới sẽ thuộc yêu cầu này."
+      "fromRequisition": "Điền sẵn từ yêu cầu {number}. Vị trí mới sẽ thuộc yêu cầu này.",
+      "referralPortal": {
+        "title": "Giới thiệu từ nhân viên",
+        "note": "Nhân viên có thể giới thiệu ứng viên cho vị trí này khi vị trí đang Mở. Họ thấy chức danh, mã vị trí, công ty, nơi làm việc, loại hình lao động, loại tuyển dụng, cấp bậc và mô tả — không bao giờ thấy lương, nhóm tuyển dụng hay số người ứng tuyển.",
+        "show": "Hiển thị trên cổng giới thiệu",
+        "notOpen": "Nhân viên chỉ thấy lại vị trí này khi vị trí được Mở.",
+        "save": "Lưu cài đặt giới thiệu"
+      }
     },
     "candidates": {
       "purpose": "Hồ sơ theo giai đoạn. Chuyển ứng viên sang giai đoạn tiếp theo, chọn giai đoạn khác hoặc từ chối kèm lý do.",
@@ -37479,7 +37489,8 @@
         "interviews": "Phỏng vấn",
         "offers": "Đề nghị và phê duyệt",
         "privacy": "Quyền riêng tư",
-        "tags": "Thẻ"
+        "tags": "Thẻ",
+        "referrals": "Giới thiệu"
       },
       "iv": {
         "rulesTitle": "Quy tắc đánh giá",
@@ -37579,6 +37590,14 @@
         "addTag": "Thêm thẻ",
         "newGroup": "Nhóm thẻ mới",
         "addGroup": "Thêm nhóm"
+      },
+      "referrals": {
+        "title": "Thời gian bảo vệ giới thiệu",
+        "note": "Trong thời gian này, ứng viên do một nhân viên giới thiệu không thể được nhân viên khác giới thiệu lại vào bất kỳ vị trí nào của công ty: người giới thiệu đầu tiên giữ công. Cùng một nhân viên có thể giới thiệu cùng một người vào vị trí khác. Vị trí nào nhân viên thấy được đặt ở từng vị trí, trong Cài đặt vị trí.",
+        "protectionDays": "Thời gian bảo vệ (ngày)",
+        "protectionNote": "Từ 0 đến {max} ngày. 0 là tắt bảo vệ.",
+        "limitNote": "Mỗi nhân viên giới thiệu được tối đa {limit} người mỗi ngày.",
+        "save": "Lưu"
       }
     },
     "app": {
@@ -37910,7 +37929,7 @@
       "removedNote": "Đã xóa dữ liệu cá nhân",
       "adding": "Đang thêm…",
       "sources": {
-        "referral": "Giới thiệu",
+        "referral": "Giới thiệu từ nhân viên",
         "job_board": "Trang tuyển dụng",
         "career_page": "Trang nghề nghiệp",
         "agency": "Công ty tuyển dụng",
@@ -38132,6 +38151,64 @@
       "teamAdminOnly": "Bảng Nhóm chỉ dành cho quản trị viên tuyển dụng.",
       "requisitionsHidden": "Số liệu yêu cầu tuyển dụng chỉ hiển thị khi mọi công ty được chọn, hoặc công ty của vị trí được chọn, đều do bạn quản trị.",
       "teamCredit": "Công việc được ghi nhận cho chuyên viên tuyển dụng hiện tại của từng vị trí. “Qua giai đoạn đầu” tính các lần chuyển, loại và tuyển ra khỏi giai đoạn mà hồ sơ bắt đầu."
+    },
+    "referral": {
+      "source": "Giới thiệu từ nhân viên",
+      "by": "Được {name} giới thiệu ngày {date}",
+      "reason": "Lý do giới thiệu ứng viên này"
+    },
+    "referrals": {
+      "title": "Giới thiệu ứng viên",
+      "description": "Bạn biết ai phù hợp? Hãy giới thiệu họ vào một vị trí đang mở, HR sẽ tiếp nhận.",
+      "tabsLabel": "Các trang giới thiệu",
+      "tabJobs": "Vị trí đang mở",
+      "tabMine": "Giới thiệu của tôi",
+      "notEligible": "Chức năng giới thiệu dành cho nhân viên hiện tại của các công ty dùng Tuyển dụng. Không có gì để hiển thị cho bạn ở đây.",
+      "noJobs": "Hiện không có vị trí nào mở để giới thiệu.",
+      "refer": "Giới thiệu ứng viên",
+      "jobLevel": "Cấp bậc",
+      "backToJobs": "Vị trí đang mở",
+      "aboutJob": "Về vị trí",
+      "formTitle": "Lượt giới thiệu của bạn",
+      "formNote": "HR sẽ liên hệ ứng viên. Bạn có thể xem tiến độ trong Giới thiệu của tôi.",
+      "fullName": "Họ tên đầy đủ của ứng viên",
+      "email": "E-mail của ứng viên",
+      "mobile": "Số điện thoại di động của ứng viên",
+      "contactHint": "Cung cấp ít nhất một cách để HR liên hệ ứng viên.",
+      "resume": "Hồ sơ (không bắt buộc)",
+      "resumeHint": "PDF, Word, JPG hoặc PNG, tối đa 10 MB.",
+      "reason": "Vì sao bạn giới thiệu người này?",
+      "reasonHint": "Tối đa {max} ký tự.",
+      "confirm": "Ứng viên đồng ý được giới thiệu và được HR liên hệ về vị trí này.",
+      "submit": "Gửi giới thiệu",
+      "submitting": "Đang gửi…",
+      "required": "bắt buộc",
+      "errors": {
+        "missing_fields": "Điền tên ứng viên, e-mail hoặc số điện thoại di động, và lý do của bạn.",
+        "invalid_input": "Kiểm tra e-mail, số điện thoại và lý do: một trong số đó không hợp lệ hoặc quá dài.",
+        "confirm_required": "Xác nhận rằng ứng viên đồng ý được giới thiệu và được liên hệ.",
+        "file_type": "Hồ sơ phải là tệp PDF, Word, JPG hoặc PNG.",
+        "file_too_large": "Hồ sơ lớn hơn 10 MB.",
+        "referral_refused": "Chúng tôi không thể nhận lượt giới thiệu này. Nếu bạn nghĩ đây là nhầm lẫn, vui lòng liên hệ HR.",
+        "unavailable": "Không thể gửi giới thiệu lúc này. Vui lòng thử lại sau."
+      },
+      "mineDescription": "Các ứng viên bạn đã giới thiệu và tiến độ của từng lượt giới thiệu.",
+      "sent": "Cảm ơn bạn. Lượt giới thiệu đã được gửi tới HR.",
+      "noReferrals": "Bạn chưa giới thiệu ai.",
+      "candidate": "Ứng viên",
+      "job": "Vị trí",
+      "referredOn": "Ngày giới thiệu",
+      "status": "Trạng thái",
+      "removedCandidate": "Đã xoá",
+      "statuses": {
+        "in_review": "Đang xem xét",
+        "interviewing": "Đang phỏng vấn",
+        "offer": "Đề nghị tuyển dụng",
+        "hired": "Đã tuyển",
+        "not_progressing": "Không tiếp tục",
+        "removed": "Đã xoá"
+      },
+      "jobUnavailable": "Vị trí này không còn mở để giới thiệu."
     }
   }
 }

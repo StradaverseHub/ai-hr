@@ -5132,6 +5132,13 @@
       "when": 1793330004106,
       "tag": "4406_recruitment_report_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 3807,
+      "version": "7",
+      "when": 1793330004107,
+      "tag": "4407_recruitment_referrals",
+      "breakpoints": true
     }
   ]
 }

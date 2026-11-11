@@ -87,6 +87,7 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path.startsWith('/performance'))return modulePlacement('performance','mine');
   if(path==='/rewards/rules'||path.startsWith('/admin/rewards'))return modulePlacement('rewards','config');
   if(path.startsWith('/rewards'))return modulePlacement('rewards','mine');
+  if(path==='/me/referrals'||path.startsWith('/me/referrals/'))return modulePlacement('recruitment','mine');
   if(path==='/recruitment/settings'||path.startsWith('/recruitment/settings/'))return modulePlacement('recruitment','config');
   if(path==='/recruitment'||path.startsWith('/recruitment/'))return modulePlacement('recruitment','hr');
   if(path==='/analytics'||path.startsWith('/reports'))return modulePlacement('workforceInsights','hr');

@@ -569,7 +569,8 @@
     "probationTracker": "试用期跟踪",
     "myPayrollReadiness": "我的发薪准备",
     "attendanceFormulaBuilder": "考勤公式",
-    "recruitment": "招聘"
+    "recruitment": "招聘",
+    "myReferrals": "推荐候选人"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -11545,7 +11546,8 @@
         "rewardsAccess": "有效薪酬职责任命及限定范围的HR管理员权限决定访问权限；仅有系统角色不代表可执行所有操作。",
         "myPrivateCases": "仅限登录者本人的私密个案。特权角色不会扩大范围；管理员无法在此阅读他人的个案。",
         "privateCaseHandling": "所有人都可以访问，但只向个案所属公司的指定个案处理人显示个案（若没有符合条件的处理人，则向集团管理员显示），绝不向提交人或被提交人排除的人显示。角色在此不授予任何权限。",
-        "recruitment": "须先启用招聘模块。人力资源管理员和招聘合作伙伴可查看其所管理公司的职位、候选人和设置；用人经理和面试官暂无访问权限。"
+        "recruitment": "须先启用招聘模块。人力资源管理员和招聘合作伙伴可查看其所管理公司的职位、候选人和设置；用人经理和面试官暂无访问权限。",
+        "myReferrals": "仅限在使用招聘模块的公司中有有效雇佣的人员。他们只能看到 HR 放到推荐门户上的职位以及自己的推荐；推荐不会带来任何其他招聘权限。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -37243,7 +37245,8 @@
       "tag_disabled": "此标签已停用，不能再添加。",
       "period_invalid": "请选择有效的期间：开始日期必须早于或等于结束日期。",
       "period_too_long": "报表最多涵盖 24 个月。请选择较短的期间。",
-      "report_too_slow": "此报表耗时过长。请缩短期间或选择一个职位，然后重试。"
+      "report_too_slow": "此报表耗时过长。请缩短期间或选择一个职位，然后重试。",
+      "referral_refused": "无法接受此推荐。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -37384,7 +37387,14 @@
       "candidates": "候选人",
       "requisition": "招聘需求",
       "readOnly": "您是此职位招聘团队的成员。职位信息和团队由管理员修改。",
-      "fromRequisition": "已根据招聘需求 {number} 预填。新职位将归属于该需求。"
+      "fromRequisition": "已根据招聘需求 {number} 预填。新职位将归属于该需求。",
+      "referralPortal": {
+        "title": "员工推荐",
+        "note": "职位处于开放状态时，员工可以为此职位推荐候选人。他们能看到职位名称、职位编号、公司、工作地点、雇佣类型、招聘类型、职级和职位描述——绝不包括薪资、招聘团队或申请人数。",
+        "show": "在推荐门户上显示",
+        "notOpen": "只有当职位重新开放时，员工才会再次看到它。",
+        "save": "保存推荐设置"
+      }
     },
     "candidates": {
       "purpose": "按阶段查看申请。可推进候选人、选择其他阶段，或注明原因后拒绝。",
@@ -37479,7 +37489,8 @@
         "interviews": "面试",
         "offers": "录用与审批",
         "privacy": "隐私",
-        "tags": "标签"
+        "tags": "标签",
+        "referrals": "推荐"
       },
       "iv": {
         "rulesTitle": "反馈规则",
@@ -37579,6 +37590,14 @@
         "addTag": "添加标签",
         "newGroup": "新标签组",
         "addGroup": "添加组"
+      },
+      "referrals": {
+        "title": "推荐保护期",
+        "note": "在保护期内，某位员工推荐的候选人不能再由其他员工推荐到本公司的任何职位：首位推荐人保留功劳。同一员工可以将同一人推荐到其他职位。员工能看到哪些职位，在每个职位的“职位设置”中设定。",
+        "protectionDays": "保护期（天）",
+        "protectionNote": "0 到 {max} 天。0 表示关闭保护。",
+        "limitNote": "每位员工每天最多可推荐 {limit} 人。",
+        "save": "保存"
       }
     },
     "app": {
@@ -37910,7 +37929,7 @@
       "removedNote": "个人资料已删除",
       "adding": "正在添加…",
       "sources": {
-        "referral": "内部推荐",
+        "referral": "员工推荐",
         "job_board": "招聘网站",
         "career_page": "招聘页面",
         "agency": "猎头机构",
@@ -38132,6 +38151,64 @@
       "teamAdminOnly": "团队看板仅供招聘管理员使用。",
       "requisitionsHidden": "只有当所选的每家公司（或所选职位所属的公司）都由您管理时，才会显示招聘需求数据。",
       "teamCredit": "工作量计入每个职位当前的招聘专员。“通过第一阶段”统计申请从其起始阶段移出、被淘汰或被录用的次数。"
+    },
+    "referral": {
+      "source": "员工推荐",
+      "by": "由 {name} 于 {date} 推荐",
+      "reason": "推荐此候选人的理由"
+    },
+    "referrals": {
+      "title": "推荐候选人",
+      "description": "认识合适的人选吗？将其推荐到开放职位，HR 会跟进。",
+      "tabsLabel": "推荐页面",
+      "tabJobs": "开放职位",
+      "tabMine": "我的推荐",
+      "notEligible": "推荐仅向使用招聘模块的公司的在职员工开放。这里没有可向您显示的内容。",
+      "noJobs": "目前没有开放推荐的职位。",
+      "refer": "推荐候选人",
+      "jobLevel": "职级",
+      "backToJobs": "开放职位",
+      "aboutJob": "职位简介",
+      "formTitle": "您的推荐",
+      "formNote": "HR 会联系候选人。您可以在“我的推荐”中查看推荐进展。",
+      "fullName": "候选人全名",
+      "email": "候选人电子邮箱",
+      "mobile": "候选人手机号码",
+      "contactHint": "请至少提供一种 HR 可以联系候选人的方式。",
+      "resume": "简历（可选）",
+      "resumeHint": "PDF、Word、JPG 或 PNG，不超过 10 MB。",
+      "reason": "您为什么推荐此人？",
+      "reasonHint": "最多 {max} 个字符。",
+      "confirm": "候选人同意被推荐，并同意 HR 就此职位与其联系。",
+      "submit": "提交推荐",
+      "submitting": "正在提交…",
+      "required": "必填",
+      "errors": {
+        "missing_fields": "请填写候选人姓名、电子邮箱或手机号码，以及您的推荐理由。",
+        "invalid_input": "请检查电子邮箱、手机号码和理由：其中一项无效或过长。",
+        "confirm_required": "请确认候选人同意被推荐并同意被联系。",
+        "file_type": "简历必须是 PDF、Word、JPG 或 PNG 文件。",
+        "file_too_large": "简历超过 10 MB。",
+        "referral_refused": "我们无法接受此推荐。如您认为有误，请联系 HR。",
+        "unavailable": "暂时无法提交推荐，请稍后再试。"
+      },
+      "mineDescription": "您推荐的候选人及每项推荐的进展。",
+      "sent": "谢谢。您的推荐已发送给 HR。",
+      "noReferrals": "您尚未推荐任何人。",
+      "candidate": "候选人",
+      "job": "职位",
+      "referredOn": "推荐日期",
+      "status": "状态",
+      "removedCandidate": "已移除",
+      "statuses": {
+        "in_review": "审核中",
+        "interviewing": "面试中",
+        "offer": "录用通知",
+        "hired": "已录用",
+        "not_progressing": "未继续",
+        "removed": "已移除"
+      },
+      "jobUnavailable": "此职位已不再开放推荐。"
     }
   }
 }

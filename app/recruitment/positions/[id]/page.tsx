@@ -6,7 +6,7 @@ import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, PageHeader, StatusBadge, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { getJob, JOB_MEMBER_ROLES, JOB_STATUS_TRANSITIONS, RecruitmentError, type JobDetail } from '@/packs/recruitment/service';
-import { addJobMemberAction, changeJobStatusAction, removeJobMemberAction, updateJobAction } from '../../actions';
+import { addJobMemberAction, changeJobStatusAction, removeJobMemberAction, setJobReferralPortalAction, updateJobAction } from '../../actions';
 import { Notice, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
 import { JobInfoFields } from '../job-fields';
 
@@ -110,6 +110,21 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
             </>
           )}
           <button type="submit" className={btnPrimary}>{t('save')}</button>
+        </form>
+      )}
+
+      {tab === 'settings' && (
+        <form action={setJobReferralPortalAction} className="space-y-3 rounded-xl border border-border bg-card p-4" aria-labelledby="referral-portal-title">
+          {hidden('jobId', job.id)}{hidden('returnTo', here)}
+          <div>
+            <h2 id="referral-portal-title" className="text-sm font-semibold">{t('referralPortal.title')}</h2>
+            <p className="text-sm text-muted-foreground">{t('referralPortal.note')}</p>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="showOnReferralPortal" defaultChecked={job.showOnReferralPortal} />{t('referralPortal.show')}
+          </label>
+          {job.showOnReferralPortal && job.status !== 'open' && <p className="text-xs text-muted-foreground">{t('referralPortal.notOpen')}</p>}
+          <button type="submit" className={btnGhost}>{t('referralPortal.save')}</button>
         </form>
       )}
 

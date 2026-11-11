@@ -179,6 +179,11 @@ export const SCREENS: readonly ScreenEntry[] = [
   // administrators and a job's recruiter, assistant or hiring manager for their own jobs, its Team view administrators only. The service and row
   // security refuse independently. A capability gate inside the page, not a role grant at the boundary — hence
   // conditionalAccess.
+  // Recruitment slice 7 — employee referrals. Every signed-in person reaches the address; the pages show the referral portal
+  // and My referrals only to a person with an active employment in a company with Recruitment (app.recruitment_referral_*,
+  // 4407), and only their own referrals. Referring grants no other Recruitment access.
+  {screenKey:'myReferrals',href:'/me/referrals',labelKey:'nav.myReferrals',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,
+    routes:['/me/referrals','/me/referrals/jobs/[jobId]','/me/referrals/mine']},
   {screenKey:'recruitment',href:'/recruitment',labelKey:'nav.recruitment',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
     '/recruitment','/recruitment/positions','/recruitment/positions/new','/recruitment/positions/[id]','/recruitment/candidates','/recruitment/settings',
     '/recruitment/applications/[id]','/recruitment/interviews','/recruitment/interviews/[id]/feedback','/recruitment/scorecards/[id]',

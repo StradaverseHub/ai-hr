@@ -62,7 +62,7 @@ import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
-import { recruitmentTeamPresence } from '@/packs/recruitment/service';
+import { recruitmentTeamPresence, referralEligible } from '@/packs/recruitment/service';
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
@@ -238,6 +238,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const recruitmentTeam = isModuleEnabledOrFalse(session, 'recruitment') && !canAdminRecruitment(session)
     ? await recruitmentTeamPresence(session).catch((e) => { console.error('recruitment team presence failed', e); return false; })
     : false;
+  // Recruitment slice 7 — "Refer a candidate" shows for a person with an active employment in a company with Recruitment
+  // (a tenant-wide grant, as for every HR screen; the service gate refuses a tenant without one before any SQL). Failure hides it.
+  const referralPortal = await referralEligible(session).catch(() => false);
   const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0};
   const scopedLifecycleNavigation=await lifecycleModuleNavigation(session);
   const onboardingAccess=onboardingNav.module;
@@ -353,6 +356,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               assistantAccess={assistantAccess}
               feedbackAccess={feedbackAccess}
               privateCaseHandler={privateCaseHandler}
+              referralPortal={referralPortal}
               defaultCollapsed={railCollapsed}
               // r398 — the Monolith rail's user line. Display only, the same identity the header shows.
               viewerName={viewer.name}

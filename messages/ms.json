@@ -569,7 +569,8 @@
     "probationTracker": "Penjejak percubaan",
     "myPayrollReadiness": "Kesediaan gaji saya",
     "attendanceFormulaBuilder": "Formula kehadiran",
-    "recruitment": "Pengambilan"
+    "recruitment": "Pengambilan",
+    "myReferrals": "Rujuk calon"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -11545,7 +11546,8 @@
         "rewardsAccess": "Penugasan Rewards berkuat kuasa dan kuasa pentadbir HR mengikut skop menentukan akses; peranan sistem sahaja tidak memberikan semua tindakan.",
         "myPrivateCases": "Hanya kes peribadi milik orang yang log masuk. Peranan berkeistimewaan tidak meluaskannya; pentadbir tidak boleh membaca kes orang lain di sini.",
         "privateCaseHandling": "Boleh dicapai oleh semua orang, tetapi menunjukkan kes hanya kepada pengendali kes yang dilantik bagi syarikat kes itu (atau pentadbir kumpulan apabila tiada pengendali yang layak), tidak sekali-kali kepada penulisnya atau sesiapa yang dikecualikan oleh penulis. Peranan tidak memberi apa-apa di sini.",
-        "recruitment": "Pengambilan mesti diaktifkan. Pentadbir HR dan Rakan Pengambilan melihat jawatan, calon dan tetapan bagi syarikat yang mereka tadbir; pengurus pengambilan dan penemu duga belum mempunyai akses."
+        "recruitment": "Pengambilan mesti diaktifkan. Pentadbir HR dan Rakan Pengambilan melihat jawatan, calon dan tetapan bagi syarikat yang mereka tadbir; pengurus pengambilan dan penemu duga belum mempunyai akses.",
+        "myReferrals": "Hanya orang yang mempunyai pekerjaan aktif dalam syarikat yang menggunakan Pengambilan. Mereka melihat jawatan yang diletakkan HR di portal rujukan dan rujukan mereka sendiri sahaja; merujuk tidak memberi akses Pengambilan yang lain."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -37243,7 +37245,8 @@
       "tag_disabled": "Tag ini dinyahdayakan dan tidak boleh ditambah lagi.",
       "period_invalid": "Pilih tempoh yang sah: tarikh mula mesti pada atau sebelum tarikh tamat.",
       "period_too_long": "Laporan meliputi paling lama 24 bulan. Pilih tempoh yang lebih pendek.",
-      "report_too_slow": "Laporan ini mengambil masa terlalu lama. Pendekkan tempoh atau pilih satu jawatan, kemudian cuba lagi."
+      "report_too_slow": "Laporan ini mengambil masa terlalu lama. Pendekkan tempoh atau pilih satu jawatan, kemudian cuba lagi.",
+      "referral_refused": "Rujukan ini tidak dapat diterima."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -37384,7 +37387,14 @@
       "candidates": "Calon",
       "requisition": "Permintaan jawatan",
       "readOnly": "Anda dalam pasukan pengambilan jawatan ini. Pentadbir mengubah maklumat dan pasukannya.",
-      "fromRequisition": "Diisi daripada permintaan {number}. Jawatan baharu akan dikaitkan dengannya."
+      "fromRequisition": "Diisi daripada permintaan {number}. Jawatan baharu akan dikaitkan dengannya.",
+      "referralPortal": {
+        "title": "Rujukan pekerja",
+        "note": "Pekerja boleh merujuk calon untuk jawatan ini semasa ia Dibuka. Mereka melihat tajuk, nombor jawatan, syarikat, lokasi kerja, jenis pekerjaan, jenis pengambilan, tahap jawatan dan keterangan — tidak sekali-kali gaji, pasukan pengambilan atau bilangan pemohon.",
+        "show": "Tunjukkan di portal rujukan",
+        "notOpen": "Pekerja akan melihat jawatan ini semula hanya apabila ia Dibuka.",
+        "save": "Simpan tetapan rujukan"
+      }
     },
     "candidates": {
       "purpose": "Permohonan mengikut peringkat. Gerakkan calon ke hadapan, pilih peringkat lain atau tolak dengan sebab.",
@@ -37479,7 +37489,8 @@
         "interviews": "Temu duga",
         "offers": "Tawaran dan kelulusan",
         "privacy": "Privasi",
-        "tags": "Tag"
+        "tags": "Tag",
+        "referrals": "Rujukan"
       },
       "iv": {
         "rulesTitle": "Peraturan maklum balas",
@@ -37579,6 +37590,14 @@
         "addTag": "Tambah tag",
         "newGroup": "Kumpulan tag baharu",
         "addGroup": "Tambah kumpulan"
+      },
+      "referrals": {
+        "title": "Tempoh perlindungan rujukan",
+        "note": "Sepanjang tempoh ini, calon yang dirujuk oleh seorang pekerja tidak boleh dirujuk semula oleh pekerja lain, untuk mana-mana jawatan dalam syarikat ini: perujuk pertama mengekalkan kredit. Pekerja yang sama boleh merujuk orang yang sama untuk jawatan lain. Jawatan yang boleh dilihat pekerja ditetapkan pada setiap jawatan, di bawah Tetapan jawatan.",
+        "protectionDays": "Tempoh perlindungan (hari)",
+        "protectionNote": "Dari 0 hingga {max} hari. 0 mematikan perlindungan.",
+        "limitNote": "Setiap pekerja boleh membuat paling banyak {limit} rujukan sehari.",
+        "save": "Simpan"
       }
     },
     "app": {
@@ -37910,7 +37929,7 @@
       "removedNote": "Data peribadi telah dipadam",
       "adding": "Menambah…",
       "sources": {
-        "referral": "Rujukan",
+        "referral": "Rujukan pekerja",
         "job_board": "Papan kerja",
         "career_page": "Halaman kerjaya",
         "agency": "Agensi",
@@ -38132,6 +38151,64 @@
       "teamAdminOnly": "Papan pemuka Pasukan adalah untuk pentadbir pengambilan.",
       "requisitionsHidden": "Angka permintaan jawatan dipaparkan hanya apabila setiap syarikat yang dipilih, atau syarikat bagi jawatan yang dipilih, ialah syarikat yang anda tadbir.",
       "teamCredit": "Kerja dikreditkan kepada perekrut semasa bagi setiap jawatan. “Melepasi peringkat pertama” mengira pemindahan, penolakan dan pengambilan keluar dari peringkat permulaan sesuatu permohonan."
+    },
+    "referral": {
+      "source": "Rujukan pekerja",
+      "by": "Dirujuk oleh {name} pada {date}",
+      "reason": "Sebab calon ini dirujuk"
+    },
+    "referrals": {
+      "title": "Rujuk calon",
+      "description": "Kenal seseorang yang sesuai? Rujuk mereka untuk jawatan yang dibuka dan HR akan menguruskannya.",
+      "tabsLabel": "Halaman rujukan",
+      "tabJobs": "Jawatan dibuka",
+      "tabMine": "Rujukan saya",
+      "notEligible": "Rujukan dibuka kepada pekerja semasa syarikat yang menggunakan Pengambilan. Tiada apa-apa untuk ditunjukkan kepada anda di sini.",
+      "noJobs": "Tiada jawatan yang dibuka untuk rujukan buat masa ini.",
+      "refer": "Rujuk calon",
+      "jobLevel": "Tahap jawatan",
+      "backToJobs": "Jawatan dibuka",
+      "aboutJob": "Tentang jawatan",
+      "formTitle": "Rujukan anda",
+      "formNote": "HR akan menghubungi calon. Anda boleh melihat perkembangan rujukan di bawah Rujukan saya.",
+      "fullName": "Nama penuh calon",
+      "email": "E-mel calon",
+      "mobile": "Nombor telefon bimbit calon",
+      "contactHint": "Berikan sekurang-kurangnya satu cara untuk HR menghubungi calon.",
+      "resume": "Resume (pilihan)",
+      "resumeHint": "PDF, Word, JPG atau PNG, sehingga 10 MB.",
+      "reason": "Mengapa anda merujuk orang ini?",
+      "reasonHint": "Sehingga {max} aksara.",
+      "confirm": "Calon bersetuju untuk dirujuk dan dihubungi oleh HR mengenai jawatan ini.",
+      "submit": "Hantar rujukan",
+      "submitting": "Menghantar…",
+      "required": "wajib",
+      "errors": {
+        "missing_fields": "Isikan nama calon, e-mel atau nombor telefon bimbit, dan sebab anda.",
+        "invalid_input": "Semak e-mel, nombor telefon bimbit dan sebab: salah satunya tidak sah atau terlalu panjang.",
+        "confirm_required": "Sahkan bahawa calon bersetuju untuk dirujuk dan dihubungi.",
+        "file_type": "Resume mestilah fail PDF, Word, JPG atau PNG.",
+        "file_too_large": "Resume melebihi 10 MB.",
+        "referral_refused": "Kami tidak dapat menerima rujukan ini. Jika anda rasa ini satu kesilapan, sila hubungi HR.",
+        "unavailable": "Rujukan tidak dapat dihantar sekarang. Sila cuba lagi kemudian."
+      },
+      "mineDescription": "Calon yang anda rujuk dan perkembangan setiap rujukan.",
+      "sent": "Terima kasih. Rujukan anda telah dihantar kepada HR.",
+      "noReferrals": "Anda belum merujuk sesiapa.",
+      "candidate": "Calon",
+      "job": "Jawatan",
+      "referredOn": "Dirujuk pada",
+      "status": "Status",
+      "removedCandidate": "Dialih keluar",
+      "statuses": {
+        "in_review": "Dalam semakan",
+        "interviewing": "Temu duga",
+        "offer": "Tawaran",
+        "hired": "Diambil bekerja",
+        "not_progressing": "Tidak diteruskan",
+        "removed": "Dialih keluar"
+      },
+      "jobUnavailable": "Jawatan ini tidak lagi dibuka untuk rujukan."
     }
   }
 }

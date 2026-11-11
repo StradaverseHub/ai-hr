@@ -569,7 +569,8 @@
     "probationTracker": "Probation tracker",
     "myPayrollReadiness": "My payroll readiness",
     "attendanceFormulaBuilder": "Attendance formulas",
-    "recruitment": "Recruitment"
+    "recruitment": "Recruitment",
+    "myReferrals": "Refer a candidate"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -11545,7 +11546,8 @@
         "rewardsAccess": "Effective Rewards assignments and scoped HR administrator authority determine access; a platform role alone does not grant every action.",
         "myPrivateCases": "Only the signed-in person’s own private cases. Privileged roles do not widen it; administrators cannot read others’ cases here.",
         "privateCaseHandling": "Reachable by everyone, but shows cases only to the designated case handlers of the case’s company (or the group administrator when no eligible handler remains), never to the author or anyone the author left out. A role grants nothing here.",
-        "recruitment": "Recruitment must be enabled. HR administrators and Recruiting Partners see the jobs, candidates and settings of the companies they administer; hiring managers and interviewers do not have access yet."
+        "recruitment": "Recruitment must be enabled. HR administrators and Recruiting Partners see the jobs, candidates and settings of the companies they administer; hiring managers and interviewers do not have access yet.",
+        "myReferrals": "Only people with an active employment in a company that uses Recruitment. They see the jobs HR put on the referral portal and their own referrals only; referring gives no other Recruitment access."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -37243,7 +37245,8 @@
       "tag_disabled": "This tag is disabled and can no longer be added.",
       "period_invalid": "Choose a valid period: the start date must be on or before the end date.",
       "period_too_long": "A report covers at most 24 months. Choose a shorter period.",
-      "report_too_slow": "This report took too long. Narrow the period or choose a job, then try again."
+      "report_too_slow": "This report took too long. Narrow the period or choose a job, then try again.",
+      "referral_refused": "This referral could not be accepted."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -37384,7 +37387,14 @@
       "candidates": "Candidates",
       "requisition": "Job requisition",
       "readOnly": "You are on this job’s hiring team. Administrators change its information and team.",
-      "fromRequisition": "Pre-filled from requisition {number}. The new position will belong to it."
+      "fromRequisition": "Pre-filled from requisition {number}. The new position will belong to it.",
+      "referralPortal": {
+        "title": "Employee referrals",
+        "note": "Employees can refer candidates to this job while it is Open. They see the title, job number, company, work location, employment type, recruitment type, job level and description — never salary, the hiring team or how many people applied.",
+        "show": "Show on the referral portal",
+        "notOpen": "Employees will see this job again only when it is Open.",
+        "save": "Save referral setting"
+      }
     },
     "candidates": {
       "purpose": "Applications by stage. Move a candidate forward, choose another stage or reject with a reason.",
@@ -37479,7 +37489,8 @@
         "interviews": "Interviews",
         "offers": "Offers and approvals",
         "privacy": "Privacy",
-        "tags": "Tags"
+        "tags": "Tags",
+        "referrals": "Referrals"
       },
       "iv": {
         "rulesTitle": "Feedback rules",
@@ -37579,6 +37590,14 @@
         "addTag": "Add tag",
         "newGroup": "New tag group",
         "addGroup": "Add group"
+      },
+      "referrals": {
+        "title": "Referral protection period",
+        "note": "While the period runs, a candidate one employee referred cannot be referred again by another employee, to any job in this company: the first referrer keeps the credit. The same employee may refer the same person to another job. Which jobs employees can see is set on each job, under Job settings.",
+        "protectionDays": "Protection period (days)",
+        "protectionNote": "From 0 to {max} days. 0 switches the protection off.",
+        "limitNote": "Each employee can make at most {limit} referrals a day.",
+        "save": "Save"
       }
     },
     "app": {
@@ -37910,7 +37929,7 @@
       "removedNote": "Personal data removed",
       "adding": "Adding…",
       "sources": {
-        "referral": "Referral",
+        "referral": "Employee referral",
         "job_board": "Job board",
         "career_page": "Career page",
         "agency": "Agency",
@@ -38132,6 +38151,64 @@
       "teamAdminOnly": "The Team dashboard is for recruitment administrators.",
       "requisitionsHidden": "Requisition figures appear only when every selected company, or the chosen job's company, is one you administer.",
       "teamCredit": "Work is credited to each job's current recruiter. “Moved past first stage” counts moves, rejections and hires out of the stage an application started in."
+    },
+    "referral": {
+      "source": "Employee referral",
+      "by": "Referred by {name} on {date}",
+      "reason": "Why they referred this candidate"
+    },
+    "referrals": {
+      "title": "Refer a candidate",
+      "description": "Know someone who would be a good fit? Refer them to an open job and HR will take it from there.",
+      "tabsLabel": "Referral pages",
+      "tabJobs": "Open jobs",
+      "tabMine": "My referrals",
+      "notEligible": "Referrals are open to current employees of companies that use Recruitment. There is nothing to show for you here.",
+      "noJobs": "There are no jobs open for referrals right now.",
+      "refer": "Refer a candidate",
+      "jobLevel": "Job level",
+      "backToJobs": "Open jobs",
+      "aboutJob": "About the job",
+      "formTitle": "Your referral",
+      "formNote": "HR will contact the candidate. You will see how the referral is progressing under My referrals.",
+      "fullName": "Candidate's full name",
+      "email": "Candidate's e-mail",
+      "mobile": "Candidate's mobile number",
+      "contactHint": "Give at least one way for HR to reach the candidate.",
+      "resume": "Resume (optional)",
+      "resumeHint": "PDF, Word, JPG or PNG, up to 10 MB.",
+      "reason": "Why are you referring this person?",
+      "reasonHint": "Up to {max} characters.",
+      "confirm": "The candidate agreed to be referred and to be contacted by HR about this job.",
+      "submit": "Send referral",
+      "submitting": "Sending…",
+      "required": "required",
+      "errors": {
+        "missing_fields": "Fill in the candidate's name, an e-mail or mobile number, and your reason.",
+        "invalid_input": "Check the e-mail, mobile number and reason: one of them is not valid or is too long.",
+        "confirm_required": "Confirm that the candidate agreed to be referred and contacted.",
+        "file_type": "The resume must be a PDF, Word, JPG or PNG file.",
+        "file_too_large": "The resume is larger than 10 MB.",
+        "referral_refused": "We could not accept this referral. If you think this is a mistake, please contact HR.",
+        "unavailable": "The referral could not be sent just now. Please try again later."
+      },
+      "mineDescription": "The candidates you referred and how each referral is progressing.",
+      "sent": "Thank you. Your referral has been sent to HR.",
+      "noReferrals": "You have not referred anyone yet.",
+      "candidate": "Candidate",
+      "job": "Job",
+      "referredOn": "Referred on",
+      "status": "Status",
+      "removedCandidate": "Removed",
+      "statuses": {
+        "in_review": "In review",
+        "interviewing": "Interviewing",
+        "offer": "Offer",
+        "hired": "Hired",
+        "not_progressing": "Not progressing",
+        "removed": "Removed"
+      },
+      "jobUnavailable": "This job is no longer open for referrals."
     }
   }
 }

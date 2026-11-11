@@ -1,3 +1,21 @@
+# Recruitment slice 7 — 11 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 6 entry,
+`4407_recruitment_referrals` at idx 3807 / when 1793330004107. A fresh read-only survey
+after `git fetch --prune origin` of 4,035 remote refs (436 distinct committed journal blobs),
+277 registered worktrees (264 readable journals; the only match is this branch's own) and
+350 committed allocation-document blobs found no claim of this name, position or timestamp
+(four allocation blobs match the digits only inside SHA-256 hashes). Peers above this block
+still exist (the peer timestamp maximum is 1793330099956; one peer renumbering proposes
+`5055_payroll_history_staged_job` at idx 4455 / when 1793330004755), so whichever lands later
+must be checked against the applied watermark; a lower timestamp can be silently skipped.
+4407 adds one table (`recruitment_referral`), two private tables
+(`app.recruitment_referral_context`, `app.recruitment_referral_attempt`), two columns, owner-only marker-bound policies on eight
+earlier recruitment tables, the referral definer functions, and restates 4405's
+`app.recruitment_destroy_candidate` with one added step; 4400–4406 are unapplied outside
+throwaway databases and CI. Recheck peer claims, the published baseline and the ordered
+applied ledger before admission. The reservation grants no installation authority.
+
 # Recruitment slice 6 — 10 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 5 entry,

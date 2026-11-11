@@ -62,6 +62,8 @@ export const RECRUITMENT_ERROR_CODES = [
   'confirm_required', 'consent_state', 'tag_disabled',
   // Slice 6.
   'period_invalid', 'period_too_long', 'report_too_slow',
+  // Slice 7: every database refusal of a referral reaches the referrer as this one code (D-023).
+  'referral_refused',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 
