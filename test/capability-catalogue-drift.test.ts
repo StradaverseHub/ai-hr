@@ -82,6 +82,7 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/admin/personnel/import/history/import-history-views.tsx':support('Shared personnel import history views.'),
  'app/admin/personnel/import/history/page.tsx':support('Shared personnel import history and revert.'),
  'app/admin/personnel/import/history/revert-jobs/[jobId]/route.ts':support('Shared personnel import history and revert.'),
+ 'app/admin/personnel/import/history/runs/[runId]/page.tsx':support('Import Log of a section import run (summary and rows not saved).'),
  'app/admin/personnel/import/information-correction-template/route.ts':'information_correction',
  'app/admin/personnel/import/movement/checks/[jobId]/route.ts':'employee_movement',
  'app/admin/personnel/import/movement/checks/route.ts':'employee_movement',

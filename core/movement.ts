@@ -4318,6 +4318,9 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
     if(event.eventType==='employment.company.transferred'){protectedFields.add('companyId');protectedFields.add('joinDate');}
     if(event.eventType==='assignment.transferred'){protectedFields.add('employmentType');protectedFields.add('companyId');}
     if(event.eventType==='employment.info.updated')for(const field of ((event.payload??{}) as {fields?:string[]}).fields??[])protectedFields.add(field);
+    // ccd3a65c — the organisation dimensions and the Direct Superior an information-only correction can now set.
+    if(event.eventType==='employment.assignment.changed'){const p=(event.payload??{}) as {before?:Record<string,unknown>;after?:Record<string,unknown>};for(const field of ['departmentId','positionId','businessUnitId'])if(p.before?.[field]!==p.after?.[field])protectedFields.add(field);}
+    if(event.eventType==='reporting-line.set')protectedFields.add('managerEmploymentId');
   }
   if(events.some(event=>event.eventType==='employment.information.corrected'&&event.sequence>row.sequence&&(((event.payload??{}) as {fields?:string[]}).fields??[]).some(field=>protectedFields.has(field)))){
     throw new MovementNotCorrectableError('A later information-only correction protects these details. Review the correction history before changing this movement.');

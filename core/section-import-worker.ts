@@ -95,7 +95,7 @@ export const sectionImportJobHandler:BulkJobHandler<SectionRowNomination>={
    return'more';
   }
   const updated=Number(job.counters?.updated??0);const failed=failedOf(job);const total=plan.total??0;
-  const runId=await recordSectionRun(ctx,{companyId:plan.companyId??null,fileName,totalRows:total,updated,rejected:plan.rejected??[],failed});
+  const runId=await recordSectionRun(ctx,{section,companyId:plan.companyId??null,fileName,totalRows:total,updated,rejected:plan.rejected??[],failed});
   const result:SectionImportResult={section,updated,skipped:total-updated-failed.length,failed,fileErrors:[],warnings:plan.warnings??[],runId};
   return{result};
  },
@@ -112,6 +112,8 @@ export const sectionImportJobHandler:BulkJobHandler<SectionRowNomination>={
   const plan=planOf(job);if(plan.result)return;
   const updated=Number(job.counters?.updated??0);
   if(!updated&&!(job.errors??[]).length)return;
-  await recordSectionRun(ctx,{companyId:plan.companyId??null,fileName:inputOf(job)?.fileName??job.source_name,totalRows:plan.total??0,updated,rejected:plan.rejected??[],failed:failedOf(job)});
+  // ccd3a65c — the history row names its section; preparation stores it in the plan before any row is written.
+  const section=plan.section??inputOf(job)?.section;if(!section)return;
+  await recordSectionRun(ctx,{section,companyId:plan.companyId??null,fileName:inputOf(job)?.fileName??job.source_name,totalRows:plan.total??0,updated,rejected:plan.rejected??[],failed:failedOf(job)});
  },
 };

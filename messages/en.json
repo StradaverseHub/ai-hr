@@ -3020,7 +3020,8 @@
         "waiting": "Waiting for the import worker. The check starts automatically; do not upload the file again.",
         "otherRunning": "Another movement check you started is still running. Wait for it to finish before checking a new file.",
         "workerUnavailable": "The import service is not running yet. Your file is kept and the check starts automatically as soon as it is."
-      }
+      },
+      "historyButton": "Import History"
     },
     "wizard": {
       "deleteRecord": "Delete Record",
@@ -3345,7 +3346,12 @@
         "bank_statutory": "Bank & Statutory",
         "employee_full": "Everything — new employees",
         "movement": "Movement",
-        "information_correction": "Information-Only Correction"
+        "information_correction": "Information-Only Correction",
+        "profile": "Profile",
+        "family": "Family",
+        "qualification": "Qualifications",
+        "emergency": "Emergency Contacts",
+        "notRecorded": "Not recorded"
       },
       "reference": "Reference",
       "referenceLabel": "Reference {reference}",
@@ -3426,6 +3432,40 @@
       "employeeFull": {
         "created": "Created {code} · {name}",
         "willVoid": "This employee will be voided: removed from lists, headcount and payroll, kept in the audit trail. The Employee ID, email and NRIC are freed."
+      },
+      "listDescription": "Every personnel import file: who imported it, when, for which companies, and the result of every row.",
+      "backToImport": "Import employees",
+      "total": "Total",
+      "successful": "Successful",
+      "failed": "Failed",
+      "totalRows": "Total rows",
+      "pasted": "Pasted data",
+      "openLog": "Open the Import Log of {file}",
+      "log": {
+        "title": "Every row of the file",
+        "hint": "Saved rows show what changed. Rows that were not saved show why. Only employees of companies you can view are shown.",
+        "empty": "No rows of this file are visible to you.",
+        "row": "Row",
+        "employee": "Employee",
+        "result": "Result",
+        "field": "Field",
+        "before": "Before",
+        "after": "After",
+        "reason": "Reason given",
+        "saved": "Saved",
+        "unchanged": "Unchanged",
+        "notSaved": "Not saved",
+        "notConfirmed": "Checked, not saved",
+        "nothingChanged": "Every value already matched — nothing saved."
+      },
+      "run": {
+        "noFile": "This import keeps a summary and the rows that were not saved. The file itself is not stored.",
+        "failedTitle": "Rows not saved",
+        "hint": "Each row that was not saved, with its reason.",
+        "truncated": "Showing {shown} of {total} rows that were not saved.",
+        "noDetail": "No row detail was recorded for this import.",
+        "none": "Every row was saved.",
+        "reasonColumn": "Reason"
       }
     },
     "informationCorrection": {
@@ -3464,14 +3504,38 @@
         "hiredOn": "Group Join Date",
         "joinDate": "Join Date",
         "gradeId": "Job Grade",
-        "employmentType": "Employment Type"
+        "employmentType": "Employment Type",
+        "businessUnitId": "Business Unit",
+        "departmentId": "Department",
+        "positionId": "Position",
+        "orgDivision": "Division",
+        "orgBranch": "Branch",
+        "orgRegion": "Region",
+        "orgLine": "Line",
+        "orgSection": "Section",
+        "orgTeam": "Team",
+        "orgBase": "Base",
+        "employmentCategory": "Category",
+        "probationValue": "Probation Period",
+        "probationUnit": "Probation Period Unit",
+        "extendedProbationValue": "Extended Probation Period",
+        "extendedProbationUnit": "Extended Probation Period Unit",
+        "confirmationDate": "Confirmation Date",
+        "noticeBeforeConfirmationValue": "Notice Before Confirmation",
+        "noticeBeforeConfirmationUnit": "Notice Before Confirmation Unit",
+        "noticeAfterConfirmationValue": "Notice After Confirmation",
+        "noticeAfterConfirmationUnit": "Notice After Confirmation Unit",
+        "managerEmploymentId": "Direct Superior"
       },
       "statuses": {
         "applied": "Successful",
         "failed": "Failed",
         "unchanged": "Unchanged"
       },
-      "effective": "Future processing uses these corrected details from {date}."
+      "effective": "Future processing uses these corrected details from {date}.",
+      "templateFields": "Fields this template corrects (new ones highlighted). Blank cells keep the existing value.",
+      "templateFieldsLabel": "Fields this template corrects",
+      "ownersNote": "Basic Salary and resignation dates are corrected on the event that recorded them: use the Movement import with Action \"Update\". Payment Method is in the Bank and Statutory import."
     }
   },
   "leave": {

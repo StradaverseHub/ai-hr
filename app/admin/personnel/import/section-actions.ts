@@ -64,6 +64,7 @@ export async function commitSectionAction(
   try {
     const started=await createSectionImportJob(s,{section:assertSection(section),records,fileName:fileName ?? '',csv});
     revalidatePath('/admin/personnel/import');
+    revalidatePath('/admin/personnel/import/history');
     return started;
   } catch(error) {
     if(error instanceof SectionImportJobError)return {error:error.message};

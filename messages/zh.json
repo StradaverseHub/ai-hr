@@ -3020,7 +3020,8 @@
         "waiting": "正在等待导入进程。检查会自动开始；请勿再次上传该文件。",
         "otherRunning": "您发起的另一项异动检查仍在进行。请等待其完成后再检查新文件。",
         "workerUnavailable": "导入服务尚未运行。您的文件已保留，服务一运行检查便会自动开始。"
-      }
+      },
+      "historyButton": "导入历史"
     },
     "wizard": {
       "deleteRecord": "删除记录",
@@ -3345,7 +3346,12 @@
         "bank_statutory": "银行与法定",
         "employee_full": "全部 — 新员工",
         "movement": "人事变动",
-        "information_correction": "仅信息更正"
+        "information_correction": "仅信息更正",
+        "profile": "个人资料",
+        "family": "家庭",
+        "qualification": "资历",
+        "emergency": "紧急联系人",
+        "notRecorded": "未记录"
       },
       "reference": "参考号",
       "referenceLabel": "参考号 {reference}",
@@ -3426,6 +3432,40 @@
       "employeeFull": {
         "created": "已创建 {code} · {name}",
         "willVoid": "该员工将被作废：从列表、人数统计和薪资中移除，保留在审计记录中。员工编号、邮箱和 NRIC 将被释放。"
+      },
+      "listDescription": "每个人事导入文件：由谁导入、何时导入、涉及哪些公司，以及每一行的结果。",
+      "backToImport": "导入员工",
+      "total": "总计",
+      "successful": "成功",
+      "failed": "失败",
+      "totalRows": "总行数",
+      "pasted": "粘贴的数据",
+      "openLog": "打开 {file} 的导入日志",
+      "log": {
+        "title": "文件的每一行",
+        "hint": "已保存的行显示更改内容。未保存的行显示原因。仅显示您可查看的公司的员工。",
+        "empty": "您无法查看此文件的任何行。",
+        "row": "行",
+        "employee": "员工",
+        "result": "结果",
+        "field": "字段",
+        "before": "更正前",
+        "after": "更正后",
+        "reason": "提供的原因",
+        "saved": "已保存",
+        "unchanged": "未更改",
+        "notSaved": "未保存",
+        "notConfirmed": "已检查，未保存",
+        "nothingChanged": "所有值均已一致——未保存任何内容。"
+      },
+      "run": {
+        "noFile": "此导入保留摘要和未保存的行。文件本身不会被存储。",
+        "failedTitle": "未保存的行",
+        "hint": "每个未保存的行及其原因。",
+        "truncated": "显示 {total} 个未保存行中的 {shown} 个。",
+        "noDetail": "此导入未记录行详情。",
+        "none": "所有行均已保存。",
+        "reasonColumn": "原因"
       }
     },
     "informationCorrection": {
@@ -3464,14 +3504,38 @@
         "hiredOn": "集团入职日期",
         "joinDate": "入职日期",
         "gradeId": "职级",
-        "employmentType": "雇佣类型"
+        "employmentType": "雇佣类型",
+        "businessUnitId": "业务单位",
+        "departmentId": "部门",
+        "positionId": "职位",
+        "orgDivision": "事业部",
+        "orgBranch": "分行",
+        "orgRegion": "区域",
+        "orgLine": "条线",
+        "orgSection": "科室",
+        "orgTeam": "团队",
+        "orgBase": "基地",
+        "employmentCategory": "类别",
+        "probationValue": "试用期",
+        "probationUnit": "试用期单位",
+        "extendedProbationValue": "延长试用期",
+        "extendedProbationUnit": "延长试用期单位",
+        "confirmationDate": "转正日期",
+        "noticeBeforeConfirmationValue": "转正前通知期",
+        "noticeBeforeConfirmationUnit": "转正前通知期单位",
+        "noticeAfterConfirmationValue": "转正后通知期",
+        "noticeAfterConfirmationUnit": "转正后通知期单位",
+        "managerEmploymentId": "直属上级"
       },
       "statuses": {
         "applied": "成功",
         "failed": "失败",
         "unchanged": "未更改"
       },
-      "effective": "未来处理将从{date}起使用这些更正信息。"
+      "effective": "未来处理将从{date}起使用这些更正信息。",
+      "templateFields": "此模板可更正的字段（新增字段已突出显示）。空白单元格保留现有值。",
+      "templateFieldsLabel": "此模板可更正的字段",
+      "ownersNote": "基本工资和辞职日期须在记录它们的事件上更正：请使用变动导入，操作选择“Update”。付款方式在银行与法定导入中。"
     }
   },
   "leave": {

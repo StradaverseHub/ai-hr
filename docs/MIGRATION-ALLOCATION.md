@@ -1,3 +1,14 @@
+# Import History section type (ccd3a65c) — 11 November 2026 MYT (unapplied, renumbered)
+
+Board staging window 3 now follows the combined release block (`5000`–`5090`, idx 4400–4490, when
+1793330004700–1793330004790), so the unapplied `4900_import_history_kind` (idx 4300 / when 1793330004600) would be
+silently skipped after it. It moves to `5100_import_history_kind` at idx 4500 / when 1793330004800, keeping the
+block's shared offset (tag 51NN, idx 45NN, when …48NN). Board window 4's `4901_attendance_workflow_skipped_levels`
+follows as `5101` (idx 4501 / when 1793330004801) and PR 240's `4902_account_action_authority` as `5102`
+(idx 4502 / when 1793330004802). The SQL bytes are unchanged and were never applied anywhere. A survey of origin
+branches found no other claim above 5090. Recheck peer claims and the installed ledger at admission; this grants no
+installation authority.
+
 # Combined release block — 11 November 2026 MYT (unapplied allocation, one block)
 
 Branch `claude/combined-release-20261111` (base `claude/architecture-release-20261110` @ `6e4a883c2`) merges every
@@ -235,6 +246,15 @@ idx 4201–4243 or when 1793330004501–1793330004543. A raw tuple scan of the o
 unparseable peer worktree journal (feedback-menu-operator-toggle-616263) found no
 occupant either. Refresh the peer survey and the installed ordered ledger before
 release admission. This reallocation grants no installation authority.
+# Import History section type (ccd3a65c) — 10 November 2026 MYT (unapplied)
+
+The board staging release moves the unapplied reservation `4500_import_history_kind` to `4900_import_history_kind`
+at idx 4300 / when 1793330004600, because main now ends at 4800 (idx 4200 / when
+1793330004500) and a lower timestamp would be silently skipped after it. The SQL bytes
+are unchanged and were never applied anywhere. A survey of main and the 150 most recently
+updated origin heads found no other claim between when 1793330004500 and 1793330009820;
+4902 (idx 4302) is PR 240's. Recheck peer claims and the installed ledger at admission;
+this grants no installation authority.
 
 # Shared Leave Groups AI read control — 10 November 2026 MYT (unapplied)
 
