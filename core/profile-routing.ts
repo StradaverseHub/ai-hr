@@ -67,12 +67,17 @@ async function eligibleTargetCount(tx:Tx,approverEmploymentId:string,subjectIds:
  }
  return count;
 }
-async function subjectContext(tx:Tx,ctx:SessionContext,subjectId:string,asOf:string){
- const [e]=await tx.select({companyId:employment.companyId,gradeId:employment.gradeId,orgDivision:employment.orgDivision,orgBranch:employment.orgBranch,orgRegion:employment.orgRegion,orgLine:employment.orgLine,orgSection:employment.orgSection,orgTeam:employment.orgTeam,orgBase:employment.orgBase,employmentCategory:employment.employmentCategory,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,finalConfirmationDate:employment.finalConfirmationDate,probationEndDate:employment.probationEndDate,provisionalEndOn:employment.provisionalEndOn,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,terminatedOn:employment.terminatedOn,blacklistedAt:employment.blacklistedAt,gender:person.gender,nationality:person.nationality,religion:person.religion,race:person.race}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(eq(employment.id,subjectId),eq(employment.tenantId,ctx.tenantId))).limit(1).for('update');
+/** `lockRows` fences the subject's rows until commit for a writer (route resolution and the decision itself). A
+ * display-only eligibility read passes false: it reads the same rows and fingerprint and writes nothing, so it takes no
+ * row lock (a FOR UPDATE in a read would block employment writers for the whole read and can deadlock two readers). */
+async function subjectContext(tx:Tx,ctx:SessionContext,subjectId:string,asOf:string,lockRows=true){
+ const employmentRow=tx.select({companyId:employment.companyId,gradeId:employment.gradeId,orgDivision:employment.orgDivision,orgBranch:employment.orgBranch,orgRegion:employment.orgRegion,orgLine:employment.orgLine,orgSection:employment.orgSection,orgTeam:employment.orgTeam,orgBase:employment.orgBase,employmentCategory:employment.employmentCategory,hiredOn:employment.hiredOn,confirmationDate:employment.confirmationDate,finalConfirmationDate:employment.finalConfirmationDate,probationEndDate:employment.probationEndDate,provisionalEndOn:employment.provisionalEndOn,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,terminatedOn:employment.terminatedOn,blacklistedAt:employment.blacklistedAt,gender:person.gender,nationality:person.nationality,religion:person.religion,race:person.race}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(eq(employment.id,subjectId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+ const [e]=await (lockRows?employmentRow.for('update'):employmentRow);
  if(!e)throw new ProfileRoutingError('unauthorized');
  // Match the canonical criteria owner's inclusive end-date semantics, and lock its relevant rows.
  // Assignment rollback is update-only; locking employment/person alone does not fence those writes.
- const rows=await tx.select({id:assignment.id,companyId:assignment.companyId,departmentId:assignment.departmentId,businessUnitId:assignment.businessUnitId,positionId:assignment.positionId,costCenterId:assignment.costCenterId,employmentType:assignment.employmentType}).from(assignment).where(and(eq(assignment.employmentId,subjectId),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${asOf}::date AND (${assignment.validTo} IS NULL OR ${assignment.validTo}>=${asOf}::date)`)).orderBy(asc(assignment.id)).for('update');
+ const assignmentRows=tx.select({id:assignment.id,companyId:assignment.companyId,departmentId:assignment.departmentId,businessUnitId:assignment.businessUnitId,positionId:assignment.positionId,costCenterId:assignment.costCenterId,employmentType:assignment.employmentType}).from(assignment).where(and(eq(assignment.employmentId,subjectId),isNull(assignment.supersededAt),sql`${assignment.validFrom}<=${asOf}::date AND (${assignment.validTo} IS NULL OR ${assignment.validTo}>=${asOf}::date)`)).orderBy(asc(assignment.id));
+ const rows=await (lockRows?assignmentRows.for('update'):assignmentRows);
  return {asOf,companyId:e.companyId,fingerprint:createHash('sha256').update(JSON.stringify({employment:e,assignments:rows})).digest('hex')};
 }
 export async function resolveProfileRouteTx(tx:Tx,ctx:SessionContext,subjectId:string,requestType:ProfileRequestType='fields'){
@@ -92,7 +97,8 @@ type ProfileRouteDecisionBase=Pick<typeof profileChangeRequest.$inferSelect,'emp
 /** Writers pass their real row; metadata-only eligibility readers must supply the actual stored type.
  * A missing classifier must not silently route a photo request through the fields default. */
 export type ProfileRouteDecisionSubject=ProfileRouteDecisionBase&({proposed:unknown}|{requestType:ProfileRequestType});
-export async function assertProfileRouteDecisionTx(tx:Tx,ctx:SessionContext,request:ProfileRouteDecisionSubject){
+export async function assertProfileRouteDecisionTx(tx:Tx,ctx:SessionContext,request:ProfileRouteDecisionSubject,options:{lockRows?:boolean}={}){
+ const lockRows=options.lockRows!==false;
  if(!request.routeId){if(request.routeApproverUserId||request.routeApproverEmploymentId||request.routeContext)throw new ProfileRoutingError('changed');return;}
  const snapshot=request.routeContext as {version?:unknown;decisionMode?:unknown;approvers?:{userId:string;employmentId:string}[];fingerprint?:unknown}|null;
  if(snapshot?.version===3){
@@ -100,13 +106,13 @@ export async function assertProfileRouteDecisionTx(tx:Tx,ctx:SessionContext,requ
   const assigned=snapshot.approvers.find(row=>row.userId===ctx.userId);
   if(!assigned||!z.uuid().safeParse(assigned.employmentId).success)throw new ProfileRoutingError('unauthorized');
   const principal=await namedPrincipal(tx,assigned.employmentId,request.employmentId);
-  if(principal.user_id!==assigned.userId||(await subjectContext(tx,ctx,request.employmentId,todayInKualaLumpur())).fingerprint!==snapshot.fingerprint)throw new ProfileRoutingError('changed');
+  if(principal.user_id!==assigned.userId||(await subjectContext(tx,ctx,request.employmentId,todayInKualaLumpur(),lockRows)).fingerprint!==snapshot.fingerprint)throw new ProfileRoutingError('changed');
   return;
  }
  const requestType='proposed' in request?profileRequestType(request.proposed):request.requestType;
  if(requestType!=='photo'&&requestType!=='fields')throw new ProfileRoutingError('changed');
  const principal=await namedPrincipal(tx,request.routeApproverEmploymentId??'',request.employmentId);
- if(ctx.userId!==request.routeApproverUserId||principal.user_id!==request.routeApproverUserId||principal.employment_id!==request.routeApproverEmploymentId||(await subjectContext(tx,ctx,request.employmentId,todayInKualaLumpur())).fingerprint!==snapshot?.fingerprint)throw new ProfileRoutingError('changed');
+ if(ctx.userId!==request.routeApproverUserId||principal.user_id!==request.routeApproverUserId||principal.employment_id!==request.routeApproverEmploymentId||(await subjectContext(tx,ctx,request.employmentId,todayInKualaLumpur(),lockRows)).fingerprint!==snapshot?.fingerprint)throw new ProfileRoutingError('changed');
 }
 export function profileRequestType(proposed:unknown):ProfileRequestType{return proposed&&typeof proposed==='object'&&!Array.isArray(proposed)&&'v' in proposed&&proposed.v===3?'photo':'fields';}
 /** SQL twin for bounded queue metadata: never select the proposal values/byte reference just to route it. */

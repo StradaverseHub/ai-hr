@@ -975,8 +975,8 @@ export async function pendingProfileTasksFromCandidates(ctx:SessionContext,candi
 /** pendingProfileTaskMetadata's first transaction in the one-statement account task read (core/account-task-bundle.ts):
  * its probe with the company binding, then its candidate query unchanged. jsonb {pending, candidates}. No pending request,
  * or no candidate, is the owner's empty result; candidates still need actionableProfileChangeIds, which takes the
- * exclusive profile-write barrier, re-resolves the policy after it and locks routed subjects FOR UPDATE, so that locked
- * transaction still runs for them (pendingProfileTasksFromCandidates). */
+ * shared Access and profile-policy locks, re-resolves the policy after them and re-checks each routed subject, so that
+ * locked transaction still runs for them (pendingProfileTasksFromCandidates). */
 export function pendingProfileTaskBundleSql(tx:Tx,ctx:SessionContext,companyIds?:string[]){
  return sql`(select jsonb_build_object('pending',profile_probe.pending,'candidates',case when profile_probe.pending then
    (select coalesce(jsonb_agg(jsonb_build_object('id',profile_candidate.id,'employmentId',profile_candidate.employment_id,'personId',profile_candidate.person_id,
@@ -991,10 +991,15 @@ export function pendingProfileCandidatesFromBundle(value:unknown):AssignedApprov
  return (section.pending?section.candidates??[]:[]).map(row=>({id:row.id,employmentId:row.employmentId,personId:row.personId,employee:row.employee,createdAt:new Date(row.createdAt)}));
 }
 
+/** Which pending profile requests the viewer can decide now: a read for the bell, Home, Approvals and the mobile queue.
+ * It runs on every shell render, so it holds the shared Access and profile-policy locks and no row lock (staging,
+ * 11 November 2026: the exclusive barrier it used to take, held across this per-request loop, stopped every other
+ * caller in the tenant after a restart). Access and profile-policy editors still exclude it; the decision command
+ * itself re-checks the same authority under the exclusive barrier with its row locks. */
 export function actionableProfileChangeIds(ctx:SessionContext,requestIds:readonly string[]){
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx,result:string[]=[],ids=[...new Set(requestIds)];
+  const current=(await freshProfileEditPolicySharedTx(tx,ctx)).ctx,result:string[]=[],ids=[...new Set(requestIds)];
   for(let offset=0;offset<ids.length;offset+=1000){
    const rows=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
     routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,
@@ -1002,7 +1007,7 @@ export function actionableProfileChangeIds(ctx:SessionContext,requestIds:readonl
     .where(and(inArray(profileChangeRequest.id,ids.slice(offset,offset+1000)),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current))).orderBy(profileChangeRequest.id);
    for(const row of rows){
     if(row.personId===current.personId||row.requestType===null)continue;
-    try{await assertProfileChangeDecisionAuthorityTx(tx,current,{...row,requestType:row.requestType},'rejected');result.push(row.id);}
+    try{await assertProfileChangeDecisionAuthorityTx(tx,current,{...row,requestType:row.requestType},'rejected',{lockRows:false});result.push(row.id);}
     catch(error){
      if(isApprovalDecisionRefusal(error,'profile change'))continue;
      if(error instanceof ProfileRoutingError&&['changed','unauthorized'].includes(error.code))continue;
@@ -1016,8 +1021,8 @@ export function actionableProfileChangeIds(ctx:SessionContext,requestIds:readonl
 }
 
 
-async function assertProfileChangeDecisionAuthorityTx(tx:Tx,ctx:SessionContext,req:ProfileRouteDecisionSubject&{personId:string},decision:'approved'|'rejected'){
- await assertProfileRouteDecisionTx(tx,ctx,req);
+async function assertProfileChangeDecisionAuthorityTx(tx:Tx,ctx:SessionContext,req:ProfileRouteDecisionSubject&{personId:string},decision:'approved'|'rejected',options:{lockRows?:boolean}={}){
+ await assertProfileRouteDecisionTx(tx,ctx,req,options);
  if(req.personId===ctx.personId&&decision==='approved')throw new EssProfileError('permission');
  await assertCanDecide(tx,ctx,req.employmentId,'profile change');
  const roles=ctx.roles??[];
