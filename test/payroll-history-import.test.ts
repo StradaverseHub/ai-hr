@@ -38,6 +38,7 @@ import {
 } from '../core/payroll-history-import';
 import { PAYROLL_HISTORY_HEADERS } from '../lib/payroll-history-import-schema';
 import { payrollRunLabel } from '../core/payslip-cycle-label';
+import { withRunPayPeriod } from '../core/payroll-period-lock';
 import { parseCsvRecords } from '../lib/csv';
 import {
   adminCtx,
@@ -582,10 +583,11 @@ describe('import payroll history — the long (seven-column) contract', () => {
     expect(totals.gross).toBeCloseTo(10600, 2);
     expect(totals.net).toBeCloseTo(9064.7, 2);
 
+    const { payPeriodId } = withRunPayPeriod(batch, () => Error('Expected the released history run to carry its pay period'));
     const [period] = await owner.db
       .select()
       .from(schema.payPeriod)
-      .where(eq(schema.payPeriod.id, batch.payPeriodId));
+      .where(eq(schema.payPeriod.id, payPeriodId));
     expect(period.status).toBe('closed');
   });
 

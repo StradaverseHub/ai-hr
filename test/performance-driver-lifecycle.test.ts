@@ -592,7 +592,7 @@ it('names the owned request a driver deadline aborted: role, reviewed route, met
  const address=server.address();if(!address||typeof address==='string')throw Error('server address unavailable');
  const failures=createDriverFailures(),deadline=AbortSignal.timeout(60);let headers:{status:number;ttfbMs:number}|undefined;
  const started=performance.now();
- const opened=openDriverResponse({start:()=>httpRequest('http://127.0.0.1:'+address.port+'/approvals',{signal:deadline,agent:new Agent()}),
+ const opened=openDriverResponse({start:()=>httpRequest('http://127.0.0.1:'+address.port+'/approvals',{signal:deadline,agent:new Agent()}),body:undefined,
   startedMs:started,onHeaders:(response:{statusCode:number},ttfbMs:number)=>{headers={status:response.statusCode,ttfbMs};},
   observeSocket:()=>{},recordFailure:failures.record});
  const error=await opened.result.then(()=>null,(reason:unknown)=>reason);

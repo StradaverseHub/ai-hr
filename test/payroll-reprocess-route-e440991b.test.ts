@@ -48,6 +48,7 @@ import {
   reprocessSelectedEmployees,
 } from '../core/payroll';
 import { setPayrollPermissionGrant } from '../core/payroll-permissions-admin';
+import { withRunPayPeriod } from '../core/payroll-period-lock';
 import { listRecomputeDisclosure } from '../core/payroll-view';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
@@ -329,7 +330,8 @@ describe('e440991b — against a real run', () => {
       // This is the refusal that is invisible on the run row: the batch is still `processed`, so a screen
       // that only looked at batch.status would offer the button and the service would throw on submit.
       const { batchId, employmentId } = await processedRun();
-      const [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+      const [read] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+      const batch = withRunPayPeriod(read, () => Error('Expected the committed run to carry its pay period'));
       await owner.db
         .update(schema.payPeriod)
         .set({ status: 'closed' })

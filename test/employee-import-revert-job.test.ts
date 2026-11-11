@@ -42,7 +42,7 @@ async function endState(f:Fixture){
   from domain_event where tenant_id=${f.b.tenantId}::uuid and event_type in ('employment.voided','import-attempt.reverted','import-attempt.revert-failed') order by sequence`)
   .map(e=>({...e,aggregate_id:code.get(e.aggregate_id)??(e.aggregate_id===f.attemptId?'attempt':e.aggregate_id),subject_employment_id:e.subject_employment_id?code.get(e.subject_employment_id):null,
    payload:{...withoutJob(e.payload),...(e.payload.importAttemptId?{importAttemptId:e.payload.importAttemptId===f.attemptId?'attempt':'other'}:{})}}));
- const history=await owner.client<Record<string,unknown>[]>`select kind,reason,detail,actor_id=${f.ctx.userId!}::uuid as by_admin from import_attempt_event where attempt_id=${f.attemptId}::uuid order by created_at,id`;
+ const history=await owner.client<{kind:string;reason:string|null;detail:Record<string,unknown>;by_admin:boolean}[]>`select kind,reason,detail,actor_id=${f.ctx.userId!}::uuid as by_admin from import_attempt_event where attempt_id=${f.attemptId}::uuid order by created_at,id`;
  return{employments,persons,events,history:history.map(h=>({...h,detail:{...(h.detail as object),...((h.detail as {blockers?:unknown[]}).blockers?{blockers:'present'}:{})}}))};
 }
 /** Owner-path events carry their job (5014). endState leaves that key out so the rest compares with the synchronous

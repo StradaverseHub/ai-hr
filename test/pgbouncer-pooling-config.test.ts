@@ -5,9 +5,7 @@ import {DATABASE_CAPACITY_DIGEST} from '../db/admission';
 import {assertFleetFitsServer} from '../db/capacity';
 import {applicationDatabaseUrl, fleetEnvForServerBudget, isPoolerCapacityError} from '../db/pooling';
 import {isDatabaseCapacityFailure, markDatabaseCapacityFailure} from '../db/read-retry';
-// @ts-expect-error plain deployment script, no declaration file
 import {customerEnvironmentErrors} from '../deploy/check-customer-env.mjs';
-// @ts-expect-error plain deployment script, no declaration file
 import {pgbouncerSizing, renderFiles} from '../deploy/pgbouncer/render-config.mjs';
 
 const DIRECT = 'postgresql://ai_hr_app:fixture@db.internal:5432/ai_hr?sslmode=verify-full';
@@ -68,7 +66,7 @@ describe('pooler capacity errors', () => {
 });
 
 describe('deployment validation of the pooled URL', () => {
-  const valid = {
+  const valid: NodeJS.ProcessEnv = {
     NODE_ENV: 'production', AUTH_PROVIDER: 'internal', AUTH_SESSION_KEY: 'a'.repeat(64), AUTH_PUBLIC_ORIGIN: 'https://hr.customer.com',
     AI_CONFIG_SECRET: 'fixture-encryption-password', TERAS_PROPOSAL_SECRET: 'fixture-proposal-signing-secret-0123456789', AUDIT_HASH_CHAIN_ENABLED: 'true',
     DATABASE_URL: DIRECT, MIGRATION_DATABASE_URL: 'postgresql://ai_hr_owner:fixture@db.internal:5432/ai_hr?sslmode=verify-full',
