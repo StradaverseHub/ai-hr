@@ -732,6 +732,28 @@ function comparisonTelemetry(result,out){
  const metrics=(row,keys)=>Object.fromEntries(keys.map(key=>[key,number(row?.[key])]));
  let browser=null;
  try{browser=readComparisonJson(join(out,'http-browser.json'),32*1024**2);}catch{}
+ // Diagnostic log only (fictional fixture, route labels and timings; no paths, people or payloads). It is not cell
+ // evidence and never changes a cell verdict: per-route steady latency, rendered and sign-in timings, load phases.
+ try{
+  const ms=value=>Number.isFinite(value)&&value>=0?Math.round(value*10)/10:null;
+  const label=value=>typeof value==='string'&&/^[\x20-\x7e]{1,160}$/.test(value)?value:null;
+  const rows=(value,limit,map)=>Array.isArray(value)?value.slice(0,limit).filter(row=>row!==null&&typeof row==='object').map(map):null;
+  const signIn=row=>[label(row.phase),label(row.role),ms(row.passwordSubmitToCardsCheckedMs),ms(row.mfaSubmitToHomeUrlMs),ms(row.mfaSubmitToCardsCheckedMs),ms(row.elapsedMs),row.cardFailures??null];
+  const summaryOf=value=>value&&typeof value==='object'?[value.samples??null,ms(value.p50Ms),ms(value.p95Ms),ms(value.maxMs)]:null;
+  console.log('[system-perf] '+JSON.stringify({kind:'WORKER_COMPARISON_ROUTE_LATENCY_LOG_V1',
+   routeColumns:['kind','role','route','action','samples','p50Ms','p95Ms','p99Ms','maxMs'],
+   steadyDurationMs:ms(browser?.steady?.durationMs),steadyLoad:browser?.steady?.load??null,
+   steadyRoutes:rows(browser?.steady?.routeLatency?.rows,1500,row=>[label(row.kind),label(row.role),label(row.route),label(row.action??null),
+    Number.isSafeInteger(row.samples)?row.samples:null,ms(row.p50Ms),ms(row.p95Ms),ms(row.p99Ms),ms(row.maxMs)]),
+   phaseColumns:['name','elapsedMs','completed','errors','read[samples,p50,p95,max]','write[samples,p50,p95,max]'],
+   phases:rows(browser?.phases,64,row=>[label(row.name??row.label),ms(row.elapsedMs),row.completed??null,row.errors??null,summaryOf(row.read),summaryOf(row.write)]),
+   signInColumns:['phase','role','passwordSubmitToCardsCheckedMs','mfaSubmitToHomeUrlMs','mfaSubmitToCardsCheckedMs','elapsedMs','cardFailures'],
+   preflightSignIns:rows(browser?.preflightBrowserSignIns,64,signIn),loadedSignIns:rows(browser?.loadedBrowserSignIns,64,signIn),
+   renderedColumns:['phase','role','path','elapsedMs'],
+   rendered:rows(browser?.browser,400,row=>[label(row.phase),label(row.role),label(row.path),ms(row.elapsedMs)]),
+   requestErrors:Array.isArray(browser?.requestErrors)?browser.requestErrors.length:null,
+   slowPilotSnapshots:browser?.slowPilotSnapshots??null}));
+ }catch{}
  let renderedCaseCounts=null;
  const driver=measurement?.driver;
  if(driver?.renderedCapture)try{
