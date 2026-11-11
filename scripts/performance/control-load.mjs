@@ -17,7 +17,7 @@ const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
 const users=fixture.users;
 const holdMs=Number(process.env.PERF_HTTP_HOLD_MS||300000),thinkMs=Number(process.env.PERF_HTTP_THINK_MS||1000),rampMs=10000;
 const workers=Number(process.env.PERF_APP_WORKERS||0);
-const requestDeadlineMs=90000,browserStepMs=30000,pilotBudgetMs=240000,baselineBudgetMs=150000,stuckMs=30000,writeEvery=8;
+const requestDeadlineMs=90000,browserStepMs=30000,pilotBudgetMs=90000,baselineBudgetMs=60000,stuckMs=30000,writeEvery=8,probePauseMs=2000;
 // The runner kills the driver at 870 s; save what was measured before that, whatever is still running.
 const driverDeadlineMs=Number(process.env.PERF_HTTP_HOLD_MS||300000)+480000;
 const agent=new https.Agent({keepAlive:true,maxSockets:4000,rejectUnauthorized:false});
@@ -114,6 +114,7 @@ const result={kind:'CONTROL_LOAD_RESULT_V1',version:1,scope:'Load-only control; 
  pendingOver30s:null,phases:{},failures:[]};
 function save(){
  try{writeFileSync(join(out,'control-load.json'),JSON.stringify({...result,partial:true,elapsedMs:round(now()-started),
+  steady:result.steady??summarizeSteady(),keyProbes:result.keyProbes??summarizeProbes(),
   pendingOver30s:{httpRequests:stuck.http.size,browserRequests:stuck.browser.size,diagnostics:stuck.diagnostics}}));}
  catch(error){console.error('[control-load] partial save failed: '+(error?.code??error?.message));}
 }
@@ -154,9 +155,14 @@ async function signedInVisit(role,user,phase){
   const password=page.locator('input[name="password"]');await password.fill(user.password);
   const submitted=now();
   await page.locator('form').filter({has:password}).locator('button[type="submit"]').click();
-  const code=page.locator('input[name="code"]');await code.waitFor({state:'visible',timeout:browserStepMs});
-  await code.fill(await generate({strategy:'totp',secret:user.secret}));
-  await page.locator('form').filter({has:code}).locator('button[type="submit"]').click();
+  const code=page.locator('input[name="code"]');
+  const step=await Promise.race([code.waitFor({state:'visible',timeout:browserStepMs}).then(()=>'mfa'),
+   page.waitForURL(url=>url.origin===base&&url.pathname==='/',{timeout:browserStepMs}).then(()=>'home')]);
+  row.mfa=step==='mfa';
+  if(step==='mfa'){
+   await code.fill(await generate({strategy:'totp',secret:user.secret}));
+   await page.locator('form').filter({has:code}).locator('button[type="submit"]').click();
+  }
   await page.waitForURL(url=>url.origin===base&&url.pathname==='/',{timeout:requestDeadlineMs});
   await page.waitForLoadState('load',{timeout:browserStepMs});
   row.login=round(now()-submitted);
@@ -171,10 +177,20 @@ async function signedInVisit(role,user,phase){
  return row;
 }
 
+const live={samples:new Map(),statusCounts:{},writes:{attempted:0,status:{}},
+ totals:{requests:0,errors5xx:0,transport:0,aborted:0,busy:0,refusals:0,errorPages:0},launched:0,iterations:0};
+function summarizeSteady(){
+ if(steadyStart===null)return null;
+ const rows=[...live.samples].map(([key,{values,errors}])=>{
+  const [kind,role,route]=key.split('\t');const sorted=[...values].sort((a,b)=>a-b);
+  const pct=f=>round(sorted[Math.max(0,Math.ceil(sorted.length*f)-1)]);
+  return [kind,role,route,sorted.length,pct(.5),pct(.95),pct(.99),round(sorted.at(-1)),errors];
+ }).sort((a,b)=>a[0].localeCompare(b[0])||a[1].localeCompare(b[1])||a[2].localeCompare(b[2]));
+ return {columns:['kind','role','route','n','p50Ms','p95Ms','p99Ms','maxMs','errors'],holdMs,launched:live.launched,iterations:live.iterations,
+  throughputRps:round(live.totals.requests/(holdMs/1000)),totals:live.totals,statusCounts:live.statusCounts,writes:live.writes,rows};
+}
 async function steady(){
- const samples=new Map(),statusCounts={},writes={attempted:0,status:{}};
- const totals={requests:0,errors5xx:0,transport:0,aborted:0,busy:0,refusals:0,errorPages:0};
- let launched=0,iterations=0;
+ const samples=live.samples,statusCounts=live.statusCounts,writes=live.writes,totals=live.totals;
  const record=(kind,row)=>{
   if(!inSteady(row.startedMs))return;
   totals.requests++;
@@ -190,11 +206,11 @@ async function steady(){
  };
  steadyStart=now()+rampMs;steadyEnd=steadyStart+holdMs;
  await Promise.all(users.map(async(user,index)=>{
-  await pause(Math.floor(index*rampMs/users.length));launched++;
+  await pause(Math.floor(index*rampMs/users.length));live.launched++;
   const pool=routePools[user.role],writer=['employee','manager'].includes(user.role);
   let step=index,action='in';
   while(now()<steadyEnd){
-   iterations++;
+   live.iterations++;
    if(writer&&step%writeEvery===0){
     const {body,contentType}=clockBody(action);action=action==='in'?'out':'in';
     const row=await send(user,'/api/attendance/clock',{method:'POST',body,contentType});
@@ -205,13 +221,31 @@ async function steady(){
    await pause(thinkMs);
   }
  }));
- const rows=[...samples].map(([key,{values,errors}])=>{
-  const [kind,role,route]=key.split('\t');values.sort((a,b)=>a-b);
-  const pct=f=>round(values[Math.max(0,Math.ceil(values.length*f)-1)]);
-  return [kind,role,route,values.length,pct(.5),pct(.95),pct(.99),round(values.at(-1)),errors];
- }).sort((a,b)=>a[0].localeCompare(b[0])||a[1].localeCompare(b[1])||a[2].localeCompare(b[2]));
- return {columns:['kind','role','route','n','p50Ms','p95Ms','p99Ms','maxMs','errors'],holdMs,launched,iterations,
-  throughputRps:round(totals.requests/(holdMs/1000)),totals,statusCounts,writes,rows};
+ return summarizeSteady();
+}
+// Key-route probes under load: one primary actor per role repeatedly GETs only its key pages, so Home,
+// Personnel, My Profile and Approvals have enough loaded samples whatever the 500-user mix reaches.
+const probes={columns:['role','route','n','p50Ms','p95Ms','maxMs','aborted'],values:new Map()};
+async function keyProbes(){
+ await Promise.all(Object.entries(primary).map(async([role,user])=>{
+  while(now()<steadyEnd){
+   for(const route of keyPages[role]){
+    if(now()>=steadyEnd)break;
+    const row=await send(user,route);
+    if(!inSteady(row.startedMs))continue;
+    const key=role+'\t'+route;if(!probes.values.has(key))probes.values.set(key,{values:[],aborted:0});
+    const bucket=probes.values.get(key);bucket.values.push(row.durationMs);if(row.status===null)bucket.aborted++;
+    await pause(probePauseMs);
+   }
+  }
+ }));
+}
+function summarizeProbes(){
+ return {columns:probes.columns,rows:[...probes.values].map(([key,{values,aborted}])=>{
+  const [role,route]=key.split('\t');const sorted=[...values].sort((a,b)=>a-b);
+  const pct=f=>round(sorted[Math.max(0,Math.ceil(sorted.length*f)-1)]);
+  return [role,route,sorted.length,pct(.5),pct(.95),round(sorted.at(-1)),aborted];
+ })};
 }
 
 async function loadedBrowser(){
@@ -234,8 +268,8 @@ async function main(){
   args:['--host-resolver-rules=MAP localhost 127.0.0.1']});
  await phase('browser-baseline',async()=>{const deadline=now()+baselineBudgetMs;for(const [role,user] of Object.entries(primary)){if(now()>deadline){note('browser-baseline:'+role,{code:'budget'});continue;}result.browser.baseline.push(await signedInVisit(role,user,'baseline'));}});
  await phase('steady',async()=>{
-  const [load]=await Promise.all([steady(),loadedBrowser().catch(error=>note('loaded-browser',error))]);
-  result.steady=load;
+  const [load]=await Promise.all([steady(),loadedBrowser().catch(error=>note('loaded-browser',error)),keyProbes().catch(error=>note('key-probes',error))]);
+  result.steady=load;result.keyProbes=summarizeProbes();
  });
  result.pendingOver30s={httpRequests:stuck.http.size,browserRequests:stuck.browser.size,diagnostics:stuck.diagnostics};
 }
