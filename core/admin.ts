@@ -18,7 +18,7 @@ import { companyInstallersFor } from './module-activation';
 import { CrossCompanyError } from './org';
 import { isEssViewComponentKey, type EssViewConfig } from './ess-view';
 import { normalizeLeaveFormulaConfig, type LeaveFormulaConfig } from './leave-formula';
-import { isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual';
+import { isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual-keys';
 import { isCurrencyCode } from '../lib/currencies';
 import { pgErrorChain, pgSqlState, isDatabaseError } from '../lib/db-error';
 // f1bbc572 — the tokens a label refusal may travel as, so the client can say it in the reader's language
