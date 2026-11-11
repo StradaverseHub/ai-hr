@@ -1,5 +1,6 @@
--- Combined release allocation (docs/MIGRATION-ALLOCATION.md): 5091_access_review_custody_held_mode, idx 4491, when 1793330004791,
--- above the 5090 watermark that staging has already applied (first drafted as 5088 before 5090).
+-- Combined release allocation (docs/MIGRATION-ALLOCATION.md): 5120_access_review_custody_held_mode, idx 4520, when 1793330004820,
+-- above the 5090 watermark that staging has already applied and above the 5100-5112 reservations of other sessions
+-- (when 1793330004800-1793330004812), which may reach staging first (first drafted as 5088, then 5091).
 -- Review custody joins the Access lock in the mode its transaction already holds (staging, 11 November 2026).
 --
 -- These review-custody owners (0622 own-leave, 0670 generic, the 0622 leave-decision login) took the tenant's Access

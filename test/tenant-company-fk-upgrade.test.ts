@@ -191,7 +191,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5082_home_own_clock_day',
    '5083_home_own_schedule_range',
    '5090_audit_chain_commit_seal',
-   '5091_access_review_custody_held_mode',
+   '5120_access_review_custody_held_mode',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

@@ -14,6 +14,11 @@
  *   joined by newlines; each hash is the SHA-256 of the migration file's bytes, as Drizzle records it.
  * Update an entry only from the installation's actual ledger after an install, never to make a new migration fit
  * below a watermark.
+ *
+ * RESERVED records numbers other sessions hold above staging's watermark (release coordinator, 12 November 2026):
+ * 5100, 5101, 5102 and 5110-5112 at when 1793330004800-1793330004812 (tag 51NN, when ...48NN). Any of them may reach
+ * staging before this release and raise its watermark to 1793330004812, so every other pending entry is journalled
+ * above all of them; a reserved migration merged here keeps its reserved `when`.
  */
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
@@ -25,6 +30,7 @@ const INSTALLED:Installed[]=[
  {name:'staging',watermark:1793330004790,count:818,tagsSha256:'935be4c295398c784c9a16704af210dc64d18e21eb6f8c2e164dff5cf55525e4'},
  {name:'production (read 12 Nov 2026)',watermark:1793330001700,count:697,ledgerSha256:'a3335110203a291c6733fd6ee2252561ea4a91a1135ac4d7ea7da12cc54abb93'},
 ];
+const RESERVED:readonly {number:number;when:number}[]=[5100,5101,5102,5110,5111,5112].map(number=>({number,when:1793330004800+(number-5100)}));
 const sha256=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 const entries=(JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:Entry[]}).entries;
 
@@ -48,5 +54,13 @@ describe('installed migration watermarks',()=>{
    });
   // Pending entries keep strictly increasing `when` values after the watermark, in journal order.
   for(const [index,entry] of pending.entries())expect(entry.when).toBeGreaterThan(index===0?installed.watermark:pending[index-1]!.when);
+ });
+ it('journals every other pending migration above the numbers other sessions reserved',()=>{
+  const ceiling=Math.max(...RESERVED.map(reserved=>reserved.when));
+  for(const entry of entries.filter(entry=>entry.when>INSTALLED[0]!.watermark)){
+   const reserved=RESERVED.find(candidate=>entry.tag.startsWith(`${candidate.number}_`));
+   if(reserved)expect(entry.when,`${entry.tag} keeps its reserved when`).toBe(reserved.when);
+   else expect(entry.when,`${entry.tag} would be skipped wherever a reserved migration (up to when ${ceiling}) is applied first. Journal it above.`).toBeGreaterThan(ceiling);
+  }
  });
 });
