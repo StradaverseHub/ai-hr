@@ -10,6 +10,7 @@ import type {ImportAttemptDetail,ImportHistoryRow} from '@/core/import-history';
 import type {InformationLogRow} from '@/lib/information-correction';
 import {personnelColumnLabel} from '@/lib/personnel-import-contract';
 import {movementImportFieldLabel} from '@/lib/movement-import-issues';
+import {formatImportActor,formatImportBatch} from '@/lib/import-reference';
 export const IMPORT_HISTORY_PATH='/admin/personnel/import/history';
 const dateTime={dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'} as const;
 /** ccd3a65c — one look for all three pages: bordered card, muted header row, the same cell padding. */
@@ -26,15 +27,15 @@ export async function ImportKindFilter({active}:{active?:ImportHistoryKind}){
 }
 /** ccd3a65c — every import with Total, Successful and Failed; each row opens its Import Log. */
 export async function ImportHistoryTable({items}:{items:ImportHistoryRow[]}){
- const t=await getTranslations('people.importHistory'),format=await getFormatter();
- const heads=[t('reference'),t('type'),t('file'),t('time'),t('user'),t('companies'),t('total'),t('successful'),t('failed'),t('status')];
- return <div className="overflow-x-auto rounded-xl border bg-card"><table className={historyTableCls}><thead className={historyHeadCls}><tr>{heads.map((label,index)=><th key={index} scope="col" className={historyCellCls+(index>=6&&index<=8?' text-right':'')}>{label}</th>)}</tr></thead>
+ const t=await getTranslations('people.importHistory'),format=await getFormatter(),labels=await getTranslations('importLog');
+ // 8d02748a — the file name sits under the batch number, so the separate File column is folded in.
+ const heads=[t('reference'),t('type'),t('time'),t('user'),t('companies'),t('total'),t('successful'),t('failed'),t('status')];
+ return <div className="overflow-x-auto rounded-xl border bg-card"><table className={historyTableCls}><thead className={historyHeadCls}><tr>{heads.map((label,index)=><th key={index} scope="col" className={historyCellCls+(index>=5&&index<=7?' text-right':'')}>{label}</th>)}</tr></thead>
   <tbody>{items.map(item=><tr key={item.cursor} className="border-t align-top">
-   <td className={historyCellCls}><Link href={item.source==='attempt'?`${IMPORT_HISTORY_PATH}/${item.id}`:`${IMPORT_HISTORY_PATH}/runs/${item.id}`} className="font-mono text-xs text-primary underline" aria-label={t('openLog',{file:item.sourceName||t('pasted')})}>{item.id.slice(0,8)}</Link></td>
+   <td className={historyCellCls}><Link href={item.source==='attempt'?`${IMPORT_HISTORY_PATH}/${item.id}`:`${IMPORT_HISTORY_PATH}/runs/${item.id}`} className="font-medium text-primary underline" aria-label={t('openLog',{file:item.sourceName||t('pasted')})}>{formatImportBatch(labels,item.id)}</Link><span className="block break-all text-xs text-muted-foreground">{item.sourceName||t('pasted')}</span></td>
    <td className={historyCellCls}>{item.kind?t(`kinds.${item.kind}`):<span className="text-muted-foreground">{t('kinds.notRecorded')}</span>}</td>
-   <td className={historyCellCls+' break-all'}>{item.sourceName||<span className="text-muted-foreground">{t('pasted')}</span>}</td>
    <td className={historyCellCls+' whitespace-nowrap'}>{format.dateTime(item.createdAt,dateTime)}</td>
-   <td className={historyCellCls}><span title={item.createdBy??undefined}>{item.createdByName??t('unknownUser')}</span></td>
+   <td className={historyCellCls}>{formatImportActor(labels,item.createdByActor)}</td>
    <td className={historyCellCls}>{item.companies.join(', ')||'—'}</td>
    <td className={historyCellCls+' text-right tabular-nums'}>{item.total}</td>
    <td className={historyCellCls+' text-right tabular-nums'}>{item.successful}</td>
@@ -43,13 +44,13 @@ export async function ImportHistoryTable({items}:{items:ImportHistoryRow[]}){
   </tr>)}</tbody></table>{items.length===0&&<p className="p-6 text-sm text-muted-foreground">{t('noAttempts')}</p>}</div>;
 }
 export async function ImportAttemptSummary({item}:{item:ImportAttemptDetail}){
- const t=await getTranslations('people.importHistory'),format=await getFormatter();
+ const t=await getTranslations('people.importHistory'),format=await getFormatter(),labels=await getTranslations('importLog');
  const status=importAttemptStatus(item.plan,item.events),totals=importAttemptTotals(item.plan,item.events);
  return <section className="space-y-4 rounded-xl border bg-card p-5"><dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
   <div><dt className="text-muted-foreground">{t('type')}</dt><dd>{t(`kinds.${item.kind}`)}</dd></div>
   <div><dt className="text-muted-foreground">{t('status')}</dt><dd><ImportStatusText status={status}/></dd></div>
   <div><dt className="text-muted-foreground">{t('time')}</dt><dd>{format.dateTime(item.createdAt,dateTime)}</dd></div>
-  <div><dt className="text-muted-foreground">{t('user')}</dt><dd title={item.createdBy}>{item.createdByName??t('unknownUser')}</dd></div>
+  <div><dt className="text-muted-foreground">{t('user')}</dt><dd>{formatImportActor(labels,item.createdByActor)}</dd></div>
   <div><dt className="text-muted-foreground">{t('companies')}</dt><dd>{item.companies.join(', ')||'—'}</dd></div>
   <div><dt className="text-muted-foreground">{t('totalRows')}</dt><dd className="tabular-nums">{totals.total}</dd></div>
   <div><dt className="text-muted-foreground">{t('successful')}</dt><dd className="tabular-nums">{totals.successful}</dd></div>
@@ -60,10 +61,10 @@ export async function ImportAttemptSummary({item}:{item:ImportAttemptDetail}){
  </section>;
 }
 export async function ImportAttemptEvents({item}:{item:ImportAttemptDetail}){
- const t=await getTranslations('people.importHistory'),format=await getFormatter();
+ const t=await getTranslations('people.importHistory'),format=await getFormatter(),labels=await getTranslations('importLog');
  return <section className="space-y-3 rounded-xl border bg-card p-5"><h2 className="font-semibold">{t('audit')}</h2><ol className="divide-y">{item.events.map(event=><li key={event.id} className="space-y-1 py-3 text-sm">
   <p className="font-medium">{t(`events.${event.kind}`)} · {format.dateTime(event.createdAt,dateTime)}</p>
-  <p className="text-xs text-muted-foreground" title={event.actorId}>{event.actorName??t('unknownUser')}</p>
+  <p className="text-xs text-muted-foreground">{formatImportActor(labels,event.actor)}</p>
   {event.reason&&<p>{t('eventReason',{reason:event.reason})}</p>}
   {typeof event.detail.message==='string'&&<p className="text-destructive">{event.detail.message}</p>}
  </li>)}</ol></section>;

@@ -3237,3 +3237,12 @@ Branch `claude/fb-2260a06b-contract-end-dates-20261111` journals `9750_contract_
 STABLE SECURITY DEFINER probe, `app.contract_renewal_open(uuid)`, with EXECUTE for `ai_hr_app` only. No table, column,
 grant on data or data change. ALLOCATED at the Irwin board integration on 12 November 2026 as `5111_contract_internship_end_dates`, idx 4511, when
 1793330004811 (after `5110_individual_txn_pricing_marker`); SQL bytes unchanged. This entry carries no deployment authority.
+## Import log references — 11 November 2026, allocated 12 November 2026
+
+Branch `claude/fb-8d02748a-import-log-refs-20261111` (board item 8d02748a) drafted `9740_import_log_actor_labels`
+(idx 9740, when 1793330099740) from the coordinator's 9740–9749 block. At the Irwin board integration on 12 November
+2026 it is allocated as `5112_import_log_actor_labels`, idx 4512, when 1793330004812, after `5110` (5111 is reserved for
+another builder's branch). SQL bytes are unchanged (SHA-256 `1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2`).
+It adds one read-only STABLE SECURITY DEFINER function, `app.import_log_actor_facts(text, uuid[])`, with EXECUTE for
+`ai_hr_app` only; no table, column, policy, grant on data or existing function changes. This entry carries no
+deployment authority.

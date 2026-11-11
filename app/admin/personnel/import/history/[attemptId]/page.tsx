@@ -12,9 +12,10 @@ import {ImportAttemptEvents,ImportAttemptItems,ImportAttemptSummary,InformationI
 import {ImportRevertControl} from '../import-revert-control';
 import {EmployeeImportErrorReport} from '../employee-import-error-report';
 import {employeeImportErrorReportFor} from '@/core/employee-import-history';
+import {formatImportBatch} from '@/lib/import-reference';
 /** One import attempt (its Import Log): file, outcome, per-row results, audit trail and (when allowed) Revert. */
 export default async function ImportAttemptPage({params,searchParams}:{params:Promise<{attemptId:string}>;searchParams?:Promise<{rows?:string}>}){
- const ctx=await requireAdmin(),t=await getTranslations('people.importHistory');
+ const ctx=await requireAdmin(),t=await getTranslations('people.importHistory'),labels=await getTranslations('importLog');
  const{attemptId}=await params,item=await getImportAttempt(ctx,attemptId);if(!item)notFound();
  const status=importAttemptStatus(item.plan,item.events);
  const revertible=(status==='succeeded'||status==='partial')&&importKindRevertible(item.kind);
@@ -25,7 +26,7 @@ export default async function ImportAttemptPage({params,searchParams}:{params:Pr
  // A background revert of this attempt (an employee import or a movement import) that the signed-in user started and
  // that is still running.
  const activeRevert=!revertible?null:item.kind==='employee_full'?await activeEmployeeImportRevertJob(ctx,item.id):item.kind==='movement'?await activeMovementImportRevertJob(ctx,item.id):null;
- return <div className={pageWideCls}><PageHeader title={item.sourceName} description={t('referenceLabel',{reference:item.id})} back={{href:`${IMPORT_HISTORY_PATH}?kind=${item.kind}`,label:t('title')}}/>
+ return <div className={pageWideCls}><PageHeader title={item.sourceName} description={formatImportBatch(labels,item.id)} back={{href:`${IMPORT_HISTORY_PATH}?kind=${item.kind}`,label:t('title')}}/>
   <ImportAttemptSummary item={summaryItem}/>
   {/* 1859cce0 — the employee import's error report (every row and problem, with the column to correct). */}
   {errorReport&&<EmployeeImportErrorReport attemptId={item.id} report={errorReport.report} showAll={showAll} full={errorReport.full}/>}

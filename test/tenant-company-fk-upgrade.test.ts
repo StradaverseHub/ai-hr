@@ -195,6 +195,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5100_import_history_kind',
    // Board staging window 4 (4452ba3c).
    '5101_attendance_workflow_skipped_levels',
+   // Board item 792053e5, allocated at the Irwin board integration.
+   '5110_individual_txn_pricing_marker',
+   // Board item 2260a06b, allocated at the Irwin board integration.
+   '5111_contract_internship_end_dates',
+   // Board item 8d02748a, allocated at the Irwin board integration.
+   '5112_import_log_actor_labels',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -231,7 +237,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app._assistant_rewards_cancel_choice_payload_v1()','app._assistant_rewards_return_choice_payload_v1()','app._domain_event_chain_key_held(uuid)',
    'app._domain_event_chain_seal_tenant(uuid)','app._personnel_employment_tags(uuid[],date)','app.access_administrator_assert_run()',
    'app.access_administrator_guard_tenant()','app.access_capability_effective(uuid)','app.access_lock_assert_strict(uuid,text,text)',
-   'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.bulk_job_capability_held(uuid)',
+   'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.attendance_workflow_preview_bind()','app.bulk_job_capability_held(uuid)',
    'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_event_attribution()','app.bulk_job_held(uuid)',
    'app.bulk_job_input_conforms(jsonb,integer,jsonb)','app.bulk_job_input_shape_valid(jsonb)','app.bulk_job_lease_capability(uuid,uuid,text)',
    'app.bulk_job_seal_verify(uuid,text)','app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)','app.bulk_job_value_digest(jsonb)',
@@ -267,11 +273,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.bulk_job_scope_current(text,uuid[])','app.bulk_job_seal_verify(uuid,text)','app.bulk_job_step_digest(text,integer,jsonb,text,jsonb,text)',
    'app.bulk_job_step_update(uuid,integer[],jsonb)','app.bulk_job_steps_put(uuid,boolean,jsonb)','app.bulk_job_value_digest(jsonb)',
    'app.bulk_job_waiting(uuid)','app.bulk_job_worker_ready(text)','app.bulk_job_worker_update(uuid,jsonb)',
-   'app.delegated_approval_subjects(uuid[],text,text)','app.domain_event_chain_arm()','app.domain_event_chain_flush(uuid)',
+   'app.contract_renewal_open(uuid)','app.delegated_approval_subjects(uuid[],text,text)','app.domain_event_chain_arm()','app.domain_event_chain_flush(uuid)',
    'app.domain_event_chain_seal_now()','app.domain_event_chain_sealing()','app.employee_import_revert_release(uuid,boolean)',
    'app.employment_void_reference_blockers(uuid[])','app.home_leave_presentation_index(text)','app.home_own_clock_day(uuid,date,date)',
    'app.home_own_schedule_range(uuid,date,date)','app.import_activation_conflicts(uuid)','app.import_discard_batch(uuid,uuid,uuid,text,integer)',
-   'app.import_hidden_attempt_ids()','app.import_marker_released(uuid)','app.import_marker_visible(uuid)',
+   'app.import_hidden_attempt_ids()','app.import_log_actor_facts(text,uuid[])','app.import_marker_released(uuid)','app.import_marker_visible(uuid)',
    'app.import_pending_employment_ids()','app.import_pending_guard()','app.import_pending_person_ids()',
    'app.import_pending_stamp()','app.import_release(uuid)','app.import_released_attempt_ids()',
    'app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()',
