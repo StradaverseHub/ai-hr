@@ -11,7 +11,7 @@ import { legacyEmployeeMasterSpec } from '../lib/employee-master-legacy';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { masterSpecFields, runEmployeeMasterProjection, validateEmployeeMasterDefinition, validateEmployeeMasterSpec, EmployeeMasterSpecError, MASTER_PREVIEW_ROWS, type EmployeeMasterSpec, type EmployeeMasterResult } from '../lib/employee-master-report';
 import { masterReportFieldsTx, MasterReportAccessError } from './employee-master-access';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {withAccessDisplayRead} from './access-configuration-lock';
 import { employeeMasterSubjectsTx } from './employee-master-projection';
 
 export type MasterTemplate={id:string;name:string;description:string;ownerUserId:string|null;ownerName:string|null;shared:boolean;sharedRoleIds:string[];version:number;lastRunAt:string|null;scheduleEnabled:boolean;updatedAt:string;spec:EmployeeMasterSpec;canEdit:boolean};
@@ -102,11 +102,10 @@ async function masterAccessStampTx(tx:Tx,reportId:string|null,companyIds:readonl
 }
 export type MasterRun={result:EmployeeMasterResult;spec:EmployeeMasterSpec;reportId:string|null;version:number|null;name:string;catalogue:Awaited<ReturnType<typeof masterReportFieldsTx>>;fingerprint:string;brand?:{content:string;mimeType:string}};
 export async function runEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],input:{id?:string;spec?:unknown;expectedVersion?:number;includeWithoutCompany?:boolean}):Promise<MasterRun>{
-  return withTenant(ctx,async tx=>{
-    // A read of up to 2,000 employments, interactive or scheduled: the shared Access lock first, so every owner's
-    // Workforce check joins it instead of taking the exclusive lock for the whole run (staging, 11 November 2026).
-    // Access editors still exclude it; the snapshot decides the rows and bytes exactly as before.
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+  // A read of up to 2,000 employments, interactive or scheduled: an owner Workforce check inside (the movement fields)
+  // joins the Access lock shared instead of taking it exclusively for the whole run (staging, 11 November 2026). A run
+  // with no such field still takes no Access lock; the snapshot decides the rows and bytes exactly as before.
+  return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{
     const row=input.id?await visibleTx(tx,input.id):null;
     if(input.expectedVersion!==undefined&&row?.version!==input.expectedVersion)throw new Error('This report changed. Review it before running.');
     const {spec,catalogue,fields}=await checkedTx(tx,ctx,row?legacyEmployeeMasterSpec(row.spec,[...scopeIds],todayInKualaLumpur()):input.spec,scopeIds);
@@ -116,7 +115,7 @@ export async function runEmployeeMasterReport(ctx:SessionContext,scopeIds:readon
     const accessStamp=await masterAccessStampTx(tx,row?.id??null,spec.companyIds);
     const result=runEmployeeMasterProjection(spec,fields,subjects,todayInKualaLumpur());
     return {result,spec,reportId:row?.id??null,version:row?.version??null,name:row?.name??'Employee Master',catalogue,brand,fingerprint:digest({accessStamp,user:ctx.userId,roles:ctx.roles,grants:ctx.grants,companies:spec.companyIds,fields:catalogue.map(f=>f.id),spec,version:row?.version})};
-  },{readOnlySnapshot:true});
+  },{readOnlySnapshot:true}));
 }
 /** Re-authorize after generation before handing bytes/preview to the caller. No row cache crosses users. */
 export async function authorizeEmployeeMasterRun(ctx:SessionContext,scopeIds:readonly string[],run:MasterRun){return withTenant(ctx,async tx=>{

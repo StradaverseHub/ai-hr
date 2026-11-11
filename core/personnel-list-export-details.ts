@@ -6,7 +6,7 @@ import type { PersonnelFieldDescriptor } from '../lib/personnel-field-registry';
 import { MasterReportAccessError, masterReportFieldsTx } from './employee-master-access';
 import { employeeMasterSubjectsTx } from './employee-master-projection';
 import { withPersonnelPresentationReadTx } from './personnel-read-bounds';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { withAccessDisplayRead } from './access-configuration-lock';
 
 const DETAILS_BATCH_SIZE = 1000;
 const MAX_DETAIL_CELLS = 500_000;
@@ -24,10 +24,10 @@ export async function readPersonnelListExportDetails(
   const cells = new Map<string, MasterCell[]>();
   if (!companyIds.length) return { fields: [], cells };
 
-  return withPersonnelPresentationReadTx(ctx, existingTx, async (tx, current) => {
-    // The export's employee-master projection reads every listed employment: the shared Access lock first, so its
-    // Workforce checks join it instead of holding the exclusive lock for the export (staging, 11 November 2026).
-    await lockAccessConfigurationTx(tx, current.tenantId);
+  // The export's employee-master projection reads every listed employment: an owner Workforce check inside joins the
+  // Access lock shared instead of taking it exclusively for the export (staging, 11 November 2026). Without such a
+  // field the snapshot still reads behind no Access writer.
+  return withAccessDisplayRead(() => withPersonnelPresentationReadTx(ctx, existingTx, async (tx, current) => {
     let catalogue: PersonnelFieldDescriptor[];
     try {
       catalogue = await masterReportFieldsTx(tx, current, companyIds);
@@ -61,5 +61,5 @@ export async function readPersonnelListExportDetails(
       for (const row of projection.sections[0]?.rows ?? []) cells.set(row.subjectId, row.cells);
     }
     return { fields, cells };
-  });
+  }));
 }
