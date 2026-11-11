@@ -30,6 +30,8 @@ export async function previewInformationUpload(ctx:SessionContext,input:{name:st
    if(row.values['Group Join Date'])changes.hiredOn=row.values['Group Join Date'];
    if(row.values['Join Date'])changes.joinDate=row.values['Join Date'];
    if(row.values['Employment Type'])changes.employmentType=row.values['Employment Type'];
+   if(row.values['Contract End Date'])changes.contractEndDate=row.values['Contract End Date'];
+   if(row.values['Internship End Date'])changes.internshipEndDate=row.values['Internship End Date'];
    if(version===2)await extendedChanges(ctx,options,row.values,changes.companyId??co.id,changes);
    row.preview=await previewInformationCorrection(ctx,{employmentId:matches[0].id,changes,reason:row.values['Correction Reason']!},{extended:true});
    row.warnings=(await withTenant(ctx,tx=>organisationImportWarningsTx(tx,ctx,{companyId:row.preview!.after.companyId!,asOf:row.preview!.effectiveOn,...row.ignoredOrganisation}))).warnings;

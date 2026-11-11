@@ -15,7 +15,7 @@ function sets(event:Event,field:InformationField){
  if(field==='companyId'&&['employment.company.transferred','employment.company.transfer.reverted'].includes(event.eventType))return before.companyId!==after.companyId;
  if(field==='gradeId'&&event.eventType==='employment.grade.changed')return p.before!==p.after;
  if(field==='employmentType'&&event.eventType==='employment.assignment.changed')return before.employmentType!==after.employmentType;
- return (field==='hiredOn'||field==='joinDate')&&event.eventType==='employment.info.updated'&&Array.isArray(p.fields)&&p.fields.includes(field);
+ return (field==='hiredOn'||field==='joinDate'||field==='contractEndDate'||field==='internshipEndDate')&&event.eventType==='employment.info.updated'&&Array.isArray(p.fields)&&p.fields.includes(field);
 }
 /** Corrections amend a fact's existing display lineage, not the immutable ledger or payroll as-of facts.
  * A later explicit writer bounds each field separately. Untagged/unresolvable writers are reviewable,

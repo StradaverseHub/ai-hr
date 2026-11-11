@@ -251,11 +251,8 @@ const REGISTRY: Record<string, RegistryTable> = {
           'set by a movement, not by data entry: a probation extension and its recomputed confirmation date are produced by the Movement module and are derived from what it records',
         fields: ['extendedConfirmationDate', 'finalConfirmationDate'],
       },
-      {
-        reason:
-          'contract-employment block, shown only while the current assignment is a contract; a fixed-term intake is a separate request from the day-one load this template serves',
-        fields: ['contractStartDate', 'contractEndDate', 'contractRemark', 'internshipEndDate'],
-      },
+      // 2260a06b — contract_start_date / contract_end_date / contract_remark and internship_end_date are import
+      // columns (descriptor writer employment-info), so they are covered above, not excluded.
       {
         reason:
           'company transfer / rehire date maintained by a movement, never at creation (it is seeded equal to the group join date this file already carries)',
