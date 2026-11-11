@@ -174,7 +174,7 @@ it('keeps the shell bell profile owner on the shared Access lock while starved t
  const b=await seedBase(),subjects=[];
  for(let n=0;n<6;n++)subjects.push(await hireEmployee(adminCtx(b),{person:{fullName:`Fictional profile subject ${n+1}`,primaryEmail:randomUUID()+'@example.invalid'},
   companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()}));
- const requests=await owner.db.insert(profileChangeRequest).values(subjects.flatMap(subject=>Array.from({length:4},()=>({tenantId:b.tenantId,
+ const requests=await owner.db.insert(profileChangeRequest).values(subjects.flatMap(subject=>Array.from({length:8},()=>({tenantId:b.tenantId,
   employmentId:subject.employmentId,personId:subject.personId,proposed:{preferredName:'Fictional pending preferred name'}})))).returning({id:profileChangeRequest.id});
  // A second HR administrator with no person link: the owner after the restart, with the bell open in two tabs.
  const viewerId=await createAppUser(b.tenantId,null,'hr_admin'),viewer:SessionContext={...adminCtx(b),userId:viewerId},modes:string[]=[];
