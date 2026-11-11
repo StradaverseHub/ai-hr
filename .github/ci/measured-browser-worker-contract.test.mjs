@@ -6,7 +6,7 @@ import {
 } from './measured-browser-worker-contract.mjs';
 
 const repo = 'StradaverseHub/ai-hr';
-const branch = 'codex/architecture-five-item-browser-convergence-20261109';
+const branch = 'claude/worker-compare-combined-20261111';
 const workflowPath = '.github/workflows/alpha-focused-checks.yml';
 const sha = 'a'.repeat(40);
 const archiveDigest = 'b'.repeat(64);
