@@ -131,6 +131,27 @@ export function isTransientImportError(error: unknown) {
 }
 /** Every validated row ran; at least one was refused while saving, so the whole file is rolled back. */
 class ImportSaveRefused extends Error { constructor() { super('One or more rows could not be saved.'); } }
+/**
+ * Item 1859cce0 — one row's writes in their own savepoint, RELEASED on success. Postgres.js never releases the
+ * savepoint it opens for a nested `tx.transaction`, so on its own every later statement of the file ran inside
+ * that row's subtransaction (and each next row nested inside the previous one): the file's completion event got
+ * the subtransaction's id, and the measured-import receipt and native outcome capture, which accept only an
+ * event written by the top-level transaction, refused it. The explicit boundary closes the driver's savepoint
+ * too, so the file's own event and receipt are written by the top-level transaction again (the same pattern as
+ * core/delegated-request-effect.ts). On a refusal everything the row wrote is rolled back and the error rethrown.
+ */
+async function inReleasedRowSavepointTx<T>(tx: Tx, work: (savepoint: Tx) => Promise<T>): Promise<T> {
+  await tx.execute(sql`savepoint employee_import_row`);
+  try {
+    const result = await tx.transaction((inner) => work(inner as unknown as Tx));
+    await tx.execute(sql`release savepoint employee_import_row`);
+    return result;
+  } catch (error) {
+    await tx.execute(sql`rollback to savepoint employee_import_row`);
+    await tx.execute(sql`release savepoint employee_import_row`);
+    throw error;
+  }
+}
 
 const EMPLOYMENT_TYPES = new Set(['full_time', 'part_time', 'contract', 'intern']);
 const STANDING_GRANTS = new Set(['ANNUAL', 'SICK', 'HOSPITALIZATION']);
@@ -1510,7 +1531,7 @@ export async function commitEmployeeImport(
     // Item 1859cce0 — each row in a savepoint: a refusal is recorded and the remaining rows still run, so every
     // problem is reported together. A busy database stops the file at once. Anything refused rolls the file back.
     try {
-      const saved = await tx.transaction(savepoint=>applyEmployeeImportRowTx(savepoint,ctx,{row,pack,index,allocationPreview,family:familyByRow.get(index)??[],attemptId}));
+      const saved = await inReleasedRowSavepointTx(tx,savepoint=>applyEmployeeImportRowTx(savepoint,ctx,{row,pack,index,allocationPreview,family:familyByRow.get(index)??[],attemptId}));
       employmentByRow.set(index,saved.employmentId);
       outcomeEmployment(saved.employmentId);outcomePerson(saved.personId);
       if(row.hire.employeeCode)registerSubjects.set(row.hire.employeeCode,{employmentId:saved.employmentId,personId:saved.personId});
@@ -1544,7 +1565,7 @@ export async function commitEmployeeImport(
       continue;
     }
     try {
-      await tx.transaction(savepoint=>setReportingLine(ctx, {
+      await inReleasedRowSavepointTx(tx,savepoint=>setReportingLine(ctx, {
         subordinateEmploymentId: subordinate,
         managerEmploymentId: manager,
         lineType: 'administrative',
