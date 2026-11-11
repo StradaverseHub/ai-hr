@@ -28711,7 +28711,7 @@
       "next": "Tiếp theo",
       "stepOf": "Bước {current} trên {total}",
       "stepNavigation": "Điều hướng thiết lập mẫu",
-      "completeGeneral": "Điền tên, nhãn, công ty, tiền tệ và lựa chọn thời lượng trước khi tiếp tục.",
+      "completeGeneral": "Điền nhãn, tên và loại ngày của mẫu tăng ca trước khi tiếp tục.",
       "employeeEligibility": "Nhân viên áp dụng",
       "testCalculation": "Thử tính toán và xử lý lương",
       "editGeneral": "Sửa cài đặt chung",
@@ -28719,7 +28719,8 @@
       "editEligibility": "Sửa điều kiện áp dụng",
       "salaryDateHelp": "Điều kiện lương dùng khoản lương có hiệu lực vào ngày tính, theo tiền tệ đã chọn.",
       "and": "VÀ",
-      "or": "HOẶC"
+      "or": "HOẶC",
+      "draftOnlyNote": "Các mẫu lưu tại đây vẫn là bản nháp. Mức tăng ca và việc bật mẫu sẽ trở lại trong bản cập nhật tiếp theo. Công ty, tiền tệ và mức đã lưu được giữ nguyên."
     },
     "title": "Mẫu làm thêm giờ",
     "descriptionText": "Cấu hình và kiểm tra làm thêm giờ, thời lượng được trả và ánh xạ bảng lương.",
@@ -28771,7 +28772,7 @@
     "legacyLink": "Mở Nhóm lịch",
     "legacyContext": "Cài đặt nhóm hiện có tiếp tục áp dụng cho đến khi phân công mẫu công thức có hiệu lực.",
     "openWorkspace": "Cấu hình mẫu làm thêm",
-    "immutableHelp": "Phiên bản đã kích hoạt chỉ đọc. Tạo bản nháp kế tiếp để thay đổi về sau.",
+    "immutableHelp": "Phiên bản đã kích hoạt chỉ đọc. Việc thay đổi sẽ trở lại trong bản cập nhật tiếp theo của trang này.",
     "readerLimitations": "Khả dụng của trường đã ghi",
     "unknownHelp": "Thông tin quá khứ thiếu vẫn là Không rõ. Giá trị hiện tại không thay thế bằng chứng quá khứ.",
     "unavailable": "Mẫu hoặc phiên bản không khả dụng trong phạm vi hiện tại.",
@@ -29251,7 +29252,8 @@
     },
     "positionSearch": "Tìm chức danh",
     "loadMorePositions": "Tải thêm chức danh",
-    "attendanceFormulaBinding": "Bộ kết quả công thức chấm công: {id}"
+    "attendanceFormulaBinding": "Bộ kết quả công thức chấm công: {id}",
+    "chooseOneCompany": "Chọn một công ty trong bộ chuyển công ty ở đầu màn hình trước khi lưu mẫu mới. Mẫu mới thuộc về công ty đó."
   },
   "systemTestingWorkspace": {
     "title": "Kiểm thử hệ thống",

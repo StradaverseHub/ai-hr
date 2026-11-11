@@ -50,6 +50,12 @@ On 11 November 2026 MYT the repository owner approved staging window 1 review co
 
 The same 28 approvals carry forward from `b6e04e75dd91e46898fc6d8c509cf331e00bbae6e65ee9cf565d66859680312c` (the four-item board release 8d5254eb) to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status.
 
+## Board staging window 2 (rebased on 8d5254eb)
+
+On 11 November 2026 MYT the repository owner approved staging window 2 review commit `76c7f32a251b6c9eaf959b2b4ac9027893325521` and exact fingerprint `68679de0d5212e8341257bdc7f8f37674b9b14aced7da4c643a9f3b5c104084f` in the Claude board session ("Yes, I approve"). The window integrates board item b31981c0 (simplified Overtime Patterns editor). No provider transform, outbound field, approved purpose or transport changes; the only changed file under lib/ai is the agent capability inventory, which registers the board actions as native handoff, internal or backlog entries.
+
+The same 28 approvals carry forward from `a146ce7f78b132b784519acd00be3aa4aedc03fdb3237f574ab6ec1c15ddbaa6` (board staging window 1) to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status.
+
 ## Combined optimisation release binding
 
 On 11 November 2026 MYT the repository owner's approval to carry the existing approvals forward to this release's AI code version ("i fully approve carrying the existing approvals forward to this release's AI code version") is applied to the combined optimisation release on `claude/combined-release-fixes-20261111` (head `e109a581fff2db63ed48c941798d1805122182e6` before this record), with exact fingerprint `b0fd4f12ad94f19d862bb3478e8b01a54d69a4142fa3b7fb59de2ee5ab3bc20c` over 1,558 files. The release merges main through `9cf69292a`, including board staging window 1 above.
@@ -57,3 +63,11 @@ On 11 November 2026 MYT the repository owner's approval to carry the existing ap
 No provider contract, outbound field or transport is added or widened. Of the 229 covered files changed since `c4745ba3…`, the only changes under `lib/ai` or the AI governance path are the board window 1 capability inventory entries recorded above and lock-mode changes in `core/ai-governance.ts` (the provider-call pause checks hold the tenant Access lock shared instead of exclusive). The rest are the bulk background jobs, the reader/writer Access lock, the commit-sealed audit chain, Home and Personnel read consolidation and their security fixes; none of them adds data to any provider payload.
 
 The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority; a later change to the covered source needs a new owner decision.
+
+## Combined optimisation release candidate 2 binding
+
+The same owner approval ("i fully approve carrying the existing approvals forward to this release's AI code version") is applied to release candidate 2 on `claude/combined-release-rc2-20261111`, which merges the gate repairs and main through `6a21b7382` (board staging window 2 above), with exact fingerprint `2977f22beabd9029861706b724fa086f0ed462bfe40fb231bd738663453f8f35` over 1,558 files.
+
+No provider contract, outbound field or transport is added or widened. Of the 11 covered files changed since `b0fd4f12…`, the only AI-path change is the capability inventory: board window 2's Overtime Patterns entries, and six release entry points classified as presentation reads (`internal:session_and_presentation`) or, for the roster prepare route that generates and copies rosters, `backlog:confirm`. The others move the leave colour and icon allow-lists into a dependency-free module, make a same-period payroll close retry instead of queueing, drop two redirect-only pages from the setup assistant's linkable destinations, and add translations. None of them adds data to any provider payload.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority.

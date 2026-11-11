@@ -4,11 +4,13 @@ import {randomUUID,createHash} from 'node:crypto';
 import {revalidatePath} from 'next/cache';
 import {scopedAdmin} from '@/lib/scope';
 import {
-  saveOvertimePatternDraft, ensureOvertimePatternStarters, forkOvertimePatternDraft, validateOvertimePatternActivation,
-  activateOvertimePattern, stopOvertimePatternVersion, archiveOvertimePattern,
+  saveOvertimePatternDraft, ensureOvertimePatternStarters, getOvertimePattern, overtimePatternWorkspaceCompanies,
   saveOvertimePatternAssignment, closeOvertimePatternAssignment, overtimePatternSetup, overtimePositionChoices,
   OvertimeOwnerError, previewOvertimePatternEmployee, previewOvertimePatternSample, calculateOvertimePatternDay, readOvertimePatternCalculation,
+  type OvertimePatternDraft,
 } from '@/packs/attendance/service';
+import {overtimeEditorBase,overtimeEditorDefinition} from '@/lib/overtime-pattern-editor-scope';
+import {overtimeStarter} from '@/lib/overtime-pattern-starters';
 import {OvertimePatternError} from '@/lib/overtime-pattern-model';
 import {OVERTIME_LIMITS,OVERTIME_SAMPLE_INPUT_FIELDS} from '@/lib/overtime-pattern-model';
 import type {OvertimeIssue,OvertimeInput,OvertimeFact,OvertimeRawSegment} from '@/lib/overtime-pattern-model';
@@ -16,7 +18,7 @@ import type {OvertimeSampleDraft} from '@/lib/overtime-pattern-ui';
 import {overtimePatternTransferOptions,transferOvertimePatternToPayroll,OvertimePayrollError,type OvertimePayrollErrorCode} from '@/packs/payroll/service';
 import {isCalendarDate} from '@/lib/calendar-date';
 
-export type OvertimeActionFailure={ok:false;code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit'|'busy'|'system'|OvertimePayrollErrorCode;reference?:string;issues?:OvertimeIssue[]};
+export type OvertimeActionFailure={ok:false;code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit'|'busy'|'system'|OvertimePayrollErrorCode;reference?:string;issues?:OvertimeIssue[];notice?:'chooseOneCompany'};
 export type OvertimeActionResult<T>={ok:true;value:T}|OvertimeActionFailure;
 const PAGE='/admin/attendance/settings/overtime-patterns';
 async function run<T>(work:()=>Promise<T>,mutation:boolean):Promise<OvertimeActionResult<T>> {
@@ -40,29 +42,44 @@ export async function initializeOvertimeStartersAction() {
   if(result.ok&&result.value.created>0)revalidatePath(PAGE);
   return result;
 }
-export async function saveOvertimeDraftAction(input:Parameters<typeof saveOvertimePatternDraft>[1]) {
-  const {s}=await scopedAdmin();
-  return run(()=>saveOvertimePatternDraft(s,input),true);
+/** What the simplified editor may post (b31981c0). Any other field a browser sends, such as companies, currency,
+ * duration policies or rates, is ignored: the server derives them from the saved pattern or new-draft defaults. */
+export type OvertimeEditorDraft={code:string;name:string;description?:string;definition:unknown};
+export type OvertimeEditorSaveInput={patternId?:string;versionId?:string;expectedRevision?:number;starterKey?:string;draft:OvertimeEditorDraft};
+export async function saveOvertimeDraftAction(input:OvertimeEditorSaveInput) {
+  const {s,scopeIds}=await scopedAdmin();
+  const prepared=await run(()=>editorDraftForSave(s,scopeIds,input),false);
+  if(!prepared.ok)return prepared;
+  if(!prepared.value){const failure:OvertimeActionFailure={ok:false,code:'invalid',notice:'chooseOneCompany'};return failure;}
+  const save=prepared.value;
+  return run(()=>saveOvertimePatternDraft(s,save),true);
 }
-export async function forkOvertimeDraftAction(input:Parameters<typeof forkOvertimePatternDraft>[1]) {
-  const {s}=await scopedAdmin();
-  return run(()=>forkOvertimePatternDraft(s,input),true);
-}
-export async function validateOvertimeAction(input:Parameters<typeof validateOvertimePatternActivation>[1]) {
-  const {s}=await scopedAdmin();
-  return run(()=>validateOvertimePatternActivation(s,input),false);
-}
-export async function activateOvertimeAction(input:Parameters<typeof activateOvertimePattern>[1]) {
-  const {s}=await scopedAdmin();
-  return run(()=>activateOvertimePattern(s,input),true);
-}
-export async function stopOvertimeAction(input:Parameters<typeof stopOvertimePatternVersion>[1]) {
-  const {s}=await scopedAdmin();
-  return run(()=>stopOvertimePatternVersion(s,input),true);
-}
-export async function archiveOvertimeAction(input:Parameters<typeof archiveOvertimePattern>[1]) {
-  const {s}=await scopedAdmin();
-  return run(()=>archiveOvertimePattern(s,input),true);
+/** Server-derived identity and hidden definition for an editor save. Returns null when a new pattern has no single
+ * company in the server-side company selection, so nothing is written and the editor asks for one company. */
+async function editorDraftForSave(s:Awaited<ReturnType<typeof scopedAdmin>>['s'],scopeIds:readonly string[],input:OvertimeEditorSaveInput):Promise<Parameters<typeof saveOvertimePatternDraft>[1]|null> {
+  const invalid=():never=>{throw new OvertimeOwnerError('invalid','Correct the overtime pattern draft.');};
+  if(!input||typeof input!=='object'||!input.draft||typeof input.draft!=='object')invalid();
+  const posted=input.draft,description=typeof posted.description==='string'?posted.description:'';
+  if(input.patternId!==undefined){
+    if(typeof input.patternId!=='string'||typeof input.versionId!=='string')invalid();
+    const detail=await getOvertimePattern(s,input.patternId),version=detail?.versions.find(item=>item.id===input.versionId);
+    if(!detail||!version)throw new OvertimeOwnerError('unavailable','The overtime pattern is unavailable.');
+    if(detail.pattern.kind!=='formula'||!detail.pattern.creationCompanyId||!detail.pattern.code)throw new OvertimeOwnerError('permission','Use the existing Schedule Group owner to maintain legacy overtime.');
+    if(version.activatedAt||detail.pattern.archivedAt)invalid();
+    if(version.revision!==input.expectedRevision)throw new OvertimeOwnerError('stale','The draft changed. Reload before saving.');
+    const owning=detail.pattern.creationCompanyId,companies=await overtimePatternWorkspaceCompanies(s);
+    const draft:OvertimePatternDraft={code:detail.pattern.code,creationCompanyId:owning,companyIds:[...version.companyIds],name:posted.name,description,
+      definition:overtimeEditorDefinition(overtimeEditorBase(version.definition),posted.definition,companies.find(company=>company.id===owning)?.currency) as OvertimePatternDraft['definition']};
+    return {patternId:detail.pattern.id,versionId:version.id,expectedRevision:input.expectedRevision,draft};
+  }
+  if(input.versionId!==undefined)invalid();
+  const starter=input.starterKey===undefined?null:overtimeStarter(input.starterKey);
+  if(input.starterKey!==undefined&&!starter)invalid();
+  const companies=(await overtimePatternWorkspaceCompanies(s)).filter(company=>scopeIds.includes(company.id));
+  if(companies.length!==1)return null;
+  const [company]=companies;
+  return {draft:{code:posted.code,creationCompanyId:company.id,companyIds:[company.id],name:posted.name,description,
+    definition:overtimeEditorDefinition(overtimeEditorBase(null,starter?.key),posted.definition,company.currency) as OvertimePatternDraft['definition']}};
 }
 export async function saveOvertimeAssignmentAction(input:Parameters<typeof saveOvertimePatternAssignment>[1]) {
   const {s}=await scopedAdmin();
