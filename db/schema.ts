@@ -7570,6 +7570,12 @@ export const payrollIndividualTxn = pgTable(
     unit: text('unit'),
     // NULL retains legacy raw formula input. Explicit methods store the final transaction amount.
     calculationMethod: text('calculation_method').$type<'amount' | 'formula'>(),
+    // 792053e5 (draft 9730) — which Pay Item pricing produced `amount`, so processing an OPEN run re-prices the row
+    // from its saved quantity with the latest saved formula (packs/payroll/individual-calculation.ts). NULL = never
+    // re-priced (hand-typed or unknown origin). pricing_ref: rule sha256 or formula revision id.
+    pricingSource: text('pricing_source').$type<'pay_item_rule' | 'saved_formula'>(),
+    pricingRef: text('pricing_ref'),
+    pricedAt: timestamp('priced_at', { withTimezone: true }),
     notes: text('notes'),
     // 49e7e0a2 (0403) — when this row was last CHANGED. Null on every legacy row and on a row that has
     // never been edited since it was keyed, so `created_at` remains the only timestamp for those. It

@@ -133,6 +133,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4500,when:1793330004800,tag:'5100_import_history_kind'},
  // 4452ba3c attendance workflow skipped levels, renumbered after 5100 (docs/MIGRATION-ALLOCATION.md, 11 November 2026).
  {idx:4501,when:1793330004801,tag:'5101_attendance_workflow_skipped_levels'},
+ // 792053e5 payroll formula repricing marker, allocated 5110 at the Irwin board integration (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4510,when:1793330004810,tag:'5110_individual_txn_pricing_marker'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -251,6 +253,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5082_home_own_clock_day':'345c604cebcc58946865d6cc93cd248ad693165063a67648d6781243ec652c58',
  '5083_home_own_schedule_range':'75045a4ec8c176c55ddc51ddba0b079e6ca8c5662b004a345945ee335efce70a',
  '5090_audit_chain_commit_seal':'6ce9bebe8c8de296b3b4a03b1d5d52c90c7df79fbdb0b8f8e0617616001e263e',
+ '5110_individual_txn_pricing_marker':'d48a8a3e394da801bbb0e9917d74d934ab51a3470bdea1bc8d8be1b110a24837',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);
@@ -273,6 +276,7 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  {tag:'5031_leave_ledger_stage',table:'leave_ledger',columns:['stage_id']},
  {tag:'5036_leave_type_pending_year_cycle',table:'leave_type',columns:['pending_year_cycle_job_id']},
  {tag:'5051_payroll_processing_job',table:'payroll_batch',columns:['processing_job_id','processing_started_at']},
+ {tag:'5110_individual_txn_pricing_marker',table:'payroll_individual_txn',columns:['pricing_source','pricing_ref','priced_at']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

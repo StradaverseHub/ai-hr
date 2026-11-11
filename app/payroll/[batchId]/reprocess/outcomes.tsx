@@ -32,9 +32,12 @@ export async function ReprocessOutcomeStatus({ outcome }: { outcome: ReprocessEm
   </Badge>;
 }
 
+const PAY_ITEM_REPRICE_REASONS = new Set(['formula_failed', 'not_positive', 'zero_divisor', 'input_missing', 'no_longer_calculates']);
+const PAY_ITEM_QUANTITY_UNITS = new Set(['hours', 'days', 'qty', 'units']);
+
 export async function ReprocessOutcomeRemarks({
-  outcome, batchId, from, jobId,
-}: { outcome: ReprocessEmployeeOutcome; batchId: string; from?: string; jobId?: string }) {
+  outcome, batchId, from, jobId, currency = null,
+}: { outcome: ReprocessEmployeeOutcome; batchId: string; from?: string; jobId?: string; currency?: string | null }) {
   const t = await getTranslations('payroll.batch');
   const tp = await getTranslations('payroll.process');
   const locale = await getLocale();
@@ -45,6 +48,7 @@ export async function ReprocessOutcomeRemarks({
     ? t(`reprocessExclusion_${outcome.reasonCode}${exclusionDate ? 'Dated' : ''}`, exclusionDate ? { date: formatDate(exclusionDate) } : {})
     : outcome.status === 'skipped' ? t('reprocessNothingPayableFull')
     : outcome.status === 'reprocessed' ? t('reprocessSucceededReason')
+    : outcome.reasonCode === 'PAY_ITEM_FORMULA_FAILED' ? t('reprocessPayItemFormulaReason')
     : outcome.reasonCode === 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' && TAX_SELECTION_CODES.has(outcome.validationCode ?? '')
       ? tp(`taxSelection_${outcome.validationCode}`)
     : outcome.validationCode === 'pcb_non_cash_configuration_invalid'
@@ -57,8 +61,27 @@ export async function ReprocessOutcomeRemarks({
   if (from) query.set('from', from);
   if (jobId) query.set('job', jobId);
   const taxHref = `/payroll/${batchId}/tax-configuration/${outcome.employmentId}${query.size ? `?${query}` : ''}`;
+  const failure = outcome.reasonCode === 'PAY_ITEM_FORMULA_FAILED' ? outcome.formulaFailure : undefined;
   return <div className="space-y-1 text-xs">
     <p>{outcome.status === 'skipped' ? t('reprocessNothingPayableShort') : fullReason}</p>
+    {/* 792053e5 — which Pay Item an updated formula re-priced, for how many transactions, old and new amounts. */}
+    {outcome.status === 'reprocessed' && outcome.repricedItems?.map(item => <div key={item.componentId} className="rounded-md bg-muted/60 px-2 py-1.5" data-testid="reprocess-repriced-item">
+      <p>{t('reprocessPayItemRepriced', { name: item.name })}</p>
+      <p className="font-medium tabular-nums">{t('reprocessPayItemRepricedDetail', {
+        count: item.count,
+        quantity: item.unit && PAY_ITEM_QUANTITY_UNITS.has(item.unit) && item.quantity > 0 ? t(`reprocessPayItemQuantity_${item.unit}`, { qty: item.quantity.toFixed(2) }) : '',
+        before: formatMoney(item.before, currency), after: formatMoney(item.after, currency),
+      })}</p>
+    </div>)}
+    {failure && <div className="rounded-md bg-red-50 px-2 py-1.5 text-red-800 dark:bg-red-500/10 dark:text-red-300" role="alert" data-testid="reprocess-formula-failure">
+      <p><strong>{t('reprocessPayItemFormulaFailed', { name: failure.name, code: failure.code, count: failure.dates.length, dates: failure.dates.map(d => formatDate(d)).join(', ') })}</strong></p>
+      {PAY_ITEM_REPRICE_REASONS.has(failure.reason) && <p>{t(`reprocessPayItemReason_${failure.reason}`)}</p>}
+      {failure.detail && <p className="text-red-700/80 dark:text-red-300/80">{failure.detail}</p>}
+    </div>}
+    {failure && <p className="space-x-3">
+      <Link href={`/admin/pay-components/${encodeURIComponent(failure.code)}`} className="text-primary hover:underline">{t('reprocessOpenPayItem')}</Link>
+      <Link href="/payroll/transactions/individual" className="text-primary hover:underline">{t('reprocessOpenTransactions')}</Link>
+    </p>}
     {outcome.status === 'excluded' && outcome.historyId && <p className="text-muted-foreground">{t('reprocessExcludedRemoved')}</p>}
     {outcome.status === 'not_eligible' && <p className="font-medium text-amber-800 dark:text-amber-300">
       {t(outcome.validationCode === 'last_on_run' ? 'reprocessNotEligibleLastOnRun' : 'reprocessNotEligibleRemovalOff')}
@@ -145,7 +168,7 @@ export async function ReprocessOutcomePanel({ outcomes, history, slips, run, cur
             <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot?.pcbBefore!=null?formatMoney(exactSnapshot.pcbBefore,currency):'—'}</td>
             <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot?.pcbAfter!=null?formatMoney(exactSnapshot.pcbAfter,currency):'—'}</td>
             <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot?.pcbBefore!=null&&exactSnapshot.pcbAfter!=null?formatMoney(Math.round((exactSnapshot.pcbAfter-exactSnapshot.pcbBefore)*100)/100,currency):'—'}</td>
-            <td className="max-w-sm px-3 py-3"><ReprocessOutcomeRemarks outcome={outcome} batchId={batchId} from={from} jobId={jobId} /></td>
+            <td className="max-w-sm px-3 py-3"><ReprocessOutcomeRemarks outcome={outcome} batchId={batchId} from={from} jobId={jobId} currency={currency} /></td>
           </tr>;
         })}</tbody>
       </table>

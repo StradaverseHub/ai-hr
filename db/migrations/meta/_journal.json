@@ -5741,6 +5741,13 @@
       "when": 1793330004801,
       "tag": "5101_attendance_workflow_skipped_levels",
       "breakpoints": true
+    },
+    {
+      "idx": 4510,
+      "version": "7",
+      "when": 1793330004810,
+      "tag": "5110_individual_txn_pricing_marker",
+      "breakpoints": true
     }
   ]
 }

@@ -30,6 +30,9 @@ function matchesImportedSnapshot(row:typeof payrollIndividualTxn.$inferSelect,re
  // Receipts written before explicit input methods have no calculationMethod key. NULL retains
  // that exact legacy interpretation; an explicit method must still invalidate reversal.
  if(recorded&&!Object.hasOwn(recorded,'calculationMethod')&&current.calculationMethod===null)delete current.calculationMethod;
+ // 792053e5 — receipts written before the pricing marker have no marker keys. Marking the row (the one-off script or
+ // a later re-pricing) is not an operator change; a re-priced amount still differs and still refuses reversal.
+ for(const key of ['pricingSource','pricingRef','pricedAt'])if(recorded&&!Object.hasOwn(recorded,key))delete current[key];
  return isDeepStrictEqual(current,recorded);
 }
 type IndividualAnalysis=Extract<Awaited<ReturnType<typeof analyzeTxnImport>>,{kind:'individual'}>;
