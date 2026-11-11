@@ -10935,8 +10935,7 @@
       "policyBadge": "dasar",
       "save": "Simpan",
       "cancel": "Batal",
-      "typeLabel": "Jenis",
-      "rename": "Namakan semula",
+      "unsavedChanges": "Perubahan belum disimpan",
       "unarchive": "Nyaharkib",
       "archive": "Arkib",
       "deleteTypeConfirmTitle": "Padam jenis cuti ini?",
@@ -11181,12 +11180,13 @@
         "summaryCounts": "Turut mengira: {list}"
       },
       "visual": {
-        "sectionTitle": "Konfigurasi Visual Jenis Cuti",
         "help": "Pilihan. Ikon dan tema warna dipaparkan di sebelah jenis cuti ini pada tab Profil Saya → Cuti pekerja. Semata-mata visual — tiada kesan pada kelayakan, syarat atau pengiraan.",
         "iconLabel": "Ikon",
         "colorLabel": "Tema warna",
         "searchPlaceholder": "Cari ikon…",
         "noIcons": "Tiada ikon sepadan.",
+        "changeIcon": "Tukar ikon",
+        "default": "Lalai",
         "color": {
           "blue": "Biru",
           "green": "Hijau",

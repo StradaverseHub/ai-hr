@@ -166,9 +166,13 @@ describe('e1a51aea · reusable sub-step control', () => {
 
 describe('e1a51aea · Details keeps the existing General content — as tab 1', () => {
   it('the identity form and the leave unit live on tab 1, which is what "the leave type" means', () => {
+    // 73cbffa1 — the identity form is its own component (keyed so a save remounts it clean); tab 1 mounts
+    // it, and the markers are asserted on that component's source.
     const identity = tabSegment('identity');
-    for (const needle of ['name="identity"', 'name="leaveUnit"']) {
-      expect(identity.includes(needle), `${needle} on tab 1`).toBe(true);
+    expect(identity).toContain('<LeaveTypeIdentityForm');
+    const component = tabsSrc.slice(tabsSrc.indexOf('function LeaveTypeIdentityForm('));
+    for (const needle of ['name="identity"', 'name="leaveUnit"', 'name="visual"']) {
+      expect(component.includes(needle), `${needle} on tab 1`).toBe(true);
     }
   });
 

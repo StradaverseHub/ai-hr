@@ -10935,8 +10935,7 @@
       "policyBadge": "政策",
       "save": "保存",
       "cancel": "取消",
-      "typeLabel": "类型",
-      "rename": "重命名",
+      "unsavedChanges": "更改尚未保存",
       "unarchive": "取消归档",
       "archive": "归档",
       "deleteTypeConfirmTitle": "删除此休假类型？",
@@ -11181,12 +11180,13 @@
         "summaryCounts": "另计入：{list}"
       },
       "visual": {
-        "sectionTitle": "假期类型视觉配置",
         "help": "可选。图标和颜色主题会显示在员工「我的资料 → 假期」标签中此假期类型旁边。纯视觉效果——不影响权益、资格或计算。",
         "iconLabel": "图标",
         "colorLabel": "颜色主题",
         "searchPlaceholder": "搜索图标…",
         "noIcons": "没有匹配的图标。",
+        "changeIcon": "更换图标",
+        "default": "默认",
         "color": {
           "blue": "蓝色",
           "green": "绿色",

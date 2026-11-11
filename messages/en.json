@@ -10935,8 +10935,7 @@
       "policyBadge": "policy",
       "save": "Save",
       "cancel": "Cancel",
-      "typeLabel": "Type",
-      "rename": "Rename",
+      "unsavedChanges": "Unsaved changes",
       "unarchive": "Unarchive",
       "archive": "Archive",
       "deleteTypeConfirmTitle": "Delete this leave type?",
@@ -11181,12 +11180,13 @@
         "summaryCounts": "Also counts: {list}"
       },
       "visual": {
-        "sectionTitle": "Leave Type Visual Configuration",
         "help": "Optional. The icon and colour theme appear beside this leave type on the employee My Profile → Leave tab. Purely visual — no effect on entitlement, eligibility or calculations.",
         "iconLabel": "Icon",
         "colorLabel": "Colour theme",
         "searchPlaceholder": "Search icons…",
         "noIcons": "No matching icons.",
+        "changeIcon": "Change icon",
+        "default": "Default",
         "color": {
           "blue": "Blue",
           "green": "Green",
