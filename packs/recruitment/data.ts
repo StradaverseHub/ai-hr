@@ -1061,6 +1061,8 @@ export async function rejectApplication(s: SessionContext, applicationId: unknow
 export type ApplicationHistoryRow = {
   id: string; kind: 'applied' | 'moved' | 'rejected' | 'hired'; fromStage: string | null; toStage: string | null; reason: string | null;
   actorName: string | null; occurredAt: string;
+  /** Slice 8: the "applied" event of an application the applicant sent through the careers page (no signed-in author). */
+  byApplicant: boolean;
 };
 /** The application's history, oldest first, with who did it and when. */
 export async function applicationHistory(s: SessionContext, applicationId: unknown): Promise<ApplicationHistoryRow[]> {
@@ -1071,14 +1073,15 @@ export async function applicationHistory(s: SessionContext, applicationId: unkno
     if (!app) throw new RecruitmentError('not_found');
     await assertJobLevelTx(tx, app.companyId, app.jobId, 'read', applicationId);
     const labels = await userLabelsTx(tx, app.companyId);
-    const rows = await tx.execute<{ id: string; kind: ApplicationHistoryRow['kind']; from_stage: string | null; to_stage: string | null; reason: string | null; actor_user_id: string; occurred_at: string }>(sql`
+    const rows = await tx.execute<{ id: string; kind: ApplicationHistoryRow['kind']; from_stage: string | null; to_stage: string | null; reason: string | null; actor_user_id: string | null; occurred_at: string }>(sql`
       select e.id, e.kind, f.name as from_stage, t.name as to_stage, r.internal_reason as reason, e.actor_user_id, to_char(e.occurred_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as occurred_at
       from recruitment_application_event e
       left join recruitment_stage f on f.id = e.from_stage_id
       left join recruitment_stage t on t.id = e.to_stage_id
       left join recruitment_archive_reason r on r.id = e.archive_reason_id
       where e.application_id = ${applicationId}::uuid order by e.occurred_at, e.id`);
-    return rows.map((r) => ({ id: r.id, kind: r.kind, fromStage: r.from_stage, toStage: r.to_stage, reason: r.reason, actorName: labels.get(r.actor_user_id)?.name ?? null, occurredAt: r.occurred_at }));
+    return rows.map((r) => ({ id: r.id, kind: r.kind, fromStage: r.from_stage, toStage: r.to_stage, reason: r.reason, actorName: r.actor_user_id ? labels.get(r.actor_user_id)?.name ?? null : null, occurredAt: r.occurred_at,
+      byApplicant: r.actor_user_id === null }));
   });
 }
 

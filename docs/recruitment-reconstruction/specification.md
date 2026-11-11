@@ -554,3 +554,133 @@ employee's own area. Rewards, notifications, posters and sharing links are not b
 44. HR sees "Employee referral" and the referrer on the application; a company without Recruitment hides the portal
     and refuses the submission.
 45. Slice 5 removal deletes the referral's personal data with the candidate and leaves no orphan rows.
+
+## Slice 8 — Careers page and online applications (owner choice 2026-11-11; EV-039…EV-046)
+
+Moka runs one or more designed career websites per tenant (`/apply/<org>/<site>`), lists the published jobs with
+search and filters, and makes an applicant sign in with an e-mail one-time code before the application form
+(EV-039…EV-043). AI HR builds one plain careers page per company in the AI HR look, with a short application form and
+no applicant accounts. It is the first page of Recruitment that people who are not signed in can open, so everything
+public goes through narrow definer functions and returns only the fields listed here.
+
+### Actors and access
+
+- Visitor (anonymous): anyone on the internet. Reads the careers page and job pages of a company whose page is
+  published; submits applications. No session, cookie or account is created (D-026). They never read any other row.
+- Recruitment administrators of the company: publish or withdraw the page and edit its content and privacy notice;
+  turn "Show on careers page" on or off per job (service and database, like slice 7's portal flag).
+- The job's operating team and reviewers: see the resulting applications like any other, with source "Careers page"
+  and the consent the applicant gave.
+
+### Publishing (EV-039, EV-044, EV-045)
+
+- O: the tenant has career websites (list with name, Default tag, enabled filter, Create, Rename, Copy), a system
+  channel per website on the Sources page, and per job "Career page — Displayed on experienced hires website" with
+  the websites listed and Add.
+- D (D-025): one careers page per company. Company settings (administrators): Published (default off); address
+  (`/careers/<address>`, 3–40 lowercase letters, digits and hyphens, not starting or ending with a hyphen, unique in
+  the installation); display name (required, ≤120); headline (≤160); introduction (plain text, ≤4,000); privacy
+  notice (plain text, required to publish, ≤20,000). The page cannot be published without an address, a display
+  name and a privacy notice. Changing the privacy notice text creates a new numbered version; earlier versions are
+  kept unchanged so HR can show what an applicant agreed to.
+- Per job: **Show on careers page**, default off, changed only by a recruitment administrator of the job's company
+  (service refusal and direct-database refusal). A job is public only while the company page is published, the job is
+  Open and the flag is on. Otherwise every public URL for it returns the same Not found page.
+- No page designer, images, custom HTML, multiple sites, job-board posting, posters or QR codes (D-025).
+
+### Public pages (EV-040…EV-042)
+
+- `/careers/<address>`: display name, headline, introduction, then the job list. Search by job title keyword; filter
+  by work location and employment type; count of results; 30 jobs per page with page links. Each job: title, job
+  number, employment type, work location, date it was put on the careers page ("Posted on", Kuala Lumpur date),
+  link to the job. Newest first.
+- `/careers/<address>/jobs/<jobId>`: breadcrumb (careers page / job), title, job number, employment type, work
+  location, posted date, the job description as plain text with line breaks, and the application form. "Copy link"
+  copies the page URL. No referral sharing (D-022).
+- Never shown: salary, hiring team, department head, application counts, requisition, stage or process data,
+  internal notes, any candidate data.
+- Language: the visitor chooses among the six AI HR locales (`?lang=`, default from `Accept-Language`, else en); the
+  company's own text is shown as entered.
+- No cookies are set, so there is no cookie banner (the reference's banner covers its own tracking cookies). Pages
+  send `x-robots-tag: noindex` until the owner decides on search indexing (D-028). Responses carry a restrictive
+  content security policy; nothing from another origin is loaded.
+- An unknown address, an unpublished page, or a hidden, closed or other-company job all return the same Not found
+  page with no detail.
+
+### Applying (EV-043; slice 5 rules)
+
+- O: "Apply now" opens an e-mail + verification code sign-in; the first sign-in creates an applicant account; the
+  applicant agrees to the vendor's privacy policy. The application form itself was not observed (no account was
+  created).
+- D (D-026): no applicant account and no e-mail code. The form is plain HTML (works without JavaScript) and posts to
+  a route handler:
+  - full name (required, ≤120), e-mail (required, valid), mobile (optional, 7–20 digits after removing spaces, `+`,
+    `-`, brackets), résumé (optional; slice 5 types and 10 MB limit, type read from the bytes), a short message
+    (optional, ≤1,000);
+  - a required tick: "I have read the privacy notice and agree that <display name> may use my details for
+    recruitment", with the current notice shown on the page or one click away;
+  - an invisible honeypot field; a filled honeypot is treated as accepted and stores nothing.
+- On success, in one transaction: a candidate, an application at the job's first enabled stage with source
+  "Careers page", the résumé as a slice 5 file (permission confirmation recorded as given by the applicant), a slice 5
+  consent record (consented, method "online form", the notice version, the date), and an audit event without
+  personal data. The slice 5 duplicate check runs and may flag the candidate for HR; a public submission is never
+  attached to an existing candidate automatically (an unverified e-mail must not write into someone's record).
+- Refusals and limits (D-027): every well-formed submission gets the same "Thank you, your application was received"
+  page, including when nothing is stored because the slice 5 repeated-application rule matches (same normalised
+  e-mail, same job, active or archived within the window) or the honeypot is filled. The audit event records the
+  reason for HR. Missing or invalid fields return the form with field messages (these depend only on what was typed).
+  Too many submissions return "Too many applications from this connection. Try again later." (HTTP 429):
+  - at most 5 submissions per hour from one client address (stored only as a keyed hash, kept 2 days). The address
+    comes only from the installation's verified ingress header; without that step the form returns "Online
+    applications are not available right now" and stores nothing (local development excepted);
+  - at most 300 accepted submissions per company per Kuala Lumpur day; beyond that, "This page is not accepting
+    applications right now. Try again later." Both limits are fixed in this slice (D-027).
+  - the request body is refused above 11 MB before it is read.
+- A job that stops being public between viewing and submitting returns Not found and stores nothing.
+- No confirmation e-mail to the applicant and no notification to HR (D-029). New applications appear on the
+  Candidates board like any other.
+
+### HR pages
+
+- Settings › Careers page (administrators): the fields above, a Publish switch that explains what is missing, "Open
+  careers page" link, and the privacy notice version history (version, date, who changed it; text viewable).
+- Position page: "Show on careers page" switch (administrators), the public link while the job is public.
+- Application page: source "Careers page"; consent shows "Online form, careers page notice version N, <date>".
+
+### Data
+
+- One migration in the recruitment block (4408, renumbered with 4400–4407 before any merge): company careers settings
+  columns, a notice version table, the job flag and its posted date with a guard trigger, a private attempt table,
+  and definer functions for the public reads and the submission. Forced RLS and explicit grants on new tables; none to
+  PUBLIC. The public functions take the address and job id only and return only the listed fields.
+- The AI Centre recruitment read stays counts only.
+
+### Slice 8 acceptance cases
+
+46. An unpublished page, an unknown address, a closed or on-hold job, a job with the flag off and another company's
+    job each return the same Not found page; the published page lists exactly the Open, flagged jobs of that company.
+47. Publishing is refused without an address, display name and privacy notice; the address format and installation
+    uniqueness are enforced; only a recruitment administrator of the company can change the settings or a job's flag
+    (service refusal and direct-database refusal).
+48. Public page data contains no salary, team, count, stage or candidate field (sentinel values set on the job and on
+    existing applications are absent from the HTML).
+49. Search, location and employment-type filters and paging return the expected jobs in posted-date order, checked
+    against an independently computed list.
+50. A valid submission creates exactly one candidate, one application at the first enabled stage with source
+    "Careers page", the résumé file, the consent record with the current notice version, and one event without
+    personal data, in one transaction; nothing is attached to an existing candidate with the same e-mail.
+51. Invalid input (missing name, bad e-mail, bad mobile, message too long, no consent tick, bad file type, file over
+    10 MB) stores nothing and returns field messages; a body over 11 MB is refused before parsing.
+52. A repeated application within the window and a filled honeypot each return the same thank-you page and store no
+    candidate; the audit event names the reason.
+53. The 6th submission in an hour from one client address returns 429; the 301st accepted submission on a Kuala Lumpur
+    day for a company is refused, with the day boundary at Kuala Lumpur midnight; no raw client address is stored.
+54. Two concurrent submissions with the same e-mail to the same job: exactly one is stored.
+55. Changing the privacy notice creates version N+1 and keeps version N unchanged; a submission records the version
+    shown.
+56. The public routes work signed out under each authentication provider branch of the middleware and set no cookie;
+    every other route still requires sign-in.
+57. Slice 5 removal of a careers applicant leaves no personal data, including in the attempt table and events.
+58. Rendered: the careers page, a job page, the form with field errors, the thank-you page and the 429 page in a
+    signed-out browser; the HR settings and job switch as an administrator; the application page showing the source
+    and consent.

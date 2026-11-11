@@ -37246,7 +37246,9 @@
       "period_invalid": "请选择有效的期间：开始日期必须早于或等于结束日期。",
       "period_too_long": "报表最多涵盖 24 个月。请选择较短的期间。",
       "report_too_slow": "此报表耗时过长。请缩短期间或选择一个职位，然后重试。",
-      "referral_refused": "无法接受此推荐。"
+      "referral_refused": "无法接受此推荐。",
+      "careers_address_taken": "其他公司已使用此页面地址，请选择其他地址。",
+      "careers_incomplete": "招聘页面需要页面地址、显示名称和隐私声明才能发布。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -37394,6 +37396,16 @@
         "show": "在推荐门户上显示",
         "notOpen": "只有当职位重新开放时，员工才会再次看到它。",
         "save": "保存推荐设置"
+      },
+      "careersPage": {
+        "title": "招聘页面",
+        "note": "职位处于“开放”状态时，在公司的公开招聘页面上显示。访客可以看到职位名称、职位编号、雇佣类型、工作地点、发布日期和描述——绝不显示薪资、招聘团队或申请人数。",
+        "show": "在招聘页面上显示",
+        "save": "保存招聘页面设置",
+        "notOpen": "只有当职位重新开放时，访客才会再次看到它。",
+        "notPublished": "招聘页面尚未发布。请在“设置 › 招聘页面”中发布。",
+        "publicLink": "公开链接",
+        "postedOn": "自 {date} 起在招聘页面上显示"
       }
     },
     "candidates": {
@@ -37490,7 +37502,8 @@
         "offers": "录用与审批",
         "privacy": "隐私",
         "tags": "标签",
-        "referrals": "推荐"
+        "referrals": "推荐",
+        "careers": "招聘页面"
       },
       "iv": {
         "rulesTitle": "反馈规则",
@@ -37598,6 +37611,39 @@
         "protectionNote": "0 到 {max} 天。0 表示关闭保护。",
         "limitNote": "每位员工每天最多可推荐 {limit} 人。",
         "save": "保存"
+      },
+      "careers": {
+        "title": "招聘页面",
+        "note": "本公司的一个公开页面，任何人无需登录即可查看您选择的职位并提交申请。页面会要求搜索引擎不要收录，也不会向申请人或人力资源部门发送电子邮件。",
+        "statusPublished": "已发布——访客可以打开此页面。",
+        "statusDraft": "未发布——访客会看到“未找到页面”。",
+        "missingTitle": "发布前，请先添加：",
+        "missing": {
+          "address": "页面地址",
+          "displayName": "显示名称",
+          "notice": "隐私声明"
+        },
+        "publish": "发布招聘页面",
+        "withdraw": "撤下招聘页面",
+        "open": "打开招聘页面",
+        "limits": "每个网络连接每小时最多可提交 {hour} 份申请，此页面每天最多接受 {day} 份申请（马来西亚时间）。新申请会显示在候选人看板上。",
+        "contentTitle": "页面内容",
+        "address": "页面地址",
+        "addressHelp": "3–40 个小写字母、数字或连字符，不能以连字符开头或结尾。页面地址为 {path}。",
+        "displayName": "显示名称",
+        "headline": "标语",
+        "introduction": "简介",
+        "notice": "隐私声明",
+        "noticeHelp": "申请人必须同意此文本。保存修改后的文本会创建新版本；之前的版本保持不变，便于查看每位申请人同意的内容。",
+        "save": "保存招聘页面",
+        "changed": "最后由 {by} 修改，{at}",
+        "unnamedUser": "用户",
+        "versionsTitle": "隐私声明版本",
+        "versionsEmpty": "尚无隐私声明。",
+        "version": "第 {version} 版",
+        "versionBy": "由 {by} 保存，{at}",
+        "current": "当前",
+        "notAccepting": "此系统尚未启用在线申请。访客可以查看招聘页面和职位，但无法提交申请表。完成系统安装中针对招聘页面的网页服务器设置步骤后，即可开始在线申请（请参阅安装指南）。您仍可发布此页面。"
       }
     },
     "app": {
@@ -38053,7 +38099,10 @@
       "consentDate": "日期",
       "consentMethod": "方式",
       "noticeReference": "隐私声明编号",
-      "recordConsent": "记录"
+      "recordConsent": "记录",
+      "careersConsent": "在线表格，招聘页面声明第 {version} 版，{date}",
+      "recordedByApplicant": "由申请人在招聘页面提供，{at}",
+      "uploadedByApplicant": "由申请人在招聘页面上传，{at}"
     },
     "reports": {
       "purpose": "您负责的公司和职位的招聘数据：仅显示数量、比率和天数，绝不显示候选人的个人信息。",
@@ -38209,6 +38258,79 @@
         "removed": "已移除"
       },
       "jobUnavailable": "此职位已不再开放推荐。"
+    },
+    "careers": {
+      "source": "招聘页面",
+      "received": "于 {date} 通过招聘页面申请",
+      "message": "申请人留言",
+      "byApplicant": "申请人（通过招聘页面）"
     }
+  },
+  "careersPublic": {
+    "language": "语言",
+    "notFoundTitle": "未找到页面",
+    "notFoundBody": "此招聘页面或职位不可用。",
+    "unavailableTitle": "暂时无法访问",
+    "unavailableBody": "此页面目前无法显示，请稍后再试。",
+    "jobsTitle": "招聘职位",
+    "searchLabel": "按职位名称搜索",
+    "location": "工作地点",
+    "employmentType": "雇佣类型",
+    "any": "全部",
+    "search": "搜索",
+    "resultsOne": "1 个招聘职位",
+    "resultsMany": "{count} 个招聘职位",
+    "resultsNone": "没有符合搜索条件的招聘职位。",
+    "noJobs": "目前没有招聘职位。",
+    "jobNumber": "职位编号",
+    "postedOn": "发布于 {date}",
+    "pagination": "分页",
+    "previous": "上一页",
+    "next": "下一页",
+    "pageOf": "第 {page} 页，共 {pages} 页",
+    "breadcrumb": "页面路径",
+    "copyLink": "复制链接",
+    "copyLinkHelp": "选中链接并复制，即可分享此职位。",
+    "description": "职位介绍",
+    "applyTitle": "申请此职位",
+    "requiredNote": "标有 * 的字段为必填项。",
+    "fullName": "姓名",
+    "email": "电子邮件",
+    "mobile": "手机号码",
+    "mobileHelp": "选填。可包含空格、+、- 和括号。",
+    "resume": "简历",
+    "resumeHelp": "选填。PDF、Word、JPG 或 PNG，最大 10 MB。",
+    "message": "给招聘团队的留言",
+    "messageHelp": "选填，最多 1,000 个字符。",
+    "honeypot": "请勿填写此字段",
+    "consent": "我已阅读隐私声明，并同意 {company} 将我的资料用于招聘。",
+    "noticeTitle": "阅读隐私声明（第 {version} 版）",
+    "submit": "提交申请",
+    "thanksTitle": "谢谢，您的申请已收到",
+    "thanksBody": "感谢您对 {job} 职位的关注。",
+    "backToCareers": "查看 {company} 的所有招聘职位",
+    "backToJob": "返回职位",
+    "limitedTitle": "请稍后再试",
+    "tooMany": "此网络连接提交的申请过多，请稍后再试。",
+    "companyLimit": "此页面目前不接受申请，请稍后再试。",
+    "tooLargeTitle": "表单过大",
+    "tooLarge": "表单过大，无法提交。简历最大为 10 MB。",
+    "errors": {
+      "summary": "请检查下方标出的字段。",
+      "required": "此字段为必填项。",
+      "invalid": "请检查此字段。",
+      "emailInvalid": "请输入有效的电子邮件地址。",
+      "mobileInvalid": "请输入 7 至 20 位数字，可包含空格、+、- 和括号。",
+      "tooLong": "内容过长，最多 {max} 个字符。",
+      "fileType": "请上传 PDF、Word、JPG 或 PNG 文件。",
+      "fileTooLarge": "文件超过 10 MB。",
+      "consentRequired": "请勾选此框，确认您同意隐私声明。",
+      "fileName": "文件名包含不允许的字符，请重命名文件后再试。",
+      "noticeChanged": "自您打开此页面后，隐私声明已更新。请阅读下方的最新声明，并再次勾选此框。"
+    },
+    "applicationsUnavailable": "目前无法在线申请，请稍后再试。",
+    "busyTitle": "当前访问繁忙",
+    "busyBody": "目前访问此页面的人数较多，请稍后再试。",
+    "tooManyReads": "此网络连接的页面请求过多，请一分钟后再试。"
   }
 }

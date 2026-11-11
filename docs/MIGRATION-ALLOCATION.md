@@ -1,3 +1,23 @@
+# Recruitment slice 8 — 11 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 7 entry,
+`4408_recruitment_careers_page` at idx 3808 / when 1793330004108. A fresh read-only survey
+after `git fetch --prune origin` of 4,063 remote refs (436 distinct committed journal blobs),
+283 registered worktrees (266 readable journals) and 351 committed allocation-document blobs
+found no claim of this name, position or timestamp. Peers above this block still exist (the
+peer timestamp maximum is 1793330099956), so whichever lands later must be checked against
+the applied watermark; a lower timestamp can be silently skipped. 4408 adds three tables
+(`recruitment_careers_site`, `recruitment_careers_notice`, `recruitment_careers_application`),
+two private tables (`app.recruitment_careers_context`, `app.recruitment_careers_attempt`), two
+job columns and one consent column, drops NOT NULL from five author columns of earlier
+recruitment tables (guarded so only the careers submission writes a NULL author), adds
+owner-only marker-bound policies on nine earlier recruitment tables (plus owner-only
+public-row read policies on job openings and notices), the careers definer functions and an
+owner-only scheduled prune, and restates `app.recruitment_destroy_candidate` (4407 body) and
+`app.recruitment_delete_company_setup` (4405 body) with one added step each; 4400–4407 are
+unapplied outside throwaway databases and CI. Recheck peer claims, the published baseline and
+the ordered applied ledger before admission. The reservation grants no installation authority.
+
 # Recruitment slice 7 — 11 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 6 entry,

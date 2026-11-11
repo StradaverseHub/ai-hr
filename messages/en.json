@@ -37246,7 +37246,9 @@
       "period_invalid": "Choose a valid period: the start date must be on or before the end date.",
       "period_too_long": "A report covers at most 24 months. Choose a shorter period.",
       "report_too_slow": "This report took too long. Narrow the period or choose a job, then try again.",
-      "referral_refused": "This referral could not be accepted."
+      "referral_refused": "This referral could not be accepted.",
+      "careers_address_taken": "Another company already uses this page address. Choose a different one.",
+      "careers_incomplete": "The careers page needs a page address, a display name and a privacy notice before it can be published."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -37394,6 +37396,16 @@
         "show": "Show on the referral portal",
         "notOpen": "Employees will see this job again only when it is Open.",
         "save": "Save referral setting"
+      },
+      "careersPage": {
+        "title": "Careers page",
+        "note": "Show this job on the company’s public careers page while it is Open. Visitors see the title, job number, employment type, work location, posted date and description — never salary, the hiring team or how many people applied.",
+        "show": "Show on careers page",
+        "save": "Save careers page setting",
+        "notOpen": "Visitors will see this job again only when it is Open.",
+        "notPublished": "The careers page is not published yet. Publish it in Settings › Careers page.",
+        "publicLink": "Public link",
+        "postedOn": "On the careers page since {date}"
       }
     },
     "candidates": {
@@ -37490,7 +37502,8 @@
         "offers": "Offers and approvals",
         "privacy": "Privacy",
         "tags": "Tags",
-        "referrals": "Referrals"
+        "referrals": "Referrals",
+        "careers": "Careers page"
       },
       "iv": {
         "rulesTitle": "Feedback rules",
@@ -37598,6 +37611,39 @@
         "protectionNote": "From 0 to {max} days. 0 switches the protection off.",
         "limitNote": "Each employee can make at most {limit} referrals a day.",
         "save": "Save"
+      },
+      "careers": {
+        "title": "Careers page",
+        "note": "One public page for this company where anyone can see the jobs you choose and apply without signing in. Search engines are asked not to list it, and no email is sent to applicants or to HR.",
+        "statusPublished": "Published — visitors can open the page.",
+        "statusDraft": "Not published — visitors see “Page not found”.",
+        "missingTitle": "Before you can publish, add:",
+        "missing": {
+          "address": "a page address",
+          "displayName": "a display name",
+          "notice": "a privacy notice"
+        },
+        "publish": "Publish careers page",
+        "withdraw": "Withdraw careers page",
+        "open": "Open careers page",
+        "limits": "Each connection can send at most {hour} applications an hour, and the page accepts at most {day} applications a day (Malaysia time). New applications appear on the Candidates board.",
+        "contentTitle": "Page content",
+        "address": "Page address",
+        "addressHelp": "3–40 lowercase letters, digits and hyphens, not starting or ending with a hyphen. The page is {path}.",
+        "displayName": "Display name",
+        "headline": "Headline",
+        "introduction": "Introduction",
+        "notice": "Privacy notice",
+        "noticeHelp": "Applicants must agree to this text. Saving a changed text creates a new version; earlier versions are kept unchanged so you can see what each applicant agreed to.",
+        "save": "Save careers page",
+        "changed": "Last changed by {by}, {at}",
+        "unnamedUser": "User",
+        "versionsTitle": "Privacy notice versions",
+        "versionsEmpty": "No privacy notice yet.",
+        "version": "Version {version}",
+        "versionBy": "Saved by {by}, {at}",
+        "current": "Current",
+        "notAccepting": "Online applications are not working on this installation yet. Visitors can see the careers page and its jobs, but the application form cannot be sent. Online applications start working after the installation’s web server step for the careers page is completed (see the installation guide). You can still publish the page."
       }
     },
     "app": {
@@ -38053,7 +38099,10 @@
       "consentDate": "Date",
       "consentMethod": "Method",
       "noticeReference": "Privacy notice reference",
-      "recordConsent": "Record"
+      "recordConsent": "Record",
+      "careersConsent": "Online form, careers page notice version {version}, {date}",
+      "recordedByApplicant": "Given by the applicant on the careers page, {at}",
+      "uploadedByApplicant": "Uploaded by the applicant on the careers page, {at}"
     },
     "reports": {
       "purpose": "Hiring figures for the companies and jobs you work on: counts, rates and durations only, never a candidate's details.",
@@ -38209,6 +38258,79 @@
         "removed": "Removed"
       },
       "jobUnavailable": "This job is no longer open for referrals."
+    },
+    "careers": {
+      "source": "Careers page",
+      "received": "Applied on the careers page on {date}",
+      "message": "Message from the applicant",
+      "byApplicant": "The applicant, on the careers page"
     }
+  },
+  "careersPublic": {
+    "language": "Language",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "This careers page or job is not available.",
+    "unavailableTitle": "Temporarily unavailable",
+    "unavailableBody": "This page cannot be shown right now. Try again later.",
+    "jobsTitle": "Open positions",
+    "searchLabel": "Search by job title",
+    "location": "Work location",
+    "employmentType": "Employment type",
+    "any": "Any",
+    "search": "Search",
+    "resultsOne": "1 open position",
+    "resultsMany": "{count} open positions",
+    "resultsNone": "No open positions match your search.",
+    "noJobs": "There are no open positions right now.",
+    "jobNumber": "Job number",
+    "postedOn": "Posted on {date}",
+    "pagination": "Pages",
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {page} of {pages}",
+    "breadcrumb": "Breadcrumb",
+    "copyLink": "Copy link",
+    "copyLinkHelp": "Select the link and copy it to share this job.",
+    "description": "About the job",
+    "applyTitle": "Apply for this job",
+    "requiredNote": "Fields marked * are required.",
+    "fullName": "Full name",
+    "email": "Email",
+    "mobile": "Mobile number",
+    "mobileHelp": "Optional. Spaces, +, - and brackets are fine.",
+    "resume": "Resume",
+    "resumeHelp": "Optional. PDF, Word, JPG or PNG, up to 10 MB.",
+    "message": "Message to the hiring team",
+    "messageHelp": "Optional, up to 1,000 characters.",
+    "honeypot": "Leave this field empty",
+    "consent": "I have read the privacy notice and agree that {company} may use my details for recruitment.",
+    "noticeTitle": "Read the privacy notice (version {version})",
+    "submit": "Send application",
+    "thanksTitle": "Thank you, your application was received",
+    "thanksBody": "Thank you for your interest in {job}.",
+    "backToCareers": "See all open positions at {company}",
+    "backToJob": "Back to the job",
+    "limitedTitle": "Please try again later",
+    "tooMany": "Too many applications from this connection. Try again later.",
+    "companyLimit": "This page is not accepting applications right now. Try again later.",
+    "tooLargeTitle": "The form is too large",
+    "tooLarge": "The form could not be sent because it is too large. The resume can be at most 10 MB.",
+    "errors": {
+      "summary": "Please check the fields marked below.",
+      "required": "This field is required.",
+      "invalid": "Check this field.",
+      "emailInvalid": "Enter a valid email address.",
+      "mobileInvalid": "Enter 7 to 20 digits. Spaces, +, - and brackets are allowed.",
+      "tooLong": "This is too long. Use at most {max} characters.",
+      "fileType": "Upload a PDF, Word, JPG or PNG file.",
+      "fileTooLarge": "The file is larger than 10 MB.",
+      "consentRequired": "Tick the box to confirm you agree to the privacy notice.",
+      "fileName": "The file name contains characters that are not allowed. Rename the file and try again.",
+      "noticeChanged": "The privacy notice has changed since you opened this page. Read the current notice below and tick the box again."
+    },
+    "applicationsUnavailable": "Online applications are not available right now. Try again later.",
+    "busyTitle": "Busy right now",
+    "busyBody": "Many people are using this page right now. Try again in a moment.",
+    "tooManyReads": "Too many page requests from this connection. Try again in a minute."
   }
 }

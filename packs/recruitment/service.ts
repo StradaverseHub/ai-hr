@@ -74,6 +74,23 @@ export {
   validateReferralInput, validateProtectionDays, referralStatus,
 } from './referral-model';
 export type { ReferralStatus, ReferralRefusal, ReferralProgress } from './referral-model';
+// Slice 8 — the public careers page and online applications: HR's settings, notice versions and job switch; the
+// anonymous page, job and submission (through 4408's definer functions only); the careers record on an application.
+export {
+  careersSettings, updateCareersSettings, setCareersPublished, setJobCareersPage, jobCareersStatus, applicationCareers, careersPublicPage,
+  careersPublicJob, submitCareersApplication, careersClientLimited,
+} from './careers';
+export type {
+  CareersSettings, CareersNoticeVersionView, JobCareersStatus, ApplicationCareers, CareersPublicJobRow, CareersPublicPage, CareersPublicJob,
+  CareersPageQuery, CareersSubmission, CareersSubmitResult,
+} from './careers';
+export {
+  CAREERS_DISPLAY_NAME_MAX, CAREERS_HEADLINE_MAX, CAREERS_INTRODUCTION_MAX, CAREERS_NOTICE_MAX, CAREERS_NAME_MAX, CAREERS_MESSAGE_MAX,
+  CAREERS_CLIENT_HOURLY_LIMIT, CAREERS_COMPANY_DAILY_LIMIT, CAREERS_PAGE_SIZE, CAREERS_BODY_MAX_BYTES, CAREERS_QUERY_MAX, CAREERS_PUBLISH_REQUIREMENTS,
+  CAREERS_FORM_FIELDS, CAREERS_FIELD_ERRORS, CAREERS_OUTCOMES, validateCareersSettings, careersPublishMissing, validateCareersApplication,
+  normaliseCareersMobile, careersPageNumber, careersPageCount,
+} from './careers-model';
+export type { CareersPublishRequirement, CareersFormField, CareersFieldError, CareersOutcome, CareersApplicationInput, CareersSettingsInput } from './careers-model';
 export {
   RecruitmentError, RECRUITMENT_ERROR_CODES, JOB_STATUSES, JOB_STATUS_TRANSITIONS, JOB_MEMBER_ROLES, POSITION_ATTRIBUTES, RECRUITMENT_TYPES,
   JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab,

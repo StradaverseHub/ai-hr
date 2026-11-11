@@ -5139,6 +5139,13 @@
       "when": 1793330004107,
       "tag": "4407_recruitment_referrals",
       "breakpoints": true
+    },
+    {
+      "idx": 3808,
+      "version": "7",
+      "when": 1793330004108,
+      "tag": "4408_recruitment_careers_page",
+      "breakpoints": true
     }
   ]
 }

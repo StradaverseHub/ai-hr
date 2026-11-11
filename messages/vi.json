@@ -37246,7 +37246,9 @@
       "period_invalid": "Hãy chọn khoảng thời gian hợp lệ: ngày bắt đầu phải trước hoặc bằng ngày kết thúc.",
       "period_too_long": "Một báo cáo bao gồm tối đa 24 tháng. Hãy chọn khoảng thời gian ngắn hơn.",
       "report_too_slow": "Báo cáo này mất quá nhiều thời gian. Hãy thu hẹp khoảng thời gian hoặc chọn một vị trí rồi thử lại.",
-      "referral_refused": "Không thể nhận lượt giới thiệu này."
+      "referral_refused": "Không thể nhận lượt giới thiệu này.",
+      "careers_address_taken": "Một công ty khác đã dùng địa chỉ trang này. Hãy chọn địa chỉ khác.",
+      "careers_incomplete": "Trang tuyển dụng cần có địa chỉ trang, tên hiển thị và thông báo quyền riêng tư trước khi xuất bản."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -37394,6 +37396,16 @@
         "show": "Hiển thị trên cổng giới thiệu",
         "notOpen": "Nhân viên chỉ thấy lại vị trí này khi vị trí được Mở.",
         "save": "Lưu cài đặt giới thiệu"
+      },
+      "careersPage": {
+        "title": "Trang tuyển dụng",
+        "note": "Hiển thị vị trí này trên trang tuyển dụng công khai của công ty khi vị trí Đang mở. Khách truy cập thấy tên vị trí, mã vị trí, loại hình công việc, địa điểm làm việc, ngày đăng và mô tả — không bao giờ thấy mức lương, đội tuyển dụng hay số người đã ứng tuyển.",
+        "show": "Hiển thị trên trang tuyển dụng",
+        "save": "Lưu cài đặt trang tuyển dụng",
+        "notOpen": "Khách truy cập chỉ thấy lại vị trí này khi vị trí Đang mở.",
+        "notPublished": "Trang tuyển dụng chưa được xuất bản. Hãy xuất bản trong Cài đặt › Trang tuyển dụng.",
+        "publicLink": "Liên kết công khai",
+        "postedOn": "Trên trang tuyển dụng từ {date}"
       }
     },
     "candidates": {
@@ -37490,7 +37502,8 @@
         "offers": "Đề nghị và phê duyệt",
         "privacy": "Quyền riêng tư",
         "tags": "Thẻ",
-        "referrals": "Giới thiệu"
+        "referrals": "Giới thiệu",
+        "careers": "Trang tuyển dụng"
       },
       "iv": {
         "rulesTitle": "Quy tắc đánh giá",
@@ -37598,6 +37611,39 @@
         "protectionNote": "Từ 0 đến {max} ngày. 0 là tắt bảo vệ.",
         "limitNote": "Mỗi nhân viên giới thiệu được tối đa {limit} người mỗi ngày.",
         "save": "Lưu"
+      },
+      "careers": {
+        "title": "Trang tuyển dụng",
+        "note": "Một trang công khai cho công ty này, nơi bất kỳ ai cũng có thể xem các vị trí bạn chọn và ứng tuyển mà không cần đăng nhập. Trang yêu cầu công cụ tìm kiếm không hiển thị nó, và không gửi email cho ứng viên hay bộ phận nhân sự.",
+        "statusPublished": "Đã xuất bản — khách truy cập có thể mở trang.",
+        "statusDraft": "Chưa xuất bản — khách truy cập sẽ thấy “Không tìm thấy trang”.",
+        "missingTitle": "Trước khi xuất bản, hãy thêm:",
+        "missing": {
+          "address": "địa chỉ trang",
+          "displayName": "tên hiển thị",
+          "notice": "thông báo quyền riêng tư"
+        },
+        "publish": "Xuất bản trang tuyển dụng",
+        "withdraw": "Gỡ trang tuyển dụng",
+        "open": "Mở trang tuyển dụng",
+        "limits": "Mỗi kết nối gửi tối đa {hour} hồ sơ mỗi giờ, và trang nhận tối đa {day} hồ sơ mỗi ngày (giờ Malaysia). Hồ sơ mới hiển thị trên bảng Ứng viên.",
+        "contentTitle": "Nội dung trang",
+        "address": "Địa chỉ trang",
+        "addressHelp": "3–40 chữ thường, chữ số và dấu gạch ngang, không bắt đầu hoặc kết thúc bằng dấu gạch ngang. Trang sẽ là {path}.",
+        "displayName": "Tên hiển thị",
+        "headline": "Tiêu đề",
+        "introduction": "Giới thiệu",
+        "notice": "Thông báo quyền riêng tư",
+        "noticeHelp": "Ứng viên phải đồng ý với nội dung này. Lưu nội dung đã sửa sẽ tạo phiên bản mới; các phiên bản trước được giữ nguyên để bạn biết mỗi ứng viên đã đồng ý với nội dung nào.",
+        "save": "Lưu trang tuyển dụng",
+        "changed": "Thay đổi lần cuối bởi {by}, {at}",
+        "unnamedUser": "Người dùng",
+        "versionsTitle": "Các phiên bản thông báo quyền riêng tư",
+        "versionsEmpty": "Chưa có thông báo quyền riêng tư.",
+        "version": "Phiên bản {version}",
+        "versionBy": "Lưu bởi {by}, {at}",
+        "current": "Hiện hành",
+        "notAccepting": "Hệ thống này chưa nhận hồ sơ trực tuyến. Khách truy cập vẫn xem được trang tuyển dụng và các vị trí, nhưng chưa gửi được biểu mẫu ứng tuyển. Việc ứng tuyển trực tuyến sẽ hoạt động sau khi hoàn tất bước cấu hình máy chủ web cho trang tuyển dụng (xem hướng dẫn cài đặt). Bạn vẫn có thể xuất bản trang."
       }
     },
     "app": {
@@ -38053,7 +38099,10 @@
       "consentDate": "Ngày",
       "consentMethod": "Cách thức",
       "noticeReference": "Mã thông báo quyền riêng tư",
-      "recordConsent": "Ghi nhận"
+      "recordConsent": "Ghi nhận",
+      "careersConsent": "Biểu mẫu trực tuyến, thông báo trang tuyển dụng phiên bản {version}, {date}",
+      "recordedByApplicant": "Ứng viên cung cấp trên trang tuyển dụng, {at}",
+      "uploadedByApplicant": "Ứng viên tải lên trên trang tuyển dụng, {at}"
     },
     "reports": {
       "purpose": "Số liệu tuyển dụng của các công ty và vị trí bạn phụ trách: chỉ gồm số lượng, tỷ lệ và số ngày, không bao giờ có thông tin của ứng viên.",
@@ -38209,6 +38258,79 @@
         "removed": "Đã xoá"
       },
       "jobUnavailable": "Vị trí này không còn mở để giới thiệu."
+    },
+    "careers": {
+      "source": "Trang tuyển dụng",
+      "received": "Ứng tuyển qua trang tuyển dụng ngày {date}",
+      "message": "Lời nhắn của ứng viên",
+      "byApplicant": "Ứng viên, qua trang tuyển dụng"
     }
+  },
+  "careersPublic": {
+    "language": "Ngôn ngữ",
+    "notFoundTitle": "Không tìm thấy trang",
+    "notFoundBody": "Trang tuyển dụng hoặc vị trí này không khả dụng.",
+    "unavailableTitle": "Tạm thời không khả dụng",
+    "unavailableBody": "Không thể hiển thị trang này lúc này. Vui lòng thử lại sau.",
+    "jobsTitle": "Vị trí đang tuyển",
+    "searchLabel": "Tìm theo tên vị trí",
+    "location": "Địa điểm làm việc",
+    "employmentType": "Loại hình công việc",
+    "any": "Tất cả",
+    "search": "Tìm kiếm",
+    "resultsOne": "1 vị trí đang tuyển",
+    "resultsMany": "{count} vị trí đang tuyển",
+    "resultsNone": "Không có vị trí nào phù hợp với tìm kiếm của bạn.",
+    "noJobs": "Hiện chưa có vị trí nào đang tuyển.",
+    "jobNumber": "Mã vị trí",
+    "postedOn": "Đăng ngày {date}",
+    "pagination": "Trang",
+    "previous": "Trước",
+    "next": "Tiếp",
+    "pageOf": "Trang {page}/{pages}",
+    "breadcrumb": "Đường dẫn",
+    "copyLink": "Sao chép liên kết",
+    "copyLinkHelp": "Chọn liên kết và sao chép để chia sẻ vị trí này.",
+    "description": "Về vị trí này",
+    "applyTitle": "Ứng tuyển vị trí này",
+    "requiredNote": "Các trường có dấu * là bắt buộc.",
+    "fullName": "Họ và tên",
+    "email": "Email",
+    "mobile": "Số điện thoại di động",
+    "mobileHelp": "Không bắt buộc. Có thể dùng dấu cách, +, - và dấu ngoặc.",
+    "resume": "CV",
+    "resumeHelp": "Không bắt buộc. PDF, Word, JPG hoặc PNG, tối đa 10 MB.",
+    "message": "Lời nhắn cho bộ phận tuyển dụng",
+    "messageHelp": "Không bắt buộc, tối đa 1.000 ký tự.",
+    "honeypot": "Để trống trường này",
+    "consent": "Tôi đã đọc thông báo quyền riêng tư và đồng ý để {company} sử dụng thông tin của tôi cho mục đích tuyển dụng.",
+    "noticeTitle": "Đọc thông báo quyền riêng tư (phiên bản {version})",
+    "submit": "Gửi hồ sơ ứng tuyển",
+    "thanksTitle": "Cảm ơn bạn, hồ sơ ứng tuyển của bạn đã được tiếp nhận",
+    "thanksBody": "Cảm ơn bạn đã quan tâm đến vị trí {job}.",
+    "backToCareers": "Xem tất cả vị trí đang tuyển tại {company}",
+    "backToJob": "Quay lại vị trí",
+    "limitedTitle": "Vui lòng thử lại sau",
+    "tooMany": "Có quá nhiều hồ sơ được gửi từ kết nối này. Vui lòng thử lại sau.",
+    "companyLimit": "Trang này hiện không nhận hồ sơ. Vui lòng thử lại sau.",
+    "tooLargeTitle": "Biểu mẫu quá lớn",
+    "tooLarge": "Không thể gửi biểu mẫu vì quá lớn. CV tối đa 10 MB.",
+    "errors": {
+      "summary": "Vui lòng kiểm tra các trường được đánh dấu bên dưới.",
+      "required": "Trường này là bắt buộc.",
+      "invalid": "Vui lòng kiểm tra trường này.",
+      "emailInvalid": "Vui lòng nhập địa chỉ email hợp lệ.",
+      "mobileInvalid": "Nhập từ 7 đến 20 chữ số. Có thể dùng dấu cách, +, - và dấu ngoặc.",
+      "tooLong": "Nội dung quá dài. Tối đa {max} ký tự.",
+      "fileType": "Vui lòng tải lên tệp PDF, Word, JPG hoặc PNG.",
+      "fileTooLarge": "Tệp lớn hơn 10 MB.",
+      "consentRequired": "Đánh dấu vào ô để xác nhận bạn đồng ý với thông báo quyền riêng tư.",
+      "fileName": "Tên tệp có ký tự không được phép. Hãy đổi tên tệp rồi thử lại.",
+      "noticeChanged": "Thông báo quyền riêng tư đã thay đổi kể từ khi bạn mở trang này. Hãy đọc thông báo hiện hành bên dưới và đánh dấu lại vào ô."
+    },
+    "applicationsUnavailable": "Hiện chưa thể ứng tuyển trực tuyến. Vui lòng thử lại sau.",
+    "busyTitle": "Hệ thống đang bận",
+    "busyBody": "Hiện có nhiều người đang dùng trang này. Vui lòng thử lại sau giây lát.",
+    "tooManyReads": "Có quá nhiều yêu cầu trang từ kết nối này. Vui lòng thử lại sau một phút."
   }
 }

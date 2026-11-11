@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, PageHeader, StatusBadge, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { getJob, JOB_MEMBER_ROLES, JOB_STATUS_TRANSITIONS, RecruitmentError, type JobDetail } from '@/packs/recruitment/service';
-import { addJobMemberAction, changeJobStatusAction, removeJobMemberAction, setJobReferralPortalAction, updateJobAction } from '../../actions';
-import { Notice, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
+import { getJob, jobCareersStatus, JOB_MEMBER_ROLES, JOB_STATUS_TRANSITIONS, RecruitmentError, type JobDetail } from '@/packs/recruitment/service';
+import { addJobMemberAction, changeJobStatusAction, removeJobMemberAction, setJobCareersPageAction, setJobReferralPortalAction, updateJobAction } from '../../actions';
+import { Notice, klDate, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
 import { JobInfoFields } from '../job-fields';
 
 type Tab = 'info' | 'settings' | 'team';
@@ -35,6 +35,10 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
   const { job, options } = detail;
   if (!detail.manage || !options) return <TeamJobView detail={detail} />;
   const here = `/recruitment/positions/${job.id}${tab === 'info' ? '' : `?tab=${tab}`}`;
+  // Administrators only (this view is the manage view); a refusal hides the section rather than showing a wrong state.
+  const [careers, locale] = tab === 'settings'
+    ? await Promise.all([jobCareersStatus(s, job.id).catch((e) => { if (e instanceof RecruitmentError) return null; throw e; }), getLocale()])
+    : [null, 'en'];
   const hidden = (name: string, value: string | null | undefined) => <input type="hidden" name={name} value={value ?? ''} />;
   const notice = sp.notice === 'created' ? t('createdNotice') : sp.notice === 'saved' ? t('savedNotice') : undefined;
   return (
@@ -125,6 +129,27 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
           </label>
           {job.showOnReferralPortal && job.status !== 'open' && <p className="text-xs text-muted-foreground">{t('referralPortal.notOpen')}</p>}
           <button type="submit" className={btnGhost}>{t('referralPortal.save')}</button>
+        </form>
+      )}
+
+      {tab === 'settings' && careers && (
+        <form action={setJobCareersPageAction} className="space-y-3 rounded-xl border border-border bg-card p-4" aria-labelledby="careers-page-title">
+          {hidden('jobId', job.id)}{hidden('returnTo', here)}
+          <div>
+            <h2 id="careers-page-title" className="text-sm font-semibold">{t('careersPage.title')}</h2>
+            <p className="text-sm text-muted-foreground">{t('careersPage.note')}</p>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="showOnCareersPage" defaultChecked={careers.show} />{t('careersPage.show')}
+          </label>
+          {careers.show && careers.postedAt && <p className="text-xs text-muted-foreground">{t('careersPage.postedOn', { date: klDate(locale, careers.postedAt) })}</p>}
+          {careers.show && !careers.jobOpen && <p className="text-xs text-muted-foreground">{t('careersPage.notOpen')}</p>}
+          {careers.show && !careers.sitePublished && <p className="text-xs text-muted-foreground">{t('careersPage.notPublished')}</p>}
+          {careers.publicPath && (
+            <p className="text-sm"><span className="font-medium">{t('careersPage.publicLink')}:</span>{' '}
+              <a href={careers.publicPath} target="_blank" rel="noopener noreferrer" className="break-all text-primary hover:underline">{careers.publicPath}</a></p>
+          )}
+          <button type="submit" className={btnGhost}>{t('careersPage.save')}</button>
         </form>
       )}
 

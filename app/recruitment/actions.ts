@@ -18,6 +18,7 @@ import {
   addCandidateEntry, addCandidateTag, deleteCandidateFile, destroyCandidates, recordConsent, removeCandidateEntry, removeCandidateTag,
   saveCandidateRestricted, saveTag, saveTagGroup, updateCandidateProfile, updatePrivacySettings, uploadCandidateFile, CANDIDATE_FILE_MAX_BYTES,
   checkDuplicateCandidate, RECRUITMENT_ERROR_CODES, type DuplicateCheck, setJobReferralPortal, updateReferralSettings,
+  setCareersPublished, setJobCareersPage, updateCareersSettings,
 } from '@/packs/recruitment/service';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -81,6 +82,12 @@ export async function changeJobStatusAction(f: FormData) {
 export async function setJobReferralPortalAction(f: FormData) {
   const jobId = str(f, 'jobId');
   return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobReferralPortal(s, jobId, f.get('showOnReferralPortal') === 'on'));
+}
+
+/** Slice 8: the job's "Show on careers page" switch (recruitment administrators; the service and 4408 refuse others). */
+export async function setJobCareersPageAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobCareersPage(s, jobId, f.get('showOnCareersPage') === 'on'));
 }
 
 export async function addJobMemberAction(f: FormData) {
@@ -357,6 +364,17 @@ export async function updatePrivacySettingsAction(f: FormData) {
 /** Slice 7: the company's referral protection period in days (0 switches it off). */
 export async function updateReferralSettingsAction(f: FormData) {
   return run(back(f, '/recruitment/settings?section=referrals'), (s) => updateReferralSettings(s, str(f, 'companyId'), { protectionDays: str(f, 'protectionDays') }));
+}
+/** Slice 8: the careers page fields; a changed privacy notice text becomes a new version (earlier ones are kept). */
+export async function updateCareersSettingsAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=careers'), (s) => updateCareersSettings(s, str(f, 'companyId'), {
+    address: str(f, 'address'), displayName: str(f, 'displayName'), headline: str(f, 'headline'), introduction: String(f.get('introduction') ?? ''),
+    notice: String(f.get('notice') ?? ''),
+  }));
+}
+/** Slice 8: publish or withdraw the careers page (publishing is refused while anything it needs is missing). */
+export async function setCareersPublishedAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=careers'), (s) => setCareersPublished(s, str(f, 'companyId'), str(f, 'published') === 'on'));
 }
 /** Destruction: the administrator's selection and explicit confirmation; the service re-checks every candidate is due. */
 export async function destroyCandidatesAction(f: FormData) {

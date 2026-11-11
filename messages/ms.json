@@ -37246,7 +37246,9 @@
       "period_invalid": "Pilih tempoh yang sah: tarikh mula mesti pada atau sebelum tarikh tamat.",
       "period_too_long": "Laporan meliputi paling lama 24 bulan. Pilih tempoh yang lebih pendek.",
       "report_too_slow": "Laporan ini mengambil masa terlalu lama. Pendekkan tempoh atau pilih satu jawatan, kemudian cuba lagi.",
-      "referral_refused": "Rujukan ini tidak dapat diterima."
+      "referral_refused": "Rujukan ini tidak dapat diterima.",
+      "careers_address_taken": "Syarikat lain sudah menggunakan alamat halaman ini. Pilih alamat lain.",
+      "careers_incomplete": "Halaman kerjaya memerlukan alamat halaman, nama paparan dan notis privasi sebelum boleh diterbitkan."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -37394,6 +37396,16 @@
         "show": "Tunjukkan di portal rujukan",
         "notOpen": "Pekerja akan melihat jawatan ini semula hanya apabila ia Dibuka.",
         "save": "Simpan tetapan rujukan"
+      },
+      "careersPage": {
+        "title": "Halaman kerjaya",
+        "note": "Tunjukkan jawatan ini di halaman kerjaya awam syarikat semasa ia Dibuka. Pelawat melihat nama jawatan, nombor jawatan, jenis pekerjaan, lokasi kerja, tarikh disiarkan dan huraian — tidak sekali-kali gaji, pasukan pengambilan atau bilangan pemohon.",
+        "show": "Tunjukkan di halaman kerjaya",
+        "save": "Simpan tetapan halaman kerjaya",
+        "notOpen": "Pelawat akan melihat jawatan ini semula hanya apabila ia Dibuka.",
+        "notPublished": "Halaman kerjaya belum diterbitkan. Terbitkannya di Tetapan › Halaman kerjaya.",
+        "publicLink": "Pautan awam",
+        "postedOn": "Di halaman kerjaya sejak {date}"
       }
     },
     "candidates": {
@@ -37490,7 +37502,8 @@
         "offers": "Tawaran dan kelulusan",
         "privacy": "Privasi",
         "tags": "Tag",
-        "referrals": "Rujukan"
+        "referrals": "Rujukan",
+        "careers": "Halaman kerjaya"
       },
       "iv": {
         "rulesTitle": "Peraturan maklum balas",
@@ -37598,6 +37611,39 @@
         "protectionNote": "Dari 0 hingga {max} hari. 0 mematikan perlindungan.",
         "limitNote": "Setiap pekerja boleh membuat paling banyak {limit} rujukan sehari.",
         "save": "Simpan"
+      },
+      "careers": {
+        "title": "Halaman kerjaya",
+        "note": "Satu halaman awam untuk syarikat ini di mana sesiapa sahaja boleh melihat jawatan yang anda pilih dan memohon tanpa log masuk. Enjin carian diminta untuk tidak menyenaraikannya, dan tiada e-mel dihantar kepada pemohon atau HR.",
+        "statusPublished": "Diterbitkan — pelawat boleh membuka halaman ini.",
+        "statusDraft": "Belum diterbitkan — pelawat melihat “Halaman tidak dijumpai”.",
+        "missingTitle": "Sebelum menerbitkan, tambah:",
+        "missing": {
+          "address": "alamat halaman",
+          "displayName": "nama paparan",
+          "notice": "notis privasi"
+        },
+        "publish": "Terbitkan halaman kerjaya",
+        "withdraw": "Tarik balik halaman kerjaya",
+        "open": "Buka halaman kerjaya",
+        "limits": "Setiap sambungan boleh menghantar paling banyak {hour} permohonan sejam, dan halaman ini menerima paling banyak {day} permohonan sehari (waktu Malaysia). Permohonan baharu dipaparkan pada papan Calon.",
+        "contentTitle": "Kandungan halaman",
+        "address": "Alamat halaman",
+        "addressHelp": "3–40 huruf kecil, digit dan sempang, tidak bermula atau berakhir dengan sempang. Halamannya ialah {path}.",
+        "displayName": "Nama paparan",
+        "headline": "Tajuk utama",
+        "introduction": "Pengenalan",
+        "notice": "Notis privasi",
+        "noticeHelp": "Pemohon mesti bersetuju dengan teks ini. Menyimpan teks yang diubah akan mencipta versi baharu; versi terdahulu dikekalkan tanpa perubahan supaya anda dapat melihat apa yang dipersetujui oleh setiap pemohon.",
+        "save": "Simpan halaman kerjaya",
+        "changed": "Kali terakhir diubah oleh {by}, {at}",
+        "unnamedUser": "Pengguna",
+        "versionsTitle": "Versi notis privasi",
+        "versionsEmpty": "Belum ada notis privasi.",
+        "version": "Versi {version}",
+        "versionBy": "Disimpan oleh {by}, {at}",
+        "current": "Semasa",
+        "notAccepting": "Permohonan dalam talian belum berfungsi pada pemasangan ini. Pelawat boleh melihat halaman kerjaya dan jawatannya, tetapi borang permohonan tidak dapat dihantar. Permohonan dalam talian mula berfungsi selepas langkah pelayan web pemasangan untuk halaman kerjaya selesai (lihat panduan pemasangan). Anda masih boleh menerbitkan halaman ini."
       }
     },
     "app": {
@@ -38053,7 +38099,10 @@
       "consentDate": "Tarikh",
       "consentMethod": "Kaedah",
       "noticeReference": "Rujukan notis privasi",
-      "recordConsent": "Rekod"
+      "recordConsent": "Rekod",
+      "careersConsent": "Borang dalam talian, notis halaman kerjaya versi {version}, {date}",
+      "recordedByApplicant": "Diberikan oleh pemohon di halaman kerjaya, {at}",
+      "uploadedByApplicant": "Dimuat naik oleh pemohon di halaman kerjaya, {at}"
     },
     "reports": {
       "purpose": "Angka pengambilan bagi syarikat dan jawatan yang anda uruskan: kiraan, kadar dan tempoh sahaja, tidak sekali-kali butiran calon.",
@@ -38209,6 +38258,79 @@
         "removed": "Dialih keluar"
       },
       "jobUnavailable": "Jawatan ini tidak lagi dibuka untuk rujukan."
+    },
+    "careers": {
+      "source": "Halaman kerjaya",
+      "received": "Memohon melalui halaman kerjaya pada {date}",
+      "message": "Mesej daripada pemohon",
+      "byApplicant": "Pemohon, melalui halaman kerjaya"
     }
+  },
+  "careersPublic": {
+    "language": "Bahasa",
+    "notFoundTitle": "Halaman tidak dijumpai",
+    "notFoundBody": "Halaman kerjaya atau jawatan ini tidak tersedia.",
+    "unavailableTitle": "Tidak tersedia buat sementara",
+    "unavailableBody": "Halaman ini tidak dapat dipaparkan sekarang. Cuba lagi kemudian.",
+    "jobsTitle": "Jawatan kosong",
+    "searchLabel": "Cari mengikut nama jawatan",
+    "location": "Lokasi kerja",
+    "employmentType": "Jenis pekerjaan",
+    "any": "Semua",
+    "search": "Cari",
+    "resultsOne": "1 jawatan kosong",
+    "resultsMany": "{count} jawatan kosong",
+    "resultsNone": "Tiada jawatan kosong yang sepadan dengan carian anda.",
+    "noJobs": "Tiada jawatan kosong buat masa ini.",
+    "jobNumber": "Nombor jawatan",
+    "postedOn": "Disiarkan pada {date}",
+    "pagination": "Halaman",
+    "previous": "Sebelumnya",
+    "next": "Seterusnya",
+    "pageOf": "Halaman {page} daripada {pages}",
+    "breadcrumb": "Laluan navigasi",
+    "copyLink": "Salin pautan",
+    "copyLinkHelp": "Pilih pautan dan salin untuk berkongsi jawatan ini.",
+    "description": "Mengenai jawatan",
+    "applyTitle": "Mohon jawatan ini",
+    "requiredNote": "Ruangan bertanda * wajib diisi.",
+    "fullName": "Nama penuh",
+    "email": "E-mel",
+    "mobile": "Nombor telefon bimbit",
+    "mobileHelp": "Pilihan. Ruang, +, - dan kurungan dibenarkan.",
+    "resume": "Resume",
+    "resumeHelp": "Pilihan. PDF, Word, JPG atau PNG, sehingga 10 MB.",
+    "message": "Mesej kepada pasukan pengambilan",
+    "messageHelp": "Pilihan, sehingga 1,000 aksara.",
+    "honeypot": "Biarkan ruangan ini kosong",
+    "consent": "Saya telah membaca notis privasi dan bersetuju bahawa {company} boleh menggunakan maklumat saya untuk tujuan pengambilan.",
+    "noticeTitle": "Baca notis privasi (versi {version})",
+    "submit": "Hantar permohonan",
+    "thanksTitle": "Terima kasih, permohonan anda telah diterima",
+    "thanksBody": "Terima kasih atas minat anda terhadap jawatan {job}.",
+    "backToCareers": "Lihat semua jawatan kosong di {company}",
+    "backToJob": "Kembali ke jawatan",
+    "limitedTitle": "Sila cuba lagi kemudian",
+    "tooMany": "Terlalu banyak permohonan daripada sambungan ini. Cuba lagi kemudian.",
+    "companyLimit": "Halaman ini tidak menerima permohonan buat masa ini. Cuba lagi kemudian.",
+    "tooLargeTitle": "Borang terlalu besar",
+    "tooLarge": "Borang tidak dapat dihantar kerana terlalu besar. Resume tidak boleh melebihi 10 MB.",
+    "errors": {
+      "summary": "Sila semak ruangan yang ditanda di bawah.",
+      "required": "Ruangan ini wajib diisi.",
+      "invalid": "Semak ruangan ini.",
+      "emailInvalid": "Masukkan alamat e-mel yang sah.",
+      "mobileInvalid": "Masukkan 7 hingga 20 digit. Ruang, +, - dan kurungan dibenarkan.",
+      "tooLong": "Terlalu panjang. Gunakan tidak lebih daripada {max} aksara.",
+      "fileType": "Muat naik fail PDF, Word, JPG atau PNG.",
+      "fileTooLarge": "Fail melebihi 10 MB.",
+      "consentRequired": "Tandakan kotak untuk mengesahkan anda bersetuju dengan notis privasi.",
+      "fileName": "Nama fail mengandungi aksara yang tidak dibenarkan. Namakan semula fail dan cuba lagi.",
+      "noticeChanged": "Notis privasi telah berubah sejak anda membuka halaman ini. Baca notis semasa di bawah dan tandakan kotak sekali lagi."
+    },
+    "applicationsUnavailable": "Permohonan dalam talian tidak tersedia buat masa ini. Cuba lagi kemudian.",
+    "busyTitle": "Sibuk buat masa ini",
+    "busyBody": "Ramai orang sedang menggunakan halaman ini. Cuba lagi sebentar lagi.",
+    "tooManyReads": "Terlalu banyak permintaan halaman daripada sambungan ini. Cuba lagi dalam seminit."
   }
 }

@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly expiry cleanup for AI HR careers page submission records
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=300
+Persistent=true
+Unit=aihr-recruitment-careers-prune.service
+
+[Install]
+WantedBy=timers.target

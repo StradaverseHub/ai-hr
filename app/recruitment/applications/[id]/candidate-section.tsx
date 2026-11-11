@@ -177,7 +177,7 @@ export async function CandidateSection({ profile: p, applicationId, here, locale
                 <span>
                   <Pill tone={f.kind === 'resume' ? 'info' : 'neutral'}>{t(`fileKinds.${f.kind}`)}</Pill>{' '}
                   <a className="text-primary hover:underline" href={`/recruitment/files/${f.id}`}>{f.fileName}</a>
-                  <span className="block text-xs text-muted-foreground">{size(f.sizeBytes)} · {t('uploadedBy', { name: f.uploadedBy ?? t('unnamedUser'), at: klDateTime(locale, f.uploadedAt) })}</span>
+                  <span className="block text-xs text-muted-foreground">{size(f.sizeBytes)} · {f.byApplicant ? t('uploadedByApplicant', { at: klDateTime(locale, f.uploadedAt) }) : t('uploadedBy', { name: f.uploadedBy ?? t('unnamedUser'), at: klDateTime(locale, f.uploadedAt) })}</span>
                 </span>
                 {p.can.edit && (
                   <form action={deleteCandidateFileAction}>{base}{hidden('fileId', f.id)}
@@ -250,8 +250,11 @@ export async function CandidateSection({ profile: p, applicationId, here, locale
             <ol className="space-y-1 text-sm">
               {p.consent.history.map((h) => (
                 <li key={h.id} className="border-l-2 border-border pl-3">
-                  <p>{t(`consentStatuses.${h.status}`)} · {day(h.effectiveOn)} · {t(`consentMethods.${h.method}`)}{h.noticeReference && <> · {h.noticeReference}</>}</p>
-                  <p className="text-xs text-muted-foreground">{t('recordedBy', { name: h.recordedBy ?? t('unnamedUser'), at: klDateTime(locale, h.recordedAt) })}</p>
+                  {h.careersNoticeVersion !== null
+                    ? <p>{t(`consentStatuses.${h.status}`)} · {t('careersConsent', { version: h.careersNoticeVersion, date: day(h.effectiveOn) })}</p>
+                    : <p>{t(`consentStatuses.${h.status}`)} · {day(h.effectiveOn)} · {t(`consentMethods.${h.method}`)}{h.noticeReference && <> · {h.noticeReference}</>}</p>}
+                  <p className="text-xs text-muted-foreground">{h.byApplicant ? t('recordedByApplicant', { at: klDateTime(locale, h.recordedAt) })
+                    : t('recordedBy', { name: h.recordedBy ?? t('unnamedUser'), at: klDateTime(locale, h.recordedAt) })}</p>
                 </li>
               ))}
             </ol>

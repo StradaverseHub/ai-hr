@@ -185,12 +185,16 @@ export async function destroyCandidates(s: SessionContext, companyId: unknown, c
 // ── The candidate profile ────────────────────────────────────────────────────────────────────────────────────
 
 export type CandidateEntryView = { id: string; kind: EntryKind; organisation: string; title: string | null; fromMonth: string | null; toMonth: string | null; isCurrent: boolean };
-export type CandidateFileView = { id: string; kind: CandidateFileKind; fileName: string; mimeType: string; sizeBytes: number; uploadedAt: string; uploadedBy: string | null };
+export type CandidateFileView = { id: string; kind: CandidateFileKind; fileName: string; mimeType: string; sizeBytes: number; uploadedAt: string; uploadedBy: string | null;
+  /** Slice 8: uploaded by the applicant on the careers page. */
+  byApplicant: boolean };
 export type CandidateRestrictedView = {
   currentSalaryAmount: string | null; currentSalaryCurrency: string | null; expectedSalaryAmount: string | null; expectedSalaryCurrency: string | null;
   idType: IdType | null; idNumber: string | null;
 };
-export type ConsentEntryView = { id: string; status: ConsentStatus; effectiveOn: string; method: ConsentMethod; noticeReference: string | null; recordedAt: string; recordedBy: string | null };
+export type ConsentEntryView = { id: string; status: ConsentStatus; effectiveOn: string; method: ConsentMethod; noticeReference: string | null; recordedAt: string; recordedBy: string | null;
+  /** Slice 8: given by the applicant on the careers page, agreeing to this notice version. */
+  careersNoticeVersion: number | null; byApplicant: boolean };
 export type CandidateProfile = {
   candidateId: string; companyId: string; removed: boolean;
   fullName: string; email: string | null; phone: string | null; location: string | null; currentCompany: string | null; currentTitle: string | null;
@@ -254,7 +258,8 @@ export async function candidateProfile(s: SessionContext, applicationId: unknown
       const history = await tx.select().from(recruitmentCandidateConsent).where(eq(recruitmentCandidateConsent.candidateId, c.id));
       const views = history.map((h) => ({
         id: h.id, status: h.status, effectiveOn: h.effectiveOn, method: h.method, noticeReference: h.noticeReference, recordedAt: iso(h.recordedAt),
-        recordedBy: who(h.recordedByUserId),
+        recordedBy: h.recordedByUserId ? who(h.recordedByUserId) : null, careersNoticeVersion: h.careersNoticeVersion ?? null,
+        byApplicant: h.recordedByUserId === null,
       })).sort((a, b) => b.effectiveOn.localeCompare(a.effectiveOn) || b.recordedAt.localeCompare(a.recordedAt));
       consent = { current: currentConsent(views), history: views };
     }
@@ -268,7 +273,7 @@ export async function candidateProfile(s: SessionContext, applicationId: unknown
       candidateId: c.id, companyId: c.companyId, removed: !!c.destroyedAt, fullName: c.fullName, email: c.email, phone: c.phone, location: c.location,
       currentCompany: c.currentCompany, currentTitle: c.currentTitle, highestEducation: c.highestEducation ?? null, noticePeriod: c.noticePeriod,
       source: c.source ?? null, entries, restricted, consent, retention,
-      files: files.map((f) => ({ ...f, uploadedAt: iso(f.uploadedAt), uploadedBy: who(f.uploadedBy) })),
+      files: files.map((f) => ({ ...f, uploadedAt: iso(f.uploadedAt), uploadedBy: f.uploadedBy ? who(f.uploadedBy) : null, byApplicant: f.uploadedBy === null })),
       tags: tags ? tags.map((t) => ({ id: t.id, name: t.name, groupName: t.group_name, enabled: t.enabled })) : null,
       tagOptions: tagOptions.map((t) => ({ id: t.id, name: t.name, groupName: t.group_name })),
       can: { edit: access.operate && !c.destroyedAt, admin: access.admin, review: access.review },

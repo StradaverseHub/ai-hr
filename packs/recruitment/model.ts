@@ -64,6 +64,8 @@ export const RECRUITMENT_ERROR_CODES = [
   'period_invalid', 'period_too_long', 'report_too_slow',
   // Slice 7: every database refusal of a referral reaches the referrer as this one code (D-023).
   'referral_refused',
+  // Slice 8: the careers page address is used by another company; the page cannot be published yet (missing items).
+  'careers_address_taken', 'careers_incomplete',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

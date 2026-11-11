@@ -1,6 +1,6 @@
 /**
  * The Recruitment pack's satellite tables (ADR-0080 D5/D11) as the service reads and writes them. The DDL,
- * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4407; these
+ * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4408; these
  * declarations carry no references or checks of their own so they can never disagree with it.
  */
 import { boolean, customType, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
@@ -17,6 +17,13 @@ const audit = {
   createdByUserId: uuid('created_by_user_id').notNull(),
   updatedAt: ts('updated_at').notNull().defaultNow(),
   updatedByUserId: uuid('updated_by_user_id').notNull(),
+};
+/** Slice 8 (4408): candidates and applications received through the careers page have no signed-in author (NULL). */
+const auditOrCareers = {
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id'),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+  updatedByUserId: uuid('updated_by_user_id'),
 };
 
 export const recruitmentStage = pgTable('recruitment_stage', {
@@ -86,6 +93,10 @@ export const recruitmentJobOpening = pgTable('recruitment_job_opening', {
   statusChangedAt: ts('status_changed_at').notNull().defaultNow(),
   /** Slice 7 (4407): listed on the employee referral portal while Open. Changed by recruitment administrators only. */
   showOnReferralPortal: boolean('show_on_referral_portal').notNull().default(false),
+  /** Slice 8 (4408): listed on the company's public careers page while Open and the page is published. Administrators only;
+   *  careersPostedAt is set by the database when the flag is turned on and cleared when it is turned off. */
+  showOnCareersPage: boolean('show_on_careers_page').notNull().default(false),
+  careersPostedAt: ts('careers_posted_at'),
   ...audit,
 });
 
@@ -117,7 +128,7 @@ export const recruitmentCandidate = pgTable('recruitment_candidate', {
   source: text('source').$type<CandidateSource>(),
   destroyedAt: ts('destroyed_at'),
   destroyedByUserId: uuid('destroyed_by_user_id'),
-  ...audit,
+  ...auditOrCareers,
 });
 
 export const recruitmentApplication = pgTable('recruitment_application', {
@@ -133,9 +144,10 @@ export const recruitmentApplication = pgTable('recruitment_application', {
   source: text('source'),
   appliedAt: ts('applied_at').notNull().defaultNow(),
   stateChangedAt: ts('state_changed_at').notNull().defaultNow(),
-  createdByUserId: uuid('created_by_user_id').notNull(),
+  /** NULL only for an application received through the careers page (slice 8). */
+  createdByUserId: uuid('created_by_user_id'),
   updatedAt: ts('updated_at').notNull().defaultNow(),
-  updatedByUserId: uuid('updated_by_user_id').notNull(),
+  updatedByUserId: uuid('updated_by_user_id'),
 });
 
 export const recruitmentApplicationEvent = pgTable('recruitment_application_event', {
@@ -149,7 +161,8 @@ export const recruitmentApplicationEvent = pgTable('recruitment_application_even
   fromState: text('from_state').$type<ApplicationState>(),
   toState: text('to_state').$type<ApplicationState>().notNull(),
   archiveReasonId: uuid('archive_reason_id'),
-  actorUserId: uuid('actor_user_id').notNull(),
+  /** NULL only for the "applied" event of a careers-page application (slice 8). */
+  actorUserId: uuid('actor_user_id'),
   occurredAt: ts('occurred_at').notNull().defaultNow(),
 });
 
@@ -436,7 +449,8 @@ export const recruitmentCandidateFile = pgTable('recruitment_candidate_file', {
   content: bytea('content').notNull(),
   permissionConfirmed: boolean('permission_confirmed').notNull(),
   uploadedAt: ts('uploaded_at').notNull().defaultNow(),
-  uploadedByUserId: uuid('uploaded_by_user_id').notNull(),
+  /** NULL for a resume the applicant uploaded on the careers page (slice 8). */
+  uploadedByUserId: uuid('uploaded_by_user_id'),
 });
 
 export const recruitmentTagGroup = pgTable('recruitment_tag_group', {
@@ -478,7 +492,9 @@ export const recruitmentCandidateConsent = pgTable('recruitment_candidate_consen
   method: text('method').$type<ConsentMethod>().notNull(),
   noticeReference: text('notice_reference'),
   recordedAt: ts('recorded_at').notNull().defaultNow(),
-  recordedByUserId: uuid('recorded_by_user_id').notNull(),
+  /** NULL for consent the applicant gave on the careers page (slice 8), which also names the notice version agreed to. */
+  recordedByUserId: uuid('recorded_by_user_id'),
+  careersNoticeVersion: integer('careers_notice_version'),
 });
 
 // ── Slice 7 (db/migrations/4407_recruitment_referrals.sql) ────────────────────────────────────────────────────
@@ -499,4 +515,43 @@ export const recruitmentReferral = pgTable('recruitment_referral', {
   reason: text('reason'),
   confirmedAt: ts('confirmed_at').notNull(),
   createdAt: ts('created_at').notNull().defaultNow(),
+});
+
+// ── Slice 8 (db/migrations/4408_recruitment_careers_page.sql) ───────────────────────────────────────────────────
+
+/** One public careers page per company. Written by recruitment administrators; read by the public careers functions only
+ *  while published. */
+export const recruitmentCareersSite = pgTable('recruitment_careers_site', {
+  companyId: uuid('company_id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  published: boolean('published').notNull().default(false),
+  address: text('address'),
+  displayName: text('display_name'),
+  headline: text('headline'),
+  introduction: text('introduction'),
+  ...audit,
+});
+
+/** The careers privacy notice, one immutable row per version; the database numbers the versions. */
+export const recruitmentCareersNotice = pgTable('recruitment_careers_notice', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  /** Assigned by the database guard; the value sent on insert is replaced. */
+  version: integer('version').notNull(),
+  body: text('body').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+});
+
+/** An application received through the careers page: written only by app.recruitment_careers_submit. The message is
+ *  cleared when the candidate is removed (slice 5). */
+export const recruitmentCareersApplication = pgTable('recruitment_careers_application', {
+  applicationId: uuid('application_id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  jobId: uuid('job_id').notNull(),
+  candidateId: uuid('candidate_id').notNull(),
+  message: text('message'),
+  receivedAt: ts('received_at').notNull().defaultNow(),
 });

@@ -28,6 +28,10 @@
  *   app/me/referrals for any person with an active employment in a company with Recruitment; they reach the pack only through
  *   4407's definer functions (the referrer holds no grant on a recruitment table). HR sets "Show on the referral portal" per
  *   job and the protection period per company, and sees the referrer on the application. No rewards or notifications.
+ * - Careers page (slice 8, ./careers and ./careers-model): one public page per company at /careers/<address> with its Open
+ *   jobs and a short application form, served to visitors who are not signed in by app/careers/** route handlers (plain HTML,
+ *   no script, no cookie) that reach the data ONLY through 4408's definer functions. HR sets the page, its privacy notice
+ *   versions and "Show on careers page" per job; an application lands as a new candidate with source "Careers page".
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (4402); the menu shows for team members, interviewers and pending approvers.
  */
@@ -79,6 +83,10 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_candidate_consent', note: 'append-only consent history entered by people' },
     // Slice 7 (4407)
     { table: 'recruitment_referral', note: 'employee referrals: referrer, job, application, reason and agreement time; no candidate data of its own' },
+    // Slice 8 (4408)
+    { table: 'recruitment_careers_site', note: 'one public careers page per company: address, display name, headline, introduction, published' },
+    { table: 'recruitment_careers_notice', note: 'careers privacy notice versions, immutable, numbered by the database' },
+    { table: 'recruitment_careers_application', note: 'applications received through the careers page: job, candidate, message, arrival time' },
   ],
 };
 registerPack(recruitmentPack);

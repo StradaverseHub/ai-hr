@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 import {NOTICE_UPLOAD_PROXY_MAX_BYTES} from './lib/notice-upload-policy';
 import {PROFILE_ATTACHMENT_ACTION_BODY_LIMIT} from './lib/profile-attachment';
 import { PHOTO_ACTION_BODY_LIMIT } from './lib/profile-photo-limits';
+import { CAREERS_BODY_MAX_BYTES, CAREERS_HEADERS } from './lib/careers-security';
 import createNextIntlPlugin from 'next-intl/plugin';
 import { systemTestingNextCompileEnvironment } from './scripts/improve/system-testing-next-config';
 
@@ -44,7 +45,9 @@ const nextConfig: NextConfig = {
     serverActions: { bodySizeLimit: Math.max(PHOTO_ACTION_BODY_LIMIT,PROFILE_ATTACHMENT_ACTION_BODY_LIMIT) },
     // Retain a complete bounded body for Notice multipart and profile evidence actions;
     // each owner enforces its smaller file/aggregate limits before persistence.
-    proxyClientMaxBodySize:Math.max(NOTICE_UPLOAD_PROXY_MAX_BYTES,PROFILE_ATTACHMENT_ACTION_BODY_LIMIT+1),
+    // The public careers form (Recruitment slice 8) refuses bodies above CAREERS_BODY_MAX_BYTES itself; one byte more is
+    // retained so an allowed body is never truncated before the handler counts it.
+    proxyClientMaxBodySize:Math.max(NOTICE_UPLOAD_PROXY_MAX_BYTES,PROFILE_ATTACHMENT_ACTION_BODY_LIMIT+1,CAREERS_BODY_MAX_BYTES+1),
   },
 
   /**
@@ -88,6 +91,17 @@ const nextConfig: NextConfig = {
       },
       {source:'/me/letters/:path*',headers:[{key:'Cache-Control',value:'private, no-store'},{key:'Referrer-Policy',value:'no-referrer'}]},
       {source:'/letters/:path*',headers:[{key:'Cache-Control',value:'private, no-store'},{key:'Referrer-Policy',value:'no-referrer'}]},
+      // Recruitment slice 8: the public careers pages carry their own strict policy (no script, one hashed stylesheet,
+      // no framing, no referrer, not indexed, not cached). Later entries override the global ones above by key; the
+      // handlers set the same values themselves.
+      {source:'/careers/:path*',headers:[
+        {key:'Content-Security-Policy',value:CAREERS_HEADERS['content-security-policy']},
+        {key:'X-Frame-Options',value:CAREERS_HEADERS['x-frame-options']},
+        {key:'X-Content-Type-Options',value:CAREERS_HEADERS['x-content-type-options']},
+        {key:'Referrer-Policy',value:CAREERS_HEADERS['referrer-policy']},
+        {key:'X-Robots-Tag',value:CAREERS_HEADERS['x-robots-tag']},
+        {key:'Cache-Control',value:CAREERS_HEADERS['cache-control']},
+      ]},
     ];
   },
 };

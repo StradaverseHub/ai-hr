@@ -533,7 +533,7 @@ describe('case 26 — destruction', () => {
     // No sentinel anywhere in any recruitment table (rows as text; file bytes searched as bytes) or in any event.
     const tables = await owner.db.execute<{ relname: string }>(sql`select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'recruitment\\_%' order by c.relname`);
-    expect(tables.length).toBe(31); // slice 7 (4407) adds recruitment_referral
+    expect(tables.length).toBe(34); // slice 7 (4407) adds recruitment_referral; slice 8 (4408) the careers site, notice and application
     for (const { relname } of tables) {
       const [hit] = await owner.db.execute<{ n: number }>(sql`select count(*)::int as n from ${sql.identifier(relname)} r where to_jsonb(r.*)::text ilike ${`%${SENTINEL}%`}`);
       expect(hit.n, `${relname} still holds personal data`).toBe(0);
@@ -559,7 +559,7 @@ describe('case 26 — destruction', () => {
     expect(await counts()).toEqual(before);
     const [event] = await owner.db.execute<{ payload: Record<string, unknown> }>(sql`
       select payload from domain_event where event_type = 'recruitment-candidate.personal-data-removed' and aggregate_id = ${t.candX}::uuid`);
-    expect(event.payload).toEqual({ companyId: base.companyId, files: 2, restricted: 1, entries: 2, tags: 1, consents: 1, scorecards: 1, offerValues: 4, referrals: 0, applications: 2, offers: 1 });
+    expect(event.payload).toEqual({ companyId: base.companyId, files: 2, restricted: 1, entries: 2, tags: 1, consents: 1, scorecards: 1, offerValues: 4, referrals: 0, careersMessages: 0, applications: 2, offers: 1 });
 
     // The record is closed afterwards, and a second removal finds nothing to remove.
     expect(await code(updateCandidateProfile(admin, t.candX, { fullName: 'Fictional again' }))).toBe('candidate_removed');
