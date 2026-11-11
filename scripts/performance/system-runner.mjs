@@ -198,6 +198,24 @@ async function run(label,command,args,childEnv=env,timeout=900000){
    .slice(-80).map(line=>line.slice(0,300));
   console.log('[system-perf] '+JSON.stringify({kind:'SETUP_PHASE_FAILURE_EXCERPT_V1',label,file,lines}));
  }catch{}
+ // After the browser phase, whatever its outcome: the slowest normalized statements of the run (placeholders only,
+ // no parameters) and any statement still running, so a slow or timed-out route can be tied to its SQL.
+ if(label==='http-and-browser'&&env.AIHR_CI_PG_STATEMENTS==='1')try{
+  const {default:postgres}=await import('postgres');
+  const sql=postgres(env.MIGRATION_DATABASE_URL,{max:1,onnotice:()=>{},connect_timeout:5,idle_timeout:1});
+  try{
+   const db='(select oid from pg_database where datname=current_database())';
+   const slowest=await sql.unsafe(`select calls::int,round(mean_exec_time)::int as mean_ms,round(max_exec_time)::int as max_ms,round(total_exec_time)::int as total_ms,
+    rows::bigint::text as rows,left(regexp_replace(query,'\\s+',' ','g'),360) as query from pg_stat_statements where dbid=${db}
+    and query not ilike '%pg_stat%' order by max_exec_time desc limit 20`);
+   const running=await sql.unsafe(`select state,wait_event_type,wait_event,round(extract(epoch from clock_timestamp()-query_start)*1000)::int as age_ms,
+    left(regexp_replace(query,'\\s+',' ','g'),360) as query from pg_stat_activity where datname=current_database() and pid<>pg_backend_pid()
+    and state<>'idle' order by query_start limit 12`);
+   const clean=rows=>rows.map(row=>Object.fromEntries(Object.entries(row).map(([key,value])=>[key,typeof value==='string'?redact(value):value])));
+   console.log('[system-perf] '+JSON.stringify({kind:'STATEMENT_LATENCY_LOG_V1',scope:'normalized pg_stat_statements since the driver reset; no parameters',
+    slowest:clean(slowest),running:clean(running)}));
+  }finally{await sql.end({timeout:2}).catch(()=>{});}
+ }catch(error){console.log('[system-perf] '+JSON.stringify({kind:'STATEMENT_LATENCY_LOG_V1',unavailable:String(error?.code??error?.name??'error').slice(0,40)}));}
  // The driver records browser errors (page errors, console errors) and the failed owned request in its report.
  if(label==='http-and-browser'&&(code!==0||timedOut))try{
   const driver=JSON.parse(readFileSync(join(out,'http-browser.json'),'utf8'));
