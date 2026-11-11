@@ -110,7 +110,10 @@ async function owners(){
  }
  for(const actor of ['admin','adminPart','manager','viewer'] as Actor[]){
   const ctx=contexts[actor],scope=sql`ARRAY[${sql.join(scopes[actor].map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
-  const read=(label:string,query:ReturnType<typeof sql>)=>attempt(()=>withTenant(ctx,tx=>tx.execute(query)).then(rows=>sorted(rows))).then(value=>{out[label+' '+actor]=value;progress('owner '+label+' '+actor);});
+  // Interpreted, as the Personnel overview and search statements run them (JIT compilation alone takes seconds here).
+  const read=(label:string,query:ReturnType<typeof sql>)=>attempt(()=>withTenant(ctx,async tx=>{
+   await tx.execute(sql`select set_config('jit','off',true)`);return tx.execute(query);
+  }).then(rows=>sorted(rows))).then(value=>{out[label+' '+actor]=value;progress('owner '+label+' '+actor);});
   await read('facts',sql`select * from app.personnel_overview_facts(${f.today}::date,${scope})`);
   await read('filter fields',sql`select * from app.personnel_overview_filter_fields(${f.today}::date,${scope})`);
   await read('companies',sql`select * from app.personnel_filter_companies(${scope},${f.today}::date)`);

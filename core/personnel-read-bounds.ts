@@ -10,11 +10,14 @@ export async function boundPersonnelStatementTx(tx: Tx) {
     from pg_catalog.pg_settings where name = 'statement_timeout'`);
 }
 
-/** boundPersonnelStatementTx, and in the same statement whether a reader a later migration adds is installed
- * (`procedure` is a regprocedure signature), so a database that migration has not reached keeps the previous reader. */
+/** boundPersonnelStatementTx with interpreted execution for the rest of the transaction (as the Personnel overview
+ * statement runs: compiling these short whole-population statements costs more than it saves, and a reader that turns
+ * nested loops off would otherwise be compiled on every call), and in the same statement whether a reader a later
+ * migration adds is installed (`procedure` is a regprocedure signature), so a database that migration has not reached
+ * keeps the previous reader. */
 export async function boundPersonnelStatementWithProbeTx(tx: Tx, procedure: string): Promise<boolean> {
   const [row] = await tx.execute<{ installed: boolean }>(sql`select set_config('statement_timeout', least(
-    coalesce(nullif(setting::int, 0), 20000), 20000)::text, true) as bound,
+    coalesce(nullif(setting::int, 0), 20000), 20000)::text, true) as bound, set_config('jit', 'off', true) as interpreted,
     to_regprocedure(${procedure}::text) is not null as installed
     from pg_catalog.pg_settings where name = 'statement_timeout'`);
   return row?.installed === true;
