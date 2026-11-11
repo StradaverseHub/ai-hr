@@ -28,6 +28,9 @@ export const MOVEMENT_RULE_FIELDS = [
   'positionId',
   'gradeId',
   'employmentType',
+  // 2260a06b — the end date of the (resulting) Employee Type. Migration 9750 widens the stored vocabulary.
+  'contractEndDate',
+  'internshipEndDate',
   'locationId',
   'managerEmploymentId',
   ...MOVEMENT_FLAT_FIELDS,
@@ -60,7 +63,7 @@ export type MovementFieldRule = {
 export const MOVEMENT_RULE_GROUPS: readonly { id: 'organisation' | 'labels' | 'salary'; fields: readonly MovementRuleField[] }[] = [
   {
     id: 'organisation',
-    fields: ['companyId', 'businessUnitId', 'departmentId', 'positionId', 'gradeId', 'employmentType', 'locationId', 'managerEmploymentId'],
+    fields: ['companyId', 'businessUnitId', 'departmentId', 'positionId', 'gradeId', 'employmentType', 'contractEndDate', 'internshipEndDate', 'locationId', 'managerEmploymentId'],
   },
   { id: 'labels', fields: [...MOVEMENT_FLAT_FIELDS] },
   { id: 'salary', fields: ['basicSalary', 'currency', 'payMode', 'paymentTerm'] },

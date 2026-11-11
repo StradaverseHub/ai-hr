@@ -17,6 +17,7 @@ import {assertWorkforceEmploymentTx,assertWorkforceCompanyTx,workforceEmployment
 import {allocationCompanyCode} from './cost-allocation-import';
 import {labelUsableByCompany,visibleLabelIdsCondition} from './system-labels';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {contractPeriodIssues} from '../lib/contract-period';
 import {isCalendarDate} from '../lib/calendar-date';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
 import {INFORMATION_FIELDS,INFORMATION_ALL_FIELDS,INFORMATION_ASSIGNMENT_FIELDS,INFORMATION_LABEL_FIELDS,INFORMATION_PERIOD_FIELDS,INFORMATION_PERIOD_PAIRS,INFORMATION_FIELD_CAPTIONS,type InformationField,type InformationOptions,type InformationChanges,type InformationValues,type InformationPreview} from '../lib/information-correction';
@@ -69,7 +70,7 @@ export async function informationCorrectionOptions(ctx:SessionContext){return wi
  return {companies:coded,grades,employmentTypes:[...PERSONNEL_EMPLOYMENT_TYPES],organisation,labels} satisfies InformationOptions;
  });}
 const text=(value:number|string|null|undefined)=>value==null?null:String(value);
-function values(s:Awaited<ReturnType<typeof stateTx>>):InformationValues{const e=s.emp;return {companyId:e.companyId,hiredOn:e.hiredOn,joinDate:e.joinDate,gradeId:e.gradeId,employmentType:s.current.employmentType,
+function values(s:Awaited<ReturnType<typeof stateTx>>):InformationValues{const e=s.emp;return {companyId:e.companyId,hiredOn:e.hiredOn,joinDate:e.joinDate,gradeId:e.gradeId,employmentType:s.current.employmentType,contractEndDate:e.contractEndDate,internshipEndDate:e.internshipEndDate,
  businessUnitId:s.current.businessUnitId,departmentId:s.current.departmentId,positionId:s.current.positionId,
  orgDivision:e.orgDivision,orgBranch:e.orgBranch,orgRegion:e.orgRegion,orgLine:e.orgLine,orgSection:e.orgSection,orgTeam:e.orgTeam,orgBase:e.orgBase,employmentCategory:e.employmentCategory,
  probationValue:text(e.probationValue),probationUnit:e.probationUnit,extendedProbationValue:text(e.extendedProbationValue),extendedProbationUnit:e.extendedProbationUnit,confirmationDate:e.confirmationDate,
@@ -113,22 +114,43 @@ async function validateTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof s
  const allowed:readonly InformationField[]=extended?INFORMATION_ALL_FIELDS:INFORMATION_FIELDS;
  if(!extended&&Object.keys(changes).some(field=>(INFORMATION_ALL_FIELDS as readonly string[]).includes(field)&&!(INFORMATION_FIELDS as readonly string[]).includes(field)))fail('Use the Information-Only Correction template to correct these details.');
  for(const field of allowed){const value=changes[field];if(value!==undefined){if(typeof value!=='string'||!value.trim())fail('Empty correction values cannot clear existing information.');after[field]=value.trim();}}
- for(const key of ['hiredOn','joinDate'] as const)if(after[key]&&!isCalendarDate(after[key]!))fail('Use a valid date in YYYY-MM-DD format.');
+ for(const key of ['hiredOn','joinDate','contractEndDate','internshipEndDate'] as const)if(after[key]&&!isCalendarDate(after[key]!))fail('Use a valid date in YYYY-MM-DD format.');
  if(after.hiredOn!>todayInKualaLumpur()||(after.joinDate&&after.joinDate>todayInKualaLumpur()))fail('Joining dates cannot be in the future.');
  if(after.joinDate&&after.joinDate<after.hiredOn!)fail('Join Date cannot precede Group Join Date.');
  if(after.confirmationDate!==before.confirmationDate&&!isCalendarDate(after.confirmationDate!))fail('Confirmation Date: use YYYY-MM-DD or an Excel date.');
  if(after.confirmationDate!==before.confirmationDate&&after.confirmationDate!<after.hiredOn!)fail('Confirmation Date: cannot be earlier than the Group Join Date.');
- const endDates=[s.emp.terminatedOn,s.emp.probationEndDate,s.emp.contractStartDate,s.emp.contractEndDate,s.emp.internshipEndDate,after.confirmationDate,s.emp.resignationDate,s.emp.lastWorkingDate].filter((x):x is string=>!!x);
+ const endDates=[s.emp.terminatedOn,s.emp.probationEndDate,s.emp.contractStartDate,after.contractEndDate,after.internshipEndDate,after.confirmationDate,s.emp.resignationDate,s.emp.lastWorkingDate].filter((x):x is string=>!!x);
  if(endDates.some(date=>date<after.hiredOn!))fail('The corrected date conflicts with existing employment dates. Use the relevant workflow.');
  if(after.confirmationDate&&after.confirmationDate!==before.confirmationDate){
   if(s.emp.extendedConfirmationDate&&s.emp.extendedConfirmationDate<after.confirmationDate)fail('Confirmation Date: cannot be later than the extended confirmation date. Use Employment Movement for the probation extension.');
  }
  if(!PERSONNEL_EMPLOYMENT_TYPES.includes(after.employmentType as typeof PERSONNEL_EMPLOYMENT_TYPES[number]))fail('Employment Type is not a valid system code.');
- // Contract/intern dates are not editable here, so their prerequisites apply only when this correction changes
- // Employment Type: a legacy contract with no end date can still have its grade, dates or company corrected.
- if(after.employmentType!==before.employmentType){
-  if(after.employmentType==='contract'&&(!s.emp.contractStartDate||!s.emp.contractEndDate))fail('Contract employment requires valid contract start and end dates.');
-  if(after.employmentType==='intern'&&!s.emp.internshipEndDate)fail('Intern employment requires an internship end date.');
+ // 2260a06b — the type end dates are corrected here too, for the type this correction leaves the employee with.
+ // Their prerequisites still apply only when the correction changes Employment Type or the date itself: a legacy
+ // contract with no end date can still have its grade, dates or company corrected. The date may arrive in the
+ // same correction that changes the type, which is what lets a change to Intern succeed at all. The contract
+ // order rule is 1859cce0's single owner (lib/contract-period.ts).
+ const typeChanged=after.employmentType!==before.employmentType;
+ const contractEndChanged=after.contractEndDate!==before.contractEndDate,internshipEndChanged=after.internshipEndDate!==before.internshipEndDate;
+ if(contractEndChanged&&after.employmentType!=='contract')fail('Contract End Date applies only to Contract employees.');
+ if(internshipEndChanged&&after.employmentType!=='intern')fail('Internship End Date applies only to Intern employees.');
+ const started=after.joinDate??after.hiredOn!;
+ let contractStartDate:string|null=s.emp.contractStartDate;
+ if(after.employmentType==='contract'&&(typeChanged||contractEndChanged)){
+  // A correction says the employee was on contract all along, so a missing contract start is the join date,
+  // exactly as hireEmployee seeds it.
+  contractStartDate??=started;
+  if(!after.contractEndDate)fail('Contract employment requires valid contract start and end dates.');
+  const order=contractPeriodIssues({contract:true,requireBoth:false,start:contractStartDate,end:after.contractEndDate});
+  if(order.length)fail(order[0].message);
+ }
+ if(after.employmentType==='intern'&&(typeChanged||internshipEndChanged)){
+  if(!after.internshipEndDate)fail('Intern employment requires an internship end date.');
+  if(after.internshipEndDate<=started)fail('Internship end date must be later than the join date.');
+ }
+ if(contractEndChanged||contractStartDate!==s.emp.contractStartDate){
+  const [open]=await tx.execute<{open:boolean}>(sql`select app.contract_renewal_open(${s.emp.id}::uuid) as open`);
+  if(open?.open)fail('A contract renewal is in progress for this employee. Change the contract dates through that renewal in Contract Management.');
  }
  await administratorTx(tx,ctx,after.companyId!);
  const companies=await tx.select().from(company).where(and(eq(company.tenantId,ctx.tenantId),inArray(company.id,[before.companyId!,after.companyId!]),isNull(company.archivedAt)));
@@ -145,7 +167,7 @@ async function validateTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof s
   if(s.assignments.some(a=>!a.companyId))fail('Historical company information is incomplete. Resolve the dated company history before correcting Company.');
  }
  if(extended)await validateExtendedTx(tx,ctx,s,before,after);
- return {before,after};
+ return {before,after,contractStartDate};
 }
 /** ccd3a65c — the further details, checked against the resulting company's settings before any write. The
  * owners repeat their own checks when the correction is saved; these give the row error its column. */
@@ -201,7 +223,7 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;cha
  // Five-fact corrections keep their original fingerprint; the further details also bind the displayed labels.
  const extendedChange=changed.some(f=>!(INFORMATION_FIELDS as readonly string[]).includes(f));
  const fingerprint=hash({state:state.fingerprint,companies:companyRefs,grades:gradeRefs,effectiveOn,...(organisation.status==='legacy'?{}:{organisation}),...(extendedChange?{labels:[beforeLabels,afterLabels]}:{})});
- const preview:InformationPreview={effectiveOn,employmentId:state.emp.id,employeeCode:state.emp.employeeCode??'',name:state.name,fingerprint,...v,beforeLabels,afterLabels,reason,changed};
+ const preview:InformationPreview={effectiveOn,employmentId:state.emp.id,employeeCode:state.emp.employeeCode??'',name:state.name,fingerprint,before:v.before,after:v.after,beforeLabels,afterLabels,reason,changed};
  return {state,preview};
 }
 class InformationRehearsal extends Error{constructor(readonly preview:InformationPreview){super('information_preview_rollback');}}
@@ -242,7 +264,12 @@ async function applyTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stat
   const [version]=await tx.insert(assignment).values({...prior,departmentId:p.after.departmentId??prior.departmentId,positionId:p.after.positionId,businessUnitId:p.after.businessUnitId,...(tags.status==='legacy'?{}:{businessUnitId:tags.businessUnitId}),validFrom:effectiveOn,validTo:null,companyId:p.after.companyId,employmentType:p.after.employmentType as typeof s.current.employmentType}).returning({id:assignment.id});
   assignmentVersionId=version.id;
  }
- await tx.update(employment).set({companyId:p.after.companyId!,hiredOn:p.after.hiredOn!,joinDate:p.after.joinDate,gradeId:p.after.gradeId}).where(eq(employment.id,s.emp.id));
+ // 2260a06b — the type end dates live on employment. A change to Contract with no stored contract start starts it
+ // on the join date (as hireEmployee does). provisional_end_on follows the internship date only while it is still
+ // that date's copy (setEmploymentInfo applies the same rule), so the review and status fallbacks agree.
+ const contractStartDate=p.after.employmentType==='contract'&&(p.changed.includes('employmentType')||p.changed.includes('contractEndDate'))?(s.emp.contractStartDate??p.after.joinDate??p.after.hiredOn):s.emp.contractStartDate;
+ const internshipProvisional=p.changed.includes('internshipEndDate')&&p.after.internshipEndDate&&s.emp.provisionalEndOn!=null&&s.emp.provisionalEndOn===s.emp.internshipEndDate?{provisionalEndOn:p.after.internshipEndDate}:{};
+ await tx.update(employment).set({companyId:p.after.companyId!,hiredOn:p.after.hiredOn!,joinDate:p.after.joinDate,gradeId:p.after.gradeId,contractStartDate,contractEndDate:p.after.contractEndDate,internshipEndDate:p.after.internshipEndDate,...internshipProvisional}).where(eq(employment.id,s.emp.id));
  // ccd3a65c — labels, periods and Confirmation Date through their owner, untagged: no movement row is
  // projected, the catalog, date-order and closed-payroll checks apply, and employment.info.updated records it.
  const info=p.changed.filter(field=>(INFORMATION_LABEL_FIELDS as readonly string[]).includes(field)||(INFORMATION_PERIOD_FIELDS as readonly string[]).includes(field));

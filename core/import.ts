@@ -949,6 +949,15 @@ async function analyze(
         // A cell that was filled but not a valid date already carries its own problem; "required" would be noise.
         if (!(issue.code === 'required' && norm(rec[issue.column]))) fail(issue.column, issue.code === 'required' ? `${issue.column === 'contract_start_date' ? 'Contract Start Date' : 'Contract End Date'} is required when Employment Type is Contract.` : issue.message, `contract.${issue.code}`);
     }
+    // 2260a06b — internship_end_date is the Intern's end date, refused for any other type exactly like
+    // probation_end_date above; setEmploymentInfo then checks it is later than the join date.
+    const rowType: string = employmentType; // widened: the probation branch above narrows the literal type
+    if (employmentInfo.internshipEndDate && rowType !== 'intern') {
+      fail('internship_end_date', `internship_end_date applies to intern employees only (this row is ${rowType})`);
+    }
+    if (employmentInfo.internshipEndDate && hiredOn && isCalendarDate(hiredOn) && employmentInfo.internshipEndDate <= hiredOn) {
+      fail('internship_end_date', 'internship_end_date must be after hired_on');
+    }
     for(const [legacyA,legacyB,valueColumn,unitColumn] of [
       ['probation_months','probation_days','probation_value','probation_unit'],
       ['resignation_notice_months','resignation_notice_days','notice_before_confirmation_value','notice_before_confirmation_unit'],

@@ -304,6 +304,10 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
         provisionalEndOn,
         contractStartDate: isContractHire ? p.hiredOn : null,
         contractEndDate: isContractHire ? provisionalEndOn : null,
+        // 2260a06b — the intern twin of the contract fix above: the internship end date keyed in the Draft is
+        // the employment's internship_end_date from activation onwards (the Employment tab, Movement, the
+        // correction workbook and the internship review all read that column). provisional_end_on keeps it too.
+        internshipEndDate: p.employmentType === 'intern' ? provisionalEndOn : null,
       })
       .returning({ id: employment.id });
 
@@ -2944,6 +2948,11 @@ export type EmploymentInfoInput = {
   contractStartDate?: string | null;
   contractEndDate?: string | null;
   contractRemark?: string | null;
+  /** 2260a06b — the internship end date (pre-existing 0110 review column). Shown and maintained for an Intern
+   *  employee; required for one whenever a save carries it, and later than the join date. */
+  internshipEndDate?: string | null;
+  /** 2260a06b — honoured ONLY inside withEndDateRestoreTx (a Movement rollback); ignored everywhere else. */
+  provisionalEndOn?: string | null;
   orgBranch?: string | null;
   orgDivision?: string | null;
   orgRegion?: string | null;
@@ -3024,6 +3033,9 @@ const EMPLOYMENT_INFO_DATE_FIELDS = [
   // Review row write the SAME date rather than two copies of it.
   'contractStartDate',
   'contractEndDate',
+  // 2260a06b — the internship end date (0110 review column), maintained by the Employment tab's Intern block,
+  // Movement and the corrections. One date, one home, exactly like contractEndDate above.
+  'internshipEndDate',
 ] as const;
 
 /**
@@ -3116,6 +3128,24 @@ function employmentThresholdWindow(
 function earliestEmploymentDate(...dates: (string | null | undefined)[]): string | null {
   const present = dates.filter((d): d is string => d != null);
   return present.length === 0 ? null : present.reduce((a, b) => (a < b ? a : b));
+}
+
+/**
+ * 2260a06b — transaction-bound authority for a Movement ROLLBACK that puts the Employee Type end dates back.
+ * Undoing a movement restores the exact values it replaced, which may be the empty dates of a type the employee
+ * no longer has (the assignment leg is undone separately). The per-type requirement checks therefore do not
+ * apply to that restore, and only that restore may put provisional_end_on back. Held only by core/movement.ts's
+ * reverse leg for the duration of its own setEmploymentInfo call; a form or import cannot reach it.
+ */
+const endDateRestoreTx = new WeakSet<object>();
+export async function withEndDateRestoreTx<T>(tx: Tx, run: () => Promise<T>): Promise<T> {
+  if (endDateRestoreTx.has(tx)) throw new Error('An end-date restore is already active.');
+  endDateRestoreTx.add(tx);
+  try {
+    return await run();
+  } finally {
+    endDateRestoreTx.delete(tx);
+  }
 }
 
 export async function setEmploymentInfo(
@@ -3282,6 +3312,9 @@ export async function setEmploymentInfo(
         contractStartDate: employment.contractStartDate,
         contractEndDate: employment.contractEndDate,
         contractRemark: employment.contractRemark,
+        internshipEndDate: employment.internshipEndDate,
+        // The at-hire copy the internship date keeps aligned (see below); in the diff so a rollback can restore it.
+        provisionalEndOn: employment.provisionalEndOn,
         orgBranch: employment.orgBranch,
         orgDivision: employment.orgDivision,
         orgRegion: employment.orgRegion,
@@ -3395,7 +3428,22 @@ export async function setEmploymentInfo(
     //      no employment_type column — a query against employment.employment_type ERRORS — so the type is
     //      resolved through `assignment`, with the same shape core/employment-review.ts:liveTypeAndDates
     //      uses. Same tx, so it shares the RLS session and a violation aborts before the write.
-    if ('contractStartDate' in set || 'contractEndDate' in set) {
+    // 2260a06b — the internship end date, resolved the same way. It closes the internship, so it must be later
+    // than the day the employee joined the current company (join date, else the group join date).
+    const internshipEnd =
+      'internshipEndDate' in set ? (set.internshipEndDate as string | null) : before.internshipEndDate;
+    const restoring = endDateRestoreTx.has(tx);
+    if (restoring && p.provisionalEndOn !== undefined) {
+      const v = p.provisionalEndOn == null ? null : String(p.provisionalEndOn).trim();
+      if (v && !isCalendarDate(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
+      set.provisionalEndOn = v || null;
+    }
+    if (!restoring && 'internshipEndDate' in set && internshipEnd && internshipEnd <= (join ?? hire)) {
+      throw new Error('Internship end date must be later than the join date.');
+    }
+    if ('contractStartDate' in set || 'contractEndDate' in set || 'internshipEndDate' in set) {
+      // A movement that changes the type in the same transaction has already written the new open assignment,
+      // so this reads the type the dates are being saved for.
       const [live] = await tx
         .select({ employmentType: assignment.employmentType })
         .from(assignment)
@@ -3407,8 +3455,61 @@ export async function setEmploymentInfo(
           ),
         )
         .limit(1);
-      const missing = contractPeriodIssues({ contract: live?.employmentType === 'contract', requireBoth: true, start: contractStart, end: contractEnd });
-      if (missing.length) throw new Error(missing[0].message);
+      // 1859cce0's single contract-period owner (lib/contract-period.ts) decides "both required"; a Movement
+      // rollback restoring an earlier type's empty dates (2260a06b) is the one save it does not apply to.
+      if (!restoring && ('contractStartDate' in set || 'contractEndDate' in set)) {
+        const missing = contractPeriodIssues({ contract: live?.employmentType === 'contract', requireBoth: true, start: contractStart, end: contractEnd });
+        if (missing.length) throw new Error(missing[0].message);
+      }
+      if (!restoring && 'internshipEndDate' in set && live?.employmentType === 'intern' && !internshipEnd) {
+        throw new Error('Internship end date is required for an intern employee.');
+      }
+      // The internship end date belongs to an Intern. A changed, non-empty date for any other type is refused
+      // (imports and corrections included) rather than stored as a fact that no screen shows.
+      if (
+        !restoring &&
+        'internshipEndDate' in set &&
+        internshipEnd &&
+        internshipEnd !== (before.internshipEndDate ?? null) &&
+        live?.employmentType !== 'intern'
+      ) {
+        throw new Error('Internship end date applies only to Intern employees.');
+      }
+      // 2260a06b — Contract Management owns the contract dates while one of its cases is open for this
+      // employment (its accepted renewal writes them under the protected intent checked above). Any other writer
+      // — the profile, a movement, a correction or an import — is refused only when it would actually MOVE a
+      // contract date, so re-saving the Employment tab with the dates unchanged still works.
+      const contractDatesMove =
+        ('contractStartDate' in set && (set.contractStartDate ?? null) !== (before.contractStartDate ?? null)) ||
+        ('contractEndDate' in set && (set.contractEndDate ?? null) !== (before.contractEndDate ?? null));
+      if (contractDatesMove && !contractDateAuthorityTx(tx, p)) {
+        const [open] = await tx.execute<{ open: boolean }>(
+          sql`select app.contract_renewal_open(${p.employmentId}::uuid) as open`,
+        );
+        if (open?.open) {
+          throw new Error(
+            'A contract renewal is in progress for this employee. Change the contract dates through that renewal in Contract Management.',
+          );
+        }
+      }
+      // 2260a06b — ONE DATE, ONE HOME for interns. hireEmployee wrote the internship end into provisional_end_on
+      // as well, and the review/status fallbacks (core/employment-review.ts computeReviewWindow,
+      // core/employment-status.ts) read that copy when the typed column is empty. When the provisional date is
+      // still the internship's own copy (equal to the stored internship date) it follows the change, so the two
+      // never disagree. Any other provisional date (a former full-time probation end, or a pre-release intern
+      // the backfill has not reached) is left alone, so the status fallback keeps its existing behaviour.
+      if (
+        !restoring &&
+        'internshipEndDate' in set &&
+        internshipEnd &&
+        internshipEnd !== (before.internshipEndDate ?? null) &&
+        live?.employmentType === 'intern'
+      ) {
+        const prior = before.provisionalEndOn ?? null;
+        if (prior !== internshipEnd && prior != null && prior === (before.internshipEndDate ?? null)) {
+          set.provisionalEndOn = internshipEnd;
+        }
+      }
     }
 
     // finalConfirmationDate is DERIVED, never accepted from the caller: = extendedConfirmation ?? confirmation.

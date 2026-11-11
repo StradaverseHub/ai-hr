@@ -3333,6 +3333,15 @@ export default async function EmployeePage({
           const c = movementDetailData.flatChanges.find((x) => x.field === f);
           return c ? [{ key: f, label: t(`movement.field.${f}` as 'movement.field.orgDivision'), before: c.before, after: c.after }] : [];
         }),
+        // 2260a06b — the contract period / internship end this movement set, from its own recorded diff.
+        ...([
+          ['contractStartDate', 'employment.employment_dates_and_service.contractstartdate'],
+          ['contractEndDate', 'employment.employment_dates_and_service.contractenddate'],
+          ['internshipEndDate', 'employment.draft_only_employment_fields.internshipenddate'],
+        ] as const).flatMap(([f, id]) => {
+          const c = movementDetailData.flatChanges.find((x) => x.field === f);
+          return c ? [{ key: f, label: personnelLabel(id), before: c.before ? formatDmy(c.before) : null, after: c.after ? formatDmy(c.after) : null }] : [];
+        }),
       ]
     : [];
   const movementInformationAudit=movementDetailData?.informationCorrections?.length
@@ -3672,6 +3681,7 @@ export default async function EmployeePage({
                 heading={`${movementKindLabel('hired')} · ${formatDmy(hireCorrection.hiredOn)}`}
                 fields={fields}
                 salaryAtHire={hireCorrection.salaryAtHire}
+                endDate={hireCorrection.endDate ? { field: hireCorrection.endDate.field, value: hireCorrection.endDate.value } : undefined}
                 readOnly={readOnly}
                 cancelHref={historyHref}
                 pageContext={movementPage?movementContext:undefined}
@@ -4192,6 +4202,25 @@ export default async function EmployeePage({
                 />
               </PersonnelField>
               <p className="text-xs text-muted-foreground">{t('employmentInfo.contractNote')}</p>
+            </div>
+          )}
+
+          {/* 2260a06b — Internship Information: the Intern twin of the Contract block above, rendered ONLY while the
+              current open assignment is 'intern'. It writes employment.internship_end_date (the internship review
+              column hireEmployee now seeds from the Draft). An intern activated before that falls back to the
+              provisional end date the Draft captured, so the date is shown and re-saved rather than lost. */}
+          {current?.employmentType === 'intern' && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.internshipGroup')}</h4>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <PersonnelField fieldId="employment.draft_only_employment_fields.internshipenddate" mode="record">
+                  <DateField {...personnelControl('employment.draft_only_employment_fields.internshipenddate','record')}
+                    defaultValue={emp.internshipEndDate ?? emp.provisionalEndOn ?? ''}
+                    className={inputCls}
+                    label={personnelLabel('employment.draft_only_employment_fields.internshipenddate')}
+                  />
+                </PersonnelField>
+              </div>
             </div>
           )}
 

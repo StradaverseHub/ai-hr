@@ -8,6 +8,8 @@ export const MOVEMENT_FORM_IDS = {
   "positionId": "employment.organisation_assignment.positionname",
   "gradeId": "employment.organisation_assignment.gradename",
   "employmentType": "employment.organisation_assignment.employmenttype",
+  "contractEndDate": "employment.employment_dates_and_service.contractenddate",
+  "internshipEndDate": "employment.draft_only_employment_fields.internshipenddate",
   "locationId": "attendance.work_location_and_shift_arrangement.locationid",
   "managerEmploymentId": "employment.direct_superior_and_history.superioremploymentid",
   "basicSalary": "payroll.basic_salary_and_salary_history.basicsalary",
@@ -40,7 +42,7 @@ export type MovementFormField=Exclude<keyof typeof MOVEMENT_FORM_IDS,'reason'>;
 export function movementFormFields(behaviour:string,reason?:string):MovementFormField[]{
  const fields:MovementFormField[]=['kind','remarks'];
  if(behaviour!=='blacklist')fields.push('effectiveDate');
- if(isComparisonKind(behaviour))fields.push(...(['businessUnitId','departmentId','positionId','gradeId','employmentType','locationId','managerEmploymentId','basicSalary','currency','payMode','paymentTerm','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase'] as const));
+ if(isComparisonKind(behaviour))fields.push(...(['businessUnitId','departmentId','positionId','gradeId','employmentType','contractEndDate','internshipEndDate','locationId','managerEmploymentId','basicSalary','currency','payMode','paymentTerm','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase'] as const));
  if(behaviour==='entityTransfer')fields.push('companyId');
  if(['probationExtension','secondment','actingPosition','resignation','termination'].includes(behaviour))fields.push('endDate');
  if(behaviour==='resignation')fields.push('tenderResignationDate','resignationEffectiveDate');
@@ -53,6 +55,8 @@ export function movementFormFields(behaviour:string,reason?:string):MovementForm
 }
 export function movementFormRequired(field:MovementFormField,behaviour:string):boolean{
  if(field==='kind')return true;
+ // 2260a06b — required only for the matching (resulting) Employee Type; core/movement.ts decides that.
+ if(field==='contractEndDate'||field==='internshipEndDate')return false;
  const id=behaviour==='termination'&&field==='endDate'?'employment_history.event_information.lastworkingdate':MOVEMENT_FORM_IDS[field];
  return personnelFormRequired(id,'record',{movementEndDate:behaviour==='probationExtension'||behaviour==='termination'});
 }
