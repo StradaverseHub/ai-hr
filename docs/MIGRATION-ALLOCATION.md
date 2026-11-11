@@ -18,7 +18,7 @@ idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when sh
 | `9820_access_wave4_admin_fair_exclusive` | 9820 / 1793330009820 | `5006_access_wave4_admin_fair_exclusive` | 4406 / 1793330004706 | `3a8ef207e6235548a53d2d49993c81404a097a6dc503eb77e1e5a7115abe8445` |
 | `9001_employee_import_staged_job` | 9001 / 1793330090001 | `5010_employee_import_staged_job` | 4410 / 1793330004710 | `c71e21ef9571ebd015bcff95b87da46fbedb098b66f0b8edfbb10d4b16fe9e65` |
 | `9003_bulk_job_kernel` | 9003 / 1793330090003 | `5011_bulk_job_kernel` | 4411 / 1793330004711 | `50af4670d06419c82ec7495827cf14db2905fda780b21ee58f17ae2f1df7af58` |
-| `9004_import_release_visibility` | 9004 / 1793330090004 | `5012_import_release_visibility` | 4412 / 1793330004712 | `215ea68a36df931277a14a4a5fcdc7ab213da17c39e68d83def21c1209a9e5b9` |
+| `9004_import_release_visibility` | 9004 / 1793330090004 | `5012_import_release_visibility` | 4412 / 1793330004712 | `3885cb0c5eb07a9c09eca297a4bcb18e1253e2fa5269b9d6c3dc1de8005ac190` |
 | `9005_bulk_job_least_privilege` | 9005 / 1793330090005 | `5013_bulk_job_least_privilege` | 4413 / 1793330004713 | `14ced1c75079a4b5846cbb2c267671cbdbcb77e5810aeb43f73909e3b5a3cde6` |
 | `9006_bulk_job_owner_attribution` | 9006 / 1793330090006 | `5014_bulk_job_owner_attribution` | 4414 / 1793330004714 | `204bdda42c5a3bbde262c07698d25d34071056b45cf3068189c1cb8c2bb7bdfe` |
 | `9880_personnel_overview_facts` | 3743 / 1793330004043 | `5020_personnel_overview_facts` | 4420 / 1793330004720 | `e45555e45eee6f644abf2cd2665b9ac7c3c4adad5b46874fc8b1296f648d350f` |
@@ -90,6 +90,7 @@ Order and why:
 - **Integration fixes (branch `claude/combined-release-fixes-20261111`, 11 November 2026).** Six of these unapplied
   migrations changed in place; the table above holds their new SHA256, and `test/helpers/approved-upgrade.ts` the same.
   `5012_import_release_visibility`: `app.import_released_attempt_ids()` is no longer executable by PUBLIC; it is granted to the roles its policies reach (was `c9317842654b48046d93ca842cf5fbb99db42324bca02858fcea4759a0d90801`).
+  Gate repair (branch `claude/gate-repair-permissions-20261111`): `5012` also re-creates `app._bank_event_scope` with `import_pending_attempt_id` = NULL, because the reviewed Bank completion (0863) commits to every business column of its native event and the new staged marker made every Assistant Bank confirmation refuse (was `215ea68a36df931277a14a4a5fcdc7ab213da17c39e68d83def21c1209a9e5b9`).
   `5055_payroll_history_staged_job`: `app.payroll_history_hidden_rows(text)` likewise (was `0484c6569d846c4ae89afaaac6acd8617380764df3e8d9d35b05fb9d6403dc47`).
   `5070_system_label_import_staged_job`: the same grant for the nine catalogue tables' policies that also call `app.import_released_attempt_ids()` (was `ba9f29643d13bbe4e69f169d004c698a393af6b639edf97f1d7dd835347e61ba`).
   `5078_bulk_job_movement_import_revert`: adds `app.movement_revert_job_outcome`, the synchronous fallback's durable completion (row security, a policy-checked insert by the job's creator) (was `7c9cc1e2564400925acece3c05644e62eb87b31315cbc7b43d28eab9c0d7489f`).

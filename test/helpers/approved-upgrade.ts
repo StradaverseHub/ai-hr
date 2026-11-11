@@ -208,7 +208,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5006_access_wave4_admin_fair_exclusive':'3a8ef207e6235548a53d2d49993c81404a097a6dc503eb77e1e5a7115abe8445',
  '5010_employee_import_staged_job':'c71e21ef9571ebd015bcff95b87da46fbedb098b66f0b8edfbb10d4b16fe9e65',
  '5011_bulk_job_kernel':'50af4670d06419c82ec7495827cf14db2905fda780b21ee58f17ae2f1df7af58',
- '5012_import_release_visibility':'215ea68a36df931277a14a4a5fcdc7ab213da17c39e68d83def21c1209a9e5b9',
+ '5012_import_release_visibility':'3885cb0c5eb07a9c09eca297a4bcb18e1253e2fa5269b9d6c3dc1de8005ac190',
  '5013_bulk_job_least_privilege':'14ced1c75079a4b5846cbb2c267671cbdbcb77e5810aeb43f73909e3b5a3cde6',
  '5014_bulk_job_owner_attribution':'204bdda42c5a3bbde262c07698d25d34071056b45cf3068189c1cb8c2bb7bdfe',
  '5020_personnel_overview_facts':'e45555e45eee6f644abf2cd2665b9ac7c3c4adad5b46874fc8b1296f648d350f',
