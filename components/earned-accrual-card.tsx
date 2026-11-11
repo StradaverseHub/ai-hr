@@ -11,7 +11,7 @@ import { runEarnedAccrualAction } from '@/app/admin/actions';
 // reason; the COMMIT is unchanged and still posts through app/admin/actions.ts. See that file's header.
 import { previewEarnedAccrualWithReasonAction } from '@/app/admin/leave-config/earned-accrual/actions';
 import type { ArchivedLeaveTypeHint, EarnedAccrualEmptyReason, EarnedAccrualGroup } from '@/core/leave';
-import { LeaveCohortJobPanel } from './leave/leave-cohort-job-panel';
+import { LeaveCohortJobPanel } from './leave-cohort-job-panel';
 import type { LeaveCohortJobProgress } from '@/lib/leave-cohort-job';
 
 export type EarnedScopeOption = { id: string; name: string };

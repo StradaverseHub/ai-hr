@@ -11,7 +11,7 @@ const POLL_MS = 2000;
 
 /**
  * A running replacement-leave sweep (Process expirations, Close replacement-leave year), in the pattern of the leave
- * processing panel (components/leave/leave-cohort-job-panel.tsx). When it finishes the page shows what the
+ * processing panel (components/leave-cohort-job-panel.tsx). When it finishes the page shows what the
  * synchronous action showed: it opens the same address the action redirected to, so the same banner reports the
  * result, and says which employees were left unchanged, if any.
  */
