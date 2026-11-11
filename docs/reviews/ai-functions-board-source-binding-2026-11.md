@@ -79,3 +79,11 @@ The same owner approval ("i fully approve carrying the existing approvals forwar
 No provider contract, outbound field or transport is added or widened. The five covered files changed since `2977f22b…` are: `core/claims.ts`, where the Approvals claim queue resolves approval subjects once per employment and pages in SQL with the same results, proven by an equivalence test against the previous queue; `db/admission.ts`, `db/client.ts` and `db/read-retry.ts`, where a draining admission queue is served instead of refused at a fixed deadline and a refused permit, which started no work, is requested again; and a comment in `lib/internal-auth/store.ts`. None of them adds data to any provider payload.
 
 The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority.
+
+## Combined optimisation release rc3 binding
+
+On 12 November 2026 MYT the repository owner approved re-binding for this release without a further prompt ("Ai rebinding and approval can proceed without me. I have fully approved this."). The approval is applied to release candidate rc3 on `claude/combined-release-rc3-20261112` (head `62cf77b84676c4692405c16a21aeed21d337432e` before this record), with exact fingerprint `3baa446f7cfdbae12c6db4c7aebe9074409b8b96182164d6c0bb042e4dfe0a04` over 1,558 files.
+
+No provider contract, outbound field or transport is added or widened. The covered-source changes since `5e631303…` change lock modes and read shapes only: the Assistant choice pickers, the AI Centre control check and the AI principal read take the shared Access lock instead of the exclusive one; the AI Centre, payroll-audit, loop and Personnel readers read set-wise; and every tenant transaction runs with JIT off. None of them adds data to any provider payload.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority.
