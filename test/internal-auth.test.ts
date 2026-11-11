@@ -625,7 +625,8 @@ describe('first-party authentication with real private storage and existing HR b
   }, 20000);
   it('advances returning MFA to required password change while the unused audit owner is held', async () => {
     await enroll();
-    const ctx = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] };
+    // A separate super admin issues the recovery: account actions never target the actor (5102).
+    const ctx = await superCtx();
     const password = 'Single use fictional MFA password 448!';
     await manageAccount(ctx, base.adminUserId, { type: 'temporary-password', reason: 'Verified account recovery', password, minutes: 30 });
     const login = await startLogin({ organization: 'alpha', username: 'owner', password, native: false });
