@@ -178,7 +178,7 @@ beforeAll(async()=>{
  await finding(second,PREVIOUS,'preparer_closed_run',null);
  const [third]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Third Sdn Bhd'}).returning({id:schema.company.id});
  thirdCompany=third!.id;
- await owner.db.insert(payrollAuditFinding).values([PERIOD,PREVIOUS].map(payPeriod=>({tenantId:b.tenantId,companyId:thirdCompany,payPeriod,controlId:'pay_after_last_day',employmentId:null,
+ await owner.db.insert(payrollAuditFinding).values([PERIOD,PREVIOUS].map(payPeriod=>({tenantId:b.tenantId,companyId:thirdCompany,payPeriod,controlId:'pay_after_last_day' as const,employmentId:null,
   subjectKey:`fixture:${randomUUID()}`,evidence:{fixture:true},evidenceHash:'f'.repeat(64),detectedAt:new Date(`${payPeriod}-15T02:00:00Z`),writer:'user' as const,writerId:b.adminUserId})));
  // Net-swing dispositions for the Payroll loop settings page's proposals: the paid company's salary-change flags (five
  // expected, one a problem) and the second company's overtime flags (six expected), one of whose proposals was rejected.
