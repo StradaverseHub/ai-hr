@@ -33,7 +33,7 @@ const UNCOVERED=Number(process.env.UNCOVERED??300),RECONCILE_ITEMS=Number(proces
 const PHASES=new Set((process.env.REHEARSAL_PHASES??'').split(',').map(x=>x.trim()).filter(Boolean)),PUBLICATION_TENANTS=Number(process.env.PUBLICATION_TENANTS??0);
 const wanted=(name:string)=>!PHASES.size||PHASES.has(name);
 const TODAY='2026-11-10',SHIFT_CODE='OPAM03';
-process.env.AUDIT_HASH_CHAIN_ENABLED='true';
+if(process.env.AUDIT_HASH_CHAIN_ENABLED === 'true'){/* already armed by the caller */}else process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 const load=<T=any>(path:string):Promise<T>=>import(`${ROOT}/${path}.ts`);
 const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));

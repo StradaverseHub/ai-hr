@@ -25,7 +25,7 @@ const OWNER_URL=required('MIGRATION_DATABASE_URL',process.env.MIGRATION_DATABASE
 for(const url of [required('DATABASE_URL',process.env.DATABASE_URL),OWNER_URL])if(new URL(url).port!==port)throw new Error('Refusing: rehearsal runs only against the disposable cluster port.');
 const TENANT=required('REHEARSAL_TENANT',process.env.REHEARSAL_TENANT),ADMIN=required('REHEARSAL_ADMIN',process.env.REHEARSAL_ADMIN);
 const EMPLOYEES=Number(process.env.EMPLOYEES??3000),PERIOD=process.env.HISTORY_PERIOD??'2026-05';
-if(process.env.AUDIT_HASH_CHAIN_ENABLED!=='true')process.env.AUDIT_HASH_CHAIN_ENABLED='true';
+if(process.env.AUDIT_HASH_CHAIN_ENABLED === 'true'){/* already armed by the caller */}else process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 const stat=(values:number[])=>{const s=[...values].sort((a,b)=>a-b);return s.length?{n:s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.floor(s.length*.95)],max:s[s.length-1]}:{n:0,p50:0,p95:0,max:0};};
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -60,8 +60,8 @@ async function main(){
  const {verifyTenantChain}=await import('../../core/audit-chain');
  const {freshImportContext}=await import('../../core/bank-import-worker');
  const {readEmployeeHomeSummary}=await import('../../core/employee-home-summary');
- const {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload}=await import('../../core/payroll-history-revisions');
- const {requestPayrollHistoryConfirm,requestPayrollHistoryRevert}=await import('../../core/payroll-history-job');
+ const {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload}=await import('../../packs/payroll/service');
+ const {requestPayrollHistoryConfirm,requestPayrollHistoryRevert}=await import('../../packs/payroll/service');
  const {PAYROLL_HISTORY_HEADERS}=await import('../../lib/payroll-history-import-schema');
  const {toCsv}=await import('../../lib/csv');
  const obs=postgres(OWNER_URL,{max:4,onnotice:()=>{}});

@@ -49,7 +49,7 @@ for(const url of [required('DATABASE_URL',process.env.DATABASE_URL),OWNER_URL])i
 const TENANT=required('REHEARSAL_TENANT',process.env.REHEARSAL_TENANT),ADMIN=required('REHEARSAL_ADMIN',process.env.REHEARSAL_ADMIN);
 const ROWS=Number(process.env.IMPORT_ROWS??500),REVERT_ROWS=Number(process.env.REVERT_ROWS??0);
 const PHASES=new Set((process.env.PHASES??'baseline,sync,qualification,emergency,profile,family,late,revertSync,revertJob').split(','));
-if(process.env.AUDIT_HASH_CHAIN_ENABLED!=='true')process.env.AUDIT_HASH_CHAIN_ENABLED='true';
+if(process.env.AUDIT_HASH_CHAIN_ENABLED === 'true'){/* already armed by the caller */}else process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 const stat=(values:number[])=>{const s=[...values].sort((a,b)=>a-b);return s.length?{n:s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.floor(s.length*.95)],max:s[s.length-1]}:{n:0,p50:0,p95:0,max:0};};
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));

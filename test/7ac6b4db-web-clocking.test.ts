@@ -81,11 +81,12 @@ describe('7ac6b4db · the date and the shift being clocked against', () => {
 
   it('the shift window depends on the existing engine schedule resolver', () => {
     const reader = codeOnly(read('/core/attendance-clock-read.ts'));
-    expect(reader).toContain('clockScheduleForTx(tx, employmentId, yesterday)');
-    expect(reader).toContain('clockScheduleForTx(tx, employmentId, today)');
+    // 83578dc29 (Home Today in one statement): the SAME resolver now takes a memo built from that bundled read.
+    expect(reader).toContain('clockScheduleForTx(tx, employmentId, yesterday, pre?.memo(yesterday))');
+    expect(reader).toContain('clockScheduleForTx(tx, employmentId, today, pre?.memo(today))');
+    expect(read('/core/attendance.ts')).toContain('const schedule = await scheduleFor(tx, employmentId, date, memo)');
     expect(reader).toMatch(/const schedule = overnightSchedule\?\.crossesMidnight\s*\? overnightSchedule/);
     expect(reader).toContain('shift:{code:schedule.code,start:schedule.start,end:schedule.end}');
-    expect(read('/core/attendance.ts')).toContain('const schedule = await scheduleFor(tx, employmentId, date)');
   });
 });
 

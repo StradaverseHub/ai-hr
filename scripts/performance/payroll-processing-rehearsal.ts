@@ -27,7 +27,7 @@ const OWNER_URL=required('MIGRATION_DATABASE_URL',process.env.MIGRATION_DATABASE
 for(const url of [required('DATABASE_URL',process.env.DATABASE_URL),OWNER_URL])if(new URL(url).port!==port)throw new Error('Refusing: rehearsal runs only against the disposable cluster port.');
 const TENANT=required('REHEARSAL_TENANT',process.env.REHEARSAL_TENANT),ADMIN=required('REHEARSAL_ADMIN',process.env.REHEARSAL_ADMIN);
 const BASE=Number(process.env.BASE_EMPLOYEES??3000),PERIOD=process.env.PAY_PERIOD??'2026-06';
-if(process.env.AUDIT_HASH_CHAIN_ENABLED!=='true')process.env.AUDIT_HASH_CHAIN_ENABLED='true';
+if(process.env.AUDIT_HASH_CHAIN_ENABLED === 'true'){/* already armed by the caller */}else process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 process.env.TZ=process.env.TZ??'Asia/Kuala_Lumpur';
 const stat=(values:number[])=>{const s=[...values].sort((a,b)=>a-b);return s.length?{n:s.length,p50:s[Math.floor(s.length*.5)],p95:s[Math.floor(s.length*.95)],max:s[s.length-1]}:{n:0,p50:0,p95:0,max:0};};
 const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -62,7 +62,7 @@ async function main(){
  const {verifyTenantChain}=await import('../../core/audit-chain');
  const {freshImportContext}=await import('../../core/bank-import-worker');
  const {readEmployeeHomeSummary}=await import('../../core/employee-home-summary');
- const {createBatch,generatePayslips,resetProcessedBatch}=await import('../../core/payroll');
+ const {createBatch,generatePayslips,resetProcessedBatch}=await import('../../packs/payroll/service');
  const {setCompensation}=await import('../../core/comp');
  const {requestPayrollProcessing}=await import('../../core/payroll-processing-job');
  const obs=postgres(OWNER_URL,{max:4,onnotice:()=>{}});

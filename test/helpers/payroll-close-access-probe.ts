@@ -1,6 +1,8 @@
 /** Close Access admission witness: since 915d5a06 Close try-locks Access and retries a miss after
  * returning its connection instead of joining the PostgreSQL wait queue. Observes the actual try
- * result on the driver's normal query path; no lock, result or authorization is substituted. */
+ * result on the driver's normal query path; no lock, result or authorization is substituted.
+ * 7b6dceb82 (reader/writer Access lock) moved the payroll period owners to the SHARED try
+ * (tryLockAccessConfigurationReadTx), so either try form on the tenant's Access key is the witness. */
 import {sql} from 'drizzle-orm';
 import {expect,vi} from 'vitest';
 import {client} from '../../db/client';
@@ -16,7 +18,7 @@ export function observeCloseAccessMisses(tenantId:string){
   args[index]=(native:typeof client)=>callback(new Proxy(native,{get(target,key,receiver){
    if(key==='unsafe')return (...query:unknown[])=>{
     const pending=Reflect.apply(target.unsafe,target,query);
-    if(typeof query[0]==='string'&&query[0].includes('pg_try_advisory_xact_lock(')&&Array.isArray(query[1])&&query[1].includes(accessKey)){
+    if(typeof query[0]==='string'&&/pg_try_advisory_xact_lock(?:_shared)?\(/.test(query[0])&&Array.isArray(query[1])&&query[1].includes(accessKey)){
      void (pending as PromiseLike<readonly {acquired?:boolean;owned?:boolean}[]>).then(rows=>{
       if(rows[0]?.acquired===false||rows[0]?.owned===false)missed=true;
      },()=>undefined);

@@ -21,7 +21,9 @@ import {definitionOfDoneInputs} from './definition-of-done-inputs';
 // AI Centre restructure (4 Nov 2026): lowered to the counts after it (356/344/236/4/339 before, 352/341/233/4/335 after).
 // 50d9b809: lowered to the counts after it (352/341/233/4/335 before, 351/340/232/4/334 after): the leave admin guide now
 // links Leave Settings, closing its guide gap, and the new Shared Leave Groups page shipped with no gap of its own.
-const CEILING={entries:351,semantic:340,guide:232,readiness:4,corpus:334} as const;
+// 90377f8ca and 6781b901f made /admin/claims/forms and /admin/locations route-handler redirects, so they left the
+// linkable pages and their entries closed: lowered to the counts after it (351/340/232/4/334 before, 349/338/231/4/332 after).
+const CEILING={entries:349,semantic:338,guide:231,readiness:4,corpus:332} as const;
 
 const allowed=():Map<string,string[]>=>{const map=new Map<string,string[]>();
  for(const [signature,keys] of Object.entries(DEFINITION_OF_DONE_GAPS))for(const key of keys){

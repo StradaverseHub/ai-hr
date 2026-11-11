@@ -23,7 +23,11 @@ function replies(values:(unknown[]|Error)[]){
 }
 beforeEach(()=>{port.withTenant.mockReset();statements=[];contexts=[];});
 it('pins the independently frozen old locked editor',()=>{
- expect(createHash('sha256').update(readFileSync('test/fixtures/access-editor-locked-baseline.ts')).digest('hex')).toBe('abd52e2d2ab8d9d4a5d799d3bb15a71335acb80c1c91a032c2c6801b5b47f097');
+ // d9dfbaf15 (reader/writer Access lock) renamed the exclusive lock lockAccessConfigurationTx to
+ // lockAccessConfigurationWriteTx in the frozen editor too: the same EXCLUSIVE hold, so the frozen behaviour is unchanged.
+ const frozen=readFileSync('test/fixtures/access-editor-locked-baseline.ts','utf8');
+ expect(frozen).toContain('await lockAccessConfigurationWriteTx(tx,ctx.tenantId);');
+ expect(createHash('sha256').update(frozen).digest('hex')).toBe('9623ca8823b6b7dea97602d82171a6bc9e3f81019dda01828180161650873677');
 });
 it('uses one RR/RO read for initialized state and exposes only existing minimized editor props',async()=>{
  replies([[initialized()]]);const page=await readAccessConfigurationEditor(context());

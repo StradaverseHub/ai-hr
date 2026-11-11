@@ -106,6 +106,12 @@ const ALWAYS_ALLOWED = [
   'core/payroll-readiness.ts',
   'core/payroll-history-import.ts',
   'core/payroll-history-revisions.ts',
+  // The payroll pack's own handlers on the shared bulk-job kernel (owner bulk-job decisions, 10 Nov 2026): processing
+  // (078caace2), history upload/revert (dd6326b7e) and selective reprocess (2304b7d65). Pack implementation, so they
+  // import their siblings like core/payroll-run-group.ts does; the kernel registry and outsiders do not gain access.
+  'core/payroll-processing-job.ts',
+  'core/payroll-history-job.ts',
+  'core/payroll-reprocess-job.ts',
   'core/payroll-permissions-admin.ts',
   'core/pay-components.ts',
   'core/pay-formula.ts',

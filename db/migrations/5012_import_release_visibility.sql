@@ -245,6 +245,19 @@ ALTER TABLE domain_event ADD COLUMN import_pending_attempt_id uuid;
 --> statement-breakpoint
 CREATE TRIGGER domain_event_import_pending_stamp BEFORE INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.import_pending_stamp();
 --> statement-breakpoint
+-- The reviewed Bank completion (0863) commits to every business column of its native event: the column set of
+-- to_jsonb(domain_event) outside the generated audit slots and the payload. That set now includes the staged marker,
+-- so the committed scope names it too, and as NULL: an Assistant Bank change is never a staged import event. Same
+-- signature, language, volatility and search_path; CREATE OR REPLACE keeps its owner and its REVOKE.
+CREATE OR REPLACE FUNCTION app._bank_event_scope(p_tenant uuid,p_person uuid,p_statutory uuid,p_user uuid) RETURNS jsonb
+LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('tenant_id',p_tenant,'aggregate_type','employee-statutory',
+  'aggregate_id',p_statutory,'event_type','employee.bank.updated','actor_type','user','actor_id',p_user,
+  'subject_employment_id',(SELECT e.id FROM public.employment e WHERE e.tenant_id=p_tenant AND e.person_id=p_person
+   ORDER BY (e.terminated_on IS NOT NULL),e.hired_on,e.id LIMIT 1),
+  'import_pending_attempt_id',NULL::uuid)
+$$;
+--> statement-breakpoint
 -- Chain verification (core/audit-chain.ts, group administrators only) must read every chained row to prove the
 -- chain; it sets app.audit_chain_verification for its own read-only statements and returns no event content.
 ALTER POLICY domain_event_import_pending ON public.domain_event
