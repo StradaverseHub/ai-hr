@@ -12,6 +12,7 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import {terasLoopCase,terasLoopRun} from '../../db/teras-schema';
+import {payrollCheckAcknowledgement} from '../../db/teras-payroll-cycle-schema';
 import type {SessionContext} from '../../db/client';
 import {entitledCtx,owner,type Base} from '../harness';
 
@@ -64,7 +65,8 @@ export async function buildScaleFixture(b:Base,opts:Readonly<{employments?:numbe
  const now=Date.now();
  const caseRows=active.slice(0,130).flatMap((e,i)=>(['no_tax_number','no_bank_account'] as const).map((gap,g)=>({tenantId:b.tenantId,employmentId:e.id,gap,
   state:(i%9===0?'verified':g===1&&i%3===0?'needs_review':'needs_input') as 'verified'|'needs_review'|'needs_input',audience:(g===1&&i%3===0?'hr':'employee') as 'hr'|'employee',
-  harnessVersion:'fictional-scale',openedAt:new Date(now-((i*7+g)%90)*DAY),observedAt:new Date(now-DAY),reopenCount:i%23===0?1:0})));
+  harnessVersion:'fictional-scale',openedAt:new Date(now-((i*7+g)%90)*DAY),observedAt:new Date(now-DAY),reopenCount:i%23===0?1:0,
+  ...(i%9===0?{verifiedAt:new Date(now-2*DAY)}:{})})));
  await owner.db.insert(schema.hrOrchestrationCase).values(caseRows);
  // The missing-employee-data loop's cases for ~450 employments: open, waiting and closed.
  const runId=randomUUID();
@@ -78,6 +80,28 @@ export async function buildScaleFixture(b:Base,opts:Readonly<{employments?:numbe
  // A few pending self-service corrections.
  await owner.db.insert(schema.profileChangeRequest).values(active.slice(0,6).map((e,i)=>({tenantId:b.tenantId,personId:e.personId,employmentId:e.id,status:'pending' as const,
   proposed:{taxNumber:`SG${9000000+i}`}})));
+ // Payroll exceptions as staging holds them: ten months of processed runs in six companies, ~140 live unresolved
+ // verdicts (40 blocking across all ten months, 100 for review), ~600 superseded ones, one finding each, and one
+ // standing acknowledgement of a blocking check, so Exceptions reads every month's acknowledged blocks.
+ const periods=Array.from({length:10},(_,i)=>`2026-${String(i+1).padStart(2,'0')}`),payrollCompanies=staffed.slice(0,6);
+ const batches:{id:string;companyId:string;period:string}[]=[];
+ for(const companyId of payrollCompanies)for(const period of periods){
+  const [pp]=await owner.db.insert(schema.payPeriod).values({tenantId:b.tenantId,companyId,period,status:'open'} as never).returning({id:schema.payPeriod.id});
+  const [batch]=await owner.db.insert(schema.payrollBatch).values({tenantId:b.tenantId,companyId,payPeriodId:pp.id,payPeriod:period,batchDate:`${period}-28`,status:'processed',employeeCount:10} as never)
+   .returning({id:schema.payrollBatch.id});
+  batches.push({id:batch.id,companyId,period});
+ }
+ const staffOf=new Map<string,string[]>();for(const e of active)(staffOf.get(e.companyId)??staffOf.set(e.companyId,[]).get(e.companyId)!).push(e.id);
+ const verdicts=Array.from({length:740},(_,i)=>{const batch=batches[i%batches.length],staff=staffOf.get(batch.companyId)!;
+  return {tenantId:b.tenantId,batchId:batch.id,employmentId:staff[i%staff.length],disposition:i<40?'block':i<140?'review':i%3?'review':'block',
+   detectorsRun:['missing-bank-profile','net-swing'],detectorsSkipped:[],computedAt:new Date(now-(i%90)*DAY),...(i>=140?{supersededAt:new Date(now-DAY)}:{})};});
+ const verdictIds:string[]=[];
+ for(const part of chunk(verdicts,500))verdictIds.push(...(await owner.db.insert(schema.payrollAnomalyVerdict).values(part as never).returning({id:schema.payrollAnomalyVerdict.id})).map(r=>r.id));
+ for(const part of chunk(verdictIds.map((verdictId,i)=>({tenantId:b.tenantId,verdictId,detectorId:i<40||(i>=140&&i%3===0)?'missing-bank-profile':'net-swing',
+  severity:i<40||(i>=140&&i%3===0)?'block':'review',facts:{},sourceEventIds:[],suggestedAction:'anomaly.action.missingBankProfile'})),500))
+  await owner.db.insert(schema.payrollAnomalyFinding).values(part as never);
+ await owner.db.insert(payrollCheckAcknowledgement).values({tenantId:b.tenantId,companyId:payrollCompanies[0],checkId:'anomaly:missing-bank-profile',scope:'company',
+  reason:'Fictional: paid by cheque this year',createdByUserId:b.adminUserId});
  // The domain-event history: orchestrator receipts among ~30k unrelated events (payroll, feedback, hires, holidays).
  const kinds=[['payroll','payroll.anomaly.flagged'],['feedback','feedback.release.recorded'],['payroll','payroll.anomaly.evaluated'],['holiday','holiday.replacement.reconciled'],
   ['feedback','feedback.plan.drafted'],['employment','employment.hired'],['employee','employee.tax-scheme.selected']] as const;
@@ -86,7 +110,8 @@ export async function buildScaleFixture(b:Base,opts:Readonly<{employments?:numbe
  for(let i=0;i<33;i++)events.push({tenantId:b.tenantId,aggregateType:'hr_orchestrator',aggregateId:b.tenantId,eventType:'orchestrator.readiness-checked',actorType:'system' as const,
   subjectEmploymentId:null,payload:{scheduled:false,scopeDigest:'fictional-other-scope'} as never,occurredAt:new Date(now-(33-i)*3*3_600_000)});
  for(const part of chunk(events,2000))await owner.db.insert(schema.domainEvent).values(part as never);
- await owner.db.execute(sql`analyze public.employment, public.person, public.company, public.employee_statutory_my, public.compensation, public.hr_orchestration_case, public.teras_loop_case, public.domain_event`);
+ await owner.db.execute(sql`analyze public.employment, public.person, public.company, public.employee_statutory_my, public.compensation, public.hr_orchestration_case,
+  public.teras_loop_case, public.domain_event, public.payroll_batch, public.payroll_anomaly_verdict, public.payroll_anomaly_finding`);
  // Personas, each with their own person and employment in the group company.
  const persona=async(name:string,grants:{role:string;companyId:string|null}[]):Promise<SessionContext>=>{
   const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:name,primaryEmail:`${randomUUID()}@fixture.test`}).returning({id:schema.person.id});
