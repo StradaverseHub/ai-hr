@@ -216,7 +216,8 @@ async function loadedBrowser(){
 }
 
 async function main(){
- const phase=async(name,work)=>{const at=now();try{await work();}catch(error){note(name,error);}result.phases[name]=round(now()-at);};
+ const phase=async(name,work)=>{const at=now();console.error('[control-load] phase '+name+' started');try{await work();}catch(error){note(name,error);console.error('[control-load] phase '+name+' failed: '+(error?.message??error));}
+  result.phases[name]=round(now()-at);console.error('[control-load] phase '+name+' finished ms='+result.phases[name]);};
  await phase('pilot-http',pilot);
  browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined,
   args:['--host-resolver-rules=MAP localhost 127.0.0.1']});
@@ -234,7 +235,12 @@ finally{
  clearInterval(lockTimer);clearInterval(stuckTimer);
  await activityProbe?.catch(()=>{});
  result.elapsedMs=round(now()-started);
- try{writeFileSync(join(out,'control-load.json'),JSON.stringify(result));}catch{}
+ let serialized;
+ try{serialized=JSON.stringify(result);}
+ catch(error){console.error('[control-load] result serialization failed: '+(error?.message??error));
+  serialized=JSON.stringify({kind:'CONTROL_LOAD_RESULT_V1',unavailable:'serialization',failures:result.failures});}
+ try{writeFileSync(join(out,'control-load.json'),serialized);console.error('[control-load] result written, bytes='+serialized.length);}
+ catch(error){console.error('[control-load] result write failed: '+(error?.code??error?.message));}
  await browser?.close().catch(()=>{});
  await Promise.allSettled([observer.end({timeout:2}),probeDb.end({timeout:2})]);
  agent.destroy();
