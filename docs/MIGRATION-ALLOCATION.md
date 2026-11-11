@@ -101,6 +101,17 @@ Order and why:
   `5012_import_release_visibility`: the same two leave its release-aware rewrite list (was `3885cb0c5eb07a9c09eca297a4bcb18e1253e2fa5269b9d6c3dc1de8005ac190`).
   `5070_system_label_import_staged_job`: the grade choice list and the uploaded-award validation leave its rewrite list and are verified instead (was `6ed0f9b6bf699fb05d21c920ef2a11f7fedb03308dac3a166b7031dbd2ab7ffb`).
   `test/restricted-owner-release-upgrade.test.ts` applies every migration above main as the literal `ai_hr_owner` login on the installed role topology.
+- **5088 (Access lock restart fix, 12 November 2026).** Branch `claude/access-lock-restart-20261111` takes
+  `5088_access_review_custody_held_mode` at idx 4488 / when 1793330004788, inserted before 5090 in journal order
+  (SHA256 `91b5a8f36000eca314473911393e8e851af7f94fee6fc81345a2864f52233e96`). It re-creates six review-custody
+  functions owned by the migration owner (`app._assistant_own_leave_review_identity`,
+  `app.assistant_own_leave_review_subject`, `app.assistant_own_leave_review_read` from 0622,
+  `app.assistant_generic_review_subject`, `app.assistant_generic_review_read` from 0670 and
+  `app._assistant_leave_decision_login` from 0622) with one change each: the Access lock is taken in the mode the
+  transaction already holds (shared when it holds shared, exclusive otherwise). No purpose-owned object is replaced.
+  **Watermark:** staging already applied 5090 (when 1793330004790); Drizzle skips a migration whose `when` is below the
+  applied watermark, so this tag must move above 5090 (for example 5091 / idx 4491 / when 1793330004791) if it ships
+  to an installation that has 5090.
 <!-- combined-release-fixes:end -->
 - **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069, 5072–5074 and 5084–5089 are
   left for branches accepted later; they are inserted before 5090 in journal order while the block is unapplied.
