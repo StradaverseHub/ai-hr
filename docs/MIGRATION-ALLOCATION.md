@@ -4,7 +4,8 @@ Board staging window 3 now follows the combined release block (`5000`–`5090`, 
 1793330004700–1793330004790), so the unapplied `4900_import_history_kind` (idx 4300 / when 1793330004600) would be
 silently skipped after it. It moves to `5100_import_history_kind` at idx 4500 / when 1793330004800, keeping the
 block's shared offset (tag 51NN, idx 45NN, when …48NN). Board window 4's `4901_attendance_workflow_skipped_levels`
-follows as `5101` (idx 4501 / when 1793330004801) and PR 240's `4902_account_action_authority` as `5102`
+follows as `5101` (idx 4501 / when 1793330004801) with one change: its request-links trigger keeps the shared submission lock that
+`3210_attendance_shared_workflow_submission_lock` installs (the draft re-created the exclusive 3101 lock) and PR 240's `4902_account_action_authority` as `5102`
 (idx 4502 / when 1793330004802). The SQL bytes are unchanged and were never applied anywhere. A survey of origin
 branches found no other claim above 5090. Recheck peer claims and the installed ledger at admission; this grants no
 installation authority.

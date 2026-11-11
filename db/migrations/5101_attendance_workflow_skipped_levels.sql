@@ -120,8 +120,10 @@ REVOKE ALL ON FUNCTION app.attendance_workflow_resolve_v4(uuid,jsonb,jsonb) FROM
 GRANT EXECUTE ON FUNCTION app.attendance_workflow_resolve_v4(uuid,jsonb,jsonb) TO ai_hr_app;
 
 --> statement-breakpoint
--- Replaces 3101_attendance_shared_workflow.sql. Unchanged except that the v4 skipped levels are also
--- compared with canonical resolution, and older routing versions cannot carry skipped levels.
+-- Replaces the 3101_attendance_shared_workflow.sql body as 3210_attendance_shared_workflow_submission_lock.sql left it:
+-- a submission takes the per-company lock SHARED, so submissions do not queue behind each other while a
+-- configuration writer still excludes them. Unchanged except that the v4 skipped levels are also compared with
+-- canonical resolution, and older routing versions cannot carry skipped levels.
 CREATE OR REPLACE FUNCTION app.attendance_workflow_links() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE canonical jsonb;
@@ -131,7 +133,7 @@ BEGIN
    THEN RAISE EXCEPTION 'Invalid workflow company'; END IF;
  END IF;
  IF TG_TABLE_NAME='attendance_workflow_request' THEN
-  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text||':attendance-workflow:'||NEW.company_id::text||':'||NEW.application_type,0));
+  PERFORM pg_advisory_xact_lock_shared(hashtextextended(NEW.tenant_id::text||':attendance-workflow:'||NEW.company_id::text||':'||NEW.application_type,0));
   IF NOT EXISTS(SELECT 1 FROM public.employment e JOIN public.attendance_correction c ON c.employment_id=e.id AND c.tenant_id=e.tenant_id
    JOIN public.attendance_workflow_template t ON t.id=NEW.template_id AND t.tenant_id=e.tenant_id
    WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id AND e.company_id=NEW.company_id AND c.id=NEW.correction_id
