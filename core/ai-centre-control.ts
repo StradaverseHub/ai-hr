@@ -1,4 +1,4 @@
-import {accessLockModeHeldTx,lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {accessLockModeHeldTx,inAccessDisplayRead,lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {AiAllowanceError,AiGatewayError} from '../lib/ai/types';
@@ -13,7 +13,9 @@ import {aiCentreActivity,runAiCentreActivity,trackAiCentreFunctions} from '../li
  * effect may rely on that until the caller itself is verified. An exclusive holder simply re-enters.
  */
 export async function lockAccessForAiControlCheckTx(tx:Tx,tenantId:string):Promise<void>{
-  if(await accessLockModeHeldTx(tx,tenantId)==='S')await lockAccessConfigurationTx(tx,tenantId);
+  // A display read never takes it exclusively (staging, 11 November 2026); a read-only transaction is shared anyway.
+  const mode=await accessLockModeHeldTx(tx,tenantId);
+  if(mode==='S'||mode!=='X'&&inAccessDisplayRead())await lockAccessConfigurationTx(tx,tenantId);
   else await lockAccessConfigurationWriteTx(tx,tenantId);
 }
 

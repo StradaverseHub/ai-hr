@@ -1,7 +1,7 @@
 # Combined release block — 11 November 2026 MYT (unapplied allocation, one block)
 
 Branch `claude/combined-release-20261111` (base `claude/architecture-release-20261110` @ `6e4a883c2`) merges every
-accepted branch of the combined release and moves all of their draft migrations into one block (46 migrations): tags `5000`–`5090`,
+accepted branch of the combined release and moves all of their draft migrations into one block (46 migrations; 5120 and 5121 are appended above 5090 and the 5100–5112 reservations later): tags `5000`–`5090`,
 idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when share one offset (tag 50NN, idx 44NN, when
 …47NN). The 772-entry journal of the base keeps its entries, order and SQL bytes; the 818-entry journal passes
 `node .github/ci/check-migration-order.mjs origin/main` (main `9cf69292a`, 729 entries ending at
@@ -55,6 +55,7 @@ idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when sh
 | `9870_home_own_clock_day` | 3744 / 1793330009870 | `5082_home_own_clock_day` | 4482 / 1793330004782 | `345c604cebcc58946865d6cc93cd248ad693165063a67648d6781243ec652c58` |
 | `9873_home_own_schedule_range` | 3745 / 1793330009873 | `5083_home_own_schedule_range` | 4483 / 1793330004783 | `75045a4ec8c176c55ddc51ddba0b079e6ca8c5662b004a345945ee335efce70a` |
 | `4700_audit_chain_commit_seal` | 4100 / 1793330004400 | `5090_audit_chain_commit_seal` | 4490 / 1793330004790 | `6ce9bebe8c8de296b3b4a03b1d5d52c90c7df79fbdb0b8f8e0617616001e263e` |
+| (allocated directly, branch `claude/personnel-search-scan-20261111`; drafted 5086, then 5092 at 4492 / 1793330004792, SHA256 `977040da60dcf94f9ef2650dceec76192ea53c23b163cc00d6bfd484d760bf0f`) | — | `5121_personnel_search_set_mapping` | 4521 / 1793330004821 | `3d9b5a53b963a0f01843d090a96662da3e9f7b5c5bb0650e3064d237a3c60d54` |
 
 Order and why:
 
@@ -101,9 +102,53 @@ Order and why:
   `5012_import_release_visibility`: the same two leave its release-aware rewrite list (was `3885cb0c5eb07a9c09eca297a4bcb18e1253e2fa5269b9d6c3dc1de8005ac190`).
   `5070_system_label_import_staged_job`: the grade choice list and the uploaded-award validation leave its rewrite list and are verified instead (was `6ed0f9b6bf699fb05d21c920ef2a11f7fedb03308dac3a166b7031dbd2ab7ffb`).
   `test/restricted-owner-release-upgrade.test.ts` applies every migration above main as the literal `ai_hr_owner` login on the installed role topology.
+- **5120 (Access lock restart fix, 12 November 2026; drafted as 5088, first allocated 5091).** Branch
+  `claude/access-lock-restart-20261111` took `5091_access_review_custody_held_mode` at idx 4491 / when 1793330004791,
+  appended after 5090 because staging has already applied 5090 (watermark 1793330004790) and Drizzle skips a migration
+  whose `when` is at or below the applied watermark. Release candidate 3 (`claude/combined-release-rc3-20261112`)
+  renumbers it `5120_access_review_custody_held_mode` at idx 4520 / when 1793330004820, above the numbers other
+  sessions have reserved (below), any of which may reach staging first. Only the header comment changed: SHA256
+  `f99d6938631f4ae17dea7af03b56d5dad4830ef5402b206b097e25ea4854c2a0` (was `32e2a479db86feaa32b2bd9ed9e34c127f4269498ef9d58f8da60ded98ef37c9` as 5091). It re-creates six
+  review-custody functions owned by the migration owner (`app._assistant_own_leave_review_identity`,
+  `app.assistant_own_leave_review_subject`, `app.assistant_own_leave_review_read` from 0622,
+  `app.assistant_generic_review_subject`, `app.assistant_generic_review_read` from 0670 and
+  `app._assistant_leave_decision_login` from 0622) with one change each: the Access lock is taken in the mode the
+  transaction already holds (shared when it holds shared, exclusive otherwise). No purpose-owned object is replaced.
+  Where 5090 is still unapplied (production), 5120 runs in the same batch after it; it only replaces function bodies.
+  `test/migration-installed-watermark.test.ts` records staging's installed ledger and fails when any other entry sits
+  at or below its watermark.
+- **Other sessions' reservations (release coordinator, 12 November 2026).** These numbers belong to other sessions;
+  they are not free and are not allocated by this release:
+  - `5100`, `5101`, `5102` and `5110`–`5112` (when 1793330004800–1793330004812; tag 51NN, when …48NN): the Irwin
+    release, which may deploy to staging before release candidate 3;
+  - `5122` (when 1793330004822): PR 240.
+  Release candidate 3 journals its own migrations above the Irwin release: `5120` (above) and the Personnel search set
+  mapping `5121` (below). `test/migration-installed-watermark.test.ts` records the reservations and fails when any other
+  pending entry sits at or below when 1793330004812, uses a reserved number or `when`, or a reserved number arrives at
+  another `when`.
 <!-- combined-release-fixes:end -->
+- **Personnel search set mapping (5121, 12 November 2026; drafted 5086, then 5092).** Branch
+  `claude/personnel-search-scan-20261111` took `5092_personnel_search_set_mapping` at idx 4492 / when 1793330004792,
+  journalled after 5090 and above the then `5091_access_review_custody_held_mode`, because staging has applied 5090 and
+  drizzle skips an entry whose `when` is below the applied watermark (docs/SCALE-AND-RELEASE-RULES.md rule 11). Release
+  candidate 3 (`claude/combined-release-rc3-20261112`) renumbers it `5121_personnel_search_set_mapping` at idx 4521 /
+  when 1793330004821, journalled after `5120_access_review_custody_held_mode` and above the Irwin release's 5100–5112;
+  only its header comment changed (SHA256 `3d9b5a53b963a0f01843d090a96662da3e9f7b5c5bb0650e3064d237a3c60d54`). 5120
+  replaces none of the functions whose predecessor digests 5121 checks, and reads none of them, so applying 5120 first
+  leaves every checked body as installed. The 5086 number is released. A survey of every origin ref's journal on 12 November 2026 found 5091 and
+  then 5100–5112 (`5100_import_history_kind`, `5101_attendance_workflow_skipped_levels`, `5102_account_action_authority`,
+  `5110`–`5112`), nothing at 5092–5099. Functions only: it replaces `app.company_org_mapping_at`,
+  `app._personnel_employment_tags`, `app.personnel_overview_facts`, `app.personnel_overview_filter_fields`,
+  `app.personnel_filter_companies`, `app.personnel_list_rows`, `app.personnel_list_rows_for_ids` and
+  `app.personnel_private_search_bind()` in place (each checked against its installed body digest, owner and settings)
+  and adds `app._personnel_company_tags` and `app.personnel_search_candidates`; it creates no trigger. Where 5090 and
+  5120 are still unapplied (production), it runs in the same batch after them; it only replaces function bodies. Until
+  it is installed, core/personnel-private-search.ts keeps the previous search reader.
 - **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069, 5072–5074 and 5084–5089 are
   left for branches accepted later; they are inserted before 5090 in journal order while the block is unapplied.
+  Staging has now applied the block through 5090, so a gap number journalled before 5090 would be skipped there: a
+  branch that ships to staging takes a number above every installed and reserved number (5112 on 12 November 2026)
+  and is journalled after it (`test/migration-installed-watermark.test.ts` fails otherwise).
 
 Retired: `9002_leave_import_job` (phase 3's leave import proof). The leave ledger import runs on the shared kernel
 (kind `leave_ledger`, 5030), so the proof's table, runner and systemd unit were removed with it; it was never applied.

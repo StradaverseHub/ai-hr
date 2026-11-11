@@ -11,21 +11,20 @@
  * may read their record. The Salary payroll page and the settings page add what only payroll administrators may see:
  * each person's net-swing flag (a ratio, never an amount) and the thresholds. No model is called; no figure of pay is
  * computed here. */
-import {and,count,desc,eq,inArray,sql} from 'drizzle-orm';
+import {and,count,desc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
-import {appUser,company,companyPayrollConfig,domainEvent,employment,payrollBatch,payrollStatusHistory,person} from '../../db/schema';
+import {appUser,company,companyPayrollConfig,domainEvent,employment,payrollAnomalyVerdict,payrollBatch,payrollStatusHistory,person} from '../../db/schema';
 import {terasLoopCase,terasLoopPause} from '../../db/teras-schema';
 import {terasPayrollSwingDisposition,terasPayrollThresholdDecision} from '../../db/teras-payroll-cycle-schema';
 import {isAdmin} from '../../lib/authz-model';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {tenantStoppedTx,workerSwitchStateTx} from '../agent-registry/controls';
 import {registeredWorker} from '../agent-registry/workers';
-import {anomalyMetrics} from '../payroll-anomaly';
 import {listPayComponents} from '../../packs/payroll/service';
 import {PAY_CAUSE_KINDS,type PayCauseKind} from '../pay-difference';
 import {decodeCheck,type PreSalaryCheck} from './pre-salary-checks';
 import {daysBetween,nextPeriod,preSalaryWindows,previousPeriod,payrollKey,type CompanyCutOffs} from './payroll-inputs';
-import {payrollLoopSettingHistoryTx,payrollLoopSettingsTx,thresholdProposalsTx,type PayrollLoopSetting} from './payroll-loop-settings';
+import {payrollLoopSettingHistoryTx,payrollLoopSettingsTx,thresholdProposalsByCompanyTx,type PayrollLoopSetting} from './payroll-loop-settings';
 import {startKey,type BankCheck} from './salary-payroll';
 import {AuditViewRefused,auditLoopSummary,type AuditLoopSummary} from '../payroll-audit/status';
 import type {SwingProposal} from './swing-proposals';
@@ -117,6 +116,8 @@ export async function payrollCycleOverview(ctx:SessionContext,options:Readonly<{
  const today=options.today??todayInKualaLumpur();
  const period=typeof options.period==='string'&&PERIOD.test(options.period)?options.period:today.slice(0,7);
  const view=await withTenant(ctx,async tx=>{
+  // Row-secured reads whose planned cost would buy JIT compilation dearer than the reads (core/payroll-audit/status.ts).
+  await tx.execute(sql`set local jit=off`);
   const allowed=await allowedTx(tx,ctx);
   const filter=typeof options.companyId==='string'&&allowed.some(item=>item.companyId===options.companyId)?options.companyId:null;
   const scope=filter?allowed.filter(item=>item.companyId===filter):allowed;
@@ -174,8 +175,12 @@ export async function payrollCycleOverview(ctx:SessionContext,options:Readonly<{
    let issuesCaught:number|null=null;
    const processed=batches.filter(batch=>batch.status!=='draft');
    if(processed.length){
-    issuesCaught=0;
-    for(const batch of processed){const metrics=await anomalyMetrics(ctx,{batchId:batch.id});issuesCaught+=metrics.review+metrics.block;}
+    // The anomaly verdicts to review or block of the month's processed runs (core/payroll-anomaly.ts anomalyMetrics counts
+    // the same rows per run), as one count in this transaction: a nested transaction per run held this one's pooled
+    // connection while it waited for another, once per run (11 Nov 2026).
+    const [flagged]=await tx.select({n:count()}).from(payrollAnomalyVerdict).where(and(inArray(payrollAnomalyVerdict.batchId,processed.map(batch=>batch.id)),
+     isNull(payrollAnomalyVerdict.supersededAt),inArray(payrollAnomalyVerdict.disposition,['review','block'])));
+    issuesCaught=Number(flagged?.n??0);
     const [swings]=await tx.select({n:count()}).from(terasLoopCase).where(and(eq(terasLoopCase.tenantId,ctx.tenantId),eq(terasLoopCase.workerId,'loop_salary_payroll'),
      inArray(terasLoopCase.companyId,ids),sql`${terasLoopCase.subjectKey} like ${'swing:%:'+p}`));
     issuesCaught+=Number(swings?.n??0);
@@ -305,8 +310,10 @@ export async function payrollLoopSettingsPage(ctx:SessionContext,options:Readonl
   const rules=await ruleProposalsTx(tx,ctx.tenantId,[...payroll]).catch(()=>[] as readonly RuleProposal[]);
   const ruleNames=rules.length?new Map((await tx.select({id:employment.id,name:person.fullName}).from(employment).leftJoin(person,eq(person.id,employment.personId))
    .where(inArray(employment.id,[...new Set(rules.map(rule=>rule.employmentId))]))).map(row=>[row.id,row.name??null])):new Map<string,string|null>();
+  // Every company's setting and proposals in three statements, whatever the number of companies.
+  const proposalsByCompany=await thresholdProposalsByCompanyTx(tx,ctx.tenantId,ids,now);
   for(const ref of allowed){
-   const {setting,proposals}=await thresholdProposalsTx(tx,ctx.tenantId,ref.companyId,now);
+   const {setting,proposals}=proposalsByCompany.get(ref.companyId)!;
    companies.push(Object.freeze({...ref,setting,proposals,
     acknowledgements:Object.freeze(acknowledgements.filter(item=>item.companyId===ref.companyId)),
     ruleProposals:Object.freeze(rules.filter(rule=>rule.companyId===ref.companyId).map(rule=>Object.freeze({...rule,personName:ruleNames.get(rule.employmentId)??null}))),

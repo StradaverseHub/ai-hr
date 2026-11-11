@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { getFormatter, getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { proposeActions } from '@/core/agent-actions';
-import { acknowledgedBlocks, type AcknowledgedBlock } from '@/core/loops/grouped-dispositions';
+import { acknowledgedBlocksForPeriods, type AcknowledgedBlock } from '@/core/loops/grouped-dispositions';
 import { allowedCompanies } from '@/core/read';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
@@ -92,13 +92,13 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
       proposeActions(s),
       allowedCompanies(s).then(rows => rows.map(row => row.id)).catch(() => [] as string[]),
     ]);
-    // The acknowledged blocks of the newest ACK_PERIODS months with an open block, for the companies the viewer may see
-    // (the owner reads one month at a time; core/loops/grouped-dispositions.ts), and the month of each fixed-cause row.
+    // The acknowledged blocks of the newest ACK_PERIODS months with an open block, for the companies the viewer may see:
+    // every month in one read and one transaction (core/loops/grouped-dispositions.ts acknowledgedBlocksForPeriods), not
+    // one transaction per month, and the month of each fixed-cause row.
     const [acknowledged, periodOf] = await Promise.all([
       companies.length
-        ? Promise.all(view.blockPeriods.slice(0, ACK_PERIODS).map(payPeriod => acknowledgedBlocks(s, { companyIds: companies, payPeriod })
-          .then(list => list.map((block): AckRow => ({ ...block, payPeriod }))))).then(lists => lists.flat())
-        : Promise.resolve([] as AckRow[]),
+        ? acknowledgedBlocksForPeriods(s, { companyIds: companies, payPeriods: view.blockPeriods.slice(0, ACK_PERIODS) })
+        : Promise.resolve([] as readonly AckRow[]),
       payPeriodsOf(s, proposals.flatMap(p => p.subjects.map(sub => sub.verdictId))),
     ]);
     return { view, proposals, acknowledged, periodOf };

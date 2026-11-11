@@ -7,7 +7,7 @@ import {todayInKualaLumpur} from '../../lib/hr-date';
 import {parseRewardPolicyGroupVersion,type RewardPolicyGroupVersion} from './policy-group-model';
 import {libraryVersionTx,libraryCandidates,rewardLibraries,type RewardLibraryVersion} from './libraries';
 import {latestConfirmedPatTx,rewardSetupCompaniesTx} from './pat-inputs';
-import {setupPersonTx,setupAuthority,setupTenant,setupReadTenant,setupLock,setupEvent,setupCompanyEligible} from './setup-data';
+import {setupPersonTx,setupAuthority,setupTenant,setupReadTenant,setupSharedTenant,setupLock,setupEvent,setupCompanyEligible} from './setup-data';
 import {setupUuid,setupYear,setupReason,RewardSetupError,libraryPolicyProjection,suggestRewardLibrary,patProjection,type PatInput} from './setup-model';
 import {policySchema,type RewardPolicy} from './model';
 const bindingSchema=z.object({companyId:setupUuid,businessUnitId:setupUuid,salaryVersionId:setupUuid,bonusVersionId:setupUuid,branchAcknowledged:z.boolean()}).strict();
@@ -51,45 +51,53 @@ export type PlanCreationPreview = RewardPlanBinding & {
 };
 
 async function creationPreviewTx(tx: Tx, ctx: SessionContext, versionId: string) {
+  const { plan, source } = await creationPlanTx(tx, ctx, versionId);
+  const rows: PlanCreationPreview[] = [];
+  for (const binding of plan.bindings) rows.push(await creationPreviewRowTx(tx, ctx, versionId, plan, binding));
+  return { plan, rows, sourceRevision: source.revision, digest: digest({ versionId, planRevision: plan.revision,
+    snapshotDate: plan.snapshotDate, rows, sourceRevision: source.revision }) };
+}
+
+async function creationPlanTx(tx: Tx, ctx: SessionContext, versionId: string) {
   const plan = await setupPlanTx(tx, ctx, versionId);
   const source = await setupPolicySourceTx(tx, versionId);
   if (!plan || plan.state !== 'approved') {
     throw new RewardSetupError('invalid', 'Approve the shared rewards plan before creating reviews.');
   }
+  return { plan, source };
+}
 
-  const rows: PlanCreationPreview[] = [];
-  for (const binding of plan.bindings) {
-    await setupAuthority(tx, binding.companyId, 'manage');
-    const [existing] = await tx.execute<{review: {exists: boolean; unitId: string | null}}>(
-      sql`select app.reward_setup_company_review(${binding.companyId}::uuid,${plan.year}) as review`,
+/** One binding's creation preview row, exactly as the plan preview reads it. */
+async function creationPreviewRowTx(tx: Tx, ctx: SessionContext, versionId: string, plan: RewardSetupPlan,
+  binding: RewardSetupPlan['bindings'][number]): Promise<PlanCreationPreview> {
+  await setupAuthority(tx, binding.companyId, 'manage');
+  const [existing] = await tx.execute<{review: {exists: boolean; unitId: string | null}}>(
+    sql`select app.reward_setup_company_review(${binding.companyId}::uuid,${plan.year}) as review`,
+  );
+  let patVersionId: string | null = null;
+  let reason: PlanCreationPreview['reason'] = 'ready';
+  if (existing?.review.exists) {
+    reason = 'already-reviewed';
+  } else {
+    const [structure] = await tx.execute<{tags: {status: string; businessUnitId: string | null}}>(
+      sql`select app.reward_company_structure(${binding.companyId}::uuid,${plan.snapshotDate}::date) as tags`,
     );
-    let patVersionId: string | null = null;
-    let reason: PlanCreationPreview['reason'] = 'ready';
-    if (existing?.review.exists) {
-      reason = 'already-reviewed';
+    if (structure?.tags?.status !== 'ready' || structure.tags.businessUnitId !== binding.businessUnitId) {
+      reason = 'structure-not-ready';
     } else {
-      const [structure] = await tx.execute<{tags: {status: string; businessUnitId: string | null}}>(
-        sql`select app.reward_company_structure(${binding.companyId}::uuid,${plan.snapshotDate}::date) as tags`,
-      );
-      if (structure?.tags?.status !== 'ready' || structure.tags.businessUnitId !== binding.businessUnitId) {
-        reason = 'structure-not-ready';
-      } else {
-        try {
-          patVersionId = (await approvedPlanPolicyTx(tx, ctx, versionId, binding.companyId, binding.businessUnitId)).pat.id;
-        } catch (error) {
-          if (!(error instanceof RewardSetupError)) throw error;
-          if (error.code === 'missing') reason = 'pat-not-confirmed';
-          else if (error.code === 'invalid') reason = 'company-unavailable';
-          else if (error.code === 'changed') reason = 'plan-assignment-changed';
-          else throw error;
-        }
+      try {
+        patVersionId = (await approvedPlanPolicyTx(tx, ctx, versionId, binding.companyId, binding.businessUnitId)).pat.id;
+      } catch (error) {
+        if (!(error instanceof RewardSetupError)) throw error;
+        if (error.code === 'missing') reason = 'pat-not-confirmed';
+        else if (error.code === 'invalid') reason = 'company-unavailable';
+        else if (error.code === 'changed') reason = 'plan-assignment-changed';
+        else throw error;
       }
     }
-    rows.push({ ...binding, patVersionId, status: reason === 'ready' ? 'ready' : 'skip', reason,
-      existingUnitId: existing?.review.unitId ?? null });
   }
-  return { plan, rows, digest: digest({ versionId, planRevision: plan.revision,
-    snapshotDate: plan.snapshotDate, rows, sourceRevision: source.revision }) };
+  return { ...binding, patVersionId, status: reason === 'ready' ? 'ready' : 'skip', reason,
+    existingUnitId: existing?.review.unitId ?? null };
 }
 
 export function previewRewardPlanCreation(ctx: SessionContext, versionId: string) {
@@ -120,27 +128,53 @@ export function rewardApprovedPlanReviewSummaries(ctx: SessionContext) {
   `)));
 }
 
-export function createRewardPlanReviews(ctx: SessionContext, versionId: string, expectedDigest: string) {
-  return setupTenant(ctx, async tx => {
+/**
+ * Creates the plan's reviews, one company per transaction (staging, 11 November 2026: one transaction for every
+ * company held the tenant's exclusive Access lock for the whole plan, about 25 s at 71 companies).
+ *
+ * The preview the user confirmed (its digest) is checked once, under the shared Access lock and the plans lock. Each
+ * company then gets its own short exclusive transaction that first re-reads the plan and that company's preview row and
+ * refuses as "changed" unless both are still exactly what the confirmed preview showed, so a concurrent creation, a
+ * plan edit or a company change between the two still refuses. The rows, the events and their order are the single
+ * transaction's. A run stopped part way leaves the companies it finished as reviewed; the next preview shows them as
+ * already reviewed and creates the rest.
+ */
+export async function createRewardPlanReviews(ctx: SessionContext, versionId: string, expectedDigest: string) {
+  const id = setupUuid.parse(versionId);
+  const confirmed = await setupSharedTenant(ctx, async tx => {
     await setupLock(tx, ctx, 'plans');
-    const { plan, rows, digest } = await creationPreviewTx(tx, ctx, setupUuid.parse(versionId));
-    await assertIndependentReviewCreator(tx, ctx, plan);
-    if (digest !== expectedDigest) throw new RewardSetupError('changed', 'The creation preview changed. Review it again.');
-    const created: string[] = [];
-    const { createRewardUnitTx } = await import('./service');
-    for (const row of rows) {
+    const preview = await creationPreviewTx(tx, ctx, id);
+    await assertIndependentReviewCreator(tx, ctx, preview.plan);
+    if (preview.digest !== expectedDigest) throw new RewardSetupError('changed', 'The creation preview changed. Review it again.');
+    return preview;
+  });
+  const anchor = digest({ versionId: id, planRevision: confirmed.plan.revision, snapshotDate: confirmed.plan.snapshotDate,
+    bindings: confirmed.plan.bindings, sourceRevision: confirmed.sourceRevision });
+  const created: string[] = [];
+  const { createRewardUnitTx } = await import('./service');
+  for (const [index, row] of confirmed.rows.entries()) {
+    await setupTenant(ctx, async tx => {
+      await setupLock(tx, ctx, 'plans');
+      const { plan, source } = await creationPlanTx(tx, ctx, id);
+      const binding = plan.bindings[index];
+      const current = digest({ versionId: id, planRevision: plan.revision, snapshotDate: plan.snapshotDate,
+        bindings: plan.bindings, sourceRevision: source.revision });
+      if (current !== anchor || !binding || binding.companyId !== row.companyId
+        || digest(await creationPreviewRowTx(tx, ctx, id, plan, binding)) !== digest(row)) {
+        throw new RewardSetupError('changed', 'The creation preview changed. Review it again.');
+      }
       if (row.status === 'skip') {
         await setupEvent(tx, ctx, 'review.skipped', versionId, { companyId: row.companyId,
           reason: row.reason, existingUnitId: row.existingUnitId });
-        continue;
+        return;
       }
       created.push(await createRewardUnitTx(tx, ctx, {
         name: plan.cycleName, year: plan.year, companyId: row.companyId, businessUnitId: row.businessUnitId,
         snapshotDate: plan.snapshotDate, approvedPlanVersionId: versionId,
       }));
-    }
-    return { created, skipped: rows.filter(row => row.status === 'skip') };
-  });
+    });
+  }
+  return { created, skipped: confirmed.rows.filter(row => row.status === 'skip') };
 }
 export function rewardPlanSuggestions(ctx:SessionContext,year:number,companyIds:readonly string[],asOf?:string){setupYear.parse(year);return setupReadTenant(ctx,tx=>rewardPlanSuggestionsTx(tx,ctx,year,companyIds,asOf));}
 async function rewardPlanSuggestionsTx(tx:Tx,ctx:SessionContext,year:number,companyIds:readonly string[],asOf?:string){const companies=await rewardSetupCompaniesTx(tx,ctx,year),libraries=await tx.execute<{id:string}>(sql`select v.id from reward_library l join reward_library_version v on v.library_id=l.id and v.tenant_id=l.tenant_id where l.tenant_id=${ctx.tenantId}::uuid and l.year=${year} and v.state='confirmed' order by l.name,v.revision desc`);const versions:RewardLibraryVersion[]=[];for(const row of libraries)versions.push(await libraryVersionTx(tx,ctx,row.id,true));const candidates=libraryCandidates(versions),rows=[];

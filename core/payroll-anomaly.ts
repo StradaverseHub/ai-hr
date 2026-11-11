@@ -1413,7 +1413,24 @@ export async function openExceptionsAcrossRuns(
 ): Promise<{ rows: OpenExceptionRow[]; total: number; blocking: number; cappedOut: boolean }> {
   const limit = p?.limit ?? 100;
   return withTenant(ctx, async (tx) => {
-    const verdicts = await tx
+    // BOUNDED IN SQL (AI Centre at group scale, 11 November 2026). This used to read EVERY live unresolved verdict, with
+    // the employee's name, and sort and slice them here; now the database returns only the page, in the same order
+    // (worst first, then oldest first; the verdict id settles equal times, which the in-memory sort left to the
+    // database's row order), and counts the whole queue in the same statement, so `total`, `blocking` and `cappedOut`
+    // are unchanged. Same joins, same predicate, same row-level security.
+    const where = and(
+      // LIVE only: a superseded verdict is what the system believed before the last re-evaluation,
+      // and resolving one would stamp a judgement on a reading nobody is looking at.
+      isNull(schema.payrollAnomalyVerdict.supersededAt),
+      // UNRESOLVED only. This queue is work outstanding; what has been decided belongs to its run.
+      isNull(schema.payrollAnomalyVerdict.resolvedAt),
+      // Auto-cleared rows are excluded HERE and deliberately, unlike the per-run screen which lists
+      // them so a human can raise a false negative. That affordance is per-run by nature — it needs
+      // the whole run in front of you to notice an omission — and a cross-run list of everything the
+      // system cleared would be thousands of rows nobody is being asked to act on.
+      ne(schema.payrollAnomalyVerdict.disposition, 'auto_clear'),
+    );
+    const from = () => tx
       .select({
         verdictId: schema.payrollAnomalyVerdict.id,
         employmentId: schema.payrollAnomalyVerdict.employmentId,
@@ -1427,36 +1444,23 @@ export async function openExceptionsAcrossRuns(
         employeeName: schema.person.fullName,
         employeeCode: schema.employment.employeeCode,
         payPeriod: schema.payrollBatch.payPeriod,
+        // The whole queue's counts, before the page's LIMIT applies.
+        total: sql<number>`count(*) over ()`.mapWith(Number),
+        blocking: sql<number>`count(*) filter (where ${schema.payrollAnomalyVerdict.disposition} = 'block') over ()`.mapWith(Number),
       })
       .from(schema.payrollAnomalyVerdict)
       .innerJoin(schema.employment, eq(schema.employment.id, schema.payrollAnomalyVerdict.employmentId))
       .innerJoin(schema.person, eq(schema.person.id, schema.employment.personId))
       .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payrollAnomalyVerdict.batchId))
-      .where(
-        and(
-          // LIVE only: a superseded verdict is what the system believed before the last re-evaluation,
-          // and resolving one would stamp a judgement on a reading nobody is looking at.
-          isNull(schema.payrollAnomalyVerdict.supersededAt),
-          // UNRESOLVED only. This queue is work outstanding; what has been decided belongs to its run.
-          isNull(schema.payrollAnomalyVerdict.resolvedAt),
-          // Auto-cleared rows are excluded HERE and deliberately, unlike the per-run screen which lists
-          // them so a human can raise a false negative. That affordance is per-run by nature — it needs
-          // the whole run in front of you to notice an omission — and a cross-run list of everything the
-          // system cleared would be thousands of rows nobody is being asked to act on.
-          ne(schema.payrollAnomalyVerdict.disposition, 'auto_clear'),
-        ),
-      );
-    if (verdicts.length === 0) return { rows: [], total: 0, blocking: 0, cappedOut: false };
-
-    const rank: Record<string, number> = { block: 0, review: 1, auto_clear: 2 };
-    const ordered = verdicts.sort((x, y) => {
-      const d = (rank[x.disposition] ?? 9) - (rank[y.disposition] ?? 9);
-      if (d !== 0) return d;
-      return x.computedAt.getTime() - y.computedAt.getTime();
-    });
-    // ⚠️ CAPPED, AND THE COUNT IS RETURNED SO THE SCREEN CAN SAY SO. A page that silently shows the first
-    // hundred of nine hundred reads as a queue somebody has nearly finished (AGENTS: no silent caps).
-    const page = ordered.slice(0, limit);
+      .where(where);
+    // The in-memory rank it replaces: block 0, review 1, auto_clear 2, anything else 9; then oldest first.
+    const rank = sql`case ${schema.payrollAnomalyVerdict.disposition} when 'block' then 0 when 'review' then 1 when 'auto_clear' then 2 else 9 end`;
+    const page = await from().orderBy(rank, schema.payrollAnomalyVerdict.computedAt, schema.payrollAnomalyVerdict.id).limit(Math.max(limit, 1));
+    // A page of at least one row carries the counts; an empty page means an empty queue. A caller asking for no rows
+    // (never the screens) gets the counts alone.
+    const total = page[0]?.total ?? 0, blocking = page[0]?.blocking ?? 0;
+    if (total === 0) return { rows: [], total: 0, blocking: 0, cappedOut: false };
+    if (limit < 1) return { rows: [], total, blocking, cappedOut: total > 0 };
 
     // One read for every finding on the page, then grouped in memory — the same no-N+1 discipline
     // `anomalyQueue` follows, for the same reason.
@@ -1507,9 +1511,9 @@ export async function openExceptionsAcrossRuns(
         payPeriod: v.payPeriod,
         batchId: v.batchId,
       })),
-      total: ordered.length,
-      blocking: ordered.filter((v) => v.disposition === 'block').length,
-      cappedOut: ordered.length > page.length,
+      total,
+      blocking,
+      cappedOut: total > page.length,
     };
   });
 }

@@ -4,7 +4,7 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
 import {appendEvent,actorOf} from '../../db/events';
-import {setupPersonTx,setupAuthority,setupTenant,setupLock,setupEvent,setupCompanyEligible} from './setup-data';
+import {setupPersonTx,setupAuthority,setupTenant,setupAuditedReadTenant,setupLock,setupEvent,setupCompanyEligible} from './setup-data';
 import {patInputSchema,patProjection,setupUuid,setupYear,setupReason,RewardSetupError,type PatInput} from './setup-model';
 export type {PatVersion,PatCompany} from './setup-query-owner';
 import {rewardSetupCompaniesQueryTx,rewardPatInputsQueryTx,rewardPlanCompanyChoicesQueryTx,type PatVersion,type PatCompany} from './setup-query-owner';
@@ -13,7 +13,7 @@ export async function rewardSetupCompaniesTx(tx:Tx,ctx:SessionContext,year:numbe
 export async function latestConfirmedPatTx(tx:Tx,ctx:SessionContext,companyId:string,year:number):Promise<PatVersion|null>{await setupAuthority(tx,companyId,'manage');const [r]=await tx.execute<PatVersion>(sql`select id,company_id as "companyId",year,revision,inputs,state,created_by as "createdBy",confirmed_by as "confirmedBy",confirmed_at::text as "confirmedAt",reason from reward_pat_version where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid and year=${year} and state='confirmed' order by revision desc limit 1`);if(r)patInputSchema.parse(r.inputs);return r??null;}
 function auditedPatRead<T>(ctx:SessionContext,year:number,read:(tx:Tx)=>Promise<T>){
  setupYear.parse(year);
- return setupTenant(ctx,async tx=>{
+ return setupAuditedReadTenant(ctx,async tx=>{
   const rows=await read(tx);
   await setupEvent(tx,ctx,'pat.viewed',null,{year});
   return rows;
@@ -34,7 +34,7 @@ export function confirmRewardPat(ctx:SessionContext,id:string){setupUuid.parse(i
  await tx.execute(sql`update reward_pat_version set state='confirmed',confirmed_by=${ctx.userId}::uuid,confirmed_at=now() where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
  for(const unit of affected){await setupEvent(tx,ctx,'pat.recalculation.required',unit.id,{companyId:p.company_id,year:p.year,patVersionId:id});await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'reward-unit',aggregateId:unit.id,eventType:'reward-unit.final-pool-changed',actor:actorOf(ctx),payload:{recalculationRequired:true,privateHistory:true}});}
  await setupEvent(tx,ctx,'pat.confirmed',id,{companyId:p.company_id,year:p.year,revision:p.revision,affectedReviewIds:affected.map(u=>u.id)});return affected.map(u=>u.id);});}
-export function rewardPatExport(ctx:SessionContext,year:number){return setupTenant(ctx,async tx=>{const companies=await rewardSetupCompaniesTx(tx,ctx,year),rows=[];for(const c of companies){const p=await latestConfirmedPatTx(tx,ctx,c.id,year);rows.push({company:c,inputs:p?.inputs??{targetCents:null,forecastCents:null,actualCents:null,targetMonthsBp:20000},revision:p?.revision??0});}await setupEvent(tx,ctx,'pat.exported',null,{year,companyCount:rows.length});return rows;});}
+export function rewardPatExport(ctx:SessionContext,year:number){return setupAuditedReadTenant(ctx,async tx=>{const companies=await rewardSetupCompaniesTx(tx,ctx,year),rows=[];for(const c of companies){const p=await latestConfirmedPatTx(tx,ctx,c.id,year);rows.push({company:c,inputs:p?.inputs??{targetCents:null,forecastCents:null,actualCents:null,targetMonthsBp:20000},revision:p?.revision??0});}await setupEvent(tx,ctx,'pat.exported',null,{year,companyCount:rows.length});return rows;});}
 export const publicPatProjection=(v:PatVersion|null)=>v?{version:v.revision,...patProjection(v.inputs)}:{version:null,status:'not-set' as const,achievementBp:null,targetMonthsBp:20000};
 
 export function proposeRewardPatBatch(ctx:SessionContext,raw:unknown){const rows=z.array(z.object({companyId:setupUuid,year:setupYear,expectedRevision:z.number().int().nonnegative(),inputs:patInputSchema,reason:setupReason}).strict()).min(1).max(1000).parse(raw);if(new Set(rows.map(r=>r.companyId+':'+r.year)).size!==rows.length)throw new RewardSetupError('invalid','Each company-year can appear once in an import.');return setupTenant(ctx,async tx=>{const ids=[];for(const r of rows)ids.push(await proposeRewardPat(ctx,r,tx));await setupEvent(tx,ctx,'pat.imported',null,{count:ids.length,versionIds:ids});return ids;});}

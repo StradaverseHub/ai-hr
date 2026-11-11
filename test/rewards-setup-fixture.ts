@@ -3,7 +3,7 @@ import {owner} from './harness';
 import {approvedRewardFixtures} from '../scripts/fixtures/reward-approved';
 
 const fixtures=approvedRewardFixtures(owner);
-export const {setupChecker,setupGrades,setupCompanyStructureFixture,confirmFixturePat,setupRewardLibrariesFixture}=fixtures;
+export const {setupChecker,setupGrades,setupCompanyStructureFixture,confirmFixturePat,setupRewardLibrariesFixture,createApprovedRewardPlan}=fixtures;
 /** New review admission tests use the real application default and must complete checked preparation. */
 export const createPreparingRewardUnit=fixtures.createApprovedRewardUnit;
 /** Existing Rewards regressions exercise the explicitly retained historical workflow. Only the test

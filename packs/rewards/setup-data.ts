@@ -3,15 +3,25 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {withRewardsTenant} from '../../core/module-gate';
-import {lockAccessConfigurationWriteTx} from '../../core/access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from '../../core/access-configuration-lock';
 import {appendEvent,actorOf} from '../../db/events';
 import {RewardSetupError} from './setup-model';
 export async function setupAuthority(tx:Tx,companyId:string|null,operation:'library_view'|'manage'){
  const[r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_setup_allowed(${companyId}::uuid,${operation}) as allowed`);if(!r?.allowed)throw new RewardSetupError('forbidden','This Rewards configuration is not available to you.');
 }
+/** Setup commands: they change Rewards configuration that other setup commands read, so they keep the exclusive
+ * Access lock. Never use it for a view: an exclusive request queued behind any shared holder stops every new shared
+ * caller in the tenant until it is granted or gives up (staging, 11 November 2026). */
 export async function setupTenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){if(!ctx.userId)throw new RewardSetupError('forbidden','Sign in to continue.');return withRewardsTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,ctx.tenantId);return fn(tx);});}
-/** Pure setup presentation owns one database-enforced snapshot. Commands and audited
- * views must keep setupTenant: their Access lock and History append are intentional.
+/** Audited setup views and exports: the same native authority, read and History append as setupTenant under the
+ * shared Access lock. Setup commands and Access editors still exclude them; views overlap each other and ordinary
+ * writers, and a long view never queues an exclusive request ahead of the tenant's other work. */
+export async function setupAuditedReadTenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){if(!ctx.userId)throw new RewardSetupError('forbidden','Sign in to continue.');return withRewardsTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return fn(tx);});}
+/** A setup command's checking phase that only reads (the review-creation preview check): the same shared Access lock as
+ * an audited view. Its writes run afterwards in setupTenant transactions, which re-check what they depend on. */
+export const setupSharedTenant=setupAuditedReadTenant;
+/** Pure setup presentation owns one database-enforced snapshot. Commands keep setupTenant and audited
+ * views setupAuditedReadTenant: their Access lock and History append are intentional.
  * Authority is rechecked from native rows on every call; no cached grant or person
  * claim is used. A snapshot describes data and never authorizes a later mutation. */
 export async function setupReadTenant<T>(supplied:SessionContext,fn:(tx:Tx)=>Promise<T>){

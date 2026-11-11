@@ -129,6 +129,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4482,when:1793330004782,tag:'5082_home_own_clock_day'},
  {idx:4483,when:1793330004783,tag:'5083_home_own_schedule_range'},
  {idx:4490,when:1793330004790,tag:'5090_audit_chain_commit_seal'},
+ {idx:4520,when:1793330004820,tag:'5120_access_review_custody_held_mode'},
+ {idx:4521,when:1793330004821,tag:'5121_personnel_search_set_mapping'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -245,6 +247,8 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5082_home_own_clock_day':'345c604cebcc58946865d6cc93cd248ad693165063a67648d6781243ec652c58',
  '5083_home_own_schedule_range':'75045a4ec8c176c55ddc51ddba0b079e6ca8c5662b004a345945ee335efce70a',
  '5090_audit_chain_commit_seal':'6ce9bebe8c8de296b3b4a03b1d5d52c90c7df79fbdb0b8f8e0617616001e263e',
+ '5120_access_review_custody_held_mode':'f99d6938631f4ae17dea7af03b56d5dad4830ef5402b206b097e25ea4854c2a0',
+ '5121_personnel_search_set_mapping':'3d9b5a53b963a0f01843d090a96662da3e9f7b5c5bb0650e3064d237a3c60d54',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);

@@ -3,7 +3,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { AiGatewayError } from '../lib/ai/types';
-import { accessLockModeHeldTx,lockAccessConfigurationWriteTx,lockAccessConfigurationReadTx } from './access-configuration-lock';
+import { accessLockModeHeldTx,inAccessDisplayRead,lockAccessConfigurationWriteTx,lockAccessConfigurationReadTx } from './access-configuration-lock';
 /** False is an actual identity/snapshot refusal. SQL failures propagate and require rollback;
  * accounting may skip a private projection on false without pretending an aborted query succeeded. */
 export function isAiPrincipalCurrentTx(tx:Tx,supplied:SessionContext):Promise<boolean>{
@@ -26,7 +26,7 @@ async function readAiPrincipalTx(tx:Tx,supplied:SessionContext,isolation:'read c
   // Only read-only carriers whose callers do not require exclusive Access may share the barrier. A write
   // carrier that already holds the shared lock is an ordinary writer under the reader/writer lock: it never
   // takes the exclusive lock later, so joining shared here cannot strand it waiting to upgrade.
-  const shared=!requireExclusive&&(carrier.read_only===true||await accessLockModeHeldTx(tx,ctx.tenantId)==='S');
+  const shared=!requireExclusive&&(carrier.read_only===true||inAccessDisplayRead()||await accessLockModeHeldTx(tx,ctx.tenantId)==='S');
   await (shared?lockAccessConfigurationReadTx:lockAccessConfigurationWriteTx)(tx,ctx.tenantId);
  }
  const [row]=await tx.execute<{allowed:boolean}>(principalProofStatement(aiPrincipalProofSql(ctx,ctx.userId,grants,roles,isolation)));

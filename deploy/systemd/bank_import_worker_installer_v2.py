@@ -141,7 +141,8 @@ def validate_service(properties,release):
     for key,wanted in {'User':USER,'Group':USER,'WorkingDirectory':str(release),'FragmentPath':str(UNIT),'Environment':'NODE_ENV=production AIHR_DB_PROCESS_ROLE=worker AIHR_DB_POOL_MAX=2','EnvironmentFiles':str(ENV)+' (ignore_errors=no)'}.items():
         check(properties.get(key)==wanted,'actual worker service configuration differs: '+key)
     for key in ['DropInPaths','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition','PassEnvironment','RootDirectory','RootImage','PAMName']:
-        check(properties.get(key)=='','unreviewed service override: '+key)
+        # systemd 255 omits an unset Exec*/override property from `systemctl show --property=`; absent means unset.
+        check(properties.get(key,'')=='','unreviewed service override: '+key)
 
 def stop_owned_first_install():
     """Normal managed stop; independently disable even if the stop request fails or times out."""

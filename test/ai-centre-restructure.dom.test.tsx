@@ -66,8 +66,9 @@ vi.mock('../app/control-tower/exceptions/data',async()=>{
 });
 vi.mock('../core/agent-actions',()=>({proposeActions:async()=>{state.reads.push('proposals');return [{type:{id:'close_fixed_upstream',blastRadiusCap:25},count:1,overCap:false,
  subjects:[{verdictId:V.fixed,name:'Aina Fictional',detectorId:'missing-bank-profile',cause:'no_bank_account'}]}];}}));
-vi.mock('../core/loops/grouped-dispositions',()=>({acknowledgedBlocks:async(_s:unknown,input:{companyIds:string[];payPeriod:string})=>{state.reads.push(`acknowledged:${input.payPeriod}:${input.companyIds.join(',')}`);
- return [{verdictId:V.acked,batchId:'b-1',companyId:COMPANY,employmentId:'e-a2',personName:'Ben Fictional',detectors:['missing-bank-profile'],acknowledgementId:'ack-1',reason:'Paid in cash at the site office'}];}}));
+// Exceptions reads every month's acknowledged blocks in one call (core/loops/grouped-dispositions.ts acknowledgedBlocksForPeriods).
+vi.mock('../core/loops/grouped-dispositions',()=>({acknowledgedBlocksForPeriods:async(_s:unknown,input:{companyIds:string[];payPeriods:string[]})=>{state.reads.push(`acknowledged:${input.payPeriods.join('+')}:${input.companyIds.join(',')}`);
+ return input.payPeriods.map(payPeriod=>({verdictId:V.acked,batchId:'b-1',companyId:COMPANY,employmentId:'e-a2',personName:'Ben Fictional',detectors:['missing-bank-profile'],acknowledgementId:'ack-1',reason:'Paid in cash at the site office',payPeriod}));}}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[{id:COMPANY}]}));
 import ExceptionsPage from '../app/control-tower/exceptions/page';
 import {AiCentreGroupTabs,AiCentreTabs} from '../components/ai-centre/centre-tabs';
