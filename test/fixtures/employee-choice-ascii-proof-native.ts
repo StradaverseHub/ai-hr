@@ -35,7 +35,10 @@ function binding(){
  return{database,url,source,controller:process.env.AIHR_CI_CONTROL_HEAD!,run:process.env.GITHUB_RUN_ID!,attempt:process.env.GITHUB_RUN_ATTEMPT!};
 }
 function evidenceDirectory(){
- const temporary=process.env.RUNNER_TEMP;assert(temporary);const base=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR??process.env.AIHR_CI_ROLE_EVIDENCE_DIR??join(temporary,'aihr-ci'));
+ // The release gate uploads $RUNNER_TEMP/aihr-ci as unit evidence, and its operator extractor accepts only flat JSON
+ // there; this proof's binary bundle goes beside it unless a focused or role evidence directory is named.
+ const temporary=process.env.RUNNER_TEMP;assert(temporary);const base=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR??process.env.AIHR_CI_ROLE_EVIDENCE_DIR??join(temporary,'aihr-proof-bundles'));
+ if(!process.env.AIHR_FOCUSED_EVIDENCE_DIR&&!process.env.AIHR_CI_ROLE_EVIDENCE_DIR)try{mkdirSync(base,{mode:0o700});}catch(error){if(!(error instanceof Error&&'code'in error&&error.code==='EEXIST'))throw error;}
  assert.equal(realpathSync(base),base);assert.equal(lstatSync(base).uid,process.getuid!());
  const output=join(base,'employee-choice-exact-ascii-proof');try{mkdirSync(output,{mode:0o700});}catch(error){if(!(error instanceof Error&&'code'in error&&error.code==='EEXIST'))throw error;}
  const info=lstatSync(output);assert(info.isDirectory()&&!info.isSymbolicLink()&&info.uid===process.getuid!()&&(info.mode&0o077)===0);return output;
