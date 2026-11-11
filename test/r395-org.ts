@@ -345,7 +345,7 @@ export async function fillTables() {
   const visit = (t: string, seen = new Set<string>()) => {
     if (ordered.includes(t) || seen.has(t)) return;
     seen.add(t);
-    for (const fk of fks.filter((f) => f.tbl === t && (f.required || requiredByTrigger(t, f.col as string)) && targets.includes(f.ref as string) && f.ref !== t)) visit(fk.ref as string, seen);
+    for (const fk of fks.filter((f) => f.tbl === t && f.required && targets.includes(f.ref as string) && f.ref !== t)) visit(fk.ref as string, seen);
     ordered.push(t);
   };
   // leave_ledger BEFORE leave_encashment_snapshot: a frozen snapshot makes a trigger refuse ledger rows.
@@ -407,7 +407,7 @@ export async function fillTables() {
           v=lit(String(parents[0].id));
         }
         else if (ref) {
-          if (c.nullable && !requiredByTrigger(table, c.name)) continue;
+          if (c.nullable) continue;
           // ROTATE through the parent's rows so child rows hang off many parents (and so many employments),
           // not all off the first one.
           const key = `${ref}|${e.tenant_id}`;
@@ -462,11 +462,6 @@ export async function fillTables() {
     }
   }
 }
-/** Nullable columns that a deferred constraint trigger still requires on every row the filler can write.
- * 5055_payroll_history_staged_job made payroll_batch.pay_period_id nullable for a staged history batch only;
- * app.payroll_batch_period_required refuses any other batch without one, so the filler keeps supplying it. */
-export const REQUIRED_BY_TRIGGER: Readonly<Record<string, readonly string[]>> = { payroll_batch: ['pay_period_id'] };
-const requiredByTrigger = (table: string, column: string) => REQUIRED_BY_TRIGGER[table]?.includes(column) ?? false;
 export const tenantTables = new Set<string>();
 export const refCache = new Map<string, string[]>();
 export const PER_TENANT = ['review_cycle', 'claim_type', 'clocking_location', 'shift'];
