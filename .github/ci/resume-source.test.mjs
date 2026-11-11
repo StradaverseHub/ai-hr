@@ -1,8 +1,34 @@
 import test from 'node:test';
+import {readFileSync as readModelSource} from 'node:fs';
+import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {createHash as modelCreateHash} from 'node:crypto';
+import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
+import {singletonSources} from './singleton-protocol.mjs';
+import {join as modelJoin} from 'node:path';
 import assert from 'node:assert/strict';
 import {assessResumeSource} from './resume-source.mjs';
 import {fixture, put, remove, time} from './resume-test-fixtures.mjs';
 
+
+// Source-data model only: actual hosted/source authentication belongs to the real adapters.
+const {candidate:modelRoot}=controllerRegressionRoots();
+function databaseModel(f,root=modelRoot){
+ const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
+ const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
+ const unit=buildDatabaseModelUnits([file],{db:[file],nodb:[]},browser.files)[0],report=f.reports.find(report=>report.id===oldId),runId=f.expected.runId??100;
+ f.expected.runId=runId;plan.suite=[...plan.suite.filter(path=>!old.files.includes(path)),file].sort();plan.units=plan.units.map(row=>row.id===oldId?unit:row);
+ const journal='db/migrations/meta/_journal.json',journalHash=modelCreateHash('sha256').update(readModelSource(modelJoin(root,journal))).digest('hex');
+ plan.singletonSources={[unit.id]:Object.fromEntries(singletonSources(unit,root).map(path=>[path,path===journal?journalHash:'c'.repeat(64)]))};
+ const {fingerprint,...body}=plan;plan.fingerprint=modelCreateHash('sha256').update(JSON.stringify(body)).digest('hex');
+ report.id=unit.id;report.files=unit.files;report.batches[0].result.testResults=[{name:report.cwd+'/'+file,status:'passed',assertionResults:[{status:'passed'}]}];
+ report.batches[0].result.numTotalTests=1;report.batches[0].result.numPassedTests=1;
+ const resource=report.databaseTerminalEvidence;resource.name=`aihr-ci-${runId}-1-${unit.id}`;report.batches[0].databaseEvidence=structuredClone(resource);
+ report.singleton={schemaVersion:1,mode:'full-ci-singleton',candidate:plan.sha,controller:plan.controller,runId:String(runId),attempt:'1',unit:unit.id,fingerprint:plan.fingerprint,file,profile:unit.singleton.profile,sourceHashes:plan.singletonSources[unit.id],evidenceDirectory:'/tmp/model/aihr-ci',prerequisites:{kind:'fresh-job-postgres-cluster',workers:1,database:structuredClone(resource)}};
+ for(const row of f.reports)row.fingerprint=plan.fingerprint;
+ if(f.jobs)f.jobs.find(job=>job.name===`test (${oldId})`).name=`test (${unit.id})`;
+ if(f.archives){remove(f,'unit-'+oldId);put(f,'gate-plan','ci-plan.json',plan);for(const row of f.reports)put(f,'unit-'+row.id,`unit-${row.id}.json`,row);}
+ return f;
+}
 test('Verified raw archives produce a non-authoritative assessment, preserving a failed whole run', () => {
   const f = fixture(), before = structuredClone(f.run), r = assessResumeSource(f);
   assert.equal(r.reusable.length, 5); assert.equal(r.rerun.length, 0);
@@ -12,6 +38,40 @@ test('Verified raw archives produce a non-authoritative assessment, preserving a
   assert.equal(r.sourceRun.conclusion, 'failure'); assert.deepEqual(f.run, before);
   for (const unit of r.reusable) {assert.equal(unit.source.runId, 100); assert(unit.source.jobId > 0); assert.match(unit.source.digest, /^sha256:/);}
   assert.equal(r.observations.length, f.expectedPlan.units.length); assert(r.freshPrerequisites.includes('build'));
+  const db=databaseModel(fixture());assert.throws(()=>assessResumeSource(db),/Explicit candidate root/);assert.throws(()=>assessResumeSource({...db,candidateRoot:modelRoot}),/Explicit candidate root/);assert.equal(assessResumeSource(db,modelRoot).reusable.length,5);
+});
+test('replaced database archives keep unique fresh IDs and reach the actual root and plan guards', () => {
+  const f = fixture(), before = new Map(f.artifacts.map(artifact => [artifact.name, artifact.id]));
+  const old = f.expectedPlan.units.find(unit => unit.kind === 'db'), oldName = 'unit-' + old.id;
+  const db = databaseModel(f), unit = db.expectedPlan.units.find(row => row.singleton), name = 'unit-' + unit.id;
+  const current = db.artifacts.find(artifact => artifact.name === name);
+  assert(current); assert(!db.archives.has(oldName)); assert(db.archives.has(name));
+  assert(current.id > Math.max(...before.values()));
+  assert(db.artifacts.every(artifact => Number.isSafeInteger(artifact.id) && artifact.id > 0));
+  assert.equal(new Set(db.artifacts.map(artifact => artifact.id)).size, db.artifacts.length);
+  for (const artifact of db.artifacts) if (artifact.name !== name) assert.equal(artifact.id, before.get(artifact.name));
+  assert.throws(() => assessResumeSource(db), /Explicit candidate root/);
+  assert.throws(() => assessResumeSource({...db, candidateRoot: modelRoot}), /Explicit candidate root/);
+  assert.equal(assessResumeSource(db, modelRoot).reusable.length, 5);
+  const planId = db.artifacts.find(artifact => artifact.name === 'gate-plan').id;
+  put(db, 'gate-plan', 'ci-plan.json', {...db.expectedPlan, candidateRoot: modelRoot});
+  assert.equal(db.artifacts.find(artifact => artifact.name === 'gate-plan').id, planId);
+  assert.throws(() => assessResumeSource(db, modelRoot), /plan/);
+
+  const malformed = fixture(); malformed.artifacts[0].id = 0;
+  put(malformed, 'gate-plan', 'ci-plan.json', malformed.expectedPlan);
+  assert.equal(malformed.artifacts[0].id, 0);
+  assert.throws(() => assessResumeSource(malformed), /invalid, foreign, duplicate or expired artifact/);
+  for (const invalid of [0, -1, 1.5, '2000', true, NaN, Infinity, undefined, null, Number.MAX_SAFE_INTEGER]) {
+    const bad = fixture(); bad.artifacts[0].id = invalid;
+    const artifactCount = bad.artifacts.length, archiveCount = bad.archives.size;
+    assert.throws(() => put(bad, 'additional-model-archive', 'model.json', {}));
+    assert.equal(bad.artifacts.length, artifactCount); assert.equal(bad.archives.size, archiveCount);
+    assert.equal(bad.artifacts[0].id, invalid);
+  }
+  const duplicate = fixture(); duplicate.artifacts[1].id = duplicate.artifacts[0].id;
+  assert.throws(() => put(duplicate, 'additional-model-archive', 'model.json', {}));
+  assert.throws(() => assessResumeSource(duplicate), /invalid, foreign, duplicate or expired artifact/);
 });
 test('A failed producing job overrides a green payload; it is never selected from an earlier green', () => {
   const f = fixture(), unit = f.expectedPlan.units.find(u => u.kind === 'db');
@@ -52,6 +112,7 @@ test('Archived plan and report identity are independently checked', () => {
     f => {const r = structuredClone(f.reports[0]); r.id = f.reports[1].id; put(f, 'unit-' + f.reports[0].id, `unit-${f.reports[0].id}.json`, r);}]) {
     const f = fixture(); change(f); assert.throws(() => assessResumeSource(f));
   }
+  const db=databaseModel(fixture()),archived={...db.expectedPlan,candidateRoot:modelRoot};put(db,'gate-plan','ci-plan.json',archived);assert.throws(()=>assessResumeSource(db,modelRoot),/plan/);
 });
 test('Authenticated archive bytes still cannot contain traversal or executable files', () => {
   for (const name of ['../escape.json', 'payload.sh']) {
@@ -105,4 +166,10 @@ test('failed-build diagnostic stays non-authoritative and cannot prevent retaini
  put(f,'next-application-build-failure','comparison.json',diagnostic);
  const result=assessResumeSource(f);assert.equal(result.reusable.length,5);assert(result.freshPrerequisites.includes('build'));assert.equal(result.releaseAuthorized,false);
  job.conclusion='success';assert.throws(()=>assessResumeSource(f),/failure diagnostic attached/);
+});
+
+test('Source assessment permits only the explicitly skipped commissioning job',()=>{
+ const f=fixture(),template=f.jobs[0];f.jobs.push({...template,id:9999,name:'commission-summary',conclusion:'skipped'});
+ assert.equal(assessResumeSource(f).releaseAuthorized,false);
+ f.jobs.at(-1).conclusion='success';assert.throws(()=>assessResumeSource(f),/unexpected job/);
 });

@@ -3,7 +3,7 @@ import {CI_POLICY} from './policy-version.mjs';
 import {hash,requiredEvidence} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
 const sha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
-export function assessResumeCoverage({expectedPlan:plan,reports,expected}) {
+export function assessResumeCoverage({expectedPlan:plan,reports,expected},candidateRoot) {
   if(!plan||!expected||!['candidate','controller','baseline'].every(k=>sha(expected[k])))throw Error('Exact candidate/controller/baseline required');
   const {fingerprint,...body}=plan;
   if(plan.schemaVersion!==2||plan.policyVersion!==CI_POLICY||fingerprint!==hash(body))throw Error('Invalid complete expected plan');
@@ -21,7 +21,8 @@ export function assessResumeCoverage({expectedPlan:plan,reports,expected}) {
   for(const unit of plan.units) {
     const report=supplied.get(unit.id);
     if(!report){rerun.push({id:unit.id,reason:'Missing completed evidence'});continue;}
-    try {const verified=verifyUnitReport(plan,report);reusable.push({id:unit.id,reportHash:hash(report),files:verified.files,tests:verified.tests});}
+    if(unit.singleton&&unit.kind==='db'&&report.singleton!==undefined&&(typeof candidateRoot!=='string'||candidateRoot.length===0))throw Error('Explicit candidate root required for present database singleton report');
+    try {const verified=verifyUnitReport(plan,report,{runId:expected.runId,attempt:1},candidateRoot);reusable.push({id:unit.id,reportHash:hash(report),files:verified.files,tests:verified.tests});}
     catch(error){rerun.push({id:unit.id,reason:String(error.message??error)});}
   }
   if(reusable.length+rerun.length!==topology.units.length)throw Error('Incomplete assessment');

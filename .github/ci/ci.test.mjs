@@ -1,15 +1,43 @@
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
+import {readFileSync as readModelSource} from 'node:fs';
+import {controllerRegressionRoots} from './controller-regression-roots.mjs';
+import {createHash as modelCreateHash} from 'node:crypto';
+import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
+import {singletonSources} from './singleton-protocol.mjs';
+import {fixture as databaseBaseFixture} from './resume-test-fixtures.mjs';
+import {join as modelJoin} from 'node:path';
 import assert from 'node:assert/strict';
 import {verifyReports} from './verify-shards.mjs';
 import {candidateRequest,repository} from './resolve.mjs';
+
+// Source-data model only: actual hosted/source authentication belongs to the real adapters.
+const {controller:automationRoot,candidate:modelRoot}=controllerRegressionRoots();
+function databaseModel(f,root=modelRoot){
+ const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
+ const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
+ const unit=buildDatabaseModelUnits([file],{db:[file],nodb:[]},browser.files)[0],report=f.reports.find(report=>report.id===oldId),runId=f.expected.runId??100;
+ f.expected.runId=runId;plan.suite=[...plan.suite.filter(path=>!old.files.includes(path)),file].sort();plan.units=plan.units.map(row=>row.id===oldId?unit:row);
+ const journal='db/migrations/meta/_journal.json',journalHash=modelCreateHash('sha256').update(readModelSource(modelJoin(root,journal))).digest('hex');
+ plan.singletonSources={[unit.id]:Object.fromEntries(singletonSources(unit,root).map(path=>[path,path===journal?journalHash:'c'.repeat(64)]))};
+ const {fingerprint,...body}=plan;plan.fingerprint=modelCreateHash('sha256').update(JSON.stringify(body)).digest('hex');
+ report.id=unit.id;report.files=unit.files;report.batches[0].result.testResults=[{name:report.cwd+'/'+file,status:'passed',assertionResults:[{status:'passed'}]}];
+ report.batches[0].result.numTotalTests=1;report.batches[0].result.numPassedTests=1;
+ const resource=report.databaseTerminalEvidence;resource.name=`aihr-ci-${runId}-1-${unit.id}`;report.batches[0].databaseEvidence=structuredClone(resource);
+ report.singleton={schemaVersion:1,mode:'full-ci-singleton',candidate:plan.sha,controller:plan.controller,runId:String(runId),attempt:'1',unit:unit.id,fingerprint:plan.fingerprint,file,profile:unit.singleton.profile,sourceHashes:plan.singletonSources[unit.id],evidenceDirectory:'/tmp/model/aihr-ci',prerequisites:{kind:'fresh-job-postgres-cluster',workers:1,database:structuredClone(resource)}};
+ for(const row of f.reports)row.fingerprint=plan.fingerprint;
+ if(f.jobs)f.jobs.find(job=>job.name===`test (${oldId})`).name=`test (${unit.id})`;
+ return f;
+}
 const sha='a'.repeat(40),base='b'.repeat(40);
 function sample(){
  const plan={sha,controller:'c'.repeat(40),fingerprint:'fixture',suite:['test/example.test.ts'],units:[{id:'nodb-1',files:['test/example.test.ts'],kind:'nodb'}]};
  const report={schemaVersion:1,sha,fingerprint:'fixture',id:'nodb-1',cwd:'/candidate',files:['test/example.test.ts'],exitCode:0,batches:[{exitCode:0,result:{success:true,numFailedTests:0,numFailedTestSuites:0,numTotalTests:1,numPassedTests:1,testResults:[{name:'/candidate/test/example.test.ts',status:'passed',assertionResults:[{status:'passed'}]}]}}]};
  return {plan,report};
 }
-test('Complete execution retains exact candidate and controller identity',()=>{const {plan,report}=sample();const receipt=verifyReports(plan,[report]);assert.equal(receipt.sha,sha);assert.equal(receipt.controller,plan.controller);assert.equal(receipt.tests,1);});
+test('Complete execution retains exact candidate and controller identity',()=>{const {plan,report}=sample();const receipt=verifyReports(plan,[report]);assert.equal(receipt.sha,sha);assert.equal(receipt.controller,plan.controller);assert.equal(receipt.tests,1);
+ const db=databaseModel(databaseBaseFixture());assert.equal(verifyReports(db.expectedPlan,db.reports,{runId:100,attempt:1},modelRoot).tests,5);assert.throws(()=>verifyReports(db.expectedPlan,db.reports,{runId:100,attempt:1}));assert.throws(()=>verifyReports(db.expectedPlan,db.reports.filter(report=>!report.singleton)));
+});
 for(const [name,change] of [
  ['foreign commit',r=>r.sha=base],
  ['missing suite',r=>r.files=[]],
@@ -29,7 +57,8 @@ test('Reject fork, draft and wrong-target PRs',()=>{const pr={draft:false,head:{
 
 test('manual workflow input inventories stay nonempty, unique and within GitHub 25-input limit',()=>{
  for(const name of ['alpha-staging.yml','alpha-staging-diagnostics.yml']){
-  const source=readFileSync(new URL('../workflows/'+name,import.meta.url),'utf8'),start=source.indexOf('    inputs:\n'),end=source.indexOf('\npermissions:',start);
+  const root=name==='alpha-staging.yml'?automationRoot:modelRoot;
+  const source=readFileSync(modelJoin(root,'.github/workflows',name),'utf8'),start=source.indexOf('    inputs:\n'),end=source.indexOf('\npermissions:',start);
   assert(start>=0&&end>start+50,'Complete manual-input source boundary required');
   const names=[...source.slice(start,end).matchAll(/^      ([A-Za-z_][A-Za-z0-9_]*):$/gm)].map(m=>m[1]);
   assert(names.length>0&&names.length<=25,'Manual workflow exceeds GitHub input limit: '+name);assert.equal(new Set(names).size,names.length);
@@ -42,16 +71,59 @@ test('independent v12 report verification rejects absent or foreign per-unit dep
  for(const key of ['candidate','controller','fingerprint','unit']){const wrong=structuredClone(report);wrong.pdfToolSetup[key]='foreign';assert.throws(()=>verifyReports(plan,[wrong]));}
 });
 
+/** Interpret only the closed boolean/string syntax used by these five current
+ * routing guards. No eval, code calls, arbitrary property or general GHA engine. */
+function cleanupGuardPredicate(source){
+ assert.equal(typeof source,'string');assert(source.length>0&&source.length<=4096);
+ const tokens=[];let offset=0;
+ while(offset<source.length){
+  if(/^\s*$/.test(source.slice(offset)))break;
+  const match=/^\s*(&&|\|\||==|!=|!|\(|\)|inputs\.installer_fixture_phase|inputs\.filesystem_activation_probe|github\.repository|'[A-Za-z0-9_/-]+')/.exec(source.slice(offset));
+  assert(match,'Unsupported cleanup guard syntax');tokens.push(match[1]);offset+=match[0].length;assert(tokens.length<=256);
+ }
+ let cursor=0;
+ const take=token=>tokens[cursor]===token?(cursor++,true):false;
+ function primary(){
+  if(take('(')){const value=or();assert(take(')'),'Unclosed cleanup guard');return value;}
+  const token=tokens[cursor++];assert(['inputs.installer_fixture_phase','inputs.filesystem_activation_probe','github.repository'].includes(token),'Closed cleanup input required');
+  if(token==='inputs.filesystem_activation_probe')return facts=>facts.activation;
+  const operator=tokens[cursor++],literal=tokens[cursor++];assert(['==','!='].includes(operator)&&/^'[A-Za-z0-9_/-]+'$/.test(literal??''),'Closed cleanup comparison required');
+  const expected=literal.slice(1,-1);return facts=>{const value=token==='github.repository'?facts.repository:facts.phase;return operator==='=='?value===expected:value!==expected;};
+ }
+ function unary(){if(take('!')){const next=unary();return facts=>!next(facts);}return primary();}
+ function and(){let left=unary();while(take('&&')){const before=left,right=unary();left=facts=>before(facts)&&right(facts);}return left;}
+ function or(){let left=and();while(take('||')){const before=left,right=and();left=facts=>before(facts)||right(facts);}return left;}
+ const predicate=or();assert.equal(cursor,tokens.length,'Unexpected cleanup guard tail');
+ return facts=>{assert(facts&&typeof facts.phase==='string'&&typeof facts.activation==='boolean'&&typeof facts.repository==='string');const value=predicate(facts);assert.equal(typeof value,'boolean');return value;};
+}
 test('normal cleanup diagnostic selects only the explicit non-activation phase',()=>{
- const workflow=readFileSync(new URL('../workflows/alpha-staging-diagnostics.yml',import.meta.url),'utf8');
+ const workflow=readFileSync(modelJoin(modelRoot,'.github/workflows/alpha-staging-diagnostics.yml'),'utf8');
  const job=workflow.match(/^  normal-cleanup:\n    if: \$\{\{ (.+) \}\}/m);assert(job,'Normal cleanup diagnostic must have an explicit routing guard');
- const guard=job[1];assert.match(guard,/^inputs\.installer_fixture_phase == 'normal-cleanup' && !inputs\.filesystem_activation_probe$/);
- const route=(phase,activation)=>guard.replace("inputs.installer_fixture_phase == 'normal-cleanup'",String(phase==='normal-cleanup')).replace('!inputs.filesystem_activation_probe',String(!activation))==='true && true';
- for(const phase of ['full','source-proof-followup','environment','source-transfer-followup','ledger-connection-followup','pdf-tools-setup','private-access-integration','normal-cleanup'])for(const activation of [true,false])assert.equal(route(phase,activation),phase==='normal-cleanup'&&!activation);
- assert.doesNotMatch(workflow,/normal_cleanup_probe/);assert.match(workflow,/options: \[full,[^\n]*normal-cleanup\]/);
- // Every existing activation fixture keeps its own activation guard, so normal=false cannot enter it.
- const activationJobs=[...workflow.matchAll(/^  ([a-z-]+):\n    if: \$\{\{ (inputs\.filesystem_activation_probe[^\n]+) \}\}/gm)];assert.ok(activationJobs.length>=4);
- for(const [,name,guard] of activationJobs)assert.ok(guard.includes("inputs.installer_fixture_phase != 'normal-cleanup'")||/inputs\.installer_fixture_phase == '(?!normal-cleanup)[a-z-]+'/.test(guard),'Activation route must exclude normal cleanup even for conflicting selectors: '+name);
+ const normal=cleanupGuardPredicate(job[1]);
+ const options=workflow.match(/options: \[([^\n]+)\]/);assert(options,'Fixed installer phase choices required');
+ const phases=options[1].split(',').map(value=>value.trim());assert(phases.includes('normal-cleanup')&&phases.includes('compiler-boundary')&&phases.includes('compiler-consumer-trace'));
+ for(const phase of [...phases,'unreviewed-future-phase'])for(const activation of [true,false])for(const repository of ['StradaverseHub/ai-hr','foreign/repository'])
+  assert.equal(normal({phase,activation,repository}),phase==='normal-cleanup'&&!activation,'Actual normal routing differs: '+phase+'/'+activation);
+ assert.doesNotMatch(workflow,/normal_cleanup_probe/);
+ // Preserve all five existing activation routes, including their repository,
+ // normal-cleanup and both compiler-phase exclusions despite harmless wrapping.
+ const activationJobs=[...workflow.matchAll(/^  ([a-z-]+):\n    if: \$\{\{ (.+) \}\}/gm)].filter(([, ,guard])=>/(?:^|[\s(])inputs\.filesystem_activation_probe\b/.test(guard));
+ assert.deepEqual(activationJobs.map(([,name])=>name),['filesystem-activation','private-access-integration','pdf-tools-setup','ledger-connection-followup','source-transfer-followup']);
+ const compilerPhases=['compiler-boundary','compiler-consumer-trace'],specific=['private-access-integration','pdf-tools-setup','ledger-connection-followup','source-transfer-followup'];
+ for(const [,name,guard]of activationJobs){
+  const route=cleanupGuardPredicate(guard);
+  for(const phase of phases)for(const activation of [true,false])for(const repository of ['StradaverseHub/ai-hr','foreign/repository']){
+   const expected=activation&&repository==='StradaverseHub/ai-hr'&&!compilerPhases.includes(phase)
+    &&(name==='filesystem-activation'?!['normal-cleanup',...specific].includes(phase):phase===name);
+   assert.equal(route({phase,activation,repository}),expected,'Actual activation routing differs: '+name+'/'+phase+'/'+activation+'/'+repository);
+  }
+ }
+ // A lost activation exclusion must fail the same truth table; unknown input,
+ // injected call, malformed comparison/parenthesis and trailing clauses refuse.
+ const bad=cleanupGuardPredicate("inputs.installer_fixture_phase == 'normal-cleanup'");
+ assert.notEqual(bad({phase:'normal-cleanup',activation:true,repository:'StradaverseHub/ai-hr'}),normal({phase:'normal-cleanup',activation:true,repository:'StradaverseHub/ai-hr'}));
+ for(const source of ["inputs.unknown == 'normal-cleanup'","always()","inputs.installer_fixture_phase = 'normal-cleanup'","(inputs.filesystem_activation_probe","inputs.filesystem_activation_probe trailing","inputs.installer_fixture_phase == 'normal-cleanup' || process.exit"])
+  assert.throws(()=>cleanupGuardPredicate(source));
 });
 
 
@@ -79,7 +151,7 @@ test('full-CI import is inert in ordinary local/noDB context without loading can
  const result=spawnSync(process.execPath,['--input-type=module','-e',`await import(${JSON.stringify(new URL('./run-unit.mjs',import.meta.url).href)}); console.log('inert controller import');`],{encoding:'utf8',env:{...process.env,CI:'false',GITHUB_ACTIONS:'false',DATABASE_URL:'postgres://nobody:nothing@127.0.0.1:1/no_database',TEST_DATABASE_URL:'postgres://nobody:nothing@127.0.0.1:1/no_database'}});
  assert.equal(result.status,0,result.stderr);assert.equal(result.stdout.trim(),'inert controller import');
  const source=readFileSync(script,'utf8');assert.doesNotMatch(source,/import\s+(?:[^;]+from\s+)?['"](?:postgres|pg|.*personnel-draft-discard-ci-role-fixture)['"]/);
- assert.match(source,/if\(process\.argv\[1\].*\)main\(\);/);
+ assert.match(source,/if\(process\.argv\[1\]&&resolve\(process\.argv\[1\]\)===fileURLToPath\(import\.meta\.url\)\)main\(\)\.catch\(/);
 });
 test('full-CI accepts actual first/final DB batches and emits only migration-child canonical hints',()=>{
  const c=roleContext(),binding=fullCiRoleBinding(c),env=fullCiRoleMigrationEnvironment(c.env,binding,c.layout.evidence);
@@ -121,9 +193,59 @@ test('full-CI receipt reader accepts only owned bounded direct regular auxiliary
   rmSync(path);symlinkSync(join(temp,'foreign'),path);assert.throws(()=>readFullCiRoleReceipt(dir,binding,c.sourceHashes,temp));rmSync(path);mkdirSync(path);assert.throws(()=>readFullCiRoleReceipt(dir,binding,c.sourceHashes,temp));rmSync(path,{recursive:true});writeFileSync(path,'x'.repeat(32769));assert.throws(()=>readFullCiRoleReceipt(dir,binding,c.sourceHashes,temp));writeFileSync(path,'{}');assert.throws(()=>readFullCiRoleReceipt(dir,binding,c.sourceHashes,temp));writeFileSync(path,JSON.stringify(receipt));assert.throws(()=>readFullCiRoleReceipt(dir,binding,c.sourceHashes,join(temp,'foreign')));
  }finally{rmSync(temp,{recursive:true,force:true});}
 });
+function assertFullCiProvisioningWiring(source){
+ const start=source.indexOf('export async function main(){');assert(start>=0);source=source.slice(start);
+ const resetBranches=`if(workloadUnit){
+        assert(offset===0&&roleProfile===fullRoleMode,'Native workload requires the existing role prerequisite owner');
+        workloadHost=provisionSingletonHost(plan,unit,dir);
+        workloadBuild=await provisionNativeNextBuild(plan,unit,dir,process.env,installation);
+        const {prepareNativeWorkloadPostgres}=await import('./native-workload-postgres.mjs');
+        workload=prepareNativeWorkloadPostgres(plan,unit,dir);
+        workloadProof=workload.start();resetStatus=0;
+      }else{
+        const reset = lifecycle?fixedStage('reset'):spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
+        resetStatus=reset.status;
+      }`;
+ const branches=source.indexOf(resetBranches);
+ const reset=source.indexOf("if (resetStatus !== 0) throw Error('Owned CI PostgreSQL reset failed');");
+ const context=source.indexOf('const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(');
+ const migration=source.indexOf('const migrate = ',context);
+ const migrated=source.indexOf("if(migrate.status !== 0)throw Error('CI migration failed');",migration);
+ const receipt=source.indexOf('rolePrerequisites=readFullCiRoleReceipt(',migration);
+ const environment=source.indexOf('const env = {...candidateEnvironment(process.env)',receipt);
+ const vitest=source.indexOf('const child = ',environment);
+ assert(branches>=0&&reset>=branches+resetBranches.length&&context>reset&&migration>context&&migrated>migration&&receipt>migrated&&environment>receipt&&vitest>environment);
+ const line=at=>source.slice(at,source.indexOf('\n',at)).trim();
+ assert.equal(line(context),"const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,resetStatus,lifecycle?metadata:undefined):null;");
+ assert.equal(source.slice(migration,migrated).trim(),`const migrate = workload?workloadChild(['db:migrate'],{...roleContext.env,...workload.migrationUrls})
+        :lifecycle?fixedStage('migrate',roleContext?.env??candidateEnvironment(process.env)):roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:candidateEnvironment(process.env)});`);
+ assert.equal(line(vitest),"const child = workload?workloadChild(args,env):lifecycle?fixedStage(lifecycleProfile.stage,env):spawnSync('pnpm', args, {stdio: 'inherit', env});");
+ const testEnvironment=source.slice(environment,vitest);
+ assert(testEnvironment.includes('Object.assign(env,workload?{...workload.migrationUrls,...workload.observerEnvironment}:FULL_CI_ROLE_URLS);'));
+ assert.doesNotMatch(testEnvironment,/roleContext|AIHR_CI_ROLE_|AIHR_CI_DISPOSABLE_ROLE/);
+ assert.match(source,/report\.batches\.push\(\{exitCode,databaseEvidence,\.\.\.\(rolePrerequisites\?\{rolePrerequisites\}:\{\}\)/);
+}
 test('full-CI provisioning is wired only between successful DB reset and migration, never Vitest/globalsetup',()=>{
- const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8'),reset=source.indexOf("if (reset.status !== 0)"),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(',reset),migration=source.indexOf("const migrate = roleContext?spawnSync('pnpm', ['db:migrate']",context),receipt=source.indexOf('rolePrerequisites=readFullCiRoleReceipt(',migration),vitest=source.indexOf("const child = spawnSync('pnpm', args",receipt);
- assert(reset>=0&&context>reset&&migration>context&&receipt>migration&&vitest>receipt);assert.match(source.slice(migration,receipt),/env:roleContext\.env/);assert.match(source.slice(vitest,vitest+100),/stdio: 'inherit', env/);assert.doesNotMatch(source.slice(source.indexOf('const env = {...process.env'),vitest),/roleContext|AIHR_CI_ROLE_|AIHR_CI_DISPOSABLE_ROLE/);assert.match(source,/report\.batches\.push\(\{exitCode,databaseEvidence,\.\.\.\(rolePrerequisites\?\{rolePrerequisites\}:\{\}\)/);
+ assertFullCiProvisioningWiring(readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8'));
+});
+test('both owned and ordinary provisioning branches retain ordering and never give role setup authority to Vitest',()=>{
+ const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');
+ for(const [before,after]of [
+  ["if (resetStatus !== 0)","if (resetStatus === 0)"],
+  ['const roleContext=roleProfile===fullRoleMode?','const roleContext=undefined;const unused=roleProfile===fullRoleMode?'],
+  ["lifecycle?fixedStage('reset')","lifecycle?fixedStage('migrate')"],
+  ["lifecycle?fixedStage('migrate',roleContext?.env??candidateEnvironment(process.env))","lifecycle?fixedStage('migrate',candidateEnvironment(process.env))"],
+  ["{stdio: 'inherit',env:roleContext.env}","{stdio: 'inherit',env:candidateEnvironment(process.env)}"],
+  ["lifecycle?fixedStage(lifecycleProfile.stage,env)","lifecycle?fixedStage('migrate',env)"],
+  ['const env = {...candidateEnvironment(process.env),','const env = {...roleContext.env,'],
+  ["offset===0&&roleProfile===fullRoleMode","offset===0"],
+  ["workloadProof=workload.start();resetStatus=0;","resetStatus=0;workloadProof=workload.start();"],
+  ["workloadBuild=await provisionNativeNextBuild(plan,unit,dir,process.env,installation);","workloadBuild=undefined;"],
+  ["if(migrate.status !== 0)","if(migrate.status === 0)"],
+  ["workload?workloadChild(['db:migrate'],{...roleContext.env,...workload.migrationUrls})","workload?workloadChild(['db:migrate'],workload.migrationUrls)"],
+  ["workload?workloadChild(args,env)","workload?workloadChild(args,roleContext.env)"],
+  ["...workload.observerEnvironment}:FULL_CI_ROLE_URLS","...roleContext.env}:FULL_CI_ROLE_URLS"],
+ ]){assert.equal(source.split(before).length-1,1);assert.throws(()=>assertFullCiProvisioningWiring(source.replace(before,after)));}
 });
 
 import {gunzipSync} from 'node:zlib';
@@ -139,7 +261,7 @@ test('actual pinned7c57 ordinary migration profile performs no new source reads 
  const owners=profileOwners(actualLegacy7c57);assert.equal(inspectFullCiRoleApplicability(owners.read,owners.present),'ordinary');assert.deepEqual(owners.reads,['package.json','db/migrations/meta/_journal.json']);assert.equal(JSON.parse(actualLegacy7c57['package.json']).scripts['db:migrate'],'drizzle-kit migrate');
  // The known immutable Git snapshot has no0859 journal row/file and none of the3 new helper sources.
  assert.equal(JSON.parse(actualLegacy7c57['db/migrations/meta/_journal.json']).entries.some(row=>row.tag.includes('employee_draft_discard_custody')),false);for(const path of Object.keys(actualFullHandshakeV1))assert.equal(owners.present(path),false);
- const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');const profile=source.indexOf("const roleProfile=unit.kind==='db'?actualFullCiRoleApplicability():null"),reset=source.indexOf("const reset = spawnSync('bash'",profile),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?',reset);assert(profile>=0&&reset>profile&&context>reset);assert.match(source,/const migrate = roleContext\?spawnSync\('pnpm', \['db:migrate'\], \{stdio: 'inherit',env:roleContext.env\}\):spawnSync\('pnpm', \['db:migrate'\], \{stdio: 'inherit'\}\);/);assert.match(source,/if\(roleContext\)rolePrerequisites=readFullCiRoleReceipt/);
+ const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');const profile=source.indexOf("const roleProfile=unit.kind==='db'?actualFullCiRoleApplicability():null"),reset=source.indexOf("const reset = lifecycle?fixedStage('reset'):spawnSync('bash'",profile),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?',reset);assert(profile>=0&&reset>profile&&context>reset);assertFullCiProvisioningWiring(source);assert.match(source,/if\(roleContext\)rolePrerequisites=readFullCiRoleReceipt/);
 });
 test('required0859 and frozen three-source handshake demand the strict full receipt, without fallback',()=>{
  const files=requiredRoleProfile(),owners=profileOwners(files);assert.equal(inspectFullCiRoleApplicability(owners.read,owners.present),'full_ci_disposable');assert(owners.reads.includes('scripts/lib/discard-premigration.ts'));
@@ -155,4 +277,21 @@ test('full namespace is only absent or empty; every nonempty namespace refuses',
 });
 test('receipt PG16 versionText requires a real string, never coercion',()=>{
  const c=roleContext(),b=fullCiRoleBinding(c),receipt=roleReceipt(c);assert.doesNotThrow(()=>validateFullCiRoleReceipt(receipt,b,c.sourceHashes));for(const value of [['PostgreSQL 16.15 on fixture'],{toString:'PostgreSQL 16.15 on fixture'},null,16,true]){const wrong=structuredClone(receipt);wrong.fixture.postgres.versionText=value;assert.throws(()=>validateFullCiRoleReceipt(wrong,b,c.sourceHashes));}
+});
+
+test('catalogue replay receipt extension is mandatory only for the two closed isolated native units',async()=>{
+ const {catalogueReplayRoleHash}=await import('./notification-catalogue-replay.mjs');
+ const context=roleContext(),ordinary=fullCiRoleBinding(context),base=roleReceipt(context),sources={ownerSha256:'1'.repeat(64),contractSha256:'2'.repeat(64)};
+ const facts={objects:[{oid:20000}],dependencies:[{objid:20000}],shared:[]};
+ for(const [file,mode]of [['test/notification-final-catalogue-baseline.test.ts','baseline'],['test/notification-final-catalogue-oid-shift.test.ts','oid-shift']]){
+  const binding={...ordinary,batchFiles:[file]},receipt={...base,...binding,catalogueReplay:{version:1,kind:'NATIVE_CATALOGUE_REPLAY_PREREQUISITE_NOT_PROFILE',mode,candidate:binding.candidate,controller:binding.controller,runId:binding.runId,attempt:binding.attempt,unit:binding.unit,planFingerprint:binding.planFingerprint,sourceHashes:sources,
+   session:{database:'postgres',pid:123,backendStart:'2026-11-08 00:00:00.123456+00',postmasterStart:'2026-11-08T00:00:00.123456Z',versionNumber:base.fixture.postgres.versionNumber,versionText:base.fixture.postgres.versionText,session:'postgres',current:'postgres',loopback:true},
+   roleCatalogSha256:catalogueReplayRoleHash({roles:base.fixture.roles,edges:base.fixture.edges}),allocation:mode==='baseline'?null:{namespaceOid:20000,enumOid:20001,enumArrayOid:20002,heapOid:20003,rowTypeOid:20004,rowArrayOid:20005,nativeRowsSha256:catalogueReplayRoleHash(facts.objects),dependenciesSha256:catalogueReplayRoleHash({dependencies:facts.dependencies,shared:facts.shared}),facts},objectsAbsent:true,quiescence:{sameCluster:true,ownedPresent:false,observerPid:124,observerStart:'2026-11-08 00:00:01.123456+00',observedAt:'2026-11-08 00:00:02.123456+00',postmasterStart:'2026-11-08T00:00:00.123456Z'},releaseAuthorized:false}};
+  assert.doesNotThrow(()=>validateFullCiRoleReceipt(receipt,binding,context.sourceHashes,sources));
+  assert.throws(()=>validateFullCiRoleReceipt(receipt,binding,context.sourceHashes));
+  for(const mutate of [x=>delete x.catalogueReplay,x=>x.catalogueReplay.sourceHashes.ownerSha256='0'.repeat(64),x=>x.catalogueReplay.roleCatalogSha256='0'.repeat(64),x=>x.catalogueReplay.session.versionNumber++,x=>x.catalogueReplay.session.database='ai_hr_dev',x=>x.catalogueReplay.objectsAbsent=false,x=>x.catalogueReplay.extra=true]){
+   const changed=structuredClone(receipt);mutate(changed);assert.throws(()=>validateFullCiRoleReceipt(changed,binding,context.sourceHashes,sources));
+  }
+  assert.throws(()=>validateFullCiRoleReceipt({...base,catalogueReplay:receipt.catalogueReplay},ordinary,context.sourceHashes,sources));
+ }
 });
