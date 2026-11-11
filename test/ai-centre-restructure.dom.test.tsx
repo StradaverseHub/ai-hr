@@ -9,7 +9,8 @@
  *  - Operations' second row: Loops · Payroll cycle · Exceptions · Record readiness (the payroll pages only with payroll);
  *    Administration's: Workers · Setup · Spend and providers, plus Build list for a group administrator only.
  *  - Exceptions, the one place an exception is resolved: the "cause already fixed" group (the former Proposed actions),
- *    the acknowledged blocks (moved from Salary payroll), and every other open exception, with no verdict listed twice. */
+ *    the acknowledged blocks (moved from Salary payroll), and every open exception grouped in plain language (AI-native
+ *    batch, 11 November 2026), with no verdict offered for a decision twice. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen,within} from '@testing-library/react';
 import type {ReactNode} from 'react';
@@ -20,11 +21,12 @@ import en from '../messages/en.json';
 const state=vi.hoisted(()=>({session:null as unknown,reads:[] as string[]}));
 vi.mock('next/link',()=>({default:({children,prefetch:_prefetch,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',async()=>{
+ const getLocale=async()=>'en';
  const {createTranslator,createFormatter}=await import('next-intl');
  const {withAiCentre:merge}=await import('./helpers/ai-centre-messages');
  const messages=merge('en',(await import('../messages/en.json')).default as any);
  return {getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:messages as any,namespace,onError:error=>{throw error;}}),
-  getFormatter:async()=>createFormatter({locale:'en',timeZone:'Asia/Kuala_Lumpur'})};
+  getFormatter:async()=>createFormatter({locale:'en',timeZone:'Asia/Kuala_Lumpur'}),getLocale};
 });
 vi.mock('next/navigation',()=>({redirect:vi.fn((url:string)=>{throw Object.assign(Error('NEXT_REDIRECT'),{url});}),usePathname:()=>'/control-tower/exceptions',
  useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
@@ -36,11 +38,32 @@ vi.mock('../app/control-tower/actions/actions',()=>({approveAgentActionAction:vi
 vi.mock('../app/control-tower/loops/payroll-cycle/actions',()=>({resolveAcknowledgedBlockAction:vi.fn()}));
 const V={fixed:'00000000-0000-4000-8000-0000000000a1',acked:'00000000-0000-4000-8000-0000000000a2',open:'00000000-0000-4000-8000-0000000000a3'};
 const COMPANY='00000000-0000-4000-8000-0000000000c1';
-const row=(verdictId:string,name:string,disposition:'block'|'review')=>({verdictId,employmentId:'e-'+verdictId.slice(-2),batchId:'b-1',payPeriod:'2026-10',disposition,
- computedAt:new Date('2026-10-28T02:00:00Z'),resolution:null,resolvedAt:null,detectorsRun:['missing-bank-profile'],detectorsSkipped:[],employeeName:name,employeeCode:null,
- findings:[{detectorId:'missing-bank-profile',severity:disposition,facts:{bank:'none'},suggestedAction:null,narrative:null}]});
-vi.mock('../core/payroll-anomaly',()=>({openExceptionsAcrossRuns:async()=>{state.reads.push('exceptions');return {rows:[row(V.fixed,'Aina Fictional','block'),
- row(V.acked,'Ben Fictional','block'),row(V.open,'Chong Fictional','review')],total:3,blocking:2,cappedOut:false};}}));
+vi.mock('../app/control-tower/exceptions/actions',()=>({markGroupExpectedAction:vi.fn()}));
+// The grouped reader (app/control-tower/exceptions/data.ts) is the database's; its rows are fixtured here with the real
+// pure grouping (lib/payroll-exceptions), so the page renders exactly what buildGroups describes.
+const MISSING='missing-bank-profile.block.payment-method-not-set',SETUP='pay-without-attendance.review.-';
+const item=(verdictId:string,name:string,checkId:string,severity:string,variant:string|null,facts:Record<string,unknown>)=>({verdictId,employmentId:'e-'+verdictId.slice(-2),
+ batchId:'b-1',disposition:severity==='block'?'block':'review',computedAt:new Date('2026-10-28T02:00:00Z'),payPeriod:'2026-10',checkId,severity,variant,facts,narrative:null,
+ name,employeeCode:null,currency:'MYR',signature:[`${checkId}:${severity}`]});
+vi.mock('../app/control-tower/exceptions/data',async()=>{
+ const {buildGroups,groupKey}=await import('../lib/payroll-exceptions');
+ // Built when the page reads, not when the mock is hoisted: the fixture constants exist by then.
+ const fixture=()=>({groups:buildGroups([
+  {checkId:'pay-without-attendance',severity:'review',variant:null,exceptions:1,people:1,companies:1,runs:1,companyNames:['Fictional Sdn Bhd']},
+  {checkId:'missing-bank-profile',severity:'block',variant:'payment-method-not-set',exceptions:2,people:2,companies:1,runs:1,companyNames:['Fictional Sdn Bhd']},
+ ]),
+ items:[item(V.fixed,'Aina Fictional','missing-bank-profile','block','payment-method-not-set',{netPay:1200,paymentMethod:'unset',reason:'payment-method-not-set'}),
+  item(V.acked,'Ben Fictional','missing-bank-profile','block','payment-method-not-set',{netPay:900,paymentMethod:'unset',reason:'payment-method-not-set'}),
+  item(V.open,'Chong Fictional','pay-without-attendance','review',null,{netPay:2500,attendanceDays:0,approvedLeaveDays:0})]});
+ return {GROUP_PAGE_SIZE:25,pageReadAdmission:(_s:unknown,read:()=>Promise<unknown>)=>read(),
+  groupedExceptions:async(_s:unknown,p:{focus?:{checkId:string;severity:string;variant:string|null}|null})=>{
+   state.reads.push(p.focus?`exceptions:${groupKey(p.focus)}`:'exceptions');
+   const {groups,items}=fixture();
+   const listed=p.focus?items.filter(i=>groupKey(i)===groupKey(p.focus!)):items;
+   const map=new Map<string,unknown[]>();for(const i of listed)map.set(groupKey(i),[...(map.get(groupKey(i))??[]),i]);
+   return {total:3,blocking:2,buckets:{check:0,missing:2,setup:1},bucketsPartial:false,groups,groupsCapped:false,items:map,blockPeriods:['2026-10']};
+  }};
+});
 vi.mock('../core/agent-actions',()=>({proposeActions:async()=>{state.reads.push('proposals');return [{type:{id:'close_fixed_upstream',blastRadiusCap:25},count:1,overCap:false,
  subjects:[{verdictId:V.fixed,name:'Aina Fictional',detectorId:'missing-bank-profile',cause:'no_bank_account'}]}];}}));
 vi.mock('../core/loops/grouped-dispositions',()=>({acknowledgedBlocks:async(_s:unknown,input:{companyIds:string[];payPeriod:string})=>{state.reads.push(`acknowledged:${input.payPeriod}:${input.companyIds.join(',')}`);
@@ -110,31 +133,89 @@ describe('Exceptions, the one place an exception is resolved (owner decision 28)
   expect(state.reads).toEqual([]);
  });
 
- it.each(['hrAdmin','groupAdmin'] as const)('%s: the counts over every open exception, then the two groups, then the rest, no verdict twice',async role=>{
+ it.each(['hrAdmin','groupAdmin'] as const)('%s: the counts over every open exception, the two groups, then every pattern in plain words',async role=>{
   state.session=SESSIONS[role];
   const view=wrap(await ExceptionsPage({searchParams:Promise.resolve({})}));
   expect(state.reads.slice(0,2).sort()).toEqual(['exceptions','proposals']);
   // The acknowledged blocks of each month with an open block, for the companies the viewer may see.
   expect(state.reads[2]).toBe(`acknowledged:2026-10:${COMPANY}`);
-  expect(text(view.container.querySelector('[data-exceptions-total]'))).toBe('3');
-  expect(text(view.container.querySelector('[data-exceptions-blocking]'))).toBe('2');
+  const head=view.container.querySelector('[data-exceptions-total]')!;
+  expect([head.getAttribute('data-exceptions-total'),head.getAttribute('data-exceptions-blocking')]).toEqual(['3','2']);
+  expect(text(head)).toBe('3 waiting · 2 block a run · grouped into 2 patterns');
+  expect([...view.container.querySelectorAll('[data-exceptions-bucket]')].map(text)).toEqual([
+   '0look like real pay errors · check each one','2missing details · one fix per person','1look like your setup, not errors']);
   // Cause already fixed: the former Proposed actions, approving exactly what is on screen.
   const fixed=view.container.querySelector('#fixed-causes')!;
   expect(within(fixed as HTMLElement).getByRole('heading',{level:2}).textContent).toBe('Cause already fixed');
   expect([...fixed.querySelectorAll('input[name="verdictId"]')].map(input=>input.getAttribute('value'))).toEqual([V.fixed]);
   expect(within(fixed as HTMLElement).getByRole('button').textContent).toBe('Approve and close 1');
+  expect(text(fixed.querySelector('[data-fix-subject]'))).toBe('Aina Fictional No bank account to pay into · bank account now on file');
   // Acknowledged: the pre-filled resolve, returning to this page.
   const acked=view.container.querySelector('#acknowledged-blocks')!;
   expect((acked.querySelector('input[readonly]') as HTMLInputElement).value).toBe('Paid in cash at the site office');
   expect([...acked.querySelectorAll('input[type="hidden"]')].map(input=>`${input.getAttribute('name')}=${input.getAttribute('value')}`))
    .toEqual(['back=exceptions','period=2026-10',`target=${COMPANY}`,`verdict=${V.acked}`]);
-  // The rest: only the exception in no group, with its three resolutions.
-  expect([...view.container.querySelectorAll('[data-exception-row]')].map(el=>el.getAttribute('data-exception-row'))).toEqual([V.open]);
-  expect(text(view.container.querySelector('[data-exceptions-grouped]'))).toBe('2 exceptions are listed in the groups above.');
-  const rest=view.container.querySelector(`[data-exception-row="${V.open}"]`)!;
-  expect([...rest.querySelectorAll('button')].map(button=>button.getAttribute('value'))).toEqual(['accepted','fixed_upstream','false_positive']);
+  // The patterns, worst bucket first: missing details (blocking) before the set-up pattern.
+  expect([...view.container.querySelectorAll('[data-exceptions-pattern]')].map(el=>el.getAttribute('data-exceptions-pattern'))).toEqual([MISSING,SETUP]);
+  const missing=view.container.querySelector(`[data-exceptions-pattern="${MISSING}"]`)!;
+  expect(text(missing.querySelector('h2'))).toBe('We don’t know how to pay these people · 2 people');
+  expect(text(missing.querySelector('[data-group-tag]'))).toBe('Blocks payroll');
+  expect(within(missing as HTMLElement).getAllByRole('link').map(a=>[a.textContent,a.getAttribute('href')])).toEqual([
+   ['Fix the records',`/control-tower/exceptions?group=${encodeURIComponent(MISSING)}#exceptions-group`],
+   ['Set how they’re paid','/admin/personnel/e-a1?tab=payroll'],['Set how they’re paid','/admin/personnel/e-a2?tab=payroll'],
+   ['See who has been asked for details','/control-tower/readiness']]);
+  expect(text(missing.querySelector(`[data-exception-preview="${V.fixed}"] > span`)))
+   .toBe('Aina Fictional · October 2026 · Their record doesn’t say how they’re paid. Take-home pay: MYR 1,200.00.');
+  // A blocking pattern offers no bulk decision and no resolution form on the overview.
+  expect(missing.querySelector('form')).toBeNull();
+  const setup=view.container.querySelector(`[data-exceptions-pattern="${SETUP}"]`)!;
+  expect(text(setup.querySelector('[data-group-tag]'))).toBe('Looks like setup');
+  expect(within(setup as HTMLElement).getAllByRole('link')[0].textContent).toBe('Review and mark as expected');
+  expect(text(setup)).toContain('Companies: Fictional Sdn Bhd');
+  expect(text(setup)).toContain('Chong Fictional · October 2026 · Paid MYR 2,500.00, with no attendance and no approved leave this month.');
+  // Plain words only: no check ids, field names or internal terms on the page.
+  expect(text(view.container)).not.toMatch(/missing-bank-profile|pay-without-attendance|paymentMethod|netPay|verdict|detector|[0-9a-f]{8}-[0-9a-f]{4}-/i);
   // No staffing figure on the page, and nothing names the retired overview.
   expect(text(view.container)).not.toMatch(/operators|staffing|headcount|Operations overview/i);
+ });
+
+ it('a set-up pattern opens into its list: one bulk "Mark as expected" for what is on screen, and each one\'s three resolutions',async()=>{
+  state.session=SESSIONS.hrAdmin;
+  const view=wrap(await ExceptionsPage({searchParams:Promise.resolve({group:SETUP})}));
+  expect(state.reads).toContain(`exceptions:${SETUP}`);
+  const focus=view.container.querySelector('[data-exceptions-focus]')!;
+  const bulk=focus.querySelector('[data-bulk-expect]')!;
+  expect([...bulk.querySelectorAll('input[type="hidden"]')].map(input=>`${input.getAttribute('name')}=${input.getAttribute('value')}`))
+   .toEqual([`group=${SETUP}`,`verdictId=${V.open}`]);
+  expect((bulk.querySelector('input[name="note"]') as HTMLInputElement).required).toBe(true);
+  expect(within(bulk as HTMLElement).getByRole('button').textContent).toBe('Mark this one as expected');
+  const rowEl=focus.querySelector(`[data-exception-row="${V.open}"]`)!;
+  expect([...rowEl.querySelectorAll('button')].map(button=>button.getAttribute('value'))).toEqual(['accepted','fixed_upstream','false_positive']);
+  expect([...rowEl.querySelectorAll('input[type="hidden"]')].map(input=>`${input.getAttribute('name')}=${input.getAttribute('value')}`))
+   .toEqual(['batchId=b-1',`verdictId=${V.open}`,'returnTo=tower']);
+ });
+
+ it('a blocking pattern opens into a one-by-one list: never a bulk form, and what is offered above is pointed there',async()=>{
+  state.session=SESSIONS.hrAdmin;
+  const view=wrap(await ExceptionsPage({searchParams:Promise.resolve({group:MISSING})}));
+  const focus=view.container.querySelector('[data-exceptions-focus]')!;
+  expect(focus.querySelector('[data-bulk-expect]')).toBeNull();
+  expect(focus.querySelector(`[data-exception-row="${V.fixed}"] [data-offered-above]`)).not.toBeNull();
+  expect(focus.querySelector(`[data-exception-row="${V.fixed}"] form`)).toBeNull();
+  expect(focus.querySelector(`[data-exception-row="${V.acked}"] [data-offered-above]`)).not.toBeNull();
+ });
+
+ it('says the bulk outcome and its closed error codes only',async()=>{
+  state.session=SESSIONS.hrAdmin;
+  let view=wrap(await ExceptionsPage({searchParams:Promise.resolve({expected:'4',expectedSkipped:'1'})}));
+  expect([...view.container.querySelectorAll('[data-bulk-result] p')].map(text)).toEqual(['4 exceptions were marked as expected.',
+   '1 was left open because it had changed or isn’t yours to decide.']);
+  cleanup();
+  view=wrap(await ExceptionsPage({searchParams:Promise.resolve({bulkError:'<script>'})}));
+  expect(view.container.textContent).not.toContain('<script>');
+  cleanup();
+  view=wrap(await ExceptionsPage({searchParams:Promise.resolve({bulkError:'blocking'})}));
+  expect(view.container.textContent).toContain('Exceptions that block a run are never cleared in one go. Check each one.');
  });
 
  it('shows the fix approval\'s outcome, and its closed error codes only',async()=>{

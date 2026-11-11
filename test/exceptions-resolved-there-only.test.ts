@@ -24,6 +24,9 @@ const RESOLVING_ACTIONS={
  resolveAcknowledgedBlockAction:'app/control-tower/loops/payroll-cycle/actions.ts',
  // Approves the "cause already fixed" closes (core/agent-actions.ts), which resolve verdicts as fixed upstream.
  approveAgentActionAction:'app/control-tower/actions/actions.ts',
+ // AI-native batch (11 November 2026): bulk "Mark as expected" for a non-blocking set-up pattern, each exception through
+ // the anomaly owner's own resolve (app/control-tower/exceptions/bulk.ts).
+ markGroupExpectedAction:'app/control-tower/exceptions/actions.ts',
 } as const;
 
 describe('owner decision 28: exceptions are resolved on Exceptions only',()=>{
@@ -45,11 +48,11 @@ describe('owner decision 28: exceptions are resolved on Exceptions only',()=>{
   const salary=read('app/control-tower/loops/payroll-cycle/salary/page.tsx');
   for(const action of Object.keys(RESOLVING_ACTIONS))expect(mentions(salary,action),action).toBe(false);
   expect(salary).toContain('href="/control-tower/exceptions"');
-  // The anomaly owner's resolve is named only by its owner, the run action module, the two services the Exceptions page
-  // posts to and that page's own note.
+  // The anomaly owner's resolve is named only by its owner, the run action module and the three services the Exceptions
+  // page posts to.
   const callers=[...sources('core'),...sources('lib'),...sources('app'),...sources('components')]
    .filter(path=>path!=='core/payroll-anomaly.ts'&&mentions(read(path),'resolveAnomalyVerdict')).sort();
-  expect(callers).toEqual(['app/control-tower/exceptions/page.tsx','app/payroll/actions.ts','core/agent-actions.ts','core/loops/grouped-dispositions.ts']);
+  expect(callers).toEqual(['app/control-tower/exceptions/bulk.ts','app/payroll/actions.ts','core/agent-actions.ts','core/loops/grouped-dispositions.ts']);
   const grouped=read('core/loops/grouped-dispositions.ts');
   const dispose=grouped.slice(grouped.indexOf('export async function disposeSwingGroup'),grouped.indexOf('export type AcknowledgedBlock'));
   expect(dispose.length).toBeGreaterThan(500);

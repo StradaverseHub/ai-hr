@@ -2048,7 +2048,191 @@
     "exceptions": {
       "fixedTitle": "Nguyên nhân đã được khắc phục",
       "inGroups": "{count, plural, other {# ngoại lệ}} đã được liệt kê trong các nhóm ở trên.",
-      "resolveThere": "Xử lý tại Ngoại lệ"
+      "resolveThere": "Xử lý tại Ngoại lệ",
+      "grouped": {
+        "headline": "{total, plural, other {# đang chờ}}",
+        "headlineBlocking": "{blocking, plural, =0 {không có mục nào chặn kỳ lương} other {# chặn kỳ lương}}",
+        "headlineGroups": "{groups, plural, other {được nhóm thành # dạng}}",
+        "bucket": {
+          "check": "có vẻ là lỗi lương thật · kiểm tra từng mục",
+          "missing": "thiếu thông tin · mỗi người sửa một lần",
+          "setup": "có vẻ do cách thiết lập của bạn, không phải lỗi"
+        },
+        "bucketsPartial": "Ba con số này chỉ được tính từ các dạng phổ biến nhất. Các tổng số ở trên là chính xác.",
+        "groupsCapped": "Chỉ hiển thị các dạng lớn nhất ở đây.",
+        "tag": {
+          "blocks": "Chặn trả lương",
+          "review": "Cần xem lại",
+          "setup": "Có vẻ do thiết lập"
+        },
+        "size": {
+          "people": "{people, plural, other {# người}}",
+          "exceptions": "{exceptions, plural, other {# ngoại lệ}} trong {runs, plural, other {# kỳ lương}}",
+          "companies": "Công ty: {names}",
+          "companiesMore": "Công ty: {names} và {more, plural, other {# công ty khác}}"
+        },
+        "action": {
+          "oneByOne": "Kiểm tra từng mục",
+          "review": "Xem lại các mục này",
+          "markExpected": "Xem lại và đánh dấu là bình thường",
+          "fixRecords": "Sửa hồ sơ",
+          "asked": "Xem ai đã được yêu cầu bổ sung thông tin",
+          "seeAll": "Xem tất cả {count}",
+          "openRun": "Mở kỳ lương",
+          "fixTab": {
+            "payroll": "Đặt cách trả lương",
+            "bankStatutory": "Bổ sung thông tin còn thiếu"
+          },
+          "back": "Quay lại tất cả các dạng"
+        },
+        "list": {
+          "waitingSince": "Đánh dấu ngày {date}",
+          "alsoFlagged": "Cũng bị đánh dấu: {checks}",
+          "listedAbove": "Đã liệt kê ở trên, nơi có thể đóng trong một bước.",
+          "notBulk": "Mục này còn bị đánh dấu vì lý do khác, nên hãy quyết định riêng.",
+          "emptyGroup": "Dạng này không còn mục nào. Tất cả đã được quyết định.",
+          "fixNote": "Khi hồ sơ đã được sửa, ngoại lệ của nó chuyển lên mục “Nguyên nhân đã được khắc phục” ở trên, nơi có thể đóng nó.",
+          "pageOf": "Trang {page} / {pages}",
+          "previous": "Trước",
+          "next": "Tiếp",
+          "unnamed": "Người chưa có tên"
+        },
+        "bulk": {
+          "title": "Đánh dấu các mục này là bình thường",
+          "help": "{count, plural, other {# ngoại lệ trên trang này}} sẽ được đóng là bình thường, và quyết định được ghi lại cho từng người. Lương không thay đổi, và việc kiểm tra vẫn chạy ở kỳ lương sau.",
+          "noteLabel": "Vì sao đây là điều bình thường?",
+          "notePlaceholder": "Ví dụ: các công ty này không dùng chấm công",
+          "submit": "{count, plural, other {Đánh dấu # mục này là bình thường}}",
+          "none": "Không có mục nào trên trang này có thể đánh dấu cùng lúc. Hãy quyết định từng mục bên dưới.",
+          "done": "{count, plural, =0 {Không có mục nào được đánh dấu là bình thường.} other {Đã đánh dấu # ngoại lệ là bình thường.}}",
+          "skipped": "{count, plural, other {# mục vẫn để mở vì đã thay đổi hoặc không thuộc quyền quyết định của bạn.}}",
+          "error": {
+            "not_administrator": "Chỉ quản trị viên nhân sự mới có thể làm việc này.",
+            "invalid": "Hãy thêm một lý do ngắn rồi thử lại.",
+            "blocking": "Các ngoại lệ chặn kỳ lương không bao giờ được xóa cùng lúc. Hãy kiểm tra từng mục.",
+            "too_many": "Số lượng vượt quá mức có thể đánh dấu cùng lúc. Hãy thử lại từ danh sách.",
+            "nothing": "Chưa chọn mục nào.",
+            "failed": "Thao tác không thành công và không có gì thay đổi. Vui lòng thử lại."
+          }
+        },
+        "footer": "Việc nhóm chỉ thay đổi cách hiển thị ngoại lệ. Lỗi chặn kỳ lương không bao giờ được xóa hàng loạt, mỗi quyết định vẫn được ghi lại cho từng người, và không có con số lương nào bị thay đổi ở đây.",
+        "check": {
+          "negativeNet": {
+            "title": "Lương thực nhận dưới 0",
+            "why": "Những người này sẽ không nhận được gì, hoặc bị nợ, vì khoản khấu trừ lớn hơn thu nhập. Gần như chắc chắn đây là sai sót, nên từng trường hợp được kiểm tra riêng.",
+            "todo": "Mở kỳ lương, sửa các khoản khấu trừ, rồi tính lương lại."
+          },
+          "statutoryOverCap": {
+            "title": "Khoản đóng góp bắt buộc vượt mức tối đa theo luật",
+            "why": "Một khoản EPF, SOCSO, EIS hoặc tương tự vượt mức luật cho phép. Nếu đã nộp, sau đó phải điều chỉnh với cơ quan liên quan.",
+            "todo": "Đừng nộp. Kiểm tra mức đóng góp dùng cho kỳ lương này, sửa lại, rồi tính lương lại."
+          },
+          "missingBankProfile": {
+            "title": "Không có tài khoản ngân hàng để trả lương",
+            "why": "Hồ sơ của họ không có tài khoản ngân hàng, nên lương không thể đưa vào tệp ngân hàng.",
+            "todo": "Thêm tài khoản ngân hàng vào hồ sơ của từng người. Sửa một lần sẽ xử lý cho mọi kỳ lương có họ.",
+            "paymentMethodNotSet": {
+              "title": "Chưa biết trả lương cho những người này bằng cách nào",
+              "why": "Hồ sơ của họ không ghi họ được trả bằng chuyển khoản, tiền mặt hay séc, nên không thể đưa vào tệp ngân hàng. Người được trả bằng tiền mặt không bao giờ bị đánh dấu vì lý do này.",
+              "todo": "Đặt cách trả lương trên hồ sơ của từng người. Đặt một lần sẽ xử lý cho mọi kỳ lương có họ."
+            },
+            "bankDetailsMissing": {
+              "title": "Trả bằng chuyển khoản nhưng không có tài khoản ngân hàng",
+              "why": "Những người này được trả bằng chuyển khoản, nhưng hồ sơ không có tài khoản ngân hàng, nên lương không thể đưa vào tệp ngân hàng.",
+              "todo": "Thêm tài khoản ngân hàng vào hồ sơ của từng người, hoặc đề nghị họ gửi cho bộ phận nhân sự. Sửa một lần sẽ xử lý cho mọi kỳ lương có họ."
+            }
+          },
+          "duplicateEmploymentPay": {
+            "title": "Cùng một người được trả lương hai lần trong một tháng",
+            "why": "Người này được trả lương theo nhiều hơn một công việc trong cùng tháng. Điều đó có thể đúng với nhân viên dùng chung, nhưng nếu không, một khoản lương thứ hai sẽ bị chi ra.",
+            "todo": "Kiểm tra từng trường hợp. Nếu cả hai công việc đều có thật, đánh dấu là đúng. Nếu không, bỏ khoản trả thêm và tính lương lại."
+          },
+          "zeroNetWithPay": {
+            "title": "Không còn gì để trả",
+            "why": "Các khoản khấu trừ dùng hết toàn bộ lương. Điều này có thể xảy ra khi nghỉ không lương cả tháng, nhưng thường là do một khoản khấu trừ bị nhập sai.",
+            "todo": "Kiểm tra các khoản khấu trừ. Nếu đúng, đánh dấu là đúng như hiện tại."
+          },
+          "missingTaxProfile": {
+            "title": "Hồ sơ không có thông tin thuế thu nhập",
+            "why": "Thiếu thông tin thuế thu nhập, số thuế tính cho những người này có thể sai và không thể kê khai dưới tên họ.",
+            "todo": "Thêm thông tin thuế thu nhập vào hồ sơ của từng người, hoặc đề nghị họ gửi cho bộ phận nhân sự. Bộ phận nhân sự duyệt từng cập nhật như thường lệ."
+          },
+          "payWithoutAttendance": {
+            "title": "Đã trả lương nhưng không có ngày làm việc nào được ghi nhận",
+            "why": "Những người này đã được trả lương, nhưng trong tháng không có chấm công và không có ngày nghỉ được duyệt. Ở các công ty không dùng chấm công, điều này là bình thường.",
+            "todo": "Nếu các công ty này không ghi nhận chấm công, hãy đánh dấu là bình thường. Nếu lẽ ra có, hãy kiểm tra dữ liệu chấm công."
+          },
+          "prorationMismatch": {
+            "title": "Số ngày trả lương không khớp với tháng",
+            "why": "Số ngày được trả lương không khớp với ngày người này bắt đầu hoặc nghỉ việc, nên lương có thể quá cao hoặc quá thấp.",
+            "todo": "Kiểm tra ngày bắt đầu hoặc nghỉ việc và số ngày được trả lương. Sửa và tính lương lại nếu cần."
+          },
+          "netSwing": {
+            "title": "Lương thay đổi nhiều hơn bình thường mà không có gì trong bảng lương giải thích",
+            "why": "Lương thực nhận thay đổi nhiều so với tháng trước, và không có khoản thưởng, thay đổi lương, làm thêm giờ, nghỉ không lương hay dữ liệu lương nào khác giải thích được. Số tiền nhập tay luôn được coi là chưa giải thích.",
+            "todo": "Xem điều gì đã thay đổi. Nếu đúng, đánh dấu là đúng như hiện tại."
+          },
+          "componentAppeared": {
+            "title": "Một khoản lương xuất hiện lần đầu",
+            "titleNamed": "{component} xuất hiện lần đầu",
+            "why": "Khoản lương này không có trên phiếu lương tháng trước. Đây thường là thay đổi có kế hoạch, như một khoản phụ cấp mới hoặc một khoản phí công ty bắt đầu đóng.",
+            "todo": "Nếu thay đổi này có kế hoạch, hãy đánh dấu là bình thường. Chỉ cần xác nhận một lần."
+          },
+          "componentVanished": {
+            "title": "Một khoản lương đã biến mất",
+            "titleNamed": "{component} đã biến mất",
+            "why": "Khoản lương này có trên phiếu lương tháng trước nhưng không có trên phiếu này. Có thể là có kế hoạch, như phụ cấp đã kết thúc, hoặc bị bỏ sót do nhầm lẫn.",
+            "todo": "Nếu thay đổi này có kế hoạch, hãy đánh dấu là bình thường. Nếu không, thêm lại khoản đó và tính lương lại."
+          },
+          "hypothesis": {
+            "title": "Có điều bất thường đáng xem",
+            "why": "AI Centre nhận thấy điều gì đó trong các phiếu lương này không khớp với thông lệ. Đây chỉ là gợi ý và không bao giờ chặn kỳ lương.",
+            "todo": "Mở kỳ lương và quyết định đây có phải là vấn đề thật không."
+          },
+          "unknown": {
+            "title": "Một bước kiểm tra lương cần bạn quyết định",
+            "why": "Một trong các bước kiểm tra lương đã đánh dấu những phiếu lương này.",
+            "todo": "Mở kỳ lương để xem chi tiết và quyết định từng mục."
+          }
+        },
+        "detail": {
+          "generic": "Mở kỳ lương để xem các con số.",
+          "negativeNet": "Thu nhập {grossPay}, nhưng bị khấu trừ {totalDeductions}, nên lương thực nhận là {netPay}.",
+          "zeroNetWithPay": "Thu nhập {grossPay}, bị khấu trừ {totalDeductions}, không còn gì để trả.",
+          "statutoryOverCap": "{component} là {actual}, vượt mức tối đa {cap} là {excess}.",
+          "missingBankProfile": {
+            "generic": "Lương thực nhận {netPay} không có tài khoản ngân hàng để chuyển vào.",
+            "paymentMethodNotSet": "Hồ sơ không ghi cách trả lương. Lương thực nhận: {netPay}.",
+            "bankDetailsMissing": "Trả bằng chuyển khoản nhưng hồ sơ không có tài khoản ngân hàng. Lương thực nhận: {netPay}."
+          },
+          "missingTaxProfile": {
+            "withTax": "Hồ sơ không có thông tin thuế thu nhập. Thuế thu nhập đã khấu trừ tháng này: {pcb}.",
+            "noTax": "Hồ sơ không có thông tin thuế thu nhập và không có thuế thu nhập nào được khấu trừ."
+          },
+          "payWithoutAttendance": "Được trả {netPay}, không có chấm công và không có ngày nghỉ được duyệt trong tháng này.",
+          "prorationMismatch": "Được trả cho {daysWorked} trên {periodDays} ngày của tháng.",
+          "duplicateEmploymentPay": "Tháng này còn được trả lương theo {others, plural, other {# công việc khác}}. Lương thực nhận ở đây: {netPay}.",
+          "netSwing": "Lương thực nhận {direction, select, down {giảm} other {tăng}} {pct}%, từ {priorNetPay} thành {netPay}.",
+          "componentAppeared": "{component} {amount} trong tháng này, tháng trước không có.",
+          "componentVanished": "{component} {priorAmount} trong tháng trước, tháng này không có.",
+          "hypothesis": "Mở kỳ lương để đọc điều đã được nhận thấy."
+        },
+        "component": {
+          "allowance": "Phụ cấp",
+          "overtimePay": "Tiền làm thêm giờ",
+          "bonus": "Thưởng",
+          "epfEmployee": "EPF (phần người lao động)",
+          "epfEmployer": "EPF (phần người sử dụng lao động)",
+          "socsoEmployee": "SOCSO (phần người lao động)",
+          "socsoEmployer": "SOCSO (phần người sử dụng lao động)",
+          "eisEmployee": "EIS (phần người lao động)",
+          "eisEmployer": "EIS (phần người sử dụng lao động)",
+          "pcb": "Thuế thu nhập (PCB)",
+          "hrdf": "Phí HRD",
+          "zakat": "Zakat",
+          "other": "Một khoản lương khác"
+        }
+      }
     },
     "readiness": {
       "notChecked": "Công cụ HR chưa kiểm tra",
