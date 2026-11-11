@@ -1,5 +1,10 @@
 /**
- * Rewards setup views never take the tenant's exclusive Access lock (staging, 11 November 2026).
+ * Read paths that run on ordinary page renders never take the tenant's exclusive Access lock (staging, 11 November 2026).
+ *
+ * The shell bell runs on every authenticated render. For an administrator with pending profile-change requests its
+ * profile owner (core/profile.ts actionableProfileChangeIds) took the exclusive Access lock and the profile-policy
+ * write lock and then re-checked decision authority request by request, with FOR UPDATE row locks, all under that
+ * exclusive hold. After the deploy restart every open tab re-rendered at once on a CPU-starved box.
  *
  * After the deploy restart the Rewards Libraries page refused with 55P03 on the per-tenant Access lock while other
  * pages of the same tenant timed out in shared mode. The Rewards setup views (Salary structures, Bonus matrices,
@@ -19,7 +24,10 @@ import postgres from 'postgres';
 import {sql} from 'drizzle-orm';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
-import {person} from '../db/schema';
+import {person,profileChangeRequest} from '../db/schema';
+import {hireEmployee} from '../core/org';
+import {pendingProfileTaskMetadata} from '../core/profile';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {pgSqlState} from '../lib/db-error';
 import {confirmRewardLibrary,rewardLibraries,rewardLibraryForExport,rewardPlanLibraryChoices,saveRewardLibrary,submitRewardLibrary} from '../packs/rewards/libraries';
@@ -155,4 +163,33 @@ it('runs every audited Rewards setup view and export under the shared Access loc
  const added=(type:string)=>(after['rewards-setup.'+type]??0)-(before['rewards-setup.'+type]??0);
  expect({libraries:added('libraries.viewed'),export:added('library.exported'),pat:added('pat.viewed'),patExport:added('pat.exported')})
   .toEqual({libraries:1,export:1,pat:2,patExport:1});
+},120_000);
+
+it('keeps the shell bell profile owner on the shared Access lock while starved tabs re-render beside ordinary callers',async()=>{
+ const b=await seedBase(),subjects=[];
+ for(let n=0;n<6;n++)subjects.push(await hireEmployee(adminCtx(b),{person:{fullName:`Fictional profile subject ${n+1}`,primaryEmail:randomUUID()+'@example.invalid'},
+  companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()}));
+ const requests=await owner.db.insert(profileChangeRequest).values(subjects.flatMap(subject=>Array.from({length:4},()=>({tenantId:b.tenantId,
+  employmentId:subject.employmentId,personId:subject.personId,proposed:{preferredName:'Fictional pending preferred name'}})))).returning({id:profileChangeRequest.id});
+ // A second HR administrator with no person link: the owner after the restart, with the bell open in two tabs.
+ const viewerId=await createAppUser(b.tenantId,null,'hr_admin'),viewer:SessionContext={...adminCtx(b),userId:viewerId},modes:string[]=[];
+ starvedViewer(viewerId,modes);
+ const stop=accessLockSampler(b.tenantId);
+ const bells=Promise.all([pendingProfileTaskMetadata(viewer),pause(150).then(()=>pendingProfileTaskMetadata(viewer))]);
+ let rendering=true;void bells.finally(()=>{rendering=false;});
+ const callers:ReturnType<typeof ordinaryCaller>[]=[];
+ await pause(100);
+ while(rendering){callers.push(ordinaryCaller(b));await pause(100);}
+ const [first,second]=await bells,outcomes=await Promise.all(callers),locks=await stop();
+ const refused=outcomes.filter(o=>!o.ok);
+ console.log('[access-lock-shell-bell]',JSON.stringify({...locks,requests:requests.length,callers:outcomes.length,refused:refused.length,
+  refusedCodes:[...new Set(refused.map(o=>o.code))],slowestCallerMs:Math.round(Math.max(0,...outcomes.map(o=>o.ms))),bellModes:modes}));
+ expect(locks.maxExclusiveMs).toBeLessThanOrEqual(MAX_EXCLUSIVE_HOLD_MS);
+ expect(outcomes.length).toBeGreaterThan(3);
+ expect(refused).toEqual([]);
+ // Each bell: the candidate transaction (no Access lock), then the decision-authority check under the shared lock.
+ expect(modes.filter(mode=>mode!=='none')).toEqual(['S','S']);
+ // The same actionable tasks as before, for both renders.
+ expect(new Set(first.map(row=>row.id))).toEqual(new Set(requests.map(row=>row.id)));
+ expect(second.map(row=>row.id)).toEqual(first.map(row=>row.id));
 },120_000);
