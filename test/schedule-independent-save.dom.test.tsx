@@ -18,7 +18,7 @@ const { LEGACY_PATTERN, current } = vi.hoisted(() => ({ LEGACY_PATTERN: '0000000
 vi.mock('../packs/attendance/service', () => ({ getScheduleRotation: async () => ({ versions: [],memberships:[], revision: 'r1' }),
   legacyOvertimePatternIdForRule: async () => LEGACY_PATTERN, getAttendanceRule: async () => current.rule }));
 vi.mock('../app/admin/attendance-policy/rule-actions', () => ({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
-vi.mock('../components/schedule-rotation-editor', () => ({ ScheduleRotationEditor: () => null, StepMark: () => null, rotationMethodOf: () => 'workingWeek' }));
+vi.mock('../components/schedule-rotation-editor', () => ({ ScheduleRotationEditor: () => null, StepMark: () => null }));
 vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn(),saveScheduleGroupControlAction:vi.fn(),saveScheduleGroupAllowedShiftsAction:vi.fn(),saveScheduleGroupWeekAction:vi.fn() }));
 
 import { RuleForm } from '../app/admin/attendance-policy/rules/rule-form';

@@ -2,20 +2,14 @@
 import { ActionButton } from '@/components/ui/action-button';
 import { useActionState, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { normalizeRotation, MAX_ROTATION_DAYS, type RotationCycle, type RotationDay, type WeekDayKind } from '@/core/week-pattern';
+import { normalizeRotation, rotationMethodOf, MAX_ROTATION_DAYS, ROTATION_METHODS, type RotationCycle, type RotationDay, type RotationMethod, type WeekDayKind } from '@/core/week-pattern';
 import { saveRotationAction, type RotationActionState } from '@/app/admin/attendance/schedule/rotation-actions';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { AttendanceSettingsActionForm } from '@/components/attendance-settings-action-form';
 import {ScheduleShiftPicker} from '@/components/schedule-shift-picker';
 import {useSchedulePoolDraft} from './schedule-pool-draft';
 import { btnPrimary, inputCls } from '@/components/ui';
-/** 2f803985 — the three ways a Schedule Group's cycle repeats, read from (never stored beside) unit/length. */
-export const ROTATION_METHODS=['workingWeek','weeklyPattern','dailyPattern'] as const;
-export type RotationMethod=typeof ROTATION_METHODS[number];
 const METHOD_KEY={workingWeek:'methodWorkingWeek',weeklyPattern:'methodWeekly',dailyPattern:'methodDaily'} as const;
-export function rotationMethodOf(cycle:Pick<RotationCycle,'unit'|'length'>):RotationMethod {
-  return cycle.unit==='day'?'dailyPattern':cycle.length===1?'workingWeek':'weeklyPattern';
-}
 function mondayOnOrBefore(date:string):string {
   const parsed=Date.parse(`${date}T00:00:00Z`);if(Number.isNaN(parsed))return date;
   const day=new Date(parsed);day.setUTCDate(day.getUTCDate()-((day.getUTCDay()+6)%7));return day.toISOString().slice(0,10);

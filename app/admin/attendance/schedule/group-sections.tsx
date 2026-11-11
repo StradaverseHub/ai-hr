@@ -35,10 +35,10 @@ import {
   saveScheduleGroupWeekAction,
 } from './actions';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
-import { ScheduleRotationEditor, StepMark, rotationMethodOf } from '@/components/schedule-rotation-editor';
+import { ScheduleRotationEditor, StepMark } from '@/components/schedule-rotation-editor';
 import { getScheduleRotation, legacyOvertimePatternIdForRule, workingShiftSchedule } from '@/packs/attendance/service';
 import { todayInKualaLumpur } from '@/lib/hr-date';
-import {rotationVersionOn,type RotationCycle} from '@/core/week-pattern';
+import {rotationMethodOf,rotationVersionOn,type RotationCycle} from '@/core/week-pattern';
 
 /**
  * ─── 665de026 (r331) · ONE SCHEDULE GROUP, ONE SCREEN ────────────────────────────────────────────────
