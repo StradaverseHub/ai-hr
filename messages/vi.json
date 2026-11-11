@@ -1451,6 +1451,7 @@
         "status_terminated": "Đã chấm dứt",
         "probationGroup": "Thông tin thử việc",
         "contractGroup": "Thông tin hợp đồng",
+        "internshipGroup": "Thông tin thực tập",
         "contractStartDate": "Ngày bắt đầu hợp đồng",
         "contractEndDate": "Ngày kết thúc hợp đồng",
         "contractRemark": "Ghi chú",

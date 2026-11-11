@@ -1267,6 +1267,8 @@ async function applyEmploymentInfoSection(
     contractStartDate: str('contractStartDate'),
     contractEndDate: str('contractEndDate'),
     contractRemark: str('contractRemark'),
+    // 2260a06b — the Internship Information block, rendered only for an Intern; absent (undefined) otherwise.
+    internshipEndDate: str('internshipEndDate'),
     // c5ac75fa / 8ebabbf2 — the eight flat org columns (orgDivision/orgBranch/orgRegion/orgLine/orgSection/
     // orgTeam/orgBase/employmentCategory) are NOT written here. They were owned by
     // setOrganisationAssignmentAction, which 8ebabbf2 deleted along with the editable Organisation

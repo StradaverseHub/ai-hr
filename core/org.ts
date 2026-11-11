@@ -303,6 +303,10 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
         provisionalEndOn,
         contractStartDate: isContractHire ? p.hiredOn : null,
         contractEndDate: isContractHire ? provisionalEndOn : null,
+        // 2260a06b — the intern twin of the contract fix above: the internship end date keyed in the Draft is
+        // the employment's internship_end_date from activation onwards (the Employment tab, Movement, the
+        // correction workbook and the internship review all read that column). provisional_end_on keeps it too.
+        internshipEndDate: p.employmentType === 'intern' ? provisionalEndOn : null,
       })
       .returning({ id: employment.id });
 
@@ -2943,6 +2947,9 @@ export type EmploymentInfoInput = {
   contractStartDate?: string | null;
   contractEndDate?: string | null;
   contractRemark?: string | null;
+  /** 2260a06b — the internship end date (pre-existing 0110 review column). Shown and maintained for an Intern
+   *  employee; required for one whenever a save carries it, and later than the join date. */
+  internshipEndDate?: string | null;
   orgBranch?: string | null;
   orgDivision?: string | null;
   orgRegion?: string | null;
@@ -3023,6 +3030,9 @@ const EMPLOYMENT_INFO_DATE_FIELDS = [
   // Review row write the SAME date rather than two copies of it.
   'contractStartDate',
   'contractEndDate',
+  // 2260a06b — the internship end date (0110 review column), maintained by the Employment tab's Intern block,
+  // Movement and the corrections. One date, one home, exactly like contractEndDate above.
+  'internshipEndDate',
 ] as const;
 
 /**
@@ -3281,6 +3291,7 @@ export async function setEmploymentInfo(
         contractStartDate: employment.contractStartDate,
         contractEndDate: employment.contractEndDate,
         contractRemark: employment.contractRemark,
+        internshipEndDate: employment.internshipEndDate,
         orgBranch: employment.orgBranch,
         orgDivision: employment.orgDivision,
         orgRegion: employment.orgRegion,
@@ -3397,7 +3408,16 @@ export async function setEmploymentInfo(
     //      no employment_type column — a query against employment.employment_type ERRORS — so the type is
     //      resolved through `assignment`, with the same shape core/employment-review.ts:liveTypeAndDates
     //      uses. Same tx, so it shares the RLS session and a violation aborts before the write.
-    if ('contractStartDate' in set || 'contractEndDate' in set) {
+    // 2260a06b — the internship end date, resolved the same way. It closes the internship, so it must be later
+    // than the day the employee joined the current company (join date, else the group join date).
+    const internshipEnd =
+      'internshipEndDate' in set ? (set.internshipEndDate as string | null) : before.internshipEndDate;
+    if ('internshipEndDate' in set && internshipEnd && internshipEnd <= (join ?? hire)) {
+      throw new Error('Internship end date must be later than the join date.');
+    }
+    if ('contractStartDate' in set || 'contractEndDate' in set || 'internshipEndDate' in set) {
+      // A movement that changes the type in the same transaction has already written the new open assignment,
+      // so this reads the type the dates are being saved for.
       const [live] = await tx
         .select({ employmentType: assignment.employmentType })
         .from(assignment)
@@ -3409,8 +3429,53 @@ export async function setEmploymentInfo(
           ),
         )
         .limit(1);
-      if (live?.employmentType === 'contract' && !(contractStart && contractEnd)) {
+      if (
+        ('contractStartDate' in set || 'contractEndDate' in set) &&
+        live?.employmentType === 'contract' &&
+        !(contractStart && contractEnd)
+      ) {
         throw new Error('Contract start date and contract end date are required for a contract employee.');
+      }
+      if ('internshipEndDate' in set && live?.employmentType === 'intern' && !internshipEnd) {
+        throw new Error('Internship end date is required for an intern employee.');
+      }
+      // 2260a06b — Contract Management owns the contract dates while one of its cases is open for this
+      // employment (its accepted renewal writes them under the protected intent checked above). Any other writer
+      // — the profile, a movement, a correction or an import — is refused only when it would actually MOVE a
+      // contract date, so re-saving the Employment tab with the dates unchanged still works.
+      const contractDatesMove =
+        ('contractStartDate' in set && (set.contractStartDate ?? null) !== (before.contractStartDate ?? null)) ||
+        ('contractEndDate' in set && (set.contractEndDate ?? null) !== (before.contractEndDate ?? null));
+      if (contractDatesMove && !contractDateAuthorityTx(tx, p)) {
+        const [open] = await tx.execute<{ open: boolean }>(
+          sql`select app.contract_renewal_open(${p.employmentId}::uuid) as open`,
+        );
+        if (open?.open) {
+          throw new Error(
+            'A contract renewal is in progress for this employee. Change the contract dates through that renewal in Contract Management.',
+          );
+        }
+      }
+      // 2260a06b — ONE DATE, ONE HOME for interns. hireEmployee wrote the internship end into provisional_end_on
+      // as well, and the review/status fallbacks (core/employment-review.ts computeReviewWindow,
+      // core/employment-status.ts) read that copy when the typed column is empty. When the provisional date is
+      // still the internship's own date (equal to it, or the internship column was never filled), it follows
+      // the change so the two can never disagree. A full-time provisional (probation) date is left alone.
+      if (
+        'internshipEndDate' in set &&
+        internshipEnd &&
+        internshipEnd !== (before.internshipEndDate ?? null) &&
+        live?.employmentType === 'intern'
+      ) {
+        const [provisional] = await tx
+          .select({ provisionalEndOn: employment.provisionalEndOn })
+          .from(employment)
+          .where(eq(employment.id, p.employmentId))
+          .limit(1);
+        const prior = provisional?.provisionalEndOn ?? null;
+        if (prior !== internshipEnd && (prior === (before.internshipEndDate ?? null) || before.internshipEndDate == null)) {
+          set.provisionalEndOn = internshipEnd;
+        }
       }
     }
 

@@ -3493,6 +3493,8 @@ export function employeeDetail(ctx: SessionContext, employmentId: string,purpose
         contractStartDate: employment.contractStartDate,
         contractEndDate: employment.contractEndDate,
         contractRemark: employment.contractRemark,
+        // 2260a06b — the Intern twin of the contract group: the Employment tab shows and re-saves it.
+        internshipEndDate: employment.internshipEndDate,
         tenderResignationDate: employment.tenderResignationDate,
         lastWorkingDate: employment.lastWorkingDate,
         orgBranch: employment.orgBranch,

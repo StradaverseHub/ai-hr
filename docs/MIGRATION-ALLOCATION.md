@@ -3186,3 +3186,12 @@ one read-only STABLE SECURITY DEFINER probe, `app.reward_access_observation_due(
 only; no table, index, grant on data or existing function changes. Final tag, idx and `when` must be assigned above the
 freshly verified ledger at integration, and the approved upgrade tail pins (`test/helpers/approved-upgrade.ts`) updated
 then. This entry carries no allocation or deployment authority.
+
+## Contract and internship end dates — 11 November 2026 (unallocated draft)
+
+Branch `claude/fb-2260a06b-contract-end-dates-20261111` journals `9750_contract_internship_end_dates` at idx 9750 and when
+1793330099750 as an UNALLOCATED DRAFT from the coordinator-provided 9750–9759 block. It widens the
+`movement_type_field_rule_field_check` vocabulary with `contractEndDate` and `internshipEndDate` and adds one read-only
+STABLE SECURITY DEFINER probe, `app.contract_renewal_open(uuid)`, with EXECUTE for `ai_hr_app` only. No table, column,
+grant on data or data change. Final tag, idx and `when` are assigned above the freshly verified ledger at integration.
+This entry carries no allocation or deployment authority.

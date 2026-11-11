@@ -4195,6 +4195,25 @@ export default async function EmployeePage({
             </div>
           )}
 
+          {/* 2260a06b — Internship Information: the Intern twin of the Contract block above, rendered ONLY while the
+              current open assignment is 'intern'. It writes employment.internship_end_date (the internship review
+              column hireEmployee now seeds from the Draft). An intern activated before that falls back to the
+              provisional end date the Draft captured, so the date is shown and re-saved rather than lost. */}
+          {current?.employmentType === 'intern' && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.internshipGroup')}</h4>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <PersonnelField fieldId="employment.draft_only_employment_fields.internshipenddate" mode="record">
+                  <DateField {...personnelControl('employment.draft_only_employment_fields.internshipenddate','record')}
+                    defaultValue={emp.internshipEndDate ?? emp.provisionalEndOn ?? ''}
+                    className={inputCls}
+                    label={personnelLabel('employment.draft_only_employment_fields.internshipenddate')}
+                  />
+                </PersonnelField>
+              </div>
+            </div>
+          )}
+
           {/* Notice Period Information */}
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.noticeGroup')}</h4>

@@ -1451,6 +1451,7 @@
         "status_terminated": "நிறுத்தப்பட்டது",
         "probationGroup": "சோதனை கால தகவல்",
         "contractGroup": "ஒப்பந்தத் தகவல்",
+        "internshipGroup": "பயிற்சித் தகவல்",
         "contractStartDate": "ஒப்பந்தத் தொடக்க தேதி",
         "contractEndDate": "ஒப்பந்த முடிவு தேதி",
         "contractRemark": "குறிப்பு",

@@ -1451,6 +1451,7 @@
         "status_terminated": "สิ้นสุดการจ้าง",
         "probationGroup": "ข้อมูลช่วงทดลองงาน",
         "contractGroup": "ข้อมูลสัญญา",
+        "internshipGroup": "ข้อมูลการฝึกงาน",
         "contractStartDate": "วันที่เริ่มสัญญา",
         "contractEndDate": "วันที่สิ้นสุดสัญญา",
         "contractRemark": "หมายเหตุ",

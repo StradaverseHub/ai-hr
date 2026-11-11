@@ -406,7 +406,7 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
       const end=draftProvisionalEndOn(job).date;
       const sources:Record<string,Row[]>={
         person:[{...profile,age:completedYearsAt(profile.dateOfBirth??null,spec.asAt)}],
-        employment:[{...job,employeeCode:draft.reservedEmployeeCode}],employmentStatus:[{status:'draft'}],
+        employment:[{...job,employeeCode:draft.reservedEmployeeCode,internshipEndDate:job.employmentType==='intern'?end:null}],employmentStatus:[{status:'draft'}],
         assignment:[{...job,companyName:ref(0,draft.companyId,'legalName'),departmentName:ref(1,job.departmentId),positionName:ref(3,job.positionId,'title'),gradeName:ref(4,job.gradeId)}],
         statutory:[{...profile,...stat}],bank:[{...stat}],compensation:[{...pay}],payrollProfile:[{...pay}],
         dependent:draftFamily(data).map(member=>({...member,age:completedYearsAt(member.dateOfBirth??null,spec.asAt)})),

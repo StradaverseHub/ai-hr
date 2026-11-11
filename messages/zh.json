@@ -1451,6 +1451,7 @@
         "status_terminated": "已离职",
         "probationGroup": "试用期信息",
         "contractGroup": "合同信息",
+        "internshipGroup": "实习信息",
         "contractStartDate": "合同开始日期",
         "contractEndDate": "合同结束日期",
         "contractRemark": "备注",

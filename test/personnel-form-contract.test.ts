@@ -83,7 +83,7 @@ describe('Personnel shared form contract',()=>{
     expect(personnelFormName('employment.approval_delegations.delegateemploymentid')).toBe('delegateEmploymentId');
     expect(personnelFormName('attendance.work_location_and_shift_arrangement.locationid')).toBe('locationId');
     for(const id of ['employment.direct_superior_and_history.superioremploymentid','employment.approval_delegations.delegateemploymentid','attendance.work_location_and_shift_arrangement.locationid'])expect(PERSONNEL_FIELDS.find(field=>field.id===id)?.report.enabled).toBe(false);
-    expect(PERSONNEL_FIELDS.find(field=>field.id==='employment.draft_only_employment_fields.internshipenddate')).toMatchObject({ownerField:'provisionalEndOn',form:{draftPath:'employment.provisionalEndOn'}});
+    expect(PERSONNEL_FIELDS.find(field=>field.id==='employment.draft_only_employment_fields.internshipenddate')).toMatchObject({owner:'employment',ownerField:'internshipEndDate',form:{name:'internshipEndDate',draftPath:'employment.provisionalEndOn'}});
   });
   it('declares every relief grid count with a canonical composed label and exact owner cell',()=>{
     const cells=PERSONNEL_FIELDS.filter(field=>field.childReliefCell);

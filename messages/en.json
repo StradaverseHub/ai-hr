@@ -1459,6 +1459,7 @@
         "status_terminated": "Terminated",
         "probationGroup": "Probation Information",
         "contractGroup": "Contract Information",
+        "internshipGroup": "Internship Information",
         "contractStartDate": "Contract Start Date",
         "contractEndDate": "Contract End Date",
         "contractRemark": "Remark",
