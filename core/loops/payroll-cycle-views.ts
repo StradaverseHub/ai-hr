@@ -11,16 +11,15 @@
  * may read their record. The Salary payroll page and the settings page add what only payroll administrators may see:
  * each person's net-swing flag (a ratio, never an amount) and the thresholds. No model is called; no figure of pay is
  * computed here. */
-import {and,count,desc,eq,inArray,sql} from 'drizzle-orm';
+import {and,count,desc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
-import {appUser,company,companyPayrollConfig,domainEvent,employment,payrollBatch,payrollStatusHistory,person} from '../../db/schema';
+import {appUser,company,companyPayrollConfig,domainEvent,employment,payrollAnomalyVerdict,payrollBatch,payrollStatusHistory,person} from '../../db/schema';
 import {terasLoopCase,terasLoopPause} from '../../db/teras-schema';
 import {terasPayrollSwingDisposition,terasPayrollThresholdDecision} from '../../db/teras-payroll-cycle-schema';
 import {isAdmin} from '../../lib/authz-model';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {tenantStoppedTx,workerSwitchStateTx} from '../agent-registry/controls';
 import {registeredWorker} from '../agent-registry/workers';
-import {anomalyMetrics} from '../payroll-anomaly';
 import {listPayComponents} from '../../packs/payroll/service';
 import {PAY_CAUSE_KINDS,type PayCauseKind} from '../pay-difference';
 import {decodeCheck,type PreSalaryCheck} from './pre-salary-checks';
@@ -174,8 +173,12 @@ export async function payrollCycleOverview(ctx:SessionContext,options:Readonly<{
    let issuesCaught:number|null=null;
    const processed=batches.filter(batch=>batch.status!=='draft');
    if(processed.length){
-    issuesCaught=0;
-    for(const batch of processed){const metrics=await anomalyMetrics(ctx,{batchId:batch.id});issuesCaught+=metrics.review+metrics.block;}
+    // The anomaly verdicts to review or block of the month's processed runs (core/payroll-anomaly.ts anomalyMetrics counts
+    // the same rows per run), as one count in this transaction: a nested transaction per run held this one's pooled
+    // connection while it waited for another, once per run (11 Nov 2026).
+    const [flagged]=await tx.select({n:count()}).from(payrollAnomalyVerdict).where(and(inArray(payrollAnomalyVerdict.batchId,processed.map(batch=>batch.id)),
+     isNull(payrollAnomalyVerdict.supersededAt),inArray(payrollAnomalyVerdict.disposition,['review','block'])));
+    issuesCaught=Number(flagged?.n??0);
     const [swings]=await tx.select({n:count()}).from(terasLoopCase).where(and(eq(terasLoopCase.tenantId,ctx.tenantId),eq(terasLoopCase.workerId,'loop_salary_payroll'),
      inArray(terasLoopCase.companyId,ids),sql`${terasLoopCase.subjectKey} like ${'swing:%:'+p}`));
     issuesCaught+=Number(swings?.n??0);

@@ -26,9 +26,9 @@ import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {company,STATUTORY_FILED_STATUSES} from '../../db/schema';
 import {payrollAuditCapture,payrollAuditFinding} from '../../db/payroll-audit-schema';
 import {isAdmin,isGroupAdmin} from '../../lib/authz-model';
-import {postRunCorrectionsTx,type PostRunCorrection} from './corrections';
+import {postRunCorrectionsByCompanyTx,type PostRunCorrection} from './corrections';
 import {latestDispositionsTx} from './controls';
-import {controlSettingsTx,type AuditControlSettings} from './settings';
+import {controlSettingsByCompanyTx,type AuditControlSettings} from './settings';
 import {acknowledgementFor,acknowledgementsTx,currentDepartmentsTx,type Acknowledgement} from '../loops/acknowledgements';
 import {AUDIT_LOOP_ID,AUDIT_STATUTORY_FORMS,PAYROLL_ACCESS_EVENT,PAYSLIP_OPENED_EVENT,STATUTORY_DUE_DAY,STATUTORY_FORM_TYPES,isPayPeriod,
  type AuditControlId,type AuditDisposition,type AuditStatutoryForm} from './types';
@@ -58,6 +58,8 @@ export type AuditLoopDetail=AuditLoopSummary&Readonly<{findings:readonly AuditFi
 
 type Row=Record<string,unknown>;
 const rows=async(tx:Tx,query:SQL)=>Array.from(await tx.execute(query) as unknown as Row[]);
+const uuids=(ids:readonly string[])=>sql.join(ids.map(id=>sql`${id}::uuid`),sql`,`);
+const texts=(ids:readonly string[])=>sql.join(ids.map(id=>sql`${id}`),sql`,`);
 const nextMonth=(period:string)=>{const y=Number(period.slice(0,4)),m=Number(period.slice(5,7));return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,'0')}`;};
 const prevMonth=(period:string)=>{const y=Number(period.slice(0,4)),m=Number(period.slice(5,7));return m===1?`${y-1}-12`:`${y}-${String(m-1).padStart(2,'0')}`;};
 /** Until the 15th the month being audited is last month (its statutory files are due then); after it, this month. */
@@ -67,21 +69,41 @@ const dayOf=(value:unknown)=>value==null?null:value instanceof Date?value.toISOS
 const klDay=(value:unknown)=>{if(value==null)return null;const at=value instanceof Date?value:new Date(String(value));return new Date(at.getTime()+8*3_600_000).toISOString().slice(0,10);};
 const at=(value:unknown)=>value==null?null:value instanceof Date?value:new Date(String(value));
 
-async function formsTx(tx:Tx,tenantId:string,companyId:string,payPeriod:string):Promise<AuditFormStatus[]>{
+/** Rows grouped by their company, each group in the rows' own order. */
+const byCompany=<T extends {companyId:string}>(list:readonly T[])=>{
+ const out=new Map<string,T[]>();
+ for(const row of list){const group=out.get(row.companyId);if(group)group.push(row);else out.set(row.companyId,[row]);}
+ return out;
+};
+/** Raw rows grouped by their `company_id` column. */
+const byCompanyColumn=(list:readonly Row[])=>byCompany(list.map(row=>Object.assign({},row,{companyId:String(row.company_id)})));
+
+/** The month's statutory files per company, for every company in four statements whatever their number. */
+async function formsByCompanyTx(tx:Tx,tenantId:string,companyIds:readonly string[],payPeriod:string):Promise<Map<string,AuditFormStatus[]>>{
  const due=statutoryDueDate(payPeriod),filedStatuses=[...STATUTORY_FILED_STATUSES] as string[];
- const reports=await rows(tx,sql`select r.report_type,r.status,r.generated_at,r.filed_on,r.ack_ref from public.statutory_report r
-  where r.tenant_id=${tenantId}::uuid and r.company_id=${companyId}::uuid and r.period_key=${payPeriod}`);
- const exports=await rows(tx,sql`select d.payload->>'detail' as type,d.occurred_at from public.domain_event d where d.tenant_id=${tenantId}::uuid
-  and d.event_type=${PAYROLL_ACCESS_EVENT} and d.payload->>'surface'='statutory_file' and d.payload->>'companyId'=${companyId} and d.payload->>'payPeriod'=${payPeriod}`);
- const receipts=await rows(tx,sql`select p.paid_on,p.receipt_ref from public.pcb_payment p where p.tenant_id=${tenantId}::uuid and p.company_id=${companyId}::uuid
+ const reports=await rows(tx,sql`select r.company_id,r.report_type,r.status,r.generated_at,r.filed_on,r.ack_ref from public.statutory_report r
+  where r.tenant_id=${tenantId}::uuid and r.company_id in (${uuids(companyIds)}) and r.period_key=${payPeriod}`);
+ const exports=await rows(tx,sql`select d.payload->>'companyId' as company_id,d.payload->>'detail' as type,d.occurred_at from public.domain_event d where d.tenant_id=${tenantId}::uuid
+  and d.event_type=${PAYROLL_ACCESS_EVENT} and d.payload->>'surface'='statutory_file' and d.payload->>'companyId' in (${texts(companyIds)}) and d.payload->>'payPeriod'=${payPeriod}`);
+ const receipts=await rows(tx,sql`select p.company_id,p.paid_on,p.receipt_ref from public.pcb_payment p where p.tenant_id=${tenantId}::uuid and p.company_id in (${uuids(companyIds)})
   and p.period_key=${payPeriod} and coalesce(btrim(p.receipt_ref),'')<>''`);
  // What the month requires, from the owners' own facts: any PCB deducted; HRD liability or any levy charged.
- const [need]=await rows(tx,sql`select
-  exists(select 1 from public.payslip s join public.payroll_batch b on b.id=s.batch_id where b.tenant_id=${tenantId}::uuid and b.company_id=${companyId}::uuid
+ const needs=await rows(tx,sql`select c.id as company_id,
+  exists(select 1 from public.payslip s join public.payroll_batch b on b.id=s.batch_id where b.tenant_id=${tenantId}::uuid and b.company_id=c.id
    and b.pay_period=${payPeriod} and b.history_import_attempt_id is null and coalesce((s.statutory->>'pcb')::numeric,0)>0) as pcb,
-  exists(select 1 from public.payslip s join public.payroll_batch b on b.id=s.batch_id where b.tenant_id=${tenantId}::uuid and b.company_id=${companyId}::uuid
+  exists(select 1 from public.payslip s join public.payroll_batch b on b.id=s.batch_id where b.tenant_id=${tenantId}::uuid and b.company_id=c.id
    and b.pay_period=${payPeriod} and b.history_import_attempt_id is null and coalesce((s.statutory->>'hrdf')::numeric,0)>0)
-  or exists(select 1 from public.company_statutory_my c where c.tenant_id=${tenantId}::uuid and c.company_id=${companyId}::uuid and c.hrdf_status<>'not_registered') as hrd`);
+  or exists(select 1 from public.company_statutory_my m where m.tenant_id=${tenantId}::uuid and m.company_id=c.id and m.hrdf_status<>'not_registered') as hrd
+  from unnest(array[${uuids(companyIds)}]::uuid[]) as c(id)`);
+ const per=[reports,exports,receipts,needs].map(byCompanyColumn);
+ return new Map(companyIds.map(companyId=>{
+  const [own,exported,paid,need]=per.map(lists=>lists.get(companyId)??[]);
+  return [companyId,formStatuses(own!,exported!,paid!,need![0],due,filedStatuses)];
+ }));
+}
+
+/** One company's statutory files from its own rows. PURE. */
+function formStatuses(reports:readonly Row[],exports:readonly Row[],receipts:readonly Row[],need:Row|undefined,due:string,filedStatuses:readonly string[]):AuditFormStatus[]{
  const required=(form:AuditStatutoryForm)=>form==='pcb_cp39'?need?.pcb===true:form==='hrd'?need?.hrd===true:true;
  return AUDIT_STATUTORY_FORMS.map(form=>{
   const types=STATUTORY_FORM_TYPES[form];
@@ -94,65 +116,96 @@ async function formsTx(tx:Tx,tenantId:string,companyId:string,payPeriod:string):
  });
 }
 
-async function companyStatusTx(tx:Tx,ctx:SessionContext,item:{id:string;name:string;paused:boolean},payPeriod:string):Promise<{status:AuditCompanyStatus;corrections:PostRunCorrection[];findingIds:string[]}>{
- const runs=(await rows(tx,sql`select b.id,b.run_type,b.run_seq,b.status,b.closed_at,b.released_at from public.payroll_batch b where b.tenant_id=${ctx.tenantId}::uuid
-  and b.company_id=${item.id}::uuid and b.pay_period=${payPeriod} and b.history_import_attempt_id is null order by b.run_seq,b.id`))
-  .map(row=>Object.freeze({batchId:String(row.id),runType:String(row.run_type),runSeq:Number(row.run_seq),status:String(row.status),closedAt:at(row.closed_at),releasedAt:at(row.released_at)}));
- const [slips]=await rows(tx,sql`select count(*)::int as total,count(*) filter (where b.released_at is not null and b.released_at<=now())::int as released
-  from public.payslip s join public.payroll_batch b on b.id=s.batch_id where b.tenant_id=${ctx.tenantId}::uuid and b.company_id=${item.id}::uuid
-  and b.pay_period=${payPeriod} and b.history_import_attempt_id is null`);
- const [opened]=await rows(tx,sql`select count(distinct d.subject_employment_id)::int as n from public.domain_event d where d.tenant_id=${ctx.tenantId}::uuid
-  and d.event_type=${PAYSLIP_OPENED_EVENT} and d.payload->>'companyId'=${item.id} and d.payload->>'payPeriod'=${payPeriod}`);
- const statutory=await formsTx(tx,ctx.tenantId,item.id,payPeriod);
- const banks=(await rows(tx,sql`select bp.bank,x.format,count(*)::int as files,sum(x.record_count)::int as records,sum(x.total_cents)::bigint as total_cents
+type CompanyAuditRead={status:AuditCompanyStatus;corrections:PostRunCorrection[];findingIds:string[]};
+/** Every company's Audit status for one month, in a fixed number of statements whatever the number of companies (each read
+ * covers all of them and is split per company here), so a group of many companies costs what a group of one does. Each
+ * value is what the company's own reads gave before (11 Nov 2026: one company after another, about fifteen statements
+ * each, kept the Payroll cycle page of a 71-company group loading for minutes). `acknowledged` maps each covered finding
+ * to the standing acknowledgement covering it. */
+async function companyStatusesTx(tx:Tx,ctx:SessionContext,items:readonly {id:string;name:string;paused:boolean}[],payPeriod:string)
+ :Promise<{companies:CompanyAuditRead[];acknowledged:Map<string,Acknowledgement>}>{
+ if(!items.length)return {companies:[],acknowledged:new Map()};
+ const ids=items.map(item=>item.id),tenantId=ctx.tenantId;
+ const runs=(await rows(tx,sql`select b.id,b.company_id,b.run_type,b.run_seq,b.status,b.closed_at,b.released_at from public.payroll_batch b where b.tenant_id=${tenantId}::uuid
+  and b.company_id in (${uuids(ids)}) and b.pay_period=${payPeriod} and b.history_import_attempt_id is null order by b.run_seq,b.id`))
+  .map(row=>({companyId:String(row.company_id),run:Object.freeze({batchId:String(row.id),runType:String(row.run_type),runSeq:Number(row.run_seq),status:String(row.status),
+   closedAt:at(row.closed_at),releasedAt:at(row.released_at)})}));
+ const slips=await rows(tx,sql`select b.company_id,count(*)::int as total,count(*) filter (where b.released_at is not null and b.released_at<=now())::int as released
+  from public.payslip s join public.payroll_batch b on b.id=s.batch_id where b.tenant_id=${tenantId}::uuid and b.company_id in (${uuids(ids)})
+  and b.pay_period=${payPeriod} and b.history_import_attempt_id is null group by b.company_id`);
+ const opened=await rows(tx,sql`select d.payload->>'companyId' as company_id,count(distinct d.subject_employment_id)::int as n from public.domain_event d where d.tenant_id=${tenantId}::uuid
+  and d.event_type=${PAYSLIP_OPENED_EVENT} and d.payload->>'companyId' in (${texts(ids)}) and d.payload->>'payPeriod'=${payPeriod} group by 1`);
+ const statutory=await formsByCompanyTx(tx,tenantId,ids,payPeriod);
+ const banks=(await rows(tx,sql`select x.company_id,bp.bank,x.format,count(*)::int as files,sum(x.record_count)::int as records,sum(x.total_cents)::bigint as total_cents
   from public.bank_payment_export x join public.domain_event d on d.aggregate_id=x.id and d.event_type='bank-payment-file.generated' and d.tenant_id=x.tenant_id
-  left join public.company_bank_profile bp on bp.id=x.bank_profile_id where x.tenant_id=${ctx.tenantId}::uuid and x.company_id=${item.id}::uuid
-  and d.payload->>'periodKey'=${payPeriod} group by bp.bank,x.format order by x.format,bp.bank`))
-  .map(row=>Object.freeze({bank:row.bank==null?null:String(row.bank),format:String(row.format),files:Number(row.files),records:Number(row.records),totalCents:Number(row.total_cents)}));
- const corrections=await postRunCorrectionsTx(tx,ctx.tenantId,{companyId:item.id,payPeriod});
- const own=await tx.select({id:payrollAuditFinding.id,controlId:payrollAuditFinding.controlId,employmentId:payrollAuditFinding.employmentId}).from(payrollAuditFinding)
-  .where(and(eq(payrollAuditFinding.tenantId,ctx.tenantId),eq(payrollAuditFinding.companyId,item.id),eq(payrollAuditFinding.payPeriod,payPeriod)));
+  left join public.company_bank_profile bp on bp.id=x.bank_profile_id where x.tenant_id=${tenantId}::uuid and x.company_id in (${uuids(ids)})
+  and d.payload->>'periodKey'=${payPeriod} group by x.company_id,bp.bank,x.format order by x.format,bp.bank`))
+  .map(row=>({companyId:String(row.company_id),bank:Object.freeze({bank:row.bank==null?null:String(row.bank),format:String(row.format),files:Number(row.files),
+   records:Number(row.records),totalCents:Number(row.total_cents)})}));
+ const corrections=await postRunCorrectionsByCompanyTx(tx,tenantId,ids,payPeriod);
+ const findingFields={id:payrollAuditFinding.id,companyId:payrollAuditFinding.companyId,controlId:payrollAuditFinding.controlId,employmentId:payrollAuditFinding.employmentId};
+ const own=await tx.select(findingFields).from(payrollAuditFinding)
+  .where(and(eq(payrollAuditFinding.tenantId,tenantId),inArray(payrollAuditFinding.companyId,ids),eq(payrollAuditFinding.payPeriod,payPeriod)));
  // A shared bank account first seen in an earlier month and not yet disposed of is still this month's finding.
- const earlier=await tx.select({id:payrollAuditFinding.id,controlId:payrollAuditFinding.controlId,employmentId:payrollAuditFinding.employmentId}).from(payrollAuditFinding)
-  .where(and(eq(payrollAuditFinding.tenantId,ctx.tenantId),eq(payrollAuditFinding.companyId,item.id),eq(payrollAuditFinding.controlId,'shared_bank_account'),
+ const earlier=await tx.select(findingFields).from(payrollAuditFinding)
+  .where(and(eq(payrollAuditFinding.tenantId,tenantId),inArray(payrollAuditFinding.companyId,ids),eq(payrollAuditFinding.controlId,'shared_bank_account'),
    sql`${payrollAuditFinding.payPeriod}<${payPeriod}`));
- const earlierLatest=await latestDispositionsTx(tx,ctx.tenantId,earlier.map(row=>row.id));
- const findings=[...own,...earlier.filter(row=>!earlierLatest.has(row.id))];
- const latest=await latestDispositionsTx(tx,ctx.tenantId,findings.map(row=>row.id));
+ // A finding's latest disposition is its own, whichever company or month it belongs to: one read covers both lists.
+ const latest=await latestDispositionsTx(tx,tenantId,[...own,...earlier].map(row=>row.id));
+ const findings=[...own,...earlier.filter(row=>!latest.has(row.id))];
  // Standing acknowledgements: an acknowledged finding is expected, not an open exception (it stays listed).
- const covered=await acknowledgedFindingsTx(tx,ctx.tenantId,item.id,findings);
- const previous=await tx.selectDistinct({controlId:payrollAuditFinding.controlId}).from(payrollAuditFinding)
-  .where(and(eq(payrollAuditFinding.tenantId,ctx.tenantId),eq(payrollAuditFinding.companyId,item.id),eq(payrollAuditFinding.payPeriod,prevMonth(payPeriod))));
- const before=new Set(previous.map(row=>row.controlId));
- const repeatIssues=[...new Set(own.filter(row=>!covered.has(row.id)).map(row=>row.controlId))].filter(id=>before.has(id)).sort();
- const [captures]=await tx.select({n:count(),lastAt:max(payrollAuditCapture.capturedAt)}).from(payrollAuditCapture)
-  .where(and(eq(payrollAuditCapture.tenantId,ctx.tenantId),eq(payrollAuditCapture.companyId,item.id),eq(payrollAuditCapture.payPeriod,payPeriod)));
- const [head]=await tx.select({hash:payrollAuditCapture.chainHash}).from(payrollAuditCapture)
-  .where(and(eq(payrollAuditCapture.tenantId,ctx.tenantId),eq(payrollAuditCapture.companyId,item.id),eq(payrollAuditCapture.payPeriod,payPeriod)))
-  .orderBy(desc(payrollAuditCapture.seq)).limit(1);
- const open=findings.filter(row=>!latest.has(row.id)&&!covered.has(row.id)).length;
- const acknowledged=findings.filter(row=>!latest.has(row.id)&&covered.has(row.id)).length;
- const withoutRootCause=corrections.filter(row=>!row.rootCause).length;
- const done=runs.length>0&&runs.every(run=>run.status==='closed'&&run.releasedAt!==null)&&statutory.every(form=>!form.required||form.filed)&&open===0&&withoutRootCause===0;
- const status:AuditCompanyStatus=Object.freeze({companyId:item.id,companyName:item.name,paused:item.paused,runs:Object.freeze(runs),
-  payslips:Object.freeze({total:Number(slips?.total??0),released:Number(slips?.released??0),opened:Number(opened?.n??0)}),statutory:Object.freeze(statutory),
-  bank:Object.freeze({files:banks.reduce((n,row)=>n+row.files,0),byBank:Object.freeze(banks)}),
-  corrections:Object.freeze({count:corrections.length,withoutRootCause}),findings:Object.freeze({open,disposed:findings.length-open-acknowledged,acknowledged}),
-  repeatIssues:Object.freeze(repeatIssues),captures:Object.freeze({count:Number(captures?.n??0),lastAt:captures?.lastAt??null,head:head?.hash??null}),
-  settings:await controlSettingsTx(tx,ctx.tenantId,item.id),done});
- return {status,corrections,findingIds:findings.map(row=>row.id)};
+ const acknowledged=await acknowledgedAcrossTx(tx,tenantId,findings);
+ const previous=await tx.selectDistinct({companyId:payrollAuditFinding.companyId,controlId:payrollAuditFinding.controlId}).from(payrollAuditFinding)
+  .where(and(eq(payrollAuditFinding.tenantId,tenantId),inArray(payrollAuditFinding.companyId,ids),eq(payrollAuditFinding.payPeriod,prevMonth(payPeriod))));
+ const captures=await tx.select({companyId:payrollAuditCapture.companyId,n:count(),lastAt:max(payrollAuditCapture.capturedAt)}).from(payrollAuditCapture)
+  .where(and(eq(payrollAuditCapture.tenantId,tenantId),inArray(payrollAuditCapture.companyId,ids),eq(payrollAuditCapture.payPeriod,payPeriod)))
+  .groupBy(payrollAuditCapture.companyId);
+ const heads=await tx.selectDistinctOn([payrollAuditCapture.companyId],{companyId:payrollAuditCapture.companyId,hash:payrollAuditCapture.chainHash}).from(payrollAuditCapture)
+  .where(and(eq(payrollAuditCapture.tenantId,tenantId),inArray(payrollAuditCapture.companyId,ids),eq(payrollAuditCapture.payPeriod,payPeriod)))
+  .orderBy(payrollAuditCapture.companyId,desc(payrollAuditCapture.seq));
+ const settings=await controlSettingsByCompanyTx(tx,tenantId,ids);
+ const per={runs:byCompany(runs),banks:byCompany(banks),findings:byCompany(findings),own:byCompany(own),previous:byCompany(previous),captures:byCompany(captures),
+  heads:byCompany(heads),slips:byCompanyColumn(slips),opened:byCompanyColumn(opened)};
+ const companies=items.map(item=>{
+  const mine=<T,>(lists:Map<string,T[]>)=>lists.get(item.id)??[];
+  const companyRuns=mine(per.runs).map(row=>row.run),companyBanks=mine(per.banks).map(row=>row.bank),companyCorrections=corrections.get(item.id)!;
+  const slip=mine(per.slips)[0],seen=mine(per.opened)[0];
+  const companyFindings=mine(per.findings),before=new Set(mine(per.previous).map(row=>row.controlId));
+  const repeatIssues=[...new Set(mine(per.own).filter(row=>!acknowledged.has(row.id)).map(row=>row.controlId))].filter(id=>before.has(id)).sort();
+  const capture=mine(per.captures)[0],head=mine(per.heads)[0],statutoryForms=statutory.get(item.id)!;
+  const open=companyFindings.filter(row=>!latest.has(row.id)&&!acknowledged.has(row.id)).length;
+  const acknowledgedCount=companyFindings.filter(row=>!latest.has(row.id)&&acknowledged.has(row.id)).length;
+  const withoutRootCause=companyCorrections.filter(row=>!row.rootCause).length;
+  const done=companyRuns.length>0&&companyRuns.every(run=>run.status==='closed'&&run.releasedAt!==null)&&statutoryForms.every(form=>!form.required||form.filed)
+   &&open===0&&withoutRootCause===0;
+  const status:AuditCompanyStatus=Object.freeze({companyId:item.id,companyName:item.name,paused:item.paused,runs:Object.freeze(companyRuns),
+   payslips:Object.freeze({total:Number(slip?.total??0),released:Number(slip?.released??0),opened:Number(seen?.n??0)}),statutory:Object.freeze(statutoryForms),
+   bank:Object.freeze({files:companyBanks.reduce((n,row)=>n+row.files,0),byBank:Object.freeze(companyBanks)}),
+   corrections:Object.freeze({count:companyCorrections.length,withoutRootCause}),
+   findings:Object.freeze({open,disposed:companyFindings.length-open-acknowledgedCount,acknowledged:acknowledgedCount}),
+   repeatIssues:Object.freeze(repeatIssues),captures:Object.freeze({count:Number(capture?.n??0),lastAt:capture?.lastAt??null,head:head?.hash??null}),
+   settings:settings.get(item.id)!,done});
+  return {status,corrections:companyCorrections,findingIds:companyFindings.map(row=>row.id)};
+ });
+ return {companies,acknowledged};
 }
 
 /** Which of a company's findings a standing acknowledgement covers, and by which (findings with no person are covered only
  * by a company-wide acknowledgement of their check). */
 export async function acknowledgedFindingsTx(tx:Tx,tenantId:string,companyId:string,findings:readonly Readonly<{id:string;controlId:string;employmentId:string|null}>[]):Promise<Map<string,Acknowledgement>>{
+ return acknowledgedAcrossTx(tx,tenantId,findings.map(row=>({id:row.id,companyId,controlId:row.controlId,employmentId:row.employmentId})));
+}
+
+/** acknowledgedFindingsTx for the findings of many companies at once (each finding names its company), in at most two
+ * statements: a finding is covered only by an acknowledgement of its own company, exactly as company by company. */
+async function acknowledgedAcrossTx(tx:Tx,tenantId:string,findings:readonly Readonly<{id:string;companyId:string;controlId:string;employmentId:string|null}>[]):Promise<Map<string,Acknowledgement>>{
  const out=new Map<string,Acknowledgement>();
  if(!findings.length)return out;
- const list=await acknowledgementsTx(tx,tenantId,[companyId]).catch(()=>[] as Acknowledgement[]);
+ const list=await acknowledgementsTx(tx,tenantId,[...new Set(findings.map(row=>row.companyId))]).catch(()=>[] as Acknowledgement[]);
  if(!list.length)return out;
  const departments=await currentDepartmentsTx(tx,findings.flatMap(row=>row.employmentId?[row.employmentId]:[]));
  for(const row of findings){
-  const ack=acknowledgementFor(list,{companyId,checkId:`audit:${row.controlId}`,employmentId:row.employmentId,departmentId:row.employmentId?departments.get(row.employmentId)??null:null});
+  const ack=acknowledgementFor(list,{companyId:row.companyId,checkId:`audit:${row.controlId}`,employmentId:row.employmentId,departmentId:row.employmentId?departments.get(row.employmentId)??null:null});
   if(ack)out.set(row.id,ack);
  }
  return out;
@@ -192,8 +245,7 @@ export async function auditLoopSummary(ctx:SessionContext,input:Readonly<{payPer
  requireAdmin(ctx,input.payPeriod);
  const payPeriod=input.payPeriod;
  return withTenant(ctx,async tx=>{
-  const companies:AuditCompanyStatus[]=[];
-  for(const item of await scopeTx(tx,ctx,input.companyIds))companies.push((await companyStatusTx(tx,ctx,item,payPeriod)).status);
+  const companies=(await companyStatusesTx(tx,ctx,await scopeTx(tx,ctx,input.companyIds),payPeriod)).companies.map(read=>read.status);
   return Object.freeze({payPeriod,dueDate:statutoryDueDate(payPeriod),level:'prepare' as const,loop:await loopStateTx(tx,ctx.tenantId),
    companies:Object.freeze(companies),totals:totalsOf(companies),canCapture:isAdmin(ctx)});
  });
@@ -205,21 +257,18 @@ export async function auditLoopDetail(ctx:SessionContext,input:Readonly<{payPeri
  const payPeriod=input.payPeriod;
  return withTenant(ctx,async tx=>{
   const companies:AuditCompanyStatus[]=[],corrections:(PostRunCorrection&{companyId:string;companyName:string})[]=[],findingIds:string[]=[];
-  for(const item of await scopeTx(tx,ctx,input.companyIds)){
-   const result=await companyStatusTx(tx,ctx,item,payPeriod);
+  const items=await scopeTx(tx,ctx,input.companyIds);
+  // Each finding's standing acknowledgement, as the companies' own read found it (one owner, read once).
+  const {companies:reads,acknowledged:acks}=await companyStatusesTx(tx,ctx,items,payPeriod);
+  for(const [index,result] of reads.entries()){
+   const item=items[index]!;
    companies.push(result.status);findingIds.push(...result.findingIds);
    corrections.push(...result.corrections.map(row=>Object.freeze({...row,companyId:item.id,companyName:item.name})));
   }
   const latest=await latestDispositionsTx(tx,ctx.tenantId,findingIds);
-  const acks=new Map<string,Acknowledgement>();
   const found=findingIds.length?await rows(tx,sql`select f.id,f.company_id,f.control_id,f.batch_id,f.employment_id,f.detected_at,f.evidence,f.evidence_hash,p.full_name,e.employee_code
    from public.payroll_audit_finding f left join public.employment e on e.id=f.employment_id left join public.person p on p.id=e.person_id
    where f.tenant_id=${ctx.tenantId}::uuid and f.id in (${sql.join(findingIds.map(id=>sql`${id}::uuid`),sql`,`)}) order by f.detected_at desc,f.id`):[];
-  for(const companyId of new Set(found.map(row=>String(row.company_id)))){
-   const covered=await acknowledgedFindingsTx(tx,ctx.tenantId,companyId,found.filter(row=>String(row.company_id)===companyId)
-    .map(row=>({id:String(row.id),controlId:String(row.control_id),employmentId:row.employment_id==null?null:String(row.employment_id)})));
-   for(const [id,ack] of covered)acks.set(id,ack);
-  }
   const findings=found.map(row=>{const d=latest.get(String(row.id)),ack=acks.get(String(row.id));return Object.freeze({id:String(row.id),companyId:String(row.company_id),controlId:row.control_id as AuditControlId,
    batchId:row.batch_id==null?null:String(row.batch_id),employmentId:row.employment_id==null?null:String(row.employment_id),personName:row.full_name==null?null:String(row.full_name),
    employeeCode:row.employee_code==null?null:String(row.employee_code),detectedAt:at(row.detected_at)!,evidence:(row.evidence??{}) as Record<string,unknown>,
