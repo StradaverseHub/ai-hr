@@ -137,7 +137,12 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const log=join(evidence,'system-label-browser-server.log'),stream=createWriteStream(log);serverLog=stream;
   stream.once('error',()=>{logFailed=true;});
   const port=3149,origin=`http://127.0.0.1:${port}`;
-  const memory=totalmem(),heapMiB=memory>=12*1024**3?8192:4096;
+  // next dev restarts itself once its used heap passes 80% of the limit, and the page request after that restart never
+  // completed on the hosted runner. With the background import's job routes compiled too, an 8 GiB limit was crossed
+  // during the six-language loop. The 16 GB hosted runner (15.6 GiB reported) holds a 12 GiB limit beside PostgreSQL's
+  // 2 GiB cap and the unit's second worker; this is the only dev-server test, one per unit. Peaks are recorded per process.
+  const memory=totalmem(),heapMiB=memory>=15*1024**3?12288:memory>=12*1024**3?8192:4096;
+  const heapEvidence=join(evidence,'system-label-dev-server-heap');mkdirSync(heapEvidence,{recursive:true});
   writeFileSync(join(evidence,'system-label-browser-resources.json'),JSON.stringify({memoryBytes:memory,cpus:availableParallelism(),heapMiB,runner:process.env.RUNNER_ENVIRONMENT??'local'}));
   const labelsPath='/admin/settings/system-labels',profilePath='/admin/settings/system-labels/profile-options';
   type LabelsPath=typeof labelsPath|typeof profilePath;
@@ -233,7 +238,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   // No production credentials or identity provider. This is the existing explicit developer identity route.
   signal.throwIfAborted();
   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
-   detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:`--max-old-space-size=${heapMiB}`},stdio:['ignore','pipe','pipe']});
+   detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
   const nextChild=server;
   nextChild.once('spawn',()=>{serverStartTicks=detachedLeaderStart(nextChild);});
   nextChild.once('error',()=>{serverSpawnFailed=true;});
