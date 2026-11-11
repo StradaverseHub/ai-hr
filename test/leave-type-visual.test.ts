@@ -242,7 +242,7 @@ describe('i18n — visual block present in all 6 locales', () => {
       const j = JSON.parse(readFileSync(join(process.cwd(), 'messages', `${loc}.json`), 'utf8'));
       const v = j.admin?.leave?.visual;
       expect(v, `${loc} admin.leave.visual`).toBeTruthy();
-      for (const k of ['sectionTitle', 'help', 'iconLabel', 'colorLabel', 'searchPlaceholder', 'noIcons']) {
+      for (const k of ['help', 'iconLabel', 'colorLabel', 'searchPlaceholder', 'noIcons', 'changeIcon', 'default']) {
         expect(typeof v[k], `${loc} visual.${k}`).toBe('string');
       }
       for (const token of LEAVE_COLOR_TOKENS) {

@@ -10871,8 +10871,7 @@
       "policyBadge": "chính sách",
       "save": "Lưu",
       "cancel": "Hủy",
-      "typeLabel": "Loại",
-      "rename": "Đổi tên",
+      "unsavedChanges": "Chưa lưu thay đổi",
       "unarchive": "Bỏ lưu trữ",
       "archive": "Lưu trữ",
       "deleteTypeConfirmTitle": "Xóa loại nghỉ phép này?",
@@ -11117,12 +11116,13 @@
         "summaryCounts": "Còn tính: {list}"
       },
       "visual": {
-        "sectionTitle": "Cấu hình Hiển thị Loại nghỉ phép",
         "help": "Tùy chọn. Biểu tượng và chủ đề màu sẽ hiển thị bên cạnh loại nghỉ phép này trong tab Hồ sơ của tôi → Nghỉ phép của nhân viên. Chỉ mang tính hiển thị — không ảnh hưởng đến quyền lợi, điều kiện hay tính toán.",
         "iconLabel": "Biểu tượng",
         "colorLabel": "Chủ đề màu",
         "searchPlaceholder": "Tìm biểu tượng…",
         "noIcons": "Không có biểu tượng phù hợp.",
+        "changeIcon": "Đổi biểu tượng",
+        "default": "Mặc định",
         "color": {
           "blue": "Xanh dương",
           "green": "Xanh lá",
