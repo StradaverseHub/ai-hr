@@ -34,7 +34,7 @@ function hotspots(plan:PlanNode,limit=8):PlanHotspot[]{
  return out.sort((a,b)=>b.totalMs-a.totalMs).slice(0,limit);
 }
 
-export type ExplainedStatement=Readonly<{ordinal:number;sql:string;executionMs:number|null;planningMs:number|null;hotspots:readonly PlanHotspot[];error?:string}>;
+export type ExplainedStatement=Readonly<{ordinal:number;sql:string;executionMs:number|null;planningMs:number|null;jitMs?:number|null;hotspots:readonly PlanHotspot[];error?:string}>;
 /** Replays `statements` (as captured, identity statements re-establishing each transaction's settings) under EXPLAIN. */
 export async function explainStatements(statements:readonly Captured[]):Promise<ExplainedStatement[]>{
  const out:ExplainedStatement[]=[];
@@ -47,8 +47,10 @@ export async function explainStatements(statements:readonly Captured[]):Promise<
    if(!/^(select|with|\()/i.test(text)){out.push({ordinal,sql:text.slice(0,300),executionMs:null,planningMs:null,hotspots:[],error:'not a read'});continue;}
    try{
     const rows=await tx.savepoint(sp=>sp.unsafe(`explain (analyze, buffers, format json) ${text}`,statement.params as never[]));
-    const plan=(rows[0] as Record<string,unknown>)['QUERY PLAN'] as [{Plan:PlanNode;'Execution Time':number;'Planning Time':number}];
-    out.push({ordinal,sql:text.slice(0,300),executionMs:Math.round(plan[0]['Execution Time']*100)/100,planningMs:Math.round(plan[0]['Planning Time']*100)/100,hotspots:hotspots(plan[0].Plan)});
+    const plan=(rows[0] as Record<string,unknown>)['QUERY PLAN'] as [{Plan:PlanNode;'Execution Time':number;'Planning Time':number;JIT?:{Timing?:{Total?:number}}}];
+    // JIT compilation is part of execution time; reported apart because it is the cost an OLTP read most often need not pay.
+    out.push({ordinal,sql:text.slice(0,300),executionMs:Math.round(plan[0]['Execution Time']*100)/100,planningMs:Math.round(plan[0]['Planning Time']*100)/100,
+     jitMs:plan[0].JIT?.Timing?.Total==null?null:Math.round(plan[0].JIT.Timing.Total*100)/100,hotspots:hotspots(plan[0].Plan)});
    }catch(error){out.push({ordinal,sql:text.slice(0,300),executionMs:null,planningMs:null,hotspots:[],error:String(error).slice(0,300)});}
   }
   await tx.unsafe('select 1');
