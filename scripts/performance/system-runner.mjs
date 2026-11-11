@@ -209,8 +209,15 @@ async function run(label,command,args,childEnv=env,timeout=900000){
    const control=readFileSync(join(out,'control-load.json'),'utf8');
    if(control.length<=900000)console.log('[system-perf] '+redactDiagnostic(control).replace(/[\u0000-\u001f]/g,' '));
    else console.log('[system-perf] '+JSON.stringify({kind:'CONTROL_LOAD_RESULT_V1',unavailable:'oversize',bytes:control.length}));
-  }catch{}
-  console.log('[system-perf] '+JSON.stringify({kind:'HOST_MEMORY_LOG_V1',...hostMemory}));
+  }catch(error){
+   if(env.AIHR_MEASURED_BROWSER_COURSE==='parallel-control'){
+    console.log('[system-perf] '+JSON.stringify({kind:'CONTROL_LOAD_RESULT_V1',unavailable:String(error?.code??error?.name??'error').slice(0,40)}));
+    // The control driver's own log tail, redacted, so a missing result names its cause.
+    try{console.log('[system-perf] '+JSON.stringify({kind:'CONTROL_DRIVER_LOG_TAIL_V1',
+     lines:redactDiagnostic(readFileSync(join(privateDir,label+'.log'),'utf8').slice(-6000)).split('\n').slice(-40).map(line=>line.slice(0,300))}));}catch{}
+   }
+  }
+  console.log('[system-perf] '+JSON.stringify({...hostMemory,kind:'HOST_MEMORY_LOG_V1'}));
  }
  // After the browser phase, whatever its outcome: the slowest normalized statements of the run (placeholders only,
  // no parameters) and any statement still running, so a slow or timed-out route can be tied to its SQL.
