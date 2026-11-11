@@ -356,3 +356,38 @@ A first dispatch (42992782333) selected 67 files and was refused by the 64-file 
 
 The 6 failing files and 53 tests are the known set waiting for the owner's re-recorded provider-data approval. No
 recruitment test failed.
+
+## Slice 9 — Recruitment tasks and updates (commit d02f524ff)
+
+### Local checks (private Postgres, port 55440)
+
+After one independent review round and a bell-cost change: slice 9 tests (Postgres, rules, DOM) pass, and 34 related
+files, 544 tests pass (all recruitment suites, notification tabs, pack task projection, Home and mobile task suites,
+approval queue, My tasks page). The review's test found a real defect, now fixed: under a non-superuser owner the
+company setup delete removed only the administrator's own read markers. Synthetic volume (400,000 offers, 50,000
+requisitions, 300,000 interviewers, a recruiter on 1,000 jobs, 270,000 careers applications on one job): bell read
+median 9.6 ms; Overview per-job counts median 2.37 s, streamed separately under a 3 s timeout.
+
+### Rendered (case 65; local dev server, fictional data)
+
+- Recruiter: Overview To do shows "12 new applications to screen" for Data analyst; an independent query gives 12
+  active applications in Application Review (10 careers page, 1 referral, 1 manual).
+- A new careers application sent signed out appears under Applications with an unread badge of 1 and a "New" tag;
+  Mark all as read clears both. The applicant's message is not in the page.
+- Approver not on the job team: To do, the bell's Tasks tab and My tasks each show the same two items (a requisition
+  and an offer waiting for approval); the offer reads "An offer" without a candidate name, as on the Approvals page.
+- The local render database has no referral record (lost when 4407 was rebuilt earlier), so referral updates were
+  not rendered; they are covered by the Postgres tests.
+
+### GitHub Actions focused runs (commit d02f524ff, 2026-11-11)
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43007452847 | Whole-repo type check (three compilers) | PASS: 8.5 GB, 6.1 GB and 8.4 GB peaks |
+| 43007452847 | Production build (`linux-build`) | PASS |
+| 43007452847 | Selected tests, no-DB batch (35 files, 632 tests) | 34 PASS; 1 FAIL: `provider-analysis-policy` (9) |
+| 43007452847 | Selected tests, DB batch (29 files, 520 tests) | 24 PASS, including recruitment-careers, recruitment-referrals, recruitment-candidate-privacy, recruitment-reports; 5 FAIL, 44 tests: the known AI files |
+| 43007469376 | Selected tests, 17 files including recruitment-tasks, recruitment-tasks-rules, recruitment-tasks-panel.dom, wpa1-pack-task-projection and the Home, mobile and notification suites | PASS: 188 tests |
+
+The 6 failing files and 53 tests are the known set waiting for the owner's re-recorded provider-data approval. No
+recruitment test failed.
