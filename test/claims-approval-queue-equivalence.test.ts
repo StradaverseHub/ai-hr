@@ -5,8 +5,9 @@
  * report, indirect reports, the approvers' own claims, colliding names, tied and sub-millisecond submission
  * times, non-pending claims and a second tenant. */
 import {randomUUID} from 'node:crypto';
+import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
-import type {SessionContext} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {createCompany,createDepartment} from '../core/admin';
 import {hireEmployee,setReportingLine} from '../core/org';
@@ -30,6 +31,7 @@ let b:Base,root:SessionContext;
 const approvers=new Map<(typeof APPROVERS)[number],Approver>();
 const pendingBySubject=new Map<string,string[]>();
 let tenantPending:string[]=[];
+let allEmployments:string[]=[];
 
 const day=(n:number)=>{const d=new Date(todayInKualaLumpur()+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
 
@@ -71,12 +73,14 @@ beforeAll(async()=>{
  await owner.db.insert(schema.assignment).values({tenantId:b.tenantId,employmentId:ended.employmentId,companyId:A,departmentId:b.deptA,employmentType:'full_time',validFrom:'2020-01-01'});
  await owner.db.insert(schema.reportingLine).values({tenantId:b.tenantId,subordinateEmploymentId:ended.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
 
- // Delegations: one delegator per window/scope, each with two reports in different departments.
+ // Delegations: one delegator per window/scope, each with two reports in different departments. A stand-in
+ // must hold the delegator's approval level, so each stand-in manages one report of its own.
  const delegation=async(label:string)=>{
   const delegator=await hire('Fictional Delegator '+label,A,b.deptA),stand=await hire('Fictional Stand-in '+label,A,b.deptB);
   const reports=[await hire('Fictional Siti Aminah '+label,A,b.deptA),await hire('fictional siti aminah '+label,A,b.deptB)];
   for(const report of reports)await administrative(report,delegator);
-  return {delegator,stand,reports};
+  const standReport=await hire('Fictional Stand-in Report '+label,A,b.deptB);await administrative(standReport,stand);
+  return {delegator,stand,reports,standReport};
  };
  const active=await delegation('Active'),expired=await delegation('Expired'),future=await delegation('Future');
  const scoped=await delegation('Department'),leaveOnly=await delegation('Leave');
@@ -94,7 +98,7 @@ beforeAll(async()=>{
  const groupHr=await hire('Fictional Group HR',A,b.deptA),sisterHr=await hire('Fictional Sister HR',sister.id,sisterDept.id);
 
  const everyone:Person[]=[senior,manager,r1,r2,r3,r4,r5,r6,indirect,ended,employee,groupHr,sisterHr,
-  ...[active,expired,future,scoped,leaveOnly].flatMap(d=>[d.delegator,d.stand,...d.reports])];
+  ...[active,expired,future,scoped,leaveOnly].flatMap(d=>[d.delegator,d.stand,...d.reports,d.standReport])];
 
  // Claims: two types (one with an item), varied submission times with shared instants across claimants,
  // and a non-pending tail that no queue may show.
@@ -148,13 +152,14 @@ beforeAll(async()=>{
  approvers.set('company-scoped HR (home company and its subsidiary)',{ctx:await login(await hire('Fictional Home HR',A,b.deptB),'hr_admin',A),subjects:[...homeCompany,r5]});
  approvers.set('line manager',{ctx:await login(manager,'manager'),subjects:[manager,r1,r2,r3,r4,r5,indirect]});
  approvers.set('senior manager (indirect reports)',{ctx:await login(senior,'manager'),subjects:[senior,manager,r1,r2,r3,r4,r5,indirect]});
- approvers.set('active delegate',{ctx:await login(active.stand,'manager'),subjects:[active.stand,...active.reports]});
- approvers.set('expired delegate',{ctx:await login(expired.stand,'manager'),subjects:[expired.stand]});
- approvers.set('future delegate',{ctx:await login(future.stand,'manager'),subjects:[future.stand]});
- approvers.set('department-scoped delegate',{ctx:await login(scoped.stand,'manager'),subjects:[scoped.stand,scoped.reports[0]]});
- approvers.set('leave-only delegate',{ctx:await login(leaveOnly.stand,'manager'),subjects:[leaveOnly.stand]});
+ approvers.set('active delegate',{ctx:await login(active.stand,'manager'),subjects:[active.stand,active.standReport,...active.reports]});
+ approvers.set('expired delegate',{ctx:await login(expired.stand,'manager'),subjects:[expired.stand,expired.standReport]});
+ approvers.set('future delegate',{ctx:await login(future.stand,'manager'),subjects:[future.stand,future.standReport]});
+ approvers.set('department-scoped delegate',{ctx:await login(scoped.stand,'manager'),subjects:[scoped.stand,scoped.standReport,scoped.reports[0]]});
+ approvers.set('leave-only delegate',{ctx:await login(leaveOnly.stand,'manager'),subjects:[leaveOnly.stand,leaveOnly.standReport]});
  approvers.set('delegator (manager of its own reports)',{ctx:await login(active.delegator,'manager'),subjects:[active.delegator,...active.reports]});
  approvers.set('employee',{ctx:await login(employee,'employee'),subjects:[employee]});
+ allEmployments=(await owner.client<{id:string}[]>`select id from employment where tenant_id in (${b.tenantId}::uuid,${foreign.tenantId}::uuid) order by id`).map(row=>row.id);
 },300000);
 afterAll(closeAll);
 
@@ -162,7 +167,7 @@ const expectedClaims=(subjects:Person[])=>subjects.flatMap(p=>pendingBySubject.g
 
 describe('the batched claims approvals queue equals the former per-row queue',()=>{
  it('covers a fixture that exercises every path',()=>{
-  expect(tenantPending).toHaveLength(147);
+  expect(tenantPending).toHaveLength(169);
   expect([...approvers.keys()]).toEqual([...APPROVERS]);
  });
 
@@ -193,6 +198,24 @@ describe('the batched claims approvals queue equals the former per-row queue',()
   const own=ctx.personId?subjects.filter(p=>p.personId===ctx.personId).flatMap(p=>pendingBySubject.get(p.employmentId)??[]):[];
   expect(selection).toEqual(expected.filter(id=>!own.includes(id)));
  },120000);
+
+ // The non-admin trim answers "can see" from the native visible set and asks the scalar readers only outside it
+ // (the batched subject owner's own course). That is exact only while the set and the scalar owner agree, so
+ // check them against each other for every approver and every employment of both tenants.
+ it.each(APPROVERS)('%s: the native visible set equals can_see_employment on every employment',async name=>{
+  const {ctx}=approvers.get(name)!;
+  const rows=await withTenant(ctx,async tx=>Array.from(await tx.execute<{id:string;inSet:boolean;scalar:boolean;setSize:number}>(sql`
+   with visible as materialized (select unnest(app.visible_employment_ids()) as id)
+   select candidate.id,candidate.id in (select visible.id from visible) as "inSet",app.can_see_employment(candidate.id) as scalar,
+    (select count(distinct visible.id)::int from visible) as "setSize"
+   from unnest(string_to_array(${allEmployments.join(',')}::text,',')::uuid[]) as candidate(id) order by candidate.id`)),{readOnlySnapshot:true});
+  expect(rows).toHaveLength(allEmployments.length);
+  expect(rows.filter(row=>row.inSet!==row.scalar)).toEqual([]);
+  const seen=rows.filter(row=>row.scalar).length;
+  expect(seen).toBeGreaterThan(0);
+  // The set holds nothing outside these employments (and no duplicates).
+  expect(rows[0].setSize).toBe(seen);
+ });
 
  it('keeps the inbox order deterministic under ties and sub-millisecond instants',async()=>{
   const {ctx}=approvers.get('group HR with own claims')!;
