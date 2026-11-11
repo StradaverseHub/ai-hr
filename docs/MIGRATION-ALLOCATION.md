@@ -1,3 +1,22 @@
+# Recruitment slice 11 — 11 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 10 entry,
+`4411_recruitment_screening` at idx 3811 / when 1793330004111. A fresh read-only survey after
+`git fetch origin` of 7,437 refs (564 distinct committed journal blobs), 296 registered worktrees
+(279 readable journals) and 386 committed allocation-document blobs found no claim of this name,
+position or timestamp and no `4411_` migration file. Peers above this block still exist (the peer
+timestamp maximum is 1793330099990; `origin/main` ends at when 1793330004500 and `origin/alpha` at
+1793330004790), so whichever lands later must be checked against the applied watermark; a lower
+timestamp can be silently skipped. 4411 adds two tables (`recruitment_screening_request`,
+`recruitment_screening_answer`), their guards, owner-bound removal, company-delete and automatic-closing
+policies on the new tables, an owner-only read policy on `recruitment_job_member` bound to a
+transaction-local setting, the write-free `app.recruitment_job_hiring_managers` definer, two owner-run
+closing triggers (on `recruitment_application` state and on `recruitment_job_member`), and restates
+`app.recruitment_destroy_candidate` and `app.recruitment_delete_company_setup` (4410 bodies) with
+added steps only; 4400–4410 are unapplied outside throwaway databases and CI. Recheck peer claims,
+the published baseline and the ordered applied ledger before admission. The reservation grants no
+installation authority.
+
 # Recruitment slice 10 — 11 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 9 entry,

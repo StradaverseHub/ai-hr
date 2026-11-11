@@ -21,6 +21,7 @@ import {
   updatePrivacySettings, uploadCandidateFile, RecruitmentError,
 } from '../packs/recruitment/service';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
+import { expectNoLeakedValue } from './helpers/leaf-values';
 
 const SENTINEL = 'S5SENTINEL';
 let base: Base;
@@ -211,7 +212,9 @@ describe('case 21 — duplicates', () => {
     expect(byId).toEqual({ count: 1, matches: null });
     const twoOfThree = await checkDuplicateCandidate(recruiter2, { jobId: job2, fullName: `  ${SENTINEL.toLowerCase()}   candidate x`, phone: '+012 111 2222' });
     expect(twoOfThree).toEqual({ count: 1, matches: null });
-    expect(JSON.stringify([byId, twoOfThree])).not.toMatch(/Candidate X|s5sentinel\.x|1112222/i);
+    expect(JSON.stringify([byId, twoOfThree])).not.toMatch(/Candidate X|s5sentinel\.x|\+012 111 2222/i);
+    // The phone digits by WHOLE leaf value: a random id may contain "1112222".
+    for (const secret of ['0121112222', '1112222', '+0121112222']) expectNoLeakedValue([byId, twoOfThree], secret);
     expect(await checkDuplicateCandidate(recruiter2, { jobId: job2, fullName: 'Fictional Different', email: 'S5SENTINEL.X@example.test' })).toEqual({ count: 0, matches: [] });
 
     // The operator is refused, even when asking to create a separate candidate; one-of-three goes through.
@@ -533,7 +536,7 @@ describe('case 26 — destruction', () => {
     // No sentinel anywhere in any recruitment table (rows as text; file bytes searched as bytes) or in any event.
     const tables = await owner.db.execute<{ relname: string }>(sql`select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'recruitment\\_%' order by c.relname`);
-    expect(tables.length).toBe(44); // slice 7 (4407) adds recruitment_referral; slice 8 (4408) the careers site, notice and application; slice 9 (4409) the read markers; slice 10 (4410) nine agency tables
+    expect(tables.length).toBe(46); // slice 7 (4407) adds recruitment_referral; slice 8 (4408) the careers site, notice and application; slice 9 (4409) the read markers; slice 10 (4410) nine agency tables; slice 11 (4411) two screening tables
     for (const { relname } of tables) {
       const [hit] = await owner.db.execute<{ n: number }>(sql`select count(*)::int as n from ${sql.identifier(relname)} r where to_jsonb(r.*)::text ilike ${`%${SENTINEL}%`}`);
       expect(hit.n, `${relname} still holds personal data`).toBe(0);
@@ -559,7 +562,7 @@ describe('case 26 — destruction', () => {
     expect(await counts()).toEqual(before);
     const [event] = await owner.db.execute<{ payload: Record<string, unknown> }>(sql`
       select payload from domain_event where event_type = 'recruitment-candidate.personal-data-removed' and aggregate_id = ${t.candX}::uuid`);
-    expect(event.payload).toEqual({ companyId: base.companyId, files: 2, restricted: 1, entries: 2, tags: 1, consents: 1, scorecards: 1, offerValues: 4, referrals: 0, careersMessages: 0, agencySubmissions: 0, agencyMatchedSubmissions: 0, applications: 2, offers: 1 });
+    expect(event.payload).toEqual({ companyId: base.companyId, files: 2, restricted: 1, entries: 2, tags: 1, consents: 1, scorecards: 1, offerValues: 4, referrals: 0, careersMessages: 0, agencySubmissions: 0, agencyMatchedSubmissions: 0, screeningNotes: 0, screeningComments: 0, applications: 2, offers: 1 });
 
     // The record is closed afterwards, and a second removal finds nothing to remove.
     expect(await code(updateCandidateProfile(admin, t.candX, { fullName: 'Fictional again' }))).toBe('candidate_removed');

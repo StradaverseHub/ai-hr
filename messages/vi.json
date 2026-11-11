@@ -14641,7 +14641,8 @@
       "recruitmentOfferApproval": "Phê duyệt đề nghị tuyển dụng",
       "recruitmentFeedback": "Gửi đánh giá phỏng vấn",
       "recruitmentAgencyReview": "Xem xét hồ sơ từ công ty tuyển dụng",
-      "recruitmentContractExpiry": "Hợp đồng công ty tuyển dụng sắp hết hạn"
+      "recruitmentContractExpiry": "Hợp đồng công ty tuyển dụng sắp hết hạn",
+      "recruitmentScreening": "Sàng lọc ứng viên"
     },
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
     "title": "Thông báo",
@@ -14649,7 +14650,8 @@
     "lifecycleMore": "Còn {count} công việc hiện tại. Mở mô-đun để xem.",
     "taskAction": {
       "recruitmentAgencyReview": "Xem xét hồ sơ",
-      "recruitmentContractExpiry": "Mở hợp đồng"
+      "recruitmentContractExpiry": "Mở hợp đồng",
+      "recruitmentScreening": "Gửi ý kiến"
     }
   },
   "approvalHistory": {
@@ -37208,7 +37210,8 @@
       "interviews": "Phỏng vấn",
       "talentPool": "Nguồn ứng viên",
       "reports": "Báo cáo",
-      "approvals": "Phê duyệt"
+      "approvals": "Phê duyệt",
+      "screening": "Cần sàng lọc"
     },
     "errors": {
       "forbidden": "Bạn không quản lý tuyển dụng của công ty này.",
@@ -37266,7 +37269,12 @@
       "submission_decided": "Hồ sơ này đã được quyết định.",
       "consultant_unavailable": "Hãy chọn một chuyên viên đang hoạt động của hợp đồng.",
       "agency_daily_limit": "Hôm nay bạn đã ghi nhận 50 hồ sơ từ công ty tuyển dụng. Hãy thử lại vào ngày mai.",
-      "candidate_busy": "Người khác đang thay đổi ứng viên này. Hãy thử lại sau giây lát."
+      "candidate_busy": "Người khác đang thay đổi ứng viên này. Hãy thử lại sau giây lát.",
+      "not_hiring_manager": "Hãy chọn người đánh giá trong số các quản lý tuyển dụng của vị trí này.",
+      "no_hiring_manager": "Vị trí này chưa có quản lý tuyển dụng. Hãy thêm một người ở thẻ Nhóm của vị trí trước.",
+      "screening_closed": "Yêu cầu sàng lọc này đã bị rút lại hoặc đã được trả lời.",
+      "not_your_request": "Chỉ quản lý tuyển dụng nhận yêu cầu này mới có thể trả lời.",
+      "mixed_jobs": "Hãy chọn ứng viên của từng vị trí một."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -38300,7 +38308,7 @@
       "markAllRead": "Đánh dấu tất cả là đã đọc",
       "markEverythingRead": "Đánh dấu mọi cập nhật là đã đọc",
       "markedNotice": "Đã đánh dấu là đã đọc.",
-      "todoEmpty": "Không có phê duyệt hay đánh giá phỏng vấn nào đang chờ bạn.",
+      "todoEmpty": "Không có phê duyệt, ý kiến hay yêu cầu sàng lọc nào đang chờ bạn.",
       "updatesEmpty": "Không có cập nhật nào trong nhóm này.",
       "window": "Cập nhật trong {days} ngày qua, mới nhất trước.",
       "unread": "Mới",
@@ -38318,7 +38326,9 @@
         "toSchedule": "{count, plural, one {# hồ sơ cần xếp lịch phỏng vấn} other {{shown} hồ sơ cần xếp lịch phỏng vấn}}",
         "toScreen": "{count, plural, one {# hồ sơ mới cần sàng lọc} other {{shown} hồ sơ mới cần sàng lọc}}",
         "agencyReview": "Hồ sơ từ công ty tuyển dụng cần xem xét",
-        "contractExpiry": "Hợp đồng công ty tuyển dụng sắp hết hạn"
+        "contractExpiry": "Hợp đồng công ty tuyển dụng sắp hết hạn",
+        "screening": "Hồ sơ cần sàng lọc",
+        "screeningFor": "Sàng lọc {candidate} cho {job}"
       },
       "update": {
         "requisitionApproved": "Yêu cầu tuyển dụng đã được phê duyệt",
@@ -38330,7 +38340,8 @@
         "feedbackSubmitted": "Đã gửi đánh giá phỏng vấn",
         "careersApplication": "Hồ sơ mới từ trang tuyển dụng",
         "referral": "Giới thiệu mới từ nhân viên",
-        "agencySubmission": "Đã thêm hồ sơ từ công ty tuyển dụng"
+        "agencySubmission": "Đã thêm hồ sơ từ công ty tuyển dụng",
+        "screeningFeedback": "Đã nhận ý kiến sàng lọc"
       },
       "jobsLoading": "Đang tải số liệu theo vị trí…",
       "jobsUnavailable": "Hiện chưa tải được số liệu theo vị trí.",
@@ -38509,6 +38520,71 @@
       "removeDataConfirm": "Tôi hiểu thao tác này không thể hoàn tác.",
       "removeDataNote": "Xóa họ tên, thông tin liên hệ, số giấy tờ, lương, nhận xét và sơ yếu lý lịch lưu cùng hồ sơ này. Vị trí, hợp đồng, chuyên viên, ngày tháng và kết quả được giữ lại.",
       "removedNotice": "Đã xóa dữ liệu cá nhân."
+    },
+    "screening": {
+      "tab": "Sàng lọc",
+      "toScreenPurpose": "Các ứng viên mà nhà tuyển dụng nhờ bạn sàng lọc. Hãy gửi ý kiến cho từng người.",
+      "toScreenEmpty": "Không có gì đang chờ ý kiến sàng lọc của bạn.",
+      "answeredNotice": "Ý kiến của bạn đã được gửi.",
+      "sentNotice": "Đã gửi cho quản lý tuyển dụng.",
+      "removedCandidate": "Ứng viên đã bị xóa",
+      "candidateFallback": "Một ứng viên",
+      "sentBy": "{name} đã gửi lúc {time}",
+      "noteFromRecruiter": "Ghi chú",
+      "yourEarlierAnswers": "Các câu trả lời trước của bạn",
+      "unnamedUser": "Người dùng",
+      "you": "Bạn",
+      "youReviewer": "Bạn",
+      "resultLabel": "Đề xuất của bạn",
+      "required": "bắt buộc",
+      "result": {
+        "advance": "Tiếp tục",
+        "reject": "Từ chối",
+        "pending": "Chờ thêm"
+      },
+      "resultHint": {
+        "advance": "Tiếp tục với ứng viên này",
+        "reject": "Không phù hợp với vị trí này",
+        "pending": "Cần thêm thông tin"
+      },
+      "comment": "Nhận xét (không bắt buộc)",
+      "commentHint": "Điểm nổi bật, điều bạn lo ngại hoặc điều bạn cần biết thêm.",
+      "sendFeedback": "Gửi ý kiến",
+      "status": {
+        "not_assigned": "Chưa giao",
+        "awaiting": "Đang chờ ý kiến",
+        "positive": "Ý kiến mới nhất tích cực",
+        "negative": "Ý kiến mới nhất tiêu cực"
+      },
+      "statusLabel": "Trạng thái sàng lọc",
+      "filterLabel": "Sàng lọc",
+      "allStatuses": "Tất cả",
+      "select": "Chọn",
+      "send": "Gửi cho quản lý tuyển dụng",
+      "reassign": "Nhờ thêm quản lý tuyển dụng",
+      "noHiringManager": "Vị trí này chưa có quản lý tuyển dụng. Hãy thêm một người ở thẻ Nhóm của vị trí trước.",
+      "nothingToSend": "Không có ứng viên đang hoạt động ở giai đoạn này để gửi.",
+      "selectHint": "Đánh dấu các ứng viên để gửi cùng lúc.",
+      "reviewers": "Quản lý tuyển dụng",
+      "note": "Ghi chú",
+      "noteHint": "Điều quản lý tuyển dụng nên xem xét (không bắt buộc).",
+      "alsoMove": "Đồng thời chuyển sang {stage}",
+      "sendButton": "Gửi",
+      "reassignButton": "Gửi thêm cho họ",
+      "everyoneAsked": "Mọi quản lý tuyển dụng của vị trí này đều đã có yêu cầu đang mở.",
+      "none": "Chưa gửi sàng lọc.",
+      "state": {
+        "open": "Đang chờ ý kiến",
+        "answered": "Đã trả lời",
+        "withdrawn": "Đã rút lại",
+        "application_closed": "Đã đóng: hồ sơ đã lưu trữ hoặc đã tuyển",
+        "reviewer_removed": "Đã đóng: không còn là quản lý tuyển dụng"
+      },
+      "withdraw": "Rút lại",
+      "otherAnswers": "Ý kiến của các quản lý tuyển dụng khác",
+      "closedAt": "Đã đóng lúc {time}",
+      "reviewersUnavailable": "Không thể tải danh sách quản lý tuyển dụng lúc này. Hãy tải lại trang để thử lại.",
+      "countWindow": "Số đếm và bộ lọc tính trên {count} ứng viên gần nhất ở giai đoạn này."
     }
   },
   "careersPublic": {

@@ -4,14 +4,16 @@ import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { applicationHistory, candidateBoard, CANDIDATE_SOURCES, ID_TYPES, RecruitmentError, type ApplicationHistoryRow } from '@/packs/recruitment/service';
+import { applicationHistory, candidateBoard, ASSIGNMENT_STATUSES, SCREENING_STATUS_WINDOW, CANDIDATE_SOURCES, ID_TYPES, RecruitmentError, type ApplicationHistoryRow } from '@/packs/recruitment/service';
 import { moveApplicationAction, rejectApplicationAction } from '../actions';
 import { NoRecruitmentCompany, Notice, RecruitmentTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
 import { RejectDialog } from './reject-dialog';
 import { AddApplicationForm } from './add-application-form';
 import { AgencyReviewList, AgencySubmissionPanel } from './agency-panel';
+import { SCREENING_SEND_FORM, ScreeningSendPanel } from './screening-panel';
+import { ScreeningStatusPill } from '../screening-ui';
 
-type Search = { job?: string; tab?: string; tag?: string; application?: string; problem?: string; notice?: string };
+type Search = { job?: string; tab?: string; tag?: string; application?: string; problem?: string; notice?: string; screening?: string; send?: string };
 
 /**
  * Recruitment › Candidates: the pipeline by stage, with live counts, Move forward, Reject and Add application.
@@ -24,13 +26,20 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
   const access = await recruitmentViewerAccess(s, scopeIds);
   const companies = access.companies;
   const sp = await searchParams;
-  const [t, nav, locale, tc] = await Promise.all([getTranslations('recruitment.candidates'), getTranslations('nav'), getLocale(), getTranslations('recruitment.cand')]);
-  const board = await candidateBoard(s, companies.map((c) => c.id), { jobId: sp.job, tab: sp.tab, tagId: sp.tag });
+  const [t, nav, locale, tc, ts] = await Promise.all([getTranslations('recruitment.candidates'), getTranslations('nav'), getLocale(), getTranslations('recruitment.cand'),
+    getTranslations('recruitment.screening')]);
+  const board = await candidateBoard(s, companies.map((c) => c.id), { jobId: sp.job, tab: sp.tab, tagId: sp.tag, screening: sp.screening });
   const selectedTab = board.tabs.find((x) => x.key === sp.tab) ?? board.tabs[0];
   const query = (next: Record<string, string | undefined>) => {
-    const q = new URLSearchParams(Object.entries({ job: sp.job, tag: sp.tag, tab: selectedTab?.key, ...next }).filter((e): e is [string, string] => !!e[1]));
+    const q = new URLSearchParams(Object.entries({ job: sp.job, tag: sp.tag, tab: selectedTab?.key, screening: board.screening?.filter ?? undefined, ...next })
+      .filter((e): e is [string, string] => !!e[1]));
     return `/recruitment/candidates${q.size ? `?${q}` : ''}`;
   };
+  // Slice 11: one job in view that the viewer operates, on a stage tab: its active cards can be ticked and sent to the job's
+  // hiring managers together (the panel's form). The move offered is the stage's next enabled stage.
+  const sendJob = board.jobs.find((j) => j.id === sp.job && j.canOperate && j.status !== 'closed');
+  const sendable = sendJob && selectedTab?.stageId ? board.cards.filter((c) => c.jobId === sendJob.id && c.state === 'active' && c.canOperate) : [];
+  const sendNext = sendable.map((c) => board.nextStage[c.id]).find((n) => n !== undefined);
   const here = query({});
   let history: ApplicationHistoryRow[] | null = null;
   if (sp.application) {
@@ -44,8 +53,9 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
   return (
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={t('purpose')} />
-      <RecruitmentTabs active="candidates" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0} />
-      <Notice text={sp.notice === 'saved' ? t('savedNotice') : sp.notice === 'agency-accepted' || sp.notice === 'agency-waiting' ? await agencyNotice(sp.notice) : undefined} />
+      <RecruitmentTabs active="candidates" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0}  screening={access.pendingScreening} />
+      <Notice text={sp.notice === 'saved' ? t('savedNotice') : sp.notice === 'screening-sent' ? ts('sentNotice')
+        : sp.notice === 'agency-accepted' || sp.notice === 'agency-waiting' ? await agencyNotice(sp.notice) : undefined} />
       <ErrorBanner message={(await recruitmentErrorText(sp.problem)) ?? (sp.notice === 'agency-refused' ? await agencyNotice(sp.notice) : undefined)} />
       {companies.length === 0 ? <NoRecruitmentCompany /> : (
         <div className="grid gap-5 xl:grid-cols-[1fr_20rem]">
@@ -76,6 +86,22 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                 </Link>
               ))}
             </nav>
+            {board.screening && (
+              <nav aria-label={ts('filterLabel')} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-xs font-medium text-muted-foreground">{ts('filterLabel')}</span>
+                {[null, ...ASSIGNMENT_STATUSES].map((key) => {
+                  const count = key ? board.screening!.counts[key] : ASSIGNMENT_STATUSES.reduce((n, k) => n + board.screening!.counts[k], 0);
+                  const current = (board.screening!.filter ?? null) === key;
+                  return (
+                    <Link key={key ?? 'all'} href={query({ screening: key ?? '', application: undefined, send: undefined })} aria-current={current ? 'page' : undefined}
+                      className={cn('rounded-md border px-2.5 py-1', current ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:bg-accent')}>
+                      {key ? ts(`status.${key}`) : ts('allStatuses')} <span className="tabular-nums">({count}{board.screening!.capped ? '+' : ''})</span>
+                    </Link>
+                  );
+                })}
+                {board.screening.capped && <span className="w-full text-xs text-muted-foreground">{ts('countWindow', { count: SCREENING_STATUS_WINDOW })}</span>}
+              </nav>
+            )}
             {board.cards.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">{t('empty')}</p>
             ) : (
@@ -83,7 +109,18 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                 {board.cards.map((card) => {
                   const next = board.nextStage[card.id];
                   return (
-                    <li key={card.id} className={cn('space-y-3 rounded-xl border border-border bg-card p-4', sp.application === card.id && 'border-primary')}>
+                    <li key={card.id} className={cn('space-y-3 rounded-xl border border-border bg-card p-4', (sp.application === card.id || sp.send === card.id) && 'border-primary')}>
+                      {(sendable.includes(card) || card.screeningStatus) && (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          {sendable.includes(card) ? (
+                            <label className="flex items-center gap-2 text-xs font-medium">
+                              <input type="checkbox" name="applicationIds" value={card.id} form={SCREENING_SEND_FORM} defaultChecked={sp.send === card.id} className="accent-primary" />
+                              {ts('select')}
+                            </label>
+                          ) : <span />}
+                          {card.screeningStatus && <ScreeningStatusPill status={card.screeningStatus} />}
+                        </div>
+                      )}
                       <div className="text-xs text-muted-foreground">
                         {t('applied', { date: date(card.appliedAt) })} · <Link href={`/recruitment/positions/${card.jobId}`} className="hover:underline">{card.jobTitle}</Link>
                         {card.source && <> · {(CANDIDATE_SOURCES as readonly string[]).includes(card.source) ? tc(`sources.${card.source as (typeof CANDIDATE_SOURCES)[number]}`) : card.source}</>}
@@ -126,6 +163,9 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                           <RejectDialog action={rejectApplicationAction} applicationId={card.id} returnTo={here} candidateName={card.candidateName}
                             reasons={board.reasons.filter((r) => r.companyId === card.companyId)} labels={rejectLabels} />
                         )}
+                        {card.state === 'active' && card.canOperate && !sendable.includes(card) && (
+                          <Link href={`${query({ job: card.jobId, send: card.id, screening: undefined, application: undefined })}#screening-send-panel`} className="text-sm text-primary hover:underline">{ts('send')}</Link>
+                        )}
                         <Link href={`/recruitment/applications/${card.id}`} className="text-sm font-medium text-primary hover:underline">{t('open')}</Link>
                         <Link href={query({ application: card.id })} className="text-sm text-primary hover:underline">{t('history')}</Link>
                       </div>
@@ -136,6 +176,10 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
             )}
           </div>
           <aside className="space-y-4">
+            {sendJob && selectedTab?.stageId && (
+              <ScreeningSendPanel s={s} jobId={sendJob.id} here={query({ application: undefined })} selectable={sendable.length}
+                nextStage={sendNext && sendNext !== 'hired' ? sendNext.name : null} />
+            )}
             {history && (
               <section className="space-y-2 rounded-xl border border-border bg-card p-4" aria-labelledby="history-title">
                 <h2 id="history-title" className="text-sm font-semibold">{t('historyTitle')}</h2>

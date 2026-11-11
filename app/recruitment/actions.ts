@@ -24,6 +24,7 @@ import {
   acceptAgencySubmission, addAgencyContractUser, assignAgencyContract, deleteAgencyTag, recordAgencySubmission, rejectAgencySubmission, removeAgencyAssignment,
   removeAgencyContractFile, removeAgencyContractUser, saveAgency, saveAgencyConsultant, saveAgencyContract, saveAgencyTag, updateAgencyAssignment,
   uploadAgencyContractFile, CONTRACT_FILE_MAX_BYTES, removeAgencySubmissionData,
+  answerScreening, reassignScreening, sendForScreening, withdrawScreening,
 } from '@/packs/recruitment/service';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -526,4 +527,38 @@ export async function removeAgencySubmissionDataAction(f: FormData) {
   const id = str(f, 'submissionId');
   return run(back(f, `/recruitment/agency-submissions/${encodeURIComponent(id)}`), (s) => removeAgencySubmissionData(s, id, f.get('confirm') === 'on'),
     withParam(back(f, `/recruitment/agency-submissions/${encodeURIComponent(id)}`), 'notice', 'removed'));
+}
+
+// ── Slice 11: resume screening by hiring managers ──────────────────────────────────────────────────────────────
+/** A same-site return path without the board's one-card preselection (so the page does not reopen the send panel). */
+const withoutSend = (url: string) => url.replace(/([?&])send=[^&#]*&?/, '$1').replace(/[?&]$/, '');
+/** "Send to hiring manager" for one card or a selection of one job: the chosen reviewers, the note and the optional move. */
+export async function sendForScreeningAction(f: FormData) {
+  const url = withoutSend(back(f, '/recruitment/candidates'));
+  // The panel ticks every hiring manager; unticking them all is a refusal, not "everyone" (the service's default).
+  if (f.get('reviewersChosen') === '1' && !f.getAll('reviewerUserIds').length) {
+    return run(url, async () => { throw new RecruitmentError('missing_fields'); });
+  }
+  return run(url, (s) => sendForScreening(s, {
+    applicationIds: f.getAll('applicationIds').map(String), reviewerUserIds: f.getAll('reviewerUserIds').map(String),
+    note: String(f.get('note') ?? ''), move: f.get('move') === 'on',
+  }), withParam(url, 'notice', 'screening-sent'));
+}
+/** "Reassign": ask more of the job's hiring managers about one application. */
+export async function reassignScreeningAction(f: FormData) {
+  const applicationId = str(f, 'applicationId');
+  const url = back(f, `/recruitment/applications/${encodeURIComponent(applicationId)}?tab=screening`);
+  return run(url, (s) => reassignScreening(s, { applicationId, reviewerUserIds: f.getAll('reviewerUserIds').map(String), note: String(f.get('note') ?? '') }),
+    withParam(url, 'notice', 'screening-sent'));
+}
+/** "Withdraw": close an open screening request without an answer. */
+export async function withdrawScreeningAction(f: FormData) {
+  const applicationId = str(f, 'applicationId');
+  return run(back(f, `/recruitment/applications/${encodeURIComponent(applicationId)}?tab=screening`), (s) => withdrawScreening(s, str(f, 'requestId')));
+}
+/** The hiring manager's screening feedback: Advance, Reject or Pending, and an optional comment. */
+export async function answerScreeningAction(f: FormData) {
+  const url = back(f, '/recruitment/screening');
+  return run(url, (s) => answerScreening(s, str(f, 'requestId'), { result: str(f, 'result'), comment: String(f.get('comment') ?? '') }),
+    withParam(url, 'notice', 'screening-answered'));
 }

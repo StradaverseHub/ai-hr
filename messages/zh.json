@@ -14641,7 +14641,8 @@
       "recruitmentOfferApproval": "审批录用通知",
       "recruitmentFeedback": "提交面试反馈",
       "recruitmentAgencyReview": "审核机构推荐",
-      "recruitmentContractExpiry": "机构合同即将到期"
+      "recruitmentContractExpiry": "机构合同即将到期",
+      "recruitmentScreening": "筛选候选人"
     },
     "tasksEmpty": "没有需要您处理的事项",
     "title": "通知",
@@ -14649,7 +14650,8 @@
     "lifecycleMore": "还有 {count} 项当前任务。请打开相应模块查看。",
     "taskAction": {
       "recruitmentAgencyReview": "审核推荐",
-      "recruitmentContractExpiry": "打开合同"
+      "recruitmentContractExpiry": "打开合同",
+      "recruitmentScreening": "提交反馈"
     }
   },
   "approvalHistory": {
@@ -37208,7 +37210,8 @@
       "interviews": "面试",
       "talentPool": "人才库",
       "reports": "报表",
-      "approvals": "审批"
+      "approvals": "审批",
+      "screening": "待筛选"
     },
     "errors": {
       "forbidden": "您不负责该公司的招聘。",
@@ -37266,7 +37269,12 @@
       "submission_decided": "此推荐已作出决定。",
       "consultant_unavailable": "请选择该合同下在职的顾问。",
       "agency_daily_limit": "您今天已录入 50 条机构推荐，请明天再试。",
-      "candidate_busy": "其他人正在修改此候选人，请稍后再试。"
+      "candidate_busy": "其他人正在修改此候选人，请稍后再试。",
+      "not_hiring_manager": "请从该职位的用人经理中选择评估人。",
+      "no_hiring_manager": "该职位还没有用人经理。请先在职位的团队标签页中添加。",
+      "screening_closed": "该筛选请求已撤回或已答复。",
+      "not_your_request": "只有收到该筛选请求的用人经理才能答复。",
+      "mixed_jobs": "请每次只选择同一职位的候选人。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -38300,7 +38308,7 @@
       "markAllRead": "全部标为已读",
       "markEverythingRead": "将所有动态标为已读",
       "markedNotice": "已标为已读。",
-      "todoEmpty": "没有等待您处理的审批或面试反馈。",
+      "todoEmpty": "没有等待您处理的审批、反馈或筛选请求。",
       "updatesEmpty": "此类别暂无动态。",
       "window": "最近 {days} 天的动态，最新的在前。",
       "unread": "新",
@@ -38318,7 +38326,9 @@
         "toSchedule": "{count, plural, other {{shown} 份申请待安排面试}}",
         "toScreen": "{count, plural, other {{shown} 份新申请待筛选}}",
         "agencyReview": "待审核的机构推荐",
-        "contractExpiry": "机构合同即将到期"
+        "contractExpiry": "机构合同即将到期",
+        "screening": "待筛选的简历",
+        "screeningFor": "为{job}筛选{candidate}"
       },
       "update": {
         "requisitionApproved": "招聘需求已获批准",
@@ -38330,7 +38340,8 @@
         "feedbackSubmitted": "面试反馈已提交",
         "careersApplication": "来自招聘页面的新申请",
         "referral": "新的员工推荐",
-        "agencySubmission": "已添加机构推荐"
+        "agencySubmission": "已添加机构推荐",
+        "screeningFeedback": "已收到筛选反馈"
       },
       "jobsLoading": "正在加载职位统计…",
       "jobsUnavailable": "暂时无法加载职位统计。",
@@ -38509,6 +38520,71 @@
       "removeDataConfirm": "我了解此操作无法撤销。",
       "removeDataNote": "删除此推荐中保存的姓名、联系方式、证件号码、薪资、备注和简历。职位、合同、顾问、日期和结果会保留。",
       "removedNotice": "个人资料已删除。"
+    },
+    "screening": {
+      "tab": "筛选",
+      "toScreenPurpose": "招聘人员请您筛选的候选人。请逐一提交您的反馈。",
+      "toScreenEmpty": "没有等待您提交筛选反馈的内容。",
+      "answeredNotice": "您的反馈已提交。",
+      "sentNotice": "已发送给用人经理。",
+      "removedCandidate": "已删除的候选人",
+      "candidateFallback": "一位候选人",
+      "sentBy": "由{name}于{time}发送",
+      "noteFromRecruiter": "备注",
+      "yourEarlierAnswers": "您之前的答复",
+      "unnamedUser": "用户",
+      "you": "您",
+      "youReviewer": "您",
+      "resultLabel": "您的建议",
+      "required": "必填",
+      "result": {
+        "advance": "推进",
+        "reject": "淘汰",
+        "pending": "待定"
+      },
+      "resultHint": {
+        "advance": "继续推进该候选人",
+        "reject": "不适合该职位",
+        "pending": "需要更多信息"
+      },
+      "comment": "评语（选填）",
+      "commentHint": "亮点、顾虑，或您还需要了解的信息。",
+      "sendFeedback": "提交反馈",
+      "status": {
+        "not_assigned": "未分配",
+        "awaiting": "等待反馈",
+        "positive": "最新反馈为正面",
+        "negative": "最新反馈为负面"
+      },
+      "statusLabel": "筛选状态",
+      "filterLabel": "筛选",
+      "allStatuses": "全部",
+      "select": "选择",
+      "send": "发送给用人经理",
+      "reassign": "再请其他用人经理",
+      "noHiringManager": "该职位还没有用人经理。请先在职位的团队标签页中添加。",
+      "nothingToSend": "此阶段没有可发送的在进行中的候选人。",
+      "selectHint": "勾选候选人即可一并发送。",
+      "reviewers": "用人经理",
+      "note": "备注",
+      "noteHint": "希望用人经理关注的内容（选填）。",
+      "alsoMove": "同时移至{stage}",
+      "sendButton": "发送",
+      "reassignButton": "也发送给他们",
+      "everyoneAsked": "该职位的每位用人经理都已有未完成的请求。",
+      "none": "尚未发送筛选。",
+      "state": {
+        "open": "等待反馈",
+        "answered": "已答复",
+        "withdrawn": "已撤回",
+        "application_closed": "已关闭：申请已归档或已录用",
+        "reviewer_removed": "已关闭：已不再是用人经理"
+      },
+      "withdraw": "撤回",
+      "otherAnswers": "其他用人经理的反馈",
+      "closedAt": "于{time}关闭",
+      "reviewersUnavailable": "暂时无法加载用人经理，请刷新后重试。",
+      "countWindow": "计数和筛选涵盖此阶段最近的{count}位候选人。"
     }
   },
   "careersPublic": {

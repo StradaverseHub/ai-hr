@@ -42,6 +42,10 @@
  *   recruiter release the job to usable contracts; the job's recruiter and assistants record submissions on the agency's behalf,
  *   checked for duplicates and channel protection by 4410's definer, which answers an outcome (and match ids to administrators
  *   only). No agency login or message (D-036); no fee is calculated (D-037).
+ * - Resume screening (slice 11, ./screening and ./screening-model): a job's recruiter, assistants and administrators send
+ *   applications to the job's hiring managers (optionally moving them to the next stage in the same transaction); each reviewer
+ *   answers Advance, Reject or Pending on the To screen page; the board shows each card's derived assignment status and filters
+ *   by it (4411). One fixed form (D-040); reviewers are hiring managers only (D-041).
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (4402); the menu shows for team members, interviewers and pending approvers.
  */
@@ -109,6 +113,9 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_agency_consultant', note: 'agency consultants: contact records, not users; nothing is sent to them' },
     { table: 'recruitment_job_agency_contract', note: 'contracts released to a job, with requirements for the agency' },
     { table: 'recruitment_agency_submission', note: 'submissions HR recorded for an agency, with the outcome of the duplicate and protection check' },
+    // Slice 11 (4411)
+    { table: 'recruitment_screening_request', note: 'a hiring manager asked to screen an application: sender, time, note, how it closed' },
+    { table: 'recruitment_screening_answer', note: 'the reviewer\'s screening answers (Advance, Reject or Pending, comment), append-only' },
   ],
 };
 registerPack(recruitmentPack);

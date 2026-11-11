@@ -192,6 +192,8 @@ export const SCREENS: readonly ScreenEntry[] = [
     // Slice 10 — an agency contract's page (recruitment administrators only, inside the page and by row security) and an
     // agency submission's review (administrators only).
     '/recruitment/settings/agencies/contracts/[id]','/recruitment/agency-submissions/[id]',
+    // Slice 11 — the hiring manager's To screen list (their own open screening requests; row security returns nothing else).
+    '/recruitment/screening',
   ]},
   // ── Everyday screens (scopedSession: every role reaches, data is scoped) ──
   { screenKey: 'dashboard', href: '/', labelKey: 'nav.dashboard', guard: 'scopedSession', routes: ['/'] },

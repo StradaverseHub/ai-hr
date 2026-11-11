@@ -16,6 +16,7 @@ import { appUser, company, employment, jobGrade, person, roleAssignment } from '
 import { pgSqlState } from '../lib/db-error';
 import { addCalendarMonths, todayInKualaLumpur } from '../lib/hr-date';
 import { RECRUITMENT_TASK_KINDS } from '../lib/assigned-work';
+import { expectNoLeakedValue } from './helpers/leaf-values';
 import {
   acceptAgencySubmission, addAgencyContractUser, addApplication, candidateBoard, addJobMember, agencyContract, agencyContracts, agencyReviewQueue, agencySetup,
   agencySubmissionOptions, agencySubmissionReview, applicationAgency, applicationHistory, assignAgencyContract, createJob, deleteAgencyTag,
@@ -176,7 +177,9 @@ describe('case 66 — only administrators manage agencies; fee rate and contract
       for (const table of NEW_TABLES) {
         const seen = await rows(who, sql`select to_jsonb(x.*)::text as j from ${sql.identifier(table)} x`);
         for (const r of seen) {
-          expect(String(r.j)).not.toContain(FEE_SENTINEL);
+          // By whole value: a timestamp column such as "…:37.254" contains the text "37.25".
+          expectNoLeakedValue(JSON.parse(String(r.j)), Number(FEE_SENTINEL));
+          expectNoLeakedValue(JSON.parse(String(r.j)), FEE_SENTINEL);
           expect(String(r.j)).not.toContain(Buffer.from(FILE_SENTINEL).toString('hex'));
           expect(String(r.j)).not.toContain('fee_rate');
         }
@@ -219,8 +222,9 @@ describe('case 66 — only administrators manage agencies; fee rate and contract
       expect(await rows(who, sql`select id from recruitment_agency`)).toHaveLength(0);
       expect(await rows(who, sql`select id from recruitment_agency_contract`)).toHaveLength(0);
     }
-    expect(JSON.stringify([await jobAgencyContracts(t.recruiter, t.jobId), await agencySubmissionOptions(t.recruiter, t.jobId), await jobAgencySubmissions(t.recruiter, t.jobId)]))
-      .not.toContain(FEE_SENTINEL);
+    const operatorViews = [await jobAgencyContracts(t.recruiter, t.jobId), await agencySubmissionOptions(t.recruiter, t.jobId), await jobAgencySubmissions(t.recruiter, t.jobId)];
+    expectNoLeakedValue(operatorViews, Number(FEE_SENTINEL));
+    expectNoLeakedValue(operatorViews, FEE_SENTINEL);
   });
 });
 
@@ -317,7 +321,10 @@ describe('case 68 — a New submission creates the candidate, the application an
       and payload->>'submissionId' = ${result.submissionId}`);
     expect(events).toHaveLength(1);
     expect(events[0].payload).toMatchObject({ outcome: 'accepted', matchKind: 'new', applicationId: result.applicationId, resume: true });
-    expect(JSON.stringify(events[0].payload)).not.toMatch(/Fictional New Person|new\.person|900101|5000|resume\.pdf|agency comment/i);
+    // Text sentinels by substring (letters, or the dashed ID number, which no UUID or timestamp can contain); amounts and the
+    // bare ID digits by WHOLE leaf value (test/helpers/leaf-values.ts): a random id may contain "5000".
+    expect(JSON.stringify(events[0].payload)).not.toMatch(/Fictional New Person|new\.person|900101-14-5555|resume\.pdf|agency comment/i);
+    for (const secret of [5000, 6500.5, '5,000', '900101145555']) expectNoLeakedValue(events[0].payload, secret);
     // The Candidates board shows the source "agency" (the slice 5 choice), and the new candidate counts for slice 5's duplicate check.
     expect((await candidateBoard(t.recruiter, [base.companyId], { jobId: t.jobId })).cards.find((c) => c.id === result.applicationId)?.source).toBe('agency');
     expect(await code(addApplication(t.recruiter, { jobId: t.jobId, fullName: 'Fictional New Person', email: 'new.person@example.test' }))).toBe('possible_duplicate');
@@ -789,7 +796,8 @@ describe('case 73 — removal, company deletion, row security and grants, the AI
       expect(Object.keys(row).sort()).toEqual(['company', ...COUNT_KEYS].sort());
       for (const k of COUNT_KEYS) expect(Number.isInteger((row as Record<string, unknown>)[k]), k).toBe(true);
     }
-    expect(JSON.stringify(counts)).not.toMatch(new RegExp(`${SENTINEL}|${FEE_SENTINEL}|Fictional Agency`));
+    expect(JSON.stringify(counts)).not.toMatch(new RegExp(`${SENTINEL}|Fictional Agency`));
+    expectNoLeakedValue(counts, Number(FEE_SENTINEL));
   });
 });
 

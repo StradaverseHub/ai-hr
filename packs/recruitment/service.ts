@@ -123,6 +123,21 @@ export {
   protectionDays, matchKind, submissionFor, feeRate, validateContractInput, validateSubmissionInput, validateConsultantInput,
 } from './agency-model';
 export type { ContractType, ContractStatus, ContractAccess, ConsultantStatus, SubmissionOutcome, MatchKind, CheckOutcome, ContractPositionCounts } from './agency-model';
+// Slice 11 — resume screening by hiring managers: send (one or many applications of one job, with the optional move), reassign,
+// withdraw, the reviewer's answer, the To screen list and an application's Screening section; the board's statuses and filter
+// come with candidateBoard.
+export {
+  screeningSendOptions, sendForScreening, reassignScreening, withdrawScreening, answerScreening, myScreeningRequests, applicationScreening,
+} from './screening';
+export type {
+  ScreeningReviewerOption, ScreeningSendOptions, ScreeningSendResult, ScreeningAnswerView, ScreeningTodoRow, ScreeningRequestView, ApplicationScreening,
+} from './screening';
+export {
+  SCREENING_RESULTS, ASSIGNMENT_STATUSES, SCREENING_CLOSE_REASONS, SCREENING_NOTE_MAX, SCREENING_COMMENT_MAX, SCREENING_SEND_MAX, SCREENING_LIST_LIMIT,
+  SCREENING_STATUS_WINDOW, isScreeningResult,
+  parseAssignmentFilter, closesRequest, validateSendInput, validateAnswerInput, assignmentStatus, statusCounts, requestState,
+} from './screening-model';
+export type { ScreeningResult, AssignmentStatus, ScreeningCloseReason, RequestState, StatusRequest, StatusAnswer } from './screening-model';
 export {
   RecruitmentError, RECRUITMENT_ERROR_CODES, JOB_STATUSES, JOB_STATUS_TRANSITIONS, JOB_MEMBER_ROLES, POSITION_ATTRIBUTES, RECRUITMENT_TYPES,
   JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab,

@@ -99,7 +99,8 @@ describe('the bell projection', () => {
   });
   it('gives the bell no per-job count (D-035)', () => {
     for (const kind of JOB_TODO_KINDS) expect(todoToPackTask(todo({ kind, candidateName: null, count: 3 }))).toBeNull();
-    expect(PACK_TASK_KINDS.some((k) => /schedule|screen/i.test(k))).toBe(false);
+    // Slice 11's recruitmentScreening is one hiring manager's own screening request (a personal to-do), not a per-job count.
+    expect(PACK_TASK_KINDS.filter((k) => /schedule|screen/i.test(k))).toEqual(['recruitmentScreening']);
   });
   it('names a removed or unreadable candidate by the job only', () => {
     expect(todoToPackTask(todo({ candidateRemoved: true, candidateName: null }))!.subjectName).toBe('Fictional data analyst');

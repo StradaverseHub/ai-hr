@@ -6,7 +6,7 @@ import type { SessionContext } from '@/db/client';
 import { canAdminRecruitment, withEffectiveGrants } from '@/lib/authz';
 import { cn } from '@/lib/utils';
 import {
-  ensureRecruitmentDefaults, recruitmentCompanies, recruitmentViewer, RECRUITMENT_ERROR_CODES, type RecruitmentCompany, type RecruitmentViewer,
+  ensureRecruitmentDefaults, recruitmentCompanies, recruitmentViewer, RECRUITMENT_ERROR_CODES, SCREENING_LIST_LIMIT, type RecruitmentCompany, type RecruitmentViewer,
 } from '@/packs/recruitment/service';
 
 /**
@@ -50,6 +50,7 @@ export function pickCompany(companies: readonly RecruitmentCompany[], requested?
 const TABS = [
   { key: 'overview', href: '/recruitment', adminOnly: false },
   { key: 'candidates', href: '/recruitment/candidates', adminOnly: false },
+  { key: 'screening', href: '/recruitment/screening', adminOnly: false },
   { key: 'interviews', href: '/recruitment/interviews', adminOnly: false },
   { key: 'positions', href: '/recruitment/positions', adminOnly: false },
   { key: 'talentPool', href: '/recruitment/talent-pool', adminOnly: true },
@@ -64,23 +65,28 @@ export type RecruitmentTabKey = (typeof TABS)[number]['key'];
  * Reports, Approvals and Settings. A job-team member sees Candidates, Interviews and Positions (their own jobs); Reports
  * shows for administrators and for a job's recruiter, assistant or hiring manager (`reports`; never an interviewer
  * alone); Approvals shows when a step waits for the viewer; Talent pool and Settings are administrator-only. Overview
- * shows for everyone with Recruitment access since slice 9 (its Tasks panel); its tiles stay administrator-only.
+ * shows for everyone with Recruitment access since slice 9 (its Tasks panel); its tiles stay administrator-only. To screen
+ * (slice 11) shows, with its count, while the viewer has open screening requests (or is on it).
  */
-export async function RecruitmentTabs({ active, admin = true, approvals = 0, reports = false }: { active: RecruitmentTabKey; admin?: boolean; approvals?: number; reports?: boolean }) {
+export async function RecruitmentTabs({ active, admin = true, approvals = 0, reports = false, screening = 0 }: {
+  active: RecruitmentTabKey; admin?: boolean; approvals?: number; reports?: boolean; screening?: number;
+}) {
   const t = await getTranslations('recruitment.tabs');
   const label: Record<RecruitmentTabKey, string> = {
-    overview: t('overview'), candidates: t('candidates'), interviews: t('interviews'), positions: t('positions'), talentPool: t('talentPool'),
+    overview: t('overview'), candidates: t('candidates'), screening: t('screening'), interviews: t('interviews'), positions: t('positions'), talentPool: t('talentPool'),
     reports: t('reports'), approvals: t('approvals'), settings: t('settings'),
   };
   const shown = TABS.filter((tab) => (admin || !tab.adminOnly) && (tab.key !== 'approvals' || approvals > 0 || active === 'approvals')
-    && (tab.key !== 'reports' || admin || reports || active === 'reports'));
+    && (tab.key !== 'reports' || admin || reports || active === 'reports') && (tab.key !== 'screening' || screening > 0 || active === 'screening'));
+  const count = (key: RecruitmentTabKey) => (key === 'approvals' ? approvals : key === 'screening' ? screening : 0);
   return (
     <nav aria-label={t('label')} className="flex flex-wrap gap-1 border-b border-border">
       {shown.map((tab) => (
         <Link key={tab.key} href={tab.href} aria-current={tab.key === active ? 'page' : undefined}
           className={cn('-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
             tab.key === active ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
-          {label[tab.key]}{tab.key === 'approvals' && approvals > 0 && <span className="ml-1 rounded-full bg-primary/15 px-1.5 text-xs tabular-nums text-foreground">{approvals}</span>}
+          {label[tab.key]}{count(tab.key) > 0 && <span className="ml-1 rounded-full bg-primary/15 px-1.5 text-xs tabular-nums text-foreground">
+            {tab.key === 'screening' && count(tab.key) > SCREENING_LIST_LIMIT ? `${SCREENING_LIST_LIMIT}+` : count(tab.key)}</span>}
         </Link>
       ))}
     </nav>

@@ -387,6 +387,10 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'recruitment_agency_contract', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Agency contracts, with their fee terms and access lists (ON DELETE CASCADE). Before their agencies.' },
   { table: 'recruitment_agency', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s agencies (headhunters, RPO providers). After their contracts and tag links.' },
   { table: 'recruitment_agency_tag', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s agency tags. After the tag links that use them.' },
+  // 4411 — screening requests and their answers (answers first). Both need an application, whose job opening refuses the delete
+  // above, so the remover finds none; they are declared so every company table is covered.
+  { table: 'recruitment_screening_answer', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Hiring managers\' screening answers. Before the requests they answer; only exist with an application, whose job opening refuses the delete first.' },
+  { table: 'recruitment_screening_request', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Screening requests sent to hiring managers. After their answers; only exist with an application, whose job opening refuses the delete first.' },
   { table: 'recruitment_evaluation_form', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s interview evaluation forms. Interviews and scorecards point at them only through a job opening.' },
   { table: 'recruitment_archive_reason', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s rejection / archive reasons. Removed with its stages and processes.' },
   { table: 'recruitment_process', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment processes; their ordered stages go with them (ON DELETE CASCADE).' },
@@ -477,6 +481,8 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'recruitment_job_agency_contract', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'blocks', note: 'A job released to a contract keeps it; a job opening refuses the company delete first.' },
   { table: 'recruitment_agency_submission', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'blocks', note: 'An agency submission keeps its contract; it needs a job opening, which refuses the company delete first.' },
   { table: 'recruitment_agency_submission', column: 'consultant_id', references: 'recruitment_agency_consultant', effect: 'blocks', note: 'An agency submission keeps its consultant; it needs a job opening, which refuses the company delete first.' },
+  // 4411 — an answer keeps its request; the company delete removes answers before requests.
+  { table: 'recruitment_screening_answer', column: 'request_id', references: 'recruitment_screening_request', effect: 'blocks', note: 'A screening answer keeps its request; the company delete removes answers first.' },
   { table: 'recruitment_requisition', column: 'department_id', references: 'department', effect: 'blocks', note: 'A requisition keeps its department.' },
   { table: 'shift_ot_window', column: 'shift_id', references: 'shift', effect: 'part', note: 'A shift\'s clock-time OT windows. ON DELETE CASCADE.' },
   { table: 'attendance_rule_ot_row', column: 'rule_id', references: 'attendance_rule', effect: 'part', note: 'A rule\'s OT rows. ON DELETE CASCADE.' },

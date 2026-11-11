@@ -906,3 +906,88 @@ is no agency login, platform, e-mail or invitation (D-036).
     every new table has forced RLS and grants with none to PUBLIC; the AI Centre read is counts only.
 74. Rendered: settings (agency, contract, consultant), job assignment, recording New, Duplicate-protected and
     Suspected submissions, the review list and accept/reject, the application page, the expiry to-do.
+
+## Slice 11 — Resume screening by hiring managers (owner choice 2026-11-11; EV-013, EV-052…EV-054)
+
+Moka lets a recruiter "Assign to hiring manager" (one or more applications; reviewers default to the job's hiring
+manager; notes; what to share; the button also moves the application to the next stage), shows each card's
+assignment status, filters the stage by Not assigned / Awaiting feedback / Latest feedback is positive / Latest
+feedback is negative, and has a screening evaluation form whose default question is single choice Advance, Reject or
+Pending (EV-052…EV-054). AI HR builds the same request-and-feedback loop on its existing job teams.
+
+### Actors and access
+
+- The job's recruiter and assistants, and recruitment administrators: assign, reassign and withdraw screening
+  requests; see every request and answer on the job.
+- Reviewers: the job's hiring managers (slice 2 team role). A request names one or more of them. A reviewer sees the
+  requests addressed to them and gives feedback; they already read the job's applications and résumés (slices 2, 5).
+- Other hiring managers of the job see the answers on the application, like scorecards (slice 2). Interviewers,
+  approvers and anyone else see nothing of screening.
+
+### Assigning (EV-053)
+
+- From the Candidates board (one card or several selected in the same job) or the application page: "Send to hiring
+  manager". Choose reviewers among the job's hiring managers (default: all of them), add a note (optional, ≤1,000),
+  and optionally move the applications to a later stage at the same time (offered: the next enabled stage of the
+  job's process; default on, as in the reference). Archived or hired applications cannot be sent.
+- A reviewer who already has an open request on the application is not asked twice. "Reassign" adds reviewers;
+  "Withdraw" closes an open request without an answer.
+
+### Feedback (EV-054)
+
+- One company screening form: the result (Advance, Reject or Pending, required) and a comment (optional, ≤2,000). No
+  custom forms or scored questions in this slice (D-040).
+- A reviewer answers each open request once; Pending is an answer meaning "need more information" and the reviewer
+  may later answer the same request again with Advance or Reject (history kept). Answers never move or reject the
+  application by themselves: the recruiter acts on them (slice 1 moves).
+- Assignment status of an application (derived, EV-052), in this order of precedence (D-042):
+  1. Awaiting feedback — at least one request is open (no answer yet, or its latest answer is Pending);
+  2. Positive or Negative — otherwise, the most recent final answer (Advance or Reject) from any reviewer;
+  3. Not assigned — otherwise: never sent, or every request was withdrawn or closed without a final answer.
+- Open requests close automatically, without an answer, when the application is archived or hired, or when the
+  reviewer stops being a hiring manager of the job; they then leave the reviewer's To screen list, to-dos and counts.
+- Sending with the move option moves only the applications that received at least one new request.
+
+### Where it shows
+
+- Candidates board: each card's assignment status for operators and administrators; a filter by assignment status
+  with counts per stage; "Send to hiring manager" on cards and for a selection.
+- Application page: a Screening section with each request (reviewer, sent by, sent at, note) and its answers
+  (result, comment, time). Reviewers see only their own requests plus the answers of others on that application.
+- Hiring manager: a "To screen" list of their open requests (job, candidate, sent at, note) with the feedback form.
+- Tasks (slice 9): a personal to-do per open request for the reviewer ("Screen <candidate> for <job>"); an update in
+  the Applications category for the job's recruiter and assistants when an answer arrives.
+
+### Not built
+
+- "To assign" résumés with no job (the reference's unassigned-résumé pool) — AI HR has no job-less applications.
+- Long-unprocessed reminders and automatic archiving, scoring rules, smart tags (EV-052; D-015 stays).
+- Sharing options (résumé file versus profile): reviewers already see both under slices 2 and 5.
+
+### Data
+
+- One migration in the recruitment block (4411): screening request (tenant, company, job, application, reviewer
+  user, sent by, sent at, note, closed at, closed reason) and screening answer (request, result, comment, answered at,
+  answered by) tables with forced RLS, explicit grants, none to PUBLIC; guards so only operators and administrators
+  send, reassign and withdraw, only the named reviewer answers their own open request, and a reviewer must still be a
+  hiring manager of the job when sending and answering. Slice 5 removal clears notes and comments; company setup
+  deletion and the AI Centre read (counts only) cover the new tables.
+
+### Slice 11 acceptance cases
+
+75. Only operators and administrators send, reassign and withdraw (service and database); reviewers must be the job's
+    hiring managers; archived and hired applications cannot be sent; the optional move goes to the next enabled stage
+    in the same transaction.
+76. Only the named reviewer answers their open request (service and database); Pending can be followed by Advance or
+    Reject with history kept; a withdrawn request cannot be answered.
+77. Assignment status for each application and the per-stage filter counts match independently computed values for
+    Not assigned, Awaiting feedback, Positive and Negative, including several reviewers.
+78. Visibility: operators and administrators see all requests and answers on the job; a reviewer sees their own
+    requests and the answers on that application; interviewers, approvers, other jobs' teams, other companies and
+    other tenants see nothing (service and direct database).
+79. The reviewer's to-do appears while a request is open and disappears when answered or withdrawn; the recruiter's
+    update appears when an answer arrives; neither carries the comment text.
+80. Slice 5 removal clears notes and comments; company setup deletion covers the new tables; every new table has
+    forced RLS and grants with none to PUBLIC; the AI Centre read is counts only.
+81. Rendered: sending one and several cards with the move; the hiring manager's To screen list and feedback; the
+    board filter and statuses; the application's Screening section; the to-do and update.

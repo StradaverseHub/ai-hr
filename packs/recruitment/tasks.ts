@@ -21,10 +21,12 @@
  * (time, id); unread counts start each category's read at the viewer's own read-up-to time.
  *
  * Never selected: a referral reason, an applicant's message, an offer value or salary, a scorecard rating, result or
- * overview, an approval comment, an agency's comments, or a submission's contacts, ID number or salaries.
+ * overview, an approval comment, an agency's comments, a submission's contacts, ID number or salaries, or a screening note or
+ * comment.
  *
  * Slice 10 adds two personal to-dos (an agency submission waiting for an administrator's review; the HR contact's contract
- * expiry from 30 days before its end date) and accepted agency submissions to the Applications updates.
+ * expiry from 30 days before its end date) and accepted agency submissions to the Applications updates. Slice 11 adds the
+ * hiring manager's open screening requests as personal to-dos and their answers to the Applications updates.
  */
 import { sql, type SQL } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../../db/client';
@@ -132,7 +134,19 @@ async function personalTodosTx(tx: Tx, s: SessionContext, scope: readonly string
        and c.ends_on between ${today}::date and ${today}::date + ${CONTRACT_EXPIRY_NOTICE_DAYS}::int and ${scoped(sql`c.company_id`)}
        -- …while the contact still administers the company (a demoted contact gets no to-do and cannot read the contract).
        and app.can_admin_recruitment_for(c.company_id)
-     order by c.ends_on, c.id limit ${TODO_LIMIT})`);
+     order by c.ends_on, c.id limit ${TODO_LIMIT})
+    union all
+    -- Slice 11: the viewer's OPEN screening requests, through the reviewer's own index; row security admits them only while the
+    -- viewer is a hiring manager of the job. Gone once answered with Advance or Reject, withdrawn, or closed by itself when the
+    -- application is archived or hired or the reviewer leaves the job's hiring managers (4411). The note is not read.
+    (select 'screening', q.id, q.company_id, q.job_id, j.title, j.job_number,
+       case when c.destroyed_at is null then c.full_name end, coalesce(c.destroyed_at is not null, false), null, null, null, q.sent_at, null, null
+     from recruitment_screening_request q
+     left join recruitment_application a on a.id = q.application_id
+     left join recruitment_job_opening j on j.id = q.job_id
+     left join recruitment_candidate c on c.id = a.candidate_id
+     where q.tenant_id = ${s.tenantId}::uuid and q.reviewer_user_id = ${me} and q.closed_at is null and ${scoped(sql`q.company_id`)}
+     order by q.sent_at desc limit ${TODO_LIMIT})`);
   return rows.map(todoOf).sort(byNewest);
 }
 
@@ -327,7 +341,15 @@ function updateSource(s: SessionContext, category: TaskCategory, companies: read
           from recruitment_agency_submission sb
           where sb.job_id = mj.job_id and sb.tenant_id = ${t} and sb.outcome = 'accepted' and ${bounds(sql`sb.decided_at`, sql`sb.id::text`, r)}
             and sb.decided_by_user_id <> ${me}
-          order by sb.decided_at desc, sb.id::text desc ${limit}) z`;
+          order by sb.decided_at desc, sb.id::text desc ${limit}) z
+        union all
+        -- Slice 11: a hiring manager's screening answer on the job (that one arrived, and its result's kind of event — never
+        -- the comment), not the viewer's own, through the job's (job, time) index.
+        select w.* from ${operated} mj cross join lateral (
+          select x.id::text as id, 'screeningFeedback'::text as kind, x.company_id, x.answered_at as at, null::uuid as requisition_id, x.job_id, x.application_id
+          from recruitment_screening_answer x
+          where x.job_id = mj.job_id and x.tenant_id = ${t} and ${bounds(sql`x.answered_at`, sql`x.id::text`, r)} and x.answered_by_user_id <> ${me}
+          order by x.answered_at desc, x.id::text desc ${limit}) w`;
   }
 }
 

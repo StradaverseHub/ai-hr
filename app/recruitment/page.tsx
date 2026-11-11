@@ -42,7 +42,7 @@ export default async function RecruitmentOverviewPage({ searchParams }: {
   return (
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={access.isAdmin ? t('purpose') : tt('purpose')} />
-      <RecruitmentTabs active="overview" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0} />
+      <RecruitmentTabs active="overview" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0}  screening={access.pendingScreening} />
       <Notice text={sp.notice === 'saved' ? tt('markedNotice') : undefined} />
       <ErrorBanner message={await recruitmentErrorText(sp.problem)} />
       {!access.isAdmin ? <div className="max-w-3xl">{panel}</div> : companies.length === 0 ? <NoRecruitmentCompany /> : (

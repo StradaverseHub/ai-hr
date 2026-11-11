@@ -14641,7 +14641,8 @@
       "recruitmentOfferApproval": "Luluskan tawaran kerja",
       "recruitmentFeedback": "Beri maklum balas temu duga",
       "recruitmentAgencyReview": "Semak penyerahan agensi",
-      "recruitmentContractExpiry": "Kontrak agensi hampir tamat"
+      "recruitmentContractExpiry": "Kontrak agensi hampir tamat",
+      "recruitmentScreening": "Saring calon"
     },
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
     "title": "Pemberitahuan",
@@ -14649,7 +14650,8 @@
     "lifecycleMore": "Terdapat {count} lagi tugasan semasa. Buka modul untuk menyemaknya.",
     "taskAction": {
       "recruitmentAgencyReview": "Semak penyerahan",
-      "recruitmentContractExpiry": "Buka kontrak"
+      "recruitmentContractExpiry": "Buka kontrak",
+      "recruitmentScreening": "Beri maklum balas"
     }
   },
   "approvalHistory": {
@@ -37208,7 +37210,8 @@
       "interviews": "Temu duga",
       "talentPool": "Kumpulan bakat",
       "reports": "Laporan",
-      "approvals": "Kelulusan"
+      "approvals": "Kelulusan",
+      "screening": "Untuk disaring"
     },
     "errors": {
       "forbidden": "Anda tidak menguruskan pengambilan bagi syarikat ini.",
@@ -37266,7 +37269,12 @@
       "submission_decided": "Penyerahan ini telah diputuskan.",
       "consultant_unavailable": "Pilih perunding aktif kontrak tersebut.",
       "agency_daily_limit": "Anda telah merekodkan 50 penyerahan agensi hari ini. Cuba lagi esok.",
-      "candidate_busy": "Orang lain sedang mengubah calon ini. Cuba lagi sebentar lagi."
+      "candidate_busy": "Orang lain sedang mengubah calon ini. Cuba lagi sebentar lagi.",
+      "not_hiring_manager": "Pilih penyemak daripada pengurus pengambilan bagi jawatan ini.",
+      "no_hiring_manager": "Jawatan ini belum mempunyai pengurus pengambilan. Tambah seorang di tab Pasukan jawatan dahulu.",
+      "screening_closed": "Permintaan saringan ini telah ditarik balik atau sudah dijawab.",
+      "not_your_request": "Hanya pengurus pengambilan yang menerimanya boleh menjawab permintaan saringan ini.",
+      "mixed_jobs": "Pilih calon bagi satu jawatan pada satu masa."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -38300,7 +38308,7 @@
       "markAllRead": "Tanda semua sebagai dibaca",
       "markEverythingRead": "Tanda setiap kemas kini sebagai dibaca",
       "markedNotice": "Ditanda sebagai dibaca.",
-      "todoEmpty": "Tiada kelulusan atau maklum balas temu duga yang menunggu anda.",
+      "todoEmpty": "Tiada kelulusan, maklum balas atau permintaan saringan yang menunggu anda.",
       "updatesEmpty": "Tiada kemas kini dalam kategori ini.",
       "window": "Kemas kini dari {days} hari lepas, yang terbaharu dahulu.",
       "unread": "Baharu",
@@ -38318,7 +38326,9 @@
         "toSchedule": "{count, plural, one {# permohonan perlu dijadualkan untuk temu duga} other {{shown} permohonan perlu dijadualkan untuk temu duga}}",
         "toScreen": "{count, plural, one {# permohonan baharu perlu ditapis} other {{shown} permohonan baharu perlu ditapis}}",
         "agencyReview": "Penyerahan agensi untuk disemak",
-        "contractExpiry": "Kontrak agensi hampir tamat"
+        "contractExpiry": "Kontrak agensi hampir tamat",
+        "screening": "Resume untuk disaring",
+        "screeningFor": "Saring {candidate} untuk {job}"
       },
       "update": {
         "requisitionApproved": "Permintaan jawatan diluluskan",
@@ -38330,7 +38340,8 @@
         "feedbackSubmitted": "Maklum balas temu duga dihantar",
         "careersApplication": "Permohonan baharu dari halaman kerjaya",
         "referral": "Rujukan pekerja baharu",
-        "agencySubmission": "Penyerahan agensi ditambah"
+        "agencySubmission": "Penyerahan agensi ditambah",
+        "screeningFeedback": "Maklum balas saringan diterima"
       },
       "jobsLoading": "Memuatkan kiraan jawatan…",
       "jobsUnavailable": "Kiraan jawatan tidak dapat dimuatkan sekarang.",
@@ -38509,6 +38520,71 @@
       "removeDataConfirm": "Saya faham ini tidak boleh dibatalkan.",
       "removeDataNote": "Membuang nama, butiran hubungan, nombor pengenalan, gaji, ulasan dan sebarang resume yang disimpan bersama penyerahan ini. Jawatan, kontrak, perunding, tarikh dan keputusan kekal.",
       "removedNotice": "Data peribadi telah dibuang."
+    },
+    "screening": {
+      "tab": "Saringan",
+      "toScreenPurpose": "Calon yang diminta oleh perekrut anda untuk disaring. Berikan maklum balas anda bagi setiap calon.",
+      "toScreenEmpty": "Tiada apa-apa yang menunggu maklum balas saringan anda.",
+      "answeredNotice": "Maklum balas anda telah dihantar.",
+      "sentNotice": "Dihantar kepada pengurus pengambilan.",
+      "removedCandidate": "Calon dipadam",
+      "candidateFallback": "Seorang calon",
+      "sentBy": "Dihantar oleh {name} pada {time}",
+      "noteFromRecruiter": "Nota",
+      "yourEarlierAnswers": "Jawapan anda sebelum ini",
+      "unnamedUser": "Pengguna",
+      "you": "Anda",
+      "youReviewer": "Anda",
+      "resultLabel": "Cadangan anda",
+      "required": "wajib",
+      "result": {
+        "advance": "Teruskan",
+        "reject": "Tolak",
+        "pending": "Belum pasti"
+      },
+      "resultHint": {
+        "advance": "Teruskan dengan calon ini",
+        "reject": "Tidak sesuai untuk jawatan ini",
+        "pending": "Perlukan maklumat lanjut"
+      },
+      "comment": "Ulasan (pilihan)",
+      "commentHint": "Apa yang menonjol, apa yang membimbangkan anda, atau apa yang perlu anda ketahui.",
+      "sendFeedback": "Hantar maklum balas",
+      "status": {
+        "not_assigned": "Belum diberikan",
+        "awaiting": "Menunggu maklum balas",
+        "positive": "Maklum balas terkini positif",
+        "negative": "Maklum balas terkini negatif"
+      },
+      "statusLabel": "Status saringan",
+      "filterLabel": "Saringan",
+      "allStatuses": "Semua",
+      "select": "Pilih",
+      "send": "Hantar kepada pengurus pengambilan",
+      "reassign": "Minta pengurus pengambilan lain",
+      "noHiringManager": "Jawatan ini belum mempunyai pengurus pengambilan. Tambah seorang di tab Pasukan jawatan dahulu.",
+      "nothingToSend": "Tiada calon aktif di peringkat ini untuk dihantar.",
+      "selectHint": "Tandakan calon untuk menghantar mereka bersama.",
+      "reviewers": "Pengurus pengambilan",
+      "note": "Nota",
+      "noteHint": "Apa-apa yang perlu diteliti oleh pengurus pengambilan (pilihan).",
+      "alsoMove": "Juga pindahkan ke {stage}",
+      "sendButton": "Hantar",
+      "reassignButton": "Hantar kepada mereka juga",
+      "everyoneAsked": "Setiap pengurus pengambilan bagi jawatan ini sudah mempunyai permintaan terbuka.",
+      "none": "Belum dihantar untuk saringan.",
+      "state": {
+        "open": "Menunggu maklum balas",
+        "answered": "Dijawab",
+        "withdrawn": "Ditarik balik",
+        "application_closed": "Ditutup: permohonan diarkibkan atau diambil bekerja",
+        "reviewer_removed": "Ditutup: bukan lagi pengurus pengambilan"
+      },
+      "withdraw": "Tarik balik",
+      "otherAnswers": "Maklum balas daripada pengurus pengambilan lain",
+      "closedAt": "Ditutup pada {time}",
+      "reviewersUnavailable": "Pengurus pengambilan tidak dapat dimuatkan sekarang. Muat semula untuk mencuba lagi.",
+      "countWindow": "Kiraan dan penapis meliputi {count} calon terkini di peringkat ini."
     }
   },
   "careersPublic": {

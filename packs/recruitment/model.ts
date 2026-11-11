@@ -73,6 +73,9 @@ export const RECRUITMENT_ERROR_CODES = [
   // …the recorder's 50 agency submission attempts for today (Kuala Lumpur) are used; another session is changing the same
   // candidate (a lock wait gave up or a deadlock was broken) — try again.
   'agency_daily_limit', 'candidate_busy',
+  // Slice 11: a chosen reviewer is not a hiring manager of the job; the job has no hiring manager to send to; the screening
+  // request was withdrawn or already answered; only the named reviewer answers; one selection spans several jobs.
+  'not_hiring_manager', 'no_hiring_manager', 'screening_closed', 'not_your_request', 'mixed_jobs',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

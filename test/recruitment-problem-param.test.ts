@@ -78,13 +78,13 @@ describe('rendering review of slice 10 — labels, not codes', () => {
       expect(m.recruitment.cand.dup.matchedOn, locale).toMatch(/[:：]$/);
     }
   });
-  it('My tasks gives the two agency kinds their own action labels in every locale', () => {
-    expect(read('app/tasks/tasks-view.tsx')).toMatch(/i\.kind==='recruitmentAgencyReview'\|\|i\.kind==='recruitmentContractExpiry'\?tAction\(i\.kind\)/);
+  it('My tasks gives the two agency kinds (and slice 11\'s screening kind) their own action labels in every locale', () => {
+    expect(read('app/tasks/tasks-view.tsx')).toMatch(/i\.kind==='recruitmentAgencyReview'\|\|i\.kind==='recruitmentContractExpiry'\|\|i\.kind==='recruitmentScreening'\?tAction\(i\.kind\)/);
     const en = JSON.parse(read('messages/en.json')) as { notifications: { taskAction: Record<string, string> } };
-    expect(en.notifications.taskAction).toEqual({ recruitmentAgencyReview: 'Review submission', recruitmentContractExpiry: 'Open contract' });
+    expect(en.notifications.taskAction).toEqual({ recruitmentAgencyReview: 'Review submission', recruitmentContractExpiry: 'Open contract', recruitmentScreening: 'Give feedback' });
     for (const locale of ['ms', 'ta', 'th', 'vi', 'zh']) {
       const m = JSON.parse(read(`messages/${locale}.json`)) as { notifications: { taskAction: Record<string, string> } };
-      for (const kind of ['recruitmentAgencyReview', 'recruitmentContractExpiry']) {
+      for (const kind of ['recruitmentAgencyReview', 'recruitmentContractExpiry', 'recruitmentScreening']) {
         expect(m.notifications.taskAction[kind], `${locale} ${kind}`).toBeTruthy();
         expect(m.notifications.taskAction[kind], `${locale} ${kind}`).not.toBe(en.notifications.taskAction[kind]);
       }

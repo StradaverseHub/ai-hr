@@ -15,11 +15,12 @@ export const TASK_TABS = ['todo', ...TASK_CATEGORIES] as const;
 export type TaskTab = (typeof TASK_TABS)[number];
 
 /** Things waiting for the viewer's action. */
-export const TODO_KINDS = ['requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry', 'toSchedule', 'toScreen'] as const;
+export const TODO_KINDS = ['requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry', 'screening', 'toSchedule', 'toScreen'] as const;
 export type TodoKind = (typeof TODO_KINDS)[number];
 /** The viewer's personal to-dos (approval steps, feedback due; slice 10: an agency submission waiting for the
- *  administrator's review, and the HR contact's contract expiry): the bell, My tasks and the Overview's To do tab. */
-export const PERSONAL_TODO_KINDS = ['requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry'] as const;
+ *  administrator's review, and the HR contact's contract expiry; slice 11: a screening request waiting for the hiring
+ *  manager's feedback): the bell, My tasks and the Overview's To do tab. */
+export const PERSONAL_TODO_KINDS = ['requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry', 'screening'] as const;
 export type PersonalTodoKind = (typeof PERSONAL_TODO_KINDS)[number];
 /** Per-job counts: only on the Overview's To do tab, loaded after the page (D-035). */
 export const JOB_TODO_KINDS = ['toSchedule', 'toScreen'] as const;
@@ -29,7 +30,7 @@ export const UPDATE_KINDS = {
   requisitions: ['requisitionApproved', 'requisitionDenied'],
   offers: ['offerApproved', 'offerDenied', 'offerAccepted', 'offerDeclined'],
   interviews: ['feedbackSubmitted'],
-  applications: ['careersApplication', 'referral', 'agencySubmission'],
+  applications: ['careersApplication', 'referral', 'agencySubmission', 'screeningFeedback'],
 } as const satisfies Record<TaskCategory, readonly string[]>;
 export type UpdateKind = (typeof UPDATE_KINDS)[TaskCategory][number];
 
@@ -80,7 +81,7 @@ export type RecruitmentTodo = {
   href: string;
 };
 
-/** One update. Never a referral reason, an applicant's message, a salary, an offer value or a score. */
+/** One update. Never a referral reason, an applicant's message, a salary, an offer value, a score or a screening comment. */
 export type RecruitmentUpdate = {
   /** Stable per event (the approval decision, scorecard, referral, careers application or offer decision). */
   id: string;
@@ -152,6 +153,8 @@ export function todoHref(kind: TodoKind, ids: { id: string; jobId?: string | nul
       return `/recruitment/agency-submissions/${encodeURIComponent(ids.id)}`;
     case 'contractExpiry':
       return `/recruitment/settings/agencies/contracts/${encodeURIComponent(ids.id)}`;
+    case 'screening':
+      return `/recruitment/screening#request-${encodeURIComponent(ids.id)}`;
     case 'toSchedule':
     case 'toScreen': {
       const q = new URLSearchParams({ job: ids.jobId ?? ids.id, ...(ids.stageId ? { tab: ids.stageId } : {}) });
@@ -171,6 +174,7 @@ const BELL_KIND: Record<PersonalTodoKind, RecruitmentTaskKind> = {
   feedback: 'recruitmentFeedback',
   agencyReview: 'recruitmentAgencyReview',
   contractExpiry: 'recruitmentContractExpiry',
+  screening: 'recruitmentScreening',
 };
 export function isPersonalTodo(item: RecruitmentTodo): item is RecruitmentTodo & { kind: PersonalTodoKind } {
   return (PERSONAL_TODO_KINDS as readonly string[]).includes(item.kind);

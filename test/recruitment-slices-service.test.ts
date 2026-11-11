@@ -19,6 +19,7 @@ import {
   submitScorecard, talentPool, updateInterviewSettings, updateOfferSettings, updateRequisition, withdrawOffer, RecruitmentError,
 } from '../packs/recruitment/service';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
+import { expectNoLeakedValue } from './helpers/leaf-values';
 
 let base: Base;
 let admin: SessionContext;
@@ -136,12 +137,12 @@ describe('case 11 — no team, not an administrator: no menu and no rows', () =>
     const t = await hiringTeam();
     await scheduleInterview(t.recruiter, { applicationId: t.appX, type: 'onsite', startsAt: future(24), interviewerIds: [t.interviewerA.userId] });
     expect(await recruitmentTeamPresence(t.bystander)).toBe(false);
-    expect(await recruitmentViewer(t.bystander, [base.companyId, otherCompanyId])).toEqual({ adminCompanies: [], teamCompanies: [], pendingApprovals: 0, reportCompanies: [] });
+    expect(await recruitmentViewer(t.bystander, [base.companyId, otherCompanyId])).toEqual({ adminCompanies: [], teamCompanies: [], pendingApprovals: 0, reportCompanies: [], pendingScreening: 0 });
     expect(await code(candidateBoard(t.bystander, [base.companyId]))).toBe('forbidden');
     expect(await code(interviewSchedule(t.bystander, [base.companyId]))).toBe('forbidden');
     const tables = await owner.db.execute<{ relname: string }>(sql`select relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'recruitment\\_%' order by relname`);
-    expect(tables.length).toBe(44); // 9 (slice 1) + 14 (slices 2–4) + 7 (slice 5) + 1 (slice 7) + 3 (slice 8) + 1 (slice 9) + 9 (slice 10)
+    expect(tables.length).toBe(46); // 9 (slice 1) + 14 (slices 2–4) + 7 (slice 5) + 1 (slice 7) + 3 (slice 8) + 1 (slice 9) + 9 (slice 10) + 2 (slice 11)
     for (const { relname } of tables) {
       const seen = await rows(t.bystander, sql`select 1 from ${sql.identifier(relname)} where tenant_id = ${base.tenantId}::uuid`);
       expect(seen.length, `${relname} visible to a bystander`).toBe(0);
@@ -334,11 +335,16 @@ describe('case 15 — private offer fields are hidden from users without access'
     expect((await salaryOf(t.recruiter)).value).toEqual({ kind: 'money', amount: '7345.67', currency: 'MYR' });
     const hidden = await salaryOf(t.manager);
     expect(hidden).toMatchObject({ value: null, hidden: true });
-    expect(JSON.stringify(await applicationOffer(t.manager, t.appX))).not.toContain('7345');
+    // By whole value, and the dotted amount by substring (no id or timestamp holds four digits before a dot); a bare "7345"
+    // can occur inside a random id.
+    const forManager = await applicationOffer(t.manager, t.appX);
+    expectNoLeakedValue(forManager, 7345.67);
+    expect(JSON.stringify(forManager)).not.toContain('7345.67');
     const forApprover = await offerForApprover(approver, offerId);
     expect(forApprover.fields.find((x) => x.id === f.salary)).toMatchObject({ value: null, hidden: true });
     expect(forApprover.fields.find((x) => x.id === f.jobOffered)?.value).toEqual({ kind: 'text', text: 'Fictional data analyst' });
-    expect(JSON.stringify(forApprover)).not.toContain('7345');
+    expectNoLeakedValue(forApprover, 7345.67);
+    expect(JSON.stringify(forApprover)).not.toContain('7345.67');
     // Row security: the same rows straight from the table.
     const valueRows = (ctx: SessionContext) => rows(ctx, sql`select field_id from recruitment_offer_value where offer_id = ${offerId}::uuid`);
     expect((await valueRows(admin)).map((r) => r.field_id)).toContain(f.salary);

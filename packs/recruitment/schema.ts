@@ -1,6 +1,6 @@
 /**
  * The Recruitment pack's satellite tables (ADR-0080 D5/D11) as the service reads and writes them. The DDL,
- * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4410; these
+ * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4411; these
  * declarations carry no references or checks of their own so they can never disagree with it.
  */
 import { boolean, customType, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
@@ -12,6 +12,7 @@ import type {
 import type { TaskCategory } from './tasks-model';
 import type { CandidateFileKind, CandidateSource, ConsentMethod, ConsentStatus, EducationLevel, EntryKind, IdType } from './privacy-model';
 import type { ConsultantStatus, ContractAccess, ContractStatus, ContractType, MatchKind, SubmissionOutcome } from './agency-model';
+import type { ScreeningCloseReason, ScreeningResult } from './screening-model';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 const audit = {
@@ -703,4 +704,36 @@ export const recruitmentAgencySubmission = pgTable('recruitment_agency_submissio
   decidedAt: ts('decided_at'),
   decidedByUserId: uuid('decided_by_user_id'),
   personalDataRemovedAt: ts('personal_data_removed_at'),
+});
+
+// ── Slice 11 (db/migrations/4411_recruitment_screening.sql) ───────────────────────────────────────────────────
+
+/** One hiring manager asked to screen one application. Open until withdrawn or answered with Advance or Reject. */
+export const recruitmentScreeningRequest = pgTable('recruitment_screening_request', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  jobId: uuid('job_id').notNull(),
+  applicationId: uuid('application_id').notNull(),
+  reviewerUserId: uuid('reviewer_user_id').notNull(),
+  sentByUserId: uuid('sent_by_user_id').notNull(),
+  sentAt: ts('sent_at').notNull().defaultNow(),
+  note: text('note'),
+  closedAt: ts('closed_at'),
+  closedReason: text('closed_reason').$type<ScreeningCloseReason>(),
+  closedByUserId: uuid('closed_by_user_id'),
+});
+
+/** The reviewer's answers to their request, append-only (Pending may be followed by another answer). */
+export const recruitmentScreeningAnswer = pgTable('recruitment_screening_answer', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  jobId: uuid('job_id').notNull(),
+  applicationId: uuid('application_id').notNull(),
+  requestId: uuid('request_id').notNull(),
+  result: text('result').$type<ScreeningResult>().notNull(),
+  comment: text('comment'),
+  answeredAt: ts('answered_at').notNull().defaultNow(),
+  answeredByUserId: uuid('answered_by_user_id').notNull(),
 });

@@ -35,6 +35,7 @@ import {
   recruitmentRequisitionJob, recruitmentStage, recruitmentCandidateRestricted,
 } from './schema';
 import { DEFAULT_EVALUATION_FORM, DEFAULT_OFFER_FIELDS } from './hiring-model';
+import { ASSIGNMENT_STATUSES, SCREENING_LIST_LIMIT, SCREENING_STATUS_WINDOW, parseAssignmentFilter, type AssignmentStatus } from './screening-model';
 import {
   CANDIDATE_SOURCES, DEFAULT_REPEAT_WINDOW_MONTHS, ID_TYPES, normEmail, normIdNumber, normMobile, normName, repeatApplicationBlocked,
   type CandidateSource, type IdType,
@@ -87,6 +88,9 @@ export type RecruitmentViewer = {
   /** Slice 6: companies whose Reports the caller may open — those they administer, and those where they are a job's
    *  recruiter, assistant or hiring manager (an interviewer alone gets none). */
   reportCompanies: RecruitmentCompany[];
+  /** Slice 11: the caller's open screening requests in the companies they may see here (the To screen list's scope), counted
+   *  up to SCREENING_LIST_LIMIT + 1 (more than the list shows reads as "200+"). */
+  pendingScreening: number;
 };
 
 /**
@@ -107,11 +111,19 @@ export async function recruitmentViewer(s: SessionContext, scopeIds: readonly st
     const [pending] = await tx.execute<{ n: number }>(sql`select
       (select count(*)::int from recruitment_offer o where o.tenant_id = ${s.tenantId}::uuid and o.status = 'pending' and o.approver_user_ids[o.pending_position] = app.current_user_id())
       + (select count(*)::int from recruitment_requisition r where r.tenant_id = ${s.tenantId}::uuid and r.approval_status = 'pending' and r.approver_user_ids[r.pending_position] = app.current_user_id()) as n`);
+    // Slice 11: the caller's own open screening requests in the companies they may see (administered or on a team) — the To
+    // screen list's scope and cap. Requests close by themselves when the application or the reviewer leaves (4411), so no
+    // application join is needed; the reviewer's own index bounds the read.
+    const seen = rows.filter((r) => r.admin || r.team).map((r) => r.id);
+    const [screening] = seen.length ? await tx.execute<{ n: number }>(sql`select count(*)::int as n from (select 1 from recruitment_screening_request q
+      where q.tenant_id = ${s.tenantId}::uuid and q.reviewer_user_id = app.current_user_id() and q.closed_at is null
+        and q.company_id = any(${uuidArray(seen)}::uuid[]) limit ${SCREENING_LIST_LIMIT + 1}) x`) : [];
     return {
       adminCompanies: rows.filter((r) => r.admin).map((r) => ({ id: r.id, name: r.name })),
       teamCompanies: rows.filter((r) => !r.admin && r.team).map((r) => ({ id: r.id, name: r.name })),
       pendingApprovals: pending?.n ?? 0,
       reportCompanies: rows.filter((r) => r.admin || r.reporter).map((r) => ({ id: r.id, name: r.name })),
+      pendingScreening: screening?.n ?? 0,
     };
   });
 }
@@ -668,6 +680,8 @@ export type ApplicationCard = {
   canReview: boolean; canOperate: boolean;
   /** Slice 5: the candidate's tags the viewer may see (row security: reviewers, not interviewers); a removed candidate. */
   candidateId: string; tags: { id: string; name: string }[]; removed: boolean;
+  /** Slice 11: the screening assignment status, for the job's operators and administrators only (null for anyone else). */
+  screeningStatus: AssignmentStatus | null;
 };
 export type CandidateBoard = {
   tabs: StageTab[]; cards: ApplicationCard[];
@@ -678,15 +692,36 @@ export type CandidateBoard = {
   reasons: { id: string; internal: string; external: string; companyId: string }[];
   nextStage: Record<string, { stageId: string; name: string } | 'hired'>;
   moveTargets: Record<string, { stageId: string; name: string }[]>;
+  /** Slice 11, on a stage tab only: the selected stage's applications by screening assignment status (the jobs in view the
+   *  viewer operates only; the SCREENING_STATUS_WINDOW most recent — `capped` when the stage has more), and the status filter
+   *  applied (within the same window); null on Hired and Archived, or when the viewer operates none of the jobs in view. */
+  screening: { counts: Record<AssignmentStatus, number>; filter: AssignmentStatus | null; capped: boolean } | null;
 };
+
+/**
+ * The assignment status of the application aliased `a` (slice 11, EV-052, D-042), as SQL text: an OPEN request (no answer
+ * yet, or its latest answer Pending) → awaiting; otherwise the most recent FINAL answer (Advance or Reject) from any reviewer
+ * (answered time, then id) → positive or negative; otherwise (never sent, or every request withdrawn or closed without a final
+ * answer) → not_assigned. The same rule as screening-model.ts assignmentStatus. Indexed: requests and answers by application.
+ * Read under the viewer's row security, so it is only shown for jobs the viewer operates (who see every request and answer).
+ * Written as LIMIT 1 scalar subqueries so each application is one probe of the open-request and answer indexes (an EXISTS
+ * here may be planned as a hashed scan of the tenant's open requests, which grows with the tenant, not the window).
+ */
+export const screeningStatusSql = sql`(case
+  when (select 1 from recruitment_screening_request q where q.application_id = a.id and q.closed_at is null limit 1) is not null then 'awaiting'
+  else coalesce(
+    (select case x.result when 'advance' then 'positive' else 'negative' end
+     from recruitment_screening_answer x where x.application_id = a.id and x.result in ('advance', 'reject') order by x.answered_at desc, x.id desc limit 1),
+    'not_assigned')
+  end)`;
 
 /**
  * The pipeline board. Tabs are the stages of the processes in view (the selected job's process, or every
  * process of the companies in view, ordered by position), each with its live count of ACTIVE applications,
  * followed by the Hired and Archived buckets.
  */
-export async function candidateBoard(s: SessionContext, companyIds: readonly string[], filter: { jobId?: string; tab?: string; tagId?: string } = {}): Promise<CandidateBoard> {
-  if (!companyIds.length) return { tabs: [], cards: [], jobs: [], reasons: [], nextStage: {}, moveTargets: {}, tagOptions: [] };
+export async function candidateBoard(s: SessionContext, companyIds: readonly string[], filter: { jobId?: string; tab?: string; tagId?: string; screening?: string } = {}): Promise<CandidateBoard> {
+  if (!companyIds.length) return { tabs: [], cards: [], jobs: [], reasons: [], nextStage: {}, moveTargets: {}, tagOptions: [], screening: null };
   return withRecruitmentTenant(s, async (tx) => {
     // Administrators see the company's pipeline; a team member's row security narrows it to their jobs' applications
     // and the applications they interview (4402). Every count below runs under the same row security.
@@ -721,6 +756,25 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
       : selected.key === 'hired' ? sql`and a.state = 'hired'`
         : selected.key === 'archived' ? sql`and a.state = 'archived'`
           : sql`and a.state = 'active' and a.current_stage_id = ${selected.stageId}::uuid`;
+    const access = new Map<string, { review: boolean; operate: boolean }>();
+    for (const j of jobs) access.set(j.id, await jobLevelTx(tx, j.company_id, j.id));
+    // Slice 11: screening statuses, counts and the status filter cover only an active STAGE tab (never Hired or Archived) and
+    // only the jobs in view the viewer operates (they read every request and answer there). Each is evaluated over at most the
+    // SCREENING_STATUS_WINDOW most recent such applications of the stage (one index read), so a large stage costs the same as
+    // a small one; `capped` says the stage has more. For any other card the status is not shown.
+    const operated = jobs.filter((j) => access.get(j.id)?.operate).map((j) => j.id);
+    const screeningOn = operated.length > 0 && !!selected?.stageId;
+    const window = screeningOn ? (await tx.execute<{ id: string }>(sql`
+      select a.id from recruitment_application a
+      where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[]) ${jobFilter} ${tabFilter} and a.job_id = any(${uuidArray(operated)}::uuid[])
+      order by a.applied_at desc, a.id limit ${SCREENING_STATUS_WINDOW + 1}`)).map((r) => r.id) : [];
+    const windowIds = window.slice(0, SCREENING_STATUS_WINDOW);
+    const statuses = windowIds.length ? await tx.execute<{ id: string; status: AssignmentStatus }>(sql`
+      select a.id, ${screeningStatusSql} as status from recruitment_application a where a.id = any(${uuidArray(windowIds)}::uuid[])`) : [];
+    const statusOf = new Map(statuses.map((r) => [r.id, r.status]));
+    const screeningFilter = screeningOn ? parseAssignmentFilter(filter.screening) : null;
+    const filtered = screeningFilter ? statuses.filter((r) => r.status === screeningFilter).map((r) => r.id) : null;
+    const statusFilter = filtered ? (filtered.length ? sql`and a.id = any(${uuidArray(filtered)}::uuid[])` : sql`and false`) : sql``;
     const rows = await tx.execute<{
       id: string; full_name: string; email: string | null; phone: string | null; job_id: string; title: string; job_number: string; source: string | null;
       applied_at: string; owner_user_id: string | null; state: ApplicationState; stage_id: string; stage_name: string; reason: string | null; company_id: string;
@@ -733,8 +787,14 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
       join recruitment_job_opening j on j.id = a.job_id
       join recruitment_stage st on st.id = a.current_stage_id
       left join recruitment_archive_reason r on r.id = a.archive_reason_id
-      where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[]) ${jobFilter} ${tabFilter}
+      where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[]) ${jobFilter} ${tabFilter} ${statusFilter}
       order by a.applied_at desc, a.id limit 200`);
+    // Cards outside the window (older than its most recent applications) are read without a status; one query for them.
+    const outside = rows.filter((r) => screeningOn && operated.includes(r.job_id) && !statusOf.has(r.id)).map((r) => r.id);
+    if (outside.length) {
+      for (const r of await tx.execute<{ id: string; status: AssignmentStatus }>(sql`
+        select a.id, ${screeningStatusSql} as status from recruitment_application a where a.id = any(${uuidArray(outside)}::uuid[])`)) statusOf.set(r.id, r.status);
+    }
     const labels = new Map<string, UserLabel>();
     for (const id of companyIds) for (const [k, v] of await userLabelsTx(tx, id)) labels.set(k, v);
     const reasons = await tx.select({ id: recruitmentArchiveReason.id, internal: recruitmentArchiveReason.internalReason, external: recruitmentArchiveReason.externalReason, companyId: recruitmentArchiveReason.companyId })
@@ -744,8 +804,6 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
     const nextStage: CandidateBoard['nextStage'] = {};
     const moveTargets: CandidateBoard['moveTargets'] = {};
     const byProcess = new Map<string, Awaited<ReturnType<typeof processStagesTx>>>();
-    const access = new Map<string, { review: boolean; operate: boolean }>();
-    for (const j of jobs) access.set(j.id, await jobLevelTx(tx, j.company_id, j.id));
     for (const r of rows) {
       if (!access.has(r.job_id)) access.set(r.job_id, await jobLevelTx(tx, r.company_id, r.job_id));
     }
@@ -769,6 +827,10 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
     }
     return {
       tabs, nextStage, moveTargets, reasons: [...reasons],
+      screening: screeningOn ? {
+        counts: Object.fromEntries(ASSIGNMENT_STATUSES.map((k) => [k, statuses.filter((c) => c.status === k).length])) as Record<AssignmentStatus, number>,
+        filter: screeningFilter, capped: window.length > SCREENING_STATUS_WINDOW,
+      } : null,
       tagOptions: tagOptions.map((t) => ({ id: t.id, name: t.name, groupName: t.group_name })),
       jobs: jobs.map((j) => ({ id: j.id, title: j.title, jobNumber: j.job_number, status: j.status, companyId: j.company_id, canOperate: access.get(j.id)?.operate ?? false })),
       cards: rows.map((r) => ({
@@ -778,6 +840,7 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
         canReview: access.get(r.job_id)?.review ?? false, canOperate: access.get(r.job_id)?.operate ?? false,
         candidateId: r.candidate_id, removed: r.removed,
         tags: cardTags.filter((x) => x.candidate_id === r.candidate_id).map((x) => ({ id: x.id, name: x.name })),
+        screeningStatus: statusOf.get(r.id) ?? null,
       })),
     };
   });
@@ -1022,24 +1085,30 @@ export async function applicationTx(tx: Tx, s: SessionContext, applicationId: un
  * Move to (target): any other enabled stage of the job's process. Every move writes one history event.
  */
 export async function moveApplication(s: SessionContext, applicationId: unknown, targetStageId?: unknown): Promise<{ state: ApplicationState; stageId: string }> {
+  return withRecruitmentTenant(s, (tx) => moveApplicationTx(tx, s, applicationId, targetStageId));
+}
+
+/**
+ * The move itself, inside the caller's transaction (slice 11's "send to hiring manager" moves in the same transaction as it
+ * sends): the same access levels, plans, guards and one history event as moveApplication.
+ */
+export async function moveApplicationTx(tx: Tx, s: SessionContext, applicationId: unknown, targetStageId?: unknown): Promise<{ state: ApplicationState; stageId: string }> {
   const user = actorId(s);
   // Move forward: the job's reviewers (hiring manager included). Move to a chosen stage: its operators.
   const chosen = !(targetStageId == null || targetStageId === '');
-  return withRecruitmentTenant(s, async (tx) => {
-    const { app, processId } = await applicationTx(tx, s, applicationId, chosen ? 'operate' : 'review');
-    const stages = await processStagesTx(tx, processId);
-    const plan = targetStageId == null || targetStageId === ''
-      ? planMoveForward(stages, app.currentStageId)
-      : planMoveTo(stages, app.currentStageId, isUuid(targetStageId) ? targetStageId : '');
-    if (plan.kind === 'hired') {
-      await tx.update(recruitmentApplication).set({ state: 'hired', updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id));
-      await writeEventTx(tx, s, { companyId: app.companyId, applicationId: app.id, ...moveEvent(plan) });
-      return { state: 'hired', stageId: plan.from };
-    }
-    await tx.update(recruitmentApplication).set({ currentStageId: plan.to, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id));
+  const { app, processId } = await applicationTx(tx, s, applicationId, chosen ? 'operate' : 'review');
+  const stages = await processStagesTx(tx, processId);
+  const plan = targetStageId == null || targetStageId === ''
+    ? planMoveForward(stages, app.currentStageId)
+    : planMoveTo(stages, app.currentStageId, isUuid(targetStageId) ? targetStageId : '');
+  if (plan.kind === 'hired') {
+    await tx.update(recruitmentApplication).set({ state: 'hired', updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id));
     await writeEventTx(tx, s, { companyId: app.companyId, applicationId: app.id, ...moveEvent(plan) });
-    return { state: 'active', stageId: plan.to };
-  });
+    return { state: 'hired', stageId: plan.from };
+  }
+  await tx.update(recruitmentApplication).set({ currentStageId: plan.to, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id));
+  await writeEventTx(tx, s, { companyId: app.companyId, applicationId: app.id, ...moveEvent(plan) });
+  return { state: 'active', stageId: plan.to };
 }
 
 /** Reject: an archive reason of the application's company is mandatory; the application keeps the stage it left. */

@@ -14641,7 +14641,8 @@
       "recruitmentOfferApproval": "Approve job offer",
       "recruitmentFeedback": "Give interview feedback",
       "recruitmentAgencyReview": "Review agency submission",
-      "recruitmentContractExpiry": "Agency contract ending soon"
+      "recruitmentContractExpiry": "Agency contract ending soon",
+      "recruitmentScreening": "Screen a candidate"
     },
     "tasksEmpty": "Nothing needs your action",
     "title": "Notifications",
@@ -14649,7 +14650,8 @@
     "lifecycleMore": "There are {count} more current tasks. Open a module to review them.",
     "taskAction": {
       "recruitmentAgencyReview": "Review submission",
-      "recruitmentContractExpiry": "Open contract"
+      "recruitmentContractExpiry": "Open contract",
+      "recruitmentScreening": "Give feedback"
     }
   },
   "approvalHistory": {
@@ -37208,7 +37210,8 @@
       "interviews": "Interviews",
       "talentPool": "Talent pool",
       "reports": "Reports",
-      "approvals": "Approvals"
+      "approvals": "Approvals",
+      "screening": "To screen"
     },
     "errors": {
       "forbidden": "You do not manage recruitment for this company.",
@@ -37266,7 +37269,12 @@
       "submission_decided": "This submission has already been decided.",
       "consultant_unavailable": "Choose an active consultant of the contract.",
       "agency_daily_limit": "You have recorded 50 agency submissions today. Try again tomorrow.",
-      "candidate_busy": "Someone else is changing this candidate. Try again in a moment."
+      "candidate_busy": "Someone else is changing this candidate. Try again in a moment.",
+      "not_hiring_manager": "Choose reviewers from this job's hiring managers.",
+      "no_hiring_manager": "This job has no hiring manager yet. Add one on the job's Team tab first.",
+      "screening_closed": "This screening request was withdrawn or already answered.",
+      "not_your_request": "Only the hiring manager it was sent to can answer this screening request.",
+      "mixed_jobs": "Choose candidates of one job at a time."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -38300,7 +38308,7 @@
       "markAllRead": "Mark all as read",
       "markEverythingRead": "Mark every update as read",
       "markedNotice": "Marked as read.",
-      "todoEmpty": "No approvals or interview feedback are waiting for you.",
+      "todoEmpty": "No approvals, feedback or screening requests are waiting for you.",
       "updatesEmpty": "No updates in this category.",
       "window": "Updates from the last {days} days, newest first.",
       "unread": "New",
@@ -38318,7 +38326,9 @@
         "toSchedule": "{count, plural, one {# application to schedule for an interview} other {{shown} applications to schedule for interviews}}",
         "toScreen": "{count, plural, one {# new application to screen} other {{shown} new applications to screen}}",
         "agencyReview": "Agency submission to review",
-        "contractExpiry": "Agency contract ending soon"
+        "contractExpiry": "Agency contract ending soon",
+        "screening": "Résumé to screen",
+        "screeningFor": "Screen {candidate} for {job}"
       },
       "update": {
         "requisitionApproved": "Job requisition approved",
@@ -38330,7 +38340,8 @@
         "feedbackSubmitted": "Interview feedback submitted",
         "careersApplication": "New application from the careers page",
         "referral": "New employee referral",
-        "agencySubmission": "Agency submission added"
+        "agencySubmission": "Agency submission added",
+        "screeningFeedback": "Screening feedback received"
       },
       "jobsLoading": "Loading the job counts…",
       "jobsUnavailable": "The job counts couldn't be loaded just now.",
@@ -38509,6 +38520,71 @@
       "removeDataConfirm": "I understand this cannot be undone.",
       "removeDataNote": "Removes the name, contacts, ID number, salaries, comments and any résumé held with this submission. The job, contract, consultant, dates and outcome stay.",
       "removedNotice": "Personal data removed."
+    },
+    "screening": {
+      "tab": "Screening",
+      "toScreenPurpose": "Candidates your recruiters asked you to screen. Give your feedback on each one.",
+      "toScreenEmpty": "Nothing is waiting for your screening feedback.",
+      "answeredNotice": "Your feedback has been sent.",
+      "sentNotice": "Sent to the hiring manager.",
+      "removedCandidate": "Removed candidate",
+      "candidateFallback": "A candidate",
+      "sentBy": "Sent by {name} on {time}",
+      "noteFromRecruiter": "Note",
+      "yourEarlierAnswers": "Your earlier answers",
+      "unnamedUser": "User",
+      "you": "You",
+      "youReviewer": "You",
+      "resultLabel": "Your recommendation",
+      "required": "required",
+      "result": {
+        "advance": "Advance",
+        "reject": "Reject",
+        "pending": "Pending"
+      },
+      "resultHint": {
+        "advance": "Move forward with this candidate",
+        "reject": "Not suitable for this job",
+        "pending": "Need more information"
+      },
+      "comment": "Comment (optional)",
+      "commentHint": "What stood out, what concerns you, or what you need to know.",
+      "sendFeedback": "Send feedback",
+      "status": {
+        "not_assigned": "Not assigned",
+        "awaiting": "Awaiting feedback",
+        "positive": "Latest feedback positive",
+        "negative": "Latest feedback negative"
+      },
+      "statusLabel": "Screening status",
+      "filterLabel": "Screening",
+      "allStatuses": "All",
+      "select": "Select",
+      "send": "Send to hiring manager",
+      "reassign": "Ask more hiring managers",
+      "noHiringManager": "This job has no hiring manager yet. Add one on the job's Team tab first.",
+      "nothingToSend": "No active candidates in this stage to send.",
+      "selectHint": "Tick the candidates to send them together.",
+      "reviewers": "Hiring managers",
+      "note": "Note",
+      "noteHint": "Anything the hiring manager should look at (optional).",
+      "alsoMove": "Also move to {stage}",
+      "sendButton": "Send",
+      "reassignButton": "Send to them too",
+      "everyoneAsked": "Every hiring manager of this job already has an open request.",
+      "none": "Not sent for screening yet.",
+      "state": {
+        "open": "Awaiting feedback",
+        "answered": "Answered",
+        "withdrawn": "Withdrawn",
+        "application_closed": "Closed: application archived or hired",
+        "reviewer_removed": "Closed: no longer a hiring manager"
+      },
+      "withdraw": "Withdraw",
+      "otherAnswers": "Feedback from other hiring managers",
+      "closedAt": "Closed on {time}",
+      "reviewersUnavailable": "The hiring managers couldn't be loaded just now. Refresh to try again.",
+      "countWindow": "Counts and the filter cover the {count} most recent candidates in this stage."
     }
   },
   "careersPublic": {

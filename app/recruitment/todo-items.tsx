@@ -17,6 +17,9 @@ export async function TodoItems({ items }: { items: RecruitmentTodo[] }) {
       case 'feedback': return { label: t('todo.feedback'), detail: line(candidate(item), item.title, t('startedAt', { time: klDateTime(locale, item.at) })) };
       case 'agencyReview': return { label: t('todo.agencyReview'), detail: line(candidate(item), item.title, item.number) };
       case 'contractExpiry': return { label: t('todo.contractExpiry'), detail: line(item.title, item.endsOn && t('endsOn', { date: klDate(locale, item.endsOn) })) };
+      case 'screening': return {
+        label: candidate(item) && item.title ? t('todo.screeningFor', { candidate: candidate(item)!, job: item.title }) : t('todo.screening'), detail: line(item.number),
+      };
       case 'toSchedule': return { label: t('todo.toSchedule', { count: item.count ?? 0, shown }), detail: line(item.title, item.number) };
       case 'toScreen': return { label: t('todo.toScreen', { count: item.count ?? 0, shown }), detail: line(item.title, item.number) };
     }

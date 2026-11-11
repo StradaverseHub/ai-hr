@@ -21,10 +21,10 @@ export const PACK_TASK_KINDS=['performanceReview','assessmentWork','careerPlan',
  // Recruitment slice 9 (packs/recruitment/tasks.ts): the viewer's personal recruitment to-dos for the bell and My tasks —
  // a requisition or offer approval step waiting for them, and interview feedback due. Per-job counts stay on the
  // Recruitment Overview (D-035). Slice 10: an agency submission waiting for the administrator's review, and the HR contact's
- // agency contract expiry.
- 'recruitmentRequisitionApproval','recruitmentOfferApproval','recruitmentFeedback','recruitmentAgencyReview','recruitmentContractExpiry'] as const;
+ // agency contract expiry. Slice 11: a screening request waiting for the hiring manager's feedback.
+ 'recruitmentRequisitionApproval','recruitmentOfferApproval','recruitmentFeedback','recruitmentAgencyReview','recruitmentContractExpiry','recruitmentScreening'] as const;
 /** The Recruitment kinds above. Only surfaces that ask for them (core/approvals-inbox.ts InboxModulesWithRecruitment) get them. */
-export const RECRUITMENT_TASK_KINDS=['recruitmentRequisitionApproval','recruitmentOfferApproval','recruitmentFeedback','recruitmentAgencyReview','recruitmentContractExpiry'] as const satisfies readonly PackTaskKind[];
+export const RECRUITMENT_TASK_KINDS=['recruitmentRequisitionApproval','recruitmentOfferApproval','recruitmentFeedback','recruitmentAgencyReview','recruitmentContractExpiry','recruitmentScreening'] as const satisfies readonly PackTaskKind[];
 export type PackTaskKind=typeof PACK_TASK_KINDS[number];
 export type RecruitmentTaskKind=typeof RECRUITMENT_TASK_KINDS[number];
 export type PackTaskItem={id:string;kind:PackTaskKind;subjectName:string|null;createdAt:string;linkPath:string};
