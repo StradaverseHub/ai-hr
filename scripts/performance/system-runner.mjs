@@ -182,9 +182,10 @@ async function run(label,command,args,childEnv=env,timeout=900000){
  // Diagnostic only, for a failed phase on the fictional fixture: error, timeout and stack-frame lines of the
  // private log, with origins (scheme, credentials, host, port), addresses and long tokens redacted, so a
  // failed phase names its cause and route path in the job log.
- if(code!==0||timedOut)try{
-  const lines=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-16000)
-   .replace(/\b(?!file:\/\/)[a-z][a-z0-9+.-]*:\/\/[^/\s"'`]*/gi,'<ORIGIN>')
+ // The browser phase keeps its reasons in the driver's private failure record, so read that as well.
+ if(code!==0||timedOut)for(const file of [label+'.log',...(label==='http-and-browser'?['driver-failures.log']:[])])try{
+  const lines=readFileSync(join(privateDir,file),'utf8').slice(-16000)
+   .replace(/\\n/g,'\n').replace(/\b(?!file:\/\/)[a-z][a-z0-9+.-]*:\/\/[^/\s"'`]*/gi,'<ORIGIN>')
    .replace(/\b(?:password|passwd|pwd|secret|token|key|authorization|cookie|session|user|username|host|hostname|hostaddr|dbname|port)\b\s*[=:]\s*\S+/gi,'<REDACTED>')
    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b/g,'<IP>').replace(/\[[0-9a-f:]{2,39}\](?::\d{1,5})?/gi,'<IP>')
    .replace(/\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:internal|local|net|com|io|cloud|azure))(?::\d{1,5})?\b/gi,'<HOST>')
@@ -194,7 +195,7 @@ async function run(label,command,args,childEnv=env,timeout=900000){
    .replace(/[A-Za-z0-9_+/=.-]{20,}/g,run=>/^[a-z/_.-]+$/.test(run)?run:'<REDACTED>').split('\n')
    .filter(line=>/error|code|constraint|column|relation|violat|denied|permission|must|refus|assert|expected|actual|detail|hint|where|routine|severity|timeout|exceeded|waiting|navigat|locator|selector|stage|route|\bat .*\.(?:ts|mts|mjs|js):\d+/i.test(line))
    .slice(-80).map(line=>line.slice(0,300));
-  console.log('[system-perf] '+JSON.stringify({kind:'SETUP_PHASE_FAILURE_EXCERPT_V1',label,lines}));
+  console.log('[system-perf] '+JSON.stringify({kind:'SETUP_PHASE_FAILURE_EXCERPT_V1',label,file,lines}));
  }catch{}
  assert.equal(timedOut,false,label+' exceeded its unchanged process budget; retain incomplete evidence');
  assert.equal(code,0,label+' failed; private process logs contain no published credentials');
