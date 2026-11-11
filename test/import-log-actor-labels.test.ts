@@ -113,7 +113,9 @@ describe('import log actor labels (8d02748a)',()=>{
   const depts=await owner.db.insert(s.department).values(companies.map(c=>({tenantId:b.tenantId,companyId:c.id,name:'Operations'}))).returning({id:s.department.id,companyId:s.department.companyId});
   const people=await owner.db.insert(s.person).values(Array.from({length:1000},(_,i)=>({tenantId:b.tenantId,fullName:`Group Person ${i}`,primaryEmail:`group${i}@example.test`}))).returning({id:s.person.id});
   const[template]=await owner.db.select().from(s.employment).where(eq(s.employment.employeeCode,'EMP-0412'));
-  await owner.db.insert(s.employment).values(people.map((p,i)=>({...template,id:randomUUID(),personId:p.id,companyId:depts[i%70].companyId,departmentId:depts[i%70].id,employeeCode:`GRP-${String(i).padStart(4,'0')}`})) as (typeof s.employment.$inferInsert)[]);
+  const rows=people.map((p,i)=>({...template,id:randomUUID(),personId:p.id,companyId:depts[i%70].companyId,departmentId:depts[i%70].id,employeeCode:`GRP-${String(i).padStart(4,'0')}`})) as (typeof s.employment.$inferInsert)[];
+  // Chunked: one statement of 1,000 wide employment rows exceeds the 65,534 bind-parameter limit.
+  for(let i=0;i<rows.length;i+=200)await owner.db.insert(s.employment).values(rows.slice(i,i+200));
   const importers=[aisyahUser,bobUser,b.adminUserId];
   for(let i=0;i<105;i++)await job(importers[i%3],[companies[i%70].id],new Date(Date.UTC(2026,10,5,0,0,0)-i*60000).toISOString());
   const all=[b.companyId,betaId,...companies.map(c=>c.id)];

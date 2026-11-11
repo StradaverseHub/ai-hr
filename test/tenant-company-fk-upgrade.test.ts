@@ -193,6 +193,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5090_audit_chain_commit_seal',
    // Board staging window 3 (ccd3a65c), after the combined release block.
    '5100_import_history_kind',
+   // Board item 8d02748a draft (unallocated), after window 3.
+   '9740_import_log_actor_labels',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

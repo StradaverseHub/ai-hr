@@ -131,10 +131,13 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4490,when:1793330004790,tag:'5090_audit_chain_commit_seal'},
  // ccd3a65c Import History section type, renumbered above the combined release block (docs/MIGRATION-ALLOCATION.md, 11 November 2026).
  {idx:4500,when:1793330004800,tag:'5100_import_history_kind'},
+ // 8d02748a readable import log references: UNALLOCATED draft 9740 (docs/MIGRATION-ALLOCATION.md); reallocated at integration.
+ {idx:9740,when:1793330099740,tag:'9740_import_log_actor_labels'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5100_import_history_kind':'2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7',
+ '9740_import_log_actor_labels':'1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
