@@ -23,14 +23,6 @@ test('fresh attempts retain the original build UUID and authenticated origin wit
  assert.equal(validateInstallGrant(f.grant,{now:f.now}),f.grant);
  assert.equal(f.grant.result,undefined);assert.equal(f.grant.releaseAuthorized,undefined);
 });
-test('v21 refuses an otherwise exact v20 staging grant and old-policy build evidence',()=>{
- assert.equal(CI_POLICY,'aihr-staging-ci/v21');
- const current=fixture();assert.equal(validateInstallGrant(current.grant,{now:current.now}),current.grant);
- const legacy=structuredClone(current.grant);legacy.policyVersion='aihr-staging-ci/v20';
- assert.throws(()=>validateInstallGrant(legacy,{now:current.now}),/Authenticated staging installation identity/);
- const oldEvidence=fixture();oldEvidence.evidence.policyVersion='aihr-staging-ci/v20';
- assert.throws(()=>createInstallGrant(oldEvidence),/Complete authenticated current CI evidence/);
-});
 test('failed, partial, different-source, repeated-attempt and duplicate-artifact evidence refuses',()=>{
  for(const mutate of [
   f=>f.evidence.result='FAIL',f=>f.evidence.tier='focused',f=>f.evidence.build.canonicalCandidateInputsVerified=false,

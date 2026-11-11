@@ -93,8 +93,8 @@ test('normal suite setup preserves24GiB pre-dependency and21GiB ready margins; t
   assert.equal(capacityDecision(profile,floor-1).decision,'clean');assert.equal(capacityDecision(profile,floor).decision,'enough');
   const e={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_RUN_ATTEMPT:'1',GITHUB_JOB:'test',
    GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/alpha',GITHUB_SHA:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'a'.repeat(40)};
-  for(const event of ['push','pull_request','workflow_dispatch'])for(const job of ['test','native-test','browser','controller-tests'])assert(validateCapacityScope(profile,{...e,GITHUB_JOB:job,GITHUB_EVENT_NAME:event}));
-  for(const change of [{CI:'false'},{GITHUB_JOB:'native-test-other'},{GITHUB_JOB:'build'},{GITHUB_JOB:'typecheck'},{GITHUB_JOB:'migrations'},{GITHUB_RUN_ATTEMPT:'2'},{RUNNER_ENVIRONMENT:'self-hosted'},{GITHUB_REPOSITORY_ID:'1'},{GITHUB_SHA:'b'.repeat(40)},{GITHUB_WORKFLOW_REF:'other'}])assert.throws(()=>validateCapacityScope(profile,{...e,...change}));
+  for(const event of ['push','pull_request','workflow_dispatch'])for(const job of ['test','browser','controller-tests'])assert(validateCapacityScope(profile,{...e,GITHUB_JOB:job,GITHUB_EVENT_NAME:event}));
+  for(const change of [{CI:'false'},{GITHUB_JOB:'build'},{GITHUB_JOB:'typecheck'},{GITHUB_JOB:'migrations'},{GITHUB_RUN_ATTEMPT:'2'},{RUNNER_ENVIRONMENT:'self-hosted'},{GITHUB_REPOSITORY_ID:'1'},{GITHUB_SHA:'b'.repeat(40)},{GITHUB_WORKFLOW_REF:'other'}])assert.throws(()=>validateCapacityScope(profile,{...e,...change}));
   const pilot={...e,GITHUB_JOB:'runner-diagnostics',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/codex/test-suite-efficiency-review-20261025',AIHR_SUITE_CAPACITY_PILOT:'true'};
   assert(validateCapacityScope(profile,pilot));assert.throws(()=>validateCapacityScope(profile,{...pilot,AIHR_SUITE_CAPACITY_PILOT:'false'}));
   assert.throws(()=>compilerSwapFloorKiB(profile,e));

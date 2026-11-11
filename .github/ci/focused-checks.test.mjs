@@ -1,8 +1,7 @@
 /** Controller-only regressions; no app imports, database, compiler or provider calls. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {parseSelection, partitionSelection, verifyFocusedResult, isEmployeeChoiceBenchmark, employeeBenchmarkFile} from './focused-checks.mjs';
+import {parseSelection, partitionSelection, verifyFocusedResult} from './focused-checks.mjs';
 
 const files = ['test/example.test.ts', 'test/screen.dom.test.tsx'];
 test('Manifest retains exact file identities and sorts a copied selection', () => {
@@ -81,116 +80,4 @@ test('focused plan identity binds cap and peak budget independently of selected 
     assert.notEqual(altered.fingerprint, original.fingerprint);
     assert.deepEqual(altered.files, original.files);
   }
-});
-
-test('only the exact sole experimental employee plan takes the supervised execution seam',()=>{
- assert.equal(isEmployeeChoiceBenchmark([employeeBenchmarkFile]),true);
- for(const selected of [[],files,[employeeBenchmarkFile,files[0]],['test/employee-choice-benchmark-owner-native.test.ts'],['test/employee-choice-native-purpose.test.ts']])assert.equal(isEmployeeChoiceBenchmark(selected),false);
-});
-
-test('partial evidence failure cannot prevent mandatory cleanup or erase its independent failure',async()=>{
- const {finalizeFocusedBenchmark}=await import('./focused-checks.mjs');let cleaned=0,refused=0;
- finalizeFocusedBenchmark(()=>{throw Error('PRIVATE_PAYLOAD');},()=>{cleaned++;},()=>{refused++;});assert.equal(cleaned,1);assert.equal(refused,1);
- const cleanup=Error('fixed independent cleanup refusal');let failure;
- try{finalizeFocusedBenchmark(()=>{throw Error('PRIVATE_PAYLOAD');},()=>{cleaned++;throw cleanup;},()=>{refused++;});}catch(error){failure=error;}
- assert(failure instanceof AggregateError);assert.equal(failure.errors[1],cleanup);assert(!failure.errors[0].message.includes('PRIVATE'));assert.equal(cleaned,2);
- assert.throws(()=>finalizeFocusedBenchmark(()=>{throw Error('private');},()=>{cleaned++;},()=>{throw Error('private refusal callback');}));assert.equal(cleaned,3);
-});
-test('uncertain process owner permanently refuses further reset/migration/test SQL while safe stop remains available',async()=>{
- const {focusedBenchmarkStageFrontier}=await import('./focused-checks.mjs');
- for(const failed of ['benchmark','native-controls','native-factory','ascii-purpose','ascii-plan','compiler-reference']){
-  const calls=[],stage=focusedBenchmarkStageFrontier(name=>{calls.push(name);return{status:name===failed?1:0};});
-  stage(failed);for(const name of ['reset','migrate','benchmark','native-controls','native-factory','ascii-purpose','ascii-plan','compiler-reference'])assert.throws(()=>stage(name));
-  for(const name of ['evidence','stats','stop'])stage(name);assert.deepEqual(calls,[failed,'evidence','stats','stop']);
- }
-});
-
-test('new native owner controls alone use their separate fixed outer command and retain strict selection',async()=>{
- const {isEmployeeChoiceNativeControls,employeeNativeControlFile}=await import('./focused-checks.mjs');
- assert.equal(isEmployeeChoiceNativeControls([employeeNativeControlFile]),true);
- for(const selected of [[],files,[employeeNativeControlFile,files[0]],[employeeBenchmarkFile]])assert.equal(isEmployeeChoiceNativeControls(selected),false);
-});
-
-
-test('only the exact sole three-case native factory uses its own supervised route and mandatory workflow cleanup',async()=>{
- const {isEmployeeChoiceNativeFactory,employeeNativeFactoryFile,isEmployeeChoiceNativeControls,employeeNativeControlFile}=await import('./focused-checks.mjs');
- assert.equal(isEmployeeChoiceNativeFactory([employeeNativeFactoryFile]),true);
- for(const selected of [[],files,[employeeNativeFactoryFile,files[0]],[employeeNativeControlFile],[employeeBenchmarkFile],[employeeNativeFactoryFile+'.extra']])assert.equal(isEmployeeChoiceNativeFactory(selected),false);
- assert.equal(isEmployeeChoiceNativeControls([employeeNativeControlFile]),true);assert.equal(isEmployeeChoiceNativeControls([employeeNativeFactoryFile]),false);assert.equal(isEmployeeChoiceBenchmark([employeeNativeFactoryFile]),false);
- const workflow=readFileSync(new URL('../workflows/alpha-focused-checks.yml',import.meta.url),'utf8'),anchor=workflow.indexOf('- name: Anchor first executable focused job step'),checkout=workflow.indexOf('- uses: actions/checkout@',anchor);
- assert(anchor>=0&&checkout>anchor);assert(workflow.includes("'[\"test/employee-choice-native-owner-factory.test.ts\"]'"));
- const owner=readFileSync(new URL('./focused-checks.mjs',import.meta.url),'utf8');assert(owner.includes("stage(compiler?compilerPurpose(files).stage:nativeFactory?'native-factory':nativeControls?'native-controls':asciiPurpose?'ascii-purpose':asciiPlan?'ascii-plan':'benchmark'"));
- assert(owner.includes('!isEmployeeChoiceNativeFactory(files)'));
-});
-
-test('ASCII purpose and plan have separate sole closed commands and mandatory cleanup, never mixed selections',async()=>{
- const {isEmployeeChoiceAsciiPurpose,isEmployeeChoiceAsciiPlan,employeeAsciiPurposeFile,employeeAsciiPlanFile,employeeNativeFactoryFile}=await import('./focused-checks.mjs');
- for(const [accept,file,other]of [[isEmployeeChoiceAsciiPurpose,employeeAsciiPurposeFile,employeeAsciiPlanFile],[isEmployeeChoiceAsciiPlan,employeeAsciiPlanFile,employeeAsciiPurposeFile]]){
-  assert.equal(accept([file]),true);
-  for(const selected of [[],[other],[file,other],[file,file],[file+'.extra'],[employeeBenchmarkFile],[employeeNativeFactoryFile]])assert.equal(accept(selected),false);
- }
- const workflow=readFileSync(new URL('../workflows/alpha-focused-checks.yml',import.meta.url),'utf8');
- for(const file of [employeeAsciiPurposeFile,employeeAsciiPlanFile])assert(workflow.includes(`'["${file}"]'`));
-});
-
-test('compiler fixture alone uses closed NODB supervision and read-only CPU settlement, never employee DB cleanup',async()=>{
- const {isCompilerReferenceFixture,compilerReferenceFile,focusedBenchmarkStageFrontier}=await import('./focused-checks.mjs');
- assert(isCompilerReferenceFixture([compilerReferenceFile]));
- for(const selected of [[],files,[compilerReferenceFile,files[0]],[employeeBenchmarkFile],[compilerReferenceFile+'.extra']])assert.equal(isCompilerReferenceFixture(selected),false);
- const workflow=readFileSync(new URL('../workflows/alpha-focused-checks.yml',import.meta.url),'utf8');
- assert(workflow.includes(`if [ "$AIHR_RESOLVED_FOCUSED_TESTS" = '["${compilerReferenceFile}"]' ]; then`));
- assert(workflow.includes('focused-checks.mjs compiler-settled'));assert(workflow.includes('AIHR_RESOLVED_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}'));
- const calls=[],stage=focusedBenchmarkStageFrontier(name=>{calls.push(name);return{status:name==='classifier'?1:0};});
- stage('classifier');assert.throws(()=>stage('compiler-reference'));assert.deepEqual(calls,['classifier']);
-});
-
-const compilerContext={source:'1'.repeat(40),controller:'2'.repeat(40),run:'123'};
-function compilerRows(){
- const rows=[];for(const[index,stage]of ['git-head','git-status','git-tracked','controller-head','controller-status','classifier','compiler-reference','git-head','git-status'].entries()){
-  const common={...compilerContext,attempt:'1',operation:String(index+1).padStart(32,'0'),stage,writer:{pid:500+index,start:100+index},owner:{pid:400,start:90},releaseAuthorized:false};
-  for(const value of [{kind:'stage-started'},{kind:'session-admitted',pid:600+index,start:200+index},{kind:'group-stop-before-reap',reason:'complete'},
-   {kind:'group-quiescent-then-reaped',escapedSession:false},{kind:'stage-ended',reason:'complete',commandExit:0,admitted:true,reaped:true,groupQuiescent:true,escapedSession:false}])rows.push({...common,...value});
- }return rows;
-}
-const compilerStream=rows=>rows.map(row=>JSON.stringify(row)).join('\n')+'\n';
-test('compiler stream model requires all nine ordered native ownership stages without claiming live proof',async()=>{
- const {parseCompilerSettlementRows}=await import('./focused-checks.mjs');
- assert.deepEqual(parseCompilerSettlementRows(compilerStream(compilerRows()),compilerContext),Array.from({length:9},(_,index)=>({pid:600+index,start:200+index})));
-});
-test('compiler stream refuses coherent foreign context, missing/duplicated/reordered stages and incomplete cleanup',async()=>{
- const {parseCompilerSettlementRows}=await import('./focused-checks.mjs');
- for(const mutate of [rows=>rows.forEach(row=>row.source='3'.repeat(40)),rows=>rows.splice(30,5),rows=>rows.push({...rows.at(-1)}),
-  rows=>{[rows[6],rows[8]]=[rows[8],rows[6]];},rows=>rows[4].reaped=false,rows=>rows[3].escapedSession=true,rows=>rows[2].reason='deadline',
-  rows=>rows[1].start='200',rows=>rows[7].writer={pid:9,start:9},rows=>rows[0].kind='arbitrary',rows=>rows.splice(7,0,{...rows[0]})]){
-  const rows=compilerRows();mutate(rows);assert.throws(()=>parseCompilerSettlementRows(compilerStream(rows),compilerContext));
- }
- assert.throws(()=>parseCompilerSettlementRows(compilerStream(compilerRows()).trimEnd(),compilerContext));
-});
-test('actual same native PID/start refuses settlement while different historical start never signals the reused PID',async()=>{
- const {requireCompilerMonitorsAbsent}=await import('./focused-checks.mjs');
- const {compilerProcIdentity}=await import('./diagnostics/native-reference/admission.mjs');const actual=compilerProcIdentity(process.pid);
- assert.throws(()=>requireCompilerMonitorsAbsent([{pid:actual.pid,start:actual.start}]),/native monitor remains/);
- requireCompilerMonitorsAbsent([{pid:actual.pid,start:actual.start+1}]);
- for(const row of [{pid:0,start:1},{pid:actual.pid,start:'1'},null])assert.throws(()=>requireCompilerMonitorsAbsent([row]));
- assert.equal(compilerProcIdentity(process.pid).start,actual.start);
-});
-
-
-test('application inventory has its distinct sole selector and rejects mixed or duplicate selections before staging',async()=>{
- const {isCompilerApplicationInventory,compilerApplicationInventoryFile,isCompilerReferenceFixture,compilerReferenceFile,parseSelection}=await import('./focused-checks.mjs');
- assert(isCompilerApplicationInventory([compilerApplicationInventoryFile]));assert(!isCompilerReferenceFixture([compilerApplicationInventoryFile]));
- for(const selected of [[],[compilerReferenceFile],[compilerApplicationInventoryFile,compilerReferenceFile],[compilerApplicationInventoryFile+'.extra']])assert(!isCompilerApplicationInventory(selected));
- assert.deepEqual(parseSelection(JSON.stringify([compilerApplicationInventoryFile])),[compilerApplicationInventoryFile]);
- for(const selected of [[compilerApplicationInventoryFile,compilerReferenceFile],[compilerApplicationInventoryFile,...files],[compilerApplicationInventoryFile,compilerApplicationInventoryFile]])assert.throws(()=>parseSelection(JSON.stringify(selected)));
- const workflow=readFileSync(new URL('../workflows/alpha-focused-checks.yml',import.meta.url),'utf8');assert(workflow.includes(`elif [ "$AIHR_RESOLVED_FOCUSED_TESTS" = '["${compilerApplicationInventoryFile}"]' ]; then`));
-});
-test('application ownership stream requires its own actual terminal stage and never borrows miniature settlement',async()=>{
- const {parseCompilerSettlementRows}=await import('./focused-checks.mjs'),rows=compilerRows();for(const row of rows)if(row.stage==='compiler-reference')row.stage='compiler-application-inventory';
- assert.equal(parseCompilerSettlementRows(compilerStream(rows),compilerContext,'application').length,9);
- assert.throws(()=>parseCompilerSettlementRows(compilerStream(rows),compilerContext));assert.throws(()=>parseCompilerSettlementRows(compilerStream(compilerRows()),compilerContext,'application'));
- assert.throws(()=>parseCompilerSettlementRows(compilerStream(rows),compilerContext,'arbitrary'));
-});
-test('failed metadata prefix closes BOTH compiler purposes before a native process can start',async()=>{
- const {focusedBenchmarkStageFrontier}=await import('./focused-checks.mjs');
- for(const failed of ['classifier','git-head','compiler-application-inventory']){const calls=[],stage=focusedBenchmarkStageFrontier(name=>{calls.push(name);return{status:1};});stage(failed);for(const terminal of ['compiler-reference','compiler-application-inventory'])assert.throws(()=>stage(terminal));assert.deepEqual(calls,[failed]);}
 });

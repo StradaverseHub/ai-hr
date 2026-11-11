@@ -4,16 +4,10 @@ set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted && "$(uname -s)" == Linux ]] || { echo 'Disposable GitHub-hosted Linux VM required' >&2; exit 2; }
 profile="${AIHR_CI_CAPACITY_PROFILE:-legacy}"
 policy="$(dirname "$0")/runner-capacity.mjs"
-node_binary=node
-if [[ "${GITHUB_JOB:-}" == native-test && -e "/var/lib/aihr-native-controller/${GITHUB_RUN_ID:-missing}/bootstrap.json" ]]; then
-  native_root="/var/lib/aihr-native-controller/$GITHUB_RUN_ID"
-  [[ "$policy" == "$native_root/automation/.github/ci/runner-capacity.mjs" && -f "$native_root/node" && ! -L "$native_root/node" ]] || { echo 'Protected native capacity owner required' >&2; exit 2; }
-  node_binary="$native_root/node"
-fi
 capacity_paths=("$GITHUB_WORKSPACE" "$RUNNER_TEMP")
 sdk_paths=(/usr/share/dotnet /usr/local/lib/android /usr/local/.ghcup)
 if [[ "$profile" == bounded-suite-setup || "$profile" == bounded-suite-ready ]]; then
-  "$node_binary" "$policy" "$profile" 0 >/dev/null # Validate scope before any Docker/SDK action.
+  node "$policy" "$profile" 0 >/dev/null # Validate scope before any Docker/SDK action.
   docker_root="$(docker info --format '{{.DockerRootDir}}')"
   [[ "$docker_root" = /* && "$docker_root" != / && "$docker_root" != *$'\n'* && -d "$docker_root" ]] || { echo 'Actual Docker filesystem unavailable' >&2; exit 2; }
   capacity_paths+=("$docker_root")
@@ -23,7 +17,7 @@ available_kib() { df -Pk "${capacity_paths[@]}" | awk 'NR>1 { if (n==0 || $4<min
 capacity_decision() {
   local available
   available="$(available_kib)" || return 2
-  "$node_binary" "$policy" "$profile" "$available"
+  node "$policy" "$profile" "$available"
 }
 echo "Capacity profile: $profile; before optional SDK cleanup"
 df -Pk "${capacity_paths[@]}"

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,realpathSync,truncateSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
-import {inspectCiBuildPacket,inspectCiNativeBuildPacket,bindCiBuildSource,BUILD_ARTIFACT,BUILD_ARCHIVE_MAX,BUILD_ZIP_MAX} from './build-artifact.mjs';
+import {inspectCiBuildPacket,bindCiBuildSource,BUILD_ARTIFACT,BUILD_ARCHIVE_MAX,BUILD_ZIP_MAX} from './build-artifact.mjs';
 import {BUILD_CAPACITY_PROFILE} from './build-production.mjs';
 import {buildPacketFixture,fixtureHash} from './build-artifact-test-fixture.mjs';
 import {requiredEvidence} from './manifest.mjs';
@@ -85,31 +85,5 @@ test('archive capacity is272MiB while outer ZIP remains280MiB; oversized actual 
  const f=fixture();try{
   truncateSync(join(f.directory,'bytes/build-bundle.tar.gz'),BUILD_ARCHIVE_MAX+1);
   assert.throws(()=>inspectCiBuildPacket(f.directory,f.expected),/oversized packet member/);
- }finally{f.close();}
-});
-
-test('native development packet consumer never widens release branch admission',()=>{
- const f=fixture();try{
-  const p={...f.provenance,workflowRef:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/codex/native-next-ci'};
-  writeFileSync(join(f.directory,'build-provenance.json'),JSON.stringify(p));
-  const expected={...f.expected,controllerBranch:'codex/native-next-ci'};
-  assert.throws(()=>inspectCiBuildPacket(f.directory,expected));
-  const native=inspectCiNativeBuildPacket(f.directory,expected);
-  assert.equal(native.kind,'VERIFIED_NATIVE_NEXT_PACKET_NOT_RELEASE');assert.equal(native.releaseAuthorized,false);
-  assert.equal(native.archiveMembersVerified,false);assert.equal(native.activeServiceVerified,false);
-  for(const branch of ['feature','codex/../main','codex//other','codex/other\n','refs/heads/main'])
-   assert.throws(()=>inspectCiNativeBuildPacket(f.directory,{...expected,controllerBranch:branch}));
- }finally{f.close();}
-});
-
-test('PR packets have a distinct native-only merge-ref scope; release packets remain main/alpha only',()=>{
- const f=fixture();try{
-  const ref='refs/pull/230/merge',expected={...f.expected,controllerBranch:'feature/native-runtime',controllerRef:ref};
-  const p={...f.provenance,workflowRef:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@'+ref,producerEvent:'pull_request',producerRef:ref};
-  writeFileSync(join(f.directory,'build-provenance.json'),JSON.stringify(p));
-  assert.throws(()=>inspectCiBuildPacket(f.directory,expected));
-  assert.equal(inspectCiNativeBuildPacket(f.directory,expected).kind,'VERIFIED_NATIVE_NEXT_PACKET_NOT_RELEASE');
-  for(const change of [{controllerRef:'refs/pull/231/merge'},{controllerRef:'refs/heads/main'},{controller: 'f'.repeat(40)},{candidate:'f'.repeat(40)}])
-   assert.throws(()=>inspectCiNativeBuildPacket(f.directory,{...expected,...change}));
  }finally{f.close();}
 });

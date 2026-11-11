@@ -1,2 +1,0 @@
-/** @param {number} amount */
-export function doubled(amount) { return amount * 2; }

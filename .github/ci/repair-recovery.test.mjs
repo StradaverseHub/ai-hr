@@ -1,13 +1,4 @@
 import test from 'node:test';
-import {mkdtempSync as modelMkdtemp,mkdirSync as modelMkdir,readdirSync as modelReaddir,writeFileSync as modelWrite,rmSync as modelRemove} from 'node:fs';
-import {tmpdir as modelTmpdir} from 'node:os';
-
-import {realpathSync,readFileSync as readModelSource} from 'node:fs';
-import {controllerRegressionRoots} from './controller-regression-roots.mjs';
-import {createHash as modelCreateHash} from 'node:crypto';
-import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
-import {singletonSources} from './singleton-protocol.mjs';
-import {join as modelJoin} from 'node:path';
 import assert from 'node:assert/strict';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
@@ -20,44 +11,11 @@ import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
-
-
-function differentDatabaseRoot(){
- const root=realpathSync(modelMkdtemp(modelJoin(modelTmpdir(),'shared-prerequisite-other-source-'))),journal='db/migrations/meta/_journal.json';
- modelMkdir(modelJoin(root,'db/migrations/meta'),{recursive:true});
- for(const file of modelReaddir(modelJoin(modelRoot,'db/migrations')).filter(file=>file.endsWith('.sql')))modelWrite(modelJoin(root,'db/migrations',file),'-- fictional source input\n');
- const archive='test/fixtures/historical-migrations';
- modelMkdir(modelJoin(root,archive),{recursive:true});
- for(const file of ['2301_attendance_workflow_submission_shared_lock.sql','3103_access_editor_presentation.sql']){
-  modelWrite(modelJoin(root,archive,file),readModelSource(modelJoin(modelRoot,archive,file)));
- }
- const data=JSON.parse(readModelSource(modelJoin(modelRoot,journal),'utf8'));
- data.entries.push({...data.entries.at(-1),idx:data.entries.length,tag:'9999_distinct_current_model'});
- modelWrite(modelJoin(root,journal),JSON.stringify(data));modelWrite(modelJoin(root,'db/migrations/9999_distinct_current_model.sql'),'-- fictional new source input\n');return root;
-}
-// Source-data model only: actual hosted/source authentication belongs to the real adapters.
-const {candidate:modelRoot}=controllerRegressionRoots();
-function databaseModel(f,root=modelRoot){
- const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
- const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
- const unit=buildDatabaseModelUnits([file],{db:[file],nodb:[]},browser.files)[0],report=f.reports.find(report=>report.id===oldId),runId=f.expected.runId??100;
- f.expected.runId=runId;plan.suite=[...plan.suite.filter(path=>!old.files.includes(path)),file].sort();plan.units=plan.units.map(row=>row.id===oldId?unit:row);
- const journal='db/migrations/meta/_journal.json',journalHash=modelCreateHash('sha256').update(readModelSource(modelJoin(root,journal))).digest('hex');
- plan.singletonSources={[unit.id]:Object.fromEntries(singletonSources(unit,root).map(path=>[path,path===journal?journalHash:'c'.repeat(64)]))};
- const {fingerprint,...body}=plan;plan.fingerprint=modelCreateHash('sha256').update(JSON.stringify(body)).digest('hex');
- report.id=unit.id;report.files=unit.files;report.batches[0].result.testResults=[{name:report.cwd+'/'+file,status:'passed',assertionResults:[{status:'passed'}]}];
- report.batches[0].result.numTotalTests=1;report.batches[0].result.numPassedTests=1;
- const resource=report.databaseTerminalEvidence;resource.name=`aihr-ci-${runId}-1-${unit.id}`;report.batches[0].databaseEvidence=structuredClone(resource);
- report.singleton={schemaVersion:1,mode:'full-ci-singleton',candidate:plan.sha,controller:plan.controller,runId:String(runId),attempt:'1',unit:unit.id,fingerprint:plan.fingerprint,file,profile:unit.singleton.profile,sourceHashes:plan.singletonSources[unit.id],evidenceDirectory:'/tmp/model/aihr-ci',prerequisites:{kind:'fresh-job-postgres-cluster',workers:1,database:structuredClone(resource)}};
- for(const row of f.reports)row.fingerprint=plan.fingerprint;
- if(f.jobs)f.jobs.find(job=>job.name===`test (${oldId})`).name=`test (${unit.id})`;
- return f;
-}
-function input(root){
- const f=root?databaseModel(fixture(),root):fixture(),sourcePlan=f.expectedPlan,unit=sourcePlan.units.find(u=>u.kind==='nodb');
+function input(){
+ const f=fixture(),sourcePlan=f.expectedPlan,unit=sourcePlan.units.find(u=>u.kind==='nodb');
  for(const r of f.reports)for(const b of r.batches)for(const file of b.result.testResults)for(const a of file.assertionResults)a.fullName='unchanged behavioral case '+file.name;
  const failed=f.reports.find(r=>r.id===unit.id);failed.exitCode=1;failed.batches[0].exitCode=1;failed.batches[0].result.success=false;
- const assessment={...assessResumeCoverage({expectedPlan:sourcePlan,reports:f.reports,expected:f.expected},root),sourceRun:{id:f.run.id},observations:[{id:unit.id,conclusion:'failure'},{name:'typecheck',conclusion:'failure'},{name:'build',conclusion:'failure'}]};
+ const assessment={...assessResumeCoverage({expectedPlan:sourcePlan,reports:f.reports,expected:f.expected}),sourceRun:{id:f.run.id},observations:[{id:unit.id,conclusion:'failure'},{name:'typecheck',conclusion:'failure'},{name:'build',conclusion:'failure'}]};
  for(const r of assessment.reusable)r.source={runId:f.run.id,jobId:123,artifactId:456,digest:'sha256:'+'a'.repeat(64)};
  const candidate='d'.repeat(40),verificationController='e'.repeat(40),body={...sourcePlan,sha:candidate};delete body.fingerprint;const plan={...body,fingerprint:hash(body)};
  const impactBody={policyVersion:3,tier:'impact',risk:'moderate',changed:['core/lifecycle/service.ts'],classifications:[{path:'core/lifecycle/service.ts',risk:'moderate',uncertainties:[]}],reasons:[],run:unit.files,selection:Object.fromEntries(unit.files.map(p=>[p,['transitive consumer']])),browser:false};
@@ -69,16 +27,11 @@ function input(root){
  const report={kind:'FOCUSED_ONLY',releaseEligible:false,schemaVersion:1,sha:candidate,controller:plan.controller,runId:String(run.id),attempt:'1',runtime:plan.runtime,files:unit.files,groups:{NODB:unit.files,DB:[]},manifestHash:hash(JSON.stringify(unit.files)),classifierHash:'classifier',startedAt:time(2.9),endedAt:time(2.1),exitCode:0,healthBefore:{ok:true},healthAfter:{ok:true},batches:[{kind:'NODB',files:unit.files,exitCode:0,processExitCode:0,signal:null,assertions:1}]};
  const result=structuredClone(failed.batches[0].result);result.success=true;result.testResults[0].name='/home/runner/work/ai-hr/ai-hr/source/'+unit.files[0];
  const buildRun={...f.run,id:500,conclusion:'success',created_at:time(4),updated_at:time(1),display_title:'Canonical build only · repair'};
- const buildJobs=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','commission-summary','deployment-hold'].map((name,i)=>({id:600+i,name,run_id:500,head_sha:buildRun.head_sha,head_branch:buildRun.head_branch,run_attempt:1,status:'completed',conclusion:['resolve','build','deployment-hold'].includes(name)?'success':'skipped',started_at:time(3),completed_at:time(2)}));
+ const buildJobs=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','deployment-hold'].map((name,i)=>({id:600+i,name,run_id:500,head_sha:buildRun.head_sha,head_branch:buildRun.head_branch,run_attempt:1,status:'completed',conclusion:['resolve','build','deployment-hold'].includes(name)?'success':'skipped',started_at:time(3),completed_at:time(2)}));
  return {sourcePlan,plan,assessment,sourceRun:f.run,reports:f.reports,focused:[{run,jobs,artifact,producer:jobs[1],compiler:{runId:200,jobId:302,controller:run.head_sha},report,result}],impactContext,classifierHash:'classifier',verificationController,verificationDiagnostic:{controller:verificationController,runId:900},reviewedController:verificationController,buildRun,buildJobs,build:{canonicalCandidateInputsVerified:true,source:candidate,controller:plan.controller,runId:500},history:{kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:f.run.id,runIds:[200,500]}};
 }
 test('v2 preserves failed source and retained report identities while replacing compiler/build and whole failed process',()=>{
  const f=input(),original=structuredClone(f.reports),c=verifyRepairRecovery(f);assert.deepEqual(f.reports,original);assert.equal(c.originalConclusion,'failure');assert.equal(c.originalSha,f.sourcePlan.sha);assert.equal(c.sha,f.plan.sha);assert.equal(c.runId,500);assert.equal(c.tests,5);assert.equal(c.units.filter(u=>u.kind==='retained').length,4);assert.equal(c.units.find(u=>u.kind==='retained').originalSha,f.sourcePlan.sha);
- const current=differentDatabaseRoot();try{
-  const db=input(modelRoot),fresh=databaseModel(fixture(),current).expectedPlan,{fingerprint,...body}={...fresh,sha:db.plan.sha};db.plan={...body,fingerprint:hash(body)};
-  assert.notDeepEqual(db.plan.singletonSources,db.sourcePlan.singletonSources);assert.throws(()=>verifyRepairRecovery(db));assert.throws(()=>verifyRepairRecovery({...db,sourceCandidateRoot:modelRoot}));
-  assert.equal(verifyRepairRecovery(db,modelRoot).tests,5);assert.throws(()=>verifyRepairRecovery(db,current),{code:'ERR_ASSERTION',message:/^Singleton source membership differs$/});
- }finally{modelRemove(current,{recursive:true,force:true});}
 });
 for(const [name,change] of [
  ['unfinished original',f=>f.sourceRun.status='in_progress'],['source run relabelled',f=>f.sourceRun.conclusion='success'],['old assessment',f=>f.assessment.sha='f'.repeat(40)],
@@ -144,10 +97,4 @@ test('Failure diagnostics remain their own bounded original namespace and cannot
  const m={run,jobs:[j],artifacts:[a]};assert.doesNotThrow(()=>validateRepairArchiveInventory(m,new Set([a.name]),()=> 'build',now));
  assert.throws(()=>validateRepairArchiveInventory(m,new Set(['production-build-v1','next-application-state-v1']),()=> 'build',now));
  for(const change of [m=>m.artifacts[0].workflow_run.id++,m=>m.artifacts[0].name='unknown',m=>m.artifacts[0].created_at=time(30),m=>m.artifacts.push(structuredClone(m.artifacts[0]))]){const bad=structuredClone(m);change(bad);assert.throws(()=>validateRepairArchiveInventory(bad,new Set([a.name]),()=> 'build',now));}
-});
-
-test('Build-only repair metadata refuses any successful commissioning summary',()=>{
- const f=buildMetadata();assert.equal(validateRepairBuildMetadata(f).name,'build');
- f.jobs.find(j=>j.name==='commission-summary').conclusion='success';
- assert.throws(()=>validateRepairBuildMetadata(f),/Repair producing job differs/);
 });

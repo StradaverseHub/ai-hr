@@ -1,1 +1,0 @@
-interface CompilerReferenceAmbient { readonly nativeContext: 'intact'; }
