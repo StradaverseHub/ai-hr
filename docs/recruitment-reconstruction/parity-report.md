@@ -316,3 +316,43 @@ Dispatched from this branch so its split type check ran.
 The 6 failing files and 53 tests are the same set as in every run since the AI source manifests changed
 (`AiPrivacyGateError`: the owner's provider-data approval must be re-recorded for the new digest). No recruitment
 test failed.
+
+## Slice 8 — Careers page and online applications (commit 3f99f3afe)
+
+### Local checks (private Postgres, port 55440)
+
+Builder runs after two independent review rounds (all findings fixed): `recruitment-careers` 25/25, careers rules and
+middleware 42/42, and 27 related files 490/490 (all recruitment suites, letter verification, WorkOS middleware, share
+gate, health route, request budget, identity e-mail install, Keycloak bootstrap guard, migration journal ordering,
+i18n coverage). Scoped type checks and ESLint clean; AI manifests regenerated, `--check` passes.
+
+### Rendered (case 58; local dev server, fictional data)
+
+- HR settings list what is missing before Publish; saving creates privacy notice version 1; publishing works. The
+  job's "Show on careers page" saves and then shows the date and the public link.
+- Signed out: an unknown address, an unpublished page and a job on an unpublished page return the same 404 with no
+  cookie; responses carry the CSP, `X-Frame-Options: DENY`, `noindex, nofollow` and `private, no-store`.
+- The careers page and job page in English, Malay and Chinese, and Tamil from `Accept-Language`; no salary, team or
+  counts.
+- Invalid form: field messages, typed values kept, HTTP 400, nothing stored. Valid applications (browser, and a PDF
+  resume by multipart POST) show the thank-you page and store the candidate, the application at Application Review
+  with source `career_page`, the resume, consent to notice version 1, and only a client hash.
+- The 6th submission in an hour returns 429; with five used, a 9 MB upload is refused in 14 ms with
+  `Retry-After: 3600` before the body is read.
+- HR application page: "Applied on the careers page", the applicant's message, the resume "uploaded by the
+  applicant", consent "Online form, careers page notice version 1". The Candidates board shows "Career page".
+
+### GitHub Actions focused runs (commit 3f99f3afe, 2026-11-11)
+
+A first dispatch (42992782333) selected 67 files and was refused by the 64-file input limit before any job ran.
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 42993035848 | Whole-repo type check (three compilers) | PASS: 8.8 GB, 5.0 GB and 8.4 GB peaks |
+| 42993035848 | Production build (`linux-build`) | PASS |
+| 42993035848 | Selected tests, no-DB batch (38 files, 660 tests) | 37 PASS, including recruitment-careers-rules (23) and recruitment-careers-middleware (19); 1 FAIL: `provider-analysis-policy` (9) |
+| 42993035848 | Selected tests, DB batch (26 files, 512 tests) | 21 PASS, including recruitment-careers (25), recruitment-referrals (18), recruitment-candidate-privacy (12), recruitment-reports (16), recruitment-slices-service (15), recruitment-service (11); 5 FAIL, 44 tests: the same AI files as slice 7 |
+| 42993053014 | Selected tests: request-budget, identity-email-install, keycloak-bootstrap-guard | PASS |
+
+The 6 failing files and 53 tests are the known set waiting for the owner's re-recorded provider-data approval. No
+recruitment test failed.
