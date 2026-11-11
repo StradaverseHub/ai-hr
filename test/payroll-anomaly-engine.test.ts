@@ -32,7 +32,7 @@ import {
   evaluateCircuitBreaker,
 } from '../core/payroll-anomaly';
 import { BatchHasBlockingAnomaliesError, BatchSwingTooLargeError, closeBatch } from '../core/payroll';
-import { closeAll, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { closeAll, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, setModule, setTenantStatus, type Base } from './harness';
 
 const PERIOD = '2026-05';
 
@@ -234,6 +234,108 @@ describe('ADR-0076 — the evaluator writes verdicts and never touches the money
     const bankFindings = await findingsOf(byEmp.get(bank.employmentId)!.id);
     expect(bankFindings.map((f) => f.detectorId)).toContain('missing-bank-profile');
     expect(byEmp.get(bank.employmentId)!.disposition).toBe('block');
+  });
+});
+
+describe('Owner rule (4 November 2026) — data-aware checks: a legitimate set-up is not an exception', () => {
+  const detectorsOf = async (batchId: string, employmentId: string) => {
+    const v = (await liveVerdicts(batchId)).find((r) => r.employmentId === employmentId)!;
+    return { verdict: v, findings: await findingsOf(v.id) };
+  };
+
+  it('missing-bank-profile stores WHY it blocked, and cash still never fires', async () => {
+    const unset = await makeEmp('UnsetMethod', { paymentMethod: null });
+    const bank = await makeEmp('BankNoDetails', { paymentMethod: 'bank_transfer' });
+    const cash = await makeEmp('CashNoDetails', { paymentMethod: 'cash' });
+    const cheque = await makeEmp('ChequeNoDetails', { paymentMethod: 'cheque' });
+    const batchId = await makeBatch();
+    for (const e of [unset, bank, cash, cheque]) await addPayslip(batchId, e.employmentId);
+
+    await evaluateBatchAnomalies(a, { batchId });
+    const bankFinding = async (employmentId: string) =>
+      (await detectorsOf(batchId, employmentId)).findings.find((f) => f.detectorId === 'missing-bank-profile');
+
+    expect((await bankFinding(unset.employmentId))?.facts).toEqual({ netPay: 4200, paymentMethod: 'unset', reason: 'payment-method-not-set' });
+    expect((await detectorsOf(batchId, unset.employmentId)).verdict.disposition).toBe('block');
+    expect((await bankFinding(bank.employmentId))?.facts).toEqual({ netPay: 4200, paymentMethod: 'bank_transfer', reason: 'bank-details-missing' });
+    expect(await bankFinding(cash.employmentId)).toBeUndefined();
+    expect(await bankFinding(cheque.employmentId)).toBeUndefined();
+  });
+
+  it('pay-without-attendance runs only where the company has Attendance, read once for the batch', async () => {
+    const { employmentId, personId } = await makeEmp('NoClockIn');
+    await giveProfile(personId);
+    const batchId = await makeBatch();
+    await addPayslip(batchId, employmentId, {}, { noAttendance: true });
+    const ghostFlag = async () => {
+      await evaluateBatchAnomalies(a, { batchId });
+      const { verdict, findings } = await detectorsOf(batchId, employmentId);
+      // Always RUN (the coverage figure is unchanged); whether it FINDS anything is the data-aware part.
+      expect(verdict.detectorsRun as string[]).toContain('pay-without-attendance');
+      return findings.some((f) => f.detectorId === 'pay-without-attendance');
+    };
+
+    // The suite's baseline grants nothing: Attendance is off for the company, so nobody there clocks in.
+    expect(await ghostFlag()).toBe(false);
+    // Tenant-wide grant.
+    await setModule(b.tenantId, 'attendance', 'active');
+    expect(await ghostFlag()).toBe(true);
+    // Granted only for ANOTHER company of the group: still off here.
+    await setModule(b.tenantId, 'attendance', null);
+    const [other] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Other Fictional Sdn Bhd' }).returning({ id: schema.company.id });
+    await setModule(b.tenantId, 'attendance', 'active', other.id);
+    expect(await ghostFlag()).toBe(false);
+    // Granted for THIS company.
+    await setModule(b.tenantId, 'attendance', 'active', b.companyId);
+    expect(await ghostFlag()).toBe(true);
+    // A suspended tenant reads every billable module off — which must never switch the check off. (`a` was resolved
+    // while the tenant was active, so its transaction may still write; the evaluator's own in-transaction read is the
+    // one that sees the suspension.)
+    await setModule(b.tenantId, 'attendance', null, b.companyId);
+    await setTenantStatus(b.tenantId, 'suspended');
+    expect(await ghostFlag()).toBe(true);
+  });
+
+  it('re-evaluation supersedes a verdict the old rules raised — it neither stays open nor duplicates', async () => {
+    // A verdict as the OLD rules wrote it: a cash employee blocked on bank details, and a ghost flag at a company
+    // without Attendance. Inserted directly, because the current detectors can no longer produce either.
+    const cash = await makeEmp('OldCashBlock', { paymentMethod: 'cash' });
+    const ghost = await makeEmp('OldGhostFlag');
+    await giveProfile(ghost.personId);
+    const batchId = await makeBatch();
+    await addPayslip(batchId, cash.employmentId);
+    await addPayslip(batchId, ghost.employmentId, {}, { noAttendance: true });
+    const stale = await owner.db
+      .insert(schema.payrollAnomalyVerdict)
+      .values([
+        { tenantId: b.tenantId, batchId, employmentId: cash.employmentId, disposition: 'block' },
+        { tenantId: b.tenantId, batchId, employmentId: ghost.employmentId, disposition: 'review' },
+      ])
+      .returning({ id: schema.payrollAnomalyVerdict.id, employmentId: schema.payrollAnomalyVerdict.employmentId });
+    await owner.db.insert(schema.payrollAnomalyFinding).values([
+      { tenantId: b.tenantId, verdictId: stale[0].id, detectorId: 'missing-bank-profile', severity: 'block', facts: { netPay: 4200, paymentMethod: 'cash' }, sourceEventIds: [], suggestedAction: 'anomaly.action.missingBankProfile' },
+      { tenantId: b.tenantId, verdictId: stale[1].id, detectorId: 'pay-without-attendance', severity: 'review', facts: { netPay: 4200 }, sourceEventIds: [], suggestedAction: 'anomaly.action.payWithoutAttendance' },
+    ]);
+    expect(await withTenant(a, (tx) => openBlockingVerdicts(tx, batchId))).toHaveLength(1);
+
+    await evaluateBatchAnomalies(a, { batchId });
+
+    const all = await owner.db.select().from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.batchId, batchId));
+    // Superseded, never deleted, and NOT marked resolved: it is history, not a human decision.
+    for (const old of stale) {
+      const row = all.find((r) => r.id === old.id)!;
+      expect(row.supersededAt).not.toBeNull();
+      expect(row.resolvedAt).toBeNull();
+    }
+    // Exactly one live verdict per person, and neither carries the old finding.
+    const live = all.filter((r) => r.supersededAt === null);
+    expect(live.map((r) => r.employmentId).sort()).toEqual([cash.employmentId, ghost.employmentId].sort());
+    for (const v of live) {
+      const ids = (await findingsOf(v.id)).map((f) => f.detectorId);
+      expect(ids).not.toContain('missing-bank-profile');
+      expect(ids).not.toContain('pay-without-attendance');
+    }
+    expect(await withTenant(a, (tx) => openBlockingVerdicts(tx, batchId))).toEqual([]);
   });
 });
 

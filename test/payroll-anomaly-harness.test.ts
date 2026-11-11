@@ -27,7 +27,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { evaluateBatchAnomalies, anomalyMetrics } from '../core/payroll-anomaly';
-import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 /** Big enough that a per-employee query would be plainly visible; small enough to stay a unit of a chunk. */
 const POPULATION = 120;
@@ -46,6 +46,9 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
+  // The planted ghosts are only ghosts where attendance is recorded: `pay-without-attendance` is skipped for a company
+  // without the Attendance module (owner rule, 4 November 2026), and the suite's entitlement baseline is empty.
+  await setModule(b.tenantId, 'attendance', 'active');
   a = await entitledCtx(b);
 });
 

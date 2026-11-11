@@ -267,7 +267,9 @@ function capsFromRuleset(rules: unknown): Record<string, number> | null {
   return Object.keys(caps).length ? caps : null;
 }
 
-async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise<BatchContext | null> {
+/** `entitlements`: a snapshot the caller ALREADY resolved for this tenant in this same transaction (loadBatchContextsTx's
+ *  module gate), so the attendance-in-use fact costs no second read. Absent, it is resolved here, once for the batch. */
+async function gatherContext(tx: Tx, tenantId: string, batchId: string, entitlements?: EntitlementSnapshot): Promise<BatchContext | null> {
   // Country comes from the COMPANY, not the batch — payroll_batch has no country column, and the
   // statutory pack is a property of the employing entity (which is the whole point of slice 6's
   // per-employer pack resolution).
@@ -488,8 +490,11 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
   }
 
   // Owner rule (4 November 2026) — is attendance in use for this company at all? The Attendance module's entitlement
-  // (tenant-wide or scoped to this company) is the owning fact. ONE read per batch, never per employee.
-  const attendanceInUse = attendanceInUseFor(await resolveEntitlementsTx(tx, tenantId), batch.companyId);
+  // (tenant-wide or scoped to this company) is the owning fact. ONE bounded read per batch (a batch is one company), never
+  // per employee — and none at all when the caller already resolved the snapshot in this transaction. A failed read
+  // fails this evaluation's transaction like every other read here; it never switches the check off.
+  const snapshot = entitlements && entitlements.tenantId === tenantId ? entitlements : await resolveEntitlementsTx(tx, tenantId);
+  const attendanceInUse = attendanceInUseFor(snapshot, batch.companyId);
 
   const contexts: DetectorContext[] = slips.map((slip) => {
     const emp = empById.get(slip.employmentId);
@@ -543,10 +548,16 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
  * PURE over the snapshot; exported for its tests.
  */
 export function attendanceInUseFor(snapshot: EntitlementSnapshot, companyId: string): boolean {
-  if (!TENANT_STATUS_GOOD_STANDING.has(snapshot.tenantStatus)) return true;
   try {
+    if (!TENANT_STATUS_GOOD_STANDING.has(snapshot.tenantStatus)) return true;
+    // GRANTED in the tenant's own rows ⇒ in use, whatever else is true. Checked directly so the deployment kill lever
+    // (MODULE_KILL, an operational switch, not a fact about this company) can never be what silences the check.
+    if (snapshot.enabledModules.includes('attendance')) return true;
+    if ((snapshot.scopedModules.attendance ?? []).includes(companyId)) return true;
+    // Not granted here: the entitlement owner decides (a catalog change making attendance core answers TRUE).
     return isModuleEnabled({ tenantId: snapshot.tenantId, entitlements: snapshot }, 'attendance', companyId);
   } catch {
+    // A malformed snapshot (or any resolver error) is "cannot tell", and "cannot tell" keeps the check on.
     return true;
   }
 }
@@ -732,7 +743,7 @@ export async function loadBatchContextsTx(tx:Tx,supplied:SessionContext,input:{b
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={batchId:input.batchId};await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(fresh,'payroll');
  const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.payroll_batch b where b.id=${p.batchId}::uuid and b.tenant_id=${ctx.tenantId}::uuid and app.can_admin_payroll_for(b.company_id)
  and not exists(select 1 from public.payslip s where s.batch_id=b.id and s.tenant_id=b.tenant_id and app.can_admin_payroll_employment(s.employment_id) is not true)) as allowed`);if(authority?.allowed!==true)throw Error('Current payroll source unavailable.');
- return (await gatherContext(tx,ctx.tenantId,p.batchId))?.contexts??null;
+ return (await gatherContext(tx,ctx.tenantId,p.batchId,fresh.entitlements))?.contexts??null;
 }
 
 export async function loadBatchContexts(
