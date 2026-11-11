@@ -208,9 +208,11 @@ describe('Exceptions, the one place an exception is resolved (owner decision 28)
 
  it('says the bulk outcome and its closed error codes only',async()=>{
   state.session=SESSIONS.hrAdmin;
-  let view=wrap(await ExceptionsPage({searchParams:Promise.resolve({expected:'4',expectedSkipped:'1'})}));
+  let view=wrap(await ExceptionsPage({searchParams:Promise.resolve({expected:'4',expectedSkipped:'1',expectedDecided:'2',expectedSuperseded:'1',expectedNotYours:'1'})}));
   expect([...view.container.querySelectorAll('[data-bulk-result] p')].map(text)).toEqual(['4 exceptions were marked as expected.',
-   '1 was left open because it had changed or isn’t yours to decide.']);
+   '1 was left open because it had changed or isn’t yours to decide.','2 had already been decided by someone else, so those decisions stand.',
+   '1 was checked again since this page opened, so it is left open. The new result is listed instead.',
+   '1 is for a payroll you don’t manage, so it was left open.']);
   cleanup();
   view=wrap(await ExceptionsPage({searchParams:Promise.resolve({bulkError:'<script>'})}));
   expect(view.container.textContent).not.toContain('<script>');

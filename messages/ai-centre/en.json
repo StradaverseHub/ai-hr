@@ -2118,7 +2118,10 @@
             "nothing": "Nothing was selected.",
             "failed": "That didn’t work, and nothing was changed. Please try again.",
             "retry": "Something interrupted this, and nothing was changed. Please try again."
-          }
+          },
+          "alreadyDecided": "{count, plural, one {# had already been decided by someone else, so that decision stands.} other {# had already been decided by someone else, so those decisions stand.}}",
+          "superseded": "{count, plural, one {# was checked again since this page opened, so it is left open. The new result is listed instead.} other {# were checked again since this page opened, so they are left open. The new results are listed instead.}}",
+          "notYours": "{count, plural, one {# is for a payroll you don’t manage, so it was left open.} other {# are for payrolls you don’t manage, so they were left open.}}"
         },
         "footer": "Grouping only changes how exceptions are shown. Blocking errors are never cleared in bulk, every decision is still recorded per person, and no pay figure is changed here.",
         "check": {

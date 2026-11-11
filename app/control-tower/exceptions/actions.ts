@@ -18,7 +18,8 @@ export async function markGroupExpectedAction(formData: FormData) {
   try {
     const result = await markGroupExpected(s, { group, verdictIds: formData.getAll('verdictId'), note: formData.get('note') });
     params.set('expected', String(result.resolved));
-    params.set('expectedSkipped', String(result.skipped));
+    for (const [name, count] of [['expectedSkipped', result.skipped], ['expectedDecided', result.alreadyDecided],
+      ['expectedSuperseded', result.superseded], ['expectedNotYours', result.notYours]] as const) if (count > 0) params.set(name, String(count));
   } catch (e) {
     if (e instanceof BulkExpectInterrupted) {
       // The batch failed as a whole (nothing written): ask for another try. Nothing is reported as skipped.

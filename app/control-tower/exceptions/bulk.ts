@@ -20,7 +20,9 @@ import {
   BulkExpectInterrupted, BulkExpectRefused, mayBulkExpect, parseGroupKey, planBulkExpect, requestedIds, variantOf, type BulkCandidate,
 } from '@/lib/payroll-exceptions';
 
-export type BulkExpectResult = Readonly<{ resolved: number; skipped: number }>;
+/** What one press did. `skipped` is what the guard left out before writing (another check on it, blocking, not in the
+ * group, already closed when read); the rest are the owner's per-exception outcomes. */
+export type BulkExpectResult = Readonly<{ resolved: number; skipped: number; alreadyDecided: number; superseded: number; notYours: number }>;
 
 const NOTE_MAX = 400;
 
@@ -53,7 +55,8 @@ Promise<BulkExpectResult> {
       findings: row.findings.map(f => ({ checkId: f.checkId, severity: f.severity, variant: variantOf(f.checkId, f.facts) })) })));
 
   const plan = planBulkExpect(group, ids, candidates);
-  if (plan.resolve.length === 0) return Object.freeze({ resolved: 0, skipped: plan.skipped.length });
+  const out = { resolved: 0, skipped: plan.skipped.length, alreadyDecided: 0, superseded: 0, notYours: 0 };
+  if (plan.resolve.length === 0) return Object.freeze(out);
   let results: Awaited<ReturnType<typeof resolveAnomalyVerdicts>>['results'];
   try {
     // ONE call, ONE access lock and ONE transaction for the whole press; per-item authority, audit and ledger stamp.
@@ -63,8 +66,15 @@ Promise<BulkExpectResult> {
     // A lock timeout, a lost connection or any other database failure: nothing was written. Never counted as a skip.
     throw new BulkExpectInterrupted(0, error);
   }
-  // Per-id outcomes: anything not written now (decided meanwhile, superseded, not the caller's payroll) stays as it is.
-  const resolved = results.filter(r => r.outcome === 'resolved').length;
-  const skipped = plan.skipped.length + results.length - resolved;
-  return Object.freeze({ resolved, skipped });
+  // Every one of the owner's five outcomes, each said plainly; anything not written now stays exactly as it is.
+  for (const { outcome } of results) {
+    switch (outcome) {
+      case 'resolved': out.resolved++; break;
+      case 'already_resolved': out.alreadyDecided++; break; // somebody decided it first; their decision stands
+      case 'superseded': out.superseded++; break; // re-checked since the page loaded; the new result is listed instead
+      case 'not_allowed': case 'not_found': out.notYours++; break; // not this person's payroll, or not visible to them
+      default: { const unknown: never = outcome; throw new BulkExpectInterrupted(0, unknown); }
+    }
+  }
+  return Object.freeze(out);
 }

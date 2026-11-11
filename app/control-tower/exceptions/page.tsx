@@ -64,7 +64,8 @@ const TAG_TONE = {
 type AckRow = AcknowledgedBlock & { payPeriod: string };
 type Search = {
   error?: string; toast?: string; fixError?: string; closed?: string; stale?: string; ackError?: string; acknowledged?: string;
-  group?: string; page?: string; expected?: string; expectedSkipped?: string; bulkError?: string;
+  group?: string; page?: string; expected?: string; expectedSkipped?: string; expectedDecided?: string; expectedSuperseded?: string;
+  expectedNotYours?: string; bulkError?: string;
 };
 
 const focusHref = (key: string, page = 1) => `${HOME}?${new URLSearchParams({ group: key, ...(page > 1 ? { page: String(page) } : {}) })}#exceptions-group`;
@@ -108,7 +109,10 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
   const ackError = ACK_ERRORS.find(code => code === sp.ackError);
   const bulkError = BULK_ERRORS.find(code => code === sp.bulkError);
   const closed = Number(sp.closed ?? 0), stale = Number(sp.stale ?? 0);
-  const expected = Number.parseInt(sp.expected ?? '', 10), expectedSkipped = Number.parseInt(sp.expectedSkipped ?? '0', 10) || 0;
+  const expected = Number.parseInt(sp.expected ?? '', 10);
+  const countOf = (value?: string) => Math.max(0, Number.parseInt(value ?? '0', 10) || 0);
+  const bulkOutcomes = ([['bulk.skipped', sp.expectedSkipped], ['bulk.alreadyDecided', sp.expectedDecided], ['bulk.superseded', sp.expectedSuperseded],
+    ['bulk.notYours', sp.expectedNotYours]] as const).map(([key, value]) => [key, countOf(value)] as const).filter(([, count]) => count > 0);
   const focus = focusKey ? view.groups.find(group => group.key === sp.group) ?? null : null;
 
   const month = (payPeriod: string) => formatPayPeriodMonth(payPeriod, locale);
@@ -375,7 +379,7 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
       {Number.isFinite(expected) && (
         <Card className="p-4" role="status" data-bulk-result>
           <p className="m-0 text-sm">{tg('bulk.done', { count: expected })}</p>
-          {expectedSkipped > 0 && <p className="m-0 mt-1 text-xs text-muted-foreground">{tg('bulk.skipped', { count: expectedSkipped })}</p>}
+          {bulkOutcomes.map(([key, count]) => <p key={key} className="m-0 mt-1 text-xs text-muted-foreground">{tg(key, { count })}</p>)}
         </Card>
       )}
 

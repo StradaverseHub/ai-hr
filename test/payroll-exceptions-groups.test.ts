@@ -255,7 +255,7 @@ describe('bulk "Mark as expected"', () => {
     const page = await groupedExceptions(all, { focus: eis, page: 1 });
     for (const item of page.items.get(groupKey(eis)) ?? []) expect(item.signature, item.verdictId)
       .toEqual(['component-appeared:review:eisEmployee', 'component-appeared:review:epfEmployee']);
-    expect(await markGroupExpected(all, { group: groupKey(eis), verdictIds: ids, note: 'Fixture' })).toEqual({ resolved: 0, skipped: ids.length });
+    expect(await markGroupExpected(all, { group: groupKey(eis), verdictIds: ids, note: 'Fixture' })).toEqual({ resolved: 0, skipped: ids.length, alreadyDecided: 0, superseded: 0, notYours: 0 });
     expect((await state(ids)).every(r => r.resolution === null)).toBe(true);
   });
 
@@ -264,7 +264,7 @@ describe('bulk "Mark as expected"', () => {
       .map(s => s.verdictId);
     expect(elsewhere.length).toBeGreaterThan(0);
     expect(await markGroupExpected(one, { group: 'pay-without-attendance.review.-', verdictIds: elsewhere, note: 'Fixture' }))
-      .toEqual({ resolved: 0, skipped: elsewhere.length });
+      .toEqual({ resolved: 0, skipped: elsewhere.length, alreadyDecided: 0, superseded: 0, notYours: 0 });
     expect((await state(elsewhere)).every(r => r.resolution === null)).toBe(true);
   });
 
@@ -280,7 +280,7 @@ describe('bulk "Mark as expected"', () => {
     const result = await markGroupExpected(all, { group: groupKey(ATTENDANCE), verdictIds: [...items.map(i => i.verdictId).slice(0, 24), smuggled], note: 'These companies do not use clock-in' });
     const requested = items.slice(0, 24);
     const closable = requested.filter(i => i.signature.length === 1).map(i => i.verdictId);
-    expect(result).toEqual({ resolved: closable.length, skipped: 25 - closable.length });
+    expect(result).toEqual({ resolved: closable.length, skipped: 25 - closable.length, alreadyDecided: 0, superseded: 0, notYours: 0 });
     const after = new Map((await state([...requested.map(i => i.verdictId), smuggled])).map(r => [r.id, r]));
     for (const id of closable) expect(after.get(id)).toMatchObject({ resolution: 'accepted', resolvedBy: all.userId });
     for (const id of requested.filter(i => i.signature.length > 1).map(i => i.verdictId)) expect(after.get(id)?.resolution, 'mixed stays open').toBeNull();

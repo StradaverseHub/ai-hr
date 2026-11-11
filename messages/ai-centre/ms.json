@@ -2118,7 +2118,10 @@
             "nothing": "Tiada apa-apa dipilih.",
             "failed": "Itu tidak berjaya, dan tiada apa-apa diubah. Sila cuba lagi.",
             "retry": "Sesuatu telah mengganggu proses ini, dan tiada apa-apa diubah. Sila cuba lagi."
-          }
+          },
+          "alreadyDecided": "{count, plural, other {# telah pun diputuskan oleh orang lain, jadi keputusan itu kekal.}}",
+          "superseded": "{count, plural, other {# telah disemak semula sejak halaman ini dibuka, jadi ia dibiarkan terbuka. Keputusan baharu disenaraikan sebagai gantinya.}}",
+          "notYours": "{count, plural, other {# adalah untuk gaji yang bukan di bawah urusan anda, jadi ia dibiarkan terbuka.}}"
         },
         "footer": "Pengumpulan hanya mengubah cara pengecualian dipaparkan. Ralat yang menyekat tidak pernah dikosongkan secara pukal, setiap keputusan tetap direkodkan bagi setiap orang, dan tiada angka gaji diubah di sini.",
         "check": {

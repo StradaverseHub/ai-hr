@@ -2118,7 +2118,10 @@
             "nothing": "Chưa chọn mục nào.",
             "failed": "Thao tác không thành công và không có gì thay đổi. Vui lòng thử lại.",
             "retry": "Thao tác bị gián đoạn và không có gì thay đổi. Vui lòng thử lại."
-          }
+          },
+          "alreadyDecided": "{count, plural, other {# mục đã được người khác quyết định, nên quyết định đó được giữ nguyên.}}",
+          "superseded": "{count, plural, other {# mục đã được kiểm tra lại kể từ khi mở trang này, nên vẫn để mở. Kết quả mới được liệt kê thay thế.}}",
+          "notYours": "{count, plural, other {# mục thuộc bảng lương bạn không quản lý, nên vẫn để mở.}}"
         },
         "footer": "Việc nhóm chỉ thay đổi cách hiển thị ngoại lệ. Lỗi chặn kỳ lương không bao giờ được xóa hàng loạt, mỗi quyết định vẫn được ghi lại cho từng người, và không có con số lương nào bị thay đổi ở đây.",
         "check": {
