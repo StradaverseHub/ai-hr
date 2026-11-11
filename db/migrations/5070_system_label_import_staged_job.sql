@@ -118,7 +118,6 @@ BEGIN
   ('app.contract_configuration_choices(uuid)','(FROM public\.business_unit b WHERE )','b',1),
   ('app.contract_workflow_business_groups()','(JOIN public\.business_unit bu ON )','bu',1),
   ('app.reward_policy_memberships(uuid[])','(JOIN public\.business_unit u ON )','u',1),
-  ('app.reward_setup_grade_choices()','(FROM job_grade g WHERE )','g',1),
   ('app.assistant_family_maintenance_context(uuid)','(FROM public\.profile_option o WHERE )','o',1),
   -- Archive entry points (whether any archivable code exists).
   ('app.department_archive_entry_available()','(FROM public\.department p WHERE )','p',1),
@@ -127,22 +126,38 @@ BEGIN
   ('app.profile_option_value_allowed(text,text,text,uuid)','(FROM public\.profile_option p WHERE )','p',2),
   ('app.profile_option_value_allowed(text,text,text)','(FROM public\.profile_option p WHERE )','p',2),
   ('app.system_label_value_scope_allowed(text,text,uuid)','(FROM public\.profile_option p WHERE )','p',1),
-  ('app.access_workforce_value_shape(text,text,jsonb,jsonb)','(FROM public\.profile_option o WHERE )','o',1),
-  -- Promotion validation counts grades by architecture code.
-  ('app.reward_uploaded_validation(uuid)','(FROM job_grade g WHERE )','g',1)
+  ('app.access_workforce_value_shape(text,text,jsonb,jsonb)','(FROM public\.profile_option o WHERE )','o',1)
  ) v(sig,pattern,alias,expected) LOOP
+  -- Each definer belongs to the migration owner, which re-creates it; see the row-security readers below.
+  SELECT o.rolname INTO owner_ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_roles o ON o.oid=p.proowner WHERE p.oid=r.sig::regprocedure;
+  IF owner_<>current_user THEN RAISE EXCEPTION 'label import predicate: % belongs to %, not the migration owner',r.sig,owner_ USING ERRCODE='42501'; END IF;
   def:=pg_catalog.pg_get_functiondef(r.sig::regprocedure);
   SELECT count(*) INTO found FROM regexp_matches(def,r.pattern,'g');
   IF found<>r.expected THEN RAISE EXCEPTION 'label import predicate: % has % reads matching %, expected %',r.sig,found,r.pattern,r.expected; END IF;
   -- One function can appear twice (two aliases); its later entry rewrites the already rewritten definition.
   EXECUTE regexp_replace(def,r.pattern,'\1app.label_import_marker_visible('||r.alias||'.import_pending_attempt_id) AND ','g');
-  SELECT o.rolname INTO owner_ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_roles o ON o.oid=p.proowner WHERE p.oid=r.sig::regprocedure;
-  IF owner_<>current_user THEN
-   EXECUTE format('GRANT EXECUTE ON FUNCTION app.label_import_marker_visible(uuid) TO %I',owner_);
-   EXECUTE format('GRANT SELECT ON app.system_label_import_release TO %I',owner_);
-  END IF;
  END LOOP;
 END $$;
+--> statement-breakpoint
+-- Row-security readers. app.reward_setup_grade_choices() (ai_hr_reward_setup_reader, 2205) and
+-- app.reward_uploaded_validation(uuid) (ai_hr_reward_upload_reader, 2208) also enumerate grades, but they belong to
+-- purpose roles the migration owner may not act as, so it cannot re-create them. Nor do they need the predicate: their
+-- owners are neither the owner of job_grade nor BYPASSRLS, so job_grade_import_pending above already hides every
+-- staged grade inside them (the grade choice list's live branch has always read job_grade that way). Refuse if that changes.
+DO $label_import_rls_readers$
+DECLARE f regprocedure;
+BEGIN
+ FOREACH f IN ARRAY ARRAY['app.reward_setup_grade_choices()','app.reward_uploaded_validation(uuid)']::regprocedure[] LOOP
+  IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_roles o ON o.oid=p.proowner
+    WHERE p.oid=f AND p.prosecdef AND NOT o.rolsuper AND NOT o.rolbypassrls
+     AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid='public.job_grade'::regclass
+      AND (NOT c.relrowsecurity OR pg_catalog.pg_has_role(p.proowner,c.relowner,'USAGE')
+       OR NOT EXISTS(SELECT 1 FROM pg_catalog.pg_policy pol WHERE pol.polrelid=c.oid AND NOT pol.polpermissive
+        AND pol.polcmd='*' AND pol.polroles='{0}' AND pol.polname='job_grade_import_pending')))) THEN
+   RAISE EXCEPTION 'label import: % must read job_grade under the staged-row policy',f USING ERRCODE='42501';
+  END IF;
+ END LOOP;
+END $label_import_rls_readers$;
 --> statement-breakpoint
 -- Release-time conflicts: a visible code that appeared while the import was staged and that the import's own rules
 -- (the preview's) would have refused. The ordinary writers that ran meanwhile could not see the staged codes; unique

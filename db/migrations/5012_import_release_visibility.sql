@@ -126,18 +126,17 @@ BEGIN
   ('app.personnel_duplicate_candidate_rows(uuid[],date)',1),('app.personnel_filter_rows(date,uuid[])',2),('app.personnel_overview_filter_fields(date,uuid[])',1),
   ('app.personnel_overview_narrow_rows(date,uuid[])',1),('app.personnel_overview_page_rows(date,uuid[],uuid[])',2),('app.personnel_search_rows(uuid[])',1),
   ('app.prepare_company_organisation_run(jsonb)',2),('app.probation_intake_workspace(uuid)',4),('app.probation_required_workflow_status(uuid)',1),
-  ('app.reward_confidentiality_floors(uuid,uuid[],date)',2),('app.reward_create_planned_unit_bound(uuid,uuid,uuid)',5),('app.reward_uploaded_snapshot_roster(uuid,date)',6)
+  ('app.reward_confidentiality_floors(uuid,uuid[],date)',2)
  ) v(sig,expected) LOOP
+  -- Each reader belongs to the migration owner, which re-creates it. A reader owned by a restricted role (the Rewards
+  -- setup readers 5010 leaves alone) runs under row security, where the staged-row policies already apply, and the
+  -- owner may not replace it.
+  SELECT o.rolname INTO owner_ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_roles o ON o.oid=p.proowner WHERE p.oid=r.sig::regprocedure;
+  IF owner_<>current_user THEN RAISE EXCEPTION 'import release predicate: % belongs to %, not the migration owner',r.sig,owner_ USING ERRCODE='42501'; END IF;
   def:=pg_catalog.pg_get_functiondef(r.sig::regprocedure);
   SELECT count(*) INTO found FROM regexp_matches(def,'(\m[a-z_]+\.)?import_pending_attempt_id IS NULL','g');
   IF found<>r.expected THEN RAISE EXCEPTION 'import release predicate: % has % staged-marker filters, expected %',r.sig,found,r.expected; END IF;
   EXECUTE regexp_replace(def,'(\m[a-z_]+\.)?import_pending_attempt_id IS NULL','app.import_marker_visible(\1import_pending_attempt_id)','g');
-  -- A reader owned by a restricted role (for example a Rewards setup reader) runs the predicate as that owner.
-  SELECT o.rolname INTO owner_ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_roles o ON o.oid=p.proowner WHERE p.oid=r.sig::regprocedure;
-  IF owner_<>current_user THEN
-   EXECUTE format('GRANT EXECUTE ON FUNCTION app.import_marker_visible(uuid) TO %I',owner_);
-   EXECUTE format('GRANT SELECT ON app.import_attempt_release TO %I',owner_);
-  END IF;
  END LOOP;
 END $$;
 --> statement-breakpoint
