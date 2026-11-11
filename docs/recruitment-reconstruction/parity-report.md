@@ -283,7 +283,7 @@ day-cap test and a timing-dependent concurrency test.
 | Scoped `tsc` over 26 touched files | PASS except a pre-existing missing `fontkit` declaration in `lib/payslip-pdf-fonts.ts` |
 | ESLint on changed files | Clean; remaining errors in `components/sidebar.tsx`, `app/layout.tsx`, `lib/product-context/destinations.ts` are identical at HEAD |
 | AI source manifests | Regenerated; both `--check` PASS. The owner's provider-data approval must be re-recorded |
-| Whole-repo type check, build, CI | NOT RUN for slice 7 yet |
+| Whole-repo type check, build, CI | See run 42955441606 below |
 
 Rendered on the private render database (fictional people), as HR admin and as an employee:
 
@@ -301,3 +301,18 @@ Rendered on the private render database (fictional people), as HR admin and as a
 - The referral protection period saves from Recruitment settings.
 
 Open: the last working day counts as employed (matches login blocking; the employee record shows "Resigned" that day).
+
+### GitHub Actions focused run 42955441606 (commit 5f6c1dd89, 2026-11-11)
+
+Dispatched from this branch so its split type check ran.
+
+| Job | Result |
+| --- | --- |
+| Whole-repo type check (three compilers) | PASS: 9.2 GB, 6.0 GB and 8.4 GB peaks, all exit 0 |
+| Production build (`linux-build`) | PASS |
+| Selected tests, no-DB batch (33 files, 578 tests) | 32 files PASS, including recruitment-referral-rules, recruitment-rules, recruitment-hiring-rules, recruitment-privacy-rules, recruitment-report-rules, recruitment-pack-drift; 1 FAIL: `provider-analysis-policy` (9 tests) |
+| Selected tests, DB batch (23 files, 445 tests) | 18 files PASS, including recruitment-referrals (18), recruitment-candidate-privacy (12), recruitment-slices-service (15), recruitment-service (11), recruitment-reports (16); 5 FAIL, 44 tests: `assistant-conversation-evaluation-fence`, `assistant-conversation-lifecycle`, `human-module-planner`, `module-agent-evaluation-progress`, `module-agent-prompt-release` |
+
+The 6 failing files and 53 tests are the same set as in every run since the AI source manifests changed
+(`AiPrivacyGateError`: the owner's provider-data approval must be re-recorded for the new digest). No recruitment
+test failed.
