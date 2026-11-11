@@ -179,6 +179,15 @@ async function run(label,command,args,childEnv=env,timeout=900000){
   console.log('[system-perf] '+JSON.stringify(workerSetupFailureFact({label,code,timedOut,exitSignal,log})));
  }
  if(code!==0&&!comparison){const text=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>');writeFileSync(join(out,label+'-failure.txt'),text);}
+ // Diagnostic only, for a failed setup phase of the fictional fixture: error and stack-frame lines of the
+ // private log, with URLs and long tokens redacted, so a setup failure names its cause in the job log.
+ if(label!=='http-and-browser'&&(code!==0||timedOut))try{
+  const lines=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-16000)
+   .replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi,'<URL>').replace(/[A-Za-z0-9_+/=-]{32,}/g,'<REDACTED>').split('\n')
+   .filter(line=>/error|code|constraint|column|relation|violat|denied|permission|must|refus|assert|expected|actual|detail|hint|where|routine|severity|\bat .*\.(?:ts|mts|mjs|js):\d+/i.test(line))
+   .slice(-80).map(line=>line.slice(0,300));
+  console.log('[system-perf] '+JSON.stringify({kind:'SETUP_PHASE_FAILURE_EXCERPT_V1',label,lines}));
+ }catch{}
  assert.equal(timedOut,false,label+' exceeded its unchanged process budget; retain incomplete evidence');
  assert.equal(code,0,label+' failed; private process logs contain no published credentials');
  if(capturingBirth)assert(developmentReset.state==='settled','Development PostgreSQL reset birth receipt refused');
