@@ -2,7 +2,7 @@ import {EmployeePersonalHome} from '@/components/employee-home/personal-home';
 import {HomeAccessError,readEmployeeHomeIdentity} from '@/core/employee-home';
 import {withSharedReadSnapshot} from '@/db/client';
 import {requestReadScope} from '@/lib/request-read-scope';
-import {notFound} from 'next/navigation';
+import {notFound,redirect} from 'next/navigation';
 import { Suspense, type ReactNode } from 'react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -61,6 +61,10 @@ import { currentUiTheme } from '@/lib/ui-theme-server';
 import { MonoPageHeader, Note } from '@/components/monolith';
 import { MONOLITH_SECTION_KEYS, monolithDashboardBlocks } from '@/app/dashboard-monolith';
 import { TodayPage } from '@/components/today/today-page';
+import { EmployeeTodayPage } from '@/components/today/employee/today-page';
+import { AdminTodayPage, ManagerTodayPage } from '@/components/today/admin/today-pages';
+import { todayLayoutFor } from '@/lib/today/admin';
+import { assignedApprovalHref, parseAssignedApprovalFocus } from '@/lib/assigned-approval-focus';
 import RouteLoading from '@/components/route-loading';
 
 const rm = (n: unknown) =>
@@ -168,6 +172,38 @@ export default async function DashboardPage({
   const unavailableCode = Array.isArray(rawUnavailable) ? rawUnavailable[0] : rawUnavailable;
   const unavailableModule = MODULE_CATALOG.find((m) => m.code === unavailableCode && !m.isCore) ?? null;
   const tModule = await getTranslations('moduleUnavailable');
+  const notice = unavailableModule && (
+    <Card role="status" className="border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/40">
+      <h2 className="text-sm font-semibold">{tModule('title')}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{tModule('body', { module: unavailableModule.name })}</p>
+    </Card>
+  );
+  // Today by audience (owner decisions, 11 Nov 2026): an employee gets the one-pager, an HR administrator the ranked
+  // administrator page and a manager the team page, each in place of Today over the old dashboard. The payroll and
+  // performance partners, and the explicit team workbench, keep the path below (Today with the dashboard under it).
+  const layout = todayLayoutFor(scoped.s.roles, isAdmin(scoped.s));
+  const ownEmploymentId = typeof homeQuery?.employmentId === 'string' ? homeQuery.employmentId : undefined;
+  const recommend = typeof homeQuery?.recommend === 'string' ? homeQuery.recommend : undefined;
+  if (layout === 'employee' && homeQuery?.workspace !== 'team') {
+    return <EmployeeTodayPage session={scoped.s} scopeIds={scoped.scopeIds} employmentId={ownEmploymentId} notice={notice} />;
+  }
+  // `?recommend=<leave request>` (the leave recommendation link): an administrator's Today groups decisions, so it opens
+  // the request's own review on /approvals, where the recommendation is drawn beside it; Manager Today opens it in place.
+  if (layout === 'administrator' && recommend && homeQuery?.workspace !== 'dashboard') {
+    const focus = (() => { try { return parseAssignedApprovalFocus('leave', recommend); } catch { return null; } })();
+    if (focus) redirect(assignedApprovalHref(focus));
+  }
+  if (layout === 'administrator') {
+    // The earlier administrator dashboard (its cards and each person's saved layout) is no longer drawn under Today. It
+    // stays reachable on its own, without Today above it, only when asked for by name; nothing on Today links to it.
+    if (homeQuery?.workspace === 'dashboard') {
+      return <>{notice}<Suspense fallback={<RouteLoading />}><DashboardMore homeQuery={homeQuery && { ...homeQuery, moduleUnavailable: undefined }} scoped={scoped} /></Suspense></>;
+    }
+    return <AdminTodayPage session={scoped.s} scopeIds={scoped.scopeIds} allCompanies={scoped.scopeIds.length >= scoped.allowedCount} notice={notice} all={homeQuery?.needs === 'all'} employmentId={ownEmploymentId} />;
+  }
+  if (layout === 'manager' && homeQuery?.workspace !== 'team') {
+    return <ManagerTodayPage session={scoped.s} scopeIds={scoped.scopeIds} allCompanies={scoped.scopeIds.length >= scoped.allowedCount} notice={notice} employmentId={ownEmploymentId} recommend={recommend} />;
+  }
   return (
     <TodayPage
       session={scoped.s}
@@ -177,12 +213,7 @@ export default async function DashboardPage({
       needs={{ all: homeQuery?.needs === 'all', recommend: typeof homeQuery?.recommend === 'string' ? homeQuery.recommend : undefined }}
       // AI v2 W5: the At a glance "Why?" panel the person opened in place.
       why={typeof homeQuery?.why === 'string' ? homeQuery.why : undefined}
-      notice={unavailableModule && (
-        <Card role="status" className="border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/40">
-          <h2 className="text-sm font-semibold">{tModule('title')}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{tModule('body', { module: unavailableModule.name })}</p>
-        </Card>
-      )}
+      notice={notice}
       more={<Suspense fallback={<RouteLoading />}><DashboardMore homeQuery={homeQuery && { ...homeQuery, moduleUnavailable: undefined }} scoped={scoped} /></Suspense>}
     />
   );
