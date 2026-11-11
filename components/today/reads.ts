@@ -28,7 +28,6 @@ import {EntitlementsResolutionFailedError,isModuleEnabled} from '@/core/entitlem
 import {listPendingTasks,pendingTaskSummary,type PendingTaskItem} from '@/core/approvals-inbox';
 import {reopenOwnLeaveReviewTx} from '@/core/assistant-actions/own-leave-store';
 import {leaveCancellationReviews} from '@/core/assistant-actions/leave-change-review-store';
-import {withAccessDisplayRead} from '@/core/access-configuration-lock';
 import {reopenLeaveDecisionReview} from '@/core/assistant-actions/leave-decision-review-store';
 import {readHomeOwnLeaveReviewIndex,readHomeLeaveCancellationReviewIndex,readHomeLeaveDecisionReviewIndex} from '@/core/home-leave-review-presentation';
 import {OwnLeavePreparedReview} from '@/lib/assistant-actions/own-leave-contract';
@@ -122,11 +121,6 @@ const leaveFacts=(leaveType:string,startDate:string,endDate:string,days:number,d
 /** The caller's own prepared review, reopened by its owner as the caller. Anything the owner refuses (changed since,
  * paused, no longer assigned) or fails on leaves the card with its generic title, never a guessed one. */
 async function preparedLeave(s:SessionContext,item:PreparedItem,locale:string):Promise<PreparedLeave|null>{
- // A card's details only: the reopen owners' AI principal and control checks hold the Access lock shared here
- // (core/access-configuration-lock.ts withAccessDisplayRead); Confirm reopens with the owner's own locks.
- return withAccessDisplayRead(()=>preparedLeaveFacts(s,item,locale));
-}
-async function preparedLeaveFacts(s:SessionContext,item:PreparedItem,locale:string):Promise<PreparedLeave|null>{
  try{
   if(item.kind==='leaveApply'){
    const review=OwnLeavePreparedReview.safeParse(preparedBody(await withTenant(s,tx=>reopenOwnLeaveReviewTx(tx,s,item.actionId,locale))));

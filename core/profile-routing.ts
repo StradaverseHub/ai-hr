@@ -198,7 +198,8 @@ export function profileApproverCandidates(ctx:SessionContext){
 export function previewProfileRoutingPolicy(ctx:SessionContext,input:{enabled:boolean;rules:ProfileRouteRule[];version?:1|2|3}){
  return withTenant(ctx,async tx=>{
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
-  const fresh=await freshProfileEditPolicyTx(tx,ctx);
+  // A preview reads: the shared barrier (staging, 11 November 2026). Saving re-reads it under the exclusive one.
+  const fresh=await freshProfileEditPolicySharedTx(tx,ctx);
   return previewRoutingTx(tx,fresh.ctx,{version:input.version??1,revision:readProfileRoutingPolicy(fresh.ctx).revision,enabled:input.enabled,rules:input.rules});
  });
 }

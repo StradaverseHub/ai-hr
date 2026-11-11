@@ -6,6 +6,7 @@ import type { PersonnelFieldDescriptor } from '../lib/personnel-field-registry';
 import { MasterReportAccessError, masterReportFieldsTx } from './employee-master-access';
 import { employeeMasterSubjectsTx } from './employee-master-projection';
 import { withPersonnelPresentationReadTx } from './personnel-read-bounds';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
 
 const DETAILS_BATCH_SIZE = 1000;
 const MAX_DETAIL_CELLS = 500_000;
@@ -24,6 +25,9 @@ export async function readPersonnelListExportDetails(
   if (!companyIds.length) return { fields: [], cells };
 
   return withPersonnelPresentationReadTx(ctx, existingTx, async (tx, current) => {
+    // The export's employee-master projection reads every listed employment: the shared Access lock first, so its
+    // Workforce checks join it instead of holding the exclusive lock for the export (staging, 11 November 2026).
+    await lockAccessConfigurationTx(tx, current.tenantId);
     let catalogue: PersonnelFieldDescriptor[];
     try {
       catalogue = await masterReportFieldsTx(tx, current, companyIds);

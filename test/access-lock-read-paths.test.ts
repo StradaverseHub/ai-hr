@@ -3,14 +3,13 @@
  *
  * After the deploy restart one tenant's pages timed out on the Access lock in both modes: read paths that only
  * display data took the exclusive lock, each one queued behind the last, and every ordinary caller waited behind them.
- * This suite holds the line in three ways, on real PostgreSQL through the repository harness:
- *  - the mechanism: a READ ONLY transaction is granted the shared lock by every exclusive helper, and a display read
- *    (withAccessDisplayRead) makes the mode-joining helpers shared, while commands keep the exclusive lock;
+ * This suite holds the line in two ways, on real PostgreSQL through the repository harness:
+ *  - the mechanism: a report read that takes the shared lock first, and a display read (withAccessDisplayRead), stay
+ *    shared through every mode-joining helper, while commands keep the exclusive lock;
  *  - the guard: an independent pg_locks sampler watches the tenant's Access key while the shell bell, the Home
- *    sections, the worker gate, the Personnel movement and correction reads and an Employee Master run read a
- *    populated tenant, and no exclusive hold may appear;
- *  - the Home prepared-leave card: its reopen holds the lock shared, returns the same review, and the command path
- *    that Confirm uses keeps the exclusive lock.
+ *    sections, the worker gate, the Personnel movement and correction reads, an Employee Master run and the Personnel
+ *    export details read a populated tenant, and no exclusive hold may appear. Any SQL owner on these paths that took
+ *    the exclusive lock of its own would show here too.
  */
 import {randomUUID} from 'node:crypto';
 import {afterAll,afterEach,beforeAll,beforeEach,expect,it,vi} from 'vitest';
@@ -29,19 +28,19 @@ import {hireEmployee} from '../core/org';
 import {movementAttachments,movementHistory,resignationInformation} from '../core/movement';
 import {informationCorrectionHistory} from '../core/information-correction';
 import {runEmployeeMasterReport} from '../core/employee-master-reports';
+import {readPersonnelListExportDetails} from '../core/personnel-list-export-details';
+import {withPersonnelRead} from '../core/personnel-read-bounds';
 import {defaultMasterColumn,type EmployeeMasterSpec} from '../lib/employee-master-report';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
-import {grantAssistant} from '../core/assistant-grant';
-import {prepareOwnLeaveReviewTx,reopenOwnLeaveReviewTx} from '../core/assistant-actions/own-leave-store';
 import {readAtAGlance,readDoneForYou,readNeedsYou} from '../components/today/reads';
 import {todayAudience} from '../lib/today/audience';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 const pause=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 let raw:postgres.Sql;
 beforeAll(async()=>{await migrateTestDb();raw=postgres(process.env.TEST_MIGRATION_DATABASE_URL!,{max:4,onnotice:()=>{}});});
-beforeEach(resetDb);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
+beforeEach(resetDb);afterEach(()=>vi.restoreAllMocks());
 afterAll(async()=>{await raw.end({timeout:5});await closeAll();});
 
 /** Independent observer: every granted hold of the tenant's Access key, by backend transaction and mode. */
@@ -70,23 +69,12 @@ function accessLockSampler(tenantId:string){
 const admin=(b:Base):SessionContext=>({...adminCtx(b),personId:null,grants:[{role:'hr_admin',companyId:null}]});
 const heldMode=(tx:Tx,tenantId:string)=>accessLockModeHeldTx(tx,tenantId);
 
-it('grants a READ ONLY transaction the shared lock from every exclusive helper and keeps commands exclusive',async()=>{
+it('keeps a report read that takes the shared lock first shared through every mode-joining helper, and commands exclusive',async()=>{
  const b=await seedBase(),ctx=admin(b);
- const readOnly=await withTenant(ctx,async tx=>{
-  await lockAccessConfigurationWriteTx(tx,b.tenantId);const direct=await heldMode(tx,b.tenantId);
-  await joinAccessConfigurationTx(tx,b.tenantId);await lockAccessForAiControlCheckTx(tx,b.tenantId);await lockAccessConfigurationWriteTx(tx,b.tenantId);
-  return {direct,after:await heldMode(tx,b.tenantId)};
- },{readOnlySnapshot:true});
- expect(readOnly).toEqual({direct:'S',after:'S'});
- // While a read-only holder keeps the shared lock, an ordinary shared caller is granted at once.
- let release!:()=>void;const hold=new Promise<void>(done=>{release=done;});let entered!:()=>void;const ready=new Promise<void>(done=>{entered=done;});
- const holder=withTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,b.tenantId);entered();await hold;},{readOnlySnapshot:true});
- await ready;
- try{
-  const started=performance.now();
-  await withTenant(ctx,async tx=>{await tx.execute(sql`set local lock_timeout='500ms'`);await lockAccessConfigurationTx(tx,b.tenantId);});
-  expect(performance.now()-started).toBeLessThan(500);
- }finally{release();await holder;}
+ expect(await withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,b.tenantId);await joinAccessConfigurationTx(tx,b.tenantId);await lockAccessForAiControlCheckTx(tx,b.tenantId);
+  return heldMode(tx,b.tenantId);
+ },{readOnlySnapshot:true})).toBe('S');
  // A read-write transaction keeps the exclusive lock for a command, through every helper.
  expect(await withTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,b.tenantId);return heldMode(tx,b.tenantId);})).toBe('X');
  expect(await withTenant(ctx,async tx=>{await joinAccessConfigurationTx(tx,b.tenantId);return heldMode(tx,b.tenantId);})).toBe('X');
@@ -123,6 +111,8 @@ it('reads the shell bell, Home, the worker gate, Personnel movement history and 
  const documents=await movementAttachments(ctx,subject.employmentId,hired.id),corrections=await informationCorrectionHistory(ctx,subject.employmentId);
  const resignation=await resignationInformation(ctx,subject.employmentId);
  const master=await runEmployeeMasterReport(ctx,[b.companyId],{spec});
+ // The Personnel export's details, in one read-only snapshot as the export route reads them.
+ const exported=await withPersonnelRead(ctx,tx=>readPersonnelListExportDetails(ctx,subjects.map(row=>({employmentId:row.employmentId,companyId:b.companyId})),today,tx));
  const locks=await stop();
  console.log('[access-lock-read-paths]',JSON.stringify({exclusive:locks.exclusive,shared:locks.shared}));
  expect(locks.exclusive).toEqual([]);
@@ -134,35 +124,5 @@ it('reads the shell bell, Home, the worker gate, Personnel movement history and 
  expect(doneForYou).toBeDefined();expect(glance).toBeDefined();
  expect(documents).toEqual([]);expect(Array.isArray(corrections)).toBe(true);expect(resignation).toBeDefined();
  expect(master.result.totalRows).toBeGreaterThanOrEqual(3);
-},120_000);
-
-it('reopens a Home prepared-leave card under the shared lock with the same review, while the command path stays exclusive',async()=>{
- vi.stubEnv('AI_CONFIG_SECRET','fictional-review-storage-master-passphrase-12345');
- const b=await seedBase();await setModule(b.tenantId,'assistant','active');
- const today=todayInKualaLumpur(),subject=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Home review applicant',primaryEmail:randomUUID()+'@example.invalid'},
-  companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:today});
- const userId=await createAppUser(b.tenantId,subject.personId,'employee');
- await grantAssistant(adminCtx(b),{appUserId:userId});
- const ctx:SessionContext={...await entitledCtx(b,['employee']),userId,personId:subject.personId,grants:[{role:'employee',companyId:null}]};
- await owner.db.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,entryType:'accrual',days:'10',effectiveOn:today});
- const next=new Date(today+'T00:00:00Z');do{next.setUTCDate(next.getUTCDate()+1);}while([0,6].includes(next.getUTCDay()));
- const nomination={action:'leave.apply' as const,contractVersion:1 as const,employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,date:next.toISOString().slice(0,10),durationType:'full_day' as const};
- const prepared=await withTenant(ctx,tx=>prepareOwnLeaveReviewTx(tx,ctx,nomination,{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId},
-  {reason:'Fictional custody-only private reason',employeeRemark:'Fictional custody-only private remark'},'en'));
- if(prepared.kind!=='prepared')throw Error('Fictional fixture did not prepare a review: '+prepared.kind);
- const reopen=(display:boolean)=>{
-  const read=()=>withTenant(ctx,async tx=>({result:await reopenOwnLeaveReviewTx(tx,ctx,prepared.review.actionId,'en'),mode:await heldMode(tx,b.tenantId)}));
-  return display?withAccessDisplayRead(read):read();
- };
- const card=await reopen(true),command=await reopen(false);
- expect(card.mode).toBe('S');expect(command.mode).toBe('X');
- expect(card.result).toEqual(command.result);
- // The actual Home section, under the sampler: the card's details come back and nothing holds the lock exclusively.
- const stop=accessLockSampler(b.tenantId);
- const needsYou=await readNeedsYou(ctx,{scopeIds:[b.companyId],audience:todayAudience(ctx),today,locale:'en'});
- const locks=await stop();
- console.log('[access-lock-home-prepared]',JSON.stringify({exclusive:locks.exclusive,shared:locks.shared,prepared:needsYou.prepared.length}));
- expect(locks.exclusive).toEqual([]);
- expect(needsYou.prepared.map(item=>item.actionId)).toEqual([prepared.review.actionId]);
- expect(needsYou.prepared[0]).toMatchObject({leave:{days:1}});
+ expect(exported.fields.length).toBeGreaterThan(0);expect(exported.cells.size).toBe(3);
 },120_000);

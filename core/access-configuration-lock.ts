@@ -73,11 +73,6 @@ export async function acquireBoundedAdvisoryLockTx(tx: Tx, key: string, shared: 
     ? await tx.execute<{acquired: boolean}>(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) as acquired`)
     : await tx.execute<{acquired: boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${key},0)) as acquired`);
   if (fast?.acquired === true) return;
-  await waitBoundedAdvisoryLockTx(tx, key, shared);
-}
-
-/** The bounded wait after a missed try, in the mode already decided. */
-async function waitBoundedAdvisoryLockTx(tx: Tx, key: string, shared: boolean): Promise<void> {
   // PostgreSQL 16 refuses a no-wait request whose mode conflicts with a queued waiter even when this
   // transaction already holds the stronger lock, so an exclusive holder re-entering through a shared reader
   // fails the try. It is no waiter: the exclusive hold already covers the shared request, so it returns
@@ -113,32 +108,11 @@ export async function lockAccessConfigurationTx(tx:Tx,tenantId:string){
  * and catalogues. Exclusive, so an editor is serialized against every writer depending on it.
  */
 export async function lockAccessConfigurationWriteTx(tx:Tx,tenantId:string){
-  // Test-only: a shared holder asking for exclusive would deadlock against another one doing the same. A read-only
-  // transaction is exempt: it is granted the shared lock below and can never upgrade.
-  if (process.env.AIHR_ACCESS_LOCK_STRICT === 'on') {
-    const [held] = await tx.execute<{mode: 'X'|'S'|null; read_only: boolean}>(sql`select app.access_lock_mode_held(${tenantId}::uuid) as mode,
-      current_setting('transaction_read_only') = 'on' as read_only`);
-    if (held?.mode === 'S' && held.read_only !== true) throw new Error('Access lock strict mode: shared holder requested the exclusive lock');
+  // Test-only: a shared holder asking for exclusive would deadlock against another one doing the same.
+  if (process.env.AIHR_ACCESS_LOCK_STRICT === 'on' && await accessLockModeHeldTx(tx, tenantId) === 'S') {
+    throw new Error('Access lock strict mode: shared holder requested the exclusive lock');
   }
-  await acquireAccessExclusiveUnlessReadOnlyTx(tx, tenantId);
-}
-
-/**
- * The exclusive Access lock, except in a READ ONLY transaction, which gets the shared lock (staging, 11 November
- * 2026). A read-only transaction cannot change configuration or anything another writer depends on, so it never
- * needs to exclude ordinary writers; the shared lock still excludes every Access editor for the rest of the
- * transaction. Readers in a REPEATABLE READ snapshot see exactly the rows they saw before. This is what keeps a read
- * that reaches a mode-joining helper (joinAccessConfigurationTx, the AI control check) while holding nothing from
- * taking the exclusive lock: the Employee Master report and the Personnel export read 2,000 employments that way.
- * One statement decides the mode and tries it, the same single round trip as the exclusive try it replaces.
- */
-async function acquireAccessExclusiveUnlessReadOnlyTx(tx: Tx, tenantId: string): Promise<void> {
-  const key = accessConfigurationKey(tenantId);
-  const [fast] = await tx.execute<{read_only: boolean; acquired: boolean}>(sql`select current_setting('transaction_read_only') = 'on' as read_only,
-    case when current_setting('transaction_read_only') = 'on' then pg_try_advisory_xact_lock_shared(hashtextextended(${key},0))
-      else pg_try_advisory_xact_lock(hashtextextended(${key},0)) end as acquired`);
-  if (fast?.acquired === true) return;
-  await waitBoundedAdvisoryLockTx(tx, key, fast?.read_only === true);
+  await acquireBounded(tx, tenantId, false);
 }
 
 const accessDisplayRead = new AsyncLocalStorage<true>();
@@ -146,8 +120,9 @@ const accessDisplayRead = new AsyncLocalStorage<true>();
  * A page section or card that only displays what an owner returns (staging, 11 November 2026). Inside it, the
  * mode-joining helpers (joinAccessConfigurationTx, the AI control check, the AI principal read) take the shared Access
  * lock when their transaction holds none, instead of the exclusive lock they keep for callers that may write later.
- * Use it only around an owner call whose result is presentation; an explicit lockAccessConfigurationWriteTx inside is
- * unchanged, and a read-only transaction is shared anyway.
+ * Use it only around an owner call whose result is presentation and whose SQL owners take no exclusive Access lock of
+ * their own (a shared holder asking for it would have to upgrade); an explicit lockAccessConfigurationWriteTx inside is
+ * unchanged.
  */
 export function withAccessDisplayRead<T>(read: () => Promise<T>): Promise<T> {
   return accessDisplayRead.run(true, read);

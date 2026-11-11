@@ -15,10 +15,9 @@ import {pgSqlState} from '../lib/db-error';
  * want shared mode take lockAccessConfigurationTx first; nothing here makes an unconverted caller shared.
  */
 export async function joinAccessConfigurationTx(tx:Tx,tenantId:string):Promise<'S'|'X'>{
- // A display read and a read-only transaction never need the exclusive lock (staging, 11 November 2026).
- const [held]=await tx.execute<{mode:'X'|'S'|null;read_only:boolean}>(sql`select app.access_lock_mode_held(${tenantId}::uuid) as mode,
-  current_setting('transaction_read_only')='on' as read_only`);
- if(held?.mode==='S'||held?.mode!=='X'&&(held?.read_only===true||inAccessDisplayRead())){await lockAccessConfigurationTx(tx,tenantId);return 'S';}
+ // A display read never needs the exclusive lock (staging, 11 November 2026, core/access-configuration-lock.ts).
+ const mode=await accessLockModeHeldTx(tx,tenantId);
+ if(mode==='S'||mode!=='X'&&inAccessDisplayRead()){await lockAccessConfigurationTx(tx,tenantId);return 'S';}
  await lockAccessConfigurationWriteTx(tx,tenantId);
  return 'X';
 }
