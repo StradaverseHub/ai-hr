@@ -223,6 +223,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
+   // Board window 4 (5101): a trigger function, never granted to the application role.
+   'app.attendance_workflow_preview_bind()',
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -253,7 +255,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.access_workforce_list_rows_for_ids(uuid[])','app.access_workforce_permitted_companies(text)','app.access_workforce_picker_facts(uuid[])',
    'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.assistant_rewards_calendar_presentation_choices_v1()',
    'app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()','app.attendance_clock_policy_history(uuid,uuid)',
-   'app.attendance_frozen_actor_identity_keys(jsonb,text)','app.attendance_pending_visible_headers(uuid)','app.bulk_job_access(uuid)',
+   'app.attendance_frozen_actor_identity_keys(jsonb,text)','app.attendance_pending_visible_headers(uuid)',
+   // Board window 4 (5101): the preview binding trigger (owner only) and the superior diagnostic.
+   'app.attendance_workflow_preview_bind()','app.attendance_workflow_superior_diagnostic(uuid,integer)',
+   'app.bulk_job_access(uuid)',
    'app.bulk_job_admit()','app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)',
    'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()',
    'app.bulk_job_fence(uuid,text)','app.bulk_job_held(uuid)','app.bulk_job_input_conforms(jsonb,integer,jsonb)',
@@ -412,6 +417,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const ownerAcl=(acl:string|null)=>acl===null?null:acl.split(ownerRole).join('OWNER');
   const digest=(text:string|null)=>text===null?null:createHash('md5').update(text).digest('hex');
   const combinedRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
+   // Board window 4 (5101): stored Preview Assignment snapshots, append-only and forced RLS.
+   'attendance_workflow_preview':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    'app.access_administrator_assert_pending':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_administrator_guard':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_capability_publication':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
@@ -444,6 +451,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'app',tablename:'movement_revert_job_outcome',policyname:'movement_revert_job_outcome_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'dd91406dbf38ec27c75ca3c02598b2ad',with_check:null},
    {schemaname:'app',tablename:'movement_revert_job_outcome',policyname:'movement_revert_job_outcome_record',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'96504ac7df85a38ba60b8d60fb88d6e4'},
    {schemaname:'public',tablename:'assignment',policyname:'assignment_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'0f9dd65355006232e921e629437f17ed',with_check:null},
+   {schemaname:'public',tablename:'attendance_workflow_preview',policyname:'attendance_workflow_preview_insert',permissive:'PERMISSIVE',roles:'{public}',cmd:'INSERT',qual:null,with_check:'cdc05808fee3cfb686b795e84e860d62'},
+   {schemaname:'public',tablename:'attendance_workflow_preview',policyname:'attendance_workflow_preview_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'5be0ee6aeebbaa48781aed226acba9e1',with_check:null},
    {schemaname:'public',tablename:'bulk_job',policyname:'bulk_job_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'854f996ebf0fabb3d26bab47074b4367',with_check:null},
    {schemaname:'public',tablename:'bulk_job_step',policyname:'bulk_job_step_read',permissive:'PERMISSIVE',roles:'{public}',cmd:'SELECT',qual:'d7dd4940b61e35f349026181b8e2bf9f',with_check:null},
    {schemaname:'public',tablename:'business_unit',policyname:'business_unit_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
