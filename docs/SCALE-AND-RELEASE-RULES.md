@@ -48,37 +48,40 @@ last-resort guard with automatic retry.
 10. **A new column on a populated table** must be nullable or defaulted, and the populated upgrade tests must prove it
    is present and null (see `test/helpers/approved-upgrade.ts` and `test/helpers/prefix-seed.ts`). Upgrade fixtures
    seed only the columns that exist at their prefix.
-11. **Diagnosing on staging:** as `ai_hr_owner`, `pg_stat_activity` shows application rows as
+11. **A new migration's journal `when` must be above every installation's applied watermark.** Drizzle silently skips
+    an entry whose `when` is below the last applied one, so a migration numbered into a gap below an already-installed
+    one never runs there. Check staging's and production's ledger maximum before allocating.
+12. **Diagnosing on staging:** as `ai_hr_owner`, `pg_stat_activity` shows application rows as
     "&lt;insufficient privilege&gt;" with NULL state, so a `state<>'idle'` filter hides them. Use `ps` (backend state
     and CPU) and `pg_locks` instead.
 
 ## The v17 release gate
 
-12. **Every `test/**/*.test.ts` and `*.dom.test.tsx` file runs in the gate, and a skipped test fails `verify`.** Never use
+13. **Every `test/**/*.test.ts` and `*.dom.test.tsx` file runs in the gate, and a skipped test fails `verify`.** Never use
     `skipIf`, `skip` or `todo` for hosted-only measurements. Name them `*.hosted-diagnostic.ts`
     (see `test/performance/HOSTED-DIAGNOSTICS.md`).
-13. **Unit artifacts are flat JSON.** The operator extractor refuses subfolders and binary files under
+14. **Unit artifacts are flat JSON.** The operator extractor refuses subfolders and binary files under
     `$RUNNER_TEMP/aihr-ci`. Write extra evidence bundles beside it.
-14. **Give slow cases headroom.** A case that runs 15 s or more needs an explicit timeout of about 3× its worst gate
+15. **Give slow cases headroom.** A case that runs 15 s or more needs an explicit timeout of about 3× its worst gate
     duration, with a comment naming the measurement. The global limit is 30 s.
-15. **Do not edit files pinned by `.github/ci/*.test.mjs`** (for example `test/r395-org.ts`). Put new setup in a
+16. **Do not edit files pinned by `.github/ci/*.test.mjs`** (for example `test/r395-org.ts`). Put new setup in a
     new helper.
-16. **Focused runs:** dispatch `alpha-focused-checks.yml` from main. A job is cancelled at 20 minutes, so keep each run to
+17. **Focused runs:** dispatch `alpha-focused-checks.yml` from main. A job is cancelled at 20 minutes, so keep each run to
     about 25 database files. Runs on the same `candidate_ref` queue, and a newer pending run cancels the older one.
     Use alias branches for parallel runs, and never push to a branch with a run pending. The split typecheck
     (test files included) only runs when dispatched from the candidate branch itself.
-17. **Never `gh run rerun` a gate.** A database-unit failure needs a fresh full gate; only no-database failures can use
+18. **Never `gh run rerun` a gate.** A database-unit failure needs a fresh full gate; only no-database failures can use
     focused recovery.
 
 ## AI approvals
 
-18. Any change to covered AI source (check `node scripts/ai-provider-data-source-manifest.mjs --check --list`) needs
+19. Any change to covered AI source (check `node scripts/ai-provider-data-source-manifest.mjs --check --list`) needs
     both manifests regenerated and the provider approvals re-bound in `lib/ai/provider-data-approvals.ts`. Only the
     release coordinator re-binds, under a recorded owner approval, with a dated note in
     `docs/reviews/ai-functions-board-source-binding-2026-11.md`.
 
 ## Staging
 
-19. Follow docs/STAGING-RELEASE-QUEUE.md. The staging box is small (2 CPUs, 3.9 GB). Staging runs PgBouncer
+20. Follow docs/STAGING-RELEASE-QUEUE.md. The staging box is small (2 CPUs, 3.9 GB). Staging runs PgBouncer
     (`DATABASE_POOLED_URL`) and the bulk-job worker. A worker that predates managed install receipts is taken over with
     the reviewed `adopt-stopped` mode of `bank_import_worker_upgrade_v1.py` (deploy/systemd/BANK-IMPORT.md).
