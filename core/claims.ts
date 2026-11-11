@@ -1,5 +1,5 @@
 import {parsePageQuery, pageState} from '../lib/pagination';
-import {sortApprovalRows, type ApprovalSort} from '../lib/approvals-sort';
+import {type ApprovalSort} from '../lib/approvals-sort';
 import {assertClaimsProviderSourceTx} from './claims-provider-source';
 import {createHash} from 'node:crypto';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
@@ -3384,7 +3384,8 @@ export type ClaimRow = {
   attachments: { id: string; fileName: string; sizeBytes: number }[];
 };
 
-function rowSelect(delegated=false) {
+/** The claim's own columns of an inbox/list row (no subject identity). */
+function claimRowColumns() {
   return {
     id: claimRequest.id,
     claimTypeId: claimRequest.claimTypeId,
@@ -3402,6 +3403,12 @@ function rowSelect(delegated=false) {
     decidedAt: claimRequest.decidedAt,
     paidAt: claimRequest.paidAt,
     employmentId: claimRequest.employmentId,
+  };
+}
+
+function rowSelect(delegated=false) {
+  return {
+    ...claimRowColumns(),
     claimantName: delegated?sql<string>`approval_subject.employee`:person.fullName,
     employeeCode: delegated?sql<string|null>`approval_subject.employee_code`:employment.employeeCode,
     personId: delegated?sql<string>`approval_subject.person_id`:employment.personId,
@@ -3599,52 +3606,161 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
   });
 }
 
-/** The approvals inbox row set, identical to listPendingClaims: pending requests under the caller's
- * request RLS, the native approval subject, and the delegate org-scope trim. There is deliberately NO
- * company-switcher filter (the base inbox shows every claim the caller may decide across the group).
- * Only identity/sort columns are read here so a page can bound the private details and attachments. */
-async function pendingClaimQueueTx(tx:Tx,ctx:SessionContext){
-  await assertAssignedWorkPrincipalTx(tx,ctx);
-  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,createdAt:claimRequest.createdAt,
-    claimantName:sql<string>`approval_subject.employee`,personId:sql<string>`approval_subject.person_id`})
-    .from(claimRequest)
-    .innerJoin(claimType,eq(claimType.id,claimRequest.claimTypeId))
-    .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
-    .where(eq(claimRequest.status,'pending'))
-    .orderBy(desc(claimRequest.createdAt));
-  return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
+/** The approvals inbox row set, identical to listPendingClaims, as one set-based statement prefix:
+ * pending requests under the caller's request RLS (joined to their claim type, as before), the native
+ * approval subject resolved ONCE per distinct subject employment through the batched owner
+ * app.delegated_approval_subjects (at most 1,000 subjects per call, the owner's own bound), and the delegate
+ * org-scope trim of filterDelegationOrgScopeTx applied to that subject set by the same rule. There is
+ * deliberately NO company-switcher filter (the base inbox shows every claim the caller may decide across
+ * the group). Callers append their own bounded projection over queue_request ⋈ queue_subject.
+ * The former shape ran the scalar subject function once per pending claim row and sorted and paged the
+ * whole queue in memory (34 s per page at 34,000 pending claims). */
+function pendingClaimQueueSql(ctx:SessionContext){
+  // filterDelegationOrgScopeTx's rule: administrators keep every subject; anyone else only the subjects they
+  // can see in their own right or may decide by delegation (any module).
+  const roles=ctx.roles??[],everySubject=roles.includes('hr_admin')||roles.includes('super_admin');
+  return sql`with queue_request as materialized (
+    select request.id,request.employment_id,request.created_at
+    from public.claim_request request
+    join public.claim_type claim_kind on claim_kind.id=request.claim_type_id
+    where request.status='pending'
+   ), queue_employment as materialized (
+    select queued.employment_id,count(*)::int as pending from queue_request queued group by queued.employment_id
+   ), queue_bucket as (
+    select employment_id,(row_number() over(order by employment_id)-1)/1000 as bucket from queue_employment
+   ), queue_batch as (
+    select array_agg(employment_id order by employment_id) as ids from queue_bucket group by bucket
+   ), queue_subject as materialized (
+    select approval_subject.employment_id,approval_subject.person_id,approval_subject.employee,approval_subject.employee_code
+    from queue_batch batch
+    cross join lateral app.delegated_approval_subjects(batch.ids,'claims','claims.claim') approval_subject
+    where ${everySubject?sql`true`:sql`(app.can_see_employment(approval_subject.employment_id)
+     or app.can_decide_via_delegation(approval_subject.employment_id,NULL,NULL))`}
+   )`;
+}
+
+/** The subject facts the inbox row shows (the batched owner's employee/person/code columns). */
+type PendingClaimSubject={employmentId:string;personId:string;employee:string;employeeCode:string|null};
+type PendingClaimQueuePage={total:number;rows:({id:string}&PendingClaimSubject)[]};
+
+/** sortApprovalRows's order in SQL. Its createdAt key is the millisecond JS Date the driver returns, so
+ * the database orders by the same truncated instant; its tie-break is the request id ascending (UUID byte
+ * order is the lowercase-text order localeCompare gives). A name sort needs the JS collator itself, so its
+ * rank arrives from pendingClaimNameRanks instead. */
+function pendingClaimOrderSql(sort:ApprovalSort,alias:string){
+  const at=sql.raw(`date_trunc('milliseconds',${alias}.created_at)`),id=sql.raw(`${alias}.id`);
+  switch(sort){
+    case 'latest':return sql`${at} desc,${id}`;
+    case 'oldest':return sql`${at} asc,${id}`;
+    case 'name_asc':return sql`${sql.raw(`${alias}.name_rank`)} asc,${id}`;
+    case 'name_desc':return sql`${sql.raw(`${alias}.name_rank`)} desc,${id}`;
+    default:return sql`${id}`;
+  }
+}
+
+/** Dense ranks of the subjects' names under the exact comparator sortApprovalRows applies
+ * ((name ?? '').localeCompare), so equal-collating names share a rank and the request id breaks the tie. */
+function pendingClaimNameRanks(subjects:readonly PendingClaimSubject[]){
+  const named=subjects.map(subject=>({employmentId:subject.employmentId,name:subject.employee??''}));
+  named.sort((a,b)=>a.name.localeCompare(b.name));
+  const ranks=new Map<string,number>();let rank=0;
+  named.forEach((subject,index)=>{
+    if(index>0&&named[index-1].name.localeCompare(subject.name)!==0)rank++;
+    ranks.set(subject.employmentId,rank);
+  });
+  return ranks;
+}
+
+const decodeQueuePage=(value:unknown):PendingClaimQueuePage=>{
+  const page=value as {total:number;rows:({id:string}&PendingClaimSubject)[]};
+  if(!Number.isSafeInteger(page?.total)||page.total<0||!Array.isArray(page.rows))throw new TypeError('Invalid claim queue page');
+  return page;
+};
+
+/** One bounded page of the inbox's claim ids, in the inbox's order, with the exact count of the queue. */
+async function pendingClaimQueuePageTx(tx:Tx,ctx:SessionContext,sort:ApprovalSort,limit:number,offset:number):Promise<PendingClaimQueuePage>{
+  if(sort!=='name_asc'&&sort!=='name_desc'){
+    // Count and page over the same materialized queue: one statement, one RLS read, no row leaves SQL
+    // except the requested page.
+    const [row]=await tx.execute<{result:unknown}>(sql`${pendingClaimQueueSql(ctx)}
+     select jsonb_build_object(
+      'total',(select coalesce(sum(employment.pending),0)::int from queue_employment employment
+       join queue_subject subject on subject.employment_id=employment.employment_id),
+      'rows',coalesce((select jsonb_agg(jsonb_build_object('id',page.id,'employmentId',page.employment_id,'personId',subject.person_id,
+        'employee',subject.employee,'employeeCode',subject.employee_code) order by ${pendingClaimOrderSql(sort,'page')})
+       from (select request.id,request.employment_id,request.created_at from queue_request request
+        join queue_subject subject on subject.employment_id=request.employment_id
+        order by ${pendingClaimOrderSql(sort,'request')} limit ${limit} offset ${offset}) page
+       join queue_subject subject on subject.employment_id=page.employment_id),'[]'::jsonb)) as result`);
+    return decodeQueuePage(row?.result);
+  }
+  // A name sort uses the application collator: resolve the subject set once (distinct employments only),
+  // rank it here, and page the requests by that rank in SQL within the same read-only snapshot.
+  const subjects=Array.from(await tx.execute<PendingClaimSubject>(sql`${pendingClaimQueueSql(ctx)}
+   select subject.employment_id as "employmentId",subject.person_id as "personId",subject.employee,subject.employee_code as "employeeCode"
+   from queue_subject subject`));
+  if(!subjects.length)return {total:0,rows:[]};
+  const ranks=pendingClaimNameRanks(subjects),bySubject=new Map(subjects.map(subject=>[subject.employmentId,subject]));
+  const ids=subjects.map(subject=>subject.employmentId),rankList=ids.map(id=>ranks.get(id)!);
+  const [row]=await tx.execute<{result:unknown}>(sql`with queue_rank as materialized (
+    select ranked.employment_id,ranked.name_rank
+    from unnest(string_to_array(${ids.join(',')}::text,',')::uuid[],string_to_array(${rankList.join(',')}::text,',')::int[]) as ranked(employment_id,name_rank)
+   ), queue_request as materialized (
+    select request.id,request.employment_id,ranked.name_rank
+    from public.claim_request request
+    join public.claim_type claim_kind on claim_kind.id=request.claim_type_id
+    join queue_rank ranked on ranked.employment_id=request.employment_id
+    where request.status='pending'
+   )
+   select jsonb_build_object('total',(select count(*)::int from queue_request),
+    'rows',coalesce((select jsonb_agg(jsonb_build_object('id',page.id,'employmentId',page.employment_id) order by ${pendingClaimOrderSql(sort,'page')})
+     from (select request.id,request.employment_id,request.name_rank from queue_request request
+      order by ${pendingClaimOrderSql(sort,'request')} limit ${limit} offset ${offset}) page),'[]'::jsonb)) as result`);
+  const page=decodeQueuePage(row?.result);
+  return {total:page.total,rows:page.rows.map(entry=>({...bySubject.get(entry.employmentId)!,id:entry.id}))};
 }
 
 /** Capture the inbox's selectable claims across pages: the same rows listPendingClaimsPage counts,
- * minus the caller's own (the inbox never offers a checkbox on those). The decide action still
- * reauthorizes every ID. */
+ * minus the caller's own (the inbox never offers a checkbox on those), as ids only from one set-based
+ * statement (no cap; that is the owner's decision). The decide action still reauthorizes every ID. */
 export function listPendingClaimSelection(ctx:SessionContext){
   return withTenant(ctx,async tx=>{
-    const queue=await pendingClaimQueueTx(tx,ctx);
-    return queue.filter(row=>!(ctx.personId!=null&&row.personId===ctx.personId)).map(row=>row.id).sort();
+    await assertAssignedWorkPrincipalTx(tx,ctx);
+    // A large queue's plan cost would otherwise buy JIT compilation that costs more than this OLTP read.
+    await tx.execute(sql`set local jit=off`);
+    const rows=await tx.execute<{id:string}>(sql`${pendingClaimQueueSql(ctx)}
+     select request.id from queue_request request
+     join queue_subject subject on subject.employment_id=request.employment_id
+     ${ctx.personId!=null?sql`where subject.person_id::text is distinct from ${ctx.personId}::text`:sql``}
+     order by request.id`);
+    return Array.from(rows,row=>row.id);
   },{readOnlySnapshot:true});
 }
 
-/** Page the inbox's claims (the exact listPendingClaims set and the inbox's own sort) before reading
- * private details or attachments for the requested page only. */
+/** Page the inbox's claims (the exact listPendingClaims set and the inbox's own sort) in SQL, then read
+ * private details and attachments for the requested page only. */
 export function listPendingClaimsPage(ctx:SessionContext,opts:{
  page?:string;size?:string;sort?:ApprovalSort;
 }={}){
  const page=parsePageQuery(opts);
  return withTenant(ctx,async tx=>{
-  const queue=sortApprovalRows(await pendingClaimQueueTx(tx,ctx),opts.sort??'latest',
-   {id:row=>row.id,name:row=>row.claimantName,createdAt:row=>row.createdAt});
-  const requestIds=queue.slice(page.offset,page.offset+page.limit).map(row=>row.id);
-  if(!requestIds.length)return {rows:[] as ClaimRow[],page:pageState(page,queue.length,0)};
-  const rows=await tx.select(rowSelect(true)).from(claimRequest)
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  await tx.execute(sql`set local jit=off`);
+  const queue=await pendingClaimQueuePageTx(tx,ctx,opts.sort??'latest',page.limit,page.offset);
+  const requestIds=queue.rows.map(row=>row.id);
+  if(!requestIds.length)return {rows:[] as ClaimRow[],page:pageState(page,queue.total,0)};
+  const rows=await tx.select(claimRowColumns()).from(claimRequest)
    .innerJoin(claimType,eq(claimType.id,claimRequest.claimTypeId))
    .leftJoin(claimItem,eq(claimItem.id,claimRequest.claimItemId))
-   .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
    .where(and(eq(claimRequest.status,'pending'),inArray(claimRequest.id,requestIds)));
+  // The subject columns come from the queue's batched subject read, in the same snapshot.
   const attachments=await attachmentsByClaim(tx,requestIds);
-  const byId=new Map(rows.map(row=>[row.id,toRow(row,attachments)]));
-  const ordered=requestIds.flatMap(id=>{const row=byId.get(id);return row?[row]:[];});
-  return {rows:ordered,page:pageState(page,queue.length,ordered.length)};
+  const byId=new Map(rows.map(row=>[row.id,row]));
+  const ordered=queue.rows.flatMap(subject=>{
+   const row=byId.get(subject.id);
+   return row?[toRow({...row,claimantName:subject.employee,employeeCode:subject.employeeCode,personId:subject.personId},attachments)]:[];
+  });
+  return {rows:ordered,page:pageState(page,queue.total,ordered.length)};
  },{readOnlySnapshot:true});
 }
 
