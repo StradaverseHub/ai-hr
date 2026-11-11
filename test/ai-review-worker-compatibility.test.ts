@@ -49,6 +49,22 @@ const PRIOR_PROFILE_PASSPORT_CHECK=`    if (!merged.passportNumber || !merged.pa
 const REVIEWED_PROFILE_PASSPORT_CHECK=`    if (!subject.pack.statutory.validatePassport({personId:subject.personId,...merged},row.personPatch?.fields?.nationality??subject.personRow.nationality)) {
       errors.push('passport_number is required for non-Malaysian employees; check supplied passport dates and country code');`;
 const reviewedChanges=['core/bank-import-worker.ts','core/import-sections.ts','core/import-history.ts'];
+// ccd3a65c (99d5) adds only Import History's section type and read side on top of 3abe. The archived 968
+// worker never calls the new readers, and migration 4900's import_section column is nullable, so the old
+// worker's own inserts are unchanged; the real old-worker ticks below run against that migrated schema.
+const REVIEWED_IMPORT_HISTORY_SOURCE='99d5fe349f99d019b57571886237c63435eba9be';
+// Exact section-type writes in import-sections: each before text appears once in 3abe.
+const REVIEWED_SECTION_TYPE_WRITES:readonly (readonly [string,string])[]=[
+ ['result.runId=await recordSectionRun(ctx,{companyId:null,','result.runId=await recordSectionRun(ctx,{section:p.section,companyId:null,'],
+ ['  const runId = await recordSectionRun(ctx, {\n    companyId:','  const runId = await recordSectionRun(ctx, {\n    section: p.section,\n    companyId:'],
+ ['  p: {\n    companyId: string | null;','  p: {\n    /** ccd3a65c — the section key, stored so Import History can list the run by its type. */\n    section: ImportSection;\n    companyId: string | null;'],
+ ['          errorsTruncated: errors.length > IMPORT_RUN_ERROR_CAP,\n        })','          errorsTruncated: errors.length > IMPORT_RUN_ERROR_CAP,\n          importSection: p.section,\n        })'],
+];
+// import-history only gains readers: the sole removed lines are these two import lists, which it widens.
+const REVIEWED_IMPORT_HISTORY_REMOVALS=[
+ "-import {company,importAttempt as attempt,importAttemptItem as item,importAttemptEvent as historyEvent} from '../db/schema';",
+ "-import {isImportKind,normalizeImportRevertReason,type ImportEventKind,type ImportKind,type ImportPlanBase} from '../lib/import-history';",
+];
 const payrollQueueWorkerPins = {
  'scripts/bank-import-runner.ts': '87be8d289901a19e8b1e74e8e7013b6f634416aa3cf5fe621d2b0b5c159f1e5f',
  'core/bank-import-worker.ts': '0d84069e170914694314c207aea7917cc652c54068c4181a6e884b748f47ef46',
@@ -73,7 +89,11 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
  expect(webClient.replace(WEB_AGENT_ENABLEMENT,WORKER_AGENT_ENABLEMENT).replace(WEB_TAX_BASIS_READER,'')).toBe(workerClient);
  for(const path of unchanged.filter(path=>path!=='db/client.ts'))expect(execFileSync('git',['show',WORKER_SOURCE+':'+path],{encoding:'utf8'}),path+' never reads payslip').not.toMatch(/payslip/i);
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim().split('\n').sort()).toEqual([...reviewedChanges].sort());
- expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,'HEAD','--',...reviewedChanges.filter(path=>path!=='core/bank-import-worker.ts')],{encoding:'utf8'}).trim()).toBe('');
+ expect(execFileSync('git',['diff','--name-only',REVIEWED_IMPORT_HISTORY_SOURCE,'HEAD','--',...reviewedChanges.filter(path=>path!=='core/bank-import-worker.ts')],{encoding:'utf8'}).trim()).toBe('');
+ let reviewedSections=execFileSync('git',['show',REVIEWED_BANK_SOURCE+':core/import-sections.ts'],{encoding:'utf8'});
+ for(const [before,after] of REVIEWED_SECTION_TYPE_WRITES){expect(reviewedSections.split(before),before).toHaveLength(2);reviewedSections=reviewedSections.replace(before,after);}
+ expect(execFileSync('git',['show',REVIEWED_IMPORT_HISTORY_SOURCE+':core/import-sections.ts'],{encoding:'utf8'})).toBe(reviewedSections);
+ expect(execFileSync('git',['diff','-U0',REVIEWED_BANK_SOURCE,REVIEWED_IMPORT_HISTORY_SOURCE,'--','core/import-history.ts'],{encoding:'utf8'}).split('\n').filter(line=>line.startsWith('-')&&!line.startsWith('---'))).toEqual(REVIEWED_IMPORT_HISTORY_REMOVALS);
  for(const [path,hash] of Object.entries(payrollQueueWorkerPins))expect(createHash('sha256').update(readFileSync(path)).digest('hex'),path).toBe(hash);
  const priorSections=execFileSync('git',['show',PRIOR_REVIEWED_BANK_SOURCE+':core/import-sections.ts'],{encoding:'utf8'});
  expect(priorSections.split(PRIOR_PROFILE_PASSPORT_CHECK)).toHaveLength(2);

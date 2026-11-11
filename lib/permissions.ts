@@ -513,7 +513,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   // page floor: an import is listed for Workforce view on at least one of its companies, each item only for
   // its own company, the original file only with view on every company, and Revert only with Workforce
   // maintain on every company. The guard MATCHES the pages' own requireAdmin().
-  {screenKey:'importHistory',href:'/admin/personnel/import/history',labelKey:'admin.users.screen.importHistory',guard:'requireAdmin',routes:['/admin/personnel/import/history','/admin/personnel/import/history/[attemptId]'],hasScopeNote:true},
+  {screenKey:'importHistory',href:'/admin/personnel/import/history',labelKey:'admin.users.screen.importHistory',guard:'requireAdmin',routes:['/admin/personnel/import/history','/admin/personnel/import/history/[attemptId]','/admin/personnel/import/history/runs/[runId]'],hasScopeNote:true},
   {
     // 05d2709a — Possible duplicate employee records. Its OWN column, deliberately NOT a fifth route on
     // personnelAdmin above: managing an employee and reviewing a cross-company list of people who may be
