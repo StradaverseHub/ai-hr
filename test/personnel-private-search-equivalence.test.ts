@@ -16,7 +16,7 @@
  *     which (1) proves answer the shipped search's reads identically, comparing the stored membership, for a group HR administrator, the same
  *     administrator over part of the group, a scoped HR administrator with a Workforce denial and a capability-only
  *     viewer.
- * Over 76 companies with dated organisation runs (ties, an unpublished time, a parent cycle), retained
+ * Over 28 companies in five holding blocks (the scale test covers 76) with dated organisation runs (ties, an unpublished time, a parent cycle), retained
  * classifications, dated and cross-company placements, future corrections, terminated and voided staff, identity
  * numbers and non-ASCII text. Fictional data only. */
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
@@ -138,6 +138,8 @@ function caseList(sample:{name:string;email:string;code:string|null;ic:string|nu
   ['manager','',[{field:'identity',operator:'contains',value:passport.slice(0,3).toUpperCase()},{field:'email',operator:'contains',value:'EXAMPLE'}]],
  ];
  list.push(...filtered.map(([actor,text,filters],i)=>({label:`${actor} filters ${i} ${JSON.stringify(text)}`,actor,text,filters})));
+ // Refused before any read: no term and no filter.
+ list.push({label:'admin no criteria',actor:'admin',text:'   '});
  list.push({label:'admin previous term then filter',actor:'admin',text:'',previous:{text:'tan'},filters:[{field:'name',operator:'contains',value:'lim'}]});
  list.push({label:'manager previous filter then term',actor:'manager',text:'000',previous:{text:'',filters:[{field:'identity',operator:'contains',value:ic.slice(0,3)}]}});
  return list;
@@ -147,7 +149,7 @@ function caseList(sample:{name:string;email:string;code:string|null;ic:string|nu
  * filters and both previous-token merges. */
 function endToEnd(){
  const pick=(label:string)=>cases.filter(c=>c.label===label);
- const chosen=[...cases.filter(c=>c.filters||c.previous),...pick('viewer "tan"'),...pick('manager "tan"'),...pick('adminPart "a"'),
+ const chosen=[...cases.filter(c=>c.filters||c.previous||c.label==='admin no criteria'),...pick('viewer "tan"'),...pick('manager "tan"'),...pick('adminPart "a"'),
   ...pick('admin "fx\\t0000"'),...pick('admin "ÇELİK"'),...cases.filter(c=>c.actor==='admin'&&!c.filters&&!c.previous).filter((_,i)=>i%13===4)];
  return [...new Map(chosen.map(c=>[c.label,c])).values()];
 }
@@ -188,11 +190,11 @@ async function bindVerdicts(){
 
 beforeAll(async()=>{
  await migrateTestDb();
- f=await seedPersonnelSearchFixture({count:160,companies:76,runs:6});
+ f=await seedPersonnelSearchFixture({count:200,companies:28,runs:6});
  const t=f.base.tenantId;
  // Organisation edge cases: two runs published together on one day (ties broken by id), a published run without a
  // publication time (sorted first), and a parent cycle between two companies.
- const tie=f.companies.slice(10,20),cycle=[f.companies[49],f.companies[50]];
+ const tie=f.companies.slice(10,20),cycle=[f.companies[21],f.companies[22]];
  await owner.client`with runs as (insert into company_organisation_run(id,tenant_id,kind,effective_on,state,company_ids,authority_company_ids,mapping,source_epoch,digest,requested_by,published_at)
    select gen_random_uuid(),${t}::uuid,'restructure',${shift(f.today,-30)}::date,'published',${tie}::uuid[],${tie}::uuid[],'[]'::jsonb,0,'tie-'||n,${f.base.adminUserId}::uuid,
      case when n=3 then null else now() end from generate_series(1,3) n returning id,digest)

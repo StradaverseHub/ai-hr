@@ -245,7 +245,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5081_reward_access_observation_due':'f55738cd1422d1c955c722869e0328f9dcafafeb0042fd2b137165606663460a',
  '5082_home_own_clock_day':'345c604cebcc58946865d6cc93cd248ad693165063a67648d6781243ec652c58',
  '5083_home_own_schedule_range':'75045a4ec8c176c55ddc51ddba0b079e6ca8c5662b004a345945ee335efce70a',
- '5086_personnel_search_set_mapping':'6ea2dd551026edf62ae412924aa6ad7660f5de5be3a51a16697e172c8fff4da3',
+ '5086_personnel_search_set_mapping':'20155cc67bc3a1a70ea67a589fb6d94cb42db7b6a3d5f08372d670e1daf0d803',
  '5090_audit_chain_commit_seal':'6ce9bebe8c8de296b3b4a03b1d5d52c90c7df79fbdb0b8f8e0617616001e263e',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){

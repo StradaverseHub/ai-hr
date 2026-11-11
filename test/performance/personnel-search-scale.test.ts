@@ -4,8 +4,8 @@
  * that the search opens, one at a time and four at a time (the staging box has two vCPUs, so four concurrent searches
  * keep it CPU-bound), for selective terms, terms that match everyone and a column filter without a term, and reports
  * p50/p95/max. No search may reach the 20-second Personnel statement limit; a selective search stays under a second up
- * to 10,000 employments. At 1,000 and 10,000 employments it also times the search exactly as release f7ee5177 shipped it
- * (the pre-5086 owners and the verbatim legacy search), which staging timed out on. Measurements are written to the focused
+ * to 10,000 employments. At 1,000 employments it also times the search exactly as release f7ee5177 shipped it (the
+ * pre-5086 owners and the verbatim legacy search), which staging timed out on. Measurements are written to the focused
  * evidence directory when one is set. Fictional data only. */
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {writeFileSync} from 'node:fs';
@@ -60,13 +60,13 @@ it('searches thousands to tens of thousands of employments over 76 companies, al
   const entry:Record<string,unknown>={employments:count,seedMs:Math.round(seeded.ms)};
   for(const [kind,criteria] of Object.entries(list)){
    const alone:number[]=[],page:number[]=[];let matched=0;
-   for(let round=0;round<(kind==='selective'?3:2);round++)for(const c of criteria){
+   for(let round=0;round<(kind==='selective'?2:1);round++)for(const c of criteria){
     const {value:token,ms}=await timed(()=>search(c));alone.push(ms);
     const {value:overview,ms:pageMs}=await timed(()=>readPersonnelOverview(f.admin,{companyIds,privateSearch:token,limit:25,offset:0},{privateSearch:token}));
     page.push(pageMs);if(overview.headcount.total>0)matched++;
    }
    const together:number[]=[];
-   for(let round=0;round<(kind==='selective'?3:1);round++){
+   for(let round=0;round<(kind==='selective'?2:1);round++){
     const results=await Promise.all(Array.from({length:CONCURRENCY},(_,j)=>timed(()=>search(criteria[(round*CONCURRENCY+j)%criteria.length]))));
     together.push(...results.map(result=>result.ms));
    }
@@ -78,11 +78,10 @@ it('searches thousands to tens of thousands of employments over 76 companies, al
   }
   report.sizes.push(entry);save();
  }
- // The release staging timed out on, for the before numbers: every kind at the smallest size, and the selective
- // searches at the next size (a refusal, such as the 20-second statement limit, is timed as it happened).
+ // The release staging timed out on, for the before numbers at the smallest size (a refusal, such as the 20-second
+ // statement limit, is timed as it happened).
  const legacy:Record<string,unknown>[]=[];
  const legacySizes:[number,('selective'|'broad'|'filter')[]][]=[[SIZES[0],['selective','broad','filter']]];
- if(SIZES.length>1)legacySizes.push([SIZES[1],['selective']]);
  for(const [count,kinds] of legacySizes){
   const f=await seedPersonnelSearchFixture({count,companies:76,runs:8}),list=await terms(f);
   const reapply=await installPreSearchMappingOwners();

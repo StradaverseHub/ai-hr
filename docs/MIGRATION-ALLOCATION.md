@@ -54,7 +54,7 @@ idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when sh
 | `9850_reward_access_observation_due` | 3743 / 1793330009850 | `5081_reward_access_observation_due` | 4481 / 1793330004781 | `f55738cd1422d1c955c722869e0328f9dcafafeb0042fd2b137165606663460a` |
 | `9870_home_own_clock_day` | 3744 / 1793330009870 | `5082_home_own_clock_day` | 4482 / 1793330004782 | `345c604cebcc58946865d6cc93cd248ad693165063a67648d6781243ec652c58` |
 | `9873_home_own_schedule_range` | 3745 / 1793330009873 | `5083_home_own_schedule_range` | 4483 / 1793330004783 | `75045a4ec8c176c55ddc51ddba0b079e6ca8c5662b004a345945ee335efce70a` |
-| (allocated directly, branch `claude/personnel-search-scan-20261111`) | — | `5086_personnel_search_set_mapping` | 4486 / 1793330004786 | `6ea2dd551026edf62ae412924aa6ad7660f5de5be3a51a16697e172c8fff4da3` |
+| (allocated directly, branch `claude/personnel-search-scan-20261111`) | — | `5086_personnel_search_set_mapping` | 4486 / 1793330004786 | `20155cc67bc3a1a70ea67a589fb6d94cb42db7b6a3d5f08372d670e1daf0d803` |
 | `4700_audit_chain_commit_seal` | 4100 / 1793330004400 | `5090_audit_chain_commit_seal` | 4490 / 1793330004790 | `6ce9bebe8c8de296b3b4a03b1d5d52c90c7df79fbdb0b8f8e0617616001e263e` |
 
 Order and why:

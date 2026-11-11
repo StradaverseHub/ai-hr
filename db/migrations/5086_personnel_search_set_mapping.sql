@@ -97,9 +97,10 @@ REVOKE ALL ON FUNCTION app._personnel_company_tags(uuid[],date) FROM PUBLIC,ai_h
 -- Same signature, owner and grants: app._personnel_employment_tags (5020). The subjects, values and refusal paths
 -- are unchanged; the shortcut companies' tags come from one organisation read, and the dated company and retained
 -- classification of every subject are joined sets (hashed, as in app.personnel_overview_facts) instead of one indexed
--- lookup and one scan of the classifications per subject. The configuration now also turns nested loops off.
+-- lookup and one scan of the classifications per subject. The configuration now also turns nested loops off, and
+-- with them JIT compilation (a disabled join's cost would otherwise compile this short statement on every call).
 CREATE OR REPLACE FUNCTION app._personnel_employment_tags(p_employments uuid[],p_day date) RETURNS TABLE(employment_id uuid,tags jsonb)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET enable_nestloop=off AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET enable_nestloop=off SET jit=off AS $$
  -- A join, not id = ANY(array): a runtime array parameter is not hashed, and a per-row scan of a
  -- whole-tenant subject array is quadratic.
  WITH subjects AS MATERIALIZED (
@@ -666,10 +667,10 @@ END $$;
 -- excluded when the JavaScript rule (lib/employee-search.ts and the private-search identity rule) would exclude it
 -- (a row with any non-ASCII text is always kept):
 -- p_raw and p_folded are the term as matchesEmployeeSearch lowers and folds it, p_needle as toLocaleLowerCase
--- lowers it, and p_nric the separator-free NRIC.
+-- lowers it, and p_nric the separator-free NRIC. Nested loops and JIT compilation are off, as in the resolver above.
 CREATE FUNCTION app.personnel_search_candidates(p_scope uuid[],p_every boolean,p_none boolean,p_raw text,p_folded text,p_needle text,p_nric text,p_identity text[])
 RETURNS TABLE(population integer,value jsonb)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET enable_nestloop=off AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET enable_nestloop=off SET jit=off AS $$
  WITH permitted_companies AS MATERIALIZED (
    SELECT c.id
    FROM public.company c
