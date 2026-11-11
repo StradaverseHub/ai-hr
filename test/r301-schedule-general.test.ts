@@ -741,13 +741,16 @@ describe('G. General has scoped ownership; standalone and create forms retain fu
     expect(full).toContain('name="lateGracePeriodMinutes"');
     expect(full).toContain('name="applyToEarlyOt"');
     expect(panel, 'legacy groups can save the base pool from General').toContain('name="allowedShiftsEditor"');
-    // c03670cc — the Duty Roster (switch + rotation) is in General now, after Shift Allowed.
+    // 2f803985 — one Working Day / Schedule Pattern section: Step 1 Shift Allowed, then the cycle. No
+    // separate Duty Roster block or switch.
     const general = elementById(await renderEdit(group.id), 'section-general');
     expect(general).toContain('name="allowedShiftIds"');
     expect(general).toContain('name="cycle"');
-    expect(general).toContain('data-schedule-control="duty"');
+    expect(general).not.toContain('data-schedule-control="duty"');
+    expect(general).not.toContain('data-schedule-duty-roster');
+    expect(general.indexOf('data-schedule-working-pattern'), 'the consolidated section is drawn').toBeGreaterThan(-1);
     expect(general.indexOf(esc(en.scheduleGroupEditor.shiftAllowed)), 'Shift Allowed comes first')
-      .toBeLessThan(general.indexOf('data-schedule-duty-roster'));
+      .toBeLessThan(general.indexOf('name="cycle"'));
 
     // And Add New: the retired rules/new page body. Here the form DOES draw a Cancel, because Add Schedule
     // has no record to go back to and "Back to Schedule" and "Cancel" are the same destination for it.

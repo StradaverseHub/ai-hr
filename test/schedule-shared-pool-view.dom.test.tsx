@@ -16,11 +16,12 @@ vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>create
 vi.mock('../core/schedule-group-controls',()=>({scheduleGroupControls:async()=>({label:null,dutyRosterControl:false,revisions:[]})}));
 vi.mock('../components/attendance-settings-navigation',()=>({AttendanceSettingsNavigation:()=>null}));
 vi.mock('../app/admin/attendance-policy/rule-actions',()=>({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
-vi.mock('../app/admin/attendance/schedule/actions',()=>({saveScheduleGroupAttendanceAction:vi.fn(),saveScheduleGroupOvertimeAction:vi.fn(),saveScheduleGroupControlAction:vi.fn(),saveScheduleGroupAllowedShiftsAction:vi.fn()}));
-vi.mock('../components/schedule-rotation-editor',()=>({ScheduleRotationEditor:()=>null}));
+vi.mock('../app/admin/attendance/schedule/actions',()=>({saveScheduleGroupAttendanceAction:vi.fn(),saveScheduleGroupOvertimeAction:vi.fn(),saveScheduleGroupControlAction:vi.fn(),saveScheduleGroupAllowedShiftsAction:vi.fn(),saveScheduleGroupWeekAction:vi.fn()}));
+vi.mock('../components/schedule-rotation-editor',()=>({ScheduleRotationEditor:()=>null,StepMark:()=>null}));
 vi.mock('../packs/attendance/service',()=>({
   getScheduleRotation:async()=>({versions:[],revision:'pool-version',memberships:[{shiftId:'shared-one'},{shiftId:'shared-two'}]}),
   workingShiftSchedule:()=>({normalMinutes:480,shiftEnd:'18:00'}),
+  legacyOvertimePatternIdForRule:async()=>null,
 }));
 vi.mock('../core/roster',()=>({listShiftsForTenant:async()=>['one','two'].map(key=>({
   id:`shared-${key}`,name:`Shared shift ${key}`,code:`SHARED-${key}`,ruleId:'another-default-group',type:'normal',startTime:'09:00',endTime:'18:00',

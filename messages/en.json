@@ -13685,7 +13685,10 @@
       "shiftsInGroupCheckTitle": "Check before you save",
       "shiftsInGroupWarning": "Saving this week changes working days for {count} shift(s): {names}. Overtime changes for anyone on those shifts from the day you save.",
       "shiftsInGroupEmploymentsWarning": "{count} employee(s) placed directly in this group also follow it.",
-      "shiftsInGroupNothingUntilSave": "Nothing changes until you press Save."
+      "shiftsInGroupNothingUntilSave": "Nothing changes until you press Save.",
+      "otMovedNote": "Overtime bands, rates, rounding and early overtime for this group are now in Overtime Patterns › 1. General Settings.",
+      "otMovedOpen": "Open",
+      "otSettingPending": "The Overtime Setting section (before and after shift, approval method, lateness offset and rounding) will be added here once Payroll is proven to receive its overtime figures. Until then this group’s overtime works exactly as it does today."
     },
     "leaveConfigLeaveCredit": {
       "pageDescription": "Credits earned by working a rest day, off day or public holiday, and the Replacement Leave that uses them."
@@ -14196,7 +14199,17 @@
       "poolHistorical": "Retained unavailable shifts",
       "poolHistoricalHelp": "These saved references are kept for review. Remove or replace them explicitly before saving a new rotation; they cannot be selected again.",
       "poolRemoveNamed": "Remove {shift} from selected shifts",
-      "poolRemove": "Remove"
+      "poolRemove": "Remove",
+      "methodWorkingWeek": "Working Week",
+      "methodWeekly": "Weekly Pattern",
+      "methodDaily": "Daily Pattern",
+      "methodHint": "Working Week repeats one week. Weekly Pattern repeats several weeks; Daily Pattern repeats a cycle of days. All three use the same Day Type and Shift table.",
+      "stepDays": "Day Type and Shift for each day",
+      "weeksCount": "Number of weeks",
+      "daysCount": "Number of days",
+      "standardWeekHint": "The Standard group uses Working Week only. On working days each employee works the hours of their own assigned shift.",
+      "shiftFromEmployee": "Employee's own shift",
+      "saveWeek": "Save working week"
     }
   },
   "topbar": {
@@ -29461,7 +29474,12 @@
     "positionSearch": "Search positions",
     "loadMorePositions": "Load more positions",
     "attendanceFormulaBinding": "Attendance formula result set: {id}",
-    "chooseOneCompany": "Select one company in the company switcher at the top of the screen before saving a new pattern. The new pattern belongs to that company."
+    "chooseOneCompany": "Select one company in the company switcher at the top of the screen before saving a new pattern. The new pattern belongs to that company.",
+    "legacyGeneralSettings": "1. General Settings",
+    "legacyGroup": "Schedule Group: {name}",
+    "legacyOpenGroup": "Open Schedule Group",
+    "legacyMovedHelp": "These overtime bands, rates, rounding and early overtime settings moved here from the Schedule Group. They look and work exactly as before; each save is kept as a new version of this pattern.",
+    "legacyGroupGone": "The Schedule Group behind this pattern no longer exists, so its overtime bands cannot be edited. Earlier versions are kept."
   },
   "systemTestingWorkspace": {
     "title": "System Testing",
@@ -37815,7 +37833,7 @@
     "noShifts": "No shifts in this list.",
     "includeMarked": "Include {count} selected →",
     "excludeMarked": "← Exclude {count} selected",
-    "rotationPoolSave": "This list shows the rotation saved for {date}. To change the pool, save it with a new rotation in the Duty Roster section below.",
+    "rotationPoolSave": "This list shows the pattern saved for {date}. To change the allowed shifts, save them with a new pattern below.",
     "saveShiftPool": "Save allowed shifts",
     "currentRotation": "{days}-day rotation effective from {date}",
     "company": "Company",

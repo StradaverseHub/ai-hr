@@ -13685,7 +13685,10 @@
       "shiftsInGroupCheckTitle": "保存前请检查",
       "shiftsInGroupWarning": "保存此工作周将更改 {count} 个班次的工作日：{names}。这些班次上所有人的加班计算将从保存当天起改变。",
       "shiftsInGroupEmploymentsWarning": "直接归入此组的 {count} 名员工也将遵循此设定。",
-      "shiftsInGroupNothingUntilSave": "在您按下保存之前，不会有任何变化。"
+      "shiftsInGroupNothingUntilSave": "在您按下保存之前，不会有任何变化。",
+      "otMovedNote": "此组的加班区间、费率、取整和提前加班设置现已移至 加班模式 › 1. 常规设置。",
+      "otMovedOpen": "打开",
+      "otSettingPending": "加班设置部分（班前和班后加班、审批方式、迟到抵扣和取整）将在确认薪资能收到其加班数据后添加到此处。在此之前，此组的加班计算与现在完全相同。"
     },
     "leaveConfigLeaveCredit": {
       "pageDescription": "在休息日、休假日或公共假期工作所获得的额度，以及使用这些额度的补休假。"
@@ -14196,7 +14199,17 @@
       "poolHistorical": "保留的不可用班次",
       "poolHistoricalHelp": "这些已保存的引用保留供您查看。保存新轮班前，请明确移除或替换它们；移除后无法重新选择。",
       "poolRemoveNamed": "从已选班次中移除 {shift}",
-      "poolRemove": "移除"
+      "poolRemove": "移除",
+      "methodWorkingWeek": "工作周",
+      "methodWeekly": "每周模式",
+      "methodDaily": "每日模式",
+      "methodHint": "工作周重复一周。每周模式重复数周；每日模式按天数循环重复。三者都使用同一张日类型和班次表。",
+      "stepDays": "每天的日类型和班次",
+      "weeksCount": "周数",
+      "daysCount": "天数",
+      "standardWeekHint": "标准组仅使用工作周。在工作日，每位员工按其本人所分配班次的时间工作。",
+      "shiftFromEmployee": "员工本人的班次",
+      "saveWeek": "保存工作周"
     }
   },
   "topbar": {
@@ -29461,7 +29474,12 @@
     "positionSearch": "搜索职位",
     "loadMorePositions": "加载更多职位",
     "attendanceFormulaBinding": "考勤公式结果集：{id}",
-    "chooseOneCompany": "保存新模式前，请在屏幕顶部的公司切换器中选择一家公司。新模式将归属该公司。"
+    "chooseOneCompany": "保存新模式前，请在屏幕顶部的公司切换器中选择一家公司。新模式将归属该公司。",
+    "legacyGeneralSettings": "1. 常规设置",
+    "legacyGroup": "排班组：{name}",
+    "legacyOpenGroup": "打开排班组",
+    "legacyMovedHelp": "这些加班区间、费率、取整和提前加班设置已从排班组移至此处，外观和功能与之前完全相同；每次保存都会记录为此模式的新版本。",
+    "legacyGroupGone": "此模式对应的排班组已不存在，因此无法编辑其加班区间。之前的版本仍会保留。"
   },
   "systemTestingWorkspace": {
     "title": "系统测试",
@@ -37815,7 +37833,7 @@
     "noShifts": "此列表没有班次。",
     "includeMarked": "纳入所选的 {count} 项 →",
     "excludeMarked": "← 排除所选的 {count} 项",
-    "rotationPoolSave": "此列表显示为 {date} 保存的轮班。如需更改班次列表，请在下方值班表部分随新的轮班一起保存。",
+    "rotationPoolSave": "此列表显示为 {date} 保存的模式。如需更改允许的班次，请在下方随新的模式一起保存。",
     "saveShiftPool": "保存允许的班次",
     "currentRotation": "{days} 天轮班，自 {date} 起生效",
     "company": "公司",

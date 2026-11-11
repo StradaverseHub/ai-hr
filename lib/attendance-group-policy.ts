@@ -4,11 +4,16 @@
 import {overtimeDate,overtimeInteger,overtimeKeys,overtimeObject,overtimeRefuse,overtimeUuid} from './overtime-pattern-schema';
 export const ATTENDANCE_POLICY_DAY_CLASSES=['normal','off','rest','publicHoliday','replacementHoliday'] as const;
 export type AttendancePolicyDayClass=typeof ATTENDANCE_POLICY_DAY_CLASSES[number];
-export const ATTENDANCE_POLICY_ROUNDING_STEPS=[5,10,15,30,60] as const;
+/** 2f803985 adds the 45-minute step the Overtime Setting offers (15, 30, 45); 5, 10 and 60 stay valid for stored policies. */
+export const ATTENDANCE_POLICY_ROUNDING_STEPS=[5,10,15,30,45,60] as const;
 export type AttendanceGroupPolicy={
  version:1;
  clock:{pairing:'auto'|'firstInLastOut';minimumIntervalMinutes:number;lateGraceMinutes:number;earlyGraceMinutes:number;skipLatenessIfIncomplete:boolean};
  overtime:{enabled:boolean;beforeShift:boolean;afterShift:boolean;allowBackdatedWithoutClock:boolean;splitAtMidnight:boolean;offsetLateness:boolean;
+  /** 2f803985 — show a lateness exception for lateness that remains after the overtime offset. Only valid
+   * with offsetLateness. Optional so policies stored before it keep validating (absent means off). Not yet
+   * consumed: exception display arrives with the ADR-0134 execution release. */
+  showLatenessExceptionAfterOffset?:boolean;
   approval:'manual'|'auto';autoMethod:'actual'|'preApproved'|'intersect';rounding:{mode:'none'|'down'|'up'|'nearest';step:typeof ATTENDANCE_POLICY_ROUNDING_STEPS[number]|null};
   days:Record<AttendancePolicyDayClass,{minimumMinutes:number;maximumMinutes:number|null;patternVersionId:string|null}>};
 };
@@ -27,12 +32,15 @@ export function validateAttendanceGroupPolicy(raw:unknown,maxPeriodMinutes:numbe
  const clock=overtimeObject(root.clock,'policy.clock');
  overtimeKeys(clock,['pairing','minimumIntervalMinutes','lateGraceMinutes','earlyGraceMinutes','skipLatenessIfIncomplete'],'policy.clock');
  const ot=overtimeObject(root.overtime,'policy.overtime');
- overtimeKeys(ot,['enabled','beforeShift','afterShift','allowBackdatedWithoutClock','splitAtMidnight','offsetLateness','approval','autoMethod','rounding','days'],'policy.overtime');
+ overtimeKeys(ot,['enabled','beforeShift','afterShift','allowBackdatedWithoutClock','splitAtMidnight','offsetLateness','showLatenessExceptionAfterOffset','approval','autoMethod','rounding','days'],'policy.overtime');
  const enabled=flag(ot.enabled,'policy.overtime.enabled'),rounding=overtimeObject(ot.rounding,'policy.overtime.rounding');
  overtimeKeys(rounding,['mode','step'],'policy.overtime.rounding');
  const mode=choice(rounding.mode,['none','down','up','nearest'] as const,'policy.overtime.rounding.mode');
  if(mode==='none'?rounding.step!==null:!ATTENDANCE_POLICY_ROUNDING_STEPS.includes(rounding.step as never))
-  overtimeRefuse('invalid','policy.overtime.rounding.step','No rounding requires no step; otherwise choose 5, 10, 15, 30 or 60 minutes.');
+  overtimeRefuse('invalid','policy.overtime.rounding.step','No rounding requires no step; otherwise choose 5, 10, 15, 30, 45 or 60 minutes.');
+ const offsetLateness=flag(ot.offsetLateness,'policy.overtime.offsetLateness');
+ const showException=Object.hasOwn(ot,'showLatenessExceptionAfterOffset')?flag(ot.showLatenessExceptionAfterOffset,'policy.overtime.showLatenessExceptionAfterOffset'):undefined;
+ if(showException&&!offsetLateness)overtimeRefuse('invalid','policy.overtime.showLatenessExceptionAfterOffset','Show Lateness Exception After Offset needs Offset Overtime by Lateness.');
  const rawDays=overtimeObject(ot.days,'policy.overtime.days');overtimeKeys(rawDays,[...ATTENDANCE_POLICY_DAY_CLASSES],'policy.overtime.days');
  const days={} as AttendanceGroupPolicy['overtime']['days'];
  for(const key of ATTENDANCE_POLICY_DAY_CLASSES){
@@ -48,7 +56,8 @@ export function validateAttendanceGroupPolicy(raw:unknown,maxPeriodMinutes:numbe
   lateGraceMinutes:overtimeInteger(clock.lateGraceMinutes,0,max,'policy.clock.lateGraceMinutes'),earlyGraceMinutes:overtimeInteger(clock.earlyGraceMinutes,0,max,'policy.clock.earlyGraceMinutes'),
   skipLatenessIfIncomplete:flag(clock.skipLatenessIfIncomplete,'policy.clock.skipLatenessIfIncomplete')},
   overtime:{enabled,beforeShift:flag(ot.beforeShift,'policy.overtime.beforeShift'),afterShift:flag(ot.afterShift,'policy.overtime.afterShift'),
-   allowBackdatedWithoutClock:flag(ot.allowBackdatedWithoutClock,'policy.overtime.allowBackdatedWithoutClock'),splitAtMidnight:flag(ot.splitAtMidnight,'policy.overtime.splitAtMidnight'),offsetLateness:flag(ot.offsetLateness,'policy.overtime.offsetLateness'),
+   allowBackdatedWithoutClock:flag(ot.allowBackdatedWithoutClock,'policy.overtime.allowBackdatedWithoutClock'),splitAtMidnight:flag(ot.splitAtMidnight,'policy.overtime.splitAtMidnight'),offsetLateness,
+   ...(showException===undefined?{}:{showLatenessExceptionAfterOffset:showException}),
    approval:choice(ot.approval,['manual','auto'] as const,'policy.overtime.approval'),autoMethod:choice(ot.autoMethod,['actual','preApproved','intersect'] as const,'policy.overtime.autoMethod'),
    rounding:{mode,step:rounding.step as AttendanceGroupPolicy['overtime']['rounding']['step']},days}};
 }

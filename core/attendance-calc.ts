@@ -18,7 +18,7 @@
  */
 import type { DayType } from './attendance';
 import type { ResolvedAttendanceRule, ResolvedOtRow } from './attendance-rule';
-import type {AttendanceGroupPolicy,AttendancePolicyDayClass} from '../lib/attendance-group-policy';
+import {ATTENDANCE_POLICY_ROUNDING_STEPS,type AttendanceGroupPolicy,type AttendancePolicyDayClass} from '../lib/attendance-group-policy';
 
 export type PolicyOvertimeDurationStep={kind:'disabled'|'belowMinimum'|'maximum'|'rounding'|'preApprovedLimit'|'periodLimit';before:number;after:number};
 /** The canonical day owner calls this ONCE per business-day classification after evidenced breaks,
@@ -34,7 +34,7 @@ export function finalizePolicyOvertimeDuration(input:{policy:AttendanceGroupPoli
  const day=policy.days[dayClass];
  if(!day||!valid(day.minimumMinutes)||day.maximumMinutes!==null&&(!valid(day.maximumMinutes)||day.maximumMinutes<day.minimumMinutes))throw Error('Invalid day-specific overtime thresholds.');
  const {mode,step}=policy.rounding;
- if(!['none','down','up','nearest'].includes(mode)||(mode==='none'?step!==null:!([5,10,15,30,60] as readonly unknown[]).includes(step)))throw Error('Invalid overtime rounding policy.');
+ if(!['none','down','up','nearest'].includes(mode)||(mode==='none'?step!==null:!(ATTENDANCE_POLICY_ROUNDING_STEPS as readonly unknown[]).includes(step)))throw Error('Invalid overtime rounding policy.');
  if(raw===null)return {status:'unavailable',reason:'durationUnknown'};
  const steps:PolicyOvertimeDurationStep[]=[];
  let minutes=raw;
