@@ -616,8 +616,13 @@ describe('ADR-0076 §4 — the run-level circuit breaker', () => {
   });
 
   it('TRIPS on a uniform global mis-key that every per-employee detector rates as unremarkable', async () => {
-    // +25% for everyone. net-swing's 30% default does NOT fire per employee, which is exactly the blind
+    // +25% for everyone. With the company's per-employee threshold at 30% (its Salary payroll loop setting, the one
+    // net-swing threshold since 11 November 2026), net-swing does NOT fire per employee, which is exactly the blind
     // spot this breaker exists to cover.
+    await owner.db.insert(terasPayrollLoopSetting).values({
+      tenantId: b.tenantId, companyId: b.companyId, version: 1, checkInterval: 'daily', swingThresholdBp: 3000, swingExclusions: [],
+      remindersEnabled: true, source: 'admin', changedByUserId: b.adminUserId,
+    });
     const { current } = await twoCycles('4000.00', '5000.00');
     await evaluateBatchAnomalies(a, { batchId: current });
     const perEmployee = await liveVerdicts(current);
