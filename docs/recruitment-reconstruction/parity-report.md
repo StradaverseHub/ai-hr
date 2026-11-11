@@ -391,3 +391,44 @@ median 9.6 ms; Overview per-job counts median 2.37 s, streamed separately under 
 
 The 6 failing files and 53 tests are the known set waiting for the owner's re-recorded provider-data approval. No
 recruitment test failed.
+
+## Slice 10 — Agencies and headhunters (commit c10ae9490)
+
+### Local checks (private Postgres, port 55440)
+
+After three independent review rounds (a confirmed forged-accept route closed twice, removal of a look-alike's data
+closed, hardening and a per-recorder daily cap added) and a rendering round: `recruitment-agencies` 20+ cases pass;
+the slice's wider set of 31 files passed 538 of 539 tests, the one failure being the new problem-parameter source test,
+which passed 8/8 after it was narrowed. Bell timing with 201 companies: 9.4 ms (group-wide administrator), 46 ms
+(company-scoped Recruiting Partner), 5 ms (recruiter).
+
+### Rendered (case 74; local dev server, fictional data)
+
+- Settings › Agencies: a tag, an agency, a Headhunter contract (20%, 1 Nov–1 Dec 2026, HR Admin as contact) and a
+  consultant; the contract page says the fee rate is for reference only.
+- The contract released to Data analyst ("Usable today").
+- Four submissions: a new person accepted at once (source Agency on the board); the employee-referral candidate
+  refused ("applied earlier through another channel and that application still protects it"); the careers applicant
+  waiting as "Same person"; a different name with the same e-mail and mobile waiting as "Possible match".
+- Review: accepting the "Same person" onto the existing candidate refused because she already has an active
+  application for the job; reject with reason works and offers "Remove personal data"; the possible match accepted
+  as a new candidate; the application page shows the agency, contract, consultant and date under "Agency".
+- My tasks: "Agency contract ending soon … Dec 1, 2026 · Open contract" for the HR contact.
+- Found while rendering and fixed in this commit: Recruitment refusals used `?error=`, which the global toast showed as
+  a raw code (e.g. "duplicate_application") before wiping the page's own message — on every Recruitment page since
+  slice 1. They now use `?problem=`; a real repeat submission shows "This agency has already submitted this person to
+  this job…" on the page with no toast. Also fixed: a doubled colon, a raw source code and the reminder's date and
+  button label.
+
+### GitHub Actions focused runs (commit c10ae9490, 2026-11-11)
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43040321669 | Whole-repo type check (three compilers) | PASS: 8.8 GB, 5.0 GB and 8.4 GB peaks |
+| 43040321669 | Production build (`linux-build`) | PASS |
+| 43040321669 | Selected tests, no-DB batch (34 files, 636 tests) | 33 PASS; 1 FAIL: `provider-analysis-policy` (9) |
+| 43040321669 | Selected tests, DB batch (30 files, 545 tests) | 25 PASS, including recruitment-agencies; 5 FAIL, 44 tests: the known AI files |
+| 43040340069 | Selected tests, 21 files including recruitment-problem-param, recruitment-tasks and the Home, mobile and notification suites | PASS: 228 tests |
+
+The 6 failing files and 53 tests are the known set waiting for the owner's re-recorded provider-data approval. No
+recruitment test failed.
