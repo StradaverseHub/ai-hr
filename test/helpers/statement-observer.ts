@@ -49,8 +49,9 @@ export async function explainStatements(statements:readonly Captured[]):Promise<
     const rows=await tx.savepoint(sp=>sp.unsafe(`explain (analyze, buffers, format json) ${text}`,statement.params as never[]));
     const plan=(rows[0] as Record<string,unknown>)['QUERY PLAN'] as [{Plan:PlanNode;'Execution Time':number;'Planning Time':number;JIT?:{Timing?:{Total?:number}}}];
     // JIT compilation is part of execution time; reported apart because it is the cost an OLTP read most often need not pay.
+    const jit=plan[0].JIT?.Timing?.Total;
     out.push({ordinal,sql:text.slice(0,300),executionMs:Math.round(plan[0]['Execution Time']*100)/100,planningMs:Math.round(plan[0]['Planning Time']*100)/100,
-     jitMs:plan[0].JIT?.Timing?.Total==null?null:Math.round(plan[0].JIT.Timing.Total*100)/100,hotspots:hotspots(plan[0].Plan)});
+     jitMs:jit==null?null:Math.round(jit*100)/100,hotspots:hotspots(plan[0].Plan)});
    }catch(error){out.push({ordinal,sql:text.slice(0,300),executionMs:null,planningMs:null,hotspots:[],error:String(error).slice(0,300)});}
   }
   await tx.unsafe('select 1');

@@ -37,7 +37,7 @@ export async function buildScaleFixture(b:Base,opts:Readonly<{employments?:numbe
  const companyOf:string[]=[];
  staffed.forEach((id,i)=>{const n=Math.max(1,Math.round(total*weights[i]/sum));for(let k=0;k<n;k++)companyOf.push(id);});
  companyOf.length=Math.min(companyOf.length,total);while(companyOf.length<total)companyOf.push(staffed[0]);
- const people=[];
+ const people:{id:string}[]=[];
  for(const part of chunk(companyOf.map((_,i)=>({tenantId:b.tenantId,fullName:`Fictional Person ${String(i).padStart(4,'0')} ${['Tan','Lim','Wong','Raj','Aziz','Lee','Ng','Chong'][i%8]}`,
   primaryEmail:`scale-${i}-${randomUUID().slice(0,8)}@fixture.test`})),500))
   people.push(...await owner.db.insert(schema.person).values(part).returning({id:schema.person.id}));
@@ -106,11 +106,11 @@ export async function buildScaleFixture(b:Base,opts:Readonly<{employments?:numbe
  // The domain-event history: orchestrator receipts among ~30k unrelated events (payroll, feedback, hires, holidays).
  const kinds=[['payroll','payroll.anomaly.flagged'],['feedback','feedback.release.recorded'],['payroll','payroll.anomaly.evaluated'],['holiday','holiday.replacement.reconciled'],
   ['feedback','feedback.plan.drafted'],['employment','employment.hired'],['employee','employee.tax-scheme.selected']] as const;
- const events=Array.from({length:eventCount},(_,i)=>{const [aggregateType,eventType]=kinds[i%kinds.length],subject=aggregateType==='employment'||aggregateType==='employee'?employments[i%employments.length].id:null;
+ const events:(typeof schema.domainEvent.$inferInsert)[]=Array.from({length:eventCount},(_,i)=>{const [aggregateType,eventType]=kinds[i%kinds.length],subject=aggregateType==='employment'||aggregateType==='employee'?employments[i%employments.length].id:null;
   return {tenantId:b.tenantId,aggregateType,aggregateId:subject??randomUUID(),eventType,actorType:'system' as const,subjectEmploymentId:subject,payload:{n:i},occurredAt:new Date(now-(eventCount-i)*60_000)};});
  for(let i=0;i<33;i++)events.push({tenantId:b.tenantId,aggregateType:'hr_orchestrator',aggregateId:b.tenantId,eventType:'orchestrator.readiness-checked',actorType:'system' as const,
-  subjectEmploymentId:null,payload:{scheduled:false,scopeDigest:'fictional-other-scope'} as never,occurredAt:new Date(now-(33-i)*3*3_600_000)});
- for(const part of chunk(events,2000))await owner.db.insert(schema.domainEvent).values(part as never);
+  subjectEmploymentId:null,payload:{scheduled:false,scopeDigest:'fictional-other-scope'},occurredAt:new Date(now-(33-i)*3*3_600_000)});
+ for(const part of chunk(events,2000))await owner.db.insert(schema.domainEvent).values(part);
  await owner.db.execute(sql`analyze public.employment, public.person, public.company, public.employee_statutory_my, public.compensation, public.hr_orchestration_case,
   public.teras_loop_case, public.domain_event, public.payroll_batch, public.payroll_anomaly_verdict, public.payroll_anomaly_finding`);
  // Personas, each with their own person and employment in the group company.
