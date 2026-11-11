@@ -115,7 +115,7 @@ describe('the slot', () => {
     load.mockResolvedValueOnce(manager);
     const { TodayPerformance } = await import('../components/today/performance-slot');
     const { resolveServerTree } = await import('./helpers/server-tree');
-    render(await resolveServerTree(TodayPerformance({ session: {} as never, scopeIds: ['c1'] })) as never);
+    render(await resolveServerTree(await TodayPerformance({ session: {} as never, scopeIds: ['c1'] })) as never);
     const block = document.querySelector('[data-today-performance] [data-performance-home]');
     expect(block, 'the Performance block under Today').not.toBeNull();
     expect(block?.textContent).toContain('Fictional year-end');

@@ -281,7 +281,8 @@ describe('Manager Today',()=>{
   const view=await show('manager');
   const otherRows=view.panel('today-decide')!.querySelector('[data-today-other-work]')!;
   expect([...otherRows.querySelectorAll('[data-today-task]')].map(li=>[li.getAttribute('data-today-task'),li.querySelector('a')?.getAttribute('href')])).toEqual([
-   ['performanceReview','/performance/workspace?cycle=c1&view=team'],['profile','/admin/personnel/profile-changes?assigned=1&requestId=p1#request-p1']]);
+   // Each opens its owner's page, marked as opened from Today (lib/ai-centre/inbox-origin.ts).
+   ['performanceReview','/performance/workspace?cycle=c1&view=team&from=today'],['profile','/admin/personnel/profile-changes?assigned=1&requestId=p1&from=today#request-p1']]);
   expect(view.container.querySelector('[data-today-task="noticeAcknowledgement"]')).toBeNull();
   expect(text(view.panel('today-decide'))).toContain('2 other items are waiting for you');
  });
