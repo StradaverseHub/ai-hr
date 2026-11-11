@@ -94,7 +94,8 @@ export async function buildScaleFixture(b:Base,opts:Readonly<{employments?:numbe
  }
  const staffOf=new Map<string,string[]>();for(const e of active)(staffOf.get(e.companyId)??staffOf.set(e.companyId,[]).get(e.companyId)!).push(e.id);
  const verdicts=Array.from({length:740},(_,i)=>{const batch=batches[i%batches.length],staff=staffOf.get(batch.companyId)!;
-  return {tenantId:b.tenantId,batchId:batch.id,employmentId:staff[i%staff.length],disposition:i<40?'block':i<140?'review':i%3?'review':'block',
+  // One live verdict per run and person (payroll_anomaly_verdict_live_uq): the n-th verdict of a run names its n-th person.
+  return {tenantId:b.tenantId,batchId:batch.id,employmentId:staff[Math.floor(i/batches.length)%staff.length],disposition:i<40?'block':i<140?'review':i%3?'review':'block',
    detectorsRun:['missing-bank-profile','net-swing'],detectorsSkipped:[],computedAt:new Date(now-(i%90)*DAY),...(i>=140?{supersededAt:new Date(now-DAY)}:{})};});
  const verdictIds:string[]=[];
  for(const part of chunk(verdicts,500))verdictIds.push(...(await owner.db.insert(schema.payrollAnomalyVerdict).values(part as never).returning({id:schema.payrollAnomalyVerdict.id})).map(r=>r.id));
