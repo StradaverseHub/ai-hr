@@ -1,5 +1,6 @@
 /** Existing human-saved Draft activation. Unsupported captured shapes remain native handoffs. */
 import {createHash} from 'node:crypto';
+import {lockAccessConfigurationTx} from '../access-configuration-lock';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {isAdmin} from '../../lib/authz-model';
@@ -76,7 +77,8 @@ export async function reconcileEmployeeDraftActivationSourceTx(tx:Tx,ctx:Session
  return C.Receipt.parse({kind:'activated',draftId:reference.draftId,companyId:reference.companyId,eventId:reference.eventId,employmentId:row.employmentId,personId:row.personId,employeeCode:row.employeeCode,semantics:'employment_created_not_payroll_processed_or_access_granted'});
 }
 export async function readEmployeeDraftActivationChoicesTx(tx:Tx,ctx:SessionContext,selection:unknown){
- const fresh=await employeeDraftActivationActorTx(tx,ctx),pick=C.Selection.parse(selection??{});await tx.execute(sql`select app.access_configuration_write_lock()`);const lifecycle=await onboardingDraftActivationContextTx(fresh,tx);
+ // A choice list only reads: the shared Access lock first, so the actor guard joins it (staging, 11 November 2026). Prepare and confirm keep the exclusive lock.
+ await lockAccessConfigurationTx(tx,ctx.tenantId);const fresh=await employeeDraftActivationActorTx(tx,ctx),pick=C.Selection.parse(selection??{});await tx.execute(sql`select app.access_workforce_write_lock()`);const lifecycle=await onboardingDraftActivationContextTx(fresh,tx);
  const rows=await tx.execute<{draftId:string;companyId:string;label:string;employeeCode:string|null;data:unknown;country:string}>(sql`select d.id as "draftId",d.company_id as "companyId",d.label,d.reserved_employee_code as "employeeCode",d.data,c.country from employee_draft d join company c on c.id=d.company_id and c.tenant_id=d.tenant_id where d.tenant_id=${fresh.tenantId}::uuid and app.is_admin_for(c.id) and app.access_workforce_company(c.id,'workforce.maintain') and (${pick.companyId??null}::uuid is null or c.id=${pick.companyId??null}::uuid) order by d.updated_at desc,d.id desc limit 26`);
  return C.Choices.parse({kind:'choices',drafts:Array.from(rows).slice(0,25).map(r=>({draftId:r.draftId,companyId:r.companyId,label:r.label,employeeCode:r.employeeCode??'',supported:!lifecycle.willSynchronize&&r.country==='MY'&&!!r.employeeCode&&supportedEmployeeDraftActivationData(r.data)&&!missingForCreation(r.data as EmployeeDraftData).length&&!missingToCreate(r.data as EmployeeDraftData).length,unsupportedReason:lifecycle.willSynchronize?'configured_onboarding':r.country==='MY'&&!!r.employeeCode&&supportedEmployeeDraftActivationData(r.data)&&!missingForCreation(r.data as EmployeeDraftData).length&&!missingToCreate(r.data as EmployeeDraftData).length?null:'captured_shape',route:'/admin/personnel/new'})),truncated:rows.length>25});
 }
