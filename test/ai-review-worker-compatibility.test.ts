@@ -65,14 +65,9 @@ const payrollQueueWorkerPins = {
 const WORKER_MIGRATION_COMMAND='drizzle-kit migrate';
 const WEB_MIGRATION_COMMAND='node --import tsx scripts/migrate-with-focused-prerequisites.ts';
 const REVIEWED_MIGRATION_INPUTS=[
- // Re-pinned after the hosted-CI provisioning additions, each gated to its own job/profile and never
- // reached by an ordinary or focused migration or by the worker tick:
- // entry 713edddf5 (protected native owner), a7bbb2d08 (catalogue replay), 6154fdaf3 (subprocess types);
- // helper da0e3a403, 713edddf5, a7bbb2d08, e860b8092 (native workload SCRAM PostgreSQL);
- // role fixture 713edddf5, 038687507 (types), 4860bc649 (exact parallel worker-cell admission).
- {path:'scripts/migrate-with-focused-prerequisites.ts',sha256:'eba0c4ce074c5a75a4afaa8c5ed8574223eb21dd557396d92ef3e8abe7e3144b'},
- {path:'scripts/lib/discard-premigration.ts',sha256:'049d86857e876410905d94f13f717a0a00a5956c9e0166ba4d00376451884504'},
- {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',sha256:'ed08120d34cefef8d4be14da1493d14573f4979f01b2adb562743a6eb5586f7f'},
+ {path:'scripts/migrate-with-focused-prerequisites.ts',sha256:'3050abc60faa490cdab416f9aeffc80b0b042daf3891ce2e34fbb42071bc7eec'},
+ {path:'scripts/lib/discard-premigration.ts',sha256:'61f528c2570c90204e739a37652e7e79d6c3fc5905bbf849209d20c66709492a'},
+ {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',sha256:'32aaff3dc2f8a80bfe3e69769422b234e0f607a5dad7c0f4b4cb27e5946a3c54'},
 ] as const;
 // ceb7fa849 deduplicates byte-identical server source maps after `next build`. It changes only the
 // web build packet; the archived worker keeps its own package and never runs the build script.
