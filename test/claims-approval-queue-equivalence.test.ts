@@ -59,8 +59,13 @@ beforeAll(async()=>{
  // Line management: a senior manager over a line manager, whose reports span the home company, its
  // subsidiary (visible through the company clamp), a sister company (not visible to the manager) and a
  // terminated report (not visible to the manager); one report has a report of their own (indirect).
- const senior=await hire('Fictional Senior Manager',A,b.deptA),manager=await hire('Fictional Line Manager',A,b.deptA);
+ // A manager also heads the department of its current assignment (app.heads_department_of) and so sees its
+ // members: each approving manager sits in a department of its own, and one peer shares the line manager's.
+ const ownDepartment=async(name:string)=>(await createDepartment(root,{companyId:A,name:'Fictional '+name+' Department'})).id;
+ const managerDept=await ownDepartment('Line Manager');
+ const senior=await hire('Fictional Senior Manager',A,await ownDepartment('Senior Manager')),manager=await hire('Fictional Line Manager',A,managerDept);
  await administrative(manager,senior);
+ const peer=await hire('Fictional Department Peer',A,managerDept);
  const r1=await hire('Fictional Aaron Tan',A,b.deptA),r2=await hire('fictional aaron tan',A,b.deptB);
  const r3=await hire('Fictional Ámelia Wong',A,b.deptA),r4=await hire('Fictional Ng Mei',A,b.deptB);
  const r5=await hire('Fictional Ng Mei',subsidiary.id,subsidiaryDept.id),r6=await hire('Fictional Ömer Kaya',sister.id,sisterDept.id);
@@ -76,7 +81,8 @@ beforeAll(async()=>{
  // Delegations: one delegator per window/scope, each with two reports in different departments. A stand-in
  // must hold the delegator's approval level, so each stand-in manages one report of its own.
  const delegation=async(label:string)=>{
-  const delegator=await hire('Fictional Delegator '+label,A,b.deptA),stand=await hire('Fictional Stand-in '+label,A,b.deptB);
+  const delegator=await hire('Fictional Delegator '+label,A,await ownDepartment('Delegator '+label));
+  const stand=await hire('Fictional Stand-in '+label,A,await ownDepartment('Stand-in '+label));
   const reports=[await hire('Fictional Siti Aminah '+label,A,b.deptA),await hire('fictional siti aminah '+label,A,b.deptB)];
   for(const report of reports)await administrative(report,delegator);
   const standReport=await hire('Fictional Stand-in Report '+label,A,b.deptB);await administrative(standReport,stand);
@@ -97,7 +103,7 @@ beforeAll(async()=>{
  const employee=await hire('Fictional 李 Wei',A,b.deptA);
  const groupHr=await hire('Fictional Group HR',A,b.deptA),sisterHr=await hire('Fictional Sister HR',sister.id,sisterDept.id);
 
- const everyone:Person[]=[senior,manager,r1,r2,r3,r4,r5,r6,indirect,ended,employee,groupHr,sisterHr,
+ const everyone:Person[]=[senior,manager,r1,r2,r3,r4,r5,r6,indirect,ended,employee,groupHr,sisterHr,peer,
   ...[active,expired,future,scoped,leaveOnly].flatMap(d=>[d.delegator,d.stand,...d.reports,d.standReport])];
 
  // Claims: two types (one with an item), varied submission times with shared instants across claimants,
@@ -150,7 +156,7 @@ beforeAll(async()=>{
  approvers.set('group HR with own claims',{ctx:await login(groupHr,'hr_admin'),subjects:everyone});
  approvers.set('company-scoped HR (sister company)',{ctx:await login(sisterHr,'hr_admin',sister.id),subjects:[r6,sisterHr]});
  approvers.set('company-scoped HR (home company and its subsidiary)',{ctx:await login(await hire('Fictional Home HR',A,b.deptB),'hr_admin',A),subjects:[...homeCompany,r5]});
- approvers.set('line manager',{ctx:await login(manager,'manager'),subjects:[manager,r1,r2,r3,r4,r5,indirect]});
+ approvers.set('line manager',{ctx:await login(manager,'manager'),subjects:[manager,peer,r1,r2,r3,r4,r5,indirect]});
  approvers.set('senior manager (indirect reports)',{ctx:await login(senior,'manager'),subjects:[senior,manager,r1,r2,r3,r4,r5,indirect]});
  approvers.set('active delegate',{ctx:await login(active.stand,'manager'),subjects:[active.stand,active.standReport,...active.reports]});
  approvers.set('expired delegate',{ctx:await login(expired.stand,'manager'),subjects:[expired.stand,expired.standReport]});
@@ -167,7 +173,7 @@ const expectedClaims=(subjects:Person[])=>subjects.flatMap(p=>pendingBySubject.g
 
 describe('the batched claims approvals queue equals the former per-row queue',()=>{
  it('covers a fixture that exercises every path',()=>{
-  expect(tenantPending).toHaveLength(169);
+  expect(tenantPending).toHaveLength(174);
   expect([...approvers.keys()]).toEqual([...APPROVERS]);
  });
 

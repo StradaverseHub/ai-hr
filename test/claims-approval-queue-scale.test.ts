@@ -18,7 +18,7 @@ it('pages 100,000 pending claims for group HR and a manager without reading the 
  const report:Record<string,unknown>={kind:'CLAIMS_APPROVAL_QUEUE_SCALE_V1',employees:10000,claimsPerEmployee:10,managerReports:1000,complete:false};
  const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'claims-approval-queue-100k.json'),JSON.stringify(report,null,2));};
  const fixture=await seedClaimQueueScaleFixture({employees:10000,claimsPerEmployee:10,managerReports:1000},report,save);
- expect(fixture.counts).toEqual({claims:100000,managerClaims:10010});
+ expect(fixture.counts).toEqual({claims:100010,managerClaims:10010});
 
  // Only the requested page leaves the database: every statement of a newest-first page returns at most one
  // page of rows (the queue statement returns one jsonb row).
@@ -32,7 +32,7 @@ it('pages 100,000 pending claims for group HR and a manager without reading the 
  const progress:Record<string,Record<string,unknown>>={groupHr:{},manager:{}};report.progress=progress;
  const record=(actor:'groupHr'|'manager')=>(name:string,timing:unknown)=>{progress[actor][name]=timing;save();};
  report.after={
-  groupHr:await measureClaimQueue(fixture.groupHr,100000,fixture.ownClaims,2000,3,record('groupHr')),
+  groupHr:await measureClaimQueue(fixture.groupHr,100010,fixture.ownClaims,2000,3,record('groupHr')),
   manager:await measureClaimQueue(fixture.lineManager,10010,fixture.ownClaims,200,3,record('manager')),
  };
  report.phase='before';save();

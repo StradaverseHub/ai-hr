@@ -1,6 +1,7 @@
 /** Fictional scale fixture for the Claims approvals queue: N employees (the retained Personnel fixture, one
- * in five terminated), C pending claims each, a group HR administrator and a line manager over R active
- * reports, both with real logins and claims of their own. Every pending claim is written directly. */
+ * in five terminated), C pending claims each, a group HR administrator among them and a line manager in its
+ * own department over R active reports, both with real logins and C claims of their own. Every pending claim
+ * is written directly. */
 import {randomUUID} from 'node:crypto';
 import {expect} from 'vitest';
 import type {SessionContext} from '../../db/client';
@@ -29,9 +30,22 @@ export async function seedClaimQueueScaleFixture(shape:{employees:number;claimsP
  }
  report.phase='actors';save();
  const active=await owner.client<{id:string;person_id:string}[]>`select id,person_id from employment
-  where tenant_id=${b.tenantId}::uuid and terminated_on is null order by id limit ${shape.managerReports+2}`;
- expect(active).toHaveLength(shape.managerReports+2);
- const [manager,hr,...reports]=active;
+  where tenant_id=${b.tenantId}::uuid and terminated_on is null order by id limit ${shape.managerReports+1}`;
+ expect(active).toHaveLength(shape.managerReports+1);
+ const [hr,...reports]=active;
+ // The line manager sits in a department of its own: a manager also heads the department of its current
+ // assignment (app.heads_department_of), and every fixture employee shares one department. It files the
+ // same number of claims as everyone else.
+ const manager={id:randomUUID(),person_id:randomUUID()};
+ await owner.client`insert into person(id,tenant_id,full_name,primary_email)
+  values(${manager.person_id}::uuid,${b.tenantId}::uuid,'Fictional scale line manager',${manager.person_id+'@example.invalid'})`;
+ await owner.client`insert into employment(id,tenant_id,person_id,company_id,employee_code,hired_on)
+  values(${manager.id}::uuid,${b.tenantId}::uuid,${manager.person_id}::uuid,${b.companyId}::uuid,'PERFMANAGER','2020-01-01')`;
+ await owner.client`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from)
+  values(${b.tenantId}::uuid,${manager.id}::uuid,${b.companyId}::uuid,${b.deptB}::uuid,'full_time','2020-01-01')`;
+ await owner.client`insert into claim_request(tenant_id,employment_id,claim_type_id,amount,incurred_on,description,status,created_at)
+  select ${b.tenantId}::uuid,${manager.id}::uuid,${type.id}::uuid,'12.50','2026-02-02','Fictional scale claim','pending',
+   timestamptz '2025-06-01 00:00:00+00'+k*interval '1 hour' from generate_series(1,${shape.claimsPerEmployee}::int) k`;
  const login=async(person:{id:string;person_id:string},role:'manager'|'hr_admin'):Promise<SessionContext>=>{
   const [user]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'user_'+randomUUID(),personId:person.person_id}).returning({id:schema.appUser.id});
   await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,companyId:null,role});
@@ -46,7 +60,7 @@ export async function seedClaimQueueScaleFixture(shape:{employees:number;claimsP
    count(*) filter(where employment_id=${manager.id}::uuid or employment_id in (select subordinate_employment_id from reporting_line
     where tenant_id=${b.tenantId}::uuid and manager_employment_id=${manager.id}::uuid))::int as "managerClaims"
   from claim_request where tenant_id=${b.tenantId}::uuid and status='pending'`;
- expect(counts).toEqual({claims:shape.employees*shape.claimsPerEmployee,managerClaims:(shape.managerReports+1)*shape.claimsPerEmployee});
+ expect(counts).toEqual({claims:(shape.employees+1)*shape.claimsPerEmployee,managerClaims:(shape.managerReports+1)*shape.claimsPerEmployee});
  report.fixtureCounts=counts;report.phase='measure';save();
  return {b,root,groupHr,lineManager,counts,ownClaims:shape.claimsPerEmployee};
 }
