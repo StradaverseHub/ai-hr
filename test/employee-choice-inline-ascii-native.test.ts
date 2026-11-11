@@ -43,7 +43,8 @@ async function observe<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>){
  return database.withTenant(ctx,async tx=>{
   const [facts]=await tx.execute<{role:string;isolation:string;readonly:string;jit:string;pid:number}>(sql`select current_user::text as role,
    current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as readonly,current_setting('jit') as jit,pg_backend_pid() as pid`);
-  expect(facts).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readonly:'on',jit:'on'});expect(facts.pid).toBeGreaterThan(0);
+  // Every tenant transaction starts with JIT off (db/client.ts bootstrapTenantTx, test/with-tenant-jit-off.test.ts).
+  expect(facts).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readonly:'on',jit:'off'});expect(facts.pid).toBeGreaterThan(0);
   const observed=new Proxy(tx,{get(target,key,receiver){
    if(key==='execute')return async(query:SQL)=>{expect(queries.length).toBeLessThan(64);const rows=await target.execute(query);queries.push({sql:dialect.sqlToQuery(query).sql,rows:rows.length});return rows;};
    const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
