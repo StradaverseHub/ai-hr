@@ -13,7 +13,7 @@ import type {PayrollItem,PayrollItemKind} from '../pre-salary/items';
 // ── Audience ───────────────────────────────────────────────────────────────────────────────────────────────────
 /** Roles other than administrator whose Today stays the personal layout with the dashboard under "More" (manager and
  * partner Today are a later step, owner decision 11 Nov 2026). */
-const NOT_EMPLOYEE_ONLY:ReadonlySet<string>=new Set(['manager','payroll_partner','performance_comp_partner']);
+const NOT_EMPLOYEE_ONLY:ReadonlySet<string>=new Set(['manager','payroll_partner','performance_partner','performance_comp_partner']);
 /** Employee Today is drawn for an employee and nobody else: not an administrator (`admin`, the caller's own isAdmin
  * answer), not a manager and not a partner. Choosing a layout never widens a read. */
 export function isEmployeeOnlyAudience(roles:readonly string[]|null|undefined,admin:boolean):boolean{

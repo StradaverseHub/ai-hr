@@ -12,7 +12,7 @@ import {comingUp,isAllClear,nextStepsFrom,orderRequests,paydayView,trackSteps,wa
  type ModuleState,type NextStep,type TrackedRequest} from '@/lib/today/employee';
 import {AskChips,type AskChip} from './ask-chips';
 import {BUTTON,EYEBROW,LINK,Panel,PanelLink,PanelNote,hrDay} from './panel';
-import {readAskAllowed,readManagersAway,readOwnCalendar,readOwnPassportCards,readOwnPayHints,readOwnReadiness,readOwnRequests,readOwnTimeOff,readOwnWeek} from './reads';
+import {readAskAllowed,readManagersAway,readOwnCalendar,readOwnPassportCards,readOwnPayHints,readOwnReadiness,readOwnRequests,readOwnTimeOff,readOwnWeek,readWaitingForYou} from './reads';
 
 /** Employee Today's panels (owner-approved EmployeeLight.dc.html / EmployeeDashboard.dc.html and AllClear.dc.html).
  * Each is its own async server component, rendered inside its own Suspense and error boundary by today-page.tsx, so a
@@ -240,7 +240,12 @@ const stepLabel=(t:T,row:TrackedRequest,step:'sent'|'decide'|'outcome')=>step===
 export async function RequestsPanel(p:PanelContext){
  const [t,data]=await Promise.all([getTranslations('today.employee'),attempt(()=>readOwnRequests(p.session,p.employmentId,{leave:p.modules.leave==='on',claims:p.modules.claims==='on'}))]);
  const rows=data.ok?orderRequests(data.value.requests):[];
- return <Panel id="today-requests" className="lg:col-span-8" title={t('requestsTitle')}>
+ // Each kind of request is listed on its own page; "See all" opens them, for the modules in use.
+ const lists=[...(p.modules.leave==='on'?[{key:'leave',href:'/leave',label:t('requestsLeave')}]:[]),...(p.modules.claims==='on'?[{key:'claims',href:'/claims',label:t('requestsClaims')}]:[]),
+  {key:'letters',href:'/me/letters',label:t('requestsLetters')}];
+ return <Panel id="today-requests" className="lg:col-span-8" title={t('requestsTitle')}
+  action={<nav aria-label={t('requestsSeeAll')} data-today-requests-all className="flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
+   <span aria-hidden>{t('requestsSeeAll')}</span>{lists.map(list=><Link key={list.key} href={list.href} className={LINK}>{list.label}</Link>)}</nav>}>
   {!data.ok?<PanelNote>{t('unavailable')}</PanelNote>:rows.length===0?<p className="m-0 text-sm text-muted-foreground">{t('noRequests')}</p>:
   <ul className="m-0 flex list-none flex-col gap-3.5 p-0">
    {rows.map(row=>{const title=requestTitle(t,row),steps=trackSteps(row.stage);
@@ -300,5 +305,25 @@ export async function ComingUpPanel(p:PanelContext){
   </ul>}
   {(!readiness.ok||!calendar.ok||!away.ok||(hints!==null&&!hints.ok))&&<PanelNote>{t('comingUpPartial')}</PanelNote>}
   <div className="mt-auto pt-1"><AskChips label={tToday('suggestions')} chips={chips}/></div>
+ </Panel>;
+}
+
+// ── Waiting for your decision ──────────────────────────────────────────────────────────────────────────────────
+const WAITING_SHOWN=3;
+/** Work assigned to the person (a named participant, a profile-change assignee, a reviewer, a rewards approver), from
+ * the Tasks page's own read. Drawn only when something is waiting; its count is the count the Tasks page lists. */
+export async function WaitingPanel(p:{session:SessionContext;locale:string}){
+ const [t,tTask,tToday,data]=await Promise.all([getTranslations('today.employee'),getTranslations('notifications.task'),getTranslations('today'),
+  attempt(()=>readWaitingForYou(p.session))]);
+ if(!data.ok)return <Panel id="today-waiting" title={t('waitingTitle')}><PanelNote>{t('unavailable')}</PanelNote></Panel>;
+ const {items,total}=data.value;
+ if(total<=0)return null;
+ const label=(kind:string)=>tTask.has(kind as never)?tTask(kind as never):tToday('tasks.review');
+ return <Panel id="today-waiting" title={t('waitingTitle')} action={<PanelLink href="/tasks">{t('waitingSeeAll',{count:total})}</PanelLink>}>
+  <p data-today-waiting={total} className="m-0 text-sm font-semibold">{t('waitingCount',{count:total})}</p>
+  <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+   {items.slice(0,WAITING_SHOWN).map(item=>{const title=item.subjectName?`${label(item.kind)} · ${item.subjectName}`:label(item.kind);
+    return <li key={`${item.kind}:${item.id}`} data-today-waiting-item={item.kind}><Link href={item.linkPath} className="text-[0.8125rem] text-primary hover:underline">{title}</Link></li>;})}
+  </ul>
  </Panel>;
 }

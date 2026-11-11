@@ -14,11 +14,11 @@ import {cache} from 'react';
 import {withBackgroundReadWork,withSharedReadSnapshot,type SessionContext} from '@/db/client';
 import {requestReadScope} from '@/lib/request-read-scope';
 import {EntitlementsResolutionFailedError,isModuleEnabled} from '@/core/entitlements';
-import {openExceptionsAcrossRuns} from '@/core/payroll-anomaly';
+import {pendingTaskSummary} from '@/core/approvals-inbox';
 import {summariseOutcomeRecords,type OutcomeSummary} from '@/core/outcome-record/summary';
-import {readAdminLoopHandled,readAdminPayrollReadiness,readAdminStatutoryDeadlines,type LoopHandled,type PayrollReadiness,type StatutoryDeadlines} from '@/core/today-admin-reads';
+import {readAdminExceptionCounts,readAdminLoopHandled,readAdminPayrollReadiness,readAdminStatutoryDeadlines,type LoopHandled,type PayrollReadiness,type StatutoryDeadlines} from '@/core/today-admin-reads';
 import {todayAudience,windowStart} from '@/lib/today/audience';
-import {rankedNeeds,type RankedNeeds} from '@/lib/today/admin';
+import {managerQueue,rankedNeeds,type ManagerQueue,type RankedNeeds} from '@/lib/today/admin';
 import {readNeedsYou,type NeedsYouData} from '../reads';
 
 const shared=<T,>(s:SessionContext,read:()=>Promise<T>)=>withSharedReadSnapshot(s,read,undefined,requestReadScope());
@@ -44,8 +44,25 @@ export const readNeeds=cache((s:SessionContext,key:string,today:string,locale:st
 export const readReadiness=cache((s:SessionContext,key:string,today:string):Promise<PayrollReadiness>=>
  shared(s,()=>readAdminPayrollReadiness(s,{scopeIds:scopeOf(key),today,payrollOn:companyId=>payrollState(s,companyId)==='on'})));
 
-/** Open payroll exceptions and how many block a run: the same read, with the same arguments, as Operations › Exceptions. */
-export const readExceptions=cache((s:SessionContext)=>shared(s,()=>openExceptionsAcrossRuns(s)));
+/** Open payroll exceptions on the runs of the companies in view, and how many block a run: Operations › Exceptions'
+ * own filters, counted in one statement (core/today-admin-reads.ts readAdminExceptionCounts). */
+export const readExceptions=cache((s:SessionContext,key:string)=>shared(s,()=>readAdminExceptionCounts(s,{scopeIds:scopeOf(key)})));
+
+/** The optional modules the approvals queue reads, with the throwing check: an unresolved snapshot reads a module as
+ * off and reports the read as failed, never as "not in use". */
+function queueModules(s:SessionContext){
+ let failed=false;
+ const on=(code:string)=>{try{return isModuleEnabled(s,code);}catch(error){if(error instanceof EntitlementsResolutionFailedError){failed=true;return false;}throw error;}};
+ return {modules:{attendance:on('attendance'),claims:on('claims'),performance:on('performance'),rewards:on('rewards')},failed:()=>failed};
+}
+/** The manager's decisions: the approvals queue for the companies in view, WITHOUT notice acknowledgements (those are
+ * the person's own, not decisions), split into what /approvals lists (counted, linked there) and the other work each
+ * owner lists on its own page (lib/today/admin.ts managerQueue). */
+export const readManagerQueue=cache((s:SessionContext,key:string):Promise<ManagerQueue&Readonly<{failed:boolean}>>=>shared(s,async()=>{
+ const {modules,failed}=queueModules(s);
+ const summary=await pendingTaskSummary(s,scopeOf(key),modules,{noticeAcknowledgements:false});
+ return Object.freeze({...managerQueue(summary),failed:failed()});
+}));
 
 export type AdminNeeds=Readonly<{ranked:RankedNeeds;failed:boolean}>;
 /** The administrator's one ranked Needs you list. Every source is read once for the render; one that fails is left out
@@ -57,7 +74,7 @@ export const readAdminNeeds=cache((s:SessionContext,key:string,today:string,loca
    settle(()=>readNeeds(s,key,today,locale)),
    payroll==='on'?settle(()=>readReadiness(s,key,today)):null,
    payroll==='on'?settle(()=>shared(s,()=>readAdminStatutoryDeadlines(s,{scopeIds:scopeOf(key),today}))):null,
-   payroll==='on'?settle(()=>readExceptions(s)):null,
+   payroll==='on'?settle(()=>readExceptions(s,key)):null,
   ]);
   const data=needs.ok?needs.value:null;
   const ranked=rankedNeeds({today,

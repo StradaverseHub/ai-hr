@@ -2,7 +2,8 @@
  * fixtures, never re-derived from the functions under test. */
 import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
-import {ADMIN_ASK_PROMPTS,NEEDS_SHOWN,needsEntries,needsTag,oldestFirst,rankNeedsYou,rankedNeeds,readinessShares,taskGroupHref,todayLayoutFor,urgencyTier,
+import {isEmployeeOnlyAudience} from '../lib/today/employee';
+import {managerQueue,ADMIN_ASK_PROMPTS,NEEDS_SHOWN,needsEntries,needsTag,oldestFirst,rankNeedsYou,rankedNeeds,readinessShares,taskGroupHref,todayLayoutFor,urgencyTier,
  type NeedsEntry,type NeedsInput} from '../lib/today/admin';
 
 const TODAY='2026-11-12';
@@ -11,15 +12,24 @@ const task=(id:string,kind:string,createdAt:string)=>({id,kind,createdAt,linkPat
 const entry=(key:string,over:Partial<NeedsEntry>):NeedsEntry=>({key,source:{kind:'finding',finding:'setup'},count:1,due:null,since:null,consequence:3,blocksPayroll:false,href:'/x',...over});
 
 describe('which Today a person lands on',()=>{
- it('gives an administrator the administrator page whatever else they hold, a manager the team page, an employee the one-pager, and a partner the earlier page',()=>{
-  expect(todayLayoutFor(['hr_admin','manager'],true)).toBe('administrator');
-  expect(todayLayoutFor(['manager'],false)).toBe('manager');
-  expect(todayLayoutFor(['manager','employee'],false)).toBe('manager');
-  expect(todayLayoutFor(['employee'],false)).toBe('employee');
-  expect(todayLayoutFor([],false)).toBe('employee');
-  expect(todayLayoutFor(null,false)).toBe('employee');
-  expect(todayLayoutFor(['payroll_partner'],false)).toBe('other');
-  expect(todayLayoutFor(['performance_comp_partner','employee'],false)).toBe('other');
+ const PARTNERS=['payroll_partner','performance_partner','performance_comp_partner'];
+ it.each([
+  // [roles, admin, layout]
+  [['hr_admin'],true,'administrator'],[['super_admin'],true,'administrator'],[['hr_admin','manager'],true,'administrator'],
+  ...PARTNERS.map(role=>[[role,'hr_admin'],true,'administrator'] as const),
+  ...PARTNERS.map(role=>[[role],false,'other'] as const),
+  ...PARTNERS.map(role=>[[role,'manager'],false,'other'] as const),
+  ...PARTNERS.map(role=>[['employee',role],false,'other'] as const),
+  [['payroll_partner','performance_partner','manager'],false,'other'],
+  [['manager'],false,'manager'],[['manager','employee'],false,'manager'],
+  [['employee'],false,'employee'],[[],false,'employee'],[null,false,'employee'],
+ ] as const)('%j (administrator: %s) lands on %s',(roles,admin,layout)=>{
+  expect(todayLayoutFor(roles as readonly string[]|null,admin)).toBe(layout);
+ });
+ it('never gives Employee Today to a partner, an administrator or a manager',()=>{
+  for(const role of [...PARTNERS,'manager'])expect(isEmployeeOnlyAudience([role],false),role).toBe(false);
+  expect(isEmployeeOnlyAudience(['employee'],true)).toBe(false);
+  expect(isEmployeeOnlyAudience(['employee'],false)).toBe(true);
  });
 });
 
@@ -107,8 +117,26 @@ describe('Needs you: one list',()=>{
   expect(taskGroupHref('leave',['/a','/b'],2)).toBe('/approvals?category=leave');
   expect(taskGroupHref('resignation',['/a','/b'],2)).toBe('/approvals?category=resignations');
   expect(taskGroupHref('profile',['/admin/personnel/profile-changes?assigned=1&requestId=1#request-1','/b'],2)).toBe('/admin/personnel/profile-changes?assigned=1');
-  expect(taskGroupHref('performanceReview',['/performance/reviews/1#r','/performance/reviews/2'],2)).toBe('/performance/reviews/1');
+  // Several items of a kind with no list of its own open the list of every task, never the first item.
+  expect(taskGroupHref('performanceReview',['/performance/reviews/1#r','/performance/reviews/2'],2)).toBe('/tasks');
+  expect(taskGroupHref('performanceReview',['/performance/reviews/1#r'],1)).toBe('/performance/reviews/1#r');
   expect(taskGroupHref('claim',[],40)).toBe('/approvals?category=claim');
+ });
+});
+
+describe('the manager queue',()=>{
+ const item=(id:string,kind:string,createdAt:string,linkPath:string)=>({id,kind,subjectName:null,createdAt,linkPath});
+ it('counts what /approvals lists, exactly (claims it did not list included), and keeps other work and notices apart',()=>{
+  const queue=managerQueue({approvalCount:6,items:[
+   item('c1','claim','2026-11-03T00:00:00Z','/approvals?category=claim&requestId=c1#c1'),item('l1','leave','2026-11-01T00:00:00Z','/approvals?category=leave&requestId=l1'),
+   item('a1','attendance','2026-11-02T00:00:00Z','/approvals#row-a1'),
+   item('p1','profile','2026-11-01T00:00:00Z','/admin/personnel/profile-changes?assigned=1&requestId=p1'),item('r1','rewardReview','2026-10-30T00:00:00Z','/rewards/review'),
+   item('n1','noticeAcknowledgement','2026-10-01T00:00:00Z','/notices/n1')]});
+  expect(queue.decisions.map(task=>task.id)).toEqual(['l1','a1','c1']);
+  expect(queue.approvalTotal).toBe(6);
+  expect(queue.other.map(task=>task.id)).toEqual(['r1','p1']);
+  // Never fewer than the decisions it lists.
+  expect(managerQueue({approvalCount:0,items:[item('l1','leave','2026-11-01T00:00:00Z','/approvals')]}).approvalTotal).toBe(1);
  });
 });
 

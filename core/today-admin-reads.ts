@@ -21,10 +21,14 @@
  *    every company in view in one statement. A company whose country no localization pack owns has no statutory
  *    deadline, exactly as there.
  *  - readAdminLoopHandled: what the loops did over a window, from their own case ledger: cases opened and cases closed
- *    as done, per loop, in one statement. */
-import {and,eq,gte,inArray,isNull,or,sql} from 'drizzle-orm';
+ *    as done, per loop, in one statement.
+ *  - readAdminExceptionCounts: open payroll exceptions and how many block a run, with the same filters as Operations ›
+ *    Exceptions (core/payroll-anomaly.ts openExceptionsAcrossRuns: live, unresolved, not auto-cleared, joined to the
+ *    person, employment and run), counted in one statement for the runs of the companies in view. That reader loads
+ *    every open verdict to count them; Today needs only the two numbers. */
+import {and,eq,gte,inArray,isNull,ne,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
-import {company,companyPayrollConfig,employment,person} from '../db/schema';
+import {company,companyPayrollConfig,employment,payrollAnomalyVerdict,payrollBatch,person} from '../db/schema';
 import {terasLoopCase,terasLoopPause} from '../db/teras-schema';
 import {isAdmin} from '../lib/authz-model';
 import {addCalendarDays} from '../lib/hr-date-calendar';
@@ -161,5 +165,24 @@ export async function readAdminLoopHandled(ctx:SessionContext,p:Readonly<{scopeI
    .where(and(eq(c.tenantId,ctx.tenantId),inArray(c.companyId,scope),or(gte(c.firstOpenedAt,p.since),gte(c.closedAt,p.since))))
    .groupBy(c.workerId).orderBy(c.workerId);
   return Object.freeze(rows.map(row=>Object.freeze({workerId:row.workerId,opened:Number(row.opened),done:Number(row.done)})).filter(row=>row.opened+row.done>0));
+ });
+}
+
+// ── Payroll exceptions ─────────────────────────────────────────────────────────────────────────────────────────
+export type ExceptionCounts=Readonly<{total:number;blocking:number}>;
+/** Open exceptions on the runs of the companies in view, and how many of them block a run. */
+export async function readAdminExceptionCounts(ctx:SessionContext,p:Readonly<{scopeIds:readonly string[]}>):Promise<ExceptionCounts>{
+ requireAdministrator(ctx);
+ const scope=uniqueIds(p.scopeIds);
+ if(!scope.length)return Object.freeze({total:0,blocking:0});
+ return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  const v=payrollAnomalyVerdict;
+  const [row]=await tx.select({total:sql<number>`(count(*))::int`,blocking:sql<number>`(count(*) filter (where ${v.disposition}='block'))::int`}).from(v)
+   .innerJoin(employment,eq(employment.id,v.employmentId))
+   .innerJoin(person,eq(person.id,employment.personId))
+   .innerJoin(payrollBatch,eq(payrollBatch.id,v.batchId))
+   .where(and(eq(v.tenantId,ctx.tenantId),inArray(payrollBatch.companyId,scope),isNull(v.supersededAt),isNull(v.resolvedAt),ne(v.disposition,'auto_clear')));
+  return Object.freeze({total:Number(row?.total??0),blocking:Number(row?.blocking??0)});
  });
 }

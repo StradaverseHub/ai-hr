@@ -14,14 +14,19 @@ import {isEmployeeOnlyAudience} from './employee';
 
 // ── Audience ───────────────────────────────────────────────────────────────────────────────────────────────────
 export type TodayLayout='administrator'|'manager'|'employee'|'other';
-/** Which Today a person lands on. `admin`: the caller's own isAdmin answer. A manager is someone holding the manager
- * role; an employee is anyone Employee Today is drawn for (lib/today/employee.ts); everyone else (the payroll and
- * performance partners) keeps the earlier Today. Choosing a layout never widens a read: every read is the viewer's
- * own, under row-level security. */
+/** The partner roles. Someone holding one (and not an administrator) keeps the earlier Today, with its loop and finding
+ * cards, even when they also manage a team, until a partner page is designed (coordinator decision, 12 Nov 2026). */
+export const PARTNER_ROLES:ReadonlySet<string>=new Set(['payroll_partner','performance_partner','performance_comp_partner']);
+/** Which Today a person lands on. `admin`: the caller's own isAdmin answer. An administrator gets the administrator
+ * page whatever else they hold; then any partner role gives the earlier page ('other'); then the manager role gives the
+ * team page; everyone else is an employee (lib/today/employee.ts). Choosing a layout never widens a read: every read is
+ * the viewer's own, under row-level security. */
 export function todayLayoutFor(roles:readonly string[]|null|undefined,admin:boolean):TodayLayout{
  if(admin)return 'administrator';
- if((roles??[]).includes('manager'))return 'manager';
- return isEmployeeOnlyAudience(roles,false)?'employee':'other';
+ const held=roles??[];
+ if(held.some(role=>PARTNER_ROLES.has(role)))return 'other';
+ if(held.includes('manager'))return 'manager';
+ return isEmployeeOnlyAudience(held,false)?'employee':'other';
 }
 
 // ── Needs you: the entries ─────────────────────────────────────────────────────────────────────────────────────
@@ -89,12 +94,15 @@ export type LoopCardFacts=Readonly<{kind:string;endDate?:string;overdue?:boolean
 /** Where a group of the same decisions is decided: the approvals page filtered to that kind, or the one item's page. */
 const APPROVAL_CATEGORY:Readonly<Record<string,string>>={leave:'leave',leaveCancellation:'leaveCancellation',attendance:'all',claim:'claim',
  resignation:'resignations',managerReview:'managerReviews',hrReview:'hrReviews',replacementLeave:'replacementLeave'};
+/** Where every waiting task of every kind is listed (app/tasks/page.tsx, the approvals queue's own summary). */
+export const TASKS_HREF='/tasks';
 export function taskGroupHref(kind:string,links:readonly string[],count:number):string{
  if(count===1&&links.length===1)return links[0];
  const category=APPROVAL_CATEGORY[kind];
  if(category)return `/approvals?${new URLSearchParams({category})}`;
  if(kind==='profile')return '/admin/personnel/profile-changes?assigned=1';
- return links[0]?.split('#')[0]??'/approvals';
+ // A group of several items of a kind with no list of its own opens the list of every task, never one item.
+ return TASKS_HREF;
 }
 const PREPARED_LIST:Readonly<Record<'leaveApply'|'leaveCancel'|'leaveDecision',string>>={leaveApply:'/assistant/leave',leaveCancel:'/assistant/leave',leaveDecision:'/assistant/approvals'};
 /** The probation loop's own page, and the Payroll cycle page of the Pre-salary loop (AI Centre › Loops). */
@@ -219,6 +227,19 @@ export function oldestFirst<T extends Readonly<{id:string;createdAt:string}>>(ta
 }
 /** Decisions shown before "See all". */
 export const DECISIONS_SHOWN=5;
+type QueueTask=Readonly<{id:string;kind:string;subjectName:string|null;createdAt:string;linkPath:string}>;
+/** The manager's queue, split by where each item is decided. `decisions`: what /approvals lists (its path is
+ * /approvals), oldest first; `approvalTotal` counts them exactly (the queue's approvalCount, which includes claims the
+ * summary did not list), and Decide's heading and its "See all" link to /approvals both read it. `other`: work each
+ * owner lists on its own page (a profile change, a performance or rewards task), shown as its own rows with its own
+ * links and never counted into the /approvals total. */
+export type ManagerQueue=Readonly<{decisions:readonly QueueTask[];approvalTotal:number;other:readonly QueueTask[]}>;
+const pathOf=(href:string)=>href.split(/[?#]/,1)[0];
+export function managerQueue(summary:Readonly<{items:readonly QueueTask[];approvalCount:number}>):ManagerQueue{
+ const decisions=summary.items.filter(item=>pathOf(item.linkPath)==='/approvals');
+ const other=summary.items.filter(item=>pathOf(item.linkPath)!=='/approvals'&&item.kind!=='noticeAcknowledgement');
+ return Object.freeze({decisions:oldestFirst(decisions),approvalTotal:Math.max(summary.approvalCount,decisions.length),other:oldestFirst(other)});
+}
 
 // ── Ask prompts ────────────────────────────────────────────────────────────────────────────────────────────────
 /** The administrator's Ask prompts (today.admin.ask.*), in the order shown. Questions only: AI Centre answers them

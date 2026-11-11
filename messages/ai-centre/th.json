@@ -2421,7 +2421,15 @@
         "managerAwayUnnamed": "ผู้จัดการของคุณไม่อยู่",
         "holiday": "{name} · วันหยุดนักขัตฤกษ์",
         "holidayUnnamed": "วันหยุดนักขัตฤกษ์"
-      }
+      },
+      "pageUnavailable": "ไม่สามารถโหลดหน้าของคุณได้ในขณะนี้ โปรดลองอีกครั้งในอีกสักครู่",
+      "waitingTitle": "รอการตัดสินใจของคุณ",
+      "waitingCount": "{count, plural, other {มี # รายการรอคุณอยู่}}",
+      "waitingSeeAll": "ดูทั้งหมด {count} รายการ",
+      "requestsSeeAll": "ดูทั้งหมด:",
+      "requestsLeave": "การลา",
+      "requestsClaims": "การเบิกค่าใช้จ่าย",
+      "requestsLetters": "หนังสือ"
     },
     "admin": {
       "unavailable": "ไม่สามารถโหลดส่วนนี้ได้ในขณะนี้ หน้าของรายการนั้นยังใช้งานได้ตามปกติ",
@@ -2495,7 +2503,7 @@
       "handledTitle": "สิ่งที่ AI Centre จัดการในสัปดาห์นี้",
       "handled": {
         "answered": "{count, plural, other {คำถามที่ตอบแล้ว}}",
-        "leaveChecks": "{count, plural, other {คำขอลาที่ตรวจสอบแล้ว}}",
+        "leaveChecks": "{count, plural, other {คำแนะนำเรื่องการลาที่เตรียมไว้}}",
         "prepared": "{count, plural, other {รายการที่เตรียมไว้ให้คุณ}}",
         "loopFound": "{loop}: {count, plural, other {กรณีที่พบ}}",
         "loopResolved": "{count, plural, =0 {ยังไม่มีกรณีที่แก้ไขแล้ว} other {แก้ไขแล้ว #}}"
@@ -2537,7 +2545,9 @@
       "cutOff": "ข้อมูลเงินเดือนปิดรับวันที่ {date} โปรดตัดสินใจเรื่องโอทีและการเบิกค่าใช้จ่ายก่อนวันนั้น",
       "preparedNote": "{count, plural, other {การเปลี่ยนแปลง # รายการพร้อมให้คุณยืนยัน}}",
       "comingUpEmpty": "ไม่มีอะไรกำลังจะมาถึงสำหรับทีมของคุณ",
-      "comingUpPartial": "บางรายการโหลดไม่ได้ในขณะนี้"
+      "comingUpPartial": "บางรายการโหลดไม่ได้ในขณะนี้",
+      "otherWork": "{count, plural, other {มีอีก # รายการรอคุณอยู่}}",
+      "seeAllWork": "ดูทั้งหมด {count} รายการในงาน"
     }
   },
   "why": {

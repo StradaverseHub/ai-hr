@@ -1,20 +1,19 @@
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
-import type {PendingTaskItem} from '@/core/approvals-inbox';
 import {cn} from '@/lib/utils';
 import {calendarDaysBetween} from '@/lib/hr-date-calendar';
 import {formatPayPeriodMonth,todayInKualaLumpur} from '@/lib/hr-date';
 import {PAYROLL_READINESS_HREF} from '@/lib/pre-salary/items';
 import {withTodayOrigin} from '@/lib/ai-centre/inbox-origin';
-import {ADMIN_ASK_PROMPTS,DECISIONS_SHOWN,NEEDS_SHOWN,needsTag,oldestFirst,readinessShares,type NeedsEntry} from '@/lib/today/admin';
+import {ADMIN_ASK_PROMPTS,DECISIONS_SHOWN,NEEDS_SHOWN,TASKS_HREF,needsTag,readinessShares,type NeedsEntry} from '@/lib/today/admin';
 import {nextStepsFrom,paydayView} from '@/lib/today/employee';
 import {Panel,PanelLink,PanelNote,hrDay} from '../employee/panel';
 import {AskChips,type AskChip} from '../employee/ask-chips';
 import {stepTitle} from '../employee/panels';
 import {moduleState,readAskAllowed,readOwnContext,readOwnPassportCards,readOwnPayHints,readOwnReadiness} from '../employee/reads';
-import {readAdminNeeds,readExceptions,readHandled,readNeeds,readReadiness} from './reads';
-import {DecisionRecommendation} from './recommendation';
+import {readAdminNeeds,readExceptions,readHandled,readManagerQueue,readNeeds,readReadiness} from './reads';
+import {DecisionRecommendation,RecommendationNote} from './recommendation';
 
 /** HR administrator and manager Today's panels (owner-approved AdminToday.dc.html and ManagerToday.dc.html). Each is its
  * own async server component, rendered inside its own Suspense and error boundary by ./admin-page.tsx and
@@ -22,7 +21,8 @@ import {DecisionRecommendation} from './recommendation';
  * (or the Employee Today readers, for the viewer's own record) and shows only what its owner returned. Token classes
  * only, so both pages follow the app's theme in light and dark. */
 
-export type RoleContext=Readonly<{session:SessionContext;scopeKey:string;locale:string;today:string;all?:boolean}>;
+export type RoleContext=Readonly<{session:SessionContext;scopeKey:string;locale:string;today:string;all?:boolean;
+ /** The viewer's own employment chosen on Home (`?employmentId=`), for their own record. */employmentId?:string}>;
 type T=Awaited<ReturnType<typeof getTranslations>>;
 const attempt=async<V,>(read:()=>Promise<V>):Promise<{ok:true;value:V}|{ok:false}>=>{try{return {ok:true,value:await read()};}catch{return {ok:false};}};
 const ROW='flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-3.5 last:border-b-0 sm:flex-nowrap';
@@ -43,11 +43,11 @@ export async function AdminHeadline(p:RoleContext){
  </p>;
 }
 
-/** "4 decisions for your team", from the same queue read the Decide panel draws. */
+/** "4 decisions for your team": the decisions /approvals lists, from the same queue read the Decide panel draws. */
 export async function ManagerHeadline(p:RoleContext){
- const [t,needs]=await Promise.all([getTranslations('today.manager'),attempt(()=>readNeeds(p.session,p.scopeKey,p.today,p.locale))]);
- if(!needs.ok)return null;
- const total=needs.value.taskTotal??needs.value.tasks.length;
+ const [t,queue]=await Promise.all([getTranslations('today.manager'),attempt(()=>readManagerQueue(p.session,p.scopeKey))]);
+ if(!queue.ok)return null;
+ const total=queue.value.approvalTotal;
  return <p data-today-decision-count={total} className="m-0 text-[0.9375rem]"><b className="font-semibold">{t('headline',{count:total})}</b></p>;
 }
 
@@ -161,7 +161,7 @@ export async function HandledPanel(p:RoleContext){
 
 // ── Watching (administrator, side) ─────────────────────────────────────────────────────────────────────────────
 export async function WatchingPanel(p:RoleContext){
- const [t,data]=await Promise.all([getTranslations('today.admin'),attempt(()=>readExceptions(p.session))]);
+ const [t,data]=await Promise.all([getTranslations('today.admin'),attempt(()=>readExceptions(p.session,p.scopeKey))]);
  const notBlocking=data.ok?Math.max(0,data.value.total-data.value.blocking):0;
  return <Panel id="today-watching" title={t('watchingTitle')}>
   {!data.ok?<PanelNote>{t('unavailable')}</PanelNote>:notBlocking===0?<p className="m-0 text-sm text-muted-foreground">{t('watchingEmpty')}</p>:
@@ -174,11 +174,23 @@ export async function WatchingPanel(p:RoleContext){
  * selected employment. Nothing for a login with no employment of its own. Changes are always sent to HR. */
 export async function OwnRecordPanel(p:RoleContext&{title:'own'|'forYou'}){
  const [t,te,tr]=await Promise.all([getTranslations('today.admin'),getTranslations('today.employee'),getTranslations('payrollReadiness')]);
- const own=await attempt(()=>readOwnContext(p.session,undefined));
+ // The person's own selected employment (`?employmentId=`), proved by the Home identity owner; a foreign or stale
+ // choice is refused there and this panel says it could not load, nothing else on the page changes.
+ const own=await attempt(()=>readOwnContext(p.session,p.employmentId));
  const title=t(p.title==='own'?'ownTitle':'forYouTitle');
  if(!own.ok)return <Panel id="today-own" title={title}><PanelNote>{t('unavailable')}</PanelNote></Panel>;
  const employmentId=own.value.identity.selectedEmploymentId;
- if(!employmentId)return null;
+ if(!employmentId){
+  // Several own employments and none chosen yet: offer the choice, as Employee Today does. None at all: no panel.
+  if(own.value.identity.employmentState!=='choose')return null;
+  const tHome=await getTranslations('employeeHome');
+  return <Panel id="today-own" title={title}>
+   <p className="m-0 text-sm">{tHome('chooseEmployment')}</p>
+   <ul data-today-own-choose className="m-0 flex list-none flex-col gap-1 p-0">{own.value.identity.employments.map(row=><li key={row.employmentId}>
+    <PanelLink href={`/?${new URLSearchParams({employmentId:row.employmentId})}`}>{[row.company||tHome('companyUnavailable'),row.employeeCode].filter(Boolean).join(' · ')}</PanelLink>
+   </li>)}</ul>
+  </Panel>;
+ }
  const payroll=moduleState(p.session,'payroll',own.value.companyId);
  const [readiness,passports,hints]=await Promise.all([attempt(()=>readOwnReadiness(p.session,employmentId,p.locale,p.today)),
   attempt(()=>readOwnPassportCards(p.session,p.today)),payroll==='on'?attempt(()=>readOwnPayHints(p.session,employmentId)):Promise.resolve(null)]);
@@ -212,31 +224,41 @@ export async function AdminAskPanel(p:RoleContext){
 }
 
 // ── Decide (manager) ───────────────────────────────────────────────────────────────────────────────────────────
-/** The decisions waiting for the manager, oldest first. A leave request shows the leave recommendation inline, under
- * its own Suspense boundary (./recommendation.tsx); the decision itself is made on the request's own page. */
-export async function DecidePanel(p:RoleContext){
- const [t,tToday,tTask,data]=await Promise.all([getTranslations('today.manager'),getTranslations('today'),getTranslations('notifications.task'),
-  attempt(()=>readNeeds(p.session,p.scopeKey,p.today,p.locale))]);
- if(!data.ok)return <Panel id="today-decide" title={t('decideTitle')}><PanelNote>{t('decidePartial')}</PanelNote></Panel>;
- const total=data.value.taskTotal??data.value.tasks.length;
- const ordered=oldestFirst(data.value.tasks),shown=ordered.slice(0,DECISIONS_SHOWN);
+type QueueRow=Readonly<{id:string;kind:string;subjectName:string|null;createdAt:string;linkPath:string}>;
+/** The decisions waiting for the manager that /approvals lists, oldest first; its heading and "See all" both count
+ * exactly those. Work another page owns (a profile change, a performance or rewards task) follows as its own rows,
+ * each with its own link. A leave request shows the leave recommendation inline, under its own Suspense boundary
+ * (./recommendation.tsx); the decision itself is made on the request's own page. `highlight`: the leave request whose
+ * recommendation the person asked to open (`?recommend=`), shown even when it is past the first rows. */
+export async function DecidePanel(p:RoleContext&{highlight?:string}){
+ const [t,tToday,tTask,queue]=await Promise.all([getTranslations('today.manager'),getTranslations('today'),getTranslations('notifications.task'),
+  attempt(()=>readManagerQueue(p.session,p.scopeKey))]);
+ if(!queue.ok)return <Panel id="today-decide" title={t('decideTitle')}><PanelNote>{t('decidePartial')}</PanelNote></Panel>;
+ const {decisions,approvalTotal,other}=queue.value;
+ const first=decisions.slice(0,DECISIONS_SHOWN),asked=p.highlight?decisions.find(task=>task.id===p.highlight&&task.kind==='leave'):undefined;
+ const shown=asked&&!first.includes(asked)?[...first,asked]:first;
  const leaveIds=shown.filter(task=>task.kind==='leave').map(task=>task.id);
- const title=(task:PendingTaskItem)=>{const label=tTask.has(task.kind as never)?tTask(task.kind as never):tToday('tasks.review');return task.subjectName?`${label} · ${task.subjectName}`:label;};
+ const title=(task:QueueRow)=>{const label=tTask.has(task.kind as never)?tTask(task.kind as never):tToday('tasks.review');return task.subjectName?`${label} · ${task.subjectName}`:label;};
+ const row=(task:QueueRow,recommend:boolean)=>{const name=title(task),focused=task.id===p.highlight;
+  return <li key={`${task.kind}:${task.id}`} data-today-task={task.kind} data-today-focus={focused||undefined} className={cn(ROW,'items-start',focused&&'bg-primary/5')}>
+   <div className="min-w-0 flex-1 basis-56">
+    <p className="m-0 break-words text-sm font-semibold">{name}</p>
+    <p className="m-0 mt-0.5 text-[0.8125rem] text-muted-foreground">{t('sent',{date:hrDay(p.locale,dayOfInstant(task.createdAt),'day')})}</p>
+    {recommend&&task.kind==='leave'&&<DecisionRecommendation session={p.session} leaveRequestId={task.id} leaveIds={leaveIds} checking={t('checking')}/>}
+   </div>
+   <Link href={withTodayOrigin(task.linkPath)} className={QUIET_BUTTON}>{t('open')}<span className="sr-only"> · {name}</span></Link>
+  </li>;};
  return <Panel id="today-decide" title={<>{t('decideTitle')} <span className="font-normal normal-case tracking-normal">· {t('decideOrder')}</span></>}
-  action={total>shown.length?<PanelLink href="/approvals">{t('seeAll',{count:total})}</PanelLink>:null}>
-  {shown.length===0?<p data-today-empty className="m-0 text-sm text-muted-foreground">{t('decideEmpty')}</p>:
-  <ul data-today-decisions className="-mx-5 m-0 list-none border-y border-border p-0">
-   {shown.map(task=>{const name=title(task);return <li key={`${task.kind}:${task.id}`} data-today-task={task.kind} className={cn(ROW,'items-start')}>
-    <div className="min-w-0 flex-1 basis-56">
-     <p className="m-0 break-words text-sm font-semibold">{name}</p>
-     <p className="m-0 mt-0.5 text-[0.8125rem] text-muted-foreground">{t('sent',{date:hrDay(p.locale,dayOfInstant(task.createdAt),'day')})}</p>
-     {task.kind==='leave'&&<DecisionRecommendation session={p.session} leaveRequestId={task.id} leaveIds={leaveIds} checking={t('checking')}/>}
-    </div>
-    <Link href={withTodayOrigin(task.linkPath)} className={QUIET_BUTTON}>{t('open')}<span className="sr-only"> · {name}</span></Link>
-   </li>;})}
-  </ul>}
-  {leaveIds.length>0&&<p className="m-0 text-xs text-muted-foreground">{t('recommendationNote')}</p>}
-  {data.value.failed&&<PanelNote>{t('decidePartial')}</PanelNote>}
+  action={approvalTotal>first.length?<PanelLink href="/approvals">{t('seeAll',{count:approvalTotal})}</PanelLink>:null}>
+  {shown.length===0&&other.length===0?<p data-today-empty className="m-0 text-sm text-muted-foreground">{t('decideEmpty')}</p>:null}
+  {shown.length>0&&<ul data-today-decisions className="-mx-5 m-0 list-none border-y border-border p-0">{shown.map(task=>row(task,true))}</ul>}
+  {leaveIds.length>0&&<RecommendationNote session={p.session} leaveIds={leaveIds} note={t('recommendationNote')}/>}
+  {other.length>0&&<>
+   <p className="m-0 mt-1 text-[0.8125rem] font-semibold">{t('otherWork',{count:other.length})}</p>
+   <ul data-today-other-work className="-mx-5 m-0 list-none border-y border-border p-0">{other.slice(0,DECISIONS_SHOWN).map(task=>row(task,false))}</ul>
+   {other.length>DECISIONS_SHOWN&&<PanelLink href={TASKS_HREF}>{t('seeAllWork',{count:other.length})}</PanelLink>}
+  </>}
+  {queue.value.failed&&<PanelNote>{t('decidePartial')}</PanelNote>}
  </Panel>;
 }
 /** The Malaysian calendar day of an owner's instant (the HR date owner's conversion). */

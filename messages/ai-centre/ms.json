@@ -2421,7 +2421,15 @@
         "managerAwayUnnamed": "Pengurus anda tiada di pejabat",
         "holiday": "{name} · cuti umum",
         "holidayUnnamed": "Cuti umum"
-      }
+      },
+      "pageUnavailable": "Kami tidak dapat memuatkan halaman anda sekarang. Sila cuba lagi sebentar lagi.",
+      "waitingTitle": "Menunggu keputusan anda",
+      "waitingCount": "{count, plural, other {# perkara sedang menunggu anda}}",
+      "waitingSeeAll": "Lihat kesemua {count}",
+      "requestsSeeAll": "Lihat semua:",
+      "requestsLeave": "Cuti",
+      "requestsClaims": "Tuntutan",
+      "requestsLetters": "Surat"
     },
     "admin": {
       "unavailable": "Bahagian ini tidak dapat dimuatkan sekarang. Halamannya sendiri masih berfungsi.",
@@ -2495,7 +2503,7 @@
       "handledTitle": "Diuruskan oleh AI Centre minggu ini",
       "handled": {
         "answered": "{count, plural, other {soalan dijawab}}",
-        "leaveChecks": "{count, plural, other {permohonan cuti disemak}}",
+        "leaveChecks": "{count, plural, other {cadangan cuti disediakan}}",
         "prepared": "{count, plural, other {perkara disediakan untuk anda}}",
         "loopFound": "{loop}: {count, plural, other {kes ditemui}}",
         "loopResolved": "{count, plural, =0 {Belum ada yang selesai} other {# selesai}}"
@@ -2537,7 +2545,9 @@
       "cutOff": "Input gaji ditutup pada {date}. Putuskan kerja lebih masa dan tuntutan sebelum itu.",
       "preparedNote": "{count, plural, other {# perubahan sedia untuk anda sahkan}}",
       "comingUpEmpty": "Tiada apa yang akan datang untuk pasukan anda.",
-      "comingUpPartial": "Sesetengah perkara tidak dapat dimuatkan sekarang."
+      "comingUpPartial": "Sesetengah perkara tidak dapat dimuatkan sekarang.",
+      "otherWork": "{count, plural, other {# perkara lain sedang menunggu anda}}",
+      "seeAllWork": "Lihat kesemua {count} dalam Tugasan"
     }
   },
   "why": {

@@ -17,7 +17,8 @@ import * as s from '../db/schema';
 import {terasLoopCase,terasLoopPause,terasWorkerControl} from '../db/teras-schema';
 import {complianceWorklist} from '../core/reporting';
 import {payrollKey,upcomingPeriod} from '../core/loops/payroll-inputs';
-import {readAdminLoopHandled,readAdminPayrollReadiness,readAdminStatutoryDeadlines,TodayAdminReadRefused} from '../core/today-admin-reads';
+import {readAdminExceptionCounts,readAdminLoopHandled,readAdminPayrollReadiness,readAdminStatutoryDeadlines,TodayAdminReadRefused} from '../core/today-admin-reads';
+import {openExceptionsAcrossRuns} from '../core/payroll-anomaly';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addCalendarDays} from '../lib/hr-date-calendar';
 import {observeNativeRead} from './helpers/native-read-observer';
@@ -168,6 +169,34 @@ describe('what the loops did, from their own ledger',()=>{
  },60_000);
 });
 
+describe('open payroll exceptions, set-based',()=>{
+ it('equal Operations › Exceptions\' own reader under All companies, and narrow to the company switcher\'s scope',async()=>{
+  // One October run per company; a verdict for every employment on it: blocks, reviews and auto-cleared, some resolved,
+  // some superseded (a re-evaluation's earlier reading), as the anomaly owner writes them.
+  await owner.client.unsafe(`with pp as (insert into pay_period(tenant_id,company_id,period,status) select $1::uuid,c,'2026-10','open' from unnest($2::uuid[]) c returning id,company_id)
+   insert into payroll_batch(tenant_id,company_id,pay_period_id,pay_period,run_seq,run_type,batch_date,status) select $1::uuid,pp.company_id,pp.id,'2026-10',1,'regular','2026-10-28','processed' from pp`,
+   [b.tenantId,`{${companies.join(',')}}`]);
+  await owner.client.unsafe(`with v as (select b.id batch_id,e.id employment_id,row_number() over (order by e.id) n from payroll_batch b join employment e on e.company_id=b.company_id
+    where b.tenant_id=$1::uuid and b.pay_period='2026-10')
+   insert into payroll_anomaly_verdict(tenant_id,batch_id,employment_id,disposition,resolved_at,superseded_at)
+   select $1::uuid,batch_id,employment_id,(array['block','review','auto_clear'])[1+(n%3)::int],case when n%7=0 then now() end,case when n%11=0 then now() end from v`,[b.tenantId]);
+  const expected=async(scope:readonly string[])=>{
+   const [row]=await owner.client<{total:number;blocking:number}[]>`select count(*)::int total,(count(*) filter (where v.disposition='block'))::int blocking
+    from payroll_anomaly_verdict v join payroll_batch b on b.id=v.batch_id where v.tenant_id=${b.tenantId}::uuid and b.company_id = any(${scope as string[]}::uuid[])
+     and v.superseded_at is null and v.resolved_at is null and v.disposition<>'auto_clear'`;
+   return {total:row.total,blocking:row.blocking};
+  };
+  const all=await readAdminExceptionCounts(group,{scopeIds:companies});
+  const reader=await openExceptionsAcrossRuns(group);
+  expect(all).toEqual({total:reader.total,blocking:reader.blocking});
+  expect(all).toEqual(await expected(companies));
+  expect(all.total).toBeGreaterThan(400);expect(all.blocking).toBeGreaterThan(200);
+  expect(await readAdminExceptionCounts(group,{scopeIds:[companies[4]]})).toEqual(await expected([companies[4]]));
+  expect(await readAdminExceptionCounts(single,{scopeIds:companies})).toEqual(await expected([companies[4]]));
+  expect(await readAdminExceptionCounts(group,{scopeIds:[otherTenantCompany]})).toEqual({total:0,blocking:0});
+ },120_000);
+});
+
 describe('bounded, authorize-first and shared-locked',()=>{
  it('runs the same number of statements for 72 companies as for one, taking the shared Access lock and never the exclusive one',async()=>{
   const statements=async(read:()=>Promise<unknown>)=>{
@@ -178,6 +207,7 @@ describe('bounded, authorize-first and shared-locked',()=>{
    (scope:string[])=>readAdminPayrollReadiness(group,{scopeIds:scope,today,payrollOn:allOn}),
    (scope:string[])=>readAdminStatutoryDeadlines(group,{scopeIds:scope,today}),
    (scope:string[])=>readAdminLoopHandled(group,{scopeIds:scope,since:new Date(Date.parse(`${today}T00:00:00+08:00`))}),
+   (scope:string[])=>readAdminExceptionCounts(group,{scopeIds:scope}),
   ]){
    const many=await statements(()=>read(companies)),few=await statements(()=>read([companies[4]]));
    const seen=JSON.stringify(many.map(text=>text.slice(0,120)));
@@ -198,6 +228,7 @@ describe('bounded, authorize-first and shared-locked',()=>{
     await expect(readAdminPayrollReadiness(actor,{scopeIds:companies,today,payrollOn:allOn})).rejects.toBeInstanceOf(TodayAdminReadRefused);
     await expect(readAdminStatutoryDeadlines(actor,{scopeIds:companies,today})).rejects.toBeInstanceOf(TodayAdminReadRefused);
     await expect(readAdminLoopHandled(actor,{scopeIds:companies,since:new Date()})).rejects.toBeInstanceOf(TodayAdminReadRefused);
+    await expect(readAdminExceptionCounts(actor,{scopeIds:companies})).rejects.toBeInstanceOf(TodayAdminReadRefused);
     expect(probe.queries).toEqual([]);expect(probe.properties).toEqual([]);
    }finally{probe.restore();}
   }

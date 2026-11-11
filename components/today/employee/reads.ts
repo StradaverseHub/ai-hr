@@ -25,6 +25,7 @@ import {listOpenClaimsForEmployment} from '@/packs/claims/service';
 import {attendanceEmploymentRangePage} from '@/packs/attendance/service';
 import {listMyLetterRequests} from '@/core/letter-requests';
 import {mayUseAssistant} from '@/core/assistant-grant';
+import {pendingTaskSummary} from '@/core/approvals-inbox';
 import {parsePageQuery} from '@/lib/pagination';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import {addCalendarDays} from '@/lib/hr-date-calendar';
@@ -45,7 +46,9 @@ export const readOwnContext=cache((s:SessionContext,employmentId:string|undefine
  shared(s,()=>withTenant(s,tx=>readEmployeeHomeIdentityContextTx(tx,s,employmentId),{readOnlySnapshot:true})));
 
 /** The person's own Before payroll checklist (core/pre-salary/person-items.ts): items, due dates, the pay period and its
- * cut-off. Their approvals as an approver are not read: an employee has none, and this is not the manager's Today.
+ * cut-off. Their approvals as an approver are not read here: decisions assigned to the person (a named participant, a
+ * profile-change assignee, a reviewer, a rewards approver) are shown by the Waiting for your decision panel instead
+ * (readWaitingForYou), which counts exactly what the Tasks page lists.
  * null: payroll is not in use. */
 export const readOwnReadiness=cache((s:SessionContext,employmentId:string,locale:string,today:string)=>
  readMyPayrollReadiness(s,{employmentId,locale,today,includeApprovals:false}));
@@ -112,3 +115,12 @@ export const readOwnRequests=cache((s:SessionContext,employmentId:string,modules
 
 /** Whether the Assistant may answer this person (the gate AI Centre Ask uses). A failed read offers no Ask. */
 export const readAskAllowed=cache((s:SessionContext)=>shared(s,()=>mayUseAssistant(s)).then(access=>access.allowed).catch(()=>false));
+
+/** Work assigned to the person to decide or act on (core/approvals-inbox.ts pendingTaskSummary), exactly as the Tasks page
+ * reads it (app/tasks/page.tsx: no company filter, the same optional modules, notice acknowledgements included), so the
+ * panel's count is the count its "See all" link opens. An entitlement snapshot that cannot be resolved reads a module as
+ * off, as the Tasks page's quiet check does. */
+export const readWaitingForYou=cache((s:SessionContext)=>shared(s,()=>{
+ const on=(code:string)=>moduleState(s,code,null)==='on';
+ return pendingTaskSummary(s,undefined,{attendance:on('attendance'),claims:on('claims'),performance:on('performance'),rewards:on('rewards')});
+}));

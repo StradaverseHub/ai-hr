@@ -120,6 +120,7 @@ describe('panel visibility',()=>{
   expect(isEmployeeOnlyAudience(['employee','manager'],false)).toBe(false);
   expect(isEmployeeOnlyAudience(['payroll_partner'],false)).toBe(false);
   expect(isEmployeeOnlyAudience(['performance_comp_partner'],false)).toBe(false);
+  expect(isEmployeeOnlyAudience(['performance_partner'],false)).toBe(false);
   expect(isEmployeeOnlyAudience(['employee'],true)).toBe(false);
  });
 });

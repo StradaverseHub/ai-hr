@@ -2421,7 +2421,15 @@
         "managerAwayUnnamed": "Quản lý của bạn vắng mặt",
         "holiday": "{name} · ngày lễ",
         "holidayUnnamed": "Ngày lễ"
-      }
+      },
+      "pageUnavailable": "Hiện không tải được trang của bạn. Vui lòng thử lại sau ít phút.",
+      "waitingTitle": "Đang chờ bạn quyết định",
+      "waitingCount": "{count, plural, other {# mục đang chờ bạn}}",
+      "waitingSeeAll": "Xem tất cả {count} mục",
+      "requestsSeeAll": "Xem tất cả:",
+      "requestsLeave": "Nghỉ phép",
+      "requestsClaims": "Hoàn ứng",
+      "requestsLetters": "Thư"
     },
     "admin": {
       "unavailable": "Hiện không tải được phần này. Trang riêng của nó vẫn hoạt động.",
@@ -2495,7 +2503,7 @@
       "handledTitle": "AI Centre đã xử lý trong tuần này",
       "handled": {
         "answered": "{count, plural, other {câu hỏi đã được trả lời}}",
-        "leaveChecks": "{count, plural, other {đơn nghỉ phép đã được kiểm tra}}",
+        "leaveChecks": "{count, plural, other {gợi ý nghỉ phép đã chuẩn bị}}",
         "prepared": "{count, plural, other {mục đã chuẩn bị cho bạn}}",
         "loopFound": "{loop}: {count, plural, other {trường hợp phát hiện}}",
         "loopResolved": "{count, plural, =0 {Chưa có trường hợp nào được giải quyết} other {# đã giải quyết}}"
@@ -2537,7 +2545,9 @@
       "cutOff": "Dữ liệu lương chốt ngày {date}. Hãy quyết định làm thêm giờ và yêu cầu hoàn ứng trước ngày đó.",
       "preparedNote": "{count, plural, other {# thay đổi sẵn sàng để bạn xác nhận}}",
       "comingUpEmpty": "Nhóm của bạn không có gì sắp tới.",
-      "comingUpPartial": "Một số mục hiện không tải được."
+      "comingUpPartial": "Một số mục hiện không tải được.",
+      "otherWork": "{count, plural, other {# mục khác đang chờ bạn}}",
+      "seeAllWork": "Xem tất cả {count} mục trong Công việc"
     }
   },
   "why": {
