@@ -48,6 +48,15 @@ BEGIN
   THEN RAISE EXCEPTION 'Rewards preparation definers do not have their intended owners'; END IF;
   IF applied AND NOT has_function_privilege('ai_hr_reward_preparation_reader', 'app.reward_not_viewing_as()', 'EXECUTE')
   THEN RAISE EXCEPTION 'Preparation reader cannot evaluate View as'; END IF;
+  -- The migration's REVOKEs landed: no handed-over definer is executable by PUBLIC (a SET-only owner leaves it so).
+  IF applied AND EXISTS (
+    SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+     WHERE p.oid IN (to_regprocedure('app.reward_preparation_view(uuid)'), to_regprocedure('app.reward_preparation_upload_state(uuid)'),
+                     to_regprocedure('app.reward_preparation_released(uuid)'), to_regprocedure('app.reward_preparation_source_changed()'),
+                     to_regprocedure('app.company_org_scope_run(uuid)'), to_regprocedure('app.company_org_scope_rows(uuid)'),
+                     to_regprocedure('app.company_org_scope_mappings()'), to_regprocedure('app.reward_create_planned_unit_bound(uuid,uuid,uuid)'))
+       AND a.grantee = 0 AND a.privilege_type = 'EXECUTE')
+  THEN RAISE EXCEPTION 'A Rewards preparation definer is still executable by PUBLIC'; END IF;
 END $verify$;
 
 COMMIT;

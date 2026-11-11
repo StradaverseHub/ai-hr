@@ -1,3 +1,5 @@
+import type postgres from 'postgres';
+import {expect} from 'vitest';
 /** The installed role topology for populated upgrade rehearsals, copied verbatim from
  * test/restricted-owner-release-upgrade.test.ts (which keeps its own copy; a test file cannot be imported without
  * registering its cases). Everything the superuser built becomes ai_hr_owner's, purpose-owned objects keep their
@@ -118,3 +120,60 @@ UNION ALL SELECT 'policy '||pol.polname||' on '||pol.polrelid::regclass FROM pg_
 UNION ALL SELECT 'default privileges in '||coalesce(n.nspname,'every schema') FROM pg_catalog.pg_default_acl d LEFT JOIN pg_catalog.pg_namespace n ON n.oid=d.defaclnamespace
  WHERE d.defaclrole=(SELECT oid FROM su)
 ORDER BY 1`;
+
+type Keyed=Record<string,unknown>;
+const OWNER='ai_hr_owner';
+/** The catalogue comparison of test/restricted-owner-release-upgrade.test.ts, copied verbatim: owners, ACLs, row
+ * security, policies, triggers, routine bodies and row counts, with the migrating role ($1) shown as ai_hr_owner. */
+/** Objects outside system schemas and extensions, keyed by identity, with the migrating role ($1) shown as ai_hr_owner. */
+export const USER_SCOPE=(alias:string,namespace:string,catalog:string)=>`${namespace} IN (SELECT oid FROM pg_catalog.pg_namespace WHERE nspname NOT IN ('pg_catalog','information_schema') AND nspname NOT LIKE 'pg\\_%')
+ AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid='pg_catalog.${catalog}'::regclass AND d.objid=${alias}.oid AND d.deptype='e')`;
+const ROLE=(expression:string)=>`CASE WHEN ${expression}=0 THEN 'PUBLIC' WHEN pg_catalog.pg_get_userbyid(${expression})=$1 THEN '${OWNER}' ELSE pg_catalog.pg_get_userbyid(${expression})::text END`;
+const ACL=(acl:string)=>`(SELECT coalesce(jsonb_agg(x ORDER BY x::text),'[]'::jsonb) FROM (SELECT DISTINCT jsonb_build_array(${ROLE('a.grantee')},${ROLE('a.grantor')},a.privilege_type,a.is_grantable) x FROM pg_catalog.aclexplode(${acl}) a) acl)`;
+export const CATALOGUE:Record<string,string>={
+ schemas:`SELECT n.nspname AS key,jsonb_build_object('owner',${ROLE('n.nspowner')},'acl',${ACL(`coalesce(n.nspacl,pg_catalog.acldefault('n',n.nspowner))`)}) AS value
+  FROM pg_catalog.pg_namespace n WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%'
+  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid='pg_catalog.pg_namespace'::regclass AND d.objid=n.oid AND d.deptype='e')`,
+ relations:`SELECT c.oid::regclass::text AS key,jsonb_build_object('kind',c.relkind,'owner',${ROLE('c.relowner')},'rls',c.relrowsecurity,'force',c.relforcerowsecurity,
+   'acl',${ACL(`coalesce(c.relacl,pg_catalog.acldefault((CASE WHEN c.relkind='S' THEN 's' ELSE 'r' END)::"char",c.relowner))`)},
+   'view',CASE WHEN c.relkind IN ('v','m') THEN md5(pg_catalog.pg_get_viewdef(c.oid)) END) AS value
+  FROM pg_catalog.pg_class c WHERE c.relkind IN ('r','p','v','m','S','f','c') AND ${USER_SCOPE('c','c.relnamespace','pg_class')}`,
+ columns:`SELECT c.oid::regclass::text||'.'||att.attname AS key,${ACL('att.attacl')} AS value
+  FROM pg_catalog.pg_attribute att JOIN pg_catalog.pg_class c ON c.oid=att.attrelid
+  WHERE att.attacl IS NOT NULL AND att.attnum>0 AND NOT att.attisdropped AND ${USER_SCOPE('c','c.relnamespace','pg_class')}`,
+ routines:`SELECT p.oid::regprocedure::text AS key,jsonb_build_object('kind',p.prokind,'owner',${ROLE('p.proowner')},'definer',p.prosecdef,'volatility',p.provolatile,
+   'config',p.proconfig,'result',pg_catalog.pg_get_function_result(p.oid),'body',md5(p.prosrc),
+   'acl',${ACL(`coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))`)}) AS value
+  FROM pg_catalog.pg_proc p WHERE ${USER_SCOPE('p','p.pronamespace','pg_proc')}`,
+ types:`SELECT t.oid::regtype::text AS key,jsonb_build_object('owner',${ROLE('t.typowner')},'acl',${ACL(`coalesce(t.typacl,pg_catalog.acldefault('T',t.typowner))`)}) AS value
+  FROM pg_catalog.pg_type t WHERE t.typtype IN ('b','d','e','r','m') AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type e WHERE e.typarray=t.oid)
+  AND ${USER_SCOPE('t','t.typnamespace','pg_type')}`,
+ policies:`SELECT pol.polrelid::regclass::text||'.'||pol.polname AS key,jsonb_build_object('command',pol.polcmd,'permissive',pol.polpermissive,
+   'roles',(SELECT jsonb_agg(${ROLE('r.role')} ORDER BY ${ROLE('r.role')}) FROM unnest(pol.polroles) r(role)),
+   'using',pg_catalog.pg_get_expr(pol.polqual,pol.polrelid),'check',pg_catalog.pg_get_expr(pol.polwithcheck,pol.polrelid)) AS value
+  FROM pg_catalog.pg_policy pol`,
+ triggers:`SELECT t.tgrelid::regclass::text||'.'||t.tgname AS key,jsonb_build_object('enabled',t.tgenabled,'definition',pg_catalog.pg_get_triggerdef(t.oid)) AS value
+  FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid WHERE NOT t.tgisinternal AND ${USER_SCOPE('c','c.relnamespace','pg_class')}`,
+ rows:`SELECT c.oid::regclass::text AS key,(xpath('/row/n/text()',query_to_xml(format('SELECT count(*) AS n FROM %s',c.oid::regclass),false,true,'')))[1]::text AS value
+  FROM pg_catalog.pg_class c WHERE c.relkind IN ('r','p') AND ${USER_SCOPE('c','c.relnamespace','pg_class')}`,
+};
+export async function catalogue(sql:postgres.Sql,superuser:string):Promise<Record<string,Keyed>>{
+ const out:Record<string,Keyed>={};
+ for(const [kind,query] of Object.entries(CATALOGUE)){
+  const rows=await sql.unsafe<{key:string;value:unknown}[]>(query,query.includes('$1')?[superuser]:[]);
+  out[kind]=Object.fromEntries(rows.map(row=>[row.key,row.value]));
+  expect(rows.length,kind+' has distinct keys').toBe(Object.keys(out[kind]).length);
+ }
+ return out;
+}
+export function differences(reference:Record<string,Keyed>,restricted:Record<string,Keyed>):string[]{
+ const found:string[]=[];
+ for(const kind of Object.keys(CATALOGUE)){
+  const a=reference[kind],b=restricted[kind];
+  for(const key of [...new Set([...Object.keys(a),...Object.keys(b)])].sort()){
+   const left=JSON.stringify(a[key]),right=JSON.stringify(b[key]);
+   if(left!==right)found.push(`${kind} ${key}: superuser ${left??'absent'}; ${OWNER} ${right??'absent'}`);
+  }
+ }
+ return found;
+}

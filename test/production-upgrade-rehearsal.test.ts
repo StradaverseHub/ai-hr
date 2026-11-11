@@ -20,7 +20,7 @@ import {drizzle} from 'drizzle-orm/postgres-js';
 import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {afterAll,expect,it} from 'vitest';
 import {closeAll} from './harness';
-import {PROJECT_INSTALLED_OWNERSHIP,SUPERUSER_LEFTOVERS} from './helpers/installed-role-topology';
+import {PROJECT_INSTALLED_OWNERSHIP,SUPERUSER_LEFTOVERS,catalogue,differences} from './helpers/installed-role-topology';
 
 type Entry={idx:number;version:string;when:number;tag:string;breakpoints:boolean};
 type Notice={severity:string;code:string;message:string};
@@ -157,7 +157,7 @@ it('upgrades a populated production-baseline database to the candidate as the re
  const base=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appBase=new URL(process.env.TEST_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(base.hostname);expect(base.username).not.toBe(OWNER);
  const at=(database:string,user?:string,from:URL=base)=>{const url=new URL(from);url.pathname='/'+database;if(user){url.username=user;url.password='';}return url.toString();};
- const id=randomUUID().replaceAll('-',''),names={base:'ai_hr_prod_rehearsal_base_'+id,upgrade:'ai_hr_prod_rehearsal_owner_'+id,
+ const id=randomUUID().replaceAll('-',''),names={base:'ai_hr_prod_rehearsal_base_'+id,upgrade:'ai_hr_prod_rehearsal_owner_'+id,reference:'ai_hr_prod_rehearsal_ref_'+id,
   diagnosis:'ai_hr_prod_rehearsal_diag_'+id,restore:'ai_hr_rehearsal_arch_'+id};
  const admin=postgres(at('postgres'),{max:1,onnotice:()=>{}});
  const temporary=mkdtempSync(join(tmpdir(),'aihr-prod-rehearsal-'));
@@ -236,6 +236,8 @@ it('upgrades a populated production-baseline database to the candidate as the re
 
   // 4. The installed role topology on a copy: owner-owned objects, purpose owners kept, documented DBA prerequisites.
   const topology=await timed('topology',async()=>{
+   // The superuser twin: the same populated baseline, upgraded the way every other CI database is.
+   await admin.unsafe(`CREATE DATABASE "${names.reference}" TEMPLATE "${names.base}"`);
    await admin.unsafe(`CREATE DATABASE "${names.upgrade}" TEMPLATE "${names.base}" OWNER ${OWNER}`);
    const observer=connect(at(names.upgrade));
    await observer.unsafe(`GRANT CONNECT ON DATABASE "${names.upgrade}" TO ai_hr_app`);
@@ -340,6 +342,22 @@ it('upgrades a populated production-baseline database to the candidate as the re
    catch(error){dba.cleanup='refused: '+String((error as Error).message);}
    finally{await close(sql);}}
   dba.after=await roleState(upgraded);
+
+  // 6c. The superuser twin, and a byte comparison of the whole catalogue (owners, ACLs including every EXECUTE grant,
+  // row security, policies, triggers, routine bodies, row counts) before any post-migration step touches either.
+  const referenceNotices:Notice[]=[];
+  const twin=await timed('superuserTwin',async()=>{
+   const reference=connect(at(names.reference),referenceNotices);
+   await reference.unsafe(`GRANT EXECUTE ON FUNCTION app.reward_setup_allowed(uuid,text) TO ${OWNER}`);
+   await migrate(drizzle(reference),{migrationsFolder:'db/migrations'});
+   const observer=connect(at(upgraded));
+   try{
+    const found=differences(await catalogue(reference,superuser),await catalogue(observer,superuser));
+    const warnings=(notices:Notice[])=>notices.filter(notice=>notice.severity==='WARNING').map(notice=>`${notice.code} ${notice.message}`).sort();
+    return {differences:found.length,firstDifferences:found.slice(0,60),referenceWarnings:warnings(referenceNotices),ownerWarnings:warnings(ownerNotices)};
+   }finally{await close(observer);await close(reference);}
+  });
+  evidence.superuserTwin=twin;write();
   evidence.migration={...migration,privilegeWarnings:ownerNotices.filter(notice=>PRIVILEGE_WARNINGS.has(notice.code)),
    warnings:ownerNotices.filter(notice=>notice.severity==='WARNING').map(notice=>`${notice.code} ${notice.message}`)};
   write();
@@ -403,6 +421,9 @@ it('upgrades a populated production-baseline database to the candidate as the re
   evidence.verdict={
    restrictedOwnerMigration:migration.restrictedOwner==='applied'?'PASS':'FAIL',
    dbaPrerequisiteAndCleanup:dba.prerequisite==='applied'&&dba.cleanup==='applied and verified'?'PASS':'FAIL',
+   superuserTwinCatalogue:twin.differences===0?'PASS':'FAIL',
+   noPrivilegeWarnings:ownerNotices.some(notice=>PRIVILEGE_WARNINGS.has(notice.code))?'FAIL':'PASS',
+   warningsMatchSuperuser:JSON.stringify(twin.ownerWarnings)===JSON.stringify(twin.referenceWarnings)?'PASS':'FAIL',
    postMigrateSteps:Object.values(steps).every(step=>step.status===0)?'PASS':'FAIL',
    noRowsLostNoTablesOrColumnsDropped:after.missing.length===0&&Object.keys(after.missingColumns).length===0&&Object.values(preservation).every(diff=>diff.removed===0)?'PASS':'FAIL',
    changedExistingRowsOutsideLedger:changedTenantTables.map(([name,diff])=>`${name} changed=${diff.changed} removed=${diff.removed}`),
@@ -411,7 +432,7 @@ it('upgrades a populated production-baseline database to the candidate as the re
   };
   evidence.elapsedMs=Date.now()-started;write();
 
-  expect(evidence.verdict).toMatchObject({restrictedOwnerMigration:'PASS',dbaPrerequisiteAndCleanup:'PASS',postMigrateSteps:'PASS',noRowsLostNoTablesOrColumnsDropped:'PASS',backupRestore:'PASS',restoredBusinessProof:'PASS'});
+  expect(evidence.verdict).toMatchObject({restrictedOwnerMigration:'PASS',dbaPrerequisiteAndCleanup:'PASS',superuserTwinCatalogue:'PASS',noPrivilegeWarnings:'PASS',warningsMatchSuperuser:'PASS',postMigrateSteps:'PASS',noRowsLostNoTablesOrColumnsDropped:'PASS',backupRestore:'PASS',restoredBusinessProof:'PASS'});
   expect(evidence.migration).toMatchObject({privilegeWarnings:[]});
  }finally{
   write();
