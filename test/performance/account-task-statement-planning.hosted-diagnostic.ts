@@ -7,7 +7,7 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 const state=vi.hoisted(()=>{
- const file='test/performance/account-task-statement-planning.test.ts';
+ const file='test/performance/account-task-statement-planning.hosted-diagnostic.ts';
  let selected=false;
  try{selected=(JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]') as unknown[]).includes(file);}catch{selected=false;}
  return {hostedFocused:selected&&process.env.GITHUB_ACTIONS==='true'&&Boolean(process.env.AIHR_FOCUSED_EVIDENCE_DIR)};

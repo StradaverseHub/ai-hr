@@ -3,7 +3,7 @@
  * selects this file; every other Vitest run skips it. No installation is touched; no release evidence. */
 import {afterAll,beforeAll,describe,it,vi} from 'vitest';
 const state=vi.hoisted(()=>{
- const file='test/performance/personnel-page-reads-3500.test.ts';
+ const file='test/performance/personnel-page-reads-3500.hosted-diagnostic.ts';
  let selected=false;
  try{selected=(JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]') as unknown[]).includes(file);}catch{selected=false;}
  const hostedFocused=selected&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'

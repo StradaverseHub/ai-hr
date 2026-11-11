@@ -13,8 +13,8 @@ const state=vi.hoisted(()=>{
  // The whole diagnostic runs when this file is selected. Its equivalence loop alone outgrew one hosted job's 20 minutes, so
  // two part files (each importing this one) run it in halves over the same seed: part A the first five subjects and the
  // timing phases, part B the other five, the extra subjects and the isolation checks.
- const parts={'test/performance/home-manager-card-reads.test.ts':'all','test/performance/home-manager-card-reads-a.test.ts':'equivalence-a',
-  'test/performance/home-manager-card-reads-b.test.ts':'equivalence-b'} as const;
+ const parts={'test/performance/home-manager-card-reads.hosted-diagnostic.ts':'all','test/performance/home-manager-card-reads-a.hosted-diagnostic.ts':'equivalence-a',
+  'test/performance/home-manager-card-reads-b.hosted-diagnostic.ts':'equivalence-b'} as const;
  let part:(typeof parts)[keyof typeof parts]|null=null;
  try{const list=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]') as unknown[];part=Object.entries(parts).find(([file])=>list.includes(file))?.[1]??null;}catch{part=null;}
  const selected=part!==null;
@@ -22,7 +22,7 @@ const state=vi.hoisted(()=>{
   &&process.env.GITHUB_WORKFLOW==='alpha-focused-checks'&&Boolean(process.env.AIHR_FOCUSED_EVIDENCE_DIR);
  // The comparison's two-worker cell gives each application worker eight connections.
  if(hostedFocused)process.env.AIHR_DB_POOL_MAX='8';
- // One state object for this file and a part file's own mocks (test/performance/home-manager-card-reads-a.test.ts).
+ // One state object for this file and a part file's own mocks (test/performance/home-manager-card-reads-a.hosted-diagnostic.ts).
  const shared=((globalThis as {__aihrHomeCardReads?:{session:unknown;run:string|null}}).__aihrHomeCardReads??={session:undefined,run:null});
  return Object.assign(shared,{hostedFocused,part:part??'all'});
 });
