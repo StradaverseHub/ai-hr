@@ -153,10 +153,10 @@ export async function readAdminLoopHandled(ctx:SessionContext,p:Readonly<{scopeI
  if(!scope.length)return Object.freeze([]);
  return withTenant(ctx,async tx=>{
   await lockAccessConfigurationReadTx(tx,ctx.tenantId);
-  const c=terasLoopCase;
+  const c=terasLoopCase,since=p.since.toISOString();
   const rows=await tx.select({workerId:c.workerId,
-   opened:sql<number>`(count(*) filter (where ${c.firstOpenedAt} >= ${p.since}))::int`,
-   done:sql<number>`(count(*) filter (where ${c.closedAt} >= ${p.since} and ${c.closeReason}='done'))::int`,
+   opened:sql<number>`(count(*) filter (where ${c.firstOpenedAt} >= ${since}::timestamptz))::int`,
+   done:sql<number>`(count(*) filter (where ${c.closedAt} >= ${since}::timestamptz and ${c.closeReason}='done'))::int`,
   }).from(c)
    .where(and(eq(c.tenantId,ctx.tenantId),inArray(c.companyId,scope),or(gte(c.firstOpenedAt,p.since),gte(c.closedAt,p.since))))
    .groupBy(c.workerId).orderBy(c.workerId);
