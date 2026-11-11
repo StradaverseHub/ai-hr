@@ -32,19 +32,30 @@ const EMPLOYEE_LIST_KEY = 'employeeList';
 /** Read the caller's whole raw list_preferences jsonb through the own-row seam. */
 async function readRawPrefs(tx: Tx): Promise<Record<string, unknown>> {
   const rows = (await tx.execute(
-    sql`select app.list_preferences_get() as prefs`,
+    sql`select ${LIST_PREFERENCES_SQL} as prefs`,
   )) as unknown as { prefs: unknown }[];
-  const raw = rows[0]?.prefs;
+  return preferenceEnvelope(rows[0]?.prefs);
+}
+
+/** The caller's own list-preference envelope (the own-row seam). A reader that already spends a
+ * statement in the same snapshot may select it there and pass the value to employeeListColumnsFrom. */
+export const LIST_PREFERENCES_SQL = sql`app.list_preferences_get()`;
+function preferenceEnvelope(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+}
+/** The Personnel columns from a LIST_PREFERENCES_SQL value (null for a context without a login). */
+export function employeeListColumnsFrom(raw: unknown): EmployeeColumnPrefs {
+  return normalizeEmployeeColumns(preferenceEnvelope(raw)[EMPLOYEE_LIST_KEY]);
 }
 
 /**
  * The caller's saved, normalised employee-listing columns. Always returns a usable value: with nothing
  * saved (or no login identity at all — a background/system context) it yields the default view.
  */
-export function getEmployeeListColumns(ctx: SessionContext): Promise<EmployeeColumnPrefs> {
+export function getEmployeeListColumns(ctx: SessionContext, existingTx?: Tx): Promise<EmployeeColumnPrefs> {
   if (!ctx.userId) return Promise.resolve(normalizeEmployeeColumns(null));
-  return withTenant(ctx, async (tx) => normalizeEmployeeColumns((await readRawPrefs(tx))[EMPLOYEE_LIST_KEY]));
+  const read = async (tx: Tx) => normalizeEmployeeColumns((await readRawPrefs(tx))[EMPLOYEE_LIST_KEY]);
+  return existingTx ? read(existingTx) : withTenant(ctx, read);
 }
 
 /**

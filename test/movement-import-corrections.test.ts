@@ -14,7 +14,8 @@ import {createJobGrade,createPosition} from '../core/admin';
 import {createMovementEvent,editMovementEvent,movementCurrentState,movementHistory,reverseMovementEvent} from '../core/movement';
 import {previewMovementUpload,confirmMovementUpload} from '../core/movement-import-history';
 import {getImportAttempt} from '../core/import-history';
-import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
+import {previewImportRevertForAttempt} from '../core/import-history-handlers';
+import {revertMovementByJob} from './movement-revert-job-helper';
 import {toCsv} from '../lib/csv';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {personnelImportLabelResolvers} from '../lib/personnel-import-labels.server';
@@ -71,7 +72,7 @@ describe('Movement import Update and Delete (646355e5 slice C)',()=>{
   const {checked,result}=await importRows([['ACME','AC001','','','','','','','Delete',original.id,'Fictional wrong exit']]);
   expect(result).toMatchObject({imported:1,failed:0});
   const preview=await previewImportRevertForAttempt(a,checked.attemptId);expect(preview.blockers).toEqual([]);
-  await revertImportForAttempt(a,checked.attemptId,{previewHash:preview.previewHash,reason:'Fictional restore original exit'});
+  await revertMovementByJob(a,checked.attemptId,{previewHash:preview.previewHash,reason:'Fictional restore original exit'});
   const [employee]=await owner.db.select({terminatedOn:s.employment.terminatedOn}).from(s.employment).where(eq(s.employment.id,ac1));expect(employee.terminatedOn).toBe(day(-3));
  });
 
@@ -92,7 +93,7 @@ describe('Movement import Update and Delete (646355e5 slice C)',()=>{
   expect(detail.items[0].before).toMatchObject({action:'update',movementId:original.id,reason:'Salary keyed wrong'});
   expect(detail.items[0].after).toMatchObject({action:'update',movementId:replacement.id,originalMovementId:original.id});
   const review=await previewImportRevertForAttempt(a,checked.attemptId);expect(review.blockers).toEqual([]);expect(review.eligible).toBe(true);
-  await revertImportForAttempt(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional revert of the salary fix'});
+  await revertMovementByJob(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional revert of the salary fix'});
   expect(await state(ac1)).toMatchObject({gradeId:senior,positionId:seniorExec,basicSalary:'3500.00'});
   expect((await movementHistory(a,ac1)).find(row=>row.id===replacement.id)?.reversed).toMatchObject({corrected:true,reason:'Fictional revert of the salary fix'});
   expect(await live(ac1,'promotion')).toHaveLength(1);
@@ -106,7 +107,7 @@ describe('Movement import Update and Delete (646355e5 slice C)',()=>{
   expect((await state(ac1)).departmentId).toBe(b.deptA);
   expect((await movementHistory(a,ac1)).find(row=>row.id===transfer.id)?.reversed).toMatchObject({corrected:false,reason:'Keyed against the wrong employee'});
   const review=await previewImportRevertForAttempt(a,checked.attemptId);expect(review.blockers).toEqual([]);
-  await revertImportForAttempt(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional undo of the delete'});
+  await revertMovementByJob(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional undo of the delete'});
   expect((await state(ac1)).departmentId).toBe(b.deptB);
   const again=await live(ac1,'transfer');expect(again).toHaveLength(1);expect(again[0]).toMatchObject({effectiveDate:day(-3)});expect(again[0].id).not.toBe(transfer.id);
  });
@@ -167,13 +168,13 @@ describe('Movement import Update and Delete (646355e5 slice C)',()=>{
   await editMovementEvent(a,{employmentId:ac1,movementId:left.id,kind:'promotion',effectiveDate:day(-6),gradeId:senior,basicSalary:3900,reason:'Fictional later edit'});
   const review=await previewImportRevertForAttempt(a,updated.checked.attemptId);
   expect(review.eligible).toBe(false);expect(review.blockers.map(x=>x.reason).join(' ')).toMatch(/changed or rolled back since|has been changed since this import/);
-  await expect(revertImportForAttempt(a,updated.checked.attemptId,{previewHash:review.previewHash,reason:'Fictional revert attempt'})).rejects.toThrow(/cannot be reverted/);
+  await expect(revertMovementByJob(a,updated.checked.attemptId,{previewHash:review.previewHash,reason:'Fictional revert attempt'})).rejects.toThrow(/cannot be reverted/);
   expect((await state(ac1)).basicSalary).toBe('3900.00');
   // A later movement after the Delete: re-recording the deleted transfer would overwrite it.
   await createMovementEvent(a,{employmentId:ac2,kind:'transfer',effectiveDate:day(-1),departmentId:b.deptB});
   const blocked=await previewImportRevertForAttempt(a,deleted.checked.attemptId);
   expect(blocked.eligible).toBe(false);expect(blocked.blockers.length).toBeGreaterThan(0);
-  await expect(revertImportForAttempt(a,deleted.checked.attemptId,{previewHash:blocked.previewHash,reason:'Fictional revert attempt'})).rejects.toThrow(/cannot be reverted/);
+  await expect(revertMovementByJob(a,deleted.checked.attemptId,{previewHash:blocked.previewHash,reason:'Fictional revert attempt'})).rejects.toThrow(/cannot be reverted/);
   expect(await live(ac2,'transfer')).toHaveLength(1);
   expect((await getImportAttempt(a,deleted.checked.attemptId))!.events.at(-1)?.kind).toBe('revert_failed');
  });

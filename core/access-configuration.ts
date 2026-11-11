@@ -5,7 +5,7 @@
  */
 import {randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {
   AccessPermissionError,previewEffectiveAccess,type AccessCapability,type AccessPreviewChange,
   assertSystemAdministratorSurvives,type AccessSnapshot,type CompanyScopeEvidence,
@@ -51,7 +51,7 @@ async function currentTransition(tx:Tx,ctx:SessionContext,p:AccessConfigurationE
   if(!ctx.userId||typeof p.expectedRevision!=='string'||!p.expectedRevision.length||p.expectedRevision.length>128||!isAccessConfigurationCommand(p.command))throw new AccessPermissionError('invalid');
   // All permission writers and account/role deactivation paths must join this same lock at integration.
   // Neither a per-user lock nor a lock acquired after the last-admin count protects concurrent removal.
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const current=await owner.loadCurrent(tx,ctx);
   if(current.snapshot.tenantId!==ctx.tenantId||current.evidence.tenantId!==ctx.tenantId)throw new AccessPermissionError('invalid');
   const after=applyAccessConfigurationCommand(current.snapshot,current.catalog,ctx.userId,p.expectedRevision,p.command,current.evidence);

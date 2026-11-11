@@ -24,6 +24,8 @@ async function existingSubject(tx: Tx, kind: Register, id: string) {
 }
 async function maintain<T>(ctx: SessionContext, kind: Register, target: {id: string; existing: boolean}, write: (tx: Tx) => Promise<T>, outerTx?: Tx) {
   const run = async (tx: Tx) => {
+    // The register writers run under the shared Access lock with their per-person (or per-employment) lock, so
+    // the Workforce check joins the shared lock first instead of taking the exclusive lock for them.
     await lockAccessConfigurationTx(tx, ctx.tenantId);
     // A record id from a form/import never selects a different subject from the stored relationship.
     const subject = target.existing ? await existingSubject(tx, kind, target.id) : target.id;

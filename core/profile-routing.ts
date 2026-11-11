@@ -7,7 +7,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {employment,assignment,profileChangeRequest,person} from '../db/schema';
 import {appendEvent,actorOf} from '../db/events';
 import {getSetting} from './entitlements';
-import {assertProfilePolicyWriteAuthorityTx,freshProfileEditPolicyTx} from './profile-edit-policy';
+import {assertProfilePolicyWriteAuthorityTx,freshProfileEditPolicySharedTx,freshProfileEditPolicyTx} from './profile-edit-policy';
 import {setTenantSetting} from './tenant-settings';
 import {isAdmin,isGroupAdmin} from '../lib/authz-model';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
@@ -145,9 +145,12 @@ export async function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRev
 export function rerouteProfileRequest(ctx:SessionContext,p:{requestId:string;reason:string}){
  if(!p.reason.trim()||p.reason.length>2000)throw new ProfileRoutingError('reasonRequired');
  return withTenant(ctx,async tx=>{
+  // Reassigning one pending request changes no routing configuration: shared Access and the shared policy lock,
+  // so only an access or profile-policy editor excludes it. The request row lock serialises a reroute against a
+  // decision or another reroute of the same request; the subject's route context keeps its own row locks.
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
-  const fresh=await freshProfileEditPolicyTx(tx,ctx);
+  const fresh=await freshProfileEditPolicySharedTx(tx,ctx);
   await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
   const [row]=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,status:profileChangeRequest.status,proposed:profileChangeRequest.proposed,routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,routeApproverEmploymentId:profileChangeRequest.routeApproverEmploymentId,routeContext:profileChangeRequest.routeContext,routeHistory:profileChangeRequest.routeHistory}).from(profileChangeRequest).where(eq(profileChangeRequest.id,p.requestId)).limit(1).for('update');
   if(!row||row.status!=='pending')throw new ProfileRoutingError('changed');

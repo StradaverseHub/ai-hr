@@ -1,5 +1,6 @@
-/** Immutable Bank worker Git source vs the new AI-review schema/web contract. GHA disposable DB only.
- * This supplies compatibility evidence for an owner decision, never permission to retain/update a live service. */
+/** Immutable historical worker sources against current web commands and the migrated schema.
+ * This proves ordinary overlap while draining jobs. Release requires the matching worker package,
+ * including the new admission and infrastructure-failure semantics. GHA disposable DB only. */
 import {createHash} from 'node:crypto';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -15,18 +16,24 @@ import {parseCsvRecords} from '../lib/csv';
 import * as s from '../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
 const WORKER_SOURCE='968354c00a71df7baccd499eb60757a3307ed61e';
+// Observed staging web and worker source before the architecture release. Freeze the
+// historical compatibility pins here so future replacements cannot relabel their bytes.
+const STAGING_BASELINE='a4bd903840cdae2a94e67d5f57e3b54c9e2a86ac';
+const archived=(ref:string,path:string)=>execFileSync('git',['show',ref+':'+path]);
+
 // The dependency security update is an exact reviewed graph, not permission for arbitrary drift.
 // The archived worker below retains its original package/lock while executing copied current deps.
 const REVIEWED_SECURITY_GRAPH={source:'c58c30efd6bc81b20bb4b5a82b026b93c7297760',baseline:'8b676f25c006dd9a95dfd30bb6005e558923980a',
  lockSha256:'0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd',
  baselineLockSha256:'959230b1c75266db4c15f8df1c9aa4317e74f887d8899f4c05aace77b5fe9a62'} as const;
+const REVIEWED_POSTGRES_PATCH={path:'patches/postgres@3.4.9.patch',sha256:'f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd'} as const;
 // Copied from the actual corrected V2 controller policy, not a fixture-only root expansion.
 // This source fixture never substitutes for that controller's authenticated extracted-packet boot proof.
 const PACKET_POLICY={controller:'567ec0908a24e21078e458ec1e93e696cafeb0a8',formatSha256:'07fa30e623f192ed8231ed42de4a606ed8251539db95389ec7ad6b50ff166369',
  roots:['package.json','pnpm-lock.yaml','tsconfig.json','app','assets','components','content','core','data','db','deploy','i18n','lib','localization','messages','packs','public','scripts','types','node_modules']};
 const unchanged=['db/client.ts','core/bank-import-job.ts','lib/bank-import-source.server.ts','lib/bank-import-job.ts'];
-// Current web db/client differs only in this reviewed erased type union. The child process below
-// still receives and verifies the COMPLETE immutable 968 db/client, including its original type.
+// The staged baseline differs from 968 only in the reviewed type union and tax-reader setting.
+// Each child still receives and verifies its complete immutable db/client.
 const WORKER_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage'; userId: string; eventId: string };";
 const WEB_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage' | 'approval_chasers' | 'review_chasers' | 'clock_reminders' | 'document_reminders' | 'lifecycle_chasers'; userId: string; eventId: string };";
 // 929ea296 (PR126): web transactions declare the correction-aware income-tax reader. Without it a reader fails
@@ -62,19 +69,24 @@ const REVIEWED_MIGRATION_INPUTS=[
  {path:'scripts/lib/discard-premigration.ts',sha256:'61f528c2570c90204e739a37652e7e79d6c3fc5905bbf849209d20c66709492a'},
  {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',sha256:'32aaff3dc2f8a80bfe3e69769422b234e0f607a5dad7c0f4b4cb27e5946a3c54'},
 ] as const;
+// ceb7fa849 deduplicates byte-identical server source maps after `next build`. It changes only the
+// web build packet; the archived worker keeps its own package and never runs the build script.
+const WORKER_BUILD_COMMAND='next build';
+const WEB_BUILD_COMMAND='next build && node scripts/dedupe-server-source-maps.mjs .next';
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
-it('runs immutable 968 worker Git source under the corrected V2 root policy against the AI schema and web contract',async()=>{
+it.each([['legacy',WORKER_SOURCE],['staged',STAGING_BASELINE]] as const)(
+ 'runs immutable %s worker source against the migrated database and current web commands',async(label,workerSource)=>{
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...unchanged.filter(path=>path!=='db/client.ts')],{encoding:'utf8'}).trim()).toBe('');
- const workerClient=execFileSync('git',['show',WORKER_SOURCE+':db/client.ts'],{encoding:'utf8'}),webClient=readFileSync('db/client.ts','utf8');
+ const workerClient=archived(WORKER_SOURCE,'db/client.ts').toString('utf8'),webClient=archived(STAGING_BASELINE,'db/client.ts').toString('utf8');
  expect(workerClient.split(WORKER_AGENT_ENABLEMENT)).toHaveLength(2);
  expect(webClient.split(WEB_AGENT_ENABLEMENT)).toHaveLength(2);
  // No arbitrary type/comment stripping: ANY other runtime, import, context, transaction or type delta fails.
  expect(webClient.split(WEB_TAX_BASIS_READER)).toHaveLength(2);
  expect(webClient.replace(WEB_AGENT_ENABLEMENT,WORKER_AGENT_ENABLEMENT).replace(WEB_TAX_BASIS_READER,'')).toBe(workerClient);
  for(const path of unchanged.filter(path=>path!=='db/client.ts'))expect(execFileSync('git',['show',WORKER_SOURCE+':'+path],{encoding:'utf8'}),path+' never reads payslip').not.toMatch(/payslip/i);
- expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim().split('\n').sort()).toEqual([...reviewedChanges].sort());
- expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,'HEAD','--',...reviewedChanges.filter(path=>path!=='core/bank-import-worker.ts')],{encoding:'utf8'}).trim()).toBe('');
- for(const [path,hash] of Object.entries(payrollQueueWorkerPins))expect(createHash('sha256').update(readFileSync(path)).digest('hex'),path).toBe(hash);
+ expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,STAGING_BASELINE,'--',...reviewedChanges],{encoding:'utf8'}).trim().split('\n').sort()).toEqual([...reviewedChanges].sort());
+ expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,STAGING_BASELINE,'--',...reviewedChanges.filter(path=>path!=='core/bank-import-worker.ts')],{encoding:'utf8'}).trim()).toBe('');
+ for(const [path,hash] of Object.entries(payrollQueueWorkerPins))expect(createHash('sha256').update(archived(STAGING_BASELINE,path)).digest('hex'),path).toBe(hash);
  const priorSections=execFileSync('git',['show',PRIOR_REVIEWED_BANK_SOURCE+':core/import-sections.ts'],{encoding:'utf8'});
  expect(priorSections.split(PRIOR_PROFILE_PASSPORT_CHECK)).toHaveLength(2);
  expect(execFileSync('git',['show',REVIEWED_BANK_SOURCE+':core/import-sections.ts'],{encoding:'utf8'})).toBe(priorSections.replace(PRIOR_PROFILE_PASSPORT_CHECK,REVIEWED_PROFILE_PASSPORT_CHECK));
@@ -86,14 +98,26 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
  const webPackage=JSON.parse(readFileSync('package.json','utf8'));
  expect(oldPackage.scripts['db:migrate']).toBe(WORKER_MIGRATION_COMMAND);
  expect(webPackage.scripts['db:migrate']).toBe(WEB_MIGRATION_COMMAND);
+ expect(oldPackage.scripts.build).toBe(WORKER_BUILD_COMMAND);
+ expect(webPackage.scripts.build).toBe(WEB_BUILD_COMMAND);
  for(const input of REVIEWED_MIGRATION_INPUTS)expect(createHash('sha256').update(readFileSync(input.path)).digest('hex'),input.path).toBe(input.sha256);
  expect(oldPackage).toMatchObject({dependencies:{next:'16.3.8',nodemailer:'10.1.0'},devDependencies:{'eslint-config-next':'16.3.8'}});
- expect({...webPackage,scripts:{...webPackage.scripts,'db:migrate':WORKER_MIGRATION_COMMAND}}).toEqual({...oldPackage,
+ expect({...webPackage,scripts:{...webPackage.scripts,'db:migrate':WORKER_MIGRATION_COMMAND,build:WORKER_BUILD_COMMAND}}).toEqual({...oldPackage,
   dependencies:{...oldPackage.dependencies,'server-only':'0.0.1',next:'16.4.1',nodemailer:'10.1.4'},
   devDependencies:{...oldPackage.devDependencies,ajv:'8.20.0','eslint-config-next':'16.4.1'}});
  const securityLock=execFileSync('git',['show',REVIEWED_SECURITY_GRAPH.source+':pnpm-lock.yaml'],{encoding:'utf8'});
  expect(createHash('sha256').update(securityLock).digest('hex')).toBe(REVIEWED_SECURITY_GRAPH.lockSha256);
- expect(readFileSync('pnpm-lock.yaml','utf8'),'only the exact reviewed security dependency graph').toBe(securityLock);
+ // The PgBouncer work (ADR 2026-11-10 pgbouncer transaction pooling, patches/README.md) patches postgres@3.4.9 in the
+ // repository: no package or version changes. The lock may differ from the reviewed graph only by that patch's own
+ // entry and its hash on the five postgres@3.4.9 references, and the hash is the SHA-256 of the patch's exact bytes.
+ const postgresPatch=createHash('sha256').update(readFileSync(REVIEWED_POSTGRES_PATCH.path)).digest('hex');
+ expect(postgresPatch,REVIEWED_POSTGRES_PATCH.path).toBe(REVIEWED_POSTGRES_PATCH.sha256);
+ const patchEntry='  postgres@3.4.9:\n    hash: '+postgresPatch+'\n    path: '+REVIEWED_POSTGRES_PATCH.path+'\n';
+ const patchedVersion='3.4.9(patch_hash='+postgresPatch+')';
+ const currentLock=readFileSync('pnpm-lock.yaml','utf8');
+ expect(currentLock.split(patchEntry),'one postgres patch entry').toHaveLength(2);
+ expect(currentLock.split(patchedVersion),'five patched postgres references').toHaveLength(6);
+ expect(currentLock.replace(patchEntry,'').split(patchedVersion).join('3.4.9'),'only the exact reviewed security dependency graph').toBe(securityLock);
  expect(execFileSync('git',['rev-parse',REVIEWED_SECURITY_GRAPH.source+'^'],{encoding:'utf8'}).trim()).toBe(REVIEWED_SECURITY_GRAPH.baseline);
  const baselineLock=execFileSync('git',['show',REVIEWED_SECURITY_GRAPH.baseline+':pnpm-lock.yaml'],{encoding:'utf8'});
  expect(createHash('sha256').update(baselineLock).digest('hex')).toBe(REVIEWED_SECURITY_GRAPH.baselineLockSha256);
@@ -116,12 +140,12 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
 
  const directory=mkdtempSync(join(tmpdir(),'aihr-worker-compat-'));
  try{
-  const available=new Set(execFileSync('git',['ls-tree','--name-only',WORKER_SOURCE],{encoding:'utf8'}).trim().split('\n'));
+  const available=new Set(execFileSync('git',['ls-tree','--name-only',workerSource],{encoding:'utf8'}).trim().split('\n'));
   const roots=PACKET_POLICY.roots.filter(path=>available.has(path));
   expect(roots).toEqual(expect.arrayContaining(['package.json','pnpm-lock.yaml','tsconfig.json','core','db','i18n','localization','lib','scripts','packs']));
-  const archive=execFileSync('git',['archive',WORKER_SOURCE,...roots],{maxBuffer:128*1024**2});
+  const archive=execFileSync('git',['archive',workerSource,...roots],{maxBuffer:128*1024**2});
   execFileSync('tar',['-xf','-','-C',directory],{input:archive,maxBuffer:1024**2});
-  for(const path of ['package.json','pnpm-lock.yaml',...new Set([...unchanged,...reviewedChanges,...Object.keys(payrollQueueWorkerPins)])])expect(readFileSync(join(directory,path)).equals(execFileSync('git',['show',WORKER_SOURCE+':'+path])),'Executed old worker retains original '+path).toBe(true);
+  for(const path of ['package.json','pnpm-lock.yaml',...new Set([...unchanged,...reviewedChanges,...Object.keys(payrollQueueWorkerPins)])])expect(readFileSync(join(directory,path)).equals(archived(workerSource,path)),'Executed worker retains its original '+path).toBe(true);
   // Real isolated dependency files, preserving internal pnpm links. No external module symlink,
   // installation files, frozen worker source or vendor network is modified by this disposable fixture.
   execFileSync('cp',['-a',...(process.platform==='linux'?['--reflink=auto']:[]),join(process.cwd(),'node_modules'),join(directory,'node_modules')],{timeout:60000,maxBuffer:1024**2});
@@ -180,11 +204,11 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
    expect(await owner.db.select().from(s.importAttemptItem).where(eq(s.importAttemptItem.attemptId,done.attemptId!))).toEqual(history);
   }
   const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
-  if(evidence){mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,'worker-cross-version.json'),JSON.stringify({
-   kind:'GIT_SOURCE_CROSS_VERSION_FIXTURE_NOT_PACKET_OR_LIVE_ACCEPTANCE',workerSource:WORKER_SOURCE,webSource:process.env.AIHR_CI_HEAD,
+  if(evidence){mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,'worker-cross-version-'+label+'.json'),JSON.stringify({
+   kind:'GIT_SOURCE_CROSS_VERSION_FIXTURE_NOT_PACKET_OR_LIVE_ACCEPTANCE',workerSource,webSource:process.env.AIHR_CI_HEAD,reviewedHistoricalBaseline:STAGING_BASELINE,matchingWorkerRequired:true,
    reviewedCurrentDependencyGraph:REVIEWED_SECURITY_GRAPH,executedDependencyOrigin:'copied-current-reviewed-node_modules-not-historical-worker-packet',
    correctedRootPolicy:PACKET_POLICY,actualPacketExecuted:false,authenticatedCorrectedPacketProofRequired:true,
-   schemaEntries:schema.ledger,unchangedSourcePaths:unchanged.filter(path=>path!=='db/client.ts'),reviewedWebTypeOnlyChange:{path:'db/client.ts',workerDeclaration:WORKER_AGENT_ENABLEMENT,webDeclaration:WEB_AGENT_ENABLEMENT,allOtherBytesIdentical:true,executedArchivedBytes:WORKER_SOURCE},reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:WORKER_SOURCE},reviewedWebMigrationEntryChange:{workerCommand:WORKER_MIGRATION_COMMAND,webCommand:WEB_MIGRATION_COMMAND,inputs:REVIEWED_MIGRATION_INPUTS,executedArchivedPackageAndLock:WORKER_SOURCE,workerTickUsesPackageMigrationCommand:false},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
+   schemaEntries:schema.ledger,unchangedSourcePaths:unchanged.filter(path=>path!=='db/client.ts'),reviewedHistoricalClientDelta:{path:'db/client.ts',legacySource:WORKER_SOURCE,stagedSource:STAGING_BASELINE,legacyDeclaration:WORKER_AGENT_ENABLEMENT,stagedDeclaration:WEB_AGENT_ENABLEMENT,taxBasisReaderAdded:true,allOtherBytesIdentical:true},reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:workerSource},reviewedWebMigrationEntryChange:{workerCommand:WORKER_MIGRATION_COMMAND,webCommand:WEB_MIGRATION_COMMAND,inputs:REVIEWED_MIGRATION_INPUTS,executedArchivedPackageAndLock:workerSource,workerTickUsesPackageMigrationCommand:false},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
    newWebAdmission:true,humanCommandFixture:true,canonicalWrite:true,tenantDenial:true,newProcessReplay:true,historyItems:history.length,
    reviewedWebPassportChange:{priorSource:PRIOR_REVIEWED_BANK_SOURCE,source:REVIEWED_BANK_SOURCE,changedBranch:'buildProfile',webProfileNumberOnlyApplied:true,archivedWorkerBankTaxPreservedNumberOnlyPassport:true,passportOnlyAndMixedBankSourcesRefused:true,refusedSourcesCreatedNoAttemptOrPersonnelMutation:true},
    protectedServiceVerified:false,liveRestartVerified:false,deploymentAuthorized:false,

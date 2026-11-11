@@ -36,6 +36,7 @@ import {
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { hireEmployee } from '../core/org';
+import { withRunPayPeriod } from '../core/payroll-period-lock';
 import {
   adminCtx,
   closeAll,
@@ -82,7 +83,7 @@ async function hire(name: string, basic = 5000) {
 
 const batchRow = async (batchId: string) => {
   const [b] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
-  return b;
+  return withRunPayPeriod(b, () => Error('Expected the committed run to carry its pay period'));
 };
 
 const unlockHistoryRows = async (batchId: string) =>

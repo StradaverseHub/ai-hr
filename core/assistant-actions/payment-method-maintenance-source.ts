@@ -15,7 +15,7 @@ export class PaymentMethodMaintenanceUnavailable extends Error{constructor(){sup
 export const paymentMethodMaintenanceUnavailable=():never=>{throw new PaymentMethodMaintenanceUnavailable();};
 const fail=paymentMethodMaintenanceUnavailable,hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 type Subject=AssignedSubject&{employeeName:string;employeeCode:string|null;companyName:string;country:string;scopeDigest:string};
-async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();await tx.execute(sql`select app.access_workforce_write_lock()`);await lockProfileValueWritesTx(tx,fresh.tenantId);return fresh;}
+async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();await tx.execute(sql`select app.access_configuration_write_lock()`);await lockProfileValueWritesTx(tx,fresh.tenantId);return fresh;}
 async function subject(tx:Tx,ctx:SessionContext,id:string):Promise<Subject>{
  const [row]=await tx.execute<{scope:Subject|null}>(sql`select app.assistant_payment_method_scope(${id}::uuid) as scope`),s=row?.scope;if(!s||s.subjectPersonId===ctx.personId)return fail();
  const fields=await masterReportFieldsTx(tx,ctx,[s.companyId]);if(!fields.some(f=>f.owner==='payrollProfile'&&f.ownerField==='paymentMethod'&&f.sensitivity==='payroll'))return fail();

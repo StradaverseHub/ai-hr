@@ -4,27 +4,18 @@ import {PERSONNEL_EMPLOYMENT_FILTERS} from '@/lib/personnel-list-employment-fiel
 import {personnelFieldLabel} from '@/lib/personnel-field-label';
 import {PERSONNEL_FIELDS} from '@/lib/personnel-field-registry';
 import {ResponsiveActions} from '@/components/responsive-actions';
-import {readPersonnelPrivateCriteria} from '@/core/personnel-private-search';
 import { PersonnelExportOptions } from './export-options';
 import { PersonnelAutoFilters } from './auto-filter';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
-import {PersonnelReadBusyError} from '@/core/personnel-read-bounds';
-import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
-import {requireWorkforceAccess} from '@/lib/workforce-authz';
-import {
-  listCompanies,
-  listDepartments,
-  readPersonnelOverview,
-} from '@/core/read';
+import { requireWorkforceAccess, type WorkforcePageRead } from '@/lib/workforce-authz';
+import { personnelPageExtra, readPersonnelPageTx } from './page-read';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
 
-import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
-import { getEmployeeListColumns } from '@/core/employee-list-prefs';
 import { Card, PageHeader } from '@/components/ui';
 import { FilterChips, type FilterField } from '@/components/filter-panel';
 import { Pager } from '@/components/pager';
@@ -39,24 +30,21 @@ import { resetEmployeeColumnsAction, saveEmployeeColumnsAction } from './column-
 import { ColumnPicker } from './column-picker';
 import { draftRowHref } from './draft-row';
 import { employeeRowHref } from './employee-row';
-import { employmentPhotoIds } from '@/core/person-photo';
 // 034a5080 — the Create New Employee prompt over this list. Same four-question body the standalone route
 // renders, so it needs the same Employee ID rule resolution the route's page performs.
-import { listConfigs, resolveEmployeeIdRule } from '@/core/employee-id-config';
+import { resolveEmployeeIdRule } from '@/core/employee-id-config';
 import type { EmployeeIdRule } from '@/lib/employee-id-mode';
 import { CreateEmployeeDialog } from './create-employee-dialog';
 import {
   DRAFT_BUCKET,
   EMPLOYEE_STATUS_BUCKETS,
-  draftListScope,
-  draftMatchesQuery,
-  headcountFilters,
   parsePersonnelListQuery,
   personnelQueryParams,
   type PersonnelSearchParams,
 } from './list-query';
 // Approved9c6b06d4: one private list search and hierarchy-aware filters; profile switchers stay on profiles.
 import {PersonnelOrganisationFilters} from './organisation-filters';
+import {PersonnelListSearch} from './list-search';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -109,31 +97,25 @@ export default async function PeoplePage({
 }: {
   searchParams: Promise<PersonnelSearchParams>;
 }) {
-  const sp = await searchParams;
-  try {
-    return await renderPersonnelPage(sp);
-  } catch (error) {
-    if (!(error instanceof PersonnelReadBusyError)) throw error;
-    const t = await getTranslations('people.list');
-    const to = await getTranslations('personnelOrganisationFilters');
-    const pq = parsePageQuery(sp);
-    const params = personnelQueryParams(sp);
-    params.set('size', String(pq.size));
-    params.set('page', String(pq.page));
-    return (
-      <div className="mx-auto max-w-[100rem] space-y-4">
-        <PageHeader title={t('adminTitle')} />
-        <div role="alert" className="space-y-2 rounded-md border p-4">
-          <p>{to('readBusy')}</p>
-          <a className="text-primary underline" href={`/admin/personnel?${params}`}>{to('retryRead')}</a>
-        </div>
-      </div>
-    );
-  }
+  return renderPersonnelPage(await searchParams);
 }
 
 async function renderPersonnelPage(sp: PersonnelSearchParams) {
-  const {s:session,scopeIds,companyIds,allowedCount}=await requireWorkforceAccess({ personnelList: true });
+  const pq = parsePageQuery(sp);
+  // 579255c3 — ONE parse of the query string, shared with the Excel export so the file and the table
+  // are answering the same question. See ./list-query.ts for why the cards write `bucket` rather than
+  // overloading `status`.
+  const query = parsePersonnelListQuery(sp);
+  // The Workforce gate and every database read of this screen share one read-only snapshot
+  // (./page-read.ts); a reader who may not open Personnel is redirected before any listing read.
+  const data = await requireWorkforceAccess({ personnelList: true, extra: personnelPageExtra, read: (access: WorkforcePageRead) => readPersonnelPageTx(access, {
+    query, page: pq, isAdmin: (access.s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin'),
+    overviewInput: (scopeIds) => ({ companyIds: scopeIds, ...query.filters, limit: pq.limit, offset: pq.offset }),
+  }) });
+  const { session, scopeIds, maintainIds, canCreate, overview, privateCriteria, companies, departments, idConfigs, photoIds } = data;
+  const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
+  const { rows: drafts, count: draftCardCount } = data.drafts;
+  const savedColumns = data.savedColumns;
   const t = await getTranslations('people.list');
   const tStatus = await getTranslations('people.employeeStatus');
   const to = await getTranslations('personnelOrganisationFilters');
@@ -145,44 +127,12 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   const tMeOptions = await getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE);
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
-  const workforceIds=new Set(companyIds);
-  const maintainIds=new Set(await personnelMaintenanceCompanyIds(session));
   const today = todayInKualaLumpur();
-  const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
-  const canCreate=isAdmin&&maintainIds.size>0;
   const { error } = sp;
-  const pq = parsePageQuery(sp);
-  // 579255c3 — ONE parse of the query string, shared with the Excel export so the file and the table
-  // are answering the same question. See ./list-query.ts for why the cards write `bucket` rather than
-  // overloading `status`.
-  const query = parsePersonnelListQuery(sp);
   const { q, company, dept, type, draftOnly, hasFilters } = query;
-  const overviewRead = readPersonnelOverview(session, {
-    companyIds: scopeIds,
-    ...query.filters,
-    limit: pq.limit,
-    offset: pq.offset,
-  }, headcountFilters(query));
-  const [overview, privateCriteria, companies, departments, allDrafts, savedColumns, idConfigs] = await Promise.all([
-    overviewRead,
-    query.filters.privateSearch
-      ? readPersonnelPrivateCriteria(session, query.filters.privateSearch, scopeIds)
-      : Promise.resolve(null),
-    listCompanies(session).then(rows=>rows.filter(row=>workforceIds.has(row.id))),
-    scopeIds.length?listDepartments(session,{companyIds:scopeIds}):Promise.resolve([]),
-    // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
-    // be read with no scope at all, so choosing one company still listed every company's drafts.
-    isAdmin ? listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount)) : Promise.resolve([]),
-    // 579255c3 — this reader's own columns and their order. Per user (app_user.list_preferences through
-    // the own-row seam), so one person's arrangement never changes what anybody else sees.
-    getEmployeeListColumns(session),
-    // 034a5080 — the Create New Employee prompt asks the same four questions the standalone route asks,
-    // so it needs the same two things that route's page builds: the companies (already read above) and
-    // the Employee ID Auto Running Number Setup that applies to each of them. Resolved ONCE from a single
-    // read here, exactly as app/admin/personnel/new/page.tsx does it, rather than a query per company as
-    // the select is used. Admin-only, because the prompt itself is.
-    canCreate ? listConfigs(session, scopeIds) : Promise.resolve([]),
-  ]);
+  // The reads behind these values, unchanged, now share the page snapshot (./page-read.ts): drafts follow
+  // the TOP-BAR company scope (b1b1879d); saved columns are this reader's own (579255c3); Employee ID rules
+  // are read once for the Create New Employee prompt, admin-only like the prompt itself (034a5080).
 
   const { employees: { rows: employeeRows, total: employeeTotal }, headcount, organisationChoices } = overview;
   const columns = savedColumns.selected;
@@ -198,50 +148,15 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   const employeeIdRules: Record<string, EmployeeIdRule> = {};
   for (const c of companies) employeeIdRules[c.id] = resolveEmployeeIdRule(idConfigs, c.id);
 
-  // ── Draft rows (item 06f0cb8f, preserved) ─────────────────────────────────────────────────────────
-  // Drafts are PINNED ABOVE the employees on every page, not merged into the sort and not paged. There
-  // are a handful of them at most (they exist for days, not years), and the reporter's reason for wanting
-  // them in this list is to see who is still outstanding — an outstanding record on page 4 answers
-  // nothing. THE PAGER TOTAL STILL COUNTS EMPLOYMENTS ONLY: "40 employees" must keep meaning forty people
-  // on the books, and a Draft is a reserved place, not a person.
-  //
-  // 579255c3 DELIBERATELY DOES NOT RE-SEPARATE THEM. A standalone "Draft Employees" card above the table
-  // used to exist and was REMOVED AT THE REPORTER'S OWN REQUEST (06f0cb8f) — a draft parked outside the
-  // list with no status against it was exactly the complaint. What the redesign adds instead is the Draft
-  // CARD, which shows the count and pulls up those rows alone in one click.
-  //
-  // Which filters hide a draft, and why, now lives in ONE predicate (draftMatchesQuery) shared with the
-  // Draft card's count and with the export, so a card can never promise records the table then refuses.
-  const matchingDrafts = allDrafts.filter((d) => draftMatchesQuery(d, query));
-  // THE DRAFT CARD COUNTS WHAT CLICKING IT WOULD SHOW, not what the current selection shows. Clicking a
-  // card REPLACES the bucket, so counting the drafts under the bucket already chosen made the card read
-  // "0" the moment Active was selected — a card offering nothing, next to two records that exist. Caught
-  // by rendering, not by a test: every count was individually correct.
-  const draftCardCount = allDrafts.filter((d) =>
-    draftMatchesQuery(d, { ...query, bucket: undefined }),
-  ).length;
-  // FIRST PAGE ONLY. Pinned rows that repeat above every page of a long list stop reading as "these are
-  // outstanding" and start reading as a rendering fault. Under the Draft selection there is only one
-  // page, so this costs nothing there.
-  const drafts = pq.offset > 0 ? [] : matchingDrafts;
-
+  // Drafts share the employee list and stay pinned on its first page (06f0cb8f/579255c3).
+  // The Draft card counts the view it opens; the pager still counts employments only.
   const employees = draftOnly ? [] : employeeRows;
   const total = draftOnly ? 0 : employeeTotal;
   const pgState = pageState(pq, total, employees.length);
 
-  // 597c810a — WHO ON THIS PAGE HAS A PROFILE PHOTO, in ONE query, AFTER the page's rows are known.
-  //
-  // It cannot join the Promise.all above: the answer depends on the twenty-five rows that read returns, and
-  // a photo lookup over the whole scoped set would be a bulk read of the wrong population. One extra round
-  // trip for the page is the point — the alternative is an <img> on every row, which on production's 89
-  // persons and 2 photos means 89 browser requests, 87 of them 404s that each cost a session read and an
-  // RLS query. The Map is empty for a page where nobody has one, and then the rows are byte-identical to
-  // before. RLS decides membership, not this call: a person outside can_see_person is simply absent
-  // (core/person-photo.ts).
-  const photoIds = await employmentPhotoIds(
-    session,
-    employees.map((e) => e.employmentId),
-  );
+  // 597c810a — WHO ON THIS PAGE HAS A PROFILE PHOTO is read for the page's own rows only, after they are
+  // known (an administrator's in the overview statement itself; see ./page-read.ts). The alternative is an
+  // <img> on every row, 404s included. RLS decides membership: a person outside can_see_person is absent.
 
   // ── Filters ───────────────────────────────────────────────────────────────────────────────────────
   // Consolidated filter panel (feedback 3542ed4a): same GET params, same query path — only the
@@ -390,6 +305,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
           // group `shrink-0` — without wrapping, a narrow window would scroll the PAGE sideways rather
           // than stacking the controls, which is the one thing a full-width change must not introduce.
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            <PersonnelListSearch pageSize={String(pq.size)} parameters={[...personnelQueryParams(sp)]} privateCriteria={privateCriteria??undefined}/>
             <PersonnelOrganisationFilters pageSize={String(pq.size)} fields={filterFields} values={filterValues} privateCriteria={privateCriteria??undefined} employmentFields={employmentFilterFields} columnFields={(['code','name','email','reportingTo','costCenter','workLocation','jobGrade'] as const).map(key=>({key,label:t(COLUMN_LABEL_KEY[key]),type:'text'}))} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
             {canCreate && (
               <CreateEmployeeDialog

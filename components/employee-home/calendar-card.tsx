@@ -7,6 +7,7 @@ import {useSearchParams} from 'next/navigation';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
 import {IndependentHomeCard} from './home-card';
+import {useHomeInitialSharing} from './sharing-cohort';
 import {HomeTeamCard} from './team-card';
 import {addMonths} from '@/lib/roster-month';
 import {homeCalendarMonth,validateHomeCalendar,type EmployeeHomeCalendar,type HomeCalendarEntry} from '@/lib/employee-home-calendar';
@@ -16,6 +17,7 @@ const tones={leave:'border-primary/50 bg-primary/10 text-foreground',holiday:'bo
 
 export function HomeCalendarCard({employmentId,initialMonth,full=false}:{employmentId:string;initialMonth:string;full?:boolean}){
  const t=useTranslations('employeeHome.calendar'),locale=useLocale();
+ const subscribe=useHomeInitialSharing();
  const [localMonth,setMonth]=React.useState(initialMonth),[view,setView]=React.useState<View>('month');
  const search=useSearchParams(),month=full?(search?.get('month')??localMonth):localMonth;
  function changeMonth(next:string){
@@ -28,9 +30,11 @@ export function HomeCalendarCard({employmentId,initialMonth,full=false}:{employm
   if(!response.ok)throw Error('Calendar unavailable.');
   return validateHomeCalendar(await response.json(),employmentId,month);
  },[employmentId,month]);
+ const initialRead=React.useCallback(async(signal:AbortSignal)=>subscribe
+  ?validateHomeCalendar(await subscribe('calendar',signal,()=>read(signal)) as EmployeeHomeCalendar,employmentId,month):read(signal),[subscribe,read,employmentId,month]);
  const monthLabel=new Intl.DateTimeFormat(locale,{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(month+'-01T00:00:00Z'));
  return <IndependentHomeCard card="calendar" title={t('title')} labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}}
-  requestKey={`${employmentId}:${month}:${locale}`} read={read}>{value=><div className="space-y-4">
+  requestKey={`${employmentId}:${month}:${locale}`} read={read} initialRead={!full&&month===initialMonth?initialRead:undefined}>{value=><div className="space-y-4">
    <div className="flex flex-wrap items-center justify-between gap-2">
     <h3 aria-live="polite" className="font-semibold">{monthLabel}</h3>
     <div className="flex flex-wrap gap-1">

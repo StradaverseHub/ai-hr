@@ -12,6 +12,9 @@ WorkingDirectory=/opt/ai-hr
 # Never add the owner credential to the web service's runtime.env.
 EnvironmentFile=/etc/aihr/import-worker.env
 Environment=NODE_ENV=production
+# Connection budget (db/capacity.ts): counted in AIHR_DB_BACKGROUND_CONNECTIONS, not the web pool.
+Environment=AIHR_DB_PROCESS_ROLE=worker
+Environment=AIHR_DB_POOL_MAX=2
 ExecStart=/usr/bin/env node --import tsx scripts/bank-import-runner.ts
 Restart=on-failure
 RestartSec=5

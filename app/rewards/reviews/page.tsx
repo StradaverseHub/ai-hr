@@ -15,7 +15,7 @@ export default async function RewardsPage({searchParams}:{searchParams:Promise<R
  const companies=await rewardVisibleCompanies(s),allowedIds=companies.map(c=>c.id),scopeIds=companies.some(c=>c.wholeGroup)?allowedIds:await getScopeIds(allowedIds);
  const t=await getTranslations('rewards'), nav=await getTranslations('nav'), sp=await searchParams;
  const [list,choices,destinations,plans,companyGroups]=await Promise.all([
-   listRewardReviewStatus(s,scopeIds),rewardSetupChoices(s,scopeIds),rewardNavigation(s),rewardWholeGroupPlans(s),rewardReviewCompanyGroups(s,scopeIds),
+   listRewardReviewStatus(s,scopeIds,{includeCreationPlan:Boolean(sp.plan)}),rewardSetupChoices(s,scopeIds,{fields:[]}),rewardNavigation(s),rewardWholeGroupPlans(s),rewardReviewCompanyGroups(s,scopeIds),
  ]);
  const maintenanceIds=new Set(choices.companies.map(company=>company.id));
  const maintenanceActions=new Map(list.rows.filter(row=>maintenanceIds.has(row.companyId)).map(row=>[row.id,<RewardReviewActions key={row.id} review={row}/>]));

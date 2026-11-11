@@ -22,9 +22,12 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import type {ChatImportFile} from '../lib/chat-import';
 import {chatImportKindsFor} from '../core/chat-import/kinds';
 import {confirmChatImport} from '../core/chat-import/confirm';
+import {runBulkJobTick} from '../core/bulk-job-worker';
+import {leaveImportJobHandler} from '../core/leave-import-worker';
 import {prepareChatImportProposal} from '../core/proposals/chat-import';
 import {verifyProposal,type Proposal} from '../core/proposals/proposal';
-import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
+import {previewImportRevertForAttempt} from '../core/import-history-handlers';
+import {revertImportToOutcome} from './helpers/employee-import-revert';
 import {confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {HARNESS_TEST_ONLY,runTurn} from '../core/harness/runner';
 import {InMemoryTaskMemoryStore} from '../core/harness/memory';
@@ -65,6 +68,15 @@ async function prepare(kind:string,file:ChatImportFile,caller=ctx):Promise<Propo
 const clone=<T>(value:T):T=>JSON.parse(JSON.stringify(value));
 const leaveFile=(rows:readonly string[]):ChatImportFile=>({name:'leave-balances-nov.xlsx',format:'xlsx',text:['employee_id,leave_type,transaction_type,days,effective_date',...rows].join('\n')+'\n'});
 const imported=()=>owner.db.select().from(schema.leaveLedger).where(and(eq(schema.leaveLedger.tenantId,base.tenantId),eq(schema.leaveLedger.reason,'Imported (leave migration)')));
+/** The worker runs the chat-started leave import to its end; its row on the leave import page carries the counts. */
+async function finishLeaveImport(){
+ for(let i=0;i<2000;i++){
+  const [row]=await owner.client<{state:string;result:Record<string,number>|null;notified:boolean}[]>`select state,result,notified_at is not null as notified from bulk_job where tenant_id=${base.tenantId}::uuid and kind='leave_ledger' order by created_at desc limit 1`;
+  if(row&&['completed','failed','cancelled'].includes(row.state)&&row.notified)return row;
+  if(!await runBulkJobTick(owner.client,{handlers:[leaveImportJobHandler]}))await new Promise(resolve=>setTimeout(resolve,20));
+ }
+ throw new Error('leave import did not finish');
+}
 
 describe('leave balances: prepared from the file, confirmed once through the leave import',()=>{
  const rows=['L0001,ANNUAL,adjustment,5,2026-01-15','L0002,ANNUAL,adjustment,3,2026-01-15','E0999,ANNUAL,adjustment,2,2026-01-15',`L0001,"${INJECTION}",adjustment,1,2026-01-15`];
@@ -88,7 +100,10 @@ describe('leave balances: prepared from the file, confirmed once through the lea
   const file=leaveFile(rows),proposal=await prepare('leave_balances',file);
   expect(await confirmChatImport(ctx,{proposal,confirm:'true',file})).toEqual({kind:'refused',reason:'not_confirmed'});
   const first=await confirmChatImport(ctx,{proposal,confirm:true,file});
-  expect(first).toEqual({kind:'imported',importKind:'leave_balances',imported:2,notImported:2,otherCompany:0,historyHref:null,revertible:false,replayed:false});
+  // The leave owner's background import: started here, shown (and counted) on its own page.
+  expect(first).toEqual({kind:'imported',importKind:'leave_balances',imported:0,notImported:0,otherCompany:0,historyHref:'/admin/leave-config/import',revertible:false,started:true,replayed:false});
+  const job=await finishLeaveImport();
+  expect(job.result).toMatchObject({imported:2,totalRows:4});
   const rowsNow=await imported();
   expect(rowsNow.map(row=>Number(row.days)).sort()).toEqual([3,5]);
   const again=await confirmChatImport(ctx,{proposal,confirm:true,file});
@@ -213,7 +228,7 @@ describe('employee records: confirmed through the employee import, and its own r
   expect(await confirmChatImport(ctx,{proposal,confirm:true,file})).toMatchObject({kind:'imported',imported:2,replayed:true});
   const recovery=await previewImportRevertForAttempt(ctx,attemptId);
   expect(recovery.eligible).toBe(true);
-  expect(await revertImportForAttempt(ctx,attemptId,{previewHash:recovery.previewHash,reason:'Fictional wrong file'})).toEqual({attemptId,restored:2});
+  expect(await revertImportToOutcome(ctx,attemptId,{previewHash:recovery.previewHash,reason:'Fictional wrong file'})).toEqual({attemptId,restored:2});
  });
 });
 
@@ -286,7 +301,8 @@ describe('the card\'s one company: an administrator of two companies, preparing 
   expect(proposal.body.import).toMatchObject({company:'Acme Sdn Bhd',total:2,ready:1,attention:1,otherCompany:1,confirmable:true,
    issues:[{row:2,field:'employee_id',reason:'other_company'}]});
   const done=await confirmChatImport(ctx,{proposal,confirm:true,file});
-  expect(done).toEqual({kind:'imported',importKind:'leave_balances',imported:1,notImported:1,otherCompany:1,historyHref:null,revertible:false,replayed:false});
+  expect(done).toEqual({kind:'imported',importKind:'leave_balances',imported:0,notImported:0,otherCompany:0,historyHref:'/admin/leave-config/import',revertible:false,started:true,replayed:false});
+  expect((await finishLeaveImport()).result).toMatchObject({imported:1,totalRows:2,otherCompany:1});
   // Only the card's company's row is in the ledger; the second company's employee has nothing imported.
   const rows=await imported();
   expect(rows.map(row=>[row.employmentId===there.employmentId?'second':'first',Number(row.days)])).toEqual([['first',5]]);

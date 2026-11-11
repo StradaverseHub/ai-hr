@@ -1,5 +1,7 @@
-import { withTenant } from '@/db/client';
-import {workforceViewScope} from '@/core/workforce-access';
+import {capacityAwareRead} from '@/lib/database-degraded';
+import { sql } from 'drizzle-orm';
+import {personnelPageAccessFrom,personnelPageAccessSql} from '@/core/workforce-access';
+import { withPersonnelOverviewRead } from '@/core/personnel-read-bounds';
 import {getSession} from '@/lib/session';
 /**
  * Personnel employee-listing export (feedback 579255c3, points 9 & 10) — the currently filtered list as
@@ -22,9 +24,8 @@ import {getSession} from '@/lib/session';
 import { getTranslations } from 'next-intl/server';
 import { getScopeIds } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { listEmployeesPage } from '@/core/read';
-import { PersonnelReadBusyError } from '@/core/personnel-read-bounds';
-import { getEmployeeListColumns } from '@/core/employee-list-prefs';
+import { listWorkforcePersonnelPageTx, listWorkforcePersonnelPresentationPageTx, type EmployeeListRow } from '@/core/read';
+import { employeeListColumnsFrom, LIST_PREFERENCES_SQL } from '@/core/employee-list-prefs';
 import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { columnsFromParam, employeeColumnText, EMPLOYEE_COLUMN_KEYS, type EmployeeColumnKey } from '@/lib/employee-columns';
@@ -68,7 +69,7 @@ const EMPLOYMENT_TYPE_KEY: Record<string, string> = {
  *  download must still be bounded. 10_000 is the same ceiling the leave-record export uses. */
 const ROW_CAP = 10_000;
 
-export async function GET(req: Request) {
+export const GET = capacityAwareRead(async function GET(req: Request) {
   try {
     return await exportPersonnel(req);
   } catch (error) {
@@ -77,21 +78,12 @@ export async function GET(req: Request) {
         status: 413, headers: { 'Cache-Control': 'private, no-store' },
       });
     }
-    if (!(error instanceof PersonnelReadBusyError)) throw error;
-    const messages = await getTranslations('personnelOrganisationFilters');
-    return new Response(messages('readBusy'), {
-      status: 503,
-      headers: { 'Retry-After': '5', 'Cache-Control': 'private, no-store', Vary: 'Cookie' },
-    });
+    throw error;
   }
-}
+});
 
 async function exportPersonnel(req: Request) {
   const session=await getSession();
-  const allowed=await workforceViewScope(session, { personnelList: true });
-  if(!allowed.canOpen||allowed.companyIds.length===0)return new Response('Forbidden',{status:403});
-  const scopeIds=await getScopeIds(allowed.companyIds),allowedCount=allowed.companyIds.length;
-
   const url = new URL(req.url);
   const sp = url.searchParams;
   const mode = sp.get('mode');
@@ -107,38 +99,49 @@ async function exportPersonnel(req: Request) {
   const tStatus = await getTranslations('people.employeeStatus');
   const today = todayInKualaLumpur();
 
-  const columns = mode === 'all'
-    ? [...EMPLOYEE_COLUMN_KEYS]
-    : columnsFromParam(params.cols, await getEmployeeListColumns(session));
-
-  // Draft-only is not an employment query at all — the same suppression the screen applies. Exporting
-  // the drafts under it keeps "what is on screen" literally true for the one selection where the rows
-  // come from a different table.
-  const listInput = {
-    companyIds: scopeIds,
-    ...query.filters,
-    limit: mode === 'page' ? pagination.limit : ROW_CAP,
-    offset: mode === 'page' ? pagination.offset : 0,
-  };
-  const { rows, total, details } = query.draftOnly
-    ? { rows: [], total: 0, details: null }
-    : mode === 'all'
-      ? await withTenant(session, async tx => {
-          const matching = await listEmployeesPage(session, listInput, 'workforce', tx);
-          const details = matching.total > ROW_CAP ? null
-            : await readPersonnelListExportDetails(session, matching.rows, today, tx);
-          return { ...matching, details };
-        }, { readOnlySnapshot: true })
-      : { ...await listEmployeesPage(session, listInput, 'workforce'), details: null };
+  // One read-only snapshot for the Workforce gate, saved columns, rows (and details) and drafts; the
+  // gate and the saved columns ride in the snapshot's bounds statement (see ../page-read.ts).
+  const extra = sql`jsonb_build_object('access', ${personnelPageAccessSql}, 'columns', ${session.userId ? LIST_PREFERENCES_SQL : sql`null::jsonb`})`;
+  const read = await withPersonnelOverviewRead(session, async (tx, snapshot) => {
+    const {access: rawAccess, columns: savedColumns} = snapshot.extra as {access: unknown; columns: unknown};
+    const allowed = personnelPageAccessFrom(rawAccess);
+    if(!allowed.canOpen||allowed.companyIds.length===0)return null;
+    const scopeIds=await getScopeIds(allowed.companyIds),allowedCount=allowed.companyIds.length;
+    const columns = mode === 'all'
+      ? [...EMPLOYEE_COLUMN_KEYS]
+      : columnsFromParam(params.cols, employeeListColumnsFrom(savedColumns));
+    // Draft-only is not an employment query at all — the same suppression the screen applies. Exporting
+    // the drafts under it keeps "what is on screen" literally true for the one selection where the rows
+    // come from a different table.
+    const listInput = {
+      companyIds: scopeIds,
+      ...query.filters,
+      limit: mode === 'page' ? pagination.limit : ROW_CAP,
+      offset: mode === 'page' ? pagination.offset : 0,
+    };
+    const listed = query.draftOnly
+      ? { rows: [], total: 0, details: null }
+      : mode === 'all'
+        ? await (async () => {
+            const matching = await listWorkforcePersonnelPresentationPageTx(session, listInput, today, tx, snapshot);
+            const details = matching.total > ROW_CAP ? null
+              : await readPersonnelListExportDetails(session, matching.rows, today, tx);
+            return { ...matching, details };
+          })()
+        : { ...await listWorkforcePersonnelPageTx(tx, session, listInput, snapshot), details: null };
+    // b1b1879d — the SAME top-bar scope the employees above are read under, built by the same function the
+    // screen uses. Without it a file exported while viewing one company carried every company's drafts.
+    const includeDrafts = mode === 'page' ? pagination.offset === 0 : mode !== 'all' && query.draftOnly;
+    const drafts = includeDrafts && isAdmin(session) && !(mode !== 'page' && listed.total > ROW_CAP)
+      ? (await listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount), undefined, tx)).filter((d) =>
+          draftMatchesQuery(d, query),
+        )
+      : [];
+    return { columns, ...listed, drafts };
+  }, { extra });
+  if(!read)return new Response('Forbidden',{status:403});
+  const { columns, rows, total, details, drafts } = read;
   if(mode !== 'page' && total>ROW_CAP)return new Response('Too many matching employees. Narrow the filters before exporting.',{status:413,headers:{'Cache-Control':'private, no-store','Vary':'Cookie'}});
-  // b1b1879d — the SAME top-bar scope the employees above are read under, built by the same function the
-  // screen uses. Without it a file exported while viewing one company carried every company's drafts.
-  const includeDrafts = mode === 'page' ? pagination.offset === 0 : mode !== 'all' && query.draftOnly;
-  const drafts = includeDrafts && isAdmin(session)
-    ? (await listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount))).filter((d) =>
-        draftMatchesQuery(d, query),
-      )
-    : [];
 
   if(drafts.length>ROW_CAP)return new Response('Too many matching drafts. Narrow the filters before exporting.',{status:413,headers:{'Cache-Control':'private, no-store','Vary':'Cookie'}});
 
@@ -198,7 +201,7 @@ async function exportPersonnel(req: Request) {
 async function personnelWorkbook(
   data: ReportData,
   columns: EmployeeColumnKey[],
-  rows: Awaited<ReturnType<typeof listEmployeesPage>>['rows'],
+  rows: EmployeeListRow[],
   draftCount: number,
   details: Awaited<ReturnType<typeof readPersonnelListExportDetails>> | null,
 ) {

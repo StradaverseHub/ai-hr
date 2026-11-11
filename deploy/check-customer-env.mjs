@@ -119,6 +119,26 @@ export function customerEnvironmentErrors(env = process.env, cwd = process.cwd()
     errors.push('DATABASE_URL and MIGRATION_DATABASE_URL must use separate database roles.');
   }
 
+  // Transaction pooling (deploy/pgbouncer/README.md). The pooled URL is the same role and database as
+  // DATABASE_URL by a different route; migrations and every other direct connection never use it.
+  if (env.DATABASE_POOLED_URL) {
+    const pooledDb = databaseUrl('DATABASE_POOLED_URL');
+    const endpoint = (url) => url.hostname + ':' + (url.port || '5432');
+    if (pooledDb && appDb) {
+      if (decodeURIComponent(pooledDb.username) !== decodeURIComponent(appDb.username) || pooledDb.pathname !== appDb.pathname) {
+        errors.push('DATABASE_POOLED_URL must use the same role and database as DATABASE_URL.');
+      }
+      if (endpoint(pooledDb) === endpoint(appDb)) errors.push('DATABASE_POOLED_URL must point at the pooler, not at the database DATABASE_URL already reaches.');
+    }
+    if (pooledDb && migrationDb && endpoint(pooledDb) === endpoint(migrationDb)) {
+      errors.push('MIGRATION_DATABASE_URL must stay a direct connection, not the pooler.');
+    }
+    const server = env.AIHR_DB_POOLER_SERVER_CONNECTIONS;
+    if (!server || !/^[1-9][0-9]*$/.test(server) || Number(server) > 1000) {
+      errors.push('AIHR_DB_POOLER_SERVER_CONNECTIONS must be the pooler\'s max_db_connections when DATABASE_POOLED_URL is set.');
+    }
+  }
+
   if (env.AUTH_PROVIDER === 'workos' && required('NEXT_PUBLIC_WORKOS_REDIRECT_URI')) {
     let valid = false;
     try {

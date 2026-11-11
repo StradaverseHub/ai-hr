@@ -24,7 +24,7 @@ import { assertSchedulePoolExclusionsTx } from './attendance-rotation';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { lockLeaveDependencyConfigurationTx } from '../packs/leave/service';
 import {
   ATTENDANCE_OT_ROUNDING_MODES,
@@ -211,6 +211,14 @@ export async function resolveRuleTx(
   if (!rule) return null;
   const rows = await tx.select().from(attendanceRuleOtRow).where(eq(attendanceRuleOtRow.ruleId, rule.id));
   const exceptions=await tx.select({id:attendanceExceptionRevision.id,effectiveFrom:attendanceExceptionRevision.effectiveFrom,enabled:attendanceExceptionRevision.enabled}).from(attendanceExceptionRevision).where(eq(attendanceExceptionRevision.ruleId,rule.id)).orderBy(asc(attendanceExceptionRevision.effectiveFrom));
+  return resolvedAttendanceRuleFrom(rule, rows, exceptions);
+}
+/** resolveRuleTx's result from the three rows it reads, for a caller that read them in one bundled statement. */
+export function resolvedAttendanceRuleFrom(
+  rule: typeof attendanceRule.$inferSelect,
+  rows: (typeof attendanceRuleOtRow.$inferSelect)[],
+  exceptions: { id: string; effectiveFrom: string; enabled: boolean }[],
+): ResolvedAttendanceRule {
   return {...toResolved(rule, rows),exceptions};
 }
 
@@ -259,7 +267,7 @@ export function setRuleShifts(ctx:SessionContext,p:{ruleId:string;shiftIds:reado
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  const save=async (tx:Tx)=>{
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.principal_snapshot_current() and app.is_group_admin() as allowed`);
   if(!authority?.allowed)throw new Error('A group-wide HR administrator is required to change allowed shifts.');
@@ -318,7 +326,7 @@ export function getAttendanceRule(ctx: SessionContext, ruleId: string): Promise<
 export function ensureStandardRule(ctx: SessionContext): Promise<{ id: string; created: boolean }> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [existing] = await tx
       .select({ id: attendanceRule.id })
@@ -686,7 +694,7 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const n = normalizeInput(p);
   const create = async (tx:Tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     let ruleId: string;
     try {
@@ -755,7 +763,7 @@ export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } 
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     return updateAttendanceRuleTx(ctx,tx,p);
   });
@@ -793,7 +801,7 @@ export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRu
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const save = async (tx:Tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [rule] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1).for('update');
     if (!rule) throw new Error('Rule not found.');
@@ -972,7 +980,7 @@ export function copyAttendanceRule(ctx: SessionContext, p: { ruleId: string }): 
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1).for('update');
     if (!src) throw new Error('Rule not found.');
@@ -1103,7 +1111,7 @@ export function setAttendanceRuleStatus(
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const status = p.status === 'inactive' ? 'inactive' : 'active';
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [rule] = await tx
       .select({ id: attendanceRule.id, name: attendanceRule.name })
@@ -1140,7 +1148,7 @@ export function deleteAttendanceRule(ctx: SessionContext, p: { ruleId: string })
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [rule] = await tx
       .select({ id: attendanceRule.id, isDefault: attendanceRule.isDefault, name: attendanceRule.name })

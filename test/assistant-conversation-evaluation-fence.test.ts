@@ -14,7 +14,7 @@ import {hireEmployee} from '../core/org';
 import {grantAssistant} from '../core/assistant-grant';
 import {resolveActiveAiConfig} from '../core/ai-config';
 import {bindAiSpendTaskTx} from '../core/ai-spend-task';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {erasePersonPii} from '../core/pdpa';
 import {eraseOwnAssistantHistory} from '../core/assistant-history-retention';
 import * as conversationHarness from '../core/assistant-conversation-harness';
@@ -143,7 +143,7 @@ describe('in-flight evaluation cannot recreate erased conversation metadata',()=
   const a=await candidate(),id=randomUUID(),digest='a'.repeat(64),insert=(row:string)=>withTenant(a.reviewer,tx=>tx.execute(sql`insert into public.ai_assistant_answer_evaluation_intent(id,tenant_id,candidate_id,evaluator_user_id,evaluator_person_id,source_digest,provider_fingerprint,suite_digest,receipt) values(${row}::uuid,${base.tenantId}::uuid,${a.candidateId}::uuid,${a.reviewer.userId}::uuid,${a.reviewer.personId}::uuid,${digest},${digest},${digest},'fictional-opaque-intent-receipt')`));
   await insert(id);expect(await count(INTENT)).toBe(1);
   let ready!:()=>void,release!:()=>void;const entered=new Promise<void>(yes=>{ready=yes;}),done=new Promise<void>(yes=>{release=yes;});
-  const busy={cause:expect.objectContaining({code:'55P03'})},timeout=setTimeout(()=>release(),10000),holder=withTenant(a.author,async tx=>{await lockAccessConfigurationTx(tx,base.tenantId);ready();await done;});
+  const busy={cause:expect.objectContaining({code:'55P03'})},timeout=setTimeout(()=>release(),10000),holder=withTenant(a.author,async tx=>{await lockAccessConfigurationWriteTx(tx,base.tenantId);ready();await done;});
   try{
    await entered;
    await expect(withTenant(a.reviewer,tx=>tx.execute(sql`delete from public.ai_assistant_answer_evaluation_intent where id=${id}::uuid`))).rejects.toMatchObject(busy);

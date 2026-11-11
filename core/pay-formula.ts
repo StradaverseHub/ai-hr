@@ -10,7 +10,7 @@ import {assertModuleEnabled,resolveEntitlementsTx} from './entitlements';
 import {companySegmentsForPeriodBulk,employedByCompanyDuring} from './employment-company';
 import {isCalendarDate} from '../lib/calendar-date';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
 import {assertPayFormulaCompleteSource,parsePayFormula,printPayFormula,analyzePayFormula,PAY_FORMULA_EVALUATOR_VERSION,type FormulaProgram} from '../lib/pay-formula-language';
 import {PAY_FORMULA_REGISTRY_VERSION,PAY_FORMULA_PROVIDER_VERSION} from '../lib/pay-formula-registry';
@@ -41,7 +41,7 @@ export async function validatePayFormulaDraft(ctx:SessionContext,source:string){
  if(diagnosePayFormula(source).some(problem=>problem.severity==='error'))throw new PayFormulaError('The proposed formula has validation errors.');
  return locked(ctx,async tx=>{await assertPayFormulaDraftAuthorTx(tx,ctx);await dependenciesTx(tx,ctx,program);await dependencySnapshotTx(tx,ctx,program);});
 }
-async function locked<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){return withTenant(ctx,async tx=>{await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await authority(tx,ctx);await lockPayComponentCatalogTx(tx,ctx);return fn(tx);});}
+async function locked<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){return withTenant(ctx,async tx=>{await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await authority(tx,ctx);await lockPayComponentCatalogTx(tx,ctx);return fn(tx);});}
 async function event(tx:Tx,ctx:SessionContext,p:{id:string;kind:string;revisionId?:string;testId?:string;componentId?:string;detail?:unknown}){
  await tx.execute(sql`insert into pay_formula_event(tenant_id,formula_id,revision_id,test_id,component_id,kind,detail,actor_id) values(${ctx.tenantId}::uuid,${p.id}::uuid,${p.revisionId??null}::uuid,${p.testId??null}::uuid,${p.componentId??null}::uuid,${p.kind},${JSON.stringify(p.detail??{})}::jsonb,${ctx.userId!}::uuid)`);
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'pay-formula',aggregateId:p.id,eventType:'pay-formula.'+p.kind,actor:actorOf(ctx),payload:{revisionId:p.revisionId??null,testId:p.testId??null,componentId:p.componentId??null,...(p.detail&&typeof p.detail==='object'?p.detail:{})}});

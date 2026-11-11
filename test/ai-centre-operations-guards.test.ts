@@ -3,7 +3,8 @@
  *  - an employee or a manager requesting any /control-tower page is still refused (the shared layout and the page
  *    each run requireAdmin, which sends them home with a temporary 307);
  *  - "How the Control Tower works" answers a permanent 308 to /assistant?view=how, and only after that same guard;
- *  - requireAdmin itself, and its isAdmin predicate, are byte-for-byte what they were.
+ *  - requireAdmin's check and its isAdmin predicate are byte-for-byte what they were; since 90377f8ca it may reuse a
+ *    session already resolved for the request, which it re-checks exactly like one it resolves itself.
  * No database: the session owner is the only stand-in. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import fs from 'node:fs';
@@ -24,6 +25,7 @@ import InventoryStub from '../app/control-tower/agents/inventory/page';
 import OrchestratorStub from '../app/control-tower/agents/orchestrator/page';
 import BuildListPage from '../app/control-tower/agents/build-list/page';
 import {requireAdmin} from '../lib/authz';
+import type {SessionContext} from '../db/client';
 
 const ROOT=path.resolve(__dirname,'..');
 const read=(rel:string)=>fs.readFileSync(path.join(ROOT,rel),'utf8');
@@ -61,10 +63,26 @@ describe('guards are unchanged by the merge',()=>{
   expect(await redirectOf(()=>HowItWorksPage())).toEqual({url:'/assistant?view=how',status:'308'});
  });
 
+ it('a session the caller already resolved for this request is re-checked, never trusted',async()=>{
+  // 90377f8ca lets a route reuse the session it resolved; requireAdmin still applies isAdmin to that session.
+  const resolved=(role:keyof typeof SESSIONS)=>SESSIONS[role] as unknown as SessionContext;
+  for(const role of ['employee','manager'] as const){
+   state.session=SESSIONS.groupAdmin;
+   expect(await redirectOf(()=>requireAdmin(resolved(role)))).toEqual({url:'/',status:'307'});
+   state.session=SESSIONS[role];
+   expect(await redirectOf(()=>requireAdmin(resolved(role)))).toEqual({url:'/',status:'307'});
+  }
+  for(const role of ['hrAdmin','groupAdmin'] as const){
+   state.session=SESSIONS[role];
+   expect(await requireAdmin(resolved(role))).toBe(SESSIONS[role]);
+  }
+ });
+
  it('the guard functions are the same source as before the merge',()=>{
   const authz=read('lib/authz.ts');
-  expect(authz).toContain(`export async function requireAdmin(): Promise<SessionContext> {
-  const s = await getSession();
+  // 90377f8ca: the only change is the optional session already resolved for this request; the check is unchanged.
+  expect(authz).toContain(`export async function requireAdmin(session?: SessionContext): Promise<SessionContext> {
+  const s = session ?? await getSession();
   if (!isAdmin(s)) redirect('/');
   return s;
 }`);

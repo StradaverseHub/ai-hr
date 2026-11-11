@@ -1,5 +1,14 @@
 {
   "roster": {
+    "prepareTitle": "检查排班更改",
+    "prepareHint": "请检查班次、日期和员工人数，然后确认。",
+    "browseEmployees": "浏览所有员工",
+    "reviewTargets": "检查所选员工",
+    "confirmRoster": "确认排班更改",
+    "prepareFailed": "无法准备排班更改。请检查所选内容后重试。",
+    "pickerFailed": "无法加载员工，请重试。",
+    "pickerSelectMatching": "选择全部 {n} 名匹配员工",
+    "copyTargetsReview": "将为当前选中的 {n} 名员工复制排班。请检查日期，然后点击复制以确认。",
     "title": "排班",
     "subtitle": "编制月度排班表——选择月份，然后为团队安排班次。",
     "noCompanies": "您的范围内没有可排班的公司。",
@@ -296,6 +305,14 @@
       "rule": "此更改被保护现有记录（例如已关闭的薪资）的安全规则拒绝。参考编号 {ref}。",
       "busy": "系统繁忙，更改未完成。请重试。参考编号 {ref}。",
       "nricDuplicate": "此 NRIC 已存在于另一名员工的记录中。当前人员常规设置不允许重复 NRIC。 参考编号 {ref}."
+    },
+    "degraded": {
+      "title": "加载时间比平时更长",
+      "body": "由于系统当前负载较高，页面未能完成加载。系统稍后会自动重试。",
+      "retryNow": "立即重试",
+      "unexpectedTitle": "无法显示此页面",
+      "unexpectedBody": "发生了意外情况，导致此页面无法加载。请重试；如果问题仍然存在，请联系管理员。",
+      "apiMessage": "系统当前负载较高，请稍后再试。"
     },
     "moreActions": "更多操作",
     "noSearchResults": "没有与搜索匹配的结果。",
@@ -861,7 +878,8 @@
       "placeholder": "搜索员工编号或姓名…",
       "resultsLabel": "员工搜索结果",
       "noMatches": "没有匹配的员工。",
-      "currentTag": "当前"
+      "currentTag": "当前",
+      "loadFailed": "无法加载员工搜索，请重试。"
     },
     "detail": {
       "incentiveDeclarations": {
@@ -2938,6 +2956,70 @@
         "payItems": "基本工资和每月津贴以外的固定薪资项目——在“薪资”标签页或通过薪资项目导入添加。",
         "openingTax": "年中入职员工的期初税款余额（TP3）——在“薪资”标签页填写。",
         "holidayCalendar": "假日日历——带日期并有自身历史的分配；请在导入后于“考勤”标签页设置。"
+      },
+      "employeeJob": {
+        "queued": "等待开始",
+        "validating": "正在检查文件",
+        "importing": "正在导入员工",
+        "activating": "正在完成导入",
+        "discarding": "正在撤销导入",
+        "completed": "导入已完成",
+        "failed": "导入已停止——未添加任何员工",
+        "phase": {
+          "employees": "正在创建员工",
+          "superiors": "正在关联汇报线",
+          "registers": "正在添加登记记录",
+          "activation": "正在收尾"
+        },
+        "progressCount": "已完成 {done}/{total} 个步骤",
+        "backgroundHelp": "您可以离开此页面。导入完成前，其他人看不到新员工。",
+        "waiting": "正在等待导入进程。进度已保存；请勿再次上传文件。",
+        "otherRunning": "另一项员工导入仍在进行。请等待其完成后再开始新的导入。",
+        "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务一运行便会自动开始。"
+      },
+      "sectionJob": {
+        "queued": "等待开始",
+        "preparing": "正在检查文件",
+        "running": "正在保存各行",
+        "finalizing": "正在完成导入",
+        "discarding": "正在停止导入",
+        "completed": "导入已完成",
+        "failed": "导入已停止",
+        "cancelled": "导入已取消",
+        "progressCount": "已完成 {done}/{total} 个步骤",
+        "backgroundHelp": "您可以离开此页面。导入过程中每一行都会单独保存。",
+        "backgroundHelpRegister": "您可以离开此页面。整个文件保存完成前，其他人看不到这些登记变更。",
+        "waiting": "正在等待导入进程。进度已保存；请勿再次上传文件。",
+        "otherRunning": "您发起的同类导入仍在进行。请等待其完成后再开始新的导入。",
+        "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务一运行便会自动开始。"
+      },
+      "movementJob": {
+        "queued": "等待开始",
+        "validating": "正在重新检查文件",
+        "importing": "正在保存异动",
+        "finishing": "正在记录导入",
+        "completed": "导入已完成",
+        "failed": "导入已停止",
+        "cancelled": "导入已停止",
+        "progressCount": "已处理 {done}/{total} 名员工",
+        "backgroundHelp": "您可以离开此页面。每名员工的异动会在处理该员工时一并保存。",
+        "waiting": "正在等待导入进程。进度已保存；请勿再次确认导入。",
+        "otherRunning": "您发起的另一项异动导入仍在进行。请等待其完成后再确认新的导入。",
+        "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务一运行便会自动开始。"
+      },
+      "movementCheckJob": {
+        "queued": "等待开始",
+        "reading": "正在读取文件",
+        "checking": "正在检查异动",
+        "finishing": "正在记录检查",
+        "completed": "检查已完成",
+        "failed": "检查已停止",
+        "cancelled": "检查已停止",
+        "progressCount": "已检查 {done}/{total} 名员工",
+        "backgroundHelp": "在您确认导入之前，不会保存任何内容。请保持此页面打开，以便检查完成时查看结果。",
+        "waiting": "正在等待导入进程。检查会自动开始；请勿再次上传该文件。",
+        "otherRunning": "您发起的另一项异动检查仍在进行。请等待其完成后再检查新文件。",
+        "workerUnavailable": "导入服务尚未运行。您的文件已保留，服务一运行检查便会自动开始。"
       }
     },
     "wizard": {
@@ -4698,7 +4780,26 @@
       "runByUnknown": "系统",
       "scopeEmployees": "{count, plural, other {# 名员工}}",
       "runNoChanges": "本次重新计算没有改变任何内容。",
-      "recentNote": "每次重新计算都会永久保留 — 执行人、涉及的员工和日期，以及每个变动日的前后数字。每次重新计算也会出现在审计记录的考勤栏目下。"
+      "recentNote": "每次重新计算都会永久保留 — 执行人、涉及的员工和日期，以及每个变动日的前后数字。每次重新计算也会出现在审计记录的考勤栏目下。",
+      "job": {
+        "queued": "等待开始",
+        "preparing": "正在检查范围",
+        "running": "正在为员工重新计算",
+        "finalizing": "正在汇总结果",
+        "discarding": "正在停止",
+        "completed": "已完成",
+        "failed": "已中止",
+        "cancelled": "已中止",
+        "progressCount": "已完成 {done}/{total} 名员工",
+        "backgroundHelp": "您可以离开此页面稍后再回来；结果准备好后会显示在这里。",
+        "waiting": "正在等待导入服务。进度已保存；请勿再次开始。",
+        "workerUnavailable": "导入服务尚未运行。此请求已保存，服务一运行便会自动开始。",
+        "previewTitle": "预览",
+        "applyTitle": "正在应用更改",
+        "leftOut": "{count, plural, other {# 名员工未重新计算}}",
+        "alreadyRunning": "您已有一项重新计算正在运行。请等待其完成后再开始另一项。",
+        "unavailable": "此重新计算已不可用。请重新打开页面。"
+      }
     },
     "reject": "驳回",
     "rejectNotRecorded": "未记录说明",
@@ -4841,6 +4942,33 @@
       "active": "在职",
       "probation": "试用期",
       "notice": "通知期"
+    },
+    "explorer": {
+      "hint": "分段浏览大型组织。搜索涵盖所选公司中的所有人员。",
+      "topLevel": "最高层级",
+      "allPeople": "所有人员",
+      "search": "搜索",
+      "searchResults": "搜索结果",
+      "reports": "直属下属",
+      "managers": "经理",
+      "connections": "所有关系",
+      "history": "已浏览人员",
+      "loading": "正在加载组织…",
+      "loaded": "本页已加载 {loaded} 项 · 共 {total} 项匹配结果 · 所选公司共 {people} 人",
+      "accessChanged": "您的访问权限已更改。请重新加载以继续。",
+      "changed": "组织已更改。请刷新此部分以继续。",
+      "failed": "无法加载此部分。请重试。",
+      "refresh": "重新加载",
+      "retry": "重试",
+      "multipleAssignments": "多个当前任职",
+      "profile": "查看个人资料",
+      "relationships": "汇报关系",
+      "outsideScope": "此关系位于所选公司之外",
+      "incoming": "向此人汇报",
+      "outgoing": "此人汇报给",
+      "explore": "浏览",
+      "back": "返回",
+      "next": "下一页"
     }
   },
   "me": {
@@ -5006,7 +5134,8 @@
     "payrollStatus": {
       "draft": "草稿",
       "processed": "已处理",
-      "closed": "已关闭"
+      "closed": "已关闭",
+      "processing": "处理中"
     },
     "payslip": {
       "backToWorkspace": "我的资料",
@@ -5516,7 +5645,8 @@
     "submitDecisions": "提交",
     "employeeRemark": "员工备注",
     "closeDialog": "关闭",
-    "bulkSelectAll": "全选",
+    "bulkSelectAll": "选择此视图中的所有申请",
+    "bulkSelectionUnavailable": "无法选择待审批的报销申请。请重试。",
     "bulkSelectRow": "选择申请",
     "bulkSelected": "已选择：{count, plural, other {# 项申请}}",
     "bulkClear": "清除",
@@ -5828,7 +5958,8 @@
         "closed": "已关闭",
         "unattached": "未挂接",
         "reprocess": "待重新计算",
-        "reprocessRequired": "需重新处理"
+        "reprocessRequired": "需重新处理",
+        "processing": "处理中"
       },
       "importHistory": "导入薪资历史",
       "periodContext": "发薪周期",
@@ -6822,6 +6953,7 @@
       },
       "preChecksOpenProfile": "打开档案",
       "preChecksBlockedError": "无法处理薪资：{n} 名员工没有当前薪资记录。请先解决处理前检查问题。",
+      "preChecksNotReady": "请先解决预处理检查中的阻止项，再处理薪资。",
       "preChecksBlockedPayModeError": "无法处理薪资：{n} 名员工采用薪资无法计算的自定义周期薪酬结构。请更改其基本薪资记录上的薪资模式，或将他们排除在本次运行之外。",
       "preChecksBlockedTp3Error": "无法处理薪资：{n} 名员工本年度的 TP3 表格尚未进入其薪资数字。请先逐一打开并保存其 TP3 表格。",
       "generatedWithSkipped": "已生成工资单 — 跳过 {n} 名员工。下方列表列出姓名与原因。",
@@ -7046,7 +7178,33 @@
       "reprocessPendingEmployees": "{count} 名所选员工仍待处理。",
       "reprocessPcbBefore": "原 PCB",
       "reprocessPcbAfter": "更新后 PCB",
-      "reprocessPcbDifference": "PCB 差额"
+      "reprocessPcbDifference": "PCB 差额",
+      "processingStarted": "薪资处理已开始。此页面显示其进度。",
+      "processingJob": {
+        "title": "薪资处理",
+        "othersRun": "此薪资批次正在处理中。处理完成后即可审核。",
+        "state": {
+          "queued": "等待开始",
+          "preparing": "正在检查批次",
+          "running": "正在计算工资单",
+          "finalizing": "正在完成批次",
+          "discarding": "正在撤销处理",
+          "completed": "处理已完成",
+          "failed": "处理已停止——批次已退回草稿",
+          "cancelled": "处理已取消——批次已退回草稿"
+        },
+        "progressCount": "已完成 {done}/{total} 个步骤",
+        "backgroundHelp": "您可以离开此页面。批次关闭前员工看不到任何内容，处理完成后您会收到通知。",
+        "waiting": "正在等待薪资处理服务。进度已保存；请勿再次处理此批次。",
+        "workerUnavailable": "薪资处理服务尚未运行。批次已保存，服务一运行便会自动开始。"
+      },
+      "reprocessJob": {
+        "title": "正在后台重新处理",
+        "queued": "等待开始",
+        "running": "正在重新处理所选员工",
+        "progress": "已完成 {done}/{total} 名员工",
+        "help": "您可以离开此页面。每位员工单独重新计算，重新处理完成后结果会显示在这里。"
+      }
     },
     "transactions": {
       "title": "交易录入",
@@ -9920,7 +10078,24 @@
       "tickHint": "部分记录已有工资数据。勾选要覆盖的记录；未勾选的记录保持不变。",
       "acknowledge": "我已了解。用我的文件数值替换已勾选的记录。原始数值保留在审计历史中，可从 Log File 撤销覆盖。",
       "confirmOverwrite": "确认覆盖并导入",
-      "importNewOnly": "仅导入新记录"
+      "importNewOnly": "仅导入新记录",
+      "job": {
+        "title": "正在后台提交",
+        "state": {
+          "queued": "等待开始",
+          "preparing": "正在重新检查文件",
+          "running": "正在写入薪资历史",
+          "finalizing": "正在使更改生效",
+          "discarding": "正在撤销未完成的更改",
+          "completed": "已提交",
+          "failed": "已停止——薪资历史未作任何更改",
+          "cancelled": "已停止——薪资历史未作任何更改"
+        },
+        "progressCount": "已完成 {done}/{total} 个步骤",
+        "backgroundHelp": "您可以离开此页面。在所有更改一起提交之前，任何人都看不到这些更改；完成后您会收到通知。",
+        "waiting": "正在等待后台服务。您的请求已保存，请勿重复提交。",
+        "workerUnavailable": "后台服务尚未运行。您的请求已保存，服务运行后将自动开始。"
+      }
     },
     "individualImport": {
       "submitWorkbook": "上传工作簿",
@@ -10850,7 +11025,20 @@
         "fileTooLarge": "文件过大。请拆分为较小批次后重试。",
         "emptySheet": "第一个工作表为空。",
         "pasteToggle": "或改为粘贴 CSV",
-        "downloadTemplateXlsx": "下载 Excel 模板"
+        "downloadTemplateXlsx": "下载 Excel 模板",
+        "job": {
+          "title": "正在导入休假记录",
+          "progressCount": "已处理 {done} / {total} 行",
+          "backgroundHelp": "此操作在后台运行。您可以离开此页面，稍后再回来。",
+          "waiting": "正在等待导入服务继续。无需任何操作。",
+          "failed": "导入未能完成。已保存的记录将被保留。",
+          "state": {
+            "queued": "等待开始",
+            "importing": "正在导入",
+            "completed": "已完成",
+            "failed": "已停止"
+          }
+        }
       },
       "expiryUnitMonths": "月",
       "expiryUnitDays": "天",
@@ -11268,7 +11456,28 @@
       "cancelApprovedReplacementNote": "取消补休始终需要审批人重新审批，因为退回休假也会退回其抵扣额度。",
       "cancelApprovedNotifyLabel": "有取消申请时通知审批人和人力资源部",
       "cancelApprovedNotifyHelp": "收件人可在应用通知铃中查看提醒。邮件还需要启用类别、收件人同意和已激活的 SMTP 中继。",
-      "generateOutcome_not_eligible": "不符合条件 — 该休假类型的条件不包含此员工"
+      "generateOutcome_not_eligible": "不符合条件 — 该休假类型的条件不包含此员工",
+      "processingJob": {
+        "title": {
+          "leave_generation": "正在生成休假权益",
+          "leave_accrual": "正在运行累计休假",
+          "leave_recalc": "正在重新计算假期余额",
+          "leave_a2c": "正在将假期年度类型应用于余额"
+        },
+        "progressCount": "已处理 {done} / {total} 名员工",
+        "backgroundHelp": "此操作在后台运行。您可以离开此页面，稍后再回来。",
+        "waiting": "正在等待后台服务继续。无需任何操作。",
+        "state": {
+          "queued": "等待开始",
+          "running": "正在运行",
+          "completed": "已完成",
+          "failed": "已停止"
+        },
+        "failed": "运行已停止：{reason} 已处理的员工保留其数据。",
+        "partial": "{count} 名员工无法处理，保持不变：{reason} 请再次运行以完成。",
+        "alreadyRunning": "另一位管理员正在运行此操作。请在其完成后重试。",
+        "failedNothingChanged": "运行已停止：{reason} 未做任何更改。"
+      }
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -12293,7 +12502,25 @@
       "closeAlready": "该年度边界已结算；无需操作。",
       "configMovedTitle": "Replacement leave settings",
       "configMovedHint": "The policy editor for replacement leave now lives under Leave Config.",
-      "configMovedLink": "Go to Replacement Leave settings"
+      "configMovedLink": "Go to Replacement Leave settings",
+      "sweepJob": {
+        "title": {
+          "toil_expiry": "正在处理到期",
+          "toil_year_close": "正在结算补假年度"
+        },
+        "progressCount": "已处理 {done} / {total} 名员工",
+        "backgroundHelp": "此操作在后台运行。您可以离开此页面，稍后再回来。",
+        "waiting": "正在等待后台服务继续。无需任何操作。",
+        "state": {
+          "queued": "等待开始",
+          "running": "正在运行",
+          "completed": "已完成",
+          "failed": "已停止"
+        },
+        "failed": "运行已停止：{reason} 已处理的补假保持不变。请再次运行以处理其余部分。",
+        "partial": "{count} 名员工无法处理，其补假保持不变：{reason} 请再次运行以完成。",
+        "alreadyRunning": "另一位管理员正在运行此操作。请在其完成后重试。"
+      }
     },
     "locations": {
       "pageTitle": "地点",
@@ -16070,7 +16297,8 @@
     "batchStatus": {
       "draft": "草稿",
       "processed": "已处理",
-      "closed": "已关闭"
+      "closed": "已关闭",
+      "processing": "处理中"
     }
   },
   "payrollCycleConfig": {
@@ -17040,12 +17268,24 @@
     "colRanAt": "运行时间",
     "colOutcome": "结果",
     "colError": "错误",
+    "notificationEvidenceUnverified": "运行历史不能证明已安装的工作程序版本或邮件已送达。",
     "outcome": {
+      "running": "已开始；尚未记录完成",
       "success": "成功",
       "partial": "部分成功",
       "failed": "失败"
     },
     "counters": {
+      "processedEvents": "已处理事件",
+      "createdNotifications": "已创建通知",
+      "committedBatches": "已提交批次",
+      "pendingEvents": "待处理事件",
+      "oldestPendingSeconds": "最早待处理事件的等待时间（秒）",
+      "cappedTenants": "达到批次上限的公司",
+      "emailAttempted": "邮件尝试次数",
+      "emailSkipped": "已跳过邮件",
+      "emailUnavailableTenants": "邮件服务不可用的公司",
+      "emailCappedTenants": "达到邮件批次上限的公司",
       "granted": "发放天数",
       "opened": "已开启考核",
       "reminders": "已发送提醒",
@@ -17055,6 +17295,10 @@
       "tenantsAlarming": "存在警报的公司"
     },
     "jobs": {
+      "notifications-project": {
+        "name": "通知处理",
+        "description": "处理待处理的通知事件，并记录已提交的工作和积压。邮件投递结果单独记录。"
+      },
       "leave-accrue": {
         "name": "应计假期发放",
         "description": "发放员工截至目前已累积的假期天数。"
@@ -17733,7 +17977,13 @@
     "selectedTag": "已选择",
     "allEmployees": "全部员工",
     "allEmployeesHint": "清除选择并显示全部员工。",
-    "showingCapped": "显示 {total} 个匹配中的前 {cap} 个 — 请细化搜索。"
+    "showingCapped": "显示 {total} 个匹配中的前 {cap} 个 — 请细化搜索。",
+    "loadingEmployees": "正在加载员工…",
+    "loadFailed": "无法加载员工，请重试。",
+    "retry": "重试",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "pageRange": "第 {from}–{to} 条，共 {total, number} 条"
   },
   "appliedInPayroll": {
     "searchPlaceholder": "搜索月份、员工、公司或金额",
@@ -19627,7 +19877,8 @@
         "statuses": {
           "draft": "草稿",
           "processed": "已处理",
-          "closed": "已关闭"
+          "closed": "已关闭",
+          "processing": "处理中"
         },
         "periodStates": {
           "open": "开放",
@@ -19771,7 +20022,8 @@
         "statuses": {
           "draft": "草稿",
           "processed": "已处理",
-          "closed": "已关闭"
+          "closed": "已关闭",
+          "processing": "处理中"
         },
         "currentStatus": "批次当前状态",
         "title": "创建额外薪资草稿",
@@ -23196,6 +23448,49 @@
       "category": "类别",
       "active": "启用",
       "addItem": "添加项目"
+    },
+    "workflowRemoval": {
+      "statusTabs": "工作流状态",
+      "activeTab": "使用中",
+      "retiredTab": "已停用 ({count})",
+      "retiredHeading": "已停用",
+      "retiredHelp": "已停用的工作流不能为新案例选择或启动。使用过它们的案例保留其历史记录。恢复的工作流将以草稿形式返回。准备好后请另行开启自动启动。",
+      "retiredEmpty": "没有已停用的工作流。",
+      "retiredBadge": "已停用",
+      "retiredMeta": "{date} 由 {name} 停用 · 已被 {cases, plural, other {# 个案例}}使用",
+      "retiredDrawer": "此工作流已停用，不能为新案例启动。恢复后才能修改或再次使用。",
+      "delete": "删除",
+      "deleteAria": "删除 {name}",
+      "restore": "恢复",
+      "restoreAria": "恢复 {name}",
+      "close": "关闭",
+      "cancel": "取消",
+      "checkingTitle": "删除 {name}？",
+      "checking": "正在检查是否有案例使用过此工作流…",
+      "checkFailed": "无法检查此工作流。请刷新后重试。",
+      "deleteTitle": "删除 {name}？",
+      "deleteBody": "此工作流从未在任何案例中使用。删除是永久性的，无法撤销。",
+      "retireTitle": "停用 {name}？",
+      "retireBody": "已有 {cases, plural, other {# 个案例}}使用此工作流，因此无法删除，将改为移至“已停用”。进行中的案例保留其开始时的步骤，已关闭的案例保留完整历史记录。",
+      "retireEffect": "它将不再提供给新案例，也不会为新案例启动。您之后可以从“已停用”中恢复。",
+      "automaticWarning": "此工作流会在以下情况自动启动：{when}。移除后，在设置另一个工作流之前，新案例不会以这种方式启动任何工作流。",
+      "changed": "自您打开此窗口后情况已有变化。请在确认前查看更新后的详情。",
+      "saveFirst": "请等待您最新的更改保存完成后再试。",
+      "confirmDelete": "删除工作流",
+      "confirmRetire": "移至已停用",
+      "deleted": "{name} 已删除。",
+      "retired": "{name} 已移至已停用。",
+      "failed": "无法保存更改。请刷新后重试。",
+      "restoreTitle": "恢复 {name}？",
+      "restoreBody": "它将以草稿形式返回使用中列表，其步骤、收件人和设置保持停用时的状态。之前使用过它的案例不会改变。",
+      "restoreNotLive": "它不会自动启动。准备好后请将其上线。",
+      "restoreWasAutomatic": "它在停用前会自动启动，但恢复后不会重新获得该设置。这可避免在已设置替代工作流时，同一案例启动两个工作流。如有需要，请自行将其重新上线。",
+      "duplicateName": "已有一个使用中的工作流名为 {name}。请重命名其中一个以免混淆：在下方输入新名称，或取消并先重命名使用中的工作流。",
+      "newName": "恢复后工作流的名称",
+      "stillDuplicate": "请选择此模块中没有使用中工作流使用的名称。",
+      "confirmRestore": "恢复工作流",
+      "restored": "{name} 已恢复为草稿。",
+      "view": "查看"
     }
   },
   "clockingFile": {
@@ -23442,8 +23737,26 @@
         "emptyFile": "文件为空。",
         "fileTooLarge": "文件超过约 900 KB（约 25,000 行）。请拆分为两个文件并分别导入。",
         "unreadable": "无法读取该文件。",
-        "excel": "此处不接受 Excel 文件。请将设备文件导出为 CSV 或 TXT。"
-      }
+        "excel": "此处不接受 Excel 文件。请将设备文件导出为 CSV 或 TXT。",
+        "alreadyRunning": "另一项打卡导入仍在运行。请等待其完成后再开始新的导入。",
+        "notAdmin": "只有人力资源管理员可以导入打卡数据。",
+        "unavailable": "此导入已不可用。请重新打开页面查看进度。"
+      },
+      "job": {
+        "queued": "等待开始",
+        "preparing": "正在读取文件",
+        "running": "正在添加打卡记录",
+        "finalizing": "正在写入导入日志",
+        "discarding": "正在停止导入",
+        "completed": "导入已完成",
+        "failed": "导入已中止",
+        "cancelled": "导入已中止",
+        "progressCount": "已完成 {done}/{total} 名员工",
+        "backgroundHelp": "您可以离开此页面。打卡记录按员工逐一添加；导入完成后将打开导入日志。",
+        "waiting": "正在等待导入服务。进度已保存；请勿再次导入此文件。",
+        "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务一运行便会自动开始。"
+      },
+      "jobStopped": "导入已中止：{reason}"
     },
     "result": {
       "imported": "已导入",
@@ -28398,7 +28711,7 @@
       "next": "下一步",
       "stepOf": "第{current}步，共{total}步",
       "stepNavigation": "方案设置导航",
-      "completeGeneral": "继续前请填写名称、简称、公司、币种和时长选项。",
+      "completeGeneral": "继续前请填写加班模式简称、名称和日期类型。",
       "employeeEligibility": "员工适用范围",
       "testCalculation": "测试计算及薪资处理",
       "editGeneral": "编辑常规设置",
@@ -28406,7 +28719,8 @@
       "editEligibility": "编辑适用条件",
       "salaryDateHelp": "工资条件使用计算日生效的员工薪酬，并采用配置的币种。",
       "and": "并且",
-      "or": "或者"
+      "or": "或者",
+      "draftOnlyNote": "在此保存的模式将保持为草稿。加班费率和启用模式将在下一次更新中恢复。已保存的公司、币种和费率保持不变。"
     },
     "title": "加班模式",
     "descriptionText": "配置和审核员工加班、应付时长及薪资映射。",
@@ -28458,7 +28772,7 @@
     "legacyLink": "打开排班组",
     "legacyContext": "在分配有效公式模式前，现有组设置继续适用。",
     "openWorkspace": "配置加班模式",
-    "immutableHelp": "已激活版本为只读。请派生新草稿以进行未来变更。",
+    "immutableHelp": "已激活版本为只读。修改功能将在本页面的下一次更新中恢复。",
     "readerLimitations": "已记录字段的可用性",
     "unknownHelp": "缺失的历史事实保持“未知”，不能用员工当前值替代历史证据。",
     "unavailable": "当前范围内无法访问此模式或版本。",
@@ -28938,7 +29252,8 @@
     },
     "positionSearch": "搜索职位",
     "loadMorePositions": "加载更多职位",
-    "attendanceFormulaBinding": "考勤公式结果集：{id}"
+    "attendanceFormulaBinding": "考勤公式结果集：{id}",
+    "chooseOneCompany": "保存新模式前，请在屏幕顶部的公司切换器中选择一家公司。新模式将归属该公司。"
   },
   "systemTestingWorkspace": {
     "title": "系统测试",
@@ -29355,7 +29670,25 @@
     },
     "notSelected": "此有效新代码未被选中导入，未创建任何记录。",
     "notSelectedStatus": "未选择 — 已跳过",
-    "invalidStatus": "状态必须填写 Active 或 Inactive。留空时默认为 Active。"
+    "invalidStatus": "状态必须填写 Active 或 Inactive。留空时默认为 Active。",
+    "job": {
+      "state": {
+        "queued": "等待开始",
+        "preparing": "正在检查工作簿",
+        "running": "正在导入代码",
+        "finalizing": "正在完成导入",
+        "discarding": "正在撤销导入",
+        "completed": "导入已完成",
+        "failed": "导入已停止——未添加任何代码",
+        "cancelled": "导入已取消——未添加任何代码"
+      },
+      "progressCount": "已写入 {done}/{total} 个代码",
+      "backgroundHelp": "您可以关闭此窗口。导入完成前，任何人都看不到新代码。",
+      "waiting": "正在等待导入服务处理。进度已保存，请勿再次上传工作簿。",
+      "workerUnavailable": "导入服务尚未运行。您的导入已保存，服务运行后会自动开始。",
+      "otherRunning": "另一个系统标签导入仍在运行。请等待其完成后再开始新的导入。",
+      "unavailable": "无法获取导入状态。请刷新页面再次查看。"
+    }
   },
   "onboardingV31": {
     "copy": {
@@ -31733,7 +32066,8 @@
     "runStates": {
       "draft": "草稿",
       "processed": "已处理",
-      "closed": "已关闭"
+      "closed": "已关闭",
+      "processing": "处理中"
     },
     "reconciliationTitle": "薪资对账",
     "summaryNetPay": "员工汇总依据：已记录的实发工资",
@@ -36809,7 +37143,7 @@
   },
   "personnelOrganisationFilters": {
     "updatingResults": "正在更新结果…",
-    "readBusy": "人事系统正忙。请稍候再试。",
+    "applyFailed": "无法应用筛选条件。请重试。",
     "retryRead": "重试",
     "businessUnit": "业务单位",
     "parentCompany": "母公司",
@@ -37303,5 +37637,345 @@
     "appliesFromTomorrow": "配对方式和打卡最短间隔的更改从明天起生效，今天已记录的考勤不会被重新计算。历史记录会保存更改人和更改时间。",
     "systemReason": "已在排班组设置中更新",
     "dutyRosterPoolNote": "轮班只能使用上方“允许的班次”中已纳入的班次。"
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "员工导入已完成",
+          "body": "打开导入历史，查看已添加的员工。"
+        },
+        "failed": {
+          "title": "员工导入已停止",
+          "body": "未添加任何员工。打开导入历史查看原因。"
+        },
+        "cancelled": {
+          "title": "员工导入已取消",
+          "body": "未添加任何员工。打开导入历史查看详情。"
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "休假数据导入已完成",
+          "body": "导入的记录现已计入员工的休假余额。"
+        },
+        "failed": {
+          "title": "休假数据导入已停止",
+          "body": "已保存的记录将被保留。再次导入同一文件时会跳过这些记录。"
+        },
+        "cancelled": {
+          "title": "休假数据导入已取消",
+          "body": "已保存的记录将被保留。再次导入同一文件时会跳过这些记录。"
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "休假处理已完成",
+          "body": "休假数据已更新。"
+        },
+        "failed": {
+          "title": "休假处理已停止",
+          "body": "已处理的员工保留其数据。请再次运行以完成其余部分。"
+        },
+        "cancelled": {
+          "title": "休假处理已取消",
+          "body": "已处理的员工保留其数据。请再次运行以完成其余部分。"
+        }
+      },
+      "roster": {
+        "completed": {
+          "title": "排班更改已完成",
+          "body": "打开排班查看结果。"
+        },
+        "failed": {
+          "title": "排班更改已停止",
+          "body": "打开排班查看原因。"
+        },
+        "cancelled": {
+          "title": "排班更改已取消",
+          "body": "打开排班查看详情。"
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "排班组分配已完成",
+          "body": "打开分配排班组查看结果。"
+        },
+        "failed": {
+          "title": "排班组分配已停止",
+          "body": "打开分配排班组查看原因。"
+        },
+        "cancelled": {
+          "title": "排班组分配已取消",
+          "body": "打开分配排班组查看详情。"
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "打卡导入已完成",
+          "body": "打开导入日志，查看已添加的打卡记录。"
+        },
+        "failed": {
+          "title": "打卡导入已中止",
+          "body": "打开导入日志，查看已保存的内容及中止原因。"
+        },
+        "cancelled": {
+          "title": "打卡导入已中止",
+          "body": "打开导入日志，查看已保存的内容。"
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "重新计算预览已就绪",
+          "body": "打开重新计算考勤，查看将会发生的变化。"
+        },
+        "failed": {
+          "title": "重新计算预览已中止",
+          "body": "打开重新计算考勤，查看原因。"
+        },
+        "cancelled": {
+          "title": "重新计算预览已中止",
+          "body": "打开重新计算考勤，重新开始。"
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "考勤已重新计算",
+          "body": "打开重新计算考勤，查看发生变化的日期。"
+        },
+        "failed": {
+          "title": "考勤重新计算已中止",
+          "body": "打开重新计算考勤，查看原因。"
+        },
+        "cancelled": {
+          "title": "考勤重新计算已中止",
+          "body": "打开重新计算考勤，查看详情。"
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "薪资处理已完成",
+          "body": "打开薪资，审核已处理的批次。"
+        },
+        "failed": {
+          "title": "薪资处理已停止",
+          "body": "批次已退回草稿，未保留任何工资单。打开薪资查看原因。"
+        },
+        "cancelled": {
+          "title": "薪资处理已取消",
+          "body": "批次已退回草稿，未保留任何工资单。"
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "系统标签导入已完成",
+          "body": "打开系统标签，查看已添加的代码。"
+        },
+        "failed": {
+          "title": "系统标签导入已停止",
+          "body": "未添加任何代码。请打开系统标签并重新预览工作簿。"
+        },
+        "cancelled": {
+          "title": "系统标签导入已取消",
+          "body": "未添加任何代码。"
+        }
+      },
+      "sectionImport": {
+        "completed": {
+          "title": "分项导入已完成",
+          "body": "打开导入页面，查看已更新的行。"
+        },
+        "failed": {
+          "title": "分项导入已停止",
+          "body": "停止前已保存的行均已保留。打开导入页面查看原因。"
+        },
+        "cancelled": {
+          "title": "分项导入已取消",
+          "body": "停止前已保存的行均已保留。打开导入页面查看详情。"
+        }
+      },
+      "registerImport": {
+        "completed": {
+          "title": "登记导入已完成",
+          "body": "打开导入页面，查看已保存的登记记录。"
+        },
+        "failed": {
+          "title": "登记导入已停止",
+          "body": "未保存任何登记记录。打开导入页面查看原因。"
+        },
+        "cancelled": {
+          "title": "登记导入已取消",
+          "body": "未保存任何登记记录。打开导入页面查看详情。"
+        }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "导入撤销已完成",
+          "body": "打开导入历史，查看已作废的员工。"
+        },
+        "failed": {
+          "title": "导入撤销已停止",
+          "body": "未做任何更改。打开导入历史查看原因。"
+        },
+        "cancelled": {
+          "title": "导入撤销已取消",
+          "body": "未做任何更改。打开导入历史查看详情。"
+        }
+      },
+      "leaveGeneration": {
+        "completed": {
+          "title": "假期额度生成已完成",
+          "body": "假期数据已更新。"
+        },
+        "failed": {
+          "title": "假期额度生成已停止",
+          "body": "未做任何更改。请打开生成假期额度查看原因，然后再次运行。"
+        },
+        "cancelled": {
+          "title": "假期额度生成已取消",
+          "body": "未做任何更改。"
+        }
+      },
+      "leaveRecalculation": {
+        "completed": {
+          "title": "假期余额已重新计算",
+          "body": "员工的假期数据现已按已保存的设置计算。"
+        },
+        "failed": {
+          "title": "假期重新计算已停止",
+          "body": "已重新计算的员工保留其新数据。请再次保存该设置以重新计算其余员工。"
+        },
+        "cancelled": {
+          "title": "假期重新计算已取消",
+          "body": "已重新计算的员工保留其新数据。请再次保存该设置以重新计算其余员工。"
+        }
+      },
+      "leaveYearType": {
+        "completed": {
+          "title": "假期年度类型已应用",
+          "body": "首年员工的假期数据现已按已保存的假期年度类型计算。"
+        },
+        "failed": {
+          "title": "假期年度类型未应用于余额",
+          "body": "未更改任何假期数据。请再次保存假期年度类型以重试。"
+        },
+        "cancelled": {
+          "title": "假期年度类型调整已取消",
+          "body": "未更改任何假期数据。"
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "补假结算已完成",
+          "body": "到期的补假已处理完毕。打开假期额度页面查看。"
+        },
+        "failed": {
+          "title": "补假结算已停止",
+          "body": "已处理的补假保持不变。请再次运行以处理其余部分。"
+        },
+        "cancelled": {
+          "title": "补假结算已取消",
+          "body": "已处理的补假保持不变。请再次运行以处理其余部分。"
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "薪资历史更改已提交",
+          "body": "打开导入日志查看已提交的内容。"
+        },
+        "failed": {
+          "title": "薪资历史更改已停止",
+          "body": "薪资历史未作任何更改。打开导入日志查看原因。"
+        },
+        "cancelled": {
+          "title": "薪资历史更改已取消",
+          "body": "薪资历史未作任何更改。"
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "薪资重新处理已完成",
+          "body": "打开薪资批次查看已重新处理的员工。"
+        },
+        "failed": {
+          "title": "薪资重新处理已停止",
+          "body": "已重新处理的员工保留其新结果。打开薪资批次查看停止的位置。"
+        },
+        "cancelled": {
+          "title": "薪资重新处理已取消",
+          "body": "已重新处理的员工保留其新结果。"
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "异动导入已完成",
+          "body": "打开导入历史，查看已保存的异动以及未能保存的员工。"
+        },
+        "failed": {
+          "title": "异动导入已停止",
+          "body": "打开导入历史查看原因。已保存的员工会保留其异动。"
+        },
+        "cancelled": {
+          "title": "异动导入已停止",
+          "body": "已保存的员工会保留其异动。打开导入历史查看详情。"
+        }
+      },
+      "movementCheck": {
+        "completed": {
+          "title": "异动文件已检查",
+          "body": "检查已记录在导入历史中。如果您已离开导入页面，请重新上传该文件以查看并确认。"
+        },
+        "failed": {
+          "title": "异动检查已停止",
+          "body": "打开导入历史查看原因。未保存任何内容。"
+        },
+        "cancelled": {
+          "title": "异动检查已停止",
+          "body": "未保存任何内容。打开导入历史查看详情。"
+        }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "异动导入撤销已完成",
+          "body": "打开导入历史，查看已撤销的异动。"
+        },
+        "failed": {
+          "title": "异动导入撤销已停止",
+          "body": "未作任何更改。打开导入历史查看原因。"
+        },
+        "cancelled": {
+          "title": "异动导入撤销已取消",
+          "body": "未作任何更改。打开导入历史查看详情。"
+        }
+      }
+    },
+    "panel": {
+      "queued": "等待开始",
+      "preparing": "正在检查每项更改",
+      "running": "正在保存",
+      "finalizing": "正在完成",
+      "discarding": "正在停止",
+      "completed": "已完成",
+      "failed": "已停止",
+      "cancelled": "已取消",
+      "progressCount": "已完成 {done}/{total} 个步骤",
+      "backgroundHelp": "您可以离开此页面。工作会继续进行，完成后会通知您。",
+      "waiting": "正在等待后台服务。进度已保存；请勿再次启动。",
+      "workerUnavailable": "后台服务尚未运行。您的请求已保存，服务一运行便会自动开始。"
+    },
+    "roster": {
+      "generate": "正在生成排班",
+      "copy": "正在复制排班",
+      "assign": "正在应用排班更改",
+      "import": "正在保存上传的排班",
+      "otherRunning": "另一项排班更改仍在保存。请等待其完成后再试。",
+      "saveFailed": "无法保存排班更改。请重试，或联系 HR 管理员。",
+      "queuedBehind": "正在排队，等待另一项排班任务完成。该任务完成后将自动开始。"
+    },
+    "scheduleGroup": {
+      "title": "正在分配排班组",
+      "otherRunning": "另一项排班组分配仍在保存。请等待其完成后再试。",
+      "queuedBehind": "正在排队，等待另一项排班组分配完成。该分配完成后将自动开始。"
+    }
   }
 }

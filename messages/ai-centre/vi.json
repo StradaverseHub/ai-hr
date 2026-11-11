@@ -2562,7 +2562,8 @@
       "inProgress": "Lần nhập này đang được xác nhận.",
       "invalid": "Không kiểm tra được thẻ này. Hãy đính kèm tệp lại.",
       "unavailable": "Không thể hoàn tất lần nhập và chưa có gì được nhập. Hãy thử lại, hoặc dùng trang nhập."
-    }
+    },
+    "started": "Đã bắt đầu nhập. Việc nhập chạy ở chế độ nền; trang của nó hiển thị tiến độ và những gì đã được nhập."
   },
   "payrollAudit": {
     "name": "Vòng lặp kiểm toán",

@@ -14,8 +14,9 @@ import {withAiCentreFunction} from '../ai-centre-control';
  *  6. the import owner's own commit path runs, with its own checks, history and revert:
  *     - employee records: core/employee-import-upload.ts commitEmployeeImportUpload (Import History, kind employee_full,
  *       with this card's operation key, which the owner itself admits once);
- *     - leave balances: commitLeaveImport for the card's company, which re-checks every row, skips one already imported
- *       and refuses a row of another company;
+ *     - leave balances: the background leave import (core/leave-import-job.ts, the same row writer as commitLeaveImport)
+ *       for the card's company, which re-checks every row, skips one already imported and refuses a row of another
+ *       company; the card says it started and links to the leave import page, which shows its progress and counts;
  *     - payroll history: confirmPayrollHistoryUpload on the owner's own attempt and plan hash (once only by its own index),
  *       for the card's company (the owner refuses an attempt spanning another), importing only the new records when some
  *       would replace earlier history (the replacement is decided on its page);
@@ -34,7 +35,7 @@ import {BUILTIN_MAPPING_ID} from '../../lib/clocking-file';
 import {CHAT_IMPORT_ACTION,CHAT_IMPORT_ENTITY,chatImportFileInput,isChatImportKind,type ChatImportFile,type ChatImportKind} from '../../lib/chat-import';
 import {verifyProposal,type Proposal,type ProposalRefusal} from '../proposals/proposal';
 import {commitEmployeeImportUpload,employeeImportUploadInput} from '../employee-import-upload';
-import {commitLeaveImport} from '../../packs/leave/service';
+import {activeLeaveImportJob,startLeaveImportJobOnce} from '../leave-import-job';
 import {confirmPayrollHistoryUpload} from '../../packs/payroll/service';
 import {commitClockingImport} from '../../packs/attendance/service';
 import {chatImportKindsFor} from './kinds';
@@ -42,6 +43,8 @@ import {previewChatImport,previewDigest,sourceHashOf,historySourceName} from './
 
 export type ChatImportRefusal=ProposalRefusal|'wrong_action'|'not_confirmed'|'not_permitted'|'file_changed'|'changed'|'not_confirmable'|'in_progress'|'unavailable';
 export type ChatImportConfirmResult=Readonly<{kind:'imported';importKind:ChatImportKind;imported:number;notImported:number;
+ /** Leave balances: the import was started in the background; `historyHref` is its page, which shows its progress. */
+ started?:boolean;
  /** Of the rows not imported, those that belong to another company than the card's (never imported here). */
  otherCompany:number;
  /** The owner's own history of this import, where its revert is, when it keeps one. */
@@ -60,14 +63,17 @@ export function outcomeEventId(proposalId:string):string{
 }
 type Outcome=Readonly<{importKind:ChatImportKind;imported:number;notImported:number;otherCompany:number;historyHref:string|null;revertible:boolean;
  /** The owner reported the import already committed by an earlier confirmation: nothing was imported by this Confirm. */
- alreadyCommitted:boolean}>;
+ alreadyCommitted:boolean;
+ /** The owner runs this import in the background (leave balances): it was started, and its own page shows its
+  * progress and outcome; the counts are not known yet. */
+ started?:boolean}>;
 const AGGREGATE='chat-import';
 
 type Failed=Readonly<{failed:ChatImportRefusal}>;
 /** The person's view of an outcome: the counts and the history link (whether the owner had already committed it is
  * answered as `replayed`). */
 const shown=(outcome:Outcome)=>({importKind:outcome.importKind,imported:outcome.imported,notImported:outcome.notImported,otherCompany:outcome.otherCompany,
- historyHref:outcome.historyHref,revertible:outcome.revertible});
+ historyHref:outcome.historyHref,revertible:outcome.revertible,...(outcome.started?{started:true}:{})});
 async function recordedOutcome(ctx:SessionContext,proposalId:string):Promise<Outcome|Failed|'claimed'|null>{
  return withTenant(ctx,async tx=>{
   const rows=await tx.select({id:domainEvent.id,payload:domainEvent.payload}).from(domainEvent)
@@ -77,7 +83,8 @@ async function recordedOutcome(ctx:SessionContext,proposalId:string):Promise<Out
    if(value&&typeof value.failed==='string')return Object.freeze({failed:value.failed as ChatImportRefusal});
    if(value&&isChatImportKind(value.importKind)&&typeof value.imported==='number'&&typeof value.notImported==='number')
     return Object.freeze({importKind:value.importKind,imported:value.imported,notImported:value.notImported,otherCompany:typeof value.otherCompany==='number'?value.otherCompany:0,
-     historyHref:typeof value.historyHref==='string'?value.historyHref:null,revertible:value.revertible===true,alreadyCommitted:value.alreadyCommitted===true});}
+     historyHref:typeof value.historyHref==='string'?value.historyHref:null,revertible:value.revertible===true,alreadyCommitted:value.alreadyCommitted===true,
+     ...(value.started===true?{started:true}:{})});}
   return rows.some(row=>row.id===proposalId)?'claimed':null;
  });
 }
@@ -107,8 +114,13 @@ async function commit(ctx:SessionContext,proposal:Proposal,kind:ChatImportKind,f
  }
  if(!file)return 'file_changed';
  if(kind==='leave_balances'){
-  const result=await commitLeaveImport(ctx,{records:parseCsvRecords(file.text).records,source:{kind:'file',name:file.name,format:file.format==='txt'?'csv':file.format},companyId});
-  return {importKind:kind,imported:result.imported,notImported:result.totalRows-result.imported,otherCompany:result.otherCompany??0,historyHref:null,revertible:false,alreadyCommitted:false};
+  // Bulk-job conversion: the leave owner's own background import (kind leave_ledger), which re-checks every row,
+  // skips one already imported and refuses a row of another company exactly as commitLeaveImport did, in short
+  // transactions. Admitted once for this card; its page (the leave import screen) rejoins it and reports the counts.
+  const started=await startLeaveImportJobOnce(ctx,{records:parseCsvRecords(file.text).records,source:{kind:'file',name:file.name,format:file.format==='txt'?'csv':file.format},companyId},
+   proposal.body.id);
+  if(!started.started)return 'in_progress';
+  return {importKind:kind,imported:0,notImported:0,otherCompany:0,historyHref:'/admin/leave-config/import',revertible:false,alreadyCommitted:false,started:true};
  }
  if(kind==='employee_records'){
   const result=await commitEmployeeImportUpload(ctx,employeeImportUploadInput({companyId,csv:file.text,fileName:file.name}),
@@ -147,6 +159,9 @@ export async function confirmChatImport(supplied:SessionContext,input:Readonly<{
    const again=await previewChatImport(ctx,{kind,companyId:body.forWhom.subjectId,file:file!,operationKey:body.review.reference});
    if(previewDigest(body.forWhom.subjectId,again)!==body.what.reviewedDigest)return refused('changed');
   }
+  // A leave import of this person still running in the background: nothing is claimed, so Confirm works again once
+  // it has finished (the background import admits one file per person at a time).
+  if(kind==='leave_balances'&&await activeLeaveImportJob(ctx))return refused('in_progress');
   if(!await claim(ctx,proposal)){
    const raced=await recordedOutcome(ctx,body.id);
    if(raced&&raced!=='claimed')return 'failed' in raced?refused(raced.failed):Object.freeze({kind:'imported' as const,...shown(raced),replayed:true});

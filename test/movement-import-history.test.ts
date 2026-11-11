@@ -13,7 +13,8 @@ import {createJobGrade,createPosition} from '../core/admin';
 import {createMovementEvent,movementCurrentState,movementHistory} from '../core/movement';
 import {previewMovementUpload,confirmMovementUpload} from '../core/movement-import-history';
 import {getImportAttempt,listImportAttempts} from '../core/import-history';
-import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
+import {previewImportRevertForAttempt} from '../core/import-history-handlers';
+import {revertMovementByJob} from './movement-revert-job-helper';
 import {toCsv} from '../lib/csv';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {personnelImportLabelResolvers} from '../lib/personnel-import-labels.server';
@@ -75,12 +76,12 @@ describe('single-sheet Movement import, history and revert (ac6645ec)',()=>{
   expect((detail.items[0].after as {movementId:string}).movementId).toBe(history[0].id);
   expect(Object.keys((detail.items[0].after as {raw:Record<string,unknown>}).raw).sort()).toEqual(expect.arrayContaining(['basicSalary','gradeId','positionId']));
   const review=await previewImportRevertForAttempt(a,checked.attemptId);expect(review.eligible).toBe(true);expect(review.blockers).toEqual([]);
-  await revertImportForAttempt(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional wrong promotion batch'});
+  await revertMovementByJob(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional wrong promotion batch'});
   expect(await state(ac1)).toMatchObject({gradeId:junior,positionId:b.positionId,basicSalary:'3000.00'});
   const reverted=(await movementHistory(a,ac1)).find(row=>row.id===history[0].id)!;
   expect(reverted.reversed).toMatchObject({reason:'Fictional wrong promotion batch'});
   await expect(previewImportRevertForAttempt(a,checked.attemptId)).rejects.toThrow(/already been reverted/);
-  await expect(revertImportForAttempt(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional second try'})).rejects.toThrow(/already been reverted/);
+  await expect(revertMovementByJob(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional second try'})).rejects.toThrow(/already been reverted/);
  });
 
  it('resolves Company ID per row: mixed rights, unknown and ambiguous companies are row errors while permitted rows proceed',async()=>{
@@ -129,7 +130,7 @@ describe('single-sheet Movement import, history and revert (ac6645ec)',()=>{
   await createMovementEvent(a,{employmentId:ac1,kind:'transfer',effectiveDate:day(-1),departmentId:b.deptA});
   const review=await previewImportRevertForAttempt(a,checked.attemptId);
   expect(review.eligible).toBe(false);expect(review.blockers).toHaveLength(1);expect(review.blockers[0].reason).toMatch(/changed since this import/);
-  await expect(revertImportForAttempt(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional revert attempt'})).rejects.toThrow(/cannot be reverted/);
+  await expect(revertMovementByJob(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional revert attempt'})).rejects.toThrow(/cannot be reverted/);
   expect((await state(ac2)).departmentId).toBe(b.deptB);
   const detail=(await getImportAttempt(a,checked.attemptId))!;expect(detail.events.at(-1)?.kind).toBe('revert_failed');
  });

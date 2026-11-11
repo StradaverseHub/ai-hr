@@ -872,6 +872,30 @@
       "occurrences": 1,
       "name": "movementId",
       "reason": "Guarded action record/subject pointer (movementId) used by MovementHistoryActions (Employment History Roll Back); the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "MovementHistoryActions",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "movementPage",
+      "reason": "Fixed navigation mode for the action return."
+    },
+    {
+      "tag": "input",
+      "context": "MovementHistoryActions",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "showCorrected",
+      "reason": "Carries the current history view filter to the return URL."
+    },
+    {
+      "tag": "input",
+      "context": "MovementHistoryActions",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "from",
+      "reason": "Carries the validated return destination for the action."
     }
   ]
 }

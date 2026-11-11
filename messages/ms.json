@@ -1,5 +1,14 @@
 {
   "roster": {
+    "prepareTitle": "Semak perubahan jadual kerja",
+    "prepareHint": "Semak syif, tarikh dan bilangan pekerja, kemudian sahkan.",
+    "browseEmployees": "Lihat semua pekerja",
+    "reviewTargets": "Semak pekerja yang dipilih",
+    "confirmRoster": "Sahkan perubahan jadual kerja",
+    "prepareFailed": "Perubahan jadual kerja tidak dapat disediakan. Semak pilihan dan cuba lagi.",
+    "pickerFailed": "Tidak dapat memuatkan pekerja. Sila cuba lagi.",
+    "pickerSelectMatching": "Pilih semua {n} pekerja yang sepadan",
+    "copyTargetsReview": "Salinan akan menggunakan {n} pekerja yang dipilih sekarang. Semak tarikh, kemudian klik Salin untuk mengesahkan.",
     "title": "Roster",
     "subtitle": "Bina jadual syif bulanan — pilih bulan, kemudian tetapkan syif untuk pasukan anda.",
     "noCompanies": "Tiada syarikat dalam skop anda untuk diroster.",
@@ -296,6 +305,14 @@
       "rule": "Perubahan ini ditolak oleh perlindungan yang melindungi rekod sedia ada, seperti gaji yang telah ditutup. Rujukan {ref}.",
       "busy": "Sistem sedang sibuk dan perubahan tidak diselesaikan. Sila cuba lagi. Rujukan {ref}.",
       "nricDuplicate": "NRIC ini sudah wujud dalam rekod pekerja lain. NRIC pendua tidak dibenarkan di bawah Tetapan Umum Orang semasa. Rujukan {ref}."
+    },
+    "degraded": {
+      "title": "Ini mengambil masa lebih lama daripada biasa",
+      "body": "Halaman tidak dapat dimuatkan sepenuhnya kerana sistem sedang menerima permintaan yang tinggi. Halaman akan dicuba semula secara automatik sebentar lagi.",
+      "retryNow": "Cuba lagi sekarang",
+      "unexpectedTitle": "Halaman ini tidak dapat dipaparkan",
+      "unexpectedBody": "Sesuatu yang tidak dijangka menghalang halaman ini daripada dimuatkan. Cuba lagi, dan jika masalah berterusan, hubungi pentadbir anda.",
+      "apiMessage": "Sistem sedang menerima permintaan yang tinggi. Sila cuba lagi sebentar."
     },
     "moreActions": "Tindakan lain",
     "noSearchResults": "Tiada hasil sepadan dengan carian anda.",
@@ -861,7 +878,8 @@
       "placeholder": "Cari ID pekerja atau nama…",
       "resultsLabel": "Hasil carian pekerja",
       "noMatches": "Tiada pekerja yang sepadan.",
-      "currentTag": "Semasa"
+      "currentTag": "Semasa",
+      "loadFailed": "Carian pekerja tidak dapat dimuatkan. Cuba lagi."
     },
     "detail": {
       "incentiveDeclarations": {
@@ -2938,6 +2956,70 @@
         "payItems": "Item gaji berulang selain gaji pokok dan elaun bulanan — tambah pada tab Gaji atau dengan import item gaji.",
         "openingTax": "Baki cukai pembukaan untuk pekerja yang menyertai pertengahan tahun (TP3) — dimasukkan pada tab Gaji.",
         "holidayCalendar": "Kalendar cuti umum — tugasan bertarikh dengan sejarahnya sendiri; tetapkan pada tab Kehadiran selepas import."
+      },
+      "employeeJob": {
+        "queued": "Menunggu untuk bermula",
+        "validating": "Menyemak fail",
+        "importing": "Mengimport pekerja",
+        "activating": "Menyelesaikan import",
+        "discarding": "Membatalkan import",
+        "completed": "Import selesai",
+        "failed": "Import dihentikan — tiada pekerja ditambah",
+        "phase": {
+          "employees": "Mencipta pekerja",
+          "superiors": "Memautkan garis pelaporan",
+          "registers": "Menambah rekod daftar",
+          "activation": "Memuktamadkan"
+        },
+        "progressCount": "{done} daripada {total} langkah selesai",
+        "backgroundHelp": "Anda boleh tinggalkan halaman ini. Tiada sesiapa melihat pekerja baharu sehingga import selesai.",
+        "waiting": "Menunggu pekerja import. Kemajuan disimpan; jangan muat naik fail ini sekali lagi.",
+        "otherRunning": "Satu lagi import pekerja masih berjalan. Tunggu sehingga selesai sebelum memulakan yang baharu.",
+        "workerUnavailable": "Perkhidmatan import belum berjalan. Import anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
+      },
+      "sectionJob": {
+        "queued": "Menunggu untuk bermula",
+        "preparing": "Menyemak fail",
+        "running": "Menyimpan baris",
+        "finalizing": "Menyelesaikan import",
+        "discarding": "Menghentikan import",
+        "completed": "Import selesai",
+        "failed": "Import dihentikan",
+        "cancelled": "Import dibatalkan",
+        "progressCount": "{done} daripada {total} langkah selesai",
+        "backgroundHelp": "Anda boleh tinggalkan halaman ini. Setiap baris disimpan secara berasingan semasa import berjalan.",
+        "backgroundHelpRegister": "Anda boleh tinggalkan halaman ini. Tiada sesiapa melihat perubahan daftar ini sehingga keseluruhan fail disimpan.",
+        "waiting": "Menunggu pekerja import. Kemajuan disimpan; jangan muat naik fail ini sekali lagi.",
+        "otherRunning": "Satu lagi import jenis ini yang anda mulakan masih berjalan. Tunggu sehingga selesai sebelum memulakan yang baharu.",
+        "workerUnavailable": "Perkhidmatan import belum berjalan. Import anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
+      },
+      "movementJob": {
+        "queued": "Menunggu untuk bermula",
+        "validating": "Menyemak fail sekali lagi",
+        "importing": "Menyimpan pergerakan",
+        "finishing": "Merekodkan import",
+        "completed": "Import selesai",
+        "failed": "Import dihentikan",
+        "cancelled": "Import dihentikan",
+        "progressCount": "{done} daripada {total} pekerja diproses",
+        "backgroundHelp": "Anda boleh tinggalkan halaman ini. Pergerakan setiap pekerja disimpan bersama sebaik sahaja pekerja itu diproses.",
+        "waiting": "Menunggu pekerja import. Kemajuan disimpan; jangan sahkan import ini sekali lagi.",
+        "otherRunning": "Satu lagi import pergerakan yang anda mulakan masih berjalan. Tunggu sehingga selesai sebelum mengesahkan yang baharu.",
+        "workerUnavailable": "Perkhidmatan import belum berjalan. Import anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
+      },
+      "movementCheckJob": {
+        "queued": "Menunggu untuk bermula",
+        "reading": "Membaca fail",
+        "checking": "Menyemak pergerakan",
+        "finishing": "Merekodkan semakan",
+        "completed": "Semakan selesai",
+        "failed": "Semakan dihentikan",
+        "cancelled": "Semakan dihentikan",
+        "progressCount": "{done} daripada {total} pekerja disemak",
+        "backgroundHelp": "Tiada apa-apa disimpan sehingga anda mengesahkan import. Biarkan halaman ini terbuka untuk menyemak hasilnya apabila semakan selesai.",
+        "waiting": "Menunggu pekerja import. Semakan akan bermula secara automatik; jangan muat naik fail ini sekali lagi.",
+        "otherRunning": "Satu lagi semakan pergerakan yang anda mulakan masih berjalan. Tunggu sehingga selesai sebelum menyemak fail baharu.",
+        "workerUnavailable": "Perkhidmatan import belum berjalan. Fail anda disimpan dan semakan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
       }
     },
     "wizard": {
@@ -4698,7 +4780,26 @@
       "runByUnknown": "Sistem",
       "scopeEmployees": "{count, plural, other {# pekerja}}",
       "runNoChanges": "Pengiraan semula ini tidak mengubah apa-apa.",
-      "recentNote": "Setiap pengiraan semula disimpan secara kekal — siapa yang menjalankannya, pekerja dan tarikh mana, serta angka sebelum dan selepas bagi setiap hari yang berubah. Setiap pengiraan semula juga muncul dalam Jejak Audit di bawah Kehadiran."
+      "recentNote": "Setiap pengiraan semula disimpan secara kekal — siapa yang menjalankannya, pekerja dan tarikh mana, serta angka sebelum dan selepas bagi setiap hari yang berubah. Setiap pengiraan semula juga muncul dalam Jejak Audit di bawah Kehadiran.",
+      "job": {
+        "queued": "Menunggu untuk bermula",
+        "preparing": "Menyemak skop",
+        "running": "Mengira semula pekerja",
+        "finalizing": "Menyusun keputusan",
+        "discarding": "Menghentikan",
+        "completed": "Selesai",
+        "failed": "Dihentikan",
+        "cancelled": "Dihentikan",
+        "progressCount": "{done} daripada {total} pekerja selesai",
+        "backgroundHelp": "Anda boleh meninggalkan halaman ini dan kembali semula; keputusan akan dipaparkan di sini apabila siap.",
+        "waiting": "Menunggu perkhidmatan import. Kemajuan disimpan; jangan mulakan ini sekali lagi.",
+        "workerUnavailable": "Perkhidmatan import belum berjalan. Permintaan ini telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan.",
+        "previewTitle": "Pratonton",
+        "applyTitle": "Melaksanakan perubahan",
+        "leftOut": "{count, plural, =1 {# pekerja tidak dikira semula} other {# pekerja tidak dikira semula}}",
+        "alreadyRunning": "Anda sudah mempunyai kiraan semula yang sedang berjalan. Tunggu sehingga ia selesai sebelum memulakan yang lain.",
+        "unavailable": "Kiraan semula ini tidak lagi tersedia. Buka semula halaman."
+      }
     },
     "reject": "Tolak",
     "rejectNotRecorded": "Penjelasan tidak direkod",
@@ -4841,6 +4942,33 @@
       "active": "Aktif",
       "probation": "Percubaan",
       "notice": "Notis"
+    },
+    "explorer": {
+      "hint": "Terokai organisasi besar satu bahagian pada satu masa. Carian merangkumi semua orang dalam syarikat pilihan anda.",
+      "topLevel": "Peringkat teratas",
+      "allPeople": "Semua orang",
+      "search": "Cari",
+      "searchResults": "Hasil carian",
+      "reports": "Laporan langsung",
+      "managers": "Pengurus",
+      "connections": "Semua hubungan",
+      "history": "Orang yang dilawati",
+      "loading": "Memuatkan organisasi…",
+      "loaded": "{loaded} dimuatkan pada halaman ini · {total} hasil sepadan · {people} orang dalam syarikat pilihan anda",
+      "accessChanged": "Akses anda telah berubah. Muat semula untuk meneruskan.",
+      "changed": "Organisasi telah berubah. Muat semula bahagian ini untuk meneruskan.",
+      "failed": "Bahagian ini tidak dapat dimuatkan. Sila cuba lagi.",
+      "refresh": "Muat semula",
+      "retry": "Cuba lagi",
+      "multipleAssignments": "Berbilang penugasan semasa",
+      "profile": "Lihat profil",
+      "relationships": "Hubungan pelaporan",
+      "outsideScope": "Hubungan di luar syarikat pilihan anda",
+      "incoming": "Melapor kepada orang ini",
+      "outgoing": "Orang ini melapor kepada",
+      "explore": "Terokai",
+      "back": "Kembali",
+      "next": "Halaman seterusnya"
     }
   },
   "me": {
@@ -5006,7 +5134,8 @@
     "payrollStatus": {
       "draft": "Draf",
       "processed": "Diproses",
-      "closed": "Ditutup"
+      "closed": "Ditutup",
+      "processing": "Sedang diproses"
     },
     "payslip": {
       "backToWorkspace": "Profil Saya",
@@ -5516,7 +5645,8 @@
     "submitDecisions": "Hantar",
     "employeeRemark": "Catatan pekerja",
     "closeDialog": "Tutup",
-    "bulkSelectAll": "Pilih semua",
+    "bulkSelectAll": "Pilih semua permintaan dalam paparan ini",
+    "bulkSelectionUnavailable": "Tuntutan yang belum diputuskan tidak dapat dipilih. Cuba lagi.",
     "bulkSelectRow": "Pilih permohonan",
     "bulkSelected": "Dipilih: {count, plural, other {# permohonan}}",
     "bulkClear": "Kosongkan",
@@ -5828,7 +5958,8 @@
         "closed": "Ditutup",
         "unattached": "Belum dilampirkan",
         "reprocess": "Menunggu pengiraan semula",
-        "reprocessRequired": "Perlu Proses Semula"
+        "reprocessRequired": "Perlu Proses Semula",
+        "processing": "Sedang diproses"
       },
       "importHistory": "Import sejarah gaji",
       "periodContext": "Tempoh gaji",
@@ -6822,6 +6953,7 @@
       },
       "preChecksOpenProfile": "Buka profil",
       "preChecksBlockedError": "Payroll tidak boleh diproses: {n} pekerja tiada rekod gaji semasa. Selesaikan semakan pra-pemprosesan dahulu.",
+      "preChecksNotReady": "Selesaikan semakan pra-pemprosesan yang menghalang pemprosesan gaji.",
       "preChecksBlockedPayModeError": "Payroll tidak boleh diproses: {n} pekerja mempunyai struktur gaji Tempoh Tersuai yang tidak boleh dikira oleh payroll. Tukar Mod Gaji pada rekod Gaji Asas mereka, atau keluarkan mereka daripada larian ini.",
       "preChecksBlockedTp3Error": "Payroll tidak boleh diproses: {n} pekerja mempunyai Borang TP3 untuk tahun ini yang belum sampai kepada angka payroll mereka. Buka Borang TP3 bagi setiap seorang dan simpan dahulu.",
       "generatedWithSkipped": "Slip gaji dijana — {n} pekerja dilangkau. Senarai di bawah menamakan mereka dan sebabnya.",
@@ -7046,7 +7178,33 @@
       "reprocessPendingEmployees": "{count} pekerja yang dipilih masih menunggu.",
       "reprocessPcbBefore": "PCB sebelum",
       "reprocessPcbAfter": "PCB dikemas kini",
-      "reprocessPcbDifference": "Perbezaan PCB"
+      "reprocessPcbDifference": "Perbezaan PCB",
+      "processingStarted": "Pemprosesan gaji dimulakan. Halaman ini menunjukkan kemajuannya.",
+      "processingJob": {
+        "title": "Pemprosesan gaji",
+        "othersRun": "Larian ini sedang diproses. Ia dibuka untuk semakan apabila pemprosesan selesai.",
+        "state": {
+          "queued": "Menunggu untuk bermula",
+          "preparing": "Menyemak larian",
+          "running": "Mengira slip gaji",
+          "finalizing": "Menyelesaikan larian",
+          "discarding": "Membatalkan pemprosesan",
+          "completed": "Pemprosesan selesai",
+          "failed": "Pemprosesan dihentikan — larian kembali ke draf",
+          "cancelled": "Pemprosesan dibatalkan — larian kembali ke draf"
+        },
+        "progressCount": "{done} daripada {total} langkah selesai",
+        "backgroundHelp": "Anda boleh tinggalkan halaman ini. Pekerja tidak melihat apa-apa sehingga larian ditutup, dan anda menerima notis apabila pemprosesan selesai.",
+        "waiting": "Menunggu perkhidmatan pemprosesan gaji. Kemajuan disimpan; jangan proses larian ini sekali lagi.",
+        "workerUnavailable": "Perkhidmatan pemprosesan gaji belum berjalan. Larian telah disimpan dan bermula secara automatik sebaik sahaja perkhidmatan berjalan."
+      },
+      "reprocessJob": {
+        "title": "Memproses semula di latar belakang",
+        "queued": "Menunggu untuk bermula",
+        "running": "Memproses semula pekerja yang dipilih",
+        "progress": "{done} daripada {total} pekerja selesai",
+        "help": "Anda boleh meninggalkan halaman ini. Setiap pekerja dikira semula secara berasingan, dan keputusan dipaparkan di sini apabila pemprosesan semula selesai."
+      }
     },
     "transactions": {
       "title": "Kemasukan Transaksi",
@@ -9920,7 +10078,24 @@
       "tickHint": "Gaji sudah wujud untuk sesetengah rekod. Tandakan rekod yang ingin ditulis ganti; rekod yang tidak ditanda kekal seperti sedia ada.",
       "acknowledge": "Saya faham. Gantikan rekod yang ditanda dengan nilai fail saya. Nilai asal kekal dalam sejarah audit dan tulis ganti boleh dibatalkan daripada Log File.",
       "confirmOverwrite": "Sahkan tulis ganti dan import",
-      "importNewOnly": "Import rekod baharu sahaja"
+      "importNewOnly": "Import rekod baharu sahaja",
+      "job": {
+        "title": "Disimpan di latar belakang",
+        "state": {
+          "queued": "Menunggu untuk bermula",
+          "preparing": "Menyemak fail sekali lagi",
+          "running": "Menulis sejarah gaji",
+          "finalizing": "Menjadikan perubahan kelihatan",
+          "discarding": "Membatalkan perubahan yang belum selesai",
+          "completed": "Disimpan",
+          "failed": "Dihentikan — tiada sejarah gaji diubah",
+          "cancelled": "Dihentikan — tiada sejarah gaji diubah"
+        },
+        "progressCount": "{done} daripada {total} langkah selesai",
+        "backgroundHelp": "Anda boleh meninggalkan halaman ini. Tiada sesiapa melihat perubahan ini sehingga semuanya disimpan bersama, dan anda akan menerima notis apabila selesai.",
+        "waiting": "Menunggu perkhidmatan latar belakang. Permintaan anda telah disimpan; jangan hantar semula.",
+        "workerUnavailable": "Perkhidmatan latar belakang belum berjalan. Permintaan anda telah disimpan dan akan bermula secara automatik sebaik sahaja ia berjalan."
+      }
     },
     "individualImport": {
       "submitWorkbook": "Muat naik buku kerja",
@@ -10850,7 +11025,20 @@
         "fileTooLarge": "Fail terlalu besar. Bahagikan kepada kelompok lebih kecil dan cuba lagi.",
         "emptySheet": "Lembaran kerja pertama kosong.",
         "pasteToggle": "Atau tampal CSV sebaliknya",
-        "downloadTemplateXlsx": "Muat turun templat Excel"
+        "downloadTemplateXlsx": "Muat turun templat Excel",
+        "job": {
+          "title": "Mengimport rekod cuti",
+          "progressCount": "{done} daripada {total} baris diproses",
+          "backgroundHelp": "Ini berjalan di latar belakang. Anda boleh meninggalkan halaman ini dan kembali kemudian.",
+          "waiting": "Menunggu perkhidmatan import untuk meneruskan. Tiada tindakan diperlukan.",
+          "failed": "Import tidak dapat diselesaikan. Baris yang telah disimpan dikekalkan.",
+          "state": {
+            "queued": "Menunggu untuk bermula",
+            "importing": "Sedang mengimport",
+            "completed": "Selesai",
+            "failed": "Dihentikan"
+          }
+        }
       },
       "expiryUnitMonths": "Bulan",
       "expiryUnitDays": "Hari",
@@ -11268,7 +11456,28 @@
       "cancelApprovedReplacementNote": "Pembatalan Cuti Gantian sentiasa memerlukan kelulusan semula pelulus, kerana memulangkan cuti turut memulangkan kreditnya.",
       "cancelApprovedNotifyLabel": "Maklumkan pelulus dan HR apabila pembatalan diminta",
       "cancelApprovedNotifyHelp": "Penerima melihat makluman dalam loceng aplikasi. E-mel juga memerlukan kategori dibenarkan, persetujuan penerima dan geganti SMTP aktif.",
-      "generateOutcome_not_eligible": "Tidak layak — syarat jenis cuti ini tidak merangkumi pekerja tersebut"
+      "generateOutcome_not_eligible": "Tidak layak — syarat jenis cuti ini tidak merangkumi pekerja tersebut",
+      "processingJob": {
+        "title": {
+          "leave_generation": "Menjana kelayakan",
+          "leave_accrual": "Menjalankan akruan cuti yang diperoleh",
+          "leave_recalc": "Mengira semula baki cuti",
+          "leave_a2c": "Menggunakan jenis tahun cuti pada baki"
+        },
+        "progressCount": "{done} daripada {total} pekerja diproses",
+        "backgroundHelp": "Ini berjalan di latar belakang. Anda boleh meninggalkan halaman ini dan kembali kemudian.",
+        "waiting": "Menunggu perkhidmatan latar belakang untuk meneruskan. Tiada tindakan diperlukan.",
+        "state": {
+          "queued": "Menunggu untuk bermula",
+          "running": "Sedang berjalan",
+          "completed": "Selesai",
+          "failed": "Dihentikan"
+        },
+        "failed": "Proses dihentikan: {reason} Pekerja yang telah diproses mengekalkan angka mereka.",
+        "partial": "{count} pekerja tidak dapat diproses dan tidak diubah: {reason} Jalankan sekali lagi untuk melengkapkannya.",
+        "alreadyRunning": "Pentadbir lain sedang menjalankan proses ini. Cuba lagi apabila ia selesai.",
+        "failedNothingChanged": "Proses dihentikan: {reason} Tiada apa-apa yang diubah."
+      }
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -12293,7 +12502,25 @@
       "closeAlready": "Sempadan tahun ini telah ditutup; tiada apa-apa untuk dilakukan.",
       "configMovedTitle": "Replacement leave settings",
       "configMovedHint": "The policy editor for replacement leave now lives under Leave Config.",
-      "configMovedLink": "Go to Replacement Leave settings"
+      "configMovedLink": "Go to Replacement Leave settings",
+      "sweepJob": {
+        "title": {
+          "toil_expiry": "Memproses tamat tempoh",
+          "toil_year_close": "Menutup tahun cuti ganti"
+        },
+        "progressCount": "{done} daripada {total} pekerja diproses",
+        "backgroundHelp": "Ini berjalan di latar belakang. Anda boleh meninggalkan halaman ini dan kembali kemudian.",
+        "waiting": "Menunggu perkhidmatan latar belakang untuk meneruskan. Tiada tindakan diperlukan.",
+        "state": {
+          "queued": "Menunggu untuk bermula",
+          "running": "Sedang berjalan",
+          "completed": "Selesai",
+          "failed": "Dihentikan"
+        },
+        "failed": "Proses dihentikan: {reason} Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya.",
+        "partial": "{count} pekerja tidak dapat diproses dan kredit mereka tidak diubah: {reason} Jalankan sekali lagi untuk melengkapkannya.",
+        "alreadyRunning": "Pentadbir lain sedang menjalankan proses ini. Cuba lagi apabila ia selesai."
+      }
     },
     "locations": {
       "pageTitle": "Lokasi",
@@ -16070,7 +16297,8 @@
     "batchStatus": {
       "draft": "Draf",
       "processed": "Diproses",
-      "closed": "Ditutup"
+      "closed": "Ditutup",
+      "processing": "Sedang diproses"
     }
   },
   "payrollCycleConfig": {
@@ -17040,12 +17268,24 @@
     "colRanAt": "Masa larian",
     "colOutcome": "Keputusan",
     "colError": "Ralat",
+    "notificationEvidenceUnverified": "Sejarah pelaksanaan tidak mengesahkan keluaran pekerja yang dipasang atau penerimaan e-mel.",
     "outcome": {
+      "running": "Dimulakan; penyelesaian belum direkodkan",
       "success": "Berjaya",
       "partial": "Separa",
       "failed": "Gagal"
     },
     "counters": {
+      "processedEvents": "Peristiwa diproses",
+      "createdNotifications": "Pemberitahuan dicipta",
+      "committedBatches": "Kelompok disahkan",
+      "pendingEvents": "Peristiwa tertunda",
+      "oldestPendingSeconds": "Usia tertunda paling lama (saat)",
+      "cappedTenants": "Syarikat mencapai had kelompok",
+      "emailAttempted": "Cubaan e-mel",
+      "emailSkipped": "E-mel dilangkau",
+      "emailUnavailableTenants": "Syarikat dengan e-mel tidak tersedia",
+      "emailCappedTenants": "Syarikat mencapai had kelompok e-mel",
       "granted": "Hari diberikan",
       "opened": "Penilaian dibuka",
       "reminders": "Peringatan dihantar",
@@ -17055,6 +17295,10 @@
       "tenantsAlarming": "Syarikat dengan amaran"
     },
     "jobs": {
+      "notifications-project": {
+        "name": "Pemprosesan pemberitahuan",
+        "description": "Memproses peristiwa pemberitahuan tertunda dan merekod kerja yang disahkan serta tunggakan. Penghantaran e-mel mempunyai hasil berasingan."
+      },
       "leave-accrue": {
         "name": "Tambahan cuti terkumpul",
         "description": "Menambah hari cuti yang telah dikumpul pekerja setakat ini."
@@ -17733,7 +17977,13 @@
     "selectedTag": "Dipilih",
     "allEmployees": "Semua pekerja",
     "allEmployeesHint": "Kosongkan pilihan dan tunjukkan semua pekerja.",
-    "showingCapped": "Memaparkan {cap} pertama daripada {total} padanan — perhalusi carian anda."
+    "showingCapped": "Memaparkan {cap} pertama daripada {total} padanan — perhalusi carian anda.",
+    "loadingEmployees": "Memuatkan pekerja…",
+    "loadFailed": "Pekerja tidak dapat dimuatkan. Cuba lagi.",
+    "retry": "Cuba lagi",
+    "previousPage": "Sebelumnya",
+    "nextPage": "Seterusnya",
+    "pageRange": "{from}–{to} daripada {total, number}"
   },
   "appliedInPayroll": {
     "searchPlaceholder": "Cari bulan, pekerja, syarikat atau amaun",
@@ -19627,7 +19877,8 @@
         "statuses": {
           "draft": "Draf",
           "processed": "Diproses",
-          "closed": "Ditutup"
+          "closed": "Ditutup",
+          "processing": "Sedang diproses"
         },
         "periodStates": {
           "open": "Terbuka",
@@ -19771,7 +20022,8 @@
         "statuses": {
           "draft": "Draf",
           "processed": "Diproses",
-          "closed": "Ditutup"
+          "closed": "Ditutup",
+          "processing": "Sedang diproses"
         },
         "currentStatus": "Status larian semasa",
         "title": "Cipta draf gaji tambahan",
@@ -23196,6 +23448,49 @@
       "category": "Kategori",
       "active": "Aktif",
       "addItem": "Tambah item"
+    },
+    "workflowRemoval": {
+      "statusTabs": "Status aliran kerja",
+      "activeTab": "Aktif",
+      "retiredTab": "Dipersarakan ({count})",
+      "retiredHeading": "Dipersarakan",
+      "retiredHelp": "Aliran kerja yang dipersarakan tidak boleh dipilih atau dimulakan untuk kes baharu. Kes yang telah menggunakannya mengekalkan sejarahnya. Aliran kerja yang dipulihkan kembali sebagai draf. Hidupkan permulaan automatik secara berasingan apabila sedia.",
+      "retiredEmpty": "Tiada aliran kerja yang dipersarakan.",
+      "retiredBadge": "Dipersarakan",
+      "retiredMeta": "Dipersarakan pada {date} oleh {name} · digunakan oleh {cases, plural, one {# kes} other {# kes}}",
+      "retiredDrawer": "Aliran kerja ini telah dipersarakan. Ia tidak boleh dimulakan untuk kes baharu. Pulihkannya untuk mengubahnya atau menggunakannya semula.",
+      "delete": "Padam",
+      "deleteAria": "Padam {name}",
+      "restore": "Pulihkan",
+      "restoreAria": "Pulihkan {name}",
+      "close": "Tutup",
+      "cancel": "Batal",
+      "checkingTitle": "Padam {name}?",
+      "checking": "Menyemak sama ada mana-mana kes telah menggunakan aliran kerja ini…",
+      "checkFailed": "Aliran kerja tidak dapat disemak. Muat semula dan cuba lagi.",
+      "deleteTitle": "Padam {name}?",
+      "deleteBody": "Aliran kerja ini tidak pernah digunakan dalam mana-mana kes. Pemadaman adalah kekal dan tidak boleh dibatalkan.",
+      "retireTitle": "Persarakan {name}?",
+      "retireBody": "{cases, plural, one {# kes telah} other {# kes telah}} menggunakan aliran kerja ini, jadi ia tidak boleh dipadam. Ia akan dipindahkan ke Dipersarakan. Kes yang sedang berjalan mengekalkan langkah yang dimulakan, dan kes yang ditutup mengekalkan sejarah penuhnya.",
+      "retireEffect": "Ia tidak lagi ditawarkan atau dimulakan untuk kes baharu. Anda boleh memulihkannya daripada Dipersarakan kemudian.",
+      "automaticWarning": "Aliran kerja ini bermula secara automatik apabila {when}. Selepas ia dikeluarkan, tiada aliran kerja akan bermula dengan cara ini untuk kes baharu sehingga aliran kerja lain disediakan.",
+      "changed": "Ada perubahan sejak anda membuka ini. Semak butiran terkini sebelum mengesahkan.",
+      "saveFirst": "Tunggu sehingga perubahan terkini anda disimpan, kemudian cuba lagi.",
+      "confirmDelete": "Padam aliran kerja",
+      "confirmRetire": "Pindah ke Dipersarakan",
+      "deleted": "{name} telah dipadam.",
+      "retired": "{name} telah dipindahkan ke Dipersarakan.",
+      "failed": "Perubahan tidak dapat disimpan. Muat semula dan cuba lagi.",
+      "restoreTitle": "Pulihkan {name}?",
+      "restoreBody": "Ia kembali ke senarai aktif sebagai draf, dengan langkah, penerima dan tetapan seperti semasa ia dipersarakan. Kes yang menggunakannya sebelum ini tidak berubah.",
+      "restoreNotLive": "Ia tidak akan bermula secara automatik. Aktifkannya apabila sedia.",
+      "restoreWasAutomatic": "Ia bermula secara automatik sebelum dipersarakan, tetapi tetapan itu tidak dikembalikan. Ini mengelakkan dua aliran kerja bermula untuk kes yang sama jika pengganti telah disediakan. Aktifkannya semula sendiri jika perlu.",
+      "duplicateName": "Aliran kerja aktif sudah dinamakan {name}. Namakan semula salah satu supaya tidak keliru: masukkan nama baharu di bawah, atau batal dan namakan semula aliran kerja aktif dahulu.",
+      "newName": "Nama untuk aliran kerja yang dipulihkan",
+      "stillDuplicate": "Pilih nama yang tidak digunakan oleh mana-mana aliran kerja aktif dalam modul ini.",
+      "confirmRestore": "Pulihkan aliran kerja",
+      "restored": "{name} telah dipulihkan sebagai draf.",
+      "view": "Lihat"
     }
   },
   "clockingFile": {
@@ -23442,8 +23737,26 @@
         "emptyFile": "Fail itu kosong.",
         "fileTooLarge": "Fail itu lebih besar daripada kira-kira 900 KB (lebih kurang 25,000 baris). Pecahkannya kepada dua fail dan import setiap satu.",
         "unreadable": "Fail itu tidak dapat dibaca.",
-        "excel": "Fail Excel tidak diterima di sini. Eksport fail peranti sebagai CSV atau TXT."
-      }
+        "excel": "Fail Excel tidak diterima di sini. Eksport fail peranti sebagai CSV atau TXT.",
+        "alreadyRunning": "Satu lagi import kehadiran masih berjalan. Tunggu sehingga ia selesai sebelum memulakan yang baharu.",
+        "notAdmin": "Hanya pentadbir HR boleh mengimport data kehadiran.",
+        "unavailable": "Import ini tidak lagi tersedia. Buka semula halaman untuk melihat kemajuannya."
+      },
+      "job": {
+        "queued": "Menunggu untuk bermula",
+        "preparing": "Membaca fail",
+        "running": "Menambah rekod kehadiran",
+        "finalizing": "Menulis log import",
+        "discarding": "Menghentikan import",
+        "completed": "Import selesai",
+        "failed": "Import dihentikan",
+        "cancelled": "Import dihentikan",
+        "progressCount": "{done} daripada {total} pekerja selesai",
+        "backgroundHelp": "Anda boleh meninggalkan halaman ini. Rekod kehadiran ditambah seorang pekerja pada satu masa; log import dibuka apabila import selesai.",
+        "waiting": "Menunggu perkhidmatan import. Kemajuan disimpan; jangan import fail ini sekali lagi.",
+        "workerUnavailable": "Perkhidmatan import belum berjalan. Import anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
+      },
+      "jobStopped": "Import dihentikan: {reason}"
     },
     "result": {
       "imported": "Diimport",
@@ -28398,7 +28711,7 @@
       "next": "Seterusnya",
       "stepOf": "Langkah {current} daripada {total}",
       "stepNavigation": "Navigasi persediaan corak",
-      "completeGeneral": "Lengkapkan nama, label, syarikat, mata wang dan pilihan tempoh sebelum meneruskan.",
+      "completeGeneral": "Lengkapkan label, nama dan jenis hari corak lebih masa sebelum meneruskan.",
       "employeeEligibility": "Kelayakan pekerja",
       "testCalculation": "Uji pengiraan dan pemprosesan gaji",
       "editGeneral": "Edit tetapan umum",
@@ -28406,7 +28719,8 @@
       "editEligibility": "Edit kelayakan",
       "salaryDateHelp": "Syarat gaji menggunakan pampasan pekerja yang berkuat kuasa pada tarikh pengiraan dalam mata wang ditetapkan.",
       "and": "DAN",
-      "or": "ATAU"
+      "or": "ATAU",
+      "draftOnlyNote": "Corak yang disimpan di sini kekal sebagai draf. Kadar lebih masa dan pengaktifan corak akan kembali dalam kemas kini seterusnya. Syarikat, mata wang dan kadar yang telah disimpan dikekalkan seperti sedia ada."
     },
     "title": "Corak Kerja Lebih Masa",
     "descriptionText": "Konfigurasi dan semak kerja lebih masa pekerja, tempoh bayaran dan pemetaan gaji.",
@@ -28458,7 +28772,7 @@
     "legacyLink": "Buka Kumpulan Jadual",
     "legacyContext": "Tetapan kumpulan sedia ada terus terpakai melainkan corak formula berkuat kuasa ditetapkan.",
     "openWorkspace": "Konfigurasi Corak Kerja Lebih Masa",
-    "immutableHelp": "Versi diaktifkan adalah baca sahaja. Cipta draf baharu untuk perubahan akan datang.",
+    "immutableHelp": "Versi diaktifkan adalah baca sahaja. Pengubahannya akan kembali dalam kemas kini seterusnya halaman ini.",
     "readerLimitations": "Ketersediaan medan direkodkan",
     "unknownHelp": "Fakta sejarah tidak tersedia kekal Tidak Diketahui. Nilai semasa tidak menggantikan bukti sejarah yang tiada.",
     "unavailable": "Corak atau versi ini tidak tersedia dalam skop semasa anda.",
@@ -28938,7 +29252,8 @@
     },
     "positionSearch": "Cari jawatan",
     "loadMorePositions": "Muatkan lebih banyak jawatan",
-    "attendanceFormulaBinding": "Set hasil formula kehadiran: {id}"
+    "attendanceFormulaBinding": "Set hasil formula kehadiran: {id}",
+    "chooseOneCompany": "Pilih satu syarikat dalam penukar syarikat di bahagian atas skrin sebelum menyimpan corak baharu. Corak baharu itu milik syarikat tersebut."
   },
   "systemTestingWorkspace": {
     "title": "Ujian Sistem",
@@ -29355,7 +29670,25 @@
     },
     "notSelected": "Kod baharu yang sah tidak dipilih untuk import ini. Tiada rekod dicipta.",
     "notSelectedStatus": "Tidak dipilih — dilangkau",
-    "invalidStatus": "Status mestilah Active atau Inactive. Biarkan kosong untuk menggunakan Active."
+    "invalidStatus": "Status mestilah Active atau Inactive. Biarkan kosong untuk menggunakan Active.",
+    "job": {
+      "state": {
+        "queued": "Menunggu untuk bermula",
+        "preparing": "Menyemak buku kerja",
+        "running": "Mengimport kod",
+        "finalizing": "Menyelesaikan import",
+        "discarding": "Membatalkan import",
+        "completed": "Import selesai",
+        "failed": "Import dihentikan — tiada kod ditambah",
+        "cancelled": "Import dibatalkan — tiada kod ditambah"
+      },
+      "progressCount": "{done} daripada {total} kod ditulis",
+      "backgroundHelp": "Anda boleh menutup tetingkap ini. Tiada sesiapa melihat kod baharu sehingga import selesai.",
+      "waiting": "Menunggu pekerja import. Kemajuan disimpan; jangan muat naik buku kerja sekali lagi.",
+      "workerUnavailable": "Perkhidmatan import belum berjalan. Import anda disimpan dan bermula secara automatik sebaik sahaja ia berjalan.",
+      "otherRunning": "Satu lagi import Label Sistem masih berjalan. Tunggu sehingga ia selesai sebelum memulakan yang baharu.",
+      "unavailable": "Status import tidak tersedia. Muat semula halaman untuk menyemak sekali lagi."
+    }
   },
   "onboardingV31": {
     "copy": {
@@ -31733,7 +32066,8 @@
     "runStates": {
       "draft": "Draf",
       "processed": "Diproses",
-      "closed": "Ditutup"
+      "closed": "Ditutup",
+      "processing": "Sedang diproses"
     },
     "reconciliationTitle": "Rekonsiliasi Gaji",
     "summaryNetPay": "Asas ringkasan pekerja: Gaji Bersih yang direkodkan",
@@ -36809,7 +37143,7 @@
   },
   "personnelOrganisationFilters": {
     "updatingResults": "Mengemas kini hasil…",
-    "readBusy": "Personel sedang sibuk. Tunggu sebentar dan cuba lagi.",
+    "applyFailed": "Penapis tidak dapat digunakan. Cuba lagi.",
     "retryRead": "Cuba lagi",
     "businessUnit": "Unit perniagaan",
     "parentCompany": "Syarikat induk",
@@ -37303,5 +37637,345 @@
     "appliesFromTomorrow": "Perubahan pada Kaedah Padanan dan Sela Minimum Antara Rekod Waktu berkuat kuasa mulai esok, jadi kehadiran yang sudah direkodkan hari ini tidak dikira semula. Sejarah merekodkan siapa yang mengubahnya dan bila.",
     "systemReason": "Dikemas kini dalam tetapan Kumpulan Jadual",
     "dutyRosterPoolNote": "Giliran hanya boleh menggunakan syif yang Disertakan dalam Syif Dibenarkan di atas."
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "Import pekerja selesai",
+          "body": "Buka Sejarah Import untuk melihat pekerja yang ditambah."
+        },
+        "failed": {
+          "title": "Import pekerja dihentikan",
+          "body": "Tiada pekerja ditambah. Buka Sejarah Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Import pekerja dibatalkan",
+          "body": "Tiada pekerja ditambah. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "Import cuti selesai",
+          "body": "Baris yang diimport kini termasuk dalam baki cuti pekerja."
+        },
+        "failed": {
+          "title": "Import cuti dihentikan",
+          "body": "Baris yang telah disimpan dikekalkan. Mengimport fail yang sama sekali lagi akan melangkau baris tersebut."
+        },
+        "cancelled": {
+          "title": "Import cuti dibatalkan",
+          "body": "Baris yang telah disimpan dikekalkan. Mengimport fail yang sama sekali lagi akan melangkau baris tersebut."
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "Pemprosesan cuti selesai",
+          "body": "Angka cuti telah dikemas kini."
+        },
+        "failed": {
+          "title": "Pemprosesan cuti dihentikan",
+          "body": "Pekerja yang telah diproses mengekalkan angka mereka. Jalankan sekali lagi untuk melengkapkan selebihnya."
+        },
+        "cancelled": {
+          "title": "Pemprosesan cuti dibatalkan",
+          "body": "Pekerja yang telah diproses mengekalkan angka mereka. Jalankan sekali lagi untuk melengkapkan selebihnya."
+        }
+      },
+      "roster": {
+        "completed": {
+          "title": "Perubahan roster selesai",
+          "body": "Buka roster untuk melihat hasilnya."
+        },
+        "failed": {
+          "title": "Perubahan roster dihentikan",
+          "body": "Buka roster untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Perubahan roster dibatalkan",
+          "body": "Buka roster untuk butiran."
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "Penetapan Kumpulan Jadual selesai",
+          "body": "Buka Tetapkan Kumpulan Jadual untuk melihat hasilnya."
+        },
+        "failed": {
+          "title": "Penetapan Kumpulan Jadual dihentikan",
+          "body": "Buka Tetapkan Kumpulan Jadual untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Penetapan Kumpulan Jadual dibatalkan",
+          "body": "Buka Tetapkan Kumpulan Jadual untuk butiran."
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "Import kehadiran selesai",
+          "body": "Buka log import untuk melihat rekod kehadiran yang ditambah."
+        },
+        "failed": {
+          "title": "Import kehadiran dihentikan",
+          "body": "Buka log import untuk melihat apa yang disimpan dan sebab ia dihentikan."
+        },
+        "cancelled": {
+          "title": "Import kehadiran dihentikan",
+          "body": "Buka log import untuk melihat apa yang disimpan."
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "Pratonton kiraan semula sedia",
+          "body": "Buka Kira Semula Kehadiran untuk menyemak apa yang akan berubah."
+        },
+        "failed": {
+          "title": "Pratonton kiraan semula dihentikan",
+          "body": "Buka Kira Semula Kehadiran untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pratonton kiraan semula dihentikan",
+          "body": "Buka Kira Semula Kehadiran untuk memulakannya semula."
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "Kehadiran dikira semula",
+          "body": "Buka Kira Semula Kehadiran untuk melihat hari yang berubah."
+        },
+        "failed": {
+          "title": "Kiraan semula kehadiran dihentikan",
+          "body": "Buka Kira Semula Kehadiran untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Kiraan semula kehadiran dihentikan",
+          "body": "Buka Kira Semula Kehadiran untuk butiran."
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "Pemprosesan gaji selesai",
+          "body": "Buka Gaji untuk menyemak larian yang telah diproses."
+        },
+        "failed": {
+          "title": "Pemprosesan gaji dihentikan",
+          "body": "Larian kembali ke draf dan tiada slip gaji disimpan. Buka Gaji untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pemprosesan gaji dibatalkan",
+          "body": "Larian kembali ke draf dan tiada slip gaji disimpan."
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "Import Label Sistem selesai",
+          "body": "Buka Label Sistem untuk melihat kod yang ditambah."
+        },
+        "failed": {
+          "title": "Import Label Sistem dihentikan",
+          "body": "Tiada kod ditambah. Buka Label Sistem dan pratonton buku kerja sekali lagi."
+        },
+        "cancelled": {
+          "title": "Import Label Sistem dibatalkan",
+          "body": "Tiada kod ditambah."
+        }
+      },
+      "sectionImport": {
+        "completed": {
+          "title": "Import bahagian selesai",
+          "body": "Buka Import untuk melihat baris yang dikemas kini."
+        },
+        "failed": {
+          "title": "Import bahagian dihentikan",
+          "body": "Baris yang disimpan sebelum ia berhenti dikekalkan. Buka Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Import bahagian dibatalkan",
+          "body": "Baris yang disimpan sebelum ia berhenti dikekalkan. Buka Import untuk butiran."
+        }
+      },
+      "registerImport": {
+        "completed": {
+          "title": "Import daftar selesai",
+          "body": "Buka Import untuk melihat rekod daftar yang disimpan."
+        },
+        "failed": {
+          "title": "Import daftar dihentikan",
+          "body": "Tiada rekod daftar disimpan. Buka Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Import daftar dibatalkan",
+          "body": "Tiada rekod daftar disimpan. Buka Import untuk butiran."
+        }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "Pembatalan import selesai",
+          "body": "Buka Sejarah Import untuk melihat pekerja yang dibatalkan."
+        },
+        "failed": {
+          "title": "Pembatalan import dihentikan",
+          "body": "Tiada apa-apa yang diubah. Buka Sejarah Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pembatalan import dibatalkan",
+          "body": "Tiada apa-apa yang diubah. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "leaveGeneration": {
+        "completed": {
+          "title": "Penjanaan kelayakan selesai",
+          "body": "Angka cuti telah dikemas kini."
+        },
+        "failed": {
+          "title": "Penjanaan kelayakan dihentikan",
+          "body": "Tiada apa-apa yang diubah. Buka Jana Kelayakan untuk melihat sebabnya, kemudian jalankan sekali lagi."
+        },
+        "cancelled": {
+          "title": "Penjanaan kelayakan dibatalkan",
+          "body": "Tiada apa-apa yang diubah."
+        }
+      },
+      "leaveRecalculation": {
+        "completed": {
+          "title": "Baki cuti telah dikira semula",
+          "body": "Angka cuti pekerja kini mengikut tetapan yang disimpan."
+        },
+        "failed": {
+          "title": "Pengiraan semula cuti dihentikan",
+          "body": "Pekerja yang telah dikira semula mengekalkan angka baharu mereka. Simpan tetapan sekali lagi untuk mengira semula selebihnya."
+        },
+        "cancelled": {
+          "title": "Pengiraan semula cuti dibatalkan",
+          "body": "Pekerja yang telah dikira semula mengekalkan angka baharu mereka. Simpan tetapan sekali lagi untuk mengira semula selebihnya."
+        }
+      },
+      "leaveYearType": {
+        "completed": {
+          "title": "Jenis tahun cuti telah digunakan",
+          "body": "Angka cuti pekerja tahun pertama kini mengikut jenis tahun cuti yang disimpan."
+        },
+        "failed": {
+          "title": "Jenis tahun cuti tidak digunakan pada baki",
+          "body": "Tiada angka cuti yang diubah. Simpan jenis tahun cuti sekali lagi untuk mencuba semula."
+        },
+        "cancelled": {
+          "title": "Pembetulan jenis tahun cuti dibatalkan",
+          "body": "Tiada angka cuti yang diubah."
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "Penyelesaian cuti ganti selesai",
+          "body": "Kredit cuti ganti yang perlu diselesaikan telah diselesaikan. Buka Kredit Cuti untuk menyemaknya."
+        },
+        "failed": {
+          "title": "Penyelesaian cuti ganti dihentikan",
+          "body": "Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya."
+        },
+        "cancelled": {
+          "title": "Penyelesaian cuti ganti dibatalkan",
+          "body": "Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya."
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "Perubahan sejarah gaji disimpan",
+          "body": "Buka log import untuk melihat apa yang disimpan."
+        },
+        "failed": {
+          "title": "Perubahan sejarah gaji dihentikan",
+          "body": "Tiada sejarah gaji diubah. Buka log import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Perubahan sejarah gaji dibatalkan",
+          "body": "Tiada sejarah gaji diubah."
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "Pemprosesan semula gaji selesai",
+          "body": "Buka larian untuk menyemak pekerja yang diproses semula."
+        },
+        "failed": {
+          "title": "Pemprosesan semula gaji dihentikan",
+          "body": "Pekerja yang telah diproses semula mengekalkan keputusan baharu mereka. Buka larian untuk melihat di mana ia berhenti."
+        },
+        "cancelled": {
+          "title": "Pemprosesan semula gaji dibatalkan",
+          "body": "Pekerja yang telah diproses semula mengekalkan keputusan baharu mereka."
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "Import pergerakan selesai",
+          "body": "Buka Sejarah Import untuk melihat pergerakan yang disimpan dan pekerja yang tidak dapat disimpan."
+        },
+        "failed": {
+          "title": "Import pergerakan dihentikan",
+          "body": "Buka Sejarah Import untuk melihat sebabnya. Pekerja yang telah disimpan mengekalkan pergerakan mereka."
+        },
+        "cancelled": {
+          "title": "Import pergerakan dihentikan",
+          "body": "Pekerja yang telah disimpan mengekalkan pergerakan mereka. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "movementCheck": {
+        "completed": {
+          "title": "Fail pergerakan telah disemak",
+          "body": "Semakan direkodkan dalam Sejarah Import. Jika anda telah meninggalkan skrin import, muat naik fail itu sekali lagi untuk menyemak dan mengesahkannya."
+        },
+        "failed": {
+          "title": "Semakan pergerakan dihentikan",
+          "body": "Buka Sejarah Import untuk melihat sebabnya. Tiada apa-apa disimpan."
+        },
+        "cancelled": {
+          "title": "Semakan pergerakan dihentikan",
+          "body": "Tiada apa-apa disimpan. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "Pembatalan import pergerakan selesai",
+          "body": "Buka Sejarah Import untuk melihat pergerakan yang telah dibatalkan."
+        },
+        "failed": {
+          "title": "Pembatalan import pergerakan dihentikan",
+          "body": "Tiada apa-apa diubah. Buka Sejarah Import untuk melihat sebabnya."
+        },
+        "cancelled": {
+          "title": "Pembatalan import pergerakan dibatalkan",
+          "body": "Tiada apa-apa diubah. Buka Sejarah Import untuk butiran."
+        }
+      }
+    },
+    "panel": {
+      "queued": "Menunggu untuk bermula",
+      "preparing": "Menyemak setiap perubahan",
+      "running": "Menyimpan",
+      "finalizing": "Menyelesaikan",
+      "discarding": "Menghentikan",
+      "completed": "Selesai",
+      "failed": "Dihentikan",
+      "cancelled": "Dibatalkan",
+      "progressCount": "{done} daripada {total} langkah selesai",
+      "backgroundHelp": "Anda boleh tinggalkan halaman ini. Kerja diteruskan dan anda akan dimaklumkan apabila selesai.",
+      "waiting": "Menunggu perkhidmatan latar belakang. Kemajuan disimpan; jangan mulakan sekali lagi.",
+      "workerUnavailable": "Perkhidmatan latar belakang belum berjalan. Permintaan anda telah disimpan dan akan bermula secara automatik sebaik sahaja perkhidmatan itu berjalan."
+    },
+    "roster": {
+      "generate": "Menjana roster",
+      "copy": "Menyalin roster",
+      "assign": "Menggunakan perubahan roster",
+      "import": "Menyimpan roster yang dimuat naik",
+      "otherRunning": "Satu lagi perubahan roster masih disimpan. Tunggu sehingga selesai, kemudian cuba lagi.",
+      "saveFailed": "Perubahan roster tidak dapat disimpan. Sila cuba lagi, atau hubungi pentadbir HR.",
+      "queuedBehind": "Beratur di belakang kerja roster lain. Ia bermula secara automatik sebaik sahaja kerja itu selesai."
+    },
+    "scheduleGroup": {
+      "title": "Menetapkan Kumpulan Jadual",
+      "otherRunning": "Satu lagi penetapan Kumpulan Jadual masih disimpan. Tunggu sehingga selesai, kemudian cuba lagi.",
+      "queuedBehind": "Beratur di belakang penetapan Kumpulan Jadual lain. Ia bermula secara automatik sebaik sahaja penetapan itu selesai."
+    }
   }
 }

@@ -57,6 +57,7 @@
  */
 import { and, asc, eq, gt, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {assertAiPresentationPrincipalTx} from './ai-principal';
 import { company, domainEvent, employment, leaveLedger, leaveRequest, leaveRequestDate, leaveType } from '../db/schema';
 // Leave services through the pack facade (ADR-0080 D9), never the pack's implementation modules directly.
 import {
@@ -70,6 +71,7 @@ import { leaveBalances, leaveEntitlementBreakdowns, listLeaveRequestsPage, type 
 import { balanceStoryTypeId, type SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
 import { PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup } from '../lib/leave-groups';
 import type { EntitlementStatus } from '../lib/entitlement-status';
+import type { OwnLeaveInputs } from './own-leave-inputs';
 
 /** One leave type's card on the dashboard. Every figure is null when HR has hidden it (ESS view) or nothing
  *  could be read — the card renders an em dash, never a number the employee was not meant to see. */
@@ -268,12 +270,60 @@ export function resolveSelectedLeaveYear(raw: string | undefined, years: readonl
   return years.includes(y) ? y : currentYear;
 }
 
+/** Current Home figures use the same eligibility, visibility and calculation owner as My Leave.
+ * Historical year choices and balance footnotes belong only to the full dashboard. */
+export async function myCurrentLeaveCards(
+  ctx: SessionContext,
+  employmentId: string,
+  opts: { today: string; locale?: string },
+  existingTx?: Tx,
+): Promise<Pick<MyLeaveCard, 'leaveTypeId' | 'leaveType' | 'annualLeave' | 'canApplyFor' | 'pending'>[]> {
+  const read = async (tx: Tx) => {
+    const [snapshot] = await tx.execute<{safe: boolean}>(sql`select current_setting('transaction_isolation')='read committed'
+      and current_setting('transaction_read_only')='on' as safe`);
+    if (snapshot?.safe !== true) throw new Error('Current leave cards require a complete read-only Read Committed transaction.');
+    const dashboard = await buildMyLeaveDashboard(ctx, employmentId, { today: opts.today, locale: opts.locale }, false, tx);
+    return projectCurrentLeaveCards(dashboard);
+  };
+  return existingTx ? read(existingTx) : withTenant(ctx, async tx => {
+    await tx.execute(sql`set transaction read only`);
+    return read(tx);
+  });
+}
+
+function projectCurrentLeaveCards(dashboard:MyLeaveDashboard){
+ return dashboard.cards.map(({leaveTypeId,leaveType,annualLeave,canApplyFor,pending})=>
+  ({leaveTypeId,leaveType,annualLeave,canApplyFor,pending}));
+}
+
+/** Complete presentation composition only. The legacy Read Committed entry point and all
+ * command/approval calculations keep their original authority and transaction contracts. */
+export async function myCurrentLeaveSnapshotCards(ctx:SessionContext,employmentId:string,
+ opts:{today:string;locale?:string},tx:Tx,inputs?:OwnLeaveInputs){
+ await assertAiPresentationPrincipalTx(tx,ctx);
+ return projectCurrentLeaveCards(await buildMyLeaveDashboard(ctx,employmentId,{today:opts.today,locale:opts.locale},false,tx,inputs));
+}
+
 export async function myLeaveDashboard(
   ctx: SessionContext,
   employmentId: string,
   opts: { today: string; year?: string; locale?: string },
 ): Promise<MyLeaveDashboard> {
+  return buildMyLeaveDashboard(ctx, employmentId, opts, true);
+}
+
+async function buildMyLeaveDashboard(
+  ctx: SessionContext,
+  employmentId: string,
+  opts: { today: string; year?: string; locale?: string },
+  fullDashboard: boolean,
+  existingTx?: Tx,
+  /** Bundled own leave inputs (core/own-leave-inputs.ts): each read below is answered from them for the employment and
+   *  transaction they were read for. Every figure is computed by the same lines either way. */
+  inputs?: OwnLeaveInputs,
+): Promise<MyLeaveDashboard> {
   const { today, locale } = opts;
+  const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => existingTx ? fn(existingTx) : withTenant(ctx, fn);
   const currentYear = Number(today.slice(0, 4));
 
   // The same type list the page has always read: visible, not archived, pooled (r209) — and, since
@@ -283,7 +333,8 @@ export async function myLeaveDashboard(
   // not repeated here — it is `leaveBalances`'s own `includeIneligible` (default: gated), the SAME
   // `isProfileEligible` the apply dropdown has always used, so the card and the dropdown can no longer
   // disagree about whether a type is this person's.
-  const balances = (await leaveBalances(ctx, employmentId, locale, { includeArchived: false })).filter(
+  const own = existingTx && inputs?.answers(existingTx, employmentId) ? inputs : undefined;
+  const balances = (await leaveBalances(ctx, employmentId, locale, { includeArchived: false }, existingTx, own)).filter(
     (b) => b.placement !== 'hidden',
   );
   if (balances.length === 0) {
@@ -297,7 +348,17 @@ export async function myLeaveDashboard(
   }
 
   const storyIds = [...new Set(balances.map((b) => balanceStoryTypeId(b)))];
-  const { hiredOn, companyCycle, overrides } = await withTenant(ctx, async (tx) => {
+  const { hiredOn, companyCycle, overrides } = await read(async (tx) => {
+    if (own) {
+      const [emp] = own.employmentRows<{ hiredOn: string; leaveCycle: string }>({ hiredOn: employment.hiredOn, leaveCycle: company.leaveCycle });
+      const types = own.typeRows<{ id: string; yearCycleOverride: string | null }>(
+        { id: leaveType.id, yearCycleOverride: leaveType.yearCycleOverride }, (type) => storyIds.includes(type.id));
+      return {
+        hiredOn: emp?.hiredOn ?? null,
+        companyCycle: emp?.leaveCycle ?? null,
+        overrides: new Map(types.map((t) => [t.id, t.yearCycleOverride])),
+      };
+    }
     const [emp] = await tx
       .select({ hiredOn: employment.hiredOn, leaveCycle: company.leaveCycle })
       .from(employment)
@@ -321,8 +382,8 @@ export async function myLeaveDashboard(
   // r302 hand-fix (second verification, defect 3) — the selector offers exactly the selections whose cycles hold
   // rows, under the SAME year → cycle mapping the cards use (N years back = N cycles back from today's), so every
   // cycle with rows is reachable and no offered year maps to an empty cycle for want of a calendar-year match.
-  const years = await offeredLeaveYears(ctx, employmentId, today, hiredOn, cycleByType);
-  const selectedYear = resolveSelectedLeaveYear(opts.year, years, currentYear);
+  const years = fullDashboard ? await offeredLeaveYears(ctx, employmentId, today, hiredOn, cycleByType) : [currentYear];
+  const selectedYear = fullDashboard ? resolveSelectedLeaveYear(opts.year, years, currentYear) : currentYear;
 
   // r397 — EACH CARD'S LEAVE YEAR IS DECIDED FIRST, WITH NO READ (it is pure date arithmetic on `hiredOn`, `today`
   // and the type's cycle), so the two per-type reads below can be asked for EVERY card at once: one transaction
@@ -347,8 +408,8 @@ export async function myLeaveDashboard(
   });
   const shownPlans = plans.filter((p) => p.shown);
   const [breakdowns, applyByType] = await Promise.all([
-    leaveEntitlementBreakdowns(ctx, employmentId, shownPlans.map((p) => ({ leaveTypeId: p.storyId, asOf: p.asOf })), locale),
-    leaveTypeApplySummaries(ctx, employmentId, shownPlans.filter((p) => p.isCurrentCycle).map((p) => p.b.leaveTypeId)),
+    leaveEntitlementBreakdowns(ctx, employmentId, shownPlans.map((p) => ({ leaveTypeId: p.storyId, asOf: p.asOf })), locale, existingTx, own),
+    leaveTypeApplySummaries(ctx, employmentId, shownPlans.filter((p) => p.isCurrentCycle).map((p) => p.b.leaveTypeId), existingTx, own),
   ]);
   const breakdownByPlan = new Map(shownPlans.map((p, i) => [p, breakdowns[i]] as const));
 
@@ -367,7 +428,7 @@ export async function myLeaveDashboard(
       // otherwise let a hidden figure be recovered by subtraction.
       const balanceShown = bd != null && !takenOnly && shows('available') && shows('taken');
       const balanceIncludesLater =
-        balanceShown && apply && round2(apply.balance) !== round2(bd!.balance)
+        fullDashboard && balanceShown && apply && round2(apply.balance) !== round2(bd!.balance)
           ? await ledgerAfterCycle(ctx, employmentId, storyId, cycleEnd, apply.balance - bd!.balance)
           : null;
       return {

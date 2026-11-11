@@ -30,6 +30,8 @@ import {resolveDocumentUpload} from './employee-documents';
 import { and, asc, desc, eq, inArray, isNull, isNotNull, lte, gte, sql } from 'drizzle-orm';
 
 import { withTenant, type SessionContext,type Tx } from '../db/client';
+import {decodeJsonFieldRows,decodeJsonFields,jsonFieldsSql,jsonRowsSql} from '../db/json-fields';
+import {ownerCardSectionReads} from './home-owner-reads';
 import { actorOf, appendEvent } from '../db/events';
 import { company,employment, notice, noticeRecipient,noticeRevision,noticeAcknowledgement,noticeAttachment } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -667,26 +669,42 @@ export type EmployeeNoticePage={items:EmployeeNoticeSummary[];total:number;unrea
  * Search executes inside the authorized live-recipient query. It does not transport body text.
  * Counts and the following page are independent current reads; concurrent edits may change the list.
  */
-export function employeeNoticeBoard(ctx:SessionContext,employmentId:string,options:{query?:string;category?:string;page?:number;pageSize?:number}={}):Promise<EmployeeNoticePage>{
- const query=(options.query??'').trim().slice(0,120),category=(options.category??'').trim().slice(0,80);
- const size=Number.isSafeInteger(options.pageSize)?Math.max(1,Math.min(20,options.pageSize!)):20;
- const requested=Number.isSafeInteger(options.page)&&options.page!>0?options.page!:1;
- return withTenant(ctx,async tx=>{
+type EmployeeNoticeBoardOptions={query?:string;category?:string;page?:number;pageSize?:number};
+export function employeeNoticeBoard(ctx:SessionContext,employmentId:string,options:EmployeeNoticeBoardOptions={}):Promise<EmployeeNoticePage>{
+ return withTenant(ctx,tx=>employeeNoticeBoardTx(tx,employmentId,options));
+}
+
+export async function employeeNoticeBoardTx(tx:Tx,employmentId:string,options:EmployeeNoticeBoardOptions):Promise<EmployeeNoticePage>{
+  const query=(options.query??'').trim().slice(0,120),category=(options.category??'').trim().slice(0,80);
+  const size=Number.isSafeInteger(options.pageSize)?Math.max(1,Math.min(20,options.pageSize!)):20;
+  const requested=Number.isSafeInteger(options.page)&&options.page!>0?options.page!:1;
   const eligible=and(liveEmployeeNotice(employmentId,todayInKualaLumpur(),true),
    query?sql`position(lower(${query}) in lower(${notice.title} || ' ' || ${notice.summary} || ' ' || ${notice.body})) > 0`:undefined,
    category?eq(notice.category,category):undefined);
   const fields=employeeNoticeFields();
-  const [counts]=await tx.select({total:sql<number>`count(*)::integer`,
+  const counted={total:sql<number>`count(*)::integer`,
    unread:sql<number>`count(*) FILTER (WHERE ${noticeRecipient.firstViewedAt} IS NULL)::integer`,
-   acknowledgementRequired:sql<number>`count(*) FILTER (WHERE ${notice.requiresAcknowledgement} AND ${fields.acknowledgedAt} IS NULL)::integer`})
-   .from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId)).where(eligible);
-  const total=counts?.total??0,pages=Math.max(1,Math.ceil(total/size)),page=Math.min(requested,pages);
+   acknowledgementRequired:sql<number>`count(*) FILTER (WHERE ${notice.requiresAcknowledgement} AND ${fields.acknowledgedAt} IS NULL)::integer`};
   const {body:_body,attachmentIds:_files,popupEnabled:_popup,popupFrequency:_frequency,popupDismissedAt:_dismissed,
    startOn:_start,endOn:_end,showEndDate:_show,...summaryFields}=fields;
+  const order=[desc(notice.pinned),desc(notice.publishedAt),asc(notice.id)];
+  // The first page never depends on the count (page = min(1, pages) = 1), so its counts and its rows are one statement
+  // (docs/adr/2026-11-10-home-request-read-scope.md decision 13): the same predicate, joins, order and page, each row
+  // decoded exactly as the select below returns it. Any later page is clamped by the count and keeps two statements.
+  if(requested===1&&!ownerCardSectionReads()){
+   const from=sql`${noticeRecipient} inner join ${notice} on ${eq(notice.id,noticeRecipient.noticeId)}`;
+   const [row]=await tx.execute<{counts:Record<string,unknown>;items:unknown}>(sql`select (select ${jsonFieldsSql(counted)} from ${from} where ${eligible!}) as counts,
+    ${jsonRowsSql({row:jsonFieldsSql(summaryFields),from,where:eligible!,order:sql.join(order,sql`, `),limit:size})} as items`);
+   if(!row?.counts)throw new Error('The notice board statement returned no row.');
+   const counts=decodeJsonFields(counted,row.counts);
+   const total=counts.total??0,pages=Math.max(1,Math.ceil(total/size));
+   return {items:decodeJsonFieldRows(summaryFields,row.items) as unknown as EmployeeNoticeSummary[],total,unread:counts.unread??0,acknowledgementRequired:counts.acknowledgementRequired??0,page:1,pageSize:size,pages};
+  }
+  const [counts]=await tx.select(counted).from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId)).where(eligible);
+  const total=counts?.total??0,pages=Math.max(1,Math.ceil(total/size)),page=Math.min(requested,pages);
   const items=await tx.select(summaryFields).from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
-   .where(eligible).orderBy(desc(notice.pinned),desc(notice.publishedAt),asc(notice.id)).limit(size).offset((page-1)*size);
+   .where(eligible).orderBy(...order).limit(size).offset((page-1)*size);
   return {items,total,unread:counts?.unread??0,acknowledgementRequired:counts?.acknowledgementRequired??0,page,pageSize:size,pages};
- });
 }
 
 /** Canonical assigned work, across the actual login's own recipient employments. Read/dismissed and
@@ -698,15 +716,28 @@ export function pendingNoticeAcknowledgementTasks(ctx:SessionContext){
  return withTenant(ctx,tx=>tx.select({noticeId:notice.id,employmentId:noticeRecipient.employmentId,
   title:notice.title,contentVersion:notice.contentVersion,sourceUpdatedAt:notice.updatedAt})
   .from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
-  .where(and(eq(noticeRecipient.tenantId,notice.tenantId),eq(notice.tenantId,ctx.tenantId),
+  .where(pendingNoticeAcknowledgementWhere(ctx,today))
+  .orderBy(desc(notice.updatedAt),asc(notice.id),asc(noticeRecipient.employmentId)));
+}
+function pendingNoticeAcknowledgementWhere(ctx:SessionContext,today:string){
+ return and(eq(noticeRecipient.tenantId,notice.tenantId),eq(notice.tenantId,ctx.tenantId),
    sql`app.principal_snapshot_current()`,isNotNull(notice.publishedAt),isNull(notice.archivedAt),
    lte(notice.startOn,today),gte(notice.endOn,today),eq(notice.requiresAcknowledgement,true),
    sql`EXISTS(SELECT 1 FROM public.employment self_employment
     WHERE self_employment.id=notice_recipient.employment_id AND self_employment.tenant_id=notice_recipient.tenant_id
      AND app.is_self_person(self_employment.person_id))`,
    sql`NOT EXISTS(SELECT 1 FROM public.notice_acknowledgement a
-    WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version)`))
-  .orderBy(desc(notice.updatedAt),asc(notice.id),asc(noticeRecipient.employmentId)));
+    WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version)`);
+}
+/** pendingNoticeAcknowledgementTasks in the one-statement Home task read (core/account-task-bundle.ts): same rows, same order. */
+export function pendingNoticeAcknowledgementTaskBundleSql(ctx:SessionContext,today:string){
+ return sql`(select coalesce(jsonb_agg(jsonb_build_object('noticeId',${notice.id},'employmentId',${noticeRecipient.employmentId},'title',${notice.title},
+   'contentVersion',${notice.contentVersion},'sourceUpdatedAt',${notice.updatedAt}) order by ${notice.updatedAt} desc,${notice.id},${noticeRecipient.employmentId}),'[]'::jsonb)
+  from ${noticeRecipient} inner join ${notice} on ${eq(notice.id,noticeRecipient.noticeId)} where ${pendingNoticeAcknowledgementWhere(ctx,today)})`;
+}
+export function pendingNoticeAcknowledgementTasksFromBundle(value:unknown){
+ return (value as {noticeId:string;employmentId:string;title:string;contentVersion:number;sourceUpdatedAt:string}[])
+  .map(row=>({noticeId:row.noticeId,employmentId:row.employmentId,title:row.title,contentVersion:row.contentVersion,sourceUpdatedAt:new Date(row.sourceUpdatedAt)}));
 }
 
 /**

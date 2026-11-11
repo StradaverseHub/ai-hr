@@ -1,20 +1,13 @@
-import { validateAllowanceEmployeeExpression, allowanceEmployeeExpressionMatches, type AllowanceEmployeeGroup, type AllowanceEmployeeFactsV4 } from './allowance-employee-expression';
+import { validateAllowanceEmployeeExpression, allowanceEmployeeExpressionMatches, type AllowanceEmployeeFactsV4 } from './allowance-employee-expression';
 /** Client-safe policy vocabulary and deterministic fixed-amount engine. No database or executable formula. */
 import { addDaysIso, datesBetween, isMonthParam, monthRange, weekRangeOf } from './roster-month';
 import { ALLOWANCE_METHODS_V2, ALLOWANCE_EMPLOYEE_FIELDS, ALLOWANCE_METRICS, ALLOWANCE_OPERATORS, ALLOWANCE_DAY_KINDS, type AllowancePeriodMethod, type AllowancePolicyType, type AllowanceEmployeeField, type AllowanceMetric, type AllowanceOperator, type AllowanceDayKind } from './attendance-allowance-vocabulary';
 export * from './attendance-allowance-vocabulary';
-import { validateAllowanceExpression, evaluateAllowanceExpression, type AllowanceExpression, type AllowanceExpressionTrace } from './attendance-allowance-expression';
-import type { RecordedAllowanceAttendanceFacts } from '../packs/attendance/service';
-export type AllowanceAttendanceCriterion = { field: AllowanceMetric; operator: AllowanceOperator; value: string; upper?: string; unit: 'minutes' | 'hours' | 'days' };
-export type AllowanceEmployeeCriterion = { field: AllowanceEmployeeField; operator: 'in' | 'notIn'; values: string[] };
-export type AllowanceRulesV2 = {
-  v: 2;
-  employee: { mode: 'all' | 'selected' | 'criteria'; employmentIds: string[]; logic: 'and' | 'or'; criteria: AllowanceEmployeeCriterion[] };
-  attendance: { dayKinds: AllowanceDayKind[]; shiftIds: string[]; logic: 'and' | 'or'; criteria: AllowanceAttendanceCriterion[] };
-};
-export type AllowanceRulesV3 = Omit<AllowanceRulesV2,'v'|'attendance'> & { v:3; attendance:AllowanceRulesV2['attendance'] & {expression:AllowanceExpression} };
-export type AllowanceRulesV4 = Omit<AllowanceRulesV3, 'v' | 'employee'> & { v: 4; employee: AllowanceRulesV3['employee'] & { expression: AllowanceEmployeeGroup | null } };
-export type AllowanceRules = AllowanceRulesV2 | AllowanceRulesV3 | AllowanceRulesV4;
+import { validateAllowanceExpression, evaluateAllowanceExpression, type AllowanceExpressionTrace } from './attendance-allowance-expression';
+import type { AllowanceDay } from './attendance-allowance-day-types';
+import type { AllowanceAttendanceCriterion, AllowanceRules, AllowanceRulesV2, AllowanceRulesV3, AllowanceRulesV4 } from './attendance-allowance-rule-types';
+export type { AllowanceDay } from './attendance-allowance-day-types';
+export type { AllowanceAttendanceCriterion, AllowanceEmployeeCriterion, AllowanceRules, AllowanceRulesV2, AllowanceRulesV3, AllowanceRulesV4 } from './attendance-allowance-rule-types';
 export const emptyAllowanceRules = (): AllowanceRulesV2 => ({ v: 2, employee: { mode: 'all', employmentIds: [], logic: 'and', criteria: [] }, attendance: { dayKinds: [], shiftIds: [], logic: 'and', criteria: [] } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const bag = (v: unknown): Record<string, unknown> => {
@@ -146,15 +139,6 @@ export function allowanceEmployeePeriodMatch(rule:AllowanceRules['employee'],emp
   const asOf=dates.at(-1)??null,facts=asOf?input.factsByDate.get(asOf)??null:null;
   return {asOf,facts,pass:!!facts&&allowanceEmployeeMatches(rule,employmentId,facts)};
 }
-export type AllowanceDay = {
-  date: string; attendanceId: string | null; kind: AllowanceDayKind; shiftId: string | null;
-  workingMinutes: number | null; actualMinutes: number | null; overtimeMinutes: number | null;
-  lateMinutes: number | null; earlyOutMinutes: number | null;
-  absentDays: number; attendanceDays: number; eligibleWorkingDays: number;
-  complete: boolean;
-  v3Facts?: {shortMinutes:number|null;incomplete:boolean;fixedClockApplicable:boolean|null;attendanceEvidence?:RecordedAllowanceAttendanceFacts;absenceKnown?:boolean;leave:{typeId:string;paid:boolean|null;days:number;requestIds:string[]}[]|null;leaveTypesPresent:string[];leaveUnknownTypeIds?:string[];source:string};
-  factSources?: { measurements: 'recorded-attendance' | 'canonical-scheduled-absence'; recordedDayType: string | null; dayAndShift: 'canonical-schedule-at-calculation'; canonicalKind: AllowanceDayKind };
-};
 export type AllowanceMetricTrace = { field: AllowanceMetric; actual: number | null; pass: boolean; operator: AllowanceOperator; value: string; upper?: string; unit: AllowanceAttendanceCriterion['unit'] };
 export type AllowancePeriodEvaluation = AllowancePeriod & { qualified: boolean; amount: string; eligibleDates: string[]; attendanceIds: string[]; metrics: Record<AllowanceMetric, number | null>; criteria: AllowanceMetricTrace[]; reasons: string[]; sourceDays: AllowanceDay[]; expression?:AllowanceExpressionTrace; ruleVersion?:3|4; employeeSelection?: { asOf:string|null; facts:AllowanceEmployeeFacts|null; pass:boolean; factSources:Partial<Record<keyof AllowanceEmployeeFacts,string>> } };
 export function evaluateAllowancePeriods(p: { method: AllowancePeriodMethod; month: string; amount: string; effectiveFrom: string; today: string; rules: AllowanceRules; days: AllowanceDay[] }): AllowancePeriodEvaluation[] {

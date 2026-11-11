@@ -18,7 +18,8 @@
  * Application History (app/attendance/application-history) and its photo route; not exported through the facade,
  * because core/mobile-offline-claim (its AAD owner) is server-only.
  *
- * Lock order of a resolution: the subject advisory lock (tenant:employment), then the correction owner's own order
+ * Lock order of a resolution: the Access and leave-dependency locks exactly as clocking takes them
+ * (lockAttendanceClockDependenciesTx), then the subject advisory lock (tenant:employment), then the correction owner's own order
  * (payroll batches by id on filing; on approval the same subject lock again, re-entrant, the correction row, its
  * workflow, payroll, then the attendance day row). It is the tail of the claim consumption order (actor admission, key,
  * stream, subject, payroll, attendance) with its first three locks omitted: a resolution never requests an actor, key or
@@ -36,7 +37,7 @@ import {OfflineClockSignedClaim,offlineClockClaimClientData,type OfflineClockCla
 import {offlineClaimAAD,offlineClaimPhotoAAD} from '../../core/mobile-offline-claim';
 import {withAttendanceTenant} from '../../core/module-gate';
 import {clockAttendanceDateTx,openClockSessionDateTx} from '../../core/attendance-clock';
-import {decideAttendanceCorrection,requestAttendanceCorrection} from '../../core/attendance';
+import {decideAttendanceCorrection,lockAttendanceClockDependenciesTx,requestAttendanceCorrection} from '../../core/attendance';
 import {ClockDataChangedError,clockFingerprint,punchesForCorrectionTx} from '../../core/attendance-punch-change';
 import {clockingEmploymentSpan,employedOnDate} from '../../core/attendance-clocking-import';
 import {offlineEffectiveInstant} from './mobile-offline-adjudicator';
@@ -227,6 +228,9 @@ export async function resolveOfflineClaimTx(tx:Tx,ctx:SessionContext,input:Offli
  if(!ctx.userId)throw refuse('forbidden');
  const claim=await claimTx(tx,ctx,p.claimId),who=await authorityTx(tx,claim.employmentId);
  if(!who.correct)throw refuse('forbidden');if(who.self)throw refuse('self_resolution');
+ // Before the subject lock, as clocking and the claim consumer order them. The correction owner below keeps
+ // the mode taken here, so it never waits for the Access lock while holding the subject lock.
+ await lockAttendanceClockDependenciesTx(tx,ctx,[claim.employmentId]);
  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+claim.employmentId},0))`);
  const inputDigest=hash(JSON.stringify(['mobile-offline-claim-resolution',1,claim.id,p.decision,p.effectiveAt??null,p.reason]));
  const [prior]=await tx.select().from(mobileOfflineClaimResolution).where(and(eq(mobileOfflineClaimResolution.claimId,claim.id),eq(mobileOfflineClaimResolution.tenantId,ctx.tenantId))).limit(1);

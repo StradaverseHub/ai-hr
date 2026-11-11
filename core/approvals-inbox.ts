@@ -21,18 +21,33 @@
  * which counts only /approvals links, is unchanged by them.
  */
 import {assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
-import type {SessionContext} from '../db/client';
+import {settleReadGroup} from '../lib/settle-read-group';
+import {sql} from 'drizzle-orm';
+import {withTenant,type SessionContext} from '../db/client';
+import {assertAssignedWorkPrincipalTx} from './approvals';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
-import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,listPendingReplacementLeaveTasks} from '../packs/leave/service';
-import {pendingClaimTaskMetadata} from '../packs/claims/service';
+import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,pendingLeaveCancellationCandidatesExistSql,listPendingReplacementLeaveTasks} from '../packs/leave/service';
+import {countPendingClaimTasks,pendingClaimTaskMetadata,pendingClaimTaskSummary} from '../packs/claims/service';
 import {pendingAttendanceTaskMetadata} from '../packs/attendance/service';
-import {pendingProfileTaskMetadata} from './profile';
-import {pendingResignationTaskMetadata} from './offboarding';
+import {pendingProfileTaskMetadata,pendingProfileTasksFromCandidates} from './profile';
+import {pendingResignationCandidatesExistSql,pendingResignationTaskMetadata} from './offboarding';
 import {pendingNoticeAcknowledgementTasks} from './notice';
-import {pendingReviewTaskMetadata} from './employment-review';
+import {pendingReviewCandidatesExistSql,pendingReviewTaskMetadata} from './employment-review';
 import {pendingPerformanceTasks} from '../packs/performance/service';
 import {pendingRewardTasks} from '../packs/rewards/service';
 import type {PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
+import type {AccountTaskBundle,AccountTaskModules,AccountTaskRead} from './account-task-bundle';
+
+/** The account task statement, loaded on first use: this file is reached from the root layout and from narrow unit
+ * harnesses, and a statement that cannot be built or sent leaves every owner to read on its own. */
+async function startAccountTaskBundle(ctx:SessionContext,modules:AccountTaskModules,read:AccountTaskRead):Promise<AccountTaskBundle|null>{
+  try{return await (await import('./account-task-bundle')).readAccountTaskBundle(ctx,modules,read);}catch{return null;}
+}
+/** core/account-task-bundle.ts sameAccountTaskRead, kept here so the type-only import above stays type-only. */
+function sameRead(built:AccountTaskRead,wanted:AccountTaskRead){
+  const ids=(read:AccountTaskRead)=>read.companyIds===undefined?null:JSON.stringify(read.companyIds);
+  return ids(built)===ids(wanted)&&built.notices===wanted.notices&&(built.personal||!wanted.personal);
+}
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
 export type PendingTaskKind =
@@ -110,34 +125,174 @@ export async function listPendingTasks(
   modules: InboxModules,
   options:{noticeAcknowledgements?:boolean}={},
 ): Promise<PendingTaskItem[]> {
+  return (await loadPendingTasks(ctx,scopeIds,modules,options)).items;
+}
+
+export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:{noticeAcknowledgements?:boolean;deferClaimPreview?:true}={}){
+  const preview={...options,preview:true} as const;
+  // The same owners through one account task statement with this list's company filter (core/account-task-bundle.ts).
+  const read:AccountTaskRead={companyIds:scopeIds,personal:false,notices:options.noticeAcknowledgements!==false};
+  const bundle=startAccountTaskBundle(ctx,{...modules,lifecycle:false},read);
+  return loadPendingTasks(ctx,scopeIds,modules,preview,loadBundledCommonTaskSources(ctx,scopeIds,modules,preview,bundle),
+    loadBundledClaimTaskSource(ctx,scopeIds,modules,preview,bundle));
+}
+
+type DecisionHeaders=Pick<AccountTaskBundle,'cancellations'|'resignations'|'managerReviews'|'hrReviews'>;
+async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefined,preview?:true,known?:DecisionHeaders){
+  // known: each owner the account task statement answered for this same read (core/account-task-bundle.ts); every
+  // other owner reads on its own, exactly as below.
+  if(known)return settleReadGroup([
+    ()=>known.cancellations??pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
+    ()=>known.resignations??pendingResignationTaskMetadata(ctx,scopeIds),
+    ()=>known.managerReviews??pendingReviewTaskMetadata(ctx,'manager',scopeIds),
+    ()=>known.hrReviews??pendingReviewTaskMetadata(ctx,'hr',scopeIds),
+  ]);
+  if(preview){
+    const candidates=await withTenant(ctx,async tx=>{
+      await assertAssignedWorkPrincipalTx(tx,ctx);
+      const [row]=await tx.execute<{has_candidates:boolean}>(sql`
+        select (
+          ${pendingLeaveCancellationCandidatesExistSql(tx,ctx,scopeIds)}
+          or ${pendingResignationCandidatesExistSql(tx,ctx,scopeIds)}
+          or ${pendingReviewCandidatesExistSql(tx,ctx,'manager',scopeIds)}
+          or ${pendingReviewCandidatesExistSql(tx,ctx,'hr',scopeIds)}
+        ) as has_candidates
+      `);
+      return row?.has_candidates;
+    });
+    // An empty candidate set needs no per-owner decision checks. A possible
+    // match still goes through each owner's fresh authorization.
+    if(candidates===false)return [[],[],[],[]] as const;
+  }
+  return settleReadGroup([
+    ()=>pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
+    ()=>pendingResignationTaskMetadata(ctx,scopeIds),
+    ()=>pendingReviewTaskMetadata(ctx,'manager',scopeIds),
+    ()=>pendingReviewTaskMetadata(ctx,'hr',scopeIds),
+  ]);
+}
+
+type TaskSourceOptions={noticeAcknowledgements?:boolean;preview?:true;countOnly?:true;deferClaimPreview?:true};
+async function loadCommonTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options:TaskSourceOptions){
   // Each owner proves actual current assignment without selecting its private decision workspace.
   // A platform role or broad read permission alone is not an actionable task assignment.
-  const [leave,cancellations,replacement,attendance,profile,claims,resignations,managerReviews,hrReviews,noticeAcknowledgements,packTaskLists]=await Promise.all([
-    pendingLeaveTaskMetadata(ctx,scopeIds),pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
-    listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
-    modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
-    pendingProfileTaskMetadata(ctx,scopeIds),
-    modules.claims?pendingClaimTaskMetadata(ctx,scopeIds):Promise.resolve([]),
-    pendingResignationTaskMetadata(ctx,scopeIds),pendingReviewTaskMetadata(ctx,'manager',scopeIds),pendingReviewTaskMetadata(ctx,'hr',scopeIds),
-    options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
-    Promise.all(PACK_TASK_SOURCES.map(source=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([]))),
+  return settleReadGroup([
+    ()=>pendingLeaveTaskMetadata(ctx,scopeIds),()=>loadDecisionHeaders(ctx,scopeIds,options.preview),
+    ()=>listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
+    ()=>modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
+    ()=>pendingProfileTaskMetadata(ctx,scopeIds),
+    ()=>options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
+    ()=>settleReadGroup(PACK_TASK_SOURCES.map(source=>()=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([]))),
   ]);
+}
+
+/** loadCommonTaskSources(ctx, scopeIds, modules, options) from the account task statement, for a preview: each owner
+ * whose section the statement answered for this same read takes that answer; every other owner reads exactly as
+ * loadCommonTaskSources reads it. */
+async function loadBundledCommonTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:TaskSourceOptions,
+  bundle:Promise<AccountTaskBundle|null>):CommonTaskSources{
+  const read=await bundle,notices=options.noticeAcknowledgements!==false;
+  if(!read||!options.preview||!sameRead(read.read,{companyIds:scopeIds,personal:false,notices}))return loadCommonTaskSources(ctx,scopeIds,modules,options);
+  const same=(module:keyof InboxModules)=>read.modules[module]===modules[module];
+  const own=<T,>(value:T|null,owner:()=>Promise<T>)=>()=>value!==null?Promise.resolve(value):owner();
+  return settleReadGroup([
+    own(read.leave,()=>pendingLeaveTaskMetadata(ctx,scopeIds)),()=>loadDecisionHeaders(ctx,scopeIds,true,read),
+    own(read.replacement,()=>listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds})),
+    own(same('attendance')?read.attendance:null,()=>modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([])),
+    // Profile candidates from the statement still pass the owner's locked decision transaction.
+    ()=>read.profile!==null?Promise.resolve(read.profile):read.profileCandidates?pendingProfileTasksFromCandidates(ctx,read.profileCandidates):pendingProfileTaskMetadata(ctx,scopeIds),
+    own(notices?read.notices:[],()=>pendingNoticeAcknowledgementTasks(ctx)),
+    ()=>settleReadGroup(PACK_TASK_SOURCES.map(source=>own(same(source.module)?read[source.module]:null,
+      ()=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([])))),
+  ]);
+}
+/** loadClaimTaskSource(ctx, scopeIds, modules, options) from the same statement: its preview, or for a count-only read
+ * (countOnly, deferClaimPreview) the same exact total with no rows, as countPendingClaimTasks answers it. */
+async function loadBundledClaimTaskSource(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:TaskSourceOptions,
+  bundle:Promise<AccountTaskBundle|null>):ClaimTaskSource{
+  const read=await bundle;
+  if(!read?.claims||read.modules.claims!==modules.claims||!options.preview
+   ||!sameRead(read.read,{companyIds:scopeIds,personal:false,notices:read.read.notices}))return loadClaimTaskSource(ctx,scopeIds,modules,options);
+  return options.countOnly||options.deferClaimPreview?{items:[],total:read.claims.total}:read.claims;
+}
+
+type CommonTaskSources=ReturnType<typeof loadCommonTaskSources>;
+type ClaimTaskSource=ReturnType<typeof loadClaimTaskSource>;
+function loadClaimTaskSource(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:TaskSourceOptions){
+  return modules.claims
+    ? options.countOnly || options.deferClaimPreview ? countPendingClaimTasks(ctx,scopeIds).then(total=>({items:[],total}))
+      : options.preview ? pendingClaimTaskSummary(ctx,scopeIds,25)
+      : pendingClaimTaskMetadata(ctx,scopeIds).then(items=>({items,total:items.length}))
+    : Promise.resolve({items:[],total:0});
+}
+
+export function countPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules):Promise<number>{
+  return countTaskSources(ctx,scopeIds,modules);
+}
+
+async function countTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,common?:CommonTaskSources,claimTotal?:()=>Promise<{total:number}>){
+  const options={preview:true,countOnly:true} as const;
+  const [[leave,decisionHeaders,replacement,attendance,profile,notices,packTasks],claims]=await settleReadGroup([
+    ()=>common??loadCommonTaskSources(ctx,scopeIds,modules,options),
+    ()=>claimTotal?.()??loadClaimTaskSource(ctx,scopeIds,modules,options),
+  ]);
+  return claims.total+leave.length+replacement.length+attendance.length+profile.length+notices.length+
+    decisionHeaders.reduce((total,rows)=>total+rows.length,0)+packTasks.reduce((total,rows)=>total+rows.length,0);
+}
+
+/** Reuse the live account-wide preview sources within one Home response. The bounded Claims preview
+ * already reads the exact total, so the count shares that one read instead of repeating its subject,
+ * authority and count statements. Only a failed preview pays for the separate count owner, so a
+ * preview failure still cannot turn the exact count into a failure. */
+export function createAccountTaskPreviewRead(ctx:SessionContext,modules:InboxModules,bundle?:Promise<AccountTaskBundle|null>){
+  const options={preview:true} as const;
+  let pending:CommonTaskSources|undefined,claimPreview:ClaimTaskSource|undefined;
+  // With the account task statement, every owner it answered costs no further statement (core/account-task-bundle.ts).
+  const common=()=>pending??=bundle?loadBundledCommonTaskSources(ctx,undefined,modules,options,bundle):loadCommonTaskSources(ctx,undefined,modules,options);
+  const preview=()=>claimPreview??=bundle?loadBundledClaimTaskSource(ctx,undefined,modules,options,bundle):loadClaimTaskSource(ctx,undefined,modules,options);
+  const exactClaimTotal=async()=>{
+    try{return await preview();}
+    catch{return loadClaimTaskSource(ctx,undefined,modules,{preview:true,countOnly:true});}
+  };
+  return {
+    count:()=>countTaskSources(ctx,undefined,modules,common(),exactClaimTotal),
+    summary:()=>loadPendingTasks(ctx,undefined,modules,options,common(),preview()),
+  };
+}
+
+const projectTasks = (rows:readonly Pick<AssignedApprovalMetadata,'id'|'employee'|'createdAt'>[],kind:AssignedApprovalKind):PendingTaskItem[] =>
+  rows.map(row=>({id:row.id,kind,subjectName:row.employee,createdAt:row.createdAt instanceof Date?row.createdAt.toISOString():new Date(row.createdAt).toISOString(),linkPath:assignedApprovalHref({kind,id:row.id})}));
+
+export async function pendingBellClaimPreview(ctx:SessionContext,scopeIds:string[]){
+  const {items,total}=await pendingClaimTaskSummary(ctx,scopeIds);
+  return {items:projectTasks(items,'claim'),total};
+}
+
+async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options:TaskSourceOptions,common?:CommonTaskSources,claimPreview?:ClaimTaskSource){
+  const [[leave,[cancellations,resignations,managerReviews,hrReviews],replacement,attendance,profile,noticeAcknowledgements,packTaskLists],claimResult]=
+    await settleReadGroup([
+      ()=>common??loadCommonTaskSources(ctx,scopeIds,modules,options),
+      ()=>claimPreview??loadClaimTaskSource(ctx,scopeIds,modules,options),
+    ]);
   const packTasks:PackTaskItem[]=packTaskLists.flat();
   const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();
-  const project=(rows:readonly Pick<AssignedApprovalMetadata,'id'|'employee'|'createdAt'>[],kind:AssignedApprovalKind):PendingTaskItem[]=>
-    rows.map(row=>({id:row.id,kind,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:assignedApprovalHref({kind,id:row.id})}));
   const items:PendingTaskItem[]=[
     ...noticeAcknowledgements.map(row=>({id:`${row.noticeId}:${row.employmentId}:${row.contentVersion}`,kind:'noticeAcknowledgement' as const,subjectName:row.title,createdAt:iso(row.sourceUpdatedAt),linkPath:`/notices/${row.noticeId}?employmentId=${row.employmentId}`})),
-    ...project(leave,'leave'),
-    ...project(cancellations,'leaveCancellation'),
-    ...project(replacement,'replacementLeave'),
-    ...project(attendance,'attendance'),
+    ...projectTasks(leave,'leave'),
+    ...projectTasks(cancellations,'leaveCancellation'),
+    ...projectTasks(replacement,'replacementLeave'),
+    ...projectTasks(attendance,'attendance'),
     ...profile.map(row=>({id:row.id,kind:'profile' as const,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:`/admin/personnel/profile-changes?assigned=1&requestId=${row.id}#request-${row.id}`})),
-    ...project(claims,'claim'),...project(resignations,'resignation'),
-    ...project(managerReviews,'managerReview'),...project(hrReviews,'hrReview'),
+    ...projectTasks(claimResult.items,'claim'),...projectTasks(resignations,'resignation'),
+    ...projectTasks(managerReviews,'managerReview'),...projectTasks(hrReviews,'hrReview'),
     ...packTasks.map(({id,kind,subjectName,createdAt,linkPath})=>({id,kind,subjectName,createdAt,linkPath})),
   ];
-  return items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));
+  items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));
+  const omittedClaims=Math.max(0,claimResult.total-claimResult.items.length);
+  return {items,claimTotal:claimResult.total,total:items.length+omittedClaims,
+    approvalCount:items.filter(task=>task.linkPath.split(/[?#]/,1)[0]==='/approvals').length+omittedClaims};
 }
 
 export async function pendingApprovalsCount(

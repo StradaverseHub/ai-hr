@@ -13,7 +13,8 @@
  *   2. the policies 0515 rewrote are exactly the fixture's 57 (test/fixtures/r395-policy-quals.json,
  *      generated from pg_policies before and after 0515), each with the fixture's post-0515 USING text and
  *      its WITH CHECK text UNCHANGED from before 0515, except the explicitly pinned 0540 assessment-file, 0560 own-Profile and 0561 user-only Feedback extensions,
- *      the 0676 import-void narrowing (ADR-0157), and the 0691 authorized Bank point-read arm.
+ *      the 0676 import-void narrowing (ADR-0157), the 0691 authorized Bank point-read arm,
+ *      the 3001 scalar-InitPlan positive Employment membership and the 3102 one for Assignment.
  *   3. the migration file's ALTER POLICY statements name exactly those 57 and set no WITH CHECK.
  *   4. the set form really is planned as an InitPlan (the `(SELECT …)` wrapper is load-bearing).
  */
@@ -39,12 +40,12 @@ const assessmentAttachment = {
 const importVoidNarrowed = new Set(['employment.employment_rls', 'person.person_rls']);
 const voidNarrowedQual = (qual: string) => `((voided_at IS NULL) AND ${qual})`;
 
-// Pin the reviewed 0691 arm independently of the migration bytes. PostgreSQL normalizes
+// Pin the reviewed 0691 arm (with 5054's payroll-partner short-circuit) independently of the migration bytes. PostgreSQL normalizes
 // the complete expected expression; the temporary policy edit always rolls back.
 async function bankPointReadQual(original: string): Promise<string> {
  const expected=`voided_at IS NULL AND tenant_id=app.current_tenant_id() AND CASE
   WHEN (SELECT current_setting('app.bank_import_point_read',true))='on'
-  THEN CASE WHEN app.is_admin_for(company_id) THEN true ELSE ${original} END
+  THEN CASE WHEN (app.is_admin_for(company_id) OR app.can_admin_payroll_for(company_id)) THEN true ELSE ${original} END
   ELSE ${original} END`;
  const rollback=new Error('Bank policy normalization rollback');let normalized='';
  try {
@@ -55,6 +56,26 @@ async function bankPointReadQual(original: string): Promise<string> {
   });
  } catch(error) {if(error!==rollback)throw error;}
  expect(normalized).not.toBe('');return normalized;
+}
+
+// 3102 (docs/adr/2026-11-07-assignment-membership-adoption.md) replaces ONLY Assignment's positive membership with
+// the same statement-local scalar InitPlan form 3001 gave Employment. Pinned as the exact reviewed body, and
+// independently derived from the immutable 0515 fixture so no other part of the predicate may drift.
+const assignmentMembershipQual='((tenant_id = app.current_tenant_id()) AND (employment_id IN ( SELECT unnest(( SELECT app.visible_employment_ids() AS visible_employment_ids)) AS unnest)))';
+function assignmentInitPlanQual(historical:string):string {
+ const old='(employment_id = ANY (( SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[]))';
+ expect(historical.split(old)).toHaveLength(2);
+ const derived=historical.replace(old,'(employment_id IN ( SELECT unnest(( SELECT app.visible_employment_ids() AS visible_employment_ids)) AS unnest))');
+ expect(derived).toBe(assignmentMembershipQual);
+ return derived;
+}
+
+function employmentInitPlanQual(historical:string):string {
+ // Keep the historical0515 fixture immutable. This is the independently reviewed
+ // current positive-membership expression, still evaluated once per statement.
+ const old='(id = ANY (( SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[]))';
+ expect(historical.split(old)).toHaveLength(2);
+ return historical.replace(old,'(id IN (SELECT unnest((SELECT app.visible_employment_ids()))))');
 }
 
 
@@ -87,7 +108,9 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     );
     const employmentFixture=FIXTURE.policies.find(p=>key(p.table,p.policy)==='employment.employment_rls');
     expect(employmentFixture).toBeTruthy();
-    const bankEmploymentQual=await bankPointReadQual(voidNarrowedQual(employmentFixture!.newQual));
+    const bankEmploymentQual=await bankPointReadQual(voidNarrowedQual(employmentInitPlanQual(employmentFixture!.newQual)));
+    expect(bankEmploymentQual.match(/SELECT unnest\(\( SELECT app\.visible_employment_ids\(\) AS visible_employment_ids\)\) AS unnest/g)).toHaveLength(2);
+    const claimMembershipQual = '((tenant_id = app.current_tenant_id()) AND (employment_id IN ( SELECT unnest(app.visible_employment_ids()) AS unnest)))';
     const reconciledFeedbackKeys = new Set<string>();
     for (const p of FIXTURE.policies) {
       // These historical invariants still apply to all 57 fixture entries, including the five 0560/0561 cases.
@@ -105,7 +128,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
         const r = live.get(historicalKey);
         expect(r, `${historicalKey} exists`).toBeTruthy();
         const attachment=p.table==='performance_attachment'&&p.policy==='performance_attachment_rls';
-        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='employment.employment_rls'?bankEmploymentQual:importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
+        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='employment.employment_rls'?bankEmploymentQual:historicalKey==='claim_request.claim_request_rls'?claimMembershipQual:historicalKey==='assignment.assignment_rls'?assignmentInitPlanQual(p.newQual):importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
         expect(r!.qual, `${historicalKey} USING`).toBe(expectedQual);
         expect(r!.with_check ?? null, `${historicalKey} WITH CHECK`).toBe(attachment?assessmentAttachment.withCheck:p.withCheck);
       }
@@ -130,19 +153,25 @@ describe('r395 — per-row visibility functions are gone from every policy USING
   });
 
   it('the set form is an InitPlan (evaluated once per statement), not a per-row call', async () => {
-    const plans: string[] = [];
+    const plans: {table:string;plan:string}[] = [];
     await owner.client.begin(async (tx) => {
       await tx.unsafe(`select set_config('app.tenant_id', gen_random_uuid()::text, true), set_config('app.user_id', gen_random_uuid()::text, true)`);
       await tx.unsafe(`set local role ai_hr_app`);
       for (const t of ['feedback_request', 'leave_request', 'person', 'employment',
         'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision', 'performance_kpi_library']) {
-        const rows = (await tx.unsafe(`explain (costs off) select * from "${t}"`)) as unknown as Row[];
-        plans.push(rows.map((r) => r['QUERY PLAN']).join('\n'));
+        const rows = (await tx.unsafe(`explain (${t==='employment'?'verbose, ':''}costs off) select * from "${t}"`)) as unknown as Row[];
+        plans.push({table:t,plan:rows.map((r) => r['QUERY PLAN']).join('\n')});
       }
     });
-    for (const p of plans) {
+    for (const {table,plan:p} of plans) {
       expect(p).toMatch(/InitPlan/);
-      expect(p).toMatch(/ANY \(\$\d+\)|= ANY \(\(InitPlan/);
+      if(table==='employment'){
+        expect(p).toMatch(/hashed SubPlan/);
+        // Target-list unnest is a ProjectSet; Function Call is reserved for
+        // a FunctionScan in FROM. Keep the scalar InitPlan parameter visible.
+        expect(p).toMatch(/ProjectSet/);
+        expect(p).toMatch(/Output: unnest\(\$\d+\)/);
+      }else expect(p).toMatch(/ANY \(\$\d+\)|= ANY \(\(InitPlan/);
       expect(p).not.toMatch(/can_see_(employment|person)/);
     }
   });

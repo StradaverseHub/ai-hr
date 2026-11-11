@@ -1,6 +1,11 @@
+import {isAiPrincipalCurrentTx} from './ai-principal';
+import {filterMyTeamSearch,resolveMyTeamScopeTx} from './my-team-scope';
+import {parseMyTeamQuery} from '../lib/my-team-query';
+import {parseRosterSelection,ROSTER_SELECTION_MAX_BYTES} from '../lib/roster-selection';
 import { assertDutyRosterWriteTx } from './schedule-group-controls';
 import { rotationVersionOn, weekPatternWorkingDayCount } from './week-pattern';
 import { ShiftNotInScheduleGroupError, groupRuleIdTx, assertShiftsAllowedForEmploymentsTx } from './schedule-shift-eligibility';
+import {assertUniqueRosterWriteKeys,ROSTER_WRITE_ROWS_PER_STATEMENT,rosterUuidSet} from './roster-write-batches';
 export { ShiftNotInScheduleGroupError, groupRuleIdTx, assertShiftsAllowedForEmploymentsTx } from './schedule-shift-eligibility';
 /**
  * Shift rosters (ADR-0032 Phase C, slice C1). Shift templates per company + per-employee roster
@@ -40,12 +45,13 @@ import {
 } from './attendance';
 import { breakRowMinutes, checkBreakRow, findBreakOverlaps } from './shift-break-rules';
 import { holidayCalendarFactsByEmployment } from './holidays';
-import { approvedLeavePresenceByEmploymentTx, lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import { approvedLeavePresenceByEmploymentTx, lockLeaveDependenciesTx, lockLeaveDependenciesWaitTx, lockLeaveDependencyReadConfigurationTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {chunkDeadline,lockOperatorChunkTx} from './operator-chunks';
 import { approvedLeaveDates } from './leave';
 import {workingShiftSchedule, rotationLookupTx, assertRotationPoolWriteTx} from '../packs/attendance/service';
 import type { RotationCycle } from './week-pattern';
-import { listEmployees, listEmployeesPage, myEmployment, ownReportingManagersTx } from './read';
+import { listEmployees, listEmployeesPage, employeeListMembersTx, adminCompaniesTx, myEmployment, ownReportingManagersTx } from './read';
 import { isAdmin } from '../lib/authz-model';
 import {
   ROSTER_MAX_RANGE_DAYS,
@@ -804,7 +810,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
   const flexibleBreakEnabled = n.flexibleBreakEnabled ?? false;
   const flexibleBreakMinutes = n.flexibleBreakMinutes ?? null;
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertRotationPoolWriteTx(tx,null,n.ruleId);
     let row: { id: string };
@@ -890,7 +896,7 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string; exp
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const n = normalizeShiftInput(p);
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // r429 (f6819e19) · D4 — READ THE STORED SWITCH FIRST. Two things need it, and neither can be answered
     // by this request's own input alone: (1) "turning it ON" is a REFUSAL, and whether this save turns it
@@ -1040,7 +1046,7 @@ export async function copyShift(ctx: SessionContext, p: { shiftId: string }): Pr
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx.select().from(shift).where(eq(shift.id, p.shiftId)).limit(1);
     if (!src) throw new Error('Shift not found (or not visible)');
@@ -1191,7 +1197,7 @@ export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): 
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx
       .select({ id: shift.id, companyId: shift.companyId, name: shift.name, code: shift.code })
@@ -1253,7 +1259,7 @@ export async function archiveShift(ctx: SessionContext, p: { shiftId: string }) 
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx.update(shift).set({ archivedAt: new Date(), updatedAt: new Date() }).where(eq(shift.id, p.shiftId));
     await appendEvent(tx, {
@@ -1286,7 +1292,7 @@ export async function unarchiveShift(ctx: SessionContext, p: { shiftId: string }
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx
       .select({ id: shift.id, name: shift.name, code: shift.code, archivedAt: shift.archivedAt })
@@ -1389,7 +1395,7 @@ export async function replaceShiftOtWindows(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     return replaceShiftOtWindowsTx(tx, ctx, p);
   });
@@ -1678,8 +1684,11 @@ export async function setEmploymentScheduleGroupTx(
 ): Promise<{ id: string; attendanceRuleId: string | null; changed: boolean; eventId?: string }> {
   p={...p};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
-  await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+  // Seating one employment in a group writes only that employment. Its employment lock serialises this with
+  // every other writer of its group, backup shift and roster (the reverse check reads all three), and group
+  // and shift definitions stay fixed under the shared Access lock because their editors take it exclusively.
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[p.employmentId]);
   const ruleId = p.attendanceRuleId?.trim() || null;
   const [emp] = await tx
     .select({ id: employment.id, before: employment.attendanceRuleId })
@@ -1799,7 +1808,7 @@ export async function setEmploymentScheduleGroupBulk(
   const ids = [...new Set(p.employmentIds.map((v) => v.trim()).filter(Boolean))].sort();
   if (ids.length === 0) throw new NoEmploymentsSelectedError();
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
     let changed = 0;
     for (const employmentId of ids) {
@@ -1897,8 +1906,9 @@ export async function assignEmployeeShift(
   const shiftId = p.shiftId || null;
   if (!shiftId) throw new BackupShiftRequiredError();
   const perform = async (tx: Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+    // One employment's backup shift: serialised by its employment lock, like setEmploymentScheduleGroupTx.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[p.employmentId]);
     const [emp] = await tx
       .select({
         id: employment.id,
@@ -2075,7 +2085,7 @@ export async function backfillBackupShift(
   p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   // Initial discovery is nomination/preview only. It never owns an eventual profile write.
   const nominated=await withTenant(ctx,async tx=>{
-    await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
     return{before:await employmentsWithoutBackupShift(ctx,undefined,tx),shifts:await listShiftsForTenant(ctx,undefined,tx)};
   });
   const before=nominated.before;
@@ -2093,23 +2103,38 @@ export async function backfillBackupShift(
   const target = matches[0];
   const ids=before.map(row=>row.employmentId),completed=new Set<string>();
   const image=(rows:UncoveredEmployment[])=>JSON.stringify(rows.slice().sort((a,b)=>a.employmentId.localeCompare(b.employmentId)));
-  for (const row of before) {
-    // The arrangement is stamped FIXED, not left alone, and that is deliberate. Migration 0162 defaulted
-    // shift_type to 'roster' for everyone who had no default shift — which is precisely this population —
-    // so preserving it would leave 30 profiles reading "Roster shift" for people nobody rosters. Fixed is
-    // the truthful label for "works this shift every working day, roster the exceptions", and it is one
-    // click to change per employee afterwards. Nothing in the engine branches on shift_type either way.
-    // One call per row on purpose — each needs its own DomainEvent to be individually reversible.
+  if(!before.length)return { before, after: await employmentsWithoutBackupShift(ctx), assignedShiftId: target.id, applied: true };
+  // The whole nominated cohort's leave sources must be free before the first profile write, as before: a held
+  // subject refuses the run with nothing written. This check holds no Access lock and writes nothing.
+  await withTenant(ctx,tx=>lockLeaveDependenciesTx(tx,ctx.tenantId,ids));
+  // Bounded transactions (core/operator-chunks.ts): rows in nomination order, about OPERATOR_CHUNK_BUDGET_MS per
+  // transaction instead of one transaction per row that each re-read the tenant-wide image and re-locked every
+  // subject. Under the writer lock nothing else can change coverage or the shift catalogue, so one image and one
+  // fresh shift match at the start of a chunk prove what the old per-row checks proved for every row in it.
+  while (completed.size < before.length) {
     await withTenant(ctx,async tx=>{
-      await tx.execute(sql`select app.access_workforce_write_lock()`);
-      await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
+      await lockOperatorChunkTx(tx,ctx.tenantId);
+      const overBudget=chunkDeadline();
       const current=await employmentsWithoutBackupShift(ctx,undefined,tx);
       if(image(current)!==image(before.filter(row=>!completed.has(row.employmentId))))throw new LeaveDependencyUnavailable();
       const freshMatches=(await listShiftsForTenant(ctx,undefined,tx)).filter(sh=>(sh.code??'').trim().toLowerCase()===wanted);
       if(freshMatches.length!==1||freshMatches[0].id!==target.id)throw new LeaveDependencyUnavailable();
-      await assignEmployeeShift(ctx,{employmentId:row.employmentId,shiftType:'fixed',shiftId:target.id},tx);
-    });
-    completed.add(row.employmentId);
+      const done:string[]=[];
+      for (const row of before) {
+        if(completed.has(row.employmentId))continue;
+        if(done.length>0&&overBudget())break;
+        // The arrangement is stamped FIXED, not left alone, and that is deliberate. Migration 0162 defaulted
+        // shift_type to 'roster' for everyone who had no default shift — which is precisely this population —
+        // so preserving it would leave 30 profiles reading "Roster shift" for people nobody rosters. Fixed is
+        // the truthful label for "works this shift every working day, roster the exceptions", and it is one
+        // click to change per employee afterwards. Nothing in the engine branches on shift_type either way.
+        // One call per row on purpose — each needs its own DomainEvent to be individually reversible. The
+        // row's own subject lock is taken by assignEmployeeShift, as every ordinary assignment does.
+        await assignEmployeeShift(ctx,{employmentId:row.employmentId,shiftType:'fixed',shiftId:target.id},tx);
+        done.push(row.employmentId);
+      }
+      return done;
+    }).then(done=>{for(const id of done)completed.add(id);}); // only a committed chunk counts as completed
   }
   return { before, after: await employmentsWithoutBackupShift(ctx), assignedShiftId: target.id, applied: true };
 }
@@ -2134,10 +2159,10 @@ async function rosterRowBefore(
 }
 
 /** Assign (or re-assign) a shift to an employee on a date. Upsert: one assignment per (employee, date). */
-export async function assignShift(ctx: SessionContext, p: { employmentId: string; shiftDate: string; shiftId: string }) {
+export async function assignShift(ctx: SessionContext, p: { employmentId: string; shiftDate: string; shiftId: string },existingTx?:Tx) {
   p={...p};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async (tx) => {
+  const perform=async (tx:Tx) => {
     await assertDutyRosterWriteTx(tx,ctx,[{...p,isRestDay:false}]);
     // 870b79e2 — the Schedule Group's allowed-shift list, enforced before the upsert. assignRosterRow
     // loops this primitive per date, so the per-date roster brush is covered by this one call.
@@ -2161,14 +2186,15 @@ export async function assignShift(ctx: SessionContext, p: { employmentId: string
       payload: { employmentId: p.employmentId, shiftDate: p.shiftDate, shiftId: p.shiftId, ...before },
     });
     return { id: row.id };
-  });
+  };
+  return existingTx?perform(existingTx):withTenant(ctx,perform);
 }
 
 /** Mark a date as an explicit rest day for an employee (vs no row = company-policy fallback). */
-export async function setRestDay(ctx: SessionContext, p: { employmentId: string; shiftDate: string; note?: string }) {
+export async function setRestDay(ctx: SessionContext, p: { employmentId: string; shiftDate: string; note?: string },existingTx?:Tx) {
   p={...p};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async (tx) => {
+  const perform=async (tx:Tx) => {
     await assertDutyRosterWriteTx(tx,ctx,[{...p,shiftId:null,isRestDay:true}]);
     const before = await rosterRowBefore(tx, p.employmentId, p.shiftDate);
     const [row] = await tx
@@ -2189,7 +2215,8 @@ export async function setRestDay(ctx: SessionContext, p: { employmentId: string;
       payload: { employmentId: p.employmentId, shiftDate: p.shiftDate, ...before },
     });
     return { id: row.id };
-  });
+  };
+  return existingTx?perform(existingTx):withTenant(ctx,perform);
 }
 
 /**
@@ -2262,36 +2289,57 @@ export async function assignShiftBulk(
   p={...p,employmentIds:p.employmentIds.slice(),shiftDates:p.shiftDates.slice()};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (p.employmentIds.length === 0 || p.shiftDates.length === 0) return { assigned: 0 };
+  const write = async (tx: Tx) => {
+    // A grid or generated batch can write thousands of cells in one transaction: the synchronous writer stays
+    // exclusive. assertDutyRosterWriteTx keeps the mode already held.
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+    const rows=await writeRosterShiftRowsTx(tx,ctx,p);
+    await appendRosterBulkAssignedTx(tx,ctx,{ shiftId: p.shiftId, employmentCount: p.employmentIds.length, dateCount: p.shiftDates.length, rows });
+    return { assigned: rows };
+  };
+  return existingTx ? write(existingTx) : withTenant(ctx,write);
+}
+
+/** The shift rows of assignShiftBulk, without its summary event: the duty-roster guard (one
+ *  roster.manual-changes event per employee), the batched Schedule Group check before any row is written,
+ *  then the idempotent upserts. A background roster job calls it once per employee and files the one
+ *  summary event itself (core/roster-bulk-worker.ts), so the rows and every per-employee event are identical. */
+export async function writeRosterShiftRowsTx(tx:Tx,ctx:SessionContext,p:{employmentIds:readonly string[];shiftDates:readonly string[];shiftId:string}):Promise<number>{
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  if (p.employmentIds.length === 0 || p.shiftDates.length === 0) return 0;
   const values = p.employmentIds.flatMap((employmentId) =>
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: p.shiftId, isRestDay: false })),
   );
-  const write = async (tx: Tx) => {
-    await assertDutyRosterWriteTx(tx,ctx,values);
-    // 870b79e2 — one batched check for the whole grid, BEFORE any row is written, so a generation run that
-    // would put somebody on a shift their group forbids fails whole rather than half. This is the
-    // roster-generation writer (generateRosterFromTemplate is a thin date-splitter over this primitive).
-    await assertShiftsAllowedForEmploymentsTx(
-      tx,
-      p.employmentIds.flatMap((employmentId) => p.shiftDates.map(shiftDate=>({ employmentId, shiftId: p.shiftId, shiftDate }))),
-    );
-    await tx
-      .insert(rosterAssignment)
-      .values(values)
+  await assertDutyRosterWriteTx(tx,ctx,values);
+  // 870b79e2 — one batched check for the whole grid, BEFORE any row is written, so a generation run that
+  // would put somebody on a shift their group forbids fails whole rather than half. This is the
+  // roster-generation writer (generateRosterFromTemplate is a thin date-splitter over this primitive).
+  await assertShiftsAllowedForEmploymentsTx(
+    tx,
+    p.employmentIds.flatMap((employmentId) => p.shiftDates.map(shiftDate=>({ employmentId, shiftId: p.shiftId, shiftDate }))),
+  );
+  assertUniqueRosterWriteKeys(values);
+  const updatedAt=new Date();
+  for(let offset=0;offset<values.length;offset+=ROSTER_WRITE_ROWS_PER_STATEMENT){
+    await tx.insert(rosterAssignment).values(values.slice(offset,offset+ROSTER_WRITE_ROWS_PER_STATEMENT))
       .onConflictDoUpdate({
-        target: [rosterAssignment.tenantId, rosterAssignment.employmentId, rosterAssignment.shiftDate],
-        set: { shiftId: sql`excluded.shift_id`, isRestDay: false, updatedAt: new Date() },
+        target:[rosterAssignment.tenantId,rosterAssignment.employmentId,rosterAssignment.shiftDate],
+        set:{shiftId:sql`excluded.shift_id`,isRestDay:false,updatedAt},
       });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'roster-assignment',
-      aggregateId: p.shiftId,
-      eventType: 'roster.bulk.assigned',
-      actor: actorOf(ctx),
-      payload: { shiftId: p.shiftId, employmentCount: p.employmentIds.length, dateCount: p.shiftDates.length, rows: values.length },
-    });
-    return { assigned: values.length };
-  };
-  return existingTx ? write(existingTx) : withTenant(ctx,write);
+  }
+  return values.length;
+}
+
+/** assignShiftBulk's one thin summary event (roster.bulk.assigned), anchored on the shift. */
+export async function appendRosterBulkAssignedTx(tx:Tx,ctx:SessionContext,p:{shiftId:string;employmentCount:number;dateCount:number;rows:number}){
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'roster-assignment',
+    aggregateId: p.shiftId,
+    eventType: 'roster.bulk.assigned',
+    actor: actorOf(ctx),
+    payload: { shiftId: p.shiftId, employmentCount: p.employmentCount, dateCount: p.dateCount, rows: p.rows },
+  });
 }
 
 /** Bulk-mark rest days for many employees across many dates — the rest-day half of roster generation,
@@ -2317,40 +2365,167 @@ export async function setRestDayBulk(
   if (p.employmentIds.length === 0 || p.shiftDates.length === 0) return { rested: 0 };
   const anchorId = p.forShiftId ?? p.anchorId;
   if (!anchorId) throw new Error('setRestDayBulk needs forShiftId or anchorId to anchor its event');
+  const write = async (tx: Tx) => {
+    // Bulk rest days stay exclusive with assignShiftBulk in the synchronous writer.
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+    const rows=await writeRosterRestRowsTx(tx,ctx,p);
+    await appendRosterBulkRestDayTx(tx,ctx,{ anchorId, shiftId: p.forShiftId ?? null, employmentCount: p.employmentIds.length, dateCount: p.shiftDates.length, rows });
+    return { rested: rows };
+  };
+  return existingTx ? write(existingTx) : withTenant(ctx,write);
+}
+
+/** The rest-day rows of setRestDayBulk, without its summary event (see writeRosterShiftRowsTx). */
+export async function writeRosterRestRowsTx(tx:Tx,ctx:SessionContext,p:{employmentIds:readonly string[];shiftDates:readonly string[]}):Promise<number>{
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  if (p.employmentIds.length === 0 || p.shiftDates.length === 0) return 0;
   const values = p.employmentIds.flatMap((employmentId) =>
     p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: null, isRestDay: true })),
   );
-  const write = async (tx: Tx) => {
-    await assertDutyRosterWriteTx(tx,ctx,values);
-    await tx
-      .insert(rosterAssignment)
-      .values(values)
+  await assertDutyRosterWriteTx(tx,ctx,values);
+  assertUniqueRosterWriteKeys(values);
+  const updatedAt=new Date();
+  for(let offset=0;offset<values.length;offset+=ROSTER_WRITE_ROWS_PER_STATEMENT){
+    await tx.insert(rosterAssignment).values(values.slice(offset,offset+ROSTER_WRITE_ROWS_PER_STATEMENT))
       .onConflictDoUpdate({
-        target: [rosterAssignment.tenantId, rosterAssignment.employmentId, rosterAssignment.shiftDate],
-        set: { shiftId: null, isRestDay: true, updatedAt: new Date() },
+        target:[rosterAssignment.tenantId,rosterAssignment.employmentId,rosterAssignment.shiftDate],
+        set:{shiftId:null,isRestDay:true,updatedAt},
       });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'roster-assignment',
-      aggregateId: anchorId,
-      eventType: 'roster.bulk.rest-day.set',
-      actor: actorOf(ctx),
-      payload: {
-        shiftId: p.forShiftId ?? null,
-        employmentCount: p.employmentIds.length,
-        dateCount: p.shiftDates.length,
-        rows: values.length,
-      },
-    });
-    return { rested: values.length };
-  };
-  return existingTx ? write(existingTx) : withTenant(ctx,write);
+  }
+  return values.length;
+}
+
+/** setRestDayBulk's one thin summary event (roster.bulk.rest-day.set). */
+export async function appendRosterBulkRestDayTx(tx:Tx,ctx:SessionContext,p:{anchorId:string;shiftId:string|null;employmentCount:number;dateCount:number;rows:number}){
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'roster-assignment',
+    aggregateId: p.anchorId,
+    eventType: 'roster.bulk.rest-day.set',
+    actor: actorOf(ctx),
+    payload: {
+      shiftId: p.shiftId,
+      employmentCount: p.employmentCount,
+      dateCount: p.dateCount,
+      rows: p.rows,
+    },
+  });
 }
 
 const DAY_MS = 86_400_000;
 // a57f0584 rev 2 — the local `const isIsoDate = /^\d{4}-\d{2}-\d{2}$/` that stood here was a
 // character-for-character copy of lib/roster-month's exported one, and this file now imports that module
 // anyway. Two identical predicates are two things to change when the shape of a date changes.
+
+/** Expected command refusals only. SQL/driver failures retain their original classification. */
+export class RosterCommandRefusal extends Error {
+ constructor(readonly code:'range'|'template'|'selection'|'permission',message:string){super(message);this.name='RosterCommandRefusal';}
+}
+export function validateRosterGenerateRange(p:{from:string;to:string}){
+ if (!isIsoDate(p.from) || !isIsoDate(p.to)) throw new RosterCommandRefusal('range','Dates must be YYYY-MM-DD');
+ const fromMs=Date.parse(`${p.from}T00:00:00Z`),toMs=Date.parse(`${p.to}T00:00:00Z`);
+ if(toMs<fromMs)throw new RosterCommandRefusal('range','The end date must not be before the start date');
+ if(toMs-fromMs>366*DAY_MS)throw new RosterCommandRefusal('range','Generate at most one year at a time');
+ return {fromMs,toMs};
+}
+export function validateRosterCopyRange(p:{sourceFrom:string;sourceTo:string;targetFrom:string}){
+ if(!isIsoDate(p.sourceFrom)||!isIsoDate(p.sourceTo)||!isIsoDate(p.targetFrom))throw new RosterCommandRefusal('range','Dates must be YYYY-MM-DD');
+ const srcFromMs=Date.parse(`${p.sourceFrom}T00:00:00Z`),srcToMs=Date.parse(`${p.sourceTo}T00:00:00Z`);
+ if(srcToMs<srcFromMs)throw new RosterCommandRefusal('range','The source end date must not be before the source start date');
+ if(srcToMs-srcFromMs>366*DAY_MS)throw new RosterCommandRefusal('range','Copy at most one year of source roster at a time');
+ const offsetDays=Math.round((Date.parse(`${p.targetFrom}T00:00:00Z`)-srcFromMs)/DAY_MS);
+ if(offsetDays===0)throw new RosterCommandRefusal('range','The target start date must differ from the source start date');
+ return {offsetDays};
+}
+/** An exact reviewed subset is a narrowing intent, separate from the legacy department precedence. */
+export type ReviewedRosterDepartment={departmentId:string;employmentIds:string[];companyIds:string[];teamQuery?:string};
+function captureReviewedDepartment(value:ReviewedRosterDepartment):ReviewedRosterDepartment{
+ const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+ if(!value||typeof value!=='object'||Object.keys(value).some(k=>!['departmentId','employmentIds','companyIds','teamQuery'].includes(k))
+  ||typeof value.departmentId!=='string'||!uuid.test(value.departmentId)||!Array.isArray(value.companyIds)||!value.companyIds.length||value.companyIds.length>50
+  ||value.companyIds.some(id=>typeof id!=='string'||!uuid.test(id))||new Set(value.companyIds).size!==value.companyIds.length
+  ||value.teamQuery!==undefined&&(typeof value.teamQuery!=='string'||value.teamQuery.length>16384)
+  ||new TextEncoder().encode(JSON.stringify(value)).byteLength>ROSTER_SELECTION_MAX_BYTES)
+  throw new RosterCommandRefusal('selection','Invalid reviewed department scope. Prepare it again.');
+ const employmentIds=parseRosterSelection(JSON.stringify(value.employmentIds));
+ if(value.teamQuery!==undefined){
+  const raw=new URLSearchParams(value.teamQuery),keys=new Set(['view','scope','anchorDate','departmentId','employmentId','search','companyIds','layers']);
+  if([...raw.keys()].some(key=>!keys.has(key))||[...keys].some(key=>key!=='companyIds'&&raw.getAll(key).length>1))throw new RosterCommandRefusal('selection','Invalid reviewed team scope.');
+  parseMyTeamQuery(raw);
+ }
+ return {...value,employmentIds,companyIds:value.companyIds.slice()};
+}
+async function assertReviewedDepartmentTx(tx:Tx,ctx:SessionContext,p:ReviewedRosterDepartment,templateCompanyId:string|null){
+ const permittedCompanies=new Set((await adminCompaniesTx(tx)).map(row=>row.id));
+ if(p.companyIds.some(id=>!permittedCompanies.has(id)))throw new RosterCommandRefusal('permission','An employee is unavailable in your company scope.');
+ const current=new Set(await rosterDepartmentPopulationIdsTx(ctx,tx,{departmentId:p.departmentId,templateCompanyId}));
+ if(p.employmentIds.some(id=>!current.has(id)))throw new RosterCommandRefusal('selection','The department selection changed. Prepare it again.');
+ const rows=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(sql`${employment.id}=any(${'{'+p.employmentIds.join(',')+'}'}::uuid[])`);
+ if(rows.length!==p.employmentIds.length||rows.some(row=>!p.companyIds.includes(row.companyId)))throw new RosterCommandRefusal('permission','An employee is unavailable in your company scope.');
+ if(p.teamQuery!==undefined){
+  const query=parseMyTeamQuery(new URLSearchParams(p.teamQuery));
+  const team=await resolveMyTeamScopeTx(tx,ctx,query),ids=new Set(filterMyTeamSearch(team.employees,query.search).map(row=>row.employmentId));
+  if(!team.canEditRoster||p.employmentIds.some(id=>!ids.has(id)))throw new RosterCommandRefusal('permission','The roster selection is no longer available in the current team scope. Prepare it again.');
+ }
+}
+
+/** Exact existing department population owner, shared with explicit preparation.
+ * listEmployeesPage owns its effective-dated assignment predicate and active(NULL) status.
+ * A tenant-global template has no company filter; the transport must independently narrow its
+ * posted company/team before confirming an explicit subset. This read grants no write authority. */
+export async function rosterDepartmentPopulationIdsTx(
+  ctx: SessionContext, tx: Tx, p: { departmentId: string; templateCompanyId: string | null },
+): Promise<string[]> {
+  const page = await listEmployeesPage(ctx, { departmentId: p.departmentId,
+    companyIds: p.templateCompanyId ? [p.templateCompanyId] : undefined,
+    status: 'active', limit: 100_000, offset: 0 }, undefined, tx);
+  if (page.total !== page.rows.length) throw new LeaveDependencyUnavailable();
+  return page.rows.map(row => row.employmentId);
+}
+
+/** Which of `ids` are in that same department population now: listEmployeesPage's predicate, narrowed to a few
+ *  employments so a background generation can revalidate its chunk without listing the whole department. */
+export async function rosterDepartmentMembersTx(
+  tx: Tx, p: { departmentId: string; templateCompanyId: string | null }, ids: readonly string[],
+): Promise<string[]> {
+  return employeeListMembersTx(tx, { departmentId: p.departmentId,
+    companyIds: p.templateCompanyId ? [p.templateCompanyId] : undefined, status: 'active' }, ids);
+}
+
+/** Canonical generation template validation, shared by preparation and the locked writer. */
+export async function rosterGenerationTemplateTx(tx:Tx,shiftId:string){
+  const tpl = await (async () => {
+    const [row] = await tx
+      .select({
+        companyId: shift.companyId,
+        weeklyPattern: shift.weeklyPattern,
+        // b8aa3466 — the four-way row, so generation and the engine split the month the same way.
+        halfPattern: shift.halfPattern,
+        offPattern: shift.offPattern,
+        ruleId: shift.ruleId,
+        archivedAt: shift.archivedAt,
+      })
+      .from(shift)
+      .where(eq(shift.id, shiftId))
+      .limit(1);
+    if (!row) return null;
+    const week = (await weekLookupTx(tx, null, [row.ruleId]))(row.ruleId, {
+      pattern: row.weeklyPattern,
+      halfPattern: row.halfPattern,
+      offPattern: row.offPattern,
+    });
+    return { ...row, ...week };
+  })();
+  if (!tpl) throw new RosterCommandRefusal('template','Shift not found (or not visible)');
+  if (tpl.archivedAt) throw new RosterCommandRefusal('template','Cannot generate a roster from an archived shift');
+  // b8aa3466 — Full ∪ Half. A shift that is all half days has a perfectly usable pattern; refusing it here
+  // would be a new false rejection introduced by the four-way row.
+  if (workingDayCount({ pattern: tpl.pattern, halfPattern: tpl.halfPattern }) === 0) {
+    throw new RosterCommandRefusal('template','This shift has no working days — put it in a Schedule Group that has a working week');
+  }
+
+ return tpl;
+}
 
 /**
  * R7 Multi-Shift Phase 2 — generate a roster window from a shift's weekly pattern. A THIN date-splitter
@@ -2371,21 +2546,85 @@ const DAY_MS = 86_400_000;
  * Events: assignShiftBulk fires its existing roster.bulk.assigned; the rest half fires one thin
  * roster.bulk.rest-day.set summary. NO separate roster.generated event (nothing would branch on it).
  */
+export type RosterGenerateInput={ shiftId: string; employmentIds?: string[]; departmentId?: string; reviewedDepartment?:ReviewedRosterDepartment; from: string; to: string };
+/** The shape checks generateRosterFromTemplate runs before any read, in the same order; the background
+ *  job runs them at admission and again in the worker. Returns a private copy. */
+export function captureRosterGenerateInput(p:RosterGenerateInput):RosterGenerateInput{
+  p={...p,employmentIds:p.employmentIds?.slice(),...(p.reviewedDepartment?{reviewedDepartment:captureReviewedDepartment(p.reviewedDepartment)}:{})};
+  if(p.reviewedDepartment&&(typeof p.shiftId!=='string'||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(p.shiftId)))throw new RosterCommandRefusal('selection','Invalid reviewed shift.');
+  if(p.reviewedDepartment&&(p.employmentIds!==undefined||p.departmentId!==undefined))throw new RosterCommandRefusal('selection','Choose one roster target intent.');
+  validateRosterGenerateRange(p);
+  return p;
+}
+/** The generator's nominated employments, read under the caller's Access and leave-configuration locks. */
+export async function rosterGenerationNomineesTx(tx:Tx,ctx:SessionContext,p:RosterGenerateInput,templateCompanyId:string|null):Promise<string[]>{
+  let employmentIds: string[];
+  if(p.reviewedDepartment){
+    employmentIds=p.reviewedDepartment.employmentIds;
+  } else if (p.departmentId) {
+    // The existing owner supplies the effective-dated assignment and active(NULL) department population.
+    employmentIds = await rosterDepartmentPopulationIdsTx(ctx, tx, { departmentId: p.departmentId, templateCompanyId });
+  } else {
+    employmentIds = [...new Set(p.employmentIds ?? [])];
+  }
+  if (employmentIds.length === 0) throw new RosterCommandRefusal('selection','No employees in scope — pick employees or a department with members');
+  return employmentIds;
+}
+/** b8aa3466 — the generator's split of the window into working and rest dates (see generateRosterFromTemplate). */
+export function rosterGenerationDates(tpl:{pattern:number[]|null;halfPattern?:number[]|null;offPattern?:number[]|null},p:{from:string;to:string}){
+  const {fromMs,toMs}=validateRosterGenerateRange(p);
+  const workingDates: string[] = [];
+  const restDates: string[] = [];
+  for (let ms = fromMs; ms <= toMs; ms += DAY_MS) {
+    const iso = new Date(ms).toISOString().slice(0, 10);
+    const kind = shiftDayKindFor({ pattern: tpl.pattern, halfPattern: tpl.halfPattern, offPattern: tpl.offPattern }, iso);
+    (isWorkingDayKind(kind) ? workingDates : restDates).push(iso);
+  }
+  return {workingDates,restDates};
+}
+/** A department generation's narrowed revalidation for a few nominated employments (the background job's chunk):
+ *  the same checks assertReviewedDepartmentTx makes for the whole list, restricted to `ids`. */
+export async function assertReviewedDepartmentMembersTx(tx:Tx,ctx:SessionContext,p:ReviewedRosterDepartment,templateCompanyId:string|null,ids:readonly string[]){
+ const permittedCompanies=new Set((await adminCompaniesTx(tx)).map(row=>row.id));
+ if(p.companyIds.some(id=>!permittedCompanies.has(id)))throw new RosterCommandRefusal('permission','An employee is unavailable in your company scope.');
+ if(ids.some(id=>!p.employmentIds.includes(id)))throw new RosterCommandRefusal('selection','The department selection changed. Prepare it again.');
+ const current=new Set(await rosterDepartmentMembersTx(tx,{departmentId:p.departmentId,templateCompanyId},ids));
+ if(ids.some(id=>!current.has(id)))throw new RosterCommandRefusal('selection','The department selection changed. Prepare it again.');
+ const rows=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(sql`${employment.id}=any(${'{'+ids.join(',')+'}'}::uuid[])`);
+ if(rows.length!==ids.length||rows.some(row=>!p.companyIds.includes(row.companyId)))throw new RosterCommandRefusal('permission','An employee is unavailable in your company scope.');
+ if(p.teamQuery!==undefined){
+  const query=parseMyTeamQuery(new URLSearchParams(p.teamQuery));
+  const team=await resolveMyTeamScopeTx(tx,ctx,query),teamIds=new Set(filterMyTeamSearch(team.employees,query.search).map(row=>row.employmentId));
+  if(!team.canEditRoster||ids.some(id=>!teamIds.has(id)))throw new RosterCommandRefusal('permission','The roster selection is no longer available in the current team scope. Prepare it again.');
+ }
+}
+
+/** The generator's read-only nomination, in its own order and under its own locks: administrator, Access
+ *  configuration, current calling authority for a reviewed department, leave configuration, the template, the
+ *  nominated employments and the reviewed department's exact subset. No subject lock and no write: the background
+ *  job runs it at admission (so these refusals still answer the click) and again before its first write. */
+export async function rosterGenerationNominationTx(tx:Tx,ctx:SessionContext,p:RosterGenerateInput){
+  assertRosterAdmin(ctx);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+  if(p.reviewedDepartment&&!await isAiPrincipalCurrentTx(tx,ctx))throw new RosterCommandRefusal('permission','Current calling authority could not be confirmed.');
+  await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
+  const tpl=await rosterGenerationTemplateTx(tx,p.shiftId);
+  const employmentIds=await rosterGenerationNomineesTx(tx,ctx,p,tpl.companyId);
+  if(p.reviewedDepartment)await assertReviewedDepartmentMembersTx(tx,ctx,p.reviewedDepartment,tpl.companyId,employmentIds);
+  return {tpl,employmentIds};
+}
+
 export async function generateRosterFromTemplate(
   ctx: SessionContext,
-  p: { shiftId: string; employmentIds?: string[]; departmentId?: string; from: string; to: string },
+  p: RosterGenerateInput,
 ) {
-  p={...p,employmentIds:p.employmentIds?.slice()};
+  p=captureRosterGenerateInput(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  if (!isIsoDate(p.from) || !isIsoDate(p.to)) throw new Error('Dates must be YYYY-MM-DD');
-  const fromMs = Date.parse(`${p.from}T00:00:00Z`);
-  const toMs = Date.parse(`${p.to}T00:00:00Z`);
-  if (toMs < fromMs) throw new Error('The end date must not be before the start date');
-  if (toMs - fromMs > 366 * DAY_MS) throw new Error('Generate at most one year at a time');
 
   return withTenant(ctx,async tx=>{
   assertRosterAdmin(ctx);
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+  if(p.reviewedDepartment&&!await isAiPrincipalCurrentTx(tx,ctx))throw new RosterCommandRefusal('permission','Current calling authority could not be confirmed.');
   await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
 
   // 07ebd04d — the template's week is resolved through its SCHEDULE GROUP first (migration 0483). The
@@ -2398,61 +2637,14 @@ export async function generateRosterFromTemplate(
   // The GROUP here is the SHIFT's (shift.rule_id), not any one employee's: this call generates for a whole
   // department, and the group guard (assertShiftsAllowedForEmploymentsTx) already refuses an employment
   // whose own group does not contain this shift, so on every assignment the system accepts the two agree.
-  const tpl = await (async () => {
-    const [row] = await tx
-      .select({
-        companyId: shift.companyId,
-        weeklyPattern: shift.weeklyPattern,
-        // b8aa3466 — the four-way row, so generation and the engine split the month the same way.
-        halfPattern: shift.halfPattern,
-        offPattern: shift.offPattern,
-        ruleId: shift.ruleId,
-        archivedAt: shift.archivedAt,
-      })
-      .from(shift)
-      .where(eq(shift.id, p.shiftId))
-      .limit(1);
-    if (!row) return null;
-    const week = (await weekLookupTx(tx, null, [row.ruleId]))(row.ruleId, {
-      pattern: row.weeklyPattern,
-      halfPattern: row.halfPattern,
-      offPattern: row.offPattern,
-    });
-    return { ...row, ...week };
-  })();
-  if (!tpl) throw new Error('Shift not found (or not visible)');
-  if (tpl.archivedAt) throw new Error('Cannot generate a roster from an archived shift');
-  // b8aa3466 — Full ∪ Half. A shift that is all half days has a perfectly usable pattern; refusing it here
-  // would be a new false rejection introduced by the four-way row.
-  if (workingDayCount({ pattern: tpl.pattern, halfPattern: tpl.halfPattern }) === 0) {
-    throw new Error('This shift has no working days — put it in a Schedule Group that has a working week');
-  }
+  const tpl = await rosterGenerationTemplateTx(tx,p.shiftId);
 
-  let employmentIds: string[];
-  if (p.departmentId) {
-    // Department scope — the reuse path that actually exists: listEmployeesPage's current-assignment
-    // (validTo IS NULL AND supersededAt IS NULL) department filter, mapped to employmentIds.
-    const page = await listEmployeesPage(ctx, {
-      departmentId: p.departmentId,
-      // R33 f21d6eee — a tenant-global shift (company_id NULL) has no company to narrow by; the department
-      // already belongs to one company, so scope by department alone. Legacy company-stamped shifts still narrow.
-      companyIds: tpl.companyId ? [tpl.companyId] : undefined,
-      status: 'active',
-      limit: 100_000,
-      offset: 0,
-    },undefined,tx);
-    if(page.total!==page.rows.length)throw new LeaveDependencyUnavailable();
-    employmentIds = page.rows.map((r) => r.employmentId);
-  } else {
-    employmentIds = [...new Set(p.employmentIds ?? [])];
-  }
-  if (employmentIds.length === 0) throw new Error('No employees in scope — pick employees or a department with members');
+  const employmentIds=await rosterGenerationNomineesTx(tx,ctx,p,tpl.companyId);
   await lockLeaveDependenciesTx(tx,ctx.tenantId,employmentIds);
+  if(p.reviewedDepartment)await assertReviewedDepartmentTx(tx,ctx,p.reviewedDepartment,tpl.companyId);
   if(p.departmentId){
-    const fresh=await listEmployeesPage(ctx,{departmentId:p.departmentId,
-      companyIds:tpl.companyId?[tpl.companyId]:undefined,status:'active',limit:100_000,offset:0},undefined,tx);
-    if(fresh.total!==fresh.rows.length)throw new LeaveDependencyUnavailable();
-    const nominated=[...new Set(employmentIds)].sort(),current=[...new Set(fresh.rows.map(row=>row.employmentId))].sort();
+    const fresh = await rosterDepartmentPopulationIdsTx(ctx, tx, { departmentId: p.departmentId, templateCompanyId: tpl.companyId });
+    const nominated=[...new Set(employmentIds)].sort(),current=[...new Set(fresh)].sort();
     if(nominated.length!==current.length||nominated.some((id,index)=>id!==current[index]))throw new LeaveDependencyUnavailable();
   }
 
@@ -2461,13 +2653,7 @@ export async function generateRosterFromTemplate(
   // a shift row (a half day is a working day; its shorter hours are decided by the engine, not by whether a
   // roster row exists); Rest and Off both generate a rest row, because neither is scheduled work. A
   // template written before migration 0429 has empty half/off arrays and therefore splits exactly as before.
-  const workingDates: string[] = [];
-  const restDates: string[] = [];
-  for (let ms = fromMs; ms <= toMs; ms += DAY_MS) {
-    const iso = new Date(ms).toISOString().slice(0, 10);
-    const kind = shiftDayKindFor({ pattern: tpl.pattern, halfPattern: tpl.halfPattern, offPattern: tpl.offPattern }, iso);
-    (isWorkingDayKind(kind) ? workingDates : restDates).push(iso);
-  }
+  const {workingDates,restDates}=rosterGenerationDates(tpl,p);
 
   const assigned = await assignShiftBulk(ctx, { employmentIds, shiftDates: workingDates, shiftId: p.shiftId },tx);
   const rested = await setRestDayBulk(ctx, { employmentIds, shiftDates: restDates, forShiftId: p.shiftId },tx);
@@ -2501,29 +2687,41 @@ export async function copyRoster(
 ): Promise<{ copied: number; sourceRows: number }> {
   p={...p,employmentIds:p.employmentIds?.slice()};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  if (!isIsoDate(p.sourceFrom) || !isIsoDate(p.sourceTo) || !isIsoDate(p.targetFrom)) {
-    throw new Error('Dates must be YYYY-MM-DD');
-  }
-  const srcFromMs = Date.parse(`${p.sourceFrom}T00:00:00Z`);
-  const srcToMs = Date.parse(`${p.sourceTo}T00:00:00Z`);
-  if (srcToMs < srcFromMs) throw new Error('The source end date must not be before the source start date');
-  if (srcToMs - srcFromMs > 366 * DAY_MS) throw new Error('Copy at most one year of source roster at a time');
-  const offsetDays = Math.round((Date.parse(`${p.targetFrom}T00:00:00Z`) - srcFromMs) / DAY_MS);
-  if (offsetDays === 0) throw new Error('The target start date must differ from the source start date');
+  const {offsetDays}=validateRosterCopyRange(p);
 
   const empIds = [...new Set((p.employmentIds ?? []).filter(Boolean))];
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
-    const srcConds = [gte(rosterAssignment.shiftDate, p.sourceFrom), lte(rosterAssignment.shiftDate, p.sourceTo)];
-    if (empIds.length > 0) srcConds.push(inArray(rosterAssignment.employmentId, empIds));
     // Nominate source/target subjects only, then reread membership before copying source facts.
-    const nominate=()=>tx.selectDistinct({employmentId:rosterAssignment.employmentId}).from(rosterAssignment)
-      .where(and(...srcConds)).orderBy(rosterAssignment.employmentId);
-    const nominated=await nominate();
+    const nominated=await rosterCopyNomineesTx(tx,{...p,employmentIds:empIds});
     if(!nominated.length)return {copied:0,sourceRows:0};
-    await lockLeaveDependenciesTx(tx,ctx.tenantId,nominated.map(row=>row.employmentId));
-    if(JSON.stringify(nominated)!==JSON.stringify(await nominate()))throw new LeaveDependencyUnavailable();
+    await lockLeaveDependenciesTx(tx,ctx.tenantId,nominated);
+    if(JSON.stringify(nominated)!==JSON.stringify(await rosterCopyNomineesTx(tx,{...p,employmentIds:empIds})))throw new LeaveDependencyUnavailable();
+    const {rows,sourceRows}=await copyRosterRowsTx(tx,ctx,{...p,employmentIds:empIds,offsetDays});
+    if (sourceRows === 0) return { copied: 0, sourceRows: 0 };
+    await appendRosterCopiedTx(tx,ctx,{...p,offsetDays,rows,employmentScope:empIds.length > 0 ? empIds.length : 'all-visible'});
+    return { copied: rows, sourceRows };
+  });
+}
+
+/** The employments with a source row in the copy window (narrowed to `employmentIds` when given), in id order. */
+export async function rosterCopyNomineesTx(tx:Tx,p:{employmentIds?:readonly string[];sourceFrom:string;sourceTo:string}):Promise<string[]>{
+  const srcConds = [gte(rosterAssignment.shiftDate, p.sourceFrom), lte(rosterAssignment.shiftDate, p.sourceTo)];
+  if (p.employmentIds && p.employmentIds.length > 0) srcConds.push(rosterUuidSet(rosterAssignment.employmentId,p.employmentIds));
+  const rows=await tx.selectDistinct({employmentId:rosterAssignment.employmentId}).from(rosterAssignment)
+    .where(and(...srcConds)).orderBy(rosterAssignment.employmentId);
+  return rows.map(row=>row.employmentId);
+}
+
+/** The rows of copyRoster, without its summary event: read the source window (narrowed to `employmentIds` when
+ *  given), shift every row by `offsetDays`, check the duty-roster guard and the Schedule Group for the copied
+ *  rows, then upsert. A background roster job runs it once per nominated employment. */
+export async function copyRosterRowsTx(tx:Tx,ctx:SessionContext,p:{employmentIds?:readonly string[];sourceFrom:string;sourceTo:string;offsetDays:number}):Promise<{rows:number;sourceRows:number}>{
+    ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+    const offsetDays=p.offsetDays;
+    const srcConds = [gte(rosterAssignment.shiftDate, p.sourceFrom), lte(rosterAssignment.shiftDate, p.sourceTo)];
+    if (p.employmentIds && p.employmentIds.length > 0) srcConds.push(rosterUuidSet(rosterAssignment.employmentId,p.employmentIds));
     const srcRows = await tx
       .select({
         employmentId: rosterAssignment.employmentId,
@@ -2534,7 +2732,7 @@ export async function copyRoster(
       })
       .from(rosterAssignment)
       .where(and(...srcConds));
-    if (srcRows.length === 0) return { copied: 0, sourceRows: 0 };
+    if (srcRows.length === 0) return { rows: 0, sourceRows: 0 };
 
     const shift1 = (iso: string) => new Date(Date.parse(`${iso}T00:00:00Z`) + offsetDays * DAY_MS).toISOString().slice(0, 10);
     const values = srcRows.map((r) => ({
@@ -2554,15 +2752,21 @@ export async function copyRoster(
       tx,
       values.map((v) => ({ employmentId: v.employmentId, shiftId: v.shiftId, shiftDate:v.shiftDate })),
     );
-    await tx
-      .insert(rosterAssignment)
-      .values(values)
-      .onConflictDoUpdate({
-        target: [rosterAssignment.tenantId, rosterAssignment.employmentId, rosterAssignment.shiftDate],
-        set: { shiftId: sql`excluded.shift_id`, isRestDay: sql`excluded.is_rest_day`, note: sql`excluded.note`, updatedAt: new Date() },
-      });
-    // Thin summary event on a virtual aggregate (UUID-typed aggregate_id) — the copied window is described in
-    // the payload; per-row events would flood the log at scale (same skip as assignShiftBulk).
+    assertUniqueRosterWriteKeys(values);
+    const updatedAt=new Date();
+    for(let offset=0;offset<values.length;offset+=ROSTER_WRITE_ROWS_PER_STATEMENT){
+      await tx.insert(rosterAssignment).values(values.slice(offset,offset+ROSTER_WRITE_ROWS_PER_STATEMENT))
+        .onConflictDoUpdate({
+          target:[rosterAssignment.tenantId,rosterAssignment.employmentId,rosterAssignment.shiftDate],
+          set:{shiftId:sql`excluded.shift_id`,isRestDay:sql`excluded.is_rest_day`,note:sql`excluded.note`,updatedAt},
+        });
+    }
+    return { rows: values.length, sourceRows: srcRows.length };
+}
+
+/** copyRoster's thin summary event on a virtual aggregate (UUID-typed aggregate_id) — the copied window is
+ *  described in the payload; per-row events would flood the log at scale (same skip as assignShiftBulk). */
+export async function appendRosterCopiedTx(tx:Tx,ctx:SessionContext,p:{sourceFrom:string;sourceTo:string;targetFrom:string;offsetDays:number;rows:number;employmentScope:number|'all-visible'}){
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'roster-assignment',
@@ -2573,13 +2777,11 @@ export async function copyRoster(
         sourceFrom: p.sourceFrom,
         sourceTo: p.sourceTo,
         targetFrom: p.targetFrom,
-        offsetDays,
-        rows: values.length,
-        employmentScope: empIds.length > 0 ? empIds.length : 'all-visible',
+        offsetDays: p.offsetDays,
+        rows: p.rows,
+        employmentScope: p.employmentScope,
       },
     });
-    return { copied: values.length, sourceRows: srcRows.length };
-  });
 }
 
 /** The roster grid for a date window (admin/manager view; RLS scopes which employees are visible). */
@@ -2641,9 +2843,9 @@ export type UsualShiftRow = {
  * are simply absent from the result; their month reads as blank, which is the honest answer and is what
  * the Attendance Policy screen's "no usual shift" list already exists to fix.
  */
-export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Promise<UsualShiftRow[]> {
+export function usualShiftsFor(ctx: SessionContext, employmentIds: string[], existingTx?: Tx): Promise<UsualShiftRow[]> {
   if (employmentIds.length === 0) return Promise.resolve([]);
-  return withTenant(ctx, async (tx) => {
+  const read = async (tx: Tx) => {
     const rows = await tx
       .select({
         employmentId: employment.id,
@@ -2688,7 +2890,8 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
         ...(rotations.length?{noDefault:!r.shiftId,rotations:rotations.map(({ruleId,effectiveFrom,anchorDate,unit,length,days})=>({ruleId,effectiveFrom,anchorDate,unit,length,days})),...(periods.length?{rotationPeriods:periods}:{}),
           rotationShifts:rotationLookup.shifts.filter(s=>ids.has(s.id))}:{})}];
     });
-  });
+  };
+  return existingTx ? read(existingTx) : withTenant(ctx, read);
 }
 
 /** One row of the month grid's pinned block. Every field comes from listEmployees, which already
@@ -2821,11 +3024,26 @@ export async function rosterWindowView(
   assertRosterWindow(p.from, p.to);
   const { from, to } = { from: p.from, to: p.to };
   const dates = datesBetween(from, to);
-  const today=todayInKualaLumpur();
-  const [employeeRows, shiftRows] = await Promise.all([
-    p.employmentIds?.length === 0 ? Promise.resolve([]) : listEmployees(ctx, p.companyIds.length > 0 ? p.companyIds : undefined),
+  const [{ employees, allEmployees }, shiftRows] = await Promise.all([
+    rosterWindowEmployees(ctx, p),
     listShiftsForTenant(ctx),
   ]);
+
+  return hydrateRosterWindow(ctx, { from, to, dates, employees, allEmployees, shiftRows });
+}
+
+/**
+ * The employees rosterWindowView puts on screen (`employees`, after the filters) and the unfiltered set the
+ * filters draw from (`allEmployees`), with no cell hydration. rosterWindowView reads its people through this
+ * one function, so the Roster Generate and Copy forms, which use it directly, always target exactly the
+ * employees the unpaged roster screen listed, while the grid itself pages. RLS-fenced like listEmployees.
+ */
+export async function rosterWindowEmployees(
+  ctx: SessionContext,
+  p: { companyIds: string[]; businessUnitId?: string; departmentId?: string; q?: string; employmentIds?: string[] },
+): Promise<{ employees: RosterMonthEmployee[]; allEmployees: RosterMonthEmployee[] }> {
+  const today=todayInKualaLumpur();
+  const employeeRows = p.employmentIds?.length === 0 ? [] : await listEmployees(ctx, p.companyIds.length > 0 ? p.companyIds : undefined);
 
   const allEmployees: RosterMonthEmployee[] = employeeRows
     .filter((e) => (!e.terminatedOn || e.terminatedOn>today) && (!p.employmentIds || p.employmentIds.includes(e.employmentId)))
@@ -2856,14 +3074,27 @@ export async function rosterWindowView(
       (needle === '' || e.name.toLowerCase().includes(needle) || (e.code ?? '').toLowerCase().includes(needle)),
   );
 
+  return { employees, allEmployees };
+}
+
+/** Canonical cell hydration shared by the full artifact reader and bounded presentation reader.
+ * A supplied transaction is the caller's enforced presentation snapshot. No calculation is duplicated. */
+export async function hydrateRosterWindow(
+  ctx: SessionContext,
+  { from, to, dates, employees, allEmployees, shiftRows }: {
+    from: string; to: string; dates: string[];
+    employees: RosterMonthEmployee[]; allEmployees: RosterMonthEmployee[];
+    shiftRows: Awaited<ReturnType<typeof listShiftsForTenant>>;
+  },
+  existingTx?: Tx,
+): Promise<RosterMonthView> {
   // The roster read is narrowed to the employees actually on screen. A filtered month must not drag the
   // whole company's rows across just to throw them away, and an empty result must not fall through to
   // rosterForRange's "no employmentIds ⇒ everyone" branch.
   const visible = employees.map((e) => e.employmentId);
-  const [roster, usualRows] = await Promise.all([
-    visible.length > 0 ? rosterForRange(ctx, { employmentIds: visible, from, to }) : Promise.resolve([]),
-    usualShiftsFor(ctx, visible),
-  ]);
+  // A borrowed transaction must never finish while a sibling multi-query reader is still running.
+  const roster = visible.length > 0 ? await rosterForRange(ctx, { employmentIds: visible, from, to }, existingTx) : [];
+  const usualRows = await usualShiftsFor(ctx, visible, existingTx);
 
   const cells: Record<string, AssignedCell> = {};
   for (const r of roster) {
@@ -2883,11 +3114,9 @@ export async function rosterWindowView(
   }
 
   const dayContext: RosterMonthView['dayContext'] = {};
-  if (visible.length) await withTenant(ctx, async tx => {
-    const [calendar, leave] = await Promise.all([
-      holidayCalendarFactsByEmployment(tx, { employmentIds: visible, startDate: from, endDate: to }),
-      approvedLeavePresenceByEmploymentTx(tx, visible, from, to),
-    ]);
+  const readDayContext = async (tx: Tx) => {
+    const calendar = await holidayCalendarFactsByEmployment(tx, { employmentIds: visible, startDate: from, endDate: to });
+    const leave = await approvedLeavePresenceByEmploymentTx(tx, visible, from, to);
     for (const id of visible) for (const date of dates) {
       const facts: RosterMonthView['dayContext'][string] = {};
       if (calendar.holidays.get(id)?.has(date)) facts.publicHoliday = true;
@@ -2896,7 +3125,8 @@ export async function rosterWindowView(
       if (presence) facts.approvedLeave = presence;
       if (Object.keys(facts).length) dayContext[cellKey(id, date)] = facts;
     }
-  });
+  };
+  if (visible.length) await (existingTx ? readDayContext(existingTx) : withTenant(ctx, readDayContext));
 
   return {
     from,
@@ -3067,8 +3297,15 @@ export async function recordRosterUpload(
   },
 ): Promise<void> {
   p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  await withTenant(ctx, (tx) =>
-    appendEvent(tx, {
+  await withTenant(ctx, (tx) => recordRosterUploadTx(tx, ctx, p));
+}
+/** recordRosterUpload inside the caller's transaction (the background upload's finalize). */
+export async function recordRosterUploadTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { companyId: string; month: string; fileName: string; employees: number; rowsRead: number; changed: number; rejected: number },
+): Promise<void> {
+  await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'roster-assignment',
       aggregateId: p.companyId,
@@ -3083,8 +3320,7 @@ export async function recordRosterUpload(
         changed: p.changed,
         rejected: p.rejected,
       },
-    }),
-  );
+    });
 }
 
 // ── Roster vs actual (ADR-0032 C4) ──────────────────────────────────
@@ -3519,7 +3755,7 @@ export async function saveShiftPay(ctx: SessionContext, p: { shiftId: string; wi
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const differential = validateDifferential(p.differential);
   return withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx.select().from(shift).where(eq(shift.id, p.shiftId)).for('update');
     if (!before) throw new Error('Shift not found (or not visible)');

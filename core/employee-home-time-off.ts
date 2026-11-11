@@ -1,26 +1,35 @@
 /** A minimal own Time Off projection over the existing leave dashboard and approved-date owners.
  * Available is already net of pending reservations; Home must never subtract Pending again. */
+import {settleReadGroup} from '../lib/settle-read-group';
 import type {SessionContext} from '../db/client';
 import {withTenant} from '../db/client';
-import {myOwnEmploymentSubjects,listEligibleLeaveTypesFor} from './read';
-import {requireOwnHomeSubject,HomeAccessError} from './employee-home';
-import {myLeaveDashboard,nextApprovedLeavePresenceTx} from '../packs/leave/service';
+import {hasEligibleLeaveTypeFrom} from './read';
+import {requireActiveOwnHomeSnapshotEmploymentIdTx} from './employee-home';
+import {assertAiPresentationPrincipalTx} from './ai-principal';
+import {sharedOwnLeaveInputsTx} from './own-leave-inputs';
+import {myCurrentLeaveSnapshotCards} from '../packs/leave/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {EmployeeHomeTimeOff} from '../lib/employee-home-read-model';
 export type {EmployeeHomeTimeOff} from '../lib/employee-home-read-model';
-export async function readEmployeeHomeTimeOff(ctx:SessionContext,employmentId?:string,locale?:string):Promise<EmployeeHomeTimeOff>{
- const subject=await requireOwnHomeSubject(ctx,employmentId);
- // A prior selected card cannot survive a blocked/archived login or a now-ended employment.
- const active=await myOwnEmploymentSubjects(ctx,{profileEdit:true});
- if(!active.some(row=>row.employmentId===subject.employmentId))throw new HomeAccessError('employmentUnavailable');
- const today=todayInKualaLumpur();
- const [dashboard,nextApproved,eligible]=await Promise.all([
-  myLeaveDashboard(ctx,subject.employmentId,{today,locale}),
-  withTenant(ctx,tx=>nextApprovedLeavePresenceTx(tx,subject.employmentId,today)),
-  listEligibleLeaveTypesFor(ctx,subject.employmentId,locale),
- ]);
- if(dashboard.cards.length>100)throw Error('Own leave catalogue exceeds its supported Home limit.');
- return {version:1,employmentId:subject.employmentId,asOf:today,canApply:eligible.length>0,
-  balances:dashboard.cards.map(card=>({id:card.leaveTypeId,name:card.leaveType,annualLeave:card.annualLeave,available:card.canApplyFor,pending:card.pending})),
-  nextApproved};
+export async function readEmployeeHomeTimeOff(ctx:SessionContext,employmentId?:string,locale?:string,signal?:AbortSignal):Promise<EmployeeHomeTimeOff>{
+ return withTenant(ctx,async tx=>{
+  const subjectId=await requireActiveOwnHomeSnapshotEmploymentIdTx(tx,ctx,employmentId);
+  signal?.throwIfAborted();
+  const today=todayInKualaLumpur();
+  // The cards' own principal proof is asked before any leave figure is read. The cards, the next approved date and
+  // the Apply entry point are then answered from one bundled read of this employment's leave inputs
+  // (core/own-leave-inputs.ts) by the same calculators; the proof inside the cards is the same statement again.
+  // Inside a Home stream the Summary card answers its next approved date and Apply entry point from the same read.
+  await assertAiPresentationPrincipalTx(tx,ctx);
+  const inputs=await sharedOwnLeaveInputsTx(tx,subjectId,today);
+  signal?.throwIfAborted();
+  const [cards,eligible]=await settleReadGroup([
+   ()=>myCurrentLeaveSnapshotCards(ctx,subjectId,{today,locale},tx,inputs),
+   ()=>hasEligibleLeaveTypeFrom(tx,subjectId,inputs),
+  ]);
+  if(cards.length>100)throw Error('Own leave catalogue exceeds its supported Home limit.');
+  return {version:1,employmentId:subjectId,asOf:today,canApply:eligible,
+   balances:cards.map(card=>({id:card.leaveTypeId,name:card.leaveType,annualLeave:card.annualLeave,available:card.canApplyFor,pending:card.pending})),
+   nextApproved:inputs.nextApproved};
+ },{readOnlySnapshot:true,readSignal:signal});
 }

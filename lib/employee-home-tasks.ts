@@ -13,7 +13,7 @@ export type EmployeeHomeTasks={
 /** Counts and effort cover every actual assignment, independently of this card's bounded page.
  * A missing estimate/deadline stays unknown. Submission age never manufactures an overdue task. */
 export function projectHomeAssignedWork(tasks:readonly EmployeeHomeTask[],options:{
- employmentId:string;today:string;page?:number;effortMinutes:Partial<Record<HomeTaskKind,number>>;
+ employmentId:string;today:string;page?:number;omittedClaims?:number;effortMinutes:Partial<Record<HomeTaskKind,number>>;
 }):EmployeeHomeTasks{
  if(!isCalendarDate(options.today))throw Error('Invalid assigned-work business date.');
  const unique=new Map<string,EmployeeHomeTask&{overdue:boolean}>();
@@ -35,8 +35,15 @@ export function projectHomeAssignedWork(tasks:readonly EmployeeHomeTask[],option
   else if(!Number.isSafeInteger(estimate)||estimate<0||estimate>1440)throw Error('Invalid assigned-work effort estimate.');
   else effortMinutes+=estimate;
  }
- const pages=Math.max(1,Math.ceil(all.length/12));
+ // Claims have no due date. The bounded inbox returns at least the first page
+ // of claims in the same order, so omitted claims only contribute to aggregates.
+ const omitted=options.omittedClaims??0;
+ const total=all.length+omitted;
+ const claimEstimate=options.effortMinutes.claim;
+ if(claimEstimate===undefined)unestimated+=omitted;
+ else effortMinutes+=omitted*claimEstimate;
+ const pages=Math.max(1,Math.ceil(total/12));
  const page=Math.min(pages,Math.max(1,Number.isSafeInteger(options.page)?options.page!:1));
- return {version:1,employmentId:options.employmentId,grain:'account',asOf:options.today,total:all.length,
+ return {version:1,employmentId:options.employmentId,grain:'account',asOf:options.today,total,
   overdue:all.filter(task=>task.overdue).length,effortMinutes,unestimated,page,pages,pageSize:12,items:all.slice((page-1)*12,page*12)};
 }

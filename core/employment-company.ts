@@ -47,6 +47,8 @@
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { assignment, employment } from '../db/schema';
 import type { Tx } from '../db/client';
+import { sharedReadWindow, sharedSnapshotValue } from '../db/shared-read';
+import { sharedCalendarWindowInputs, stagedHomeReads, type CalendarWindowInputs } from './calendar-window-inputs';
 
 /** One maximal range over which a single legal entity applied. Inclusive on both ends. */
 export type CompanySegment = {
@@ -104,11 +106,14 @@ async function entityRowsFor(
   for (const r of rows) {
     if (!r.companyId) continue;
     const list = byEmp.get(r.employmentId) ?? [];
-    // valid_to is exclusive → the last day this version applied is the day before it.
-    list.push({ companyId: r.companyId, from: r.validFrom, to: r.validTo ? dayBefore(r.validTo) : null });
+    list.push(entitySegmentRow({ companyId: r.companyId, validFrom: r.validFrom, validTo: r.validTo }));
     byEmp.set(r.employmentId, list);
   }
   return byEmp;
+}
+/** One `assignment` entity row as the merge reads it: valid_to is exclusive → the last day it applied is the day before. */
+export function entitySegmentRow(r: { companyId: string; validFrom: string; validTo: string | null }) {
+  return { companyId: r.companyId, from: r.validFrom, to: r.validTo ? dayBefore(r.validTo) : null };
 }
 
 /**
@@ -230,14 +235,26 @@ export async function companySegmentsForPeriodBulk(
   for (const id of ids) {
     const current = currentCompanyById.get(id);
     if (!current) continue;
-    // An employment RLS hides (or that has been deleted between the two statements) keeps the caller's
-    // window: narrowing on a tenure we cannot read would invent a gap out of a missing row.
-    const t = tenureById.get(id);
-    const winFrom = t?.hiredOn ? maxDate(from, t.hiredOn) : from;
-    const winTo = t?.terminatedOn ? minDate(to, t.terminatedOn) : to;
-    out.set(id, mergeCompanySegments(rowsByEmp.get(id) ?? [], current, winFrom, winTo));
+    out.set(id, tenureClampedCompanySegments(rowsByEmp.get(id) ?? [], current, tenureById.get(id), from, to));
   }
   return out;
+}
+
+/** The pure half of `companySegmentsForPeriodBulk` for one employment: its entity rows as `entityRowsFor` returns them
+ *  (an inclusive `to`), merged over [from, to] narrowed to the tenure. Exported for a caller that already holds those
+ *  rows from one bundled statement (core/calendar-window-inputs.ts), so both compute the same segments by one line. */
+export function tenureClampedCompanySegments(
+  rows: { companyId: string; from: string; to: string | null }[],
+  currentCompanyId: string,
+  tenure: { hiredOn: string | null; terminatedOn: string | null } | undefined,
+  from: string,
+  to: string,
+): CompanySegment[] {
+  // An employment RLS hides (or that has been deleted between the two statements) keeps the caller's
+  // window: narrowing on a tenure we cannot read would invent a gap out of a missing row.
+  const winFrom = tenure?.hiredOn ? maxDate(from, tenure.hiredOn) : from;
+  const winTo = tenure?.terminatedOn ? minDate(to, tenure.terminatedOn) : to;
+  return mergeCompanySegments(rows, currentCompanyId, winFrom, winTo);
 }
 
 /**
@@ -373,15 +390,47 @@ export type ProvenCompanyDate = {
 export async function provenCompanyDatesTx(
   tx: Tx,
   requested: readonly { employmentId: string; date: string }[],
+  /** A Home card's calendar window for this transaction and employment (core/calendar-window-inputs.ts), which holds
+   *  this same function's answer for every date of the window. */
+  pre?: CalendarWindowInputs | null,
 ): Promise<Map<string, ProvenCompanyDate>> {
   const out = new Map<string, ProvenCompanyDate>();
   if (!requested.length) return out;
-  // The same INVOKER fact reader can be composed behind a separately fenced, minimal Home peer
-  // projection. Ordinary consumers retain their existing RLS; no owner credential or new scope is used.
-  const rows=await tx.execute(sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,
-   company_id::text AS "companyId",reason FROM app.proven_company_date_points(${JSON.stringify(requested)}::jsonb)
-   ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;companyId:string|null;reason:ProvenCompanyDate['reason']}[];
-  const byPoint=new Map(rows.map(row=>[`${row.employmentId}|${row.date}`,{companyId:row.companyId,reason:row.reason}]));
+  // Each point's proof depends on that point alone. Inside a shared snapshot whose request declared a window for the
+  // one employment asked about (db/shared-read.ts), every date of the window is proven once and each caller reads its
+  // own points from it, in its own order; a point outside the window reads exactly as before. The window's proofs come
+  // from the one calendar window statement when it holds them (or from `pre`), else from this reader's own window read.
+  const subject = requested[0].employmentId;
+  if (requested.every((point) => point.employmentId === subject)) {
+    const dates = requested.map((point) => point.date).sort();
+    const preloaded = (inputs: CalendarWindowInputs | null) => {
+      if (!inputs || !inputs.answers(tx, subject, dates[0], dates[dates.length - 1])) return null;
+      const proofs = inputs.proofs;
+      return requested.every((point) => proofs.has(`${point.employmentId}|${point.date}`)) ? proofs : null;
+    };
+    const held = preloaded(pre ?? null);
+    const wide = sharedReadWindow(tx, subject, dates[0], dates[dates.length - 1]);
+    const shared = held ?? (wide && !stagedHomeReads() ? await sharedCalendarWindowInputs(tx, subject, wide).then(preloaded).catch(() => null) : null);
+    if (shared) {
+      for (const point of requested) {
+        const key = `${point.employmentId}|${point.date}`, proof = shared.get(key)!;
+        out.set(key, { companyId: proof.companyId, reason: proof.reason as ProvenCompanyDate['reason'] });
+      }
+      return out;
+    }
+    if (wide && requested.every((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.date))) {
+      const all = await sharedSnapshotValue(tx, 'provenCompanyDates|' + subject + '|' + wide.from + '|' + wide.to,
+        () => provenCompanyDatePointsTx(tx, windowDates(wide.from, wide.to).map((date) => ({ employmentId: subject, date })))).catch(() => null);
+      if (all && requested.every((point) => all.has(`${point.employmentId}|${point.date}`))) {
+        for (const point of requested) {
+          const key = `${point.employmentId}|${point.date}`;
+          out.set(key, { ...all.get(key)! });
+        }
+        return out;
+      }
+    }
+  }
+  const byPoint = await provenCompanyDatePointsTx(tx, requested);
   // Preserve the caller's requested insertion order, including the established duplicate-key behaviour.
   for(const point of requested){
    const key=`${point.employmentId}|${point.date}`,proof=byPoint.get(key);
@@ -389,6 +438,27 @@ export async function provenCompanyDatesTx(
    out.set(key,proof);
   }
   return out;
+}
+function windowDates(from: string, to: string): string[] {
+  const dates: string[] = [];
+  for (let at = Date.parse(from + 'T00:00:00Z'), end = Date.parse(to + 'T00:00:00Z'); at <= end; at += 86_400_000) dates.push(new Date(at).toISOString().slice(0, 10));
+  return dates;
+}
+async function provenCompanyDatePointsTx(
+  tx: Tx,
+  requested: readonly { employmentId: string; date: string }[],
+): Promise<Map<string, ProvenCompanyDate>> {
+  // The same INVOKER fact reader can be composed behind a separately fenced, minimal Home peer
+  // projection. Ordinary consumers retain their existing RLS; no owner credential or new scope is used.
+  const rows=await tx.execute(provenCompanyDatePointsSql(JSON.stringify(requested))) as unknown as {employmentId:string;date:string;companyId:string|null;reason:ProvenCompanyDate['reason']}[];
+  return new Map(rows.map(row=>[`${row.employmentId}|${row.date}`,{companyId:row.companyId,reason:row.reason}]));
+}
+/** The statement provenCompanyDatePointsTx sends for its points (their JSON text, or an equal jsonb value where a
+ * request preamble answers it ahead, docs/adr/2026-11-10-home-request-read-scope.md decision 12). */
+export function provenCompanyDatePointsSql(points:string|SQL){
+  return sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,
+   company_id::text AS "companyId",reason FROM app.proven_company_date_points(${points}::jsonb)
+   ORDER BY employment_id,on_date`;
 }
 
 /** Strict dated intervals. Unknown intervals are retained explicitly and never filled from a mutable

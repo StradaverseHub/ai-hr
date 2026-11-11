@@ -4,12 +4,14 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {readEmployeeHomeTasks} from '../core/employee-home-tasks';
+import {OwnHomeTaskSourceRead,readEmployeeHomeTasks} from '../core/employee-home-tasks';
+import {withOwnerTaskReads} from '../core/account-task-bundle';
 import {saveEmployeeHomeConfiguration} from '../core/employee-home-configuration';
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {projectHomeAssignedWork,type EmployeeHomeTask} from '../lib/employee-home-tasks';
 import {decideLeave} from '../packs/leave/service';
 import * as perf from '../packs/performance/service';
+import * as claims from '../packs/claims/service';
 import {defaultPolicy} from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -52,6 +54,15 @@ describe('Home Waiting for You projects complete actual owner assignments',()=>{
   await saveEmployeeHomeConfiguration(adminCtx(b),{companyId:b.companyId,audienceRole:'manager',expectedOrdinal:0,configuration:config,reason:'Fictional task effort acceptance'});
   const value=await readEmployeeHomeTasks(manager.ctx,manager.employmentId);
   expect(value).toMatchObject({grain:'account',total:25,effortMinutes:100,unestimated:0,pages:3});expect(value.items).toHaveLength(12);
+  const source=new OwnHomeTaskSourceRead(manager.ctx,manager.employmentId);
+  const [count,firstPage]=await Promise.all([
+   source.count(manager.ctx,manager.employmentId),
+   readEmployeeHomeTasks(manager.ctx,manager.employmentId,1,undefined,source),
+  ]);
+  expect(count).toBe(25);
+  expect(firstPage).toEqual(value);
+  await expect(source.count({...manager.ctx},manager.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
+  expect(()=>source.summary(manager.ctx,subject.employmentId)).toThrow();
   const response=await GET(new Request('http://localhost/api/home/tasks?employmentId='+manager.employmentId+'&page=3'));
   expect(response.status).toBe(200);const last=await response.json();expect(last).toMatchObject({total:25,page:3});expect(last.items).toHaveLength(1);
   expect(response.headers.get('cache-control')).toBe('private, no-store');
@@ -62,6 +73,33 @@ describe('Home Waiting for You projects complete actual owner assignments',()=>{
   expect((await readEmployeeHomeTasks(subject.ctx,subject.employmentId)).total).toBe(0);
   expect((await GET(new Request('http://localhost/api/home/tasks?employmentId='+subject.employmentId))).status).toBe(403);
   for(const query of ['companyId='+b.companyId,'personId='+subject.personId,'page=0','page=-1','page=1&page=2','employmentId=a&employmentId=b'])expect((await GET(new Request('http://localhost/api/home/tasks?'+query))).status).toBe(400);
+ });
+ it('reads one Claims preview for the Home count and first page, and keeps the exact count when that preview fails',async()=>{
+  await setModule(b.tenantId,'claims','active');const a=await entitledCtx(b);
+  const manager=await employee('Fictional claim approver'),subject=await employee('Fictional claim subject',manager.employmentId);
+  manager.ctx.entitlements=a.entitlements;
+  const type=await claims.createClaimType(a,{code:'HOME_TASK',name:'Fictional Home task claim',requiresReceipt:false,defaultTaxable:false});
+  await owner.db.insert(s.claimRequest).values(Array.from({length:3},()=>({tenantId:b.tenantId,employmentId:subject.employmentId,claimTypeId:type.id,amount:'1',incurredOn:today(),status:'pending' as const})));
+  const preview=vi.spyOn(claims,'pendingClaimTaskSummary'),count=vi.spyOn(claims,'countPendingClaimTasks');
+  try{
+   // The account task statement answers the Claims preview and exact count for both: no Claims owner reads.
+   const bundled=new OwnHomeTaskSourceRead(manager.ctx,manager.employmentId);
+   const [bundledTotal,bundledValue]=await Promise.all([bundled.count(manager.ctx,manager.employmentId),readEmployeeHomeTasks(manager.ctx,manager.employmentId,1,undefined,bundled)]);
+   expect(bundledTotal).toBe(3);expect(bundledValue.total).toBe(3);expect(bundledValue.items.filter(row=>row.kind==='claim')).toHaveLength(3);
+   expect(preview).not.toHaveBeenCalled();expect(count).not.toHaveBeenCalled();
+   // Every owner on its own: one Claims preview for both, and the exact count survives that preview's failure.
+   await withOwnerTaskReads(async()=>{
+    const source=new OwnHomeTaskSourceRead(manager.ctx,manager.employmentId);
+    const [total,value]=await Promise.all([source.count(manager.ctx,manager.employmentId),readEmployeeHomeTasks(manager.ctx,manager.employmentId,1,undefined,source)]);
+    expect(total).toBe(3);expect(value).toEqual(bundledValue);expect(value.items.filter(row=>row.kind==='claim')).toHaveLength(3);
+    expect(preview).toHaveBeenCalledOnce();expect(count).not.toHaveBeenCalled();
+    preview.mockClear();preview.mockRejectedValueOnce(Error('Fictional preview failure'));
+    const degraded=new OwnHomeTaskSourceRead(manager.ctx,manager.employmentId);
+    const [exact,first]=await Promise.allSettled([degraded.count(manager.ctx,manager.employmentId),readEmployeeHomeTasks(manager.ctx,manager.employmentId,1,undefined,degraded)]);
+    expect(exact).toEqual({status:'fulfilled',value:3});expect(first.status).toBe('rejected');
+    expect(preview).toHaveBeenCalledOnce();expect(count).toHaveBeenCalledOnce();
+   });
+  }finally{preview.mockRestore();count.mockRestore();}
  });
  it('lists an assigned replacement-leave decision once instead of failing the whole list as a duplicate',async()=>{
   const manager=await employee('Fictional replacement approver'),subject=await employee('Fictional replacement requester',manager.employmentId);
@@ -95,6 +133,28 @@ describe('Home Waiting for You projects complete actual owner assignments',()=>{
   expect(await perf.pendingOnehrFeedbackTaskMetadata(peer.ctx)).toEqual([]);
   cycle=await perf.getOnehrCycle(a,cycleId);await perf.updateOnehrWindows(a,cycleId,cycle!.revision,{},'Fictional open work window');
   expect(await perf.pendingOnehrFeedbackTaskMetadata(peer.ctx)).toHaveLength(1);
+  const standardRead=vi.spyOn(perf,'pendingStandardFeedbackTaskMetadata');
+  const onehrRead=vi.spyOn(perf,'pendingOnehrFeedbackTaskMetadata');
+  try{
+   const read=async()=>{
+    const source=new OwnHomeTaskSourceRead(peer.ctx,peer.employmentId);
+    const [count,value]=await Promise.all([
+     source.count(peer.ctx,peer.employmentId),readEmployeeHomeTasks(peer.ctx,peer.employmentId,1,undefined,source),
+    ]);
+    expect(value.total).toBe(count);
+    expect(value.items).toEqual(expect.arrayContaining([expect.objectContaining({id:assigned[0].id,kind:'feedback'})]));
+    return value;
+   };
+   const owners=await withOwnerTaskReads(read);
+   expect(standardRead).toHaveBeenCalledExactlyOnceWith(peer.ctx);
+   expect(onehrRead).toHaveBeenCalledExactlyOnceWith(peer.ctx);
+   standardRead.mockClear();onehrRead.mockClear();
+   // The account task statement answers standard feedback and the assigned OneHR panel (the owner's cycle and window
+   // checks run on the panel's bundled cycle), so neither owner reads.
+   expect(await read()).toEqual(owners);
+   expect(standardRead).not.toHaveBeenCalled();
+   expect(onehrRead).not.toHaveBeenCalled();
+  }finally{standardRead.mockRestore();onehrRead.mockRestore();}
   await perf.declineOnehrFeedback(peer.ctx,assigned[0].id);expect(await perf.pendingOnehrFeedbackTaskMetadata(peer.ctx)).toEqual([]);
  });
 });

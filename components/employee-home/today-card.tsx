@@ -7,6 +7,8 @@ import Link from 'next/link';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
 import {IndependentHomeCard} from './home-card';
+import {useHomeInitialSharing} from './sharing-cohort';
+import {createHomeCardRefreshGate} from '@/lib/employee-home-delivery';
 import {validateEmployeeHomeToday,type EmployeeHomeToday} from '@/lib/employee-home-today';
 import {liveClockSeconds} from '@/lib/clock-elapsed';
 import type {ClockingConfirmation} from '@/app/attendance/clock/clock-client';
@@ -20,26 +22,31 @@ const CanonicalClockFlow=dynamic(()=>import('@/app/attendance/clock/clock-client
  * canonical clock interaction mounts only after an explicit button press for this own employment. */
 export function HomeTodayCard({employmentId,employmentLabel,timeZone}:{employmentId:string;employmentLabel:string;timeZone:string}){
  const t=useTranslations('employeeHome.today'),clockText=useTranslations('attendance.clock'),locale=useLocale();
+ const subscribe=useHomeInitialSharing();
  const [revision,setRevision]=React.useState(0),[intent,setIntent]=React.useState<'in'|'out'|null>(null),[confirmed,setConfirmed]=React.useState<ClockingConfirmation|null>(null);
  const actionRef=React.useRef<HTMLButtonElement|null>(null),regionRef=React.useRef<HTMLDivElement|null>(null);
+ const [gate]=React.useState(createHomeCardRefreshGate);
  const restoreFocus=React.useCallback(()=>{(actionRef.current??regionRef.current)?.focus();},[]);
  const read=React.useCallback(async(signal:AbortSignal):Promise<EmployeeHomeToday>=>{
   const response=await fetch('/api/home/today?'+new URLSearchParams({employmentId}),{signal,cache:'no-store',credentials:'same-origin'});
   if(!response.ok)throw Error('Your Day unavailable.');return validateEmployeeHomeToday(await response.json(),employmentId);
  },[employmentId]);
+ const initialRead=React.useCallback(async(signal:AbortSignal)=>subscribe
+  ?validateEmployeeHomeToday(await subscribe('today',signal,()=>read(signal)) as EmployeeHomeToday,employmentId):read(signal),[subscribe,read,employmentId]);
  React.useEffect(()=>{
-  const refresh=()=>{if(document.visibilityState==='visible'&&intent===null)setRevision(value=>value+1);};
+  // An automatic refresh never cancels the Your Day read still in flight (createHomeCardRefreshGate).
+  const refresh=()=>{if(document.visibilityState==='visible'&&intent===null&&gate.allow())setRevision(value=>value+1);};
   const timer=setInterval(refresh,60000);window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
   return()=>{clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
- },[intent]);
+ },[intent,gate]);
  const complete=React.useCallback((receipt:ClockingConfirmation)=>{setConfirmed(receipt);setIntent(null);setRevision(value=>value+1);},[]);
  const dismiss=React.useCallback(()=>{setIntent(null);setRevision(value=>value+1);},[]);
  const start=React.useCallback((direction:'in'|'out')=>{setConfirmed(null);setIntent(direction);},[]);
  const recorded=confirmed?new Intl.DateTimeFormat(locale,{timeZone,hour:'2-digit',minute:'2-digit'}).format(new Date(confirmed.recordedAt)):null;
  return <>
   {confirmed&&<p role="status" className="mb-3 rounded-lg border p-3 text-sm">{clockText(confirmed.direction==='in'?'savedIn':'savedOut',{time:recorded!})}</p>}
-  <IndependentHomeCard card="today" title={t('title')} labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}} regionRef={regionRef}
-   requestKey={`${employmentId}:${locale}:${revision}`} read={read}>{value=><TodayFacts value={value} timeZone={timeZone} onClock={start} actionRef={actionRef}/>}</IndependentHomeCard>
+  <IndependentHomeCard card="today" title={t('title')} labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}} regionRef={regionRef} activity={gate}
+   requestKey={`${employmentId}:${locale}:${revision}`} read={read} initialRead={revision===0?initialRead:undefined}>{value=><TodayFacts value={value} timeZone={timeZone} onClock={start} actionRef={actionRef}/>}</IndependentHomeCard>
   {intent&&<HomeClockDialog key={`${employmentId}:${intent}`} employmentId={employmentId} employmentLabel={employmentLabel} intent={intent} onSaved={complete} onClose={dismiss} onRestoreFocus={restoreFocus}/>}
  </>;
 }

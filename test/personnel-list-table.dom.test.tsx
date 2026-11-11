@@ -64,6 +64,43 @@ it('coalesces typing and sends private filter text only in the request body', as
  }
 });
 
+it('reports a failed automatic filter and retries the same scoped private POST', async () => {
+ const term = 'Fictional private name';
+ const href = '/admin/personnel?companies=fixture-company&search='+'a'.repeat(43)+'&size=50';
+ const fetchMock = vi.fn()
+  .mockResolvedValueOnce(new Response('Fictional server refusal', { status: 403 }))
+  .mockResolvedValueOnce(Response.json({ href }));
+ vi.stubGlobal('fetch', fetchMock);
+ try {
+  render(<NextIntlClientProvider locale="en" messages={en}><PersonnelAutoFilters>
+    <PersonnelListTable columns={['name']} allOrder={[...EMPLOYEE_COLUMN_KEYS]} labels={labels} employees={[]} drafts={[]}
+      parameters={[[ 'companies', 'fixture-company' ], [ 'page', '3' ]]} pageSize="50" empty="None"/>
+  </PersonnelAutoFilters></NextIntlClientProvider>);
+  fireEvent.change(screen.getByLabelText('Filter name'), { target: { value: term } });
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent(en.personnelOrganisationFilters.applyFailed);
+  expect(alert).not.toHaveTextContent(/busy|Fictional server refusal/i);
+  expect(controls.replace).not.toHaveBeenCalled();
+
+  fireEvent.click(within(alert).getByRole('button', { name: en.personnelOrganisationFilters.retryRead }));
+  await waitFor(() => expect(controls.replace).toHaveBeenCalledExactlyOnceWith(href, { scroll: false }));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  const [first, retry] = fetchMock.mock.calls;
+  for (const [target, request] of [first, retry]) {
+   expect(target).toBe('/admin/personnel/search');
+   expect(request).toMatchObject({ method: 'POST', headers: { Accept: 'application/json' }, cache: 'no-store', redirect: 'error' });
+   expect(request.body.get('field.name')).toBe(term);
+   expect(request.body.get('companies')).toBe('fixture-company');
+   expect(request.body.get('size')).toBe('50');
+   expect(request.body.has('page')).toBe(false);
+  }
+  expect(retry[1].body.toString()).toBe(first[1].body.toString());
+ } finally {
+  vi.unstubAllGlobals();
+ }
+});
+
 it('renders the two distinct Excel download choices', async () => {
  render(<NextIntlClientProvider locale="en" messages={en}>
   <PersonnelExportOptions pageHref="/admin/personnel/export?mode=page&page=1&size=25" allHref="/admin/personnel/export?mode=all" hasPage hasEmployees/>

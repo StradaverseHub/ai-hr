@@ -26,6 +26,7 @@ vi.mock('../lib/ai',async importOriginal=>{
 import * as schema from '../db/schema';
 import {terasLoopCase,terasLoopRun} from '../db/teras-schema';
 import {withTenant,type SessionContext} from '../db/client';
+import {appendEvent} from '../db/events';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {agentContext,ensureAgentPrincipal} from '../core/agent-principal';
 import {setWorkerSwitch,workerRunGate} from '../core/agent-registry/controls';
@@ -36,7 +37,7 @@ import {decideProfileChange} from '../core/profile';
 import {runLoop,runLoopsForTenant} from '../core/loops/run';
 import {readEmployeeLoopCards,readLoopCards} from '../core/loops/cards';
 import {queueEmployeeLoopDigests} from '../core/loops/employee-action-digest';
-import {dispatchNotificationsFromSweep,notificationStillTargets} from '../core/notifications';
+import {dispatchNotifications,dispatchNotificationsFromSweep,notificationStillTargets} from '../core/notifications';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addHrDays} from '../lib/today/audience';
 import {LoopControlRefused,setLoopPause} from '../core/loops/controls';
@@ -433,7 +434,31 @@ describe('employee action digest',()=>{
   const input={principalId,today,generation:control.generation,runs};
   expect(await queueEmployeeLoopDigests(maintenance,owner,input)).toBeGreaterThan(0);
   expect(await queueEmployeeLoopDigests(maintenance,owner,input)).toBe(0);
+  const [digest]=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(
+   eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.subjectEmploymentId,recipient.employmentId),
+   eq(schema.domainEvent.eventType,'teras-loop.employee-digest-queued')));
+  const ordinary=await owner.withTenant(maintenance,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'leave-request',
+   aggregateId:randomUUID(),eventType:'leave-request.approved',actor:{type:'system'},subjectEmploymentId:recipient.employmentId},{returnId:true}));
+  let catchUp:ReturnType<typeof dispatchNotifications>|undefined;
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try{
+   await owner.client.begin(async tx=>{
+    await tx`select pg_advisory_xact_lock(hashtext('ai-control'),hashtext(${b.tenantId}::text))`;
+    catchUp=dispatchNotifications({...group,entitlements:snapshot},{skipIfBusy:true});
+    await Promise.race([catchUp,new Promise<never>((_,reject)=>{
+     timer=setTimeout(()=>reject(Error('Bell catch-up waited for digest AI control')),5000);
+    })]);
+    const [witness]=await tx`select
+     exists(select 1 from pg_locks where pid=pg_backend_pid() and locktype='advisory' and mode='ExclusiveLock' and granted) as ai_held,
+     exists(select 1 from notification_event_processing where event_id=${digest.id}::uuid and consumer='notifications' and disposition is null) as digest_pending,
+     exists(select 1 from notification where source_event_id=${digest.id}::uuid) as digest_projected,
+     exists(select 1 from notification where source_event_id=${ordinary}::uuid and kind='leave.approved') as ordinary_projected,
+     exists(select 1 from notification_cursor c join domain_event e on e.tenant_id=c.tenant_id where e.id=${digest.id}::uuid and c.last_sequence>e.sequence) as cursor_advanced`;
+    expect(witness).toEqual({ai_held:true,digest_pending:true,digest_projected:false,ordinary_projected:true,cursor_advanced:true});
+   });
+  }finally{clearTimeout(timer);await catchUp?.catch(()=>{});}
   await dispatchNotificationsFromSweep(maintenance,owner);
+  expect(await dispatchNotificationsFromSweep(maintenance,owner)).toEqual({processed:0,created:0});
   const notices=await owner.db.select().from(schema.notification).where(and(
    eq(schema.notification.tenantId,b.tenantId),eq(schema.notification.recipientEmploymentId,recipient.employmentId),
    eq(schema.notification.kind,'teras-loop.employee-digest')));
@@ -447,4 +472,34 @@ describe('employee action digest',()=>{
   expect(await target()).toBe(false);
   expect(await readEmployeeLoopCards(recipient)).toEqual([]);
  });
+ it('queues one digest from two concurrent sweeps under the shared Access lock, beside another shared writer',async()=>{
+  await setModule(b.tenantId,'notifications','active');
+  const recipient=await login(b,'Fictional Concurrent Digest Recipient','employee');
+  const today=todayInKualaLumpur();
+  await owner.db.insert(schema.employeeStatutoryMy).values({tenantId:b.tenantId,personId:recipient.personId,
+   passportNumber:randomUUID(),passportExpiryDate:addHrDays(today,40),epfNumber:'EPF',socsoNumber:'SOCSO',taxNumber:'TAX'});
+  await on('loop_missing_employee_data');
+  await on('loop_document_expiry');
+  const snapshot=await entitlements();
+  const maintenance:SessionContext={tenantId:b.tenantId,roles:['hr_admin'],entitlements:snapshot};
+  const [control]=await owner.withTenant(maintenance,tx=>tx.execute<{generation:number}>(sql`select app.ai_centre_assert_running() as generation`));
+  const runs=await runLoopsForTenant({tenantId:b.tenantId,principalId,entitlements:snapshot,today});
+  const input={principalId,today,generation:control.generation,runs};
+  // Another ordinary writer holds Access shared throughout: the digest no longer waits for it.
+  let held!:()=>void,release!:()=>void;
+  const entered=new Promise<void>(yes=>{held=yes;}),finish=new Promise<void>(yes=>{release=yes;});
+  const writer=owner.client.begin(async tx=>{await tx`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;held();await finish;});
+  try{
+   await entered;
+   let timer:ReturnType<typeof setTimeout>|undefined;
+   const counts=await Promise.race([Promise.all([queueEmployeeLoopDigests(maintenance,owner,input),queueEmployeeLoopDigests(maintenance,owner,input)]),
+    new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Digest waited for a shared Access writer')),10000);})]).finally(()=>clearTimeout(timer));
+   // The ai-control lock serialises the idempotency check: one sweep queues, the other finds it queued.
+   expect(Math.min(...counts)).toBe(0);expect(Math.max(...counts)).toBeGreaterThan(0);
+  }finally{release();await writer;}
+  const digests=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(
+   eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.subjectEmploymentId,recipient.employmentId),
+   eq(schema.domainEvent.eventType,'teras-loop.employee-digest-queued')));
+  expect(digests).toHaveLength(1);
+ },60000);
 });

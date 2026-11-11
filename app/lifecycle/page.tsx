@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button } from '@/components/ui';
-import { LEVEL, getMyOnboarding, lifecycleWorklist, listAssetRequests, listCases, listRequisitions, pendingApprovals, whenOf } from '@/packs/lifecycle/service';
+import { LEVEL, getMyOnboarding, lifecycleHubTileCounts, lifecycleWorklist, listAssetRequests, whenOf } from '@/packs/lifecycle/service';
 import { requireModule } from '@/lib/authz';
 import { lifecycleSession } from './_guard';
 import { LifecycleTabs, Pill, ProgressBar, fmt } from './_ui';
@@ -13,17 +13,16 @@ export default async function LifecycleHub({ searchParams }: { searchParams: Pro
   const t = await getTranslations('lifecycle');
   const { error } = await searchParams;
   const mine = await getMyOnboarding(s);
-  const myRequests = (await listAssetRequests(s, { mine: true })).slice(0, 5);
+  const myRequests = await listAssetRequests(s, { mine: true, limit: 5 });
   const staff = level >= LEVEL.agent;
-  const [onb, ofb, reqs, work, pending] = staff
-    ? await Promise.all([listCases(s, 'onboarding'), listCases(s, 'offboarding'), listRequisitions(s, { status: 'open' }), lifecycleWorklist(s), pendingApprovals(s)])
-    : [[], [], [], [], { requisitions: [], assetRequests: [] }];
-  const tiles = [
-    { href: '/lifecycle/onboarding/legacy', label: t('onboarding.legacyTitle'), n: onb.length },
-    { href: '/lifecycle/offboarding', label: t('tabs.offboarding'), n: ofb.length },
-    { href: '/lifecycle/requisitions', label: t('hub.openRequisitions'), n: reqs.length },
-    ...(level >= LEVEL.manager ? [{ href: '/lifecycle/requisitions?approval=pending', label: t('hub.awaitingApproval'), n: pending.requisitions.length + pending.assetRequests.length }] : []),
-  ];
+  const [counts, work] = staff ? await Promise.all([lifecycleHubTileCounts(s), lifecycleWorklist(s)]) : [null, []] as const;
+  const tileCount = ({ count, overflow }: { count: number; overflow: boolean }) => overflow ? `${count}+` : count;
+  const tiles = counts ? [
+    { href: '/lifecycle/onboarding/legacy', label: t('onboarding.legacyTitle'), n: tileCount(counts.onboarding) },
+    { href: '/lifecycle/offboarding', label: t('tabs.offboarding'), n: tileCount(counts.offboarding) },
+    { href: '/lifecycle/requisitions', label: t('hub.openRequisitions'), n: tileCount(counts.open) },
+    ...(level >= LEVEL.manager ? [{ href: '/lifecycle/requisitions?approval=pending', label: t('hub.awaitingApproval'), n: counts.pending }] : []),
+  ] : [];
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} actions={<Link data-tour="lifecycle-request" href="/lifecycle/asset-requests/new"><Button size="sm">{t('hub.requestEquipment')}</Button></Link>} />

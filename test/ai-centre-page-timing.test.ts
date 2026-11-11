@@ -9,7 +9,8 @@
  *  - `asWritten`: the page's current order, where each stage waits for the one before (a stage the page already runs with
  *    Promise.all counts once, as its slowest read);
  *  - `ifIndependentReadsOverlap`: the critical path when only true data dependencies wait (a read that needs the
- *    company scope waits for it; the bell's reads wait for the notification dispatch that writes them).
+ *    company scope waits for it; the bell's reads wait for the notification dispatch that writes them). This is
+ *    arithmetic only, not a native concurrency/lock-feasibility result; no overlapping page reads are enabled here.
  * Nothing is changed or asserted about what the reads return beyond that they ran. Spans carry labels and counts only.
  * Output: ai-centre-page-timing.json in the evidence folder and one AIHR_AI_CENTRE_PAGE_TIMING line. */
 import {randomUUID} from 'node:crypto';
@@ -51,10 +52,11 @@ import {workerRunGate} from '../core/agent-registry/controls';
 import {RECOMMENDER_WORKER} from '../core/recommenders/leave-decision';
 import {orchestrationQueue} from '../core/hr-orchestrator';
 import {agreementView,controlTowerView} from '../core/control-tower';
-import {aiManagementView} from '../core/ai-management';
+import {aiManagementView,aiManagementPageView} from '../core/ai-management';
+import {aiCentreControlReads} from '../app/control-tower/agents/centre-controls';
 import {aiInventoryView,aiManagementAlerts} from '../core/ai-inventory';
 import {agentStatuses} from '../core/control-domains';
-import {listWorkers} from '../core/agent-registry/views';
+import {listWorkers,workerDetail} from '../core/agent-registry/views';
 import {outcomeSummary} from '../core/agent-registry/export';
 import {agentBuildList} from '../core/agent-build-list';
 import {assistantOutcomes} from '../core/assistant-outcomes';
@@ -65,7 +67,7 @@ const RUNS=6,WARMUP=1;
 /** One read of a page: `stage` is its position in the page as written (equal stages already run together); `deps` are
  * the reads whose results it really needs. `run` returns a value later reads may use. */
 type Read=Readonly<{label:string;stage:number;deps?:readonly string[];run:(ctx:SessionContext,got:Map<string,unknown>)=>unknown}>;
-type Page=Readonly<{id:string;persona:'admin'|'employee';firstPaint:boolean;reads:readonly Read[]}>;
+type Page=Readonly<{id:string;persona:'admin'|'employee';firstPaint:boolean;historical?:true;reads:readonly Read[]}>;
 const scopeOf=(got:Map<string,unknown>)=>got.get('scope') as string[];
 const modules=(ctx:SessionContext)=>({attendance:isModuleEnabledOrFalse(ctx,'attendance'),claims:isModuleEnabledOrFalse(ctx,'claims'),performance:isModuleEnabledOrFalse(ctx,'performance'),rewards:isModuleEnabledOrFalse(ctx,'rewards')});
 const canApprove=(ctx:SessionContext)=>isAdmin(ctx)||(ctx.roles??[]).includes('manager');
@@ -110,7 +112,7 @@ const ask=(persona:'admin'|'employee'):Page=>({id:'assistant.ask.'+persona,perso
 ]});
 /** The retired AI Centre Inbox's reads (its component, app/assistant/centre/inbox.tsx, was removed in AI v2 Phase 1 slice 1;
  * Today replaces it). Kept as the R8 baseline the speed findings were measured against. */
-const inbox=(persona:'admin'|'employee'):Page=>({id:'assistant.inbox.'+persona,persona,firstPaint:true,reads:[
+const inbox=(persona:'admin'|'employee'):Page=>({id:'assistant.inbox.'+persona,persona,firstPaint:false,historical:true,reads:[
  {label:'allowedCompanies',stage:0,run:ctx=>allowedCompanies(ctx)},
  {label:'scope',stage:1,deps:['allowedCompanies'],run:async(_ctx,got)=>getScopeIds((got.get('allowedCompanies') as {id:string}[]).map(row=>row.id))},
  {label:'listPendingTasks',stage:2,deps:['scope'],run:(ctx,got)=>listPendingTasks(ctx,scopeOf(got),modules(ctx))},
@@ -126,16 +128,16 @@ const controlTower:readonly Page[]=[
   {label:'orchestrationQueue',stage:0,run:ctx=>orchestrationQueue(ctx)},
   {label:'controlTowerView',stage:1,run:ctx=>on(ctx,'payroll')?controlTowerView(ctx):skip()},
   {label:'agreementView',stage:2,run:ctx=>agreementView(ctx)}]},
- {id:'control-tower.agents.features',persona:'admin',firstPaint:true,reads:[
+ {id:'control-tower.agents.features.r8-baseline',persona:'admin',firstPaint:false,historical:true,reads:[
   {label:'agentStatuses',stage:0,run:ctx=>agentStatuses(ctx).catch(()=>null)},
   {label:'listWorkers',stage:1,run:ctx=>listWorkers(ctx)},
   {label:'outcomeSummary',stage:1,run:ctx=>outcomeSummary(ctx).catch(()=>null)},
   {label:'aiManagementView',stage:2,run:ctx=>aiManagementView(ctx,'',{})},
   {label:'aiManagementAlerts',stage:3,deps:['aiManagementView'],run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementView') as Awaited<ReturnType<typeof aiManagementView>>)}]},
  {id:'control-tower.agents.overview',persona:'admin',firstPaint:true,reads:[
-  {label:'aiManagementView',stage:0,run:ctx=>aiManagementView(ctx,'',{})},
-  {label:'aiManagementAlerts',stage:1,deps:['aiManagementView'],run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementView') as Awaited<ReturnType<typeof aiManagementView>>)}]},
- {id:'control-tower.agents.inventory',persona:'admin',firstPaint:true,reads:[
+  {label:'aiManagementPageView',stage:0,run:ctx=>aiManagementPageView(ctx,'overview','',{})},
+  {label:'aiManagementAlerts',stage:1,deps:['aiManagementPageView'],run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementPageView') as Awaited<ReturnType<typeof aiManagementPageView>>)}]},
+ {id:'control-tower.agents.inventory.r8-baseline',persona:'admin',firstPaint:false,historical:true,reads:[
   {label:'aiManagementView',stage:0,run:ctx=>aiManagementView(ctx,'',{})},
   {label:'aiInventoryView',stage:1,deps:['aiManagementView'],run:(ctx,got)=>aiInventoryView(ctx,got.get('aiManagementView') as Awaited<ReturnType<typeof aiManagementView>>)},
   {label:'aiManagementAlerts',stage:2,deps:['aiManagementView'],run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementView') as Awaited<ReturnType<typeof aiManagementView>>)}]},
@@ -147,7 +149,19 @@ const controlTower:readonly Page[]=[
   {label:'assistantOutcomes',stage:1,run:ctx=>assistantOutcomes(ctx,90)}]},
  {id:'control-tower.how-it-works',persona:'admin',firstPaint:true,reads:[{label:'agentStatuses',stage:0,run:ctx=>agentStatuses(ctx)}]},
 ];
-const PAGES:readonly Page[]=[rootLayout('admin'),rootLayout('employee'),ask('admin'),ask('employee'),inbox('admin'),inbox('employee'),...controlTower];
+/** Current features/page.tsx then screen.tsx. Controls' exact read tuple is the SAME owner the
+ * component awaits after translations. Translation work/JSX/session/RSC/network remain excluded.
+ * Registry Promise.all is measured as one actual cohort, including contention, not the maximum of
+ * independently timed calls. The selected-worker course exercises the conditional valid worker query. */
+const currentWorkers=(selected:boolean):Page=>({id:'control-tower.agents.features'+(selected?'.selected-worker':''),persona:'admin',firstPaint:true,reads:[
+ {label:'agentStatuses',stage:0,run:ctx=>agentStatuses(ctx).catch(()=>null)},
+ {label:'registry',stage:1,run:ctx=>Promise.all([listWorkers(ctx),outcomeSummary(ctx).catch(()=>null),selected?workerDetail(ctx,RECOMMENDER_WORKER).catch(()=>null):Promise.resolve(null)]).then(([rows,summary,detail])=>({rows,summary,detail})).catch(()=>null)},
+ {label:'aiCentreControlReads',stage:2,run:ctx=>aiCentreControlReads(ctx)},
+ {label:'aiManagementPageView',stage:3,run:ctx=>aiManagementPageView(ctx,'features','',{})},
+ {label:'aiInventoryView',stage:4,deps:['aiManagementPageView'],run:(ctx,got)=>aiInventoryView(ctx,got.get('aiManagementPageView') as Awaited<ReturnType<typeof aiManagementPageView>>).catch(()=>null)},
+ {label:'aiManagementAlerts',stage:5,deps:['aiManagementPageView'],run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementPageView') as Awaited<ReturnType<typeof aiManagementPageView>>)},
+]});
+const PAGES:readonly Page[]=[rootLayout('admin'),rootLayout('employee'),ask('admin'),ask('employee'),inbox('admin'),inbox('employee'),...controlTower,currentWorkers(false),currentWorkers(true)];
 
 let b:Base;const people={} as Record<'admin'|'employee',SessionContext>;
 async function hire(base:Base,name:string,role:'employee'|'manager'|'hr_admin'){
@@ -199,10 +213,10 @@ describe('AI Centre and Control Tower server reads before first paint',()=>{
    expect(got.size,page.id).toBe(page.reads.length);
   }
   const report=Object.fromEntries(PAGES.map(page=>{const ms=Object.fromEntries(Object.entries(samples[page.id]).map(([label,values])=>[label,median(values)]));
-   return[page.id,{persona:page.persona,reads:page.reads.length,medianMs:ms,...totals(page,ms)}];}));
+   return[page.id,{persona:page.persona,firstPaint:page.firstPaint,course:page.historical?'historical-owner-baseline':'current-server-owner-reads',reads:page.reads.length,medianMs:ms,...totals(page,ms)}];}));
   const dir=process.env.RUNNER_TEMP?join(process.env.RUNNER_TEMP,'aihr-focused'):join(process.cwd(),'.review-evidence');mkdirSync(dir,{recursive:true});
-  writeFileSync(join(dir,'ai-centre-page-timing.json'),JSON.stringify({kind:'ai-centre.page-timing',version:1,runs:RUNS,warmup:WARMUP,
-   note:'Server reads only, called in page order on the CI fixture; session resolution, rendering, serialisation and network are not included.',
+  writeFileSync(join(dir,'ai-centre-page-timing.json'),JSON.stringify({kind:'ai-centre.page-timing',version:2,runs:RUNS,warmup:WARMUP,
+   note:'Server owner reads only, called in page order on the CI fixture. Current Workers includes its exact controls tuple, inventory and conditional selected-worker query. Translation work, session resolution, rendering, serialisation and network are excluded. Retired/incomplete R8 courses are separately marked historical and not current first paint.',
    ...(process.env.GITHUB_RUN_ID?{runId:process.env.GITHUB_RUN_ID}:{}),report,samples},null,1));
   process.stdout.write('AIHR_AI_CENTRE_PAGE_TIMING '+JSON.stringify(Object.fromEntries(Object.entries(report).map(([id,row])=>[id,{asWritten:row.asWritten,overlap:row.ifIndependentReadsOverlap}])))+'\n');
   // The employee's Ask view and Inbox read the same owners as the administrator's, minus the administrator-only ones.

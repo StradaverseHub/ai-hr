@@ -9,10 +9,14 @@ import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, l
 import { randomUUID, createHash } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
-import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
+import type { OwnLeaveInputs } from './own-leave-inputs';
+import { sharedReadWindow, sharedSnapshotValue } from '../db/shared-read';
+import { sharedCalendarWindowInputs, stagedHomeReads, type CalendarWindowInputs } from './calendar-window-inputs';
+import {assertReadCompositionPrincipalTx} from './read-composition-principal';
+import { lockAccessConfigurationTx, lockAccessConfigurationWriteTx } from './access-configuration-lock';
+import { lockLeaveDependenciesTx, lockLeaveDependenciesWaitTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
-import { assertCanDecide, assertAssignedWorkPrincipalTx, decideByRoleForKnownSubject, isApprovalDecisionRefusal, subjectPersonIdsTx } from './approvals';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, canDecideSql, decideByRoleForKnownSubject, decideSelfSql, isApprovalDecisionRefusal, isCallerOwnEmploymentSql, subjectPersonIdsTx } from './approvals';
 import {assertMyTeamSubjectTx} from './my-team-scope';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import { scopeOf } from '../lib/delegation-scope';
@@ -25,6 +29,8 @@ import { decidePayrollPermission } from '../lib/payroll-permissions';
 import {calendarWindowDates} from '../lib/calendar-window';
 import {
   approversOf,
+  FIXED_LEVEL_KINDS,
+  LEVEL_KINDS,
   resolveApprovalDecision,
   sanitizeApprovalLevels,
   type ApprovalApprover,
@@ -69,7 +75,7 @@ import {
   holidayDatesFor,
   effectiveHolidayState,
   readHolidayCompletenessWarnings,
-  warnIfHolidaysIncomplete,
+  appendHolidayCompletenessWarnings,
   yearsSpanned,
   type HolidayCompletenessWarning,
 } from './holidays';
@@ -850,6 +856,20 @@ export function isEmergencyReasonCategory(v: unknown): v is EmergencyReasonCateg
 // half=0.5, hourly = round(hours / DEFAULT_STANDARD_HOURS, 2). The denominator "hours in a workday" is a
 // company-wide constant (matches core/toil.ts STD_DAY_MINUTES = 480 = 8h), not a per-type column.
 export type LeaveDurationType = 'full_day' | 'half_day_am' | 'half_day_pm' | 'hourly';
+
+async function assertNoLeaveSlotConflictTx(tx:Tx,p:{
+  employmentId:string;startDate:string;endDate:string;durationType:LeaveDurationType;excludeRequestId?:string;
+}){
+  const [conflict]=await tx.select({id:leaveRequest.id}).from(leaveRequest).where(and(
+    eq(leaveRequest.employmentId,p.employmentId),
+    eq(leaveRequest.startDate,p.startDate),
+    eq(leaveRequest.endDate,p.endDate),
+    inArray(leaveRequest.status,['pending','approved']),
+    p.excludeRequestId===undefined?undefined:sql`${leaveRequest.id} <> ${p.excludeRequestId}`,
+    p.durationType==='hourly'?undefined:inArray(leaveRequest.durationType,[p.durationType,'full_day','hourly']),
+  )).limit(1);
+  if(conflict)throw new Error('This date already has a conflicting leave request');
+}
 export const LEAVE_DURATION_TYPES: readonly LeaveDurationType[] = [
   'full_day',
   'half_day_am',
@@ -1753,69 +1773,42 @@ export async function resolveBalanceSourceTypeId(tx: Tx, leaveTypeId: string): P
   return row?.src ?? leaveTypeId;
 }
 
-/** Every leave type that SPENDS `sourceTypeId`'s balance — the source itself plus each type configured to
- *  deduct from it. The pending reservation has to cover all of them: once Emergency Leave draws on Annual,
- *  a pending Emergency application reserves Annual days just as surely as a pending Annual one does, and
- *  counting only one of the two would let a stack of applications collectively overshoot the balance.
- *  Returns just [sourceTypeId] when nothing borrows (today's shape). */
-async function balanceSpenderTypeIds(tx: Tx, sourceTypeId: string): Promise<string[]> {
-  const borrowers = await tx
-    .select({ id: leaveType.id })
-    .from(leaveType)
-    .where(eq(leaveType.balanceSourceTypeId, sourceTypeId));
-  return [sourceTypeId, ...borrowers.map((b) => b.id)];
+/** Read the source ledger and every borrowing type's pending reservations in one snapshot. */
+async function readLeaveBalancePositionTx(tx:Tx,employmentId:string,leaveTypeId:string,excludeRequestId?:string){
+  const [row]=await tx.execute<{balance:string;taken:string;pending:string}>(sql`
+    with source as (
+      select coalesce((select balance_source_type_id from public.leave_type where id=${leaveTypeId}::uuid),${leaveTypeId}::uuid) as id
+    ), ledger as (
+      select coalesce(sum(l.days),0) as balance,
+        coalesce(-sum(l.days) filter (where l.entry_type='debit'),0) as taken
+      from public.leave_ledger l
+      where l.employment_id=${employmentId}::uuid and l.leave_type_id=(select id from source)
+    ), reserved as (
+      select coalesce(sum(r.days-coalesce(r.unpaid_days,0)),0) as pending
+      from public.leave_request r
+      where r.employment_id=${employmentId}::uuid and r.status='pending'
+        ${excludeRequestId?sql`and r.id<>${excludeRequestId}::uuid`:sql``}
+        and r.leave_type_id in (
+          select id from source
+          union all
+          select id from public.leave_type where balance_source_type_id=(select id from source)
+        )
+    )
+    select ledger.balance,ledger.taken,reserved.pending from ledger cross join reserved
+  `);
+  return {balance:Number(row.balance),taken:Number(row.taken),pending:Number(row.pending)};
 }
 
-// Configurable Negative Leave Balance Validation (0ef0defd): the "available" balance for the SUBMIT/EDIT-time
-// guard = leaveBalance (approved ledger only) MINUS the sum of this employee's OTHER PENDING requests of the
-// same leave type (days already reserved but not yet approved, so they post no ledger entry). Subtracting the
-// pending reservation stops an employee stacking several pending applications that individually pass but
-// collectively overshoot. `excludeRequestId` drops the request being edited from its own pending sum (the edit
-// path re-checks the NEW days against everything else). Rounded to 2dp to match the rest of the leave math.
-//
-// Balance Deduction Source (cdf9ca48): the ledger read and the pending reservation both move to the RESOLVED
-// source type, so a borrowing type is measured against the balance it will actually spend. With no source
-// configured anywhere this resolves to leaveTypeId and one spender, i.e. exactly the query it ran before.
+/** The submission and edit guard uses the same source ledger and reservations as the Apply form.
+ * An edit excludes its own pending request so only the new amount is tested. */
 export async function availableLeaveBalance(
   tx: Tx,
   employmentId: string,
   leaveTypeId: string,
   excludeRequestId?: string,
 ): Promise<number> {
-  const sourceTypeId = await resolveBalanceSourceTypeId(tx, leaveTypeId);
-  const bal = await leaveBalance(tx, employmentId, sourceTypeId);
-  const spenders = await balanceSpenderTypeIds(tx, sourceTypeId);
-  return round2(bal - (await pendingLeaveDays(tx, employmentId, spenders, excludeRequestId)));
-}
-
-/** The days already RESERVED by this employee's other PENDING requests of the given leave type(s) — extracted
- *  verbatim from availableLeaveBalance (no behaviour change) so the apply-popup summary's "Pending" figure is
- *  byte-identical to what the submit-time negative-balance guard reserves. substrate: read-only, no event.
- *
- *  Allow Unpaid Leave (a7fab30b): a request reserves days - unpaid_days, not days. Its unpaid portion was
- *  never going to touch the balance, so reserving it would understate what is still available and refuse a
- *  later application that in fact fits. unpaid_days is NULL on every pre-existing row ⇒ the sum is unchanged. */
-async function pendingLeaveDays(
-  tx: Tx,
-  employmentId: string,
-  leaveTypeIds: string | string[],
-  excludeRequestId?: string,
-): Promise<number> {
-  const ids = Array.isArray(leaveTypeIds) ? leaveTypeIds : [leaveTypeIds];
-  const [row] = await tx
-    .select({
-      pending: sql<string>`coalesce(sum(${leaveRequest.days} - coalesce(${leaveRequest.unpaidDays}, 0)), 0)`,
-    })
-    .from(leaveRequest)
-    .where(
-      and(
-        eq(leaveRequest.employmentId, employmentId),
-        inArray(leaveRequest.leaveTypeId, ids),
-        eq(leaveRequest.status, 'pending'),
-        ...(excludeRequestId ? [sql`${leaveRequest.id} <> ${excludeRequestId}`] : []),
-      ),
-    );
-  return Number(row?.pending ?? 0);
+  const {balance,pending}=await readLeaveBalancePositionTx(tx,employmentId,leaveTypeId,excludeRequestId);
+  return round2(balance-pending);
 }
 
 /**
@@ -1834,7 +1827,7 @@ async function pendingLeaveDays(
  * popup's third column from Balance to Available and left the value alone, so the popup read 13.5 where the
  * leave type's own Leave Summary card read 8.5; the 5.0 difference was the employee's own submitted-but-
  * undecided request, which the word "Available" promises has already been taken off. It is computed from the
- * SAME `balance` and the SAME pendingLeaveDays() the guard uses, so it is availableLeaveBalance() by
+ * SAME ledger and pending reservation projection the guard uses, so it is availableLeaveBalance() by
  * construction rather than by coincidence — the r72 (cdf9ca48) invariant that the popup and the submit-time
  * guard cannot diverge now covers the figure the employee actually reads, not just the Pending line. Both are
  * returned so the popup can show the subtraction (Balance − Pending Approval = Available) rather than a bare
@@ -1863,16 +1856,7 @@ export async function leaveTypeApplySummary(
     // Balance Deduction Source (cdf9ca48): report the balance the employee will actually spend. A borrowing
     // type has no ledger of its own, so reading its own would show a flat 0.0 Available directly above a real
     // day count — the same "0.0 / 0.0 / 0.0" nonsense the panel already suppresses for Emergency Leave.
-    const sourceTypeId = await resolveBalanceSourceTypeId(tx, p.leaveTypeId);
-    const balance = await leaveBalance(tx, p.employmentId, sourceTypeId);
-    const pending = await pendingLeaveDays(tx, p.employmentId, await balanceSpenderTypeIds(tx, sourceTypeId));
-    // Same expression core/read.ts leaveBalances uses for `taken`, so the two never disagree.
-    const [tk] = await tx
-      .select({
-        taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
-      })
-      .from(leaveLedger)
-      .where(and(eq(leaveLedger.employmentId, p.employmentId), eq(leaveLedger.leaveTypeId, sourceTypeId)));
+    const {balance,taken,pending}=await readLeaveBalancePositionTx(tx,p.employmentId,p.leaveTypeId);
     const [lt] = await tx
       .select({ essViewConfig: leaveType.essViewConfig, role: leaveType.role, code: leaveType.code })
       .from(leaveType)
@@ -1880,7 +1864,7 @@ export async function leaveTypeApplySummary(
       .limit(1);
     return {
       pending: round2(pending),
-      taken: round2(Number(tk?.taken ?? 0)),
+      taken: round2(taken),
       balance: round2(balance),
       // Not clamped at zero: an overdrawn type must read the same negative figure the guard measures, or the
       // popup would understate how far the employee is already committed.
@@ -1911,9 +1895,9 @@ export type LeaveTypeApplySummary = Awaited<ReturnType<typeof leaveTypeApplySumm
  *                                    the type's own id when it has no source or is not visible);
  *   · balance                     — `coalesce(sum(days), 0)` per SOURCE, `group by leave_type_id` (leaveBalance);
  *   · taken                       — `coalesce(-sum(days) filter (where entry_type = 'debit'), 0)` per source;
- *   · the spenders of each source — the source plus every type whose source it is (balanceSpenderTypeIds);
+ *   · the spenders of each source — the source plus every type whose source it is;
  *   · pending                     — `coalesce(sum(days - coalesce(unpaid_days, 0)), 0)` over each source's OWN
- *                                    spender set, summed in SQL per source (pendingLeaveDays), so a request
+ *                                    spender set, summed in SQL per source; so a request
  *                                    is counted for every source whose set holds its type, exactly as the
  *                                    per-source read counted it — and never twice within one set;
  *   · essViewConfig / role / code — the asked type's own row (the same select, `id in (…)`);
@@ -1927,18 +1911,28 @@ export async function leaveTypeApplySummaries(
   ctx: SessionContext,
   employmentId: string,
   leaveTypeIds: readonly string[],
+  existingTx?: Tx,
+  /** Bundled own leave inputs (core/own-leave-inputs.ts): the five statements below are answered from them for the
+   *  employment and transaction they were read for; every figure is the same `round2` of the same numbers. */
+  inputs?: OwnLeaveInputs,
 ): Promise<Map<string, LeaveTypeApplySummary>> {
   const ids = [...new Set(leaveTypeIds)];
   if (ids.length === 0) return new Map();
-  return withTenant(ctx, async (tx) => {
-    const typeRows = await tx
-      .select({ id: leaveType.id, src: leaveType.balanceSourceTypeId, essViewConfig: leaveType.essViewConfig, role: leaveType.role, code: leaveType.code })
-      .from(leaveType)
-      .where(inArray(leaveType.id, ids));
+  const read = async (tx: Tx) => {
+    const own = inputs?.answers(tx, employmentId) ? inputs : undefined;
+    const typeColumns = { id: leaveType.id, src: leaveType.balanceSourceTypeId, essViewConfig: leaveType.essViewConfig, role: leaveType.role, code: leaveType.code };
+    const typeQuery = tx.select(typeColumns).from(leaveType).where(inArray(leaveType.id, ids));
+    const typeRows = own
+      ? own.typeRows<Awaited<typeof typeQuery>[number]>(typeColumns, (type) => ids.includes(type.id))
+      : await typeQuery;
     const typeById = new Map(typeRows.map((r) => [r.id, r]));
     const sourceOf = new Map(ids.map((id) => [id, typeById.get(id)?.src ?? id]));
     const sources = [...new Set(sourceOf.values())];
-    const [balanceRows, takenRows, borrowerRows] = await Promise.all([
+    const [balanceRows, takenRows, borrowerRows] = own
+      ? ([own.ledgerBalanceBySourceType(sources), own.ledgerTakenBySourceType(sources),
+          own.typeRows<{ id: string; src: (typeof leaveType.$inferSelect)['balanceSourceTypeId'] }>({ id: leaveType.id, src: leaveType.balanceSourceTypeId },
+            (type) => type.balanceSourceTypeId !== null && sources.includes(type.balanceSourceTypeId))] as const)
+      : await Promise.all([
       tx
         .select({ typeId: leaveLedger.leaveTypeId, bal: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
         .from(leaveLedger)
@@ -1968,7 +1962,7 @@ export async function leaveTypeApplySummaries(
         pairType.push(t);
       }
     }
-    const pendingRows = (await tx.execute(
+    const pendingRows = own ? own.pendingBySource(pairSrc, pairType) : (await tx.execute(
       sql`select m.src::text as src, coalesce(sum(${leaveRequest.days} - coalesce(${leaveRequest.unpaidDays}, 0)), 0) as pending
           from unnest(${`{${pairSrc.join(',')}}`}::uuid[], ${`{${pairType.join(',')}}`}::uuid[]) as m(src, type_id)
           join ${leaveRequest} on ${leaveRequest.leaveTypeId} = m.type_id
@@ -1999,7 +1993,12 @@ export async function leaveTypeApplySummaries(
       });
     }
     return out;
-  });
+  };
+  if (existingTx) {
+    await assertReadCompositionPrincipalTx(existingTx, ctx);
+    return read(existingTx);
+  }
+  return withTenant(ctx, read);
 }
 
 // ── Shared Leave Group enforcement (r88, feedback 1ef1cf95; the rules themselves R44 4c48fd1f + r82a) ──
@@ -2080,6 +2079,25 @@ export function bindingApplicationLengthLimit(
   return [...breached].sort((a, bb) => slack(a) - slack(bb) || rank(a) - rank(bb))[0];
 }
 
+async function readSharedLeaveGroupLimit(tx: Tx, leaveTypeId: string) {
+  // The group (if any) this leave type belongs to. The unique index on (tenant, leave_type) means there is
+  // at most one, so no ordering or tie-break is needed to make this deterministic.
+  const [group] = await tx
+    .select({
+      id: leaveSharedGroup.id,
+      name: leaveSharedGroup.name,
+      totalLimitDays: leaveSharedGroup.totalLimitDays,
+      maxDaysPerApplication: leaveSharedGroup.maxDaysPerApplication,
+    })
+    .from(leaveSharedGroupMember)
+    .innerJoin(leaveSharedGroup, eq(leaveSharedGroup.id, leaveSharedGroupMember.groupId))
+    .where(eq(leaveSharedGroupMember.leaveTypeId, leaveTypeId))
+    .limit(1);
+  return group;
+}
+
+type SharedLeaveGroupLimit = NonNullable<Awaited<ReturnType<typeof readSharedLeaveGroupLimit>>>;
+
 /**
  * THE ONE PLACE a per-application length cap is compared with an application (c6ffa725 rev 2).
  *
@@ -2103,6 +2121,7 @@ export function bindingApplicationLengthLimit(
  */
 async function enforceApplicationLengthLimit(
   tx: Tx,
+  group: SharedLeaveGroupLimit | undefined,
   p: {
     leaveTypeId: string;
     startDate: string;
@@ -2112,9 +2131,10 @@ async function enforceApplicationLengthLimit(
      *  with the type's counting mode; never recomputed here (one working-day count, not two). */
     chargedDays: number;
   },
+  config?: Pick<typeof leaveType.$inferSelect, 'name' | 'maxConsecutiveDays' | 'maxConsecutiveUnit'> | null,
 ): Promise<void> {
   if (p.chargedDays <= 0) return;
-  const [lt] = await tx
+  const lt = config === undefined ? (await tx
     .select({
       name: leaveType.name,
       maxConsecutiveDays: leaveType.maxConsecutiveDays,
@@ -2122,16 +2142,7 @@ async function enforceApplicationLengthLimit(
     })
     .from(leaveType)
     .where(eq(leaveType.id, p.leaveTypeId))
-    .limit(1);
-  // The group (if any) this leave type belongs to. The unique index on (tenant, leave_type) means there is
-  // at most one, so no ordering or tie-break is needed to make this deterministic.
-  const [group] = await tx
-    .select({ name: leaveSharedGroup.name, maxDaysPerApplication: leaveSharedGroup.maxDaysPerApplication })
-    .from(leaveSharedGroupMember)
-    .innerJoin(leaveSharedGroup, eq(leaveSharedGroup.id, leaveSharedGroupMember.groupId))
-    .where(eq(leaveSharedGroupMember.leaveTypeId, p.leaveTypeId))
-    .limit(1);
-
+    .limit(1))[0] : config;
   const candidates: ApplicationLengthLimit[] = [];
   if (lt?.maxConsecutiveDays != null) {
     const cap = Number(lt.maxConsecutiveDays);
@@ -2198,28 +2209,15 @@ async function enforceApplicationLengthLimit(
  *  Both call sites (requestLeave, the approval path) are unchanged — this is a re-point, not a rewrite. */
 async function enforceSharedLeaveGroupLimit(
   tx: Tx,
+  group: SharedLeaveGroupLimit | undefined,
   p: {
     employmentId: string;
-    leaveTypeId: string;
     startDate: string;
     requestedDays: number;
     excludeRequestId?: string;
   },
 ): Promise<void> {
   if (p.requestedDays <= 0) return;
-  // The group (if any) this leave type belongs to. The unique index on (tenant, leave_type) means there is
-  // at most one, so no ordering or tie-break is needed to make this deterministic.
-  const [group] = await tx
-    .select({
-      id: leaveSharedGroup.id,
-      name: leaveSharedGroup.name,
-      totalLimitDays: leaveSharedGroup.totalLimitDays,
-      maxDaysPerApplication: leaveSharedGroup.maxDaysPerApplication,
-    })
-    .from(leaveSharedGroupMember)
-    .innerJoin(leaveSharedGroup, eq(leaveSharedGroup.id, leaveSharedGroupMember.groupId))
-    .where(eq(leaveSharedGroupMember.leaveTypeId, p.leaveTypeId))
-    .limit(1);
   if (!group) return;
   // The shared annual total. (The group's per-application cap was checked before this function ran — see
   // enforceApplicationLengthLimit; leaving a copy of it here would recreate the two-places-decide problem
@@ -2351,19 +2349,12 @@ export function applicationLimitWindow(p: {
  * (cdf9ca48) and, on the edit path, excluding the request's own reservation. Re-reading it here would
  * quietly measure a different balance from the one the caller just gated on.
  */
-async function enforceMaxNegativeBalance(
-  tx: Tx,
-  p: { leaveTypeId: string; available: number; requestedDays: number },
-): Promise<void> {
-  const [lt] = await tx
-    .select({ name: leaveType.name, maxNegativeBalance: leaveType.maxNegativeBalance })
-    .from(leaveType)
-    .where(eq(leaveType.id, p.leaveTypeId))
-    .limit(1);
-  if (!lt || lt.maxNegativeBalance == null) return; // NULL ⇒ unbounded, today's behaviour
+function enforceMaxNegativeBalance(
+  lt: { name: string; maxNegativeBalance: string },
+  p: { available: number; requestedDays: number },
+): void {
   const floor = Number(lt.maxNegativeBalance);
-  // A non-positive floor is refused by the DB CHECK, but restate it: a hand-edited row must not start
-  // refusing every application of the type (the same reasoning as the application-limit guard).
+  // The database rejects non-positive floors. Do not apply an invalid legacy floor.
   if (!Number.isFinite(floor) || floor <= 0) return;
   if (round2(p.available - p.requestedDays) < -floor) {
     throw new NegativeLeaveBalanceLimitExceededError({
@@ -2405,9 +2396,10 @@ async function enforceLeaveYearApplicationLimit(
     requestedDays: number;
     excludeRequestId?: string;
   },
+  config?: Pick<typeof leaveType.$inferSelect, 'name' | 'maxDaysPerLeaveYear' | 'maxDaysPeriod' | 'yearCycleOverride'> | null,
 ): Promise<void> {
   if (p.requestedDays <= 0) return;
-  const [lt] = await tx
+  const lt = config === undefined ? (await tx
     .select({
       name: leaveType.name,
       maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
@@ -2416,7 +2408,7 @@ async function enforceLeaveYearApplicationLimit(
     })
     .from(leaveType)
     .where(eq(leaveType.id, p.leaveTypeId))
-    .limit(1);
+    .limit(1))[0] : config;
   // NULL ⇒ unlimited. A non-positive figure is refused by the DB CHECK and by the write-time validator, but
   // the guard is restated here so a hand-edited row cannot refuse every application of a type.
   if (!lt || lt.maxDaysPerLeaveYear == null) return;
@@ -3023,6 +3015,7 @@ async function insertLeaveRequest(
     // from one filed directly as Emergency Leave, and from an HR-side advance-notice override. null/absent
     // ⇒ nothing extra on the payload, so every existing assertion stays green.
     overrideAudit?: LeaveOverrideAudit | null;
+    resolvedApprovalChain?: Awaited<ReturnType<typeof resolveRequestApprovalChain>>;
   },
   includeSubmittedEventId = false,
 ): Promise<{ id: string; submittedEventId?: string }> {
@@ -3052,6 +3045,12 @@ async function insertLeaveRequest(
       allowanceEligible: v.allowanceEligible ?? null,
     })
     .returning({ id: leaveRequest.id });
+  // Resolve the step snapshot before appending the event takes the tenant audit-chain lock.
+  const approvalSteps = await prepareApprovalSteps(
+    tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId, v.days, v.resolvedApprovalChain,
+  );
+  // Keep the approval-step write ahead of the tenant-wide audit lock.
+  if (approvalSteps.length > 0) await tx.insert(leaveApprovalStep).values(approvalSteps);
   const submittedEventId = await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
@@ -3149,9 +3148,6 @@ async function insertLeaveRequest(
     },
   }, { returnId: includeSubmittedEventId });
   if (includeSubmittedEventId && !submittedEventId) throw new Error('leave.submitted_reference_missing');
-  // 2B-1/2B-2/ADR-0071: if the company runs a multi-step chain, generate the instance approval steps,
-  // resolving the scoped rule matrix against this request's day count (fractional for hourly/partial).
-  await generateApprovalSteps(tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId, v.days);
   return { id: row.id, ...(submittedEventId ? { submittedEventId } : {}) };
 }
 
@@ -3231,6 +3227,12 @@ const leaveTypeRequestColumns = {
   // Configurable Negative Leave Balance Validation (0ef0defd): false ⇒ reject a submit that would take
   // the balance negative (enforced below, after `days` is known); true ⇒ skip the submit-time check.
   allowNegativeBalance: leaveType.allowNegativeBalance,
+  maxConsecutiveDays: leaveType.maxConsecutiveDays,
+  maxConsecutiveUnit: leaveType.maxConsecutiveUnit,
+  maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
+  maxDaysPeriod: leaveType.maxDaysPeriod,
+  yearCycleOverride: leaveType.yearCycleOverride,
+  maxNegativeBalance: leaveType.maxNegativeBalance,
   // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): the two settings that decide
   // WHICH balance this application is measured against and what happens to the part it cannot cover.
   // Both are read here and used together below — see the balance guard.
@@ -3417,11 +3419,14 @@ export async function requestLeave(
       || p.startDate !== reviewedOwnLeave.date || p.endDate !== reviewedOwnLeave.date)
       throw new LeaveReviewedEffectError('changed');
   }
-  const perform = async (tx: Tx) => {
+  const retryWithExclusiveAccess = new Error();
+  const perform = async (tx: Tx, sharedAccess = false) => {
     // Rights first, then shared source configuration. An unauthorized subject is refused by the
     // original gate before acquiring any employment lock or reading leave policy/balance facts.
+    // Applying leave only needs configuration stable. The employment lock below serialises the balance,
+    // duplicate and borrowing checks, so both courses share the Access lock and wait for short holders.
     await lockAccessConfigurationTx(tx, ctx.tenantId);
-    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, []);
     if (p.document) p = { ...p, hasDocument: true };
     // ── On-behalf gate (5206539f) — THE FIRST THING THIS FUNCTION DOES, and deliberately ────────────────
     // Submitting leave for an employment that is not the caller's own requires `leave.apply_on_behalf`.
@@ -3441,7 +3446,9 @@ export async function requestLeave(
         resignationDate: employment.resignationDate, lastWorkingDate: employment.lastWorkingDate,
         blacklistedAt: employment.blacklistedAt })
       .from(employment)
-      .where(eq(employment.id, p.employmentId))
+      .where(and(eq(employment.id, p.employmentId), sharedAccess
+        ? sql`app.principal_snapshot_current() and app.is_self_person(${employment.personId})`
+        : undefined))
       .limit(1);
     const [subject] = await readSubject();
     // Self is decided by PERSON, not by employment id: one person can hold several employments (multi-company
@@ -3449,6 +3456,7 @@ export async function requestLeave(
     // not tied to an employee) can never satisfy this, and falls to the permission below — which is where an
     // HR administrator has always passed.
     const isSelfSubject = ctx.personId != null && subject?.personId != null && ctx.personId === subject.personId;
+    if (sharedAccess && !isSelfSubject) throw retryWithExclusiveAccess;
     if (reviewedOwnLeave) {
       const currentDate = todayInKualaLumpur();
       if (!isSelfSubject || !subject || subject.companyId !== reviewedOwnLeave.companyId
@@ -3470,7 +3478,7 @@ export async function requestLeave(
       throw new LeaveOnBehalfNotAllowedError();
     }
 
-    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+    await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, [p.employmentId]);
     const [currentSubject] = await readSubject();
     // The initial row nominated/authorized a subject; use it only if the same canonical projection
     // still holds after acquiring ownership. All selected facts are scalar/date values, fixed order.
@@ -3490,6 +3498,13 @@ export async function requestLeave(
     // conversion re-points BOTH so every gate after it is judged against the type the application actually
     // becomes, rather than a second submission path re-implementing them. Nothing else reassigns either.
     let lt = lt0;
+    // Only ordinary annual applications may stay in this owned shared transaction.
+    // Other policy branches restart before any effect, with the original exclusive lock.
+    if (sharedAccess && (!lt || !leaveTypeIs(lt, 'annual') || !lt.paid || lt.archivedAt !== null
+      || lt.requiresDocument || lt.balanceSourceTypeId !== null || lt.perDateApproval
+      || normalizeLeaveOverrideRules(lt.overrideRules).some(rule => rule.enabled))) {
+      throw retryWithExclusiveAccess;
+    }
     if (reviewedOwnLeave && (!lt || !leaveTypeIs(lt, 'annual') || !lt.paid || lt.archivedAt !== null
       || lt.requiresDocument || lt.balanceSourceTypeId !== null || lt.employeeCanApply === false)) {
       throw new LeaveReviewedEffectError('unsupported');
@@ -3602,6 +3617,7 @@ export async function requestLeave(
     // question whose answer cannot matter.
     const minAdvance = lt?.minAdvanceDays ?? null;
     const minAdvanceDayType = resolveAdvanceNoticeDayType(lt?.minAdvanceDayType);
+    let noticeSchedule: LeaveResolvedSchedule | undefined;
     let noticeRotation: LeaveResolvedSchedule['rotationKindOn'];
     let noticeRoster: number[] | undefined;
     let noticeHolidays: Set<string> | undefined;
@@ -3609,7 +3625,7 @@ export async function requestLeave(
       // The SAME sources the deduction engine uses — attendance_policy.working_days (Full ∪ Half) and the
       // business-group → state → national holiday resolution — so "working day" means one thing in this
       // product, not two.
-      const noticeSchedule = await resolveSchedule(tx, p.employmentId);
+      noticeSchedule = await resolveSchedule(tx, p.employmentId);
       noticeRoster = [...new Set([...noticeSchedule.workingDaysIso,...noticeSchedule.halfDaysIso])];
       noticeRotation = noticeSchedule.rotationKindOn;
       noticeHolidays = await resolveHolidaySet(tx, p.employmentId, today, p.startDate);
@@ -3799,13 +3815,15 @@ export async function requestLeave(
     // company's leaveHalfDayFullDeduction toggle apply (D2/Feedback 31474452).
     let workingDayCount: number | null = null;
     let workingDayWeight: number | null = null;
+    let workingDayFacts: { schedule: LeaveResolvedSchedule; holidays: Set<string> } | undefined;
     let creditDateWeights: {date: string; days: number}[] | undefined;
     if (lt?.counting === 'working_days') {
       // 2C (ADR-0038) + holiday grouping: holidays apply per the employee's effective set of states —
       // national (state null) ∪ those states, resolved holiday_group → work_state →
       // company.default_work_state → national-only (see resolveHolidaySet).
       const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
-      const sched = await resolveSchedule(tx, p.employmentId);
+      const sched = noticeSchedule ?? await resolveSchedule(tx, p.employmentId);
+      workingDayFacts = { schedule: sched, holidays: hols };
       // Day Type Inclusion (feedback ef6d7146): the type's re-inclusion vector (undefined ⇒ inert legacy
       // path). Both the deducted WEIGHT and the "any deductible day in range?" guard honour it so a type
       // configured to count e.g. public holidays deducts them and a half/hourly guard sees them as valid.
@@ -3813,8 +3831,11 @@ export async function requestLeave(
       // workingDayCount is the LIST count of deductible days — byte-identical to workingDays() when incl is
       // undefined (a Full/Half day weighs > 0, a holiday/rest day 0), and additionally counts re-included
       // day types when a vector is set.
-      workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
-      workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
+      if (durationType === 'full_day') {
+        workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
+      } else {
+        workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
+      }
       if (leaveTypeIs(lt, 'replacement') && durationType === 'full_day' && dayCount(p.startDate, p.endDate) <= 400)
         creditDateWeights = eachDate(p.startDate, p.endDate).map(date => ({date, days: dayWeight(date, sched, hols, incl)})).filter(row => row.days > 0);
     }
@@ -3842,25 +3863,7 @@ export async function requestLeave(
       // AM/PM same-date conflict (ADR-0048): a non-rejected request already covering this slot blocks a new
       // one. Complementary AM + PM on the same date is allowed; everything else (same slot, a full_day, or
       // an hourly) conflicts. This is the only overlap logic — general range overlap stays out of scope.
-      const existing = await tx
-        .select({ durationType: leaveRequest.durationType })
-        .from(leaveRequest)
-        .where(
-          and(
-            eq(leaveRequest.employmentId, p.employmentId),
-            eq(leaveRequest.startDate, p.startDate),
-            eq(leaveRequest.endDate, p.endDate),
-            inArray(leaveRequest.status, ['pending', 'approved']),
-          ),
-        );
-      for (const e of existing) {
-        const conflicts =
-          e.durationType === durationType || // same slot (or hourly vs hourly)
-          e.durationType === 'full_day' ||
-          e.durationType === 'hourly' ||
-          durationType === 'hourly';
-        if (conflicts) throw new Error('This date already has a conflicting leave request');
-      }
+      await assertNoLeaveSlotConflictTx(tx,{employmentId:p.employmentId,startDate:p.startDate,endDate:p.endDate,durationType});
     }
 
     // Duplicate Leave Application Restriction (d5e51c34): AFTER the narrow AM/PM same-slot clash above, apply
@@ -3959,11 +3962,11 @@ export async function requestLeave(
     } else if (lt?.allowNegativeBalance === false) {
       const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
       if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
-    } else if (lt?.allowNegativeBalance === true) {
+    } else if (lt?.allowNegativeBalance === true && lt.maxNegativeBalance != null) {
       // bc512dc3 — going negative is permitted, but not without end. Same balance the branch above reads,
       // resolved through the BALANCE SOURCE, so the two gates never talk about different ledgers.
       const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
-      await enforceMaxNegativeBalance(tx, { leaveTypeId: p.leaveTypeId, available, requestedDays: days });
+      enforceMaxNegativeBalance({ name: lt.name, maxNegativeBalance: lt.maxNegativeBalance }, { available, requestedDays: days });
     }
 
     // Shared Leave Group (R44 4c48fd1f, re-pointed to leave-type level by r88 1ef1cf95): reject when this
@@ -3975,15 +3978,15 @@ export async function requestLeave(
     // application ALONE — an employee whose whole year is untouched is still refused a too-long
     // application, and telling them "your allowance is spent" would be a lie. Both dates AND the charged
     // days are passed: a calendar-unit cap measures the span, a working-days cap measures what it charges.
-    await enforceApplicationLengthLimit(tx, {
+    const sharedGroup = days > 0 ? await readSharedLeaveGroupLimit(tx, p.leaveTypeId) : undefined;
+    await enforceApplicationLengthLimit(tx, sharedGroup, {
       leaveTypeId: p.leaveTypeId,
       startDate: p.startDate,
       endDate: p.endDate,
       chargedDays: days,
-    });
-    await enforceSharedLeaveGroupLimit(tx, {
+    }, lt ?? null);
+    await enforceSharedLeaveGroupLimit(tx, sharedGroup, {
       employmentId: p.employmentId,
-      leaveTypeId: p.leaveTypeId,
       startDate: p.startDate,
       requestedDays: days,
     });
@@ -3997,7 +4000,7 @@ export async function requestLeave(
       leaveTypeId: p.leaveTypeId,
       startDate: p.startDate,
       requestedDays: days,
-    });
+    }, lt ?? null);
 
     // ADR-0069: a friendly UX pre-check — the DB trigger (guard_frozen_leave_balance) is the real
     // enforcement at approval time, but failing fast here gives the employee a readable error immediately
@@ -4096,24 +4099,25 @@ export async function requestLeave(
     // precisely because rows are only ever created for single-approver requests. EL was already routed above.
     //
     // r79 0322 — "single-step" is no longer a COMPANY flag, it is this request's RESOLVED CHAIN having at
-    // most one level: the same gate generateApprovalSteps uses (isMultiStepChain), resolved from the same
+    // most one level: the same gate prepareApprovalSteps uses (isMultiStepChain), resolved from the same
     // helper with the same day count, so the per-date rows and the step rows can never disagree about the
     // request's shape. An unresolvable employment stays ineligible, exactly as `multi === false` did.
-    const resolvedChain = await resolveRequestApprovalChain(tx, p.employmentId, p.leaveTypeId, days);
-    const perDateEligible =
+    const canUsePerDateApproval =
       durationType === 'full_day' &&
       lt?.counting === 'working_days' &&
       !!lt?.perDateApproval &&
       !leaveTypeIs(lt, 'replacement') &&
       p.startDate !== p.endDate &&
-      resolvedChain !== null &&
-      !isMultiStepChain(resolvedChain.chain) &&
       // Allow Unpaid Leave (a7fab30b): a part-unpaid request is excluded, for the same reason REPLACEMENT is —
       // the two features have no agreed answer between them. The paid/unpaid boundary is a QUANTITY of days,
       // not an attribution to particular dates, so "approve Tuesday, reject Wednesday" cannot say which of the
       // two was the unpaid one, and any rule we invented would silently change what the employee is paid.
       // The request still goes through normally, just as one whole-span decision.
       unpaidDays === 0;
+    const resolvedChain = canUsePerDateApproval
+      ? await resolveRequestApprovalChain(tx, p.employmentId, p.leaveTypeId, days)
+      : undefined;
+    const perDateEligible = resolvedChain != null && !isMultiStepChain(resolvedChain.chain);
 
     if (reviewedOwnLeave) {
       // Reuse THIS execution's calculations, not a second preview. This adds no lock or retry:
@@ -4124,11 +4128,18 @@ export async function requestLeave(
       const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
       if (days !== reviewedOwnLeave.days || available !== reviewedOwnLeave.availableBalance)
         throw new LeaveReviewedEffectError('changed');
-      const warnings = lt?.counting === 'working_days'
-        ? await leaveHolidayCompletenessTx(tx, p.employmentId, p.startDate, p.endDate) : [];
+    }
+
+    // Resolve the holiday sources before the submitted event takes the audit-chain lock.
+    const holidayWarningWindows = lt?.counting === 'working_days'
+      ? await readLeaveHolidayWarningWindows(tx, p.employmentId, p.startDate, p.endDate)
+      : [];
+    const holidayWarnings = holidayWarningWindows.flatMap(window => window.warnings);
+
+    if (reviewedOwnLeave) {
       const reviewedWarnings = reviewedOwnLeave.holidayWarnings;
-      if (warnings.length !== reviewedWarnings.length
-        || warnings.some((warning, index) => {
+      if (holidayWarnings.length !== reviewedWarnings.length
+        || holidayWarnings.some((warning, index) => {
           const reviewed = reviewedWarnings[index];
           return warning.country !== reviewed.country || warning.state !== reviewed.state
             || warning.year !== reviewed.year || warning.loaded !== reviewed.loaded
@@ -4176,6 +4187,7 @@ export async function requestLeave(
       // Override Leave Application (56910869): null on every application no rule changed, which is every
       // application until HR enables a rule — so the ordinary payload is byte-identical to before.
       overrideAudit,
+      resolvedApprovalChain: resolvedChain,
     }, reviewedOwnLeave !== undefined);
 
     // Replacement Leave deliberately has no per-date approval rows. Retain the canonical weights
@@ -4196,9 +4208,8 @@ export async function requestLeave(
     // lifecycle is captured by the aggregate's submitted (with perDate) + per-date-decided events — no separate
     // event per sub-row insert.
     let perDate: { date: string; days: number }[] = [];
-    if (perDateEligible) {
-      const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
-      const sched = await resolveSchedule(tx, p.employmentId);
+    if (perDateEligible && workingDayFacts) {
+      const { schedule: sched, holidays: hols } = workingDayFacts;
       // Day Type Inclusion (feedback ef6d7146): the per-date sub-rows must span exactly the DEDUCTIBLE dates
       // (re-included day types included) and carry each date's inclusion-aware weight, so sum(perDate.days)
       // still equals the request's weighted `days` and no re-included day is stranded outside per-date approval.
@@ -4239,9 +4250,12 @@ export async function requestLeave(
     // holidays loaded for the employee's (state, year). If fewer than the s.60D minimum of 11 are loaded,
     // warn LOUDLY (domain event + returned warning) but do NOT block — the count may be wrong until HR loads
     // the rest of the state gazette. Only meaningful for working_days types (calendar types ignore holidays).
-    const holidayWarnings = lt?.counting === 'working_days'
-      ? await leaveHolidayCompletenessTx(tx, p.employmentId, p.startDate, p.endDate, { ctx, leaveRequestId: id })
-      : [];
+    for (const window of holidayWarningWindows) {
+      await appendHolidayCompletenessWarnings(tx, ctx, {
+        module: 'leave', aggregateType: 'leave-request', aggregateId: id, subjectEmploymentId: p.employmentId,
+        context: { leaveRequestId: id, startDate: window.from, endDate: window.to },
+      }, window.warnings);
+    }
 
     return {
       leaveRequestId: id,
@@ -4253,7 +4267,18 @@ export async function requestLeave(
       ...(holidayWarnings.length ? { holidayWarnings } : {}),
     };
   };
-  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
+  if (existingTx) return perform(existingTx);
+  if (ctx.userId && ctx.personId && !ctx.agent && !isAdmin(ctx)
+    && (p.durationType ?? 'full_day') === 'full_day' && !p.document && !p.hasDocument
+    && !p.overrideConsent?.length && p.reasonCategory === undefined && !p.unpaidConsent
+    && p.survivingChildren === undefined && p.confinementDate === undefined) {
+    try {
+      return await withTenant(ctx, tx => perform(tx, true));
+    } catch (error) {
+      if (error !== retryWithExclusiveAccess) throw error;
+    }
+  }
+  return withTenant(ctx, perform);
 }
 
 /** Feedback 31474452 (Step 5): pre-submission preview — "this will deduct X day(s), balance before/after" —
@@ -4488,7 +4513,7 @@ export async function previewLeaveDeduction(
       : undefined;
     const holidayWarnings = p.includeHolidayWarnings
       ? lt?.counting === 'working_days'
-        ? await leaveHolidayCompletenessTx(tx, p.employmentId, p.startDate, p.endDate)
+        ? (await readLeaveHolidayWarningWindows(tx, p.employmentId, p.startDate, p.endDate)).flatMap(window => window.warnings)
         : []
       : undefined;
     return {
@@ -4588,33 +4613,27 @@ async function resolveApplyDayRows(
   });
 }
 
-/** One dated-calendar owner for read-only previews and post-submission warning events. Passing an
- * event target preserves the existing warning audit; omitting it performs only source reads. */
-async function leaveHolidayCompletenessTx(
+/** Read dated holiday warnings and retain the source windows for the submission audit. */
+async function readLeaveHolidayWarningWindows(
   tx: Tx,
   employmentId: string,
   startDate: string,
   endDate: string,
-  event?: { ctx: SessionContext; leaveRequestId: string },
-): Promise<HolidayCompletenessWarning[]> {
+) {
   const periods=(await holidayCalendarPeriodsByEmploymentTx(tx,[employmentId],startDate,endDate)).get(employmentId)??[];
   const segments=await companySegmentsForPeriod(tx,employmentId,startDate,endDate);
-  const warnings:HolidayCompletenessWarning[]=[],seen=new Set<string>();
+  const windows: { from: string; to: string; warnings: HolidayCompletenessWarning[] }[] = [];
+  const seen = new Set<string>();
   for(const segment of segments)for(const window of holidayCalendarWindows(segment.from,segment.to,periods)){
     const eff=await effectiveHolidayState(tx,employmentId,segment.companyId,window.from);
     if(!eff||eff.skipCompleteness)continue;
     const years=yearsSpanned(window.from,window.to).filter(year=>{
       const key=JSON.stringify([eff.country,eff.state,year]);if(seen.has(key))return false;seen.add(key);return true;
     });
-    const currentWarnings = event
-      ? await warnIfHolidaysIncomplete(tx,event.ctx,{
-        country:eff.country,state:eff.state,years,module:'leave',aggregateType:'leave-request',aggregateId:event.leaveRequestId,
-        subjectEmploymentId:employmentId,context:{leaveRequestId:event.leaveRequestId,startDate:window.from,endDate:window.to},
-      })
-      : await readHolidayCompletenessWarnings(tx,eff.country,eff.state,years);
-    warnings.push(...currentWarnings);
+    const warnings = await readHolidayCompletenessWarnings(tx, eff.country, eff.state, years);
+    if (warnings.length) windows.push({ from: window.from, to: window.to, warnings });
   }
-  return warnings;
+  return windows;
 }
 
 /**
@@ -4862,28 +4881,20 @@ async function requestEmergencyLeave(
  * Null only when the employment row is not visible.
  */
 async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTypeId: string, days: number) {
-  const [co] = await tx
-    .select({ companyId: company.id })
-    .from(employment)
-    .innerJoin(company, eq(company.id, employment.companyId))
-    .where(eq(employment.id, employmentId))
-    .limit(1);
-  if (!co) return null;
-
-  // ADR-0071: gather the requester's OWN current-assignment attributes (validTo/supersededAt null — the
-  // same currentAssignment predicate used across the read layer) plus grade (on the employment row) and
-  // the department's business unit (nullable — a BU-scoped rule simply fails to match when unset, never
-  // errors). Scoped strictly to THIS employmentId — never a concurrent employment at another company
-  // (ADR-0071 1(f)).
-  const [attr] = await tx
+  // Read the company and current assignment together. The optional grade group is unique
+  // per tenant and grade, so it does not multiply the requester's assignment rows.
+  const [subject] = await tx
     .select({
+      companyId: company.id,
       gradeId: employment.gradeId,
+      gradeGroupId: gradeGroupMember.gradeGroupId,
       departmentId: assignment.departmentId,
       positionId: assignment.positionId,
       employmentType: assignment.employmentType,
       businessUnitId: department.businessUnitId,
     })
     .from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
     .leftJoin(
       assignment,
       and(
@@ -4893,21 +4904,14 @@ async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTy
       ),
     )
     .leftJoin(department, eq(department.id, assignment.departmentId))
+    .leftJoin(gradeGroupMember, and(
+      eq(gradeGroupMember.tenantId, employment.tenantId),
+      eq(gradeGroupMember.gradeId, employment.gradeId),
+    ))
     .where(eq(employment.id, employmentId))
     .limit(1);
-
-  // R41 72800eda: map the requester's individual grade → its GRADE GROUP (grade_group_member) so a
-  // grade-group-scoped approval rule can match. A grade belongs to at most one group (unique index); an
-  // ungrouped/ungraded requester resolves to null and simply never matches a group-scoped rule.
-  let gradeGroupId: string | null = null;
-  if (attr?.gradeId) {
-    const [gm] = await tx
-      .select({ gradeGroupId: gradeGroupMember.gradeGroupId })
-      .from(gradeGroupMember)
-      .where(eq(gradeGroupMember.gradeId, attr.gradeId))
-      .limit(1);
-    gradeGroupId = gm?.gradeGroupId ?? null;
-  }
+  if (!subject) return null;
+  const { companyId, gradeGroupId, ...attr } = subject;
 
   // 2B-2 / ADR-0071: the chain is data — resolve the most-specific matching rule for this request.
   //
@@ -4915,16 +4919,8 @@ async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTy
   // PREVIEW has to name WHERE the chain came from (a scoped rule, the org-wide default, or the built-in
   // fallback) and re-resolving to find that out would be a second ranking of the same rows over a
   // different attribute set. The chain below is that decision's own `levels` — the wrapper's whole body.
-  const decision = await resolveApprovalDecision(tx, co.companyId, leaveTypeId, {
-    gradeId: attr?.gradeId ?? null,
-    gradeGroupId,
-    departmentId: attr?.departmentId ?? null,
-    positionId: attr?.positionId ?? null,
-    employmentType: attr?.employmentType ?? null,
-    businessUnitId: attr?.businessUnitId ?? null,
-    days,
-  });
-  return { companyId: co.companyId, chain: decision.levels, decision, attr: attr ?? null };
+  const decision = await resolveApprovalDecision(tx, companyId, leaveTypeId, { ...attr, gradeGroupId, days });
+  return { companyId, chain: decision.levels, decision, attr };
 }
 
 /** r79 0322 — a request is MULTI-STEP when its resolved chain has two or more levels. One level is a
@@ -5187,44 +5183,44 @@ export async function previewApprovalChain(
  *  day-equivalent for hourly/partial requests (ADR-0071 1(h)), so an hourly request still participates in
  *  day-range matching. The generated steps are snapshotted here at submission time and NEVER re-resolved
  *  (ADR-0071 1(g)) — editing/archiving a rule later cannot change a pending request's routing. */
-async function generateApprovalSteps(
+async function prepareApprovalSteps(
   tx: Tx,
   tenantId: string,
   leaveRequestId: string,
   employmentId: string,
   leaveTypeId: string,
   days: number,
-) {
-  const resolved = await resolveRequestApprovalChain(tx, employmentId, leaveTypeId, days);
-  if (!resolved) return;
+  preResolved?: Awaited<ReturnType<typeof resolveRequestApprovalChain>>,
+): Promise<(typeof leaveApprovalStep.$inferInsert)[]> {
+  const resolved = preResolved === undefined
+    ? await resolveRequestApprovalChain(tx, employmentId, leaveTypeId, days)
+    : preResolved;
+  if (!resolved) return [];
   const { chain, attr } = resolved;
   // The gate. Branching on the chain BEFORE the drop rules below is deliberate: a two-step template whose
   // manager step is dropped (no reporting line) has always produced ONE step row, and still does. Only a
   // chain that is one level BY CONFIGURATION collapses to the single-approver path.
-  if (!isMultiStepChain(chain)) return;
+  if (!isMultiStepChain(chain)) return [];
 
   const facts = await resolveChainFacts(tx, employmentId, attr, resolved.decision.resolvedLevels);
   const kept = applyChainDropRules(resolved.decision.resolvedLevels, facts).filter((l) => l.kept);
-  if (kept.length === 0) return;
-  await tx.insert(leaveApprovalStep).values(
-    // r293 phase 3 — the kind and the named approver are written TOGETHER, from one sanitised level.
-    // That pairing is the invariant migration 0467 deliberately does not put in a check constraint, and
-    // this is the single writer it is enforced in.
-    kept.map((level, stepIndex) => ({
-      tenantId,
-      leaveRequestId,
-      subjectEmploymentId: employmentId,
-      stepIndex,
-      approverKind: level.kind,
-      approverEmploymentId: level.employmentId,
-      // r293 phase 4 — NULL, not [], when the level has one approver: "no alternates" and "an empty list
-      // of alternates" must not be two different values in the column, and NULL is what every row written
-      // before this migration holds.
-      approverAlternates: level.alternates.length
-        ? level.alternates.map((a) => (a.employmentId ? { kind: a.kind, employmentId: a.employmentId } : a.kind))
-        : null,
-    })),
-  );
+  // r293 phase 3 — the kind and the named approver are written TOGETHER, from one sanitised level.
+  // That pairing is the invariant migration 0467 deliberately does not put in a check constraint, and
+  // this is the single writer it is enforced in.
+  return kept.map((level, stepIndex) => ({
+    tenantId,
+    leaveRequestId,
+    subjectEmploymentId: employmentId,
+    stepIndex,
+    approverKind: level.kind,
+    approverEmploymentId: level.employmentId,
+    // r293 phase 4 — NULL, not [], when the level has one approver: "no alternates" and "an empty list
+    // of alternates" must not be two different values in the column, and NULL is what every row written
+    // before this migration holds.
+    approverAlternates: level.alternates.length
+      ? level.alternates.map((a) => (a.employmentId ? { kind: a.kind, employmentId: a.employmentId } : a.kind))
+      : null,
+  }));
 }
 
 /** Attach a supporting document to a pending leave request (2A-2). employment_id is denormalized from
@@ -5724,15 +5720,17 @@ async function finalizeLeaveApproval(
   // the charged days are the request's own `days`, NOT `approvedDays`. Partial approval narrows which dates
   // are granted; it does not turn a 5-day application into a 3-day one, and approving 3 of 5 days must not
   // slip a 5-day application past a 3-day cap.
-  await enforceApplicationLengthLimit(tx, {
+  const chargedDays = Number(req.days);
+  const sharedGroup = chargedDays > 0 || approvedDays > 0
+    ? await readSharedLeaveGroupLimit(tx, req.leaveTypeId) : undefined;
+  await enforceApplicationLengthLimit(tx, sharedGroup, {
     leaveTypeId: req.leaveTypeId,
     startDate: req.startDate,
     endDate: req.endDate,
-    chargedDays: Number(req.days),
+    chargedDays,
   });
-  await enforceSharedLeaveGroupLimit(tx, {
+  await enforceSharedLeaveGroupLimit(tx, sharedGroup, {
     employmentId: req.employmentId,
-    leaveTypeId: req.leaveTypeId,
     startDate: req.startDate,
     requestedDays: approvedDays,
     excludeRequestId: req.id,
@@ -5951,15 +5949,64 @@ function assertExpectedLeaveStep(
   const current = [...steps].sort((a, b) => a.stepIndex - b.stepIndex).find((st) => st.status === 'pending')?.stepIndex ?? null;
   if (status !== 'pending' || current !== expected) throw new LeaveStaleStepError();
 }
+/**
+ * A leave cohort writer (year-open, earned accrual, carry expiry) run for ONE BATCH of employees by a background
+ * job or a chunked timer (core/leave-cohort-run.ts), so no transaction holds the tenant's Access and leave locks for
+ * the whole cohort. Inside the caller's transaction, and handing over the summary event it would have appended:
+ * the caller appends one event for the whole run. Nothing about the calculation changes; each employee's result
+ * depends only on that employee, so a batch computes exactly what the whole-cohort run computes for it.
+ */
+export type LeaveCohortStepRun = {
+  tx: Tx;
+  onSummary: (payload: Record<string, unknown>) => void;
+  /** Carry expiry only (it has no employee scope of its own): restrict the sweep to these employments. */
+  employmentIds?: readonly string[];
+  /** Earned accrual only: the run's own reads, made once for the whole run instead of once per batch
+   * (`readEarnedAccrualRunInputsTx`). Used only for the same as-at date and leave-type scope; the caller
+   * guarantees they are still current (core/leave-cohort-worker.ts re-checks them before every batch). */
+  preload?: EarnedAccrualRunInputs;
+};
+/** What earned accrual reads once per run rather than per employee: the scoped active leave types, the types with
+ * a table in force at the as-at date, the template resolver for every employee the run may reach, and whether the
+ * run's whole-scope protected-period check has already passed (the synchronous run made it once, at its start). */
+export type EarnedAccrualRunInputs = {
+  asOf: string;
+  leaveTypeIds: string[];
+  activeTypes: Awaited<ReturnType<typeof readEarnedAccrualActiveTypesTx>>;
+  templateConfigured: Set<string>;
+  resolver: Awaited<ReturnType<typeof buildTemplateEntitlementResolver>>;
+  periodChecked: boolean;
+};
+/** Which of the scoped types the sweep accrues: Annual Leave, with a table in force, configured, earned method. */
+function earnedAccrualTypeIdsOf(types: readonly { id: string; code: string | null; role: string | null; accrualMethod: string | null; accrualUnconfigured?: Date | string | null }[], templateConfigured: ReadonlySet<string>) {
+  return types
+    .filter((t) => {
+      if (!templateConfigured.has(t.id)) return false;
+      // bc36c768 — THE NOT-CONFIGURED GATE, ahead of method resolution. An unconfigured type is not an
+      // earned type and is not a lump type; it is a type that grants nothing until HR configures it.
+      if (isAccrualUnconfigured(t)) return false;
+      return isEarnedMethod(t.accrualMethod);
+    })
+    .map((t) => t.id);
+}
+/** The earned accrual run's once-per-run reads (see `EarnedAccrualRunInputs`), for every employee it may reach. */
+export async function readEarnedAccrualRunInputsTx(tx: Tx, p: { asOf: string; leaveTypeIds?: string[]; employmentIds: readonly string[]; periodChecked: boolean }): Promise<EarnedAccrualRunInputs> {
+  const leaveTypeIds = (p.leaveTypeIds ?? []).filter(Boolean);
+  const activeTypes = await readEarnedAccrualActiveTypesTx(tx, leaveTypeIds);
+  const templateConfigured = await leaveTypeIdsWithTemplatesAt(tx, p.asOf);
+  const earnedTypeIds = earnedAccrualTypeIdsOf(activeTypes.filter((t) => isEarnedAccrualType(t)), templateConfigured);
+  const resolver = await buildTemplateEntitlementResolver(tx, { employmentIds: [...p.employmentIds], leaveTypeIds: earnedTypeIds, asOf: p.asOf });
+  return { asOf: p.asOf, leaveTypeIds, activeTypes, templateConfigured, resolver, periodChecked: p.periodChecked };
+}
 /** D5(a) — run in the caller's transaction when one is passed (a mobile command receipt), else in a new one. */
-function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>): Promise<T> {
-  return existingTx ? run(existingTx) : withTenant(ctx, run);
+function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>, readOnlySnapshot = false): Promise<T> {
+  return existingTx ? run(existingTx) : withTenant(ctx, run, readOnlySnapshot ? { readOnlySnapshot: true } : undefined);
 }
 
 /** Information-only corrections apply to future processing. Earlier leave runs require an
  * independent historical review rather than interpreting today's corrected service/grade/company.
  * This guard runs after the ordinary dependency locks and before any ledger writes. */
-async function assertInformationLeavePeriodTx(tx:Tx,asOf:string,scope:{employmentIds?:readonly string[];companyIds?:readonly string[];gradeIds?:readonly string[]}={}){
+export async function assertInformationLeavePeriodTx(tx:Tx,asOf:string,scope:{employmentIds?:readonly string[];companyIds?:readonly string[];gradeIds?:readonly string[]}={}){
  const [protectedPeriod]=await tx.select({id:employment.id}).from(employment).where(and(
   scope.employmentIds!==undefined?(scope.employmentIds.length?inArray(employment.id,[...scope.employmentIds]):sql`false`):undefined,
   scope.companyIds?.length?inArray(employment.companyId,[...scope.companyIds]):undefined,
@@ -5975,8 +6022,12 @@ async function assertInformationLeavePeriodTx(tx:Tx,asOf:string,scope:{employmen
  * Read-only previews do not acquire employment-exclusive ownership. */
 async function lockLeaveCohortDependenciesTx(tx: Tx, ctx: SessionContext, scope: {
   employmentIds?: readonly string[]; companyIds?: readonly string[]; gradeIds?: readonly string[];
-}, writes = true): Promise<void> {
-  await lockAccessConfigurationTx(tx, ctx.tenantId);
+}, writes = true, snapshot = false): Promise<void> {
+  // A preview (dry run) in its own READ ONLY REPEATABLE READ transaction reads one consistent snapshot of the
+  // configuration, the access rules and every employee, and the database refuses any write it might attempt; it
+  // takes no tenant lock at all, so a long preview never holds up an Access writer or a leave writer.
+  if (!writes && snapshot) return;
+  await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
   if (!writes) return;
   const ids = scope.employmentIds?.slice(), companies = scope.companyIds?.slice(), grades = scope.gradeIds?.slice();
@@ -5997,15 +6048,28 @@ async function lockLeaveCohortDependenciesTx(tx: Tx, ctx: SessionContext, scope:
 /** Exported for the Assistant's leave-change review (ADR-0151), which takes this same lock before comparing
  *  the reviewed values, so the comparison and the native write see one state. */
 export async function lockLeaveRequestDependenciesTx(tx: Tx, ctx: SessionContext, requestId: string): Promise<void> {
-  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await readLeaveRequestWithDependenciesTx(tx, ctx, requestId, () =>
+    tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
+      .where(eq(leaveRequest.id, requestId)).limit(1));
+}
+
+async function readLeaveRequestWithDependenciesTx<T extends { employmentId: string }>(
+  tx: Tx, ctx: SessionContext, requestId: string, readCurrent: () => PromiseLike<readonly T[]>,
+  sharedAccessHeld = false,
+): Promise<T> {
+  // Stays exclusive: approvals and cancellations lock the company's payroll batches FOR UPDATE NOWAIT
+  // (app.leave_payroll_coverage, record_leave_payroll_effect) so they never wait behind the audit-chain lock.
+  // Exclusivity is what keeps two decisions, or a decision and a clocking, from meeting there; shared, they
+  // would refuse each other as busy. Revisit once the audit chain is sealed at commit.
+  if (!sharedAccessHeld) await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
-  const read = () => tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
+  const [nominated] = await tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
     .where(eq(leaveRequest.id, requestId)).limit(1);
-  const [nominated] = await read();
   if (!nominated) throw new Error('leave request not found (or not visible)');
   await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominated.employmentId]);
-  const [current] = await read();
+  const [current] = await readCurrent();
   if (!current || current.employmentId !== nominated.employmentId) throw new LeaveDependencyUnavailable();
+  return current;
 }
 
 /** Decide a leave request. With a multi-step chain (2B-1) this advances the current step and only
@@ -6113,7 +6177,7 @@ const captureLeaveDecisionContext = (ctx: SessionContext): SessionContext => ({ 
  roles: ctx.roles?.slice(), grants: ctx.grants?.map(g => ({ ...g })) });
 export async function lockReviewedLeaveDecisionSourceTx(tx: Tx, supplied: SessionContext, selection: {leaveRequestId:string;currentStepId:string|null}, mode:'pending'|'recorded') {
  const ctx = captureLeaveDecisionContext(supplied), p = structuredClone(selection);
- await lockAccessConfigurationTx(tx, ctx.tenantId);
+ await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
  await assertAssignedWorkPrincipalTx(tx, ctx);
  await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
  const nominate = async () => {
@@ -6214,19 +6278,69 @@ async function approvedLeaveCalendarPresence(
   to: string,
   fullDayOnly: boolean,
   status: 'approved' | 'pending' = 'approved',
+  pre?: CalendarWindowInputs | null,
 ): Promise<Map<string, Map<string, 'full_day' | 'part_day'>>> {
   const out = new Map<string, Map<string, 'full_day' | 'part_day'>>();
   if (empIds.length === 0) return out;
-  // Preserve the established child-date/span distinction in one INVOKER reader. A purpose-bound
-  // Home projection may compose it without granting coworkers access to the underlying leave rows.
-  const rows=await tx.execute(sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,presence
-   FROM app.leave_calendar_presence(${JSON.stringify(empIds)}::jsonb,${from}::date,${to}::date,${status})
-   WHERE (${!fullDayOnly} OR presence='full_day') ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;presence:'full_day'|'part_day'}[];
+  // The reader groups by employment and date, so each date's presence depends on that date alone. Inside a shared
+  // snapshot with a declared wider window for this one employment (db/shared-read.ts), every presence of the window is
+  // read once per status and each caller keeps its own dates and full-day filter, in the same order.
+  // Both statuses of the window come from one statement: each status is the same reader's own call. The window's rows
+  // come from the one calendar window statement (core/calendar-window-inputs.ts) whenever it holds them, or from rows a
+  // card already read for this transaction and employment (`pre`); otherwise from this reader's own window statement.
+  const wide = empIds.length === 1 ? sharedReadWindow(tx, empIds[0], from, to) : null;
+  const preloaded = empIds.length === 1 && pre?.presence && pre.answers(tx, empIds[0], from, to) ? pre.presence[status] : null;
+  const windowed = preloaded ?? (wide && !stagedHomeReads() ? await sharedCalendarWindowInputs(tx, empIds[0], wide)
+    .then(inputs => inputs.presence && inputs.answers(tx, empIds[0], from, to) ? inputs.presence[status] : null).catch(() => null) : null);
+  const all = windowed ?? (wide ? await sharedSnapshotValue(tx, 'leaveCalendarPresence|' + empIds[0] + '|' + wide.from + '|' + wide.to,
+    () => leaveCalendarPresenceWindowRows(tx, empIds[0], wide.from, wide.to)).then(rows => rows[status]).catch(() => null) : null);
+  const rows = all ? all.filter(row => row.date >= from && row.date <= to && (!fullDayOnly || row.presence === 'full_day'))
+    : await leaveCalendarPresenceRows(tx, empIds, from, to, fullDayOnly, status);
   for(const row of rows){
    let dates=out.get(row.employmentId);if(!dates)out.set(row.employmentId,(dates=new Map()));
    dates.set(row.date,row.presence);
   }
   return out;
+}
+
+async function leaveCalendarPresenceRows(tx: Tx, empIds: string[], from: string, to: string, fullDayOnly: boolean, status: 'approved' | 'pending') {
+  // Preserve the established child-date/span distinction in one INVOKER reader. A purpose-bound
+  // Home projection may compose it without granting coworkers access to the underlying leave rows.
+  return await tx.execute(sql`SELECT employment_id::text AS "employmentId",on_date::text AS date,presence
+   FROM app.leave_calendar_presence(${JSON.stringify(empIds)}::jsonb,${from}::date,${to}::date,${status})
+   WHERE (${!fullDayOnly} OR presence='full_day') ORDER BY employment_id,on_date`) as unknown as {employmentId:string;date:string;presence:'full_day'|'part_day'}[];
+}
+
+/** leaveCalendarPresenceRows as one jsonb array inside a bundled statement (the Home greeting's own facts,
+ *  docs/adr/2026-11-10-home-request-read-scope.md decision 13): the same reader call, filter, projection and order. */
+export function leaveCalendarPresenceRowsJsonSql(empIds: string[], from: string, to: string, fullDayOnly: boolean, status: 'approved' | 'pending' = 'approved'): SQL {
+  return sql`(SELECT coalesce(jsonb_agg(jsonb_build_object('employmentId',employment_id::text,'date',on_date::text,'presence',presence) ORDER BY employment_id,on_date),'[]'::jsonb)
+   FROM app.leave_calendar_presence(${JSON.stringify(empIds)}::jsonb,${from}::date,${to}::date,${status})
+   WHERE (${!fullDayOnly} OR presence='full_day'))`;
+}
+/** approvedLeavePresenceByEmploymentTx's map over rows read by leaveCalendarPresenceRowsJsonSql (fullDayOnly false,
+ *  approved), built by the same loop. A row in another form refuses rather than decoding to a nearby value. */
+export function approvedLeavePresenceFromRows(value: unknown): Map<string, Map<string, 'full_day' | 'part_day'>> {
+  if (!Array.isArray(value)) throw new Error('Bundled leave presence is not a row array.');
+  const out = new Map<string, Map<string, 'full_day' | 'part_day'>>();
+  for (const raw of value as { employmentId: unknown; date: unknown; presence: unknown }[]) {
+    if (typeof raw.employmentId !== 'string' || typeof raw.date !== 'string' || (raw.presence !== 'full_day' && raw.presence !== 'part_day'))
+      throw new Error('A bundled leave presence row is malformed.');
+    let dates = out.get(raw.employmentId); if (!dates) out.set(raw.employmentId, (dates = new Map()));
+    dates.set(raw.date, raw.presence);
+  }
+  return out;
+}
+
+async function leaveCalendarPresenceWindowRows(tx: Tx, employmentId: string, from: string, to: string) {
+  const ids = JSON.stringify([employmentId]);
+  const rows = await tx.execute(sql`SELECT status,employment_id::text AS "employmentId",on_date::text AS date,presence FROM (
+   SELECT 'approved' AS status,p.*,1 AS part FROM app.leave_calendar_presence(${ids}::jsonb,${from}::date,${to}::date,'approved') p
+   UNION ALL
+   SELECT 'pending' AS status,p.*,2 AS part FROM app.leave_calendar_presence(${ids}::jsonb,${from}::date,${to}::date,'pending') p
+  ) both_statuses ORDER BY part,employment_id,on_date`) as unknown as {status:'approved'|'pending';employmentId:string;date:string;presence:'full_day'|'part_day'}[];
+  const strip = (status: 'approved' | 'pending') => rows.filter(row => row.status === status).map(({ employmentId, date, presence }) => ({ employmentId, date, presence }));
+  return { approved: strip('approved'), pending: strip('pending') };
 }
 
 /** Existing Attendance/Payroll consumers exclude partial days from full-day absence relief. */
@@ -6235,19 +6349,20 @@ async function approvedLeaveDates(tx: Tx, empIds: string[], from: string, to: st
   return new Map([...presence].map(([id, dates]) => [id, new Set(dates.keys())]));
 }
 
-/** Privacy-minimal calendar presence, including partial days. No leave type, reason or medical facts. */
-export function approvedLeavePresenceByEmploymentTx(tx: Tx, employmentIds: string[], from: string, to: string) {
-  return approvedLeaveCalendarPresence(tx, employmentIds, from, to, false);
+/** Privacy-minimal calendar presence, including partial days. No leave type, reason or medical facts. `pre`: the
+ *  calendar window a Home card already read for this transaction and employment (core/calendar-window-inputs.ts). */
+export function approvedLeavePresenceByEmploymentTx(tx: Tx, employmentIds: string[], from: string, to: string, pre?: CalendarWindowInputs | null) {
+  return approvedLeaveCalendarPresence(tx, employmentIds, from, to, false, 'approved', pre);
 }
 
 /** Bounded calendar statuses through the same child-date/span semantics as approved absence.
  * Pending dates never relieve absence. No reason, type, medical fact or approval body is selected.
  * The caller must establish the permitted subjects before entering this transaction helper. */
-export async function leaveCalendarPresenceByEmploymentTx(tx:Tx,employmentIds:string[],from:string,to:string){
+export async function leaveCalendarPresenceByEmploymentTx(tx:Tx,employmentIds:string[],from:string,to:string,pre?:CalendarWindowInputs|null){
  calendarWindowDates(from,to);
  const [approved,pending]=await Promise.all([
-  approvedLeaveCalendarPresence(tx,employmentIds,from,to,false),
-  approvedLeaveCalendarPresence(tx,employmentIds,from,to,false,'pending'),
+  approvedLeaveCalendarPresence(tx,employmentIds,from,to,false,'approved',pre),
+  approvedLeaveCalendarPresence(tx,employmentIds,from,to,false,'pending',pre),
  ]);
  return {approved,pending};
 }
@@ -6259,7 +6374,12 @@ export async function leaveCalendarPresenceByEmploymentTx(tx:Tx,employmentIds:st
 export async function nextApprovedLeavePresenceTx(tx:Tx,employmentId:string,today:string):Promise<{
  requestId:string;date:string;duration:'full_day'|'part_day';
 }|null>{
- const rows=await tx.execute(sql`
+ const rows=await tx.execute(nextApprovedLeavePresenceSql(employmentId,today));
+ return (rows as unknown as {requestId:string;date:string;duration:'full_day'|'part_day'}[])[0]??null;
+}
+/** The statement above, also carried unchanged inside the bundled own leave inputs (core/own-leave-inputs.ts). */
+export function nextApprovedLeavePresenceSql(employmentId:string,today:string){
+ return sql`
   SELECT candidate."requestId",candidate.date,candidate.duration FROM (
    SELECT ${leaveRequest.id} AS "requestId",${leaveRequestDate.leaveDate}::text AS date,
     CASE WHEN ${leaveRequest.durationType}='full_day' THEN 'full_day' ELSE 'part_day' END AS duration
@@ -6272,8 +6392,7 @@ export async function nextApprovedLeavePresenceTx(tx:Tx,employmentId:string,toda
    FROM ${leaveRequest} WHERE ${leaveRequest.employmentId}=${employmentId}::uuid AND ${leaveRequest.status}='approved'
     AND ${leaveRequest.endDate}>=${today}::date
     AND NOT EXISTS(SELECT 1 FROM ${leaveRequestDate} WHERE ${leaveRequestDate.leaveRequestId}=${leaveRequest.id})
-  ) candidate ORDER BY candidate.date,candidate."requestId" LIMIT 1`);
- return (rows as unknown as {requestId:string;date:string;duration:'full_day'|'part_day'}[])[0]??null;
+  ) candidate ORDER BY candidate.date,candidate."requestId" LIMIT 1`;
 }
 
 /** ADR-0068 §4A (exported for the span consumers in attendance/roster/read). See approvedLeaveDates. */
@@ -7070,7 +7189,7 @@ export async function decideLeaveCancellation(
   existingTx?: Tx,
 ) {
   return withLeaveTx(ctx, existingTx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     // r301 hand-fix (verifier defect 1) — LOCKS, leave row first, then the cancellation: the order
     // requestLeaveCancellation and adminCancelLeave take them in, so the three cannot deadlock. Two approvers
@@ -7797,49 +7916,63 @@ export async function adminCancelLeave(
  * {before, after, diff} for the audit trail (CLAUDE.md substrate discipline).
  */
 export async function editLeaveRequest(
-  ctx: SessionContext,
-  p: {
-    leaveRequestId: string;
-    leaveTypeId: string;
-    startDate: string;
-    endDate: string;
-    reason?: string;
-    employeeRemark?: string;
-    durationType?: LeaveDurationType;
-    fromTime?: string;
-    toTime?: string;
-    today?: string;
-  },
+  ctx: SessionContext, p: LeaveEditInput,
 ): Promise<{ leaveRequestId: string; days: number }> {
-  const { leaveRequestId, days } = await withTenant(ctx, (tx) => editLeaveRequestTx(tx, ctx, p));
-  return { leaveRequestId, days };
+  const {leaveRequestId, days} = await withTenant(ctx, async tx => {
+    if (ctx.userId && ctx.personId && !ctx.agent && !isAdmin(ctx)) {
+      // This owned transaction edits a pending request and its approval steps. Access
+      // configuration writers still exclude it, and the subject dependency remains exclusive.
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + ctx.tenantId},0))`);
+      const [principal] = await tx.execute<{current: boolean}>(sql`
+        select (app.principal_snapshot_current() and app.is_self_person(${ctx.personId}::uuid)) as current
+      `);
+      if (principal?.current !== true) throw new LeaveEditNotAllowedError('only the employee who applied can edit their leave');
+      return editLeaveRequestInTransaction(tx, ctx, p, true);
+    }
+    return editLeaveRequestTx(tx, ctx, p);
+  });
+  return {leaveRequestId, days};
 }
 
-/** editLeaveRequest in the caller's transaction (ADR-0151): returns the edited event id for the Assistant's
- *  leave-edit review receipt. Same gates, same writes. */
-export async function editLeaveRequestTx(
-  tx: Tx,
-  ctx: SessionContext,
-  p: {
-    leaveRequestId: string;
-    leaveTypeId: string;
-    startDate: string;
-    endDate: string;
-    reason?: string;
-    employeeRemark?: string;
-    durationType?: LeaveDurationType;
-    fromTime?: string;
-    toTime?: string;
-    today?: string;
-  },
-): Promise<{ leaveRequestId: string; days: number; eventId: string }> {
-  {
-    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
-    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
-    if (!req) throw new Error('leave request not found (or not visible)');
+type LeaveEditInput = {
+  leaveRequestId: string;
+  leaveTypeId: string;
+  startDate: string;
+  endDate: string;
+  reason?: string;
+  employeeRemark?: string;
+  durationType?: LeaveDurationType;
+  fromTime?: string;
+  toTime?: string;
+  today?: string;
+};
 
-    // Subject-only: RLS is symmetric so the creator-only rule is enforced here (mirrors requestLeaveCancellation).
-    const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
+/** Caller-owned transaction used by the Assistant's reviewed action. */
+export function editLeaveRequestTx(tx: Tx, ctx: SessionContext, p: LeaveEditInput) {
+  return editLeaveRequestInTransaction(tx, ctx, p, false);
+}
+
+async function editLeaveRequestInTransaction(
+  tx: Tx, ctx: SessionContext, p: LeaveEditInput, sharedAccessHeld: boolean,
+): Promise<{leaveRequestId: string; days: number; eventId: string}> {
+  {
+    const row = await readLeaveRequestWithDependenciesTx(tx, ctx, p.leaveRequestId, () => tx
+      .select({
+        request: leaveRequest,
+        employmentId: leaveRequest.employmentId,
+        subjectPersonId: employment.personId,
+        hasDateRows: sql<boolean>`exists(select 1 from ${leaveRequestDate}
+          where ${leaveRequestDate.leaveRequestId} = ${leaveRequest.id})`,
+        hasApprovalSteps: sql<boolean>`exists(select 1 from ${leaveApprovalStep}
+          where ${leaveApprovalStep.leaveRequestId} = ${leaveRequest.id})`,
+      })
+      .from(leaveRequest)
+      .leftJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .where(eq(leaveRequest.id, p.leaveRequestId))
+      .limit(1), sharedAccessHeld);
+
+    // A visible request with a hidden or different subject still fails the creator-only rule.
+    const { request: req, subjectPersonId } = row;
     if (!ctx.personId || ctx.personId !== subjectPersonId) {
       throw new LeaveEditNotAllowedError('only the employee who applied can edit their leave');
     }
@@ -7851,12 +7984,7 @@ export async function editLeaveRequestTx(
     if (req.parentGroupId != null) {
       throw new LeaveEditNotAllowedError('grouped (emergency / split) leave cannot be edited here');
     }
-    const [hasDateRows] = await tx
-      .select({ id: leaveRequestDate.id })
-      .from(leaveRequestDate)
-      .where(eq(leaveRequestDate.leaveRequestId, req.id))
-      .limit(1);
-    if (hasDateRows) {
+    if (row.hasDateRows) {
       throw new LeaveEditNotAllowedError('per-date-approval leave cannot be edited here');
     }
 
@@ -7891,6 +8019,7 @@ export async function editLeaveRequestTx(
         // Configurable Negative Leave Balance Validation (0ef0defd): submit/edit-time balance guard flag —
         // enforced below (excluding this very request from its own pending reservation). false ⇒ block.
         allowNegativeBalance: leaveType.allowNegativeBalance,
+        maxNegativeBalance: leaveType.maxNegativeBalance,
         // Allow Unpaid Leave (a7fab30b): the edit re-splits paid/unpaid from scratch. An edit can change the
         // type, the dates, or the duration, any of which moves the boundary — carrying the old split forward
         // would leave the request claiming unpaid days it no longer has (or paying for days it cannot cover).
@@ -7971,13 +8100,14 @@ export async function editLeaveRequestTx(
     // is empty either way.
     const editMinAdvance = lt.minAdvanceDays ?? null;
     const editDayType = resolveAdvanceNoticeDayType(lt.minAdvanceDayType);
+    let editNoticeSchedule: LeaveResolvedSchedule | undefined;
     let editNoticeRotation: LeaveResolvedSchedule['rotationKindOn'];
     let editNoticeRoster: number[] | undefined;
     let editNoticeHolidays: Set<string> | undefined;
     if (!isAdmin(ctx) && editMinAdvance != null && editDayType === 'working_days' && p.startDate > today) {
-      const noticeSchedule = await resolveSchedule(tx, req.employmentId);
-      editNoticeRoster = [...new Set([...noticeSchedule.workingDaysIso,...noticeSchedule.halfDaysIso])];
-      editNoticeRotation = noticeSchedule.rotationKindOn;
+      editNoticeSchedule = await resolveSchedule(tx, req.employmentId);
+      editNoticeRoster = [...new Set([...editNoticeSchedule.workingDaysIso, ...editNoticeSchedule.halfDaysIso])];
+      editNoticeRotation = editNoticeSchedule.rotationKindOn;
       editNoticeHolidays = await resolveHolidaySet(tx, req.employmentId, today, p.startDate);
     }
     if (
@@ -8017,10 +8147,13 @@ export async function editLeaveRequestTx(
     let workingDayWeight: number | null = null;
     if (lt.counting === 'working_days') {
       const hols = await resolveHolidaySet(tx, req.employmentId, p.startDate, p.endDate);
-      const sched = await resolveSchedule(tx, req.employmentId);
+      const sched = editNoticeSchedule ?? await resolveSchedule(tx, req.employmentId);
       const incl = normalizeDayTypeInclusion(lt.dayTypeInclusion);
-      workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
-      workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
+      if (durationType === 'full_day') {
+        workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
+      } else {
+        workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
+      }
     }
 
     let days: number;
@@ -8036,26 +8169,7 @@ export async function editLeaveRequestTx(
         days = 0.5;
       }
       // AM/PM same-date conflict guard, EXCLUDING this very request (an edit must not clash with itself).
-      const existing = await tx
-        .select({ durationType: leaveRequest.durationType })
-        .from(leaveRequest)
-        .where(
-          and(
-            eq(leaveRequest.employmentId, req.employmentId),
-            eq(leaveRequest.startDate, p.startDate),
-            eq(leaveRequest.endDate, p.endDate),
-            inArray(leaveRequest.status, ['pending', 'approved']),
-            sql`${leaveRequest.id} <> ${req.id}`,
-          ),
-        );
-      for (const e of existing) {
-        const conflicts =
-          e.durationType === durationType ||
-          e.durationType === 'full_day' ||
-          e.durationType === 'hourly' ||
-          durationType === 'hourly';
-        if (conflicts) throw new Error('This date already has a conflicting leave request');
-      }
+      await assertNoLeaveSlotConflictTx(tx,{employmentId:req.employmentId,startDate:p.startDate,endDate:p.endDate,durationType,excludeRequestId:req.id});
     }
 
     // Duplicate Leave Application Restriction (d5e51c34): mirror of the requestLeave guard, EXCLUDING this very
@@ -8097,30 +8211,30 @@ export async function editLeaveRequestTx(
     } else if (lt.allowNegativeBalance === false) {
       const available = await availableLeaveBalance(tx, req.employmentId, p.leaveTypeId, req.id);
       if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
-    } else if (lt.allowNegativeBalance === true) {
+    } else if (lt.allowNegativeBalance === true && lt.maxNegativeBalance != null) {
       // bc512dc3 — the floor applies to an EDIT too, or an application refused at submission could be
       // resubmitted as an edit and land past the limit. Excludes this request's own reservation, exactly
       // as the branch above does.
       const available = await availableLeaveBalance(tx, req.employmentId, p.leaveTypeId, req.id);
-      await enforceMaxNegativeBalance(tx, { leaveTypeId: p.leaveTypeId, available, requestedDays: days });
+      enforceMaxNegativeBalance({ name: lt.name, maxNegativeBalance: lt.maxNegativeBalance }, { available, requestedDays: days });
     }
 
     // Document + remark gates (identical to requestLeave). hasDocument = an attachment already exists on this
     // request (edit does not re-upload; changing to a doc-required type with no attachment is refused).
-    const [att] = await tx
-      .select({ id: leaveRequestAttachment.id })
-      .from(leaveRequestAttachment)
-      .where(eq(leaveRequestAttachment.leaveRequestId, req.id))
-      .limit(1);
-    const hasDocument = !!att;
-    if (lt.requiresDocument && !hasDocument) {
-      const after = lt.mandatoryAfterDays;
-      if (after == null || after === 0 || days > after) {
-        throw new LeaveDocumentRequiredError(lt.name, after ?? undefined);
-      }
+    const mandatoryAfter = lt.mandatoryAfterDays;
+    if (lt.requiresDocument && (mandatoryAfter == null || mandatoryAfter === 0 || days > mandatoryAfter)) {
+      const [attachment] = await tx
+        .select({ id: leaveRequestAttachment.id })
+        .from(leaveRequestAttachment)
+        .where(eq(leaveRequestAttachment.leaveRequestId, req.id))
+        .limit(1);
+      if (!attachment) throw new LeaveDocumentRequiredError(lt.name, mandatoryAfter ?? undefined);
     }
     const employeeRemark = p.employeeRemark?.trim() || null;
     if (lt.employeeRemarkRequired && !employeeRemark) throw new LeaveRemarkRequiredError(lt.name);
+
+    // Resolve the new chain under the existing subject/configuration locks before writing any rows.
+    const approvalSteps = await prepareApprovalSteps(tx, ctx.tenantId, req.id, req.employmentId, p.leaveTypeId, days);
 
     // ── Apply the edit ───────────────────────────────────────────────────────────────────────────────────
     const before = {
@@ -8153,9 +8267,9 @@ export async function editLeaveRequestTx(
       .where(eq(leaveRequest.id, req.id));
 
     // Regenerate the approval-step chain from scratch — the day count / leave type may now resolve a different
-    // scoped chain. Only pending steps existed (the request is pending), so deleting + regenerating is safe.
-    await tx.delete(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, req.id));
-    await generateApprovalSteps(tx, ctx.tenantId, req.id, req.employmentId, p.leaveTypeId, days);
+    // scoped chain. A previous step may already have approved the old version of the pending request.
+    if (row.hasApprovalSteps) await tx.delete(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, req.id));
+    if (approvalSteps.length > 0) await tx.insert(leaveApprovalStep).values(approvalSteps);
 
     const after = {
       leaveTypeId: p.leaveTypeId,
@@ -8801,14 +8915,16 @@ function yearOpenMarkerCond(yearStart: string, yearEnd: string) {
 export async function openLeaveYear(
   ctx: SessionContext,
   p: { year: number; leaveTypeIds?: string[]; employmentIds?: string[]; dryRun?: boolean },
+  run?: LeaveCohortStepRun,
 ): Promise<OpenLeaveYearResult> {
   const scopeTypeIds = (p.leaveTypeIds ?? []).filter(Boolean);
   const scopeEmpIds = (p.employmentIds ?? []).filter(Boolean);
   const dryRun = p.dryRun === true;
   p = { ...p, leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  return withTenant(ctx, async (tx): Promise<OpenLeaveYearResult> => {
-    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds.length ? scopeEmpIds : undefined }, !dryRun);
+  const snapshot = dryRun && !run?.tx;
+  return withLeaveTx(ctx, run?.tx, async (tx): Promise<OpenLeaveYearResult> => {
+    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds.length ? scopeEmpIds : undefined }, !dryRun, snapshot);
     const yearStart = `${p.year}-01-01`;
     await assertInformationLeavePeriodTx(tx,yearStart,{employmentIds:scopeEmpIds.length?scopeEmpIds:undefined});
     // r193 — the leave year is a WINDOW now, not the instant at its left edge. See `effectiveGrantStart`.
@@ -9270,17 +9386,20 @@ export async function openLeaveYear(
     // `leave-generation.run` event on the commit path (core/leave-generation.ts), carrying the scope this
     // event has no field for.
     if (!dryRun) {
-      await appendEvent(tx, {
+      const payload = { year: p.year, granted, skipped, forfeits };
+      // A batch of a background run hands the payload over; the run appends one event for the whole cohort.
+      if (run) run.onSummary(payload);
+      else await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'leave-year',
         aggregateId: ctx.tenantId,
         eventType: 'leave-year.opened',
         actor: actorOf(ctx),
-        payload: { year: p.year, granted, skipped, forfeits },
+        payload,
       });
     }
     return { granted, skipped, forfeits, packBlocked, rows };
-  });
+  }, snapshot);
 }
 
 /** A non-granting log line — every one of these outcomes moves no days, so the four numbers are fixed. */
@@ -10078,6 +10197,7 @@ export async function accrueEarnedLeave(
     employmentIds?: string[];
     dryRun?: boolean;
   },
+  run?: LeaveCohortStepRun,
 ): Promise<EarnedAccrualResult> {
   const scopeCompanyIds = (p.companyIds ?? []).filter(Boolean);
   const scopeGradeIds = (p.gradeIds ?? []).filter(Boolean);
@@ -10089,9 +10209,12 @@ export async function accrueEarnedLeave(
   const accrualPeriod = Number(p.asOf.slice(0, 4));
   p = { ...p, companyIds: p.companyIds?.slice(), gradeIds: p.gradeIds?.slice(), leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  return withTenant(ctx, async (tx): Promise<EarnedAccrualResult> => {
-    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds === null ? undefined : scopeEmpIds, companyIds: scopeCompanyIds, gradeIds: scopeGradeIds }, !dryRun);
-    await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:scopeEmpIds===null?undefined:scopeEmpIds,companyIds:scopeCompanyIds,gradeIds:scopeGradeIds});
+  // The run's once-per-run reads, when the caller made them for this same date and type scope.
+  const pre = run?.preload && run.preload.asOf === p.asOf && run.preload.leaveTypeIds.join(',') === scopeTypeIds.join(',') ? run.preload : undefined;
+  const snapshot = dryRun && !run?.tx;
+  return withLeaveTx(ctx, run?.tx, async (tx): Promise<EarnedAccrualResult> => {
+    await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds === null ? undefined : scopeEmpIds, companyIds: scopeCompanyIds, gradeIds: scopeGradeIds }, !dryRun, snapshot);
+    if (!pre?.periodChecked) await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:scopeEmpIds===null?undefined:scopeEmpIds,companyIds:scopeCompanyIds,gradeIds:scopeGradeIds});
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
 
     // ── feedback cf9dcb98 — the empty-preview explanation. Everything below this comment runs ONLY where
@@ -10150,19 +10273,7 @@ export async function accrueEarnedLeave(
     // `role` MUST ride in the select. Without it every row is unclassified to `leaveTypeIs`, the predicate
     // silently falls back to the code, and the reporter's `AL` "*Annual Leave" — switched on by role — is
     // declined exactly as before. Nothing would fail; the sweep would just stay wrong.
-    const activeTypes = await tx
-      // Leave Year Type override (e1a51aea): yearCycleOverride is selected so the per-type effective cycle
-      // can be resolved below (resolveLeaveYearCycle) — null on every pre-existing row ⇒ company cycle.
-      // 9816a5ad step 2: the type's own rules ride along (see leaveTypeRuleColumns).
-      .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
-      .from(leaveType)
-      .where(
-        and(
-          isNull(leaveType.archivedAt),
-          // Leave-Type scope filter (feedback 2c7c6385). Empty ⇒ every active type, narrowed below.
-          scopeTypeIds.length ? inArray(leaveType.id, scopeTypeIds) : undefined,
-        ),
-      );
+    const activeTypes = pre?.activeTypes ?? await readEarnedAccrualActiveTypesTx(tx, scopeTypeIds);
     const types = activeTypes.filter((t) => isEarnedAccrualType(t));
     const typeIds = types.map((t) => t.id);
     if (typeIds.length === 0) {
@@ -10228,16 +10339,8 @@ export async function accrueEarnedLeave(
     // The membership test is deliberately KEPT — a type with nothing configured has no days to accrue and
     // was never swept here. It also decides which ledger rows are read back as "already accrued", so
     // widening it would have this sweep reasoning about a type it must not touch.
-    const templateConfigured = await leaveTypeIdsWithTemplatesAt(tx, p.asOf);
-    const earnedTypeIds = types
-      .filter((t) => {
-        if (!templateConfigured.has(t.id)) return false;
-        // bc36c768 — THE NOT-CONFIGURED GATE, ahead of method resolution. An unconfigured type is not an
-        // earned type and is not a lump type; it is a type that grants nothing until HR configures it.
-        if (isAccrualUnconfigured(t)) return false;
-        return isEarnedMethod(t.accrualMethod);
-      })
-      .map((t) => t.id);
+    const templateConfigured = pre?.templateConfigured ?? await leaveTypeIdsWithTemplatesAt(tx, p.asOf);
+    const earnedTypeIds = earnedAccrualTypeIdsOf(types, templateConfigured);
     if (earnedTypeIds.length === 0) {
       // feedback cf9dcb98 — EXIT 2, partitioned by the SAME three conditions the filter above applies, in
       // the same order, so the sentence and the gate can never disagree about which one bit.
@@ -10358,7 +10461,9 @@ export async function accrueEarnedLeave(
     // dates the same question `templateConfigured` above asked, so both answer for the same moment. The
     // BAND is still picked per (employee, type) at that pair's own cycle-start service length, below —
     // dating the eligibility and dating the band are different questions and only the first one is `asOf`.
-    const templates = await buildTemplateEntitlementResolver(tx, {
+    // A run's preloaded resolver was built for every employee it may reach and the same earned types: each
+    // employee's band depends only on that employee and the configuration, so it answers exactly as this one.
+    const templates = pre?.resolver ?? await buildTemplateEntitlementResolver(tx, {
       employmentIds: empIds,
       leaveTypeIds: earnedTypeIds,
       asOf: p.asOf,
@@ -10723,27 +10828,30 @@ export async function accrueEarnedLeave(
     // dryRun (feedback 2c7c6385): a PREVIEW must leave no trace — skip the audit event entirely. A real
     // run appends ONE summary event; the ledger rows are the per-item audit (deliberate skip, as openLeaveYear).
     if (!dryRun) {
-      await appendEvent(tx, {
+      // feedback 2c7c6385 (product decision 4): stamp the scope so a manual scoped run is distinguishable
+      // from the unscoped monthly cron in the audit log. Empty arrays ⇒ "all" on that axis. IDs only (no
+      // PII — see test/event-payload-pii-guard.test.ts). A batch of a background run hands the payload
+      // over; the run appends one event carrying the run's own scope.
+      const payload = {
+        asOf: p.asOf,
+        granted,
+        forfeits,
+        companyIds: scopeCompanyIds,
+        gradeIds: scopeGradeIds,
+        leaveTypeIds: scopeTypeIds,
+        // r301 — so a run Generate Entitlement triggered for named employees does not read, in the audit
+        // log, as an unscoped sweep of everyone. `[]` ⇒ unscoped, as on the axes above (an EMPTY employee
+        // scope never reaches this line: it has no employments and returns at exit 3).
+        employmentIds: scopeEmpIds ?? [],
+      };
+      if (run) run.onSummary(payload);
+      else await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'leave-year',
         aggregateId: ctx.tenantId,
         eventType: 'leave.earned-accrual.run',
         actor: actorOf(ctx),
-        // feedback 2c7c6385 (product decision 4): stamp the scope so a manual scoped run is distinguishable
-        // from the unscoped monthly cron in the audit log. Empty arrays ⇒ "all" on that axis. IDs only (no
-        // PII — see test/event-payload-pii-guard.test.ts).
-        payload: {
-          asOf: p.asOf,
-          granted,
-          forfeits,
-          companyIds: scopeCompanyIds,
-          gradeIds: scopeGradeIds,
-          leaveTypeIds: scopeTypeIds,
-          // r301 — so a run Generate Entitlement triggered for named employees does not read, in the audit
-          // log, as an unscoped sweep of everyone. `[]` ⇒ unscoped, as on the axes above (an EMPTY employee
-          // scope never reaches this line: it has no employments and returns at exit 3).
-          employmentIds: scopeEmpIds ?? [],
-        },
+        payload,
       });
     }
     // feedback cf9dcb98 — EXIT 4, the last one: the configuration is present, the population is present,
@@ -10781,10 +10889,29 @@ export async function accrueEarnedLeave(
       archivedHint = await archivedHintFor(scopedTypeNames);
     }
     return { granted, forfeits, breakdown, packBlocked, emptyReason, archivedHint, earnedToDateTotal, pairs };
-  });
+  }, snapshot);
+}
+
+/** Earned accrual's scoped active leave types, with the type's own rules (the one shared shape): read by the
+ * engine, or once per run by `readEarnedAccrualRunInputsTx`. */
+function readEarnedAccrualActiveTypesTx(tx: Tx, scopeTypeIds: readonly string[]) {
+  return tx
+    // Leave Year Type override (e1a51aea): yearCycleOverride is selected so the per-type effective cycle
+    // can be resolved below (resolveLeaveYearCycle) — null on every pre-existing row ⇒ company cycle.
+    // 9816a5ad step 2: the type's own rules ride along (see leaveTypeRuleColumns).
+    .select({ id: leaveType.id, code: leaveType.code, role: leaveType.role, name: leaveType.name, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
+    .from(leaveType)
+    .where(
+      and(
+        isNull(leaveType.archivedAt),
+        // Leave-Type scope filter (feedback 2c7c6385). Empty ⇒ every active type, narrowed below.
+        scopeTypeIds.length ? inArray(leaveType.id, [...scopeTypeIds]) : undefined,
+      ),
+    );
 }
 
 // ── Entitlement-correction recalculation (feedback 49809272) ───────────────────────────────────────
+
 /**
  * Pure per-employee current-cycle entitlement projection — the shared kernel used by BOTH recalc paths:
  * the configuration-triggered `reprojectEntitlementForLeaveType` (49809272) and the profile-triggered
@@ -10996,6 +11123,26 @@ const a2cSupersededReasonCond = () =>
     ]),
   );
 
+/** Where the background A2C job collects each corrected employee's history row and event (see `sink` below). */
+export type A2cRecalcSink = {
+  corrected(audit: typeof leaveEntitlementRecalcAudit.$inferInsert, event: Parameters<typeof appendEvent>[1]): void;
+};
+/** The employments an A2C re-projection of this type reaches, read the way `reprojectA2cEntitlement` reads them
+ * (same window, same first-year predicate), with no lock: the background job's batches, each of which the engine
+ * then re-reads and re-filters under its locks. `isA2c` false: the type is not on a2c, so the engine is a no-op. */
+export async function a2cReprojectionCandidatesTx(tx: Tx, p: { leaveTypeId: string; asOf: string; yearCycleOverrideAs?: string | null }): Promise<{ isA2c: boolean; employmentIds: string[] }> {
+  const [stored] = await tx.select({ code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride }).from(leaveType)
+    .where(and(eq(leaveType.id, p.leaveTypeId), isNull(leaveType.archivedAt))).limit(1);
+  const type = stored && p.yearCycleOverrideAs !== undefined ? { ...stored, yearCycleOverride: p.yearCycleOverrideAs } : stored;
+  if (!type || type.yearCycleOverride !== A2C_OVERRIDE) return { isA2c: false, employmentIds: [] };
+  const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
+  const rows = await tx.select({ employmentId: employment.id, hiredOn: employment.hiredOn }).from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .where(and(lte(employment.hiredOn, p.asOf), or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart))))
+    .orderBy(employment.id);
+  return { isA2c: true, employmentIds: rows.filter((e) => isA2cFirstYear(type.yearCycleOverride, type.code, e.hiredOn, p.asOf)).map((e) => e.employmentId) };
+}
+
 /**
  * Anniversary to Calendar — the dedicated first-year correction (feedback f3a64d90).
  *
@@ -11057,7 +11204,14 @@ export async function reprojectA2cEntitlement(
     gradeBefore?: { gradeId: string | null };
     newGradeId?: string | null;
     changeEffectiveOn?: string | null;
+    /** The background A2C job only: the Leave Year Type the save asked for, which the job's release will set
+     *  together with these corrections (draft 5036). The engine computes exactly as if the type already had it. */
+    yearCycleOverrideAs?: string | null;
   },
+  /** The background A2C job (core/leave-follow-up-worker.ts) only: each corrected employee's history row and
+   * `leave.entitlement.recalculated` event are handed here instead of being written, so the job writes them
+   * once its staged ledger rows are released together. Ordinary callers write them as before. */
+  sink?: A2cRecalcSink,
 ): Promise<{ affected: number; totalDelta: number; packBlocked: PackBlockedEmployment[] }> {
   p = { ...p, employmentIds: p.employmentIds?.slice(), ...(p.gradeBefore ? { gradeBefore: { ...p.gradeBefore } } : {}) };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
@@ -11067,12 +11221,13 @@ export async function reprojectA2cEntitlement(
   await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:protectedIds.length?protectedIds:undefined});
   const none = { affected: 0, totalDelta: 0, packBlocked: [] as PackBlockedEmployment[] };
 
-  const [type] = await tx
+  const [stored] = await tx
     // 9816a5ad step 2: the type's own rules ride along and are handed to the projection kernel below.
     .select({ id: leaveType.id, code: leaveType.code, yearCycleOverride: leaveType.yearCycleOverride, ...leaveTypeRuleColumns })
     .from(leaveType)
     .where(and(eq(leaveType.id, p.leaveTypeId), isNull(leaveType.archivedAt)))
     .limit(1);
+  const type = stored && p.yearCycleOverrideAs !== undefined ? { ...stored, yearCycleOverride: p.yearCycleOverrideAs } : stored;
   // No-op unless the type is actually on a2c today. Callers fire this on any move TO or FROM a2c; a move
   // AWAY simply hands the type back to the ordinary calendar engines from the next year-open.
   if (!type || type.yearCycleOverride !== A2C_OVERRIDE) return none;
@@ -11218,7 +11373,7 @@ export async function reprojectA2cEntitlement(
       anchorRowId ??= row.id;
     }
 
-    await tx.insert(leaveEntitlementRecalcAudit).values({
+    const auditRow = {
       tenantId: ctx.tenantId,
       employmentId: e.employmentId,
       leaveTypeId: p.leaveTypeId,
@@ -11233,8 +11388,8 @@ export async function reprojectA2cEntitlement(
       previousGradeId: p.gradeBefore ? (p.gradeBefore.gradeId ?? null) : null,
       newGradeId: p.gradeBefore ? (p.newGradeId ?? null) : null,
       ledgerId: anchorRowId,
-    });
-    await appendEvent(tx, {
+    };
+    const recalculated = {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-ledger',
       aggregateId: anchorRowId!,
@@ -11252,7 +11407,12 @@ export async function reprojectA2cEntitlement(
         reason: 'a2c_recalc',
         trigger: p.trigger,
       },
-    });
+    } satisfies Parameters<typeof appendEvent>[1];
+    if (sink) sink.corrected(auditRow, recalculated);
+    else {
+      await tx.insert(leaveEntitlementRecalcAudit).values(auditRow);
+      await appendEvent(tx, recalculated);
+    }
     affected += 1;
     totalDelta = round2(totalDelta + accrualDelta + reversal);
   }
@@ -11361,8 +11521,10 @@ export async function reprojectEntitlementForEmployment(
   const asOf = p.asOf ?? todayInKualaLumpur();
   const none = { affected: 0, totalDelta: 0 };
   const run=async(tx:Tx)=>{
+    // One employment's entitlement ledger. Its employment lock below serialises the read-recalculate-write;
+    // configuration only has to stay stable, so this shares the Access lock and waits for short holders.
     await lockAccessConfigurationTx(tx, ctx.tenantId);
-    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+    await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, []);
     // 1. Resolve the employment + its company's country/leave-cycle context.
     const readEmployment = () => tx
       .select({
@@ -11380,7 +11542,7 @@ export async function reprojectEntitlementForEmployment(
       .limit(1);
     const [emp] = await readEmployment();
     if (!emp) return none;
-    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+    await lockLeaveDependenciesWaitTx(tx, ctx.tenantId, [p.employmentId]);
     const [currentEmployment] = await readEmployment();
     if (!currentEmployment || JSON.stringify(emp) !== JSON.stringify(currentEmployment)) {
       throw new LeaveDependencyUnavailable();
@@ -11636,26 +11798,29 @@ export async function reprojectEntitlementForEmployment(
  * Sequential + best-effort per employee (log and continue): a rare admin operation, and one frozen or
  * hiccuping employment must never abort the rest of the cohort.
  */
+/** Who a leave-type cohort recalculation visits, in the order it visits them: read-only candidate resolution (no
+ * events — CLAUDE.md skip rule) with the SAME live-in-cycle window guard the granting engines use;
+ * reprojectEntitlementForEmployment re-checks it per employment anyway. Shared with the background job. */
+export async function leaveTypeCohortRecalcCandidatesTx(tx: Tx, asOf: string): Promise<string[]> {
+  const yearStart = `${asOf.slice(0, 4)}-01-01`;
+  const rows = await tx
+    .select({ id: employment.id })
+    .from(employment)
+    .where(
+      and(
+        lte(employment.hiredOn, asOf),
+        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
+      ),
+    );
+  return rows.map((r) => r.id);
+}
+
 export async function reprojectEntitlementForLeaveTypeCohort(
   ctx: SessionContext,
   p: { leaveTypeId: string; trigger: string; asOf?: string },
 ): Promise<{ employees: number; affected: number; totalDelta: number }> {
   const asOf = p.asOf ?? todayInKualaLumpur();
-  // Read-only candidate resolution (no events — CLAUDE.md skip rule). The SAME live-in-cycle window guard
-  // the granting engines use; reprojectEntitlementForEmployment re-checks it per employment anyway.
-  const empIds = await withTenant(ctx, async (tx) => {
-    const yearStart = `${asOf.slice(0, 4)}-01-01`;
-    const rows = await tx
-      .select({ id: employment.id })
-      .from(employment)
-      .where(
-        and(
-          lte(employment.hiredOn, asOf),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
-        ),
-      );
-    return rows.map((r) => r.id);
-  });
+  const empIds = await withTenant(ctx, (tx) => leaveTypeCohortRecalcCandidatesTx(tx, asOf));
 
   let affected = 0;
   let totalDelta = 0;
@@ -11900,11 +12065,12 @@ export function resolveCarryBreakdown(p: {
  * convention in openLeaveYear/accrueEarnedLeave (ledger rows are the per-item audit). One summary
  * DomainEvent is appended below.
  */
-export async function expireCarriedLeave(ctx: SessionContext, p: { today: string }) {
+export async function expireCarriedLeave(ctx: SessionContext, p: { today: string }, run?: LeaveCohortStepRun) {
   p = { ...p };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  return withTenant(ctx, async (tx) => {
-    await lockLeaveCohortDependenciesTx(tx, ctx, {});
+  const batch = run?.employmentIds?.slice();
+  return withLeaveTx(ctx, run?.tx, async (tx) => {
+    await lockLeaveCohortDependenciesTx(tx, ctx, batch ? { employmentIds: batch } : {});
     const todayYear = Number(p.today.slice(0, 4));
     const annualTypes = await tx
       // 9816a5ad step 2: the type's own carry-forward rules drive both the sweepable-year boundary and the
@@ -11925,7 +12091,8 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
-      .where(and(lte(employment.hiredOn, p.today), or(isNull(employment.terminatedOn), gte(employment.terminatedOn, `${todayYear}-01-01`))));
+      .where(and(lte(employment.hiredOn, p.today), or(isNull(employment.terminatedOn), gte(employment.terminatedOn, `${todayYear}-01-01`)),
+        batch ? (batch.length ? inArray(employment.id, batch) : sql`false`) : undefined));
     if (emps.length === 0) return { swept: 0, forfeited: 0 };
     const empIds = emps.map((e) => e.employmentId);
 
@@ -12106,13 +12273,15 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
 
     // One summary event; the ledger rows are the per-item audit (deliberate substrate skip, as
     // openLeaveYear / accrueEarnedLeave).
-    await appendEvent(tx, {
+    const payload = { today: p.today, swept, forfeited: forfeitedTotal };
+    if (run) run.onSummary(payload);
+    else await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-year',
       aggregateId: ctx.tenantId,
       eventType: 'leave.carry-forward.swept',
       actor: actorOf(ctx),
-      payload: { today: p.today, swept, forfeited: forfeitedTotal },
+      payload,
     });
     return { swept, forfeited: forfeitedTotal };
   });
@@ -12270,15 +12439,30 @@ export async function pendingLeaveDecisionChoiceMetadataTx(tx:Tx,ctx:SessionCont
  return{tasks,truncated};
 }
 
+/** pendingLeaveTaskMetadata's candidate source, shared with the one-statement Home task read. Resolve each native
+ * subject once per bounded batch, rather than once for every pending request. These are candidates only. */
+function pendingLeaveCandidateSource(ctx:SessionContext){
+  return sql`(
+   with headers as materialized(select q.id,q.employment_id,q.created_at from public.leave_request q where q.tenant_id=${ctx.tenantId}::uuid and q.status='pending'),
+   distinct_subjects as(select distinct employment_id from headers),
+   numbered_subjects as(select employment_id,(row_number()over(order by employment_id)-1)/1000 as bucket from distinct_subjects),
+   subject_batches as(select array_agg(employment_id order by employment_id)as ids from numbered_subjects group by bucket),
+   subject_rows as materialized(select r.* from subject_batches b cross join lateral app.delegated_approval_subjects(b.ids,'leave','leave.application')r)
+   select h.id,h.employment_id,h.created_at,r.person_id,r.employee,r.company_id from headers h join subject_rows r on r.employment_id=h.employment_id
+  ) as pending_leave`;
+}
+
 export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const candidates=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:sql<string>`approval_subject.person_id`,
-   employee:sql<string>`approval_subject.employee`,createdAt:leaveRequest.createdAt}).from(leaveRequest)
-   .innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveRequest.employmentId},'leave','leave.application') AS approval_subject`,sql`true`)
-   .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
-    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
-   .orderBy(desc(leaveRequest.createdAt),asc(leaveRequest.id));
+  // Resolve each native subject once per bounded batch, rather than once for every
+  // pending request. These are candidates only: all live current-step/alternate and
+  // decision checks below remain unchanged, including when the queue exceeds1000.
+  const source=pendingLeaveCandidateSource(ctx);
+  const id=sql<string>`pending_leave.id`,createdAt=sql<Date>`pending_leave.created_at`.mapWith(leaveRequest.createdAt);
+  const candidates=await tx.select({id,employmentId:sql<string>`pending_leave.employment_id`,personId:sql<string>`pending_leave.person_id`,employee:sql<string>`pending_leave.employee`,createdAt}).from(source)
+   .where(and(sql`NOT app.is_self_person(pending_leave.person_id)`,companyIds===undefined?undefined:sql`pending_leave.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
+   .orderBy(desc(createdAt),asc(id));
   const result:AssignedApprovalMetadata[]=[];
   for(let offset=0;offset<candidates.length;offset+=1000){
    const batch=candidates.slice(offset,offset+1000);
@@ -12303,15 +12487,183 @@ export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]
 }
 
 
-export async function pendingLeaveCancellationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
- const candidates=await withTenant(ctx,async tx=>{
-  await assertAssignedWorkPrincipalTx(tx,ctx);
+/** The subject facts every approver of a step starts from, read once per candidate in its lateral row:
+ * assertCanDecide's self ban (`self`) and assertCanDecide's whole answer for the subject in this task's scope (`can_decide`). */
+export function leaveSubjectFactsSql(ctx:SessionContext,subject:SQL,taskType:SQL,own?:SQL):SQL{
+  return sql`(select subject_self.self,${canDecideSql(ctx,subject,{module:'leave',taskType},sql`subject_self.self`,own)} as can_decide
+    from (select ${decideSelfSql(ctx,subject,own)} as self) subject_self)`;
+}
+type LeaveSubjectFacts={self:SQL;canDecide:SQL};
+
+/** assertCanDecideAsApprover for ONE approver of a step, as SQL text, in assertCanDecideLeaveStep's terms: 'allow' where
+ * the gate returns, 'refuse' where it throws one of isLeaveDecisionRefusal's refusals, 'error' where it throws anything
+ * else (an unknown kind, a named-person step naming nobody), and 'ambiguous' where the gate takes an unordered `limit 1`
+ * among several rows (a manager's manager line, or the head of one of several current assignments) and those rows'
+ * decisions disagree. Every candidate row is decided; when all agree the answer is exact whichever row the owner's
+ * `limit 1` returns. Same branches, same order, the caller's own session. The subject's self ban and assertCanDecide
+ * answer come from leaveSubjectFactsSql, and a role the session holds or lacks selects its branches when the text is
+ * built (the TypeScript gate reads the same roles from ctx), so each table appears once per section. */
+export function leaveApproverDecisionSql(ctx:SessionContext,facts:LeaveSubjectFacts,subject:SQL,kind:SQL,approver:SQL,taskType:SQL,own?:SQL):SQL{
+  const roles=ctx.roles??[],isSuper=roles.includes('super_admin'),isAdmin=isSuper||roles.includes('hr_admin');
+  // Both leave decision task types are the 'leave' module's (lib/delegation-scope.ts scopeOf).
+  const person=ctx.personId??null,scope={module:'leave',taskType},self=facts.self;
+  const personOf=(holder:SQL)=>isCallerOwnEmploymentSql(ctx,holder,own);
+  const grants=ctx.grants??[],payrollCompanies=grants.filter(g=>g.role==='payroll_partner'&&g.companyId!=null).map(g=>g.companyId as string);
+  const payroll=grants.some(g=>g.role==='payroll_partner'&&g.companyId==null)?sql`true`:payrollCompanies.length
+    ?sql`exists(select 1 from public.employment payroll_subject where payroll_subject.id=${subject} and payroll_subject.company_id::text=any(array[${sql.join(payrollCompanies.map(id=>sql`${id}::text`),sql`,`)}]::text[]))`:sql`false`;
+  // assertIsHrAdmin: a non-admin is refused before the self ban.
+  const hr=isAdmin?sql`case when ${self} then 'refuse' else 'allow' end`:sql`'refuse'`;
+  // The line the owner's `limit 1` returns, decided for every line it could return: no line refuses; the manager
+  // themself refuses; otherwise assertCanDecide about that manager.
+  const managerManager=sql`(select case when count(*)=0 then 'refuse'
+     when bool_and(manager_line.outcome='allow') then 'allow' when bool_and(manager_line.outcome='refuse') then 'refuse' else 'ambiguous' end
+    from (select case when line.manager_employment_id is null then 'refuse'
+      when ${personOf(sql`line.manager_employment_id`)} then 'refuse'
+      when ${canDecideSql(ctx,sql`line.manager_employment_id`,scope,undefined,own)} then 'allow' else 'refuse' end as outcome
+     from public.reporting_line line
+     where line.subordinate_employment_id=${subject} and line.line_type='administrative' and line.valid_from<=current_date
+      and (line.valid_to is null or line.valid_to>current_date)) manager_line)`;
+  // The head the owner's `limit 1` returns: the caller holding it allows; otherwise the head handover delegation, which
+  // re-resolves the head inside its definer function and so does not depend on the row; otherwise a refusal.
+  const head=(headKind:'department_head'|'business_unit_head')=>{
+    const holder=headKind==='department_head'?sql`head_department.head_employment_id`:sql`head_unit.head_employment_id`;
+    const delegated=person!=null?sql`coalesce(app.can_decide_via_delegation_from(app.subject_head(${subject},${headKind}::text),${subject},'leave',${taskType}::text),false)`:sql`false`;
+    return sql`(select case when bool_and(subject_head.mine) then 'allow' when ${delegated} then 'allow'
+      when coalesce(bool_or(subject_head.mine),false) then 'ambiguous' else 'refuse' end
+     from (select (${holder} is not null and ${personOf(holder)}) as mine
+      from public.assignment head_assignment join public.department head_department on head_department.id=head_assignment.department_id
+      ${headKind==='business_unit_head'?sql`join public.business_unit head_unit on head_unit.id=head_department.business_unit_id`:sql``}
+      where head_assignment.employment_id=${subject} and head_assignment.valid_to is null and head_assignment.superseded_at is null) subject_head)`;
+  };
+  // An admin clears every kind but a named step after its self ban (and after the named person); a non-admin reads on.
+  const afterSelf=(rest:SQL)=>isAdmin?sql`case when ${self} then 'refuse' else 'allow' end`:sql`case when ${self} then 'refuse' else ${rest} end`;
+  return sql`case
+    when ${kind}='direct_manager' then case when ${facts.canDecide} then 'allow' else 'refuse' end
+    when ${kind}='manager_manager' then ${afterSelf(managerManager)}
+    when ${kind} in ('hr_admin','hr_manager','custom_role') then ${hr}
+    when ${kind}='payroll' then ${afterSelf(sql`case when ${payroll} then 'allow' else 'refuse' end`)}
+    when ${kind}='specific_employee' then case when ${self} then 'refuse' when ${approver} is null then 'error'
+     when ${personOf(approver)} then 'allow' when ${isAdmin?sql`true`:sql`false`} then 'allow' else 'refuse' end
+    when ${kind}='department_head' then ${afterSelf(head('department_head'))}
+    when ${kind}='business_unit_head' then ${afterSelf(head('business_unit_head'))}
+    else 'error' end`;
+}
+
+const levelKindsSql=(kinds:readonly string[])=>sql.raw(`array[${kinds.map(kind=>{if(!/^[a-z_]+$/.test(kind))throw new Error('Unexpected leave approver kind');return `'${kind}'`;}).join(',')}]::text[]`);
+/** A step's stored alternates exactly as assertCanDecideLeaveStep reads them (sanitizeApprovalLevels over an array, none
+ * otherwise), in order: a known dynamic kind as a bare string, or an object whose `kind` is a known kind, with the
+ * employment id of a fixed kind (a level naming nobody is dropped; a dynamic kind's id is cleared). A fixed kind's id that
+ * is trimmed exactly as sanitizeApprover trims it; trimmed text that is not plain UUID text (the gate would cast it in
+ * PostgreSQL: another accepted spelling, or a cast error) is `unsupported`. */
+/** String.prototype.trim's whitespace (WhiteSpace and LineTerminator: tab to carriage return, space, no-break space,
+ * ogham space, en quad to hair space, line and paragraph separators, narrow no-break, medium mathematical and
+ * ideographic spaces, and the byte order mark) at either end, as a PostgreSQL regular expression. */
+const JS_TRIM_CLASS='[\\u0009-\\u000d\\u0020\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]';
+const JS_TRIM_PATTERN=`^${JS_TRIM_CLASS}+|${JS_TRIM_CLASS}+$`;
+function leaveStepAlternatesSql(alternates:SQL):SQL{
+  const known=levelKindsSql(LEVEL_KINDS),fixed=levelKindsSql(FIXED_LEVEL_KINDS);
+  return sql`select entry.ord,entry.kind,case when entry.fixed and entry.named~'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' then entry.named::uuid end as employment_id,
+     entry.fixed and not entry.named~'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' as unsupported
+    from (select raw.ord,raw.kind,raw.kind=any(${fixed}) as fixed,raw.shape,
+      case when jsonb_typeof(raw.value->'employmentId')='string' then regexp_replace(raw.value->>'employmentId',${sql.raw(`'${JS_TRIM_PATTERN}'`)},'','g') end as named
+     from (select item.ord,item.value,jsonb_typeof(item.value) as shape,
+       case jsonb_typeof(item.value) when 'string' then item.value#>>'{}'
+        when 'object' then case when jsonb_typeof(item.value->'kind')='string' then item.value->>'kind' end end as kind
+      from jsonb_array_elements(case when jsonb_typeof(${alternates})='array' then ${alternates} else '[]'::jsonb end) with ordinality as item(value,ord)) raw
+     where raw.kind=any(${known})) entry
+    where not entry.fixed or (entry.shape='object' and entry.named is not null and entry.named<>'')`;
+}
+/** assertCanDecideLeaveStep for one current step as SQL: its primary approver, then its alternates, tried in order. The
+ * first approver that allows decides 'allow', a non-refusal error decides 'error' and refusals are skipped ('refuse' when
+ * all refuse). An unsupported alternate reached first is 'defer'. An ambiguous approver (allow or refuse) is exact only
+ * when every way it can resolve gives one answer, which is when the first later approver that does not refuse allows;
+ * otherwise the step is 'defer'. A 'defer' or 'error' step is never answered here: the owner reads and decides (or
+ * throws) itself. */
+export function leaveStepDecisionSql(ctx:SessionContext,facts:LeaveSubjectFacts,subject:SQL,step:{kind:SQL;approver:SQL;alternates:SQL},taskType:SQL,own?:SQL):SQL{
+  return sql`(select case
+     when folded.ambiguous_ord is not null and (folded.definite_ord is null or folded.ambiguous_ord<folded.definite_ord)
+      then case when folded.definite='allow' then 'allow' else 'defer' end
+     when folded.definite='unsupported' then 'defer'
+     else coalesce(folded.definite,'refuse') end
+    from (select min(outcome.ord) filter(where outcome.decision in ('allow','error','unsupported')) as definite_ord,
+      (array_agg(outcome.decision order by outcome.ord) filter(where outcome.decision in ('allow','error','unsupported')))[1] as definite,
+      min(outcome.ord) filter(where outcome.decision='ambiguous') as ambiguous_ord
+     from (select approver.ord,case when approver.unsupported then 'unsupported'
+       else ${leaveApproverDecisionSql(ctx,facts,subject,sql`approver.kind`,sql`approver.employment_id`,taskType,own)} end as decision
+      from (select 0::bigint as ord,${step.kind}::text as kind,${step.approver}::uuid as employment_id,false as unsupported
+       union all ${leaveStepAlternatesSql(step.alternates)}) approver) outcome) folded)`;
+}
+
+/** pendingLeaveTaskMetadata(ctx, companyIds) and pendingLeaveCancellationTaskMetadata(ctx, companyIds) in one sub-select
+ * for the account task read (core/account-task-bundle.ts), each with the owner's own company filter: the leave owner's
+ * candidates and the cancellation owner's unchanged header query (actionableLeaveCancellationIds decides the same
+ * pending requests under the same RLS), each with its chain's current step, decided by one leaveStepDecisionSql with the
+ * candidate's own task type. A chain without a pending step is skipped; no chain is assertCanDecide in that task's
+ * scope, as in the owners. jsonb {leave, cancellations}, each {defer, rows}: `rows` are the owner's result in its order;
+ * `defer` is true when any of that owner's candidates is 'defer' or 'error', and then that owner itself runs (and
+ * throws its own error). */
+/** pendingLeaveDecisionTasksBundleSql's decided candidates: `from` text yielding decision_candidate (section, id,
+ * employment_id, person_id, employee, created_at, task_type, step kind) and decided.decision. */
+export function pendingLeaveDecisionCandidatesSql(tx:Tx,ctx:SessionContext,companyIds?:string[],own?:SQL):SQL{
+  const candidate=sql`decision_candidate`,subject=sql`${candidate}.employment_id`;
+  const facts={self:sql`decision_subject.self`,canDecide:sql`decision_subject.can_decide`};
+  const decision=sql`case
+    when ${candidate}.step_id is null and ${candidate}.present then 'skip'
+    when ${candidate}.step_id is null then case when ${facts.canDecide} then 'allow' else 'refuse' end
+    else ${leaveStepDecisionSql(ctx,facts,subject,{kind:sql`${candidate}.approver_kind`,approver:sql`${candidate}.approver_employment_id`,
+      alternates:sql`${candidate}.approver_alternates`},sql`${candidate}.task_type`,own)} end`;
+  return sql`from (select 'leave'::text as section,pending_leave.id,pending_leave.employment_id,pending_leave.person_id,pending_leave.employee,pending_leave.created_at,
+      'leave.application'::text as task_type,leave_chain.present,leave_current.id as step_id,leave_current.approver_kind,leave_current.approver_employment_id,leave_current.approver_alternates
+     from ${pendingLeaveCandidateSource(ctx)}
+     cross join lateral (select exists(select 1 from public.leave_approval_step chain where chain.leave_request_id=pending_leave.id) as present) leave_chain
+     left join lateral (select step.id,step.approver_kind,step.approver_employment_id,step.approver_alternates from public.leave_approval_step step
+       where step.leave_request_id=pending_leave.id and step.status='pending' order by step.step_index,step.id limit 1) leave_current on true
+     where not app.is_self_person(pending_leave.person_id)
+      ${companyIds===undefined?sql``:sql`and pending_leave.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}
+    union all
+    select 'cancellations'::text,cancel_header.id,cancel_header.employment_id,cancel_header.person_id,cancel_header.employee,cancel_header.created_at,
+      'leave.cancellation'::text,cancel_chain.present,cancel_current.id,cancel_current.approver_kind,cancel_current.approver_employment_id,cancel_current.approver_alternates
+     from (${pendingLeaveCancellationHeadersQuery(tx,ctx,companyIds).getSQL()}) as cancel_header(id,employment_id,person_id,employee,created_at)
+     cross join lateral (select exists(select 1 from public.leave_cancellation_step chain where chain.cancellation_request_id=cancel_header.id) as present) cancel_chain
+     left join lateral (select step.id,step.approver_kind,step.approver_employment_id,step.approver_alternates from public.leave_cancellation_step step
+       where step.cancellation_request_id=cancel_header.id and step.status='pending' order by step.step_index,step.id limit 1) cancel_current on true
+   ) ${candidate}
+   cross join lateral ${leaveSubjectFactsSql(ctx,subject,sql`${candidate}.task_type`,own)} decision_subject
+   cross join lateral (select ${decision} as decision) decided`;
+}
+export function pendingLeaveDecisionTasksBundleSql(tx:Tx,ctx:SessionContext,companyIds?:string[],own?:SQL):SQL{
+  const candidate=sql`decision_candidate`;
+  const owner=(section:'leave'|'cancellations')=>sql`jsonb_build_object('defer',coalesce(bool_or(decided.decision in ('defer','error')) filter(where ${candidate}.section=${section}),false),
+    'rows',coalesce(jsonb_agg(jsonb_build_object('id',${candidate}.id,'employmentId',${candidate}.employment_id,'personId',${candidate}.person_id,
+     'employee',${candidate}.employee,'createdAt',${candidate}.created_at) order by ${candidate}.created_at desc,${candidate}.id)
+     filter(where ${candidate}.section=${section} and decided.decision='allow'),'[]'::jsonb))`;
+  return sql`(select jsonb_build_object('leave',${owner('leave')},'cancellations',${owner('cancellations')})
+   ${pendingLeaveDecisionCandidatesSql(tx,ctx,companyIds,own)})`;
+}
+type BundleApprovalRow={id:string;employmentId:string;personId:string;employee:string|null;createdAt:string};
+/** The leave (or cancellation) section's owner result, or null when the owner must run itself. */
+export function pendingLeaveTasksFromBundle(value:unknown):AssignedApprovalMetadata[]|null{
+  const section=value as {defer:boolean;rows:BundleApprovalRow[]};
+  if(section.defer)return null;
+  return section.rows.map(row=>({id:row.id,employmentId:row.employmentId,personId:row.personId,employee:row.employee,createdAt:new Date(row.createdAt)}));
+}
+
+function pendingLeaveCancellationHeadersQuery(tx:Tx,ctx:SessionContext,companyIds?:string[]){
   return tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId,personId:sql<string>`approval_subject.person_id`,
    employee:sql<string>`approval_subject.employee`,createdAt:leaveCancellationRequest.createdAt}).from(leaveCancellationRequest)
    .innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveCancellationRequest.employmentId},'leave','leave.cancellation') AS approval_subject`,sql`true`)
    .where(and(eq(leaveCancellationRequest.tenantId,ctx.tenantId),eq(leaveCancellationRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
     companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
    .orderBy(desc(leaveCancellationRequest.createdAt),asc(leaveCancellationRequest.id));
+}
+
+export function pendingLeaveCancellationCandidatesExistSql(tx:Tx,ctx:SessionContext,companyIds?:string[]){
+  return sql<boolean>`exists (${pendingLeaveCancellationHeadersQuery(tx,ctx,companyIds).getSQL()})`;
+}
+export async function pendingLeaveCancellationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ const candidates=await withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  return pendingLeaveCancellationHeadersQuery(tx,ctx,companyIds);
  });
  const allowed=new Set(await actionableLeaveCancellationIds(ctx,candidates.map(row=>row.id)));
  return candidates.filter(row=>allowed.has(row.id));

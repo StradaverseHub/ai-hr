@@ -1,3 +1,13 @@
+# Security Center account-action authority (PR 240) — 12 November 2026 MYT (unapplied, renumbered)
+
+Main now ends with the combined release block (`5000`–`5090`, idx 4400–4490, when 1793330004700–1793330004790), so
+the unapplied `4902_account_action_authority` (idx 4302 / when 1793330004602) would be silently skipped after it.
+It moves to `5102_account_action_authority` at idx 4502 / when 1793330004802, the slot reserved for PR 240 beside
+board windows 3 and 4 (`5100`, `5101`). The SQL bytes are unchanged and were never applied anywhere; the migration
+only creates two new functions. If windows 3 and 4 reach main first, this entry stays last; if PR 240 lands first,
+their journal entries must still be appended in timestamp order, which `check-migration-order.mjs` enforces.
+Recheck peer claims and the installed ledger at admission; this grants no installation authority.
+
 # Security Center account-action authority — 10 November 2026 MYT (unapplied)
 
 PR 240 (branch claude/fix-account-action-privilege) moves its unapplied reservation
@@ -8,6 +18,243 @@ anywhere. A survey of main and the 150 most recently updated origin heads found 
 claim at idx 4302 or between when 1793330004500 and 1793330009820; 4900 and 4901 are
 reserved the same day for the rebased ccd3a65c and 4452ba3c board releases. Recheck
 peer claims and the installed ledger at admission; this grants no installation authority.
+# Combined release block — 11 November 2026 MYT (unapplied allocation, one block)
+
+Branch `claude/combined-release-20261111` (base `claude/architecture-release-20261110` @ `6e4a883c2`) merges every
+accepted branch of the combined release and moves all of their draft migrations into one block (46 migrations): tags `5000`–`5090`,
+idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when share one offset (tag 50NN, idx 44NN, when
+…47NN). The 772-entry journal of the base keeps its entries, order and SQL bytes; the 818-entry journal passes
+`node .github/ci/check-migration-order.mjs origin/main` (main `9cf69292a`, 729 entries ending at
+`4800_ai_shared_leave_groups_read`, idx 4200 / when 1793330004500).
+
+| Draft tag (branch) | Draft idx / when | Allocated tag | idx / when | SHA256 at allocation |
+| --- | ---: | --- | ---: | --- |
+| `4700_access_reader_writer_core` | 4100 / 1793330004400 | `5000_access_reader_writer_core` | 4400 / 1793330004700 | `fead3e8f0d90a199119cf0578e2cab387f4a4d9a2e56cb4ab96de792d4040527` |
+| `4701_access_reader_writer_serialisers` | 4101 / 1793330004401 | `5001_access_reader_writer_serialisers` | 4401 / 1793330004701 | `6665dac2d56dd325b0495fbf1e1215326071b7a23043d5c546155abae971c104` |
+| `4702_access_reader_writer_profile_values` | 4102 / 1793330004402 | `5002_access_reader_writer_profile_values` | 4402 / 1793330004702 | `c976c1b3852df4a7715047912ead0fc53a50492ca9a59c7e72490c8fff4598f1` |
+| `4703_access_reader_writer_owner_writers` | 4103 / 1793330004403 | `5003_access_reader_writer_owner_writers` | 4403 / 1793330004703 | `07f7c70515033c682a9dadd5031c68df282ad56b9eb984423fd2ee807de019cf` |
+| `9830_access_reader_writer_payroll_inputs` | 4104 / 1793330009830 | `5004_access_reader_writer_payroll_inputs` | 4404 / 1793330004704 | `5f6cf69f2c1c6b1285536727df0bb43d6459a4bbec013e4ea2c0628ab80d4bd0` |
+| `9840_access_reader_writer_people_values` | 9840 / 1793330009840 | `5005_access_reader_writer_people_values` | 4405 / 1793330004705 | `4e00488e5571f4d7e17e4f90fa8445150c848fb4159bd50d76f986f1e6354025` |
+| `9820_access_wave4_admin_fair_exclusive` | 9820 / 1793330009820 | `5006_access_wave4_admin_fair_exclusive` | 4406 / 1793330004706 | `3a8ef207e6235548a53d2d49993c81404a097a6dc503eb77e1e5a7115abe8445` |
+| `9001_employee_import_staged_job` | 9001 / 1793330090001 | `5010_employee_import_staged_job` | 4410 / 1793330004710 | `75b8691265788892e2bf3cc885280a804e4528730fb9c461e77a4a6426670ff6` |
+| `9003_bulk_job_kernel` | 9003 / 1793330090003 | `5011_bulk_job_kernel` | 4411 / 1793330004711 | `50af4670d06419c82ec7495827cf14db2905fda780b21ee58f17ae2f1df7af58` |
+| `9004_import_release_visibility` | 9004 / 1793330090004 | `5012_import_release_visibility` | 4412 / 1793330004712 | `f0ac24138bdfecb5c2eea63a724808c119db86cc1719936b7f839473c7396ac8` |
+| `9005_bulk_job_least_privilege` | 9005 / 1793330090005 | `5013_bulk_job_least_privilege` | 4413 / 1793330004713 | `14ced1c75079a4b5846cbb2c267671cbdbcb77e5810aeb43f73909e3b5a3cde6` |
+| `9006_bulk_job_owner_attribution` | 9006 / 1793330090006 | `5014_bulk_job_owner_attribution` | 4414 / 1793330004714 | `204bdda42c5a3bbde262c07698d25d34071056b45cf3068189c1cb8c2bb7bdfe` |
+| `9880_personnel_overview_facts` | 3743 / 1793330004043 | `5020_personnel_overview_facts` | 4420 / 1793330004720 | `e45555e45eee6f644abf2cd2665b9ac7c3c4adad5b46874fc8b1296f648d350f` |
+| `9900_leave_bulk_jobs` | 9900 / 1793330099900 | `5030_leave_bulk_jobs` | 4430 / 1793330004730 | `63cf77be718402bc8cf27653ea4fab7cf08f6ace92a08751597fff8dae4b2b9a` |
+| `9901_leave_ledger_stage` | 9901 / 1793330099901 | `5031_leave_ledger_stage` | 4431 / 1793330004731 | `89b37fb2f07bd3d12214ddbab3ec681a029d539a1312adcd611f29ff7580b484` |
+| `9902_bulk_job_unbounded_kind` | 9902 / 1793330099902 | `5032_bulk_job_unbounded_kind` | 4432 / 1793330004732 | `87546b29bea2e2103bf6261fef63d04d068906cba48555def165f53e2fd83df4` |
+| `9903_leave_follow_up_jobs` | 9903 / 1793330099903 | `5033_leave_follow_up_jobs` | 4433 / 1793330004733 | `d948a22f42e1a65ee259782d0d4856e5e3ba5d069ec344d9f39175f87ce47d42` |
+| `9905_leave_stage_digests` | 9905 / 1793330099905 | `5035_leave_stage_digests` | 4435 / 1793330004735 | `494012354aa83806eee58e6c4476016cc2534ec255b58feacd523b0f784638d1` |
+| `9906_leave_type_pending_year_cycle` | 9906 / 1793330099906 | `5036_leave_type_pending_year_cycle` | 4436 / 1793330004736 | `451ac2eefb07ca27865ea92f60bd7819f9882156c7dda88b1686ef4eace69324` |
+| `9920_roster_bulk_jobs` | 9920 / 1793330099920 | `5040_roster_bulk_jobs` | 4440 / 1793330004740 | `c8aada50a9e2fb4a9fc938334fc1e7e0412e9afbb155e108296c2516e6fc3d73` |
+| `9921_bulk_job_queue_and_watch` | 9921 / 1793330099921 | `5041_bulk_job_queue_and_watch` | 4441 / 1793330004741 | `2597d98df5afbbcb1d7dea7a31c1d09c5902753ebc04a40003992dbc8b9d4e2d` |
+| `9940_attendance_bulk_jobs` | 9940 / 1793330099400 | `5045_attendance_bulk_jobs` | 4445 / 1793330004745 | `deb95193c213c2d400d5e2d798c3bcf376d07f9635d635be42b663ee1fef4e1c` |
+| `9950_payroll_processing_status` | 9950 / 1793330099950 | `5050_payroll_processing_status` | 4450 / 1793330004750 | `1e9ca4115879eff695e815bc7e83ce18eef78ce0982da05a8d292eb5a08bc7d1` |
+| `9951_payroll_processing_job` | 9951 / 1793330099951 | `5051_payroll_processing_job` | 4451 / 1793330004751 | `37caaa2ba6bc6ea90552cf3da0a933c9972cc9aff3d56c98c567b28e6891be16` |
+| `9952_payroll_run_group` | 9952 / 1793330099952 | `5052_payroll_run_group` | 4452 / 1793330004752 | `f420568a0612c6da490ea7330d36b464bedad8fc5e25663d268e9750b1886901` |
+| `9953_bulk_job_settle` | 9953 / 1793330099953 | `5053_bulk_job_settle` | 4453 / 1793330004753 | `a0edd7cf60bd4cb3dc5c52a924abc749b5af3dde9c53a22034673e2ba78d3f6e` |
+| `9954_payroll_partner_point_read` | 9954 / 1793330099954 | `5054_payroll_partner_point_read` | 4454 / 1793330004754 | `628f65f096449ddfca7075e1fc75e6e727f1e5ea566d83b3610b2924378a5d45` |
+| `9955_payroll_history_staged_job` | 9955 / 1793330099955 | `5055_payroll_history_staged_job` | 4455 / 1793330004755 | `52b094d559f748ff638bdaff0575ad97bce1a1312a719ed1508e25b90333e69b` |
+| `9956_payroll_reprocess_job` | 9956 / 1793330099956 | `5056_payroll_reprocess_job` | 4456 / 1793330004756 | `9c060255355bcb74569ffde8d8974ab433cfaa4a319c837b874abd1a33bcb57c` |
+| `9930_register_section_import_jobs` | 9930 / 1793330099300 | `5060_register_section_import_jobs` | 4460 / 1793330004760 | `208d2d40dd1c9b6a5c3cc061ac6a9f282e8f20eb1309c69aeb0e15c2a5088346` |
+| `9931_register_import_set_release` | 9931 / 1793330099310 | `5061_register_import_set_release` | 4461 / 1793330004761 | `2e58415bc1ba2925268df41bf07d3b9cf802f274e01476b336b7dd207b843efe` |
+| `9932_employee_import_revert_job` | 9932 / 1793330099320 | `5062_employee_import_revert_job` | 4462 / 1793330004762 | `1e48068ba30160e2a94e5e511a5dd68bf23f5f968f5fd675da39cc11599d8d43` |
+| `9933_register_import_release_key_authority` | 9933 / 1793330099330 | `5063_register_import_release_key_authority` | 4463 / 1793330004763 | `ae0827b9a2cc63fdc9a2485d4e2762f34800c070da43e2e5b4b2bb2567316f40` |
+| `9934_employee_import_revert_release_hash` | 9934 / 1793330099340 | `5064_employee_import_revert_release_hash` | 4464 / 1793330004764 | `8862489275a2132ff64547b7e1641afd43c57a2cc4f1660ff9a3a8464d2ff568` |
+| `9961_system_label_import_staged_job` | 9961 / 1793330090961 | `5070_system_label_import_staged_job` | 4470 / 1793330004770 | `9d30e4768feb5b5c0de4bbbe40ec149d746216efdabfa55a9dea3327b93b3270` |
+| `9962_workforce_capability_tenant_publication` | 9962 / 1793330090962 | `5071_workforce_capability_tenant_publication` | 4471 / 1793330004771 | `4d22cd648ea0698c5ce230461862fc4c93e61cbc9196800e0317b680d694a311` |
+| `9910_bulk_job_movement_import` | 9910 / 1793330099910 | `5075_bulk_job_movement_import` | 4475 / 1793330004775 | `11a734038c4f7d7dd31e3f342a1d85103365f7b13f2936bd6c1348f7f30ce190` |
+| `9911_workforce_employment_access_set` | 9911 / 1793330099911 | `5076_workforce_employment_access_set` | 4476 / 1793330004776 | `0e1c2bce56e6ee1380bae2451d2d7ab83b6fff9b33a5eddba2d247595fbc995f` |
+| `9912_bulk_job_movement_check` | 9912 / 1793330099912 | `5077_bulk_job_movement_check` | 4477 / 1793330004777 | `3abc199fe1d6602b771e9c205d5b4f1be15133b10f9deec2f4b33e50d26a4dc1` |
+| `9913_bulk_job_movement_import_revert` | 9913 / 1793330099913 | `5078_bulk_job_movement_import_revert` | 4478 / 1793330004778 | `de9210cf356101a69c19ea695bdc6b7ccc6ec9e0667e19b82e4b1d20dda98f5d` |
+| `9914_movement_revert_capture` | 9914 / 1793330099914 | `5079_movement_revert_capture` | 4479 / 1793330004779 | `0e334a7236ee9a2ae433b28bce3e7e011aa8cee9407bea46ca4a225cf6f2d47c` |
+| `9990_access_administrator_coalesced_assert` | 9990 / 1793330099990 | `5080_access_administrator_coalesced_assert` | 4480 / 1793330004780 | `721af90b5e4554c36ce39ee8e8db2ae6b53bdfa2cabc0029b990bd0f78cfd1f2` |
+| `9850_reward_access_observation_due` | 3743 / 1793330009850 | `5081_reward_access_observation_due` | 4481 / 1793330004781 | `f55738cd1422d1c955c722869e0328f9dcafafeb0042fd2b137165606663460a` |
+| `9870_home_own_clock_day` | 3744 / 1793330009870 | `5082_home_own_clock_day` | 4482 / 1793330004782 | `345c604cebcc58946865d6cc93cd248ad693165063a67648d6781243ec652c58` |
+| `9873_home_own_schedule_range` | 3745 / 1793330009873 | `5083_home_own_schedule_range` | 4483 / 1793330004783 | `75045a4ec8c176c55ddc51ddba0b079e6ca8c5662b004a345945ee335efce70a` |
+| `4700_audit_chain_commit_seal` | 4100 / 1793330004400 | `5090_audit_chain_commit_seal` | 4490 / 1793330004790 | `6ce9bebe8c8de296b3b4a03b1d5d52c90c7df79fbdb0b8f8e0617616001e263e` |
+
+Order and why:
+
+- **Reader/writer Access lock first (5000–5006).** Its migrations re-create existing functions from their reviewed
+  bodies. Everything that rewrites an installed definition in place runs after them.
+- **Staged employee import and kernel (5010–5012), then Personnel typed facts (5020).** 5010 re-creates three
+  Personnel readers with the staged-row filter and 5012 rewrites that filter in place. 5020 replaces the same three
+  readers, so it now expects those bodies as its predecessors and keeps `app.import_marker_visible` in every
+  employment reader it creates or replaces. Its bytes changed for that (was
+  `ebe4e9de76f137a577aaa555b22ec5afedaa8f06922860e03a5dbaacaba8302d` on its branch).
+- **Bulk conversions (5030–5071).** One kernel: `5032_bulk_job_unbounded_kind` introduces exclusivity `none`,
+  `5041_bulk_job_queue_and_watch` adds `tenant_queue` and `watched_at` and carries all four modes in its constraint
+  and in `app.bulk_job_admit`, and `5051_payroll_processing_job` no longer redefines either (its bytes changed).
+  `5064_employee_import_revert_release_hash` takes a short queued wait for the exclusive Access lock and then the
+  editor barrier, as the synchronous revert does under the reader/writer lock (its bytes changed).
+- **Audit-chain commit seal last (5090).** It asks to be the last migration of its batch: its final statement takes
+  the only lock on a populated table, it rewrites one function the Access-lock migrations re-create
+  (`app.contract_lock_authority_sources`), and it refuses unless the UPDATE triggers on `domain_event` are exactly
+  its reviewed set.
+- **Hardened kernel (5013, 5014).** Accepted after the first allocation and placed in the slots kept for it, directly
+  after the kernel and before any kind row, so every kind declares its `input_shape` when it is inserted.
+  `5041_bulk_job_queue_and_watch` stamps `watched_at` through the definer `app.bulk_job_mark_watched` instead of a
+  column grant.
+- **Movement import jobs (5075–5079) and the coalesced last-administrator assertion (5080).** Accepted after the
+  first allocation. The movement kinds follow the kernel (5011, 5013) and the employee import Revert (5062–5064)
+  whose screens they share. 5080 replaces `app.access_administrator_constraint()` from its 5000 body, so it runs
+  after the reader/writer Access lock migrations; it adds one private queue table and its deferred trigger and no
+  trigger on `domain_event`, so 5090's reviewed trigger set is unchanged.
+- **Home reads (5081–5083).** Accepted after the first allocation: one read-only probe for the Rewards access
+  observation and two SECURITY INVOKER readers of one employment's own clock day and schedule range. They create
+  functions only and change no existing definition.
+<!-- combined-release-fixes:begin -->
+- **Integration fixes (branch `claude/combined-release-fixes-20261111`, 11 November 2026).** Six of these unapplied
+  migrations changed in place; the table above holds their new SHA256, and `test/helpers/approved-upgrade.ts` the same.
+  `5012_import_release_visibility`: `app.import_released_attempt_ids()` is no longer executable by PUBLIC; it is granted to the roles its policies reach (was `c9317842654b48046d93ca842cf5fbb99db42324bca02858fcea4759a0d90801`).
+  Gate repair (branch `claude/gate-repair-permissions-20261111`): `5012` also re-creates `app._bank_event_scope` with `import_pending_attempt_id` = NULL, because the reviewed Bank completion (0863) commits to every business column of its native event and the new staged marker made every Assistant Bank confirmation refuse (was `215ea68a36df931277a14a4a5fcdc7ab213da17c39e68d83def21c1209a9e5b9`).
+  `5055_payroll_history_staged_job`: `app.payroll_history_hidden_rows(text)` likewise (was `0484c6569d846c4ae89afaaac6acd8617380764df3e8d9d35b05fb9d6403dc47`).
+  `5070_system_label_import_staged_job`: the same grant for the nine catalogue tables' policies that also call `app.import_released_attempt_ids()` (was `ba9f29643d13bbe4e69f169d004c698a393af6b639edf97f1d7dd835347e61ba`).
+  `5078_bulk_job_movement_import_revert`: adds `app.movement_revert_job_outcome`, the synchronous fallback's durable completion (row security, a policy-checked insert by the job's creator) (was `7c9cc1e2564400925acece3c05644e62eb87b31315cbc7b43d28eab9c0d7489f`).
+  `5079_movement_revert_capture`: the capture table gains tenant and transaction columns, row security limiting the application role to its own transaction's rows of its own tenant, and a deferred trigger refusing any commit that holds a capture row (was `e5f5a468d2087067101ab6df786e682023952ab75251efdcb0799f2957b77139`).
+  `5090_audit_chain_commit_seal`: `app.domain_event_chain_sealing()` is granted to the roles that write `domain_event` instead of PUBLIC (was `f6bf0e0f80ca6cb222c8ec10996d55e1bafdbe436809987d9d7b7cf9c11485f1`).
+  Restricted-owner repair (branch `claude/combined-release-rc2-20261111`, after the staging `db:migrate` as `ai_hr_owner` refused `5010` with "must be owner of function reward_uploaded_snapshot_roster" and rolled back): the release no longer re-creates the four definers owned by purpose roles the migration owner is not a member of — `app.reward_uploaded_snapshot_roster(uuid,date)` and `app.reward_create_planned_unit_bound(uuid,uuid,uuid)` (`ai_hr_reward_setup_reader`), `app.reward_setup_grade_choices()` (`ai_hr_reward_setup_reader`) and `app.reward_uploaded_validation(uuid)` (`ai_hr_reward_upload_reader`). Their owners are neither the table owner nor BYPASSRLS, so the restrictive staged-row policies already govern their reads; each migration now verifies that instead, and the definer rewrite loops refuse a reader the migration owner does not own. Owners, grants, REVOKEs and bodies of those four stay exactly as installed, and the purpose roles no longer receive the predicate and release-table grants they only needed for the removed rewrites.
+  `5010_employee_import_staged_job`: the two Rewards setup readers are verified instead of re-created (was `c71e21ef9571ebd015bcff95b87da46fbedb098b66f0b8edfbb10d4b16fe9e65`).
+  `5012_import_release_visibility`: the same two leave its release-aware rewrite list (was `3885cb0c5eb07a9c09eca297a4bcb18e1253e2fa5269b9d6c3dc1de8005ac190`).
+  `5070_system_label_import_staged_job`: the grade choice list and the uploaded-award validation leave its rewrite list and are verified instead (was `6ed0f9b6bf699fb05d21c920ef2a11f7fedb03308dac3a166b7031dbd2ab7ffb`).
+  `test/restricted-owner-release-upgrade.test.ts` applies every migration above main as the literal `ai_hr_owner` login on the installed role topology.
+<!-- combined-release-fixes:end -->
+- **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069, 5072–5074 and 5084–5089 are
+  left for branches accepted later; they are inserted before 5090 in journal order while the block is unapplied.
+
+Retired: `9002_leave_import_job` (phase 3's leave import proof). The leave ledger import runs on the shared kernel
+(kind `leave_ledger`, 5030), so the proof's table, runner and systemd unit were removed with it; it was never applied.
+
+Phase 0 and phase 2 both claimed `4700` at idx 4100 / when 1793330004400; they are now 5090 and 5000.
+
+Read-only survey, 11 November 2026: 7,316 refs (4,055 distinct heads, 556 distinct committed journal blobs, all
+parseable, one ref without a journal) and 250 readable journals among 265 registered worktrees (one unparseable:
+feedback-menu-operator-toggle-616263). Above idx 4243 / when 1793330004543 the peers hold `4900`–`4902` at idx
+4300–4302 / when 1793330004600–1793330004602 (staging board window 4 and the account-action fix), and the drafts now allocated here: Home's `9850`, `9870`, `9873` and this programme's `9910`–`9914`, `9990`.
+Nothing occupies tags 5000–5099, idx 4303–4600 or when 1793330004603–1793330004999. This block sits above
+4900–4902 on purpose. **The architecture block of this same release (idx 4201–4243 / when …4501–…4543) sits below
+them:** if 4900–4902 are installed anywhere before this release, those 43 entries would be skipped there and must
+move above when 1793330004602 first. Refresh the peer survey and the installed ordered ledger before release
+admission. This allocation grants no installation authority.
+
+# Reader/writer Access lock — 10 November 2026 (provisional, unapplied)
+
+Branch `claude/access-reader-writer-20261110` provisionally claims `4700_access_reader_writer_core`
+at idx 4100 / when 1793330004400 and `4701_access_reader_writer_serialisers` at idx 4101 / when
+1793330004401 and `4702_access_reader_writer_profile_values` at idx 4102 / when 1793330004402 and
+`4703_access_reader_writer_owner_writers` at idx 4103 / when 1793330004403, with `4704`+ held for the
+same branch's later waves. A read-only
+survey of 7,145 refs (3,979 distinct heads), 529 distinct committed journal blobs and 247 readable
+worktree journals found highest claim 4601 / idx 4001 / when 1793330004301 (`4601_last_login_event_index`).
+The candidate base `7b585515d` ends at idx 3742 / when 1793330004042. Phase 0 and phase 1 of the same
+Access-lock programme were in progress when this survey ran and may claim overlapping numbers; the
+integration owner must reconcile them. The claim sits above every surveyed peer, so a lower peer that
+lands later must move above it rather than be silently skipped. Applied SQL and the journal prefix
+are unchanged. This grants no deployment authority; confirm peers and the installed ledger at admission.
+
+# Audit chain commit seal — 10 November 2026 (provisional, unapplied)
+
+Branch `claude/audit-commit-seal-20261110`, based on candidate
+`7b585515d67885045d79ebb3dce4ef6c5e7b1bd8`, proposes
+`4700_audit_chain_commit_seal` at idx 4100 and when 1793330004400, after that
+candidate's 769-entry journal ending at `4342_attendance_clock_policy_audit_scope`
+(idx 3742 / when 1793330004042). All 769 preceding entries and their SQL bytes are
+unchanged.
+
+The read-only peer survey on 10 November 2026 covered 7,141 refs, 529 distinct
+committed journal blobs, 589 allocation documents and 244 readable journals among
+1,243 registered worktrees. One ref has no journal and one journal needed a raw
+tuple scan. The peer maximum was tag `4601_last_login_event_index`, idx 4001 and
+when 1793330004301. No peer claimed 4700, idx 4100 or when 1793330004400. Unreadable
+worktrees and any reservation made after the survey are not covered, and the
+integration owner has not confirmed the pending union.
+
+This is a provisional source proposal. Refresh peer allocations, the accepted source
+and the installed ordered ledger before release admission. It carries no reservation
+authority beyond this branch, and no deployment authority.
+
+**Collision, for the integration owner:** the phase 2 branch
+`claude/access-reader-writer-20261110` also claims 4700–4703 (idx 4100 onwards). As
+instructed, this branch keeps 4700 and the integration step renumbers all new migrations
+in one pass. Nothing in the migration, its tests or the code depends on the number: the
+test finds the entry by its `_audit_chain_commit_seal` suffix.
+
+Ordering: apply it last in its batch. Its only lock on a populated table is the SHARE ROW
+EXCLUSIVE that `CREATE OR REPLACE TRIGGER` takes on `public.domain_event` (blocking event
+writes, not reads). That is its final statement, acquired under a statement-scoped 5-second
+`lock_timeout` and held until the batch commits. It follows the online-migration rules on
+`claude/candidate-migrations-online-20261110`: no scan, rewrite or index build on a populated
+table, and a bounded, scoped lock wait.
+
+# Personnel overview typed facts — 10 November 2026 (unallocated draft number)
+
+Branch `claude/personnel-speed-20261110` journals `9880_personnel_overview_facts` at idx 3743 and when
+1793330004043, directly after `4342_attendance_clock_policy_audit_scope`, so the branch's journal stays
+strictly monotonic. **9880 is a draft number, not a reservation**: reallocate the tag, idx and when
+through this file (peer survey, installed ordered ledger) before release; the SQL bytes may then be
+reviewed again. The migration creates and replaces SECURITY DEFINER Personnel readers only (typed facts,
+private-search entries, a set-wise organisation-tag resolver, typed page rows, the exact owner, search
+rows, the bind trigger function and the company filter choices). It adds no table, column, index,
+constraint or trigger and writes no row, so it needs no `online_migration` deferral or backfill. It
+refuses to run unless the five replaced bodies are exactly those 2210, 2450, 4001, 2451 and 2701 installed.
+
+# 4342 All Companies clock-policy audit reads — 11 November 2026 MYT (unapplied, edited in place)
+
+Owner decision, 11 November 2026: HR administrators who may make group-wide ("All Companies")
+clock-policy changes may read their audit history, read-only. `4342_attendance_clock_policy_audit_scope`
+has never been applied, so it is edited in place; its tag, idx 4243 and when 1793330004543 are unchanged.
+`app.attendance_clock_policy_history(NULL, rule)` now returns the group-wide chain, and
+`attendance_clock_policy_audit_read` now shows a group-wide revision's
+`attendance-rule.clock-policy.scheduled` event (payload `companyId` JSON null and `scope` `group`).
+Both use the group-wide writer's own check from 4600: a current principal and `app.is_group_admin()`.
+Company rows keep their `app.is_admin_for(company)` check. Grants, the insert policy and the guard are
+unchanged. SHA256 `e517de07fd7f1d536374ade1a23895b5064e459dcf3af30652b23c85554fe303` becomes
+`bc83887d91db94c2199d600a4ca5293d43d14662fb08c85818d35455ac28f67f` (also pinned in
+`test/helpers/approved-upgrade.ts`). This grants no installation authority.
+
+# Architecture candidate above released 8d5254eb — 10 November 2026 MYT (unapplied reallocation)
+
+Main, alpha and staging carry `8d5254eb286b3dd1815253435001c02d01888856`, whose
+729-entry journal ends with `4800_ai_shared_leave_groups_read` at idx 4200 / when
+1793330004500. Branch `claude/architecture-release-20261110` keeps that prefix and
+every applied SQL byte unchanged. It moves only its own 43 unapplied entries above
+that watermark, in their existing dependency order. Every tag is unchanged: no tag
+number collides with main or a surveyed peer, so no file is renamed. The 772-entry
+journal passes `node .github/ci/check-migration-order.mjs 8d5254eb`.
+
+| Candidate entries | Was idx / when | Now idx / when |
+| --- | ---: | ---: |
+| `2103_system_performance_read_guards` … `3211_access_editor_native_owner_presentation` (36, `test/performance-migration-identities.ts`) | 3700–3735 / 1793330004000–1793330004035 | 4201–4236 / 1793330004501–1793330004536 |
+| `3500_ai_centre_architecture_compatibility`, `3501_ai_centre_mandate_write_order` | 3736–3737 / 1793330004036–1793330004037 | 4237–4238 / 1793330004537–1793330004538 |
+| `4338`–`4341` presentation snapshots | 3738–3741 / 1793330004038–1793330004041 | 4239–4242 / 1793330004539–1793330004542 |
+| `4342_attendance_clock_policy_audit_scope` | 3742 / 1793330004042 | 4243 / 1793330004543 |
+
+`4600_attendance_clock_policy_group_scope` now applies before `4342`. So 4342 no
+longer re-creates `app.guard_attendance_clock_policy_revision()`: its company-only
+body would have replaced 4600's guard and refused every group-wide revision. 4600's
+guard already reads only the prior ordinal and effective_from, which is all 4342
+needed. 4342 has never been applied, so only its bytes change: SHA256
+`be818457c18cd823f0cae24c5d8eeb3e51923ed16a7451c76cb6fcb18da8fe2a` becomes
+`e517de07fd7f1d536374ade1a23895b5064e459dcf3af30652b23c85554fe303`. Its history
+function and restrictive audit-read policy still match company rows only, as the
+4600 reservation recorded. `ai_hr_app` therefore cannot read group-wide
+`attendance-rule.clock-policy.scheduled` events; that remains an owner decision.
+Main adds no `app` function, so the notification helper contract pin stays 2399.
+The AI Centre upgrade fixture now binds incoming `8d5254eb` (729 ledger rows).
+
+The read-only survey covered 7,256 refs: 545 distinct committed journal blobs, all
+parseable, plus one ref without a journal. It also covered 247 readable worktree
+journals among 1,264 registered worktrees. Above idx 4100 / when 1793330004400 it
+found the peer claims 4700–4703 (idx 4100–4103), main's 4800, 4900–4902 (idx
+4300–4302 / when 1793330004600–1793330004602), 9001–9004, and the 98xx/99xx
+bulk-job, Access and Home claims with timestamps from 1793330009820. None occupies
+idx 4201–4243 or when 1793330004501–1793330004543. A raw tuple scan of the one
+unparseable peer worktree journal (feedback-menu-operator-toggle-616263) found no
+occupant either. Refresh the peer survey and the installed ordered ledger before
+release admission. This reallocation grants no installation authority.
 
 # Shared Leave Groups AI read control — 10 November 2026 MYT (unapplied)
 
@@ -55,6 +302,111 @@ worktree journals. The staging source `5c990a639` was observed healthy with an
 exact 723-entry applied ledger ending at 4101. Recheck the published baseline,
 ordered ledger and peer claims before admission. The reservation grants no
 installation authority.
+
+# Joint AI Functions, Attendance and architecture candidate — 10 November 2026 (private proposal)
+
+The exact Streamline AI Functions and Schedule Group candidate
+`f07f32dcd0ccaeb6b49d40f2b6c64307b9bf80fc` supplies the unchanged
+726-entry journal prefix. Its three migrations follow the 723-entry
+observed Board 2 staging ledger on `5c990a639607b404a6d8fc7f78ca4752d2461476`.
+The employee digest, Attendance Formula Builder retirement and Schedule Group
+clock policy migrations retain their original identities and SQL bytes.
+
+Reallocate only the 42 unapplied migrations from architecture candidate
+`41accb95fd4408817a541736ffc11760f25b185a`. Keep their dependency order
+and all SQL payload bytes. The proposed architecture allocation is idx
+3700–3741 with timestamps 1793330004000–1793330004041, after the three
+Streamline and Schedule Group entries. This yields 768 active migrations
+before any later independently reviewed append. The first 38 architecture
+tags are unchanged. The final four names use the later reservation:
+
+| Superseded architecture tag | Candidate tag | idx | when |
+| --- | --- | ---: | ---: |
+| `4200_assistant_rewards_return_presentation_snapshot` | `4338_assistant_rewards_return_presentation_snapshot` | 3738 | 1793330004038 |
+| `4201_assistant_rewards_calendar_cancel_presentation_snapshot` | `4339_assistant_rewards_calendar_cancel_presentation_snapshot` | 3739 | 1793330004039 |
+| `4202_ai_management_presentation_snapshot` | `4340_ai_management_presentation_snapshot` | 3740 | 1793330004040 |
+| `4203_home_leave_presentation_snapshot` | `4341_home_leave_presentation_snapshot` | 3741 | 1793330004041 |
+
+The local read-only peer scan covered 6,826 refs, 517 distinct readable
+committed journal blobs and 606 readable worktree journals. It found no
+claim in this block. The only local referenced tree without a migration
+journal contains release evidence alone. The architecture candidate journal
+was verified directly from its own checkout. Raw tuple scans of five
+unparseable worktree journals also found no occupant. Refresh the complete
+peer survey and installed ordered ledger
+before reservation or release admission. This proposal carries no deployment
+authority.
+
+The current AI Centre owner fixture uses the exact 726-entry incoming
+checkpoint and applies the following 38 architecture migrations through the
+mandate write-order migration. The broader populated upgrade must also apply
+the final four presentation migrations and check the full 768-entry ledger.
+Rehearse the actual direct 723-entry staging transition if staging still uses
+Board 2, and separately rehearse the 726-entry transition to cover both
+migration transaction boundaries.
+
+Append `4342_attendance_clock_policy_audit_scope` at idx 3742 and when
+1793330004042. This adds company-scoped audit reads and keeps operational
+dated reads and inserts available. The original Streamline clock-policy
+migration remains byte-identical. The combined journal now has 769 entries.
+The populated upgrade rehearsals must include the final audit scope migration.
+The refreshed survey covered 3,762 public heads and 519 locally readable
+committed journal blobs. It resolved the other 58 public heads separately,
+including one without a migration journal. No peer claimed this position.
+
+
+# Home leave review presentation — 10 November 2026 (provisional)
+
+The architecture qualification candidate proposes `4203_home_leave_presentation_snapshot`
+at idx 3641 and when 1793330003941 after the 764-entry journal ending in 4202
+on `ba0d89d9e53bfe6663affe3e0ea3fff5fff20f47`. The append gives Home one native
+metadata projection for its three leave review lists. Existing custody,
+confirmation and retention routines keep their existing permissions and bytes.
+
+The read-only peer survey checked 3,757 public heads, 517 distinct locally
+readable committed journals and 348 readable journals among 1,625 registered
+or discovered worktree paths. Exact public reads resolved another 56 journals
+and confirmed the remaining evidence-only ref has no journal. The observed
+maximum was idx 3640 and when 1793330003940. Preserve all 764 preceding entries
+and their SQL bytes. Refresh peer allocations, accepted source and the actual
+installed ledger before release admission.
+
+# AI management presentation snapshot — 9 November 2026 (unapplied)
+
+Reserve `4202_ai_management_presentation_snapshot` at idx 3640 and when 1793330003940
+after the 763-entry architecture journal ending in 4201. The append enables
+provider metadata and spend status reads inside the same read-only snapshot.
+Preserve all 763 earlier entries and their SQL bytes. Refresh peer allocations
+and verify the installed ledger before release admission.
+
+# Assistant Annual Rewards Return snapshot — 9 November 2026 (unapplied)
+
+Reserve `4200_assistant_rewards_return_presentation_snapshot` at idx 3638 and
+when 1793330003938 after the 761-entry architecture journal. It appends an
+Assistant chooser that reads the existing policy and Rewards facts from one
+read-only snapshot. The allocation survey found no competing claim above idx
+3637 / when 1793330003937. Verify the accepted source and installed ledger
+before release admission.
+
+Reserve `4201_assistant_rewards_calendar_cancel_presentation_snapshot` at idx
+3639 and when 1793330003939. It extends the same presentation policy to Calendar
+and Cancel choices. The 4200 migration bytes and earlier journal entries stay
+as recorded.
+
+# Architecture after the five approved board items — 9 November 2026 (provisional)
+
+The private release-first preview uses the exact `8527509182bf5f0a63bd31b2e863ee74090933d5`
+candidate as its prospective base. Staging adoption and the handback are pending.
+The preview preserves that candidate's complete 723-entry journal prefix and all
+corresponding SQL. It reassigns only the 38 unapplied architecture entries to
+idx 3600–3637 and timestamps 1793330003900–1793330003937. The original tag names,
+SQL bytes and dependency order stay intact.
+
+The read-only survey observed a maximum idx 3501 and timestamp 1793330003801 across
+3,711 public heads, 513 distinct committed journals, and 505 readable registered
+worktree journals. The one public evidence-only branch has no migrations. Recheck
+the actual accepted source, complete applied ledger, and current peer allocations
+before freezing a release candidate.
 
 # Approved Rewards and Attendance follow-ups — 9 November 2026 (unapplied)
 
@@ -119,6 +471,102 @@ Branch codex/board3-personnel-20261109 reserves 3801_personnel_employment_filter
 Branch codex/board1-system-labels-plan-20261108 reserves 3400_system_label_company_scope, idx2700 / when1793330003000. A fresh scan of 495 distinct committed journals and readable registered worktree journals found maximum idx2603 / when1793330002903 through3303. A read-only live survey matched 709 applied entries with watermark1793330002801, below this reservation. Preserve the full current main/alpha prefix and the then-installed prefix. Recheck live ledger and peer claims before admission; this is source allocation only.
 
 # Coordinated migration reservations
+
+## Architecture38 after selected alpha717 — 9 November 2026 (owned uninstalled reallocation)
+
+This amendment supersedes ONLY the38 owned, independently proven uninstalled
+architecture reservation tuples listed below. Preserve their tags, filenames,
+whole SQL bytes and dependency order. The complete selected alpha
+e70686353134de3471f08fe7a27e937f14fdcc95 717-entry prefix remains whole;
+append this38-entry suffix at idx3400–3437 / when1793330003700–1793330003737.
+The canonical result has755 rows and755 active SQL files. The superseded2301
+and3103 payloads remain whole historical fixture inputs outside the active
+migration directory; they are not extra canonical migrations.
+
+Root's fresh successful origin fetch retained main00a27edbe and alphae7068635.
+The subsequent stable source-only namespace survey captured6683refs,
+1117registered worktrees,3626root trees,724migration trees,507committed journal
+blobs and345allocation document blobs. Prior maxima were tag4002,idx3302 and
+when1793330003602. Malformed/foreign WIP and all readable literal claims were
+preserved and included; no foreign reservation is rewritten or cancelled here.
+Actual read-only staging evidence records the whole710 ordered-id ledger through
+1793330003000, the two retained0180/0212 applied-hash identities and absence of
+all38 owned SQL hashes. This source amendment does not refresh that installation
+claim or grant an installation lease. Recheck actual full prefix/roles/reservations
+and native compatibility at release admission; production remains held.
+
+Foreign payroll3900 and Board34000–4002 are NOT selected. If this higher timestamp
+suffix is installed first, their owners must reallocate/rebase any still-pending
+lower-watermark release under their own authority. If a foreign release lands
+first, refreeze the actual ledger/source and re-evaluate our native preimages
+before admission. No automatic queue priority or deployment is granted.
+The later common read-only append is unallocated and excluded from this755.
+
+| Owned tag | Superseded idx / when | Current idx / when |
+| --- | --- | --- |
+| 2103_system_performance_read_guards | 2510 / 1793330002810 | 3400 / 1793330003700 |
+| 2104_contract_navigation_role_guards | 2511 / 1793330002811 | 3401 / 1793330003701 |
+| 2105_authorization_navigation_plans | 2512 / 1793330002812 | 3402 / 1793330003702 |
+| 2124_ai_control_navigation_candidates | 2513 / 1793330002813 | 3403 / 1793330003703 |
+| 2125_approval_subject_batch | 2514 / 1793330002814 | 3404 / 1793330003704 |
+| 2129_personnel_native_paging | 2515 / 1793330002815 | 3405 / 1793330003705 |
+| 2131_ai_read_only_metadata_locks | 2516 / 1793330002816 | 3406 / 1793330003706 |
+| 2132_ai_metadata_claim_preview_index | 2517 / 1793330002817 | 3407 / 1793330003707 |
+| 2133_ai_action_read_only_lock | 2518 / 1793330002818 | 3408 / 1793330003708 |
+| 2134_claim_visibility_set_membership | 2519 / 1793330002819 | 3409 / 1793330003709 |
+| 2135_profile_presentation_read_lock | 2520 / 1793330002820 | 3410 / 1793330003710 |
+| 2136_grant_admin_role_precheck | 2521 / 1793330002821 | 3411 / 1793330003711 |
+| 2137_home_peer_cohort_batch | 2522 / 1793330002822 | 3412 / 1793330003712 |
+| 2138_ai_pause_company_discovery | 2523 / 1793330002823 | 3413 / 1793330003713 |
+| 2139_workforce_bounded_read_plan | 2524 / 1793330002824 | 3414 / 1793330003714 |
+| 2252_probation_navigation_capability_probe | 2525 / 1793330002825 | 3415 / 1793330003715 |
+| 2141_approval_nonadmin_visibility_batch | 2526 / 1793330002826 | 3416 / 1793330003716 |
+| 2212_payroll_audit_claim_lookup_indexes | 2527 / 1793330002827 | 3417 / 1793330003717 |
+| 3210_attendance_shared_workflow_submission_lock | 2528 / 1793330002828 | 3418 / 1793330003718 |
+| 2302_company_ancestry_early_exit | 2529 / 1793330002829 | 3419 / 1793330003719 |
+| 2303_admin_grant_direct_scan | 2530 / 1793330002830 | 3420 / 1793330003720 |
+| 2304_payroll_grant_direct_scan | 2531 / 1793330002831 | 3421 / 1793330003721 |
+| 2403_personnel_bounded_overview | 2532 / 1793330002832 | 3422 / 1793330003722 |
+| 2503_attendance_pending_visible_headers | 2533 / 1793330002833 | 3423 / 1793330003723 |
+| 2504_notification_event_processing | 2534 / 1793330002834 | 3424 / 1793330003724 |
+| 2505_workforce_picker_facts | 2535 / 1793330002835 | 3425 / 1793330003725 |
+| 2506_notification_receipt_retention | 2536 / 1793330002836 | 3426 / 1793330003726 |
+| 2507_attendance_header_column_grants | 2537 / 1793330002837 | 3427 / 1793330003727 |
+| 2508_notification_receipt_grants | 2538 / 1793330002838 | 3428 / 1793330003728 |
+| 2509_principal_statement_plan_reuse | 2539 / 1793330002839 | 3429 / 1793330003729 |
+| 2510_capability_statement_plan_reuse | 2540 / 1793330002840 | 3430 / 1793330003730 |
+| 2701_personnel_typed_overview_filter_fields | 2541 / 1793330002841 | 3431 / 1793330003731 |
+| 2903_notification_receipt_cycle_authority | 2542 / 1793330002842 | 3432 / 1793330003732 |
+| 3001_employment_membership_initplan | 2543 / 1793330002843 | 3433 / 1793330003733 |
+| 3102_assignment_membership_initplan | 2544 / 1793330002844 | 3434 / 1793330003734 |
+| 3211_access_editor_native_owner_presentation | 2545 / 1793330002845 | 3435 / 1793330003735 |
+| 3500_ai_centre_architecture_compatibility | 2800 / 1793330003100 | 3436 / 1793330003736 |
+| 3501_ai_centre_mandate_write_order | 2801 / 1793330003101 | 3437 / 1793330003737 |
+
+All earlier sections below remain historical reservation records. Only these38
+owned uninstalled tuples are superseded by this amendment.
+
+## Architecture / AI Centre compatibility — 8 November 2026 (reserved, uninstalled)
+
+Reserve `3500_ai_centre_architecture_compatibility`, idx2800 / when1793330003100,
+and `3501_ai_centre_mandate_write_order`, idx2801 / when1793330003101.
+These are append-only source reservations; their SQL, exact guarded preimages
+and populated upgrade/native concurrency qualification are still pending.
+Preserve the complete canonical709 prefix, architecture36 suffix, all existing
+SQL bytes and journal tuples. No installed migration is rewritten.
+
+A fresh full-origin fetch and stable read-only survey covered6460refs,
+3495root trees,708migration trees,496committed journals and752readable worktrees.
+Prior maxima were3400 / idx2700 / when1793330003000; two foreign malformed
+journals were preserved and their literal claims included. A subsequent stable
+document-reservation scan covered6462refs,336distinct allocation documents and
+726worktree documents; neither new tag, index nor timestamp was claimed.
+The read-only staging catalogue observed709applied rows through1793330002801,
+with the same complete row set as the earlier audit. The two documented
+historical source/ledger hash exceptions remain unchanged; this is not a new
+identity waiver. Recheck actual refs, competing WIP and the target ledger before
+admission. Source reservation grants no installation or deployment authority.
+Production remains held.
 
 ## Six board items after System Labels — 9 November 2026 (unapplied reallocation)
 
@@ -189,6 +637,443 @@ now applied. The peer owner acknowledged that 3200/3201 remain reserved here.
 Recheck actual refs, peer claims and installed ledger at admission. This is
 source allocation, not deployment authority.
 
+## Closed staging architecture reconciliation — 8 November 2026 (draft, uninstalled)
+
+Root reserves36 suffix entries at idx2510–2545 / when1793330002810–1793330002845,
+following the exact707-entry reviewed staging feature/owner-repair prefix.
+The old36 architecture reservations retain their original source history;34 SQL
+files stay byte-identical. Superseding drafts3210 (idx2528/when1793330002828)
+and3211 (idx2545/when1793330002845) require separately reviewed native guards,
+respectively preserving3101 shared-company trigger behavior and the real Access
+native owner. Their source hashes and actual qualification remain pending.
+Do not install this draft or treat unfilled identities as accepted migrations.
+
+The fresh ref/WIP survey observed6061 refs,3232 root trees,681 migration trees,
+487 committed journals and516 readable worktrees, with stable captured claims.
+File/journal maxima were3111 /2411 /1793330002711; additionally retain the explicit
+PR230 documented3200/3201 reservations at2500/2501 and1793330002800/2801.
+One preserved foreign malformed journal and this then-unresolved merge journal
+contributed their literal claims. Recheck fresh competing claims at admission.
+
+Read-only staging retained706 exact applied rows and both architecture-superseded
+drafts absent. This reservation supports ONLY the reviewed staging lineage;
+production's current applied history is unverified and production remains held.
+No universal never-applied claim, replay waiver or ledger update is authorized.
+See [the explicit mapping](qualification/architecture-staging-lineage-reservations-20261108.json)
+and [the native-owner/history decision](adr/2026-11-08-staging-architecture-history-and-native-owners.md).
+
+
+## Access editor presentation — 8 November 2026 (uninstalled)
+
+Reserve `3103_access_editor_presentation`, idx2403 / when1793330002703.
+SQL SHA-256 `bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47`.
+Fresh main/alpha both identify109a046ef38f90514f1da458056aa09e015a47a4.
+An all-ref/tag/root-tree and captured-WIP scan covered5898 refs,3151 root trees,
+678 migration trees,484 committed journals and439 readable worktrees. All captured
+migration WIP remained stable. Previous maxima were3102 /2402 /1793330002702;
+one malformed foreign journal was preserved and its literal claims included.
+All739 predecessor entries and historical SQL bytes remain unchanged.
+
+The exact predecessor native bootstrap body/identity/ACL must match before one
+canonical eligibility predicate is factored privately. Original locking,
+initialization effects, grants, recovery invariant and audit remain. A new narrow
+native projection enforces RR/RO, current principal/login and current configure
+authority; only a legitimate uninitialized bootstrap actor receives an explicit
+status. The isolated prototype42392922965 passed43 tests, including held Access/
+History and retained command correctness. This is component evidence, not actual
+append, populated upgrade or installed-application acceptance. The guarded append,
+application adoption, complete upgrade identities and actual target ordered ledger
+still require qualification. Recheck reservations and installed watermark before
+integration/installation. Production remains on hold.
+
+## Typed Personnel overview filters — 7 November 2026 (uninstalled)
+
+`2701_personnel_typed_overview_filter_fields`, idx2001 / when1793330002301,
+SQL SHA-256 `87b1b0a0dd532eda1211dddcd5af2a8b14013a66615527cffa3c1be449d0daf8`.
+A fresh full origin fetch and scan covered3005 distinct heads,669 migration trees,
+476 journals and344 readable worktrees. Competing maxima were2700 /2000 /
+1793330002300, including literal bounds from one preserved malformed foreign journal.
+The append guards the exact narrow projection body/security and immediate assignment
+exclusion, retains native scope/date owners and the full page DTO, and returns typed
+filter facts without per-row JSON construction. The isolated50k experiment42345694089
+measured603/625/783ms for initial/search/deep pages; production append and populated
+upgrade qualification remain required. Reconcile the installed ledger before staging.
+Production remains held.
+
+## Capability statement planning — 7 November 2026 (uninstalled)
+
+`2510_capability_statement_plan_reuse`, idx1830 / when1793330002130,
+SQL SHA-256 `e5689d9c6a71e21176506a0576bd635e7c8d05c63dc76c8c492a41e2e7086f9f`.
+Fresh origin refs and2991 distinct heads covered665 migration trees,473 journals
+and341 readable worktrees. Maxima were2509 /1829 /1793330002129, including
+literal claims from one malformed foreign journal, preserved unchanged.
+The guarded replacement preserves the exact capability query and security
+attributes while reusing its statement plan. Reversible native experiment
+42341955362 retained live scope/deny/archive/group/support boundaries and
+application-role refusal to call the private helper. Recheck current claims,
+installed ledger and populated upgrade before release. Production remains held.
+
+## Architecture correctness repairs — 7 November 2026 (uninstalled)
+
+- `2506_notification_receipt_retention`, idx 1826, when 1793330002126, SQL SHA-256 `764bd405d99e398e35f2282202f07daf9c5f732cdbd67d19b35862849bfc88cf`.
+- `2507_attendance_header_column_grants`, idx 1827, when 1793330002127, SQL SHA-256 `66f567a34ad2fd9cf17f181d7ec15b6b19f435890c0a55e6be219ddb3c28f8aa`.
+
+Fresh main/alpha and local claims covered 2,962 distinct heads, 663 migration trees,
+471 journals and 333 readable worktrees. The prior maxima were 2505 / 1825 /
+1793330002125, including literal claims from one malformed foreign journal.
+Recheck the target ledger and current reservations before installation.
+
+A subsequent fresh scan (334 readable worktrees) found maxima 2507 / 1827 /
+1793330002127. Append `2508_notification_receipt_grants`, idx 1828, when 1793330002128,
+SQL SHA-256 `07eeadfb1db236283f2bcb7206e8a8274cfb637a3d1b53ddac75d40879ad6d3b` to remove inherited broad table grants.
+
+
+The next candidate appends `2509_principal_statement_plan_reuse`, idx 1829, when
+1793330002129, SQL SHA-256 `09135ed32933b61236c2dee1c05e39824155cedf8089364ef970755ca198bb88`.
+It preserves both principal queries and their grants. PostgreSQL reuses statement
+plans while evaluating identity and permissions on every call. The fresh scan
+included 2,977 distinct heads, 665 migration trees, 473 journals and 339 readable
+worktrees. Reconcile with the current installed ledger before any release.
+
+## Minimal Workforce picker projection — 6 November 2026 (uninstalled candidate)
+
+`codex/personnel-snapshot-reads-20261106` reserves `2505_workforce_picker_facts`,
+idx 1825 / when 1793330002125 / SQL SHA-256 `af1fa920e5ded85fbb0c5f4aa5d016d341a519d38e461e5926301780a0ee49d4`.
+Fresh main/alpha refs plus all available refs/worktrees covered 5415 refs, 468 journals,
+660 migration trees and 330 readable worktrees. Observed maxima 2504 / 1824 /
+1793330002124; one invalid foreign journal was preserved and literal claims included.
+This projection preserves the full authorized picker population with seven existing fields;
+it avoids building unused full-profile JSON. Recheck installed ledger and reservations before
+integration or installation. Production deployment is held.
+
+## Complete notification consumption — 6 November 2026 (uninstalled candidate)
+
+`codex/architecture-correctness-20261106` reserves `2504_notification_event_processing`,
+idx 1824 / when 1793330002124 / SQL SHA-256 `a473a533cd967d7ad2ac971e24b5141af87d25967b84b3ca491e42fa9f1d81ce`.
+Freshly fetched refs and local worktrees covered 5412 refs, 467 distinct journals,
+659 migration trees and 329 readable worktrees. Observed maxima: tag 2503, idx 1823,
+when 1793330002123. One foreign invalid journal was preserved; literal claims were included.
+This preserves the candidate's existing journal prefix and appends above all observed claims.
+Recheck reservations and the installed ledger before integration; no installation or deployment
+is authorized. Cutover preserves legacy cursor history without automatically replaying it.
+
+
+## Pending Attendance headers — 6 November 2026 (provisional source reservation)
+
+`codex/performance-staging-integration-20261105` reserves
+`2503_attendance_pending_visible_headers`, idx 1703, when 1793330001903.
+SQL SHA-256 `fca8d6436f259f4955e78da75155836083f5f970d9f5640377ffb89ce7ca7718`.
+The remote/local tip and 325 readable worktree scan observed maxima 2502,
+idx 1702, and when 1793330001902. The previously missing staging release
+tip was fetched and has a lower journal index. Recheck remote reservations
+and the installed ledger after the independent staging release settles.
+
+The new reader returns only pending request headers and checks the reviewed
+policy predicates before installation. Subject projection and actual
+decision authorization remain with their existing owners. Application
+role tests and populated upgrade rehearsal are required. No deployment is
+authorized by this reservation.
+
+## Bounded Personnel overview — 6 November 2026 (provisional source reservation)
+
+`codex/personnel-narrow-production-20261106` reserves `2403_personnel_bounded_overview`,
+idx 1603, when 1793330001803. SQL SHA-256 `1eac5d0a075e4505f69ac75f19e99e19f24fd189c93f82fd35b1c49f97ba228f`.
+The local ref and worktree scan found claims through tag 2402, idx 1602 and
+when 1793330001802. One foreign worktree has an invalid journal. Its literal
+index and timestamp claims and SQL filenames were included, and its files
+were preserved. Reconcile competing remote reservations and the actual
+installed ledger before staging admission. The change has not been applied.
+
+The append installs the guarded summary and bounded DTO functions. The
+Personnel overview uses them for the qualified filters and retains the
+existing query for other filters and scopes. Hosted parity and the 50,000
+employee benchmark are component evidence. Populated upgrade, integrated
+browser and concurrency verification remain required.
+
+## Shared Attendance workflow submission lock — 6 November 2026 (unapplied)
+
+`codex/performance-staging-integration-20261105` reserves
+`2301_attendance_workflow_submission_shared_lock`, idx 1501, when 1793330001701,
+above the observed `2300` reservation. The isolated candidate retains its
+existing journal prefix and appends this migration without importing 2300.
+The migration preserves the trigger owner, grants, and checks and changes only
+the lock mode for workflow request insertion. Configuration writers retain the
+exclusive lock on the same key. Recheck the integrated journal and installed
+watermark before deployment.
+
+## Combined performance integration — 5 November 2026 (unapplied)
+
+`codex/performance-staging-integration-20261105` preserves the 694-entry main/alpha
+journal prefix and appends 18 performance migrations at idx 1452–1469 and timestamps
+1793330001652–1793330001669, retaining performance dependency order. The ref and
+worktree scan found maximum tag 2251, idx 1451 and timestamp 1793330001651.
+`2252_probation_navigation_capability_probe` replaces the standalone, unapplied
+2140 mapping probe for this lineage because 2107 changes the authority to the
+tenant capability. The other performance SQL files retain their reviewed bytes.
+Recheck competing claims and the installed ledger before release. The combined
+tail requires an ordinary populated upgrade rehearsal and does not authorize deployment.
+
+## Non-admin approval subject visibility batch — 5 November 2026 (unapplied)
+
+`codex/performance-nonadmin-batch-migration-20261105` reserves
+`2141_approval_nonadmin_visibility_batch`, idx1394 / when1793330001541 /
+SHA256 `d25a2cc9c4c30e6941b15a203fdf869f60e2a7cc34853b0fb40007d5fbd309a1`.
+Fresh claims cover2430 heads,442 committed journals,605 migration trees and243 readable
+worktrees through2140 / idx1393 / when1793330001540. Foreign malformed WIP and literal
+claims remain untouched. Read-only staging matches all671 ordered canonical identities
+through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e.
+
+Guarded reversible native experiment41956573325 retained500 actual fixture principals,
+scalar owner/DTO equality, live scope/delegation/revocation controls and exact owner/ACL
+restoration. Ten49-subject manager reads measured1112ms original,44/47ms candidate and
+1104ms restored. Eleven source/privilege/configuration/dependency drifts refuse55000
+and roll back. These are component measurements, not500-user or million-row acceptance.
+
+The exact tested append reuses the existing native visible-employment set once per
+nonempty non-admin batch; unseen subjects keep the unchanged scalar purpose/delegation
+reader. Administrator arm,1000-input limit, tenant joins, five fields, signature, owner,
+ACL and all decision/writer locks remain unchanged. The predecessor and the qualified
+set/scalar dependency bodies and security metadata are guarded. No authorization cache.
+Installed purpose/visibility tests, four populated upgrades and compiler qualification
+remain required. Complete BOARD roles stays excluded. No deployment is authorized.
+
+## Probation navigation mapping probe — 5 November 2026 (unapplied)
+
+`codex/performance-probation-navigation-migration-20261105` reserves
+`2140_probation_navigation_mapping_probe`, idx1393 / when1793330001540 /
+SHA256 `45c65af3ce13c35d8adaa1f4cb0caf55b92268d6b03be3af46b78bc88c922a83`.
+Fresh claims cover2407 heads,441 committed journals,604 migration trees and234 readable
+worktrees through2139 / idx1392 / when1793330001539. Foreign malformed WIP and its
+literal claims remain untouched. Read-only staging matches all671 ordered canonical
+identities through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e. Its native
+Probation navigation body matches8ca468e565496b3845dca9a10beed985 and retains ai_hr_owner
+ownership and application-only nonowner EXECUTE.
+
+Guarded reversible native experiment41942549866 compared50 calls over five companies:
+260ms original,58ms candidate,58ms warm,270ms restored. Actual employee, group and
+named admin, expired/nonadmin mapping, foreign principal, archived/forged user and
+module-disabled outcomes match. Seven source/security/privilege drifts refuse55000
+and roll back; original function and owner/ACL are restored. These are component
+measurements, not500-user acceptance.
+
+The exact tested SQL preserves the first current-user check, all group bootstrap,
+participant and PBP/GBS paths. Only absence of a native tenant/user admin mapping
+skips two canonical configuration-admin calls; positives retain those exact owners.
+No permission cache, writer lock or grant changes. Installed native, populated upgrade,
+full compiler and combined browser/load checks remain required. Complete BOARD roles
+stays excluded. No deployment is authorized.
+
+## Bounded Workforce access plan — 5 November 2026 (unapplied)
+
+`codex/performance-workforce-bounded-migration-20261105` reserves
+`2139_workforce_bounded_read_plan`, idx1392 / when1793330001539 /
+SHA256 `da60091cd9f282910810fc493c3edc5fb124819899d3e91f1d2376f704f0ac75`.
+Fresh claims cover2403 heads,440 committed journals,603 migration trees and234 readable
+worktrees through2138 / idx1391 / when1793330001538. Foreign malformed WIP and literal
+bounds remain untouched. Fresh read-only staging inspection matches all671 ordered
+canonical identities through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e.
+
+Guarded native experiment41933862555 used50000 employments and retained every native
+trigger. Twenty-five selected-person reads measured491ms original,154ms candidate,
+152ms warm and475ms after exact restoration. Selected DTO/order, the complete full-list
+digest, archived/forged refusals and private owner/ACL matched. Five predecessor/body,
+volatility, application/public EXECUTE and configuration drifts refused with55000 and
+rolled back. These are component measurements, not million-row page or500-user acceptance.
+
+The exact tested append changes only the private helper's employment access plan into
+mutually exclusive full-list/selected-ID branches. JSON projection, purpose/tenant guards,
+NULL semantics, public wrappers and limits, owner and private ACL remain unchanged.
+Installed native and populated-upgrade checks remain required. Earlier SQL bytes are
+unchanged. Complete BOARD roles is excluded; no deployment is authorized.
+
+## Necessary AI pause company discovery — 5 November 2026 (unapplied)
+
+`codex/performance-ai-pause-purpose-context-20261105` reserves
+`2138_ai_pause_company_discovery`, idx1391 / when1793330001538 /
+SHA256 `bc44d218c30fcaa1db8a2f92e661be228cc4638fdfeb4280be0cacef388e5574`.
+Fresh scan covers2396 heads,439 committed journals,602 migration trees and231 readable
+worktrees through2137 / idx1390 / when1793330001537. Foreign malformed WIP and literal
+claims remain untouched. Fresh read-only staging inspection matches671 ordered canonical
+identities through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e. Both existing
+control routines retain the same ai_hr_owner definer owner; the append preserves that owner.
+
+Native reversible experiment41921332862 preserved150 company-pause audience outcomes,
+live grant/reporting/archive/foreign-principal controls, omitted-default semantics and
+a company pause published while a reader waited on the native barrier. All originals were
+restored and the temporary helper removed; zero model runs occurred. For150 unpaused
+checks,2137ms became393ms (warm361ms), returning2112ms after restoration. Disabled-company
+checks retained the full original discovery and similar timing. These are component
+measurements, not500-user capacity. The new private helper is the single control-context
+owner: ordinary context/admission calls request full scope; Boolean pause checks skip
+company discovery only when no company policy can deny them, decided under the unchanged
+lock. Predecessor/default/owner drift refuses; no permissions, provider access or writer
+locks expand. Installed native, ownership, populated-upgrade and browser/load qualification
+remain required. Complete BOARD roles is excluded; no deployment is authorized.
+
+## Home peer proof batching — 5 November 2026 (unapplied)
+
+`codex/performance-home-cohort-batch-migration-20261105` reserves
+`2137_home_peer_cohort_batch`, idx1390 / when1793330001537 /
+SHA256 `25b659236aa53f5dfd268eef64dfbda0315bfdc84aca122463d37cb943555597`.
+Fresh source scan covers2382 heads,438 committed journals,601 migration trees and231
+readable worktrees through2136 / idx1389 / when1793330001536. Foreign malformed WIP
+and literal claims remain untouched. Fresh read-only staging inspection matches all671
+ordered canonical identities through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e.
+
+Native reversible experiment41913005395 measured1541ms original,201ms candidate,
+201ms warm and1524ms after exact restoration over1005 peers/1006 employments.
+Public Team and Celebrations JSON matched exactly, including person deduplication and
+birthday opt-out. The same dated-company proof now receives at most1000 points per call;
+policy, caller, effective-date checks, ordering, owner, signature and private ACL remain unchanged.
+The append refuses an unexpected predecessor. Installed migration, privacy/revocation,
+populated upgrade and combined browser/load checks remain required. Complete BOARD roles
+is excluded; no deployment is authorized. This is component evidence, not500-user acceptance.
+
+## Administrator-role necessary precheck — 5 November 2026 (unapplied)
+
+`codex/performance-grant-admin-negative-precheck-20261105` reserves
+`2136_grant_admin_role_precheck`, idx1389 / when1793330001536 /
+SHA256 `c2c67726492e0aa45bb601fe6f0c0e61c54ca39bbfb2658cad476958ced6a027`.
+Fresh source scan covers2376 heads,437 committed journals,600 migration trees and231
+readable worktrees through2135 / idx1388 / when1793330001535. Foreign malformed WIP
+and its literal claims remain untouched. Main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e.
+Fresh read-only staging inspection again matches all671 ordered canonical identities
+through1793330001502. No applied or committed SQL is rewritten.
+
+Native experiment41905978845 preserved96 provided-grant/scope/error cases and all
+function ACL/security/configuration metadata. The positive branch still calls the exact
+canonical role/scope owner. A25,000-call mixed synthetic-grant component measured187ms
+original,113ms candidate,114ms warm and189ms after independent exact restoration.
+This is not500 concurrent users or a whole-system speed claim. The append refuses an
+unexpected predecessor and changes only the existing helper body, retaining its signature,
+owner, grants, stability and invoker mode. Populated upgrades and real permission/read/write
+consumers require qualification. Complete BOARD roles is excluded; no deployment is authorized.
+
+## Profile display read barrier — 5 November 2026 (unapplied)
+
+`codex/performance-profile-display-read-lock-20261105` reserves
+`2135_profile_presentation_read_lock`, idx1388 / when1793330001535 /
+SHA256 `b05f44a52bce44559088003111d1cc36e734ed01971a3042766909128b2d82fd`.
+Fresh source scan covers2366 heads,436 committed journals,599 migration trees and231
+readable worktrees through2134 / idx1387 / when1793330001534. Foreign malformed WIP
+and literal reservation bounds are preserved. Fresh main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e.
+Read-only staging inspection matches all671 ordered canonical identities through1793330001502.
+
+Native regression41895432699 reproduced55P03 for both actual profile presentation and
+Home photo reads behind a shared Access reader. The new function admits only native
+read-only Read Committed transactions, takes shared Access then profile-policy locks,
+and retains the required private generation-anchor existence check. Pure display readers
+use it; all existing mutation helpers, physical generation locks, grants and policy owners
+remain unchanged. Native concurrency/privacy/upgrade and browser/load qualification are
+required. Complete BOARD roles is excluded; no deployment is authorized.
+
+## Claims visibility membership plan — 5 November 2026 (unapplied)
+
+`codex/performance-claims-set-membership-20261105` reserves
+`2134_claim_visibility_set_membership`, idx1387 / when1793330001534 /
+SHA256 `a489a4293bc835003a0c6ee3f77f68d3847c618827949b54d541290563d3f2f6`.
+Fresh claims cover2363 heads,435 committed journals,598 migration trees and231 readable
+worktrees through2133 / idx1386 / when1793330001533. Foreign malformed WIP and its literal bounds
+remain untouched. Freshly fetched main/alpha are74db3bb7621c33de256372162a1961ee320baf6e.
+The read-only staging ledger matches all671 ordered canonical identities through1793330001502;
+its current Claim policy also matches the exact reviewed array-membership baseline.
+
+Native experiment41889955844 used one million all-pending Claims, two tenants, ten companies and
+500 employments. Actual group-HR preview852ms became329ms (warm304ms); restoring the original
+policy returned794ms. Other-tenant group806ms became335ms and restored808ms. Exact counts,
+ordered IDs and full metadata matched independent fixture oracles. Raw RLS scope checks,
+SELECT FOR UPDATE, actual own draft create/edit/delete and admin/foreign refusals passed in all
+phases. All native routines, grants, triggers, other policies and WITH CHECK stayed unchanged;
+the original policy was independently verified restored. This is component evidence, not500-user
+acceptance or deployment authority.
+
+The append changes only the existing Claim policy's USING membership representation. The native
+visibility function still executes per statement; tenant filtering, all other policies, write checks
+and command/decision owners remain. A precondition refuses unexpected existing policy text. No
+prior migration is edited. Upgrade and broader Claims/delegation verification remain required.
+Complete BOARD roles is excluded. No deployment is authorized.
+
+## Composed read-only action pause barrier — 5 November 2026 (unapplied)
+
+`codex/performance-ai-action-read-lock-fix-20261105` appends
+`2133_ai_action_read_only_lock`, idx1386 / when1793330001533 /
+SHA256 `d22cc6aa2e0995a4b7368127ac4d0a2d0c8f18e4bc44a5ca31480ab5d144ea8f`.
+Fresh source claims covered2351 heads,434 committed journals,597 migration trees and231 readable
+worktrees through2132 / idx1385 / when1793330001532. Foreign malformed WIP and its literal bounds
+were preserved. Main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e; read-only staging
+inspection matched all671 ordered canonical identities through1793330001502. Earlier SQL bytes,
+including2131/2132, are unchanged.
+
+Both frozen b3f500-user runs reached500 but failed. Their retained database logs identify32 and22
+deadlocks, all in `app.ai_agent_action_unpaused(text)`: read-only feature checks held a shared
+`ai-control` lock, then the individual-action check tried to upgrade it to exclusive. Native
+regression41877288302 reproduced the same two-reader deadlock;13 existing tests passed and the new
+composed guard failed. Preserve these failures as evidence; they are not accepted load results.
+
+This append changes only the existing individual-action pause function. After its unchanged
+Read Committed and known-action checks, native read-only transactions take the matching shared lock.
+Every read/write call, pause writer and budget admission remains exclusive. Owners, signatures,
+ACLs, pause values, command authority and provider gates stay unchanged. Concurrent complete action
+guards, individual writer exclusion, native effects, populated upgrades and both load scenarios must
+pass before acceptance. Complete BOARD roles remains excluded; no deployment is authorized.
+
+
+## Assigned/Rewards read metadata and Claims preview index — 5 November 2026 (unapplied)
+
+`codex/performance-ai-metadata-claims-index-20261105` appends
+`2132_ai_metadata_claim_preview_index`, idx1385 / when1793330001532 /
+SHA256 `ea9d1a6ee283b0586a835d98ee4c5e75196615a5f51d22d643966fc519c97508`.
+Freshly fetched main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e. The scan covered2343
+heads,432 committed journals,595 migration trees and230 readable worktrees, through2131 / idx1384 /
+when1793330001531. Foreign malformed WIP was preserved and its literal bounds included.
+Read-only staging inspection matched all671 ordered canonical applied identities through
+1793330001502. No applied SQL bytes changed;2131 is retained unchanged.
+
+Native qualification41866680656 passed38 assigned-review tests; the original write-login helper
+remained byte-identical while the metadata index used a separate private read-only helper.
+Rewards qualification41868731475 passed11 tests, including read overlap, the same native busy
+refusal, exact metadata/choices and actual annual return. Its original failed run41867307931 is
+retained: function-default parser offsets moved during normalized DDL replay; the repaired assertion
+normalizes only those source offsets and separately compares rendered default expressions.
+
+Claims qualification41866667526 retained one million pending requests across500 employments,
+ten companies and two tenants with every row trigger/constraint enabled. The covering index kept
+all RLS/grants, exact counts and preview DTO/order unchanged for group HR, company HR, employees
+and a foreign group. Group reads improved from1.11–1.17s to0.75–0.80s at one reader; index size
+was86269952 bytes. This is component evidence, not500-user capacity. The existing employment/status
+index remains because the new tenant-first index does not cover every existing access path.
+
+The application opts in its default assigned metadata adapter and the separately qualified Rewards
+choices/index only. All command intervals retain their write guards. Installed native checks,
+populated upgrades, compiler and both500-user/browser scenarios remain required. Recheck allocation
+before release admission. Complete BOARD roles stays excluded; no deployment or human approval
+binding refresh is authorized.
+
+
+## Read-only AI metadata locks — 5 November 2026 (unapplied)
+
+`codex/performance-ai-shared-native-reads-20261105` appends
+`2131_ai_read_only_metadata_locks`, idx1384 / when1793330001531 /
+SHA256 `409262dd7b958eb8c2633556f9dba13ad637042efcb07b632a5bcea5c8131077`.
+Freshly fetched main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e.
+The claim scan covered2337 heads,431 committed journals,593 migration trees and226 readable
+worktrees, through2130 / idx1383 / when1793330001530. Foreign malformed WIP and its literal
+bounds were preserved. Read-only staging inspection matched all671 ordered canonical applied
+identities through1793330001502 on the same main source; no applied bytes were changed.
+
+Reversible native runs41866642441 and41866654616 passed26 tests. Read-only policy reads and
+own-review metadata overlap independent readers. Policy writers and actual AI admission remain
+exclusive; read-only transactions cannot upgrade into effects. Company/feature decisions,
+current actor binding, metadata fields and native confirmation remain authoritative.
+
+This append changes only the two existing function bodies. Their owners, signatures and ACLs,
+all raw-table grants and policies remain unchanged. The application opts in only its default generic
+own-review metadata adapter; custom persistence and other review protocols retain their previous
+transaction mode. Installed native checks, populated upgrades, browser and both500-user scenarios
+remain required. Recheck claims before release admission. Complete BOARD roles stays excluded;
+no deployment or human provider-approval binding refresh is authorized.
+
+
 This record owns **unapplied reservations**, not the deployed database. Refresh canonical branch
 journals and the actual staging watermark before journal integration or application. Preserve every
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
@@ -253,6 +1138,86 @@ journals were checked separately. No 2200-or-higher source claim was observed.
 The complete main prefix through 2102 is preserved. These are source reservations only:
 recheck current main/alpha, worktree WIP, peer claims and the actual installed ledger before
 integration or installation. No live re-tag, future grade-track activation or deployment is authorized.
+
+## Personnel typed paging and navigation — 4 November 2026 (unapplied)
+
+The candidate preserves main/alpha `74db3bb7621c33de256372162a1961ee320baf6e` and its671 applied
+identities, plus the five already pinned performance appends. A read-only staging check observed the same
+source,671 rows and watermark1793330001502; all ordered hashes match under the existing historical SQL
+identity owner. No applied SQL changes. Fresh all-ref/worktree scans covered2315 heads,429 committed
+journals,585 migration trees and216 readable worktrees. The highest SQL claim was2128, journal index1372,
+and timestamp1793330001525. Foreign malformed WIP was preserved and its literal bounds checked.
+
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+|2129_personnel_native_paging|1373|1793330001529|877fb32d3e85cd3c3476038b7d1787877a27f7633bdc5308d6c660e669dc1255|
+
+Typed Workforce facts use the existing company-purpose owner. Bounded point projection supports the
+existing2000-row ceiling; the original full-list API and bounded API share one private JSON owner.
+Table/column grants and policies stay unchanged. The two navigation witnesses first select necessary
+company candidates and retain their complete canonical subject checks. Existing function attributes,
+owners and ACLs remain unchanged; new facts/point APIs are app-only, and the shared JSON helper is private.
+
+Qualification41847785388 compared50000 native employments/assignments and every typed fact against the
+original projection with zero mismatches, exact rows/counts/facets and fresh permission revocation.
+Qualification41850084378 retained all15 navigation contracts and compared501-record denied navigation:
+original calls around2.4s versus10–14ms for the candidate. Both are component evidence, not500-user or
+million-Personnel acceptance. The combined app, populated upgrades and both500-user/browser scenarios
+still require verification. Allocation must be checked again before release admission. Complete BOARD
+roles remains excluded; no deployment or human provider-approval binding update is authorized.
+
+## System performance native reads — 4 November 2026 (unapplied provisional)
+
+`codex/performance-staging-native-20261104` preserves the accepted staging source
+`3b3f94ccdc7bc6e3396caf0db2d103244413b291` and its complete656-entry journal/SQL prefix.
+A fresh read-only ledger check observed656 applied rows through1793330000353. All ordered
+identities match the existing `.github/ci/migration-history.mjs` authority, including its two
+explicit original historical SQL archives; no source or ledger hash is rewritten.
+
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+|2103_system_performance_read_guards|1350|1793330001503|0f9ec0dfac05dfd46db765cdc868b0dfc14637e4c6266d229dea12f3691f8111|
+
+The fresh source claim scan covered2206 heads/413 unique committed journals and
+184 parsed worktree journals; maximum observed filename/index/timestamp was
+2102/1349/1793330001502. One foreign WIP journal was not valid JSON; its literal
+index/timestamp bounds and SQL filenames were also scanned, remained below those maxima, and
+were preserved. Re-fetch claims and the live ledger before admission; this provisional reservation
+claims no installation priority over other pending work, including main's later AI migrations.
+
+This append owns the qualified Home role reporting-edge precheck, company-grouped visible employment
+query with statement-plan reuse, and indexed necessary-only Attendance task discovery. The Attendance
+keys/indexes derive from the earlier unapplied0887 prototype; its precheck retains all historical
+reporting-line kinds conservatively. The later narrowing0892 prototype is excluded. Future composition
+must reuse this installation rather than replay those old identities. A positive precheck always uses
+the complete existing RLS/decision reader; no permission or result is cached.
+
+The runtime load runner now uses normal journal migration rather than post-migration experimental
+SQL installation. Existing applied SQL bytes remain unchanged. Complete BOARD roles0936–0945 remain
+excluded. Native concurrency/security, populated-upgrade, browser and both500-user checks are still
+required for this new aggregate. No deployment or provider-approval-binding update is authorized.
+
+## Contract navigation performance — 4 November 2026 (unapplied provisional)
+
+Fresh main/alpha refs were inspected; staging remains `3b3f94ccdc7bc6e3396caf0db2d103244413b291`.
+A new read-only ledger check matched all656 ordered identities through1793330000353 under the
+existing historical-identity authority. A fresh claim scan covered2218 heads/414 committed journals
+and187 parsed worktrees; maximum filename/index/timestamp was2103/1350/1793330001503. The same
+foreign malformed WIP journal was preserved and its literal bounds remained below these maxima.
+
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+|2104_contract_navigation_role_guards|1351|1793330001504|6aa941d06156cd4112ed9bd5ee6974323e96dc57b000e67f4ab21776f4459fcc|
+
+This provisional append follows2103 and preserves the entire accepted staging prefix. Four existing
+Contract role owners gain necessary native assignment checks before their complete original expressions.
+Historical/revoked/out-of-company assignments deliberately remain positive candidates; they still pass
+through the original entitlement, identity, dates, canonical GBS/PBP and company/workflow checks.
+Function signatures, language, volatility, definer, owner, ACL and configuration remain unchanged.
+Native comparison41786794833 measured100 active navigation probes over500 principals, with exact
+original/candidate/restored outcomes and live authority controls. Positive populated workflow suites,
+aggregate compiler/browser/load and populated upgrade checks remain required. Re-freeze allocation
+before eventual admission. Complete BOARD roles remains excluded; no deployment is authorized.
 
 ## Tenant-isolation hardening (ADR-0174) — 4 November 2026 (provisional source claim)
 
@@ -1956,6 +2921,60 @@ Append `2211_company_retention_approved_expansion` at idx 1422 / timestamp 17933
 SHA256 `5e336a948b9490d9355eba65d6f341618334a031c7bdc66562ed9139b7c5f0c4`. The migration adds scoped retention checks and validated tenant keys for the new owners.
 It preserves earlier SQL and the original staging ledger.
 
+## Performance authorization navigation plans — 4 November 2026 (uninstalled candidate)
+
+`codex/performance-authorization-navigation-20261104` reserves
+`2105_authorization_navigation_plans`, idx1352 / when1793330001505.
+The fresh scan covered2240 heads,416 committed journals and194 readable worktrees,
+with competing bounds through2104 / idx1351 / when1793330001504. One foreign malformed
+worktree journal was preserved and its literal bounds included. Read-only staging
+inspection found668 applied rows through1793330001411 on b6077019c; the canonical
+historical identities match every ordered row. This appends above all observed bounds;
+no applied SQL is rewritten. Recheck current claims and target ledger at integration.
+No installation or deployment is authorized.
+
+## AI control navigation candidates — 4 November 2026 (uninstalled candidate)
+
+`codex/performance-ai-control-navigation-20261104` reserves `2124_ai_control_navigation_candidates`,
+idx1371 / when1793330001524 / SQL SHA256 `ed8666bfc29767ce266c362f07046dcd6b5b65b8434738bb9257daf5e328292c`.
+A fresh fetch and source scan covered2291 distinct heads,427 committed journals,579
+committed migration trees and208 readable worktrees. The highest observed reservation
+was2123 / idx1370 / when1793330001523, including uncommitted SQL filenames and literal
+bounds from one foreign malformed worktree journal, which was preserved. Read-only
+staging inspection found671 applied rows through1793330001502 on dc1c70deb, build
+I-W31qYlpals6qfOyV0p1. All671 canonical ordered identities matched. No applied SQL changes.
+
+The original private control function keeps its exclusive transaction lock, native
+final visibility checks, switch owner, signatures, configuration and existing ACL.
+Native reversible experiment41832085030 passed11 live scope-change controls and
+150-reader original/candidate/restored matrices over500 principals. This is component
+evidence only; installed migration, quota/concurrency and combined browser/load checks
+remain required. Recheck competing claims and the live watermark before installation.
+Complete BOARD roles remains excluded. No deployment or provider approval is authorized.
+
+## Bounded native approval-subject projection — 4 November 2026 (uninstalled candidate)
+
+`codex/performance-claims-native-batch-20261104` reserves `2125_approval_subject_batch`,
+idx1372 / when1793330001525 / SQL SHA256 `46573298e6faa5545dccf3c7ac5fda930ac48860636630dc4d3bd14e546a5461`.
+A fresh fetch and scan covered2300 distinct heads,428 committed journals,
+580 committed migration trees and211 readable worktrees, through
+2124 / idx1371 / when1793330001524. The foreign malformed journal and its literal
+bounds were preserved and included. Read-only staging inspection again matched all671
+ordered canonical applied identities through1793330001502 on dc1c70deb, build
+I-W31qYlpals6qfOyV0p1. All previously applied SQL bytes remain unchanged.
+
+Reversible native comparison41837291100 preserved every scalar subject field and
+audience over500 fictional principals, with delegation module/expiry controls,
+reporting/grant/archive revocation, foreign/unknown/duplicate IDs, ended own employment,
+the1000-subject bound and application-only EXECUTE. Five501-subject reads took
+1339.95ms original-warm and114.67ms candidate-warm. Component evidence only.
+
+The new reader groups actual native administrator checks by company and retains the
+unchanged scalar purpose reader for all non-admin candidates. Claim RLS, native self
+exclusion, company/org filters and read/write decision owners remain authoritative.
+Installed migration, populated upgrades, native scope, browser and both500-user checks
+remain required. Recheck claims/watermark before installation. Complete BOARD roles
+remains excluded; no deployment or human provider approval is authorized.
 ## Open onboarding Personnel projection — 7 November 2026 (unapplied)
 
 Branch `codex/board-approved-20261107` reserves `2600_onboarding_current_personnel`,
@@ -1967,6 +2986,124 @@ alpha journal prefix and SQL bytes are preserved. This is an unapplied source
 reservation: recheck freshly fetched integration journals, peer WIP and the exact
 installed ordered ledger before integration or release admission.
 
+
+## Combined correctness and performance release after PR 229 — 7 November 2026
+
+The owner recombined Phases 1 and 2; the isolated Phase 1-only staging ticket was cancelled.
+Fresh main/alpha both identify `2b90f2e45ecafd732e9e772d8edc243ee98b09bc`, whose 704-entry
+journal appends `2600_onboarding_current_personnel` at idx1900 / when1793330002200.
+The previous architecture candidate's 32 unapplied entries included timestamps below that
+watermark. Installing them after PR 229 without reallocation would silently skip them.
+
+A fresh all-ref/WIP scan found 3,023 distinct local/remote heads, 673 committed migration
+trees, 479 committed journals and 353 readable registered working trees. Maximum claims
+were tag2902 / idx2202 / timestamp1793330002502. The foreign malformed journal was preserved;
+literal bounds were included. This merge's temporary conflict journal was also reported
+and its literal bounds included before constructing the final valid journal.
+
+Keep the entire 704-entry upstream prefix and every SQL file from both histories byte-for-byte.
+Append the same 32 architecture SQL files in their existing dependency order with these
+unapplied identities, all above the new watermark and competing claims. Historical test
+reports retain their actual earlier identities; they are not relabelled after this change.
+
+| Tag | Prior idx / timestamp | Re-frozen idx / timestamp |
+| --- | --- | --- |
+| `2103_system_performance_read_guards` | 1800 / 1793330002100 | 2203 / 1793330002503 |
+| `2104_contract_navigation_role_guards` | 1801 / 1793330002101 | 2204 / 1793330002504 |
+| `2105_authorization_navigation_plans` | 1802 / 1793330002102 | 2205 / 1793330002505 |
+| `2124_ai_control_navigation_candidates` | 1803 / 1793330002103 | 2206 / 1793330002506 |
+| `2125_approval_subject_batch` | 1804 / 1793330002104 | 2207 / 1793330002507 |
+| `2129_personnel_native_paging` | 1805 / 1793330002105 | 2208 / 1793330002508 |
+| `2131_ai_read_only_metadata_locks` | 1806 / 1793330002106 | 2209 / 1793330002509 |
+| `2132_ai_metadata_claim_preview_index` | 1807 / 1793330002107 | 2210 / 1793330002510 |
+| `2133_ai_action_read_only_lock` | 1808 / 1793330002108 | 2211 / 1793330002511 |
+| `2134_claim_visibility_set_membership` | 1809 / 1793330002109 | 2212 / 1793330002512 |
+| `2135_profile_presentation_read_lock` | 1810 / 1793330002110 | 2213 / 1793330002513 |
+| `2136_grant_admin_role_precheck` | 1811 / 1793330002111 | 2214 / 1793330002514 |
+| `2137_home_peer_cohort_batch` | 1812 / 1793330002112 | 2215 / 1793330002515 |
+| `2138_ai_pause_company_discovery` | 1813 / 1793330002113 | 2216 / 1793330002516 |
+| `2139_workforce_bounded_read_plan` | 1814 / 1793330002114 | 2217 / 1793330002517 |
+| `2252_probation_navigation_capability_probe` | 1815 / 1793330002115 | 2218 / 1793330002518 |
+| `2141_approval_nonadmin_visibility_batch` | 1816 / 1793330002116 | 2219 / 1793330002519 |
+| `2212_payroll_audit_claim_lookup_indexes` | 1817 / 1793330002117 | 2220 / 1793330002520 |
+| `2301_attendance_workflow_submission_shared_lock` | 1818 / 1793330002118 | 2221 / 1793330002521 |
+| `2302_company_ancestry_early_exit` | 1819 / 1793330002119 | 2222 / 1793330002522 |
+| `2303_admin_grant_direct_scan` | 1820 / 1793330002120 | 2223 / 1793330002523 |
+| `2304_payroll_grant_direct_scan` | 1821 / 1793330002121 | 2224 / 1793330002524 |
+| `2403_personnel_bounded_overview` | 1822 / 1793330002122 | 2225 / 1793330002525 |
+| `2503_attendance_pending_visible_headers` | 1823 / 1793330002123 | 2226 / 1793330002526 |
+| `2504_notification_event_processing` | 1824 / 1793330002124 | 2227 / 1793330002527 |
+| `2505_workforce_picker_facts` | 1825 / 1793330002125 | 2228 / 1793330002528 |
+| `2506_notification_receipt_retention` | 1826 / 1793330002126 | 2229 / 1793330002529 |
+| `2507_attendance_header_column_grants` | 1827 / 1793330002127 | 2230 / 1793330002530 |
+| `2508_notification_receipt_grants` | 1828 / 1793330002128 | 2231 / 1793330002531 |
+| `2509_principal_statement_plan_reuse` | 1829 / 1793330002129 | 2232 / 1793330002532 |
+| `2510_capability_statement_plan_reuse` | 1830 / 1793330002130 | 2233 / 1793330002533 |
+| `2701_personnel_typed_overview_filter_fields` | 2001 / 1793330002301 | 2234 / 1793330002534 |
+
+The independent performance migration identity fixture is updated to these exact tuples.
+Its previous missing pin for typed Personnel filters2701 is now explicit, retaining its
+already verified SHA256 `87b1b0a0dd532eda1211dddcd5af2a8b14013a66615527cffa3c1be449d0daf8`.
+No applied SQL or existing main/alpha journal tuple changed. Recheck the actual installed
+ordered ledger, newest refs and competing claims before admission. This source merge is
+not a test PASS or deployment; production remains on hold.
+
+
+## Combined scoped notification receipt authority — 7 November 2026
+
+Freshly fetched all-ref/WIP scan: 3,025 heads, 675 committed migration trees, 481
+committed journals and 354 readable worktrees. Maximum prior tag2902 / idx2234 /
+when1793330002534; the unrelated malformed WIP journal remains untouched and its
+literal bounds are included. Reserve `2903_notification_receipt_cycle_authority`
+at idx2235 / when1793330002535, SHA256 `82711cacac3c69fc217fb9038ccc6a6000dc41c746e3751d8584499698471e22`.
+
+This appends the independently reviewed native event→recipient→run/cycle authority
+correction found during isolated correctness review. It changes no historical SQL
+or native notification content, action or recipient rule. Earlier receipt identity,
+retention and least-privilege grants stay intact. Recheck the installed ledger and
+all allocations at admission. No installation or production authority is claimed.
+
+## Statement-local Employment membership — 7 November 2026 (uninstalled candidate)
+
+Reserve `3001_employment_membership_initplan`, idx2301 / when1793330002601,
+SQL SHA-256 `cd25b675ca404c364d4aef1f436f2e8a89ddeff8d4c63c355cd1fb28dc1507d0`.
+Fresh origin fetch including tags and the all-ref/root-tree/captured-WIP scan covered
+5,778 refs, 3,085 distinct root trees, 675 migration trees, 481 committed journals and
+388 readable worktrees. Maximum prior claims were3000 /2300 /1793330002600.
+The unrelated malformed foreign journal remains untouched; its literal bounds were
+included. All737 predecessor journal entries and historical SQL bytes are preserved.
+
+The append guards the complete native Employment policy predecessor and visibility
+function identity before replacing exactly two positive membership terms. It retains
+the scalar InitPlan around the same visibility function. No function, grant, WITH CHECK,
+tenant/void/bank/partner authority or database setting changes. Actual appended-policy
+authority, populated replay and representative performance qualification remain required;
+the diagnostic alone is not deployment authority. Reconcile current reservations and the
+actual ordered installed ledger/watermark before staging. Production remains on hold.
+
+
+## Statement-local Assignment membership — 7 November 2026 (uninstalled candidate)
+
+Reserve `3102_assignment_membership_initplan`, idx2402 / when1793330002702,
+SQL SHA-256 `5cb2e363d5fb27d7de67c8317d1d0c59a5545d86dc835e0d4d1c4cfaa126c2d6`.
+Fresh main/alpha identify109a046ef38f90514f1da458056aa09e015a47a4. The all-ref
+and captured-WIP scan covered5826 refs,3112 distinct root trees,677 migration
+trees,483 committed journals and406 readable worktrees. Previous maxima were
+3101 /2401 /1793330002701. One malformed foreign journal remains untouched;
+its literal claims are included. All738 predecessor tuples and SQL bytes remain
+unchanged. Recheck current claims and the actual ordered installation ledger
+before release admission.
+
+The controlled50k experiment42383332942 compared both native authorities,
+all eight full ports and actual plans on the same application backend. It changed
+only this positive membership representation and restored exact original security
+and settings. Initial warm reads measured6915ms to1270ms, department+unit13383ms
+to3489ms, empty-unit24878ms to8898ms. All result/count/selection/facet and
+authority checks passed. Residual40000/50000 lateral probes remain and require
+a separate query/index correction; these are component measurements only.
+The real append requires independent review, native populated replay, drift
+refusal and integration qualification. It is not installed and grants no staging
+or production authority. Production remains on hold.
 ## Four approved feedback items — 7 November 2026 (unapplied)
 
 Branch codex/approved-four-20261107 reserves 3100_pay_formula_saved_availability at idx2400 / when1793330002700 and 3101_attendance_shared_workflow at idx2401 / when1793330002701. Fresh main/alpha are 4a5a9de8c. A scan of local/remote ref journals and readable registered worktree journals found highest competing timestamp1793330002601 (3001_employment_membership_initplan). Read-only staging reports704 applied entries through1793330002200. Preserve all existing SQL bytes and the canonical journal prefix; recheck the exact ordered installation ledger and peer reservations at integration/admission. Neither reservation grants installation priority or deployment authority.
@@ -2025,3 +3162,47 @@ when1793330002902. A fresh full fetch and survey of 1046 journals and 686
 readable registered worktrees found no higher competing reservation than its
 owned 3301/2601/1793330002901. This adds explicit Maybank arrangement metadata
 and a separate, nullable payee banking-residency fact; no tax residency is copied.
+
+## Online upgrade rework of the unapplied candidate set (10 November 2026)
+
+Branch `claude/candidate-migrations-online-20261110` edits these never-applied files in place so the set can be
+applied to a populated production database without holding locks across the single Drizzle transaction. Numbers,
+indexes and `when` values are unchanged; only their bytes, so their hashes:
+
+| Tag | Was SHA256 | Now SHA256 |
+| --- | --- | --- |
+| `2103_system_performance_read_guards` | 0f9ec0dfac05dfd46db765cdc868b0dfc14637e4c6266d229dea12f3691f8111 | fa2c3b276ee87843773d2f90c645d2af2ac9edeeab9c8ee7990da2f93fc9dcdc |
+| `2124_ai_control_navigation_candidates` | ed8666bfc29767ce266c362f07046dcd6b5b65b8434738bb9257daf5e328292c | 1fec462ad6033c782152938e523195190f8603d64a09e8b1c89f1f3f2d0b83c7 |
+| `2131_ai_read_only_metadata_locks` | 409262dd7b958eb8c2633556f9dba13ad637042efcb07b632a5bcea5c8131077 | 7fc2ba831335cb8cd1a4907eb6291f4508e7355dd1c02324392a8c6b70011268 |
+| `2132_ai_metadata_claim_preview_index` | ea9d1a6ee283b0586a835d98ee4c5e75196615a5f51d22d643966fc519c97508 | b50f22b90580b0ec5fcce8fdc915094d7b119cd1df5547918779ce7aa8029bd7 |
+| `2133_ai_action_read_only_lock` | d22cc6aa2e0995a4b7368127ac4d0a2d0c8f18e4bc44a5ca31480ab5d144ea8f | 92b37840b1465bd5be55bf31049db491de861f71d6b5e4a47e892afa1e8df167 |
+| `2134_claim_visibility_set_membership` | a489a4293bc835003a0c6ee3f77f68d3847c618827949b54d541290563d3f2f6 | 3aac721aa0f291127c3718f4379007eec1240a6900182c84ecf7f82e24c004ca |
+| `2138_ai_pause_company_discovery` | bc44d218c30fcaa1db8a2f92e661be228cc4638fdfeb4280be0cacef388e5574 | 074304d629b363cc1317fb1da1e06749ab4dd4102acbd1a0005b169b5ec835b7 |
+| `2212_payroll_audit_claim_lookup_indexes` | ba7080ebfe158a3e2c339552de3a4c9c5adc2ae63dd5e32ec846671e647f37e2 | 4e9b9b975ba6c22ee0c8e89b0d5e6ea5303812358a1cdab1344d08531ba1a9ef |
+| `2504_notification_event_processing` | a473a533cd967d7ad2ac971e24b5141af87d25967b84b3ca491e42fa9f1d81ce | 84ea1697e55e7df6dba1458912ab0e8a56330e2fd12c7c2a253b0f6af9e82e62 |
+| `2506_notification_receipt_retention` | 764bd405d99e398e35f2282202f07daf9c5f732cdbd67d19b35862849bfc88cf | 9094888120376fbc21a9f56eca8b7dcc6bb2774bbc6bf380a24c488cb6ceaf8d |
+| `2903_notification_receipt_cycle_authority` | 82711cacac3c69fc217fb9038ccc6a6000dc41c746e3751d8584499698471e22 | d6aae2dcc297c146afb6584701159cc09a0f65592dd4e779a83cd7782a1279ff |
+| `3001_employment_membership_initplan` | cd25b675ca404c364d4aef1f436f2e8a89ddeff8d4c63c355cd1fb28dc1507d0 | 9a7a4d8019b34041b4a7eb7c09fb44932c3e93d22a5b55000e2247da9dd8d8c7 |
+| `3102_assignment_membership_initplan` | 5cb2e363d5fb27d7de67c8317d1d0c59a5545d86dc835e0d4d1c4cfaa126c2d6 | 21a7750a316cc8a0025e8d5c51e77cd06491ce8b1fea50d8414267e9c0cc6ab0 |
+| `3500_ai_centre_architecture_compatibility` | 3286f17e76b8d997c46b22019df613b9eef1d1b82c85c125cdb57b80392884ca | c264d042ea39709e2bcc3b7f9b33b83715a30f05b98437e60b1c1910b1e3bbf3 |
+| `4342_attendance_clock_policy_audit_scope` | 611b96c0f6d47709a1f77dcf62d84c952752150b8571de2839d39d7c6e8b109d | be818457c18cd823f0cae24c5d8eeb3e51923ed16a7451c76cb6fcb18da8fe2a |
+
+- `2504` no longer locks `domain_event` or copies history inside the batch; it records the cursor cutover and
+  `scripts/post-migrate-online.ts` writes historical receipts in small resumable transactions. `2506` is a no-op
+  because `ON DELETE CASCADE` now ships on the original foreign key.
+- `2103`, `2132`, `2212` and `2504` build hot-table indexes through `online_migration.index_or_defer`: inside the migration
+  below 8 MB, otherwise `CREATE INDEX CONCURRENTLY` in the post-migration step (`online_migration.deferred_index`).
+- Lock timeouts are scoped to the statements that need them (`2134`, `2504`, `3001`, `3102`, `4342`) and restored.
+- `2124`, `2131`, `2133` and `2138` edit the inner AI control owners; the 3200 wrappers and the tenant stop check stay
+  live at every prefix. `3500` re-asserts the same final bodies.
+- `4342` keeps `SELECT(reason)` on `attendance_clock_policy_revision` for the previous application version. **Follow-up
+  required:** the first release after this one, once no old build can run, must revoke that column grant.
+
+## Home round trips — 10 November 2026 (unallocated draft)
+
+Branch `claude/home-round-trips-20261110` journals `9850_reward_access_observation_due` at idx 3743 and when
+1793330009850 as an UNALLOCATED DRAFT from the owner-provided 9850–9859 block, so the focused suite applies it. It adds
+one read-only STABLE SECURITY DEFINER probe, `app.reward_access_observation_due(uuid)`, with EXECUTE for `ai_hr_app`
+only; no table, index, grant on data or existing function changes. Final tag, idx and `when` must be assigned above the
+freshly verified ledger at integration, and the approved upgrade tail pins (`test/helpers/approved-upgrade.ts`) updated
+then. This entry carries no allocation or deployment authority.

@@ -17,6 +17,7 @@ import {seedPayrollCycleCatalog,previewPayrollHistoryUpload,confirmPayrollHistor
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
 import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule} from './harness';
+import {copyTenantRowsAtPrefix} from './helpers/prefix-seed';
 beforeAll(async()=>{await resetDb();});afterAll(closeAll);
 
 it('applies the pinned payroll and authentication successor tail through the ordinary migrator after closed payroll and immutable import history exist, preserving their bytes and the applied ledger prefix',async()=>{
@@ -65,8 +66,9 @@ it('applies the pinned payroll and authentication successor tail through the ord
     await target.client`insert into public.company(id,tenant_id,legal_name) values(${b.companyId},${b.tenantId},${company.name})`;
     continue;
    }
-   const rows=await owner.db.select().from(table).where(table===schema.tenant?eq(schema.tenant.id,b.tenantId):sql`tenant_id=${b.tenantId}::uuid`);
-   if(rows.length)await target.db.insert(table).values(rows);
+   // Prefix-era seed: only the columns these tables have at the 636-entry prefix. The combined release's
+   // staged-import marker (5010) and payroll processing lease (5051) postdate it and must be null here.
+   await copyTenantRowsAtPrefix(owner,target,table,b.tenantId);
   }
   const snapshot=async()=>{
    const out:Record<string,unknown>={};
@@ -78,11 +80,23 @@ it('applies the pinned payroll and authentication successor tail through the ord
   const protectedBefore=await target.db.execute(sql`select tgname,tgenabled from pg_trigger where tgrelid='public.payroll_history_import_snapshot'::regclass and not tgisinternal order by tgname`);expect(protectedBefore.length).toBeGreaterThan(0);expect(protectedBefore.every(row=>row.tgenabled==='O')).toBe(true);
 
   const approvedUpgrade=await migrateApprovedUpgrade(target);
-  expect(retainedUpgradeSnapshot(await snapshot(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(old!));
+  // The tail appends three nullable columns to snapshotted tables: the staged-import marker on domain_event (5012)
+  // and the processing lease on payroll_batch (5051). Each must be present and null on every retained row, and only
+  // then is the row compared without it; any other added or changed column still fails the comparison.
+  const tailNullColumns:Record<string,string[]>={domain_event:['import_pending_attempt_id'],payroll_batch:['processing_job_id','processing_started_at']};
+  const withoutTailNulls=(out:Record<string,unknown>)=>Object.fromEntries(Object.entries(out).map(([table,rows])=>[table,(rows as {value:Record<string,unknown>}[]).map(({value})=>{
+   const original={...value};
+   for(const column of tailNullColumns[table]??[]){expect(Object.hasOwn(value,column),table+'.'+column+' added by the tail').toBe(true);expect(value[column],table+'.'+column).toBeNull();delete original[column];}
+   return {value:original};
+  })]));
+  expect(retainedUpgradeSnapshot(withoutTailNulls(await snapshot()),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(old!));
   const afterLedger=await target.db.execute<{hash:string;created_at:string}>(sql`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`);
   expect(afterLedger.slice(0,-tail.length)).toEqual(beforeLedger);expect(afterLedger).toHaveLength(beforeLedger.length+tail.length);
   expect(afterLedger.slice(-tail.length)).toEqual(tail.map(([tag,when])=>({hash:createHash('sha256').update(readFileSync(`db/migrations/${tag}.sql`)).digest('hex'),created_at:when})));
-  expect(await target.db.execute(sql`select tgname,tgenabled from pg_trigger where tgrelid='public.payroll_history_import_snapshot'::regclass and not tgisinternal order by tgname`)).toEqual(protectedBefore);
+  // Every protecting trigger stays exactly as it was. The combined release adds one: 5055's AFTER INSERT stage stamp,
+  // which registers a row inserted by a staged payroll history job (and does nothing otherwise).
+  expect(await target.db.execute(sql`select tgname,tgenabled from pg_trigger where tgrelid='public.payroll_history_import_snapshot'::regclass and not tgisinternal order by tgname`))
+   .toEqual([...protectedBefore,{tgname:'payroll_history_import_snapshot_history_stage_stamp',tgenabled:'O'}].sort((a,b)=>String(a.tgname)<String(b.tgname)?-1:1));
   expect((await target.db.execute(sql`select relrowsecurity as protected from pg_class where oid='public.payroll_tax_basis_revision'::regclass`))[0]).toEqual({protected:true});
   expect((await target.db.execute(sql`select has_table_privilege('ai_hr_app','public.payroll_tax_basis_revision','SELECT') as can_read,has_table_privilege('ai_hr_app','public.payroll_tax_basis_revision','INSERT') as can_insert,has_table_privilege('ai_hr_app','public.payroll_tax_basis_revision','DELETE') as can_delete`))[0]).toEqual({can_read:true,can_insert:true,can_delete:false});
   await expect(target.db.execute(sql`update payroll_history_import_snapshot set value_hash=value_hash`)).rejects.toThrow();

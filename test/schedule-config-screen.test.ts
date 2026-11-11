@@ -512,13 +512,31 @@ describe('1c5602cc — the "Not configured here" card is tied to the absences it
     expect(controls).toContain('roster.manual-changes');
     expect(read('app/admin/attendance/schedule/group-sections.tsx')).toContain("controlPanel('duty')");
     const roster=read('core/roster.ts');
-    for(const writer of ['assignShift','setRestDay','clearRoster','assignShiftBulk','setRestDayBulk','copyRoster']){
-      const start=roster.indexOf(`export async function ${writer}(`);
-      expect(start,writer).toBeGreaterThanOrEqual(0);
+    const bodyOf=(name:string)=>{
+      const start=roster.indexOf(`export async function ${name}(`);
+      expect(start,name).toBeGreaterThanOrEqual(0);
       const end=roster.indexOf('\nexport ',start+1);
       const body=roster.slice(start,end<0?undefined:end);
-      expect(body.length,writer).toBeGreaterThan(100);
-      expect(body,writer).toContain('assertDutyRosterWriteTx');
+      expect(body.length,name).toBeGreaterThan(100);
+      return body;
+    };
+    // 22b594902 (roster bulk operations on the shared job kernel): the three bulk writers delegate their rows to the
+    // per-employee row writers the background job also runs, and the guard moved into those. Pin the CALL (a comment
+    // naming the guard is not a guard) in the writer that actually takes it, and the delegation to it.
+    const ROW_WRITER:Record<string,string>={assignShiftBulk:'writeRosterShiftRowsTx',setRestDayBulk:'writeRosterRestRowsTx',copyRoster:'copyRosterRowsTx'};
+    for(const writer of ['assignShift','setRestDay','clearRoster','assignShiftBulk','setRestDayBulk','copyRoster']){
+      const body=bodyOf(writer),rows=ROW_WRITER[writer];
+      if(rows)expect(body,writer).toMatch(new RegExp(`await ${rows}\\(tx,ctx,`));
+      expect(rows?bodyOf(rows):body,rows??writer).toMatch(/await assertDutyRosterWriteTx\(tx,ctx,/);
+    }
+    // The background job writes through the same row writers, re-runs the guard in its rolled-back check steps, and
+    // re-checks the administrator at prepare, at every chunk, at every step and at finalize.
+    const worker=read('core/roster-bulk-worker.ts');
+    for(const call of ['writeRosterShiftRowsTx(tx,ctx,','writeRosterRestRowsTx(tx,ctx,','copyRosterRowsTx(tx,ctx,','await assertDutyRosterWriteTx(sp,ctx,values)'])expect(worker,call).toContain(call);
+    for(const owner of ['async function prepareRoster(','async function applyRosterStep(','async function finalizeRoster(','async beginChunkTx(tx,ctx,job){']){
+      const start=worker.indexOf(owner);
+      expect(start,owner).toBeGreaterThanOrEqual(0);
+      expect(worker.slice(start,start+400),owner).toContain('assertRosterAdmin(ctx);');
     }
   });
 

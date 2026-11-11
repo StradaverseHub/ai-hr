@@ -2,9 +2,10 @@
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
-import {withTenant,type Tx,type SessionContext} from '../../db/client';
+import type {Tx,SessionContext} from '../../db/client';
 import {pgSqlState} from '../../lib/db-error';
 import {agentActionById} from '../../lib/ai/agent-action-registry';
+import {readRewardsPresentationChoices} from './rewards-presentation';
 import {withAgentActionGuard} from './agent-action-guard';
 import {reviewAnnualRewardReturnTx,returnAnnualRewardReviewTx} from '../../packs/rewards/service';
 import {REWARDS_RETURN_ACTION as action,RewardsReturnHuman,RewardsReturnReview,RewardsReturnReceipt,RewardsReturnChoices} from '../../lib/assistant-actions/rewards-return-contract';
@@ -37,8 +38,8 @@ export async function confirmRewardsReturnSourceTx(tx:Tx,ctx:SessionContext,valu
  if(proof.unitId!==source.unitId||proof.returnedRevision!==current.content.revision)return rewardsReturnUnavailable();return{proof,reason:current.content.reason,targets:proof.targets};
 }
 export async function reconcileRewardsReturnSourceTx(tx:Tx,ctx:SessionContext,reviewId:string){const [r]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_rewards_return_receipt(${z.guid().parse(reviewId)}::uuid) receipt`);return RewardsReturnReceipt.parse(r?.receipt);}
-export async function readRewardsReturnChoicesTx(tx:Tx,ctx:SessionContext){return withRewardsReturnBoundsTx(tx,async()=>{await assertRewardsReturnActorTx(tx,ctx);const [r]=await tx.execute<{choices:unknown}>(sql`select app.assistant_rewards_return_choices() choices`),value=RewardsReturnChoices.parse(r?.choices);if(Buffer.byteLength(JSON.stringify(value))>49152)return rewardsReturnUnavailable();return value;});}
-export const readRewardsReturnChoices=(ctx:SessionContext)=>withTenant(ctx,tx=>readRewardsReturnChoicesTx(tx,ctx));
+export const readRewardsReturnChoices=(ctx:SessionContext)=>readRewardsPresentationChoices(ctx,action,
+ sql`select app.assistant_rewards_return_presentation_choices_v1() as choices`,RewardsReturnChoices,rewardsReturnUnavailable);
 export async function withRewardsReturnBoundsTx<T>(tx:Tx,work:()=>Promise<T>):Promise<T>{
  const [prior]=await tx.execute<{saved:string;milliseconds:number;unit:string}>(sql`select current_setting('lock_timeout') saved,setting::integer milliseconds,unit from pg_settings where name='lock_timeout'`);
  if(!prior||prior.unit!=='ms'||!Number.isSafeInteger(prior.milliseconds)||prior.milliseconds<0)return rewardsReturnUnavailable();

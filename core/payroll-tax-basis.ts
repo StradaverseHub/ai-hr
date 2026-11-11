@@ -8,7 +8,7 @@ import type {StatutoryRuleset} from '../localization/country-pack';
 import {readHistoryField,STATUTORY_IMPORT_CODES,STATUTORY_DESTINATIONS} from '../lib/payroll-history-import-schema';
 import {PayrollTaxBasisError,type TaxBasisSelection,type TaxBasisPreview,type TaxBasisEmployee,type TaxBasisMonth,type TaxBasisValue,type TaxBasisBatch} from '../lib/payroll-tax-basis';
 import {assertModuleGate} from './module-gate';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx,lockPayrollHistoryWriteTx} from './payroll-history-lock';
 import {resolvePayrollPermission,parsePayrollHistorySource,markBatchNeedsRecalc} from '../packs/payroll/service';
 import {taxBasisSourceHashTx,readEffectiveTaxBasesTx,validatedTaxBasis} from './payroll-tax-basis-read';
@@ -162,24 +162,76 @@ export async function taxBasisOptions(ctx:SessionContext){return withTenant(ctx,
  for(const id of ids){const subjects=await tx.execute<{id:string;employeeNo:string;name:string}>(sql`select * from app.payroll_tax_basis_subjects(${id}::uuid,null,null)`);employees.push(...subjects.map(s=>({...s,companyId:id})));}
  const years=await tx.execute<{year:number}>(sql`select distinct left(pay_period,4)::integer as year from payroll_batch where company_id=any(${uuidArray(ids)}) and status in ('processed','closed') order by year desc`);return {companies,employees,years:years.map(r=>r.year),canRecalculate};
  });}
-export async function previewTaxBasisRecalculation(ctx:SessionContext,selection:TaxBasisSelection):Promise<TaxBasisPreview>{validateSelection(selection);return withTenant(ctx,async tx=>{
- await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await permission(tx,ctx,selection.companyId,true);const computed=await computeTx(tx,ctx,selection);const id=randomUUID(),createdAt=new Date().toISOString(),expiresAt=new Date(Date.now()+15*60000).toISOString();const previewHash=hash({selection,computed});
- const preview:TaxBasisPreview={...computed,previewId:id,previewHash,createdAt,expiresAt};await tx.execute(sql`insert into payroll_tax_basis_preview(id,tenant_id,company_id,created_by,preview,selection,preview_hash,expires_at) values(${id}::uuid,${ctx.tenantId}::uuid,${selection.companyId}::uuid,${ctx.userId!}::uuid,${JSON.stringify(preview)}::jsonb,${JSON.stringify(selection)}::jsonb,${previewHash},${expiresAt}::timestamptz)`);return preview;
+/** The preview computes in one read-only snapshot with no tenant-wide lock: everything it reads is committed
+ * whole by its writers (a history import or revert, a correction employee), so a snapshot sees each of them all or
+ * nothing, exactly as the shared history barrier made it before, and the database refuses any write in it. Only
+ * the preview record is then saved, in a short transaction that rechecks the caller's authority on the primary.
+ * Confirming still recomputes the selection under the history and Access write locks and refuses a preview whose
+ * figures no longer match, so a change between the snapshot and the confirmation is never applied. */
+export async function previewTaxBasisRecalculation(ctx:SessionContext,selection:TaxBasisSelection):Promise<TaxBasisPreview>{validateSelection(selection);
+ const computed=await withTenant(ctx,async tx=>{await permission(tx,ctx,selection.companyId,true);return computeTx(tx,ctx,selection);},{readOnlySnapshot:true});
+ const id=randomUUID(),createdAt=new Date().toISOString(),expiresAt=new Date(Date.now()+15*60000).toISOString();const previewHash=hash({selection,computed});
+ const preview:TaxBasisPreview={...computed,previewId:id,previewHash,createdAt,expiresAt};
+ return withTenant(ctx,async tx=>{
+  await permission(tx,ctx,selection.companyId,true);
+  await tx.execute(sql`insert into payroll_tax_basis_preview(id,tenant_id,company_id,created_by,preview,selection,preview_hash,expires_at) values(${id}::uuid,${ctx.tenantId}::uuid,${selection.companyId}::uuid,${ctx.userId!}::uuid,${JSON.stringify(preview)}::jsonb,${JSON.stringify(selection)}::jsonb,${previewHash},${expiresAt}::timestamptz)`);return preview;
  });}
+/** Everything a selection's recomputation reads, as one digest: the Pay Item settings, the subjects, the company,
+ * the assessment year's verified rules, and every payslip and run of the company in that year (row versions), with
+ * the income-tax corrections and imported history snapshots and revisions on them. Read set-wise, under the caller's
+ * row security, so the batch can open after a short check instead of a full recomputation under the write locks. */
+async function taxBasisInputsDigestTx(tx:Tx,selection:TaxBasisSelection){
+ const settings=await settingsTx(tx);if(!settings.some(s=>s.code.toUpperCase()==='BASIC'))settings.push(basicSetting);
+ const subjects=await tx.execute(sql`select id,"employeeNo",name from app.payroll_tax_basis_subjects(${selection.companyId}::uuid,${selection.year},${selection.upToMonth}) order by id`);
+ const [company]=await tx.execute<{country:string;row:string}>(sql`select country,legal_name||':'||coalesce(archived_at::text,'')||':'||xmin::text as row from company where id=${selection.companyId}::uuid`);
+ const pack=company?requirePackFor(company.country):null;const rules:unknown[]=[];
+ if(pack?.payroll.replayTaxBasis)for(let month=1;month<=selection.upToMonth;month++){
+  const period=`${selection.year}-${String(month).padStart(2,'0')}`;
+  rules.push(hash(await pack.payroll.loadRulesetResolved(tx,{asOf:period+'-01'}).catch((error:unknown)=>({unavailable:error instanceof Error?error.message:String(error)}))));
+ }
+ const year=selection.year+'-%';
+ const [rows]=await tx.execute<{d:string}>(sql`select md5(coalesce(string_agg(x,',' order by x),'')) as d from (
+   select 'p:'||p.id||':'||p.xmin||':'||b.id||':'||b.xmin as x from payslip p join payroll_batch b on b.id=p.batch_id where b.company_id=${selection.companyId}::uuid and b.pay_period like ${year}
+   union all select 'r:'||r.id||':'||r.xmin from payroll_tax_basis_revision r where r.company_id=${selection.companyId}::uuid and r.period like ${year}
+   union all select 's:'||s.id from payroll_history_import_snapshot s join payroll_history_import_record h on h.id=s.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}
+   union all select 'v:'||v.id from payroll_history_import_revision v join payroll_history_import_record h on h.id=v.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}) q`);
+ return hash({settings,subjects:[...subjects],company:company?.row??null,rules,rows:rows?.d??null});
+}
 async function recordEventTx(tx:Tx,ctx:SessionContext,batchId:string,companyId:string,kind:string,detail:unknown={},employmentId:string|null=null){await tx.execute(sql`insert into payroll_tax_basis_event(tenant_id,company_id,batch_id,employment_id,actor_id,kind,detail) values(${ctx.tenantId}::uuid,${companyId}::uuid,${batchId}::uuid,${employmentId}::uuid,${ctx.userId!}::uuid,${kind},${JSON.stringify(detail)}::jsonb)`);}
 async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},resume=false):Promise<{id:string}>{
  if(!uuid.test(input.previewId)||!/^[a-f0-9]{64}$/.test(input.previewHash))fail('Choose a valid recalculation preview.');
- const opened=await withTenant(ctx,async tx=>{
-  await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);
-  const [stored]=await tx.execute<{preview:TaxBasisPreview;selection:TaxBasisSelection;previewHash:string;expired:boolean}>(sql`select preview,selection,preview_hash as "previewHash",expires_at<now() as expired from payroll_tax_basis_preview where id=${input.previewId}::uuid and created_by=${ctx.userId??null}::uuid for update`);
+ type Stored={preview:TaxBasisPreview;selection:TaxBasisSelection;previewHash:string;expired:boolean};
+ const storedTx=async(tx:Tx,lock:boolean)=>{
+  const [stored]=await tx.execute<Stored>(sql`select preview,selection,preview_hash as "previewHash",expires_at<now() as expired from payroll_tax_basis_preview where id=${input.previewId}::uuid and created_by=${ctx.userId??null}::uuid ${lock?sql`for update`:sql``}`);
   if(!stored||stored.previewHash!==input.previewHash)fail('The recalculation preview is unavailable.');await permission(tx,ctx,stored.selection.companyId,true);
   const [existing]=await tx.execute<{id:string}>(sql`select id from payroll_tax_basis_batch where preview_id=${input.previewId}::uuid`);
-  if(existing)return {...stored,id:existing.id,existing:true};
-  if(stored.expired)fail('The preview expired. Preview the recalculation again.');
-  const fresh=await computeTx(tx,ctx,stored.selection);if(hash({selection:stored.selection,computed:fresh})!==stored.previewHash)fail('History, settings, rules or access changed. Preview the recalculation again.');
-  if(!stored.preview.eligibleCount)fail('There are no eligible changed employees to recalculate.');
-  const id=randomUUID();await tx.execute(sql`insert into payroll_tax_basis_batch(id,tenant_id,company_id,preview_id,created_by) values(${id}::uuid,${ctx.tenantId}::uuid,${stored.selection.companyId}::uuid,${input.previewId}::uuid,${ctx.userId!}::uuid)`);await recordEventTx(tx,ctx,id,stored.selection.companyId,'pending');return {...stored,id,existing:false};
- });
+  if(!existing&&stored.expired)fail('The preview expired. Preview the recalculation again.');
+  return{stored,existing:existing?.id??null};
+ };
+ // The whole selection is recomputed in one read-only snapshot with no tenant-wide lock (up to 25 s), and refused
+ // exactly as before when its figures no longer match the preview. The batch then opens in one short transaction
+ // under the history and Access write locks, after proving with one set-wise digest that nothing the recomputation
+ // read changed since its snapshot; if something did, the snapshot recomputation runs again. Each employee is still
+ // recomputed and compared under the write locks before its own correction commits (below).
+ let opened:Stored&{id:string;existing:boolean}|null=null;
+ for(let round=0;!opened;round++){
+  const snapshot=await withTenant(ctx,async tx=>{
+   const {stored,existing}=await storedTx(tx,false);
+   if(existing)return{stored,existing,digest:''};
+   const fresh=await computeTx(tx,ctx,stored.selection);if(hash({selection:stored.selection,computed:fresh})!==stored.previewHash)fail('History, settings, rules or access changed. Preview the recalculation again.');
+   if(!stored.preview.eligibleCount)fail('There are no eligible changed employees to recalculate.');
+   return{stored,existing:null,digest:await taxBasisInputsDigestTx(tx,stored.selection)};
+  },{readOnlySnapshot:true});
+  if(snapshot.existing){opened={...snapshot.stored,id:snapshot.existing,existing:true};break;}
+  opened=await withTenant(ctx,async tx=>{
+   await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+   const {stored,existing}=await storedTx(tx,true);
+   if(existing)return {...stored,id:existing,existing:true};
+   if(await taxBasisInputsDigestTx(tx,stored.selection)!==snapshot.digest)return null;
+   const id=randomUUID();await tx.execute(sql`insert into payroll_tax_basis_batch(id,tenant_id,company_id,preview_id,created_by) values(${id}::uuid,${ctx.tenantId}::uuid,${stored.selection.companyId}::uuid,${input.previewId}::uuid,${ctx.userId!}::uuid)`);await recordEventTx(tx,ctx,id,stored.selection.companyId,'pending');return {...stored,id,existing:false};
+  });
+  if(!opened&&round>=2)fail('History, settings, rules or access changed. Preview the recalculation again.');
+ }
  if(opened.existing&&!resume)return {id:opened.id};
  const processed=await withTenant(ctx,async tx=>{await permission(tx,ctx,opened.selection.companyId,true);return tx.execute<{kind:string;employmentId:string|null}>(sql`select kind,employment_id as "employmentId" from payroll_tax_basis_event where batch_id=${opened.id}::uuid`);});
  if(processed.some(e=>['completed','completed_with_errors','failed'].includes(e.kind)))return {id:opened.id};
@@ -188,7 +240,7 @@ async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:
  // Each employee/year commits with all correction rows and its audit event, or none of them.
  for(const reviewed of chunk){if(Date.now()-started>40000)break;
   try{await withTenant(ctx,async tx=>{
-   await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await permission(tx,ctx,opened.selection.companyId,true);
+   await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await permission(tx,ctx,opened.selection.companyId,true);
    await tx.execute(sql`select id from payroll_tax_basis_batch where id=${opened.id}::uuid for update`);
    const prior=await tx.execute(sql`select id from payroll_tax_basis_event where batch_id=${opened.id}::uuid and ((employment_id=${reviewed.id}::uuid and kind in ('employee_completed','employee_failed')) or kind in ('completed','completed_with_errors','failed'))`);if(prior.length)return;
    const settings=await settingsTx(tx,true);if(!settings.some(s=>s.code.toUpperCase()==='BASIC'))settings.push(basicSetting);if(hash(settings)!==opened.preview.settingsHash)fail('Pay Item settings changed. Create a new preview for remaining employees.');
@@ -203,16 +255,16 @@ async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:
    if(firstChanged){
     const impacted=await tx.execute<{id:string}>(sql`select distinct b.id from payroll_batch b join payslip p on p.batch_id=b.id join pay_period period on period.id=b.pay_period_id
      where b.tenant_id=${ctx.tenantId}::uuid and b.company_id=${opened.selection.companyId}::uuid and p.employment_id=${reviewed.id}::uuid
-      and b.status='processed' and period.status='open' and b.pay_period>=${firstChanged} and b.pay_period like ${opened.selection.year+'-%'} and b.history_import_attempt_id is null order by b.id`);
+      and b.status in ('processed','processing') and period.status='open' and b.pay_period>=${firstChanged} and b.pay_period like ${opened.selection.year+'-%'} and b.history_import_attempt_id is null order by b.id`);
     for(const target of impacted){await markBatchNeedsRecalc(tx,ctx,{batchId:target.id,employmentIds:[reviewed.id],category:'statutory'});await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-batch',aggregateId:target.id,eventType:'payroll-batch.tax-basis-recalc-required',actor:actorOf(ctx),subjectEmploymentId:reviewed.id,payload:{taxBasisBatchId:opened.id,employmentId:reviewed.id,sourcePeriod:firstChanged}});}
    }
    await recordEventTx(tx,ctx,opened.id,opened.selection.companyId,'employee_completed',reviewed,reviewed.id);await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-tax-basis',aggregateId:opened.id,eventType:'payroll.tax-basis.corrected',actor:actorOf(ctx),subjectEmploymentId:reviewed.id,payload:{companyId:opened.selection.companyId,year:opened.selection.year,upToMonth:opened.selection.upToMonth,recordCount:reviewed.recordCount,previewHash:input.previewHash}});
   });}catch(error){
    // Failed employee transactions are rolled back; the failure remains a separate durable outcome.
-   await withTenant(ctx,async tx=>{await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await permission(tx,ctx,opened.selection.companyId,true);const already=await tx.execute(sql`select id from payroll_tax_basis_event where batch_id=${opened.id}::uuid and ((employment_id=${reviewed.id}::uuid and kind in ('employee_completed','employee_failed')) or kind in ('completed','completed_with_errors','failed'))`);if(already.length)return;await recordEventTx(tx,ctx,opened.id,opened.selection.companyId,'employee_failed',{...reviewed,status:'failed',reason:error instanceof PayrollTaxBasisError?error.message:'The employee could not be recalculated. Review the source before retrying.'},reviewed.id);});
+   await withTenant(ctx,async tx=>{await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await permission(tx,ctx,opened.selection.companyId,true);const already=await tx.execute(sql`select id from payroll_tax_basis_event where batch_id=${opened.id}::uuid and ((employment_id=${reviewed.id}::uuid and kind in ('employee_completed','employee_failed')) or kind in ('completed','completed_with_errors','failed'))`);if(already.length)return;await recordEventTx(tx,ctx,opened.id,opened.selection.companyId,'employee_failed',{...reviewed,status:'failed',reason:error instanceof PayrollTaxBasisError?error.message:'The employee could not be recalculated. Review the source before retrying.'},reviewed.id);});
   }
  }
- await withTenant(ctx,async tx=>{await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await permission(tx,ctx,opened.selection.companyId,true);const terminal=await tx.execute(sql`select id from payroll_tax_basis_event where batch_id=${opened.id}::uuid and kind in ('completed','completed_with_errors','failed')`);if(terminal.length)return;const [counts]=await tx.execute<{ok:number}>(sql`select count(distinct employment_id)::integer as ok from payroll_tax_basis_event where batch_id=${opened.id}::uuid and kind='employee_completed'`);const total=opened.preview.eligibleCount;const [processed]=await tx.execute<{count:number}>(sql`select count(distinct employment_id)::integer as count from payroll_tax_basis_event where batch_id=${opened.id}::uuid and kind in ('employee_completed','employee_failed')`);if(processed.count<total)return;await recordEventTx(tx,ctx,opened.id,opened.selection.companyId,counts.ok===total?'completed':counts.ok?'completed_with_errors':'failed');});return {id:opened.id};
+ await withTenant(ctx,async tx=>{await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await permission(tx,ctx,opened.selection.companyId,true);const terminal=await tx.execute(sql`select id from payroll_tax_basis_event where batch_id=${opened.id}::uuid and kind in ('completed','completed_with_errors','failed')`);if(terminal.length)return;const [counts]=await tx.execute<{ok:number}>(sql`select count(distinct employment_id)::integer as ok from payroll_tax_basis_event where batch_id=${opened.id}::uuid and kind='employee_completed'`);const total=opened.preview.eligibleCount;const [processed]=await tx.execute<{count:number}>(sql`select count(distinct employment_id)::integer as count from payroll_tax_basis_event where batch_id=${opened.id}::uuid and kind in ('employee_completed','employee_failed')`);if(processed.count<total)return;await recordEventTx(tx,ctx,opened.id,opened.selection.companyId,counts.ok===total?'completed':counts.ok?'completed_with_errors':'failed');});return {id:opened.id};
 }
 export async function listTaxBasisBatches(ctx:SessionContext,requestedId?:string):Promise<TaxBasisBatch[]>{return withTenant(ctx,async tx=>{
  const rows=await tx.execute<{id:string;companyId:string;preview:TaxBasisPreview;createdAt:string;actorName:string}>(sql`select b.id,b.company_id as "companyId",p.preview,b.created_at::text as "createdAt",coalesce(actor.full_name,b.created_by::text) as "actorName" from payroll_tax_basis_batch b join payroll_tax_basis_preview p on p.id=b.preview_id left join app_user u on u.id=b.created_by left join person actor on actor.id=u.person_id ${requestedId?sql`where b.id=${requestedId}::uuid`:sql``} order by b.created_at desc,b.id desc limit 100`);
@@ -223,7 +275,7 @@ export async function getTaxBasisBatch(ctx:SessionContext,id:string):Promise<Tax
 export async function recoverTaxBasisBatch(ctx:SessionContext,id:string):Promise<{id:string}>{
  if(!uuid.test(id))fail('Choose a valid recalculation batch.');
  return withTenant(ctx,async tx=>{
-  await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const [batch]=await tx.execute<{companyId:string;preview:TaxBasisPreview}>(sql`select b.company_id as "companyId",p.preview from payroll_tax_basis_batch b join payroll_tax_basis_preview p on p.id=b.preview_id where b.id=${id}::uuid`);if(!batch)fail('The recalculation batch is unavailable.');
   await permission(tx,ctx,batch.companyId,true);
   const events=await tx.execute<{kind:string;employmentId:string|null;recent:boolean}>(sql`select kind,employment_id as "employmentId",created_at>now()-interval '5 minutes' as recent from payroll_tax_basis_event where batch_id=${id}::uuid order by created_at,id`);

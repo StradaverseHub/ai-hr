@@ -177,14 +177,27 @@ export function withModuleTenant(code: string) {
   // it (test/module-gate.test.ts), and it is the exact class of breakage this change must not introduce:
   // a gate is allowed to refuse, never to change how a refusal ARRIVES. An async function body always
   // returns a rejected promise.
-  return async function withGatedTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return async function withGatedTenant<T>(
+    ctx: SessionContext,
+    fn: (tx: Tx) => Promise<T>,
+    options?: Parameters<typeof withTenant>[2],
+  ): Promise<T> {
     assertModuleGate(ctx, code);
     return withTenant(ctx, async tx => {
       if(code==='performance'&&aiCentreActivity(ctx.tenantId))await assertAiCentreRunningTx(tx,ctx);
       if (code === 'payroll') await lockPayrollHistoryReadTx(tx,ctx.tenantId);
       return fn(tx);
-    });
+    }, options);
   };
+}
+
+/** The Payroll gate for an own read-only view that needs no payroll-history barrier: ONE REPEATABLE READ READ ONLY
+ * snapshot, taken at its first statement, so no statement of it can see half of a history correction and the barrier
+ * could only delay it (core/payroll-self-metadata.ts). Inside a request's shared snapshot it joins that snapshot. Only
+ * the Before payroll checklist's TP1 and TP3 reads use it; calculations, reports and writers keep withPayrollTenant. */
+export async function withPayrollSnapshotTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  assertModuleGate(ctx, 'payroll');
+  return withTenant(ctx, fn, { readOnlySnapshot: true });
 }
 
 /** The four optional PACKS (packs/catalog.ts: `packBacked: true`, `isCore: false`). */

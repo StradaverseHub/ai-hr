@@ -8,6 +8,7 @@ import { requireAdmin } from '@/lib/authz';
 import { resolveViewLeaveTypeId } from '@/lib/entitlement-tables-scope';
 import { Card, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
 import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
+import { LeaveFollowUpJobs } from '@/components/leave/leave-follow-up-jobs';
 import {
   EntitlementTablesBlock,
   loadEntitlementTablesData,
@@ -118,6 +119,7 @@ export default async function LeaveConfigEntitlementTablesPage({
       {/* `current="entitlementTables"` because this IS that tab of the Entitlements row. */}
       <LeaveConfigMap current="entitlementTables" />
       <ErrorBanner message={sp.error} />
+      <LeaveFollowUpJobs session={s} />
 
       <Card>
         <div className="space-y-2 p-4 text-sm">

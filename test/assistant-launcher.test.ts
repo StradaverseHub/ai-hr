@@ -15,11 +15,11 @@ vi.mock('../lib/scope',()=>({getScopeIds:async(ids:string[])=>ids}));
 const DEFAULTS:Record<string,unknown>={'assistant.launcher_enabled':false,'assistant.launcher_position':'bottom-right','assistant.launcher_hidden_areas':''};
 vi.mock('../core/entitlements',()=>({getSetting:(_ctx:unknown,key:string)=>{if(owner.settings.__broken)throw Error('PRIVATE snapshot');return key in owner.settings?owner.settings[key]:DEFAULTS[key];}}));
 vi.mock('../core/assistant-grant',()=>({mayUseAssistant:owner.access}));
-vi.mock('../core/ai-config',()=>({resolveActiveAiConfig:owner.provider}));
+vi.mock('../core/ai-provider-snapshot',()=>({readAiProviderPresentationTx:owner.provider}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,work:(tx:unknown)=>unknown)=>work({})}));
 vi.mock('../core/tenant-settings',()=>({setTenantSetting:owner.write}));
 import {resolvePageContext,PAGE_AREAS} from '../lib/ai/page-context';
-import {readLauncherSettings,assistantLauncherFor,setAssistantLauncher,LauncherSettingsError} from '../core/assistant-launcher';
+import {readLauncherSettings,assistantLauncherFor,assistantShellFor,setAssistantLauncher,LauncherSettingsError} from '../core/assistant-launcher';
 import {askFromLauncherAction,askFromWorkspaceAction} from '../app/assistant/launcher-actions';
 const ctx={tenantId:'fixture-tenant',userId:'fixture-user'};
 const id='0b6f5e3a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
@@ -54,6 +54,13 @@ describe('floating button settings fail closed',()=>{
   owner.access.mockRejectedValueOnce(Error('PRIVATE'));expect(await assistantLauncherFor(ctx as never)).toBeNull();
   // An unreadable settings snapshot hides the button rather than failing open.
   owner.settings={__broken:true};expect(await assistantLauncherFor(ctx as never)).toBeNull();
+ });
+ it('shares one access lookup between the shell navigation and enabled launcher',async()=>{
+  owner.settings={'assistant.launcher_enabled':true};
+  expect(await assistantShellFor(ctx as never)).toEqual({allowed:true,launcher:{position:'bottom-right',hiddenAreas:[]}});
+  expect(owner.access).toHaveBeenCalledTimes(1);
+  owner.provider.mockRejectedValueOnce(Error('PRIVATE'));
+  expect(await assistantShellFor(ctx as never)).toEqual({allowed:true,launcher:null});
  });
  it('writes all three settings together and refuses anything outside the closed values',async()=>{
   await setAssistantLauncher(ctx as never,{enabled:true,position:'bottom-left',hiddenAreas:['people','payroll']});

@@ -1,0 +1,135 @@
+{
+  "kind": "AI_MANAGEMENT_HOSTED_FIXTURE_RECOVERY_SOURCE_ONLY_NOT_QUALIFICATION",
+  "parent": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+  "sourceRef": "codex/ai-management-hosted-fixture-recovery-20261109",
+  "candidateCommit": "Recorded externally after freeze; no self-hash cycle",
+  "ownedTestPaths": [
+    "test/ai-management-contract.test.ts",
+    "test/ai-management-section-projection.test.ts"
+  ],
+  "wholeActualParentGitPreimages": {
+    "test/ai-management-contract.test.ts": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "gitBlob": "888709257a3509802d7def1303e7fdb44cbdbd3a",
+      "sha256": "2bbdda650507ca30bda445e3faf4bd99621e97787e3d51723ab2c036dd0427aa",
+      "bytes": 33295
+    },
+    "test/ai-management-section-projection.test.ts": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "gitBlob": "65429fba53dd66e012f65186ab259b8eb8cac65c",
+      "sha256": "faa9cd23815cefaac34f10b62f4b3260178ffc6599429f2e209e86b420d92f0f",
+      "bytes": 21877
+    },
+    "docs/adr/2026-11-09-ai-management-section-projection.md": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "gitBlob": "d1dacc7d0ed4ee8ec487988c1df42046967d005d",
+      "sha256": "4e22bbd109cdd9530d519878194e5eaf59b47f038b1b21b0e5843e93b86ef127",
+      "bytes": 4290
+    },
+    "docs/qualification/ai-management-section-projection-source-20261109.json": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "gitBlob": "abb54720b5950ea72453008fdce9c89291bec44d",
+      "sha256": "365a131f360aeb1400070a2476444e05d506b5f4111ced5e557d777dee4946f5",
+      "bytes": 23897
+    }
+  },
+  "inverseCoordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+  "wholeParentFileInverses": {
+    "test/ai-management-contract.test.ts": {
+      "currentSha256": "26311cc5725a931b951cf8825f0355c8c752eaaeb3210153f1fbc9c127a7a808",
+      "parentSha256": "2bbdda650507ca30bda445e3faf4bd99621e97787e3d51723ab2c036dd0427aa",
+      "changes": [
+        {
+          "startLine": 339,
+          "endLine": 353,
+          "after": "  const installedWrapper=read('db/migrations/3200_ai_centre_controls.sql');\n  expect(installedWrapper).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');\n  const installedAt=installedWrapper.indexOf('CREATE FUNCTION app._ai_control_context(');\n  const finalAt=wrapper.indexOf('CREATE OR REPLACE FUNCTION app._ai_control_context(');\n  expect(installedAt).toBeGreaterThanOrEqual(0);expect(finalAt).toBeGreaterThanOrEqual(0);\n  const installedEnd=installedWrapper.indexOf('END $$;',installedAt),finalEnd=wrapper.indexOf('END $$;',finalAt);\n  expect(installedEnd).toBeGreaterThan(installedAt);expect(finalEnd).toBeGreaterThan(finalAt);\n  expect(wrapper.slice(finalAt+'CREATE OR REPLACE '.length,finalEnd+'END $$;'.length))\n    .toBe(installedWrapper.slice(installedAt+'CREATE '.length,installedEnd+'END $$;'.length));\n  expect(wrapper).toContain('p.oid IS NULL OR md5(p.prosrc) IS DISTINCT FROM expected.body_hash');\n  expect(wrapper).toContain('p.proowner<>control_owner');\n  expect(wrapper).toContain(\"has_function_privilege('ai_hr_app',p.oid,'EXECUTE') IS DISTINCT FROM expected.app_execute\");\n  expect(wrapper).toContain('a.grantor<>p.proowner OR a.is_grantable');\n  expect(wrapper).toContain(\"p.oid IS DISTINCT FROM before_row.oid OR (to_jsonb(p)-'prosrc'-'proconfig') IS DISTINCT FROM before_row.attributes\");\n",
+          "before": "  expect(wrapper).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');\n"
+        }
+      ]
+    },
+    "test/ai-management-section-projection.test.ts": {
+      "currentSha256": "5b1d12868bed27cf5791ece99a77321d54c96aa228f1dd7963c405aba07bafd5",
+      "parentSha256": "faa9cd23815cefaac34f10b62f4b3260178ffc6599429f2e209e86b420d92f0f",
+      "changes": [
+        {
+          "startLine": 152,
+          "endLine": 153,
+          "after": " const zero=await usage(b.adminUserId,'completed',1,0,{provider:'openrouter',startedAt:at,openrouterAccountCostCredits:'0',observedRoundTripMs:12.5,providerObservationStatus:'reported'});\n",
+          "before": " const zero=await usage(b.adminUserId,'completed',1,0,{startedAt:at,openrouterAccountCostCredits:'0',observedRoundTripMs:12.5,providerObservationStatus:'reported'});\n"
+        }
+      ]
+    },
+    "docs/adr/2026-11-09-ai-management-section-projection.md": {
+      "currentSha256": "0b5d045397ed19325e1f70636c84cd4d4f3ddb44770eb313e7e66ab5015061ef",
+      "parentSha256": "4e22bbd109cdd9530d519878194e5eaf59b47f038b1b21b0e5843e93b86ef127",
+      "changes": [
+        {
+          "startLine": 65,
+          "endLine": 75,
+          "after": "\n## Hosted fixture recovery after1b78\n\nOriginal focused run42509856754 at1b78/controller00a27 completed its planned batch with failures. Its Node report recorded90PASS/2FAIL; the separate DOM viewport failures remain outside this correction. Full artifact authentication belongs to the independent CI owner. No original failure is relabelled.\n\nThe existing SQL-inventory case selected the actual final3500 wrapper but incorrectly required3200's historical ALTER RENAME there. Its rename assertion now names3200; a closed468-byte comparison requires the final CREATE OR REPLACE wrapper's complete FUNCTION definition to equal the installed3200 oracle. Added source assertions cover native MD5/owner/ACL/OID/attribute custody; the original delegation/centre-stop/inventory checks remain. No generic SQL parser or filename waiver is introduced.\n\nThe new KL-boundary fixture's reported-zero row used the helper's default openai provider. The actual23514 cause was ai_model_run_observation_fields:0625 permits reported accounting only for openrouter. Only that fictional zero row now overrides provider to openrouter; every zero/missing/day-boundary assertion and the native constraint remain unchanged. No provider request occurs.\n\nThis recovery changes two test owners only, retaining all6 existing contract cases and16 expanded projection cases, their caps, and all other callbacks. Its parent source index is retained by exact1b78 Git commit/blob/hash/byte provenance; current hashes and the small recovery record identify the new source without duplicating historical contents. Product, SQL/journal, authority, approvals and all DOM files remain whole1b78. The corrected source is unrun pending root and independent peer review; no retry, browser or release claim follows.\n",
+          "before": ""
+        }
+      ]
+    }
+  },
+  "originalFailure": {
+    "runId": "42509856754",
+    "controller": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
+    "source": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+    "nodeCases": 92,
+    "nodePassed": 90,
+    "nodeFailed": 2,
+    "artifactAuthentication": "Independent CI owner; not asserted by this source record",
+    "nativeCause": {
+      "code": "23514",
+      "schema": "public",
+      "table": "ai_model_run",
+      "constraint": "ai_model_run_observation_fields",
+      "constraintOwner": "db/migrations/0625_provider_readiness.sql:172",
+      "rawLogLines": [
+        25731,
+        25737
+      ]
+    },
+    "domFailures": "Separate viewport owner; no DOM changes or pass relabelling"
+  },
+  "finiteCorrections": {
+    "historicalRenameOwnedBy": "db/migrations/3200_ai_centre_controls.sql",
+    "finalDefinition": "Closed complete FUNCTION definition equality to independent installed3200 oracle, excluding only CREATE versus CREATE OR REPLACE prefixes",
+    "definitionBytes": 468,
+    "definitionSha256": "518db9933b69482ca4fafb2cb43b6a30f795616753efa99af31b733004725b58",
+    "addedSourceGuardAssertions": [
+      "predecessor MD5",
+      "actual owner",
+      "application EXECUTE",
+      "ACL grantor and grantability",
+      "postimage OID and remaining attributes"
+    ],
+    "zeroRowOnly": "extra provider:'openrouter'; every existing zero/missing/KL assertion unchanged"
+  },
+  "preservation": {
+    "contractCases": 6,
+    "contractOtherCallbacksWhole": 5,
+    "projectionDeclarations": 11,
+    "projectionExpandedCases": 16,
+    "projectionOtherCallbacksWhole": 10,
+    "allNamesAndCapsWhole": true,
+    "allProductSqlJournalConstraintApprovalsDomWholeParent": true
+  },
+  "sourceIndexRestoration": {
+    "parentIndex": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "gitBlob": "abb54720b5950ea72453008fdce9c89291bec44d",
+      "sha256": "365a131f360aeb1400070a2476444e05d506b5f4111ced5e557d777dee4946f5",
+      "bytes": 23897
+    },
+    "course": "Read the exact parent Git blob; current metadata adds only this recovery record/contract test hash/recovery bindings and updates the corrected projection/ADR hashes and sourceRef. External frozen proof replays those named field inverses to the complete parent bytes.",
+    "noBase64HistoryDuplication": true
+  },
+  "repositoryBehaviorExecutedLocally": false,
+  "runtimeQualified": false,
+  "published": false,
+  "retryAuthorized": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

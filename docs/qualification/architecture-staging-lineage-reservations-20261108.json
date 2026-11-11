@@ -1,0 +1,748 @@
+{
+  "kind": "STAGING_LINEAGE_UNINSTALLED_ARCHITECTURE_RESERVATION_RECONCILIATION",
+  "qualification": "SOURCE_INTEGRATION_ONLY; Attendance3210 and Access3211 component proofs passed on their exact isolated sources; combined706/707/native-owner upgrade and release gates remain pending",
+  "production": "HELD",
+  "productionCompatibility": "UNVERIFIED; no assertion architecture drafts were absent from every installation; inspect actual production prefix before any future mutation",
+  "baselineSource": "29d9edcbc4368be871688e9fdf35347676a7841c",
+  "baselineInstalledSource": "d4536294f2e81afed3b203e7320db5adc3e22cdf",
+  "baselineInstalledRows": 706,
+  "reviewedRequiredForwardPrefixRows": 707,
+  "baselineJournalSha256": "c65120c6fffe460c45e60d439862aab2e4b8a6b4c1271c0684fbcebafb10d65b",
+  "oldArchitectureSource": "0c7a66144f688d51fb193fe75c09d97df64f8a3c",
+  "oldArchitectureJournalSha256": "6156a0e467e2d75549d0f583330b157ff9bfe43b14f096d39cc9663ac95909af",
+  "rows": [
+    {
+      "original": {
+        "idx": 2203,
+        "version": "7",
+        "when": 1793330002503,
+        "tag": "2103_system_performance_read_guards",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2510,
+        "version": "7",
+        "when": 1793330002810,
+        "tag": "2103_system_performance_read_guards",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "0f9ec0dfac05dfd46db765cdc868b0dfc14637e4c6266d229dea12f3691f8111",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2204,
+        "version": "7",
+        "when": 1793330002504,
+        "tag": "2104_contract_navigation_role_guards",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2511,
+        "version": "7",
+        "when": 1793330002811,
+        "tag": "2104_contract_navigation_role_guards",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "6aa941d06156cd4112ed9bd5ee6974323e96dc57b000e67f4ab21776f4459fcc",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2205,
+        "version": "7",
+        "when": 1793330002505,
+        "tag": "2105_authorization_navigation_plans",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2512,
+        "version": "7",
+        "when": 1793330002812,
+        "tag": "2105_authorization_navigation_plans",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "c2f47c495fec180999d2ec236eeed1f334f3231106e08c0fec3a0c9c3c69550f",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2206,
+        "version": "7",
+        "when": 1793330002506,
+        "tag": "2124_ai_control_navigation_candidates",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2513,
+        "version": "7",
+        "when": 1793330002813,
+        "tag": "2124_ai_control_navigation_candidates",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "ed8666bfc29767ce266c362f07046dcd6b5b65b8434738bb9257daf5e328292c",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2207,
+        "version": "7",
+        "when": 1793330002507,
+        "tag": "2125_approval_subject_batch",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2514,
+        "version": "7",
+        "when": 1793330002814,
+        "tag": "2125_approval_subject_batch",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "46573298e6faa5545dccf3c7ac5fda930ac48860636630dc4d3bd14e546a5461",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2208,
+        "version": "7",
+        "when": 1793330002508,
+        "tag": "2129_personnel_native_paging",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2515,
+        "version": "7",
+        "when": 1793330002815,
+        "tag": "2129_personnel_native_paging",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "877fb32d3e85cd3c3476038b7d1787877a27f7633bdc5308d6c660e669dc1255",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2209,
+        "version": "7",
+        "when": 1793330002509,
+        "tag": "2131_ai_read_only_metadata_locks",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2516,
+        "version": "7",
+        "when": 1793330002816,
+        "tag": "2131_ai_read_only_metadata_locks",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "409262dd7b958eb8c2633556f9dba13ad637042efcb07b632a5bcea5c8131077",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2210,
+        "version": "7",
+        "when": 1793330002510,
+        "tag": "2132_ai_metadata_claim_preview_index",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2517,
+        "version": "7",
+        "when": 1793330002817,
+        "tag": "2132_ai_metadata_claim_preview_index",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "ea9d1a6ee283b0586a835d98ee4c5e75196615a5f51d22d643966fc519c97508",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2211,
+        "version": "7",
+        "when": 1793330002511,
+        "tag": "2133_ai_action_read_only_lock",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2518,
+        "version": "7",
+        "when": 1793330002818,
+        "tag": "2133_ai_action_read_only_lock",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "d22cc6aa2e0995a4b7368127ac4d0a2d0c8f18e4bc44a5ca31480ab5d144ea8f",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2212,
+        "version": "7",
+        "when": 1793330002512,
+        "tag": "2134_claim_visibility_set_membership",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2519,
+        "version": "7",
+        "when": 1793330002819,
+        "tag": "2134_claim_visibility_set_membership",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "a489a4293bc835003a0c6ee3f77f68d3847c618827949b54d541290563d3f2f6",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2213,
+        "version": "7",
+        "when": 1793330002513,
+        "tag": "2135_profile_presentation_read_lock",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2520,
+        "version": "7",
+        "when": 1793330002820,
+        "tag": "2135_profile_presentation_read_lock",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "b05f44a52bce44559088003111d1cc36e734ed01971a3042766909128b2d82fd",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2214,
+        "version": "7",
+        "when": 1793330002514,
+        "tag": "2136_grant_admin_role_precheck",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2521,
+        "version": "7",
+        "when": 1793330002821,
+        "tag": "2136_grant_admin_role_precheck",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "c2c67726492e0aa45bb601fe6f0c0e61c54ca39bbfb2658cad476958ced6a027",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2215,
+        "version": "7",
+        "when": 1793330002515,
+        "tag": "2137_home_peer_cohort_batch",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2522,
+        "version": "7",
+        "when": 1793330002822,
+        "tag": "2137_home_peer_cohort_batch",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "25b659236aa53f5dfd268eef64dfbda0315bfdc84aca122463d37cb943555597",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2216,
+        "version": "7",
+        "when": 1793330002516,
+        "tag": "2138_ai_pause_company_discovery",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2523,
+        "version": "7",
+        "when": 1793330002823,
+        "tag": "2138_ai_pause_company_discovery",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "bc44d218c30fcaa1db8a2f92e661be228cc4638fdfeb4280be0cacef388e5574",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2217,
+        "version": "7",
+        "when": 1793330002517,
+        "tag": "2139_workforce_bounded_read_plan",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2524,
+        "version": "7",
+        "when": 1793330002824,
+        "tag": "2139_workforce_bounded_read_plan",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "da60091cd9f282910810fc493c3edc5fb124819899d3e91f1d2376f704f0ac75",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2218,
+        "version": "7",
+        "when": 1793330002518,
+        "tag": "2252_probation_navigation_capability_probe",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2525,
+        "version": "7",
+        "when": 1793330002825,
+        "tag": "2252_probation_navigation_capability_probe",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "48982043ee84171b29f61c639146b4997e687e961362e3b495c24d5c858d483c",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2219,
+        "version": "7",
+        "when": 1793330002519,
+        "tag": "2141_approval_nonadmin_visibility_batch",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2526,
+        "version": "7",
+        "when": 1793330002826,
+        "tag": "2141_approval_nonadmin_visibility_batch",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "d25a2cc9c4c30e6941b15a203fdf869f60e2a7cc34853b0fb40007d5fbd309a1",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2220,
+        "version": "7",
+        "when": 1793330002520,
+        "tag": "2212_payroll_audit_claim_lookup_indexes",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2527,
+        "version": "7",
+        "when": 1793330002827,
+        "tag": "2212_payroll_audit_claim_lookup_indexes",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "ba7080ebfe158a3e2c339552de3a4c9c5adc2ae63dd5e32ec846671e647f37e2",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2221,
+        "version": "7",
+        "when": 1793330002521,
+        "tag": "2301_attendance_workflow_submission_shared_lock",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2528,
+        "version": "7",
+        "when": 1793330002828,
+        "tag": "3210_attendance_shared_workflow_submission_lock",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "421384a8eff51afcf0b910b966db1e092dd67343cd4fefff40c05aad537ae4fa",
+      "sqlByteIdentical": false,
+      "supersessionReason": "Original uninstalled trigger guard predates applied3101 shared-company links; explicit semantic union replaces only the submission lock call. New append source/native proof pending.",
+      "stagingSqlSha256": "4c627ce23deeda3195511e0ea1b6887cce6b7f39faeb538b061e82885acdb00d",
+      "isolatedComponentEvidence": {
+        "source": "5771919656cea2ee96d8166e2430780d7f4538bf",
+        "nativeRun": "42429560838",
+        "nativeTests": 23,
+        "nativePending": 0,
+        "artifactId": 13597496090,
+        "artifactZipSha256": "235cff5fbd84f39135a7be694509c518206ec429f3c0420dc909a33f44a1a21e",
+        "kind": "ISOLATED_COMPONENT_NOT_COMBINED_UPGRADE_OR_RELEASE",
+        "combinedQualification": false
+      }
+    },
+    {
+      "original": {
+        "idx": 2222,
+        "version": "7",
+        "when": 1793330002522,
+        "tag": "2302_company_ancestry_early_exit",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2529,
+        "version": "7",
+        "when": 1793330002829,
+        "tag": "2302_company_ancestry_early_exit",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "5824edcc7b35788c5c8df9d5d1a16614543eed3412b62bb1282da85609de8f54",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2223,
+        "version": "7",
+        "when": 1793330002523,
+        "tag": "2303_admin_grant_direct_scan",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2530,
+        "version": "7",
+        "when": 1793330002830,
+        "tag": "2303_admin_grant_direct_scan",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "fad8864bb7745cc0548d385af3b2d49c895c3ae041918b8d6cb79b051e16da8b",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2224,
+        "version": "7",
+        "when": 1793330002524,
+        "tag": "2304_payroll_grant_direct_scan",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2531,
+        "version": "7",
+        "when": 1793330002831,
+        "tag": "2304_payroll_grant_direct_scan",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "ef02f03fbb1f3634d8b9535ce2d98ffddac024e6f5a2f868cbb9513d8085a006",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2225,
+        "version": "7",
+        "when": 1793330002525,
+        "tag": "2403_personnel_bounded_overview",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2532,
+        "version": "7",
+        "when": 1793330002832,
+        "tag": "2403_personnel_bounded_overview",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "1eac5d0a075e4505f69ac75f19e99e19f24fd189c93f82fd35b1c49f97ba228f",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2226,
+        "version": "7",
+        "when": 1793330002526,
+        "tag": "2503_attendance_pending_visible_headers",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2533,
+        "version": "7",
+        "when": 1793330002833,
+        "tag": "2503_attendance_pending_visible_headers",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "fca8d6436f259f4955e78da75155836083f5f970d9f5640377ffb89ce7ca7718",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2227,
+        "version": "7",
+        "when": 1793330002527,
+        "tag": "2504_notification_event_processing",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2534,
+        "version": "7",
+        "when": 1793330002834,
+        "tag": "2504_notification_event_processing",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "a473a533cd967d7ad2ac971e24b5141af87d25967b84b3ca491e42fa9f1d81ce",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2228,
+        "version": "7",
+        "when": 1793330002528,
+        "tag": "2505_workforce_picker_facts",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2535,
+        "version": "7",
+        "when": 1793330002835,
+        "tag": "2505_workforce_picker_facts",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "af1fa920e5ded85fbb0c5f4aa5d016d341a519d38e461e5926301780a0ee49d4",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2229,
+        "version": "7",
+        "when": 1793330002529,
+        "tag": "2506_notification_receipt_retention",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2536,
+        "version": "7",
+        "when": 1793330002836,
+        "tag": "2506_notification_receipt_retention",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "764bd405d99e398e35f2282202f07daf9c5f732cdbd67d19b35862849bfc88cf",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2230,
+        "version": "7",
+        "when": 1793330002530,
+        "tag": "2507_attendance_header_column_grants",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2537,
+        "version": "7",
+        "when": 1793330002837,
+        "tag": "2507_attendance_header_column_grants",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "66f567a34ad2fd9cf17f181d7ec15b6b19f435890c0a55e6be219ddb3c28f8aa",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2231,
+        "version": "7",
+        "when": 1793330002531,
+        "tag": "2508_notification_receipt_grants",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2538,
+        "version": "7",
+        "when": 1793330002838,
+        "tag": "2508_notification_receipt_grants",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "07eeadfb1db236283f2bcb7206e8a8274cfb637a3d1b53ddac75d40879ad6d3b",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2232,
+        "version": "7",
+        "when": 1793330002532,
+        "tag": "2509_principal_statement_plan_reuse",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2539,
+        "version": "7",
+        "when": 1793330002839,
+        "tag": "2509_principal_statement_plan_reuse",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "09135ed32933b61236c2dee1c05e39824155cedf8089364ef970755ca198bb88",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2233,
+        "version": "7",
+        "when": 1793330002533,
+        "tag": "2510_capability_statement_plan_reuse",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2540,
+        "version": "7",
+        "when": 1793330002840,
+        "tag": "2510_capability_statement_plan_reuse",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "e5689d9c6a71e21176506a0576bd635e7c8d05c63dc76c8c492a41e2e7086f9f",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2234,
+        "version": "7",
+        "when": 1793330002534,
+        "tag": "2701_personnel_typed_overview_filter_fields",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2541,
+        "version": "7",
+        "when": 1793330002841,
+        "tag": "2701_personnel_typed_overview_filter_fields",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "87b1b0a0dd532eda1211dddcd5af2a8b14013a66615527cffa3c1be449d0daf8",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2235,
+        "version": "7",
+        "when": 1793330002535,
+        "tag": "2903_notification_receipt_cycle_authority",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2542,
+        "version": "7",
+        "when": 1793330002842,
+        "tag": "2903_notification_receipt_cycle_authority",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "82711cacac3c69fc217fb9038ccc6a6000dc41c746e3751d8584499698471e22",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2301,
+        "version": "7",
+        "when": 1793330002601,
+        "tag": "3001_employment_membership_initplan",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2543,
+        "version": "7",
+        "when": 1793330002843,
+        "tag": "3001_employment_membership_initplan",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "cd25b675ca404c364d4aef1f436f2e8a89ddeff8d4c63c355cd1fb28dc1507d0",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2402,
+        "version": "7",
+        "when": 1793330002702,
+        "tag": "3102_assignment_membership_initplan",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2544,
+        "version": "7",
+        "when": 1793330002844,
+        "tag": "3102_assignment_membership_initplan",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "5cb2e363d5fb27d7de67c8317d1d0c59a5545d86dc835e0d4d1c4cfaa126c2d6",
+      "sqlByteIdentical": true
+    },
+    {
+      "original": {
+        "idx": 2403,
+        "version": "7",
+        "when": 1793330002703,
+        "tag": "3103_access_editor_presentation",
+        "breakpoints": true
+      },
+      "stagingReservation": {
+        "idx": 2545,
+        "version": "7",
+        "when": 1793330002845,
+        "tag": "3211_access_editor_native_owner_presentation",
+        "breakpoints": true
+      },
+      "originalSqlSha256": "bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47",
+      "sqlByteIdentical": false,
+      "supersessionReason": "Uninstalled3103 hardpins postgres; actual staging native owner is non-superuser ai_hr_owner with exact predecessor body. New guarded native-owner append and real forced-RLS qualification passed separately; combined upgrade qualification pending.",
+      "stagingSqlSha256": "9f9691816d1ae1b9bad62675169b3b07353af50e14c3863d247ffb3fbc3a3421",
+      "isolatedComponentEvidence": {
+        "source": "006c1864d848548c2adb8581c3fd00707ae421e5",
+        "nativeRun": "42430762378",
+        "nativeTests": 1,
+        "nativePending": 0,
+        "artifactId": 13596758913,
+        "artifactZipSha256": "3aa7f1c622c59f7366208a95850047699102432266b5ee776cfd3f9d61a21f22",
+        "kind": "ISOLATED_COMPONENT_NOT_COMBINED_UPGRADE_OR_RELEASE",
+        "combinedQualification": false
+      }
+    }
+  ],
+  "releaseAuthorized": false,
+  "targetCatalogProof": {
+    "kind": "READ_ONLY_NATIVE_SOURCE_OWNER_FINGERPRINT_NO_HR_ROWS",
+    "privateCatalogSha256": "0f0355a849598e18028865bfd7a6e9549397f5a130e1572afc0fb3008df22a72",
+    "observedGuardTargets": [
+      {
+        "signature": "app.access_install_defaults(uuid,uuid)",
+        "owner": "ai_hr_owner",
+        "ownerSuper": false,
+        "ownerBypassRls": false,
+        "securityDefiner": true,
+        "configuration": [
+          "search_path=pg_catalog, public, pg_temp"
+        ],
+        "bodyMd5": "3b4bd83bfef3d84a3af43885256e2187",
+        "bodyShaUnavailable": true
+      },
+      {
+        "signature": "app.attendance_workflow_links()",
+        "owner": "ai_hr_owner",
+        "ownerSuper": false,
+        "ownerBypassRls": false,
+        "securityDefiner": true,
+        "configuration": [
+          "search_path=pg_catalog, public, pg_temp"
+        ],
+        "bodyMd5": "b383b0524878d7b82c58ec374146f75a",
+        "bodyShaUnavailable": true
+      }
+    ],
+    "notAProductionProfile": true
+  },
+  "allocationAudit": {
+    "refs": 6061,
+    "rootTrees": 3232,
+    "migrationTrees": 681,
+    "committedJournals": 487,
+    "readableWorktrees": 516,
+    "claimsStable": true,
+    "surveySha256": "a3970eff86d13f236f6e338a6dc7e5a2e0d582cc3e4467e831c2ac029c59a033",
+    "observedFileJournalMax": {
+      "tag": 3111,
+      "idx": 2411,
+      "when": 1793330002711
+    },
+    "additionalExplicitDocumentedClaims": [
+      {
+        "tag": 3200,
+        "idx": 2500,
+        "when": 1793330002800
+      },
+      {
+        "tag": 3201,
+        "idx": 2501,
+        "when": 1793330002801
+      }
+    ],
+    "firstReservedIndex": 2510,
+    "firstReservedWhen": 1793330002810,
+    "reservedCount": 36
+  }
+}

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { and, asc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { lockLeaveDependencyConfigurationTx } from '../packs/leave/service';
 import { attendanceRotation, attendanceRule, attendanceRuleShift, employment, employmentShiftArrangement, rosterAssignment, shift } from '../db/schema';
 import { assertModuleGate } from './module-gate';
@@ -18,6 +18,10 @@ export async function rotationLookupTx(tx: Tx) {
   const versions = await tx.select().from(attendanceRotation).orderBy(asc(attendanceRotation.ruleId), asc(attendanceRotation.effectiveFrom));
   const ids = [...new Set(versions.flatMap(v => v.allowedShiftIds))];
   const shifts = ids.length ? await tx.select().from(shift).where(inArray(shift.id, ids)) : [];
+  return rotationLookupFrom(versions, shifts);
+}
+/** rotationLookupTx over its two reads, for a caller that read every version and allowed shift in one statement. */
+export function rotationLookupFrom(versions: AttendanceRotationVersion[], shifts: RotationShift[]) {
   const byShift = new Map(shifts.map(s => [s.id, s]));
   const byRule = new Map<string, AttendanceRotationVersion[]>();
   for (const v of versions) { const rows = byRule.get(v.ruleId) ?? []; rows.push(v); byRule.set(v.ruleId, rows); }
@@ -92,7 +96,7 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
   // A new optional Attendance configuration write; shared tx readers stay available to core Leave.
   assertModuleGate(ctx,'attendance');
   const save=async (tx:Tx)=>{
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     const [authority] = await tx.execute(sql`select app.is_group_admin() as allowed`) as unknown as { allowed: boolean }[];
     if (!authority?.allowed) throw new Error('A group-wide HR administrator is required to change tenant-wide schedule rotations.');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);

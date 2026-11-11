@@ -3,14 +3,17 @@ import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {withTenant} from '../db/client';
-import {appUser,leaveType,leaveLedger} from '../db/schema';
+import * as database from '../db/client';
+import {appUser,employment,leaveType,leaveLedger} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {readEmployeeHomeTimeOff} from '../core/employee-home-time-off';
 import {requestLeave,decideLeave,decideLeaveDates,requestLeaveCancellation,decideLeaveCancellation,myLeaveDashboard,
  leaveTypeApplySummary,approvedLeavePresenceByEmploymentTx,leaveCalendarPresenceByEmploymentTx,setLeaveApprovalPolicy} from '../packs/leave/service';
 import {readEmployeeHomeCalendar} from '../core/employee-home-calendar';
+import {readHomeTeamCalendar} from '../core/employee-home-sharing';
+import {isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx} from '../core/read';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,CALLER:SessionContext;
 vi.mock('../lib/session',()=>({getSession:async()=>CALLER}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en'}));
@@ -53,6 +56,23 @@ describe('Home Time Off consumes canonical own leave facts',()=>{
   expect(response.status).toBe(200);expect(await response.json()).toEqual(result);
   expect(response.headers.get('cache-control')).toBe('private, no-store');
   for(const field of ['Private fictional','reason','leaveTypeId','medical','personId','4321'])expect(JSON.stringify(result)).not.toContain(field);
+ });
+ it('shares the own and team Calendar checkout while retaining the separate Payroll read',async()=>{
+  await setModule(b.tenantId,'payroll','active');
+  const own=await worker();
+  const month=today().slice(0,7);
+  const read=vi.spyOn(database,'withTenant');
+  try{
+   const result=await readEmployeeHomeCalendar(own.ctx,own.employmentId,month);
+   expect(result).toMatchObject({employmentId:own.employmentId,month,payrollEnabled:true,team:{days:expect.any(Array)}});
+   expect(read).toHaveBeenCalledTimes(2);
+   expect(read.mock.calls[0]?.[2]).toMatchObject({readOnlySnapshot:true});
+   // Payroll keeps its own separate read: one metadata statement in its own read-only snapshot, without the history
+   // barrier it never needed (core/payroll-self-metadata.ts).
+   expect(read.mock.calls[1]?.[2]).toMatchObject({readOnlySnapshot:true});
+   const from=result.days[0].date,to=result.days[result.days.length-1].date;
+   expect(await readHomeTeamCalendar(own.ctx,own.employmentId,from,to)).toEqual(result.team);
+  }finally{read.mockRestore();}
  });
  it('refuses foreign and forged calendar subjects, scope injection and malformed or oversized windows',async()=>{
   const own=await worker('hr_admin'),other=await worker();CALLER=own.ctx;
@@ -109,6 +129,21 @@ describe('Home Time Off consumes canonical own leave facts',()=>{
   const cancellation=await requestLeaveCancellation(own.ctx,{leaveRequestId:request.leaveRequestId,cancelDates:[add(monday,1)],today:today(),reason:'Fictional return'});
   if(cancellation.status!=='approved')await decideLeaveCancellation(a,{cancellationRequestId:cancellation.cancellationRequestId,decision:'approved'});
   expect((await readEmployeeHomeTimeOff(own.ctx,own.employmentId)).nextApproved?.date).toBe(add(monday,2));
+ });
+ it('keeps selected employment eligibility aligned with the canonical active inventory',async()=>{
+  const own=await worker('hr_admin'),other=await worker(),id=own.employmentId;
+  const compare=async(expected:boolean)=>withTenant(own.ctx,async tx=>{
+   const active=await myOwnEmploymentSubjectsTx(tx,own.ctx,{profileEdit:true});
+   expect(active.some(row=>row.employmentId===id)).toBe(expected);
+   expect(await isOwnProfileEditEmploymentTx(tx,own.ctx,id)).toBe(expected);
+   expect(await isOwnProfileEditEmploymentTx(tx,own.ctx,other.employmentId)).toBe(false);
+  });
+  await compare(true);
+  await owner.db.update(employment).set({lastWorkingDate:today()}).where(eq(employment.id,id));
+  await compare(true);
+  await owner.db.update(employment).set({lastWorkingDate:add(today(),-1)}).where(eq(employment.id,id));
+  await compare(false);
+  await expect(readEmployeeHomeTimeOff(own.ctx,id)).rejects.toMatchObject({code:'employmentUnavailable'});
  });
  it('refuses foreign, forged, stale and injected scope selectors, including HR readers',async()=>{
   const own=await worker('hr_admin'),other=await worker();CALLER=own.ctx;

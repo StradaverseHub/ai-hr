@@ -357,7 +357,7 @@ export function progress(config: Config, c: Case) {
     return { done, total, ready, active: active.length, handed: !!r?.handedAt, percent: denominator ? Math.round(100 * (done + (count ? credit : 0)) / denominator) : 0 };
 }
 /** Display window only. Access is still enforced by the tenant/company and module guards. */
-export function visibleRecentJoiner(config: Config, c: Case, today: string) {
+export function visibleRecentJoiner(config: Pick<Config, 'recentActiveDays'>, c: Case, today: string) {
     return c.personnelStatus === 'Draft' || c.state !== 'cancelled' && (c.state === 'pending' || c.tasks.some(t => t.status !== 'done') || !!currentReq(c) && !currentReq(c)?.handedAt) || effectiveFacts(c).joinDate >= dayDate(today, -config.recentActiveDays);
 }
 export function log(c: Case, a: Actor, env: Environment, action: string, detail = '') {

@@ -1,8 +1,11 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const h=vi.hoisted(()=>({admin:vi.fn(),validate:vi.fn(),commit:vi.fn(),revalidate:vi.fn()}));
+const h=vi.hoisted(()=>({admin:vi.fn(),validate:vi.fn(),commit:vi.fn(),syncCommit:vi.fn(),revalidate:vi.fn()}));
 vi.mock('../lib/authz',()=>({requireAdmin:h.admin}));
 vi.mock('next/cache',()=>({revalidatePath:h.revalidate}));
-vi.mock('../core/import',()=>({validateEmployeeImport:h.validate,commitEmployeeImport:h.commit}));
+vi.mock('../core/import',()=>({validateEmployeeImport:h.validate,commitEmployeeImport:h.syncCommit}));
+// f34d15dc0 moved the commit owner to the background job's admission (the worker writes); the synchronous writer is gone
+// from this action, and the same refusals must still come back before that owner runs.
+vi.mock('../core/employee-import-job',()=>({createEmployeeImportJob:h.commit,EmployeeImportJobError:class EmployeeImportJobError extends Error{}}));
 vi.mock('../lib/personnel-import-labels.server',()=>({personnelImportLabelResolvers:[]}));
 import {validateImportAction,commitImportAction} from '../app/admin/personnel/import/actions';
 import {parseEmployeeImportText} from '../lib/employee-import-error.server';
@@ -13,7 +16,7 @@ describe('employee import production error boundary',()=>{
   it.each([validateImportAction,commitImportAction])('returns blank-header guidance as serializable data before any owner runs',async action=>{
     const result=await action('full_name,,email\nFictional,,fictional@example.test','company');
     expect(JSON.parse(JSON.stringify(result))).toEqual({error:expect.stringMatching(/employee worksheet.*blank column heading at column 2/)});
-    expect(h.validate).not.toHaveBeenCalled();expect(h.commit).not.toHaveBeenCalled();expect(h.revalidate).not.toHaveBeenCalled();
+    expect(h.validate).not.toHaveBeenCalled();expect(h.commit).not.toHaveBeenCalled();expect(h.syncCommit).not.toHaveBeenCalled();expect(h.revalidate).not.toHaveBeenCalled();
   });
   it('names the Family worksheet when its heading is blank',async()=>{
     expect(await validateImportAction(csv,'company','employee_code,,full_name\nA001,,Fictional Child')).toEqual({error:expect.stringMatching(/family worksheet.*column 2/)});

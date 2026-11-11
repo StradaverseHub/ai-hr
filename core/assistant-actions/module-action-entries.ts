@@ -14,7 +14,7 @@ import {hasTeamAccess} from '../../lib/authz-model';
 import {MODULE_ACTION_ENTRY_OF,moduleActionEntryRoleFloor,type ModuleActionEntry,type ModuleActionEntryAccess} from '../../lib/assistant-actions/module-action-entries';
 import {workforceCompanies} from '../workforce-access';
 import {administersRewardsForAnyCompany} from '../../packs/rewards/service';
-import {readAssignedLeaveModuleActionChoices} from './module-action-server';
+import {hasAssignedLeaveActionForPresentation} from './assigned-leave-presentation';
 
 export async function moduleActionEntryAccess(supplied:SessionContext,entry:ModuleActionEntry):Promise<ModuleActionEntryAccess>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
@@ -31,8 +31,7 @@ export async function moduleActionEntryAccess(supplied:SessionContext,entry:Modu
   // Same audience as the native Approvals entry (app/layout.tsx canApprove = admin or manager), plus
   // anyone the assigned-decision read itself currently finds an assigned leave task for.
   if(hasTeamAccess(ctx))return 'allowed';
-  const choices=await readAssignedLeaveModuleActionChoices(ctx);
-  return choices.kind!=='choices'?'unknown':choices.tasks.length>0?'allowed':'refused';
+  return await hasAssignedLeaveActionForPresentation(ctx)?'allowed':'refused';
  }catch{return 'unknown';}
 }
 

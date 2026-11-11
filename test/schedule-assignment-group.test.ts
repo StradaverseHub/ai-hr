@@ -56,6 +56,10 @@ import {
 } from '../core/roster';
 import { UNGROUPED, listShiftArrangements } from '../core/shift-arrangement';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { runBulkJobTick } from '../core/bulk-job-worker';
+import { scheduleGroupBulkJobHandler } from '../core/roster-bulk-worker';
+import { readRosterBulkJob } from '../core/roster-bulk-job';
+import { SCHEDULE_GROUP_BULK_KIND } from '../lib/roster-bulk-job';
 
 let ADMIN: ReturnType<typeof adminCtx>;
 vi.mock('../lib/authz', () => ({ requireAdmin: async () => ADMIN }));
@@ -187,6 +191,19 @@ async function runAction(action: (fd: FormData) => Promise<void>, fields: [strin
   LAST_REDIRECT = '';
   await expect(action(fd)).rejects.toThrow('NEXT_REDIRECT');
   return LAST_REDIRECT;
+}
+
+/** The bulk action queues a background job and lands on its progress (`bulkJob=`); this runs the protected
+ * worker until the job has ended and returns the outcome address the page then opens. */
+async function settleBulk(redirect: string): Promise<string> {
+  const id = new URLSearchParams(redirect.split('?')[1] ?? '').get('bulkJob');
+  if (!id) return redirect;
+  for (let i = 0; i < 2000; i++) {
+    const [row] = await owner.client<{ state: string; notified: boolean }[]>`select state,notified_at is not null as notified from bulk_job where id=${id}::uuid`;
+    if (['completed', 'failed', 'cancelled'].includes(row.state) && row.notified) break;
+    if (!(await runBulkJobTick(owner.client, { handlers: [scheduleGroupBulkJobHandler] }))) await new Promise((r) => setTimeout(r, 20));
+  }
+  return (await readRosterBulkJob(ADMIN, id, SCHEDULE_GROUP_BULK_KIND)).href ?? '';
 }
 
 beforeAll(async () => {
@@ -376,12 +393,12 @@ describe('§1 setEmploymentScheduleGroupBulk', () => {
     await assignDefaultShift(a, { employmentId: ok, shiftId: allowed.id });
     await assignDefaultShift(a, { employmentId: bad, shiftId: forbidden.id });
 
-    const refused = await runAction(bulkAssignScheduleGroupAction, [
+    const refused = await settleBulk(await runAction(bulkAssignScheduleGroupAction, [
       ['employmentId', ok],
       ['employmentId', bad],
       ['attendanceRuleId', group.id],
       ['returnTo', '/admin/attendance/schedule-assignment/bulk?scheduleGroupId=none'],
-    ]);
+    ]));
     expect(refused).toContain('/admin/attendance/schedule-assignment/bulk?');
     expect(errorOf(refused)).toContain('Nobody was moved');
     expect(errorOf(refused), 'and the whole refusal, not a flat sentence').toContain(
@@ -391,11 +408,11 @@ describe('§1 setEmploymentScheduleGroupBulk', () => {
     expect(await storedGroups([ok, bad])).toEqual([null, null]);
 
     // …and the same action, with only the employee the group allows, reports the counts.
-    const done = await runAction(bulkAssignScheduleGroupAction, [
+    const done = await settleBulk(await runAction(bulkAssignScheduleGroupAction, [
       ['employmentId', ok],
       ['attendanceRuleId', group.id],
       ['returnTo', '/admin/attendance/schedule-assignment/bulk'],
-    ]);
+    ]));
     expect(done).toContain('bulkChanged=1');
     expect(done).toContain('bulkUnchanged=0');
     expect(await storedGroup(ok)).toBe(group.id);
@@ -468,7 +485,12 @@ describe('§2 employment.attendance_rule_id still has exactly one writer', () =>
     const attendance = read('app/admin/attendance/schedule-assignment/actions.ts');
     expect(personnel).toContain('setEmploymentScheduleGroup(s, {');
     expect(attendance).toContain('setEmploymentScheduleGroup(s, { employmentId, attendanceRuleId }');
-    expect(attendance).toContain('setEmploymentScheduleGroupBulk(s, {');
+    // The bulk door queues the background batch, whose worker reaches the column only through the same
+    // per-employment writer (core/roster-bulk-worker.ts scheduleGroupBulkJobHandler).
+    expect(attendance).toContain('enqueueScheduleGroupBulkJob(s, {');
+    const worker = read('core/roster-bulk-worker.ts');
+    expect(worker).toContain('setEmploymentScheduleGroupTx(tx,ctx,{employmentId,attendanceRuleId:');
+    expect(worker).not.toMatch(/\.update\(employment\)|attendance_rule_id\s*=/);
     // Neither file may know how the column is decided.
     for (const src of [personnel, attendance]) {
       expect(src).not.toMatch(/\.set\(\{[^}]*attendanceRuleId/);

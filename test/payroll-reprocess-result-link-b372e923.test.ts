@@ -56,6 +56,8 @@ import { listRecomputeDisclosure } from '../core/payroll-view';
 import { PAYROLL_RESULT_PATH, payrollResultHref } from '../app/payroll/payroll-result-href';
 import { reprocessResultHrefs } from '../app/payroll/[batchId]/reprocess/result-links';
 import { reprocessSelectedAction } from '../app/payroll/actions';
+import { runBulkJobTick } from '../core/bulk-job-worker';
+import { payrollReprocessJobHandler } from '../core/payroll-reprocess-job';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 // `reprocessSelectedAction` resolves its own session/translations and always redirects; mirror the
@@ -485,7 +487,11 @@ describe('b372e923 — against a real reprocessed run', () => {
     );
 
     // …and end to end: re-render the page's reads off that redirect's own query, exactly as the operator
-    // would land on it, and the Payroll Result link carries the filters through to the result screen.
+    // would land on it, and the Payroll Result link carries the filters through to the result screen. The
+    // recompute now runs as a background job (core/payroll-reprocess-job.ts) and the page shows its progress until
+    // it ends, so the worker runs it to the end first: the result table is the one the page then renders.
+    for (let i = 0; i < 200 && await runBulkJobTick(owner.client, { handlers: [payrollReprocessJobHandler] }); i++);
+    expect((await getReprocessJob(a, params.get('job')!))?.status).toBe('completed');
     const detail = await batchDetail(a, b.batchId);
     const thisJob = (await getReprocessJob(a, params.get('job')!))!;
     const jobRows = (await listRecomputeDisclosure(a, { batchId: b.batchId })).filter(

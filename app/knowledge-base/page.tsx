@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { canAuthor, listDocuments, visibleAudiencesFor, type KbAudience } from '@/core/knowledge-base';
+import { canAuthor, listDocumentsPage, visibleAudiencesFor, type KbAudience } from '@/core/knowledge-base';
 import { Card, ErrorBanner, PageHeader, inputCls } from '@/components/ui';
 import { KbComposer } from '@/components/kb-composer';
+import { Pager } from '@/components/pager';
 import { BookOpen, FileText, Paperclip, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -13,7 +14,7 @@ const humanize = (s: string) => s.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => 
 export default async function KnowledgeBasePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; audience?: string; error?: string }>;
+  searchParams: Promise<{ q?: string; audience?: string; error?: string; page?: string; size?: string }>;
 }) {
   const sp = await searchParams;
   const s = await getSession();
@@ -24,7 +25,7 @@ export default async function KnowledgeBasePage({
     | undefined;
 
   const locale = await getLocale();
-  const docs = await listDocuments(s, { search: q || undefined, audience, locale });
+  const { rows: docs, state: pgState } = await listDocumentsPage(s, { search: q || undefined, audience, locale }, sp);
   // Only offer audience filters the viewer is actually cleared to see (R34).
   const filterAudiences = visibleAudiencesFor(s).filter((a) => a !== 'all');
 
@@ -39,6 +40,7 @@ export default async function KnowledgeBasePage({
   const qs = (next: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
     if (q) p.set('q', q);
+    if (sp.size) p.set('size', String(pgState.size));
     if (audience) p.set('audience', audience);
     for (const [k, v] of Object.entries(next)) {
       if (v) p.set(k, v);
@@ -62,6 +64,7 @@ export default async function KnowledgeBasePage({
       <div className="flex flex-wrap items-center gap-3">
         <form method="get" className="relative grow">
           {audience && <input type="hidden" name="audience" value={audience} />}
+          {sp.size && <input type="hidden" name="size" value={String(pgState.size)} />}
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             name="q"
@@ -96,9 +99,11 @@ export default async function KnowledgeBasePage({
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">{t('resultCount', { count: docs.length })}</p>
+      <p className="text-xs text-muted-foreground">{t('resultCount', { count: pgState.total })}</p>
 
-      {docs.length === 0 ? (
+      <Pager basePath="/knowledge-base" params={{ q: q || undefined, audience }} state={pgState} truncatedHint="" />
+
+      {pgState.total === 0 ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">
           {q ? t('emptySearch', { q }) : t('empty')}
         </Card>

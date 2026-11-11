@@ -636,7 +636,14 @@ describe('§5 the screens derive from the predicate — they do not restate it',
     const body = engine.slice(start, engine.indexOf('\n}\n', start));
     expect(body).toContain('const types = activeTypes.filter((t) => isEarnedAccrualType(t));');
     expect(codeOf(body)).not.toContain('STANDING_LEAVE_CODES');
-    expect(body).toContain('role: leaveType.role, name: leaveType.name, yearCycleOverride');
+    // 2c6f5183b (earned accrual job: run inputs read once) moved the select into one shared reader, used by the
+    // engine and by the once-per-run inputs alike. The role still rides in the rows the predicate filters.
+    expect(body).toContain('const activeTypes = pre?.activeTypes ?? await readEarnedAccrualActiveTypesTx(tx, scopeTypeIds);');
+    const readerStart = engine.indexOf('function readEarnedAccrualActiveTypesTx(');
+    expect(readerStart).toBeGreaterThan(0);
+    const reader = engine.slice(readerStart, engine.indexOf('\n}\n', readerStart));
+    expect(reader).toContain('role: leaveType.role, name: leaveType.name, yearCycleOverride');
+    expect(engine.match(/readEarnedAccrualActiveTypesTx\(tx, /g)?.length).toBe(2);
   });
 });
 

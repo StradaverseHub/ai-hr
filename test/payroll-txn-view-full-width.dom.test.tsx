@@ -25,8 +25,8 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 
 import messages from '../messages/en.json';
@@ -37,9 +37,11 @@ import { HistoryTable } from '../app/payroll/transaction-view/history-table';
 
 // The address bar, stubbed — these tables read ?page/?size through useClientPageQuery and nothing here
 // navigates. Same shape as test/client-pager.dom.test.tsx.
+const navigation=vi.hoisted(()=>({query:'',replace:vi.fn()}));
+beforeEach(()=>{navigation.query='';navigation.replace.mockClear();});
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(''),
+  useRouter: () => ({ replace: navigation.replace, push: vi.fn(), refresh: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(navigation.query),
 }));
 
 const ROOT = path.resolve(__dirname, '..');
@@ -249,4 +251,17 @@ describe('1372d169 · the Fixed tab table (inline in page.tsx) matches', () => {
     // The pay-item cell (code + description).
     expect(fixedTable.match(/<td className="whitespace-nowrap px-4 py-2\.5">/)).not.toBeNull();
   });
+});
+
+it('keeps the native page intact and requests full-set sorting with every existing URL filter',()=>{
+  navigation.query='tab=individual&companyId=scope-a&page=1&size=25';
+  const rows=[{...individualRow,id:'native-1',employeeName:'Zulu native',amount:'10.25'},
+    {...individualRow,id:'native-2',employeeName:'Alice native',amount:'20.25'}];
+  render(wrap(<IndividualTxnTable rows={rows} serverSort={{key:'amount',direction:'asc'}} pager={<span>Bounded server pager</span>}/>));
+  expect(screen.getByText('Bounded server pager')).toBeTruthy();
+  expect([...screen.getByRole('table').querySelectorAll('tbody tr')].map(row=>row.textContent)).toEqual([
+    expect.stringContaining('Zulu native'),expect.stringContaining('Alice native'),
+  ]);
+  fireEvent.click(screen.getByRole('button',{name:'Company'}));
+  expect(navigation.replace).toHaveBeenCalledWith('?tab=individual&companyId=scope-a&page=1&size=25&txnSort=company&txnDir=asc',{scroll:false});
 });

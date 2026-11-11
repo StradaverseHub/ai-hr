@@ -1,5 +1,7 @@
+import {setTimeout as delay} from 'node:timers/promises';
+import {pgSqlState} from '../lib/db-error';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx,tryLockAccessConfigurationTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {assertWorkforceCompanyTx} from './workforce-access';
 import {hireEmployee,setEmploymentInfo} from './workforce-commands';
@@ -41,7 +43,7 @@ import {hireEmployee,setEmploymentInfo} from './workforce-commands';
  */
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { onboardingSyncDraftTx,onboardingDraftActivationContextTx } from '../packs/lifecycle/service';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { withTenant, withTenantWriteWork, type SessionContext, type Tx } from '../db/client';
 import {
   company, employeeDraft, employeeIdConfig, person, tenantCounter, department, position,
   costCenter, jobGrade, employment, employmentTypeEnum,
@@ -300,6 +302,10 @@ export type DraftListScope = {
   includeWithoutCompany: boolean;
 };
 
+function withExistingOrTenant<T>(ctx: SessionContext, existingTx: Tx | undefined, read: (tx: Tx) => Promise<T>): Promise<T> {
+  return existingTx ? read(existingTx) : withTenant(ctx, read);
+}
+
 /** Drafts visible to the caller inside `scope`, most recently touched first.
  *
  *  TWO FENCES, and they answer different questions. `scope` is the VIEW: the companies picked at the top of
@@ -307,36 +313,65 @@ export type DraftListScope = {
  *  AUTHORITY: an administrator sees a company's drafts only when they administer that company, a draft with
  *  no company only when they administer every company, and an author always sees their own. The scope can
  *  only ever be narrower than RLS; it never grants anything. */
-export function listEmployeeDrafts(ctx: SessionContext, scope: DraftListScope): Promise<EmployeeDraftRow[]> {
-  const ids = [...new Set(scope.companyIds)];
-  // An empty selection selects nothing. Without this, `includeWithoutCompany` alone would answer with the
-  // unassigned drafts under a scope that names no company at all.
-  if (ids.length === 0) return Promise.resolve([]);
-  return withTenant(ctx, async (tx) => {
+export function listEmployeeDrafts(
+  ctx: SessionContext, scope: DraftListScope, matches?: (row: EmployeeDraftSearchFields) => boolean, existingTx?: Tx,
+): Promise<EmployeeDraftRow[]> {
+  const where = employeeDraftScopeWhere(scope);
+  if (!where) return Promise.resolve([]);
+  // A caller's read snapshot (the Personnel page) composes this read; RLS still decides the rows.
+  return withExistingOrTenant(ctx, existingTx, async (tx) => {
     const rows = await tx
       .select({
+        ...draftSearchFields,
         id: employeeDraft.id,
-        label: employeeDraft.label,
-        companyId: employeeDraft.companyId,
-        companyName: company.legalName,
         currentStep: employeeDraft.currentStep,
         createdByName: person.fullName,
         createdAt: employeeDraft.createdAt,
         updatedAt: employeeDraft.updatedAt,
-        reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
         data: employeeDraft.data,
       })
       .from(employeeDraft)
       .leftJoin(company, eq(company.id, employeeDraft.companyId))
       .leftJoin(person, eq(person.id, employeeDraft.createdByPersonId))
-      .where(
-        scope.includeWithoutCompany
-          ? or(inArray(employeeDraft.companyId, ids), isNull(employeeDraft.companyId))
-          : inArray(employeeDraft.companyId, ids),
-      )
+      .where(where)
       // `id` breaks a tie on `updated_at`, so two drafts saved in the same instant keep one order.
       .orderBy(desc(employeeDraft.updatedAt), desc(employeeDraft.id));
-    return rows.map(({ data, ...r }) => ({ ...r, missing: missingForCreation(asData(data)) }));
+    const visible = matches ? rows.filter(matches) : rows;
+    return visible.map(({ data, ...r }) => ({ ...r, missing: missingForCreation(asData(data)) }));
+  });
+}
+
+type EmployeeDraftSearchFields = Pick<EmployeeDraftRow, 'label' | 'companyId' | 'companyName' | 'reservedEmployeeCode'>;
+const draftSearchFields = {
+  label: employeeDraft.label,
+  companyId: employeeDraft.companyId,
+  companyName: company.legalName,
+  reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
+};
+
+function employeeDraftScopeWhere(scope: DraftListScope) {
+  const ids = [...new Set(scope.companyIds)];
+  // Empty scope excludes even unassigned drafts. The same RLS policy applies to every projection.
+  if (ids.length === 0) return undefined;
+  const selected = inArray(employeeDraft.companyId, ids);
+  return scope.includeWithoutCompany ? or(selected, isNull(employeeDraft.companyId)) : selected;
+}
+
+/** Count without fetching draft forms or creator details. A literal search reuses the caller's
+ * existing JavaScript predicate over four small fields, including company labels from the same RLS join. */
+export function countEmployeeDrafts(
+  ctx: SessionContext, scope: DraftListScope, matches?: (row: EmployeeDraftSearchFields) => boolean, existingTx?: Tx,
+): Promise<number> {
+  const where = employeeDraftScopeWhere(scope);
+  if (!where) return Promise.resolve(0);
+  return withExistingOrTenant(ctx, existingTx, async (tx) => {
+    if (matches) {
+      const rows = await tx.select(draftSearchFields).from(employeeDraft)
+        .leftJoin(company, eq(company.id, employeeDraft.companyId)).where(where);
+      return rows.reduce((count, row) => count + Number(matches(row)), 0);
+    }
+    const [row] = await tx.select({ count: sql<number>`count(*)::int` }).from(employeeDraft).where(where);
+    return Number(row.count);
   });
 }
 
@@ -405,6 +440,10 @@ async function draftCreationDefaultsTx(tx:Tx,ctx:SessionContext,input:EmployeeDr
  return next;
 }
 
+// Keep the native tenant ordering, with bounded admission before borrowing any
+// connection. The command itself retains its fresh authority and transaction.
+function queueDraftWrite<T>(tenantId:string,write:()=>Promise<T>){return withTenantWriteWork(tenantId,write);}
+
 export async function saveEmployeeDraft(
   ctx: SessionContext,
   p: { id?: string; data: EmployeeDraftData; currentStep: number },
@@ -413,6 +452,8 @@ export async function saveEmployeeDraft(
   assertAdmin(ctx);
   const currentStep = Math.min(Math.max(Math.trunc(p.currentStep) || 1, 1), 20);
   const run=async(tx:Tx)=>{
+    // One draft's values: shared Access (an activation holding the exclusive lock keeps it). The draft row lock
+    // serialises two saves of the same draft; a new draft is an insert. A held Employee ID is pinned, never claimed.
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     const [existing]=p.id?await tx.select({id:employeeDraft.id,companyId:employeeDraft.companyId,reservedEmployeeCode:employeeDraft.reservedEmployeeCode,data:employeeDraft.data}).from(employeeDraft).where(and(eq(employeeDraft.id,p.id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update'):[];
     if(p.id&&!existing)throw new DraftActivationValidationError('draft_unavailable',[]);
@@ -463,7 +504,10 @@ export async function saveEmployeeDraft(
     await onboardingSyncDraftTx(ctx,tx,id,'save');
     return { id };
   };
-  return outerTx?run(outerTx):withTenant(ctx,run);
+  if (outerTx) return run(outerTx);
+  if (!p.id) return withTenant(ctx, run);
+
+  return queueDraftWrite(ctx.tenantId, () => withTenant(ctx, run));
 }
 
 /**
@@ -559,6 +603,11 @@ export async function createEmployeeDraftWithReservedCode(
   }
 
   return withTenant(ctx, async (tx) => {
+    // Shared Access; the Workforce check joins it. Exclusivity used to be the only thing serialising "is this
+    // Employee ID free across employments and drafts" with the reservation insert. The per-code claim lock from
+    // 5001 (taken inside findEmployeeCodeClaim and held to commit) now does: a concurrent claimer of the same ID
+    // waits, then sees this draft's reservation and gets the same refusal. A running number is issued under its
+    // counter row lock, so two creates never take the same number, and employee_draft_reserved_code_uq remains.
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
     let code: string;
@@ -679,8 +728,13 @@ export async function discardEmployeeDraft(
   assertAdmin(ctx);
   const capture = options?.returnResult === true;
   if (capture && !outerTx) throw new Error('Draft discard result requires an enclosing transaction.');
+  const accessBusy = new Error('Draft discard is waiting for Workforce access.');
   const run = async (tx: Tx): Promise<void | EmployeeDraftDiscardResult> => {
     await boundNativeOutcomeTransactionTx(tx);
+    // Match create/save: authority precedes Onboarding's audit and case locks.
+    // The closed delete port repeats this native barrier; taking it here prevents
+    // a discard from holding audit custody while another writer holds authority.
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     const [row] = await tx
       .select({
         reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
@@ -723,7 +777,36 @@ export async function discardEmployeeDraft(
       return { draftId: deleted[0].id, reservedEmployeeCode: row?.reservedEmployeeCode ?? null, released, eventId };
     }
   };
-  return outerTx ? run(outerTx) : withTenant(ctx, run);
+  if (outerTx) return run(outerTx);
+  return queueDraftWrite(ctx.tenantId, async () => {
+    for (const backoff of [75, 200, 400, 800]) {
+      let transactionLockFailure: unknown;
+      try {
+        return await withTenant(ctx, async tx => {
+          // Give up the connection while another transaction holds the tenant fence.
+          // The native port still checks policy generation and executes the delete.
+          if (!await tryLockAccessConfigurationTx(tx, ctx.tenantId)) throw accessBusy;
+          try {
+            const result = await run(tx);
+            // Seal this transaction's audit events inside the retried body (audit-chain commit seal migration), so a wait on the
+            // tenant's audit-chain key still ends in an in-body lock failure that is retried, never at COMMIT.
+            await tx.execute(sql`select app.domain_event_chain_flush(${ctx.tenantId}::uuid)`);
+            return result;
+          } catch (error) {
+            // The effects (including Onboarding, number release and audit) all
+            // belong to this transaction. Capture only a PostgreSQL lock failure
+            // inside its body, so a commit or transport failure cannot trigger replay.
+            if (pgSqlState(error) === '55P03') transactionLockFailure = error;
+            throw error;
+          }
+        });
+      } catch (error) {
+        if (error !== accessBusy && (transactionLockFailure === undefined || error !== transactionLockFailure)) throw error;
+        await delay(backoff);
+      }
+    }
+    return withTenant(ctx, run);
+  });
 }
 
 /**
@@ -785,7 +868,7 @@ export async function saveAndCompleteEmployeeDraft(ctx:SessionContext,p:{id?:str
   if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new DraftActivationValidationError('permission',[]);
   if(p.id&&!UUID_RE.test(p.id))throw new DraftActivationValidationError('draft_unavailable',[]);
   const run=async(tx:Tx)=>{
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // saveEmployeeDraft acquires and retains this exact row's lock before pinning or saving input.
     const saved=await saveEmployeeDraft(ctx,p,tx);
@@ -819,7 +902,7 @@ export type EmployeeDraftActivationPreview={
 export async function previewSavedEmployeeDraftActivationTx(tx:Tx,supplied:SessionContext,p:{id:string;data:EmployeeDraftData;currentStep:number}):Promise<EmployeeDraftActivationPreview>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
  // Configuration and retained source locks precede the rollback-only savepoint, so they survive it.
- await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLabelCriteriaTx(tx,ctx.tenantId);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await lockLabelCriteriaTx(tx,ctx.tenantId);
  const [draft]=await tx.select({id:employeeDraft.id}).from(employeeDraft).where(and(eq(employeeDraft.id,p.id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update');if(!draft)throw new DraftActivationValidationError('draft_unavailable',[]);
  const lifecycle=await onboardingDraftActivationContextTx(ctx,tx);if(lifecycle.willSynchronize)throw new DraftActivationValidationError('invalid_data',[]);
  await tx.execute(sql`savepoint ai_employee_draft_activation_preview`);
@@ -850,9 +933,9 @@ export async function completeEmployeeDraft(
 
 async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promise<{employmentId:string}> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const [draft]=await tx.select().from(employeeDraft).where(and(eq(employeeDraft.id,id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update');
   if(!draft)throw new DraftActivationValidationError('draft_unavailable',[]);
   const data=activationData(draft.data);

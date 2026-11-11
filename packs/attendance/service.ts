@@ -36,6 +36,8 @@ export {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from '../.
 
 // r424 (50ed39e1) — File Structure Mapping, Import Clocking Data and Import Logs.
 export * from '../../core/attendance-clocking-import';
+// Import Clocking Data as a background job on the shared bulk-job kernel (draft 5045).
+export * from '../../core/attendance-clocking-import-job';
 
 export * from '../../core/attendance-clock-data';
 export { ClockDataChangedError, AttendancePayrollClosedError } from '../../core/attendance-punch-change';
@@ -53,7 +55,7 @@ export * from '../../core/attendance-shortfall';
 // ADR0123 — canonical recorded inputs, consumed through this facade by Attendance writers.
 export { captureCanonicalOvertimePersonnelContextTx } from './overtime-input';
 
-export { previewOvertimePatternEmployee, previewOvertimePatternSample, calculateOvertimePatternDay, reconcileOvertimePatternDayTx, refreshOvertimePatternDayTx, overtimeSourceRevisionTx } from './overtime-calculation';
+export { previewOvertimePatternEmployee, previewOvertimePatternSample, calculateOvertimePatternDay, reconcileOvertimePatternDayTx, refreshOvertimePatternDayTx, refreshOvertimePatternDaysTx, overtimeSourceRevisionTx } from './overtime-calculation';
 export { canonicalOvertimeInputTx, canonicalOvertimePayrollInputTx, canonicalOvertimeToilInputTx } from './overtime-input';
 
 export { readOvertimePatternCalculation, readOvertimePatternCalculationTx, type OvertimePatternCalculationReview } from './overtime-calculation';

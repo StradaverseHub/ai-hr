@@ -1,5 +1,14 @@
 {
   "roster": {
+    "prepareTitle": "Review roster changes",
+    "prepareHint": "Check the shift, dates and employee count, then confirm.",
+    "browseEmployees": "Browse all employees",
+    "reviewTargets": "Review selected employees",
+    "confirmRoster": "Confirm roster changes",
+    "prepareFailed": "The roster change could not be prepared. Check the selection and try again.",
+    "pickerFailed": "Could not load employees. Please try again.",
+    "pickerSelectMatching": "Select all {n} matching employees",
+    "copyTargetsReview": "Copy will use the {n} employees selected now. Review the dates, then click Copy to confirm.",
     "title": "Roster",
     "subtitle": "Build the monthly shift roster — pick a month, then assign shifts across your team.",
     "noCompanies": "No companies in your scope to roster.",
@@ -296,6 +305,14 @@
       "rule": "This change was refused by a safeguard that protects existing records, such as a closed payroll. Reference {ref}.",
       "busy": "The system was busy and the change was not completed. Please try again. Reference {ref}.",
       "nricDuplicate": "This NRIC already exists in another employee record. Duplicate NRIC numbers are not allowed under the current People General Settings. Reference {ref}."
+    },
+    "degraded": {
+      "title": "This is taking longer than usual",
+      "body": "The page could not finish loading because the system is under heavy demand. It will try again automatically in a moment.",
+      "retryNow": "Try again now",
+      "unexpectedTitle": "This page could not be displayed",
+      "unexpectedBody": "Something unexpected stopped this page from loading. Try again, and if it keeps happening, contact your administrator.",
+      "apiMessage": "The system is under heavy demand. Please try again in a moment."
     },
     "moreActions": "More actions",
     "noSearchResults": "No results match your search.",
@@ -861,7 +878,8 @@
       "placeholder": "Search employee ID or name…",
       "resultsLabel": "Employee search results",
       "noMatches": "No employee matches that.",
-      "currentTag": "Current"
+      "currentTag": "Current",
+      "loadFailed": "Employee search could not be loaded. Try again."
     },
     "detail": {
       "incentiveDeclarations": {
@@ -2938,6 +2956,70 @@
         "payItems": "Recurring pay items beyond basic salary and monthly allowance — add them on the Payroll tab or with the pay item import.",
         "openingTax": "Opening tax balances for mid-year joiners (TP3) — entered on the Payroll tab.",
         "holidayCalendar": "Holiday calendar — a dated assignment with its own history; set it on the Attendance tab after the import."
+      },
+      "employeeJob": {
+        "queued": "Waiting to start",
+        "validating": "Checking the file",
+        "importing": "Importing employees",
+        "activating": "Finishing the import",
+        "discarding": "Undoing the import",
+        "completed": "Import finished",
+        "failed": "Import stopped — no employees were added",
+        "phase": {
+          "employees": "Creating employees",
+          "superiors": "Linking reporting lines",
+          "registers": "Adding register records",
+          "activation": "Finalising"
+        },
+        "progressCount": "{done} of {total} steps complete",
+        "backgroundHelp": "You can leave this page. Nobody sees the new employees until the import finishes.",
+        "waiting": "Waiting for the import worker. Progress is saved; do not upload the file again.",
+        "otherRunning": "Another employee import is still running. Wait for it to finish before starting a new one.",
+        "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is."
+      },
+      "sectionJob": {
+        "queued": "Waiting to start",
+        "preparing": "Checking the file",
+        "running": "Saving the rows",
+        "finalizing": "Finishing the import",
+        "discarding": "Stopping the import",
+        "completed": "Import finished",
+        "failed": "Import stopped",
+        "cancelled": "Import cancelled",
+        "progressCount": "{done} of {total} steps complete",
+        "backgroundHelp": "You can leave this page. Each row is saved on its own as the import runs.",
+        "backgroundHelpRegister": "You can leave this page. Nobody sees these register changes until the whole file is saved.",
+        "waiting": "Waiting for the import worker. Progress is saved; do not upload the file again.",
+        "otherRunning": "Another import of this kind that you started is still running. Wait for it to finish before starting a new one.",
+        "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is."
+      },
+      "movementJob": {
+        "queued": "Waiting to start",
+        "validating": "Checking the file again",
+        "importing": "Saving movements",
+        "finishing": "Recording the import",
+        "completed": "Import finished",
+        "failed": "Import stopped",
+        "cancelled": "Import stopped",
+        "progressCount": "{done} of {total} employees processed",
+        "backgroundHelp": "You can leave this page. Each employee’s movements are saved together as soon as that employee is processed.",
+        "waiting": "Waiting for the import worker. Progress is saved; do not confirm the import again.",
+        "otherRunning": "Another movement import you started is still running. Wait for it to finish before confirming a new one.",
+        "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is."
+      },
+      "movementCheckJob": {
+        "queued": "Waiting to start",
+        "reading": "Reading the file",
+        "checking": "Checking movements",
+        "finishing": "Recording the check",
+        "completed": "Check finished",
+        "failed": "Check stopped",
+        "cancelled": "Check stopped",
+        "progressCount": "{done} of {total} employees checked",
+        "backgroundHelp": "Nothing is saved until you confirm the import. Keep this page open to review the result when the check finishes.",
+        "waiting": "Waiting for the import worker. The check starts automatically; do not upload the file again.",
+        "otherRunning": "Another movement check you started is still running. Wait for it to finish before checking a new file.",
+        "workerUnavailable": "The import service is not running yet. Your file is kept and the check starts automatically as soon as it is."
       }
     },
     "wizard": {
@@ -4698,7 +4780,26 @@
       "runByUnknown": "System",
       "scopeEmployees": "{count, plural, =1 {# employee} other {# employees}}",
       "runNoChanges": "This run changed nothing.",
-      "recentNote": "Every run is kept permanently — who ran it, which employees and dates, and the before-and-after figures for each day that moved. Each run also appears in the Audit Trail under Attendance."
+      "recentNote": "Every run is kept permanently — who ran it, which employees and dates, and the before-and-after figures for each day that moved. Each run also appears in the Audit Trail under Attendance.",
+      "job": {
+        "queued": "Waiting to start",
+        "preparing": "Checking the scope",
+        "running": "Recalculating employees",
+        "finalizing": "Putting the result together",
+        "discarding": "Stopping",
+        "completed": "Finished",
+        "failed": "Stopped",
+        "cancelled": "Stopped",
+        "progressCount": "{done} of {total} employees done",
+        "backgroundHelp": "You can leave this page and come back; the result appears here when it is ready.",
+        "waiting": "Waiting for the import service. Progress is saved; do not start this again.",
+        "workerUnavailable": "The import service is not running yet. This request is saved and starts automatically as soon as it is.",
+        "previewTitle": "Preview",
+        "applyTitle": "Applying the changes",
+        "leftOut": "{count, plural, =1 {# employee was not recalculated} other {# employees were not recalculated}}",
+        "alreadyRunning": "You already have a recompute running. Wait for it to finish before starting another.",
+        "unavailable": "This recompute is no longer available. Reopen the page."
+      }
     },
     "reject": "Reject",
     "rejectNotRecorded": "Explanation not recorded",
@@ -4841,6 +4942,33 @@
       "active": "Active",
       "probation": "Probation",
       "notice": "Notice"
+    },
+    "explorer": {
+      "hint": "Explore a large organization one section at a time. Search reaches everyone in your selected companies.",
+      "topLevel": "Top level",
+      "allPeople": "All people",
+      "search": "Search",
+      "searchResults": "Search results",
+      "reports": "Direct reports",
+      "managers": "Managers",
+      "connections": "All connections",
+      "history": "Visited people",
+      "loading": "Loading organization…",
+      "loaded": "Loaded {loaded} on this page · {total} matching results · {people} people in your selected companies",
+      "accessChanged": "Your access changed. Reload to continue.",
+      "changed": "The organization changed. Refresh this section to continue.",
+      "failed": "This section could not load. Please try again.",
+      "refresh": "Reload",
+      "retry": "Try again",
+      "multipleAssignments": "Multiple current assignments",
+      "profile": "View profile",
+      "relationships": "Reporting relationships",
+      "outsideScope": "Connection outside your selected companies",
+      "incoming": "Reports to this person",
+      "outgoing": "This person reports to",
+      "explore": "Explore",
+      "back": "Back",
+      "next": "Next page"
     }
   },
   "me": {
@@ -5039,7 +5167,8 @@
     "payrollStatus": {
       "draft": "Draft",
       "processed": "Processed",
-      "closed": "Closed"
+      "closed": "Closed",
+      "processing": "Processing"
     },
     "payslip": {
       "backToWorkspace": "My Profile",
@@ -5516,7 +5645,8 @@
     "submitDecisions": "Submit",
     "employeeRemark": "Employee remark",
     "closeDialog": "Close",
-    "bulkSelectAll": "Select all",
+    "bulkSelectAll": "Select all requests in this view",
+    "bulkSelectionUnavailable": "Could not select the pending claims. Try again.",
     "bulkSelectRow": "Select request",
     "bulkSelected": "Selected: {count, plural, one {# request} other {# requests}}",
     "bulkClear": "Clear",
@@ -5828,7 +5958,8 @@
         "closed": "Closed",
         "unattached": "Unattached",
         "reprocess": "Pending reprocessing",
-        "reprocessRequired": "Reprocess Required"
+        "reprocessRequired": "Reprocess Required",
+        "processing": "Processing"
       },
       "importHistory": "Import payroll history",
       "periodContext": "Pay period",
@@ -6098,6 +6229,7 @@
       },
       "preChecksOpenProfile": "Open profile",
       "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
+      "preChecksNotReady": "Resolve the blocking pre-processing checks before processing payroll.",
       "preChecksBlockedPayModeError": "Cannot process payroll: {n} employee(s) have a Custom Period pay structure that payroll cannot calculate. Change the Pay Mode on their Basic Salary record, or leave them out of this run.",
       "preChecksBlockedTp3Error": "Cannot process payroll: {n} employee(s) have a Form TP3 for this year that has not reached their payroll figures. Open Form TP3 for each of them and save it first.",
       "generatedWithSkipped": "Payslips generated — {n} employee(s) skipped. The list below names them and says why.",
@@ -6322,7 +6454,33 @@
       "reprocessPendingEmployees": "{count} selected employee(s) are pending.",
       "reprocessPcbBefore": "Previous PCB",
       "reprocessPcbAfter": "Updated PCB",
-      "reprocessPcbDifference": "PCB difference"
+      "reprocessPcbDifference": "PCB difference",
+      "processingStarted": "Payroll processing started. This page shows its progress.",
+      "processingJob": {
+        "title": "Payroll processing",
+        "othersRun": "This run is being processed. It opens for review when processing finishes.",
+        "state": {
+          "queued": "Waiting to start",
+          "preparing": "Checking the run",
+          "running": "Calculating payslips",
+          "finalizing": "Finishing the run",
+          "discarding": "Undoing the processing",
+          "completed": "Processing finished",
+          "failed": "Processing stopped — the run is back in draft",
+          "cancelled": "Processing cancelled — the run is back in draft"
+        },
+        "progressCount": "{done} of {total} steps complete",
+        "backgroundHelp": "You can leave this page. Employees see nothing until the run is closed, and you get a notice when processing finishes.",
+        "waiting": "Waiting for the payroll processing service. Progress is saved; do not process the run again.",
+        "workerUnavailable": "The payroll processing service is not running yet. The run is saved and starts automatically as soon as it is."
+      },
+      "reprocessJob": {
+        "title": "Reprocessing in the background",
+        "queued": "Waiting to start",
+        "running": "Reprocessing the selected employees",
+        "progress": "{done} of {total} employees done",
+        "help": "You can leave this page. Each employee is recalculated on its own, and the results appear here when the reprocess finishes."
+      }
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -9920,7 +10078,24 @@
       "tickHint": "Payroll is already on file for some records. Tick the ones you want to overwrite; records you do not tick stay as they are.",
       "acknowledge": "I understand. Replace the ticked records with my file's values. The original values stay in the audit history and the overwrite can be undone from Log File.",
       "confirmOverwrite": "Confirm overwrite and import",
-      "importNewOnly": "Import new records only"
+      "importNewOnly": "Import new records only",
+      "job": {
+        "title": "Committing in the background",
+        "state": {
+          "queued": "Waiting to start",
+          "preparing": "Checking the file again",
+          "running": "Writing payroll history",
+          "finalizing": "Making the changes visible",
+          "discarding": "Undoing the unfinished changes",
+          "completed": "Committed",
+          "failed": "Stopped — no payroll history was changed",
+          "cancelled": "Stopped — no payroll history was changed"
+        },
+        "progressCount": "{done} of {total} steps complete",
+        "backgroundHelp": "You can leave this page. Nobody sees any of these changes until all of them are committed together, and you get a notice when it finishes.",
+        "waiting": "Waiting for the background service. Your request is saved; do not submit it again.",
+        "workerUnavailable": "The background service is not running yet. Your request is saved and starts automatically as soon as it is."
+      }
     },
     "individualImport": {
       "submitWorkbook": "Upload workbook",
@@ -10850,7 +11025,20 @@
         "fileTooLarge": "File is too large. Split it into smaller batches and try again.",
         "emptySheet": "The first worksheet is empty.",
         "pasteToggle": "Or paste CSV instead",
-        "downloadTemplateXlsx": "Download Excel template"
+        "downloadTemplateXlsx": "Download Excel template",
+        "job": {
+          "title": "Importing leave records",
+          "progressCount": "{done} of {total} rows processed",
+          "backgroundHelp": "This runs in the background. You can leave this page and come back.",
+          "waiting": "Waiting for the import service to continue. No action is needed.",
+          "failed": "The import could not finish. Rows already saved are kept.",
+          "state": {
+            "queued": "Waiting to start",
+            "importing": "Importing",
+            "completed": "Finished",
+            "failed": "Stopped"
+          }
+        }
       },
       "expiryUnitMonths": "Months",
       "expiryUnitDays": "Days",
@@ -11268,7 +11456,28 @@
       "cancelApprovedReplacementNote": "Replacement Leave cancellations always need the approver's re-approval, because giving the leave back returns its credit.",
       "cancelApprovedNotifyLabel": "Notify the approver and HR when a cancellation is requested",
       "cancelApprovedNotifyHelp": "Recipients see an alert in the in-app notification bell. Email also requires category permission, recipient consent and an active SMTP relay.",
-      "generateOutcome_not_eligible": "Not eligible — the leave type’s conditions exclude this employee"
+      "generateOutcome_not_eligible": "Not eligible — the leave type’s conditions exclude this employee",
+      "processingJob": {
+        "title": {
+          "leave_generation": "Generating entitlement",
+          "leave_accrual": "Running earned accrual",
+          "leave_recalc": "Recalculating leave balances",
+          "leave_a2c": "Applying the leave year type to balances"
+        },
+        "progressCount": "{done} of {total} employees processed",
+        "backgroundHelp": "This runs in the background. You can leave this page and come back.",
+        "waiting": "Waiting for the background service to continue. No action is needed.",
+        "state": {
+          "queued": "Waiting to start",
+          "running": "Running",
+          "completed": "Finished",
+          "failed": "Stopped"
+        },
+        "failed": "The run stopped: {reason} Employees already processed keep their figures.",
+        "partial": "{count} employee(s) could not be processed and were left unchanged: {reason} Run it again to complete them.",
+        "alreadyRunning": "Another administrator is already running this. Try again when it has finished.",
+        "failedNothingChanged": "The run stopped: {reason} Nothing was changed."
+      }
     },
     "holidays": {
       "pageTitle": "Public holidays",
@@ -12293,7 +12502,25 @@
       "closeAlready": "This year boundary was already closed; nothing to do.",
       "configMovedTitle": "Replacement leave settings",
       "configMovedHint": "The policy editor for replacement leave now lives under Leave Config.",
-      "configMovedLink": "Go to Replacement Leave settings"
+      "configMovedLink": "Go to Replacement Leave settings",
+      "sweepJob": {
+        "title": {
+          "toil_expiry": "Processing expirations",
+          "toil_year_close": "Closing the replacement-leave year"
+        },
+        "progressCount": "{done} of {total} employees processed",
+        "backgroundHelp": "This runs in the background. You can leave this page and come back.",
+        "waiting": "Waiting for the background service to continue. No action is needed.",
+        "state": {
+          "queued": "Waiting to start",
+          "running": "Running",
+          "completed": "Finished",
+          "failed": "Stopped"
+        },
+        "failed": "The run stopped: {reason} Credits already settled stay settled. Run it again to settle the rest.",
+        "partial": "{count} employee(s) could not be processed and their credits were left unchanged: {reason} Run it again to complete them.",
+        "alreadyRunning": "Another administrator is already running this. Try again when it has finished."
+      }
     },
     "locations": {
       "pageTitle": "Locations",
@@ -16070,7 +16297,8 @@
     "batchStatus": {
       "draft": "Draft",
       "processed": "Processed",
-      "closed": "Closed"
+      "closed": "Closed",
+      "processing": "Processing"
     }
   },
   "payrollCycleConfig": {
@@ -17040,12 +17268,24 @@
     "colRanAt": "Ran at",
     "colOutcome": "Outcome",
     "colError": "Error",
+    "notificationEvidenceUnverified": "Run history does not verify the installed worker release or email receipt.",
     "outcome": {
+      "running": "Started; completion not recorded",
       "success": "Success",
       "partial": "Partial",
       "failed": "Failed"
     },
     "counters": {
+      "processedEvents": "Events processed",
+      "createdNotifications": "Notifications created",
+      "committedBatches": "Batches committed",
+      "pendingEvents": "Events pending",
+      "oldestPendingSeconds": "Oldest pending age (seconds)",
+      "cappedTenants": "Companies reaching batch limit",
+      "emailAttempted": "Email attempts",
+      "emailSkipped": "Emails skipped",
+      "emailUnavailableTenants": "Companies with unavailable email",
+      "emailCappedTenants": "Companies reaching email batch limit",
       "granted": "Days granted",
       "opened": "Reviews opened",
       "reminders": "Reminders sent",
@@ -17055,6 +17295,10 @@
       "tenantsAlarming": "Companies with an alarm"
     },
     "jobs": {
+      "notifications-project": {
+        "name": "Notification processing",
+        "description": "Processes pending notification events and records committed work and backlog. Email delivery has separate outcomes."
+      },
       "leave-accrue": {
         "name": "Earned leave top-up",
         "description": "Adds the leave days employees have earned so far."
@@ -17733,7 +17977,13 @@
     "selectedTag": "Selected",
     "allEmployees": "All employees",
     "allEmployeesHint": "Clear the selection and show every employee.",
-    "showingCapped": "Showing first {cap} of {total} matches — refine your search."
+    "showingCapped": "Showing first {cap} of {total} matches — refine your search.",
+    "loadingEmployees": "Loading employees…",
+    "loadFailed": "Employees could not be loaded. Try again.",
+    "retry": "Retry",
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "pageRange": "{from}–{to} of {total, number}"
   },
   "appliedInPayroll": {
     "searchPlaceholder": "Search month, employee, company or amount",
@@ -19627,7 +19877,8 @@
         "statuses": {
           "draft": "Draft",
           "processed": "Processed",
-          "closed": "Closed"
+          "closed": "Closed",
+          "processing": "Processing"
         },
         "periodStates": {
           "open": "Open",
@@ -19771,7 +20022,8 @@
         "statuses": {
           "draft": "Draft",
           "processed": "Processed",
-          "closed": "Closed"
+          "closed": "Closed",
+          "processing": "Processing"
         },
         "currentStatus": "Current run status",
         "title": "Create an additional payroll draft",
@@ -23196,6 +23448,49 @@
       "category": "Category",
       "active": "Active",
       "addItem": "Add item"
+    },
+    "workflowRemoval": {
+      "statusTabs": "Workflow status",
+      "activeTab": "Active",
+      "retiredTab": "Retired ({count})",
+      "retiredHeading": "Retired",
+      "retiredHelp": "Retired workflows cannot be chosen or started for new cases. Cases that used them keep their history. Restored workflows return as drafts. Turn on automatic start separately when ready.",
+      "retiredEmpty": "No retired workflows.",
+      "retiredBadge": "Retired",
+      "retiredMeta": "Retired on {date} by {name} · used by {cases, plural, one {# case} other {# cases}}",
+      "retiredDrawer": "This workflow is retired. It cannot start for new cases. Restore it to change it or use it again.",
+      "delete": "Delete",
+      "deleteAria": "Delete {name}",
+      "restore": "Restore",
+      "restoreAria": "Restore {name}",
+      "close": "Close",
+      "cancel": "Cancel",
+      "checkingTitle": "Delete {name}?",
+      "checking": "Checking whether any case has used this workflow…",
+      "checkFailed": "The workflow could not be checked. Refresh and try again.",
+      "deleteTitle": "Delete {name}?",
+      "deleteBody": "This workflow has never been used in a case. Deleting it is permanent and cannot be undone.",
+      "retireTitle": "Retire {name}?",
+      "retireBody": "{cases, plural, one {# case has} other {# cases have}} used this workflow, so it cannot be deleted. It will be moved to Retired instead. Running cases keep the steps they started with, and closed cases keep their full history.",
+      "retireEffect": "It will no longer be offered or started for new cases. You can restore it from Retired later.",
+      "automaticWarning": "This workflow starts automatically when {when}. After it is removed, no workflow will start this way for new cases until another one is set up.",
+      "changed": "Something changed since you opened this. Review the updated details before confirming.",
+      "saveFirst": "Wait until your latest changes are saved, then try again.",
+      "confirmDelete": "Delete workflow",
+      "confirmRetire": "Move to Retired",
+      "deleted": "{name} was deleted.",
+      "retired": "{name} was moved to Retired.",
+      "failed": "The change could not be saved. Refresh and try again.",
+      "restoreTitle": "Restore {name}?",
+      "restoreBody": "It returns to the active list as a draft, with its steps, recipients and settings as they were when it was retired. Cases that used it before are not changed.",
+      "restoreNotLive": "It will not start automatically. Make it live when it is ready.",
+      "restoreWasAutomatic": "It started automatically before it was retired, but it does not get that back. This avoids two workflows starting for the same case if a replacement has been set up. Make it live again yourself if it is needed.",
+      "duplicateName": "An active workflow is already called {name}. Rename one of them so they cannot be confused: enter a new name below, or cancel and rename the active workflow first.",
+      "newName": "Name for the restored workflow",
+      "stillDuplicate": "Choose a name that no active workflow in this module uses.",
+      "confirmRestore": "Restore workflow",
+      "restored": "{name} was restored as a draft.",
+      "view": "View"
     }
   },
   "clockingFile": {
@@ -23442,8 +23737,26 @@
         "emptyFile": "The file is empty.",
         "fileTooLarge": "The file is larger than about 900 KB (roughly 25,000 lines). Split it into two files and import each.",
         "unreadable": "The file could not be read.",
-        "excel": "Excel files are not accepted here. Export the device file as CSV or TXT."
-      }
+        "excel": "Excel files are not accepted here. Export the device file as CSV or TXT.",
+        "alreadyRunning": "Another clocking import is still running. Wait for it to finish before starting a new one.",
+        "notAdmin": "Only an HR administrator can import clocking data.",
+        "unavailable": "This import is no longer available. Reopen the page to see its progress."
+      },
+      "job": {
+        "queued": "Waiting to start",
+        "preparing": "Reading the file",
+        "running": "Adding clockings",
+        "finalizing": "Writing the import log",
+        "discarding": "Stopping the import",
+        "completed": "Import finished",
+        "failed": "Import stopped",
+        "cancelled": "Import stopped",
+        "progressCount": "{done} of {total} employees done",
+        "backgroundHelp": "You can leave this page. Clockings are added one employee at a time; the import log opens when the import finishes.",
+        "waiting": "Waiting for the import service. Progress is saved; do not import the file again.",
+        "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is."
+      },
+      "jobStopped": "The import stopped: {reason}"
     },
     "result": {
       "imported": "Imported",
@@ -28398,7 +28711,7 @@
       "next": "Next",
       "stepOf": "Step {current} of {total}",
       "stepNavigation": "Pattern setup navigation",
-      "completeGeneral": "Complete the name, label, company, currency and duration choices before continuing.",
+      "completeGeneral": "Complete the overtime pattern label, name and day types before continuing.",
       "employeeEligibility": "Employee eligibility",
       "testCalculation": "Test calculation and payroll processing",
       "editGeneral": "Edit general settings",
@@ -28406,7 +28719,8 @@
       "editEligibility": "Edit eligibility",
       "salaryDateHelp": "Salary conditions use the employee’s compensation effective on the calculation date, in the configured currency.",
       "and": "AND",
-      "or": "OR"
+      "or": "OR",
+      "draftOnlyNote": "Patterns saved here stay as drafts. Overtime rates and switching a pattern on come back in the next update. Saved companies, currency and rates are kept as they are."
     },
     "title": "Overtime Patterns",
     "descriptionText": "Configure and review employee overtime, payable duration and payroll mapping.",
@@ -28458,7 +28772,7 @@
     "legacyLink": "Open Schedule Groups",
     "legacyContext": "Existing group settings continue to apply unless an effective formula pattern is assigned.",
     "openWorkspace": "Configure Overtime Patterns",
-    "immutableHelp": "Activated versions are read-only. Fork a draft to make future changes.",
+    "immutableHelp": "Activated versions are read-only. Changing them returns in the next update of this page.",
     "readerLimitations": "Recorded field availability",
     "unknownHelp": "Unavailable historical facts remain Unknown. Current employee values cannot replace missing historical evidence.",
     "unavailable": "This pattern or version is unavailable in your current scope.",
@@ -28938,7 +29252,8 @@
     },
     "positionSearch": "Search positions",
     "loadMorePositions": "Load more positions",
-    "attendanceFormulaBinding": "Attendance formula result set: {id}"
+    "attendanceFormulaBinding": "Attendance formula result set: {id}",
+    "chooseOneCompany": "Select one company in the company switcher at the top of the screen before saving a new pattern. The new pattern belongs to that company."
   },
   "systemTestingWorkspace": {
     "title": "System Testing",
@@ -29355,7 +29670,25 @@
     },
     "notSelected": "Valid new code was not selected for this import. No record was created.",
     "notSelectedStatus": "Not selected — skipped",
-    "invalidStatus": "Status must be Active or Inactive. Leave it blank to use Active."
+    "invalidStatus": "Status must be Active or Inactive. Leave it blank to use Active.",
+    "job": {
+      "state": {
+        "queued": "Waiting to start",
+        "preparing": "Checking the workbook",
+        "running": "Importing codes",
+        "finalizing": "Finishing the import",
+        "discarding": "Undoing the import",
+        "completed": "Import finished",
+        "failed": "Import stopped — no codes were added",
+        "cancelled": "Import cancelled — no codes were added"
+      },
+      "progressCount": "{done} of {total} codes written",
+      "backgroundHelp": "You can close this window. Nobody sees the new codes until the import finishes.",
+      "waiting": "Waiting for the import worker. Progress is saved; do not upload the workbook again.",
+      "workerUnavailable": "The import service is not running yet. Your import is saved and starts automatically as soon as it is.",
+      "otherRunning": "Another System Labels import is still running. Wait for it to finish before starting a new one.",
+      "unavailable": "The import status is unavailable. Refresh the page to check again."
+    }
   },
   "onboardingV31": {
     "copy": {
@@ -31733,7 +32066,8 @@
     "runStates": {
       "draft": "Draft",
       "processed": "Processed",
-      "closed": "Closed"
+      "closed": "Closed",
+      "processing": "Processing"
     },
     "reconciliationTitle": "Payroll Reconciliation",
     "summaryNetPay": "Employee summary basis: recorded Net Pay",
@@ -36809,7 +37143,7 @@
   },
   "personnelOrganisationFilters": {
     "updatingResults": "Updating results…",
-    "readBusy": "Personnel is busy. Wait a moment and try again.",
+    "applyFailed": "Could not apply the filters. Try again.",
     "retryRead": "Try again",
     "businessUnit": "Business unit",
     "parentCompany": "Parent company",
@@ -37303,5 +37637,345 @@
     "appliesFromTomorrow": "Changes to Pairing Method and Minimum Interval Between Clock apply from tomorrow, so attendance already captured today is not reworked. The history records who changed them and when.",
     "systemReason": "Updated in Schedule Group settings",
     "dutyRosterPoolNote": "The rotation can only use the shifts Included in Shift Allowed above."
+  },
+  "bulkJobs": {
+    "notification": {
+      "employeeImport": {
+        "completed": {
+          "title": "Employee import finished",
+          "body": "Open Import History to see the employees that were added."
+        },
+        "failed": {
+          "title": "Employee import stopped",
+          "body": "No employees were added. Open Import History to see why."
+        },
+        "cancelled": {
+          "title": "Employee import cancelled",
+          "body": "No employees were added. Open Import History for details."
+        }
+      },
+      "leaveImport": {
+        "completed": {
+          "title": "Leave import finished",
+          "body": "The imported rows are now in employees' leave balances."
+        },
+        "failed": {
+          "title": "Leave import stopped",
+          "body": "Rows already saved are kept. Importing the same file again skips them."
+        },
+        "cancelled": {
+          "title": "Leave import cancelled",
+          "body": "Rows already saved are kept. Importing the same file again skips them."
+        }
+      },
+      "leaveProcessing": {
+        "completed": {
+          "title": "Leave processing finished",
+          "body": "The leave figures have been updated."
+        },
+        "failed": {
+          "title": "Leave processing stopped",
+          "body": "Employees already processed keep their figures. Run it again to complete the rest."
+        },
+        "cancelled": {
+          "title": "Leave processing cancelled",
+          "body": "Employees already processed keep their figures. Run it again to complete the rest."
+        }
+      },
+      "roster": {
+        "completed": {
+          "title": "Roster change finished",
+          "body": "Open the roster to see the result."
+        },
+        "failed": {
+          "title": "Roster change stopped",
+          "body": "Open the roster to see why."
+        },
+        "cancelled": {
+          "title": "Roster change cancelled",
+          "body": "Open the roster for details."
+        }
+      },
+      "scheduleGroup": {
+        "completed": {
+          "title": "Schedule Group assignment finished",
+          "body": "Open Assign Schedule Group to see the result."
+        },
+        "failed": {
+          "title": "Schedule Group assignment stopped",
+          "body": "Open Assign Schedule Group to see why."
+        },
+        "cancelled": {
+          "title": "Schedule Group assignment cancelled",
+          "body": "Open Assign Schedule Group for details."
+        }
+      },
+      "clockingImport": {
+        "completed": {
+          "title": "Clocking import finished",
+          "body": "Open the import logs to see the clockings that were added."
+        },
+        "failed": {
+          "title": "Clocking import stopped",
+          "body": "Open the import logs to see what was saved and why it stopped."
+        },
+        "cancelled": {
+          "title": "Clocking import stopped",
+          "body": "Open the import logs to see what was saved."
+        }
+      },
+      "attendanceRecomputePreview": {
+        "completed": {
+          "title": "Recompute preview ready",
+          "body": "Open Recompute Attendance to review what would change."
+        },
+        "failed": {
+          "title": "Recompute preview stopped",
+          "body": "Open Recompute Attendance to see why."
+        },
+        "cancelled": {
+          "title": "Recompute preview stopped",
+          "body": "Open Recompute Attendance to start it again."
+        }
+      },
+      "attendanceRecompute": {
+        "completed": {
+          "title": "Attendance recalculated",
+          "body": "Open Recompute Attendance to see the days that changed."
+        },
+        "failed": {
+          "title": "Attendance recompute stopped",
+          "body": "Open Recompute Attendance to see why."
+        },
+        "cancelled": {
+          "title": "Attendance recompute stopped",
+          "body": "Open Recompute Attendance for details."
+        }
+      },
+      "payrollProcess": {
+        "completed": {
+          "title": "Payroll processing finished",
+          "body": "Open Payroll to review the processed run."
+        },
+        "failed": {
+          "title": "Payroll processing stopped",
+          "body": "The run is back in draft and no payslips were kept. Open Payroll to see why."
+        },
+        "cancelled": {
+          "title": "Payroll processing cancelled",
+          "body": "The run is back in draft and no payslips were kept."
+        }
+      },
+      "systemLabelImport": {
+        "completed": {
+          "title": "System Labels import finished",
+          "body": "Open System Labels to see the codes that were added."
+        },
+        "failed": {
+          "title": "System Labels import stopped",
+          "body": "No codes were added. Open System Labels and preview the workbook again."
+        },
+        "cancelled": {
+          "title": "System Labels import cancelled",
+          "body": "No codes were added."
+        }
+      },
+      "sectionImport": {
+        "completed": {
+          "title": "Section import finished",
+          "body": "Open Import to see the rows that were updated."
+        },
+        "failed": {
+          "title": "Section import stopped",
+          "body": "Rows saved before it stopped were kept. Open Import to see why."
+        },
+        "cancelled": {
+          "title": "Section import cancelled",
+          "body": "Rows saved before it stopped were kept. Open Import for details."
+        }
+      },
+      "registerImport": {
+        "completed": {
+          "title": "Register import finished",
+          "body": "Open Import to see the register records that were saved."
+        },
+        "failed": {
+          "title": "Register import stopped",
+          "body": "No register records were saved. Open Import to see why."
+        },
+        "cancelled": {
+          "title": "Register import cancelled",
+          "body": "No register records were saved. Open Import for details."
+        }
+      },
+      "employeeImportRevert": {
+        "completed": {
+          "title": "Import revert finished",
+          "body": "Open Import History to see the employees that were voided."
+        },
+        "failed": {
+          "title": "Import revert stopped",
+          "body": "Nothing was changed. Open Import History to see why."
+        },
+        "cancelled": {
+          "title": "Import revert cancelled",
+          "body": "Nothing was changed. Open Import History for details."
+        }
+      },
+      "leaveGeneration": {
+        "completed": {
+          "title": "Entitlement generation finished",
+          "body": "The leave figures have been updated."
+        },
+        "failed": {
+          "title": "Entitlement generation stopped",
+          "body": "Nothing was changed. Open Generate Entitlement to see why, then run it again."
+        },
+        "cancelled": {
+          "title": "Entitlement generation cancelled",
+          "body": "Nothing was changed."
+        }
+      },
+      "leaveRecalculation": {
+        "completed": {
+          "title": "Leave balances recalculated",
+          "body": "Employees' leave figures now follow the saved settings."
+        },
+        "failed": {
+          "title": "Leave recalculation stopped",
+          "body": "Employees already recalculated keep their new figures. Save the setting again to recalculate the rest."
+        },
+        "cancelled": {
+          "title": "Leave recalculation cancelled",
+          "body": "Employees already recalculated keep their new figures. Save the setting again to recalculate the rest."
+        }
+      },
+      "leaveYearType": {
+        "completed": {
+          "title": "Leave year type applied",
+          "body": "First-year employees' leave figures now follow the saved leave year type."
+        },
+        "failed": {
+          "title": "Leave year type not applied to balances",
+          "body": "No leave figures were changed. Save the leave year type again to retry."
+        },
+        "cancelled": {
+          "title": "Leave year type correction cancelled",
+          "body": "No leave figures were changed."
+        }
+      },
+      "toilSweep": {
+        "completed": {
+          "title": "Replacement leave settlement finished",
+          "body": "The replacement leave credits that were due have been settled. Open Leave Credit to review them."
+        },
+        "failed": {
+          "title": "Replacement leave settlement stopped",
+          "body": "Credits already settled stay settled. Run it again to settle the rest."
+        },
+        "cancelled": {
+          "title": "Replacement leave settlement cancelled",
+          "body": "Credits already settled stay settled. Run it again to settle the rest."
+        }
+      },
+      "payrollHistory": {
+        "completed": {
+          "title": "Payroll history change committed",
+          "body": "Open the import log to see what was committed."
+        },
+        "failed": {
+          "title": "Payroll history change stopped",
+          "body": "No payroll history was changed. Open the import log to see why."
+        },
+        "cancelled": {
+          "title": "Payroll history change cancelled",
+          "body": "No payroll history was changed."
+        }
+      },
+      "payrollReprocess": {
+        "completed": {
+          "title": "Payroll reprocess finished",
+          "body": "Open the run to review the reprocessed employees."
+        },
+        "failed": {
+          "title": "Payroll reprocess stopped",
+          "body": "Employees already reprocessed keep their new results. Open the run to see where it stopped."
+        },
+        "cancelled": {
+          "title": "Payroll reprocess cancelled",
+          "body": "Employees already reprocessed keep their new results."
+        }
+      },
+      "movementImport": {
+        "completed": {
+          "title": "Movement import finished",
+          "body": "Open Import History to see the movements that were saved and any employees that could not be."
+        },
+        "failed": {
+          "title": "Movement import stopped",
+          "body": "Open Import History to see why. Employees already saved keep their movements."
+        },
+        "cancelled": {
+          "title": "Movement import stopped",
+          "body": "Employees already saved keep their movements. Open Import History for details."
+        }
+      },
+      "movementCheck": {
+        "completed": {
+          "title": "Movement file checked",
+          "body": "The check is recorded in Import History. If you left the import screen, upload the file again to review and confirm it."
+        },
+        "failed": {
+          "title": "Movement check stopped",
+          "body": "Open Import History to see why. Nothing was saved."
+        },
+        "cancelled": {
+          "title": "Movement check stopped",
+          "body": "Nothing was saved. Open Import History for details."
+        }
+      },
+      "movementImportRevert": {
+        "completed": {
+          "title": "Movement import revert finished",
+          "body": "Open Import History to see the movements that were rolled back."
+        },
+        "failed": {
+          "title": "Movement import revert stopped",
+          "body": "Nothing was changed. Open Import History to see why."
+        },
+        "cancelled": {
+          "title": "Movement import revert cancelled",
+          "body": "Nothing was changed. Open Import History for details."
+        }
+      }
+    },
+    "panel": {
+      "queued": "Waiting to start",
+      "preparing": "Checking every change",
+      "running": "Saving",
+      "finalizing": "Finishing",
+      "discarding": "Stopping",
+      "completed": "Finished",
+      "failed": "Stopped",
+      "cancelled": "Cancelled",
+      "progressCount": "{done} of {total} steps complete",
+      "backgroundHelp": "You can leave this page. The work continues and you will be notified when it finishes.",
+      "waiting": "Waiting for the background service. Progress is saved; do not start this again.",
+      "workerUnavailable": "The background service is not running yet. Your request is saved and starts automatically as soon as it is."
+    },
+    "roster": {
+      "generate": "Generating the roster",
+      "copy": "Copying the roster",
+      "assign": "Applying the roster change",
+      "import": "Saving the uploaded roster",
+      "otherRunning": "Another roster change is still being saved. Wait for it to finish, then try again.",
+      "saveFailed": "The roster change could not be saved. Please try again, or ask an HR administrator.",
+      "queuedBehind": "Queued behind another roster job. It starts automatically as soon as that one finishes."
+    },
+    "scheduleGroup": {
+      "title": "Assigning the Schedule Group",
+      "otherRunning": "Another Schedule Group assignment is still being saved. Wait for it to finish, then try again.",
+      "queuedBehind": "Queued behind another Schedule Group assignment. It starts automatically as soon as that one finishes."
+    }
   }
 }

@@ -56,6 +56,15 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     for (const role of ['bg', 'gr', 'ctro', 'ec'] as const) await decideRewardUnit(actors[role]!, unitId, rev, 'approve', 'Reviewed recommendations');
     return rev;
   }
+  it('keeps company scope identical when a route requests no picker data', async () => {
+    const companyIds = [b.companyId];
+    const full = await rewardSetupChoices(admin, companyIds);
+    expect(full.companies).toHaveLength(1);
+    expect(full.units.length).toBeGreaterThan(0);
+    expect(await rewardSetupChoices(admin, companyIds, { fields: [] })).toEqual({
+      companies: full.companies, units: [], users: [], cycles: [],
+    });
+  });
   it.each([
     ['  Current Rewards unit  ', 'Current Rewards unit'],
     ['', 'HQ'],

@@ -41,10 +41,10 @@ import { createBatch, generatePayslips, resetProcessedBatch, updateBatchScope } 
 import {
   decodeRunGroupResult,
   encodeRunGroupResult,
-  reasonForError,
-  summarize,
-  type CompanyOutcome,
+  startResumedPayrollRun,
 } from '../core/payroll-run-group';
+import { readRunGroup } from '../core/payroll-run-group-store';
+import { drainRunGroup } from './payroll-run-group-helpers';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { hireEmployee } from '../core/org';
@@ -151,10 +151,10 @@ describe('7076f8af — Reset lands in the run flow, and the run flow ends', () =
 
   it('2. resumeRunAction is terminal: it generates and lands on the result page, never back on the run screen', () => {
     expect(PROCESS_ACTIONS).toMatch(/export async function resumeRunAction/);
-    // It calculates …
-    expect(PROCESS_ACTIONS).toMatch(/await generatePayslips\(s, \{ batchId \}\)/);
-    // … wraps the outcome in the EXISTING run-group shape and ends on the shared result page …
-    expect(PROCESS_ACTIONS).toMatch(/summarize\(batch\.payPeriod, startedAt, new Date\(\)\.toISOString\(\), \[outcome\]\)/);
+    // It calculates (as the run's background processing job) …
+    expect(PROCESS_ACTIONS).toMatch(/await startResumedPayrollRun\(s, \{ batchId, companyId: batch\.companyId, companyName, payPeriod: batch\.payPeriod, employeesSelected \}\)/);
+    // … and the one-company outcome is the EXISTING run-group shape, derived by the same `summarize` (3a/3b below
+    // run it for real), on the shared result page …
     /**
      * UPDATED BY d75b0c11, NOT WEAKENED. The destination is unchanged — `/payroll/process/result` with
      * the encoded run-group payload, which is the whole claim this line makes. What is appended is the
@@ -166,15 +166,20 @@ describe('7076f8af — Reset lands in the run flow, and the run flow ends', () =
      * produces the byte-identical redirect this case used to pin. Pinning the trailing backtick would
      * forbid the fix, so the assertion moves to the prefix plus the suffix call.
      */
+    // The background job moved the outcome off the redirect: the result page follows the durable run group
+    // (`?g=`) until the run finishes, with the same `from` suffix.
     expect(PROCESS_ACTIONS).toMatch(
-      /redirect\(`\/payroll\/process\/result\?r=\$\{encodeRunGroupResult\(result\)\}\$\{resultFromSuffix\(formData\.get\('from'\)\)\}`\)/,
+      /redirect\(`\/payroll\/process\/result\?g=\$\{groupId\}\$\{resultFromSuffix\(formData\.get\('from'\)\)\}`\)/,
     );
     // … and the old hand-back is gone.
     expect(PROCESS_ACTIONS).not.toMatch(/redirect\(`\/payroll\/\$\{batchId\}\?from=process`\)/);
   });
 
-  it('2b. the generation stays inside a try so a failed run renders as a reason row, not a thrown page', () => {
-    const body = PROCESS_ACTIONS.slice(PROCESS_ACTIONS.indexOf('export async function resumeRunAction'));
+  it('2b. a failed run renders as a reason row, not a thrown page', () => {
+    // A refusal before the job is caught into the same reason row; a refusal inside the job is mapped by the job
+    // (core/payroll-processing-job.ts) and settled into it (3b below runs it).
+    const orchestrator = fs.readFileSync(path.join(ROOT, 'core', 'payroll-run-group.ts'), 'utf8');
+    const body = orchestrator.slice(orchestrator.indexOf('export async function startResumedPayrollRun'));
     expect(body).toMatch(/reason: reasonForPayrollError\(e\)/);
     expect(body).toMatch(/status: 'failed'/);
   });
@@ -394,20 +399,10 @@ describe('7076f8af — the terminal resume payload, against a real run', () => {
     expect(slipsAfterReset.length).toBe(0);
 
     // The resume path: re-set the scope (untouched here ⇒ whole company), then calculate. This is the
-    // sequence resumeRunAction performs.
+    // sequence resumeRunAction performs: the run's processing job, followed to its settled outcome.
     await updateBatchScope(a, { batchId, scope: { employmentIds: [] } });
-    const startedAt = new Date().toISOString();
-    const gen = await generatePayslips(a, { batchId });
-    const payslips = 'payslips' in gen && typeof gen.payslips === 'number' ? gen.payslips : 0;
-    const outcome: CompanyOutcome = {
-      companyId: base.companyId,
-      companyName: 'Acme',
-      status: 'succeeded',
-      batchId,
-      employeesSelected: 2,
-      employeesSucceeded: payslips,
-    };
-    const result = summarize('2026-05', startedAt, new Date().toISOString(), [outcome]);
+    const { groupId } = await startResumedPayrollRun(a, { batchId, companyId: base.companyId, companyName: 'Acme', payPeriod: '2026-05', employeesSelected: 2 });
+    const result = await drainRunGroup(groupId);
 
     expect(result.totalCompanies).toBe(1);
     expect(result.companiesSucceeded).toBe(1);
@@ -415,13 +410,14 @@ describe('7076f8af — the terminal resume payload, against a real run', () => {
     expect(result.totalEmployeesSelected).toBe(2);
     expect(result.totalEmployeesSucceeded).toBe(2);
     expect(result.totalEmployeesFailed).toBe(0);
+    expect(result.perCompany).toEqual([{ companyId: base.companyId, companyName: 'Acme', status: 'succeeded', batchId, employeesSelected: 2, employeesSucceeded: 2 }]);
 
-    // The one-shot transport survives the redirect the action performs.
+    // The result page reads it back (the run group is durable; the one-shot transport still decodes drafts).
+    expect((await readRunGroup(a, groupId))?.result).toEqual(result);
     const decoded = decodeRunGroupResult(encodeRunGroupResult(result));
-    expect(decoded).not.toBeNull();
-    expect(decoded!.perCompany).toHaveLength(1);
     expect(decoded!.perCompany[0].batchId).toBe(batchId);
-    expect(decoded!.perCompany[0].status).toBe('succeeded');
+    // A resumed run records no run-group event, as before.
+    expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateType, 'payroll-run-group'))).toHaveLength(0);
   });
 
   it('3b. a run that cannot be processed comes back as a REASON ROW with a name the operator can act on', async () => {
@@ -430,38 +426,14 @@ describe('7076f8af — the terminal resume payload, against a real run', () => {
     await hire(base, 'No Salary Person'); // no compensation row at all — the pre-processing blocker
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    const startedAt = new Date().toISOString();
 
-    // Exactly what resumeRunAction's try/catch does with the throw.
-    let outcome: CompanyOutcome;
-    try {
-      await generatePayslips(a, { batchId });
-      outcome = {
-        companyId: base.companyId,
-        companyName: 'Acme',
-        status: 'succeeded',
-        batchId,
-        employeesSelected: 2,
-        employeesSucceeded: 2,
-      };
-    } catch (e) {
-      outcome = {
-        companyId: base.companyId,
-        companyName: 'Acme',
-        status: 'failed',
-        batchId,
-        employeesSelected: 2,
-        employeesSucceeded: 0,
-        reason: reasonForError((e as Error).message),
-      };
-    }
-
-    expect(outcome.status).toBe('failed');
+    // Exactly what resumeRunAction does: the job's readiness gate refuses, and the group settles the reason row.
+    const { groupId } = await startResumedPayrollRun(a, { batchId, companyId: base.companyId, companyName: 'Acme', payPeriod: '2026-05', employeesSelected: 2 });
+    const result = await drainRunGroup(groupId);
+    const [outcome] = result.perCompany;
+    expect(outcome).toEqual({ companyId: base.companyId, companyName: 'Acme', status: 'failed', batchId, employeesSelected: 2, employeesSucceeded: 0, reason: 'PRE_PROCESS_BLOCKED' });
     // Not the catch-all: the blocker is named, and the result page has copy for that name.
-    expect(outcome.reason).toBe('PRE_PROCESS_BLOCKED');
     expect(en.payroll.process.reason.PRE_PROCESS_BLOCKED).toBeTruthy();
-
-    const result = summarize('2026-05', startedAt, new Date().toISOString(), [outcome]);
     expect(result.overallStatus).toBe('failed');
     expect(result.totalEmployeesFailed).toBe(2);
 

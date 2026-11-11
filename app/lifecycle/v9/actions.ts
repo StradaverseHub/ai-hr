@@ -1,7 +1,7 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { requireModule } from '@/lib/authz';
-import { v9CaseDetail, v9PreviewPersonnelValues, v9PreviewWorkflow, v9PreviewEmail, v9PreviewUpdatedEmail, v9Command, v9CreateOffboarding, v9SaveConfig, v9Setup } from '@/packs/lifecycle/service';
+import { v9CaseDetail, v9PreviewPersonnelValues, v9PreviewWorkflow, v9PreviewEmail, v9PreviewUpdatedEmail, v9Command, v9CreateOffboarding, v9SaveConfig, v9Setup, v9PreviewWorkflowRemoval, v9RemoveWorkflow, v9RestoreWorkflow } from '@/packs/lifecycle/service';
 import type { LifecycleV9Command as Command } from '@/packs/lifecycle/service';
 import type { ExitType, Module } from '@/lib/lifecycle-v9-model';
 async function execute<T>(work: () => Promise<T>) {
@@ -11,6 +11,8 @@ async function execute<T>(work: () => Promise<T>) {
 export async function setupV9() { return execute(async () => v9Setup(await requireModule('lifecycle'))); }
 export async function saveV9Config(revision: number, input: unknown) { return execute(async () => v9SaveConfig(await requireModule('lifecycle'), revision, input)); }
 export async function createV9Offboarding(input: { employmentId: string; type: ExitType; noticeDate: string; lastDay: string }) { return execute(async () => v9CreateOffboarding(await requireModule('lifecycle'), input)); }
+export async function removeV9Workflow(input: { revision: number; workflowId: string; expected: { mode: 'delete' | 'retire'; cases: number; automatic: boolean } }) { return execute(async () => v9RemoveWorkflow(await requireModule('lifecycle'), input)); }
+export async function restoreV9Workflow(input: { revision: number; workflowId: string; name?: string }) { return execute(async () => v9RestoreWorkflow(await requireModule('lifecycle'), input)); }
 export async function commandV9(id: string, revision: number, command: Command) { return execute(async () => v9Command(await requireModule('lifecycle'), id, revision, command)); }
 export async function readV9Case(id: string) {
   try { return { ok: true as const, detail: await v9CaseDetail(await requireModule('lifecycle'), id) }; }
@@ -35,4 +37,9 @@ export async function readV9Workflow(caseId:string,workflowId:string) {
 export async function readV9PersonnelPreview(caseId: string, module: Module) {
   try { return { ok: true as const, values: await v9PreviewPersonnelValues(await requireModule('lifecycle'), caseId, module) }; }
   catch { return { ok: false as const, error: 'The Personnel preview could not be loaded.' }; }
+}
+
+export async function readV9WorkflowRemoval(workflowId: string) {
+  try { return { ok: true as const, preview: await v9PreviewWorkflowRemoval(await requireModule('lifecycle'), workflowId) }; }
+  catch (error) { return { ok: false as const, error: error instanceof Error && error.name === 'V9Error' ? error.message : 'The workflow could not be checked. Refresh and try again.' }; }
 }

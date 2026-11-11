@@ -1,3 +1,5 @@
+import {assessmentReminderProjectionWork,assessmentReminderProjectionRoutes,assessmentReminderProjectionExpiry} from './reminder-projection';
+import {assessmentReminderPreparationStart,assessmentReminderPreparationRoute,assessmentReminderPreparationCurrent,assessmentReminderPreparationSkip,assessmentReminderPreparationValue,type ReminderPreparationRefusal} from './reminder-preparation';
 import {listEmailDesigns,saveEmailDesign} from '../../../core/email-design/service';
 import {defaultEmailDocument,emailDesignEnvelope,emailLocale} from '../../../lib/email-design/model';
 import {assessmentReminderWordsSchema,fillAssessmentReminderWords} from '../../../lib/assessment-reminder-mail';
@@ -14,7 +16,7 @@ import { setTenantSetting } from '../../../core/tenant-settings';
 import { isGroupAdmin } from '../../../lib/authz-model';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { assessmentReminderDue,assessmentReminderRulesSchema,defaultAssessmentReminderRules,nextAssessmentReminder } from './reminder-model';
-import { assessmentReminderWork,type ReminderWorkGraph,type ReminderWorkRecipient } from './reminder-work';
+import { type ReminderWorkGraph,type ReminderWorkRecipient } from './reminder-work';
 
 const tenantScope='00000000-0000-0000-0000-000000000000';
 async function access(tx:Tx,cycleId:string){
@@ -31,14 +33,11 @@ async function work(tx:Tx,cycleId:string,ctx:SessionContext,now=new Date()){
  await access(tx,cycleId);
  const [row]=await tx.execute<{value:ReminderWorkGraph|null}>(sql`select app.assessment_pending_work(${cycleId}::uuid) as value`),graph=row?.value;
  if(!graph)return null;
- const companies=new Set(graph.reviews.map(r=>r.companyId));if(graph.cycle.companyId)companies.add(graph.cycle.companyId);for(const s of graph.sessions){if(s.companyId)companies.add(s.companyId);for(const e of s.entries)companies.add(e.companyId);}
- const enabled=new Set([...companies].filter(companyId=>isModuleEnabled(ctx,'performance',companyId)));if(!enabled.size&&!isModuleEnabled(ctx,'performance'))return null;
- return {graph,recipients:assessmentReminderWork(graph,enabled,now)};
+ return assessmentReminderProjectionWork(graph,ctx,now);
 }
 async function routes(tx:Tx,cycleId:string,ctx:SessionContext){
  const rows=await tx.execute<{user_id:string;employment_id:string;company_id:string}>(sql`select * from app.assessment_reminder_mail_routes(${cycleId}::uuid)`);
- const byUser=new Map<string,string>();for(const row of rows)if(!byUser.has(row.user_id)&&isModuleEnabled(ctx,'notifications',row.company_id))byUser.set(row.user_id,row.employment_id);
- return byUser;
+ return assessmentReminderProjectionRoutes(rows,ctx);
 }
 async function cooldowns(tx:Tx,cycleId:string,userIds:string[],except?:string){
  if(!userIds.length)return new Set<string>();
@@ -69,8 +68,7 @@ async function projection(tx:Tx,tenantId:string,cycleId:string,epochs:typeof ass
  const pending=(async()=>{
   const now=new Date(),state=await fresh(tx,tenantId),current=await work(tx,cycleId,state,now),mailRoutes=current?await routes(tx,cycleId,state):new Map<string,string>();
   const [expiry]=await tx.execute<{until:Date|null}>(sql`select min(expires_at) as until from tenant_module where tenant_id=app.current_tenant_id() and expires_at>now()`);
-  const boundaries=Object.values(current?.graph.cycle.policy.windows??{}).flatMap(window=>[window?.opensAt,window?.closesAt]).filter((value):value is string=>!!value).map(Date.parse).filter(time=>time>now.getTime());
-  const expiresAt=Math.min(now.getTime()+60_000,new Date(`${todayInKualaLumpur(now)}T23:59:59.999+08:00`).getTime(),expiry?.until?new Date(expiry.until).getTime():Infinity,...boundaries);
+  const expiresAt=assessmentReminderProjectionExpiry(now,current?.graph??null,expiry?.until??null);
   return {state,current,mailRoutes,actors:new Map((current?.recipients??[]).map(actor=>[actor.userId,actor])),expiresAt};
  })();cache.set(key,pending);return pending;
 }
@@ -186,18 +184,21 @@ export async function assessmentReminderRecipientsTx(tx:Tx,recipientId:string){
  z.uuid().parse(recipientId);
  const [recipient]=await tx.select({recipient:assessmentReminderRecipient,run:assessmentReminderRun}).from(assessmentReminderRecipient).innerJoin(assessmentReminderRun,eq(assessmentReminderRun.id,assessmentReminderRecipient.runId)).where(eq(assessmentReminderRecipient.id,recipientId));
  if(!recipient||recipient.recipient.outcome!=='queued'||!recipient.recipient.employmentId)return [];
- const skip=async(outcome:'changed'|'noPendingWork'|'noConsent'|'cooldown')=>{await tx.update(assessmentReminderRecipient).set({outcome,tasks:[],mailWords:null,preparedAt:null,preparedUntil:null}).where(eq(assessmentReminderRecipient.id,recipientId));return [];};
+ const skip=async(outcome:ReminderPreparationRefusal)=>{await tx.update(assessmentReminderRecipient).set(assessmentReminderPreparationSkip(outcome)).where(eq(assessmentReminderRecipient.id,recipientId));return [];};
  const epochs=await tx.select().from(assessmentReminderEpoch).where(and(eq(assessmentReminderEpoch.tenantId,recipient.run.tenantId),sql`${assessmentReminderEpoch.scopeId} in (${tenantScope}::uuid,${recipient.run.cycleId}::uuid)`));
  const prepared=await projection(tx,recipient.run.tenantId,recipient.run.cycleId,epochs),{state,mailRoutes}=prepared;
- if(recipient.run.mode==='automatic'&&!rules(state).enabled)return skip('changed');
  const actor=prepared.actors.get(recipient.recipient.userId);
- if(!actor||!actor.employmentIds.includes(recipient.recipient.employmentId))return skip('noPendingWork');
- if(await cooling(tx,recipient.run.cycleId,actor.userId,recipientId))return skip('cooldown');
- if(mailRoutes.get(actor.userId)!==recipient.recipient.employmentId)return skip('noConsent');
+ const initial=assessmentReminderPreparationStart(recipient.run.mode,recipient.run.mode==='automatic'?rules(state).enabled:true,recipient.recipient.employmentId,actor);
+ if(initial)return skip(initial);
+ // Initial eligibility proves this exact actor; no new fact read precedes it.
+ if(!actor)throw Error('Assessment preparation actor is unavailable');
+ const route=assessmentReminderPreparationRoute(await cooling(tx,recipient.run.cycleId,actor.userId,recipientId),mailRoutes.get(actor.userId),recipient.recipient.employmentId);
+ if(route)return skip(route);
  const checked=await tx.select().from(assessmentReminderEpoch).where(and(eq(assessmentReminderEpoch.tenantId,recipient.run.tenantId),sql`${assessmentReminderEpoch.scopeId} in (${tenantScope}::uuid,${recipient.run.cycleId}::uuid)`));
- if(checked.length!==epochs.length||checked.some(row=>epochs.find(e=>e.scopeId===row.scopeId)?.revision!==row.revision)||prepared.expiresAt<=Date.now())return skip('changed');
- const now=new Date(),until=new Date(Math.min(now.getTime()+60_000,prepared.expiresAt));
- await tx.update(assessmentReminderRecipient).set({tasks:actor.tasks,mailWords:fillAssessmentReminderWords(await words(tx),prepared.current!.graph.actors.find(person=>person.userId===actor.userId)!.name,prepared.current!.graph.cycle.name,actor.tasks.length),preparedAt:now,preparedUntil:until,tenantEpoch:epochs.find(e=>e.scopeId===tenantScope)?.revision??0,cycleEpoch:epochs.find(e=>e.scopeId===recipient.run.cycleId)?.revision??0}).where(eq(assessmentReminderRecipient.id,recipientId));
+ if(!assessmentReminderPreparationCurrent(epochs,checked,prepared.expiresAt,Date.now()))return skip('changed');
+ const now=new Date();
+ const value=assessmentReminderPreparationValue({actor,name:prepared.current!.graph.actors.find(person=>person.userId===actor.userId)!.name,cycleName:prepared.current!.graph.cycle.name,cycleId:recipient.run.cycleId,tenantScope,epochs,expiresAt:prepared.expiresAt,now,words:await words(tx)});
+ await tx.update(assessmentReminderRecipient).set(value).where(eq(assessmentReminderRecipient.id,recipientId));
  return [recipient.recipient.employmentId];
 }
 

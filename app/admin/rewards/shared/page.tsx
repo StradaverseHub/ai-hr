@@ -25,7 +25,7 @@ export default async function SharedRewardPolicyPage({searchParams}:{searchParam
  const {s}=wholeGroup.length?{s:session}:await scopedAdmin(),t=await getTranslations('rewards.sharedPolicy'),params=await searchParams,{group:groupId}=params;
  const [groups,approvedPlans]=await Promise.all([listRewardPolicyGroups(s),rewardApprovedPlanReviewSummaries(s)]),selected=groupId?groups.find(row=>row.groupId===groupId):null;if(groupId&&!selected)notFound();
  // Deliberately all permitted companies for multi-company setup, rather than the current header filter.
- const companies=wholeGroup.length?wholeGroup:await adminCompanies(s),choices=await rewardSetupChoices(s,companies.map(company=>company.id),{includeArchived:true,sharedPolicy:true});
+ const companies=wholeGroup.length?wholeGroup:await adminCompanies(s),choices=await rewardSetupChoices(s,companies.map(company=>company.id),{includeArchived:true,sharedPolicy:true,fields:['units']});
  const policy=selected?.policy??defaultPolicy(Number(todayInKualaLumpur().slice(0,4)));
  const tree=await companyTree(s),classifications=await rewardCompanyClassifications(s);
  const groupedCompanies=choices.companies.map(company=>({...company,...rewardCompanyBusinessGroup(company.id,tree),disposition:classifications.find(row=>row.companyId===company.id)?.disposition??'visible'}));
@@ -40,7 +40,7 @@ export default async function SharedRewardPolicyPage({searchParams}:{searchParam
   <ApprovedRewardPlans plans={approvedPlans}/><p className="text-sm text-muted-foreground">{t('currencyHelp')}</p>
   <SharedRewardHistory session={s} groups={groups} groupId={groupId} showVersions={params.versions} versionId={params.version} compare={params.compare} companies={choices.companies} units={choices.units}/>
   {choices.companies.length>0&&<SharedRewardEditor actorUserId={s.userId??''} groupId={selected?.groupId??null} revision={selected?.revision??0} name={selected?.name??''} year={policy.year} targets={selected?.targets??[]} companies={groupedCompanies} units={choices.units} memberships={memberships} initialTaken={taken} loadTakenAction={loadSharedRewardTakenAction} canManageUnits={companies.length>0} exclusions={exclusions} exclusionAction={changeSharedRewardExclusionAction}
-   policyFields={<RewardPolicyFields policy={policy} context="shared"/>} saveAction={saveSharedRewardPolicyAction}/>}
+   policyFields={<RewardPolicyFields policy={policy} context="shared" pristineValidationGuidance={!selected}/>} saveAction={saveSharedRewardPolicyAction}/>}
   <RewardCompanyClassificationPanel companies={choices.companies} rows={classifications} saveAction={classifySharedRewardCompanyAction}/>
   {selected&&<Card id="configuration-usage" className="space-y-3 p-4"><h2 className="font-semibold">{t('usage')}</h2><p className="text-sm text-muted-foreground">{t('usageHelp')}</p>{usage.length?<ul className="divide-y">{usage.map(row=><li key={row.unitId} className="py-2 text-sm"><Link className="text-primary hover:underline" href={`/admin/rewards/${row.unitId}`}>{row.cycle} · {row.company} · {row.businessUnit} · {t('version',{version:row.revision})}</Link></li>)}</ul>:<p className="text-sm text-muted-foreground">{t('unused')}</p>}</Card>}
  </div>;

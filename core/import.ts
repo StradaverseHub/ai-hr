@@ -142,7 +142,7 @@ type CompanyContext = {
   country: string;
 };
 
-type ResolvedRow = {
+export type ResolvedRow = {
   result: RowResult;
   /** The company's pack — resolved from the ROW's company, not the screen's, so a Singapore company
    *  in a mostly-Malaysian file is validated under its own statutory rules (ADR-0080 D1/D6). */
@@ -237,7 +237,7 @@ type ResolvedRow = {
 };
 
 /** Item 2983802f — one validated row of the FAMILY sheet, with the employee row it belongs to. */
-type ResolvedDependent = {
+export type ResolvedDependent = {
   result: DependentRowResult;
   /** Index into the employee `resolved` array; -1 when the Employee ID matched nothing on that sheet. */
   employeeIndex: number;
@@ -1280,10 +1280,87 @@ export async function validateEmployeeImport(
   return preview;
 }
 
+
+/** The complete write for one validated employee row (hire, statutory, compensation, profile, family, history item),
+ *  shared by the synchronous commit and the background job's chunks so the two can never diverge. */
+export async function applyEmployeeImportRowTx(tx:Tx,ctx:SessionContext,input:{row:Omit<ResolvedRow,'pack'>;pack:CountryPack;index:number;allocationPreview?:AllocationImportPreview;family:ResolvedDependent[];attemptId:string|null}):Promise<{employmentId:string;personId:string;familyCount:number}>{
+  const {row,pack,index,allocationPreview,family,attemptId}=input;
+  const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.initialTaxScheme}, tx);
+  if(allocationPreview)await writeNewEmployeeCostAllocationsTx(tx,ctx,allocationPreview.groups,index,employmentId);
+  let familyCount=0;
+  await (pack.statutory.initializeForHire??pack.statutory.set)(ctx, { personId, ...row.statutory }, tx);
+  if(row.oldIcNumber)await pack.statutory.setIc(ctx,{personId,icNumber:row.statutory.icNumber??'',oldIcNumber:row.oldIcNumber},tx);
+  if(row.bankExtra)await pack.statutory.setBank(ctx,{personId,...row.bankExtra},tx);
+  if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,employmentId,row.operations);
+  // 524303d9 — the remaining Bank & Statutory settings, through the merged writer over the row just written
+  // (it re-reads under lock and re-validates; a refusal rolls the whole import back).
+  if(row.statutoryPatch){
+    try{await applyBankStatutoryPatchTx(tx,ctx,{employmentId,personId,pack,country:row.country},row.statutoryPatch);}
+    catch(error){const message=bankStatutoryRefusal(error);if(message)throw new Error(message);throw error;}
+  }
+  if(row.payrollPolicyId)await assignPolicy(ctx,{employmentId,policyId:row.payrollPolicyId},tx);
+  if(row.scheduleGroupId)await setEmploymentScheduleGroupTx(tx,ctx,{employmentId,attendanceRuleId:row.scheduleGroupId});
+  // Feedback b9fd8fd5 — imports behave like manual entry (setIcAction, item 354a500d): a valid IC also
+  // persists the derived Date of Birth so the Profile tab's Age never reads "Not Available" for an
+  // imported employee. `dobOnlyIfEmpty` guarantees an existing DOB is never overwritten; an IC whose
+  // first six digits form no real calendar date derives nothing (null) and is skipped, not failed.
+  // The complete employee row shares one transaction; a later owner refusal rolls back this autofill too.
+  const derivedDob = pack.statutory.dobFromIC(row.statutory.icNumber);
+  if (derivedDob) {
+    await setPersonComplianceFields(ctx, { employmentId, dateOfBirth: derivedDob, dobOnlyIfEmpty: true }, tx);
+  }
+  await setCompensation(ctx, {
+    employmentId,
+    basicSalary: row.basicSalary,
+    monthlyAllowance: row.monthlyAllowance,
+    // ADR-0078 — undefined falls through to the service defaults (monthly / monthly / no rate).
+    payMode: row.payMode,
+    paymentTerm: row.paymentTerm,
+    rateAmount: row.rateAmount,
+    // r369 — the reason off the row, or undefined for a blank cell. The service stores undefined as
+    // NULL and logs no `remarks` field change, so a file with no such column writes what it always did.
+    remarks: row.salaryRemarks,
+    effectiveFrom: row.effectiveFrom,
+  }, tx);
+  // ── Item 2983802f — the new blocks, each through the SAME service its Personnel card uses, and
+  //    each skipped entirely when the file carried none of its columns. That is what keeps an
+  //    existing file's import byte-identical to what it was before this change.
+  if (row.profile) {
+    // `updatePerson` re-writes the core trio, so the row's own values are passed through — omitting
+    // `phone` would blank a phone number the file had just supplied.
+    await updatePerson(ctx, {
+      personId,
+      fullName: row.hire.person.fullName,
+      primaryEmail: row.hire.person.primaryEmail,
+      phone: row.hire.person.phone ?? null,
+      via: 'employee-import',
+      ...row.profile,
+    }, tx);
+  }
+  if (row.passport) {
+    await pack.statutory.setPassport(ctx, { personId, ...row.passport }, tx);
+  }
+  if (row.compliance) await setPersonComplianceFields(ctx,{employmentId,...row.compliance}, tx);
+  if (row.employmentInfo) {
+    await setEmploymentInfo(ctx, { employmentId, ...row.employmentInfo }, tx);
+  }
+  for (const d of family) {
+    await addDependentTx(tx,ctx,personId,d.add);
+    familyCount++;
+  }
+  // 524303d9 — the attempt's item for this employment, in the SAME transaction as the hire (ADR-0155).
+  if(attemptId){
+    const [created]=await tx.select({code:employment.employeeCode}).from(employment).where(eq(employment.id,employmentId));
+    const after:EmployeeFullItemState={employeeCode:created?.code??'',fullName:row.result.fullName,rowNum:row.result.rowNum};
+    await recordImportItemTx(tx,ctx,{attemptId,companyId:row.hire.companyId,employmentId,itemKey:`row:${row.result.rowNum}`,label:`${after.employeeCode||'—'} · ${after.fullName}`,ordinal:index,status:'applied',after});
+  }
+  return {employmentId,personId,familyCount};
+}
+
 /** Commit the valid rows. Re-validates server-side (never trusts a client-supplied preview),
  *  imports row-by-row reusing the hire / statutory / compensation services, and records a
  *  batch event so the import itself shows up in the audit trail. */
-function measuredImportReplay(companyId:string,evaluationReceipt:EmployeeImportEvaluationReceipt):ImportResult&{evaluationReceipt:EmployeeImportEvaluationReceipt}{
+export function measuredImportReplay(companyId:string,evaluationReceipt:EmployeeImportEvaluationReceipt):ImportResult&{evaluationReceipt:EmployeeImportEvaluationReceipt}{
  const c=evaluationReceipt.canonicalCounts;if(!c)throw Error('The import receipt could not be confirmed.');
  return{companyId,imported:c.imported,failed:[],skipped:c.skipped,dependentsImported:c.dependents,registersImported:{qualification:c.qualification,emergency:c.emergency},superiorFailed:[],fileErrors:[],runId:null,evaluationReceipt};
 }
@@ -1366,7 +1443,8 @@ export async function commitEmployeeImport(
   let evaluationReceipt:EmployeeImportEvaluationReceipt|undefined,replayedEvaluation=false;
   try {
     await withTenant(ctx,async tx=>{
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  // Reader/writer Access lock: a hire keeps the exclusive lock, so the whole-file transaction that hires keeps it.
+  await tx.execute(sql`select app.access_configuration_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   if(p.evaluationBinding){const claimed=await claimEmployeeImportEvaluationTx(tx,ctx,p.evaluationBinding,p);if(claimed.replayed){evaluationReceipt=claimed.replayed;replayedEvaluation=true;return;}}
   // The outside analysis nominated this exact raw file. Resolve ALL protected facts in this actual
@@ -1386,78 +1464,7 @@ export async function commitEmployeeImport(
     // own country's. Reading it off the row rather than the batch is what keeps that honest.
     const pack = row.pack;
     try {
-      const saved = await (async()=>{
-      const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.initialTaxScheme}, tx);
-      if(allocationPreview)await writeNewEmployeeCostAllocationsTx(tx,ctx,allocationPreview.groups,index,employmentId);
-      let familyCount=0;
-      await (pack.statutory.initializeForHire??pack.statutory.set)(ctx, { personId, ...row.statutory }, tx);
-      if(row.oldIcNumber)await pack.statutory.setIc(ctx,{personId,icNumber:row.statutory.icNumber??'',oldIcNumber:row.oldIcNumber},tx);
-      if(row.bankExtra)await pack.statutory.setBank(ctx,{personId,...row.bankExtra},tx);
-      if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,employmentId,row.operations);
-      // 524303d9 — the remaining Bank & Statutory settings, through the merged writer over the row just written
-      // (it re-reads under lock and re-validates; a refusal rolls the whole import back).
-      if(row.statutoryPatch){
-        try{await applyBankStatutoryPatchTx(tx,ctx,{employmentId,personId,pack,country:row.country},row.statutoryPatch);}
-        catch(error){const message=bankStatutoryRefusal(error);if(message)throw new Error(message);throw error;}
-      }
-      if(row.payrollPolicyId)await assignPolicy(ctx,{employmentId,policyId:row.payrollPolicyId},tx);
-      if(row.scheduleGroupId)await setEmploymentScheduleGroupTx(tx,ctx,{employmentId,attendanceRuleId:row.scheduleGroupId});
-      // Feedback b9fd8fd5 — imports behave like manual entry (setIcAction, item 354a500d): a valid IC also
-      // persists the derived Date of Birth so the Profile tab's Age never reads "Not Available" for an
-      // imported employee. `dobOnlyIfEmpty` guarantees an existing DOB is never overwritten; an IC whose
-      // first six digits form no real calendar date derives nothing (null) and is skipped, not failed.
-      // The complete employee row shares one transaction; a later owner refusal rolls back this autofill too.
-      const derivedDob = pack.statutory.dobFromIC(row.statutory.icNumber);
-      if (derivedDob) {
-        await setPersonComplianceFields(ctx, { employmentId, dateOfBirth: derivedDob, dobOnlyIfEmpty: true }, tx);
-      }
-      await setCompensation(ctx, {
-        employmentId,
-        basicSalary: row.basicSalary,
-        monthlyAllowance: row.monthlyAllowance,
-        // ADR-0078 — undefined falls through to the service defaults (monthly / monthly / no rate).
-        payMode: row.payMode,
-        paymentTerm: row.paymentTerm,
-        rateAmount: row.rateAmount,
-        // r369 — the reason off the row, or undefined for a blank cell. The service stores undefined as
-        // NULL and logs no `remarks` field change, so a file with no such column writes what it always did.
-        remarks: row.salaryRemarks,
-        effectiveFrom: row.effectiveFrom,
-      }, tx);
-      // ── Item 2983802f — the new blocks, each through the SAME service its Personnel card uses, and
-      //    each skipped entirely when the file carried none of its columns. That is what keeps an
-      //    existing file's import byte-identical to what it was before this change.
-      if (row.profile) {
-        // `updatePerson` re-writes the core trio, so the row's own values are passed through — omitting
-        // `phone` would blank a phone number the file had just supplied.
-        await updatePerson(ctx, {
-          personId,
-          fullName: row.hire.person.fullName,
-          primaryEmail: row.hire.person.primaryEmail,
-          phone: row.hire.person.phone ?? null,
-          via: 'employee-import',
-          ...row.profile,
-        }, tx);
-      }
-      if (row.passport) {
-        await pack.statutory.setPassport(ctx, { personId, ...row.passport }, tx);
-      }
-      if (row.compliance) await setPersonComplianceFields(ctx,{employmentId,...row.compliance}, tx);
-      if (row.employmentInfo) {
-        await setEmploymentInfo(ctx, { employmentId, ...row.employmentInfo }, tx);
-      }
-      for (const d of familyByRow.get(index) ?? []) {
-        await addDependentTx(tx,ctx,personId,d.add);
-        familyCount++;
-      }
-      // 524303d9 — the attempt's item for this employment, in the SAME transaction as the hire (ADR-0155).
-      if(attemptId){
-        const [created]=await tx.select({code:employment.employeeCode}).from(employment).where(eq(employment.id,employmentId));
-        const after:EmployeeFullItemState={employeeCode:created?.code??'',fullName:row.result.fullName,rowNum:row.result.rowNum};
-        await recordImportItemTx(tx,ctx,{attemptId,companyId:row.hire.companyId,employmentId,itemKey:`row:${row.result.rowNum}`,label:`${after.employeeCode||'—'} · ${after.fullName}`,ordinal:index,status:'applied',after});
-      }
-      return {employmentId,personId,familyCount};
-      })();
+      const saved = await applyEmployeeImportRowTx(tx,ctx,{row,pack,index,allocationPreview,family:familyByRow.get(index)??[],attemptId});
       employmentByRow.set(index,saved.employmentId);
       outcomeEmployment(saved.employmentId);outcomePerson(saved.personId);
       if(row.hire.employeeCode)registerSubjects.set(row.hire.employeeCode,{employmentId:saved.employmentId,personId:saved.personId});
@@ -1598,17 +1605,79 @@ function recordsAsCsv(records:ImportRecord[]){
  * Every listed company is one this actor maintains (analyze() already refused any other), so the attempt's
  * insert policy holds. A repeated upload operation is refused, never re-imported.
  */
-async function recordEmployeeImportAttempt(ctx:SessionContext,p:{companyId:string;records:ImportRecord[];fileName?:string;source?:{name:string;content:Buffer;operationKey?:string}},preview:ImportPreview,resolved:ResolvedRow[]):Promise<string|null>{
+async function recordEmployeeImportAttempt(ctx:SessionContext,p:EmployeeImportAttemptInput,preview:ImportPreview,resolved:ResolvedRow[]):Promise<string|null>{
   if(!ctx.userId)return null;
+  const created=await withTenant(ctx,tx=>recordEmployeeImportAttemptTx(tx,ctx,p,preview,resolved));
+  if(created.existing)throw new ImportHistoryError('This upload was already received. Open Import History to see its outcome.');
+  return created.attemptId;
+}
+type EmployeeImportAttemptInput={companyId:string;records:ImportRecord[];fileName?:string;source?:{name:string;content:Buffer;operationKey?:string}};
+/** Inside a caller's transaction so the job's attempt, steps and state commit atomically. `existing` is true on a replay. */
+export async function recordEmployeeImportAttemptTx(tx:Tx,ctx:SessionContext,p:EmployeeImportAttemptInput,preview:ImportPreview,resolved:ResolvedRow[]){
   const name=p.source?.name||p.fileName||'pasted-employees.csv';
   const content=p.source?.content??Buffer.from(recordsAsCsv(p.records),'utf8');
   const rows=resolved.map(row=>({rowNum:row.result.rowNum,fullName:row.result.fullName,employeeCode:row.hire.employeeCode??'',company:row.result.company,ok:row.result.ok,errors:row.result.errors}));
   const plan=sealImportPlan<EmployeeFullImportPlan>({version:1,kind:'employee_full',companyId:p.companyId,rows,counts:{total:rows.length,valid:preview.validCount,invalid:rows.length-preview.validCount},
     issues:[...preview.fileErrors.map(reason=>({rowNum:0,reason})),...rows.filter(row=>!row.ok).map(row=>({rowNum:row.rowNum,reason:`Row ${row.rowNum} (${row.fullName||row.employeeCode||'no name'}): ${row.errors.join('; ')}`}))],previewHash:''});
   const companyIds=[...new Set(resolved.filter(row=>row.result.ok).map(row=>row.hire.companyId))];
-  const created=await withTenant(ctx,tx=>createImportAttemptTx(tx,ctx,{kind:'employee_full',sourceName:name,content,companyIds,plan,operationKey:p.source?.operationKey}));
-  if(created.existing)throw new ImportHistoryError('This upload was already received. Open Import History to see its outcome.');
-  return created.attemptId;
+  const created=await createImportAttemptTx(tx,ctx,{kind:'employee_full',sourceName:name,content,companyIds,plan,operationKey:p.source?.operationKey});
+  return{attemptId:created.attemptId,existing:created.existing};
+}
+
+/** Background job plan: what `commitEmployeeImport` would write, persisted as ordered, serializable steps. */
+export type EmployeeImportPlanStep=
+ {kind:'employee';rowNum:number;index:number;email:string;row:Omit<ResolvedRow,'pack'>;family:ResolvedDependent[]}
+ |{kind:'superior';rowNum:number;index:number;email:string;hiredOn:string;superior:NonNullable<ResolvedRow['superior']>}
+ |{kind:'register';rowNum:number;registerKind:'qualification'|'emergency';item:unknown};
+export type EmployeeImportJobPlan={fileErrors:string[];total:number;valid:number;invalid:number;companyIds:string[];allocationPreview?:AllocationImportPreview;
+ steps:EmployeeImportPlanStep[];preview:ImportPreview;resolved:ResolvedRow[];rejected:RowResult[]};
+/** Validate once (no tenant locks held) and shape the plan the worker persists before any write. */
+export async function prepareEmployeeImportJobPlan(ctx:SessionContext,p:{companyId:string;records:ImportRecord[];dependentRecords?:ImportRecord[];registerRecords?:PersonnelRegisterRecords;allocationRecords?:AllocationImportRecords;allocationToken?:string}):Promise<EmployeeImportJobPlan>{
+  const {preview,resolved,dependents,registers}=await analyze(ctx,p.companyId,p.records,p.dependentRecords??[],p.registerRecords);
+  const allocationEmployees=resolved.flatMap((row,index)=>row.result.ok?[{companyId:row.hire.companyId,employeeCode:row.hire.employeeCode??'',hiredOn:row.hire.hiredOn,index}]:[]);
+  let allocationPreview:AllocationImportPreview|undefined;
+  const fileErrors=[...preview.fileErrors];
+  if(p.allocationRecords?.length){
+    allocationPreview=await withTenant(ctx,tx=>previewCostAllocationImportTx(tx,ctx,p.allocationRecords!,allocationEmployees));
+    if(!p.allocationToken||p.allocationToken!==allocationPreview.token)fileErrors.push('Cost Center Allocations changed. Preview the complete workbook again.');
+    for(const group of allocationPreview.groups)if(group.errors.length)fileErrors.push(`Cost Center Allocations · ${group.employeeCode} · ${group.effectiveDate} · rows ${group.rowNums.join(', ')}: ${group.errors.join('; ')}`);
+  }
+  const familyByRow=new Map<number,ResolvedDependent[]>();
+  for(const d of dependents){if(d.employeeIndex<0)continue;(familyByRow.get(d.employeeIndex)??familyByRow.set(d.employeeIndex,[]).get(d.employeeIndex)!).push(d);}
+  const steps:EmployeeImportPlanStep[]=[];
+  for(const [index,row] of resolved.entries()){if(!row.result.ok)continue;const{pack:_pack,...plain}=row;steps.push({kind:'employee',rowNum:row.result.rowNum,index,email:row.result.email,row:plain,family:familyByRow.get(index)??[]});}
+  for(const [index,row] of resolved.entries())if(row.result.ok&&row.superior)steps.push({kind:'superior',rowNum:row.result.rowNum,index,email:row.result.email,hiredOn:row.hire.hiredOn,superior:row.superior});
+  for(const register of registers)for(const item of register.resolved)steps.push({kind:'register',rowNum:(item as {preview?:{rowNum?:number}}).preview?.rowNum??0,registerKind:register.preview.kind as 'qualification'|'emergency',item});
+  const valid=resolved.filter(r=>r.result.ok).length;
+  return{fileErrors,total:resolved.length,valid,invalid:resolved.length-valid,companyIds:[...new Set(resolved.filter(r=>r.result.ok).map(r=>r.hire.companyId))],allocationPreview,steps,preview,resolved,rejected:resolved.filter(r=>!r.result.ok).map(r=>r.result)};
+}
+/** Re-checks the initiating user's maintain authority on the plan's companies (job start and activation). */
+export async function assertEmployeeImportAuthorityTx(tx:Tx,ctx:SessionContext,companyId:string,companyIds:readonly string[]){
+  await assertWorkforceCompanyTx(tx,ctx,companyId,'view');await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
+  for(const id of new Set(companyIds)){await assertWorkforceCompanyTx(tx,ctx,id,'view');await assertWorkforceCompanyTx(tx,ctx,id,'maintain');}
+}
+/** Apply one persisted step inside a chunk transaction. Idempotency is the caller's step-state check under row lock. */
+export async function applyEmployeeImportStepTx(tx:Tx,ctx:SessionContext,step:EmployeeImportPlanStep,env:{attemptId:string;allocationPreview?:AllocationImportPreview;employmentByIndex:Map<number,string>;registerSubjects:Map<string,{employmentId:string;personId:string}>}):Promise<{employmentId?:string;personId?:string;family?:number;register?:'qualification'|'emergency';superior?:boolean;subordinate?:string;manager?:string;target?:{employmentId:string;personId:string}|null}>{
+  if(step.kind==='employee'){
+    const pack=requirePackFor(step.row.country);
+    const saved=await applyEmployeeImportRowTx(tx,ctx,{row:step.row,pack,index:step.index,allocationPreview:env.allocationPreview,family:step.family,attemptId:env.attemptId});
+    env.employmentByIndex.set(step.index,saved.employmentId);
+    if(step.row.hire.employeeCode)env.registerSubjects.set(step.row.hire.employeeCode,{employmentId:saved.employmentId,personId:saved.personId});
+    return{employmentId:saved.employmentId,personId:saved.personId,family:saved.familyCount};
+  }
+  if(step.kind==='superior'){
+    const subordinate=env.employmentByIndex.get(step.index);
+    if(!subordinate)throw new Error('The direct superior named on this row was not imported.');
+    const manager=step.superior.kind==='existing'?step.superior.employmentId:env.employmentByIndex.get(step.superior.index);
+    if(!manager)throw new Error('The direct superior named on this row was not imported.');
+    await setReportingLine(ctx,{subordinateEmploymentId:subordinate,managerEmploymentId:manager,lineType:'administrative',validFrom:step.hiredOn},tx);
+    return{superior:true,subordinate,manager};
+  }
+  const item=step.item as Parameters<typeof writeRegisterRowsTx>[3][number];
+  await writeRegisterRowsTx(tx,ctx,step.registerKind,[item],env.registerSubjects);
+  // The register row's real subject, as the synchronous measured import records it for its outcome receipt.
+  const target=env.registerSubjects.get(item.preview.employeeCode)??item.subject??null;
+  return{register:step.registerKind,target:target?.employmentId&&target.personId?{employmentId:target.employmentId,personId:target.personId}:null};
 }
 
 /**
@@ -1624,7 +1693,7 @@ async function recordEmployeeImportAttempt(ctx:SessionContext,p:{companyId:strin
  * FAILED at write (a service threw). Storing them apart would make the screen ask HR to understand an
  * internal boundary in order to fix a spreadsheet.
  */
-async function recordImportRun(
+export async function recordImportRun(
   ctx: SessionContext,
   p: {
     companyId: string;

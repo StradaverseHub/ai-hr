@@ -2,17 +2,20 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {homeQuickActionHref,homeSummaryHref,validateEmployeeHomeSummary} from '../lib/employee-home-summary';
 import {todayInKualaLumpur} from '../lib/hr-date';
-const state=vi.hoisted(()=>({subject:vi.fn(),config:vi.fn(),tasks:vi.fn(),enabled:vi.fn(),leave:vi.fn(),holidays:vi.fn(),replacement:vi.fn(),payroll:vi.fn(),types:vi.fn(),claims:vi.fn(),profile:vi.fn()}));
+const state=vi.hoisted(()=>({config:vi.fn(),tasks:vi.fn(),enabled:vi.fn(),leave:vi.fn(),holidays:vi.fn(),replacement:vi.fn(),payroll:vi.fn(),types:vi.fn(),claims:vi.fn(),profile:vi.fn()}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,read:(tx:unknown)=>unknown)=>read({})}));
-vi.mock('../core/employee-home',()=>({requireOwnHomeSubject:state.subject}));
 vi.mock('../core/employee-home-configuration',()=>({readOwnEmployeeHomeConfiguration:state.config}));
-vi.mock('../core/employee-home-tasks',()=>({readEmployeeHomeTasks:state.tasks}));
+vi.mock('../core/employee-home-tasks',()=>({countEmployeeHomeTasks:state.tasks}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:state.enabled}));
-vi.mock('../core/read',()=>({listEligibleLeaveTypesFor:state.types}));
+vi.mock('../core/read',()=>({hasEligibleLeaveTypeForTx:state.types,hasEligibleLeaveTypeFrom:(tx:unknown,id:string)=>state.types(tx,id)}));
 vi.mock('../packs/leave/service',()=>({nextApprovedLeavePresenceTx:state.leave}));
+// The next approved date and the Apply entry point come from the shared own leave inputs (one read per Summary), and the
+// holidays from the calendar window (none here, so each holiday owner is handed null and reads on its own).
+vi.mock('../core/own-leave-inputs',()=>({sharedOwnLeaveInputsTx:async(tx:unknown,id:string,day:string)=>({nextApproved:await state.leave(tx,id,day)})}));
+vi.mock('../core/calendar-window-inputs',()=>({calendarWindowInputsFor:async()=>null,stagedHomeReads:()=>false}));
 vi.mock('../packs/payroll/service',()=>({readOwnPayrollHomeMetadata:state.payroll}));
 vi.mock('../packs/claims/service',()=>({ownClaimFormAvailable:state.claims}));
-vi.mock('../core/profile-edit-policy',()=>({readProfilePresentationPolicy:state.profile}));
+vi.mock('../core/profile-edit-policy',()=>({readProfilePresentationSnapshotPolicy:state.profile}));
 vi.mock('../core/holidays',()=>({originalHolidayCalendarFor:state.holidays}));
 vi.mock('../core/holiday-replacement-read',()=>({replacementHolidayCalendarProjectionsTx:state.replacement}));
 import {readEmployeeHomeSummary} from '../core/employee-home-summary';
@@ -20,30 +23,33 @@ const ctx={tenantId:'tenant',userId:'login',personId:'person',roles:['employee']
 const today=todayInKualaLumpur(),offset=(days:number)=>new Date(Date.parse(today+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
 const read=()=>readEmployeeHomeSummary(ctx,'own','en','Replacement holiday');
 beforeEach(()=>{
- vi.clearAllMocks();state.subject.mockResolvedValue({employmentId:'own'});state.config.mockResolvedValue({configuration:defaultEmployeeHomeConfiguration()});state.enabled.mockReturnValue(true);
- state.tasks.mockResolvedValue({total:0,overdue:0});state.leave.mockResolvedValue(null);state.holidays.mockResolvedValue([]);state.replacement.mockResolvedValue([]);
- state.payroll.mockResolvedValue({payslips:[],nextPayment:null});state.types.mockResolvedValue([]);state.claims.mockResolvedValue(false);state.profile.mockResolvedValue({editable:new Set()});
+ vi.clearAllMocks();state.config.mockResolvedValue({employmentId:'own',configuration:defaultEmployeeHomeConfiguration()});state.enabled.mockReturnValue(true);
+ state.tasks.mockResolvedValue(0);state.leave.mockResolvedValue(null);state.holidays.mockResolvedValue([]);state.replacement.mockResolvedValue([]);
+ state.payroll.mockResolvedValue({payslips:[],nextPayment:null});state.types.mockResolvedValue(false);state.claims.mockResolvedValue(false);state.profile.mockResolvedValue({editable:new Set()});
 });
 describe('Own Home deterministic summary and current action capability',()=>{
  it('only renders a calm sentence after all actual owners succeed, with honest disabled actions',async()=>{
   const result=await read();expect(validateEmployeeHomeSummary(result,'own')).toEqual(result);expect(result.items).toEqual([]);expect(result.calm).toBe('Nothing needs your attention today.');
+  expect(state.holidays.mock.calls[0][0]).toBe(state.leave.mock.calls[0][0]);
+  expect(state.replacement.mock.calls[0][0]).toBe(state.leave.mock.calls[0][0]);
+  expect(state.types).toHaveBeenCalledExactlyOnceWith(state.leave.mock.calls[0][0],'own');
   expect(result.quickActions).toEqual([{key:'leave',reason:'notConfigured'},{key:'claim',reason:'notConfigured'},{key:'payslip',reason:'noPayslip'},{key:'profile',reason:'detailsLocked'}]);
  });
  it('orders actual urgent work before reminders/good news, caps four and excludes private owner context',async()=>{
-  state.tasks.mockResolvedValue({total:2,overdue:1,items:[{subjectName:'private peer'}]});state.leave.mockResolvedValue({requestId:'leave-1',date:offset(2),reason:'private medical'});
+  state.tasks.mockResolvedValue(2);state.leave.mockResolvedValue({requestId:'leave-1',date:offset(2),reason:'private medical'});
   state.holidays.mockResolvedValue([{id:'holiday-1',date:offset(3),name:'Fictional holiday',tentative:false,active:true}]);
   state.payroll.mockResolvedValue({payslips:[{id:'published',period:today.slice(0,7),amount:'private salary'}],nextPayment:{date:offset(4),amount:'private salary'}});
-  state.types.mockResolvedValue([{id:'eligible'}]);state.claims.mockResolvedValue(true);state.profile.mockResolvedValue({editable:new Set(['person.firstName'])});
+  state.types.mockResolvedValue(true);state.claims.mockResolvedValue(true);state.profile.mockResolvedValue({editable:new Set(['person.firstName'])});
   const result=await read();expect(result.items).toHaveLength(4);expect(result.items[0]).toMatchObject({key:'tasks',message:'Tasks waiting for you: 2.'});expect(result.calm).toBeNull();
   expect(JSON.stringify(result)).not.toMatch(/private|medical|amount|subjectName/);expect(result.quickActions.every(row=>row.reason===null)).toBe(true);
-  expect(state.payroll).toHaveBeenCalledWith(ctx,'own');expect(state.claims).toHaveBeenCalledWith(ctx,'own');
+  expect(state.payroll).toHaveBeenCalledWith(ctx,'own',undefined);expect(state.claims).toHaveBeenCalledWith(ctx,'own',undefined);
  });
  it('does not invent a calm day when HR disabled the templates for existing facts',async()=>{
-  const configuration=defaultEmployeeHomeConfiguration();configuration.templates.find(row=>row.key==='tasksPending')!.enabled=false;state.config.mockResolvedValue({configuration});state.tasks.mockResolvedValue({total:1,overdue:0});
+  const configuration=defaultEmployeeHomeConfiguration();configuration.templates.find(row=>row.key==='tasksPending')!.enabled=false;state.config.mockResolvedValue({configuration});state.tasks.mockResolvedValue(1);
   expect(await read()).toMatchObject({items:[],calm:null});
  });
  it('places one pending action before a payday reminder without inventing an overdue deadline',async()=>{
-  state.tasks.mockResolvedValue({total:1,overdue:0});state.payroll.mockResolvedValue({payslips:[],nextPayment:{date:offset(1)}});
+  state.tasks.mockResolvedValue(1);state.payroll.mockResolvedValue({payslips:[],nextPayment:{date:offset(1)}});
   const result=await read();expect(result.items.map(row=>row.key)).toEqual(['tasks','payday']);expect(result.items[0].message).toBe('Tasks waiting for you: 1.');
   expect(result.items[0].message).not.toMatch(/overdue|urgent|due today/i);
  });
@@ -56,7 +62,7 @@ describe('Own Home deterministic summary and current action capability',()=>{
   state.tasks.mockRejectedValue(Error('owner offline'));await expect(read()).rejects.toThrow('owner offline');
  });
  it('stops before domain reads for an unavailable identity or inactive configuration context',async()=>{
-  state.subject.mockRejectedValueOnce(Error('foreign'));await expect(read()).rejects.toThrow('foreign');expect(state.tasks).not.toHaveBeenCalled();
+  state.config.mockRejectedValueOnce(Error('foreign'));await expect(read()).rejects.toThrow('foreign');expect(state.tasks).not.toHaveBeenCalled();
   state.config.mockRejectedValueOnce(Error('inactive'));await expect(read()).rejects.toThrow('inactive');expect(state.payroll).not.toHaveBeenCalled();
  });
  it('never reads disabled module owners or advertises their configured action as available',async()=>{

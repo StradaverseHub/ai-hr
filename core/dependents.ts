@@ -1,6 +1,6 @@
 import {dependentFieldApplies} from '../lib/dependent-vocabulary';
 import {familyGridComplete} from '../lib/family-child-relief-rule';
-import {lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockProfileSubjectTx,lockProfileValueSharedTx} from './access-configuration-lock';
 import {assertWorkforcePersonTx} from './workforce-access';
 import { dependentNaturalKey } from '../lib/dependent-identity';
 export { dependentNaturalKey } from '../lib/dependent-identity';
@@ -37,8 +37,9 @@ export { dependentNaturalKey } from '../lib/dependent-identity';
  * aggregate row). subjectEmploymentId is resolved via subjectEmploymentForPerson (null when the person has
  * no employment → the event is admin-only-readable, which is acceptable).
  */
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { employeeDependent, employeeStatutoryMy, profileOption } from '../db/schema';
 import { packFor } from '../localization/registry';
@@ -48,7 +49,7 @@ import { packFor } from '../localization/registry';
 import { todayInKualaLumpur } from '../lib/hr-date';
 // Type-only (ADR-0080 D7): the child-relief COUNT/AMOUNT contract shapes, so the weighted derivation
 // below can take the pack's own functions as parameters without this module naming a MY figure.
-import type { ChildReliefFigure, ChildReliefInput, ChildReliefPrice } from '../localization/country-pack';
+import type { ChildReliefFigure, ChildReliefInput, ChildReliefPrice, StatutoryRuleset } from '../localization/country-pack';
 // item 759dfc7d — the closed value sets, shared with the browser (see the re-export block below).
 import {
   CHILD_RELIEF_CATEGORIES,
@@ -614,7 +615,13 @@ export function listDependents(
 ): Promise<DependentRow[]> {
   return withTenant(ctx, (tx) =>
     tx
-      .select({
+      .select(DEPENDENT_FIELDS)
+      .from(employeeDependent)
+      .where(dependentsWhere(p.personId))
+      .orderBy(asc(employeeDependent.createdAt), asc(employeeDependent.id)),
+  );
+}
+const DEPENDENT_FIELDS = {
         id: employeeDependent.id,
         personId: employeeDependent.personId,
         fullName: employeeDependent.fullName,
@@ -643,16 +650,19 @@ export function listDependents(
         childTaxRelief: employeeDependent.childTaxRelief,
         childReliefPercentage: employeeDependent.childReliefPercentage,
         archivedAt: employeeDependent.archivedAt,
-      })
-      .from(employeeDependent)
-      .where(
-        and(
-          eq(employeeDependent.personId, p.personId),
+};
+const dependentsWhere = (personId: string) => and(
+          eq(employeeDependent.personId, personId),
           isNull(employeeDependent.archivedAt),
-        ),
-      )
-      .orderBy(asc(employeeDependent.createdAt), asc(employeeDependent.id)),
-  );
+        );
+/** listDependents in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the same rows,
+ * fields, predicate and order. */
+export function listDependentsBundleSql(p: { personId: string }) {
+  return jsonRowsSql({ row: jsonFieldsSql(DEPENDENT_FIELDS), from: sql`${employeeDependent}`, where: dependentsWhere(p.personId),
+    order: sql`${employeeDependent.createdAt} asc, ${employeeDependent.id} asc` });
+}
+export function listDependentsFromBundle(value: unknown): DependentRow[] {
+  return decodeJsonFieldRows(DEPENDENT_FIELDS, value) as DependentRow[];
 }
 
 /**
@@ -685,7 +695,8 @@ export async function addDependentTx(
   personId: string,
   p: DependentInput,
 ): Promise<{ id: string }> {
-  await lockProfileValueWritesTx(tx,ctx.tenantId);
+  await lockProfileValueSharedTx(tx,ctx.tenantId);
+  await lockProfileSubjectTx(tx,ctx.tenantId,personId);
   const normalized=await normaliseDependentPatchTx(tx,p);
   const [row] = await tx
     .insert(employeeDependent)
@@ -809,7 +820,8 @@ export async function materialiseDependents(
 ): Promise<{ created: string[]; skipped: number; childReliefSync: ChildReliefSyncResult }> {
   if (p.members.length === 0) return { created: [], skipped: 0, childReliefSync: NO_SYNC('unchanged') };
   const run=async(tx:Tx)=>{
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    await lockProfileSubjectTx(tx,ctx.tenantId,p.personId);
     const existing = await tx
       .select({
         fullName: employeeDependent.fullName,
@@ -963,7 +975,9 @@ export async function updateDependent(
   outerTx?:Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
   const run=async(tx:Tx)=>{
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    const nominated = await loadDependent(tx, p.id);
+    if (nominated) await lockProfileSubjectTx(tx,ctx.tenantId,nominated.personId);
     const existing = await loadDependent(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new DependentValidationError('Dependent record not found.');
@@ -1002,7 +1016,9 @@ export async function archiveDependent(
   outerTx?: Tx,
 ): Promise<{ id: string; childReliefSync: ChildReliefSyncResult }> {
   const run = async (tx: Tx) => {
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    const nominated = await loadDependent(tx, p.id);
+    if (nominated) await lockProfileSubjectTx(tx,ctx.tenantId,nominated.personId);
     const existing = await loadDependent(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new DependentValidationError('Dependent record not found.');
@@ -1255,258 +1271,340 @@ export async function qualifyingChildReliefFor(
   const childReliefFor = pack?.payroll?.childReliefFor;
   const childReliefPrices = pack?.payroll?.childReliefPrices;
   if (!pack || !childReliefFor || !childReliefPrices) return null;
-  const read = async (tx: Tx): Promise<QualifyingChildRelief | null> => {
-    const rules = await pack.payroll.loadRuleset(tx, { asOf: p.asOf });
-    const reliefs = rules.pcb?.reliefs;
-    if (!reliefs) return null;
-    const perChild = reliefs.perChild;
-    // The country pricing owner decides whether zero Q has a coherent qualifying-count basis.
-    // Invalid settings offer no prices; never dress that absence as C=0 or a zero child deduction.
-    if (typeof perChild !== 'number' || !Number.isFinite(perChild) || perChild < 0) return null;
-    const categories = childReliefPrices(reliefs);
-    if (categories.length === 0 || categories.some(price =>
-      !Number.isFinite(price.units) || price.units < 0 || !Number.isFinite(price.amountRM) || price.amountRM < 0)) return null;
+  const read = (tx: Tx): Promise<QualifyingChildRelief | null> => qualifyingChildReliefFrom(childReliefFor, childReliefPrices, p.asOf, {
+    rules: () => pack.payroll.loadRuleset(tx, { asOf: p.asOf }),
+    statutory: async () => (await childReliefStatutoryTx(tx, p.personId))[0],
+    family: () => childReliefFamilyTx(tx, p.personId),
+  });
+  return outerTx ? read(outerTx) : withTenant(ctx, read);
+}
 
-    const [statutory] = await tx
-      .select({
-        taxCategory: employeeStatutoryMy.taxCategory,
-        numChildren: employeeStatutoryMy.numChildren,
-        childReliefMode: employeeStatutoryMy.childReliefMode,
-        childReliefTable: employeeStatutoryMy.childReliefTable,
-      })
+/**
+ * The set-wise form of `qualifyingChildReliefFor`, for a caller that already holds one scoped snapshot over
+ * many people (the Personnel "export all" details). Nothing about the figure changes: each person's result
+ * is the SAME derivation (`qualifyingChildReliefFrom`) over that person's own rows, worked out when it is
+ * asked for. Only the reads are shared, and each happens at most once, when the single-person path would
+ * first have issued it: the country ruleset once for the whole set, then the PCB records of every listed
+ * person in one statement, then the Family register of every listed person who has a record in one
+ * statement (ordered per person exactly as the single read orders it). RLS on the caller's transaction is
+ * the authority for every row, exactly as for the single read. A person outside the list falls back to the
+ * single read.
+ */
+export async function qualifyingChildReliefReaderTx(
+  ctx: SessionContext,
+  p: { personIds: readonly string[]; country?: string; asOf: string },
+  tx: Tx,
+): Promise<(personId: string) => Promise<QualifyingChildRelief | null>> {
+  const pack = packFor(p.country ?? 'MY');
+  const childReliefFor = pack?.payroll?.childReliefFor;
+  const childReliefPrices = pack?.payroll?.childReliefPrices;
+  if (!pack || !childReliefFor || !childReliefPrices) return async () => null;
+  const personIds = [...new Set(p.personIds)], listed = new Set(personIds);
+  const once = <T,>(read: () => Promise<T>) => { let value: Promise<T> | undefined; return () => (value ??= read()); };
+  const rules = once(() => pack.payroll.loadRuleset(tx, { asOf: p.asOf }));
+  const records = once(async () => {
+    const rows = await tx
+      .select({ personId: employeeStatutoryMy.personId, ...childReliefStatutoryColumns })
       .from(employeeStatutoryMy)
-      .where(eq(employeeStatutoryMy.personId, p.personId))
-      .limit(1);
-    if (!statutory) return null;
-
-    const rawMode = statutory.childReliefMode ?? 'manual';
-    const mode: QualifyingChildRelief['mode'] =
-      rawMode === 'auto' || rawMode === 'auto_table' ? rawMode : 'manual';
-    const physicalChildren = statutory.numChildren ?? 0;
-
-    // ORDER BY so the breakdown reads the same on every load (CLAUDE.md §8: an asserted array needs one).
-    const family = await tx
-      .select({
-        fullName: employeeDependent.fullName,
-        relationship: employeeDependent.relationship,
-        dateOfBirth: employeeDependent.dateOfBirth,
-        isStudent: employeeDependent.isStudent,
-        isDeceased: employeeDependent.isDeceased,
-        archivedAt: employeeDependent.archivedAt,
-        childTaxRelief: employeeDependent.childTaxRelief,
-        childReliefCategory: employeeDependent.childReliefCategory,
-        childReliefPercentage: employeeDependent.childReliefPercentage,
-      })
+      .where(inArray(employeeStatutoryMy.personId, personIds));
+    return new Map(rows.map(({ personId, ...row }) => [personId, row]));
+  });
+  const families = once(async () => {
+    const withRecord = [...(await records()).keys()];
+    const rows = withRecord.length ? await tx
+      .select({ personId: employeeDependent.personId, ...childReliefFamilyColumns })
       .from(employeeDependent)
-      .where(and(eq(employeeDependent.personId, p.personId), isNull(employeeDependent.archivedAt)))
-      .orderBy(asc(employeeDependent.dateOfBirth), asc(employeeDependent.fullName));
+      .where(and(inArray(employeeDependent.personId, withRecord), isNull(employeeDependent.archivedAt)))
+      .orderBy(asc(employeeDependent.personId), asc(employeeDependent.dateOfBirth), asc(employeeDependent.fullName)) : [];
+    const byPerson = new Map<string, ChildReliefFamilyMember[]>();
+    for (const { personId, ...row } of rows) {
+      const members = byPerson.get(personId);
+      if (members) members.push(row);
+      else byPerson.set(personId, [row]);
+    }
+    return byPerson;
+  });
+  return personId => listed.has(personId)
+    ? qualifyingChildReliefFrom(childReliefFor, childReliefPrices, p.asOf, {
+        rules,
+        statutory: async () => (await records()).get(personId),
+        family: async () => [...((await families()).get(personId) ?? [])],
+      })
+    : qualifyingChildReliefFor(ctx, { personId, country: p.country, asOf: p.asOf }, tx);
+}
 
-    // `childAgeYears` parses a DOB as `${dob}T00:00:00Z`, so the other endpoint is built the same way —
-    // the same reasoning core/child-relief-review.ts records: an eight-hour offset could otherwise flip a
-    // child's whole-year age on their birthday, the one day the eligibility rule turns on.
-    const asOfDate = new Date(`${p.asOf}T00:00:00Z`);
-    const children = family.filter((d) => d.relationship === 'child' && !d.isDeceased);
-    const eligible = children.filter((d) => isChildReliefEligible(d, asOfDate));
-    const uncategorisedChildren = eligible.filter((d) => !d.childReliefCategory).length;
-    // r351 — THE CHILDREN THAT WERE BEING COUNTED ZERO WITHOUT A WORD. `isChildReliefEligible` returns
-    // false for a child whose date of birth is missing or unparseable: it cannot confirm the age the rule
-    // turns on, and inventing an age would be inventing a relief. That is the right answer and it was
-    // INVISIBLE — the child sat on the Family tab with an empty Age column and contributed nothing to a
-    // figure captioned as describing the register. Named here so the screen can name them.
-    // A child with an explicit `childTaxRelief` decision, or recorded as a full-time student, IS eligible
-    // without a date of birth, so it is not listed: nothing eligible is being reported as dropped.
-    const undatedChildren = children
-      .filter((d) => childAgeYears(d.dateOfBirth, asOfDate) == null && !isChildReliefEligible(d, asOfDate))
-      .map((d) => d.fullName);
+const childReliefStatutoryColumns = {
+  taxCategory: employeeStatutoryMy.taxCategory,
+  numChildren: employeeStatutoryMy.numChildren,
+  childReliefMode: employeeStatutoryMy.childReliefMode,
+  childReliefTable: employeeStatutoryMy.childReliefTable,
+};
+const childReliefFamilyColumns = {
+  fullName: employeeDependent.fullName,
+  relationship: employeeDependent.relationship,
+  dateOfBirth: employeeDependent.dateOfBirth,
+  isStudent: employeeDependent.isStudent,
+  isDeceased: employeeDependent.isDeceased,
+  archivedAt: employeeDependent.archivedAt,
+  childTaxRelief: employeeDependent.childTaxRelief,
+  childReliefCategory: employeeDependent.childReliefCategory,
+  childReliefPercentage: employeeDependent.childReliefPercentage,
+};
+function childReliefStatutoryTx(tx: Tx, personId: string) {
+  return tx
+    .select(childReliefStatutoryColumns)
+    .from(employeeStatutoryMy)
+    .where(eq(employeeStatutoryMy.personId, personId))
+    .limit(1);
+}
+// ORDER BY so the breakdown reads the same on every load (CLAUDE.md §8: an asserted array needs one).
+function childReliefFamilyTx(tx: Tx, personId: string) {
+  return tx
+    .select(childReliefFamilyColumns)
+    .from(employeeDependent)
+    .where(and(eq(employeeDependent.personId, personId), isNull(employeeDependent.archivedAt)))
+    .orderBy(asc(employeeDependent.dateOfBirth), asc(employeeDependent.fullName));
+}
+type ChildReliefStatutory = Awaited<ReturnType<typeof childReliefStatutoryTx>>[number];
+type ChildReliefFamilyMember = Awaited<ReturnType<typeof childReliefFamilyTx>>[number];
 
-    // The pack's own prices, and the ONLY place ringgit and qualifying children are converted into each
-    // other. The screen receives this list verbatim: it has to price a grid the admin is still typing into,
-    // and handing it the prices keeps the statutory rule in the pack while it does.
-    // r343 04b88724 — the s.48 WEIGHTED figure from the children on file, through the pack's own prices and
-    // the pack's own walk. One call; no units are named here. See `eligibleChildReliefUnits` for why this is
-    // reported rather than applied.
-    const rule = eligibleChildReliefUnits(family, {
-      prices: categories,
-      childReliefFor,
-      taxCategory: statutory.taxCategory ?? 1,
-      asOf: asOfDate,
-    });
+/** One person's inputs, from that person's own reads or from a caller's set-wise snapshot reads. */
+async function qualifyingChildReliefFrom(
+  childReliefFor: (p: ChildReliefInput) => ChildReliefFigure,
+  childReliefPrices: (reliefs?: StatutoryRuleset['pcb']['reliefs']) => ChildReliefPrice[],
+  asOf: string,
+  source: {
+    rules: () => Promise<StatutoryRuleset>;
+    statutory: () => Promise<ChildReliefStatutory | undefined>;
+    family: () => Promise<ChildReliefFamilyMember[]>;
+  },
+): Promise<QualifyingChildRelief | null> {
+  const rules = await source.rules();
+  const reliefs = rules.pcb?.reliefs;
+  if (!reliefs) return null;
+  const perChild = reliefs.perChild;
+  // The country pricing owner decides whether zero Q has a coherent qualifying-count basis.
+  // Invalid settings offer no prices; never dress that absence as C=0 or a zero child deduction.
+  if (typeof perChild !== 'number' || !Number.isFinite(perChild) || perChild < 0) return null;
+  const categories = childReliefPrices(reliefs);
+  if (categories.length === 0 || categories.some(price =>
+    !Number.isFinite(price.units) || price.units < 0 || !Number.isFinite(price.amountRM) || price.amountRM < 0)) return null;
 
-    // ══ r351 — WHICH HEAD COUNT AND WHICH GRID PRICE THE FIGURE, AND WHY IT IS NO LONGER THE COLUMN ══
-    //
-    // THE DEFECT THIS REVERSES. Both branches below used to read STORED columns: the head-count branch
-    // multiplied `num_children`, the grid branch priced `child_relief_table`. Both are written by
-    // `syncChildReliefFromFamily`, which fires on a family add / materialise / update / archive and on a
-    // manual backfill script — AND ON NOTHING ELSE. Nothing fires on the passage of time. So a child who
-    // turned 18 and is not in further education stayed in the tax figure indefinitely, the Family tab (which
-    // recomputes eligibility on every render) and this card disagreed about the same child, and the card
-    // was the one asserting a figure while the register beside it said otherwise.
-    //
-    // In the AUTO modes the figure now follows the register as of `asOf` — the same date the Family tab's
-    // "Counts toward tax relief" column and the ages beside it are taken at, so the two surfaces answer one
-    // question once. 'auto' derives BOTH halves (the count of eligible children, and the grid through the
-    // shared `derivedChildReliefGrid` completeness gate); 'auto_table' keeps the KEYED grid, because that
-    // mode exists precisely for the case where the employee's DECLARED relief differs from what the Family
-    // tab holds and there is no register behind it to re-derive from. 'manual' keeps the typed head count.
-    //
-    // `num_children` IS NOT REPURPOSED (the r343 decision, and the warning block on
-    // `eligibleChildReliefCount`): it remains the stored head count Form E, CP8D and the EA statement read,
-    // it is still what this returns as `physicalChildren`, and `storedReliefRM` below still reports the
-    // money the kernel makes of it. It is a projection now, not the source.
-    const derivedGrid = derivedChildReliefGrid(family, asOfDate);
-    const pricingTable = mode === 'auto' ? derivedGrid : statutory.childReliefTable;
-    const pricingHeadCount = mode === 'auto' ? eligible.length : physicalChildren;
-    const pricedFromGrid = pricesChildReliefFromGrid({ childReliefMode: mode, childReliefTable: pricingTable });
+  const statutory = await source.statutory();
+  if (!statutory) return null;
 
-    // ── THE FIGURE. ONE CALL, TWO FIELDS, AND IT IS THE KERNEL'S OWN ─────────────────────────────────
-    //
-    // ⚠️ THIS GATE WAS THE DEFECT, AND THE COMMENT ABOVE IT WAS THE EVIDENCE (item 04b88724, r347).
-    // It read `mode === 'auto_table'`, under a comment saying "every other mode is num_children ×
-    // perChild, which is what core/payroll.ts and core/payroll-view.ts do for the same employee". That
-    // was true when it was written and r344 made it FALSE: r344 widened those two — and the multicycle
-    // worksheet — to price the DERIVED grid on 'auto' too, and did not widen this one. An 'auto'
-    // employee whose grid IS derived was then relieved at the s.48 weight on their payslip while the
-    // card that explains the figure showed the head count. The reporter found it on a named employee:
-    // one disabled child, 1 qualifying shown where the payslip used 4.
-    //
-    // It now reads the SAME predicate the other three read. A comment asserting what another module
-    // does is worth exactly as much as the day it was written; the predicate is worth more.
-    //
-    // An empty / unkeyed grid still claims NOTHING — the count follows the money to zero rather than
-    // optimistically reporting the head count.
-    const figure = pricedFromGrid
-      ? childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'table', table: pricingTable, prices: categories })
-      : childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: pricingHeadCount, perChild });
+  const rawMode = statutory.childReliefMode ?? 'manual';
+  const mode: QualifyingChildRelief['mode'] =
+    rawMode === 'auto' || rawMode === 'auto_table' ? rawMode : 'manual';
+  const physicalChildren = statutory.numChildren ?? 0;
 
-    // ── WHAT PAYROLL DEDUCTS TODAY, FROM THE STORED COLUMNS, IN THE KERNEL'S OWN EXPRESSION ───────────
-    // Not a second arithmetic: the SAME predicate and the SAME pack call, over `child_relief_table` and
-    // `num_children` instead of the register. core/payroll.ts ~5886 and core/payroll-view.ts ~1493 are this
-    // expression, so when this differs from `figure` the difference is the gap between the screen and the
-    // next payslip — and a screen that shows a figure without naming that gap is the r340 defect again.
-    const stored = pricesChildReliefFromGrid({
-      childReliefMode: mode,
-      childReliefTable: statutory.childReliefTable,
-    })
-      ? childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'table', table: statutory.childReliefTable, prices: categories })
-      : childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: physicalChildren, perChild });
+  // Ordered by the reader (date of birth, then name), so the breakdown reads the same on every load.
+  const family = await source.family();
 
-    /**
-     * ONE LINE PER CHILD, PRICED THE WAY THAT CHILD IS ACTUALLY PRICED (r347).
-     *
-     * The child's own category is turned into a ONE-CHILD GRID and run through the SAME
-     * `childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'table' })` that prices the whole employee, so the lines provably sum to
-     * the total above them rather than being a second arithmetic that agrees by coincidence. This is
-     * what the reporter asked to see: "1 Disabled Child × 4 = 4 Qualifying Children".
-     *
-     * An uncategorised child cannot reach here: the grid is only stored when EVERY eligible child has a
-     * category, so if any is missing `pricesChildReliefFromGrid` is false and the head-count branch runs.
-     */
-    const oneChildRow = (d: (typeof eligible)[number]): QualifyingChildRow => {
-      const cat = d.childReliefCategory ?? null;
-      const half = d.childReliefPercentage === 50;
-      const priced =
-        cat != null
-          ? childReliefFor({
-              taxCategory: statutory.taxCategory ?? 1,
-              from: 'table',
-              table: { [cat]: { full: half ? 0 : 1, half: half ? 1 : 0 } },
-              prices: categories,
-            })
-          : childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: 1, perChild });
-      return {
-        kind: 'child' as const,
-        name: d.fullName,
-        category: cat,
-        sharePercent: half ? 50 : 100,
-        children: 1,
-        units: priced.units,
-        amountRM: priced.amountRM,
-        // 77e882f5 — the two disclosures, from the SAME row and the SAME date the figure was taken at.
-        why: childEligibilityReason(d, asOfDate),
-        categoryContradictsDob: childCategoryContradictsDob(d, asOfDate),
-      };
-    };
+  // `childAgeYears` parses a DOB as `${dob}T00:00:00Z`, so the other endpoint is built the same way —
+  // the same reasoning core/child-relief-review.ts records: an eight-hour offset could otherwise flip a
+  // child's whole-year age on their birthday, the one day the eligibility rule turns on.
+  const asOfDate = new Date(`${asOf}T00:00:00Z`);
+  const children = family.filter((d) => d.relationship === 'child' && !d.isDeceased);
+  const eligible = children.filter((d) => isChildReliefEligible(d, asOfDate));
+  const uncategorisedChildren = eligible.filter((d) => !d.childReliefCategory).length;
+  // r351 — THE CHILDREN THAT WERE BEING COUNTED ZERO WITHOUT A WORD. `isChildReliefEligible` returns
+  // false for a child whose date of birth is missing or unparseable: it cannot confirm the age the rule
+  // turns on, and inventing an age would be inventing a relief. That is the right answer and it was
+  // INVISIBLE — the child sat on the Family tab with an empty Age column and contributed nothing to a
+  // figure captioned as describing the register. Named here so the screen can name them.
+  // A child with an explicit `childTaxRelief` decision, or recorded as a full-time student, IS eligible
+  // without a date of birth, so it is not listed: nothing eligible is being reported as dropped.
+  const undatedChildren = children
+    .filter((d) => childAgeYears(d.dateOfBirth, asOfDate) == null && !isChildReliefEligible(d, asOfDate))
+    .map((d) => d.fullName);
 
-    const breakdown: QualifyingChildRow[] =
-      mode === 'auto_table'
-        ? // One line PER SHARE, so "claimed in full or shared" is visible rather than averaged away. The
-          // lines are the PACK's own rows; this only names them for a screen. 'auto_table' holds category
-          // COUNTS and no individual children, so its lines are categories — inventing one child row per
-          // counted child would be inventing people.
-          figure.rows.map((r) => ({
-            kind: 'category' as const,
-            name: null,
-            category: r.category,
-            sharePercent: r.sharePercent,
-            children: r.children,
-            units: r.units,
-            amountRM: r.amountRM,
-          }))
-        : mode === 'auto'
-          ? // 'auto' HAS the actual children, so its lines are children. Each is priced by its own
-            // category when the derived grid is live, and at one unit when it is not.
-            //
-            // ⚠️ r351 — THE LINES AND THE TOTAL ABOVE THEM ARE NOW THE SAME ARITHMETIC OVER THE SAME LIST,
-            // so they cannot disagree. They could before: the total was priced from `num_children` (or the
-            // stored grid) while these lines were built from `eligible`, so a child who aged out left ONE
-            // row worth 1 under a printed total of 2 — a table whose own working contradicted its footer.
-            // `pricedFromGrid` is loop-invariant here for the same reason: one decision, one list, one date.
-            eligible.map((d) =>
-              pricedFromGrid
-                ? oneChildRow(d)
-                : {
-                    kind: 'child' as const,
-                    name: d.fullName,
-                    category: d.childReliefCategory ?? null,
-                    // 100 when nothing is recorded: an unshared claim is the whole relief, which is what
-                    // the kernel's flat count already assumes. `setDependentChildRelief` validates the
-                    // stored 100|50 on write, so this never has to re-validate it.
-                    sharePercent: d.childReliefPercentage === 50 ? 50 : 100,
-                    children: 1,
-                    units: childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: 1, perChild }).units,
-                    amountRM: childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: 1, perChild }).amountRM,
-                    why: childEligibilityReason(d, asOfDate),
-                    categoryContradictsDob: childCategoryContradictsDob(d, asOfDate),
-                  },
-            )
-          : // manual — nothing was worked out, so there is nothing to break down.
-            [];
+  // The pack's own prices, and the ONLY place ringgit and qualifying children are converted into each
+  // other. The screen receives this list verbatim: it has to price a grid the admin is still typing into,
+  // and handing it the prices keeps the statutory rule in the pack while it does.
+  // r343 04b88724 — the s.48 WEIGHTED figure from the children on file, through the pack's own prices and
+  // the pack's own walk. One call; no units are named here. See `eligibleChildReliefUnits` for why this is
+  // reported rather than applied.
+  const rule = eligibleChildReliefUnits(family, {
+    prices: categories,
+    childReliefFor,
+    taxCategory: statutory.taxCategory ?? 1,
+    asOf: asOfDate,
+  });
 
+  // ══ r351 — WHICH HEAD COUNT AND WHICH GRID PRICE THE FIGURE, AND WHY IT IS NO LONGER THE COLUMN ══
+  //
+  // THE DEFECT THIS REVERSES. Both branches below used to read STORED columns: the head-count branch
+  // multiplied `num_children`, the grid branch priced `child_relief_table`. Both are written by
+  // `syncChildReliefFromFamily`, which fires on a family add / materialise / update / archive and on a
+  // manual backfill script — AND ON NOTHING ELSE. Nothing fires on the passage of time. So a child who
+  // turned 18 and is not in further education stayed in the tax figure indefinitely, the Family tab (which
+  // recomputes eligibility on every render) and this card disagreed about the same child, and the card
+  // was the one asserting a figure while the register beside it said otherwise.
+  //
+  // In the AUTO modes the figure now follows the register as of `asOf` — the same date the Family tab's
+  // "Counts toward tax relief" column and the ages beside it are taken at, so the two surfaces answer one
+  // question once. 'auto' derives BOTH halves (the count of eligible children, and the grid through the
+  // shared `derivedChildReliefGrid` completeness gate); 'auto_table' keeps the KEYED grid, because that
+  // mode exists precisely for the case where the employee's DECLARED relief differs from what the Family
+  // tab holds and there is no register behind it to re-derive from. 'manual' keeps the typed head count.
+  //
+  // `num_children` IS NOT REPURPOSED (the r343 decision, and the warning block on
+  // `eligibleChildReliefCount`): it remains the stored head count Form E, CP8D and the EA statement read,
+  // it is still what this returns as `physicalChildren`, and `storedReliefRM` below still reports the
+  // money the kernel makes of it. It is a projection now, not the source.
+  const derivedGrid = derivedChildReliefGrid(family, asOfDate);
+  const pricingTable = mode === 'auto' ? derivedGrid : statutory.childReliefTable;
+  const pricingHeadCount = mode === 'auto' ? eligible.length : physicalChildren;
+  const pricedFromGrid = pricesChildReliefFromGrid({ childReliefMode: mode, childReliefTable: pricingTable });
+
+  // ── THE FIGURE. ONE CALL, TWO FIELDS, AND IT IS THE KERNEL'S OWN ─────────────────────────────────
+  //
+  // ⚠️ THIS GATE WAS THE DEFECT, AND THE COMMENT ABOVE IT WAS THE EVIDENCE (item 04b88724, r347).
+  // It read `mode === 'auto_table'`, under a comment saying "every other mode is num_children ×
+  // perChild, which is what core/payroll.ts and core/payroll-view.ts do for the same employee". That
+  // was true when it was written and r344 made it FALSE: r344 widened those two — and the multicycle
+  // worksheet — to price the DERIVED grid on 'auto' too, and did not widen this one. An 'auto'
+  // employee whose grid IS derived was then relieved at the s.48 weight on their payslip while the
+  // card that explains the figure showed the head count. The reporter found it on a named employee:
+  // one disabled child, 1 qualifying shown where the payslip used 4.
+  //
+  // It now reads the SAME predicate the other three read. A comment asserting what another module
+  // does is worth exactly as much as the day it was written; the predicate is worth more.
+  //
+  // An empty / unkeyed grid still claims NOTHING — the count follows the money to zero rather than
+  // optimistically reporting the head count.
+  const figure = pricedFromGrid
+    ? childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'table', table: pricingTable, prices: categories })
+    : childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: pricingHeadCount, perChild });
+
+  // ── WHAT PAYROLL DEDUCTS TODAY, FROM THE STORED COLUMNS, IN THE KERNEL'S OWN EXPRESSION ───────────
+  // Not a second arithmetic: the SAME predicate and the SAME pack call, over `child_relief_table` and
+  // `num_children` instead of the register. core/payroll.ts ~5886 and core/payroll-view.ts ~1493 are this
+  // expression, so when this differs from `figure` the difference is the gap between the screen and the
+  // next payslip — and a screen that shows a figure without naming that gap is the r340 defect again.
+  const stored = pricesChildReliefFromGrid({
+    childReliefMode: mode,
+    childReliefTable: statutory.childReliefTable,
+  })
+    ? childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'table', table: statutory.childReliefTable, prices: categories })
+    : childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: physicalChildren, perChild });
+
+  /**
+   * ONE LINE PER CHILD, PRICED THE WAY THAT CHILD IS ACTUALLY PRICED (r347).
+   *
+   * The child's own category is turned into a ONE-CHILD GRID and run through the SAME
+   * `childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'table' })` that prices the whole employee, so the lines provably sum to
+   * the total above them rather than being a second arithmetic that agrees by coincidence. This is
+   * what the reporter asked to see: "1 Disabled Child × 4 = 4 Qualifying Children".
+   *
+   * An uncategorised child cannot reach here: the grid is only stored when EVERY eligible child has a
+   * category, so if any is missing `pricesChildReliefFromGrid` is false and the head-count branch runs.
+   */
+  const oneChildRow = (d: (typeof eligible)[number]): QualifyingChildRow => {
+    const cat = d.childReliefCategory ?? null;
+    const half = d.childReliefPercentage === 50;
+    const priced =
+      cat != null
+        ? childReliefFor({
+            taxCategory: statutory.taxCategory ?? 1,
+            from: 'table',
+            table: { [cat]: { full: half ? 0 : 1, half: half ? 1 : 0 } },
+            prices: categories,
+          })
+        : childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: 1, perChild });
     return {
-      mode,
-      derived: mode !== 'manual',
-      physicalChildren,
-      familyChildren: children.length,
-      eligibleChildren: eligible.length,
-      categories,
-      qualifyingChildren: figure.units,
-      reliefRM: figure.amountRM,
-      // r351 — the money the STORED columns come to, so the screen can print the derived figure and name
-      // the gap in the same breath rather than choosing one and hiding the other.
-      storedQualifyingChildren: stored.units,
-      storedReliefRM: stored.amountRM,
-      /**
-       * r347 — is this figure priced from the s.48 grid, or from the plain head count?
-       *
-       * The card used to infer it from `mode`, which was right until r344 made an 'auto' employee's
-       * relief depend on whether the grid is DERIVED as well as on the mode. Returning it means the
-       * screen and the kernel cannot disagree about which rule produced the number they are both
-       * describing — and the notes under the table say the right thing without re-deriving anything.
-       *
-       * r351 — it is the flag for `pricingTable`, the table the figure was actually priced from, which in
-       * 'auto' is the grid DERIVED from the register and no longer the stored column.
-       */
-      pricedFromGrid,
-      perChild,
-      statutoryVersion: rules.version ?? null,
-      breakdown,
-      uncategorisedChildren,
-      undatedChildren,
-      derivedGrid,
-      asOf: p.asOf,
-      ruleUnits: rule.units,
-      ruleReliefRM: rule.amountRM,
+      kind: 'child' as const,
+      name: d.fullName,
+      category: cat,
+      sharePercent: half ? 50 : 100,
+      children: 1,
+      units: priced.units,
+      amountRM: priced.amountRM,
+      // 77e882f5 — the two disclosures, from the SAME row and the SAME date the figure was taken at.
+      why: childEligibilityReason(d, asOfDate),
+      categoryContradictsDob: childCategoryContradictsDob(d, asOfDate),
     };
   };
-  return outerTx ? read(outerTx) : withTenant(ctx, read);
+
+  const breakdown: QualifyingChildRow[] =
+    mode === 'auto_table'
+      ? // One line PER SHARE, so "claimed in full or shared" is visible rather than averaged away. The
+        // lines are the PACK's own rows; this only names them for a screen. 'auto_table' holds category
+        // COUNTS and no individual children, so its lines are categories — inventing one child row per
+        // counted child would be inventing people.
+        figure.rows.map((r) => ({
+          kind: 'category' as const,
+          name: null,
+          category: r.category,
+          sharePercent: r.sharePercent,
+          children: r.children,
+          units: r.units,
+          amountRM: r.amountRM,
+        }))
+      : mode === 'auto'
+        ? // 'auto' HAS the actual children, so its lines are children. Each is priced by its own
+          // category when the derived grid is live, and at one unit when it is not.
+          //
+          // ⚠️ r351 — THE LINES AND THE TOTAL ABOVE THEM ARE NOW THE SAME ARITHMETIC OVER THE SAME LIST,
+          // so they cannot disagree. They could before: the total was priced from `num_children` (or the
+          // stored grid) while these lines were built from `eligible`, so a child who aged out left ONE
+          // row worth 1 under a printed total of 2 — a table whose own working contradicted its footer.
+          // `pricedFromGrid` is loop-invariant here for the same reason: one decision, one list, one date.
+          eligible.map((d) =>
+            pricedFromGrid
+              ? oneChildRow(d)
+              : {
+                  kind: 'child' as const,
+                  name: d.fullName,
+                  category: d.childReliefCategory ?? null,
+                  // 100 when nothing is recorded: an unshared claim is the whole relief, which is what
+                  // the kernel's flat count already assumes. `setDependentChildRelief` validates the
+                  // stored 100|50 on write, so this never has to re-validate it.
+                  sharePercent: d.childReliefPercentage === 50 ? 50 : 100,
+                  children: 1,
+                  units: childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: 1, perChild }).units,
+                  amountRM: childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: 1, perChild }).amountRM,
+                  why: childEligibilityReason(d, asOfDate),
+                  categoryContradictsDob: childCategoryContradictsDob(d, asOfDate),
+                },
+          )
+        : // manual — nothing was worked out, so there is nothing to break down.
+          [];
+
+  return {
+    mode,
+    derived: mode !== 'manual',
+    physicalChildren,
+    familyChildren: children.length,
+    eligibleChildren: eligible.length,
+    categories,
+    qualifyingChildren: figure.units,
+    reliefRM: figure.amountRM,
+    // r351 — the money the STORED columns come to, so the screen can print the derived figure and name
+    // the gap in the same breath rather than choosing one and hiding the other.
+    storedQualifyingChildren: stored.units,
+    storedReliefRM: stored.amountRM,
+    /**
+     * r347 — is this figure priced from the s.48 grid, or from the plain head count?
+     *
+     * The card used to infer it from `mode`, which was right until r344 made an 'auto' employee's
+     * relief depend on whether the grid is DERIVED as well as on the mode. Returning it means the
+     * screen and the kernel cannot disagree about which rule produced the number they are both
+     * describing — and the notes under the table say the right thing without re-deriving anything.
+     *
+     * r351 — it is the flag for `pricingTable`, the table the figure was actually priced from, which in
+     * 'auto' is the grid DERIVED from the register and no longer the stored column.
+     */
+    pricedFromGrid,
+    perChild,
+    statutoryVersion: rules.version ?? null,
+    breakdown,
+    uncategorisedChildren,
+    undatedChildren,
+    derivedGrid,
+    asOf,
+    ruleUnits: rule.units,
+    ruleReliefRM: rule.amountRM,
+  };
 }

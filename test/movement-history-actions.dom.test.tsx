@@ -47,7 +47,7 @@ describe('actual Movement history correction actions',()=>{
  });
  it('the real page uses separate creation/correction gates for row controls and both correction forms',()=>{
   const page=fs.readFileSync(path.resolve(__dirname,'../app/admin/personnel/[employmentId]/page.tsx'),'utf8');
-  expect(page).toContain('movementScreenAccess({admin, canMaintainWorkforce, terminatedOn: emp.terminatedOn})');expect(page).toContain('canCorrect={canCorrectMovement}');
+  expect(page).toMatch(/movementScreenAccess\(\{\s*admin,\s*canMaintainWorkforce,\s*terminatedOn:\s*emp\.terminatedOn\s*\}\)/);expect(page).toContain('canCorrect={canCorrectMovement}');
   expect(page).toContain('const editEventCard = canCorrectMovement &&');expect(page).toContain('canCorrectMovement && hireCorrection &&');
  });
 });

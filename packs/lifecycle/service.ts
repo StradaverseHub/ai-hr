@@ -10,13 +10,14 @@ export * from '../../core/lifecycle-assets';
 export * from '../../core/lifecycle-self';
 export * from '../../core/lifecycle-import';
 export * from '../../core/lifecycle-worklist';
+export { lifecycleHubTileCounts } from '../../core/lifecycle-hub';
 export * from '../../core/lifecycle-export';
 export * from '../../core/lifecycle-rules';
 export * from '../../core/lifecycle-defaults';
 
 export * from './onboarding/service';
 export * from './v9/entrypoints';
-export type { Workspace as LifecycleV9Workspace, Command as LifecycleV9Command, OwnCase as LifecycleV9OwnCase, CaseDetail as LifecycleV9CaseDetail, UpdatedEmailPreview as LifecycleV9UpdatedEmailPreview } from './v9/service';
+export type { Workspace as LifecycleV9Workspace, Command as LifecycleV9Command, OwnCase as LifecycleV9OwnCase, CaseDetail as LifecycleV9CaseDetail, UpdatedEmailPreview as LifecycleV9UpdatedEmailPreview, WorkflowRemovalPreview as LifecycleV9WorkflowRemovalPreview, WorkflowRemovalResult as LifecycleV9WorkflowRemovalResult } from './v9/service';
 /** Narrow source handoff; the native owner supplies every canonical input and deduplicates its receipt. */
 export async function createProbationOffboardingTx(tx:import('../../db/client').Tx,ctx:import('../../db/client').SessionContext,caseId:string):Promise<string>{
  const{sql}=await import('drizzle-orm');const[row]=await tx.execute<{intent:{employmentId:string;type:'Non-confirmation';noticeDate:string;lastDay:string;offboardingCaseId?:string}}>(sql`select app.probation_offboarding_intent(${caseId}::uuid) as intent`);

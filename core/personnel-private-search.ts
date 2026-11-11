@@ -1,25 +1,36 @@
 import {serviceYearsMonthsDaysAt} from '../packs/leave/service';
 import {matchesPersonnelColumnFilters,normalizePersonnelPrivateCriteria,type PersonnelPrivateCriteria,type PersonnelColumnFilter} from '../lib/personnel-list-controls';
 import {deriveEmploymentStatus} from './employment-status';
+import {matchesEmployeeSearch} from '../lib/employee-search';
 import {todayInKualaLumpur} from '../lib/hr-date';
 /** Five-minute principal-bound private filters. Criteria stay in the protected row, never URLs or logs. */
 import {createHash,randomBytes} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {withPersonnelRead} from './personnel-read-bounds';
+import {boundPersonnelStatementTx,withPersonnelRead} from './personnel-read-bounds';
 const TOKEN=/^[A-Za-z0-9_-]{43}$/;
 export const privateSearchHash=(token:string)=>TOKEN.test(token)?createHash('sha256').update(token).digest('hex'):null;
 export class PersonnelSearchLimitError extends Error{constructor(){super('Narrow the top company scope before searching this many records.');}}
 type SearchRow={employmentId:string;companyId:string;name:string;email:string;employeeCode:string|null;personRevision:string;employmentRevision:string;identityRevision:string|null;icNumber:string|null;passportNumber:string|null};
 async function privateCriteriaTx(tx:Tx,token:string,companyIds:string[]):Promise<PersonnelPrivateCriteria|null>{
+ const criteria=personnelPrivateCriteriaSql(token,companyIds);if(!criteria)return null;
+ const [row]=await tx.execute<{criteria:unknown}>(sql`select ${criteria} as criteria`);
+ return personnelPrivateCriteriaFrom(row?.criteria);
+}
+/** The sole criteria read seam as a scalar expression, for a reader that selects it in a statement it
+ * already spends in the same snapshot. Null when the token cannot name a private search. */
+export function personnelPrivateCriteriaSql(token:string,companyIds:string[]){
  const hash=privateSearchHash(token);if(!hash)return null;
- const [row]=await tx.execute<{criteria:unknown}>(sql`select app.personnel_column_search_criteria(${hash},ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as criteria`);
- if(!row?.criteria)return null;try{return normalizePersonnelPrivateCriteria(row.criteria);}catch{return null;}
+ return sql`app.personnel_column_search_criteria(${hash},ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`;
+}
+export function personnelPrivateCriteriaFrom(raw:unknown):PersonnelPrivateCriteria|null{
+ if(!raw)return null;try{return normalizePersonnelPrivateCriteria(raw);}catch{return null;}
 }
 export function readPersonnelPrivateCriteria(ctx:SessionContext,token:string,companyIds:string[]):Promise<PersonnelPrivateCriteria|null>{return withPersonnelRead(ctx,tx=>privateCriteriaTx(tx,token,companyIds));}
 export async function createPersonnelPrivateSearch(ctx:SessionContext,p:{text:string;companyIds:string[];columnFilters?:PersonnelColumnFilter[];previousToken?:string;replaceCriteria?:boolean}):Promise<string>{
  if(p.companyIds.length>1000||!ctx.userId)throw new PersonnelSearchLimitError();
- return withPersonnelRead(ctx,async tx=>{
+ return withTenant(ctx,async tx=>{
+  await boundPersonnelStatementTx(tx);
   const prior=p.previousToken&&!p.replaceCriteria?await privateCriteriaTx(tx,p.previousToken,p.companyIds):null;
   if(p.previousToken&&!p.replaceCriteria&&!prior)throw new Error('Private filters expired. Apply the complete filters again.');
   const byField=new Map((prior?.filters??[]).map(filter=>[filter.field,filter]));for(const filter of p.columnFilters??[])byField.set(filter.field,filter);
@@ -43,7 +54,10 @@ export async function createPersonnelPrivateSearch(ctx:SessionContext,p:{text:st
    const identityFilters=filters.filter(f=>f.field==='identity');
    const permittedIdentityMatch=(text:string)=>!!(row.icNumber?.toLocaleLowerCase().includes(text.toLocaleLowerCase())||row.passportNumber?.toLocaleLowerCase().includes(text.toLocaleLowerCase()));
    if(identityFilters.length&&!identityFilters.every(f=>f.operator==='contains'&&permittedIdentityMatch(f.value)))return [];
-   const publicMatch=[row.name,row.email,row.employeeCode].some(value=>value?.toLocaleLowerCase().includes(needle));
+   // eaa7697c: Employee ID and name use the ONE shared employee-search rule (case, spaces and dashes in an
+   // Employee ID do not matter, so "emp0008" finds "EMP-0008"), exactly as the profile switcher does.
+   // Work email stays a literal case-insensitive substring; identity matching below stays literal.
+   const publicMatch=matchesEmployeeSearch({name:row.name??'',employeeCode:row.employeeCode},criteria.term)||!!row.email?.toLocaleLowerCase().includes(needle);
    const identityMatch=!!needle&&!!(row.icNumber?.toLocaleLowerCase().includes(needle)||nricNeedle&&row.icNumber===nricNeedle||row.passportNumber?.toLocaleLowerCase().includes(needle));
    return (!needle||publicMatch||identityMatch)?[{employmentId:row.employmentId,kind:identityFilters.length?'identity':!needle||publicMatch?'public':'identity',personRevision:row.personRevision,employmentRevision:row.employmentRevision,identityRevision:identityMatch||identityFilters.length?row.identityRevision:null,...(fields?{filterRevision:fields.filterRevision}:{})}]:[];
   });

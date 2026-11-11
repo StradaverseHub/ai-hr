@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 /**
  * ADR-0171: the embedded sign-in service ends a web session after the organization's idle limit. Only reported
  * user activity (touchSession) moves the idle clock; reading the session for an ordinary request does not, so
@@ -49,6 +50,40 @@ const idleEvents = () => owner.db.select().from(schema.domainEvent)
   .where(and(eq(schema.domainEvent.tenantId, base.tenantId), eq(schema.domainEvent.eventType, 'app-user.session-idle-expired')));
 
 describe('ADR-0171 idle sign-out in the embedded sign-in service', () => {
+  it('opens a current credential and family in one query, then still refuses revoked or changed credentials', async () => {
+    const token = await signIn();
+    const reserve = client.reserve;
+    const statements: string[] = [];
+    // Session proofs now share one admitted reserved connection. Observe the
+    // actual SQL leaf on that connection rather than the unused pool facade.
+    const restorers:(()=>void)[]=[];
+    const spy=vi.spyOn(client,'reserve').mockImplementation(async()=>{
+      const connection=await Reflect.apply(reserve,client,[]),unsafe=connection.unsafe;
+      const leaf=vi.spyOn(connection,'unsafe').mockImplementation(((query:string,...args:unknown[])=>{
+        statements.push(query);return Reflect.apply(unsafe,connection,[query,...args]);
+      }) as typeof connection.unsafe);
+      restorers.push(()=>leaf.mockRestore());return connection;
+    });
+    let admitted:Awaited<ReturnType<typeof readSession>>;
+    try{admitted=await readSession(token);expect(spy).toHaveBeenCalledTimes(1);}
+    finally{restorers.forEach(restore=>restore());spy.mockRestore();}
+    expect(admitted).not.toBeNull();
+    const lookups = statements.filter(query => query.includes('first_record') || query.includes('second_record'));
+    expect(lookups).toHaveLength(1);
+    expect(lookups[0].match(/app\.internal_auth_read/g)).toHaveLength(2);
+
+    const credential = admitted!.credential, key = 'credential:' + admitted!.subject;
+    const family = 'family:' + admitted!.family;
+    await writeRecord(owner.client, key, { ...credential, version: randomUUID() }, admitted!.subject);
+    // An obsolete credential is refused before opening the invalid sealed family record.
+    await owner.client`select app.internal_auth_write(${family},${admitted!.subject}::uuid,${'invalid-fixture-record'.repeat(2)},null)`;
+    expect(await readSession(token)).toBeNull();
+
+    await writeRecord(owner.client, key, credential, admitted!.subject);
+    await owner.client`select app.internal_auth_delete(${family})`;
+    expect(await readSession(token)).toBeNull();
+  });
+
   it('ends a web session after 15 idle minutes by default, revokes it and audits a system sign-out', async () => {
     const { token, advance } = await signedInWithClock();
     advance(14 * MINUTE);

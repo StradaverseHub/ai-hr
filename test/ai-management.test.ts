@@ -39,9 +39,12 @@ afterAll(async()=>{await closeAll();vi.unstubAllEnvs();});
 describe('central AI allowance admission and durable accounting',()=>{
  it('serializes simultaneous calls at a daily user ceiling and counts blocked calls separately',async()=>{
   await limit('user',base.adminUserId,2,null);
-  const result=await Promise.allSettled(Array.from({length:8},()=>call()));
+  // Admission joins the exclusive Access lock. With the per-process waiter cap removed (11 November 2026), all
+  // eight simultaneous calls queue on it within its wait bound and are serialized, as before 799afc80c.
+  const simultaneous=8;
+  const result=await Promise.allSettled(Array.from({length:simultaneous},()=>call()));
   expect(result.filter(r=>r.status==='fulfilled')).toHaveLength(2);
-  const rows=await runs();expect(rows.filter(r=>r.state==='completed')).toHaveLength(2);expect(rows.filter(r=>r.state==='blocked')).toHaveLength(6);
+  const rows=await runs();expect(rows.filter(r=>r.state==='completed')).toHaveLength(2);expect(rows.filter(r=>r.state==='blocked')).toHaveLength(simultaneous-2);
   expect(rows.filter(r=>r.state==='completed').every(r=>r.actualTokens===10)).toBe(true);
  });
  it('holds unknown usage durably, including concurrent calls and changes to the cap',async()=>{

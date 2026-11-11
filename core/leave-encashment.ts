@@ -4,7 +4,7 @@
  * salary math, NO RM conversion, NO payroll logic — see ADR-0069 for the full scope boundary and the
  * enforcement design (one DB trigger + one UX pre-check + sweep skip-filters).
  */
-import { and, eq, gt, isNull, lte, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { leaveDaysAreThisSystems } from './leave-charge';
@@ -427,21 +427,45 @@ export async function encashmentSnapshotForEmploymentTx(tx: Tx, ctx: SessionCont
       .orderBy(sql`${leaveEncashmentSnapshot.createdAt} desc`)
       .limit(1);
     if (!row) return null;
-    const encashableDays = Number(row.encashableDays);
-    const overrideDays = row.overrideDays != null ? Number(row.overrideDays) : null;
-    const view: EncashmentSnapshotView = {
-      id: row.id,
-      leaveTypeId: row.leaveTypeId,
-      balanceDays: Number(row.balanceDays),
-      encashableDays,
-      overrideDays,
-      days: overrideDays ?? encashableDays,
-      status: row.status,
-      calculatedAsOf: row.calculatedAsOf,
-      overrideReason: row.overrideReason,
-    };
-    return view;
+    return encashmentSnapshotView(row);
   }
+
+/** Set-wise form of encashmentSnapshotForEmploymentTx for a caller-held scoped snapshot (the Personnel
+ *  export): the same RLS read and the same latest-by-`created_at desc` pick per employment, in ONE
+ *  statement for every employment. An employment with no snapshot is absent from the map (the single
+ *  read's null). */
+export async function encashmentSnapshotsForEmploymentsTx(
+  tx: Tx,
+  ctx: SessionContext,
+  employmentIds: readonly string[],
+): Promise<Map<string, EncashmentSnapshotView>> {
+  const ids = [...new Set(employmentIds)];
+  const views = new Map<string, EncashmentSnapshotView>();
+  if (!ids.length) return views;
+  const rows = await tx
+    .selectDistinctOn([leaveEncashmentSnapshot.employmentId])
+    .from(leaveEncashmentSnapshot)
+    .where(inArray(leaveEncashmentSnapshot.employmentId, ids))
+    .orderBy(leaveEncashmentSnapshot.employmentId, sql`${leaveEncashmentSnapshot.createdAt} desc`);
+  for (const row of rows) views.set(row.employmentId, encashmentSnapshotView(row));
+  return views;
+}
+
+function encashmentSnapshotView(row: typeof leaveEncashmentSnapshot.$inferSelect): EncashmentSnapshotView {
+  const encashableDays = Number(row.encashableDays);
+  const overrideDays = row.overrideDays != null ? Number(row.overrideDays) : null;
+  return {
+    id: row.id,
+    leaveTypeId: row.leaveTypeId,
+    balanceDays: Number(row.balanceDays),
+    encashableDays,
+    overrideDays,
+    days: overrideDays ?? encashableDays,
+    status: row.status,
+    calculatedAsOf: row.calculatedAsOf,
+    overrideReason: row.overrideReason,
+  };
+}
 
 export type EncashmentForPayroll = {
   leaveTypeId: string;

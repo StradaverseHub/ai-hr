@@ -1205,6 +1205,8 @@ export type ReviewedOnehrPlanAcknowledgement={employmentId:string;planVersion:st
  * carries safe revision/time metadata and own subject, enabling exact terminal reconciliation. */
 export async function acknowledgeOnehrPlanTx(tx:Tx,ctx:SessionContext,planId:string,expected:number,reviewed?:ReviewedOnehrPlanAcknowledgement){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const id=planId,expectedRevision=expected,checked=reviewed?{...reviewed}:undefined;
+ // An employee's own acknowledgement changes no configuration: shared Access. The plan row lock and its
+ // revision check serialise two acknowledgements of the same plan; Access editors still exclude it.
  await lockAccessConfigurationTx(tx,ctx.tenantId);
  const plan=await ownOnehrPlanAcknowledgementSourceTx(tx,ctx,id,Boolean(checked));revision(plan.planRevision,expectedRevision);
  if(checked&&(checked.employmentId!==plan.employmentId||checked.planVersion!==plan.planVersion||plan.acknowledgedAt!==null))throw Error('This record changed. Reload before saving.');
@@ -1465,6 +1467,42 @@ export async function ownPerformanceWorkStatusesTx(tx:Tx,supplied:SessionContext
 export async function onehrAssignments(ctx:SessionContext) {
   return withPerformanceTenant(ctx,async tx=>({reviews:await tx.select({id:onehrReview.reviewId,cycle:reviewCycle.name,cycleStatus:reviewCycle.status,periodEnd:reviewCycle.periodEnd,name:sql<string>`app.onehr_review_header(${onehrReview.reviewId})->>'name'`}).from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).where(sql`(app.assessment_review_participates(${onehrReview.reviewId}) or ${reviewCycle.status}='closed') and (app.onehr_manager(${onehrReview.reviewId}) or app.onehr_effective_reviewer(${onehrReview.reviewId}) or app.onehr_moderator(${onehrReview.reviewId}) or exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id)))`).orderBy(desc(reviewCycle.periodEnd)),sessions:await tx.select({id:onehrCalibration.id,name:onehrCalibration.name,lockedAt:onehrCalibration.lockedAt}).from(onehrCalibration).orderBy(desc(onehrCalibration.createdAt)),feedback:await tx.select({id:onehrPanel.requestId,subject:peerFeedbackRequest.subjectName}).from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId)).where(and(isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),sql`app.onehr_feedback_card(${onehrPanel.requestId})->>'closed'='false'`,sql`exists(select 1 from employment e where e.id=${onehrPanel.peerEmploymentId} and app.is_self_person(e.person_id))`))}));
 }
+function pendingOnehrFeedbackWhere(ctx:SessionContext){
+ return and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),
+    sql`app.onehr_feedback_card(${onehrPanel.requestId})->>'closed'='false'`,
+    sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${onehrPanel.peerEmploymentId}
+      AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`);
+}
+/** pendingOnehrFeedbackTaskMetadata in the one-statement Home task read (core/account-task-bundle.ts): the owner's rows in
+ * its order, each with the review cycle (status and configured policy) loadCycle would read for its cycle id, under the
+ * same RLS. pendingOnehrFeedbackTasksFromBundle runs the owner's cycle and window checks on them. */
+export function pendingOnehrFeedbackTaskBundleSql(ctx:SessionContext){
+ return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',feedback_row.id,'subjectName',feedback_row.subject_name,'sourceUpdatedAt',feedback_row.source_updated_at,
+   'cycleId',feedback_row.cycle_id,'cycles',(select coalesce(jsonb_agg(jsonb_build_object('status',${reviewCycle.status},'policy',${onehrCycle.policy})),'[]'::jsonb)
+     from ${reviewCycle} inner join ${onehrCycle} on ${eq(onehrCycle.cycleId,reviewCycle.id)}
+     where ${reviewCycle.id}=case when feedback_row.cycle_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then feedback_row.cycle_id::uuid end))
+   order by feedback_row.source_updated_at desc,feedback_row.id),'[]'::jsonb)
+  from (select ${onehrPanel.requestId} as id,${peerFeedbackRequest.subjectName} as subject_name,${peerFeedbackRequest.createdAt} as source_updated_at,
+    app.onehr_feedback_card(${onehrPanel.requestId})->>'cycleId' as cycle_id
+   from ${onehrPanel} inner join ${peerFeedbackRequest} on ${eq(peerFeedbackRequest.id,onehrPanel.requestId)} where ${pendingOnehrFeedbackWhere(ctx)}) feedback_row)`;
+}
+/** The owner's loop over the bundled rows: loadCycle's id parse, single cycle and policy parse, then its status and window
+ * checks. Anything loadCycle would throw throws here too, and the owner then reads (and throws) itself. */
+export function pendingOnehrFeedbackTasksFromBundle(value:unknown):AssignedPersonalTaskMetadata[]{
+ const rows=value as {id:string;subjectName:string;sourceUpdatedAt:string;cycleId:string;cycles:{status:string;policy:unknown}[]}[];
+ const cycles=new Map<string,{status:string;policy:z.infer<typeof policySchema>}>(),result:AssignedPersonalTaskMetadata[]=[];
+ for(const row of rows){
+  let cycle=cycles.get(row.cycleId);
+  if(!cycle){
+   uuid.parse(row.cycleId);
+   if(row.cycles.length!==1)throw Error('Performance review cycle not found.');
+   cycle={status:row.cycles[0].status,policy:policySchema.parse(row.cycles[0].policy)};cycles.set(row.cycleId,cycle);
+  }
+  if(!['open','calibration'].includes(cycle.status)||!assessmentWorkWindowOpen(cycle.policy,'f360'))continue;
+  result.push({id:row.id,kind:'feedback',subjectName:row.subjectName,sourceUpdatedAt:new Date(row.sourceUpdatedAt),linkPath:`/performance/assessment/feedback/${row.id}`});
+ }
+ return result;
+}
 /** Form assignment metadata, repeating the canonical feedback owner's current window and frozen
  * recipient gates. No feedback answers, remarks, draft or assessment ratings enter this projection. */
 export function pendingOnehrFeedbackTaskMetadata(ctx:SessionContext):Promise<AssignedPersonalTaskMetadata[]>{
@@ -1473,10 +1511,7 @@ export function pendingOnehrFeedbackTaskMetadata(ctx:SessionContext):Promise<Ass
   const rows=await tx.select({id:onehrPanel.requestId,subjectName:peerFeedbackRequest.subjectName,
    sourceUpdatedAt:peerFeedbackRequest.createdAt,cycleId:sql<string>`app.onehr_feedback_card(${onehrPanel.requestId})->>'cycleId'`})
    .from(onehrPanel).innerJoin(peerFeedbackRequest,eq(peerFeedbackRequest.id,onehrPanel.requestId))
-   .where(and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),isNull(onehrPanel.submittedAt),isNull(onehrPanel.archivedAt),
-    sql`app.onehr_feedback_card(${onehrPanel.requestId})->>'closed'='false'`,
-    sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${onehrPanel.peerEmploymentId}
-      AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`))
+   .where(pendingOnehrFeedbackWhere(ctx))
    .orderBy(desc(peerFeedbackRequest.createdAt),onehrPanel.requestId);
   const cycles=new Map<string,Awaited<ReturnType<typeof loadCycle>>>(),result:AssignedPersonalTaskMetadata[]=[];
   for(const row of rows){

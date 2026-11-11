@@ -875,6 +875,8 @@ export const person = pgTable(
     // read through `person_rls`, which releases the work email; the statutory IC moves to `voidedIcNumber`.
     voidedAt: timestamp('voided_at', { withTimezone: true }),
     voidedIcNumber: text('voided_ic_number'),
+    // Staged import (5010): non-null while a background import owns this row; hidden from every normal session.
+    importPendingAttemptId: uuid('import_pending_attempt_id'),
     createdAt: createdAt(),
   },
   (t) => [index('person_tenant_idx').on(t.tenantId)],
@@ -1267,6 +1269,8 @@ export const employment = pgTable(
     // Final and one-way (trigger `employment_void_guard`); a voided row leaves every ordinary read through
     // `employment_rls`. `employeeCode` is cleared (the original kept in `voidedEmployeeCode`) so the ID re-imports.
     voidedAt: timestamp('voided_at', { withTimezone: true }),
+    // Staged import (5010): see person.importPendingAttemptId.
+    importPendingAttemptId: uuid('import_pending_attempt_id'),
     voidedBy: uuid('voided_by'),
     voidReason: text('void_reason'),
     voidedImportAttemptId: uuid('voided_import_attempt_id'),
@@ -1611,6 +1615,9 @@ export const leaveType = pgTable('leave_type', {
   // where set, company cycle otherwise. 'a2c' resolves to its OWN token, which every boundary consumer
   // treats as calendar through its existing non-anniversary default (see that function's ADR note).
   yearCycleOverride: text('year_cycle_override'),
+  // Draft 5036: the background A2C job that will set year_cycle_override together with its staged corrections
+  // (core/leave-follow-up-worker.ts). NULL unless a move to a2c is waiting for its release.
+  pendingYearCycleJobId: uuid('pending_year_cycle_job_id'),
   // Leave Type Employee Visibility (feedback 7b11f1c1): two additive, NULLABLE booleans that let HR control,
   // per leave type, whether an employee sees the type at all on their self-service Leave surface, and whether
   // they may submit an application for it. These are the SINGLE SOURCE OF TRUTH for employee-facing leave-type
@@ -2455,6 +2462,10 @@ export const leaveLedger = pgTable(
     // importer's Replace mode safe — Replace negates only the rows carrying a run id, never the rest of
     // the prior-year balance, which contains real accruals, debits and adjustments.
     bfImportRunId: uuid('bf_import_run_id').references((): AnyPgColumn => leaveBfImportRun.id),
+    // Staged cohort run (draft 5031, core/leave-stage.ts): the stage of an all-or-nothing background leave job
+    // whose rows are not yet released. NULL for every ordinary row; stamped by trigger from app.leave_stage,
+    // never written by a writer directly.
+    stageId: uuid('stage_id'),
     createdAt: createdAt(),
   },
   (t) => [index('leave_ledger_employment_idx').on(t.employmentId, t.leaveTypeId)],
@@ -5555,6 +5566,7 @@ export const notification = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
+    index('notification_source_recipient_kind_idx').on(t.tenantId,t.sourceEventId,t.recipientEmploymentId,t.kind).where(sql`source_event_id is not null`),
     uniqueIndex('notification_letter_job_uq').on(t.letterJobId).where(sql`letter_job_id is not null`),
     index('notification_user_recipient_idx').on(t.tenantId,t.recipientUserId,t.createdAt),
     index('notification_recipient_idx').on(t.tenantId, t.recipientEmploymentId, t.createdAt),
@@ -5665,9 +5677,8 @@ export const notificationEmailPolicy = pgTable('notification_email_policy', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [uniqueIndex('notification_email_policy_tenant_id_category_key').on(t.tenantId, t.category)]);
 
-// Dispatcher state: the last domain_event.sequence (a monotonic bigserial — exact, unlike a timestamp which
-// loses sub-millisecond precision on the JS Date round-trip and would re-process events) processed per
-// tenant. The event log stays append-only — no mutable column on domain_event.
+// Legacy high-water marks retained for old/new dispatcher overlap and operations only.
+// Complete consumption is owned by notificationEventProcessing, never serial commit assumptions.
 export const notificationCursor = pgTable(
   'notification_cursor',
   {
@@ -5679,6 +5690,14 @@ export const notificationCursor = pgTable(
   },
   (t) => [uniqueIndex('notification_cursor_tenant_uq').on(t.tenantId)],
 );
+
+// Durable per-consumer projection intent; created atomically by the source-event trigger.
+export const notificationEventProcessing = pgTable('notification_event_processing', {
+ tenantId:tenantId(),eventId:uuid('event_id').notNull().references(()=>domainEvent.id,{onDelete:'cascade'}),
+ consumer:text('consumer').notNull(),eventSequence:bigint('event_sequence',{mode:'number'}).notNull(),
+ disposition:text('disposition'),processedAt:timestamp('processed_at',{withTimezone:true}),
+},t=>[primaryKey({columns:[t.eventId,t.consumer]}),
+ index('notification_event_processing_pending_idx').on(t.tenantId,t.consumer,t.eventSequence).where(sql`disposition is null`)]);
 
 // ─────────────────────── Notice Board (6e122302) ───────────────────────
 //
@@ -6483,7 +6502,10 @@ export const employeeQualification = pgTable(
 );
 
 // ──────────────────────── Payroll (generic kernel) ────────────────────────
-export const payrollStatusEnum = pgEnum('payroll_status', ['draft', 'processed', 'closed']);
+// 'processing' (draft migration 5050/5051): a run the background payroll processing job owns. Visible to payroll
+// operators as in progress, never to employees (they read closed, released runs only); its payslips are written
+// in chunks and the run flips to 'processed' in one short finalize transaction.
+export const payrollStatusEnum = pgEnum('payroll_status', ['draft', 'processing', 'processed', 'closed']);
 
 // ─────────────── Multi-cycle payroll (Wave 2C, ADR-0024) — GATED ───────────────
 // GATED behind MULTI_CYCLE_PAYROLL_ENABLED: the schema + backfill exist, but the kernel still
@@ -6628,8 +6650,10 @@ export const payrollBatch = pgTable(
       .references(() => company.id),
     // ADR-0024 (Wave 2C): a "run" within a pay_period. Backfilled so every existing batch is
     // run_seq=1, run_type='regular' under one parent per (company, month) — behaviour-preserving.
+    // Nullable since 5055: a payroll history job's staged draft batch has no period until its release. The deferred
+    // app.payroll_batch_period_required refuses any other period-less batch at commit, so every run a reader can see
+    // has one, but readers check (core/payroll-period-lock.ts withRunPayPeriod) instead of assuming.
     payPeriodId: uuid('pay_period_id')
-      .notNull()
       .references(() => payPeriod.id),
     runSeq: integer('run_seq').notNull().default(1),
     runType: payrollRunTypeEnum('run_type').notNull().default('regular'),
@@ -6688,6 +6712,10 @@ export const payrollBatch = pgTable(
     // A null-cycle REGULAR run behaves exactly as it does today; a null-cycle NON-regular run can name no
     // cycle, so it collects no period-keyed rows at all — which is also exactly today's behaviour.
     payrollCycleId: uuid('payroll_cycle_id').references(() => payrollCycle.id),
+    // Run-level durable lease (draft 5051): the bulk job that owns a 'processing' run. Set exactly while
+    // status = 'processing' (CHECK payroll_batch_processing_lease); the job's chunks fence on it.
+    processingJobId: uuid('processing_job_id'),
+    processingStartedAt: timestamp('processing_started_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -7427,7 +7455,7 @@ export const attendanceAllowancePolicy = pgTable(
     policyType: text('policy_type').notNull().default('earning'),
     version: integer('version').notNull().default(1),
     // NULL retains the original monthly criteria/scope semantics until explicitly edited.
-    rules: jsonb('rules').$type<import('../lib/attendance-allowance-rules').AllowanceRules>(),
+    rules: jsonb('rules').$type<import('../lib/attendance-allowance-rule-types').AllowanceRules>(),
     criteria: jsonb('criteria').$type<AttendanceAllowanceCriteria>().notNull().default({}),
     scope: jsonb('scope').$type<AttendanceAllowanceScope>().notNull().default({}),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -9001,7 +9029,10 @@ export const claimRequest = pgTable(
     payoutRef: text('payout_ref'),
     createdAt: createdAt(),
   },
-  (t) => [index('claim_request_employment_idx').on(t.employmentId, t.status)],
+  (t) => [index('claim_request_employment_idx').on(t.employmentId, t.status),
+    index('claim_request_preview_order_idx').on(t.tenantId,t.employmentId,t.status,t.createdAt.desc(),t.id),
+    index('claim_request_payroll_batch_idx').on(t.payrollBatchId).where(sql`payroll_batch_id is not null`),
+    index('claim_request_employment_incurred_idx').on(t.employmentId, t.incurredOn)],
 );
 
 export const claimAttachment = pgTable(
@@ -9159,7 +9190,7 @@ export const feedbackRequest = pgTable(
     blockedReason: text('blocked_reason'),
     buildRef: text('build_ref'), // PR / branch link once a build agent runs (F4)
     /** Operator-attested release evidence for this exact feedback cycle and build. */
-    release: jsonb('release').$type<import('../lib/feedback-release').FeedbackRelease | null>(),
+    release: jsonb('release').$type<import('../lib/feedback-release-types').FeedbackRelease | null>(),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -10919,7 +10950,7 @@ export const assessmentInsight = pgTable('performance_assessment_insight', {
 // Reviewer-owned summaries of submitted evidence; never a rating or decision authority.
 export const assessmentSummary = pgTable('performance_assessment_summary', {
  id:id(),tenantId:tenantId(),reviewId:uuid('review_id').notNull().references(()=>onehrReview.reviewId),actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),contextId:uuid('context_id').notNull(),visibilityKey:text('visibility_key'),kind:text('kind').notNull(),
- fingerprint:text('fingerprint').notNull(),source:text('source').notNull(),data:jsonb('data').$type<import('../packs/performance/onehr/competency-insight-model').CompetencyInsight|import('../packs/performance/onehr/idp-fit-model').IdpFitInsight|import('../packs/performance/onehr/potential-insight-model').PotentialInsight|import('../packs/performance/onehr/talent-insight-model').TalentInsight>().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+ fingerprint:text('fingerprint').notNull(),source:text('source').notNull(),data:jsonb('data').$type<import('../packs/performance/onehr/competency-insight-model').CompetencyInsight|import('../packs/performance/onehr/idp-fit-model').IdpFitInsight|import('../packs/performance/onehr/potential-insight-model').PotentialInsight|import('../packs/performance/onehr/talent-insight-types').TalentInsight>().notNull(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[uniqueIndex('performance_assessment_summary_actor_uq').on(t.reviewId,t.actorUserId,t.kind,t.contextId)]);
 // Authoritative PM overall remarks. The legacy review column is a guarded derived projection.
 export const assessmentReviewerRemark = pgTable('performance_assessment_reviewer_remark', {
@@ -11675,6 +11706,32 @@ const agentPrincipalPrivate=pgSchema('app');
 export const aiAgentPrincipal=agentPrincipalPrivate.table('ai_agent_principal',{
  id:id(),tenantId:uuid('tenant_id').notNull().unique().references(()=>tenant.id),createdAt:createdAt(),
 });
+
+/** Shared background bulk-job kernel (migration 5011): one job/step store for every background bulk operation.
+ * Admission, reads and cancel: core/bulk-job.ts. Worker: core/bulk-job-worker.ts. Kinds: bulk_job_kind rows. */
+/** input_shape, input_max_bytes, finalize_owner: migration 5013 (admission shape check; owner-connection finalize). */
+export const bulkJobKind=pgTable('bulk_job_kind',{kind:text('kind').primaryKey(),scopeKind:text('scope_kind'),exclusive:text('exclusive').notNull().$type<'tenant'|'creator'|'tenant_queue'|'none'>(),
+ inputShape:jsonb('input_shape').$type<Record<string,string>>(),inputMaxBytes:integer('input_max_bytes').notNull().default(1048576),finalizeOwner:boolean('finalize_owner').notNull().default(false)});
+export const bulkJob=pgTable('bulk_job',{
+ id:id(),tenantId:tenantId(),kind:text('kind').notNull().references(()=>bulkJobKind.kind),createdBy:uuid('created_by').notNull().references(()=>appUser.id),
+ context:jsonb('context').notNull().$type<Record<string,unknown>>(),operationKey:uuid('operation_key').notNull(),exclusiveKey:text('exclusive_key').notNull(),
+ companyIds:uuid('company_ids').array().notNull().default(sql`'{}'`),sourceName:text('source_name').notNull().default(''),sourceHash:text('source_hash'),
+ sourceBytes:integer('source_bytes').notNull().default(0),sourceContent:bytea('source_content'),input:jsonb('input').$type<unknown>(),plan:jsonb('plan').$type<unknown>(),
+ attemptId:uuid('attempt_id').references(()=>importAttempt.id),state:text('state').notNull().default('queued').$type<import('../lib/bulk-job').BulkJobState>(),
+ outcome:text('outcome').$type<'failed'|'cancelled'>(),phase:text('phase'),stepsTotal:integer('steps_total').notNull().default(0),stepsDone:integer('steps_done').notNull().default(0),
+ counters:jsonb('counters').notNull().default({}).$type<Record<string,number>>(),metrics:jsonb('metrics').notNull().default({}).$type<Record<string,number>>(),
+ result:jsonb('result').$type<unknown>(),error:text('error'),errors:jsonb('errors').notNull().default([]).$type<unknown[]>(),
+ cancelRequestedAt:timestamp('cancel_requested_at',{withTimezone:true}),transientRetries:integer('transient_retries').notNull().default(0),notBefore:timestamp('not_before',{withTimezone:true}),
+ leaseToken:uuid('lease_token'),leaseExpiresAt:timestamp('lease_expires_at',{withTimezone:true}),noticeEventId:uuid('notice_event_id'),notifiedAt:timestamp('notified_at',{withTimezone:true}),
+ createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),finishedAt:timestamp('finished_at',{withTimezone:true}),
+},t=>[uniqueIndex('bulk_job_tenant_id_created_by_operation_key_key').on(t.tenantId,t.createdBy,t.operationKey),
+ uniqueIndex('bulk_job_one_active').on(t.tenantId,t.kind,t.exclusiveKey).where(sql`${t.state} in ('queued','preparing','running','finalizing','discarding')`),
+ index('bulk_job_queue').on(t.updatedAt).where(sql`${t.state} in ('queued','preparing','running','finalizing','discarding')`),index('bulk_job_creator').on(t.tenantId,t.createdBy,t.kind,t.createdAt),
+ index('bulk_job_unnotified').on(t.finishedAt).where(sql`${t.notifiedAt} is null and ${t.state} in ('completed','failed','cancelled')`)]);
+export const bulkJobStep=pgTable('bulk_job_step',{
+ jobId:uuid('job_id').notNull().references(()=>bulkJob.id,{onDelete:'cascade'}),tenantId:tenantId(),seq:integer('seq').notNull(),kind:text('kind').notNull(),rowNum:integer('row_num'),
+ state:text('state').notNull().default('pending').$type<'pending'|'applied'|'failed'>(),payload:jsonb('payload').notNull().$type<unknown>(),result:jsonb('result').$type<unknown>(),error:text('error'),
+},t=>[primaryKey({columns:[t.jobId,t.seq]}),index('bulk_job_step_pending').on(t.jobId,t.seq).where(sql`${t.state}='pending'`)]);
 
 /** Canonical row meaning approved by the import preview; codes and names are only lookup inputs. */
 export type PayrollTxnImportBinding={employmentId:string;companyId:string;departmentId:string|null;componentId:string;intendedCycleId:string|null;targetBatchId:string|null;targetCycle:string;payPeriod:string;txnDate:string;kind:string;quantity:number|null;unit:string|null;sourceRef:string;notes:string|null};

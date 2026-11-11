@@ -12,14 +12,28 @@ const MIGRATION = 'db/migrations/0812_ai_feature_switch_owner.sql';
 const journal: string[] = JSON.parse(read('db/migrations/meta/_journal.json')).entries.map((e: { tag: string }) => `db/migrations/${e.tag}.sql`);
 /** The live definition of a SQL function is its LAST definition in journal (apply) order. */
 const live = (marker: string) => {
-  // REVOKE/GRANT/ALTER FUNCTION statements are references, not later definitions.
-  const definitions=(source:string)=>[...source.matchAll(/CREATE(?: OR REPLACE)? FUNCTION /g)]
-    .map(match=>match.index+match[0].indexOf('FUNCTION ')).filter(at=>source.startsWith(marker,at));
-  const files = journal.filter(f => definitions(read(f)).length>0);
-  expect(files.length, marker).toBeGreaterThan(0);
-  const src = read(files.at(-1)!), at = definitions(src).at(-1)!, end = src.indexOf('$$;', src.indexOf('$$', at) + 2);
-  expect(at).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(at);
-  return { file: files.at(-1)!, body: src.slice(at, end) };
+  // Ownership ALTER statements also name functions; only CREATE definitions own bodies.
+  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const definitions = journal.flatMap(file => {
+    const src = read(file);
+    const pattern = new RegExp(String.raw`(?:^|\n)[\t ]*CREATE(?:\s+OR\s+REPLACE)?\s+` + escaped, 'g');
+    return [...src.matchAll(pattern)].map(match => ({file, src, at: match.index + match[0].lastIndexOf(marker)}));
+  });
+  expect(definitions.length, marker).toBeGreaterThan(0);
+  // Bodies may use any dollar-quote tag ($$, $facts$, …); the body ends at the next occurrence of its own tag.
+  const {file, src, at} = definitions.at(-1)!, quote = /\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/g;
+  quote.lastIndex = at; const open = quote.exec(src);
+  expect(open, marker).not.toBeNull();
+  const end = src.indexOf(open![0], open!.index + open![0].length);
+  expect(at).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(open!.index);
+  return {file, body: src.slice(at, end)};
+};
+/** The original installed wrapper is an independent byte oracle, not the final filename. */
+const centreWrapper = (marker:string) => {
+  const src=read('db/migrations/3200_ai_centre_controls.sql'),at=src.indexOf('CREATE '+marker);
+  expect(at,marker).toBeGreaterThanOrEqual(0);
+  const start=at+'CREATE '.length,end=src.indexOf('$$;',src.indexOf('$$',start)+2);
+  expect(end).toBeGreaterThan(start);return src.slice(start,end);
 };
 const seed = () => journal.flatMap(file=>{
   const inserts=[...read(file).matchAll(/INSERT INTO app\.ai_feature_setting\(feature_id,setting_key\) VALUES([\s\S]*?);/g)];
@@ -41,16 +55,35 @@ describe('one switch owner per AI feature (0692)', () => {
   });
 
   it('reads the live switch key from the table, with no hard-coded CASE left', () => {
+    const purpose = live('FUNCTION app._ai_control_context_for_purpose(');
+    // 4338 keeps the ai-control lock in the purpose function and moves its policy reads into one facts owner.
+    expect(purpose.body).toContain('FROM app._ai_control_context_policy_facts(wanted_feature,forced_pause,pause_only) f');
+    expect(purpose.body).toContain("PERFORM pg_advisory_xact_lock_shared(hashtext('ai-control'),hashtext(tid::text))");
+    expect(purpose.body).toContain("ELSE PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text))");
+    expect(purpose.body).not.toContain('SELECT s.setting_key');
+    const context = live('FUNCTION app._ai_control_context_policy_facts(');
+    expect(context.body).toContain('feature_paused:=coalesce(forced_pause,false) OR EXISTS(SELECT 1 FROM public.teras_mandate_control c WHERE c.tenant_id=tid AND c.stopped)');
+    const pause=live('FUNCTION app.ai_action_unpaused(').body;
+    // The installed centre stop wrapper must survive later pause-discovery optimisation.
+    const beforeCentre=live('FUNCTION app._ai_control_context_before_centre(').body;
+    expect(beforeCentre).toContain('RETURN QUERY SELECT * FROM app._ai_control_context_for_purpose(wanted_feature,forced_pause,false)');
+    expect(pause).toContain('app._ai_control_context_for_purpose(wanted_feature,forced_pause,true)');
     const wrapper = live('FUNCTION app._ai_control_context(');
-    expect(wrapper.file).toBe('db/migrations/3200_ai_centre_controls.sql');
-    expect(read(wrapper.file)).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');
+    expect(wrapper.body).toBe(centreWrapper('FUNCTION app._ai_control_context('));
+    expect(live('FUNCTION app.ai_agent_action_unpaused(').body).toBe(centreWrapper('FUNCTION app.ai_agent_action_unpaused('));
+    expect(read('db/migrations/3200_ai_centre_controls.sql')).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');
+    const compatibility=read(wrapper.file);
+    expect(compatibility).toContain("'app._ai_control_context_before_centre(text,boolean)','a9ea819594d4adbde182910b573287da'");
+    expect(compatibility).toContain("'app.ai_agent_action_unpaused_before_centre(text)','a1ae73ad6d4f47b598df29412507bccb'");
+    expect(compatibility).toContain("p.proowner<>control_owner");
+    expect(compatibility).toContain("a.grantor<>p.proowner OR a.is_grantable");
     expect(wrapper.body).toContain('FROM app._ai_control_context_before_centre(wanted_feature,forced_pause) c');
     expect(wrapper.body).toContain('c.feature_paused OR EXISTS(SELECT 1 FROM public.teras_mandate_control t WHERE t.tenant_id=app.current_tenant_id() AND t.stopped)');
-    // The wrapper only adds stop; 0812 remains the unchanged canonical feature-switch owner.
-    const source=read(MIGRATION),at=source.lastIndexOf('FUNCTION app._ai_control_context(');
-    const context={body:source.slice(at,source.indexOf('$$;',source.indexOf('$$',at)+2))};
-    expect(context.body).not.toMatch(/CASE\s+wanted_feature/);
-    for (const [, key] of settingBacked) expect(context.body).not.toContain(`'${key}'`);
+    expect(wrapper.body).not.toContain('SELECT s.setting_key');
+    for (const body of [purpose.body, context.body]) {
+      expect(body).not.toMatch(/CASE\s+wanted_feature/);
+      for (const [, key] of settingBacked) expect(body).not.toContain(`'${key}'`);
+    }
     expect(context.body).toContain('SELECT s.setting_key INTO switch_key FROM app.ai_feature_setting s WHERE s.feature_id=wanted_feature');
     // A `feature:` row pauses only a settingless feature; the setting is the switch for the others.
     expect(context.body).toContain("IF switch_key IS NULL AND EXISTS(SELECT 1 FROM ai_control_policy p WHERE p.tenant_id=tid AND p.kind='feature'");

@@ -40,7 +40,7 @@ export async function reconcileCompensationMaintenanceSourceTx(tx:Tx,ctx:Session
  if(!row)return fail();return C.Receipt.parse({kind:'maintained',...reference,compensationId:row.compensationId,operation:row.eventType==='compensation.set'?'set':row.eventType==='compensation.updated'?'edit':'supersede'});
 }
 export async function readCompensationMaintenanceChoicesTx(tx:Tx,ctx:SessionContext,selection:unknown){
- const fresh=await actor(tx,ctx),pick=C.Selection.parse(selection??{query:''});await tx.execute(sql`select app.access_workforce_write_lock()`);
+ const fresh=await actor(tx,ctx),pick=C.Selection.parse(selection??{query:''});await tx.execute(sql`select app.access_configuration_write_lock()`);
  const pattern=`%${pick.query.replace(/[\\%_]/g,'\\$&')}%`;
  const employees=await tx.execute<{employmentId:string;employeeName:string;employeeCode:string|null;companyName:string}>(sql`select e.id as "employmentId",p.full_name as "employeeName",e.employee_code as "employeeCode",c.legal_name as "companyName" from public.employment e join public.person p on p.id=e.person_id and p.tenant_id=e.tenant_id join public.company c on c.id=e.company_id and c.tenant_id=e.tenant_id where e.tenant_id=${fresh.tenantId}::uuid and not app.is_self_person(e.person_id) and (app.can_admin_employment(e.id) or app.can_admin_perfcomp_employment(e.id)) and (p.full_name ilike ${pattern} or coalesce(e.employee_code,'') ilike ${pattern}) order by p.full_name,e.id limit 26`);
  let nominated:Subject|null=null,history:Awaited<ReturnType<typeof reviewedCompensationHistoryTx>>=[];

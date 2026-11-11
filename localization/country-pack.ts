@@ -420,6 +420,8 @@ export interface CountryPack {
     /** Optional trusted human full-row reviewed source; never a generic model executor. */
     reviewed?:{readEditable:MyStatutoryModule['readReviewedStatutoryEditableMYTx'];choices:MyStatutoryModule['reviewedStatutoryChoiceMetadataMYTx'];labels:MyStatutoryModule['readReviewedStatutoryLabelsMYTx'];lockSubject:MyStatutoryModule['lockReviewedStatutoryProfileMYTx'];prepare:MyStatutoryModule['prepareReviewedStatutoryProfileMYTx'];confirm:MyStatutoryModule['confirmReviewedStatutoryProfileMYTx'];readReference:MyStatutoryModule['readReviewedStatutoryProfileReferenceMYTx']};
     get: MyStatutoryModule['getStatutoryProfileMY'];
+    /** Set-wise `get` for a caller-held scoped snapshot (the Personnel export): one read for many people. */
+    getManyTx?: MyStatutoryModule['getStatutoryProfilesMYTx'];
     /** Exact country-owned row revision for masked ESS concurrency checks; never a value digest. */
     getEditSnapshot?: MyStatutoryModule['getStatutoryEditSnapshotMY'];
     setTp3: MyStatutoryModule['setTp3ProfileMY'];
@@ -439,6 +441,8 @@ export interface CountryPack {
     validatePassport:MyStatutoryModule['validatePassportProfileMY'];
     setTax: MyStatutoryModule['setTaxProfileMY'];
     getTaxSelection?: MyTaxSelectionModule['getTaxSelectionMY'];
+    /** Set-wise borrowed read-only `getTaxSelection` for a caller-held scoped snapshot (the Personnel export). */
+    getTaxSelections?: MyTaxSelectionModule['getTaxSelectionsMY'];
     saveTaxSelection?: MyTaxSelectionModule['saveTaxSelectionMY'];
     initializeHiredTaxSelectionTx?: MyTaxSelectionModule['initializeHiredTaxSelectionMYTx'];
     initializeTransferredTaxSelectionTx?: MyTaxSelectionModule['initializeTransferredTaxSelectionMYTx'];

@@ -4,7 +4,7 @@ import * as React from 'react';
 import {Button} from '@/components/ui';
 import {Card,CardContent,CardHeader} from '@/components/ui/card';
 import type {EmployeeHomeCard} from '@/lib/employee-home';
-import {deliverHomeCard,type HomeCardDelivery,type HomeCardReader} from '@/lib/employee-home-delivery';
+import {createHomeCardRefreshGate,deliverHomeCard,type HomeCardDelivery,type HomeCardReadActivity,type HomeCardReader} from '@/lib/employee-home-delivery';
 
 type Labels={loading:string;failed:string;timeout:string;retry:string;refresh:string};
 type View<T>={key:string;result:HomeCardDelivery<T>|{state:'loading'}};
@@ -21,15 +21,40 @@ function DeliveredBody<T>({value,render}:{value:T;render:(value:T)=>React.ReactN
   return render(value);
 }
 
+/** Automatic refresh on focus, visibility and an interval. Pass `activity` to the card it refreshes:
+ * a refresh never cancels that card's read while it is in flight (see createHomeCardRefreshGate). */
+export function useHomeCardRefresh(intervalMs:number){
+  const [refresh,setRefresh]=React.useState(0);
+  const [gate]=React.useState(createHomeCardRefreshGate);
+  React.useEffect(()=>{
+    const update=()=>{
+      if(document.visibilityState!=='visible'||!gate.allow())return;
+      setRefresh(value=>value+1);
+    };
+    window.addEventListener('focus',update);
+    document.addEventListener('visibilitychange',update);
+    const timer=window.setInterval(update,intervalMs);
+    return ()=>{
+      window.removeEventListener('focus',update);
+      document.removeEventListener('visibilitychange',update);
+      window.clearInterval(timer);
+    };
+  },[intervalMs,gate]);
+  return {refresh,activity:gate as HomeCardReadActivity};
+}
+
 /** Client-side composition boundary. Supply a stable reader from the client card owner, not an
  * unserializable function through a Server Component. Empty/unavailable facts belong to that owner's
  * typed result; a failed transport must never be reinterpreted as an empty list or a calm summary.
  */
-export function IndependentHomeCard<T>({card,title,labels,requestKey,read,children,className,regionRef,footer}:{
+export function IndependentHomeCard<T>({card,title,labels,requestKey,read,children,className,regionRef,footer,initialRead,activity}:{
   card:EmployeeHomeCard;title:string;labels:Labels;requestKey:string;read:HomeCardReader<T>;
   children:(value:T)=>React.ReactNode;className?:string;
   regionRef?:React.Ref<HTMLDivElement>;
   footer?:React.ReactNode;
+  initialRead?:HomeCardReader<T>;
+  /** Told when each read starts and settles, so an automatic refresh never cancels one in flight. */
+  activity?:HomeCardReadActivity;
 }){
   const titleId=React.useId();
   const [attempt,setAttempt]=React.useState(0);
@@ -42,11 +67,13 @@ export function IndependentHomeCard<T>({card,title,labels,requestKey,read,childr
     const controller=new AbortController();
     let current=true;
     setView({key,result:{state:'loading'}});
-    void deliverHomeCard(read,{signal:controller.signal}).then(next=>{
+    activity?.start();
+    void deliverHomeCard(attempt===0&&initialRead?initialRead:read,{signal:controller.signal}).then(next=>{
+      activity?.settle();
       if(current&&next.state!=='cancelled')setView({key,result:next});
     });
     return ()=>{current=false;controller.abort();};
-  },[key,read]);
+  },[key,read,attempt,initialRead,activity]);
   const renderFailed=React.useCallback(()=>{
     setView({key,result:{state:'failed',reason:'unavailable'}});
   },[key]);

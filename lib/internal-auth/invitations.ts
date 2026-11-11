@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import {validateTenantPassword} from './password-policy';
 import { generateSecret } from 'otplib';
-import { client } from '../../db/client';
+import { client, withPoolWork } from '../../db/client';
 import { internalConfig, internalIssuer } from './config';
 import { digest, opaque, passwordHash, validOpaque } from './crypto';
-import { authTransaction, readRecord, writeRecord } from './store';
+import { authTransaction, admittedAuthSql, readRecord, writeRecord } from './store';
 import { InternalAuthError, loginKey, takeRate, type Credential, type Organization, type AuthReply } from './service';
 import { sendInternalMail, type MailTransport } from './mail';
 import { AccountEmailDeliveryError, type AccountEmailContext } from '../account-email-model';
@@ -14,9 +14,9 @@ import {accountEmailAction,invitationEmailContent} from '../account-email-conten
 export async function sendInternalInvitation(email: string, activationPath: string, context?: AccountEmailContext, transport?: MailTransport) {
   const match = /^\/invite\/([A-Za-z0-9_-]{43})\/activate$/.exec(activationPath);
   if (!match || !context) throw new AccountEmailDeliveryError('notEligible');
-  const rows = await client.unsafe('select * from app.internal_auth_invitation_mail($1::uuid,$2::uuid,$3)', [context.deliveryId, context.leaseToken, digest(match[1])]);
+  const rows = await withPoolWork('authentication', () => client.unsafe('select * from app.internal_auth_invitation_mail($1::uuid,$2::uuid,$3)', [context.deliveryId, context.leaseToken, digest(match[1])]));
   const invitation = rows[0];
-  const org = invitation ? await readRecord<Organization>(client, `tenant:${invitation.tenant_id}`) : null;
+  const org = invitation ? await readRecord<Organization>(admittedAuthSql, `tenant:${invitation.tenant_id}`) : null;
   if (!org || invitation.email !== email) throw new AccountEmailDeliveryError('notEligible');
   const design=await accountEmailDesign(context.deliveryId,context.leaseToken),link=internalConfig().origin+activationPath;
   await sendInternalMail({to:email,...renderEmailDesign(design.document,'invitation',design.locale,{...invitationEmailContent(org.code,link,design.locale),link,buttonLabel:accountEmailAction('invitation',design.locale)},{...design.data,company_name:design.data?.company_name??org.name,organization_code:org.code,expiry_days:'7'})},transport);
@@ -26,14 +26,14 @@ export async function startInvitation(token: string, username: string, password:
   if (!validOpaque(token)) throw new InternalAuthError('invalidChallenge');
   if (!sourceBudgeted) await takeRate('invite-global', 120, 3600_000);
   await takeRate(`invitation:${digest(token)}`, 5);
-  const rows = await client.unsafe('select * from app.internal_auth_invitation($1)', [digest(token)]);
+  const rows = await withPoolWork('authentication', () => client.unsafe('select * from app.internal_auth_invitation($1)', [digest(token)]), undefined, {idempotent:true});
   const invitation = rows[0];
   if (!invitation) throw new InternalAuthError('invalidChallenge');
-  const org = await readRecord<Organization>(client, `tenant:${invitation.tenant_id}`);
+  const org = await readRecord<Organization>(admittedAuthSql, `tenant:${invitation.tenant_id}`);
   username = username.trim().toLowerCase();
   if (!org || !/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username)) throw new InternalAuthError('invalidChallenge');
-  await validateTenantPassword(client,{tenantId:org.tenantId,username,email:invitation.email},password);
-  if (await readRecord(client, loginKey(org.code, username))) throw new InternalAuthError('conflict');
+  await validateTenantPassword(admittedAuthSql,{tenantId:org.tenantId,username,email:invitation.email},password);
+  if (await readRecord(admittedAuthSql, loginKey(org.code, username))) throw new InternalAuthError('conflict');
   const c: Credential = { subject: randomUUID(), tenantId: org.tenantId, issuer: internalIssuer(org.tenantId), organization: org.code,
     username, email: invitation.email, emailVerified: false, enabled: false, password: await passwordHash(password), passwordChangedAt: Date.now(), mustChange: false,
     version: randomUUID(), totpSecret: null, lastStep: -1, recoveryHashes: [] };
@@ -49,10 +49,10 @@ export async function startInvitation(token: string, username: string, password:
 /** Existing credentials may accept only invitations for their own tenant namespace and verified address. */
 export async function acceptInternalInvitation(token: string, identity: { issuer: string; subject: string; email?: string | null; emailVerified: boolean }) {
   if (!validOpaque(token) || !identity.emailVerified) throw new InternalAuthError('invalidChallenge');
-  const rows = await client.unsafe('select * from app.internal_auth_invitation($1)', [digest(token)]);
+  const rows = await withPoolWork('authentication', () => client.unsafe('select * from app.internal_auth_invitation($1)', [digest(token)]), undefined, {idempotent:true});
   const invitation = rows[0];
   if (!invitation || identity.issuer !== internalIssuer(invitation.tenant_id) || identity.email?.toLowerCase() !== invitation.email.toLowerCase()) throw new InternalAuthError('invalidChallenge');
-  const org = await readRecord<Organization>(client, `tenant:${invitation.tenant_id}`);
+  const org = await readRecord<Organization>(admittedAuthSql, `tenant:${invitation.tenant_id}`);
   if (!org || org.tenantId !== invitation.tenant_id) throw new InternalAuthError('invalidChallenge');
   await (await import('../../core/auth')).acceptInvitation({ token, issuer: identity.issuer, subject: identity.subject, verifiedEmail: identity.email! });
   return org.code;

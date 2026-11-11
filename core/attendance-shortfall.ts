@@ -3,6 +3,8 @@
  */
 import { isAttendanceTrace } from './attendance-trace';
 import type { ApprovedAllowanceLeavePiece } from '../packs/leave/service';
+import type { AllowanceAttendanceFactReason, AllowanceAttendanceFactSource, RecordedAllowanceAttendanceFacts } from '../lib/attendance-allowance-day-types';
+export type { AllowanceAttendanceFactReason, AllowanceAttendanceFactSource, RecordedAllowanceAttendanceFacts } from '../lib/attendance-allowance-day-types';
 
 export type RecordedAllowanceAttendance = {
   checkInAt: Date | string | null;
@@ -13,31 +15,6 @@ export type RecordedAllowanceAttendance = {
   lateMinutes: number | null;
   earlyOutMinutes: number | null;
   calcTrace: unknown;
-};
-export type AllowanceAttendanceFactSource =
-  | 'recorded-attendance' | 'recorded-attendance-trace'
-  | 'recorded-attendance-and-approved-leave' | 'unavailable';
-export type AllowanceAttendanceFactReason =
-  | 'recorded-fixed-clock-applicability' | 'fixed-clock-applicability-not-recorded'
-  | 'attendance-not-recorded' | 'incomplete-clocks' | 'shortfall-not-recorded'
-  | 'recorded-zero-shortfall' | 'no-approved-leave' | 'approved-leave-allocation-unknown'
-  | 'recorded-normal-target-unavailable' | 'recorded-full-day-basis-unavailable'
-  | 'approved-leave-minutes-unavailable' | 'approved-full-day-leave'
-  | 'approved-partial-leave-adjustment' | 'recorded-non-workday';
-export type RecordedAllowanceAttendanceFacts = {
-  fixedClockApplicable: boolean | null;
-  lateMinutes: number | null;
-  earlyOutMinutes: number | null;
-  recordedLateMinutes: number | null;
-  recordedEarlyOutMinutes: number | null;
-  incomplete: boolean;
-  shortMinutes: number | null;
-  recordedUnderMinutes: number | null;
-  recordedNormalMinutes: number | null;
-  fullDayNormalMinutes: number | null;
-  leaveMinutes: number | null;
-  sources: { applicability: AllowanceAttendanceFactSource; shortfall: AllowanceAttendanceFactSource };
-  reasons: { applicability: AllowanceAttendanceFactReason; shortfall: AllowanceAttendanceFactReason };
 };
 const measurement = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;

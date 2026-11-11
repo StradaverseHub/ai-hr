@@ -16,7 +16,7 @@ const profileKeys: Record<string, keyof PersonProfileFields | 'phone'> = { mobil
 const statutoryKeys: Record<string, string> = { bankName: 'bank_name', bankAcc: 'bank_account_no', epfNo: 'epf_number', taxNo: 'tax_number' };
 export const v9PersonnelWritableKeys = [...Object.keys(profileKeys), ...Object.keys(statutoryKeys), 'gender', 'marital'];
 export async function lockV9PersonnelWritesTx(tx: Tx, ctx: SessionContext): Promise<void> {
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
   await lockProfileValueWritesTx(tx, ctx.tenantId);
 }

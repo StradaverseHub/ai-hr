@@ -8,7 +8,8 @@ import {setEmploymentPayComponent,endEmploymentPayComponent,tryLockPayrollHistor
 import { hasExitDateAuthorityTx } from './exit-date-authority';
 import { hasClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {assertCostAllocationTransferTx} from './employment-cost-allocations';
-import {lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockAccessAdministratorSetTx,lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockEmploymentLeaveDependenciesTx,lockOrgReportingTx,lockPersonValueWritesTx} from './workforce-lock-mode';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
 import {setWorkforceEmployeeCode} from './workforce-code';
 import {personnelField} from '../lib/personnel-field-registry';
@@ -214,6 +215,10 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
   const run = async (tx:Tx) => withSystemLabelCompanyTx(tx,p.companyId,async()=>{
     // Hiring is a Workforce command even when called without a page/import facade. Acquire fresh
     // access before Criteria/data locks; reusing a person cannot cross their retained explicit deny.
+    // Reader/writer lock: a hire keeps the exclusive lock (the Workforce check takes it when nothing is held)
+    // while the MY statutory initialisation below still takes the exclusive statutory interval; a shared hire
+    // would upgrade there. Once that owner joins the shared lock, a shared hire also needs the guard first for
+    // an existing person with a login and the reporting-line serialiser before the writes when a manager is set.
     await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
     if(p.person.id)await assertWorkforcePersonTx(tx,ctx,p.person.id,'maintain');
     // A hire changes cohort membership and may create opening ledger grants. Own configuration
@@ -552,7 +557,7 @@ export async function transferEmployee(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const run = async (tx: Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     const [cur] = await tx
@@ -719,9 +724,15 @@ export async function terminateEmploymentTx(
   p = { ...p, ...(p.movement ? { movement: { ...p.movement } } : {}) };
   // Termination changes both this employment and its assignment/reporting dependency graph.
   // Access must precede dependency ownership; the canonical consequence assertion repeats Access.
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
-  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
-  await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+  // Reader/writer lock (S+A): shared Access, then the administrator guard before any other lock. Ending the
+  // employment of a person with a login can shrink the usable administrator set, and while writers share the
+  // Access lock only the guard serialises the deferred last-administrator check. Leave dependencies then wait
+  // for this employment, and the reporting-line serialiser is owned before the employment row is written,
+  // because the open reporting lines are closed after it. A caller holding the exclusive lock keeps its locks.
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockAccessAdministratorSetTx(tx, ctx.tenantId);
+  await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: true });
+  await lockOrgReportingTx(tx, ctx.tenantId);
   // ae9350f2 — the coded reason is the single source of the classification when it is present. An unknown
   // code resolves to null and falls back to whatever the caller passed, so a tampered form can neither set
   // an arbitrary code (core/movement.ts validates before reaching here) nor silently blank the enum.
@@ -843,9 +854,15 @@ export async function reverseTerminationTx(
   ctx: SessionContext,
   p: { employmentId: string; terminationDate: string; terminatedAt: Date; movement: MovementTag; reversalOf: string },
 ): Promise<{ reopenedAssignmentId: string | null; reopenedReportingLineIds: string[] }> {
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
-  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
-  await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+  // Reader/writer lock. Shared Access, then the administrator guard (this writes terminated_on, so it follows the
+  // same order as a termination) and this employment's leave dependencies. A line is reopened "only while it still
+  // ends on that date and nothing newer has replaced it": a check-then-write on other employments' reporting lines
+  // that exclusivity used to serialise. The tenant reporting-line serialiser (5001) is taken before those reads, so
+  // a concurrent reporting-line change is either fully visible to the check or waits for this reversal.
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockAccessAdministratorSetTx(tx, ctx.tenantId);
+  await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: true });
+  await lockOrgReportingTx(tx, ctx.tenantId);
   const [emp] = await tx
     .select({ terminatedOn: employment.terminatedOn,companyId:employment.companyId })
     .from(employment)
@@ -956,6 +973,9 @@ export async function terminateEmployment(ctx: SessionContext, p: TerminateEmplo
   // Direct lifecycle maintenance is distinct from an independently authorized accepted resignation.
   // The in-transaction termination owner remains shared with that decision; no caller flag bypasses it.
   return withTenant(ctx, async (tx) => {
+    // Shared Access (S+A): the guard is taken first, then the Workforce check joins the shared lock.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessAdministratorSetTx(tx, ctx.tenantId);
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     return terminateEmploymentTx(tx, ctx, p);
   });
@@ -1248,7 +1268,7 @@ export async function editDelegation(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [old] = await tx
       .update(reportingLine)
@@ -1395,8 +1415,20 @@ export async function setReportingLine(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const run = async (tx: Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    if (p.lineType === 'delegate') {
+      // A delegation hands a stand-in approvals across the delegator's whole scope; it keeps the exclusive lock.
+      await tx.execute(sql`select app.access_configuration_write_lock()`);
+      await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    } else {
+      // A structural line for one subordinate: shared Access. Approver routing is read per subordinate, so the
+      // subordinate's leave-dependency lock replaces exclusive configuration under the shared lock. The cycle
+      // preflight and "supersede the prior open line" are check-then-writes on the reporting graph that
+      // exclusivity used to serialise: the tenant reporting-line serialiser (5001) is taken before them, so a
+      // concurrent edge is either visible to the preflight (same ReportingCycleError) or waits for this one.
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.subordinateEmploymentId], { configuration: true });
+      await lockOrgReportingTx(tx, ctx.tenantId);
+    }
     await reportingLinePreflightTx(tx,ctx,p);
     if (p.lineType === 'delegate') {
       return insertDelegateLineTx(tx, ctx, {
@@ -1465,7 +1497,7 @@ export async function readReviewedReportingLineReferenceTx(tx:Tx,supplied:Sessio
 export async function searchReviewedReportingLineChoicesTx(tx:Tx,supplied:SessionContext,selection:{role:'subordinate'|'manager';query:string;subordinateEmploymentId?:string}){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={...selection,query:selection.query.trim()};
  if(p.query.length<2||p.query.length>80||!['subordinate','manager'].includes(p.role)||p.role==='manager'&&!p.subordinateEmploymentId)throw new Error('Reporting choices unavailable');
- await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);
  if(p.role==='manager')await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId!,'maintain');
  const pattern='%'+p.query.replace(/[\\%_]/g,value=>'\\'+value)+'%',purpose=p.role==='subordinate'?'workforce.maintain':'workforce.view';
  const rows=await tx.select({employmentId:employment.id,employeeCode:employment.employeeCode,name:person.fullName,companyName:sql<string>`coalesce(${company.companyLabel},${company.legalName})`}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),sql`app.access_workforce_employment(${employment.id},${purpose})`,p.role==='manager'?sql`${employment.id}<>${p.subordinateEmploymentId}::uuid`:undefined,sql`(${person.fullName} ilike ${pattern} escape ${'\\'} or coalesce(${employment.employeeCode},'') ilike ${pattern} escape ${'\\'})`)).orderBy(sql`coalesce(${company.companyLabel},${company.legalName})`,sql`${employment.employeeCode} nulls last`,employment.id).limit(21);
@@ -1517,8 +1549,19 @@ export async function endReportingLine(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    // A line's subordinate and type never change (an edit supersedes it with a new row), so they choose the lock
+    // mode before any lock is taken. Ending a structural line changes one subordinate's approver: shared Access,
+    // that subordinate's leave-dependency lock and the reporting-line serialiser. A delegation, or a line this
+    // session cannot see, keeps the exclusive lock and its existing outcome.
+    const [nominated]=await tx.select({subject:reportingLine.subordinateEmploymentId,type:reportingLine.lineType}).from(reportingLine).where(eq(reportingLine.id,p.reportingLineId)).limit(1);
+    if(nominated&&nominated.type!=='delegate'){
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [nominated.subject], { configuration: true });
+      await lockOrgReportingTx(tx, ctx.tenantId);
+    }else{
+      await tx.execute(sql`select app.access_configuration_write_lock()`);
+      await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    }
     const [line]=await tx.select({subject:reportingLine.subordinateEmploymentId,type:reportingLine.lineType}).from(reportingLine).where(eq(reportingLine.id,p.reportingLineId)).limit(1);
     if(line&&line.type!=='delegate')await assertWorkforceEmploymentTx(tx,ctx,line.subject,'maintain');
     const [ended] = await tx
@@ -1715,9 +1758,10 @@ async function writePersonProfile(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const run = async (tx:Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    // One person's values: shared Access unless the caller already holds the exclusive lock, then the person's
+    // leave dependencies, the shared profile-policy lock and the per-person lock, before the person row lock.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockPersonValueWritesTx(tx,ctx.tenantId,p.personId);
     const [before] = await tx
       .select({
         fullName: person.fullName,
@@ -1813,7 +1857,8 @@ async function writePersonProfile(
 export function updatePerson(ctx:SessionContext,p:{personId:string;fullName:string;primaryEmail:string;phone?:string|null;via?:string}&PersonProfileFields,outerTx?:Tx){
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
- const run=async(tx:Tx)=>{await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');return writePersonProfile(ctx,{...p,phone:p.phone??null},tx);};
+ // Shared Access; the Workforce check joins it and writePersonProfile takes the person's value locks.
+ const run=async(tx:Tx)=>{await lockAccessConfigurationTx(tx,ctx.tenantId);await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');return writePersonProfile(ctx,{...p,phone:p.phone??null},tx);};
  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 /** Canonical partial profile adapter. Omitted trio values retain exact stored nullable data.
@@ -1880,8 +1925,10 @@ export async function setEmploymentWorkState(
   p = { ...p };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+    // One employment's value: shared Access, then this employment's leave-dependency lock (waiting, bounded),
+    // which serialises the read-modify-write against other writers and leave commands for this employment.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: false });
     const [before] = await tx
       .select({ workState: employment.workState })
       .from(employment)
@@ -1926,8 +1973,9 @@ export async function setEmploymentHolidayCalendar(
   p = { ...p, selection: p.selection ? { ...p.selection } : p.selection };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+    // One employment's value: shared Access, then this employment's leave-dependency lock (see work state).
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: false });
     const [before] = await tx
       .select({ workState: employment.workState, holidayGroupId: employment.holidayGroupId })
       .from(employment)
@@ -2011,8 +2059,11 @@ export async function setEmploymentGrade(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const run = async (tx: Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    // One employment's grade. Shared Access, then this employment's leave-dependency lock: grade-scoped
+    // entitlements are read per employment, so leave commands for this employment wait and others do not.
+    // A movement holding the exclusive lock keeps the exclusive configuration lock it always took.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: true });
     const [before] = await tx
       .select({ gradeId: employment.gradeId })
       .from(employment)
@@ -2107,8 +2158,17 @@ export async function setEmploymentAssignment(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const run = async (tx: Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    if (p.companyId !== undefined) {
+      // Naming a company makes this an entity move between companies: it stays exclusive with its transfer owners.
+      await tx.execute(sql`select app.access_configuration_write_lock()`);
+      await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    } else {
+      // Department, position, type or status of one employment: shared Access, then this employment's leave
+      // dependencies (cohort membership and approver routing are read per employment), which also serialise
+      // the close-and-insert of its dated assignment against another writer of the same employment.
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: true });
+    }
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     if(p.companyId)await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
     const [cur] = await tx
@@ -2378,7 +2438,7 @@ export async function changeEmploymentCompany(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
@@ -2596,7 +2656,7 @@ export async function transferEmploymentCompanyTx(
 ) {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
   await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
@@ -3173,8 +3233,13 @@ export async function setEmploymentInfo(
   if (Object.keys(set).length === 0) throw new Error('Nothing to change.');
 
   const run = async (tx: Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    // Reader/writer lock. One employment's information: shared Access unless the caller already holds the
+    // exclusive lock. A save that moves the resignation or last working date can end the employment of a person
+    // with a login (S+A), so it takes the administrator guard before any other lock. Leave commands on this
+    // employment then wait for the write; the leave-dependency employment lock serialises the read-modify-write.
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    if ('resignationDate' in set || 'lastWorkingDate' in set) await lockAccessAdministratorSetTx(tx, ctx.tenantId);
+    await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: true });
     if(!probationDateAuthorityTx(tx,p as unknown as Record<string,unknown>)&&!contractDateAuthorityTx(tx,p))await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     // 1d58019a Step 2 — the exit-tag rule above, for one of the organisation's OWN Termination types. Its
     // code is not the string 'termination', so ask the catalogue (the custom row's behaviour). Only the
@@ -3564,7 +3629,7 @@ async function paymentMethodBankReadinessTx(tx:Tx,ctx:SessionContext,personId:st
  * Existing native setter behavior remains: only bank_transfer requires the two MY bank inputs. */
 export async function prepareEmploymentPaymentMethodTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;paymentMethod:PaymentMethod|null}){
  if(!(ctx.roles??[]).some(role=>role==='hr_admin'||role==='super_admin'))throw Error('Payment method unavailable');
- await tx.execute(sql`select app.access_workforce_write_lock()`);await lockProfileValueWritesTx(tx,ctx.tenantId);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockProfileValueWritesTx(tx,ctx.tenantId);
  await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
  const [row]=await tx.select({employmentId:employment.id,personId:employment.personId,companyId:employment.companyId,paymentMethod:employment.paymentMethod,terminatedOn:employment.terminatedOn,revision:sql<string>`xmin::text`}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).for('update');
  if(!row||row.terminatedOn)throw Error('Payment method unavailable');
@@ -3686,7 +3751,7 @@ export async function setDesignatedPaymaster(
 /** Actual canonical owners apply only the protected accepted intent, under the real owner session. */
 export async function applyAcceptedContractRecordsTx(tx:Tx,ctx:SessionContext,caseId:string):Promise<Record<string,unknown>>{
  ctx={...ctx,roles:[],grants:[]};
- await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);
  await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  return withAcceptedContractRecordIntentTx(tx,caseId,async intent=>{
@@ -3703,7 +3768,7 @@ export async function applyAcceptedContractRecordsTx(tx:Tx,ctx:SessionContext,ca
    // The ordinary marker filters login grants. The genuine owner executor discovers only
    // this protected employment's processed runs and delegates each write to its canonical owner.
    const {markBatchNeedsRecalc}=await import('../packs/payroll/service');
-   const batches=await tx.execute<{id:string}>(sql`select b.id from payroll_batch b where b.tenant_id=${ctx.tenantId}::uuid and b.status='processed' and b.pay_period>=${intent.startOn.slice(0,7)} and exists(select 1 from payslip p where p.batch_id=b.id and p.tenant_id=b.tenant_id and p.employment_id=${intent.employmentId}::uuid) order by b.id for update nowait`);
+   const batches=await tx.execute<{id:string}>(sql`select b.id from payroll_batch b where b.tenant_id=${ctx.tenantId}::uuid and b.status in ('processed','processing') and b.pay_period>=${intent.startOn.slice(0,7)} and exists(select 1 from payslip p where p.batch_id=b.id and p.tenant_id=b.tenant_id and p.employment_id=${intent.employmentId}::uuid) order by b.id for update nowait`);
    for(const batch of batches)await markBatchNeedsRecalc(tx,ctx,{batchId:batch.id,employmentIds:[intent.employmentId],category:'compensation'});
   }
   await tx.execute(sql`select app.contract_prepare_record_dates(${caseId}::uuid)`);
@@ -3713,7 +3778,7 @@ export async function applyAcceptedContractRecordsTx(tx:Tx,ctx:SessionContext,ca
 }
 
 export async function applyContractMaternityEndTx(tx:Tx,ctx:SessionContext,caseId:string){
- ctx={...ctx,roles:[],grants:[]};await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ ctx={...ctx,roles:[],grants:[]};await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  return withContractMaternityRecordIntentTx(tx,caseId,async intent=>{await lockLeaveDependenciesTx(tx,ctx.tenantId,[intent.employmentId]);await setEmploymentInfo(ctx,{employmentId:intent.employmentId,contractEndDate:intent.endOn},tx);const [r]=await tx.execute<{data:Record<string,unknown>}>(sql`select app.contract_finish_maternity_records(${caseId}::uuid) as data`);return r.data;});
 }
 
@@ -3723,7 +3788,7 @@ export async function applyContractMaternityEndTx(tx:Tx,ctx:SessionContext,caseI
 export async function projectEmploymentOrganisationAssignmentTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;effectiveOn:string;trigger:OrganisationTagTrigger}):Promise<{changed:number;assignmentIds:string[]}>{
   if(!isCalendarDate(p.effectiveOn))throw new Error('Select a valid organisation reference date.');
   await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);
   const [emp]=await tx.select().from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).for('update');
   if(!emp)throw new Error('Employment is unavailable.');
   const endedOn=earliestEmploymentDate(emp.resignationDate,emp.lastWorkingDate,emp.terminatedOn);

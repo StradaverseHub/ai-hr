@@ -16,7 +16,7 @@ import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {payslipReleaseAt} from '../core/payroll-policy-config';
 import {setPayrollConfig} from '../core/payroll-config';
 import {erasePersonPii} from '../core/pdpa';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {createBatch,createAdditionalRun,generatePayslips,setPayrollInput,unlockClosedBatch,setPayrollPermissionGrant} from '../packs/payroll/service';
 import {prepareReviewedPayrollCloseSourceTx,confirmReviewedPayrollCloseSourceTx} from '../core/assistant-actions/reviewed-payroll-close-source';
 import {preparePayrollCloseReview,confirmPayrollCloseReview,reopenPayrollCloseReview,discardPayrollCloseReview,listPayrollCloseReviews} from '../core/assistant-actions/payroll-close-review-store';

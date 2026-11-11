@@ -13,7 +13,7 @@ const fail=positionArchiveUnavailable;
 const Fields=z.object({title:z.string(),jobFamily:z.string().nullable(),label:z.string().nullable(),description:z.string().nullable(),isGlobal:z.boolean(),companyId:z.guid()}).strict();
 const Source=z.object({positionId:z.guid(),companyId:z.guid(),companyName:z.string(),title:z.string(),archived:z.boolean(),inUse:z.boolean(),fields:Fields,revision:z.string(),companyRevision:z.string(),criteria:z.unknown(),epoch:z.string(),authority:z.unknown()}).strict();
 export async function lockPositionArchiveSourceTx(tx:Tx,ctx:SessionContext,id:string){
- await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  await lockLabelCriteriaReadTx(tx,ctx.tenantId);
  // Refuse before projecting private catalogue metadata. Same native HR/origin-company gate.

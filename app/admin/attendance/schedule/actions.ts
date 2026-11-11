@@ -1,7 +1,7 @@
 'use server';
 import { saveScheduleGroupControl } from '@/core/schedule-group-controls';
 import { withTenant } from '@/db/client';
-import { lockAccessConfigurationTx } from '@/core/access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from '@/core/access-configuration-lock';
 import { lockAttendanceClockPolicyConfigurationTx, saveScheduleGroupClockPolicy } from '@/packs/attendance/service';
 import { readScheduleClockPolicyFields } from './clock-policy-fields';
 import { parseOtRows } from './overtime-fields';
@@ -195,7 +195,7 @@ export async function saveScheduleGroupAttendanceAction(fd: FormData) {
     if(clock) {
       const reason=(await getTranslations('scheduleGroupEditor'))('systemReason');
       await withTenant(s, async tx=>{
-        await lockAccessConfigurationTx(tx,s.tenantId);
+        await lockAccessConfigurationWriteTx(tx,s.tenantId);
         await lockAttendanceClockPolicyConfigurationTx(tx,s);
         await updateAttendanceRuleSection(s,{ruleId,section:'attendance',fields},tx);
         await saveScheduleGroupClockPolicy(s,{ruleId,scope:clock.scope,policy:clock.policy,expected:clock.expected,reason},tx);

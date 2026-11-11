@@ -23,18 +23,18 @@ describe('section import actual row source intervals',()=>{
  });
  it('rolls back the first refused row, releases only its owned holder, and allows the independent second row',async()=>{
   const a=await hire('SECA'),b2=await hire('SECB'),holder=await held(a.employmentId),before=await state(),actual=tenantDb.withTenant;let rowTransactions=0,afterFirst:Awaited<ReturnType<typeof state>>|undefined;
-  const boundary=vi.spyOn(tenantDb,'withTenant').mockImplementation(async(ctx,fn)=>{if(fn.toString().includes('Section import inputs changed')){rowTransactions++;if(rowTransactions===1){try{return await actual(ctx,fn);}finally{afterFirst=await state();await holder.close();}}}return actual(ctx,fn);});
+  const boundary=vi.spyOn(tenantDb,'withTenant').mockImplementation(async(ctx,fn)=>{if(fn.toString().includes('applySectionRowTx')){rowTransactions++;if(rowTransactions===1){try{return await actual(ctx,fn);}finally{afterFirst=await state();await holder.close();}}}return actual(ctx,fn);});
   try{const result=await commitSectionImport(group(),input());expect(rowTransactions).toBe(2);expect(afterFirst).toEqual(before);expect(result.updated).toBe(1);expect(result.failed.map(row=>row.rowNum)).toEqual([1]);const after=await state();expect(after.people.find(row=>row.id===a.personId)?.permanentCity).toBeNull();expect(after.people.find(row=>row.id===b2.personId)?.permanentCity).toBe('Fictional City B');}
   finally{boundary.mockRestore();await holder.close();}
   const retry=await commitSectionImport(group(),{section:'profile',records:[input().records[0]]});expect(retry.updated).toBe(1);
  });
  it('freshly resolves the original Employee ID and refuses changed person binding instead of retargeting',async()=>{
   const a=await hire('SECA'),other=await hire('OTHER'),before=await state(),actual=tenantDb.withTenant;let changed=false;
-  const boundary=vi.spyOn(tenantDb,'withTenant').mockImplementation(async(ctx,fn)=>{if(!changed&&fn.toString().includes('Section import inputs changed')){changed=true;await owner.db.update(schema.employment).set({employeeCode:'MOVED'}).where(eq(schema.employment.id,a.employmentId));await owner.db.update(schema.employment).set({employeeCode:'SECA'}).where(eq(schema.employment.id,other.employmentId));}return actual(ctx,fn);});
+  const boundary=vi.spyOn(tenantDb,'withTenant').mockImplementation(async(ctx,fn)=>{if(!changed&&fn.toString().includes('applySectionRowTx')){changed=true;await owner.db.update(schema.employment).set({employeeCode:'MOVED'}).where(eq(schema.employment.id,a.employmentId));await owner.db.update(schema.employment).set({employeeCode:'SECA'}).where(eq(schema.employment.id,other.employmentId));}return actual(ctx,fn);});
   try{const result=await commitSectionImport(group(),{section:'profile',records:[input().records[0]]});expect(changed).toBe(true);expect(result.updated).toBe(0);expect(result.failed.map(row=>row.rowNum)).toEqual([1]);expect(await state()).toEqual(before);}finally{boundary.mockRestore();}
  });
  it('retains omitted cells from the actual locked source rather than an old preview snapshot',async()=>{
-  const a=await hire('SECA'),actual=tenantDb.withTenant;let changed=false;const boundary=vi.spyOn(tenantDb,'withTenant').mockImplementation(async(ctx,fn)=>{if(!changed&&fn.toString().includes('Section import inputs changed')){changed=true;await owner.db.update(schema.person).set({phone:'Fictional concurrent contact'}).where(eq(schema.person.id,a.personId));}return actual(ctx,fn);});
+  const a=await hire('SECA'),actual=tenantDb.withTenant;let changed=false;const boundary=vi.spyOn(tenantDb,'withTenant').mockImplementation(async(ctx,fn)=>{if(!changed&&fn.toString().includes('applySectionRowTx')){changed=true;await owner.db.update(schema.person).set({phone:'Fictional concurrent contact'}).where(eq(schema.person.id,a.personId));}return actual(ctx,fn);});
   try{const result=await commitSectionImport(group(),{section:'profile',records:[input().records[0]]});expect(changed).toBe(true);expect(result.updated).toBe(1);}finally{boundary.mockRestore();}const [fresh]=await owner.db.select().from(schema.person).where(eq(schema.person.id,a.personId));expect(fresh).toMatchObject({phone:'Fictional concurrent contact',permanentCity:'Fictional City A'});
  });
  it('captures uploaded records/options and original caller before the first preview await',async()=>{

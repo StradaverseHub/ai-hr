@@ -366,6 +366,25 @@ describe('days the import refuses to change (plan item 18)', () => {
     expect(await dayRow(emp, '2026-07-15')).toBeUndefined();
   });
 
+  it('keeps prior-month cutoff coverage while importing dates beyond the closed period', async () => {
+    const { emp, batchId } = await onRun('E303');
+    await owner.db.insert(schema.companyPayrollConfig)
+      .values({ tenantId: b.tenantId, companyId: b.companyId, attendanceCutOffDay: 26 })
+      .onConflictDoUpdate({ target: schema.companyPayrollConfig.companyId, set: { attendanceCutOffDay: 26 } });
+    await owner.db.update(schema.payrollBatch).set({ status: 'closed' }).where(eq(schema.payrollBatch.id, batchId));
+
+    const covered = await importText(adminCtx(b), BUILTIN_MAPPING_ID,
+      'staff,time\nE303,2026-06-29 08:00\nE303,2026-06-29 17:00');
+    expect(covered.imported).toBe(0);
+    expect((await linesOf(covered.runId!)).map(line => line.result)).toEqual(['period_closed', 'period_closed']);
+    expect(await dayRow(emp, '2026-06-29')).toBeUndefined();
+
+    const later = await importText(adminCtx(b), BUILTIN_MAPPING_ID,
+      'staff,time\nE303,2026-08-03 08:00\nE303,2026-08-03 17:00');
+    expect(later.imported).toBe(2);
+    expect((await dayRow(emp, '2026-08-03')).checkOutAt).toBe('17:00:00');
+  });
+
   it('a day inside a PROCESSED pay run is updated and that run is marked as needing recalculation', async () => {
     const { emp, batchId } = await onRun('E302');
     const r = await importText(adminCtx(b), BUILTIN_MAPPING_ID, 'staff,time\nE302,2026-07-16 08:00\nE302,2026-07-16 17:00');

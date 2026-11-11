@@ -78,9 +78,11 @@ import {captureStatutorySourceContext,lockStatutorySourceTx} from './statutory-s
  */
 import { and, eq, desc, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
+import { decodeJsonRow, jsonRowSql } from '../db/json-row';
+import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 // ADR-0077 D3 SERVICE GATE — the same binding core/tax-relief.ts uses and for the same reason: a
 // `layout.tsx` covers a RENDER and covers no server action, so the module check belongs on the service.
-import { withPayrollTenant as withTenant } from './module-gate';
+import { withPayrollSnapshotTenant, withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { isAdmin } from '../lib/authz-model';
 import {
@@ -1088,7 +1090,7 @@ type MyTp3Storage = {draftId:string;revision:number};
 export async function saveTp3(ctx: SessionContext,p:Tp3WriteInput):Promise<{id:string;seed:Tp3SeedOutcome}> {
   ctx=captureStatutorySourceContext(ctx);p=structuredClone(p);
   const personId=requireAdminTarget(ctx,p.personId),prepared=prepareTp3(p);
-  return withTenant(ctx,async tx=>{await lockStatutorySourceTx(tx,ctx);return savePreparedTp3Tx(tx,ctx,personId,p,prepared);});
+  return withTenant(ctx,async tx=>{await lockStatutorySourceTx(tx,ctx,{personId});return savePreparedTp3Tx(tx,ctx,personId,p,prepared);});
 }
 async function savePreparedTp3Tx(tx:Tx,ctx:SessionContext,personId:string,p:Tp3WriteInput,prepared:PreparedTp3,self?:MyTp3Storage):Promise<{id:string;seed:Tp3SeedOutcome}> {
   const {assessmentYear,deductionMonth,previousEmployers,payload,remarks}=prepared;
@@ -1216,7 +1218,7 @@ export async function deleteTp3(ctx: SessionContext, p: { personId: string; asse
   const personId = requireAdminTarget(ctx, p.personId);
   const assessmentYear = validateYear(p.assessmentYear);
   await withTenant(ctx, async (tx) => {
-    await lockStatutorySourceTx(tx,ctx);
+    await lockStatutorySourceTx(tx,ctx,{personId});
     const [existing] = await tx
       .select()
       .from(employeeTp3)
@@ -1253,7 +1255,27 @@ const ownTp3=sql`app.principal_snapshot_current() AND app.is_self_person(${emplo
 export function myTp3Employments(ctx:SessionContext):Promise<MyTp3Employment[]> {
   const personId=ctx.personId;
   if(!personId)return Promise.resolve([]);
-  return withTenant(ctx,tx=>tx.select({employmentId:employment.id,company:company.legalName,employeeCode:employment.employeeCode,joinDate:employment.joinDate,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.personId,personId),ownTp3)).orderBy(desc(employment.hiredOn),employment.id));
+  return withTenant(ctx,tx=>myTp3EmploymentsTx(tx,personId));
+}
+const MY_TP3_EMPLOYMENT_FIELDS={employmentId:employment.id,company:company.legalName,employeeCode:employment.employeeCode,joinDate:employment.joinDate,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt};
+const myTp3EmploymentsWhere=(personId:string)=>and(eq(employment.personId,personId),ownTp3);
+function myTp3EmploymentsTx(tx:Tx,personId:string):Promise<MyTp3Employment[]> {
+  return tx.select(MY_TP3_EMPLOYMENT_FIELDS).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(myTp3EmploymentsWhere(personId)).orderBy(desc(employment.hiredOn),employment.id);
+}
+/** myTp3Employments and myTp3History for the read-only Before payroll checklist (core/pre-salary/person-items.ts): the
+ * same statements behind the same Payroll module gate, in ONE REPEATABLE READ READ ONLY snapshot without the
+ * payroll-history barrier. The employments are one statement; the history's two statements read the same snapshot,
+ * taken at the transaction's first statement, so neither can see half of a history correction and the barrier could
+ * only delay them (the reasoning of core/payroll-self-metadata.ts). Nothing is written. Every other caller keeps it. */
+export async function myTp3EmploymentsSnapshot(ctx:SessionContext):Promise<MyTp3Employment[]> {
+  const personId=ctx.personId;
+  if(!personId)return [];
+  return withPayrollSnapshotTenant(ctx,tx=>myTp3EmploymentsTx(tx,personId));
+}
+export async function myTp3HistorySnapshot(ctx:SessionContext):Promise<{records:Tp3Record[];drafts:MyTp3Draft[]}> {
+  const personId=ctx.personId;
+  if(!personId)return {records:[],drafts:[]};
+  return withPayrollSnapshotTenant(ctx,tx=>myTp3HistoryTx(tx,personId));
 }
 export {myTp3Eligibility} from '../lib/my-tp3-eligibility';
 /** Both top-level and legacy payload notes are removed before this model leaves its owner. */
@@ -1266,13 +1288,41 @@ function personalTp3(row:Row):Tp3Record {
 export function myTp3History(ctx:SessionContext):Promise<{records:Tp3Record[];drafts:MyTp3Draft[]}> {
   const personId=ctx.personId;
   if(!personId)return Promise.resolve({records:[],drafts:[]});
-  return withTenant(ctx,async tx=>{
-    const records=await tx.select().from(employeeTp3).where(and(eq(employeeTp3.personId,personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employeeTp3.personId})`)).orderBy(desc(employeeTp3.assessmentYear),employeeTp3.id);
-    const drafts=await tx.execute(sql`select id,employment_id as "employmentId",assessment_year as "assessmentYear",revision,deduction_month as "deductionMonth",previous_employers as "previousEmployers",payload,declaration_accepted as "declarationAccepted",submitted_at as "submittedAt",canonical_id as "canonicalId",projection_outcome as "projectionOutcome",updated_at as "updatedAt" from public.employee_tp3_draft where person_id=${personId}::uuid and app.principal_snapshot_current() and app.is_self_person(person_id) order by assessment_year desc,id`) as unknown as (Omit<MyTp3Draft,'updatedAt'|'submittedAt'>&{updatedAt:string|Date;submittedAt:string|Date|null})[];
+  return withTenant(ctx,tx=>myTp3HistoryTx(tx,personId));
+}
+const myTp3RecordWhere=(personId:string)=>and(eq(employeeTp3.personId,personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employeeTp3.personId})`);
+const myTp3DraftsSql=(personId:string)=>sql`select id,employment_id as "employmentId",assessment_year as "assessmentYear",revision,deduction_month as "deductionMonth",previous_employers as "previousEmployers",payload,declaration_accepted as "declarationAccepted",submitted_at as "submittedAt",canonical_id as "canonicalId",projection_outcome as "projectionOutcome",updated_at as "updatedAt" from public.employee_tp3_draft where person_id=${personId}::uuid and app.principal_snapshot_current() and app.is_self_person(person_id) order by assessment_year desc,id`;
+type MyTp3DraftRow=Omit<MyTp3Draft,'updatedAt'|'submittedAt'>&{updatedAt:string|Date;submittedAt:string|Date|null};
+async function myTp3HistoryTx(tx:Tx,personId:string):Promise<{records:Tp3Record[];drafts:MyTp3Draft[]}> {
+    const records=await tx.select().from(employeeTp3).where(myTp3RecordWhere(personId)).orderBy(desc(employeeTp3.assessmentYear),employeeTp3.id);
+    const drafts=await tx.execute(myTp3DraftsSql(personId)) as unknown as MyTp3DraftRow[];
+    return myTp3HistoryFrom(records,drafts);
+}
+function myTp3HistoryFrom(records:readonly Row[],drafts:readonly MyTp3DraftRow[]):{records:Tp3Record[];drafts:MyTp3Draft[]}{
     // Raw SQL has no Drizzle timestamp decoder; expose the Date contract used by the shared form.
     const date=(value:string|Date)=>new Date(value instanceof Date?value.getTime():value);
     return {records:records.map(personalTp3),drafts:drafts.map(row=>({...row,updatedAt:date(row.updatedAt),submittedAt:row.submittedAt==null?null:date(row.submittedAt)}))};
-  });
+}
+/** myTp3EmploymentsSnapshot and myTp3HistorySnapshot in the one-statement Before payroll read
+ * (core/pre-salary/before-payroll-bundle.ts): their three statements as one JSON value, the same predicates (each with
+ * its own principal and own-person proof) and orders; the drafts' timestamps as the text the driver returns for them.
+ * null without a person (both owners then answer empty without reading). */
+export function myTp3SnapshotBundleSql(ctx:SessionContext){
+  const personId=ctx.personId;
+  if(!personId)return null;
+  return sql`jsonb_build_object('employments',${jsonRowsSql({row:jsonFieldsSql(MY_TP3_EMPLOYMENT_FIELDS),from:sql`${employment} inner join ${company} on ${eq(company.id,employment.companyId)}`,
+    where:myTp3EmploymentsWhere(personId),order:sql`${employment.hiredOn} desc, ${employment.id}`})},
+   'records',${jsonRowsSql({row:jsonRowSql(employeeTp3,'employee_tp3'),from:sql`${employeeTp3}`,where:myTp3RecordWhere(personId),order:sql`${employeeTp3.assessmentYear} desc, ${employeeTp3.id}`})},
+   'drafts',(select coalesce(jsonb_agg(to_jsonb(draft) || jsonb_build_object('submittedAt',draft."submittedAt"::text,'updatedAt',draft."updatedAt"::text)
+     order by draft."assessmentYear" desc, draft.id),'[]'::jsonb) from (${myTp3DraftsSql(personId)}) draft))`;
+}
+export function myTp3SnapshotFromBundle(value:unknown):{employments:MyTp3Employment[];history:{records:Tp3Record[];drafts:MyTp3Draft[]}}{
+  const raw=value as {employments:unknown;records:Record<string,unknown>[];drafts:MyTp3DraftRow[]};
+  return {employments:decodeJsonFieldRows(MY_TP3_EMPLOYMENT_FIELDS,raw.employments) as MyTp3Employment[],
+    // The draft keys in the owner's select order (jsonb orders object keys by length).
+    history:myTp3HistoryFrom(raw.records.map(row=>decodeJsonRow(employeeTp3,row)),raw.drafts.map(row=>({id:row.id,employmentId:row.employmentId,
+     assessmentYear:row.assessmentYear,revision:row.revision,deductionMonth:row.deductionMonth,previousEmployers:row.previousEmployers,payload:row.payload,
+     declarationAccepted:row.declarationAccepted,submittedAt:row.submittedAt,canonicalId:row.canonicalId,projectionOutcome:row.projectionOutcome,updatedAt:row.updatedAt})))};
 }
 export function myTp3Identity(ctx:SessionContext):Promise<Tp3Identity> {
   if(!ctx.personId)throw new Tp3Error('This account is not linked to an employee profile.');
@@ -1281,7 +1331,7 @@ export function myTp3Identity(ctx:SessionContext):Promise<Tp3Identity> {
 }
 export type MyTp3WriteInput=Omit<Tp3WriteInput,'personId'|'remarks'> & {employmentId:string;expectedRevision:number};
 async function saveMyTp3Tx(tx:Tx,ctx:SessionContext,input:MyTp3WriteInput,submit:boolean) {
-  ctx=captureStatutorySourceContext(ctx);input=structuredClone(input);await lockStatutorySourceTx(tx,ctx);
+  ctx=captureStatutorySourceContext(ctx);input=structuredClone(input);await lockStatutorySourceTx(tx,ctx,{personId:ctx.personId??null,employmentId:input.employmentId});
   if(!ctx.personId||!Number.isInteger(input.expectedRevision)||input.expectedRevision<0)throw new Tp3Error('Reload this TP3 draft before saving.');
   const [actual]=await tx.execute(sql`select u.id from public.app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=${ctx.personId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current() and app.is_self_person(${ctx.personId}::uuid) for share`) as unknown as {id:string}[];
   if(!actual?.id)throw new Tp3Error('This account is not linked to this employee profile.');

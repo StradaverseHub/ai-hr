@@ -145,7 +145,13 @@ async function seedRelief(mode='auto',count=7){
 async function allEffects(){
  const dependents=await owner.db.select().from(schema.employeeDependent).where(eq(schema.employeeDependent.tenantId,b.tenantId)).orderBy(schema.employeeDependent.id),statutory=await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,subject.personId)),events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,b.tenantId)).orderBy(schema.domainEvent.sequence),batches=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.tenantId,b.tenantId)).orderBy(schema.payrollBatch.id);
  const queues=await owner.db.execute<{schema:string;name:string}>(sql`select n.nspname as schema,c.relname as name from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','app') and c.relkind='r' and c.relname ~ '(outbox|notification|delivery_queue)' order by n.nspname,c.relname`);
- const counts=[];for(const queue of queues){const [count]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from ${sql.identifier(queue.schema)}.${sql.identifier(queue.name)}`);counts.push([queue.schema,queue.name,count.n]);}return{dependents,statutory,events,batches,counts};
+ const counts=[];for(const queue of queues){
+  if(queue.schema==='public'&&queue.name==='notification_event_processing')continue;
+  const [count]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from ${sql.identifier(queue.schema)}.${sql.identifier(queue.name)}`);
+  counts.push([queue.schema,queue.name,count.n]);
+ }
+ const receipts=await owner.db.select().from(schema.notificationEventProcessing).orderBy(schema.notificationEventProcessing.eventSequence,schema.notificationEventProcessing.consumer);
+ return{dependents,statutory,events,batches,counts,receipts};
 }
 const confirmation=(r:{actionId:string;reviewedDigest:string})=>({action:ACTION,contractVersion:1 as const,actionId:r.actionId,reviewedDigest:r.reviewedDigest});
 async function openBatch(){const {createBatch}=await import('../packs/payroll/service');const [clock]=await owner.db.execute<{period:string}>(sql`select to_char(now() at time zone 'UTC','YYYY-MM') as period`);return{...await createBatch(group(),{companyId:b.companyId,payPeriod:clock.period}),period:clock.period};}
@@ -157,7 +163,14 @@ describe('Native family relief consequence review',()=>{
   expect(JSON.stringify(r)).not.toContain('PRIVATE-TAX');expect(JSON.stringify(r)).not.toContain('PRIVATE-BANK');
   const done=await familyMaintenanceReviews.confirm(hr,confirmation(r));expect(done.kind).toBe('completed');expect(await familyMaintenanceReviews.reopen(hr,r.actionId)).toEqual(done);
   const after=await allEffects();expect(after.statutory[0]).toMatchObject({numChildren:1,childReliefTable:{under_18:{full:0,half:1}},taxNumber:'PRIVATE-TAX-NEVER-REVIEW',bankAccountNo:'PRIVATE-BANK-NEVER-REVIEW'});expect(after.batches).toEqual(before.batches);expect(after.counts).toEqual(before.counts);
-  expect(after.events.filter(e=>e.eventType==='dependent.added')).toHaveLength(1);expect(after.events.filter(e=>e.eventType==='employee.tax.updated'&&(e.payload as {provenance?:string}).provenance==='auto_child_relief')).toHaveLength(1);
+  const added=after.events.slice(before.events.length);
+  expect(after.events.slice(0,before.events.length)).toEqual(before.events);
+  expect(added).toHaveLength(2);
+  expect(added.filter(e=>e.eventType==='dependent.added')).toHaveLength(1);
+  expect(added.filter(e=>e.eventType==='employee.tax.updated'&&(e.payload as {provenance?:string}).provenance==='auto_child_relief')).toHaveLength(1);
+  expect(after.receipts).toEqual([...before.receipts,...added.map(e=>({
+   tenantId:e.tenantId,eventId:e.id,eventSequence:e.sequence,consumer:'notifications',disposition:null,processedAt:null,
+  }))]);
  });
  it.each(['manual','auto_table'])('preserves %s settings and does not echo their private count/grid',async mode=>{
   await seedRelief(mode);const before=await allEffects(),r=(await familyMaintenanceReviews.prepare(hr,human())).review;expect(r.review.relief).toEqual({changed:false,before:null,after:null,payrollAlert:null,skipped:'manual_mode',values:null});expect(JSON.stringify(r)).not.toContain('PRIVATE-');expect(await allEffects()).toEqual(before);await familyMaintenanceReviews.confirm(hr,confirmation(r));expect((await allEffects()).statutory).toEqual(before.statutory);

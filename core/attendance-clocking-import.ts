@@ -48,7 +48,7 @@ import {
   type ClockingImportLineResult,
 } from '../db/schema';
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { lockAttendanceLeaveDependenciesTx, addImportedPunchesBatchTx, assignPunchBusinessDays, punchOrderKey } from './attendance';
+import { withClockingImportWrite, addImportedPunchesBatchTx, assignPunchBusinessDays, punchOrderKey } from './attendance';
 // ADR-0080 D9 — payroll is consumed through its pack facade, never core/payroll directly.
 import {
   batchesCoveringAttendanceDates,
@@ -436,6 +436,8 @@ type Decided = {
   direction: 'in' | 'out' | null;
   detail: string;
 };
+/** The stage types, for the background job (core/attendance-clocking-import-job.ts). */
+export type { EmpRow as ClockingEmploymentRow, Decided as ClockingDecidedLine };
 
 const onlyDigits = (s: string) => s.replace(/\D/g, '');
 const hm = (t: string) => t.slice(0, 5);
@@ -447,7 +449,7 @@ const chunks = <T,>(xs: T[], n = CHUNK): T[][] => {
 };
 
 /** Resolve the mapping an import names: the built-in template, or an ACTIVE saved mapping. */
-async function resolveMapping(
+export async function resolveClockingMapping(
   tx: Tx,
   mappingId: string,
 ): Promise<{ id: string | null; name: string; def: AnyMappingDef; snapshot: Record<string, unknown> }> {
@@ -470,12 +472,38 @@ export class ClockingImportError extends Error {
 
 /**
  * Decide every line. Reads only; the commit calls this inside its own transaction so the checks are run
- * again at the moment of import (plan item 12).
+ * again at the moment of import (plan item 12). It is the three stages below in order: read the file
+ * (readClockingLines), match each line to an employment (matchClockingLines), then decide each matched
+ * line against its (employee, business day) as it stands now (decideClockingDaysTx). The background job
+ * (core/attendance-clocking-import-job.ts) runs the same stages: the first two once while preparing, the
+ * third per employee inside that employee's own chunk transaction.
  */
 async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantId?: string, companyId?: string): Promise<Decided[]> {
+  const decided = readClockingLines(def, text);
+  const readable = decided.filter((d) => d.result === 'imported');
+  if (readable.length === 0 && !decided.some((d) => d.read.cardRef)) return decided;
+  const emps = await readClockingEmploymentsTx(tx);
+  const matched = matchClockingLines(decided, emps, companyId);
+  if (matched.length === 0) return decided;
+  // Commit shares the correction/clock lock before reading days or approved corrections.
+  // Preview stays read-only. Stable order avoids two multi-employee imports deadlocking.
+  if (lockTenantId) {
+    const ids=[...new Set(matched.map(d=>d.emp!.id))].sort();
+    await lockLeaveDependenciesTx(tx,lockTenantId,ids);
+    const fresh=await readClockingEmploymentsTx(tx);
+    const image=(rows:EmpRow[])=>JSON.stringify(rows.slice().sort((a,b)=>a.id.localeCompare(b.id)));
+    if(image(emps)!==image(fresh))throw new LeaveDependencyUnavailable();
+    for(const id of ids) await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockTenantId + ':' + id}, 0))`);
+  }
+  await decideClockingDaysTx(tx, matched);
+  return decided;
+}
+
+/** Stage 1 · read every line of the file through the mapping (pure; `now` refuses future clockings). */
+export function readClockingLines(def: AnyMappingDef, text: string): Decided[] {
   const now = { date: todayInKualaLumpur(), time: timeInKualaLumpur() };
   const { lines } = parseWithMapping(text, def, now);
-  const decided: Decided[] = lines.map((read) => ({
+  return lines.map((read) => ({
     read,
     result: (read.error ?? 'imported') as ClockingImportLineResult,
     emp: null,
@@ -483,13 +511,12 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
     direction: read.direction,
     detail: read.error === 'unknown_in_out_code' ? (read.code ?? '') : '',
   }));
-  const readable = decided.filter((d) => d.result === 'imported');
-  if (readable.length === 0 && !decided.some((d) => d.read.cardRef)) return decided;
+}
 
-  // 1 · Match. Every employment the importer may see (RLS), terminated ones included, because "employed
-  //     on the date" is decided per line. Card, then code, then IC digits; first level with an employment
-  //     employed on that date wins; two at one level is ambiguous.
-  const readEmployments = async (): Promise<EmpRow[]> => (
+/** Every employment the importer may see (RLS), terminated ones included, because "employed on the date"
+ *  is decided per line. `ids` narrows the read to those employments (the job's per-employee recheck). */
+export async function readClockingEmploymentsTx(tx: Tx, ids?: readonly string[]): Promise<EmpRow[]> {
+  return (
     await tx
       .select({
         id: employment.id,
@@ -503,8 +530,17 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(ids ? inArray(employment.id, [...ids]) : undefined)
   ).map((r) => ({ ...r, start: String(r.start), end: r.end == null ? null : String(r.end) }));
-  const emps = await readEmployments();
+}
+
+/**
+ * Stage 2 · match. Card, then code, then IC digits; first level with an employment employed on that date
+ * wins; two at one level is ambiguous. Pure over the employments read in stage 1. Returns the lines still
+ * to be decided against their day (result 'imported' with an employment), in file order.
+ */
+export function matchClockingLines(decided: Decided[], emps: EmpRow[], companyId?: string): Decided[] {
+  const readable = decided.filter((d) => d.result === 'imported');
   const index = (key: (e: EmpRow) => string | null) => {
     const m = new Map<string, EmpRow[]>();
     for (const e of emps) {
@@ -532,7 +568,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
     );
     if (hit && hit.length === 1) d.emp = hit[0];
   }
-  if (readable.length === 0) return decided;
+  if (readable.length === 0) return [];
   for (const d of readable) {
     const ref = d.read.cardRef.trim();
     const levels = [byCard.get(ref.toLowerCase()), byCode.get(ref.toLowerCase()), onlyDigits(ref) ? byIc.get(onlyDigits(ref)) : undefined];
@@ -565,20 +601,17 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
       } else d.result = 'unmatched_card';
     }
   }
-  const matched = readable.filter((d) => d.result === 'imported' && d.emp);
-  if (matched.length === 0) return decided;
-  // Commit shares the correction/clock lock before reading days or approved corrections.
-  // Preview stays read-only. Stable order avoids two multi-employee imports deadlocking.
-  if (lockTenantId) {
-    const ids=[...new Set(matched.map(d=>d.emp!.id))].sort();
-    await lockLeaveDependenciesTx(tx,lockTenantId,ids);
-    const fresh=await readEmployments();
-    const image=(rows:EmpRow[])=>JSON.stringify(rows.slice().sort((a,b)=>a.id.localeCompare(b.id)));
-    if(image(emps)!==image(fresh))throw new LeaveDependencyUnavailable();
-    for(const id of ids) await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockTenantId + ':' + id}, 0))`);
-  }
+  return readable.filter((d) => d.result === 'imported' && d.emp);
+}
 
-
+/**
+ * Stage 3 · decide each matched line against its (employee, business day) as it stands now: the business
+ * day, then refused whole days, duplicates and the in/out reading. Every decision is per (employee, day),
+ * so deciding one employee's lines alone gives the same answers as deciding the whole file. The caller
+ * holds the employees' clock and leave-dependency locks when it is going to write (commit and the job).
+ */
+export async function decideClockingDaysTx(tx: Tx, matched: Decided[]): Promise<void> {
+  if (matched.length === 0) return;
   // 2 · Business day per clocking (the roster window, one query for the file).
   const days = await assignPunchBusinessDays(
     tx,
@@ -718,10 +751,9 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
       });
     }
   }
-  return decided;
 }
 
-function countsOf(decided: Decided[]): ImportCounts {
+export function clockingImportCounts(decided: Decided[]): ImportCounts {
   const c: ImportCounts = {
     total: decided.length,
     valid: 0,
@@ -768,7 +800,7 @@ const viewOf = (d: Decided): ImportLineView => ({
 
 const sha256 = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 
-function assertFile(text: string) {
+export function assertClockingFile(text: string) {
   if (!text || !text.trim()) throw new ClockingImportError('emptyFile');
   if (Buffer.byteLength(text, 'utf8') > MAX_IMPORT_CSV_BYTES) throw new ClockingImportError('fileTooLarge');
 }
@@ -778,9 +810,9 @@ export async function validateClockingImport(
   ctx: SessionContext,
   p: { mappingId: string; text: string; companyId?: string },
 ): Promise<ClockingImportPreview> {
-  assertFile(p.text);
+  assertClockingFile(p.text);
   return withTenant(ctx, async (tx) => {
-    const mapping = await resolveMapping(tx, p.mappingId);
+    const mapping = await resolveClockingMapping(tx, p.mappingId);
     const decided = await decideLines(tx, mapping.def, p.text, undefined, p.companyId);
     const [prev] = await tx
       .select({ id: clockingImportRun.id, at: clockingImportRun.createdAt, fileName: clockingImportRun.fileName })
@@ -792,7 +824,7 @@ export async function validateClockingImport(
     const valid = decided.filter((d) => d.result === 'imported');
     return {
       mappingName: mapping.name,
-      counts: countsOf(decided),
+      counts: clockingImportCounts(decided),
       errorRows: errors.slice(0, PREVIEW_ERROR_ROWS).map(viewOf),
       validRows: valid.slice(0, PREVIEW_VALID_ROWS).map(viewOf),
       previousImport: prev ? { runId: prev.id, at: prev.at, fileName: prev.fileName } : null,
@@ -815,7 +847,7 @@ export type ClockingImportOutcome = {
   otherCompany?: number;
 };
 
-async function actorPersonId(tx: Tx, ctx: SessionContext): Promise<string | null> {
+export async function clockingActorPersonId(tx: Tx, ctx: SessionContext): Promise<string | null> {
   if (ctx.personId) return ctx.personId;
   if (!ctx.userId) return null;
   const [u] = await tx
@@ -824,6 +856,116 @@ async function actorPersonId(tx: Tx, ctx: SessionContext): Promise<string | null
     .where(and(eq(appUser.tenantId, ctx.tenantId), or(sql`${appUser.id}::text = ${ctx.userId}`, eq(appUser.workosUserId, ctx.userId))))
     .limit(1);
   return u?.personId ?? null;
+}
+
+/** The (employee, business day) groups an import adds to, in the file order of each day's first accepted
+ *  line, each in real-time order within the day. */
+export function clockingImportDayGroups(decided: Decided[]): Decided[][] {
+  const byDay = new Map<string, Decided[]>();
+  for (const d of decided) {
+    if (d.result !== 'imported') continue;
+    const k = `${d.emp!.id}|${d.day}`;
+    const arr = byDay.get(k) ?? [];
+    arr.push(d);
+    byDay.set(k, arr);
+  }
+  const groups = [...byDay.values()];
+  for (const ds of groups) {
+    ds.sort((a, b) => punchOrderKey(a.read.date!, a.read.time!) - punchOrderKey(b.read.date!, b.read.time!) || a.read.lineNo - b.read.lineNo);
+  }
+  return groups;
+}
+
+/** Add every accepted clocking of these day groups (core/attendance.ts addImportedPunchesBatchTx) and return
+ *  the punch written for each line. */
+export async function addClockingImportPunchesTx(tx: Tx, ctx: SessionContext, runId: string, groups: Decided[][]): Promise<Map<Decided, string>> {
+  const punchIdOf = new Map<Decided, string>();
+  const written = await addImportedPunchesBatchTx(tx, ctx, {
+    runId,
+    days: groups.map((ds) => ({
+      employmentId: ds[0].emp!.id,
+      day: ds[0].day!,
+      punches: ds.map((d) => ({ time: d.read.time!, direction: d.direction! })),
+    })),
+  });
+  groups.forEach((ds, gi) => ds.forEach((d, i) => punchIdOf.set(d, written.punchIds[gi][i])));
+  return punchIdOf;
+}
+
+export type ClockingChangedDay = { employmentId: string; companyId: string; date: string };
+export const clockingImportChangedDays = (groups: Decided[][]): ClockingChangedDay[] =>
+  groups.map((ds) => ({ employmentId: ds[0].emp!.id, companyId: ds[0].emp!.companyId, date: ds[0].day! }));
+
+/** The log lines of a run: every data line, raw text only for a line that was not imported. */
+export async function insertClockingImportLinesTx(tx: Tx, tenantId: string, runId: string, decided: Decided[], punchIdOf: ReadonlyMap<Decided, string>): Promise<void> {
+  for (const part of chunks(decided, 500)) {
+    await tx.insert(clockingImportLine).values(
+      part.map((d) => ({
+        tenantId,
+        runId,
+        lineNo: d.read.lineNo,
+        cardRef: d.read.cardRef.slice(0, 100),
+        employmentId: d.emp?.id ?? null,
+        deviceRef: d.read.deviceRef?.slice(0, 100) ?? null,
+        punchDate: d.day ?? d.read.date,
+        punchTime: d.read.time,
+        direction: d.direction,
+        result: d.result,
+        message: (d.detail || (d.result === 'invalid_date' ? d.read.dateText : d.result === 'invalid_time' ? d.read.timeText : '')).slice(0, 200),
+        rawLine: d.result === 'imported' ? null : d.read.raw.slice(0, 500),
+        attendancePunchId: punchIdOf.get(d) ?? null,
+      })),
+    );
+  }
+}
+
+/** Raise the needs-recalculation notice of every processed pay run owning a changed day; returns their ids
+ *  in the order they were marked (the run event's recalcBatchIds). */
+export async function markClockingImportRecalcTx(tx: Tx, ctx: SessionContext, changed: ClockingChangedDay[]): Promise<string[]> {
+  const byCompany = new Map<string, { employmentId: string; date: string }[]>();
+  for (const c of changed) {
+    const arr = byCompany.get(c.companyId) ?? [];
+    arr.push({ employmentId: c.employmentId, date: c.date });
+    byCompany.set(c.companyId, arr);
+  }
+  const marked: { batchId: string; employmentIds: string[] }[] = [];
+  for (const [companyId, entries] of byCompany) {
+    for (const b of await batchesCoveringAttendanceDates(tx, { companyId, entries })) {
+      await markBatchNeedsRecalc(tx, ctx, { batchId: b.batchId, employmentIds: b.employmentIds });
+      marked.push({ batchId: b.batchId, employmentIds: b.employmentIds });
+    }
+  }
+  return marked.map((m) => m.batchId);
+}
+
+/** The run's one summary event. Counts only: the per-line detail is the log table's, and no subject (a run
+ *  spans employees). */
+export async function appendClockingImportRunEventTx(tx: Tx, ctx: SessionContext, p: {
+  runId: string; mapping: { id: string | null; name: string }; fileName: string; counts: ImportCounts;
+  importedLines: number; daysUpdated: number; employeesUpdated: number; recalcBatchIds: string[];
+}): Promise<void> {
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'attendance-clocking-import',
+    aggregateId: p.runId,
+    eventType: 'attendance-clocking-import.run',
+    actor: actorOf(ctx),
+    payload: {
+      runId: p.runId,
+      mappingId: p.mapping.id,
+      mappingName: p.mapping.name,
+      fileName: p.fileName,
+      totalLines: p.counts.total,
+      importedLines: p.importedLines,
+      duplicateLines: p.counts.duplicate,
+      unmatchedCardLines: p.counts.unmatchedCard,
+      invalidDatetimeLines: p.counts.invalidDateTime,
+      otherErrorLines: p.counts.otherError,
+      daysUpdated: p.daysUpdated,
+      employeesUpdated: p.employeesUpdated,
+      recalcBatchIds: p.recalcBatchIds,
+    },
+  });
 }
 
 /**
@@ -836,20 +978,19 @@ export async function commitClockingImport(
   p: { mappingId: string; text: string; fileName: string; fileBytes: number; companyId?: string },
 ): Promise<ClockingImportOutcome> {
   p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  assertFile(p.text);
+  assertClockingFile(p.text);
   const fileSha = sha256(p.text);
   const fileName = (p.fileName ?? '').slice(0, 255);
   let mappingForFailure: { id: string | null; name: string; snapshot: Record<string, unknown> } | null = null;
   let totalForFailure = 0;
   try {
-    return await withTenant(ctx, async (tx) => {
-      await lockAttendanceLeaveDependenciesTx(tx,ctx,[]);
-      const mapping = await resolveMapping(tx, p.mappingId);
+    return await withClockingImportWrite(ctx, async tx => {
+      const mapping = await resolveClockingMapping(tx, p.mappingId);
       mappingForFailure = mapping;
       const decided = await decideLines(tx, mapping.def, p.text, ctx.tenantId, p.companyId);
       totalForFailure = decided.length;
-      const counts = countsOf(decided);
-      const personId = await actorPersonId(tx, ctx);
+      const counts = clockingImportCounts(decided);
+      const personId = await clockingActorPersonId(tx, ctx);
       const [run] = await tx
         .insert(clockingImportRun)
         .values({
@@ -873,50 +1014,12 @@ export async function commitClockingImport(
         .returning({ id: clockingImportRun.id });
 
       // Write, one business day at a time, in real-time order within the day.
-      const byDay = new Map<string, Decided[]>();
-      for (const d of decided) {
-        if (d.result !== 'imported') continue;
-        const k = `${d.emp!.id}|${d.day}`;
-        const arr = byDay.get(k) ?? [];
-        arr.push(d);
-        byDay.set(k, arr);
-      }
-      const punchIdOf = new Map<Decided, string>();
-      const groups = [...byDay.values()];
-      for (const ds of groups) {
-        ds.sort((a, b) => punchOrderKey(a.read.date!, a.read.time!) - punchOrderKey(b.read.date!, b.read.time!) || a.read.lineNo - b.read.lineNo);
-      }
-      const written = await addImportedPunchesBatchTx(tx, ctx, {
-        runId: run.id,
-        days: groups.map((ds) => ({
-          employmentId: ds[0].emp!.id,
-          day: ds[0].day!,
-          punches: ds.map((d) => ({ time: d.read.time!, direction: d.direction! })),
-        })),
-      });
-      groups.forEach((ds, gi) => ds.forEach((d, i) => punchIdOf.set(d, written.punchIds[gi][i])));
-      const changed = groups.map((ds) => ({ employmentId: ds[0].emp!.id, companyId: ds[0].emp!.companyId, date: ds[0].day! }));
+      const groups = clockingImportDayGroups(decided);
+      const punchIdOf = await addClockingImportPunchesTx(tx, ctx, run.id, groups);
+      const changed = clockingImportChangedDays(groups);
 
       // The log lines — every data line, raw text only for a line that was not imported.
-      for (const part of chunks(decided, 500)) {
-        await tx.insert(clockingImportLine).values(
-          part.map((d) => ({
-            tenantId: ctx.tenantId,
-            runId: run.id,
-            lineNo: d.read.lineNo,
-            cardRef: d.read.cardRef.slice(0, 100),
-            employmentId: d.emp?.id ?? null,
-            deviceRef: d.read.deviceRef?.slice(0, 100) ?? null,
-            punchDate: d.day ?? d.read.date,
-            punchTime: d.read.time,
-            direction: d.direction,
-            result: d.result,
-            message: (d.detail || (d.result === 'invalid_date' ? d.read.dateText : d.result === 'invalid_time' ? d.read.timeText : '')).slice(0, 200),
-            rawLine: d.result === 'imported' ? null : d.read.raw.slice(0, 500),
-            attendancePunchId: punchIdOf.get(d) ?? null,
-          })),
-        );
-      }
+      await insertClockingImportLinesTx(tx, ctx.tenantId, run.id, decided, punchIdOf);
 
       const employeesUpdated = new Set(changed.map((c) => c.employmentId)).size;
       await tx
@@ -926,42 +1029,10 @@ export async function commitClockingImport(
 
       // Processed pay runs that own a changed day: raise their needs-recalculation notice (no payslip is
       // edited). Draft and closed runs are no-ops there; closed days never reached this point.
-      const byCompany = new Map<string, { employmentId: string; date: string }[]>();
-      for (const c of changed) {
-        const arr = byCompany.get(c.companyId) ?? [];
-        arr.push({ employmentId: c.employmentId, date: c.date });
-        byCompany.set(c.companyId, arr);
-      }
-      const marked: { batchId: string; employmentIds: string[] }[] = [];
-      for (const [companyId, entries] of byCompany) {
-        for (const b of await batchesCoveringAttendanceDates(tx, { companyId, entries })) {
-          await markBatchNeedsRecalc(tx, ctx, { batchId: b.batchId, employmentIds: b.employmentIds });
-          marked.push({ batchId: b.batchId, employmentIds: b.employmentIds });
-        }
-      }
+      const recalcBatchIds = await markClockingImportRecalcTx(tx, ctx, changed);
 
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'attendance-clocking-import',
-        aggregateId: run.id,
-        eventType: 'attendance-clocking-import.run',
-        actor: actorOf(ctx),
-        // Counts only: the per-line detail is the log table's, and no subject (a run spans employees).
-        payload: {
-          runId: run.id,
-          mappingId: mapping.id,
-          mappingName: mapping.name,
-          fileName,
-          totalLines: counts.total,
-          importedLines: punchIdOf.size,
-          duplicateLines: counts.duplicate,
-          unmatchedCardLines: counts.unmatchedCard,
-          invalidDatetimeLines: counts.invalidDateTime,
-          otherErrorLines: counts.otherError,
-          daysUpdated: changed.length,
-          employeesUpdated,
-          recalcBatchIds: marked.map((m) => m.batchId),
-        },
+      await appendClockingImportRunEventTx(tx, ctx, {
+        runId: run.id, mapping, fileName, counts, importedLines: punchIdOf.size, daysUpdated: changed.length, employeesUpdated, recalcBatchIds,
       });
       const imported = punchIdOf.size;
       return {
@@ -977,7 +1048,7 @@ export async function commitClockingImport(
   } catch (e) {
     if (e instanceof ClockingImportError) throw e;
     const reason = String((e as Error)?.message ?? e).slice(0, 500) || 'Unknown error';
-    const runId = await recordFailedRun(ctx, {
+    const runId = await recordFailedClockingRun(ctx, {
       mapping: mappingForFailure,
       mappingIdAsked: p.mappingId,
       fileName,
@@ -998,7 +1069,7 @@ export async function commitClockingImport(
 }
 
 /** Best-effort: losing the Failed row is a lesser fault than masking the failure itself. */
-async function recordFailedRun(
+export async function recordFailedClockingRun(
   ctx: SessionContext,
   p: {
     mapping: { id: string | null; name: string; snapshot: Record<string, unknown> } | null;
@@ -1012,7 +1083,7 @@ async function recordFailedRun(
 ): Promise<string | null> {
   try {
     return await withTenant(ctx, async (tx) => {
-      const personId = await actorPersonId(tx, ctx);
+      const personId = await clockingActorPersonId(tx, ctx);
       const [row] = await tx
         .insert(clockingImportRun)
         .values({

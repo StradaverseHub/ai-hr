@@ -22,17 +22,26 @@ import {
 } from '../db/schema';
 import { PAYROLL_FREQUENCIES } from './payroll-policy-config';
 import { isCurrencyCode } from '../lib/currencies';
-import {lockLeaveDependencyReadConfigurationTx,lockLeaveDependenciesTx} from './leave-dependency-lock';
+import {lockLeaveDependenciesWaitTx} from './leave-dependency-lock';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockPayrollInputsTx} from './payroll-inputs-lock';
 
 /** The existing compensation WITH CHECK authority precedes subject resource ownership; this adds
- * no Workforce/Payroll role. Access→configuration→employment is held before any pay/history facts.
- * A busy/partial interval must roll back the WHOLE supplied transaction. */
+ * no Workforce/Payroll role. Access→configuration→employment→payroll inputs is held before any
+ * pay/history facts. A busy/partial interval must roll back the WHOLE supplied transaction.
+ *
+ * Shared Access (reader/writer wave 4): salary writers for different employees overlap. The
+ * employment's leave-dependency lock serialises writers of one employee and waits with the bound
+ * instead of refusing, and the payroll inputs key makes a change wait for an in-flight run of the
+ * employee's company, so the run either reads it or is marked for recalculation below. */
 async function ownCompensationDependenciesTx(tx:Tx,ctx:SessionContext,employmentId:string,contractAuthority=false){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ // Same barrier rows as before (a stale REPEATABLE READ writer still refuses), in shared mode.
  await tx.execute(sql`select app.access_workforce_write_lock()`);
- await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
  const [row]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.employment e where e.id=${employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid and (app.can_admin_employment(e.id) or app.can_admin_perfcomp_employment(e.id))) as allowed`);
  if(row?.allowed!==true&&!contractAuthority)throw new Error('Salary record or permission is unavailable');
- await lockLeaveDependenciesTx(tx,ctx.tenantId,[employmentId]);
+ await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[employmentId]);
+ await lockPayrollInputsTx(tx,{employmentIds:[employmentId]});
 }
 
 
@@ -272,6 +281,19 @@ export async function processedPeriodsTx(tx: Tx, employmentId: string): Promise<
     .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
     .where(and(eq(payslip.employmentId, employmentId), inArray(payrollBatch.status, ['processed', 'closed'])));
   return rows.map((r) => r.period);
+}
+
+/** Movement history needs both payroll protection sets from the same observation. */
+export async function movementPayrollPeriodsTx(tx: Tx, employmentId: string) {
+  const rows = await tx
+    .selectDistinct({ period: payrollBatch.payPeriod, status: payrollBatch.status })
+    .from(payslip)
+    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+    .where(and(eq(payslip.employmentId, employmentId), inArray(payrollBatch.status, ['processed', 'closed'])));
+  return {
+    closed: rows.filter(row => row.status === 'closed').map(row => row.period),
+    processed: [...new Set(rows.map(row => row.period))],
+  };
 }
 
 /**
@@ -983,7 +1005,7 @@ export type ReviewedCompensationCommand=
  |{operation:'edit';input:Parameters<typeof updateCompensation>[1]}
  |{operation:'supersede';input:Parameters<typeof supersedeCompensation>[1]};
 export async function withReviewedCompensationIntervalTx<T>(tx:Tx,ctx:SessionContext,employmentId:string,work:()=>Promise<T>):Promise<T>{
- await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);
  // Assistant custody already owns Access: never wait for a History writer owning History→Access.
  await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);await ownCompensationDependenciesTx(tx,ctx,employmentId);
  return work();

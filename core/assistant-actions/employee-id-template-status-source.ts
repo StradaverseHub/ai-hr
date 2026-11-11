@@ -12,7 +12,7 @@ const Fields=z.object({companyId:z.guid(),templateName:z.string().nullable(),pre
 const Source=z.object({configId:z.guid(),companyId:z.guid(),companyName:z.string(),status:z.enum(['active','inactive']),fields:Fields,revision:z.string(),companyRevision:z.string(),authority:z.unknown(),activePeers:z.unknown()}).strict();
 async function read(tx:Tx,id:string){const [row]=await tx.execute<{source:unknown}>(sql`select app.employee_id_template_status_source(${id}::uuid) as source`);return Source.parse(row?.source);}
 export async function lockEmployeeIdTemplateStatusSourceTx(tx:Tx,ctx:SessionContext,id:string){
- await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);
  // Same mounted page admission and native company write authority, before any template projection.
  const [row]=await tx.execute(sql`select c.id from employee_id_config c where c.id=${id}::uuid and c.tenant_id=${ctx.tenantId}::uuid and c.company_id is not null and app.current_user_id() is not null and app.principal_snapshot_current() and app.is_admin() and app.is_admin_for(c.company_id) for update of c`);
  if(!row)return fail();return read(tx,id);

@@ -77,6 +77,8 @@ import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { assignCellAction, bulkAssignAction } from '@/app/roster/actions';
+import { waitForRosterBulkJob } from '@/lib/roster-bulk-job-poll';
+import { ROSTER_WRITE_FAILED } from '@/lib/roster-bulk-job';
 import { RosterLegend } from '@/components/roster-legend';
 import { EmployeeCode } from '@/components/ui';
 import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';
@@ -183,6 +185,7 @@ export function RosterGrid({
   isAdmin,
   today,
   editQuery,
+  serverPaged = false,
 }: {
   dates: GridDate[];
   employees: GridEmployee[];
@@ -199,8 +202,11 @@ export function RosterGrid({
    *  and Back returns to the same narrowing. A STRING and not a href-builder: a server component may hand
    *  a client island data or a server action, never an ordinary function. */
   editQuery: string;
+  /** The server already bounded employees and cell facts; never slice this page again. */
+  serverPaged?: boolean;
 }) {
   const t = useTranslations('roster');
+  const tJob = useTranslations('bulkJobs.roster');
   const [cells, setCells] = useState<Record<string, AssignedCell>>(initial);
   const [brush, setBrush] = useState<Brush>(shifts[0]?.id ?? 'rest');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -268,10 +274,17 @@ export function RosterGrid({
       return n;
     });
     startTx(async () => {
+      // The bar's writes run as a background roster job (app/roster/actions.ts bulkAssignAction): the brush stays
+      // painted while it runs, and its outcome is reported exactly as the synchronous action's was.
       const r = await bulkAssignAction({ employmentIds: empIds, shiftDates: isoDates, brush });
-      if (!r.ok) {
+      // A brush queued behind another roster job starts by itself when that one ends; say so once.
+      let toldWaiting = false;
+      const job = r.ok && r.jobId ? await waitForRosterBulkJob('/roster/jobs', r.jobId, (j) => {
+        if (j.waiting && !toldWaiting) { toldWaiting = true; toast(tJob('queuedBehind')); }
+      }) : null;
+      if (!r.ok || (job && job.state !== 'completed')) {
         setCells(snapshot);
-        toast.error(r.error);
+        toast.error(r.ok ? job?.error || ROSTER_WRITE_FAILED : r.error);
       } else toast.success(t('bulkDone', { n: empIds.length }));
     });
   };
@@ -284,7 +297,8 @@ export function RosterGrid({
       return n;
     });
   const q = useClientPageQuery();
-  const { rows: pageEmployees, state } = paginateRows(employees, q);
+  const { rows: localEmployees, state } = paginateRows(employees, q);
+  const pageEmployees = serverPaged ? employees : localEmployees;
   // Selection covers the rows you can see, for the same reason as the feedback table: a brush applied
   // to "everyone" must mean everyone on screen, not everyone in the roster.
   const selectedOnPage = pageEmployees.filter((e) => selected.has(e.employmentId));
@@ -338,7 +352,7 @@ export function RosterGrid({
         <span className="ml-auto">{t('ghostHint')}</span>
       </div>
 
-      <ClientPager state={state} />
+      {!serverPaged && <ClientPager state={state} />}
       {/* Grid */}
       {/* On compact views the identity block can be wider than the viewport. Let every column pan there;
           retain the shared pinned geometry on desktop and expose the pan region to keyboard users. */}
@@ -349,6 +363,7 @@ export function RosterGrid({
         className="overflow-x-auto rounded-lg border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         <table
+          data-roster-grid
           className="border-collapse text-sm"
           style={{ tableLayout: 'fixed', minWidth: pinned.width + dates.length * DATE_W }}
         >
@@ -408,7 +423,7 @@ export function RosterGrid({
           </thead>
           <tbody className="divide-y divide-border">
             {pageEmployees.map((e) => (
-              <tr key={e.employmentId}>
+              <tr key={e.employmentId} data-roster-employment-id={e.employmentId}>
                 {canEdit && (
                   <td className="sticky max-lg:static z-10 truncate bg-background px-2 py-1.5" style={pinned.col('check')}>
                     <input
@@ -544,26 +559,28 @@ function cellClass(cell: ResolvedCell, shiftColor: (id: string) => string): stri
  * again — which is exactly what made the download/upload round trip impossible in ms, zh, ta, th and vi.
  */
 export function RosterTemplateButton({
-  dates,
-  rows,
+  dates = [],
+  rows = [],
   month,
-  codes,
+  codes = [],
+  source,
   label,
   notesTitle,
   notes,
   failedLabel,
 }: {
   /** The ISO dates of the month, in order — the date half of the header. */
-  dates: string[];
-  rows: string[][];
+  dates?: string[];
+  rows?: string[][];
   month: string;
-  codes: string[];
+  codes?: string[];
+  /** Read the complete authorized template only after an explicit click. */
+  source?: string;
   label: string;
   notesTitle: string;
   notes: string[];
   failedLabel: string;
 }) {
-  const header = [...ROSTER_TEMPLATE_ID_COLUMNS, ...dates];
   const [busy, setBusy] = useState(false);
   const download = async () => {
     setBusy(true);
@@ -572,11 +589,20 @@ export function RosterTemplateButton({
         import('@/lib/spreadsheet'),
         import('@/lib/import-template-xlsx'),
       ]);
-      const bytes = await buildXlsx(header, rows, {
+      const payload = source ? await fetch(source, { cache: 'no-store' }).then(async response => {
+        if (!response.ok) throw new Error('Template unavailable');
+        const data = await response.json();
+        if (!Array.isArray(data.dates) || !data.dates.every((v: unknown) => typeof v === 'string') ||
+            !Array.isArray(data.rows) || !data.rows.every((row: unknown) => Array.isArray(row) && row.every(v => typeof v === 'string')) ||
+            !Array.isArray(data.codes) || !data.codes.every((v: unknown) => typeof v === 'string')) throw new Error('Invalid template');
+        return data as { dates: string[]; rows: string[][]; codes: string[] };
+      }) : { dates, rows, codes };
+      const header = [...ROSTER_TEMPLATE_ID_COLUMNS, ...payload.dates];
+      const bytes = await buildXlsx(header, payload.rows, {
         sheetName: 'Roster',
         textColumns: header.map((_, i) => i),
         extraSheets: [
-          { name: 'Notes', rows: buildInstructionRows(notesTitle, [...notes, codes.join(', ') || '—']) },
+          { name: 'Notes', rows: buildInstructionRows(notesTitle, [...notes, payload.codes.join(', ') || '—']) },
         ],
       });
       const url = URL.createObjectURL(

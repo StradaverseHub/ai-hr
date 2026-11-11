@@ -1,4 +1,4 @@
-import {lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockProfileSubjectTx,lockProfileValueSharedTx} from './access-configuration-lock';
 /**
  * Personnel — Emergency contacts (feedback 23ad620e). A per-PERSON register of who to call in an emergency:
  * name, relationship, mobile phone, home phone, address, remark and a priority. Replaces the five flat
@@ -19,7 +19,7 @@ import {lockProfileValueWritesTx} from './access-configuration-lock';
  * spells out why the two must not be conflated).
  *
  * SINGLE-CONTACT READERS — the screens that show "the" emergency contact (core/read.ts employeeDetail,
- * core/profile.ts myProfile, and hence /me) resolve through primaryEmergencyContactSql below: the live
+ * core/profile.ts myProfile, and hence /me) use the same ordering below: the live
  * 'primary' row, falling back to the next priority and then the oldest record. So every existing surface
  * keeps working while the fuller list lives on the Personnel (Admin) profile.
  *
@@ -105,6 +105,21 @@ export function primaryEmergencyContactSql(
     order by case ec.priority when 'primary' then 0 when 'secondary' then 1 else 2 end, ec.created_at, ec.id
     limit 1
   )`;
+}
+
+/** One correlated lookup for callers projecting several fields of the same contact. */
+export function primaryEmergencyContactRow(tx: Tx) {
+  return tx.select({
+    fullName: personEmergencyContact.fullName,
+    relationship: personEmergencyContact.relationship,
+    mobilePhone: personEmergencyContact.mobilePhone,
+    homePhone: personEmergencyContact.homePhone,
+    address: personEmergencyContact.address,
+  }).from(personEmergencyContact)
+    .where(and(eq(personEmergencyContact.personId, sql`"person"."id"`), isNull(personEmergencyContact.archivedAt)))
+    .orderBy(PRIORITY_RANK, asc(personEmergencyContact.createdAt), asc(personEmergencyContact.id))
+    .limit(1)
+    .as('primary_emergency_contact');
 }
 
 /**
@@ -213,7 +228,8 @@ export async function addEmergencyContact(
   outerTx?:Tx,
 ): Promise<{ id: string }> {
   const run=async(tx:Tx)=>{
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    await lockProfileSubjectTx(tx,ctx.tenantId,p.personId);
     const validated=await validateEmergencyContactInputTx(tx,p.personId,p);
     const fullName=validated.fullName!;
     const priority=validated.priority as EmergencyContactPriority;
@@ -274,7 +290,9 @@ export async function updateEmergencyContact(
   outerTx?:Tx,
 ): Promise<{ id: string }> {
   const run=async(tx:Tx)=>{
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    const nominated = await loadContact(tx, p.id);
+    if (nominated) await lockProfileSubjectTx(tx,ctx.tenantId,nominated.personId);
     const existing = await loadContact(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new EmergencyContactValidationError('Emergency contact not found.');
@@ -324,7 +342,9 @@ export async function archiveEmergencyContact(
   outerTx?: Tx,
 ): Promise<{ id: string }> {
   const run = async (tx: Tx) => {
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    const nominated = await loadContact(tx, p.id);
+    if (nominated) await lockProfileSubjectTx(tx,ctx.tenantId,nominated.personId);
     const existing = await loadContact(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new EmergencyContactValidationError('Emergency contact not found.');
@@ -362,7 +382,8 @@ export async function writeSingleEmergencyContactInTx(
   personId: string,
   p: Partial<PrimaryEmergencyContact>,
 ): Promise<{ id: string; created: boolean } | null> {
-  await lockProfileValueWritesTx(tx,ctx.tenantId);
+  await lockProfileValueSharedTx(tx,ctx.tenantId);
+  await lockProfileSubjectTx(tx,ctx.tenantId,personId);
   const touched = (Object.keys(p) as (keyof PrimaryEmergencyContact)[]).filter((k) => p[k] !== undefined);
   if (touched.length === 0) return null;
 

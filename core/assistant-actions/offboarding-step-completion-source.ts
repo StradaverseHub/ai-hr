@@ -1,4 +1,4 @@
-import {lockAccessConfigurationTx} from '../access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../access-configuration-lock';
 /** Source adapter only; no model execution. Native lifecycle owns applicability and completion. */
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -36,7 +36,7 @@ export async function reconcileOffboardingStepSourceTx(tx:Tx,ctx:SessionContext,
 export async function readOffboardingStepChoices(supplied:SessionContext,value:unknown){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
  try{const pick=C.Selection.parse(structuredClone(value));return await withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const fresh=await withAgentActionGuard(tx,ctx,C.action);
   const selected=await offboardingStepChoicesTx(tx,fresh,pick.caseNumber);
   return C.Choices.parse({kind:'choices',cases:[selected],truncated:false});
