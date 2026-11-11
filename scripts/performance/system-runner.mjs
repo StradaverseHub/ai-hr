@@ -839,7 +839,33 @@ function comparisonTelemetry(result,out){
    renderedColumns:['phase','role','path','elapsedMs'],
    rendered:rows(browser?.browser,400,row=>[label(row.phase),label(row.role),label(row.path),ms(row.elapsedMs)]),
    requestErrors:Array.isArray(browser?.requestErrors)?browser.requestErrors.length:null,
-   slowPilotSnapshots:browser?.slowPilotSnapshots??null}));
+   slowPilotSnapshots:browser?.slowPilotSnapshots??null,
+   // Lock-sampler ticks skipped because the previous probe was still running (probes never overlap).
+   preflightLockSkippedTicks:browser?.preflightLockSkippedTicks??null,
+   // Database activity sampled while a browser request had been pending for over 30 s.
+   longPendingDiagnostics:Array.isArray(browser?.longPendingDiagnostics)?browser.longPendingDiagnostics.slice(0,24).map(row=>({at:label(row?.at),
+    longestPendingMs:ms(row?.longestPendingMs),ungrantedLocks:Number.isSafeInteger(row?.ungrantedLocks)?row.ungrantedLocks:null,
+    pending:(Array.isArray(row?.pending)?row.pending:[]).slice(0,8).map(p=>({method:label(p?.method),path:label(p?.path),elapsedMs:ms(p?.elapsedMs)})),
+    activity:(Array.isArray(row?.activity)?row.activity:[]).slice(0,12).map(a=>({state:label(a?.state),waitType:label(a?.wait_type),
+     waitEvent:label(a?.wait_event),n:Number.isSafeInteger(a?.n)?a.n:null,maxAgeS:ms(a?.max_age_s)})),
+    oldestActive:row?.oldestActive?{ageMs:ms(row.oldestActive.age_ms),waitType:label(row.oldestActive.wait_type),waitEvent:label(row.oldestActive.wait_event),
+     query:redactDiagnostic(String(row.oldestActive.query??'')).replace(/[\u0000-\u001f]/g,' ').slice(0,300)}:null})):null,
+   // Server-log admission and statement-timeout markers per web worker (counts only).
+   serverMarkers:Array.isArray(report.workerFatalDiagnostics)?report.workerFatalDiagnostics.map(row=>row?.logMarkers??null):null,
+   // Application transaction start delay (admission, pool checkout and BEGIN) per web worker, from 5 s windows.
+   appTransactions:Array.from({length:report.topology?.workers??0},(_,worker)=>{
+    try{
+     const data=JSON.parse(readFileSync(join(out,'app-transactions-'+worker+'.json'),'utf8'));
+     const windows=Array.isArray(data.windows)?data.windows:[];
+     const worst=(pick)=>windows.reduce((max,row)=>Math.max(max,Number(pick(row))||0),0);
+     return {worker,peakPending:data.peakPending??null,peakHolding:data.peakHolding??null,failedBeforeCallback:data.failedBeforeCallback??null,
+      windows:windows.length,startDelayP95MaxMs:ms(worst(row=>row.startDelay?.p95Ms)),startDelayP99MaxMs:ms(worst(row=>row.startDelay?.p99Ms)),
+      windowsStartDelayP99Over1s:windows.filter(row=>(row.startDelay?.p99Ms??0)>1000).length,
+      windowsStartDelayP99Over30s:windows.filter(row=>(row.startDelay?.p99Ms??0)>30000).length,
+      heldP99MaxMs:ms(worst(row=>row.held?.p99Ms)),rawPoolQueueP99MaxMs:ms(worst(row=>row.rawPoolWork?.queueWait?.p99Ms)),
+      eventLoopMaxMs:ms(worst(row=>row.eventLoopDelay?.maxMs)),maxPendingInWindow:worst(row=>row.pending)};
+    }catch{return {worker,unavailable:true};}
+   })}));
  }catch{}
  let renderedCaseCounts=null;
  const driver=measurement?.driver;

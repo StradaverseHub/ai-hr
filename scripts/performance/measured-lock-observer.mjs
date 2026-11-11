@@ -159,7 +159,7 @@ export function startMeasuredPreflightProbes({sql,rescueSql=undefined,backendPid
   const attributionEnd=Atomics.load(token,0);
   onProbe({sequence:++sequence,startedMs,timing,attributionStart,attributionEnd,...observation});
  },onFailure);
- return {stop:timer.stop,samples:()=>sequence};
+ return {stop:timer.stop,samples:()=>sequence,skipped:()=>timer.skipped?.()??0};
 }
 
 async function withinLifecycle(pending){
@@ -176,7 +176,7 @@ export function createMeasuredPreflightObserver({url,bootIdentity,accessLocks,au
   workerData:{url,bootIdentity,accessLocks,auditLocks,categorized,token,stopped},env:{},execArgv:[],
  });
  const ready=Promise.withResolvers(),began=Promise.withResolvers(),exited=Promise.withResolvers();
- let state='starting',seen=0,stopRequested=false,closed=false,failure,stopping;
+ let state='starting',seen=0,stopRequested=false,closed=false,failure,stopping,skippedTicks=null;
  function fail(){
   if(failure)return;
   failure=Error('Measured preflight lock observer failed to settle');
@@ -193,6 +193,7 @@ export function createMeasuredPreflightObserver({url,bootIdentity,accessLocks,au
    }else if(message.kind==='probe'&&state==='started'&&!closed&&message.sequence===seen+1&&seen<measuredLockSampleLimit){
     seen++;onProbe(message);
    }else if(message.kind==='closed'&&stopRequested&&!closed&&message.samples===seen){
+    skippedTicks=Number.isSafeInteger(message.skippedTicks)&&message.skippedTicks>=0?message.skippedTicks:null;
     closed=true;
    }else fail();
   }catch{fail();}
@@ -204,6 +205,7 @@ export function createMeasuredPreflightObserver({url,bootIdentity,accessLocks,au
   exited.resolve(true);
  });
  return {
+  skippedTicks:()=>skippedTicks,
   async ready(){if(!(await withinLifecycle(ready.promise))){fail();throw failure;}},
   async start(){
    if(state!=='ready'||stopRequested||failure){fail();throw failure;}

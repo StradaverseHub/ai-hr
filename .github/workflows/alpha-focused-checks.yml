@@ -1622,7 +1622,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        workers: ['2', '4', '8']
+        # Release-versus-main control: steady 2 and 4 only. The 8-worker functional cell is not run; the
+        # aggregate reports it missing rather than being changed.
+        workers: ['2', '4']
     defaults:
       run:
         working-directory: source

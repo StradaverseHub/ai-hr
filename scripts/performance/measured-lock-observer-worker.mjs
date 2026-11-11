@@ -37,5 +37,5 @@ try{
    if(outcomes.some(outcome=>outcome.status==='rejected'))throw Error('Measured lock observer connections did not settle');
   }
  }
- parentPort.postMessage({kind:'closed',samples:sampler?.samples()??0});
+ parentPort.postMessage({kind:'closed',samples:sampler?.samples()??0,skippedTicks:sampler?.skipped?.()??0});
 }finally{parentPort.close();}

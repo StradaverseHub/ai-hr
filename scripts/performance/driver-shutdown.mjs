@@ -133,7 +133,7 @@ export function startMeasuredPreflightLockInterval(maximum,slots,run,recordFailu
  if(!Number.isSafeInteger(maximum)||maximum<1||maximum>4097||!([1,2].includes(slots)))
   throw Error('Measured preflight probe capacity refused');
  const pending=Array(slots).fill(null);
- let timer,stopped=false,starts=0,stopPromise;
+ let timer,stopped=false,starts=0,skipped=0,stopPromise;
  let attemptIntervalMs=measuredPreflightLockAttemptMs(starts),due=now()+attemptIntervalMs;
  function arm(){
   if(stopped||starts>=maximum||timer!==undefined||pending.every(Boolean))return;
@@ -144,6 +144,10 @@ export function startMeasuredPreflightLockInterval(maximum,slots,run,recordFailu
   if(stopped)return;
   const started=now();
   if(started<due){arm();return;}
+  // Measurement fix: never start a probe while the previous one still runs. Overlapping probes made the
+  // evaluator refuse the window as 'sample-order'; skip this tick instead and count it. Every cadence,
+  // gap, timeout and blocking threshold is unchanged, so a slow probe still shows as a coverage gap.
+  if(pending.some(Boolean)){skipped++;due=started+attemptIntervalMs;arm();return;}
   const slot=pending.indexOf(null);
   if(slot<0)return;
   const timing={dueMs:due,timerStartedMs:started,attemptIntervalMs};
@@ -159,7 +163,7 @@ export function startMeasuredPreflightLockInterval(maximum,slots,run,recordFailu
  return {stop(){
   stopped=true;clearTimeout(timer);
   return stopPromise??=Promise.all(pending.filter(Boolean)).then(()=>{});
- }};
+ },skipped:()=>skipped};
 }
 
 export function lockSampleEvidence(samples,window){

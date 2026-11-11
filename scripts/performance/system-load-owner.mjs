@@ -138,6 +138,8 @@ if(nativePreflight){
 }
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
 let db,measuredLockDb,agent,browser,ownedBrowser,chromiumEnv,nativeAuditClient;
+// Diagnostic only: one database activity sample at a time while a browser request has been pending over 30 s.
+let longPendingProbe=null;
 const acquired={observer:'absent',agent:'absent',browser:'absent',audit:'absent'};
 const failures=createDriverFailures(),contexts=createDriverContexts(failures),sockets=createDriverSockets(failures);
 const lanes=createDriverWork(),requests=createDriverWork(),transports=createDriverWork(),diagnostics=createDriverWork();
@@ -445,6 +447,8 @@ function closePreflightLockWindow(){
 async function finishPreflightLockSampling(){
  closePreflightLockWindow();
  await preflightSampler.stop();
+ // Ticks skipped because the previous probe was still running (the sampler never overlaps probes).
+ report.preflightLockSkippedTicks=typeof preflightSampler.skippedTicks==='function'?preflightSampler.skippedTicks():null;save();
  if(measureDevelopment)preflightCadenceClosed=true;
  recordLockSampling();
  if(samplingRequired)assert(report.lockSampling.preflight.pass,'Preflight lock samples were incomplete or observed blocking');
@@ -693,6 +697,22 @@ async function main(){
  browserDiagnosticTimer=setInterval(()=>noteEvidence(()=>{
   if(!lastPage||lastPage.isClosed())return;
   report.browserPendingSnapshot={at:new Date().toISOString(),requests:[...(pendingBrowserRequests.get(lastPage)?.values()??[])].slice(0,50).map(row=>({...row,elapsedMs:performance.now()-row.startedMs}))};save();
+  const stuck=report.browserPendingSnapshot.requests.filter(row=>row.elapsedMs>30000);
+  if(stuck.length&&!longPendingProbe&&db&&(report.longPendingDiagnostics?.length??0)<24){
+   const longestPendingMs=Math.max(...stuck.map(row=>row.elapsedMs));
+   longPendingProbe=(async()=>{
+    const activity=await db`select coalesce(state,'') as state,coalesce(wait_event_type,'') as wait_type,coalesce(wait_event,'') as wait_event,count(*)::int as n,
+     coalesce(max(extract(epoch from clock_timestamp()-query_start)),0)::float8 as max_age_s from pg_stat_activity
+     where datname=current_database() and pid<>pg_backend_pid() group by 1,2,3 order by 4 desc limit 12`;
+    const [oldest]=await db`select round(extract(epoch from clock_timestamp()-query_start)*1000)::int as age_ms,coalesce(wait_event_type,'') as wait_type,
+     coalesce(wait_event,'') as wait_event,left(regexp_replace(query,'\s+',' ','g'),300) as query from pg_stat_activity
+     where datname=current_database() and pid<>pg_backend_pid() and state='active' order by query_start limit 1`;
+    const [ungranted]=await db`select count(*)::int as n from pg_locks where not granted`;
+    (report.longPendingDiagnostics??=[]).push({at:new Date().toISOString(),longestPendingMs,ungrantedLocks:ungranted?.n??null,
+     pending:stuck.slice(0,8).map(row=>({method:row.method,path:row.path,elapsedMs:row.elapsedMs})),activity:[...activity],oldestActive:oldest??null});
+    save();
+   })().catch(()=>{}).finally(()=>{longPendingProbe=null;});
+  }
  }),5000);
  async function context(user,locale='en',signIn=false){
   let context;
