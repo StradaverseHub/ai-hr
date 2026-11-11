@@ -44,7 +44,7 @@ import {BankPaymentFileError} from '../../localization/country-pack';
 import {read,unique,type LoopDetectInput,type LoopDetection,type LoopObservation} from './detect';
 import {companyCutOffs,nextPeriod,preSalaryWindows,previousPeriod} from './payroll-inputs';
 import {payrollLoopSettingsTx} from './payroll-loop-settings';
-import {netSwings,type ComponentIds,type SwingSummary} from './net-swing';
+import {netSwings,swingMonths,type ComponentIds,type SwingSummary} from './net-swing';
 import {listPayComponents} from '../../packs/payroll/service';
 import type {LoopFacts} from './types';
 import {acknowledgementFor,acknowledgementsTx,currentDepartmentsTx,type Acknowledgement} from './acknowledgements';
@@ -138,7 +138,7 @@ async function ruleVersionsFor(sponsor:SessionContext,batch:Batch,country:string
 }
 
 async function swingsFor(sponsor:SessionContext,companyId:string,period:string,setting:{thresholdBp:number;exclusions:readonly string[]},componentIds:ComponentIds):Promise<SwingSummary>{
- const periods=[period,previousPeriod(period),previousPeriod(previousPeriod(period)),previousPeriod(previousPeriod(previousPeriod(period)))];
+ const periods=swingMonths(period);
  const rows=await withTenant(sponsor,tx=>tx.select({employmentId:payslip.employmentId,payPeriod:payrollBatch.payPeriod,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq,
   basic:payslip.basicSalary,allowance:payslip.allowance,overtime:payslip.overtimePay,bonus:payslip.bonus,gross:payslip.grossPay,statutory:payslip.statutory,
   otherDeductions:payslip.otherDeductions,totalDeductions:payslip.totalDeductions,net:payslip.netPay,daysWorked:payslip.daysWorked})

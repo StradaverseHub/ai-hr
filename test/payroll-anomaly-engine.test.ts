@@ -20,6 +20,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import * as schema from '../db/schema';
+import { terasPayrollLoopSetting } from '../db/teras-payroll-cycle-schema';
 import { withTenant, type SessionContext } from '../db/client';
 import {
   evaluateBatchAnomalies,
@@ -275,13 +276,13 @@ describe('Owner rule (4 November 2026) — data-aware checks: a legitimate set-u
       return findings.some((f) => f.detectorId === 'pay-without-attendance');
     };
 
-    // The suite's baseline grants nothing: Attendance is off for the company, so nobody there clocks in.
-    expect(await ghostFlag()).toBe(false);
-    // Tenant-wide grant.
-    await setModule(b.tenantId, 'attendance', 'active');
+    // Every test tenant (like every tenant the 0313 backfill reached) starts with Attendance granted tenant-wide
+    // (packs/catalog.ts LEGACY_ENABLED_MODULE_CODES): in use, so the person with no attendance is flagged.
     expect(await ghostFlag()).toBe(true);
-    // Granted only for ANOTHER company of the group: still off here.
+    // Removed: Attendance is off for the company, so nobody there clocks in and zero days is the normal set-up.
     await setModule(b.tenantId, 'attendance', null);
+    expect(await ghostFlag()).toBe(false);
+    // Granted only for ANOTHER company of the group: still off here.
     const [other] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Other Fictional Sdn Bhd' }).returning({ id: schema.company.id });
     await setModule(b.tenantId, 'attendance', 'active', other.id);
     expect(await ghostFlag()).toBe(false);
@@ -299,6 +300,7 @@ describe('Owner rule (4 November 2026) — data-aware checks: a legitimate set-u
   it('re-evaluation supersedes a verdict the old rules raised — it neither stays open nor duplicates', async () => {
     // A verdict as the OLD rules wrote it: a cash employee blocked on bank details, and a ghost flag at a company
     // without Attendance. Inserted directly, because the current detectors can no longer produce either.
+    await setModule(b.tenantId, 'attendance', null); // the ghost's company does not use Attendance
     const cash = await makeEmp('OldCashBlock', { paymentMethod: 'cash' });
     const ghost = await makeEmp('OldGhostFlag');
     await giveProfile(ghost.personId);
@@ -362,29 +364,39 @@ describe('ADR-0076 §2.4 — coverage transparency', () => {
     expect((v.detectorsRun as string[]).length).toBeGreaterThan(0);
   });
 
-  it('runs the prior-period detectors once a prior cycle exists, and net-swing reads its threshold from config', async () => {
+  it('runs the prior-period detectors once a prior cycle exists, and net-swing reads the ONE Salary loop threshold', async () => {
     const { employmentId, personId } = await makeEmp('SecondCycle');
     await giveProfile(personId);
     const priorBatch = await makeBatch('2026-04');
     await addPayslip(priorBatch, employmentId, { netPay: '4000.00' }, { noAttendance: true });
     await closeRun(priorBatch);
     const batchId = await makeBatch('2026-05');
-    await addPayslip(batchId, employmentId, { netPay: '6000.00' }); // +50%, over the untuned 30 default
+    await addPayslip(batchId, employmentId, { netPay: '6000.00' }); // +50%, over the 15% default, and no record explains it
 
     await evaluateBatchAnomalies(a, { batchId });
     let [v] = await liveVerdicts(batchId);
     expect((v.detectorsRun as string[])).toContain('net-swing');
     expect((await findingsOf(v.id)).map((f) => f.detectorId)).toContain('net-swing');
 
-    // THRESHOLDS ARE DATA: the same 50% movement is unremarkable at a 60% threshold, and setting it
-    // required no deploy. This is the property the whole config table exists for.
-    expect(UNTUNED_DEFAULT_PARAMS['net-swing']).toEqual({ netSwingPct: 30 });
+    const [finding] = (await findingsOf(v.id)).filter((f) => f.detectorId === 'net-swing');
+    expect(finding.facts).toMatchObject({ movementPct: 50, thresholdPct: 15, explainedCauses: '', unexplainedShare: 1 });
+
+    // ONE THRESHOLD (owner, 11 November 2026): a per-detector netSwingPct in payroll_anomaly_config no longer applies…
+    expect(UNTUNED_DEFAULT_PARAMS['net-swing']).toEqual({ netSwingPct: 15 });
     await owner.db.insert(schema.payrollAnomalyConfig).values({
       tenantId: b.tenantId,
       companyId: b.companyId,
       detectorId: 'net-swing',
       params: { netSwingPct: 60 },
       effectiveFrom: '2026-01-01',
+    });
+    await evaluateBatchAnomalies(a, { batchId });
+    [v] = await liveVerdicts(batchId);
+    expect((await findingsOf(v.id)).map((f) => f.detectorId)).toContain('net-swing');
+    // …the company's Salary payroll loop setting does, read once for the batch: at 50% the same 50% movement is not over it.
+    await owner.db.insert(terasPayrollLoopSetting).values({
+      tenantId: b.tenantId, companyId: b.companyId, version: 1, checkInterval: 'daily', swingThresholdBp: 5000, swingExclusions: [],
+      remindersEnabled: true, source: 'admin', changedByUserId: b.adminUserId,
     });
     await evaluateBatchAnomalies(a, { batchId });
     [v] = await liveVerdicts(batchId);

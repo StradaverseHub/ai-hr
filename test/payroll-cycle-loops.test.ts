@@ -239,7 +239,8 @@ describe('the Pre-salary loop',()=>{
 });
 
 /** Seven fictional people paid by bank in May and June: five with a new housing allowance in June (one pay component,
- * so one pattern), one unchanged, one with a June bonus run. */
+ * so one pattern), one unchanged, one with a June bonus run AND a new cost-of-living allowance. The bonus run is a payroll
+ * record that explains its part of the change ("check the payroll first", owner 11 November 2026); the allowances are not. */
 async function payrollFixture(){
  await seedPayComponentCatalog(a);
  const housing=(await listPayComponents(a,{includeArchived:true})).find(component=>component.code==='HOUSING')!;
@@ -253,6 +254,8 @@ async function payrollFixture(){
  }
  const may=(await createBatch(a,{companyId:b.companyId,payPeriod:MAY})).batchId;await generatePayslips(a,{batchId:may});await closeBatch(a,{batchId:may});
  for(const [i,amount] of [1000,1100,1200,1300,1400].entries())await setEmploymentPayComponent(a,{employmentId:people[i].employmentId,componentId:housing.id,amount,effectiveFrom:'2026-06-01'});
+ const cola=(await listPayComponents(a,{includeArchived:true})).find(component=>component.code==='COLA')!;
+ await setEmploymentPayComponent(a,{employmentId:people[6].employmentId,componentId:cola.id,amount:1000,effectiveFrom:'2026-06-01'});
  const june=(await createBatch(a,{companyId:b.companyId,payPeriod:JUNE})).batchId;await generatePayslips(a,{batchId:june});
  const bonus=(await createAdditionalRun(a,{companyId:b.companyId,payPeriod:JUNE,runType:'bonus'})).batchId;
  // With typed pay items in use (the housing allowance is one), a bonus run pays the catalogue's BONUS item for the run.
@@ -268,7 +271,10 @@ async function payrollFixture(){
  const net=(employmentId:string,batches:string[])=>slips.filter(slip=>slip.employmentId===employmentId&&batches.includes(slip.batchId)).reduce((sum,slip)=>sum+Number(slip.net),0);
  const swing=Object.fromEntries(people.map(e=>{const before=net(e.employmentId,[may]),after=net(e.employmentId,[june,bonus]);
   return [e.employmentId,Math.round(Math.abs(Math.round((after-before)*100)/100)*10_000/before)];}));
- return {people,may,june,bonus,offCycle,swing,housing};
+ // What no payroll record explains: the bonus run's own net is explained by the run, so this is the regular run's change.
+ const unexplained=Object.fromEntries(people.map(e=>{const before=net(e.employmentId,[may]),after=net(e.employmentId,[june]);
+  return [e.employmentId,Math.round(Math.abs(Math.round((after-before)*100)/100)*10_000/before)];}));
+ return {people,may,june,bonus,offCycle,swing,unexplained,housing};
 }
 const snapshot=async()=>({
  batches:(await owner.db.select({id:schema.payrollBatch.id,status:schema.payrollBatch.status,closedAt:schema.payrollBatch.closedAt,totals:schema.payrollBatch.totals})
@@ -374,8 +380,10 @@ describe('the Salary payroll loop',()=>{
   await setup(['payroll','multi_cycle_payroll','typed_pay_components']);
   const fx=await payrollFixture();
   const [raises,steady,bonusPerson]=[fx.people.slice(0,5),fx.people[5],fx.people[6]];
-  const flagged=fx.people.filter(e=>fx.swing[e.employmentId]>1500).map(e=>e.employmentId).sort();
-  // Every new housing allowance (1,000–1,400 on 3,000) and the 2,000 bonus moves net pay by more than 15%; the steady pay does not.
+  const over=(id:string,thresholdBp:number)=>fx.swing[id]>thresholdBp&&fx.unexplained[id]>thresholdBp;
+  const flagged=fx.people.filter(e=>over(e.employmentId,1500)).map(e=>e.employmentId).sort();
+  // Every new housing allowance (1,000–1,400 on 3,000) moves net pay by more than 15%, and so does the bonus person's new
+  // 1,000 allowance once the bonus run (explained) is taken out; the steady pay does not.
   expect(flagged).toEqual([...raises,bonusPerson].map(e=>e.employmentId).sort());
   expect(fx.swing[steady.employmentId]).toBe(0);
   const thresholds=await thresholdsInForce(group,{batchId:fx.june});
@@ -396,13 +404,13 @@ describe('the Salary payroll loop',()=>{
   expect((await caseOf('loop_salary_payroll',`salaryrun:${fx.june}`))!.facts).toMatchObject({changed:6,flagged:6,thresholdBp:1500});
   // Phase 2 hardening: a threshold is never set above the proposal cap, 50%.
   await expect(setPayrollLoopSetting(group,{companyId:b.companyId,thresholdBp:5001})).rejects.toMatchObject({reason:'invalid'});
-  // At the highest threshold, 50%, the flags under it no longer apply (the bonus, a swing over 50%, still does); back at
+  // At the highest threshold, 50%, the flags whose swing or unexplained change is under it no longer apply; back at
   // 15%, the same flags reopen.
   await setPayrollLoopSetting(group,{companyId:b.companyId,thresholdBp:5000});
   await run('loop_salary_payroll');
   expect((await swings()).map(row=>[row.employmentId,row.state,row.closeReason]).sort())
-   .toEqual(flagged.map(id=>fx.swing[id]>5000?[id,'open',null]:[id,'closed','superseded']).sort());
-  const underCap=flagged.filter(id=>fx.swing[id]<=5000).length;
+   .toEqual(flagged.map(id=>over(id,5000)?[id,'open',null]:[id,'closed','superseded']).sort());
+  const underCap=flagged.filter(id=>!over(id,5000)).length;
   await setPayrollLoopSetting(group,{companyId:b.companyId,thresholdBp:1500});
   expect(await run('loop_salary_payroll')).toMatchObject({totals:{reopened:underCap}});
   swingsNow=await swings();

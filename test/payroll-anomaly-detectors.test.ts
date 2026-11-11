@@ -201,12 +201,16 @@ describe('ADR-0076 prior-period detectors — self-disable on cycle 1', () => {
     }
   });
 
-  it('net-swing respects the configured threshold rather than a hardcoded one', () => {
-    const ctx = ctxOf({ current: figures({ netPay: 6000 }), prior: figures({ netPay: 4000 }) }); // +50%
-    expect(run('net-swing', ctx, { netSwingPct: 30 })).toHaveLength(1);
-    // The SAME movement is unremarkable under a looser threshold — proving the value is read from config,
-    // which is the whole point of thresholds-as-data (calibration must not require a deploy).
-    expect(run('net-swing', ctx, { netSwingPct: 60 })).toHaveLength(0);
+  it('net-swing has ONE threshold, the Salary loop\'s: a per-detector netSwingPct no longer changes anything', () => {
+    // Owner, 11 November 2026. Without payroll months in the context, the plain swing is judged at the 15% default;
+    // test/net-swing-explained.test.ts covers the company's own threshold and "check the payroll first".
+    const ctx = ctxOf({ current: figures({ netPay: 4800 }), prior: figures({ netPay: 4000 }) }); // +20%
+    for (const params of [{}, { netSwingPct: 30 }, { netSwingPct: 60 }]) {
+      const out = run('net-swing', ctx, params);
+      expect(out).toHaveLength(1);
+      expect(out[0].facts).toMatchObject({ movementPct: 20, thresholdPct: 15, unexplainedShare: 1 });
+    }
+    expect(run('net-swing', ctxOf({ current: figures({ netPay: 4400 }), prior: figures({ netPay: 4000 }) }), { netSwingPct: 5 })).toHaveLength(0); // +10%
   });
 
   it('net-swing reports the movement it measured, in both directions', () => {

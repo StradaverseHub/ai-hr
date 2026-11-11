@@ -1,6 +1,9 @@
 import {assertAiPrincipalTx} from './ai-principal';
 import {resolveEntitlementsTx,assertModuleEnabled,isModuleEnabled,TENANT_STATUS_GOOD_STANDING} from './entitlements';
 import type { EntitlementSnapshot } from './entitlement-types';
+import {payrollLoopSettingsTx} from './loops/payroll-loop-settings';
+import {DEFAULT_SWING_THRESHOLD_BP,swingMonths,swingThresholdOrDefault,type ComponentIds} from './loops/net-swing';
+import type {StoredPayslipRow} from './pay-difference';
 /**
  * ADR-0076 — the payroll anomaly engine. The ADR-0074 control-tower keystone, Phase 1a.
  *
@@ -64,7 +67,11 @@ const num = (v: unknown): number => {
  * is the entire reason thresholds live in the database. Nobody should mistake 30 for an empirical number.
  */
 export const UNTUNED_DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
-  'net-swing': { netSwingPct: 30 },
+  // ONE THRESHOLD (owner, 11 November 2026): `net-swing` judges by the company's Salary payroll loop threshold
+  // (core/loops/payroll-loop-settings.ts), whose default is 15%. This entry is that default as the disclosure prints it
+  // when no administrator has set one; it is NOT read by the detector, and a payroll_anomaly_config `netSwingPct` no
+  // longer changes anything (the config row can still switch the detector off).
+  'net-swing': { netSwingPct: DEFAULT_SWING_THRESHOLD_BP / 100 },
   'batch-swing': { batchSwingPct: 15 },
 };
 
@@ -139,6 +146,25 @@ export type ThresholdProvenance = {
   anyUntuned: boolean;
 };
 
+/**
+ * The company's ONE net-swing threshold (its Salary payroll loop setting) and its exclusions: one bounded read for the
+ * batch's company. FAIL SAFE: a setting that cannot be used (absent, malformed, out of range, or a reader error that
+ * leaves the transaction usable) is the 15% default, never "no check". A database error fails the caller's transaction
+ * like every other read of an evaluation.
+ */
+async function swingSettingTx(tx: Tx, tenantId: string, companyId: string): Promise<{ thresholdBp: number; exclusions: readonly string[]; configured: boolean }> {
+  try {
+    const setting = (await payrollLoopSettingsTx(tx, tenantId, [companyId])).get(companyId);
+    const thresholdBp = swingThresholdOrDefault(setting?.thresholdBp);
+    const exclusions = [...(setting?.exclusions ?? [])].filter((e): e is string => typeof e === 'string');
+    // "Configured" = an administrator chose a number other than the shipped 15% (a settings version that only added an
+    // exclusion, or put 15% back, has tuned nothing).
+    return { thresholdBp, exclusions, configured: thresholdBp !== DEFAULT_SWING_THRESHOLD_BP };
+  } catch {
+    return { thresholdBp: DEFAULT_SWING_THRESHOLD_BP, exclusions: [], configured: false };
+  }
+}
+
 /** The numbers that classified this batch, and where each came from. Read-only; touches nothing. */
 export async function thresholdsInForce(ctx: SessionContext, p: { batchId: string }): Promise<ThresholdProvenance> {
   return withTenant(ctx, async (tx) => {
@@ -148,7 +174,16 @@ export async function thresholdsInForce(ctx: SessionContext, p: { batchId: strin
       .where(eq(schema.payrollBatch.id, p.batchId))
       .limit(1);
     const { cfgFor, paramsFor } = thresholdResolver(await readAnomalyConfig(tx, ctx.tenantId), batch?.companyId ?? null);
+    const swing = batch ? await swingSettingTx(tx, ctx.tenantId, batch.companyId) : null;
     const thresholds: ThresholdInForce[] = Object.keys(UNTUNED_DEFAULT_PARAMS).map((detectorId) => {
+      // The one net-swing threshold is the Salary payroll loop's, exactly as the evaluator reads it.
+      if (detectorId === 'net-swing') {
+        return {
+          detectorId,
+          params: { netSwingPct: (swing?.thresholdBp ?? DEFAULT_SWING_THRESHOLD_BP) / 100 },
+          source: swing?.configured ? 'configured' : 'untuned_default',
+        };
+      }
       const supplied = cfgFor(detectorId)?.params as Record<string, unknown> | undefined;
       return {
         detectorId,
@@ -496,6 +531,43 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string, entitlem
   const snapshot = entitlements && entitlements.tenantId === tenantId ? entitlements : await resolveEntitlementsTx(tx, tenantId);
   const attendanceInUse = attendanceInUseFor(snapshot, batch.companyId);
 
+  // ONE THRESHOLD and "check the payroll first" (owner, 11 November 2026). The company's Salary payroll loop setting, and
+  // every payslip these people had at this company in the months a comparison reads, exactly as the Salary loop reads
+  // them (processed or closed runs, plus this batch): ONE set-based read each for the whole batch, never per employee.
+  const swingSetting = await swingSettingTx(tx, tenantId, batch.companyId);
+  const months = swingMonths(batch.payPeriod);
+  const monthRows = await tx
+    .select({
+      employmentId: schema.payslip.employmentId, payPeriod: schema.payrollBatch.payPeriod, runType: schema.payrollBatch.runType,
+      runSeq: schema.payrollBatch.runSeq, basic: schema.payslip.basicSalary, allowance: schema.payslip.allowance,
+      overtime: schema.payslip.overtimePay, bonus: schema.payslip.bonus, gross: schema.payslip.grossPay, statutory: schema.payslip.statutory,
+      otherDeductions: schema.payslip.otherDeductions, totalDeductions: schema.payslip.totalDeductions, net: schema.payslip.netPay,
+      daysWorked: schema.payslip.daysWorked,
+    })
+    .from(schema.payslip)
+    .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payslip.batchId))
+    .where(
+      and(
+        eq(schema.payrollBatch.companyId, batch.companyId),
+        inArray(schema.payrollBatch.payPeriod, months),
+        inArray(schema.payslip.employmentId, employmentIds),
+        sql`(${inArray(schema.payrollBatch.status, ['processed', 'closed'])} or ${schema.payrollBatch.id} = ${batchId}::uuid)`,
+      ),
+    );
+  const monthsByEmployment = new Map<string, StoredPayslipRow[]>();
+  for (const row of monthRows) {
+    const list = monthsByEmployment.get(row.employmentId) ?? [];
+    list.push({ companyId: batch.companyId, company: '', payPeriod: row.payPeriod, runType: row.runType, runSeq: row.runSeq, basic: row.basic,
+      allowance: row.allowance, overtime: row.overtime, bonus: row.bonus, gross: row.gross, statutory: row.statutory,
+      otherDeductions: row.otherDeductions, totalDeductions: row.totalDeductions, net: row.net, daysWorked: row.daysWorked });
+    monthsByEmployment.set(row.employmentId, list);
+  }
+  // An approved pay-item exclusion is keyed on a pay component's id: the catalogue is read only when one is in force.
+  const componentIds: ComponentIds | undefined = swingSetting.exclusions.some((e) => e.startsWith('item:'))
+    ? new Map((await tx.select({ code: schema.payComponent.code, id: schema.payComponent.id }).from(schema.payComponent)
+        .where(eq(schema.payComponent.tenantId, tenantId))).map((c) => [c.code, c.id]))
+    : undefined;
+
   const contexts: DetectorContext[] = slips.map((slip) => {
     const emp = empById.get(slip.employmentId);
     const profile = emp ? profileByPerson.get(emp.personId) : undefined;
@@ -523,6 +595,14 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string, entitlem
       },
       period: { start: periodStart, end: periodEnd, calendarDays: dim },
       caps: caps ?? {},
+      swing: {
+        period: batch.payPeriod,
+        companyId: batch.companyId,
+        rows: monthsByEmployment.get(slip.employmentId) ?? [],
+        thresholdBp: swingSetting.thresholdBp,
+        exclusions: swingSetting.exclusions,
+        ...(componentIds ? { componentIds } : {}),
+      },
       // Provenance is populated in a later slice; the column and the plumbing exist now so findings
       // written today are shaped the same as findings written then.
       eventIds: [],

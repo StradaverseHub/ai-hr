@@ -193,6 +193,69 @@ export function comparePayPeriods(rows:readonly StoredPayslipRow[],input:Readonl
   onlyIn:{current:[...now].filter(([id])=>!before.has(id)).map(([,name])=>name).sort(),previous:[...before].filter(([id])=>!now.has(id)).map(([,name])=>name).sort()}});
 }
 
+/** The causes that may explain an amount of a net change. `set_by_hand` is deliberately absent (owner, 11 November 2026):
+ * a figure somebody typed is exactly what a person should look at, so it never explains anything. */
+export const EXPLAINING_PAY_CAUSES=['additional_run','salary_change','days_paid','overtime_hours','unpaid_leave','absence','statutory_rules'] as const;
+export type ExplainingPayCause=(typeof EXPLAINING_PAY_CAUSES)[number];
+export type ExplainedNetChange=Readonly<{
+ /** The month's net change and the previous month's net, exactly as `comparePayPeriods` reports them. */
+ net:PayChange;
+ /** The part of the net change each recorded cause accounts for (signed, to the sen). Only causes with an amount. */
+ byCause:Readonly<Partial<Record<ExplainingPayCause,number>>>;
+ explained:number;
+ /** net.change − explained: what no payroll record accounts for. */
+ unexplained:number}>;
+const STATUTORY_LINES=['epf','socso','skbbk','eis','pcb'] as const;
+/** "Check the payroll first": how much of one company's net change the payroll's own records explain, line by line.
+ *
+ * DETERMINISTIC AND CONSERVATIVE. An amount is explained only where a recorded cause owns the line it moved:
+ *  - an additional (bonus or off-cycle) run: that run's whole net, month against month;
+ *  - a recorded salary change, else a change in days paid: the regular run's basic line;
+ *  - overtime hours: the regular run's overtime line;
+ *  - unpaid leave / absence: their own deduction lines;
+ *  - the statutory deductions (EPF, SOCSO, SKBBK, EIS, PCB) of the regular run: when the statutory ruleset changed, or as
+ *    the computed consequence of an earnings change explained above, then never more than that earnings change.
+ * Everything else (allowances, claims, other deductions, a second regular run) stays unexplained, and a cause that cannot
+ * be tied to an amount explains nothing. A figure SET BY HAND explains nothing and, more than that, makes the whole
+ * comparison unexplained: a typed figure can make every other line look consistent, so a person looks at all of it.
+ * Null when the two months cannot be compared (see comparePayPeriods). */
+export function explainNetChange(rows:readonly StoredPayslipRow[],input:Readonly<{period?:string;compareTo?:string;companyId:string}>):ExplainedNetChange|null{
+ const result=comparePayPeriods(rows,input);
+ if(!result.ok)return null;
+ const cmp=result.comparisons.find(row=>row.companyId===input.companyId);
+ if(!cmp)return null;
+ const net=cmp.totals.net,kinds=new Set(cmp.causes.map(cause=>cause.kind));
+ const byCause:Partial<Record<ExplainingPayCause,number>>={};
+ const done=(explained:number)=>Object.freeze({net,byCause:Object.freeze(byCause),explained,unexplained:round2(net.change-explained)});
+ if(kinds.has('set_by_hand'))return done(0);
+ const add=(kind:ExplainingPayCause,amount:number)=>{if(amount!==0)byCause[kind]=round2((byCause[kind]??0)+amount);};
+ const own=rows.filter(row=>row.companyId===cmp.companyId);
+ const nowRows=own.filter(row=>row.payPeriod===cmp.period),beforeRows=own.filter(row=>row.payPeriod===cmp.previousPeriod);
+ if(kinds.has('additional_run')){
+  const extra=(list:readonly StoredPayslipRow[])=>round2(list.filter(row=>row.runType!=='regular').reduce((sum,row)=>sum+num(row.net),0));
+  add('additional_run',round2(extra(nowRows)-extra(beforeRows)));
+ }
+ const regular=(list:readonly StoredPayslipRow[])=>{const found=list.filter(row=>row.runType==='regular');return found.length===1?found[0]:null;};
+ const regNow=regular(nowRows),regBefore=regular(beforeRows);
+ if(regNow&&regBefore){
+  const a=payslipLineFigures(regNow),b=payslipLineFigures(regBefore),delta=(key:PayLineKey)=>round2(a[key]-b[key]);
+  const basicCause:ExplainingPayCause|null=kinds.has('salary_change')?'salary_change':kinds.has('days_paid')?'days_paid':null;
+  if(basicCause)add(basicCause,delta('basic'));
+  if(kinds.has('overtime_hours'))add('overtime_hours',delta('overtime'));
+  if(kinds.has('unpaid_leave'))add('unpaid_leave',-delta('unpaidLeave'));
+  if(kinds.has('absence'))add('absence',-delta('absent'));
+  const statutory=round2(-STATUTORY_LINES.reduce((sum,key)=>sum+delta(key),0));
+  if(kinds.has('statutory_rules'))add('statutory_rules',statutory);
+  else{
+   const earnings=(['salary_change','days_paid','overtime_hours'] as const).filter(kind=>byCause[kind]!==undefined);
+   const earned=round2(earnings.reduce((sum,kind)=>sum+(byCause[kind]??0),0));
+   // The knock-on of a computed deduction on an explained earnings change, never larger than that change.
+   if(earnings.length&&Math.abs(statutory)<=Math.abs(earned))add(earnings[0],statutory);
+  }
+ }
+ return done(round2(Object.values(byCause).reduce((sum,amount)=>sum+(amount??0),0)));
+}
+
 export type PayslipDeductionExplanation=Readonly<{key:PayslipDeductionWhy;amount:number;
  statutory:Readonly<{ruleKind:StatutoryRuleKind;setBy:StatutoryProvenanceSource;employeeReported:number;employeeTakeHome:number;employerBorne:number;employer:number;
   totalBase:number|null;effectiveEmployeeRatePercent:number|null;workingNotRecorded:boolean;additionalRun:boolean;ruleVersion:string|null}>|null;

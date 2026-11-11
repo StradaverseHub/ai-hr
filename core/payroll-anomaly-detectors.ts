@@ -19,6 +19,9 @@
  * SKIPPED WITH A REASON, so a verdict can say "auto-clear, but 2 of 6 detectors could not run yet".
  */
 
+import { DEFAULT_SWING_THRESHOLD_BP, netSwingFor, swingThresholdOrDefault, type ComponentIds } from './loops/net-swing';
+import type { StoredPayslipRow } from './pay-difference';
+
 export type DataRequirement = {
   /** 0 = works on a brand-new client's very first run, before any history exists. */
   priorCycles: number;
@@ -73,6 +76,18 @@ export type DetectorContext = {
   caps: Record<string, number>;
   /** Event ids gathered for this employee, so findings can cite provenance. */
   eventIds: string[];
+  /** Owner, 11 November 2026 — ONE net-swing threshold, and "check the payroll first". What `net-swing` judges by: this
+   *  person's payslips at this company for the period and the months before it (core/loops/net-swing.ts swingMonths), and
+   *  the company's Salary payroll loop setting, read once for the batch. Absent (a context built without it): the swing
+   *  is judged on `current`/`prior` against the 15% default, with nothing explained. */
+  swing?: {
+    period: string;
+    companyId: string;
+    rows: readonly StoredPayslipRow[];
+    thresholdBp: number;
+    exclusions: readonly string[];
+    componentIds?: ComponentIds;
+  };
 };
 
 export type PayslipFigures = {
@@ -355,17 +370,49 @@ const duplicateEmploymentPay: Detector = {
 // PHASE 1a — PRIOR-PERIOD DELTA. priorCycles: 1, so these SELF-DISABLE on a client's first cycle and are
 // recorded as skipped rather than passing vacuously.
 //
-// The defaults below are CONSERVATIVE PLACEHOLDERS, EXPLICITLY UNTUNED. ADR-0076 §6 is blunt that only
-// real client history or a shadow run produces defensible thresholds, and the seed config labels them as
-// such so nobody mistakes 30% for an empirically derived number.
+// ONE THRESHOLD (owner, 11 November 2026). `net-swing` no longer has a threshold of its own (it was a fixed 30%
+// placeholder, overridable per tenant through payroll_anomaly_config): it judges by the company's Salary payroll loop
+// threshold (15% unless an administrator set another), through the SAME pure function the Salary loop flags with
+// (core/loops/net-swing.ts netSwingFor), so the two can never disagree. `params` are ignored here on purpose.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const netSwing: Detector = {
   id: 'net-swing',
   requires: { priorCycles: 1 },
-  evaluate: (ctx, params) => {
+  evaluate: (ctx) => {
     if (!ctx.prior) return [];
-    const pct = num(params.netSwingPct) || 30;
+    if (ctx.swing) {
+      const thresholdBp = swingThresholdOrDefault(ctx.swing.thresholdBp);
+      const person = netSwingFor(ctx.employmentId, ctx.swing.rows, {
+        period: ctx.swing.period,
+        companyId: ctx.swing.companyId,
+        thresholdBp,
+        exclusions: ctx.swing.exclusions,
+        componentIds: ctx.swing.componentIds,
+      });
+      if (!person?.flagged || person.swingBp === null || person.unexplainedBp === null) return [];
+      const sign = person.direction === 'down' ? -1 : 1;
+      return [
+        {
+          detectorId: 'net-swing',
+          severity: 'review',
+          facts: {
+            netPay: person.netPay,
+            priorNetPay: person.previousNetPay,
+            movementPct: Math.round((sign * person.swingBp) / 10) / 10,
+            thresholdPct: thresholdBp / 100,
+            // "Check the payroll first": what the payroll records explained, and how much of the change they did not,
+            // as a ratio of the whole change (1 = none of it). Names and a ratio only; no new amounts.
+            explainedCauses: person.explainedBy.join(','),
+            unexplainedShare: person.swingBp === 0 ? 1 : Math.min(1, Math.round((person.unexplainedBp / person.swingBp) * 1000) / 1000),
+          },
+          sourceEventIds: ctx.eventIds,
+          suggestedAction: 'anomaly.action.netSwing',
+        },
+      ];
+    }
+    // No payroll months to check against: the plain swing, against the one default threshold.
+    const pct = DEFAULT_SWING_THRESHOLD_BP / 100;
     const before = ctx.prior.netPay;
     if (before === 0) return []; // a swing from zero is infinite; component-appeared covers that case.
     const movement = ((ctx.current.netPay - before) / Math.abs(before)) * 100;
@@ -379,6 +426,8 @@ const netSwing: Detector = {
               priorNetPay: before,
               movementPct: Math.round(movement * 10) / 10,
               thresholdPct: pct,
+              explainedCauses: '',
+              unexplainedShare: 1,
             },
             sourceEventIds: ctx.eventIds,
             suggestedAction: 'anomaly.action.netSwing',

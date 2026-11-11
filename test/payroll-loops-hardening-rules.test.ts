@@ -36,19 +36,24 @@ const OCT_BONUS=row({payPeriod:'2026-10',runType:'bonus',runSeq:2,basic:'0.00',b
  statutory:statutory({epfEmployee:110,socsoEmployee:0,eisEmployee:0,pcb:0})});
 const swing=(rows:StoredPayslipRow[],thresholdBp:number,exclusions:string[])=>netSwingFor('e1',rows,{period:'2026-10',companyId:'co-a',thresholdBp,exclusions});
 
+// October with one day fewer paid and a 445.00 allowance with no pay item behind it: net 4,740.35, the same 10.36% change,
+// whose only recorded cause (days paid) explains none of it, since the basic did not move.
+const OCT_DAYS=row({payPeriod:'2026-10',daysWorked:'29.00',allowance:'445.00',gross:'5445.00',net:'4740.35'});
 describe('an excluded cause never hides a change of any size (review finding A1)',()=>{
  it('explains a change only when it is the only cause and the swing is under twice the threshold',()=>{
   // 10.36% against 10%: over it, under twice it, one cause: excluded.
-  expect(swing([SEPTEMBER,OCT_REGULAR],1000,['cause:salary_change'])).toMatchObject({swingBp:1036,causes:['salary_change'],flagged:false,excluded:true});
+  expect(swing([SEPTEMBER,OCT_DAYS],1000,['cause:days_paid'])).toMatchObject({swingBp:1036,unexplainedBp:1036,causes:['days_paid'],flagged:false,excluded:true});
   // Against 5%: 10.36% is at least twice 5%, so it is flagged whatever is excluded.
-  expect(swing([SEPTEMBER,OCT_REGULAR],500,['cause:salary_change'])).toMatchObject({swingBp:1036,flagged:true,excluded:false});
-  // A second cause beside the excluded one (the bonus run): flagged.
-  const both=swing([SEPTEMBER,OCT_REGULAR,OCT_BONUS],2000,['cause:salary_change']);
+  expect(swing([SEPTEMBER,OCT_DAYS],500,['cause:days_paid'])).toMatchObject({swingBp:1036,flagged:true,excluded:false});
+  // A second cause beside the excluded one (the bonus run, which explains its own 890.00 and leaves 10.36%): flagged.
+  const both=swing([SEPTEMBER,OCT_DAYS,OCT_BONUS],1000,['cause:days_paid']);
   expect(both).not.toBeNull();
   expect(both!.causes.length).toBeGreaterThan(1);
-  expect(both).toMatchObject({flagged:true,excluded:false});
+  expect(both).toMatchObject({swingBp:3108,unexplainedBp:1036,flagged:true,excluded:false});
   // No exclusion: flagged as before.
-  expect(swing([SEPTEMBER,OCT_REGULAR],1000,[])).toMatchObject({flagged:true,excluded:false});
+  expect(swing([SEPTEMBER,OCT_DAYS],1000,[])).toMatchObject({flagged:true,excluded:false});
+  // And a recorded salary change is not an exclusion at all: the record explains it, so it is never flagged.
+  expect(swing([SEPTEMBER,OCT_REGULAR],500,[])).toMatchObject({swingBp:1036,unexplainedBp:0,explainedBy:['salary_change'],flagged:false,excluded:false});
  });
  it('caps every threshold at the proposal cap, 50%',()=>{
   expect(MAX_THRESHOLD_BP).toBe(5000);
