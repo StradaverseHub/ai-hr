@@ -18,7 +18,11 @@ import {acknowledgedBlocksForPeriods} from '../core/loops/grouped-dispositions';
 import {LOOP_IDS} from '../core/loops/types';
 import {closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
-import {legacyExceptionsAcknowledged,legacyLoopAutonomyDetail,legacyLoopCompanyLevels,legacyLoopLevelSummaries} from './helpers/ai-centre-scale-legacy';
+import {legacyExceptionsAcknowledged,legacyLoopAutonomyDetail,legacyLoopCompanyLevels,legacyLoopLevelSummaries,legacyOpenExceptionsAcrossRuns,legacyRecordReadiness} from './helpers/ai-centre-scale-legacy';
+import {recordReadiness} from '../core/record-readiness';
+import {orchestrationQueue} from '../core/hr-orchestrator';
+import {readinessLoopAsks} from '../core/loops/readiness-asks';
+import {openExceptionsAcrossRuns,type OpenExceptionRow} from '../core/payroll-anomaly';
 import {observeStatements} from './helpers/statement-observer';
 
 const DAY=86_400_000,LOOP='loop_missing_employee_data' as const;
@@ -111,5 +115,48 @@ describe('AI Centre set-based owners answer exactly as the per-company owners di
   const observed=await observeStatements(()=>acknowledgedBlocksForPeriods(fixture.personas.group,{companyIds:fixture.companyIds,payPeriods:PERIODS}));
   expect(observed.transactions).toBe(1);
   expect(observed.statements.length).toBeLessThanOrEqual(4);
+ },180_000);
+ it('Exceptions queue: the page bounded in SQL is the page the in-memory sort gave, with the same counts',async()=>{
+  // Worst first, then oldest first. The old in-memory sort left verdicts of the same time in the database's row order;
+  // the bounded read settles them by verdict id. So: the same counts, the same (severity, time) sequence, the same rows
+  // wherever a time is not split by the page's edge, and the same rows outright when nothing is cut off.
+  const rank=(row:OpenExceptionRow)=>row.disposition==='block'?0:row.disposition==='review'?1:2;
+  const key=(row:OpenExceptionRow)=>`${rank(row)}|${row.computedAt.getTime()}`;
+  const canon=(rows:readonly OpenExceptionRow[])=>[...rows].sort((a,b)=>rank(a)-rank(b)||a.computedAt.getTime()-b.computedAt.getTime()||a.verdictId.localeCompare(b.verdictId));
+  let compared=0;
+  for(const [name,ctx] of personas())for(const limit of [1000,100,25,7,1,undefined]){
+   const now=await openExceptionsAcrossRuns(ctx,limit===undefined?undefined:{limit}),before=await legacyOpenExceptionsAcrossRuns(ctx,limit===undefined?undefined:{limit});
+   const label=`${name} limit ${limit}`;
+   expect({total:now.total,blocking:now.blocking,cappedOut:now.cappedOut},label).toEqual({total:before.total,blocking:before.blocking,cappedOut:before.cappedOut});
+   expect(now.rows.map(key),label).toEqual(before.rows.map(key));
+   const edge=now.rows.length?key(now.rows[now.rows.length-1]):null;
+   expect(canon(now.rows.filter(row=>key(row)!==edge)),label).toEqual(canon(before.rows.filter(row=>key(row)!==edge)));
+   if(!before.cappedOut)expect(canon(now.rows),label).toEqual(canon(before.rows));
+   compared+=now.rows.length;
+  }
+  // Non-trivial: the group administrator's queue is longer than a page and holds both blocks and reviews.
+  const group=await openExceptionsAcrossRuns(fixture.personas.group,{limit:25});
+  expect(group.cappedOut).toBe(true);expect(group.blocking).toBeGreaterThan(0);expect(group.total).toBeGreaterThan(group.blocking);
+  expect(compared).toBeGreaterThan(100);
+  const observed=await observeStatements(()=>openExceptionsAcrossRuns(fixture.personas.group));
+  expect(observed.statements.length).toBe(3);
+ },180_000);
+ it('Record readiness: the screen\'s read (compensation probed per employment, planned without JIT) answers as before',async()=>{
+  for(const [name,ctx] of personas())for(const peopleLimit of [undefined,0,3,Number.POSITIVE_INFINITY]){
+   const opts=peopleLimit===undefined?undefined:{peopleLimit};
+   const before=await legacyRecordReadiness(ctx,opts);
+   expect(await recordReadiness(ctx,{...opts,planWithoutJit:true}),`${name} ${peopleLimit}`).toEqual(before);
+   expect(await recordReadiness(ctx,opts),`${name} ${peopleLimit} (other callers)`).toEqual(before);
+  }
+  // Non-trivial: every gap occurs, and the group administrator sees ready and unready people.
+  const view=await recordReadiness(fixture.personas.group,{peopleLimit:Number.POSITIVE_INFINITY,planWithoutJit:true});
+  expect(view.gaps.map(gap=>gap.id).sort()).toEqual(['no_bank_account','no_compensation','no_epf_number','no_identity','no_socso_number','no_tax_number']);
+  expect(view.ready).toBeGreaterThan(0);expect(view.ready).toBeLessThan(view.employees);
+  // The screen's three reads keep their statements: one per read plus each transaction's identity and its JIT setting.
+  const read=await observeStatements(async()=>{const v=await recordReadiness(fixture.personas.group,{planWithoutJit:true});
+   await orchestrationQueue(fixture.personas.group);return readinessLoopAsks(fixture.personas.group,v.gaps.flatMap(g=>g.people.map(p=>p.employmentId)));});
+  expect(read.transactions).toBe(3);
+  expect(read.statements.filter(s=>!/^select b\.oid, b\.typarray/i.test(s.sql.trim())).length).toBe(13);
+  expect(read.statements.filter(s=>/^set local jit\s*=\s*off$/i.test(s.sql.trim())).length).toBe(3);
  },180_000);
 });

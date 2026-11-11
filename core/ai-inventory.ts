@@ -94,6 +94,10 @@ export async function aiInventoryView(supplied:SessionContext,view:ManagementVie
  const components=aiInventoryComponents();
  return withTenant(ctx,async tx=>{
   await assertAiPresentationPrincipalTx(tx,ctx);
+  // Planned without JIT (AI Centre › Workers, 11 November 2026): the use counts aggregate the row-secured audit log, which
+  // compiled for about 2.8 s and ran in milliseconds on a 30,000-event tenant (test/ai-centre-scale-timing.test.ts).
+  // Scoped to this transaction; same answer.
+  await tx.execute(sql`set local jit=off`);
   const group=await groupAdminClaimTx(tx,ctx),pauses=await pausesTx(tx,group),from=window30();
   const paused=(c:AiInventoryComponent)=>c.kind==='action'?pauses.get(c.id)?.paused===true:null;
   if(!group)return {scope:'registry',rows:components.map(c=>({...registryRow(c),actionPaused:paused(c)}))};
