@@ -51,7 +51,8 @@ case "${AIHR_CI_PG_DEVELOPMENT_LOCK_LOG:-0}" in
   0) ;;
   1)
     [[ "$operation" == reset && ( "${GITHUB_JOB:-}" == selected-tests ||
-      ( "${GITHUB_JOB:-}" == worker-cell && ( "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-2-4-8 || "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-smoke ) ) ) &&
+      ( "${GITHUB_JOB:-}" == worker-cell && ( "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-2-4-8 || "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-smoke ||
+        "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-control ) ) ) &&
       "${GITHUB_EVENT_NAME:-}" == workflow_dispatch &&
       "${GITHUB_RUN_ATTEMPT:-}" == 1 && "$AIHR_CI_UNIT" == db-1 && "$AIHR_CI_PG_PROFILE" == 2 &&
       "${AIHR_CI_PG_DURABLE:-}" == 1 && "${AIHR_CI_PG_STATEMENTS_OWNER:-}" == system-http-profile ]] || exit 2
