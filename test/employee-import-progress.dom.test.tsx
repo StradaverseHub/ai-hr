@@ -51,6 +51,15 @@ describe('EmployeeImportJobPanel',()=>{
   expect(onFinished).not.toHaveBeenCalled();
  });
 
+ it('says plainly when progress cannot be checked, and keeps checking (item 1859cce0)',async()=>{
+  const m=(en as never as {people:{import:{uploadErrors:{progressUnreachable:string}}}}).people.import.uploadErrors;
+  const fetch=vi.fn().mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce(new Response('<html>Gateway Timeout</html>',{status:504})).mockImplementation(()=>respond(base));
+  vi.stubGlobal('fetch',fetch);
+  harness(en as never,'en',base);
+  await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(m.progressUnreachable));
+  expect(screen.getByRole('alert').textContent).not.toMatch(/Failed to fetch|Nothing was changed/);
+ });
+
  it('renders the shipping translation for another locale',async()=>{
   vi.stubGlobal('fetch',vi.fn(()=>respond(base)));
   harness(zh as never,'zh',base);

@@ -3021,7 +3021,14 @@
         "otherRunning": "您发起的另一项异动检查仍在进行。请等待其完成后再检查新文件。",
         "workerUnavailable": "导入服务尚未运行。您的文件已保留，服务一运行检查便会自动开始。"
       },
-      "historyButton": "导入历史"
+      "historyButton": "导入历史",
+      "uploadErrors": {
+        "unreachable": "无法连接服务器。请检查网络连接后重试；再次发送同一文件不会重复导入。",
+        "unavailable": "系统暂时不可用。请先打开导入历史，确认此导入是否已收到，再重试。",
+        "timeout": "处理时间比预期长。导入可能仍在进行：请查看导入历史，在显示结果之前不要重新上传文件。",
+        "unknown": "无法确认导入结果。请先查看导入历史再重试。",
+        "progressUnreachable": "无法连接服务器以查看进度。导入仍在后台进行，此页面会继续检查。"
+      }
     },
     "wizard": {
       "deleteRecord": "删除记录",
@@ -3466,6 +3473,52 @@
         "noDetail": "此导入未记录行详情。",
         "none": "所有行均已保存。",
         "reasonColumn": "原因"
+      },
+      "errorReport": {
+        "title": "错误报告",
+        "hint": "每个问题一行：行号、员工、需要更正的列以及错误内容。",
+        "download": "下载错误报告",
+        "filterLabel": "显示行",
+        "problemRows": "有问题的行（{count}）",
+        "allRows": "所有行（{count}）",
+        "saved": "已保存的员工",
+        "toFix": "需要修正的问题行",
+        "cancelled": "没有问题、因文件被取消而未保存的行",
+        "cancelledTitle": "此文件在保存时被取消，因此未创建任何员工。",
+        "cancelledBody": "第 {rows} 行无法保存（见下文）。文件要么全部保存，要么全部不保存，因此没有问题的行也未保存。请修正所列的行，然后重新上传整个文件。",
+        "stoppedBody": "导入在完成前停止，因此未保存任何内容。原因见下方审计记录。请重新上传整个文件。",
+        "restricted": "仅显示您可查看的公司的行。",
+        "noProblems": "此文件未发现问题。",
+        "noRows": "此导入没有可显示的行。",
+        "colRow": "行",
+        "colCode": "员工编号",
+        "colName": "姓名",
+        "colColumn": "列",
+        "colProblem": "问题",
+        "colResult": "结果",
+        "stage": {
+          "check": "在文件检查中发现",
+          "save": "在保存时发现——导致文件停止"
+        },
+        "outcome": {
+          "refused": "未保存",
+          "stopped": "导致保存停止",
+          "cancelled": "未保存——文件已取消",
+          "saved": "已保存",
+          "pending": "未完成"
+        },
+        "cancelledRow": "没有问题。因第 {rows} 行导致文件停止而未保存。",
+        "cancelledRowUnnamed": "没有问题。因文件被取消而未保存。",
+        "contract": {
+          "required": "雇佣类型为合同时必填。",
+          "before_hire": "不能早于集团入职日期。",
+          "end_not_after_start": "必须晚于合同开始日期。"
+        },
+        "csvBatch": "批次编号",
+        "csvFile": "文件名",
+        "csvStatus": "最终状态",
+        "csvStage": "发现于",
+        "rowsHint": "行号按文件中的员工行计数，与导入预览一致。"
       }
     },
     "informationCorrection": {

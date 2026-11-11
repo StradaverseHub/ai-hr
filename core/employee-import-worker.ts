@@ -22,6 +22,7 @@ import type {AllocationImportPreview} from '../lib/cost-allocation-import';
 import type {EmployeeImportResultSummary} from '../lib/employee-import-job';
 import type {RowResult} from '../lib/import-schema';
 import type {BulkJobRowError} from '../lib/bulk-job';
+import {EMPLOYEE_IMPORT_SAVE_REPORT_LIMIT,cancelledFileMessage,cancelledRowMessage,ownerRefusalColumn,type EmployeeImportSaveReportRow} from '../lib/employee-import-report';
 
 /** Step work per chunk before it commits. One hire costs 60–150 ms (more on a loaded host), so most chunks hold the
  * tenant writer locks for one or two rows; the 8,000-row rehearsal at 200 ms peaked at 1.42 s under host load. */
@@ -31,24 +32,35 @@ const BATCH_TARGET_MS=Number(process.env.EMPLOYEE_IMPORT_BATCH_TARGET_MS??200);
 const BATCH_MIN=10,BATCH_MAX=1000;
 export type EmployeeImportStoredPlan={allocationPreview?:AllocationImportPreview;rejected?:RowResult[];skipped?:number;companyId:string;
  replay?:{imported:number;skipped:number;dependents:number;qualification:number;emergency:number};released?:boolean;settled?:boolean;
- counts?:{imported:number;dependents:number;qualification:number;emergency:number}};
-type StepResult={employmentId?:string;personId?:string;family?:number;register?:'qualification'|'emergency';subordinate?:string;manager?:string;target?:{employmentId:string;personId:string}|null};
+ counts?:{imported:number;dependents:number;qualification:number;emergency:number};
+ /** Item 1859cce0 — the rows refused while saving (outcome 'stopped'), kept until Import History records them. Rows
+  *  with no problem are not listed: every other valid row of a failed import is a cancelled row. */
+ saveReport?:EmployeeImportSaveReportRow[]};
+/** `refused`: the step's owner refused it while saving (item 1859cce0); its savepoint rolled back and nothing of it
+ *  is staged. `skipped`: the step belonged to a refused row and was not attempted. */
+type StepResult={employmentId?:string;personId?:string;family?:number;register?:'qualification'|'emergency';subordinate?:string;manager?:string;target?:{employmentId:string;personId:string}|null;
+ refused?:{message:string;column?:string};skipped?:'refused-row'};
 const isTransient=(error:unknown)=>isTransientBulkJobError(error);
 export {isTransient as isTransientEmployeeImportError};
 
 class ActivationConflict extends Error{constructor(readonly rows:BulkJobRowError[]){super('Employee data changed before the import could be finished.');}}
+/** Item 1859cce0 — every step ran and at least one was refused while saving: the whole file is discarded. */
+class SaveRefused extends Error{constructor(readonly rows:number[]){super(`Row ${rows.join(', ')} could not be saved.`);}}
 const inputOf=(job:BulkJobRow)=>job.input as EmployeeImportJobInput;
 const planOf=(job:BulkJobRow)=>(job.plan??{companyId:inputOf(job)?.upload.companyId}) as EmployeeImportStoredPlan;
 /** The validated plan travels from prepare to the commit transaction of the same tick (never persisted twice). */
 const prepared=new Map<string,EmployeeImportJobPlan&{parsed:ReturnType<typeof parseEmployeeImportUpload>}>();
 
 /** Rebuilds the map of already applied rows from their committed step results (survives a worker restart). */
+type StepEnv={employmentByIndex:Map<number,string>;registerSubjects:Map<string,{employmentId:string;personId:string}>;refusedByIndex:Map<number,number>;refusedCodes:Set<string>};
 async function stepEnv(tx:Tx,job:BulkJobRow,cache:Map<string,unknown>){
- let env=cache.get('env') as {employmentByIndex:Map<number,string>;registerSubjects:Map<string,{employmentId:string;personId:string}>}|undefined;
+ let env=cache.get('env') as StepEnv|undefined;
  if(env)return env;
- env={employmentByIndex:new Map(),registerSubjects:new Map()};
+ env={employmentByIndex:new Map(),registerSubjects:new Map(),refusedByIndex:new Map(),refusedCodes:new Set()};
  const rows=await tx.execute<{payload:EmployeeImportPlanStep;result:StepResult}>(sql`select payload,result from bulk_job_step where job_id=${job.id}::uuid and kind='employee' and state='applied'`);
- for(const r of rows){if(r.payload.kind!=='employee'||!r.result?.employmentId)continue;env.employmentByIndex.set(r.payload.index,r.result.employmentId);const code=r.payload.row.hire.employeeCode;if(code&&r.result.personId)env.registerSubjects.set(code,{employmentId:r.result.employmentId,personId:r.result.personId});}
+ for(const r of rows){
+  if(r.payload.kind==='employee'&&r.result?.refused){env.refusedByIndex.set(r.payload.index,r.payload.rowNum);if(r.payload.row.hire.employeeCode)env.refusedCodes.add(r.payload.row.hire.employeeCode);continue;}
+  if(r.payload.kind!=='employee'||!r.result?.employmentId)continue;env.employmentByIndex.set(r.payload.index,r.result.employmentId);const code=r.payload.row.hire.employeeCode;if(code&&r.result.personId)env.registerSubjects.set(code,{employmentId:r.result.employmentId,personId:r.result.personId});}
  cache.set('env',env);return env;
 }
 async function setImportAttemptTx(tx:Tx,attemptId:string){await tx.execute(sql`select set_config('app.import_attempt',${attemptId},true)`);}
@@ -106,15 +118,37 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   await tx.execute(sql`select app.access_configuration_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  },
+ /** Item 1859cce0 — each step runs in a savepoint. A refusal by the owner (a business rule, not a busy database) is
+  *  recorded on the step and the remaining rows continue, so every problem of the file is reported together;
+  *  finalize then refuses the release and the discard voids everything staged. A transient error still rolls the
+  *  whole chunk back for the kernel to retry. Steps of a refused row are skipped, never attempted. */
  async applyStepTx(tx,ctx,job,step,cache){
-  const env=await stepEnv(tx,job,cache);
-  const saved=await applyEmployeeImportStepTx(tx,ctx,step.payload,{attemptId:job.attempt_id!,allocationPreview:planOf(job).allocationPreview,...env});
-  return{result:saved,counters:step.kind==='employee'?{imported:1}:undefined};
+  const env=await stepEnv(tx,job,cache);const p=step.payload;
+  if(p.kind==='superior'){
+   if(env.refusedByIndex.has(p.index))return{result:{skipped:'refused-row'} satisfies StepResult};
+   const managerRow=p.superior.kind==='row'?env.refusedByIndex.get(p.superior.index):undefined;
+   if(managerRow!==undefined)return{result:{refused:{message:`The direct superior on row ${managerRow} could not be saved, so this reporting line was not set.`,column:'direct_superior'}} satisfies StepResult,counters:{refused:1}};
+  }
+  if(p.kind==='register'){const code=(p.item as {preview?:{employeeCode?:string}}).preview?.employeeCode;if(code&&env.refusedCodes.has(code))return{result:{skipped:'refused-row'} satisfies StepResult};}
+  try{
+   const saved=await tx.transaction(savepoint=>applyEmployeeImportStepTx(savepoint,ctx,p,{attemptId:job.attempt_id!,allocationPreview:planOf(job).allocationPreview,employmentByIndex:env.employmentByIndex,registerSubjects:env.registerSubjects}));
+   return{result:saved,counters:step.kind==='employee'?{imported:1}:undefined};
+  }catch(error){
+   if(isTransient(error))throw error;
+   const message=publicErrorMessage(error).slice(0,1000);
+   if(p.kind==='employee'){env.refusedByIndex.set(p.index,p.rowNum);if(p.row.hire.employeeCode)env.refusedCodes.add(p.row.hire.employeeCode);}
+   return{result:{refused:{message,column:ownerRefusalColumn(message)}} satisfies StepResult,counters:{refused:1}};
+  }
  },
  /** Release (one short transaction), then settle in bounded batches, then the post-commit follow-ups. */
  async finalize(ctx,job,unit){
   const plan=planOf(job);
-  if(!plan.released){await release(ctx,job,unit,plan);return'more';}
+  if(!plan.released){
+   // Nothing becomes visible while any row was refused while saving: the failure path discards the whole file.
+   const refused=await withTenant(ctx,tx=>tx.execute<{row_num:number}>(sql`select distinct row_num from bulk_job_step where job_id=${job.id}::uuid and result ? 'refused' order by row_num`));
+   if(refused.length)throw new SaveRefused(refused.map(r=>Number(r.row_num)));
+   await release(ctx,job,unit,plan);return'more';
+  }
   if(!plan.settled){
    // Settle and its plan marker commit together, attributed to the job (app.bulk_job).
    await ownerBatch(job,unit,'settle',limit=>unit.ownerTx!(async owner=>{
@@ -129,13 +163,27 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   return{result:await followUps(ctx,job,plan)};
  },
  onFailure:job=>planOf(job).released?'fail':'discard',
+ /** Item 1859cce0 — names every row refused while saving (with the column when the owner's refusal names one) and
+  *  says of every other row that it was not saved only because the file was cancelled. */
  async describeFailure(job,error,step,owner){
-  if(error instanceof ActivationConflict)return{error:`No employee rows were written. ${error.message}`,errors:error.rows};
   const message=publicErrorMessage(error);
-  const rows=await owner<{row_num:number;email:string}[]>`select row_num,payload->>'email' as email from bulk_job_step where job_id=${job.id}::uuid and kind='employee' order by seq`;
-  const errors=rows.map(r=>({rowNum:r.row_num,ref:r.email??'',message:step&&r.row_num===step.row_num?message:'Not written because the import was rolled back.'}));
   if(planOf(job).released)return{error:`The employees were imported; finishing the import needs attention: ${message}`};
-  return{error:step?`No employee rows were written. The import was rolled back${step.row_num?` after row ${step.row_num} was refused`:''}. ${message}`:`Import stopped: ${message}`,errors};
+  const rows=await owner<{kind:string;row_num:number;email:string|null;code:string|null;company:string|null;name:string|null;refused:{message:string;column?:string}|null}[]>`select kind,row_num,payload->>'email' as email,
+    payload#>>'{row,hire,employeeCode}' as code,payload#>>'{row,hire,companyId}' as company,payload#>>'{row,result,fullName}' as name,result->'refused' as refused
+   from bulk_job_step where job_id=${job.id}::uuid order by seq`;
+  const employees=new Map(rows.filter(r=>r.kind==='employee').map(r=>[r.row_num,r]));
+  const identity=(rowNum:number)=>{const e=employees.get(rowNum);return{rowNum,employeeCode:e?.code??'',fullName:e?.name??'',companyId:e?.company??planOf(job).companyId};};
+  const stops:EmployeeImportSaveReportRow[]=[];
+  for(const r of rows)if(r.refused)stops.push({...identity(r.row_num),outcome:'stopped',message:r.refused.message,...(r.refused.column?{column:r.refused.column}:{})});
+  if(error instanceof ActivationConflict)for(const c of error.rows)stops.push({...identity(c.rowNum),outcome:'stopped',message:c.message,column:'email'});
+  else if(!(error instanceof SaveRefused)&&step?.row_num)stops.push({...identity(step.row_num),outcome:'stopped',message,...(ownerRefusalColumn(message)?{column:ownerRefusalColumn(message)}:{})});
+  stops.sort((a,b)=>a.rowNum-b.rowNum);
+  const stoppedBy=[...new Set(stops.map(s=>s.rowNum))].sort((a,b)=>a-b);
+  const errors:BulkJobRowError[]=[
+   ...stops.map(s=>({rowNum:s.rowNum,ref:employees.get(s.rowNum)?.email??'',message:s.message??''})),
+   ...[...employees.values()].filter(e=>!stoppedBy.includes(e.row_num)).map(e=>({rowNum:e.row_num,ref:e.email??'',message:cancelledRowMessage(stoppedBy)})),
+  ].sort((a,b)=>a.rowNum-b.rowNum);
+  return{error:cancelledFileMessage(stoppedBy,message),errors,planMerge:{saveReport:stops.slice(0,EMPLOYEE_IMPORT_SAVE_REPORT_LIMIT)}};
  },
  /** Void every staged row in bounded owner batches (ADR-0157), release the attempt as discarded, then settle. */
  async discard(job,unit){
@@ -162,7 +210,7 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
  async afterTerminal(ctx,job){
   if(job.state==='completed'||!ctx)return;
   const plan=planOf(job);
-  if(job.attempt_id)await recordImportFailure(ctx,job.attempt_id,'employee_full','failed',new ImportHistoryError(job.error??'Employee import stopped before activation.'));
+  if(job.attempt_id)await recordImportFailure(ctx,job.attempt_id,'employee_full','failed',new ImportHistoryError(job.error??'Employee import stopped before activation.'),{rows:plan.saveReport??[]});
   const companyId=plan.companyId??inputOf(job)?.upload.companyId;
   if(companyId)await recordImportRun(ctx,{companyId,fileName:job.source_name,totalRows:Number(job.counters?.total??0),imported:0,
    rejected:plan.rejected??[],failed:(job.errors??[]).map(e=>({rowNum:e.rowNum,email:e.ref,message:e.message}))});

@@ -3021,7 +3021,14 @@
         "otherRunning": "Một lần kiểm tra biến động khác do bạn bắt đầu vẫn đang chạy. Hãy chờ hoàn tất trước khi kiểm tra tệp mới.",
         "workerUnavailable": "Dịch vụ nhập chưa chạy. Tệp của bạn được giữ lại và việc kiểm tra sẽ tự động bắt đầu ngay khi dịch vụ chạy."
       },
-      "historyButton": "Lịch sử nhập"
+      "historyButton": "Lịch sử nhập",
+      "uploadErrors": {
+        "unreachable": "Không thể kết nối tới máy chủ. Hãy kiểm tra kết nối và thử lại; gửi lại cùng tệp sẽ không nhập hai lần.",
+        "unavailable": "Hệ thống hiện không khả dụng. Mở Lịch sử nhập để kiểm tra lần nhập này đã được nhận chưa trước khi thử lại.",
+        "timeout": "Việc này mất nhiều thời gian hơn dự kiến. Lần nhập có thể vẫn đang chạy: hãy kiểm tra Lịch sử nhập và đừng tải tệp lên lại cho đến khi có kết quả.",
+        "unknown": "Không thể xác nhận kết quả nhập. Hãy kiểm tra Lịch sử nhập trước khi thử lại.",
+        "progressUnreachable": "Không thể kết nối tới máy chủ để kiểm tra tiến độ. Quá trình nhập vẫn tiếp tục chạy nền và trang này sẽ tiếp tục kiểm tra."
+      }
     },
     "wizard": {
       "deleteRecord": "Xóa hồ sơ",
@@ -3466,6 +3473,52 @@
         "noDetail": "Không có chi tiết dòng nào được ghi nhận cho lần nhập này.",
         "none": "Mọi dòng đã được lưu.",
         "reasonColumn": "Lý do"
+      },
+      "errorReport": {
+        "title": "Báo cáo lỗi",
+        "hint": "Mỗi vấn đề một dòng: dòng, nhân viên, cột cần sửa và lỗi là gì.",
+        "download": "Tải báo cáo lỗi",
+        "filterLabel": "Hiển thị dòng",
+        "problemRows": "Dòng có vấn đề ({count})",
+        "allRows": "Tất cả dòng ({count})",
+        "saved": "Nhân viên đã lưu",
+        "toFix": "Dòng có vấn đề cần sửa",
+        "cancelled": "Dòng không có vấn đề, chưa lưu vì tệp đã bị hủy",
+        "cancelledTitle": "Tệp này đã bị hủy trong khi lưu, nên không có nhân viên nào được tạo.",
+        "cancelledBody": "Không thể lưu dòng {rows} (xem bên dưới). Một tệp được lưu toàn bộ hoặc không lưu gì, nên các dòng không có vấn đề cũng không được lưu. Hãy sửa các dòng được liệt kê và tải lại toàn bộ tệp.",
+        "stoppedBody": "Quá trình nhập đã dừng trước khi hoàn tất, nên không có gì được lưu. Lý do có trong nhật ký kiểm tra bên dưới. Hãy tải lại toàn bộ tệp.",
+        "restricted": "Chỉ hiển thị các dòng của công ty bạn có quyền xem.",
+        "noProblems": "Không tìm thấy vấn đề nào trong tệp này.",
+        "noRows": "Lần nhập này không có dòng nào để hiển thị.",
+        "colRow": "Dòng",
+        "colCode": "Mã nhân viên",
+        "colName": "Tên",
+        "colColumn": "Cột",
+        "colProblem": "Vấn đề",
+        "colResult": "Kết quả",
+        "stage": {
+          "check": "Phát hiện khi kiểm tra tệp",
+          "save": "Phát hiện khi lưu — điều này đã dừng tệp"
+        },
+        "outcome": {
+          "refused": "Chưa lưu",
+          "stopped": "Đã dừng việc lưu",
+          "cancelled": "Chưa lưu — tệp bị hủy",
+          "saved": "Đã lưu",
+          "pending": "Chưa hoàn tất"
+        },
+        "cancelledRow": "Không có vấn đề. Chưa lưu vì dòng {rows} đã dừng tệp.",
+        "cancelledRowUnnamed": "Không có vấn đề. Chưa lưu vì tệp đã bị hủy.",
+        "contract": {
+          "required": "Bắt buộc khi Loại hình làm việc là Hợp đồng.",
+          "before_hire": "Không được sớm hơn Ngày gia nhập tập đoàn.",
+          "end_not_after_start": "Phải sau Ngày bắt đầu hợp đồng."
+        },
+        "csvBatch": "Mã tham chiếu lô",
+        "csvFile": "Tên tệp",
+        "csvStatus": "Trạng thái cuối",
+        "csvStage": "Phát hiện",
+        "rowsHint": "Số dòng đếm các dòng nhân viên của tệp, như trong bản xem trước khi nhập."
       }
     },
     "informationCorrection": {
