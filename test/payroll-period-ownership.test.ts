@@ -23,8 +23,11 @@ async function state(){return{periods:await owner.db.select().from(s.payPeriod).
 async function waitingOn(pid:number){for(let n=0;n<100;n++){const [row]=await owner.db.execute<{pid:number}>(sql`select a.pid from pg_stat_activity a where ${pid}=any(pg_blocking_pids(a.pid)) and a.pid<>pg_backend_pid() order by a.pid limit 1`);if(row)return row.pid;await new Promise(yes=>setTimeout(yes,10));}throw Error('Actual expected database wait not observed');}
 async function holdRow(kind:'batch'|'period',id:string){let ready!:(pid:number)=>void,release!:()=>void;const start=new Promise<number>(yes=>{ready=yes;}),finish=new Promise<void>(yes=>{release=yes;}),running=owner.db.transaction(async tx=>{const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);if(kind==='batch')await tx.select({id:s.payrollBatch.id}).from(s.payrollBatch).where(eq(s.payrollBatch.id,id)).for('update');else await tx.select({id:s.payPeriod.id}).from(s.payPeriod).where(eq(s.payPeriod.id,id)).for('update');ready(row.pid);await finish;});return{pid:await start,release,done:running};}
 // Observe the actual PostgreSQL try result, preserving the transaction and driver's normal query path.
+// 7b6dceb82 moved Close onto the shared Access lock (a shared try) and, with it, the point where a same
+// company/month close meets another owner: the period owner key, tried without waiting. Both are admission
+// misses; any other key is not.
 function observeCloseAccessMisses(){
- const begin=client.begin.bind(client),accessKey='access-configuration:'+b.tenantId;
+ const begin=client.begin.bind(client),accessKey='access-configuration:'+b.tenantId,periodKeyPrefix='payroll-period:';
  let misses=0;
  const spy=vi.spyOn(client,'begin').mockImplementation(((...args:unknown[])=>{
   const index=args.findIndex(value=>typeof value==='function');
@@ -33,7 +36,8 @@ function observeCloseAccessMisses(){
   args[index]=(native:typeof client)=>callback(new Proxy(native,{get(target,key,receiver){
    if(key==='unsafe')return (...query:unknown[])=>{
     const pending=Reflect.apply(target.unsafe,target,query);
-    if(typeof query[0]==='string'&&query[0].includes('pg_try_advisory_xact_lock(')&&Array.isArray(query[1])&&query[1].includes(accessKey)){
+    if(typeof query[0]==='string'&&/pg_try_advisory_xact_lock(?:_shared)?\(/.test(query[0])&&Array.isArray(query[1])
+     &&query[1].some(value=>value===accessKey||typeof value==='string'&&value.startsWith(periodKeyPrefix)&&value.includes(b.tenantId))){
      void (pending as PromiseLike<readonly {acquired?:boolean;owned?:boolean}[]>).then(rows=>{
       if(rows[0]?.acquired===false||rows[0]?.owned===false)missed=true;
      },()=>undefined);
@@ -143,9 +147,15 @@ describe('canonical same company/month owner',()=>{
   let secondClose:ReturnType<typeof closeBatch>|undefined;
   try{
    const firstPid=await waitingOn(holder.pid);
+   // 7b6dceb82: under the shared Access lock, Payroll runs of different companies overlap. The other company's
+   // close neither waits behind the held one nor misses: it commits while the first is still held.
    secondClose=closeBatch(secondActor,{batchId:second});void secondClose.catch(()=>undefined);
-   await expectCooperativeAdmission(probe,firstPid);
-   expect(await state()).toEqual(before);
+   await secondClose;
+   expect(probe.misses()).toBe(0);await expectNoNativeWaiter(firstPid);
+   const during=await state();
+   expect(during.batches.find(row=>row.id===first)).toEqual(before.batches.find(row=>row.id===first));
+   expect(during.batches.find(row=>row.id===second)?.status).toBe('closed');
+   expect(during.slips).toEqual(before.slips);
   }finally{
    try{holder.release();await holder.done;}
    finally{await Promise.allSettled([firstClose,secondClose]);probe.restore();}

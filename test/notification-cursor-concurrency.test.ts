@@ -23,16 +23,20 @@ async function bounded<T>(work:Promise<T>):Promise<T>{
   timer=setTimeout(()=>reject(new Error('Cursor probe barrier timed out')),8000);
  })]);}finally{clearTimeout(timer);}
 }
-async function waitForAuditLock(pid:number,blocker:number){
- const stop=Date.now()+6000;
- while(Date.now()<stop){
-  const [row]=await owner.client`select exists(select 1 from pg_stat_activity
-   where pid=${pid} and wait_event_type='Lock' and wait_event='advisory'
-   and ${blocker}::integer=any(pg_blocking_pids(pid))) as waiting`;
-  if(row.waiting)return;
-  await new Promise(resolve=>setTimeout(resolve,20));
- }
- throw new Error('Writer B did not wait behind A on the real audit lock');
+// 074a61d0f (migration 5090) seals the audit chain at commit: an audited insert no longer takes the tenant's
+// audit-chain key and holds it to commit, so B's insert no longer waits behind A. The interleaving this file exists
+// for is unchanged: B holds a sequence between A's two events and is still uncommitted while A commits and the
+// projector runs. This proves the seal's side of it on the real backends: A is open without the key, and B is not
+// blocked by A.
+async function expectInsertNotWaitingOnAudit(tenant:string,holder:number,writer:number){
+ const [row]=await owner.client`select
+  (select state from pg_stat_activity where pid=${holder}) as holder_state,
+  exists(select 1 from pg_catalog.pg_locks l,(select hashtext('audit-chain:'||${tenant}::text)::bigint as k) ck
+   where l.pid=${holder} and l.locktype='advisory' and l.granted and l.objsubid=1
+    and l.classid::bigint=((ck.k>>32)&4294967295) and l.objid::bigint=(ck.k&4294967295)) as holder_has_key,
+  exists(select 1 from pg_stat_activity where pid=${writer} and wait_event_type='Lock') as writer_waiting,
+  ${holder}::integer=any(pg_blocking_pids(${writer})) as writer_blocked`;
+ expect(row).toEqual({holder_state:'idle in transaction',holder_has_key:false,writer_waiting:false,writer_blocked:false});
 }
 
 for(const chain of [false,true]){
@@ -49,15 +53,14 @@ for(const chain of [false,true]){
    const actor=adminCtx(base);
    await dispatchNotifications(actor);
    const ids={a1:randomUUID(),a2:randomUUID(),b:randomUUID()};
-   const sequences:Record<string,number>={},chainSequences:Record<string,number|null>={};
+   const sequences:Record<string,number>={};
    async function insert(tx:postgres.TransactionSql,key:keyof typeof ids){
     const [row]=await tx`insert into domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,
      actor_type,subject_employment_id,payload)
      values(${ids[key]}::uuid,${base.tenantId}::uuid,'cursor-probe',${ids[key]}::uuid,
      'toil.accrued','system',${recipient.employmentId}::uuid,'{"daysCredited":1}'::jsonb)
-     returning sequence,chain_seq`;
+     returning sequence`;
     sequences[key]=Number(row.sequence);
-    chainSequences[key]=row.chain_seq===null?null:Number(row.chain_seq);
    }
    const aReady=barrier(),continueA=barrier(),bReady=barrier(),bInserted=barrier(),releaseB=barrier();
    let aPid=0,bPid=0;
@@ -83,9 +86,10 @@ for(const chain of [false,true]){
     }).catch(error=>{if(error!==rollback)throw error;});
     void b.catch(()=>{});
     await bounded(Promise.race([bReady.promise,b.then(()=>{throw Error('B ended before its barrier');})]));
-    await waitForAuditLock(bPid,aPid);
-    continueA.resolve();await bounded(a);
+    // B's insert completes while A is still open (a wait behind A would time out this barrier).
     await bounded(Promise.race([bInserted.promise,b.then(()=>{throw Error('B ended before insert barrier');})]));
+    await expectInsertNotWaitingOnAudit(base.tenantId,aPid,bPid);
+    continueA.resolve();await bounded(a);
     expect(sequences.a1).toBeLessThan(sequences.b);
     if(scenario!=='single-event-control')expect(sequences.b).toBeLessThan(sequences.a2);
     const first=await dispatchNotifications(actor,{limit:1});
@@ -95,7 +99,9 @@ for(const chain of [false,true]){
     const second=await dispatchNotifications(actor,{limit:1});
     await dispatchNotifications(actor,{limit:1});
     const third=await dispatchNotifications(actor,{limit:1});
-    const committed=await owner.client`select id from domain_event where id in (${ids.a1}::uuid,${ids.a2}::uuid,${ids.b}::uuid) order by id`;
+    const committed=await owner.client`select id,chain_seq from domain_event where id in (${ids.a1}::uuid,${ids.a2}::uuid,${ids.b}::uuid) order by id`;
+    // Chain positions are taken at each transaction's seal, so they are read from the committed rows.
+    const chainSequences=Object.fromEntries(committed.map(row=>[row.id,row.chain_seq===null?null:Number(row.chain_seq)]));
     const projected=await owner.client`select source_event_id from notification
      where source_event_id in (${ids.a1}::uuid,${ids.a2}::uuid,${ids.b}::uuid) order by source_event_id`;
     console.info('[architecture-cursor-probe]',JSON.stringify({scenario,chain,sequences,chainSequences,
