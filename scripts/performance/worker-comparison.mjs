@@ -26,8 +26,13 @@ const smokeCourse = Object.freeze([2, 4, 8].map((workers, index) => Object.freez
   heapMiBPerWorker: profile.totalHeapMiB / workers, poolPerWorker: profile.totalPool / workers, claimsPerActor: 200,
   activeMinimumMs: 1390 * second, buildMode: 'comparison-artifact', buildMs: null, driverMs: 600 * second,
   rampMs: null, holdMs: 30 * second, oversubscribed: workers > 4 })));
-const courses = Object.freeze({ 'serial-2-4-8': course, 'parallel-2-4-8': parallelCourse, 'parallel-smoke': smokeCourse });
-export const PARALLEL_WORKER_COMPARISON_COURSES = Object.freeze(['parallel-2-4-8', 'parallel-smoke']);
+// Load-only control (release versus main): the steady 2- and 4-worker shapes, one runner per cell, with no
+// preflight authority. The control driver records every outcome; it asserts no release-only behaviour.
+const controlCourse = Object.freeze(parallelCourse.filter(cell => cell.suite === 'whole-system').map(cell => Object.freeze({
+  ...cell, name: 'control-' + cell.workers, scope: 'load-only-control' })));
+const courses = Object.freeze({ 'serial-2-4-8': course, 'parallel-2-4-8': parallelCourse, 'parallel-smoke': smokeCourse,
+  'parallel-control': controlCourse });
+export const PARALLEL_WORKER_COMPARISON_COURSES = Object.freeze(['parallel-2-4-8', 'parallel-smoke', 'parallel-control']);
 export function isWorkerComparisonCourse(name) {
   return typeof name === 'string' && Object.hasOwn(courses, name);
 }
@@ -269,7 +274,7 @@ export function createParallelWorkerCellModel({ courseName, workers, identity, p
   const cell = courses[courseName].find(row => String(row.workers) === workers);
   assert(cell, 'Parallel worker comparison cell refused');
   identityFor(identity);
-  if (courseName === 'parallel-smoke') assert(prerequisite === null, 'The harness smoke takes no preflight authority');
+  if (courseName === 'parallel-smoke' || courseName === 'parallel-control') assert(prerequisite === null, 'The harness smoke takes no preflight authority');
   else upstreamFor(identity, prerequisite);
   runnerHostFor(host);
   assert(closed(transport, ['seal', 'archiveSha256']) && validSeal(transport.seal) && hex(transport.archiveSha256, 64),

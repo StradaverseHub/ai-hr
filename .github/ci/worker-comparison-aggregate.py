@@ -24,6 +24,8 @@ LIMIT = 128 * 1024
 COURSES = {
     'parallel-2-4-8': (('2', 'steady-2', 'steady-500'), ('4', 'steady-4', 'steady-500'),
                        ('8', 'functional-8', 'functional-diagnostic-only')),
+    # Load-only control (release versus main): steady 2 and 4 only, recorded, never a release gate.
+    'parallel-control': (('2', 'control-2', 'load-only-control'), ('4', 'control-4', 'load-only-control')),
     'parallel-smoke': (('2', 'smoke-2', 'smoke-harness-only'), ('4', 'smoke-4', 'smoke-harness-only'),
                        ('8', 'smoke-8', 'smoke-harness-only')),
 }
@@ -172,7 +174,7 @@ def check_cell(summary, course, workers, expected, seal=None, archive=None):
     cell = summary['cell']
     require(type(cell) is dict and cell.get('name') == name and cell.get('scope') == scope
             and cell.get('state') in ('passed', 'failed', 'not-entered'), 'cell result')
-    if course == 'parallel-smoke':
+    if course in ('parallel-smoke', 'parallel-control'):
         require(summary['prerequisite'] is None, 'smoke prerequisite')
     else:
         require(type(summary['prerequisite']) is dict and summary['prerequisite'].get('source') == expected['candidateSha'],
