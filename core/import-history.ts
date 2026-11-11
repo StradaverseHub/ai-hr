@@ -117,7 +117,8 @@ async function eventsWithNamesTx(tx:Tx,ids:string[],actors:Map<string,ImportRowA
  const rows=await tx.select(getTableColumns(historyEvent)).from(historyEvent).where(inArray(historyEvent.attemptId,ids)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
  return rows.map(row=>{const actor=actorOn(actors,row.attemptId,row.actorId);return{...row,actor,actorName:personName(actor)};});
 }
-function withCreator<R extends {id:string}>(actors:Map<string,ImportRowActors>,row:R){const createdByActor=creatorOf(actors,row.id);return{...row,createdByActor,createdByName:personName(createdByActor)};}
+function creatorLabels(actors:Map<string,ImportRowActors>,id:string){const createdByActor=creatorOf(actors,id);return{createdByActor,createdByName:personName(createdByActor)};}
+function withCreator<R extends {id:string}>(actors:Map<string,ImportRowActors>,row:R){return{...row,...creatorLabels(actors,row.id)};}
 /** Company-scoped by RLS: an attempt is listed when the actor holds view for at least one listed company. */
 export async function listImportAttempts(ctx:SessionContext,options:{kind?:ImportKind;before?:string;limit?:number}={}){
  if(options.kind!==undefined&&!isImportKind(options.kind))fail('Unknown import kind.');
@@ -174,8 +175,8 @@ export async function listImportHistory(ctx:SessionContext,options:{kind?:Import
   const attemptActors=await resolveImportActors(tx,'import_attempt',attempts.map(r=>r.id)),runActors=await resolveImportActors(tx,'employee_import_run',runs.map(r=>r.id));
   const events=await eventsWithNamesTx(tx,attempts.map(r=>r.id),attemptActors),names=await companyNamesTx(tx,[...new Set(attempts.flatMap(r=>r.companyIds))]);
   const merged:(ImportHistoryRow&{sortKey:string})[]=[
-   ...attempts.map(r=>{const own=events.filter(e=>e.attemptId===r.id),plan=r.plan as unknown as ImportPlanBase;return{source:'attempt' as const,id:r.id,cursor:'a.'+r.id,kind:isImportKind(r.kind)?r.kind:null,sourceName:r.sourceName,createdAt:r.createdAt,createdBy:r.createdBy,...withCreator(attemptActors,{id:r.id}),companies:r.companyIds.map(id=>names.get(id)).filter((n):n is string=>!!n),...importAttemptTotals(plan,own),status:importAttemptStatus(plan,own),sortKey:r.sortKey};}),
-   ...runs.map(r=>{const outcome=importRunOutcome(r);return{source:'run' as const,id:r.id,cursor:'r.'+r.id,kind:isImportRunKind(r.section)?r.section:null,sourceName:r.fileName,createdAt:r.createdAt,createdBy:r.createdBy,...withCreator(runActors,{id:r.id}),companies:r.companyName?[r.companyLabel?.trim()?`${r.companyLabel.trim()} · ${r.companyName}`:r.companyName]:[],total:r.totalRows,successful:r.importedRows,failed:r.failedRows,status:outcome,sortKey:r.sortKey};}),
+   ...attempts.map(r=>{const own=events.filter(e=>e.attemptId===r.id),plan=r.plan as unknown as ImportPlanBase;return{source:'attempt' as const,id:r.id,cursor:'a.'+r.id,kind:isImportKind(r.kind)?r.kind:null,sourceName:r.sourceName,createdAt:r.createdAt,createdBy:r.createdBy,...creatorLabels(attemptActors,r.id),companies:r.companyIds.map(id=>names.get(id)).filter((n):n is string=>!!n),...importAttemptTotals(plan,own),status:importAttemptStatus(plan,own),sortKey:r.sortKey};}),
+   ...runs.map(r=>{const outcome=importRunOutcome(r);return{source:'run' as const,id:r.id,cursor:'r.'+r.id,kind:isImportRunKind(r.section)?r.section:null,sourceName:r.fileName,createdAt:r.createdAt,createdBy:r.createdBy,...creatorLabels(runActors,r.id),companies:r.companyName?[r.companyLabel?.trim()?`${r.companyLabel.trim()} · ${r.companyName}`:r.companyName]:[],total:r.totalRows,successful:r.importedRows,failed:r.failedRows,status:outcome,sortKey:r.sortKey};}),
   ].sort((a,b)=>a.sortKey<b.sortKey?1:a.sortKey>b.sortKey?-1:a.id<b.id?1:a.id>b.id?-1:0);
   const chosen=merged.slice(0,limit).map(({sortKey:_sortKey,...row})=>row);
   return{items:chosen,nextCursor:merged.length>limit?chosen.at(-1)!.cursor:null};

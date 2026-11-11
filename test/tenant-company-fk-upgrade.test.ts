@@ -266,7 +266,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.domain_event_chain_seal_now()','app.domain_event_chain_sealing()','app.employee_import_revert_release(uuid,boolean)',
    'app.employment_void_reference_blockers(uuid[])','app.home_leave_presentation_index(text)','app.home_own_clock_day(uuid,date,date)',
    'app.home_own_schedule_range(uuid,date,date)','app.import_activation_conflicts(uuid)','app.import_discard_batch(uuid,uuid,uuid,text,integer)',
-   'app.import_hidden_attempt_ids()','app.import_marker_released(uuid)','app.import_marker_visible(uuid)',
+   'app.import_hidden_attempt_ids()','app.import_log_actor_facts(text,uuid[])','app.import_marker_released(uuid)','app.import_marker_visible(uuid)',
    'app.import_pending_employment_ids()','app.import_pending_guard()','app.import_pending_person_ids()',
    'app.import_pending_stamp()','app.import_release(uuid)','app.import_released_attempt_ids()',
    'app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()',
