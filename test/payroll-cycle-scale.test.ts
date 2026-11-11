@@ -8,8 +8,9 @@
  * of the page ran for many minutes; repeated opens filled the two-CPU database host and the pooled server connections.
  *
  * Pinned here on fictional data:
- *  - the reads send the same statements and transactions for a group of 3 companies as for one of 30, and never hold two
- *    transactions open at once;
+ *  - the reads send the same statements and transactions for a group of 3 companies as for one of 30, never hold two
+ *    transactions open at once, and plan without JIT (on staging one row-secured audit-log count took 1,270 ms with JIT
+ *    compilation and 11 ms without);
  *  - a 72-company group with a staging-sized audit log (36,000 events) reads within the page's two-second budget;
  *  - the values, written out from the fixture: each company's Audit status (runs, payslips released and opened, statutory
  *    files, findings open, carried, disposed and acknowledged, repeat issues, captures, settings), the history's issues
@@ -36,18 +37,20 @@ let hr:SessionContext;
 let paid:string,second:string;
 const ids={carried:'',current:'',acknowledged:'',disposed:''};
 
-type Trace={statements:number;begins:number;maxOpen:number};
-/** Every statement the application's pool sends while `run` runs, and the most transactions open at once. */
+type Trace={statements:number;begins:number;maxOpen:number;jitOff:number};
+/** Every statement the application's pool sends while `run` runs, the most transactions open at once, and how many
+ * switched JIT off for themselves. */
 async function traced<T>(run:()=>Promise<T>):Promise<{value:T;trace:Trace;ms:number}>{
  const options=client.options as {debug?:unknown};
  const previous=options.debug;
- const trace:Trace={statements:0,begins:0,maxOpen:0};
+ const trace:Trace={statements:0,begins:0,maxOpen:0,jitOff:0};
  let open=0;
  options.debug=(_connection:number,text:string)=>{
   const statement=text.trim().toLowerCase();
   trace.statements++;
   if(statement.startsWith('begin')){trace.begins++;open++;trace.maxOpen=Math.max(trace.maxOpen,open);}
   else if(statement==='commit'||statement==='rollback')open--;
+  else if(statement==='set local jit=off')trace.jitOff++;
  };
  const started=performance.now();
  try{const value=await run();return {value,trace,ms:performance.now()-started};}
@@ -134,6 +137,8 @@ describe('payroll cycle page reads at group scale', ()=>{
   expect(large.trace.begins).toBe(small.trace.begins);
   expect(small.trace.maxOpen).toBe(1);
   expect(large.trace.maxOpen).toBe(1);
+  // Each of the page's read transactions plans without JIT (its compile time cost seconds per statement on staging).
+  expect(large.trace.jitOff).toBe(large.trace.begins);
   // The Audit loop's own page reads the same way.
   const detail=await traced(()=>auditLoopDetail(hr,{payPeriod:PERIOD}));
   await addCompanies(5);
@@ -141,6 +146,7 @@ describe('payroll cycle page reads at group scale', ()=>{
   expect(wider.value.companies).toHaveLength(35);
   expect(wider.trace.statements).toBe(detail.trace.statements);
   expect(wider.trace.maxOpen).toBe(1);
+  expect(wider.trace.jitOff).toBe(wider.trace.begins);
  },120_000);
 
  it('keeps every value: Audit status per company, issues caught and the Audit loop page', async()=>{

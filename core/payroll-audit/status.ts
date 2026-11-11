@@ -240,11 +240,17 @@ async function loopStateTx(tx:Tx,tenantId:string){
   sponsorName:on&&control?.full_name?String(control.full_name):null});
 }
 
+/** The Audit status reads are row-secured scans whose planned cost buys JIT compilation that costs far more than running
+ * them: on staging (11 Nov 2026) one month's payslip-opened count took 1,270 ms with JIT and 11 ms without. As the Claims,
+ * Attendance and Analytics owners do for their reads, each Audit loop read switches it off for its own transaction only. */
+const JIT_OFF=sql`set local jit=off`;
+
 /** The Audit loop's column: one pay month, the companies in scope. */
 export async function auditLoopSummary(ctx:SessionContext,input:Readonly<{payPeriod:unknown;companyIds?:readonly string[]}>):Promise<AuditLoopSummary>{
  requireAdmin(ctx,input.payPeriod);
  const payPeriod=input.payPeriod;
  return withTenant(ctx,async tx=>{
+  await tx.execute(JIT_OFF);
   const companies=(await companyStatusesTx(tx,ctx,await scopeTx(tx,ctx,input.companyIds),payPeriod)).companies.map(read=>read.status);
   return Object.freeze({payPeriod,dueDate:statutoryDueDate(payPeriod),level:'prepare' as const,loop:await loopStateTx(tx,ctx.tenantId),
    companies:Object.freeze(companies),totals:totalsOf(companies),canCapture:isAdmin(ctx)});
@@ -256,6 +262,7 @@ export async function auditLoopDetail(ctx:SessionContext,input:Readonly<{payPeri
  requireAdmin(ctx,input.payPeriod);
  const payPeriod=input.payPeriod;
  return withTenant(ctx,async tx=>{
+  await tx.execute(JIT_OFF);
   const companies:AuditCompanyStatus[]=[],corrections:(PostRunCorrection&{companyId:string;companyName:string})[]=[],findingIds:string[]=[];
   const items=await scopeTx(tx,ctx,input.companyIds);
   // Each finding's standing acknowledgement, as the companies' own read found it (one owner, read once).

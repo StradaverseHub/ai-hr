@@ -116,6 +116,8 @@ export async function payrollCycleOverview(ctx:SessionContext,options:Readonly<{
  const today=options.today??todayInKualaLumpur();
  const period=typeof options.period==='string'&&PERIOD.test(options.period)?options.period:today.slice(0,7);
  const view=await withTenant(ctx,async tx=>{
+  // Row-secured reads whose planned cost would buy JIT compilation dearer than the reads (core/payroll-audit/status.ts).
+  await tx.execute(sql`set local jit=off`);
   const allowed=await allowedTx(tx,ctx);
   const filter=typeof options.companyId==='string'&&allowed.some(item=>item.companyId===options.companyId)?options.companyId:null;
   const scope=filter?allowed.filter(item=>item.companyId===filter):allowed;
