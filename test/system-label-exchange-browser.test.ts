@@ -11,6 +11,8 @@ import {chromium,type Browser,type ConsoleMessage,type Page,type Request,type Re
 import {eq} from 'drizzle-orm';
 import {adminCtx,migrateTestDb,resetDb,seedBase,owner,closeAll} from './harness';
 import {createCompany} from '../core/admin';
+import {runBulkJobTick} from '../core/bulk-job-worker';
+import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
 import * as s from '../db/schema';
 import {buildSystemLabelWorkbook,readSystemLabelWorkbook} from '../lib/system-label-workbook';
 import {LOCALE_COOKIE,locales} from '../i18n/config';
@@ -280,7 +282,15 @@ describe('System Labels authenticated Excel browser journey',()=>{
   expect(await page.getByRole('dialog').innerText()).toContain('BROWSER_GROUP_LABEL');
   await page.screenshot({path:join(evidence,'system-label-preview-en-desktop.png'),fullPage:true});
   await page.getByRole('button',{name:'Import 3 new codes',exact:true}).click();
-  await expect.poll(async()=>page.getByRole('dialog').innerText()).toContain('Failed rows: 1');
+  // 44810ec04 runs the confirmed import as a background job on the shared bulk-job kernel, and the wizard follows the
+  // job to the summary the synchronous import showed. This disposable runner has no worker process, so the test runs
+  // the worker's own tick (the call scripts/bank-import-runner.ts makes) until the wizard shows that outcome.
+  await expect.poll(async()=>{
+   await runBulkJobTick(owner.client,{handlers:BULK_JOB_HANDLERS});
+   return page.getByRole('dialog').innerText();
+  },{timeout:120000,interval:250}).toContain('Failed rows: 1');
+  const [labelJob]=await owner.client<{state:string}[]>`select state from bulk_job where tenant_id=${b.tenantId}::uuid and kind='system_label_import' order by created_at desc limit 1`;
+  expect(labelJob).toEqual({state:'completed'});
   const [global]=await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_GLOBAL_LABEL'));
   expect(global).toMatchObject({tenantId:b.tenantId,isGlobal:true});
   const [scoped]=await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'BROWSER_COMPANY_LABEL'));
