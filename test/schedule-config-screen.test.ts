@@ -333,8 +333,12 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
       appFiles.filter((f) => importsRuleForm(f)).sort(),
       'and that editor is mounted by the Add Schedule page and the Edit Schedule sections, and nothing else',
     ).toEqual(
-      ['app/admin/attendance/schedule/group-sections.tsx', 'app/admin/attendance/schedule/new/page.tsx'].sort(),
+      // 2f803985 — Overtime Patterns › 1. General Settings imports only the band renderer (never RuleForm,
+      // and so never the deduction switch) for a legacy Schedule Group pattern.
+      ['app/admin/attendance/schedule/group-sections.tsx', 'app/admin/attendance/schedule/new/page.tsx',
+        'app/admin/attendance/settings/overtime-patterns/legacy-bands.tsx'].sort(),
     );
+    expect(read('app/admin/attendance/settings/overtime-patterns/legacy-bands.tsx')).not.toContain('RuleForm');
   });
 
   it('the built sections show settings that ALREADY EXIST, and read them from the Schedule Group', () => {
