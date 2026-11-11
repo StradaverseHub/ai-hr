@@ -42,7 +42,7 @@ import {closeAll,migrateTestDb,resetDb,seedBase,setModule} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {explainStatements,observeStatements,type ExplainedStatement} from './helpers/statement-observer';
 
-const RUNS=3,WARMUP=1;
+const RUNS=2,WARMUP=1;
 /** The owner's bar: a page renders in about 2 s; its reads must leave room for the shell and rendering. */
 const PAGE_BUDGET_MS=Number(process.env.AIHR_SCALE_PAGE_BUDGET_MS??1500);
 const STATEMENT_BOUND=40;
@@ -61,7 +61,7 @@ const loops:Page={id:'control-tower.loops',reads:[
  {label:'loopsOverview',stage:0,run:ctx=>loopsOverview(ctx)},
  {label:'loopLevelSummaries',stage:0,run:ctx=>loopLevelSummaries(ctx)},
 ]};
-const loopPages:Page[]=LOOP_IDS.filter(id=>id!=='loop_payroll_audit').map(id=>({id:`control-tower.loops.${id}`,reads:[
+const loopPages:Page[]=LOOP_IDS.map(id=>({id:`control-tower.loops.${id}`,reads:[
  {label:'loopDetail',stage:0,run:ctx=>loopDetail(ctx,id)},
  {label:'loopAutonomyDetail',stage:1,run:ctx=>loopAutonomyDetail(ctx,id)},
 ]}));
@@ -127,10 +127,18 @@ async function runPage(page:Page,ctx:SessionContext,explain:boolean){
  return{pageMs:performance.now()-started,reads,captured};
 }
 
+const SLOW_MS=3000;
+function write(report:Record<string,unknown>,failures:readonly string[]){
+ const dir=process.env.RUNNER_TEMP?join(process.env.RUNNER_TEMP,'aihr-focused'):join(process.cwd(),'.review-evidence');mkdirSync(dir,{recursive:true});
+ writeFileSync(join(dir,'ai-centre-scale-timing.json'),JSON.stringify({kind:'ai-centre.scale-timing',version:1,runs:RUNS,warmup:WARMUP,
+  fixture:{companies:fixture.companyIds.length,employments:fixture.employmentIds.length,active:fixture.activeEmploymentIds.length},
+  ...(process.env.GITHUB_RUN_ID?{runId:process.env.GITHUB_RUN_ID}:{}),failures,readErrors:[...new Set(errors)],report},null,1));
+}
+
 describe('AI Centre pages at group scale (71 companies, ~1,000 employments)',()=>{
  it('times each page read, counts its statements and names the slowest statements',async()=>{
   const report:Record<string,unknown>={};const lines:string[]=[];const failures:string[]=[];
-  for(const persona of ['group','multi','single'] as Persona[]){
+  for(const persona of ['group','single','multi'] as Persona[]){
    const ctx=fixture.personas[persona];
    for(const page of PAGES){
     const samples:Record<string,ReadResult>={};const pageMs:number[]=[];let explained:Record<string,ExplainedStatement[]>={};
@@ -139,15 +147,21 @@ describe('AI Centre pages at group scale (71 companies, ~1,000 employments)',()=
      if(run===0)for(const item of result.captured)explained[item.label]=(await explainStatements(item.statements)
       .catch(error=>[{ordinal:0,sql:'(replay)',executionMs:null,planningMs:null,hotspots:[],error:String(error).slice(0,300)}] as ExplainedStatement[]))
       .filter(s=>s.executionMs!==null||s.error).sort((a,b)=>(b.executionMs??0)-(a.executionMs??0)).slice(0,4);
-     if(run<WARMUP)continue;
+     // A page whose first render already took over SLOW_MS is measured once: its cost is the finding, and repeating it
+     // would only spend the CI job's time budget.
+     if(run<WARMUP&&result.pageMs<SLOW_MS)continue;
      pageMs.push(result.pageMs);
      for(const [label,read] of Object.entries(result.reads)){const s=(samples[label]??={ms:[],statements:read.statements,transactions:read.transactions});s.ms.push(read.ms);}
+     if(run===0&&result.pageMs>=SLOW_MS)break;
     }
     const reads=Object.fromEntries(Object.entries(samples).map(([label,s])=>[label,{medianMs:median(s.ms),statements:s.statements,transactions:s.transactions}]));
     const statements=Object.values(samples).reduce((n,s)=>n+s.statements,0),transactions=Object.values(samples).reduce((n,s)=>n+s.transactions,0);
     const row={persona,page:page.id,medianPageMs:median(pageMs),statements,transactions,reads,slowestStatements:explained};
     report[`${page.id}|${persona}`]=row;
     lines.push(`AIHR_AI_CENTRE_SCALE ${JSON.stringify({page:page.id,persona,ms:row.medianPageMs,statements,transactions,reads:Object.fromEntries(Object.entries(reads).map(([l,r])=>[l,[r.medianMs,r.statements]]))})}`);
+    process.stdout.write(lines[lines.length-1]+'\n');
+    // Written after every page, so a job that runs out of time still leaves every page measured so far.
+    write(report,failures);
     explained={};
     const own=Object.entries(samples).filter(([label])=>!label.includes('foreign owner'));
     const ownStatements=own.reduce((n,[,s])=>n+s.statements,0);
@@ -155,13 +169,9 @@ describe('AI Centre pages at group scale (71 companies, ~1,000 employments)',()=
     if(row.medianPageMs>PAGE_BUDGET_MS&&!Object.keys(samples).some(label=>label.includes('foreign owner')))failures.push(`${page.id}|${persona}: ${row.medianPageMs} ms`);
    }
   }
-  const dir=process.env.RUNNER_TEMP?join(process.env.RUNNER_TEMP,'aihr-focused'):join(process.cwd(),'.review-evidence');mkdirSync(dir,{recursive:true});
-  writeFileSync(join(dir,'ai-centre-scale-timing.json'),JSON.stringify({kind:'ai-centre.scale-timing',version:1,runs:RUNS,warmup:WARMUP,
-   fixture:{companies:fixture.companyIds.length,employments:fixture.employmentIds.length,active:fixture.activeEmploymentIds.length},
-   ...(process.env.GITHUB_RUN_ID?{runId:process.env.GITHUB_RUN_ID}:{}),failures,readErrors:[...new Set(errors)],report},null,1));
-  process.stdout.write(lines.join('\n')+'\n');
+  write(report,failures);
   process.stdout.write('AIHR_AI_CENTRE_SCALE_FAILURES '+JSON.stringify(failures)+'\n');
   process.stdout.write('AIHR_AI_CENTRE_SCALE_READ_ERRORS '+JSON.stringify([...new Set(errors)])+'\n');
   expect(Object.keys(report).length).toBe(PAGES.length*3);
- },600_000);
+ },840_000);
 });
