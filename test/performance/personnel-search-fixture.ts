@@ -268,8 +268,8 @@ function fixtureSql(personPrefix: string, employmentPrefix: string, low: number,
     from generate_series(${low},${high}) n`;
 }
 
-/** The functions migration 5086 adds; the bodies it replaces, as the migrations that installed them wrote them, with the
- * md5 of each body that 5086's predecessor check accepts. */
+/** The functions migration 5092 adds; the bodies it replaces, as the migrations that installed them wrote them, with the
+ * md5 of each body that 5092's predecessor check accepts. */
 export const SEARCH_MAPPING_NEW_FUNCTIONS = [
   'app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])', 'app._personnel_company_tags(uuid[],date)',
 ];
@@ -285,7 +285,7 @@ const SEARCH_MAPPING_PREDECESSORS = [
 ] as const;
 const MAPPING_AT_DIGEST = 'dc4382976c3eec1dce402dc2145398c2';
 const migration = (tag: string) => readFileSync(new URL('../../db/migrations/' + tag + '.sql', import.meta.url), 'utf8');
-/** app.company_org_mapping_at as installed before 5086: the 2126 body with 3701's source-reader rewrite. */
+/** app.company_org_mapping_at as installed before 5092: the 2126 body with 3701's source-reader rewrite. */
 function mappingAtPredecessor() {
   const text = migration('2126_company_organisation_tagging'), start = text.indexOf('CREATE FUNCTION app.company_org_mapping_at(');
   expect(start).toBeGreaterThan(0);
@@ -295,12 +295,12 @@ function mappingAtPredecessor() {
     .replace('company_organisation_mapping m', 'app.company_org_scope_mappings() m');
 }
 
-/** Return the database to the Personnel search and organisation owners exactly as they were before migration 5086
- * (each restored body is checked against the digest 5086 requires); the returned function re-applies 5086 itself. */
+/** Return the database to the Personnel search and organisation owners exactly as they were before migration 5092
+ * (each restored body is checked against the digest 5092 requires); the returned function re-applies 5092 itself. */
 export async function installPreSearchMappingOwners(): Promise<() => Promise<void>> {
   const [installed] = await owner.client<{n: number}[]>`
     select count(*)::int as n from unnest(${SEARCH_MAPPING_NEW_FUNCTIONS}::text[]) name where to_regprocedure(name) is not null`;
-  expect(installed.n, 'migration 5086 is applied before the oracle switch').toBe(SEARCH_MAPPING_NEW_FUNCTIONS.length);
+  expect(installed.n, 'migration 5092 is applied before the oracle switch').toBe(SEARCH_MAPPING_NEW_FUNCTIONS.length);
   await owner.client.begin(async tx => {
     await tx.unsafe(mappingAtPredecessor()).simple();
     for (const [, tag, name] of SEARCH_MAPPING_PREDECESSORS) {
@@ -315,6 +315,6 @@ export async function installPreSearchMappingOwners(): Promise<() => Promise<voi
   expect(Object.fromEntries(digests.map(row => [row.signature, row.digest]))).toEqual(Object.fromEntries(
     [...SEARCH_MAPPING_PREDECESSORS.map(([signature, , , digest]) => [signature, digest]), ['app.company_org_mapping_at(date)', MAPPING_AT_DIGEST]]));
   return async () => {
-    await owner.client.unsafe(migration('5086_personnel_search_set_mapping')).simple();
+    await owner.client.unsafe(migration('5092_personnel_search_set_mapping')).simple();
   };
 }

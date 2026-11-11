@@ -5,7 +5,7 @@
  * keep it CPU-bound), for selective terms, terms that match everyone and a column filter without a term, and reports
  * p50/p95/max. No term search may be refused or reach the 20-second Personnel statement limit; a selective search
  * stays under a second up to 10,000 employments. Column filters without a term are measured (with any refusal) only. At 1,000 employments it also times the search exactly as release f7ee5177 shipped it (the
- * pre-5086 owners and the verbatim legacy search), which staging timed out on. Measurements are written to the focused
+ * pre-5092 owners and the verbatim legacy search), which staging timed out on. Measurements are written to the focused
  * evidence directory when one is set. Fictional data only. */
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {writeFileSync} from 'node:fs';

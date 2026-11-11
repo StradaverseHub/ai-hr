@@ -1,7 +1,7 @@
 # Combined release block — 11 November 2026 MYT (unapplied allocation, one block)
 
 Branch `claude/combined-release-20261111` (base `claude/architecture-release-20261110` @ `6e4a883c2`) merges every
-accepted branch of the combined release and moves all of their draft migrations into one block (46 migrations, and 5086 allocated directly): tags `5000`–`5090`,
+accepted branch of the combined release and moves all of their draft migrations into one block (46 migrations; 5092 is appended above 5090 later): tags `5000`–`5090`,
 idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when share one offset (tag 50NN, idx 44NN, when
 …47NN). The 772-entry journal of the base keeps its entries, order and SQL bytes; the 818-entry journal passes
 `node .github/ci/check-migration-order.mjs origin/main` (main `9cf69292a`, 729 entries ending at
@@ -54,8 +54,8 @@ idx 4400–4490, when 1793330004700–1793330004790. Tag number, idx and when sh
 | `9850_reward_access_observation_due` | 3743 / 1793330009850 | `5081_reward_access_observation_due` | 4481 / 1793330004781 | `f55738cd1422d1c955c722869e0328f9dcafafeb0042fd2b137165606663460a` |
 | `9870_home_own_clock_day` | 3744 / 1793330009870 | `5082_home_own_clock_day` | 4482 / 1793330004782 | `345c604cebcc58946865d6cc93cd248ad693165063a67648d6781243ec652c58` |
 | `9873_home_own_schedule_range` | 3745 / 1793330009873 | `5083_home_own_schedule_range` | 4483 / 1793330004783 | `75045a4ec8c176c55ddc51ddba0b079e6ca8c5662b004a345945ee335efce70a` |
-| (allocated directly, branch `claude/personnel-search-scan-20261111`) | — | `5086_personnel_search_set_mapping` | 4486 / 1793330004786 | `20155cc67bc3a1a70ea67a589fb6d94cb42db7b6a3d5f08372d670e1daf0d803` |
 | `4700_audit_chain_commit_seal` | 4100 / 1793330004400 | `5090_audit_chain_commit_seal` | 4490 / 1793330004790 | `6ce9bebe8c8de296b3b4a03b1d5d52c90c7df79fbdb0b8f8e0617616001e263e` |
+| (allocated directly, branch `claude/personnel-search-scan-20261111`) | — | `5092_personnel_search_set_mapping` | 4492 / 1793330004792 | `977040da60dcf94f9ef2650dceec76192ea53c23b163cc00d6bfd484d760bf0f` |
 
 Order and why:
 
@@ -103,17 +103,21 @@ Order and why:
   `5070_system_label_import_staged_job`: the grade choice list and the uploaded-award validation leave its rewrite list and are verified instead (was `6ed0f9b6bf699fb05d21c920ef2a11f7fedb03308dac3a166b7031dbd2ab7ffb`).
   `test/restricted-owner-release-upgrade.test.ts` applies every migration above main as the literal `ai_hr_owner` login on the installed role topology.
 <!-- combined-release-fixes:end -->
-- **Personnel search set mapping (5086).** Branch `claude/personnel-search-scan-20261111` (11 November 2026) takes 5086
-  in the reserved 5084–5089 gap; 5084 and 5085 stay free for another worker. Functions only: it replaces
-  `app.company_org_mapping_at`, `app._personnel_employment_tags`, `app.personnel_overview_facts`,
-  `app.personnel_overview_filter_fields` and `app.personnel_filter_companies` in place (each checked against its installed
-  body digest, owner and settings) and adds `app._personnel_company_tags` and `app.personnel_search_candidates`. It needs
-  5020's bodies, so it runs after 5020 and the Home reads and before 5090; it creates no trigger, so 5090's reviewed
-  trigger set is unchanged. **Watermark:** drizzle applies only entries whose `when` is above the last applied one, so an
-  installation that has already applied 5090 (when 1793330004790, staging after the rc2 deployment) would skip 5086
-  silently. Such an installation needs 5086 re-allocated above its applied watermark before it is deployed there; until
-  then core/personnel-private-search.ts keeps the previous search reader where the new one is absent.
-- **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069, 5072–5074, 5084, 5085 and 5087–5089 are
+- **Personnel search set mapping (5092, 12 November 2026).** Branch `claude/personnel-search-scan-20261111` takes
+  `5092_personnel_search_set_mapping` at idx 4492 / when 1793330004792, journalled after 5090 and above
+  `5091_access_review_custody_held_mode` (branch `claude/access-lock-restart-20261111`, idx 4491 / when 1793330004791),
+  because staging has applied 5090 and drizzle skips an entry whose `when` is below the applied watermark
+  (docs/SCALE-AND-RELEASE-RULES.md rule 11 on `claude/scale-conventions-20261111`). It was first numbered 5086 in the
+  5084–5089 gap; that number is released. A survey of every origin ref's journal on 12 November 2026 found 5091 and
+  then 5100–5112 (`5100_import_history_kind`, `5101_attendance_workflow_skipped_levels`, `5102_account_action_authority`,
+  `5110`–`5112`), nothing at 5092–5099. Functions only: it replaces `app.company_org_mapping_at`,
+  `app._personnel_employment_tags`, `app.personnel_overview_facts`, `app.personnel_overview_filter_fields`,
+  `app.personnel_filter_companies`, `app.personnel_list_rows`, `app.personnel_list_rows_for_ids` and
+  `app.personnel_private_search_bind()` in place (each checked against its installed body digest, owner and settings)
+  and adds `app._personnel_company_tags` and `app.personnel_search_candidates`; it creates no trigger. Where 5090 and
+  5091 are still unapplied (production), it runs in the same batch after them; it only replaces function bodies. Until
+  it is installed, core/personnel-private-search.ts keeps the previous search reader.
+- **Gaps are deliberate.** 5015–5019, 5034 and 5037–5039, 5057–5059, 5065–5069, 5072–5074 and 5084–5089 are
   left for branches accepted later; they are inserted before 5090 in journal order while the block is unapplied.
 
 Retired: `9002_leave_import_job` (phase 3's leave import proof). The leave ledger import runs on the shared kernel

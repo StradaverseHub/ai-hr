@@ -1,18 +1,18 @@
-/** Personnel private search before and after migration 5086, side by side.
+/** Personnel private search before and after migration 5092, side by side.
  *
  * The oracle is the release that staging timed out on: the Personnel search and organisation owners exactly as they
- * were before 5086 (restored from the migrations that installed them and checked against the digests 5086 accepts)
+ * were before 5092 (restored from the migrations that installed them and checked against the digests 5092 accepts)
  * and the search creation exactly as it shipped (test/helpers/personnel-private-search-legacy.ts, verbatim).
  *
- *  1. Owners. In the restored state every owner 5086 replaces or builds on is read directly (the organisation mapping
+ *  1. Owners. In the restored state every owner 5092 replaces or builds on is read directly (the organisation mapping
  *     and tags on fourteen days, a publish-leased run, employment tags for three actors, typed overview facts and
  *     filter fields, company choices, search rows, filter rows and list rows) and the private-search bind trigger's
- *     verdict on crafted memberships is recorded; after 5086 every answer must be identical.
+ *     verdict on crafted memberships is recorded; after 5092 every answer must be identical.
  *  2. End to end. A spread of searches (terms, identity, column filters, a previous token, a refused viewer) is run
  *     with the shipped search on the restored owners, and must give exactly the same stored membership (every entry,
- *     kind and revision), criteria, scope, first Personnel page, headcount and refusal as the new search after 5086.
- *     The new search on the restored database (its fallback before 5086 arrives) must agree as well.
- *  3. Breadth. Every search is then run with the shipped search and the new search side by side on the 5086 owners,
+ *     kind and revision), criteria, scope, first Personnel page, headcount and refusal as the new search after 5092.
+ *     The new search on the restored database (its fallback before 5092 arrives) must agree as well.
+ *  3. Breadth. Every search is then run with the shipped search and the new search side by side on the 5092 owners,
  *     which (1) proves answer the shipped search's reads identically, comparing the stored membership, for a group HR administrator, the same
  *     administrator over part of the group, a scoped HR administrator with a Workforce denial and a capability-only
  *     viewer.
@@ -84,7 +84,7 @@ async function search(create:Create,c:Case,page=true){
  });
 }
 
-/** The organisation and Personnel owners 5086 replaces or builds on, read directly. */
+/** The organisation and Personnel owners 5092 replaces or builds on, read directly. */
 async function owners(){
  const out:Record<string,unknown>={};
  const admin=contexts.admin;
@@ -235,23 +235,23 @@ beforeAll(async()=>{
  cases=caseList(sample,f.companies);
  for(const day of ['2022-12-31','2023-01-01',shift(f.today,-101),shift(f.today,-100),shift(f.today,-30),shift(f.today,-20),
   shift(f.today,-11),shift(f.today,-10),f.today,shift(f.today,59),shift(f.today,60),'infinity','-infinity',null])days.push(day);
- // The oracle: the owners and the search creation as they were before 5086.
+ // The oracle: the owners and the search creation as they were before 5092.
  reapply=await installPreSearchMappingOwners();
- progress('restored pre-5086 owners');
+ progress('restored pre-5092 owners');
  before.set('owners',{...await owners(),...await bindVerdicts()});
- progress('read pre-5086 owners');
+ progress('read pre-5092 owners');
  for(const c of endToEnd()){
   before.set(c.label,await search(legacyCreatePersonnelPrivateSearch,c));
-  // The new search on a database that 5086 has not reached keeps the previous reader and the same answers.
+  // The new search on a database that 5092 has not reached keeps the previous reader and the same answers.
   beforeFallback.set(c.label,await search(createPersonnelPrivateSearch,c,false));
   progress('end to end '+c.label);
  }
  await reapply();reapply=undefined;
- progress('re-applied 5086');
+ progress('re-applied 5092');
 },1_200_000);
 afterAll(async()=>{try{await reapply?.();await restoreWorkforceCapabilityCatalogue();}finally{await closeAll();}},120_000);
 
-describe('migration 5086 keeps every Personnel search answer',()=>{
+describe('migration 5092 keeps every Personnel search answer',()=>{
  it('reads the same organisation mapping, tags, typed facts, company choices and search rows',async()=>{
   const previous=before.get('owners') as Record<string,unknown>,current={...await owners(),...await bindVerdicts()};
   expect(Object.keys(current).length).toBeGreaterThan(60);
@@ -280,12 +280,12 @@ describe('migration 5086 keeps every Personnel search answer',()=>{
    // Breadth: the stored membership of the shipped search on the owners test 1 proves identical.
    const now=await search(createPersonnelPrivateSearch,c,before.has(c.label));
    expect(now,c.label).toEqual(await search(legacyCreatePersonnelPrivateSearch,c,before.has(c.label)));
-   // End to end: the shipped search on the restored owners (with its page), and the new search there before 5086.
+   // End to end: the shipped search on the restored owners (with its page), and the new search there before 5092.
    if(before.has(c.label)){
     endToEndCases++;
     expect(now,c.label+' (shipped release)').toEqual(before.get(c.label));
     const shipped=before.get(c.label) as Record<string,unknown>;
-    expect(beforeFallback.get(c.label),c.label+' (pre-5086 database)').toEqual('refused' in shipped?shipped:{matches:shipped.matches,criteria:shipped.criteria,scope:shipped.scope});
+    expect(beforeFallback.get(c.label),c.label+' (pre-5092 database)').toEqual('refused' in shipped?shipped:{matches:shipped.matches,criteria:shipped.criteria,scope:shipped.scope});
    }
    if('refused' in now)refused++;else if(now.matches.length)matched++;else empty++;
    progress('breadth '+c.label);

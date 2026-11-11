@@ -1,4 +1,4 @@
--- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5086_personnel_search_set_mapping, idx 4486, when 1793330004786.
+-- Combined release allocation, 12 November 2026 (docs/MIGRATION-ALLOCATION.md): 5092_personnel_search_set_mapping, idx 4492, when 1793330004792.
 -- Personnel search and the Personnel list read the dated company organisation once per statement.
 --
 -- Staging (11 Nov 2026, 75 companies) refused People > Personnel search at the 20 s Personnel statement limit

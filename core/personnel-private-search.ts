@@ -12,8 +12,8 @@ const TOKEN=/^[A-Za-z0-9_-]{43}$/;
 export const privateSearchHash=(token:string)=>TOKEN.test(token)?createHash('sha256').update(token).digest('hex'):null;
 export class PersonnelSearchLimitError extends Error{constructor(){super('Narrow the top company scope before searching this many records.');}}
 type SearchRow={employmentId:string;companyId:string;name:string;email:string;employeeCode:string|null;personRevision:string;employmentRevision:string;identityRevision:string|null;icNumber:string|null;passportNumber:string|null};
-/** Migration 5086's candidate reader: app.personnel_search_rows, its bounded population count, and only the rows the
- * criteria below may match (db/migrations/5086_personnel_search_set_mapping.sql), with the 5020 resolver it reads. */
+/** Migration 5092's candidate reader: app.personnel_search_rows, its bounded population count, and only the rows the
+ * criteria below may match (db/migrations/5092_personnel_search_set_mapping.sql), with the 5020 resolver it reads. */
 const SEARCH_CANDIDATES=['app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])','app._personnel_employment_tags(uuid[],date)'];
 /** The database narrows by ASCII lower case (A-Z to a-z). JavaScript's toLowerCase always lowers ASCII that way;
  * toLocaleLowerCase does too unless the process locale has its own I/i rule (Turkish, Azeri). There every row is

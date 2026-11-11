@@ -1,5 +1,5 @@
 /** The Personnel private search creation exactly as release f7ee5177 shipped it (core/personnel-private-search.ts
- * before migration 5086), kept verbatim as the equivalence oracle: it reads every authorised search row and every
+ * before migration 5092), kept verbatim as the equivalence oracle: it reads every authorised search row and every
  * list row into Node and matches there. Only its name and imports differ. Never used by the application. */
 import {serviceYearsMonthsDaysAt} from '../../packs/leave/service';
 import {matchesPersonnelColumnFilters,normalizePersonnelPrivateCriteria,type PersonnelPrivateCriteria,type PersonnelColumnFilter} from '../../lib/personnel-list-controls';
