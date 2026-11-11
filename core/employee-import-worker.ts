@@ -171,7 +171,7 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   const rows=await owner<{kind:string;row_num:number;email:string|null;code:string|null;company:string|null;name:string|null;refused:{message:string;column?:string}|null}[]>`select kind,row_num,payload->>'email' as email,
     payload#>>'{row,hire,employeeCode}' as code,payload#>>'{row,hire,companyId}' as company,payload#>>'{row,result,fullName}' as name,result->'refused' as refused
    from bulk_job_step where job_id=${job.id}::uuid order by seq`;
-  const employees=new Map(rows.filter(r=>r.kind==='employee').map(r=>[r.row_num,r]));
+  const employees=new Map(rows.filter(r=>r.kind==='employee').map(r=>[r.row_num,r] as const));
   const identity=(rowNum:number)=>{const e=employees.get(rowNum);return{rowNum,employeeCode:e?.code??'',fullName:e?.name??'',companyId:e?.company??planOf(job).companyId};};
   const stops:EmployeeImportSaveReportRow[]=[];
   for(const r of rows)if(r.refused)stops.push({...identity(r.row_num),outcome:'stopped',message:r.refused.message,...(r.refused.column?{column:r.refused.column}:{})});

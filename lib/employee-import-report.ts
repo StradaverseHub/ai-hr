@@ -108,7 +108,7 @@ export function scopeEmployeeImportReport(report:EmployeeImportReport,visibleCom
 /** The plan's own row-issue list (shown in the attempt summary), narrowed to the rows of visible companies. */
 export function scopeEmployeeImportIssues<T extends {rowNum:number}>(issues:readonly T[],plan:unknown,visibleCompanyIds:ReadonlySet<string>,coversAttempt:boolean):T[]{
  if(coversAttempt)return[...issues];
- const company=new Map(planRowsOf(plan).map(r=>[r.rowNum,r.companyId]));
+ const company=new Map(planRowsOf(plan).map(r=>[r.rowNum,r.companyId] as const));
  // rowNum 0 is a whole-file problem; its text may quote rows of any company, so it needs the whole attempt too.
  return issues.filter(i=>i.rowNum!==0&&(company.get(i.rowNum)?visibleCompanyIds.has(company.get(i.rowNum)!):false));
 }
