@@ -15,8 +15,9 @@ let fixture:PersonnelScaleFixture;
 let blanked:string[]=[];
 beforeAll(async()=>{
  await migrateTestDb();fixture=await seedPersonnelScaleFixture(320);
- // Give a few current placements no department, so "Blank / unassigned" has rows to find.
- blanked=(await owner.client<{id:string}[]>`update assignment a set department_id=null
+ // A placement always names a department, so "Blank / unassigned" finds employments with no current placement:
+ // withdraw a few current placements (superseded corrections), so it has rows to find.
+ blanked=(await owner.client<{id:string}[]>`update assignment a set superseded_at=now()
   where a.id in (select a2.id from assignment a2 join employment e on e.id=a2.employment_id
    where e.tenant_id=${fixture.base.tenantId}::uuid and e.company_id=${fixture.companies.b}::uuid and a2.superseded_at is null
     and a2.valid_from<=${todayInKualaLumpur()}::date and (a2.valid_to is null or a2.valid_to>${todayInKualaLumpur()}::date)

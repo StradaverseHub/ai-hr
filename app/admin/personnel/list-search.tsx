@@ -133,7 +133,7 @@ export function PersonnelListSearch({parameters, pageSize, privateCriteria = emp
         // here would scroll the page sideways on a phone.
         className={`${inputCls} h-9 w-52 sm:w-64 md:w-72`}/>
       {showList && <div id={listId} role="listbox" aria-label={t('resultsLabel')}
-        className="absolute left-0 z-50 mt-1 max-h-96 w-[min(24rem,90vw)] overflow-y-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-lg">
+        className="absolute right-0 z-50 mt-1 max-h-96 w-[min(24rem,90vw)] overflow-y-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-lg">
         <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" aria-hidden>{t('matchingHeading')}</p>
         {rows.length === 0 && <p role="status" className="px-3 py-3 text-sm text-muted-foreground">{loading ? common('loading') : current?.failed ? t('loadFailed') : t('noMatches')}</p>}
         {rows.map((row, index) => <div key={row.employmentId} id={optionId(index)} role="option" aria-selected={index === active}
