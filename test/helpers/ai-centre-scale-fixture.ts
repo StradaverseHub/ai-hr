@@ -73,10 +73,11 @@ export async function buildScaleFixture(b:Base,opts:Readonly<{employments?:numbe
  const loopRows=active.slice(40,490).map((e,i)=>({tenantId:b.tenantId,workerId:'loop_missing_employee_data' as const,companyId:e.companyId,employmentId:e.id,
   subjectKey:`record:${e.id}`,recipient:'employee' as const,state:(i%5===0?'closed':i%3===0?'waiting':'open') as 'open'|'waiting'|'closed',
   ...(i%5===0?{closeReason:'done' as const,resolution:'completed' as const,closedAt:new Date(now-3*DAY)}:{}),
-  facts:{gaps:['no_tax_number',...(i%2?['no_socso_number']:[])]},openedAt:new Date(now-((i%40)+1)*DAY),checkedAt:new Date(now-DAY),openedRunId:runId,checkedRunId:runId}));
+  facts:{gaps:['no_tax_number',...(i%2?['no_socso_number']:[])]},firstOpenedAt:new Date(now-((i%40)+1)*DAY),openedAt:new Date(now-((i%40)+1)*DAY),checkedAt:new Date(now-DAY),
+  openedRunId:runId,checkedRunId:runId}));
  for(const part of chunk(loopRows,500))await owner.db.insert(terasLoopCase).values(part);
  await owner.db.insert(terasLoopRun).values(staffed.slice(0,20).map((companyId,i)=>({tenantId:b.tenantId,runId:randomUUID(),workerId:'loop_missing_employee_data' as const,companyId,
-  status:'ran' as const,loopVersion:'loop_missing_employee_data@v1',startedAt:new Date(now-(i+1)*3_600_000),finishedAt:new Date(now-(i+1)*3_600_000+5000),checks:[],reads:[]})));
+  status:'ran' as const,sponsorUserId:b.adminUserId,loopVersion:'loop_missing_employee_data@v1',startedAt:new Date(now-(i+1)*3_600_000),finishedAt:new Date(now-(i+1)*3_600_000+5000),checks:[],reads:[]})));
  // A few pending self-service corrections.
  await owner.db.insert(schema.profileChangeRequest).values(active.slice(0,6).map((e,i)=>({tenantId:b.tenantId,personId:e.personId,employmentId:e.id,status:'pending' as const,
   proposed:{taxNumber:`SG${9000000+i}`}})));
