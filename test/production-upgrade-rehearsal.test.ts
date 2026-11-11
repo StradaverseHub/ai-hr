@@ -30,7 +30,7 @@ const PRIVILEGE_WARNINGS=new Set(['01006','01007']);
 const config=JSON.parse(readFileSync('test/fixtures/production-upgrade/rehearsal.json','utf8')) as {
  baseline:{installedSource:string;ledgerEntries:number;ledgerWatermark:number;expectedLedgerDigest:string;populatorSource:string;
   productionRoles:string[];productionPurposeOwners:Record<string,string>;productionShape:Record<string,number>};
- sizes:Record<string,unknown>;auditHashChainEnabled:string;replication:{targetEmployments:number}};
+ sizes:Record<string,unknown>;auditHashChainEnabled:string;replication:{targetEmployments:number;targetDomainEvents:number}};
 const sha256=(bytes:Buffer|string)=>createHash('sha256').update(bytes).digest('hex');
 const git=(...args:string[])=>execFileSync('git',args,{maxBuffer:256*1024*1024});
 const journalAt=(ref:string)=>(JSON.parse(git('show',`${ref}:db/migrations/meta/_journal.json`).toString()) as {entries:Entry[]}).entries;
@@ -107,6 +107,33 @@ async function replicateEmployments(sql:postgres.Sql,tenantId:string,templates:s
  await sql.unsafe('ANALYZE');
  const [{count:after}]=await sql.unsafe<{count:number}[]>('SELECT count(*)::int AS count FROM employment WHERE tenant_id=$1::uuid',[tenantId]);
  return {templates:templates.length,employmentsBefore:before,employmentsAfter:after,copies,triggersDisabled,tables,skipped,ms:Date.now()-started};
+}
+
+/** Production-scale audit history: re-append the tenant's own service-written events with new ids through the live
+ * BEFORE INSERT chain trigger, which assigns sequence, chain position and hashes exactly as for a service write. */
+const EVENT_ASSIGNED=new Set(['id','sequence','chain_seq','prev_hash','hash','occurred_at']);
+async function appendEventVolume(sql:postgres.Sql,tenantId:string,target:number){
+ const started=Date.now();
+ const count=async()=>(await sql.unsafe<{n:number}[]>('SELECT count(*)::int AS n FROM domain_event WHERE tenant_id=$1::uuid',[tenantId]))[0].n;
+ const before=await count();
+ if(before>=target||before===0)return {before,after:before,rounds:0,ms:0};
+ const columns=[...await sql.unsafe<{name:string;generated:string;identity:string;def:string|null}[]>(`SELECT a.attname::text AS name,a.attgenerated::text AS generated,
+  a.attidentity::text AS identity,pg_get_expr(d.adbin,d.adrelid) AS def FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+  WHERE a.attrelid='public.domain_event'::regclass AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum`)]
+  .filter(column=>!column.generated&&!column.identity&&!(column.def??'').includes('nextval(')&&!EVENT_ASSIGNED.has(column.name)).map(column=>'"'+column.name+'"');
+ const [{pk}]=await sql.unsafe<{pk:string|null}[]>(`SELECT format_type(a.atttypid,a.atttypmod) AS pk FROM pg_attribute a WHERE a.attrelid='public.domain_event'::regclass AND a.attname='id'`);
+ const idColumn=pk==='uuid'?['"id"']:[],idValue=pk==='uuid'?['gen_random_uuid()']:[];
+ await sql.unsafe(`CREATE TEMP TABLE rp_event_source AS SELECT id FROM domain_event WHERE tenant_id=$1::uuid ORDER BY sequence`,[tenantId]);
+ let rounds=0,after=before;
+ while(after<target){
+  const take=Math.min(before,target-after);
+  await sql.unsafe(`INSERT INTO domain_event (${[...idColumn,...columns].join(',')}) SELECT ${[...idValue,...columns.map(column=>'e.'+column)].join(',')}
+   FROM domain_event e JOIN (SELECT id FROM rp_event_source LIMIT $1) s ON s.id=e.id ORDER BY e.sequence`,[take]);
+  rounds++;after=await count();
+ }
+ await sql.unsafe('DROP TABLE rp_event_source');await sql.unsafe('ANALYZE domain_event');
+ const [chain]=await sql.unsafe<{chained:number;max_seq:string|null}[]>(`SELECT count(*) FILTER (WHERE hash IS NOT NULL)::int AS chained,max(chain_seq)::text AS max_seq FROM domain_event WHERE tenant_id=$1::uuid`,[tenantId]);
+ return {before,after,rounds,chained:chain.chained,maxChainSeq:chain.max_seq,ms:Date.now()-started};
 }
 
 afterAll(closeAll);
@@ -231,7 +258,13 @@ it('upgrades a populated production-baseline database to the candidate as the re
    try{return await replicateEmployments(sql,population.tenantId,population.templateEmploymentIds,config.replication.targetEmployments);}
    finally{await close(sql);}
   });
-  evidence.replication=replication;write();
+  const events=await timed('eventVolume',async()=>{
+   const sql=connect(at(names.base));
+   try{return await appendEventVolume(sql,population.tenantId,config.replication.targetDomainEvents);}
+   catch(error){return {refused:String((error as Error).message).slice(0,500)};}
+   finally{await close(sql);}
+  });
+  evidence.replication={...replication,events};write();
   expect(replication.employmentsAfter,'production-shaped employment volume').toBeGreaterThanOrEqual(Math.floor(config.replication.targetEmployments*0.9));
 
   // 4. The installed role topology on a copy: owner-owned objects, purpose owners kept, documented DBA prerequisites.

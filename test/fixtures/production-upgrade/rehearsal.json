@@ -57,6 +57,8 @@
   "auditHashChainEnabled": "true",
   "replication": {
     "targetEmployments": 3800,
-    "note": "Service hires in non-payroll companies are the templates; the test copies their person, employment and every row that references them (except users, payroll, claims and audit events) set-wise inside the same company until the tenant reaches the target. Copied rows have no audit events of their own, like imported history."
+    "note": "Service hires in non-payroll companies are the templates; the test copies their person, employment and every row that references them (except users, payroll, claims and audit events) set-wise inside the same company until the tenant reaches the target. Copied rows have no audit events of their own, like imported history.",
+    "targetDomainEvents": 46000,
+    "eventNote": "After the employment copies, the main tenant's own service-written events are re-appended set-wise (new ids, every other column kept) through the live chain trigger until the tenant holds the target, so the release's receipt backfill and audit-chain seal run over production-scale history. The trigger assigns sequence, chain position and hashes."
   }
 }
