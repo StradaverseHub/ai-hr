@@ -150,7 +150,9 @@ describe('AI centre catalogue completeness', () => {
       blocking: 2, groups: 6, exceptions: 33, names: 'Fictional Ceria Sdn Bhd', more: 6, page: 1, pages: 3, checks: 'No tax profile',
       component: 'Bonus', grossPay: 'MYR 100.00', totalDeductions: 'MYR 400.00', netPay: 'MYR 1,200.00', actual: 'MYR 300.00',
       excess: 'MYR 50.00', pcb: 'MYR 12.00', daysWorked: 20, periodDays: 31, others: 2, direction: 'down', pct: 82.3,
-      priorNetPay: 'RM 6,386.55', priorAmount: 'RM 200.00', shown: 50 };
+      priorNetPay: 'RM 6,386.55', priorAmount: 'RM 200.00', shown: 50,
+      // AI-native batch: arguments of the administrator Today page's statutory entry detail and readiness bar.
+      soon: 1, ready: 4 };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });
