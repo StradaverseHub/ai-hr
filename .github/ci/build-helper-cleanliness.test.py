@@ -10,7 +10,7 @@ class HelperCleanliness(unittest.TestCase):
         for reader in ["build-transport-extract.py","build-package-diagnostic.py"]:
             with self.subTest(reader=reader),tempfile.TemporaryDirectory(prefix="aihr-helper-clean-",dir="/private/tmp" if Path("/private/tmp").is_dir() else None) as temp:
                 root=Path(temp).resolve();directory=root/".github/ci";directory.mkdir(parents=True)
-                for name in ["build-bundle.py","runtime_inventory.py",reader]:
+                for name in ["build-bundle.py",reader]:
                     (directory/name).write_bytes(Path(__file__).with_name(name).read_bytes())
                 environment={**os.environ,"GIT_CONFIG_GLOBAL":os.devnull,"GIT_CONFIG_NOSYSTEM":"1"}
                 def git(*args):

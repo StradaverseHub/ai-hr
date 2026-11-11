@@ -98,14 +98,6 @@ DIRTY_AT_START=$(git status --porcelain | head -1)
 ALL=()
 while IFS= read -r f; do ALL+=("$f"); done < "$OUT/all-files.txt"
 TOTAL=${#ALL[@]}
-if ! node scripts/gate-singleton-scope.mjs < "$OUT/all-files.txt"; then
-  # This is a refusal, never a narrowed run. Invalidate a clean same-source local
-  # receipt before returning; dirty/proof invocations still issue no receipt.
-  if [ -z "$DIRTY_AT_START" ] && [ "$PROOF" != "1" ]; then
-    node -e 'require("node:fs").writeFileSync(".gate-receipt.json",JSON.stringify({sha:process.argv[1],result:"FAIL",tier:"full",reason:"Authenticated hosted singleton profiles required",at:new Date().toISOString()},null,2)+"\n")' "$HEAD_AT_START"
-  fi
-  exit 2
-fi
 
 # ── the split ───────────────────────────────────────────────────────────────────────────────────────────
 node --import tsx scripts/gate-db-classify.ts explain < "$OUT/all-files.txt" > "$OUT/classify.tsv" || {

@@ -17,7 +17,7 @@ function regular(p,max=32*1024**2){const s=lstatSync(p);assert(s.isFile()&&!s.is
 function owned(p){const s=lstatSync(p);assert(s.isDirectory()&&!s.isSymbolicLink()&&realpathSync(p)===p&&s.uid===process.getuid());return s;}
 function unchanged(source,e){assert(git(source,'rev-parse','HEAD')===e.AIHR_CI_HEAD&&git(ROOT,'rev-parse','HEAD')===e.AIHR_CI_CONTROL_HEAD
  &&git(source,'status','--porcelain','--untracked-files=all')===''&&git(ROOT,'status','--porcelain','--untracked-files=all')==='','Exact clean application source/controller required');}
-export const NEXT_BUILD_CACHE_CODE=Object.freeze(['.github/ci/next-state-recovery.mjs','.github/ci/next-build-cache.mjs','.github/ci/next-build-cache-policy.mjs','.github/ci/next-app-typecheck-probe.mjs','.github/ci/build-production.mjs','.github/ci/build-bundle.py','.github/ci/runtime_inventory.py','.github/ci/runner-capacity.mjs','.github/ci/prepare-runner.sh','.github/ci/extract-artifact.py','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging-diagnostics.yml']);
+const CODE=['.github/ci/next-state-recovery.mjs','.github/ci/next-build-cache.mjs','.github/ci/next-build-cache-policy.mjs','.github/ci/next-app-typecheck-probe.mjs','.github/ci/build-production.mjs','.github/ci/build-bundle.py','.github/ci/runner-capacity.mjs','.github/ci/prepare-runner.sh','.github/ci/extract-artifact.py','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging-diagnostics.yml'];
 function context(source){
  const root=JSON.parse(regular(join(source,'tsconfig.json'))),build=JSON.parse(regular(join(source,'tsconfig.build.json')));
  assert(root.compilerOptions?.incremental===true&&root.extends===undefined&&root.references===undefined&&build.extends==='./tsconfig.json'&&build.references===undefined,'Reviewed exact application config chain required');
@@ -34,7 +34,7 @@ function restore(source,out,e,c,currentRunner){
  const origin=parseNextCacheOrigin(e.AIHR_NEXT_BUILD_ORIGIN);assert(String(origin.runId)!==e.GITHUB_RUN_ID,'Original successful state run must be separate');
  const run=api('actions/runs/'+origin.runId),jobs=api('actions/runs/'+origin.runId+'/attempts/1/jobs?per_page=100'),artifact=api('actions/artifacts/'+origin.artifactId);
  const job=validateNextOrigin(origin,run,jobs,artifact),tree=api('git/trees/'+origin.sha+'?recursive=1');assert(tree.truncated===false);
- const expected=Object.fromEntries(NEXT_BUILD_CACHE_CODE.map(p=>[p,git(ROOT,'rev-parse','HEAD:'+p)])),entries=new Map(tree.tree.filter(t=>t.type==='blob').map(t=>[t.path,t.sha]));
+ const expected=Object.fromEntries(CODE.map(p=>[p,git(ROOT,'rev-parse','HEAD:'+p)])),entries=new Map(tree.tree.filter(t=>t.type==='blob').map(t=>[t.path,t.sha]));
  for(const [p,sha]of Object.entries(expected))assert(entries.get(p)===sha,'Original actual controller code differs: '+p);
  const bytes=execFileSync('gh',['api','repos/StradaverseHub/ai-hr/actions/artifacts/'+origin.artifactId+'/zip'],{timeout:10000,maxBuffer:64*1024**2});
  assert(bytes.length===artifact.size_in_bytes&&hash(bytes)===origin.digest);

@@ -1,5 +1,4 @@
 import {execFileSync} from 'node:child_process';
-import assert from 'node:assert/strict';
 import {buildUnits, hash, requiredEvidence, CI_EXECUTION} from './manifest.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 import {REPOSITORY, REPOSITORY_ID, WORKFLOW_ID, WORKFLOW_PATH, digest} from './release-policy.mjs';
@@ -44,18 +43,9 @@ export function fixture() {
   return f;
 }
 export function put(f, name, filename, value, extra = {}) {
-  const previous = f.artifacts.find(a => a.name === name);
-  let id;
-  if (previous) id = previous.id;
-  else {
-    const knownIds = f.artifacts.map(artifact => artifact.id);
-    assert(knownIds.every(value => Number.isSafeInteger(value) && value > 0), 'Existing fixture artifact IDs must be positive safe integers');
-    assert.equal(new Set(knownIds).size, knownIds.length, 'Existing fixture artifact IDs must be unique');
-    id = Math.max(1999, ...knownIds) + 1;
-    assert(Number.isSafeInteger(id), 'Fixture artifact ID space exhausted');
-  }
   const bytes = zip({[filename]: JSON.stringify(value), ...extra});
-  const artifact = {id, name, size_in_bytes: bytes.length, digest: digest(bytes),
+  const previous = f.artifacts.find(a => a.name === name);
+  const artifact = {id: previous?.id ?? 2000 + f.artifacts.length, name, size_in_bytes: bytes.length, digest: digest(bytes),
     expired: false, created_at: time(10), expires_at: time(-60), workflow_run: {id: f.run.id,
       repository_id: REPOSITORY_ID, head_repository_id: REPOSITORY_ID, head_sha: f.expected.controller, head_branch: 'main'}};
   if (previous) f.artifacts.splice(f.artifacts.indexOf(previous), 1, artifact); else f.artifacts.push(artifact);

@@ -14,7 +14,6 @@ import {runNormalCleanupSession,RESULT_KIND} from './normal-cleanup-session.mjs'
 import {durableCleanupRecord,acquireNormalCleanupLock,readSingleCleanupCommit} from './normal-cleanup-io.mjs';
 import {captureNormalCleanupFences,canonicalSourceExclusions} from './normal-cleanup-fences.mjs';
 import {validateCleanupRequest} from './staging-cleanup-protocol.mjs';
-import {validateArrivalCleanupAuthority,validateArrivalCleanupRuntime,validateCleanupLease} from './arrival-cleanup-authority.mjs';
 import {validateInstallGrant,installJson,installHash} from './ci-install-grant.mjs';
 import {inspectCiBuildPacket} from './build-artifact.mjs';
 import {assertBuildRuntime,assertBuildDotenvCompileKeys,assertBuildCapacityProfile} from './build-production.mjs';
@@ -45,7 +44,7 @@ function locations(installId,home=homedir()){
  return {parent,directory,packet:join(directory,'packet'),next:join(directory,'next')};
 }
 /** Initialization is independently testable on private fixtures. CLI always binds the live staging root. */
-export function initializePrivateInstall(grant,{home=homedir(),lease}={}){
+export function initializePrivateInstall(grant,{home=homedir()}={}){
  validateInstallGrant(grant);
  const p=locations(grant.installId,home);privateDirectory(p.parent,true);
  // A fresh attempt has a fresh installId while retaining the original baked buildRecordId.
@@ -53,9 +52,7 @@ export function initializePrivateInstall(grant,{home=homedir(),lease}={}){
  save(join(p.directory,'authorization.json'),grant);
  mkdirSync(p.packet,{mode:0o700});
  save(join(p.directory,'store.json'),{format:1,installId:grant.installId,directory:identity(st),packetDirectory:identity(lstatSync(p.packet))});
- const authorizationSha256=installHash(installJson(grant)+'\n');
- if(lease)durableCleanupRecord(join(p.directory,'installation-lease.json'),cleanupLeaseBinding(grant,authorizationSha256,lease));
- return {installId:grant.installId,packetDirectory:p.packet,authorizationSha256,releaseAuthorized:false};
+ return {installId:grant.installId,packetDirectory:p.packet,authorizationSha256:installHash(Buffer.from(installJson(grant)+'\n')),releaseAuthorized:false};
 }
 export function readPrivateInstall(installId,{home=homedir(),allowExpired=false,allowCleanup=false}={}){
  const p=locations(installId,home);privateDirectory(p.parent);const st=privateDirectory(p.directory);
@@ -72,8 +69,8 @@ function targetRoot(source=ROOT){
  source=resolve(source);assert(source==='/opt/ai-hr'&&realpathSync(source)===source&&process.platform==='linux','Installer is restricted to the existing Linux alpha/staging source');
  return source;
 }
-function selected(installId,sourceRef,buildRecordId,{allowCleanup=false,allowExpired=false}={}){
- const p=readPrivateInstall(installId,{allowCleanup,allowExpired});
+function selected(installId,sourceRef,buildRecordId,{allowCleanup=false}={}){
+ const p=readPrivateInstall(installId,{allowCleanup});
  assert(p.grant.source===sourceRef&&p.grant.build.buildRecordId===buildRecordId,'Selected source/record differs from installation grant');
  return p;
 }
@@ -194,11 +191,7 @@ export async function activateCiBuild(sourceRef,installId,buildRecordId){
  save(join(p.directory,'activated.json'),result);return result;
 }
 async function confirmRuntime(sourceRef,installId,buildRecordId,{persist=true,allowCleanup=false}={}){
- const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowCleanup});
- return auditSelectedRuntime(source,p,{persist});
-}
-async function auditSelectedRuntime(source,p,{persist=false}={}){
- const g=p.grant,sourceRef=g.source,installId=g.installId,buildRecordId=g.build.buildRecordId;
+ const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowCleanup}),g=p.grant;
  const activated=JSON.parse(regular(join(p.directory,'activated.json'),1024**2));
  assert(activated.installId===installId&&activated.source===sourceRef&&activated.buildRecordId===buildRecordId&&activated.authorizationSha256===p.authorizationSha256,'Activated installation differs');
  runtimeContract(source,g);const bound=await sourceContract(source,p);
@@ -220,70 +213,10 @@ async function auditSelectedRuntime(source,p,{persist=false}={}){
   authorizationSha256:p.authorizationSha256,pid,startedMonotonicUs:started,healthStatus:200,compiledByteInventory,migrationLedger:collectMigrationLedger(source),verifiedAt:new Date().toISOString(),releaseAuthorized:false,fullSourceChecksumVerified:false,fullMigrationLedgerVerified:true};
  if(persist)save(join(p.directory,'runtime.json'),result);return result;
 }
-const ARRIVAL_AUTHORITY='arrival-cleanup-authority.json';
-const ARRIVAL_START='arrival-cleanup-session-start.json';
-function assertAbsent(directory,names){
- for(const name of names){
-  try{lstatSync(join(directory,name));}catch(error){if(error.code==='ENOENT')continue;throw error;}
-  throw Error('Prior cleanup state requires explicit reconciliation: '+name);
- }
-}
-export function assertFreshCleanup(directory,{arrival=false}={}){
- assertAbsent(directory,['cleanup-authorized.json','cleanup-intent.json','cleanup-result.json','normal-cleanup-ready.json',
-  'normal-cleanup-commit.json','normal-cleanup-consumed.json','normal-cleanup-owned-cleanup.json',ARRIVAL_START,...(arrival?[]:[ARRIVAL_AUTHORITY])]);
-}
-function cleanupLeaseBinding(grant,authorizationSha256,lease){
- return {format:1,kind:'ORIGINAL_CI_INSTALL_STAGING_LEASE',authorizationSha256,lease:validateCleanupLease(lease,grant.source)};
-}
-export function assertInstallationCleanupLease(p,lease){
- const path=join(p.directory,'installation-lease.json'),bytes=regular(path,4096);
- const expected=cleanupLeaseBinding(p.grant,p.authorizationSha256,lease);
- assert((lstatSync(path).mode&0o777)===0o600&&bytes.equals(Buffer.from(installJson(expected)+'\n')),'Current lease differs from immutable original installation lease');
- return lease;
-}
-function arrivalLease(sourceRef,p){
- assert(existsSync(COORDINATOR),'Arrival cleanup requires commissioned staging lease custody');
- guardServerCli(sourceRef);
- const lease={batch:process.env.AIHR_STAGING_BATCH,epoch:Number(process.env.AIHR_STAGING_EPOCH),candidate:process.env.AIHR_STAGING_CANDIDATE};
- return p?assertInstallationCleanupLease(p,lease):validateCleanupLease(lease,sourceRef);
-}
-function ownedCleanupCustody(p){
- const ownedDirectory=path=>{const st=lstatSync(path);assert(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===process.getuid(),'Owned cleanup directory required');return identity(st);};
- return {directory:ownedDirectory(p.directory),retained:ownedDirectory(p.next),packet:ownedDirectory(p.packet)};
-}
-function liveCleanupRuntime(source){
- return {bootIdSha256:installHash(readFileSync('/proc/sys/kernel/random/boot_id')),
-  environmentSha256:fingerprintStagingEnvironment(source),activeDirectory:identity(lstatSync(join(source,'.next')))};
-}
-const cleanupServiceValue=name=>execFileSync('systemctl',['show','aihr','--property='+name,'--value'],{encoding:'utf8',timeout:3000}).trim();
-const cleanupServiceActive=()=>execFileSync('systemctl',['is-active','aihr'],{encoding:'utf8',timeout:3000}).trim()==='active';
-async function cleanupHealth(){
- const response=await fetch('http://127.0.0.1:'+(process.env.PORT??'3000')+'/health',{redirect:'manual',signal:AbortSignal.timeout(3000)});
- await response.arrayBuffer();return response.status;
-}
-async function readStatus(sourceRef,installId,buildRecordId,{arrival=false}={}){
- const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowCleanup:!arrival,allowExpired:arrival});
- if(arrival){arrivalLease(sourceRef,p);assertFreshCleanup(p.directory);regular(join(p.directory,'runtime.json'),1024**2);}
+async function readStatus(sourceRef,installId,buildRecordId){
+ targetRoot();const p=selected(installId,sourceRef,buildRecordId,{allowCleanup:true});
  return {authorizationSha256:p.authorizationSha256,verified:JSON.parse(regular(join(p.directory,'verified.json'),1024**2)),
-  activated:JSON.parse(regular(join(p.directory,'activated.json'),1024**2)),
-  runtime:arrival?await auditSelectedRuntime(source,p):await confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true}),releaseAuthorized:false,
-  ...(arrival?{cleanupCustody:ownedCleanupCustody(p)}:{})};
-}
-async function authorizeArrivalCleanup(sourceRef,installId,buildRecordId,authority){
- const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowExpired:true});
- return withNormalCleanupLock(p.directory,{source:sourceRef,installId,pid:process.pid},async()=>{
-  assertFreshCleanup(p.directory);validateArrivalCleanupAuthority(authority,p.grant,{freshSource:true});
-  const completed=JSON.parse(regular(join(p.directory,'runtime.json'),1024**2)),live=liveCleanupRuntime(source);
-  validateArrivalCleanupRuntime(authority,completed,live);
-  const pid=cleanupServiceValue('MainPID'),startedMonotonicUs=Number(cleanupServiceValue('ExecMainStartTimestampMonotonic'));
-  const healthStatus=await cleanupHealth(),migrationLedger=collectMigrationLedger(source);
-  validateArrivalCleanupRuntime(authority,{...completed,pid,startedMonotonicUs,healthStatus,migrationLedger},live);
-  assert(cleanupServiceActive()&&cleanupServiceValue('MainPID')===pid&&buildId(join(source,'.next'))===p.grant.build.nextBuildId,'Live service or active build changed during authority verification');
-  assert(isDeepStrictEqual(arrivalLease(sourceRef,p),authority.lease)&&isDeepStrictEqual(ownedCleanupCustody(p),authority.custody),'Arrival cleanup lease or owned inode differs');
-  validateArrivalCleanupAuthority(authority,p.grant,{freshSource:true});
-  durableCleanupRecord(join(p.directory,ARRIVAL_AUTHORITY),authority);
-  return {authoritySha256:installHash(installJson(authority)),releaseAuthorized:false};
- });
+  activated:JSON.parse(regular(join(p.directory,'activated.json'),1024**2)),runtime:await confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true}),releaseAuthorized:false};
 }
 export async function withNormalCleanupLock(directory,selection,operation){
  const release=acquireNormalCleanupLock(join(directory,'normal-cleanup.lock'),selection);
@@ -292,7 +225,7 @@ export async function withNormalCleanupLock(directory,selection,operation){
 export async function cleanupCiBuild(sourceRef,installId,buildRecordId,request){
  const p=selected(installId,sourceRef,buildRecordId,{allowCleanup:true});
  return withNormalCleanupLock(p.directory,{source:sourceRef,installId,pid:process.pid},async()=>{
-  assertAbsent(p.directory,[ARRIVAL_AUTHORITY,...['ready','commit','consumed'].map(name=>'normal-cleanup-'+name+'.json')]);
+  assert(!['ready','commit','consumed'].some(name=>existsSync(join(p.directory,'normal-cleanup-'+name+'.json'))),'Interrupted normal session requires explicit recovery');
   return cleanupCiBuildLocked(sourceRef,installId,buildRecordId,request);
  });
 }
@@ -339,47 +272,32 @@ export function retainNormalCleanupAudit(p,activated){
  for(const folder of [join(p.directory,'audit/bytes'),join(p.directory,'audit'),p.directory]){const fd=openSync(folder,'r');try{fsyncSync(fd);}finally{closeSync(fd);}}
 }
 
-export async function cleanupCiBuildSession(sourceRef,installId,buildRecordId,{arrival=false}={}){
- const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowExpired:arrival}),g=p.grant;
+export async function cleanupCiBuildSession(sourceRef,installId,buildRecordId){
+ const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId),g=p.grant;
+ assert(!existsSync(join(p.directory,'cleanup-authorized.json'))&&!existsSync(join(p.directory,'normal-cleanup-consumed.json')),'Prior cleanup attempt requires explicit recovery');
  return withNormalCleanupLock(p.directory,{source:sourceRef,installId,pid:process.pid},async()=>{
-  assertFreshCleanup(p.directory,{arrival});
-  const authorityPath=join(p.directory,ARRIVAL_AUTHORITY);
-  const readAuthority=()=>{
-   const bytes=regular(authorityPath,32768),value=validateArrivalCleanupAuthority(JSON.parse(bytes),g);
-   assert((lstatSync(authorityPath).mode&0o777)===0o600&&bytes.equals(Buffer.from(installJson(value)+'\n')),'Immutable private arrival cleanup authority required');
-   assert(isDeepStrictEqual(arrivalLease(sourceRef,p),value.lease),'Arrival cleanup lease differs');
-   return value;
-  };
-  const authority=arrival?readAuthority():undefined;
-  if(authority)durableCleanupRecord(join(p.directory,ARRIVAL_START),{kind:'ARRIVAL_CLEANUP_SESSION_STARTED',authoritySha256:installHash(installJson(authority))});
+  assert(!existsSync(join(p.directory,'cleanup-authorized.json'))&&!existsSync(join(p.directory,'normal-cleanup-consumed.json')),'Concurrent cleanup attempt requires explicit recovery');
   const activated=JSON.parse(regular(join(p.directory,'activated.json'),1024**2));
   const official=await import(pathToFileURL(join(source,'scripts/improve/release.ts')).href),exclude=canonicalSourceExclusions((official.deploymentRsyncArgs??official.default?.deploymentRsyncArgs)(source));
   let expectedAuthority=null;
-  const recordNames=['authorization.json','store.json','verified.json','activated.json',...(arrival?[ARRIVAL_AUTHORITY,ARRIVAL_START,'installation-lease.json','runtime.json']:[]),'audit/system-testing.json','audit/successful-build.json','audit/build-provenance.json','audit/bytes/build-bundle-files.json'];
+  const recordNames=['authorization.json','store.json','verified.json','activated.json','audit/system-testing.json','audit/successful-build.json','audit/build-provenance.json','audit/bytes/build-bundle-files.json'];
+  const show=name=>execFileSync('systemctl',['show','aihr','--property='+name,'--value'],{encoding:'utf8',timeout:3000}).trim();
   const fences=()=>captureNormalCleanupFences({source,p,activated,exclude,recordNames,ports:{
-   authority:async()=>{const current=selected(installId,sourceRef,buildRecordId,{allowExpired:arrival});assert(current.authorizationSha256===p.authorizationSha256,'Original grant changed');if(authority)assert(isDeepStrictEqual(readAuthority(),authority),'Arrival cleanup authority changed');if(expectedAuthority)assert(regular(join(p.directory,'cleanup-authorized.json'),32768).equals(Buffer.from(installJson(expectedAuthority)+'\n')),'Cleanup authority changed');},
-   lease:async()=>guardServerCli(sourceRef),leaseIdentity:async()=>arrival?arrivalLease(sourceRef,p):{batch:process.env.AIHR_STAGING_BATCH,epoch:process.env.AIHR_STAGING_EPOCH},
+   authority:async()=>{const current=selected(installId,sourceRef,buildRecordId);assert(current.authorizationSha256===p.authorizationSha256,'Original grant changed');if(expectedAuthority)assert(regular(join(p.directory,'cleanup-authorized.json'),32768).equals(Buffer.from(installJson(expectedAuthority)+'\n')),'Cleanup authority changed');},
+   lease:async()=>guardServerCli(sourceRef),leaseIdentity:async()=>({batch:process.env.AIHR_STAGING_BATCH,epoch:process.env.AIHR_STAGING_EPOCH}),
    runtime:async()=>{runtimeContract(source,g);assert(buildId(join(source,'.next'))===g.build.nextBuildId,'Active build changed');},
-   service:async()=>{const pid=cleanupServiceValue('MainPID'),started=cleanupServiceValue('ExecMainStartTimestampMonotonic');return {pid,started:arrival?Number(started):started,active:cleanupServiceActive()};},
+   service:async()=>({pid:show('MainPID'),started:show('ExecMainStartTimestampMonotonic'),active:execFileSync('systemctl',['is-active','aihr'],{encoding:'utf8',timeout:3000}).trim()==='active'}),
    boot:async()=>installHash(readFileSync('/proc/sys/kernel/random/boot_id')),environment:async()=>fingerprintStagingEnvironment(source),ledger:async()=>collectMigrationLedger(source),
-   health:cleanupHealth
+   health:async()=>{const response=await fetch('http://127.0.0.1:'+(process.env.PORT??'3000')+'/health',{redirect:'manual',signal:AbortSignal.timeout(3000)});await response.arrayBuffer();return response.status;}
   }});
-  const {cleanup,runtime}=await runNormalCleanupSession({grant:g,authority,
+  const {cleanup,runtime}=await runNormalCleanupSession({grant:g,
    retainAudit:async()=>{retainNormalCleanupAudit(p,activated);for(const folder of [join(p.directory,'audit/bytes'),join(p.directory,'audit'),p.directory]){const fd=openSync(folder,'r');try{fsyncSync(fd);}finally{closeSync(fd);}}},
-   audit:async()=>{
-    if(!authority)return confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true});
-    const current=selected(installId,sourceRef,buildRecordId,{allowCleanup:true,allowExpired:true});
-    assert(current.authorizationSha256===p.authorizationSha256,'Original arrival grant changed');
-    const runtime=await auditSelectedRuntime(source,current);
-    assert(isDeepStrictEqual(readAuthority(),authority),'Arrival cleanup authority changed during audit');
-    return validateArrivalCleanupRuntime(authority,runtime,liveCleanupRuntime(source));
-   },fences,
+   audit:()=>confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true}),fences,
    persist:async(name,value)=>durableCleanupRecord(join(p.directory,'normal-cleanup-'+name+'.json'),value),
    consume:async ready=>durableCleanupRecord(join(p.directory,'normal-cleanup-consumed.json'),{kind:'NORMAL_CLEANUP_NONCE_CONSUMED',readySha256:installHash(installJson(ready))}),
    authorize:async request=>{
-    expectedAuthority=normalCleanupAuthority(source,p,activated,request);
-    if(authority)expectedAuthority.arrivalCleanupAuthoritySha256=installHash(installJson(authority));
-    durableCleanupRecord(join(p.directory,'cleanup-authorized.json'),expectedAuthority);
+ const authority=normalCleanupAuthority(source,p,activated,request);
+ durableCleanupRecord(join(p.directory,'cleanup-authorized.json'),authority);expectedAuthority=authority;
    },
    removeOwned:async()=>JSON.parse(execFileSync('python3',[join(ROOT,'.github/ci/cleanup-install.py'),p.directory],{encoding:'utf8',timeout:120000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}})),
    io:{ready:async ready=>{process.stdout.write(installJson(ready)+'\n');},commit:()=>readSingleCleanupCommit(process.stdin)}});
@@ -397,13 +315,11 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
    assert(process.argv.length===3,'Initialization takes only bounded stdin');
    const chunks=[];let total=0;for await(const chunk of process.stdin){total+=chunk.length;assert(total<=32*1024,'Installation grant exceeds bound');chunks.push(chunk);}
    const grant=JSON.parse(Buffer.concat(chunks));
-   const lease=existsSync(COORDINATOR)?arrivalLease(grant.source):undefined;
-   return initializePrivateInstall(grant,{lease});
+   if(existsSync(COORDINATOR))assert(grant.source===process.env.AIHR_STAGING_CANDIDATE,'Installation source differs from lease');
+   return initializePrivateInstall(grant);
   }
-  assert(process.argv.length===6&&['stage','activate','confirm-runtime','status','cleanup','cleanup-session','arrival-status','authorize-arrival-cleanup','cleanup-arrival-session'].includes(mode),'Exact installer mode/source/install/build record required');
-  if(mode==='arrival-status')return readStatus(sourceRef,installId,buildRecordId,{arrival:true});
-  if(mode==='authorize-arrival-cleanup')return authorizeArrivalCleanup(sourceRef,installId,buildRecordId,await readSingleCleanupCommit(process.stdin));
-  if(mode==='cleanup-session'||mode==='cleanup-arrival-session')return cleanupCiBuildSession(sourceRef,installId,buildRecordId,{arrival:mode==='cleanup-arrival-session'});
+  assert(process.argv.length===6&&['stage','activate','confirm-runtime','status','cleanup','cleanup-session'].includes(mode),'Exact installer mode/source/install/build record required');
+  if(mode==='cleanup-session')return cleanupCiBuildSession(sourceRef,installId,buildRecordId);
   if(mode==='cleanup'){const chunks=[];let total=0;for await(const chunk of process.stdin){total+=chunk.length;assert(total<=32*1024,'Cleanup proof exceeds bound');chunks.push(chunk);}return cleanupCiBuild(sourceRef,installId,buildRecordId,JSON.parse(Buffer.concat(chunks)));}
   return mode==='stage'?stageCiBuild(sourceRef,installId,buildRecordId):mode==='activate'?activateCiBuild(sourceRef,installId,buildRecordId):mode==='confirm-runtime'?confirmRuntime(sourceRef,installId,buildRecordId):readStatus(sourceRef,installId,buildRecordId);
  })().then(value=>console.log(JSON.stringify(value))).catch(error=>{console.error(error);process.exitCode=1;});

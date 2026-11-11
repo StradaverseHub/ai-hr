@@ -18,7 +18,7 @@ export function validateCapacityScope(profile,e){
  if(profile==='bounded-canonical-build')return assertCiCandidateBuildInvocation(e);
  if(['bounded-suite-setup','bounded-suite-ready'].includes(profile)){
   const prefix='StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/';
-  const normal=['test','native-test','browser','controller-tests'].includes(e.GITHUB_JOB)&&e.GITHUB_WORKFLOW_REF?.startsWith(prefix)&&['workflow_dispatch','push','pull_request'].includes(e.GITHUB_EVENT_NAME);
+  const normal=['test','browser','controller-tests'].includes(e.GITHUB_JOB)&&e.GITHUB_WORKFLOW_REF?.startsWith(prefix)&&['workflow_dispatch','push','pull_request'].includes(e.GITHUB_EVENT_NAME);
   const pilot=e.GITHUB_JOB==='runner-diagnostics'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_WORKFLOW_REF===prefix+'heads/codex/test-suite-efficiency-review-20261025'&&e.AIHR_SUITE_CAPACITY_PILOT==='true';
   const focused=e.GITHUB_JOB==='selected-tests'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_WORKFLOW_REF?.startsWith('StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/')&&e.AIHR_FOCUSED_SUITE_CAPACITY==='true';
   assert(e.GITHUB_ACTIONS==='true'&&e.CI==='true'&&e.RUNNER_ENVIRONMENT==='github-hosted'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_RUN_ATTEMPT==='1'&&(normal||pilot||focused),'Suite capacity requires exact first-attempt managed suite or explicit standard-runner pilot');

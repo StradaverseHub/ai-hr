@@ -7,17 +7,9 @@ import {isAbsolute,join,resolve} from 'node:path';
 import {platform} from 'node:os';
 import postgres from 'postgres';
 import {hasFullCiRoleIntent,hasFocusedMigrationIntent,inspectFullCiRoleAdmission,sameFullCiRoleBinding,FULL_CI_PLAN_OBSERVER,type FullCiRoleBinding,type FullCiRoleHost,type FullCiRoleAdmission} from '../../scripts/lib/discard-premigration';
-import {readProtectedBootstrap} from '../../.github/ci/native-next-installation.mjs';
-import {nativePreparationEnvironment} from '../../.github/ci/candidate-environment.mjs';
-const rolePreparationEnvironment=()=>({...nativePreparationEnvironment(process.env),NODE_ENV:process.env.NODE_ENV});
 const fullCiRoleHost=():FullCiRoleHost=>({platform:platform(),cwd:process.cwd(),realpath:path=>realpathSync(path),read:path=>readFileSync(path,'utf8'),
- git:(cwd,args)=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null',...args],{cwd,env:rolePreparationEnvironment(),encoding:'utf8',maxBuffer:16*1024*1024}),
- ...(process.env.GITHUB_JOB==='native-test'?{nativeBootstrap:()=>readProtectedBootstrap(process.env)}:{}),
- observePlan:cwd=>{
-  if(process.env.GITHUB_JOB==='native-test'){const bootstrap=readProtectedBootstrap(process.env);return JSON.parse(execFileSync(bootstrap.protectedNodePath,
-   [join(bootstrap.automation,'.github/ci/native-controller-owner.mjs'),'role-plan'],{cwd,env:rolePreparationEnvironment(),encoding:'utf8',timeout:120000,maxBuffer:16*1024*1024}));}
-  return JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',FULL_CI_PLAN_OBSERVER],{cwd,env:process.env,encoding:'utf8',maxBuffer:16*1024*1024}));
- },});
+ git:(cwd,args)=>execFileSync('git',[...args],{cwd,encoding:'utf8',maxBuffer:16*1024*1024}),
+ observePlan:cwd=>JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',FULL_CI_PLAN_OBSERVER],{cwd,env:process.env,encoding:'utf8',maxBuffer:16*1024*1024})),});
 
 
 export const DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT='test/helpers/personnel-draft-discard-ci-role-fixture.ts';
@@ -46,8 +38,7 @@ export function assertDisposableDraftDiscardFixture(adminUrl:string,full?:FullCi
  const env=process.env;
  if(env.GITHUB_ACTIONS!=='true'||env.CI!=='true'||env.RUNNER_ENVIRONMENT!=='github-hosted'||env.RUNNER_OS!=='Linux'||platform()!=='linux'
   ||env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||env.GITHUB_EVENT_NAME!=='workflow_dispatch'||env.GITHUB_WORKFLOW!=='alpha-focused-checks'
-  ||!(env.GITHUB_JOB==='selected-tests'||env.GITHUB_JOB==='worker-cell'&&['parallel-2-4-8','parallel-smoke'].includes(env.AIHR_MEASURED_BROWSER_COURSE??''))
-  ||!numeric(env.GITHUB_RUN_ID)||!numeric(env.GITHUB_RUN_ATTEMPT)
+  ||env.GITHUB_JOB!=='selected-tests'||!numeric(env.GITHUB_RUN_ID)||!numeric(env.GITHUB_RUN_ATTEMPT)
   ||env.TEST_DB_NAMESPACE!=='aifocus'||env.AIHR_FOCUSED_SUITE_CAPACITY!=='true'||!sha(env.AIHR_CI_HEAD)||!sha(env.AIHR_CI_CONTROL_HEAD)
   ||!env.GITHUB_WORKFLOW_REF?.startsWith('StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/heads/'))refuse();
  if(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()!==env.AIHR_CI_HEAD)refuse();

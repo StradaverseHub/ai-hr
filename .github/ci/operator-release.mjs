@@ -9,8 +9,6 @@ import {stagingInstallerCommand,transferAndLaunchCiBuild,installationGrantFromVe
 import {expectedMigrationLedger,expectedBaselineMigrationLedger,validateMigrationLedgerRows,stagingLedgerProbeCommand,LEDGER_QUERY,verifyBaselineMigrationPreflight} from './staging-migration-ledger.mjs';
 import {stagingEnvironmentProbeCommand} from './staging-environment.mjs';
 import {openNormalCleanupChannel,driveNormalCleanup} from './normal-cleanup-operator.mjs';
-import {ARRIVAL_CLEANUP_WINDOW_MS,createArrivalCleanupAuthority} from './arrival-cleanup-authority.mjs';
-import {installHash,installJson} from './ci-install-grant.mjs';
 import {assertRsyncPacketCapability} from './rsync-packet-capability.mjs';
 import {verifyRecoveredCi,revalidateRecoveredCi} from './focused-recovery.mjs';
 import {verifyRepairedCi,revalidateRepairedCi} from './repair-recovery.mjs';
@@ -56,8 +54,7 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  save('operator-preflight.json',{...evidence,target:STAGING,baselineLedger,profilePreflight,execute,packetTransport});
  if(!execute)return evidence;
  const frozen=()=>{if(cleanHead(candidatePath)!==evidence.sha||cleanHead(controllerRoot)!==(evidence.verificationController??evidence.controller))throw Error('Verified source changed');};
- const revalidateEvidence=()=>browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence);
- const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,baseline,announced,ssh});await revalidateEvidence();validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
+ const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,baseline,announced,ssh});await (browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence));validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
   if(!announced){const actual=JSON.parse(ssh(stagingLedgerProbeCommand(),{input:LEDGER_QUERY,timeout:20000,maxBuffer:4*1024**2}));const fresh=validateMigrationLedgerRows(expectedBaseline,actual);if(fresh.actualSha256!==baselineLedger.actualSha256)throw Error('Applied migration history changed before source transfer');}
  };
  frozen();await revalidate();
@@ -74,26 +71,21 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  requireSuccessfulBuild(official,status,evidence.sha);
  if(status.built_build_id!==grant.build.nextBuildId)throw Error('Actual installed build differs from original CI build');
  frozen();
- const sourceChecksum=()=>execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:120000,maxBuffer:16*1024**2});
- const command=mode=>stagingInstallerCommand(mode,grant.source,grant.installId,grant.build.buildRecordId);
- await revalidateEvidence();const revalidatedAt=new Date().toISOString();frozen();
- // Inspection may outlast installation authority. It cannot activate or remove anything.
- const installed=JSON.parse(ssh(command('arrival-status'),{timeout:600000}));
- const expectedLedger=expectedMigrationLedger(candidatePath);
- const initialArrival=validateInstalledArrival(installed,grant,expectedLedger);frozen();
- const checksum=sourceChecksum(),checkedAt=new Date().toISOString();
- save('source-arrival.json',{source:evidence.sha,checksum:true,output:checksum,checkedAt});
+ const checksum=execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:120000,maxBuffer:16*1024**2});
+ const checksumCheckedAt=new Date().toISOString();
+ save('source-arrival.json',{source:evidence.sha,checksum:true,output:checksum,checkedAt:checksumCheckedAt});
  if(checksum.length!==0)throw Error('Source checksum arrival differs; owned previous build retained for explicit recovery');
- save('installed-arrival.json',{...initialArrival,fullSourceChecksumVerified:true});frozen();
- const authority=createArrivalCleanupAuthority({grant,evidence,lease,installed,output:checksum,checkedAt,revalidatedAt});
- save('arrival-cleanup-authority.json',authority);
- const authorized=JSON.parse(ssh(command('authorize-arrival-cleanup'),{input:installJson(authority)+'\n',timeout:60000}));
- if(authorized?.authoritySha256!==installHash(installJson(authority))||authorized.releaseAuthorized!==false)throw Error('Exact cleanup-only authority was not acknowledged');
- save('arrival-cleanup-authorized.json',authorized);frozen();
- const channel=openNormalCleanupChannel(transport.sshArgs(guardCommand(lease,command('cleanup-arrival-session'))),{terminalTimeout:ARRIVAL_CLEANUP_WINDOW_MS});
- const cleaned=await driveNormalCleanup({channel,grant,authority,arrival:initialArrival,frozen,save,checksum:sourceChecksum});
+ frozen();
+ // Full read-only compiled-byte/runtime proof shares the installer's bounded verification budget.
+ const installed=JSON.parse(ssh(stagingInstallerCommand('status',grant.source,grant.installId,grant.build.buildRecordId),{timeout:600000}));
+ const expectedLedger=expectedMigrationLedger(candidatePath);
+ const initialArrival=validateInstalledArrival(installed,grant,expectedLedger);save('installed-arrival.json',{...initialArrival,fullSourceChecksumVerified:true});frozen();
+ const cleanupCommand=stagingInstallerCommand('cleanup-session',grant.source,grant.installId,grant.build.buildRecordId);
+ const channel=openNormalCleanupChannel(transport.sshArgs(guardCommand(lease,cleanupCommand)));
+ const cleaned=await driveNormalCleanup({channel,grant,arrival:initialArrival,frozen,save,
+  checksum:()=>execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:120000,maxBuffer:16*1024**2})});
  const arrival=validateFinalCleanup(cleaned,{grant,installed,expectedLedger});save('owned-cleanup.json',cleaned);frozen();
- const finalChecksum=sourceChecksum();
+ const finalChecksum=execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:120000,maxBuffer:16*1024**2});
  save('final-source-arrival.json',{source:evidence.sha,checksum:true,output:finalChecksum,checkedAt:new Date().toISOString()});
  if(finalChecksum.length!==0)throw Error('Final source checksum differs after cleanup; owner intervention required');frozen();
  leasePhase(lease,sshRaw,'arrived',grant.build.nextBuildId);

@@ -11,22 +11,8 @@ export function fingerprintStagingEnvironment(source,{systemctl=argv=>{
 },busctl=argv=>{
  try{return JSON.parse(cp.execFileSync('/usr/bin/busctl',['--system','--json=short',...argv],{encoding:'utf8',timeout:10000,maxBuffer:1024**2}));}
  catch{throw Error('Unable to inspect typed staging credential configuration');}
-},admissionLstat=name=>fs.lstatSync(name)}={}){
+}}={}){
  assert(path.isAbsolute(source)&&fs.realpathSync(source)===source,'Canonical environment source required');
- // Format-2 installation is LEGACY_IN_PLACE. Managed generation admission needs
- // a different authenticated installation contract; mere unreadability is not absence.
- function legacyAdmissionBoundary(){
-  for(const name of ['/','/etc','/etc/aihr-admission','/etc/aihr-admission/profile.json']){
-   let st;
-   try{st=admissionLstat(name);}catch(error){
-    assert(error?.code==='ENOENT'&&name!=='/','Unable to verify legacy admission profile absence');
-    return;
-   }
-   assert(name!=='/etc/aihr-admission/profile.json','Managed admission requires a qualified installation contract');
-   assert(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o022)===0,'Unsafe legacy admission profile parent');
-  }
- }
- legacyAdmissionBoundary();
  const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
  const keys=['Environment','EnvironmentFiles','PassEnvironment','UnsetEnvironment','PAMName','RootDirectory','RootImage','DynamicUser','User','Group','WorkingDirectory','ExecStart','FragmentPath','DropInPaths','LoadCredential','LoadCredentialEncrypted','SetCredential','SetCredentialEncrypted','ImportCredential'];
  const identity=st=>[st.dev,st.ino,st.size,st.mtimeMs,st.ctimeMs,st.mode,st.uid,st.gid];
@@ -99,7 +85,6 @@ export function fingerprintStagingEnvironment(source,{systemctl=argv=>{
  const publicDotenv=dotenv.map(({text,...row})=>row);
  const afterDotenv=['.env.production.local','.env.local','.env.production','.env'].map(name=>file(path.join(source,name),name!=='.env.production')).map(({text,...row})=>row);
  assert(JSON.stringify(publicDotenv)===JSON.stringify(afterDotenv)&&JSON.stringify(before)===JSON.stringify(service()),'Private environment/service changed during fingerprint');
- legacyAdmissionBoundary();
  return hash(JSON.stringify({format:1,kind:'STAGING_CONFIGURED_ENVIRONMENT_V1',dotenv:publicDotenv,...before}));
 }
 /** The exact shared implementation runs before source transfer; no new server helper is assumed. */

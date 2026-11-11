@@ -66,8 +66,7 @@ class Extraction(unittest.TestCase):
         for label,code in [("original",frozen["code"]),("current",Path(module.__file__).read_text())]:
             controller=self.root/label;controller.mkdir(mode=0o700)
             entry=controller/"build-transport-extract.py";entry.write_text(code)
-            for name in ["build-bundle.py","runtime_inventory.py"]:
-                shutil.copyfile(Path(module.__file__).with_name(name),controller/name)
+            shutil.copyfile(Path(module.__file__).with_name("build-bundle.py"),controller/"build-bundle.py")
             result=subprocess.run([sys.executable,str(entry),str(self.archive),str(controller/"out"),digest],env=clean_env,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             observed.append((controller/"__pycache__").exists())

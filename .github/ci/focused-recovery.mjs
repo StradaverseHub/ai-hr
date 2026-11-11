@@ -1,4 +1,3 @@
-import {assertNativeBuildMatches} from './singleton-protocol.mjs';
 /** Authenticated focused-recovery operator adapter. Original failed evidence remains immutable. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -53,7 +52,7 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
  const plan=source.parsed.get('gate-plan')?.get('ci-plan.json'),local=createPlan(candidatePath);assert(plan,'Missing original archived plan');
  const {fingerprint:unused,...body}={...local,controller,migrationBase:baseline,runtime:plan.runtime};
  const expectedPlan={...body,fingerprint:hash(body)};
- const assessment=assessResumeSource({...source,expectedPlan,expected:p},candidatePath);
+ const assessment=assessResumeSource({...source,expectedPlan,expected:p});
  const workflow=api('actions/workflows/alpha-focused-checks.yml');
  assert(workflow.path==='.github/workflows/alpha-focused-checks.yml'&&workflow.state==='active','Focused workflow registry differs');
  const focused=[];
@@ -66,10 +65,9 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
   focused.push({...f,producer,artifact,report:packet.get('focused.json'),result:packet.get('nodb.vitest.json')});
  }
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyFocusedRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController},candidatePath);
+ const recovery=verifyFocusedRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController});
  recovery.verificationDiagnostic=verificationDiagnostic;
  const build=await sourceBoundBuild({candidatePath,dir,p:{...p,controllerBranch:source.run.head_branch},jobs:source.jobs});
- assertNativeBuildMatches(expectedPlan,reports,build,source.artifacts.find(a=>a.name===BUILD_ARTIFACT),source.jobs.find(j=>j.name==='build').id);
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');
  const alpha=api('git/ref/heads/alpha');assert([baseline,candidate].includes(alpha.object?.sha),'Canonical alpha moved away from recovery source');
  const result={...recovery,tier:'ci',result:'PASS',recovery,fingerprint:hash(recovery),build,candidatePath,controllerBranch:source.run.head_branch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
