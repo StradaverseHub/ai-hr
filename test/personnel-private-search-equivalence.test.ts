@@ -20,6 +20,8 @@
  * classifications, dated and cross-company placements, future corrections, terminated and voided staff, identity
  * numbers and non-ASCII text. Fictional data only. */
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
+import {appendFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {sql} from 'drizzle-orm';
 import type {TransactionSql} from 'postgres';
 import {client as applicationClient,withTenant,type SessionContext} from '../db/client';
@@ -43,6 +45,12 @@ let cases:Case[]=[];
 const days:(string|null)[]=[];
 const before=new Map<string,unknown>(),beforeFallback=new Map<string,unknown>();
 
+/** Step timings in the focused evidence directory, kept even when a hosted run is cut short. */
+const started=Date.now();
+function progress(step:string){
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)appendFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'personnel-private-search-equivalence-progress.log'),
+  `${Math.round((Date.now()-started)/1000)}s ${step}\n`);
+}
 const shift=(day:string,n:number)=>{const d=new Date(day+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
 const byId=(rows:{employmentId:string}[])=>[...rows].sort((a,b)=>a.employmentId.localeCompare(b.employmentId));
 const sorted=(rows:unknown[])=>rows.map(row=>JSON.stringify(row)).sort();
@@ -85,6 +93,7 @@ async function owners(){
   out['company tags '+day]=await asSession(admin,tx=>tx`select c.id,app.company_org_tags_unchecked(c.id,${day}::date) as tags
    from company c where c.tenant_id=${admin.tenantId}::uuid order by c.id`.then(rows=>rows.map(row=>[row.id,row.tags])));
  }
+ progress('owner mapping and company tags');
  // A run published by this very transaction (its publish lease) is part of the mapping and the tags.
  out['leased mapping']=await attempt(()=>asSession(admin,async tx=>{
   const [run]=await tx`select id from company_organisation_run where tenant_id=${admin.tenantId}::uuid and state='approved' order by id limit 1`;
@@ -97,10 +106,11 @@ async function owners(){
  for(const actor of ['admin','manager','viewer'] as Actor[]) for(const day of [f.today,shift(f.today,-100),shift(f.today,60)]){
   out[`employment tags ${actor} ${day}`]=await attempt(()=>asSession(contexts[actor],tx=>tx`select employment_id,tags
    from app._personnel_employment_tags(${employments}::uuid[],${day}::date) order by employment_id`.then(rows=>rows.map(row=>[row.employment_id,row.tags]))));
+  progress(`owner employment tags ${actor} ${day}`);
  }
  for(const actor of ['admin','adminPart','manager','viewer'] as Actor[]){
   const ctx=contexts[actor],scope=sql`ARRAY[${sql.join(scopes[actor].map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
-  const read=(label:string,query:ReturnType<typeof sql>)=>attempt(()=>withTenant(ctx,tx=>tx.execute(query)).then(rows=>sorted(rows))).then(value=>{out[label+' '+actor]=value;});
+  const read=(label:string,query:ReturnType<typeof sql>)=>attempt(()=>withTenant(ctx,tx=>tx.execute(query)).then(rows=>sorted(rows))).then(value=>{out[label+' '+actor]=value;progress('owner '+label+' '+actor);});
   await read('facts',sql`select * from app.personnel_overview_facts(${f.today}::date,${scope})`);
   await read('filter fields',sql`select * from app.personnel_overview_filter_fields(${f.today}::date,${scope})`);
   await read('companies',sql`select * from app.personnel_filter_companies(${scope},${f.today}::date)`);
@@ -190,7 +200,9 @@ async function bindVerdicts(){
 
 beforeAll(async()=>{
  await migrateTestDb();
+ progress('start');
  f=await seedPersonnelSearchFixture({count:200,companies:28,runs:6});
+ progress('seeded');
  const t=f.base.tenantId;
  // Organisation edge cases: two runs published together on one day (ties broken by id), a published run without a
  // publication time (sorted first), and a parent cycle between two companies.
@@ -222,13 +234,17 @@ beforeAll(async()=>{
   shift(f.today,-11),shift(f.today,-10),f.today,shift(f.today,59),shift(f.today,60),'infinity','-infinity',null])days.push(day);
  // The oracle: the owners and the search creation as they were before 5086.
  reapply=await installPreSearchMappingOwners();
+ progress('restored pre-5086 owners');
  before.set('owners',{...await owners(),...await bindVerdicts()});
+ progress('read pre-5086 owners');
  for(const c of endToEnd()){
   before.set(c.label,await search(legacyCreatePersonnelPrivateSearch,c));
   // The new search on a database that 5086 has not reached keeps the previous reader and the same answers.
   beforeFallback.set(c.label,await search(createPersonnelPrivateSearch,c,false));
+  progress('end to end '+c.label);
  }
  await reapply();reapply=undefined;
+ progress('re-applied 5086');
 },1_200_000);
 afterAll(async()=>{try{await reapply?.();await restoreWorkforceCapabilityCatalogue();}finally{await closeAll();}},120_000);
 
@@ -269,6 +285,7 @@ describe('migration 5086 keeps every Personnel search answer',()=>{
     expect(beforeFallback.get(c.label),c.label+' (pre-5086 database)').toEqual('refused' in shipped?shipped:{matches:shipped.matches,criteria:shipped.criteria,scope:shipped.scope});
    }
    if('refused' in now)refused++;else if(now.matches.length)matched++;else empty++;
+   progress('breadth '+c.label);
   }
   // Every outcome was exercised: searches that found people, found nobody, and were refused.
   expect(matched).toBeGreaterThan(cases.length/2);
