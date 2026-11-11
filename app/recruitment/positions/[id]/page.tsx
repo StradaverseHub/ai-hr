@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
+import type { SessionContext } from '@/db/client';
 import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, PageHeader, StatusBadge, btnGhost, btnPrimary } from '@/components/ui';
@@ -9,6 +10,7 @@ import { getJob, jobCareersStatus, JOB_MEMBER_ROLES, JOB_STATUS_TRANSITIONS, Rec
 import { addJobMemberAction, changeJobStatusAction, removeJobMemberAction, setJobCareersPageAction, setJobReferralPortalAction, updateJobAction } from '../../actions';
 import { Notice, klDate, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../../shared';
 import { JobInfoFields } from '../job-fields';
+import { AgencyAssignmentSection } from '../agency-section';
 
 type Tab = 'info' | 'settings' | 'team';
 
@@ -17,7 +19,7 @@ type Tab = 'info' | 'settings' | 'team';
  * a job-team member sees the job read-only (slice 2).
  */
 export default async function RecruitmentPositionPage({ params, searchParams }: {
-  params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; error?: string; notice?: string }>;
+  params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; problem?: string; notice?: string }>;
 }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
@@ -33,7 +35,7 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
   const tab: Tab = sp.tab === 'settings' || sp.tab === 'team' ? sp.tab : 'info';
   const [t, status] = await Promise.all([getTranslations('recruitment.job'), getTranslations('recruitment.status')]);
   const { job, options } = detail;
-  if (!detail.manage || !options) return <TeamJobView detail={detail} />;
+  if (!detail.manage || !options) return <TeamJobView detail={detail} s={s} />;
   const here = `/recruitment/positions/${job.id}${tab === 'info' ? '' : `?tab=${tab}`}`;
   // Administrators only (this view is the manage view); a refusal hides the section rather than showing a wrong state.
   const [careers, locale] = tab === 'settings'
@@ -55,7 +57,7 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
         ))]}
       />
       <Notice text={notice} />
-      <ErrorBanner message={await recruitmentErrorText(sp.error)} />
+      <ErrorBanner message={await recruitmentErrorText(sp.problem)} />
       {detail.requisition && (
         <p className="text-sm text-muted-foreground">{t('requisition')}: <Link className="text-primary hover:underline" href={`/recruitment/requisitions/${detail.requisition.id}`}>
           <span className="font-mono">{detail.requisition.reqNumber}</span> · {detail.requisition.title}</Link></p>
@@ -153,6 +155,8 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
         </form>
       )}
 
+      {tab === 'settings' && <AgencyAssignmentSection s={s} jobId={job.id} here={here} />}
+
       {tab === 'team' && (
         <section className="space-y-4 rounded-xl border border-border bg-card p-4">
           <p className="text-sm text-muted-foreground">{t('teamNote')}</p>
@@ -198,8 +202,9 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
   );
 }
 
-/** A job-team member's read-only view of their job: its information and pipeline counts. */
-async function TeamJobView({ detail }: { detail: JobDetail }) {
+/** A job-team member's read-only view of their job: its information and pipeline counts; for the job's recruiter and
+ *  assistants also the agency contracts it is released to (the recruiter assigns them, slice 10). */
+async function TeamJobView({ detail, s }: { detail: JobDetail; s: SessionContext }) {
   const [t, status] = await Promise.all([getTranslations('recruitment.job'), getTranslations('recruitment.status')]);
   const { job } = detail;
   return (
@@ -225,6 +230,7 @@ async function TeamJobView({ detail }: { detail: JobDetail }) {
           <li className="rounded-full bg-muted px-2 py-1">{t('archived')} <span className="tabular-nums">({detail.archived})</span></li>
         </ol>
       </section>
+      <AgencyAssignmentSection s={s} jobId={job.id} here={`/recruitment/positions/${job.id}`} />
     </div>
   );
 }

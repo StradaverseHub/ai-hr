@@ -9,8 +9,9 @@ import { moveApplicationAction, rejectApplicationAction } from '../actions';
 import { NoRecruitmentCompany, Notice, RecruitmentTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
 import { RejectDialog } from './reject-dialog';
 import { AddApplicationForm } from './add-application-form';
+import { AgencyReviewList, AgencySubmissionPanel } from './agency-panel';
 
-type Search = { job?: string; tab?: string; tag?: string; application?: string; error?: string; notice?: string };
+type Search = { job?: string; tab?: string; tag?: string; application?: string; problem?: string; notice?: string };
 
 /**
  * Recruitment › Candidates: the pipeline by stage, with live counts, Move forward, Reject and Add application.
@@ -44,11 +45,12 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={t('purpose')} />
       <RecruitmentTabs active="candidates" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0} />
-      <Notice text={sp.notice === 'saved' ? t('savedNotice') : undefined} />
-      <ErrorBanner message={await recruitmentErrorText(sp.error)} />
+      <Notice text={sp.notice === 'saved' ? t('savedNotice') : sp.notice === 'agency-accepted' || sp.notice === 'agency-waiting' ? await agencyNotice(sp.notice) : undefined} />
+      <ErrorBanner message={(await recruitmentErrorText(sp.problem)) ?? (sp.notice === 'agency-refused' ? await agencyNotice(sp.notice) : undefined)} />
       {companies.length === 0 ? <NoRecruitmentCompany /> : (
         <div className="grid gap-5 xl:grid-cols-[1fr_20rem]">
           <div className="min-w-0 space-y-4">
+            {access.isAdmin && <AgencyReviewList s={s} companyIds={access.adminCompanies.map((c) => c.id)} />}
             <form method="get" className="flex flex-wrap items-end gap-2">
               <Field label={t('job')} className="min-w-64">
                 <select name="job" defaultValue={sp.job ?? ''} className={selectCls}>
@@ -170,9 +172,21 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                 />
               )}
             </section>}
+            {sp.job && openJobs.some((j) => j.id === sp.job) && <AgencySubmissionPanel s={s} jobId={sp.job} here={here} />}
           </aside>
         </div>
       )}
     </div>
   );
+}
+
+/** The notice after recording an agency submission: its outcome only (slice 10). */
+async function agencyNotice(notice: string): Promise<string | undefined> {
+  const t = await getTranslations('recruitment.agency');
+  switch (notice) {
+    case 'agency-accepted': return t('notice.accepted');
+    case 'agency-refused': return t('notice.refused');
+    case 'agency-waiting': return t('notice.waiting');
+    default: return undefined;
+  }
 }

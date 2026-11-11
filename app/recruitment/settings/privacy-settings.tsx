@@ -1,8 +1,8 @@
 import { getLocale, getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import { Field, Input, btnPrimary, tableWrapCls, tbodyCls, thCls, theadCls } from '@/components/ui';
-import { dueForDestruction, REPEAT_WINDOW_CHOICES } from '@/packs/recruitment/service';
-import { destroyCandidatesAction, updatePrivacySettingsAction } from '../actions';
+import { agencySubmissionsDue, dueForDestruction, REPEAT_WINDOW_CHOICES } from '@/packs/recruitment/service';
+import { destroyCandidatesAction, removeAgencySubmissionDataAction, updatePrivacySettingsAction } from '../actions';
 import { klDate, selectCls } from '../shared';
 
 /**
@@ -12,7 +12,8 @@ import { klDate, selectCls } from '../shared';
  * skeleton, so pipeline counts do not change.
  */
 export async function PrivacySettingsSection({ s, companyId, here }: { s: SessionContext; companyId: string; here: string }) {
-  const [t, locale, { settings, due, today }] = await Promise.all([getTranslations('recruitment.settings.privacy'), getLocale(), dueForDestruction(s, companyId)]);
+  const [t, ta, locale, { settings, due, today }, agencyDue] = await Promise.all([getTranslations('recruitment.settings.privacy'), getTranslations('recruitment.agency'),
+    getLocale(), dueForDestruction(s, companyId), agencySubmissionsDue(s, companyId)]);
   const day = (d: string) => klDate(locale, `${d}T00:00:00+08:00`);
   const hidden = (name: string, value: string) => <input type="hidden" name={name} value={value} />;
   return (
@@ -69,6 +70,28 @@ export async function PrivacySettingsSection({ s, companyId, here }: { s: Sessio
               <button type="submit" className="inline-flex h-9 items-center rounded-md bg-destructive px-4 text-sm font-medium text-destructive-foreground hover:bg-destructive/90">{t('destroy')}</button>
             </div>
           </form>
+        )}
+      </section>
+
+      <section className="space-y-3" aria-labelledby="agency-due-title">
+        <div>
+          <h2 id="agency-due-title" className="text-base font-semibold">{ta('dueTitle')}</h2>
+          <p className="text-sm text-muted-foreground">{ta('dueNote', { months: settings.monthsWithoutConsent })}</p>
+        </div>
+        {agencyDue.length === 0 ? <p className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">{ta('noneDue')}</p> : (
+          <ul className="divide-y divide-border rounded-lg border border-border">
+            {agencyDue.map((d) => (
+              <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 text-sm">
+                <span className="min-w-0">{d.jobTitle} <span className="font-mono text-xs text-muted-foreground">{d.jobNumber}</span>
+                  <span className="block text-xs text-muted-foreground">{d.agencyName} · {ta(`outcome.${d.outcome}`)} · {ta('decidedOn', { date: day(d.decidedOn) })}</span></span>
+                <form action={removeAgencySubmissionDataAction} className="flex items-center gap-2">
+                  {hidden('submissionId', d.id)}{hidden('returnTo', here)}
+                  <label className="flex items-center gap-1 text-xs"><input type="checkbox" name="confirm" required />{ta('removeDataConfirm')}</label>
+                  <button type="submit" className="text-sm font-medium text-destructive hover:underline">{ta('removeData')}</button>
+                </form>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     </div>

@@ -189,6 +189,9 @@ export const SCREENS: readonly ScreenEntry[] = [
     '/recruitment/applications/[id]','/recruitment/interviews','/recruitment/interviews/[id]/feedback','/recruitment/scorecards/[id]',
     '/recruitment/requisitions','/recruitment/requisitions/new','/recruitment/requisitions/[id]','/recruitment/talent-pool','/recruitment/approvals',
     '/recruitment/reports',
+    // Slice 10 — an agency contract's page (recruitment administrators only, inside the page and by row security) and an
+    // agency submission's review (administrators only).
+    '/recruitment/settings/agencies/contracts/[id]','/recruitment/agency-submissions/[id]',
   ]},
   // ── Everyday screens (scopedSession: every role reaches, data is scoped) ──
   { screenKey: 'dashboard', href: '/', labelKey: 'nav.dashboard', guard: 'scopedSession', routes: ['/'] },

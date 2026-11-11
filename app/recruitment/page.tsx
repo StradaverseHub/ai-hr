@@ -14,7 +14,7 @@ import { RecruitmentTasksPanel } from './tasks-panel';
  * Tasks panel: their live to-do list and the updates of the companies in the current selection.
  */
 export default async function RecruitmentOverviewPage({ searchParams }: {
-  searchParams: Promise<{ tasks?: string; page?: string; after?: string; error?: string; notice?: string }>;
+  searchParams: Promise<{ tasks?: string; page?: string; after?: string; problem?: string; notice?: string }>;
 }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
@@ -44,7 +44,7 @@ export default async function RecruitmentOverviewPage({ searchParams }: {
       <PageHeader title={nav('recruitment')} description={access.isAdmin ? t('purpose') : tt('purpose')} />
       <RecruitmentTabs active="overview" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0} />
       <Notice text={sp.notice === 'saved' ? tt('markedNotice') : undefined} />
-      <ErrorBanner message={await recruitmentErrorText(sp.error)} />
+      <ErrorBanner message={await recruitmentErrorText(sp.problem)} />
       {!access.isAdmin ? <div className="max-w-3xl">{panel}</div> : companies.length === 0 ? <NoRecruitmentCompany /> : (
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
           <div className="space-y-3">

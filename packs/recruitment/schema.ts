@@ -1,6 +1,6 @@
 /**
  * The Recruitment pack's satellite tables (ADR-0080 D5/D11) as the service reads and writes them. The DDL,
- * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4409; these
+ * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4410; these
  * declarations carry no references or checks of their own so they can never disagree with it.
  */
 import { boolean, customType, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
@@ -11,6 +11,7 @@ import type {
 } from './hiring-model';
 import type { TaskCategory } from './tasks-model';
 import type { CandidateFileKind, CandidateSource, ConsentMethod, ConsentStatus, EducationLevel, EntryKind, IdType } from './privacy-model';
+import type { ConsultantStatus, ContractAccess, ContractStatus, ContractType, MatchKind, SubmissionOutcome } from './agency-model';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
 const audit = {
@@ -565,4 +566,141 @@ export const recruitmentTaskReadMarker = pgTable('recruitment_task_read_marker',
   category: text('category').$type<TaskCategory>().notNull(),
   readUpTo: ts('read_up_to').notNull(),
   updatedAt: ts('updated_at').notNull().defaultNow(),
+});
+
+// ── Slice 10 (db/migrations/4410_recruitment_agencies.sql) ─────────────────────────────────────────────────────
+
+/** The company's agency tags (administrators). A tag in use can be disabled; its foreign key keeps it from deletion. */
+export const recruitmentAgencyTag = pgTable('recruitment_agency_tag', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  name: text('name').notNull(),
+  enabled: boolean('enabled').notNull().default(true),
+  ...audit,
+});
+
+/** An agency company (headhunter or RPO provider). Name unique in the company. */
+export const recruitmentAgency = pgTable('recruitment_agency', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  name: text('name').notNull(),
+  ...audit,
+});
+
+export const recruitmentAgencyTagLink = pgTable('recruitment_agency_tag_link', {
+  agencyId: uuid('agency_id').notNull(),
+  tagId: uuid('tag_id').notNull(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+});
+
+/** A contract with an agency. The fee rate and file are NOT here: see recruitmentAgencyContractTerms (administrators only). */
+export const recruitmentAgencyContract = pgTable('recruitment_agency_contract', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  agencyId: uuid('agency_id').notNull(),
+  name: text('name').notNull(),
+  contractType: text('contract_type').$type<ContractType>().notNull(),
+  status: text('status').$type<ContractStatus>().notNull().default('enabled'),
+  startsOn: date('starts_on').notNull(),
+  endsOn: date('ends_on').notNull(),
+  hrContactUserId: uuid('hr_contact_user_id').notNull(),
+  access: text('access').$type<ContractAccess>().notNull().default('public'),
+  protectionDays: integer('protection_days'),
+  ...audit,
+});
+
+/** The fee rate (percent; shown, never calculated into an amount, D-037) and the contract PDF. Administrators only. */
+export const recruitmentAgencyContractTerms = pgTable('recruitment_agency_contract_terms', {
+  contractId: uuid('contract_id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  feeRate: numeric('fee_rate', { precision: 5, scale: 2 }).notNull(),
+  fileName: text('file_name'),
+  fileMime: text('file_mime'),
+  fileSize: integer('file_size'),
+  /** Never selected by a list: only the administrator's download reads the bytes. */
+  fileContent: bytea('file_content'),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+  updatedByUserId: uuid('updated_by_user_id').notNull(),
+});
+
+/** The users a Restricted contract is released to. */
+export const recruitmentAgencyContractUser = pgTable('recruitment_agency_contract_user', {
+  contractId: uuid('contract_id').notNull(),
+  appUserId: uuid('app_user_id').notNull(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+});
+
+/** A consultant of a contract: a contact record, not a user. Nothing is ever sent to them (D-036). */
+export const recruitmentAgencyConsultant = pgTable('recruitment_agency_consultant', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  contractId: uuid('contract_id').notNull(),
+  name: text('name').notNull(),
+  email: text('email'),
+  mobile: text('mobile'),
+  status: text('status').$type<ConsultantStatus>().notNull().default('active'),
+  ...audit,
+});
+
+/** A contract released to a job, with requirements text for the agency. */
+export const recruitmentJobAgencyContract = pgTable('recruitment_job_agency_contract', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  jobId: uuid('job_id').notNull(),
+  contractId: uuid('contract_id').notNull(),
+  requirements: text('requirements'),
+  ...audit,
+});
+
+/**
+ * A submission HR recorded on an agency's behalf. Personal columns are cleared by the slice 5 removal. The outcome is
+ * computed again by the database guard; the resume is kept only while the submission waits for review.
+ */
+export const recruitmentAgencySubmission = pgTable('recruitment_agency_submission', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  jobId: uuid('job_id').notNull(),
+  contractId: uuid('contract_id').notNull(),
+  agencyId: uuid('agency_id').notNull(),
+  consultantId: uuid('consultant_id').notNull(),
+  submittedOn: date('submitted_on').notNull(),
+  fullName: text('full_name'),
+  email: text('email'),
+  mobile: text('mobile'),
+  idType: text('id_type').$type<IdType>(),
+  idNumber: text('id_number'),
+  currentSalaryAmount: numeric('current_salary_amount', { precision: 18, scale: 2 }),
+  currentSalaryCurrency: text('current_salary_currency'),
+  expectedSalaryAmount: numeric('expected_salary_amount', { precision: 18, scale: 2 }),
+  expectedSalaryCurrency: text('expected_salary_currency'),
+  comments: text('comments'),
+  resumeName: text('resume_name'),
+  resumeMime: text('resume_mime'),
+  resumeSize: integer('resume_size'),
+  /** Never selected by a list. */
+  resumeContent: bytea('resume_content'),
+  matchKind: text('match_kind').$type<MatchKind>().notNull(),
+  outcome: text('outcome').$type<SubmissionOutcome>().notNull(),
+  refusalReason: text('refusal_reason').$type<'protected'>(),
+  reviewReason: text('review_reason'),
+  candidateId: uuid('candidate_id'),
+  applicationId: uuid('application_id'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+  decidedAt: ts('decided_at'),
+  decidedByUserId: uuid('decided_by_user_id'),
+  personalDataRemovedAt: ts('personal_data_removed_at'),
 });

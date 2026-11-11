@@ -9,7 +9,7 @@ import { NoRecruitmentCompany, pickCompany, recruitmentAccess, recruitmentErrorT
 import { RequisitionFields } from '../requisition-fields';
 
 /** Recruitment › Job requisitions › New. Saved as a Draft; the HC number is given automatically. */
-export default async function NewRequisitionPage({ searchParams }: { searchParams: Promise<{ company?: string; error?: string; fields?: string }> }) {
+export default async function NewRequisitionPage({ searchParams }: { searchParams: Promise<{ company?: string; problem?: string; fields?: string }> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
   const companies = await recruitmentAccess(s, scopeIds, false);
@@ -19,7 +19,7 @@ export default async function NewRequisitionPage({ searchParams }: { searchParam
   const back = { href: '/recruitment/requisitions', label: t('back') };
   if (!company) return <div className="w-full space-y-5"><PageHeader title={t('newTitle')} back={back} /><NoRecruitmentCompany /></div>;
   const options = await requisitionFormOptions(s, company.id);
-  const error = await recruitmentErrorText(sp.error);
+  const error = await recruitmentErrorText(sp.problem);
   const fields = (sp.fields ?? '').split(',').filter(Boolean);
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5">

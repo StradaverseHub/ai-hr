@@ -6,7 +6,7 @@ import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, Input, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import {
-  applicationCareers, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
+  applicationAgency, applicationCareers, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
   OFFER_SEND_CHANNELS, RecruitmentError, type ApplicationHire, type InterviewFormOptions, type InterviewStatus, type OfferView,
 } from '@/packs/recruitment/service';
 import {
@@ -28,7 +28,7 @@ const STATUS_TONE: Record<InterviewStatus, 'neutral' | 'info' | 'good' | 'warn' 
  * the Interview tab only). The hire hand-off appears once the application is at Onboarding or hired.
  */
 export default async function RecruitmentApplicationPage({ params, searchParams }: {
-  params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; error?: string; notice?: string; fields?: string }>;
+  params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; problem?: string; notice?: string; fields?: string }>;
 }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
@@ -42,10 +42,10 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
     throw e;
   }
   const soft = async <T,>(work: Promise<T>): Promise<T | null> => work.catch((e) => { if (e instanceof RecruitmentError) return null; throw e; });
-  const [offer, history, hire, options, profile, referral, careers] = await Promise.all([
+  const [offer, history, hire, options, profile, referral, careers, agency] = await Promise.all([
     soft(applicationOffer(s, id)), soft(applicationHistory(s, id)), soft(applicationHire(s, id)),
     interviews.canSchedule ? soft(interviewFormOptions(s, id)) : Promise.resolve(null), soft(candidateProfile(s, id)), soft(applicationReferral(s, id)),
-    soft(applicationCareers(s, id)),
+    soft(applicationCareers(s, id)), soft(applicationAgency(s, id)),
   ]);
   const reviewer = !!offer;
   const tab: Tab = sp.tab === 'offer' && reviewer ? 'offer' : sp.tab === 'history' && history ? 'history' : sp.tab === 'interviews' || !profile ? 'interviews' : 'candidate';
@@ -53,7 +53,7 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
   const here = `/recruitment/applications/${id}?tab=${tab}`;
   const hidden = (name: string, value: string) => <input type="hidden" name={name} value={value} />;
   const stateText = interviews.state === 'active' ? interviews.stageName : interviews.state === 'hired' ? t('candidates.hired') : t('candidates.archivedFrom', { stage: interviews.stageName });
-  const errorText = await recruitmentErrorText(sp.error);
+  const errorText = await recruitmentErrorText(sp.problem);
   return (
     <div className="mx-auto w-full max-w-5xl space-y-5">
       <PageHeader title={profile?.removed ? t('cand.removedLabel') : interviews.candidateName} description={<>{interviews.jobTitle} · {stateText}</>}
@@ -62,16 +62,25 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
       <ErrorBanner message={errorText} />
       {referral && (
         <section aria-labelledby="referral-title" className="space-y-1 rounded-xl border border-border bg-card p-4 text-sm">
-          <h2 id="referral-title" className="font-semibold">{t('referral.source')}</h2>
+          <h2 id="referral-title" className="font-semibold">{t('cand.sources.referral')}</h2>
           <p className="text-muted-foreground">{t('referral.by', { name: referral.referrerName ?? t('job.unnamedUser'), date: klDate(locale, referral.referredAt) })}</p>
           {referral.reason && <p className="whitespace-pre-wrap"><span className="font-medium">{t('referral.reason')}:</span> {referral.reason}</p>}
         </section>
       )}
       {careers && (
         <section aria-labelledby="careers-title" className="space-y-1 rounded-xl border border-border bg-card p-4 text-sm">
-          <h2 id="careers-title" className="font-semibold">{t('careers.source')}</h2>
+          <h2 id="careers-title" className="font-semibold">{t('cand.sources.career_page')}</h2>
           <p className="text-muted-foreground">{t('careers.received', { date: klDate(locale, careers.receivedAt) })}</p>
           {careers.message && <p className="whitespace-pre-wrap"><span className="font-medium">{t('careers.message')}:</span> {careers.message}</p>}
+        </section>
+      )}
+      {agency && (
+        <section aria-labelledby="agency-title" className="space-y-1 rounded-xl border border-border bg-card p-4 text-sm">
+          <h2 id="agency-title" className="font-semibold">{t('cand.sources.agency')}</h2>
+          <p className="text-muted-foreground">{agency.contractName
+            ? t('agency.sourceLine', { agency: agency.agencyName, contract: agency.contractName, consultant: agency.consultantName ?? '', date: agency.submittedOn ? klDate(locale, agency.submittedOn) : '' })
+            : agency.agencyName}</p>
+          {agency.comments && <p className="whitespace-pre-wrap"><span className="font-medium">{t('agency.agencyComments')}:</span> {agency.comments}</p>}
         </section>
       )}
       {hire && <HireSection hire={hire} applicationId={id} t={t} locale={locale} />}

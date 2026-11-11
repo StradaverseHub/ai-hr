@@ -15,10 +15,11 @@ export const TASK_TABS = ['todo', ...TASK_CATEGORIES] as const;
 export type TaskTab = (typeof TASK_TABS)[number];
 
 /** Things waiting for the viewer's action. */
-export const TODO_KINDS = ['requisitionApproval', 'offerApproval', 'feedback', 'toSchedule', 'toScreen'] as const;
+export const TODO_KINDS = ['requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry', 'toSchedule', 'toScreen'] as const;
 export type TodoKind = (typeof TODO_KINDS)[number];
-/** The viewer's personal to-dos (approval steps, feedback due): the bell, My tasks and the Overview's To do tab. */
-export const PERSONAL_TODO_KINDS = ['requisitionApproval', 'offerApproval', 'feedback'] as const;
+/** The viewer's personal to-dos (approval steps, feedback due; slice 10: an agency submission waiting for the
+ *  administrator's review, and the HR contact's contract expiry): the bell, My tasks and the Overview's To do tab. */
+export const PERSONAL_TODO_KINDS = ['requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry'] as const;
 export type PersonalTodoKind = (typeof PERSONAL_TODO_KINDS)[number];
 /** Per-job counts: only on the Overview's To do tab, loaded after the page (D-035). */
 export const JOB_TODO_KINDS = ['toSchedule', 'toScreen'] as const;
@@ -28,7 +29,7 @@ export const UPDATE_KINDS = {
   requisitions: ['requisitionApproved', 'requisitionDenied'],
   offers: ['offerApproved', 'offerDenied', 'offerAccepted', 'offerDeclined'],
   interviews: ['feedbackSubmitted'],
-  applications: ['careersApplication', 'referral'],
+  applications: ['careersApplication', 'referral', 'agencySubmission'],
 } as const satisfies Record<TaskCategory, readonly string[]>;
 export type UpdateKind = (typeof UPDATE_KINDS)[TaskCategory][number];
 
@@ -71,6 +72,8 @@ export type RecruitmentTodo = {
   count: number | null;
   /** Approval steps: the viewer's position and the number of steps. */
   step: { position: number; steps: number } | null;
+  /** Contract expiry: the contract's end date (Kuala Lumpur calendar day). */
+  endsOn?: string | null;
   /** ISO instant: when the item became the viewer's (the step was reached, the interview started, the latest arrival). */
   at: string;
   /** The page where the viewer acts. */
@@ -145,6 +148,10 @@ export function todoHref(kind: TodoKind, ids: { id: string; jobId?: string | nul
       return '/recruitment/approvals';
     case 'feedback':
       return `/recruitment/interviews/${encodeURIComponent(ids.id)}/feedback`;
+    case 'agencyReview':
+      return `/recruitment/agency-submissions/${encodeURIComponent(ids.id)}`;
+    case 'contractExpiry':
+      return `/recruitment/settings/agencies/contracts/${encodeURIComponent(ids.id)}`;
     case 'toSchedule':
     case 'toScreen': {
       const q = new URLSearchParams({ job: ids.jobId ?? ids.id, ...(ids.stageId ? { tab: ids.stageId } : {}) });
@@ -162,6 +169,8 @@ const BELL_KIND: Record<PersonalTodoKind, RecruitmentTaskKind> = {
   requisitionApproval: 'recruitmentRequisitionApproval',
   offerApproval: 'recruitmentOfferApproval',
   feedback: 'recruitmentFeedback',
+  agencyReview: 'recruitmentAgencyReview',
+  contractExpiry: 'recruitmentContractExpiry',
 };
 export function isPersonalTodo(item: RecruitmentTodo): item is RecruitmentTodo & { kind: PersonalTodoKind } {
   return (PERSONAL_TODO_KINDS as readonly string[]).includes(item.kind);

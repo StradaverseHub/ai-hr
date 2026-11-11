@@ -13,7 +13,7 @@ import { JobInfoFields } from '../job-fields';
  * "Create job" from a requisition (slice 4) arrives with ?requisition=<id>: the server reads the requisition (after
  * re-checking access) and pre-fills the form from it; the new job is associated with that requisition.
  */
-export default async function NewRecruitmentPositionPage({ searchParams }: { searchParams: Promise<{ company?: string; error?: string; fields?: string; requisition?: string }> }) {
+export default async function NewRecruitmentPositionPage({ searchParams }: { searchParams: Promise<{ company?: string; problem?: string; fields?: string; requisition?: string }> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
   const companies = await recruitmentAccess(s, scopeIds, false);
@@ -25,7 +25,7 @@ export default async function NewRecruitmentPositionPage({ searchParams }: { sea
   if (!company) return <div className="w-full space-y-5"><PageHeader title={t('newTitle')} back={back} /><NoRecruitmentCompany /></div>;
   const options = await jobFormOptions(s, company.id);
   const missing = (sp.fields ?? '').split(',').filter(Boolean);
-  const error = await recruitmentErrorText(sp.error);
+  const error = await recruitmentErrorText(sp.problem);
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5">
       <PageHeader title={t('newTitle')} description={t('newPurpose')} back={back} />

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import { TODO_COUNT_CAP, countText, recruitmentJobTodos, type RecruitmentTodo } from '@/packs/recruitment/service';
-import { klDateTime } from './shared';
+import { klDate, klDateTime } from './shared';
 
 /** One list of to-dos (personal or per-job), each linked to where the viewer acts, with its Kuala Lumpur time. */
 export async function TodoItems({ items }: { items: RecruitmentTodo[] }) {
@@ -15,6 +15,8 @@ export async function TodoItems({ items }: { items: RecruitmentTodo[] }) {
       case 'requisitionApproval': return { label: t('todo.requisitionApproval'), detail: line(item.title, item.number, item.step && t('step', item.step)) };
       case 'offerApproval': return { label: t('todo.offerApproval'), detail: line(candidate(item) ?? t('offerFallback'), item.title, item.step && t('step', item.step)) };
       case 'feedback': return { label: t('todo.feedback'), detail: line(candidate(item), item.title, t('startedAt', { time: klDateTime(locale, item.at) })) };
+      case 'agencyReview': return { label: t('todo.agencyReview'), detail: line(candidate(item), item.title, item.number) };
+      case 'contractExpiry': return { label: t('todo.contractExpiry'), detail: line(item.title, item.endsOn && t('endsOn', { date: klDate(locale, item.endsOn) })) };
       case 'toSchedule': return { label: t('todo.toSchedule', { count: item.count ?? 0, shown }), detail: line(item.title, item.number) };
       case 'toScreen': return { label: t('todo.toScreen', { count: item.count ?? 0, shown }), detail: line(item.title, item.number) };
     }
@@ -29,7 +31,7 @@ export async function TodoItems({ items }: { items: RecruitmentTodo[] }) {
               <Link href={item.href} className="text-sm font-medium hover:underline">{label}</Link>
               {detail && <p className="truncate text-xs text-muted-foreground">{detail}</p>}
             </div>
-            <time dateTime={item.at} className="shrink-0 text-xs tabular-nums text-muted-foreground">{klDateTime(locale, item.at)}</time>
+            <time dateTime={item.at} className="shrink-0 text-xs tabular-nums text-muted-foreground">{item.kind === 'contractExpiry' ? klDate(locale, item.at) : klDateTime(locale, item.at)}</time>
           </li>
         );
       })}

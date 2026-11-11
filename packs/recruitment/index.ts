@@ -37,6 +37,11 @@
  *   per-job counts of applications to schedule and to screen on the Overview only, streamed after the page (D-035); and
  *   live updates per category with unread counts. Everything is read as
  *   the viewer under row security; only the viewer's own "read up to" time per company and category is stored (4409).
+ * - Agencies and headhunters (slice 10, ./agencies and ./agency-model): administrators keep agencies, tags, contracts (fee rate and
+ *   file in an administrators-only table) and consultants (contact records) under Settings › Agencies; administrators and a job's
+ *   recruiter release the job to usable contracts; the job's recruiter and assistants record submissions on the agency's behalf,
+ *   checked for duplicates and channel protection by 4410's definer, which answers an outcome (and match ids to administrators
+ *   only). No agency login or message (D-036); no fee is calculated (D-037).
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (4402); the menu shows for team members, interviewers and pending approvers.
  */
@@ -94,6 +99,16 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_careers_application', note: 'applications received through the careers page: job, candidate, message, arrival time' },
     // Slice 9 (4409)
     { table: 'recruitment_task_read_marker', note: 'a user\'s own "read up to" time per company and update category; no candidate data' },
+    // Slice 10 (4410)
+    { table: 'recruitment_agency_tag', note: 'the company\'s agency tags (administrators); a tag in use is disabled, not deleted' },
+    { table: 'recruitment_agency', note: 'agency companies (headhunters, RPO providers), name unique in the company' },
+    { table: 'recruitment_agency_tag_link', note: 'tags on agencies' },
+    { table: 'recruitment_agency_contract', note: 'agency contracts: type, status, period, HR contact, access, protection override' },
+    { table: 'recruitment_agency_contract_terms', note: 'fee rate and contract file: recruitment administrators only (row security)' },
+    { table: 'recruitment_agency_contract_user', note: 'the users a Restricted contract is released to' },
+    { table: 'recruitment_agency_consultant', note: 'agency consultants: contact records, not users; nothing is sent to them' },
+    { table: 'recruitment_job_agency_contract', note: 'contracts released to a job, with requirements for the agency' },
+    { table: 'recruitment_agency_submission', note: 'submissions HR recorded for an agency, with the outcome of the duplicate and protection check' },
   ],
 };
 registerPack(recruitmentPack);

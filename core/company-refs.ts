@@ -379,6 +379,14 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'recruitment_careers_notice', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s careers privacy notice versions. Only a consent (which needs a candidate) names one.' },
   // 4409 — users' "read up to" times for the company's recruitment updates: per-user display state, no candidate data.
   { table: 'recruitment_task_read_marker', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Users\' own "read up to" times for the company\'s recruitment updates. Nothing references them.' },
+  // 4410 — the agency setup, children first: tag links, consultants and contracts (their terms and access lists cascade), then
+  // agencies and agency tags. Assignments and submissions point at contracts and consultants only through a job opening,
+  // which refuses the delete above.
+  { table: 'recruitment_agency_tag_link', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Tags on the company\'s agencies. Before the agencies and the tags they join.' },
+  { table: 'recruitment_agency_consultant', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Agency consultants (contact records). Before their contracts; only a submission, which needs a job opening, points at one.' },
+  { table: 'recruitment_agency_contract', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Agency contracts, with their fee terms and access lists (ON DELETE CASCADE). Before their agencies.' },
+  { table: 'recruitment_agency', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s agencies (headhunters, RPO providers). After their contracts and tag links.' },
+  { table: 'recruitment_agency_tag', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s agency tags. After the tag links that use them.' },
   { table: 'recruitment_evaluation_form', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s interview evaluation forms. Interviews and scorecards point at them only through a job opening.' },
   { table: 'recruitment_archive_reason', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s rejection / archive reasons. Removed with its stages and processes.' },
   { table: 'recruitment_process', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment processes; their ordered stages go with them (ON DELETE CASCADE).' },
@@ -458,6 +466,17 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'recruitment_offer_value', column: 'field_id', references: 'recruitment_offer_field', effect: 'blocks', note: 'An offer value keeps its field.' },
   { table: 'recruitment_tag', column: 'group_id', references: 'recruitment_tag_group', effect: 'blocks', note: 'A tag keeps its group; the company delete removes tags before groups.' },
   { table: 'recruitment_candidate_tag', column: 'tag_id', references: 'recruitment_tag', effect: 'blocks', note: 'A candidate keeps their tags; a candidate refuses the company delete first.' },
+  // 4410 — inside the agency setup (deleted in order by app.recruitment_delete_company_setup) and from job-side rows, which need
+  // a job opening and so refuse the delete first.
+  { table: 'recruitment_agency_tag_link', column: 'agency_id', references: 'recruitment_agency', effect: 'blocks', note: 'A tag link keeps its agency; the company delete removes links first.' },
+  { table: 'recruitment_agency_tag_link', column: 'tag_id', references: 'recruitment_agency_tag', effect: 'blocks', note: 'A tag in use is kept; the company delete removes links before tags.' },
+  { table: 'recruitment_agency_contract', column: 'agency_id', references: 'recruitment_agency', effect: 'blocks', note: 'A contract keeps its agency; the company delete removes contracts first.' },
+  { table: 'recruitment_agency_contract_terms', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'part', note: 'A contract\'s fee rate and file. ON DELETE CASCADE.' },
+  { table: 'recruitment_agency_contract_user', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'part', note: 'A Restricted contract\'s access list. ON DELETE CASCADE.' },
+  { table: 'recruitment_agency_consultant', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'blocks', note: 'A consultant keeps their contract; the company delete removes consultants first.' },
+  { table: 'recruitment_job_agency_contract', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'blocks', note: 'A job released to a contract keeps it; a job opening refuses the company delete first.' },
+  { table: 'recruitment_agency_submission', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'blocks', note: 'An agency submission keeps its contract; it needs a job opening, which refuses the company delete first.' },
+  { table: 'recruitment_agency_submission', column: 'consultant_id', references: 'recruitment_agency_consultant', effect: 'blocks', note: 'An agency submission keeps its consultant; it needs a job opening, which refuses the company delete first.' },
   { table: 'recruitment_requisition', column: 'department_id', references: 'department', effect: 'blocks', note: 'A requisition keeps its department.' },
   { table: 'shift_ot_window', column: 'shift_id', references: 'shift', effect: 'part', note: 'A shift\'s clock-time OT windows. ON DELETE CASCADE.' },
   { table: 'attendance_rule_ot_row', column: 'rule_id', references: 'attendance_rule', effect: 'part', note: 'A rule\'s OT rows. ON DELETE CASCADE.' },

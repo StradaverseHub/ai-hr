@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { listRequisitions, REQUISITION_APPROVAL_STATUSES, REQUISITION_TABS } from '@/packs/recruitment/service';
 import { NoRecruitmentCompany, Pill, RecruitmentTabs, SubTabs, klDate, recruitmentAccess, recruitmentErrorText, selectCls } from '../shared';
 
-type Search = { tab?: string; department?: string; manager?: string; creator?: string; hasJob?: string; approval?: string; error?: string };
+type Search = { tab?: string; department?: string; manager?: string; creator?: string; hasJob?: string; approval?: string; problem?: string };
 
 /**
  * Recruitment › Positions › Job requisitions (administrators): status tabs with counts, filters (department, hiring
@@ -42,7 +42,7 @@ export default async function RecruitmentRequisitionsPage({ searchParams }: { se
         { key: 'positions', href: '/recruitment/positions', text: t('positionsTab'), current: false },
         { key: 'requisitions', href: '/recruitment/requisitions', text: t('requisitionsTab'), current: true },
       ]} />
-      <ErrorBanner message={await recruitmentErrorText(sp.error)} />
+      <ErrorBanner message={await recruitmentErrorText(sp.problem)} />
       {companies.length === 0 ? <NoRecruitmentCompany /> : (
         <>
           <div role="tablist" aria-label={t('statusTabs')} className="flex flex-wrap gap-2">

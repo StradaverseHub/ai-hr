@@ -31,6 +31,9 @@ const careersPublicPage = async (...a: Parameters<typeof pageRead>) => { const r
 const careersPublicJob = async (...a: Parameters<typeof jobRead>) => { const r = await jobRead(...a); if (r === 'limited') throw new Error('read budget'); return r; };
 /** Reviewed SECURITY DEFINER functions that read job openings or careers sites/notices (see the residual-risk guard). */
 const REVIEWED_DEFINERS: string[] = [
+  // 4410: each reads one job opening by id in the caller's tenant (the check refuses unless the caller operates that job;
+  // the submission guard checks the job's status for a row the caller may write).
+  'app.recruitment_agency_check(uuid,uuid,text,text,text,text,uuid,boolean)',
   // 4408: the careers functions themselves — each returns only the spec's public fields.
   'app.recruitment_careers_job(text,uuid)',
   'app.recruitment_careers_page(text,text,text,text,integer)',
@@ -39,6 +42,7 @@ const REVIEWED_DEFINERS: string[] = [
   'app.recruitment_careers_submit(text,uuid,text,text,text,text,text,integer,boolean,text,text,bytea)',
   // 4401–4405/4408: deletes only the caller's tenant + company setup (checks job openings exist there first).
   'app.recruitment_delete_company_setup(uuid)',
+  'app.recruitment_guard_agency_submission()',
   // 4407: every job read filters by the caller's tenant (and the referral marker's companies, or the referrer's own rows).
   'app.recruitment_my_referrals()',
   'app.recruitment_referral_portal(uuid)',

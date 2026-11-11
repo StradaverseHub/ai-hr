@@ -43,6 +43,8 @@ const selectedTabCls: Record<TabKey, string> = {
 };
 
 function relTime(d: Date): string {
+  // A task dated in the future (an agency contract's end date) has no "time ago": show nothing rather than "now".
+  if (d.getTime() > Date.now() + 60_000) return '';
   const s = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
   if (s < 60) return 'now';
   const m = Math.floor(s / 60);

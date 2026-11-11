@@ -17,7 +17,7 @@ import { RequisitionFields } from '../requisition-fields';
  * queries; a negative shows as 0 with an over-filled warning. An approver sees it read-only and decides on the
  * Approvals page.
  */
-export default async function RequisitionPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; notice?: string; fields?: string }> }) {
+export default async function RequisitionPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ problem?: string; notice?: string; fields?: string }> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
   await recruitmentViewerAccess(s, scopeIds);
@@ -35,7 +35,7 @@ export default async function RequisitionPage({ params, searchParams }: { params
   const here = `/recruitment/requisitions/${r.id}`;
   const hidden = (name: string, value: string) => <input type="hidden" name={name} value={value} />;
   const terminal = r.status === 'completed' || r.status === 'cancelled';
-  const error = await recruitmentErrorText(sp.error);
+  const error = await recruitmentErrorText(sp.problem);
   const fields = (sp.fields ?? '').split(',').filter(Boolean);
   const notice = sp.notice === 'created' ? t('createdNotice') : sp.notice === 'saved' ? t('savedNotice') : undefined;
   const person = (uid: string | null) => (uid ? d.names[uid] ?? t('unnamedUser') : '—');

@@ -12,7 +12,7 @@ import { Notice, RecruitmentTabs, klDate, recruitmentErrorText, recruitmentViewe
  * pending step, never an item they created; a rejection needs a comment and returns the item to Draft. The offer's
  * private values appear only to those allowed to see them (administrators, the job's recruiter, the offer's creator).
  */
-export default async function ApprovalsPage({ searchParams }: { searchParams: Promise<{ error?: string; notice?: string }> }) {
+export default async function ApprovalsPage({ searchParams }: { searchParams: Promise<{ problem?: string; notice?: string }> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
@@ -39,7 +39,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
       <PageHeader title={nav('recruitment')} description={t('purpose')} />
       <RecruitmentTabs active="approvals" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0} />
       <Notice text={sp.notice === 'saved' ? t('decidedNotice') : undefined} />
-      <ErrorBanner message={await recruitmentErrorText(sp.error)} />
+      <ErrorBanner message={await recruitmentErrorText(sp.problem)} />
       {empty && <p className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">{t('empty')}</p>}
       {offers.length > 0 && (
         <section className="space-y-3" aria-labelledby="offers-title">

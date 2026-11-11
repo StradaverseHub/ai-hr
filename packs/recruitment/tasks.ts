@@ -21,12 +21,17 @@
  * (time, id); unread counts start each category's read at the viewer's own read-up-to time.
  *
  * Never selected: a referral reason, an applicant's message, an offer value or salary, a scorecard rating, result or
- * overview, an approval comment.
+ * overview, an approval comment, an agency's comments, or a submission's contacts, ID number or salaries.
+ *
+ * Slice 10 adds two personal to-dos (an agency submission waiting for an administrator's review; the HR contact's contract
+ * expiry from 30 days before its end date) and accepted agency submissions to the Applications updates.
  */
 import { sql, type SQL } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../../db/client';
 import { withRecruitmentTenant } from '../../core/module-gate';
 import { pgSqlState } from '../../lib/db-error';
+import { todayInKualaLumpur } from '../../lib/hr-date';
+import { CONTRACT_EXPIRY_NOTICE_DAYS } from './agency-model';
 import type { PackTaskItem } from '../../lib/assigned-work';
 import { RecruitmentError, isUuid } from './model';
 import { uuidArray } from './data';
@@ -42,7 +47,7 @@ const me = sql`app.current_user_id()`;
 type TodoRow = {
   kind: TodoKind; id: string; company_id: string; job_id: string | null; title: string | null; number: string | null;
   candidate_name: string | null; candidate_removed: boolean; count: number | null; position: number | null; steps: number | null;
-  at: string | Date; stage_id: string | null;
+  at: string | Date; stage_id: string | null; ends_on?: string | Date | null;
 };
 
 const todoOf = (r: TodoRow): RecruitmentTodo => ({
@@ -50,6 +55,7 @@ const todoOf = (r: TodoRow): RecruitmentTodo => ({
   candidateName: r.candidate_removed ? null : r.candidate_name, candidateRemoved: r.candidate_removed === true,
   count: r.count, step: r.position != null && r.steps != null ? { position: r.position, steps: r.steps } : null,
   at: iso(r.at), href: todoHref(r.kind, { id: r.id, jobId: r.job_id, stageId: r.stage_id }),
+  ...(r.ends_on ? { endsOn: (r.ends_on instanceof Date ? r.ends_on.toISOString() : String(r.ends_on)).slice(0, 10) } : {}),
 });
 const scopedBy = (scope: readonly string[] | undefined) => (column: SQL) => (scope ? sql`${column} = any(${uuidArray(scope)}::uuid[])` : sql`true`);
 
@@ -57,11 +63,33 @@ const scopedBy = (scope: readonly string[] | undefined) => (column: SQL) => (sco
  *  rows through indexes (pending-approver expression indexes, the interviewer's user index). */
 async function personalTodosTx(tx: Tx, s: SessionContext, scope: readonly string[] | undefined, now: Date): Promise<RecruitmentTodo[]> {
   const scoped = scopedBy(scope);
+  const today = todayInKualaLumpur(now);
+  // Slice 10: only a session holding a recruitment administration grant can have agency submissions to review. The
+  // administered companies come from the session's grants once (group-wide: every company in scope; else the granted
+  // companies and their descendants), not from a per-company predicate over the tenant; the database predicate is then
+  // applied only to the few rows returned.
+  const grants = s.grants ?? (s.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
+  const adminGrants = grants.filter((g) => g.role === 'hr_admin' || g.role === 'super_admin' || g.role === 'recruiting_partner');
+  const groupWide = adminGrants.some((g) => g.companyId == null);
+  const grantedCompanies = [...new Set(adminGrants.map((g) => g.companyId).filter((c): c is string => !!c && isUuid(c)))];
+  const adminCompanies = groupWide ? sql`true`
+    : grantedCompanies.length ? sql`(co.id = any(${uuidArray(grantedCompanies)}::uuid[])
+        or exists (select 1 from unnest(${uuidArray(grantedCompanies)}::uuid[]) g(id) where app.is_company_descendant(co.id, g.id)))` : sql`false`;
+  const reviewBranch = adminGrants.length ? sql`
+    union all
+    -- Slice 10: an agency submission waiting for review, one per submission, for the administrators of its company.
+    (select 'agencyReview', w.id, w.company_id, w.job_id, j.title, j.job_number, w.full_name, w.full_name is null, null, null, null, w.created_at, null, null
+     from (select co.id from company co where co.tenant_id = ${s.tenantId}::uuid and ${scoped(sql`co.id`)} and ${adminCompanies}) ac
+     cross join lateral (select x.id, x.company_id, x.job_id, x.full_name, x.created_at from recruitment_agency_submission x
+       where x.tenant_id = ${s.tenantId}::uuid and x.company_id = ac.id and x.outcome = 'waiting' order by x.created_at desc limit ${TODO_LIMIT}) w
+     left join recruitment_job_opening j on j.id = w.job_id
+     where app.can_admin_recruitment_for(w.company_id)
+     order by w.created_at desc limit ${TODO_LIMIT})` : sql``;
   const rows = await tx.execute<TodoRow>(sql`
     -- Approval steps are tenant-wide, like the Approvals page and its badge: they do not follow the company switcher.
     (select 'requisitionApproval'::text as kind, r.id, r.company_id, null::uuid as job_id, r.title, r.req_number as number,
        null::text as candidate_name, false as candidate_removed, null::int as count, r.pending_position as position,
-       cardinality(r.approver_user_ids) as steps, r.updated_at as at, null::uuid as stage_id
+       cardinality(r.approver_user_ids) as steps, r.updated_at as at, null::uuid as stage_id, null::date as ends_on
      from recruitment_requisition r
      where r.tenant_id = ${s.tenantId}::uuid and r.approval_status = 'pending' and r.approver_user_ids[r.pending_position] = ${me}
      order by r.updated_at desc limit ${TODO_LIMIT})
@@ -70,7 +98,7 @@ async function personalTodosTx(tx: Tx, s: SessionContext, scope: readonly string
     -- exactly as on the Approvals page (packs/recruitment/offers.ts offerForApprover).
     (select 'offerApproval', o.id, o.company_id, o.job_id, j.title, j.job_number,
        case when c.destroyed_at is null then c.full_name end, c.destroyed_at is not null, null, o.pending_position,
-       cardinality(o.approver_user_ids), o.updated_at, null
+       cardinality(o.approver_user_ids), o.updated_at, null, null
      from recruitment_offer o
      left join recruitment_job_opening j on j.id = o.job_id
      left join recruitment_application a on a.id = o.application_id
@@ -82,7 +110,7 @@ async function personalTodosTx(tx: Tx, s: SessionContext, scope: readonly string
     -- interview that is not cancelled, that the candidate has not declined, that the viewer interviews and has not given
     -- feedback on.
     (select 'feedback', i.id, i.company_id, i.job_id, j.title, j.job_number,
-       case when c.destroyed_at is null then c.full_name end, c.destroyed_at is not null, null, null, null, i.starts_at, null
+       case when c.destroyed_at is null then c.full_name end, c.destroyed_at is not null, null, null, null, i.starts_at, null, null
      from recruitment_interview_interviewer ii
      join recruitment_interview i on i.id = ii.interview_id and i.tenant_id = ii.tenant_id
      left join recruitment_job_opening j on j.id = i.job_id
@@ -91,7 +119,20 @@ async function personalTodosTx(tx: Tx, s: SessionContext, scope: readonly string
      where ii.tenant_id = ${s.tenantId}::uuid and ii.app_user_id = ${me} and i.cancelled_at is null and i.candidate_response <> 'declined'
        and i.starts_at <= ${now.toISOString()}::timestamptz and ${scoped(sql`ii.company_id`)}
        and not exists (select 1 from recruitment_scorecard sc where sc.interview_id = i.id and sc.interviewer_user_id = ${me})
-     order by i.starts_at desc limit ${TODO_LIMIT})`);
+     order by i.starts_at desc limit ${TODO_LIMIT})
+    ${reviewBranch}
+    union all
+    -- Slice 10: the HR contact's Enabled contracts from 30 days before their end date until the end date (Kuala Lumpur
+    -- dates), through the contact's own index; the item's date is the contract's END date (what My tasks and the bell show).
+    (select 'contractExpiry', c.id, c.company_id, null, concat_ws(' · ', a.name, c.name), null, null, false, null, null, null,
+       (c.ends_on::timestamp at time zone 'Asia/Kuala_Lumpur'), null, c.ends_on
+     from recruitment_agency_contract c
+     left join recruitment_agency a on a.id = c.agency_id
+     where c.tenant_id = ${s.tenantId}::uuid and c.hr_contact_user_id = ${me} and c.status = 'enabled'
+       and c.ends_on between ${today}::date and ${today}::date + ${CONTRACT_EXPIRY_NOTICE_DAYS}::int and ${scoped(sql`c.company_id`)}
+       -- …while the contact still administers the company (a demoted contact gets no to-do and cannot read the contract).
+       and app.can_admin_recruitment_for(c.company_id)
+     order by c.ends_on, c.id limit ${TODO_LIMIT})`);
   return rows.map(todoOf).sort(byNewest);
 }
 
@@ -265,7 +306,7 @@ function updateSource(s: SessionContext, category: TaskCategory, companies: read
           from recruitment_scorecard sc
           where sc.job_id = mj.job_id and sc.tenant_id = ${t} and ${bounds(sql`sc.submitted_at`, sql`sc.id::text`, r)} and sc.interviewer_user_id <> ${me}
           order by sc.submitted_at desc, sc.id::text desc ${limit}) x`;
-    // The job's recruiter and assistants: a new application from the careers page or an employee referral.
+    // The job's recruiter and assistants: a new application from the careers page, an employee referral or an agency.
     case 'applications':
       return sql`select x.* from ${operated} mj cross join lateral (
           select ca.application_id::text || ':careers' as id, 'careersApplication'::text as kind, ca.company_id, ca.received_at as at,
@@ -278,7 +319,15 @@ function updateSource(s: SessionContext, category: TaskCategory, companies: read
           select rf.id::text as id, 'referral'::text as kind, rf.company_id, rf.created_at as at, null::uuid as requisition_id, rf.job_id, rf.application_id
           from recruitment_referral rf
           where rf.job_id = mj.job_id and rf.tenant_id = ${t} and ${bounds(sql`rf.created_at`, sql`rf.id::text`, r)} and rf.referrer_user_id <> ${me}
-          order by rf.created_at desc, rf.id::text desc ${limit}) y`;
+          order by rf.created_at desc, rf.id::text desc ${limit}) y
+        union all
+        -- Slice 10: an agency submission accepted onto the job (at once, or by an administrator's review), not by the viewer.
+        select z.* from ${operated} mj cross join lateral (
+          select sb.id::text as id, 'agencySubmission'::text as kind, sb.company_id, sb.decided_at as at, null::uuid as requisition_id, sb.job_id, sb.application_id
+          from recruitment_agency_submission sb
+          where sb.job_id = mj.job_id and sb.tenant_id = ${t} and sb.outcome = 'accepted' and ${bounds(sql`sb.decided_at`, sql`sb.id::text`, r)}
+            and sb.decided_by_user_id <> ${me}
+          order by sb.decided_at desc, sb.id::text desc ${limit}) z`;
   }
 }
 

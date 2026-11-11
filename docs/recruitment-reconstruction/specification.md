@@ -773,3 +773,136 @@ Derived live from recruitment records and their history; nothing is copied. Cate
     the module is enabled; the existing bell items and counts are unchanged otherwise.
 65. Rendered: the Overview Tasks panel for a recruiter, an interviewer and an approver; the bell with recruitment
     items; Mark all as read.
+
+## Slice 10 — Agencies and headhunters (owner choice 2026-11-11; EV-031, EV-045, EV-048…EV-051)
+
+Moka keeps headhunter and RPO contracts with agency companies, gives agency consultants their own login to a
+headhunter platform where they submit candidates to the jobs released to them, checks each submission for
+duplicates, lets HR accept or reject it, and protects the submitting channel's credit for a period (EV-048…EV-051).
+AI HR builds the HR side only: agencies, contracts, consultants as contact records, which jobs each contract may
+work on, and submissions **recorded by HR** on the agency's behalf, with the duplicate and protection rules. There
+is no agency login, platform, e-mail or invitation (D-036).
+
+### Actors and access
+
+- Recruitment administrators of a company: manage agencies, tags, contracts, consultants and job assignments; see
+  fee rates and contract files; accept or reject submissions waiting for review.
+- The job's recruiter and assistants (slice 2): record a submission for their job from a contract assigned to the
+  job; see the agency, contract name and consultant on the application.
+- Hiring managers, interviewers and approvers see the application's source "Agency" and the agency name only.
+- Nobody else sees agency data. Fee rate and contract file are for administrators only (service and database).
+
+### Agencies, tags and contracts (EV-048, EV-049)
+
+- Agency (per company): name (required, unique in the company, ≤120), tags (company list of agency tags, managed by
+  administrators; a tag in use can be disabled, not deleted).
+- Contract (per agency): name (required, ≤120; distinguishes several contracts with one agency), type (Headhunter or
+  RPO), status (Enabled or Disabled), fee rate in percent (0–100, two decimals; shown, never calculated into an
+  amount, D-037), contract period (start and end dates, end on or after start), contract file (optional PDF, slice 5
+  file rules), HR contact (a user with Recruitment access in the company), access (Public: every recruiter of the
+  company may use it; Restricted: only the listed users), protection period override in days (optional, 0–730).
+- Consultants (per contract): name (required), e-mail, mobile, status (Active or Disabled). They are contact records,
+  not users; no login and no message is sent.
+- A contract is **usable** on a date when it is Enabled and the date is within its period (Kuala Lumpur dates through
+  lib/hr-date).
+- Contract list (administrators): filters by agency name, tag, type and status; columns contract name, agency, tags,
+  consultants (active count), rate, status, period. Contract page: details, consultants, and Positions with per-job
+  counts: submitted, accepted, interviewed, offered, hired (derived live, slice 6 rules).
+- Expiry to-do (EV-047 "Agency contract expiration reminder"): the contract's HR contact gets a personal to-do in the
+  bell and Overview (slice 9 pack task source) from 30 days before the end date until the end date, while Enabled.
+
+### Jobs released to agencies (EV-045 "Post to agency/RPO")
+
+- On the job's sourcing settings, administrators and the job's recruiter assign contracts usable today (Public, or
+  Restricted with the actor listed) and may add requirements text for agencies (≤2,000). Removing an assignment stops
+  new submissions; existing ones stay.
+
+### Recording a submission (EV-049 "Headhunter referral field"; slice 5 rules)
+
+- From the job's Candidates board ("Add agency submission"): contract (assigned to the job and usable today),
+  consultant (active, of that contract), candidate full name (required), e-mail and mobile (at least one), ID number
+  (optional, slice 5 restricted value), current and expected salary (optional, slice 5 restricted values), résumé
+  (optional, slice 5 file rules, with the permission confirmation), agency comments (optional, ≤2,000; shown to
+  administrators and the job's operators only), submission date (default today, not in the future, not before the
+  contract start).
+- Duplicate check, run in the service and enforced in the database:
+  - **Duplicate**: the same ID number, or the same normalised name plus the same e-mail, or the same normalised name
+    plus the same mobile (EV-050 "simple checking") as a candidate who already has an application in the company.
+  - **Suspected**: any two of name, e-mail and mobile match but not as above (slice 5 rule).
+  - **New**: neither.
+- Protection (EV-031, EV-051): an existing application protects its channel's credit for a period counted from its
+  application date: agency or RPO 365 days unless its contract overrides it, employee referral 180 days (slice 7
+  setting), any other source 0 days. Archived applications protect too until the period ends.
+- Outcome:
+  - New: accepted at once (D-038): a candidate, an application at the job's first enabled stage with source
+    "Agency", and the submission record (contract, consultant, submission date, comments, outcome) in one
+    transaction, audited.
+  - Duplicate inside another channel's protection: refused. The submission is kept as Refused with the reason
+    "protected by an earlier application" so the agency's history is complete; no candidate or application is
+    created. The recorder sees the reason without the earlier candidate's details unless they may read that candidate
+    (slice 5 rule).
+  - Duplicate outside any protection, or Suspected: stored as **Waiting for review** with the matches listed for
+    administrators. An administrator accepts (the application is added to the existing candidate for a Duplicate, or
+    a new candidate is created for Suspected, as the administrator chooses) or rejects with a reason. Recruiters see
+    "waiting for an administrator".
+- The same agency cannot submit the same person to the same job twice while an earlier submission is waiting,
+  accepted and active, or inside the repeated-application window (slice 5).
+- Concurrency: two submissions of the same person at the same time yield one outcome each in order, never two
+  applications (lock on company and normalised identity, the same key as slices 7 and 8).
+- At most 50 submission attempts per recorder per Kuala Lumpur day (accepted, waiting, refused and repeats all
+  count), like slice 7's cap, so the protection answer cannot be used to probe who is in the company (D-039).
+- The contract's HR contact must be a recruitment administrator of the company, and stops seeing the contract and
+  its expiry to-do when they no longer are. A Restricted contract is usable only by the users listed on it,
+  administrators included (administrators can list themselves). Protection is counted against today's Kuala Lumpur
+  date, never the typed submission date.
+- Accepting onto an existing candidate does not overwrite that candidate's profile or restricted values; the typed
+  values stay on the submission and the résumé moves to the candidate's files.
+- Personal data of Refused and Rejected submissions: an administrator can remove it (name, contacts, ID number,
+  salaries, comments, held résumé; job, contract, consultant, dates and outcome stay). Decided submissions older than
+  the company's slice 5 "months kept without consent" are listed in Settings › Privacy as due. Nothing is removed
+  automatically. Slice 5 removal of a candidate clears the submission accepted onto them and any undecided
+  submission whose only match was that candidate as a Duplicate (closing it as rejected if it was waiting); a
+  Suspected match, or one of several matches, only loses its link, and another person's submission never changes.
+
+### Where it shows
+
+- Settings › Agencies (administrators): agencies, tags, contracts, consultants.
+- Job sourcing settings: assigned contracts and requirements.
+- Candidates board: "Add agency submission"; a Waiting for review list for administrators.
+- Application page: source "Agency", agency, contract name, consultant, submission date, and comments for
+  administrators and operators.
+- Overview Tasks (slice 9): administrators get a personal to-do per submission waiting for review; the Applications
+  updates tab includes accepted agency submissions for the job's recruiter and assistants.
+
+### Data
+
+- One migration in the recruitment block (4410): agency, agency tag, contract, contract user (restricted access),
+  consultant, job assignment, and submission tables, with forced RLS, explicit grants, none to PUBLIC; fee rate and
+  contract file readable by administrators only (column grants or a separate table); guards so only administrators
+  change agencies and contracts; the submission path as a service under the actor's own access, using a definer
+  function only for the duplicate and protection check across candidates the actor may not read, returning only the
+  outcome and, for administrators, match ids. Slice 5 removal clears submission personal data (name, contacts,
+  comments, ID number, salaries) with the candidate; company setup deletion covers the new tables.
+- The AI Centre recruitment read stays counts only.
+
+### Slice 10 acceptance cases
+
+66. Only administrators manage agencies, tags, contracts and consultants (service and database); fee rate and
+    contract file are invisible to recruiters, hiring managers and interviewers through the service and the tables.
+67. Usability: a contract is offered and accepted only when Enabled and within its period on the Kuala Lumpur date,
+    and only to permitted users when Restricted; assignment to a job and submission respect that.
+68. A New submission creates the candidate, the application at the first enabled stage with source "Agency" and the
+    submission in one transaction with an audit event.
+69. Duplicate inside protection (agency 365 days, contract override, referral 180 days, archived application inside
+    its period) is refused and stored as Refused with no candidate or application; outside protection it waits for
+    review; the day boundaries use Kuala Lumpur dates.
+70. Suspected waits for review; an administrator accepts (new candidate or existing candidate) or rejects with a
+    reason; a recruiter cannot; the recruiter never sees the matched candidate's details without access.
+71. Repeat submission of the same person to the same job by the same agency is refused while waiting, active, or
+    inside the repeated-application window; two concurrent submissions give one application.
+72. Contract positions counts and the expiry to-do (from 30 days before the end date to the end date, HR contact only)
+    match independently computed values.
+73. Slice 5 removal leaves no personal data in submissions; company setup deletion removes every new table's rows;
+    every new table has forced RLS and grants with none to PUBLIC; the AI Centre read is counts only.
+74. Rendered: settings (agency, contract, consultant), job assignment, recording New, Duplicate-protected and
+    Suspected submissions, the review list and accept/reject, the application page, the expiry to-do.

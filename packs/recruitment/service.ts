@@ -101,6 +101,28 @@ export {
   updateHref, todoToPackTask, updatesHasMore, encodeUpdatesCursor, decodeUpdatesCursor,
 } from './tasks-model';
 export type { TaskCategory, TaskTab, TodoKind, PersonalTodoKind, UpdateKind, RecruitmentTodo, RecruitmentUpdate } from './tasks-model';
+// Slice 10 — agencies and headhunters: agencies, tags, contracts (fee rate and file for administrators only), consultants,
+// jobs released to contracts, submissions recorded by HR with the duplicate and protection check, administrators' review,
+// and the agency on an application.
+export {
+  agencySetup, saveAgency, saveAgencyTag, deleteAgencyTag, agencyContracts, agencyContract, saveAgencyContract, uploadAgencyContractFile,
+  removeAgencyContractFile, getAgencyContractFile, addAgencyContractUser, removeAgencyContractUser, saveAgencyConsultant, jobAgencyContracts,
+  assignAgencyContract, updateAgencyAssignment, removeAgencyAssignment, agencySubmissionOptions, recordAgencySubmission, jobAgencySubmissions,
+  agencyReviewQueue, agencySubmissionReview, acceptAgencySubmission, rejectAgencySubmission, applicationAgency, removeAgencySubmissionData,
+  agencySubmissionsDue,
+} from './agencies';
+export type {
+  AgencySetup, AgencyRow, AgencyTagRow, AgencyContact, ContractFilters, ContractRow, ContractDetail, ConsultantRow, ContractPositionRow, JobAgencyAssignment,
+  JobAgencyContracts, SubmissionContractOption, AgencySubmissionInput, AgencySubmissionResult, JobAgencySubmissionRow, AgencyReviewRow,
+  AgencySubmissionReview, ApplicationAgency, AgencySubmissionDue,
+} from './agencies';
+export {
+  CONTRACT_TYPES, CONTRACT_STATUSES, CONTRACT_ACCESS, CONSULTANT_STATUSES, SUBMISSION_OUTCOMES, MATCH_KINDS, AGENCY_NAME_MAX, AGENCY_TAG_MAX,
+  CONTRACT_NAME_MAX, REQUIREMENTS_MAX, COMMENTS_MAX, REVIEW_REASON_MAX, AGENCY_PROTECTION_DEFAULT_DAYS, PROTECTION_OVERRIDE_MAX_DAYS,
+  CONTRACT_EXPIRY_NOTICE_DAYS, CONTRACT_FILE_MAX_BYTES, CONTRACT_FILE_ACCEPT, AGENCY_DAILY_LIMIT, contractUsableOn, contractExpiryDue, daysUntil, insideProtection,
+  protectionDays, matchKind, submissionFor, feeRate, validateContractInput, validateSubmissionInput, validateConsultantInput,
+} from './agency-model';
+export type { ContractType, ContractStatus, ContractAccess, ConsultantStatus, SubmissionOutcome, MatchKind, CheckOutcome, ContractPositionCounts } from './agency-model';
 export {
   RecruitmentError, RECRUITMENT_ERROR_CODES, JOB_STATUSES, JOB_STATUS_TRANSITIONS, JOB_MEMBER_ROLES, POSITION_ATTRIBUTES, RECRUITMENT_TYPES,
   JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab,

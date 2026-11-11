@@ -1,3 +1,26 @@
+# Recruitment slice 10 — 11 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 9 entry,
+`4410_recruitment_agencies` at idx 3810 / when 1793330004110. A fresh read-only survey after
+`git fetch --prune origin` of 4,076 remote refs (435 distinct committed journal blobs), 283
+registered worktrees (264 readable journals) and 352 committed allocation-document blobs found no
+claim of this name, position or timestamp and no `4410_` migration file (the combined-release
+block's allocation documents name idx 4410 / when 1793330004710 for `5010_employee_import_staged_job`,
+a different position and timestamp). Peers above this block still exist (the peer timestamp maximum
+is 1793330099956, and `origin/main` ends at when 1793330004500), so whichever lands later must be
+checked against the applied watermark; a lower timestamp can be silently skipped. 4410 adds nine
+tables (`recruitment_agency_tag`, `recruitment_agency`, `recruitment_agency_tag_link`,
+`recruitment_agency_contract`, `recruitment_agency_contract_terms` — the fee rate and contract file,
+administrators only — `recruitment_agency_contract_user`, `recruitment_agency_consultant`,
+`recruitment_job_agency_contract`, `recruitment_agency_submission`), three private owner-only tables
+(`app.recruitment_agency_submission_match`, `app.recruitment_agency_attempt`,
+`app.recruitment_agency_clear_marker`), their guards, owner-only context-marker read policies on four
+of them, the internal check (owner-only) with its always-counting entry point, an owner-run submission guard,
+the link, clearing and application-agency definer functions, and restates `app.recruitment_destroy_candidate` (4408 body) and
+`app.recruitment_delete_company_setup` (4409 body) with added steps only; 4400–4409 are unapplied
+outside throwaway databases and CI. Recheck peer claims, the published baseline and the ordered
+applied ledger before admission. The reservation grants no installation authority.
+
 # Recruitment slice 9 — 11 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 8 entry,

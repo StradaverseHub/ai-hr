@@ -66,6 +66,13 @@ export const RECRUITMENT_ERROR_CODES = [
   'referral_refused',
   // Slice 8: the careers page address is used by another company; the page cannot be published yet (missing items).
   'careers_address_taken', 'careers_incomplete',
+  // Slice 10: a name already used in the company; a tag on an agency; a contract not usable (disabled, outside its period,
+  // not released to the user, or not assigned to the job); an HR contact without recruitment administration; the same
+  // agency already submitted the person to the job; a submission already decided; a consultant who is not active.
+  'name_taken', 'tag_in_use', 'contract_unavailable', 'contact_invalid', 'repeat_submission', 'submission_decided', 'consultant_unavailable',
+  // …the recorder's 50 agency submission attempts for today (Kuala Lumpur) are used; another session is changing the same
+  // candidate (a lock wait gave up or a deadlock was broken) — try again.
+  'agency_daily_limit', 'candidate_busy',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

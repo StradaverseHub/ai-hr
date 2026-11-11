@@ -87,7 +87,8 @@ export async function RecruitmentTabs({ active, admin = true, approvals = 0, rep
   );
 }
 
-/** A refusal code from ?error=, in the viewer's language. Unknown text is never echoed back. */
+/** A refusal code from ?problem= (Recruitment's own parameter: the global toast consumes ?error=), in the viewer's language.
+ *  Unknown text is never echoed back. */
 export async function recruitmentErrorText(code?: string): Promise<string | undefined> {
   if (!code) return undefined;
   const t = await getTranslations('recruitment.errors');

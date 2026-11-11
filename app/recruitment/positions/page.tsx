@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { listJobs } from '@/packs/recruitment/service';
 import { NoRecruitmentCompany, RecruitmentTabs, SubTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
 
-type Search = { tab?: string; title?: string; jobNumber?: string; department?: string; recruiter?: string; error?: string };
+type Search = { tab?: string; title?: string; jobNumber?: string; department?: string; recruiter?: string; problem?: string };
 
 /**
  * Recruitment › Positions: Opening (Open + On hold) and Closed, with filters. Administrators see every job of their
@@ -38,7 +38,7 @@ export default async function RecruitmentPositionsPage({ searchParams }: { searc
         { key: 'positions', href: '/recruitment/positions', text: t('positionsTab'), current: true },
         { key: 'requisitions', href: '/recruitment/requisitions', text: t('requisitionsTab'), current: false },
       ]} />}
-      <ErrorBanner message={await recruitmentErrorText(sp.error)} />
+      <ErrorBanner message={await recruitmentErrorText(sp.problem)} />
       {companies.length === 0 ? <NoRecruitmentCompany /> : (
         <>
           <div role="tablist" aria-label={t('statusTabs')} className="flex gap-2">

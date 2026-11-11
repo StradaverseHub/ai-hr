@@ -12,7 +12,7 @@ import { recruitmentErrorText, recruitmentViewerAccess, textareaCls } from '../.
  * criterion is rated 1–5 with optional notes (≤ 500 words), then the overall result and an overview. Once the
  * company's edit lock applies, submitted feedback is shown read-only. The service and the 4402 guard refuse the same.
  */
-export default async function InterviewFeedbackPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
+export default async function InterviewFeedbackPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ problem?: string }> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
   await recruitmentViewerAccess(s, scopeIds);
@@ -30,7 +30,7 @@ export default async function InterviewFeedbackPage({ params, searchParams }: { 
     <div className="mx-auto w-full max-w-3xl space-y-5">
       <PageHeader title={t('title', { name: form.candidateName })} description={`${form.jobTitle} · ${t('round', { n: form.roundNo })} · ${form.formName}`}
         back={{ href: `/recruitment/applications/${form.applicationId}?tab=interviews`, label: t('back') }} />
-      <ErrorBanner message={await recruitmentErrorText(sp.error)} />
+      <ErrorBanner message={await recruitmentErrorText(sp.problem)} />
       {locked && <p className="rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">{t('locked')}</p>}
       <form action={submitScorecardAction} className="space-y-5">
         <input type="hidden" name="interviewId" value={form.interviewId} />

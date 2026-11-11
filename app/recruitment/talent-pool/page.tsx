@@ -8,7 +8,7 @@ import { talentPool } from '@/packs/recruitment/service';
 import { addPoolCandidateToJobAction } from '../actions';
 import { NoRecruitmentCompany, Notice, RecruitmentTabs, klDate, recruitmentAccess, recruitmentErrorText, selectCls } from '../shared';
 
-type Search = { job?: string; reason?: string; since?: string; tag?: string; error?: string; notice?: string };
+type Search = { job?: string; reason?: string; since?: string; tag?: string; problem?: string; notice?: string };
 
 /**
  * Recruitment › Talent pool (administrators): one public pool per company — the latest archived application of
@@ -28,7 +28,7 @@ export default async function TalentPoolPage({ searchParams }: { searchParams: P
       <PageHeader title={nav('recruitment')} description={t('purpose')} />
       <RecruitmentTabs active="talentPool" />
       <Notice text={sp.notice === 'saved' ? t('addedNotice') : undefined} />
-      <ErrorBanner message={await recruitmentErrorText(sp.error)} />
+      <ErrorBanner message={await recruitmentErrorText(sp.problem)} />
       {companies.length === 0 ? <NoRecruitmentCompany /> : (
         <>
           <dl className="grid grid-cols-2 gap-3 sm:max-w-md">

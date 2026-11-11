@@ -2,7 +2,9 @@
 /**
  * Recruitment server actions. Each one only translates a form into a service call: the service checks the
  * module, the caller's recruitment administration of the company and every rule, and row security refuses
- * again. A refusal comes back to the page as a stable error code (?error=<code>), never as SQL.
+ * again. A refusal comes back to the page as a stable error code (?problem=<code>), never as SQL. Recruitment uses its own
+ * parameter, not ?error=: the global toast (components/ui/toast-trigger.tsx) consumes ?error= and would show the raw code
+ * and strip it before the page's ErrorBanner could say the sentence.
  */
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
@@ -19,6 +21,9 @@ import {
   saveCandidateRestricted, saveTag, saveTagGroup, updateCandidateProfile, updatePrivacySettings, uploadCandidateFile, CANDIDATE_FILE_MAX_BYTES,
   checkDuplicateCandidate, RECRUITMENT_ERROR_CODES, type DuplicateCheck, setJobReferralPortal, updateReferralSettings,
   setCareersPublished, setJobCareersPage, updateCareersSettings, markRecruitmentTasksRead,
+  acceptAgencySubmission, addAgencyContractUser, assignAgencyContract, deleteAgencyTag, recordAgencySubmission, rejectAgencySubmission, removeAgencyAssignment,
+  removeAgencyContractFile, removeAgencyContractUser, saveAgency, saveAgencyConsultant, saveAgencyContract, saveAgencyTag, updateAgencyAssignment,
+  uploadAgencyContractFile, CONTRACT_FILE_MAX_BYTES, removeAgencySubmissionData,
 } from '@/packs/recruitment/service';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -29,6 +34,8 @@ const back = (f: FormData, fallback: string) => {
 };
 const withParam = (url: string, key: string, value: string) => `${url}${url.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(value)}`;
 const errorCode = (e: unknown) => (e instanceof RecruitmentError ? e.code : 'unexpected');
+/** The query parameter a refusal code comes back in (read by every Recruitment page's ErrorBanner, recruitmentErrorText). */
+const PROBLEM_PARAM = 'problem';
 
 async function run(url: string, work: (s: Awaited<ReturnType<typeof getSession>>) => Promise<unknown>, done?: string): Promise<never> {
   const s = await getSession();
@@ -38,7 +45,7 @@ async function run(url: string, work: (s: Awaited<ReturnType<typeof getSession>>
     // Only the error's kind and SQLSTATE: a database error's message carries its bound values (candidate details,
     // private offer values, notes), which must never reach the server log.
     if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
-    redirect(withParam(url, 'error', errorCode(e)));
+    redirect(withParam(url, PROBLEM_PARAM, errorCode(e)));
   }
   revalidatePath('/recruitment', 'layout');
   redirect(done ?? withParam(url, 'notice', 'saved'));
@@ -62,7 +69,7 @@ export async function createJobAction(f: FormData) {
   } catch (e) {
     const missing = e instanceof RecruitmentError && e.detail?.length ? `&fields=${encodeURIComponent(e.detail.join(','))}` : '';
     const requisition = str(f, 'requisitionId') ? `&requisition=${encodeURIComponent(str(f, 'requisitionId'))}` : '';
-    redirect(`/recruitment/positions/new?company=${encodeURIComponent(companyId)}&error=${errorCode(e)}${missing}${requisition}`);
+    redirect(`/recruitment/positions/new?company=${encodeURIComponent(companyId)}&${PROBLEM_PARAM}=${errorCode(e)}${missing}${requisition}`);
   }
   revalidatePath('/recruitment', 'layout');
   redirect(`/recruitment/positions/${id}?notice=created`);
@@ -274,7 +281,7 @@ export async function createRequisitionAction(f: FormData) {
     ({ id } = await createRequisition(s, requisitionFields(f)));
   } catch (e) {
     const fields = e instanceof RecruitmentError && e.detail?.length ? `&fields=${encodeURIComponent(e.detail.join(','))}` : '';
-    redirect(`/recruitment/requisitions/new?company=${encodeURIComponent(str(f, 'companyId'))}&error=${errorCode(e)}${fields}`);
+    redirect(`/recruitment/requisitions/new?company=${encodeURIComponent(str(f, 'companyId'))}&${PROBLEM_PARAM}=${errorCode(e)}${fields}`);
   }
   revalidatePath('/recruitment', 'layout');
   redirect(`/recruitment/requisitions/${id}?notice=created`);
@@ -399,4 +406,124 @@ export async function saveTagAction(f: FormData) {
 export async function markRecruitmentTasksReadAction(f: FormData) {
   const category = str(f, 'category');
   return run(back(f, '/recruitment'), (s) => markRecruitmentTasksRead(s, f.getAll('companyId').map(String), category));
+}
+
+// ── Slice 10: agencies and headhunters ─────────────────────────────────────────────────────────────────────────
+const AGENCIES = '/recruitment/settings?section=agencies';
+const contractPage = (id: string) => `/recruitment/settings/agencies/contracts/${encodeURIComponent(id)}`;
+const contractFields = (f: FormData) => ({
+  name: str(f, 'name'), contractType: str(f, 'contractType'), status: str(f, 'status') || 'enabled', feeRate: str(f, 'feeRate'), startsOn: str(f, 'startsOn'),
+  endsOn: str(f, 'endsOn'), hrContactUserId: str(f, 'hrContactUserId'), access: str(f, 'access') || 'public', protectionDays: str(f, 'protectionDays'),
+});
+/** An agency tag: create, rename, enable or disable (administrators). */
+export async function saveAgencyTagAction(f: FormData) {
+  return run(back(f, AGENCIES), (s) => saveAgencyTag(s, { id: str(f, 'tagId'), companyId: str(f, 'companyId'), name: str(f, 'name'), enabled: f.get('enabled') === 'on' }));
+}
+/** Delete an unused agency tag; a tag on an agency is kept (disable it instead). */
+export async function deleteAgencyTagAction(f: FormData) {
+  return run(back(f, AGENCIES), (s) => deleteAgencyTag(s, str(f, 'tagId')));
+}
+/** An agency: create or rename, and its tags. */
+export async function saveAgencyAction(f: FormData) {
+  return run(back(f, AGENCIES), (s) => saveAgency(s, { id: str(f, 'agencyId'), companyId: str(f, 'companyId'), name: str(f, 'name'), tagIds: f.getAll('tagIds').map(String) }));
+}
+/** A new contract opens its own page; a changed one returns to it. The fee rate is a percentage, never an amount. */
+export async function saveAgencyContractAction(f: FormData) {
+  const id = str(f, 'contractId');
+  if (id) return run(back(f, contractPage(id)), (s) => saveAgencyContract(s, { id, ...contractFields(f) }));
+  const s = await getSession();
+  let created: string;
+  try {
+    ({ id: created } = await saveAgencyContract(s, { agencyId: str(f, 'agencyId'), ...contractFields(f) }));
+  } catch (e) {
+    if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    redirect(withParam(back(f, AGENCIES), PROBLEM_PARAM, errorCode(e)));
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(contractPage(created), 'notice', 'saved'));
+}
+/** The contract PDF (type read from the bytes by the service). */
+export async function uploadAgencyContractFileAction(f: FormData) {
+  const id = str(f, 'contractId');
+  const file = f.get('file');
+  return run(contractPage(id), async (s) => {
+    if (!(file instanceof File) || file.size === 0) throw new RecruitmentError('missing_fields', ['file']);
+    if (file.size > CONTRACT_FILE_MAX_BYTES) throw new RecruitmentError('file_too_large');
+    await uploadAgencyContractFile(s, id, { fileName: file.name, content: Buffer.from(await file.arrayBuffer()) });
+  });
+}
+export async function removeAgencyContractFileAction(f: FormData) {
+  const id = str(f, 'contractId');
+  return run(contractPage(id), (s) => removeAgencyContractFile(s, id));
+}
+export async function addAgencyContractUserAction(f: FormData) {
+  const id = str(f, 'contractId');
+  return run(contractPage(id), (s) => addAgencyContractUser(s, id, str(f, 'userId')));
+}
+export async function removeAgencyContractUserAction(f: FormData) {
+  const id = str(f, 'contractId');
+  return run(contractPage(id), (s) => removeAgencyContractUser(s, id, str(f, 'userId')));
+}
+/** A consultant (a contact record; nothing is sent to them). */
+export async function saveAgencyConsultantAction(f: FormData) {
+  const contractId = str(f, 'contractId');
+  return run(contractPage(contractId), (s) => saveAgencyConsultant(s, {
+    id: str(f, 'consultantId'), contractId, name: str(f, 'name'), email: str(f, 'email'), mobile: str(f, 'mobile'), status: str(f, 'status') || 'active',
+  }));
+}
+/** Release a job to a contract usable today by the actor (administrators and the job's recruiter). */
+export async function assignAgencyContractAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => assignAgencyContract(s, jobId, str(f, 'contractId'), String(f.get('requirements') ?? '')));
+}
+export async function updateAgencyAssignmentAction(f: FormData) {
+  return run(back(f, '/recruitment/positions'), (s) => updateAgencyAssignment(s, str(f, 'assignmentId'), String(f.get('requirements') ?? '')));
+}
+export async function removeAgencyAssignmentAction(f: FormData) {
+  return run(back(f, '/recruitment/positions'), (s) => removeAgencyAssignment(s, str(f, 'assignmentId')));
+}
+/**
+ * Record an agency submission (the job's recruiter, assistants and administrators). The page learns only the outcome:
+ * added as a new candidate, refused as protected by an earlier application, or waiting for an administrator. Typed values
+ * never travel in the URL or the log.
+ */
+export async function recordAgencySubmissionAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  const [contractId = '', consultantId = ''] = str(f, 'consultant').split('|');
+  const resume = f.get('resume');
+  const returnTo = back(f, `/recruitment/candidates?job=${encodeURIComponent(jobId)}`);
+  const s = await getSession();
+  let outcome: string;
+  try {
+    if (resume instanceof File && resume.size > CANDIDATE_FILE_MAX_BYTES) throw new RecruitmentError('file_too_large');
+    const hasResume = resume instanceof File && resume.size > 0;
+    ({ outcome } = await recordAgencySubmission(s, {
+      jobId, contractId, consultantId, fullName: str(f, 'fullName'), email: str(f, 'email'), mobile: str(f, 'mobile'), idType: str(f, 'idType'), idNumber: str(f, 'idNumber'),
+      currentSalaryAmount: str(f, 'currentSalaryAmount'), currentSalaryCurrency: str(f, 'currentSalaryCurrency'), expectedSalaryAmount: str(f, 'expectedSalaryAmount'),
+      expectedSalaryCurrency: str(f, 'expectedSalaryCurrency'), comments: String(f.get('comments') ?? ''), submittedOn: str(f, 'submittedOn'),
+      ...(hasResume ? { resumeName: resume.name, resumeContent: Buffer.from(await resume.arrayBuffer()), permissionConfirmed: f.get('permissionConfirmed') === 'on' } : {}),
+    }));
+  } catch (e) {
+    if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    redirect(withParam(returnTo, PROBLEM_PARAM, errorCode(e)));
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(returnTo, 'notice', `agency-${outcome}`));
+}
+/** Accept a waiting submission (administrators): onto the chosen existing candidate, or as a new candidate. */
+export async function acceptAgencySubmissionAction(f: FormData) {
+  const id = str(f, 'submissionId');
+  const target = str(f, 'target');
+  return run(`/recruitment/agency-submissions/${encodeURIComponent(id)}`, (s) => acceptAgencySubmission(s, id, { candidateId: target === 'new' ? '' : target }));
+}
+/** Reject a waiting submission with a reason (administrators). */
+export async function rejectAgencySubmissionAction(f: FormData) {
+  const id = str(f, 'submissionId');
+  return run(`/recruitment/agency-submissions/${encodeURIComponent(id)}`, (s) => rejectAgencySubmission(s, id, String(f.get('reason') ?? '')));
+}
+/** Remove the personal data of a refused or rejected agency submission (administrators; explicit confirmation). */
+export async function removeAgencySubmissionDataAction(f: FormData) {
+  const id = str(f, 'submissionId');
+  return run(back(f, `/recruitment/agency-submissions/${encodeURIComponent(id)}`), (s) => removeAgencySubmissionData(s, id, f.get('confirm') === 'on'),
+    withParam(back(f, `/recruitment/agency-submissions/${encodeURIComponent(id)}`), 'notice', 'removed'));
 }
