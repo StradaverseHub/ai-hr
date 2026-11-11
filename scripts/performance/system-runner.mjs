@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
-import {mkdirSync,writeFileSync,readFileSync,copyFileSync,readdirSync,openSync,closeSync,lstatSync,realpathSync,constants,fstatSync,readSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,copyFileSync,readdirSync,openSync,closeSync,lstatSync,realpathSync,constants,fstatSync,readSync,existsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import https from 'node:https';
 import http from 'node:http';
@@ -192,7 +192,7 @@ async function run(label,command,args,childEnv=env,timeout=900000){
   .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,'<UUID>')
   // Keep lowercase words and source paths; redact every other long run (hex, base32, base64 or mixed tokens).
   .replace(/[A-Za-z0-9_+/=.-]{20,}/g,run=>/^[a-z/_.-]+$/.test(run)?run:'<REDACTED>');
- if(code!==0||timedOut)for(const file of [label+'.log',...(label==='http-and-browser'?['driver-failures.log']:[])])try{
+ if(code!==0||timedOut)for(const file of [label+'.log',...(label==='http-and-browser'?['driver-failures.log','bulk-job-worker.log']:[])])try{
   const lines=redact(readFileSync(join(privateDir,file),'utf8').slice(-16000)).split('\n')
    .filter(line=>/error|code|constraint|column|relation|violat|denied|permission|must|refus|assert|expected|actual|detail|hint|where|routine|severity|timeout|exceeded|waiting|navigat|locator|selector|stage|route|\bat .*\.(?:ts|mts|mjs|js):\d+/i.test(line))
    .slice(-80).map(line=>line.slice(0,300));
@@ -270,6 +270,7 @@ function summarizeNativeFailures(){
  writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'Exact public-error reference/SQLSTATE metadata plus bounded native Draft marker blocks; Draft block errors may overlap; raw logs and SQL excluded',failures},null,2));
 }
 const apps=[],appFds=[],workerProcessErrors=new Set(),appBirths=new Map();let proxy,upstream,dbStarted=false,postgresRuntimeFailures;
+let jobWorker=null,jobWorkerClosed=null;
 let developmentPostgresBirth;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
 // Keep the canonical reset recipe. Its Docker commands cannot remove anything
@@ -518,6 +519,19 @@ try{
   report.workerReadiness.push({worker,elapsedMs:Date.now()-started,attempts,health,login,homeHandlerRequests:0});save();
   assert(health&&login,'production worker did not become ready');
  }
+ // Payroll processing, clocking imports and the other bulk operations now run as background jobs on the shared
+ // kernel. Production runs them in the dedicated import worker (deploy/systemd/aihr-bank-import.service), so run
+ // that same worker, with its unit's role and pool, as an owned child for the whole driver phase.
+ if(existsSync('scripts/bank-import-runner.ts')){
+  timeBudget(1);
+  const fd=openSync(join(privateDir,'bulk-job-worker.log'),'w',0o600);appFds.push(fd);
+  jobWorker=trackChild(spawn(process.execPath,['--import','tsx','scripts/bank-import-runner.ts'],{env:{...env,NODE_ENV:'production',
+   AIHR_DB_PROCESS_ROLE:'worker',AIHR_DB_POOL_MAX:'2'},stdio:['ignore',fd,fd]}));
+  jobWorkerClosed=new Promise(resolve=>jobWorker.once('close',(code,signal)=>resolve({code,signal})));
+  await pause(3000);
+  report.bulkJobWorker={started:jobWorker.exitCode===null&&jobWorker.signalCode===null,pool:2};save();
+  assert(report.bulkJobWorker.started,'background job worker exited during start');
+ }
  if(comparison){
   for(const app of apps){
    assert(app.exitCode===null&&app.signalCode===null,'Worker comparison worker terminated before driver admission');
@@ -557,6 +571,14 @@ finally{
   if(proxy)await new Promise(resolve=>{proxy.close(resolve);proxy.closeAllConnections();});
   if(upstream)upstream.destroy();
  }
+ // Stop the background job worker first: it finishes its current unit on SIGTERM, as under systemd.
+ if(jobWorker)try{
+  if(jobWorker.exitCode===null&&jobWorker.signalCode===null)signalChild(jobWorker,'SIGTERM');
+  let stopped=await Promise.race([jobWorkerClosed,pause(30000).then(()=>null)]);
+  const forced=stopped===null;
+  if(forced){signalChild(jobWorker,'SIGKILL');stopped=await Promise.race([jobWorkerClosed,pause(10000).then(()=>null)]);}
+  report.bulkJobWorker={...report.bulkJobWorker,forced,code:stopped?.code??null,signal:stopped?.signal??null};save();
+ }catch{}
  const workerStops=apps.map(async(app,worker)=>{
   if(measurement&&!app.pid)return {worker,code:null,signal:null};
   if(app.exitCode!==null||app.signalCode!==null)return {worker,alreadyExited:true,code:app.exitCode,signal:app.signalCode};

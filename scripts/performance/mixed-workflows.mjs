@@ -180,8 +180,16 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
  }
  // A real correction workflow and Payroll processing/export, not page-render timing.
  const approverFor=user=>fixture.users.find(actor=>actor.tenant===user.tenant&&actor.company===user.company&&['companyHR','groupHR'].includes(actor.role));
+ // Payroll processing is a background job in the combined release: the request admits it ('processing') and the
+ // import worker settles it. Wait a bounded time for the worker, then require the same processed result as before.
  async function assertProcessed(batchId){
-  const [batch]=await db`select status,employee_count from payroll_batch where id=${batchId}::uuid`;
+  const deadline=performance.now()+120000;let batch;
+  for(;;){
+   [batch]=await db`select status,employee_count from payroll_batch where id=${batchId}::uuid`;
+   if(batch?.status!=='processing'||performance.now()>=deadline)break;
+   await new Promise(resolve=>setTimeout(resolve,500));
+  }
+  (report.payrollProcessingWaits??=[]).push({status:batch?.status??null});
   assert.equal(batch.status,'processed');assert.equal(batch.employee_count,50);
   const rows=await db`select employment_id,basic_salary,gross_pay,total_deductions,net_pay from payslip where batch_id=${batchId}::uuid`;
   assert.equal(rows.length,50);assert.equal(new Set(rows.map(row=>row.employment_id)).size,50);
