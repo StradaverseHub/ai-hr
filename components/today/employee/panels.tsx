@@ -210,7 +210,7 @@ export async function HoursPanel(p:PanelContext){
  const value=(bar:(typeof week.bars)[number])=>bar.state==='worked'&&bar.workedMinutes!==null?hm(t,bar.workedMinutes):bar.state==='running'?t('running'):'—';
  const summary=week.bars.map(bar=>`${hrDay(p.locale,bar.date,'weekday')} ${value(bar)}`).join(', ');
  return <Panel id="today-hours" className="lg:col-span-3" title={t('hoursTitle')} action={<span data-today-hours-total className="font-mono text-xs tabular-nums">{hm(t,week.workedMinutes)}</span>}>
-  <div role="img" aria-label={t('hoursChart',{summary})} className="relative grid h-28 items-end gap-2" style={{gridTemplateColumns:`repeat(${Math.max(week.bars.length,1)},minmax(0,1fr))`}}>
+  <div role="img" aria-label={t('hoursChart',{items:summary})} className="relative grid h-28 items-end gap-2" style={{gridTemplateColumns:`repeat(${Math.max(week.bars.length,1)},minmax(0,1fr))`}}>
    {week.shiftMinutes!==null&&<div aria-hidden className="absolute inset-x-0 border-t border-dashed border-border" style={{bottom:`${(week.shiftMinutes/top)*100}%`}}/>}
    {week.bars.map(bar=><div key={bar.date} aria-hidden data-today-bar={bar.state} className="flex h-full items-end justify-center">
     <div className={cn('w-full max-w-7 rounded-t-md rounded-b-sm',bar.state==='worked'?'bg-emerald-600/80 dark:bg-emerald-400/80':bar.state==='running'?'h-1/4 bg-primary/60':'h-1 bg-muted')}
@@ -246,7 +246,7 @@ export async function RequestsPanel(p:PanelContext){
    {rows.map(row=>{const title=requestTitle(t,row),steps=trackSteps(row.stage);
     return <li key={row.key} data-today-request={row.kind} data-today-stage={row.stage} className="grid items-center gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)_auto]">
      <div className="min-w-0"><p className="m-0 break-words text-sm font-semibold">{title}</p><p className="m-0 mt-0.5 text-xs text-muted-foreground">{requestDetail(t,p.locale,row)}</p></div>
-     <ol aria-label={t('request.progress',{title})} className="m-0 flex min-w-0 list-none flex-wrap items-center gap-2 p-0 text-xs">
+     <ol aria-label={t('request.progress',{item:title})} className="m-0 flex min-w-0 list-none flex-wrap items-center gap-2 p-0 text-xs">
       {steps.map((step,index)=><li key={step.step} data-today-track={step.state} className="flex items-center gap-2">
        {index>0&&<span aria-hidden className={cn('h-0.5 w-4 rounded-full sm:w-8',step.state==='todo'?'bg-border':'bg-emerald-600/70 dark:bg-emerald-400/70')}/>}
        <span className={cn('flex items-center gap-1.5 whitespace-nowrap',step.state==='current'&&'font-medium text-amber-800 dark:text-amber-300',step.state==='todo'&&'text-muted-foreground')}>
