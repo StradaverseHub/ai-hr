@@ -240,12 +240,16 @@ export default async function AnomaliesPage({
                       <span className="tabular-nums">{label}</span>
                       <span
                         className={`rounded px-1.5 py-0.5 text-[10px] ${
-                          th.source === 'untuned_default'
-                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                            : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                          th.source === 'configured'
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
                         }`}
                       >
-                        {th.source === 'untuned_default' ? t('thresholdSourceDefault') : t('thresholdSourceConfigured')}
+                        {th.source === 'untuned_default'
+                          ? t('thresholdSourceDefault')
+                          : th.source === 'unreadable_default'
+                            ? t('thresholdSourceUnreadable')
+                            : t('thresholdSourceConfigured')}
                       </span>
                     </li>
                   );

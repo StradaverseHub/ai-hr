@@ -19,7 +19,7 @@
  * SKIPPED WITH A REASON, so a verdict can say "auto-clear, but 2 of 6 detectors could not run yet".
  */
 
-import { DEFAULT_SWING_THRESHOLD_BP, netSwingFor, swingThresholdOrDefault, type ComponentIds } from './loops/net-swing';
+import { netSwingFor, swingThresholdOrDefault, type ComponentIds } from './loops/net-swing';
 import type { StoredPayslipRow } from './pay-difference';
 
 export type DataRequirement = {
@@ -83,8 +83,13 @@ export type DetectorContext = {
   swing?: {
     period: string;
     companyId: string;
+    /** The run type of the batch under evaluation. A bonus or off-cycle batch is compared like with like (below). */
+    runType: string;
     rows: readonly StoredPayslipRow[];
     thresholdBp: number;
+    /** FALSE when the evaluator could not read the company's setting (row security: the scheduled sweep, a payroll
+     *  partner), so `thresholdBp` is the 15% default and there are no exclusions. Said so on every finding. */
+    thresholdReadable: boolean;
     exclusions: readonly string[];
     componentIds?: ComponentIds;
   };
@@ -376,47 +381,63 @@ const duplicateEmploymentPay: Detector = {
 // (core/loops/net-swing.ts netSwingFor), so the two can never disagree. `params` are ignored here on purpose.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
+/** Where the threshold a net-swing finding used came from, as a fact on the finding. */
+export const NET_SWING_THRESHOLD_SOURCES = ['company', 'default', 'default_company_setting_unreadable'] as const;
+
 const netSwing: Detector = {
   id: 'net-swing',
   requires: { priorCycles: 1 },
   evaluate: (ctx) => {
     if (!ctx.prior) return [];
-    if (ctx.swing) {
-      const thresholdBp = swingThresholdOrDefault(ctx.swing.thresholdBp);
-      const person = netSwingFor(ctx.employmentId, ctx.swing.rows, {
-        period: ctx.swing.period,
-        companyId: ctx.swing.companyId,
+    const sw = ctx.swing;
+    const thresholdBp = swingThresholdOrDefault(sw?.thresholdBp);
+    const thresholdSource: (typeof NET_SWING_THRESHOLD_SOURCES)[number] = !sw
+      ? 'default'
+      : sw.thresholdReadable === false
+        ? 'default_company_setting_unreadable'
+        : 'company';
+    // A REGULAR run is judged on the month, through the one owner the Salary loop uses, with the payroll records checked
+    // first. A bonus or off-cycle batch is NOT: an additional run must never explain itself, so it is compared like with
+    // like below, against the last closed run of its own type (the pre-11-November behaviour, at the company threshold).
+    if (sw && sw.runType === 'regular') {
+      const person = netSwingFor(ctx.employmentId, sw.rows, {
+        period: sw.period,
+        companyId: sw.companyId,
         thresholdBp,
-        exclusions: ctx.swing.exclusions,
-        componentIds: ctx.swing.componentIds,
+        exclusions: sw.thresholdReadable === false ? [] : sw.exclusions,
+        componentIds: sw.componentIds,
       });
-      if (!person?.flagged || person.swingBp === null || person.unexplainedBp === null) return [];
-      const sign = person.direction === 'down' ? -1 : 1;
-      return [
-        {
-          detectorId: 'net-swing',
-          severity: 'review',
-          facts: {
-            netPay: person.netPay,
-            priorNetPay: person.previousNetPay,
-            movementPct: Math.round((sign * person.swingBp) / 10) / 10,
-            thresholdPct: thresholdBp / 100,
-            // "Check the payroll first": what the payroll records explained, and how much of the change they did not,
-            // as a ratio of the whole change (1 = none of it). Names and a ratio only; no new amounts.
-            explainedCauses: person.explainedBy.join(','),
-            unexplainedShare: person.swingBp === 0 ? 1 : Math.min(1, Math.round((person.unexplainedBp / person.swingBp) * 1000) / 1000),
+      if (person && person.swingBp !== null && person.unexplainedBp !== null) {
+        if (!person.flagged) return [];
+        const sign = person.direction === 'down' ? -1 : 1;
+        return [
+          {
+            detectorId: 'net-swing',
+            severity: 'review',
+            facts: {
+              netPay: person.netPay,
+              priorNetPay: person.previousNetPay,
+              movementPct: Math.round((sign * person.swingBp) / 10) / 10,
+              thresholdPct: thresholdBp / 100,
+              thresholdSource,
+              comparedWith: 'previous_paid_month',
+              // "Check the payroll first": the records that accounted for part of the change, and how much of it they did
+              // not, as a ratio of the whole change (1 = none of it; above 1 when explained and unexplained moves offset).
+              explainedCauses: person.explainedBy.join(','),
+              unexplainedShare: person.swingBp === 0 ? 1 : Math.round((person.unexplainedBp / person.swingBp) * 1000) / 1000,
+            },
+            sourceEventIds: ctx.eventIds,
+            suggestedAction: 'anomaly.action.netSwing',
           },
-          sourceEventIds: ctx.eventIds,
-          suggestedAction: 'anomaly.action.netSwing',
-        },
-      ];
+        ];
+      }
+      // Nothing comparable in the months read (the previous paid month is older than the window, or was not positive):
+      // never a vacuous pass. Fall through to the like-for-like comparison with the prior cycle the gate found.
     }
-    // No payroll months to check against: the plain swing, against the one default threshold.
-    const pct = DEFAULT_SWING_THRESHOLD_BP / 100;
     const before = ctx.prior.netPay;
     if (before === 0) return []; // a swing from zero is infinite; component-appeared covers that case.
     const movement = ((ctx.current.netPay - before) / Math.abs(before)) * 100;
-    return Math.abs(movement) > pct
+    return Math.abs(movement) * 100 > thresholdBp
       ? [
           {
             detectorId: 'net-swing',
@@ -425,7 +446,9 @@ const netSwing: Detector = {
               netPay: ctx.current.netPay,
               priorNetPay: before,
               movementPct: Math.round(movement * 10) / 10,
-              thresholdPct: pct,
+              thresholdPct: thresholdBp / 100,
+              thresholdSource,
+              comparedWith: 'previous_run_of_same_type',
               explainedCauses: '',
               unexplainedShare: 1,
             },

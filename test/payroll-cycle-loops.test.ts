@@ -380,7 +380,8 @@ describe('the Salary payroll loop',()=>{
   await setup(['payroll','multi_cycle_payroll','typed_pay_components']);
   const fx=await payrollFixture();
   const [raises,steady,bonusPerson]=[fx.people.slice(0,5),fx.people[5],fx.people[6]];
-  const over=(id:string,thresholdBp:number)=>fx.swing[id]>thresholdBp&&fx.unexplained[id]>thresholdBp;
+  // The flag is the UNEXPLAINED change alone (owner, 11 November 2026).
+  const over=(id:string,thresholdBp:number)=>fx.unexplained[id]>thresholdBp;
   const flagged=fx.people.filter(e=>over(e.employmentId,1500)).map(e=>e.employmentId).sort();
   // Every new housing allowance (1,000–1,400 on 3,000) moves net pay by more than 15%, and so does the bonus person's new
   // 1,000 allowance once the bonus run (explained) is taken out; the steady pay does not.

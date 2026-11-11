@@ -44,7 +44,7 @@ export type SwingPerson=Readonly<{employmentId:string;
  excluded:boolean;
  /** "Check the payroll first" (owner, 11 November 2026): the change no payroll record explains, as a share of the previous
   * net pay in basis points (core/pay-difference.ts explainNetChange); null when there is no ratio. A person is flagged
-  * only when this, as well as the whole swing, is over the threshold. */
+  * when this is over the threshold, whatever the whole swing is. */
  unexplainedBp:number|null;
  /** The recorded causes that accounted for part of the change. */
  explainedBy:readonly ExplainingPayCause[];
@@ -73,30 +73,37 @@ function itemPattern(rows:readonly StoredPayslipRow[],name:string,componentIds:C
 
 /** THE ONE OWNER of the net-swing flag. The Salary payroll loop (netSwings) and the payroll anomaly layer's `net-swing`
  * detector (core/payroll-anomaly-detectors.ts) both call this, with the company's one threshold, so they cannot disagree.
- * Flagged = the whole swing is over the threshold AND the part no payroll record explains is over it too, unless an
- * approved exclusion applies (the Phase 2 hardening rules below are unchanged). */
+ * Flagged = the part of the change no payroll record accounts for is over the threshold (whatever the whole swing is),
+ * unless an approved exclusion applies (the Phase 2 hardening rules below are unchanged, and never excuse a figure set by
+ * hand on any run of either month). */
 export function netSwingFor(employmentId:string,rows:readonly StoredPayslipRow[],input:SwingInput):SwingPerson|null{
  const result=comparePayPeriods(rows,{period:input.period,companyId:input.companyId});
  if(!result.ok||!result.comparisons.length)return null;
  const cmp=result.comparisons[0],net=cmp.totals.net,causes=cmp.causes.map(cause=>cause.kind);
  const changed=net.change!==0;
  const money={netPay:net.current,previousNetPay:net.previous};
- if(!changed)return Object.freeze({employmentId,changed,swingBp:0,direction:null,pattern:null,causes,flagged:false,excluded:false,unexplainedBp:0,explainedBy:Object.freeze([]),...money});
+ // The service computes what the records account for; this only compares. Not comparable ⇒ nothing explained.
+ const explanation=net.previous>0?explainNetChange(rows,{period:input.period,compareTo:cmp.previousPeriod,companyId:cmp.companyId}):null;
+ const unexplained=explanation?explanation.unexplained:net.change;
+ const explainedBy=Object.freeze((Object.keys(explanation?.byCause??{}) as ExplainingPayCause[]).sort());
+ // Unchanged AND nothing unexplained: no swing. (Unchanged net with an explained raise hiding an unexplained cut is NOT
+ // this case: its unexplained part is judged below.)
+ if(!changed&&unexplained===0)return Object.freeze({employmentId,changed,swingBp:0,direction:null,pattern:null,causes,flagged:false,excluded:false,unexplainedBp:0,explainedBy,...money});
  const top=cmp.payItems[0];
  const pattern=(top&&Math.abs(top.change)*2>=Math.abs(net.change)?itemPattern(rows,top.name,input.componentIds):null)
   ??(causes[0]?`cause:${causes[0]}`:'cause:other');
- const direction=net.change>0?'up' as const:'down' as const;
+ const moved=changed?net.change:unexplained;
+ const direction=moved>0?'up' as const:'down' as const;
  if(!(net.previous>0))return Object.freeze({employmentId,changed,swingBp:null,direction,pattern,causes,flagged:false,excluded:false,unexplainedBp:null,explainedBy:Object.freeze([]),...money});
  const ratio=(value:number)=>Math.round(Math.abs(value)*10_000/net.previous);
  const swingBp=ratio(net.change);
- // The service computes what the records explain; this only compares. Not comparable ⇒ nothing explained.
- const explanation=explainNetChange(rows,{period:input.period,compareTo:cmp.previousPeriod,companyId:cmp.companyId});
- const unexplainedBp=ratio(explanation?explanation.unexplained:net.change);
- const explainedBy=Object.freeze((Object.keys(explanation?.byCause??{}) as ExplainingPayCause[]).sort());
- const over=swingBp>input.thresholdBp&&unexplainedBp>input.thresholdBp;
+ const unexplainedBp=ratio(unexplained);
+ // Owner rule (11 November 2026): the flag is the UNEXPLAINED change alone. An explained raise that hides an unexplained
+ // cut of the same size is a 0% swing and still flagged.
+ const over=unexplainedBp>input.thresholdBp;
  let excluded=false;
  // A figure set by hand is never excused, by a record or by an exclusion (owner, 11 November 2026).
- if(over&&input.exclusions.includes(pattern)&&!causes.includes('set_by_hand')){
+ if(over&&input.exclusions.includes(pattern)&&!causes.includes('set_by_hand')&&explanation?.handSet!==true){
   // An excluded cause: the only cause recorded, and the swing under twice the threshold. An excluded item: the change
   // left once that item's own change is set aside must be within the threshold.
   excluded=pattern.startsWith('cause:')

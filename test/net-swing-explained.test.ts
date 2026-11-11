@@ -44,16 +44,17 @@ const input = (thresholdBp = DEFAULT_SWING_THRESHOLD_BP) => ({ period: '2026-10'
 describe('the pay-difference service explains a net change from the payroll records', () => {
   it('a bonus run explains its own net, and nothing else', () => {
     expect(explainNetChange([SEPTEMBER, OCT_SAME, OCT_BONUS], { period: '2026-10', companyId: 'co-a' })).toEqual({
-      net: { current: 5185.35, previous: 4295.35, change: 890 }, byCause: { additional_run: 890 }, explained: 890, unexplained: 0 });
+      net: { current: 5185.35, previous: 4295.35, change: 890 }, byCause: { additional_run: 890 }, explained: 890, unexplained: 0, handSet: false });
   });
   it('a recorded salary change explains the basic and the computed deductions on it', () => {
-    // Basic +1,000, EPF +110 (computed, and no larger than the change it follows).
+    // Basic +1,000 (the salary record moved by exactly 1,000), EPF +110: moving WITH the raise and within September's
+    // recorded employee rate, 550 / 5,000 = 11% × 1,000 = 110.
     expect(explainNetChange([SEPTEMBER, OCT_RAISE], { period: '2026-10', companyId: 'co-a' })).toEqual({
-      net: { current: 5185.35, previous: 4295.35, change: 890 }, byCause: { salary_change: 890 }, explained: 890, unexplained: 0 });
+      net: { current: 5185.35, previous: 4295.35, change: 890 }, byCause: { salary_change: 890 }, explained: 890, unexplained: 0, handSet: false });
   });
   it('a figure set by hand explains nothing, and makes the whole change unexplained', () => {
     expect(explainNetChange([SEPTEMBER, OCT_RAISE_BY_HAND], { period: '2026-10', companyId: 'co-a' })).toEqual({
-      net: { current: 5845.35, previous: 4295.35, change: 1550 }, byCause: {}, explained: 0, unexplained: 1550 });
+      net: { current: 5845.35, previous: 4295.35, change: 1550 }, byCause: {}, explained: 0, unexplained: 1550, handSet: true });
   });
   it('a change with no record behind it stays unexplained; a cause with no amount explains nothing', () => {
     expect(explainNetChange([SEPTEMBER, OCT_EXTRA], { period: '2026-10', companyId: 'co-a' })).toMatchObject({ explained: 0, unexplained: 1000 });
@@ -62,6 +63,70 @@ describe('the pay-difference service explains a net change from the payroll reco
     expect(explainNetChange([SEPTEMBER, fewerDays], { period: '2026-10', companyId: 'co-a' })).toMatchObject({ byCause: {}, unexplained: 445 });
     // Nothing to compare: null.
     expect(explainNetChange([OCT_SAME], { period: '2026-10', companyId: 'co-a' })).toBeNull();
+  });
+});
+
+// ── a record must ACCOUNT FOR the amount, not merely exist (review repair, 11 November 2026) ─────────────────────────
+const explain = (rows: StoredPayslipRow[]) => explainNetChange(rows, { period: '2026-10', companyId: 'co-a' })!;
+describe('a cause that is present explains no more than its record supports', () => {
+  it('salary change: at most the recorded new basic less the old one', () => {
+    // The salary record moved by 100 (5,000 → 5,100) but the basic paid moved by 1,000: 100 explained, 900 is not.
+    const keyed = row({ payPeriod: '2026-10', basic: '6000.00', gross: '6000.00', net: '5295.35',
+      statutory: statutory({ salaryBasis: { version: 2, basicSalary: 5100, effectiveFrom: '2026-10-01' } }) });
+    expect(explain([SEPTEMBER, keyed])).toMatchObject({ byCause: { salary_change: 100 }, explained: 100, unexplained: 900 });
+    expect(netSwingFor('e1', [SEPTEMBER, keyed], input())).toMatchObject({ unexplainedBp: 2095, flagged: true });
+    // The basic moved the OTHER way from the salary record: nothing explained.
+    const opposite = row({ payPeriod: '2026-10', basic: '4500.00', gross: '4500.00', net: '3795.35',
+      statutory: statutory({ salaryBasis: { version: 2, basicSalary: 5500, effectiveFrom: '2026-10-01' } }) });
+    expect(explain([SEPTEMBER, opposite])).toMatchObject({ byCause: {}, unexplained: -500 });
+  });
+  it('overtime: only when the hours changed, at most the change in hours × the stamped hourly rate', () => {
+    // 10 hours recorded at 36.045 an hour = 360.45, but 3,604.50 of overtime paid: 360.45 explained, 3,244.05 is not.
+    const ot = (amount: string, net: string) => row({ payPeriod: '2026-10', overtime: amount, gross: (5000 + Number(amount)).toFixed(2), net,
+      statutory: statutory({ otDetail: { total: 360.45, lines: [{ kind: 'workday', qty: 10, unit: 'hours', rate: 36.045, amount: 360.45 }] } }) });
+    expect(explain([SEPTEMBER, ot('360.45', '4655.80')])).toMatchObject({ byCause: { overtime_hours: 360.45 }, unexplained: 0 });
+    expect(explain([SEPTEMBER, ot('3604.50', '7899.85')])).toMatchObject({ byCause: { overtime_hours: 360.45 }, unexplained: 3244.05 });
+    expect(netSwingFor('e1', [SEPTEMBER, ot('3604.50', '7899.85')], input())).toMatchObject({ flagged: true });
+  });
+  it('days paid, unpaid leave and absence explain nothing: the payslip does not stamp the day rate they are priced at', () => {
+    // 5 unpaid days, 1,000 deducted: the cause is recorded, but nothing ties 1,000 to 5 days.
+    const unpaid = row({ payPeriod: '2026-10', totalDeductions: '1704.65', net: '3295.35', statutory: statutory({ unpaidLeave: { days: 5, amount: 1000 } }) });
+    expect(explain([SEPTEMBER, unpaid])).toMatchObject({ byCause: {}, explained: 0, unexplained: -1000 });
+    expect(netSwingFor('e1', [SEPTEMBER, unpaid], input())).toMatchObject({ causes: ['unpaid_leave'], unexplainedBp: 2328, flagged: true });
+  });
+  it('a statutory knock-on moves WITH the earnings change, and never beyond the previous recorded rate', () => {
+    // A raise of 1,000 with EPF going DOWN by 100 (computed): the wrong way, so it is not explained.
+    const wrongWay = row({ payPeriod: '2026-10', basic: '6000.00', gross: '6000.00', totalDeductions: '604.65', net: '5395.35',
+      statutory: statutory({ epfEmployee: 450, salaryBasis: { version: 2, basicSalary: 6000, effectiveFrom: '2026-10-01' } }) });
+    expect(explain([SEPTEMBER, wrongWay])).toMatchObject({ byCause: { salary_change: 1000 }, unexplained: 100 });
+    // A cut of 1,000 with EPF down 110: explained both ways (a decrease is a knock-on too).
+    const cut = row({ payPeriod: '2026-10', basic: '4000.00', gross: '4000.00', totalDeductions: '594.65', net: '3405.35',
+      statutory: statutory({ epfEmployee: 440, salaryBasis: { version: 2, basicSalary: 4000, effectiveFrom: '2026-10-01' } }) });
+    expect(explain([SEPTEMBER, cut])).toMatchObject({ byCause: { salary_change: -890 }, explained: -890, unexplained: 0 });
+    // A raise of 1,000 with EPF up by 500: September's rate (11%) supports 110; the other 390 is not explained.
+    const tooMuch = row({ payPeriod: '2026-10', basic: '6000.00', gross: '6000.00', totalDeductions: '1204.65', net: '4795.35',
+      statutory: statutory({ epfEmployee: 1050, salaryBasis: { version: 2, basicSalary: 6000, effectiveFrom: '2026-10-01' } }) });
+    expect(explain([SEPTEMBER, tooMuch])).toMatchObject({ byCause: { salary_change: 890 }, unexplained: -390 });
+  });
+  it('a figure set by hand on ANY run of either month, a bonus run included, explains nothing', () => {
+    // A PCB of 500 typed onto the October bonus run (the schedule said 0): bonus net 390.
+    const typedBonus = row({ payPeriod: '2026-10', runType: 'bonus', runSeq: 2, basic: '0.00', bonus: '1000.00', gross: '1000.00', totalDeductions: '610.00',
+      net: '390.00', statutory: statutory({ epfEmployee: 110, socsoEmployee: 0, eisEmployee: 0, pcb: 500,
+        adjustment: { reason: 'Typed by a fictional payroll officer', lines: { pcb: { system: 0, applied: 500 } } } }) });
+    expect(explain([SEPTEMBER, OCT_SAME, typedBonus])).toMatchObject({ handSet: true, explained: 0, unexplained: 390 });
+    // At 5%: the 9.08% change is flagged with the typed PCB; without it the bonus run explains everything.
+    expect(netSwingFor('e1', [SEPTEMBER, OCT_SAME, typedBonus], input(500))).toMatchObject({ unexplainedBp: 908, flagged: true });
+    expect(netSwingFor('e1', [SEPTEMBER, OCT_SAME, OCT_BONUS], input(500))).toMatchObject({ unexplainedBp: 0, flagged: false });
+    // And typed onto the PREVIOUS month's bonus run: still nothing explained.
+    const typedSeptBonus = { ...typedBonus, payPeriod: '2026-09' };
+    expect(explain([SEPTEMBER, typedSeptBonus, OCT_SAME, OCT_BONUS])).toMatchObject({ handSet: true, explained: 0 });
+  });
+  it('the flag is the unexplained change ALONE: an explained raise offsetting an unexplained cut is flagged', () => {
+    // A recorded raise of 1,000 (with its 110 EPF) and 890 of allowance gone with no record: net unchanged, 890 unexplained.
+    const offset = row({ payPeriod: '2026-10', basic: '6000.00', allowance: '-890.00', gross: '5110.00', totalDeductions: '814.65', net: '4295.35',
+      statutory: statutory({ epfEmployee: 660, salaryBasis: { version: 2, basicSalary: 6000, effectiveFrom: '2026-10-01' } }) });
+    expect(explain([SEPTEMBER, offset])).toMatchObject({ net: { change: 0 }, byCause: { salary_change: 890 }, unexplained: -890 });
+    expect(netSwingFor('e1', [SEPTEMBER, offset], input())).toMatchObject({ changed: false, swingBp: 0, unexplainedBp: 2072, direction: 'down', flagged: true });
   });
 });
 
@@ -109,16 +174,17 @@ const figures = (netPay: number): PayslipFigures => ({
   grossPay: 5000, netPay, basicSalary: 5000, allowance: 0, overtimePay: 0, bonus: 0, totalDeductions: 704.65, daysWorked: 30, statutory: {},
 });
 const detector = DETECTORS.find((d) => d.id === 'net-swing')!;
-const ctxFor = (rows: StoredPayslipRow[], thresholdBp: unknown): DetectorContext => ({
+const ctxFor = (rows: StoredPayslipRow[], thresholdBp: unknown, over: { runType?: string; readable?: boolean; current?: number; prior?: number } = {}): DetectorContext => ({
   employmentId: 'e1',
-  current: figures(4295.35),
-  prior: figures(4295.35),
+  current: figures(over.current ?? 4295.35),
+  prior: figures(over.prior ?? 4295.35),
   profile: { hasBankProfile: true, hasTaxProfile: true, paymentMethod: 'bank_transfer', hiredOn: '2020-01-01', terminatedOn: null, concurrentPaidEmploymentIds: [] },
   activity: { attendanceDays: 22, approvedLeaveDays: 0 },
   period: { start: '2026-10-01', end: '2026-10-31', calendarDays: 31 },
   caps: {},
   eventIds: [],
-  swing: { period: '2026-10', companyId: 'co-a', rows, thresholdBp: thresholdBp as number, exclusions: [] },
+  swing: { period: '2026-10', companyId: 'co-a', runType: over.runType ?? 'regular', rows, thresholdBp: thresholdBp as number,
+    thresholdReadable: over.readable ?? true, exclusions: [] },
 });
 
 describe('the anomaly detector and the Salary loop cannot disagree', () => {
@@ -129,6 +195,7 @@ describe('the anomaly detector and the Salary loop cannot disagree', () => {
     ['set by hand', [SEPTEMBER, OCT_RAISE_BY_HAND]],
     ['unexplained extra', [SEPTEMBER, OCT_EXTRA]],
     ['unchanged', [SEPTEMBER, OCT_SAME]],
+    ['unpaid leave', [SEPTEMBER, row({ payPeriod: '2026-10', totalDeductions: '1704.65', net: '3295.35', statutory: statutory({ unpaidLeave: { days: 5, amount: 1000 } }) })]],
   ];
   for (const thresholdBp of [1500, 2500, 4000]) {
     for (const [name, rows] of cases) {
@@ -159,7 +226,36 @@ describe('the anomaly detector and the Salary loop cannot disagree', () => {
   it('a flag carries the explained causes and the unexplained share as a ratio', () => {
     const [f] = detector.evaluate(ctxFor([SEPTEMBER, OCT_EXTRA, OCT_BONUS], 1500), {});
     // 2328 / 4400 of the change is unexplained.
-    expect(f.facts).toMatchObject({ movementPct: 44, thresholdPct: 15, explainedCauses: 'additional_run', unexplainedShare: 0.529 });
+    expect(f.facts).toMatchObject({ movementPct: 44, thresholdPct: 15, thresholdSource: 'company', comparedWith: 'previous_paid_month',
+      explainedCauses: 'additional_run', unexplainedShare: 0.529 });
     expect(f.severity).toBe('review');
+  });
+
+  it('says so when the company setting could not be read and the 15% default was used', () => {
+    const [f] = detector.evaluate(ctxFor([SEPTEMBER, OCT_EXTRA], 1500, { readable: false }), {});
+    expect(f.facts).toMatchObject({ thresholdPct: 15, thresholdSource: 'default_company_setting_unreadable' });
+  });
+
+  it('never a vacuous pass: with no previous paid month in the window it compares like with like against the prior cycle', () => {
+    // Only October is in the months read (the closed prior cycle is older than the window): the Salary loop has nothing to
+    // compare, so the detector compares the batch with the prior cycle the gate found: 4,000 → 6,000, +50%.
+    expect(netSwingFor('e1', [OCT_EXTRA], input())).toBeNull();
+    const [f] = detector.evaluate(ctxFor([OCT_EXTRA], 1500, { current: 6000, prior: 4000 }), {});
+    expect(f.facts).toMatchObject({ movementPct: 50, comparedWith: 'previous_run_of_same_type', unexplainedShare: 1 });
+    expect(detector.evaluate(ctxFor([OCT_EXTRA], 1500, { current: 4200, prior: 4000 }), {})).toEqual([]); // +5%
+  });
+
+  it('a bonus or off-cycle batch never explains itself: a bonus keyed 10× too large is flagged against the last bonus run', () => {
+    // The months read would call the bonus run "explained" (additional_run); the detector does not ask them for a bonus batch.
+    const tenfold = row({ payPeriod: '2026-10', runType: 'bonus', runSeq: 2, basic: '0.00', bonus: '10000.00', gross: '10000.00', totalDeductions: '1100.00',
+      net: '8900.00', statutory: statutory({ epfEmployee: 1100, socsoEmployee: 0, eisEmployee: 0, pcb: 0 }) });
+    const rows = [SEPTEMBER, OCT_SAME, tenfold];
+    expect(netSwingFor('e1', rows, input())).toMatchObject({ flagged: false });
+    for (const runType of ['bonus', 'off_cycle']) {
+      const [f] = detector.evaluate(ctxFor(rows, 1500, { runType, current: 8900, prior: 890 }), {});
+      expect(f.facts, runType).toMatchObject({ movementPct: 900, comparedWith: 'previous_run_of_same_type', explainedCauses: '' });
+    }
+    // At the company threshold, like with like: a bonus 10% over last year's is not flagged at 15%.
+    expect(detector.evaluate(ctxFor(rows, 1500, { runType: 'bonus', current: 979, prior: 890 }), {})).toEqual([]);
   });
 });

@@ -2,8 +2,8 @@ import {assertAiPrincipalTx} from './ai-principal';
 import {resolveEntitlementsTx,assertModuleEnabled,isModuleEnabled,TENANT_STATUS_GOOD_STANDING} from './entitlements';
 import type { EntitlementSnapshot } from './entitlement-types';
 import {payrollLoopSettingsTx} from './loops/payroll-loop-settings';
-import {DEFAULT_SWING_THRESHOLD_BP,swingMonths,swingThresholdOrDefault,type ComponentIds} from './loops/net-swing';
-import type {StoredPayslipRow} from './pay-difference';
+import {DEFAULT_SWING_THRESHOLD_BP,swingThresholdOrDefault,type ComponentIds} from './loops/net-swing';
+import {swingRowsTx} from './loops/swing-rows';
 /**
  * ADR-0076 — the payroll anomaly engine. The ADR-0074 control-tower keystone, Phase 1a.
  *
@@ -138,7 +138,7 @@ function thresholdResolver(cfgRows: AnomalyConfigRow[], companyId: string | null
 
 /** 'configured' only when a row actually SUPPLIES a number. A row that merely disables a detector has
  *  tuned nothing, and calling that "configured" would be the same class of untruth this change removes. */
-export type ThresholdSource = 'configured' | 'untuned_default';
+export type ThresholdSource = 'configured' | 'untuned_default' | 'unreadable_default';
 export type ThresholdInForce = { detectorId: string; params: Record<string, unknown>; source: ThresholdSource };
 export type ThresholdProvenance = {
   thresholds: ThresholdInForce[];
@@ -148,20 +148,32 @@ export type ThresholdProvenance = {
 
 /**
  * The company's ONE net-swing threshold (its Salary payroll loop setting) and its exclusions: one bounded read for the
- * batch's company. FAIL SAFE: a setting that cannot be used (absent, malformed, out of range, or a reader error that
- * leaves the transaction usable) is the 15% default, never "no check". A database error fails the caller's transaction
- * like every other read of an evaluation.
+ * batch's company, plus one statement asking whether the caller may read that setting at all.
+ *
+ * ROW SECURITY (owner-accepted interim, 11 November 2026). teras_payroll_loop_setting is readable only by an agent
+ * principal or a user who administers the company (migration 2005, policy teras_payroll_loop_setting_read). The scheduled
+ * sweep (no user) and a payroll partner see no row, which is indistinguishable from "never set". So `readable` is asked
+ * with the policy's OWN predicate, and when it is false the 15% default is used WITH NO EXCLUSIONS and that is said on the
+ * disclosure and on every finding — never presented as the company's choice or as the shipped default. The follow-on
+ * migration (a narrow reader for the evaluator) is a separate item.
+ *
+ * FAIL SAFE: a setting that cannot be used (absent, malformed, out of range) is the 15% default, never "no check". A
+ * database error fails the caller's transaction like every other read of an evaluation.
  */
-async function swingSettingTx(tx: Tx, tenantId: string, companyId: string): Promise<{ thresholdBp: number; exclusions: readonly string[]; configured: boolean }> {
+async function swingSettingTx(tx: Tx, tenantId: string, companyId: string): Promise<{ thresholdBp: number; exclusions: readonly string[]; configured: boolean; readable: boolean }> {
+  const [access] = (await tx.execute(sql`select (app.current_agent_principal() is not null
+      or (app.current_user_id() is not null and app.is_admin_for(${companyId}::uuid) is true)) as readable`)) as unknown as { readable: boolean | null }[];
+  const readable = access?.readable === true;
+  if (!readable) return { thresholdBp: DEFAULT_SWING_THRESHOLD_BP, exclusions: [], configured: false, readable };
   try {
     const setting = (await payrollLoopSettingsTx(tx, tenantId, [companyId])).get(companyId);
     const thresholdBp = swingThresholdOrDefault(setting?.thresholdBp);
     const exclusions = [...(setting?.exclusions ?? [])].filter((e): e is string => typeof e === 'string');
     // "Configured" = an administrator chose a number other than the shipped 15% (a settings version that only added an
     // exclusion, or put 15% back, has tuned nothing).
-    return { thresholdBp, exclusions, configured: thresholdBp !== DEFAULT_SWING_THRESHOLD_BP };
+    return { thresholdBp, exclusions, configured: thresholdBp !== DEFAULT_SWING_THRESHOLD_BP, readable };
   } catch {
-    return { thresholdBp: DEFAULT_SWING_THRESHOLD_BP, exclusions: [], configured: false };
+    return { thresholdBp: DEFAULT_SWING_THRESHOLD_BP, exclusions: [], configured: false, readable };
   }
 }
 
@@ -181,7 +193,9 @@ export async function thresholdsInForce(ctx: SessionContext, p: { batchId: strin
         return {
           detectorId,
           params: { netSwingPct: (swing?.thresholdBp ?? DEFAULT_SWING_THRESHOLD_BP) / 100 },
-          source: swing?.configured ? 'configured' : 'untuned_default',
+          // The company's own setting could not be read here (row security): the 15% default was used, and the disclosure
+          // says so rather than calling it a shipped default or the company's choice.
+          source: swing && !swing.readable ? 'unreadable_default' : swing?.configured ? 'configured' : 'untuned_default',
         };
       }
       const supplied = cfgFor(detectorId)?.params as Record<string, unknown> | undefined;
@@ -535,33 +549,9 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string, entitlem
   // every payslip these people had at this company in the months a comparison reads, exactly as the Salary loop reads
   // them (processed or closed runs, plus this batch): ONE set-based read each for the whole batch, never per employee.
   const swingSetting = await swingSettingTx(tx, tenantId, batch.companyId);
-  const months = swingMonths(batch.payPeriod);
-  const monthRows = await tx
-    .select({
-      employmentId: schema.payslip.employmentId, payPeriod: schema.payrollBatch.payPeriod, runType: schema.payrollBatch.runType,
-      runSeq: schema.payrollBatch.runSeq, basic: schema.payslip.basicSalary, allowance: schema.payslip.allowance,
-      overtime: schema.payslip.overtimePay, bonus: schema.payslip.bonus, gross: schema.payslip.grossPay, statutory: schema.payslip.statutory,
-      otherDeductions: schema.payslip.otherDeductions, totalDeductions: schema.payslip.totalDeductions, net: schema.payslip.netPay,
-      daysWorked: schema.payslip.daysWorked,
-    })
-    .from(schema.payslip)
-    .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payslip.batchId))
-    .where(
-      and(
-        eq(schema.payrollBatch.companyId, batch.companyId),
-        inArray(schema.payrollBatch.payPeriod, months),
-        inArray(schema.payslip.employmentId, employmentIds),
-        sql`(${inArray(schema.payrollBatch.status, ['processed', 'closed'])} or ${schema.payrollBatch.id} = ${batchId}::uuid)`,
-      ),
-    );
-  const monthsByEmployment = new Map<string, StoredPayslipRow[]>();
-  for (const row of monthRows) {
-    const list = monthsByEmployment.get(row.employmentId) ?? [];
-    list.push({ companyId: batch.companyId, company: '', payPeriod: row.payPeriod, runType: row.runType, runSeq: row.runSeq, basic: row.basic,
-      allowance: row.allowance, overtime: row.overtime, bonus: row.bonus, gross: row.gross, statutory: row.statutory,
-      otherDeductions: row.otherDeductions, totalDeductions: row.totalDeductions, net: row.net, daysWorked: row.daysWorked });
-    monthsByEmployment.set(row.employmentId, list);
-  }
+  // The SAME reader, and so the same baseline (earlier months: closed runs only, like the prior-cycle gate above), as the
+  // Salary payroll loop: core/loops/swing-rows.ts. One set-based statement for the whole batch.
+  const monthsByEmployment = await swingRowsTx(tx, { companyId: batch.companyId, period: batch.payPeriod, employmentIds, includeBatchId: batchId });
   // An approved pay-item exclusion is keyed on a pay component's id: the catalogue is read only when one is in force.
   const componentIds: ComponentIds | undefined = swingSetting.exclusions.some((e) => e.startsWith('item:'))
     ? new Map((await tx.select({ code: schema.payComponent.code, id: schema.payComponent.id }).from(schema.payComponent)
@@ -598,8 +588,10 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string, entitlem
       swing: {
         period: batch.payPeriod,
         companyId: batch.companyId,
+        runType: batch.runType,
         rows: monthsByEmployment.get(slip.employmentId) ?? [],
         thresholdBp: swingSetting.thresholdBp,
+        thresholdReadable: swingSetting.readable,
         exclusions: swingSetting.exclusions,
         ...(componentIds ? { componentIds } : {}),
       },
@@ -937,7 +929,7 @@ async function hypothesisProposalsToStamp(tx: Tx, verdictId: string): Promise<st
 export async function resolveAnomalyVerdict(
   ctx: SessionContext,
   p: { verdictId: string; resolution: 'accepted' | 'fixed_upstream' | 'false_positive'; note?: string },
-): Promise<void> {
+): Promise<{ outcome: 'resolved' | 'already_resolved' }> {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   const toStamp = await withTenant(ctx, async (tx) => {
     await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
@@ -962,7 +954,9 @@ export async function resolveAnomalyVerdict(
     if (!row) throw new Error('verdict not found');
     if (row.supersededAt) throw new Error('cannot resolve a superseded verdict');
 
-    await tx
+    // CONCURRENCY GUARD: only an UNRESOLVED, live verdict is written. A second person deciding the same verdict gets
+    // "already resolved", never an overwrite of the first decision and never a second audit event.
+    const written = await tx
       .update(schema.payrollAnomalyVerdict)
       .set({
         resolution: p.resolution,
@@ -970,7 +964,10 @@ export async function resolveAnomalyVerdict(
         resolvedAt: sql`now()`,
         resolvedByUserId: ctx.userId ?? null,
       })
-      .where(eq(schema.payrollAnomalyVerdict.id, p.verdictId));
+      .where(and(eq(schema.payrollAnomalyVerdict.id, p.verdictId), isNull(schema.payrollAnomalyVerdict.resolvedAt),
+        isNull(schema.payrollAnomalyVerdict.supersededAt)))
+      .returning({ id: schema.payrollAnomalyVerdict.id });
+    if (written.length === 0) return null;
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -986,6 +983,7 @@ export async function resolveAnomalyVerdict(
     // read of the verdict being resolved) and stamped OUTSIDE it, below.
     return hypothesisProposalsToStamp(tx, p.verdictId);
   });
+  if (toStamp === null) return { outcome: 'already_resolved' };
 
   /**
    * ⚠️ **THE ONLY REAL AGREEMENT RATE THE PAYROLL SIDE OF THIS PRODUCT HAS.** `anomaly_narration` has no
@@ -1001,6 +999,115 @@ export async function resolveAnomalyVerdict(
    */
   const decision = p.resolution === 'false_positive' ? 'declined' : 'approved';
   for (const proposalId of toStamp) await recordDecision(ctx, { proposalId, decision });
+  return { outcome: 'resolved' };
+}
+
+/** The most verdicts one batch resolve may carry (one lock, one transaction). */
+export const MAX_BATCH_RESOLVE = 25;
+export type BatchResolveOutcome = 'resolved' | 'not_found' | 'already_resolved' | 'not_allowed' | 'superseded';
+
+/**
+ * Resolve up to MAX_BATCH_RESOLVE verdicts with ONE decision, in ONE transaction that takes the access-configuration
+ * write lock ONCE (the Exceptions page's group action). Each item gets exactly what `resolveAnomalyVerdict` gives one:
+ * the same caller checks (an active, unblocked user whose principal snapshot is current), the same per-item
+ * `app.can_admin_payroll_employment`, the same `payroll.anomaly.resolved` event and the same ADR-0084 ledger stamp.
+ *
+ * PER-ID OUTCOMES, never a silent skip:
+ *  - `resolved`: written now, with its event;
+ *  - `already_resolved`: somebody decided it first (read or concurrent) — their decision stands and no event is added;
+ *  - `superseded`: a re-evaluation replaced it; the live verdict is the one to decide;
+ *  - `not_allowed`: the caller may not administer that person's payroll, or the caller's own principal check failed;
+ *  - `not_found`: no such verdict for this caller. A verdict of a company the caller cannot see is invisible under row
+ *    security and so reads as `not_found` — its existence is not disclosed.
+ * INFRASTRUCTURE FAILURES ARE ERRORS: a lock timeout (55P03), a connection error or any other database error rejects the
+ * whole call and nothing is written; it never turns into per-item skips.
+ */
+export async function resolveAnomalyVerdicts(
+  ctx: SessionContext,
+  p: { verdictIds: string[]; resolution: 'accepted' | 'fixed_upstream' | 'false_positive'; note?: string },
+): Promise<{ results: { verdictId: string; outcome: BatchResolveOutcome }[] }> {
+  p = structuredClone(p); ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map((g) => ({ ...g })) };
+  const ids = [...new Set(p.verdictIds)];
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (ids.length === 0 || ids.length > MAX_BATCH_RESOLVE || !ids.every((id) => UUID.test(id))) {
+    throw new Error(`Resolve between 1 and ${MAX_BATCH_RESOLVE} exceptions at a time.`);
+  }
+  if (!['accepted', 'fixed_upstream', 'false_positive'].includes(p.resolution)) throw new Error('Unknown resolution.');
+  const { results, toStamp } = await withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+    const [caller] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from public.app_user u
+      where u.id=${ctx.userId ?? null}::uuid and u.tenant_id=${ctx.tenantId}::uuid
+       and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
+       and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current()) as ok`);
+    const callerOk = caller?.ok === true;
+    // ONE statement for every id: what exists for this caller, and whether each may be administered.
+    const rows = Array.from(await tx.execute<{ id: string; found: boolean; employment_id: string | null; batch_id: string | null; disposition: string | null;
+      superseded: boolean; resolved: boolean; allowed: boolean | null }>(sql`select ids.id::text as id, v.id is not null as found,
+        v.employment_id::text as employment_id, v.batch_id::text as batch_id, v.disposition,
+        coalesce(v.superseded_at is not null,false) as superseded, coalesce(v.resolved_at is not null,false) as resolved,
+        (v.id is not null and app.can_admin_payroll_employment(v.employment_id)) as allowed
+      from unnest(ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`,`)}]) as ids(id)
+      left join public.payroll_anomaly_verdict v on v.id=ids.id and v.tenant_id=app.current_tenant_id()`)) as unknown as {
+        id: string; found: boolean; employment_id: string | null; batch_id: string | null; disposition: string | null; superseded: boolean; resolved: boolean; allowed: boolean | null }[];
+    const byId = new Map(rows.map((r) => [r.id.toLowerCase(), r]));
+    const outcome = new Map<string, BatchResolveOutcome>();
+    const writable: string[] = [];
+    for (const id of ids) {
+      const r = byId.get(id.toLowerCase());
+      if (!r || !r.found) outcome.set(id, 'not_found');
+      else if (!callerOk || r.allowed !== true) outcome.set(id, 'not_allowed');
+      else if (r.superseded) outcome.set(id, 'superseded');
+      else if (r.resolved) outcome.set(id, 'already_resolved');
+      else writable.push(id);
+    }
+    // CONCURRENCY GUARD: only unresolved, live verdicts are written; anything decided meanwhile stays as decided.
+    const written = writable.length
+      ? await tx
+          .update(schema.payrollAnomalyVerdict)
+          .set({ resolution: p.resolution, resolutionNote: p.note ?? null, resolvedAt: sql`now()`, resolvedByUserId: ctx.userId ?? null })
+          .where(and(inArray(schema.payrollAnomalyVerdict.id, writable), isNull(schema.payrollAnomalyVerdict.resolvedAt),
+            isNull(schema.payrollAnomalyVerdict.supersededAt)))
+          .returning({ id: schema.payrollAnomalyVerdict.id })
+      : [];
+    const done = new Set(written.map((w) => w.id.toLowerCase()));
+    for (const id of writable) outcome.set(id, done.has(id.toLowerCase()) ? 'resolved' : 'already_resolved');
+    for (const id of writable) {
+      if (!done.has(id.toLowerCase())) continue;
+      const r = byId.get(id.toLowerCase())!;
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'payslip',
+        aggregateId: id,
+        eventType: 'payroll.anomaly.resolved',
+        actor: actorOf(ctx),
+        subjectEmploymentId: r.employment_id!,
+        payload: { batchId: r.batch_id, disposition: r.disposition, resolution: p.resolution, note: p.note ?? null },
+      });
+    }
+    // ADR-0084 §2.3 ledger rows, for every resolved verdict at once (the same rule as hypothesisProposalsToStamp).
+    const resolvedIds = writable.filter((id) => done.has(id.toLowerCase()));
+    let stamp: string[] = [];
+    if (resolvedIds.length) {
+      const findings = await tx
+        .select({ verdictId: schema.payrollAnomalyFinding.verdictId, detectorId: schema.payrollAnomalyFinding.detectorId, proposalId: schema.payrollAnomalyFinding.proposalId })
+        .from(schema.payrollAnomalyFinding)
+        .where(inArray(schema.payrollAnomalyFinding.verdictId, resolvedIds));
+      const byVerdict = new Map<string, typeof findings>();
+      for (const f of findings) byVerdict.set(f.verdictId, [...(byVerdict.get(f.verdictId) ?? []), f]);
+      const candidates = [...byVerdict.values()]
+        .filter((list) => list.length > 0 && list.every((f) => f.detectorId === HYPOTHESIS_DETECTOR_ID))
+        .flatMap((list) => list.map((f) => f.proposalId).filter((x): x is string => x !== null));
+      if (candidates.length) {
+        stamp = (await tx.select({ id: schema.agentProposal.id }).from(schema.agentProposal)
+          .where(and(inArray(schema.agentProposal.id, candidates), isNull(schema.agentProposal.decision)))).map((r) => r.id);
+      }
+    }
+    return { results: ids.map((verdictId) => ({ verdictId, outcome: outcome.get(verdictId)! })), toStamp: stamp };
+  });
+  // Outside the transaction, as in resolveAnomalyVerdict: recordDecision opens its own.
+  const decision = p.resolution === 'false_positive' ? 'declined' : 'approved';
+  for (const proposalId of toStamp) await recordDecision(ctx, { proposalId, decision });
+  return { results };
 }
 
 /**

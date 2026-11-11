@@ -21,11 +21,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import * as schema from '../db/schema';
 import { terasPayrollLoopSetting } from '../db/teras-payroll-cycle-schema';
+import { netSwings } from '../core/loops/net-swing';
+import { swingRowsTx } from '../core/loops/swing-rows';
 import { withTenant, type SessionContext } from '../db/client';
 import {
   evaluateBatchAnomalies,
   openBlockingVerdicts,
   resolveAnomalyVerdict,
+  thresholdsInForce,
   UNTUNED_DEFAULT_PARAMS,
 } from '../core/payroll-anomaly';
 import {
@@ -338,6 +341,104 @@ describe('Owner rule (4 November 2026) — data-aware checks: a legitimate set-u
       expect(ids).not.toContain('pay-without-attendance');
     }
     expect(await withTenant(a, (tx) => openBlockingVerdicts(tx, batchId))).toEqual([]);
+  });
+});
+
+describe('One net-swing threshold — what the evaluator reads, and that it agrees with the Salary loop on the same rows', () => {
+  const setThreshold = (thresholdBp: number) =>
+    owner.db.insert(terasPayrollLoopSetting).values({
+      tenantId: b.tenantId, companyId: b.companyId, version: 1, checkInterval: 'daily', swingThresholdBp: thresholdBp, swingExclusions: [],
+      remindersEnabled: true, source: 'admin', changedByUserId: b.adminUserId,
+    });
+  const swingFindings = async (batchId: string) => {
+    const out = new Map<string, Record<string, string | number>>();
+    for (const v of await liveVerdicts(batchId))
+      for (const f of await findingsOf(v.id)) if (f.detectorId === 'net-swing') out.set(v.employmentId, f.facts as Record<string, string | number>);
+    return out;
+  };
+  /** One person paid 4,000 in a closed April and `current` in a processed May. */
+  async function moved(current: string) {
+    const { employmentId, personId } = await makeEmp(`Mover_${randomUUID().slice(0, 6)}`);
+    await giveProfile(personId);
+    const april = await makeBatch('2026-04');
+    await addPayslip(april, employmentId, { netPay: '4000.00' }, { noAttendance: true });
+    await closeRun(april);
+    const may = await makeBatch('2026-05');
+    await addPayslip(may, employmentId, { netPay: current });
+    return { employmentId, may };
+  }
+
+  it('the company setting is used when readable; the sweep and a payroll partner say they could not read it and use 15%', async () => {
+    await setThreshold(3000);
+    const { employmentId, may } = await moved('4800.00'); // +20%: inside the company's 30%, outside the 15% default
+
+    // A company administrator reads the 30%: no flag, and the disclosure says it is the company's own.
+    await evaluateBatchAnomalies(a, { batchId: may });
+    expect((await swingFindings(may)).has(employmentId)).toBe(false);
+    const own = (await thresholdsInForce(a, { batchId: may })).thresholds.find((t) => t.detectorId === 'net-swing')!;
+    expect(own).toMatchObject({ params: { netSwingPct: 30 }, source: 'configured' });
+
+    // The scheduled sweep's carrier (no user): the setting is invisible under row security. 15% is used, no exclusion,
+    // and the finding and the disclosure both say the company's own threshold could not be read.
+    const sweep: SessionContext = { tenantId: b.tenantId, roles: ['hr_admin'], entitlements: a.entitlements };
+    await evaluateBatchAnomalies(sweep, { batchId: may });
+    expect((await swingFindings(may)).get(employmentId)).toMatchObject({ thresholdPct: 15, thresholdSource: 'default_company_setting_unreadable' });
+    const blind = (await thresholdsInForce(sweep, { batchId: may })).thresholds.find((t) => t.detectorId === 'net-swing')!;
+    expect(blind).toMatchObject({ params: { netSwingPct: 15 }, source: 'unreadable_default' });
+
+    // A payroll partner of this company administers its payroll but not its loop settings: the same, said the same way.
+    const [u] = await owner.db.insert(schema.appUser).values({ tenantId: b.tenantId, workosUserId: `user_${randomUUID()}`, personId: null }).returning({ id: schema.appUser.id });
+    await owner.db.insert(schema.roleAssignment).values({ tenantId: b.tenantId, appUserId: u.id, companyId: b.companyId, role: 'payroll_partner' });
+    const partner: SessionContext = { ...(await entitledCtx(b, ['payroll_partner'])), userId: u.id, personId: null, roles: ['payroll_partner'],
+      grants: [{ role: 'payroll_partner', companyId: b.companyId }] };
+    await evaluateBatchAnomalies(partner, { batchId: may });
+    expect((await swingFindings(may)).get(employmentId)).toMatchObject({ thresholdPct: 15, thresholdSource: 'default_company_setting_unreadable' });
+    expect((await thresholdsInForce(partner, { batchId: may })).thresholds.find((t) => t.detectorId === 'net-swing')).toMatchObject({ source: 'unreadable_default' });
+  });
+
+  it('never a vacuous pass: a prior cycle older than the months read is compared like with like', async () => {
+    const { employmentId, personId } = await makeEmp('LongGap');
+    await giveProfile(personId);
+    const december = await makeBatch('2025-12');
+    await addPayslip(december, employmentId, { netPay: '4000.00' }, { noAttendance: true });
+    await closeRun(december);
+    const may = await makeBatch('2026-05');
+    await addPayslip(may, employmentId, { netPay: '6000.00' });
+    await evaluateBatchAnomalies(a, { batchId: may });
+    expect((await swingFindings(may)).get(employmentId)).toMatchObject({ movementPct: 50, comparedWith: 'previous_run_of_same_type' });
+  });
+
+  it('the detector and the Salary loop flag the same people from the same database rows, on the same baseline', async () => {
+    // Steady, +20% with no record, +10%, and one paid in a closed March whose April run is only PROCESSED.
+    const april = await makeBatch('2026-04');
+    const march = await makeBatch('2026-03');
+    const may = await makeBatch('2026-05');
+    const people: string[] = [];
+    for (const [priorNet, mayNet] of [['4000.00', '4000.00'], ['4000.00', '4800.00'], ['4000.00', '4400.00']] as const) {
+      const { employmentId, personId } = await makeEmp(`Agree_${randomUUID().slice(0, 6)}`);
+      await giveProfile(personId);
+      await addPayslip(april, employmentId, { netPay: priorNet }, { noAttendance: true });
+      await addPayslip(may, employmentId, { netPay: mayNet });
+      people.push(employmentId);
+    }
+    const late = await makeEmp(`AgreeLate_${randomUUID().slice(0, 6)}`);
+    await giveProfile(late.personId);
+    await addPayslip(march, late.employmentId, { netPay: '4000.00' }, { noAttendance: true });
+    await addPayslip(may, late.employmentId, { netPay: '4800.00' });
+    await closeRun(march);
+    await closeRun(april);
+    // The late person's April: an off-cycle run left PROCESSED. Were it read as "last month", May (4,800) would compare
+    // with it (4,800) and nothing would move; on the shared baseline both checks compare May with the closed March.
+    const [aprilBatch] = await owner.db.select({ payPeriodId: schema.payrollBatch.payPeriodId }).from(schema.payrollBatch).where(eq(schema.payrollBatch.id, april));
+    const [unfinished] = await owner.db.insert(schema.payrollBatch).values({ tenantId: b.tenantId, companyId: b.companyId, payPeriodId: aprilBatch.payPeriodId,
+      payPeriod: '2026-04', batchDate: '2026-04-28', status: 'processed', runType: 'off_cycle', runSeq: 2 }).returning({ id: schema.payrollBatch.id });
+    await addPayslip(unfinished.id, late.employmentId, { netPay: '4800.00' }, { noAttendance: true });
+    await evaluateBatchAnomalies(a, { batchId: may });
+    const anomaly = [...(await swingFindings(may)).keys()].sort();
+    const loop = await withTenant(a, async (tx) =>
+      netSwings(await swingRowsTx(tx, { companyId: b.companyId, period: '2026-05' }), { period: '2026-05', companyId: b.companyId, thresholdBp: 1500, exclusions: [] }));
+    expect(loop.people.filter((x) => x.flagged).map((x) => x.employmentId).sort()).toEqual(anomaly);
+    expect(anomaly).toEqual([people[1], late.employmentId].sort());
   });
 });
 
