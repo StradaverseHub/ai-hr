@@ -3617,8 +3617,13 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
  * whole queue in memory (34 s per page at 34,000 pending claims). */
 function pendingClaimQueueSql(ctx:SessionContext){
   // filterDelegationOrgScopeTx's rule: administrators keep every subject; anyone else only the subjects they
-  // can see in their own right or may decide by delegation (any module).
+  // can see in their own right or may decide by delegation (any module). As in the batched subject owner
+  // (migration 2141), membership of the native visible set answers "can see" once for the whole batch; only a
+  // subject outside it pays the scalar visibility and delegation readers. Per subject, the scalar
+  // can_see_employment walks the caller's whole downline again.
   const roles=ctx.roles??[],everySubject=roles.includes('hr_admin')||roles.includes('super_admin');
+  const trim=everySubject?sql`true`:sql`case when approval_subject.employment_id in (select visible.employment_id from queue_visible visible) then true
+     else app.can_see_employment(approval_subject.employment_id) or app.can_decide_via_delegation(approval_subject.employment_id,NULL,NULL) end`;
   return sql`with queue_request as materialized (
     select request.id,request.employment_id,request.created_at
     from public.claim_request request
@@ -3630,12 +3635,13 @@ function pendingClaimQueueSql(ctx:SessionContext){
     select employment_id,(row_number() over(order by employment_id)-1)/1000 as bucket from queue_employment
    ), queue_batch as (
     select array_agg(employment_id order by employment_id) as ids from queue_bucket group by bucket
-   ), queue_subject as materialized (
+   ),${everySubject?sql``:sql` queue_visible as materialized (
+    select unnest(app.visible_employment_ids()) as employment_id where exists(select 1 from queue_employment)
+   ),`} queue_subject as materialized (
     select approval_subject.employment_id,approval_subject.person_id,approval_subject.employee,approval_subject.employee_code
     from queue_batch batch
     cross join lateral app.delegated_approval_subjects(batch.ids,'claims','claims.claim') approval_subject
-    where ${everySubject?sql`true`:sql`(app.can_see_employment(approval_subject.employment_id)
-     or app.can_decide_via_delegation(approval_subject.employment_id,NULL,NULL))`}
+    where ${trim}
    )`;
 }
 
