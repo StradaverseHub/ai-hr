@@ -23,6 +23,9 @@ case "${AIHR_CI_PG_PROFILE:-}" in
     memory_bytes=$((memory_gib * 1073741824)) ;;
   *) exit 2 ;;
 esac
+# Load-only control course only (release versus main): the same raised cap on both trees, sized to keep
+# about 1.5 GB of the 16 GB runner free for the OS. Every other course keeps profile 2's pinned cap.
+if [[ "$AIHR_CI_PG_PROFILE" == 2 && "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-control ]]; then memory_bytes=6442450944; fi
 jit_args=(-c "jit=$AIHR_CI_PG_JIT")
 statement_args=()
 [[ "${AIHR_CI_PG_STATEMENTS:-0}" == 0 || "${AIHR_CI_PG_STATEMENTS:-0}" == 1 ]] || exit 2

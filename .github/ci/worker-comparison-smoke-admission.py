@@ -27,11 +27,11 @@ def unique(pairs):
     return value
 
 
-def expected_inputs(branch, sha):
+def expected_inputs(branch, sha, course='parallel-smoke'):
     return {
         'candidate_ref': branch, 'expected_sha': sha, 'selected_tests': '[]',
         'architecture_browser_development_preflight': 'false', 'employee_ascii_qualification': 'off',
-        'measured_browser_course': 'parallel-smoke', 'measured_browser_preflight_run': '',
+        'measured_browser_course': course, 'measured_browser_preflight_run': '',
         'qualify_restricted_port_prerequisites': 'false', 'profile_database': 'false', 'duration_order': 'false',
         'run_typecheck': 'false', 'run_native_typecheck': 'false', 'run_native_swift_models': 'false',
         'run_native_bundle': 'false', 'run_build': 'false', 'model_eval': '', 'eval_budget_usd': '20',
@@ -66,7 +66,9 @@ def admit(env, event):
     # GitHub can omit explicitly supplied empty optional strings from the event.
     for key in ('model_eval', 'eval_allowed_providers', 'measured_browser_preflight_run'):
         inputs.setdefault(key, '')
-    if inputs != expected_inputs(branch, sha):
+    # The load-only control course has the same closed shape as the smoke: no secret, no preflight, no release authority.
+    course = inputs.get('measured_browser_course') if inputs.get('measured_browser_course') in ('parallel-smoke', 'parallel-control') else 'parallel-smoke'
+    if inputs != expected_inputs(branch, sha, course):
         refuse('dispatch inputs; the smoke runs only its own branch head with every other course off')
     return {'kind': 'PARALLEL_WORKER_HARNESS_SMOKE_ADMISSION_ONLY', 'releaseEligible': False, 'source': sha, 'branch': branch}
 

@@ -36,6 +36,7 @@ MODES = {
                        'outer': 3500_000, 'exited_outside_session': True},
 }
 MODES['parallel-smoke'] = MODES['parallel-2-4-8']
+MODES['parallel-control'] = MODES['parallel-2-4-8']
 # Exiting descendants may still be tearing down when cleanup returns. Wait, bounded,
 # for the whole owned family to finish exiting before any census is taken.
 FAMILY_EXIT_WAIT_MS = 20_000

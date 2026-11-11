@@ -126,7 +126,7 @@ function signalChild(child,signal){
 }
 async function run(label,command,args,childEnv=env,timeout=900000){
  timeout=timeBudget(timeout,10000,label==='http-and-browser');
- console.log('[system-perf] '+label+' started');const start=Date.now();
+ console.log('[system-perf] '+label+' started');const start=Date.now();hostMemory.phase=label;
  const fd=openSync(join(privateDir,label+'.log'),'w',0o600);
  const phaseDeadline=comparison?comparisonClock()+timeout:null;
  const measuring=measurement!==null&&label==='http-and-browser';
@@ -202,6 +202,16 @@ async function run(label,command,args,childEnv=env,timeout=900000){
    .slice(-80).map(line=>line.slice(0,300));
   console.log('[system-perf] '+JSON.stringify({kind:'SETUP_PHASE_FAILURE_EXCERPT_V1',label,file,lines}));
  }catch{}
+ // Load-only control course: its driver writes only route labels, counts and timings. Host memory headroom is
+ // sampled every 2 s for the whole cell (lowest MemAvailable and the phase it occurred in).
+ if(label==='http-and-browser'){
+  try{
+   const control=readFileSync(join(out,'control-load.json'),'utf8');
+   if(control.length<=900000)console.log('[system-perf] '+redactDiagnostic(control).replace(/[\u0000-\u001f]/g,' '));
+   else console.log('[system-perf] '+JSON.stringify({kind:'CONTROL_LOAD_RESULT_V1',unavailable:'oversize',bytes:control.length}));
+  }catch{}
+  console.log('[system-perf] '+JSON.stringify({kind:'HOST_MEMORY_LOG_V1',...hostMemory}));
+ }
  // After the browser phase, whatever its outcome: the slowest normalized statements of the run (placeholders only,
  // no parameters) and any statement still running, so a slow or timed-out route can be tied to its SQL.
  if(label==='http-and-browser'&&env.AIHR_CI_PG_STATEMENTS==='1')try{
@@ -293,6 +303,18 @@ function summarizeNativeFailures(){
 }
 const apps=[],appFds=[],workerProcessErrors=new Set(),appBirths=new Map();let proxy,upstream,dbStarted=false,postgresRuntimeFailures;
 let jobWorker=null,jobWorkerClosed=null;
+// Host memory headroom for the whole cell: lowest MemAvailable, when, and in which phase.
+const hostMemory={kind:'host-memory',samples:0,totalBytes:null,minAvailableBytes:null,minAt:null,minPhase:null,phase:null};
+const hostMemoryTimer=setInterval(()=>{
+ try{
+  const text=readFileSync('/proc/meminfo','utf8'),kb=key=>Number((text.match(new RegExp('^'+key+':\\s+(\\d+) kB','m'))??[])[1])*1024;
+  const available=kb('MemAvailable');hostMemory.totalBytes=kb('MemTotal');hostMemory.samples++;
+  if(Number.isFinite(available)&&(hostMemory.minAvailableBytes===null||available<hostMemory.minAvailableBytes)){
+   hostMemory.minAvailableBytes=available;hostMemory.minAt=new Date().toISOString();hostMemory.minPhase=hostMemory.phase;
+  }
+ }catch{}
+},2000);
+hostMemoryTimer.unref();
 let developmentPostgresBirth;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
 // Keep the canonical reset recipe. Its Docker commands cannot remove anything
@@ -442,7 +464,7 @@ try{
  if(comparison){
   comparison.recordDatabase(developmentPostgresBirth);
   postgresProfile=observeComparisonPostgres(developmentPostgresBirth);
-  assert.equal(postgresProfile.capBytes,2113929216,'Worker comparison native PostgreSQL memory cap refused');
+  assert.equal(postgresProfile.capBytes,env.AIHR_MEASURED_BROWSER_COURSE==='parallel-control'?6442450944:2113929216,'Worker comparison native PostgreSQL memory cap refused');
   assert.equal(postgresProfile.swapMaxBytes,0,'Worker comparison PostgreSQL swap refused');
  }
  await run('migrate','pnpm',['db:migrate']);
@@ -566,7 +588,8 @@ try{
  const driverTimeoutMs=600000+Math.max(0,Number(env.PERF_HTTP_HOLD_MS??30000)-30000);
  if(comparison)assert.equal(driverTimeoutMs,comparison.cell.driverMs,'Worker comparison driver budget differs');
  const clockTicks=execFileSync('getconf',['CLK_TCK'],{encoding:'utf8',...(comparison?{env,timeout:timeBudget(5000),killSignal:'SIGKILL'}:{})}).trim();
- await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_PROXY_PID:String(process.pid),PERF_POSTGRES_CONTAINER:container,...(measureDevelopment?{PERF_POSTGRES_CONTAINER_ID:developmentPostgresBirth.id}:{}),PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:clockTicks,NODE_OPTIONS:'--max-old-space-size=2048'},driverTimeoutMs);
+ // The load-only control course (release versus main) has its own driver; every other course keeps system-load.
+ await run('http-and-browser',process.execPath,['--import','tsx',env.AIHR_MEASURED_BROWSER_COURSE==='parallel-control'?'scripts/performance/control-load.mjs':'scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_PROXY_PID:String(process.pid),PERF_POSTGRES_CONTAINER:container,...(measureDevelopment?{PERF_POSTGRES_CONTAINER_ID:developmentPostgresBirth.id}:{}),PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:clockTicks,NODE_OPTIONS:'--max-old-space-size=2048'},driverTimeoutMs);
  if(comparison)report.comparisonWorkerMemory.terminal=comparisonWorkerMemory(apps,appBirths);
  summarizeNativeFailures();
  assert(report.workerFatalDiagnostics.every(worker=>worker.logMarkers.passiveReadUnavailable===0),'passive shell approval read failures must be fixed before acceptance');
@@ -648,7 +671,7 @@ finally{
    writeFileSync(join(out,'postgres-resources.txt'),stats+'\n');
    if(comparison){
     postgresProfile=observeComparisonPostgres(developmentPostgresBirth);
-    assert(postgresProfile.capBytes===2113929216&&postgresProfile.swapMaxBytes===0
+    assert(postgresProfile.capBytes===(env.AIHR_MEASURED_BROWSER_COURSE==='parallel-control'?6442450944:2113929216)&&postgresProfile.swapMaxBytes===0
      &&postgresProfile.oom===0&&postgresProfile.oomKill===0,'Worker comparison PostgreSQL resource evidence refused');
    }
   }catch{report.postgresResourceSummaryUnavailable=true;report.exitCode=1;}
@@ -1127,7 +1150,7 @@ async function runParallelWorkerCell(){
  const anchorMs=Number(env.AIHR_WORKER_COMPARISON_T0_MS),now=comparisonClock;
  assert(now()>=anchorMs&&now()<anchorMs+PARALLEL_WORKER_CELL_FRONTIERS_MS.active,'Worker comparison admission deadline elapsed');
  let prerequisite=null;
- if(course==='parallel-smoke')assert(!env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256,'The harness smoke takes no preflight authority');
+ if(course==='parallel-smoke'||course==='parallel-control')assert(!env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256,'The harness smoke takes no preflight authority');
  else{
   assert(hex64(env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256),'Worker comparison sealed admission missing');
   prerequisite=readComparisonJson(join(env.RUNNER_TEMP,'aihr-worker-comparison-admission.json'),4096,env.AIHR_WORKER_COMPARISON_ADMISSION_SHA256);

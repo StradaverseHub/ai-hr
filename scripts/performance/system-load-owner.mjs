@@ -705,7 +705,7 @@ async function main(){
      coalesce(max(extract(epoch from clock_timestamp()-query_start)),0)::float8 as max_age_s from pg_stat_activity
      where datname=current_database() and pid<>pg_backend_pid() group by 1,2,3 order by 4 desc limit 12`;
     const [oldest]=await db`select round(extract(epoch from clock_timestamp()-query_start)*1000)::int as age_ms,coalesce(wait_event_type,'') as wait_type,
-     coalesce(wait_event,'') as wait_event,left(regexp_replace(query,'\s+',' ','g'),300) as query from pg_stat_activity
+     coalesce(wait_event,'') as wait_event,left(regexp_replace(query,'\\s+',' ','g'),300) as query from pg_stat_activity
      where datname=current_database() and pid<>pg_backend_pid() and state='active' order by query_start limit 1`;
     const [ungranted]=await db`select count(*)::int as n from pg_locks where not granted`;
     (report.longPendingDiagnostics??=[]).push({at:new Date().toISOString(),longestPendingMs,ungrantedLocks:ungranted?.n??null,

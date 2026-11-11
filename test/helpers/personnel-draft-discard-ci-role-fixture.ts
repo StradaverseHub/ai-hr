@@ -38,7 +38,7 @@ export function assertDisposableDraftDiscardFixture(adminUrl:string,full?:FullCi
  const env=process.env;
  if(env.GITHUB_ACTIONS!=='true'||env.CI!=='true'||env.RUNNER_ENVIRONMENT!=='github-hosted'||env.RUNNER_OS!=='Linux'||platform()!=='linux'
   ||env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||env.GITHUB_EVENT_NAME!=='workflow_dispatch'||env.GITHUB_WORKFLOW!=='alpha-focused-checks'
-  ||!(env.GITHUB_JOB==='selected-tests'||env.GITHUB_JOB==='worker-cell'&&['parallel-2-4-8','parallel-smoke'].includes(env.AIHR_MEASURED_BROWSER_COURSE??''))
+  ||!(env.GITHUB_JOB==='selected-tests'||env.GITHUB_JOB==='worker-cell'&&['parallel-2-4-8','parallel-smoke','parallel-control'].includes(env.AIHR_MEASURED_BROWSER_COURSE??''))
   ||!numeric(env.GITHUB_RUN_ID)||!numeric(env.GITHUB_RUN_ATTEMPT)
   ||env.TEST_DB_NAMESPACE!=='aifocus'||env.AIHR_FOCUSED_SUITE_CAPACITY!=='true'||!sha(env.AIHR_CI_HEAD)||!sha(env.AIHR_CI_CONTROL_HEAD)
   ||!env.GITHUB_WORKFLOW_REF?.startsWith('StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/heads/'))refuse();
