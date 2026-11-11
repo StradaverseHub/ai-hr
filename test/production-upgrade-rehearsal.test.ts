@@ -123,7 +123,7 @@ it('upgrades a populated production-baseline database to the candidate as the re
  const {releaseTarget}=JSON.parse(readFileSync('test/fixtures/production-upgrade/target.json','utf8')) as {releaseTarget:string};
  expect(releaseTarget).toMatch(/^[0-9a-f]{40}$/);
  const overlay=git('diff','--name-only',releaseTarget,'HEAD').toString().split('\n').filter(Boolean);
- const REHEARSAL_FILES=['scripts/production-upgrade-rehearsal.sh','test/production-upgrade-rehearsal.test.ts','test/helpers/installed-role-topology.ts',
+ const REHEARSAL_FILES=['scripts/production-upgrade-rehearsal.sh','deploy/runner-control/release-rewards-roles-prerequisite.sql','deploy/runner-control/release-rewards-roles-cleanup.sql','test/production-upgrade-rehearsal.test.ts','test/helpers/installed-role-topology.ts',
   'test/fixtures/production-upgrade/populate-baseline.mts','test/fixtures/production-upgrade/rehearsal.json','test/fixtures/production-upgrade/target.json'];
  expect(overlay.filter(file=>!REHEARSAL_FILES.includes(file)),'the candidate is the release target plus the rehearsal files only').toEqual([]);
  evidence.releaseTarget=releaseTarget;evidence.overlayFiles=overlay;
@@ -292,6 +292,20 @@ it('upgrades a populated production-baseline database to the candidate as the re
   const gateBefore=run(process.execPath,['--import','tsx','scripts/check-audit-chain-gate.ts'],{env:scriptEnv(names.upgrade),timeout:180_000});
   evidence.auditChainGateBefore={status:gateBefore.status,tail:gateBefore.out.slice(-1500)};
 
+  // 5b. The installation DBA's release prerequisite (deploy/runner-control/release-rewards-roles-prerequisite.sql),
+  // applied verbatim by the superuser immediately before the migration, as the runbook orders it.
+  const PURPOSE=['ai_hr_reward_preparation_reader','ai_hr_reward_preparation_invalidator','ai_hr_company_org_source_reader','ai_hr_reward_setup_reader','ai_hr_reward_view_reader'];
+  const roleState=async(database:string)=>{const sql=connect(at(database));try{return [...await sql.unsafe<Record<string,unknown>[]>(`SELECT r.rolname::text AS role,
+   has_schema_privilege(r.rolname,'app','CREATE') AS app_create,pg_has_role('${OWNER}',r.rolname,'SET') AS owner_set,pg_has_role('${OWNER}',r.rolname,'USAGE') AS owner_inherit
+   FROM pg_catalog.pg_roles r WHERE r.rolname=ANY($1::text[]) ORDER BY 1`,[PURPOSE])];}finally{await close(sql);}};
+  const dba:Record<string,unknown>={before:await roleState(names.upgrade)};
+  {const sql=connect(at(names.upgrade));
+   try{await sql.unsafe(readFileSync('deploy/runner-control/release-rewards-roles-prerequisite.sql','utf8'));dba.prerequisite='applied';}
+   catch(error){dba.prerequisite='refused: '+String((error as Error).message);}
+   finally{await close(sql);}}
+  dba.during=await roleState(names.upgrade);
+  evidence.dbaPrerequisite=dba;write();
+
   // 6. Every release migration through the stock engine, one transaction, the literal restricted login.
   const ownerNotices:Notice[]=[];
   let upgraded=names.upgrade;
@@ -320,6 +334,12 @@ it('upgrades a populated production-baseline database to the candidate as the re
    upgraded=names.diagnosis;
    return {restrictedOwner:'refused',firstRefusal:describe(refused),refusals};
   });
+  // 6b. The DBA's cleanup, immediately after the migration (deploy/runner-control/release-rewards-roles-cleanup.sql).
+  {const sql=connect(at(upgraded));
+   try{await sql.unsafe(readFileSync('deploy/runner-control/release-rewards-roles-cleanup.sql','utf8'));dba.cleanup='applied and verified';}
+   catch(error){dba.cleanup='refused: '+String((error as Error).message);}
+   finally{await close(sql);}}
+  dba.after=await roleState(upgraded);
   evidence.migration={...migration,privilegeWarnings:ownerNotices.filter(notice=>PRIVILEGE_WARNINGS.has(notice.code)),
    warnings:ownerNotices.filter(notice=>notice.severity==='WARNING').map(notice=>`${notice.code} ${notice.message}`)};
   write();
@@ -382,6 +402,7 @@ it('upgrades a populated production-baseline database to the candidate as the re
   const changedTenantTables=Object.entries(preservation).filter(([name,diff])=>diff.removed>0||(diff.changed>0&&!['drizzle.__drizzle_migrations'].includes(name)));
   evidence.verdict={
    restrictedOwnerMigration:migration.restrictedOwner==='applied'?'PASS':'FAIL',
+   dbaPrerequisiteAndCleanup:dba.prerequisite==='applied'&&dba.cleanup==='applied and verified'?'PASS':'FAIL',
    postMigrateSteps:Object.values(steps).every(step=>step.status===0)?'PASS':'FAIL',
    noRowsLostNoTablesOrColumnsDropped:after.missing.length===0&&Object.keys(after.missingColumns).length===0&&Object.values(preservation).every(diff=>diff.removed===0)?'PASS':'FAIL',
    changedExistingRowsOutsideLedger:changedTenantTables.map(([name,diff])=>`${name} changed=${diff.changed} removed=${diff.removed}`),
@@ -390,7 +411,7 @@ it('upgrades a populated production-baseline database to the candidate as the re
   };
   evidence.elapsedMs=Date.now()-started;write();
 
-  expect(evidence.verdict).toMatchObject({restrictedOwnerMigration:'PASS',postMigrateSteps:'PASS',noRowsLostNoTablesOrColumnsDropped:'PASS',backupRestore:'PASS',restoredBusinessProof:'PASS'});
+  expect(evidence.verdict).toMatchObject({restrictedOwnerMigration:'PASS',dbaPrerequisiteAndCleanup:'PASS',postMigrateSteps:'PASS',noRowsLostNoTablesOrColumnsDropped:'PASS',backupRestore:'PASS',restoredBusinessProof:'PASS'});
   expect(evidence.migration).toMatchObject({privilegeWarnings:[]});
  }finally{
   write();

@@ -40,6 +40,10 @@ fi
 if [ "$TARGET_IN_FILE" != "$TARGET" ]; then
   git fetch --quiet origin "${SOURCE#origin/}" || true
   git checkout --quiet "$SOURCE" -- "${FILES[@]}"
+  # The DBA prerequisite and cleanup are release files: rehearse the release's own copy when it has one.
+  for SQL in deploy/runner-control/release-rewards-roles-prerequisite.sql deploy/runner-control/release-rewards-roles-cleanup.sql; do
+    if ! git cat-file -e "$TARGET:$SQL" 2>/dev/null; then git checkout --quiet "$SOURCE" -- "$SQL"; git add -- "$SQL"; fi
+  done
   mkdir -p test/fixtures/production-upgrade
   printf '{"releaseTarget":"%s","note":"Overlay written by scripts/production-upgrade-rehearsal.sh; the candidate may differ from this SHA only by the rehearsal files."}\n' "$TARGET" > test/fixtures/production-upgrade/target.json
   git add -- "${FILES[@]}" test/fixtures/production-upgrade/target.json
