@@ -71,7 +71,7 @@ async function search(create:Create,c:Case,page=true){
    from personnel_private_search where token_hash=${privateSearchHash(token)}`;
   const membership={matches:byId(stored.matches),criteria:stored.criteria,scope:[...stored.scope].sort()};
   if(!page)return membership;
-  const overview=await readPersonnelOverview(ctx,{companyIds,privateSearch:token,limit:25,offset:0},{companyIds,privateSearch:token});
+  const overview=await readPersonnelOverview(ctx,{companyIds,privateSearch:token,limit:25,offset:0},{privateSearch:token});
   return {...membership,employees:overview.employees,headcount:overview.headcount};
  });
 }

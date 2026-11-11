@@ -62,7 +62,7 @@ it('searches thousands to tens of thousands of employments over 76 companies, al
    const alone:number[]=[],page:number[]=[];let matched=0;
    for(let round=0;round<(kind==='selective'?3:2);round++)for(const c of criteria){
     const {value:token,ms}=await timed(()=>search(c));alone.push(ms);
-    const {value:overview,ms:pageMs}=await timed(()=>readPersonnelOverview(f.admin,{companyIds,privateSearch:token,limit:25,offset:0},{companyIds,privateSearch:token}));
+    const {value:overview,ms:pageMs}=await timed(()=>readPersonnelOverview(f.admin,{companyIds,privateSearch:token,limit:25,offset:0},{privateSearch:token}));
     page.push(pageMs);if(overview.headcount.total>0)matched++;
    }
    const together:number[]=[];
