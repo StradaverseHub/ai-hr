@@ -179,11 +179,12 @@ async function run(label,command,args,childEnv=env,timeout=900000){
   console.log('[system-perf] '+JSON.stringify(workerSetupFailureFact({label,code,timedOut,exitSignal,log})));
  }
  if(code!==0&&!comparison){const text=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>');writeFileSync(join(out,label+'-failure.txt'),text);}
- // Diagnostic only, for a failed setup phase of the fictional fixture: error and stack-frame lines of the
- // private log, with URLs and long tokens redacted, so a setup failure names its cause in the job log.
- if(label!=='http-and-browser'&&(code!==0||timedOut))try{
+ // Diagnostic only, for a failed phase on the fictional fixture: error, timeout and stack-frame lines of the
+ // private log, with origins (scheme, credentials, host, port), addresses and long tokens redacted, so a
+ // failed phase names its cause and route path in the job log.
+ if(code!==0||timedOut)try{
   const lines=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-16000)
-   .replace(/\b(?!file:\/\/)[a-z][a-z0-9+.-]*:\/\/\S+/gi,'<URL>')
+   .replace(/\b(?!file:\/\/)[a-z][a-z0-9+.-]*:\/\/[^/\s"'`]*/gi,'<ORIGIN>')
    .replace(/\b(?:password|passwd|pwd|secret|token|key|authorization|cookie|session|user|username|host|hostname|hostaddr|dbname|port)\b\s*[=:]\s*\S+/gi,'<REDACTED>')
    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b/g,'<IP>').replace(/\[[0-9a-f:]{2,39}\](?::\d{1,5})?/gi,'<IP>')
    .replace(/\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:internal|local|net|com|io|cloud|azure))(?::\d{1,5})?\b/gi,'<HOST>')
@@ -191,7 +192,7 @@ async function run(label,command,args,childEnv=env,timeout=900000){
    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,'<UUID>')
    // Keep lowercase words and source paths; redact every other long run (hex, base32, base64 or mixed tokens).
    .replace(/[A-Za-z0-9_+/=.-]{20,}/g,run=>/^[a-z/_.-]+$/.test(run)?run:'<REDACTED>').split('\n')
-   .filter(line=>/error|code|constraint|column|relation|violat|denied|permission|must|refus|assert|expected|actual|detail|hint|where|routine|severity|\bat .*\.(?:ts|mts|mjs|js):\d+/i.test(line))
+   .filter(line=>/error|code|constraint|column|relation|violat|denied|permission|must|refus|assert|expected|actual|detail|hint|where|routine|severity|timeout|exceeded|waiting|navigat|locator|selector|stage|route|\bat .*\.(?:ts|mts|mjs|js):\d+/i.test(line))
    .slice(-80).map(line=>line.slice(0,300));
   console.log('[system-perf] '+JSON.stringify({kind:'SETUP_PHASE_FAILURE_EXCERPT_V1',label,lines}));
  }catch{}
