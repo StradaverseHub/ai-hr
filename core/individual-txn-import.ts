@@ -12,6 +12,7 @@ import {createIndividualTxnsBulkTx,deleteIndividualTxnTx,loadWritableBatch,lockN
 import {parseIndividualImport} from '../lib/individual-txn-import-contract';
 import type {IndividualImportMethod,TxnImportPreview} from '../lib/payroll-txn-import-schema';
 import type {IndividualImportAttempt,IndividualImportOutcome} from '../lib/individual-txn-import-model';
+import {actorOn,creatorOf,resolveImportActors} from './import-actor-label';
 
 const uuid=z.uuid();
 export class IndividualImportError extends Error {}
@@ -132,12 +133,15 @@ export async function listIndividualImports(ctx:SessionContext,scopeIds:string[]
  await scope(ctx,scopeIds);if(before){z.iso.datetime().parse(before.at);uuid.parse(before.id);}
  return withTenant(ctx,async tx=>{
   const rows=await tx.select().from(attempt).where(and(eq(attempt.tenantId,ctx.tenantId),sql`${attempt.companyIds} <@ ${JSON.stringify(scopeIds)}::jsonb`,legacyOnly ? sql`not exists (select 1 from payroll_individual_import_job job where job.attempt_id = ${attempt.id})` : undefined,before?or(lt(attempt.createdAt,new Date(before.at)),and(eq(attempt.createdAt,new Date(before.at)),lt(attempt.id,before.id))):undefined)).orderBy(desc(attempt.createdAt),desc(attempt.id)).limit(101);
-  return rows.filter(r=>r.companyIds.every(c=>scopeIds.includes(c))).map(project);
+  const visible=rows.filter(r=>r.companyIds.every(c=>scopeIds.includes(c)));
+  const actors=await resolveImportActors(tx,'payroll_individual_attempt',visible.map(r=>r.id));
+  return visible.map(r=>({...project(r),createdByActor:creatorOf(actors,r.id)}));
  });
 }
 export async function readIndividualImport(ctx:SessionContext,id:string,scopeIds:string[]):Promise<IndividualImportAttempt>{return withTenant(ctx,async tx=>{
  const item=project(await owned(tx,ctx,id,scopeIds));const events=await tx.select({type:domainEvent.eventType,at:domainEvent.occurredAt,actorId:domainEvent.actorId,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.aggregateId,id),eq(domainEvent.aggregateType,'payroll-txn-import'))).orderBy(asc(domainEvent.occurredAt),asc(domainEvent.id));
- return {...item,events:events.map(event=>({type:event.type.slice('payroll.txn-import.'.length),at:event.at.toISOString(),actorId:event.actorId,...(typeof (event.payload as {reason?:unknown})?.reason==='string'?{reason:(event.payload as {reason:string}).reason}:{})}))};
+ const actors=await resolveImportActors(tx,'payroll_individual_attempt',[id]),jobs=await tx.execute<{id:string}>(sql`select id from payroll_individual_import_job where attempt_id=${id}::uuid limit 1`);
+ return {...item,createdByActor:creatorOf(actors,id),revertedByActor:item.revertedBy?actorOn(actors,id,item.revertedBy):null,jobId:[...jobs][0]?.id??null,events:events.map(event=>({type:event.type.slice('payroll.txn-import.'.length),at:event.at.toISOString(),actorId:event.actorId,actor:actorOn(actors,id,event.actorId),...(typeof (event.payload as {reason?:unknown})?.reason==='string'?{reason:(event.payload as {reason:string}).reason}:{})}))};
  });}
 /** Whole-batch reversal refuses any changed row; original outcomes remain immutable. */
 export async function revertIndividualImport(ctx:SessionContext,p:{id:string;scopeIds:string[];confirmProcessed:boolean}):Promise<IndividualImportAttempt>{

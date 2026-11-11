@@ -3,6 +3,7 @@ import {getFormatter, getTranslations} from 'next-intl/server';
 import {scopedAdmin} from '@/lib/scope';
 import {listIndividualImportJobs, listIndividualImports} from '@/packs/payroll/service';
 import {PageHeader, pageWideCls} from '@/components/ui';
+import {formatImportActor, formatImportBatch} from '@/lib/import-reference';
 
 const log = '/payroll/transactions/individual/imports';
 
@@ -11,6 +12,7 @@ export default async function IndividualImportLogPage({searchParams}: {
 }) {
   const {s, scopeIds} = await scopedAdmin();
   const t = await getTranslations('payroll.individualImport');
+  const labels = await getTranslations('importLog');
   const f = await getFormatter();
   const params = await searchParams;
   const before = params.before && params.beforeId ? {at: params.before, id: params.beforeId} : undefined;
@@ -21,13 +23,13 @@ export default async function IndividualImportLogPage({searchParams}: {
   const rows = [
     ...jobs.map(job => ({
       id: job.id, source: job.source_name, method: job.method, at: new Date(job.created_at).toISOString(),
-      by: job.created_by, written: job.written, failed: job.failed_rows, total: job.total,
+      by: formatImportActor(labels, job.created_by_actor), written: job.written, failed: job.failed_rows, total: job.total,
       status: job.state === 'completed' && job.failed_rows ? t('completedWithErrors') : t(`batchState.${job.state}`),
       progress: job.state === 'completed' ? 100 : job.total ? Math.min(99, Math.floor(job.processed * 100 / job.total)) : 0,
       href: `${log}/batches/${job.id}`,
     })),
     ...legacy.map(item => ({
-      id: item.id, source: item.sourceName, method: item.method, at: item.createdAt, by: item.createdBy,
+      id: item.id, source: item.sourceName, method: item.method, at: item.createdAt, by: formatImportActor(labels, item.createdByActor),
       written: item.written, failed: item.state === 'validated' ? item.preview.invalid : item.outcomes.filter(row => row.state !== 'imported').length,
       total: item.preview.total, status: t(item.state), progress: item.state === 'validated' ? null : 100,
       href: `${log}/${item.id}`,
@@ -39,13 +41,15 @@ export default async function IndividualImportLogPage({searchParams}: {
     <PageHeader title={t('log')} description={t('logHint')} back={{href: '/payroll/transactions/individual', label: t('back')}}/>
     <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full text-left text-sm">
-        <thead className="bg-muted/50"><tr>{(['reference', 'file', 'method', 'time', 'user', 'outcome', 'progress', 'details'] as const).map(key => <th key={key} className="p-3">{t(key)}</th>)}</tr></thead>
+        <thead className="bg-muted/50"><tr>{(['reference', 'method', 'time', 'user', 'outcome', 'progress', 'details'] as const).map(key => <th key={key} className="p-3">{t(key)}</th>)}</tr></thead>
         <tbody>{items.map(item => <tr key={item.id} className="border-t border-border">
-          <td className="p-3 font-mono text-xs">{item.id}</td>
-          <td className="p-3">{item.source}</td>
+          <td className="p-3">
+            <Link className="font-medium text-primary underline" href={item.href}>{formatImportBatch(labels, item.id)}</Link>
+            <p className="break-all text-xs text-muted-foreground">{item.source}</p>
+          </td>
           <td className="p-3">{t(item.method)}</td>
           <td className="p-3">{f.dateTime(new Date(item.at), {dateStyle: 'medium', timeStyle: 'short'})}</td>
-          <td className="p-3 font-mono text-xs">{item.by}</td>
+          <td className="p-3">{item.by}</td>
           <td className="p-3"><p>{item.status}</p><p className="text-xs text-muted-foreground">{t('batchCounts', {total: item.total, written: item.written, failed: item.failed})}</p></td>
           <td className="p-3">{item.progress === null ? '—' : `${item.progress}%`}</td>
           <td className="p-3"><Link className="text-primary underline" href={item.href}>{t('details')}</Link></td>

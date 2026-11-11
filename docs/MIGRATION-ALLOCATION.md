@@ -3228,3 +3228,13 @@ The approved upgrade tail pin and its populated null-column proof (`test/helpers
 reassign the final tag, idx and `when` above the freshly verified ledger at integration. The marking of rows already on
 open months is the separate report-first script `scripts/mark-individual-txn-pricing-792053e5.ts`, not part of the
 migration. This entry carries no allocation or deployment authority.
+
+## Import log references — 11 November 2026, allocated 12 November 2026
+
+Branch `claude/fb-8d02748a-import-log-refs-20261111` (board item 8d02748a) drafted `9740_import_log_actor_labels`
+(idx 9740, when 1793330099740) from the coordinator's 9740–9749 block. At the Irwin board integration on 12 November
+2026 it is allocated as `5112_import_log_actor_labels`, idx 4512, when 1793330004812, after `5110` (5111 is reserved for
+another builder's branch). SQL bytes are unchanged (SHA-256 `1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2`).
+It adds one read-only STABLE SECURITY DEFINER function, `app.import_log_actor_facts(text, uuid[])`, with EXECUTE for
+`ai_hr_app` only; no table, column, policy, grant on data or existing function changes. This entry carries no
+deployment authority.
