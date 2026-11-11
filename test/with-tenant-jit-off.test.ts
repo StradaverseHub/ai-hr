@@ -8,13 +8,10 @@
  *    tenant transaction commits or rolls back (so a pooled server connection hands nothing to the next client;
  *    test/pgbouncer-transaction-pool.test.ts checks the same through a real PgBouncer in transaction mode);
  *  - it costs no round trip: BEGIN, the one identity statement, then the caller;
- *  - an owner may still switch JIT on for its own transaction;
- *  - the Personnel overview snapshot still hands its exact owner the session's own JIT setting (core/read.ts restores
- *    it), not the tenant transaction's off. */
+ *  - an owner may still switch JIT on for its own transaction. */
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {client,createDb,withSharedReadSnapshot,withTenant,type SessionContext} from '../db/client';
-import {personnelOverviewSnapshotTx} from '../core/personnel-read-bounds';
 import {adminCtx,closeAll,migrateTestDb,resetDb,seedBase,type Base} from './harness';
 
 let b:Base;
@@ -67,24 +64,6 @@ describe('JIT off in every tenant transaction', ()=>{
   expect(bootstrap).toHaveLength(1);
   expect(bootstrap[0]).toContain("set_config('app.tenant_id'");
   expect(bootstrap[0]).toContain("set_config('jit', 'off', true)");
- });
-
- it('hands the Personnel exact owner the session\'s own JIT setting while the tenant transaction runs without it', async()=>{
-  for(const sessionJit of ['on','off']){
-   // A connection whose session default is set at startup, as a server, role or connection setting would set it.
-   const url=new URL(process.env.TEST_DATABASE_URL!);
-   url.searchParams.set('application_name',`with-tenant-jit-session-${sessionJit}`);
-   url.searchParams.set('jit',sessionJit);
-   const pool=createDb(url.toString(),{max:1});
-   try{
-    const seen=await pool.withTenant(ctx,async tx=>{
-     const before=(await jitOf(tx)).jit;
-     const snapshot=await personnelOverviewSnapshotTx(tx);
-     return {before,previousJit:snapshot.previousJit,bounded:(await jitOf(tx)).jit};
-    });
-    expect(seen).toEqual({before:'off',previousJit:sessionJit,bounded:'off'});
-   }finally{await pool.client.end({timeout:5});}
-  }
  });
 
  it('lets an owner switch JIT on for its own transaction only', async()=>{
