@@ -12,14 +12,19 @@ vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) 
 
 vi.mock('../core/schedule-group-controls', () => ({scheduleGroupControls:async()=>({label:null,dutyRosterControl:false,revisions:[]})}));
 vi.mock('../core/roster', () => ({ listShiftsForTenant: async () => [] }));
-vi.mock('../packs/attendance/service', () => ({ getScheduleRotation: async () => ({ versions: [],memberships:[], revision: 'r1' }) }));
+// 2f803985 — the band editor moved to Overtime Patterns › 1. General Settings (legacy-bands.tsx), which reads
+// the group itself. The page under test mounts it beside the General and Attendance forms.
+const { LEGACY_PATTERN, current } = vi.hoisted(() => ({ LEGACY_PATTERN: '00000000-0000-4000-8000-0000000000aa', current: { rule: null as unknown } }));
+vi.mock('../packs/attendance/service', () => ({ getScheduleRotation: async () => ({ versions: [],memberships:[], revision: 'r1' }),
+  legacyOvertimePatternIdForRule: async () => LEGACY_PATTERN, getAttendanceRule: async () => current.rule }));
 vi.mock('../app/admin/attendance-policy/rule-actions', () => ({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
-vi.mock('../components/schedule-rotation-editor', () => ({ ScheduleRotationEditor: () => null }));
-vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn(),saveScheduleGroupControlAction:vi.fn(),saveScheduleGroupAllowedShiftsAction:vi.fn() }));
+vi.mock('../components/schedule-rotation-editor', () => ({ ScheduleRotationEditor: () => null, StepMark: () => null, rotationMethodOf: () => 'workingWeek' }));
+vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn(),saveScheduleGroupControlAction:vi.fn(),saveScheduleGroupAllowedShiftsAction:vi.fn(),saveScheduleGroupWeekAction:vi.fn() }));
 
 import { RuleForm } from '../app/admin/attendance-policy/rules/rule-form';
 import { saveScheduleGroupGeneralAction } from '../app/admin/attendance-policy/rule-actions';
 import { ScheduleGroupSections } from '../app/admin/attendance/schedule/group-sections';
+import { LegacyOvertimeBands } from '../app/admin/attendance/settings/overtime-patterns/legacy-bands';
 import {ScheduleGroupTabs} from '../components/schedule-group-tabs';
 import { AttendanceSettingsNavigation } from '../components/attendance-settings-navigation';
 import { AttendanceSettingsActionForm } from '../components/attendance-settings-action-form';
@@ -58,8 +63,10 @@ const rule: AttendanceRuleView = {
 async function page(bandId: string, receipt?: string, savedSection: 'general'|'attendance'|'overtime'='attendance', updated:Partial<AttendanceRuleView>={}) {
   const refreshed = { ...rule, lateGracePeriodMinutes: receipt && savedSection === 'attendance' ? 5 : 0, otRows: [{ ...rule.otRows[0], id: bandId }],...updated };
   const tree = await resolveGeneral(await ScheduleGroupSections({ s: {} as SessionContext, rule: refreshed, rules: [refreshed], mode: 'edit', savedSection: receipt ? savedSection : undefined, savedReceipt: receipt }));
+  current.rule = refreshed;
+  const bands = await LegacyOvertimeBands({ s: {} as SessionContext, ruleId: refreshed.id, patternId: LEGACY_PATTERN, savedReceipt: receipt && savedSection === 'overtime' ? receipt : undefined });
   const forms = ['general', 'attendance', 'overtime'].map(section => {
-    const form = findForm(tree, section);
+    const form = section === 'overtime' ? findForm(bands, 'form') : findForm(tree, section);
     expect(form, `real ${section} form`).toBeDefined();
     return cloneElement(form as ReactElement<React.ComponentProps<typeof AttendanceSettingsActionForm>>, { key: section, 'aria-label': section });
   });
@@ -72,12 +79,14 @@ describe('independent Schedule Group forms after a server refresh', () => {
     const tree=await resolveGeneral(await ScheduleGroupSections({s:{} as SessionContext,rule,rules:[rule],mode:'edit'}));
     render(<NextIntlClientProvider locale="en" messages={messages}><AttendanceSettingsNavigation/>{tree}</NextIntlClientProvider>);
     const panels=screen.getAllByRole('tabpanel',{hidden:true});
-    // c03670cc — three tabs: General (with the Duty Roster under Shift Allowed), Attendance, Overtime.
+    // 2f803985 — three tabs: General (one Working Day / Schedule Pattern section), Attendance, Overtime.
     expect(panels).toHaveLength(3);
     expect(screen.getAllByRole('tab',{hidden:true}).map(tab=>tab.textContent)).toEqual([
       messages.admin.scheduleConfig.sectionGeneral,messages.admin.scheduleConfig.sectionAttendance,messages.admin.scheduleConfig.sectionOvertime]);
     const general=screen.getByRole('tabpanel');
-    expect(general.querySelector('[data-schedule-duty-roster]'),'the Duty Roster sits in General').not.toBeNull();
+    expect(general.querySelector('[data-schedule-working-pattern]'),'the consolidated pattern sits in General').not.toBeNull();
+    expect(general.querySelector('[data-schedule-duty-roster]'),'no separate Duty Roster block').toBeNull();
+    expect(general.querySelector('[data-schedule-control="duty"]'),'no Duty Roster switch').toBeNull();
     const label=general.querySelector<HTMLInputElement>('input[name="label"]')!;
     expect(label).not.toBeNull();
     fireEvent.change(label,{target:{value:'OFFICE-UNSAVED'}});
@@ -137,6 +146,11 @@ describe('independent Schedule Group forms after a server refresh', () => {
     });
     fireEvent.submit(overtime);
     await waitFor(()=>expect((overtime.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(false));
+    // 2f803985 — the relocated band form posts to the same writer and returns to its Overtime Pattern.
+    const bandPost=vi.mocked(saveScheduleGroupOvertimeAction).mock.calls[0][0];
+    expect(bandPost.get('returnPattern')).toBe(LEGACY_PATTERN);
+    expect(bandPost.get('overtimeFullEditor')).toBe('1');
+    expect(JSON.parse(String(bandPost.get('otRows')))[0]).toMatchObject({roundingMode:'up',roundToMinutes:30});
     expect(screen.getByRole('form',{name:'general'})).toBe(general);
     fireEvent.change(general.querySelector('[name="name"]')!,{target:{value:'Renamed group'}});
     vi.mocked(saveScheduleGroupGeneralAction).mockImplementationOnce(async()=>{throw Object.assign(new Error('NEXT_REDIRECT'),{digest:'NEXT_REDIRECT;push;/admin/attendance/schedule/group/edit;303;',handled:true});});

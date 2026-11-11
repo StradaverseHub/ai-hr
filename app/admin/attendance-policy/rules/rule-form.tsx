@@ -86,7 +86,7 @@ export async function RuleForm({
   const tomorrow = new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+86_400_000).toISOString().slice(0,10);
   const monday=new Date(tomorrow+"T00:00:00Z");
   monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
-  const duty = canEditShared ? <Card><SectionHeader title={te('dutyRoster')} subtitle={tr('title')}/>
+  const duty = canEditShared ? <Card><SectionHeader title={ts('sectionWorkingDay')} subtitle={tr('title')}/>
     <p className="px-4 pt-3 text-sm text-muted-foreground">{te('dutyRosterPoolNote')}</p>
     <ScheduleRotationEditor creating editing ruleId="" revision="" minimumDate={tomorrow}
     initial={{effectiveFrom:tomorrow,anchorDate:monday.toISOString().slice(0,10),unit:'week',length:1,days:Array.from({length:7},()=>({kind:'rest',shiftId:null}))}}

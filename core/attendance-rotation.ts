@@ -137,6 +137,15 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
       eventType: 'attendance-rule.rotation-saved', actor: actorOf(ctx),
       payload: { versionId: version.id, effectiveFrom: cycle.effectiveFrom, anchorDate: cycle.anchorDate,
         unit: cycle.unit, length: cycle.length, allowedShiftIds: pool, days: cycle.days, previousVersionIds: versions.map(v => v.id) } });
+    // 2f803985 — the Duty Roster block and its switch were folded into Working Day / Schedule Pattern. A group
+    // with a saved pattern is roster-controlled, so its first saved version turns Duty Roster Control on (it is
+    // never turned off here). Same transaction and lock as the version, with its own audit event.
+    if (!rule.dutyRosterControl) {
+      await tx.update(attendanceRule).set({ dutyRosterControl: true, updatedAt: new Date() }).where(eq(attendanceRule.id, rule.id));
+      await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-rule', aggregateId: rule.id,
+        eventType: 'attendance-rule.duty-roster-control.changed', actor: actorOf(ctx),
+        payload: { before: false, enabled: true, reason: 'schedule-pattern-saved', versionId: version.id } });
+    }
     return { id: version.id, revision:revisionOf([...versions,version],memberships), effectiveFrom:version.effectiveFrom };
   };
   return existingTx?save(existingTx):withTenant(ctx,save);

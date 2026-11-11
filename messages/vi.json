@@ -13552,7 +13552,10 @@
       "shiftsInGroupCheckTitle": "Kiểm tra trước khi lưu",
       "shiftsInGroupWarning": "Lưu tuần này sẽ thay đổi ngày làm việc của {count} ca: {names}. Tăng ca của mọi người ở các ca đó sẽ thay đổi kể từ ngày bạn lưu.",
       "shiftsInGroupEmploymentsWarning": "{count} nhân viên được đặt trực tiếp vào nhóm này cũng theo quy định này.",
-      "shiftsInGroupNothingUntilSave": "Không có gì thay đổi cho đến khi bạn nhấn Lưu."
+      "shiftsInGroupNothingUntilSave": "Không có gì thay đổi cho đến khi bạn nhấn Lưu.",
+      "otMovedNote": "Các mức, đơn giá, cách làm tròn và tăng ca sớm của nhóm này nay nằm ở Mẫu tăng ca › 1. Cài đặt chung.",
+      "otMovedOpen": "Mở",
+      "otSettingPending": "Phần Cài đặt tăng ca (trước và sau ca, phương thức phê duyệt, bù trừ đi muộn và làm tròn) sẽ được thêm vào đây khi đã chứng minh Bảng lương nhận đúng số liệu tăng ca. Cho đến lúc đó, tăng ca của nhóm này vẫn hoạt động như hiện nay."
     },
     "leaveConfigLeaveCredit": {
       "pageDescription": "Tín dụng có được khi làm việc vào ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ, và Nghỉ bù sử dụng tín dụng đó."
@@ -14063,7 +14066,17 @@
       "poolHistorical": "Ca không còn khả dụng được giữ lại",
       "poolHistoricalHelp": "Các tham chiếu đã lưu được giữ để xem lại. Hãy chủ động xóa hoặc thay thế trước khi lưu vòng ca mới; không thể chọn lại chúng.",
       "poolRemoveNamed": "Xóa {shift} khỏi các ca đã chọn",
-      "poolRemove": "Xóa"
+      "poolRemove": "Xóa",
+      "methodWorkingWeek": "Tuần làm việc",
+      "methodWeekly": "Mẫu theo tuần",
+      "methodDaily": "Mẫu theo ngày",
+      "methodHint": "Tuần làm việc lặp lại một tuần. Mẫu theo tuần lặp lại nhiều tuần; Mẫu theo ngày lặp lại một chu kỳ ngày. Cả ba đều dùng cùng một bảng Loại ngày và Ca.",
+      "stepDays": "Loại ngày và Ca cho từng ngày",
+      "weeksCount": "Số tuần",
+      "daysCount": "Số ngày",
+      "standardWeekHint": "Nhóm Tiêu chuẩn chỉ dùng Tuần làm việc. Vào ngày làm việc, mỗi nhân viên làm theo giờ của ca được phân công cho chính họ.",
+      "shiftFromEmployee": "Ca của chính nhân viên",
+      "saveWeek": "Lưu tuần làm việc"
     }
   },
   "topbar": {
@@ -29253,7 +29266,12 @@
     "positionSearch": "Tìm chức danh",
     "loadMorePositions": "Tải thêm chức danh",
     "attendanceFormulaBinding": "Bộ kết quả công thức chấm công: {id}",
-    "chooseOneCompany": "Chọn một công ty trong bộ chuyển công ty ở đầu màn hình trước khi lưu mẫu mới. Mẫu mới thuộc về công ty đó."
+    "chooseOneCompany": "Chọn một công ty trong bộ chuyển công ty ở đầu màn hình trước khi lưu mẫu mới. Mẫu mới thuộc về công ty đó.",
+    "legacyGeneralSettings": "1. Cài đặt chung",
+    "legacyGroup": "Nhóm lịch: {name}",
+    "legacyOpenGroup": "Mở Nhóm lịch",
+    "legacyMovedHelp": "Các mức, đơn giá, cách làm tròn và cài đặt tăng ca sớm này được chuyển từ Nhóm lịch sang đây. Giao diện và cách hoạt động giữ nguyên; mỗi lần lưu được giữ thành một phiên bản mới của mẫu này.",
+    "legacyGroupGone": "Nhóm lịch của mẫu này không còn tồn tại, nên không thể sửa các mức tăng ca. Các phiên bản trước vẫn được giữ."
   },
   "systemTestingWorkspace": {
     "title": "Kiểm thử hệ thống",
@@ -37607,7 +37625,7 @@
     "noShifts": "Danh sách này không có ca.",
     "includeMarked": "Đưa vào {count} ca đã chọn →",
     "excludeMarked": "← Loại trừ {count} ca đã chọn",
-    "rotationPoolSave": "Danh sách này hiển thị vòng xoay đã lưu cho {date}. Để thay đổi danh sách, hãy lưu cùng một vòng xoay mới trong phần Lịch trực bên dưới.",
+    "rotationPoolSave": "Danh sách này hiển thị mẫu đã lưu cho ngày {date}. Để thay đổi các ca được phép, hãy lưu cùng với một mẫu mới ở bên dưới.",
     "saveShiftPool": "Lưu các ca được phép",
     "currentRotation": "Chu kỳ {days} ngày có hiệu lực từ {date}",
     "company": "Công ty",

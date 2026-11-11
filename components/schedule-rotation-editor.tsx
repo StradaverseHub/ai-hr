@@ -9,6 +9,20 @@ import { AttendanceSettingsActionForm } from '@/components/attendance-settings-a
 import {ScheduleShiftPicker} from '@/components/schedule-shift-picker';
 import {useSchedulePoolDraft} from './schedule-pool-draft';
 import { btnPrimary, inputCls } from '@/components/ui';
+/** 2f803985 — the three ways a Schedule Group's cycle repeats, read from (never stored beside) unit/length. */
+export const ROTATION_METHODS=['workingWeek','weeklyPattern','dailyPattern'] as const;
+export type RotationMethod=typeof ROTATION_METHODS[number];
+const METHOD_KEY={workingWeek:'methodWorkingWeek',weeklyPattern:'methodWeekly',dailyPattern:'methodDaily'} as const;
+export function rotationMethodOf(cycle:Pick<RotationCycle,'unit'|'length'>):RotationMethod {
+  return cycle.unit==='day'?'dailyPattern':cycle.length===1?'workingWeek':'weeklyPattern';
+}
+function mondayOnOrBefore(date:string):string {
+  const parsed=Date.parse(`${date}T00:00:00Z`);if(Number.isNaN(parsed))return date;
+  const day=new Date(parsed);day.setUTCDate(day.getUTCDate()-((day.getUTCDay()+6)%7));return day.toISOString().slice(0,10);
+}
+export function StepMark({n}:{n:number}) {
+  return <span aria-hidden="true" className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-xs tabular-nums">{n}</span>;
+}
 type ShiftChoice = { id: string; name: string; code: string | null; startTime: string | null; endTime: string | null;
   fullMinutes: number; halfMinutes: number; halfEnd: string | null; archived: boolean; available: boolean; selected: boolean };
 export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minimumDate, editing, creating = false, poolInGeneral = false, useSavedPool = false}: {
@@ -49,30 +63,51 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
   const chosen=shifts.filter(s=>pool.includes(s.id));
   const mark=(next:RotationCycle)=>{setCycle(next);setDirty(true);};
   let validation=''; try {normalizeRotation(cycle,pool);} catch(e){validation=e instanceof Error?e.message:t('invalid');}
-  const generate=()=>{
-    const n=Number(length), count=n*(unit==='week'?7:1);
-    if(!Number.isInteger(n)||n<1||count>MAX_ROTATION_DAYS){setGenerateError(t('limit'));return;}
-    if((unit!==cycle.unit||count<cycle.days.length)&&!window.confirm(t('replaceConfirm')))return;
+  /** Rebuilds the day table for a unit and length. Every method keeps the same Day Type and Shift rows;
+   * only the cycle's unit and length differ. Week cycles must start on a Monday (normalizeRotation). */
+  const rebuild=(nextUnit:'week'|'day',n:number):boolean=>{
+    const count=n*(nextUnit==='week'?7:1);
+    if(!Number.isInteger(n)||n<1||count>MAX_ROTATION_DAYS){setGenerateError(t('limit'));return false;}
+    if((nextUnit!==cycle.unit||count<cycle.days.length)&&!window.confirm(t('replaceConfirm')))return false;
     const days=Array.from({length:count},(_,i)=>cycle.days[i]??{kind:'rest' as const,shiftId:null});
-    mark({...cycle,unit,length:n,days});setGenerateError('');
+    mark({...cycle,unit:nextUnit,length:n,days,anchorDate:nextUnit==='week'?mondayOnOrBefore(cycle.anchorDate):cycle.anchorDate});
+    setUnit(nextUnit);setLength(String(n));setGenerateError('');return true;
+  };
+  const generate=()=>{rebuild(unit,Number(length));};
+  const method=rotationMethodOf(cycle);
+  const chooseMethod=(next:RotationMethod)=>{
+    if(next===method)return;
+    if(next==='workingWeek')rebuild('week',1);
+    else if(next==='weeklyPattern')rebuild('week',cycle.unit==='week'&&cycle.length>1?cycle.length:2);
+    else rebuild('day',cycle.unit==='day'?cycle.length:7);
   };
   const changeDay=(index:number,day:RotationDay)=>mark({...cycle,days:cycle.days.map((d,i)=>i===index?day:d)});
   const fields=<>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm">{t('basedOn')}<select name="rotationUnitDraft" className={inputCls} value={unit} onChange={e=>{setUnit(e.target.value as 'week'|'day');setDirty(true);}}><option value="week">{t('week')}</option><option value="day">{t('day')}</option></select></label>
-        <label className="text-sm">{t('length')}<input name="rotationLengthDraft" type="number" min={1} max={unit==='week'?52:366} step={1} value={length} className={inputCls} onChange={e=>{setLength(e.target.value);setDirty(true);}}/></label>
-        <label className="text-sm">{t('effective')}<input name="rotationEffectiveDraft" type="date" min={nextMinimum} value={cycle.effectiveFrom} className={inputCls} onChange={e=>mark({...cycle,effectiveFrom:e.target.value})}/></label>
-        <label className="text-sm">{t('anchor')}<input name="rotationAnchorDraft" type="date" value={cycle.anchorDate} className={inputCls} onChange={e=>mark({...cycle,anchorDate:e.target.value})}/></label>
+      {/* 2f803985 — Step 2: one choice of how the cycle repeats. Working Week = week × 1, Weekly Pattern =
+          week × N, Daily Pattern = day × N; the stored unit/length are unchanged (rotationMethodOf). */}
+      <div className="space-y-2" data-schedule-step="2">
+        <p id={`${formId}-method`} className="flex items-center gap-2 text-sm font-medium"><StepMark n={2}/>{t('basedOn')}</p>
+        <div role="radiogroup" aria-labelledby={`${formId}-method`} className="inline-flex flex-wrap overflow-hidden rounded-lg border border-border">
+          {ROTATION_METHODS.map(key=><button key={key} type="button" role="radio" aria-checked={method===key} data-rotation-method={key}
+            disabled={!editing} onClick={()=>chooseMethod(key)}
+            className={`min-h-10 px-3 py-2 text-sm ${method===key?'bg-foreground text-background':'hover:bg-accent'}`}>{t(METHOD_KEY[key])}</button>)}
+        </div>
+        <p className="text-xs text-muted-foreground">{t('methodHint')}</p>
       </div>
-      <p className="text-xs text-muted-foreground">{t('anchorHint')}</p>
-      {editing&&<button type="button" className="rounded border border-border px-3 py-2 text-sm" onClick={generate}>{t('generate')}</button>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {method!=='workingWeek'&&<label className="text-sm">{t(method==='dailyPattern'?'daysCount':'weeksCount')}<input name="rotationLengthDraft" type="number" min={1} max={unit==='week'?52:366} step={1} value={length} className={inputCls} onChange={e=>{setLength(e.target.value);setDirty(true);}}/></label>}
+        <label className="text-sm">{t('effective')}<input name="rotationEffectiveDraft" type="date" min={nextMinimum} value={cycle.effectiveFrom} className={inputCls} onChange={e=>mark({...cycle,effectiveFrom:e.target.value})}/></label>
+        {method!=='workingWeek'&&<label className="text-sm">{t('anchor')}<input name="rotationAnchorDraft" type="date" value={cycle.anchorDate} className={inputCls} onChange={e=>mark({...cycle,anchorDate:e.target.value})}/></label>}
+      </div>
+      {method!=='workingWeek'&&<p className="text-xs text-muted-foreground">{t('anchorHint')}</p>}
+      {editing&&method!=='workingWeek'&&<button type="button" className="rounded border border-border px-3 py-2 text-sm" onClick={generate}>{t('generate')}</button>}
       {(unit!==cycle.unit||Number(length)!==cycle.length)&&<p role="status" className="text-sm">{t('generateNeeded')}</p>}
       {generateError&&<p role="alert" className="text-sm text-destructive">{generateError}</p>}
-      <h3 className="text-sm font-medium">{t('preview',{n:cycle.days.length})}</h3>
+      <h3 className="flex items-center gap-2 text-sm font-medium" data-schedule-step="3"><StepMark n={3}/>{t('stepDays')} · {t('preview',{n:cycle.days.length})}</h3>
       <div className="overflow-x-auto rounded border border-border"><table className="w-full text-sm">
         <thead><tr className="border-b border-border"><th className="p-2 text-left">{t('position')}</th><th className="p-2 text-left">{t('dayType')}</th><th className="p-2 text-left">{t('shift')}</th><th className="p-2 text-left">{t('hours')}</th></tr></thead>
         <tbody>{cycle.days.map((day,index)=>{const sh=shifts.find(s=>s.id===day.shiftId);return <tr key={index} className="border-b border-border last:border-0">
-          <td className="p-2 whitespace-nowrap">{cycle.unit==='week'?`${t('week')} ${Math.floor(index/7)+1} · ${t(`weekday${index%7+1}`)}`:`${t('day')} ${index+1}`}</td>
+          <td className="p-2 whitespace-nowrap">{cycle.unit==='week'?(cycle.length===1?t(`weekday${index%7+1}`):`${t('week')} ${Math.floor(index/7)+1} · ${t(`weekday${index%7+1}`)}`):`${t('day')} ${index+1}`}</td>
           <td className="p-2"><select name={`rotationDayKind_${index}`} aria-label={`${t('dayType')} ${index+1}`} className={inputCls} value={day.kind} onChange={e=>{const kind=e.target.value as WeekDayKind;changeDay(index,{kind,shiftId:kind==='full'||kind==='half'?day.shiftId??chosen.find(s=>s.available)?.id??null:null});}}>{(['full','half','off','rest'] as const).map(k=><option key={k} value={k}>{t(k)}</option>)}</select></td>
           <td className="p-2">{day.kind==='full'||day.kind==='half'?<select name={`rotationDayShift_${index}`} aria-label={`${t('shift')} ${index+1}`} className={inputCls} value={day.shiftId??''} onChange={e=>changeDay(index,{...day,shiftId:e.target.value||null})}>
             <option value="">{t('chooseShift')}</option>{day.shiftId&&!chosen.some(s=>s.id===day.shiftId)&&<option value={day.shiftId}>{t('removedShift')}</option>}{chosen.map(s=><option key={s.id} value={s.id} disabled={!s.available}>{s.code?`${s.code} · `:''}{s.name}{s.archived?` · ${t('archived')}`:''}</option>)}</select>:t('notRequired')}</td>

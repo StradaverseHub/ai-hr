@@ -25,3 +25,20 @@ Full Flexi owns a required positive duration and may have no fixed clock anchors
 ## Consequences
 
 Membership and default calculation are distinct concepts with distinct consumers. New readers must use the membership owner instead of reverse-reading `shift.rule_id`. Future rotation changes preserve old pools, and archived historical sources remain available without becoming new picker choices. Database/schema, attendance and pay-facing verification require full release verification and a migration rehearsal. New exception scopes or historical recomputation require a further explicit decision; this flag is not a general formula bypass.
+
+## Amendment, 12 November 2026 (board item 2f803985): one Working Day / Schedule Pattern section
+
+The General tab's read-only working-day summary, Shift Allowed and the separate Duty Roster block are one
+section in three steps: Shift Allowed, Schedule Rotates Based On, and a Day Type and Shift per day. The three
+methods are presentation over the existing dated rotation version: Working Week = week × 1, Weekly Pattern =
+week × N, Daily Pattern = day × N. No method is stored beside `unit`/`length`, no schema changes, and the
+calculation precedence (explicit roster row, rotation version, shift arrangement plus legacy week) is unchanged.
+A group with no version shows its legacy week as a Working Week and writes nothing until a future-dated version
+is saved (no backfill). The Standard group cannot rotate, so it offers Working Week only and keeps saving its
+day types through the legacy week writer.
+
+The Duty Roster Control switch is no longer drawn. Its stored semantics and every manual-writer guard remain.
+`saveScheduleRotation` turns the control on in the same transaction when it saves a version for a group whose
+control is Off, with an `attendance-rule.duty-roster-control.changed` event (reason `schedule-pattern-saved`).
+It never turns the control off. A group with a saved pattern is therefore roster-controlled; a new group with no
+pattern still refuses individual roster changes until one is saved.

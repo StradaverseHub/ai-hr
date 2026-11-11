@@ -351,9 +351,8 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
       'earlyDeductMinutes',
       // c03670cc — `applyDeductions` is rendered by rule-form.tsx WageDeductionsCard, which this file mounts
       // in the Attendance section (asserted in the deduction-switch case above).
-      'applyToEarlyOt',
-      'roundingMode',
-      'roundToMinutes',
+      // 2f803985 — applyToEarlyOt, roundingMode and roundToMinutes moved with the band editor to Overtime
+      // Patterns › 1. General Settings; they are asserted on that file below.
       // 665de026 — the seventh section's three columns (07ebd04d, migration 0483). They are listed HERE,
       // beside the six r277 settings, for the same reason those are: each is a stored column, and a
       // section quietly emptied out in a later round must fail rather than disappear.
@@ -363,6 +362,11 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
     ]) {
       expect(src, `the built sections render attendance_rule.${field}`).toContain(field);
     }
+    const bands = read('app/admin/attendance/settings/overtime-patterns/legacy-bands.tsx') + read('app/admin/attendance-policy/rules/rule-form.tsx');
+    for (const field of ['applyToEarlyOt', 'roundingMode', 'roundToMinutes']) {
+      expect(bands, `the relocated band editor renders attendance_rule.${field}`).toContain(field);
+    }
+    expect(src, 'and the Schedule Group no longer draws the bands').not.toContain('renderScheduleOvertimeBands');
     // And they render it FOR ONE GROUP — which, since 665de026, is the PAGE rather than a picker on it.
     // That is the item: the reporter asked for one Schedule Group to be one screen.
     expect(src, 'the sections are rendered for a single rule').toMatch(/rule: AttendanceRuleView;/);
@@ -510,7 +514,12 @@ describe('1c5602cc — the "Not configured here" card is tied to the absences it
     expect(controls).toContain('app.can_admin_employment');
     expect(controls).toContain('lockPayrollForAttendanceChange');
     expect(controls).toContain('roster.manual-changes');
-    expect(read('app/admin/attendance/schedule/group-sections.tsx')).toContain("controlPanel('duty')");
+    // 2f803985 — no separate switch: a saved Working Day / Schedule Pattern turns the control on, in the
+    // rotation writer's own transaction, with its own audit event.
+    expect(read('app/admin/attendance/schedule/group-sections.tsx')).not.toContain("controlPanel('duty')");
+    const rotation=read('core/attendance-rotation.ts');
+    expect(rotation).toContain('dutyRosterControl: true');
+    expect(rotation).toContain("eventType: 'attendance-rule.duty-roster-control.changed'");
     const roster=read('core/roster.ts');
     const bodyOf=(name:string)=>{
       const start=roster.indexOf(`export async function ${name}(`);
