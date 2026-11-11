@@ -91,6 +91,16 @@ export {
   normaliseCareersMobile, careersPageNumber, careersPageCount,
 } from './careers-model';
 export type { CareersPublishRequirement, CareersFormField, CareersFieldError, CareersOutcome, CareersApplicationInput, CareersSettingsInput } from './careers-model';
+// Slice 9 — recruitment tasks and updates: the live to-do list (also the bell's recruitment tasks), the live updates per
+// category, unread counts against the viewer's own read markers (4409) and "Mark all as read".
+export { recruitmentTodos, recruitmentJobTodos, recruitmentUpdates, recruitmentUnreadCounts, markRecruitmentTasksRead, pendingRecruitmentTasks } from './tasks';
+export type { RecruitmentUpdatesPage, RecruitmentJobTodos } from './tasks';
+export {
+  TASK_CATEGORIES, TASK_TABS, TODO_KINDS, UPDATE_KINDS, UPDATES_WINDOW_DAYS, UPDATES_PAGE_SIZE, UPDATES_MAX_PAGE, UNREAD_CAP, TODO_LIMIT,
+  TODO_COUNT_CAP, TODO_JOB_LIMIT, BELL_TIMEOUT_MS, JOB_TODOS_TIMEOUT_MS, PERSONAL_TODO_KINDS, JOB_TODO_KINDS, isPersonalTodo, isTaskCategory, parseTaskTab, parseUpdatesPage, readCategories, updatesSince, countText, todoHref,
+  updateHref, todoToPackTask, updatesHasMore, encodeUpdatesCursor, decodeUpdatesCursor,
+} from './tasks-model';
+export type { TaskCategory, TaskTab, TodoKind, PersonalTodoKind, UpdateKind, RecruitmentTodo, RecruitmentUpdate } from './tasks-model';
 export {
   RecruitmentError, RECRUITMENT_ERROR_CODES, JOB_STATUSES, JOB_STATUS_TRANSITIONS, JOB_MEMBER_ROLES, POSITION_ATTRIBUTES, RECRUITMENT_TYPES,
   JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab,

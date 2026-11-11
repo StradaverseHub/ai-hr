@@ -26,7 +26,7 @@ import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import { createRewardUnit, decideRewardUnit, getRewardUnit, pendingRewardReviews, pendingRewardTasks, saveRewardEntry } from '../packs/rewards/service';
 import { emptyFacts } from '../packs/rewards/model';
-import { PACK_TASK_KINDS } from '../lib/assigned-work';
+import { PACK_TASK_KINDS, RECRUITMENT_TASK_KINDS } from '../lib/assigned-work';
 import { HOME_TASK_KINDS } from '../lib/employee-home';
 import { closeAll, createAppUser, entitledCtx, harnessSnapshot, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -211,7 +211,9 @@ describe('performance work in the shared task list', () => {
     }
     expect(JSON.stringify(packItems(managerTasks))).not.toMatch(/band|rating|score|amount|salary|aspiration|Facilitat/i);
     // Every projected kind is a Home task kind: Home validates kinds and would refuse the whole card.
-    for (const kind of PACK_TASK_KINDS) expect(HOME_TASK_KINDS as readonly string[]).toContain(kind);
+    // Recruitment slice 9's kinds are bell-only: Home asks listPendingTasks without `recruitment`, so it never receives them
+    // (core/approvals-inbox.ts overloads type that result without them).
+    for (const kind of PACK_TASK_KINDS.filter((k) => !(RECRUITMENT_TASK_KINDS as readonly string[]).includes(k))) expect(HOME_TASK_KINDS as readonly string[]).toContain(kind);
   });
 
   it('the company switcher narrows performance tasks; another company and another tenant see none of them', async () => {

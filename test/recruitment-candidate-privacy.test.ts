@@ -533,7 +533,7 @@ describe('case 26 — destruction', () => {
     // No sentinel anywhere in any recruitment table (rows as text; file bytes searched as bytes) or in any event.
     const tables = await owner.db.execute<{ relname: string }>(sql`select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'recruitment\\_%' order by c.relname`);
-    expect(tables.length).toBe(34); // slice 7 (4407) adds recruitment_referral; slice 8 (4408) the careers site, notice and application
+    expect(tables.length).toBe(35); // slice 7 (4407) adds recruitment_referral; slice 8 (4408) the careers site, notice and application; slice 9 (4409) the read markers
     for (const { relname } of tables) {
       const [hit] = await owner.db.execute<{ n: number }>(sql`select count(*)::int as n from ${sql.identifier(relname)} r where to_jsonb(r.*)::text ilike ${`%${SENTINEL}%`}`);
       expect(hit.n, `${relname} still holds personal data`).toBe(0);

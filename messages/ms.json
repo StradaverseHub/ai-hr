@@ -14636,7 +14636,10 @@
       "rewardReview": "Semak ganjaran",
       "probation": "Pengesahan Percubaan",
       "contract_staff": "Pengurusan Kontrak",
-      "contractDateCorrection": "Pembetulan tarikh kontrak"
+      "contractDateCorrection": "Pembetulan tarikh kontrak",
+      "recruitmentRequisitionApproval": "Luluskan permintaan jawatan",
+      "recruitmentOfferApproval": "Luluskan tawaran kerja",
+      "recruitmentFeedback": "Beri maklum balas temu duga"
     },
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
     "title": "Pemberitahuan",
@@ -38264,6 +38267,56 @@
       "received": "Memohon melalui halaman kerjaya pada {date}",
       "message": "Mesej daripada pemohon",
       "byApplicant": "Pemohon, melalui halaman kerjaya"
+    },
+    "tasks": {
+      "purpose": "Perkara yang menunggu anda dalam Pengambilan, dan apa yang berlaku baru-baru ini.",
+      "title": "Tugasan",
+      "tabsLabel": "Kategori tugasan",
+      "tabs": {
+        "todo": "Perlu dibuat",
+        "requisitions": "Permintaan jawatan",
+        "offers": "Tawaran",
+        "interviews": "Temu duga",
+        "applications": "Permohonan"
+      },
+      "todoBadge": "{count, plural, one {# perkara perlu dibuat} other {# perkara perlu dibuat}}",
+      "unreadBadge": "{count, plural, one {# kemas kini belum dibaca} other {# kemas kini belum dibaca}}",
+      "markAllRead": "Tanda semua sebagai dibaca",
+      "markEverythingRead": "Tanda setiap kemas kini sebagai dibaca",
+      "markedNotice": "Ditanda sebagai dibaca.",
+      "todoEmpty": "Tiada kelulusan atau maklum balas temu duga yang menunggu anda.",
+      "updatesEmpty": "Tiada kemas kini dalam kategori ini.",
+      "window": "Kemas kini dari {days} hari lepas, yang terbaharu dahulu.",
+      "unread": "Baharu",
+      "pagesLabel": "Halaman kemas kini",
+      "newest": "Kembali ke yang terbaharu",
+      "older": "Lebih lama",
+      "page": "Halaman {page}",
+      "step": "Langkah {position} daripada {steps}",
+      "offerFallback": "Satu tawaran",
+      "startedAt": "Bermula {time}",
+      "todo": {
+        "requisitionApproval": "Permintaan jawatan menunggu kelulusan anda",
+        "offerApproval": "Tawaran menunggu kelulusan anda",
+        "feedback": "Maklum balas temu duga perlu diberi",
+        "toSchedule": "{count, plural, one {# permohonan perlu dijadualkan untuk temu duga} other {{shown} permohonan perlu dijadualkan untuk temu duga}}",
+        "toScreen": "{count, plural, one {# permohonan baharu perlu ditapis} other {{shown} permohonan baharu perlu ditapis}}"
+      },
+      "update": {
+        "requisitionApproved": "Permintaan jawatan diluluskan",
+        "requisitionDenied": "Kelulusan permintaan jawatan ditolak",
+        "offerApproved": "Tawaran diluluskan",
+        "offerDenied": "Kelulusan tawaran ditolak",
+        "offerAccepted": "Calon menerima tawaran",
+        "offerDeclined": "Calon menolak tawaran",
+        "feedbackSubmitted": "Maklum balas temu duga dihantar",
+        "careersApplication": "Permohonan baharu dari halaman kerjaya",
+        "referral": "Rujukan pekerja baharu"
+      },
+      "jobsLoading": "Memuatkan kiraan jawatan…",
+      "jobsUnavailable": "Kiraan jawatan tidak dapat dimuatkan sekarang.",
+      "jobsRefresh": "Muat semula",
+      "jobsTitle": "Jawatan anda"
     }
   },
   "careersPublic": {

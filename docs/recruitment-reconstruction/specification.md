@@ -684,3 +684,92 @@ public goes through narrow definer functions and returns only the fields listed 
 58. Rendered: the careers page, a job page, the form with field errors, the thank-you page and the 429 page in a
     signed-out browser; the HR settings and job switch as an administrator; the application page showing the source
     and consent.
+
+## Slice 9 — Recruitment tasks and updates (owner choice 2026-11-11; EV-007, EV-047)
+
+Moka's dashboard has a Tasks panel of notifications in seven tabs (@Reminder, Job Requisitions, Jobs, Interviews,
+Offers, Referrals, Other), each with its own filters, unread badges, "All marked as read" and items such as
+"<person> initiates approval for the job requisition named <title>. You are still looking forward to approval" and
+"Candidate <name> accepted the offer" (EV-047). AI HR already has a bell with notifications and "open tasks", and
+modules add live to-dos to it (`PACK_TASK_SOURCES` in core/approvals-inbox.ts). AI HR's notification engine stores
+frozen title and body text; candidate names frozen there would survive slice 5 removal. So this slice builds
+**live** items computed from current recruitment records under the viewer's current access, and stores only a
+per-user "read up to" time per category (D-031).
+
+### To do (things waiting for the viewer's action)
+
+Computed live; an item disappears as soon as the action is done or the viewer loses access. Each links to the page
+where the viewer acts.
+- Requisition approvals at the viewer's current step (slice 4).
+- Offer approvals at the viewer's current step (slice 3). Approval to-dos are tenant-wide, like the Approvals page,
+  and do not follow the company switcher.
+- Interview feedback due: interviews where the viewer is an interviewer, the interview has started (Kuala Lumpur time
+  through lib/hr-date), it is not cancelled, the candidate has not declined it, and the viewer has not submitted a
+  scorecard (slice 2).
+- Interviews to schedule: for the job's recruiter and assistants (slice 2 team), applications in an Interview-type
+  stage with no upcoming or completed interview in that stage. One item per job with a count, not one per candidate.
+- Applications to screen: for the job's recruiter and assistants, applications in the job's first enabled stage that
+  have not moved since they arrived. One item per job with a count ("3 new applications to screen"), any source,
+  including careers page and employee referrals.
+- Interviews to schedule and applications to screen come only from jobs that are Open or On hold; closed jobs give
+  no to-dos.
+- To-dos join the AI HR bell through a recruitment entry in `PACK_TASK_SOURCES` (kinds and bell labels in the
+  registry), gated by the Recruitment module and the viewer's Recruitment access. The item text names the job or
+  requisition; for interview feedback and offer approvals it names the candidate as the HR pages already show it to
+  that viewer, read live (a removed candidate shows the neutral label).
+
+### Updates (things that happened, with unread counts)
+
+Derived live from recruitment records and their history; nothing is copied. Categories and what each shows to whom:
+- Requisitions: for the requisition's requester — approved, denied (slice 4).
+- Offers: for the offer's creator and the job's recruiter — offer approved, approval denied, candidate accepted,
+  candidate declined (slice 3).
+- Interviews: for the job's recruiter and assistants — feedback submitted on an interview of their job.
+- Applications: for the job's recruiter and assistants — new application from the careers page (slice 8) or an
+  employee referral (slice 7). Never shows the referral reason or the applicant's message.
+- Each update: what happened, the job or requisition, the candidate as the viewer may see them, and when (Kuala
+  Lumpur time), linking to the record. Only updates from the last 90 days are shown, newest first, 20 per page.
+- Unread: an update is unread when it happened after the viewer's "read up to" time for its category (default: the
+  first time the viewer opens the panel, so a new user does not start with a backlog). "Mark all as read" sets the
+  time for one category or for all. Opening an item does not change the read state (D-032).
+- Updates caused by the viewer themselves are not shown.
+
+### Where it appears
+
+- Recruitment › Overview: a Tasks panel beside the existing tiles, with tabs To do, Requisitions, Offers, Interviews,
+  Applications; badge counts; "Mark all as read". It respects the Overview's company selection.
+- The AI HR bell and the My tasks page: only the viewer's personal to-dos (approvals at their step and interview
+  feedback due), through the pack task source, so the My tasks badge and the page agree. The per-job counts
+  (applications to screen, interviews to schedule) appear only in the Overview's To do tab, which loads them
+  separately so the rest of the page never waits for them (D-035). Home and the mobile app are unchanged until the
+  owner decides (D-034). Updates are not pushed to the bell or e-mail
+  (D-029 stays open for e-mail).
+- Not built (D-033): @mentions and follow-up reminders, agency contract expiry, assessment reports, probation and
+  work-trial reminders, candidate satisfaction surveys, self-scheduling, message records — their features do not
+  exist in AI HR yet.
+
+### Data
+
+- One migration (4409, in the unapplied block): a per-user, per-company, per-category read marker table
+  (tenant, company, user, category, read_up_to) with forced RLS so a user reads and writes only their own rows, and
+  any indexes the live queries need. No other new table; nothing stores candidate data.
+- The AI Centre recruitment read stays counts only.
+
+### Slice 9 acceptance cases
+
+59. To do lists exactly the viewer's pending requisition and offer approval steps, due interview feedback, jobs with
+    applications to schedule and to screen (with counts), checked against independently computed sets; an item
+    disappears after the action and when the viewer loses access to the job.
+60. A viewer never sees a to-do or update for a job, requisition, offer or company they cannot read on the HR pages
+    (bystander, interviewer of another job, another company's recruiter, another tenant).
+61. Interview feedback becomes due at the interview's start in Kuala Lumpur time and not before; cancelled
+    interviews and submitted scorecards produce no item.
+62. Updates show the specified events to the specified people, exclude the viewer's own actions, never include the
+    referral reason, the applicant's message, salary or scores (sentinel check), and show the neutral label for a
+    removed candidate with no personal data.
+63. Unread counts per category follow the read-up-to times; "Mark all as read" for one category leaves the others;
+    a user can neither read nor change another user's markers (service and direct database).
+64. The bell shows the recruitment to-dos with working links only for users with Recruitment access and only while
+    the module is enabled; the existing bell items and counts are unchanged otherwise.
+65. Rendered: the Overview Tasks panel for a recruiter, an interviewer and an approver; the bell with recruitment
+    items; Mark all as read.

@@ -14636,7 +14636,10 @@
       "rewardReview": "ตรวจทานผลตอบแทน",
       "probation": "การยืนยันผ่านทดลองงาน",
       "contract_staff": "การจัดการสัญญา",
-      "contractDateCorrection": "การแก้ไขวันที่สัญญา"
+      "contractDateCorrection": "การแก้ไขวันที่สัญญา",
+      "recruitmentRequisitionApproval": "อนุมัติคำขออัตรากำลัง",
+      "recruitmentOfferApproval": "อนุมัติข้อเสนองาน",
+      "recruitmentFeedback": "ให้ความเห็นการสัมภาษณ์"
     },
     "tasksEmpty": "ไม่มีรายการที่ต้องดำเนินการ",
     "title": "การแจ้งเตือน",
@@ -38264,6 +38267,56 @@
       "received": "สมัครผ่านหน้ารับสมัครงานเมื่อ {date}",
       "message": "ข้อความจากผู้สมัคร",
       "byApplicant": "ผู้สมัคร ผ่านหน้ารับสมัครงาน"
+    },
+    "tasks": {
+      "purpose": "สิ่งที่รอคุณอยู่ในการสรรหา และสิ่งที่เกิดขึ้นล่าสุด",
+      "title": "งาน",
+      "tabsLabel": "หมวดหมู่งาน",
+      "tabs": {
+        "todo": "สิ่งที่ต้องทำ",
+        "requisitions": "คำขออัตรากำลัง",
+        "offers": "ข้อเสนอ",
+        "interviews": "การสัมภาษณ์",
+        "applications": "ใบสมัคร"
+      },
+      "todoBadge": "{count, plural, other {สิ่งที่ต้องทำ # รายการ}}",
+      "unreadBadge": "{count, plural, other {อัปเดตที่ยังไม่ได้อ่าน # รายการ}}",
+      "markAllRead": "ทำเครื่องหมายว่าอ่านแล้วทั้งหมด",
+      "markEverythingRead": "ทำเครื่องหมายว่าอ่านอัปเดตทั้งหมดแล้ว",
+      "markedNotice": "ทำเครื่องหมายว่าอ่านแล้ว",
+      "todoEmpty": "ไม่มีการอนุมัติหรือความเห็นการสัมภาษณ์ที่รอคุณอยู่",
+      "updatesEmpty": "ไม่มีอัปเดตในหมวดหมู่นี้",
+      "window": "อัปเดตในช่วง {days} วันที่ผ่านมา ล่าสุดก่อน",
+      "unread": "ใหม่",
+      "pagesLabel": "หน้าอัปเดต",
+      "newest": "กลับไปที่ล่าสุด",
+      "older": "เก่ากว่า",
+      "page": "หน้า {page}",
+      "step": "ขั้นที่ {position} จาก {steps}",
+      "offerFallback": "ข้อเสนอหนึ่งรายการ",
+      "startedAt": "เริ่มเมื่อ {time}",
+      "todo": {
+        "requisitionApproval": "คำขออัตรากำลังรอการอนุมัติจากคุณ",
+        "offerApproval": "ข้อเสนอรอการอนุมัติจากคุณ",
+        "feedback": "ถึงเวลาให้ความเห็นการสัมภาษณ์",
+        "toSchedule": "{count, plural, one {ใบสมัคร # รายการที่ต้องนัดสัมภาษณ์} other {ใบสมัคร {shown} รายการที่ต้องนัดสัมภาษณ์}}",
+        "toScreen": "{count, plural, one {ใบสมัครใหม่ # รายการที่ต้องคัดกรอง} other {ใบสมัครใหม่ {shown} รายการที่ต้องคัดกรอง}}"
+      },
+      "update": {
+        "requisitionApproved": "คำขออัตรากำลังได้รับอนุมัติ",
+        "requisitionDenied": "คำขออัตรากำลังไม่ได้รับอนุมัติ",
+        "offerApproved": "ข้อเสนอได้รับอนุมัติ",
+        "offerDenied": "ข้อเสนอไม่ได้รับอนุมัติ",
+        "offerAccepted": "ผู้สมัครตอบรับข้อเสนอ",
+        "offerDeclined": "ผู้สมัครปฏิเสธข้อเสนอ",
+        "feedbackSubmitted": "ส่งความเห็นการสัมภาษณ์แล้ว",
+        "careersApplication": "ใบสมัครใหม่จากหน้าร่วมงานกับเรา",
+        "referral": "การแนะนำจากพนักงานรายการใหม่"
+      },
+      "jobsLoading": "กำลังโหลดจำนวนตามตำแหน่งงาน…",
+      "jobsUnavailable": "ไม่สามารถโหลดจำนวนตามตำแหน่งงานได้ในขณะนี้",
+      "jobsRefresh": "รีเฟรช",
+      "jobsTitle": "ตำแหน่งงานของคุณ"
     }
   },
   "careersPublic": {

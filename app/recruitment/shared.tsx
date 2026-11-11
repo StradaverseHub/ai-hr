@@ -48,7 +48,7 @@ export function pickCompany(companies: readonly RecruitmentCompany[], requested?
 }
 
 const TABS = [
-  { key: 'overview', href: '/recruitment', adminOnly: true },
+  { key: 'overview', href: '/recruitment', adminOnly: false },
   { key: 'candidates', href: '/recruitment/candidates', adminOnly: false },
   { key: 'interviews', href: '/recruitment/interviews', adminOnly: false },
   { key: 'positions', href: '/recruitment/positions', adminOnly: false },
@@ -63,7 +63,8 @@ export type RecruitmentTabKey = (typeof TABS)[number]['key'];
  * The module's own sub-navigation (one menu entry, F1): Overview, Candidates, Interviews, Positions, Talent pool,
  * Reports, Approvals and Settings. A job-team member sees Candidates, Interviews and Positions (their own jobs); Reports
  * shows for administrators and for a job's recruiter, assistant or hiring manager (`reports`; never an interviewer
- * alone); Approvals shows when a step waits for the viewer; Overview, Talent pool and Settings are administrator-only.
+ * alone); Approvals shows when a step waits for the viewer; Talent pool and Settings are administrator-only. Overview
+ * shows for everyone with Recruitment access since slice 9 (its Tasks panel); its tiles stay administrator-only.
  */
 export async function RecruitmentTabs({ active, admin = true, approvals = 0, reports = false }: { active: RecruitmentTabKey; admin?: boolean; approvals?: number; reports?: boolean }) {
   const t = await getTranslations('recruitment.tabs');

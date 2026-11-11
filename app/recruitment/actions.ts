@@ -18,7 +18,7 @@ import {
   addCandidateEntry, addCandidateTag, deleteCandidateFile, destroyCandidates, recordConsent, removeCandidateEntry, removeCandidateTag,
   saveCandidateRestricted, saveTag, saveTagGroup, updateCandidateProfile, updatePrivacySettings, uploadCandidateFile, CANDIDATE_FILE_MAX_BYTES,
   checkDuplicateCandidate, RECRUITMENT_ERROR_CODES, type DuplicateCheck, setJobReferralPortal, updateReferralSettings,
-  setCareersPublished, setJobCareersPage, updateCareersSettings,
+  setCareersPublished, setJobCareersPage, updateCareersSettings, markRecruitmentTasksRead,
 } from '@/packs/recruitment/service';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -390,4 +390,13 @@ export async function saveTagAction(f: FormData) {
   return run(back(f, '/recruitment/settings?section=tags'), (s) => saveTag(s, {
     id: str(f, 'tagId'), groupId: str(f, 'groupId'), name: str(f, 'name'), enabled: f.get('enabled') === 'on',
   }));
+}
+
+/**
+ * Slice 9: "Mark all as read" in the Overview Tasks panel — one update category, or all, for the companies the panel shows.
+ * The service writes only the caller's own read markers and refuses a company whose recruitment they may not see.
+ */
+export async function markRecruitmentTasksReadAction(f: FormData) {
+  const category = str(f, 'category');
+  return run(back(f, '/recruitment'), (s) => markRecruitmentTasksRead(s, f.getAll('companyId').map(String), category));
 }

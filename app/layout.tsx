@@ -57,7 +57,7 @@ import {canConfigureAccess} from '@/core/access-configuration-editor';
 import {workforceViewScope} from '@/core/workforce-access';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
-import { listPendingTasks } from '@/core/approvals-inbox';
+import { listPendingTasks, withoutRecruitmentTasks } from '@/core/approvals-inbox';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
@@ -224,11 +224,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // same reason `notifEnabled` two lines above uses it: this is the root layout and a throw 500s every
   // authenticated route. `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
   // belongs to whichever surface calls it.
+  // Recruitment slice 9: the bell (and My tasks, whose badge is this count) asks for the recruitment to-dos — live, under
+  // the viewer's own access; nothing for a viewer with no recruitment role, and no call at all while the module is off.
+  // The AI Centre launcher's count below leaves them out: it opens Home, which does not list them (D-034).
   const approvalTasks = await listPendingTasks(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
     performance: isModuleEnabledOrFalse(session, 'performance'),
     rewards: isModuleEnabledOrFalse(session, 'rewards'),
+    recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
   });
   // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
@@ -518,7 +522,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </AiAskAvailability>
           </NavIndexProvider>
           <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
-          <AssistantReplyClientEntry>{launcher && <AssistantLauncher key={personnelImportBrowserKey(session,scopeIds)} position={launcher.position} hiddenAreas={launcher.hiddenAreas} inboxCount={approvalTasks.length} />}</AssistantReplyClientEntry>
+          <AssistantReplyClientEntry>{launcher && <AssistantLauncher key={personnelImportBrowserKey(session,scopeIds)} position={launcher.position} hiddenAreas={launcher.hiddenAreas} inboxCount={withoutRecruitmentTasks(approvalTasks).length} />}</AssistantReplyClientEntry>
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most
               ONE notice, chosen server-side; the slot renders null when nothing is due, so this costs an

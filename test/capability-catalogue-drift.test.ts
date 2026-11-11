@@ -11,7 +11,7 @@ import {MODULE_CATALOG} from '../packs/catalog';
 import {ACTION_PURPOSE,SUGGESTABLE_ACTIONS} from '../core/product-context/actions';
 import {DECIDER_ACTORS,DECIDER_WORK,IMPORT_OWNERS,IMPORT_PAGES,IMPORT_SUPPORT_FILES,MAX_CAPABILITY_ENTRIES,MODULE_AREA,MODULE_WORK,PREPARED_ACTIONS,PRODUCT_CAPABILITIES_SPEC,areaOf,
  capabilitiesInput,capabilitiesResult,searchWords,type CatalogueEntry} from '../core/product-context/capability-catalogue';
-import {PACK_TASK_KINDS} from '../lib/assigned-work';
+import {PACK_TASK_KINDS,RECRUITMENT_TASK_KINDS} from '../lib/assigned-work';
 import {CAPABILITY_KINDS,CATALOGUE_ENTITIES,CATALOGUE_READS} from '../core/semantic-model/entities-catalogue';
 import {SEMANTIC_ACTIONS} from '../core/semantic-model/entities';
 import {describeRead,terasEntities,terasEntity} from '../core/semantic-model/generate';
@@ -292,7 +292,10 @@ describe('deciding actions are mapped to the inbox work that makes them the call
   for(const action of deciding)expect((DECIDER_WORK[action.id]??MODULE_WORK[action.module]??[]).length,action.id).toBeGreaterThan(0);
   expect(DECIDER_WORK).toEqual({'approvals.leave.decide':['leave'],'approvals.claim.decide':['claim'],'approvals.attendance.decide':['attendance'],'approvals.toil.decide':['replacementLeave']});
   // Every pack task kind belongs to the module that owns it, and no kind is invented.
-  expect([...MODULE_WORK.performance,...MODULE_WORK.rewards].sort()).toEqual([...PACK_TASK_KINDS].sort());
+  // Recruitment's kinds (slice 9) map to no deciding catalogue action: the action catalogue has no recruitment module at all, and the
+  // inbox read here does not ask for recruitment work, so a MODULE_WORK entry for them would be dead.
+  expect([...MODULE_WORK.performance,...MODULE_WORK.rewards].sort()).toEqual(PACK_TASK_KINDS.filter((k) => !(RECRUITMENT_TASK_KINDS as readonly string[]).includes(k)).sort());
+  expect(Object.keys(MODULE_WORK).sort()).toEqual(['performance','rewards']);
   // Own, administrator, lifecycle staff and automatic classes are not per-item deciders.
   for(const actor of ['self','hr_admin','tenant_admin','payroll_admin','rewards_admin','workforce_maintainer','lifecycle_staff','agent_principal'])
    expect(DECIDER_ACTORS.has(actor),actor).toBe(false);

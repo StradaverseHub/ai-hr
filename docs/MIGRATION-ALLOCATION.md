@@ -1,3 +1,19 @@
+# Recruitment slice 9 — 11 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 8 entry,
+`4409_recruitment_tasks` at idx 3809 / when 1793330004109. A fresh read-only survey after
+`git fetch --prune origin` of 4,069 remote refs (435 distinct committed journal blobs), 283
+registered worktrees (265 readable journals) and 351 committed allocation-document blobs found no
+claim of this name, position or timestamp and no `4409_` migration file. Peers above this block
+still exist (the peer timestamp maximum is 1793330099956), so whichever lands later must be
+checked against the applied watermark; a lower timestamp can be silently skipped. 4409 adds one
+table (`recruitment_task_read_marker`: a user's own "read up to" time per company and update
+category, forced row security, no DELETE grant), its guard, ten indexes on earlier recruitment
+tables for the live task and update reads, and restates `app.recruitment_delete_company_setup`
+(4408 body) with one added step; 4400–4408 are unapplied outside throwaway databases and CI.
+Recheck peer claims, the published baseline and the ordered applied ledger before admission. The
+reservation grants no installation authority.
+
 # Recruitment slice 8 — 11 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 7 entry,

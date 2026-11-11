@@ -14636,7 +14636,10 @@
       "rewardReview": "Review rewards",
       "probation": "Probation Confirmation",
       "contract_staff": "Contract Management",
-      "contractDateCorrection": "Contract date correction"
+      "contractDateCorrection": "Contract date correction",
+      "recruitmentRequisitionApproval": "Approve job requisition",
+      "recruitmentOfferApproval": "Approve job offer",
+      "recruitmentFeedback": "Give interview feedback"
     },
     "tasksEmpty": "Nothing needs your action",
     "title": "Notifications",
@@ -38264,6 +38267,56 @@
       "received": "Applied on the careers page on {date}",
       "message": "Message from the applicant",
       "byApplicant": "The applicant, on the careers page"
+    },
+    "tasks": {
+      "purpose": "What is waiting for you in Recruitment, and what has happened recently.",
+      "title": "Tasks",
+      "tabsLabel": "Task categories",
+      "tabs": {
+        "todo": "To do",
+        "requisitions": "Requisitions",
+        "offers": "Offers",
+        "interviews": "Interviews",
+        "applications": "Applications"
+      },
+      "todoBadge": "{count, plural, one {# item to do} other {# items to do}}",
+      "unreadBadge": "{count, plural, one {# unread update} other {# unread updates}}",
+      "markAllRead": "Mark all as read",
+      "markEverythingRead": "Mark every update as read",
+      "markedNotice": "Marked as read.",
+      "todoEmpty": "No approvals or interview feedback are waiting for you.",
+      "updatesEmpty": "No updates in this category.",
+      "window": "Updates from the last {days} days, newest first.",
+      "unread": "New",
+      "pagesLabel": "Update pages",
+      "newest": "Back to newest",
+      "older": "Older",
+      "page": "Page {page}",
+      "step": "Step {position} of {steps}",
+      "offerFallback": "An offer",
+      "startedAt": "Started {time}",
+      "todo": {
+        "requisitionApproval": "Job requisition waiting for your approval",
+        "offerApproval": "Offer waiting for your approval",
+        "feedback": "Interview feedback due",
+        "toSchedule": "{count, plural, one {# application to schedule for an interview} other {{shown} applications to schedule for interviews}}",
+        "toScreen": "{count, plural, one {# new application to screen} other {{shown} new applications to screen}}"
+      },
+      "update": {
+        "requisitionApproved": "Job requisition approved",
+        "requisitionDenied": "Job requisition approval denied",
+        "offerApproved": "Offer approved",
+        "offerDenied": "Offer approval denied",
+        "offerAccepted": "Candidate accepted the offer",
+        "offerDeclined": "Candidate declined the offer",
+        "feedbackSubmitted": "Interview feedback submitted",
+        "careersApplication": "New application from the careers page",
+        "referral": "New employee referral"
+      },
+      "jobsLoading": "Loading the job counts…",
+      "jobsUnavailable": "The job counts couldn't be loaded just now.",
+      "jobsRefresh": "Refresh",
+      "jobsTitle": "Your jobs"
     }
   },
   "careersPublic": {

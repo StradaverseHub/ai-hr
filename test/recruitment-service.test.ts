@@ -259,16 +259,16 @@ describe('case 8 — users without access cannot read or move applications', () 
         (select count(*)::int from information_schema.role_table_grants g where g.table_name = c.relname and g.grantee = 'PUBLIC') as public_grants
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'recruitment\\_%' order by c.relname`);
-    // Slices 2–4 (4402–4404) add fourteen tables, slice 5 (4405) seven, slice 7 (4407) one and slice 8 (4408) three;
-    // test/recruitment-slices-service.test.ts, test/recruitment-candidate-privacy.test.ts, test/recruitment-referrals.test.ts and
-    // test/recruitment-careers.test.ts check them in detail.
+    // Slices 2–4 (4402–4404) add fourteen tables, slice 5 (4405) seven, slice 7 (4407) one, slice 8 (4408) three and slice 9
+    // (4409) one; test/recruitment-slices-service.test.ts, test/recruitment-candidate-privacy.test.ts, test/recruitment-referrals.test.ts,
+    // test/recruitment-careers.test.ts and test/recruitment-tasks.test.ts check them in detail.
     expect(rows.map((r) => r.relname)).toEqual([
       'recruitment_application', 'recruitment_application_event', 'recruitment_approval_step', 'recruitment_archive_reason', 'recruitment_candidate',
       'recruitment_candidate_consent', 'recruitment_candidate_entry', 'recruitment_candidate_file', 'recruitment_candidate_restricted', 'recruitment_candidate_tag',
       'recruitment_careers_application', 'recruitment_careers_notice', 'recruitment_careers_site', 'recruitment_company_setting', 'recruitment_evaluation_form', 'recruitment_hire_handoff', 'recruitment_interview', 'recruitment_interview_interviewer',
       'recruitment_job_member', 'recruitment_job_opening', 'recruitment_offer', 'recruitment_offer_approval', 'recruitment_offer_field', 'recruitment_offer_value',
       'recruitment_process', 'recruitment_process_stage', 'recruitment_referral', 'recruitment_requisition', 'recruitment_requisition_approval',
-      'recruitment_requisition_job', 'recruitment_scorecard', 'recruitment_stage', 'recruitment_tag', 'recruitment_tag_group',
+      'recruitment_requisition_job', 'recruitment_scorecard', 'recruitment_stage', 'recruitment_tag', 'recruitment_tag_group', 'recruitment_task_read_marker',
     ]);
     expect(rows.every((r) => r.rls && r.forced && r.public_grants === 0)).toBe(true);
   });

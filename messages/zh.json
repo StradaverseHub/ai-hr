@@ -14636,7 +14636,10 @@
       "rewardReview": "审阅薪酬奖励",
       "probation": "试用期转正确认",
       "contract_staff": "合同管理",
-      "contractDateCorrection": "合同日期更正"
+      "contractDateCorrection": "合同日期更正",
+      "recruitmentRequisitionApproval": "审批招聘需求",
+      "recruitmentOfferApproval": "审批录用通知",
+      "recruitmentFeedback": "提交面试反馈"
     },
     "tasksEmpty": "没有需要您处理的事项",
     "title": "通知",
@@ -38264,6 +38267,56 @@
       "received": "于 {date} 通过招聘页面申请",
       "message": "申请人留言",
       "byApplicant": "申请人（通过招聘页面）"
+    },
+    "tasks": {
+      "purpose": "招聘中等待您处理的事项，以及最近发生的动态。",
+      "title": "任务",
+      "tabsLabel": "任务类别",
+      "tabs": {
+        "todo": "待办",
+        "requisitions": "招聘需求",
+        "offers": "录用通知",
+        "interviews": "面试",
+        "applications": "申请"
+      },
+      "todoBadge": "{count, plural, other {# 项待办}}",
+      "unreadBadge": "{count, plural, other {# 条未读动态}}",
+      "markAllRead": "全部标为已读",
+      "markEverythingRead": "将所有动态标为已读",
+      "markedNotice": "已标为已读。",
+      "todoEmpty": "没有等待您处理的审批或面试反馈。",
+      "updatesEmpty": "此类别暂无动态。",
+      "window": "最近 {days} 天的动态，最新的在前。",
+      "unread": "新",
+      "pagesLabel": "动态分页",
+      "newest": "返回最新",
+      "older": "较早",
+      "page": "第 {page} 页",
+      "step": "第 {position} 步，共 {steps} 步",
+      "offerFallback": "一份录用通知",
+      "startedAt": "开始于 {time}",
+      "todo": {
+        "requisitionApproval": "招聘需求等待您审批",
+        "offerApproval": "录用通知等待您审批",
+        "feedback": "待提交面试反馈",
+        "toSchedule": "{count, plural, other {{shown} 份申请待安排面试}}",
+        "toScreen": "{count, plural, other {{shown} 份新申请待筛选}}"
+      },
+      "update": {
+        "requisitionApproved": "招聘需求已获批准",
+        "requisitionDenied": "招聘需求审批被拒绝",
+        "offerApproved": "录用通知已获批准",
+        "offerDenied": "录用通知审批被拒绝",
+        "offerAccepted": "候选人已接受录用通知",
+        "offerDeclined": "候选人已拒绝录用通知",
+        "feedbackSubmitted": "面试反馈已提交",
+        "careersApplication": "来自招聘页面的新申请",
+        "referral": "新的员工推荐"
+      },
+      "jobsLoading": "正在加载职位统计…",
+      "jobsUnavailable": "暂时无法加载职位统计。",
+      "jobsRefresh": "刷新",
+      "jobsTitle": "您的职位"
     }
   },
   "careersPublic": {

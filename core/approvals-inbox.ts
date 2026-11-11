@@ -19,6 +19,11 @@
  * awaiting you" queue, OneHR assessment work and career plans awaiting their reviewer) and Rewards (units at
  * the viewer's approval stage). They deep-link to their own screens, so the layout's /approvals badge,
  * which counts only /approvals links, is unchanged by them.
+ *
+ * Recruitment slice 9 joins the same table with live recruitment to-dos (packs/recruitment/tasks.ts), but ONLY for a
+ * surface that asks for them with `recruitment` (see InboxModulesWithRecruitment): the bell and My tasks (`listMyTasks`),
+ * whose badge is the bell's count. Home, the AI Centre launcher's count and the mobile task contract do not carry them
+ * (D-034); `withoutRecruitmentTasks` takes them out of a list that has them.
  */
 import {assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
 import type {SessionContext} from '../db/client';
@@ -32,7 +37,8 @@ import {pendingNoticeAcknowledgementTasks} from './notice';
 import {pendingReviewTaskMetadata} from './employment-review';
 import {pendingPerformanceTasks} from '../packs/performance/service';
 import {pendingRewardTasks} from '../packs/rewards/service';
-import type {PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
+import {pendingRecruitmentTasks} from '../packs/recruitment/service';
+import {RECRUITMENT_TASK_KINDS,type PackTaskItem,type PackTaskKind,type PackTaskProvider,type RecruitmentTaskKind} from '../lib/assigned-work';
 
 /** The per-module task vocabulary — each key maps to an i18n label (notifications.task.*). */
 export type PendingTaskKind =
@@ -80,6 +86,14 @@ export type PendingTaskItem = {
  * next caller would inherit whichever was guessed. Making it a parameter puts the compiler on the hook.
  */
 export type InboxModules = { attendance: boolean; claims: boolean; performance: boolean; rewards: boolean };
+/**
+ * Recruitment slice 9 — the caller ALSO answers whether Recruitment is enabled, which is how a surface asks for the
+ * recruitment to-dos at all. Required on this type for the same reason as the four above; a surface that passes plain
+ * `InboxModules` has not asked and gets no recruitment kind (the overloads below type its result without them). Only the
+ * bell (app/layout.tsx) and My tasks (app/tasks/page.tsx through listMyTasks) ask: Home's task kinds (lib/employee-home.ts)
+ * and the mobile v2 task enum do not carry them (D-034).
+ */
+export type InboxModulesWithRecruitment = InboxModules & { recruitment: boolean };
 
 /**
  * Module-owned task sources (WP-A1) — the extension point for packs whose work belongs in this list.
@@ -94,20 +108,32 @@ export type InboxModules = { attendance: boolean; claims: boolean; performance: 
  * Each provider is its pack's projection of an owner that already decides the work; it returns only
  * id, kind, subject name, owner time and link (lib/assigned-work.ts PackTaskItem).
  */
-const PACK_TASK_SOURCES:readonly {module:'performance'|'rewards';load:PackTaskProvider}[]=[
+const PACK_TASK_SOURCES:readonly {module:'performance'|'rewards'|'recruitment';load:PackTaskProvider}[]=[
   {module:'performance',load:pendingPerformanceTasks},
   {module:'rewards',load:pendingRewardTasks},
+  // Recruitment slice 9: the viewer's personal to-dos only — requisition and offer approval steps waiting for them and
+  // interview feedback due — read live under their own row security. Per-job counts stay on the Overview (D-035).
+  {module:'recruitment',load:pendingRecruitmentTasks},
 ];
 
 type ApprovalOnlyTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,'noticeAcknowledgement'>};
-export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+/** What a surface that did not ask for recruitment work receives: every kind except the recruitment ones. */
+export type InboxTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,RecruitmentTaskKind>};
+type InboxApprovalOnlyTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,'noticeAcknowledgement'|RecruitmentTaskKind>};
+// The overloads that ask for recruitment come first (they need the `recruitment` key); the last one is what
+// ReturnType<typeof listPendingTasks> names, so every existing reader of that type keeps its kinds.
+export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModulesWithRecruitment,
   options:{noticeAcknowledgements:false}):Promise<ApprovalOnlyTaskItem[]>;
-export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModulesWithRecruitment,
   options?:{noticeAcknowledgements?:boolean}):Promise<PendingTaskItem[]>;
+export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options:{noticeAcknowledgements:false}):Promise<InboxApprovalOnlyTaskItem[]>;
+export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options?:{noticeAcknowledgements?:boolean}):Promise<InboxTaskItem[]>;
 export async function listPendingTasks(
   ctx: SessionContext,
   scopeIds: string[] | undefined,
-  modules: InboxModules,
+  modules: InboxModules & { recruitment?: boolean },
   options:{noticeAcknowledgements?:boolean}={},
 ): Promise<PendingTaskItem[]> {
   // Each owner proves actual current assignment without selecting its private decision workspace.
@@ -120,7 +146,7 @@ export async function listPendingTasks(
     modules.claims?pendingClaimTaskMetadata(ctx,scopeIds):Promise.resolve([]),
     pendingResignationTaskMetadata(ctx,scopeIds),pendingReviewTaskMetadata(ctx,'manager',scopeIds),pendingReviewTaskMetadata(ctx,'hr',scopeIds),
     options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
-    Promise.all(PACK_TASK_SOURCES.map(source=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([]))),
+    Promise.all(PACK_TASK_SOURCES.map(source=>modules[source.module]===true?source.load(ctx,scopeIds):Promise.resolve([]))),
   ]);
   const packTasks:PackTaskItem[]=packTaskLists.flat();
   const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();
@@ -137,7 +163,29 @@ export async function listPendingTasks(
     ...project(managerReviews,'managerReview'),...project(hrReviews,'hrReview'),
     ...packTasks.map(({id,kind,subjectName,createdAt,linkPath})=>({id,kind,subjectName,createdAt,linkPath})),
   ];
-  return items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));
+  return items.sort(inboxOrder);
+}
+
+/** The inbox's one order: newest first, then kind, then id. */
+export const inboxOrder=(a:Pick<PendingTaskItem,'createdAt'|'kind'|'id'>,b:Pick<PendingTaskItem,'createdAt'|'kind'|'id'>)=>
+  a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id);
+
+const RECRUITMENT_KINDS:ReadonlySet<string>=new Set<string>(RECRUITMENT_TASK_KINDS);
+/** A list without the recruitment kinds: what Home and the AI Centre launcher count (D-034). */
+export function withoutRecruitmentTasks<T extends {kind:string}>(items:readonly T[]):T[]{
+  return items.filter(item=>!RECRUITMENT_KINDS.has(item.kind));
+}
+
+/**
+ * My tasks (app/tasks/page.tsx): the inbox as that page has always read it (every company), plus — when the caller says
+ * Recruitment is on — the recruitment to-dos for the SAME company selection the root layout gives the bell, so the
+ * sidebar's My tasks badge (the bell's count) and the page list the same recruitment items. One provider call, the
+ * inbox's order.
+ */
+export async function listMyTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModulesWithRecruitment):Promise<PendingTaskItem[]>{
+  const {recruitment,...rest}=modules;
+  const [inbox,recruitmentTasks]=await Promise.all([listPendingTasks(ctx,undefined,rest),recruitment?pendingRecruitmentTasks(ctx,scopeIds):Promise.resolve([])]);
+  return [...inbox,...recruitmentTasks].sort(inboxOrder);
 }
 
 export async function pendingApprovalsCount(

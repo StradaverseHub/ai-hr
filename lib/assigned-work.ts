@@ -17,8 +17,15 @@ export class AssignedWorkPrincipalUnavailableError extends Error{
  * never a band, rating, score, amount, remark or plan body — the link opens the owning screen, which
  * applies its own authorization again.
  */
-export const PACK_TASK_KINDS=['performanceReview','assessmentWork','careerPlan','calibration','rewardReview'] as const;
+export const PACK_TASK_KINDS=['performanceReview','assessmentWork','careerPlan','calibration','rewardReview',
+ // Recruitment slice 9 (packs/recruitment/tasks.ts): the viewer's personal recruitment to-dos for the bell and My tasks —
+ // a requisition or offer approval step waiting for them, and interview feedback due. Per-job counts stay on the
+ // Recruitment Overview (D-035).
+ 'recruitmentRequisitionApproval','recruitmentOfferApproval','recruitmentFeedback'] as const;
+/** The Recruitment kinds above. Only surfaces that ask for them (core/approvals-inbox.ts InboxModulesWithRecruitment) get them. */
+export const RECRUITMENT_TASK_KINDS=['recruitmentRequisitionApproval','recruitmentOfferApproval','recruitmentFeedback'] as const satisfies readonly PackTaskKind[];
 export type PackTaskKind=typeof PACK_TASK_KINDS[number];
+export type RecruitmentTaskKind=typeof RECRUITMENT_TASK_KINDS[number];
 export type PackTaskItem={id:string;kind:PackTaskKind;subjectName:string|null;createdAt:string;linkPath:string};
 /** A pack's task provider. `scopeIds` is the company-switcher selection; undefined means no filter. */
 export type PackTaskProvider=(ctx:SessionContext,scopeIds:string[]|undefined)=>Promise<PackTaskItem[]>;

@@ -32,6 +32,11 @@
  *   jobs and a short application form, served to visitors who are not signed in by app/careers/** route handlers (plain HTML,
  *   no script, no cookie) that reach the data ONLY through 4408's definer functions. HR sets the page, its privacy notice
  *   versions and "Show on careers page" per job; an application lands as a new candidate with source "Careers page".
+ * - Tasks and updates (slice 9, ./tasks and ./tasks-model): live personal to-dos (approval steps waiting for the viewer,
+ *   interview feedback due) on the Overview, in the bell and on My tasks (core/approvals-inbox.ts PACK_TASK_SOURCES);
+ *   per-job counts of applications to schedule and to screen on the Overview only, streamed after the page (D-035); and
+ *   live updates per category with unread counts. Everything is read as
+ *   the viewer under row security; only the viewer's own "read up to" time per company and category is stored (4409).
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (4402); the menu shows for team members, interviewers and pending approvers.
  */
@@ -87,6 +92,8 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_careers_site', note: 'one public careers page per company: address, display name, headline, introduction, published' },
     { table: 'recruitment_careers_notice', note: 'careers privacy notice versions, immutable, numbered by the database' },
     { table: 'recruitment_careers_application', note: 'applications received through the careers page: job, candidate, message, arrival time' },
+    // Slice 9 (4409)
+    { table: 'recruitment_task_read_marker', note: 'a user\'s own "read up to" time per company and update category; no candidate data' },
   ],
 };
 registerPack(recruitmentPack);

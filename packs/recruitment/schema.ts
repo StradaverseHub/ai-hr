@@ -1,6 +1,6 @@
 /**
  * The Recruitment pack's satellite tables (ADR-0080 D5/D11) as the service reads and writes them. The DDL,
- * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4408; these
+ * keys, row security, grants and guards are owned by db/migrations/4401_recruitment_core.sql and 4402–4409; these
  * declarations carry no references or checks of their own so they can never disagree with it.
  */
 import { boolean, customType, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
@@ -9,6 +9,7 @@ import type {
   ApprovalDecision, CandidateDecision, CandidateResponse, CriterionRating, EvaluationFormDefinition, EvaluationResult, FeedbackEditLock,
   InterviewType, OfferFieldType, OfferSendChannel, OfferStatus, RequisitionApprovalStatus, RequisitionStatus,
 } from './hiring-model';
+import type { TaskCategory } from './tasks-model';
 import type { CandidateFileKind, CandidateSource, ConsentMethod, ConsentStatus, EducationLevel, EntryKind, IdType } from './privacy-model';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
@@ -554,4 +555,14 @@ export const recruitmentCareersApplication = pgTable('recruitment_careers_applic
   candidateId: uuid('candidate_id').notNull(),
   message: text('message'),
   receivedAt: ts('received_at').notNull().defaultNow(),
+});
+
+/** Slice 9 (4409): a user's own "read up to" time per company and update category. Rows are the viewer's own only. */
+export const recruitmentTaskReadMarker = pgTable('recruitment_task_read_marker', {
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  appUserId: uuid('app_user_id').notNull(),
+  category: text('category').$type<TaskCategory>().notNull(),
+  readUpTo: ts('read_up_to').notNull(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
 });

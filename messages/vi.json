@@ -14636,7 +14636,10 @@
       "rewardReview": "Xem xét đãi ngộ",
       "probation": "Xác nhận thử việc",
       "contract_staff": "Quản lý hợp đồng",
-      "contractDateCorrection": "Điều chỉnh ngày hợp đồng"
+      "contractDateCorrection": "Điều chỉnh ngày hợp đồng",
+      "recruitmentRequisitionApproval": "Phê duyệt yêu cầu tuyển dụng",
+      "recruitmentOfferApproval": "Phê duyệt đề nghị tuyển dụng",
+      "recruitmentFeedback": "Gửi đánh giá phỏng vấn"
     },
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
     "title": "Thông báo",
@@ -38264,6 +38267,56 @@
       "received": "Ứng tuyển qua trang tuyển dụng ngày {date}",
       "message": "Lời nhắn của ứng viên",
       "byApplicant": "Ứng viên, qua trang tuyển dụng"
+    },
+    "tasks": {
+      "purpose": "Những việc đang chờ bạn trong Tuyển dụng và những gì vừa diễn ra.",
+      "title": "Công việc",
+      "tabsLabel": "Nhóm công việc",
+      "tabs": {
+        "todo": "Cần làm",
+        "requisitions": "Yêu cầu tuyển dụng",
+        "offers": "Đề nghị",
+        "interviews": "Phỏng vấn",
+        "applications": "Hồ sơ ứng tuyển"
+      },
+      "todoBadge": "{count, plural, other {# việc cần làm}}",
+      "unreadBadge": "{count, plural, other {# cập nhật chưa đọc}}",
+      "markAllRead": "Đánh dấu tất cả là đã đọc",
+      "markEverythingRead": "Đánh dấu mọi cập nhật là đã đọc",
+      "markedNotice": "Đã đánh dấu là đã đọc.",
+      "todoEmpty": "Không có phê duyệt hay đánh giá phỏng vấn nào đang chờ bạn.",
+      "updatesEmpty": "Không có cập nhật nào trong nhóm này.",
+      "window": "Cập nhật trong {days} ngày qua, mới nhất trước.",
+      "unread": "Mới",
+      "pagesLabel": "Trang cập nhật",
+      "newest": "Về mới nhất",
+      "older": "Cũ hơn",
+      "page": "Trang {page}",
+      "step": "Bước {position}/{steps}",
+      "offerFallback": "Một đề nghị",
+      "startedAt": "Bắt đầu lúc {time}",
+      "todo": {
+        "requisitionApproval": "Yêu cầu tuyển dụng đang chờ bạn phê duyệt",
+        "offerApproval": "Đề nghị đang chờ bạn phê duyệt",
+        "feedback": "Đến hạn gửi đánh giá phỏng vấn",
+        "toSchedule": "{count, plural, one {# hồ sơ cần xếp lịch phỏng vấn} other {{shown} hồ sơ cần xếp lịch phỏng vấn}}",
+        "toScreen": "{count, plural, one {# hồ sơ mới cần sàng lọc} other {{shown} hồ sơ mới cần sàng lọc}}"
+      },
+      "update": {
+        "requisitionApproved": "Yêu cầu tuyển dụng đã được phê duyệt",
+        "requisitionDenied": "Yêu cầu tuyển dụng bị từ chối phê duyệt",
+        "offerApproved": "Đề nghị đã được phê duyệt",
+        "offerDenied": "Đề nghị bị từ chối phê duyệt",
+        "offerAccepted": "Ứng viên đã chấp nhận đề nghị",
+        "offerDeclined": "Ứng viên đã từ chối đề nghị",
+        "feedbackSubmitted": "Đã gửi đánh giá phỏng vấn",
+        "careersApplication": "Hồ sơ mới từ trang tuyển dụng",
+        "referral": "Giới thiệu mới từ nhân viên"
+      },
+      "jobsLoading": "Đang tải số liệu theo vị trí…",
+      "jobsUnavailable": "Hiện chưa tải được số liệu theo vị trí.",
+      "jobsRefresh": "Tải lại",
+      "jobsTitle": "Vị trí của bạn"
     }
   },
   "careersPublic": {

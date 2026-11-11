@@ -5146,6 +5146,13 @@
       "when": 1793330004108,
       "tag": "4408_recruitment_careers_page",
       "breakpoints": true
+    },
+    {
+      "idx": 3809,
+      "version": "7",
+      "when": 1793330004109,
+      "tag": "4409_recruitment_tasks",
+      "breakpoints": true
     }
   ]
 }
