@@ -23,7 +23,9 @@ import {definitionOfDoneInputs} from './definition-of-done-inputs';
 // links Leave Settings, closing its guide gap, and the new Shared Leave Groups page shipped with no gap of its own.
 // 90377f8ca and 6781b901f made /admin/claims/forms and /admin/locations route-handler redirects, so they left the
 // linkable pages and their entries closed: lowered to the counts after it (351/340/232/4/334 before, 349/338/231/4/332 after).
-const CEILING={entries:349,semantic:338,guide:231,readiness:4,corpus:332} as const;
+// Re-baselined at integration of the Irwin combined release (82748f92, 2026-11-12): +1 entry (page:/admin/settings/people,
+// semantic+corpus; its guide gap is closed). The card hub needs a registered People Settings read (a migration) before it closes.
+const CEILING={entries:350,semantic:339,guide:231,readiness:4,corpus:333} as const;
 
 const allowed=():Map<string,string[]>=>{const map=new Map<string,string[]>();
  for(const [signature,keys] of Object.entries(DEFINITION_OF_DONE_GAPS))for(const key of keys){
