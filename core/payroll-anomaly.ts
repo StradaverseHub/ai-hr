@@ -1,5 +1,6 @@
 import {assertAiPrincipalTx} from './ai-principal';
-import {resolveEntitlementsTx,assertModuleEnabled} from './entitlements';
+import {resolveEntitlementsTx,assertModuleEnabled,isModuleEnabled,TENANT_STATUS_GOOD_STANDING} from './entitlements';
+import type { EntitlementSnapshot } from './entitlement-types';
 /**
  * ADR-0076 — the payroll anomaly engine. The ADR-0074 control-tower keystone, Phase 1a.
  *
@@ -486,6 +487,10 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
     }
   }
 
+  // Owner rule (4 November 2026) — is attendance in use for this company at all? The Attendance module's entitlement
+  // (tenant-wide or scoped to this company) is the owning fact. ONE read per batch, never per employee.
+  const attendanceInUse = attendanceInUseFor(await resolveEntitlementsTx(tx, tenantId), batch.companyId);
+
   const contexts: DetectorContext[] = slips.map((slip) => {
     const emp = empById.get(slip.employmentId);
     const profile = emp ? profileByPerson.get(emp.personId) : undefined;
@@ -509,6 +514,7 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
         attendanceDays: attByEmployment.get(slip.employmentId) ?? 0,
         approvedLeaveDays: leaveByEmployment.get(slip.employmentId) ?? 0,
         attendanceExempt: exemptByEmployment.get(slip.employmentId) === true,
+        attendanceInUse,
       },
       period: { start: periodStart, end: periodEnd, calendarDays: dim },
       caps: caps ?? {},
@@ -527,6 +533,22 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
     capsSkipReason,
     contexts,
   };
+}
+
+/**
+ * Owner rule (4 November 2026) — does attendance apply to this company? FALSE only when the tenant's entitlements were
+ * READ (tenant in good standing) and the Attendance module is not enabled for the company, tenant-wide or company-scoped.
+ * Every other answer is TRUE, so `pay-without-attendance` keeps checking: an unreadable snapshot, a suspended tenant
+ * (every billable module reads off) or a resolver error must never quietly switch the ghost-employee check off.
+ * PURE over the snapshot; exported for its tests.
+ */
+export function attendanceInUseFor(snapshot: EntitlementSnapshot, companyId: string): boolean {
+  if (!TENANT_STATUS_GOOD_STANDING.has(snapshot.tenantStatus)) return true;
+  try {
+    return isModuleEnabled({ tenantId: snapshot.tenantId, entitlements: snapshot }, 'attendance', companyId);
+  } catch {
+    return true;
+  }
 }
 
 /** Which detectors can run for this employee, and why the others cannot (§2.4 coverage transparency). */

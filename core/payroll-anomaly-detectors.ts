@@ -63,8 +63,11 @@ export type DetectorContext = {
   };
   /** Attendance + approved leave day counts for the period. Both zero is what `pay-without-attendance` looks for.
    *  `attendanceExempt` (AI v2 Phase 2 hardening): the person's schedule group is exempt from absence judgments on every
-   *  day of the period (the attendance owner's "Enable Exception"), so no attendance is their normal set-up. */
-  activity: { attendanceDays: number; approvedLeaveDays: number; attendanceExempt?: boolean };
+   *  day of the period (the attendance owner's "Enable Exception"), so no attendance is their normal set-up.
+   *  `attendanceInUse` (owner rule, 4 November 2026): FALSE when the Attendance module is not enabled for the person's
+   *  company (core/entitlements.ts, tenant-wide or company-scoped), so nobody there records attendance and zero days is
+   *  the normal set-up, not a ghost. Absent (a context built before this fact existed) or TRUE = attendance applies. */
+  activity: { attendanceDays: number; approvedLeaveDays: number; attendanceExempt?: boolean; attendanceInUse?: boolean };
   period: { start: string; end: string; calendarDays: number };
   /** Statutory ceilings resolved from the pack in force for this batch. */
   caps: Record<string, number>;
@@ -172,6 +175,16 @@ const statutoryOverCap: Detector = {
 };
 
 /**
+ * Why `missing-bank-profile` fired, carried as the `reason` fact so a screen can word the two cases differently.
+ * `payment-method-not-set`: the employment has no payment method on record (NULL), so it is paid by bank by default
+ * and has no bank details. `bank-details-missing`: the payment method is bank transfer and the bank details are missing.
+ * ADDITIVE: the `netPay` and `paymentMethod` facts keep their keys and values, so verdicts stored before this fact
+ * existed still render (a finding without `reason` reads as before).
+ */
+export const MISSING_BANK_PROFILE_REASONS = ['payment-method-not-set', 'bank-details-missing'] as const;
+export type MissingBankProfileReason = (typeof MISSING_BANK_PROFILE_REASONS)[number];
+
+/**
  * Payable by BANK TRANSFER with nowhere to send it. BLOCK — the disbursement file would carry a row that
  * cannot land.
  *
@@ -179,34 +192,41 @@ const statutoryOverCap: Detector = {
  * nearly shipped with. `employment.payment_method` is a three-value enum (bank_transfer | cheque | cash),
  * so a cash-paid site worker legitimately has no bank details. Firing on them would flag a whole deskless
  * workforce as blocked on their first cycle — the single fastest way to teach an operator that this layer
- * cries wolf.
+ * cries wolf. Cash and cheque NEVER fire, whatever the bank details.
  *
  * NULL counts as bank transfer. The column is nullable with no default, so every employment predating
  * migration 0270 carries NULL, and those are ordinary bank-transfer employees — treating NULL as "unknown,
- * so stay quiet" would silently exempt most of the existing population from the check.
+ * so stay quiet" would silently exempt most of the existing population from the check. It still BLOCKS
+ * (a bank file cannot be made for the row), but its `reason` says the payment method was never set, because
+ * the fix is different: set the payment method (cash or cheque needs no bank details) or capture the account.
  */
 const missingBankProfile: Detector = {
   id: 'missing-bank-profile',
   requires: { priorCycles: 0 },
   evaluate: (ctx) => {
-    const paidByBank = ctx.profile.paymentMethod === 'bank_transfer' || ctx.profile.paymentMethod === null;
-    return ctx.current.netPay > 0 && paidByBank && !ctx.profile.hasBankProfile
-      ? [
-          {
-            detectorId: 'missing-bank-profile',
-            severity: 'block',
-            facts: { netPay: ctx.current.netPay, paymentMethod: ctx.profile.paymentMethod ?? 'unset' },
-            sourceEventIds: ctx.eventIds,
-            suggestedAction: 'anomaly.action.missingBankProfile',
-          },
-        ]
-      : [];
+    const method = ctx.profile.paymentMethod;
+    const paidByBank = method === 'bank_transfer' || method === null;
+    if (!(ctx.current.netPay > 0 && paidByBank && !ctx.profile.hasBankProfile)) return [];
+    const reason: MissingBankProfileReason = method === null ? 'payment-method-not-set' : 'bank-details-missing';
+    return [
+      {
+        detectorId: 'missing-bank-profile',
+        severity: 'block',
+        facts: { netPay: ctx.current.netPay, paymentMethod: method ?? 'unset', reason },
+        sourceEventIds: ctx.eventIds,
+        suggestedAction: 'anomaly.action.missingBankProfile',
+      },
+    ];
   },
 };
 
 /**
  * No tax profile. REVIEW rather than block: PCB may still be computed on defaults and be right, and a
  * brand-new client mid-onboarding would otherwise have its whole first batch blocked on paperwork.
+ *
+ * WHAT IT TESTS (checked 11 November 2026): the person has NO `employee_statutory_my` row at all (ADR-0076 §3 table) —
+ * no tax category, no children, no statutory numbers, so PCB ran on defaults. It does NOT test the PCB amount: `pcb` is
+ * EVIDENCE only, and a zero PCB (a person below the PCB threshold) neither causes nor prevents a finding.
  */
 const missingTaxProfile: Detector = {
   id: 'missing-tax-profile',
@@ -231,12 +251,18 @@ const missingTaxProfile: Detector = {
  * BOTH counts must be zero. Approved leave is attendance for this purpose — flagging someone on a month of
  * approved annual leave would fire on every legitimate long absence and train the operator to dismiss this
  * detector, which is worse than not shipping it.
+ *
+ * ONLY WHERE ATTENDANCE APPLIES (owner rule, 4 November 2026: a legitimate set-up is not an exception). Not when the
+ * Attendance module is off for the person's company (`attendanceInUse === false`), and not when their schedule group
+ * is exempt for the whole period (`attendanceExempt`). Someone who is expected to record attendance and has zero days
+ * is still flagged.
  */
 const payWithoutAttendance: Detector = {
   id: 'pay-without-attendance',
   requires: { priorCycles: 0 },
   evaluate: (ctx) =>
     ctx.current.netPay > 0 && ctx.activity.attendanceDays === 0 && ctx.activity.approvedLeaveDays === 0 && ctx.activity.attendanceExempt !== true
+      && ctx.activity.attendanceInUse !== false
       ? [
           {
             detectorId: 'pay-without-attendance',
