@@ -51,28 +51,35 @@ export async function seedClaimQueueScaleFixture(shape:{employees:number;claimsP
  return {b,root,groupHr,lineManager,counts,ownClaims:shape.claimsPerEmployee};
 }
 
-type Sample={medianMs:number;maxMs:number;samplesMs:number[]};
-async function timed<T>(runs:number,read:()=>Promise<T>):Promise<{value:T;timing:Sample}>{
+export type QueueTiming={medianMs:number;maxMs:number;samplesMs:number[]};
+/** `runs` samples, except that a read slower than 20 s is not repeated (the figure is already the answer). */
+async function timed<T>(runs:number,read:()=>Promise<T>):Promise<{value:T;timing:QueueTiming}>{
  const samples:number[]=[];let value!:T;
- for(let run=0;run<runs;run++){const started=performance.now();value=await read();samples.push(Math.round(performance.now()-started));}
+ for(let run=0;run<runs;run++){
+  const started=performance.now();value=await read();samples.push(Math.round(performance.now()-started));
+  if(samples[samples.length-1]>20000)break;
+ }
  const sorted=samples.slice().sort((a,b)=>a-b);
  return {value,timing:{medianMs:sorted[Math.floor(sorted.length/2)],maxMs:sorted[sorted.length-1],samplesMs:samples}};
 }
 
 /** First, next and deep pages (newest first), the first name-sorted page, the oldest-first page, the "All"
- * page and select-all for one approver, each correct against the known total and measured `runs` times. */
-export async function measureClaimQueue(ctx:SessionContext,total:number,ownClaims:number,deepPage:number,runs=3){
+ * page and select-all for one approver, each correct against the known total and measured `runs` times.
+ * `record` receives every timing as soon as it is known, so a slow read still leaves its figures. */
+export async function measureClaimQueue(ctx:SessionContext,total:number,ownClaims:number,deepPage:number,runs=3,
+ record:(name:string,timing:QueueTiming)=>void=()=>{}){
  const pageCount=Math.ceil(total/25);
  expect(deepPage).toBeLessThan(pageCount);
- const first=await timed(runs,()=>listPendingClaimsPage(ctx));
- const next=await timed(runs,()=>listPendingClaimsPage(ctx,{page:'1'}));
- const deep=await timed(runs,()=>listPendingClaimsPage(ctx,{page:String(deepPage)}));
- const last=await timed(1,()=>listPendingClaimsPage(ctx,{page:String(pageCount-1)}));
- const nameFirst=await timed(runs,()=>listPendingClaimsPage(ctx,{sort:'name_asc'}));
- const nameDeep=await timed(runs,()=>listPendingClaimsPage(ctx,{sort:'name_desc',page:String(deepPage)}));
- const oldest=await timed(runs,()=>listPendingClaimsPage(ctx,{sort:'oldest'}));
- const all=await timed(runs,()=>listPendingClaimsPage(ctx,{size:'all'}));
- const selection=await timed(runs,()=>listPendingClaimSelection(ctx));
+ const step=async<T>(name:string,count:number,read:()=>Promise<T>)=>{const result=await timed(count,read);record(name,result.timing);return result;};
+ const first=await step('firstPage',runs,()=>listPendingClaimsPage(ctx));
+ const next=await step('nextPage',runs,()=>listPendingClaimsPage(ctx,{page:'1'}));
+ const deep=await step('deepPage',runs,()=>listPendingClaimsPage(ctx,{page:String(deepPage)}));
+ const last=await step('lastPage',1,()=>listPendingClaimsPage(ctx,{page:String(pageCount-1)}));
+ const nameFirst=await step('nameAscFirstPage',runs,()=>listPendingClaimsPage(ctx,{sort:'name_asc'}));
+ const nameDeep=await step('nameDescDeepPage',runs,()=>listPendingClaimsPage(ctx,{sort:'name_desc',page:String(deepPage)}));
+ const oldest=await step('oldestFirstPage',runs,()=>listPendingClaimsPage(ctx,{sort:'oldest'}));
+ const all=await step('allPage2000',runs,()=>listPendingClaimsPage(ctx,{size:'all'}));
+ const selection=await step('selectAll',runs,()=>listPendingClaimSelection(ctx));
  for(const page of [first,next,deep,nameFirst,nameDeep,oldest])expect(page.value.page).toMatchObject({total,limit:25,hasNext:true});
  for(const page of [first,next,deep,nameFirst,nameDeep,oldest])expect(page.value.rows).toHaveLength(25);
  expect(last.value.rows).toHaveLength(total-(pageCount-1)*25);expect(last.value.page.hasNext).toBe(false);

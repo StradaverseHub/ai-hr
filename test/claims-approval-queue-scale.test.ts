@@ -22,21 +22,24 @@ it('pages 100,000 pending claims for group HR and a manager without reading the 
 
  // Only the requested page leaves the database: every statement of a newest-first page returns at most one
  // page of rows (the queue statement returns one jsonb row).
- const probe=observeNativeRead();
+ const probe=observeNativeRead();const probeStarted=performance.now();
  try{await listPendingClaimsPage(fixture.groupHr,{page:'2000'});}finally{probe.restore();}
+ report.probeMs=Math.round(performance.now()-probeStarted);save();
  expect(probe.queries.length).toBeGreaterThan(0);
  expect(probe.queries.every(query=>(query.rows??0)<=25)).toBe(true);
  report.pageStatementRows=probe.queries.map(query=>query.rows??null);
 
+ const progress:Record<string,Record<string,unknown>>={groupHr:{},manager:{}};report.progress=progress;
+ const record=(actor:'groupHr'|'manager')=>(name:string,timing:unknown)=>{progress[actor][name]=timing;save();};
  report.after={
-  groupHr:await measureClaimQueue(fixture.groupHr,100000,fixture.ownClaims,2000),
-  manager:await measureClaimQueue(fixture.lineManager,10010,fixture.ownClaims,200),
+  groupHr:await measureClaimQueue(fixture.groupHr,100000,fixture.ownClaims,2000,3,record('groupHr')),
+  manager:await measureClaimQueue(fixture.lineManager,10010,fixture.ownClaims,200,3,record('manager')),
  };
  report.phase='before';save();
 
  // Before: the former queue on the same data (one read each; group HR bounded so a regression cannot hang CI).
  const before:Record<string,unknown>={};
- for(const [name,ctx,timeoutMs] of [['manager',fixture.lineManager,240000],['groupHr',fixture.groupHr,240000]] as const){
+ for(const [name,ctx,timeoutMs] of [['manager',fixture.lineManager,120000],['groupHr',fixture.groupHr,180000]] as const){
   const started=performance.now();
   try{
    const queue=await legacyClaimQueue(ctx,{statementTimeoutMs:timeoutMs});
