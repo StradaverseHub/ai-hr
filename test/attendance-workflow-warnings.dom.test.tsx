@@ -21,7 +21,11 @@ it('loads subsequent employee warning pages and preserves the current page after
  render(<NextIntlClientProvider locale="en" messages={en}><WorkflowWarnings lineageId="lineage" initial={{rows:[row],total:51,offset:0,hasMore:true}} saved={false}/></NextIntlClientProvider>);
  fireEvent.click(screen.getByRole('button',{name:en.attendanceWorkflow.nextEmployees}));
  expect(await screen.findByRole('cell',{name:'EMP-0051'})).toBeVisible();expect(load).toHaveBeenCalledWith('lineage',50);
- fireEvent.click(screen.getByRole('button',{name:en.attendanceWorkflow.previousEmployees}));
+ // The next page's row can render while its transition is still pending, and Previous stays disabled until that
+ // transition settles. A click on the disabled button would be swallowed, so wait until it can be pressed.
+ const previous=screen.getByRole('button',{name:en.attendanceWorkflow.previousEmployees});
+ await waitFor(()=>expect(previous).toBeEnabled());
+ fireEvent.click(previous);
  expect(await screen.findByRole('alert')).toHaveTextContent('Unable to read warnings.');
  await waitFor(()=>expect(screen.getByRole('cell',{name:'EMP-0051'})).toBeVisible());
 });
