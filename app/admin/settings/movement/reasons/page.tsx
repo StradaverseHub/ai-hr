@@ -1,4 +1,6 @@
 import { getTranslations } from 'next-intl/server';
+import { peopleSettingsBack } from '@/app/admin/settings/people/back';
+import { PeopleSettingsNavigation } from '@/components/people-settings-navigation';
 import { requireAdmin } from '@/lib/authz';
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { listTerminationReasons, type TerminationReasonRow } from '@/core/termination-reason-catalog';
@@ -89,7 +91,8 @@ export default async function TerminationReasonsPage({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader title={t('title')} description={t('description')} />
+      <PageHeader title={t('title')} description={t('description')} back={await peopleSettingsBack()} />
+      <PeopleSettingsNavigation />
       <MovementSettingsTabs active="reasons" labels={{ types: t('tabs.types'), reasons: t('tabs.reasons') }} />
       <ErrorBanner message={sp.error} />
 

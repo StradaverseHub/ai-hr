@@ -463,19 +463,10 @@
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
-      "id": "shell.employeeIdConfig",
+      "id": "shell.peopleSettings",
       "sourceOwner": "lib/navigation/shell-inventory.ts",
-      "sourceKey": "shell-slot:employeeIdConfig",
-      "declaredHref": "/admin/settings/employee-id",
-      "status": "uncovered",
-      "owner": "lib/navigation/shell-inventory.ts",
-      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
-    },
-    {
-      "id": "shell.peopleGeneral",
-      "sourceOwner": "lib/navigation/shell-inventory.ts",
-      "sourceKey": "shell-slot:peopleGeneral",
-      "declaredHref": "/admin/settings/people-general",
+      "sourceKey": "shell-slot:peopleSettings",
+      "declaredHref": "/admin/settings/people",
       "status": "uncovered",
       "owner": "lib/navigation/shell-inventory.ts",
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
@@ -490,15 +481,6 @@
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
-      "id": "shell.systemLabels",
-      "sourceOwner": "lib/navigation/shell-inventory.ts",
-      "sourceKey": "shell-slot:systemLabels",
-      "declaredHref": "/admin/settings/system-labels",
-      "status": "uncovered",
-      "owner": "lib/navigation/shell-inventory.ts",
-      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
-    },
-    {
       "id": "shell.delegations",
       "sourceOwner": "lib/navigation/shell-inventory.ts",
       "sourceKey": "shell-slot:delegations",
@@ -508,37 +490,10 @@
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
-      "id": "shell.movementSettings",
-      "sourceOwner": "lib/navigation/shell-inventory.ts",
-      "sourceKey": "shell-slot:movementSettings",
-      "declaredHref": "/admin/settings/movement",
-      "status": "uncovered",
-      "owner": "lib/navigation/shell-inventory.ts",
-      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
-    },
-    {
-      "id": "shell.hiringDefaults",
-      "sourceOwner": "lib/navigation/shell-inventory.ts",
-      "sourceKey": "shell-slot:hiringDefaults",
-      "declaredHref": "/admin/settings/hiring-defaults",
-      "status": "uncovered",
-      "owner": "lib/navigation/shell-inventory.ts",
-      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
-    },
-    {
       "id": "shell.holidays",
       "sourceOwner": "lib/navigation/shell-inventory.ts",
       "sourceKey": "shell-slot:holidays",
       "declaredHref": "/admin/holidays",
-      "status": "uncovered",
-      "owner": "lib/navigation/shell-inventory.ts",
-      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
-    },
-    {
-      "id": "shell.profileRequestSettings",
-      "sourceOwner": "lib/navigation/shell-inventory.ts",
-      "sourceKey": "shell-slot:profileRequestSettings",
-      "declaredHref": "/admin/settings/profile-requests",
       "status": "uncovered",
       "owner": "lib/navigation/shell-inventory.ts",
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."

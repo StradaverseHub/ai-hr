@@ -348,6 +348,7 @@
     "attendance": "Attendance Records",
     "attendanceSettings": "Attendance",
     "attendanceSettingsPage": "Settings",
+    "peopleSettings": "Settings",
     "employeeAttendance": "Employee Attendance",
     "myAttendance": "My Attendance",
     "manage": "Manage",
@@ -1321,7 +1322,7 @@
         "deleteConfirmTitle": "Delete qualification",
         "deleteConfirmBody": "Remove this qualification record? It will no longer appear in this employee's qualification history.",
         "none": "No qualification records.",
-        "hint": "HR maintains these records. Qualification types are managed under System Settings > System Labels > Profile Options.",
+        "hint": "HR maintains these records. Qualification types are managed under People > Configuration > Settings > System Labels > Profile Options.",
         "level": "Qualification",
         "levelPlaceholder": "Select qualification",
         "institute": "Institute",
@@ -24101,6 +24102,44 @@
       "desc": "Configure and test attendance calculations linked to Payroll Pay Items.",
       "cta": "Open formula builder"
     }
+  },
+  "peopleSettingsHub": {
+    "title": "People Settings",
+    "subtitle": "The central place to manage people settings. Open a section to configure it; only the sections you can access are shown.",
+    "employeeId": {
+      "title": "Employee ID numbering",
+      "desc": "How new Employee IDs are generated: prefix, starting number, digits and scope.",
+      "cta": "Open employee ID numbering"
+    },
+    "general": {
+      "title": "General",
+      "desc": "Organisation-wide rules for employee data entry, such as duplicate NRIC and email checks.",
+      "cta": "Open general settings"
+    },
+    "systemLabels": {
+      "title": "System Labels",
+      "desc": "The shared lists everyone picks from: departments, positions, cost centers, business units, grades and profile options.",
+      "cta": "Open system labels"
+    },
+    "movement": {
+      "title": "Movement Settings",
+      "desc": "The career event types HR can record on an employee, and the termination reasons they offer.",
+      "cta": "Open movement settings"
+    },
+    "hiringDefaults": {
+      "title": "Hiring Defaults",
+      "desc": "Per-company probation length and review-reminder cadence applied when HR creates an employee.",
+      "cta": "Open hiring defaults"
+    },
+    "changeRequests": {
+      "title": "Employee Change Requests",
+      "desc": "What employees can see and change in My Profile, photo editing, and who approves their requests.",
+      "cta": "Open change request settings"
+    },
+    "empty": "You do not have access to any people settings.",
+    "backToSettings": "Back to Settings",
+    "leaveUnsaved": "Leave this page and discard unsaved changes?",
+    "leaveOtherUnsaved": "Saving this form will leave unsaved changes in another form. Discard those changes?"
   },
   "rewards": {
     "promotionNominationsHelp": "Review nominations from the annual rewards reviews you can access.",
