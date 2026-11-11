@@ -61,6 +61,8 @@ import { currentUiTheme } from '@/lib/ui-theme-server';
 import { MonoPageHeader, Note } from '@/components/monolith';
 import { MONOLITH_SECTION_KEYS, monolithDashboardBlocks } from '@/app/dashboard-monolith';
 import { TodayPage } from '@/components/today/today-page';
+import { EmployeeTodayPage } from '@/components/today/employee/today-page';
+import { isEmployeeOnlyAudience } from '@/lib/today/employee';
 import RouteLoading from '@/components/route-loading';
 
 const rm = (n: unknown) =>
@@ -168,6 +170,17 @@ export default async function DashboardPage({
   const unavailableCode = Array.isArray(rawUnavailable) ? rawUnavailable[0] : rawUnavailable;
   const unavailableModule = MODULE_CATALOG.find((m) => m.code === unavailableCode && !m.isCore) ?? null;
   const tModule = await getTranslations('moduleUnavailable');
+  const notice = unavailableModule && (
+    <Card role="status" className="border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/40">
+      <h2 className="text-sm font-semibold">{tModule('title')}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{tModule('body', { module: unavailableModule.name })}</p>
+    </Card>
+  );
+  // Employee Today (owner decision, 11 Nov 2026): an employee gets the one-pager instead of Today over the old
+  // personal dashboard. Administrators, managers and partners, and the explicit team workbench, keep the path below.
+  if (isEmployeeOnlyAudience(scoped.s.roles, isAdmin(scoped.s)) && homeQuery?.workspace !== 'team') {
+    return <EmployeeTodayPage session={scoped.s} employmentId={typeof homeQuery?.employmentId === 'string' ? homeQuery.employmentId : undefined} notice={notice} />;
+  }
   return (
     <TodayPage
       session={scoped.s}
@@ -177,12 +190,7 @@ export default async function DashboardPage({
       needs={{ all: homeQuery?.needs === 'all', recommend: typeof homeQuery?.recommend === 'string' ? homeQuery.recommend : undefined }}
       // AI v2 W5: the At a glance "Why?" panel the person opened in place.
       why={typeof homeQuery?.why === 'string' ? homeQuery.why : undefined}
-      notice={unavailableModule && (
-        <Card role="status" className="border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/40">
-          <h2 className="text-sm font-semibold">{tModule('title')}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{tModule('body', { module: unavailableModule.name })}</p>
-        </Card>
-      )}
+      notice={notice}
       more={<Suspense fallback={<RouteLoading />}><DashboardMore homeQuery={homeQuery && { ...homeQuery, moduleUnavailable: undefined }} scoped={scoped} /></Suspense>}
     />
   );

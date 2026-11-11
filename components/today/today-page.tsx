@@ -73,7 +73,7 @@ export async function TodayPage({session,scopeIds,employmentId,notice,more,needs
 
 /** The viewer's given name: the salary-free Home identity for someone with an own employment, otherwise the
  * name the top bar already shows. Never blocks the greeting: no name, or a failed read, keeps "Good morning". */
-async function GreetingWithName({session,employmentId,period}:{session:SessionContext;employmentId?:string;period:ReturnType<typeof greetingFor>}){
+export async function GreetingWithName({session,employmentId,period}:{session:SessionContext;employmentId?:string;period:ReturnType<typeof greetingFor>}){
  const t=await getTranslations('today');
  const name=await withSharedReadSnapshot(session,()=>readEmployeeHomeGreetingIdentity(session,employmentId),undefined,requestReadScope()).then(identity=>identity.name)
   .catch(()=>viewerIdentity(session).then(viewer=>viewer.name)).catch(()=>null);
