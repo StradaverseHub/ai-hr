@@ -3465,7 +3465,9 @@
         "hiredOn": "Tarikh Menyertai Kumpulan",
         "joinDate": "Tarikh Menyertai",
         "gradeId": "Gred Jawatan",
-        "employmentType": "Jenis Pekerjaan"
+        "employmentType": "Jenis Pekerjaan",
+        "contractEndDate": "Tarikh Tamat Kontrak",
+        "internshipEndDate": "Tarikh Tamat Latihan"
       },
       "statuses": {
         "applied": "Berjaya",

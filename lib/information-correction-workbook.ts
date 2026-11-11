@@ -10,7 +10,7 @@ export function parseInformationWorkbook(content:Buffer):InformationImportRow[]{
  const book=XLSX.read(content,{type:'buffer',cellDates:false,cellFormula:true});
  const sheet=book.Sheets.Corrections;if(!sheet||!sheet['!ref'])throw new Error('Use the Corrections sheet from the Information-Only Correction template.');
  const range=XLSX.utils.decode_range(sheet['!ref']);
- if(range.s.r!==0||range.s.c!==0||range.e.r<1||range.e.r>INFORMATION_MAX_ROWS||range.e.c>=INFORMATION_HEADERS.length+2)throw new Error('Use the nine-column template with between 1 and 200 employee rows.');
+ if(range.s.r!==0||range.s.c!==0||range.e.r<1||range.e.r>INFORMATION_MAX_ROWS||range.e.c>=INFORMATION_HEADERS.length+2)throw new Error('Use the eleven-column template with between 1 and 200 employee rows.');
  INFORMATION_HEADERS.forEach((header,c)=>{const cell=sheet[XLSX.utils.encode_cell({r:0,c})];if(cell?.v!==header||cell.f)throw new Error('The template columns changed. Download a new template.');});
  const ignoredColumns:Array<{column:number;field:'businessUnit'|'parentCompany'}>=[];
  for(let c=INFORMATION_HEADERS.length;c<=range.e.c;c++){const cell=sheet[XLSX.utils.encode_cell({r:0,c})],header=String(cell?.v??'');if(cell?.f||!['Business Unit','Parent company','Parent Company'].includes(header))throw new Error('The template columns changed. Download a new template.');const field=header==='Business Unit'?'businessUnit':'parentCompany';if(ignoredColumns.some(column=>column.field===field))throw new Error('The template repeats an organisation column.');ignoredColumns.push({column:c,field});}
@@ -23,7 +23,7 @@ export function parseInformationWorkbook(content:Buffer):InformationImportRow[]{
    if(cell.f||cell.t==='e'){errors.push(`${header}: formulas and error cells are not accepted.`);continue;}
    if(cell.v===undefined||String(cell.v).trim()==='')continue;
    if((header==='Employee ID'||header==='Company Code'||header==='New Company Code'||header==='Job Grade')&&cell.t!=='s'){errors.push(`${header}: enter a text code to preserve leading zeros.`);continue;}
-   if(header==='Group Join Date'||header==='Join Date'){
+   if(header==='Group Join Date'||header==='Join Date'||header==='Contract End Date'||header==='Internship End Date'){
     let date=String(cell.v).trim();
     if(cell.t==='n') {const parsed=XLSX.SSF.parse_date_code(Number(cell.v),{date1904:!!book.Workbook?.WBProps?.date1904});date=parsed?`${String(parsed.y).padStart(4,'0')}-${String(parsed.m).padStart(2,'0')}-${String(parsed.d).padStart(2,'0')}`:'';}
     if(!isCalendarDate(date))errors.push(`${header}: use YYYY-MM-DD or an Excel date.`);else values[header]=date;
@@ -47,7 +47,7 @@ export function informationWorkbook(options:InformationOptions):Uint8Array{
  const sheet=XLSX.utils.aoa_to_sheet([[...INFORMATION_HEADERS]]);sheet['!cols']=INFORMATION_HEADERS.map(()=>({wch:24}));
  XLSX.utils.book_append_sheet(book,sheet,'Corrections');
  XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([
- ['Information-Only Correction'],['One row per existing employee. Maximum 200 rows.'],['Company Code checks the existing company. New Company Code is optional.'],['Employee ID and codes must be text; preserve leading zeros. Employee Name is reference only.'],['Blank correction fields keep existing values. Supply a reason on every row.'],['Dates: YYYY-MM-DD text or actual Excel dates. No formulas.'],['Completed transactions are never recalculated. Future processing may use the corrected information.'],['Use Employment Movement for genuine transfers and operational changes.']]),'Instructions');
+ ['Information-Only Correction'],['One row per existing employee. Maximum 200 rows.'],['Company Code checks the existing company. New Company Code is optional.'],['Employee ID and codes must be text; preserve leading zeros. Employee Name is reference only.'],['Blank correction fields keep existing values. Supply a reason on every row.'],['Dates: YYYY-MM-DD text or actual Excel dates. No formulas.'],['Contract End Date applies to Contract employees and Internship End Date to Intern employees (the type after this correction). Each must be later than the start or join date.'],['Completed transactions are never recalculated. Future processing may use the corrected information.'],['Use Employment Movement for genuine transfers and operational changes.']]),'Instructions');
  XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Company Code','Company Name'],...options.companies.map(c=>[c.code,c.name])]),'Companies');
  XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Job Grade Code','Job Grade Name'],...options.grades.map(g=>[g.code,g.name])]),'Job Grades');
  XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Employment Type Code'],...options.employmentTypes.map(t=>[t])]),'Employment Types');

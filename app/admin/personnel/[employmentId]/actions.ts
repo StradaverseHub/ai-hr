@@ -32,7 +32,7 @@ import {
 import { reprojectEntitlementForEmployment } from '@/core/leave';
 // c063eea9 — the hire-details correction. Its form parser lives in core/ (a 'use server' module may only
 // export async functions) and reads ONLY the six allow-listed fields.
-import { correctHireDetails, parseHireCorrectionForm } from '@/core/hire-correction';
+import { correctHireDetails, parseHireCorrectionEndDate, parseHireCorrectionForm } from '@/core/hire-correction';
 // r256 420ebab5 — the SERVICE behind the Payroll tab's policy card. The per-card door is
 // assignPolicyAction (app/admin/payroll-policy/actions.ts, resolved through getSession); the consolidated
 // door reaches the same service directly, under requireAdmin, so both write through one implementation.
@@ -649,6 +649,7 @@ export async function correctHireDetailsAction(formData: FormData) {
     const res = await correctHireDetails(s, {
       employmentId,
       changes: parseHireCorrectionForm(formData),
+      endDates: parseHireCorrectionEndDate(formData),
       basicSalary: salary === null ? undefined : Number(salary),
       reason: orNull(formData.get('reason')),
     });

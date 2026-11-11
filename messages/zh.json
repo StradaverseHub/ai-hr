@@ -3465,7 +3465,9 @@
         "hiredOn": "集团入职日期",
         "joinDate": "入职日期",
         "gradeId": "职级",
-        "employmentType": "雇佣类型"
+        "employmentType": "雇佣类型",
+        "contractEndDate": "合同结束日期",
+        "internshipEndDate": "实习结束日期"
       },
       "statuses": {
         "applied": "成功",

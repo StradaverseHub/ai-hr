@@ -63,6 +63,7 @@ export function HireCorrectionForm({
   heading,
   fields,
   salaryAtHire,
+  endDate,
   readOnly,
   cancelHref,
   pageContext,
@@ -72,6 +73,8 @@ export function HireCorrectionForm({
   heading: string;
   fields: HireCorrectionFormField[];
   salaryAtHire?: { amount: string; currency: string };
+  /** 2260a06b — the current Employee Type's end date (Contract End Date / Internship End Date). */
+  endDate?: { field: 'contractEndDate' | 'internshipEndDate'; value: string | null };
   readOnly: HireCorrectionReadOnlyRow[];
   cancelHref: string;
   pageContext?:import('@/lib/personnel-movement-navigation').MovementPageContext;
@@ -91,6 +94,10 @@ export function HireCorrectionForm({
   const [salary, setSalary] = useState(salaryAtHire?.amount ?? '');
   const salaryChanged = !!salaryAtHire && salary !== '' && Number(salary) !== Number(salaryAtHire.amount);
   const salaryLabel = tRoot('people.detail.movement.field.basicSalary');
+  const endDateId = endDate?.field === 'contractEndDate' ? 'employment.employment_dates_and_service.contractenddate' : 'employment.draft_only_employment_fields.internshipenddate';
+  const [endValue, setEndValue] = useState(endDate?.value ?? '');
+  const endChanged = !!endDate && (endValue || null) !== endDate.value;
+  const endLabel = endDate ? personnelFormLabel(endDateId,(key,fallback)=>tRoot.has(key)?tRoot(key):fallback) : '';
 
   const changed = useMemo(
     () => editableFields.filter((f) => (values[f.field] || null) !== f.currentId),
@@ -112,7 +119,7 @@ export function HireCorrectionForm({
     return [...byRecord.entries()].map(([record, labels]) => t('recordFields', { record, fields: labels.join(', ') }));
   }, [changed, t]);
 
-  const canReview = (changed.length > 0 || salaryChanged) && reason.trim().length > 0;
+  const canReview = (changed.length > 0 || salaryChanged || endChanged) && reason.trim().length > 0;
 
   return (
     <form ref={formRef} aria-busy={pagePending} action={pageContext?pageAction:correctHireDetailsAction}>
@@ -244,6 +251,14 @@ export function HireCorrectionForm({
           className={selectCls} value={salary} onChange={event => setSalary(event.target.value)} />
       </label>}
 
+      {endDate && <label className="mx-4 mt-4 block space-y-1 text-sm">
+        <span>{endLabel}</span>
+        {/* Posted only when changed, like every other field on this form. */}
+        <input {...personnelWorkflowInput(endDateId, 'hireCorrection')}
+          name={endChanged ? endDate.field : undefined}
+          className={selectCls} value={endValue} onChange={event => setEndValue(event.target.value)} />
+      </label>}
+
       <div className="mt-4 flex items-center justify-end gap-2 border-t border-border p-4">
         <a href={cancelHref} className={btnGhost}>
           {t('cancel')}
@@ -263,6 +278,9 @@ export function HireCorrectionForm({
                 <div className="mt-4 divide-y divide-border rounded-md border border-border text-sm">
                   {salaryChanged && salaryAtHire && <div className="px-3 py-2">
                     {salaryLabel} ({salaryAtHire.currency}) · {salaryAtHire.amount} → {salary}
+                  </div>}
+                  {endChanged && endDate && <div className="px-3 py-2">
+                    {endLabel} · {endDate.value ?? '—'} → {endValue || '—'}
                   </div>}
                   {changed.map((f) => (
                     <div key={f.field} className="px-3 py-2">

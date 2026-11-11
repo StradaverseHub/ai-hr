@@ -3465,7 +3465,9 @@
         "hiredOn": "குழுமத்தில் சேர்ந்த தேதி",
         "joinDate": "சேர்ந்த தேதி",
         "gradeId": "பணித் தரம்",
-        "employmentType": "பணி வகை"
+        "employmentType": "பணி வகை",
+        "contractEndDate": "ஒப்பந்த முடிவு தேதி",
+        "internshipEndDate": "பயிற்சி முடிவு தேதி"
       },
       "statuses": {
         "applied": "வெற்றி",

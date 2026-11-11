@@ -3465,7 +3465,9 @@
         "hiredOn": "Ngày vào tập đoàn",
         "joinDate": "Ngày vào làm",
         "gradeId": "Bậc công việc",
-        "employmentType": "Loại việc làm"
+        "employmentType": "Loại việc làm",
+        "contractEndDate": "Ngày kết thúc hợp đồng",
+        "internshipEndDate": "Ngày kết thúc thực tập"
       },
       "statuses": {
         "applied": "Thành công",

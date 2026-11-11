@@ -3465,7 +3465,9 @@
         "hiredOn": "วันที่เริ่มงานในกลุ่ม",
         "joinDate": "วันที่เริ่มงาน",
         "gradeId": "ระดับงาน",
-        "employmentType": "ประเภทการจ้างงาน"
+        "employmentType": "ประเภทการจ้างงาน",
+        "contractEndDate": "วันที่สิ้นสุดสัญญา",
+        "internshipEndDate": "วันที่สิ้นสุดการฝึกงาน"
       },
       "statuses": {
         "applied": "สำเร็จ",

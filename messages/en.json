@@ -3465,7 +3465,9 @@
         "hiredOn": "Group Join Date",
         "joinDate": "Join Date",
         "gradeId": "Job Grade",
-        "employmentType": "Employment Type"
+        "employmentType": "Employment Type",
+        "contractEndDate": "Contract End Date",
+        "internshipEndDate": "Internship End Date"
       },
       "statuses": {
         "applied": "Successful",
