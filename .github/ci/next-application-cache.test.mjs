@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_SEED,NEXT_APPLICATION_CODE,assertManagedNextInvocation,validateManagedNextOrigin,verifyNextPublisherTree,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
+import {NEXT_BUILD_CACHE_CODE} from './next-build-cache.mjs';
 import {capacityDecision,validateCapacityScope,compilerSwapFloorKiB} from './runner-capacity.mjs';
 import {applicationStateFixture,FIXTURE_DEFAULT_HEAP,FIXTURE_BOUNDED_HEAP} from './next-application-test-fixtures.mjs';
 import {buildUnits,requiredEvidence} from './manifest.mjs';
@@ -55,6 +56,10 @@ test('bootstrap cannot be retargeted to a different controller/run/artifact/stat
 test('managed publishers bind actual complete controller Git blobs, not self-reported implementation names',()=>{
  const expected=Object.fromEntries(NEXT_APPLICATION_CODE.map(path=>[path,controller])),tree={truncated:false,tree:NEXT_APPLICATION_CODE.map(path=>({type:'blob',path,sha:controller}))};
  assert.equal(verifyNextPublisherTree(tree,expected),true);
+ const inventory='.github/ci/runtime_inventory.py';
+ for(const names of [NEXT_APPLICATION_CODE,NEXT_BUILD_CACHE_CODE])assert.equal(names.filter(path=>path===inventory).length,1,'Shared byte-inventory implementation must bind the controller cache');
+ assert.throws(()=>verifyNextPublisherTree({...tree,tree:tree.tree.filter(row=>row.path!==inventory)},expected));
+ assert.throws(()=>verifyNextPublisherTree({...tree,tree:tree.tree.map(row=>row.path===inventory?{...row,sha:source}:row)},expected));
  assert.throws(()=>verifyNextPublisherTree({...tree,truncated:true},expected));
  assert.throws(()=>verifyNextPublisherTree({...tree,tree:tree.tree.slice(1)},expected));
  assert.throws(()=>verifyNextPublisherTree({...tree,tree:[...tree.tree,tree.tree[0]]},expected));

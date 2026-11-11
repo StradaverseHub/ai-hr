@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {balanceDatabaseFiles,DB_SCHEDULING} from './db-scheduling.mjs';
 import {PDF_TOOL_CONSUMERS} from './pdf-tool-scope.mjs';
 import {V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
+import {singletonDescriptor,singletonKind,nativeNextUnit,singletonJobName} from './singleton-protocol.mjs';
 export const CI_EXECUTION={workers:2,postgres:V15_POSTGRES_PROFILE,scheduling:DB_SCHEDULING};
 export const DB_BATCH_FILES=24;
 export const NODB_BATCH_FILES=256;
@@ -18,7 +19,8 @@ export function buildUnits(suite,groups,browserFiles){
  const browser=inventory(browserFiles,/^test\/[A-Za-z0-9_./-]+\.browser\.test\.tsx$/);
  const units=[];
  for(const kind of ['nodb','db']){
-  const files=groups[kind].slice().sort(),size=kind==='db'?DB_BATCH_FILES:NODB_BATCH_FILES;
+  const all=groups[kind].slice().sort(),special=all.filter(f=>singletonDescriptor(f)),files=all.filter(f=>!singletonDescriptor(f)),size=kind==='db'?DB_BATCH_FILES:NODB_BATCH_FILES;
+  for(const file of special){const descriptor=singletonDescriptor(file);if(singletonKind(descriptor.profile)!==kind)throw Error('Singleton capability disagrees with native DB classification');units.push({id:`${kind}-${hash({file,descriptor}).slice(0,16)}`,kind,files:[file],pdfTools:false,singleton:descriptor});}
   if(kind==='db'&&files.some(f=>PDF_TOOL_CONSUMERS.includes(f)))throw Error('Audited PDF tool consumers must retain their no-DB classification');
   const ordinary=kind==='nodb'?files.filter(f=>!PDF_TOOL_CONSUMERS.includes(f)):files,pdf=kind==='nodb'?files.filter(f=>PDF_TOOL_CONSUMERS.includes(f)):[];
   const batches=kind==='db'?balanceDatabaseFiles(files,size):Array.from({length:Math.ceil(ordinary.length/size)},(_,i)=>ordinary.slice(i*size,(i+1)*size));
@@ -37,5 +39,16 @@ export function requiredEvidence(expectedPlan){
  const browser=expectedPlan.units.find(u=>u.kind==='browser')?.files;
  if(JSON.stringify(buildUnits(expectedPlan.suite,groups,browser))!==JSON.stringify(expectedPlan.units))throw Error('Incomplete or altered manifest topology');
  const units=expectedPlan.units.map(u=>u.id);
- return {units,jobs:['resolve','plan','controller-tests','migrations','typecheck','build',...expectedPlan.units.map(u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`),'verify','deployment-hold'],artifacts:['gate-plan','gate-evidence','production-build-v1',...units.map(id=>`unit-${id}`)]};
+ return {units,jobs:['resolve','plan','controller-tests','migrations','typecheck','build',...expectedPlan.units.map(singletonJobName),'verify','deployment-hold'],artifacts:['gate-plan','gate-evidence','production-build-v1',...units.map(id=>`unit-${id}`)]};
+}
+
+/** A skipped empty matrix is optional only when its capability has no units. */
+export const optionalSkippedCiJob=(name,plan)=>['runner-diagnostics','commission-summary'].includes(name)||name==='native-test'&&!plan.units.some(nativeNextUnit);
+
+/** A local plan has no controller authority. Bind only independently authenticated
+ * witness identity, retaining the source-derived complete inventory. */
+export function bindPlanWitnessIdentity(local,{controller,baseline},runtime=local.runtime){
+ if(!/^[a-f0-9]{40}$/.test(controller??'')||!/^[a-f0-9]{40}$/.test(baseline??''))throw Error('Authenticated plan witness identity required');
+ const {fingerprint:unused,...body}={...local,controller,migrationBase:baseline,runtime};
+ return {...body,fingerprint:hash(body)};
 }

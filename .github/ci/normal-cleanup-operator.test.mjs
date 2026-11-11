@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 import {openNormalCleanupChannel,driveNormalCleanup,waitForRealReadyClock} from './normal-cleanup-operator.mjs';
 import {selection,READY_KIND} from './normal-cleanup-session.mjs';
-import {withNormalCleanupLock,retainNormalCleanupAudit} from './staging-build-install.mjs';
+import {withNormalCleanupLock,retainNormalCleanupAudit,assertFreshCleanup,assertInstallationCleanupLease,initializePrivateInstall,readPrivateInstall} from './staging-build-install.mjs';
 import {canonicalSourceExclusions,captureNormalCleanupFences} from './normal-cleanup-fences.mjs';
 const root=fileURLToPath(new URL('../../',import.meta.url));
 for(const scenario of [
@@ -45,6 +45,27 @@ test('real installer CLI/package refuses cleanup-session outside canonical stagi
  const result=spawnSync(process.execPath,[join(root,'.github/ci/staging-build-install.mjs'),'cleanup-session','a'.repeat(40),'00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002'],{cwd:root,encoding:'utf8',timeout:10000});assert.equal(result.status,1);assert.match(result.stderr,/existing Linux alpha\/staging source/);
 });
 
+test('an installation pins its original lease and refuses a new epoch even for the same source',t=>{
+ const home=mkdtempSync(join(tmpdir(),'original-installation-lease-'));t.after(()=>rmSync(home,{recursive:true,force:true}));
+ const {grant}=installationFixture(),lease={batch:'0'.repeat(36),epoch:74,candidate:grant.source};
+ initializePrivateInstall(grant,{home,lease});const p=readPrivateInstall(grant.installId,{home});
+ assert.deepEqual(assertInstallationCleanupLease(p,lease),lease);
+ assert.throws(()=>assertInstallationCleanupLease(p,{...lease,epoch:75}),/immutable original installation lease/);
+ assert.throws(()=>assertInstallationCleanupLease(p,{...lease,batch:'1'.repeat(36)}),/immutable original installation lease/);
+ rmSync(join(p.directory,'installation-lease.json'));assert.throws(()=>assertInstallationCleanupLease(p,lease),/ENOENT/);
+});
+test('a published arrival authority excludes other authority and cleanup modes',t=>{
+ const directory=mkdtempSync(join(tmpdir(),'arrival-authority-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));
+ assert.doesNotThrow(()=>assertFreshCleanup(directory));
+ writeFileSync(join(directory,'arrival-cleanup-authority.json'),'immutable fixture',{mode:0o600,flag:'wx'});
+ assert.throws(()=>assertFreshCleanup(directory),/explicit reconciliation/);
+ assert.doesNotThrow(()=>assertFreshCleanup(directory,{arrival:true}));
+ for(const name of ['arrival-cleanup-session-start.json','normal-cleanup-ready.json','normal-cleanup-consumed.json','cleanup-intent.json','cleanup-result.json']){
+  const path=join(directory,name);symlinkSync('absent',path);
+  assert.throws(()=>assertFreshCleanup(directory,{arrival:true}),/explicit reconciliation/);rmSync(path);
+ }
+ assert.throws(()=>writeFileSync(join(directory,'arrival-cleanup-authority.json'),'replacement',{mode:0o600,flag:'wx'}),/EEXIST/);
+});
 test('shared real legacy/session lock excludes interleaved mutators without taking over existing locks',async t=>{
  const directory=mkdtempSync(join(tmpdir(),'normal-mutator-lock-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));let finish,entered=0;const held=new Promise(done=>finish=done);
  const first=withNormalCleanupLock(directory,{mode:'session'},async()=>{entered++;await held;});

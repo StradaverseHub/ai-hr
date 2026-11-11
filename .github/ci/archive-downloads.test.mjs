@@ -80,7 +80,20 @@ test('altered prefetch is refused against final API metadata without silently re
 test('prefetch symlinks, public files/directories and output alias refuse',async t=>{
  const cache=directory(t),dir=directory(t),a=artifact(),target=join(cache,'target');writeFileSync(target,payload,{mode:0o600});symlinkSync(target,join(cache,a.name+'.zip'));
  await assert.rejects(downloadCiArchives([a],dir,{prefetchDirectory:cache,start:transport()}));
- const publicCache=directory(t);writeFileSync(join(publicCache,a.name+'.zip'),payload,{mode:0o644});await assert.rejects(downloadCiArchives([a],directory(t),{prefetchDirectory:publicCache,start:transport()}));
+ const publicCache=directory(t),publicArchive=join(publicCache,a.name+'.zip');
+ writeFileSync(publicArchive,payload,{mode:0o600});
+ chmodSync(publicArchive,0o644);
+ assert.equal(statSync(publicArchive).mode&0o777,0o644);
+ let starts=0;
+ const start=()=>{starts++;throw Error('must use or refuse the existing archive');};
+ await assert.rejects(downloadCiArchives([a],directory(t),{prefetchDirectory:publicCache,start}),error=>{
+  assert.deepEqual(error.errors.map(item=>item.message),['Private regular prefetched archive required']);
+  return true;
+ });
+ chmodSync(publicArchive,0o600);
+ const privateArchive=await downloadCiArchives([a],directory(t),{prefetchDirectory:publicCache,start});
+ assert.equal(privateArchive.artifacts[0].reusedPrefetch,true);
+ assert.equal(starts,0);
  chmodSync(publicCache,0o755);await assert.rejects(downloadCiArchives([a],directory(t),{prefetchDirectory:publicCache,start:transport()}));
  await assert.rejects(downloadCiArchives([a],cache,{prefetchDirectory:cache,start:transport()}));
 });
