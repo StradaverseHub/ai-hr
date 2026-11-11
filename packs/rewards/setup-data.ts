@@ -17,6 +17,9 @@ export async function setupTenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){
  * shared Access lock. Setup commands and Access editors still exclude them; views overlap each other and ordinary
  * writers, and a long view never queues an exclusive request ahead of the tenant's other work. */
 export async function setupAuditedReadTenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){if(!ctx.userId)throw new RewardSetupError('forbidden','Sign in to continue.');return withRewardsTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return fn(tx);});}
+/** A setup command's checking phase that only reads (the review-creation preview check): the same shared Access lock as
+ * an audited view. Its writes run afterwards in setupTenant transactions, which re-check what they depend on. */
+export const setupSharedTenant=setupAuditedReadTenant;
 /** Pure setup presentation owns one database-enforced snapshot. Commands keep setupTenant and audited
  * views setupAuditedReadTenant: their Access lock and History append are intentional.
  * Authority is rechecked from native rows on every call; no cached grant or person
