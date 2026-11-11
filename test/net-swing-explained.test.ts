@@ -90,7 +90,7 @@ describe('a cause that is present explains no more than its record supports', ()
   });
   it('days paid, unpaid leave and absence explain nothing: the payslip does not stamp the day rate they are priced at', () => {
     // 5 unpaid days, 1,000 deducted: the cause is recorded, but nothing ties 1,000 to 5 days.
-    const unpaid = row({ payPeriod: '2026-10', totalDeductions: '1704.65', net: '3295.35', statutory: statutory({ unpaidLeave: { days: 5, amount: 1000 } }) });
+    const unpaid = row({ payPeriod: '2026-10', otherDeductions: '1000.00', totalDeductions: '1704.65', net: '3295.35', statutory: statutory({ unpaidLeave: { days: 5, amount: 1000 } }) });
     expect(explain([SEPTEMBER, unpaid])).toMatchObject({ byCause: {}, explained: 0, unexplained: -1000 });
     expect(netSwingFor('e1', [SEPTEMBER, unpaid], input())).toMatchObject({ causes: ['unpaid_leave'], unexplainedBp: 2328, flagged: true });
   });
@@ -195,7 +195,7 @@ describe('the anomaly detector and the Salary loop cannot disagree', () => {
     ['set by hand', [SEPTEMBER, OCT_RAISE_BY_HAND]],
     ['unexplained extra', [SEPTEMBER, OCT_EXTRA]],
     ['unchanged', [SEPTEMBER, OCT_SAME]],
-    ['unpaid leave', [SEPTEMBER, row({ payPeriod: '2026-10', totalDeductions: '1704.65', net: '3295.35', statutory: statutory({ unpaidLeave: { days: 5, amount: 1000 } }) })]],
+    ['unpaid leave', [SEPTEMBER, row({ payPeriod: '2026-10', otherDeductions: '1000.00', totalDeductions: '1704.65', net: '3295.35', statutory: statutory({ unpaidLeave: { days: 5, amount: 1000 } }) })]],
   ];
   for (const thresholdBp of [1500, 2500, 4000]) {
     for (const [name, rows] of cases) {

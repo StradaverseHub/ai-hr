@@ -388,8 +388,10 @@ const netSwing: Detector = {
   id: 'net-swing',
   requires: { priorCycles: 1 },
   evaluate: (ctx) => {
-    if (!ctx.prior) return [];
     const sw = ctx.swing;
+    // A regular run with a previous PAID month in the months read is judged on it even when the company's last closed run
+    // did not pay this person (the evaluator's gate admits that case); anything else needs the prior cycle.
+    if (!ctx.prior && !(sw?.runType === 'regular' && sw.rows.some((r) => r.payPeriod < sw.period))) return [];
     const thresholdBp = swingThresholdOrDefault(sw?.thresholdBp);
     const thresholdSource: (typeof NET_SWING_THRESHOLD_SOURCES)[number] = !sw
       ? 'default'
@@ -434,6 +436,7 @@ const netSwing: Detector = {
       // Nothing comparable in the months read (the previous paid month is older than the window, or was not positive):
       // never a vacuous pass. Fall through to the like-for-like comparison with the prior cycle the gate found.
     }
+    if (!ctx.prior) return []; // a previous paid month whose net was not positive: a swing from zero (component-appeared)
     const before = ctx.prior.netPay;
     if (before === 0) return []; // a swing from zero is infinite; component-appeared covers that case.
     const movement = ((ctx.current.netPay - before) / Math.abs(before)) * 100;
