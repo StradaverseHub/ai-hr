@@ -106,6 +106,28 @@ describe('import log actor labels (8d02748a)',()=>{
   expect(byId[gone.id]).toEqual({kind:'unavailable'});
  });
 
+ // Scale rule 3: a real group's shape (70+ companies, 1,000+ employments) under "All companies" and one company.
+ it('labels a full page at group shape in one read, with the same rows and order as before',async()=>{
+  const companies=await owner.db.insert(s.company).values(Array.from({length:70},(_,i)=>({tenantId:b.tenantId,legalName:`Group Fictional ${i} Sdn Bhd`,registrationNo:`2020${String(i).padStart(8,'0')}`}))).returning({id:s.company.id});
+  const depts=await owner.db.insert(s.department).values(companies.map(c=>({tenantId:b.tenantId,companyId:c.id,name:'Operations'}))).returning({id:s.department.id,companyId:s.department.companyId});
+  const people=await owner.db.insert(s.person).values(Array.from({length:1000},(_,i)=>({tenantId:b.tenantId,fullName:`Group Person ${i}`,primaryEmail:`group${i}@example.test`}))).returning({id:s.person.id});
+  const[template]=await owner.db.select().from(s.employment).where(eq(s.employment.employeeCode,'EMP-0412'));
+  await owner.db.insert(s.employment).values(people.map((p,i)=>({...template,id:randomUUID(),personId:p.id,companyId:depts[i%70].companyId,departmentId:depts[i%70].id,employeeCode:`GRP-${String(i).padStart(4,'0')}`})) as (typeof s.employment.$inferInsert)[]);
+  const importers=[aisyahUser,bobUser,b.adminUserId];
+  for(let i=0;i<105;i++)await job(importers[i%3],[companies[i%70].id],new Date(Date.UTC(2026,10,5,0,0,0)-i*60000).toISOString());
+  const all=[b.companyId,betaId,...companies.map(c=>c.id)];
+  const expected=await withTenant(a,tx=>tx.execute<{id:string}>(sql`select id from payroll_individual_import_job where company_ids <@ ${JSON.stringify(all)}::jsonb order by created_at desc,id desc limit 101`));
+  const page=await listIndividualImportJobs(a,all);
+  expect(page.map(row=>row.id)).toEqual([...expected].map(row=>row.id));
+  expect(page).toHaveLength(101);
+  for(const row of page)expect(row.created_by_actor?.kind).toBe(row.created_by===b.adminUserId?'unlinked':'person');
+  const one=await listIndividualImportJobs(a,[companies[0].id]);
+  expect(one.length).toBeGreaterThan(0);expect(one.every(row=>row.created_by_actor&&row.created_by_actor.kind!=='unavailable')).toBe(true);
+  // One set-wise statement per page: the facts read answers every row of the page at once.
+  const facts=await withTenant(a,tx=>resolveImportActors(tx,'payroll_individual_job',page.map(row=>row.id)));
+  expect(facts.size).toBe(101);
+ },90_000); // Not yet measured: ~1,200 bulk-inserted rows plus 105 single inserts; bound to be set from the first gate timing.
+
  it('grants EXECUTE only to the application role and pins search_path',async()=>{
   const [fn]=await owner.db.execute<{definer:boolean;config:string[]|null;public_exec:boolean;app_exec:boolean}>(sql`
    select p.prosecdef as definer,p.proconfig as config,
