@@ -3186,3 +3186,14 @@ one read-only STABLE SECURITY DEFINER probe, `app.reward_access_observation_due(
 only; no table, index, grant on data or existing function changes. Final tag, idx and `when` must be assigned above the
 freshly verified ledger at integration, and the approved upgrade tail pins (`test/helpers/approved-upgrade.ts`) updated
 then. This entry carries no allocation or deployment authority.
+
+## Individual transaction pricing marker — 11 November 2026 (unallocated draft)
+
+Branch `claude/fb-792053e5-reprocess-formula-20261111` (board item 792053e5) journals
+`9730_individual_txn_pricing_marker` at idx 9730 and when 1793330099730 as an UNALLOCATED DRAFT from the owner-provided
+9730–9739 block. It adds three nullable columns to `payroll_individual_txn` (`pricing_source`, `pricing_ref`,
+`priced_at`) and one CHECK tying them to `calculation_method`; no default, no backfill, no new table, grant or function.
+The approved upgrade tail pin and its populated null-column proof (`test/helpers/approved-upgrade.ts`) carry the draft;
+reassign the final tag, idx and `when` above the freshly verified ledger at integration. The marking of rows already on
+open months is the separate report-first script `scripts/mark-individual-txn-pricing-792053e5.ts`, not part of the
+migration. This entry carries no allocation or deployment authority.

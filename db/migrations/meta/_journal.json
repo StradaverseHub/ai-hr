@@ -5727,6 +5727,13 @@
       "when": 1793330004790,
       "tag": "5090_audit_chain_commit_seal",
       "breakpoints": true
+    },
+    {
+      "idx": 9730,
+      "version": "7",
+      "when": 1793330099730,
+      "tag": "9730_individual_txn_pricing_marker",
+      "breakpoints": true
     }
   ]
 }
