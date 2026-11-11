@@ -42,6 +42,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
+import { terasPayrollLoopSetting } from '../db/teras-payroll-cycle-schema';
 import {
   evaluateBatchAnomalies,
   thresholdsInForce,
@@ -214,6 +215,14 @@ async function addPayslip(batchId: string, employmentId: string, netPay = '4200.
   });
 }
 
+/** ONE net-swing threshold (owner, 11 November 2026): the company's Salary payroll loop setting, written as an
+ *  administrator's version row. */
+const setSwingThreshold = (thresholdBp: number) =>
+  owner.db.insert(terasPayrollLoopSetting).values({
+    tenantId: b.tenantId, companyId: b.companyId, version: 1, checkInterval: 'daily', swingThresholdBp: thresholdBp, swingExclusions: [],
+    remindersEnabled: true, source: 'admin', changedByUserId: b.adminUserId,
+  });
+
 beforeAll(async () => {
   await migrateTestDb();
 });
@@ -254,13 +263,14 @@ describe('r292 §A — the disclosure names the numbers the engine actually used
     await addPayslip(priorBatch, employmentId, '4200.00', '2026-04-06');
     await closeRun(priorBatch);
     const batchId = await makeBatch(PERIOD);
-    await addPayslip(batchId, employmentId, '3400.00'); // −19.05%: inside 30, outside 5
+    await addPayslip(batchId, employmentId, '3800.00'); // −9.52%: inside 15, outside 5
 
-    // Placeholder 30% ⇒ nothing to see. This is the control that makes the flip below mean something.
+    // Default 15% ⇒ nothing to see. This is the control that makes the flip below mean something.
     const before = await evaluateBatchAnomalies(a, { batchId });
     expect(before.review + before.block).toBe(0);
     expect((await thresholdsInForce(a, { batchId })).anyUntuned).toBe(true);
 
+    // ONE THRESHOLD (owner, 11 November 2026): a per-detector netSwingPct no longer changes the engine or the disclosure…
     await owner.db.insert(schema.payrollAnomalyConfig).values({
       tenantId: b.tenantId,
       companyId: b.companyId,
@@ -269,12 +279,16 @@ describe('r292 §A — the disclosure names the numbers the engine actually used
       params: { netSwingPct: 5 },
       effectiveFrom: EFFECTIVE_FROM,
     });
+    expect((await evaluateBatchAnomalies(a, { batchId })).review).toBe(0);
+    expect((await thresholdsInForce(a, { batchId })).thresholds.find((t) => t.detectorId === 'net-swing')!.params.netSwingPct).toBe(15);
+    // …the company's Salary payroll loop threshold does.
+    await setSwingThreshold(500);
 
-    // ENGINE: the saved 5 is what classified this run.
+    // ENGINE: the saved 5% is what classified this run.
     const after = await evaluateBatchAnomalies(a, { batchId });
     expect(after.review + after.block).toBe(1);
 
-    // DISCLOSURE: the same saved 5, reported as configured — one resolver, so they cannot disagree.
+    // DISCLOSURE: the same saved 5, reported as configured — one reader, so they cannot disagree.
     const p = await thresholdsInForce(a, { batchId });
     const net = p.thresholds.find((t) => t.detectorId === 'net-swing')!;
     expect(net.source).toBe('configured');
@@ -359,22 +373,22 @@ describe('r292 §C — and it stops calling a threshold a placeholder once one i
   it('a saved threshold renders as set-for-this-company, and the warning is gone', async () => {
     const batchId = await makeBatch();
     await addPayslip(batchId, await makeEmp('Tuned'));
-    for (const detectorId of ['net-swing', 'batch-swing'])
-      await owner.db.insert(schema.payrollAnomalyConfig).values({
-        tenantId: b.tenantId,
-        companyId: b.companyId,
-        detectorId,
-        enabled: true,
-        params: detectorId === 'net-swing' ? { netSwingPct: 12 } : { batchSwingPct: 7 },
-        effectiveFrom: EFFECTIVE_FROM,
-      });
+    await setSwingThreshold(1200);
+    await owner.db.insert(schema.payrollAnomalyConfig).values({
+      tenantId: b.tenantId,
+      companyId: b.companyId,
+      detectorId: 'batch-swing',
+      enabled: true,
+      params: { batchSwingPct: 7 },
+      effectiveFrom: EFFECTIVE_FROM,
+    });
     await evaluateBatchAnomalies(a, { batchId });
 
     const html = await renderPage(batchId);
     // The configured numbers, not the placeholders.
     expect(html).toContain('Pay change for one employee: 12%');
     expect(html).toContain('Pay change for the whole run: 7%');
-    expect(html).not.toContain('Pay change for one employee: 30%');
+    expect(html).not.toContain('Pay change for one employee: 15%');
     expect(html).toContain(an('thresholdSourceConfigured'));
     expect(html).not.toContain(an('thresholdSourceDefault'));
     // THE POINT OF A DERIVED DISCLOSURE: the placeholder paragraph disappears by itself. A hand-written
@@ -392,9 +406,9 @@ describe('r292 §C — and it stops calling a threshold a placeholder once one i
       .values({
         tenantId: b.tenantId,
         companyId: b.companyId,
-        detectorId: 'net-swing',
+        detectorId: 'batch-swing',
         enabled: true,
-        params: { netSwingPct: 12 },
+        params: { batchSwingPct: 7 },
         effectiveFrom: EFFECTIVE_FROM,
       })
       .returning({ id: schema.payrollAnomalyConfig.id });
@@ -405,7 +419,8 @@ describe('r292 §C — and it stops calling a threshold a placeholder once one i
     await evaluateBatchAnomalies(a, { batchId });
 
     const html = await renderPage(batchId);
-    expect(html).toContain('Pay change for one employee: 30%');
+    expect(html).toContain('Pay change for the whole run: 15%');
+    expect(html).toContain('Pay change for one employee: 15%');
     expect(html).toContain(an('thresholdsUntuned'));
   });
 });

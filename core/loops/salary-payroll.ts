@@ -38,13 +38,13 @@ import {terasPayrollSwingDisposition} from '../../db/teras-payroll-cycle-schema'
 import {isModuleEnabled} from '../entitlements';
 import {anomalyMetrics} from '../payroll-anomaly';
 import {DETECTORS} from '../payroll-anomaly-detectors';
-import type {StoredPayslipRow} from '../pay-difference';
 import {packFor} from '../../localization/registry';
 import {BankPaymentFileError} from '../../localization/country-pack';
 import {read,unique,type LoopDetectInput,type LoopDetection,type LoopObservation} from './detect';
 import {companyCutOffs,nextPeriod,preSalaryWindows,previousPeriod} from './payroll-inputs';
 import {payrollLoopSettingsTx} from './payroll-loop-settings';
 import {netSwings,type ComponentIds,type SwingSummary} from './net-swing';
+import {swingRowsTx} from './swing-rows';
 import {listPayComponents} from '../../packs/payroll/service';
 import type {LoopFacts} from './types';
 import {acknowledgementFor,acknowledgementsTx,currentDepartmentsTx,type Acknowledgement} from './acknowledgements';
@@ -138,21 +138,8 @@ async function ruleVersionsFor(sponsor:SessionContext,batch:Batch,country:string
 }
 
 async function swingsFor(sponsor:SessionContext,companyId:string,period:string,setting:{thresholdBp:number;exclusions:readonly string[]},componentIds:ComponentIds):Promise<SwingSummary>{
- const periods=[period,previousPeriod(period),previousPeriod(previousPeriod(period)),previousPeriod(previousPeriod(previousPeriod(period)))];
- const rows=await withTenant(sponsor,tx=>tx.select({employmentId:payslip.employmentId,payPeriod:payrollBatch.payPeriod,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq,
-  basic:payslip.basicSalary,allowance:payslip.allowance,overtime:payslip.overtimePay,bonus:payslip.bonus,gross:payslip.grossPay,statutory:payslip.statutory,
-  otherDeductions:payslip.otherDeductions,totalDeductions:payslip.totalDeductions,net:payslip.netPay,daysWorked:payslip.daysWorked})
-  .from(payslip).innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId))
-  .where(and(eq(payrollBatch.companyId,companyId),inArray(payrollBatch.payPeriod,periods),inArray(payrollBatch.status,['processed','closed']))));
- const byEmployment=new Map<string,StoredPayslipRow[]>();
- for(const row of rows){
-  const list=byEmployment.get(row.employmentId)??[];
-  list.push({companyId,company:'',payPeriod:row.payPeriod,runType:row.runType,runSeq:row.runSeq,basic:row.basic,allowance:row.allowance,overtime:row.overtime,
-   bonus:row.bonus,gross:row.gross,statutory:row.statutory,otherDeductions:row.otherDeductions,totalDeductions:row.totalDeductions,net:row.net,daysWorked:row.daysWorked});
-  byEmployment.set(row.employmentId,list);
- }
- // Only people paid in the period itself are compared.
- for(const [employmentId,list] of byEmployment)if(!list.some(row=>row.payPeriod===period))byEmployment.delete(employmentId);
+ // The same reader, and so the same baseline, as the anomaly layer's net-swing (core/loops/swing-rows.ts).
+ const byEmployment=await withTenant(sponsor,tx=>swingRowsTx(tx,{companyId,period}));
  return netSwings(byEmployment,{period,companyId,thresholdBp:setting.thresholdBp,exclusions:setting.exclusions,componentIds});
 }
 

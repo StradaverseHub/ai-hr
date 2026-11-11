@@ -18027,6 +18027,7 @@
     "thresholdBatchSwing": "Mức thay đổi lương của cả đợt: {pct}%",
     "thresholdSourceDefault": "mặc định đi kèm",
     "thresholdSourceConfigured": "đặt cho công ty này",
+    "thresholdSourceUnreadable": "không đọc được thiết lập riêng của công ty tại đây nên đã dùng giá trị mặc định",
     "thresholdsUntuned": "Con số ghi “mặc định đi kèm” là giá trị tạm không có cơ sở thực nghiệm — nó được chọn để các bước kiểm tra chạy được ngay từ đợt đầu, chứ không đo từ bất kỳ bảng lương nào. Các kết luận bên dưới phản ánh giá trị tạm đó, không phải một quy tắc được hiệu chỉnh cho công ty này. Ngưỡng có thể bảo vệ được phải đến từ lịch sử lương của chính công ty này hoặc từ một đợt chạy song song.",
     "blockedHelp": "Không thể chốt kỳ lương này khi còn mục bị chặn.",
     "resolveAccepted": "Đúng như hiện tại",
