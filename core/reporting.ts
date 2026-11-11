@@ -1254,7 +1254,6 @@ export function cp22Particulars(
         hiredOn: employment.hiredOn,
         contractStartDate: employment.contractStartDate,
         contractEndDate: employment.contractEndDate,
-        internshipEndDate: employment.internshipEndDate,
         country: company.country,
         companyName: company.legalName,
         companyLine1: company.addressLine1,
@@ -1424,15 +1423,11 @@ export function cp22Particulars(
 
     // Derived, not stored: a contract or internship states its dates, everything else is Permanent. Left
     // editable in the downloaded file either way — this is the one pre-filled box that is a judgement.
-    // 2260a06b — an intern's period ends on the internship end date (from the hire date); a contract's on the
-    // contract end date (from the contract start).
-    const isIntern = current?.employmentType === 'intern';
-    const dated = current?.employmentType === 'contract' || isIntern;
-    const from = isIntern ? base.hiredOn : (base.contractStartDate ?? base.hiredOn);
-    const until = isIntern ? base.internshipEndDate : base.contractEndDate;
+    const dated = current?.employmentType === 'contract' || current?.employmentType === 'intern';
+    const from = base.contractStartDate ?? base.hiredOn;
     const expectedDuration = dated
-      ? until
-        ? `${from} - ${until}`
+      ? base.contractEndDate
+        ? `${from} - ${base.contractEndDate}`
         : 'Contract'
       : 'Permanent';
 
