@@ -4,12 +4,16 @@ import {validateEmployeeHomeSummary} from '../../lib/employee-home-summary.ts';
 import {validateEmployeeHomeToday} from '../../lib/employee-home-today.ts';
 import {validateHomeCalendar} from '../../lib/employee-home-calendar.ts';
 import {validateHomeTeamResponse,validateHomeCelebrationResponse} from '../../lib/employee-home-sharing.ts';
-import {DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,HOME_SHARING_STREAM} from '../../lib/employee-home-sharing-cohort.ts';
 import {todayInKualaLumpur} from '../../lib/hr-date.ts';
 import {calendarWindowDates} from '../../lib/calendar-window.ts';
+// The release's combined Home sharing stream is absent from older product trees (the main-branch control).
+// Load its constants only where the product has them; the stream is only checked when the browser used it.
+const sharingCohort=await import('../../lib/employee-home-sharing-cohort.ts').catch(()=>null);
 const sharingPath='/api/home/sharing-initial';
 const paths=new Set(['summary','today','calendar','team','celebrations','time-off','tasks','notices','greeting-message','sharing-initial'].map(name=>'/api/home/'+name));
 function sharingFrames(response,expectedStatus,url){
+ assert(sharingCohort,'Home sharing stream observed without its product contract');
+ const {DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,HOME_SHARING_STREAM}=sharingCohort;
  const selected=url.searchParams.getAll('card');
  const expectedCards=selected.length?selected:DEFAULT_HOME_SHARING_CARDS;
  assert.equal(String(response.headers['content-type']).split(';')[0],HOME_SHARING_STREAM);
