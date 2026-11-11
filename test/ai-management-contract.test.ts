@@ -248,6 +248,7 @@ function assertWorkloadOwner(file:string,src:string){
  return {kind:'pack',count:calls.length};
 }
 describe('complete AI management inventory and boundary',()=>{
+ // Explicit timeout: measured 22.2 s against the global 30 s in gate 42958137526.
  it('registers every production AI workload caller and keeps providers behind the shared gateway',()=>{
   const coreFound:string[]=[],packFound:Record<string,number>={};let packCalls=0;
   for(const file of [...walk('core'),...walk('packs'),...walk('app'),...walk('lib'),...walk('scripts')]){
@@ -283,7 +284,7 @@ describe('complete AI management inventory and boundary',()=>{
   // snapshot, so the active resolver issues exactly one governed configuration and nothing ungoverned.
   const config=read('core/ai-config.ts');expect(config.match(/governedAiConfig\(/g)?.length).toBe(1);
   expect(config).toMatch(/const snapshot\s*=\s*await resolveAiProviderSnapshotTx\(tx,\s*ctx\);\s*return snapshot\s*\?\s*governedAiConfig\(ctx,\s*snapshot,\s*feature\)\s*:\s*null;/);
- });
+ },90_000);
  it('sees calls after TypeScript generics and preserves canonical aliased and namespace wrapper ownership',()=>{
   const generic='const run=<T>(fn:()=>T):T=>fn();';
   const admin=workloadSource('packs/performance/onehr/admin-agent-service.ts',read('packs/performance/onehr/admin-agent-service.ts'));

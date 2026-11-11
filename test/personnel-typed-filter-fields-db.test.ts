@@ -19,6 +19,7 @@ const restoreNarrowPredecessor=async(tx:{unsafe:(q:string)=>Promise<unknown>})=>
 };
 const normalize=(value:Awaited<ReturnType<typeof readPersonnelOverview>>)=>({...value,organisationChoices:{...value.organisationChoices,rows:value.organisationChoices.rows.map(row=>JSON.stringify(row)).sort()}});
 
+// Explicit timeout: timed out at 31.3 s against the global 30 s in gate 42971805278 (27.0 s in 42958137526).
 it('retains exact full DTOs, independently expected pages/facets and native dated-company facts',async()=>{
  const base=await seedBase(),foreign=await seedBase(),ctx={...adminCtx(base),grants:[{role:'hr_admin' as const,companyId:null}]};
  const hire=(name:string,code:string)=>hireEmployee(ctx,{person:{fullName:name,primaryEmail:randomUUID()+'@example.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01',employeeCode:code});
@@ -61,7 +62,7 @@ it('retains exact full DTOs, independently expected pages/facets and native date
    where t."employmentId"=${corrected.employmentId}::uuid
   `));expect(row.same).toBe(true);
  }
-});
+},100_000);
 
 it('installs on a populated predecessor without changing source facts, full DTOs or privileges',async()=>{
  const base=await seedBase(),ctx=adminCtx(base);

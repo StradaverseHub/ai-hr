@@ -314,6 +314,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
 
   // ── G: bulk ────────────────────────────────────────────────────────────────────────────────────────
   describe('Send all ready', () => {
+    // Explicit timeout: measured 22.6 s against the global 30 s in main gate 42949200222.
     it('sends ready units, skips a blocked one, refuses one that changed, one decision per success', async () => {
       // Each BU CEO has their own real People placement; BG remains a group reviewer across units.
       const buActors = new Map<string, SessionContext>(),companies:string[]=[];
@@ -356,7 +357,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       expect((await decisions(blocked)).length).toBe(before[blocked]);
       expect((await decisions(changed)).length).toBe(before[changed]);
       expect((await getRewardUnit(admin, changed)).unit.status).toBe('bg');
-    });
+    }, 90_000);
     it('ignores units the viewer did not see and units not waiting on the viewer', async () => {
       const id = await unit('UNSEEN', [{ salary: 5000 }]);
       await submit(id);

@@ -167,6 +167,7 @@ describe('i18n coverage', () => {
       .toEqual(['missing.static','rich.key']);
   });
 
+  // Explicit timeout: measured 24.6 s against the global 30 s in main gate 42949200222.
   it('resolves the Formula editor dynamic catalogue in every locale', () => {
     const editor=fs.readFileSync(path.resolve(__dirname,'../app/payroll/formula-builder/condition-editor.tsx'),'utf8');
     const parameterMap=editor.match(/const parameterKeys:Record<string,string>=\{([^}]+)\}/)?.[1];
@@ -208,7 +209,7 @@ describe('i18n coverage', () => {
       expect(typeof value,`${locale}:payFormula.${key}`).toBe('string');
       expect((value as string).trim(),`${locale}:payFormula.${key}`).not.toBe('');
     }
-  });
+  }, 90_000);
 
   it('C. every static t() key in a single-namespace file resolves in en.json', () => {
     const missing = missingStaticKeys(sources(), en);
