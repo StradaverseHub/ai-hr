@@ -173,6 +173,26 @@ const assertNotNegative = (field: string, v: number | null | undefined): void =>
 };
 
 /**
+ * 03877e — A NEW SALARY CANNOT START BEFORE THE CURRENT ONE DOES.
+ *
+ * setCompensation closes the open record at the new record's start. When that start is EARLIER than the open
+ * record's own start, the closed record would end before it begins, and the database refused it with a bare
+ * range error that reached HR as "one of the values is not allowed here" (production, 5 Nov 2026: six
+ * attempts at a Transfer dated 1 Jan 2024 against a salary record that started later). Refusing here, with
+ * the date, tells HR exactly what to change. A start ON the current record's start day is still allowed —
+ * it is the existing closed-payroll correction path just below.
+ */
+export class SalaryBeforeCurrentRecordError extends Error {
+  constructor(readonly currentStart: string) {
+    super(
+      `The effective date is before this employee's current salary starts (${currentStart}). ` +
+        'Use a date on or after that day, or correct the salary history on the Salary tab.',
+    );
+    this.name = 'SalaryBeforeCurrentRecordError';
+  }
+}
+
+/**
  * r369 — THE CONFIRMATION GESTURE, AND THE ONLY THING LEFT OF THE REFUSAL THE REPORTER REJECTED.
  *
  * We proposed refusing a basic salary of zero outright. The reporter rejected that: a Director paid fees
@@ -380,6 +400,7 @@ export async function setCompensation(
         ),
       )
       .limit(1);
+    if (cur && p.effectiveFrom < cur.validFrom) throw new SalaryBeforeCurrentRecordError(cur.validFrom);
     if (cur) {
       // 646355e5 — inside an acknowledged Movement correction, a salary clamped to the first open day can
       // land on the very day the restored record starts; that record is replaced rather than left empty.

@@ -46,3 +46,38 @@ export function isDatabaseError(e: unknown): boolean {
       /^E(CONNREFUSED|CONNRESET|TIMEDOUT|NOTFOUND|HOSTUNREACH|NETUNREACH|PIPE|AI_AGAIN)$/.test(l.code ?? ''),
   );
 }
+
+/**
+ * The NAMES Postgres attaches to a refusal — never its values. postgres.js copies the server's error fields
+ * onto its PostgresError (`constraint_name`, `column_name`, `table_name`, `routine`), and drizzle keeps that
+ * error on `.cause`. These are schema identifiers we wrote, so they are safe to classify on; `message` is the
+ * driver's own sentence and is returned ONLY so lib/public-error.ts can match our trigger wording — it can
+ * embed ids and must never be shown.
+ */
+export type PgErrorDetail = {
+  sqlState?: string;
+  constraint?: string;
+  column?: string;
+  table?: string;
+  routine?: string;
+  message?: string;
+};
+
+export function pgErrorDetail(e: unknown): PgErrorDetail {
+  let cur = e as Record<string, unknown> | null | undefined;
+  for (let i = 0; cur && typeof cur === 'object' && i < 4; i++) {
+    if (typeof cur.code === 'string' && /^[0-9A-Z]{5}$/.test(cur.code)) {
+      const str = (k: string) => (typeof cur![k] === 'string' && cur![k] ? (cur![k] as string) : undefined);
+      return {
+        sqlState: cur.code,
+        constraint: str('constraint_name'),
+        column: str('column_name'),
+        table: str('table_name'),
+        routine: str('routine'),
+        message: str('message'),
+      };
+    }
+    cur = cur.cause as Record<string, unknown> | null | undefined;
+  }
+  return {};
+}
