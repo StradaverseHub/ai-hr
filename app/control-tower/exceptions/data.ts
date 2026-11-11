@@ -51,6 +51,8 @@ export type ExceptionItem = Readonly<{
   currency: string | null;
   /** Every finding of the verdict, as `<check>:<severity>`. */
   signature: readonly string[];
+  /** Its payroll run is already closed: a blocking finding no longer holds anything up (the queue has no run-status filter). */
+  runClosed: boolean;
 }>;
 
 export type GroupedExceptions = Readonly<{
@@ -78,7 +80,7 @@ const rows = async <T>(tx: Tx, query: SQL) => Array.from(await tx.execute(query)
 
 /** The open population, as `openExceptionsAcrossRuns` selects it. */
 const OPEN = sql`open_v as (
-  select v.id, v.employment_id, v.batch_id, v.disposition, v.computed_at, b.company_id, b.pay_period
+  select v.id, v.employment_id, v.batch_id, v.disposition, v.computed_at, b.company_id, b.pay_period, b.status::text as batch_status
   from public.payroll_anomaly_verdict v
   join public.employment e on e.id = v.employment_id
   join public.person p on p.id = e.person_id
@@ -103,10 +105,10 @@ const FINDINGS = () => sql`fv as (
   from public.payroll_anomaly_finding f where f.verdict_id in (select id from open_v))`;
 
 type SignatureRow = { disposition: string; signature: string[] | null; n: number; total: number; blocking: number; signatures: number };
-type GroupRow = { check_id: string; severity: string; variant: string | null; exceptions: number; people: number; companies: number; runs: number; company_names: string[] | null };
+type GroupRow = { check_id: string; severity: string; variant: string | null; exceptions: number; people: number; companies: number; runs: number; open_runs: number; company_names: string[] | null };
 type ItemRow = { verdict_id: string; employment_id: string; batch_id: string; disposition: string; computed_at: Date | string; pay_period: string;
   check_id: string; severity: string; variant: string | null; facts: Record<string, unknown> | null; narrative: string | null; full_name: string | null;
-  employee_code: string | null; currency: string | null; signature: string[] | null };
+  employee_code: string | null; currency: string | null; signature: string[] | null; batch_status: string };
 
 function itemsQuery(where: { group: GroupIdentity; offset: number; limit: number } | { preview: number }): SQL {
   const filter = 'group' in where
@@ -118,14 +120,14 @@ function itemsQuery(where: { group: GroupIdentity; offset: number; limit: number
   return sql`with ${OPEN}, ${FINDINGS()},
     per as (
       select distinct on (fv.check_id, fv.severity, fv.variant, o.id)
-        o.id as verdict_id, o.employment_id, o.batch_id, o.disposition, o.computed_at, o.company_id, o.pay_period,
+        o.id as verdict_id, o.employment_id, o.batch_id, o.disposition, o.computed_at, o.company_id, o.pay_period, o.batch_status,
         fv.check_id, fv.severity, fv.variant, fv.facts, fv.narrative
       from fv join open_v o on o.id = fv.verdict_id
       ${filter}
       order by fv.check_id, fv.severity, fv.variant, o.id, fv.finding_id),
     ranked as (select per.*, row_number() over (partition by check_id, severity, variant
       order by case disposition when 'block' then 0 when 'review' then 1 else 2 end, computed_at, verdict_id) as rn from per)
-    select r.verdict_id, r.employment_id, r.batch_id, r.disposition, r.computed_at, r.pay_period, r.check_id, r.severity, r.variant,
+    select r.verdict_id, r.employment_id, r.batch_id, r.disposition, r.computed_at, r.pay_period, r.batch_status, r.check_id, r.severity, r.variant,
       r.facts, r.narrative, p.full_name, e.employee_code, c.currency,
       (select array_agg(distinct f2.detector_id || ':' || f2.severity) from public.payroll_anomaly_finding f2 where f2.verdict_id = r.verdict_id) as signature
     from ranked r
@@ -141,6 +143,7 @@ const toItem = (row: ItemRow): ExceptionItem => Object.freeze({
   computedAt: row.computed_at instanceof Date ? row.computed_at : new Date(row.computed_at), payPeriod: row.pay_period,
   checkId: row.check_id, severity: row.severity, variant: row.variant, facts: Object.freeze({ ...(row.facts ?? {}) }), narrative: row.narrative,
   name: row.full_name ?? '', employeeCode: row.employee_code, currency: row.currency, signature: Object.freeze([...(row.signature ?? [])].sort()),
+  runClosed: row.batch_status === 'closed',
 });
 
 /**
@@ -175,6 +178,7 @@ export async function groupedExceptions(s: SessionContext, p: { focus?: GroupIde
       select fv.check_id, fv.severity, fv.variant,
         count(distinct o.id)::int as exceptions, count(distinct o.employment_id)::int as people,
         count(distinct o.company_id)::int as companies, count(distinct o.batch_id)::int as runs,
+        (count(distinct o.batch_id) filter (where o.batch_status <> 'closed'))::int as open_runs,
         (array_agg(distinct c.legal_name) filter (where c.legal_name is not null))[1:${sql.raw(String(COMPANY_NAMES_SHOWN))}] as company_names
       from fv join open_v o on o.id = fv.verdict_id left join public.company c on c.id = o.company_id
       group by fv.check_id, fv.severity, fv.variant
@@ -182,7 +186,7 @@ export async function groupedExceptions(s: SessionContext, p: { focus?: GroupIde
       limit ${GROUP_LIMIT + 1}`);
     const groups = buildGroups(groupRows.slice(0, GROUP_LIMIT).map(row => ({
       checkId: row.check_id, severity: row.severity, variant: row.variant, exceptions: row.exceptions, people: row.people,
-      companies: row.companies, runs: row.runs, companyNames: Object.freeze([...(row.company_names ?? [])]),
+      companies: row.companies, runs: row.runs, openRuns: row.open_runs, companyNames: Object.freeze([...(row.company_names ?? [])]),
     })));
     const focus = p.focus ? groups.find(group => group.key === groupKey(p.focus!)) ?? null : null;
     const itemRows = focus

@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { DETECTORS, HYPOTHESIS_DETECTOR_ID } from '../core/payroll-anomaly-detectors';
 import { locales } from '../i18n/config';
 import {
-  BANK_REASONS, CATALOGUE, DETAIL_KEYS, HYPOTHESIS_CHECK_ID, KNOWN_COMPONENTS, catalogueMessageKeys, checkCopy, entryOf,
+  BANK_REASONS, CATALOGUE, DETAIL_KEYS, HYPOTHESIS_CHECK_ID, KNOWN_COMPONENTS, NET_SWING_CAUSES, catalogueMessageKeys, checkCopy, entryOf,
 } from '../lib/payroll-exceptions';
 
 type Dict = Record<string, unknown>;
@@ -40,7 +40,7 @@ const SAMPLE = {
   total: 135, blocking: 38, groups: 6, people: 31, exceptions: 33, runs: 9, names: 'Demo Sdn Bhd, Fictional Bhd', more: 6, count: 9,
   page: 2, pages: 4, date: '28 Oct 2026', checks: 'No tax profile', component: 'Bonus', grossPay: 'MYR 100.00', totalDeductions: 'MYR 400.00',
   netPay: 'MYR 1,200.00', actual: 'MYR 300.00', cap: 'MYR 250.00', excess: 'MYR 50.00', pcb: 'MYR 12.00', daysWorked: 20, periodDays: 31,
-  others: 2, direction: 'down', pct: 82.3, priorNetPay: 'MYR 6,386.55', amount: 'MYR 5,000.00', priorAmount: 'MYR 200.00',
+  others: 2, direction: 'down', pct: 82.3, causes: 'a salary change, overtime', priorNetPay: 'MYR 6,386.55', amount: 'MYR 5,000.00', priorAmount: 'MYR 200.00',
 };
 /** What must never be rendered on this page. */
 const JARGON = [/\b[a-z]+[A-Z][A-Za-z]*\b/, /verdict/i, /detector/i, /[0-9a-f]{8}-[0-9a-f]{4}-/i, /_/, /\{|\}/,
@@ -67,7 +67,8 @@ describe('every check the page can show has plain-language copy', () => {
     // Same keys as English, all filled.
     expect(Object.keys(flat).sort()).toEqual(Object.keys(en).sort());
     for (const [key, value] of Object.entries(flat)) expect(typeof value === 'string' && value.trim() !== '', `${locale} ${key}`).toBe(true);
-    const required = [...catalogueMessageKeys(), ...DETAIL_KEYS, ...KNOWN_COMPONENTS.map(c => `component.${c}`), 'component.other'];
+    const required = [...catalogueMessageKeys(), ...DETAIL_KEYS, ...KNOWN_COMPONENTS.map(c => `component.${c}`), 'component.other',
+      ...NET_SWING_CAUSES.map(c => `cause.${c}`), 'cause.other', 'tag.blocks', 'tag.blocksClosed', 'list.runClosed'];
     for (const key of required) expect(typeof get(mine, key), `${locale} ${key}`).toBe('string');
     // Every message parses and formats with real values, and what it renders is plain words.
     const t = createTranslator({ locale, messages: { g: mine } as never, namespace: 'g' as never, onError: error => { throw error; } });

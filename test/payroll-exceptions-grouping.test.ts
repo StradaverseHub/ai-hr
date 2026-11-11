@@ -95,6 +95,10 @@ describe('groups', () => {
       ['component-appeared.review.hrdf', 'setup', false, 'mark_expected', true, null],
     ]);
     expect(describeGroup(agg('missing-bank-profile', 'block', 'bank-details-missing', 1)).fixTab).toBe('bankStatutory');
+    // Old exceptions of closed runs stay in the queue; a blocking group whose runs are all closed says it holds nothing up.
+    expect(describeGroup(agg('negative-net', 'block', null, 2, { runs: 2, openRuns: 0 })).closedRunsOnly).toBe(true);
+    expect(describeGroup(agg('negative-net', 'block', null, 2, { runs: 2, openRuns: 1 })).closedRunsOnly).toBe(false);
+    expect(describeGroup(agg('net-swing', 'review', null, 2, { runs: 2, openRuns: 0 })).closedRunsOnly).toBe(false);
     expect(describeGroup(agg('missing-bank-profile', 'block', null, 1)).copy.title).toBe('check.missingBankProfile.title');
     expect(describeGroup(agg('component-appeared', 'review', 'hrdf', 1)).copy).toEqual({
       title: 'check.componentAppeared.titleNamed', why: 'check.componentAppeared.why', todo: 'check.componentAppeared.todo', component: 'component.hrdf' });
@@ -168,6 +172,13 @@ describe('each exception\'s line of evidence', () => {
     expect(findingDetail('net-swing', { netPay: 11642.8, priorNetPay: 6386.55, movementPct: 82.3, thresholdPct: 30 }))
       .toEqual({ key: 'detail.netSwing', money: { priorNetPay: 6386.55, netPay: 11642.8 }, numbers: { pct: 82.3 }, direction: 'up' });
     expect(findingDetail('net-swing', { netPay: 1, priorNetPay: 2, movementPct: -50 }).direction).toBe('down');
+    // The Salary-loop explanation (optional facts): cause ids become label keys, the share a rounded percentage.
+    expect(findingDetail('net-swing', { netPay: 1500, priorNetPay: 1000, movementPct: 50, thresholdPct: 15,
+      explainedCauses: 'salary_change,overtime_hours,not_a_cause', unexplainedShare: 0.333 }))
+      .toEqual({ key: 'detail.netSwing', money: { priorNetPay: 1000, netPay: 1500 }, numbers: { pct: 50 }, direction: 'up',
+        causes: ['cause.salary_change', 'cause.overtime_hours', 'cause.other'], unexplainedPct: 33 });
+    const plain = findingDetail('net-swing', { netPay: 1500, priorNetPay: 1000, movementPct: 50, explainedCauses: '', unexplainedShare: 1 });
+    expect([plain.causes, plain.unexplainedPct]).toEqual([undefined, undefined]);
     expect(findingDetail('missing-bank-profile', { netPay: 900, paymentMethod: 'unset', reason: 'payment-method-not-set' }).key).toBe('detail.missingBankProfile.paymentMethodNotSet');
     expect(findingDetail('missing-bank-profile', { netPay: 900, paymentMethod: 'bank_transfer', reason: 'bank-details-missing' }).key).toBe('detail.missingBankProfile.bankDetailsMissing');
     expect(findingDetail('missing-bank-profile', { netPay: 900, paymentMethod: 'unset' }).key).toBe('detail.missingBankProfile.generic');

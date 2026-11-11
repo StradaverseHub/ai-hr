@@ -2051,7 +2051,7 @@
       "resolveThere": "Xử lý tại Ngoại lệ",
       "grouped": {
         "headline": "{total, plural, other {# đang chờ}}",
-        "headlineBlocking": "{blocking, plural, =0 {không có mục nào chặn kỳ lương} other {# chặn kỳ lương}}",
+        "headlineBlocking": "{blocking, plural, =0 {không có mục nào từ bước kiểm tra chặn} other {# từ bước kiểm tra chặn}}",
         "headlineGroups": "{groups, plural, other {được nhóm thành # dạng}}",
         "bucket": {
           "check": "có vẻ là lỗi lương thật · kiểm tra từng mục",
@@ -2063,7 +2063,8 @@
         "tag": {
           "blocks": "Chặn trả lương",
           "review": "Cần xem lại",
-          "setup": "Có vẻ do thiết lập"
+          "setup": "Có vẻ do thiết lập",
+          "blocksClosed": "Kiểm tra chặn · kỳ lương đã đóng"
         },
         "size": {
           "people": "{people, plural, other {# người}}",
@@ -2095,7 +2096,8 @@
           "pageOf": "Trang {page} / {pages}",
           "previous": "Trước",
           "next": "Tiếp",
-          "unnamed": "Người chưa có tên"
+          "unnamed": "Người chưa có tên",
+          "runClosed": "Kỳ lương này đã đóng, nên không có gì bị trì hoãn. Quyết định mục này giúp hồ sơ luôn chính xác."
         },
         "bulk": {
           "title": "Đánh dấu các mục này là bình thường",
@@ -2215,7 +2217,8 @@
           "netSwing": "Lương thực nhận {direction, select, down {giảm} other {tăng}} {pct}%, từ {priorNetPay} thành {netPay}.",
           "componentAppeared": "{component} {amount} trong tháng này, tháng trước không có.",
           "componentVanished": "{component} {priorAmount} trong tháng trước, tháng này không có.",
-          "hypothesis": "Mở kỳ lương để đọc điều đã được nhận thấy."
+          "hypothesis": "Mở kỳ lương để đọc điều đã được nhận thấy.",
+          "netSwingExplained": "Được giải thích một phần bởi {causes}; khoảng {pct}% thay đổi chưa được giải thích."
         },
         "component": {
           "allowance": "Phụ cấp",
@@ -2231,6 +2234,16 @@
           "hrdf": "Phí HRD",
           "zakat": "Zakat",
           "other": "Một khoản lương khác"
+        },
+        "cause": {
+          "additional_run": "một kỳ thưởng hoặc kỳ lương bổ sung",
+          "salary_change": "thay đổi lương",
+          "days_paid": "thay đổi số ngày được trả",
+          "overtime_hours": "làm thêm giờ",
+          "unpaid_leave": "nghỉ không lương",
+          "absence": "vắng mặt",
+          "statutory_rules": "thay đổi mức đóng bắt buộc",
+          "other": "một dữ liệu lương khác"
         }
       }
     },

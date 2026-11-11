@@ -51,6 +51,7 @@ const HOME = '/control-tower/exceptions';
 
 const TAG_TONE = {
   blocks: 'bg-destructive/10 text-destructive',
+  blocksClosed: 'bg-muted text-foreground',
   review: 'bg-primary/10 text-primary',
   setup: 'bg-muted text-muted-foreground',
 } as const;
@@ -107,11 +108,18 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
     for (const [name, amount] of Object.entries(d.money)) values[name] = formatMoney(amount, item.currency);
     if (d.component) values.component = tg(d.component);
     if (d.direction) values.direction = d.direction;
-    return tg(d.key, values);
+    const line = tg(d.key, values);
+    // A pay change's payroll explanations, when the check recorded them; never the stored cause ids.
+    if (d.causes && d.unexplainedPct !== undefined) {
+      return `${line} ${tg('detail.netSwingExplained', { causes: d.causes.map(key => tg(key)).join(', '), pct: d.unexplainedPct })}`;
+    }
+    return line;
   };
   const alsoFlagged = (item: ExceptionItem) => [...new Set(parseSignature(item.signature).filter(x => x.checkId !== item.checkId)
     .map(x => tg(checkCopy(x.checkId, null).title)))];
-  const tagOf = (group: ExceptionGroup) => group.blocking ? 'blocks' : group.bucket === 'setup' ? 'setup' : 'review';
+  // A blocking check whose runs are all closed holds nothing up any more (the queue keeps old runs' exceptions), so its
+  // tag says so rather than "Blocks payroll".
+  const tagOf = (group: ExceptionGroup) => group.blocking ? (group.closedRunsOnly ? 'blocksClosed' : 'blocks') : group.bucket === 'setup' ? 'setup' : 'review';
   const recordHref = (group: ExceptionGroup, item: ExceptionItem) => group.fixTab ? `/admin/personnel/${item.employmentId}?tab=${group.fixTab}` : null;
 
   const groupHeader = (group: ExceptionGroup, focused: boolean) => {
@@ -225,6 +233,7 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
                   {others.length > 0 && <> · {tg('list.alsoFlagged', { checks: others.join(', ') })}</>}
                 </p>
                 {/* The prose, when an operator already asked for it on the run's own screen. Never generated from here. */}
+                {item.runClosed && item.disposition === 'block' && <p data-run-closed className="m-0 text-xs text-muted-foreground">{tg('list.runClosed')}</p>}
                 {item.checkId === 'hypothesis' && item.narrative && <p className="m-0 text-[12px] leading-snug">{item.narrative}</p>}
                 {group.bulkExpect && !above && !bulkEligible(group, candidateOf(item)) && <p className="m-0 text-xs text-muted-foreground">{tg('list.notBulk')}</p>}
                 {above ? <p data-offered-above className="m-0 text-xs text-muted-foreground">{tg('list.listedAbove')}</p> : (

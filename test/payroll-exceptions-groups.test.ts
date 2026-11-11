@@ -56,6 +56,8 @@ let all: SessionContext;
 let one: SessionContext;
 let companyIds: string[] = [];
 let specs: Spec[] = [];
+/** One October run already closed: its exceptions stay in the queue (no run-status filter) and say so. */
+let closedBatch = '';
 
 async function chunked<T>(rows: T[], insert: (part: T[]) => Promise<unknown>) {
   for (let at = 0; at < rows.length; at += 400) await insert(rows.slice(at, at + 400));
@@ -79,6 +81,8 @@ beforeAll(async () => {
     .values(periods.map(p => ({ tenantId: b.tenantId, companyId: p.companyId, payPeriodId: p.id, payPeriod: p.period, batchDate: `${p.period}-28`, status: 'processed' as const })))
     .returning({ id: schema.payrollBatch.id, companyId: schema.payrollBatch.companyId, payPeriod: schema.payrollBatch.payPeriod });
   const batchOf = new Map(batches.map(x => [`${x.companyId}|${x.payPeriod}`, x.id]));
+  closedBatch = batchOf.get(`${companyIds[1]}|${OCT}`)!;
+  await owner.db.update(schema.payrollBatch).set({ status: 'closed' }).where(eq(schema.payrollBatch.id, closedBatch));
   const total = COMPANIES * PER_COMPANY;
   const people: { id: string }[] = [];
   await chunked(Array.from({ length: total }, (_, i) => ({ tenantId: b.tenantId, fullName: `Person ${i}`, primaryEmail: `p${i}_${randomUUID()}@fictional.test` })),
@@ -168,6 +172,8 @@ describe.each([['All companies', () => all, null], ['one company', () => one, ()
     expect(view.bucketsPartial).toBe(false);
     // Months with an open block, for the acknowledged list.
     expect(view.blockPeriods).toEqual([OCT]);
+    // Blocking groups still have open runs here, so none is marked as holding nothing up.
+    for (const g of view.groups.filter(x => x.blocking)) expect(g.closedRunsOnly, g.key).toBe(false);
   }, 120_000);
 
   it('lists exactly the previous reader\'s exceptions, page by page, in its order within each group', async () => {
@@ -181,7 +187,7 @@ describe.each([['All companies', () => all, null], ['one company', () => one, ()
       const expectedOrder = old.rows.filter(r => r.findings.some(f => groupKey({ checkId: f.detectorId, severity: f.severity,
         variant: specs.find(s => s.verdictId === r.verdictId)!.findings.find(x => x.checkId === f.detectorId)!.variant }) === group.key)).map(r => r.verdictId);
       expect(rows.map(r => r.verdictId), group.key).toEqual(expectedOrder);
-      for (const r of rows) listed.add(r.verdictId);
+      for (const r of rows) { listed.add(r.verdictId); expect(r.runClosed, r.verdictId).toBe(r.batchId === closedBatch); }
     }
     expect([...listed].sort()).toEqual(old.rows.map(r => r.verdictId).sort());
     // The overview's previews are the first rows of each group, bounded.

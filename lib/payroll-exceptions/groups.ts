@@ -16,6 +16,8 @@ export type GroupAggregateRow = GroupIdentity & Readonly<{
   people: number;
   companies: number;
   runs: number;
+  /** Of those runs, the ones not yet closed. Absent = all open. */
+  openRuns?: number;
   /** A few company names, alphabetically, for set-up groups. */
   companyNames: readonly string[];
 }>;
@@ -27,6 +29,8 @@ export type ExceptionGroup = GroupAggregateRow & Readonly<{
   key: string;
   bucket: Bucket;
   blocking: boolean;
+  /** Blocking, but every run it is in is already closed, so it holds nothing up now. */
+  closedRunsOnly: boolean;
   /** True only for a non-blocking set-up group: the one kind that may be marked as expected in bulk. */
   bulkExpect: boolean;
   action: GroupAction;
@@ -73,6 +77,7 @@ export function describeGroup(row: GroupAggregateRow): ExceptionGroup {
     key: groupKey(row),
     bucket,
     blocking,
+    closedRunsOnly: blocking && row.openRuns !== undefined && row.openRuns === 0,
     bulkExpect,
     action: actionOf(bucket, blocking, bulkExpect),
     fixTab: fixTabOf(row.checkId, row.variant),

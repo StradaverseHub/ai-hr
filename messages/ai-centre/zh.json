@@ -2051,7 +2051,7 @@
       "resolveThere": "在“异常”中处理",
       "grouped": {
         "headline": "{total, plural, other {# 项待处理}}",
-        "headlineBlocking": "{blocking, plural, =0 {没有阻止发薪的项目} other {# 项阻止发薪}}",
+        "headlineBlocking": "{blocking, plural, =0 {没有来自阻止性检查的项目} other {# 项来自阻止性检查}}",
         "headlineGroups": "{groups, plural, other {归为 # 类}}",
         "bucket": {
           "check": "看起来是真实的工资错误 · 逐一检查",
@@ -2063,7 +2063,8 @@
         "tag": {
           "blocks": "阻止发薪",
           "review": "需要复核",
-          "setup": "看起来是设置"
+          "setup": "看起来是设置",
+          "blocksClosed": "阻止性检查 · 该次发薪已关闭"
         },
         "size": {
           "people": "{people, plural, other {# 人}}",
@@ -2095,7 +2096,8 @@
           "pageOf": "第 {page} 页，共 {pages} 页",
           "previous": "上一页",
           "next": "下一页",
-          "unnamed": "未命名人员"
+          "unnamed": "未命名人员",
+          "runClosed": "该次发薪已关闭，因此不会耽误任何事。作出决定可以让记录保持准确。"
         },
         "bulk": {
           "title": "将这些标记为预期情况",
@@ -2215,7 +2217,8 @@
           "netSwing": "实发工资{direction, select, down {下降} other {上升}}了 {pct}%，从 {priorNetPay} 变为 {netPay}。",
           "componentAppeared": "本月有{component} {amount}，上月没有。",
           "componentVanished": "上月有{component} {priorAmount}，本月没有。",
-          "hypothesis": "打开该次发薪，查看发现的内容。"
+          "hypothesis": "打开该次发薪，查看发现的内容。",
+          "netSwingExplained": "部分可由{causes}解释；约 {pct}% 的变动无法解释。"
         },
         "component": {
           "allowance": "津贴",
@@ -2231,6 +2234,16 @@
           "hrdf": "人力资源发展税",
           "zakat": "天课",
           "other": "其他工资项目"
+        },
+        "cause": {
+          "additional_run": "奖金或额外发薪",
+          "salary_change": "调薪",
+          "days_paid": "计薪天数变化",
+          "overtime_hours": "加班",
+          "unpaid_leave": "无薪假",
+          "absence": "缺勤",
+          "statutory_rules": "法定费率变化",
+          "other": "其他发薪记录"
         }
       }
     },

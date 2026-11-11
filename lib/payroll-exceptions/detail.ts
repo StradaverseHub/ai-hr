@@ -19,7 +19,23 @@ export type FindingDetail = Readonly<{
   component?: string;
   /** `up` or `down`, for a pay change. */
   direction?: 'up' | 'down';
+  /** A pay change's payroll explanations, as label keys under `cause.` (never the stored cause ids). */
+  causes?: readonly string[];
+  /** How much of a pay change nothing explains, as a rounded whole percentage. */
+  unexplainedPct?: number;
 }>;
+
+/** The payroll records that can explain a pay change (core/payroll-anomaly-detectors.ts `explainedCauses`). */
+export const NET_SWING_CAUSES = ['additional_run', 'salary_change', 'days_paid', 'overtime_hours', 'unpaid_leave', 'absence', 'statutory_rules'] as const;
+
+/** `explainedCauses` is stored comma-separated; an array is read too. Unknown ids become "another payroll record". */
+function causeKeys(value: unknown): string[] {
+  const ids = Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string')
+    : typeof value === 'string' ? value.split(',') : [];
+  const keys = ids.map(id => id.trim()).filter(Boolean)
+    .map(id => `cause.${(NET_SWING_CAUSES as readonly string[]).includes(id) ? id : 'other'}`);
+  return [...new Set(keys)];
+}
 
 const GENERIC: FindingDetail = Object.freeze({ key: 'detail.generic', money: {}, numbers: {} });
 
@@ -84,7 +100,13 @@ export function findingDetail(checkId: string, rawFacts: Readonly<Record<string,
       const m = figures(facts, ['priorNetPay', 'netPay']);
       const pct = num(facts.movementPct);
       if (!m || pct === null) return GENERIC;
-      return { key: 'detail.netSwing', money: m, numbers: { pct: Math.abs(pct) }, direction: pct < 0 ? 'down' : 'up' };
+      // Optional on verdicts from before the Salary-loop explanation (owner decision, 11 November 2026): absent, the
+      // sentence simply says less.
+      const causes = causeKeys(facts.explainedCauses);
+      const share = num(facts.unexplainedShare);
+      return { key: 'detail.netSwing', money: m, numbers: { pct: Math.abs(pct) }, direction: pct < 0 ? 'down' : 'up',
+        ...(causes.length ? { causes } : {}),
+        ...(causes.length && share !== null && share >= 0 && share <= 1 ? { unexplainedPct: Math.round(share * 100) } : {}) };
     }
     case 'component-appeared': {
       const m = figures(facts, ['amount']);
@@ -106,5 +128,5 @@ export const DETAIL_KEYS: readonly string[] = Object.freeze([
   'detail.generic', 'detail.negativeNet', 'detail.zeroNetWithPay', 'detail.statutoryOverCap',
   'detail.missingBankProfile.generic', 'detail.missingBankProfile.paymentMethodNotSet', 'detail.missingBankProfile.bankDetailsMissing',
   'detail.missingTaxProfile.withTax', 'detail.missingTaxProfile.noTax', 'detail.payWithoutAttendance', 'detail.prorationMismatch',
-  'detail.duplicateEmploymentPay', 'detail.netSwing', 'detail.componentAppeared', 'detail.componentVanished', 'detail.hypothesis',
+  'detail.duplicateEmploymentPay', 'detail.netSwing', 'detail.netSwingExplained', 'detail.componentAppeared', 'detail.componentVanished', 'detail.hypothesis',
 ]);

@@ -44,7 +44,7 @@ vi.mock('../app/control-tower/exceptions/actions',()=>({markGroupExpectedAction:
 const MISSING='missing-bank-profile.block.payment-method-not-set',SETUP='pay-without-attendance.review.-';
 const item=(verdictId:string,name:string,checkId:string,severity:string,variant:string|null,facts:Record<string,unknown>)=>({verdictId,employmentId:'e-'+verdictId.slice(-2),
  batchId:'b-1',disposition:severity==='block'?'block':'review',computedAt:new Date('2026-10-28T02:00:00Z'),payPeriod:'2026-10',checkId,severity,variant,facts,narrative:null,
- name,employeeCode:null,currency:'MYR',signature:[`${checkId}:${severity}`]});
+ name,employeeCode:null,currency:'MYR',signature:[`${checkId}:${severity}`],runClosed:false});
 vi.mock('../app/control-tower/exceptions/data',async()=>{
  const {buildGroups,groupKey}=await import('../lib/payroll-exceptions');
  // Built when the page reads, not when the mock is hoisted: the fixture constants exist by then.
@@ -141,7 +141,7 @@ describe('Exceptions, the one place an exception is resolved (owner decision 28)
   expect(state.reads[2]).toBe(`acknowledged:2026-10:${COMPANY}`);
   const head=view.container.querySelector('[data-exceptions-total]')!;
   expect([head.getAttribute('data-exceptions-total'),head.getAttribute('data-exceptions-blocking')]).toEqual(['3','2']);
-  expect(text(head)).toBe('3 waiting · 2 block a run · grouped into 2 patterns');
+  expect(text(head)).toBe('3 waiting · 2 from blocking checks · grouped into 2 patterns');
   expect([...view.container.querySelectorAll('[data-exceptions-bucket]')].map(text)).toEqual([
    '0look like real pay errors · check each one','2missing details · one fix per person','1look like your setup, not errors']);
   // Cause already fixed: the former Proposed actions, approving exactly what is on screen.

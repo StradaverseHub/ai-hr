@@ -2051,7 +2051,7 @@
       "resolveThere": "Resolve on Exceptions",
       "grouped": {
         "headline": "{total, plural, one {# waiting} other {# waiting}}",
-        "headlineBlocking": "{blocking, plural, =0 {nothing blocks a run} one {# blocks a run} other {# block a run}}",
+        "headlineBlocking": "{blocking, plural, =0 {none from a blocking check} one {# from a blocking check} other {# from blocking checks}}",
         "headlineGroups": "{groups, plural, one {grouped into # pattern} other {grouped into # patterns}}",
         "bucket": {
           "check": "look like real pay errors · check each one",
@@ -2063,7 +2063,8 @@
         "tag": {
           "blocks": "Blocks payroll",
           "review": "Needs review",
-          "setup": "Looks like setup"
+          "setup": "Looks like setup",
+          "blocksClosed": "Blocking check · run already closed"
         },
         "size": {
           "people": "{people, plural, one {# person} other {# people}}",
@@ -2095,7 +2096,8 @@
           "pageOf": "Page {page} of {pages}",
           "previous": "Previous",
           "next": "Next",
-          "unnamed": "Unnamed person"
+          "unnamed": "Unnamed person",
+          "runClosed": "This payroll run is already closed, so nothing is held up. Deciding it keeps the record straight."
         },
         "bulk": {
           "title": "Mark these as expected",
@@ -2215,7 +2217,8 @@
           "netSwing": "Take-home pay went {direction, select, down {down} other {up}} {pct}%, from {priorNetPay} to {netPay}.",
           "componentAppeared": "{component} of {amount} this month, and none last month.",
           "componentVanished": "{component} of {priorAmount} last month, and none this month.",
-          "hypothesis": "Open the payroll run to read what was noticed."
+          "hypothesis": "Open the payroll run to read what was noticed.",
+          "netSwingExplained": "Partly explained by {causes}; about {pct}% of the change is not explained."
         },
         "component": {
           "allowance": "Allowance",
@@ -2231,6 +2234,16 @@
           "hrdf": "HRD levy",
           "zakat": "Zakat",
           "other": "Another pay item"
+        },
+        "cause": {
+          "additional_run": "a bonus or additional run",
+          "salary_change": "a salary change",
+          "days_paid": "a change in days paid",
+          "overtime_hours": "overtime",
+          "unpaid_leave": "unpaid leave",
+          "absence": "absence",
+          "statutory_rules": "a change in statutory rates",
+          "other": "another payroll record"
         }
       }
     },
