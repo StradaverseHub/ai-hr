@@ -1,0 +1,1 @@
+{"releaseTarget":"f7ee5177feb1ca37a11847bf9fe349c3deab0b0d","note":"The release SHA this rehearsal stands for. The candidate may differ from it only by the rehearsal's own files; scripts/production-upgrade-rehearsal.sh rewrites this for another SHA."}
