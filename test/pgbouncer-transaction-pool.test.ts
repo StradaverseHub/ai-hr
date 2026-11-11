@@ -73,8 +73,9 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
       await Promise.all(Array.from({length: 240}, (_, index) => {
         const [ctx, tenantId] = contexts[index % 2];
         return pool.withTenant(ctx, async tx => {
-          const [settings] = await tx.execute(sql`select current_setting('app.tenant_id', true) as tenant, current_setting('app.user_id', true) as usr`) as unknown as {tenant: string; usr: string}[];
-          expect(settings).toEqual({tenant: tenantId, usr: ctx.userId});
+          const [settings] = await tx.execute(sql`select current_setting('app.tenant_id', true) as tenant, current_setting('app.user_id', true) as usr, current_setting('jit') as jit`) as unknown as {tenant: string; usr: string; jit: string}[];
+          // JIT is off inside every tenant transaction (db/client.ts bootstrapTenantTx), on whichever server connection.
+          expect(settings).toEqual({tenant: tenantId, usr: ctx.userId, jit: 'off'});
           const visible = await tx.execute(sql`select distinct tenant_id::text as tenant from company`) as unknown as {tenant: string}[];
           expect(visible).toEqual([{tenant: tenantId}]);
           checks++;
@@ -89,6 +90,8 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
     const failure = new Error('fictional rollback');
     const backends = new Set<number>();
     try {
+      // The server's own JIT setting, before any tenant transaction switched it off for itself.
+      const [server] = await pool.client<{jit: string}[]>`select current_setting('jit') as jit`;
       for (let round = 0; round < 20; round++) {
         await Promise.all(Array.from({length: 12}, async (_, worker) => {
           const ctx = worker % 2 ? adminCtx(a) : adminCtx(b);
@@ -97,9 +100,11 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
             await tx.execute(sql`select 1`);
             if (worker % 3 === 0) throw failure;
           }).catch(error => { if (error !== failure) throw error; });
-          const [after] = await pool.client<{tenant: string | null; pid: number}[]>`select current_setting('app.tenant_id', true) as tenant, pg_backend_pid() as pid`;
+          const [after] = await pool.client<{tenant: string | null; pid: number; jit: string}[]>`select current_setting('app.tenant_id', true) as tenant, pg_backend_pid() as pid, current_setting('jit') as jit`;
           backends.add(after.pid);
           expect(after.tenant ?? '').toBe('');
+          // Transaction-local like the identity: the next client on this server connection has the server's JIT setting.
+          expect(after.jit).toBe(server.jit);
         }));
       }
       // Twelve clients ran on no more than the configured server connections.
