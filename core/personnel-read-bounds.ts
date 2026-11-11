@@ -10,6 +10,16 @@ export async function boundPersonnelStatementTx(tx: Tx) {
     from pg_catalog.pg_settings where name = 'statement_timeout'`);
 }
 
+/** boundPersonnelStatementTx, and in the same statement whether a reader a later migration adds is installed
+ * (`procedure` is a regprocedure signature), so a database that migration has not reached keeps the previous reader. */
+export async function boundPersonnelStatementWithProbeTx(tx: Tx, procedure: string): Promise<boolean> {
+  const [row] = await tx.execute<{ installed: boolean }>(sql`select set_config('statement_timeout', least(
+    coalesce(nullif(setting::int, 0), 20000), 20000)::text, true) as bound,
+    to_regprocedure(${procedure}::text) is not null as installed
+    from pg_catalog.pg_settings where name = 'statement_timeout'`);
+  return row?.installed === true;
+}
+
 /** Compose presentation reads in one borrowed snapshot whose identity and read-only
  * isolation PostgreSQL can prove. Command callers keep the existing Access barrier. */
 export async function withPersonnelPresentationReadTx<T>(
