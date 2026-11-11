@@ -122,7 +122,7 @@ const leaveFacts=(leaveType:string,startDate:string,endDate:string,days:number,d
 /** The caller's own prepared review, reopened by its owner as the caller. Anything the owner refuses (changed since,
  * paused, no longer assigned) or fails on leaves the card with its generic title, never a guessed one. */
 async function preparedLeave(s:SessionContext,item:PreparedItem,locale:string):Promise<PreparedLeave|null>{
- // A card's details only: the reopen owners' AI principal, AI control and review custody checks (migration 5088) hold
+ // A card's details only: the reopen owners' AI principal, AI control and review custody checks (migration 5091) hold
  // the Access lock shared here (core/access-configuration-lock.ts withAccessDisplayRead); Confirm reopens with the
  // owner's own exclusive locks.
  return withAccessDisplayRead(()=>preparedLeaveFacts(s,item,locale));
