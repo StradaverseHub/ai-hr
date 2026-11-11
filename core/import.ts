@@ -621,7 +621,7 @@ async function analyze(
     let employmentType: 'full_time' | 'part_time' | 'contract' | 'intern' = 'full_time';
     const etRaw = lc(rec.employment_type).replace(/[\s-]+/g, '_');
     if (etRaw) {
-      if (EMPLOYMENT_TYPES.has(etRaw)) employmentType = etRaw as typeof employmentType;
+      if (EMPLOYMENT_TYPES.has(etRaw)) employmentType = etRaw as 'full_time' | 'part_time' | 'contract' | 'intern';
       else fail('employment_type', `Unknown employment_type "${rec.employment_type}"`);
     }
 
@@ -934,7 +934,7 @@ async function analyze(
 
     for(const field of PERSONNEL_EMPLOYMENT_IMPORT_FIELDS) {
       const {column,writerField,catalog:category}=field.import;const value=norm(rec[column!]);if(!value)continue;
-      const issue=personnelScalarIssue(field,value);if(issue){fail(column, `${column}: invalid ${issue} value`);continue;}
+      const issue=personnelScalarIssue(field,value);if(issue){fail(column!, `${column}: invalid ${issue} value`);continue;}
       const checked=category?catalogField(value,category,column!):undefined;
       if(checked?.kind==='refused')continue;
       employmentInfo[writerField!]=checked?.kind==='ok'?checked.value:value;

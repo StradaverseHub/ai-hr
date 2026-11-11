@@ -8,7 +8,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
 import {publicErrorMessage} from '@/lib/public-error';
-import {isTransientBulkJobError,type BulkJobDiscardUnit,type BulkJobHandler,type BulkJobStep,type BulkJobUnit} from './bulk-job-worker';
+import {isTransientBulkJobError,type BulkJobStepOutcome,type BulkJobDiscardUnit,type BulkJobHandler,type BulkJobStep,type BulkJobUnit} from './bulk-job-worker';
 import type {BulkJobRow} from './bulk-job';
 import {parseEmployeeImportUpload} from './employee-import-upload';
 import {applyEmployeeImportStepTx,assertEmployeeImportAuthorityTx,prepareEmployeeImportJobPlan,recordEmployeeImportAttemptTx,recordImportRun,type EmployeeImportJobPlan,type EmployeeImportPlanStep} from './import';
@@ -122,7 +122,7 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   *  recorded on the step and the remaining rows continue, so every problem of the file is reported together;
   *  finalize then refuses the release and the discard voids everything staged. A transient error still rolls the
   *  whole chunk back for the kernel to retry. Steps of a refused row are skipped, never attempted. */
- async applyStepTx(tx,ctx,job,step,cache){
+ async applyStepTx(tx,ctx,job,step,cache):Promise<BulkJobStepOutcome>{
   const env=await stepEnv(tx,job,cache);const p=step.payload;
   if(p.kind==='superior'){
    if(env.refusedByIndex.has(p.index))return{result:{skipped:'refused-row'} satisfies StepResult};
@@ -131,7 +131,7 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   }
   if(p.kind==='register'){const code=(p.item as {preview?:{employeeCode?:string}}).preview?.employeeCode;if(code&&env.refusedCodes.has(code))return{result:{skipped:'refused-row'} satisfies StepResult};}
   try{
-   const saved=await tx.transaction(savepoint=>applyEmployeeImportStepTx(savepoint,ctx,p,{attemptId:job.attempt_id!,allocationPreview:planOf(job).allocationPreview,employmentByIndex:env.employmentByIndex,registerSubjects:env.registerSubjects}));
+   const saved=await tx.transaction(savepoint=>applyEmployeeImportStepTx(savepoint as Tx,ctx,p,{attemptId:job.attempt_id!,allocationPreview:planOf(job).allocationPreview,employmentByIndex:env.employmentByIndex,registerSubjects:env.registerSubjects}));
    return{result:saved,counters:step.kind==='employee'?{imported:1}:undefined};
   }catch(error){
    if(isTransient(error))throw error;
