@@ -5,7 +5,7 @@ import { requireAdmin } from '@/lib/authz';
 import { openExceptionsAcrossRuns } from '@/core/payroll-anomaly';
 import { HYPOTHESIS_DETECTOR_ID } from '@/core/payroll-anomaly-detectors';
 import { proposeActions } from '@/core/agent-actions';
-import { acknowledgedBlocks, type AcknowledgedBlock } from '@/core/loops/grouped-dispositions';
+import { acknowledgedBlocksForPeriods, type AcknowledgedBlock } from '@/core/loops/grouped-dispositions';
 import { allowedCompanies } from '@/core/read';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
@@ -69,11 +69,10 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
     allowedCompanies(s).then(rows => rows.map(row => row.id)).catch(() => [] as string[]),
   ]);
   const { rows, total, blocking, cappedOut } = queue;
-  // The acknowledged blocks of each month that has an open block on screen, for the companies the viewer may see.
+  // The acknowledged blocks of each month that has an open block on screen, for the companies the viewer may see: every
+  // month in one read (one transaction), not one transaction per month all at once.
   const periods = [...new Set(rows.filter(row => row.disposition === 'block').map(row => row.payPeriod))].sort();
-  const acknowledged: AckRow[] = companies.length
-    ? (await Promise.all(periods.map(payPeriod => acknowledgedBlocks(s, { companyIds: companies, payPeriod }).then(list => list.map(block => ({ ...block, payPeriod })))))).flat()
-    : [];
+  const acknowledged: readonly AckRow[] = companies.length ? await acknowledgedBlocksForPeriods(s, { companyIds: companies, payPeriods: periods }) : [];
   const periodOf = new Map(rows.map(row => [row.verdictId, row.payPeriod]));
   // No verdict is listed twice: one in a group above is left out of the list below.
   const grouped = new Set([...proposals.flatMap(p => p.subjects.map(sub => sub.verdictId)), ...acknowledged.map(block => block.verdictId)]);

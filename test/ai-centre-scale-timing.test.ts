@@ -24,7 +24,7 @@ import {payrollCycleOverview} from '../core/loops/payroll-cycle-views';
 import {LOOP_IDS} from '../core/loops/types';
 import {openExceptionsAcrossRuns} from '../core/payroll-anomaly';
 import {proposeActions} from '../core/agent-actions';
-import {acknowledgedBlocks} from '../core/loops/grouped-dispositions';
+import {acknowledgedBlocksForPeriods} from '../core/loops/grouped-dispositions';
 import {allowedCompanies} from '../core/read';
 import {aiManagementPageView} from '../core/ai-management';
 import {aiInventoryView,aiManagementAlerts,aiRunHistory} from '../core/ai-inventory';
@@ -72,7 +72,8 @@ const exceptions:Page={id:'control-tower.exceptions',reads:[
  {label:'acknowledgedBlocks',stage:1,run:async(ctx,got)=>{
   const queue=got.get('openExceptionsAcrossRuns') as Awaited<ReturnType<typeof openExceptionsAcrossRuns>>,companies=got.get('allowedCompanies') as string[];
   const periods=[...new Set(queue.rows.filter(row=>row.disposition==='block').map(row=>row.payPeriod))].sort();
-  return companies.length?Promise.all(periods.map(payPeriod=>acknowledgedBlocks(ctx,{companyIds:companies,payPeriod}))):[];}},
+  // As the page reads them since this branch: every month in one call (it was one acknowledgedBlocks transaction per month).
+  return companies.length?acknowledgedBlocksForPeriods(ctx,{companyIds:companies,payPeriods:periods}):[];}},
 ]};
 type View=Awaited<ReturnType<typeof aiManagementPageView>>;
 /** AiManagementScreen (app/control-tower/agents/screen.tsx): its reads in order for one section, after the page's own. */

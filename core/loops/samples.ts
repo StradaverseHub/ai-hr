@@ -6,7 +6,7 @@
  * hash of the action and the week, so it is reproducible and not chosen by the loop). The week runs Monday to Sunday,
  * Asia/Kuala_Lumpur. An administrator of the company records the review in their own name (migration 0963,
  * teras_loop_sample_review, append-only); a review covers the sample as it stood then. No model. */
-import {and,desc,eq,gte,lt,sql} from 'drizzle-orm';
+import {and,desc,eq,gte,inArray,lt,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
@@ -44,6 +44,33 @@ export async function weeklySampleTx(tx:Tx,tenantId:string,workerId:LoopId,compa
   .orderBy(desc(terasLoopSampleReview.reviewedAt),desc(terasLoopSampleReview.id)).limit(1);
  return Object.freeze({weekStart,total:all.length,actionIds:Object.freeze(all.slice(0,size).map(row=>row.id)),
   reviewed:review?Object.freeze({byUserId:review.by,at:review.at,actionIds:Object.freeze([...review.ids])}):null});
+}
+
+/** weeklySampleTx for several companies of one loop in two statements, not two per company (a loop's page shows every
+ * Level 3 company's sample): each company's sample exactly as weeklySampleTx answers it, under the same row-level
+ * security. Companies with no applied action that week have an empty sample. */
+export async function weeklySamplesTx(tx:Tx,tenantId:string,workerId:LoopId,companyIds:readonly string[],weekStart:string):Promise<Map<string,WeeklySample>>{
+ const out=new Map<string,WeeklySample>(),ids=[...new Set(companyIds)];
+ if(!ids.length)return out;
+ const {from,to}=weekBounds(weekStart);
+ const all=await tx.select({id:terasLoopAction.id,companyId:terasLoopAction.companyId}).from(terasLoopAction)
+  .where(and(eq(terasLoopAction.tenantId,tenantId),eq(terasLoopAction.workerId,workerId),inArray(terasLoopAction.companyId,ids),
+   eq(terasLoopAction.state,'applied'),gte(terasLoopAction.appliedAt,from),lt(terasLoopAction.appliedAt,to)))
+  .orderBy(terasLoopAction.companyId,sql`md5(${terasLoopAction.id}::text || ${weekStart})`,terasLoopAction.id);
+ const reviews=await tx.selectDistinctOn([terasLoopSampleReview.companyId],{companyId:terasLoopSampleReview.companyId,by:terasLoopSampleReview.reviewedByUserId,
+  at:terasLoopSampleReview.reviewedAt,ids:terasLoopSampleReview.actionIds}).from(terasLoopSampleReview)
+  .where(and(eq(terasLoopSampleReview.tenantId,tenantId),eq(terasLoopSampleReview.workerId,workerId),inArray(terasLoopSampleReview.companyId,ids),
+   eq(terasLoopSampleReview.weekStart,weekStart)))
+  .orderBy(terasLoopSampleReview.companyId,desc(terasLoopSampleReview.reviewedAt),desc(terasLoopSampleReview.id));
+ const actions=new Map<string,string[]>();
+ for(const row of all)(actions.get(row.companyId)??actions.set(row.companyId,[]).get(row.companyId)!).push(row.id);
+ const reviewOf=new Map(reviews.map(row=>[row.companyId,row]));
+ for(const companyId of ids){
+  const list=actions.get(companyId)??[],review=reviewOf.get(companyId),size=sampleSize(list.length);
+  out.set(companyId,Object.freeze({weekStart,total:list.length,actionIds:Object.freeze(list.slice(0,size)),
+   reviewed:review?Object.freeze({byUserId:review.by,at:review.at,actionIds:Object.freeze([...review.ids])}):null}));
+ }
+ return out;
 }
 
 const Input=z.object({workerId:z.string(),companyId:z.guid(),weekStart:z.string().regex(/^\d{4}-\d{2}-\d{2}$/)});
