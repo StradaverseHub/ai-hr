@@ -5,7 +5,7 @@
 set -euo pipefail
 job="${1:?job}"
 case "$job" in worker-build|worker-cell) ;; *) echo 'Unknown parallel worker job' >&2; exit 1 ;; esac
-case "${AIHR_MEASURED_BROWSER_COURSE:-}" in parallel-2-4-8|parallel-smoke|parallel-control) ;; *) echo 'Parallel worker course refused' >&2; exit 1 ;; esac
+case "${AIHR_MEASURED_BROWSER_COURSE:-}" in parallel-2-4-8|parallel-smoke|parallel-control|parallel-control-50|parallel-control-100) ;; *) echo 'Parallel worker course refused' >&2; exit 1 ;; esac
 test "$GITHUB_JOB" = "$job"
 test "$GITHUB_EVENT_NAME" = workflow_dispatch
 test "$GITHUB_RUN_ATTEMPT" = 1

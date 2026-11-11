@@ -30,9 +30,12 @@ const smokeCourse = Object.freeze([2, 4, 8].map((workers, index) => Object.freez
 // preflight authority. The control driver records every outcome; it asserts no release-only behaviour.
 const controlCourse = Object.freeze(parallelCourse.filter(cell => cell.suite === 'whole-system').map(cell => Object.freeze({
   ...cell, name: 'control-' + cell.workers, scope: 'load-only-control' })));
+// Realistic-load variants of the same control course: only the number of paced actors differs.
+const controlAt = actors => Object.freeze(controlCourse.map(cell => Object.freeze({ ...cell, controlActors: actors })));
 const courses = Object.freeze({ 'serial-2-4-8': course, 'parallel-2-4-8': parallelCourse, 'parallel-smoke': smokeCourse,
-  'parallel-control': controlCourse });
-export const PARALLEL_WORKER_COMPARISON_COURSES = Object.freeze(['parallel-2-4-8', 'parallel-smoke', 'parallel-control']);
+  'parallel-control': controlCourse, 'parallel-control-50': controlAt(50), 'parallel-control-100': controlAt(100) });
+export const PARALLEL_WORKER_COMPARISON_COURSES = Object.freeze(['parallel-2-4-8', 'parallel-smoke', 'parallel-control',
+  'parallel-control-50', 'parallel-control-100']);
 export function isWorkerComparisonCourse(name) {
   return typeof name === 'string' && Object.hasOwn(courses, name);
 }
@@ -274,7 +277,7 @@ export function createParallelWorkerCellModel({ courseName, workers, identity, p
   const cell = courses[courseName].find(row => String(row.workers) === workers);
   assert(cell, 'Parallel worker comparison cell refused');
   identityFor(identity);
-  if (courseName === 'parallel-smoke' || courseName === 'parallel-control') assert(prerequisite === null, 'The harness smoke takes no preflight authority');
+  if (courseName === 'parallel-smoke' || courseName.startsWith('parallel-control')) assert(prerequisite === null, 'The harness smoke takes no preflight authority');
   else upstreamFor(identity, prerequisite);
   runnerHostFor(host);
   assert(closed(transport, ['seal', 'archiveSha256']) && validSeal(transport.seal) && hex(transport.archiveSha256, 64),

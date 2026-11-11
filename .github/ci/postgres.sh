@@ -25,7 +25,7 @@ case "${AIHR_CI_PG_PROFILE:-}" in
 esac
 # Load-only control course only (release versus main): the same raised cap on both trees, sized to keep
 # about 1.5 GB of the 16 GB runner free for the OS. Every other course keeps profile 2's pinned cap.
-if [[ "$AIHR_CI_PG_PROFILE" == 2 && "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-control ]]; then memory_bytes=6442450944; fi
+if [[ "$AIHR_CI_PG_PROFILE" == 2 && "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-control* ]]; then memory_bytes=6442450944; fi
 jit_args=(-c "jit=$AIHR_CI_PG_JIT")
 statement_args=()
 [[ "${AIHR_CI_PG_STATEMENTS:-0}" == 0 || "${AIHR_CI_PG_STATEMENTS:-0}" == 1 ]] || exit 2
@@ -52,7 +52,7 @@ case "${AIHR_CI_PG_DEVELOPMENT_LOCK_LOG:-0}" in
   1)
     [[ "$operation" == reset && ( "${GITHUB_JOB:-}" == selected-tests ||
       ( "${GITHUB_JOB:-}" == worker-cell && ( "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-2-4-8 || "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-smoke ||
-        "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-control ) ) ) &&
+        "${AIHR_MEASURED_BROWSER_COURSE:-}" == parallel-control* ) ) ) &&
       "${GITHUB_EVENT_NAME:-}" == workflow_dispatch &&
       "${GITHUB_RUN_ATTEMPT:-}" == 1 && "$AIHR_CI_UNIT" == db-1 && "$AIHR_CI_PG_PROFILE" == 2 &&
       "${AIHR_CI_PG_DURABLE:-}" == 1 && "${AIHR_CI_PG_STATEMENTS_OWNER:-}" == system-http-profile ]] || exit 2

@@ -67,7 +67,7 @@ def admit(env, event):
     for key in ('model_eval', 'eval_allowed_providers', 'measured_browser_preflight_run'):
         inputs.setdefault(key, '')
     # The load-only control course has the same closed shape as the smoke: no secret, no preflight, no release authority.
-    course = inputs.get('measured_browser_course') if inputs.get('measured_browser_course') in ('parallel-smoke', 'parallel-control') else 'parallel-smoke'
+    course = inputs.get('measured_browser_course') if inputs.get('measured_browser_course') in ('parallel-smoke', 'parallel-control', 'parallel-control-50', 'parallel-control-100') else 'parallel-smoke'
     if inputs != expected_inputs(branch, sha, course):
         refuse('dispatch inputs; the smoke runs only its own branch head with every other course off')
     return {'kind': 'PARALLEL_WORKER_HARNESS_SMOKE_ADMISSION_ONLY', 'releaseEligible': False, 'source': sha, 'branch': branch}
