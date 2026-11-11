@@ -212,3 +212,76 @@ the current template, atomic replacement, `daemon-reload`, start, three stable l
 `worker-install-v2.json`. That receipt carries `mode: adopt-stopped`, `previousUnitSha256` and the observation
 digest, and a later managed `drain` can validate it. A failure after replacement enters the same protected
 quarantine. The mode never signals, kills, restores or deletes the prior worker, its release or any record.
+
+## Production first activation (`production-first-install`)
+
+`bank_import_worker_production_v1.py` is the reviewed route for the first worker activation on the customer
+production layout (production runbook section 6). It exists because the first-install v2 helper refuses that layout
+(the worker identity and environment already exist, there are no staging deployment receipts and the database is
+remote) and the staging update helper needs an existing unit. **Production installation still needs the owner's
+separate, explicit go-ahead.** The helper, its tests and its bundle grant no release or production authority.
+
+It expects the customer layout: the web is `aihr.service` running as `aihr` from `/opt/ai-hr`, with its environment
+in `/etc/aihr/runtime.env`; the worker reads the existing `/etc/aihr/import-worker.env` and runs on
+`/opt/node22/bin/node` (v22.23.3, as the worker package requires). The unit is the same fixed template as v2:
+`User=aihr-import`, `WorkingDirectory=/opt/aihr-import/releases/<source>`, `AIHR_DB_PROCESS_ROLE=worker`,
+`AIHR_DB_POOL_MAX=2` and `EnvironmentFile=/etc/aihr/import-worker.env`. Its receipt has the same fields that a later
+managed `drain` checks.
+
+Build the helper from the reviewed commit, hash-pin it, copy it to a new root-protected path, check the hash there
+and run it with `python3 -I -B`:
+
+```bash
+python3 -I -B scripts/bank-import-worker-production-bundle.py /PRIVATE/production-helper.py   # prints helperSha256
+sudo python3 -I -B /ROOT-PROTECTED/production-helper.py production-first-install \
+  --source <RELEASE_SHA> --build-id <STAGING_BUILD_ID> --web-port <PORT from runtime.env> \
+  --release-manifest /var/tmp/aihr-release-<PROD_TAG>/release-manifest.json --release-manifest-sha256 <from SHA256SUMS> \
+  --archive /var/tmp/aihr-release-<PROD_TAG>/worker-package.zip --archive-sha256 <authenticated artifact zip sha256> \
+  --lock-sha256 <lock sha256> --package-sha256 <package sha256> \
+  --worker-env-sha256 <root-read sha256sum of /etc/aihr/import-worker.env> --existing-uid <id -u aihr-import>
+```
+
+Every value comes from independently verified release evidence or a root-read observation. The helper prints
+no environment value or database URL. Before it writes anything, it refuses when:
+- the release manifest is not the pinned bytes, or does not name exactly `--source` and `--build-id`;
+- `/opt/ai-hr/.next/BUILD_ID` is not `--build-id`;
+- `aihr` is not active and running as `aihr` from `/opt/ai-hr`;
+- loopback `/health` on `--web-port` is not `{"status":"ok"}`;
+- the web service's main PID changes while these checks run;
+- any `aihr-bank-import*` unit, template, drop-in or enablement link exists in a systemd unit directory, or systemd
+  knows the unit (loaded, masked or tracking a control group);
+- any process runs as `aihr-import` or inside an `aihr-bank-import` cgroup;
+- `aihr-import` is not the pinned uid, is not a system uid (below 1000), shares its uid or primary group, has a
+  supplementary group (including `aihr`) or a login shell, or has a home that exists and is not root-owned and
+  read-only;
+- the environment file is not root-owned 0600/0400 (or 0640/0440 with group root or `aihr-import`) with the pinned
+  sha256, or does not parse under a closed subset of systemd's syntax: `KEY=value` lines, `#` comments, and plain or
+  quoted values without `$`, backslash, quote characters, spaces or control characters;
+- the file contains a key outside the reviewed set (`DATABASE_URL`, `MIGRATION_DATABASE_URL`,
+  `AUDIT_HASH_CHAIN_ENABLED`, `NODE_EXTRA_CA_CERTS`, `PGSSLMODE`, `PGSSLROOTCERT`, `PGSSLCERT`, `PGSSLKEY`), so it
+  cannot override `AIHR_DB_POOL_MAX` or `AIHR_DB_PROCESS_ROLE`;
+- `DATABASE_URL` does not use `ai_hr_app` and `MIGRATION_DATABASE_URL` does not use `ai_hr_owner`, both on database
+  `ai_hr` at the same host and port, with no options except `sslmode`, `sslrootcert`, `sslcert` and `sslkey`;
+- a non-loopback database lacks exactly one `sslmode=verify-full` per URL, or lacks a root-protected
+  `NODE_EXTRA_CA_CERTS` (for Node) and `PGSSLROOTCERT` (for libpq). `PGSSLMODE`, if set, must also be `verify-full`;
+- `aihr-import` cannot read those certificate files or traverse `/opt/aihr-import`;
+- a read-only `/usr/bin/psql` check shows that the app role is a superuser or BYPASSRLS, or that the owner role does
+  not own `bank_import_job` (so the app VM needs the PostgreSQL client);
+- `/opt/aihr-import/releases/<source>` or an earlier attempt in `/opt/aihr-import/installs/<source>/` exists.
+
+It then records `preflight.json` (key names and identities only) in `/opt/aihr-import/installs/<source>/`,
+snapshots and authenticates the archive, and extracts it into the new immutable release. The prior receipt-less
+releases stay untouched. Immediately before the unit exists, it repeats every check above. It creates the unit
+atomically, without replacing anything, then runs `daemon-reload` and checks the loaded configuration. It starts
+the worker and takes three stable observations of the live process: worker uid, release directory, fixed command,
+and the exact environment file values plus `AIHR_DB_PROCESS_ROLE=worker` and `AIHR_DB_POOL_MAX=2`. After that it
+re-checks the web identity and the environment pin, enables the unit, and writes `worker-install-v2.json`
+(`mode: production-first-install`, `journeyVerified: false`) and `activated.json`.
+
+Any failure after the unit exists enters the same quarantine as `activate`: `Restart=no`, `SendSIGKILL=no`, reload,
+disable and a bounded graceful stop. It never sends SIGKILL and never deletes prior releases, the environment file
+or the identity. If the quarantine cannot be confirmed, it reports uncertainty for administrator recovery. A failed
+or partial attempt cannot be retried by deleting its records. After success, verify the worker as in the runbook
+(`scripts/check-import-worker.ts`), then set `AIHR_IMPORT_WORKER_REQUIRED=1` in the deploy environment. Later
+production updates need their own reviewed route: the staging `drain`/`activate` helper depends on staging
+deployment receipts and the v2 environment format.
