@@ -647,7 +647,11 @@ function planDetectors(
       skipped.push({ id: d.id, reason: 'disabled by configuration' });
       continue;
     }
-    if (d.requires.priorCycles > 0 && !ctx.prior) {
+    // net-swing on a REGULAR run compares the person's previous PAID month (closed runs, core/loops/swing-rows.ts), which
+    // can be earlier than the company's last closed run (a person not paid in it): that is a prior cycle for this check
+    // too, so the gate and the comparison use the same baseline as the Salary loop.
+    const swingHasPrior = d.id === 'net-swing' && ctx.swing?.runType === 'regular' && ctx.swing.rows.some((r) => r.payPeriod < ctx.swing!.period);
+    if (d.requires.priorCycles > 0 && !ctx.prior && !swingHasPrior) {
       skipped.push({ id: d.id, reason: 'no prior cycle for this employee yet' });
       continue;
     }
