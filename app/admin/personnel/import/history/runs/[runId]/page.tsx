@@ -5,6 +5,7 @@ import {getImportRun} from '@/core/import-history';
 import {PageHeader,pageWideCls} from '@/components/ui';
 import {ImportStatusText,historyCellCls,historyHeadCls,historyTableCls,IMPORT_HISTORY_PATH} from '../../import-history-views';
 import {RunErrorsDownload,RunErrorReasons} from './run-errors-download';
+import {formatImportActor,formatImportBatch} from '@/lib/import-reference';
 const dateTime={dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'} as const;
 /**
  * ccd3a65c — the Import Log of a section import (Profile, Family, Qualifications, Emergency Contacts). These
@@ -12,14 +13,14 @@ const dateTime={dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur
  * shows exactly that. Visible by the viewer's company access (core/import-history getImportRun).
  */
 export default async function ImportRunPage({params}:{params:Promise<{runId:string}>}){
- const ctx=await requireAdmin(),t=await getTranslations('people.importHistory'),format=await getFormatter();
+ const ctx=await requireAdmin(),t=await getTranslations('people.importHistory'),format=await getFormatter(),labels=await getTranslations('importLog');
  const{runId}=await params,run=await getImportRun(ctx,runId);if(!run)notFound();
- return <div className={pageWideCls}><PageHeader title={run.fileName||t('pasted')} description={t('referenceLabel',{reference:run.id})} back={{href:run.kind?`${IMPORT_HISTORY_PATH}?kind=${run.kind}`:IMPORT_HISTORY_PATH,label:t('title')}}/>
+ return <div className={pageWideCls}><PageHeader title={run.fileName||t('pasted')} description={formatImportBatch(labels,run.id)} back={{href:run.kind?`${IMPORT_HISTORY_PATH}?kind=${run.kind}`:IMPORT_HISTORY_PATH,label:t('title')}}/>
   <section className="space-y-4 rounded-xl border bg-card p-5"><dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
    <div><dt className="text-muted-foreground">{t('type')}</dt><dd>{run.kind?t(`kinds.${run.kind}`):t('kinds.notRecorded')}</dd></div>
    <div><dt className="text-muted-foreground">{t('status')}</dt><dd><ImportStatusText status={run.status}/></dd></div>
    <div><dt className="text-muted-foreground">{t('time')}</dt><dd>{format.dateTime(run.createdAt,dateTime)}</dd></div>
-   <div><dt className="text-muted-foreground">{t('user')}</dt><dd title={run.createdBy??undefined}>{run.createdByName??t('unknownUser')}</dd></div>
+   <div><dt className="text-muted-foreground">{t('user')}</dt><dd>{formatImportActor(labels,run.createdByActor)}</dd></div>
    <div><dt className="text-muted-foreground">{t('companies')}</dt><dd>{run.companies.join(', ')||'—'}</dd></div>
    <div><dt className="text-muted-foreground">{t('totalRows')}</dt><dd className="tabular-nums">{run.totalRows}</dd></div>
    <div><dt className="text-muted-foreground">{t('successful')}</dt><dd className="tabular-nums">{run.importedRows}</dd></div>

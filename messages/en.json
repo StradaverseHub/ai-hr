@@ -3353,7 +3353,7 @@
         "emergency": "Emergency Contacts",
         "notRecorded": "Not recorded"
       },
-      "reference": "Reference",
+      "reference": "Batch reference",
       "referenceLabel": "Reference {reference}",
       "type": "Type",
       "file": "File",

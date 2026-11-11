@@ -59,6 +59,19 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   ) x(is_creator,user_id)
   WHERE p_log='import_attempt' AND a.id=ANY(p_rows) AND app.import_attempt_access(a.id,'view',false)
   UNION ALL
+  -- Personnel > Import History section runs (read rule: core/import-history.ts runVisibleSql, ccd3a65c —
+  -- the run's company is administered and Workforce-viewable; a run with no company is its creator's, or
+  -- visible to a viewer who covers every active company).
+  SELECT r.id, true,
+   CASE WHEN r.created_by_user_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN r.created_by_user_id::uuid END,
+   r.created_by_person_id, r.created_at, CASE WHEN r.company_id IS NULL THEN '{}'::uuid[] ELSE ARRAY[r.company_id] END
+  FROM public.employee_import_run r JOIN viewer v ON r.tenant_id=v.tenant_id
+  WHERE p_log='employee_import_run' AND r.id=ANY(p_rows) AND app.is_admin()
+   AND ((r.company_id IS NOT NULL AND app.is_admin_for(r.company_id) AND app.access_workforce_company(r.company_id,'workforce.view'))
+    OR (r.company_id IS NULL AND (r.created_by_user_id=app.current_user_id()::text
+     OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.tenant_id=v.tenant_id AND c.archived_at IS NULL
+      AND NOT (app.is_admin_for(c.id) AND app.access_workforce_company(c.id,'workforce.view'))))))
+  UNION ALL
   -- Attendance clocking and Leave data imports record the PERSON plus the login id as text
   -- (read rule: 0518/0497/0490 tenant administrators).
   SELECT r.id, true,

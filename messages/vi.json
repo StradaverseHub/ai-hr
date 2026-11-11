@@ -3353,7 +3353,7 @@
         "emergency": "Liên hệ khẩn cấp",
         "notRecorded": "Không được ghi nhận"
       },
-      "reference": "Mã tham chiếu",
+      "reference": "Mã lô",
       "referenceLabel": "Mã tham chiếu {reference}",
       "type": "Loại",
       "file": "Tệp",

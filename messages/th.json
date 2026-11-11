@@ -3353,7 +3353,7 @@
         "emergency": "ผู้ติดต่อฉุกเฉิน",
         "notRecorded": "ไม่ได้บันทึก"
       },
-      "reference": "เลขอ้างอิง",
+      "reference": "เลขอ้างอิงชุด",
       "referenceLabel": "เลขอ้างอิง {reference}",
       "type": "ประเภท",
       "file": "ไฟล์",

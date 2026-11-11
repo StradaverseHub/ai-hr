@@ -3,7 +3,7 @@
  * name (Employee ID); no internal 36-character id appears in visible text or tooltips, while links,
  * downloads and revert keep the full internal id. Fictional data only.
  */
-import type {ReactNode} from 'react';
+import {cloneElement,isValidElement,type ReactElement,type ReactNode} from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen,within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -11,7 +11,7 @@ import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 
 const m=vi.hoisted(()=>({
- jobs:vi.fn(),legacy:vi.fn(),readImport:vi.fn(),readJob:vi.fn(),historyList:vi.fn(),historyGet:vi.fn(),clockList:vi.fn(),clockGet:vi.fn(),
+ jobs:vi.fn(),legacy:vi.fn(),readImport:vi.fn(),readJob:vi.fn(),historyList:vi.fn(),historyGet:vi.fn(),clockList:vi.fn(),clockGet:vi.fn(),personnelRun:vi.fn(),
 }));
 vi.mock('next-intl/server',async()=>{
  const {createTranslator:tr,createFormatter:fmt}=await import('next-intl');const messages=(await import('../messages/en.json')).default;
@@ -21,6 +21,7 @@ vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('notFound');},useR
 vi.mock('@/lib/scope',()=>({scopedAdmin:async()=>({s:{userId:'viewer'},scopeIds:['company-a']})}));
 vi.mock('@/lib/authz',()=>({requireAdmin:async()=>({userId:'viewer'})}));
 vi.mock('@/packs/payroll/service',()=>({listIndividualImportJobs:m.jobs,listIndividualImports:m.legacy,readIndividualImport:m.readImport,readIndividualImportJob:m.readJob,listPayrollHistoryAttempts:m.historyList,getPayrollHistoryAttempt:m.historyGet}));
+vi.mock('@/core/import-history',()=>({getImportRun:m.personnelRun}));
 vi.mock('@/packs/attendance/service',()=>({listClockingImportRuns:m.clockList,getClockingImportRun:m.clockGet}));
 vi.mock('../app/payroll/transactions/individual/imports/[attemptId]/result-rows',()=>({IndividualImportRows:()=>null}));
 vi.mock('../app/payroll/transactions/individual/imports/batches/[jobId]/batch-controls',()=>({ImportBatchControls:()=>null}));
@@ -44,6 +45,17 @@ import ClockingImportLogPage from '../app/attendance/import/logs/[runId]/page';
 import {LeaveDataImport} from '../app/admin/leave-config/data-import/leave-data-import';
 import {LeaveBfImport} from '../app/admin/leave-config/bf-import/leave-bf-import';
 import {LeaveHistoryImport} from '../app/admin/leave-config/history-import/leave-history-import';
+import {ImportAttemptEvents,ImportAttemptSummary,ImportHistoryTable} from '../app/admin/personnel/import/history/import-history-views';
+import ImportRunPage from '../app/admin/personnel/import/history/runs/[runId]/page';
+
+/** Server views nest async server components, which React DOM cannot render: resolve them first. */
+async function resolveAsync(node:ReactNode):Promise<ReactNode>{
+ if(Array.isArray(node))return Promise.all(node.map(resolveAsync));
+ if(!isValidElement(node))return node;
+ const element=node as ReactElement<{children?:ReactNode}>;
+ if(typeof element.type==='function'&&element.type.constructor.name==='AsyncFunction')return resolveAsync(await (element.type as (props:unknown)=>Promise<ReactNode>)(element.props));
+ return element.props.children===undefined?element:cloneElement(element,undefined,await resolveAsync(element.props.children));
+}
 
 const UUID=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const JOB='7f3a2c19-4b8e-4d21-9a6f-0c5e8b13d7a2',LEGACY='2d84e6b0-91c3-4a7f-b52e-e8f04a6c19d3',ATTEMPT='9e01b7c4-3c2a-4f00-8a1b-5d6e7f809a1b';
@@ -106,7 +118,7 @@ describe('Payroll > Individual Transaction > Import log',()=>{
 });
 
 describe('Payroll > Import payroll history > Log File',()=>{
- const item={id:ATTEMPT,sourceName:'history-2025.xlsx',sourceHash:'a'.repeat(64),companyIds:[],plan:{rows:[{companyName:'Acme Sdn Bhd'}],counts:{total:1,changed:1,unchanged:0,invalid:0}},createdBy:USER,createdByName:'Aisyah Rahman',createdByActor:aisyah,createdAt:new Date('2026-10-28T01:15:00Z'),
+ const item={id:ATTEMPT,sourceName:'history-2025.xlsx',sourceHash:'a'.repeat(64),companyIds:[],plan:{rows:[{companyName:'Acme Sdn Bhd'}],counts:{created:0,replaced:1,unchanged:0,invalid:0}},createdBy:USER,createdByName:'Aisyah Rahman',createdByActor:aisyah,createdAt:new Date('2026-10-28T01:15:00Z'),
   events:[{id:'e1',attemptId:ATTEMPT,kind:'confirmed',actorId:ADMIN,actor:admin,actorName:null,detail:{},changes:[{}],createdAt:new Date('2026-10-28T01:20:00Z')}]};
  it('shows the batch number with the source file, and Imported by, on the log list',async()=>{
   m.historyList.mockResolvedValue({items:[item],nextCursor:null});
@@ -162,6 +174,33 @@ describe('Leave Configuration > Leave Data Import > Import history',()=>{
   expect(screen.getByText('Aisyah Rahman (EMP-0412)')).toBeInTheDocument();
   expect(screen.getByText('Administrator login (no employee record · login ending 9C41E2)')).toBeInTheDocument();
   expect(screen.getAllByText('Imported by')).toHaveLength(2);expect(screen.getAllByText('Batch reference')).toHaveLength(2);
+  assertNoRawIds(container);
+ });
+});
+
+describe('Personnel > Import Employees > Import History',()=>{
+ const row={source:'attempt' as const,id:JOB,cursor:'a.'+JOB,kind:'movement' as const,sourceName:'movement-nov.xlsx',createdAt:new Date('2026-11-05T02:42:00Z'),createdBy:USER,createdByName:'Aisyah Rahman',createdByActor:aisyah,companies:['Acme Sdn Bhd'],total:3,successful:3,failed:0,status:'succeeded' as const};
+ it('folds the file under the batch number and shows Imported by, without raw ids or tooltips',async()=>{
+  const {container}=wrap(await resolveAsync(await ImportHistoryTable({items:[row,{...row,source:'run',id:LEGACY,cursor:'r.'+LEGACY,kind:'profile' as never,sourceName:'',createdBy:null,createdByName:null,createdByActor:admin}]})));
+  expect(screen.getAllByRole('columnheader').map(th=>th.textContent)).not.toContain(en.people.importHistory.file);
+  expect(screen.getAllByRole('columnheader')[0]).toHaveTextContent('Batch reference');
+  expect(screen.getByText('Batch 7F3A2C19').closest('a')).toHaveAttribute('href',`/admin/personnel/import/history/${JOB}`);
+  expect(screen.getByText('Batch 2D84E6B0').closest('a')).toHaveAttribute('href',`/admin/personnel/import/history/runs/${LEGACY}`);
+  expect(screen.getByText('movement-nov.xlsx')).toBeInTheDocument();expect(screen.getByText(en.people.importHistory.pasted)).toBeInTheDocument();
+  expect(screen.getByText('Aisyah Rahman (EMP-0412)')).toBeInTheDocument();expect(screen.getByText('Administrator login (no employee record · login ending 9C41E2)')).toBeInTheDocument();
+  assertNoRawIds(container);
+ });
+ it('shows Imported by and audit actors on an import attempt log',async()=>{
+  const item={id:JOB,kind:'movement',sourceName:'movement-nov.xlsx',sourceHash:'b'.repeat(64),companyIds:[],plan:{counts:{total:3,invalid:0},issues:[]},createdBy:USER,createdAt:new Date('2026-11-05T02:42:00Z'),createdByName:'Aisyah Rahman',createdByActor:aisyah,companies:['Acme Sdn Bhd'],items:[],canDownloadSource:true,canRevert:false,
+   events:[{id:'e1',attemptId:JOB,kind:'confirmed',actorId:ADMIN,actor:admin,actorName:null,reason:null,detail:{succeeded:3,failed:0},createdAt:new Date('2026-11-05T02:43:00Z')}]};
+  const {container}=wrap(<>{await resolveAsync(await ImportAttemptSummary({item:item as never}))}{await resolveAsync(await ImportAttemptEvents({item:item as never}))}</>);
+  expect(screen.getByText('Aisyah Rahman (EMP-0412)')).toBeInTheDocument();expect(screen.getByText('Administrator login (no employee record · login ending 9C41E2)')).toBeInTheDocument();
+  assertNoRawIds(container);
+ });
+ it('shows the batch number and importer on a section run log',async()=>{
+  m.personnelRun.mockResolvedValue({id:LEGACY,kind:'profile',section:'profile',fileName:'profile.xlsx',companyName:'Acme Sdn Bhd',companyLabel:null,createdBy:USER,createdByName:null,createdByActor:{kind:'unavailable'},createdAt:new Date('2026-11-04T02:42:00Z'),totalRows:2,importedRows:2,failedRows:0,errors:[],errorsTruncated:false,companies:['Acme Sdn Bhd'],status:'succeeded'});
+  const {container}=wrap(await resolveAsync(await ImportRunPage({params:Promise.resolve({runId:LEGACY})})));
+  expect(screen.getByText('Batch 2D84E6B0')).toBeInTheDocument();expect(screen.getByText('Unavailable user')).toBeInTheDocument();
   assertNoRawIds(container);
  });
 });

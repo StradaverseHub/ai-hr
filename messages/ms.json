@@ -3353,7 +3353,7 @@
         "emergency": "Kenalan Kecemasan",
         "notRecorded": "Tidak direkodkan"
       },
-      "reference": "Rujukan",
+      "reference": "Rujukan kelompok",
       "referenceLabel": "Rujukan {reference}",
       "type": "Jenis",
       "file": "Fail",

@@ -14,6 +14,7 @@ export type ImportLogKind =
   | 'payroll_individual_attempt'
   | 'payroll_history'
   | 'import_attempt'
+  | 'employee_import_run'
   | 'clocking_run'
   | 'leave_bf_run'
   | 'leave_history_run';

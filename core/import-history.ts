@@ -19,6 +19,8 @@ import {company,importAttempt as attempt,importAttemptItem as item,importAttempt
 import {actorOf,appendEvent} from '../db/events';
 import {isImportKind,isImportRunKind,isImportHistoryKind,importAttemptStatus,importAttemptTotals,IMPORT_RUN_KINDS,normalizeImportRevertReason,type ImportAttemptStatus,type ImportEventKind,type ImportHistoryKind,type ImportKind,type ImportPlanBase,type ImportRunKind} from '../lib/import-history';
 import {importRunOutcome,type ImportRunError} from '../lib/import-schema';
+import {actorOn,creatorOf,resolveImportActors,type ImportRowActors} from './import-actor-label';
+import type {ImportActor} from '../lib/import-reference';
 
 export class ImportHistoryError extends Error{
  constructor(message:string,readonly blockers:ImportRevertBlocker[]=[]){super(message);this.name='ImportHistoryError';}
@@ -102,16 +104,20 @@ export async function recordImportFailure(ctx:SessionContext,attemptId:string,im
  });}catch(recordError){console.error('[import history failure audit]',recordError);}
 }
 
-const listColumns={id:attempt.id,kind:attempt.kind,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdAt:attempt.createdAt,createdByName:sql<string|null>`app.import_attempt_actor_label(${attempt.id},${attempt.createdBy})`};
+const listColumns={id:attempt.id,kind:attempt.kind,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdAt:attempt.createdAt};
 async function companyNamesTx(tx:Tx,ids:string[]){
  if(!ids.length)return new Map<string,string>();
  const rows=await tx.select({id:company.id,name:company.legalName,label:company.companyLabel}).from(company).where(inArray(company.id,ids));
  return new Map(rows.map(r=>[r.id,r.label?.trim()?`${r.label.trim()} · ${r.name}`:r.name]));
 }
-async function eventsWithNamesTx(tx:Tx,ids:string[]){
+/** Board 8d02748a: every recorded actor of these attempts in ONE set-wise read (no per-row label function). */
+const personName=(actor:ImportActor)=>actor.kind==='person'?actor.name:null;
+async function eventsWithNamesTx(tx:Tx,ids:string[],actors:Map<string,ImportRowActors>){
  if(!ids.length)return[];
- return tx.select({...getTableColumns(historyEvent),actorName:sql<string|null>`app.import_attempt_actor_label(${historyEvent.attemptId},${historyEvent.actorId})`}).from(historyEvent).where(inArray(historyEvent.attemptId,ids)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
+ const rows=await tx.select(getTableColumns(historyEvent)).from(historyEvent).where(inArray(historyEvent.attemptId,ids)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
+ return rows.map(row=>{const actor=actorOn(actors,row.attemptId,row.actorId);return{...row,actor,actorName:personName(actor)};});
 }
+function withCreator<R extends {id:string}>(actors:Map<string,ImportRowActors>,row:R){const createdByActor=creatorOf(actors,row.id);return{...row,createdByActor,createdByName:personName(createdByActor)};}
 /** Company-scoped by RLS: an attempt is listed when the actor holds view for at least one listed company. */
 export async function listImportAttempts(ctx:SessionContext,options:{kind?:ImportKind;before?:string;limit?:number}={}){
  if(options.kind!==undefined&&!isImportKind(options.kind))fail('Unknown import kind.');
@@ -120,8 +126,8 @@ export async function listImportAttempts(ctx:SessionContext,options:{kind?:Impor
   await principalTx(tx,ctx);const limit=Math.min(100,Math.max(1,options.limit??25));
   const rows=await tx.select(listColumns).from(attempt).where(and(options.kind?eq(attempt.kind,options.kind):undefined,options.before?sql`(${attempt.createdAt},${attempt.id}) < (select created_at,id from import_attempt where id=${options.before}::uuid)`:undefined))
    .orderBy(desc(attempt.createdAt),desc(attempt.id)).limit(limit+1);
-  const chosen=rows.slice(0,limit),events=await eventsWithNamesTx(tx,chosen.map(r=>r.id)),names=await companyNamesTx(tx,[...new Set(chosen.flatMap(r=>r.companyIds))]);
-  return{items:chosen.map(r=>({...r,plan:r.plan as unknown as ImportPlanBase,companies:r.companyIds.map(id=>names.get(id)).filter((n):n is string=>!!n),events:events.filter(e=>e.attemptId===r.id)})),nextCursor:rows.length>limit?chosen.at(-1)!.id:null};
+  const chosen=rows.slice(0,limit),actors=await resolveImportActors(tx,'import_attempt',chosen.map(r=>r.id)),events=await eventsWithNamesTx(tx,chosen.map(r=>r.id),actors),names=await companyNamesTx(tx,[...new Set(chosen.flatMap(r=>r.companyIds))]);
+  return{items:chosen.map(r=>({...withCreator(actors,r),plan:r.plan as unknown as ImportPlanBase,companies:r.companyIds.map(id=>names.get(id)).filter((n):n is string=>!!n),events:events.filter(e=>e.attemptId===r.id)})),nextCursor:rows.length>limit?chosen.at(-1)!.id:null};
  });
 }
 export type ImportAttemptListItem=Awaited<ReturnType<typeof listImportAttempts>>['items'][number];
@@ -142,7 +148,7 @@ function listedRunSql(kind?:ImportRunKind){
  return kind?sql`${run.importSection}=${kind}`:sql`(${run.importSection} is null or ${run.importSection} in (${sql.join(IMPORT_RUN_KINDS.map(k=>sql`${k}`),sql`,`)}))`;
 }
 const HISTORY_CURSOR=/^([ar])\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
-export type ImportHistoryRow={source:'attempt'|'run';id:string;cursor:string;kind:ImportHistoryKind|null;sourceName:string;createdAt:Date;createdBy:string|null;createdByName:string|null;companies:string[];total:number;successful:number;failed:number;status:ImportAttemptStatus};
+export type ImportHistoryRow={source:'attempt'|'run';id:string;cursor:string;kind:ImportHistoryKind|null;sourceName:string;createdAt:Date;createdBy:string|null;createdByName:string|null;createdByActor:ImportActor;companies:string[];total:number;successful:number;failed:number;status:ImportAttemptStatus};
 /**
  * ccd3a65c — Import History: every shared import attempt (ADR-0155) and every section run that keeps only
  * a summary, newest first, with one stable cursor across both sources ((created_at, id) descending).
@@ -165,10 +171,11 @@ export async function listImportHistory(ctx:SessionContext,options:{kind?:Import
    .from(run).leftJoin(company,eq(company.id,run.companyId)).leftJoin(person,eq(person.id,run.createdByPersonId))
    .where(and(options.kind&&!runKind?sql`false`:undefined,listedRunSql(runKind),runVisibleSql(ctx),bound?sql`(${run.createdAt},${run.id}) < ${bound}`:undefined))
    .orderBy(desc(run.createdAt),desc(run.id)).limit(limit+1);
-  const events=await eventsWithNamesTx(tx,attempts.map(r=>r.id)),names=await companyNamesTx(tx,[...new Set(attempts.flatMap(r=>r.companyIds))]);
+  const attemptActors=await resolveImportActors(tx,'import_attempt',attempts.map(r=>r.id)),runActors=await resolveImportActors(tx,'employee_import_run',runs.map(r=>r.id));
+  const events=await eventsWithNamesTx(tx,attempts.map(r=>r.id),attemptActors),names=await companyNamesTx(tx,[...new Set(attempts.flatMap(r=>r.companyIds))]);
   const merged:(ImportHistoryRow&{sortKey:string})[]=[
-   ...attempts.map(r=>{const own=events.filter(e=>e.attemptId===r.id),plan=r.plan as unknown as ImportPlanBase;return{source:'attempt' as const,id:r.id,cursor:'a.'+r.id,kind:isImportKind(r.kind)?r.kind:null,sourceName:r.sourceName,createdAt:r.createdAt,createdBy:r.createdBy,createdByName:r.createdByName,companies:r.companyIds.map(id=>names.get(id)).filter((n):n is string=>!!n),...importAttemptTotals(plan,own),status:importAttemptStatus(plan,own),sortKey:r.sortKey};}),
-   ...runs.map(r=>{const outcome=importRunOutcome(r);return{source:'run' as const,id:r.id,cursor:'r.'+r.id,kind:isImportRunKind(r.section)?r.section:null,sourceName:r.fileName,createdAt:r.createdAt,createdBy:r.createdBy,createdByName:r.createdByName,companies:r.companyName?[r.companyLabel?.trim()?`${r.companyLabel.trim()} · ${r.companyName}`:r.companyName]:[],total:r.totalRows,successful:r.importedRows,failed:r.failedRows,status:outcome,sortKey:r.sortKey};}),
+   ...attempts.map(r=>{const own=events.filter(e=>e.attemptId===r.id),plan=r.plan as unknown as ImportPlanBase;return{source:'attempt' as const,id:r.id,cursor:'a.'+r.id,kind:isImportKind(r.kind)?r.kind:null,sourceName:r.sourceName,createdAt:r.createdAt,createdBy:r.createdBy,...withCreator(attemptActors,{id:r.id}),companies:r.companyIds.map(id=>names.get(id)).filter((n):n is string=>!!n),...importAttemptTotals(plan,own),status:importAttemptStatus(plan,own),sortKey:r.sortKey};}),
+   ...runs.map(r=>{const outcome=importRunOutcome(r);return{source:'run' as const,id:r.id,cursor:'r.'+r.id,kind:isImportRunKind(r.section)?r.section:null,sourceName:r.fileName,createdAt:r.createdAt,createdBy:r.createdBy,...withCreator(runActors,{id:r.id}),companies:r.companyName?[r.companyLabel?.trim()?`${r.companyLabel.trim()} · ${r.companyName}`:r.companyName]:[],total:r.totalRows,successful:r.importedRows,failed:r.failedRows,status:outcome,sortKey:r.sortKey};}),
   ].sort((a,b)=>a.sortKey<b.sortKey?1:a.sortKey>b.sortKey?-1:a.id<b.id?1:a.id>b.id?-1:0);
   const chosen=merged.slice(0,limit).map(({sortKey:_sortKey,...row})=>row);
   return{items:chosen,nextCursor:merged.length>limit?chosen.at(-1)!.cursor:null};
@@ -182,8 +189,8 @@ export async function getImportRun(ctx:SessionContext,id:string){
   const[row]=await tx.select({id:run.id,section:run.importSection,fileName:run.fileName,companyName:company.legalName,companyLabel:company.companyLabel,createdBy:run.createdByUserId,createdByName:person.fullName,createdAt:run.createdAt,totalRows:run.totalRows,importedRows:run.importedRows,failedRows:run.failedRows,errors:run.errors,errorsTruncated:run.errorsTruncated})
    .from(run).leftJoin(company,eq(company.id,run.companyId)).leftJoin(person,eq(person.id,run.createdByPersonId)).where(and(eq(run.id,id),runVisibleSql(ctx)));
   if(!row)return null;
-  const outcome=importRunOutcome(row);
-  return{...row,kind:isImportRunKind(row.section)?row.section:null,companies:row.companyName?[row.companyLabel?.trim()?`${row.companyLabel.trim()} · ${row.companyName}`:row.companyName]:[],errors:Array.isArray(row.errors)?row.errors as ImportRunError[]:[],status:outcome};
+  const outcome=importRunOutcome(row),actors=await resolveImportActors(tx,'employee_import_run',[row.id]);
+  return{...withCreator(actors,row),kind:isImportRunKind(row.section)?row.section:null,companies:row.companyName?[row.companyLabel?.trim()?`${row.companyLabel.trim()} · ${row.companyName}`:row.companyName]:[],errors:Array.isArray(row.errors)?row.errors as ImportRunError[]:[],status:outcome};
  });
 }
 export type ImportRunDetail=NonNullable<Awaited<ReturnType<typeof getImportRun>>>;
@@ -193,9 +200,10 @@ export async function getImportAttempt(ctx:SessionContext,id:string){
  return withTenant(ctx,async tx=>{
   await principalTx(tx,ctx);
   const[row]=await tx.select(listColumns).from(attempt).where(eq(attempt.id,id));if(!row)return null;
-  const items=await importAttemptItemsTx(tx,id),events=await eventsWithNamesTx(tx,[id]),names=await companyNamesTx(tx,row.companyIds);
+  const actors=await resolveImportActors(tx,'import_attempt',[id]);
+  const items=await importAttemptItemsTx(tx,id),events=await eventsWithNamesTx(tx,[id],actors),names=await companyNamesTx(tx,row.companyIds);
   const canDownloadSource=await coversTx(tx,id,'view'),canRevert=await coversTx(tx,id,'maintain');
-  return{...row,plan:row.plan as unknown as ImportPlanBase,companies:row.companyIds.map(c=>names.get(c)).filter((n):n is string=>!!n),items:items.map(i=>({...i,companyName:names.get(i.companyId)??null})),events,canDownloadSource,canRevert};
+  return{...withCreator(actors,row),plan:row.plan as unknown as ImportPlanBase,companies:row.companyIds.map(c=>names.get(c)).filter((n):n is string=>!!n),items:items.map(i=>({...i,companyName:names.get(i.companyId)??null})),events,canDownloadSource,canRevert};
  });
 }
 export type ImportAttemptDetail=NonNullable<Awaited<ReturnType<typeof getImportAttempt>>>;

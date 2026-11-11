@@ -3353,7 +3353,7 @@
         "emergency": "அவசரத் தொடர்புகள்",
         "notRecorded": "பதிவு செய்யப்படவில்லை"
       },
-      "reference": "குறிப்பு",
+      "reference": "தொகுதி குறிப்பு",
       "referenceLabel": "குறிப்பு {reference}",
       "type": "வகை",
       "file": "கோப்பு",

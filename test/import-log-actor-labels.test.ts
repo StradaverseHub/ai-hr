@@ -71,8 +71,8 @@ describe('import log actor labels (8d02748a)',()=>{
 
  it('shows a company-scoped viewer the importer of a row they can see, even when the importer is outside their scope',async()=>{
   const visible=await job(bobUser,[b.companyId]),hidden=await job(bobUser,[betaId]);
-  // Under the viewer's own RLS, Bob's person row is not readable at all.
-  const direct=await withTenant(acmeOnly,tx=>tx.select({id:s.person.id}).from(s.person).where(eq(s.person.fullName,'Bob Tan')));
+  // Bob's only employment is in Beta, which this viewer cannot see under employment RLS.
+  const direct=await withTenant(acmeOnly,tx=>tx.select({id:s.employment.id}).from(s.employment).where(eq(s.employment.employeeCode,'BETA-0009')));
   expect(direct).toEqual([]);
   const result=await actors(acmeOnly,'payroll_individual_job',[visible,hidden]);
   expect(creatorOf(result,visible)).toEqual({kind:'person',name:'Bob Tan',employeeCode:'BETA-0009'});
@@ -102,7 +102,8 @@ describe('import log actor labels (8d02748a)',()=>{
   const[gone]=await owner.db.insert(s.clockingImportRun).values({tenantId:b.tenantId,mappingName:'AIHR Standard Template',fileName:'clock-old.csv',createdByPersonId:null,createdByUserId:'not-a-login'}).returning({id:s.clockingImportRun.id});
   const runs=await listClockingImportRuns(a);
   const byId=Object.fromEntries(runs.map(run=>[run.id,run.actor]));
-  expect(byId[named.id]).toEqual({kind:'person',name:'Aisyah Rahman',employeeCode:'EMP-0412'});
+  // No company on a clocking run: the most recent employment active on the import date.
+  expect(byId[named.id]).toEqual({kind:'person',name:'Aisyah Rahman',employeeCode:'BETA-0077'});
   expect(byId[gone.id]).toEqual({kind:'unavailable'});
  });
 
@@ -128,6 +129,19 @@ describe('import log actor labels (8d02748a)',()=>{
   expect(facts.size).toBe(101);
  },90_000); // Not yet measured: ~1,200 bulk-inserted rows plus 105 single inserts; bound to be set from the first gate timing.
 
+ it('labels Personnel section runs under the Import History visibility rule (company access)',async()=>{
+  const[bob]=await owner.db.select({personId:s.appUser.personId}).from(s.appUser).where(eq(s.appUser.id,bobUser));
+  const[acmeRun]=await owner.db.insert(s.employeeImportRun).values({tenantId:b.tenantId,companyId:b.companyId,createdByPersonId:bob.personId,createdByUserId:bobUser,fileName:'profile.xlsx'}).returning({id:s.employeeImportRun.id});
+  const[betaRun]=await owner.db.insert(s.employeeImportRun).values({tenantId:b.tenantId,companyId:betaId,createdByPersonId:bob.personId,createdByUserId:bobUser,fileName:'family.xlsx'}).returning({id:s.employeeImportRun.id});
+  const full=await actors(a,'employee_import_run',[acmeRun.id,betaRun.id]);
+  expect(creatorOf(full,betaRun.id)).toEqual({kind:'person',name:'Bob Tan',employeeCode:'BETA-0009'});
+  // Bob has no ACME employment: the run is ACME's, so the best active employment is still his Beta one.
+  expect(creatorOf(full,acmeRun.id)).toEqual({kind:'person',name:'Bob Tan',employeeCode:'BETA-0009'});
+  const scoped=await actors(acmeOnly,'employee_import_run',[acmeRun.id,betaRun.id]);
+  expect(scoped.has(betaRun.id)).toBe(false);
+  expect(creatorOf(scoped,acmeRun.id)).toEqual({kind:'person',name:'Bob Tan',employeeCode:'BETA-0009'});
+ });
+
  it('grants EXECUTE only to the application role and pins search_path',async()=>{
   const [fn]=await owner.db.execute<{definer:boolean;config:string[]|null;public_exec:boolean;app_exec:boolean}>(sql`
    select p.prosecdef as definer,p.proconfig as config,
@@ -135,6 +149,6 @@ describe('import log actor labels (8d02748a)',()=>{
     has_function_privilege('ai_hr_app','app.import_log_actor_facts(text,uuid[])','EXECUTE') as app_exec
    from pg_proc p where p.oid='app.import_log_actor_facts(text,uuid[])'::regprocedure`);
   expect(fn).toMatchObject({definer:true,public_exec:false,app_exec:true});
-  expect(fn.config?.join(',')).toContain('search_path=pg_catalog,public,pg_temp');
+  expect(fn.config?.join(',').replace(/\s/g,'')).toContain('search_path=pg_catalog,public,pg_temp');
  });
 });

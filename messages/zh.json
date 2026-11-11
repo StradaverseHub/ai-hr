@@ -3353,7 +3353,7 @@
         "emergency": "紧急联系人",
         "notRecorded": "未记录"
       },
-      "reference": "参考号",
+      "reference": "批次编号",
       "referenceLabel": "参考号 {reference}",
       "type": "类型",
       "file": "文件",
