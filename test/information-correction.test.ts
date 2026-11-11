@@ -200,7 +200,7 @@ describe('8550b282 information-only corrections',()=>{
   const book=XLSX.read(content,{type:'buffer'});book.Sheets.Corrections.E2={t:'n',f:'1+1',v:2};const rows=parseInformationWorkbook(XLSX.write(book,{type:'buffer',bookType:'xlsx'}));expect(rows[0].errors.join(' ')).toContain('formulas');
  });
  it('produces a usable blank template with live reference sheets',async()=>{
-  const file=informationWorkbook(await informationCorrectionOptions(ctx()));const book=XLSX.read(file,{type:'array'});expect(book.SheetNames).toEqual(['Corrections','Instructions','Companies','Job Grades','Employment Types']);expect(book.Sheets.Companies.A2.v).toBe('DEMO');expect(book.Sheets.Corrections.I1.v).toBe('Correction Reason');
+  const file=informationWorkbook(await informationCorrectionOptions(ctx()));const book=XLSX.read(file,{type:'array'});expect(book.SheetNames).toEqual(['Corrections','Instructions','Companies','Job Grades','Employment Types']);expect(book.Sheets.Companies.A2.v).toBe('DEMO');expect(book.Sheets.Corrections.I1.v).toBe('Contract End Date');expect(book.Sheets.Corrections.J1.v).toBe('Internship End Date');expect(book.Sheets.Corrections.K1.v).toBe('Correction Reason');
  });
  it('preserves leading zeros and accepts actual Excel dates; blank cells stay absent',()=>{
   const rows=parseInformationWorkbook(workbook([['DEMO','00001','','',45658,'','','','','','Correct record']]));expect(rows[0].employeeCode).toBe('00001');expect(rows[0].values['Group Join Date']).toBe('2025-01-01');expect(rows[0].values['Job Grade']).toBeUndefined();

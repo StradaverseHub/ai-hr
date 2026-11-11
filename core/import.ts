@@ -917,8 +917,9 @@ async function analyze(
     }
     // 2260a06b — internship_end_date is the Intern's end date, refused for any other type exactly like
     // probation_end_date above; setEmploymentInfo then checks it is later than the join date.
-    if (employmentInfo.internshipEndDate && employmentType !== 'intern') {
-      errors.push(`internship_end_date applies to intern employees only (this row is ${employmentType})`);
+    const rowType: string = employmentType; // widened: the probation branch above narrows the literal type
+    if (employmentInfo.internshipEndDate && rowType !== 'intern') {
+      errors.push(`internship_end_date applies to intern employees only (this row is ${rowType})`);
     }
     if (employmentInfo.internshipEndDate && hiredOn && isCalendarDate(hiredOn) && employmentInfo.internshipEndDate <= hiredOn) {
       errors.push('internship_end_date must be after hired_on');
