@@ -183,19 +183,33 @@ async function run(label,command,args,childEnv=env,timeout=900000){
  // private log, with origins (scheme, credentials, host, port), addresses and long tokens redacted, so a
  // failed phase names its cause and route path in the job log.
  // The browser phase keeps its reasons in the driver's private failure record, so read that as well.
+ const redact=text=>String(text)
+  .replace(/\\n/g,'\n').replace(/\b(?!file:\/\/)[a-z][a-z0-9+.-]*:\/\/[^/\s"'`]*/gi,'<ORIGIN>')
+  .replace(/\b(?:password|passwd|pwd|secret|token|key|authorization|cookie|session|user|username|host|hostname|hostaddr|dbname|port)\b\s*[=:]\s*\S+/gi,'<REDACTED>')
+  .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b/g,'<IP>').replace(/\[[0-9a-f:]{2,39}\](?::\d{1,5})?/gi,'<IP>')
+  .replace(/\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:internal|local|net|com|io|cloud|azure))(?::\d{1,5})?\b/gi,'<HOST>')
+  .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\b/g,'<EMAIL>')
+  .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,'<UUID>')
+  // Keep lowercase words and source paths; redact every other long run (hex, base32, base64 or mixed tokens).
+  .replace(/[A-Za-z0-9_+/=.-]{20,}/g,run=>/^[a-z/_.-]+$/.test(run)?run:'<REDACTED>');
  if(code!==0||timedOut)for(const file of [label+'.log',...(label==='http-and-browser'?['driver-failures.log']:[])])try{
-  const lines=readFileSync(join(privateDir,file),'utf8').slice(-16000)
-   .replace(/\\n/g,'\n').replace(/\b(?!file:\/\/)[a-z][a-z0-9+.-]*:\/\/[^/\s"'`]*/gi,'<ORIGIN>')
-   .replace(/\b(?:password|passwd|pwd|secret|token|key|authorization|cookie|session|user|username|host|hostname|hostaddr|dbname|port)\b\s*[=:]\s*\S+/gi,'<REDACTED>')
-   .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b/g,'<IP>').replace(/\[[0-9a-f:]{2,39}\](?::\d{1,5})?/gi,'<IP>')
-   .replace(/\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:internal|local|net|com|io|cloud|azure))(?::\d{1,5})?\b/gi,'<HOST>')
-   .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\b/g,'<EMAIL>')
-   .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,'<UUID>')
-   // Keep lowercase words and source paths; redact every other long run (hex, base32, base64 or mixed tokens).
-   .replace(/[A-Za-z0-9_+/=.-]{20,}/g,run=>/^[a-z/_.-]+$/.test(run)?run:'<REDACTED>').split('\n')
+  const lines=redact(readFileSync(join(privateDir,file),'utf8').slice(-16000)).split('\n')
    .filter(line=>/error|code|constraint|column|relation|violat|denied|permission|must|refus|assert|expected|actual|detail|hint|where|routine|severity|timeout|exceeded|waiting|navigat|locator|selector|stage|route|\bat .*\.(?:ts|mts|mjs|js):\d+/i.test(line))
    .slice(-80).map(line=>line.slice(0,300));
   console.log('[system-perf] '+JSON.stringify({kind:'SETUP_PHASE_FAILURE_EXCERPT_V1',label,file,lines}));
+ }catch{}
+ // The driver records browser errors (page errors, console errors) and the failed owned request in its report.
+ if(label==='http-and-browser'&&(code!==0||timedOut))try{
+  const driver=JSON.parse(readFileSync(join(out,'http-browser.json'),'utf8'));
+  const text=value=>typeof value==='string'||typeof value==='number'?redact(value).slice(0,400):null;
+  console.log('[system-perf] '+JSON.stringify({kind:'BROWSER_PHASE_FAILURE_FACTS_V1',
+   browserErrors:Array.isArray(driver.browserErrors)?driver.browserErrors.slice(0,12).map(row=>({role:text(row?.role),locale:text(row?.locale),
+    path:text(row?.path),kind:text(row?.kind),atMs:typeof row?.atMs==='number'?Math.round(row.atMs):null,error:text(row?.error)})):null,
+   requestFailure:driver.workerRequestFailure?text(JSON.stringify(driver.workerRequestFailure)):null,
+   lastBrowserVisit:Array.isArray(driver.browser)&&driver.browser.length?{phase:text(driver.browser.at(-1)?.phase),role:text(driver.browser.at(-1)?.role),
+    path:text(driver.browser.at(-1)?.path),workflow:text(driver.browser.at(-1)?.workflow)}:null,
+   pendingBrowserRequests:Array.isArray(driver.browserPendingSnapshot?.requests)?driver.browserPendingSnapshot.requests.slice(0,12)
+    .map(row=>({method:text(row?.method),path:text(row?.path),type:text(row?.type),elapsedMs:typeof row?.elapsedMs==='number'?Math.round(row.elapsedMs):null})):null}));
  }catch{}
  assert.equal(timedOut,false,label+' exceeded its unchanged process budget; retain incomplete evidence');
  assert.equal(code,0,label+' failed; private process logs contain no published credentials');
