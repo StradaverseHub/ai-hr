@@ -30,12 +30,84 @@ const PRIVILEGE_WARNINGS=new Set(['01006','01007']);
 const config=JSON.parse(readFileSync('test/fixtures/production-upgrade/rehearsal.json','utf8')) as {
  baseline:{installedSource:string;ledgerEntries:number;ledgerWatermark:number;expectedLedgerDigest:string;populatorSource:string;
   productionRoles:string[];productionPurposeOwners:Record<string,string>;productionShape:Record<string,number>};
- sizes:Record<string,unknown>;auditHashChainEnabled:string};
+ sizes:Record<string,unknown>;auditHashChainEnabled:string;replication:{targetEmployments:number}};
 const sha256=(bytes:Buffer|string)=>createHash('sha256').update(bytes).digest('hex');
 const git=(...args:string[])=>execFileSync('git',args,{maxBuffer:256*1024*1024});
 const journalAt=(ref:string)=>(JSON.parse(git('show',`${ref}:db/migrations/meta/_journal.json`).toString()) as {entries:Entry[]}).entries;
 const FLAGS=['MULTI_CYCLE_PAYROLL_ENABLED','TYPED_PAY_COMPONENTS_ENABLED','GROUP_PCB_COORDINATION_ENABLED','PAYROLL_RESET_ENABLED','NOTIFICATIONS_ENABLED',
  'TOIL_ENABLED','PAYROLL_UNLOCK_ENABLED','INDIVIDUAL_TXN_PAY_ENABLED','FEEDBACK_AI_PLANNING_ENABLED','SYSTEM_EXPLORER_ENABLED','ASSISTANT_ENABLED'];
+
+/** Copies of template hires at the baseline's own column shapes. Each copy remaps person and employment ids (and the
+ * own id of every dependent row), suffixes the identity text a person or employee code carries, and keeps every other
+ * value, so foreign keys, company scope and row-security columns stay valid. Triggers stay on; a dependent table that
+ * refuses a copy is skipped and recorded, never forced. */
+const NOT_COPIED=/^(app_user|role_assignment|app_invitation|domain_event|payslip.*|payroll.*|claim.*|bank_.*|notification.*|leave_request.*|employee_draft.*|.*import.*)$/;
+async function replicateEmployments(sql:postgres.Sql,tenantId:string,templates:string[],target:number){
+ const started=Date.now();
+ const [{count:before}]=await sql.unsafe<{count:number}[]>('SELECT count(*)::int AS count FROM employment WHERE tenant_id=$1::uuid',[tenantId]);
+ if(!templates.length||before>=target)return {templates:templates.length,employmentsBefore:before,employmentsAfter:before,copies:0,tables:{},skipped:{},ms:0};
+ const fks=[...await sql.unsafe<{tbl:string;col:string;ref:string}[]>(`SELECT k.relname::text AS tbl,a.attname::text AS col,r.relname::text AS ref
+  FROM pg_constraint c JOIN pg_class k ON k.oid=c.conrelid JOIN pg_namespace n ON n.oid=k.relnamespace JOIN pg_class r ON r.oid=c.confrelid
+  JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=c.conkey[1]
+  WHERE c.contype='f' AND cardinality(c.conkey)=1 AND n.nspname='public' AND c.confrelid IN ('public.person'::regclass,'public.employment'::regclass)`)];
+ const dependents=[...new Set(fks.map(fk=>fk.tbl))].filter(name=>name!=='person'&&name!=='employment'&&!NOT_COPIED.test(name)).sort();
+ const plans=new Map<string,{columns:string[];select:string[];where:string}>();
+ for(const table of ['person','employment',...dependents]){
+  const columns=[...await sql.unsafe<{name:string;type:string;generated:string;identity:string;def:string|null}[]>(`SELECT a.attname::text AS name,
+   format_type(a.atttypid,a.atttypmod) AS type,a.attgenerated::text AS generated,a.attidentity::text AS identity,pg_get_expr(d.adbin,d.adrelid) AS def
+   FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+   WHERE a.attrelid=('public.'||quote_ident($1))::regclass AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum`,[table])]
+   .filter(column=>!column.generated&&!column.identity&&!(column.def??'').includes('nextval('));
+  const [pk]=await sql.unsafe<{cols:string[]|null}[]>(`SELECT array_agg(a.attname::text) AS cols FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
+   WHERE i.indrelid=('public.'||quote_ident($1))::regclass AND i.indisprimary`,[table]);
+  const mapped=new Map(fks.filter(fk=>fk.tbl===table).map(fk=>[fk.col,fk.ref]));
+  const uniques=[...await sql.unsafe<{cols:string[]}[]>(`SELECT array_agg(a.attname::text) AS cols FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
+   WHERE i.indrelid=('public.'||quote_ident($1))::regclass AND i.indisunique AND NOT i.indisprimary GROUP BY i.indexrelid`,[table])];
+  const suffixed=new Set<string>();
+  for(const unique of uniques)if(!unique.cols.some(col=>mapped.has(col)||(pk.cols??[]).includes(col)))
+   for(const col of unique.cols){const type=columns.find(column=>column.name===col)?.type??'';if(/text|character|citext/.test(type))suffixed.add(col);}
+  const q=(name:string)=>'"'+name.replaceAll('"','""')+'"';
+  const select=columns.map(({name,type})=>{
+   if(table==='person'&&name==='id')return `(SELECT m.new FROM rp_map m WHERE m.kind='person' AND m.old=t.id)`;
+   if(table==='employment'&&name==='id')return `(SELECT m.new FROM rp_map m WHERE m.kind='employment' AND m.old=t.id)`;
+   if(mapped.has(name))return `coalesce((SELECT m.new FROM rp_map m WHERE m.kind='${mapped.get(name)}' AND m.old=t.${q(name)}),t.${q(name)})`;
+   if((pk.cols??[]).length===1&&pk.cols![0]===name&&type==='uuid')return 'gen_random_uuid()';
+   if(table==='person'&&name==='primary_email')return `CASE WHEN t.primary_email IS NULL THEN NULL ELSE 'c'||$1::text||'.'||t.primary_email END`;
+   if(table==='person'&&name==='full_name')return `t.full_name||' C'||$1::text`;
+   if(table==='employment'&&name==='employee_code')return `CASE WHEN t.employee_code IS NULL THEN NULL ELSE t.employee_code||'C'||$1::text END`;
+   if(suffixed.has(name))return `CASE WHEN t.${q(name)} IS NULL THEN NULL ELSE t.${q(name)}||'-c'||$1::text END`;
+   return `t.${q(name)}`;
+  });
+  const where=table==='person'?`t.id IN (SELECT old FROM rp_map WHERE kind='person')`:table==='employment'?`t.id IN (SELECT old FROM rp_map WHERE kind='employment')`
+   :[...mapped].map(([col,ref])=>`t.${q(col)} IN (SELECT old FROM rp_map WHERE kind='${ref}')`).join(' OR ');
+  plans.set(table,{columns:columns.map(column=>q(column.name)),select,where});
+ }
+ const copies=Math.ceil((target-before)/templates.length),tables:Record<string,number>={},skipped:Record<string,string>={};
+ let triggersDisabled=false;
+ for(let copy=1;copy<=copies;copy++){
+  const slice=templates.slice(0,Math.min(templates.length,target-before-(copy-1)*templates.length));
+  if(!slice.length)break;
+  const attempt=async(replica:boolean)=>sql.begin(async tx=>{
+   if(replica)await tx.unsafe(`SET LOCAL session_replication_role=replica`);
+   await tx.unsafe(`CREATE TEMP TABLE rp_map(kind text,old uuid,new uuid,PRIMARY KEY(kind,old)) ON COMMIT DROP`);
+   await tx.unsafe(`INSERT INTO rp_map SELECT 'employment',id,gen_random_uuid() FROM employment WHERE id=ANY($1::uuid[])`,[slice]);
+   await tx.unsafe(`INSERT INTO rp_map SELECT 'person',person_id,gen_random_uuid() FROM employment WHERE id=ANY($1::uuid[])`,[slice]);
+   for(const [table,plan] of plans){
+    // $1 (the copy number) is always bound; the trailing predicate keeps it referenced when no column uses it.
+    const statement=`INSERT INTO public."${table}" (${plan.columns.join(',')}) SELECT ${plan.select.join(',')} FROM public."${table}" t WHERE (${plan.where}) AND $1::text IS NOT NULL`;
+    if(table==='person'||table==='employment'){const result=await tx.unsafe(statement,[String(copy)]);tables[table]=(tables[table]??0)+result.count;continue;}
+    if(skipped[table])continue;
+    try{const count=await tx.savepoint(async sp=>(await sp.unsafe(statement,[String(copy)])).count);tables[table]=(tables[table]??0)+count;}
+    catch(error){skipped[table]=String((error as Error).message).slice(0,300);}
+   }
+  });
+  try{await attempt(triggersDisabled);}
+  catch(error){if(triggersDisabled)throw error;triggersDisabled=true;skipped['(triggers)']='person/employment copy refused with triggers on: '+String((error as Error).message).slice(0,300);await attempt(true);}
+ }
+ await sql.unsafe('ANALYZE');
+ const [{count:after}]=await sql.unsafe<{count:number}[]>('SELECT count(*)::int AS count FROM employment WHERE tenant_id=$1::uuid',[tenantId]);
+ return {templates:templates.length,employmentsBefore:before,employmentsAfter:after,copies,triggersDisabled,tables,skipped,ms:Date.now()-started};
+}
 
 afterAll(closeAll);
 
@@ -143,15 +215,24 @@ it('upgrades a populated production-baseline database to the candidate as the re
     MIGRATION_DATABASE_URL:at(names.base),REHEARSAL_SIZES:JSON.stringify(config.sizes),REHEARSAL_POPULATION_OUTPUT:output,REHEARSAL_POPULATOR_SOURCE:populatorSource});
    const catalogs=run(process.execPath,['--import','tsx','scripts/seed-catalogs.ts'],{cwd:populator,env,timeout:180_000});
    expect(catalogs.status,'baseline seed-catalogs: '+catalogs.out.slice(-4000)).toBe(0);
-   const populate=run(process.execPath,['--conditions=react-server','--import','tsx','scripts/production-rehearsal-populate.mts'],{cwd:populator,env,timeout:900_000});
+   const populate=run(process.execPath,['--conditions=react-server','--import','tsx','scripts/production-rehearsal-populate.mts'],{cwd:populator,env,timeout:480_000});
    evidence.populationLog=populate.out.split('\n').filter(line=>line.startsWith('populate ')).slice(-20);
    if(populate.status!==0){evidence.populationFailure=populate.out.slice(-8000);write();}
    expect(populate.status,'baseline population: '+populate.out.slice(-8000)).toBe(0);
    return JSON.parse(readFileSync(output,'utf8')) as {tenantId:string;companyId:string;departmentId:string;adminUserId:string;foreignCompanyId:string;
-    foreignEmploymentId:string;ownEmploymentId:string;counts:Record<string,string>;timings:Record<string,number>};
+    foreignEmploymentId:string;ownEmploymentId:string;templateEmploymentIds:string[];counts:Record<string,string>;timings:Record<string,number>};
   });
   evidence.population=population;write();
-  expect(Number(population.counts.employments)).toBeGreaterThanOrEqual(3000);
+
+  // 3b. Production volume, set-wise: copy the service-written non-payroll hires (and every row that references their
+  // person or employment, except users, payroll, claims and audit events) inside the same company.
+  const replication=await timed('replication',async()=>{
+   const sql=connect(at(names.base));
+   try{return await replicateEmployments(sql,population.tenantId,population.templateEmploymentIds,config.replication.targetEmployments);}
+   finally{await close(sql);}
+  });
+  evidence.replication=replication;write();
+  expect(replication.employmentsAfter,'production-shaped employment volume').toBeGreaterThanOrEqual(Math.floor(config.replication.targetEmployments*0.9));
 
   // 4. The installed role topology on a copy: owner-owned objects, purpose owners kept, documented DBA prerequisites.
   const topology=await timed('topology',async()=>{

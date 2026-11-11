@@ -19,7 +19,8 @@ import { provisionTenant } from '../db/provision';
 import { closeAll, createAppUser, entitledCtx, owner, seedBase, setModule } from '../test/harness';
 
 type Sizes = {
-  companies: number; employments: number; payrollCompanies: number; payrollMonths: string[]; openPayrollMonth: string;
+  companies: number; payrollCompanies: number; payrollEmploymentsPerCompany: number; otherEmploymentsPerCompany: number;
+  payrollMonths: string[]; openPayrollMonth: string;
   claims: number; users: number; secondTenantEmployments: number;
 };
 const target = new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
@@ -65,17 +66,22 @@ async function main() {
   });
 
   // Employments through the baseline's real hire service: person, employment, assignment and their audit events.
+  // Employments through the baseline's real hire service: person, employment, assignment, statutory defaults and their
+  // chained audit events. The test multiplies the non-payroll ones set-wise afterwards (service hires cost ~250 ms each).
   const hired = await phase('employments', async () => {
     const rows: { companyIndex: number; employmentId: string; personId: string; serial: number }[] = [];
-    for (let serial = 0; serial < sizes.employments; serial++) {
-      const companyIndex = serial % companies.length, company = companies[companyIndex];
-      const name = `${GIVEN[serial % GIVEN.length]} ${SURNAMES[Math.floor(serial / GIVEN.length) % SURNAMES.length]} ${pad(serial, 5)}`;
-      const hire = await hireEmployee(ctx, {
-        person: { fullName: name, primaryEmail: `employee.${pad(serial, 5)}@meranti-rehearsal.example.test` },
-        companyId: company.companyId, departmentId: company.departments[serial % company.departments.length],
-        employmentType: 'full_time', hiredOn: `202${4 + (serial % 2)}-0${1 + (serial % 9)}-01`, employeeCode: `MR${pad(serial, 5)}`,
-      });
-      rows.push({ companyIndex, employmentId: hire.employmentId, personId: hire.personId, serial });
+    let serial = 0;
+    for (const [companyIndex, company] of companies.entries()) {
+      const count = companyIndex < sizes.payrollCompanies ? sizes.payrollEmploymentsPerCompany : sizes.otherEmploymentsPerCompany;
+      for (let within = 0; within < count; within++, serial++) {
+        const name = `${GIVEN[serial % GIVEN.length]} ${SURNAMES[Math.floor(serial / GIVEN.length) % SURNAMES.length]} ${pad(serial, 5)}`;
+        const hire = await hireEmployee(ctx, {
+          person: { fullName: name, primaryEmail: `employee.${pad(serial, 5)}@meranti-rehearsal.example.test` },
+          companyId: company.companyId, departmentId: company.departments[within % company.departments.length],
+          employmentType: 'full_time', hiredOn: `202${4 + (serial % 2)}-0${1 + (serial % 9)}-01`, employeeCode: `MR${pad(serial, 5)}`,
+        });
+        rows.push({ companyIndex, employmentId: hire.employmentId, personId: hire.personId, serial });
+      }
     }
     return rows;
   });
@@ -163,7 +169,8 @@ async function main() {
     kind: 'FICTIONAL_PRODUCTION_SHAPED_BASELINE_POPULATION', populatorSource: process.env.REHEARSAL_POPULATOR_SOURCE, sizes, timings,
     tenantId: base.tenantId, companyId: base.companyId, departmentId: base.deptA, adminUserId: base.adminUserId,
     foreignTenantId: second.tenantId, foreignCompanyId: second.companyId, foreignEmploymentId: second.foreignEmploymentId,
-    ownEmploymentId: hired[0].employmentId, batches, claims, users, counts, marker: randomUUID(),
+    ownEmploymentId: hired[0].employmentId,
+    templateEmploymentIds: hired.filter((row) => row.companyIndex >= sizes.payrollCompanies).map((row) => row.employmentId), batches, claims, users, counts, marker: randomUUID(),
   }, null, 2));
 }
 
