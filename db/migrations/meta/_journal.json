@@ -5734,6 +5734,13 @@
       "when": 1793330004800,
       "tag": "5100_import_history_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 9740,
+      "version": "7",
+      "when": 1793330099740,
+      "tag": "9740_import_log_actor_labels",
+      "breakpoints": true
     }
   ]
 }

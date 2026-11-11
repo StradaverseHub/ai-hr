@@ -3206,3 +3206,11 @@ one read-only STABLE SECURITY DEFINER probe, `app.reward_access_observation_due(
 only; no table, index, grant on data or existing function changes. Final tag, idx and `when` must be assigned above the
 freshly verified ledger at integration, and the approved upgrade tail pins (`test/helpers/approved-upgrade.ts`) updated
 then. This entry carries no allocation or deployment authority.
+
+## Import log references — 11 November 2026 (unallocated draft)
+
+Branch `claude/fb-8d02748a-import-log-refs-20261111` (board item 8d02748a) journals `9740_import_log_actor_labels`
+at idx 9740 and when 1793330099740 as an UNALLOCATED DRAFT from the coordinator's 9740–9749 block. It adds one
+read-only STABLE SECURITY DEFINER function, `app.import_log_actor_facts(text, uuid[])`, with EXECUTE for `ai_hr_app`
+only; no table, column, policy, grant on data or existing function changes. Final tag, idx and `when` must be
+assigned above the freshly verified ledger at integration. This entry carries no allocation or deployment authority.

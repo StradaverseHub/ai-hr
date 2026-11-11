@@ -160,6 +160,7 @@ import {
 import { holidayDatesByEmployment } from './holidays';
 import { earnedCycleStart, resolveLeaveYearCycle, leaveWorkingDaysCounterTx } from './leave';
 import { listLeaveTypes } from './read';
+import { creatorOf, resolveImportActors } from './import-actor-label';
 
 export {
   LEAVE_HISTORY_COLUMNS,
@@ -985,7 +986,10 @@ export function listLeaveHistoryImportRuns(
       // two runs committed inside the same millisecond still come back in a stable order.
       .orderBy(sql`${leaveHistoryImportRun.createdAt} desc`, sql`${leaveHistoryImportRun.id} desc`)
       .limit(limit);
+    // Board 8d02748a: readable "Imported by" for the page in one set-wise read.
+    const actors = await resolveImportActors(tx, 'leave_history_run', rows.map((r) => r.id));
     return rows.map((r) => ({
+      actor: creatorOf(actors, r.id),
       ...r,
       // jsonb arrives as `unknown`; a row written by an older or newer shape renders as "no detail"
       // rather than crashing the log for every other run beside it.

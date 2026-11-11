@@ -74,6 +74,8 @@ import {
 } from '../lib/clocking-file';
 import { MAX_IMPORT_CSV_BYTES } from '../lib/import-file';
 import { timeInKualaLumpur, todayInKualaLumpur } from '../lib/hr-date';
+import { creatorOf, resolveImportActors, type ImportRowActors } from './import-actor-label';
+import type { ImportActor } from '../lib/import-reference';
 
 // ─── Mapping library ──────────────────────────────────────────────────────────────────────────────────
 
@@ -1128,6 +1130,8 @@ export type ClockingImportRunRow = {
   mappingId: string | null;
   mappingName: string;
   userName: string | null;
+  /** Board 8d02748a: readable "Imported by" (name and Employee ID), resolved set-wise. */
+  actor?: ImportActor;
   totalLines: number;
   validLines: number;
   importedLines: number;
@@ -1162,10 +1166,10 @@ const runSelect = {
   failureReason: clockingImportRun.failureReason,
 };
 
-const toRunRow = (r: Omit<ClockingImportRunRow, 'status' | 'failedLines'>): ClockingImportRunRow => {
+const toRunRow = (r: Omit<ClockingImportRunRow, 'status' | 'failedLines' | 'actor'>, actors: Map<string, ImportRowActors>): ClockingImportRunRow => {
   // Failed = duplicates + unmatched card ids + invalid date/time + other errors (the reporter's sum).
   const failedLines = r.failureReason ? 0 : r.duplicateLines + r.unmatchedCardLines + r.invalidDatetimeLines + r.otherErrorLines;
-  return { ...r, failedLines, status: deriveStatus({ failureReason: r.failureReason, imported: r.importedLines, failed: failedLines }) };
+  return { ...r, actor: creatorOf(actors, r.id), failedLines, status: deriveStatus({ failureReason: r.failureReason, imported: r.importedLines, failed: failedLines }) };
 };
 
 export const IMPORT_RUN_LIST_LIMIT = 200;
@@ -1179,7 +1183,8 @@ export function listClockingImportRuns(ctx: SessionContext, opts?: { limit?: num
       .leftJoin(person, eq(person.id, clockingImportRun.createdByPersonId))
       .orderBy(desc(clockingImportRun.createdAt), desc(clockingImportRun.id))
       .limit(limit);
-    return rows.map(toRunRow);
+    const actors = await resolveImportActors(tx, 'clocking_run', rows.map((r) => r.id));
+    return rows.map((r) => toRunRow(r, actors));
   });
 }
 
@@ -1225,6 +1230,7 @@ export function getClockingImportRun(
       .leftJoin(emp, eq(emp.id, employment.personId))
       .where(eq(clockingImportLine.runId, runId))
       .orderBy(clockingImportLine.lineNo, clockingImportLine.id);
-    return { run: toRunRow(r), lines };
+    const actors = await resolveImportActors(tx, 'clocking_run', [r.id]);
+    return { run: toRunRow(r, actors), lines };
   });
 }
