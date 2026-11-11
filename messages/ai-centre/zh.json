@@ -2422,6 +2422,122 @@
         "holiday": "{name} · 公共假期",
         "holidayUnnamed": "公共假期"
       }
+    },
+    "admin": {
+      "unavailable": "暂时无法加载此内容。其自身页面仍可正常使用。",
+      "sideLabel": "关注事项、您本人的记录和可提问的问题",
+      "scopeAll": "所有公司",
+      "scopeSome": "{count, plural, other {# 家公司}}",
+      "headline": "{count, plural, =0 {目前没有需要您处理的事项} other {# 项事情需要您处理}}",
+      "headlineOverdue": "{count} 项已逾期",
+      "headlineCutOff": "{days, plural, =0 {薪资今天截止} =1 {薪资明天截止} other {薪资 # 天后截止}}",
+      "needsTitle": "需要您处理",
+      "needsOrder": "最紧急的在前",
+      "seeAll": "查看全部 {count} 项",
+      "showFewer": "只显示最紧急的",
+      "needsEmpty": "目前没有需要您处理的事项。",
+      "needsPartial": "部分事项暂时无法检查，因此此列表可能不完整。其自身页面仍可正常使用。",
+      "tag": {
+        "overdue": "{days, plural, other {已逾期 # 天}}",
+        "blocksPayroll": "阻碍发薪",
+        "dueIn": "{days, plural, =0 {今天截止} =1 {明天截止} other {# 天后截止}}",
+        "waiting": "{days, plural, other {已等待 # 天}}"
+      },
+      "entry": {
+        "statutory": "{count, plural, other {提交 # 份 CP22 或 CP22A 通知}}",
+        "statutoryDetail": "{overdue} 份已逾期，{soon} 份将在 7 天内到期。",
+        "firstDue": "最早截止日期：{date}。",
+        "exceptions": "{count, plural, other {# 个薪资异常阻碍了薪资运行}}",
+        "exceptionsDetail": "在解决之前，该次运行无法关闭。",
+        "task": "{label}：{count} 项待处理",
+        "oldest": "最早于 {date} 提交",
+        "beforeCutOff": "请在 {date} 截止日前决定",
+        "prepared": {
+          "leaveApply": "{count, plural, other {# 份请假申请已准备好，等待您确认}}",
+          "leaveCancel": "{count, plural, other {# 份请假取消已准备好，等待您确认}}",
+          "leaveDecision": "{count, plural, other {# 个请假决定已准备好，等待您确认}}"
+        },
+        "preparedDetail": "由 AI Centre 准备。在您确认之前不会发生任何变化。",
+        "probation": "{count, plural, other {# 个试用期即将结束}}",
+        "probationDetail": "第一个将于 {date} 结束。结果由人来决定。",
+        "payrollInputs": "{count, plural, other {# 家公司仍有未完成的薪资输入}}",
+        "payrollInputsBlockers": "{count, plural, =0 {目前没有阻碍发薪的事项。} other {# 项检查阻碍发薪。}}",
+        "cutOff": "截止日期 {date}。",
+        "passports": "{count, plural, other {# 本护照将在 30 天内到期}}",
+        "passportsDetail": "第一本将于 {date} 到期。",
+        "autonomy": {
+          "movedDown": "{loop} 已退回为仅准备",
+          "acted": "{loop} 已自行处理：请检查它做了什么",
+          "sample": "{loop} 有一份每周抽样等待您检查",
+          "leftAlone": "{loop} 留下了一些需要人工处理的个案"
+        },
+        "aLoop": "一个 AI Centre 循环",
+        "companies": "{count, plural, other {# 家公司}}"
+      },
+      "cta": {
+        "statutory": "打开法定表格",
+        "exceptions": "打开异常",
+        "review": "审阅",
+        "open": "打开",
+        "check": "检查"
+      },
+      "readinessTitle": "薪资准备情况",
+      "readinessNext": "{period} 薪资 · 下一个截止日 {date}",
+      "readinessOpen": "打开薪资",
+      "readinessBar": "{companies} 家公司中有 {ready} 家已准备好",
+      "readiness": {
+        "ready": "{count, plural, other {家公司已准备好}}",
+        "waiting": "{count, plural, other {家公司正在等待输入}}",
+        "notStarted": "{count, plural, other {家公司尚未检查}}"
+      },
+      "readinessOff": "{count, plural, other {# 家公司使用薪资模块。}}AI Centre 中的发薪前检查已关闭，因此尚未检查准备情况。",
+      "readinessNone": "当前显示的公司未使用薪资模块。",
+      "handledTitle": "AI Centre 本周处理的事项",
+      "handled": {
+        "answered": "{count, plural, other {个问题已回答}}",
+        "leaveChecks": "{count, plural, other {份请假申请已检查}}",
+        "prepared": "{count, plural, other {项事项已为您准备}}",
+        "loopFound": "{loop}：{count, plural, other {发现的个案}}",
+        "loopResolved": "{count, plural, =0 {尚未解决任何个案} other {已解决 # 个}}"
+      },
+      "handledEmpty": "过去 7 天内还没有。",
+      "handledNote": "根据 AI Centre 自身过去 7 天的记录统计。",
+      "handledPartial": "部分数字暂时无法加载。",
+      "watchingTitle": "关注事项",
+      "watchingEmpty": "目前没有需要关注的事项。",
+      "watchingExceptions": "{count, plural, other {# 个薪资异常需要查看，但不会阻碍薪资运行。}}",
+      "ownTitle": "您本人的记录",
+      "forYouTitle": "您的事项",
+      "ownClear": "您本人的记录没有需要处理的事项。",
+      "ownSteps": "{count, plural, other {# 项需要提交或处理}}",
+      "ownPayday": "下一个发薪日 {date}",
+      "ownCutOff": "薪资截止 {date}",
+      "askTitle": "试着问问",
+      "ask": {
+        "payrollBlocking": "是什么阻碍了本月的薪资？",
+        "claimsBeforeCutOff": "谁还没有在截止日前提交报销？",
+        "approvalsWaiting": "哪些审批已等待超过 3 天？"
+      }
+    },
+    "manager": {
+      "sideLabel": "您的团队",
+      "headline": "{count, plural, =0 {您的团队没有待决定的事项} other {您的团队有 # 项待决定}}",
+      "decideTitle": "决定",
+      "decideOrder": "最早的在前",
+      "seeAll": "查看全部 {count} 项",
+      "decideEmpty": "没有等待您决定的事项。",
+      "decidePartial": "部分决定暂时无法加载。审批页面仍可正常使用。",
+      "sent": "{date} 提交",
+      "open": "打开",
+      "checking": "正在按照贵公司的规则检查…",
+      "recommendationNote": "建议来自贵公司的规则和记录，而不是猜测。每个决定仍由您做出，并以您的名义记录。",
+      "comingUpTitle": "您团队即将发生的事项",
+      "probation": "{name} 的试用期将于 {date} 结束",
+      "probationUnnamed": "一个试用期将于 {date} 结束",
+      "cutOff": "薪资输入将于 {date} 截止。请在此之前决定加班和报销。",
+      "preparedNote": "{count, plural, other {# 项更改已准备好，等待您确认}}",
+      "comingUpEmpty": "您的团队近期没有安排。",
+      "comingUpPartial": "部分事项暂时无法加载。"
     }
   },
   "why": {

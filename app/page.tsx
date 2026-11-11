@@ -62,7 +62,8 @@ import { MonoPageHeader, Note } from '@/components/monolith';
 import { MONOLITH_SECTION_KEYS, monolithDashboardBlocks } from '@/app/dashboard-monolith';
 import { TodayPage } from '@/components/today/today-page';
 import { EmployeeTodayPage } from '@/components/today/employee/today-page';
-import { isEmployeeOnlyAudience } from '@/lib/today/employee';
+import { AdminTodayPage, ManagerTodayPage } from '@/components/today/admin/today-pages';
+import { todayLayoutFor } from '@/lib/today/admin';
 import RouteLoading from '@/components/route-loading';
 
 const rm = (n: unknown) =>
@@ -176,10 +177,23 @@ export default async function DashboardPage({
       <p className="mt-1 text-sm text-muted-foreground">{tModule('body', { module: unavailableModule.name })}</p>
     </Card>
   );
-  // Employee Today (owner decision, 11 Nov 2026): an employee gets the one-pager instead of Today over the old
-  // personal dashboard. Administrators, managers and partners, and the explicit team workbench, keep the path below.
-  if (isEmployeeOnlyAudience(scoped.s.roles, isAdmin(scoped.s)) && homeQuery?.workspace !== 'team') {
+  // Today by audience (owner decisions, 11 Nov 2026): an employee gets the one-pager, an HR administrator the ranked
+  // administrator page and a manager the team page, each in place of Today over the old dashboard. The payroll and
+  // performance partners, and the explicit team workbench, keep the path below (Today with the dashboard under it).
+  const layout = todayLayoutFor(scoped.s.roles, isAdmin(scoped.s));
+  if (layout === 'employee' && homeQuery?.workspace !== 'team') {
     return <EmployeeTodayPage session={scoped.s} employmentId={typeof homeQuery?.employmentId === 'string' ? homeQuery.employmentId : undefined} notice={notice} />;
+  }
+  if (layout === 'administrator') {
+    // The earlier administrator dashboard (its cards and each person's saved layout) is no longer drawn under Today. It
+    // stays reachable on its own, without Today above it, only when asked for by name; nothing on Today links to it.
+    if (homeQuery?.workspace === 'dashboard') {
+      return <>{notice}<Suspense fallback={<RouteLoading />}><DashboardMore homeQuery={homeQuery && { ...homeQuery, moduleUnavailable: undefined }} scoped={scoped} /></Suspense></>;
+    }
+    return <AdminTodayPage session={scoped.s} scopeIds={scoped.scopeIds} allCompanies={scoped.scopeIds.length >= scoped.allowedCount} notice={notice} all={homeQuery?.needs === 'all'} />;
+  }
+  if (layout === 'manager' && homeQuery?.workspace !== 'team') {
+    return <ManagerTodayPage session={scoped.s} scopeIds={scoped.scopeIds} allCompanies={scoped.scopeIds.length >= scoped.allowedCount} notice={notice} />;
   }
   return (
     <TodayPage

@@ -2422,6 +2422,122 @@
         "holiday": "{name} · public holiday",
         "holidayUnnamed": "Public holiday"
       }
+    },
+    "admin": {
+      "unavailable": "This could not be loaded just now. Its own page still works.",
+      "sideLabel": "Watching, your own record and questions to ask",
+      "scopeAll": "All companies",
+      "scopeSome": "{count, plural, one {# company} other {# companies}}",
+      "headline": "{count, plural, =0 {Nothing needs you right now} one {# thing needs you} other {# things need you}}",
+      "headlineOverdue": "{count} overdue",
+      "headlineCutOff": "{days, plural, =0 {payroll closes today} one {payroll closes tomorrow} other {payroll closes in # days}}",
+      "needsTitle": "Needs you",
+      "needsOrder": "most urgent first",
+      "seeAll": "See all {count}",
+      "showFewer": "Show the most urgent",
+      "needsEmpty": "Nothing needs you right now.",
+      "needsPartial": "Some items could not be checked just now, so this list may be incomplete. Their own pages still work.",
+      "tag": {
+        "overdue": "{days, plural, one {Overdue # day} other {Overdue # days}}",
+        "blocksPayroll": "Blocks payroll",
+        "dueIn": "{days, plural, =0 {Due today} one {Due tomorrow} other {Due in # days}}",
+        "waiting": "{days, plural, one {Waiting # day} other {Waiting # days}}"
+      },
+      "entry": {
+        "statutory": "{count, plural, one {File # CP22 or CP22A notification} other {File # CP22 or CP22A notifications}}",
+        "statutoryDetail": "{overdue} overdue, {soon} due within 7 days.",
+        "firstDue": "Earliest due date: {date}.",
+        "exceptions": "{count, plural, one {# payroll exception blocks a run} other {# payroll exceptions block a run}}",
+        "exceptionsDetail": "The run cannot close until they are resolved.",
+        "task": "{label}: {count} waiting",
+        "oldest": "Oldest sent {date}",
+        "beforeCutOff": "Decide before the {date} cut-off",
+        "prepared": {
+          "leaveApply": "{count, plural, one {# leave application is ready for you to confirm} other {# leave applications are ready for you to confirm}}",
+          "leaveCancel": "{count, plural, one {# leave cancellation is ready for you to confirm} other {# leave cancellations are ready for you to confirm}}",
+          "leaveDecision": "{count, plural, one {# leave decision is ready for you to confirm} other {# leave decisions are ready for you to confirm}}"
+        },
+        "preparedDetail": "AI Centre prepared it. Nothing happens until you confirm.",
+        "probation": "{count, plural, one {# probation period is ending} other {# probation periods are ending}}",
+        "probationDetail": "The first ends on {date}. A person decides the outcome.",
+        "payrollInputs": "{count, plural, one {# company still has payroll inputs open} other {# companies still have payroll inputs open}}",
+        "payrollInputsBlockers": "{count, plural, =0 {Nothing blocks payroll yet.} one {# check blocks payroll.} other {# checks block payroll.}}",
+        "cutOff": "Cut-off {date}.",
+        "passports": "{count, plural, one {# passport expires within 30 days} other {# passports expire within 30 days}}",
+        "passportsDetail": "The first expires on {date}.",
+        "autonomy": {
+          "movedDown": "{loop} went back to preparing only",
+          "acted": "{loop} acted on its own: check what it did",
+          "sample": "{loop} has a weekly sample for you to check",
+          "leftAlone": "{loop} left some cases for a person"
+        },
+        "aLoop": "An AI Centre loop",
+        "companies": "{count, plural, one {# company} other {# companies}}"
+      },
+      "cta": {
+        "statutory": "Open statutory forms",
+        "exceptions": "Open exceptions",
+        "review": "Review",
+        "open": "Open",
+        "check": "Check"
+      },
+      "readinessTitle": "Payroll readiness",
+      "readinessNext": "{period} payroll · next cut-off {date}",
+      "readinessOpen": "Open payroll",
+      "readinessBar": "{ready} of {companies} companies ready",
+      "readiness": {
+        "ready": "{count, plural, one {company ready} other {companies ready}}",
+        "waiting": "{count, plural, one {company waiting on inputs} other {companies waiting on inputs}}",
+        "notStarted": "{count, plural, one {company not checked yet} other {companies not checked yet}}"
+      },
+      "readinessOff": "{count, plural, one {# company uses payroll.} other {# companies use payroll.}} The pre-salary check in AI Centre is switched off, so readiness has not been checked.",
+      "readinessNone": "Payroll is not in use for the companies in view.",
+      "handledTitle": "AI Centre handled this week",
+      "handled": {
+        "answered": "{count, plural, one {question answered} other {questions answered}}",
+        "leaveChecks": "{count, plural, one {leave request checked} other {leave requests checked}}",
+        "prepared": "{count, plural, one {item prepared for you} other {items prepared for you}}",
+        "loopFound": "{loop}: {count, plural, one {case found} other {cases found}}",
+        "loopResolved": "{count, plural, =0 {None resolved yet} other {# resolved}}"
+      },
+      "handledEmpty": "Nothing yet in the last 7 days.",
+      "handledNote": "Counted from AI Centre's own records for the last 7 days.",
+      "handledPartial": "Some figures could not be loaded just now.",
+      "watchingTitle": "Watching",
+      "watchingEmpty": "Nothing to watch right now.",
+      "watchingExceptions": "{count, plural, one {# payroll exception needs a look but does not block a run.} other {# payroll exceptions need a look but do not block a run.}}",
+      "ownTitle": "Your own record",
+      "forYouTitle": "For you",
+      "ownClear": "Nothing needs you for your own record.",
+      "ownSteps": "{count, plural, one {# thing to send or do} other {# things to send or do}}",
+      "ownPayday": "Next payday {date}",
+      "ownCutOff": "Payroll closes {date}",
+      "askTitle": "Try asking",
+      "ask": {
+        "payrollBlocking": "What is blocking this month's payroll?",
+        "claimsBeforeCutOff": "Who has not sent their claims before the cut-off?",
+        "approvalsWaiting": "Which approvals have waited more than 3 days?"
+      }
+    },
+    "manager": {
+      "sideLabel": "Your team",
+      "headline": "{count, plural, =0 {No decisions waiting for your team} one {# decision for your team} other {# decisions for your team}}",
+      "decideTitle": "Decide",
+      "decideOrder": "oldest first",
+      "seeAll": "See all {count}",
+      "decideEmpty": "No decisions are waiting for you.",
+      "decidePartial": "Some decisions could not be loaded just now. The approvals page still works.",
+      "sent": "Sent {date}",
+      "open": "Open",
+      "checking": "Checking against your company's rules…",
+      "recommendationNote": "Recommendations come from your company's rules and records, not from guesses. You still make every decision, and each one is recorded under your name.",
+      "comingUpTitle": "Coming up for your team",
+      "probation": "Probation ends for {name} on {date}",
+      "probationUnnamed": "A probation period ends on {date}",
+      "cutOff": "Payroll inputs close on {date}. Decide overtime and claims before then.",
+      "preparedNote": "{count, plural, one {# change is ready for you to confirm} other {# changes are ready for you to confirm}}",
+      "comingUpEmpty": "Nothing coming up for your team.",
+      "comingUpPartial": "Some items could not be loaded just now."
     }
   },
   "why": {

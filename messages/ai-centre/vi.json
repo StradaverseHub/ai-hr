@@ -2422,6 +2422,122 @@
         "holiday": "{name} · ngày lễ",
         "holidayUnnamed": "Ngày lễ"
       }
+    },
+    "admin": {
+      "unavailable": "Hiện không tải được phần này. Trang riêng của nó vẫn hoạt động.",
+      "sideLabel": "Đang theo dõi, hồ sơ của bạn và các câu hỏi gợi ý",
+      "scopeAll": "Tất cả công ty",
+      "scopeSome": "{count, plural, other {# công ty}}",
+      "headline": "{count, plural, =0 {Hiện không có việc gì cần bạn} other {# việc đang chờ bạn}}",
+      "headlineOverdue": "{count} việc quá hạn",
+      "headlineCutOff": "{days, plural, =0 {lương chốt hôm nay} =1 {lương chốt ngày mai} other {lương chốt sau # ngày}}",
+      "needsTitle": "Cần bạn xử lý",
+      "needsOrder": "việc gấp nhất trước",
+      "seeAll": "Xem tất cả {count} mục",
+      "showFewer": "Chỉ hiện việc gấp nhất",
+      "needsEmpty": "Hiện không có việc gì cần bạn.",
+      "needsPartial": "Một số mục hiện không kiểm tra được nên danh sách này có thể chưa đầy đủ. Trang riêng của chúng vẫn hoạt động.",
+      "tag": {
+        "overdue": "{days, plural, other {Quá hạn # ngày}}",
+        "blocksPayroll": "Chặn kỳ lương",
+        "dueIn": "{days, plural, =0 {Hạn hôm nay} =1 {Hạn ngày mai} other {Hạn trong # ngày}}",
+        "waiting": "{days, plural, other {Đã chờ # ngày}}"
+      },
+      "entry": {
+        "statutory": "{count, plural, other {Nộp # thông báo CP22 hoặc CP22A}}",
+        "statutoryDetail": "{overdue} quá hạn, {soon} đến hạn trong 7 ngày.",
+        "firstDue": "Hạn sớm nhất: {date}.",
+        "exceptions": "{count, plural, other {# ngoại lệ lương đang chặn kỳ lương}}",
+        "exceptionsDetail": "Không thể đóng kỳ lương cho đến khi chúng được xử lý.",
+        "task": "{label}: {count} đang chờ",
+        "oldest": "Gửi sớm nhất ngày {date}",
+        "beforeCutOff": "Quyết định trước ngày chốt {date}",
+        "prepared": {
+          "leaveApply": "{count, plural, other {# đơn nghỉ phép sẵn sàng để bạn xác nhận}}",
+          "leaveCancel": "{count, plural, other {# yêu cầu hủy nghỉ phép sẵn sàng để bạn xác nhận}}",
+          "leaveDecision": "{count, plural, other {# quyết định nghỉ phép sẵn sàng để bạn xác nhận}}"
+        },
+        "preparedDetail": "AI Centre đã chuẩn bị. Không có gì xảy ra cho đến khi bạn xác nhận.",
+        "probation": "{count, plural, other {# kỳ thử việc sắp kết thúc}}",
+        "probationDetail": "Kỳ đầu tiên kết thúc ngày {date}. Kết quả do con người quyết định.",
+        "payrollInputs": "{count, plural, other {# công ty vẫn còn dữ liệu lương chưa đủ}}",
+        "payrollInputsBlockers": "{count, plural, =0 {Chưa có gì chặn kỳ lương.} other {# mục kiểm tra đang chặn kỳ lương.}}",
+        "cutOff": "Ngày chốt {date}.",
+        "passports": "{count, plural, other {# hộ chiếu hết hạn trong 30 ngày}}",
+        "passportsDetail": "Hộ chiếu đầu tiên hết hạn ngày {date}.",
+        "autonomy": {
+          "movedDown": "{loop} đã quay về chỉ chuẩn bị",
+          "acted": "{loop} đã tự xử lý: hãy kiểm tra việc nó đã làm",
+          "sample": "{loop} có mẫu kiểm tra hằng tuần chờ bạn",
+          "leftAlone": "{loop} để lại một số trường hợp cho con người"
+        },
+        "aLoop": "Một vòng lặp AI Centre",
+        "companies": "{count, plural, other {# công ty}}"
+      },
+      "cta": {
+        "statutory": "Mở biểu mẫu luật định",
+        "exceptions": "Mở ngoại lệ",
+        "review": "Xem xét",
+        "open": "Mở",
+        "check": "Kiểm tra"
+      },
+      "readinessTitle": "Mức sẵn sàng của kỳ lương",
+      "readinessNext": "Lương {period} · ngày chốt tiếp theo {date}",
+      "readinessOpen": "Mở lương",
+      "readinessBar": "{ready} trên {companies} công ty đã sẵn sàng",
+      "readiness": {
+        "ready": "{count, plural, other {công ty đã sẵn sàng}}",
+        "waiting": "{count, plural, other {công ty đang chờ dữ liệu}}",
+        "notStarted": "{count, plural, other {công ty chưa được kiểm tra}}"
+      },
+      "readinessOff": "{count, plural, other {# công ty dùng lương.}} Bước kiểm tra trước kỳ lương trong AI Centre đang tắt nên chưa kiểm tra mức sẵn sàng.",
+      "readinessNone": "Các công ty đang xem không dùng lương.",
+      "handledTitle": "AI Centre đã xử lý trong tuần này",
+      "handled": {
+        "answered": "{count, plural, other {câu hỏi đã được trả lời}}",
+        "leaveChecks": "{count, plural, other {đơn nghỉ phép đã được kiểm tra}}",
+        "prepared": "{count, plural, other {mục đã chuẩn bị cho bạn}}",
+        "loopFound": "{loop}: {count, plural, other {trường hợp phát hiện}}",
+        "loopResolved": "{count, plural, =0 {Chưa có trường hợp nào được giải quyết} other {# đã giải quyết}}"
+      },
+      "handledEmpty": "Chưa có gì trong 7 ngày qua.",
+      "handledNote": "Đếm từ hồ sơ của chính AI Centre trong 7 ngày qua.",
+      "handledPartial": "Một số số liệu hiện không tải được.",
+      "watchingTitle": "Đang theo dõi",
+      "watchingEmpty": "Hiện không có gì cần theo dõi.",
+      "watchingExceptions": "{count, plural, other {# ngoại lệ lương cần xem nhưng không chặn kỳ lương.}}",
+      "ownTitle": "Hồ sơ của bạn",
+      "forYouTitle": "Dành cho bạn",
+      "ownClear": "Hồ sơ của bạn không có việc gì cần làm.",
+      "ownSteps": "{count, plural, other {# việc cần gửi hoặc làm}}",
+      "ownPayday": "Ngày trả lương tiếp theo {date}",
+      "ownCutOff": "Lương chốt ngày {date}",
+      "askTitle": "Thử hỏi",
+      "ask": {
+        "payrollBlocking": "Điều gì đang chặn kỳ lương tháng này?",
+        "claimsBeforeCutOff": "Ai chưa gửi yêu cầu hoàn ứng trước ngày chốt?",
+        "approvalsWaiting": "Những phê duyệt nào đã chờ hơn 3 ngày?"
+      }
+    },
+    "manager": {
+      "sideLabel": "Nhóm của bạn",
+      "headline": "{count, plural, =0 {Không có quyết định nào đang chờ cho nhóm của bạn} other {# quyết định cho nhóm của bạn}}",
+      "decideTitle": "Quyết định",
+      "decideOrder": "cũ nhất trước",
+      "seeAll": "Xem tất cả {count} mục",
+      "decideEmpty": "Không có quyết định nào đang chờ bạn.",
+      "decidePartial": "Một số quyết định hiện không tải được. Trang phê duyệt vẫn hoạt động.",
+      "sent": "Gửi ngày {date}",
+      "open": "Mở",
+      "checking": "Đang kiểm tra theo quy định của công ty bạn…",
+      "recommendationNote": "Gợi ý đến từ quy định và hồ sơ của công ty bạn, không phải phỏng đoán. Bạn vẫn đưa ra mọi quyết định, và mỗi quyết định được ghi lại dưới tên bạn.",
+      "comingUpTitle": "Sắp tới của nhóm bạn",
+      "probation": "Kỳ thử việc của {name} kết thúc ngày {date}",
+      "probationUnnamed": "Một kỳ thử việc kết thúc ngày {date}",
+      "cutOff": "Dữ liệu lương chốt ngày {date}. Hãy quyết định làm thêm giờ và yêu cầu hoàn ứng trước ngày đó.",
+      "preparedNote": "{count, plural, other {# thay đổi sẵn sàng để bạn xác nhận}}",
+      "comingUpEmpty": "Nhóm của bạn không có gì sắp tới.",
+      "comingUpPartial": "Một số mục hiện không tải được."
     }
   },
   "why": {

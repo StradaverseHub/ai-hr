@@ -73,8 +73,10 @@ export async function NeedsYouSection(p:Common&Readonly<{all?:boolean;recommend?
  const count=taskTotal+data.prepared.length+data.findings.length+data.loops.length;
  return <TodaySection id="today-needs-you" title={t(needsYouHeading(p.audience))} count={count} empty={count===0} emptyText={t('needsYouEmpty')}
   unavailable={data.failed?t('unavailable'):null}
+  // "See all" names the same count as the heading: /?needs=all lists every card this section counts (prepared changes,
+  // loop cards, every decision and the findings). It used to name the decisions alone (staging, 11 Nov 2026: 29 and 27).
   footer={taskTotal>shown.length?<Link href={NEEDS_ALL_HREF} className="inline-flex min-h-9 items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
-   {t('tasks.seeAll',{count:taskTotal})}</Link>:null}>
+   {t('tasks.seeAll',{count})}</Link>:null}>
   {data.prepared.map(preparedCard)}
   {/* AI v2 W8: what the loops prepared for this person, before the decisions waiting on them. */}
   <LoopCards cards={data.loops} locale={p.locale}/>

@@ -2422,6 +2422,122 @@
         "holiday": "{name} · cuti umum",
         "holidayUnnamed": "Cuti umum"
       }
+    },
+    "admin": {
+      "unavailable": "Bahagian ini tidak dapat dimuatkan sekarang. Halamannya sendiri masih berfungsi.",
+      "sideLabel": "Pemantauan, rekod anda sendiri dan soalan untuk ditanya",
+      "scopeAll": "Semua syarikat",
+      "scopeSome": "{count, plural, other {# syarikat}}",
+      "headline": "{count, plural, =0 {Tiada apa yang perlukan anda sekarang} other {# perkara perlukan anda}}",
+      "headlineOverdue": "{count} lewat",
+      "headlineCutOff": "{days, plural, =0 {gaji ditutup hari ini} one {gaji ditutup esok} other {gaji ditutup dalam # hari}}",
+      "needsTitle": "Perlukan anda",
+      "needsOrder": "paling mendesak dahulu",
+      "seeAll": "Lihat kesemua {count}",
+      "showFewer": "Tunjukkan yang paling mendesak",
+      "needsEmpty": "Tiada apa yang perlukan anda sekarang.",
+      "needsPartial": "Sesetengah perkara tidak dapat disemak sekarang, jadi senarai ini mungkin tidak lengkap. Halamannya sendiri masih berfungsi.",
+      "tag": {
+        "overdue": "{days, plural, other {Lewat # hari}}",
+        "blocksPayroll": "Menyekat gaji",
+        "dueIn": "{days, plural, =0 {Perlu siap hari ini} one {Perlu siap esok} other {Perlu siap dalam # hari}}",
+        "waiting": "{days, plural, other {Menunggu # hari}}"
+      },
+      "entry": {
+        "statutory": "{count, plural, other {Failkan # pemberitahuan CP22 atau CP22A}}",
+        "statutoryDetail": "{overdue} lewat, {soon} perlu siap dalam 7 hari.",
+        "firstDue": "Tarikh akhir paling awal: {date}.",
+        "exceptions": "{count, plural, other {# pengecualian gaji menyekat larian}}",
+        "exceptionsDetail": "Larian tidak boleh ditutup sehingga ia diselesaikan.",
+        "task": "{label}: {count} menunggu",
+        "oldest": "Paling lama dihantar {date}",
+        "beforeCutOff": "Putuskan sebelum tarikh tutup {date}",
+        "prepared": {
+          "leaveApply": "{count, plural, other {# permohonan cuti sedia untuk anda sahkan}}",
+          "leaveCancel": "{count, plural, other {# pembatalan cuti sedia untuk anda sahkan}}",
+          "leaveDecision": "{count, plural, other {# keputusan cuti sedia untuk anda sahkan}}"
+        },
+        "preparedDetail": "AI Centre telah menyediakannya. Tiada apa berlaku sehingga anda sahkan.",
+        "probation": "{count, plural, other {# tempoh percubaan akan tamat}}",
+        "probationDetail": "Yang pertama tamat pada {date}. Seorang manusia memutuskan keputusannya.",
+        "payrollInputs": "{count, plural, other {# syarikat masih ada input gaji yang belum lengkap}}",
+        "payrollInputsBlockers": "{count, plural, =0 {Belum ada yang menyekat gaji.} other {# semakan menyekat gaji.}}",
+        "cutOff": "Tarikh tutup {date}.",
+        "passports": "{count, plural, other {# pasport tamat tempoh dalam 30 hari}}",
+        "passportsDetail": "Yang pertama tamat tempoh pada {date}.",
+        "autonomy": {
+          "movedDown": "{loop} kembali kepada menyediakan sahaja",
+          "acted": "{loop} bertindak sendiri: semak apa yang dilakukannya",
+          "sample": "{loop} ada sampel mingguan untuk anda semak",
+          "leftAlone": "{loop} meninggalkan beberapa kes untuk manusia"
+        },
+        "aLoop": "Satu gelung AI Centre",
+        "companies": "{count, plural, other {# syarikat}}"
+      },
+      "cta": {
+        "statutory": "Buka borang berkanun",
+        "exceptions": "Buka pengecualian",
+        "review": "Semak",
+        "open": "Buka",
+        "check": "Semak"
+      },
+      "readinessTitle": "Kesediaan gaji",
+      "readinessNext": "Gaji {period} · tarikh tutup seterusnya {date}",
+      "readinessOpen": "Buka gaji",
+      "readinessBar": "{ready} daripada {companies} syarikat sedia",
+      "readiness": {
+        "ready": "{count, plural, other {syarikat sedia}}",
+        "waiting": "{count, plural, other {syarikat menunggu input}}",
+        "notStarted": "{count, plural, other {syarikat belum disemak}}"
+      },
+      "readinessOff": "{count, plural, other {# syarikat menggunakan gaji.}} Semakan pra-gaji dalam AI Centre dimatikan, jadi kesediaan belum disemak.",
+      "readinessNone": "Gaji tidak digunakan untuk syarikat yang dipaparkan.",
+      "handledTitle": "Diuruskan oleh AI Centre minggu ini",
+      "handled": {
+        "answered": "{count, plural, other {soalan dijawab}}",
+        "leaveChecks": "{count, plural, other {permohonan cuti disemak}}",
+        "prepared": "{count, plural, other {perkara disediakan untuk anda}}",
+        "loopFound": "{loop}: {count, plural, other {kes ditemui}}",
+        "loopResolved": "{count, plural, =0 {Belum ada yang selesai} other {# selesai}}"
+      },
+      "handledEmpty": "Belum ada apa-apa dalam 7 hari lepas.",
+      "handledNote": "Dikira daripada rekod AI Centre sendiri bagi 7 hari lepas.",
+      "handledPartial": "Sesetengah angka tidak dapat dimuatkan sekarang.",
+      "watchingTitle": "Pemantauan",
+      "watchingEmpty": "Tiada apa untuk dipantau sekarang.",
+      "watchingExceptions": "{count, plural, other {# pengecualian gaji perlu dilihat tetapi tidak menyekat larian.}}",
+      "ownTitle": "Rekod anda sendiri",
+      "forYouTitle": "Untuk anda",
+      "ownClear": "Tiada apa yang perlukan anda untuk rekod anda sendiri.",
+      "ownSteps": "{count, plural, other {# perkara untuk dihantar atau dilakukan}}",
+      "ownPayday": "Hari gaji seterusnya {date}",
+      "ownCutOff": "Gaji ditutup {date}",
+      "askTitle": "Cuba tanya",
+      "ask": {
+        "payrollBlocking": "Apakah yang menyekat gaji bulan ini?",
+        "claimsBeforeCutOff": "Siapa yang belum menghantar tuntutan sebelum tarikh tutup?",
+        "approvalsWaiting": "Kelulusan mana yang telah menunggu lebih daripada 3 hari?"
+      }
+    },
+    "manager": {
+      "sideLabel": "Pasukan anda",
+      "headline": "{count, plural, =0 {Tiada keputusan menunggu untuk pasukan anda} other {# keputusan untuk pasukan anda}}",
+      "decideTitle": "Putuskan",
+      "decideOrder": "paling lama dahulu",
+      "seeAll": "Lihat kesemua {count}",
+      "decideEmpty": "Tiada keputusan yang menunggu anda.",
+      "decidePartial": "Sesetengah keputusan tidak dapat dimuatkan sekarang. Halaman kelulusan masih berfungsi.",
+      "sent": "Dihantar {date}",
+      "open": "Buka",
+      "checking": "Menyemak berdasarkan peraturan syarikat anda…",
+      "recommendationNote": "Cadangan datang daripada peraturan dan rekod syarikat anda, bukan tekaan. Anda tetap membuat setiap keputusan, dan setiap satu direkodkan atas nama anda.",
+      "comingUpTitle": "Akan datang untuk pasukan anda",
+      "probation": "Tempoh percubaan {name} tamat pada {date}",
+      "probationUnnamed": "Satu tempoh percubaan tamat pada {date}",
+      "cutOff": "Input gaji ditutup pada {date}. Putuskan kerja lebih masa dan tuntutan sebelum itu.",
+      "preparedNote": "{count, plural, other {# perubahan sedia untuk anda sahkan}}",
+      "comingUpEmpty": "Tiada apa yang akan datang untuk pasukan anda.",
+      "comingUpPartial": "Sesetengah perkara tidak dapat dimuatkan sekarang."
     }
   },
   "why": {

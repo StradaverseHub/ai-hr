@@ -2422,6 +2422,122 @@
         "holiday": "{name} · วันหยุดนักขัตฤกษ์",
         "holidayUnnamed": "วันหยุดนักขัตฤกษ์"
       }
+    },
+    "admin": {
+      "unavailable": "ไม่สามารถโหลดส่วนนี้ได้ในขณะนี้ หน้าของรายการนั้นยังใช้งานได้ตามปกติ",
+      "sideLabel": "สิ่งที่ติดตาม ข้อมูลของคุณเอง และคำถามที่ลองถามได้",
+      "scopeAll": "ทุกบริษัท",
+      "scopeSome": "{count, plural, other {# บริษัท}}",
+      "headline": "{count, plural, =0 {ตอนนี้ไม่มีอะไรที่ต้องให้คุณทำ} other {มี # เรื่องที่รอคุณอยู่}}",
+      "headlineOverdue": "เลยกำหนด {count} เรื่อง",
+      "headlineCutOff": "{days, plural, =0 {เงินเดือนปิดรับวันนี้} =1 {เงินเดือนปิดรับพรุ่งนี้} other {เงินเดือนปิดรับในอีก # วัน}}",
+      "needsTitle": "รอคุณดำเนินการ",
+      "needsOrder": "เรื่องเร่งด่วนที่สุดก่อน",
+      "seeAll": "ดูทั้งหมด {count} รายการ",
+      "showFewer": "แสดงเฉพาะเรื่องเร่งด่วนที่สุด",
+      "needsEmpty": "ตอนนี้ไม่มีอะไรที่ต้องให้คุณทำ",
+      "needsPartial": "บางรายการตรวจสอบไม่ได้ในขณะนี้ รายการนี้จึงอาจไม่ครบ หน้าของรายการนั้นยังใช้งานได้ตามปกติ",
+      "tag": {
+        "overdue": "{days, plural, other {เลยกำหนด # วัน}}",
+        "blocksPayroll": "ทำให้จ่ายเงินเดือนไม่ได้",
+        "dueIn": "{days, plural, =0 {ครบกำหนดวันนี้} =1 {ครบกำหนดพรุ่งนี้} other {ครบกำหนดในอีก # วัน}}",
+        "waiting": "{days, plural, other {รอมา # วัน}}"
+      },
+      "entry": {
+        "statutory": "{count, plural, other {ยื่นแบบแจ้ง CP22 หรือ CP22A # รายการ}}",
+        "statutoryDetail": "เลยกำหนด {overdue} รายการ ครบกำหนดภายใน 7 วัน {soon} รายการ",
+        "firstDue": "กำหนดส่งเร็วที่สุด: {date}",
+        "exceptions": "{count, plural, other {ข้อยกเว้นเงินเดือน # รายการทำให้ปิดรอบไม่ได้}}",
+        "exceptionsDetail": "ปิดรอบเงินเดือนไม่ได้จนกว่าจะแก้ไขเสร็จ",
+        "task": "{label}: รอ {count} รายการ",
+        "oldest": "รายการที่เก่าที่สุดส่งเมื่อ {date}",
+        "beforeCutOff": "ตัดสินใจก่อนวันปิดรับ {date}",
+        "prepared": {
+          "leaveApply": "{count, plural, other {ใบลา # รายการพร้อมให้คุณยืนยัน}}",
+          "leaveCancel": "{count, plural, other {การยกเลิกการลา # รายการพร้อมให้คุณยืนยัน}}",
+          "leaveDecision": "{count, plural, other {การตัดสินใจเรื่องการลา # รายการพร้อมให้คุณยืนยัน}}"
+        },
+        "preparedDetail": "AI Centre เตรียมไว้ให้ จะไม่มีอะไรเกิดขึ้นจนกว่าคุณจะยืนยัน",
+        "probation": "{count, plural, other {ช่วงทดลองงาน # รายการใกล้สิ้นสุด}}",
+        "probationDetail": "รายการแรกสิ้นสุดวันที่ {date} ผลการประเมินตัดสินโดยคน",
+        "payrollInputs": "{count, plural, other {# บริษัทยังมีข้อมูลเงินเดือนที่ยังไม่ครบ}}",
+        "payrollInputsBlockers": "{count, plural, =0 {ยังไม่มีอะไรทำให้จ่ายเงินเดือนไม่ได้} other {การตรวจสอบ # รายการทำให้จ่ายเงินเดือนไม่ได้}}",
+        "cutOff": "วันปิดรับ {date}",
+        "passports": "{count, plural, other {หนังสือเดินทาง # เล่มจะหมดอายุภายใน 30 วัน}}",
+        "passportsDetail": "เล่มแรกหมดอายุวันที่ {date}",
+        "autonomy": {
+          "movedDown": "{loop} กลับไปเป็นแค่การเตรียมการ",
+          "acted": "{loop} ดำเนินการเอง: ตรวจสอบสิ่งที่ทำไป",
+          "sample": "{loop} มีตัวอย่างรายสัปดาห์ให้คุณตรวจสอบ",
+          "leftAlone": "{loop} เหลือบางกรณีไว้ให้คนดูแล"
+        },
+        "aLoop": "ลูปของ AI Centre",
+        "companies": "{count, plural, other {# บริษัท}}"
+      },
+      "cta": {
+        "statutory": "เปิดแบบฟอร์มตามกฎหมาย",
+        "exceptions": "เปิดข้อยกเว้น",
+        "review": "ตรวจสอบ",
+        "open": "เปิด",
+        "check": "ตรวจสอบ"
+      },
+      "readinessTitle": "ความพร้อมของเงินเดือน",
+      "readinessNext": "เงินเดือน {period} · วันปิดรับถัดไป {date}",
+      "readinessOpen": "เปิดเงินเดือน",
+      "readinessBar": "พร้อมแล้ว {ready} จาก {companies} บริษัท",
+      "readiness": {
+        "ready": "{count, plural, other {บริษัทพร้อมแล้ว}}",
+        "waiting": "{count, plural, other {บริษัทกำลังรอข้อมูล}}",
+        "notStarted": "{count, plural, other {บริษัทยังไม่ได้ตรวจสอบ}}"
+      },
+      "readinessOff": "{count, plural, other {มี # บริษัทที่ใช้เงินเดือน}} การตรวจสอบก่อนจ่ายเงินเดือนใน AI Centre ปิดอยู่ จึงยังไม่ได้ตรวจสอบความพร้อม",
+      "readinessNone": "บริษัทที่แสดงอยู่ไม่ได้ใช้ระบบเงินเดือน",
+      "handledTitle": "สิ่งที่ AI Centre จัดการในสัปดาห์นี้",
+      "handled": {
+        "answered": "{count, plural, other {คำถามที่ตอบแล้ว}}",
+        "leaveChecks": "{count, plural, other {คำขอลาที่ตรวจสอบแล้ว}}",
+        "prepared": "{count, plural, other {รายการที่เตรียมไว้ให้คุณ}}",
+        "loopFound": "{loop}: {count, plural, other {กรณีที่พบ}}",
+        "loopResolved": "{count, plural, =0 {ยังไม่มีกรณีที่แก้ไขแล้ว} other {แก้ไขแล้ว #}}"
+      },
+      "handledEmpty": "ยังไม่มีใน 7 วันที่ผ่านมา",
+      "handledNote": "นับจากบันทึกของ AI Centre เองใน 7 วันที่ผ่านมา",
+      "handledPartial": "ตัวเลขบางส่วนโหลดไม่ได้ในขณะนี้",
+      "watchingTitle": "สิ่งที่ติดตาม",
+      "watchingEmpty": "ตอนนี้ไม่มีอะไรต้องติดตาม",
+      "watchingExceptions": "{count, plural, other {ข้อยกเว้นเงินเดือน # รายการควรตรวจดู แต่ไม่ทำให้ปิดรอบไม่ได้}}",
+      "ownTitle": "ข้อมูลของคุณเอง",
+      "forYouTitle": "สำหรับคุณ",
+      "ownClear": "ไม่มีอะไรที่ต้องทำสำหรับข้อมูลของคุณเอง",
+      "ownSteps": "{count, plural, other {มี # เรื่องที่ต้องส่งหรือทำ}}",
+      "ownPayday": "วันจ่ายเงินเดือนถัดไป {date}",
+      "ownCutOff": "เงินเดือนปิดรับ {date}",
+      "askTitle": "ลองถาม",
+      "ask": {
+        "payrollBlocking": "อะไรทำให้เงินเดือนเดือนนี้ติดขัด?",
+        "claimsBeforeCutOff": "ใครยังไม่ได้ส่งเบิกค่าใช้จ่ายก่อนวันปิดรับ?",
+        "approvalsWaiting": "การอนุมัติใดบ้างที่รอมากกว่า 3 วัน?"
+      }
+    },
+    "manager": {
+      "sideLabel": "ทีมของคุณ",
+      "headline": "{count, plural, =0 {ไม่มีเรื่องรอการตัดสินใจสำหรับทีมของคุณ} other {มี # เรื่องรอการตัดสินใจสำหรับทีมของคุณ}}",
+      "decideTitle": "ตัดสินใจ",
+      "decideOrder": "เรื่องที่เก่าที่สุดก่อน",
+      "seeAll": "ดูทั้งหมด {count} รายการ",
+      "decideEmpty": "ไม่มีเรื่องที่รอคุณตัดสินใจ",
+      "decidePartial": "บางรายการโหลดไม่ได้ในขณะนี้ หน้าการอนุมัติยังใช้งานได้ตามปกติ",
+      "sent": "ส่งเมื่อ {date}",
+      "open": "เปิด",
+      "checking": "กำลังตรวจสอบตามกฎของบริษัทคุณ…",
+      "recommendationNote": "คำแนะนำมาจากกฎและข้อมูลของบริษัทคุณ ไม่ใช่การคาดเดา คุณยังเป็นผู้ตัดสินใจทุกเรื่อง และทุกการตัดสินใจจะบันทึกในชื่อของคุณ",
+      "comingUpTitle": "สิ่งที่กำลังจะมาถึงสำหรับทีมของคุณ",
+      "probation": "ช่วงทดลองงานของ {name} สิ้นสุดวันที่ {date}",
+      "probationUnnamed": "ช่วงทดลองงานหนึ่งรายการสิ้นสุดวันที่ {date}",
+      "cutOff": "ข้อมูลเงินเดือนปิดรับวันที่ {date} โปรดตัดสินใจเรื่องโอทีและการเบิกค่าใช้จ่ายก่อนวันนั้น",
+      "preparedNote": "{count, plural, other {การเปลี่ยนแปลง # รายการพร้อมให้คุณยืนยัน}}",
+      "comingUpEmpty": "ไม่มีอะไรกำลังจะมาถึงสำหรับทีมของคุณ",
+      "comingUpPartial": "บางรายการโหลดไม่ได้ในขณะนี้"
     }
   },
   "why": {
