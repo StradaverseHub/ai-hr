@@ -116,7 +116,7 @@ it.each([
 
 it('admits only the exact self-source development event and never a steady or ordinary route selection',()=>{
  withScratch(({privateDir})=>{
-  const repository='StradaverseHub/ai-hr',branch='claude/worker-compare-rc2-20261111';
+  const repository='StradaverseHub/ai-hr',branch='claude/worker-compare-rc2b-20261111';
   const ref='refs/heads/'+branch,sha='a'.repeat(40),temp=realpathSync(privateDir);
   const eventDir=join(temp,'_github_workflow'),eventPath=join(eventDir,'event.json');
   mkdirSync(eventDir);

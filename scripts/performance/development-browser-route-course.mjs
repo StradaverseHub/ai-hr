@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {closeSync,constants,fstatSync,lstatSync,openSync,readSync,realpathSync} from 'node:fs';
 import {join} from 'node:path';
 
-const branch='claude/worker-compare-rc2-20261111';
+const branch='claude/worker-compare-rc2b-20261111';
 const ref='refs/heads/'+branch;
 const repository='StradaverseHub/ai-hr';
 const workflow=repository+'/.github/workflows/alpha-focused-checks.yml@'+ref;

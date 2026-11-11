@@ -596,9 +596,10 @@ finally{
  // Stop the background job worker first: it finishes its current unit on SIGTERM, as under systemd.
  if(jobWorker)try{
   if(jobWorker.exitCode===null&&jobWorker.signalCode===null)signalChild(jobWorker,'SIGTERM');
-  let stopped=await Promise.race([jobWorkerClosed,pause(30000).then(()=>null)]);
+  // Unreferenced deadlines: a worker that already stopped must not keep the runner alive past its family barrier.
+  let stopped=await Promise.race([jobWorkerClosed,pause(30000,null,{ref:false})]);
   const forced=stopped===null;
-  if(forced){signalChild(jobWorker,'SIGKILL');stopped=await Promise.race([jobWorkerClosed,pause(10000).then(()=>null)]);}
+  if(forced){signalChild(jobWorker,'SIGKILL');stopped=await Promise.race([jobWorkerClosed,pause(10000,null,{ref:false})]);}
   report.bulkJobWorker={...report.bulkJobWorker,forced,code:stopped?.code??null,signal:stopped?.signal??null};save();
  }catch{}
  const workerStops=apps.map(async(app,worker)=>{

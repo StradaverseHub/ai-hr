@@ -6,7 +6,7 @@ import {
 } from './measured-browser-worker-contract.mjs';
 
 const repo = 'StradaverseHub/ai-hr';
-const branch = 'claude/worker-compare-rc2-20261111';
+const branch = 'claude/worker-compare-rc2b-20261111';
 const workflowPath = '.github/workflows/alpha-focused-checks.yml';
 const sha = 'a'.repeat(40);
 const archiveDigest = 'b'.repeat(64);
