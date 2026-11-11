@@ -10,11 +10,14 @@ import type {EmployeeImportReport} from '@/lib/employee-import-report';
 import {IMPORT_HISTORY_PATH} from './import-history-views';
 import {employeeImportColumnText,employeeImportProblemText} from './employee-import-report-text';
 
+/** Lines rendered on the page at most (the download is not bounded by it). */
+export const ERROR_REPORT_PAGE_LINES=500;
 export async function EmployeeImportErrorReport({attemptId,report,showAll,full}:{attemptId:string;report:EmployeeImportReport;showAll:boolean;full:boolean}){
  const t=await getTranslations('people.importHistory'),root=await getTranslations();
  const resolve=(key:string,fallback:string)=>root.has(key)?root(key):fallback;
  const problems=report.lines.filter(l=>l.outcome==='refused'||l.outcome==='stopped');
- const lines=showAll?report.lines:problems;
+ // A large file renders a bounded page; the CSV download always carries every line the viewer may see.
+ const shown=showAll?report.lines:problems,lines=shown.slice(0,ERROR_REPORT_PAGE_LINES);
  const allRows=new Set(report.lines.map(l=>l.rowNum)).size;
  const chip=(selected:boolean)=>`inline-flex min-h-9 items-center rounded-full border px-3 text-sm ${selected?'border-primary bg-primary/10 font-medium text-primary':'text-muted-foreground'}`;
  const base=`${IMPORT_HISTORY_PATH}/${attemptId}`;
@@ -48,6 +51,7 @@ export async function EmployeeImportErrorReport({attemptId,report,showAll,full}:
      {line.stage&&<p className="text-xs text-muted-foreground">{t(`errorReport.stage.${line.stage}`)}</p>}</td>
     <td className="p-3"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs ${line.outcome==='stopped'?'bg-destructive/10 text-destructive':'bg-muted'}`}>{t(`errorReport.outcome.${line.outcome}`)}</span></td>
    </tr>)}</tbody></table></div>}
+  {shown.length>lines.length&&<p className="text-sm text-muted-foreground">{t('errorReport.truncated',{shown:lines.length,total:shown.length})}</p>}
   <p className="text-xs text-muted-foreground">{t('errorReport.rowsHint')}</p>
  </section>;
 }

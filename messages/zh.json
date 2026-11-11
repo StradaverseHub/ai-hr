@@ -3518,7 +3518,8 @@
         "csvFile": "文件名",
         "csvStatus": "最终状态",
         "csvStage": "发现于",
-        "rowsHint": "行号按文件中的员工行计数，与导入预览一致。"
+        "rowsHint": "行号按文件中的员工行计数，与导入预览一致。",
+        "truncated": "显示前 {shown} 行，共 {total} 行。下载错误报告以查看全部。"
       }
     },
     "informationCorrection": {

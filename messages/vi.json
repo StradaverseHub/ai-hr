@@ -3518,7 +3518,8 @@
         "csvFile": "Tên tệp",
         "csvStatus": "Trạng thái cuối",
         "csvStage": "Phát hiện",
-        "rowsHint": "Số dòng đếm các dòng nhân viên của tệp, như trong bản xem trước khi nhập."
+        "rowsHint": "Số dòng đếm các dòng nhân viên của tệp, như trong bản xem trước khi nhập.",
+        "truncated": "Đang hiển thị {shown} dòng đầu tiên trong {total} dòng. Tải báo cáo lỗi để xem tất cả."
       }
     },
     "informationCorrection": {

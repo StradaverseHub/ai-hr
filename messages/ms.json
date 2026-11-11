@@ -3518,7 +3518,8 @@
         "csvFile": "Nama fail",
         "csvStatus": "Status akhir",
         "csvStage": "Ditemui",
-        "rowsHint": "Nombor baris mengira baris pekerja dalam fail, seperti dalam pratonton import."
+        "rowsHint": "Nombor baris mengira baris pekerja dalam fail, seperti dalam pratonton import.",
+        "truncated": "Menunjukkan {shown} baris pertama daripada {total}. Muat turun laporan ralat untuk kesemuanya."
       }
     },
     "informationCorrection": {

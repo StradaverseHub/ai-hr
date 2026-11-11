@@ -3518,7 +3518,8 @@
         "csvFile": "File name",
         "csvStatus": "Final status",
         "csvStage": "Found",
-        "rowsHint": "Row numbers count the employee rows of the file, as in the import preview."
+        "rowsHint": "Row numbers count the employee rows of the file, as in the import preview.",
+        "truncated": "Showing the first {shown} of {total} lines. Download the error report for all of them."
       }
     },
     "informationCorrection": {
