@@ -90,7 +90,7 @@ it('makes the mode-joining helpers shared inside a display read and leaves an ex
 },60_000);
 
 it('reads the shell bell, Home, the worker gate, Personnel movement history and an Employee Master run with no exclusive hold',async()=>{
- const b=await seedBase(),ctx=admin(b),today=todayInKualaLumpur(),subjects=[];
+ const b=await seedBase(),ctx=admin(b),today=todayInKualaLumpur(),subjects:Awaited<ReturnType<typeof hireEmployee>>[]=[];
  for(let n=0;n<3;n++)subjects.push(await hireEmployee(adminCtx(b),{person:{fullName:`Fictional read subject ${n+1}`,primaryEmail:randomUUID()+'@example.invalid'},
   companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:today}));
  await owner.db.insert(schema.profileChangeRequest).values(subjects.map(subject=>({tenantId:b.tenantId,employmentId:subject.employmentId,personId:subject.personId,
