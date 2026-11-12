@@ -273,9 +273,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.reward_config_source_org_tags(uuid,date)','app.reward_config_uploaded_binding()','app.reward_limit_version_guard()',
    'app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
   ];
-  // 5580: the configuration editor predicates are read by row-security policies that apply to every role (purpose
-  // readers included), and the creating flag by the annual-admission guard, so PUBLIC may execute them.
-  const publicFunctions:string[]=['app.reward_config_creating()','app.reward_config_editor(uuid)','app.reward_config_editor_anywhere()','app.reward_config_library_viewer()','app.reward_config_viewer(uuid)'];
+  // 5620 took EXECUTE on the 5580 configuration predicates and the creating flag away from PUBLIC; each is granted to
+  // the roles that evaluate it (test/rewards-config-grants-lock.test.ts), so no added function is callable by PUBLIC.
+  const publicFunctions:string[]=[];
   const addedFunctions=[
    // Board window 4 (5124): the preview binding trigger (owner only) and the superior diagnostic.
    // Board release block 5400-5560 (12 November 2026): the Rewards, dashboard and On/Off Boarding functions. Kept sorted.

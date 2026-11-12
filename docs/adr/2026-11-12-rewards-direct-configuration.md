@@ -163,6 +163,34 @@ Tables that are not forced (`reward_unit`, `reward_cycle`, `reward_member`, `rew
 read by their owner without row security. `test/rewards-config-owner-paths.test.ts` now checks that `ai_hr_owner` may
 execute every function the board owner definers call.
 
+**Loose ends closed in 5620 (13 November 2026).** `5620_rewards_config_grants_creator_lock` replaces only the
+owner-owned creator and changes grants:
+
+- EXECUTE on `app.reward_config_editor`, `app.reward_config_viewer`, `app.reward_config_library_viewer`,
+  `app.reward_config_editor_anywhere` (granted to PUBLIC by 5580) and `app.reward_config_creating` (PUBLIC by default)
+  is revoked from PUBLIC. `app.reward_config_editor` is granted to `ai_hr_app`, `ai_hr_reward_setup_reader` and
+  `ai_hr_reward_preparation_reader`, the non-owner roles that reach the 5580 permissive policies on `reward_library`,
+  `reward_library_version` and `reward_pat_version`; the viewer, library viewer and editor-anywhere predicates to
+  `ai_hr_app` (application calls only); `app.reward_config_creating` to `ai_hr_app` and `ai_hr_reward_setup_reader`,
+  the roles besides the owner that insert reviews and so run the SECURITY INVOKER annual-admission guard.
+  `test/rewards-config-grants-lock.test.ts` derives the needing roles from the catalogue.
+- The creating flag is not a bypass: `app.reward_config_creating()` is true only when the setting holds this
+  transaction's id **and** the current role holds the owner of `app_user`; the guard evaluates it as the inserting role,
+  so the application role that forges the setting still gets "Use approved Rewards annual admission" (tested with a
+  Group Rewards administrator copying a real annual review).
+- `app.reward_config_create_planned_unit` hashed the company-year lock key from a plan-year subquery taken before any
+  check, so a caller whose plan the function cannot see locked on NULL (no lock). It now checks authority, reads the
+  year itself under its own row security, refuses an invisible or non-active plan before that lock, and confirms the
+  locked plan still has that year. Lock order and every other line of the 5600 body are unchanged.
+
+**Owner decision of 13 November 2026 (CTRO and HR Admin create unit reviews): not yet built.** Review creation still
+needs Group Rewards. Two things in the code stand in the way and need an owner ruling first (see the board release
+report). New annual reviews start in set-up, and `reward_preparation_unit_withholding` hides them from anyone without a
+Group Rewards, CTRO or Executive Chairman seat, so an HR Admin without a seat would never see the review they created.
+Creation also runs the snapshot and budget steps in the creator's own session (`createRewardUnitTx`): the governance
+rows, the budget basis (`app.reward_record_pat_basis`), OneHR sources and job architecture all require a Group Rewards
+seat. A CTRO seat does not satisfy them.
+
 Left as it was (it predates this release; the purpose creator had the same predicates): a Group Rewards user whose
 setup authority covers only some companies cannot create a review from a plan that spans other companies, because
 `reward_plan_setup`, `reward_library(_version)` and `reward_setup_cycle` admit the creator only with group-wide or
