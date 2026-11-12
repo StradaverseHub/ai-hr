@@ -499,10 +499,20 @@ Plan revision 2 ships the screen, the writer, the calculation order and the Payr
   with no overtime request (or only rejected/cancelled ones) use a known empty approved plan
   (`attendancePolicyPlanNotRequested`) with approval `notRequired`; a pending or approved request never takes
   that branch. Unknown evidence (incomplete clocks, missing receipts) still refuses.
-- **Order.** For Auto the duration owner now applies breaks/eligibility, then the approval method, then the
-  lateness offset, then the midnight split and rounding last (`finalizePolicyOvertimeDuration`). This replaces
-  point 4's offset-before-method order. Frozen Manual-receipt workflows keep their recorded order. One existing
-  pure regression changed accordingly (Intersect 30 then 15 late now pays 15, not 30).
+- **Order.** For Auto: eligibility, the midnight split into per-date portions, the approval method, the
+  lateness offset, then threshold/maximum/rounding last **per date** (`finalizePolicyOvertimeDuration` once per
+  day class and calendar date). The method (a pointwise interval intersection) and the offset are computed on
+  the source timeline before partitioning, which is equivalent to applying them per portion. The offset
+  consumes the earliest selected minutes, which are the shift date's, so lateness reaches the next date's
+  early overtime only once the shift-date portion is used up (then it continues from the next date's
+  earliest minutes). This replaces point 4's offset-before-method order and the earlier "round once across
+  each business-day classification" rule. Frozen Manual-receipt workflows keep their offset-before-method
+  order. Duration class rows now carry `calendarDate`. The 0590 private count owner
+  `app.attendance_policy_part_payable_count` required exactly one row per day class, so draft migration
+  5150 (`5150_attendance_policy_dated_rounding`) replaces only that invoker function to match a part to its own
+  date's row. Rows recorded without `calendarDate` keep the per-class reading, and a mixture refuses.
+  Existing regressions changed accordingly. For example, Intersect 30 with 15 minutes late now pays 15, not 30,
+  and a split 20 + 20 rounded up to 30 is now 30 + 30 per date.
 - **Lateness exception.** With Show Lateness Exception After Offset on, the recorded day marker carries
   `latenessAfterOffset` and the employee exception list adds the remaining minutes beside the unchanged Late In.
 - **Fast path.** The import no-op check's tenant-wide policy kill is narrowed to policies of the days' derived
