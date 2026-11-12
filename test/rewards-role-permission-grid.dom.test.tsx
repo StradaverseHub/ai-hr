@@ -33,7 +33,9 @@ describe('Role permissions grid',()=>{
   expect(screen.getAllByText('HR Admin').length).toBeGreaterThan(0);expect(screen.getAllByText('Payroll').length).toBeGreaterThan(0);
   const scope=screen.getByText('Units in scope').closest('tr')!;
   expect([...scope.querySelectorAll('td')].map(td=>td.textContent)).toEqual(['Assigned companies','Assigned Business Units','Assigned Business Units','Whole group','Whole group','Whole group','Assigned companies (view only)','—','Assigned companies']);
-  expect([...cell(/^CTRO · Salary Structures$/).options].map(o=>o.textContent)).toEqual(['View only','—']);
+  // Migration 5600: CTRO and HR Admin edit Salary Structures, Bonus Matrices and PAT, so their default is Full.
+  expect([...cell(/^CTRO · Salary Structures$/).options].map(o=>o.textContent)).toEqual(['Full','View only','—']);
+  expect([...cell(/^HR Admin · PAT Inputs$/).options].map(o=>o.textContent)).toEqual(['Full','—']);
   expect([...cell(/^Proxy BG CEO · Approve off-cycle request$/).options].map(o=>o.textContent)).toEqual(['At their step','—']);
   expect([...cell(/^Executive Chairman · Senior plan amounts$/).options].map(o=>o.value)).toEqual(['view','none']);
  });
@@ -57,7 +59,7 @@ describe('Role permissions grid',()=>{
   const bar=screen.getByRole('region',{name:'Unsaved changes'});expect(within(bar).getByText('1 change')).toBeTruthy();
   fireEvent.change(cell(/^CTRO · Bonus Matrices$/),{target:{value:'none'}});expect(within(bar).getByText('2 changes')).toBeTruthy();
   // Reverting a cell removes it from the count.
-  fireEvent.change(cell(/^CTRO · Bonus Matrices$/),{target:{value:'view'}});expect(within(bar).getByText('1 change')).toBeTruthy();
+  fireEvent.change(cell(/^CTRO · Bonus Matrices$/),{target:{value:'full'}});expect(within(bar).getByText('1 change')).toBeTruthy();
   fireEvent.click(screen.getByRole('checkbox',{name:'Changed from default only'}));
   const rows=[...document.querySelectorAll('tbody th[scope=row]')].map(th=>th.textContent);
   expect(rows).toEqual(['Submit or approve','Approve off-cycle request']);
@@ -105,7 +107,7 @@ describe('Role permissions grid',()=>{
   show(value);const confirm=vi.spyOn(window,'confirm').mockReturnValue(true);
   fireEvent.click(screen.getByRole('button',{name:'Reset role defaults'}));
   expect(confirm).toHaveBeenCalledWith("Load every role's defaults as unsaved changes? You can review them before saving.");
-  expect(cell(/^CTRO · Bonus Matrices$/).value).toBe('view');
+  expect(cell(/^CTRO · Bonus Matrices$/).value).toBe('full');
   expect(within(screen.getByRole('region',{name:'Unsaved changes'})).getByText('2 changes')).toBeTruthy();
   expect(screen.getByText('1 cell was left unchanged because it is locked for you.')).toBeTruthy();
   confirm.mockRestore();
@@ -114,7 +116,7 @@ describe('Role permissions grid',()=>{
   show(grid({matrix:{}}));
   fireEvent.click(screen.getByRole('button',{name:'Compare with current'}));
   const history=screen.getByRole('region',{name:'Version history'});
-  expect(within(history).getByRole('rowheader',{name:'CTRO · Bonus Matrices'}).closest('tr')!.textContent).toBe('CTRO · Bonus Matrices—View only');
+  expect(within(history).getByRole('rowheader',{name:'CTRO · Bonus Matrices'}).closest('tr')!.textContent).toBe('CTRO · Bonus Matrices—Full');
   fireEvent.click(within(history).getByRole('button',{name:'Restore'}));
   expect(cell(/^CTRO · Bonus Matrices$/).value).toBe('none');
   const bar=screen.getByRole('region',{name:'Unsaved changes'});

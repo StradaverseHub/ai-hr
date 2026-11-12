@@ -188,7 +188,7 @@ it('lets ai_hr_owner execute every function the board owner definers call',async
   // ai_hr_owner); anything else needs an EXECUTE grant ai_hr_owner holds.
   const callees=await owner.db.execute<{fn:string;ok:boolean}>(sql`select p.oid::regprocedure::text as fn,
     p.proowner=(select proowner from pg_proc where oid='app.reward_config_editor(uuid)'::regprocedure) or has_function_privilege('ai_hr_owner',p.oid,'EXECUTE') as ok
-   from pg_proc p where p.pronamespace='app'::regnamespace and p.proname=any(${names}::text[])`);
+   from pg_proc p where p.pronamespace='app'::regnamespace and p.proname=any(string_to_array(${names.join(',')},','))`);
   for(const c of callees)if(!c.ok&&!prerequisite.has(c.fn))refused.push(`${d.fn} -> ${c.fn}`);
  }
  expect(refused).toEqual([]);
