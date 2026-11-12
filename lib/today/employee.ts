@@ -9,6 +9,7 @@
  * the change request flow of ADR-0159, or to their manager as an attendance request), and the owner decides it. */
 import {addCalendarDays,calendarDaysBetween,isoWeekdayOf} from '../hr-date-calendar';
 import type {PayrollItem,PayrollItemKind} from '../pre-salary/items';
+import type {HomeCalendarEntry} from '../employee-home-calendar';
 
 // ── Audience ───────────────────────────────────────────────────────────────────────────────────────────────────
 /** Roles other than administrator whose Today stays the personal layout with the dashboard under "More" (manager and
@@ -163,6 +164,13 @@ export function dayRuns(dates:readonly string[]):readonly Readonly<{from:string;
  const sorted=[...new Set(dates)].sort(),runs:{from:string;to:string}[]=[];
  for(const date of sorted){const last=runs[runs.length-1];if(last&&addCalendarDays(last.to,1)===date)last.to=date;else runs.push({from:date,to:date});}
  return Object.freeze(runs.map(run=>Object.freeze(run)));
+}
+/** Coming up's facts from the person's own Home calendar days (core/employee-home-calendar.ts): the days of their leave,
+ * and each holiday that is not a replacement day, with its name. */
+export function calendarComingUp(days:readonly Readonly<{date:string;entries:readonly HomeCalendarEntry[]}>[]):Readonly<{
+ leaveDates:readonly string[];holidays:readonly Readonly<{date:string;name:string|null}>[]}>{
+ return Object.freeze({leaveDates:days.filter(day=>day.entries.some(entry=>entry.kind==='leave')).map(day=>day.date),
+  holidays:days.flatMap(day=>day.entries.flatMap(entry=>entry.kind==='holiday'&&!entry.replacement?[{date:day.date,name:entry.name}]:[]))});
 }
 const KIND_ORDER:Readonly<Record<ComingUpKind,number>>={cutoff:0,payday:1,leave:2,managerAway:3,holiday:4};
 /** What is coming up from today on, soonest first (on the same day: cut-off, payday, the person's leave, a manager
