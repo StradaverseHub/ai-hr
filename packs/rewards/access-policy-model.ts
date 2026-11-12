@@ -9,10 +9,10 @@ import type {RewardRole} from './model';
 export const rewardAccessRoles=['bu','bg','proxy_bg','gr','ctro','ec','pbp','hr_admin','payroll'] as const;
 export type RewardAccessRole=typeof rewardAccessRoles[number];
 
-/** Limit Controls (board fc804e8c) is built on its own branch. Its row, defaults and SQL options already exist; switch
- * this on in the change that adds the Limit Controls page and wires app.reward_actor_page_level('limits.view') into its
- * authority. Until then the row is not shown and cannot be saved from the grid. */
-export const REWARD_LIMIT_CONTROLS_ROW_ENABLED=false;
+/** Limit Controls (board fc804e8c). Switched on at the board release integration: app.reward_limit_controls_access()
+ * (migration 5560) now applies app.reward_actor_page_level('limits.view'), so the row narrows the page, its commands,
+ * the menu and the row security on the Limit Controls tables. */
+export const REWARD_LIMIT_CONTROLS_ROW_ENABLED=true;
 
 export const rewardPermissionCategories=['pages','annual','offcycle','data','governance'] as const;
 export type RewardPermissionCategory=typeof rewardPermissionCategories[number];

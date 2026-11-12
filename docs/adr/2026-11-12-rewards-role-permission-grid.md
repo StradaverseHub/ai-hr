@@ -38,8 +38,10 @@ Builds on [Rewards direct configuration](2026-11-12-rewards-direct-configuration
 
 ## Not in this change
 
-- **Limit Controls** (board fc804e8c) is built on its own branch. Its row, defaults and SQL options exist; it is hidden
-  behind `REWARD_LIMIT_CONTROLS_ROW_ENABLED` until that page wires `app.reward_actor_page_level('limits.view')`.
+- **Limit Controls** (board fc804e8c) was built on its own branch. At the board release integration (12 Nov 2026)
+  `REWARD_LIMIT_CONTROLS_ROW_ENABLED` was switched on and migration 5560 made `app.reward_limit_controls_access()`
+  apply `app.reward_actor_page_level('limits.view')`: Full keeps edit, View only reads, — removes the page, its
+  commands, its menu entry and its rows. The native predicate stays the outer limit.
 - **CTRO / HR Admin edit access to the other configuration pages** stays as decided in the direct-configuration ADR
   (`app.reward_setup_allowed` is purpose-owned). The grid therefore never shows Full for them on those pages.
 - The stage-free entry rule for EC-confidential rows by per-review Group Rewards / CTRO / EC seats is unchanged at the

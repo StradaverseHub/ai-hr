@@ -31,7 +31,8 @@ Every limit and threshold the annual review, the AI advisor and Rewards Analytic
   (`reward-unit.limits-reapplied`). Approved and posted reviews always keep their version.
 - **Access.** Group Rewards with whole-group configuration authority edits; CTRO and EC (and unit-level Group Rewards
   seats) view; every other role, and a direct link, gets "You don't have access" (`app.reward_limit_controls_access()`,
-  enforced by row security and every command). The review calculation reads the confirmed values through
+  enforced by row security and every command). Since migration 5560 the Rewards Access Role permissions row
+  "Limit Controls" (board db14e49c) narrows this further per role: Full = edit, View only = view, — = no access. The review calculation reads the confirmed values through
   `app.reward_unit_limit_version(unit)`, authorized by the review's own row security, so reviewers' checks use them
   without the values reaching their pages.
 - **Projections hide limit settings from other reviewers.** The Rules page shows BU and BG CEOs, proxies and PBPs what

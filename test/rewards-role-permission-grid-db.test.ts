@@ -15,6 +15,7 @@ import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {rewardAccessRoles,rewardPermissionCatalogue,rewardDefaultLevel,rewardLevelOptions,rewardCellLock} from '../packs/rewards/access-policy-model';
 import {rewardRolePermissionGrid,previewRewardRolePermissionBatch,saveRewardRolePermissionBatch,decideRewardRolePermissionRequest,rewardRolePermissionAuditRows,rewardRolePermissionEntry} from '../packs/rewards/role-permission-grid';
 import {rewardNavigation} from '../packs/rewards/access-policy';
+import {rewardLimitControlsAccessTx} from '../packs/rewards/limit-controls';
 import {pgSqlState} from '../lib/db-error';
 import {todayInKualaLumpur} from '../lib/hr-date';
 
@@ -177,6 +178,34 @@ describe('Role permissions grid (database)',()=>{
   const write=await errorOf(withTenant(gr,tx=>tx.execute(sql`insert into reward_library(tenant_id,kind,name,year,created_by) values(app.current_tenant_id(),'salary','Fictional blocked',${year},app.current_user_id())`)));
   expect(write).not.toBeNull();
   await withTenant(gr,tx=>tx.execute(sql`insert into reward_library(tenant_id,kind,name,year,created_by) values(app.current_tenant_id(),'bonus','Fictional allowed bonus',${year},app.current_user_id())`));
+ },90_000);
+
+ it('narrows Limit Controls through its row: CTRO loses the page and its rows, Group Rewards drops to read-only',async()=>{
+  const hr=adminCtx(b),gr=await groupRewards(),ctro=await wholeGroupCtro();
+  const access=(ctx:SessionContext)=>withTenant(ctx,tx=>rewardLimitControlsAccessTx(tx));
+  const versionsSeen=(ctx:SessionContext)=>withTenant(ctx,tx=>tx.execute<{revision:number}>(sql`select revision from reward_limit_version order by revision`)).then(rows=>rows.map(r=>r.revision));
+  const insertVersion=(ctx:SessionContext,revision:number)=>withTenant(ctx,tx=>tx.execute(sql`insert into reward_limit_version(tenant_id,year,revision,limit_values,reason,created_by) values(app.current_tenant_id(),${year},${revision},'{"fictional":true}'::jsonb,'Fictional limit decision for the grid test',app.current_user_id())`));
+  // Defaults: Group Rewards edits, CTRO views.
+  expect(await access(gr)).toBe('edit');expect(await access(ctro)).toBe('view');
+  await insertVersion(gr,1);
+  expect(await versionsSeen(ctro)).toEqual([1]);
+  expect(await rewardNavigation(ctro)).toContain('/admin/rewards/limit-controls');
+  // HR Admin narrows both cells in one batch.
+  await save(hr,[{role:'ctro',capability:'limits.view',after:'none'},{role:'gr',capability:'limits.view',after:'view'}],'Fictional Limit Controls narrowing');
+  expect(await access(ctro)).toBeNull();
+  expect(await versionsSeen(ctro)).toEqual([]);
+  expect(await rewardNavigation(ctro)).not.toContain('/admin/rewards/limit-controls');
+  expect(await access(gr)).toBe('view');
+  expect(await versionsSeen(gr)).toEqual([1]);
+  expect(await rewardNavigation(gr)).toContain('/admin/rewards/limit-controls');
+  const blocked=await errorOf(insertVersion(gr,2));
+  expect(pgSqlState(blocked)).toBe('42501');
+  // Back to the default: Group Rewards edits again.
+  await save(hr,[{role:'gr',capability:'limits.view',after:'full'}]);
+  expect(await access(gr)).toBe('edit');
+  await insertVersion(gr,2);
+  expect(await versionsSeen(gr)).toEqual([1,2]);
+  expect(await access(ctro)).toBeNull();
  },90_000);
 
  it('reads legacy one-cell rows as levels, keeps another tenant isolated and refuses View as',async()=>{

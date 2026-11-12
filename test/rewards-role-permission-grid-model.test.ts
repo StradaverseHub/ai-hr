@@ -17,11 +17,15 @@ describe('Role permissions catalogue',()=>{
   expect(en.rewardAccessPolicy.roles.hr_admin).toBe('HR Admin');expect(en.rewardAccessPolicy.roles.payroll).toBe('Payroll');
   expect('cycles' in en.rewardAccessPolicy.permissions).toBe(false);
  });
- it('keeps Limit Controls behind one switch until its page exists (board fc804e8c)',()=>{
-  expect(REWARD_LIMIT_CONTROLS_ROW_ENABLED).toBe(false);
-  expect(permissionRows.some(r=>r.id==='limits.view')).toBe(false);
-  expect(rewardPermissionCatalogue.some(r=>r.id==='limits.view')).toBe(true);
-  expect(rewardBatchProblems([{role:'ctro',capability:'limits.view',after:'none'}],[])).toEqual([{role:'ctro',capability:'limits.view',code:'unknown'}]);
+ it('shows and saves the Limit Controls row now that its page follows the grid (board fc804e8c)',()=>{
+  expect(REWARD_LIMIT_CONTROLS_ROW_ENABLED).toBe(true);
+  expect(permissionRows.filter(r=>r.id==='limits.view')).toEqual([{id:'limits.view',category:'pages',kind:'page',editable:true}]);
+  expect(rewardBatchProblems([{role:'ctro',capability:'limits.view',after:'none'}],[])).toEqual([]);
+  // The default stays the ceiling: CTRO cannot be widened to Full; Group Rewards can drop to View only or —.
+  expect(rewardBatchProblems([{role:'ctro',capability:'limits.view',after:'full'}],[]).map(p=>p.code)).not.toEqual([]);
+  expect(rewardLevelOptions('gr','limits.view')).toEqual(['full','view','none']);
+  expect(rewardLevelOptions('ctro','limits.view')).toEqual(['view','none']);
+  expect(rewardLevelOptions('bu','limits.view')).toEqual(['none']);
  });
  it('sets the agreed defaults that match what the server already allows',()=>{
   const row=(capability:Parameters<typeof rewardDefaultLevel>[1])=>Object.fromEntries(rewardAccessRoles.map(role=>[role,rewardDefaultLevel(role,capability)]));

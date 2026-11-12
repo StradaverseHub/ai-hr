@@ -143,12 +143,20 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4527,when:1793330004827,tag:'5127_import_log_actor_labels'},
  // 60f1fdcd Rewards direct configuration (DRAFT block 5400–5419; the integrator renumbers at admission).
  {idx:4800,when:1793330005100,tag:'5400_rewards_direct_configuration'},
+ // 4de410ed/356ae8c1 Rewards dashboard preparation notices (DRAFT block 5420–5439).
+ {idx:4820,when:1793330005120,tag:'5420_rewards_dashboard_preparation_notices'},
+ // 5a8c382c/4a60b3ec/6bdda222 lifecycle email recipients (DRAFT block 5460–5479).
+ {idx:4860,when:1793330005160,tag:'5460_lifecycle_v9_email_recipients'},
+ // d1e26f81 offboarding items assignment load (DRAFT block 5480–5499).
+ {idx:4880,when:1793330005180,tag:'5480_offboarding_items_assignment_load'},
  // fc804e8c Rewards Limit Controls (DRAFT block 5500–5519; the integrator renumbers at admission).
  {idx:4900,when:1793330005200,tag:'5500_rewards_limit_controls'},
  // db14e49c Rewards role permission grid (DRAFT block 5520–5539; the integrator renumbers at admission).
  {idx:4920,when:1793330005220,tag:'5520_rewards_role_permission_grid'},
  // b945f0cc Rewards off-cycle company balance (DRAFT block 5540–5559; the integrator renumbers at admission).
  {idx:4940,when:1793330005240,tag:'5540_rewards_offcycle_company_balance'},
+ // fc804e8c + db14e49c Limit Controls follows its Role permissions row (board release integration, 12 Nov 2026).
+ {idx:4960,when:1793330005260,tag:'5560_rewards_limit_controls_role_level'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -159,6 +167,10 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5500_rewards_limit_controls':'3a710dc0103dd39b50c734243fd7f2691d6f08dbfb5d94d388d7664eb7ef93b0',
  '5520_rewards_role_permission_grid':'e603208c9cb9ada2e35a7338ede22637dcf886c5763912e5273adce0fd7ce172',
  '5540_rewards_offcycle_company_balance':'25bd51577444f2cea0a0c53a231156f591c6c2f0f0ce56e293aeae9d054850aa',
+ '5420_rewards_dashboard_preparation_notices':'b0882911ef0802d34e67408810dfb455e935f25de54ac563460cd4b4755bef96',
+ '5460_lifecycle_v9_email_recipients':'117d86c07c68c2bc658b4a33e26797bf23b040ad998fa948dbae1ad1307ef3d0',
+ '5480_offboarding_items_assignment_load':'d5dc8975f26a9091f1bafd089aa36619b30eaa222b02ab09538ec63397d22ed3',
+ '5560_rewards_limit_controls_role_level':'04d12b358fb70088e9bd9be95b64aa5014068a80035bafc5a2b605f5a308c619',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
