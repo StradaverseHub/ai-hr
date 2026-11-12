@@ -2679,6 +2679,28 @@
         "payrollBlocking": "Điều gì đang chặn kỳ lương tháng này?",
         "claimsBeforeCutOff": "Ai chưa gửi yêu cầu hoàn ứng trước ngày chốt?",
         "approvalsWaiting": "Những phê duyệt nào đã chờ hơn 3 ngày?"
+      },
+      "morning": {
+        "title": "Tóm tắt buổi sáng",
+        "intro": "Mỗi sáng, AI Centre đếm những việc đang chờ bạn: các quyết định, thiếu sót trong thiết lập và hạn chót theo luật định. Bản tóm tắt chỉ dành cho bạn và không quyết định điều gì.",
+        "start": "Gửi tóm tắt buổi sáng cho tôi",
+        "stop": "Dừng tóm tắt buổi sáng của tôi",
+        "started": "Tóm tắt buổi sáng của bạn bắt đầu từ sáng mai.",
+        "stoppedToast": "Đã dừng tóm tắt buổi sáng của bạn.",
+        "startFailed": "Không thể bắt đầu tóm tắt buổi sáng. Hãy tải lại trang và thử lại.",
+        "stopFailed": "Không thể dừng tóm tắt buổi sáng. Hãy tải lại trang và thử lại.",
+        "unavailable": "Không thể tải tóm tắt buổi sáng của bạn.",
+        "approvals": "{count, plural, =0 {Không có việc nào chờ bạn quyết định} other {# quyết định đang chờ bạn}}",
+        "setup": "Thiết lập: {blocked} bị chặn, {attention} cần chú ý",
+        "deadlines": "Hạn chót theo luật định: {overdue} quá hạn, {dueSoon} đến hạn trong 7 ngày",
+        "openApprovals": "Xem xét",
+        "openSetup": "Mở thiết lập",
+        "openDeadlines": "Mở biểu mẫu",
+        "preparedAt": "Được chuẩn bị sáng nay lúc {time}.",
+        "first": "Bản tóm tắt đầu tiên của bạn được chuẩn bị vào sáng sớm mai.",
+        "notToday": "Sáng nay chưa có bản tóm tắt nào được chuẩn bị. Hệ thống sẽ thử lại tối nay.",
+        "paused": "Hoạt động AI đang bị dừng, nên sẽ không có bản tóm tắt cho đến khi được tiếp tục.",
+        "forYouOnly": "Chỉ bạn thấy bản tóm tắt này. Nó chỉ đếm và đưa liên kết; mọi quyết định vẫn do con người đưa ra."
       }
     },
     "manager": {

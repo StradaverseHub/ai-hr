@@ -393,6 +393,10 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/roster/prepare/route.ts#route":{"POST":"backlog:confirm"},
  "app/scope-actions.ts":{"setCompanyScope":"internal:session_and_presentation"},
  "app/system-testing/executions/[id]/attachments/route.ts#route":{"POST":"backlog:confirm"},
+ // Admin Today's morning summary (owner decision, 11 Nov 2026): starting or stopping it grants or revokes the person's own
+ // mandate to an AI worker. That is the person's own choice about AI authority, so it stays a human-only handoff, like every
+ // other AI Centre control: the assistant must never start (or stop) a mandate on someone's behalf.
+ "app/today-morning-actions.ts":{"startMorningSummaryAction":"handoff:ai_governance","stopMorningSummaryAction":"handoff:ai_governance"},
  "app/ui-theme-actions.ts":{"setUiTheme":"internal:session_and_presentation"},
 });
 

@@ -9,7 +9,7 @@ import {TodayAsk} from '../today-ask';
 import {PanelNote,PanelSkeleton} from '../employee/panel';
 import {PanelBoundary} from '../employee/panel-boundary';
 import {readAskAllowed} from '../employee/reads';
-import {AdminAskPanel,AdminHeadline,AdminNeedsPanel,DecidePanel,HandledPanel,ManagerHeadline,OwnRecordPanel,ReadinessPanel,TeamComingUpPanel,TeamTodayPanel,WatchingPanel,
+import {AdminAskPanel,AdminHeadline,AdminNeedsPanel,DecidePanel,HandledPanel,ManagerHeadline,MorningSummaryPanel,OwnRecordPanel,ReadinessPanel,TeamComingUpPanel,TeamTodayPanel,WatchingPanel,
  type RoleContext} from './panels';
 import {scopeKey} from './reads';
 import {TodayPerformance} from '../performance-slot';
@@ -73,6 +73,8 @@ export async function AdminTodayPage(p:PageProps){
    </div>
    <aside aria-label={t('sideLabel')} className="flex min-w-0 flex-col gap-4">
     {slot('watching',t('watchingTitle'),<WatchingPanel {...c}/>,1)}
+    {/* The administrator's own morning summary (owner decision, 11 Nov 2026): absent unless it runs or can be started. */}
+    {slot('morning',t('morning.title'),<MorningSummaryPanel {...c}/>,1)}
     {slot('own',t('ownTitle'),<OwnRecordPanel {...c} title="own"/>,1)}
     {slot('ask',t('askTitle'),<AdminAskPanel {...c}/>,1)}
    </aside>

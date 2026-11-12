@@ -140,11 +140,16 @@ export async function latestDailyDigest(ctx:SessionContext):Promise<Readonly<{re
   .where(and(eq(terasOutcomeRecord.tenantId,ctx.tenantId),eq(terasOutcomeRecord.grantorUserId,ctx.userId!),eq(terasMandate.jobType,'daily_digest'),
    eq(terasOutcomeRecord.outcomeKind,'prepared'))).orderBy(desc(terasOutcomeRecord.startedAt),desc(terasOutcomeRecord.id)).limit(1));
  if(!row)return null;
- const o=row.outcome as Record<string,unknown>,n=(value:unknown)=>typeof value==='number'?value:null;
+ return Object.freeze({recordId:row.id,preparedAt:row.at,digest:digestFromOutcome(row.outcome as Record<string,unknown>)});
+}
+/** A prepared digest rebuilt from its outcome record's counts (dailyDigestJob's `outcome`). Shared by latestDailyDigest
+ * and Today's morning summary (./own-digest.ts), so both read one shape. */
+export function digestFromOutcome(o:Readonly<Record<string,unknown>>):DailyDigest{
+ const n=(value:unknown)=>typeof value==='number'?value:null;
  const byKind=(Array.isArray(o.approvalsByKind)?o.approvalsByKind:[]).flatMap(item=>{const [kind,count]=String(item).split(':');const value=Number(count);
   return kind&&Number.isInteger(value)?[Object.freeze({kind,count:value})]:[];});
  const setup=n(o.setupBlocked)===null?null:Object.freeze({blocked:n(o.setupBlocked)!,attention:n(o.setupAttention)??0,companies:n(o.setupCompanies)??0,unknown:n(o.setupUnknown)??0,page:DIGEST_PAGES.setup});
  const deadlines=n(o.deadlinesOverdue)===null?null:Object.freeze({overdue:n(o.deadlinesOverdue)!,dueSoon:n(o.deadlinesDueSoon)??0,page:DIGEST_PAGES.deadlines});
  const body={asOf:String(o.asOf),approvals:Object.freeze({total:n(o.approvalsTotal)??0,byKind:Object.freeze(byKind),page:DIGEST_PAGES.approvals}),setup,deadlines};
- return Object.freeze({recordId:row.id,preparedAt:row.at,digest:Object.freeze({kind:'teras.daily_digest' as const,version:1 as const,...body,text:digestText(body)})});
+ return Object.freeze({kind:'teras.daily_digest' as const,version:1 as const,...body,text:digestText(body)});
 }
