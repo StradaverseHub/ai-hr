@@ -34798,7 +34798,19 @@
         "companyName": "Tên pháp lý của công ty",
         "companyCode": "Mã công ty"
       },
-      "conditions": "Điều kiện đã xác thực"
+      "conditions": "Điều kiện đã xác thực",
+      "busy": "Mô tả trước đó của bạn vẫn đang được soạn. Hãy đợi đến khi xong (tối đa {seconds} giây) rồi thử lại.",
+      "reasons": {
+        "timeout": "Nhà cung cấp AI không phản hồi trong {seconds} giây nên chưa có bản nháp. Hãy thử lại.",
+        "provider_unavailable": "Không thể kết nối nhà cung cấp AI hoặc không nhận được phản hồi dùng được. Hãy thử lại sau.",
+        "invalid_draft": "Phản hồi của AI không vượt qua bước kiểm tra công thức nên không được hiển thị. Hãy diễn đạt lại mô tả rồi thử lại.",
+        "paused": "Tính năng soạn công thức bằng AI đang tạm dừng. Bạn vẫn có thể chỉnh sửa thủ công.",
+        "daily_limit": "Đã đạt hạn mức yêu cầu AI trong ngày. Bạn vẫn có thể chỉnh sửa thủ công.",
+        "monthly_limit": "Đã đạt hạn mức AI trong tháng. Bạn vẫn có thể chỉnh sửa thủ công.",
+        "concurrent_limit": "Tất cả lượt yêu cầu AI đang được sử dụng. Hãy thử lại sau giây lát.",
+        "access_changed": "Quyền truy cập hoặc cài đặt công thức của bạn đã thay đổi trong lúc soạn bản nháp. Hãy thử lại.",
+        "interrupted": "Việc soạn đã dừng trước khi xong vì dịch vụ được khởi động lại. Hãy thử lại."
+      }
     }
   },
   "payrollTaxBasis": {

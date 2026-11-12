@@ -34798,7 +34798,19 @@
         "companyName": "Company legal name",
         "companyCode": "Company code"
       },
-      "conditions": "Verified conditions"
+      "conditions": "Verified conditions",
+      "busy": "Your previous description is still being drafted. Wait for it to finish (up to {seconds} seconds), then try again.",
+      "reasons": {
+        "timeout": "The AI provider did not reply within {seconds} seconds, so no draft was made. Try again.",
+        "provider_unavailable": "The AI provider could not be reached or returned no usable reply. Try again later.",
+        "invalid_draft": "The AI reply did not pass the formula checks, so it is not shown. Rephrase the description and try again.",
+        "paused": "AI formula drafting is paused. Manual editing remains available.",
+        "daily_limit": "The daily AI request allowance has been reached. Manual editing remains available.",
+        "monthly_limit": "The monthly AI allowance has been reached. Manual editing remains available.",
+        "concurrent_limit": "All AI request slots are in use. Try again in a moment.",
+        "access_changed": "Your access or the formula settings changed while the draft was being generated. Try again.",
+        "interrupted": "Drafting stopped before it finished because the service restarted. Try again."
+      }
     }
   },
   "payrollTaxBasis": {

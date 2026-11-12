@@ -23,6 +23,10 @@ export type GenerateArgs = {
   maxTokens?: number;
   /** Optional bounded operation; legacy callers retain their existing transport behaviour. */
   timeoutMs?: number;
+  /** Background work only, never a request path: raises generateDraft's per-call ceiling for timeoutMs from the
+   *  request-path 22 s to BACKGROUND_DRAFT_TIMEOUT_CAP_MS (lib/ai/index.ts). Admission, privacy and accounting
+   *  are unchanged. */
+  background?: true;
   signal?: AbortSignal;
   onUsage?: (usage: AiUsage) => void;
   /** Trusted adapter receipt; the gateway overwrites caller callbacks before dispatch. */

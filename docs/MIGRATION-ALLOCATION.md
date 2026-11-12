@@ -1,3 +1,13 @@
+# Background AI Formula Generator — 12 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/formula-ai-background-20261112` (base `claude/payroll-ai-rc-20261112` at `e636e8f96`, which journals
+`5129_payroll_history_effective_reads` at idx 4529 / when 1793330004829) allocates `5130_pay_formula_ai_draft_job` at
+idx 4530 / when 1793330004830, keeping the shared offset (tag 51NN, idx 45NN, when …48NN). PR 240 still holds `5128`.
+A survey of every origin head and local worktree on 12 November 2026 found no other claim between 5130 and 5199 (the
+recruitment branch `claude/rea-web-app-reconstruction-2c12ee` holds 5200–5215). One new table with its index, row
+security and grants; no existing object changes. Recheck peer claims and the installed ledger at admission; this
+grants no installation authority.
+
 # Payroll history effective reads — 12 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/payroll-batch-totals-20261112` (base `origin/main` at `2a2495919`, the build installed on production)

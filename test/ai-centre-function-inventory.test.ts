@@ -126,6 +126,8 @@ const internalGatewayCarriers:Readonly<Record<string,string>>={
  'core/teras-wiring/model-client.ts#gatewayModelClient':'core/teras-wiring/turn.ts#runConversationTurn',
  'core/handbook/provider-model.ts#gatewayPolicyValueModel':'core/handbook/policies.ts#readPolicyValues',
  'core/personnel-import-assistance.ts#reopenPersonnelImportHeaders':'explicit retained-result viewer; execute(ctx,value,true) never dispatches',
+ // The background budget of the registered pay_formula_draft operation: same governedDraft path and read:operation_pay_formula_draft control.
+ 'core/pay-formula-ai.ts#draftPayFormulaInBackground':'core/pay-formula-ai-job.ts#startPayFormulaDraftJob',
 };
 
 describe('discovered AI execution entry points',()=>{

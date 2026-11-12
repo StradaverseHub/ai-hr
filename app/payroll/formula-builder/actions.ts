@@ -1,5 +1,6 @@
 'use server';
 import {revalidatePath} from 'next/cache';
+import {after} from 'next/server';
 import {getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
 import {registerPayFormulaPersonnelField,getPayFormula,savePayFormula,testPayFormula,samplePayFormula,deletePayFormula,saveFormulaAccumulationGroup} from '@/packs/payroll/service';
@@ -41,13 +42,21 @@ export async function searchFormulaEmployeesAction(input:{query:string;companyId
 
 export async function listFormulaBatchesAction(input:{companyId:string;period:string;cycleId:string}){return execute(async()=>{const {listPayFormulaBatches}=await import('@/packs/payroll/service');return listPayFormulaBatches(await getSession(),input);});}
 
-export async function draftFormulaAction(input:unknown){
- try{const {draftPayFormula}=await import('@/packs/payroll/service');return {ok:true as const,value:await draftPayFormula(await getSession(),input)};}
- catch(error){
-  const t=await getTranslations('payFormula.generator');
-  const code=error instanceof Error&&error.name==='AiPrivacyGateError'?'reviewRequired':error instanceof Error&&error.message==='not_configured'?'unavailable':'failed';
-  return {ok:false as const,error:t(code)};
- }
+/** Starts the AI Formula Generator and returns at once: the draft is produced after this response (core/pay-formula-ai-job.ts,
+ * next/server `after`), and the screen polls readFormulaDraftAction. Nothing is saved, activated or applied. */
+export async function startFormulaDraftAction(input:unknown){
+ try{const {startPayFormulaDraftJob}=await import('@/packs/payroll/service');return {ok:true as const,value:await startPayFormulaDraftJob(await getSession(),input,work=>after(work))};}
+ catch{const t=await getTranslations('payFormula.generator');return {ok:false as const,error:t('failed')};}
+}
+/** The signed-in author's current generation (one primary-key read); null when there is none or it expired. */
+export async function readFormulaDraftAction(){
+ try{const {readPayFormulaDraftJob}=await import('@/packs/payroll/service');return {ok:true as const,value:await readPayFormulaDraftJob(await getSession())};}
+ catch{const t=await getTranslations('payFormula.generator');return {ok:false as const,error:t('failed')};}
+}
+/** Clear: removes the author's finished draft. A running generation is left to finish. */
+export async function discardFormulaDraftAction(){
+ try{const {discardPayFormulaDraftJob}=await import('@/packs/payroll/service');await discardPayFormulaDraftJob(await getSession());return {ok:true as const,value:null};}
+ catch{const t=await getTranslations('payFormula.generator');return {ok:false as const,error:t('failed')};}
 }
 
 export async function registerPersonnelFormulaFieldAction(input:{sourceKey:string;label:string;description:string;enabled:boolean}){
