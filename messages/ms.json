@@ -34539,7 +34539,10 @@
       "dateOfBirth": "Tarikh lahir",
       "gender": "Jantina",
       "nationality": "Kewarganegaraan",
-      "maritalStatus": "Status perkahwinan"
+      "maritalStatus": "Status perkahwinan",
+      "companyId": "ID dalaman syarikat",
+      "companyName": "Nama sah syarikat",
+      "companyCode": "Kod syarikat"
     },
     "parameter": {
       "payItem": "Item gaji",
@@ -34703,7 +34706,10 @@
       "missing_return": "Sesetengah kes tidak memberikan amaun. Tambah Else dengan Return, contohnya Return 0.",
       "division_by_zero": "Ini membahagi dengan 0, yang tidak boleh dilakukan oleh gaji. Tukar nombor pembahagi.",
       "possible_zero_divisor": "Ini membahagi dengan {name}. Jika nilainya 0, gaji akan berhenti dengan ralat pengiraan bagi pekerja itu. Pertimbangkan untuk menyemak 0 dahulu.",
-      "blocked": "Betulkan masalah yang disenaraikan di bawah Semakan sebelum menyimpan."
+      "blocked": "Betulkan masalah yang disenaraikan di bawah Semakan sebelum menyimpan.",
+      "internal_id_comparedCompany": "companyId ialah ID dalaman syarikat, jadi ia tidak akan sama dengan \"{value}\". Gunakan companyCode untuk kod syarikat, atau companyName untuk nama sah.",
+      "internal_id_compared": "{name} ialah ID dalaman, jadi ia tidak akan sama dengan \"{value}\". Pilih nilai daripada senarai nilai yang dibenarkan untuk medan ini.",
+      "internal_id_comparedSuggest": "{name} ialah ID dalaman, jadi ia tidak akan sama dengan \"{value}\". Pilih nilai daripada senarai nilai yang dibenarkan untuk medan ini, atau gunakan {suggestion}."
     },
     "testArea": {
       "title": "Ujian & Keputusan Formula",
@@ -34787,7 +34793,10 @@
         "dateOfBirth": "Tarikh lahir",
         "gender": "Jantina",
         "nationality": "Kewarganegaraan",
-        "maritalStatus": "Status perkahwinan"
+        "maritalStatus": "Status perkahwinan",
+        "companyId": "ID dalaman syarikat",
+        "companyName": "Nama sah syarikat",
+        "companyCode": "Kod syarikat"
       },
       "conditions": "Syarat yang disahkan"
     }

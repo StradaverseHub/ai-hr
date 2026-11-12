@@ -34539,7 +34539,10 @@
       "dateOfBirth": "出生日期",
       "gender": "性别",
       "nationality": "国籍",
-      "maritalStatus": "婚姻状况"
+      "maritalStatus": "婚姻状况",
+      "companyId": "公司内部 ID",
+      "companyName": "公司法定名称",
+      "companyCode": "公司代码"
     },
     "parameter": {
       "payItem": "薪资项目",
@@ -34703,7 +34706,10 @@
       "missing_return": "有些情况没有给出金额。请添加带有 Return 的 Else，例如 Return 0。",
       "division_by_zero": "这里除以 0，薪资无法进行此计算。请更改除数。",
       "possible_zero_divisor": "这里除以 {name}。如果它为 0，该员工的薪资将因计算错误而停止。建议先检查是否为 0。",
-      "blocked": "请修正“保存前检查”中列出的问题。"
+      "blocked": "请修正“保存前检查”中列出的问题。",
+      "internal_id_comparedCompany": "companyId 是公司的内部 ID，因此永远不会等于“{value}”。公司代码请使用 companyCode，法定名称请使用 companyName。",
+      "internal_id_compared": "{name} 是内部 ID，因此永远不会等于“{value}”。请从该字段的允许值列表中选择。",
+      "internal_id_comparedSuggest": "{name} 是内部 ID，因此永远不会等于“{value}”。请从该字段的允许值列表中选择，或使用 {suggestion}。"
     },
     "testArea": {
       "title": "公式测试与结果",
@@ -34787,7 +34793,10 @@
         "dateOfBirth": "出生日期",
         "gender": "性别",
         "nationality": "国籍",
-        "maritalStatus": "婚姻状况"
+        "maritalStatus": "婚姻状况",
+        "companyId": "公司内部 ID",
+        "companyName": "公司法定名称",
+        "companyCode": "公司代码"
       },
       "conditions": "已验证的条件"
     }

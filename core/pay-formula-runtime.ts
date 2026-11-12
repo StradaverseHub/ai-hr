@@ -113,7 +113,9 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
   let value:unknown,sourceId:string|undefined;
   if(adapter.adapter==='company'){
    if(adapter.column==='id')value=context.companyId;
-   else {const [row]=await tx.execute<{value:unknown}>(sql`select legal_name as value from company where id=${context.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid`);value=row?.value;}
+   // companyId is the validated effective company for context.asOf; its code and name are read from that
+   // same row. The column is closed adapter metadata (company_label or legal_name), never input.
+   else {const column=adapter.column==='company_label'?sql`company_label`:sql`legal_name`;const [row]=await tx.execute<{value:unknown}>(sql`select ${column} as value from company where id=${context.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid`);value=row?.value;}
   }else if(adapter.adapter==='assignment'){
    const rows=await tx.execute<{id:string;value:unknown}>(sql`select a.id,${sql.identifier('a')}.${sql.identifier(adapter.column)}::text as value from assignment a join employment on employment.id=a.employment_id where a.employment_id=${context.employmentId}::uuid and a.tenant_id=${ctx.tenantId}::uuid and coalesce(a.company_id,${employmentInformationAt('companyId',sql`${context.asOf}::date`,sql`${employment.companyId}`)}::uuid)=${context.companyId}::uuid and a.valid_from<=${context.asOf}::date and (a.valid_to is null or a.valid_to>${context.asOf}::date) and a.superseded_at is null`);if(rows.length===1){value=rows[0].value;sourceId=rows[0].id;}
   }else if(adapter.adapter==='derived'){

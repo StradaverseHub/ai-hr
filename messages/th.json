@@ -34539,7 +34539,10 @@
       "dateOfBirth": "วันเกิด",
       "gender": "เพศ",
       "nationality": "สัญชาติ",
-      "maritalStatus": "สถานภาพสมรส"
+      "maritalStatus": "สถานภาพสมรส",
+      "companyId": "ID ภายในของบริษัท",
+      "companyName": "ชื่อนิติบุคคลของบริษัท",
+      "companyCode": "รหัสบริษัท"
     },
     "parameter": {
       "payItem": "รายการเงินเดือน",
@@ -34703,7 +34706,10 @@
       "missing_return": "บางกรณีไม่ให้จำนวนเงิน ให้เพิ่ม Else พร้อม Return เช่น Return 0",
       "division_by_zero": "ตรงนี้หารด้วย 0 ซึ่งระบบเงินเดือนทำไม่ได้ ให้เปลี่ยนตัวหาร",
       "possible_zero_divisor": "ตรงนี้หารด้วย {name} หากค่าเป็น 0 การคำนวณเงินเดือนของพนักงานคนนั้นจะหยุดพร้อมข้อผิดพลาด ควรตรวจสอบค่า 0 ก่อน",
-      "blocked": "แก้ไขปัญหาที่แสดงในส่วนตรวจสอบก่อนบันทึก"
+      "blocked": "แก้ไขปัญหาที่แสดงในส่วนตรวจสอบก่อนบันทึก",
+      "internal_id_comparedCompany": "companyId คือ ID ภายในของบริษัท จึงไม่มีวันเท่ากับ \"{value}\" ใช้ companyCode สำหรับรหัสบริษัท หรือ companyName สำหรับชื่อนิติบุคคล",
+      "internal_id_compared": "{name} คือ ID ภายใน จึงไม่มีวันเท่ากับ \"{value}\" ให้เลือกค่าจากรายการค่าที่อนุญาตของฟิลด์นี้",
+      "internal_id_comparedSuggest": "{name} คือ ID ภายใน จึงไม่มีวันเท่ากับ \"{value}\" ให้เลือกค่าจากรายการค่าที่อนุญาตของฟิลด์นี้ หรือใช้ {suggestion}"
     },
     "testArea": {
       "title": "ทดสอบสูตรและผลลัพธ์",
@@ -34787,7 +34793,10 @@
         "dateOfBirth": "วันเกิด",
         "gender": "เพศ",
         "nationality": "สัญชาติ",
-        "maritalStatus": "สถานภาพสมรส"
+        "maritalStatus": "สถานภาพสมรส",
+        "companyId": "ID ภายในของบริษัท",
+        "companyName": "ชื่อนิติบุคคลของบริษัท",
+        "companyCode": "รหัสบริษัท"
       },
       "conditions": "เงื่อนไขที่ตรวจสอบแล้ว"
     }
