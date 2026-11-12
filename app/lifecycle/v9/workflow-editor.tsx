@@ -83,10 +83,11 @@ function StepEditor({ step, index, config, module, disabled, change, users }: { 
   </div>;
 }
 function WorkflowTest({ workflow, cases }: Pick<Props, 'config' | 'cases' | 'users'> & { workflow: M.Workflow }) {
-  const [id, setId] = useState(''), [result, setResult] = useState<Awaited<ReturnType<typeof planV9Workflow>> | null>(null);
+  const [id, setId] = useState(''), [answer, setAnswer] = useState<{ key: string; value: Awaited<ReturnType<typeof planV9Workflow>> } | null>(null);
   const candidate = cases.find(c => c.id === id && c.module === workflow.module && c.state !== 'cancelled');
   // The server looks every recipient up for the chosen case and masks personal email where the viewer may not see it.
-  const definition = JSON.stringify(workflow);
-  useEffect(() => { let active = true; setResult(null); if (candidate) void planV9Workflow(candidate.id, JSON.parse(definition)).then(value => { if (active) setResult(value); }).catch(() => { if (active) setResult({ ok: false, error: 'The dry run could not be prepared. Try again.' }); }); return () => { active = false; }; }, [candidate, definition]);
+  const definition = JSON.stringify(workflow), key = candidate ? candidate.id + ':' + definition : '';
+  useEffect(() => { let active = true; if (candidate) void planV9Workflow(candidate.id, JSON.parse(definition)).then(value => { if (active) setAnswer({ key: candidate.id + ':' + definition, value }); }).catch(() => { if (active) setAnswer({ key: candidate.id + ':' + definition, value: { ok: false, error: 'The dry run could not be prepared. Try again.' } }); }); return () => { active = false; }; }, [candidate, definition]);
+  const result = answer?.key === key ? answer.value : null;
   return <section className="v9-workflow-section v9-stack" aria-label="Dry run"><h3>Dry run</h3><p className="v9-muted">A dry run shows what would happen and who each email reaches. Nothing is sent and nothing is saved.</p><Field label="Test case"><select value={id} onChange={e => setId(e.target.value)}><option value="">Choose a case…</option>{cases.filter(c => c.module === workflow.module && c.state !== 'cancelled').map(c => <option key={c.id} value={c.id}>{c.facts.name} · {c.number}</option>)}</select></Field>{candidate && <div className="v9-stack" aria-label="Dry run result"><div className="v9-heading"><strong>For {candidate.facts.name}</strong><Button onClick={() => setId('')}>Clear</Button></div>{!result ? <p role="status">Preparing the dry run…</p> : !result.ok ? <p role="alert">{result.error}</p> : result.plan.lines.map((line, index) => <p key={index} className={'v9-notice' + (line.ok ? '' : ' v9-warning')}>{line.text}</p>)}</div>}</section>;
 }
