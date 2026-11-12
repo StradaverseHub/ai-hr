@@ -587,6 +587,8 @@ function foundText(d: ExceptionDay, t: T): string {
   if (d.flag === 'late') {
     parts.push(d.lateMinutes != null ? t('maFoundLateBy', { minutes: d.lateMinutes }) : t('maFoundLateUnknown'));
   }
+  // 2f803985 — Show Lateness Exception After Offset: the lateness the overtime offset did not absorb.
+  if (d.latenessAfterOffsetMinutes != null) parts.push(t('maFoundLateAfterOffset', { minutes: d.latenessAfterOffsetMinutes }));
   if (d.earlyOutMinutes != null && d.earlyOutMinutes > 0) {
     parts.push(t('maFoundEarlyBy', { minutes: d.earlyOutMinutes }));
   }

@@ -19,8 +19,8 @@ import { SCHEDULE, scheduleGroupEditPath, scheduleGroupNewPath } from './schedul
 import { failScheduleGroup, okScheduleGroup } from '../_redirects';
 import { withTenant } from '@/db/client';
 import { lockAccessConfigurationWriteTx } from '@/core/access-configuration-lock';
-import { sql } from 'drizzle-orm';
-import { getScheduleRotation, lockAttendanceClockPolicyConfigurationTx, saveScheduleGroupClockPolicy, saveScheduleRotation } from '@/packs/attendance/service';
+import { getScheduleRotation, lockAttendanceClockPolicyConfigurationTx, saveScheduleGroupClockPolicy, saveScheduleGroupOvertimeSetting, saveScheduleRotation } from '@/packs/attendance/service';
+import { readScheduleOvertimeSettingFields } from '../attendance/schedule/overtime-setting-fields';
 import { readScheduleClockPolicyFields } from '../attendance/schedule/clock-policy-fields';
 import { parseOtRows } from '../attendance/schedule/overtime-fields';
 import type { RotationCycle } from '@/core/week-pattern';
@@ -120,27 +120,21 @@ function allowedShiftIds(fd: FormData): string[] | null {
 export async function createAttendanceRuleAction(fd: FormData) {
   const s = await getSession();
   let created: { id: string };
-  let section: 'general' | 'attendance' = 'general';
+  let section: 'general' | 'attendance' | 'overtime' = 'general';
   try {
     section='attendance';
     const clock = readScheduleClockPolicyFields(fd);
-    const shiftIds = allowedShiftIds(fd);
-    const weekdays = Array.from({length:7}, (_,index)=>String(fd.get(`createDayKind_${index+1}`)??''));
-    if (weekdays.some(kind=>!['','full','half','off','rest'].includes(kind))) throw new Error('Choose a valid schedule for each day.');
-    const week=weekdays.some(Boolean)?{
-      weeklyPattern: weekdays.flatMap((kind,index)=>kind==='full'?[index+1]:[]),
-      halfPattern: weekdays.flatMap((kind,index)=>kind==='half'?[index+1]:[]),
-      offPattern: weekdays.flatMap((kind,index)=>kind==='off'?[index+1]:[]),
-    }:null;
+    // 2f803985 — the seven Monday–Sunday dropdowns are gone: "Set up the first dated rotation with this
+    // group" (ticked by default) is the only place Day Type and Shift are set. Unticked, the group declares
+    // no week and each employee follows their own assigned shift's week, as "Use the assigned shift" does.
+    section='overtime';
+    const overtime = readScheduleOvertimeSettingFields(fd);
     section='general';
+    const shiftIds = allowedShiftIds(fd);
     created = await withTenant(s, async tx => {
       await lockAccessConfigurationWriteTx(tx,s.tenantId);
       if (clock) await lockAttendanceClockPolicyConfigurationTx(tx, s);
-      if(week){
-        const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.principal_snapshot_current() and app.is_group_admin() as allowed`);
-        if(!authority?.allowed)throw new Error('A group-wide HR administrator is required to set a shared working week.');
-      }
-      const result = await createAttendanceRule(s, {...ruleFields(fd),...week}, tx);
+      const result = await createAttendanceRule(s, ruleFields(fd), tx);
       if (shiftIds?.length) await setRuleShifts(s, {ruleId: result.id, shiftIds, expectedShiftIds:[]}, tx);
       if (fd.get('createRotation')==='1') {
         // c03670cc — the Duty Roster lives in General, directly under Shift Allowed.
@@ -160,6 +154,13 @@ export async function createAttendanceRuleAction(fd: FormData) {
         const reason = (await getTranslations('scheduleGroupEditor'))('systemReason');
         await saveScheduleGroupClockPolicy(s, {ruleId: result.id, scope: clock.scope, policy: clock.policy,
           expected: clock.expected, reason}, tx);
+      }
+      if (overtime) {
+        // Same transaction as the group: the Overtime Setting is saved with it or not at all.
+        section = 'overtime';
+        const reason = (await getTranslations('scheduleOvertimeSetting'))('systemReason');
+        await saveScheduleGroupOvertimeSetting(s, {ruleId: result.id, scope: overtime.scope, effectiveFrom: overtime.effectiveFrom,
+          setting: overtime.setting, expectedToken: overtime.token, reason}, tx);
       }
       return result;
     });

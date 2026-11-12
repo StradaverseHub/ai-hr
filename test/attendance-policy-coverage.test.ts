@@ -37,11 +37,12 @@ describe('canonical parent physical coverage',()=>{
  });
  it.each(['earliest','latest'] as const)('keeps physical coverage unchanged when %s dated-source attribution owns a rounded count',direction=>{
   const who=identity(),p=proposal([{from:1430,to:1450}],who.date,{mode:'up',step:30},direction),view=prepare(who,p);
-  expect(view).toMatchObject({state:'prepared',countAttribution:{physicalMinutes:20,roundedMinutes:10,minutes:30}});
+  // 2f803985: each date's 10 minutes round up on their own (30 + 30), never extending the physical coverage.
+  expect(view).toMatchObject({state:'prepared',countAttribution:{physicalMinutes:20,roundedMinutes:40,minutes:60}});
   if(view.state!=='prepared'||!view.countAttribution)throw Error('Expected separate count/source coverage');
   const midnight=Date.parse(who.date+'T00:00:00+08:00');
   expect(view.intervals).toEqual([{fromEpochMillisecond:midnight+1430*60000,toEpochMillisecond:midnight+1450*60000}]);
-  expect(view.countAttribution.parts.map(part=>part.minutes)).toEqual(direction==='earliest'?[20,10]:[10,20]);
+  expect(view.countAttribution.parts.map(part=>part.minutes)).toEqual([30,30]);
   const adjacent=prepared({...who,sourceId:id(30),calculationId:id(31)},[{from:1450,to:1460}]);
   expect(conflicts(adjacent,[view])).toEqual([]);
   if(p.state!=='proposed'||p.duration.status!=='calculated'||!p.duration.classes[0].roundingCountAttribution)throw Error('Expected bound count');
