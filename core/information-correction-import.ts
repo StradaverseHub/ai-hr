@@ -1,6 +1,6 @@
 import {organisationImportWarningsTx} from './derived-organisation-display';
 import {and,eq,sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {employment,company} from '../db/schema';
 import {workforceEmploymentPredicate} from './workforce-access';
 import {allocationCompanyCode} from './cost-allocation-import';
@@ -11,19 +11,42 @@ import {parseInformationWorkbookVersioned} from '../lib/information-correction-w
 import {INFORMATION_FIELD_CAPTIONS,INFORMATION_LABEL_FIELDS,type InformationChanges,type InformationField,type InformationHeader,type InformationImportPlan,type InformationImportResult,type InformationLogRow} from '../lib/information-correction';
 import {publicErrorMessage} from '../lib/public-error';
 import {pgSqlState} from '../lib/db-error';
+const rowError=(error:unknown)=>error instanceof InformationCorrectionError?error.message:publicErrorMessage(error);
+/** Employments by company and Employee ID, for every key in one statement; `view` adds the Workforce view check. */
+async function employmentsByCodeTx(tx:Tx,ctx:SessionContext,keys:{companyId:string;code:string}[],view:boolean){
+ const found=new Map<string,string[]>(),unique=[...new Map(keys.map(key=>[key.companyId+'|'+key.code,key])).values()];
+ if(!unique.length)return found;
+ const rows=await tx.select({id:employment.id,companyId:employment.companyId,code:employment.employeeCode}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),
+  sql`(${employment.companyId},${employment.employeeCode}) in (${sql.join(unique.map(key=>sql`(${key.companyId}::uuid,${key.code})`),sql`,`)})`,
+  view?workforceEmploymentPredicate(sql`${employment.id}`,'view'):undefined));
+ for(const row of rows){const key=row.companyId+'|'+row.code;found.set(key,[...(found.get(key)??[]),row.id]);}
+ return found;
+}
 export async function previewInformationUpload(ctx:SessionContext,input:{name:string;content:Buffer;operationKey:string}){
  if(!input.name.toLowerCase().endsWith('.xlsx'))throw new InformationCorrectionError('Choose the .xlsx Information-Only Correction template.');
  const {version,rows}=parseInformationWorkbookVersioned(input.content),options=await informationCorrectionOptions(ctx);
  const companyIds=new Set<string>(),targets=new Map<string,number[]>();
+ const companyOf=(code:string)=>{const companies=options.companies.filter(c=>c.code.toUpperCase()===code.toUpperCase());return companies.length===1?companies[0]:null;};
+ // Every row's employee and every Direct Superior are resolved in one statement each, with the predicates of the
+ // per-row lookups they replace, instead of one transaction per row (SCALE rule 2). Each row is then reviewed by the
+ // correction owner, and its organisation warnings are read in one transaction after the reviews.
+ const employeeKeys:{companyId:string;code:string}[]=[],superiorKeys:{companyId:string;code:string}[]=[];
  for(const row of rows){
-  const companies=options.companies.filter(c=>c.code.toUpperCase()===row.companyCode.toUpperCase());
-  if(companies.length!==1){row.errors.push('Company Code is unknown, ambiguous or outside your permission.');continue;}
-  const co=companies[0];companyIds.add(co.id);
+  const co=companyOf(row.companyCode);if(!co||row.errors.length)continue;
+  employeeKeys.push({companyId:co.id,code:row.employeeCode});
+  const superior=version===2?row.values['Direct Superior']:undefined,destination=row.values['New Company Code']?companyOf(row.values['New Company Code']):co;
+  if(superior&&destination)superiorKeys.push({companyId:destination.id,code:superior});
+ }
+ const {employees,superiors}=employeeKeys.length?await withTenant(ctx,async tx=>({employees:await employmentsByCodeTx(tx,ctx,employeeKeys,false),superiors:await employmentsByCodeTx(tx,ctx,superiorKeys,true)})):{employees:new Map<string,string[]>(),superiors:new Map<string,string[]>()};
+ for(const row of rows){
+  const co=companyOf(row.companyCode);
+  if(!co){row.errors.push('Company Code is unknown, ambiguous or outside your permission.');continue;}
+  companyIds.add(co.id);
   if(row.errors.length)continue;
   try{
-   const matches=await withTenant(ctx,tx=>tx.select({id:employment.id}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.companyId,co.id),eq(employment.employeeCode,row.employeeCode))).limit(2));
+   const matches=employees.get(co.id+'|'+row.employeeCode)??[];
    if(matches.length!==1)throw new InformationCorrectionError('Employee ID is unknown or ambiguous within the existing company.');
-   targets.set(matches[0].id,[...(targets.get(matches[0].id)??[]),row.row]);
+   targets.set(matches[0],[...(targets.get(matches[0])??[]),row.row]);
    const changes:InformationChanges={};
    if(row.values['New Company Code']){const dest=options.companies.filter(c=>c.code.toUpperCase()===row.values['New Company Code']!.toUpperCase());if(dest.length!==1)throw new InformationCorrectionError('New Company Code is unknown, ambiguous or outside your permission.');changes.companyId=dest[0].id;companyIds.add(dest[0].id);}
    if(row.values['Job Grade']){const grades=options.grades.filter(g=>g.code===row.values['Job Grade']);if(grades.length!==1)throw new InformationCorrectionError('Job Grade is not an active system code.');changes.gradeId=grades[0].id;}
@@ -32,11 +55,17 @@ export async function previewInformationUpload(ctx:SessionContext,input:{name:st
    if(row.values['Employment Type'])changes.employmentType=row.values['Employment Type'];
    if(row.values['Contract End Date'])changes.contractEndDate=row.values['Contract End Date'];
    if(row.values['Internship End Date'])changes.internshipEndDate=row.values['Internship End Date'];
-   if(version===2)await extendedChanges(ctx,options,row.values,changes.companyId??co.id,changes);
-   row.preview=await previewInformationCorrection(ctx,{employmentId:matches[0].id,changes,reason:row.values['Correction Reason']!},{extended:true});
-   row.warnings=(await withTenant(ctx,tx=>organisationImportWarningsTx(tx,ctx,{companyId:row.preview!.after.companyId!,asOf:row.preview!.effectiveOn,...row.ignoredOrganisation}))).warnings;
-  }catch(error){row.errors.push(error instanceof InformationCorrectionError?error.message:publicErrorMessage(error));}
+   if(version===2)extendedChanges(options,row.values,changes.companyId??co.id,changes,superiors);
+   row.preview=await previewInformationCorrection(ctx,{employmentId:matches[0],changes,reason:row.values['Correction Reason']!},{extended:true});
+  }catch(error){row.errors.push(rowError(error));}
  }
+ // Each reviewed row's warnings in its own savepoint, so one refusal stays that row's error, as before.
+ const reviewed=rows.filter(row=>row.preview),settled=new Set<number>();
+ if(reviewed.length)try{await withTenant(ctx,async tx=>{for(const row of reviewed){
+  try{row.warnings=(await tx.transaction(each=>organisationImportWarningsTx(each,ctx,{companyId:row.preview!.after.companyId!,asOf:row.preview!.effectiveOn,...row.ignoredOrganisation}))).warnings;}
+  catch(error){row.errors.push(rowError(error));}
+  settled.add(row.row);
+ }});}catch(error){for(const row of reviewed)if(!settled.has(row.row))row.errors.push(rowError(error));}
  for(const target of targets.values())if(target.length>1)for(const row of rows)if(target.includes(row.row))row.errors.push('Multiple rows resolve to the same employee.');
  const valid=rows.filter(r=>!r.errors.length&&r.preview?.changed.length).length;
  const plan=sealImportPlan<InformationImportPlan>({version:1,templateVersion:version,previewHash:'',counts:{total:rows.length,valid,invalid:rows.filter(r=>r.errors.length).length},issues:[],rows});
@@ -94,7 +123,7 @@ const LABEL_COLUMNS=INFORMATION_LABEL_FIELDS.map(field=>[INFORMATION_FIELD_CAPTI
 const PLAIN_COLUMNS=(['probationValue','probationUnit','extendedProbationValue','extendedProbationUnit','confirmationDate','noticeBeforeConfirmationValue','noticeBeforeConfirmationUnit','noticeAfterConfirmationValue','noticeAfterConfirmationUnit'] as const).map(field=>[INFORMATION_FIELD_CAPTIONS[field],field] as const);
 /** ccd3a65c — version 2 cells resolved against the resulting company's options. Labels, periods and dates are
  * passed as typed; the correction command validates them and names the column. */
-async function extendedChanges(ctx:SessionContext,options:Awaited<ReturnType<typeof informationCorrectionOptions>>,values:Partial<Record<InformationHeader,string>>,companyId:string,changes:InformationChanges){
+function extendedChanges(options:Awaited<ReturnType<typeof informationCorrectionOptions>>,values:Partial<Record<InformationHeader,string>>,companyId:string,changes:InformationChanges,superiors:Map<string,string[]>){
  for(const [header,kind,field,sheet] of ORGANISATION_COLUMNS){
   const value=values[header];if(!value)continue;
   const found=options.organisation.filter(row=>row.companyId===companyId&&row.kind===kind&&row.code.toUpperCase()===value.toUpperCase());
@@ -105,9 +134,9 @@ async function extendedChanges(ctx:SessionContext,options:Awaited<ReturnType<typ
  const superior=values['Direct Superior'];
  if(superior){
   // View-scoped: a superior the user cannot view reads exactly like an unknown Employee ID.
-  const managers=await withTenant(ctx,tx=>tx.select({id:employment.id}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.companyId,companyId),eq(employment.employeeCode,superior),workforceEmploymentPredicate(sql`${employment.id}`,'view'))).limit(2));
+  const managers=superiors.get(companyId+'|'+superior)??[];
   if(managers.length!==1)throw new InformationCorrectionError('Direct Superior: the Employee ID is unknown in this company or not visible to you.');
-  changes.managerEmploymentId=managers[0].id;
+  changes.managerEmploymentId=managers[0];
  }
 }
 type ConfirmedRow={row:number;status:'applied'|'failed'|'unchanged';errors:string[]};

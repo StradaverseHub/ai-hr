@@ -9,7 +9,7 @@ import {getEmploymentCostAllocations,previewEmploymentCostAllocations,saveEmploy
 import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {assertWorkforceEmploymentTx,WorkforceAccessError} from '../core/workforce-access';
 import {pgSqlState} from '../lib/db-error';
-import {previewCostAllocationImport,costAllocationReferences,costAllocationWorkbookReferences,previewCostAllocationUpload,confirmCostAllocationUpload} from '../core/cost-allocation-import';
+import {previewCostAllocationImport,previewCostAllocationImportTx,costAllocationReferences,costAllocationWorkbookReferences,previewCostAllocationUpload,confirmCostAllocationUpload} from '../core/cost-allocation-import';
 import {toCsv} from '../lib/csv';
 import {ALLOCATION_COLUMNS} from '../lib/employment-cost-allocation';
 const allocationCsv=(records:Record<string,string>[])=>Buffer.from(toCsv([[...ALLOCATION_COLUMNS],...records.map(r=>ALLOCATION_COLUMNS.map(k=>r[k]??''))]));
@@ -176,6 +176,23 @@ describe('Effective-dated employment cost allocation owner',()=>{
   await expect(costAllocationReferences(scoped,other.id)).rejects.toThrow(WorkforceAccessError);
   const own=await costAllocationReferences(scoped,b.companyId);expect(own.map(r=>r.code)).toEqual(refs.costCenters.map(r=>r.code));
   expect(own).toEqual(await costAllocationReferences(a,b.companyId));
+ });
+ it('reviews a file under the shared lock as the locked preview does, with the same refusals for another company and tenant',async()=>{
+  const records=[{company_code:'ACME',employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'}];
+  // The review (shared Access lock, no row locks since 12 November 2026) and the confirm's locked preview agree exactly.
+  const review=await previewCostAllocationImport(a,records);expect(review.validCount).toBe(1);
+  expect(review).toEqual(await withTenant(a,tx=>previewCostAllocationImportTx(tx,a,records)));
+  const[other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Other allocation company',companyLabel:'OTHERCO'}).returning();
+  const login=async(companyId:string,name:string)=>{const[p]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:name,primaryEmail:name.replace(/\W+/g,'-').toLowerCase()+'@example.test'}).returning();const userId=await createAppUser(b.tenantId,p.id,'hr_admin');await owner.db.update(s.roleAssignment).set({companyId}).where(eq(s.roleAssignment.appUserId,userId));return{...a,userId,personId:p.id,grants:[{role:'hr_admin',companyId}]};};
+  const insider=await login(b.companyId,'Fictional company allocation administrator'),outsider=await login(other.id,'Fictional other company allocation administrator');
+  const own=await previewCostAllocationImport(insider,records);expect(own.groups).toEqual(review.groups);
+  const refused=['Row 2: Company Code "ACME" does not match a company you can import for.'];
+  const blocked=await previewCostAllocationImport(outsider,records);expect(blocked.validCount).toBe(0);expect(blocked.groups.map(g=>g.errors)).toEqual([refused]);
+  expect(await costAllocationWorkbookReferences(outsider)).toEqual({companies:[{code:'OTHERCO',name:'Other allocation company'}],costCenters:[]});
+  const foreign=await seedBase(),stranger=adminCtx(foreign);
+  const foreignReview=await previewCostAllocationImport(stranger,records);expect(foreignReview.validCount).toBe(0);expect(foreignReview.groups.map(g=>g.errors)).toEqual([refused]);
+  const foreignRefs=await costAllocationWorkbookReferences(stranger);expect(foreignRefs.companies.map(c=>c.name)).toEqual(['Acme Sdn Bhd']);expect(JSON.stringify(foreignRefs)).not.toMatch(/ACME|ALLOC-A|ALLOC-B/);
+  expect((await read()).revision).toBe(0);
  });
  it('resolves lowercase existing Employee IDs and Company Codes through the canonical normalizers',async()=>{
   const records=[{company_code:' acme ',employee_code:' alloc01 ',effective_date:today,operation:'Replace',cost_center_code:'ALLOC-A',percentage:'100'}];
