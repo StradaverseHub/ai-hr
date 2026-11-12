@@ -1,3 +1,33 @@
+# Board release 12 November 2026 — Rewards, dashboard and On/Off Boarding block (unapplied, allocated)
+
+Branch `claude/board-release-20261112` (from `claude/board-rewards-offcycle-20261112` at `f4bcb5de7`, merged with
+`claude/board-rewards-role-permissions-20261112` at `460308486` and `origin/alpha` at `987fe3d10`) allocates the board
+lanes' migrations as one block, tags `5400`–`5560`, using the lanes' draft offset (tag T, idx T − 600, when
+1793330004800 + (T − 5100)). Alpha's newest entries are `5129_payroll_history_effective_reads` and
+`5130_pay_formula_ai_draft_job` (when 1793330004829 / …830), so the block sits strictly above them. `5560` is new at
+this integration: it replaces the owner-owned `app.reward_limit_controls_access()` (from `5500`) so Limit Controls
+follows its Rewards Access Role permissions row; no purpose-owned object is replaced. A scan of every origin head's
+journal on 12 November 2026 found no other claim on tags 5400–5579 or on when 1793330005100–1793330005279; the only
+holders are this block's own lane branches, with the same tag, idx and when (the recruitment branch's 5200–5215 sit
+below it).
+
+| Tag | idx / when | Board items | SHA256 |
+| --- | ---: | --- | --- |
+| `5400_rewards_direct_configuration` | 4800 / 1793330005100 | 60f1fdcd | `0e55f9de5d62ef07719a876ae208d9206ebc43d716c3bbdba02094a3cb997c6e` |
+| `5420_rewards_dashboard_preparation_notices` | 4820 / 1793330005120 | 4de410ed, 356ae8c1 | `b0882911ef0802d34e67408810dfb455e935f25de54ac563460cd4b4755bef96` |
+| `5460_lifecycle_v9_email_recipients` | 4860 / 1793330005160 | 5a8c382c, 4a60b3ec, 6bdda222 | `117d86c07c68c2bc658b4a33e26797bf23b040ad998fa948dbae1ad1307ef3d0` |
+| `5480_offboarding_items_assignment_load` | 4880 / 1793330005180 | d1e26f81 | `d5dc8975f26a9091f1bafd089aa36619b30eaa222b02ab09538ec63397d22ed3` |
+| `5500_rewards_limit_controls` | 4900 / 1793330005200 | fc804e8c | `3a710dc0103dd39b50c734243fd7f2691d6f08dbfb5d94d388d7664eb7ef93b0` |
+| `5520_rewards_role_permission_grid` | 4920 / 1793330005220 | db14e49c | `e603208c9cb9ada2e35a7338ede22637dcf886c5763912e5273adce0fd7ce172` |
+| `5540_rewards_offcycle_company_balance` | 4940 / 1793330005240 | b945f0cc | `25bd51577444f2cea0a0c53a231156f591c6c2f0f0ce56e293aeae9d054850aa` |
+| `5560_rewards_limit_controls_role_level` | 4960 / 1793330005260 | fc804e8c + db14e49c | `04d12b358fb70088e9bd9be95b64aa5014068a80035bafc5a2b605f5a308c619` |
+
+`5520` replaces `app.reward_config_change_record` (owner function from `5400`) and `5540` then widens the
+`reward_config_change` area CHECK to include `offcycle`; the widened CHECK keeps `role_permission` and `limit`, so both
+compose in journal order. None of these migrations has been applied to any installation. If another migration is
+installed first with a when at or above 1793330005100, this block must move above it before installation. Recheck peer
+claims and the installed ledger at admission; this allocation grants no installation authority.
+
 # Background AI Formula Generator — 12 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/formula-ai-background-20261112` (base `claude/payroll-ai-rc-20261112` at `e636e8f96`, which journals
