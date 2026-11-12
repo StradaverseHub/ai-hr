@@ -138,6 +138,12 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/personnel-import-assistance.ts':'Header-mapping assistance of the employee import.',
  'core/personnel-import-evaluation.ts':'Evaluation custody of the employee import.',
  'core/personnel-import-operations.ts':'Operational field writes inside the employee import.',
+ // Recruitment slice 16: candidates are imported per company by recruitment administrators and the company's recruiters (the
+ // recruitment service decides, not an admin guard). Kept out of the AI Centre's import catalogue on purpose: the AI Centre's
+ // recruitment read stays counts only (docs/recruitment-reconstruction slice 16 case 113).
+ 'core/recruitment-candidate-import-worker.ts':'Bulk-job worker of the Recruitment candidate import (slice 16); not offered by the AI Centre.',
+ 'packs/recruitment/import.ts':'Recruitment candidate import and To assign list (slice 16), admitted per company by the recruitment service; not offered by the AI Centre.',
+ 'packs/recruitment/import-model.ts':'Pure file rules of the Recruitment candidate import (slice 16).',
  'core/personnel-register-import.ts':'Register sections inside the employee and section imports.',
  'core/register-import-worker.ts':'Background worker of the register section imports: captured writes applied in one release.',
  'core/section-import-job.ts':'Background admission and progress of the section and register imports.',

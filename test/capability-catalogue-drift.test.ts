@@ -64,6 +64,11 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/admin/leave-config/import/page.tsx':'leave_balances',
  'app/admin/leave/import/actions.ts':'leave_balances',
  'app/admin/leave/import/page.tsx':support('Redirect to the leave balance import page.'),
+ // Recruitment slice 16: the candidate import is admitted per company by the recruitment service (administrators and the company's
+ // recruiters), not by an admin guard, and is deliberately not an AI Centre import owner (the AI Centre recruitment read stays counts only).
+ 'app/recruitment/actions.ts':support('Recruitment server actions; the candidate import actions call the recruitment service, which admits operators per company.'),
+ 'app/recruitment/candidates/import/page.tsx':support('Recruitment candidate import page (slice 16); the recruitment service admits operators per company.'),
+ 'app/recruitment/candidates/import/template/route.ts':support('Recruitment candidate import template download (slice 16); no data, operators per company.'),
  'app/admin/pay-components/import/route.ts':'pay_codes',
  'app/admin/personnel/import/actions.ts':'employee_records',
  'app/admin/personnel/import/assistance-actions.ts':support('Header-mapping assistance of the employee import; its owner re-checks the caller.'),

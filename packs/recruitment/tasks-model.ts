@@ -17,7 +17,7 @@ export type TaskTab = (typeof TASK_TABS)[number];
 /** Things waiting for the viewer's action. */
 export const TODO_KINDS = [
   'requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry', 'screening', 'backgroundCheckAuthorisation', 'backgroundCheckOverdue',
-  'toSchedule', 'toScreen',
+  'toSchedule', 'toScreen', 'toAssign',
 ] as const;
 export type TodoKind = (typeof TODO_KINDS)[number];
 /** The viewer's personal to-dos (approval steps, feedback due; slice 10: an agency submission waiting for the
@@ -28,8 +28,9 @@ export const PERSONAL_TODO_KINDS = [
   'requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry', 'screening', 'backgroundCheckAuthorisation', 'backgroundCheckOverdue',
 ] as const;
 export type PersonalTodoKind = (typeof PERSONAL_TODO_KINDS)[number];
-/** Per-job counts: only on the Overview's To do tab, loaded after the page (D-035). */
-export const JOB_TODO_KINDS = ['toSchedule', 'toScreen'] as const;
+/** Per-job counts: only on the Overview's To do tab, loaded after the page (D-035); slice 16 adds the per-company To assign count
+ *  (candidates with no application, for the company's operators). */
+export const JOB_TODO_KINDS = ['toSchedule', 'toScreen', 'toAssign'] as const;
 
 /** Things that happened, per category. */
 export const UPDATE_KINDS = {
@@ -166,6 +167,8 @@ export function todoHref(kind: TodoKind, ids: { id: string; jobId?: string | nul
     case 'backgroundCheckAuthorisation':
     case 'backgroundCheckOverdue':
       return `/recruitment/applications/${encodeURIComponent(ids.applicationId ?? '')}?tab=checks#check-${encodeURIComponent(ids.id)}`;
+    case 'toAssign':
+      return `/recruitment/to-assign?company=${encodeURIComponent(ids.id)}`;
     case 'toSchedule':
     case 'toScreen': {
       const q = new URLSearchParams({ job: ids.jobId ?? ids.id, ...(ids.stageId ? { tab: ids.stageId } : {}) });

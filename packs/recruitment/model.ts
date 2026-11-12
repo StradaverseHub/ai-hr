@@ -97,6 +97,13 @@ export const RECRUITMENT_ERROR_CODES = [
   // Slice 15: the position template is disabled, deleted, of another company, or templates are off for the company; the company
   // already has the most templates.
   'template_unavailable', 'template_limit',
+  // Slice 16: the import file cannot be read as an import (detail: the reason); the file is not the one previewed; the caller
+  // already has an import running; the import already ended; the candidate is not on the To assign list; the job is not Open;
+  // an export has more rows than allowed (narrow the filters).
+  'import_file_invalid', 'import_changed', 'import_running', 'import_finished', 'not_to_assign', 'job_not_open', 'export_too_large',
+  // …another export of the person (or too many in the tenant) is running; an export or a preview ran out of time (narrow the
+  // filters / split the file); the person's previews for today are used.
+  'export_busy', 'export_too_slow', 'import_too_heavy', 'import_preview_limit',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

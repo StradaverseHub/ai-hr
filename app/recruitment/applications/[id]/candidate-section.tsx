@@ -85,6 +85,12 @@ export async function CandidateSection({ profile: p, applicationId, here, locale
           </dl>
         )}
         {!p.can.edit && <CustomFieldValues fields={p.custom} locale={locale} />}
+        {p.importNote && (
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+            <p className="text-xs text-muted-foreground">{t('importNote')}</p>
+            <p className="whitespace-pre-line">{p.importNote}</p>
+          </div>
+        )}
       </section>
 
       <section className={card} aria-labelledby="cand-entries">

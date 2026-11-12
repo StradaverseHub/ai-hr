@@ -5895,6 +5895,13 @@
       "when": 1793330004916,
       "tag": "5216_recruitment_position_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 4617,
+      "version": "7",
+      "when": 1793330004917,
+      "tag": "5217_recruitment_import_export",
+      "breakpoints": true
     }
   ]
 }

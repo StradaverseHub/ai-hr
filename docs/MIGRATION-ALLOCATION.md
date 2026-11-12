@@ -1,3 +1,21 @@
+# Recruitment slice 16 — 12 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after the slice 15 entry, `5217_recruitment_import_export` at
+idx 4617 / when 1793330004917. A read-only survey of the already-fetched refs (4,156 distinct ref tips, 577 distinct committed
+journal blobs; no new fetch), the working trees of all 190 registered worktrees (all journals readable) and 399 committed
+allocation-document blobs found no `5217_` migration file and no claim of this name, position or timestamp. `origin/main` and
+`origin/alpha` end at idx 4527 / when 1793330004827, below this block; recheck the target's applied watermark before admission (a
+lower timestamp can be silently skipped). 5217 adds the bulk-job kind `recruitment_candidate_import`, six tables
+(`recruitment_candidate_import`, `recruitment_candidate_import_row`, `recruitment_to_assign`, `recruitment_candidate_import_note`,
+`recruitment_export_template`, `recruitment_import_preview_quota`), one SELECT policy on `recruitment_candidate` (To assign candidates
+for the company's operators) and an owner-bound probe policy on `recruitment_application`, an AFTER INSERT trigger on
+`recruitment_application` that clears the To assign marker, guard triggers, `app.recruitment_candidate_duplicate_flags` and
+`app.recruitment_settle_candidate_import`, and restates
+`app.recruitment_destroy_candidate` (5215 body byte for byte) and `app.recruitment_delete_company_setup` (5216 body byte for byte)
+with added steps only. 5200–5216 are unapplied outside throwaway databases, CI and the branch author's local render database.
+Recheck peer claims, the published baseline and the ordered applied ledger before admission. The reservation grants no
+installation authority.
+
 # Recruitment slice 15 — 12 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after the slice 14 entry, `5216_recruitment_position_templates` at

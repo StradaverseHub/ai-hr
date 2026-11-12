@@ -12,6 +12,7 @@ import { addPoolCandidateToJobAction, removeCandidateFromPoolAction, unblockCand
 import { AddToPool } from '../pool-ui';
 import { CustomFilterSelect } from '../custom-fields-ui';
 import { NoRecruitmentCompany, Notice, Pill, RecruitmentTabs, klDate, klDateTime, recruitmentErrorText, recruitmentViewerAccess, selectCls, textareaCls } from '../shared';
+import { ExportPanel } from '../export-ui';
 
 type Search = { pool?: string; job?: string; reason?: string; since?: string; tag?: string; problem?: string; notice?: string; cf?: string };
 type T = Awaited<ReturnType<typeof getTranslations<'recruitment.pools'>>>;
@@ -118,6 +119,8 @@ async function PublicPool({ s, companyIds, poolIds, sp, t, tp, tc, locale }: {
   const here = `/recruitment/talent-pool?${new URLSearchParams(Object.entries({ job: sp.job ?? '', reason: sp.reason ?? '', since: sp.since ?? '', tag: sp.tag ?? '', cf: pool.customFilter ?? '' }).filter(([, v]) => v))}`;
   return (
     <>
+      <ExportPanel s={s} kind="talent_pool" companyIds={companyIds} returnTo={here.includes('?') ? `${here}&pool=public` : `${here}?pool=public`}
+        filters={{ job: sp.job, reason: sp.reason, since: sp.since, tag: sp.tag, cf: pool.customFilter ?? undefined }} />
       <dl className="grid grid-cols-2 gap-3 sm:max-w-md">
         <div className="rounded-xl border border-border bg-card px-4 py-3"><dt className="text-xs text-muted-foreground">{t('today')}</dt><dd className="text-2xl font-semibold tabular-nums">{pool.totals.today}</dd></div>
         <div className="rounded-xl border border-border bg-card px-4 py-3"><dt className="text-xs text-muted-foreground">{t('total')}</dt><dd className="text-2xl font-semibold tabular-nums">{pool.totals.total}</dd></div>

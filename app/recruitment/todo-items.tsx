@@ -24,6 +24,7 @@ export async function TodoItems({ items }: { items: RecruitmentTodo[] }) {
       case 'backgroundCheckOverdue': return { label: t('todo.backgroundCheckOverdue'), detail: line(candidate(item), item.title, item.number) };
       case 'toSchedule': return { label: t('todo.toSchedule', { count: item.count ?? 0, shown }), detail: line(item.title, item.number) };
       case 'toScreen': return { label: t('todo.toScreen', { count: item.count ?? 0, shown }), detail: line(item.title, item.number) };
+      case 'toAssign': return { label: t('todo.toAssign', { count: item.count ?? 0, shown }), detail: line(item.title) };
     }
   };
   return (

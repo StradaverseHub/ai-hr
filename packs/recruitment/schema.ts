@@ -824,3 +824,72 @@ export const recruitmentBackgroundCheckFile = pgTable('recruitment_background_ch
   uploadedAt: ts('uploaded_at').notNull().defaultNow(),
   uploadedByUserId: uuid('uploaded_by_user_id').notNull(),
 });
+
+// ── Slice 16 (db/migrations/5217_recruitment_import_export.sql) ───────────────────────────────────────────
+
+/** One candidate import (its id is the bulk job's): company, importer, the permission confirmation, rows in the file, the ending. */
+export const recruitmentCandidateImport = pgTable('recruitment_candidate_import', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+  permissionConfirmedAt: ts('permission_confirmed_at').notNull(),
+  fileRows: integer('file_rows').notNull(),
+  outcome: text('outcome').$type<'completed' | 'cancelled' | 'failed'>(),
+  finishedAt: ts('finished_at'),
+});
+
+/** One result per file row: ids, outcome, codes and field keys — never a value from the file. */
+export const recruitmentCandidateImportRow = pgTable('recruitment_candidate_import_row', {
+  importId: uuid('import_id').notNull(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  rowNum: integer('row_num').notNull(),
+  outcome: text('outcome').$type<'created' | 'failed' | 'invalid'>().notNull(),
+  candidateId: uuid('candidate_id'),
+  applicationId: uuid('application_id'),
+  jobId: uuid('job_id'),
+  jobResult: text('job_result').$type<'applied' | 'no_job' | 'unknown_job' | 'job_not_open' | 'job_not_allowed'>(),
+  possibleDuplicate: boolean('possible_duplicate').notNull().default(false),
+  needsReview: boolean('needs_review').notNull().default(false),
+  errorCode: text('error_code'),
+  errorFields: text('error_fields').array().notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+});
+
+/** A candidate with no application: who imported them and when, the job title as written, and whether they are hidden. */
+export const recruitmentToAssign = pgTable('recruitment_to_assign', {
+  candidateId: uuid('candidate_id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  importId: uuid('import_id'),
+  jobTitleAsWritten: text('job_title_as_written'),
+  possibleDuplicate: boolean('possible_duplicate').notNull().default(false),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+  hiddenAt: ts('hidden_at'),
+  hiddenByUserId: uuid('hidden_by_user_id'),
+});
+
+/** The notes column of an import file, per candidate (operator-only). */
+export const recruitmentCandidateImportNote = pgTable('recruitment_candidate_import_note', {
+  candidateId: uuid('candidate_id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  importId: uuid('import_id').notNull(),
+  note: text('note').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  createdByUserId: uuid('created_by_user_id').notNull(),
+});
+
+/** A saved export column set per company and export kind. */
+export const recruitmentExportTemplate = pgTable('recruitment_export_template', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  kind: text('kind').$type<'board' | 'talent_pool' | 'interview_feedback'>().notNull(),
+  name: text('name').notNull(),
+  columns: text('columns').array().notNull(),
+  ...audit,
+});

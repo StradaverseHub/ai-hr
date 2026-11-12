@@ -38065,7 +38065,18 @@
       "custom_field_limit": "Syarikat ini sudah mencapai bilangan maksimum medan tersuai atau pilihan (50 medan didayakan bagi setiap jenis, 500 kesemuanya, 100 pilihan bagi setiap medan). Nyahdayakan atau buang satu dahulu.",
       "required_needs_option": "Medan pilihan yang wajib memerlukan sekurang-kurangnya satu pilihan yang didayakan. Tambah atau dayakan pilihan dahulu, atau jadikan medan ini tidak wajib.",
       "template_unavailable": "Templat jawatan ini tidak boleh digunakan: ia dinyahdayakan atau dipadam, atau templat dimatikan untuk syarikat. Mulakan dengan borang kosong atau pilih templat lain.",
-      "template_limit": "Syarikat sudah mempunyai bilangan templat jawatan maksimum yang dibenarkan (200). Padam templat yang tidak digunakan lagi dahulu."
+      "template_limit": "Syarikat sudah mempunyai bilangan templat jawatan maksimum yang dibenarkan (200). Padam templat yang tidak digunakan lagi dahulu.",
+      "import_file_invalid": "Fail ini tidak dapat dibaca sebagai import calon. Muat turun templat, salin baris anda ke dalamnya dan cuba lagi.",
+      "import_changed": "Fail ini bukan fail yang telah disemak. Pilih fail itu semula supaya ia disemak sebelum diimport.",
+      "import_running": "Anda sudah mempunyai import yang sedang berjalan. Tunggu sehingga selesai, atau hentikannya, sebelum memulakan yang lain.",
+      "import_finished": "Import ini sudah selesai, jadi ia tidak boleh dihentikan lagi.",
+      "not_to_assign": "Calon ini tiada lagi dalam senarai Untuk ditetapkan (mungkin sudah mempunyai jawatan).",
+      "job_not_open": "Pilih jawatan yang Dibuka. Jawatan ini ditangguhkan atau ditutup.",
+      "export_too_large": "Senarai ini mempunyai lebih daripada 10,000 baris. Kecilkan penapis dan eksport semula.",
+      "export_busy": "Eksport lain sedang berjalan. Cuba lagi sebentar lagi.",
+      "export_too_slow": "Eksport ini terlalu besar untuk disiapkan dalam masa. Kecilkan penapis dan eksport semula.",
+      "import_too_heavy": "Fail ini terlalu berat untuk disemak sekali gus. Bahagikan kepada fail yang lebih kecil dan semak setiap satu.",
+      "import_preview_limit": "Anda telah menyemak 20 fail hari ini. Anda boleh menyemak lagi esok."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -38284,7 +38295,9 @@
       "source": "Sumber",
       "sourcePlaceholder": "cth. Rujukan",
       "add": "Tambah permohonan",
-      "open": "Buka"
+      "open": "Buka",
+      "import": "Import calon",
+      "toAssign": "Untuk ditetapkan"
     },
     "settings": {
       "purpose": "Peringkat, proses pengambilan dan sebab arkib bagi satu syarikat. Semuanya bermula sebagai lalai yang boleh diedit.",
@@ -38339,7 +38352,8 @@
         "checks": "Semakan latar belakang",
         "pools": "Kumpulan bakat",
         "fields": "Medan tersuai",
-        "templates": "Templat jawatan"
+        "templates": "Templat jawatan",
+        "exports": "Templat eksport"
       },
       "iv": {
         "rulesTitle": "Peraturan maklum balas",
@@ -38413,7 +38427,7 @@
         "noneDue": "Tiada calon yang layak untuk dipadam.",
         "select": "Pilih",
         "candidate": "Calon",
-        "archivedOn": "Diarkib terakhir",
+        "archivedOn": "Diarkibkan atau ditambah pada",
         "consent": "Persetujuan",
         "dueOn": "Penyimpanan tamat",
         "selectCandidate": "Pilih {name}",
@@ -38938,7 +38952,8 @@
       "recordConsent": "Rekod",
       "careersConsent": "Borang dalam talian, notis halaman kerjaya versi {version}, {date}",
       "recordedByApplicant": "Diberikan oleh pemohon di halaman kerjaya, {at}",
-      "uploadedByApplicant": "Dimuat naik oleh pemohon di halaman kerjaya, {at}"
+      "uploadedByApplicant": "Dimuat naik oleh pemohon di halaman kerjaya, {at}",
+      "importNote": "Nota daripada import"
     },
     "reports": {
       "purpose": "Angka pengambilan bagi syarikat dan jawatan yang anda uruskan: kiraan, kadar dan tempoh sahaja, tidak sekali-kali butiran calon.",
@@ -39147,7 +39162,8 @@
         "screening": "Resume untuk disaring",
         "screeningFor": "Saring {candidate} untuk {job}",
         "backgroundCheckAuthorisation": "Semakan latar belakang menunggu kebenaran calon",
-        "backgroundCheckOverdue": "Semakan latar belakang sedang berjalan lebih daripada 14 hari"
+        "backgroundCheckOverdue": "Semakan latar belakang sedang berjalan lebih daripada 14 hari",
+        "toAssign": "{count, plural, one {# calon untuk ditetapkan kepada jawatan} other {{shown} calon untuk ditetapkan kepada jawatan}}"
       },
       "update": {
         "requisitionApproved": "Permintaan jawatan diluluskan",
@@ -39754,6 +39770,293 @@
       },
       "notFound": "Templat ini tidak lagi wujud. Ia mungkin telah dipadam.",
       "nameProblem": "Gunakan nama lain: templat lain syarikat ini sudah menggunakannya (maksimum 120 aksara)."
+    },
+    "import": {
+      "purpose": "Tambah banyak calon sekali gus daripada hamparan. Fail disemak sepenuhnya dahulu; tiada apa-apa disimpan sehingga anda memulakan import.",
+      "back": "Kembali ke calon",
+      "company": "Syarikat",
+      "switchCompany": "Papar",
+      "step1": "1. Dapatkan templat",
+      "templateNote": "Gunakan templat AI HR: satu calon bagi setiap baris, sehingga {max} baris dan 10 MB. Hanya Nama penuh diwajibkan. Tambah nombor kerja untuk terus memasukkan calon ke jawatan Dibuka itu; tanpanya mereka menunggu dalam senarai Untuk ditetapkan.",
+      "templateXlsx": "Muat turun templat Excel",
+      "templateCsv": "Muat turun templat CSV",
+      "columnsTitle": "Maksud setiap lajur",
+      "requiredField": "wajib",
+      "columns": {
+        "fullName": "Nama penuh",
+        "email": "E-mel",
+        "mobile": "Telefon bimbit",
+        "idType": "Jenis ID",
+        "idNumber": "Nombor ID",
+        "source": "Sumber",
+        "jobNumber": "Nombor kerja",
+        "jobTitle": "Jawatan seperti ditulis",
+        "notes": "Nota"
+      },
+      "columnHelp": {
+        "fullName": "wajib, sehingga 200 aksara",
+        "email": "pilihan, satu alamat e-mel",
+        "mobile": "pilihan, sehingga 40 aksara",
+        "idType": "NRIC atau Pasport; perlu apabila nombor ID diberi",
+        "idNumber": "pilihan; hanya dilihat oleh pentadbir dan perekrut calon",
+        "source": "Rujukan pekerja, Papan kerja, Halaman kerjaya, Agensi, Datang sendiri atau Lain-lain",
+        "jobNumber": "pilihan, cth. MJ000012 — jawatan Dibuka yang anda rekrut",
+        "jobTitle": "pilihan; jawatan yang dipohon, digunakan untuk mengumpulkan senarai Untuk ditetapkan",
+        "notes": "pilihan, sehingga 2,000 aksara; dilihat oleh pentadbir dan perekrut",
+        "choice": "salah satu daripada: {options}",
+        "type": {
+          "short_text": "teks, sehingga 200 aksara",
+          "long_text": "teks, sehingga 4,000 aksara",
+          "number": "nombor",
+          "date": "tarikh sebagai YYYY-MM-DD",
+          "year_month": "bulan sebagai YYYY-MM",
+          "single_choice": "salah satu pilihannya",
+          "multiple_choice": "pilihan dipisahkan dengan ;",
+          "yes_no": "Ya atau Tidak"
+        }
+      },
+      "step2": "2. Semak fail anda",
+      "chooseFile": "Pilih fail CSV atau Excel",
+      "fileHelp": "Seluruh fail disemak dan anda melihat apa yang akan berlaku sebelum apa-apa disimpan.",
+      "checking": "Menyemak fail…",
+      "starting": "Memulakan import…",
+      "fileErrors": {
+        "import_file_invalid": "Fail tidak dapat dibaca. Simpan sebagai CSV (UTF-8) atau Excel dan cuba lagi.",
+        "import_no_name_column": "Fail tiada lajur Nama penuh. Gunakan baris pertama templat sebagai pengepala.",
+        "import_empty": "Fail tiada baris calon.",
+        "import_too_many_rows": "Fail mempunyai lebih daripada 5,000 baris calon. Bahagikan kepada fail yang lebih kecil.",
+        "import_too_large": "Fail melebihi 10 MB. Bahagikan kepada fail yang lebih kecil.",
+        "import_bad_encoding": "Fail tidak disimpan sebagai UTF-8. Simpan sebagai CSV UTF-8, atau muat naik fail Excel."
+      },
+      "previewTitle": "Apa yang akan berlaku dengan {file}",
+      "previewNote": "Baris yang bermasalah tidak diimport; baris lain diimport. Calon yang mungkin pendua ditambah sebagai calon baharu dan ditandakan, tidak sekali-kali digabungkan.",
+      "counts": {
+        "rows": "Baris dalam fail",
+        "ready": "Akan diimport",
+        "invalid": "Baris bermasalah",
+        "withJob": "Ke dalam jawatan",
+        "toAssign": "Senarai Untuk ditetapkan",
+        "duplicates": "Mungkin pendua"
+      },
+      "unknownJobsNote": "{count, plural, one {# baris menamakan nombor kerja yang bukan jawatan Dibuka yang anda rekrut; ia masuk ke senarai Untuk ditetapkan.} other {# baris menamakan nombor kerja yang bukan jawatan Dibuka yang anda rekrut; ia masuk ke senarai Untuk ditetapkan.}}",
+      "ignoredColumns": "Lajur ini tidak digunakan: {columns}",
+      "issuesCaption": "Baris untuk disemak sebelum import",
+      "row": "Baris",
+      "name": "Nama",
+      "whatHappens": "Apa yang berlaku",
+      "issue": "{field}: {problem}",
+      "unknownField": "medan yang telah dibuang",
+      "issues": {
+        "required": "tiada",
+        "invalid": "tidak sah",
+        "too_long": "terlalu panjang",
+        "id_type_required": "pilih NRIC atau Pasport",
+        "custom_field_required": "tiada (medan wajib)",
+        "custom_value_invalid": "tidak sesuai dengan medan ini",
+        "needs_job": "hanya pentadbir boleh mengimport ini tanpa nombor kerja",
+        "control_character": "mengandungi aksara kawalan tersembunyi"
+      },
+      "notImported": "Baris ini tidak akan diimport.",
+      "duplicateExisting": "Mungkin pendua calon yang sedia ada (akan ditandakan)",
+      "duplicateFile": "Mungkin pendua baris {row} (akan ditandakan)",
+      "jobResults": {
+        "unknown_job": "Nombor kerja tiada dalam jawatan anda — masuk ke Untuk ditetapkan",
+        "job_not_open": "Jawatan tidak Dibuka — masuk ke Untuk ditetapkan",
+        "job_not_allowed": "Anda tidak boleh menambah calon ke jawatan ini — masuk ke Untuk ditetapkan"
+      },
+      "issuesTruncated": "Memaparkan {count} baris pertama untuk disemak.",
+      "permission": "Saya mengesahkan kami mempunyai kebenaran orang-orang ini untuk menyimpan butiran mereka bagi tujuan pengambilan.",
+      "consentNote": "Persetujuan kekal \"tidak direkodkan\" sehingga seseorang merekodkannya bagi setiap calon.",
+      "start": "{count, plural, one {Mulakan import # calon} other {Mulakan import # calon}}",
+      "cancelPreview": "Pilih fail lain",
+      "progressTitle": "Kemajuan import",
+      "progressCount": "{done} daripada {total} baris selesai",
+      "backgroundHelp": "Import berjalan di latar belakang. Anda boleh meninggalkan halaman ini; anda akan menerima pemberitahuan apabila ia tamat.",
+      "workerUnavailable": "Menunggu perkhidmatan import bermula. Import kekal dalam giliran sehingga itu.",
+      "stop": "Hentikan import",
+      "stopRequested": "Sedang dihentikan… baris yang sudah diimport kekal.",
+      "failed": "Import berhenti kerana masalah. Baris yang sudah diimport kekal; lihat hasil di bawah.",
+      "state": {
+        "queued": "Menunggu untuk bermula",
+        "preparing": "Membaca fail",
+        "running": "Mengimport",
+        "finalizing": "Menyelesaikan",
+        "discarding": "Menghentikan",
+        "completed": "Selesai",
+        "failed": "Berhenti (masalah)",
+        "cancelled": "Dihentikan"
+      },
+      "outcome": {
+        "completed": "selesai",
+        "cancelled": "dihentikan",
+        "failed": "berhenti (masalah)"
+      },
+      "jobTitle": "Import dimulakan {date}",
+      "resultTitle": "Hasil",
+      "resultStopped": "Hasil (dihentikan sebelum tamat)",
+      "resultFailed": "Hasil (dihentikan oleh masalah)",
+      "resultCounts": {
+        "created": "Calon ditambah",
+        "applications": "Dimasukkan ke jawatan",
+        "toAssign": "Dalam Untuk ditetapkan",
+        "possibleDuplicates": "Mungkin pendua",
+        "needsReview": "Perlu semakan pentadbir",
+        "invalid": "Baris bermasalah",
+        "failed": "Baris ditolak",
+        "rows": "Baris selesai"
+      },
+      "openToAssign": "Buka senarai Untuk ditetapkan",
+      "resultFilter": "Baris dipaparkan",
+      "problemsOnly": "Baris untuk disemak",
+      "allRows": "Semua baris",
+      "noProblems": "Tiada apa-apa untuk disemak: setiap baris diimport seperti dirancang.",
+      "resultCaption": "Hasil import mengikut baris",
+      "outcomeColumn": "Hasil",
+      "removed": "Calon yang dibuang",
+      "result": {
+        "invalid": "Tidak diimport (masalah dalam baris)",
+        "failed": "Tidak diimport: {reason}",
+        "applied": "Ditambah ke {job}",
+        "toAssign": "Ditambah ke senarai Untuk ditetapkan"
+      },
+      "refusals": {
+        "refused": "sistem menolak baris ini",
+        "forbidden": "anda tidak dibenarkan melakukan ini",
+        "duplicate_application": "sudah memohon jawatan ini",
+        "repeat_application": "memohon jawatan ini terlalu baru-baru ini",
+        "invalid_input": "satu nilai tidak diterima",
+        "process_unavailable": "jawatan tiada peringkat yang boleh digunakan",
+        "candidate_removed": "calon telah dibuang",
+        "custom_value_invalid": "nilai medan tersuai tidak sesuai",
+        "custom_field_required": "medan tersuai wajib kosong"
+      },
+      "flags": {
+        "duplicate": "Mungkin pendua",
+        "review": "Perlu semakan pentadbir"
+      },
+      "recentTitle": "Import terkini anda",
+      "recentEmpty": "Belum ada import.",
+      "recentRows": "{count, plural, one {# baris} other {# baris}}",
+      "privacyNote": "Fail tidak disimpan selepas import tamat. Hasil setiap baris hanya menyimpan apa yang berlaku, tidak sekali-kali nilai daripada fail.",
+      "resultPages": "Lebih banyak baris",
+      "firstRows": "Baris pertama",
+      "nextRows": "Baris seterusnya"
+    },
+    "toAssign": {
+      "purpose": "Calon tanpa jawatan — diimport tanpa nombor kerja yang boleh digunakan. Tetapkan mereka kepada jawatan Dibuka, atau buang mereka daripada senarai ini.",
+      "back": "Kembali ke calon",
+      "company": "Syarikat",
+      "switchCompany": "Papar",
+      "viewLabel": "Calon yang mana",
+      "viewShown": "Untuk ditetapkan ({count})",
+      "viewHidden": "Dibuang daripada senarai ({count})",
+      "listNote": "Dikumpulkan mengikut jawatan yang ditulis dalam fail import.",
+      "hiddenNote": "Calon ini telah dibuang daripada senarai. Mereka masih calon; paparkan semula untuk menetapkan mereka.",
+      "importLink": "Import calon",
+      "empty": "Tiada calon yang menunggu jawatan.",
+      "emptyHidden": "Tiada calon yang dibuang daripada senarai.",
+      "noTitle": "Tiada jawatan diberi",
+      "groupTitle": "Memohon: {title}",
+      "noContact": "Tiada butiran hubungan",
+      "duplicate": "Mungkin pendua",
+      "source": "Sumber",
+      "noSource": "Tidak diberi",
+      "imported": "Diimport",
+      "importedBy": "{date} oleh {by}",
+      "unnamedUser": "pengguna tanpa nama",
+      "note": "Nota",
+      "chooseJob": "Jawatan untuk {name}",
+      "chooseJobShort": "Pilih jawatan",
+      "assign": "Tetapkan kepada jawatan",
+      "hide": "Buang daripada senarai",
+      "show": "Paparkan semula",
+      "hideNamed": "Buang {name} daripada senarai",
+      "showNamed": "Paparkan {name} semula",
+      "noOpenJobs": "Anda tiada jawatan Dibuka untuk menetapkan calon.",
+      "truncated": "Memaparkan 500 calon terkini.",
+      "hideNote": "Membuang seseorang daripada senarai ini tidak memadam apa-apa: mereka kekal sebagai calon dan data mereka mengikut peraturan penyimpanan biasa.",
+      "notice": {
+        "assigned": "Calon ditambah ke jawatan.",
+        "hidden": "Calon dibuang daripada senarai.",
+        "shown": "Calon dipaparkan semula dalam senarai."
+      }
+    },
+    "exports": {
+      "open": {
+        "board": "Eksport senarai ini",
+        "talent_pool": "Eksport kumpulan bakat",
+        "interview_feedback": "Eksport maklum balas temu duga untuk jawatan ini"
+      },
+      "kinds": {
+        "board": "Calon",
+        "talent_pool": "Kumpulan bakat",
+        "interview_feedback": "Maklum balas temu duga"
+      },
+      "format": "Jenis fail",
+      "xlsx": "Excel",
+      "csv": "CSV",
+      "template": "Set lajur tersimpan",
+      "templateNone": "Pilih lajur di bawah",
+      "columnsLegend": "Lajur",
+      "columnsOr": "Atau pilih lajur",
+      "restricted": "hanya jika anda boleh melihatnya",
+      "note": "Fail menunjukkan tepat apa yang anda boleh lihat di sini, sehingga {max} baris. Ia dibuat sekarang dan tidak disimpan; muat turun direkodkan.",
+      "download": "Muat turun",
+      "reset": "Set semula",
+      "yes": "Ya",
+      "no": "Tidak",
+      "status": {
+        "active": "Dalam proses",
+        "hired": "Diambil bekerja",
+        "archived": "Diarkibkan"
+      },
+      "columns": {
+        "candidateName": "Calon",
+        "email": "E-mel",
+        "mobile": "Telefon bimbit",
+        "jobTitle": "Jawatan",
+        "jobNumber": "Nombor kerja",
+        "stage": "Peringkat",
+        "status": "Status",
+        "appliedOn": "Tarikh memohon",
+        "source": "Sumber",
+        "owner": "Pemilik calon",
+        "tags": "Tag",
+        "archiveReason": "Sebab arkib",
+        "needsReview": "Perlu semakan pentadbir",
+        "location": "Lokasi",
+        "currentCompany": "Syarikat semasa",
+        "currentTitle": "Jawatan semasa",
+        "highestEducation": "Pendidikan tertinggi",
+        "noticePeriod": "Tempoh notis",
+        "idType": "Jenis ID",
+        "idNumber": "Nombor ID",
+        "stageLeft": "Ditinggalkan pada peringkat",
+        "archivedOn": "Tarikh diarkibkan",
+        "pools": "Kumpulan bakat",
+        "round": "Pusingan",
+        "interviewDate": "Tarikh temu duga",
+        "interviewer": "Penemu duga",
+        "result": "Keputusan keseluruhan",
+        "averageScore": "Skor purata",
+        "scores": "Skor",
+        "comments": "Komen"
+      }
+    },
+    "exportTemplates": {
+      "note": "Set lajur tersimpan mempercepatkan eksport. Semua yang boleh mengeksport dalam syarikat ini boleh menggunakannya; hanya pentadbir mengubahnya. Ia hanya menyimpan nama lajur.",
+      "kindLabel": "Eksport",
+      "empty": "Belum ada set lajur tersimpan untuk eksport ini.",
+      "columnCount": "{count, plural, one {# lajur} other {# lajur}}",
+      "changed": "diubah {at}",
+      "name": "Nama",
+      "columns": "Lajur",
+      "save": "Simpan",
+      "delete": "Padam",
+      "deleteNamed": "Padam {name}",
+      "newTitle": "Set lajur baharu untuk {kind}",
+      "add": "Tambah set lajur",
+      "removedField": "medan yang telah dibuang"
     }
   },
   "careersPublic": {
@@ -40131,6 +40434,20 @@
         "cancelled": {
           "title": "Pembatalan import pergerakan dibatalkan",
           "body": "Tiada apa-apa diubah. Buka Sejarah Import untuk butiran."
+        }
+      },
+      "recruitmentImport": {
+        "completed": {
+          "title": "Import calon selesai",
+          "body": "Buka import untuk melihat hasil baris demi baris dan calon yang menunggu dalam senarai Untuk ditetapkan."
+        },
+        "failed": {
+          "title": "Import calon berhenti",
+          "body": "Satu masalah menghentikan import. Baris yang sudah diimport kekal; buka import untuk melihat hasil."
+        },
+        "cancelled": {
+          "title": "Import calon dihentikan",
+          "body": "Import telah dihentikan. Baris yang sudah diimport kekal; buka import untuk melihat hasil."
         }
       }
     },

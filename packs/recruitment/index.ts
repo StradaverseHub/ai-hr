@@ -65,6 +65,10 @@
  *   (job fields, process, interview plan, custom job values) under Settings › Position templates and switch the feature on; "New
  *   position from template" opens the ordinary form pre-filled (parts no longer usable left empty with notes; a requisition's values
  *   win) and the job records the template only (5216). Jobs carry an interview plan (a scorecard template per round).
+ * - Import, export and To assign (slice 16, ./import, ./import-model, ./export and ./export-model): a structured candidate file is
+ *   previewed in full, then imported by a background job on the shared bulk-job kernel (one step per row, rows independent, D-055);
+ *   candidates without a usable job wait on the To assign list until assigned or hidden; the board, talent pool and a job's
+ *   interview feedback export as CSV or Excel from what the exporter reads, capped and formula-escaped, with saved column sets (5217).
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (5202); the menu shows for team members, interviewers and pending approvers.
  */
@@ -158,6 +162,12 @@ export const recruitmentPack: ModulePack = {
     // Slice 15 (5216)
     { table: 'recruitment_position_template', note: 'position templates: name, job fields, process and interview plan to pre-fill new positions; administrators only' },
     { table: 'recruitment_position_template_value', note: 'a position template\'s typed custom job field values (no personal data)' },
+    // Slice 16 (5217)
+    { table: 'recruitment_candidate_import', note: 'one candidate import (the bulk job\'s id): company, importer, permission confirmation, file rows, ending; no personal data' },
+    { table: 'recruitment_candidate_import_row', note: 'one result per import file row: outcome, created candidate and application, job result, flags and error codes; never a file value' },
+    { table: 'recruitment_to_assign', note: 'a candidate with no application (To assign): importer, date, job title as written, hidden or shown; the company\'s operators' },
+    { table: 'recruitment_candidate_import_note', note: 'the notes column of an import file, per candidate; operator-only' },
+    { table: 'recruitment_export_template', note: 'saved export column sets per company and kind; administrators manage, operators use' },
   ],
 };
 registerPack(recruitmentPack);

@@ -79,6 +79,13 @@ async function privacySettingsTx(tx: Tx, companyId: string): Promise<PrivacySett
   };
 }
 
+/**
+ * The day the retention clock starts from (before consent): the latest archival day; for a candidate with no application at all
+ * (slice 16: imported without a job and still on, or removed from, the To assign list), the day they were added — so they are
+ * never kept indefinitely. Kuala Lumpur days.
+ */
+const clockStart = sql`coalesce(max((a.state_changed_at at time zone 'Asia/Kuala_Lumpur')::date) filter (where a.state = 'archived'),
+  case when count(a.id) = 0 then (c.created_at at time zone 'Asia/Kuala_Lumpur')::date end)`;
 type RetentionRow = { id: string; full_name: string; has_active: boolean; has_hired: boolean; archived_on: string | null; consent: { status: ConsentStatus; on: string } | null };
 /**
  * The facts the retention rule needs, per live candidate of the company: active / hired applications, the latest
@@ -87,17 +94,16 @@ type RetentionRow = { id: string; full_name: string; has_active: boolean; has_hi
  */
 async function retentionRowsTx(tx: Tx, s: SessionContext, companyId: string, opts: { candidateId?: string; dueOnly?: { minMonths: number; today: string } }): Promise<RetentionRow[]> {
   return [...await tx.execute<RetentionRow>(sql`
-    select c.id, c.full_name, bool_or(a.state = 'active') as has_active, bool_or(a.state = 'hired') as has_hired,
-      to_char(max((a.state_changed_at at time zone 'Asia/Kuala_Lumpur')::date) filter (where a.state = 'archived'), 'YYYY-MM-DD') as archived_on,
+    select c.id, c.full_name, coalesce(bool_or(a.state = 'active'), false) as has_active, coalesce(bool_or(a.state = 'hired'), false) as has_hired,
+      to_char(${clockStart}, 'YYYY-MM-DD') as archived_on,
       (select json_build_object('status', k.status, 'on', to_char(k.effective_on, 'YYYY-MM-DD')) from recruitment_candidate_consent k
         where k.candidate_id = c.id order by k.effective_on desc, k.recorded_at desc, k.id desc limit 1) as consent
-    from recruitment_candidate c join recruitment_application a on a.candidate_id = c.id and a.tenant_id = c.tenant_id
+    from recruitment_candidate c left join recruitment_application a on a.candidate_id = c.id and a.tenant_id = c.tenant_id
     where c.tenant_id = ${s.tenantId}::uuid and c.company_id = ${companyId}::uuid and c.destroyed_at is null
       ${opts.candidateId ? sql`and c.id = ${opts.candidateId}::uuid` : sql``}
     group by c.id
-    ${opts.dueOnly ? sql`having not bool_or(a.state in ('active', 'hired'))
-      and (max((a.state_changed_at at time zone 'Asia/Kuala_Lumpur')::date) filter (where a.state = 'archived')
-        + make_interval(months => ${opts.dueOnly.minMonths}::int))::date <= ${opts.dueOnly.today}::date` : sql``}
+    ${opts.dueOnly ? sql`having not coalesce(bool_or(a.state in ('active', 'hired')), false)
+      and (${clockStart} + make_interval(months => ${opts.dueOnly.minMonths}::int))::date <= ${opts.dueOnly.today}::date` : sql``}
     order by 5, c.id limit 1000`)];
 }
 const dueOf = (r: RetentionRow, settings: PrivacySettings) => retentionDueOn({
@@ -221,6 +227,8 @@ export type CandidateProfile = {
   /** Slice 14: the company's enabled custom candidate fields after the fixed profile, in order, with this candidate's values.
    *  Restricted fields (and their values) only for administrators and the candidate's job operators. */
   custom: CustomFieldView[];
+  /** Slice 16: the notes column of the import file that added the candidate; for administrators and the candidate's job operators. */
+  importNote: string | null;
   can: { edit: boolean; admin: boolean; review: boolean };
 };
 
@@ -280,7 +288,9 @@ export async function candidateProfile(s: SessionContext, applicationId: unknown
       retention = { dueOn, ended: retentionEnded(dueOn, today) };
     }
     const custom = c.destroyedAt ? [] : await recordCustomFieldsTx(tx, s, 'candidate', { id: c.id, companyId: c.companyId }, access.operate);
+    const [note] = access.operate && !c.destroyedAt ? await tx.execute<{ note: string }>(sql`select note from recruitment_candidate_import_note where candidate_id = ${c.id}::uuid`) : [];
     return {
+      importNote: note?.note ?? null,
       candidateId: c.id, companyId: c.companyId, removed: !!c.destroyedAt, fullName: c.fullName, email: c.email, phone: c.phone, location: c.location,
       currentCompany: c.currentCompany, currentTitle: c.currentTitle, highestEducation: c.highestEducation ?? null, noticePeriod: c.noticePeriod,
       source: c.source ?? null, entries, restricted, consent, retention, custom,

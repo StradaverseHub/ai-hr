@@ -210,6 +210,32 @@ export { POSITION_TEMPLATE_NAME_MAX, POSITION_TEMPLATES_MAX, validateTemplateInp
 export type {
   TemplateInput, ValidTemplate, TemplateRecord, TemplateAvailability, TemplateNote, PositionDraft, RequisitionValues,
 } from './position-template-model';
+// Slice 16 — candidate import (a background job on the shared bulk-job kernel; core/recruitment-candidate-import-worker.ts runs
+// the rows through importCandidateRowTx), the To assign list, list exports and saved column sets (export templates).
+export {
+  previewCandidateImport, startCandidateImport, candidateImportJob, cancelCandidateImport, candidateImportResult, recentCandidateImports,
+  candidateImportTemplate, prepareCandidateImport, importCandidateRowTx, finishCandidateImportTx, toAssignList, assignToJob, setToAssignHidden,
+  importHash, TO_ASSIGN_LIST_MAX, TO_ASSIGN_COUNT_CAP, IMPORT_PREVIEWS_PER_DAY, IMPORT_PREVIEW_TIMEOUT_MS,
+} from './import';
+export type {
+  ImportPreview, ImportPreviewRow, CandidateImportJobInput, CandidateImportJob, ImportCounters, ImportResultRow, RecentImport, ImportStep, ImportStepPayload,
+  ImportRowOutcome, ToAssignEntry, ToAssignList, ImportTemplate,
+} from './import';
+export {
+  CANDIDATE_IMPORT_KIND, IMPORT_MAX_ROWS, IMPORT_MAX_FILE_BYTES, IMPORT_MAX_TEXT_BYTES, IMPORT_COLUMNS, IMPORT_HEADERS, IMPORT_ISSUE_CODES, IMPORT_FILE_ERRORS,
+  IMPORT_PREVIEW_ISSUES_MAX, JOB_RESULTS, parseCandidateImport, importTemplateHeader, permissionConfirmed, requiredIssues, normHeader,
+} from './import-model';
+export type { ImportColumn, ImportIssueCode, ImportFileError, RowIssue, JobResult } from './import-model';
+export {
+  exportBoard, exportTalentPool, exportInterviewFeedback, recordExport, exportTemplates, saveExportTemplate, deleteExportTemplate, exportTemplateColumns,
+  exportColumnChoices, EXPORT_TIMEOUT_MS, EXPORTS_PER_TENANT,
+} from './export';
+export type { ExportTable, BoardExportFilter, PoolExportFilter, ExportTemplateRow } from './export';
+export {
+  EXPORT_KINDS, EXPORT_FORMATS, EXPORT_MAX_ROWS, EXPORT_COLUMNS, RESTRICTED_EXPORT_COLUMNS, EXPORT_TEMPLATE_NAME_MAX, isExportKind, parseExportFormat,
+  defaultExportColumns, chooseExportColumns, validateExportTemplate, safeRows, exportCsv, exportFileName, isCustomColumn,
+} from './export-model';
+export type { ExportKind, ExportFormat, ExportCell } from './export-model';
 export {
   RecruitmentError, RECRUITMENT_ERROR_CODES, JOB_STATUSES, JOB_STATUS_TRANSITIONS, JOB_MEMBER_ROLES, POSITION_ATTRIBUTES, RECRUITMENT_TYPES,
   JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab, INTERVIEW_PLAN_MAX, INTERVIEW_PLAN_FORM_MARKER, parseInterviewPlan, interviewPlanFromForm,

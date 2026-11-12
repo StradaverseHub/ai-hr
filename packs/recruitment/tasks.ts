@@ -236,6 +236,21 @@ async function jobTodosTx(tx: Tx, s: SessionContext, scope: readonly string[] | 
            and not exists (select 1 from recruitment_application_event e where e.application_id = a.id and e.kind <> 'applied')
          limit ${TODO_COUNT_CAP}) y) x
      where x.n > 0
+     order by x.at desc limit ${TODO_LIMIT})
+    union all
+    -- Slice 16: per company the viewer operates in (administrators included), the candidates with no application still shown on
+    -- the To assign list, the count capped (the markers' own row security; an index read per company).
+    -- The access check runs once per company, before any marker is read (a materialized set); the count stops at the cap.
+    (select 'toAssign', c.id, c.id, null, c.legal_name, null, null, false, x.n, null, null, x.at, null
+     from (select oc.id, oc.legal_name from company oc
+       where oc.tenant_id = ${s.tenantId}::uuid and oc.archived_at is null and ${scoped(sql`oc.id`)} and app.recruitment_operates_in_company(oc.id)
+       offset 0) c
+     cross join lateral (
+       select count(*)::int as n, max(y.created_at) as at from (
+         select t.created_at from recruitment_to_assign t
+         where t.tenant_id = ${s.tenantId}::uuid and t.company_id = c.id and t.hidden_at is null
+         limit ${TODO_COUNT_CAP}) y) x
+     where x.n > 0
      order by x.at desc limit ${TODO_LIMIT})`);
   return rows.map(todoOf).sort(byNewest);
 }

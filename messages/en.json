@@ -38065,7 +38065,18 @@
       "custom_field_limit": "This company already has the most custom fields or options allowed (50 enabled fields of each kind, 500 in all, 100 options per field). Disable or remove one first.",
       "required_needs_option": "A required choice field needs at least one enabled option. Add or enable an option first, or make the field optional.",
       "template_unavailable": "This position template cannot be used: it is disabled or deleted, or templates are turned off for the company. Start from a blank form or choose another template.",
-      "template_limit": "The company already has the most position templates allowed (200). Delete one you no longer use first."
+      "template_limit": "The company already has the most position templates allowed (200). Delete one you no longer use first.",
+      "import_file_invalid": "The file could not be read as a candidate import. Download the template, copy your rows into it and try again.",
+      "import_changed": "The file is not the one that was checked. Choose the file again so it can be checked before importing.",
+      "import_running": "You already have an import running. Wait for it to finish, or stop it, before starting another.",
+      "import_finished": "This import has already finished, so it can no longer be stopped.",
+      "not_to_assign": "This candidate is no longer on the To assign list (they may already have a job).",
+      "job_not_open": "Choose an Open position. This one is on hold or closed.",
+      "export_too_large": "This list has more than 10,000 rows. Narrow the filters and export again.",
+      "export_busy": "Another export is running. Try again in a moment.",
+      "export_too_slow": "This export is too large to make in time. Narrow the filters and export again.",
+      "import_too_heavy": "This file is too heavy to check at once. Split it into smaller files and check each one.",
+      "import_preview_limit": "You have checked 20 files today. You can check more tomorrow."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -38284,7 +38295,9 @@
       "source": "Source",
       "sourcePlaceholder": "e.g. Referral",
       "add": "Add application",
-      "open": "Open"
+      "open": "Open",
+      "import": "Import candidates",
+      "toAssign": "To assign"
     },
     "settings": {
       "purpose": "Stages, recruitment processes and archive reasons for one company. These start as editable defaults.",
@@ -38339,7 +38352,8 @@
         "checks": "Background checks",
         "pools": "Talent pools",
         "fields": "Custom fields",
-        "templates": "Position templates"
+        "templates": "Position templates",
+        "exports": "Export templates"
       },
       "iv": {
         "rulesTitle": "Feedback rules",
@@ -38413,7 +38427,7 @@
         "noneDue": "No candidate is due for removal.",
         "select": "Select",
         "candidate": "Candidate",
-        "archivedOn": "Last archived",
+        "archivedOn": "Archived or added on",
         "consent": "Consent",
         "dueOn": "Retention ended",
         "selectCandidate": "Select {name}",
@@ -38938,7 +38952,8 @@
       "recordConsent": "Record",
       "careersConsent": "Online form, careers page notice version {version}, {date}",
       "recordedByApplicant": "Given by the applicant on the careers page, {at}",
-      "uploadedByApplicant": "Uploaded by the applicant on the careers page, {at}"
+      "uploadedByApplicant": "Uploaded by the applicant on the careers page, {at}",
+      "importNote": "Notes from import"
     },
     "reports": {
       "purpose": "Hiring figures for the companies and jobs you work on: counts, rates and durations only, never a candidate's details.",
@@ -39147,7 +39162,8 @@
         "screening": "Résumé to screen",
         "screeningFor": "Screen {candidate} for {job}",
         "backgroundCheckAuthorisation": "Background check waiting for the candidate's authorisation",
-        "backgroundCheckOverdue": "Background check in progress for more than 14 days"
+        "backgroundCheckOverdue": "Background check in progress for more than 14 days",
+        "toAssign": "{count, plural, one {# candidate to assign to a position} other {{shown} candidates to assign to positions}}"
       },
       "update": {
         "requisitionApproved": "Job requisition approved",
@@ -39754,6 +39770,293 @@
       },
       "notFound": "This template no longer exists. It may have been deleted.",
       "nameProblem": "Use a different name: another template of this company already has it (at most 120 characters)."
+    },
+    "import": {
+      "purpose": "Add many candidates at once from a spreadsheet. The file is checked in full first; nothing is saved until you start the import.",
+      "back": "Back to candidates",
+      "company": "Company",
+      "switchCompany": "Show",
+      "step1": "1. Get the template",
+      "templateNote": "Use AI HR's template: one candidate per row, up to {max} rows and 10 MB. Only Full name is required. Add a job number to put the candidate straight into that Open position; without one they wait on the To assign list.",
+      "templateXlsx": "Download Excel template",
+      "templateCsv": "Download CSV template",
+      "columnsTitle": "What each column means",
+      "requiredField": "required",
+      "columns": {
+        "fullName": "Full name",
+        "email": "E-mail",
+        "mobile": "Mobile",
+        "idType": "ID type",
+        "idNumber": "ID number",
+        "source": "Source",
+        "jobNumber": "Job number",
+        "jobTitle": "Job title as written",
+        "notes": "Notes"
+      },
+      "columnHelp": {
+        "fullName": "required, up to 200 characters",
+        "email": "optional, one e-mail address",
+        "mobile": "optional, up to 40 characters",
+        "idType": "NRIC or Passport; needed when an ID number is given",
+        "idNumber": "optional; visible only to administrators and the candidate's recruiters",
+        "source": "Employee referral, Job board, Career page, Agency, Walk-in or Other",
+        "jobNumber": "optional, e.g. MJ000012 — an Open position you recruit for",
+        "jobTitle": "optional; the job the person asked for, used to group the To assign list",
+        "notes": "optional, up to 2,000 characters; seen by administrators and recruiters",
+        "choice": "one of: {options}",
+        "type": {
+          "short_text": "text, up to 200 characters",
+          "long_text": "text, up to 4,000 characters",
+          "number": "a number",
+          "date": "a date as YYYY-MM-DD",
+          "year_month": "a month as YYYY-MM",
+          "single_choice": "one of its choices",
+          "multiple_choice": "choices separated by ;",
+          "yes_no": "Yes or No"
+        }
+      },
+      "step2": "2. Check your file",
+      "chooseFile": "Choose a CSV or Excel file",
+      "fileHelp": "The whole file is checked and you see what will happen before anything is saved.",
+      "checking": "Checking the file…",
+      "starting": "Starting the import…",
+      "fileErrors": {
+        "import_file_invalid": "The file could not be read. Save it as CSV (UTF-8) or Excel and try again.",
+        "import_no_name_column": "The file has no Full name column. Use the template's first row as the header.",
+        "import_empty": "The file has no candidate rows.",
+        "import_too_many_rows": "The file has more than 5,000 candidate rows. Split it into smaller files.",
+        "import_too_large": "The file is larger than 10 MB. Split it into smaller files.",
+        "import_bad_encoding": "The file is not saved as UTF-8. Save it as CSV UTF-8, or upload the Excel file instead."
+      },
+      "previewTitle": "What will happen with {file}",
+      "previewNote": "Rows with a problem are not imported; every other row is. Possible duplicates are added as new candidates and flagged, never merged.",
+      "counts": {
+        "rows": "Rows in the file",
+        "ready": "Will be imported",
+        "invalid": "Rows with problems",
+        "withJob": "Into a position",
+        "toAssign": "To assign list",
+        "duplicates": "Possible duplicates"
+      },
+      "unknownJobsNote": "{count, plural, one {# row names a job number that is not an Open position you recruit for; it goes to the To assign list.} other {# rows name a job number that is not an Open position you recruit for; they go to the To assign list.}}",
+      "ignoredColumns": "These columns are not used: {columns}",
+      "issuesCaption": "Rows to look at before importing",
+      "row": "Row",
+      "name": "Name",
+      "whatHappens": "What happens",
+      "issue": "{field}: {problem}",
+      "unknownField": "a removed field",
+      "issues": {
+        "required": "missing",
+        "invalid": "not valid",
+        "too_long": "too long",
+        "id_type_required": "choose NRIC or Passport",
+        "custom_field_required": "missing (required field)",
+        "custom_value_invalid": "does not fit this field",
+        "needs_job": "only an administrator can import this without a job number",
+        "control_character": "contains a hidden control character"
+      },
+      "notImported": "This row will not be imported.",
+      "duplicateExisting": "Possible duplicate of a candidate you already have (it will be flagged)",
+      "duplicateFile": "Possible duplicate of row {row} (it will be flagged)",
+      "jobResults": {
+        "unknown_job": "Job number not found among your positions — goes to To assign",
+        "job_not_open": "Position is not Open — goes to To assign",
+        "job_not_allowed": "You cannot add candidates to this position — goes to To assign"
+      },
+      "issuesTruncated": "Showing the first {count} rows to look at.",
+      "permission": "I confirm we have these people's permission to store their details for recruitment.",
+      "consentNote": "Consent stays \"not recorded\" until someone records it on each candidate.",
+      "start": "{count, plural, one {Start import of # candidate} other {Start import of # candidates}}",
+      "cancelPreview": "Choose another file",
+      "progressTitle": "Import progress",
+      "progressCount": "{done} of {total} rows done",
+      "backgroundHelp": "The import runs in the background. You can leave this page; you will get a notification when it ends.",
+      "workerUnavailable": "Waiting for the import service to start. The import stays queued until then.",
+      "stop": "Stop import",
+      "stopRequested": "Stopping… rows already imported stay.",
+      "failed": "The import stopped because of a problem. Rows already imported stay; see the result below.",
+      "state": {
+        "queued": "Waiting to start",
+        "preparing": "Reading the file",
+        "running": "Importing",
+        "finalizing": "Finishing",
+        "discarding": "Stopping",
+        "completed": "Finished",
+        "failed": "Stopped (problem)",
+        "cancelled": "Stopped"
+      },
+      "outcome": {
+        "completed": "finished",
+        "cancelled": "stopped",
+        "failed": "stopped (problem)"
+      },
+      "jobTitle": "Import started {date}",
+      "resultTitle": "Result",
+      "resultStopped": "Result (stopped before the end)",
+      "resultFailed": "Result (stopped by a problem)",
+      "resultCounts": {
+        "created": "Candidates added",
+        "applications": "Put into positions",
+        "toAssign": "On To assign",
+        "possibleDuplicates": "Possible duplicates",
+        "needsReview": "Need an administrator's review",
+        "invalid": "Rows with problems",
+        "failed": "Rows refused",
+        "rows": "Rows done"
+      },
+      "openToAssign": "Open the To assign list",
+      "resultFilter": "Rows shown",
+      "problemsOnly": "Rows to look at",
+      "allRows": "All rows",
+      "noProblems": "Nothing to look at: every row was imported as planned.",
+      "resultCaption": "Import result by row",
+      "outcomeColumn": "Result",
+      "removed": "Removed candidate",
+      "result": {
+        "invalid": "Not imported (problem in the row)",
+        "failed": "Not imported: {reason}",
+        "applied": "Added to {job}",
+        "toAssign": "Added to the To assign list"
+      },
+      "refusals": {
+        "refused": "the system refused this row",
+        "forbidden": "you are not allowed to do this",
+        "duplicate_application": "already applied to this position",
+        "repeat_application": "applied to this position too recently",
+        "invalid_input": "a value is not accepted",
+        "process_unavailable": "the position has no usable stage",
+        "candidate_removed": "the candidate was removed",
+        "custom_value_invalid": "a custom field value does not fit",
+        "custom_field_required": "a required custom field is empty"
+      },
+      "flags": {
+        "duplicate": "Possible duplicate",
+        "review": "Needs an administrator's review"
+      },
+      "recentTitle": "Your recent imports",
+      "recentEmpty": "No imports yet.",
+      "recentRows": "{count, plural, one {# row} other {# rows}}",
+      "privacyNote": "The file is not kept after the import ends. Each row's result keeps only what happened, never the values from the file.",
+      "resultPages": "More rows",
+      "firstRows": "First rows",
+      "nextRows": "Next rows"
+    },
+    "toAssign": {
+      "purpose": "Candidates without a position — imported without a usable job number. Assign them to an Open position, or remove them from this list.",
+      "back": "Back to candidates",
+      "company": "Company",
+      "switchCompany": "Show",
+      "viewLabel": "Which candidates",
+      "viewShown": "To assign ({count})",
+      "viewHidden": "Removed from list ({count})",
+      "listNote": "Grouped by the job title written in the import file.",
+      "hiddenNote": "These candidates were removed from the list. They are still candidates; show them again to assign them.",
+      "importLink": "Import candidates",
+      "empty": "No candidates are waiting for a position.",
+      "emptyHidden": "No candidates were removed from the list.",
+      "noTitle": "No job title given",
+      "groupTitle": "Asked for: {title}",
+      "noContact": "No contact details",
+      "duplicate": "Possible duplicate",
+      "source": "Source",
+      "noSource": "Not given",
+      "imported": "Imported",
+      "importedBy": "{date} by {by}",
+      "unnamedUser": "an unnamed user",
+      "note": "Notes",
+      "chooseJob": "Position for {name}",
+      "chooseJobShort": "Choose a position",
+      "assign": "Assign to position",
+      "hide": "Remove from list",
+      "show": "Show again",
+      "hideNamed": "Remove {name} from the list",
+      "showNamed": "Show {name} again",
+      "noOpenJobs": "You have no Open position to assign candidates to.",
+      "truncated": "Showing the 500 most recent candidates.",
+      "hideNote": "Removing someone from this list deletes nothing: they stay a candidate and their data follows the usual retention rules.",
+      "notice": {
+        "assigned": "Candidate added to the position.",
+        "hidden": "Candidate removed from the list.",
+        "shown": "Candidate shown on the list again."
+      }
+    },
+    "exports": {
+      "open": {
+        "board": "Export this list",
+        "talent_pool": "Export the talent pool",
+        "interview_feedback": "Export interview feedback for this position"
+      },
+      "kinds": {
+        "board": "Candidates",
+        "talent_pool": "Talent pool",
+        "interview_feedback": "Interview feedback"
+      },
+      "format": "File type",
+      "xlsx": "Excel",
+      "csv": "CSV",
+      "template": "Saved column set",
+      "templateNone": "Choose columns below",
+      "columnsLegend": "Columns",
+      "columnsOr": "Or choose columns",
+      "restricted": "only if you may see it",
+      "note": "The file shows exactly what you can see here, up to {max} rows. It is made now and not kept; the download is recorded.",
+      "download": "Download",
+      "reset": "Reset",
+      "yes": "Yes",
+      "no": "No",
+      "status": {
+        "active": "In progress",
+        "hired": "Hired",
+        "archived": "Archived"
+      },
+      "columns": {
+        "candidateName": "Candidate",
+        "email": "E-mail",
+        "mobile": "Mobile",
+        "jobTitle": "Position",
+        "jobNumber": "Job number",
+        "stage": "Stage",
+        "status": "Status",
+        "appliedOn": "Applied on",
+        "source": "Source",
+        "owner": "Candidate owner",
+        "tags": "Tags",
+        "archiveReason": "Archive reason",
+        "needsReview": "Needs administrator's review",
+        "location": "Location",
+        "currentCompany": "Current company",
+        "currentTitle": "Current title",
+        "highestEducation": "Highest education",
+        "noticePeriod": "Notice period",
+        "idType": "ID type",
+        "idNumber": "ID number",
+        "stageLeft": "Left at stage",
+        "archivedOn": "Archived on",
+        "pools": "Talent pools",
+        "round": "Round",
+        "interviewDate": "Interview date",
+        "interviewer": "Interviewer",
+        "result": "Overall result",
+        "averageScore": "Average score",
+        "scores": "Scores",
+        "comments": "Comments"
+      }
+    },
+    "exportTemplates": {
+      "note": "Saved column sets make exports quicker. Everyone who may export in this company can use them; only administrators change them. They hold column names only.",
+      "kindLabel": "Export",
+      "empty": "No saved column sets for this export yet.",
+      "columnCount": "{count, plural, one {# column} other {# columns}}",
+      "changed": "changed {at}",
+      "name": "Name",
+      "columns": "Columns",
+      "save": "Save",
+      "delete": "Delete",
+      "deleteNamed": "Delete {name}",
+      "newTitle": "New column set for {kind}",
+      "add": "Add column set",
+      "removedField": "a removed field"
     }
   },
   "careersPublic": {
@@ -40131,6 +40434,20 @@
         "cancelled": {
           "title": "Movement import revert cancelled",
           "body": "Nothing was changed. Open Import History for details."
+        }
+      },
+      "recruitmentImport": {
+        "completed": {
+          "title": "Candidate import finished",
+          "body": "Open the import to see the result row by row and any candidates waiting on the To assign list."
+        },
+        "failed": {
+          "title": "Candidate import stopped",
+          "body": "A problem stopped the import. Rows already imported stay; open the import to see the result."
+        },
+        "cancelled": {
+          "title": "Candidate import stopped",
+          "body": "The import was stopped. Rows already imported stay; open the import to see the result."
         }
       }
     },

@@ -14,6 +14,7 @@ import { AgencyReviewList, AgencySubmissionPanel } from './agency-panel';
 import { SCREENING_SEND_FORM, ScreeningSendPanel } from './screening-panel';
 import { ScreeningStatusPill } from '../screening-ui';
 import { CustomFilterSelect } from '../custom-fields-ui';
+import { ExportPanel } from '../export-ui';
 
 type Search = { job?: string; tab?: string; tag?: string; application?: string; problem?: string; notice?: string; screening?: string; send?: string; held?: string; cf?: string };
 
@@ -58,7 +59,12 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
   const rejectLabels = { open: t('reject'), title: t('rejectTitle'), reason: t('rejectReason'), choose: t('choose'), external: t('externalReason'), confirm: t('rejectConfirm'), cancel: t('cancel') };
   return (
     <div className="w-full space-y-5">
-      <PageHeader title={nav('recruitment')} description={t('purpose')} />
+      <PageHeader title={nav('recruitment')} description={t('purpose')} actions={access.poolCompanies.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          <Link href="/recruitment/to-assign" className={btnGhost}>{t('toAssign')}</Link>
+          <Link href="/recruitment/candidates/import" className={btnPrimary}>{t('import')}</Link>
+        </div>
+      ) : undefined} />
       <RecruitmentTabs active="candidates" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0}  screening={access.pendingScreening} pools={access.poolCompanies.length > 0} />
       <Notice text={sp.notice === 'saved' ? t('savedNotice') : sp.notice === 'screening-sent' ? ts('sentNotice')
         : sp.notice === 'screening-sent-held' ? tp('notice.screeningHeld', { n: Math.max(1, Number.parseInt(sp.held ?? '1', 10) || 1) })
@@ -216,6 +222,10 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
             )}
           </div>
           <aside className="space-y-4">
+            {access.poolCompanies.length > 0 && (
+              <ExportPanel s={s} kind="board" companyIds={access.poolCompanies.map((c) => c.id)} returnTo={here}
+                filters={{ job: sp.job, tab: selectedTab?.key, tag: sp.tag, cf: board.customFilter ?? undefined }} />
+            )}
             {sendJob && selectedTab?.stageId && (
               <ScreeningSendPanel s={s} jobId={sendJob.id} here={query({ application: undefined })} selectable={sendable.length}
                 nextStage={sendNext && sendNext !== 'hired' ? sendNext.name : null} />

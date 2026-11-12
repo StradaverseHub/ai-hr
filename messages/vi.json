@@ -38065,7 +38065,18 @@
       "custom_field_limit": "Công ty này đã đạt số trường tùy chỉnh hoặc lựa chọn tối đa (50 trường đang bật mỗi loại, tổng cộng 500, 100 lựa chọn mỗi trường). Hãy tắt hoặc xóa bớt một mục trước.",
       "required_needs_option": "Trường lựa chọn bắt buộc cần ít nhất một lựa chọn đang bật. Hãy thêm hoặc bật một lựa chọn trước, hoặc đặt trường thành không bắt buộc.",
       "template_unavailable": "Không thể dùng mẫu vị trí này: mẫu đã bị tắt hoặc xóa, hoặc công ty đang tắt tính năng mẫu. Hãy bắt đầu từ biểu mẫu trống hoặc chọn mẫu khác.",
-      "template_limit": "Công ty đã có số mẫu vị trí tối đa cho phép (200). Hãy xóa một mẫu không còn dùng trước."
+      "template_limit": "Công ty đã có số mẫu vị trí tối đa cho phép (200). Hãy xóa một mẫu không còn dùng trước.",
+      "import_file_invalid": "Không thể đọc tệp này như một tệp nhập ứng viên. Hãy tải mẫu về, sao chép các dòng vào đó và thử lại.",
+      "import_changed": "Tệp này không phải tệp đã được kiểm tra. Hãy chọn lại tệp để được kiểm tra trước khi nhập.",
+      "import_running": "Bạn đang có một lần nhập đang chạy. Hãy chờ hoàn tất hoặc dừng nó trước khi bắt đầu lần khác.",
+      "import_finished": "Lần nhập này đã kết thúc nên không thể dừng nữa.",
+      "not_to_assign": "Ứng viên này không còn trong danh sách Cần phân công (có thể đã có vị trí).",
+      "job_not_open": "Hãy chọn một vị trí đang Mở. Vị trí này đang tạm hoãn hoặc đã đóng.",
+      "export_too_large": "Danh sách này có hơn 10.000 dòng. Hãy thu hẹp bộ lọc và xuất lại.",
+      "export_busy": "Một lần xuất khác đang chạy. Hãy thử lại sau giây lát.",
+      "export_too_slow": "Lần xuất này quá lớn để tạo kịp thời gian. Hãy thu hẹp bộ lọc và xuất lại.",
+      "import_too_heavy": "Tệp này quá nặng để kiểm tra một lần. Hãy chia thành các tệp nhỏ hơn và kiểm tra từng tệp.",
+      "import_preview_limit": "Hôm nay bạn đã kiểm tra 20 tệp. Bạn có thể kiểm tra thêm vào ngày mai."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -38284,7 +38295,9 @@
       "source": "Nguồn",
       "sourcePlaceholder": "VD: Giới thiệu",
       "add": "Thêm hồ sơ",
-      "open": "Mở"
+      "open": "Mở",
+      "import": "Nhập ứng viên",
+      "toAssign": "Cần phân công"
     },
     "settings": {
       "purpose": "Giai đoạn, quy trình tuyển dụng và lý do lưu trữ của một công ty. Tất cả bắt đầu là mặc định có thể chỉnh sửa.",
@@ -38339,7 +38352,8 @@
         "checks": "Thẩm tra lý lịch",
         "pools": "Kho ứng viên",
         "fields": "Trường tùy chỉnh",
-        "templates": "Mẫu vị trí"
+        "templates": "Mẫu vị trí",
+        "exports": "Mẫu xuất"
       },
       "iv": {
         "rulesTitle": "Quy tắc đánh giá",
@@ -38413,7 +38427,7 @@
         "noneDue": "Không có ứng viên nào đến hạn xóa.",
         "select": "Chọn",
         "candidate": "Ứng viên",
-        "archivedOn": "Lưu trữ gần nhất",
+        "archivedOn": "Ngày lưu trữ hoặc thêm",
         "consent": "Đồng ý",
         "dueOn": "Hết hạn lưu giữ",
         "selectCandidate": "Chọn {name}",
@@ -38938,7 +38952,8 @@
       "recordConsent": "Ghi nhận",
       "careersConsent": "Biểu mẫu trực tuyến, thông báo trang tuyển dụng phiên bản {version}, {date}",
       "recordedByApplicant": "Ứng viên cung cấp trên trang tuyển dụng, {at}",
-      "uploadedByApplicant": "Ứng viên tải lên trên trang tuyển dụng, {at}"
+      "uploadedByApplicant": "Ứng viên tải lên trên trang tuyển dụng, {at}",
+      "importNote": "Ghi chú từ lần nhập"
     },
     "reports": {
       "purpose": "Số liệu tuyển dụng của các công ty và vị trí bạn phụ trách: chỉ gồm số lượng, tỷ lệ và số ngày, không bao giờ có thông tin của ứng viên.",
@@ -39147,7 +39162,8 @@
         "screening": "Hồ sơ cần sàng lọc",
         "screeningFor": "Sàng lọc {candidate} cho {job}",
         "backgroundCheckAuthorisation": "Thẩm tra lý lịch đang chờ ứng viên cho phép",
-        "backgroundCheckOverdue": "Thẩm tra lý lịch đang thực hiện hơn 14 ngày"
+        "backgroundCheckOverdue": "Thẩm tra lý lịch đang thực hiện hơn 14 ngày",
+        "toAssign": "{count, plural, other {{shown} ứng viên cần phân công vào vị trí}}"
       },
       "update": {
         "requisitionApproved": "Yêu cầu tuyển dụng đã được phê duyệt",
@@ -39754,6 +39770,293 @@
       },
       "notFound": "Mẫu này không còn tồn tại. Có thể mẫu đã bị xóa.",
       "nameProblem": "Hãy dùng tên khác: một mẫu khác của công ty này đã dùng tên đó (tối đa 120 ký tự)."
+    },
+    "import": {
+      "purpose": "Thêm nhiều ứng viên cùng lúc từ bảng tính. Tệp được kiểm tra toàn bộ trước; không có gì được lưu cho đến khi bạn bắt đầu nhập.",
+      "back": "Quay lại ứng viên",
+      "company": "Công ty",
+      "switchCompany": "Hiển thị",
+      "step1": "1. Lấy mẫu",
+      "templateNote": "Dùng mẫu của AI HR: mỗi dòng một ứng viên, tối đa {max} dòng và 10 MB. Chỉ Họ và tên là bắt buộc. Thêm mã công việc để đưa ứng viên thẳng vào vị trí đang Mở đó; nếu không, họ sẽ chờ trong danh sách Cần phân công.",
+      "templateXlsx": "Tải mẫu Excel",
+      "templateCsv": "Tải mẫu CSV",
+      "columnsTitle": "Ý nghĩa của từng cột",
+      "requiredField": "bắt buộc",
+      "columns": {
+        "fullName": "Họ và tên",
+        "email": "E-mail",
+        "mobile": "Di động",
+        "idType": "Loại giấy tờ",
+        "idNumber": "Số giấy tờ",
+        "source": "Nguồn",
+        "jobNumber": "Mã công việc",
+        "jobTitle": "Chức danh như đã ghi",
+        "notes": "Ghi chú"
+      },
+      "columnHelp": {
+        "fullName": "bắt buộc, tối đa 200 ký tự",
+        "email": "không bắt buộc, một địa chỉ e-mail",
+        "mobile": "không bắt buộc, tối đa 40 ký tự",
+        "idType": "NRIC hoặc Hộ chiếu; cần khi có số giấy tờ",
+        "idNumber": "không bắt buộc; chỉ quản trị viên và người tuyển dụng của ứng viên xem được",
+        "source": "Nhân viên giới thiệu, Trang việc làm, Trang tuyển dụng, Công ty tuyển dụng, Tự đến hoặc Khác",
+        "jobNumber": "không bắt buộc, vd. MJ000012 — một vị trí đang Mở mà bạn tuyển dụng",
+        "jobTitle": "không bắt buộc; công việc người đó ứng tuyển, dùng để nhóm danh sách Cần phân công",
+        "notes": "không bắt buộc, tối đa 2.000 ký tự; quản trị viên và người tuyển dụng xem được",
+        "choice": "một trong: {options}",
+        "type": {
+          "short_text": "văn bản, tối đa 200 ký tự",
+          "long_text": "văn bản, tối đa 4.000 ký tự",
+          "number": "một số",
+          "date": "ngày dạng YYYY-MM-DD",
+          "year_month": "tháng dạng YYYY-MM",
+          "single_choice": "một trong các lựa chọn",
+          "multiple_choice": "các lựa chọn cách nhau bằng ;",
+          "yes_no": "Có hoặc Không"
+        }
+      },
+      "step2": "2. Kiểm tra tệp của bạn",
+      "chooseFile": "Chọn tệp CSV hoặc Excel",
+      "fileHelp": "Toàn bộ tệp được kiểm tra và bạn thấy điều gì sẽ xảy ra trước khi bất cứ thứ gì được lưu.",
+      "checking": "Đang kiểm tra tệp…",
+      "starting": "Đang bắt đầu nhập…",
+      "fileErrors": {
+        "import_file_invalid": "Không thể đọc tệp. Hãy lưu dưới dạng CSV (UTF-8) hoặc Excel và thử lại.",
+        "import_no_name_column": "Tệp không có cột Họ và tên. Hãy dùng dòng đầu tiên của mẫu làm tiêu đề.",
+        "import_empty": "Tệp không có dòng ứng viên nào.",
+        "import_too_many_rows": "Tệp có hơn 5.000 dòng ứng viên. Hãy chia thành các tệp nhỏ hơn.",
+        "import_too_large": "Tệp lớn hơn 10 MB. Hãy chia thành các tệp nhỏ hơn.",
+        "import_bad_encoding": "Tệp không được lưu dưới dạng UTF-8. Hãy lưu dưới dạng CSV UTF-8, hoặc tải tệp Excel lên."
+      },
+      "previewTitle": "Điều gì sẽ xảy ra với {file}",
+      "previewNote": "Các dòng có vấn đề sẽ không được nhập; mọi dòng khác đều được nhập. Ứng viên có thể trùng được thêm như ứng viên mới và được đánh dấu, không bao giờ bị gộp.",
+      "counts": {
+        "rows": "Số dòng trong tệp",
+        "ready": "Sẽ được nhập",
+        "invalid": "Dòng có vấn đề",
+        "withJob": "Vào vị trí",
+        "toAssign": "Danh sách Cần phân công",
+        "duplicates": "Có thể trùng"
+      },
+      "unknownJobsNote": "{count, plural, other {# dòng ghi mã công việc không phải vị trí đang Mở mà bạn tuyển dụng; các dòng này vào danh sách Cần phân công.}}",
+      "ignoredColumns": "Các cột này không được dùng: {columns}",
+      "issuesCaption": "Các dòng cần xem trước khi nhập",
+      "row": "Dòng",
+      "name": "Tên",
+      "whatHappens": "Điều gì xảy ra",
+      "issue": "{field}: {problem}",
+      "unknownField": "một trường đã bị xóa",
+      "issues": {
+        "required": "bị thiếu",
+        "invalid": "không hợp lệ",
+        "too_long": "quá dài",
+        "id_type_required": "chọn NRIC hoặc Hộ chiếu",
+        "custom_field_required": "bị thiếu (trường bắt buộc)",
+        "custom_value_invalid": "không phù hợp với trường này",
+        "needs_job": "chỉ quản trị viên mới nhập được mục này khi không có mã công việc",
+        "control_character": "chứa ký tự điều khiển ẩn"
+      },
+      "notImported": "Dòng này sẽ không được nhập.",
+      "duplicateExisting": "Có thể trùng với một ứng viên bạn đã có (sẽ được đánh dấu)",
+      "duplicateFile": "Có thể trùng với dòng {row} (sẽ được đánh dấu)",
+      "jobResults": {
+        "unknown_job": "Không tìm thấy mã công việc trong các vị trí của bạn — vào Cần phân công",
+        "job_not_open": "Vị trí không đang Mở — vào Cần phân công",
+        "job_not_allowed": "Bạn không thể thêm ứng viên vào vị trí này — vào Cần phân công"
+      },
+      "issuesTruncated": "Đang hiển thị {count} dòng đầu tiên cần xem.",
+      "permission": "Tôi xác nhận chúng tôi được những người này cho phép lưu thông tin của họ cho mục đích tuyển dụng.",
+      "consentNote": "Sự đồng ý vẫn là \"chưa ghi nhận\" cho đến khi có người ghi nhận cho từng ứng viên.",
+      "start": "{count, plural, other {Bắt đầu nhập # ứng viên}}",
+      "cancelPreview": "Chọn tệp khác",
+      "progressTitle": "Tiến độ nhập",
+      "progressCount": "Đã xong {done} / {total} dòng",
+      "backgroundHelp": "Việc nhập chạy ngầm. Bạn có thể rời trang này; bạn sẽ nhận thông báo khi hoàn tất.",
+      "workerUnavailable": "Đang chờ dịch vụ nhập khởi động. Lần nhập sẽ ở trong hàng chờ cho đến lúc đó.",
+      "stop": "Dừng nhập",
+      "stopRequested": "Đang dừng… các dòng đã nhập vẫn được giữ.",
+      "failed": "Việc nhập đã dừng do có sự cố. Các dòng đã nhập vẫn được giữ; xem kết quả bên dưới.",
+      "state": {
+        "queued": "Đang chờ bắt đầu",
+        "preparing": "Đang đọc tệp",
+        "running": "Đang nhập",
+        "finalizing": "Đang hoàn tất",
+        "discarding": "Đang dừng",
+        "completed": "Đã xong",
+        "failed": "Đã dừng (có sự cố)",
+        "cancelled": "Đã dừng"
+      },
+      "outcome": {
+        "completed": "đã xong",
+        "cancelled": "đã dừng",
+        "failed": "đã dừng (có sự cố)"
+      },
+      "jobTitle": "Lần nhập bắt đầu lúc {date}",
+      "resultTitle": "Kết quả",
+      "resultStopped": "Kết quả (dừng trước khi xong)",
+      "resultFailed": "Kết quả (dừng do sự cố)",
+      "resultCounts": {
+        "created": "Ứng viên đã thêm",
+        "applications": "Đã đưa vào vị trí",
+        "toAssign": "Trong Cần phân công",
+        "possibleDuplicates": "Có thể trùng",
+        "needsReview": "Cần quản trị viên xem xét",
+        "invalid": "Dòng có vấn đề",
+        "failed": "Dòng bị từ chối",
+        "rows": "Dòng đã xong"
+      },
+      "openToAssign": "Mở danh sách Cần phân công",
+      "resultFilter": "Các dòng hiển thị",
+      "problemsOnly": "Dòng cần xem",
+      "allRows": "Tất cả các dòng",
+      "noProblems": "Không có gì cần xem: mọi dòng đều được nhập như dự kiến.",
+      "resultCaption": "Kết quả nhập theo dòng",
+      "outcomeColumn": "Kết quả",
+      "removed": "Ứng viên đã bị xóa dữ liệu",
+      "result": {
+        "invalid": "Không được nhập (dòng có vấn đề)",
+        "failed": "Không được nhập: {reason}",
+        "applied": "Đã thêm vào {job}",
+        "toAssign": "Đã thêm vào danh sách Cần phân công"
+      },
+      "refusals": {
+        "refused": "hệ thống từ chối dòng này",
+        "forbidden": "bạn không được phép làm việc này",
+        "duplicate_application": "đã ứng tuyển vị trí này",
+        "repeat_application": "đã ứng tuyển vị trí này quá gần đây",
+        "invalid_input": "một giá trị không được chấp nhận",
+        "process_unavailable": "vị trí không có giai đoạn nào dùng được",
+        "candidate_removed": "ứng viên đã bị xóa dữ liệu",
+        "custom_value_invalid": "giá trị của trường tùy chỉnh không phù hợp",
+        "custom_field_required": "một trường tùy chỉnh bắt buộc đang trống"
+      },
+      "flags": {
+        "duplicate": "Có thể trùng",
+        "review": "Cần quản trị viên xem xét"
+      },
+      "recentTitle": "Các lần nhập gần đây của bạn",
+      "recentEmpty": "Chưa có lần nhập nào.",
+      "recentRows": "{count, plural, other {# dòng}}",
+      "privacyNote": "Tệp không được giữ lại sau khi nhập xong. Kết quả của mỗi dòng chỉ ghi lại điều đã xảy ra, không bao giờ lưu giá trị trong tệp.",
+      "resultPages": "Thêm dòng",
+      "firstRows": "Các dòng đầu",
+      "nextRows": "Các dòng tiếp theo"
+    },
+    "toAssign": {
+      "purpose": "Ứng viên chưa có vị trí — được nhập mà không có mã công việc dùng được. Hãy phân công họ vào một vị trí đang Mở, hoặc bỏ họ khỏi danh sách này.",
+      "back": "Quay lại ứng viên",
+      "company": "Công ty",
+      "switchCompany": "Hiển thị",
+      "viewLabel": "Những ứng viên nào",
+      "viewShown": "Cần phân công ({count})",
+      "viewHidden": "Đã bỏ khỏi danh sách ({count})",
+      "listNote": "Nhóm theo chức danh ghi trong tệp nhập.",
+      "hiddenNote": "Những ứng viên này đã bị bỏ khỏi danh sách. Họ vẫn là ứng viên; hãy hiển thị lại để phân công.",
+      "importLink": "Nhập ứng viên",
+      "empty": "Không có ứng viên nào đang chờ vị trí.",
+      "emptyHidden": "Không có ứng viên nào bị bỏ khỏi danh sách.",
+      "noTitle": "Không ghi chức danh",
+      "groupTitle": "Ứng tuyển: {title}",
+      "noContact": "Không có thông tin liên hệ",
+      "duplicate": "Có thể trùng",
+      "source": "Nguồn",
+      "noSource": "Không ghi",
+      "imported": "Đã nhập",
+      "importedBy": "{date} bởi {by}",
+      "unnamedUser": "một người dùng chưa đặt tên",
+      "note": "Ghi chú",
+      "chooseJob": "Vị trí cho {name}",
+      "chooseJobShort": "Chọn vị trí",
+      "assign": "Phân công vào vị trí",
+      "hide": "Bỏ khỏi danh sách",
+      "show": "Hiển thị lại",
+      "hideNamed": "Bỏ {name} khỏi danh sách",
+      "showNamed": "Hiển thị lại {name}",
+      "noOpenJobs": "Bạn không có vị trí đang Mở nào để phân công ứng viên.",
+      "truncated": "Đang hiển thị 500 ứng viên gần đây nhất.",
+      "hideNote": "Bỏ ai đó khỏi danh sách này không xóa gì cả: họ vẫn là ứng viên và dữ liệu của họ tuân theo quy tắc lưu giữ thông thường.",
+      "notice": {
+        "assigned": "Đã thêm ứng viên vào vị trí.",
+        "hidden": "Đã bỏ ứng viên khỏi danh sách.",
+        "shown": "Đã hiển thị lại ứng viên trong danh sách."
+      }
+    },
+    "exports": {
+      "open": {
+        "board": "Xuất danh sách này",
+        "talent_pool": "Xuất kho nhân tài",
+        "interview_feedback": "Xuất phản hồi phỏng vấn cho vị trí này"
+      },
+      "kinds": {
+        "board": "Ứng viên",
+        "talent_pool": "Kho nhân tài",
+        "interview_feedback": "Phản hồi phỏng vấn"
+      },
+      "format": "Loại tệp",
+      "xlsx": "Excel",
+      "csv": "CSV",
+      "template": "Bộ cột đã lưu",
+      "templateNone": "Chọn cột bên dưới",
+      "columnsLegend": "Cột",
+      "columnsOr": "Hoặc chọn cột",
+      "restricted": "chỉ khi bạn được phép xem",
+      "note": "Tệp hiển thị đúng những gì bạn thấy ở đây, tối đa {max} dòng. Tệp được tạo ngay và không được lưu; lượt tải về được ghi lại.",
+      "download": "Tải về",
+      "reset": "Đặt lại",
+      "yes": "Có",
+      "no": "Không",
+      "status": {
+        "active": "Đang xử lý",
+        "hired": "Đã tuyển",
+        "archived": "Đã lưu trữ"
+      },
+      "columns": {
+        "candidateName": "Ứng viên",
+        "email": "E-mail",
+        "mobile": "Di động",
+        "jobTitle": "Vị trí",
+        "jobNumber": "Mã công việc",
+        "stage": "Giai đoạn",
+        "status": "Trạng thái",
+        "appliedOn": "Ngày ứng tuyển",
+        "source": "Nguồn",
+        "owner": "Người phụ trách ứng viên",
+        "tags": "Thẻ",
+        "archiveReason": "Lý do lưu trữ",
+        "needsReview": "Cần quản trị viên xem xét",
+        "location": "Địa điểm",
+        "currentCompany": "Công ty hiện tại",
+        "currentTitle": "Chức danh hiện tại",
+        "highestEducation": "Trình độ cao nhất",
+        "noticePeriod": "Thời gian báo trước",
+        "idType": "Loại giấy tờ",
+        "idNumber": "Số giấy tờ",
+        "stageLeft": "Rời ở giai đoạn",
+        "archivedOn": "Ngày lưu trữ",
+        "pools": "Kho nhân tài",
+        "round": "Vòng",
+        "interviewDate": "Ngày phỏng vấn",
+        "interviewer": "Người phỏng vấn",
+        "result": "Kết quả chung",
+        "averageScore": "Điểm trung bình",
+        "scores": "Điểm",
+        "comments": "Nhận xét"
+      }
+    },
+    "exportTemplates": {
+      "note": "Bộ cột đã lưu giúp xuất nhanh hơn. Mọi người được phép xuất trong công ty này đều dùng được; chỉ quản trị viên thay đổi. Chúng chỉ lưu tên cột.",
+      "kindLabel": "Xuất",
+      "empty": "Chưa có bộ cột đã lưu cho lần xuất này.",
+      "columnCount": "{count, plural, other {# cột}}",
+      "changed": "đã sửa {at}",
+      "name": "Tên",
+      "columns": "Cột",
+      "save": "Lưu",
+      "delete": "Xóa",
+      "deleteNamed": "Xóa {name}",
+      "newTitle": "Bộ cột mới cho {kind}",
+      "add": "Thêm bộ cột",
+      "removedField": "một trường đã bị xóa"
     }
   },
   "careersPublic": {
@@ -40131,6 +40434,20 @@
         "cancelled": {
           "title": "Đã hủy việc hoàn tác nhập biến động",
           "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem chi tiết."
+        }
+      },
+      "recruitmentImport": {
+        "completed": {
+          "title": "Đã nhập xong ứng viên",
+          "body": "Mở lần nhập để xem kết quả từng dòng và các ứng viên đang chờ trong danh sách Cần phân công."
+        },
+        "failed": {
+          "title": "Việc nhập ứng viên đã dừng",
+          "body": "Một sự cố đã dừng việc nhập. Các dòng đã nhập vẫn được giữ; mở lần nhập để xem kết quả."
+        },
+        "cancelled": {
+          "title": "Việc nhập ứng viên đã dừng",
+          "body": "Việc nhập đã được dừng. Các dòng đã nhập vẫn được giữ; mở lần nhập để xem kết quả."
         }
       }
     },

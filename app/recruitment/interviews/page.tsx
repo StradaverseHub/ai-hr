@@ -2,11 +2,12 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
-import { PageHeader, btnGhost, btnPrimary, tableWrapCls, tbodyCls, thCls, theadCls } from '@/components/ui';
+import { ErrorBanner, PageHeader, btnGhost, btnPrimary, tableWrapCls, tbodyCls, thCls, theadCls } from '@/components/ui';
 import { INTERVIEW_TYPES, interviewSchedule, type ScheduleRow } from '@/packs/recruitment/service';
-import { NoRecruitmentCompany, Pill, RecruitmentTabs, recruitmentViewerAccess, selectCls } from '../shared';
+import { NoRecruitmentCompany, Pill, RecruitmentTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
+import { ExportPanel } from '../export-ui';
 
-type Search = { job?: string; recruiter?: string; interviewer?: string; type?: string; status?: string };
+type Search = { job?: string; recruiter?: string; interviewer?: string; type?: string; status?: string; problem?: string };
 
 /**
  * Recruitment › Interviews: the schedule, grouped Today, Upcoming and Recent (last 30 days). Filters: position,
@@ -29,6 +30,7 @@ export default async function RecruitmentInterviewsPage({ searchParams }: { sear
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={t('purpose')} />
       <RecruitmentTabs active="interviews" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0}  screening={access.pendingScreening} pools={access.poolCompanies.length > 0} />
+      <ErrorBanner message={await recruitmentErrorText(sp.problem)} />
       {access.companies.length === 0 ? <NoRecruitmentCompany /> : (
         <>
           <form method="get" className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -57,6 +59,10 @@ export default async function RecruitmentInterviewsPage({ searchParams }: { sear
               <Link href="/recruitment/interviews" className={btnGhost}>{t('reset')}</Link>
             </div>
           </form>
+          {sp.job && access.poolCompanies.length > 0 && schedule.jobs.some((j) => j.id === sp.job) && (
+            <ExportPanel s={s} kind="interview_feedback" companyIds={access.poolCompanies.map((c) => c.id)} filters={{ job: sp.job }}
+              returnTo={`/recruitment/interviews?job=${encodeURIComponent(sp.job)}`} />
+          )}
           {groups.map((g) => (
             <section key={g.key} className="space-y-2" aria-labelledby={`group-${g.key}`}>
               <h2 id={`group-${g.key}`} className="text-sm font-semibold">{t(`groups.${g.key}`, { n: g.rows.length })}</h2>

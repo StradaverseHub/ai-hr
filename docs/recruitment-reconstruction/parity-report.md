@@ -545,3 +545,13 @@ showed three field messages (before the fix both long forms came back empty and 
 | 43193948915 | Production build | PASS |
 | 43193948915 | Selected tests (64 files) | 58 PASS; FAIL: the known 6 AI files (53 tests) |
 | 43193965190 | Selected tests (60 files, incl. position templates, form DOM and action tests) | PASS: 752 tests |
+
+## Slice 16 — Import, export and the To assign list
+
+Local: after a review and a confirmation round, 602/602 tests passed (39 files).
+Rendered (case 114): the CSV template downloaded with the nine columns; a file with unknown sources and a missing name
+was refused row by row in the preview (nothing saved); a corrected file previewed 4 to import, 2 into positions, 2 to
+To assign and 1 unknown job number; after the permission confirmation the background worker finished the import and the
+result showed the same counts and the problem row. On To assign, the two candidates were grouped by the job title as
+written; assigning one to an Open position created its application and removed it from the list. A board export opened
+as CSV with only the chosen columns and the newly assigned candidate. No server errors.

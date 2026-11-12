@@ -38065,7 +38065,18 @@
       "custom_field_limit": "该公司的自定义字段或选项已达上限（每类最多启用 50 个字段，共 500 个，每个字段 100 个选项）。请先停用或删除一个。",
       "required_needs_option": "必填的选择字段至少需要一个已启用的选项。请先添加或启用一个选项，或将该字段改为选填。",
       "template_unavailable": "无法使用此职位模板：模板已停用或删除，或公司已关闭模板功能。请从空白表单开始，或选择其他模板。",
-      "template_limit": "公司的职位模板已达允许的上限（200 个）。请先删除不再使用的模板。"
+      "template_limit": "公司的职位模板已达允许的上限（200 个）。请先删除不再使用的模板。",
+      "import_file_invalid": "无法将此文件读取为候选人导入文件。请下载模板，将数据行复制进去后重试。",
+      "import_changed": "此文件不是刚才检查过的文件。请重新选择文件，以便在导入前进行检查。",
+      "import_running": "您已有一个导入正在进行。请等待其完成或将其停止后，再开始新的导入。",
+      "import_finished": "此导入已经结束，无法再停止。",
+      "not_to_assign": "该候选人已不在“待分配”列表中（可能已有职位）。",
+      "job_not_open": "请选择“开放”状态的职位。此职位已暂停或关闭。",
+      "export_too_large": "此列表超过 10,000 行。请缩小筛选范围后重新导出。",
+      "export_busy": "另一个导出正在进行。请稍后再试。",
+      "export_too_slow": "此导出太大，无法及时生成。请缩小筛选范围后重新导出。",
+      "import_too_heavy": "此文件太大，无法一次检查。请拆分为较小的文件并逐一检查。",
+      "import_preview_limit": "您今天已检查了 20 个文件。明天可以继续检查。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -38284,7 +38295,9 @@
       "source": "来源",
       "sourcePlaceholder": "例如：内部推荐",
       "add": "添加申请",
-      "open": "打开"
+      "open": "打开",
+      "import": "导入候选人",
+      "toAssign": "待分配"
     },
     "settings": {
       "purpose": "单个公司的招聘阶段、招聘流程和归档原因。初始内容均为可编辑的默认设置。",
@@ -38339,7 +38352,8 @@
         "checks": "背景调查",
         "pools": "人才库",
         "fields": "自定义字段",
-        "templates": "职位模板"
+        "templates": "职位模板",
+        "exports": "导出模板"
       },
       "iv": {
         "rulesTitle": "反馈规则",
@@ -38413,7 +38427,7 @@
         "noneDue": "没有待删除的候选人。",
         "select": "选择",
         "candidate": "候选人",
-        "archivedOn": "最近归档",
+        "archivedOn": "归档或添加日期",
         "consent": "同意",
         "dueOn": "保留期届满",
         "selectCandidate": "选择 {name}",
@@ -38938,7 +38952,8 @@
       "recordConsent": "记录",
       "careersConsent": "在线表格，招聘页面声明第 {version} 版，{date}",
       "recordedByApplicant": "由申请人在招聘页面提供，{at}",
-      "uploadedByApplicant": "由申请人在招聘页面上传，{at}"
+      "uploadedByApplicant": "由申请人在招聘页面上传，{at}",
+      "importNote": "导入备注"
     },
     "reports": {
       "purpose": "您负责的公司和职位的招聘数据：仅显示数量、比率和天数，绝不显示候选人的个人信息。",
@@ -39147,7 +39162,8 @@
         "screening": "待筛选的简历",
         "screeningFor": "为{job}筛选{candidate}",
         "backgroundCheckAuthorisation": "背景调查等待候选人授权",
-        "backgroundCheckOverdue": "背景调查进行中已超过 14 天"
+        "backgroundCheckOverdue": "背景调查进行中已超过 14 天",
+        "toAssign": "{count, plural, other {{shown} 位候选人待分配到职位}}"
       },
       "update": {
         "requisitionApproved": "招聘需求已获批准",
@@ -39754,6 +39770,293 @@
       },
       "notFound": "此模板已不存在，可能已被删除。",
       "nameProblem": "请使用其他名称：本公司的另一个模板已使用该名称（最多 120 个字符）。"
+    },
+    "import": {
+      "purpose": "从电子表格一次添加多位候选人。系统会先完整检查文件；在您开始导入之前不会保存任何内容。",
+      "back": "返回候选人",
+      "company": "公司",
+      "switchCompany": "显示",
+      "step1": "1. 获取模板",
+      "templateNote": "请使用 AI HR 模板：每行一位候选人，最多 {max} 行、10 MB。只有“全名”为必填。填写职位编号可将候选人直接放入该开放职位；未填写则进入“待分配”列表。",
+      "templateXlsx": "下载 Excel 模板",
+      "templateCsv": "下载 CSV 模板",
+      "columnsTitle": "各列说明",
+      "requiredField": "必填",
+      "columns": {
+        "fullName": "全名",
+        "email": "电子邮箱",
+        "mobile": "手机",
+        "idType": "证件类型",
+        "idNumber": "证件号码",
+        "source": "来源",
+        "jobNumber": "职位编号",
+        "jobTitle": "填写的职位名称",
+        "notes": "备注"
+      },
+      "columnHelp": {
+        "fullName": "必填，最多 200 个字符",
+        "email": "选填，一个电子邮箱地址",
+        "mobile": "选填，最多 40 个字符",
+        "idType": "NRIC 或护照；填写证件号码时必填",
+        "idNumber": "选填；仅管理员和该候选人的招聘人员可见",
+        "source": "员工推荐、招聘网站、招聘页面、中介、自荐上门或其他",
+        "jobNumber": "选填，例如 MJ000012 — 您负责招聘的开放职位",
+        "jobTitle": "选填；候选人申请的职位，用于对“待分配”列表分组",
+        "notes": "选填，最多 2,000 个字符；管理员和招聘人员可见",
+        "choice": "以下之一：{options}",
+        "type": {
+          "short_text": "文本，最多 200 个字符",
+          "long_text": "文本，最多 4,000 个字符",
+          "number": "数字",
+          "date": "日期，格式 YYYY-MM-DD",
+          "year_month": "月份，格式 YYYY-MM",
+          "single_choice": "其中一个选项",
+          "multiple_choice": "多个选项用 ; 分隔",
+          "yes_no": "是或否"
+        }
+      },
+      "step2": "2. 检查您的文件",
+      "chooseFile": "选择 CSV 或 Excel 文件",
+      "fileHelp": "系统会检查整个文件，并在保存任何内容之前让您看到将会发生什么。",
+      "checking": "正在检查文件…",
+      "starting": "正在开始导入…",
+      "fileErrors": {
+        "import_file_invalid": "无法读取文件。请另存为 CSV（UTF-8）或 Excel 后重试。",
+        "import_no_name_column": "文件没有“全名”列。请使用模板第一行作为表头。",
+        "import_empty": "文件中没有候选人数据行。",
+        "import_too_many_rows": "文件中的候选人数据超过 5,000 行。请拆分为较小的文件。",
+        "import_too_large": "文件超过 10 MB。请拆分为较小的文件。",
+        "import_bad_encoding": "文件不是以 UTF-8 保存的。请另存为 CSV UTF-8，或改为上传 Excel 文件。"
+      },
+      "previewTitle": "{file} 将会如何处理",
+      "previewNote": "有问题的行不会导入，其余行都会导入。可能重复的候选人会作为新候选人添加并加上标记，绝不会合并。",
+      "counts": {
+        "rows": "文件行数",
+        "ready": "将导入",
+        "invalid": "有问题的行",
+        "withJob": "放入职位",
+        "toAssign": "待分配列表",
+        "duplicates": "可能重复"
+      },
+      "unknownJobsNote": "{count, plural, other {有 # 行填写的职位编号不是您负责招聘的开放职位；这些行将进入“待分配”列表。}}",
+      "ignoredColumns": "以下列不会使用：{columns}",
+      "issuesCaption": "导入前需要查看的行",
+      "row": "行",
+      "name": "姓名",
+      "whatHappens": "处理结果",
+      "issue": "{field}：{problem}",
+      "unknownField": "已删除的字段",
+      "issues": {
+        "required": "缺失",
+        "invalid": "无效",
+        "too_long": "过长",
+        "id_type_required": "请选择 NRIC 或护照",
+        "custom_field_required": "缺失（必填字段）",
+        "custom_value_invalid": "不符合此字段要求",
+        "needs_job": "没有职位编号时只有管理员可以导入此项",
+        "control_character": "包含隐藏的控制字符"
+      },
+      "notImported": "此行不会导入。",
+      "duplicateExisting": "可能与已有候选人重复（将加上标记）",
+      "duplicateFile": "可能与第 {row} 行重复（将加上标记）",
+      "jobResults": {
+        "unknown_job": "在您的职位中找不到此职位编号 — 进入待分配",
+        "job_not_open": "职位不是开放状态 — 进入待分配",
+        "job_not_allowed": "您不能向此职位添加候选人 — 进入待分配"
+      },
+      "issuesTruncated": "显示前 {count} 个需要查看的行。",
+      "permission": "我确认我们已获得这些人的许可，可为招聘目的保存他们的资料。",
+      "consentNote": "在有人为每位候选人记录同意之前，同意状态保持为“未记录”。",
+      "start": "{count, plural, other {开始导入 # 位候选人}}",
+      "cancelPreview": "选择其他文件",
+      "progressTitle": "导入进度",
+      "progressCount": "已完成 {done} / {total} 行",
+      "backgroundHelp": "导入在后台进行。您可以离开此页面；导入结束时您会收到通知。",
+      "workerUnavailable": "正在等待导入服务启动。在此之前导入会保持排队。",
+      "stop": "停止导入",
+      "stopRequested": "正在停止… 已导入的行会保留。",
+      "failed": "导入因问题而停止。已导入的行会保留；请查看下方结果。",
+      "state": {
+        "queued": "等待开始",
+        "preparing": "正在读取文件",
+        "running": "正在导入",
+        "finalizing": "正在完成",
+        "discarding": "正在停止",
+        "completed": "已完成",
+        "failed": "已停止（出现问题）",
+        "cancelled": "已停止"
+      },
+      "outcome": {
+        "completed": "已完成",
+        "cancelled": "已停止",
+        "failed": "已停止（出现问题）"
+      },
+      "jobTitle": "导入开始于 {date}",
+      "resultTitle": "结果",
+      "resultStopped": "结果（在结束前停止）",
+      "resultFailed": "结果（因问题停止）",
+      "resultCounts": {
+        "created": "已添加候选人",
+        "applications": "已放入职位",
+        "toAssign": "在待分配中",
+        "possibleDuplicates": "可能重复",
+        "needsReview": "需要管理员审核",
+        "invalid": "有问题的行",
+        "failed": "被拒绝的行",
+        "rows": "已完成行数"
+      },
+      "openToAssign": "打开待分配列表",
+      "resultFilter": "显示的行",
+      "problemsOnly": "需要查看的行",
+      "allRows": "所有行",
+      "noProblems": "没有需要查看的内容：每一行都按计划导入。",
+      "resultCaption": "按行显示的导入结果",
+      "outcomeColumn": "结果",
+      "removed": "已移除的候选人",
+      "result": {
+        "invalid": "未导入（该行有问题）",
+        "failed": "未导入：{reason}",
+        "applied": "已添加到 {job}",
+        "toAssign": "已添加到待分配列表"
+      },
+      "refusals": {
+        "refused": "系统拒绝了此行",
+        "forbidden": "您无权执行此操作",
+        "duplicate_application": "已申请过此职位",
+        "repeat_application": "最近已申请过此职位",
+        "invalid_input": "某个值不被接受",
+        "process_unavailable": "该职位没有可用的阶段",
+        "candidate_removed": "该候选人已被移除",
+        "custom_value_invalid": "自定义字段的值不符合要求",
+        "custom_field_required": "必填的自定义字段为空"
+      },
+      "flags": {
+        "duplicate": "可能重复",
+        "review": "需要管理员审核"
+      },
+      "recentTitle": "您最近的导入",
+      "recentEmpty": "暂无导入。",
+      "recentRows": "{count, plural, other {# 行}}",
+      "privacyNote": "导入结束后不会保留文件。每一行的结果只记录处理情况，绝不保存文件中的值。",
+      "resultPages": "更多行",
+      "firstRows": "前面的行",
+      "nextRows": "下一批行"
+    },
+    "toAssign": {
+      "purpose": "没有职位的候选人 — 导入时没有可用的职位编号。请将他们分配到开放职位，或从此列表中移除。",
+      "back": "返回候选人",
+      "company": "公司",
+      "switchCompany": "显示",
+      "viewLabel": "显示哪些候选人",
+      "viewShown": "待分配（{count}）",
+      "viewHidden": "已从列表移除（{count}）",
+      "listNote": "按导入文件中填写的职位名称分组。",
+      "hiddenNote": "这些候选人已从列表中移除。他们仍是候选人；重新显示后即可分配。",
+      "importLink": "导入候选人",
+      "empty": "没有等待职位的候选人。",
+      "emptyHidden": "没有从列表中移除的候选人。",
+      "noTitle": "未填写职位名称",
+      "groupTitle": "申请：{title}",
+      "noContact": "没有联系方式",
+      "duplicate": "可能重复",
+      "source": "来源",
+      "noSource": "未填写",
+      "imported": "导入",
+      "importedBy": "{date}，由 {by}",
+      "unnamedUser": "未命名用户",
+      "note": "备注",
+      "chooseJob": "{name} 的职位",
+      "chooseJobShort": "选择职位",
+      "assign": "分配到职位",
+      "hide": "从列表移除",
+      "show": "重新显示",
+      "hideNamed": "将 {name} 从列表移除",
+      "showNamed": "重新显示 {name}",
+      "noOpenJobs": "您没有可分配候选人的开放职位。",
+      "truncated": "显示最近的 500 位候选人。",
+      "hideNote": "从此列表移除某人不会删除任何内容：他们仍是候选人，其资料按一般保留规则处理。",
+      "notice": {
+        "assigned": "已将候选人添加到职位。",
+        "hidden": "已将候选人从列表移除。",
+        "shown": "已在列表中重新显示候选人。"
+      }
+    },
+    "exports": {
+      "open": {
+        "board": "导出此列表",
+        "talent_pool": "导出人才库",
+        "interview_feedback": "导出此职位的面试反馈"
+      },
+      "kinds": {
+        "board": "候选人",
+        "talent_pool": "人才库",
+        "interview_feedback": "面试反馈"
+      },
+      "format": "文件类型",
+      "xlsx": "Excel",
+      "csv": "CSV",
+      "template": "已保存的列组合",
+      "templateNone": "在下方选择列",
+      "columnsLegend": "列",
+      "columnsOr": "或选择列",
+      "restricted": "仅当您有权查看时",
+      "note": "文件内容与您在此处看到的完全一致，最多 {max} 行。文件即时生成且不保留；下载会被记录。",
+      "download": "下载",
+      "reset": "重置",
+      "yes": "是",
+      "no": "否",
+      "status": {
+        "active": "进行中",
+        "hired": "已录用",
+        "archived": "已归档"
+      },
+      "columns": {
+        "candidateName": "候选人",
+        "email": "电子邮箱",
+        "mobile": "手机",
+        "jobTitle": "职位",
+        "jobNumber": "职位编号",
+        "stage": "阶段",
+        "status": "状态",
+        "appliedOn": "申请日期",
+        "source": "来源",
+        "owner": "候选人负责人",
+        "tags": "标签",
+        "archiveReason": "归档原因",
+        "needsReview": "需要管理员审核",
+        "location": "所在地",
+        "currentCompany": "目前公司",
+        "currentTitle": "目前职位",
+        "highestEducation": "最高学历",
+        "noticePeriod": "通知期",
+        "idType": "证件类型",
+        "idNumber": "证件号码",
+        "stageLeft": "离开时的阶段",
+        "archivedOn": "归档日期",
+        "pools": "人才库",
+        "round": "轮次",
+        "interviewDate": "面试日期",
+        "interviewer": "面试官",
+        "result": "总体结果",
+        "averageScore": "平均分",
+        "scores": "评分",
+        "comments": "评语"
+      }
+    },
+    "exportTemplates": {
+      "note": "已保存的列组合让导出更快捷。本公司所有可导出的人都可以使用；只有管理员可以修改。它们只保存列名。",
+      "kindLabel": "导出",
+      "empty": "此导出还没有已保存的列组合。",
+      "columnCount": "{count, plural, other {# 列}}",
+      "changed": "修改于 {at}",
+      "name": "名称",
+      "columns": "列",
+      "save": "保存",
+      "delete": "删除",
+      "deleteNamed": "删除 {name}",
+      "newTitle": "{kind} 的新列组合",
+      "add": "添加列组合",
+      "removedField": "已删除的字段"
     }
   },
   "careersPublic": {
@@ -40131,6 +40434,20 @@
         "cancelled": {
           "title": "异动导入撤销已取消",
           "body": "未作任何更改。打开导入历史查看详情。"
+        }
+      },
+      "recruitmentImport": {
+        "completed": {
+          "title": "候选人导入已完成",
+          "body": "打开导入以逐行查看结果，以及在“待分配”列表中等待的候选人。"
+        },
+        "failed": {
+          "title": "候选人导入已停止",
+          "body": "导入因问题而停止。已导入的行会保留；打开导入查看结果。"
+        },
+        "cancelled": {
+          "title": "候选人导入已停止",
+          "body": "导入已被停止。已导入的行会保留；打开导入查看结果。"
         }
       }
     },

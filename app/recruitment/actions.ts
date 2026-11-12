@@ -32,7 +32,10 @@ import {
   customValuesFromForm, deleteCustomField, deleteCustomFieldOption, moveCustomField, moveCustomFieldOption, saveCustomField, saveCustomFieldOption,
   CUSTOM_FIELD_LOCALES, interviewPlanFromForm,
   deletePositionTemplate, savePositionTemplate, setPositionTemplateEnabled, updatePositionTemplateSetting,
+  previewCandidateImport, startCandidateImport, candidateImportJob, cancelCandidateImport, assignToJob, setToAssignHidden, saveExportTemplate, deleteExportTemplate,
+  type ImportPreview, type CandidateImportJob,
 } from '@/packs/recruitment/service';
+import { getLocale } from 'next-intl/server';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
 /** Only same-site recruitment paths may be returned to. */
@@ -759,4 +762,56 @@ export async function deletePositionTemplateAction(f: FormData) {
 /** The company's "New position from template" switch. */
 export async function updatePositionTemplateSettingAction(f: FormData) {
   return run(templateSettingsPage(f), (s) => updatePositionTemplateSetting(s, str(f, 'companyId'), f.get('enabled') === 'on'));
+}
+
+// ── Slice 16: candidate import, To assign and export templates ──────────────────────────────────────────────────
+
+/** A refusal for the import screen (a client component): the code only, never SQL or a value. */
+type ImportRefusal = { problem: string };
+const importRefusal = (e: unknown): ImportRefusal => {
+  if (!(e instanceof RecruitmentError)) console.error('recruitment import action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+  return { problem: errorCode(e) };
+};
+/** Check the whole file and say what would happen. Writes nothing (READ ONLY). The file's text comes back to this viewer only. */
+export async function previewCandidateImportAction(input: { companyId: string; text: string; fileName: string }): Promise<ImportPreview | ImportRefusal> {
+  const s = await getSession();
+  try { return await previewCandidateImport(s, input); } catch (e) { return importRefusal(e); }
+}
+/** Start the previewed import (with the permission confirmation): only enqueues the background job. */
+export async function startCandidateImportAction(input: { companyId: string; text: string; fileName: string; previewHash: string; permissionConfirmed: boolean;
+  operationKey?: string }): Promise<{ importId: string } | ImportRefusal> {
+  const s = await getSession();
+  try {
+    const started = await startCandidateImport(s, { ...input, locale: await getLocale() });
+    revalidatePath('/recruitment', 'layout');
+    return { importId: started.importId };
+  } catch (e) { return importRefusal(e); }
+}
+/** The import's progress, for the progress panel's polling. */
+export async function candidateImportStatusAction(importId: string): Promise<CandidateImportJob | ImportRefusal> {
+  const s = await getSession();
+  try { return await candidateImportJob(s, importId); } catch (e) { return importRefusal(e); }
+}
+export async function cancelCandidateImportAction(importId: string): Promise<{ ok: true } | ImportRefusal> {
+  const s = await getSession();
+  try { await cancelCandidateImport(s, importId); return { ok: true }; } catch (e) { return importRefusal(e); }
+}
+const toAssignPage = (f: FormData) => back(f, '/recruitment/to-assign');
+export async function assignToJobAction(f: FormData) {
+  return run(toAssignPage(f), (s) => assignToJob(s, str(f, 'candidateId'), str(f, 'jobId')), withParam(toAssignPage(f), 'notice', 'assigned'));
+}
+export async function hideToAssignAction(f: FormData) {
+  return run(toAssignPage(f), (s) => setToAssignHidden(s, str(f, 'candidateId'), true), withParam(toAssignPage(f), 'notice', 'hidden'));
+}
+export async function showToAssignAction(f: FormData) {
+  return run(toAssignPage(f), (s) => setToAssignHidden(s, str(f, 'candidateId'), false), withParam(toAssignPage(f), 'notice', 'shown'));
+}
+const exportTemplatePage = (f: FormData) => `/recruitment/settings?${new URLSearchParams({ company: str(f, 'companyId'), section: 'exports' })}`;
+export async function saveExportTemplateAction(f: FormData) {
+  return run(exportTemplatePage(f), (s) => saveExportTemplate(s, {
+    id: str(f, 'templateId') || undefined, companyId: str(f, 'companyId'), kind: str(f, 'kind'), name: str(f, 'name'), columns: f.getAll('columns').map(String),
+  }));
+}
+export async function deleteExportTemplateAction(f: FormData) {
+  return run(exportTemplatePage(f), (s) => deleteExportTemplate(s, str(f, 'templateId')));
 }
