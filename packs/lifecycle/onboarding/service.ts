@@ -13,7 +13,7 @@ import { withLifecycleTenant as withTenant } from '../../../core/module-gate';
 import { decodeJsonRow, jsonRowSql } from '../../../db/json-row';
 import { jsonRowsSql } from '../../../db/json-fields';
 import { type SessionContext, type Tx } from '../../../db/client';
-import { appendEvent, actorOf } from '../../../db/events';
+import { appendEvent, appendEvents, actorOf } from '../../../db/events';
 import { lcOnboardingCaseRevision as revisions, lcOnboardingPrivateRevision as privateRevisions, lcOnboardingCase as cases, lcOnboardingConfig as configs, lcOnboardingPrivate as secrets, lcOnboardingNote as notes, lcOnboardingSeen as seen, employeeDraft, department, company, position, businessUnit, jobGrade, costCenter, employment, person, assignment, employmentTypeEnum } from '../../../db/schema';
 import { isModuleEnabled } from '../../../core/entitlements';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
@@ -875,6 +875,20 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
                     M.fail('This group is used by V9 checklists, recipients or open offboarding work. Reassign that work and update those settings before deleting it.');
             }
         }
+        // 259c6162 — a group a routing row points to needs a replacement first; checked before the loop rewrites row.group.
+        for (const g of deleted) {
+            if (replacements[g.id]) continue;
+            const using = next.routings.filter(r => r.rows.some(row => row.group === g.id)).map(r => r.name);
+            if (using.length)
+                M.fail(`This group is used by routing rules: ${using.join(', ')}. Choose a replacement group before deleting it.`);
+        }
+        // 259c6162 — a routing rule still used by approval steps cannot be deleted without moving those steps.
+        for (const r of old.routings) {
+            if (next.routings.some(n => n.id === r.id)) continue;
+            const steps = next.workflows.flatMap(w => w.steps.filter(s => s.type === 'routing' && s.target === r.id).map(s => w.name + ' · ' + s.label));
+            if (steps.length)
+                M.fail(`This routing rule is used by approval steps: ${steps.join(', ')}. Choose a replacement routing rule before deleting it.`);
+        }
         for (const g of deleted) {
             const replacement = replacements[g.id] ?? '';
             if (replacement && !next.groups.some(n => n.id === replacement))
@@ -964,6 +978,9 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
             M.fail('Settings changed. Reload before saving.', 'conflict');
         await tx.execute(sql `insert into lc_onboarding_config_history(tenant_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${current + 1},${JSON.stringify(next)}::jsonb,${actor.id}::uuid)`);
         await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'onboarding-config', aggregateId: ctx.tenantId, eventType: 'onboarding.config.updated', actor: actorOf(ctx), payload: { revision: current + 1 } });
+        const routingEvents = M.routingAuditChanges(old, next);
+        if (routingEvents.length)
+            await appendEvents(tx, routingEvents.map(e => ({ tenantId: ctx.tenantId, aggregateType: 'onboarding-config', aggregateId: ctx.tenantId, eventType: e.eventType, actor: actorOf(ctx), payload: { ...e.payload, revision: current + 1 } })));
         return { revision: current + 1 };
     };
     return outerTx ? save(outerTx) : withTenant(ctx, save);

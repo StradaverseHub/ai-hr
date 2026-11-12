@@ -533,7 +533,30 @@ const keys: Record<string, string> = {
     "Item": "caseItem",
     "Type": "caseType",
     "Provided by": "caseProvidedBy",
-    "Return or revoke by": "caseReturnDue"
+    "Return or revoke by": "caseReturnDue",
+    "Routing rules": "c49ce36722982",
+    "A routing rule picks the assignment group for an approval step from the new joiner’s Business group, company, department and job title. The row with the most filled-in fields wins, and the higher row wins a tie. A row with every field on Any is the default.": "cdb0e0ee5b2bf",
+    "Routing rule name": "c8f4cfe1201c9",
+    "Used in:": "cc435945f8f07",
+    "Not used by any approval step.": "c7c8b74662fcf",
+    "Business group": "c2f97ca37e44d",
+    "Delete routing rule": "c319b516c62bd",
+    "Delete routing rule {name}": "c0bd12067a890",
+    "This routing rule is used in:": "cd1e5542ac38c",
+    "Move these approval steps to": "c57b695df9242",
+    "Choose a routing rule": "c684a442f9a6b",
+    "Create another routing rule first. A routing rule that approval steps use can only be deleted when they move to a replacement.": "c4c8c3c23e0f9",
+    "Approvals already waiting keep their approver. The replacement applies to new requests and to retried approval routing.": "ce465596d4fe2",
+    "Delete and move steps": "cd025caea13b2",
+    "Create routing rule": "c690186af07bb",
+    "Routing rule": "cb00b221223e4",
+    "Manage routing rules in Assignment groups": "c8b1bf6a6887e",
+    "Save configuration first to keep your changes.": "c081ad0ce1487",
+    "Used by routing rule:": "c7863b706f1aa",
+    "row": "ce8cdc05b346a",
+    "rows": "c6c30d2615392",
+    "This group is used by routing rules: {names}. Choose a replacement group before deleting it.": "c7a649f35ee91",
+    "This routing rule is used by approval steps: {steps}. Choose a replacement routing rule before deleting it.": "cf9cf7309bcd5"
 };
 const states: Record<string, string> = { todo: 'To do', progress: 'In progress', done: 'Done', pending: 'Pending', submitted: 'Submitted', cancelled: 'Cancelled', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn', unresolved: 'Unresolved', awaiting_approval: 'Awaiting approval', in_progress: 'In progress', ready: 'Ready', completed: 'Completed', handed: 'Handed over', printed: 'Printed, sent to Group Tech', none: 'None' };
 export function useOnboardingCopy() {
