@@ -207,8 +207,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5129_payroll_history_effective_reads',
    // Background AI Formula Generator draft job (12 November 2026), above 5129.
    '5130_pay_formula_ai_draft_job',
-   // Probation and passport loops act as request-only steps (13 November 2026): draft 9780, widened CHECKs only.
-   '9780_teras_loop_request_acts',
+   // Probation and passport loops act as request-only steps (13 November 2026): draft 9780 allocated as 5162, widened CHECKs only.
+   '5162_teras_loop_request_acts',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

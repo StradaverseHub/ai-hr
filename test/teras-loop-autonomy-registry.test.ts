@@ -75,8 +75,8 @@ describe('what each loop can do at each level',()=>{
    return (m?.[1]??'').split(',').map(value=>value.trim().replace(/'/g,'')).filter(Boolean).sort();};
   expect(allowed('teras_loop_level_cap')).toEqual(['loop_missed_clock_outs','loop_missing_employee_data'].sort());
   expect(allowed('teras_loop_level_change_cap')).toEqual(['loop_missed_clock_outs','loop_missing_employee_data'].sort());
-  // Draft migration 9780 widens exactly the four loop CHECKs by the probation and passports loops, and nothing else.
-  const widened=readFileSync(new URL('../db/migrations/9780_teras_loop_request_acts.sql',import.meta.url),'utf8');
+  // Migration 5162 (drafted as 9780) widens exactly the four loop CHECKs by the probation and passports loops, and nothing else.
+  const widened=readFileSync(new URL('../db/migrations/5162_teras_loop_request_acts.sql',import.meta.url),'utf8');
   const statements=widened.split('--> statement-breakpoint').map(part=>part.replace(/^--.*$/gm,'').trim()).filter(Boolean);
   expect(statements).toHaveLength(8);
   for(const statement of statements)expect(statement).toMatch(/^ALTER TABLE public\.teras_loop_(?:level|level_change|action|sample_review) (?:DROP|ADD) CONSTRAINT /);

@@ -121,7 +121,7 @@ describe('the cap',()=>{
  it('keeps payroll inputs at Prepare in code and in the database, and caps probation and passports at Level 2, for any company and any writer',async()=>{
   const {companyId:second}=await secondCompany();
   // Owner, 11 November 2026: the request-only steps may reach Level 2 (with the evidence) but never 3. The database
-  // (draft migration 9780) no longer refuses either loop.
+  // (migration 5162, drafted as 9780) no longer refuses either loop.
   for(const companyId of [b.companyId,second])for(const workerId of ['loop_probation_ending','loop_document_expiry'] as const){
    await expect(setLoopLevel(group,{workerId,companyId,toLevel:2,expectedLevel:1,limits:LIMITS})).rejects.toMatchObject({reason:'certificate'});
    await expect(setLoopLevel(group,{workerId,companyId,toLevel:3,expectedLevel:1,limits:LIMITS})).rejects.toMatchObject({reason:'capped'});

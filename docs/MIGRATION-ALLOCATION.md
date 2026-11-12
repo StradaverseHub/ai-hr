@@ -3337,16 +3337,15 @@ It adds one read-only STABLE SECURITY DEFINER function, `app.import_log_actor_fa
 `ai_hr_app` only; no table, column, policy, grant on data or existing function changes. This entry carries no
 deployment authority.
 
-## Probation and passport loop request acts — 13 November 2026 (unallocated draft)
+## Probation and passport loop request acts — 13 November 2026 (allocated 13 Nov 2026 as 5162)
 
 Branch `claude/probation-passport-acts-20261113` (base `origin/alpha` at `3a11d916e`, which journals
-`5130_pay_formula_ai_draft_job` at idx 4530 / when 1793330004830) journals `9780_teras_loop_request_acts` at idx 9780
-and when 1793330099780 as an UNALLOCATED DRAFT from the coordinator-provided 9780–9789 block. It widens exactly four
+`5130_pay_formula_ai_draft_job` at idx 4530 / when 1793330004830) drafted `9780_teras_loop_request_acts` (idx 9780 / when 1793330099780, from the coordinator-provided 9780–9789 block);
+it was allocated 13 Nov 2026 as `5162_teras_loop_request_acts`, idx 4562, when 1793330004862, with the SQL bytes unchanged. It widens exactly four
 CHECKs from migration 2004 (`teras_loop_level_cap`, `teras_loop_level_change_cap`, `teras_loop_action_worker_id_check`,
 `teras_loop_sample_review_worker_id_check`) to add `loop_probation_ending` and `loop_document_expiry`, so the owner's
 11 November 2026 request-only acts can be promoted, recorded, undone and counted for demotion. No policy, trigger,
 grant, function, column or row changes; existing rows already satisfy the wider checks. SQL SHA-256
 `1b92edf3fe85d66954e50f5677bc1cf5122f8fe92faf22db636181c5ed8503f8`. The approved upgrade tail pin
-(`test/helpers/approved-upgrade.ts`) and `test/tenant-company-fk-upgrade.test.ts` carry the draft; reassign the final
-51NN tag, idx and `when` above the freshly verified ledger at integration. This entry carries no allocation or
-deployment authority.
+(`test/helpers/approved-upgrade.ts`) and `test/tenant-company-fk-upgrade.test.ts` carry `5162`. Recheck peer claims and
+the installed ledger at admission. This entry carries no deployment authority.
