@@ -179,6 +179,7 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0174 — Company references stay inside their tenant: tenant-isolation hardening, PR #218 (proposed)](0174-company-tenant-integrity.md)
 - [ADR-0175 — Payroll history learning: deterministic baselines, evidence first (proposed)](0175-payroll-history-learning.md)
 - [Rewards configuration is saved directly by its accountable editors (board 60f1fdcd, 12 Nov 2026)](2026-11-12-rewards-direct-configuration.md) — supersedes the Rewards configuration maker-checker and the release independence in [rewards-unit-preparation](rewards-unit-preparation.md)
+- [Rewards Access role permissions are one levelled grid saved in batches (board db14e49c, 12 Nov 2026)](2026-11-12-rewards-role-permission-grid.md) — the grid, its levels, doer/checker and the server narrowing of the formerly display-only rows
 - [Proposal — Entra sign-in and cloud/hybrid workforce provisioning](entra-workforce-integration-proposal.md) (design only; unnumbered pending integration)
 
 - [ADR-0172: Subject-owned, content-bound document signing](0172-subject-owned-content-bound-signing.md)

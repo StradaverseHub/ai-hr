@@ -36874,20 +36874,13 @@
     "rolePermissions": "Role permissions",
     "users": "Users ({count} active)",
     "permission": "Permission",
-    "groupOnly": "Visible to Group Rewards only",
-    "editable": "Editable",
-    "fixedHelp": "Scope, route and confidentiality cannot be changed here.",
-    "changed": "{count, plural, one {# role changed from default.} other {# roles changed from default.}} Every change is recorded.",
     "reset": "Reset role defaults",
-    "confirmChange": "Confirm permission change",
     "reason": "Reason for change",
     "cancel": "Cancel",
     "saving": "Saving…",
     "save": "Save",
     "error": "The change could not be saved. Reload and check your access.",
     "stepHelp": "At their step: BU CEO (draft or returned) → BG CEO → Group Rewards → CTRO → Executive Chairman → Payroll.",
-    "enable": "Enable",
-    "disable": "Disable",
     "viewAs": "View as",
     "viewingAs": "Viewing as {name} – read only",
     "readOnlyHelp": "This shows the target user’s permitted rows, also excluding your own line. No Rewards changes can be made until you end this session.",
@@ -36916,13 +36909,13 @@
       "ctro": "CTRO",
       "ec": "Executive Chairman",
       "pbp": "PBP (read only)",
-      "payroll": "Payroll handoff",
+      "payroll": "Payroll",
       "proxy_bg": "Proxy BG CEO",
-      "hr_admin": "Administrator account"
+      "hr_admin": "HR Admin"
     },
     "permissions": {
       "review": {
-        "view": "Compensation Review",
+        "view": "Reviewing Team Rewards",
         "decide": "Submit or approve",
         "batch": "Approve several reviews"
       },
@@ -36934,9 +36927,6 @@
       },
       "rules": {
         "view": "Rules"
-      },
-      "cycles": {
-        "view": "Review Cycles"
       },
       "plans": {
         "manage": "Shared Rewards Configuration"
@@ -36966,7 +36956,7 @@
         "manage": "Senior plan amounts"
       },
       "restricted": {
-        "view": "Restricted direct reports"
+        "view": "Restricted (EC) direct reports"
       },
       "offcycle": {
         "raise": "Raise off-cycle request",
@@ -36985,6 +36975,12 @@
       },
       "audit": {
         "always": "Every change audited"
+      },
+      "promotions": {
+        "view": "Promotion nominations"
+      },
+      "limits": {
+        "view": "Limit Controls"
       }
     },
     "restrictedName": "Restricted name",
@@ -36996,7 +36992,92 @@
     "validFrom": "Start date",
     "validTo": "End date (optional)",
     "active": "Active",
-    "inactive": "Inactive"
+    "inactive": "Inactive",
+    "grid": {
+      "legend": "Permission levels",
+      "legendHelp": {
+        "full": "see and change",
+        "step": "act only at their approval step",
+        "view": "see without changing",
+        "none": "no access"
+      },
+      "changedOnly": "Changed from default only",
+      "unsaved": "You have unsaved permission changes. Leave this page and lose them?",
+      "readOnly": "You can view these permissions. Group Rewards, HR Admin or CTRO can change them.",
+      "readOnlyViewAs": "Read-only while View as is active.",
+      "appliesNow": "Saved changes apply straight away to menus, pages and actions for everyone in that role.",
+      "needsApproval": "Your changes go to Waiting for approval. Group Rewards, HR Admin or CTRO approves them.",
+      "lockedOverrides": "{count, plural, one {# older saved setting removes a fixed approval step.} other {# older saved settings remove a fixed approval step.}} Reset it to the default to restore the approval order.",
+      "skipped": "{count, plural, one {# cell was left unchanged because it is locked for you.} other {# cells were left unchanged because they are locked for you.}}",
+      "resetConfirm": "Load every role's defaults as unsaved changes? You can review them before saving.",
+      "saved": "Role permissions saved.",
+      "requested": "Sent for approval.",
+      "history": "Version history",
+      "version": "Version {revision}",
+      "actions": {
+        "saved": "Saved",
+        "reset": "Reset to defaults",
+        "restored": "Restored",
+        "approved": "Approved request"
+      },
+      "unavailable": "Unavailable",
+      "restoredFrom": "from version {revision}",
+      "compare": "Compare with current",
+      "restore": "Restore",
+      "cell": "Permission",
+      "thisVersion": "This version",
+      "current": "Current",
+      "sameAsCurrent": "Same as the current permissions.",
+      "noHistory": "No saved batches yet.",
+      "bar": "Unsaved changes",
+      "changes": "{count, plural, one {# change} other {# changes}}",
+      "discard": "Discard",
+      "save": "Save changes",
+      "sendForApproval": "Send for approval",
+      "scopes": {
+        "assignedCompanies": "Assigned companies",
+        "assignedBusinessUnits": "Assigned Business Units",
+        "wholeGroup": "Whole group",
+        "assignedCompaniesView": "Assigned companies (view only)",
+        "none": "—"
+      },
+      "locks": {
+        "accessKeeper": "Group Rewards keeps Rewards Access so it can't lock itself out.",
+        "ownNever": "See or set own reward is always Never.",
+        "route": "Approval route is fixed by the workflow.",
+        "scope": "Scope comes from the review seats.",
+        "audit": "Every change is always audited.",
+        "approvalOrder": "Submit or approve stays on so the approval order can't break.",
+        "notApplicable": "This role has no access to this row.",
+        "heldRole": "You hold this role. Another Rewards administrator changes its permissions."
+      },
+      "breaksLock": "An older saved setting differs from the fixed default.",
+      "was": "Was: {level}",
+      "errors": {
+        "stale": "The permissions changed since you opened them. Reload to see the latest, then make your changes again.",
+        "locked": "A locked cell can't be changed.",
+        "forbidden": "You don't have authority to change role permissions.",
+        "invalid": "One of the changes isn't allowed. Nothing was saved.",
+        "held": "You can't change the permissions of a role you hold.",
+        "changed": "This changed. Review the summary again.",
+        "reason": "Give a reason of at least 10 characters.",
+        "decided": "This request was already decided.",
+        "system": "The change could not be saved. Try again."
+      },
+      "waiting": "{count, plural, =0 {No role permission changes waiting for approval} one {# role permission change waiting for approval} other {# role permission changes waiting for approval}}",
+      "decided": "Decided requests",
+      "statuses": {
+        "pending": "Waiting for approval",
+        "applied": "Approved and applied",
+        "rejected": "Rejected",
+        "lapsed": "Lapsed: the permissions changed after it was sent"
+      },
+      "requestedBy": "{name} · {count, plural, one {# change} other {# changes}}",
+      "decisionReason": "Reason for decision (required to reject)",
+      "approve": "Approve",
+      "reject": "Reject",
+      "needsChecker": "Another Group Rewards, HR Admin or CTRO user must decide this request."
+    }
   },
   "rewardsAnalytics": {
     "subtitle": "Salaries before and after the increase, and the bonus payout, for the units in view. Figures follow the current recommendations.",

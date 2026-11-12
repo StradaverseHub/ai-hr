@@ -50,16 +50,17 @@ export function ReviewBeforeSaving({summary,digest,action,children,triggerLabel,
 }
 
 /** The same dialog driven by the caller (client pages that fetch the summary first, such as the PAT grid). */
-export function ReviewBeforeSavingDialog({open,summary,digest,onClose,onConfirm,submitLabel,pending,error}:{
+export function ReviewBeforeSavingDialog({open,summary,digest,onClose,onConfirm,submitLabel,pending,error,defaultReason,intro}:{
  open:boolean;summary:RewardConfigSummary|null;digest:string|null;onClose:()=>void;onConfirm:(reason:string,digest:string)=>void;submitLabel:string;pending?:boolean;error?:string;
+ /** Prefills the reason (a page that already asked for it, such as the Role permissions save bar). */defaultReason?:string;/** One line above the summary. */intro?:string;
 }){
  const t=useTranslations('rewardConfig'),dialog=useRef<HTMLDialogElement>(null),reason=useRef<HTMLTextAreaElement>(null);
  useEffect(()=>{const d=dialog.current;if(!d)return;if(open&&!d.open){if(typeof d.showModal==='function')d.showModal();else d.setAttribute('open','');}if(!open&&d.open){if(typeof d.close==='function')d.close();else d.removeAttribute('open');}},[open]);
  return<dialog ref={dialog} onClose={onClose} aria-labelledby="reward-review-dialog-title" className="m-0 h-full max-h-none w-full max-w-none overflow-auto bg-card p-0 text-foreground backdrop:bg-black/40 sm:m-auto sm:h-auto sm:max-h-[90vh] sm:max-w-2xl sm:rounded-lg">
   {summary&&digest&&<form className="space-y-5 p-5" onSubmit={event=>{event.preventDefault();onConfirm(reason.current?.value??'',digest);}}>
-   <header className="space-y-1"><h2 id="reward-review-dialog-title" className="text-lg font-semibold">{t('title')}</h2><p className="text-sm text-muted-foreground">{summary.itemLabel}</p></header>
+   <header className="space-y-1"><h2 id="reward-review-dialog-title" className="text-lg font-semibold">{t('title')}</h2><p className="text-sm text-muted-foreground">{summary.itemLabel}</p>{intro&&<p className="text-sm">{intro}</p>}</header>
    <RewardChangeSummary summary={summary}/>
-   <Field label={t('reason')}><textarea ref={reason} name="reason" required minLength={10} maxLength={2000} className={inputCls+' min-h-20'}/></Field>
+   <Field label={t('reason')}><textarea ref={reason} name="reason" required minLength={10} maxLength={2000} defaultValue={defaultReason} className={inputCls+' min-h-20'}/></Field>
    {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
    <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" onClick={onClose}>{t('cancel')}</Button><Button type="submit" disabled={pending} aria-busy={pending}>{pending?t('saving'):submitLabel}</Button></div>
   </form>}

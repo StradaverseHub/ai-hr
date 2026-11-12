@@ -5,7 +5,8 @@ import {requireModule} from '@/lib/authz';
 import {scopedSession,getScopeIds} from '@/lib/scope';
 import {rewardAccessRequests,rewardAccessAdministration} from '@/packs/rewards/service';
 import {RewardPersonalPages} from './personal-pages';
-import {rewardPermissions,rewardPersonalPages,rewardAccessPageEntry,rewardSetupEntry} from '@/packs/rewards/access-policy';
+import {rewardPersonalPages,rewardAccessPageEntry,rewardSetupEntry} from '@/packs/rewards/access-policy';
+import {rewardRolePermissionEntry,rewardRolePermissionGrid} from '@/packs/rewards/role-permission-grid';
 import {PageHeader,ErrorBanner} from '@/components/ui';
 import {RewardAccessEditor} from './access-editor';
 import {RewardAccessRequests} from './requests';
@@ -19,9 +20,13 @@ export default async function RewardAccessPage({searchParams}:{searchParams:Prom
  const setupLink=setup.bootstrap?<Link href="/admin/rewards/setup-access" className="text-sm text-primary underline">{(await getTranslations('nav'))('rewardsManageSetup')}</Link>:null;
  const groupRoles=setup.bootstrap?<WholeGroupRoles session={s} error={sp.groupRoleError}/>:null;
  const {companies,groupRewards}=await rewardAccessPageEntry(s);
+ // Board db14e49c: HR Admin and whole-group CTRO open the Role permissions tab only (no user list, no reward figures).
+ const roleEntry=await rewardRolePermissionEntry(s);
+ const roleGrid=async()=>roleEntry.reader?await rewardRolePermissionGrid(s).catch(()=>null):null;
+ const roleOnly=async()=>{const grid=await roleGrid();return grid?<section aria-label={p('rolePermissions')} className="space-y-3"><h2 className="font-semibold">{p('rolePermissions')}</h2><RewardRolePermissions grid={grid}/></section>:null;};
  if(!companies.length){
-  if(!setup.bootstrap)notFound();
-  return <div data-tour="rewards-access" className="space-y-6"><PageHeader title={t('title')}/>{setupLink}{groupRoles}</div>;
+  if(!setup.bootstrap&&!roleEntry.immediate)notFound();
+  return <div data-tour="rewards-access" className="w-full space-y-6"><PageHeader title={t('title')} description={roleEntry.immediate?p('intro'):undefined}/>{setupLink}{groupRoles}{roleEntry.immediate&&await roleOnly()}</div>;
  }
  const scopeIds=await getScopeIds(companies.map(c=>c.id));
  const value=await rewardAccessAdministration(s,scopeIds),requests=(await rewardAccessRequests(s)).filter(q=>q.changes.every(c=>value.reviews.some(r=>r.id===c.unitId)));
@@ -29,13 +34,14 @@ export default async function RewardAccessPage({searchParams}:{searchParams:Prom
   <PageHeader title={t('title')} description={p('intro')}/>{setupLink}{groupRoles}
   <RewardAccessRequests requests={requests} value={value}/>
   <RewardAccessEditor value={value} requests={requests} showPolicyTools={false}/>
+  {roleEntry.immediate&&await roleOnly()}
  </div>;
- const permissions=await rewardPermissions(s).catch(()=>null),pages=await rewardPersonalPages(s);
+ const permissions=await roleGrid(),pages=await rewardPersonalPages(s);
  const tab=sp.tab==='activity'?'activity':sp.tab==='matrix'?'matrix':!permissions||sp.tab==='users'?'users':'roles',count=new Set(value.members.filter(m=>!m.disabled).map(m=>m.userId)).size;
  return <div data-tour="rewards-access" className="w-full space-y-6"><PageHeader title={t('title')} description={p('intro')}/>{setupLink}
   {sp.policyError&&<ErrorBanner message={p('error')}/>}<RewardAccessRequests requests={requests} value={value}/>
   <div className="flex flex-wrap gap-3"><Link href="/admin/rewards/access/export" className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted">{c('export')}</Link><Link href="/admin/rewards/access/audit" className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted">{c('exportAudit')}</Link><Link href="/admin/rewards/access?tab=users&copy=1" className="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted">{b('copyOpen')}</Link></div>
   <nav aria-label={p('tabs')} className="flex border-b border-border"><Link href="/admin/rewards/access?tab=roles" aria-current={tab==='roles'?'page':undefined} className={`border-b-2 px-4 py-3 text-sm ${tab==='roles'?'border-primary font-semibold':'border-transparent text-muted-foreground'}`}>{p('rolePermissions')}</Link><Link href="/admin/rewards/access?tab=users" aria-current={tab==='users'?'page':undefined} className={`border-b-2 px-4 py-3 text-sm ${tab==='users'?'border-primary font-semibold':'border-transparent text-muted-foreground'}`}>{p('users',{count})}</Link><Link href="/admin/rewards/access?tab=matrix" aria-current={tab==='matrix'?'page':undefined} className={`border-b-2 px-4 py-3 text-sm ${tab==='matrix'?'border-primary font-semibold':'border-transparent text-muted-foreground'}`}>{t('coverageTitle')}</Link><Link href="/admin/rewards/access?tab=activity" aria-current={tab==='activity'?'page':undefined} className={`border-b-2 px-4 py-3 text-sm ${tab==='activity'?'border-primary font-semibold':'border-transparent text-muted-foreground'}`}>{t('reviewActivity.title')}</Link></nav>
-  {tab==='activity'?<RewardReviewActivity session={s} value={value} reviewId={sp.review} actorId={sp.actor} subjectId={sp.subject}/>:tab==='matrix'?<RewardApprovalMatrix value={value} cycleId={sp.cycle} groupSession={setup.bootstrap ? s : undefined}/>:tab==='roles'&&permissions?<RewardRolePermissions values={permissions.values} canChange={permissions.canChange} holders={value.members.filter(m=>!m.disabled).map(m=>({role:m.role,name:m.name,proxy:!!m.coversUserId}))}/>:<div className="space-y-5">{groupRoles}<RewardAccessEditor value={value} requests={requests} initialCopy={sp.copy==='1'}/><RewardPersonalPages value={value} pages={pages}/></div>}
+  {tab==='activity'?<RewardReviewActivity session={s} value={value} reviewId={sp.review} actorId={sp.actor} subjectId={sp.subject}/>:tab==='matrix'?<RewardApprovalMatrix value={value} cycleId={sp.cycle} groupSession={setup.bootstrap ? s : undefined}/>:tab==='roles'&&permissions?<RewardRolePermissions grid={permissions} holders={value.members.filter(m=>!m.disabled).map(m=>({role:m.role,name:m.name,proxy:!!m.coversUserId}))}/>:<div className="space-y-5">{groupRoles}<RewardAccessEditor value={value} requests={requests} initialCopy={sp.copy==='1'}/><RewardPersonalPages value={value} pages={pages}/></div>}
  </div>;
 }

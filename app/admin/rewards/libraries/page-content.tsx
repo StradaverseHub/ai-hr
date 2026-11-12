@@ -11,7 +11,7 @@ import {LibraryEditor} from './editor';
 import {decideLibraryAction,restoreLibraryAction} from './actions';
 export async function RewardLibraryPage({kind,params}:{kind:'salary'|'bonus';params:{year?:string;version?:string;copy?:string;compare?:string;error?:string;next?:string;legacy?:string}}){
  const s=await getSession(),t=await getTranslations('rewardSetup'),nav=await getTranslations('nav'),year=Number(params.year)||Number(todayInKualaLumpur().slice(0,4));let canManage=false;
- try{({canManage}=await rewardLibraryPageAccess(s));}catch{return <div className="space-y-3"><PageHeader title={nav(kind==='salary'?'rewardsSalaryStructures':'rewardsBonusMatrices')}/><p>{t('noAccess')}</p></div>;}
+ try{({canManage}=await rewardLibraryPageAccess(s,kind));}catch{return <div className="space-y-3"><PageHeader title={nav(kind==='salary'?'rewardsSalaryStructures':'rewardsBonusMatrices')}/><p>{t('noAccess')}</p></div>;}
  const versions=await rewardLibraries(s,kind),selected=params.version?versions.find(v=>v.id===params.version)??null:null,copy=params.copy==='1',grades=await rewardLibraryGradeChoices(s),compare=versions.find(v=>v.id===params.compare);
  const legacyPlans=canManage?(await rewardSetupPlanChoices(s)).filter(p=>!p.setup&&p.source.policy.year<=year):[],legacy=legacyPlans.find(p=>p.source.versionId===params.legacy)?.source;
  const activation=selected&&canManage&&!copy&&selected.state!=='confirmed'?await previewRewardLibraryActivation(s,selected.id):null;

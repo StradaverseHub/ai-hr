@@ -36874,20 +36874,13 @@
     "rolePermissions": "角色权限",
     "users": "用户（{count} 名在用）",
     "permission": "权限",
-    "groupOnly": "仅 Group Rewards 可见",
-    "editable": "可编辑",
-    "fixedHelp": "范围、路线及保密规则不可在此更改。",
-    "changed": "{count} 个角色偏离默认值。每项更改均记录。",
     "reset": "恢复角色默认值",
-    "confirmChange": "确认权限更改",
     "reason": "更改理由",
     "cancel": "取消",
     "saving": "正在保存…",
     "save": "保存",
     "error": "无法保存更改。请刷新并检查权限。",
     "stepHelp": "在自己的阶段：BU CEO（草稿或退回）→ BG CEO → Group Rewards → CTRO → Executive Chairman → Payroll。",
-    "enable": "启用",
-    "disable": "停用",
     "viewAs": "以此用户查看",
     "viewingAs": "正以 {name} 查看—只读",
     "readOnlyHelp": "显示目标用户可查看的行，并排除您自己的行。结束此会话前不可更改奖励。",
@@ -36916,13 +36909,13 @@
       "ctro": "CTRO",
       "ec": "Executive Chairman",
       "pbp": "PBP (read only)",
-      "payroll": "Payroll handoff",
+      "payroll": "Payroll",
       "proxy_bg": "代理 BG CEO",
-      "hr_admin": "Administrator account"
+      "hr_admin": "HR Admin"
     },
     "permissions": {
       "review": {
-        "view": "薪酬审查",
+        "view": "团队奖励审核",
         "decide": "提交或批准",
         "batch": "批量批准审查"
       },
@@ -36934,9 +36927,6 @@
       },
       "rules": {
         "view": "规则"
-      },
-      "cycles": {
-        "view": "审查周期"
       },
       "plans": {
         "manage": "共享奖励设置"
@@ -36966,7 +36956,7 @@
         "manage": "Senior 方案金额"
       },
       "restricted": {
-        "view": "受限直属员工"
+        "view": "受限（EC）直属员工"
       },
       "offcycle": {
         "raise": "发起周期外申请",
@@ -36985,6 +36975,12 @@
       },
       "audit": {
         "always": "记录每项更改"
+      },
+      "promotions": {
+        "view": "晋升提名"
+      },
+      "limits": {
+        "view": "限额控制"
       }
     },
     "restrictedName": "受限姓名",
@@ -36996,7 +36992,92 @@
     "validFrom": "开始日期",
     "validTo": "结束日期（可选）",
     "active": "有效",
-    "inactive": "无效"
+    "inactive": "无效",
+    "grid": {
+      "legend": "权限级别",
+      "legendHelp": {
+        "full": "查看并更改",
+        "step": "仅在自己的审批阶段操作",
+        "view": "查看但不更改",
+        "none": "无访问权限"
+      },
+      "changedOnly": "仅显示与默认不同的项",
+      "unsaved": "您有未保存的权限更改。离开此页面将丢失这些更改，是否继续？",
+      "readOnly": "您可以查看这些权限。Group Rewards、HR Admin 或 CTRO 可以更改。",
+      "readOnlyViewAs": "使用 View as 时为只读。",
+      "appliesNow": "保存的更改会立即应用于该角色所有人的菜单、页面和操作。",
+      "needsApproval": "您的更改将进入等待审批。由 Group Rewards、HR Admin 或 CTRO 审批。",
+      "lockedOverrides": "{count, plural, other {有 # 项早前保存的设置移除了固定的审批步骤。}}重置为默认值以恢复审批顺序。",
+      "skipped": "{count, plural, other {有 # 个单元格因对您锁定而未更改。}}",
+      "resetConfirm": "将所有角色的默认值加载为未保存的更改？保存前可以先检查。",
+      "saved": "角色权限已保存。",
+      "requested": "已提交审批。",
+      "history": "版本历史",
+      "version": "版本 {revision}",
+      "actions": {
+        "saved": "已保存",
+        "reset": "已重置为默认",
+        "restored": "已恢复",
+        "approved": "已批准请求"
+      },
+      "unavailable": "不可用",
+      "restoredFrom": "来自版本 {revision}",
+      "compare": "与当前比较",
+      "restore": "恢复",
+      "cell": "权限",
+      "thisVersion": "此版本",
+      "current": "当前",
+      "sameAsCurrent": "与当前权限相同。",
+      "noHistory": "尚无已保存的批次。",
+      "bar": "未保存的更改",
+      "changes": "{count, plural, other {# 项更改}}",
+      "discard": "放弃",
+      "save": "保存更改",
+      "sendForApproval": "提交审批",
+      "scopes": {
+        "assignedCompanies": "分配的公司",
+        "assignedBusinessUnits": "分配的业务单元",
+        "wholeGroup": "整个集团",
+        "assignedCompaniesView": "分配的公司（仅查看）",
+        "none": "—"
+      },
+      "locks": {
+        "accessKeeper": "Group Rewards 保留 Rewards Access，避免把自己锁在外面。",
+        "ownNever": "查看或设置自己的奖励始终为绝不。",
+        "route": "审批路线由工作流固定。",
+        "scope": "范围来自审核席位。",
+        "audit": "每项更改始终会被审计。",
+        "approvalOrder": "提交或批准保持开启，确保审批顺序不被打断。",
+        "notApplicable": "此角色对该行没有访问权限。",
+        "heldRole": "您担任此角色。由其他 Rewards 管理员更改其权限。"
+      },
+      "breaksLock": "早前保存的设置与固定默认值不同。",
+      "was": "原为：{level}",
+      "errors": {
+        "stale": "自您打开后权限已更改。请重新加载查看最新内容，然后重新更改。",
+        "locked": "锁定的单元格不能更改。",
+        "forbidden": "您无权更改角色权限。",
+        "invalid": "其中一项更改不被允许，未保存任何内容。",
+        "held": "您不能更改自己所担任角色的权限。",
+        "changed": "内容已变化，请重新查看摘要。",
+        "reason": "请填写至少 10 个字符的理由。",
+        "decided": "此请求已有决定。",
+        "system": "无法保存更改，请重试。"
+      },
+      "waiting": "{count, plural, =0 {没有等待审批的角色权限更改} other {有 # 项角色权限更改等待审批}}",
+      "decided": "已决定的请求",
+      "statuses": {
+        "pending": "等待审批",
+        "applied": "已批准并应用",
+        "rejected": "已拒绝",
+        "lapsed": "已失效：提交后权限已更改"
+      },
+      "requestedBy": "{name} · {count, plural, other {# 项更改}}",
+      "decisionReason": "决定理由（拒绝时必填）",
+      "approve": "批准",
+      "reject": "拒绝",
+      "needsChecker": "必须由另一位 Group Rewards、HR Admin 或 CTRO 用户决定此请求。"
+    }
   },
   "rewardsAnalytics": {
     "subtitle": "查看所选业务单位调薪前后的薪资和奖金发放情况。数据以当前建议为准。",

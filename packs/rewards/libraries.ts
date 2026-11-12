@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
-import {setupPersonTx,setupAuthority,setupTenant,setupAuditedReadTenant,setupReadTenant,setupLock,setupEvent} from './setup-data';
+import {setupPersonTx,setupAuthority,setupPageAuthority,setupTenant,setupAuditedReadTenant,setupReadTenant,setupLock,setupEvent} from './setup-data';
 import {validateRewardLibrary,gradeCodeForLibrary,setupUuid,setupYear,setupReason,RewardSetupError,type RewardLibrary,type LibraryCandidate} from './setup-model';
 export type {RewardLibraryVersion} from './setup-query-owner';
 import {libraryVersionQueryTx,rewardLibrariesQueryTx,rewardPlanLibraryChoicesQueryTx,type RewardLibraryVersion} from './setup-query-owner';
@@ -12,10 +12,14 @@ import {assertRewardConfigReviewed,recordRewardConfigChangeTx,rewardConfigLines,
 /** Descriptive page access only: protected reads and every command re-admit authority.
  * The native manage predicate returns false for denial; database failures propagate
  * instead of continuing an aborted snapshot or masquerading as a permission answer. */
-export function rewardLibraryPageAccess(ctx:SessionContext){
+export function rewardLibraryPageAccess(ctx:SessionContext,kind?:'salary'|'bonus'){
  return setupReadTenant(ctx,async tx=>{
   await setupAuthority(tx,null,'library_view');
-  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.reward_setup_allowed(null::uuid,'manage') as allowed`);
+  // Board db14e49c: the Salary Structures / Bonus Matrices row narrows the page (View only reads, Full also edits).
+  const [row]=await tx.execute<{view:boolean;allowed:boolean}>(kind
+   ?sql`select app.reward_setup_page_allowed(null::uuid,${kind+'.view'},'library_view') as view,app.reward_setup_page_allowed(null::uuid,${kind+'.view'},'manage') as allowed`
+   :sql`select true as view,app.reward_setup_allowed(null::uuid,'manage') as allowed`);
+  if(!row?.view)throw new RewardSetupError('forbidden','This Rewards configuration is not available to you.');
   return {canManage:row?.allowed===true};
  });
 }
@@ -59,8 +63,8 @@ async function librarySummaryTx(tx:Tx,ctx:SessionContext,libraryId:string|null,l
   affected:affected.map(a=>({...a,consequence:'keeps-version' as const})),highImpact:affected.length?['released-library']:[]});
 }
 /** Read-only preview for "Review before saving": the same summary the save recomputes. */
-export function previewRewardLibrarySave(ctx:SessionContext,raw:unknown){const p=librarySaveSchema.parse(raw);const data=validateRewardLibrary(p.data);return setupReadTenant(ctx,async tx=>{await setupAuthority(tx,null,'manage');const summary=await librarySummaryTx(tx,ctx,p.libraryId,`${p.name} ${p.year}`,data,p.mode);return{summary,digest:rewardConfigSummaryDigest(summary)};});}
-export function saveRewardLibrary(ctx:SessionContext,raw:unknown){const p=librarySaveSchema.parse(raw);const data=validateRewardLibrary(p.data);return setupTenant(ctx,async tx=>{await setupAuthority(tx,null,'manage');await setupPersonTx(tx);await setupLock(tx,ctx,'library');await checkGradeIds(tx,ctx,data);let libraryId=p.libraryId;
+export function previewRewardLibrarySave(ctx:SessionContext,raw:unknown){const p=librarySaveSchema.parse(raw);const data=validateRewardLibrary(p.data);return setupReadTenant(ctx,async tx=>{await setupAuthority(tx,null,'manage');await setupPageAuthority(tx,data.kind==='salary'?'salary.view':'bonus.view',null,'manage');const summary=await librarySummaryTx(tx,ctx,p.libraryId,`${p.name} ${p.year}`,data,p.mode);return{summary,digest:rewardConfigSummaryDigest(summary)};});}
+export function saveRewardLibrary(ctx:SessionContext,raw:unknown){const p=librarySaveSchema.parse(raw);const data=validateRewardLibrary(p.data);return setupTenant(ctx,async tx=>{await setupAuthority(tx,null,'manage');await setupPageAuthority(tx,data.kind==='salary'?'salary.view':'bonus.view',null,'manage');await setupPersonTx(tx);await setupLock(tx,ctx,'library');await checkGradeIds(tx,ctx,data);let libraryId=p.libraryId;
  const summary=await librarySummaryTx(tx,ctx,libraryId,`${p.name} ${p.year}`,data,p.mode);const reason=assertRewardConfigReviewed(summary,{reason:p.reason,digest:p.summaryDigest});
  if(!libraryId){if(p.sourcePolicyVersionId){if(p.previousLibraryId)throw new RewardSetupError('invalid','Choose one source for the new library.');const {setupPolicySourceTx}=await import('./plan-configuration'),source=await setupPolicySourceTx(tx,p.sourcePolicyVersionId);if(source.policy.year>p.year)throw new RewardSetupError('invalid','Choose a shared source from this year or an earlier year.');}if(p.previousLibraryId){const [prior]=await tx.execute<{kind:string;year:number}>(sql`select kind,year from reward_library where tenant_id=${ctx.tenantId}::uuid and id=${p.previousLibraryId}::uuid`);if(!prior||prior.kind!==data.kind||prior.year>p.year)throw new RewardSetupError('invalid','Choose a prior library of the same kind.');}libraryId=randomUUID();await tx.execute(sql`insert into reward_library(id,tenant_id,kind,name,year,tags,group_default,previous_library_id,source_policy_version_id,created_by) values(${libraryId}::uuid,${ctx.tenantId}::uuid,${data.kind},${p.name},${p.year},ARRAY[${sql.join(p.tags.map(tag=>sql`${tag}`),sql`, `)}]::text[],${p.groupDefault},${p.previousLibraryId}::uuid,${p.sourcePolicyVersionId??null}::uuid,${ctx.userId}::uuid)`);}
  else{const[r]=await tx.execute<{kind:string;name:string;year:number}>(sql`select kind,name,year from reward_library where id=${libraryId}::uuid and tenant_id=${ctx.tenantId}::uuid`);if(!r||r.kind!==data.kind||r.name!==p.name||r.year!==p.year)throw new RewardSetupError('invalid','Existing library identity is fixed; duplicate it to change its name or year.');}

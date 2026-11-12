@@ -4,11 +4,17 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
 import {withRewardsTenant} from '../../core/module-gate';
-import {rewardRoles,type RewardRole} from './model';
-import {permissionRows,rolePermission,editableRewardPermission,type RewardCapability,type RewardAccessRole} from './access-policy-model';
+import {type RewardCapability} from './access-policy-model';
 export async function rewardSetupAuthorityTx(tx:Tx,_ctx:SessionContext,companyId:string|null|undefined,operation:'library_view'|'manage'){
  const [r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_setup_allowed(${companyId??null}::uuid,${operation}) as allowed`);
  if(!r?.allowed)throw new Error('This Rewards configuration is not available to you.');
+}
+/** Board db14e49c: setup authority for one configuration page - the native setup predicate and its Role permissions
+ * level (Full = manage, View only = library_view). Row security enforces the same level on the page's tables. */
+export type RewardSetupPage='plans.manage'|'pat.manage'|'salary.view'|'bonus.view'|'limits.view';
+export async function rewardSetupPageAllowedTx(tx:Tx,page:RewardSetupPage,companyId:string|null|undefined,operation:'library_view'|'manage'){
+ const [r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_setup_page_allowed(${companyId??null}::uuid,${page},${operation}) as allowed`);
+ return r?.allowed===true;
 }
 export async function assertRewardCapabilityTx(tx:Tx,unitId:string,capability:RewardCapability){
  const [r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_capability(${unitId}::uuid,${capability}) as allowed`);if(!r?.allowed)throw new Error('Your Rewards role does not permit this action.');
@@ -19,28 +25,6 @@ export async function assertRewardWritableTx(tx:Tx){
 }
 function policyAuditTx(tx:Tx,kind:string,id:string,payload:Record<string,unknown>={}){
  return tx.execute(sql`select app.reward_access_policy_event(${kind},${id}::uuid,${JSON.stringify(payload)}::jsonb)`);
-}
-export async function rewardPermissions(ctx:SessionContext){return withRewardsTenant(ctx,async tx=>{
- const [authority]=await tx.execute<{groupwide:boolean;scoped:boolean}>(sql`select app.reward_setup_allowed(NULL,'manage') and app.reward_not_viewing_as() as groupwide,exists(select 1 from reward_unit u where u.tenant_id=app.current_tenant_id() and u.deleted_at is null and 'gr'=any(array(select app.reward_roles(u.id)))) as scoped`);
- if(!authority?.scoped)throw Error('Group Rewards access-page authority is required.');
- const values=await tx.execute<{role:RewardAccessRole;capability:RewardCapability;allowed:boolean}>(sql`select role,capability,allowed from reward_role_permission where tenant_id=app.current_tenant_id() order by role,capability`);
- return{rows:permissionRows,values,canChange:authority.groupwide,roles:rewardRoles,defaults:Object.fromEntries(rewardRoles.map(role=>[role,Object.fromEntries(permissionRows.map(row=>[row.id,rolePermission(role,row.id)]))]))};
-});}
-export async function changeRewardPermission(ctx:SessionContext,raw:unknown){
- const p=z.object({role:z.enum(['bu','bg','proxy_bg','gr','ctro','ec','pbp','hr_admin','payroll']),capability:z.string(),allowed:z.boolean(),reason:z.string().trim().min(10).max(2000),reset:z.boolean().default(false)}).strict().parse(raw);
- const row=permissionRows.find(x=>x.id===p.capability);if(!row||!editableRewardPermission(p.role,row.id))throw new Error('This route, scope or governance permission is fixed.');
- return withRewardsTenant(ctx,async tx=>{await assertRewardWritableTx(tx);await rewardSetupAuthorityTx(tx,ctx,null,'manage');await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text,2206))`);
- // Board 60f1fdcd: nobody changes the switches for a role they hold; another configuration editor does it.
- const [own]=await tx.execute<{holds:boolean}>(sql`select app.reward_actor_holds_role(${p.role}) as holds`);if(own?.holds)throw new Error('You cannot change the permission switches for a role you hold. Ask another Rewards administrator.');
- const [before]=await tx.execute<{allowed:boolean}>(sql`select allowed from reward_role_permission where tenant_id=app.current_tenant_id() and role=${p.role} and capability=${row.id} for update`);
- if(p.reset)await tx.execute(sql`delete from reward_role_permission where tenant_id=app.current_tenant_id() and role=${p.role} and capability=${row.id}`);
- else await tx.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,changed_by,reason) values(app.current_tenant_id(),${p.role},${row.id},${p.allowed},app.current_user_id(),${p.reason}) on conflict(tenant_id,role,capability) do update set allowed=excluded.allowed,changed_by=excluded.changed_by,reason=excluded.reason,updated_at=now()`);
- await policyAuditTx(tx,'permission.changed',ctx.userId!,{role:p.role,capability:row.id,before:before?.allowed??null,after:p.reset?null:p.allowed,reason:p.reason});
- const {recordRewardConfigChangeTx,rewardConfigSummary}=await import('./config-change');
- const shown=(v:boolean|null|undefined)=>v===null||v===undefined?'Default':v?'On':'Off';
- const summary=rewardConfigSummary({area:'role_permission',itemLabel:`Role permissions · ${p.role}`,lines:[{key:`${p.role}:${row.id}`,label:`${p.role} · ${row.id}`,before:shown(before?.allowed),after:p.reset?'Default':shown(p.allowed)}]});
- await recordRewardConfigChangeTx(tx,ctx,{area:'role_permission',action:p.reset?'reset':'changed',itemId:null,itemLabel:summary.itemLabel,companyIds:[],versionRef:null,reason:p.reason,summary});
- });
 }
 export function beginRewardViewAs(ctx:SessionContext,userId:string){z.uuid().parse(userId);return withRewardsTenant(ctx,async tx=>{
  await tx.execute(sql`select app.access_configuration_write_lock()`);
@@ -59,10 +43,6 @@ export async function rewardViewAsState(ctx:SessionContext){return withRewardsTe
  const units=await tx.execute<{id:string;company:string;cycle:string}>(sql`select u.id,c.legal_name as company,y.name as cycle from reward_unit u join company c on c.id=u.company_id and c.tenant_id=u.tenant_id join reward_cycle y on y.id=u.cycle_id and y.tenant_id=u.tenant_id where u.tenant_id=app.current_tenant_id() and u.deleted_at is null and 'gr'=any(array(select app.reward_roles(u.id))) and exists(select 1 from reward_member m where m.unit_id=u.id and m.tenant_id=u.tenant_id and m.user_id=${session.targetId}::uuid and app.reward_member_eligible(m.id)) order by c.legal_name,y.year,u.id`);
  return{session,targetName:target?.name??null,principal:{...principal.value,entitlements:ctx.entitlements,entitlementsExempt:ctx.entitlementsExempt},units};
  });}
-export function resetRewardRolePermissions(ctx:SessionContext,reason:string){const why=z.string().trim().min(10).max(2000).parse(reason);return withRewardsTenant(ctx,async tx=>{await assertRewardWritableTx(tx);await rewardSetupAuthorityTx(tx,ctx,null,'manage');await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text,2206))`);const before=await tx.execute<{role:string;capability:string;allowed:boolean}>(sql`select role,capability,allowed from reward_role_permission where tenant_id=app.current_tenant_id() order by role,capability for update`);await tx.execute(sql`delete from reward_role_permission where tenant_id=app.current_tenant_id()`);await policyAuditTx(tx,'permissions.reset',ctx.userId!,{before,reason:why});
- // Rows for roles the editor holds are kept (the self rule); only the rows read above were reset.
- const {recordRewardConfigChangeTx,rewardConfigSummary}=await import('./config-change');const summary=rewardConfigSummary({area:'role_permission',itemLabel:'Role permissions',lines:before.map(r=>({key:`${r.role}:${r.capability}`,label:`${r.role} · ${r.capability}`,before:r.allowed?'On':'Off',after:'Default'}))});
- await recordRewardConfigChangeTx(tx,ctx,{area:'role_permission',action:'reset',itemId:null,itemLabel:'Role permissions',companyIds:[],versionRef:null,reason:why,summary});});}
 export async function rewardPersonalPages(ctx:SessionContext){return withRewardsTenant(ctx,async tx=>tx.execute<{id:string;userId:string;companyId:string;capability:string;validFrom:string;validTo:string|null;active:boolean}>(sql`select id,user_id as "userId",company_id as "companyId",capability,valid_from::text as "validFrom",valid_to::text as "validTo",active from reward_page_grant where tenant_id=app.current_tenant_id() and app.reward_setup_allowed(company_id,'manage') order by company_id,user_id,capability`));}
 export async function saveRewardPersonalPage(ctx:SessionContext,raw:unknown){const p=z.object({userId:z.uuid(),companyId:z.uuid(),capability:z.enum(['review.view','analytics.view','approvals.view','rules.view']),validFrom:z.iso.date(),validTo:z.iso.date().nullable(),active:z.boolean(),reason:z.string().trim().min(10).max(2000)}).strict().parse(raw);if(p.validTo&&p.validTo<p.validFrom)throw Error('End date must follow start date.');return withRewardsTenant(ctx,async tx=>{await assertRewardWritableTx(tx);await rewardSetupAuthorityTx(tx,ctx,p.companyId,'manage');const [eligible]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from reward_member m join reward_unit u on u.id=m.unit_id and u.tenant_id=m.tenant_id where m.tenant_id=app.current_tenant_id() and u.company_id=${p.companyId}::uuid and m.user_id=${p.userId}::uuid and u.deleted_at is null and app.reward_member_eligible(m.id)) as allowed`);if(!eligible?.allowed)throw Error('Page exceptions require a currently eligible review seat in this company.');const [before]=await tx.execute(sql`select capability,active,valid_from,valid_to from reward_page_grant where tenant_id=app.current_tenant_id() and user_id=${p.userId}::uuid and company_id=${p.companyId}::uuid and capability=${p.capability} for update`);await tx.execute(sql`insert into reward_page_grant(tenant_id,user_id,company_id,capability,valid_from,valid_to,active,created_by,reason) values(app.current_tenant_id(),${p.userId}::uuid,${p.companyId}::uuid,${p.capability},${p.validFrom}::date,${p.validTo}::date,${p.active},app.current_user_id(),${p.reason}) on conflict(tenant_id,user_id,company_id,capability) do update set valid_from=excluded.valid_from,valid_to=excluded.valid_to,active=excluded.active,reason=excluded.reason`);await policyAuditTx(tx,'personal-page.changed',p.userId,{before:before??null,after:p,reason:p.reason});});}
 const groupRewardsAccessCompanyScope = sql`
@@ -113,7 +93,7 @@ export function rewardNavigation(ctx: SessionContext) {
   return withRewardsTenant(ctx, async tx => {
     const [pages] = await tx.execute<{
       review: boolean; analytics: boolean; approvals: boolean; rules: boolean; promotions: boolean;
-      manage: boolean; libraries: boolean; access: boolean; bootstrap: boolean;
+      manage: boolean; plans: boolean; pat: boolean; salary: boolean; bonus: boolean; access: boolean; bootstrap: boolean; rolePermissions: boolean;
     }>(sql`
       with visible_units as (
         select id, company_id, kind from reward_unit
@@ -126,10 +106,15 @@ export function rewardNavigation(ctx: SessionContext) {
         exists(select 1 from visible_units u where app.reward_capability(u.id, 'rules.view')) as rules,
         exists(select 1 from visible_units u where u.kind = 'annual'
           and app.reward_capability(u.id, 'review.view')
-          and 'gr' in (select app.reward_roles(u.id))) as promotions,
+          and 'gr' in (select app.reward_roles(u.id))
+          and app.reward_level_rank(app.reward_unit_level(u.id, 'promotions.view')) >= 1) as promotions,
         app.reward_setup_allowed(null, 'manage') as manage,
-        app.reward_setup_allowed(null, 'library_view') as libraries,
+        app.reward_setup_page_allowed(null, 'plans.manage', 'manage') as plans,
+        app.reward_setup_page_allowed(null, 'pat.manage', 'manage') as pat,
+        app.reward_setup_page_allowed(null, 'salary.view', 'library_view') as salary,
+        app.reward_setup_page_allowed(null, 'bonus.view', 'library_view') as bonus,
         app.is_group_admin() as bootstrap,
+        app.reward_role_permission_immediate() as "rolePermissions",
         (exists(${groupRewardsAccessCompanyScope}) or exists(${maintenanceAccessCompanyScope})) as access
     `);
     if (!pages) return [];
@@ -139,11 +124,13 @@ export function rewardNavigation(ctx: SessionContext) {
       ...(pages.approvals ? ['/rewards/approvals'] : []),
       ...(pages.rules ? ['/rewards/rules'] : []),
       ...(pages.promotions ? ['/rewards/promotions'] : []),
-      ...(pages.manage ? ['/admin/rewards/shared'] : []),
-      ...(pages.libraries ? ['/admin/rewards/salary-structures', '/admin/rewards/bonus-matrices'] : []),
-      ...(pages.manage ? ['/admin/rewards/pat-inputs'] : []),
-      ...(pages.manage || pages.libraries ? ['/admin/rewards/change-log'] : []),
-      ...(pages.access || pages.bootstrap ? ['/admin/rewards/access'] : []),
+      // Board db14e49c: each configuration page also follows its Role permissions row.
+      ...(pages.plans ? ['/admin/rewards/shared'] : []),
+      ...(pages.salary ? ['/admin/rewards/salary-structures'] : []),
+      ...(pages.bonus ? ['/admin/rewards/bonus-matrices'] : []),
+      ...(pages.pat ? ['/admin/rewards/pat-inputs'] : []),
+      ...(pages.manage || pages.salary || pages.bonus ? ['/admin/rewards/change-log'] : []),
+      ...(pages.access || pages.bootstrap || pages.rolePermissions ? ['/admin/rewards/access'] : []),
     ];
   });
 }

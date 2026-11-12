@@ -2,10 +2,11 @@
 /** Board 2103041d: PAT Inputs as one editable grid, saved in one batch with a reason (board 60f1fdcd: no second-person
  * confirmation; every save shows the server summary in "Review before saving"). Values are integer cents and basis
  * points; this grid only parses and displays them. Pools are computed by the service, never here. */
-import {Fragment,useEffect,useMemo,useState,useTransition} from 'react';
+import {Fragment,useMemo,useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {Button,Field,inputCls} from '@/components/ui';
+import {useUnsavedChangesGuard} from '@/components/ui/unsaved-changes';
 import type {RewardConfigSummary} from '@/packs/rewards/config-change-model';
 import type {PatInput} from '@/packs/rewards/setup-model';
 import {previewPatImportAction,previewPatBatchAction,savePatBatchAction,type PatGridRow} from './actions';
@@ -15,6 +16,7 @@ import {FIELDS,LABEL,DEFAULT,formatPatValue,patRowState,type FieldKey} from './g
 export type PatGridVersion={id:string;revision:number;state:'pending'|'confirmed';inputs:PatInput;createdByName:string|null;confirmedByName:string|null;confirmedAt:string|null;reason:string};
 export type PatGridCompany={id:string;name:string;groupId:string;groupName:string;buId:string;buName:string;latestRevision:number;
  active:PatGridVersion|null;draft:PatGridVersion|null;history:PatGridVersion[]};
+const allowPatExport=(link:HTMLAnchorElement)=>link.href.includes('/pat-inputs/export');
 const money=(cents:number|null)=>cents===null?'—':(cents/100).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2});
 function subtotal(rows:readonly PatInput[]){
  const sum=(key:'targetCents'|'forecastCents'|'actualCents')=>!rows.length||rows.some(r=>r[key]===null)?null:rows.reduce((n,r)=>n+(r[key]??0),0);
@@ -38,9 +40,7 @@ export function PatGrid({year,companies}:{year:number;companies:PatGridCompany[]
  const states=useMemo(()=>new Map(companies.map(c=>[c.id,patRowState(base(c),edits[c.id])])),[companies,edits]);
  const changedCells=[...states.values()].reduce((n,s)=>n+s.changed.length,0),invalidRows=[...states.values()].filter(s=>s.invalid.size).length;
  const dirty=Object.values(edits).some(row=>Object.keys(row).length>0);
- useEffect(()=>{if(!dirty)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};
-  const leave=(event:MouseEvent)=>{const link=(event.target as Element|null)?.closest?.('a[href]');if(link&&!link.hasAttribute('download')&&!(link as HTMLAnchorElement).href.includes('/pat-inputs/export')&&!window.confirm(t('gridUnsaved'))){event.preventDefault();event.stopPropagation();}};
-  window.addEventListener('beforeunload',warn);document.addEventListener('click',leave,true);return()=>{window.removeEventListener('beforeunload',warn);document.removeEventListener('click',leave,true);};},[dirty,t]);
+ useUnsavedChangesGuard(dirty,t('gridUnsaved'),allowPatExport);
  const groups=[...new Map(companies.map(c=>[c.groupId,c.groupName])).entries()],units=[...new Map(companies.filter(c=>!group||c.groupId===group).map(c=>[c.buId,c.buName])).entries()];
  const visible=companies.filter(c=>{const s=states.get(c.id)!;return(!query||c.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()))&&(!group||c.groupId===group)&&(!bu||c.buId===bu)&&(!missingOnly||s.missing.target||s.missing.actual||s.invalid.size>0);});
  const all=[...states.values()],complete=all.filter(s=>!s.missing.target&&!s.missing.actual&&!s.invalid.size).length;

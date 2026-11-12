@@ -9,6 +9,15 @@ import {RewardSetupError} from './setup-model';
 export async function setupAuthority(tx:Tx,companyId:string|null,operation:'library_view'|'manage'){
  const[r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_setup_allowed(${companyId}::uuid,${operation}) as allowed`);if(!r?.allowed)throw new RewardSetupError('forbidden','This Rewards configuration is not available to you.');
 }
+/** Board db14e49c: the configuration page's Role permissions row (Full = manage, View only = library_view) on top of
+ * the native setup predicate. Row security enforces the same level on the page's tables. */
+export async function setupPageAuthority(tx:Tx,page:'plans.manage'|'pat.manage'|'salary.view'|'bonus.view',companyId:string|null,operation:'library_view'|'manage'){
+ const[r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_setup_page_allowed(${companyId}::uuid,${page},${operation}) as allowed`);if(!r?.allowed)throw new RewardSetupError('forbidden','This Rewards configuration is not available to you.');
+}
+/** The page's Role permissions level alone, for page entry where the native predicate is per company. */
+export async function setupPageLevelAuthority(tx:Tx,page:'plans.manage'|'pat.manage'|'salary.view'|'bonus.view',operation:'library_view'|'manage'){
+ const[r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_level_rank(app.reward_actor_page_level(${page}))>=${operation==='manage'?3:1} as allowed`);if(!r?.allowed)throw new RewardSetupError('forbidden','This Rewards configuration is not available to you.');
+}
 /** Setup commands: they change Rewards configuration that other setup commands read, so they keep the exclusive
  * Access lock. Never use it for a view: an exclusive request queued behind any shared holder stops every new shared
  * caller in the tenant until it is granted or gives up (staging, 11 November 2026). */

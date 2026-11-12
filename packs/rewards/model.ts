@@ -164,10 +164,11 @@ export function withConfidentialityFloor(source: RewardSource, floor: { level: '
   return floor ? { ...rest, confidentialityFloor: floor.level, confidentialityReason: floor.reason } : rest;
 }
 
-export function visibleEntry(entry: RewardEntry & { groupEcDirectReport?: boolean }, roles: readonly RewardRole[], personId?: string | null): boolean {
+export function visibleEntry(entry: RewardEntry & { groupEcDirectReport?: boolean; restrictedHidden?: boolean }, roles: readonly RewardRole[], personId?: string | null): boolean {
   if (entry.source.personId === personId) return false;
   if (!entry.facts.reviewed && !roles.includes('gr')) return false;
-  if (entry.groupEcDirectReport || entry.facts.confidentiality === 'ec') return roles.some(r => ['gr', 'ctro', 'ec'].includes(r));
+  // restrictedHidden: the viewer's Role permissions row for restricted (EC) direct reports is "—" (board db14e49c).
+  if (entry.groupEcDirectReport || entry.facts.confidentiality === 'ec') return !entry.restrictedHidden && roles.some(r => ['gr', 'ctro', 'ec'].includes(r));
   if (entry.facts.confidentiality === 'bg' && roles.every(r => r === 'bu' || r === 'pbp')) return false;
   return true;
 }

@@ -4,7 +4,7 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
 import {appendEvent,actorOf} from '../../db/events';
-import {setupPersonTx,setupAuthority,setupTenant,setupAuditedReadTenant,setupLock,setupEvent,setupCompanyEligible} from './setup-data';
+import {setupPersonTx,setupAuthority,setupPageAuthority,setupPageLevelAuthority,setupTenant,setupAuditedReadTenant,setupLock,setupEvent,setupCompanyEligible} from './setup-data';
 import {patInputSchema,patProjection,setupUuid,setupYear,setupReason,RewardSetupError,type PatInput} from './setup-model';
 export type {PatVersion,PatCompany} from './setup-query-owner';
 import {rewardSetupCompaniesQueryTx,rewardPatInputsQueryTx,rewardPlanCompanyChoicesQueryTx,type PatVersion,type PatCompany} from './setup-query-owner';
@@ -21,7 +21,8 @@ function auditedPatRead<T>(ctx:SessionContext,year:number,read:(tx:Tx)=>Promise<
  });
 }
 export function rewardPatInputs(ctx:SessionContext,year:number){
- return auditedPatRead(ctx,year,tx=>rewardPatInputsQueryTx(tx,ctx,year,legacyRewardSetupQueryPort));
+ // Board db14e49c: the PAT Inputs row narrows the page.
+ return auditedPatRead(ctx,year,async tx=>{await setupPageLevelAuthority(tx,'pat.manage','manage');return rewardPatInputsQueryTx(tx,ctx,year,legacyRewardSetupQueryPort);});
 }
 /** Plans keeps the historical PAT view event and reads only eligible company labels. */
 export function rewardPlanCompanyChoices(ctx:SessionContext,year:number){
@@ -32,7 +33,7 @@ const patRowSchema=z.object({companyId:setupUuid,year:setupYear,expectedRevision
  * latest revision the editor saw: a Draft at that revision is updated in place, an Active one gets a successor. */
 /** The company-year advisory lock serialises every PAT writer; a row lock would apply the Draft-only UPDATE policy
  * and hide an Active latest version. */
-async function savePatDraftTx(tx:Tx,ctx:SessionContext,p:z.infer<typeof patRowSchema>){await setupAuthority(tx,p.companyId,'manage');await setupPersonTx(tx);await setupCompanyEligible(tx,p.companyId,p.year);await setupLock(tx,ctx,'pat:'+p.companyId+':'+p.year);const [current]=await tx.execute<{id:string;revision:number;state:string}>(sql`select id,revision,state from reward_pat_version where tenant_id=${ctx.tenantId}::uuid and company_id=${p.companyId}::uuid and year=${p.year} order by revision desc limit 1`);if((current?.revision??0)!==p.expectedRevision)throw new RewardSetupError('changed','These PAT figures changed in another session. Reload before saving.');
+async function savePatDraftTx(tx:Tx,ctx:SessionContext,p:z.infer<typeof patRowSchema>){await setupAuthority(tx,p.companyId,'manage');await setupPageAuthority(tx,'pat.manage',p.companyId,'manage');await setupPersonTx(tx);await setupCompanyEligible(tx,p.companyId,p.year);await setupLock(tx,ctx,'pat:'+p.companyId+':'+p.year);const [current]=await tx.execute<{id:string;revision:number;state:string}>(sql`select id,revision,state from reward_pat_version where tenant_id=${ctx.tenantId}::uuid and company_id=${p.companyId}::uuid and year=${p.year} order by revision desc limit 1`);if((current?.revision??0)!==p.expectedRevision)throw new RewardSetupError('changed','These PAT figures changed in another session. Reload before saving.');
  const [locked]=await tx.execute<{locked:boolean}>(sql`select exists(select 1 from reward_unit u join reward_cycle c on c.id=u.cycle_id and c.tenant_id=u.tenant_id join reward_unit_setup binding on binding.unit_id=u.id and binding.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.company_id=${p.companyId}::uuid and c.year=${p.year} and u.deleted_at is null and u.status in('ec','approved','posted')) as locked`);if(locked?.locked)throw new RewardSetupError('locked','PAT figures are locked once an affected review reaches EC approval.');
  if(current?.state==='pending'){await tx.execute(sql`update reward_pat_version set inputs=${JSON.stringify(p.inputs)}::jsonb,reason=${p.reason} where id=${current.id}::uuid and tenant_id=${ctx.tenantId}::uuid and state='pending'`);await setupEvent(tx,ctx,'pat.proposed',current.id,{companyId:p.companyId,year:p.year,revision:current.revision,privateVersion:true,draftUpdated:true});return current.id;}
  const id=randomUUID();await tx.execute(sql`insert into reward_pat_version(id,tenant_id,company_id,year,revision,inputs,created_by,reason) values(${id}::uuid,${ctx.tenantId}::uuid,${p.companyId}::uuid,${p.year},${p.expectedRevision+1},${JSON.stringify(p.inputs)}::jsonb,${ctx.userId}::uuid,${p.reason})`);await setupEvent(tx,ctx,'pat.proposed',id,{companyId:p.companyId,year:p.year,revision:p.expectedRevision+1,privateVersion:true});return id;}
@@ -76,12 +77,12 @@ function parsePatBatch(raw:unknown){const p=patBatchSchema.parse(raw);if(new Set
 /** Read-only preview for activating one company's open PAT Draft. */
 export function previewRewardPatActivation(ctx:SessionContext,id:string){setupUuid.parse(id);return setupAuditedReadTenant(ctx,async tx=>{const [row]=await tx.execute<{company_id:string;year:number;inputs:PatInput}>(sql`select company_id,year,inputs from reward_pat_version where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid and state='pending'`);if(!row)throw new RewardSetupError('changed','This PAT draft is no longer open.');await setupAuthority(tx,row.company_id,'manage');const summary=await patSummaryTx(tx,ctx,row.year,[{companyId:row.company_id,inputs:row.inputs}],'active');return{summary,digest:rewardConfigSummaryDigest(summary)};});}
 /** Read-only preview for "Review before saving" on the PAT grid. */
-export function previewRewardPatBatch(ctx:SessionContext,raw:unknown){const p=parsePatBatch(raw);return setupAuditedReadTenant(ctx,async tx=>{for(const r of p.rows)await setupAuthority(tx,r.companyId,'manage');const summary=await patSummaryTx(tx,ctx,p.year,p.rows,p.mode);return{summary,digest:rewardConfigSummaryDigest(summary)};});}
+export function previewRewardPatBatch(ctx:SessionContext,raw:unknown){const p=parsePatBatch(raw);return setupAuditedReadTenant(ctx,async tx=>{for(const r of p.rows)await setupAuthority(tx,r.companyId,'manage');await setupPageLevelAuthority(tx,'pat.manage','manage');const summary=await patSummaryTx(tx,ctx,p.year,p.rows,p.mode);return{summary,digest:rewardConfigSummaryDigest(summary)};});}
 /** Board 2103041d + 60f1fdcd: one save for every edited PAT cell. All rows or none: deterministic company lock order,
  * per-row optimistic revisions, one reason, one change-log row and one notice. 'active' makes the figures active
  * immediately; there is no second-person confirmation. */
 export function saveRewardPatBatch(ctx:SessionContext,raw:unknown){const p=parsePatBatch(raw);return setupTenant(ctx,async tx=>{
- for(const r of p.rows)await setupAuthority(tx,r.companyId,'manage');
+ for(const r of p.rows)await setupAuthority(tx,r.companyId,'manage');await setupPageLevelAuthority(tx,'pat.manage','manage');
  const summary=await patSummaryTx(tx,ctx,p.year,p.rows,p.mode);const reason=assertRewardConfigReviewed(summary,{reason:p.reason,digest:p.summaryDigest});
  if(!summary.changedCount&&p.mode==='draft')throw new RewardSetupError('invalid','Nothing changed.');
  const ids:string[]=[],affected:string[]=[];

@@ -5783,6 +5783,13 @@
       "when": 1793330005100,
       "tag": "5400_rewards_direct_configuration",
       "breakpoints": true
+    },
+    {
+      "idx": 4920,
+      "version": "7",
+      "when": 1793330005220,
+      "tag": "5520_rewards_role_permission_grid",
+      "breakpoints": true
     }
   ]
 }
