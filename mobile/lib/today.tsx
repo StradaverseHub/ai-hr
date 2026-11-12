@@ -59,7 +59,7 @@ export function clockOutCommand(caseId: string, reason: ClockOutReasonV2 | null,
   return typed.length > 0 && typed.length <= CLOCK_OUT_OTHER_MAX_V2 ? { caseId, reason, other: typed, confirm: true } : null;
 }
 
-const CLOCK_OUT_REFUSAL: Record<string, TodayKey> = { changed: 'refusedChanged', retired: 'refusedRetired', expired: 'refusedExpired', access: 'refusedAccess' };
+const CLOCK_OUT_REFUSAL: Record<string, TodayKey> = { changed: 'refusedChanged', retired: 'refusedRetired', expired: 'refusedExpired', access: 'refusedAccess', pending: 'refusedPending' };
 export const clockOutRefusalText = (code: string) => tt(CLOCK_OUT_REFUSAL[code] ?? 'refusedOther');
 const UNDO_REFUSAL: Record<string, TodayKey> = { ask_hr: 'undoRefusedAskHr', human_review_required: 'undoRefusedAskHr', expired: 'undoRefusedExpired' };
 export const undoRefusalText = (code: string) => tt(UNDO_REFUSAL[code] ?? 'undoRefusedOther');

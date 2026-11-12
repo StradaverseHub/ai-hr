@@ -170,6 +170,7 @@ describe('reminders', () => {
     await screen.findByText(/This day has changed since the reminder was prepared/);
     fireEvent.click(screen.getByText('Send correction')); f.press();
     await screen.findByText('We could not confirm it was sent. Check again before sending it a second time.');
+    expect(f.clockOutRefusalText('pending')).toBe('A correction for this day is already waiting for approval. Nothing new was sent.');
     expect(screen.getByText('Send correction')).toBeDisabled();
     fireEvent.click(screen.getByText('Check again'));
     expect(onReload).toHaveBeenCalledTimes(1);

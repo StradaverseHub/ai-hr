@@ -139,7 +139,7 @@ export const ClockOutConfirmCommandV2 = z.union([
   z.object({ caseId: uuid, reason: z.literal('other'), other: z.string().min(1).max(CLOCK_OUT_OTHER_MAX_V2), confirm: z.literal(true) }).strict(),
 ]);
 export type ClockOutConfirmCommandV2 = z.infer<typeof ClockOutConfirmCommandV2>;
-export const CLOCK_OUT_REFUSALS_V2 = ['not_confirmed', 'invalid', 'retired', 'changed', 'unavailable', 'expired', 'access'] as const;
+export const CLOCK_OUT_REFUSALS_V2 = ['not_confirmed', 'invalid', 'retired', 'changed', 'unavailable', 'expired', 'access', 'pending'] as const;
 export const ClockOutConfirmResultV2 = z.discriminatedUnion('outcome', [
   z.object({ outcome: z.literal('submitted') }).strict(),
   refusalOf(CLOCK_OUT_REFUSALS_V2),
