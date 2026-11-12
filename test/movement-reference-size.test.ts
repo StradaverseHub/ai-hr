@@ -102,6 +102,7 @@ describe('Movement template Reference size',()=>{
   assertSameAllowedValues(companies,reference,fieldLabels);
  });
 
+ // Measured on a standard GitHub runner (run 43183657279): production-shape round trip 1.8 s, four-times build and read 4.0 s.
  it('downloads the production-shape template and uploads it back unchanged, and with one valid entered row',async()=>{
   const companies=tenantShape(PRODUCTION),bytes=await buildMovementWorkbook({tenantId:tenant,types,companies,resolve:fallback});
   const wb=XLSX.read(bytes,{type:'buffer'});expect(wb.SheetNames).toEqual(['Instructions','Movements','Reference','Lists','_meta']);
@@ -114,12 +115,12 @@ describe('Movement template Reference size',()=>{
   const one=await source(await fill(bytes,[[companyCode(41),'E1001','Alex Example','01-Jan-2027','Promotion',position,'','P00001']]));
   expect(one.fileErrors).toEqual([]);expect(one.records).toHaveLength(1);
   expect(one.records[0]).toMatchObject({row:2,companyCode:companyCode(41),employeeCode:'E1001',errors:[],cells:{kind:'promotion',positionId:'P00001'}});
- },120_000);
+ },60_000);
 
  it('builds and reads back the four-times template inside the archive, cell and byte budgets',async()=>{
   const bytes=await buildMovementWorkbook({tenantId:tenant,types,companies:tenantShape(FOUR_TIMES),resolve:fallback});
   expect(await source(bytes)).toEqual({records:[],fileErrors:['no_movement_entries']});
- },180_000);
+ },60_000);
 
  it('lists shared values once and company-scoped values per company when a tenant mixes global and company labels',()=>{
   const options=(...rows:[string,string][])=>rows.map(([code,label])=>({value:code.toLowerCase(),codes:[code],label}));
@@ -163,7 +164,7 @@ describe('Movement template Reference size',()=>{
  it('uses fixed translated copy for All companies and the template-size refusal in every maintained locale',async()=>{
   const bundles={en,ms,ta,th,vi:vi_,zh};
   for(const [locale,bundle]of Object.entries(bundles)){
-   const m=(bundle as {people:{import:{movement:{sheet:Record<string,string>;issues:Record<string,string>}}}}).people.import.movement;
+   const m=(bundle as unknown as {people:{import:{movement:{sheet:Record<string,string>;issues:Record<string,string>}}}}).people.import.movement;
    expect(m.sheet.allCompanies,locale).toMatch(/\S/);
    expect(m.issues.movement_template_too_large,locale).toMatch(/\S/);
    expect(m.issues.movement_template_too_large,locale).not.toBe(m.issues.movement_reference_catalog_too_large);

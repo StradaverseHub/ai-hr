@@ -74,23 +74,28 @@ export function movementReferenceSheet(p:{types:MovementWorkbookType[];companies
  for(const company of p.companies)reference.push([company.code,company.name].map(business));
  reference.push([],[words('referenceValues','Allowed values for each company')],[p.captions[0],p.captions[5],words('colValue','Value to enter in After'),words('colLabel','Meaning')]);
  const fields=REFERENCE_FIELDS.filter(field=>fieldLabels.has(field));
- const perCompany=p.companies.map(company=>new Map(fields.map(field=>[field,companyReferenceValues(company,field)] as const)));
  const pairKey=([code,label]:[string,string])=>JSON.stringify([code,label]);
+ // Intersect company by company (at most two key sets held at once), then list from the first company's order.
  const shared=new Map<MovementFormField,Set<string>>();
  if(p.companies.length>1)for(const field of fields){
-  const [first,...rest]=perCompany.map(values=>new Set(values.get(field)!.map(pairKey)));
-  shared.set(field,new Set([...first].filter(key=>rest.every(other=>other.has(key)))));
+  let common:Set<string>|undefined;
+  for(const company of p.companies){
+   const keys=new Set(companyReferenceValues(company,field).map(pairKey));
+   common=common?new Set([...common].filter(key=>keys.has(key))):keys;
+   if(!common.size)break;
+  }
+  shared.set(field,common!);
  }
  const allCompanies=business(words('allCompanies','All companies'));
  for(const field of fields){
   const keys=shared.get(field);if(!keys?.size)continue;
   const listed=new Set<string>();
-  for(const pair of perCompany[0].get(field)!){const key=pairKey(pair);if(keys.has(key)&&!listed.has(key)){listed.add(key);reference.push([allCompanies,fieldLabels.get(field)!,...pair].map(business));}}
+  for(const pair of companyReferenceValues(p.companies[0],field)){const key=pairKey(pair);if(keys.has(key)&&!listed.has(key)){listed.add(key);reference.push([allCompanies,fieldLabels.get(field)!,...pair].map(business));}}
  }
- p.companies.forEach((company,index)=>{for(const field of fields){
+ for(const company of p.companies)for(const field of fields){
   const keys=shared.get(field);
-  for(const pair of perCompany[index].get(field)!)if(!keys?.has(pairKey(pair)))reference.push([company.code,fieldLabels.get(field)!,...pair].map(business));
- }});
+  for(const pair of companyReferenceValues(company,field))if(!keys?.has(pairKey(pair)))reference.push([company.code,fieldLabels.get(field)!,...pair].map(business));
+ }
  if(fieldLabels.has('companyId'))for(const company of p.companies)reference.push(['',fieldLabels.get('companyId')!,company.code,company.name].map(business));
  for(const [field,label]of fieldLabels){
   if(REFERENCE_FIELDS.includes(field as MovementFormField)||field==='companyId'||field==='incrementAmount')continue;
