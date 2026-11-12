@@ -63,8 +63,9 @@ function renderPicker(selected: string[] = DEFAULTS) {
   );
   const open = () => userEvent.click(screen.getByRole('button', { name: labels.title }));
   const box = (label: string) => screen.getByRole('checkbox', { name: label });
+  // aa045103 round 2: the panel is portaled to <body> (anchored-panel.tsx), so it is not in `container`.
   const rowKeys = () =>
-    [...view.container.querySelectorAll('li[data-column]')].map((li) => li.getAttribute('data-column'));
+    [...document.body.querySelectorAll('li[data-column]')].map((li) => li.getAttribute('data-column'));
   return { ...view, saveAction, resetAction, open, box, rowKeys };
 }
 
