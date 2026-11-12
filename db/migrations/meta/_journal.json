@@ -5783,6 +5783,13 @@
       "when": 1793330005100,
       "tag": "5400_rewards_direct_configuration",
       "breakpoints": true
+    },
+    {
+      "idx": 4820,
+      "version": "7",
+      "when": 1793330005120,
+      "tag": "5420_rewards_dashboard_preparation_notices",
+      "breakpoints": true
     }
   ]
 }

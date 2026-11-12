@@ -1,32 +1,45 @@
 import Link from 'next/link';
 import {useLocale,useTranslations} from 'next-intl';
-import {Card,Button,inputCls} from '@/components/ui';
+import {Card} from '@/components/ui';
 import type {RewardDashboard} from '@/packs/rewards/service';
-import {rewardSalaryDisplay} from '@/packs/rewards/dashboard-model';
+import {REWARD_DASHBOARD_PLANS,REWARD_SALARY_COMPONENTS,rewardSalaryDisplay,type RewardDashboardBar} from '@/packs/rewards/dashboard-model';
 import {deskMoney,DeskMeter} from './[unitId]/desk/salary-increase-table';
-import {saveDashboardAction} from './dashboard-actions';
+import {RewardsDashboardFilters} from './dashboard-filters';
+
 export function RewardsDashboard({value}:{value:RewardDashboard}){
  const t=useTranslations('rewardDashboard'),r=useTranslations('rewards'),prep=useTranslations('rewardsPreparation'),locale=useLocale();
  const money=(n:number)=>deskMoney(n,locale),salary=(n:number)=>money(rewardSalaryDisplay(n,value.choice.period));
- const units=value.units.slice(0,3),waiting=value.waiting.slice(0,5);
- const section=(kind:'salary'|'bonus')=><Card className="min-w-0"><div className="flex items-center justify-between gap-3 border-b border-border p-5"><h2 className="font-semibold">{t(kind)}</h2><Link href="/rewards/reviews" aria-label={t('allReviews')} className="text-sm text-primary hover:underline">{t('open')}</Link></div>
-  <div className="divide-y divide-border">{units.map(unit=><section key={unit.id} className="space-y-4 p-5"><div><h3 className="font-medium">{unit.company}</h3><Link href={`/rewards/${unit.id}#${kind==='salary'?'salary-increase':'bonus'}`} className="text-sm text-primary hover:underline">{unit.name}</Link><p className="mt-1 text-xs text-muted-foreground">{unit.cycle} · {r('snapshotDate')}: {unit.snapshotDate}</p></div>
-   {!unit.budgets?<p className="text-sm text-muted-foreground">{t(unit.restricted?'restricted':'uploaded')}</p>:<>
-    {kind==='bonus'&&<p className="text-xs text-muted-foreground">{t('oneOff')} · {r(`governance.status.${unit.poolStatus}`)}</p>}
-    {(['standard','h'] as const).map(plan=>{const b=unit.budgets![plan];return <div key={plan} className="space-y-2 text-sm"><h4 className="font-medium">{r(plan)}</h4>{kind==='salary'?b.used.map((used,index)=><div key={index} className="space-y-1"><div className="flex flex-wrap justify-between gap-x-3"><span>{r(['merit','promotion','special'][index])}</span><span className={`tabular-nums ${used>b.pools[index]?'font-medium text-destructive':''}`}>{salary(used)} / {salary(b.pools[index])}</span></div><DeskMeter used={used} pool={b.pools[index]} label={`${unit.company} · ${unit.name} · ${r(plan)} · ${r(['merit','promotion','special'][index])}`}/></div>):<><p className={`tabular-nums ${b.bonusUsedCents>b.bonusPoolCents?'font-medium text-destructive':''}`}>{money(b.bonusUsedCents)} / {money(b.bonusPoolCents)}</p><DeskMeter used={b.bonusUsedCents} pool={b.bonusPoolCents} label={`${unit.company} · ${unit.name} · ${r(plan)} · ${t('bonus')}`}/></>}</div>;})}
-    {kind==='bonus'&&unit.poolStatus==='not-set'&&<Link href={unit.setupVisible?`/rewards/${unit.id}/setup#budget`:`/rewards/${unit.id}#checks`} className="inline-block text-sm text-primary underline">{t('missingInputs')}</Link>}
-   </>}
-  </section>)}</div>{value.units.length>3&&<p className="border-t border-border p-5 text-sm"><Link href="/rewards/reviews" className="text-primary underline">{t('more',{count:value.units.length-3})}</Link></p>}
-  {!units.length&&<p className="p-5 text-sm text-muted-foreground">{t('empty')}</p>}
+ const percent=(bp:number|null)=>bp===null?'—':new Intl.NumberFormat(locale,{style:'percent',minimumFractionDigits:1,maximumFractionDigits:1}).format(bp/10000);
+ const date=(iso:string)=>new Intl.DateTimeFormat(locale==='en'?'en-GB':locale,{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
+ const waiting=value.waiting.slice(0,5),figures=value.figures,ctx=value.context;
+ const hasScope=value.businessUnits.length>0;
+ const barRow=(label:string,b:RewardDashboardBar,show:(n:number)=>string,withBalance:boolean)=><div className="space-y-1">
+  <div className="flex flex-wrap justify-between gap-x-3"><span>{label}</span><span className={`tabular-nums ${b.balance<0?'font-medium text-destructive':''}`}>{show(b.used)} / {show(b.pool)} · {percent(b.shareBp)}</span></div>
+  <DeskMeter used={b.used} pool={b.pool} label={label}/>
+  {withBalance&&<p className={`text-xs ${b.balance<0?'font-medium text-destructive':'text-muted-foreground'}`}>{r(b.balance<0?'desk.amountOver':'desk.amountLeft',{amount:show(Math.abs(b.balance))})}</p>}
+  {b.overCompanies.length>0&&<p className="text-xs font-medium text-destructive">{t('overOwnPool',{companies:b.overCompanies.join(', ')})}</p>}
+ </div>;
+ const box=(kind:'salary'|'bonus')=><Card className="min-w-0"><h2 className="border-b border-border p-5 font-semibold">{t(kind)}</h2>
+  {figures?<div className="divide-y divide-border">{REWARD_DASHBOARD_PLANS.map(plan=><section key={plan} className="space-y-3 p-5 text-sm"><h3 className="font-medium">{r(plan)}</h3>
+   {kind==='salary'?REWARD_SALARY_COMPONENTS.map(component=><div key={component}>{barRow(`${r(plan)} · ${r(component)}`,figures.salary[plan][component],salary,true)}</div>)
+    :barRow(`${r(plan)} · ${t('bonus')}`,figures.bonus[plan],money,false)}
+  </section>)}</div>:<p className="p-5 text-sm text-muted-foreground">{value.excluded.length?t('noCombinedFigures'):value.preparing.length?t('preparingYear',{year:value.year}):t('empty')}</p>}
  </Card>;
+ const excludedOf=(reason:'restricted'|'uploaded')=>value.excluded.filter(e=>e.reason===reason).map(e=>e.company);
  return <div className="space-y-5">
-  {(value.notices??[]).map(notice=><Card key={notice.unitId} className="space-y-2 p-5"><h2 className="font-medium">{notice.company} · {notice.unit} · {notice.cycle}</h2><p role="status" className="text-sm">{prep('preparing')}</p><p className="text-sm text-muted-foreground">{notice.expectedRelease?prep('expectedOn',{date:notice.expectedRelease}):prep('datePending')}</p><Link href={`/rewards/${notice.unitId}`} className="inline-block text-sm text-primary hover:underline">{r('openReview')}</Link></Card>)}
-  {value.scopes.length>0&&<form action={saveDashboardAction} className="flex flex-wrap items-end gap-3" aria-label={t('preferences')}>
-   <label className="min-w-0 space-y-1 text-sm"><span className="block">{r('unit')}</span><select name="scope" defaultValue={value.choice.scope} className={`${inputCls} max-w-full sm:max-w-xl`}>{value.canSelectAll&&<option value="all">{t('allAssigned')}</option>}{value.scopes.map(scope=><option key={scope.id} value={scope.id}>{scope.label}</option>)}</select></label>
-   <label className="space-y-1 text-sm"><span className="block">{t('salaryPeriod')}</span><select name="period" defaultValue={value.choice.period} className={inputCls}><option value="monthly">{t('monthly')}</option><option value="annual">{t('annual')}</option></select></label><Button type="submit">{r('reviewList.apply')}</Button>
-  </form>}
-  {value.units.length>0&&<p className="text-sm text-muted-foreground">{t('yourRoles')}: {[...new Set(value.units.flatMap(unit=>unit.roles))].map(role=>r(`board.seat.${role}`)).join(', ')} · {t('separate')}</p>}
-  <div className="grid items-start gap-5 xl:grid-cols-3">{section('salary')}{section('bonus')}<Card className="min-w-0"><div className="flex items-center justify-between gap-3 border-b border-border p-5"><h2 className="font-semibold">{t('waiting',{count:value.waiting.length})}</h2><Link href="/rewards/approvals" className="text-sm text-primary hover:underline">{t('open')}</Link></div>
+  {hasScope&&<RewardsDashboardFilters value={value} showPeriod={!!figures}/>}
+  {ctx&&<p className="text-sm text-muted-foreground" data-testid="reward-dashboard-context">{[
+   t('showing',{scope:ctx.businessUnit??t('allBusinessUnits')}),
+   t('companyCount',{count:ctx.companies}),
+   ctx.cycleVaries?t('cyclesVary'):ctx.cycle,
+   ctx.snapshotVaries?t('snapshotsVary'):ctx.snapshot?t('snapshot',{date:date(ctx.snapshot)}):null,
+  ].filter(Boolean).join(' · ')}</p>}
+  {value.preparing.length>0&&<Card className="space-y-2 p-5"><h2 role="status" className="font-medium">{t('preparingYear',{year:value.year})}</h2>
+   <ul className="space-y-1 text-sm">{value.preparing.map(notice=><li key={notice.unitId} className="flex flex-wrap gap-x-3"><Link href={`/rewards/${notice.unitId}`} className="text-primary hover:underline">{notice.company}</Link>
+    <span className="text-muted-foreground">{notice.expectedRelease?prep('expectedOn',{date:date(notice.expectedRelease)}):prep('datePending')}</span></li>)}</ul></Card>}
+  {(['restricted','uploaded'] as const).map(reason=>excludedOf(reason).length>0&&<p key={reason} className="text-sm text-muted-foreground">{t(reason==='restricted'?'excludedRestricted':'excludedUploaded',{companies:excludedOf(reason).join(', ')})}</p>)}
+  {value.roles.length>0&&<p className="text-sm text-muted-foreground">{t('yourRoles')}: {value.roles.map(role=>r(`board.seat.${role}`)).join(', ')} · {t('separate')}</p>}
+  <div className="grid items-start gap-5 xl:grid-cols-3">{box('salary')}{box('bonus')}<Card className="min-w-0"><div className="flex items-center justify-between gap-3 border-b border-border p-5"><h2 className="font-semibold">{t('waiting',{count:value.waiting.length})}</h2><Link href="/rewards/approvals" className="text-sm text-primary hover:underline">{t('open')}</Link></div>
    {waiting.length?<ul className="divide-y divide-border">{waiting.map(unit=><li key={unit.id} className="space-y-2 p-5 text-sm"><Link href={`/rewards/${unit.id}`} className="font-medium text-primary hover:underline">{unit.company} · {unit.name}</Link><p>{r('openReview')}</p><p className={unit.daysUntilDue!==null&&unit.daysUntilDue<0?'text-destructive':'text-muted-foreground'}>{unit.due?`${r('dueOn',{date:unit.due})}${unit.daysUntilDue!==null&&unit.daysUntilDue<0?' · '+t('overdue'):''}`:t('noDue')}</p><Link href={`/rewards/${unit.id}#checks`} className={unit.blocking?'font-medium text-destructive hover:underline':'text-muted-foreground hover:underline'}>{r('reviewList.blocking',{count:unit.blocking})} · {r('reviewList.exceptions',{count:unit.exceptions})}</Link></li>)}</ul>:<p className="p-5 text-sm text-muted-foreground">{r('board.noneWaiting')}</p>}
    {value.waiting.length>5&&<Link href="/rewards/approvals" className="block border-t border-border p-5 text-sm text-primary underline">{t('more',{count:value.waiting.length-5})}</Link>}
   </Card></div>
