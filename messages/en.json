@@ -13583,7 +13583,19 @@
     "leaveConfigCompanyRules": {
       "pageDescription": "The leave settings that belong to a company or to the whole organisation, gathered in one place.",
       "intro": "The leave settings here belong to a company or to the whole organisation rather than to any one leave type, so they are set once instead of being repeated on every leave type.",
-      "whoQualifies": "Who may take a leave type, and who receives which entitlement table, is set under Leave types, not here."
+      "whoQualifies": "Who may take a leave type, and who receives which entitlement table, is set under Leave types, not here.",
+      "teamMinimum": {
+        "title": "Minimum people present",
+        "help": "Leave recommendations tell the approver when approving a request would leave fewer people of the employee's team present on a day, and name those days. The approver still decides.",
+        "teamHelp": "The team is the employee's line manager and everyone who reports to that manager. People on approved leave of half a day or more count as away.",
+        "label": "Minimum people present on any day (leave the box empty for no minimum)",
+        "save": "Save",
+        "none": "You do not manage the leave settings of any company.",
+        "error": {
+          "invalid": "Enter a whole number of people from 0 to 10,000, or leave the box empty for no minimum.",
+          "not_allowed": "You cannot change this setting for that company."
+        }
+      }
     },
     "leaveConfigSpecialSetting": {
       "pageDescription": "Settings that apply across every leave type rather than belonging to any one of them."

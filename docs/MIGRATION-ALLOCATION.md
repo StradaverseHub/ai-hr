@@ -3351,3 +3351,17 @@ threshold of each company's latest Salary payroll loop setting version, and noth
 grant on data, existing function or data change. The approved upgrade tail pin (`test/helpers/approved-upgrade.ts`)
 and `test/tenant-company-fk-upgrade.test.ts` carry the allocated tag. Recheck peer claims and the installed ledger at
 admission; this entry carries no deployment authority.
+
+## Manager Today team minimum — 13 November 2026 (allocated 13 Nov 2026 as 5161)
+
+Branch `claude/team-minimum-20261113` (base `origin/alpha` at `3a11d916e`, owner decision 12 November 2026, HANDOFF §5 item 4)
+journals `9770_leave_team_minimum_present` at idx 9770 and when 1793330099770 as an UNALLOCATED DRAFT from the
+coordinator-provided 9770–9779 block (9760–9769 belong to another builder's sweep-threshold draft). It adds one nullable
+integer column to `company`, `leave_team_minimum_present`, and one CHECK (`company_leave_team_minimum_present_check`: NULL
+or >= 0); no default, no backfill, no new table, policy, grant or function (`company` keeps its row security,
+admin-for-company update policy and table-level app grant from 0324). SHA-256
+`fa4c016e8aa6d259e8ec31bec4809c88b46f50dfd157d9ddaf251568623a4660`. The approved upgrade tail pin, its hash and the
+populated null-column proof (`test/helpers/approved-upgrade.ts`, `test/tenant-company-fk-upgrade.test.ts`) carry the draft;
+ALLOCATED by the coordinator on 13 November 2026 as `5161_leave_team_minimum_present`, idx 4561, when 1793330004861 (after the
+sweep-threshold batch's 5160); SQL bytes unchanged (the header comment still records its draft number). This entry carries no
+deployment authority.

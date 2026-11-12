@@ -5797,6 +5797,13 @@
       "when": 1793330004860,
       "tag": "5160_sweep_swing_thresholds",
       "breakpoints": true
+    },
+    {
+      "idx": 4561,
+      "version": "7",
+      "when": 1793330004861,
+      "tag": "5161_leave_team_minimum_present",
+      "breakpoints": true
     }
   ]
 }

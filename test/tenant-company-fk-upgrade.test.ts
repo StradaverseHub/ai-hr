@@ -50,12 +50,17 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   return rows;
  };
  // The combined block adds the staged-import marker column (5010, 5070) to some of these tables. It is null on every
- // row no import staged, and only then is the row compared without it.
+ // row no import staged, and only then is the row compared without it. 5161 (draft 9770) adds the company's team minimum the
+ // same way: unset on every company that predates it.
  const withoutImportMarker=(rows:Record<string,unknown>)=>Object.fromEntries(Object.entries(rows).map(([table,list])=>[table,
   (list as {row:Record<string,unknown>}[]).map(({row})=>{
-   if(!('import_pending_attempt_id' in row))return {row};
-   expect(row.import_pending_attempt_id,table+' staged-import marker').toBeNull();
-   const rest={...row};delete rest.import_pending_attempt_id;return {row:rest};
+   const rest={...row};
+   for(const column of ['import_pending_attempt_id',...(table==='company'?['leave_team_minimum_present']:[])]){
+    if(!(column in rest))continue;
+    expect(rest[column],table+'.'+column+' on a retained row').toBeNull();
+    delete rest[column];
+   }
+   return {row:rest};
   })]));
  // Everything a grant or policy could change, except the one function ACL 2100 deliberately narrows.
  const privileges=async()=>({
@@ -209,6 +214,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5130_pay_formula_ai_draft_job',
    // Sweep reads each company's net-swing threshold (draft 9760), allocated 5160 (13 November 2026).
    '5160_sweep_swing_thresholds',
+   // Manager Today team minimum (draft 9770), allocated 13 November 2026 as 5161.
+   '5161_leave_team_minimum_present',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

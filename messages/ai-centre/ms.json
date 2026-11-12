@@ -802,7 +802,9 @@
           "pass": "Tiada orang lain yang boleh anda lihat bercuti pada tarikh ini.",
           "fail": "Liputan pasukan di bawah tahap minimum.",
           "unusual": "Ada orang lain yang boleh anda lihat bercuti pada sebahagian tarikh ini.",
-          "missing": "Siapa lagi yang bercuti tidak dapat dibaca."
+          "missing": "Siapa lagi yang bercuti tidak dapat dibaca.",
+          "passMinimum": "Sekurang-kurangnya {minimum} orang daripada pasukan kekal hadir pada setiap hari permohonan ini.",
+          "failMinimum": "Meluluskan permohonan ini akan menyebabkan kurang daripada {minimum} orang daripada pasukan hadir pada {count} hari: {days}."
         },
         "policy_limits": {
           "pass": "Peraturan dokumen dan tarikh bagi jenis cuti ini dipenuhi.",
@@ -823,7 +825,9 @@
         "passing": "Lulus setiap semakan ({count})",
         "help": "Hanya menunjukkan permohonan yang lulus setiap semakan. Pilih permohonan itu, kemudian luluskan atau tolak dengan pengesahan. Tiada apa yang diluluskan secara automatik."
       },
-      "openOne": "Tunjukkan cadangan"
+      "openOne": "Tunjukkan cadangan",
+      "teamDay": "{date} ({present} hadir)",
+      "teamMoreDays": "{count} hari lagi"
     },
     "digest": {
       "title": "Hari anda",
