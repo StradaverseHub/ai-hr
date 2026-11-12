@@ -873,6 +873,10 @@ export async function saveRewardSeniorMembership(ctx: SessionContext, unitId: st
     await tx.insert(rewardGovernanceHistory).values({tenantId:ctx.tenantId,unitId,actorId:idSchema.parse(ctx.userId),kind:'senior-selection-proposed',reason:'Senior plan membership saved by Group Rewards',before:prior,after});
     await projectGovernanceTx(tx,ctx,unitId,after);
     await tx.update(rewardUnit).set({policy:{...unit.policy,seniorMembershipMode:'named-members',unitGovernanceDigest:createHash('sha256').update(JSON.stringify(after)).digest('hex')}}).where(eq(rewardUnit.id,unitId));
+    // Board 60f1fdcd: the saved membership is active; the change log names the members' entries so a member never
+    // reads the row about their own selection.
+    await recordGovernanceChangeTx(tx,ctx,unit,'senior','saved','Senior plan membership','Senior plan membership saved by Group Rewards',
+     [{key:'members',label:'Senior plan members',before:prior?.selection?String(prior.selection.employmentIds.length):null,after:String(after.selection!.employmentIds.length)}],[...selectedIds]);
   });
 }
 
