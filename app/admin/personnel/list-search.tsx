@@ -97,7 +97,10 @@ export function PersonnelListSearch({parameters, pageSize, privateCriteria = emp
     if (!showList) return;
     const measure = () => {
       const el = box.current;
-      if (el) setListWidth(suggestionListWidth(el.getBoundingClientRect(), visibleHorizontalBounds(el)));
+      const rect = el?.getBoundingClientRect();
+      // No layout box (jsdom, a hidden ancestor): nothing to measure, so the list keeps the box's own width.
+      if (!el || !rect?.width) { setListWidth(null); return; }
+      setListWidth(suggestionListWidth(rect, visibleHorizontalBounds(el)));
     };
     measure();
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;

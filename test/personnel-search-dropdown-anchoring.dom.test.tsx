@@ -112,3 +112,9 @@ it('startAlignedLeft and visibleHorizontalBounds clamp to the clipping ancestor,
  const {container}=render(<main style={{overflowX:'auto'}}><div><span id="anchor"/></div></main>);
  expect(visibleHorizontalBounds(container.querySelector('#anchor') as HTMLElement)).toEqual({left:240,right:1024});
 });
+
+it('with no layout box to measure (a static capture), the list keeps the box width instead of a guessed 24rem',async()=>{
+ mountSearch();
+ const list=await openList();
+ expect(list.style.width).toBe('');expect(list).toHaveClass('left-0','w-full','min-w-full');
+});
