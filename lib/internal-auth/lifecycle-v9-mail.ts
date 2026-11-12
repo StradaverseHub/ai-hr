@@ -9,6 +9,7 @@ import { internalConfig, internalIssuer } from './config';
 import { admittedAuthSql, readRecord } from './store';
 import { assertActiveCredential, InternalAuthError, type Credential } from './service';
 import { readLifecycleRelayTx } from './active-relay';
+import { normaliseManagedEmailSender } from '../managed-email-policy';
 import { sendSmtp, type MailTransport } from './smtp';
 
 /** Authentication owns credential verification and the applied relay. The caller supplies neither
@@ -17,9 +18,10 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
   const { deliveryId: id, leaseToken: token } = lifecycleV9DeliveryRequest.parse(input), origin = internalConfig().origin;
   const target = (await withSystemWork(()=>client`select app.lc_v9_email_target(${id}::uuid,${token}::uuid,${origin}) as target`))[0]?.target as LifecycleV9MailTarget | null;
   if (!target) return { outcome: 'skipped', error: 'notEligible' };
-  const profile = target.payload.mail.delivery?.sender;
-  if (!profile || !['onboarding','hr','noreply'].includes(profile)) return { outcome: 'skipped', error: 'notEligible' };
-  const active = await readLifecycleRelayTx(admittedAuthSql, target.tenantId, profile);
+  // Earlier payloads and retries may carry a retired per-name key; every one now sends as the tenant's single sender.
+  const profile = normaliseManagedEmailSender(target.payload.mail.delivery?.sender);
+  if (!profile) return { outcome: 'skipped', error: 'notEligible' };
+  const active = await readLifecycleRelayTx(admittedAuthSql, target.tenantId);
   if (!active) return { outcome: 'skipped', error: 'relayUnavailable' };
   const byRecipient = new Map<string, string>();
   if (target.contact) byRecipient.set(target.contact.email, target.contact.email);
@@ -67,15 +69,15 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
     return document.name + ': ' + notificationEmailLink(origin, `/me/lifecycle?case=${encodeURIComponent(target.caseId)}&document=${encodeURIComponent(documentId)}`);
   });
   const content = v9EmailContent(mail.body + (links.length ? '\n\n' + links.join('\n') : ''), assetReferences.filter(asset => asset.kind === 'image'));
-  const currentRelay = await readLifecycleRelayTx(admittedAuthSql, target.tenantId, profile);
-  if (!currentRelay || currentRelay.revision !== active.revision) return { outcome: 'skipped', error: 'relayUnavailable' };
-  const proof = { bindings: target.bindings, contact: target.contact ?? null, literals: target.literals ?? [], addresses, relayRevision: active.revision, senderProfile: profile, senderAddress: active.relay.config.from };
+  const currentRelay = await readLifecycleRelayTx(admittedAuthSql, target.tenantId);
+  if (!currentRelay || currentRelay.revision !== active.revision || currentRelay.senderName !== active.senderName) return { outcome: 'skipped', error: 'relayUnavailable' };
+  const proof = { bindings: target.bindings, contact: target.contact ?? null, literals: target.literals ?? [], addresses, relayRevision: active.revision, senderProfile: profile, senderName: active.senderName ?? active.relay.config.fromName, senderAddress: active.relay.config.from };
   // A separate completed statement persists start BEFORE any external message bytes are sent.
   const started = (await withSystemWork(()=>client`select app.lc_v9_email_start(${id}::uuid,${token}::uuid,${origin},${JSON.stringify(proof)}::jsonb) as started`))[0]?.started === true;
   if (!started) return { outcome: 'skipped', error: 'notEligible' };
   let result: LifecycleV9DeliveryResult;
   try {
-    await transport(active.relay, { to: addresses[0]!, cc: addresses.slice(1) as string[], subject: mail.subject, ...content, attachments, senderProfile: mail.delivery.sender, messageId: `<lifecycle-v9.${id}@${new URL(origin).hostname}>` });
+    await transport(active.relay, { to: addresses[0]!, cc: addresses.slice(1) as string[], subject: mail.subject, ...content, attachments, ...(active.senderName ? { senderName: active.senderName } : {}), messageId: `<lifecycle-v9.${id}@${new URL(origin).hostname}>` });
     result = { outcome: 'sent', error: null };
   } catch (error) { result = notificationSmtpFailure(error); }
   const finished = (await withSystemWork(()=>client`select app.lc_v9_email_finish(${id}::uuid,${token}::uuid,${result.outcome},${result.error}) as finished`))[0]?.finished === true;

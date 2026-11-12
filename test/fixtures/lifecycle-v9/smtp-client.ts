@@ -6,7 +6,7 @@ import { notificationSmtpFailure } from '../../../lib/notification-email-model';
 async function main() {
   try {
     await sendSmtp({ config: { ...defaultEmailConfig, host: '127.0.0.1', port: Number(process.argv[2]), security: 'tls', from: 'owner@report-acceptance.invalid', auth: false } }, {
-      to: 'recipient@report-acceptance.invalid', cc: ['supervisor@report-acceptance.invalid'], senderProfile: 'hr',
+      to: 'recipient@report-acceptance.invalid', cc: ['supervisor@report-acceptance.invalid'], senderName: 'Fictional Group Sender',
       subject: 'Fictional V9 saved document', text: 'Fictional V9 case message.', messageId: '<v9-transport-fixture@report-acceptance.invalid>',
       attachments: [{ filename: 'Fictional-V9-document.pdf', contentType: 'application/pdf', bytes: await readFile(process.argv[3]) }],
     });

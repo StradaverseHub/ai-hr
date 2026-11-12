@@ -283,9 +283,9 @@ it('freezes link/PDF routing and displayed recipients at queue time and locks re
   config.emails = [{ id: 'email', name: 'Frozen delivery', module: 'off', active: true, sender: 'hr', subject: 'Saved for {employee.name}', body: 'Saved wording', cc: ['supervisor'], links: [form.id], attachments: [attachment.id], slots: [] }];
   M.queueEmail(c, config, 'email', environment);
   const mail = c.mails[0], formDocument = c.documents.find(document => document.templateId === form.id)!;
-  expect(mail.delivery).toEqual({ version: 1, queuedBy: environment.actor, sender: 'hr', linkDocumentIds: [formDocument.id], pdfDocumentIds: [c.documents.find(document => document.templateId === attachment.id)!.id], toNames: ['employee'], ccNames: ['manager'] });
+  expect(mail.delivery).toEqual({ version: 1, queuedBy: environment.actor, sender: 'noreply', linkDocumentIds: [formDocument.id], pdfDocumentIds: [c.documents.find(document => document.templateId === attachment.id)!.id], toNames: ['employee'], ccNames: ['manager'] });
   config.emails[0].sender = 'onboarding'; config.emails[0].attachments = []; config.emails[0].links = []; config.emails[0].body = 'Changed later';
-  expect(mail.delivery!.sender).toBe('hr'); expect(mail.delivery!.pdfDocumentIds).toHaveLength(1); expect(mail.body).toBe('Saved wording');
+  expect(mail.delivery!.sender).toBe('noreply'); expect(mail.delivery!.pdfDocumentIds).toHaveLength(1); expect(mail.body).toBe('Saved wording');
   formDocument.fields[0].owner = 'hr'; formDocument.status = 'sent'; const before = structuredClone(formDocument.values);
   expect(() => M.saveDocument(c, formDocument.id, { answer: 'Changed after release' }, 'hr', environment)).toThrow('Released document fields are frozen');
   expect(formDocument.values).toEqual(before);
@@ -528,8 +528,8 @@ it('previews the first task owner and tests that same notification output only t
  const {c,config,environment}=fixture();c.tasks=[task('Return laptop','2026-10-30','hr2')];environment.userName=id=>id==='hr2'?'Fictional Owner':id;const definition=workflow({steps:[{id:'notify',type:'notify',to:'employee',cc:['supervisor'],subject:'For {owner.name}',body:'{pending.tasks}'}]});config.workflows=[definition];const step=definition.steps[0];if(step.type!=='notify')throw Error('Expected notify fixture');const preview=M.previewWorkflowNotification(c,config,step,environment);M.testWorkflowMessages(c,config,definition.id,environment);expect(preview).toMatchObject({subject:'For Fictional',body:'• Return laptop (due 30 Oct)',to:'Employee',cc:'Line manager'});expect(c.mails[0]).toMatchObject({subject:preview.subject,body:preview.body,to:['hr'],cc:[],test:true});
 });
 
-it.each(['onb','off'] as const)('uses the %s managed sender for a notification self-test and renders the empty pending summary',module=>{
- const {c,config,environment}=fixture(module);const definition=workflow({module,steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'{pending.count} pending',body:'{owner.name}\n{pending.tasks}'}]});config.workflows=[definition];const step=definition.steps[0];if(step.type!=='notify')throw Error('Expected notification');const preview=M.previewWorkflowNotification(c,config,step,environment);expect(preview).toMatchObject({subject:'0 pending',body:'\nNothing pending'});M.testWorkflowMessages(c,config,definition.id,environment);expect(c.mails[0].delivery?.sender).toBe(module==='onb'?'onboarding':'hr');expect(c.mails[0].body).toBe(preview.body);
+it.each(['onb','off'] as const)('uses the single On/Off Boarding sender for a %s notification self-test and renders the empty pending summary',module=>{
+ const {c,config,environment}=fixture(module);const definition=workflow({module,steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'{pending.count} pending',body:'{owner.name}\n{pending.tasks}'}]});config.workflows=[definition];const step=definition.steps[0];if(step.type!=='notify')throw Error('Expected notification');const preview=M.previewWorkflowNotification(c,config,step,environment);expect(preview).toMatchObject({subject:'0 pending',body:'\nNothing pending'});M.testWorkflowMessages(c,config,definition.id,environment);expect(c.mails[0].delivery?.sender).toBe('noreply');expect(c.mails[0].body).toBe(preview.body);
 });
 
 it('explicitly regenerates the latest published version while retaining a released copy and its answers', () => {

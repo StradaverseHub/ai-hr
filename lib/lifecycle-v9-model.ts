@@ -134,7 +134,8 @@ export type Mail = {
   to: string[]; cc: string[]; subject: string; body: string; documentIds: string[];
   fileIds: string[]; status: 'pending' | 'sending' | 'sent' | 'failed' | 'uncertain' | 'cancelled'; test: boolean;
   at: string; deliveredAt: string | null; failure: string | null; retryOf?: string; retryReason?: string; retryMode?: 'same'|'updated';
-  /** Frozen transport choices; older history without this must not be silently reinterpreted. */
+  /** Frozen transport choices; older history without this must not be silently reinterpreted.
+   * New mail is always 'noreply'; 'onboarding' and 'hr' survive only in earlier history and send as the same sender. */
   delivery?: { version: 1; queuedBy: Actor; sender: 'onboarding' | 'hr' | 'noreply'; linkDocumentIds: string[]; pdfDocumentIds: string[]; toNames: string[]; ccNames: string[]; assets?: EmailAsset[]; contact?: { kind: 'onboardingContact'; caseId: string; email: string; sourceRevision: string } };
 };
 export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string };
@@ -485,7 +486,7 @@ export function retryEmail(c: Case, config: Config, id: string, reason: string, 
   if (accountRecipients.some(userId => !eligibleRecipient(userId, env))) throw new V9Error('Review the unavailable recipients before retrying.');
   const next = structuredClone(original); next.id = env.nextId(); next.key = `retry:${original.id}:${next.id}`;
   next.retryOf = original.id; next.retryMode='same'; next.retryReason = reason.trim(); next.status = 'pending'; next.at = env.now; next.deliveredAt = null; next.failure = null;
-  next.delivery!.queuedBy = { ...env.actor }; c.mails.push(next);
+  next.delivery!.queuedBy = { ...env.actor }; next.delivery!.sender = 'noreply'; c.mails.push(next);
   appendLog(c, env, 'email.retryQueued', reason.trim()); return next;
 }
 /** Build a fresh, reviewable template copy without changing the case or its old delivery intent. */
@@ -647,11 +648,11 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
     const cc = test ? [] : ccTargets.filter(id => id !== target);
     const assetCount = (email?.files?.length ?? 0) + (email?.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}')).length;
     if (assetCount + (email?.attachments.length ?? 0) + c.files.filter(file => email?.slots.some(slot => file.slot === `${email.id}:${slot.id}`)).length > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT) throw new V9Error('Keep the total attached files and inline images within 20.');
-    const sender = email?.sender ?? (test ? c.module==='onb'?'onboarding':'hr' : 'noreply');
-    if (!['onboarding', 'hr', 'noreply'].includes(sender)) throw new V9Error('Choose a managed sender profile before sending.');
+    // One On/Off Boarding sender: its display name is the tenant's setting, resolved when the message is sent.
+    const sender = 'noreply' as const;
     const assets = structuredClone([...(email?.files ?? []), ...(email?.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}'))]);
     if (assets.reduce((sum, asset) => sum + asset.size, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES) throw new V9Error('Keep the total attached files and inline images within 20 MB.');
-    c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: [target], cc, subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), delivery: { version: 1, queuedBy: { ...env.actor }, sender: sender as 'onboarding' | 'hr' | 'noreply', linkDocumentIds: docs.filter(document => email?.links.includes(document.templateId)).map(document => document.id), pdfDocumentIds: docs.filter(document => email?.attachments.includes(document.templateId)).map(document => document.id), toNames: [contact ? c.facts.name : recipientName(target, env)], ccNames: cc.map(id => recipientName(id, env)), ...(assets.length ? { assets } : {}), ...(contact ? { contact: { kind: 'onboardingContact' as const, caseId: c.id, email: contact.email, sourceRevision: contact.sourceRevision } } : {}) }, fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
+    c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: [target], cc, subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), delivery: { version: 1, queuedBy: { ...env.actor }, sender, linkDocumentIds: docs.filter(document => email?.links.includes(document.templateId)).map(document => document.id), pdfDocumentIds: docs.filter(document => email?.attachments.includes(document.templateId)).map(document => document.id), toNames: [contact ? c.facts.name : recipientName(target, env)], ccNames: cc.map(id => recipientName(id, env)), ...(assets.length ? { assets } : {}), ...(contact ? { contact: { kind: 'onboardingContact' as const, caseId: c.id, email: contact.email, sourceRevision: contact.sourceRevision } } : {}) }, fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
     appendLog(c, env, test ? 'email.test.queued' : 'email.queued', `${email?.name ?? subject.text} · ${contact ? c.facts.name : recipientName(target, env)}`);
   }
   return deliveryHold(c.mails.filter(mail => mail.workflowId === workflowId && mail.key.startsWith(key + ':')));

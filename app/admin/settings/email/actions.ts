@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { requireIdentityEmailAdmin } from '@/lib/identity/email-settings';
 import { identityEmailRequest } from '@/lib/identity/email-ipc';
 import { EmailSettingsError, emailConfigSchema } from '@/lib/identity/email-model';
-import { managedEmailSenderProfiles, type ManagedEmailSenderProfile } from '@/lib/managed-email-policy';
+import { managedEmailSenderProfiles, validManagedEmailSenderName, type ManagedEmailSenderProfile } from '@/lib/managed-email-policy';
 import {internalSelected} from '@/lib/internal-auth/config';
 import {saveAccountEmailRetention} from '@/core/account-email-retention';
 const path='/admin/settings/email';
@@ -33,6 +33,17 @@ async function execute(op:'save'|'test'|'apply',form:FormData) {
  revalidatePath(path);redirect(path+'?'+new URLSearchParams({...error?{error}:{success:appliedSender?'sender':op},...(connectionId?{connection:connectionId}:form.has('connectionName')?{connection:'new'}:{})}));
 }
 export async function saveEmailDraft(form:FormData){await execute('save',form);}
+/** Only the enrolled installation email operator names the tenant's On/Off Boarding sender. */
+export async function saveLifecycleSenderName(form:FormData){
+ const {actor}=await requireIdentityEmailAdmin();
+ let error:string|undefined;
+ try{
+  const name=validManagedEmailSenderName(form.get('senderName'));
+  if(!name||!internalSelected())throw new EmailSettingsError('invalid');
+  await identityEmailRequest({op:'lifecycleSenderName',actor,name});
+ }catch(e){error=e instanceof EmailSettingsError?e.code:'unavailable';}
+ revalidatePath(path);redirect(path+'?'+new URLSearchParams(error?{error}:{success:'senderName'}));
+}
 export async function testEmailDraft(form:FormData){await execute('test',form);}
 export async function activateEmailDraft(form:FormData){await execute('apply',form);}
 export async function saveEmailRetention(form:FormData){

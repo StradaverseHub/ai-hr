@@ -33,6 +33,9 @@ export const v9ConfigSchema = z.object({
 }).strict();
 export function parseV9Config(value: unknown, previous?: Config) {
   const config = v9ConfigSchema.parse(value);
+  // Every template sends as the tenant's single On/Off Boarding sender. Earlier per-name values are rewritten on this save;
+  // nothing else in the template changes, so an active template stays active. Stored revisions are history and stay as they were.
+  for (const email of config.emails) email.sender = 'noreply';
   for (const module of ['onb','off'] as const) if (config.caseForms?.[module]) { try { validateV9CaseFields(module, config.caseForms[module]!); } catch (error) { throw new V9Error(error instanceof Error ? error.message : 'Review the case form fields.'); } }
   const unique = (values: string[], what: string) => { if (new Set(values).size !== values.length) throw new V9Error(`Duplicate ${what} identifiers.`); };
   unique(config.groups.map(g => g.id), 'group'); unique(config.checklists.map(g => g.id), 'checklist'); unique(config.templates.map(g => g.id), 'template'); unique(config.emails.map(g => g.id), 'email'); unique(config.workflows.map(g => g.id), 'workflow');
@@ -77,7 +80,6 @@ export function parseV9Config(value: unknown, previous?: Config) {
     for (const s of wf.steps) if ('template' in s && s.template) sameModule(wf.module, s.template, s.type === 'email' ? 'email' : 'document');
   }
   for (const email of config.emails) {
-    if (email.active && !['onboarding', 'hr', 'noreply'].includes(email.sender)) throw new V9Error('Choose a managed sender profile before activating this email.');
     if (email.active && !email.subject.trim()) throw new V9Error('Add a subject before activating this email.');
     unique(email.slots.map(slot => slot.id), 'email file slot');
     for (const slot of email.slots) if (!slot.label.trim()) throw new V9Error('Give each per-person file a label.');

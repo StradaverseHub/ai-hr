@@ -25104,7 +25104,8 @@
       "save": "Draf disimpan. Geganti aktif tidak berubah.",
       "test": "Geganti menerima mesej ujian. Semak peti masuk sebelum pengaktifan.",
       "apply": "Geganti diaktifkan. Jemputan dan pemulihan kata laluan kini boleh menggunakannya.",
-      "sender": "Pengirim kitar hayat dikemas kini. Pemulihan akaun dan lalai pemasangan kekal sama."
+      "sender": "Pengirim kitar hayat dikemas kini. Pemulihan akaun dan lalai pemasangan kekal sama.",
+      "senderName": "Nama pengirim disimpan. E-mel On/Off Boarding yang dihantar mulai sekarang menggunakannya."
     },
     "connectionTitle": "Sambungan SMTP",
     "security": "Penyulitan",
@@ -25143,14 +25144,19 @@
     "backToConnections": "Kembali ke sambungan",
     "saveConnection": "Simpan sambungan",
     "activeChangesHelp": "Relay aktif terus menggunakan tetapan terakhir yang diaktifkan. Simpan, uji dan sahkan penerimaan sebelum mengaktifkan perubahan ini.",
-    "lifecycleSenderTitle": "Pengirim e-mel onboarding dan offboarding",
-    "lifecycleSenderHelp": "Setiap pengirim menggunakan sambungan yang telah disahkan. Tanpa tetapan berasingan, pengirim menggunakan geganti aktif pemasangan.",
+    "lifecycleSenderTitle": "Pengirim On/Off Boarding",
+    "lifecycleSenderHelp": "Setiap e-mel onboarding dan offboarding menggunakan pengirim ini. Ia menggunakan sambungan yang telah disahkan, atau geganti aktif pemasangan jika tiada sambungan digunakan.",
     "applyTarget": "Gunakan sambungan yang diuji ini untuk",
     "applyDefault": "Lalai pemasangan (akaun dan e-mel lain)",
     "senderDefault": "Menggunakan lalai pemasangan",
     "senderConfirmed": "Penerimaan disahkan pada {at}",
     "senderPending": "Sambungan ini mempunyai perubahan tersimpan yang lebih baharu. Versi yang disahkan terus menghantar sehingga diuji dan digunakan semula.",
-    "senderTargetHelp": "Ujian tamat selepas 30 minit. Lalai pemasangan mengawal e-mel akaun. Pilihan kitar hayat hanya mengubah pengirim tersebut untuk penyewa semasa. Uji dan sahkan penerimaan semula selepas menyunting sambungan."
+    "senderTargetHelp": "Ujian tamat selepas 30 minit. Lalai pemasangan mengawal e-mel akaun. Pilihan kitar hayat hanya mengubah pengirim tersebut untuk penyewa semasa. Uji dan sahkan penerimaan semula selepas menyunting sambungan.",
+    "lifecycleSenderOption": "Pengirim On/Off Boarding",
+    "lifecycleSenderName": "Nama pengirim On/Off Boarding",
+    "lifecycleSenderNameHelp": "Penerima melihat nama ini pada setiap e-mel On/Off Boarding untuk organisasi anda. Alamat penghantar kekal sama. Tanpa nama, nama pengirim sambungan digunakan.",
+    "saveSenderName": "Simpan nama pengirim",
+    "senderStale": "Tetapan pengirim terdahulu menghala ke sambungan lain, jadi e-mel On/Off Boarding ditahan untuk semakan. Uji dan gunakan sambungan pada pengirim On/Off Boarding sekali lagi."
   },
   "workflowEmail": {
     "letterAccountTitle": "Surat untuk akaun ini",

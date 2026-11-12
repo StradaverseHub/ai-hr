@@ -25104,7 +25104,8 @@
       "save": "草稿已保存。当前中继保持不变。",
       "test": "中继已接受测试邮件。启用前请检查收件箱。",
       "apply": "中继已启用，可用于邀请和密码恢复。",
-      "sender": "生命周期邮件发件人已更新。账户恢复和安装环境默认值保持不变。"
+      "sender": "生命周期邮件发件人已更新。账户恢复和安装环境默认值保持不变。",
+      "senderName": "发件人名称已保存。此后发送的入职/离职邮件将使用该名称。"
     },
     "connectionTitle": "SMTP 连接",
     "security": "加密",
@@ -25143,14 +25144,19 @@
     "backToConnections": "返回连接列表",
     "saveConnection": "保存连接",
     "activeChangesHelp": "当前中继继续使用上次启用的设置。请先保存、测试并确认收到邮件，再启用更改。",
-    "lifecycleSenderTitle": "入职和离职邮件发件人",
-    "lifecycleSenderHelp": "每个发件人使用已确认的连接。未单独绑定时，使用安装环境当前启用的邮件中继。",
+    "lifecycleSenderTitle": "入职/离职邮件发件人",
+    "lifecycleSenderHelp": "所有入职和离职邮件都使用这一个发件人。它使用已确认的连接；未应用连接时，使用安装环境当前启用的邮件中继。",
     "applyTarget": "将此已测试的连接应用于",
     "applyDefault": "安装环境默认值（账户及其他邮件）",
     "senderDefault": "使用安装环境默认值",
     "senderConfirmed": "已于 {at} 确认收件",
     "senderPending": "此连接有更新的已保存更改。在重新测试并应用前，继续使用已确认的版本发送邮件。",
-    "senderTargetHelp": "测试在 30 分钟后过期。安装环境默认值用于控制账户邮件。生命周期选项仅更改当前租户的对应发件人。编辑连接后，请重新测试并确认收件。"
+    "senderTargetHelp": "测试在 30 分钟后过期。安装环境默认值用于控制账户邮件。生命周期选项仅更改当前租户的对应发件人。编辑连接后，请重新测试并确认收件。",
+    "lifecycleSenderOption": "入职/离职邮件发件人",
+    "lifecycleSenderName": "入职/离职邮件发件人名称",
+    "lifecycleSenderNameHelp": "收件人会在贵组织的每封入职/离职邮件上看到此名称。发件地址保持不变。未设置名称时，使用连接的发件人名称。",
+    "saveSenderName": "保存发件人名称",
+    "senderStale": "之前的发件人绑定指向其他连接，因此入职/离职邮件已暂停待审核。请重新测试并将连接应用到入职/离职邮件发件人。"
   },
   "workflowEmail": {
     "letterAccountTitle": "此账户的信函通知",

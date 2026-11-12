@@ -127,3 +127,22 @@ is deleted and audited once as expired when the next locked read, sign-in or res
 Audit events carry times, actor and the administrator's reason only, never passwords, links or codes.
 Temporary-password issuance keeps policy, history, single-use and session revocation unchanged; its
 reason becomes optional. Password Policy settings are not changed by either action.
+
+## Amendment: one On/Off Boarding sender name per tenant (board 5a8c382c, 12 November 2026)
+
+This replaces the three business senders of the 29 October 2026 section. On/Off Boarding mail has
+one sender. Its internal key stays `noreply`, which queued payloads, the capture trigger and receipts
+already accept; earlier `onboarding` and `hr` payloads and retries are normalised to it when sent.
+The display name is not a product constant: it is the tenant's own setting, stored in the
+operator-owned internal email state as `lifecycleSenderNames[tenantId] = {name, setAt, setBy}`,
+keyed by the verified session's tenant and changed only by the enrolled installation email operator
+(`identity-email.lifecycle-sender-named`). HR users cannot type a sender name. Without a name the
+bound or default connection's own sender name is used. A name is 1–160 characters with no control
+characters and no `@ < > "`. Compatibility providers refuse the operation.
+
+Applying a connection to the On/Off Boarding sender binds `noreply` and retires that tenant's earlier
+per-name bindings. Until then, an earlier `onboarding` or `hr` binding pointing at a different
+connection or version holds delivery as `relayUnavailable`; nothing is sent from another address.
+The name is resolved when each message is sent and the durable proof records `senderName` with the
+address and relay revision. Sent receipts are unchanged. Inbox notification copies and account
+email keep the installation relay's own name and address.

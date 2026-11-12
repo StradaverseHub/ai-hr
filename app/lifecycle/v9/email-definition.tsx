@@ -1,5 +1,4 @@
 'use client';
-import { managedEmailSenderProfiles, managedEmailSenderNames } from '@/lib/managed-email-policy';
 import { EmailAssets } from './email-assets';
 import { EmailMergeInput } from './email-merge-input';
 import { RecipientPicker } from './recipient-picker';
@@ -7,14 +6,14 @@ import type { ReactNode } from 'react';
 import type { EmailTemplate, Template } from '@/lib/lifecycle-v9-model';
 const descriptions: Record<Template['type'], string> = { Form: 'Form · link to fill in and sign', Acknowledgement: 'Acknowledgement · link to sign', Letter: 'Letter · link, plus a PDF copy', Attachment: 'Attachment · sent as a PDF' };
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="v9-field"><span>{label}</span>{children}</label>; }
-export function EmailDefinition({ email, templates, disabled, change, selectModule, hideName = false, revision, uploadsReady = false, groups = [], users = [] }: { groups?: import('@/lib/lifecycle-v9-model').Group[]; users?: { id: string; name: string }[]; revision?: number; uploadsReady?: boolean; email: EmailTemplate; templates: Template[]; disabled: boolean; hideName?: boolean; selectModule?: (module: EmailTemplate['module']) => void; change: (update: (next: EmailTemplate) => void) => void }) {
+export function EmailDefinition({ email, templates, disabled, change, selectModule, hideName = false, revision, uploadsReady = false, groups = [], users = [], sender }: { sender?: { name: string | null; configured: boolean }; groups?: import('@/lib/lifecycle-v9-model').Group[]; users?: { id: string; name: string }[]; revision?: number; uploadsReady?: boolean; email: EmailTemplate; templates: Template[]; disabled: boolean; hideName?: boolean; selectModule?: (module: EmailTemplate['module']) => void; change: (update: (next: EmailTemplate) => void) => void }) {
   const available = templates.filter(template => template.module === email.module), selected = available.filter(template => email.links.includes(template.id) || email.attachments.includes(template.id));
   function toggle(template: Template, checked: boolean) { change(next => { next.links = next.links.filter(id => id !== template.id); next.attachments = next.attachments.filter(id => id !== template.id); if (!checked) return; if (template.type !== 'Attachment') next.links.push(template.id); if (template.type === 'Letter' || template.type === 'Attachment') next.attachments.push(template.id); }); }
   return <>
     {!hideName && <Field label="Name"><input className="v9-input" maxLength={200} value={email.name} disabled={disabled} onChange={event => change(next => { next.name = event.target.value; })}/></Field>}
     <div className="v9-email-metadata">
     <Field label="Module"><select value={email.module} disabled={disabled} onChange={event => { const module = event.target.value as EmailTemplate['module']; change(next => { next.module = module; next.links = []; next.attachments = []; }); selectModule?.(module); }}><option value="onb">Onboarding</option><option value="off">Offboarding</option></select></Field>
-    <Field label="Sender"><select value={email.sender} disabled={disabled} onChange={event => change(next => { next.sender = event.target.value; })}>{managedEmailSenderProfiles.map(profile => <option key={profile} value={profile}>{managedEmailSenderNames[profile]}</option>)}</select></Field>
+    <div className="v9-field" data-email-sender><span id="v9-email-sender-label">Sender</span><output aria-labelledby="v9-email-sender-label" className="v9-input v9-readonly">{sender ? sender.name ?? 'Email delivery is not set up' : 'Set by your email administrator'}</output><small className="v9-muted">Every On/Off Boarding email uses this sender name. Your email administrator manages it in Admin, Settings, Email delivery.</small></div>
     <label className="v9-actions"><input type="checkbox" checked={email.active} disabled={disabled || !email.subject.trim()} onChange={event => change(next => { next.active = event.target.checked; })}/>Active</label>
     </div>
     <EmailMergeInput label="Subject" value={email.subject} disabled={disabled} onChange={value => change(next => { next.subject = value; })}/>

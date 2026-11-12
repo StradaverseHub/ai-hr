@@ -8,4 +8,4 @@ export function newV9Template(type: Template['type'], actor: Actor, id: string, 
   if (type !== 'Attachment') blocks.push({ id: 'b5', type: 'signature', text: '', section: '', role: letter ? 'hr' : 'employee', label: letter ? 'Yours sincerely,' : 'I confirm the above.' });
   return { id, name: `New ${type.toLowerCase()}`, type, module: 'onb', rules: {}, hrStep: letter ? 'before' : 'none', employeeAck: letter, retired: false, note: '', versions: [{ version: 1, state: 'draft', at: now, by: actor.name, fields, blocks }] };
 }
-export function newV9Email(id: string): EmailTemplate { return { id, name: 'New email', module: 'onb', active: false, sender: 'onboarding', subject: '', body: 'Dear {employee.name},\n\n', cc: [], links: [], attachments: [], slots: [] }; }
+export function newV9Email(id: string): EmailTemplate { return { id, name: 'New email', module: 'onb', active: false, sender: 'noreply', subject: '', body: 'Dear {employee.name},\n\n', cc: [], links: [], attachments: [], slots: [] }; }

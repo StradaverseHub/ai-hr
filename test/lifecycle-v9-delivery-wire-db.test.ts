@@ -62,7 +62,8 @@ it('sends the immutable files/CID once through verified credentials and holds an
     const sender=await internalEmailRequest<{connectionId:string}>({op:'save',actor,revision:connectionView.revision,connectionName:'Fictional lifecycle HR sender',config:{...relay,from:senderAddress}});
     const selected=await internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId:sender.connectionId});
     await internalEmailRequest({op:'test',actor,connectionId:sender.connectionId,draftId:selected.draft!.id},async()=>{});
-    await internalEmailRequest({op:'apply',actor,connectionId:sender.connectionId,draftId:selected.draft!.id,received:true,lifecycleSender:'hr'});
+    await internalEmailRequest({op:'apply',actor,connectionId:sender.connectionId,draftId:selected.draft!.id,received:true,lifecycleSender:'noreply'});
+    await internalEmailRequest({op:'lifecycleSenderName',actor,name:'Fictional Group Sender'});
     expect((await internalEmailRequest<EmailSettingsView>({op:'view',actor})).active?.from).toBe(relay.from);
     await v9Setup(admin);let config=(await v9Workspace(admin)).config!;config.checklists=config.checklists.filter(checklist=>checklist.module==='onb');config.workflows=[];
     config.groups[0].members=[base.adminUserId];config.peopleOpsGroup=config.groups[0].id;
@@ -79,8 +80,8 @@ it('sends the immutable files/CID once through verified credentials and holds an
     let childFailure: unknown;const outcomes: LifecycleV9DeliveryResult[]=[];
     const sent=await v9DeliverEmails(system,owner,async request=>{try{const result=await privateSender(request);outcomes.push(result);return result;}catch(error){childFailure=error;throw error;}});
     if(childFailure)throw childFailure;expect(outcomes).toEqual([{outcome:'sent',error:null}]);expect(sent).toEqual({attempted:1,sent:1,held:0,failed:0});expect(sink.messages).toHaveLength(1);expect(sink.messages[0].recipients).toEqual(['recipient@report-acceptance.invalid']);
-    expect(Buffer.from(sink.messages[0].raw).toString('utf8').replace(/\r?\n[ \t]+/g,' ')).toContain('From: Human Resource Department <'+senderAddress+'>');
-    const [receipt]=await owner.client`select recipient_proof from lc_v9_email_delivery where case_id=${id}::uuid`;expect(receipt.recipient_proof).toMatchObject({senderProfile:'hr',senderAddress});
+    expect(Buffer.from(sink.messages[0].raw).toString('utf8').replace(/\r?\n[ \t]+/g,' ')).toContain('From: Fictional Group Sender <'+senderAddress+'>');
+    const [receipt]=await owner.client`select recipient_proof from lc_v9_email_delivery where case_id=${id}::uuid`;expect(receipt.recipient_proof).toMatchObject({senderProfile:'noreply',senderName:'Fictional Group Sender',senderAddress});
     const attachments=fixtureMailAttachments(sink.messages[0].raw);expect(attachments).toHaveLength(2);
     expect(attachments.find(part=>part.mime==='text/plain')?.bytes).toEqual(fileBytes);expect(attachments.find(part=>part.mime==='image/png')).toMatchObject({bytes:imageBytes,cid:`v9-image.${image.id}@aihr`});
     expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:0,sent:0,held:0,failed:0});expect(sink.messages).toHaveLength(1);
