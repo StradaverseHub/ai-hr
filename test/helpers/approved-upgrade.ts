@@ -147,7 +147,7 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '5141_attendance_workflow_escalation':'56e9cd1655be3b5d21639ef38cf1448e3a5d46afaaabeede14bc036f9eaf5385',
+ '5141_attendance_workflow_escalation':'b578fbc0588c783b9091ae12753701e5e3322fc3fe53cbae60e5da18ce66ddde',
  '5140_attendance_workflow_cross_company_pending':'3fbdc8541c9ba5b9b03d7cb3a0e212df1db1b9e196822db575cc186bbb33c4c1',
  '5124_attendance_workflow_skipped_levels':'849dba4bf7c3aa39e45eb7f463ef24301a2eea3b10a781cf39858aa218635c6d',
  '5123_import_history_kind':'2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7',

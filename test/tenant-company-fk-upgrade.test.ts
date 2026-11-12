@@ -236,6 +236,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const privateFunctions=[
    // Board window 4 (5124): a trigger function, never granted to the application role.
    'app.attendance_workflow_preview_bind()',
+   // daa76ed4 (5140-5141): the login rule helper and the stage clock trigger, never granted to the application role.
+   'app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_stage_clock()',
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -267,8 +269,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.assistant_rewards_calendar_presentation_choices_v1()',
    'app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()','app.attendance_clock_policy_history(uuid,uuid)',
    'app.attendance_frozen_actor_identity_keys(jsonb,text)','app.attendance_pending_visible_headers(uuid)',
+   // daa76ed4 (5140-5141): resolution and escalation owners.
+   'app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_escalate(uuid,date)','app.attendance_workflow_escalation_due(date,date,uuid,integer)',
+   'app.attendance_workflow_escalation_written(uuid,uuid,integer)','app.attendance_workflow_hierarchy_v5(uuid,integer)',
    // Board window 4 (5124): the preview binding trigger (owner only) and the superior diagnostic.
-   'app.attendance_workflow_preview_bind()','app.attendance_workflow_superior_diagnostic(uuid,integer)',
+   'app.attendance_workflow_preview_bind()','app.attendance_workflow_stage_clock()','app.attendance_workflow_superior_diagnostic(uuid,integer)',
    'app.bulk_job_access(uuid)',
    'app.bulk_job_admit()','app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)',
    'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()',

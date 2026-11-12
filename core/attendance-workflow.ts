@@ -802,7 +802,7 @@ async function previewWarningFor(tx:Tx,who:{employmentId:string;employeeCode:str
  return{...base,levelIndex,problem};
 }
 type PreviewApprover={name:string;kind:AttendanceResolvedApprover['kind'];employmentId:string|null;pendingActivation?:true};
-const previewApprovers=(stage:AttendanceResolvedStage):PreviewApprover[]=>[...stage.approvers.map(actor=>({name:actor.kind==='hr_admin'?'':actor.name,kind:actor.kind,employmentId:actor.employmentId,...(actor.pendingActivation?{pendingActivation:true}:{})})),...(stage.hrAlternative&&!stage.approvers.some(actor=>actor.kind==='hr_admin')?[{name:'',kind:'hr_admin' as const,employmentId:null}]:[])];
+const previewApprovers=(stage:AttendanceResolvedStage):PreviewApprover[]=>[...stage.approvers.map(actor=>({name:actor.kind==='hr_admin'?'':actor.name,kind:actor.kind,employmentId:actor.employmentId,...(actor.pendingActivation?{pendingActivation:true as const}:{})})),...(stage.hrAlternative&&!stage.approvers.some(actor=>actor.kind==='hr_admin')?[{name:'',kind:'hr_admin' as const,employmentId:null}]:[])];
 /**
  * Preview Assignment of the saved version: one pass computes matching employees and per-employee route
  * warnings, using the same matcher and resolver as submission, and stores an immutable snapshot.

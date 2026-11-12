@@ -165,6 +165,17 @@ REVOKE ALL ON FUNCTION app.attendance_workflow_stage_clock() FROM PUBLIC,ai_hr_a
 CREATE TRIGGER attendance_workflow_stage_clock BEFORE INSERT OR UPDATE ON public.attendance_workflow_request FOR EACH ROW EXECUTE FUNCTION app.attendance_workflow_stage_clock();
 
 --> statement-breakpoint
+-- Same-transaction proof that the system runner recorded this level's escalation (the invoker-rights immutability
+-- trigger below cannot call the owner-only active-write predicate itself). Reveals nothing beyond that boolean.
+CREATE FUNCTION app.attendance_workflow_escalation_written(wanted_request uuid,wanted_tenant uuid,wanted_stage integer) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.attendance_workflow_escalation x WHERE x.request_id=wanted_request AND x.tenant_id=wanted_tenant
+  AND x.stage_index=wanted_stage AND app.attendance_workflow_active_write(x.xmin));
+$$;
+REVOKE ALL ON FUNCTION app.attendance_workflow_escalation_written(uuid,uuid,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.attendance_workflow_escalation_written(uuid,uuid,integer) TO ai_hr_app;
+
+--> statement-breakpoint
 -- Replaces 0592. Request routing stays immutable apart from current_stage and its clock. Advancing still needs a
 -- recorded current-level decision, or (v4 only) a same-transaction escalation row for that level; clearing a due date
 -- needs a non-pending application.
@@ -182,8 +193,7 @@ BEGIN
    AND d.actual_user_id=coalesce(app.current_user_id()::text,'system')
    AND ((d.decision='approved' AND NEW.current_stage=OLD.current_stage+1)
     OR (d.decision='rejected' AND NEW.current_stage=jsonb_array_length(OLD.stages))))
-   AND NOT (OLD.routing_version=4 AND NEW.current_stage=OLD.current_stage+1 AND EXISTS(SELECT 1 FROM public.attendance_workflow_escalation x
-    WHERE x.request_id=OLD.id AND x.tenant_id=OLD.tenant_id AND x.stage_index=OLD.current_stage AND app.attendance_workflow_active_write(x.xmin)))
+   AND NOT (OLD.routing_version=4 AND NEW.current_stage=OLD.current_stage+1 AND app.attendance_workflow_escalation_written(OLD.id,OLD.tenant_id,OLD.current_stage))
    THEN RAISE EXCEPTION 'A recorded current-stage decision is required to advance routing'; END IF;
  ELSE RAISE EXCEPTION 'Approval decisions are immutable'; END IF;
  RETURN NEW;
