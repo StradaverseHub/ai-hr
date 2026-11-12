@@ -617,7 +617,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const boardRetiredPolicies=[
    {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_check',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'c66ab0b91608107f679757a4c4f058a5',with_check:'48c95b77271b4a3fb728d587ca687b6e'},
   ];
-  const samePolicy=(a:{schemaname:string;tablename:string;policyname:string},b:{schemaname:string;tablename:string;policyname:string})=>a.schemaname===b.schemaname&&a.tablename===b.tablename&&a.policyname===b.policyname;
+  const samePolicy=(a:Record<string,unknown>,b:Record<string,unknown>)=>a.schemaname===b.schemaname&&a.tablename===b.tablename&&a.policyname===b.policyname;
   const isBoardPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>boardPolicies.some(policy=>samePolicy(policy,row));
   const isBoardRetiredPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>boardRetiredPolicies.some(policy=>samePolicy(policy,row));
   expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>Object.hasOwn(boardRelations,row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}]))).toEqual(boardRelations);
