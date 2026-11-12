@@ -3336,3 +3336,16 @@ another builder's branch); renumbered the same day to `5127_import_log_actor_lab
 It adds one read-only STABLE SECURITY DEFINER function, `app.import_log_actor_facts(text, uuid[])`, with EXECUTE for
 `ai_hr_app` only; no table, column, policy, grant on data or existing function changes. This entry carries no
 deployment authority.
+
+## Manager Today team minimum — 13 November 2026 (unallocated draft)
+
+Branch `claude/team-minimum-20261113` (base `origin/alpha` at `3a11d916e`, owner decision 12 November 2026, HANDOFF §5 item 4)
+journals `9770_leave_team_minimum_present` at idx 9770 and when 1793330099770 as an UNALLOCATED DRAFT from the
+coordinator-provided 9770–9779 block (9760–9769 belong to another builder's sweep-threshold draft). It adds one nullable
+integer column to `company`, `leave_team_minimum_present`, and one CHECK (`company_leave_team_minimum_present_check`: NULL
+or >= 0); no default, no backfill, no new table, policy, grant or function (`company` keeps its row security,
+admin-for-company update policy and table-level app grant from 0324). SHA-256
+`fa4c016e8aa6d259e8ec31bec4809c88b46f50dfd157d9ddaf251568623a4660`. The approved upgrade tail pin, its hash and the
+populated null-column proof (`test/helpers/approved-upgrade.ts`, `test/tenant-company-fk-upgrade.test.ts`) carry the draft;
+reassign the final tag, idx and `when` above the freshly verified ledger at integration. This entry carries no allocation
+or deployment authority.

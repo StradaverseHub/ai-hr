@@ -802,7 +802,9 @@
           "pass": "Nobody else you can see is away on these dates.",
           "fail": "Team coverage is below the minimum.",
           "unusual": "Others you can see are away on some of these dates.",
-          "missing": "Who else is away could not be read."
+          "missing": "Who else is away could not be read.",
+          "passMinimum": "At least {minimum, plural, one {# person} other {# people}} of the team stay present on every day of this request.",
+          "failMinimum": "Approving this would leave fewer than {minimum, plural, one {# person} other {# people}} of the team present on {count, plural, one {one day} other {# days}}: {days}."
         },
         "policy_limits": {
           "pass": "The leave type's document and date rules are met.",
@@ -823,7 +825,9 @@
         "passing": "Passes every check ({count})",
         "help": "Showing only requests that pass every check. Select them, then approve or reject them with a confirmation. Nothing is approved automatically."
       },
-      "openOne": "Show the recommendation"
+      "openOne": "Show the recommendation",
+      "teamDay": "{date} ({present} present)",
+      "teamMoreDays": "{count, plural, one {# more day} other {# more days}}"
     },
     "digest": {
       "title": "Your day",

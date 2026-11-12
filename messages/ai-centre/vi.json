@@ -802,7 +802,9 @@
           "pass": "Không có ai khác mà bạn thấy được nghỉ vào những ngày này.",
           "fail": "Mức bố trí nhân sự của nhóm thấp hơn mức tối thiểu.",
           "unusual": "Có người khác mà bạn thấy được nghỉ vào một số ngày này.",
-          "missing": "Không thể đọc những ai khác đang nghỉ."
+          "missing": "Không thể đọc những ai khác đang nghỉ.",
+          "passMinimum": "Mỗi ngày của đơn này, nhóm vẫn có ít nhất {minimum} người có mặt.",
+          "failMinimum": "Nếu duyệt đơn này, số người có mặt của nhóm sẽ ít hơn {minimum} người trong {count} ngày: {days}."
         },
         "policy_limits": {
           "pass": "Đáp ứng quy tắc về giấy tờ và ngày của loại nghỉ phép.",
@@ -823,7 +825,9 @@
         "passing": "Đạt mọi kiểm tra ({count})",
         "help": "Chỉ hiển thị các yêu cầu đạt mọi kiểm tra. Chọn chúng, rồi phê duyệt hoặc từ chối sau khi xác nhận. Không có gì được phê duyệt tự động."
       },
-      "openOne": "Xem gợi ý"
+      "openOne": "Xem gợi ý",
+      "teamDay": "{date} ({present} người có mặt)",
+      "teamMoreDays": "{count} ngày khác"
     },
     "digest": {
       "title": "Ngày của bạn",

@@ -11,12 +11,16 @@ export type LeaveRecommendationView =
       /** AI v2 W6: every check with its result and version, for the approval pages that show all four. */
       checks?: readonly RecommendationCheckView[];
       /** The outcome record this run wrote (or reused today), so the approver's decision can be appended to it. */
-      recordId?: string | null }>
+      recordId?: string | null;
+      /** The company's "minimum people present", when it applied: the minimum and the days below it, each with how many
+       * of the team would be present (dates as YYYY-MM-DD). Absent or null: no minimum applied. */
+      teamCoverage?: TeamCoverageView | null }>
   | Readonly<{ kind: 'unavailable'; reason: RecommendationUnavailable | 'failed' }>;
 
 /** The version a check ran under, as the screen may show it: a leave rule's own version, or the
  * recommender's version where its own rule decides (own overlap, team coverage). */
 export type CheckVersionLabel = RuleVersionLabel | Readonly<{ kind: 'recommender'; version: number }>;
+export type TeamCoverageView = Readonly<{ minimum: number; shortDays: readonly Readonly<{ date: string; present: number }>[] }>;
 export type RecommendationCheckView = Readonly<{ check: RecommendationCheckName; result: RecommendationResult; blocking: boolean; version: CheckVersionLabel | null }>;
 
 const RECOMMENDER_PATTERN = /^leave_decision_recommender:v(\d{1,6})$/;
@@ -39,9 +43,10 @@ export async function readLeaveRecommendation(session: SessionContext, leaveRequ
   try {
     const result = await recommendLeaveDecision(session, { leaveRequestId: id.data });
     if (result.kind === 'unavailable') return { kind: 'unavailable', reason: result.reason };
-    const { verdict, failedRules, checks, recordId } = result.recommendation;
+    const { verdict, failedRules, checks, recordId, teamCoverage } = result.recommendation;
     return { kind: 'recommendation', verdict, failedRules: failedRules.map(rule => ({ check: rule.check, blocking: rule.blocking, version: ruleVersionLabel(rule.ruleVersion) })),
-      checks: checks.map(check => ({ check: check.check, result: check.result, blocking: check.blocking, version: checkVersionLabel(check.ruleVersion) })), recordId };
+      checks: checks.map(check => ({ check: check.check, result: check.result, blocking: check.blocking, version: checkVersionLabel(check.ruleVersion) })), recordId,
+      teamCoverage: teamCoverage ? { minimum: teamCoverage.minimum, shortDays: teamCoverage.shortDays.map(day => ({ date: day.date, present: day.present })) } : null };
   } catch {
     return { kind: 'unavailable', reason: 'failed' };
   }

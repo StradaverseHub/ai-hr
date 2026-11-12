@@ -802,7 +802,9 @@
           "pass": "您可见的其他人在这些日期都没有休假。",
           "fail": "团队人手覆盖低于最低要求。",
           "unusual": "您可见的其他人在其中部分日期休假。",
-          "missing": "无法读取其他休假人员。"
+          "missing": "无法读取其他休假人员。",
+          "passMinimum": "这项申请的每一天，团队中至少有 {minimum} 人在岗。",
+          "failMinimum": "批准此申请后，团队在岗人数将有 {count} 天少于 {minimum} 人：{days}。"
         },
         "policy_limits": {
           "pass": "符合该假期类型的文件和日期规则。",
@@ -823,7 +825,9 @@
         "passing": "通过所有检查（{count}）",
         "help": "仅显示通过所有检查的申请。选择这些申请，然后在确认后批准或拒绝。不会自动批准任何申请。"
       },
-      "openOne": "显示建议"
+      "openOne": "显示建议",
+      "teamDay": "{date}（{present} 人在岗）",
+      "teamMoreDays": "另有 {count} 天"
     },
     "digest": {
       "title": "您的今天",
