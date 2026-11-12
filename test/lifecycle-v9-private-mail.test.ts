@@ -111,12 +111,14 @@ it('keeps literal mailboxes separate from credentials while preserving mixed To 
   const proof = JSON.parse(fixture.sql.mock.calls.find(call => call[0].join('?').includes('email_start'))!.at(-1));
   expect(proof).toMatchObject({ literals: target.literals, addresses: ['team@fictional.invalid', 'employee@fictional.invalid', 'archive@fictional.invalid'] });
 });
-it('holds a malformed or duplicate literal destination before persisting start', async () => {
+it('sends one copy when an account and a typed address are the same mailbox, and holds a malformed literal', async () => {
   target.payload.mail.cc = ['address:employee@fictional.invalid'];
   target.literals = [{ key: target.payload.mail.cc[0], email: 'employee@fictional.invalid', position: 2 }];
+  const sent = vi.fn(async () => {});
+  expect(await internalLifecycleV9Mail(request, sent)).toEqual({ outcome: 'sent', error: null });
+  expect(sent).toHaveBeenCalledWith(relay.relay, expect.objectContaining({ to: 'employee@fictional.invalid', cc: [] }));
+  fixture.sql.mockClear();
   const transport = vi.fn();
-  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'skipped', error: 'recipientUnavailable' });
-  expect(called('email_start')).toBe(false);
   target.literals[0].email = 'changed@fictional.invalid';
   expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'skipped', error: 'recipientUnavailable' });
   expect(transport).not.toHaveBeenCalled();
@@ -147,4 +149,20 @@ it('holds without sending when the sender name changes between resolution and st
   const transport = vi.fn();
   expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'skipped', error: 'relayUnavailable' });
   expect(called('email_start')).toBe(false); expect(transport).not.toHaveBeenCalled();
+});
+
+it('sends one message to several To recipients together and keeps every address in the durable proof', async () => {
+  target.payload.mail.to = [userId, 'address:work@fictional.invalid'];
+  target.payload.mail.cc = ['address:copy@fictional.invalid'];
+  target.literals = [{ key: 'address:work@fictional.invalid', email: 'work@fictional.invalid', position: 2 }, { key: 'address:copy@fictional.invalid', email: 'copy@fictional.invalid', position: 3 }];
+  const transport = vi.fn(async () => {});
+  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'sent', error: null });
+  expect(transport).toHaveBeenCalledExactlyOnceWith(relay.relay, expect.objectContaining({ to: ['employee@fictional.invalid', 'work@fictional.invalid'], cc: ['copy@fictional.invalid'] }));
+  const proof = JSON.parse(fixture.sql.mock.calls.find(call => call[0].join('?').includes('email_start'))!.at(-1));
+  expect(proof.addresses).toEqual(['employee@fictional.invalid', 'work@fictional.invalid', 'copy@fictional.invalid']);
+  target.payload.mail.to = Array.from({ length: 9 }, (_, index) => `address:to${index}@fictional.invalid`);
+  target.literals = target.payload.mail.to.map((key, index) => ({ key, email: key.slice(8), position: index + 2 }));
+  target.payload.mail.cc = [];
+  expect(await internalLifecycleV9Mail(request, transport)).toMatchObject({ outcome: 'skipped' });
+  expect(transport).toHaveBeenCalledOnce();
 });

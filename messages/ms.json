@@ -30520,7 +30520,18 @@
       "caseItem": "Item",
       "caseType": "Jenis",
       "caseProvidedBy": "Dibekalkan oleh",
-      "caseReturnDue": "Pulangkan atau batalkan sebelum"
+      "caseReturnDue": "Pulangkan atau batalkan sebelum",
+      "lev909e718ee5d": "E-mel ditahan",
+      "lev902aeadce22": "Tiada sesiapa yang dihantar e-mel. Penerima yang tiada:",
+      "lev9716aacede1": "Betulkan rekod atau tukar penerima untuk kes ini, kemudian tekan Teruskan.",
+      "lev9432f4737cd": "Penerima ditukar untuk kes ini",
+      "lev9f96e5e6795": "Edit penerima untuk kes ini",
+      "lev973deec6592": "Penerima untuk kes ini",
+      "lev9325a77cc26": "Simpan penerima untuk kes ini",
+      "lev9b48eacb53d": "Guna penerima aliran kerja",
+      "lev97056f1481a": "Penerima tidak dapat disimpan.",
+      "lev984add5b295": "E-mel",
+      "lev9c18f8f255a": "Pemberitahuan"
     }
   },
   "processAssessment": {
@@ -38285,5 +38296,8 @@
     "actorWithId": "{name} ({employeeId})",
     "actorUnlinked": "Log masuk pentadbir (tiada rekod pekerja · log masuk berakhir {suffix})",
     "actorUnavailable": "Pengguna tidak tersedia"
+  },
+  "lifecycleEmailHold": {
+    "inboxAction": "E-mel ditahan: {email}"
   }
 }

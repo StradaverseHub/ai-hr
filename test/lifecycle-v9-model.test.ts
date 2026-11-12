@@ -21,20 +21,21 @@ it('plans every draft step for a pending case without date gating, mutation or l
   environment.nextId = () => { throw Error('Live allocation called'); };
   const result = M.planWorkflow(c, config, definition, { ...environment, today: '2026-10-24' });
   expect(result.matches).toBe(true);
-  expect(result.lines).toEqual([{ text: 'Conditions match.', ok: true }, { text: 'Would wait: Proof of return is not uploaded yet.', ok: false }, { text: 'Would alert hr', ok: true }]);
+  expect(result.lines).toEqual([{ text: 'Conditions match.', ok: true }, { text: 'Would wait: Proof of return is not uploaded yet.', ok: false }, { text: 'Would send "Reminder" to hr (account email)', ok: true }]);
   expect(JSON.stringify({ c, config, definition })).toBe(snapshot);
   definition.conditions = [{ field: 'caseType', op: 'is', value: 'Retirement' }];
   expect(M.planWorkflow(c, config, definition, environment)).toEqual({ matches: false, lines: [{ text: 'Skipped: this record does not match the conditions.', ok: false }] });
 });
 
-it('uses the first To role from the source wire format', () => {
+it('sends one email to every To role together (board 4a60b3ec replaces the first-To wire format)', () => {
   const { c, config, environment } = fixture();
   c.facts.supervisorUserId = 'hr';
   c.tasks = [task('Return laptop', '2026-10-30', 'hr'), task('Revoke access', '2026-10-30', 'hr2')];
   const definition = workflow({ steps: [{ id: 'reminder', type: 'notify', subject: 'Reminder', body: '{pending.tasks}', to: ['supervisor', 'taskOwners'], cc: [] }] });
   M.runWorkflow(c, config, definition, environment, 'date');
   expect(c.mails).toHaveLength(1);
-  expect(c.mails[0]).toMatchObject({ to: ['hr'], body: 'Return laptop (due 2026-10-30)\nRevoke access (due 2026-10-30)' });
+  // Supervisor (hr) and the task owners (hr, hr2) together, one copy per person; every open task with its owner.
+  expect(c.mails[0]).toMatchObject({ to: ['hr', 'hr2'], cc: [], body: 'Return laptop (due 2026-10-30) – hr\nRevoke access (due 2026-10-30) – hr2' });
 });
 
 it('requires HR-owned answers before signing and freezes those fields after signature', () => {
@@ -94,13 +95,13 @@ describe('V9 calendar and matching parity', () => {
   });
 });
 describe('V9 workflows and delivery', () => {
-  it('personalizes owner messages and deduplicates a repeated date', () => {
+  it('sends task owners one email with the full task list and deduplicates a repeated date', () => {
     const { c, config, environment } = fixture(); c.tasks = [task('HR task'), task('Manager task', environment.today, 'manager')]; const w = workflow();
     M.runWorkflow(c, config, w, environment, 'date'); M.runWorkflow(c, config, w, environment, 'date');
-    expect(c.mails).toHaveLength(2);
-    expect(c.mails.find(m => m.to[0] === 'hr')?.body).toContain('HR task');
-    expect(c.mails.find(m => m.to[0] === 'hr')?.body).not.toContain('Manager task');
-    environment.today = '2026-10-31'; M.runWorkflow(c, config, w, environment, 'date'); expect(c.mails).toHaveLength(2);
+    expect(c.mails).toHaveLength(1);
+    expect(c.mails[0]).toMatchObject({ to: ['hr', 'manager'], cc: [], subject: 'Work for Person' });
+    expect(c.mails[0].body).toBe('Hi hr, manager\nHR task (due 2026-10-30) – hr\nManager task (due 2026-10-30) – manager');
+    environment.today = '2026-10-31'; M.runWorkflow(c, config, w, environment, 'date'); expect(c.mails).toHaveLength(1);
   });
   it('catches up nonrepeating dates and stops repeating before-anchor work after the anchor', () => {
     const { c, config, environment } = fixture(); c.tasks = [task('task')];
@@ -292,31 +293,30 @@ it('freezes link/PDF routing and displayed recipients at queue time and locks re
 });
 
 
-it('uses one People Ops destination for email and one group notice with remaining members in CC', () => {
+it('reaches every active member of a saved People Ops role in its own position, for email and notify alike', () => {
   const emailCase = fixture(), notifyCase = fixture();
   emailCase.config.emails = [{ id: 'mail', name: 'People Ops email', module: 'off', active: true, sender: 'hr', subject: 'Notice', body: 'Fictional notice', cc: [], links: [], attachments: [], slots: [] }];
   const trigger: M.Trigger = { event: 'submitted', days: 0, workdays: false, repeat: false, skipIf: '' };
   M.runWorkflow(emailCase.c, emailCase.config, workflow({ trigger, steps: [{ id: 'email', type: 'email', template: 'mail', to: 'peopleOps', cc: [] }] }), emailCase.environment, 'submitted');
-  expect(emailCase.c.mails.map(mail => ({ to: mail.to, cc: mail.cc }))).toEqual([{ to: ['hr'], cc: [] }]);
+  expect(emailCase.c.mails.map(mail => ({ to: mail.to, cc: mail.cc }))).toEqual([{ to: ['hr', 'hr2'], cc: [] }]);
   M.runWorkflow(notifyCase.c, notifyCase.config, workflow({ trigger, steps: [{ id: 'notify', type: 'notify', subject: 'Group notice', body: 'Fictional notice', to: 'peopleOps', cc: [] }] }), notifyCase.environment, 'submitted');
-  expect(notifyCase.c.mails.map(mail => ({ to: mail.to, cc: mail.cc }))).toEqual([{ to: ['hr'], cc: ['hr2'] }]);
+  expect(notifyCase.c.mails.map(mail => ({ to: mail.to, cc: mail.cc }))).toEqual([{ to: ['hr', 'hr2'], cc: [] }]);
 });
 
-it('holds a production workflow until every original owner delivery is confirmed', () => {
+it('holds a production workflow until the one owner delivery is confirmed and keeps its original recipients', () => {
   const { c, config, environment } = fixture(); environment.requireDeliveryAck = true;
   c.tasks = [task('First owner', environment.today, 'hr'), task('Second owner', environment.today, 'manager')];
   const definition = workflow();
   expect(M.runWorkflow(c, config, definition, environment, 'date')).toMatchObject({ status: 'waiting', cursor: 0, reason: 'Waiting for email delivery confirmation.' });
-  expect(c.mails.map(mail => mail.to)).toEqual([['hr'], ['manager']]);
-  M.markDelivered(c, c.mails[0].id, environment);
+  expect(c.mails.map(mail => mail.to)).toEqual([['hr', 'manager']]);
   c.tasks[1].assignee = 'replacement';
   expect(M.runWorkflow(c, config, definition, environment, 'resume')?.status).toBe('waiting');
-  expect(c.mails).toHaveLength(2);
-  c.mails[1].status = 'uncertain';
+  expect(c.mails).toHaveLength(1);
+  c.mails[0].status = 'uncertain';
   expect(M.runWorkflow(c, config, definition, environment, 'resume')?.reason).toContain('uncertain');
-  c.mails[1].status = 'sending'; M.markDelivered(c, c.mails[1].id, environment);
+  c.mails[0].status = 'sending'; M.markDelivered(c, c.mails[0].id, environment);
   expect(M.runWorkflow(c, config, definition, environment, 'resume')?.status).toBe('done');
-  expect(c.mails).toHaveLength(2);
+  expect(c.mails).toHaveLength(1); expect(c.mails[0].to).toEqual(['hr', 'manager']);
 });
 
 it('freezes a queued document and records a late acknowledgement without completing a cancelled case', () => {
@@ -348,7 +348,7 @@ it('queues a Native welcome to its real business contact without fabricating an 
   expect(() => M.queueEmail(c, config, 'welcome', environment)).toThrow('Link an employee account');
   expect(c.mails).toHaveLength(1);
   const off = fixture().c; off.facts.employeeUserId = null; config.emails[0].module = 'off'; config.emails[0].links = [];
-  expect(() => M.queueEmail(off, config, 'welcome', environment)).toThrow('No recipient');
+  expect(() => M.queueEmail(off, config, 'welcome', environment)).toThrow('Employee (login account): Employee login is not linked');
 });
 it('freezes shared asset receipts and holds a known oversized packet before queueing', () => {
   const { c,config,environment }=fixture();
@@ -412,22 +412,24 @@ it('resolves the actual case submitter and company signatory without using the w
  const definition=workflow({trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},steps:[{id:'notify',type:'notify',to:'starter',cc:['hrSignatory'],subject:'Fictional routing',body:'Body'}]});
  M.runWorkflow(c,config,definition,environment,'manual');expect(c.mails[0]).toMatchObject({to:['actual-submitter'],cc:['company-signatory'],delivery:{queuedBy:environment.actor}});
  const historical=fixture();historical.config.companies=structuredClone(config.companies);historical.c.log.push({id:'submission',at:historical.environment.now,actor:{id:'actual-historical-submitter',name:'Submitter'},action:'case.submitted',detail:'Submitted'});M.runWorkflow(historical.c,historical.config,definition,historical.environment,'manual');expect(historical.c.mails[0].to).toEqual(['actual-historical-submitter']);
- const missing=fixture();expect(M.runWorkflow(missing.c,missing.config,definition,missing.environment,'manual')?.status).toBe('failed');expect(missing.c.mails).toEqual([]);
+ // A saved removed role that finds nobody holds the step like any other missing recipient; nothing is queued.
+ const missing=fixture();expect(M.runWorkflow(missing.c,missing.config,definition,missing.environment,'manual')).toMatchObject({status:'waiting',hold:{stepId:'notify',missing:[{role:'starter',label:'Whoever started it',reason:'nobody is recorded as starting the case'},{role:'hrSignatory',label:'HR signatory',reason:'no HR signatory is set for the company'}]}});expect(missing.c.mails.filter(mail=>mail.workflowId)).toEqual([]);
  const submitted=fixture();submitted.c.state='pending';submitted.c.facts.starterUserId='wrong';M.submit(submitted.c,submitted.config,submitted.environment);expect(submitted.c.facts.starterUserId).toBe(submitted.environment.actor.id);
 });
 
 
-it('routes a group notification once with remaining members in CC and an ordinary email to its first member', () => {
+it('reaches every active member of a group in its own position, for email and notify alike', () => {
   const { c, config, environment } = fixture();
   config.groups.push({ id: 'recipient-group', name: 'Fictional reviewers', members: ['reviewer-a', 'reviewer-b'], limit: 0 });
   const definition = workflow({ trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'notice', type: 'notify', to: 'group:recipient-group', cc: ['person:reviewer-b'], subject: 'Review', body: 'Body' }] });
   M.runWorkflow(c, config, definition, environment, 'manual');
-  expect(c.mails).toHaveLength(1); expect(c.mails[0]).toMatchObject({ to: ['reviewer-a'], cc: ['reviewer-b'] });
+  // One copy per address: reviewer-b is already in To, so the CC copy is dropped.
+  expect(c.mails).toHaveLength(1); expect(c.mails[0]).toMatchObject({ to: ['reviewer-a', 'reviewer-b'], cc: [] });
   const ordinary = fixture(); ordinary.config.groups = config.groups;
   ordinary.config.emails.push({ id: 'group-mail', name: 'Group mail', module: 'off', active: true, sender: 'hr', subject: 'Group mail', body: 'Body', cc: [], links: [], attachments: [], slots: [] });
   const emailWorkflow = workflow({ ...definition, steps: [{ id: 'email', type: 'email', template: 'group-mail', to: 'group:recipient-group', cc: [] }] });
   M.runWorkflow(ordinary.c, ordinary.config, emailWorkflow, ordinary.environment, 'manual');
-  expect(ordinary.c.mails).toHaveLength(1); expect(ordinary.c.mails[0]).toMatchObject({ to: ['reviewer-a'], cc: [] });
+  expect(ordinary.c.mails).toHaveLength(1); expect(ordinary.c.mails[0]).toMatchObject({ to: ['reviewer-a', 'reviewer-b'], cc: [] });
   const named = fixture(); M.runWorkflow(named.c, named.config, workflow({ ...definition, steps: [{ id: 'named', type: 'notify', to: 'person:reviewer-b', cc: [], subject: 'Named review', body: '' }] }), named.environment, 'manual');
   expect(named.c.mails[0].to).toEqual(['reviewer-b']);
 });
@@ -448,11 +450,12 @@ it('holds unresolved selected CC roles before any recipient is queued and expose
   const { c, config, environment } = fixture();
   config.companies = [{ companyId: c.facts.company, signatoryUserId: null, signatoryTitle: '' }];
   config.emails = [{ id: 'cc-review', name: 'CC review', module: 'off', active: true, sender: 'hr', subject: 'Reviewed', body: '', cc: ['hrSignatory'], links: [], attachments: [], slots: [] }];
-  expect(M.previewEmail(c, config, 'cc-review', environment).holds).toContain('Resolve the CC recipient: HR signatory.');
-  expect(() => M.queueEmail(c, config, 'cc-review', environment)).toThrow('CC recipient'); expect(c.mails).toEqual([]);
+  expect(M.previewEmail(c, config, 'cc-review', environment).holds).toContain('Resolve the CC recipient: HR signatory: no HR signatory is set for the company.');
+  expect(() => M.queueEmail(c, config, 'cc-review', environment)).toThrow('Email held'); expect(c.mails).toEqual([]);
+  // A group reaches every active member; an inactive member is simply not one of them.
   config.groups[0].members = ['hr', 'hr2']; environment.eligibleUser = id => id !== 'hr2';
-  const definition = workflow({ trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'notice', type: 'notify', to: 'peopleOps', cc: [], subject: 'Group review', body: '' }] });
-  expect(M.runWorkflow(c, config, definition, environment, 'manual')?.status).toBe('failed'); expect(c.mails).toEqual([]);
+  const definition = workflow({ trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'notice', type: 'notify', to: 'peopleOps', cc: ['hrSignatory'], subject: 'Group review', body: '' }] });
+  expect(M.runWorkflow(c, config, definition, environment, 'manual')).toMatchObject({ status: 'waiting', hold: { missing: [{ role: 'hrSignatory' }] } }); expect(c.mails.filter(mail => mail.workflowId)).toEqual([]);
   config.emails[0].cc = []; M.queueEmail(c, config, 'cc-review', environment); expect(c.mails).toHaveLength(1);
 });
 it('reports the existing acceptance delivery instead of pretending to queue a second copy', () => {
@@ -491,7 +494,7 @@ it('resolves selected literal To and CC destinations without inferring user iden
   const definition = workflow({ trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'literal', type: 'notify', subject: 'Review {employee.name}', body: 'Mailbox review', to: ['address:team@fictional.invalid'], cc: ['address:archive@fictional.invalid', 'supervisor'] }] });
   environment.requireDeliveryAck = true;
   environment.eligibleUser = id => ['hr','manager'].includes(id);
-  const plan = M.planWorkflow(c, config, definition, environment); expect(plan.lines.at(-1)?.text).toBe('Would alert team@fictional.invalid');
+  const plan = M.planWorkflow(c, config, definition, environment); expect(plan.lines.at(-1)?.text).toBe('Would send "Review {employee.name}" to team@fictional.invalid <team@fictional.invalid>, CC archive@fictional.invalid <archive@fictional.invalid>, manager (account email)');
   M.runWorkflow(c, config, definition, environment, 'manual');
   expect(c.mails[0]).toMatchObject({ to: ['address:team@fictional.invalid'], cc: ['address:archive@fictional.invalid','manager'], delivery: { toNames: ['team@fictional.invalid'], ccNames: ['archive@fictional.invalid','manager'] }, status: 'pending' });
   expect(c.runs[0].status).toBe('waiting');
@@ -524,12 +527,12 @@ it.each(['pending','cancelled','cleared'] as const)('allows an explicit self-tes
  const {c,config,environment}=fixture();c.state=state;config.templates=[template()];config.emails=[{id:'future',name:'Future email',module:'off',active:true,sender:'hr',subject:'Future copy',body:'For {employee.name}',cc:['supervisor'],links:['exit'],attachments:[],slots:[{id:'proof',label:'Required proof',required:true}]}];config.workflows=[workflow({steps:[{id:'notify-first',type:'notify',to:'employee',cc:[],subject:'Wrong output',body:''},{id:'email-second',type:'email',template:'future',to:'employee',cc:['supervisor']}]})];
  const before=JSON.stringify({state:c.state,documents:c.documents,tasks:c.tasks,items:c.items,runs:c.runs});M.testWorkflowMessages(c,config,'workflow',environment);expect(c.mails[0]).toMatchObject({templateId:'future',subject:'Future copy',to:['hr'],cc:[],test:true,documentIds:[]});M.markDelivered(c,c.mails[0].id,environment);expect(JSON.stringify({state:c.state,documents:c.documents,tasks:c.tasks,items:c.items,runs:c.runs})).toBe(before);
 });
-it('previews the first task owner and tests that same notification output only to the actor',()=>{
- const {c,config,environment}=fixture();c.tasks=[task('Return laptop','2026-10-30','hr2')];environment.userName=id=>id==='hr2'?'Fictional Owner':id;const definition=workflow({steps:[{id:'notify',type:'notify',to:'employee',cc:['supervisor'],subject:'For {owner.name}',body:'{pending.tasks}'}]});config.workflows=[definition];const step=definition.steps[0];if(step.type!=='notify')throw Error('Expected notify fixture');const preview=M.previewWorkflowNotification(c,config,step,environment);M.testWorkflowMessages(c,config,definition.id,environment);expect(preview).toMatchObject({subject:'For Fictional',body:'• Return laptop (due 30 Oct)',to:'Employee',cc:'Line manager'});expect(c.mails[0]).toMatchObject({subject:preview.subject,body:preview.body,to:['hr'],cc:[],test:true});
+it('previews one notification to the To recipients with every open task and owner, and tests that output only to the actor',()=>{
+ const {c,config,environment}=fixture();c.tasks=[task('Return laptop','2026-10-30','hr2')];environment.userName=id=>id==='hr2'?'Fictional Owner':id;const definition=workflow({steps:[{id:'notify',type:'notify',to:'employee',cc:['supervisor'],subject:'For {owner.name}',body:'{pending.tasks}'}]});config.workflows=[definition];const step=definition.steps[0];if(step.type!=='notify')throw Error('Expected notify fixture');const preview=M.previewWorkflowNotification(c,config,step,environment);M.testWorkflowMessages(c,config,definition.id,environment);expect(preview).toMatchObject({subject:'For employee',body:'• Return laptop (due 30 Oct) – Fictional Owner',to:'Employee (login account)',cc:'Line manager'});expect(c.mails[0]).toMatchObject({subject:preview.subject,body:preview.body,to:['hr'],cc:[],test:true});
 });
 
 it.each(['onb','off'] as const)('uses the single On/Off Boarding sender for a %s notification self-test and renders the empty pending summary',module=>{
- const {c,config,environment}=fixture(module);const definition=workflow({module,steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'{pending.count} pending',body:'{owner.name}\n{pending.tasks}'}]});config.workflows=[definition];const step=definition.steps[0];if(step.type!=='notify')throw Error('Expected notification');const preview=M.previewWorkflowNotification(c,config,step,environment);expect(preview).toMatchObject({subject:'0 pending',body:'\nNothing pending'});M.testWorkflowMessages(c,config,definition.id,environment);expect(c.mails[0].delivery?.sender).toBe('noreply');expect(c.mails[0].body).toBe(preview.body);
+ const {c,config,environment}=fixture(module);const definition=workflow({module,steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'{pending.count} pending',body:'{owner.name}\n{pending.tasks}'}]});config.workflows=[definition];const step=definition.steps[0];if(step.type!=='notify')throw Error('Expected notification');const preview=M.previewWorkflowNotification(c,config,step,environment);expect(preview).toMatchObject({subject:'0 pending',body:'employee\nNothing pending'});M.testWorkflowMessages(c,config,definition.id,environment);expect(c.mails[0].delivery?.sender).toBe('noreply');expect(c.mails[0].body).toBe(preview.body);
 });
 
 it('explicitly regenerates the latest published version while retaining a released copy and its answers', () => {

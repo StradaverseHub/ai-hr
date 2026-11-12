@@ -30520,7 +30520,18 @@
       "caseItem": "物品",
       "caseType": "类型",
       "caseProvidedBy": "提供方",
-      "caseReturnDue": "归还或撤销日期"
+      "caseReturnDue": "归还或撤销日期",
+      "lev909e718ee5d": "邮件已暂停",
+      "lev902aeadce22": "尚未向任何人发送邮件。缺少的收件人：",
+      "lev9716aacede1": "请修正记录或更改此案例的收件人，然后点击继续。",
+      "lev9432f4737cd": "已更改此案例的收件人",
+      "lev9f96e5e6795": "编辑此案例的收件人",
+      "lev973deec6592": "此案例的收件人",
+      "lev9325a77cc26": "保存此案例的收件人",
+      "lev9b48eacb53d": "使用工作流的收件人",
+      "lev97056f1481a": "无法保存收件人。",
+      "lev984add5b295": "邮件",
+      "lev9c18f8f255a": "通知"
     }
   },
   "processAssessment": {
@@ -38285,5 +38296,8 @@
     "actorWithId": "{name}（{employeeId}）",
     "actorUnlinked": "管理员登录账号（无员工记录 · 账号结尾 {suffix}）",
     "actorUnavailable": "不可用的用户"
+  },
+  "lifecycleEmailHold": {
+    "inboxAction": "邮件已暂停：{email}"
   }
 }

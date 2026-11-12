@@ -5378,8 +5378,7 @@
       "subject": "Acceptance of your resignation",
       "body": "Dear {employee.name},\n\nPlease find attached the letter accepting your resignation, signed by {signatory.name}. Your last working day is {leaver.lastDay}.\n\nPlease open the link below to acknowledge receipt of the letter.\n\nRegards,\nHuman Resource Department\n{company.name}",
       "cc": [
-        "supervisor",
-        "pbp"
+        "supervisor"
       ],
       "links": [
         "t4"
@@ -5483,10 +5482,9 @@
         {
           "id": "w1-step-1",
           "type": "email",
-          "to": "employee",
+          "to": "employeePersonal",
           "cc": [
-            "supervisor",
-            "pbp"
+            "supervisor"
           ],
           "template": "e1"
         }
@@ -5510,7 +5508,7 @@
         {
           "id": "w2-step-1",
           "type": "email",
-          "to": "employee",
+          "to": "employeePersonal",
           "cc": [],
           "template": "e2"
         }
@@ -5568,9 +5566,7 @@
           "id": "w6-step-1",
           "type": "notify",
           "to": "supervisor",
-          "cc": [
-            "pbp"
-          ],
+          "cc": [],
           "subject": "{employee.name} starts on {joiner.joinDate}",
           "body": "Hi,\n\n{employee.name} joins as {employee.position} on {joiner.joinDate}, which is less than a week away. Please check their first-day plan, equipment and access are ready.\n\nRegards,\nAI HR"
         }
@@ -5619,7 +5615,7 @@
         {
           "id": "w8-step-1",
           "type": "notify",
-          "to": "pbp",
+          "to": "group:g-people",
           "cc": [
             "ta",
             "supervisor"
@@ -5653,7 +5649,7 @@
         {
           "id": "w9-step-2",
           "type": "email",
-          "to": "employee",
+          "to": "employeeWork",
           "cc": [],
           "template": "e12"
         }
@@ -5677,7 +5673,7 @@
         {
           "id": "w10-step-1",
           "type": "notify",
-          "to": "employee",
+          "to": "employeeWork",
           "cc": [],
           "subject": "Reminder: onboarding survey",
           "body": "Dear {employee.name},\n\nA quick reminder to complete the Onboarding Satisfaction Survey in your employee view. It takes about 10 minutes.\n\nThank you,\nHuman Resource Department"
@@ -5760,7 +5756,7 @@
         {
           "id": "w5-step-1",
           "type": "email",
-          "to": "employee",
+          "to": "employeeWork",
           "cc": [],
           "template": "e4"
         }
@@ -5796,7 +5792,7 @@
         {
           "id": "w12-step-3",
           "type": "email",
-          "to": "employee",
+          "to": "employeeWork",
           "cc": [],
           "template": "e5"
         }
@@ -5832,7 +5828,7 @@
         {
           "id": "w13-step-3",
           "type": "email",
-          "to": "employee",
+          "to": "employeeWork",
           "cc": [],
           "template": "e6"
         }
@@ -5881,10 +5877,8 @@
         {
           "id": "w15-step-1",
           "type": "notify",
-          "to": "pbp",
-          "cc": [
-            "peopleOps"
-          ],
+          "to": "group:g-people",
+          "cc": [],
           "subject": "{employee.name} may not be cleared by the last working day",
           "body": "Hi,\n\n{employee.name} leaves on {leaver.lastDay} and these items are still open:\n{pending.tasks}\n\nPlease follow up with the owners.\n\nRegards,\nAI HR"
         }

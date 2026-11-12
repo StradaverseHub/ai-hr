@@ -30520,7 +30520,18 @@
       "caseItem": "Item",
       "caseType": "Type",
       "caseProvidedBy": "Provided by",
-      "caseReturnDue": "Return or revoke by"
+      "caseReturnDue": "Return or revoke by",
+      "lev909e718ee5d": "Email held",
+      "lev902aeadce22": "Nobody was emailed. Missing recipients:",
+      "lev9716aacede1": "Fix the record or change the recipients for this case, then press Continue.",
+      "lev9432f4737cd": "Recipients changed for this case",
+      "lev9f96e5e6795": "Edit recipients for this case",
+      "lev973deec6592": "Recipients for this case",
+      "lev9325a77cc26": "Save recipients for this case",
+      "lev9b48eacb53d": "Use the workflow recipients",
+      "lev97056f1481a": "The recipients could not be saved.",
+      "lev984add5b295": "Email",
+      "lev9c18f8f255a": "Notification"
     }
   },
   "processAssessment": {
@@ -38285,5 +38296,8 @@
     "actorWithId": "{name} ({employeeId})",
     "actorUnlinked": "Administrator login (no employee record · login ending {suffix})",
     "actorUnavailable": "Unavailable user"
+  },
+  "lifecycleEmailHold": {
+    "inboxAction": "Email held: {email}"
   }
 }

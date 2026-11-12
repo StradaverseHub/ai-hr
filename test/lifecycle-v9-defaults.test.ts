@@ -9,7 +9,14 @@ it('imports the complete supplied definitions without fixture users or cases', (
   expect(config.groups.every(g => g.members.length === 0)).toBe(true);
   expect(config.workflows.filter(w => w.status === 'draft')).toHaveLength(2);
   expect(config.workflows.find(w => w.id === 'w4')?.steps.map(s => s.type)).toEqual(['doc', 'waitSign']);
-  expect(config.emails.find(e => e.id === 'e3')?.cc).toEqual(['supervisor', 'pbp']);
+  expect(config.emails.find(e => e.id === 'e3')?.cc).toEqual(['supervisor']);
+  // Board 4a60b3ec: new tenants start without removed roles; pre-start Employee emails reach the personal email.
+  const roles = config.workflows.flatMap(w => w.steps.flatMap(s => 'to' in s ? [...(Array.isArray(s.to) ? s.to : [s.to]), ...s.cc] : []));
+  expect(roles.filter(role => ['pbp', 'peopleOps', 'starter', 'employee'].includes(role))).toEqual([]);
+  const step = (id: string) => { const value = config.workflows.find(w => w.id === id)?.steps[0]; return value && 'to' in value ? { to: [value.to].flat(), cc: value.cc } : null; };
+  expect(step('w1')).toEqual({ to: ['employeePersonal'], cc: ['supervisor'] });
+  expect(step('w5')).toEqual({ to: ['employeeWork'], cc: [] });
+  expect(step('w15')).toEqual({ to: ['group:' + config.peopleOpsGroup], cc: [] });
   expect(config.checklists.find(c => c.id === 'oc1')?.tasks.some(t => t.documentTemplate === 'txi')).toBe(true);
   expect(config.templates.find(t => t.id === 'tsv')?.versions.at(-1)?.fields).toHaveLength(48);
 });

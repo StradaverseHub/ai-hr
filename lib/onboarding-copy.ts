@@ -1,6 +1,17 @@
 'use client';
 import { useTranslations } from 'next-intl';
 const keys: Record<string, string> = {
+    "Email held": "lev909e718ee5d",
+    "Nobody was emailed. Missing recipients:": "lev902aeadce22",
+    "Fix the record or change the recipients for this case, then press Continue.": "lev9716aacede1",
+    "Recipients changed for this case": "lev9432f4737cd",
+    "Edit recipients for this case": "lev9f96e5e6795",
+    "Recipients for this case": "lev973deec6592",
+    "Save recipients for this case": "lev9325a77cc26",
+    "Use the workflow recipients": "lev9b48eacb53d",
+    "The recipients could not be saved.": "lev97056f1481a",
+    "Email": "lev984add5b295",
+    "Notification": "lev9c18f8f255a",
     "No task limit": "v9NoTaskLimit",
     "% · Checklist": "c3b8171a3b4ee",
     ": Doesn't match, untick": "c1232493ed1db",

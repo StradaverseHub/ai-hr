@@ -43,10 +43,13 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
     byRecipient.set(binding.userId, credential.email);
   }
   const addresses = [...target.payload.mail.to, ...target.payload.mail.cc].map(key => byRecipient.get(key));
-  if (addresses.some(address => !address) || addresses.length !== target.payload.mail.to.length + target.payload.mail.cc.length || new Set(addresses.map(address => address!.toLowerCase())).size !== addresses.length)
+  if (addresses.some(address => !address) || addresses.length !== target.payload.mail.to.length + target.payload.mail.cc.length)
     return { outcome: 'skipped', error: 'recipientUnavailable' };
   const { mail, documents, files } = target.payload;
-  if (!mail.delivery || mail.delivery.version !== 1 || mail.to.length !== 1) return { outcome: 'skipped', error: 'notEligible' };
+  if (!mail.delivery || mail.delivery.version !== 1 || mail.to.length < 1 || mail.to.length > 8) return { outcome: 'skipped', error: 'notEligible' };
+  // One copy per address: an account and a typed address can be the same mailbox. To wins over CC.
+  const seen = new Set<string>(), unique = (list: (string | undefined)[]) => list.filter((address): address is string => { const key = address!.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true; });
+  const toAddresses = unique(addresses.slice(0, mail.to.length)), ccAddresses = unique(addresses.slice(mail.to.length));
   const attachments: ManagedEmailAttachment[] = [];
   for (const documentId of mail.delivery.pdfDocumentIds) {
     const document = documents.find(document => document.id === documentId);
@@ -77,7 +80,7 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
   if (!started) return { outcome: 'skipped', error: 'notEligible' };
   let result: LifecycleV9DeliveryResult;
   try {
-    await transport(active.relay, { to: addresses[0]!, cc: addresses.slice(1) as string[], subject: mail.subject, ...content, attachments, ...(active.senderName ? { senderName: active.senderName } : {}), messageId: `<lifecycle-v9.${id}@${new URL(origin).hostname}>` });
+    await transport(active.relay, { to: toAddresses.length === 1 ? toAddresses[0] : toAddresses, cc: ccAddresses, subject: mail.subject, ...content, attachments, ...(active.senderName ? { senderName: active.senderName } : {}), messageId: `<lifecycle-v9.${id}@${new URL(origin).hostname}>` });
     result = { outcome: 'sent', error: null };
   } catch (error) { result = notificationSmtpFailure(error); }
   const finished = (await withSystemWork(()=>client`select app.lc_v9_email_finish(${id}::uuid,${token}::uuid,${result.outcome},${result.error}) as finished`))[0]?.finished === true;

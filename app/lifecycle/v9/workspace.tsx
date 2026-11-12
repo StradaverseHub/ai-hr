@@ -49,15 +49,15 @@ function Dialog({ title, children, close }: { title: string; children: ReactNode
   useEffect(() => { ref.current?.showModal(); return () => ref.current?.close(); }, []);
   return <dialog className="v9-dialog" aria-label={title} ref={ref} onCancel={close}><header><h2>{title}</h2><button type="button" className="v9-button" aria-label="Close" onClick={close}><X size={18}/></button></header>{children}</dialog>;
 }
-export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativeSettings = null, companyScope, navigation = 'standalone', initialView, initialWorkflow, workflowNavigation }: { workflowNavigation?: ReactNode; companyScope?: string[]; navigation?: 'global' | 'standalone'; initialView?: V9WorkspaceView; initialWorkflow?: string; nativeSettings?: NativeSettingsData | null; nativeCase?: { name: string; content: ReactNode }; initial: Workspace; viewer: ViewerIdentity; joiners?: NativeJoinersData | null }) {
+export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativeSettings = null, companyScope, navigation = 'standalone', initialView, initialWorkflow, initialCase, workflowNavigation }: { initialCase?: string; workflowNavigation?: ReactNode; companyScope?: string[]; navigation?: 'global' | 'standalone'; initialView?: V9WorkspaceView; initialWorkflow?: string; nativeSettings?: NativeSettingsData | null; nativeCase?: { name: string; content: ReactNode }; initial: Workspace; viewer: ViewerIdentity; joiners?: NativeJoinersData | null }) {
   const router = useRouter(), [busy, start] = useTransition();
   const fallbackView: View = initial.permissions?.onboarding===false?(initial.permissions?.offboarding===false?(initial.permissions?.records?'records':'access'):'leavers'):'joiners';
   const requested = V9_NAVIGATION.find(item => item.view === initialView);
   const entryView: View = initialView === 'tasks' ? 'tasks' : initialView === 'records' && initial.permissions?.records !== false ? 'records' : requested && initial.permissions?.[requested.permission] !== false ? requested.view : fallbackView;
-  const [view, setView] = useState<View>(entryView), [selected, setSelected] = useState<string | null>(null), [search, setSearch] = useState(''), [company, setCompany] = useState(''), [module, setModule] = useState<M.Module>('off');
+  const [view, setView] = useState<View>(entryView), [selected, setSelected] = useState<string | null>(initialCase ?? null), [search, setSearch] = useState(''), [company, setCompany] = useState(''), [module, setModule] = useState<M.Module>('off');
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [creating, setCreating] = useState(false), [reason, setReason] = useState<{ type: 'cancel' | 'reopen'; value: string } | null>(null);
   const [mobileNavigation, setMobileNavigation] = useState(false);
-  useEffect(() => { if (navigation === 'global') { setView(entryView); setSelected(null); setDocument(null); if (entryView === 'workflows') setPick(initialWorkflow ?? ''); } }, [entryView, navigation, initialWorkflow]);
+  useEffect(() => { if (navigation === 'global') { setView(entryView); setSelected(initialCase ?? null); setDocument(null); if (entryView === 'workflows') setPick(initialWorkflow ?? ''); } }, [entryView, navigation, initialWorkflow, initialCase]);
   useEffect(()=>{const query=new URLSearchParams(window.location.search);if(query.get('view')==='workflows'&&initial.permissions?.administration!==false){setView('workflows');setPick(query.get('workflow')??'');}},[initial.permissions?.administration]);
   const [settingsTab, setSettingsTab] = useState<'onb' | 'off' | 'shared'>('onb');
   const [nativeSettingsError, setNativeSettingsError] = useState('');

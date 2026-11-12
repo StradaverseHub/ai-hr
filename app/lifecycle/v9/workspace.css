@@ -80,3 +80,4 @@
 .v9-dialog.v9-confirm{width:min(560px,calc(100vw - 32px))}.v9-confirm p{margin:0}.v9-confirm-actions{justify-content:flex-end}.v9-button-destructive{color:#fff;background:#b42318;border-color:#b42318}
 
 .v9-readonly{display:block;background:var(--v9-surface-muted,transparent);cursor:default}
+.v9-badge-warning{background:#fff4db;color:#6b4100}
