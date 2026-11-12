@@ -5776,6 +5776,13 @@
       "when": 1793330004827,
       "tag": "5127_import_log_actor_labels",
       "breakpoints": true
+    },
+    {
+      "idx": 4800,
+      "version": "7",
+      "when": 1793330005100,
+      "tag": "5400_rewards_direct_configuration",
+      "breakpoints": true
     }
   ]
 }

@@ -8,7 +8,8 @@ import { RewardUnitViews } from '../review-views';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
-import { getRewardPreparationChecklist, getRewardUnitGovernance } from '@/packs/rewards/service';
+import { getRewardPreparationChecklist, getRewardUnitGovernance, previewRewardPreparationRelease } from '@/packs/rewards/service';
+import { ReviewBeforeSaving } from '@/app/admin/rewards/review-before-saving';
 import { REWARD_PREPARATION_STEPS } from '@/packs/rewards/preparation-model';
 import { Card, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
 import { RewardSubmit } from '../../submit-button';
@@ -23,11 +24,11 @@ export default async function RewardUnitSetup({params,searchParams}:{params:Prom
  const released=preparation.state==='released';
  const fields=<><input type="hidden" name="unitId" value={unitId}/><input type="hidden" name="revision" value={value.revision}/><input type="hidden" name="basis" value={basis}/></>;
  const missing=REWARD_PREPARATION_STEPS.filter(step=>preparation.steps[step]?.basis!==basis||checks&&!checks[step]);
- const independent=access.independentChecker;
  const links:Record<typeof REWARD_PREPARATION_STEPS[number],string>={snapshot:'#source-records',data:`/rewards/${unitId}/data-check`,excluded:'#excluded',senior:`/admin/rewards/${unitId}#senior-membership`,budget:'/admin/rewards/pat-inputs',applied:'#applied-setup'};
  const locale=await getLocale();
  const money=(cents:number|null)=>cents===null?t('notSet'):new Intl.NumberFormat(locale,{style:'currency',currency:'MYR'}).format(cents/100);
  const governance=await getRewardUnitGovernance(s,unitId);
+ const releaseReview=access.required&&!released&&canEdit&&!missing.length&&preparation.expectedRelease?await previewRewardPreparationRelease(s,unitId):null;
  const review=await getRewardUnit(s,unitId),rt=await getTranslations('rewards'),onehr=await getTranslations('onehr');
  return <div className="w-full space-y-5">
   <PageHeader title={t('title')} description={`${review.companyName} · ${review.name} · ${t('description')}`}/>
@@ -51,7 +52,7 @@ export default async function RewardUnitSetup({params,searchParams}:{params:Prom
      </li>;
     })}
    </ol>
-   {access.required&&!released&&<div className="flex flex-wrap items-center gap-3"><form action={preparationAction}>{fields}<input type="hidden" name="kind" value="release"/><RewardSubmit disabled={!canEdit||missing.length>0||!preparation.expectedRelease||!independent}>{t('release')}</RewardSubmit></form><p role="status" className="text-sm text-muted-foreground">{missing.length?t('missing',{step:REWARD_PREPARATION_STEPS.indexOf(missing[0])+1,name:t(`steps.${missing[0]}`)}):!preparation.expectedRelease?t('setExpected'):!independent?t('independent'):t('ready')}</p></div>}
+   {access.required&&!released&&<div className="flex flex-wrap items-center gap-3">{releaseReview?<ReviewBeforeSaving summary={releaseReview.summary} digest={releaseReview.digest} action={preparationAction} triggerLabel={t('release')} submitLabel={t('release')}>{fields}<input type="hidden" name="kind" value="release"/></ReviewBeforeSaving>:<RewardSubmit disabled>{t('release')}</RewardSubmit>}<p role="status" className="text-sm text-muted-foreground">{missing.length?t('missing',{step:REWARD_PREPARATION_STEPS.indexOf(missing[0])+1,name:t(`steps.${missing[0]}`)}):!preparation.expectedRelease?t('setExpected'):t('ready')}</p></div>}
    {released&&<p role="status" className="text-sm">{t('released',{date:preparation.releasedAt?.slice(0,10)??''})}</p>}
    {(value.canReopen&&(released||value.needsReopen))&&<form action={preparationAction} className="space-y-3">{fields}<input type="hidden" name="kind" value="reopen"/><Field label={t('changeReason')}><textarea name="reason" required minLength={10} maxLength={2000} className={inputCls}/></Field><RewardSubmit variant="secondary">{t('requestChange')}</RewardSubmit></form>}
   </Card>

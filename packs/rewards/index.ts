@@ -14,6 +14,7 @@ export const rewardsPack: ModulePack = {
     { group: 'admin', href: '/admin/rewards/salary-structures', labelKey: 'rewardsSalaryStructures', icon: Gift },
     { group: 'admin', href: '/admin/rewards/bonus-matrices', labelKey: 'rewardsBonusMatrices', icon: Gift },
     { group: 'admin', href: '/admin/rewards/pat-inputs', labelKey: 'rewardsPatInputs', icon: Gift },
+    { group: 'admin', href: '/admin/rewards/change-log', labelKey: 'rewardsChangeLog', icon: Gift },
     { group: 'admin', href: '/admin/rewards/access', ownedSubpaths: ['/admin/rewards/setup-access'], labelKey: 'rewardsAccess', icon: Gift },
   ],
   satelliteTables: ['reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision', 'reward_calendar'].map(table => ({ table })),

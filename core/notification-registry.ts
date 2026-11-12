@@ -31,6 +31,7 @@ export type NotificationRecipientReaders<Reader>={
  rewardPreparationInvalidated:NotificationRecipientReader<Reader>;
  rewardPoolChanged:NotificationRecipientReader<Reader>;
  rewardApproved:NotificationRecipientReader<Reader>;
+ rewardConfigChanged:NotificationRecipientReader<Reader>;
  leaveSubmitted:NotificationRecipientReader<Reader>;
  leaveCancellationSubmitted:NotificationRecipientReader<Reader>;
  overtimeSubmitted:NotificationRecipientReader<Reader>;
@@ -161,6 +162,19 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     kind:'rewards.final-pool-changed',category:'rewards',
     render:(_payload,event)=>({severity:'action',title:'Rewards pool updated',body:'Group Rewards changed the bonus pool or its status. Review the current pool and budget checks before approving.',linkPath:`/rewards/${event.aggregateId}#unit-governance`}),
     recipientPort:'rewardPoolChanged',recipients:readers.rewardPoolChanged,
+  },
+  // Board 60f1fdcd: one notice per Rewards configuration save to the other configuration holders. It names the item,
+  // the editor, the count of changed values and the reason; never a value or anyone's pay.
+  'rewards-config.changed': {recipientAudience:'reader',
+    kind:'rewards.config-changed',category:'rewards',
+    render:(payload)=>{
+      const actor=typeof payload?.actorName==='string'&&payload.actorName?payload.actorName:'A Rewards administrator';
+      const item=typeof payload?.itemLabel==='string'?payload.itemLabel:'Rewards configuration';
+      const count=typeof payload?.changedCount==='number'&&Number.isSafeInteger(payload.changedCount)&&payload.changedCount>0?` (${payload.changedCount} ${payload.changedCount===1?'value':'values'})`:'';
+      const reason=typeof payload?.reason==='string'&&payload.reason?`, reason: ${payload.reason}`:'';
+      return {severity:'info',title:'rewardConfig.notificationTitle',body:`${actor} changed ${item}${count}${reason}`.slice(0,500),linkPath:'/admin/rewards/change-log'};
+    },
+    recipientPort:'rewardConfigChanged',recipients:readers.rewardConfigChanged,
   },
   'reward-unit.approved': {recipientAudience:'reader',
     kind: 'rewards.approved', category: 'rewards',

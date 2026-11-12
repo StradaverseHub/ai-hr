@@ -158,11 +158,10 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  },
  "app/admin/rewards/actions.ts":{"cancelRewardAction":"registered:rewards.cancel_review"},
  "app/admin/rewards/libraries/actions.ts":{
-  "decideLibraryAction":"backlog:approve","importLibraryAction":"internal:session_and_presentation","saveLibraryAction":"backlog:approve",
+  "decideLibraryAction":"backlog:approve","importLibraryAction":"internal:session_and_presentation","restoreLibraryAction":"backlog:approve","saveLibraryAction":"backlog:approve",
  },
  "app/admin/rewards/pat-inputs/actions.ts":{
-  "commitPatImportAction":"backlog:approve","confirmPatAction":"backlog:approve",
-  "previewPatImportAction":"internal:session_and_presentation","savePatAction":"backlog:approve",
+  "previewPatBatchAction":"internal:session_and_presentation","previewPatImportAction":"internal:session_and_presentation","savePatBatchAction":"backlog:approve",
  },
  "app/admin/rewards/plans/actions.ts":{
   "createManualPlanAction":"backlog:approve","planAction":"backlog:approve","planSettingsAction":"backlog:approve",

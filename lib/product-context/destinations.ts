@@ -160,6 +160,7 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/payroll/statutory-forms/filing-history',
  '/admin/rewards/access/view-as',
  '/admin/rewards/bonus-matrices',
+ '/admin/rewards/change-log',
  '/admin/rewards/pat-inputs',
  '/admin/rewards/plans',
  '/admin/rewards/salary-structures',

@@ -33,6 +33,7 @@ import { analyticsTotals, emptyAnalyticsTotals, type AnalyticsRow } from './anal
 import {approvedPlanPolicyTx,assertIndependentReviewCreator} from './plan-configuration';
 import {latestConfirmedPatTx} from './pat-inputs';
 import {setupAuthority,setupLock} from './setup-data';
+import {assertRewardConfigReviewed,recordRewardConfigChangeTx,rewardConfigSummary,rewardConfigSummaryDigest,type RewardConfigSummary} from './config-change';
 import {setupYear} from './setup-model';
 import { emptyGovernance, effectiveRewardPolicy, poolStatus, unitInputSchema, confirmedSeniorAwards, seniorGrade, maySeeSeniorAmounts, redactPatPolicy, seniorAwardSchema, governanceBasis,governanceHistoryProjection,seniorSourceFingerprint,type RewardPublicGovernance,type RewardGovernance, type SeniorAward } from './governance-model';
 import { assertRewardPolicyGrids } from './policy-grid-validation';
@@ -120,6 +121,13 @@ function governanceAuthority(unit:typeof rewardUnit.$inferSelect,roles:RewardRol
  assertRevision(unit,revision);assertUnlocked(unit);
  if(unit.kind!=='annual'||!roles.includes('gr'))throw new RewardError('Group Rewards access to a draft annual review is required.');
 }
+/** One change-log row and co-administrator notice for a review set-up decision (board 60f1fdcd). Lines name the
+ * decision, never an amount; rows about named reviewees carry their entries so the reviewee never sees them. */
+async function recordGovernanceChangeTx(tx:Tx,ctx:SessionContext,unit:typeof rewardUnit.$inferSelect,area:'exemption'|'senior'|'preparation',action:string,item:string,reason:string,lines:{key:string;label:string;before:string|null;after:string|null}[],entryIds:string[]=[],summary?:RewardConfigSummary){
+ const [label]=await tx.execute<{name:string|null}>(sql`select legal_name as name from company where id=${unit.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+ const itemLabel=`${item} · ${label?.name??'Review'} ${unit.policy.year}`;
+ await recordRewardConfigChangeTx(tx,ctx,{area,action,itemId:unit.id,itemLabel,companyIds:[unit.companyId],versionRef:String(unit.revision),reason,summary:summary??rewardConfigSummary({area,itemLabel,lines}),subjectUnitId:entryIds.length?unit.id:null,subjectEntryIds:entryIds});
+}
 function reasonForGovernance(reason:string){return z.string().trim().min(10).max(2000).parse(reason);}
 export async function getRewardUnitGovernance(ctx:SessionContext,unitId:string){
  return withRewardsTenant(ctx,async tx=>{
@@ -162,8 +170,10 @@ export async function proposeRewardExemption(ctx:SessionContext,unitId:string,re
  const why=reasonForGovernance(reason);
  return withRewardsTenant(ctx,async tx=>{
   const {unit,roles}=await load(tx,unitId,true);governanceAuthority(unit,roles,revision);
-  const before=await governanceStateTx(tx,unitId),after={...(before??emptyGovernance()),exemption:{reason:why,proposedBy:idSchema.parse(ctx.userId),confirmedBy:null,confirmedAt:null}};
+  // Board 60f1fdcd: the exemption is active when saved; no second person checks it.
+  const actor=idSchema.parse(ctx.userId),before=await governanceStateTx(tx,unitId),after={...(before??emptyGovernance()),exemption:{reason:why,proposedBy:actor,confirmedBy:actor,confirmedAt:new Date().toISOString()}};
   await saveGovernanceTx(tx,ctx,unitId,before,after,'exemption-proposed',why);
+  await recordGovernanceChangeTx(tx,ctx,unit,'exemption','saved','Budget-cap exemption',why,[{key:'exemption',label:'Budget-cap exemption',before:before?.exemption?'On':'Off',after:'On'}]);
  });
 }
 export async function confirmRewardGovernance(ctx:SessionContext,unitId:string,revision:number,kind:'selection'|'exemption'|'award',entryId?:string){
@@ -172,8 +182,9 @@ export async function confirmRewardGovernance(ctx:SessionContext,unitId:string,r
   const {unit,roles,entries}=await load(tx,unitId,true);governanceAuthority(unit,roles,revision);
   const before=await governanceStateTx(tx,unitId);if(!before)throw new RewardError('There is no pending decision to confirm.');
   const after:RewardGovernance=structuredClone(before),decision=kind==='selection'?after.selection:kind==='exemption'?after.exemption:entryId?after.awards[entryId]:null;
-  if(!decision||decision.confirmedBy)throw new RewardError('There is no pending decision to confirm.');
-  if(decision.proposedBy===ctx.userId)throw new RewardError('A different Group Rewards user must check this decision.');
+  if(!decision)throw new RewardError('There is no draft decision to make active.');
+  // Board 60f1fdcd: saves are active; a legacy draft becomes active in one step by any Group Rewards user.
+  if(decision.confirmedBy)return;
   if(kind==='award'){
    const entry=entries.find(entry=>entry.id===entryId);if(!entry||!visibleEntry(entry,roles,ctx.personId)||!isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade))throw new RewardError('This Senior plan entry is not available.');
    const award=after.awards[entry.id];if(award.sourceFingerprint!==seniorSourceFingerprint(entry))throw new RewardError('Employee salary or grade changed. Enter and check the offline decision again.');
@@ -182,7 +193,8 @@ export async function confirmRewardGovernance(ctx:SessionContext,unitId:string,r
    if(!fresh?.current)throw new RewardError('Salary data changed after the snapshot. Return and refresh the review.');
   }
   decision.confirmedBy=idSchema.parse(ctx.userId);decision.confirmedAt=new Date().toISOString();
-  await saveGovernanceTx(tx,ctx,unitId,before,after,`${kind}-confirmed`,'Independently checked and confirmed');
+  await saveGovernanceTx(tx,ctx,unitId,before,after,`${kind}-confirmed`,'Made active by Group Rewards');
+  await recordGovernanceChangeTx(tx,ctx,unit,kind==='exemption'?'exemption':'senior','activated',kind==='selection'?'Senior plan membership':kind==='award'?'Senior plan award':'Budget-cap exemption','Made a saved draft active',[{key:kind,label:kind,before:'Draft',after:'Active'}],kind==='award'&&entryId?[entryId]:[]);
  });
 }
 export async function saveRewardSeniorAward(ctx:SessionContext,unitId:string,revision:number,raw:unknown){
@@ -195,7 +207,9 @@ export async function saveRewardSeniorAward(ctx:SessionContext,unitId:string,rev
   const newBasicCents=input.newBasicCents??entry.source.basicCents+increase(entry.source.basicCents,input.incrementBp!);
   if(newBasicCents<entry.source.basicCents)throw new RewardError('The new basic salary must not be lower than the current salary.');
   const before=await governanceStateTx(tx,unitId),after:RewardGovernance=structuredClone(before??emptyGovernance());
-  if(!after.selection?.confirmedBy)throw new RewardError('A second Group Rewards user must confirm Senior membership before amount entry.');
+  if(!after.selection?.confirmedBy)throw new RewardError('Save the Senior plan membership before entering amounts.');
+  const [fresh]=await tx.execute<{current:boolean}>(sql`select app.reward_senior_source_current(${unitId}::uuid,${entry.id}::uuid) as current`);
+  if(!fresh?.current)throw new RewardError('Salary data changed after the snapshot. Return and refresh the review.');
   const evidence:SeniorAward['evidence']=[...(after.awards[entry.id]?.evidence??[])];
   let evidenceBytes=0;
   for(const file of input.evidence){
@@ -205,8 +219,11 @@ export async function saveRewardSeniorAward(ctx:SessionContext,unitId:string,rev
    const id=randomUUID();await tx.insert(rewardSeniorEvidence).values({id,tenantId:ctx.tenantId,unitId,entryId:entry.id,uploadedBy:idSchema.parse(ctx.userId),name:file.name,mime:file.mime,content:file.content});
    evidence.push({id,name:file.name,mime:file.mime,size:bytes.length});
   }
-  after.awards[entry.id]={newBasicCents,sourceFingerprint:seniorSourceFingerprint(entry),bonusCents:input.bonusCents,approvalDate:input.approvalDate,approvalReference:input.approvalReference,reason:input.reason,evidence,proposedBy:idSchema.parse(ctx.userId),confirmedBy:null,confirmedAt:null};
+  const actor=idSchema.parse(ctx.userId),hadAward=!!before?.awards?.[entry.id];
+  after.awards[entry.id]={newBasicCents,sourceFingerprint:seniorSourceFingerprint(entry),bonusCents:input.bonusCents,approvalDate:input.approvalDate,approvalReference:input.approvalReference,reason:input.reason,evidence,proposedBy:actor,confirmedBy:actor,confirmedAt:new Date().toISOString()};
   await saveGovernanceTx(tx,ctx,unitId,before,after,'senior-award-proposed',input.reason);
+  // The change log names the award, never its amounts; the entry keeps the row from its own reviewee.
+  await recordGovernanceChangeTx(tx,ctx,unit,'senior','saved','Senior plan award',input.reason,[{key:'award',label:'Senior plan award',before:hadAward?'Recorded':null,after:'Recorded'}],[entry.id]);
  });
 }
 export async function readRewardSeniorEvidence(ctx:SessionContext,unitId:string,evidenceId:string){
@@ -351,11 +368,11 @@ async function reviewFinancialProjectionTx(tx: Tx, ctx: SessionContext, unitId: 
   const [caps]=await tx.execute<{value:{figuresEdit:boolean;reviewDecide:boolean;batch:boolean;dataCheck:boolean;snapshotRefresh:boolean;offcycleRaise:boolean;notesAdd:boolean;casesDecide:boolean}}>(sql`select jsonb_build_object('figuresEdit',app.reward_capability(${unitId}::uuid,'figures.edit') and (not exists(select 1 from app.reward_current_group_roles()) or app.reward_group_figures_stage_allowed(${unitId}::uuid)),'reviewDecide',app.reward_capability(${unitId}::uuid,'review.decide'),'batch',app.reward_capability(${unitId}::uuid,'review.batch'),'dataCheck',app.reward_capability(${unitId}::uuid,'data.check'),'snapshotRefresh',app.reward_capability(${unitId}::uuid,'snapshot.refresh'),'offcycleRaise',app.reward_capability(${unitId}::uuid,'offcycle.raise'),'notesAdd',app.reward_capability(${unitId}::uuid,'notes.add'),'casesDecide',app.reward_capability(${unitId}::uuid,'cases.decide')) as value`);
   const [uploadedReview]=await tx.execute<{present:boolean;pending:boolean}>(sql`select true as present,(current_version=0 or checked_version is distinct from current_version) as pending from reward_uploaded_review where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()`);
   const [groupScope]=await tx.execute<{wholeGroup:boolean}>(sql`select exists(select 1 from app.reward_current_group_roles()) as "wholeGroup"`);
-  if(uploadedReview?.pending&&!roles.includes('gr')&&!groupScope?.wholeGroup)throw new RewardError('This upload awaits independent Group Rewards confirmation before the BU review opens.');
+  if(uploadedReview?.pending&&!roles.includes('gr')&&!groupScope?.wholeGroup)throw new RewardError('This upload is a draft. Group Rewards must make it active before the BU review opens.');
 
   const calculated = await calculateUnit(tx, unit, entries);
   const state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId),effectivePolicy=state?effectiveRewardPolicy(unit.policy,state):publicState?{...unit.policy,multiplierBp:publicState.multiplierBp,branchRatings:publicState.branchRatings,targetMonthsBp:publicState.targetMonthsBp}:unit.policy;
-  if(publicState&&!publicState.selectionConfirmed&&roles.includes('bu')&&!roles.includes('gr'))throw new RewardError('Senior plan membership awaits independent Group Rewards confirmation before the BU review can open.');
+  if(publicState&&!publicState.selectionConfirmed&&roles.includes('bu')&&!roles.includes('gr'))throw new RewardError('Senior plan membership is a draft. Group Rewards must make it active before the BU review can open.');
   const visible = calculated.rows.filter(e => visibleEntry(e, roles, ctx.personId)).map(entry=>{
     if(maySeeSeniorAmounts(roles)||!isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade))return entry;
     return {...entry,recommendation:emptyRecommendation(),newBasicCents:entry.source.basicCents,bonusCents:0,meritCents:0,promotionCents:0,specialCents:0,lumpCents:0};
@@ -647,7 +664,7 @@ async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewar
 
 export type PlannedRewardUnitInput={name?:string;year:number;companyId:string;businessUnitId:string;cycleId?:string;snapshotDate:string;sharedPolicyVersionId?:string;approvedPlanVersionId?:string};
 export async function createRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitInput){
- if(!raw.approvedPlanVersionId)throw new RewardError('Create unit reviews from an independently approved Shared Rewards Configuration.');
+ if(!raw.approvedPlanVersionId)throw new RewardError('Create unit reviews from an active Shared Rewards Configuration.');
  return withRewardsTenant(ctx,tx=>createRewardUnitTx(tx,ctx,raw));
 }
 /** Internal transaction seam used by approved bulk creation; SQL rechecks all authority and frozen bindings. */
@@ -849,10 +866,11 @@ export async function saveRewardSeniorMembership(ctx: SessionContext, unitId: st
     await stamp(tx, ctx, unitId, 'senior-membership-updated', { revision: unit.revision + 1, convertedLegacy: prepared.legacy, changedEmploymentIds: changedIds });
     const prior=await governanceStateTx(tx,unitId),state=prior??emptyGovernance();
     const selectedIds=new Set(prepared.updated.filter(entry=>entry.facts.seniorPlan).map(entry=>entry.id));
-    const after:RewardGovernance={...state,selection:{employmentIds:prepared.updated.filter(entry=>entry.facts.seniorPlan).map(entry=>entry.employmentId),proposedBy:idSchema.parse(ctx.userId),confirmedBy:null,confirmedAt:null},awards:Object.fromEntries(Object.entries(state.awards).filter(([id])=>selectedIds.has(id)))};
+    const actor=idSchema.parse(ctx.userId);
+    const after:RewardGovernance={...state,selection:{employmentIds:prepared.updated.filter(entry=>entry.facts.seniorPlan).map(entry=>entry.employmentId),proposedBy:actor,confirmedBy:actor,confirmedAt:new Date().toISOString()},awards:Object.fromEntries(Object.entries(state.awards).filter(([id])=>selectedIds.has(id)))};
     // touch was already performed for the roster write; persist the checkpoint atomically without another revision.
     await tx.insert(rewardGovernance).values({tenantId:ctx.tenantId,unitId,state:after}).onConflictDoUpdate({target:rewardGovernance.unitId,set:{state:after,updatedAt:new Date()}});
-    await tx.insert(rewardGovernanceHistory).values({tenantId:ctx.tenantId,unitId,actorId:idSchema.parse(ctx.userId),kind:'senior-selection-proposed',reason:'Senior membership submitted for independent checking',before:prior,after});
+    await tx.insert(rewardGovernanceHistory).values({tenantId:ctx.tenantId,unitId,actorId:idSchema.parse(ctx.userId),kind:'senior-selection-proposed',reason:'Senior plan membership saved by Group Rewards',before:prior,after});
     await projectGovernanceTx(tx,ctx,unitId,after);
     await tx.update(rewardUnit).set({policy:{...unit.policy,seniorMembershipMode:'named-members',unitGovernanceDigest:createHash('sha256').update(JSON.stringify(after)).digest('hex')}}).where(eq(rewardUnit.id,unitId));
   });
@@ -1118,7 +1136,7 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
     idSchema.parse(unitId);const [uploadKind]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from reward_uploaded_review where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()) as present`);if(uploadKind?.present)await tx.execute(sql`select app.access_configuration_write_lock()`);await funding(tx, unitId, true);
     const { unit, roles, entries } = await load(tx, unitId, true);
   const [preparationAdmission]=await tx.execute<{value:RewardPreparationView|null}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
-  if(preparationAdmission?.value?.required&&!preparationAdmission.value.released)throw new RewardError('Preparation must be independently checked and released before a review decision.'); assertRevision(unit, revision);
+  if(preparationAdmission?.value?.required&&!preparationAdmission.value.released)throw new RewardError('Unit set-up must be released before a review decision.'); assertRevision(unit, revision);
     await assertRewardCapabilityTx(tx,unitId,'review.decide');if(unit.kind!=='annual')await assertRewardCapabilityTx(tx,unitId,action==='submit'?'offcycle.raise':'offcycle.decide');
     const route = unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] as RewardRole[] : offcycleRoute(unit.kind, unit.offcycle!, entries);
     if (unit.kind === 'annual' && (action === 'reject' || action === 'withdraw')) throw new RewardError('Return an annual review to draft instead.');
@@ -1135,7 +1153,7 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
       if (!entries.length) throw new RewardError('A review needs at least one employee.');
       if(governance){
         if(entries.some(entry=>isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade)&&!seniorGrade(entry.source.grade)))throw new RewardError('Senior plan membership is limited to JG 21–23. Correct selection before submission.');
-        if(!governance.selectionConfirmed)throw new RewardError('A different Group Rewards user must confirm and lock Senior membership before the BU review opens.');
+        if(!governance.selectionConfirmed)throw new RewardError('Group Rewards must save Senior plan membership before the BU review opens.');
         if(['ctro','ec','approved'].includes(next)&&governance.status!=='final')throw new RewardError('The unit bonus pool must be Final (Actual) before CTRO or EC approval.');
         if(unit.policy.bonusStructure==='branch'&&entries.some(entry=>entry.facts.branch&&!governance.branchRatings[entry.facts.branch]))throw new RewardError('Every PPCH branch needs a rating before submission.');
       }
@@ -2182,7 +2200,7 @@ export async function changeRewardPreparation(ctx:SessionContext,unitId:string,r
  const command=z.discriminatedUnion('kind',[
   z.object({kind:z.literal('expected'),date:isoDateSchema}).strict(),
   z.object({kind:z.literal('confirm'),step:z.enum(REWARD_PREPARATION_STEPS),basis:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
-  z.object({kind:z.literal('release'),basis:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
+  z.object({kind:z.literal('release'),basis:z.string().regex(/^[a-f0-9]{64}$/),reason:z.string().trim().min(10).max(2000),summaryDigest:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
   z.object({kind:z.literal('reopen'),reason:z.string().trim().min(10).max(2000)}).strict(),
  ]).parse(raw);
  return withRewardsTenant(ctx,async tx=>{
@@ -2196,6 +2214,7 @@ export async function changeRewardPreparation(ctx:SessionContext,unitId:string,r
   const before=await governanceStateTx(tx,unitId),after=structuredClone(before??emptyGovernance());
   const preparation=after.preparation??emptyRewardPreparation();after.preparation=preparation;
   const actor=idSchema.parse(ctx.userId),basis=preparationBasis(unit,entries,after);
+  let releaseChange:{summary:RewardConfigSummary;reason:string}|null=null;
   const [identity]=await tx.execute<{value:RewardPreparationView}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
   const actorPersonId=identity?.value?.personId;
   if(!actorPersonId)throw new RewardError('A person-backed Group Rewards account is required.');
@@ -2216,19 +2235,41 @@ export async function changeRewardPreparation(ctx:SessionContext,unitId:string,r
      const status=rewardPreparationStatus(preparation,basis);
      if(!status.ready||REWARD_PREPARATION_STEPS.some(step=>!checks[step])||!preparation.expectedRelease)
       throw new RewardError('Complete and confirm every current preparation step and set the expected release date.');
-     const [checker]=await tx.execute<{value:RewardPreparationView}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
-     if(status.doers.includes(actor)||!checker?.value?.independentChecker)throw new RewardError('A different Group Rewards person must check and release this review.');
+     // Board 60f1fdcd: the person who prepared the steps may release. Releasing is high impact: the editor reviews
+     // the server summary and gives a reason, and a changed summary refuses.
+     const summary=await preparationReleaseSummaryTx(tx,ctx,unit,preparation.expectedRelease);
+     releaseChange={summary,reason:assertRewardConfigReviewed(summary,{reason:command.reason,digest:command.summaryDigest})};
      preparation.state='released';preparation.releasedBy=actor;preparation.releasedByPersonId=actorPersonId;preparation.releasedAt=new Date().toISOString();preparation.releaseBasis=basis;
     }
    }
   }
   await saveGovernanceTx(tx,ctx,unitId,before,after,'preparation-'+command.kind,command.kind==='reopen'?command.reason:'Group Rewards preparation '+command.kind,command.kind==='reopen'&&unit.status!=='draft');
-  if(command.kind==='release')await stamp(tx,ctx,unitId,'preparation-released',{to:unit.status});
+  if(command.kind==='release'){await stamp(tx,ctx,unitId,'preparation-released',{to:unit.status});if(releaseChange)await recordGovernanceChangeTx(tx,ctx,unit,'preparation','released','Release to BU CEO',releaseChange.reason,[],[],releaseChange.summary);}
   if(command.kind==='reopen')await stamp(tx,ctx,unitId,'preparation-changed',{to:unit.status});
   return {unitId,revision:revision+1};
  });
 }
 
+/** "Review before saving" for Release to BU CEO: the review, its BU CEO seats and what happens next. */
+async function preparationReleaseSummaryTx(tx:Tx,ctx:SessionContext,unit:typeof rewardUnit.$inferSelect,expectedRelease:string|null|undefined){
+ const [company]=await tx.execute<{name:string|null}>(sql`select legal_name as name from company where id=${unit.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+ const seats=await tx.execute<{userId:string;name:string|null}>(sql`select m.user_id as "userId",p.full_name as name from reward_member m join app_user u on u.id=m.user_id and u.tenant_id=m.tenant_id left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where m.unit_id=${unit.id}::uuid and m.tenant_id=${ctx.tenantId}::uuid and m.role='bu' and (m.valid_to is null or m.valid_to>=${todayInKualaLumpur()}::date) order by p.full_name,m.user_id`);
+ const label=`${company?.name??'Review'} ${unit.policy.year}`;
+ return rewardConfigSummary({area:'preparation',itemLabel:`Release to BU CEO · ${label}`,
+  lines:[{key:'state',label:'Unit set-up',before:'Preparing',after:'Released to BU CEO'},{key:'expected',label:'Expected release',before:null,after:expectedRelease??null},
+   ...seats.map(seat=>({key:'bu:'+seat.userId,label:'BU CEO',before:null,after:seat.name??seat.userId}))],
+  affected:[{reviewId:unit.id,label,stage:unit.status,consequence:'released-to-bu'}],highImpact:['release-review']});
+}
+export async function previewRewardPreparationRelease(ctx:SessionContext,unitId:string){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ idSchema.parse(unitId);
+ return withRewardsTenant(ctx,async tx=>{
+  const {unit,roles}=await load(tx,unitId);if(!roles.includes('gr'))throw new RewardError('Group Rewards access to this review is required.');
+  const state=await governanceStateTx(tx,unitId);
+  const summary=await preparationReleaseSummaryTx(tx,ctx,unit,state?.preparation?.expectedRelease);
+  return{summary,digest:rewardConfigSummaryDigest(summary)};
+ });
+}
 async function assertRewardPreparationMutableTx(tx:Tx,unitId:string){
  const [row]=await tx.execute<{value:RewardPreparationView|null}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
  if(row?.value?.required&&row.value.released)throw new RewardError('Unit set-up is locked. Request a controlled change and give a reason.');

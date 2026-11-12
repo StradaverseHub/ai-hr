@@ -54,20 +54,20 @@ Check the pool status before proceeding:
 - **Provisional (9+3)** uses the forecast and target. Preparation may continue, but a provisional review cannot progress to CTRO or EC approval.
 - **Final (Actual)** uses Actual PAT. Check the previous pool, new pool and difference when actual results replace the forecast. Relevant approvers are notified of a changed pool.
 
-Check both Standard and JG H utilisation again after an input change. Submission must fit the final pool. A budget-cap exemption requires a reason and a different Group Rewards user to confirm it; a recorded exemption does not bypass the final-pool submission control.
+Check both Standard and JG H utilisation again after an input change. Submission must fit the final pool. A budget-cap exemption requires a reason and is active when Group Rewards saves it; a recorded exemption does not bypass the final-pool submission control.
 
 A saved legacy budget basis is not automatically changed. Group Rewards must review the displayed basis and explicitly adopt unit inputs for that review. PAT figures and their change history are restricted to Group Rewards; other authorized approvers see the resulting pool and multiplier, not the underlying PAT. Shared configuration lists and version comparisons do not expose unit PAT.
 
 ## Record Senior plan decisions
 
-Group Rewards handpicks JG 21–23 members through the review's Senior membership controls in Rewards configuration. Preview the membership and submit it for checking. A different Group Rewards user must confirm the selection before the review progresses to the BU review stage. Unselected employees in those grades continue under the standard matrices.
+Group Rewards handpicks JG 21–23 members through the review's Senior membership controls in Rewards configuration. Preview the membership and save it. The saved selection is active, and it must be saved before the review progresses to the BU review stage. Unselected employees in those grades continue under the standard matrices.
 
 In the unit review's **Senior plan — offline decisions** section:
 
-1. Confirm that membership has been independently checked.
+1. Confirm that the Senior plan membership has been saved.
 2. Record the offline-approved increment percentage or new basic salary, bonus amount, approval reference and approval date. Supply the supporting approval document when applicable, and record the reason for the entry or change. Do not enter both a percentage and a new basic salary. Salary reductions are refused.
-3. Submit the amounts for a different Group Rewards user to check against the approval evidence and confirm.
-4. Check that the decision is confirmed. A change needs a reason and fresh independent confirmation; changed source salary or grade also requires the decision to be reviewed again.
+3. Save the amounts. They are active when saved, and the change log records who saved them and why.
+4. Check that the decision shows as active. A change needs a reason; changed source salary or grade also requires the decision to be entered again.
 
 Members without complete confirmed decisions remain pending, and payroll transfer is blocked. Selected Senior members' basic salary and awards sit outside the standard increase and bonus pool bases and utilisation; they receive no lump-sum token. Their separately shown totals and amounts are visible only to Group Rewards, CTRO and EC. Other authorized reviewers see that the Senior plan is handled separately.
 
@@ -92,3 +92,10 @@ Review membership, stage, confidentiality and own-record exclusions control row 
 ## Open the reviews workspace
 
 Use [Rewards reviews](/rewards/reviews) for the review list and [Rewards](/rewards) for the dashboard. A review appears only within your assigned role and company scope. Opening configuration or reading public guidance does not grant access to employee recommendations, budgets or approvals. Review the current preparation status and evidence on the native page before making a recommendation or confirming a review action.
+
+## Configuration changes and the change log
+
+Group Rewards saves Rewards configuration directly: salary structures, bonus matrices, PAT Inputs, the Shared Rewards Configuration plan, Senior plan decisions, budget-cap exemptions and the review set-up release. **Save draft** keeps work in progress; **Save and make active** puts a change into effect. No second person confirms it. Changing PAT, a salary structure or a bonus matrix after a review that uses it has been released, releasing a review to the BU CEO and removing someone's access show **Review before saving** first: check what changes, which reviews are affected and what happens to them, then give a reason.
+
+Every save is recorded in the [Change log](/admin/rewards/change-log) with the person, date and time, the old and new values and the reason, and the other Rewards configuration holders receive one notice. The log can be filtered and exported to Excel. Reviews already running keep the salary structure and bonus matrix version they started with. Nobody can add or widen their own Rewards access or change the permission switches for a role they hold.
+

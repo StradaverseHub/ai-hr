@@ -81,34 +81,31 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
    saveRewardUnitInputs(gr,unitId,governance.revision,{...governance.inputs!,multiplierBp:8000},'Second concurrent budget update'),
   ]);
   expect(attempts.filter(x=>x.status==='fulfilled')).toHaveLength(1);expect(attempts.filter(x=>x.status==='rejected')).toHaveLength(1);
+  // Board 60f1fdcd: the exemption is active when Group Rewards saves it; a repeated activation changes nothing.
   await proposeRewardExemption(gr,unitId,(await view()).unit.revision,'Signed reason for the budget exemption');
-  await expect(confirmRewardGovernance(gr,unitId,(await view()).unit.revision,'exemption')).rejects.toThrow(/different/);
-  await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'exemption');expect((await getRewardUnitGovernance(gr,unitId)).exemption?.confirmedBy).toBe(checker.userId);
+  expect((await getRewardUnitGovernance(gr,unitId)).exemption?.confirmedBy).toBe(gr.userId);
+  await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'exemption');expect((await getRewardUnitGovernance(gr,unitId)).exemption?.confirmedBy).toBe(gr.userId);
  });
- it('requires an independent selection check and amount check, retaining prior evidence and preventing same-person confirmation',async()=>{
+ it('makes Senior selection and amounts active on save by the same Group Rewards person, retaining prior evidence',async()=>{
   const v=await view(),selection={employmentIds:[employeeId],adoptLegacy:false},preview=await previewRewardSeniorMembership(gr,unitId,v.unit.revision,selection);
   await saveRewardSeniorMembership(gr,unitId,v.unit.revision,selection,preview.digest);
-  await expect(getRewardUnit(bu,unitId)).rejects.toThrow(/independent/);
-  await expect(confirmRewardGovernance(gr,unitId,(await view()).unit.revision,'selection')).rejects.toThrow(/different/);
-  await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'selection');
+  expect((await getRewardUnitGovernance(gr,unitId)).selection?.confirmedBy).toBe(gr.userId);
   expect((await getRewardUnitGovernance(ctro,unitId)).senior).toEqual([]);
   const verified=await view();await saveRewardEntry(gr,unitId,verified.unit.revision,entryId,verified.rows[0].recommendation,{...verified.rows[0].facts,reviewed:true});
   await saveRewardSeniorAward(gr,unitId,(await view()).unit.revision,{entryId,newBasicCents:550000,incrementBp:null,bonusCents:123400,approvalReference:'OFFLINE-1',approvalDate:today,reason:'Signed offline approval recorded',evidence:[]});
-  await expect(confirmRewardGovernance(gr,unitId,(await view()).unit.revision,'award',entryId)).rejects.toThrow(/different/);
-  await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'award',entryId);
-  const privileged=await getRewardUnitGovernance(ctro,unitId);expect(privileged.senior[0].award).toMatchObject({newBasicCents:550000,bonusCents:123400,confirmedBy:checker.userId});
+  const privileged=await getRewardUnitGovernance(ctro,unitId);expect(privileged.senior[0].award).toMatchObject({newBasicCents:550000,bonusCents:123400,confirmedBy:gr.userId});
   const restricted=await getRewardUnitGovernance(bu,unitId);expect(restricted.senior[0].award).toBeNull();expect(restricted.totals).toBeNull();
   const privateRows=await withTenant(payroll,tx=>tx.select().from(schema.rewardSeniorAward).where(eq(schema.rewardSeniorAward.unitId,unitId)));expect(privateRows).toEqual([]);
   await expect(withTenant(payroll,tx=>tx.execute(sql`select app.reward_senior_awards_for_post(${unitId}::uuid)`))).rejects.toMatchObject({cause:{code:'42501',message:expect.stringContaining('posting authority')}});
  });
- it('refuses Senior confirmation after the live grade code changes under the same grade UUID',async()=>{
+ it('refuses a Senior award after the live grade code changes under the same grade UUID',async()=>{
   const v=await view(),selection={employmentIds:[employeeId],adoptLegacy:false},preview=await previewRewardSeniorMembership(gr,unitId,v.unit.revision,selection);
-  await saveRewardSeniorMembership(gr,unitId,v.unit.revision,selection,preview.digest);await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'selection');
-  await saveRewardSeniorAward(gr,unitId,(await view()).unit.revision,{entryId,newBasicCents:550000,incrementBp:null,bonusCents:123400,approvalReference:'SIGNED-BEFORE-GRADE-EDIT',approvalDate:today,reason:'Checked signed offline approval retained',evidence:[]});
+  await saveRewardSeniorMembership(gr,unitId,v.unit.revision,selection,preview.digest);
+  // Board 60f1fdcd: an award is active when saved, so the live-source check runs at save.
   const gradeId=(await view()).rows[0].source.gradeId!;
   await updateJobGrade(gr,{id:gradeId,name:'Changed fictional grade',code:'JG12'});
-  await expect(confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'award',entryId)).rejects.toThrow(/changed after the snapshot/);
-  expect((await getRewardUnitGovernance(gr,unitId)).senior[0].award?.confirmedBy).toBeNull();
+  await expect(saveRewardSeniorAward(gr,unitId,(await view()).unit.revision,{entryId,newBasicCents:550000,incrementBp:null,bonusCents:123400,approvalReference:'SIGNED-AFTER-GRADE-EDIT',approvalDate:today,reason:'Checked signed offline approval retained',evidence:[]})).rejects.toThrow(/changed after the snapshot/);
+  expect((await getRewardUnitGovernance(gr,unitId)).senior[0].award).toBeNull();
  });
  it('dispatches a private status-neutral notice when a final pool is downgraded to Not set',async()=>{
   await setModule(b.tenantId,'notifications','active');

@@ -8,7 +8,7 @@ const event={id:'00000000-0000-4000-8000-000000000003',aggregateId:'00000000-000
 const port=(name:string)=>(state:Probe)=>{state.calls.push({port:name});return Promise.resolve([resolved]);};
 const readers:NotificationRecipientReaders<Probe>={
  probation:port('probation'),contract:port('contract'),onboardingDigest:port('onboardingDigest'),assessmentReminder:port('assessmentReminder'),
- rewardSuspension:port('rewardSuspension'),rewardUploadChecker:port('rewardUploadChecker'),rewardUploadReady:port('rewardUploadReady'),rewardRouted:port('rewardRouted'),rewardPreparationReleased:port('rewardPreparationReleased'),rewardPreparationChanged:port('rewardPreparationChanged'),rewardPreparationInvalidated:port('rewardPreparationInvalidated'),rewardPoolChanged:port('rewardPoolChanged'),rewardApproved:port('rewardApproved'),
+ rewardSuspension:port('rewardSuspension'),rewardUploadChecker:port('rewardUploadChecker'),rewardUploadReady:port('rewardUploadReady'),rewardRouted:port('rewardRouted'),rewardPreparationReleased:port('rewardPreparationReleased'),rewardPreparationChanged:port('rewardPreparationChanged'),rewardPreparationInvalidated:port('rewardPreparationInvalidated'),rewardPoolChanged:port('rewardPoolChanged'),rewardApproved:port('rewardApproved'),rewardConfigChanged:port('rewardConfigChanged'),
  leaveSubmitted:port('leaveSubmitted'),leaveCancellationSubmitted:port('leaveCancellationSubmitted'),overtimeSubmitted:port('overtimeSubmitted'),readinessNudge:port('readinessNudge'),peerFeedback:port('peerFeedback'),
  assessmentReviewTask:(state,_event,phase)=>{state.calls.push({port:'assessmentReviewTask',selector:phase});return Promise.resolve([resolved]);},
  assessmentKpiApproval:port('assessmentKpiApproval'),legacyReviewStarted:port('legacyReviewStarted'),legacyReviewEvaluated:port('legacyReviewEvaluated'),legacyReviewDecidedLetter:port('legacyReviewDecidedLetter'),legacyReviewReminder:port('legacyReviewReminder'),
@@ -18,7 +18,7 @@ const readers:NotificationRecipientReaders<Probe>={
 };
 const registry=createNotificationRegistry(readers),recipes=Object.entries(registry).flatMap(([eventType,value])=>(Array.isArray(value)?value:[value]).map(spec=>({eventType,spec})));
 const eligible=(spec:NotificationSpec<Probe>):NotificationPayload=>spec.recipientGuard?{[spec.recipientGuard.field]:spec.recipientGuard.not?false:true}:{};
-const unsupported=new Set(['bulkJobInitiator','rewardPreparationReleased','rewardPreparationChanged','rewardPreparationInvalidated','probation','leaveSubmitted','leaveCancellationSubmitted','overtimeSubmitted','readinessNudge','peerFeedback','assessmentReviewTask','assessmentKpiApproval','legacyReviewStarted','legacyReviewEvaluated','legacyReviewDecidedLetter','legacyReviewReminder','leaveEscalation','automaticReviewChase','missingClockFollowup','passportFollowup','lifecycleFollowup','employeeLoopDigest','approvalChase']);
+const unsupported=new Set(['bulkJobInitiator','rewardConfigChanged','rewardPreparationReleased','rewardPreparationChanged','rewardPreparationInvalidated','probation','leaveSubmitted','leaveCancellationSubmitted','overtimeSubmitted','readinessNudge','peerFeedback','assessmentReviewTask','assessmentKpiApproval','legacyReviewStarted','legacyReviewEvaluated','legacyReviewDecidedLetter','legacyReviewReminder','leaveEscalation','automaticReviewChase','missingClockFollowup','passportFollowup','lifecycleFollowup','employeeLoopDigest','approvalChase']);
 
 // Reviewed domain identities, independent of the registry's runtime count/factory expansion.
 const expectedRecipeKeys=[
@@ -85,6 +85,7 @@ const expectedRecipeKeys=[
  'reward-unit.routed|rewards.review',
  'reward-unit.upload-confirmed|rewards.upload-ready',
  'reward-unit.upload-replaced|rewards.upload-check',
+ 'rewards-config.changed|rewards.config-changed',
  'teras-loop.action.applied|teras-loop.clock-out-set',
  'teras-loop.cut-off-reminder|teras-loop.cut-off-reminder',
  'teras-loop.employee-digest-queued|teras-loop.employee-digest',

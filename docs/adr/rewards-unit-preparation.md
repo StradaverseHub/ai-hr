@@ -2,6 +2,8 @@
 
 Status: implementation candidate for approved feedback a24cb308; verification and release are separate.
 
+> Superseded in part on 12 November 2026 by [Rewards direct configuration](2026-11-12-rewards-direct-configuration.md) (board 60f1fdcd): release no longer needs a second Group Rewards person. Basis, step proofs, locked set-up, controlled change and legacy markers stay.
+
 ## Context
 
 A unit review currently combines Group Rewards preparation and reviewer work. Approvers can encounter partial figures, while preparation has no single six-step release record. The approved change requires a second Group Rewards person to release a prepared review and requires controlled, explained changes after release.
