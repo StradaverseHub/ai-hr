@@ -449,7 +449,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
       // 37f82412: pay position before and after (basis points of the approved midpoint), worked out here so
       // the screen never does pay arithmetic. Null where the figures are hidden or no midpoint is configured.
       rows: visible.map(e=>{const {uploadedAward:_award,groupEcDirectReport:_groupEc,restrictedHidden:_hidden,restrictedReadOnly:_readOnly,...safe}=e as typeof e&{uploadedAward?:unknown;groupEcDirectReport?:boolean;restrictedHidden?:boolean;restrictedReadOnly?:boolean};
-        const hiddenSenior=!maySeeSeniorAmounts(roles)&&isSeniorPlanMember(unit.policy,e.facts,e.source.grade);
+        const hiddenSenior=!seniorAmounts&&isSeniorPlanMember(unit.policy,e.facts,e.source.grade);
         const midpoint=unit.policy.ranges?.[e.recommendation.promotionGrade??e.source.grade]?.[1];
         const position=(cents:number)=>hiddenSenior||!midpoint?null:ratio(cents,10000,midpoint,'nearest');
         // b945f0cc: position in range (below / within / above) before and after, for the single-person off-cycle view.
