@@ -52,9 +52,12 @@ if [ "$TARGET_IN_FILE" != "$TARGET" ]; then
 fi
 HEAD_SHA="$(git rev-parse HEAD)"
 git push --quiet origin "HEAD:refs/heads/$BRANCH"
-echo "candidate: $BRANCH @ $HEAD_SHA (release target $TARGET)"
-gh workflow run alpha-focused-checks.yml --repo "$REPO" --ref "$BRANCH" \
+echo "candidate: $BRANCH @ $HEAD_SHA (release target $TARGET); controller ${AIHR_REHEARSAL_CONTROLLER_REF:-$BRANCH}"
+# The controller (workflow and .github/ci) comes from AIHR_REHEARSAL_CONTROLLER_REF, default the candidate branch;
+# docs/SCALE-AND-RELEASE-RULES.md rule 16 dispatches focused runs from main.
+CONTROLLER="${AIHR_REHEARSAL_CONTROLLER_REF:-$BRANCH}"
+gh workflow run alpha-focused-checks.yml --repo "$REPO" --ref "$CONTROLLER" \
   -f candidate_ref="$BRANCH" -f expected_sha="$HEAD_SHA" -f selected_tests='["test/production-upgrade-rehearsal.test.ts"]'
 sleep 8
-gh run list --repo "$REPO" --workflow alpha-focused-checks.yml --branch "$BRANCH" --limit 1 --json databaseId,url,status \
+gh run list --repo "$REPO" --workflow alpha-focused-checks.yml --branch "$CONTROLLER" --limit 1 --json databaseId,url,status \
   --jq '.[0] | "run \(.databaseId) \(.status) \(.url)"'
