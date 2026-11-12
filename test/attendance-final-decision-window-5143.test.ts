@@ -95,9 +95,10 @@ describe('request-bound final decision window',()=>{
   for(const who of [f.crossBoss,colleague]){
    const forged=await withTenant(who.ctx,async tx=>{
     await tx.execute(sql`select set_config('app.attendance_workflow_effect',${f.crossId},true)`);
+    await tx.execute(sql`select set_config('app.attendance_final_window',${f.crossId+'/'+f.crossApplicant.employmentId+'/'+'0'.repeat(32)},true)`);
     const [row]=await tx.execute<{ok:boolean}>(sql`select app.can_see_employment(${f.crossApplicant.employmentId}::uuid) as ok`);
     const people=await tx.select({id:schema.employment.id}).from(schema.employment).where(eq(schema.employment.id,f.crossApplicant.employmentId));
-    await tx.execute(sql`select set_config('app.attendance_workflow_effect','',true)`);
+    await tx.execute(sql`select set_config('app.attendance_workflow_effect','',true),set_config('app.attendance_final_window','',true)`);
     const [opened]=await tx.execute<{ok:boolean}>(sql`select app.attendance_workflow_open_final_window(${f.crossId}::uuid) as ok`);
     return {visible:row.ok,people:people.length,opened:opened.ok};
    });
@@ -115,10 +116,10 @@ describe('request-bound final decision window',()=>{
    await tx.execute(sql`savepoint window_probe`);
    await decideAttendanceCorrection(f.crossBoss.ctx,{correctionId:f.crossId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'},tx);
    await tx.execute(sql`rollback to savepoint window_probe`);
-   await tx.execute(sql`select set_config('app.attendance_workflow_effect',${f.crossId},true)`);
+   await tx.execute(sql`select set_config('app.attendance_final_window',${f.crossId+'/'+f.crossApplicant.employmentId+'/'+'0'.repeat(32)},true)`);
    const [row]=await tx.execute<{ok:boolean}>(sql`select app.can_see_employment(${f.crossApplicant.employmentId}::uuid) as ok`);
-   await tx.execute(sql`select set_config('app.attendance_workflow_effect','',true)`);
-   return row.ok;
+   const [opened]=await tx.execute<{ok:boolean}>(sql`select set_config('app.attendance_final_window','',true),app.attendance_workflow_open_final_window(${f.crossId}::uuid) as ok`);
+   return row.ok||opened.ok;
   });
   expect(outcome).toBe(false);
   expect((await correction(f.crossId)).status).toBe('pending');
@@ -138,5 +139,49 @@ describe('request-bound final decision window',()=>{
   expect((await correction(id)).status).toBe('approved');
   expect(await owner.db.select().from(schema.attendanceWorkflowParticipantDecision)).toHaveLength(1);
   for(const who of [x,y])expect(await reads(who,applicant)).toEqual(nothing);
+ });
+ it('a same-company approver never opens the window; a cross-company approval opens it once and it cannot reopen',async()=>{
+  const f=await pair('irregularity');
+  const spent=async()=>(await owner.client`select count(*)::int as n from app.attendance_final_window_spent`)[0].n;
+  await approve(f.localBoss,f.localId);
+  expect(await spent()).toBe(0);
+  const reopened=await withTenant(f.crossBoss.ctx,async tx=>{
+   await decideAttendanceCorrection(f.crossBoss.ctx,{correctionId:f.crossId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'},tx);
+   const [row]=await tx.execute<{ok:boolean;visible:boolean}>(sql`select app.attendance_workflow_open_final_window(${f.crossId}::uuid) as ok,app.can_see_employment(${f.crossApplicant.employmentId}::uuid) as visible`);
+   return row;
+  });
+  expect(reopened).toEqual({ok:false,visible:false});
+  expect(await spent()).toBe(1);
+ });
+ it('refuses the window for a final level that is not yet complete',async()=>{
+  const b=await company('Fictional Everyone company');
+  const applicant=await actor('Fictional Everyone applicant');
+  const x=await actor('Fictional Everyone X',{companyId:b.id,departmentId:b.departmentId,roleCompanyId:b.id}),y=await actor('Fictional Everyone Y',{companyId:b.id,departmentId:b.departmentId,roleCompanyId:b.id});
+  await saveAttendanceWorkflow(adminCtx(base),workflow([applicant],[level([{kind:'specific_employee',employmentIds:[x.employmentId,y.employmentId]}],'all_required')],'irregularity'));
+  const id=await file(applicant,'irregularity');
+  const opened=await withTenant(x.ctx,async tx=>{
+   await decideAttendanceCorrection(x.ctx,{correctionId:id,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'},tx);
+   return (await tx.execute<{ok:boolean}>(sql`select app.attendance_workflow_open_final_window(${id}::uuid) as ok`))[0].ok;
+  });
+  expect(opened).toBe(false);
+  expect((await correction(id)).status).toBe('pending');
+ });
+ it('returns exactly the reviewed 2105 reader result when no window is installed',async()=>{
+  const f=await pair('irregularity');
+  const {REVIEWED_VISIBILITY_PREDECESSOR}=await import('./helpers/reviewed-visibility');
+  for(const who of [f.crossBoss,f.localBoss]){
+   let compared:{current:string[];reviewed:string[]}|null=null;
+   await owner.client.begin(async tx=>{
+    await tx`select set_config('app.tenant_id',${base.tenantId},true),set_config('app.user_id',${who.userId},true),set_config('app.roles','employee',true),set_config('app.grants','[]',true)`;
+    const [current]=await tx<{ids:string[]}[]>`select app.visible_employment_ids() as ids`;
+    await tx.unsafe(REVIEWED_VISIBILITY_PREDECESSOR);
+    const [reviewed]=await tx<{ids:string[]}[]>`select app.visible_employment_ids() as ids`;
+    compared={current:current.ids,reviewed:reviewed.ids};
+    throw new Error('discard the reviewed reader');
+   }).catch((error:Error)=>{if(error.message!=='discard the reviewed reader')throw error;});
+   expect(compared).not.toBeNull();expect(compared!.current).toEqual(compared!.reviewed);
+   if(who===f.localBoss)expect(compared!.current).toContain(f.localApplicant.employmentId);
+   else expect(compared!.current).not.toContain(f.crossApplicant.employmentId);
+  }
  });
 });

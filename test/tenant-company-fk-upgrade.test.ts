@@ -208,6 +208,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5141_attendance_workflow_escalation',
    '5142_attendance_on_behalf',
    '5143_attendance_final_decision_window',
+   '5144_attendance_lane_security_review',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -242,6 +243,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_stage_clock()','app.attendance_correction_submitter_guard()',
    // 5143: the request-bound final-decision read window proof, called only by the owner-run visibility functions.
    'app.attendance_effect_window_employment()',
+   // 5144: the window token and proof (owner only).
+   'app.attendance_final_window_token(uuid,uuid)','app.attendance_final_window_prove(uuid)',
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -271,10 +274,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.access_profile_policy_value_lock()','app.access_workforce_employment_permitted(uuid,uuid,timestamp with time zone,uuid,uuid[])','app.access_workforce_list_facts()',
    'app.access_workforce_list_rows_for_ids(uuid[])','app.access_workforce_permitted_companies(text)','app.access_workforce_picker_facts(uuid[])',
    'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.assistant_rewards_calendar_presentation_choices_v1()',
-   'app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()','app.attendance_clock_policy_history(uuid,uuid)','app.attendance_correction_submitter_guard()','app.attendance_effect_window_employment()',
+   'app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()','app.attendance_clock_policy_history(uuid,uuid)','app.attendance_correction_submitter_guard()','app.attendance_effect_window_employment()','app.attendance_final_window_prove(uuid)','app.attendance_final_window_token(uuid,uuid)',
    'app.attendance_frozen_actor_identity_keys(jsonb,text)','app.attendance_pending_visible_headers(uuid)',
    // daa76ed4/96a54ed2 (5140-5142): resolution, escalation and on-behalf owners.
-   'app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_escalate(uuid,date)','app.attendance_workflow_escalation_due(date,date,uuid,integer)',
+   'app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_close_final_window()','app.attendance_workflow_escalate(uuid,date)','app.attendance_workflow_escalation_due(date,date,uuid,integer)',
    'app.attendance_workflow_escalation_written(uuid,uuid,integer)','app.attendance_workflow_hierarchy_v5(uuid,integer)',
    'app.attendance_workflow_on_behalf_allowed(uuid,integer,text)','app.attendance_workflow_on_behalf_slot(uuid,uuid)','app.attendance_workflow_open_final_window(uuid)',
    // Board window 4 (5124): the preview binding trigger (owner only) and the superior diagnostic.
@@ -468,6 +471,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'attendance_workflow_preview':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    // daa76ed4 (5141): immutable escalation history, read-only to the application role.
    'attendance_workflow_escalation':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   // 5144: owner-only window key and spent-transaction record.
+   'app.attendance_final_window_key':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.attendance_final_window_spent':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_administrator_assert_pending':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_administrator_guard':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_capability_publication':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},

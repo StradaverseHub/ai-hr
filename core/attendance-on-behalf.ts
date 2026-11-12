@@ -125,12 +125,14 @@ export async function attendanceOnBehalfApprovals(ctx: SessionContext, designate
   return withTenant(ctx, async tx => {
     const designated = await attendanceOnBehalfSubjectTx(tx, ctx, 'approve', designatedEmploymentId);
     if (!designated) return null;
+    // Narrowed to applications waiting at their current level for this designated approver (containment on the frozen
+    // level), authorised in the same statement, then paged: no fixed candidate cap ahead of the authority filter.
     const rows = await tx.execute<{ correctionId: string; slot: string; stageIndex: number }>(sql`select x.correction_id as "correctionId",x.authority->>'slot' as slot,x.current_stage as "stageIndex" from (
       select w.correction_id,w.current_stage,c.created_at,app.attendance_workflow_on_behalf_slot(w.correction_id,${designated.employmentId}::uuid) as authority
       from attendance_workflow_request w join attendance_correction c on c.id=w.correction_id and c.tenant_id=w.tenant_id
       where w.tenant_id=app.current_tenant_id() and w.routing_version in (3,4) and c.status='pending'
        and w.current_stage<jsonb_array_length(w.stages) and w.stages->w.current_stage->'approvers' @> ${JSON.stringify([{ employmentId: designated.employmentId }])}::jsonb
-      order by c.created_at,c.id limit 400) x where x.authority is not null order by x.created_at,x.correction_id
+      ) x where x.authority is not null order by x.created_at,x.correction_id
       limit ${ATTENDANCE_ON_BEHALF_PAGE_SIZE + 1} offset ${page * ATTENDANCE_ON_BEHALF_PAGE_SIZE}`);
     return { designated, rows: rows.slice(0, ATTENDANCE_ON_BEHALF_PAGE_SIZE), more: rows.length > ATTENDANCE_ON_BEHALF_PAGE_SIZE };
   }, { readOnlySnapshot: true });

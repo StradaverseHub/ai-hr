@@ -152,6 +152,13 @@ describe('approvers whose account is pending activation',()=>{
 
 describe('Escalation Approval',()=>{
  const today=()=>todayInKualaLumpur();
+ // 5144: the escalation owner never accepts a date ahead of the HR-local calendar, so time passes by moving the
+ // stored stage clock back through the owner connection (triggers off), never through the app role.
+ async function backdate(requestId:string,days:number){
+  await owner.client.begin(async tx=>{await tx`set local session_replication_role = replica`;
+   await tx`update attendance_workflow_request set escalate_on=escalate_on-${days}::integer,stage_reached_at=stage_reached_at-make_interval(days=>${days}::integer) where id=${requestId}::uuid and escalate_on is not null`;});
+ }
+ const run=(opts:{batchSize?:number}={})=>sweepAttendanceWorkflowEscalations(system(),opts);
  async function threeLevels(patch:{firstMode?:AttendanceV4Level['mode'];first?:AttendanceV4Level['sources']}={}){
   const applicant=await actor('Fictional escalation applicant'),one=await actor('Fictional Level 1 superior'),two=await actor('Fictional Level 2 head'),hr=await actor('Fictional Level 3 HR',{role:'hr_admin'});
   await reports(applicant,one);await reports(one,two);
@@ -167,13 +174,17 @@ describe('Escalation Approval',()=>{
   const f=await threeLevels();
   expect(f.request.stages.map(stage=>stage.escalateAfterDays)).toEqual([3,5,undefined]);
   expect(f.request.escalateOn).toBe(addDaysIso(today(),4));
-  expect(await sweepAttendanceWorkflowEscalations(system(),{today:addDaysIso(today(),3)})).toMatchObject({escalated:0});
-  expect(await sweepAttendanceWorkflowEscalations(system(),{today:addDaysIso(today(),4)})).toMatchObject({escalated:1,failed:0});
-  expect(await sweepAttendanceWorkflowEscalations(system(),{today:addDaysIso(today(),4)})).toMatchObject({escalated:0});
+  // A date ahead of today is clamped: nothing is due yet.
+  expect(await sweepAttendanceWorkflowEscalations(system(),{today:addDaysIso(today(),30)})).toMatchObject({escalated:0});
+  await backdate(f.request.id,3);
+  expect(await run()).toMatchObject({escalated:0});
+  await backdate(f.request.id,1);
+  expect(await run()).toMatchObject({escalated:1,failed:0});
+  expect(await run()).toMatchObject({escalated:0});
   let request=await requestOf(f.id);
   expect(request.currentStage).toBe(1);expect(request.escalateOn).toBe(addDaysIso(today(),6));
   const [first]=await escalationsOf(f.request.id);
-  expect(first).toMatchObject({stageIndex:0,nextStageIndex:1,escalateAfterDays:3,dueOn:addDaysIso(today(),4),actor:'system',reason:'no_decision_within_period',partialDecisions:[]});
+  expect(first).toMatchObject({stageIndex:0,nextStageIndex:1,escalateAfterDays:3,dueOn:today(),actor:'system',reason:'no_decision_within_period',partialDecisions:[]});
   expect(first.fromParticipants.map(a=>a.employmentId)).toEqual([f.one.employmentId]);
   expect(first.nextParticipants.map(a=>a.employmentId)).toEqual([f.two.employmentId]);
   const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,f.id),eq(schema.domainEvent.eventType,ATTENDANCE_ESCALATION_EVENT)));
@@ -181,10 +192,11 @@ describe('Escalation Approval',()=>{
   // The earlier approver can still read it but can no longer act.
   expect(await readsApplication(f.one,f.id)).toEqual([{id:f.id}]);
   await expect(decide(f.one,f.id,0,'0:0')).rejects.toThrow();
-  await sweepAttendanceWorkflowEscalations(system(),{today:addDaysIso(today(),6)});
+  await backdate(f.request.id,6);
+  await run();
   request=await requestOf(f.id);
   expect(request.currentStage).toBe(2);expect(request.escalateOn).toBeNull();
-  expect(await sweepAttendanceWorkflowEscalations(system(),{today:addDaysIso(today(),400)})).toMatchObject({escalated:0});
+  expect(await run()).toMatchObject({escalated:0});
   expect((await requestOf(f.id)).currentStage).toBe(2);
   expect(await statusOf(f.id)).toBe('pending');
   expect(await completionsOf(f.request.id)).toEqual([]);
@@ -193,15 +205,16 @@ describe('Escalation Approval',()=>{
   expect(await statusOf(f.id)).toBe('approved');
  });
  it('concurrent runners record one escalation for the level',async()=>{
-  const f=await threeLevels(),due=addDaysIso(today(),4);
-  const results=await Promise.all([1,2,3].map(()=>sweepAttendanceWorkflowEscalations(system(),{today:due})));
+  const f=await threeLevels();await backdate(f.request.id,4);
+  const results=await Promise.all([1,2,3].map(()=>run()));
   expect(results.reduce((n,r)=>n+r.escalated,0)).toBe(1);
   expect((await escalationsOf(f.request.id)).map(e=>e.stageIndex)).toEqual([0]);
   expect((await requestOf(f.id)).currentStage).toBe(1);
  });
  it('a racing decision and escalation have exactly one winner',async()=>{
   const f=await threeLevels();
-  const [decision,sweep]=await Promise.allSettled([decide(f.one,f.id,0,'0:0'),sweepAttendanceWorkflowEscalations(system(),{today:addDaysIso(today(),4)})]);
+  await backdate(f.request.id,4);
+  const [decision,sweep]=await Promise.allSettled([decide(f.one,f.id,0,'0:0'),run()]);
   const decided=decision.status==='fulfilled',escalated=sweep.status==='fulfilled'&&sweep.value.escalated===1;
   expect(decided!==escalated).toBe(true);
   expect((await requestOf(f.id)).currentStage).toBe(1);
@@ -213,7 +226,8 @@ describe('Escalation Approval',()=>{
   const f=await threeLevels({first:[named(x,y)],firstMode:'all_required'});
   await decide(x,f.id,0,'0:0');
   expect((await requestOf(f.id)).currentStage).toBe(0);
-  expect(await sweepAttendanceWorkflowEscalations(system(),{today:addDaysIso(today(),4)})).toMatchObject({escalated:1});
+  await backdate(f.request.id,4);
+  expect(await run()).toMatchObject({escalated:1});
   const [row]=await escalationsOf(f.request.id);
   expect(row.partialDecisions).toEqual([expect.objectContaining({slot:'0:0',decision:'approved',actualPersonId:x.personId})]);
   expect(await completionsOf(f.request.id)).toEqual([]);
@@ -224,7 +238,8 @@ describe('Escalation Approval',()=>{
  it('a rejected or cancelled request never escalates, and its due date is cleared',async()=>{
   const cancelled=await threeLevels();
   await cancelOwnAttendanceCorrection(cancelled.applicant.ctx,{correctionId:cancelled.id});
-  expect(await sweepAttendanceWorkflowEscalations(system(),{today:addDaysIso(today(),30)})).toMatchObject({escalated:0,failed:0});
+  await backdate(cancelled.request.id,30);
+  expect(await run()).toMatchObject({escalated:0,failed:0});
   expect(await escalationsOf(cancelled.request.id)).toEqual([]);
   expect((await requestOf(cancelled.id))).toMatchObject({currentStage:0,escalateOn:null});
  });
@@ -233,7 +248,7 @@ describe('Escalation Approval',()=>{
   await saveAttendanceWorkflow(adminCtx(base),workflow([applicant],[level([superior(1)],{escalateAfterDays:2}),level([superior(2)])]));
   const id=await submit(applicant),request=await requestOf(id);
   expect(request.stages).toHaveLength(1);expect(request.escalateOn).toBeNull();
-  expect(await sweepAttendanceWorkflowEscalations(system(),{today:addDaysIso(today(),30)})).toMatchObject({escalated:0});
+  expect(await run()).toMatchObject({escalated:0});
   expect(()=>parseAttendanceV4Route({routingVersion:4,stages:[{name:'Level 1',mode:'any_one',sources:[superior(1)],hrAlternative:false,escalateAfterDays:2}],cc:[]})).toThrow();
   for(const days of [0,366,1.5,'3'])expect(()=>parseAttendanceV4Route({routingVersion:4,stages:[{name:'Level 1',mode:'any_one',sources:[superior(1)],hrAlternative:false,escalateAfterDays:days},{name:'Level 2',mode:'any_one',sources:[superior(2)],hrAlternative:false}],cc:[]})).toThrow();
  });
@@ -256,10 +271,11 @@ describe('Escalation Approval',()=>{
    await saveAttendanceWorkflow(adminCtx(base),workflow([applicant],[level([superior(1)],{escalateAfterDays:1}),level([named(await actor(`Fictional runner HR ${index+1}`,{role:'hr_admin'}))])],{companyId:entry.id}));
    ids.push(await submit(applicant));
   }
-  const result=await sweepAttendanceWorkflowEscalations(system(),{today:addDaysIso(today(),2),batchSize:25});
+  await owner.client.begin(async tx=>{await tx`set local session_replication_role = replica`;await tx`update attendance_workflow_request set escalate_on=escalate_on-2 where escalate_on is not null`;});
+  const result=await run({batchSize:25});
   expect(result).toMatchObject({escalated:70,examined:70,failed:0,batches:3,cappedOut:false});
   const rows=await owner.db.select({requestId:schema.attendanceWorkflowEscalation.requestId}).from(schema.attendanceWorkflowEscalation);
   expect(new Set(rows.map(r=>r.requestId)).size).toBe(70);
-  expect(await sweepAttendanceWorkflowEscalations(system(),{today:addDaysIso(today(),2),batchSize:25})).toMatchObject({escalated:0});
+  expect(await run({batchSize:25})).toMatchObject({escalated:0});
  },300_000);
 });

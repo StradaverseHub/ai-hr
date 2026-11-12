@@ -99,6 +99,25 @@ describe('Request On Behalf',()=>{
  });
 });
 
+describe('per-company permission keys',()=>{
+ it('a role counts only for the company it covers: HR in one company does not lift a superior\'s denial in another',async()=>{
+  const other=await company('Fictional company B with its own override');
+  const user=await actor('Fictional HR-in-A, superior-in-B',{role:'hr_admin',roleCompanyId:base.companyId,companyId:other.id,departmentId:other.departmentId});
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.userId!,companyId:other.id,role:'manager'});
+  const ctx:SessionContext={...user.ctx,roles:['hr_admin','manager'],grants:[{role:'hr_admin',companyId:base.companyId},{role:'manager',companyId:other.id}]};
+  const report=await actor('Fictional report in B',{companyId:other.id,departmentId:other.departmentId});
+  await setReportingLine(adminCtx(base),{subordinateEmploymentId:report.employmentId,managerEmploymentId:user.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
+  await owner.db.insert(schema.payrollPermissionGrant).values([
+   {tenantId:base.tenantId,permissionKey:'attendance.request_on_behalf',role:'manager',allowed:false,companyId:other.id},
+   {tenantId:base.tenantId,permissionKey:'attendance.request_on_behalf',role:'hr_admin',allowed:true,companyId:other.id}]);
+  expect(await attendanceOnBehalfSubject(ctx,'request',report.employmentId)).toBeNull();
+  await owner.db.delete(schema.payrollPermissionGrant).where(eq(schema.payrollPermissionGrant.role,'manager'));
+  expect(await attendanceOnBehalfSubject(ctx,'request',report.employmentId)).toBeNull(); // hr_admin is not held in B
+  await owner.db.insert(schema.payrollPermissionGrant).values({tenantId:base.tenantId,permissionKey:'attendance.request_on_behalf',role:'manager',allowed:true,companyId:other.id});
+  expect(await attendanceOnBehalfSubject(ctx,'request',report.employmentId)).toMatchObject({employmentId:report.employmentId});
+ });
+});
+
 describe('Approve On Behalf',()=>{
  async function routed(stages:(people:{a:Actor;b:Actor;c:Actor})=>AttendanceV4Level[]){
   // B is an HR administrator so a final approval by B has the calculation access the final effect needs.

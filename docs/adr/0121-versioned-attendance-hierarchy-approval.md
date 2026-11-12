@@ -208,3 +208,18 @@ table's own read policy) with NULL. With no hint installed the branch costs one 
 The TypeScript runs only the fixed Attendance effect inside the window, returns the status, then clears the hint and
 re-checks that the caller is back to their normal visibility before the transaction may commit. This supersedes the
 earlier statements in this ADR that a participant without calculation visibility always receives the HR handoff.
+
+### Security review follow-up (migration 5144, 12 November 2026)
+
+The final-decision window now has its own setting, `app.attendance_final_window`, separate from the per-effect hint.
+Only `app.attendance_workflow_open_final_window` sets it, after the full proof. The proof requires the caller's level
+to be complete with that outcome, and accepts a rejection only when it is OT-bearing. The setting holds a token bound
+to the transaction, correction, subject and caller and keyed by an owner-only secret. Later calls verify the token
+(one indexed row) and do not re-run the proof.
+`app.attendance_workflow_close_final_window` makes the window one-shot by recording the transaction in an owner-only
+table, so a replayed value cannot reopen it. The branch is last in `can_see_employment`.
+`visible_employment_ids` runs the 2105 statement unchanged and merges the subject only when the setting is present.
+Both functions run with `search_path = pg_catalog, public, pg_temp`. The window is a visibility predicate shared by
+read and write policies. Writes made inside it stay confined by the existing exact-day effect policies and by its
+immediate one-shot close. A read-only split would require changing every FOR ALL policy and is not made.
+Escalation clamps `as_of` to the HR-local date.

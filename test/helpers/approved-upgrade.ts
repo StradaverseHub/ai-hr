@@ -146,9 +146,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4541,when:1793330004841,tag:'5141_attendance_workflow_escalation'},
  {idx:4542,when:1793330004842,tag:'5142_attendance_on_behalf'},
  {idx:4543,when:1793330004843,tag:'5143_attendance_final_decision_window'},
+ {idx:4544,when:1793330004844,tag:'5144_attendance_lane_security_review'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5144_attendance_lane_security_review':'a8b3b68d4ff8faa0f3f69f62089be537c1c8a7ba4522aefa5c3a5e8d314569ed',
  '5143_attendance_final_decision_window':'e048acb77ceb8115bebc25365c5f0b7a53a9981c7b2533312c0c460e5f6dca9d',
  '5142_attendance_on_behalf':'f6e733a3388ff70ffde812ce669b42b6a55decb3951584a8d8d420100d061125',
  '5141_attendance_workflow_escalation':'b578fbc0588c783b9091ae12753701e5e3322fc3fe53cbae60e5da18ce66ddde',

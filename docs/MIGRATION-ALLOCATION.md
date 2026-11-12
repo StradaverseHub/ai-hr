@@ -2,7 +2,7 @@
 
 Branch `claude/irwin-attendance-workflow-20261112` (base `origin/alpha` `f84f4c567`) uses its reserved draft block
 5140–5149 (idx 4540–4549, when 1793330004840–1793330004849, shared offset). `5140_attendance_workflow_cross_company_pending`
-and `5141_attendance_workflow_escalation` (daa76ed4); the on-behalf migration of 96a54ed2 follows at 5142. The
+and `5141_attendance_workflow_escalation` (daa76ed4); the on-behalf migration of 96a54ed2 is 5142, the owner-decided final-decision window 5143 and its security-review follow-up 5144. The
 coordinator reconciles final numbering, above every installed watermark, at integration. Never applied anywhere.
 
 # Irwin board items combined release rebased onto release candidate 3 — 12 November 2026 MYT (unapplied, renumbered)
