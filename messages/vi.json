@@ -37117,7 +37117,7 @@
     "bonusSpread": "Phân bố số tháng lương thưởng",
     "bonusSpreadHelp": "Phân nhóm nhân viên đủ điều kiện theo số tháng lương cơ bản được thưởng.",
     "poolByUnit": "Mức sử dụng quỹ thưởng theo đơn vị",
-    "poolHelp": "Đơn vị sử dụng quá 100% quỹ không thể gửi duyệt, trừ khi được miễn áp dụng giới hạn.",
+    "poolHelp": "Đơn vị chi vượt quỹ không thể gửi duyệt, trừ khi được miễn áp dụng giới hạn.",
     "bonusByGradeBand": "Số tháng lương thưởng theo nhóm cấp bậc",
     "breakdown": "Phân tích theo",
     "bonusFootnote": "Số tháng lương thưởng đã tính hệ số thưởng hoặc hệ số chi nhánh và tỷ lệ theo thời gian làm việc. Tổng chi trả bao gồm các khoản trả một lần. Số liệu quỹ thưởng và lợi nhuận sau thuế (PAT) được quản lý theo đơn vị.",

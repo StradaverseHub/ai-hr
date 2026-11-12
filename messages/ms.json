@@ -37117,7 +37117,7 @@
     "bonusSpread": "Taburan bulan bonus",
     "bonusSpreadHelp": "Bilangan kakitangan yang layak mengikut bilangan bulan gaji pokok yang dibayar sebagai bonus.",
     "poolByUnit": "Penggunaan peruntukan mengikut unit",
-    "poolHelp": "Penyerahan melebihi 100% hanya dibenarkan untuk unit yang mendapat pengecualian.",
+    "poolHelp": "Perbelanjaan melebihi kumpulan tidak boleh dihantar kecuali unit mendapat pengecualian.",
     "bonusByGradeBand": "Bulan bonus mengikut kumpulan gred",
     "breakdown": "Pecahan mengikut",
     "bonusFootnote": "Bulan bonus mengambil kira pengganda atau faktor cawangan serta pelarasan prorata. Jumlah bayaran merangkumi bayaran sekali gus. Angka peruntukan dan PAT direkodkan pada peringkat unit.",

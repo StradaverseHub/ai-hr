@@ -37117,7 +37117,7 @@
     "bonusSpread": "Spread of bonus months",
     "bonusSpreadHelp": "Eligible staff by months of basic salary paid.",
     "poolByUnit": "Pool utilisation by unit",
-    "poolHelp": "Over 100% cannot be submitted unless the unit is exempt.",
+    "poolHelp": "Spending over the pool cannot be submitted unless the unit is exempt.",
     "bonusByGradeBand": "Bonus months by grade band",
     "breakdown": "Break down by",
     "bonusFootnote": "Bonus months include the multiplier or branch factor and proration. Total payout includes lump sums. Pool and PAT figures are held at unit level.",
