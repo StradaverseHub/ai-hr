@@ -42,7 +42,7 @@ import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validate
 import { rotationLookupFrom, rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
 import { isDeepStrictEqual } from 'node:util';
 import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
-import { prepareAttendanceWorkflowSnapshotTx, snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, actionableAttendanceApplicationIdsTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
+import { prepareAttendanceWorkflowSnapshotTx, snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, actionableAttendanceApplicationIdsTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx, AttendanceWorkflowError } from './attendance-workflow';
 import { attendanceApplicationType } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { and, asc, desc, eq, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql, type Column, type SQL, type Table } from 'drizzle-orm';
@@ -4739,7 +4739,9 @@ export function withClockingImportWrite<T>(ctx: SessionContext, write: (tx: Tx) 
 
 export async function decideAttendanceCorrection(
   ctx: SessionContext,
-  p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; remarks?: string; expectedStageIndex?: number; expectedParticipantSlot?: string; deciderEmploymentId?: string; today?: string },
+  p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; remarks?: string; expectedStageIndex?: number; expectedParticipantSlot?: string; deciderEmploymentId?: string; today?: string;
+    /** 96a54ed2 Approve On Behalf: the designated approver this decision is taken for (per-level workflows only). */
+    onBehalfOfEmploymentId?: string },
   existingTx?: Tx,
 ) {
   p = structuredClone(p); ctx = captureAttendanceContext(ctx);
@@ -4749,6 +4751,9 @@ export async function decideAttendanceCorrection(
     const cor=original?.adminAmendment?{...original,proposedCheckIn:original.adminAmendment.checkIn,proposedCheckOut:original.adminAmendment.checkOut}:original;
     if (!cor) throw new Error('correction request not found (or not visible)');
     if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
+    // 96a54ed2: whoever filed an application on the employee's behalf can never also decide it (any routing version).
+    if (cor.submittedByPersonId && ctx.personId && cor.submittedByPersonId === ctx.personId)
+      throw new AttendanceWorkflowError('notApprover', 'You filed this application on the employee’s behalf, so another approver must decide it.');
 
     const rejectReason = p.decision === 'rejected' ? (p.rejectReason ?? '').trim() : null;
     const validationError = !['approved', 'rejected'].includes(p.decision)
@@ -4762,7 +4767,7 @@ export async function decideAttendanceCorrection(
       await assertCanDecideAttendanceApplicationTx(tx, ctx, cor.id, cor.employmentId);
       throw validationError;
     }
-    const workflowStage = await decideAttendanceWorkflowStageTx(tx, ctx, { correctionId: cor.id, employmentId: cor.employmentId, decision: p.decision, remarks: p.decision === 'rejected' ? rejectReason ?? undefined : p.remarks, expectedStageIndex: p.expectedStageIndex, expectedParticipantSlot: p.expectedParticipantSlot });
+    const workflowStage = await decideAttendanceWorkflowStageTx(tx, ctx, { correctionId: cor.id, employmentId: cor.employmentId, decision: p.decision, remarks: p.decision === 'rejected' ? rejectReason ?? undefined : p.remarks, expectedStageIndex: p.expectedStageIndex, expectedParticipantSlot: p.expectedParticipantSlot, ...(p.onBehalfOfEmploymentId !== undefined ? { onBehalfOfEmploymentId: p.onBehalfOfEmploymentId } : {}) });
     if (rejectionSubject !== undefined && (workflowStage.versionedFinalEffect || workflowStage.delegatedFinalStageIndex != null)) {
       throw retryAttendanceRejectionExclusively;
     }

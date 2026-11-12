@@ -5,12 +5,13 @@ import {getTableColumns as templateColumnsOf, and, asc, desc, eq, inArray, isNul
 import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant,assertModuleGate } from './module-gate';
 import { actorOf, appendEvent, type AppendEventArgs } from '../db/events';
-import { attendanceWorkflowPreview as previewSnapshot, company, attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, attendanceWorkflowReassignment as reassignment, attendanceWorkflowParticipantDecision as participantDecision, attendanceWorkflowParticipantReassignment as participantReassignment, attendanceWorkflowEscalation as escalation, domainEvent, employment, person, department, businessUnit, jobGrade, profileOption, position } from '../db/schema';
+import { attendanceWorkflowPreview as previewSnapshot, company, attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, attendanceWorkflowReassignment as reassignment, attendanceWorkflowParticipantDecision as participantDecision, attendanceWorkflowParticipantReassignment as participantReassignment, attendanceWorkflowEscalation as escalation, attendanceCorrection, domainEvent, employment, person, department, businessUnit, jobGrade, profileOption, position } from '../db/schema';
 import { approversOf } from '../lib/leave-approval-kinds';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { resolveOrgCriteriaTargets } from './org-criteria';
 import { ownPersonPredicate } from './own-person';
 import { assertCanDecide,decisionEmploymentAuthorityTx } from './approvals';
+import { canApproveOnBehalfForCompanyTx } from './attendance-on-behalf-permission';
 import { scopeOf } from '../lib/delegation-scope';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
 import { labelUsableByCompany } from './system-labels';
@@ -379,6 +380,12 @@ export async function ownAttendanceSubmissionRoute(ctx:SessionContext, employmen
       ownPersonPredicate(ctx),sql`app.principal_snapshot_current()`,
     )).limit(1);
     if(!subject)throw new AttendanceWorkflowError('scope','The employee is not visible.');
+    return submissionRouteForSubjectTx(tx,ctx,subject,employmentId,applicationType);
+  },{readOnlySnapshot:true});
+}
+/** The route a submission for this subject would freeze, as the submission screens show it. Callers authorise the
+ *  subject first (own employment, or core/attendance-on-behalf.ts for Request On Behalf). */
+export async function submissionRouteForSubjectTx(tx:Tx,ctx:SessionContext,subject:{companyId:string},employmentId:string,applicationType:AttendanceApplicationType){
     try {
       const route=await resolveAttendanceWorkflowSnapshotTx(tx,ctx,subject,employmentId,applicationType);
       const first=route.stages[0];
@@ -389,7 +396,6 @@ export async function ownAttendanceSubmissionRoute(ctx:SessionContext, employmen
       if(error instanceof AttendanceWorkflowSubmissionError) return {available:false as const,reason:error.reason};
       throw error;
     }
-  },{readOnlySnapshot:true});
 }
 export async function snapshotAttendanceWorkflowTx(tx: Tx, ctx: SessionContext, correctionId: string, employmentId: string, applicationType: AttendanceApplicationType, expectedFingerprint?:string) {
     const prepared=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,employmentId,applicationType);
@@ -478,9 +484,17 @@ export type AttendanceStageResult = {
 };
 /** V3 records each required person before considering the existing stage-completion grain. */
 async function decideAttendanceParticipantTx(tx: Tx, ctx: SessionContext, flow: typeof request.$inferSelect, p: {
-    correctionId: string; employmentId: string; decision: 'approved' | 'rejected'; remarks?: string; expectedParticipantSlot?: string; expectedStageIndex?: number;
+    correctionId: string; employmentId: string; decision: 'approved' | 'rejected'; remarks?: string; expectedParticipantSlot?: string; expectedStageIndex?: number; onBehalfOfEmploymentId?: string;
 }): Promise<AttendanceStageResult> {
-    const [authority] = await tx.execute(sql`select app.attendance_workflow_v3_decision_slot(${p.correctionId}::uuid) as actor`) as unknown as { actor: { slot: string; assigned: AttendanceResolvedApprover; actingMode: 'assigned' | 'delegate' } | null }[];
+    // 96a54ed2: Approve On Behalf decides the designated approver's outstanding slot under its own SQL authority
+    // (acting_mode on_behalf); the permission key for the application's company is checked here, in the same tx.
+    if (p.onBehalfOfEmploymentId !== undefined) {
+        if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(p.onBehalfOfEmploymentId) || !await canApproveOnBehalfForCompanyTx(tx, ctx, flow.companyId))
+            throw new AttendanceWorkflowError('notApprover', 'You may not approve on behalf of this approver.');
+    }
+    const [authority] = await (p.onBehalfOfEmploymentId !== undefined
+        ? tx.execute(sql`select app.attendance_workflow_on_behalf_slot(${p.correctionId}::uuid,${p.onBehalfOfEmploymentId}::uuid) as actor`)
+        : tx.execute(sql`select app.attendance_workflow_v3_decision_slot(${p.correctionId}::uuid) as actor`)) as unknown as { actor: { slot: string; assigned: AttendanceResolvedApprover; actingMode: 'assigned' | 'delegate' | 'on_behalf' } | null }[];
     if (!authority?.actor) throw new AttendanceWorkflowError('notApprover', 'Only the next distinct authorized participant may decide this frozen attendance request.');
     if (p.expectedStageIndex !== flow.currentStage)
         throw new AttendanceWorkflowError('stale', 'The pending approval stage changed. Reload the application before deciding it.');
@@ -532,8 +546,12 @@ export async function decideAttendanceWorkflowStageTx(tx: Tx, ctx: SessionContex
     remarks?: string;
     expectedStageIndex?: number;
     expectedParticipantSlot?: string;
+    /** 96a54ed2 Approve On Behalf: the designated approver's employment (routing versions 3 and 4 only). */
+    onBehalfOfEmploymentId?: string;
 }): Promise<AttendanceStageResult> {
     const [flow] = await tx.select().from(request).where(eq(request.correctionId, p.correctionId)).limit(1).for('update');
+    if (p.onBehalfOfEmploymentId !== undefined && flow?.routingVersion !== 3 && flow?.routingVersion !== 4)
+        throw new AttendanceWorkflowError('notApprover', 'Approve On Behalf is available for per-level approval workflows only.');
     if (flow?.routingVersion === 3 || flow?.routingVersion === 4) {
         if (flow.employmentId !== p.employmentId) throw new AttendanceWorkflowError('scope', 'The application subject does not match its frozen workflow.');
         // Resolve the live slot once for this locked request, before trusting its stage.
@@ -655,8 +673,9 @@ export async function attendanceWorkflowForTx(tx: Tx, correctionId: string) {
     const participantReassignments = (flow.routingVersion === 3 || flow.routingVersion === 4) ? await tx.select().from(participantReassignment).where(eq(participantReassignment.requestId, flow.id)).orderBy(asc(participantReassignment.occurredAt), asc(participantReassignment.id)) : [];
     const currentParticipantSlot = (flow.routingVersion === 3 || flow.routingVersion === 4) ? (await tx.execute(sql`select app.attendance_workflow_v3_decision_slot(${correctionId}::uuid)->>'slot' as slot`) as unknown as { slot: string | null }[])[0]?.slot ?? null : null;
     const escalations = flow.routingVersion === 4 ? await tx.select().from(escalation).where(eq(escalation.requestId, flow.id)).orderBy(asc(escalation.stageIndex)) : [];
+    const [filed] = await tx.select({ submittedByName: attendanceCorrection.submittedByName }).from(attendanceCorrection).where(eq(attendanceCorrection.id, correctionId)).limit(1);
     const projected = (flow.routingVersion === 3 || flow.routingVersion === 4) ? flow.stages.map((stage, index) => ({ ...stage, approvers: stage.approvers.map(actor => participantReassignments.filter(change => change.stageIndex === index && change.participantSlot === actor.slot).at(-1)?.assigned ?? actor) })) : effectiveStages;
-    return { ...flow, decisions, effectiveStages: projected, reassignments, participantDecisions, participantReassignments, currentParticipantSlot, escalations };
+    return { ...flow, decisions, effectiveStages: projected, reassignments, participantDecisions, participantReassignments, currentParticipantSlot, escalations, submittedByName: filed?.submittedByName ?? null };
 }
 /** Read-only preview uses the SAME shared org resolver and selection priority as submission. */
 async function previewAttendanceWorkflowCompany(ctx: SessionContext, raw: unknown, lineageId?: string) {
@@ -727,6 +746,7 @@ export async function attendanceWorkflowsForTx(tx: Tx, ids: string[]) {
     const participantReassignments = v3.length ? await tx.select().from(participantReassignment).where(inArray(participantReassignment.requestId, v3.map(flow => flow.id))).orderBy(asc(participantReassignment.occurredAt), asc(participantReassignment.id)) : [];
     const v4 = flows.filter(flow => flow.routingVersion === 4);
     const escalations = v4.length ? await tx.select().from(escalation).where(inArray(escalation.requestId, v4.map(flow => flow.id))).orderBy(asc(escalation.stageIndex)) : [];
+    const filedBy = new Map((await tx.select({ id: attendanceCorrection.id, submittedByName: attendanceCorrection.submittedByName }).from(attendanceCorrection).where(inArray(attendanceCorrection.id, flows.map(f => f.correctionId)))).map(row => [row.id, row.submittedByName]));
     const actorSlots = v3.length ? await tx.execute(sql`select w.id,app.attendance_workflow_v3_decision_slot(w.correction_id)->>'slot' as slot from public.attendance_workflow_request w where w.id in (${sql.join(v3.map(flow => sql`${flow.id}::uuid`), sql`,`)})`) as unknown as { id: string; slot: string | null }[] : [];
     return new Map(flows.map(f => {
         const overrides = reassignments.filter(r => r.requestId === f.id);
@@ -735,7 +755,7 @@ export async function attendanceWorkflowsForTx(tx: Tx, ids: string[]) {
         const projected = (f.routingVersion === 3 || f.routingVersion === 4) ? f.stages.map((stage, index) => ({ ...stage, approvers: stage.approvers.map(actor => participantChanges.filter(change => change.stageIndex === index && change.participantSlot === actor.slot).at(-1)?.assigned ?? actor) })) : effectiveStages;
         return [f.correctionId, { ...f, decisions: decisions.filter(d => d.requestId === f.id), effectiveStages: projected, reassignments: overrides,
             participantDecisions: participantDecisions.filter(d => d.requestId === f.id), participantReassignments: participantChanges, currentParticipantSlot: actorSlots.find(actor => actor.id === f.id)?.slot ?? null,
-            escalations: escalations.filter(e => e.requestId === f.id) }];
+            escalations: escalations.filter(e => e.requestId === f.id), submittedByName: filedBy.get(f.correctionId) ?? null }];
     }));
 }
 

@@ -144,9 +144,11 @@ export const APPROVED_UPGRADE_TAIL=[
  // daa76ed4/96a54ed2 Irwin attendance workflow lane draft (block 5140-5149; final numbering at integration).
  {idx:4540,when:1793330004840,tag:'5140_attendance_workflow_cross_company_pending'},
  {idx:4541,when:1793330004841,tag:'5141_attendance_workflow_escalation'},
+ {idx:4542,when:1793330004842,tag:'5142_attendance_on_behalf'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5142_attendance_on_behalf':'f6e733a3388ff70ffde812ce669b42b6a55decb3951584a8d8d420100d061125',
  '5141_attendance_workflow_escalation':'b578fbc0588c783b9091ae12753701e5e3322fc3fe53cbae60e5da18ce66ddde',
  '5140_attendance_workflow_cross_company_pending':'3fbdc8541c9ba5b9b03d7cb3a0e212df1db1b9e196822db575cc186bbb33c4c1',
  '5124_attendance_workflow_skipped_levels':'849dba4bf7c3aa39e45eb7f463ef24301a2eea3b10a781cf39858aa218635c6d',
@@ -294,6 +296,8 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  {tag:'5125_individual_txn_pricing_marker',table:'payroll_individual_txn',columns:['pricing_source','pricing_ref','priced_at']},
  // daa76ed4 Escalation Approval stage clock: NULL on every request submitted before it (never escalates).
  {tag:'5141_attendance_workflow_escalation',table:'attendance_workflow_request',columns:['stage_reached_at','escalate_on']},
+ // 96a54ed2 Request On Behalf: NULL on every application filed before it (the employee filed it).
+ {tag:'5142_attendance_on_behalf',table:'attendance_correction',columns:['submitted_by_user_id','submitted_by_person_id','submitted_by_name']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

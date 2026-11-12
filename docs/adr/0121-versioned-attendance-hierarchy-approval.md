@@ -176,3 +176,15 @@ advance only with a same-transaction escalation row. Escalation never approves o
 level, ignores withdrawn/cancelled requests (their due date is cleared), and keeps partial Everyone/Sequential
 approvals as evidence while marking the level "Escalated". An approver who decided an escalated level still cannot
 act on a later level of the same request. The next level's frozen participants are notified, re-checked at dispatch.
+
+## Amendment — Request On Behalf and Approve On Behalf (board 96a54ed2), 12 November 2026
+
+See ADR-0052 (amended D3) for who may act for whom. For routing versions 3 and 4 the participant ledger accepts a
+fourth acting mode, `on_behalf`, only through `app.attendance_workflow_on_behalf_allowed` (authority without the
+outstanding test, so the same-transaction completion can re-prove it) and `app.attendance_workflow_on_behalf_slot`
+(the outstanding slot of one designated employment at the current level). Completion, advance, effect and request
+guards re-prove an on_behalf participant row through the same predicate. A pending-activation designated approver is
+covered (their employment must be active; a login is not). `attendance_correction.submitted_by_*` (NULL = the employee
+filed it) is stamped by the database and immutable; the filer holds no slot of that application, is refused by the
+v1/v2/v3/v4 decision guards, and History reads "Submitted on behalf by <name>" and "Approved/Rejected On Behalf".
+Approve On Behalf is not offered for v1/v2 routes, which keep their existing reasoned HR administrator mode.

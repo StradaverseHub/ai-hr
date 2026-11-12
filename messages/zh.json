@@ -587,7 +587,9 @@
     "privateCases": "私密个案",
     "probationTracker": "试用期跟踪",
     "myPayrollReadiness": "我的发薪准备",
-    "attendanceFormulaBuilder": "考勤公式"
+    "attendanceFormulaBuilder": "考勤公式",
+    "attendanceRequestOnBehalf": "代为申请",
+    "attendanceApproveOnBehalf": "代为审批"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -11962,7 +11964,9 @@
         "jobArchitecture": "岗位架构的访问权限取决于您当前的岗位架构职责和公司范围。",
         "rewardsAccess": "有效薪酬职责任命及限定范围的HR管理员权限决定访问权限；仅有系统角色不代表可执行所有操作。",
         "myPrivateCases": "仅限登录者本人的私密个案。特权角色不会扩大范围；管理员无法在此阅读他人的个案。",
-        "privateCaseHandling": "所有人都可以访问，但只向个案所属公司的指定个案处理人显示个案（若没有符合条件的处理人，则向集团管理员显示），绝不向提交人或被提交人排除的人显示。角色在此不授予任何权限。"
+        "privateCaseHandling": "所有人都可以访问，但只向个案所属公司的指定个案处理人显示个案（若没有符合条件的处理人，则向集团管理员显示），绝不向提交人或被提交人排除的人显示。角色在此不授予任何权限。",
+        "attendanceRequestOnBehalf": "仅在您持有 attendance.request_on_behalf 时，列出您作为人事管理的公司中的员工，或您本人汇报线下属的人员。申请遵循该员工自己的工作流程。",
+        "attendanceApproveOnBehalf": "仅在您持有 attendance.approve_on_behalf 时，列出您作为人事管理的公司中的审批人，或您本人汇报线下属的人员。决定将记录为代指定审批人作出。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -27790,7 +27794,8 @@
     "modes": {
       "assigned": "指定审批人",
       "delegate": "有效受托人",
-      "administrator": "人事代为处理"
+      "administrator": "人事代为处理",
+      "on_behalf": "代指定审批人操作"
     },
     "invalidFilters": "无法应用筛选条件。请检查日期和所选值后重试。",
     "stageRecorded": "已记录阶段审批",
@@ -27935,7 +27940,10 @@
     "escalatedStage": "已升级",
     "escalatedMoved": "{days} 天内未获批准或拒绝，已自动转至第 {level} 级。",
     "escalatedWaitedFor": "等待的审批人",
-    "escalatedBy": "系统自动升级"
+    "escalatedBy": "系统自动升级",
+    "submittedOnBehalfBy": "由 {name} 代为提交",
+    "approvedOnBehalf": "已代为批准",
+    "rejectedOnBehalf": "已代为拒绝"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",
@@ -38292,5 +38300,37 @@
     "actorWithId": "{name}（{employeeId}）",
     "actorUnlinked": "管理员登录账号（无员工记录 · 账号结尾 {suffix}）",
     "actorUnavailable": "不可用的用户"
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "代为申请",
+    "requestHelp": "选择员工，然后在常用页面为其提交考勤异常或自报加班。申请将遵循该员工自己的工作流程和审批人。",
+    "approveTitle": "代为审批",
+    "approveHelp": "选择您需要代为处理其待审批考勤申请的指定审批人。",
+    "approveListHelp": "等待 {name} 审批、您可代为决定的申请。",
+    "searchLabel": "按员工编号或姓名搜索",
+    "searchPlaceholder": "例如 EMP-0123 或姓名",
+    "search": "搜索",
+    "results": "您可代为办理的员工",
+    "noResults": "没有符合此搜索且您可代为办理的员工。",
+    "noPermission": "您的角色没有此权限。如需要，请联系管理员。",
+    "choose": "选择",
+    "employeeName": "员工",
+    "employeeId": "员工编号",
+    "company": "公司",
+    "department": "部门",
+    "changeEmployee": "更换员工",
+    "chooseCategory": "您要提交哪类申请？",
+    "irregularity": "考勤异常",
+    "irregularityHelp": "员工本人日期的缺失或错误打卡、工时不足或缺勤。",
+    "selfOvertime": "自报加班",
+    "selfOvertimeHelp": "按员工本人的排班组和加班规则计划或申报加班。",
+    "banner": "正在代 {name} 提交",
+    "pendingTitle": "待审批申请",
+    "pendingEmpty": "没有您可代为决定、正在等待该审批人的申请。",
+    "approveOnBehalf": "代为批准",
+    "rejectOnBehalf": "代为拒绝",
+    "approveAudit": "历史记录保留所选人员为指定审批人，并记录您为实际操作人。",
+    "previous": "上一页",
+    "next": "下一页"
   }
 }

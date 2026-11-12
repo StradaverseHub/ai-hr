@@ -587,7 +587,9 @@
     "privateCases": "Kes peribadi",
     "probationTracker": "Penjejak percubaan",
     "myPayrollReadiness": "Kesediaan gaji saya",
-    "attendanceFormulaBuilder": "Formula kehadiran"
+    "attendanceFormulaBuilder": "Formula kehadiran",
+    "attendanceRequestOnBehalf": "Mohon Bagi Pihak",
+    "attendanceApproveOnBehalf": "Lulus Bagi Pihak"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -11962,7 +11964,9 @@
         "jobArchitecture": "Akses Seni Bina Jawatan bergantung pada penugasan Seni Bina Jawatan dan skop syarikat semasa anda.",
         "rewardsAccess": "Penugasan Rewards berkuat kuasa dan kuasa pentadbir HR mengikut skop menentukan akses; peranan sistem sahaja tidak memberikan semua tindakan.",
         "myPrivateCases": "Hanya kes peribadi milik orang yang log masuk. Peranan berkeistimewaan tidak meluaskannya; pentadbir tidak boleh membaca kes orang lain di sini.",
-        "privateCaseHandling": "Boleh dicapai oleh semua orang, tetapi menunjukkan kes hanya kepada pengendali kes yang dilantik bagi syarikat kes itu (atau pentadbir kumpulan apabila tiada pengendali yang layak), tidak sekali-kali kepada penulisnya atau sesiapa yang dikecualikan oleh penulis. Peranan tidak memberi apa-apa di sini."
+        "privateCaseHandling": "Boleh dicapai oleh semua orang, tetapi menunjukkan kes hanya kepada pengendali kes yang dilantik bagi syarikat kes itu (atau pentadbir kumpulan apabila tiada pengendali yang layak), tidak sekali-kali kepada penulisnya atau sesiapa yang dikecualikan oleh penulis. Peranan tidak memberi apa-apa di sini.",
+        "attendanceRequestOnBehalf": "Hanya menyenaraikan pekerja dalam syarikat yang anda tadbir sebagai HR, atau orang di bawah anda dalam talian pelaporan anda sendiri, jika anda memegang attendance.request_on_behalf. Permohonan mengikut aliran kerja pekerja itu sendiri.",
+        "attendanceApproveOnBehalf": "Hanya menyenaraikan pelulus dalam syarikat yang anda tadbir sebagai HR, atau orang di bawah anda dalam talian pelaporan anda sendiri, jika anda memegang attendance.approve_on_behalf. Keputusan direkodkan bagi pihak pelulus yang ditetapkan."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -27790,7 +27794,8 @@
     "modes": {
       "assigned": "Pelulus ditetapkan",
       "delegate": "Wakil sah",
-      "administrator": "HR bagi pihak"
+      "administrator": "HR bagi pihak",
+      "on_behalf": "Bertindak bagi pihak pelulus yang ditetapkan"
     },
     "invalidFilters": "Penapis tidak dapat digunakan. Semak tarikh dan nilai pilihan, kemudian cuba lagi.",
     "stageRecorded": "Peringkat kelulusan direkodkan",
@@ -27935,7 +27940,10 @@
     "escalatedStage": "Dieskalasi",
     "escalatedMoved": "Tiada kelulusan atau penolakan dalam {days} hari. Dipindahkan secara automatik ke Tahap {level}.",
     "escalatedWaitedFor": "Menunggu",
-    "escalatedBy": "Eskalasi automatik oleh sistem"
+    "escalatedBy": "Eskalasi automatik oleh sistem",
+    "submittedOnBehalfBy": "Dihantar bagi pihak oleh {name}",
+    "approvedOnBehalf": "Diluluskan Bagi Pihak",
+    "rejectedOnBehalf": "Ditolak Bagi Pihak"
   },
   "scheduleDrafts": {
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",
@@ -38292,5 +38300,37 @@
     "actorWithId": "{name} ({employeeId})",
     "actorUnlinked": "Log masuk pentadbir (tiada rekod pekerja · log masuk berakhir {suffix})",
     "actorUnavailable": "Pengguna tidak tersedia"
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "Mohon Bagi Pihak",
+    "requestHelp": "Pilih pekerja, kemudian failkan Ketidakaturan Kehadiran atau Lebih Masa Sendiri untuk mereka pada skrin biasa. Permohonan mengikut aliran kerja dan pelulus mereka sendiri.",
+    "approveTitle": "Lulus Bagi Pihak",
+    "approveHelp": "Pilih pelulus yang ditetapkan yang permohonan kehadiran belum selesainya perlu anda uruskan.",
+    "approveListHelp": "Permohonan yang menunggu {name} yang boleh anda putuskan bagi pihak mereka.",
+    "searchLabel": "Cari mengikut ID Pekerja atau nama",
+    "searchPlaceholder": "cth. EMP-0123 atau nama",
+    "search": "Cari",
+    "results": "Pekerja yang boleh anda wakili",
+    "noResults": "Tiada pekerja yang boleh anda wakili sepadan dengan carian ini.",
+    "noPermission": "Peranan anda tidak mempunyai kebenaran ini. Minta pentadbir jika anda memerlukannya.",
+    "choose": "Pilih",
+    "employeeName": "Pekerja",
+    "employeeId": "ID Pekerja",
+    "company": "Syarikat",
+    "department": "Jabatan",
+    "changeEmployee": "Tukar pekerja",
+    "chooseCategory": "Apakah yang ingin anda failkan?",
+    "irregularity": "Ketidakaturan Kehadiran",
+    "irregularityHelp": "Waktu jam yang tiada atau salah, jam kurang atau ketidakhadiran, untuk hari pekerja itu sendiri.",
+    "selfOvertime": "Lebih Masa Sendiri",
+    "selfOvertimeHelp": "Rancang atau tuntut lebih masa di bawah Kumpulan Jadual dan peraturan lebih masa pekerja itu sendiri.",
+    "banner": "Menghantar bagi pihak {name}",
+    "pendingTitle": "Permohonan menunggu kelulusan",
+    "pendingEmpty": "Tiada apa-apa yang menunggu pelulus ini yang boleh anda putuskan.",
+    "approveOnBehalf": "Lulus Bagi Pihak",
+    "rejectOnBehalf": "Tolak Bagi Pihak",
+    "approveAudit": "Sejarah mengekalkan orang yang dipilih sebagai pelulus yang ditetapkan dan merekodkan anda sebagai orang yang bertindak.",
+    "previous": "Sebelumnya",
+    "next": "Seterusnya"
   }
 }
