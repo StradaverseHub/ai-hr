@@ -5902,6 +5902,13 @@
       "when": 1793330004917,
       "tag": "5217_recruitment_import_export",
       "breakpoints": true
+    },
+    {
+      "idx": 4618,
+      "version": "7",
+      "when": 1793330004918,
+      "tag": "5218_recruitment_waiting_limits",
+      "breakpoints": true
     }
   ]
 }

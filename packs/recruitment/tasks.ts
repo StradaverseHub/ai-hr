@@ -40,8 +40,10 @@ import { CHECK_OVERDUE_DAYS } from './background-check-model';
 import type { PackTaskItem } from '../../lib/assigned-work';
 import { RecruitmentError, isUuid } from './model';
 import { uuidArray } from './data';
+import { cutoffRelation, stageEnteredDayOf, waitingContextTx } from './waiting-store';
+import { WAITING_SCAN_LIMIT } from './waiting-model';
 import {
-  BELL_TIMEOUT_MS, JOB_TODOS_TIMEOUT_MS, TASK_CATEGORIES, TODO_COUNT_CAP, TODO_JOB_LIMIT, TODO_LIMIT, UNREAD_CAP, UPDATES_PAGE_SIZE, byNewest, decodeUpdatesCursor,
+  BELL_TIMEOUT_MS, JOB_TODOS_TIMEOUT_MS, WAITING_TODOS_TIMEOUT_MS, TASK_CATEGORIES, TODO_COUNT_CAP, TODO_JOB_LIMIT, TODO_LIMIT, UNREAD_CAP, UPDATES_PAGE_SIZE, byNewest, decodeUpdatesCursor,
   encodeUpdatesCursor, isTaskCategory, parseUpdatesPage, readCategories, todoHref, todoToPackTask, updateHref, updatesHasMore, updatesSince,
   type RecruitmentTodo, type RecruitmentUpdate, type TaskCategory, type TodoKind, type UpdateKind,
 } from './tasks-model';
@@ -256,6 +258,57 @@ async function jobTodosTx(tx: Tx, s: SessionContext, scope: readonly string[] | 
 }
 
 /**
+ * Slice 17: per job, the active applications waiting too long in their stage and those suggested for archiving (the stage's waiting
+ * limits), for the same jobs as the per-job counts above (the viewer's Open or On hold jobs as recruiter or assistant). Its own
+ * statement, so a slow count here never holds up To schedule, To screen or To assign. Each job reads at most WAITING_SCAN_LIMIT of
+ * its active applications in a stage with a limit, least recently updated first (updated_at is only a sort key that front-loads likely
+ * matches; the counts come from the history; +1 to know there are more: `countCapped`, shown even when none was found yet — the
+ * suggestion only where the company has a suggest-archiving limit), and
+ * only those are looked up in the history; an application received after the cutoff day cannot have waited that long and is passed
+ * over first.
+ * The rules and, for working days, the companies' holidays are read once (two statements whatever the number of companies).
+ */
+async function waitingTodosTx(tx: Tx, s: SessionContext, scope: readonly string[] | undefined): Promise<RecruitmentTodo[]> {
+  const scoped = scopedBy(scope);
+  const companies = await tx.execute<{ company_id: string }>(sql`select distinct m.company_id from recruitment_job_member m
+    where m.tenant_id = ${s.tenantId}::uuid and m.app_user_id = ${me} and m.member_role in ('recruiter', 'assistant') and ${scoped(sql`m.company_id`)}`);
+  const ctx = await waitingContextTx(tx, s.tenantId, companies.map((c) => c.company_id), todayInKualaLumpur());
+  const rules = cutoffRelation(ctx, 'wr');
+  if (!rules) return [];
+  const archivingCompanies = [...new Set([...ctx.cutoffs.values()].filter((c) => c.archiveOn !== null).map((c) => c.companyId))];
+  const rows = await tx.execute<TodoRow & { capped: boolean }>(sql`
+    with my_jobs as materialized (
+      select j.id, j.company_id, j.title, j.job_number from recruitment_job_opening j
+      where j.id in (select m.job_id from recruitment_job_member m
+          where m.tenant_id = ${s.tenantId}::uuid and m.app_user_id = ${me} and m.member_role in ('recruiter', 'assistant'))
+        and j.tenant_id = ${s.tenantId}::uuid and j.status in ('open', 'on_hold') and ${scoped(sql`j.company_id`)}
+      order by j.updated_at desc, j.id limit ${TODO_JOB_LIMIT}
+    )
+    select k.kind, j.id, j.company_id, j.id as job_id, j.title, j.job_number as number, null::text as candidate_name, false as candidate_removed,
+      k.n as count, null::int as position, null::int as steps, coalesce(k.at::timestamp at time zone 'Asia/Kuala_Lumpur', now()) as at, null::uuid as stage_id, x.capped
+    from my_jobs j
+    cross join lateral (
+      select count(*) filter (where y.rn <= ${WAITING_SCAN_LIMIT} and y.entered <= y.remind_on)::int as waiting_n,
+        max(y.entered) filter (where y.rn <= ${WAITING_SCAN_LIMIT} and y.entered <= y.remind_on) as waiting_at,
+        count(*) filter (where y.rn <= ${WAITING_SCAN_LIMIT} and y.archive_on is not null and y.entered <= y.archive_on)::int as suggested_n,
+        max(y.entered) filter (where y.rn <= ${WAITING_SCAN_LIMIT} and y.archive_on is not null and y.entered <= y.archive_on) as suggested_at,
+        count(*) > ${WAITING_SCAN_LIMIT} as capped
+      from (select c.rn, c.remind_on, c.archive_on, ${stageEnteredDayOf('c')} as entered
+        from (select a.id, a.current_stage_id, a.applied_at, wr.remind_on, wr.archive_on, row_number() over (order by a.updated_at, a.id) as rn
+          from recruitment_application a join ${rules} on wr.stage_id = a.current_stage_id
+          where a.job_id = j.id and a.state = 'active' and (a.applied_at at time zone 'Asia/Kuala_Lumpur')::date <= wr.remind_on
+          order by a.updated_at, a.id limit ${WAITING_SCAN_LIMIT + 1}) c
+        offset 0) y) x
+    cross join lateral (values ('waiting'::text, x.waiting_n, x.waiting_at, true), ('suggestedArchive'::text, x.suggested_n, x.suggested_at,
+      j.company_id = any(${uuidArray(archivingCompanies)}::uuid[])))
+      k(kind, n, at, applies)
+    -- A job whose scan stopped at the bound is shown even with none found so far ("0+": there may be more) — the suggestion only when
+    -- the job's company has a suggest-archiving limit on some stage.
+    where k.n > 0 or (x.capped and k.applies)`);
+  return rows.map((r) => ({ ...todoOf(r), countCapped: r.capped === true })).sort(byNewest);
+}
+
+/**
  * The viewer's personal to-do list, live (cases 59–61): requisition and offer approval steps at the viewer's current step
  * (tenant-wide) and interview feedback due (from the interview's start, `now` by default). `scopeIds` is the company
  * selection for the feedback (undefined: every company). Nothing for a viewer with no recruitment role. `timeoutMs`
@@ -288,6 +341,26 @@ export async function recruitmentJobTodos(s: SessionContext, scopeIds: readonly 
   } catch (e) {
     if (e instanceof RecruitmentError) throw e;
     console.error('recruitment job counts failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    return { status: 'unavailable' };
+  }
+}
+
+/**
+ * Slice 17: the Overview's per-job waiting counts (applications waiting too long, suggested to archive), separately from
+ * recruitmentJobTodos and under their own statement timeout (default WAITING_TODOS_TIMEOUT_MS): a timeout or a database failure
+ * answers 'unavailable' for these items only (logged as the error's name and SQLSTATE). Not in the bell (D-035).
+ */
+export async function recruitmentWaitingTodos(s: SessionContext, scopeIds: readonly string[] | undefined, opts: { timeoutMs?: number } = {}): Promise<RecruitmentJobTodos> {
+  if (!s.userId) return { status: 'ok', items: [] };
+  const scope = scopeIds ? scopeIds.filter(isUuid) : undefined;
+  try {
+    return await withRecruitmentTenant(s, async (tx) => {
+      await tx.execute(sql`select set_config('statement_timeout', ${String(Math.max(1, Math.trunc(opts.timeoutMs ?? WAITING_TODOS_TIMEOUT_MS)))}, true)`);
+      return { status: 'ok' as const, items: await waitingTodosTx(tx, s, scope) };
+    });
+  } catch (e) {
+    if (e instanceof RecruitmentError) throw e;
+    console.error('recruitment waiting counts failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
     return { status: 'unavailable' };
   }
 }

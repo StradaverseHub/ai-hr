@@ -555,3 +555,22 @@ To assign and 1 unknown job number; after the permission confirmation the backgr
 result showed the same counts and the problem row. On To assign, the two candidates were grouped by the job title as
 written; assigning one to an Open position created its application and removed it from the list. A board export opened
 as CSV with only the chosen columns and the newly assigned candidate. No server errors.
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43215935192 | Whole-repo type check | PASS |
+| 43215935192 | Production build | PASS |
+| 43215935192 | Selected tests (64 files) | 57 PASS; FAIL: the known 6 AI files and function-access (the two new pages had no screen entry; fixed in lib/permissions.ts, 13/13 locally) |
+| 43215952372 | Selected tests (64 files, incl. import, export, export route and rules tests) | PASS: 793 tests |
+
+## Slice 17 — Applications left unprocessed
+
+Local: after a review and two confirmation rounds, 14 files and 237 tests passed, including a 3,000-application scale
+fixture, Kuala Lumpur day boundaries, archive races and a forced timeout of the waiting statement that leaves the other
+Overview items intact. Non-test type check 0 errors.
+Rendered (case 120): a rule with the suggest limit below the reminder was refused with the typed values kept; a rule
+(remind 3, suggest 7 calendar days) saved. Cards showed "Waiting 4 days" and "Waiting 9 days … Suggested to archive";
+the board filter counted 2 waiting and 1 suggested and narrowed the cards. The job's recruiter saw both Overview items;
+HR Admin, not on the job, saw none. The hiring manager saw "Waiting 10 days" without the suggestion and was refused the
+list. From the list, a refusal without a reason kept the selection; archiving with a reason wrote the normal rejected
+event by the recruiter, and "1 application archived." stayed after the list emptied.

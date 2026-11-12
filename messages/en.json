@@ -38353,7 +38353,8 @@
         "pools": "Talent pools",
         "fields": "Custom fields",
         "templates": "Position templates",
-        "exports": "Export templates"
+        "exports": "Export templates",
+        "waiting": "Waiting limits"
       },
       "iv": {
         "rulesTitle": "Feedback rules",
@@ -39163,7 +39164,9 @@
         "screeningFor": "Screen {candidate} for {job}",
         "backgroundCheckAuthorisation": "Background check waiting for the candidate's authorisation",
         "backgroundCheckOverdue": "Background check in progress for more than 14 days",
-        "toAssign": "{count, plural, one {# candidate to assign to a position} other {{shown} candidates to assign to positions}}"
+        "toAssign": "{count, plural, one {# candidate to assign to a position} other {{shown} candidates to assign to positions}}",
+        "waiting": "{count, plural, one {# application waiting too long in its stage} other {{shown} applications waiting too long in their stage}}",
+        "suggestedArchive": "{count, plural, one {# application suggested to archive} other {{shown} applications suggested to archive}}"
       },
       "update": {
         "requisitionApproved": "Job requisition approved",
@@ -39182,7 +39185,9 @@
       "jobsUnavailable": "The job counts couldn't be loaded just now.",
       "jobsRefresh": "Refresh",
       "jobsTitle": "Your jobs",
-      "endsOn": "Ends {date}"
+      "endsOn": "Ends {date}",
+      "waitingTitle": "Waiting in stages",
+      "waitingUnavailable": "The waiting counts couldn't be loaded just now."
     },
     "agency": {
       "title": "Agencies",
@@ -40057,6 +40062,70 @@
       "newTitle": "New column set for {kind}",
       "add": "Add column set",
       "removedField": "a removed field"
+    },
+    "waiting": {
+      "settingsNote": "Set how long an active application may wait in each stage. After the reminder, its card and page say how long it has waited; after the suggest-archiving limit, it is listed under Suggested to archive for the position's recruiters. Nothing is archived automatically: a person decides.",
+      "calendarConfigured": "Working days skip Saturdays, Sundays and this company's {count, plural, one {# public holiday} other {# public holidays}} in {year} from the holiday calendar.",
+      "calendarWeekendsOnly": "No public holiday calendar is set up for this company, so working days skip Saturdays and Sundays only.",
+      "noStages": "This company has no enabled stages.",
+      "stageDisabled": "Stage disabled",
+      "changed": "Changed by {by} on {at}",
+      "unnamedUser": "Unnamed user",
+      "noRule": "No limit",
+      "remindDays": "Remind after (days, 1–{max})",
+      "archiveDays": "Suggest archiving after (days, up to {max}, optional)",
+      "dayKind": "Count",
+      "dayKinds": {
+        "calendar": "Calendar days",
+        "working": "Working days"
+      },
+      "save": "Save",
+      "add": "Set limit",
+      "remove": "Remove limit",
+      "removeNamed": "Remove the limit for {stage}",
+      "archiveNote": "Waiting time counts from the day an application entered its current stage, in Kuala Lumpur time. Moving it to another stage starts the count again.",
+      "fieldRequired": "Required",
+      "fieldInvalid": "Enter whole days: the reminder 1–365; suggest archiving more than the reminder and at most 730.",
+      "filterLabel": "Waiting limits",
+      "filter": {
+        "all": "All",
+        "waiting": "Waiting too long",
+        "suggested": "Suggested to archive"
+      },
+      "openSuggested": "Open the Suggested to archive list",
+      "badge": "Waiting {days, plural, one {# day} other {# days}} in {stage}",
+      "suggestedBadge": "Suggested to archive",
+      "dayKindNote": {
+        "calendar": "Counted in calendar days.",
+        "working": "Counted in working days."
+      },
+      "suggestedPurpose": "Applications that have waited in their stage past the stage's limit. Choose the ones to archive and a reason; nothing is archived until you do.",
+      "back": "Back to Candidates",
+      "chooseJob": "Open a position's Suggested to archive list from the Candidates board.",
+      "suggestedTitle": "Suggested to archive · {job} ({number})",
+      "suggestedNote": "Longest waiting first. Applications held for an administrator's review cannot be archived here.",
+      "noArchiveRules": "No stage of this company has a suggest-archiving limit yet. Administrators set them in Settings › Waiting limits.",
+      "suggestedEmpty": "No application of this position is past its stage's suggest-archiving limit.",
+      "refusedTitle": "Not archived:",
+      "unknownApplication": "An application no longer on this list",
+      "archiving": "Archiving…",
+      "selectNamed": "Select {name}",
+      "enteredOn": "In {stage} since {date}",
+      "heldForReview": "Needs an administrator's review",
+      "open": "Open",
+      "truncated": "This list may be incomplete: it shows at most {count} applications, found among the {scan} least recently changed active applications of this position.",
+      "reason": "Archive reason",
+      "chooseReason": "Choose a reason",
+      "archiveSelected": "Archive selected",
+      "archiveSelectedNote": "Each selected application is archived with this reason through the normal reject, exactly as if rejected one by one.",
+      "archivedNotice": "{count, plural, one {# application archived.} other {# applications archived.}}",
+      "refused": {
+        "not_found": "not found on this position",
+        "application_closed": "already hired or archived",
+        "needs_review": "held for an administrator's review",
+        "not_suggested": "no longer past the suggest-archiving limit (it may have moved)"
+      },
+      "countWindow": "Counts cover the {count} oldest applications of a stage; “+” means there may be more."
     }
   },
   "careersPublic": {

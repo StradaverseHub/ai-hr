@@ -34,6 +34,7 @@ import {
   deletePositionTemplate, savePositionTemplate, setPositionTemplateEnabled, updatePositionTemplateSetting,
   previewCandidateImport, startCandidateImport, candidateImportJob, cancelCandidateImport, assignToJob, setToAssignHidden, saveExportTemplate, deleteExportTemplate,
   type ImportPreview, type CandidateImportJob,
+  archiveSuggestedApplications, deleteWaitingRule, saveWaitingRule, type SuggestedArchiveRefusal,
 } from '@/packs/recruitment/service';
 import { getLocale } from 'next-intl/server';
 
@@ -814,4 +815,52 @@ export async function saveExportTemplateAction(f: FormData) {
 }
 export async function deleteExportTemplateAction(f: FormData) {
   return run(exportTemplatePage(f), (s) => deleteExportTemplate(s, str(f, 'templateId')));
+}
+
+// ── Slice 17: waiting limits and the "Suggested to archive" list ──────────────────────────────────────────────────
+const waitingSettingsPage = (f: FormData) => `/recruitment/settings?${new URLSearchParams({ company: str(f, 'companyId'), section: 'waiting' })}`;
+/** Settings › Waiting limits: set one stage's limit. A refusal is RETURNED (the stage's form keeps what was typed and names the
+ *  refused fields); a successful save redirects to the section. */
+export async function saveWaitingRuleFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  const s = await getSession();
+  try {
+    await saveWaitingRule(s, { companyId: str(f, 'companyId'), stageId: str(f, 'stageId'), remindDays: str(f, 'remindDays'), archiveDays: str(f, 'archiveDays'),
+      dayKind: str(f, 'dayKind') });
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(waitingSettingsPage(f), 'notice', 'saved'));
+}
+export async function deleteWaitingRuleAction(f: FormData) {
+  return run(waitingSettingsPage(f), (s) => deleteWaitingRule(s, { companyId: str(f, 'companyId'), stageId: str(f, 'stageId') }));
+}
+
+/** The outcome of archiving from a job's "Suggested to archive" list, for the list's own form (never in a URL): how many were
+ *  archived, and each selected application left as it was with the sentence why. */
+export type SuggestedArchiveState = {
+  status: 'idle' | 'done' | 'refused';
+  archived?: number;
+  /** "N applications archived", in the viewer's language (absent when none was). */
+  archivedText?: string;
+  refused?: { applicationId: string; code: SuggestedArchiveRefusal; text: string }[];
+  problem?: string; errorText?: string; nonce?: number;
+};
+export async function archiveSuggestedAction(prev: SuggestedArchiveState, f: FormData): Promise<SuggestedArchiveState> {
+  const s = await getSession();
+  const nonce = (prev.nonce ?? 0) + 1;
+  try {
+    const result = await archiveSuggestedApplications(s, { jobId: str(f, 'jobId'), applicationIds: f.getAll('applicationIds').map(String), archiveReasonId: str(f, 'archiveReasonId') });
+    const t = await getTranslations('recruitment.waiting');
+    revalidatePath('/recruitment', 'layout');
+    return { status: 'done', archived: result.archived.length, nonce,
+      archivedText: result.archived.length ? t('archivedNotice', { count: result.archived.length }) : undefined,
+      refused: result.refused.map((r) => ({ applicationId: r.applicationId, code: r.code, text: t(`refused.${r.code}`) })) };
+  } catch (e) {
+    if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    const t = await getTranslations('recruitment.errors');
+    const problem = errorCode(e);
+    const errorText = (RECRUITMENT_ERROR_CODES as readonly string[]).includes(problem) ? t(problem as (typeof RECRUITMENT_ERROR_CODES)[number]) : t('unexpected');
+    return { status: 'refused', problem, errorText, nonce };
+  }
 }

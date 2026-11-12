@@ -38353,7 +38353,8 @@
         "pools": "人才库",
         "fields": "自定义字段",
         "templates": "职位模板",
-        "exports": "导出模板"
+        "exports": "导出模板",
+        "waiting": "等待期限"
       },
       "iv": {
         "rulesTitle": "反馈规则",
@@ -39163,7 +39164,9 @@
         "screeningFor": "为{job}筛选{candidate}",
         "backgroundCheckAuthorisation": "背景调查等待候选人授权",
         "backgroundCheckOverdue": "背景调查进行中已超过 14 天",
-        "toAssign": "{count, plural, other {{shown} 位候选人待分配到职位}}"
+        "toAssign": "{count, plural, other {{shown} 位候选人待分配到职位}}",
+        "waiting": "{count, plural, other {{shown} 份申请在当前阶段等待过久}}",
+        "suggestedArchive": "{count, plural, other {{shown} 份申请建议归档}}"
       },
       "update": {
         "requisitionApproved": "招聘需求已获批准",
@@ -39182,7 +39185,9 @@
       "jobsUnavailable": "暂时无法加载职位统计。",
       "jobsRefresh": "刷新",
       "jobsTitle": "您的职位",
-      "endsOn": "{date} 到期"
+      "endsOn": "{date} 到期",
+      "waitingTitle": "阶段等待",
+      "waitingUnavailable": "暂时无法加载等待数量。"
     },
     "agency": {
       "title": "猎头机构",
@@ -40057,6 +40062,70 @@
       "newTitle": "{kind} 的新列组合",
       "add": "添加列组合",
       "removedField": "已删除的字段"
+    },
+    "waiting": {
+      "settingsNote": "设置进行中的申请在每个阶段可等待多久。超过提醒期限后，其卡片和页面会显示已等待的时间；超过建议归档期限后，它会列入该职位招聘人员的“建议归档”列表。不会自动归档任何申请：由人来决定。",
+      "calendarConfigured": "工作日不计周六、周日以及节假日日历中本公司在 {year} 年的 {count, plural, other {# 个公共假日}}。",
+      "calendarWeekendsOnly": "本公司尚未设置公共假日日历，因此工作日只不计周六和周日。",
+      "noStages": "本公司没有已启用的阶段。",
+      "stageDisabled": "阶段已停用",
+      "changed": "由 {by} 于 {at} 修改",
+      "unnamedUser": "未命名用户",
+      "noRule": "无期限",
+      "remindDays": "提醒时间（天，1–{max}）",
+      "archiveDays": "建议归档时间（天，最多 {max}，可选）",
+      "dayKind": "计算方式",
+      "dayKinds": {
+        "calendar": "日历日",
+        "working": "工作日"
+      },
+      "save": "保存",
+      "add": "设置期限",
+      "remove": "删除期限",
+      "removeNamed": "删除 {stage} 的期限",
+      "archiveNote": "等待时间从申请进入当前阶段的那天起按吉隆坡时间计算。移到其他阶段后重新计算。",
+      "fieldRequired": "必填",
+      "fieldInvalid": "请输入整数天数：提醒 1–365；建议归档须大于提醒天数且不超过 730。",
+      "filterLabel": "等待期限",
+      "filter": {
+        "all": "全部",
+        "waiting": "等待过久",
+        "suggested": "建议归档"
+      },
+      "openSuggested": "打开“建议归档”列表",
+      "badge": "已在{stage}等待 {days, plural, other {# 天}}",
+      "suggestedBadge": "建议归档",
+      "dayKindNote": {
+        "calendar": "按日历日计算。",
+        "working": "按工作日计算。"
+      },
+      "suggestedPurpose": "在阶段中等待超过该阶段期限的申请。选择要归档的申请和原因；在您操作之前不会归档任何申请。",
+      "back": "返回候选人",
+      "chooseJob": "请从候选人看板打开某个职位的“建议归档”列表。",
+      "suggestedTitle": "建议归档 · {job}（{number}）",
+      "suggestedNote": "等待最久的排在前面。等待管理员审核而被暂停的申请不能在此归档。",
+      "noArchiveRules": "本公司尚无阶段设置建议归档期限。管理员可在 设置 › 等待期限 中设置。",
+      "suggestedEmpty": "此职位没有超过阶段建议归档期限的申请。",
+      "refusedTitle": "未归档：",
+      "unknownApplication": "已不在此列表中的申请",
+      "archiving": "正在归档…",
+      "selectNamed": "选择 {name}",
+      "enteredOn": "自 {date} 起处于{stage}",
+      "heldForReview": "需要管理员审核",
+      "open": "打开",
+      "truncated": "此列表可能不完整：最多显示 {count} 份申请，来自此职位最久未变更的 {scan} 份进行中的申请。",
+      "reason": "归档原因",
+      "chooseReason": "选择原因",
+      "archiveSelected": "归档所选",
+      "archiveSelectedNote": "每份所选申请都会以此原因通过常规拒绝流程归档，与逐一拒绝完全相同。",
+      "archivedNotice": "{count, plural, other {已归档 # 份申请。}}",
+      "refused": {
+        "not_found": "在此职位中找不到",
+        "application_closed": "已录用或已归档",
+        "needs_review": "正等待管理员审核",
+        "not_suggested": "已不再超过建议归档期限（可能已被移动）"
+      },
+      "countWindow": "计数涵盖每个阶段最早的 {count} 份申请；“+”表示可能还有更多。"
     }
   },
   "careersPublic": {

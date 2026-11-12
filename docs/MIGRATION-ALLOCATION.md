@@ -1,3 +1,17 @@
+# Recruitment slice 17 — 12 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after the slice 16 entry, `5218_recruitment_waiting_limits` at
+idx 4618 / when 1793330004918. A read-only survey of the already-fetched refs (7,561 refs; no commit touches a `5218_` file; no new
+fetch) and the working trees of all 204 registered worktrees (all journals readable) found no `5218_` migration file and no claim of
+this name, position or timestamp. `origin/main` and `origin/alpha` end at idx 4530 / when 1793330004830, below this block; recheck the
+target's applied watermark before admission (a lower timestamp can be silently skipped). 5218 adds one table
+(`recruitment_stage_waiting_rule`: per-stage reminder and suggest-archiving thresholds, administrator-only writes, team read), its guard
+trigger, one partial index on `recruitment_application_event` (application, stage entered, time) and restates
+`app.recruitment_delete_company_setup` (5217 body byte for byte) with one added step; `app.recruitment_destroy_candidate` is unchanged
+(the rules hold no personal data). 5200–5217 are unapplied outside throwaway databases, CI and the branch author's local render
+database. Recheck peer claims, the published baseline and the ordered applied ledger before admission. The reservation grants no
+installation authority.
+
 # Recruitment slice 16 — 12 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after the slice 15 entry, `5217_recruitment_import_export` at

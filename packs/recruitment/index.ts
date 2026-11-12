@@ -168,6 +168,8 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_to_assign', note: 'a candidate with no application (To assign): importer, date, job title as written, hidden or shown; the company\'s operators' },
     { table: 'recruitment_candidate_import_note', note: 'the notes column of an import file, per candidate; operator-only' },
     { table: 'recruitment_export_template', note: 'saved export column sets per company and kind; administrators manage, operators use' },
+    // Slice 17 (5218)
+    { table: 'recruitment_stage_waiting_rule', note: 'per-stage waiting limits: reminder and suggest-archiving days, calendar or working days; no personal data' },
   ],
 };
 registerPack(recruitmentPack);

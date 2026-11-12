@@ -423,6 +423,8 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'recruitment_candidate_import_row', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'One result per import file row (ids, outcome, codes). Before the imports (they also go with their import by ON DELETE CASCADE).' },
   { table: 'recruitment_candidate_import', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Candidate imports (company, importer, confirmation, file rows, ending). After their rows, markers and notes.' },
   { table: 'recruitment_export_template', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s saved export column sets. Company setup with no candidate data.' },
+  // 5218 — per-stage waiting limits (company setup, no candidate data); before the stages they name.
+  { table: 'recruitment_stage_waiting_rule', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s per-stage waiting limits (reminder and suggest-archiving days). Before the stages they name.' },
   { table: 'recruitment_evaluation_form', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s interview evaluation forms. Interviews and scorecards point at them only through a job opening.' },
   { table: 'recruitment_archive_reason', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s rejection / archive reasons. Removed with its stages and processes.' },
   { table: 'recruitment_process', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment processes; their ordered stages go with them (ON DELETE CASCADE).' },
@@ -495,6 +497,7 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'recruitment_application', column: 'archive_reason_id', references: 'recruitment_archive_reason', effect: 'blocks', note: 'An archived application keeps its reason.' },
   { table: 'recruitment_application_event', column: 'from_stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'Append-only application history keeps its stages.' },
   { table: 'recruitment_application_event', column: 'to_stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'Append-only application history keeps its stages.' },
+  { table: 'recruitment_stage_waiting_rule', column: 'stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'A stage\'s waiting limit (no cascade). The company delete removes the rules before the stages.' },
   { table: 'recruitment_application_event', column: 'archive_reason_id', references: 'recruitment_archive_reason', effect: 'blocks', note: 'Append-only application history keeps its reasons.' },
   { table: 'recruitment_interview', column: 'stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'An interview keeps the stage it was scheduled in.' },
   { table: 'recruitment_interview', column: 'evaluation_form_id', references: 'recruitment_evaluation_form', effect: 'blocks', note: 'An interview keeps its evaluation form.' },

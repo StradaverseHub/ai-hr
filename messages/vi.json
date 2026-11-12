@@ -38353,7 +38353,8 @@
         "pools": "Kho ứng viên",
         "fields": "Trường tùy chỉnh",
         "templates": "Mẫu vị trí",
-        "exports": "Mẫu xuất"
+        "exports": "Mẫu xuất",
+        "waiting": "Giới hạn chờ"
       },
       "iv": {
         "rulesTitle": "Quy tắc đánh giá",
@@ -39163,7 +39164,9 @@
         "screeningFor": "Sàng lọc {candidate} cho {job}",
         "backgroundCheckAuthorisation": "Thẩm tra lý lịch đang chờ ứng viên cho phép",
         "backgroundCheckOverdue": "Thẩm tra lý lịch đang thực hiện hơn 14 ngày",
-        "toAssign": "{count, plural, other {{shown} ứng viên cần phân công vào vị trí}}"
+        "toAssign": "{count, plural, other {{shown} ứng viên cần phân công vào vị trí}}",
+        "waiting": "{count, plural, other {{shown} hồ sơ ứng tuyển chờ quá lâu ở giai đoạn hiện tại}}",
+        "suggestedArchive": "{count, plural, other {{shown} hồ sơ ứng tuyển được đề xuất lưu trữ}}"
       },
       "update": {
         "requisitionApproved": "Yêu cầu tuyển dụng đã được phê duyệt",
@@ -39182,7 +39185,9 @@
       "jobsUnavailable": "Hiện chưa tải được số liệu theo vị trí.",
       "jobsRefresh": "Tải lại",
       "jobsTitle": "Vị trí của bạn",
-      "endsOn": "Kết thúc {date}"
+      "endsOn": "Kết thúc {date}",
+      "waitingTitle": "Đang chờ ở các giai đoạn",
+      "waitingUnavailable": "Hiện không tải được số hồ sơ đang chờ."
     },
     "agency": {
       "title": "Công ty tuyển dụng",
@@ -40057,6 +40062,70 @@
       "newTitle": "Bộ cột mới cho {kind}",
       "add": "Thêm bộ cột",
       "removedField": "một trường đã bị xóa"
+    },
+    "waiting": {
+      "settingsNote": "Đặt thời gian một hồ sơ ứng tuyển đang xử lý có thể chờ ở mỗi giai đoạn. Sau mốc nhắc nhở, thẻ và trang của hồ sơ cho biết đã chờ bao lâu; sau mốc đề xuất lưu trữ, hồ sơ được liệt kê trong mục Đề xuất lưu trữ cho nhà tuyển dụng của vị trí. Không có gì được lưu trữ tự động: một người sẽ quyết định.",
+      "calendarConfigured": "Ngày làm việc không tính thứ Bảy, Chủ nhật và {count, plural, other {# ngày lễ}} của công ty này trong năm {year} theo lịch ngày lễ.",
+      "calendarWeekendsOnly": "Công ty này chưa thiết lập lịch ngày lễ, nên ngày làm việc chỉ không tính thứ Bảy và Chủ nhật.",
+      "noStages": "Công ty này không có giai đoạn nào đang bật.",
+      "stageDisabled": "Giai đoạn đã tắt",
+      "changed": "Đã thay đổi bởi {by} lúc {at}",
+      "unnamedUser": "Người dùng chưa đặt tên",
+      "noRule": "Không giới hạn",
+      "remindDays": "Nhắc sau (ngày, 1–{max})",
+      "archiveDays": "Đề xuất lưu trữ sau (ngày, tối đa {max}, không bắt buộc)",
+      "dayKind": "Cách đếm",
+      "dayKinds": {
+        "calendar": "Ngày theo lịch",
+        "working": "Ngày làm việc"
+      },
+      "save": "Lưu",
+      "add": "Đặt giới hạn",
+      "remove": "Xóa giới hạn",
+      "removeNamed": "Xóa giới hạn của {stage}",
+      "archiveNote": "Thời gian chờ được tính từ ngày hồ sơ vào giai đoạn hiện tại, theo giờ Kuala Lumpur. Chuyển sang giai đoạn khác sẽ bắt đầu đếm lại.",
+      "fieldRequired": "Bắt buộc",
+      "fieldInvalid": "Nhập số ngày nguyên: nhắc nhở 1–365; đề xuất lưu trữ lớn hơn mốc nhắc nhở và tối đa 730.",
+      "filterLabel": "Giới hạn chờ",
+      "filter": {
+        "all": "Tất cả",
+        "waiting": "Chờ quá lâu",
+        "suggested": "Đề xuất lưu trữ"
+      },
+      "openSuggested": "Mở danh sách Đề xuất lưu trữ",
+      "badge": "Đã chờ {days, plural, other {# ngày}} ở {stage}",
+      "suggestedBadge": "Đề xuất lưu trữ",
+      "dayKindNote": {
+        "calendar": "Tính theo ngày lịch.",
+        "working": "Tính theo ngày làm việc."
+      },
+      "suggestedPurpose": "Các hồ sơ đã chờ ở giai đoạn quá giới hạn của giai đoạn đó. Chọn hồ sơ cần lưu trữ và lý do; không có gì được lưu trữ cho đến khi bạn thực hiện.",
+      "back": "Quay lại Ứng viên",
+      "chooseJob": "Mở danh sách Đề xuất lưu trữ của một vị trí từ bảng Ứng viên.",
+      "suggestedTitle": "Đề xuất lưu trữ · {job} ({number})",
+      "suggestedNote": "Chờ lâu nhất xếp trước. Hồ sơ đang bị giữ để quản trị viên xem xét không thể lưu trữ tại đây.",
+      "noArchiveRules": "Chưa có giai đoạn nào của công ty này có giới hạn đề xuất lưu trữ. Quản trị viên đặt tại Cài đặt › Giới hạn chờ.",
+      "suggestedEmpty": "Không có hồ sơ nào của vị trí này vượt quá giới hạn đề xuất lưu trữ của giai đoạn.",
+      "refusedTitle": "Chưa được lưu trữ:",
+      "unknownApplication": "Một hồ sơ không còn trong danh sách này",
+      "archiving": "Đang lưu trữ…",
+      "selectNamed": "Chọn {name}",
+      "enteredOn": "Ở {stage} từ {date}",
+      "heldForReview": "Cần quản trị viên xem xét",
+      "open": "Mở",
+      "truncated": "Danh sách này có thể chưa đầy đủ: hiển thị tối đa {count} hồ sơ, trong số {scan} hồ sơ đang xử lý lâu chưa thay đổi nhất của vị trí này.",
+      "reason": "Lý do lưu trữ",
+      "chooseReason": "Chọn lý do",
+      "archiveSelected": "Lưu trữ mục đã chọn",
+      "archiveSelectedNote": "Mỗi hồ sơ được chọn sẽ được lưu trữ với lý do này qua thao tác từ chối thông thường, giống như từ chối từng hồ sơ.",
+      "archivedNotice": "{count, plural, other {Đã lưu trữ # hồ sơ.}}",
+      "refused": {
+        "not_found": "không tìm thấy ở vị trí này",
+        "application_closed": "đã tuyển dụng hoặc đã lưu trữ",
+        "needs_review": "đang bị giữ để quản trị viên xem xét",
+        "not_suggested": "không còn vượt quá giới hạn đề xuất lưu trữ (có thể đã được chuyển)"
+      },
+      "countWindow": "Số liệu tính trên {count} hồ sơ cũ nhất của một giai đoạn; “+” nghĩa là có thể còn nhiều hơn."
     }
   },
   "careersPublic": {

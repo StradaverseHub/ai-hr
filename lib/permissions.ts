@@ -197,6 +197,12 @@ export const SCREENS: readonly ScreenEntry[] = [
     '/recruitment/settings/agencies/contracts/[id]','/recruitment/agency-submissions/[id]',
     // Slice 11 — the hiring manager's To screen list (their own open screening requests; row security returns nothing else).
     '/recruitment/screening',
+    // Slice 16 — candidate import and the To assign list (administrators and the company's recruiters and assistants;
+    // the service and row security decide).
+    '/recruitment/candidates/import','/recruitment/to-assign',
+    // Slice 17 — a job's "Suggested to archive" list (the job's recruiters, assistants and the company's recruitment administrators;
+    // the service asks app.can_operate_recruitment_job and row security decides).
+    '/recruitment/suggested-archive',
   ]},
   // ── Everyday screens (scopedSession: every role reaches, data is scoped) ──
   { screenKey: 'dashboard', href: '/', labelKey: 'nav.dashboard', guard: 'scopedSession', routes: ['/'] },

@@ -9,7 +9,7 @@ import {
 } from '@/packs/recruitment/service';
 import { markRecruitmentTasksReadAction } from './actions';
 import { Pill, klDateTime } from './shared';
-import { JobTodosLoading, RecruitmentJobTodos, TodoItems } from './todo-items';
+import { JobTodosLoading, RecruitmentJobTodos, RecruitmentWaitingTodos, TodoItems } from './todo-items';
 
 /**
  * Recruitment › Overview › Tasks (slice 9). To do: what waits for the viewer now, computed live — their approval steps
@@ -75,6 +75,10 @@ export async function RecruitmentTasksPanel({ s, scopeIds, companyIds, tab, page
             {todos.length === 0 ? <p className="py-4 text-sm text-muted-foreground">{t('todoEmpty')}</p> : <TodoItems items={todos} />}
             <Suspense fallback={<JobTodosLoading />}>
               <RecruitmentJobTodos s={s} scopeIds={scopeIds} />
+            </Suspense>
+            {/* Slice 17: the waiting counts load (and can fail) on their own, never holding up the job counts above. */}
+            <Suspense fallback={null}>
+              <RecruitmentWaitingTodos s={s} scopeIds={scopeIds} />
             </Suspense>
           </>
         ) : (

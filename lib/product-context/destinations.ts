@@ -188,6 +188,9 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  // assistants of some job in the company (app.recruitment_operates_in_company); a per-job team membership, not a role.
  '/recruitment/candidates/import',
  '/recruitment/to-assign',
+ // Recruitment slice 17 — a job's "Suggested to archive" list admits the job's recruiters, assistants and the company's recruitment
+ // administrators (app.can_operate_recruitment_job); a per-job team membership, not a role.
+ '/recruitment/suggested-archive',
  // Recruitment slice 7 — referrals admit a person by their own active employment in a company with Recruitment
  // (app.recruitment_referral_eligible); no role or tenant-wide module says who that is.
  '/me/referrals',

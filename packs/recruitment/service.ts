@@ -93,11 +93,11 @@ export {
 export type { CareersPublishRequirement, CareersFormField, CareersFieldError, CareersOutcome, CareersApplicationInput, CareersSettingsInput } from './careers-model';
 // Slice 9 — recruitment tasks and updates: the live to-do list (also the bell's recruitment tasks), the live updates per
 // category, unread counts against the viewer's own read markers (5209) and "Mark all as read".
-export { recruitmentTodos, recruitmentJobTodos, recruitmentUpdates, recruitmentUnreadCounts, markRecruitmentTasksRead, pendingRecruitmentTasks } from './tasks';
+export { recruitmentTodos, recruitmentJobTodos, recruitmentWaitingTodos, recruitmentUpdates, recruitmentUnreadCounts, markRecruitmentTasksRead, pendingRecruitmentTasks } from './tasks';
 export type { RecruitmentUpdatesPage, RecruitmentJobTodos } from './tasks';
 export {
   TASK_CATEGORIES, TASK_TABS, TODO_KINDS, UPDATE_KINDS, UPDATES_WINDOW_DAYS, UPDATES_PAGE_SIZE, UPDATES_MAX_PAGE, UNREAD_CAP, TODO_LIMIT,
-  TODO_COUNT_CAP, TODO_JOB_LIMIT, BELL_TIMEOUT_MS, JOB_TODOS_TIMEOUT_MS, PERSONAL_TODO_KINDS, JOB_TODO_KINDS, isPersonalTodo, isTaskCategory, parseTaskTab, parseUpdatesPage, readCategories, updatesSince, countText, todoHref,
+  TODO_COUNT_CAP, TODO_JOB_LIMIT, BELL_TIMEOUT_MS, JOB_TODOS_TIMEOUT_MS, WAITING_TODOS_TIMEOUT_MS, PERSONAL_TODO_KINDS, JOB_TODO_KINDS, isPersonalTodo, isTaskCategory, parseTaskTab, parseUpdatesPage, readCategories, updatesSince, countText, todoHref,
   updateHref, todoToPackTask, updatesHasMore, encodeUpdatesCursor, decodeUpdatesCursor,
 } from './tasks-model';
 export type { TaskCategory, TaskTab, TodoKind, PersonalTodoKind, UpdateKind, RecruitmentTodo, RecruitmentUpdate } from './tasks-model';
@@ -236,6 +236,21 @@ export {
   defaultExportColumns, chooseExportColumns, validateExportTemplate, safeRows, exportCsv, exportFileName, isCustomColumn,
 } from './export-model';
 export type { ExportKind, ExportFormat, ExportCell } from './export-model';
+// Slice 17 — applications left unprocessed: Settings › Waiting limits (administrators: per stage, a reminder and an optional
+// "suggest archiving" threshold, calendar or working days from the company's holiday calendar), the waiting time on the application
+// page, and a job's "Suggested to archive" list archived in one action through the normal reject path (D-057: never automatic). The
+// board's badges, filter and counts come with candidateBoard; the Overview's per-job counts with recruitmentJobTodos.
+export {
+  waitingRuleSettings, saveWaitingRule, deleteWaitingRule, applicationWaiting, suggestedArchiveList, archiveSuggestedApplications,
+} from './waiting';
+export type {
+  WaitingRuleRow, WaitingRuleSettings, ApplicationWaiting, SuggestedRow, SuggestedArchiveList, SuggestedArchiveRefusal, SuggestedArchiveResult,
+} from './waiting';
+export {
+  WAITING_DAY_KINDS, WAITING_REMIND_MAX, WAITING_ARCHIVE_MAX, WAITING_FILTERS, WAITING_SCAN_LIMIT, WAITING_BOARD_SCAN_LIMIT, SUGGESTED_LIST_LIMIT, HOLIDAY_LOOKBACK_DAYS, addDays, isWeekend, isWorkingDay,
+  waitingDays, waitingCutoff, ruleCutoffs, waitingLevel, holidayWindowStart, parseWaitingFilter, validateWaitingRule,
+} from './waiting-model';
+export type { WaitingDayKind, WaitingFilter, WaitingRule, WaitingLevel, WaitingRuleInput } from './waiting-model';
 export {
   RecruitmentError, RECRUITMENT_ERROR_CODES, JOB_STATUSES, JOB_STATUS_TRANSITIONS, JOB_MEMBER_ROLES, POSITION_ATTRIBUTES, RECRUITMENT_TYPES,
   JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab, INTERVIEW_PLAN_MAX, INTERVIEW_PLAN_FORM_MARKER, parseInterviewPlan, interviewPlanFromForm,

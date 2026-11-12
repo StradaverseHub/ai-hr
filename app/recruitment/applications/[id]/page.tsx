@@ -6,7 +6,7 @@ import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, Input, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import {
-  applicationAgency, applicationBackgroundChecks, applicationCareers, applicationPools, applicationReview, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, applicationScreening, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
+  applicationAgency, applicationBackgroundChecks, applicationCareers, applicationWaiting, applicationPools, applicationReview, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, applicationScreening, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
   OFFER_SEND_CHANNELS, RecruitmentError, type ApplicationHire, type InterviewFormOptions, type InterviewStatus, type OfferView,
 } from '@/packs/recruitment/service';
 import {
@@ -46,7 +46,7 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
     throw e;
   }
   const soft = async <T,>(work: Promise<T>): Promise<T | null> => work.catch((e) => { if (e instanceof RecruitmentError) return null; throw e; });
-  const [offer, history, hire, options, profile, referral, careers, agency, screening, checks, review, pools] = await Promise.all([
+  const [offer, history, hire, options, profile, referral, careers, agency, screening, checks, review, pools, waiting] = await Promise.all([
     soft(applicationOffer(s, id)), soft(applicationHistory(s, id)), soft(applicationHire(s, id)),
     interviews.canSchedule ? soft(interviewFormOptions(s, id)) : Promise.resolve(null), soft(candidateProfile(s, id)), soft(applicationReferral(s, id)),
     soft(applicationCareers(s, id)), soft(applicationAgency(s, id)),
@@ -62,6 +62,12 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
     }),
     // Slice 13: the review state the viewer may know, and the candidate's pools (operators and administrators only).
     soft(applicationReview(s, id)), soft(applicationPools(s, id)),
+    // Slice 17: how long it has waited in its stage, once past the stage's reminder (reviewers; the suggestion for operators). A
+    // database failure leaves the page without the line, never takes it down.
+    applicationWaiting(s, id).catch((e) => {
+      if (!(e instanceof RecruitmentError)) console.error('recruitment waiting line failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+      return null;
+    }),
   ]);
   const reviewer = !!offer;
   const tab: Tab = sp.tab === 'offer' && reviewer ? 'offer' : sp.tab === 'history' && history ? 'history' : sp.tab === 'screening' && screening ? 'screening'
@@ -85,6 +91,16 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
                 : sp.notice === 'review-resolved' ? t('pools.notice.resolved') : undefined} />
       <ErrorBanner message={errorText} />
       <ReviewBanner review={review} here={here} locale={locale} />
+      {waiting && (
+        <p className="flex flex-wrap items-center gap-2 text-sm" role="status">
+          <Pill tone="warn">{t('waiting.badge', { days: waiting.days, stage: waiting.stageName })}</Pill>
+          {waiting.suggested && <Pill tone="bad">{t('waiting.suggestedBadge')}</Pill>}
+          <span className="text-xs text-muted-foreground">{t(`waiting.dayKindNote.${waiting.dayKind}`)}</span>
+          {waiting.suggested && (
+            <Link href={`/recruitment/suggested-archive?job=${interviews.jobId}`} className="text-xs font-medium text-primary hover:underline">{t('waiting.openSuggested')}</Link>
+          )}
+        </p>
+      )}
       {referral && (
         <section aria-labelledby="referral-title" className="space-y-1 rounded-xl border border-border bg-card p-4 text-sm">
           <h2 id="referral-title" className="font-semibold">{t('cand.sources.referral')}</h2>

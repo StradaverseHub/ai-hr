@@ -893,3 +893,17 @@ export const recruitmentExportTemplate = pgTable('recruitment_export_template', 
   columns: text('columns').array().notNull(),
   ...audit,
 });
+
+// ── Slice 17 (db/migrations/5218_recruitment_waiting_limits.sql) ──────────────────────────────────────────
+
+/** A stage's waiting limit: remind after `remindDays`, suggest archiving after `archiveDays` (optional), calendar or working days. */
+export const recruitmentStageWaitingRule = pgTable('recruitment_stage_waiting_rule', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  stageId: uuid('stage_id').notNull(),
+  remindDays: integer('remind_days').notNull(),
+  archiveDays: integer('archive_days'),
+  dayKind: text('day_kind').$type<'calendar' | 'working'>().notNull(),
+  ...audit,
+});

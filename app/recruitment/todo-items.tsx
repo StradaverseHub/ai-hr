@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
-import { TODO_COUNT_CAP, countText, recruitmentJobTodos, type RecruitmentTodo } from '@/packs/recruitment/service';
+import { TODO_COUNT_CAP, countText, recruitmentJobTodos, recruitmentWaitingTodos, type RecruitmentTodo } from '@/packs/recruitment/service';
 import { klDate, klDateTime } from './shared';
 
 /** One list of to-dos (personal or per-job), each linked to where the viewer acts, with its Kuala Lumpur time. */
@@ -10,7 +10,8 @@ export async function TodoItems({ items }: { items: RecruitmentTodo[] }) {
   const line = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(' · ');
   const candidate = (item: RecruitmentTodo) => (item.candidateRemoved ? tc('removedLabel') : item.candidateName);
   const text = (item: RecruitmentTodo) => {
-    const shown = countText(item.count ?? 0, TODO_COUNT_CAP);
+    // A waiting count that read only part of a busy job is a lower bound: "N+" (slice 17).
+    const shown = item.countCapped && (item.count ?? 0) < TODO_COUNT_CAP ? `${item.count ?? 0}+` : countText(item.count ?? 0, TODO_COUNT_CAP);
     switch (item.kind) {
       case 'requisitionApproval': return { label: t('todo.requisitionApproval'), detail: line(item.title, item.number, item.step && t('step', item.step)) };
       case 'offerApproval': return { label: t('todo.offerApproval'), detail: line(candidate(item) ?? t('offerFallback'), item.title, item.step && t('step', item.step)) };
@@ -25,6 +26,8 @@ export async function TodoItems({ items }: { items: RecruitmentTodo[] }) {
       case 'toSchedule': return { label: t('todo.toSchedule', { count: item.count ?? 0, shown }), detail: line(item.title, item.number) };
       case 'toScreen': return { label: t('todo.toScreen', { count: item.count ?? 0, shown }), detail: line(item.title, item.number) };
       case 'toAssign': return { label: t('todo.toAssign', { count: item.count ?? 0, shown }), detail: line(item.title) };
+      case 'waiting': return { label: t('todo.waiting', { count: item.count ?? 0, shown }), detail: line(item.title, item.number) };
+      case 'suggestedArchive': return { label: t('todo.suggestedArchive', { count: item.count ?? 0, shown }), detail: line(item.title, item.number) };
     }
   };
   return (
@@ -63,6 +66,22 @@ export async function RecruitmentJobTodos({ s, scopeIds }: { s: SessionContext; 
   return (
     <section aria-labelledby="job-todos-title" className="border-t border-border pt-2">
       <h3 id="job-todos-title" className="pt-1 text-xs font-semibold text-muted-foreground">{t('jobsTitle')}</h3>
+      {await TodoItems({ items: result.items })}
+    </section>
+  );
+}
+
+/**
+ * Slice 17: the per-job waiting counts (applications waiting too long, suggested to archive), in their own Suspense boundary and under
+ * their own statement timeout: if they cannot be loaded, only this line says so; the other counts are unaffected.
+ */
+export async function RecruitmentWaitingTodos({ s, scopeIds }: { s: SessionContext; scopeIds: string[] }) {
+  const [t, result] = await Promise.all([getTranslations('recruitment.tasks'), recruitmentWaitingTodos(s, scopeIds)]);
+  if (result.status === 'unavailable') return <p role="status" className="py-3 text-sm text-muted-foreground">{t('waitingUnavailable')}</p>;
+  if (!result.items.length) return null;
+  return (
+    <section aria-labelledby="waiting-todos-title" className="border-t border-border pt-2">
+      <h3 id="waiting-todos-title" className="pt-1 text-xs font-semibold text-muted-foreground">{t('waitingTitle')}</h3>
       {await TodoItems({ items: result.items })}
     </section>
   );

@@ -17,7 +17,7 @@ export type TaskTab = (typeof TASK_TABS)[number];
 /** Things waiting for the viewer's action. */
 export const TODO_KINDS = [
   'requisitionApproval', 'offerApproval', 'feedback', 'agencyReview', 'contractExpiry', 'screening', 'backgroundCheckAuthorisation', 'backgroundCheckOverdue',
-  'toSchedule', 'toScreen', 'toAssign',
+  'toSchedule', 'toScreen', 'toAssign', 'waiting', 'suggestedArchive',
 ] as const;
 export type TodoKind = (typeof TODO_KINDS)[number];
 /** The viewer's personal to-dos (approval steps, feedback due; slice 10: an agency submission waiting for the
@@ -29,8 +29,9 @@ export const PERSONAL_TODO_KINDS = [
 ] as const;
 export type PersonalTodoKind = (typeof PERSONAL_TODO_KINDS)[number];
 /** Per-job counts: only on the Overview's To do tab, loaded after the page (D-035); slice 16 adds the per-company To assign count
- *  (candidates with no application, for the company's operators). */
-export const JOB_TODO_KINDS = ['toSchedule', 'toScreen', 'toAssign'] as const;
+ *  (candidates with no application, for the company's operators); slice 17 the per-job counts of applications waiting too long in
+ *  their stage and of those suggested for archiving (the stage's waiting limits). */
+export const JOB_TODO_KINDS = ['toSchedule', 'toScreen', 'toAssign', 'waiting', 'suggestedArchive'] as const;
 
 /** Things that happened, per category. */
 export const UPDATE_KINDS = {
@@ -59,6 +60,9 @@ export const TODO_JOB_LIMIT = 50;
 export const BELL_TIMEOUT_MS = 1500;
 /** The Overview's per-job counts statement timeout: over it the tab says the counts could not be loaded. */
 export const JOB_TODOS_TIMEOUT_MS = 3000;
+/** Slice 17: the Overview's per-job waiting counts have their own statement timeout, separate from the counts above: over it only
+ *  those items say they could not be loaded. */
+export const WAITING_TODOS_TIMEOUT_MS = 3000;
 /** A per-job count (to schedule, to screen) stops counting here; it then reads "99+". */
 export const TODO_COUNT_CAP = 100;
 
@@ -78,6 +82,8 @@ export type RecruitmentTodo = {
   candidateRemoved: boolean;
   /** Per-job counts (to schedule, to screen), capped at TODO_COUNT_CAP. */
   count: number | null;
+  /** Slice 17: the waiting counts read only part of a busy job (WAITING_SCAN_LIMIT): `count` is then a lower bound ("N+"). */
+  countCapped?: boolean;
   /** Approval steps: the viewer's position and the number of steps. */
   step: { position: number; steps: number } | null;
   /** Contract expiry: the contract's end date (Kuala Lumpur calendar day). */
@@ -169,6 +175,10 @@ export function todoHref(kind: TodoKind, ids: { id: string; jobId?: string | nul
       return `/recruitment/applications/${encodeURIComponent(ids.applicationId ?? '')}?tab=checks#check-${encodeURIComponent(ids.id)}`;
     case 'toAssign':
       return `/recruitment/to-assign?company=${encodeURIComponent(ids.id)}`;
+    case 'waiting':
+      return `/recruitment/candidates?${new URLSearchParams({ job: ids.jobId ?? ids.id, waiting: 'waiting' }).toString()}`;
+    case 'suggestedArchive':
+      return `/recruitment/suggested-archive?${new URLSearchParams({ job: ids.jobId ?? ids.id }).toString()}`;
     case 'toSchedule':
     case 'toScreen': {
       const q = new URLSearchParams({ job: ids.jobId ?? ids.id, ...(ids.stageId ? { tab: ids.stageId } : {}) });

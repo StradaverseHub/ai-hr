@@ -277,7 +277,7 @@ describe('case 8 — users without access cannot read or move applications', () 
       'recruitment_job_agency_contract', 'recruitment_job_custom_value', 'recruitment_job_member', 'recruitment_job_opening', 'recruitment_offer', 'recruitment_offer_approval', 'recruitment_offer_field', 'recruitment_offer_value',
       'recruitment_position_template', 'recruitment_position_template_value',
       'recruitment_process', 'recruitment_process_stage', 'recruitment_referral', 'recruitment_requisition', 'recruitment_requisition_approval',
-      'recruitment_requisition_job', 'recruitment_scorecard', 'recruitment_screening_answer', 'recruitment_screening_request', 'recruitment_stage', 'recruitment_tag', 'recruitment_tag_group', 'recruitment_talent_pool',
+      'recruitment_requisition_job', 'recruitment_scorecard', 'recruitment_screening_answer', 'recruitment_screening_request', 'recruitment_stage', 'recruitment_stage_waiting_rule', 'recruitment_tag', 'recruitment_tag_group', 'recruitment_talent_pool',
       'recruitment_talent_pool_member', 'recruitment_talent_pool_share', 'recruitment_task_read_marker', 'recruitment_to_assign',
     ]);
     expect(rows.every((r) => r.rls && r.forced && r.public_grants === 0)).toBe(true);

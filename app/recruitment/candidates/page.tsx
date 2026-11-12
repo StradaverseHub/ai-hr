@@ -4,7 +4,7 @@ import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { applicationHistory, candidateBoard, poolChoices, ASSIGNMENT_STATUSES, SCREENING_STATUS_WINDOW, CANDIDATE_SOURCES, ID_TYPES, RecruitmentError, type ApplicationHistoryRow } from '@/packs/recruitment/service';
+import { applicationHistory, candidateBoard, poolChoices, ASSIGNMENT_STATUSES, SCREENING_STATUS_WINDOW, WAITING_SCAN_LIMIT, CANDIDATE_SOURCES, ID_TYPES, RecruitmentError, type ApplicationHistoryRow } from '@/packs/recruitment/service';
 import { moveApplicationAction, rejectApplicationAction, removeCandidateFromPoolAction } from '../actions';
 import { AddToPool } from '../pool-ui';
 import { NoRecruitmentCompany, Notice, Pill, RecruitmentTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
@@ -16,7 +16,7 @@ import { ScreeningStatusPill } from '../screening-ui';
 import { CustomFilterSelect } from '../custom-fields-ui';
 import { ExportPanel } from '../export-ui';
 
-type Search = { job?: string; tab?: string; tag?: string; application?: string; problem?: string; notice?: string; screening?: string; send?: string; held?: string; cf?: string };
+type Search = { job?: string; tab?: string; tag?: string; application?: string; problem?: string; notice?: string; screening?: string; send?: string; held?: string; cf?: string; waiting?: string };
 
 /**
  * Recruitment › Candidates: the pipeline by stage, with live counts, Move forward, Reject and Add application.
@@ -29,16 +29,17 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
   const access = await recruitmentViewerAccess(s, scopeIds);
   const companies = access.companies;
   const sp = await searchParams;
-  const [t, nav, locale, tc, ts, tk, tp] = await Promise.all([getTranslations('recruitment.candidates'), getTranslations('nav'), getLocale(), getTranslations('recruitment.cand'),
-    getTranslations('recruitment.screening'), getTranslations('recruitment.checks'), getTranslations('recruitment.pools')]);
+  const [t, nav, locale, tc, ts, tk, tp, tw] = await Promise.all([getTranslations('recruitment.candidates'), getTranslations('nav'), getLocale(), getTranslations('recruitment.cand'),
+    getTranslations('recruitment.screening'), getTranslations('recruitment.checks'), getTranslations('recruitment.pools'), getTranslations('recruitment.waiting')]);
   const [board, choices] = await Promise.all([
-    candidateBoard(s, companies.map((c) => c.id), { jobId: sp.job, tab: sp.tab, tagId: sp.tag, screening: sp.screening, custom: sp.cf }),
+    candidateBoard(s, companies.map((c) => c.id), { jobId: sp.job, tab: sp.tab, tagId: sp.tag, screening: sp.screening, custom: sp.cf, waiting: sp.waiting }),
     // Slice 13: the pools the viewer can see (operators and administrators), for "Add to pool" on the cards they operate.
     poolChoices(s, access.poolCompanies.map((c) => c.id)),
   ]);
   const selectedTab = board.tabs.find((x) => x.key === sp.tab) ?? board.tabs[0];
   const query = (next: Record<string, string | undefined>) => {
-    const q = new URLSearchParams(Object.entries({ job: sp.job, tag: sp.tag, cf: board.customFilter ?? undefined, tab: selectedTab?.key, screening: board.screening?.filter ?? undefined, ...next })
+    const q = new URLSearchParams(Object.entries({ job: sp.job, tag: sp.tag, cf: board.customFilter ?? undefined, tab: selectedTab?.key, screening: board.screening?.filter ?? undefined,
+      waiting: board.waiting?.filter ?? undefined, ...next })
       .filter((e): e is [string, string] => !!e[1]));
     return `/recruitment/candidates${q.size ? `?${q}` : ''}`;
   };
@@ -97,10 +98,37 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
               {board.tabs.map((tab) => (
                 <Link key={tab.key} href={query({ tab: tab.key, application: undefined })} aria-current={tab.key === selectedTab?.key ? 'page' : undefined}
                   className={cn('rounded-full border px-3 py-1 text-sm', tab.key === selectedTab?.key ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:bg-accent')}>
-                  {tabLabel(tab.key, tab.name)} <span className="tabular-nums">({tab.count})</span>
+                  {tabLabel(tab.key, tab.name)} <span className="tabular-nums">({tab.count}{board.waiting?.filter && tab.stageId && board.waiting.counts[tab.stageId]?.capped ? '+' : ''})</span>
                 </Link>
               ))}
             </nav>
+            {board.waiting && (() => {
+              // Slice 17: the waiting filter, with the counts of the selected stage (or of every stage with a limit on Hired, Archived).
+              const w = board.waiting!;
+              const shown = selectedTab?.stageId && w.counts[selectedTab.stageId] ? [w.counts[selectedTab.stageId]] : Object.values(w.counts);
+              const total = (k: 'waiting' | 'suggested') => shown.reduce((n, c) => n + (c[k] ?? 0), 0);
+              const capped = shown.some((c) => c.capped);
+              const canSuggest = Object.values(w.counts).some((c) => c.suggested !== null);
+              const suggestJob = board.jobs.find((j) => j.id === sp.job && j.canOperate);
+              return (
+                <nav aria-label={tw('filterLabel')} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-xs font-medium text-muted-foreground">{tw('filterLabel')}</span>
+                  {([null, 'waiting', ...(canSuggest ? ['suggested'] as const : [])] as const).map((key) => {
+                    const current = (w.filter ?? null) === key;
+                    return (
+                      <Link key={key ?? 'all'} href={query({ waiting: key ?? '', application: undefined, send: undefined })} aria-current={current ? 'page' : undefined}
+                        className={cn('rounded-md border px-2.5 py-1', current ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:bg-accent')}>
+                        {key ? <>{tw(`filter.${key}`)} <span className="tabular-nums">({total(key)}{capped ? '+' : ''})</span></> : tw('filter.all')}
+                      </Link>
+                    );
+                  })}
+                  {suggestJob && canSuggest && (
+                    <Link href={`/recruitment/suggested-archive?job=${suggestJob.id}`} className="text-sm font-medium text-primary hover:underline">{tw('openSuggested')}</Link>
+                  )}
+                  {capped && <span className="w-full text-xs text-muted-foreground">{tw('countWindow', { count: WAITING_SCAN_LIMIT })}</span>}
+                </nav>
+              );
+            })()}
             {board.screening && (
               <nav aria-label={ts('filterLabel')} className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="text-xs font-medium text-muted-foreground">{ts('filterLabel')}</span>
@@ -151,6 +179,12 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                         {card.needsReview && (
                           <p className="mt-1">
                             <Link href={`/recruitment/applications/${card.id}`} className="inline-flex"><Pill tone="warn">{tp('review.cardFlag')}</Pill></Link>
+                          </p>
+                        )}
+                        {card.waiting && (
+                          <p className="mt-1 flex flex-wrap gap-1">
+                            <Pill tone="warn">{tw('badge', { days: card.waiting.days, stage: card.waiting.stageName })}</Pill>
+                            {card.waiting.suggested && <Pill tone="bad">{tw('suggestedBadge')}</Pill>}
                           </p>
                         )}
                         {card.pools.length > 0 && (

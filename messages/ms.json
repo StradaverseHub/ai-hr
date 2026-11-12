@@ -38353,7 +38353,8 @@
         "pools": "Kumpulan bakat",
         "fields": "Medan tersuai",
         "templates": "Templat jawatan",
-        "exports": "Templat eksport"
+        "exports": "Templat eksport",
+        "waiting": "Had menunggu"
       },
       "iv": {
         "rulesTitle": "Peraturan maklum balas",
@@ -39163,7 +39164,9 @@
         "screeningFor": "Saring {candidate} untuk {job}",
         "backgroundCheckAuthorisation": "Semakan latar belakang menunggu kebenaran calon",
         "backgroundCheckOverdue": "Semakan latar belakang sedang berjalan lebih daripada 14 hari",
-        "toAssign": "{count, plural, one {# calon untuk ditetapkan kepada jawatan} other {{shown} calon untuk ditetapkan kepada jawatan}}"
+        "toAssign": "{count, plural, one {# calon untuk ditetapkan kepada jawatan} other {{shown} calon untuk ditetapkan kepada jawatan}}",
+        "waiting": "{count, plural, one {# permohonan menunggu terlalu lama di peringkatnya} other {{shown} permohonan menunggu terlalu lama di peringkatnya}}",
+        "suggestedArchive": "{count, plural, one {# permohonan dicadangkan untuk diarkibkan} other {{shown} permohonan dicadangkan untuk diarkibkan}}"
       },
       "update": {
         "requisitionApproved": "Permintaan jawatan diluluskan",
@@ -39182,7 +39185,9 @@
       "jobsUnavailable": "Kiraan jawatan tidak dapat dimuatkan sekarang.",
       "jobsRefresh": "Muat semula",
       "jobsTitle": "Jawatan anda",
-      "endsOn": "Tamat {date}"
+      "endsOn": "Tamat {date}",
+      "waitingTitle": "Menunggu di peringkat",
+      "waitingUnavailable": "Kiraan menunggu tidak dapat dimuatkan buat masa ini."
     },
     "agency": {
       "title": "Agensi",
@@ -40057,6 +40062,70 @@
       "newTitle": "Set lajur baharu untuk {kind}",
       "add": "Tambah set lajur",
       "removedField": "medan yang telah dibuang"
+    },
+    "waiting": {
+      "settingsNote": "Tetapkan berapa lama permohonan aktif boleh menunggu di setiap peringkat. Selepas peringatan, kad dan halamannya menunjukkan tempoh menunggu; selepas had cadangan arkib, ia disenaraikan di bawah Dicadangkan untuk diarkibkan untuk perekrut jawatan itu. Tiada apa-apa diarkibkan secara automatik: seseorang yang membuat keputusan.",
+      "calendarConfigured": "Hari bekerja tidak mengira Sabtu, Ahad dan {count, plural, one {# cuti umum} other {# cuti umum}} syarikat ini pada {year} daripada kalendar cuti.",
+      "calendarWeekendsOnly": "Tiada kalendar cuti umum ditetapkan untuk syarikat ini, jadi hari bekerja hanya tidak mengira Sabtu dan Ahad.",
+      "noStages": "Syarikat ini tiada peringkat yang didayakan.",
+      "stageDisabled": "Peringkat dinyahdayakan",
+      "changed": "Diubah oleh {by} pada {at}",
+      "unnamedUser": "Pengguna tanpa nama",
+      "noRule": "Tiada had",
+      "remindDays": "Ingatkan selepas (hari, 1–{max})",
+      "archiveDays": "Cadangkan arkib selepas (hari, hingga {max}, pilihan)",
+      "dayKind": "Kiraan",
+      "dayKinds": {
+        "calendar": "Hari kalendar",
+        "working": "Hari bekerja"
+      },
+      "save": "Simpan",
+      "add": "Tetapkan had",
+      "remove": "Buang had",
+      "removeNamed": "Buang had untuk {stage}",
+      "archiveNote": "Tempoh menunggu dikira dari hari permohonan memasuki peringkat semasanya, mengikut waktu Kuala Lumpur. Memindahkannya ke peringkat lain memulakan kiraan semula.",
+      "fieldRequired": "Wajib",
+      "fieldInvalid": "Masukkan hari penuh: peringatan 1–365; cadangan arkib lebih daripada peringatan dan paling banyak 730.",
+      "filterLabel": "Had menunggu",
+      "filter": {
+        "all": "Semua",
+        "waiting": "Menunggu terlalu lama",
+        "suggested": "Dicadangkan untuk diarkibkan"
+      },
+      "openSuggested": "Buka senarai Dicadangkan untuk diarkibkan",
+      "badge": "Menunggu {days, plural, one {# hari} other {# hari}} di {stage}",
+      "suggestedBadge": "Dicadangkan untuk diarkibkan",
+      "dayKindNote": {
+        "calendar": "Dikira dalam hari kalendar.",
+        "working": "Dikira dalam hari bekerja."
+      },
+      "suggestedPurpose": "Permohonan yang telah menunggu di peringkatnya melebihi had peringkat itu. Pilih yang hendak diarkibkan dan sebabnya; tiada apa-apa diarkibkan sehingga anda berbuat demikian.",
+      "back": "Kembali ke Calon",
+      "chooseJob": "Buka senarai Dicadangkan untuk diarkibkan bagi sesuatu jawatan dari papan Calon.",
+      "suggestedTitle": "Dicadangkan untuk diarkibkan · {job} ({number})",
+      "suggestedNote": "Yang paling lama menunggu dahulu. Permohonan yang ditahan untuk semakan pentadbir tidak boleh diarkibkan di sini.",
+      "noArchiveRules": "Belum ada peringkat syarikat ini yang mempunyai had cadangan arkib. Pentadbir menetapkannya di Tetapan › Had menunggu.",
+      "suggestedEmpty": "Tiada permohonan jawatan ini yang melebihi had cadangan arkib peringkatnya.",
+      "refusedTitle": "Tidak diarkibkan:",
+      "unknownApplication": "Permohonan yang tiada lagi dalam senarai ini",
+      "archiving": "Mengarkibkan…",
+      "selectNamed": "Pilih {name}",
+      "enteredOn": "Di {stage} sejak {date}",
+      "heldForReview": "Perlu semakan pentadbir",
+      "open": "Buka",
+      "truncated": "Senarai ini mungkin tidak lengkap: ia menunjukkan paling banyak {count} permohonan, daripada {scan} permohonan aktif jawatan ini yang paling lama tidak diubah.",
+      "reason": "Sebab arkib",
+      "chooseReason": "Pilih sebab",
+      "archiveSelected": "Arkibkan yang dipilih",
+      "archiveSelectedNote": "Setiap permohonan yang dipilih diarkibkan dengan sebab ini melalui penolakan biasa, sama seperti ditolak satu demi satu.",
+      "archivedNotice": "{count, plural, one {# permohonan diarkibkan.} other {# permohonan diarkibkan.}}",
+      "refused": {
+        "not_found": "tidak ditemui pada jawatan ini",
+        "application_closed": "sudah diambil bekerja atau diarkibkan",
+        "needs_review": "ditahan untuk semakan pentadbir",
+        "not_suggested": "tidak lagi melebihi had cadangan arkib (mungkin telah dipindahkan)"
+      },
+      "countWindow": "Kiraan merangkumi {count} permohonan tertua sesuatu peringkat; “+” bermaksud mungkin ada lagi."
     }
   },
   "careersPublic": {
