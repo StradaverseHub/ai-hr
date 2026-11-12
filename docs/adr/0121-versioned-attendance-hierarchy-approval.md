@@ -188,3 +188,23 @@ covered (their employment must be active; a login is not). `attendance_correctio
 filed it) is stamped by the database and immutable; the filer holds no slot of that application, is refused by the
 v1/v2/v3/v4 decision guards, and History reads "Submitted on behalf by <name>" and "Approved/Rejected On Behalf".
 Approve On Behalf is not offered for v1/v2 routes, which keep their existing reasoned HR administrator mode.
+
+## Amendment — request-bound final-decision read window (owner decision, 12 November 2026)
+
+Owner decision (2026-11-12, board daa76ed4): a legitimately assigned v3/v4 participant who lacks the subject's
+calculation visibility — notably a cross-company approver in the same tenant — gives the final approval, or an
+OT-bearing final rejection, themselves. This replaces the HR handoff for that case; the handoff remains only where the
+window cannot be proven (for example the approver lost the assignment). Personnel visibility is not widened in general.
+Migration 5143 adds one leading branch to `app.can_see_employment` and merges one id into `app.visible_employment_ids`:
+exactly the subject employment of exactly one correction, and only while `app.attendance_effect_window_employment()`
+proves, on every call, that the request hint names that v3/v4 correction of the current tenant, that the live caller
+wrote the request-ending participant decision (final-level approval or a rejection) in this very transaction (active
+write: it closes at commit and at a released or rolled-back savepoint), that the request is at that level with no
+completion yet or advanced past it by the caller's same-transaction completion with the same outcome, and that the
+correction is pending or decided by this transaction. The hint itself is untrusted: a forged hint without those rows
+yields nothing; the decision path installs it only through `app.attendance_workflow_open_final_window`, which
+restores the previous hint when the window cannot be proven. The proof answers re-entrant calls (the participant
+table's own read policy) with NULL. With no hint installed the branch costs one transaction-local setting read.
+The TypeScript runs only the fixed Attendance effect inside the window, returns the status, then clears the hint and
+re-checks that the caller is back to their normal visibility before the transaction may commit. This supersedes the
+earlier statements in this ADR that a participant without calculation visibility always receives the HR handoff.

@@ -5332,6 +5332,13 @@ export async function decideAttendanceCorrection(
           : {}),
       },
     });
+    if (workflowStage.calculationWindow) {
+      // 5143: close the request-bound read window and prove the caller is back to their normal visibility.
+      await tx.execute(sql`select set_config('app.attendance_workflow_effect','',true)`);
+      const [closed] = await tx.execute(sql`select app.can_see_employment(${cor.employmentId}::uuid) as visible`) as unknown as { visible: boolean }[];
+      const [hint] = await tx.execute(sql`select coalesce(current_setting('app.attendance_workflow_effect',true),'') as hint`) as unknown as { hint: string }[];
+      if (closed?.visible !== false || hint?.hint !== '') throw new Error('The attendance decision window did not close. The decision was rolled back.');
+    }
     return { status: p.decision, deferred: deferredApproval };
   };
   if (existingTx) {

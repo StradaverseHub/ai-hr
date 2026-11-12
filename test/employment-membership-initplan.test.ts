@@ -177,7 +177,7 @@ it('installs the wrapped positive membership without changing any other authorit
  expect(installed.with_check).toBe('((tenant_id = app.current_tenant_id()) AND app.is_admin_for(company_id))');
  expect(compact(installed.qual)).toBe(originalQual.replaceAll(originalMembership,currentMembership).replace(adminArm,partnerArm));
  const [functionRow]=await owner.client`select md5(prosrc) as body,prosecdef,provolatile,proconfig from pg_proc where oid='app.visible_employment_ids()'::regprocedure`;
- expect(functionRow).toEqual({body:'1bc7e85a740a98b9db79efb2b7768c8b',prosecdef:true,provolatile:'s',proconfig:['search_path=public']});
+ expect(functionRow).toEqual({body:'b3f9d3790abea92fc2c54149eebe7fd4',prosecdef:true,provolatile:'s',proconfig:['search_path=public']});
 });
 
 it('replays the real append on populated predecessor data with exact native before/after authority',async()=>{

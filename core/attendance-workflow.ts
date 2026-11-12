@@ -481,6 +481,8 @@ export type AttendanceStageResult = {
     actualDeciderEmploymentId?: string | null;
     /** Fixed audit data only. The final caller emits it after effect/payroll locks and identity restoration. */
     finalApprovalEvent?: AppendEventArgs;
+    /** 5143: the request-bound read window was opened for this final decision; the caller must close it. */
+    calculationWindow?: boolean;
 };
 /** V3 records each required person before considering the existing stage-completion grain. */
 async function decideAttendanceParticipantTx(tx: Tx, ctx: SessionContext, flow: typeof request.$inferSelect, p: {
@@ -514,6 +516,7 @@ async function decideAttendanceParticipantTx(tx: Tx, ctx: SessionContext, flow: 
         return { routed: true, final: false, currentStage: flow.currentStage, actualDeciderEmploymentId: actualEmploymentId };
     }
     const final = fulfillment.decision === 'rejected' || flow.currentStage === flow.stages.length - 1;
+    let calculationWindow = false;
     if (final) {
         // Rejecting an OT-bearing correction changes its canonical approval digest too. Preserve
         // ordinary non-OT rejection, but require the existing scoped calculation owner for that
@@ -521,8 +524,14 @@ async function decideAttendanceParticipantTx(tx: Tx, ctx: SessionContext, flow: 
         const [visibility] = await tx.execute(sql`select app.can_see_employment(${flow.employmentId}::uuid) as ok,
             (select c.requested_ot_minutes is not null from public.attendance_correction c
              where c.id=${flow.correctionId}::uuid and c.tenant_id=app.current_tenant_id() and c.employment_id=${flow.employmentId}::uuid) as "otBearing"`) as unknown as { ok: boolean; otBearing: boolean | null }[];
-        if (!visibility?.ok && (fulfillment.decision === 'approved' || visibility?.otBearing !== false))
-            throw new AttendanceLevelError({ code: 'hr_handoff_required', levelIndex: flow.currentStage });
+        if (!visibility?.ok && (fulfillment.decision === 'approved' || visibility?.otBearing !== false)) {
+            // Owner decision 2026-11-12 (5143): the legitimately assigned participant completes the request
+            // themselves. The database opens a read window for exactly this subject, proven from the participant row
+            // just written in this transaction; anything it cannot prove keeps the HR handoff.
+            const [opened] = await tx.execute(sql`select app.attendance_workflow_open_final_window(${p.correctionId}::uuid) as ok`) as unknown as { ok: boolean }[];
+            if (!opened?.ok) throw new AttendanceLevelError({ code: 'hr_handoff_required', levelIndex: flow.currentStage });
+            calculationWindow = true;
+        }
     }
 
     await tx.insert(decision).values({ tenantId: ctx.tenantId, requestId: flow.id, employmentId: flow.employmentId, stageIndex: flow.currentStage,
@@ -536,6 +545,7 @@ async function decideAttendanceParticipantTx(tx: Tx, ctx: SessionContext, flow: 
     // The final caller emits this only after canonical effect/payroll locks; do not invert the audit lock.
     if (!final || fulfillment.decision !== 'approved') await appendEvent(tx, stageEvent);
     return { routed: true, final, currentStage: final ? flow.stages.length : flow.currentStage + 1, actualDeciderEmploymentId: actualEmploymentId,
+        ...(calculationWindow ? { calculationWindow: true } : {}),
         ...(final && fulfillment.decision === 'approved' ? { versionedFinalEffect: true, finalApprovalEvent: stageEvent } : {}) };
 }
 /** Called by EVERY decide path before touching attendance. Request row is already locked by the caller. */

@@ -89,16 +89,6 @@ describe('cross-company approvers within the Organization Code',()=>{
    expect(await statusOf(id)).toBe('approved');
   }
  });
- it('a final approval by an approver without calculation access keeps the existing HR handoff',async()=>{
-  const b=await company('Fictional handoff company');
-  const applicant=await actor('Fictional handoff applicant'),boss=await actor('Fictional handoff superior',{companyId:b.id,departmentId:b.departmentId,roleCompanyId:b.id});
-  await reports(applicant,boss);
-  await saveAttendanceWorkflow(adminCtx(base),workflow([applicant],[level([superior(1)])]));
-  const id=await submit(applicant);
-  await expect(decide(boss,id,0,'0:0')).rejects.toMatchObject({problem:{code:'hr_handoff_required',levelIndex:0}});
-  expect(await statusOf(id)).toBe('pending');
-  expect(await participantsOf((await requestOf(id)).id)).toEqual([]);
- });
  it('a named approver may come from another company; another tenant never resolves',async()=>{
   const b=await company('Fictional named-approver company');
   const applicant=await actor('Fictional named applicant'),reviewer=await actor('Fictional named reviewer',{companyId:b.id,departmentId:b.departmentId,roleCompanyId:b.id});
