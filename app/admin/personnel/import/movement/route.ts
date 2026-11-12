@@ -30,8 +30,11 @@ export async function POST(request:Request){
  try{
   const data=await form(request),operation=String(data.get('operation')??'');
   if(operation==='download'){
-   const template=await movementImportTemplateData(ctx);
-   return download(await buildMovementWorkbook({tenantId:ctx.tenantId,types:template.types,companies:template.companies,resolve}),'movement-import.xlsx');
+   // A list too large to read for the template is a template that cannot be built: one plain refusal, not "use Personnel".
+   try{
+    const template=await movementImportTemplateData(ctx);
+    return download(await buildMovementWorkbook({tenantId:ctx.tenantId,types:template.types,companies:template.companies,resolve}),'movement-import.xlsx');
+   }catch(error){if(error instanceof Error&&error.message==='movement_reference_catalog_too_large')throw new Error('movement_template_too_large');throw error;}
   }
   if(operation==='preview'){
    const file=data.get('file');if(!(file instanceof File))throw new Error('invalid_file');
@@ -58,7 +61,7 @@ export async function POST(request:Request){
   if(error instanceof MovementImportJobError)return reply(error.message===MOVEMENT_IMPORT_ALREADY_RUNNING||error.message===MOVEMENT_CHECK_ALREADY_RUNNING?{ok:false,error:error.message}:{ok:false,message:error.message},error.status);
   // Database wrappers contain SQL/bound values. Only finite application codes are presentation data.
   const raw=error instanceof Error&&!('query'in error)&&!('cause'in error)?error.message:'';
-  const code=/^(?:workbook_[a-z_]+|file_too_large|invalid_file|unknown_or_inactive_event_type|too_many_employees|movement_reference_catalog_too_large|whole_employee_selection_required|invalid_selection|preview_changed|confirm_excluded_rows|select_valid_rows)$/.test(raw)?raw:'change_refused';
+  const code=/^(?:workbook_[a-z_]+|file_too_large|invalid_file|unknown_or_inactive_event_type|too_many_employees|movement_reference_catalog_too_large|movement_template_too_large|whole_employee_selection_required|invalid_selection|preview_changed|confirm_excluded_rows|select_valid_rows)$/.test(raw)?raw:'change_refused';
   if(code==='change_refused')console.error('[movement import]',error);
   return reply({ok:false,error:code},400);
  }
