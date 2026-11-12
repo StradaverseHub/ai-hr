@@ -58,3 +58,26 @@ amount stays the ledger's figure, and it is now re-priced on an OPEN run.
   `scripts/mark-individual-txn-pricing-792053e5.ts` (open months, rule unchanged since the row was written, input
   present); the rest are listed for HR review. Covered by payroll-reprocess-formula-792053e5.test.ts and
   792053e5-reprocess-formula-presentation.test.ts.
+
+## Amendment — one owner for `{#Input}`; a Pay Item linked to the Formula Builder (12 November 2026)
+
+Production case NORMAL OT (ONOR): a row keyed as 9.00 hours and priced by the item's inline formula (method NULL,
+marker `pay_item_rule`) was processed after the item was linked to a saved Formula Builder formula ending
+`* {#Input}`. Payroll built `{#Input}` from the stored amount, so it paid amount × factor, while entry prices a
+Formula Builder item from the keyed quantity; reprocess refused the row as "no longer calculates".
+
+- `lib/pay-formula-input.ts` is the single owner of a row's own `{#Input}`, used by entry pricing, re-pricing,
+  payroll generation and saved-formula simulation (the formula tester's employee snapshot). The input is the keyed
+  Qty, Hours, Days or Units when the amount is a final figure a pricing owner worked out from it (method `formula`,
+  or marker `pay_item_rule`); otherwise the saved amount (Amount method, recurring and batch Pay Items, and unmarked
+  method-NULL rows, which stay historical raw input). A quantity-input row without a positive quantity in a
+  quantity unit has no input and is refused, never priced from its amount.
+- `{#PayItemInput}("CODE")` of another item keeps its documented saved monetary amount; it is not the same defect.
+- An open run's process or reprocess re-prices a `pay_item_rule` row whose Pay Item now links a Formula Builder
+  formula through `priceIndividualTxnInputTx` (method `formula`), and records entry's marker in the same statement:
+  method `formula`, `saved_formula`, the formula revision. The reference-only `payroll.individual-txn.repriced`
+  event says `reason: 'formula-builder-linked'` with the previous source. Formula failure, a non-positive result and
+  a missing quantity still refuse (`PayItemFormulaRepriceError`); there is no fallback to the old amount.
+- No saved row or payslip is changed by migration or script. `scripts/report-formula-keyed-input-impact.ts` is a
+  read-only report (READ ONLY transactions, named HR administrator, employee code only) of the open-month rows the
+  next process or reprocess will move. Covered by payroll-formula-keyed-input.test.ts and pay-formula-input.test.ts.
