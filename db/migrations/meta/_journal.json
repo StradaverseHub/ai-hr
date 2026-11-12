@@ -5853,6 +5853,13 @@
       "when": 1793330005280,
       "tag": "5580_rewards_config_owner_paths",
       "breakpoints": true
+    },
+    {
+      "idx": 5000,
+      "version": "7",
+      "when": 1793330005300,
+      "tag": "5600_rewards_config_editor_role_levels",
+      "breakpoints": true
     }
   ]
 }

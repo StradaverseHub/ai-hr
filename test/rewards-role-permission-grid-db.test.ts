@@ -78,7 +78,7 @@ describe('Role permissions grid (database)',()=>{
   const hr=adminCtx(b);
   const locked=await errorOf(save(hr,[{role:'bu',capability:'review.view',after:'none'},{role:'gr',capability:'access.manage',after:'none'}]));
   expect(locked?.code).toBe('locked');
-  const wider=await errorOf(save(hr,[{role:'bu',capability:'review.view',after:'none'},{role:'ctro',capability:'salary.view',after:'full'}]));
+  const wider=await errorOf(save(hr,[{role:'bu',capability:'review.view',after:'none'},{role:'ctro',capability:'limits.view',after:'full'}]));
   expect(wider?.code).toBe('invalid');
   const fixed=await errorOf(save(hr,[{role:'bu',capability:'own.never',after:'none'}]));
   expect(fixed?.code).toBe('invalid');
@@ -88,7 +88,7 @@ describe('Role permissions grid (database)',()=>{
   expect(stale?.code).toBe('stale');
   expect((await stored()).map(r=>`${r.role}:${r.capability}`)).toEqual(['ctro:bonus.view']);
   // The database refuses the same cells without the command.
-  for(const raw of [sql`'gr','access.manage','none'`,sql`'ctro','salary.view','full'`,sql`'bu','own.never','none'`,sql`'bu','review.decide','none'`]){
+  for(const raw of [sql`'gr','access.manage','none'`,sql`'ctro','limits.view','full'`,sql`'bu','own.never','none'`,sql`'bu','review.decide','none'`]){
    const error=await errorOf(withTenant(hr,tx=>tx.execute(sql`insert into reward_role_permission(tenant_id,role,capability,level,allowed,changed_by,reason) values(app.current_tenant_id(),${raw},false,app.current_user_id(),'Raw write around the command')`)));
    expect(pgSqlState(error)).toBe('42501');
   }

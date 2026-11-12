@@ -4,7 +4,7 @@ import type {RewardRole} from './model';
  * One owner for the grid: every row's category, kind and the per-role default level. The default is also the ceiling:
  * a saved cell can be the default or anything narrower among the options the server can enforce, never wider. The
  * same catalogue is mirrored in SQL by app.reward_role_default_level / app.reward_role_level_options /
- * app.reward_role_permission_locked (migration 5520) and test/rewards-role-permission-grid-db.test.ts checks parity
+ * app.reward_role_permission_locked (migrations 5520 and 5600) and test/rewards-role-permission-grid-db.test.ts checks parity
  * for every role and row. */
 export const rewardAccessRoles=['bu','bg','proxy_bg','gr','ctro','ec','pbp','hr_admin','payroll'] as const;
 export type RewardAccessRole=typeof rewardAccessRoles[number];
@@ -49,8 +49,11 @@ export const isRewardLevel=(value:unknown):value is RewardLevel=>typeof value===
 export function rewardDefaultLevel(role:RewardAccessRole,capability:RewardCapability):RewardLevel{
  const r=role==='proxy_bg'?'bg':role;
  switch(capability){
-  case'access.manage':case'plans.manage':case'pat.manage':case'data.check':case'snapshot.refresh':return r==='gr'?'full':'none';
-  case'salary.view':case'bonus.view':return r==='gr'?'full':r==='ctro'?'view':'none';
+  case'access.manage':case'plans.manage':case'data.check':case'snapshot.refresh':return r==='gr'?'full':'none';
+  // Board 60f1fdcd (migration 5600): Group Rewards, CTRO and HR Admin edit Salary Structures, Bonus Matrices and company
+  // PAT. The configuration editor predicate (app.reward_config_editor) still scopes them: a company-scoped HR Admin never
+  // edits group-wide items.
+  case'salary.view':case'bonus.view':case'pat.manage':return r==='gr'||r==='ctro'||r==='hr_admin'?'full':'none';
   case'senior.manage':case'limits.view':return r==='gr'?'full':r==='ctro'||r==='ec'?'view':'none';
   case'restricted.view':return r==='gr'||r==='ctro'||r==='ec'?'step':'none';
   case'promotions.view':return r==='gr'?'view':'none';

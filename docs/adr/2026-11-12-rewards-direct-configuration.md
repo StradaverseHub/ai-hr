@@ -121,6 +121,18 @@ must give CTRO and HR Admin Full on `salary.view`, `bonus.view` and `pat.manage`
 and `app.reward_role_default_level`, and include `hr_admin` in `app.reward_actor_page_level`; otherwise those
 restrictive policies refuse what this migration admits.
 
+**Composed at the board release integration (migration 5600, 13 November 2026).** Both are installed in journal order
+(5520, then 5580, then 5600). `5600_rewards_config_editor_role_levels` replaces only owner-owned functions from 5520:
+`app.reward_role_default_level` gives Group Rewards, CTRO and HR Admin Full on `salary.view`, `bonus.view` and
+`pat.manage` (mirrored in `packs/rewards/access-policy-model.ts`; options unchanged, so structures and matrices offer
+Full / View only / — and PAT offers Full / —), and `app.reward_actor_page_level` also counts `hr_admin`. It adds
+`app.reward_config_page_allowed(company,page,operation)`: the configuration editor (manage) or viewer (library_view)
+of the company and the page's row (Full = manage, View only = library_view), used by the library page, the library
+save and preview, each PAT row save, and the Rewards menu. The grid still only narrows: CTRO or HR Admin at View only
+read structures or matrices and cannot write them (the 5520 restrictive policies refuse the write); at — the page,
+its rows and its menu entry are gone; a company-scoped HR Admin holding Full is still refused on group-wide items,
+because `app.reward_config_editor(NULL)` stays the outer limit.
+
 Version restore for the Shared Rewards Configuration and the Rewards Access permission grid is also not in this change
 (the permission grid is rebuilt by board item db14e49c, which builds on this module).
 

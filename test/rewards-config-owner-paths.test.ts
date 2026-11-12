@@ -14,6 +14,7 @@ import {saveRewardLibrary,rewardLibraries,rewardLibraryPageAccess} from '../pack
 import {saveRewardPatBatch,rewardPatInputs} from '../packs/rewards/pat-inputs';
 import {rewardConfigChangeLog} from '../packs/rewards/config-change';
 import {rolePermission} from '../packs/rewards/access-policy-model';
+import {rewardNavigation} from '../packs/rewards/access-policy';
 import {setupGrades} from './rewards-setup-fixture';
 
 let b:Base;
@@ -114,3 +115,54 @@ it('keeps another tenant out: its editors cannot read, write or log this tenant\
  await expect(saveRewardPatBatch(there,{year:2026,mode:'draft',reason:'Cross-tenant PAT attempt',rows:[{companyId:b.companyId,expectedRevision:1,inputs:pat}]})).rejects.toThrow();
  expect((await owner.db.execute<{n:number}>(sql`select count(*)::int as n from reward_pat_version where company_id=${b.companyId}::uuid`))[0].n).toBe(1);
 },90_000);
+
+/** Migration 5600: the Role permissions grid still narrows CTRO and HR Admin on these pages. A saved level never
+ * exceeds the default; View only reads but does not write, and "—" removes the page, natively too. */
+const narrow=(base:Base,role:string,capability:string,level:'view'|'none')=>owner.db.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,level,changed_by,reason)
+ values(${base.tenantId}::uuid,${role},${capability},${level!=='none'},${level},${base.adminUserId}::uuid,'Fictional narrowing of a configuration page')`);
+const libraryKinds=(ctx:SessionContext)=>withTenant(ctx,tx=>tx.execute<{kind:string}>(sql`select distinct kind from reward_library order by kind`)).then(rows=>rows.map(r=>r.kind));
+const rawLibrary=(ctx:SessionContext,kind:'salary'|'bonus')=>withTenant(ctx,tx=>tx.execute(sql`insert into reward_library(tenant_id,kind,name,year,created_by) values(app.current_tenant_id(),${kind},${'Raw '+kind+' '+randomUUID()},2026,app.current_user_id())`));
+
+it('narrows CTRO and HR Admin through the Role permissions grid: View only reads without writing, and none removes the page',async()=>{
+ const c=await ctro(b),hr=await hrAdmin(b,null,'Fictional group HR Admin'),scoped=await hrAdmin(b,b.companyId,'Fictional company HR Admin');
+ const grades=await setupGrades(c);
+ for(const kind of ['salary','bonus'])await owner.db.execute(sql`insert into reward_library(tenant_id,kind,name,year,created_by) values(${b.tenantId}::uuid,${kind},${'Fictional '+kind},2026,${b.adminUserId}::uuid)`);
+ // At the default (Full) both edit both libraries and PAT.
+ for(const actor of [c,hr]){
+  expect(await libraryKinds(actor)).toEqual(['bonus','salary']);
+  expect((await rewardLibraryPageAccess(actor,'salary')).canManage).toBe(true);expect((await rewardLibraryPageAccess(actor,'bonus')).canManage).toBe(true);
+  expect(await rewardNavigation(actor)).toEqual(expect.arrayContaining(['/admin/rewards/salary-structures','/admin/rewards/bonus-matrices','/admin/rewards/pat-inputs']));
+ }
+ await rawLibrary(c,'salary');await rawLibrary(hr,'bonus');
+ // A company-scoped HR Admin holds Full on the row but still has no group-wide library page.
+ const scopedPage=await withTenant(scoped,tx=>tx.execute<{view:boolean;manage:boolean}>(sql`select app.reward_config_page_allowed(null,'salary.view','library_view') as view,app.reward_config_page_allowed(null,'salary.view','manage') as manage`));
+ expect(scopedPage[0]).toEqual({view:false,manage:false});await expect(rewardLibraryPageAccess(scoped,'salary')).rejects.toThrow(/not available/);
+ expect(await libraryKinds(scoped)).toEqual([]);await expect(rawLibrary(scoped,'salary')).rejects.toThrow();
+
+ await narrow(b,'ctro','salary.view','view');await narrow(b,'ctro','pat.manage','none');
+ await narrow(b,'hr_admin','salary.view','none');await narrow(b,'hr_admin','bonus.view','view');
+ // CTRO, Salary Structures at View only: reads, cannot save through the service or around it.
+ expect(await libraryKinds(c)).toEqual(['bonus','salary']);
+ expect(await rewardLibraryPageAccess(c,'salary')).toEqual({canManage:false});
+ await expect(saveRewardLibrary(c,salaryRaw('Refused CTRO Salary',grades))).rejects.toThrow(/not available/);
+ await expect(rawLibrary(c,'salary')).rejects.toThrow();
+ await rawLibrary(c,'bonus');
+ // CTRO, PAT Inputs at none: no page, no save, no raw write.
+ await expect(rewardPatInputs(c,2026)).rejects.toThrow(/not available/);
+ await expect(saveRewardPatBatch(c,{year:2026,mode:'draft',reason:'CTRO after PAT narrowing',rows:[{companyId:b.companyId,expectedRevision:0,inputs:pat}]})).rejects.toThrow(/not available/);
+ await expect(withTenant(c,tx=>tx.execute(sql`insert into reward_pat_version(tenant_id,company_id,year,revision,inputs,created_by,created_by_person_id,reason) values(app.current_tenant_id(),${b.companyId}::uuid,2026,1,${JSON.stringify(pat)}::jsonb,app.current_user_id(),${c.personId}::uuid,'Raw PAT after narrowing')`))).rejects.toThrow();
+ const ctroNav=await rewardNavigation(c);expect(ctroNav).toContain('/admin/rewards/salary-structures');expect(ctroNav).not.toContain('/admin/rewards/pat-inputs');
+ // HR Admin, Salary Structures at none and Bonus Matrices at View only.
+ expect(await libraryKinds(hr)).toEqual(['bonus']);
+ await expect(rewardLibraryPageAccess(hr,'salary')).rejects.toThrow(/not available/);
+ expect(await rewardLibraryPageAccess(hr,'bonus')).toEqual({canManage:false});
+ await expect(saveRewardLibrary(hr,salaryRaw('Refused HR Admin Salary',grades))).rejects.toThrow(/not available/);
+ await expect(rawLibrary(hr,'bonus')).rejects.toThrow();await expect(rawLibrary(hr,'salary')).rejects.toThrow();
+ const hrNav=await rewardNavigation(hr);expect(hrNav).not.toContain('/admin/rewards/salary-structures');expect(hrNav).toContain('/admin/rewards/bonus-matrices');expect(hrNav).toContain('/admin/rewards/pat-inputs');
+ // HR Admin keeps PAT at Full, within their companies.
+ await saveRewardPatBatch(hr,{year:2026,mode:'active',reason:'HR Admin still enters company PAT',rows:[{companyId:b.companyId,expectedRevision:0,inputs:pat}]});
+ expect((await owner.db.execute<{n:number}>(sql`select count(*)::int as n from reward_pat_version where company_id=${b.companyId}::uuid and state='confirmed'`))[0].n).toBe(1);
+ // The level the row-security policies read: the saved narrowing for CTRO, the default for HR Admin.
+ expect((await withTenant(c,tx=>tx.execute<{level:string}>(sql`select app.reward_actor_page_level('salary.view') as level`)))[0].level).toBe('view');
+ expect((await withTenant(hr,tx=>tx.execute<{level:string}>(sql`select app.reward_actor_page_level('pat.manage') as level`)))[0].level).toBe('full');
+},120_000);

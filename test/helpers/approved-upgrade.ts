@@ -161,6 +161,10 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4940,when:1793330005240,tag:'5540_rewards_offcycle_company_balance'},
  // fc804e8c + db14e49c Limit Controls follows its Role permissions row (board release integration, 12 Nov 2026).
  {idx:4960,when:1793330005260,tag:'5560_rewards_limit_controls_role_level'},
+ // 60f1fdcd Rewards configuration owner paths (DRAFT block 5580–5599, admitted at the board release integration).
+ {idx:4980,when:1793330005280,tag:'5580_rewards_config_owner_paths'},
+ // 60f1fdcd + db14e49c the Role permissions grid admits the configuration editors (board release integration, 13 Nov 2026).
+ {idx:5000,when:1793330005300,tag:'5600_rewards_config_editor_role_levels'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -177,6 +181,8 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5460_lifecycle_v9_email_recipients':'117d86c07c68c2bc658b4a33e26797bf23b040ad998fa948dbae1ad1307ef3d0',
  '5480_offboarding_items_assignment_load':'d5dc8975f26a9091f1bafd089aa36619b30eaa222b02ab09538ec63397d22ed3',
  '5560_rewards_limit_controls_role_level':'04d12b358fb70088e9bd9be95b64aa5014068a80035bafc5a2b605f5a308c619',
+ '5580_rewards_config_owner_paths':'cf51650518408e4c4e5cc22823924b6fbcff130820be63887ba951f5520e60cd',
+ '5600_rewards_config_editor_role_levels':'af4dfd5d1bf22df9a696b5529b7558ac77863a4f5cf16d3abbe36f640e5acba6',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
