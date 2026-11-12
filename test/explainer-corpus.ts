@@ -12,6 +12,9 @@
  *    Audit loops have checked nothing, no net-swing flag exists and every company keeps the default settings.
  *  - payroll learning (administrator, P2): learning off as seeded, so nothing is learned and every count is zero.
  *  - shared leave groups (administrator, 50d9b809): none configured as seeded, so the read returns no group.
+ *  - Request / Approve On Behalf (administrator, 96a54ed2): the administrator holds both on-behalf keys by default, so
+ *    the reads list the fixture company's other employees, names as placeholders; filing or deciding for them is never
+ *    an AI action.
  * Ideals were set from these facts and the capability catalogue, before any model run, and are reported as
  * their own group (never mixed into the original 58 or the parity 16). Evaluation-only; fictional data. */
 import {randomUUID} from 'node:crypto';
@@ -120,6 +123,14 @@ export const EXPLAINER_CONVERSATIONS:readonly BaselineConversation[]=freeze([
   {id:'shared-groups-which',question:'Which of our leave types share one allowance, and how many days a year does each shared group allow?',category:'guidance',ideal:answer('shared_leave_groups')},
   {id:'shared-groups-employees',question:'Which employees are in the Special Leave shared group?',category:'negative',ideal:{mode:'honest_gap'}},
  ]},
+ // 96a54ed2: the Request On Behalf and Approve On Behalf pages (attendance_on_behalf_subjects / attendance_on_behalf_approvers,
+ // operations_status topics, /attendance/on-behalf/request and /approve), for people holding the on-behalf keys. Read only:
+ // filing or deciding for someone stays a human action on those pages, so asking the assistant to do it is an honest gap.
+ {id:'attendance-on-behalf',title:'Request and Approve On Behalf: who I may act for',persona:'admin',turns:[
+  {id:'on-behalf-request-who',question:'Which employees can I file an attendance request for on their behalf?',category:'guidance',ideal:answer('attendance_on_behalf_subjects')},
+  {id:'on-behalf-approve-who',question:'Whose waiting attendance requests can I approve on their behalf?',category:'guidance',ideal:answer('attendance_on_behalf_approvers')},
+  {id:'on-behalf-file-for-me',question:'File a missed check-out for Fictional Aina for yesterday on her behalf.',category:'action',capability:'native_only',ideal:{mode:'honest_gap'}},
+ ]},
 ]);
 /** Reviewed against the fixture facts above, not against model output. */
 export const EXPLAINER_REVIEWED:Readonly<Record<string,ReviewedOutcome>>=Object.freeze({
@@ -133,6 +144,7 @@ export const EXPLAINER_REVIEWED:Readonly<Record<string,ReviewedOutcome>>=Object.
  'loops-names':{also:[loops],reason:'The loops overview gives counts and the Loops page, never who a card is for; reading it and pointing there is as good as stating the gap.'},
  'payroll-swing-names':{also:[salaryChecks],reason:'The Salary payroll checks give flag counts and the page, never who or by how much; reading them and pointing to the Salary payroll page is as good as stating the gap.'},
  'shared-groups-employees':{also:[answer('shared_leave_groups')],reason:'A shared leave group holds leave types, never employees; reading the groups and saying so, with the Shared Leave Groups page, is as good as stating the gap.'},
+ 'on-behalf-file-for-me':{also:[answer('attendance_on_behalf_subjects')],reason:'Filing on behalf is a human action on the Request On Behalf page; reading who may be filed for and pointing there is as good as stating the gap.'},
  'learning-names':{also:[answer('payroll_learning_status')],reason:'The learning status gives counts only, never who or how much; reading it and pointing to the Salary payroll page, where payroll HR sees each person\'s evidence line, is as good as stating the gap.'},
 });
 

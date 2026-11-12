@@ -212,6 +212,16 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5129_payroll_history_effective_reads',
    // Background AI Formula Generator draft job (12 November 2026), above 5129.
    '5130_pay_formula_ai_draft_job',
+   // Irwin attendance workflow lane draft (daa76ed4/96a54ed2).
+   '5140_attendance_workflow_cross_company_pending',
+   '5141_attendance_workflow_escalation',
+   '5142_attendance_on_behalf',
+   '5143_attendance_final_decision_window',
+   '5144_attendance_lane_security_review',
+   // 96a54ed2: the AI Centre controls for the two on-behalf reads.
+   '5145_ai_attendance_on_behalf_reads',
+   // Irwin Schedule Group Overtime Setting (2f803985): per-date rounding (function replacement only).
+   '5150_attendance_policy_dated_rounding',
    // Sweep reads each company's net-swing threshold (draft 9760), allocated 5160 (13 November 2026).
    '5160_sweep_swing_thresholds',
    // Manager Today team minimum (draft 9770), allocated 13 November 2026 as 5161.
@@ -248,6 +258,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const privateFunctions=[
    // Board window 4 (5124): a trigger function, never granted to the application role.
    'app.attendance_workflow_preview_bind()',
+   // daa76ed4/96a54ed2 (5140-5142): the login rule helper and two trigger functions, never granted to the application role.
+   'app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_stage_clock()','app.attendance_correction_submitter_guard()',
+   // 5143: the request-bound final-decision read window proof, called only by the owner-run visibility functions.
+   'app.attendance_effect_window_employment()',
+   // 5144: the window token and proof (owner only).
+   'app.attendance_final_window_token(uuid,uuid)','app.attendance_final_window_prove(uuid)',
    'app._access_bootstrap_eligible(uuid,uuid)','app._access_workforce_list_rows(uuid[])','app._ai_control_context_for_purpose(text,boolean,boolean)',
    'app._ai_control_context_policy_facts(text,boolean,boolean)','app._ai_provider_presentation_actor_valid()','app._assert_assistant_rewards_presentation_v1(text)',
    'app._assistant_assigned_index_login(uuid,boolean)','app._assistant_presentation_feature_unpaused_v1()','app._assistant_rewards_calendar_choice_payload_v1()',
@@ -279,10 +295,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.access_profile_policy_value_lock()','app.access_workforce_employment_permitted(uuid,uuid,timestamp with time zone,uuid,uuid[])','app.access_workforce_list_facts()',
    'app.access_workforce_list_rows_for_ids(uuid[])','app.access_workforce_permitted_companies(text)','app.access_workforce_picker_facts(uuid[])',
    'app.ai_centre_mandate_bound_tenant()','app.ai_centre_mandate_write_order()','app.assistant_rewards_calendar_presentation_choices_v1()',
-   'app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()','app.attendance_clock_policy_history(uuid,uuid)',
+   'app.assistant_rewards_cancel_presentation_choices_v1()','app.assistant_rewards_return_presentation_choices_v1()','app.attendance_clock_policy_history(uuid,uuid)','app.attendance_correction_submitter_guard()','app.attendance_effect_window_employment()','app.attendance_final_window_prove(uuid)','app.attendance_final_window_token(uuid,uuid)',
    'app.attendance_frozen_actor_identity_keys(jsonb,text)','app.attendance_pending_visible_headers(uuid)',
+   // daa76ed4/96a54ed2 (5140-5142): resolution, escalation and on-behalf owners.
+   'app.attendance_workflow_approver_login(uuid)','app.attendance_workflow_close_final_window()','app.attendance_workflow_escalate(uuid,date)','app.attendance_workflow_escalation_due(date,date,uuid,integer)',
+   'app.attendance_workflow_escalation_written(uuid,uuid,integer)','app.attendance_workflow_hierarchy_v5(uuid,integer)',
+   'app.attendance_workflow_on_behalf_allowed(uuid,integer,text)','app.attendance_workflow_on_behalf_slot(uuid,uuid)','app.attendance_workflow_open_final_window(uuid)',
    // Board window 4 (5124): the preview binding trigger (owner only) and the superior diagnostic.
-   'app.attendance_workflow_preview_bind()','app.attendance_workflow_superior_diagnostic(uuid,integer)',
+   'app.attendance_workflow_preview_bind()','app.attendance_workflow_stage_clock()','app.attendance_workflow_superior_diagnostic(uuid,integer)',
    'app.bulk_job_access(uuid)',
    'app.bulk_job_admit()','app.bulk_job_attribution()','app.bulk_job_capability_held(uuid)',
    'app.bulk_job_clear_inputs(uuid,boolean)','app.bulk_job_enqueue(text,uuid,uuid[],text,bytea,jsonb)','app.bulk_job_event_attribution()',
@@ -335,6 +355,31 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    }
    return qualifiers;
   });
+  // daa76ed4/96a54ed2 (5141-5142): this lane's new and replaced policies, each compared with PostgreSQL's own rendering
+  // of the reviewed expression (parsed on the same table and discarded), never with a hand-typed digest.
+  const ownerRead="tenant_id=app.current_tenant_id() AND request_id::text=current_setting('app.attendance_workflow_escalating',true) AND current_user=pg_catalog.pg_get_userbyid((SELECT p.proowner FROM pg_catalog.pg_proc p WHERE p.oid='app.attendance_workflow_escalate(uuid,date)'::regprocedure))";
+  const lanePolicies:{table:string;name:string;cmd:'SELECT'|'INSERT';using:string|null;check:string|null;replaces:boolean}[]=[
+   {table:'attendance_workflow_escalation',name:'attendance_workflow_escalation_read',cmd:'SELECT',replaces:false,check:null,
+    using:"tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=request_id AND w.tenant_id=app.current_tenant_id() AND app.attendance_workflow_v3_read(w.correction_id))"},
+   {table:'attendance_workflow_participant_decision',name:'attendance_workflow_escalation_owner_read',cmd:'SELECT',replaces:false,check:null,using:ownerRead},
+   {table:'attendance_workflow_participant_reassignment',name:'attendance_workflow_escalation_owner_read',cmd:'SELECT',replaces:false,check:null,using:ownerRead},
+   {table:'attendance_workflow_participant_decision',name:'attendance_workflow_v3_participant_insert',cmd:'INSERT',replaces:true,using:null,
+    check:"tenant_id=app.current_tenant_id() AND actual_user_id=app.current_user_id() AND EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.id=request_id AND w.tenant_id=app.current_tenant_id() AND (app.attendance_workflow_v3_decision_slot(w.correction_id) IS NOT NULL OR (acting_mode='on_behalf' AND app.attendance_workflow_on_behalf_slot(w.correction_id,(assigned->>'employmentId')::uuid)->>'slot'=participant_slot)))"},
+  ];
+  const laneRendered=await storage.client.begin(async tx=>{
+   const out:{qual:string|null;with_check:string|null}[]=[];
+   for(const policy of lanePolicies){
+    await tx.unsafe(`create policy lane_reference on public.${policy.table} for ${policy.cmd}${policy.using?` using (${policy.using})`:''}${policy.check?` with check (${policy.check})`:''}`);
+    const [row]=await tx<{qual:string|null;with_check:string|null}[]>`select qual,with_check from pg_policies where schemaname='public' and tablename=${policy.table} and policyname='lane_reference'`;
+    out.push(row);await tx.unsafe(`drop policy lane_reference on public.${policy.table}`);
+   }
+   return out;
+  });
+  const isLanePolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&lanePolicies.some(policy=>policy.table===row.tablename&&policy.name===row.policyname);
+  for(const [index,policy] of lanePolicies.entries()){
+   const [row]=afterPerformancePrivileges.policies.filter(candidate=>candidate.schemaname==='public'&&candidate.tablename===policy.table&&candidate.policyname===policy.name);
+   expect(row,policy.name).toMatchObject({permissive:'PERMISSIVE',roles:'{public}',cmd:policy.cmd,qual:laneRendered[index].qual,with_check:laneRendered[index].with_check});
+  }
   const isClaimPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='claim_request'&&row.policyname==='claim_request_rls';
   expect(beforePerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[0]);
   expect(afterPerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[1]);
@@ -446,6 +491,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const combinedRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
    // Board window 4 (5124): stored Preview Assignment snapshots, append-only and forced RLS.
    'attendance_workflow_preview':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   // daa76ed4 (5141): immutable escalation history, read-only to the application role.
+   'attendance_workflow_escalation':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   // 5144: owner-only window key and spent-transaction record.
+   'app.attendance_final_window_key':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.attendance_final_window_spent':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_administrator_assert_pending':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_administrator_guard':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.access_capability_publication':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
@@ -549,10 +599,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isLanePolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:row),
-  }).toEqual(beforePerformancePrivileges);
+  }).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isLanePolicy(row))});
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));

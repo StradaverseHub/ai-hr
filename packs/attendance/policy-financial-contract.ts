@@ -164,6 +164,12 @@ export function recordedAttendancePolicyFinancialContractMatches(source:Financia
 
 export type PolicyFinancialDurationContract=
  |{state:'unavailable';authority:'policyFinancialDurationContractOnly'}
+ /** 2f803985 — a complete, known outcome with nothing payable: the group's Overtime Approval Method
+  * is Manual (attendance creates no payable overtime; HR enters it in Payroll), or the evidenced
+  * Auto calculation selected zero minutes. Payroll treats the day as covered with no attendance
+  * overtime; TOIL and cash settlement still require a prepared contract. */
+ |{state:'none';authority:'policyFinancialDurationContractOnly';identity:PolicyCoverageIdentity;
+  policyRevisionId:string;reason:'manualApproval'|'noPayableOvertime';approvalStatus:'approved'|'notRequired';durationDigest:string|null}
  |{state:'prepared';authority:'policyFinancialDurationContractOnly';identity:PolicyCoverageIdentity;
   policyRevisionId:string;approvalStatus:'approved'|'notRequired';durationDigest:string;minutes:number;
   coverage:SourceCoverage;parts:PolicyProposalStoragePart[]};
@@ -173,7 +179,19 @@ export function attendancePolicyFinancialDurationContract(identity:PolicyCoverag
  source:IndependentPolicyDurationSource):PolicyFinancialDurationContract{
  const unavailable:PolicyFinancialDurationContract={state:'unavailable',authority:'policyFinancialDurationContractOnly'};
  try{
+  const policy=source.attendanceGroupPolicy,context=source.policyExecutionContext;
+  // Manual (stored as a disabled overtime policy) needs no clocks, plan or formula: the complete
+  // proof is the exact selected, activated policy for this employer, subject and date.
+  if(policy&&context?.state==='policy'&&!policy.policy.overtime.enabled&&isDeepStrictEqual(context.selected,policy)
+   &&context.employmentId===source.source.employmentId&&context.date===source.source.date&&context.companyId===identity.companyId
+   &&policy.companyId===identity.companyId&&source.source.tenantId===identity.tenantId&&source.source.employmentId===identity.employmentId
+   &&source.source.date===identity.date&&Number.isSafeInteger(policy.activation.epoch)&&policy.activation.epoch>=1)
+   return {state:'none',authority:'policyFinancialDurationContractOnly',identity:{...identity},policyRevisionId:policy.id,
+    reason:'manualApproval',approvalStatus:'notRequired',durationDigest:null};
   const replay=attendancePolicyIndependentDurationReplay(source),approvalStatus=attendancePolicyIndependentRecordedApprovalStatus(source);
+  if(replay.state==='known'&&replay.minutes===0&&policy&&(approvalStatus==='approved'||approvalStatus==='notRequired'))
+   return {state:'none',authority:'policyFinancialDurationContractOnly',identity:{...identity},policyRevisionId:policy.id,
+    reason:'noPayableOvertime',approvalStatus,durationDigest:replay.digest};
   if(replay.state!=='known'||replay.minutes<=0||!['approved','notRequired'].includes(approvalStatus))return unavailable;
   const coverage=attendancePolicyIndependentCapturedCoverage(identity,source);
   if(coverage.state!=='prepared'||coverage.durationDigest!==replay.digest||coverage.minutes!==replay.minutes)return unavailable;

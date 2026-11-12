@@ -4696,6 +4696,11 @@ export const attendanceCorrection = pgTable(
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),
+    /** 96a54ed2 (5142): who filed the application on the employee's behalf, stamped by the database from the live
+     *  caller. NULL = the employee filed it themselves (every application before 5142). Immutable. */
+    submittedByUserId: uuid('submitted_by_user_id'),
+    submittedByPersonId: uuid('submitted_by_person_id'),
+    submittedByName: text('submitted_by_name'),
   },
   (t) => [
     index('attendance_correction_employment_idx').on(t.employmentId, t.attendanceDate),
@@ -10901,7 +10906,24 @@ export const attendanceWorkflowRequest = pgTable('attendance_workflow_request', 
     stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedStage[]>(), currentStage: integer('current_stage').notNull().default(0), createdAt: createdAt(),
     /** v4 only: levels decided "not required" at submission because the reporting chain had ended. */
     skippedLevels: jsonb('skipped_levels').notNull().default([]).$type<import('../lib/attendance-workflow').AttendanceSkippedLevel[]>(),
+    /** Set by the stage-clock trigger (5141) when the current level is reached; NULL on requests submitted before it. */
+    stageReachedAt: timestamp('stage_reached_at', { withTimezone: true }),
+    /** HR-local date the current level escalates (v4 levels with escalateAfterDays, never the final level). */
+    escalateOn: date('escalate_on'),
 }, t => [uniqueIndex('attendance_workflow_request_correction').on(t.correctionId)]);
+/** Immutable automatic escalation history (5141): one row per request level, written only by the system runner. */
+export const attendanceWorkflowEscalation = pgTable('attendance_workflow_escalation', {
+    id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id),
+    stageIndex: integer('stage_index').notNull(), nextStageIndex: integer('next_stage_index').notNull(),
+    escalateAfterDays: integer('escalate_after_days').notNull(), stageReachedAt: timestamp('stage_reached_at', { withTimezone: true }).notNull(),
+    dueOn: date('due_on').notNull(),
+    fromParticipants: jsonb('from_participants').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover[]>(),
+    partialDecisions: jsonb('partial_decisions').notNull().default([]).$type<{slot:string;decision:'approved'|'rejected';actualActorName:string;actualPersonId:string;decidedAt:string}[]>(),
+    nextParticipants: jsonb('next_participants').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover[]>(),
+    reason: text('reason').notNull().default('no_decision_within_period').$type<'no_decision_within_period'>(),
+    actor: text('actor').notNull().default('system').$type<'system'>(),
+    escalatedAt: timestamp('escalated_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [uniqueIndex('attendance_workflow_escalation_once').on(t.requestId, t.stageIndex)]);
 /** Append-only Preview Assignment snapshot of one saved workflow version (admin of every workflow company). */
 export const attendanceWorkflowPreview = pgTable('attendance_workflow_preview', {
     id: id(), tenantId: tenantId(), lineageId: uuid('lineage_id').notNull(), templateId: uuid('template_id').notNull(),
@@ -10917,7 +10939,7 @@ export const attendanceWorkflowDecision = pgTable('attendance_workflow_decision'
     decision: text('decision').notNull().$type<'approved' | 'rejected'>(), assignedKind: text('assigned_kind').notNull(),
     assignedEmploymentId: uuid('assigned_employment_id').references(() => employment.id), actualUserId: text('actual_user_id').notNull(), actualActorName: text('actual_actor_name').notNull(),
     actualPersonId: uuid('actual_person_id').references(() => person.id), actualEmploymentId: uuid('actual_employment_id').references(() => employment.id),
-    actingMode: text('acting_mode').notNull().$type<'assigned' | 'delegate' | 'administrator'>(), remarks: text('remarks'),
+    actingMode: text('acting_mode').notNull().$type<'assigned' | 'delegate' | 'administrator' | 'on_behalf'>(), remarks: text('remarks'),
     previousStatus: text('previous_status').notNull(), resultingStatus: text('resulting_status').notNull(),
     decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [uniqueIndex('attendance_workflow_decision_stage').on(t.requestId, t.stageIndex)]);
@@ -10930,7 +10952,7 @@ export const attendanceWorkflowParticipantDecision = pgTable('attendance_workflo
     decision: text('decision').notNull().$type<'approved' | 'rejected'>(), assigned: jsonb('assigned').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover>(),
     actualUserId: uuid('actual_user_id').notNull().references(() => appUser.id), actualPersonId: uuid('actual_person_id').notNull().references(() => person.id),
     actualEmploymentId: uuid('actual_employment_id').references(() => employment.id), actualActorName: text('actual_actor_name').notNull(),
-    actingMode: text('acting_mode').notNull().$type<'assigned' | 'delegate' | 'administrator'>(), remarks: text('remarks'), decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+    actingMode: text('acting_mode').notNull().$type<'assigned' | 'delegate' | 'administrator' | 'on_behalf'>(), remarks: text('remarks'), decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [uniqueIndex('attendance_workflow_participant_slot').on(t.requestId, t.stageIndex, t.participantSlot)]);
 export const attendanceWorkflowParticipantReassignment = pgTable('attendance_workflow_participant_reassignment', {
     id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id), stageIndex: integer('stage_index').notNull(), participantSlot: text('participant_slot').notNull(),

@@ -5,7 +5,7 @@ import type {SessionContext, Tx} from '../../db/client';
 import {actorOf, appendEvent} from '../../db/events';
 import {withAttendanceTenant} from '../../core/module-gate';
 import {and, eq, gte, inArray, lte, sql} from 'drizzle-orm';
-import {attendance, attendanceOvertimeSource, attendanceGroupPolicyRevision, overtimePatternAssignment, overtimePatternVersion} from '../../db/schema';
+import {assignment, attendance, attendanceOvertimeSource, attendanceGroupPolicyRevision, employment, overtimePatternAssignment, overtimePatternVersion} from '../../db/schema';
 import {overtimeDate,overtimeUuid} from '../../lib/overtime-pattern-schema';
 import {OVERTIME_LIMITS, type OvertimeInput, type OvertimeEvaluation, type OvertimeDurationEvaluation} from '../../lib/overtime-pattern-model';
 import {parseRecordedOvertimeEvaluation, parseRecordedOvertimeDurationEvaluation} from '../../lib/overtime-pattern-result';
@@ -46,8 +46,13 @@ async function storeResultMarkerTx(tx:Tx,dayId:string,result:OvertimeRecordOutco
   }
   // A selected policy alone cannot establish coverage. Complete independently replayed duration
   // can mark its stored source as recorded even if the separate cash contract is unavailable.
-  const marker = result.policyRevisionId&&result.policyFinancialDurationContract?.state!=='prepared'?{status:'refused',reason:'sourceUnavailable'} as const:
-    {status:'recorded',sourceId:result.sourceId,calculationId:result.calculationId,revision:result.revision} as const;
+  // 2f803985: a known zero outcome (Manual, or Auto selecting nothing payable) is complete coverage
+  // with no attendance overtime; Payroll must not wait on it. Only unknown evidence stays refused.
+  const durationState=result.policyFinancialDurationContract?.state;
+  const latenessAfterOffset=result.policyLatenessAfterOffset??null;
+  const marker = result.policyRevisionId&&durationState!=='prepared'&&durationState!=='none'?{status:'refused',reason:'sourceUnavailable'} as const:
+    {status:'recorded',sourceId:result.sourceId,calculationId:result.calculationId,revision:result.revision,
+     ...(latenessAfterOffset&&latenessAfterOffset.remainingMinutes>0?{latenessAfterOffset}:{})} as const;
   await tx.update(attendance).set({calcTrace:sql`jsonb_set(coalesce(${attendance.calcTrace},'{}'::jsonb),'{overtimePattern}',${JSON.stringify(marker)}::jsonb,true)`}).where(eq(attendance.id,dayId));
 }
 /** Automatic OT stage after the canonical raw day/approval writer. Legacy quantities stay under
@@ -104,7 +109,16 @@ async function legacyRefreshIsNoopTx(tx:Tx,ctx:SessionContext,days:readonly {emp
   exists(select 1 from ${attendanceOvertimeSource} where ${attendanceOvertimeSource.tenantId}=${ctx.tenantId}::uuid
    and ${inArray(attendanceOvertimeSource.employmentId,ids)} and ${attendanceOvertimeSource.attendanceDate} between ${from}::date and ${to}::date
    and ${attendanceOvertimeSource.currentCalculationId} is not null) as recorded,
-  exists(select 1 from ${attendanceGroupPolicyRevision} where ${attendanceGroupPolicyRevision.tenantId}=${ctx.tenantId}::uuid) as policy,
+  exists(select 1 from ${attendanceGroupPolicyRevision} where ${attendanceGroupPolicyRevision.tenantId}=${ctx.tenantId}::uuid
+   and ${attendanceGroupPolicyRevision.effectiveFrom}<=${to}::date
+   -- 2f803985: a dated policy routes only its own Schedule Group and employer. Narrow the old
+   -- tenant-wide kill to policies of a group these days were derived under (or any group when a
+   -- day carries no derived group) and of any employer these employments have had.
+   and ${attendanceGroupPolicyRevision.companyId} in (
+    select ${employment.companyId} from ${employment} where ${inArray(employment.id,ids)}
+    union select ${assignment.companyId} from ${assignment} where ${inArray(assignment.employmentId,ids)} and ${assignment.companyId} is not null)
+   and (${attendanceGroupPolicyRevision.ruleId}::text in (select ${attendance.calcTrace}#>>'{schedule,ruleId}' from ${attendance} where ${dayWhere})
+    or exists(select 1 from ${attendance} where ${dayWhere} and (${attendance.calcTrace}#>>'{schedule,ruleId}') is null))) as policy,
   exists(select 1 from ${overtimePatternAssignment} inner join ${overtimePatternVersion}
    on ${overtimePatternVersion.id}=${overtimePatternAssignment.versionId}
    where ${overtimePatternAssignment.tenantId}=${ctx.tenantId}::uuid and ${overtimePatternVersion.kind}='formula') as formula`);

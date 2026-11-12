@@ -587,7 +587,9 @@
     "privateCases": "Private cases",
     "probationTracker": "Probation tracker",
     "myPayrollReadiness": "My payroll readiness",
-    "attendanceFormulaBuilder": "Attendance formulas"
+    "attendanceFormulaBuilder": "Attendance formulas",
+    "attendanceRequestOnBehalf": "Request On Behalf",
+    "attendanceApproveOnBehalf": "Approve On Behalf"
   },
   "dashboard": {
     "viewAll": "View all"
@@ -5559,6 +5561,7 @@
     "maFoundMissingOut": "Clock-out missing",
     "maFoundAbsent": "Nothing recorded",
     "maFoundLateBy": "Late in · {minutes} min",
+    "maFoundLateAfterOffset": "Late after overtime offset · {minutes} min",
     "maFoundLateUnknown": "Late in · duration not recorded",
     "maFoundEarlyBy": "Left early · {minutes} min",
     "maFoundShort": "Short of the scheduled hours",
@@ -11954,7 +11957,9 @@
         "jobArchitecture": "Job Architecture access depends on your current Architecture assignment and company scope.",
         "rewardsAccess": "Effective Rewards assignments and scoped HR administrator authority determine access; a platform role alone does not grant every action.",
         "myPrivateCases": "Only the signed-in person’s own private cases. Privileged roles do not widen it; administrators cannot read others’ cases here.",
-        "privateCaseHandling": "Reachable by everyone, but shows cases only to the designated case handlers of the case’s company (or the group administrator when no eligible handler remains), never to the author or anyone the author left out. A role grants nothing here."
+        "privateCaseHandling": "Reachable by everyone, but shows cases only to the designated case handlers of the case’s company (or the group administrator when no eligible handler remains), never to the author or anyone the author left out. A role grants nothing here.",
+        "attendanceRequestOnBehalf": "Lists only employees in companies you administer as HR, or people beneath you in your own reporting line, when you hold attendance.request_on_behalf. The request follows the employee's own workflow.",
+        "attendanceApproveOnBehalf": "Lists only approvers in companies you administer as HR, or people beneath you in your own reporting line, when you hold attendance.approve_on_behalf. Decisions are recorded as on behalf of the designated approver."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -15180,7 +15185,8 @@
       "perDayDecision": "Per-day decision",
       "confirmed": "Confirmed",
       "extended": "Extended",
-      "terminated": "Terminated"
+      "terminated": "Terminated",
+      "escalated": "Escalated"
     }
   },
   "payrollConfig": {
@@ -27609,7 +27615,13 @@
       "unusedDeleteImpact": "Delete this unused workflow for {company}? All unused versions will be permanently removed. This cannot be undone.",
       "usedCannotDelete": "This workflow has already been used by approval transactions and cannot be deleted. Please archive it instead.",
       "archived": "Workflow archived. Existing applications and history are preserved.",
-      "archivedList": "Archived workflows"
+      "archivedList": "Archived workflows",
+      "escalationLegend": "Escalation Approval – Auto Route to Next Level if No Approval / Rejection After [Day]",
+      "escalationEnable": "Enable Escalation Approval",
+      "escalationDays": "Escalation Period (Days)",
+      "escalationHelp": "Calendar days, counted from the day after the request reaches this level. A nightly check moves it to the next level; it is never approved or rejected automatically.",
+      "escalationInvalid": "Enter a whole number of days from 1 to 365.",
+      "escalationFinal": "Final level – no further escalation"
     },
     "chooseCompanies": "Choose companies",
     "searchCompanies": "Search permitted companies",
@@ -27716,7 +27728,8 @@
         "hr_unavailable": "No HR administrator can approve for this employee.",
         "selected_unavailable": "The selected approver is inactive, has no unique usable login, or is outside the permitted company scope. Replace the selection.",
         "login_unusable": "The approver has no unique usable login for this employee's company. Ask HR to correct their login."
-      }
+      },
+      "pendingActivation": "Account not activated yet – requests will wait for this approver"
     }
   },
   "attendanceHistory": {
@@ -27799,7 +27812,8 @@
     "modes": {
       "assigned": "Assigned approver",
       "delegate": "Valid delegate",
-      "administrator": "HR on behalf"
+      "administrator": "HR on behalf",
+      "on_behalf": "Acted on behalf of the designated approver"
     },
     "invalidFilters": "The filters could not be applied. Check the dates and selected values, then try again.",
     "stageRecorded": "Approval stage recorded",
@@ -27939,7 +27953,15 @@
     },
     "skippedNoSuperior": "Skipped automatically - No further Direct Superior available ({sources})",
     "skippedDecidedAt": "Decided when the application was submitted, {date}",
-    "skippedLabel": "Not required"
+    "skippedLabel": "Not required",
+    "awaitingActivation": "Waiting for account activation",
+    "escalatedStage": "Escalated",
+    "escalatedMoved": "No approval or rejection within {days} day(s). Moved automatically to Level {level}.",
+    "escalatedWaitedFor": "Waited for",
+    "escalatedBy": "Automatic escalation by the system",
+    "submittedOnBehalfBy": "Submitted on behalf by {name}",
+    "approvedOnBehalf": "Approved On Behalf",
+    "rejectedOnBehalf": "Rejected On Behalf"
   },
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",
@@ -38332,5 +38354,96 @@
     "actorWithId": "{name} ({employeeId})",
     "actorUnlinked": "Administrator login (no employee record · login ending {suffix})",
     "actorUnavailable": "Unavailable user"
+  },
+  "scheduleOvertimeSetting": {
+    "title": "Overtime Setting",
+    "intro": "Controls how overtime is captured, approved, offset and rounded for employees in this Schedule Group. It applies from its start date: earlier days, clocking records, lateness records and past payroll are never recalculated.",
+    "companiesLabel": "Applies to",
+    "allCompanies": "All companies",
+    "selectedCompanies": "Selected companies",
+    "effectiveFrom": "Start date",
+    "effectiveHint": "After today, and after any start already saved for a chosen company.",
+    "applicabilityTitle": "Overtime Applicability",
+    "beforeShift": "Before Shift Overtime",
+    "beforeShiftHint": "Allow overtime before the scheduled shift.",
+    "afterShift": "After Shift Overtime",
+    "afterShiftHint": "Allow overtime after the scheduled shift.",
+    "allowBackdated": "Allow Request Backdated Overtime Without Clocking",
+    "allowBackdatedHint": "Employees may request backdated overtime with no matching clocking. HR still records the actual worked period before it counts.",
+    "splitAtMidnight": "Split Overtime at Midnight",
+    "splitAtMidnightHint": "Overtime after midnight belongs to the next calendar day as early overtime. Example: 10:00 PM to 2:00 AM gives 2 hours on each date.",
+    "offsetTitle": "Offset Overtime by Lateness",
+    "offsetLateness": "Offset Overtime by Lateness",
+    "offsetHint": "Deduct late-in minutes from eligible overtime. Example: 20 minutes late against 60 eligible minutes leaves 40. The recorded lateness is kept.",
+    "showLatenessException": "Show Lateness Exception After Offset",
+    "showLatenessExceptionHint": "Show a lateness exception for lateness that remains after the offset.",
+    "approvalTitle": "Overtime Approval Method",
+    "approvalManual": "Manual",
+    "approvalAuto": "Auto",
+    "approvalManualHint": "Attendance creates no payable overtime. Clocking records are kept, and overtime is entered by hand in Payroll.",
+    "autoMethod": "Auto Overtime Approval Method",
+    "methodIntersect": "Intersect Actual and Pre-Approved",
+    "methodActual": "Actual Hours",
+    "methodPreApproved": "Approved Overtime",
+    "methodIntersectHint": "Pays the lower of the approved and actual minutes: approved 120 and actual 90 pays 90.",
+    "methodActualHint": "Pays the actual eligible minutes, with no approved limit.",
+    "methodPreApprovedHint": "Pays the approved duration: approved 120 and actual 90 pays 120.",
+    "patternsTitle": "Overtime Pattern for each day type",
+    "patternsHint": "Overtime pay is calculated by the chosen Overtime Pattern. Only patterns active for every chosen company are listed.",
+    "patternsNone": "No Overtime Pattern is active for every chosen company. Activate one in Overtime Patterns to use Auto, or choose Manual.",
+    "choosePattern": "Choose an Overtime Pattern",
+    "dayNormal": "Working day",
+    "dayOff": "Off day",
+    "dayRest": "Rest day",
+    "dayPublicHoliday": "Public holiday",
+    "dayReplacementHoliday": "Replacement holiday",
+    "roundingTitle": "Overtime Rounding",
+    "roundingMethod": "Overtime Rounding Method",
+    "roundUp": "Round Up",
+    "roundDown": "Round Down",
+    "roundingStep": "Overtime Rounding to Minute",
+    "stepMinutes": "{n} Minutes",
+    "roundingHint": "Rounding is applied last, after the approval method and the lateness offset. The recorded clocking duration is not changed.",
+    "unsupportedRounding": "The saved rounding uses an option this section does not offer. Saving replaces it from the new start date.",
+    "differs": "{n, plural, one {# company has} other {# companies have}} a different Overtime Setting, or none. Saving applies this setting to every chosen company.",
+    "savedFrom": "The saved setting starts on {date}.",
+    "none": "No Overtime Setting is saved yet. This group's overtime works as before until one is saved.",
+    "save": "Save Overtime Setting",
+    "systemReason": "Schedule Group Overtime Setting saved",
+    "on": "On",
+    "off": "Off",
+    "payrollNote": "Payroll receives the final overtime figures from this setting, the same way it receives overtime today."
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "Request On Behalf",
+    "requestHelp": "Choose the employee, then file Attendance Irregularity or Self Overtime for them on the usual screens. The request follows their own workflow and approvers.",
+    "approveTitle": "Approve On Behalf",
+    "approveHelp": "Choose the designated approver whose pending attendance requests you need to handle.",
+    "approveListHelp": "Requests waiting for {name} that you may decide on their behalf.",
+    "searchLabel": "Search by Employee ID or name",
+    "searchPlaceholder": "e.g. EMP-0123 or a name",
+    "search": "Search",
+    "results": "Employees you may act for",
+    "noResults": "No employee you may act for matches this search.",
+    "noPermission": "Your role does not have this permission. Ask an administrator if you need it.",
+    "choose": "Select",
+    "employeeName": "Employee",
+    "employeeId": "Employee ID",
+    "company": "Company",
+    "department": "Department",
+    "changeEmployee": "Change employee",
+    "chooseCategory": "What would you like to file?",
+    "irregularity": "Attendance Irregularity",
+    "irregularityHelp": "Missing or wrong clock times, short hours or absence, for the employee's own days.",
+    "selfOvertime": "Self Overtime",
+    "selfOvertimeHelp": "Plan or claim overtime under the employee's own Schedule Group and overtime rules.",
+    "banner": "Submitting on behalf of {name}",
+    "pendingTitle": "Pending approval requests",
+    "pendingEmpty": "Nothing is waiting for this approver that you may decide.",
+    "approveOnBehalf": "Approve On Behalf",
+    "rejectOnBehalf": "Reject On Behalf",
+    "approveAudit": "History keeps the chosen person as the designated approver and records you as the person who acted.",
+    "previous": "Previous",
+    "next": "Next"
   }
 }

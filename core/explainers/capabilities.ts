@@ -31,6 +31,8 @@ import {askPolicyHandbook} from '../handbook/ask';
 import {askAiQuality} from '../learning/ask';
 import {payrollLearningStatus} from './payroll-learning';
 import {sharedLeaveGroupsStatus} from './shared-leave-groups';
+import {attendanceOnBehalfPeople} from './attendance-on-behalf';
+import {attendanceOnBehalfPurposesHeld} from '../../packs/attendance/service';
 
 export type TerasCapabilityScope=Readonly<{companyId:string;locale?:string}>;
 export type TerasCapability=Readonly<{name:string;module:string|null;admin:boolean;
@@ -43,6 +45,10 @@ export type TerasCapability=Readonly<{name:string;module:string|null;admin:boole
  /** Release merge (spec v22): served as this topic of product_guidance (core/product-context/tools.ts GUIDANCE_TOPICS),
   * never bound as a tool of its own, so the offer stays within the provider's tool ceiling. Same runner, same gating. */
  topic?:'password_policy'|'correction_controls'|'organisation_tagging'|'reward_reviews';
+ /** 96a54ed2: an extra offer condition read from the caller's own facts, after the role, module and access gates. `once`
+  * shares one load between capabilities in the same offer, so a family of capabilities costs one read per call. The
+  * runner still re-checks its own authority. */
+ offer?(ctx:SessionContext,once:<T>(key:string,load:()=>Promise<T>)=>Promise<T>):Promise<boolean>;
  run(ctx:SessionContext,input:Record<string,unknown>,scope:TerasCapabilityScope):Promise<ExplainerOutcome>}>;
 const text=(value:unknown)=>typeof value==='string'?value:undefined;
 
@@ -152,6 +158,15 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  // 50d9b809: the Shared Leave Groups page's groups, administrators only (the page's requireAdmin), configuration only
  // (core/explainers/shared-leave-groups.ts); served as the operations_status topic shared_leave_groups, no new tool.
  {name:'shared_leave_groups',module:'leave',admin:true,worker:null,run:ctx=>sharedLeaveGroupsStatus(ctx)},
+ // 96a54ed2 (owner decision, 12 November 2026): the Request On Behalf and Approve On Behalf pages' first lists, offered to
+ // managers and administrators (team access); the runner refuses anyone without the on-behalf permission key before
+ // reading (core/explainers/attendance-on-behalf.ts). Served as operations_status topics of the same names, no new tool.
+ // Offered only while the caller holds that key somewhere (one read for both), so a manager or administrator without it is
+ // offered neither topic.
+ {name:'attendance_on_behalf_subjects',module:'attendance',admin:false,access:'team',worker:null,run:ctx=>attendanceOnBehalfPeople(ctx,'request'),
+  offer:async(ctx,once)=>(await once('attendance_on_behalf',()=>attendanceOnBehalfPurposesHeld(ctx))).has('request')},
+ {name:'attendance_on_behalf_approvers',module:'attendance',admin:false,access:'team',worker:null,run:ctx=>attendanceOnBehalfPeople(ctx,'approve'),
+  offer:async(ctx,once)=>(await once('attendance_on_behalf',()=>attendanceOnBehalfPurposesHeld(ctx))).has('approve')},
 ]);
 /** Capabilities this caller may be offered. A capability that belongs to a worker is offered only while that worker's
  * run gate is open (registered, switched on, tenant not stopped), read once per call in the caller's tenant. */
@@ -160,7 +175,11 @@ export async function terasCapabilitiesFor(ctx:SessionContext):Promise<readonly 
  const workers=[...new Set(candidates.flatMap(row=>row.worker?[row.worker]:[]))];
  const open=new Set<string>();
  for(const worker of workers)if((await workerRunGate(ctx,worker)).run)open.add(worker);
- return Object.freeze(candidates.filter(row=>row.worker===null||open.has(row.worker)).map(row=>Object.freeze({...row,
+ const loads=new Map<string,Promise<unknown>>();
+ const once=<T,>(key:string,load:()=>Promise<T>)=>{if(!loads.has(key))loads.set(key,load());return loads.get(key) as Promise<T>;};
+ const offered:TerasCapability[]=[];
+ for(const row of candidates)if((row.worker===null||open.has(row.worker))&&(!row.offer||await row.offer(ctx,once)))offered.push(row);
+ return Object.freeze(offered.map(row=>Object.freeze({...row,
   async run(caller:SessionContext,input:Record<string,unknown>,scope:TerasCapabilityScope){
    [caller,input,scope]=structuredClone([caller,input,scope] as const);
    try{return await withAiCentreFunction(caller,'read:'+row.name,()=>row.run(caller,input,scope));}

@@ -16,10 +16,11 @@ vi.mock('../core/roster', () => ({ listShiftsForTenant: async () => [] }));
 // the group itself. The page under test mounts it beside the General and Attendance forms.
 const { LEGACY_PATTERN, current } = vi.hoisted(() => ({ LEGACY_PATTERN: '00000000-0000-4000-8000-0000000000aa', current: { rule: null as unknown } }));
 vi.mock('../packs/attendance/service', () => ({ getScheduleRotation: async () => ({ versions: [],memberships:[], revision: 'r1' }),
-  legacyOvertimePatternIdForRule: async () => LEGACY_PATTERN, getAttendanceRule: async () => current.rule }));
+  legacyOvertimePatternIdForRule: async () => LEGACY_PATTERN, getAttendanceRule: async () => current.rule,
+  scheduleGroupOvertimeSetting:async()=>({companies:[],saved:null,patterns:[],minimumDate:'2030-01-02',token:'0'.repeat(64)}), }));
 vi.mock('../app/admin/attendance-policy/rule-actions', () => ({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
 vi.mock('../components/schedule-rotation-editor', () => ({ ScheduleRotationEditor: () => null, StepMark: () => null }));
-vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn(),saveScheduleGroupControlAction:vi.fn(),saveScheduleGroupAllowedShiftsAction:vi.fn(),saveScheduleGroupWeekAction:vi.fn() }));
+vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn(),saveScheduleGroupControlAction:vi.fn(),saveScheduleGroupAllowedShiftsAction:vi.fn(),saveScheduleGroupWeekAction:vi.fn(),saveScheduleGroupOvertimeSettingAction:vi.fn() }));
 
 import { RuleForm } from '../app/admin/attendance-policy/rules/rule-form';
 import { saveScheduleGroupGeneralAction } from '../app/admin/attendance-policy/rule-actions';

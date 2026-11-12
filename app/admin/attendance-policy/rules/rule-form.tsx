@@ -2,7 +2,8 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
 import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { ScheduleRotationEditor } from '@/components/schedule-rotation-editor';
+import { ScheduleRotationEditor, StepMark } from '@/components/schedule-rotation-editor';
+import { ScheduleOvertimeSettingFields, type ScheduleOvertimeSettingIslandProps } from '@/components/schedule-overtime-setting';
 import { ScheduleGroupTabs } from '@/components/schedule-group-tabs';
 import { ScheduleDraftShiftPicker } from '@/components/schedule-shift-picker';
 import { ScheduleClockFields, type ScheduleClockSettings } from '@/components/schedule-clock-fields';
@@ -61,7 +62,10 @@ export async function RuleForm({
   initialSection,
   clockCompanies = {canUseAll:false,group:[],companies:[]},
   canEditShared = true,
+  overtimeSetting,
 }: {
+  /** 2f803985 — Add Schedule's Overtime tab: the full Overtime Setting section, saved with the group. */
+  overtimeSetting?: ScheduleOvertimeSettingIslandProps;
   hideAllowedShifts?: boolean;
   saveScope?: boolean;
   generalOnly?: boolean;
@@ -86,7 +90,7 @@ export async function RuleForm({
   const tomorrow = new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+86_400_000).toISOString().slice(0,10);
   const monday=new Date(tomorrow+"T00:00:00Z");
   monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
-  const duty = canEditShared ? <Card><SectionHeader title={ts('sectionWorkingDay')} subtitle={tr('title')}/>
+  const duty = canEditShared ? <Card data-schedule-create-rotation=""><SectionHeader title={tr('title')}/>
     <p className="px-4 pt-3 text-sm text-muted-foreground">{te('dutyRosterPoolNote')}</p>
     <ScheduleRotationEditor creating editing ruleId="" revision="" minimumDate={tomorrow}
     initial={{effectiveFrom:tomorrow,anchorDate:monday.toISOString().slice(0,10),unit:'week',length:1,days:Array.from({length:7},()=>({kind:'rest',shiftId:null}))}}
@@ -120,20 +124,10 @@ export async function RuleForm({
         </Card>
 
         {!hideAllowedShifts && <Card className="space-y-3 p-4">
+          {/* 2f803985 (round 2) — no Monday–Sunday dropdowns here: they duplicated the dated rotation below,
+              which is the one place Day Type and Shift are set (Step 1 Shift Allowed, then Steps 2 and 3). */}
           <h2 className="font-semibold">{ts('sectionWorkingDay')}</h2>
-          <p className="text-sm text-muted-foreground">{te('newPattern')}</p>
-          {canEditShared&&<div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {[1,2,3,4,5,6,7].map((day)=><Field key={day} label={tr(`weekday${day}`)}>
-              <select name={`createDayKind_${day}`} defaultValue="" className={inputCls}>
-                <option value="">{te('inheritDay')}</option>
-                <option value="full">{tr('full')}</option>
-                <option value="half">{tr('half')}</option>
-                <option value="off">{tr('off')}</option>
-                <option value="rest">{tr('rest')}</option>
-              </select>
-            </Field>)}
-          </div>}
-          <h3 className="font-semibold">{te('shiftAllowed')}</h3>
+          <h3 className="flex items-center gap-2 font-semibold" data-schedule-step="1"><StepMark n={1}/>{te('shiftAllowed')}</h3>
           <p className="text-sm text-muted-foreground">{te('shiftHelp')}</p>
           {canEditShared&&<>
             <input type="hidden" name="allowedShiftsEditor" value="1"/>
@@ -186,7 +180,16 @@ export async function RuleForm({
         </Card>
         <WageDeductionsCard rule={rule} editing/>
   </>;
-  const overtime = generalOnly ? null : await renderScheduleOvertimeBands(rule);
+  // 2f803985 — the old overtime bands left Add Schedule: they live in Overtime Patterns › 1. General
+  // Settings of the group's own legacy pattern (created on insert by the 0551 trigger). This tab carries
+  // the Overtime Setting section instead, written in the same transaction as the new group.
+  const tos = await getTranslations('scheduleOvertimeSetting');
+  // The complete legacy edit form (updateAttendanceRuleAction replaces the band table from `otRows`) keeps
+  // its band editor, so it can never post an empty ladder over a saved one.
+  const overtime = generalOnly ? null : editing ? await renderScheduleOvertimeBands(rule) : overtimeSetting ? <Card className="space-y-3 p-4">
+    <h2 className="font-semibold">{tos('title')}</h2>
+    <ScheduleOvertimeSettingFields {...overtimeSetting}/>
+  </Card> : null;
   return (
     <div className="space-y-6">
       <ErrorBanner message={error}/>

@@ -336,7 +336,8 @@ describe('immutable non-payable policy part storage',()=>{
   expect(coverage.allocations.reduce((n,row)=>n+row.minutes,0)).toBe(physical);
   expect(coverage.intervals.reduce((n,row)=>n+row.toEpochMillisecond-row.fromEpochMillisecond,0)).toBe(physical*60000-555);
   const counts=coverage.countAttribution;if(!counts)throw Error('Expected explicit rounded count/date binding');
-  expect(counts.parts.map(row=>row.minutes)).toEqual(direction==='earliest'?[60+extra,physical-60]:[60,physical-60+extra]);
+  // 2f803985: each date rounds its own portion — the shift date's whole 60 stays 60, the next date takes the remainder.
+  expect(counts.parts.map(row=>row.minutes)).toEqual([60,physical-60+extra]);
   expect(read.evidence.evidence.policyCapturedCoverage).toEqual(coverage);
   // Original refused snapshots with no rounding-attribution field remain refused and readable
   // as physical proposal parts; the new source owner may not backfill or promote that history.

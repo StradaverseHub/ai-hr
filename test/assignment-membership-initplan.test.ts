@@ -1,6 +1,7 @@
 /** Real appended policy migration; populated data and native authority, no mocks. */
 import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
+import {againstReviewedVisibility,REVIEWED_VISIBILITY_PREDECESSOR} from './helpers/reviewed-visibility';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant} from '../db/client';
@@ -49,7 +50,7 @@ it('replays actual SQL on populated predecessor data with native history, scope 
  try{
   await setQual(previousSql);expect(compact((await policy()).qual)).toBe(originalQual);
   const before=await assertAssignmentAuthority(f);
-  await owner.client.begin(tx=>tx.unsafe(migration));
+  await owner.client.begin(tx=>tx.unsafe(againstReviewedVisibility(migration)));
   expect(await policy()).toEqual(installed);expect(await security()).toEqual(metadata);
   const after=await assertAssignmentAuthority(f);expect(after).toEqual(before);
   let denied:unknown;
@@ -71,6 +72,7 @@ it.each(['using','with-check','roles','command','permissive','missing','function
  ('refuses unexpected %s drift and rolls back the complete rehearsal',async drift=>{
  const installed=await policy(),metadata=await security();
  await expect(owner.client.begin(async tx=>{
+  await tx.unsafe(REVIEWED_VISIBILITY_PREDECESSOR);
   await tx.unsafe('ALTER POLICY assignment_rls ON public.assignment USING ('+previousSql+')');
   if(drift==='using')await tx.unsafe('ALTER POLICY assignment_rls ON public.assignment USING (true)');
   if(drift==='with-check')await tx.unsafe('ALTER POLICY assignment_rls ON public.assignment WITH CHECK (true)');

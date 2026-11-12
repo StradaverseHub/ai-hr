@@ -519,6 +519,7 @@ describe('E. every writer stays on the record — and the two row actions that h
     const date=new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+86_400_000).toISOString().slice(0,10);
     const form=fd({
       name:'Atomic Schedule Group',allowedShiftsEditor:'1',allowedShiftIds:shift.id,createRotation:'1',
+      // 2f803985 round 2 — a stale Monday dropdown value is ignored: the dated rotation is the only setup.
       createDayKind_1:'full',lateGracePeriodMinutes:'5',
       // c03670cc — no Effective From, no Reason, no tick box: All Companies, dated tomorrow by the service.
       clockEditor:'1',clockScope:'all',clockRevisionToken:JSON.stringify({group:0}),
@@ -529,7 +530,7 @@ describe('E. every writer stays on the record — and the two row actions that h
     const success=await redirectOf(()=>createAttendanceRuleAction(form));
     expect(queryOf(success).get('error')).toBeNull();
     const group=(await listAttendanceRules(ADMIN)).find(row=>row.name==='Atomic Schedule Group')!;
-    expect(group.weeklyPattern).toEqual([1]);
+    expect(group.weeklyPattern,'the rotation, not seven weekday dropdowns, sets Day Type and Shift').toBeNull();
     expect(group.lateGracePeriodMinutes).toBe(5);
     const rotation=await getScheduleRotation(ADMIN,group.id);
     expect(rotation.memberships).toEqual([{shiftId:shift.id}]);
@@ -770,6 +771,15 @@ describe('G. General has scoped ownership; standalone and create forms retain fu
     expect(add).not.toContain('id="section-workingDay"');
     // c03670cc — on Add, the first rotation sits in General and Wage Deductions in Attendance.
     expect(elementById(add,'section-general')).toContain('name="createRotation"');
+    // 2f803985 round 2 — no Monday–Sunday dropdowns; the first dated rotation is ticked by default and is
+    // the only Day Type + Shift setup; the Overtime tab carries the Overtime Setting, not the old bands.
+    expect(add).not.toContain('name="createDayKind_');
+    expect(elementById(add,'section-general')).toMatch(/name="createRotation"[^>]*checked/);
+    expect(elementById(add,'section-general').indexOf('data-schedule-step="1"'),'Step 1 Shift Allowed precedes the rotation')
+      .toBeLessThan(elementById(add,'section-general').indexOf('name="createRotation"'));
+    expect(elementById(add,'section-overtime')).toContain('data-schedule-overtime-setting=""');
+    expect(elementById(add,'section-overtime')).toContain('name="otApproval"');
+    expect(elementById(add,'section-overtime')).not.toContain('name="otRows"');
     expect(elementById(add,'section-attendance')).toContain('name="applyDeductions"');
     expect(elementById(add,'section-general')).not.toContain('name="applyDeductions"');
     expect(add).not.toContain('name="clockEffectiveFrom"');

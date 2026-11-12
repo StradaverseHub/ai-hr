@@ -34,6 +34,8 @@ import {
   Settings2,
   SlidersHorizontal,
   Users,
+  UserCheck,
+  UserPen,
 } from 'lucide-react';
 import { attendancePack } from '../packs/attendance';
 import { REGISTERED_ROUTES } from '../lib/permissions';
@@ -102,7 +104,8 @@ describe('ADR-0080 rung 2: attendance pack registration', () => {
  * the parity block (a duplicate that is NOT one of these still fails, and removing either half fails)
  * and the label block (a pair shares ONE label key, so both menus name the screen the same).
  */
-const PAIRED_HREFS: readonly string[] = ['/roster'];
+// 96a54ed2 — Request/Approve On Behalf: HR under Attendance, superiors under Manage (the approved plan).
+const PAIRED_HREFS: readonly string[] = ['/roster', '/attendance/on-behalf/request', '/attendance/on-behalf/approve'];
 
 /**
  * r317 (1661123d) — rows whose label KEY is deliberately not the camelCase of its English string.
@@ -225,6 +228,11 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   // the ten original rows, while an undeclared eleventh still fails: growth has to be deliberate.
   const ADDED_SINCE = [
     { href: '/attendance/application-history', labelKey: 'applicationHistory', icon: ClipboardList, adminOnly: true },
+    // 96a54ed2 — the two on-behalf screens, one adminOnly row in the node and one managerUp Manage row each.
+    { href: '/attendance/on-behalf/request', labelKey: 'attendanceRequestOnBehalf', icon: UserPen, adminOnly: true },
+    { href: '/attendance/on-behalf/approve', labelKey: 'attendanceApproveOnBehalf', icon: UserCheck, adminOnly: true },
+    { href: '/attendance/on-behalf/request', labelKey: 'attendanceRequestOnBehalf', icon: UserPen, managerUp: true },
+    { href: '/attendance/on-behalf/approve', labelKey: 'attendanceApproveOnBehalf', icon: UserCheck, managerUp: true },
     // r274 (2420718d) — Employee Attendance. The SCREEN is not new and neither is its address: it began as
     // a second, administrator-gated way into `/attendance`, which is `scopedSession` and shows each viewer
     // their own scope, and it was the ONLY href in this pack listed twice.
@@ -534,7 +542,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // r317 (1661123d) — ONE, not two. Import's Manage row was removed: it was managerUp while the page
     // calls requireAdmin(), so it offered managers a screen that bounced them. Roster's page is
     // scopedSession and genuinely works for them, so it stays.
-    expect(MANAGE_LINKS.map((l) => l.href).sort()).toEqual(['/roster']);
+    expect(MANAGE_LINKS.map((l) => l.href).sort()).toEqual(['/attendance/on-behalf/approve', '/attendance/on-behalf/request', '/roster']);
   });
 
   it('orders the Attendance CONFIG menu as the reporter listed the settings', () => {
@@ -558,6 +566,9 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // It shares its href with Records in MY_ATTENDANCE_NAV deliberately — see the note on the row.
       '/attendance', // Employee Attendance
       '/attendance/application-history',
+      // 96a54ed2 — Request On Behalf and Approve On Behalf for HR administrators.
+      '/attendance/on-behalf/request',
+      '/attendance/on-behalf/approve',
       // 22d67223 (r311) — Attendance Breakdown, SECOND and not among the settings: by this list's own
       // rule the readings lead and the configuration rows follow, and this is the second reading.
       '/attendance/breakdown',
@@ -1003,6 +1014,9 @@ describe('a324a4b3: Attendance nav labels name their screens, in all six locales
       // only: the key stays `attendanceImport` (LABEL_KEY_EXEMPT above).
       '/attendance/import': 'Import Clocking Data',
       '/attendance/application-history': 'Application History',
+      // 96a54ed2 — the same labels their Manage twins carry.
+      '/attendance/on-behalf/request': 'Request On Behalf',
+      '/attendance/on-behalf/approve': 'Approve On Behalf',
       // 4509d2b8 — '/admin/holidays': 'Holidays' used to lead this oracle. The row moved to System
       // Settings; nav.holidays is NOT removed (it labels the row at its new home and the lib/permissions.ts
       // 'holidays' column), it is simply no longer one of THIS node's rows.

@@ -22,7 +22,7 @@
  */
 import {afterAll,afterEach,beforeAll,describe,expect,it,vi} from 'vitest';
 import {page,userEvent} from 'vitest/browser';
-import {cleanup,render,screen,waitFor,within} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import geometry from './fixtures/combined-release-shell-geometry.json';
@@ -123,17 +123,39 @@ const mainEl=()=>screen.getByRole('main',{name:'Fictional Personnel page'});
 const sidebarRight=()=>document.querySelector('[data-fixture-sidebar]')!.getBoundingClientRect().right;
 const intersects=(a:DOMRect,b:DOMRect)=>a.left<b.right-.5&&a.right>b.left+.5&&a.top<b.bottom-.5&&a.bottom>b.top+.5;
 
+const listbox=()=>screen.queryByRole('listbox',{name:en.people.switcher.resultsLabel});
+/**
+ * Full gates 43221284271 and 43259497347 (Firefox) stopped here with the list stuck on "Loading…". The suggestions had
+ * in fact arrived and been set; the list the test was holding had closed. The browser jobs run several test files at
+ * once, each in its own page of ONE Firefox, and when another file's page takes the browser's focus the box gets a real
+ * blur (relatedTarget null). The list closes on that blur by design, exactly as when a person switches window, and the
+ * test kept polling the detached node, whose last text was "Loading…". Reproduced locally by running this file beside
+ * five other browser files in Firefox (3 of 3 failed; with this, 10 of 10 pass).
+ *
+ * So the wait re-reads the live list on every poll, and only when the WINDOW has lost focus (document.hasFocus() false)
+ * does it do what that person does on coming back: focus the box again, which reopens the list (onFocus). A list that
+ * closes while the window still has focus is still a failure here.
+ */
+function reopenIfWindowBlurred(){
+ if(!listbox()&&!document.hasFocus()&&(combobox() as HTMLInputElement).value)fireEvent.focusIn(combobox());
+}
 async function openList({focusOnly=false}={}){
  // focusOnly: the box itself may be under an open side menu, where a pointer cannot reach it (Tab can).
  if(focusOnly)combobox().focus();else await userEvent.click(combobox());
  await userEvent.keyboard('irwi');
- const list=await screen.findByRole('listbox',{name:en.people.switcher.resultsLabel},{timeout:5000});
+ await waitFor(()=>{reopenIfWindowBlurred();expect(listbox(),'the suggestion list closed').not.toBeNull();},{timeout:5000});
  // The suggestions arrive after the box's 200ms typing pause and the (mocked) read. Testing Library's default
- // 1s wait is too tight on a loaded CI runner: full gate 43221284271 (Firefox, Monolith) had the list open
- // with only the "Show all" row when it gave up. The wait is longer; what must arrive is unchanged (all 8 + 1).
- await waitFor(()=>expect(within(list).getAllByRole('option'),`still waiting: "${list.querySelector('[role="status"]')?.textContent??''}"`).toHaveLength(suggestions.length+1),{timeout:5000});
+ // 1s wait is too tight on a loaded CI runner. What must arrive is unchanged (all 8 + 1).
+ await waitFor(()=>{
+  reopenIfWindowBlurred();
+  const list=listbox();
+  expect(list,'the suggestion list closed').not.toBeNull();
+  expect(within(list!).getAllByRole('option'),`still waiting: "${list!.querySelector('[role="status"]')?.textContent??''}"`).toHaveLength(suggestions.length+1);
+ },{timeout:5000});
  await frame();
- return list;
+ reopenIfWindowBlurred();
+ if(!listbox())await frame();
+ return listbox()!;
 }
 
 /** The list is what a pointer hits at its centre and at the centre of every option currently in view. */

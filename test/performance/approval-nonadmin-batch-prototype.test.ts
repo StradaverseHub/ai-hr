@@ -1,5 +1,6 @@
 /** Reversible native experiment; no migration or production authorization contract changes. */
 import {randomUUID} from 'node:crypto';
+import {againstReviewedVisibility} from '../helpers/reviewed-visibility';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {eq,sql} from 'drizzle-orm';
@@ -91,7 +92,7 @@ it('compares one visible set per non-admin batch against every canonical scalar 
  };
  try{
   await owner.client.unsafe(predecessor.ddl);
-  await owner.client.unsafe(candidate);
+  await owner.client.unsafe(againstReviewedVisibility(candidate));
   const all=[...users.map(u=>u.employmentId),ended];
   await compare('group HR',base,all);await compare('company HR',context(users[0]),users.slice(0,50).map(u=>u.employmentId));
   await compare('employee retains active and ended own employment',context(users[4]),[users[4].employmentId,ended]);
@@ -125,11 +126,11 @@ it('compares one visible set per non-admin batch against every canonical scalar 
   const headerSubjects=users.slice(0,50).filter(u=>u.index!==3).map(u=>u.employmentId);
   for(const phase of ['original','candidate','candidate-warm','restored']){
    await owner.client.unsafe(predecessor.ddl);
-   if(phase==='candidate'||phase==='candidate-warm')await owner.client.unsafe(candidate);
+   if(phase==='candidate'||phase==='candidate-warm')await owner.client.unsafe(againstReviewedVisibility(candidate));
    const started=performance.now();for(let i=0;i<10;i++)expect((await read(context(users[3]),true,headerSubjects,false)).map(row=>row.employment_id)).toEqual([...headerSubjects].sort());
    measurements.push({phase,reads:10,subjectsPerRead:headerSubjects.length,elapsedMs:performance.now()-started});
   }
-  await owner.client.unsafe(candidate);
+  await owner.client.unsafe(againstReviewedVisibility(candidate));
   for(const [phase,applyOrgFilter]of [['header-with-generic-filter',true],['header-native-purpose-only',false],['header-with-generic-filter-warm',true],['header-native-purpose-only-warm',false]]as const){
    const began=performance.now();
    for(let n=0;n<5;n++)expect((await read(context(users[3]),true,headerSubjects,applyOrgFilter)).map(row=>row.employment_id)).toEqual([...headerSubjects].sort());
