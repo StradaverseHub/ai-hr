@@ -69,3 +69,21 @@ describe('Review tab People model (37f82412)', () => {
     expect(flagSection({ code: 'PRO-02', message: '' })).toBe('people');
   });
 });
+
+import { exclusionWindowOutsideYear, rollRewardPolicyDates, shiftIsoDateYears } from '../packs/rewards/model';
+describe('new-year configuration dates (70d5e7c5)', () => {
+  it('moves every date still holding the earlier year into the new year and keeps dates the user changed', () => {
+    const base = defaultPolicy(2025);
+    const typed = { ...base, year: 2026, joinedBefore: '2026-09-15' };
+    const rolled = rollRewardPolicyDates(typed, base, 2026);
+    expect(rolled).toMatchObject({ blockedFrom: '2026-10-01', blockedTo: '2026-12-31', effectiveFrom: '2027-01-01', confirmedBy: '2026-12-31', activeAsOf: '2026-12-31', joinedBefore: '2026-09-15' });
+    expect(rollRewardPolicyDates(base, base, 2025)).toBe(base);
+    expect(shiftIsoDateYears('2024-02-29', 1)).toBe('2025-02-28');
+    expect(shiftIsoDateYears('2025-10-01', 1)).toBe('2026-10-01');
+  });
+  it('flags a window that is not inside the review year', () => {
+    expect(exclusionWindowOutsideYear({ year: 2026, blockedFrom: '2025-10-01', blockedTo: '2025-12-31' })).toBe(true);
+    expect(exclusionWindowOutsideYear({ year: 2026, blockedFrom: '2026-10-01', blockedTo: '2027-01-15' })).toBe(true);
+    expect(exclusionWindowOutsideYear({ year: 2026, blockedFrom: '2026-10-01', blockedTo: '2026-12-31' })).toBe(false);
+  });
+});

@@ -587,7 +587,8 @@
     "privateCases": "தனிப்பட்ட புகார்கள்",
     "probationTracker": "சோதனைக் காலக் கண்காணிப்பு",
     "myPayrollReadiness": "எனது சம்பளத் தயார்நிலை",
-    "attendanceFormulaBuilder": "வருகைச் சூத்திரங்கள்"
+    "attendanceFormulaBuilder": "வருகைச் சூத்திரங்கள்",
+    "rewardsReviewSetup": "மதிப்பாய்வு அமைப்பு"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",
@@ -24267,7 +24268,7 @@
     "lumpSum": "ஒருமுறை தொகை",
     "lumpHelp": "One suggested amount per BU, funded from the remaining bonus balance. The lower amount across the standard and JG H plans applies to both. Individual changes require exception review. Zero means withheld.",
     "suggested": "Suggested",
-    "unitAmount": "Unit amount (RM)",
+    "unitAmount": "Unit amount (MYR)",
     "automatic": "Automatic",
     "saveAmount": "Save unit amount",
     "showWorking": "Show calculation",
@@ -24348,7 +24349,7 @@
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",
     "ruleEC": "EC direct reports have their own discretionary plan. Only Group Rewards, CTRO and Executive Chairman may see their line items. The 7% salary reference is advisory and does not block.",
     "ruleExemption": "A documented BU exemption lifts budget caps only. Eligibility, individual review thresholds and the approval route still apply.",
-    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in RM 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
+    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in MYR 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
     "rulePrivacy": "A user cannot view their own reward. BU CEOs cannot view BG CEO direct reports. The prototype’s inclusion of BG direct reports in unit totals is preserved; those totals may permit inference for small groups.",
     "ruleApproval": "Every unit follows the named approval route. Any change requires a return to draft and invalidates previous approvals. All checks are calculated on the full roster, including records hidden from the reviewer.",
     "rulePosting": "Rewards never calculates statutory deductions. Approved awards enter the existing salary and payroll services. Salary snapshots are checked again at posting; a failed employee or payroll write rolls back the whole unit.",
@@ -24652,7 +24653,7 @@
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
       "refusedItem": "{name}: {message}",
       "decided": "Decision recorded.",
-      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+      "footer": "Salary increase is the monthly total in MYR (MYR/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in MYR, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
     },
     "calendar": {
       "title": "Reward calendar",
@@ -24714,7 +24715,7 @@
       "auto": "பரிந்துரைத்த தொகையைப் பயன்படுத்து ({amount})",
       "autoHelp": "பட்ஜெட் மாறினால் பரிந்துரையைப் பின்பற்றும்.",
       "set": "தொகையை அமை",
-      "setHelp": "இந்த BU-இல் தகுதியுள்ள அனைவருக்கும் குறைந்தது RM 0.01 நிலையான தொகை.",
+      "setHelp": "இந்த BU-இல் தகுதியுள்ள அனைவருக்கும் குறைந்தது MYR 0.01 நிலையான தொகை.",
       "withhold": "இந்த BU-க்கு நிறுத்திவை",
       "withholdHelp": "இந்த BU-இல் யாருக்கும் மொத்தத் தொகை வழங்கப்படாது.",
       "aboveSuggestion": "இந்தத் தொகை மீதமுள்ள பட்ஜெட் அனுமதிப்பதை விட அதிகம் (பரிந்துரை {amount}).",
@@ -25053,7 +25054,8 @@
         "exemptionConfirmed": "விலக்கு உறுதிசெய்யப்பட்டது",
         "awardProposed": "மூத்தோர் தொகைகள் முன்மொழியப்பட்டன",
         "awardConfirmed": "மூத்தோர் தொகைகள் உறுதிசெய்யப்பட்டன"
-      }
+      },
+      "confirmSenior": "Senior திட்டத் தேர்வை உறுதிப்படுத்து"
     },
     "policyGrids": {
       "validation": {
@@ -37609,7 +37611,6 @@
     "edit": "அனுமதியைத் திருத்தவும்"
   },
   "rewardsPreparation": {
-    "notRecorded": "பதிவு இல்லை",
     "sourceChanged": "மூல ஆதாரம் மாறியது; தயாரிப்பை மீண்டும் சரிபார்க்க வேண்டும்.",
     "system": "அமைப்பு",
     "sharedConfiguration": "பொதுவமைப்பு",
@@ -37619,7 +37620,6 @@
     "viewApplied": "பயன்படுத்திய அமைப்பைப் பார்க்கவும்",
     "title": "அலகு அமைப்பு",
     "description": "தயாரித்து, வேறொருவரால் சரிபார்த்து, மதிப்பாய்வை வெளியிடவும்.",
-    "tabs": "அலகு மதிப்பாய்வுப் பகுதிகள்",
     "review": "மதிப்பாய்வு",
     "setup": "அலகு அமைப்பு",
     "checklist": "இந்த மதிப்பாய்வைத் தயாரிக்கவும்",
@@ -37628,8 +37628,6 @@
     "saveExpected": "வெளியீட்டுத் தேதியைச் சேமிக்கவும்",
     "notSet": "அமைக்கப்படவில்லை",
     "readOnly": "இந்த அமைப்பைப் பார்க்கலாம். Group Rewards மட்டுமே திருத்தலாம்.",
-    "legacy": "இந்த மதிப்பாய்வு தயாரிப்பு வரலாற்றுக்கு முந்தையது. பதிவுசெய்த செயல்முறை தொடரும்; புதிய ஆண்டு மதிப்பாய்வுகள் தனித்த சரிபார்ப்புடன் வெளியிடப்படும்.",
-    "openStep": "படியைத் திறக்கவும்",
     "done": "முடிந்தது",
     "pending": "உறுதிப்படுத்தல் நிலுவையில்",
     "notStarted": "தொடங்கவில்லை",
@@ -37675,6 +37673,64 @@
       "senior": "உறுப்பினர்களைத் தேர்ந்தெடுத்து தனித்த உறுதிப்படுத்தலைப் பெறவும்.",
       "budget": "PAT மற்றும் இலக்கு மாதங்கள் PAT Inputs-இலிருந்து பெறப்படுகின்றன. மாற்று மதிப்புகளுக்கும் விலக்குகளுக்கும் பதிவு செய்த ஒப்புதல் வேண்டும்.",
       "applied": "உறுதிப்படுத்திய பொதுவமைப்பு, சம்பளக் கட்டமைப்பு மற்றும் போனஸ் அட்டவணைப் பதிப்புகள்."
+    },
+    "blockedStep": "படி {step}: {reason}",
+    "reasons": {
+      "snapshot": "பணியாளர் நிலைப்படத்தில் மதிப்பாய்வு செய்ய வேண்டிய மாற்றங்கள் உள்ளன",
+      "data": "சிலருக்கு இன்னும் சரிபார்க்கப்பட்ட மதிப்பீடுகள் தேவை, அல்லது சந்தேகிக்கப்படும் நகல் திறந்துள்ளது",
+      "excluded": "விலக்குப் பட்டியல் இறுதியாகும் முன் நிலைப்படத்தில் மதிப்பாய்வு செய்ய வேண்டிய மாற்றங்கள் உள்ளன",
+      "window": "விலக்குக் காலம் மதிப்பாய்வு ஆண்டுக்கு வெளியே உள்ளது",
+      "senior": "Senior திட்டத் தேர்வு உறுதிப்படுத்தப்படவில்லை",
+      "budget": "பட்ஜெட் உள்ளீடுகள் இறுதியாகவில்லை",
+      "applied": "சம்பளக் கட்டமைப்பு அல்லது போனஸ் அட்டவணை பயன்படுத்தப்படவில்லை",
+      "unconfirmed": "இன்னும் உறுதிப்படுத்தப்படவில்லை"
+    },
+    "window": {
+      "dates": "விலக்குக் காலம்: {from} – {to}",
+      "outside": "இந்த விலக்குக் காலம் {year} மதிப்பாய்வு ஆண்டுக்கு வெளியே உள்ளது. வெளியிடும் முன் சரிசெய்யவும்.",
+      "fix": "உள்ளமைவில் சரிசெய்",
+      "outsideShort": "விலக்குக் காலம் மதிப்பாய்வு ஆண்டுக்கு வெளியே"
+    },
+    "detail": {
+      "title": "மதிப்பாய்வு அமைப்பு",
+      "openReview": "மதிப்பாய்வைத் திற",
+      "back": "அனைத்து மதிப்பாய்வு அமைப்புகள்",
+      "patReadOnly": "PAT மற்றும் இலக்கு போனஸ் மாதங்களை இங்கே படிக்க மட்டுமே முடியும். அவை இதிலிருந்து வருகின்றன:",
+      "noHistory": "இன்னும் அமைப்பு மாற்றங்கள் பதிவு செய்யப்படவில்லை.",
+      "beforeTrackingHelp": "படி கண்காணிப்பு தொடங்கும் முன் இந்த மதிப்பாய்வு அதன் BU CEO க்குச் சென்றது. அதன் படிகள் கண்காணிப்புக்கு முன் முடிந்தவையாகக் காட்டப்படுகின்றன, அதன் எண்கள் மாறவில்லை."
+    },
+    "beforeTracking": "கண்காணிப்புக்கு முன் முடிந்தது",
+    "list": {
+      "noAccess": "மதிப்பாய்வு அமைப்பை அணுக உங்களுக்கு அனுமதி இல்லை.",
+      "help": "ஒவ்வொரு அலகு மதிப்பாய்வையும் தயார் செய்து, அதன் BU CEO க்கு வெளியிடவும்.",
+      "viewHelp": "அமைப்பு முன்னேற்றத்தை நீங்கள் பார்க்கலாம். திருத்துவது Group Rewards க்கு மட்டும்.",
+      "cycle": "சுழற்சி",
+      "unit": "வணிக அலகு",
+      "status": "நிலை",
+      "all": "அனைத்தும்",
+      "filter": "வடிகட்டு",
+      "statuses": {
+        "preparing": "தயாராகிறது",
+        "ready": "வெளியிடத் தயார்",
+        "released": "வெளியிடப்பட்டது"
+      },
+      "columns": {
+        "company": "நிறுவனம்",
+        "unit": "வணிக அலகு",
+        "cycle": "சுழற்சி",
+        "snapshot": "நிலைப்படத் தேதி",
+        "progress": "அமைப்பு முன்னேற்றம்",
+        "status": "நிலை",
+        "expected": "எதிர்பார்க்கும் வெளியீட்டுத் தேதி",
+        "updatedBy": "கடைசியாகப் புதுப்பித்தவர்"
+      },
+      "beforeTracking": "கண்காணிப்புக்கு முன் முடிந்தது",
+      "progress": "{total} இல் {done} படிகள் முடிந்தன",
+      "empty": "இந்த வடிகட்டிகளுக்குப் பொருந்தும் அலகு மதிப்பாய்வுகள் இல்லை.",
+      "pages": "பக்கங்கள்",
+      "previous": "முந்தையது",
+      "next": "அடுத்தது",
+      "pageOf": "பக்கம் {page} / {pages} · {total} மதிப்பாய்வுகள்"
     }
   },
   "payComponentCompany": {

@@ -587,7 +587,8 @@
     "privateCases": "เรื่องส่วนตัว",
     "probationTracker": "ติดตามทดลองงาน",
     "myPayrollReadiness": "ความพร้อมสำหรับเงินเดือนของฉัน",
-    "attendanceFormulaBuilder": "สูตรเวลาทำงาน"
+    "attendanceFormulaBuilder": "สูตรเวลาทำงาน",
+    "rewardsReviewSetup": "การตั้งค่าการพิจารณา"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -24267,7 +24268,7 @@
     "lumpSum": "เงินก้อน",
     "lumpHelp": "One suggested amount per BU, funded from the remaining bonus balance. The lower amount across the standard and JG H plans applies to both. Individual changes require exception review. Zero means withheld.",
     "suggested": "Suggested",
-    "unitAmount": "Unit amount (RM)",
+    "unitAmount": "Unit amount (MYR)",
     "automatic": "Automatic",
     "saveAmount": "Save unit amount",
     "showWorking": "Show calculation",
@@ -24348,7 +24349,7 @@
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",
     "ruleEC": "EC direct reports have their own discretionary plan. Only Group Rewards, CTRO and Executive Chairman may see their line items. The 7% salary reference is advisory and does not block.",
     "ruleExemption": "A documented BU exemption lifts budget caps only. Eligibility, individual review thresholds and the approval route still apply.",
-    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in RM 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
+    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in MYR 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
     "rulePrivacy": "A user cannot view their own reward. BU CEOs cannot view BG CEO direct reports. The prototype’s inclusion of BG direct reports in unit totals is preserved; those totals may permit inference for small groups.",
     "ruleApproval": "Every unit follows the named approval route. Any change requires a return to draft and invalidates previous approvals. All checks are calculated on the full roster, including records hidden from the reviewer.",
     "rulePosting": "Rewards never calculates statutory deductions. Approved awards enter the existing salary and payroll services. Salary snapshots are checked again at posting; a failed employee or payroll write rolls back the whole unit.",
@@ -24652,7 +24653,7 @@
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
       "refusedItem": "{name}: {message}",
       "decided": "Decision recorded.",
-      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+      "footer": "Salary increase is the monthly total in MYR (MYR/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in MYR, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
     },
     "calendar": {
       "title": "Reward calendar",
@@ -24714,7 +24715,7 @@
       "auto": "ใช้จำนวนที่แนะนำ ({amount})",
       "autoHelp": "เปลี่ยนตามคำแนะนำหากงบประมาณเปลี่ยน",
       "set": "กำหนดจำนวน",
-      "setHelp": "จำนวนคงที่อย่างน้อย RM 0.01 สำหรับทุกคนที่มีสิทธิ์ใน BU นี้",
+      "setHelp": "จำนวนคงที่อย่างน้อย MYR 0.01 สำหรับทุกคนที่มีสิทธิ์ใน BU นี้",
       "withhold": "ระงับสำหรับ BU นี้",
       "withholdHelp": "ไม่มีผู้ใดใน BU นี้ได้รับเงินก้อน",
       "aboveSuggestion": "จำนวนนี้เกินกว่างบประมาณคงเหลือรองรับได้ (แนะนำ {amount})",
@@ -25053,7 +25054,8 @@
         "exemptionConfirmed": "ยืนยันข้อยกเว้นแล้ว",
         "awardProposed": "เสนอยอดผู้บริหารแล้ว",
         "awardConfirmed": "ยืนยันยอดผู้บริหารแล้ว"
-      }
+      },
+      "confirmSenior": "ยืนยันการเลือกแผน Senior"
     },
     "policyGrids": {
       "validation": {
@@ -37609,7 +37611,6 @@
     "edit": "แก้ไขสิทธิ์"
   },
   "rewardsPreparation": {
-    "notRecorded": "ไม่มีบันทึก",
     "sourceChanged": "หลักฐานต้นทางเปลี่ยน ต้องตรวจสอบการเตรียมอีกครั้ง",
     "system": "ระบบ",
     "sharedConfiguration": "การตั้งค่าร่วม",
@@ -37619,7 +37620,6 @@
     "viewApplied": "ดูการตั้งค่าที่ใช้",
     "title": "ตั้งค่าหน่วยงาน",
     "description": "เตรียม ตรวจสอบโดยบุคคลอื่น และเปิดการทบทวน",
-    "tabs": "ส่วนการทบทวนหน่วยงาน",
     "review": "ทบทวน",
     "setup": "ตั้งค่าหน่วยงาน",
     "checklist": "เตรียมการทบทวนนี้",
@@ -37628,8 +37628,6 @@
     "saveExpected": "บันทึกวันที่เปิด",
     "notSet": "ยังไม่กำหนด",
     "readOnly": "คุณดูการตั้งค่าได้ เฉพาะ Group Rewards เท่านั้นที่แก้ไขได้",
-    "legacy": "การทบทวนนี้เกิดก่อนมีประวัติการเตรียม คงขั้นตอนที่บันทึกไว้ การทบทวนรายปีใหม่ต้องผ่านการตรวจสอบโดยบุคคลอื่นก่อนเปิด",
-    "openStep": "เปิดขั้นตอน",
     "done": "เสร็จแล้ว",
     "pending": "รอยืนยัน",
     "notStarted": "ยังไม่เริ่ม",
@@ -37675,6 +37673,64 @@
       "senior": "เลือกสมาชิกและรับการยืนยันจากบุคคลอื่น",
       "budget": "PAT และจำนวนเดือนเป้าหมายมาจาก PAT Inputs การปรับค่าและการยกเว้นต้องมีอนุมัติที่บันทึกไว้",
       "applied": "รุ่นที่ยืนยันแล้วของการตั้งค่าร่วม โครงสร้างเงินเดือน และตารางโบนัส"
+    },
+    "blockedStep": "ขั้นตอน {step}: {reason}",
+    "reasons": {
+      "snapshot": "ภาพรวมพนักงานมีการเปลี่ยนแปลงที่ต้องตรวจสอบ",
+      "data": "บางคนยังต้องมีผลการประเมินที่ตรวจสอบแล้ว หรือยังมีรายการที่สงสัยว่าซ้ำ",
+      "excluded": "ภาพรวมมีการเปลี่ยนแปลงที่ต้องตรวจสอบก่อนรายชื่อยกเว้นจะเป็นฉบับสุดท้าย",
+      "window": "ช่วงเวลายกเว้นอยู่นอกปีที่พิจารณา",
+      "senior": "การเลือกแผน Senior ยังไม่ได้รับการยืนยัน",
+      "budget": "ข้อมูลงบประมาณยังไม่ใช่ฉบับสุดท้าย",
+      "applied": "ยังไม่ได้ใช้โครงสร้างเงินเดือนหรือตารางโบนัส",
+      "unconfirmed": "ยังไม่ได้ยืนยัน"
+    },
+    "window": {
+      "dates": "ช่วงเวลายกเว้น: {from} – {to}",
+      "outside": "ช่วงเวลายกเว้นนี้อยู่นอกปีที่พิจารณา {year} โปรดแก้ไขก่อนเผยแพร่",
+      "fix": "แก้ไขในการกำหนดค่า",
+      "outsideShort": "ช่วงยกเว้นอยู่นอกปีที่พิจารณา"
+    },
+    "detail": {
+      "title": "การตั้งค่าการพิจารณา",
+      "openReview": "เปิดการพิจารณา",
+      "back": "การตั้งค่าการพิจารณาทั้งหมด",
+      "patReadOnly": "PAT และจำนวนเดือนโบนัสเป้าหมายเป็นแบบอ่านอย่างเดียวที่นี่ โดยมาจาก",
+      "noHistory": "ยังไม่มีการบันทึกการเปลี่ยนแปลงการตั้งค่า",
+      "beforeTrackingHelp": "การพิจารณานี้ส่งถึง BU CEO ก่อนเริ่มติดตามขั้นตอน ขั้นตอนจึงแสดงว่าเสร็จก่อนเริ่มติดตาม และตัวเลขไม่เปลี่ยนแปลง"
+    },
+    "beforeTracking": "เสร็จก่อนเริ่มติดตาม",
+    "list": {
+      "noAccess": "คุณไม่มีสิทธิ์เข้าถึงการตั้งค่าการพิจารณา",
+      "help": "เตรียมการพิจารณาของแต่ละหน่วย แล้วเผยแพร่ให้ BU CEO",
+      "viewHelp": "คุณดูความคืบหน้าการตั้งค่าได้ การแก้ไขสงวนไว้สำหรับ Group Rewards",
+      "cycle": "รอบ",
+      "unit": "หน่วยธุรกิจ",
+      "status": "สถานะ",
+      "all": "ทั้งหมด",
+      "filter": "กรอง",
+      "statuses": {
+        "preparing": "กำลังเตรียม",
+        "ready": "พร้อมเผยแพร่",
+        "released": "เผยแพร่แล้ว"
+      },
+      "columns": {
+        "company": "บริษัท",
+        "unit": "หน่วยธุรกิจ",
+        "cycle": "รอบ",
+        "snapshot": "วันที่ภาพรวม",
+        "progress": "ความคืบหน้าการตั้งค่า",
+        "status": "สถานะ",
+        "expected": "วันที่คาดว่าจะเผยแพร่",
+        "updatedBy": "อัปเดตล่าสุดโดย"
+      },
+      "beforeTracking": "เสร็จก่อนเริ่มติดตาม",
+      "progress": "เสร็จ {done} จาก {total} ขั้นตอน",
+      "empty": "ไม่มีการพิจารณาของหน่วยที่ตรงกับตัวกรองนี้",
+      "pages": "หน้า",
+      "previous": "ก่อนหน้า",
+      "next": "ถัดไป",
+      "pageOf": "หน้า {page} จาก {pages} · {total} การพิจารณา"
     }
   },
   "payComponentCompany": {

@@ -104,7 +104,7 @@ export function rewardNavigation(ctx: SessionContext) {
   return withRewardsTenant(ctx, async tx => {
     const [pages] = await tx.execute<{
       review: boolean; analytics: boolean; approvals: boolean; rules: boolean; promotions: boolean;
-      manage: boolean; libraries: boolean; access: boolean; bootstrap: boolean;
+      manage: boolean; libraries: boolean; access: boolean; bootstrap: boolean; setup: boolean;
     }>(sql`
       with visible_units as (
         select id, company_id, kind from reward_unit
@@ -121,6 +121,9 @@ export function rewardNavigation(ctx: SessionContext) {
         app.reward_setup_allowed(null, 'manage') as manage,
         app.reward_setup_allowed(null, 'library_view') as libraries,
         app.is_group_admin() as bootstrap,
+        -- 70d5e7c5: Review Set-up for Group Rewards (edit), CTRO and EC (view) on an annual review.
+        exists(select 1 from visible_units u where u.kind = 'annual'
+          and exists(select 1 from app.reward_roles(u.id) r where r in ('gr','ctro','ec'))) as setup,
         (exists(${groupRewardsAccessCompanyScope}) or exists(${maintenanceAccessCompanyScope})) as access
     `);
     if (!pages) return [];
@@ -133,6 +136,7 @@ export function rewardNavigation(ctx: SessionContext) {
       ...(pages.manage ? ['/admin/rewards/shared'] : []),
       ...(pages.libraries ? ['/admin/rewards/salary-structures', '/admin/rewards/bonus-matrices'] : []),
       ...(pages.manage ? ['/admin/rewards/pat-inputs'] : []),
+      ...(pages.setup ? ['/admin/rewards/review-setup'] : []),
       ...(pages.access || pages.bootstrap ? ['/admin/rewards/access'] : []),
     ];
   });

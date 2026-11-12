@@ -587,7 +587,8 @@
     "privateCases": "Private cases",
     "probationTracker": "Probation tracker",
     "myPayrollReadiness": "My payroll readiness",
-    "attendanceFormulaBuilder": "Attendance formulas"
+    "attendanceFormulaBuilder": "Attendance formulas",
+    "rewardsReviewSetup": "Review Set-up"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -24267,7 +24268,7 @@
     "lumpSum": "Lump sum",
     "lumpHelp": "One suggested amount per BU, funded from the remaining bonus balance. The lower amount across the standard and JG H plans applies to both. Individual changes require exception review. Zero means withheld.",
     "suggested": "Suggested",
-    "unitAmount": "Unit amount (RM)",
+    "unitAmount": "Unit amount (MYR)",
     "automatic": "Automatic",
     "saveAmount": "Save unit amount",
     "showWorking": "Show calculation",
@@ -24348,7 +24349,7 @@
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",
     "ruleEC": "EC direct reports have their own discretionary plan. Only Group Rewards, CTRO and Executive Chairman may see their line items. The 7% salary reference is advisory and does not block.",
     "ruleExemption": "A documented BU exemption lifts budget caps only. Eligibility, individual review thresholds and the approval route still apply.",
-    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in RM 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
+    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in MYR 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
     "rulePrivacy": "A user cannot view their own reward. BU CEOs cannot view BG CEO direct reports. The prototype’s inclusion of BG direct reports in unit totals is preserved; those totals may permit inference for small groups.",
     "ruleApproval": "Every unit follows the named approval route. Any change requires a return to draft and invalidates previous approvals. All checks are calculated on the full roster, including records hidden from the reviewer.",
     "rulePosting": "Rewards never calculates statutory deductions. Approved awards enter the existing salary and payroll services. Salary snapshots are checked again at posting; a failed employee or payroll write rolls back the whole unit.",
@@ -24652,7 +24653,7 @@
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
       "refusedItem": "{name}: {message}",
       "decided": "Decision recorded.",
-      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+      "footer": "Salary increase is the monthly total in MYR (MYR/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in MYR, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
     },
     "calendar": {
       "title": "Reward calendar",
@@ -24714,7 +24715,7 @@
       "auto": "Use suggested amount ({amount})",
       "autoHelp": "Follows the suggestion if the budget changes.",
       "set": "Set amount",
-      "setHelp": "A fixed amount of at least RM 0.01 for everyone eligible in this BU.",
+      "setHelp": "A fixed amount of at least MYR 0.01 for everyone eligible in this BU.",
       "withhold": "Withhold for this BU",
       "withholdHelp": "No one in this BU receives the lump-sum token.",
       "aboveSuggestion": "This is more than the remaining budget supports (suggested {amount}).",
@@ -25053,7 +25054,8 @@
         "exemptionConfirmed": "Exemption confirmed",
         "awardProposed": "Senior amounts proposed",
         "awardConfirmed": "Senior amounts confirmed"
-      }
+      },
+      "confirmSenior": "Confirm Senior plan selection"
     },
     "policyGrids": {
       "validation": {
@@ -37609,7 +37611,6 @@
     "edit": "Edit grant"
   },
   "rewardsPreparation": {
-    "notRecorded": "Not recorded",
     "sourceChanged": "Source evidence changed; preparation needs to be checked again.",
     "system": "System",
     "sharedConfiguration": "Shared configuration",
@@ -37619,7 +37620,6 @@
     "viewApplied": "View applied settings",
     "title": "Unit set-up",
     "description": "Prepare, independently check and release the review.",
-    "tabs": "Unit review sections",
     "review": "Review",
     "setup": "Unit set-up",
     "checklist": "Prepare this review",
@@ -37628,8 +37628,6 @@
     "saveExpected": "Save release date",
     "notSet": "Not set",
     "readOnly": "You can inspect this set-up. Editing is reserved for Group Rewards.",
-    "legacy": "This review predates preparation history. Its recorded workflow is retained; new annual reviews use independently checked release.",
-    "openStep": "Open step",
     "done": "Done",
     "pending": "Pending confirmation",
     "notStarted": "Not started",
@@ -37675,6 +37673,64 @@
       "senior": "Select members and obtain independent confirmation.",
       "budget": "PAT and target months come from PAT Inputs. Overrides and exemptions need their recorded approvals.",
       "applied": "Confirmed shared configuration, salary structure and bonus matrix versions."
+    },
+    "blockedStep": "Step {step}: {reason}",
+    "reasons": {
+      "snapshot": "the employee snapshot has changes to review",
+      "data": "some people still need verified ratings, or a suspected duplicate is open",
+      "excluded": "the snapshot has changes to review before the exclusion list is final",
+      "window": "the exclusion window is outside the review year",
+      "senior": "the Senior plan selection is not confirmed",
+      "budget": "the budget inputs are not final",
+      "applied": "no salary structure or bonus matrix is applied",
+      "unconfirmed": "not confirmed yet"
+    },
+    "window": {
+      "dates": "Exclusion window: {from} – {to}",
+      "outside": "This exclusion window is outside the {year} review year. Fix it before release.",
+      "fix": "Fix in configuration",
+      "outsideShort": "Exclusion window outside the review year"
+    },
+    "detail": {
+      "title": "Review set-up",
+      "openReview": "Open review",
+      "back": "All review set-ups",
+      "patReadOnly": "PAT and target bonus months are read-only here. They come from",
+      "noHistory": "No set-up changes recorded yet.",
+      "beforeTrackingHelp": "This review went to its BU CEO before step tracking began. Its steps show as done before tracking began, and its figures are unchanged."
+    },
+    "beforeTracking": "Done before tracking began",
+    "list": {
+      "noAccess": "You don't have access to Review Set-up.",
+      "help": "Prepare each unit review, then release it to its BU CEO.",
+      "viewHelp": "You can view set-up progress. Editing is reserved for Group Rewards.",
+      "cycle": "Cycle",
+      "unit": "Business Unit",
+      "status": "Status",
+      "all": "All",
+      "filter": "Filter",
+      "statuses": {
+        "preparing": "Preparing",
+        "ready": "Ready to release",
+        "released": "Released"
+      },
+      "columns": {
+        "company": "Company",
+        "unit": "Business Unit",
+        "cycle": "Cycle",
+        "snapshot": "Snapshot date",
+        "progress": "Set-up progress",
+        "status": "Status",
+        "expected": "Expected release date",
+        "updatedBy": "Last updated by"
+      },
+      "beforeTracking": "Done before tracking began",
+      "progress": "{done} of {total} steps done",
+      "empty": "No unit reviews match these filters.",
+      "pages": "Pages",
+      "previous": "Previous",
+      "next": "Next",
+      "pageOf": "Page {page} of {pages} · {total} reviews"
     }
   },
   "payComponentCompany": {

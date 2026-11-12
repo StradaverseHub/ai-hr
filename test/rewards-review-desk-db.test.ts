@@ -57,13 +57,14 @@ describe('Rewards review desk (37f82412)', () => {
     const before = await view(actors.bg!), row = before.rows[0];
     expect(before.unit.status).toBe('bg');
     expect(before.canEdit).toBe(true);
-    await saveRewardEntry(actors.bg!, unitId, before.unit.revision, row.id, { ...row.recommendation, meritBp: 700 });
+    // 4% stays inside the 5% merit pool, so only the "differs from the matrix" exception is raised.
+    await saveRewardEntry(actors.bg!, unitId, before.unit.revision, row.id, { ...row.recommendation, meritBp: 400 });
     const after = await view(actors.bg!);
     expect(after.unit.status).toBe('bg');
     expect(after.unit.revision).toBe(before.unit.revision + 1);
-    expect(after.rows[0].meritBp).toBe(700);
-    // 5000.00 basic at 7% merit, rounded to whole ringgit by the engine.
-    expect(after.rows[0].meritCents).toBe(35000);
+    expect(after.rows[0].meritBp).toBe(400);
+    // 5,000.00 basic at 4% merit is 200.00.
+    expect(after.rows[0].meritCents).toBe(20000);
     // The re-stamped digest keeps the next approval admissible without returning the review.
     expect(await decideRewardUnit(actors.bg!, unitId, after.unit.revision, 'approve', 'Fictional BG CEO adjustment accepted')).toBe('gr');
   });

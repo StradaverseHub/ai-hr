@@ -587,7 +587,8 @@
     "privateCases": "私密个案",
     "probationTracker": "试用期跟踪",
     "myPayrollReadiness": "我的发薪准备",
-    "attendanceFormulaBuilder": "考勤公式"
+    "attendanceFormulaBuilder": "考勤公式",
+    "rewardsReviewSetup": "审核设置"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -24267,7 +24268,7 @@
     "lumpSum": "一次性奖励",
     "lumpHelp": "One suggested amount per BU, funded from the remaining bonus balance. The lower amount across the standard and JG H plans applies to both. Individual changes require exception review. Zero means withheld.",
     "suggested": "Suggested",
-    "unitAmount": "Unit amount (RM)",
+    "unitAmount": "Unit amount (MYR)",
     "automatic": "Automatic",
     "saveAmount": "Save unit amount",
     "showWorking": "Show calculation",
@@ -24348,7 +24349,7 @@
     "ruleBonus": "Bonus utilisation equals standard bonus plus individual increases, less individual reductions, plus lump sums. Spending above 100% blocks approval, including positive spending against a zero budget. Less than 80% utilisation raises a warning.",
     "ruleEC": "EC direct reports have their own discretionary plan. Only Group Rewards, CTRO and Executive Chairman may see their line items. The 7% salary reference is advisory and does not block.",
     "ruleExemption": "A documented BU exemption lifts budget caps only. Eligibility, individual review thresholds and the approval route still apply.",
-    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in RM 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
+    "ruleLump": "Lump-sum tokens apply outside the standard bonus run, excluding ER cases, senior leadership and EC direct reports. The default suggestion uses the full remaining balance, rounded down in MYR 50 steps. Group Rewards may configure the balance share, optional cap and rounding.",
     "rulePrivacy": "A user cannot view their own reward. BU CEOs cannot view BG CEO direct reports. The prototype’s inclusion of BG direct reports in unit totals is preserved; those totals may permit inference for small groups.",
     "ruleApproval": "Every unit follows the named approval route. Any change requires a return to draft and invalidates previous approvals. All checks are calculated on the full roster, including records hidden from the reviewer.",
     "rulePosting": "Rewards never calculates statutory deductions. Approved awards enter the existing salary and payroll services. Salary snapshots are checked again at posting; a failed employee or payroll write rolls back the whole unit.",
@@ -24652,7 +24653,7 @@
       "sendResult": "{sent} sent · {skipped} skipped (blocking) · {refused} refused (changed since you opened the page)",
       "refusedItem": "{name}: {message}",
       "decided": "Decision recorded.",
-      "footer": "Salary increase is the monthly total in RM (RM/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in RM, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
+      "footer": "Salary increase is the monthly total in MYR (MYR/mo) for the standard and JG H plans, against the salary increase pool. Bonus is the total in MYR, including lump sums, against the bonus budget. Totals count only the records you are allowed to see. Open a row to see its review."
     },
     "calendar": {
       "title": "Reward calendar",
@@ -24714,7 +24715,7 @@
       "auto": "使用建议金额（{amount}）",
       "autoHelp": "预算变化时随建议金额调整。",
       "set": "设定金额",
-      "setHelp": "为本业务单位所有符合资格者设定至少 RM 0.01 的固定金额。",
+      "setHelp": "为本业务单位所有符合资格者设定至少 MYR 0.01 的固定金额。",
       "withhold": "本业务单位不发放",
       "withholdHelp": "本业务单位无人获得一次性奖励。",
       "aboveSuggestion": "该金额超出剩余预算可支持的金额（建议 {amount}）。",
@@ -25053,7 +25054,8 @@
         "exemptionConfirmed": "豁免已确认",
         "awardProposed": "已提交高管金额",
         "awardConfirmed": "高管金额已确认"
-      }
+      },
+      "confirmSenior": "确认高级计划人选"
     },
     "policyGrids": {
       "validation": {
@@ -37609,7 +37611,6 @@
     "edit": "编辑授权"
   },
   "rewardsPreparation": {
-    "notRecorded": "未记录",
     "sourceChanged": "源数据已更改，须重新核查准备工作。",
     "system": "系统",
     "sharedConfiguration": "共享配置",
@@ -37619,7 +37620,6 @@
     "viewApplied": "查看已应用设置",
     "title": "单位设置",
     "description": "准备、独立核查并发布评审。",
-    "tabs": "单位评审部分",
     "review": "评审",
     "setup": "单位设置",
     "checklist": "准备本次评审",
@@ -37628,8 +37628,6 @@
     "saveExpected": "保存发布日期",
     "notSet": "未设置",
     "readOnly": "您可查看此设置。仅集团薪酬团队可编辑。",
-    "legacy": "此评审早于准备历史记录。保留其原有流程；新的年度评审须独立核查后发布。",
-    "openStep": "打开步骤",
     "done": "已完成",
     "pending": "待确认",
     "notStarted": "未开始",
@@ -37675,6 +37673,64 @@
       "senior": "选择成员并获取独立确认。",
       "budget": "PAT及目标月数来自PAT输入。覆盖值及豁免须有已记录的审批。",
       "applied": "已确认的共享配置、薪资结构及奖金矩阵版本。"
+    },
+    "blockedStep": "第 {step} 步：{reason}",
+    "reasons": {
+      "snapshot": "员工快照有待审阅的变更",
+      "data": "部分人员的评级仍需核实，或存在疑似重复记录",
+      "excluded": "快照有待审阅的变更，排除名单尚未最终确定",
+      "window": "排除期不在审核年度内",
+      "senior": "高级计划人选尚未确认",
+      "budget": "预算输入尚未最终确定",
+      "applied": "未应用薪资结构或奖金矩阵",
+      "unconfirmed": "尚未确认"
+    },
+    "window": {
+      "dates": "排除期：{from} – {to}",
+      "outside": "此排除期不在 {year} 审核年度内。请在发布前修正。",
+      "fix": "在配置中修正",
+      "outsideShort": "排除期不在审核年度内"
+    },
+    "detail": {
+      "title": "审核设置",
+      "openReview": "打开审核",
+      "back": "所有审核设置",
+      "patReadOnly": "PAT 和目标奖金月数在此处为只读，来源于",
+      "noHistory": "尚无设置变更记录。",
+      "beforeTrackingHelp": "此审核在开始步骤跟踪之前已交给业务单位总裁。其步骤显示为跟踪开始前已完成，数据未改变。"
+    },
+    "beforeTracking": "跟踪开始前已完成",
+    "list": {
+      "noAccess": "您无权访问审核设置。",
+      "help": "准备每个单位审核，然后发布给业务单位总裁。",
+      "viewHelp": "您可以查看设置进度。只有集团薪酬可以编辑。",
+      "cycle": "周期",
+      "unit": "业务单位",
+      "status": "状态",
+      "all": "全部",
+      "filter": "筛选",
+      "statuses": {
+        "preparing": "准备中",
+        "ready": "可发布",
+        "released": "已发布"
+      },
+      "columns": {
+        "company": "公司",
+        "unit": "业务单位",
+        "cycle": "周期",
+        "snapshot": "快照日期",
+        "progress": "设置进度",
+        "status": "状态",
+        "expected": "预计发布日期",
+        "updatedBy": "最后更新人"
+      },
+      "beforeTracking": "跟踪开始前已完成",
+      "progress": "已完成 {done}/{total} 步",
+      "empty": "没有符合这些筛选条件的单位审核。",
+      "pages": "页码",
+      "previous": "上一页",
+      "next": "下一页",
+      "pageOf": "第 {page} 页，共 {pages} 页 · {total} 个审核"
     }
   },
   "payComponentCompany": {

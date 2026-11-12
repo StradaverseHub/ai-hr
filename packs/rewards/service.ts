@@ -1,3 +1,4 @@
+import { formatMoney } from '../../lib/money';
 import { emptyRewardPreparation, REWARD_PREPARATION_STEPS, rewardPreparationStatus } from './preparation-model';
 import {aiCentreActivity} from '../../lib/ai/centre-activity';
 import {assertAiCentreRunningTx} from '../../core/ai-centre-control';
@@ -37,7 +38,7 @@ import {setupYear} from './setup-model';
 import { emptyGovernance, effectiveRewardPolicy, poolStatus, unitInputSchema, confirmedSeniorAwards, seniorGrade, maySeeSeniorAmounts, redactPatPolicy, seniorAwardSchema, governanceBasis,governanceHistoryProjection,seniorSourceFingerprint,type RewardPublicGovernance,type RewardGovernance, type SeniorAward } from './governance-model';
 import { assertRewardPolicyGrids } from './policy-grid-validation';
 import { onehrRewardResultTx, onehrRewardResultsTx } from '../performance/service';
-import { decisionActorRole, factsFromOnehr, isSeniorPlanMember, returnedState } from './model';
+import { decisionActorRole, exclusionWindowOutsideYear, factsFromOnehr, isSeniorPlanMember, returnedState } from './model';
 import {rewardPolicyForReviewTx} from './policy-groups';
 import { deriveConfidentialityTx, sourceWithFloor } from './confidentiality';
 export {rewardCompanyExclusions,changeRewardCompanyExclusion,rewardPolicyHistory,rewardPolicyHiddenCount} from './shared-governance';
@@ -1930,7 +1931,7 @@ export async function prepareMobileRewardReview(ctx:SessionContext,unitId:string
  }
  const privatePopulation=v.hiddenCount>0||v.rows.some(r=>isSeniorPlanMember(u.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible);
  if(privatePopulation)blocks.push(block('budget-privacy','Unit budgets',[['Visibility','Restricted population totals remain with the authorized reward reviewer.']]));
- else for(const plan of ['standard','h'] as const){const b=v.budgets[plan],money=(n:number)=>new Intl.NumberFormat('en-MY',{style:'currency',currency:'MYR'}).format(n/100);blocks.push(block(`budget-${plan}`,`${plan==='h'?'JG H':'Standard'} budgets`,[['Payroll base',money(b.payrollCents)],...b.pools.map((p,i)=>[`${['Merit','Promotion','Special'][i]} pool`,money(p)] as [string,unknown]),...b.used.map((p,i)=>[`${['Merit','Promotion','Special'][i]} used`,money(p)] as [string,unknown]),['Bonus pool',money(b.bonusPoolCents)],['Bonus used',money(b.bonusUsedCents)],['Lump sum',money(b.lumpCents)],['Balance',money(b.balanceCents)]]));}
+ else for(const plan of ['standard','h'] as const){const b=v.budgets[plan],money=(n:number)=>formatMoney(n===0?0:n/100,'MYR');blocks.push(block(`budget-${plan}`,`${plan==='h'?'JG H':'Standard'} budgets`,[['Payroll base',money(b.payrollCents)],...b.pools.map((p,i)=>[`${['Merit','Promotion','Special'][i]} pool`,money(p)] as [string,unknown]),...b.used.map((p,i)=>[`${['Merit','Promotion','Special'][i]} used`,money(p)] as [string,unknown]),['Bonus pool',money(b.bonusPoolCents)],['Bonus used',money(b.bonusUsedCents)],['Lump sum',money(b.lumpCents)],['Balance',money(b.balanceCents)]]));}
  blocks.push(block('checks','Review checks',v.flags.filter(f=>!f.entryId).map(f=>[f.severity,f.message])));
  for(const [i,d] of v.decisions.entries())blocks.push(block(`decision-${i}`,'Decision history',[['From',d.fromStage],['To',d.toStage],['Reason',d.reason],['Date',d.createdAt]]));
  const editable=u.status==='draft'&&v.canEdit,canSubmit=editable&&v.roles.includes(v.route[0]),canApprove=['bg','gr','ctro','ec'].some(r=>r===u.status&&v.roles.includes(r as RewardRole));
@@ -2170,7 +2171,8 @@ async function preparationReadinessTx(tx:Tx,ctx:SessionContext,unit:typeof rewar
  return {
   snapshot:refresh.changes.length===0,
   data:present.every(entry=>entry.facts.reviewed&&entry.facts.performance&&entry.facts.talent)&&new Set(personIds).size===personIds.length,
-  excluded:refresh.changes.length===0&&!!unit.policy.blockedFrom&&!!unit.policy.blockedTo,
+  // 70d5e7c5: a window outside the review's own year blocks this step until Group Rewards fixes it.
+  excluded:refresh.changes.length===0&&!!unit.policy.blockedFrom&&!!unit.policy.blockedTo&&!exclusionWindowOutsideYear(unit.policy),
   senior:!!state.selection?.confirmedBy&&entries.filter(entry=>entry.facts.seniorPlan).every(entry=>seniorGrade(entry.source.grade)),
   budget:!!state.inputs&&poolStatus(state)!=='not-set'&&!binding?.pool_recalculation_required&&publicState?.basis===governanceBasis(unit.policy,entries),
   applied:!!unit.policyGroupVersionId&&!!binding?.salary_version_id&&!!binding?.bonus_version_id,
@@ -2191,8 +2193,65 @@ export async function getRewardPreparationChecklist(ctx:SessionContext,unitId:st
   return {access,unitId,revision:unit.revision,preparation,basis:preparationBasis(unit,entries,state),checks,
    canEdit:access.namedDoer&&roles.includes('gr')&&unit.kind==='annual'&&unit.status==='draft'&&!viewing?.value,
    canReopen:access.required&&access.namedDoer&&roles.includes('gr')&&unit.kind==='annual'&&!['posted','withdrawn','rejected'].includes(unit.status)&&!viewing?.value,needsReopen:unit.status!=='draft',
-   snapshotDate:unit.snapshotDate,companyId:unit.companyId,branch:unit.policy.bonusStructure==='branch',budgetInputs:state.inputs};
+   snapshotDate:unit.snapshotDate,companyId:unit.companyId,branch:unit.policy.bonusStructure==='branch',budgetInputs:state.inputs,
+   status:unit.status,year:unit.policy.year,exclusionWindow:{from:unit.policy.blockedFrom,to:unit.policy.blockedTo,outsideYear:exclusionWindowOutsideYear(unit.policy)}};
  });
+}
+
+/** 70d5e7c5 — Configuration › Review Set-up. One bounded, ordered page of annual reviews the viewer prepares or
+ *  inspects (Group Rewards edits, CTRO and EC view), filtered and counted in SQL. Seat visibility is the native
+ *  reward_roles owner, which keeps preparing reviews visible only to gr / ctro / ec. Set-up progress per row comes
+ *  from the same preparation view the detail page uses; the release command still re-checks every step against
+ *  the review's current basis. */
+export const REWARD_SETUP_PAGE_SIZE = 50;
+export type RewardSetupListFilters = { cycle?: string; unit?: string; status?: 'preparing' | 'ready' | 'released'; page?: number };
+export type RewardSetupListRow = { unitId: string; company: string; unit: string; cycle: string; snapshotDate: string; stepsDone: number;
+  status: 'preparing' | 'ready' | 'released'; legacy: boolean; expectedRelease: string | null; lastUpdatedBy: string | null; lastUpdatedAt: string | null; windowOutsideYear: boolean };
+export async function rewardReviewSetupList(ctx: SessionContext, raw: RewardSetupListFilters = {}) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  const filters = z.object({ cycle: idSchema.optional(), unit: idSchema.optional(), status: z.enum(['preparing', 'ready', 'released']).optional(), page: z.number().int().min(0).max(10000).optional() }).parse(raw);
+  return withRewardsTenant(ctx, async tx => {
+    const base = sql`from reward_unit u join company c on c.id=u.company_id and c.tenant_id=u.tenant_id
+      join business_unit b on b.id=u.business_unit_id and b.tenant_id=u.tenant_id
+      join reward_cycle cy on cy.id=u.cycle_id and cy.tenant_id=u.tenant_id
+      where u.tenant_id=app.current_tenant_id() and u.deleted_at is null and u.kind='annual'
+        and exists(select 1 from app.reward_roles(u.id) r where r in ('gr','ctro','ec'))
+        and not exists(select 1 from reward_uploaded_review x where x.unit_id=u.id and x.tenant_id=u.tenant_id)`;
+    const [access] = await tx.execute<{ allowed: boolean; editor: boolean }>(sql`select exists(select 1 ${base}) as allowed, exists(select 1 ${base} and 'gr' in (select app.reward_roles(u.id))) as editor`);
+    if (!access?.allowed) return { allowed: false as const };
+    const page = filters.page ?? 0;
+    // One statement: the preparation view supplies the recorded steps for every seat (CTRO and EC cannot read
+    // the raw governance row), status is derived from it, and filtering, counting and paging agree.
+    const rows = await tx.execute<{ unitId: string; company: string; unit: string; cycle: string; snapshotDate: string; status: RewardSetupListRow['status']; legacy: boolean;
+      year: number; blockedFrom: string | null; blockedTo: string | null; steps: string[] | null; expectedRelease: string | null; latest: { actorName: string | null; at: string } | null; total: number }>(sql`
+      with listed as (
+        select u.id as "unitId", c.legal_name as company, coalesce(nullif(trim(b.label),''),b.code) as unit, cy.name as cycle, cy.year as "cycleYear",
+          u.snapshot_date::text as "snapshotDate", not u.preparation_required as legacy,
+          (u.policy->>'year')::int as year, u.policy->>'blockedFrom' as "blockedFrom", u.policy->>'blockedTo' as "blockedTo",
+          app.reward_preparation_view(u.id) as v
+        ${base} ${filters.cycle ? sql`and u.cycle_id=${filters.cycle}::uuid` : sql``} ${filters.unit ? sql`and u.business_unit_id=${filters.unit}::uuid` : sql``}
+      ), statused as (
+        select listed.*, array(select jsonb_object_keys(coalesce(v->'preparation'->'steps','{}'::jsonb))) as steps,
+          v->>'expectedRelease' as "expectedRelease", v->'history'->0 as latest,
+          case when legacy or coalesce((v->>'released')::boolean,false) then 'released'
+            when (select count(*) from jsonb_object_keys(coalesce(v->'preparation'->'steps','{}'::jsonb)))=${REWARD_PREPARATION_STEPS.length} and v->>'expectedRelease' is not null then 'ready'
+            else 'preparing' end as status
+        from listed
+      )
+      select "unitId", company, unit, cycle, "snapshotDate", status, legacy, year, "blockedFrom", "blockedTo", steps, "expectedRelease", latest, count(*) over()::int as total
+      from statused where ${filters.status ? sql`status=${filters.status}` : sql`true`}
+      order by "cycleYear" desc, cycle, company, unit, "unitId" limit ${REWARD_SETUP_PAGE_SIZE} offset ${page * REWARD_SETUP_PAGE_SIZE}`);
+    const [options] = await tx.execute<{ cycles: { id: string; name: string }[] | null; units: { id: string; name: string }[] | null }>(sql`select
+      (select jsonb_agg(distinct jsonb_build_object('id',cy.id,'name',cy.name)) ${base}) as cycles,
+      (select jsonb_agg(distinct jsonb_build_object('id',b.id,'name',coalesce(nullif(trim(b.label),''),b.code))) ${base}) as units`);
+    const list: RewardSetupListRow[] = rows.map(row => ({ unitId: row.unitId, company: row.company, unit: row.unit, cycle: row.cycle, snapshotDate: row.snapshotDate, status: row.status, legacy: row.legacy,
+      stepsDone: row.legacy ? REWARD_PREPARATION_STEPS.length : (row.steps ?? []).filter(step => (REWARD_PREPARATION_STEPS as readonly string[]).includes(step)).length,
+      expectedRelease: row.expectedRelease, lastUpdatedBy: row.latest?.actorName ?? null, lastUpdatedAt: row.latest?.at ?? null,
+      windowOutsideYear: !!row.blockedFrom && !!row.blockedTo && exclusionWindowOutsideYear({ year: row.year, blockedFrom: row.blockedFrom, blockedTo: row.blockedTo }) }));
+    const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+    return { allowed: true as const, editor: !!access.editor, rows: list, total: rows[0]?.total ?? 0, page, pageSize: REWARD_SETUP_PAGE_SIZE,
+      cycles: (options?.cycles ?? []).sort(byName), units: (options?.units ?? []).sort(byName) };
+  });
 }
 
 export async function changeRewardPreparation(ctx:SessionContext,unitId:string,revision:number,raw:unknown){

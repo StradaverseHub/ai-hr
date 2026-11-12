@@ -22,5 +22,8 @@ export async function preparationAction(form:FormData){
    :/Complete|confirm every|expected release/.test(message)?t('incomplete'):/locked|controlled change/.test(message)?t('lockedError'):t('saveFailed');
  }
  revalidatePath('/rewards','layout');revalidatePath('/admin/rewards','layout');
- redirect(`/rewards/${encodeURIComponent(unitId)}/setup${error?'?error='+encodeURIComponent(error):''}`);
+ // 70d5e7c5: set-up lives in Configuration › Review Set-up; return to the step that was open.
+ const step=String(form.get('returnStep')??'');
+ const query=new URLSearchParams({...(/^[a-z]{1,20}$/.test(step)?{step}:{}),...(error?{error}:{})}).toString();
+ redirect(`/admin/rewards/review-setup/${encodeURIComponent(unitId)}${query?'?'+query:''}`);
 }
