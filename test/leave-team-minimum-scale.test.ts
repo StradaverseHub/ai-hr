@@ -78,14 +78,14 @@ describe('team presence at group scale',()=>{
   for(const [name,persona] of personas()){
    const observed=await observeStatements(()=>leaveTeamPresence(persona,{leaveRequestId:requestId,today}));
    expect(observed.result,name).toEqual({kind:'presence',minimum:MINIMUM,teamSize,days:expected});
-   counts.push(observed.statements.length);
+   counts.push(ownReads(observed.statements).length);
    expect(observed.transactions,name).toBe(1);
    expect(observed.ms,`${name} took ${Math.round(observed.ms)} ms`).toBeLessThan(5_000);
   }
-  expect(new Set(counts).size,'the same statements under every scope').toBe(1);
+  // Three reads under every scope (the session's own setup statements aside, which differ by login): the request with
+  // its minimum, its dates, and one count over every day.
+  expect(counts,'the same reads under every scope').toEqual(counts.map(()=>3));
   presenceStatements=counts[0];
-  // The transaction's own setup, then three reads: the request with its minimum, its dates, and one count over every day.
-  expect(presenceStatements).toBeLessThanOrEqual(8);
  },120_000);
 
  it('one day short of the minimum is named with its count, and no minimum costs one statement',async()=>{
@@ -99,7 +99,7 @@ describe('team presence at group scale',()=>{
    const observed=await observeStatements(()=>leaveTeamPresence(persona,{leaveRequestId:requestId,today}));
    expect(observed.result,name).toEqual({kind:'no_minimum'});
    // The same transaction with only its first read: no dates and no count.
-   expect(observed.statements.length,name).toBe(presenceStatements-2);
+   expect(ownReads(observed.statements).length,name).toBe(presenceStatements-2);
   }
   await owner.db.update(schema.company).set({leaveTeamMinimumPresent:MINIMUM}).where(eq(schema.company.id,fixture.singleCompanyId));
  },120_000);
@@ -108,3 +108,5 @@ describe('team presence at group scale',()=>{
   await expect(leaveTeamPresence(fixture.personas.single,{leaveRequestId:randomUUID(),today})).rejects.toThrow();
  },60_000);
 });
+/** The read's own statements: those over the leave and reporting tables, not the session's setup or identity statements. */
+function ownReads(statements:readonly {sql:string}[]){return statements.filter(statement=>/\b(leave_request|leave_request_date|reporting_line)\b/i.test(statement.sql));}
