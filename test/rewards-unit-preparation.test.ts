@@ -9,7 +9,7 @@ import { createAppUser,owner,closeAll,resetDb,migrateTestDb,seedBase,setModule,e
 import { createPreparingRewardUnit as createApprovedRewardUnit } from './rewards-setup-fixture';
 import { initializeRewardGovernanceFixture,refreshRewardFixtureBudget } from './rewards-governance-fixture';
 import { setRewardMember } from './rewards-access-fixture';
-import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardPreparationNotices,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference,rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange } from '../packs/rewards/service';
+import { previewRewardPreparationRelease,getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardPreparationNotices,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference,rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange } from '../packs/rewards/service';
 import {rewardAccessPageCompanies,rewardAccessPageEntry,rewardNavigation} from '../packs/rewards/access-policy';
 import {dispatchNotificationsFromSweep} from '../core/notifications';
 import { REWARD_PREPARATION_STEPS } from '../packs/rewards/preparation-model';
@@ -18,7 +18,10 @@ let base:Base,gr:SessionContext,checker:SessionContext,reviewer:SessionContext,u
 const snapshotDate='2026-01-01';
 async function change(ctx:SessionContext,command:Record<string,unknown>){
  const current=await getRewardPreparationChecklist(ctx,unitId);
- return changeRewardPreparation(ctx,unitId,current.revision,{...command,...(['confirm','release'].includes(String(command.kind))?{basis:current.basis}:{})});
+ // Board 60f1fdcd: release is high impact; it carries the reviewed summary digest and a reason.
+ const review=command.kind==='release'&&!('summaryDigest' in command)?await previewRewardPreparationRelease(ctx,unitId).catch(()=>null):null;
+ return changeRewardPreparation(ctx,unitId,current.revision,{...command,...(['confirm','release'].includes(String(command.kind))?{basis:current.basis}:{}),
+  ...(command.kind==='release'?{reason:'Fictional preparation reviewed before release',summaryDigest:review?.digest??'0'.repeat(64),...command}:{})});
 }
 async function confirmAll(){
  await change(gr,{kind:'expected',date:'2026-11-30'});
@@ -59,12 +62,16 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   expect(records).toEqual([]);
  });
 
- it('refuses an incomplete or self-checked release and admits the same existing review after independent release',async()=>{
+ it('refuses an incomplete or stale release and lets the preparer release with a reason (board 60f1fdcd)',async()=>{
   await expect(change(checker,{kind:'release'})).rejects.toThrow(/Complete/);
   await confirmAll();
-  await expect(change(gr,{kind:'release'})).rejects.toThrow(/different Group Rewards/);
+  // A stale summary or a missing reason is refused; the person who confirmed the steps may then release.
+  await expect(change(gr,{kind:'release',summaryDigest:'f'.repeat(64)})).rejects.toThrow(/Review the summary again/);
+  await expect(change(gr,{kind:'release',reason:'short'})).rejects.toThrow();
   const before=await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId));
-  await change(checker,{kind:'release'});
+  await change(gr,{kind:'release'});
+  const [logged]=await owner.db.execute<{n:number;actor:string|null;high:boolean}>(sql`select count(*)::int as n,max(actor_id::text) as actor,bool_and(high_impact) as high from reward_config_change where area='preparation' and item_id=${unitId}::uuid`);
+  expect(logged).toEqual({n:1,actor:gr.userId,high:true});
   expect((await getRewardPreparationStatus(reviewer,unitId)).released).toBe(true);
   expect((await getRewardUnit(reviewer,unitId)).unit.id).toBe(unitId);
   expect(await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId))).toEqual(before);
@@ -129,7 +136,7 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
 
  it('prevents even an inspection seat from advancing preparation and restarts an already-routed review on a controlled change',async()=>{
   const initial=await getRewardUnit(gr,unitId);
-  await expect(decideRewardUnit(gr,unitId,initial.unit.revision,'approve','Fictional premature approval')).rejects.toThrow(/independently checked/);
+  await expect(decideRewardUnit(gr,unitId,initial.unit.revision,'approve','Fictional premature approval')).rejects.toThrow(/must be released/);
   await expect(withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)))).rejects.toMatchObject({cause:{message:expect.stringMatching(/independently checked/)}});
   await confirmAll();await change(checker,{kind:'release'});
   await withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)));

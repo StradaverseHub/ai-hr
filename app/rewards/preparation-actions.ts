@@ -12,13 +12,13 @@ export async function preparationAction(form:FormData){
  const kind=String(form.get('kind')??'');
  const payload=kind==='expected'?{kind,date:String(form.get('expectedRelease')??'')}
   :kind==='confirm'?{kind,step:String(form.get('step')??''),basis:String(form.get('basis')??'')}
-  :kind==='reopen'?{kind,reason:String(form.get('reason')??'')}:{kind,basis:String(form.get('basis')??'')};
+  :kind==='reopen'?{kind,reason:String(form.get('reason')??'')}:{kind,basis:String(form.get('basis')??''),reason:String(form.get('reason')??''),summaryDigest:String(form.get('summaryDigest')??'')};
  let error:string|undefined;
  try{await changeRewardPreparation(await getBrowserCommandSession(),unitId,revision,payload);}
  catch(value){
   const t=await getTranslations('rewardsPreparation');
   const message=publicErrorMessage(value);
-  error=/different Group Rewards/.test(message)?t('independent'):/changed in another|revision/.test(message)?t('stale')
+  error=/Review the summary again/.test(message)?t('summaryChanged'):/changed in another|revision/.test(message)?t('stale')
    :/Complete|confirm every|expected release/.test(message)?t('incomplete'):/locked|controlled change/.test(message)?t('lockedError'):t('saveFailed');
  }
  revalidatePath('/rewards','layout');revalidatePath('/admin/rewards','layout');

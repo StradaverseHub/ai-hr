@@ -56,6 +56,9 @@ export async function setRewardMember(...args:Parameters<typeof nativeSet>){
  await fixturePeople(ctx,change);
  const existing=await owner.db.select().from(s.rewardMember).where(and(eq(s.rewardMember.unitId,unitId),eq(s.rewardMember.userId,userId),eq(s.rewardMember.role,role)));
  if(!remove&&existing.length)return {requestId:'',pending:false,status:'applied_no_second_approval'};
+ // Board 60f1fdcd: nobody adds their own seat. A fixture that seats its own actor stands in for another
+ // administrator and records the seat directly.
+ if(!remove&&userId===ctx.userId){await owner.db.insert(s.rewardMember).values({tenantId:ctx.tenantId,unitId,userId,role});return {requestId:'',pending:false,status:'applied_no_second_approval'};}
  const result=await nativeSet(...args);if(!result.pending)return result;
  const checker=await independentChecker(ctx,[change]);
  const decision=await decideRewardAccessRequest(checker,result.requestId,true);if(decision.status!=='approved')throw Error('Access fixture approval lapsed');

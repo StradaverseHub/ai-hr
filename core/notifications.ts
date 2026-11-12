@@ -6,7 +6,7 @@ import {currentFollowupTargetsTx} from './automatic-followups';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { assessmentReviewTaskRecipientsTx,assessmentReminderRecipientsTx } from '../packs/performance/service';
-import { rewardUploadCheckerRecipients,rewardAccessSuspensionEventRecipients,rewardNotificationRecipients,rewardPoolNotificationRecipients,rewardPreparationNotificationRecipients } from '../packs/rewards/notification-recipients';
+import { rewardConfigChangeRecipients,rewardUploadCheckerRecipients,rewardAccessSuspensionEventRecipients,rewardNotificationRecipients,rewardPoolNotificationRecipients,rewardPreparationNotificationRecipients } from '../packs/rewards/notification-recipients';
 /**
  * Notification engine (ADR-0034) — 34-2 registry + dispatch + reads. A sweep reads new domain events after a
  * per-tenant cursor and turns the mapped ones into recipient-scoped notifications. Gated by the per-tenant
@@ -295,6 +295,7 @@ const webNotificationRecipients:NotificationRecipientReaders<Tx>={
   rewardPreparationInvalidated:(tx,event,payload)=>rewardPreparationNotificationRecipients(tx,event.aggregateId,payload?.to,false),
   rewardPoolChanged:(tx,event)=>rewardPoolNotificationRecipients(tx,event.aggregateId),
   rewardApproved:(tx, ev) => rewardNotificationRecipients(tx, ev.aggregateId, 'approved'),
+  rewardConfigChanged:(tx,event)=>rewardConfigChangeRecipients(tx,event.aggregateId),
   leaveSubmitted:async (tx, ev) => {
       if (!ev.subjectEmploymentId) return [];
       const hr = await hrAdminsForCompany(tx, ev.subjectEmploymentId);
