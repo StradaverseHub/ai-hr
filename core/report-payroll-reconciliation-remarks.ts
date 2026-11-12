@@ -55,7 +55,7 @@ export async function savePayrollReconciliationRemark(ctx: SessionContext, scope
   const spec = builtInPayrollReconciliationSpec(payItemCode);
   await withTenant(ctx, async tx => {
     await payrollComparisonAccessTx(tx, ctx, spec, 'edit', [input.companyId]);
-    const run = await executePayrollComparisonTx(tx, ctx, spec, scope, filters, 'view');
+    const run = await executePayrollComparisonTx(tx, ctx, spec, scope, filters, 'view', { readyCompanies: true });
     const row = run.result.available && run.result.rows.find(row => row.companyId === input.companyId &&
       row.employmentId === input.employmentId && row.currency === input.currency && row.payItemCode === input.rowPayItem);
     if (!row) throw new MasterReportAccessError();

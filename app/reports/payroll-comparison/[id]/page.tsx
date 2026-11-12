@@ -17,6 +17,7 @@ import {savePayrollReconciliationRemarkAction,saveReconciliationTemplateAction} 
 import {PayrollComparisonEditor} from '../PayrollComparisonEditor';
 import {ReconciliationPayItemFilter} from '../pay-item-filter';
 import {publicErrorMessage} from '@/lib/public-error';
+import {PayrollComparisonInclusionNotice,payrollComparisonEmptyMessage} from '../inclusion';
 export const dynamic='force-dynamic';
 export default async function PayrollComparisonPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<Record<string,string|string[]|undefined>>}){
   const {s,scopeIds,allowedCompanyIds}=await scopedAdmin(),{id}=await params,comparisonScope=id==='reconciliation'?(allowedCompanyIds??scopeIds):scopeIds,sp=await searchParams,t=await getTranslations('payrollComparison');
@@ -36,6 +37,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
   try{run=await runPayrollComparisonReport(s,comparisonScope,{id,filters:raw});await recordPayrollComparisonRun(s,run,builtIn?'preview':'run');}
   catch(error){if(error instanceof MasterReportAccessError)notFound();return <div className="space-y-4"><PageHeader title={t('title')} back={{href:'/reports?cat=payroll',label:t('back')}}/><ErrorBanner message={publicErrorMessage(error)}/><Link href={'/reports/payroll-comparison/'+id}>{t('reset')}</Link></div>;}
   const [people,status]=await Promise.all([getTranslations('people.detail.employmentInfo'),getTranslations('people.employeeStatus')]);
+  const empty=payrollComparisonEmptyMessage(run.inclusion,t);
   const {result,filters}=run,columns=payrollComparisonColumns(run.definition);
   const query=(changes:Record<string,string|number|null>={})=>{
     const values={...filters,...(builtIn?{payItemCode:run.definition.payItemCode}:{}),onlyVariances:filters.onlyVariances?'1':'0',...changes},search=new URLSearchParams();
@@ -50,7 +52,9 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
     {builtIn&&sp.noteError&&<ErrorBanner message={t(sp.noteError==='conflict'?'hrRemarkConflict':'hrRemarkFailed')}/>}
     {builtIn&&sp.templateError&&<ErrorBanner message={t('saveFailed')}/>}
     {result.provisional&&<div role="status" className="rounded-xl border border-border bg-muted/50 p-4 text-sm text-foreground">{t('provisional')}</div>}
-    {!result.available&&<div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"><p className="font-semibold">{t('unavailable')}</p><ul className="mt-2 list-inside list-disc">{result.issues.map((issue,index)=><li key={index}>{t(`issues.${issue.code}`)} · {issue.period} · {options.companies.find(company=>company.id===issue.companyId)?.name??issue.companyId}</li>)}</ul></div>}
+    <PayrollComparisonInclusionNotice inclusion={run.inclusion} t={t}/>
+    {empty&&<p role="status" className="rounded-xl border border-border p-4 text-sm">{empty}</p>}
+    {!result.available&&!empty&&<div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"><p className="font-semibold">{t('unavailable')}</p><ul className="mt-2 list-inside list-disc">{result.issues.map((issue,index)=><li key={index}>{t(`issues.${issue.code}`)} · {issue.period} · {options.companies.find(company=>company.id===issue.companyId)?.name??issue.companyId}</li>)}</ul></div>}
     {!!result.unavailablePayItems?.length&&<p role="status" className="rounded-lg border border-border p-3 text-sm">{t('itemsUnavailable',{codes:result.unavailablePayItems.join(', ')})}</p>}
     {run.contextUnavailable&&<p role="status" className="rounded-lg border border-border p-3 text-sm text-muted-foreground">{t('contextUnavailable')}</p>}
     {builtIn&&run.canEdit&&<details className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-medium">{t('saveTemplate')}</summary><form action={saveReconciliationTemplateAction.bind(null,query({employeeSearch:null,page:1}))} className="mt-3 flex flex-wrap items-end gap-2"><label className="text-sm">{t('reportName')}<input className={input} name="name" required maxLength={150}/></label><ActionButton actionKind="saving" className="rounded-md border border-border px-3 py-2 text-sm">{t('saveTemplate')}</ActionButton></form></details>}
@@ -108,7 +112,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
           </form>
         </details>
       </div>:column.id==='payItemCode'&&value?<span>{value}{payItems.find(item=>item.code===value)?.name&&<span className="block text-xs text-muted-foreground">{payItems.find(item=>item.code===value)?.name}</span>}</span>:column.id==='employeeName'&&!filters.employmentId?<Link className="text-primary underline" href={'?'+query({employmentId:row.employmentId,employeeSearch:null,page:1})}>{value??t('notAvailable')}</Link>:value??t('notAvailable')}</td>;
-    })}</tr></Fragment>)}{!result.rows.length&&<tr><td className="p-8 text-center text-muted-foreground" colSpan={columns.length}>{result.available?t('noRows'):t('unavailable')}</td></tr>}</tbody></table></div>
+    })}</tr></Fragment>)}{!result.rows.length&&<tr><td className="p-8 text-center text-muted-foreground" colSpan={columns.length}>{empty??(result.available?t('noRows'):t('unavailable'))}</td></tr>}</tbody></table></div>
       <div className="flex justify-between gap-4 p-4 text-sm"><span>{t('page',{page:filters.page})}</span><div className="flex gap-4">{filters.page>1&&<Link href={'?'+query({page:filters.page-1})}>{t('previous')}</Link>}{filters.page*filters.pageSize<result.displayedRows&&<Link href={'?'+query({page:filters.page+1})}>{t('next')}</Link>}</div></div></Card>
     <details className="rounded-xl border border-border p-4 text-sm"><summary className="cursor-pointer font-medium">{t('sourceRuns')}</summary><ul className="mt-3 space-y-1 text-xs text-muted-foreground">{result.runs.map(batch=><li key={batch.id}>{options.companies.find(company=>company.id===batch.companyId)?.name} · {batch.period} · {t(`runTypes.${batch.runType}`)} · {t(`runStates.${batch.status}`)} · {batch.id}</li>)}</ul></details>
     <p className="text-xs leading-relaxed text-muted-foreground">{t('basis')}</p>

@@ -300,7 +300,7 @@ describe('5129 payroll history effective reads',()=>{
    await tx`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId!},true),set_config('app.roles','hr_admin',true),set_config('app.grants',${JSON.stringify([{role:'hr_admin',companyId:null}])},true)`;
    const companies=Object.values(f.companies);
    const read=async(fn:string,args:[number|null,number|null,string|null,string|null])=>(await tx.unsafe(
-    `select string_agg(d.doc::text,'|' order by d.ord) as docs,count(*)::int as n from ${fn}($1::uuid[],$2::integer,$3::integer,$4::text,$5::uuid,true) with ordinality as d(doc,ord)`,[companies,...args] as never[]))[0] as {docs:string|null;n:number};
+    `select string_agg(d.doc::text,'|' order by d.ord) as docs,count(*)::int as n from ${fn}($1::uuid[],$2::integer,$3::integer,$4::text,$5::uuid,true) with ordinality as d(doc,ord)`,[companies,...args] as never[]))[0] as unknown as {docs:string|null;n:number};
    const cases:[number|null,number|null,string|null,string|null][]=[[null,null,null,null],[2024,2,null,null],[null,null,'regular',null],[null,null,null,f.emp.A1]];
    const a:{docs:string|null;n:number}[]=[],c:{docs:string|null;n:number}[]=[];for(const args of cases){a.push(await read('app.information_payslip_documents',args));c.push(await read('pg_temp.reference_documents_0698',args));}
    return [a,c] as const;

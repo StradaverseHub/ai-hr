@@ -32301,6 +32301,23 @@
       "stalePayroll": "Cần tính lại lương",
       "itemNotRecorded": "Kết quả lịch sử không ghi nhận khoản lương đã chọn"
     },
+    "inclusion": {
+      "coverage": "Các công ty trong phép so sánh này",
+      "comparing": "Đang so sánh {included} trên {total} công ty có bảng lương. Các dòng và tổng chỉ bao gồm những công ty này.",
+      "comparedCompanies": "Công ty được so sánh",
+      "notIncluded": "Không bao gồm",
+      "notIncludedHelp": "Các công ty này không được tính vào các dòng và tổng cho đến khi bảng lương của cả hai tháng sẵn sàng.",
+      "reasons": {
+        "missingPayroll": "Không có kỳ chạy lương trong {month, date, ::MMMMyyyy}",
+        "previousNotClosed": "{month, date, ::MMMMyyyy} chưa được đóng",
+        "stalePayroll": "{month, date, ::MMMMyyyy} cần xử lý lại",
+        "draftPayroll": "{month, date, ::MMMMyyyy} vẫn là bản nháp"
+      },
+      "neverRan": "{count, plural, other {# công ty}} trong phạm vi này chưa từng chạy lương và không được bao gồm.",
+      "neverRanShort": "Chưa từng chạy lương",
+      "emptyNoneReady": "Không có công ty nào sẵn sàng để so sánh cho các tháng này. Xem mục Không bao gồm để biết mỗi công ty cần gì.",
+      "emptyNoPayroll": "Chưa có công ty nào trong phạm vi này chạy lương."
+    },
     "basis": "Nguồn: kết quả lương đã trả được lưu. Thông tin tổ chức theo ngày thuộc đơn vị trả lương cuối cùng được ghi trong kết quả hiện tại; dùng kết quả kỳ trước khi không có kết quả hiện tại. Hiển thị tên hiện tại theo quyền truy cập. Thứ tự bằng chứng đã có hiệu lực: chuyển đơn vị trả lương đã xác minh, tuyển mới, nghỉ việc đã ghi nhận, rồi lần tăng lương/thăng chức/giáng chức có thay đổi lương gần nhất; các dòng còn lại chưa được giải thích. Nhãn không chứng minh nguyên nhân của toàn bộ chênh lệch tiền.",
     "remarks": {
       "disabled": "Đã tắt giải thích tự động.",
