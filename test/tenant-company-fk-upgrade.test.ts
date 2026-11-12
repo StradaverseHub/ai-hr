@@ -205,6 +205,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5127_import_log_actor_labels',
    // Payroll history effective reads (12 November 2026), above PR 240's 5128.
    '5129_payroll_history_effective_reads',
+   // Background AI Formula Generator draft job (12 November 2026), above 5129.
+   '5130_pay_formula_ai_draft_job',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

@@ -134,6 +134,8 @@ describe('Authenticator Control dialog',()=>{
   expect(within(dialog).getByRole('button',{name:auth.required})).toHaveAttribute('aria-pressed','true');expect(within(dialog).queryByRole('button',{name:auth.switchOn})).toBeNull();
  });
  it.each(Object.keys(locales) as (keyof typeof locales)[])('renders the %s dialogs for desktop and phone review',async locale=>{
+  // A fixed clock: the pause below must still be running when the dialog opens, whatever today's date is.
+  vi.useFakeTimers({now:Date.UTC(2026,10,10,2,0),toFake:['Date']});
   dialogs(Date.UTC(2026,10,12,9,0),locale);
   fireEvent.click(screen.getByRole('button',{name:locales[locale].accountManagement.authenticator.open}));
   const dialog=await screen.findByRole('dialog');expect(dialog.querySelector('input[name="until"]')).toBeTruthy();

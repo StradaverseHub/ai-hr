@@ -143,6 +143,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4527,when:1793330004827,tag:'5127_import_log_actor_labels'},
  // Payroll history effective reads, allocated above production's 5127 and PR 240's 5128 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4529,when:1793330004829,tag:'5129_payroll_history_effective_reads'},
+ // Background AI Formula Generator draft job (12 November 2026), allocated above 5129 (docs/MIGRATION-ALLOCATION.md).
+ {idx:4530,when:1793330004830,tag:'5130_pay_formula_ai_draft_job'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -150,6 +152,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5123_import_history_kind':'2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7',
  '5127_import_log_actor_labels':'1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2',
  '5129_payroll_history_effective_reads':'2df235f08c69d3547847e6bd8a3cafb1f774bc051ec51b2c2fcf50d8d07596e7',
+ '5130_pay_formula_ai_draft_job':'842cf4996cdb4f3d0d8f26fcc205e774d5937f0d612122dafe2b5254e16e84ce',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
