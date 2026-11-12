@@ -1,3 +1,12 @@
+# Attendance on-behalf AI read controls — 12 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/irwin-batch-b2-20261112` uses `5145_ai_attendance_on_behalf_reads` at idx 4545 / when 1793330004845,
+allocated by the release coordinator from the Irwin block 5140–5159 it holds for this release. Its journal entry sits
+between `5144_attendance_lane_security_review` (when 1793330004844) and `5150_attendance_policy_dated_rounding` (when
+1793330004850), in ascending `when`. One INSERT registering the AI Centre controls `read:attendance_on_behalf_subjects`
+and `read:attendance_on_behalf_approvers` (owner decision of 12 November 2026); no table, privilege or write. Recheck
+the installed watermarks and peer claims at admission; this grants no installation authority.
+
 # Irwin attendance approval-workflow lane (daa76ed4, 96a54ed2) — 12 November 2026 MYT (draft, unapplied)
 
 Branch `claude/irwin-attendance-workflow-20261112` (base `origin/alpha` `f84f4c567`) uses its reserved draft block

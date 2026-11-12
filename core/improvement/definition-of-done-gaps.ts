@@ -68,9 +68,6 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/approvals','page:/approvals/history','page:/attendance','page:/attendance/breakdown','page:/attendance/clock','page:/attendance/import',
  'page:/attendance/import/logs','page:/attendance/my-roster','page:/attendance/plan-ot','page:/attendance/recompute',
  'page:/attendance/request-status','page:/attendance/requests','page:/control-tower/agents',
- // arrived via 96a54ed2 (Irwin batch B, 2026-11-12): Request On Behalf / Approve On Behalf. Their guide links are written
- // (admin-attendance-engine); no semantic read describes them yet, and acting on behalf stays a human-only HR action.
- 'page:/attendance/on-behalf/approve','page:/attendance/on-behalf/request',
  'page:/control-tower/exceptions','page:/control-tower/how-it-works','page:/delegations','page:/feedback','page:/knowledge-base','page:/leave/credit',
  'page:/leave/details','page:/leave/employee-balances','page:/leave/history','page:/leave/tracker','page:/lifecycle','page:/lifecycle/onboarding',
  'page:/manage/my-team','page:/me','page:/me/notifications','page:/me/performance','page:/me/tax-relief','page:/notices','page:/payroll',

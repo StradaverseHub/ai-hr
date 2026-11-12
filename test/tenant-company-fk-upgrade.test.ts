@@ -213,6 +213,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5142_attendance_on_behalf',
    '5143_attendance_final_decision_window',
    '5144_attendance_lane_security_review',
+   // 96a54ed2: the AI Centre controls for the two on-behalf reads.
+   '5145_ai_attendance_on_behalf_reads',
    // Irwin Schedule Group Overtime Setting (2f803985): per-date rounding (function replacement only).
    '5150_attendance_policy_dated_rounding',
   ]);

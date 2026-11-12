@@ -31,6 +31,7 @@ import {askPolicyHandbook} from '../handbook/ask';
 import {askAiQuality} from '../learning/ask';
 import {payrollLearningStatus} from './payroll-learning';
 import {sharedLeaveGroupsStatus} from './shared-leave-groups';
+import {attendanceOnBehalfPeople} from './attendance-on-behalf';
 
 export type TerasCapabilityScope=Readonly<{companyId:string;locale?:string}>;
 export type TerasCapability=Readonly<{name:string;module:string|null;admin:boolean;
@@ -152,6 +153,11 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  // 50d9b809: the Shared Leave Groups page's groups, administrators only (the page's requireAdmin), configuration only
  // (core/explainers/shared-leave-groups.ts); served as the operations_status topic shared_leave_groups, no new tool.
  {name:'shared_leave_groups',module:'leave',admin:true,worker:null,run:ctx=>sharedLeaveGroupsStatus(ctx)},
+ // 96a54ed2 (owner decision, 12 November 2026): the Request On Behalf and Approve On Behalf pages' first lists, offered to
+ // managers and administrators (team access); the runner refuses anyone without the on-behalf permission key before
+ // reading (core/explainers/attendance-on-behalf.ts). Served as operations_status topics of the same names, no new tool.
+ {name:'attendance_on_behalf_subjects',module:'attendance',admin:false,access:'team',worker:null,run:ctx=>attendanceOnBehalfPeople(ctx,'request')},
+ {name:'attendance_on_behalf_approvers',module:'attendance',admin:false,access:'team',worker:null,run:ctx=>attendanceOnBehalfPeople(ctx,'approve')},
 ]);
 /** Capabilities this caller may be offered. A capability that belongs to a worker is offered only while that worker's
  * run gate is open (registered, switched on, tenant not stopped), read once per call in the caller's tenant. */
