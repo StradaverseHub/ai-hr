@@ -5,7 +5,10 @@ import { v9LiteralAddress } from './lifecycle-v9-recipient';
 import { v9EmploymentRule } from './lifecycle-v9-employment';
 import type { EmploymentConfirmationDates } from './employment-confirmation';
 import { MANAGED_EMAIL_ATTACHMENT_MAX_BYTES, MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT } from './managed-email-policy';
-import { v9ImageTokens } from './lifecycle-v9-email-content';
+import { v9ImageTokens, v9ImageCid } from './lifecycle-v9-email-content';
+import type { EmailBodyDoc } from './email-body/doc';
+import { emailBodyImageIds } from './email-body/doc';
+import { renderEmailBody } from './email-body/render';
 import { roleLabel, toRoles, workEmailLabel, personalEmailLabel, maskEmail, recipientListProblems, MAX_RECIPIENT_CHOICES } from './lifecycle-v9-recipients';
 /** V9 lifecycle rules. Services supply authorized identity, Personnel facts and final-pay snapshots. */
 import { validV9SignatureValue } from './lifecycle-v9-signature';
@@ -71,7 +74,7 @@ export type Role = 'employeeWork' | 'employeePersonal' | 'employee' | 'superviso
 /** A recipient that could not be found when the step ran. Labels and reasons only, never an address. */
 export type RecipientMissing = { role: Role; label: string; reason: string };
 export type RecipientOverride = { to: Role[]; cc: Role[]; by: Actor; at: string };
-export type EmailAsset = { id: string; kind: 'file' | 'image'; name: string; mimeType: string; size: number; contentHash: string; at: string; by: string };
+export type EmailAsset = { id: string; kind: 'file' | 'image'; name: string; mimeType: string; size: number; contentHash: string; at: string; by: string; /** Required for images used in a rich body. */ alt?: string };
 export type DefinitionUsage = { kind: 'document' | 'email'; definitionId: string; messages: number; runs: number };
 export type TemplateUsage = { templateId: string; version: number; documents: number };
 export type EmailTemplate = {
@@ -79,6 +82,8 @@ export type EmailTemplate = {
   subject: string; body: string; cc: Role[]; links: string[]; attachments: string[];
   /** Set by the one-off recipient conversion; HR clears it after checking. */
   recipientReview?: true;
+  /** Board 6bdda222: the structured rich body. Without it the legacy text body sends exactly as before. */
+  bodyDoc?: EmailBodyDoc;
   slots: { id: string; label: string; required: boolean }[]; files?: EmailAsset[]; images?: EmailAsset[];
 };
 export type Trigger = {
@@ -144,7 +149,7 @@ export type Mail = {
   at: string; deliveredAt: string | null; failure: string | null; retryOf?: string; retryReason?: string; retryMode?: 'same'|'updated';
   /** Frozen transport choices; older history without this must not be silently reinterpreted.
    * New mail is always 'noreply'; 'onboarding' and 'hr' survive only in earlier history and send as the same sender. */
-  delivery?: { version: 1; queuedBy: Actor; sender: 'onboarding' | 'hr' | 'noreply'; linkDocumentIds: string[]; pdfDocumentIds: string[]; toNames: string[]; ccNames: string[]; assets?: EmailAsset[]; contact?: { kind: 'onboardingContact'; caseId: string; email: string; sourceRevision: string };
+  delivery?: { /** 2 carries a rendered HTML snapshot; 1 is the unchanged text (and inline-image) path. */ version: 1 | 2; html?: string; queuedBy: Actor; sender: 'onboarding' | 'hr' | 'noreply'; linkDocumentIds: string[]; pdfDocumentIds: string[]; toNames: string[]; ccNames: string[]; assets?: EmailAsset[]; contact?: { kind: 'onboardingContact'; caseId: string; email: string; sourceRevision: string };
     /** Keys in to/cc that came from Employee (Personal email); masked for viewers without that Personnel permission. */
     personalKeys?: string[] };
 };
@@ -629,6 +634,8 @@ export type EmailPreview = {
   edit: { subject: string; body: string }; to: Actor[]; cc: (Actor & { personal?: true })[];
   documents: { templateId: string; name: string; version: number | null; generated: boolean }[];
   holds: string[]; canSend: boolean; assets?: EmailAsset[];
+  /** Board 6bdda222: sanitised rendered HTML of a rich body (CID images, document-link tokens unresolved). */
+  html?: string;
 };
 /** Preview uses current authorized facts without generating documents, allocating IDs or queuing mail. */
 export function previewEmail(c: Case, config: Config, emailId: string, env: Environment): EmailPreview {
@@ -638,11 +645,14 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
   const values = { ...env.mergeValues, 'owner.name': c.facts.name, 'pending.tasks': pendingPre(c).map(t => `${t.name} (due ${t.dueOn})`).join('\n') };
   const sensitive = emailSensitiveKeys(config);
   const previewValues = Object.fromEntries(Object.entries(values).filter(([key]) => !sensitive.has(key)));
-  const subject = merge(edit.subject, previewValues), body = merge(edit.body, previewValues);
+  let rich: ReturnType<typeof renderTemplateBody> = null;
+  try { rich = c.emailEdits?.[email.id] ? null : renderTemplateBody(email, config, previewValues, sensitive, true); } catch { holds.push('Remove sensitive fields from the email text.'); }
+  const subject = merge(edit.subject, previewValues), body = rich ? { text: rich.text, missing: rich.missing } : merge(edit.body, previewValues);
   if (c.state !== 'submitted') holds.push('Submit or reopen the case before sending.');
   if (!email.active) holds.push('This email template is inactive.');
   const acceptanceHold = acceptanceDeliveryHold(c, emailId); if (acceptanceHold) holds.push(acceptanceHold);
-  if (v9ImageTokens(body.text).some(id => !email.images?.some(image => image.id === id))) holds.push('Insert an available inline image before sending.');
+  if (!rich && v9ImageTokens(body.text).some(id => !email.images?.some(image => image.id === id))) holds.push('Insert an available inline image before sending.');
+  const usedImages = rich && email.bodyDoc ? new Set(emailBodyImageIds(email.bodyDoc)) : new Set(v9ImageTokens(body.text));
   const missing = [...new Set([...subject.missing, ...body.missing])];
   if (missing.length) holds.push(`Complete missing merge fields: ${missing.join(', ')}.`);
   try { merge(edit.subject + '\n' + edit.body, previewValues, sensitive); } catch { holds.push('Remove sensitive fields from the email text.'); }
@@ -651,10 +661,10 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
   const to = target && (contact || env.eligibleUser(target)) ? [{ id: target, name: contact ? c.facts.name : recipientName(target, env) }] : [];
   if (!to.length) holds.push('Link an available employee account or enter the onboarding contact before sending.');
   if (contact && email.links.length) holds.push('Link an employee account before sending document links.');
-  const imageCount = (email.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}')).length;
+  const imageCount = (email.images ?? []).filter(image => usedImages.has(image.id)).length;
   const caseFileCount = c.files.filter(file => email.slots.some(slot => file.slot === `${email.id}:${slot.id}`)).length;
   if ((email.files?.length ?? 0) + imageCount + email.attachments.length + caseFileCount > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT) holds.push('Keep the total attached files and inline images within 20.');
-  if ([...(email.files ?? []), ...(email.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}'))].reduce((sum, asset) => sum + asset.size, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES) holds.push('Keep the total attached files and inline images within 20 MB.');
+  if ([...(email.files ?? []), ...(email.images ?? []).filter(image => usedImages.has(image.id))].reduce((sum, asset) => sum + asset.size, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES) holds.push('Keep the total attached files and inline images within 20 MB.');
   const copied = resolveStepRecipients(c, config, { to: ['employee'], cc: email.cc }, env);
   for (const entry of copied.missing) if (email.cc.includes(entry.role)) holds.push(`Resolve the CC recipient: ${entry.label}: ${entry.reason}.`);
   const cc = copied.cc.filter(recipient => recipient.key !== target).map(recipient => ({ id: recipient.key, name: recipient.name, ...(recipient.personal ? { personal: true as const } : {}) }));
@@ -671,10 +681,10 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
     const acceptance = activeDocument(c, 't4');
     if (!acceptance?.hrSignature && !holds.some(hold => hold.startsWith('HR must review and sign'))) holds.push('HR must review and sign the acceptance letter before sending.');
   }
-  const assets = [...(email.files ?? []), ...(email.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}'))];
-  return { emailId, name: email.name, subject: subject.text, body: body.text, edit: { ...edit }, to, cc, documents, holds: [...new Set(holds)], canSend: holds.length === 0, ...(assets.length ? { assets: structuredClone(assets) } : {}) };
+  const assets = [...(email.files ?? []), ...(email.images ?? []).filter(image => usedImages.has(image.id))];
+  return { emailId, name: email.name, subject: subject.text, body: body.text, ...(rich ? { html: rich.html } : {}), edit: { ...edit }, to, cc, documents, holds: [...new Set(holds)], canSend: holds.length === 0, ...(assets.length ? { assets: structuredClone(assets) } : {}) };
 }
-function emailSensitiveKeys(config: Config): Set<string> {
+export function emailSensitiveKeys(config: Config): Set<string> {
   const identityKeys = ['icNo', 'passportNo', 'taxNo', 'epfNo', 'bankAcc', 'bankAccount', 'bankAccountNo', 'spIc', 'spTax', 'race', 'religion'];
   return new Set([...identityKeys.flatMap(key => [key, `employee.${key}`, `case.${key}`]), ...(['onb','off'] as const).flatMap(module => resolveV9CaseFields(module,config.caseForms?.[module],true).filter(field=>field.hrOnly).map(field=>`case.${field.key}`)), ...config.templates.flatMap(t => t.versions.flatMap(v => v.fields.filter(f => f.sensitive).flatMap(f => [f.id, ...(f.pmKey ? [f.pmKey, `employee.${f.pmKey}`] : [])])))]);
 }
@@ -706,9 +716,12 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
     // One email to everyone in To and CC. {owner.name} is the To person, or the To names together.
     const values = { ...env.mergeValues, 'owner.name': resolved.to.map(recipient => recipient.name).join(', '), 'pending.tasks': pendingTaskLines(c, env).join('\n') };
     const edits = email ? c.emailEdits?.[email.id] : null;
-    const subject = merge(edits?.subject ?? email?.subject ?? (step.type === 'notify' ? step.subject : ''), values, sensitive), body = merge(edits?.body ?? email?.body ?? (step.type === 'notify' ? step.body : ''), values, sensitive);
+    // A per-person edit is a text edit and keeps the text path; otherwise a saved rich body renders HTML and text.
+    const rich = email && !edits ? renderTemplateBody(email, config, values, sensitive, test) : null;
+    const subject = merge(edits?.subject ?? email?.subject ?? (step.type === 'notify' ? step.subject : ''), values, sensitive), body = rich ? { text: rich.text, missing: rich.missing } : merge(edits?.body ?? email?.body ?? (step.type === 'notify' ? step.body : ''), values, sensitive);
     if (!test && (subject.missing.length || body.missing.length)) throw new V9Error(`Complete missing merge fields: ${[...new Set([...subject.missing, ...body.missing])].join(', ')}.`);
-    if (v9ImageTokens(body.text).some(id => !email?.images?.some(image => image.id === id))) throw new V9Error('Insert an available inline image before sending.');
+    if (!rich && v9ImageTokens(body.text).some(id => !email?.images?.some(image => image.id === id))) throw new V9Error('Insert an available inline image before sending.');
+    const usedImages = rich && email?.bodyDoc ? new Set(emailBodyImageIds(email.bodyDoc)) : new Set(v9ImageTokens(body.text));
     const docs = [...new Set([...(email?.links ?? []), ...(email?.attachments ?? [])])].flatMap(id => {
       const d = activeDocument(c, id) ?? (test ? null : generate(c, config, id, env)), template = config.templates.find(t => t.id === id);
       if (!d) return [];
@@ -717,17 +730,25 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
       if (hold) throw new V9Error(hold, 'conflict');
       return [d];
     });
-    const assetCount = (email?.files?.length ?? 0) + (email?.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}')).length;
+    const assetCount = (email?.files?.length ?? 0) + (email?.images ?? []).filter(image => usedImages.has(image.id)).length;
     if (assetCount + (email?.attachments.length ?? 0) + c.files.filter(file => email?.slots.some(slot => file.slot === `${email.id}:${slot.id}`)).length > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT) throw new V9Error('Keep the total attached files and inline images within 20.');
     // One On/Off Boarding sender: its display name is the tenant's setting, resolved when the message is sent.
     const sender = 'noreply' as const;
-    const assets = structuredClone([...(email?.files ?? []), ...(email?.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}'))]);
+    const assets = structuredClone([...(email?.files ?? []), ...(email?.images ?? []).filter(image => usedImages.has(image.id))]);
     if (assets.reduce((sum, asset) => sum + asset.size, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES) throw new V9Error('Keep the total attached files and inline images within 20 MB.');
+    if (rich && new TextEncoder().encode(rich.html).length > 1_000_000) throw new V9Error('This email is too large to send. Shorten the body.');
     const personalKeys = [...resolved.to, ...resolved.cc].filter(recipient => recipient.personal).map(recipient => recipient.key);
-    c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: resolved.to.map(recipient => recipient.key), cc: resolved.cc.map(recipient => recipient.key), subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), delivery: { version: 1, queuedBy: { ...env.actor }, sender, linkDocumentIds: docs.filter(document => email?.links.includes(document.templateId)).map(document => document.id), pdfDocumentIds: docs.filter(document => email?.attachments.includes(document.templateId)).map(document => document.id), toNames: resolved.to.map(recipient => recipient.name), ccNames: resolved.cc.map(recipient => recipient.name), ...(assets.length ? { assets } : {}), ...(contact ? { contact: { kind: 'onboardingContact' as const, caseId: c.id, email: contact.email, sourceRevision: contact.sourceRevision } } : {}), ...(personalKeys.length ? { personalKeys } : {}) }, fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
+    c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: resolved.to.map(recipient => recipient.key), cc: resolved.cc.map(recipient => recipient.key), subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), delivery: { version: rich ? 2 : 1, ...(rich ? { html: rich.html } : {}), queuedBy: { ...env.actor }, sender, linkDocumentIds: docs.filter(document => email?.links.includes(document.templateId)).map(document => document.id), pdfDocumentIds: docs.filter(document => email?.attachments.includes(document.templateId)).map(document => document.id), toNames: resolved.to.map(recipient => recipient.name), ccNames: resolved.cc.map(recipient => recipient.name), ...(assets.length ? { assets } : {}), ...(contact ? { contact: { kind: 'onboardingContact' as const, caseId: c.id, email: contact.email, sourceRevision: contact.sourceRevision } } : {}), ...(personalKeys.length ? { personalKeys } : {}) }, fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
     appendLog(c, env, test ? 'email.test.queued' : 'email.queued', `${email?.name ?? subject.text} · ${resolved.to.map(recipient => recipient.name).join(', ')}`);
   }
   return deliveryHold(c.mails.filter(mail => mail.workflowId === workflowId && mail.key.startsWith(key + ':')));
+}
+/** Board 6bdda222: render a template's rich body with merged values. Every value is escaped by the renderer. */
+export function renderTemplateBody(email: EmailTemplate, config: Config, values: Record<string, string>, sensitive: ReadonlySet<string>, readableMissing = false) {
+  if (!email.bodyDoc) return null;
+  return renderEmailBody(email.bodyDoc, { values, sensitive: key => sensitive.has(key), readableMissing, missingLabel: key => personnelMergeLabels.get(key),
+    images: (email.images ?? []).map(image => ({ id: image.id, alt: image.alt || image.name, cid: v9ImageCid(image.id) })),
+    documentLink: id => { const template = config.templates.find(template => template.id === id && template.module === email.module); return template && email.links.includes(id) ? { name: template.name } : null; } });
 }
 const heldText = (missing: RecipientMissing[]) => 'Email held. Nobody was emailed because ' + (missing.length === 1 ? 'a recipient is' : 'recipients are') + ' missing: ' + missing.map(entry => `${entry.label}: ${entry.reason}`).join('; ') + '. Fix it and press Continue.';
 const outcomeText = (outcome: EnqueueOutcome) => !outcome ? null : 'wait' in outcome ? outcome.wait : heldText(outcome.held);

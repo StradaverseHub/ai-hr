@@ -1,7 +1,8 @@
 -- DRAFT (board 4a60b3ec, lane block 5460-5479): workflow email recipients.
 -- 1. A workflow email reaches everyone in To together: up to eight To recipients per queued message.
 -- 2. An onboarding contact without an account stays the first To recipient; the rest of To and CC resolve as before.
--- 3. lc_v9_email_hold: a projection of held email steps, written in the same transaction as the case store,
+-- 3. Board 6bdda222: delivery version 2 carries a rendered rich-body snapshot; version 1 is unchanged.
+-- 4. lc_v9_email_hold: a projection of held email steps, written in the same transaction as the case store,
 --    read for the Inbox. Labels and reasons only; it never holds an address.
 CREATE OR REPLACE FUNCTION app.lc_v9_capture_mail() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
@@ -28,7 +29,7 @@ BEGIN
  FOR mail IN SELECT value FROM jsonb_array_elements(coalesce(state->'mails','[]'::jsonb)) LOOP
   IF parent_state IS DISTINCT FROM 'submitted' AND NOT app.lc_v9_is_self_test(mail) OR mail->'test'='true'::jsonb AND NOT app.lc_v9_is_self_test(mail) THEN CONTINUE; END IF;
   -- Old records without frozen transport choices remain historical holds.
-  IF mail->>'status'<>'pending' OR mail->'delivery'->>'version' IS DISTINCT FROM '1' OR
+  IF mail->>'status'<>'pending' OR coalesce(mail->'delivery'->>'version','') NOT IN ('1','2') OR
      coalesce(mail->>'id','')='' OR jsonb_typeof(mail->'to') IS DISTINCT FROM 'array' OR
      jsonb_array_length(mail->'to') NOT BETWEEN 1 AND 8 OR coalesce(mail->'delivery'->>'sender','') NOT IN ('onboarding','hr','noreply')
   THEN CONTINUE; END IF;

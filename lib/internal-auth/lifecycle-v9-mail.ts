@@ -1,5 +1,6 @@
 import { v9LiteralAddress } from '../lifecycle-v9-recipient';
 import { v9EmailContent, v9ImageCid } from '../lifecycle-v9-email-content';
+import { resolveDocumentLinks, sanitiseEmailHtml, EMAIL_HTML_MAX_BYTES } from '../email-body/render';
 import { client, withSystemWork } from '../../db/client';
 import { renderV9DocumentPdf } from '../lifecycle-v9-pdf';
 import { lifecycleV9DeliveryRequest, type LifecycleV9DeliveryRequest, type LifecycleV9DeliveryResult, type LifecycleV9MailTarget } from '../lifecycle-v9-delivery-model';
@@ -46,7 +47,7 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
   if (addresses.some(address => !address) || addresses.length !== target.payload.mail.to.length + target.payload.mail.cc.length)
     return { outcome: 'skipped', error: 'recipientUnavailable' };
   const { mail, documents, files } = target.payload;
-  if (!mail.delivery || mail.delivery.version !== 1 || mail.to.length < 1 || mail.to.length > 8) return { outcome: 'skipped', error: 'notEligible' };
+  if (!mail.delivery || (mail.delivery.version !== 1 && !(mail.delivery.version === 2 && typeof mail.delivery.html === 'string')) || mail.to.length < 1 || mail.to.length > 8) return { outcome: 'skipped', error: 'notEligible' };
   // One copy per address: an account and a typed address can be the same mailbox. To wins over CC.
   const seen = new Set<string>(), unique = (list: (string | undefined)[]) => list.filter((address): address is string => { const key = address!.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true; });
   const toAddresses = unique(addresses.slice(0, mail.to.length)), ccAddresses = unique(addresses.slice(mail.to.length));
@@ -66,12 +67,23 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
   for (const reference of assetReferences) { const asset = assets.find(asset => asset.id === reference.id); if (!asset) return { outcome: 'skipped', error: 'notEligible' }; attachments.push(managedEmailAttachment.parse({ filename: asset.filename, contentType: asset.mime_type, bytes: Buffer.from(asset.bytes, 'base64'), ...(asset.kind === 'image' ? { cid: v9ImageCid(asset.id) } : {}) })); }
   if (attachments.length > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT || attachments.reduce((sum, file) => sum + file.bytes.byteLength, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES)
     return { outcome: 'skipped', error: 'notEligible' };
+  const personal = new Map<string, string>();
   const links = mail.delivery.linkDocumentIds.map(documentId => {
     const document = documents.find(document => document.id === documentId);
     if (!document) throw new Error('Queued document link is unavailable');
-    return document.name + ': ' + notificationEmailLink(origin, `/me/lifecycle?case=${encodeURIComponent(target.caseId)}&document=${encodeURIComponent(documentId)}`);
+    const url = notificationEmailLink(origin, `/me/lifecycle?case=${encodeURIComponent(target.caseId)}&document=${encodeURIComponent(documentId)}`);
+    personal.set(document.templateId, url);
+    return document.name + ': ' + url;
   });
-  const content = v9EmailContent(mail.body + (links.length ? '\n\n' + links.join('\n') : ''), assetReferences.filter(asset => asset.kind === 'image'));
+  const text = mail.body + (links.length ? '\n\n' + links.join('\n') : '');
+  // Version 1 keeps the original text (and inline-image) rendering byte for byte; version 2 carries the rendered rich snapshot.
+  let content: { text: string; html?: string };
+  if (mail.delivery.version === 2) {
+    let html: string;
+    try { html = sanitiseEmailHtml(resolveDocumentLinks(mail.delivery.html!, text, personal).html); } catch { return { outcome: 'skipped', error: 'notEligible' }; }
+    if (new TextEncoder().encode(html).length > EMAIL_HTML_MAX_BYTES) return { outcome: 'skipped', error: 'notEligible' };
+    content = { text, html };
+  } else content = v9EmailContent(text, assetReferences.filter(asset => asset.kind === 'image'));
   const currentRelay = await readLifecycleRelayTx(admittedAuthSql, target.tenantId);
   if (!currentRelay || currentRelay.revision !== active.revision || currentRelay.senderName !== active.senderName) return { outcome: 'skipped', error: 'relayUnavailable' };
   const proof = { bindings: target.bindings, contact: target.contact ?? null, literals: target.literals ?? [], addresses, relayRevision: active.revision, senderProfile: profile, senderName: active.senderName ?? active.relay.config.fromName, senderAddress: active.relay.config.from };

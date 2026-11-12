@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { v9CaseFieldSchema, validateV9CaseFields } from './lifecycle-v9-case-form';
 import { v9LiteralAddress } from './lifecycle-v9-recipient';
 import { recipientListProblems, replaceableRoles, roleLabel, toRoles } from './lifecycle-v9-recipients';
-import { V9Error, workflowProblems, currentVersion, type Config, type TemplateUsage } from './lifecycle-v9-model';
+import { V9Error, workflowProblems, currentVersion, emailSensitiveKeys, type Config, type TemplateUsage } from './lifecycle-v9-model';
+import { createEmailBodyDocSchema, summariseEmailBody, emailBodyImageIds, emailBodyFieldKeys } from './email-body/doc';
 const id = z.string().min(1).max(120), text = z.string().max(20000), day = z.number().int().min(-3660).max(3660);
-const emailAsset = z.object({ id: z.uuid(), kind: z.enum(['file','image']), name: z.string().min(1).max(180).regex(/^[^\u0000-\u001f\u007f/\\:]+$/u), mimeType: z.string().max(200), size: z.number().int().positive().max(10485760), contentHash: z.string().regex(/^[0-9a-f]{64}$/), at: z.iso.datetime(), by: z.string().max(200) }).strict();
+const emailAsset = z.object({ id: z.uuid(), kind: z.enum(['file','image']), name: z.string().min(1).max(180).regex(/^[^\u0000-\u001f\u007f/\\:]+$/u), mimeType: z.string().max(200), size: z.number().int().positive().max(10485760), contentHash: z.string().regex(/^[0-9a-f]{64}$/), at: z.iso.datetime(), by: z.string().max(200), alt: z.string().trim().max(300).optional() }).strict();
 const moduleSchema = z.enum(['onb', 'off']);
 const rules = z.object({ businessGroup: z.array(id).max(200).optional(), company: z.array(id).max(200).optional(), department: z.array(id).max(200).optional(), grade: z.array(id).max(200).optional(), employmentType: z.array(id).max(200).optional(), title: z.array(id).max(200).optional(), caseType: z.array(id).max(200).optional() }).strict();
 export const v9RoleSchema = z.union([z.enum(['employeeWork', 'employeePersonal', 'employee', 'supervisor', 'pbp', 'ta', 'peopleOps', 'taskOwners', 'hrSignatory', 'starter']), z.string().regex(/^person:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i), z.string().regex(/^group:[^\u0000-\u001f\u007f]{1,120}$/u), z.string().refine(value => !!v9LiteralAddress(value), 'Enter a valid email address.')]) as z.ZodType<import('./lifecycle-v9-model').Role>;
@@ -25,7 +26,7 @@ export const v9ConfigSchema = z.object({
   version: z.literal(9), revision: z.number().int().positive(), groupsRevision: z.number().int().nonnegative().optional(),
   checklists: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, ownerUserId: z.string().uuid().optional(), createdAt: z.string().datetime().optional(), rules, tasks: z.array(task).max(300) }).strict()).max(200),
   templates: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, type: z.enum(['Form', 'Letter', 'Acknowledgement', 'Attachment']), rules, hrStep: z.enum(['none', 'before', 'after']), employeeAck: z.boolean(), retired: z.boolean(), currentVersion: z.number().int().positive().optional(), note: text.optional(), versions: z.array(z.object({ version: z.number().int().positive(), state: z.enum(['draft', 'published']), at: z.string().max(100), by: z.string().max(200), blocks: z.array(block).max(500), fields: z.array(field).max(500) }).strict()).max(100) }).strict()).max(200),
-  emails: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, active: z.boolean(), sender: id, subject: z.string().max(1000), body: text, files: z.array(emailAsset).max(20).optional(), images: z.array(emailAsset).max(3).optional(), cc: z.array(role).max(8), recipientReview: z.literal(true).optional(), links: z.array(id).max(100), attachments: z.array(id).max(100), slots: z.array(z.object({ id, label: z.string().max(500), required: z.boolean() }).strict()).max(50) }).strict()).max(200),
+  emails: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, active: z.boolean(), sender: id, subject: z.string().max(1000), body: text, files: z.array(emailAsset).max(20).optional(), images: z.array(emailAsset).max(3).optional(), cc: z.array(role).max(8), recipientReview: z.literal(true).optional(), bodyDoc: z.unknown().optional(), links: z.array(id).max(100), attachments: z.array(id).max(100), slots: z.array(z.object({ id, label: z.string().max(500), required: z.boolean() }).strict()).max(50) }).strict()).max(200),
   workflows: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, status: z.enum(['draft', 'published', 'retired']), retired: z.object({ at: z.iso.datetime(), by: z.object({ id: z.string().max(120), name: z.string().max(200) }).strict(), cases: z.number().int().nonnegative(), automatic: z.boolean() }).strict().optional(), trigger: z.object({ event: z.enum(['submitted', 'hrSigned', 'docSigned', 'taskDone', 'fileUploaded', 'manual', 'beforeJoin', 'afterJoin', 'beforeLWD', 'afterLWD']), days: z.number().int().min(0).max(3660), workdays: z.boolean(), repeat: z.boolean(), skipIf: z.string().max(500).refine(s => ['', 'noPre', 'allDocsDone'].includes(s) || s.startsWith('task:')) }).strict(), conditions: z.array(z.object({ field: z.enum(['businessGroup', 'company', 'department', 'grade', 'employmentType', 'title', 'caseType', 'joinWithin']), op: z.enum(['is', 'isNot', 'lt', 'gte']), value: z.string().max(500) }).strict()).max(30), steps: z.array(step).max(100), description: text }).strict()).max(200),
   groups: z.array(z.object({ id, name: z.string().min(1).max(200), members: z.array(z.string().uuid()).max(500), limit: z.number().int().min(0).max(1000) }).strict()).max(100),
   peopleOpsGroup: id.nullable(), bpRules: z.array(z.object({ rules: z.object({ businessGroup: z.array(id).optional(), company: z.array(id).optional(), department: z.array(id).optional() }).strict(), userId: z.string().uuid() }).strict()).max(500),
@@ -90,7 +91,24 @@ export function parseV9Config(value: unknown, previous?: Config) {
   }
   unique((config.companies ?? []).map(c => c.companyId), 'company signatory');
   validateV9Recipients(config as Config, previous);
+  validateV9RichBodies(config as Config);
   return config as Config;
+}
+/** Board 6bdda222: the strict structured schema is the server trust boundary for a rich body (no free HTML is stored). */
+function validateV9RichBodies(config: Config): void {
+  const sensitive = emailSensitiveKeys(config);
+  for (const email of config.emails) {
+    if (email.bodyDoc === undefined) continue;
+    const linked = new Set(email.links), images = email.images ?? [];
+    const result = createEmailBodyDocSchema({ imageIds: images.map(image => image.id), documentIds: config.templates.filter(template => template.module === email.module).map(template => template.id), sensitive: key => sensitive.has(key) }).safeParse(email.bodyDoc);
+    if (!result.success) throw new V9Error(`${email.name}: ${result.error.issues[0]?.message ?? 'Review the email body.'}`);
+    email.bodyDoc = result.data;
+    const unticked = [...summariseEmailBody(result.data).documentLinks].filter(id => !linked.has(id));
+    if (unticked.length) throw new V9Error(`${email.name}: a document linked in the body must also be ticked under Documents.`);
+    const used = new Set(emailBodyImageIds(result.data));
+    if (images.some(image => used.has(image.id) && !image.alt?.trim()) || images.some(image => !image.alt?.trim())) throw new V9Error(`${email.name}: add alt text to every uploaded image.`);
+    if (emailBodyFieldKeys(result.data).some(key => sensitive.has(key))) throw new V9Error('Sensitive fields cannot be included in an email.');
+  }
 }
 /** Board 4a60b3ec: removed roles are flagged, never added, and a definition that still uses one cannot change or go live until it is replaced. */
 function validateV9Recipients(config: Config, previous?: Config): void {
