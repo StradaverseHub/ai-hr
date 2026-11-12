@@ -1,8 +1,9 @@
 # Board release 12 November 2026 — Rewards, dashboard and On/Off Boarding block (unapplied, allocated)
 
 Branch `claude/board-release-20261112` (from `claude/board-rewards-offcycle-20261112` at `f4bcb5de7`, merged with
-`claude/board-rewards-role-permissions-20261112` at `460308486` and `origin/alpha` at `987fe3d10`) allocates the board
-lanes' migrations as one block, tags `5400`–`5560`, using the lanes' draft offset (tag T, idx T − 600, when
+`claude/board-rewards-role-permissions-20261112` at `460308486`, `origin/alpha` at `987fe3d10` and, on 13 November,
+`claude/board-rewards-governance-owner-fns-20261112` at `c174bd5da`) allocates the board lanes' migrations as one
+block, tags `5400`–`5600`, using the lanes' draft offset (tag T, idx T − 600, when
 1793330004800 + (T − 5100)). Alpha's newest entries are `5129_payroll_history_effective_reads` and
 `5130_pay_formula_ai_draft_job` (when 1793330004829 / …830), so the block sits strictly above them. `5560` is new at
 this integration: it replaces the owner-owned `app.reward_limit_controls_access()` (from `5500`) so Limit Controls
@@ -21,10 +22,18 @@ below it).
 | `5520_rewards_role_permission_grid` | 4920 / 1793330005220 | db14e49c | `e603208c9cb9ada2e35a7338ede22637dcf886c5763912e5273adce0fd7ce172` |
 | `5540_rewards_offcycle_company_balance` | 4940 / 1793330005240 | b945f0cc | `25bd51577444f2cea0a0c53a231156f591c6c2f0f0ce56e293aeae9d054850aa` |
 | `5560_rewards_limit_controls_role_level` | 4960 / 1793330005260 | fc804e8c + db14e49c | `04d12b358fb70088e9bd9be95b64aa5014068a80035bafc5a2b605f5a308c619` |
+| `5580_rewards_config_owner_paths` | 4980 / 1793330005280 | 60f1fdcd | `cf51650518408e4c4e5cc22823924b6fbcff130820be63887ba951f5520e60cd` |
+| `5600_rewards_config_editor_role_levels` | 5000 / 1793330005300 | 60f1fdcd + db14e49c | `06a383842db72810be80aa8b276fe10e66236328afe8d4c28651b3d147792aff` |
 
 `5520` replaces `app.reward_config_change_record` (owner function from `5400`) and `5540` then widens the
 `reward_config_change` area CHECK to include `offcycle`; the widened CHECK keeps `role_permission` and `limit`, so both
-compose in journal order. None of these migrations has been applied to any installation. If another migration is
+compose in journal order. `5580` (board 60f1fdcd owner paths, built on the off-cycle lane without `5520`/`5560`) replaces
+the same writer again and keeps the `role_permission` branch behind `to_regprocedure`. `5600` is new at this
+integration: it replaces only owner-owned functions (`app.reward_role_default_level` and `app.reward_actor_page_level`
+from `5520`, `app.reward_config_create_planned_unit` from `5580`) so the Role permissions grid admits CTRO and HR Admin
+as configuration editors, and adds owner copies and owner policies for the restricted-owner gaps (see
+`docs/adr/2026-11-12-rewards-direct-configuration.md`). The drafts' own block 5580–5599 held no other entry; a scan of
+origin heads on 13 November 2026 found no other claim on tags 5580–5619 or when 1793330005280–1793330005319. None of these migrations has been applied to any installation. If another migration is
 installed first with a when at or above 1793330005100, this block must move above it before installation. Recheck peer
 claims and the installed ledger at admission; this allocation grants no installation authority.
 
