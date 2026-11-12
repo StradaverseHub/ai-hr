@@ -31,7 +31,7 @@ import { todayInKualaLumpur } from '../../lib/hr-date';
 import type { PackTaskItem } from '../../lib/assigned-work';
 import { calculateRewards, ratio, increase, payWindowReasons, type CalculatedEntry, type RewardMultiplierSuggestion } from './engine';
 import { analyticsTotals, emptyAnalyticsTotals, type AnalyticsRow } from './analytics-model';
-import {approvedPlanPolicyTx,assertIndependentReviewCreator} from './plan-configuration';
+import {approvedPlanPolicyTx} from './plan-configuration';
 import {latestConfirmedPatTx} from './pat-inputs';
 import {setupAuthority,setupLock} from './setup-data';
 import {assertRewardConfigReviewed,recordRewardConfigChangeTx,rewardConfigSummary,rewardConfigSummaryDigest,type RewardConfigSummary} from './config-change';
@@ -706,9 +706,8 @@ export async function createRewardUnitTx(tx:Tx,ctx:SessionContext,raw:PlannedRew
  await setupLock(tx,ctx,'plans');
  await setupLock(tx,ctx,'pat:'+companyId+':'+setupYear.parse(raw.year));
  const resolved=await approvedPlanPolicyTx(tx,ctx,version,companyId,businessUnitId);
- await assertIndependentReviewCreator(tx,ctx,resolved.setup);
  if(raw.year!==resolved.setup.year||raw.snapshotDate!==resolved.setup.snapshotDate||raw.name&&raw.name!==resolved.setup.cycleName||raw.cycleId)throw new RewardError('Use the frozen approved plan cycle, year and snapshot date.');
- const [created]=await tx.execute<{id:string}>(sql`select app.reward_create_planned_unit(${version}::uuid,${raw.companyId}::uuid,${raw.businessUnitId}::uuid) as id`);
+ const [created]=await tx.execute<{id:string}>(sql`select app.reward_config_create_planned_unit(${version}::uuid,${raw.companyId}::uuid,${raw.businessUnitId}::uuid) as id`);
  const [unit]=await tx.select().from(rewardUnit).where(eq(rewardUnit.id,created.id));if(!unit)throw new RewardError('The approved review could not be loaded.');
  const entries=await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId,unit.id));
  const floors=await deriveConfidentialityTx(tx,unit.id,entries.map(e=>e.employmentId),unit.snapshotDate);
@@ -1207,7 +1206,7 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
     const route = unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] as RewardRole[] : offcycleRoute(unit.kind, unit.offcycle!, entries);
     if (unit.kind === 'annual' && (action === 'reject' || action === 'withdraw')) throw new RewardError('Return an annual review to draft instead.');
     const [uploaded]=await tx.execute<{currentVersion:number;checkedVersion:number|null}>(sql`select current_version as "currentVersion",checked_version as "checkedVersion" from reward_uploaded_review where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()`);
-    if(uploaded&&(action==='submit'||action==='approve')&&(!uploaded.currentVersion||uploaded.currentVersion!==uploaded.checkedVersion))throw new RewardError('A different Group Rewards user must confirm the current upload before the review route starts.');
+    if(uploaded&&(action==='submit'||action==='approve')&&(!uploaded.currentVersion||uploaded.currentVersion!==uploaded.checkedVersion))throw new RewardError('Make the current upload active before the review route starts.');
     const governance=unit.kind==='annual'&&!uploaded?await governancePublicTx(tx,unitId):null;
     const next = unit.kind === 'annual' ? transition(unit.status, roles, action as 'submit' | 'approve' | 'return') : offcycleTransition(unit.status, roles, action, route);
     if (unit.kind !== 'annual' && action === 'approve' && entries.some(e => visibleEntry(e, roles, ctx.personId) && e.recommendation.promotionGrade) && !acknowledged) throw new RewardError('Acknowledge that you reviewed the current and proposed role summaries.');

@@ -111,9 +111,10 @@ export function rewardNavigation(ctx: SessionContext) {
           and app.reward_level_rank(app.reward_unit_level(u.id, 'promotions.view')) >= 1) as promotions,
         app.reward_setup_allowed(null, 'manage') as manage,
         app.reward_setup_page_allowed(null, 'plans.manage', 'manage') as plans,
-        app.reward_setup_page_allowed(null, 'pat.manage', 'manage') as pat,
-        app.reward_setup_page_allowed(null, 'salary.view', 'library_view') as salary,
-        app.reward_setup_page_allowed(null, 'bonus.view', 'library_view') as bonus,
+        -- Board 60f1fdcd + db14e49c: the configuration editor of the group or of a company, narrowed by the page's row.
+        app.reward_config_editor_anywhere() and app.reward_level_rank(app.reward_actor_page_level('pat.manage')) >= 3 as pat,
+        app.reward_config_page_allowed(null, 'salary.view', 'library_view') as salary,
+        app.reward_config_page_allowed(null, 'bonus.view', 'library_view') as bonus,
         app.is_group_admin() as bootstrap,
         -- 70d5e7c5: Review Set-up for Group Rewards (edit), CTRO and EC (view) on an annual review.
         exists(select 1 from visible_units u where u.kind = 'annual'
@@ -137,7 +138,7 @@ export function rewardNavigation(ctx: SessionContext) {
       ...(pages.pat ? ['/admin/rewards/pat-inputs'] : []),
       ...(pages.limits ? ['/admin/rewards/limit-controls'] : []),
       ...(pages.setup ? ['/admin/rewards/review-setup'] : []),
-      ...(pages.manage || pages.salary || pages.bonus ? ['/admin/rewards/change-log'] : []),
+      ...(pages.manage || pages.salary || pages.bonus || pages.pat ? ['/admin/rewards/change-log'] : []),
       ...(pages.access || pages.bootstrap || pages.rolePermissions ? ['/admin/rewards/access'] : []),
     ];
   });

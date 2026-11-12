@@ -42,15 +42,6 @@ export async function reserveRewardCompanyYearTx(tx:Tx,ctx:SessionContext,p:{com
  const [unit]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from reward_unit u join reward_cycle c on c.id=u.cycle_id and c.tenant_id=u.tenant_id where u.id=${p.unitId}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.company_id=${p.companyId}::uuid and c.year=${p.year}) as ok`);if(!unit?.ok)throw new RewardSetupError('invalid','Company-year admission must match the actual review.');
  await tx.execute(sql`insert into reward_company_year_review(tenant_id,company_id,year,unit_id,kind) values(${ctx.tenantId}::uuid,${p.companyId}::uuid,${p.year},${p.unitId}::uuid,${p.kind}) on conflict(tenant_id,company_id,year) do nothing`);const[r]=await tx.execute<{unit_id:string;kind:string}>(sql`select unit_id,kind from reward_company_year_review where tenant_id=${ctx.tenantId}::uuid and company_id=${p.companyId}::uuid and year=${p.year}`);if(r?.unit_id!==p.unitId||r.kind!==p.kind)throw new RewardSetupError('invalid','This company-year is already reserved for another review.');
 }
-/** The installed review creator (app.reward_create_planned_unit, owned by a purpose role the migration owner may not
- * replace) still requires a creator other than the plan's activator. Board 60f1fdcd retires that rule; until the
- * owner-approved database change lands (docs/adr/2026-11-12-rewards-direct-configuration.md, open item 2) this
- * pre-check keeps a clear message instead of a database refusal. */
-export async function assertIndependentReviewCreator(tx:Tx,ctx:SessionContext,plan:RewardSetupPlan){
- const creatorPersonId=await setupPersonTx(tx);
- if(!plan.approvedBy||!plan.approvedByPersonId||plan.approvedBy===ctx.userId||plan.approvedByPersonId===creatorPersonId)
-  throw new RewardSetupError('independent','A different Group Rewards user must create reviews from this approved plan.');
-}
 export async function approvedPlanPolicyTx(tx:Tx,ctx:SessionContext,versionId:string,companyId:string,businessUnitId:string){const p=await setupPlanTx(tx,ctx,versionId),source=await setupPolicySourceTx(tx,versionId);if(!p||p.state!=='approved')throw new RewardSetupError('invalid','Create reviews from an independently approved shared rewards plan.');const [assigned]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from reward_plan_company where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid and year=${p.year} and plan_version_id=${versionId}::uuid) as ok`);if(!assigned?.ok)throw new RewardSetupError('changed','Use the current approved company-year plan assignment.');const binding=p.bindings.find(b=>b.companyId===companyId&&b.businessUnitId===businessUnitId);if(!binding)throw new RewardSetupError('invalid','The company and Business unit are not assigned to this approved plan.');await setupAuthority(tx,companyId,'manage');await setupCompanyEligible(tx,companyId,p.year);const [structure]=await tx.execute<{tags:{status:string;businessUnitId:string|null}}>(sql`select app.reward_company_structure(${companyId}::uuid,${p.snapshotDate}::date) as tags`);if(structure?.tags?.status!=='ready'||structure.tags.businessUnitId!==businessUnitId)throw new RewardSetupError('missing','Confirm the company Business unit at the plan snapshot date.');const [salary,bonus]=await Promise.all([libraryVersionTx(tx,ctx,binding.salaryVersionId,true),libraryVersionTx(tx,ctx,binding.bonusVersionId,true)]),pat=await latestConfirmedPatTx(tx,ctx,companyId,p.year);if(salary.data.kind!=='salary'||bonus.data.kind!=='bonus'||!pat||patProjection(pat.inputs).status==='not-set')throw new RewardSetupError('missing','Confirm the company PAT inputs and both library versions before creating reviews.');const policy=policySchema.parse({...source.policy,...libraryPolicyProjection(salary.data,bonus.data),patTarget:pat.inputs.targetCents!,patActual:Math.max(0,pat.inputs.actualCents??pat.inputs.forecastCents??0),targetMonthsBp:pat.inputs.targetMonthsBp,multiplierBp:bonus.data.type==='branch'?10000:null});return{setup:p,source,binding,pat,policy};}
 export async function appliedPublicReferencesTx(tx:Tx,unitId:string){const[r]=await tx.execute<{value:unknown}>(sql`select app.reward_applied_public_references(${setupUuid.parse(unitId)}::uuid) as value`);return r?.value??null;}
 export type PlanCreationPreview = RewardPlanBinding & {
@@ -113,9 +104,9 @@ async function creationPreviewRowTx(tx: Tx, ctx: SessionContext, versionId: stri
 export function previewRewardPlanCreation(ctx: SessionContext, versionId: string) {
   return setupReadTenant(ctx, async tx => {
     const { plan, rows, digest } = await creationPreviewTx(tx, ctx, setupUuid.parse(versionId));
-    const actorPersonId = await setupPersonTx(tx);
-    return { versionId, rows, digest, mayCreate: !!plan.approvedBy && !!plan.approvedByPersonId &&
-      plan.approvedBy !== ctx.userId && plan.approvedByPersonId !== actorPersonId };
+    await setupPersonTx(tx);
+    // Board 60f1fdcd: whoever made the plan active may create its reviews (app.reward_config_create_planned_unit).
+    return { versionId, rows, digest, mayCreate: !!plan.approvedBy && !!plan.approvedByPersonId };
   });
 }
 
@@ -154,7 +145,6 @@ export async function createRewardPlanReviews(ctx: SessionContext, versionId: st
   const confirmed = await setupSharedTenant(ctx, async tx => {
     await setupLock(tx, ctx, 'plans');
     const preview = await creationPreviewTx(tx, ctx, id);
-    await assertIndependentReviewCreator(tx, ctx, preview.plan);
     if (preview.digest !== expectedDigest) throw new RewardSetupError('changed', 'The creation preview changed. Review it again.');
     return preview;
   });
