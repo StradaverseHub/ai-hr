@@ -49,6 +49,22 @@ export async function rewardLimitsForYearTx(tx:Tx,year:number):Promise<RewardLim
  const [version]=await tx.execute<StoredVersion>(sql`select id,revision,year,limit_values as values from reward_limit_version where tenant_id=app.current_tenant_id() and year=${year} order by revision desc limit 1`);
  return version?versionRewardLimits(version):null;
 }
+/** Board b945f0cc: the limits an off-cycle request calculates with, from its reward year (the funding annual review's
+ * year): Draft uses the year's current version, a submitted request keeps the version it was checked with, and a
+ * request submitted before this change keeps the baseline. Authorized by the request's own seats. */
+export async function rewardOffcycleLimitsTx(tx:Tx,unit:{id:string;policy?:Pick<RewardPolicy,'standardPools'|'hPools'|'lumpShareBp'|'lumpStepCents'|'lumpCapCents'>|null}):Promise<RewardLimits>{
+ const [ready]=await tx.execute<{ready:boolean}>(sql`select to_regprocedure('app.reward_offcycle_limit_version(uuid)') is not null as ready`);
+ if(!ready?.ready)return baselineRewardLimits(unit.policy);
+ const [row]=await tx.execute<{value:{mode:'current'|'pinned'|'legacy';year:number;version:StoredVersion|null}|null}>(sql`select app.reward_offcycle_limit_version(${unit.id}::uuid) as value`);
+ const version=row?.value?.version;
+ return version?versionRewardLimits(version):baselineRewardLimits(unit.policy);
+}
+/** Submitting an off-cycle request keeps the version it was checked with (reward_unit_limit_pin). */
+export async function pinRewardOffcycleLimitsOnSubmitTx(tx:Tx,unitId:string,limits:RewardLimits){
+ const [ready]=await tx.execute<{ready:boolean}>(sql`select to_regprocedure('app.reward_offcycle_limit_pin(uuid,uuid)') is not null as ready`);
+ if(!ready?.ready)return;
+ await tx.execute(sql`select app.reward_offcycle_limit_pin(${unitId}::uuid,${limits.versionId}::uuid)`);
+}
 /** Submission keeps the version the review was checked with. */
 export async function pinRewardLimitsOnSubmitTx(tx:Tx,unitId:string,limits:RewardLimits){
  const [ready]=await tx.execute<{ready:boolean}>(sql`select to_regprocedure('app.reward_limit_pin_on_submit(uuid,uuid)') is not null as ready`);

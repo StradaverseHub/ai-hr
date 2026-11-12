@@ -385,7 +385,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/rewards/[unitId]/uploaded/actions.ts":{
   "previewUploadedAction":"internal:session_and_presentation","saveUploadedAction":"backlog:approve","uploadedDecisionAction":"backlog:approve",
  },
- "app/rewards/dashboard-actions.ts":{"saveDashboardAction":"internal:session_and_presentation"},
+ "app/rewards/dashboard-actions.ts":{"saveDashboardAction":"internal:session_and_presentation","saveDashboardKindAction":"internal:session_and_presentation"},
+ "app/rewards/offcycle/settings/actions.ts":{"previewOffcycleYearAction":"internal:session_and_presentation","saveOffcycleYearAction":"backlog:approve"},
  "app/rewards/preparation-actions.ts":{"preparationAction":"backlog:approve"},
  "app/rewards/governance-actions.ts":{"adoptCompanyPatAction":"backlog:approve","refreshCompanyPatBasisAction":"backlog:approve","unitInputsAction":"backlog:approve","exemptionAction":"backlog:approve","confirmGovernanceAction":"backlog:approve","seniorAwardAction":"backlog:approve"},
  "app/rewards/policy-grid-actions.ts":{"loadPreviousRewardPolicyMatrices":"backlog:automatic"},

@@ -24453,7 +24453,7 @@
     "annualSource": "Open annual funding source",
     "startOffcycle": "Start off-cycle review",
     "budgetException": "Budget exception reason (optional)",
-    "exceptionHelp": "Available only for an individual ad-hoc request. Explain the exception in at least 30 characters; EC approval is then required.",
+    "exceptionHelp": "Hanya untuk permohonan ad hoc individu yang tidak dapat ditampung oleh baki. Terangkan dalam sekurang-kurangnya 30 aksara mengapa ia tidak boleh menunggu; ia dihantar sendiri melalui BG CEO, Group Rewards, CTRO dan EC.",
     "currentRoleSummary": "Current job-description summary",
     "proposedRoleSummary": "Proposed job-description summary",
     "roleSummaryHelp": "Save only the relevant role-change summaries below. Comparison extracts changed statements; it does not judge whether a promotion is justified. Each approver must review the summaries.",
@@ -25177,7 +25177,23 @@
         "special": "pelarasan khas"
       }
     },
-    "limitControlsOwned": "Kawalan Had memiliki nilai ini bagi tahun ganjaran ini. Nilai ini baca sahaja di sini dan semakan menggunakan versi Kawalan Had."
+    "limitControlsOwned": "Kawalan Had memiliki nilai ini bagi tahun ganjaran ini. Nilai ini baca sahaja di sini dan semakan menggunakan versi Kawalan Had.",
+    "offcycle": {
+      "balanceHelp": "Disemak berbanding satu baki luar kitaran syarikat: baki kenaikan gaji akhir tahun ditolak setiap permohonan lain dalam kelulusan, diluluskan atau telah dibayar. Draf dan permohonan yang dikembalikan, ditolak atau ditarik balik tidak memegang apa-apa.",
+      "available": "Baki tersedia",
+      "thisRequest": "Permohonan ini",
+      "leftAfter": "Baki selepas permohonan ini",
+      "over": "Melebihi {amount}",
+      "yearEndExclusion": "Berkuat kuasa antara 1 Oktober dan 31 Disember: individu ini dikecualikan daripada kenaikan gaji akhir tahun {year}.",
+      "crBeforeAfter": "Nisbah kompa sebelum → selepas",
+      "positionInRange": "Kedudukan dalam julat",
+      "position": {
+        "below": "Bawah julat",
+        "within": "Dalam julat",
+        "above": "Atas julat",
+        "unknown": "Tiada julat"
+      }
+    }
   },
   "identityEmail": {
     "title": "Penghantaran e-mel",
@@ -37893,7 +37909,49 @@
     "overOwnPool": "Melebihi kumpulan wangnya sendiri: {companies}",
     "excludedRestricted": "Tidak termasuk dalam angka ini kerana semakan mengandungi rekod terhad: {companies}",
     "excludedUploaded": "Tidak termasuk dalam angka ini kerana semakan yang dimuat naik mengekalkan anugerah yang direkodkan: {companies}",
-    "noCombinedFigures": "Tiada angka gabungan tersedia untuk syarikat yang dipilih."
+    "noCombinedFigures": "Tiada angka gabungan tersedia untuk syarikat yang dipilih.",
+    "kindSwitch": "Kitaran akhir tahun atau luar kitaran",
+    "kinds": {
+      "annual": "Kitaran akhir tahun",
+      "offcycle": "Luar kitaran"
+    },
+    "offcycle": {
+      "notOpen": "Permohonan luar kitaran dibuka setelah kitaran akhir tahun ditutup dan Group Rewards membuka tahun bajet baharu.",
+      "settings": "Tetapan luar kitaran",
+      "settingsHelp": "Buka tahun bajet luar kitaran setelah setiap semakan akhir tahun mendapat kelulusan akhir EC dan diserahkan kepada Payroll, dan tetapkan tempoh penghantaran pertengahan tahun.",
+      "returned": "Dikembalikan",
+      "inApproval": "Dalam kelulusan ({stage})",
+      "window": "Tempoh pertengahan tahun {from} – {to}",
+      "noWindow": "Tiada tempoh pertengahan tahun ditetapkan",
+      "addMidyear": "Tambah syor pertengahan tahun",
+      "newAdhoc": "Permohonan ad hoc baharu",
+      "blackout": "Permohonan luar kitaran tidak boleh dihantar atau diluluskan dari 1 Oktober hingga 31 Januari. Anda masih boleh menyediakan draf.",
+      "midyearClosed": "Syor pertengahan tahun hanya boleh dihantar dalam tempoh pertengahan tahun.",
+      "balanceTitle": "Baki luar kitaran",
+      "left": "{amount} berbaki",
+      "meter": "Baki luar kitaran {company} yang digunakan",
+      "remainder": "Baki akhir tahun",
+      "held": "Dipegang oleh permohonan",
+      "consumed": "Telah dibayar",
+      "available": "Tersedia",
+      "noBalance": "Belum ada baki syarikat dalam skop anda.",
+      "balanceHelp": "Satu baki bagi setiap syarikat: baki kenaikan gaji akhir tahun, ditolak permohonan dalam kelulusan atau diluluskan, dan permohonan yang telah dibayar. Draf tidak memegang bajet.",
+      "myRequests": "Permohonan saya ({count})",
+      "noRequests": "Anda tiada permohonan luar kitaran.",
+      "back": "Menyemak Ganjaran Pasukan",
+      "midyearHelp": "Pilih syarikat dan unit perniagaan. Set pertengahan tahun dihantar dan diluluskan bersama: BU CEO, BG CEO, kemudian Group Rewards.",
+      "adhocHelp": "Pilih syarikat dan unit perniagaan, kemudian seorang individu. Permohonan ad hoc dihantar kepada BU CEO, BG CEO, Group Rewards dan CTRO, serta kepada Pengerusi Eksekutif bagi JG 22 dan ke atas.",
+      "noSources": "Tiada semakan akhir tahun yang telah diposkan dalam tahun luar kitaran yang dibuka membenarkan anda membuat permohonan.",
+      "systemError": "Tetapan luar kitaran tidak dapat disimpan. Cuba lagi.",
+      "noAccess": "Anda tiada akses kepada tetapan luar kitaran.",
+      "openSince": "Tahun luar kitaran dibuka sejak {date}.",
+      "readiness": "{posted} semakan akhir tahun telah diserahkan kepada Payroll, {open} masih dalam proses.",
+      "noCycles": "Belum ada kitaran ganjaran.",
+      "windowFrom": "Tempoh pertengahan tahun dibuka",
+      "windowTo": "Tempoh pertengahan tahun ditutup",
+      "saveWindow": "Simpan tempoh pertengahan tahun",
+      "openYear": "Buka tahun luar kitaran"
+    }
   },
   "maybankPayment": {
     "settings": "Tetapan fail pembayaran Maybank",
@@ -38600,7 +38658,9 @@
       "released-library": "Semakan yang telah dilepaskan menggunakan versi terdahulu. Semakan itu mengekalkannya; semakan baharu menggunakan versi ini.",
       "released-limit": "Had bajet berubah untuk semakan yang telah dilepaskan.",
       "release-review": "Pelepasan menghantar semakan ini kepada CEO BU.",
-      "remove-access": "Seseorang kehilangan akses kepada semakan."
+      "remove-access": "Seseorang kehilangan akses kepada semakan.",
+      "open-offcycle": "Membuka tahun luar kitaran menjadikan baki syarikat tersedia kepada pemimpin untuk permohonan luar kitaran.",
+      "offcycle-window": "Tempoh pertengahan tahun menentukan bila syor pertengahan tahun boleh dihantar."
     },
     "whatChanges": "Apa yang berubah ({count})",
     "item": "Item",
@@ -38652,7 +38712,8 @@
       "access": "Akses Ganjaran",
       "role_permission": "Kebenaran peranan",
       "group_role": "Peranan seluruh kumpulan",
-      "limit": "Kawalan had"
+      "limit": "Kawalan had",
+      "offcycle": "Luar kitaran"
     },
     "actions": {
       "returned-to-draft": "Dikembalikan ke draf",

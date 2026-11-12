@@ -1,3 +1,4 @@
+import {openRewardOffcycleYearFixture,outsideOffcycleBlackout} from './helpers/rewards-offcycle-fixture';
 import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
@@ -322,12 +323,15 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const rev = await approve(); const batch = await createBatch(admin, { companyId: b.companyId, payPeriod: today.slice(0, 7) });
     await postRewardUnit(admin, unitId, rev, batch.batchId);
     const parent = await view();
+    await openRewardOffcycleYearFixture(b.tenantId, parent.unit.cycleId, admin.userId!);
     const childId = await createOffcycleReview(actors.bu!, unitId, { kind: 'adhoc', entryIds: [parent.rows[0].id], effectiveFrom: `${year + 1}-02-01`, exceptionReason: '' });
     let child = await getRewardUnit(actors.bu!, childId);
     await saveRewardEntry(actors.bu!, childId, child.unit.revision, child.rows[0].id, { ...child.rows[0].recommendation, meritBp: 100, reason: 'Expanded responsibilities' });
     child = await getRewardUnit(actors.bu!, childId);
-    await decideRewardUnit(actors.bu!, childId, child.unit.revision, 'submit', 'Reviewed recommendations');
-    for (const role of ['bg', 'gr', 'ctro'] as const) await decideRewardUnit(actors[role]!, childId, child.unit.revision, 'approve', 'Reviewed recommendations');
+    await outsideOffcycleBlackout(async () => {
+      await decideRewardUnit(actors.bu!, childId, child.unit.revision, 'submit', 'Reviewed recommendations');
+      for (const role of ['bg', 'gr', 'ctro'] as const) await decideRewardUnit(actors[role]!, childId, child.unit.revision, 'approve', 'Reviewed recommendations');
+    });
     expect(await postRewardUnit(admin, childId, child.unit.revision)).toEqual({ alreadyPosted: false });
     expect(await postRewardUnit(admin, childId, child.unit.revision)).toEqual({ alreadyPosted: true });
     const [salary] = await owner.db.select().from(schema.compensation).where(and(eq(schema.compensation.employmentId, employmentId), isNull(schema.compensation.validTo)));
@@ -340,6 +344,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await postRewardUnit(admin, unitId, rev, batch.batchId);
     const parent = await view();
     expect(parent.unit.fundingCents.standard).toBe(12500);
+    await openRewardOffcycleYearFixture(b.tenantId, parent.unit.cycleId, admin.userId!);
     const ids: string[] = [];
     for (let i = 0; i < 2; i++) {
       const id = await createOffcycleReview(actors.bu!, unitId, { kind: 'adhoc', entryIds: [parent.rows[0].id], effectiveFrom: `${year + 1}-02-01`, exceptionReason: '' });
@@ -347,7 +352,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
       await saveRewardEntry(actors.bu!, id, v.unit.revision, v.rows[0].id, { ...v.rows[0].recommendation, meritBp: 100, reason: 'Expanded responsibilities' });
       ids.push(id);
     }
-    const results = await Promise.allSettled(ids.map(async id => decideRewardUnit(actors.bu!, id, (await getRewardUnit(actors.bu!, id)).unit.revision, 'submit', 'Reviewed off-cycle request')));
+    const results = await outsideOffcycleBlackout(() => Promise.allSettled(ids.map(async id => decideRewardUnit(actors.bu!, id, (await getRewardUnit(actors.bu!, id)).unit.revision, 'submit', 'Reviewed off-cycle request'))));
     expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter(r => r.status === 'rejected')).toHaveLength(1);
     const accepted = ids[results.findIndex(r => r.status === 'fulfilled')];
@@ -356,7 +361,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await decideRewardUnit(actors.bg!, accepted, v.unit.revision, 'return', 'Please revise the business case');
     const other = ids.find(id => id !== accepted)!;
     v = await getRewardUnit(actors.bu!, other);
-    expect(await decideRewardUnit(actors.bu!, other, v.unit.revision, 'submit', 'Revised and ready for approval')).toBe('bg');
+    expect(await outsideOffcycleBlackout(() => decideRewardUnit(actors.bu!, other, v.unit.revision, 'submit', 'Revised and ready for approval'))).toBe('bg');
   });
 
   // WP-F (RW-131): Returned is derived from the latest decision, never a stored stage.
@@ -415,12 +420,13 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
       const rev = await approve(); const batch = await createBatch(admin, { companyId: b.companyId, payPeriod: today.slice(0, 7) });
       await postRewardUnit(admin, unitId, rev, batch.batchId);
       const parent = await getRewardUnit(actors.bg!, unitId);
+      await openRewardOffcycleYearFixture(b.tenantId, parent.unit.cycleId, admin.userId!);
       const childId = await createOffcycleReview(actors.bg!, unitId, { kind: 'adhoc', entryIds: [parent.rows[0].id], effectiveFrom: `${year + 1}-02-01`, exceptionReason: '' });
       let child = await getRewardUnit(actors.bg!, childId);
       expect(child.unit.offcycle?.bgOrigin).toBe(true);
       await saveRewardEntry(actors.bg!, childId, child.unit.revision, child.rows[0].id, { ...child.rows[0].recommendation, meritBp: 100, reason: 'Expanded responsibilities' });
       child = await getRewardUnit(actors.bg!, childId);
-      expect(await decideRewardUnit(actors.bg!, childId, child.unit.revision, 'submit', 'Reviewed off-cycle request')).toBe('gr');
+      expect(await outsideOffcycleBlackout(() => decideRewardUnit(actors.bg!, childId, child.unit.revision, 'submit', 'Reviewed off-cycle request'))).toBe('gr');
       await decideRewardUnit(admin, childId, child.unit.revision, 'return', 'Business case needs a comparator');
       expect((await getRewardUnit(actors.bg!, childId)).returned).toMatchObject({ toSeat: 'bg', fromStage: 'gr', actorRole: 'gr' });
       expect((await listRewardUnits(actors.bg!, [b.companyId])).find(u => u.id === childId)?.returnedTo).toBe('bg');

@@ -24453,7 +24453,7 @@
     "annualSource": "Open annual funding source",
     "startOffcycle": "Start off-cycle review",
     "budgetException": "Budget exception reason (optional)",
-    "exceptionHelp": "Available only for an individual ad-hoc request. Explain the exception in at least 30 characters; EC approval is then required.",
+    "exceptionHelp": "Only for an individual ad hoc request the remaining balance cannot cover. Explain in at least 30 characters why it cannot wait; it goes on its own through BG CEO, Group Rewards, CTRO and EC.",
     "currentRoleSummary": "Current job-description summary",
     "proposedRoleSummary": "Proposed job-description summary",
     "roleSummaryHelp": "Save only the relevant role-change summaries below. Comparison extracts changed statements; it does not judge whether a promotion is justified. Each approver must review the summaries.",
@@ -25177,7 +25177,23 @@
         "special": "special adjustment"
       }
     },
-    "limitControlsOwned": "Limit Controls own these values for this reward year. They are read-only here and the review uses the Limit Controls version."
+    "limitControlsOwned": "Limit Controls own these values for this reward year. They are read-only here and the review uses the Limit Controls version.",
+    "offcycle": {
+      "balanceHelp": "Checked against the company's one off-cycle balance: the year-end salary increase remainder less every other request in approval, approved or paid. Drafts, returned, rejected and withdrawn requests hold nothing.",
+      "available": "Available balance",
+      "thisRequest": "This request",
+      "leftAfter": "Left after this request",
+      "over": "{amount} over",
+      "yearEndExclusion": "Effective between 1 October and 31 December: this person is excluded from the {year} year-end salary increase.",
+      "crBeforeAfter": "Compa-ratio before → after",
+      "positionInRange": "Position in range",
+      "position": {
+        "below": "Below range",
+        "within": "Within range",
+        "above": "Above range",
+        "unknown": "No range"
+      }
+    }
   },
   "identityEmail": {
     "title": "Email delivery",
@@ -37893,7 +37909,49 @@
     "overOwnPool": "Over its own pool: {companies}",
     "excludedRestricted": "Not included in these figures because the review contains restricted records: {companies}",
     "excludedUploaded": "Not included in these figures because the uploaded review keeps its recorded awards: {companies}",
-    "noCombinedFigures": "No combined figures are available for the selected companies."
+    "noCombinedFigures": "No combined figures are available for the selected companies.",
+    "kindSwitch": "Year-end cycle or off-cycle",
+    "kinds": {
+      "annual": "Year-end cycle",
+      "offcycle": "Off-cycle"
+    },
+    "offcycle": {
+      "notOpen": "Off-cycle requests open once the year-end cycle closes and Group Rewards opens the new budget year.",
+      "settings": "Off-cycle settings",
+      "settingsHelp": "Open the off-cycle budget year once every year-end review has final EC approval and has been handed to Payroll, and set the mid-year submission window.",
+      "returned": "Returned",
+      "inApproval": "In approval ({stage})",
+      "window": "Mid-year window {from} – {to}",
+      "noWindow": "No mid-year window set",
+      "addMidyear": "Add mid-year recommendation",
+      "newAdhoc": "New ad hoc request",
+      "blackout": "Off-cycle requests cannot be submitted or approved from 1 October to 31 January. You can still prepare drafts.",
+      "midyearClosed": "Mid-year recommendations can be submitted only inside the mid-year window.",
+      "balanceTitle": "Off-cycle balance",
+      "left": "{amount} left",
+      "meter": "{company} off-cycle balance used",
+      "remainder": "Year-end remainder",
+      "held": "Held by requests",
+      "consumed": "Paid out",
+      "available": "Available",
+      "noBalance": "No company balance in your scope yet.",
+      "balanceHelp": "One balance per company: the year-end salary increase remainder, less requests in approval or approved, and requests already paid. Drafts do not hold budget.",
+      "myRequests": "My requests ({count})",
+      "noRequests": "You have no off-cycle requests.",
+      "back": "Reviewing Team Rewards",
+      "midyearHelp": "Choose the company and business unit. A mid-year set is submitted and approved together: BU CEO, BG CEO, then Group Rewards.",
+      "adhocHelp": "Choose the company and business unit, then one person. Ad hoc requests go to BU CEO, BG CEO, Group Rewards and CTRO, and to the Executive Chairman for JG 22 and above.",
+      "noSources": "No posted year-end review in an open off-cycle year lets you raise requests.",
+      "systemError": "The off-cycle settings could not be saved. Try again.",
+      "noAccess": "You don't have access to off-cycle settings.",
+      "openSince": "Off-cycle year open since {date}.",
+      "readiness": "{posted} year-end reviews handed to Payroll, {open} still in progress.",
+      "noCycles": "No reward cycles yet.",
+      "windowFrom": "Mid-year window opens",
+      "windowTo": "Mid-year window closes",
+      "saveWindow": "Save mid-year window",
+      "openYear": "Open the off-cycle year"
+    }
   },
   "maybankPayment": {
     "settings": "Maybank payment file settings",
@@ -38600,7 +38658,9 @@
       "released-library": "Reviews already released use an earlier version. They keep it; new reviews use this one.",
       "released-limit": "A budget limit changes for a review that has already been released.",
       "release-review": "Releasing sends this review to the BU CEO.",
-      "remove-access": "Someone loses access to a review."
+      "remove-access": "Someone loses access to a review.",
+      "open-offcycle": "Opening the off-cycle year makes company balances available to leaders for off-cycle requests.",
+      "offcycle-window": "The mid-year window decides when mid-year recommendations can be submitted."
     },
     "whatChanges": "What changes ({count})",
     "item": "Item",
@@ -38652,7 +38712,8 @@
       "access": "Rewards access",
       "role_permission": "Role permissions",
       "group_role": "Whole-group roles",
-      "limit": "Limit controls"
+      "limit": "Limit controls",
+      "offcycle": "Off-cycle"
     },
     "actions": {
       "returned-to-draft": "Returned to draft",

@@ -8,7 +8,7 @@
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
 
-export const rewardConfigAreas=['salary','bonus','pat','plan','shared','exemption','senior','upload','preparation','access','role_permission','group_role','limit'] as const;
+export const rewardConfigAreas=['salary','bonus','pat','plan','shared','exemption','senior','upload','preparation','access','role_permission','group_role','limit','offcycle'] as const;
 export type RewardConfigArea=typeof rewardConfigAreas[number];
 
 /** One changed value: a cell, a field or a seat. Values are display text; money is formatted by the caller. */
@@ -17,7 +17,7 @@ export type RewardConfigLine={key:string;label:string;before:string|null;after:s
 export type RewardConfigAffected={reviewId:string;label:string;stage:string;consequence:RewardConfigConsequence};
 export type RewardConfigConsequence='repriced'|'recalculation-required'|'keeps-version'|'released-to-bu'|'access-removed'|'none';
 /** Why the change needs a reviewed summary. */
-export type RewardHighImpactReason='released-pat'|'released-library'|'released-limit'|'release-review'|'remove-access';
+export type RewardHighImpactReason='released-pat'|'released-library'|'released-limit'|'release-review'|'remove-access'|'open-offcycle'|'offcycle-window';
 export type RewardConfigSummary={
  area:RewardConfigArea;
  itemLabel:string;

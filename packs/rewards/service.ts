@@ -36,7 +36,7 @@ import {latestConfirmedPatTx} from './pat-inputs';
 import {setupAuthority,setupLock} from './setup-data';
 import {assertRewardConfigReviewed,recordRewardConfigChangeTx,rewardConfigSummary,rewardConfigSummaryDigest,type RewardConfigSummary} from './config-change';
 import {setupYear} from './setup-model';
-import {pinRewardLimitsOnSubmitTx,rewardLimitsForUnitTx} from './limit-controls';
+import {pinRewardLimitsOnSubmitTx,pinRewardOffcycleLimitsOnSubmitTx,rewardLimitsForUnitTx,rewardOffcycleLimitsTx} from './limit-controls';
 import { emptyGovernance, effectiveRewardPolicy, poolStatus, unitInputSchema, confirmedSeniorAwards, seniorGrade, maySeeSeniorAmounts, redactPatPolicy, seniorAwardSchema, governanceBasis,governanceHistoryProjection,seniorSourceFingerprint,type RewardPublicGovernance,type RewardGovernance, type SeniorAward } from './governance-model';
 import { assertRewardPolicyGrids } from './policy-grid-validation';
 import { onehrRewardResultTx, onehrRewardResultsTx } from '../performance/service';
@@ -47,7 +47,7 @@ export {rewardCompanyExclusions,changeRewardCompanyExclusion,rewardPolicyHistory
 export type {RewardCompanyExclusion,RewardPolicyHistory} from './shared-governance';
 export {rewardPolicyMemberships,rewardPolicyTaken,saveRewardPolicyGroup,listRewardPolicyGroups,rewardSharedPolicyChoices,rewardPolicyGroupUsage,RewardPolicyGroupError} from './policy-groups';
 export type {RewardPolicyTaken,RewardSharedChoice,RewardPolicySummary} from './policy-groups';
-import { calculateOffcycle, offcycleRoute, offcycleTransition, type Funding } from './offcycle';
+import { calculateOffcycle, offcyclePayPosition, offcycleBlackout, offcycleMidyearOpen, offcycleReturnSeat, offcycleRoute, offcycleTransition, offcycleYearEndExclusion, type OffcycleBalance } from './offcycle';
 import { applyConfidentialityFloor, belowConfidentialityFloor, bpSchema, canEditStage, defaultPolicy, emptyFacts, emptyRecommendation, factsSchema, isoDateSchema, policySchema, recommendationSchema, rewardRoles, transition, visibleEntry, type RewardEntry, type RewardFacts, type RewardPolicy, type RewardRole, type RewardSource } from './model';
 
 import { emptyRewardCalendar, rewardCalendarSchema, rewardDaysUntil, rewardNextSeat, rewardRouteProgress, rewardStageDue, rewardStageSeat, rewardStageStep, type RewardCalendarValues, type RewardRouteStep } from './calendar';
@@ -240,9 +240,12 @@ export async function readRewardSeniorEvidence(ctx:SessionContext,unitId:string,
  });
 }
 
-async function funding(tx: Tx, unitId: string, lock = false): Promise<Funding & { duplicate: boolean }> {
-  const [r] = await tx.execute<{ value: Funding & { duplicate: boolean } }>(sql`select app.reward_funding(${unitId}::uuid, ${lock}) as value`);
-  return r.value;
+/** Board b945f0cc: one off-cycle balance per company and cycle. With `lock`, every posted annual review of the request's
+ * company and cycle is locked in id order (the annual parent locks), serializing every decision against that balance.
+ * An annual review returns zeros without locking anything. */
+async function funding(tx: Tx, unitId: string, lock = false): Promise<OffcycleBalance & { duplicate: boolean }> {
+  const [r] = await tx.execute<{ value: { frozen: number | string; committed: number | string; available: number | string; duplicate: boolean } }>(sql`select app.reward_offcycle_company_funding(${unitId}::uuid, ${lock}) as value`);
+  return { frozenCents: Number(r.value.frozen), committedCents: Number(r.value.committed), availableCents: Number(r.value.available), duplicate: r.value.duplicate };
 }
 export async function annualRewardCalculationTx(tx:Tx,unit:typeof rewardUnit.$inferSelect,entries:RewardEntry[],posting=false){
     const state=await governanceStateTx(tx,unit.id),publicState=await governancePublicTx(tx,unit.id),awards=await seniorAwardsTx(tx,unit.id,posting);
@@ -265,7 +268,7 @@ async function calculateUnit(tx: Tx, unit: typeof rewardUnit.$inferSelect, entri
     return result;
   }
   const available = await funding(tx, unit.id);
-  const result = calculateOffcycle(entries, unit.policy, unit.kind, unit.offcycle!, available);
+  const result = calculateOffcycle(entries, unit.policy, unit.kind, unit.offcycle!, available, await rewardOffcycleLimitsTx(tx, unit));
   if (available.duplicate) result.flags.push({ severity: 'block', code: 'OC-12', message: 'An employee already has an open off-cycle request against this annual review.' });
   return result;
 }
@@ -346,7 +349,7 @@ async function decisionHistory(tx: Tx, unitId: string, members: { role: string; 
 }
 type DecisionRow = Awaited<ReturnType<typeof decisionHistory>>[number];
 function returnedProjection(unit: typeof rewardUnit.$inferSelect, latest: DecisionRow | undefined) {
-  const state = returnedState(unit.status, latest, unit.offcycle?.bgOrigin === true);
+  const state = returnedState(unit.status, latest, offcycleReturnSeat(unit.offcycle) === 'bg');
   return state && latest ? { reason: state.reason, at: state.at, fromStage: state.fromStage, toSeat: state.toSeat, actorName: latest.actorName ?? null, actorRole: latest.actorRole } : null;
 }
 
@@ -443,7 +446,11 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
         const hiddenSenior=!maySeeSeniorAmounts(roles)&&isSeniorPlanMember(unit.policy,e.facts,e.source.grade);
         const midpoint=unit.policy.ranges?.[e.recommendation.promotionGrade??e.source.grade]?.[1];
         const position=(cents:number)=>hiddenSenior||!midpoint?null:ratio(cents,10000,midpoint,'nearest');
-        return {...safe,crBeforeBp:position(e.source.basicCents),crAfterBp:position(e.newBasicCents),totalIncreaseBp:hiddenSenior?null:e.meritBp+e.promotionBp+e.specialBp};}), flags, hiddenCount: entries.length - visible.length,
+        // b945f0cc: position in range (below / within / above) before and after, for the single-person off-cycle view.
+        const range=hiddenSenior?null:offcyclePayPosition(unit.policy,e);
+        return {...safe,crBeforeBp:position(e.source.basicCents),crAfterBp:position(e.newBasicCents),rangeBefore:range?.before.position??null,rangeAfter:range?.after.position??null,totalIncreaseBp:hiddenSenior?null:e.meritBp+e.promotionBp+e.specialBp};}), flags, hiddenCount: entries.length - visible.length,
+      // b945f0cc: the company off-cycle balance this request is checked against (aggregates only).
+      offcycleBalance: 'offcycleBalance' in calculated ? calculated.offcycleBalance : null,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
       payWindow: { standard: payWindow('standard'), h: payWindow('h') },
@@ -466,7 +473,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
 // read the unit's decisions sees no Returned state rather than a widened read.
 const latestDecisionActionSql = sql<string | null>`(select d.action from reward_decision d where d.unit_id=${rewardUnit.id} order by d.created_at desc, d.id desc limit 1)`;
 /** Derived Returned seat for list rows: null unless the draft's latest decision is a return. */
-const returnedSeatSql = sql<'bu' | 'bg' | null>`case when ${rewardUnit.status}='draft' and ${latestDecisionActionSql}='return' then case when ${rewardUnit.offcycle}->>'bgOrigin'='true' then 'bg' else 'bu' end end`;
+const returnedSeatSql = sql<'bu' | 'bg' | null>`case when ${rewardUnit.status}='draft' and ${latestDecisionActionSql}='return' then case when ${rewardUnit.offcycle}->>'bgOrigin'='true' or coalesce(${rewardUnit.offcycle}->>'exceptionReason','')<>'' then 'bg' else 'bu' end end`;
 
 /**
  * Reviews returned to a seat the viewer holds (the BU CEO, or the BG CEO for a BG-originated off-cycle
@@ -479,7 +486,7 @@ export async function returnedRewardUnits(ctx: SessionContext, companyIds?: stri
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
       .where(and(isNull(rewardUnit.deletedAt), eq(rewardUnit.status, 'draft'), ...(companyIds ? [inArray(rewardUnit.companyId, companyIds)] : []),
         sql`${latestDecisionActionSql}='return'`,
-        sql`(case when ${rewardUnit.offcycle}->>'bgOrigin'='true' then 'bg' else 'bu' end) in (select app.reward_roles(${rewardUnit.id}))`))
+        sql`(case when ${rewardUnit.offcycle}->>'bgOrigin'='true' or coalesce(${rewardUnit.offcycle}->>'exceptionReason','')<>'' then 'bg' else 'bu' end) in (select app.reward_roles(${rewardUnit.id}))`))
       .orderBy(asc(rewardUnit.updatedAt), asc(rewardUnit.id));
     const out = [];
     for (const row of rows) {
@@ -540,7 +547,7 @@ async function listRewardUnitsTx(tx:Tx,companyIds:string[]){
     if (!companyIds.length) return [];
     const seated = sql`exists(select 1 from app.reward_roles(${rewardUnit.id}))`;
     const rows = await tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, companyId: rewardUnit.companyId, company: company.legalName, businessUnitId: rewardUnit.businessUnitId, unit: businessUnitDisplayName, status: rewardUnit.status, returnedTo: returnedSeatSql, revision: rewardUnit.revision, canConfigure:sql<boolean>`${rewardUnit.status}='draft' and ${rewardUnit.kind}='annual' and 'gr' in (select app.reward_roles(${rewardUnit.id}))`, deletionReason:sql<import('./maintenance').RewardDeletionReason|null>`case when app.reward_admin(${rewardUnit.companyId}) then app.reward_deletion_reason(${rewardUnit.id}) else 'locked' end`,
-      bgOrigin: sql<boolean>`coalesce(${rewardUnit.offcycle}->>'bgOrigin','false')='true'`,
+      bgOrigin: sql<boolean>`(coalesce(${rewardUnit.offcycle}->>'bgOrigin','false')='true' or coalesce(${rewardUnit.offcycle}->>'exceptionReason','')<>'')`,
       effectiveFrom: sql<string | null>`${rewardUnit.policy}->>'effectiveFrom'`,
       people: sql<number | null>`case when ${seated} then (select count(*)::int from reward_entry e where e.unit_id=${rewardUnit.id}) end`,
       verified: sql<number | null>`case when ${seated} then (select count(*)::int from reward_entry e where e.unit_id=${rewardUnit.id} and e.facts->>'reviewed'='true') end`,
@@ -1157,6 +1164,25 @@ export async function setRewardPayWindowKeep(ctx: SessionContext, unitId: string
   });
 }
 
+/** Board b945f0cc: the off-cycle year of a cycle (opened by Group Rewards once the year-end cycle closed). */
+export type RewardOffcycleYear = { cycleId: string; openedAt: string; midyearFrom: string | null; midyearTo: string | null; revision: number };
+async function offcycleYearTx(tx: Tx, cycleId: string): Promise<RewardOffcycleYear | null> {
+  const [row] = await tx.execute<RewardOffcycleYear>(sql`select cycle_id as "cycleId",opened_at::text as "openedAt",midyear_from::text as "midyearFrom",midyear_to::text as "midyearTo",revision
+   from reward_offcycle_year where tenant_id=app.current_tenant_id() and cycle_id=${cycleId}::uuid`);
+  return row ?? null;
+}
+/** Off-cycle decision rules beyond the route: the subject never decides their own request; submission and approval
+ * need an open off-cycle year and fall outside the 1 October - 31 January blackout; a mid-year set is submitted only
+ * inside the mid-year window. Returns, rejections and withdrawals stay available. */
+async function assertOffcycleDecisionAllowedTx(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[], action: 'submit' | 'approve' | 'return' | 'reject' | 'withdraw') {
+  if (ctx.personId && entries.some(e => e.source.personId === ctx.personId)) throw new RewardError('This request is about you. Another seat holder must decide it.');
+  if (action !== 'submit' && action !== 'approve') return;
+  const today = todayInKualaLumpur();
+  if (offcycleBlackout(today)) throw new RewardError('Off-cycle requests cannot be submitted or approved from 1 October to 31 January.');
+  const year = await offcycleYearTx(tx, unit.cycleId);
+  if (!year) throw new RewardError('Group Rewards has not opened the off-cycle year for this cycle.');
+  if (action === 'submit' && unit.kind === 'midyear' && !offcycleMidyearOpen({ from: year.midyearFrom, to: year.midyearTo }, today)) throw new RewardError('Mid-year recommendations can be submitted only inside the mid-year window.');
+}
 export async function decideRewardUnit(ctx: SessionContext, unitId: string, revision: number, action: 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', reason: string, acknowledged = false) {
   z.enum(['submit', 'approve', 'return', 'reject', 'withdraw']).parse(action); reason = z.string().trim().max(4000).parse(reason);
   return withRewardsTenant(ctx, tx => decideRewardUnitTx(tx, ctx, unitId, revision, action, reason, acknowledged));
@@ -1178,6 +1204,7 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
     const governance=unit.kind==='annual'&&!uploaded?await governancePublicTx(tx,unitId):null;
     const next = unit.kind === 'annual' ? transition(unit.status, roles, action as 'submit' | 'approve' | 'return') : offcycleTransition(unit.status, roles, action, route);
     if (unit.kind !== 'annual' && action === 'approve' && entries.some(e => visibleEntry(e, roles, ctx.personId) && e.recommendation.promotionGrade) && !acknowledged) throw new RewardError('Acknowledge that you reviewed the current and proposed role summaries.');
+    if (unit.kind !== 'annual') await assertOffcycleDecisionAllowedTx(tx, ctx, unit, entries, action);
     if (['return', 'reject', 'withdraw'].includes(action) && reason.length < 10) throw new RewardError('Explain why the unit is being returned (at least 10 characters).');
     const hash = digest(unit, entries), calculated = await calculateUnit(tx, unit, entries);
     if (action === 'submit' || action === 'approve') {
@@ -1204,8 +1231,12 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
     }
     // Board fc804e8c: a submitted annual review keeps the Limit Controls version it was checked with.
     if (action === 'submit' && unit.kind === 'annual' && unit.status === 'draft' && !uploaded) await pinRewardLimitsOnSubmitTx(tx, unitId, await rewardLimitsForUnitTx(tx, unit));
+    // Board b945f0cc: a submitted off-cycle request keeps the Limit Controls version it was checked with.
+    if (action === 'submit' && unit.kind !== 'annual' && unit.status === 'draft') await pinRewardOffcycleLimitsOnSubmitTx(tx, unitId, await rewardOffcycleLimitsTx(tx, unit));
+    // An approved effective date between 1 October and 31 December is recorded as that year's year-end exclusion.
+    const offcycleDetails = unit.kind !== 'annual' && unit.offcycle ? { ...unit.offcycle, yearEndExclusion: next === 'approved' ? offcycleYearEndExclusion(unit.policy.effectiveFrom) : null } : null;
     await tx.insert(rewardDecision).values({ tenantId: ctx.tenantId, unitId, actorId: ctx.userId!, revision, action, fromStage: unit.status, toStage: next, reason, digest: hash });
-    await tx.update(rewardUnit).set({ status: next, approvedDigest: ['return', 'reject', 'withdraw'].includes(action) ? null : hash, ...(action === 'return' ? { revision: revision + 1 } : {}), ...(unit.kind !== 'annual' ? { reservedCents: { standard: calculated.budgets.standard.used[0], h: calculated.budgets.h.used[0] } } : {}), updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
+    await tx.update(rewardUnit).set({ status: next, approvedDigest: ['return', 'reject', 'withdraw'].includes(action) ? null : hash, ...(action === 'return' ? { revision: revision + 1 } : {}), ...(unit.kind !== 'annual' ? { reservedCents: { standard: calculated.budgets.standard.used[0], h: calculated.budgets.h.used[0] }, offcycle: offcycleDetails } : {}), updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
     await stamp(tx, ctx, unitId, next === 'approved' ? 'approved' : 'routed', { from: unit.status, to: next, revision });
     return next;
 }
@@ -1497,6 +1528,8 @@ export async function createOffcycleReview(ctx: SessionContext, parentId: string
     await tx.execute(sql`select app.access_configuration_write_lock()`);
     const { unit: parent, roles, entries } = await load(tx, parentId, true);await assertRewardCapabilityTx(tx,parentId,'offcycle.raise');
     if (parent.kind !== 'annual' || parent.status !== 'posted') throw new RewardError('Use a posted annual review as the funding source.');
+    // Board b945f0cc: off-cycle requests are switched on once Group Rewards opens the off-cycle year.
+    if (!await offcycleYearTx(tx, parent.cycleId)) throw new RewardError('Group Rewards has not opened the off-cycle year for this cycle.');
     if (!roles.some(r => ['bu', 'bg', 'gr'].includes(r))) throw new RewardError('BU, BG or Group Rewards access is required.');
     if (p.effectiveFrom <= parent.policy.effectiveFrom) throw new RewardError('The off-cycle effective date must follow the annual award.');
     const selected = p.entryIds.map(id => entries.find(e => e.id === id));
@@ -1653,7 +1686,7 @@ export function pendingRewardTasksBundleSql(scopeIds?: readonly string[]) {
     from ${rewardUnit} inner join ${rewardCycle} on ${eq(rewardCycle.id, rewardUnit.cycleId)} inner join ${businessUnit} on ${eq(businessUnit.id, rewardUnit.businessUnitId)}
     where ${isNull(rewardUnit.deletedAt)} and ${rewardUnit.status}='draft' ${scope ? sql`and ${rewardUnit.companyId}=any(${scope})` : sql``}
      and ${latestDecisionActionSql}='return'
-     and (case when ${rewardUnit.offcycle}->>'bgOrigin'='true' then 'bg' else 'bu' end) in (select app.reward_roles(${rewardUnit.id})))`;
+     and (case when ${rewardUnit.offcycle}->>'bgOrigin'='true' or coalesce(${rewardUnit.offcycle}->>'exceptionReason','')<>'' then 'bg' else 'bu' end) in (select app.reward_roles(${rewardUnit.id})))`;
   return sql`(select jsonb_build_object('due',reward_probe.due,'readable',reward_readable.units,
     'queue',case when reward_probe.due is distinct from false or cardinality(reward_readable.approval_ids)=0 then null else ${queue} end,
     'returned',case when reward_probe.due is distinct from false or not reward_readable.drafts then null else ${returned} end)
@@ -2477,3 +2510,109 @@ export type RewardDashboard=Awaited<ReturnType<typeof rewardDashboard>>;
 
 /** Metadata only, from the original dated preparation audience. No raw unit/policy row is exposed. */
 export function rewardPreparationNotices(ctx:SessionContext){return withRewardsTenant(ctx,tx=>tx.execute<{unitId:string;companyId:string;company:string;unit:string;cycle:string;expectedRelease:string|null}>(sql`select * from app.reward_preparation_notices()`));}
+
+/* ------------------------------------------------------------------------------------------------------------------
+ * Board b945f0cc: Off-cycle and Mid-year recommendations (docs/adr/2026-11-12-rewards-offcycle-company-balance.md).
+ * ------------------------------------------------------------------------------------------------------------------ */
+export type RewardOffcycleBalance={companyId:string;company:string;frozenCents:number;heldCents:number;consumedCents:number;availableCents:number};
+export type RewardOffcycleRequest={id:string;kind:'adhoc'|'midyear';exception:boolean;status:string;returned:boolean;company:string;unit:string;effectiveFrom:string|null;due:string|null;daysUntilDue:number|null;people:number|null};
+const OFFCYCLE_REQUEST_STATES=['draft','bg','gr','ctro','ec','approved'];
+/** The Off-cycle side of the reviewer dashboard: the latest open off-cycle year in scope, each company's balance (one
+ * set-based statement, aggregates only) and the viewer's requests with their status and due date. Requests about the
+ * viewer are never listed. Drafts hold no budget. */
+export type RewardOffcycleDashboard={cycle:{id:string;name:string;year:number}|null;balances:RewardOffcycleBalance[];requests:RewardOffcycleRequest[];
+ canRaise:boolean;canConfigure:boolean;blackout:boolean;midyearOpen:boolean;window:{from:string|null;to:string|null}|null};
+export async function rewardOffcycleDashboard(ctx:SessionContext,companyIds:string[]):Promise<RewardOffcycleDashboard>{
+ return withRewardsTenant(ctx,async tx=>{
+  if(!companyIds.length)return{cycle:null,balances:[],requests:[],canRaise:false,canConfigure:false,blackout:offcycleBlackout(todayInKualaLumpur()),midyearOpen:false,window:null};
+  const scope=sql`ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+  const [cycle]=await tx.execute<{id:string;name:string;year:number;midyearFrom:string|null;midyearTo:string|null}>(sql`select c.id,c.name,c.year,y.midyear_from::text as "midyearFrom",y.midyear_to::text as "midyearTo"
+   from reward_offcycle_year y join reward_cycle c on c.id=y.cycle_id and c.tenant_id=y.tenant_id
+   where y.tenant_id=app.current_tenant_id() and exists(select 1 from reward_unit u where u.cycle_id=c.id and u.tenant_id=c.tenant_id and u.kind='annual' and u.status='posted' and u.company_id=any(${scope}))
+   order by c.year desc,y.opened_at desc,c.id limit 1`);
+  const [whole]=await tx.execute<{allowed:boolean}>(sql`select coalesce(app.reward_setup_allowed(NULL,'manage'),false) as allowed`);
+  const today=todayInKualaLumpur();
+  if(!cycle)return{cycle:null,balances:[],requests:[],canRaise:false,canConfigure:!!whole?.allowed,blackout:offcycleBlackout(today),midyearOpen:false,window:null};
+  const balances=await tx.execute<RewardOffcycleBalance>(sql`select b.company_id as "companyId",c.legal_name as company,b.frozen_cents::bigint::float8 as "frozenCents",b.held_cents::float8 as "heldCents",b.consumed_cents::float8 as "consumedCents",b.available_cents::float8 as "availableCents"
+   from app.reward_offcycle_balances(${cycle.id}::uuid) b join company c on c.id=b.company_id and c.tenant_id=app.current_tenant_id() where b.company_id=any(${scope}) order by c.legal_name,b.company_id`);
+  // The viewer's requests in this cycle: seat holder or creator, never a request about the viewer.
+  const units=(await listRewardUnitsTx(tx,companyIds)).filter(u=>u.kind!=='annual'&&u.cycleId===cycle.id&&OFFCYCLE_REQUEST_STATES.includes(u.status));
+  const ids=units.map(u=>u.id);
+  const mine=ids.length?new Set((await tx.execute<{id:string}>(sql`select u.id::text as id from reward_unit u where u.tenant_id=app.current_tenant_id() and u.id=any(${rewardUuidArray(ids)})
+   and (u.created_by=app.current_user_id() or exists(select 1 from app.reward_roles(u.id)))
+   and not exists(select 1 from reward_entry e join employment m on m.id=e.employment_id and m.tenant_id=e.tenant_id where e.unit_id=u.id and e.tenant_id=u.tenant_id and m.person_id=${ctx.personId??null}::uuid)`)).map(r=>r.id)):new Set<string>();
+  const exceptions=ids.length?new Set((await tx.execute<{id:string}>(sql`select id::text as id from reward_unit where tenant_id=app.current_tenant_id() and id=any(${rewardUuidArray(ids)}) and coalesce(offcycle->>'exceptionReason','')<>''`)).map(r=>r.id)):new Set<string>();
+  const requests:RewardOffcycleRequest[]=units.filter(u=>mine.has(u.id)).map(u=>({id:u.id,kind:u.kind as 'adhoc'|'midyear',exception:exceptions.has(u.id),status:u.status,returned:!!u.returnedTo,company:u.company,unit:u.unit,effectiveFrom:u.effectiveFrom,due:u.due,daysUntilDue:u.daysUntilDue,people:u.people}))
+   .sort((a,b)=>(a.due??'9999').localeCompare(b.due??'9999')||a.company.localeCompare(b.company)||a.id.localeCompare(b.id));
+  const [raise]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from reward_unit u where u.tenant_id=app.current_tenant_id() and u.cycle_id=${cycle.id}::uuid and u.kind='annual' and u.status='posted' and u.deleted_at is null and u.company_id=any(${scope})
+   and exists(select 1 from app.reward_roles(u.id) r where r in('bu','bg','gr')) and app.reward_capability(u.id,'offcycle.raise')) as allowed`);
+  const window={from:cycle.midyearFrom,to:cycle.midyearTo};
+  return{cycle:{id:cycle.id,name:cycle.name,year:Number(cycle.year)},balances:[...balances].map(b=>({...b,frozenCents:Number(b.frozenCents),heldCents:Number(b.heldCents),consumedCents:Number(b.consumedCents),availableCents:Number(b.availableCents)})),
+   requests,canRaise:!!raise?.allowed,canConfigure:!!whole?.allowed,blackout:offcycleBlackout(today),midyearOpen:offcycleMidyearOpen(window,today),window};
+ });
+}
+
+/** The funding reviews (posted annual reviews of an open off-cycle year) the viewer may raise a request from. */
+export async function rewardOffcycleSources(ctx:SessionContext,companyIds:string[]){
+ return withRewardsTenant(ctx,async tx=>{
+  if(!companyIds.length)return[];
+  return [...await tx.execute<{id:string;company:string;unit:string;cycle:string;year:number}>(sql`select u.id::text as id,c.legal_name as company,coalesce(nullif(trim(b.label),''),b.name,b.code) as unit,y.name as cycle,y.year
+   from reward_unit u join reward_cycle y on y.id=u.cycle_id and y.tenant_id=u.tenant_id join reward_offcycle_year o on o.cycle_id=y.id and o.tenant_id=y.tenant_id
+   join company c on c.id=u.company_id and c.tenant_id=u.tenant_id join business_unit b on b.id=u.business_unit_id and b.tenant_id=u.tenant_id
+   where u.tenant_id=app.current_tenant_id() and u.kind='annual' and u.status='posted' and u.deleted_at is null and u.company_id=any(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])
+    and exists(select 1 from app.reward_roles(u.id) r where r in('bu','bg','gr')) and app.reward_capability(u.id,'offcycle.raise')
+   order by y.year desc,c.legal_name,3,u.id limit 500`)];
+ });
+}
+
+const offcycleYearInputSchema=z.object({cycleId:z.uuid(),expectedRevision:z.number().int().min(0),midyearFrom:isoDateSchema.nullable(),midyearTo:isoDateSchema.nullable()}).strict()
+ .refine(v=>(v.midyearFrom===null)===(v.midyearTo===null)&&(!v.midyearFrom||!v.midyearTo||v.midyearFrom<=v.midyearTo),'Enter both mid-year window dates, the start on or before the end.');
+async function requireOffcycleConfigTx(tx:Tx){
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select coalesce(app.reward_setup_allowed(NULL,'manage'),false) and coalesce(app.reward_not_viewing_as(),false) as allowed`);
+ if(!row?.allowed)throw new RewardError('Off-cycle settings are available to Group Rewards only.');
+}
+/** Off-cycle settings for Group Rewards: each recent cycle, whether its off-cycle year is open, its mid-year window and
+ * whether every year-end review has finished EC approval and the payroll hand-off. */
+export async function rewardOffcycleSettings(ctx:SessionContext){
+ return withRewardsTenant(ctx,async tx=>{
+  await requireOffcycleConfigTx(tx);
+  const rows=await tx.execute<{cycleId:string;name:string;year:number;revision:number|null;openedAt:string|null;midyearFrom:string|null;midyearTo:string|null;readiness:{posted:number;open:number;companies:number}|null}>(sql`select c.id::text as "cycleId",c.name,c.year,y.revision,y.opened_at::text as "openedAt",y.midyear_from::text as "midyearFrom",y.midyear_to::text as "midyearTo",app.reward_offcycle_cycle_readiness(c.id) as readiness
+   from reward_cycle c left join reward_offcycle_year y on y.cycle_id=c.id and y.tenant_id=c.tenant_id where c.tenant_id=app.current_tenant_id() order by c.year desc,c.name,c.id limit 20`);
+  return rows.map(row=>({...row,year:Number(row.year),revision:row.revision??0,readiness:row.readiness??{posted:0,open:0,companies:0},canOpen:!row.revision&&(row.readiness?.posted??0)>0&&(row.readiness?.open??1)===0}));
+ });
+}
+async function offcycleYearSummaryTx(tx:Tx,input:z.output<typeof offcycleYearInputSchema>){
+ const [cycle]=await tx.execute<{name:string;year:number}>(sql`select name,year from reward_cycle where id=${input.cycleId}::uuid and tenant_id=app.current_tenant_id()`);
+ if(!cycle)throw new RewardError('Reward cycle not found.');
+ const current=await offcycleYearTx(tx,input.cycleId);
+ if((current?.revision??0)!==input.expectedRevision)throw new RewardError('Off-cycle settings changed. Reload before saving.');
+ if(!current){
+  // The database function enforces the same rule; this gives the editor a plain refusal before the summary.
+  const [ready]=await tx.execute<{value:{posted:number;open:number}|null}>(sql`select app.reward_offcycle_cycle_readiness(${input.cycleId}::uuid) as value`);
+  if(!ready?.value||Number(ready.value.posted)===0||Number(ready.value.open)>0)throw new RewardError('Every year-end review must finish EC approval and the payroll hand-off before the off-cycle year opens.');
+ }
+ const window=(from:string|null,to:string|null)=>from&&to?`${from} – ${to}`:null;
+ const lines=[...(!current?[{key:'state',label:'Off-cycle year',before:'Closed',after:'Open'}]:[]),
+  ...(window(current?.midyearFrom??null,current?.midyearTo??null)!==window(input.midyearFrom,input.midyearTo)?[{key:'midyear',label:'Mid-year submission window',before:window(current?.midyearFrom??null,current?.midyearTo??null),after:window(input.midyearFrom,input.midyearTo)}]:[])];
+ return rewardConfigSummary({area:'offcycle',itemLabel:`Off-cycle year · ${cycle.name}`,lines,affected:[],highImpact:[...(!current?['open-offcycle' as const]:[]),...(lines.some(l=>l.key==='midyear')?['offcycle-window' as const]:[])]});
+}
+/** "Review before saving" for opening the off-cycle year or changing the mid-year window. */
+export async function previewRewardOffcycleYearSave(ctx:SessionContext,raw:unknown){
+ const input=offcycleYearInputSchema.parse(raw);
+ return withRewardsTenant(ctx,async tx=>{await requireOffcycleConfigTx(tx);const summary=await offcycleYearSummaryTx(tx,input);return{summary,digest:rewardConfigSummaryDigest(summary)};});
+}
+/** Board 60f1fdcd direct save: the reviewed summary, a reason and one change-log row; no second person. */
+export async function saveRewardOffcycleYear(ctx:SessionContext,raw:unknown){
+ const parsed=z.object({reason:z.string().max(4000).default(''),summaryDigest:z.string().nullable().optional()}).passthrough().parse(raw);
+ const {reason:_reason,summaryDigest:_digest,...rest}=parsed;
+ const input=offcycleYearInputSchema.parse(rest);
+ return withRewardsTenant(ctx,async tx=>{
+  await requireOffcycleConfigTx(tx);
+  const summary=await offcycleYearSummaryTx(tx,input);
+  if(!summary.changedCount)throw new RewardError('Nothing changed.');
+  const reason=assertRewardConfigReviewed(summary,{reason:parsed.reason,digest:parsed.summaryDigest});
+  const [row]=await tx.execute<{revision:number}>(sql`select app.reward_offcycle_year_save(${input.cycleId}::uuid,${input.expectedRevision},${input.midyearFrom}::date,${input.midyearTo}::date) as revision`);
+  await recordRewardConfigChangeTx(tx,ctx,{area:'offcycle',action:input.expectedRevision===0?'opened':'saved',itemId:input.cycleId,itemLabel:summary.itemLabel,companyIds:[],versionRef:String(row.revision),reason,summary});
+  return{revision:row.revision};
+ });
+}

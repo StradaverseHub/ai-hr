@@ -2,10 +2,10 @@
  * Reviewer dashboard ("Reviewing Team Rewards") presentation model. Pure and dependency-free: the service
  * supplies only authorized, released review values; nothing here confers a scope or authorizes a read.
  *
- * The dashboard currently covers the annual (Year-end) review. `RewardDashboardKind` is the single
- * extension point for an Off-cycle view: widen the union, the decoder and REWARD_DASHBOARD_KINDS.
+ * `RewardDashboardKind` is the Year-end cycle / Off-cycle switch (board b945f0cc): 'annual' is the year-end review,
+ * 'offcycle' the off-cycle balances and requests. The saved preference keeps the last choice.
  */
-export const REWARD_DASHBOARD_KINDS=['annual'] as const;
+export const REWARD_DASHBOARD_KINDS=['annual','offcycle'] as const;
 export type RewardDashboardKind=typeof REWARD_DASHBOARD_KINDS[number];
 export const REWARD_DASHBOARD_PLANS=['standard','h'] as const;
 export type RewardDashboardPlan=typeof REWARD_DASHBOARD_PLANS[number];

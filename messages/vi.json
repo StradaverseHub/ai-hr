@@ -24453,7 +24453,7 @@
     "annualSource": "Open annual funding source",
     "startOffcycle": "Start off-cycle review",
     "budgetException": "Budget exception reason (optional)",
-    "exceptionHelp": "Available only for an individual ad-hoc request. Explain the exception in at least 30 characters; EC approval is then required.",
+    "exceptionHelp": "Chỉ cho yêu cầu đột xuất cá nhân mà số dư còn lại không đủ. Giải thích ít nhất 30 ký tự vì sao không thể chờ; yêu cầu đi riêng qua BG CEO, Group Rewards, CTRO và EC.",
     "currentRoleSummary": "Current job-description summary",
     "proposedRoleSummary": "Proposed job-description summary",
     "roleSummaryHelp": "Save only the relevant role-change summaries below. Comparison extracts changed statements; it does not judge whether a promotion is justified. Each approver must review the summaries.",
@@ -25177,7 +25177,23 @@
         "special": "điều chỉnh đặc biệt"
       }
     },
-    "limitControlsOwned": "Các giá trị này của năm khen thưởng do Kiểm soát giới hạn quản lý. Tại đây chỉ được xem và đợt xét duyệt dùng phiên bản Kiểm soát giới hạn."
+    "limitControlsOwned": "Các giá trị này của năm khen thưởng do Kiểm soát giới hạn quản lý. Tại đây chỉ được xem và đợt xét duyệt dùng phiên bản Kiểm soát giới hạn.",
+    "offcycle": {
+      "balanceHelp": "Được đối chiếu với một số dư ngoài chu kỳ của công ty: phần còn lại của tăng lương cuối năm trừ mọi yêu cầu khác đang phê duyệt, đã phê duyệt hoặc đã chi trả. Bản nháp và yêu cầu bị trả lại, từ chối hoặc rút lại không giữ gì.",
+      "available": "Số dư khả dụng",
+      "thisRequest": "Yêu cầu này",
+      "leftAfter": "Còn lại sau yêu cầu này",
+      "over": "Vượt {amount}",
+      "yearEndExclusion": "Có hiệu lực từ 1 tháng 10 đến 31 tháng 12: người này bị loại khỏi đợt tăng lương cuối năm {year}.",
+      "crBeforeAfter": "Tỷ lệ so sánh trước → sau",
+      "positionInRange": "Vị trí trong khung",
+      "position": {
+        "below": "Dưới khung",
+        "within": "Trong khung",
+        "above": "Trên khung",
+        "unknown": "Không có khung"
+      }
+    }
   },
   "identityEmail": {
     "title": "Gửi email",
@@ -37893,7 +37909,49 @@
     "overOwnPool": "Vượt ngân sách riêng: {companies}",
     "excludedRestricted": "Không tính vào các số liệu này vì đợt xét có hồ sơ bị hạn chế: {companies}",
     "excludedUploaded": "Không tính vào các số liệu này vì đợt xét được tải lên giữ nguyên các khoản thưởng đã ghi nhận: {companies}",
-    "noCombinedFigures": "Không có số liệu tổng hợp cho các công ty đã chọn."
+    "noCombinedFigures": "Không có số liệu tổng hợp cho các công ty đã chọn.",
+    "kindSwitch": "Chu kỳ cuối năm hoặc ngoài chu kỳ",
+    "kinds": {
+      "annual": "Chu kỳ cuối năm",
+      "offcycle": "Ngoài chu kỳ"
+    },
+    "offcycle": {
+      "notOpen": "Yêu cầu ngoài chu kỳ mở khi chu kỳ cuối năm kết thúc và Group Rewards mở năm ngân sách mới.",
+      "settings": "Cài đặt ngoài chu kỳ",
+      "settingsHelp": "Mở năm ngân sách ngoài chu kỳ khi mọi đợt xét duyệt cuối năm đã được EC phê duyệt cuối cùng và bàn giao cho Payroll, đồng thời đặt khoảng thời gian nộp giữa năm.",
+      "returned": "Đã trả lại",
+      "inApproval": "Đang phê duyệt ({stage})",
+      "window": "Khoảng giữa năm {from} – {to}",
+      "noWindow": "Chưa đặt khoảng giữa năm",
+      "addMidyear": "Thêm đề xuất giữa năm",
+      "newAdhoc": "Yêu cầu đột xuất mới",
+      "blackout": "Không thể nộp hoặc phê duyệt yêu cầu ngoài chu kỳ từ 1 tháng 10 đến 31 tháng 1. Bạn vẫn có thể soạn bản nháp.",
+      "midyearClosed": "Đề xuất giữa năm chỉ được nộp trong khoảng giữa năm.",
+      "balanceTitle": "Số dư ngoài chu kỳ",
+      "left": "Còn {amount}",
+      "meter": "Số dư ngoài chu kỳ đã dùng của {company}",
+      "remainder": "Phần còn lại cuối năm",
+      "held": "Đang giữ cho yêu cầu",
+      "consumed": "Đã chi trả",
+      "available": "Còn dùng được",
+      "noBalance": "Chưa có số dư công ty trong phạm vi của bạn.",
+      "balanceHelp": "Một số dư cho mỗi công ty: phần còn lại của tăng lương cuối năm, trừ các yêu cầu đang phê duyệt hoặc đã phê duyệt và các yêu cầu đã chi trả. Bản nháp không giữ ngân sách.",
+      "myRequests": "Yêu cầu của tôi ({count})",
+      "noRequests": "Bạn không có yêu cầu ngoài chu kỳ nào.",
+      "back": "Xét duyệt thưởng của nhóm",
+      "midyearHelp": "Chọn công ty và đơn vị kinh doanh. Bộ đề xuất giữa năm được nộp và phê duyệt cùng nhau: BU CEO, BG CEO, rồi Group Rewards.",
+      "adhocHelp": "Chọn công ty và đơn vị kinh doanh, rồi chọn một người. Yêu cầu đột xuất đi qua BU CEO, BG CEO, Group Rewards và CTRO, và tới Chủ tịch điều hành với JG 22 trở lên.",
+      "noSources": "Không có đợt xét duyệt cuối năm đã ghi sổ nào trong năm ngoài chu kỳ đang mở cho phép bạn tạo yêu cầu.",
+      "systemError": "Không thể lưu cài đặt ngoài chu kỳ. Hãy thử lại.",
+      "noAccess": "Bạn không có quyền truy cập cài đặt ngoài chu kỳ.",
+      "openSince": "Năm ngoài chu kỳ mở từ {date}.",
+      "readiness": "{posted} đợt xét duyệt cuối năm đã bàn giao cho Payroll, {open} đang xử lý.",
+      "noCycles": "Chưa có chu kỳ thưởng.",
+      "windowFrom": "Khoảng giữa năm bắt đầu",
+      "windowTo": "Khoảng giữa năm kết thúc",
+      "saveWindow": "Lưu khoảng giữa năm",
+      "openYear": "Mở năm ngoài chu kỳ"
+    }
   },
   "maybankPayment": {
     "settings": "Cài đặt tệp thanh toán Maybank",
@@ -38600,7 +38658,9 @@
       "released-library": "Các đợt đánh giá đã phát hành dùng phiên bản trước và sẽ giữ phiên bản đó; đợt đánh giá mới dùng phiên bản này.",
       "released-limit": "Hạn mức ngân sách thay đổi cho một đợt đánh giá đã phát hành.",
       "release-review": "Phát hành sẽ gửi đợt đánh giá này đến CEO đơn vị kinh doanh.",
-      "remove-access": "Một người sẽ mất quyền truy cập vào đợt đánh giá."
+      "remove-access": "Một người sẽ mất quyền truy cập vào đợt đánh giá.",
+      "open-offcycle": "Mở năm ngoài chu kỳ cho phép lãnh đạo dùng số dư công ty cho yêu cầu ngoài chu kỳ.",
+      "offcycle-window": "Khoảng giữa năm quyết định khi nào có thể nộp đề xuất giữa năm."
     },
     "whatChanges": "Nội dung thay đổi ({count})",
     "item": "Mục",
@@ -38652,7 +38712,8 @@
       "access": "Quyền truy cập Rewards",
       "role_permission": "Quyền theo vai trò",
       "group_role": "Vai trò toàn tập đoàn",
-      "limit": "Kiểm soát hạn mức"
+      "limit": "Kiểm soát hạn mức",
+      "offcycle": "Ngoài chu kỳ"
     },
     "actions": {
       "returned-to-draft": "Trả về bản nháp",

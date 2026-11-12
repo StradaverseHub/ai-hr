@@ -24453,7 +24453,7 @@
     "annualSource": "Open annual funding source",
     "startOffcycle": "Start off-cycle review",
     "budgetException": "Budget exception reason (optional)",
-    "exceptionHelp": "Available only for an individual ad-hoc request. Explain the exception in at least 30 characters; EC approval is then required.",
+    "exceptionHelp": "仅适用于剩余余额无法覆盖的个人临时申请。请用至少 30 个字符说明为何不能等待；该申请单独经 BG CEO、Group Rewards、CTRO 和 EC 审批。",
     "currentRoleSummary": "Current job-description summary",
     "proposedRoleSummary": "Proposed job-description summary",
     "roleSummaryHelp": "Save only the relevant role-change summaries below. Comparison extracts changed statements; it does not judge whether a promotion is justified. Each approver must review the summaries.",
@@ -25177,7 +25177,23 @@
         "special": "特别调整"
       }
     },
-    "limitControlsOwned": "本奖励年度的这些数值由限额控制管理。此处为只读，评审使用限额控制版本。"
+    "limitControlsOwned": "本奖励年度的这些数值由限额控制管理。此处为只读，评审使用限额控制版本。",
+    "offcycle": {
+      "balanceHelp": "按公司唯一的周期外余额核对：年终调薪余额减去其他审批中、已批准或已发放的申请。草稿以及被退回、拒绝或撤回的申请不占用余额。",
+      "available": "可用余额",
+      "thisRequest": "本申请",
+      "leftAfter": "本申请后剩余",
+      "over": "超出 {amount}",
+      "yearEndExclusion": "生效日期在 10 月 1 日至 12 月 31 日之间：此人不参加 {year} 年终调薪。",
+      "crBeforeAfter": "薪酬比率 前 → 后",
+      "positionInRange": "区间位置",
+      "position": {
+        "below": "低于区间",
+        "within": "区间内",
+        "above": "高于区间",
+        "unknown": "无区间"
+      }
+    }
   },
   "identityEmail": {
     "title": "邮件发送",
@@ -37893,7 +37909,49 @@
     "overOwnPool": "超出其自身预算池：{companies}",
     "excludedRestricted": "以下公司未计入这些数字，因为评审含受限记录：{companies}",
     "excludedUploaded": "以下公司未计入这些数字，因为上传的评审保留其已记录的奖励：{companies}",
-    "noCombinedFigures": "所选公司没有可用的合计数字。"
+    "noCombinedFigures": "所选公司没有可用的合计数字。",
+    "kindSwitch": "年终周期或周期外",
+    "kinds": {
+      "annual": "年终周期",
+      "offcycle": "周期外"
+    },
+    "offcycle": {
+      "notOpen": "年终周期结束且 Group Rewards 开启新预算年度后，即可提交周期外申请。",
+      "settings": "周期外设置",
+      "settingsHelp": "在每项年终评审获得 EC 最终批准并移交薪资后，开启周期外预算年度并设置年中提交窗口。",
+      "returned": "已退回",
+      "inApproval": "审批中（{stage}）",
+      "window": "年中窗口 {from} – {to}",
+      "noWindow": "未设置年中窗口",
+      "addMidyear": "新增年中建议",
+      "newAdhoc": "新建临时申请",
+      "blackout": "10 月 1 日至 1 月 31 日期间不能提交或批准周期外申请，但仍可准备草稿。",
+      "midyearClosed": "年中建议只能在年中窗口内提交。",
+      "balanceTitle": "周期外余额",
+      "left": "剩余 {amount}",
+      "meter": "{company} 已用周期外余额",
+      "remainder": "年终余额",
+      "held": "申请占用",
+      "consumed": "已发放",
+      "available": "可用",
+      "noBalance": "您的范围内尚无公司余额。",
+      "balanceHelp": "每家公司一个余额：年终调薪余额，减去审批中或已批准的申请以及已发放的申请。草稿不占用预算。",
+      "myRequests": "我的申请（{count}）",
+      "noRequests": "您没有周期外申请。",
+      "back": "审核团队奖励",
+      "midyearHelp": "选择公司和业务单元。年中建议作为一组提交和审批：BU CEO、BG CEO，然后 Group Rewards。",
+      "adhocHelp": "选择公司和业务单元，再选择一名员工。临时申请依次提交 BU CEO、BG CEO、Group Rewards 和 CTRO；JG 22 及以上还需执行主席审批。",
+      "noSources": "在已开启的周期外年度中，没有允许您发起申请的已过账年终评审。",
+      "systemError": "无法保存周期外设置，请重试。",
+      "noAccess": "您无权访问周期外设置。",
+      "openSince": "周期外年度自 {date} 起开启。",
+      "readiness": "{posted} 项年终评审已移交薪资，{open} 项仍在进行中。",
+      "noCycles": "尚无奖励周期。",
+      "windowFrom": "年中窗口开始",
+      "windowTo": "年中窗口结束",
+      "saveWindow": "保存年中窗口",
+      "openYear": "开启周期外年度"
+    }
   },
   "maybankPayment": {
     "settings": "Maybank 付款文件设置",
@@ -38600,7 +38658,9 @@
       "released-library": "已发布的评审使用较早的版本，并将继续沿用；新评审将使用此版本。",
       "released-limit": "已发布的评审的预算上限发生变化。",
       "release-review": "发布后此评审将发送给业务单元 CEO。",
-      "remove-access": "有人将失去对某个评审的访问权限。"
+      "remove-access": "有人将失去对某个评审的访问权限。",
+      "open-offcycle": "开启周期外年度后，领导可使用公司余额提交周期外申请。",
+      "offcycle-window": "年中窗口决定何时可以提交年中建议。"
     },
     "whatChanges": "变更内容（{count}）",
     "item": "项目",
@@ -38652,7 +38712,8 @@
       "access": "薪酬访问权限",
       "role_permission": "角色权限",
       "group_role": "全集团角色",
-      "limit": "上限控制"
+      "limit": "上限控制",
+      "offcycle": "周期外"
     },
     "actions": {
       "returned-to-draft": "已退回草稿",

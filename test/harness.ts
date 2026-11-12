@@ -17,6 +17,7 @@ import { isFixtureResetLockError } from './harness-reset-errors';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
+  'reward_offcycle_year',
   'reward_unit_limit_pin','reward_limit_version',
   'reward_config_change',
   'reward_pat_basis',

@@ -24453,7 +24453,7 @@
     "annualSource": "Open annual funding source",
     "startOffcycle": "Start off-cycle review",
     "budgetException": "Budget exception reason (optional)",
-    "exceptionHelp": "Available only for an individual ad-hoc request. Explain the exception in at least 30 characters; EC approval is then required.",
+    "exceptionHelp": "สำหรับคำขอเฉพาะกิจรายบุคคลที่ยอดคงเหลือไม่พอเท่านั้น อธิบายอย่างน้อย 30 ตัวอักษรว่าทำไมรอไม่ได้ คำขอจะส่งแยกผ่าน BG CEO, Group Rewards, CTRO และ EC",
     "currentRoleSummary": "Current job-description summary",
     "proposedRoleSummary": "Proposed job-description summary",
     "roleSummaryHelp": "Save only the relevant role-change summaries below. Comparison extracts changed statements; it does not judge whether a promotion is justified. Each approver must review the summaries.",
@@ -25177,7 +25177,23 @@
         "special": "การปรับพิเศษ"
       }
     },
-    "limitControlsOwned": "ค่าเหล่านี้ของปีรางวัลนี้กำหนดโดยการควบคุมขีดจำกัด ที่นี่เป็นแบบอ่านอย่างเดียว และการพิจารณาใช้เวอร์ชันการควบคุมขีดจำกัด"
+    "limitControlsOwned": "ค่าเหล่านี้ของปีรางวัลนี้กำหนดโดยการควบคุมขีดจำกัด ที่นี่เป็นแบบอ่านอย่างเดียว และการพิจารณาใช้เวอร์ชันการควบคุมขีดจำกัด",
+    "offcycle": {
+      "balanceHelp": "ตรวจสอบกับยอดนอกรอบเดียวของบริษัท: ยอดคงเหลือการขึ้นเงินเดือนสิ้นปี หักคำขออื่นที่อยู่ระหว่างอนุมัติ อนุมัติแล้ว หรือจ่ายแล้ว ฉบับร่าง คำขอที่ถูกส่งคืน ปฏิเสธ หรือถอนไม่กันยอด",
+      "available": "ยอดคงเหลือใช้ได้",
+      "thisRequest": "คำขอนี้",
+      "leftAfter": "คงเหลือหลังคำขอนี้",
+      "over": "เกิน {amount}",
+      "yearEndExclusion": "มีผลระหว่าง 1 ตุลาคมถึง 31 ธันวาคม: พนักงานผู้นี้จะไม่ได้รับการขึ้นเงินเดือนสิ้นปี {year}",
+      "crBeforeAfter": "อัตราส่วนเทียบก่อน → หลัง",
+      "positionInRange": "ตำแหน่งในช่วง",
+      "position": {
+        "below": "ต่ำกว่าช่วง",
+        "within": "อยู่ในช่วง",
+        "above": "สูงกว่าช่วง",
+        "unknown": "ไม่มีช่วง"
+      }
+    }
   },
   "identityEmail": {
     "title": "การส่งอีเมล",
@@ -37893,7 +37909,49 @@
     "overOwnPool": "เกินงบของตนเอง: {companies}",
     "excludedRestricted": "ไม่รวมในตัวเลขนี้เนื่องจากการพิจารณามีข้อมูลที่จำกัดสิทธิ์: {companies}",
     "excludedUploaded": "ไม่รวมในตัวเลขนี้เนื่องจากการพิจารณาที่อัปโหลดใช้รางวัลที่บันทึกไว้: {companies}",
-    "noCombinedFigures": "ไม่มีตัวเลขรวมสำหรับบริษัทที่เลือก"
+    "noCombinedFigures": "ไม่มีตัวเลขรวมสำหรับบริษัทที่เลือก",
+    "kindSwitch": "รอบสิ้นปีหรือนอกรอบ",
+    "kinds": {
+      "annual": "รอบสิ้นปี",
+      "offcycle": "นอกรอบ"
+    },
+    "offcycle": {
+      "notOpen": "คำขอนอกรอบจะเปิดเมื่อรอบสิ้นปีปิดและ Group Rewards เปิดปีงบประมาณใหม่",
+      "settings": "การตั้งค่านอกรอบ",
+      "settingsHelp": "เปิดปีงบประมาณนอกรอบเมื่อการพิจารณาสิ้นปีทุกรายการได้รับอนุมัติขั้นสุดท้ายจาก EC และส่งต่อให้ Payroll แล้ว และกำหนดช่วงเวลายื่นกลางปี",
+      "returned": "ส่งคืนแล้ว",
+      "inApproval": "อยู่ระหว่างอนุมัติ ({stage})",
+      "window": "ช่วงกลางปี {from} – {to}",
+      "noWindow": "ยังไม่ได้กำหนดช่วงกลางปี",
+      "addMidyear": "เพิ่มข้อเสนอกลางปี",
+      "newAdhoc": "คำขอเฉพาะกิจใหม่",
+      "blackout": "ไม่สามารถยื่นหรืออนุมัติคำขอนอกรอบได้ตั้งแต่ 1 ตุลาคมถึง 31 มกราคม แต่ยังเตรียมฉบับร่างได้",
+      "midyearClosed": "ข้อเสนอกลางปียื่นได้เฉพาะในช่วงกลางปีเท่านั้น",
+      "balanceTitle": "ยอดคงเหลือนอกรอบ",
+      "left": "เหลือ {amount}",
+      "meter": "ยอดนอกรอบที่ใช้ของ {company}",
+      "remainder": "ยอดคงเหลือสิ้นปี",
+      "held": "ถูกกันไว้โดยคำขอ",
+      "consumed": "จ่ายแล้ว",
+      "available": "คงเหลือใช้ได้",
+      "noBalance": "ยังไม่มียอดคงเหลือของบริษัทในขอบเขตของคุณ",
+      "balanceHelp": "ยอดเดียวต่อบริษัท: ยอดคงเหลือการขึ้นเงินเดือนสิ้นปี หักคำขอที่อยู่ระหว่างอนุมัติหรืออนุมัติแล้ว และคำขอที่จ่ายแล้ว ฉบับร่างไม่กันงบประมาณ",
+      "myRequests": "คำขอของฉัน ({count})",
+      "noRequests": "คุณไม่มีคำขอนอกรอบ",
+      "back": "ตรวจสอบรางวัลของทีม",
+      "midyearHelp": "เลือกบริษัทและหน่วยธุรกิจ ชุดกลางปียื่นและอนุมัติพร้อมกัน: BU CEO, BG CEO แล้ว Group Rewards",
+      "adhocHelp": "เลือกบริษัทและหน่วยธุรกิจ แล้วเลือกพนักงานหนึ่งคน คำขอเฉพาะกิจส่งถึง BU CEO, BG CEO, Group Rewards และ CTRO และถึงประธานกรรมการบริหารสำหรับ JG 22 ขึ้นไป",
+      "noSources": "ไม่มีการพิจารณาสิ้นปีที่โพสต์แล้วในปีนอกรอบที่เปิดอยู่ซึ่งให้คุณยื่นคำขอได้",
+      "systemError": "ไม่สามารถบันทึกการตั้งค่านอกรอบได้ โปรดลองอีกครั้ง",
+      "noAccess": "คุณไม่มีสิทธิ์เข้าถึงการตั้งค่านอกรอบ",
+      "openSince": "ปีนอกรอบเปิดตั้งแต่ {date}",
+      "readiness": "ส่งต่อการพิจารณาสิ้นปีให้ Payroll แล้ว {posted} รายการ ยังดำเนินการอยู่ {open} รายการ",
+      "noCycles": "ยังไม่มีรอบรางวัล",
+      "windowFrom": "ช่วงกลางปีเริ่ม",
+      "windowTo": "ช่วงกลางปีสิ้นสุด",
+      "saveWindow": "บันทึกช่วงกลางปี",
+      "openYear": "เปิดปีนอกรอบ"
+    }
   },
   "maybankPayment": {
     "settings": "การตั้งค่าไฟล์ชำระเงิน Maybank",
@@ -38600,7 +38658,9 @@
       "released-library": "การทบทวนที่เผยแพร่แล้วใช้เวอร์ชันก่อนหน้าและจะใช้ต่อไป การทบทวนใหม่จะใช้เวอร์ชันนี้",
       "released-limit": "วงเงินงบประมาณเปลี่ยนสำหรับการทบทวนที่เผยแพร่แล้ว",
       "release-review": "การเผยแพร่จะส่งการทบทวนนี้ไปยัง CEO ของ BU",
-      "remove-access": "มีผู้สูญเสียสิทธิ์เข้าถึงการทบทวน"
+      "remove-access": "มีผู้สูญเสียสิทธิ์เข้าถึงการทบทวน",
+      "open-offcycle": "การเปิดปีนอกรอบทำให้ผู้นำใช้ยอดคงเหลือของบริษัทสำหรับคำขอนอกรอบได้",
+      "offcycle-window": "ช่วงกลางปีกำหนดว่าข้อเสนอกลางปียื่นได้เมื่อใด"
     },
     "whatChanges": "สิ่งที่เปลี่ยน ({count})",
     "item": "รายการ",
@@ -38652,7 +38712,8 @@
       "access": "สิทธิ์เข้าถึง Rewards",
       "role_permission": "สิทธิ์ตามบทบาท",
       "group_role": "บทบาททั้งกลุ่ม",
-      "limit": "การควบคุมวงเงิน"
+      "limit": "การควบคุมวงเงิน",
+      "offcycle": "นอกรอบ"
     },
     "actions": {
       "returned-to-draft": "คืนเป็นฉบับร่าง",
