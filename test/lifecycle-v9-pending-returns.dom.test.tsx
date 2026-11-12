@@ -9,7 +9,7 @@ import messages from '../messages/en.json';
 vi.mock('../app/lifecycle/v9/actions', () => ({ readV9Case: vi.fn() }));
 const c = { id: 'case', revision: 2 } as Case;
 it('keeps held records read-only and retains the catalogue search when a write fails', async () => {
-  vi.mocked(readV9Case).mockResolvedValue({ok:true,detail:{case:c,calculation:null,personnelWritableKeys:[],returns:{held:[{id:'held',name:'Held laptop',kind:'device',group:null,source:'asset'}],selected:['selected'],catalogue:[{id:'selected',name:'Extra account',kind:'system',group:'team',active:true},{id:'active',name:'New laptop',kind:'device',group:'team',active:true},{id:'retired',name:'New retired laptop',kind:'device',group:'team',active:false}]}}});
+  vi.mocked(readV9Case).mockResolvedValue({ok:true,detail:{case:c,calculation:null,personnelWritableKeys:[],returns:{held:[{id:'held',name:'Held laptop',kind:'device',group:null,source:'asset'}],selected:['selected'],catalogue:[{id:'selected',name:'Extra account',kind:'system',group:'team',active:true},{id:'active',name:'New laptop',kind:'device',group:'team',active:true},{id:'retired',name:'New retired laptop',kind:'device',group:'team',active:false}],rows:[]}}});
   const command=vi.fn().mockResolvedValue({ok:false,error:'The case changed.'});
   render(<NextIntlClientProvider locale="en" messages={messages}><PendingReturns c={c} config={v9Defaults()} busy={false} command={command}/></NextIntlClientProvider>);
   await screen.findByText('Held laptop');
