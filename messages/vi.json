@@ -15143,7 +15143,8 @@
       "perDayDecision": "Quyết định theo ngày",
       "confirmed": "Đã xác nhận",
       "extended": "Đã gia hạn",
-      "terminated": "Đã chấm dứt"
+      "terminated": "Đã chấm dứt",
+      "escalated": "Đã chuyển cấp"
     }
   },
   "payrollConfig": {
@@ -27592,7 +27593,13 @@
       "unusedDeleteImpact": "Xóa quy trình chưa sử dụng cho {company}? Mọi phiên bản chưa sử dụng sẽ bị xóa vĩnh viễn. Không thể hoàn tác.",
       "usedCannotDelete": "Quy trình đã được dùng trong giao dịch phê duyệt nên không thể xóa. Vui lòng lưu trữ.",
       "archived": "Đã lưu trữ quy trình. Đơn và lịch sử hiện có được giữ nguyên.",
-      "archivedList": "Quy trình đã lưu trữ"
+      "archivedList": "Quy trình đã lưu trữ",
+      "escalationLegend": "Phê duyệt chuyển cấp – Tự động chuyển lên cấp tiếp theo nếu không phê duyệt / từ chối sau [Ngày]",
+      "escalationEnable": "Bật phê duyệt chuyển cấp",
+      "escalationDays": "Thời hạn chuyển cấp (ngày)",
+      "escalationHelp": "Tính theo ngày lịch, từ ngày sau khi yêu cầu đến cấp này. Một lần kiểm tra hằng đêm sẽ chuyển yêu cầu lên cấp tiếp theo; yêu cầu không bao giờ được tự động phê duyệt hay từ chối.",
+      "escalationInvalid": "Nhập số ngày là số nguyên từ 1 đến 365.",
+      "escalationFinal": "Cấp cuối – không chuyển cấp thêm"
     },
     "chooseCompanies": "Chọn công ty",
     "searchCompanies": "Tìm công ty được phép",
@@ -27699,7 +27706,8 @@
         "hr_unavailable": "Không có quản trị viên HR nào có thể duyệt cho nhân viên này.",
         "selected_unavailable": "Người duyệt được chọn đã ngừng hoạt động, không có tài khoản đăng nhập duy nhất dùng được, hoặc nằm ngoài phạm vi công ty được phép. Hãy thay người được chọn.",
         "login_unusable": "Người duyệt không có tài khoản đăng nhập duy nhất dùng được cho công ty của nhân viên này. Hãy nhờ HR sửa tài khoản."
-      }
+      },
+      "pendingActivation": "Tài khoản chưa được kích hoạt – các yêu cầu sẽ chờ người phê duyệt này"
     }
   },
   "attendanceHistory": {
@@ -27922,7 +27930,12 @@
     },
     "skippedNoSuperior": "Tự động bỏ qua - Không còn Cấp trên trực tiếp ({sources})",
     "skippedDecidedAt": "Được quyết định khi gửi đơn, {date}",
-    "skippedLabel": "Không bắt buộc"
+    "skippedLabel": "Không bắt buộc",
+    "awaitingActivation": "Đang chờ kích hoạt tài khoản",
+    "escalatedStage": "Đã chuyển cấp",
+    "escalatedMoved": "Không có phê duyệt hoặc từ chối trong {days} ngày. Đã tự động chuyển lên Cấp {level}.",
+    "escalatedWaitedFor": "Đã chờ",
+    "escalatedBy": "Hệ thống tự động chuyển cấp"
   },
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",

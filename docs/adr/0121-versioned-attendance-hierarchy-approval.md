@@ -140,3 +140,39 @@ foreign-tenant actors remain refused. The worklist exposes only an RLS-scoped pr
 existing Approvals row links the file; file content is fetched on demand. This adds a SELECT policy,
 not an employment grant or an attachment-writing capability. Existing upload, update, delete and
 post-decision upload restrictions remain unchanged.
+
+## Amendment — cross-company and pending-activation approvers, Escalation Approval (board daa76ed4), 12 November 2026
+
+Owner-approved plan, revision 1. Applies to routing versions 3 and 4; version 1/2 resolution and decision authority
+keep their company fences unchanged.
+
+The Organization Code is the tenant. A Direct Superior or named approver may be employed in any company of the tenant
+(migration 5140): resolution walks `app.attendance_workflow_hierarchy_v5` without the subject-company fence, and a login
+is usable when it is the person's only unarchived, unblocked account holding any tenant role. Another tenant is never
+reachable. Decision access stays request-bound (`attendance_workflow_v3_read` / `v3_assigned_allowed`):
+`app.can_see_employment` is unchanged, so an approver in another company sees the requests assigned to them and their
+attachments, but not the employee's Personnel record, pay or colleagues, and neither does their company's HR. The
+existing calculation handoff above still applies: a final approval (or an OT-bearing final rejection) by an approver
+who lacks the subject's calculation visibility rolls back with the finite HR handoff, exactly as for a same-company
+named approver. Widening that visibility, or substituting a calculation identity for v3/v4, remains out of scope and
+needs a separate owner decision.
+
+An approver whose person has no account in the tenant (an invitation or manual enrollment creates none) is "pending
+activation": it is frozen with a null login and `pendingActivation: true`. An archived, blocked, role-less or duplicate
+account remains a configuration problem. The request keeps its submission date, applicant, level and Pending status.
+Once that person's single usable login exists it alone may act for the slot (assigned mode); delegation from that
+employment is unchanged. Duplicate-login checks skip null logins. Preview shows an information note, and History
+shows "Waiting for account activation". A CC recipient without an account is left out (CC is notification-only).
+
+Escalation Approval (migration 5141) is an optional per-level `escalateAfterDays` (whole calendar days 1–365) on v4
+levels other than the last; it is frozen into the resolved stage only when configured, so earlier templates and
+requests resolve and decide byte-identically. A stage clock trigger sets `stage_reached_at` and the HR-local
+`escalate_on` (date reached + days + 1) whenever the current level changes; the final frozen level never has one. The
+nightly `review:sweep` runner pages due requests in bounded indexed batches and calls the system-only
+`app.attendance_workflow_escalate`, which takes the decision guard's lock order, re-checks pending status, the level,
+absence of a completion decision or rejection and the due date, records one immutable
+`attendance_workflow_escalation` row per (request, level) and advances `current_stage`. The request guards admit that
+advance only with a same-transaction escalation row. Escalation never approves or rejects, never passes the final
+level, ignores withdrawn/cancelled requests (their due date is cleared), and keeps partial Everyone/Sequential
+approvals as evidence while marking the level "Escalated". An approver who decided an escalated level still cannot
+act on a later level of the same request. The next level's frozen participants are notified, re-checked at dispatch.

@@ -290,7 +290,8 @@ describe('v3 exact tenant/company, live identity and immutable history boundary'
             expect(await withTenant(outsider.ctx, tx => tx.select().from(schema.attendanceWorkflowRequest).where(eq(schema.attendanceWorkflowRequest.id, original.workflow!.id)))).toEqual([]);
             await expect(decideAttendanceCorrection(outsider.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' })).rejects.toThrow();
             const stages: AttendanceV3WorkflowInput['stages'] = [{ name: 'Level 1', mode: 'sequential', source: { kind: 'specific_employee', employmentIds: [outsider.employmentId] }, hrAlternative: false }];
-            expect(await resolve(f.root, f.worker.employmentId, stages)).toMatchObject({ ok: false, problem: { code: outsider===sibling?'missing_or_ambiguous_login':'employee_unavailable', levelIndex: 0 } });
+            // daa76ed4: a sibling company of the same tenant (Organization Code) supplies approvers; another tenant never does.
+            expect(await resolve(f.root, f.worker.employmentId, stages)).toMatchObject(outsider===sibling ? { ok: true } : { ok: false, problem: { code: 'employee_unavailable', levelIndex: 0 } });
         }
         expect((await state(f)).workflow?.participantDecisions).toHaveLength(0);
         await decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' });
@@ -302,12 +303,14 @@ describe('v3 exact tenant/company, live identity and immutable history boundary'
         const mutations = [
             { apply: () => owner.db.update(schema.employment).set({ terminatedOn: todayInKualaLumpur() }).where(eq(schema.employment.id, f.first.employmentId)), restore: () => owner.db.update(schema.employment).set({ terminatedOn: null }).where(eq(schema.employment.id, f.first.employmentId)), code: 'employee_unavailable' },
             { apply: () => owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, f.first.ctx.userId!)), restore: () => owner.db.update(schema.appUser).set({ archivedAt: null }).where(eq(schema.appUser.id, f.first.ctx.userId!)), code: 'missing_or_ambiguous_login' },
-            { apply: () => owner.db.update(schema.appUser).set({ personId: null }).where(eq(schema.appUser.id, f.first.ctx.userId!)), restore: () => owner.db.update(schema.appUser).set({ personId: f.first.personId }).where(eq(schema.appUser.id, f.first.ctx.userId!)), code: 'missing_or_ambiguous_login' },
+            // daa76ed4: with its only login unlinked the person has no account, so a new route freezes them as pending
+            // activation; the frozen login still cannot act on this request.
+            { apply: () => owner.db.update(schema.appUser).set({ personId: null }).where(eq(schema.appUser.id, f.first.ctx.userId!)), restore: () => owner.db.update(schema.appUser).set({ personId: f.first.personId }).where(eq(schema.appUser.id, f.first.ctx.userId!)), code: null },
         ];
         for (const mutation of mutations) {
             await mutation.apply();
             expect(await slot(f.first.ctx, f.id)).toBeNull();
-            expect(await resolve(f.root, f.worker.employmentId, f.input.stages)).toMatchObject({ ok: false, problem: { code: mutation.code, levelIndex: 0 } });
+            expect(await resolve(f.root, f.worker.employmentId, f.input.stages)).toMatchObject(mutation.code === null ? { ok: true } : { ok: false, problem: { code: mutation.code, levelIndex: 0 } });
             await expect(decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' })).rejects.toThrow();
             expect((await state(f)).workflow?.participantDecisions).toHaveLength(0);
             await mutation.restore();

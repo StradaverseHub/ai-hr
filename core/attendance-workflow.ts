@@ -5,7 +5,7 @@ import {getTableColumns as templateColumnsOf, and, asc, desc, eq, inArray, isNul
 import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant,assertModuleGate } from './module-gate';
 import { actorOf, appendEvent, type AppendEventArgs } from '../db/events';
-import { attendanceWorkflowPreview as previewSnapshot, company, attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, attendanceWorkflowReassignment as reassignment, attendanceWorkflowParticipantDecision as participantDecision, attendanceWorkflowParticipantReassignment as participantReassignment, domainEvent, employment, person, department, businessUnit, jobGrade, profileOption, position } from '../db/schema';
+import { attendanceWorkflowPreview as previewSnapshot, company, attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, attendanceWorkflowReassignment as reassignment, attendanceWorkflowParticipantDecision as participantDecision, attendanceWorkflowParticipantReassignment as participantReassignment, attendanceWorkflowEscalation as escalation, domainEvent, employment, person, department, businessUnit, jobGrade, profileOption, position } from '../db/schema';
 import { approversOf } from '../lib/leave-approval-kinds';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { resolveOrgCriteriaTargets } from './org-criteria';
@@ -191,7 +191,7 @@ async function validateActivation(tx: Tx, ctx: SessionContext, input: AnyAttenda
        const sources=stage&&('sources' in stage?stage.sources:'source' in stage?[stage.source]:[])||[];
        const dynamic=sources.some(source=>source.kind==='direct_manager');
        if(sources.some(source=>source.kind==='specific_employee')&&['employee_unavailable','missing_or_ambiguous_login'].includes(error.problem.code)){await warning(id,error.problem);continue;}
-       if(dynamic&&['missing_superior','ambiguous_superior','cycle','inactive_superior','outside_company_scope','missing_or_ambiguous_login','missing_person'].includes(error.problem.code)){await warning(id,error.problem);continue;}
+       if(dynamic&&['missing_superior','ambiguous_superior','cycle','inactive_superior','missing_or_ambiguous_login','missing_person'].includes(error.problem.code)){await warning(id,error.problem);continue;}
       }
       if(error instanceof AttendanceLevelError&&error.problem.code==='hr_unavailable'){await warning(id,error.problem);continue;}
       if(error instanceof AttendanceWorkflowError&&error.code==='unresolved'){await warning(id,null);continue;}
@@ -654,8 +654,9 @@ export async function attendanceWorkflowForTx(tx: Tx, correctionId: string) {
     const participantDecisions = (flow.routingVersion === 3 || flow.routingVersion === 4) ? await tx.select().from(participantDecision).where(eq(participantDecision.requestId, flow.id)).orderBy(asc(participantDecision.stageIndex), asc(participantDecision.decidedAt), asc(participantDecision.id)) : [];
     const participantReassignments = (flow.routingVersion === 3 || flow.routingVersion === 4) ? await tx.select().from(participantReassignment).where(eq(participantReassignment.requestId, flow.id)).orderBy(asc(participantReassignment.occurredAt), asc(participantReassignment.id)) : [];
     const currentParticipantSlot = (flow.routingVersion === 3 || flow.routingVersion === 4) ? (await tx.execute(sql`select app.attendance_workflow_v3_decision_slot(${correctionId}::uuid)->>'slot' as slot`) as unknown as { slot: string | null }[])[0]?.slot ?? null : null;
+    const escalations = flow.routingVersion === 4 ? await tx.select().from(escalation).where(eq(escalation.requestId, flow.id)).orderBy(asc(escalation.stageIndex)) : [];
     const projected = (flow.routingVersion === 3 || flow.routingVersion === 4) ? flow.stages.map((stage, index) => ({ ...stage, approvers: stage.approvers.map(actor => participantReassignments.filter(change => change.stageIndex === index && change.participantSlot === actor.slot).at(-1)?.assigned ?? actor) })) : effectiveStages;
-    return { ...flow, decisions, effectiveStages: projected, reassignments, participantDecisions, participantReassignments, currentParticipantSlot };
+    return { ...flow, decisions, effectiveStages: projected, reassignments, participantDecisions, participantReassignments, currentParticipantSlot, escalations };
 }
 /** Read-only preview uses the SAME shared org resolver and selection priority as submission. */
 async function previewAttendanceWorkflowCompany(ctx: SessionContext, raw: unknown, lineageId?: string) {
@@ -724,6 +725,8 @@ export async function attendanceWorkflowsForTx(tx: Tx, ids: string[]) {
     const v3 = flows.filter(flow => (flow.routingVersion === 3 || flow.routingVersion === 4));
     const participantDecisions = v3.length ? await tx.select().from(participantDecision).where(inArray(participantDecision.requestId, v3.map(flow => flow.id))).orderBy(asc(participantDecision.stageIndex), asc(participantDecision.decidedAt), asc(participantDecision.id)) : [];
     const participantReassignments = v3.length ? await tx.select().from(participantReassignment).where(inArray(participantReassignment.requestId, v3.map(flow => flow.id))).orderBy(asc(participantReassignment.occurredAt), asc(participantReassignment.id)) : [];
+    const v4 = flows.filter(flow => flow.routingVersion === 4);
+    const escalations = v4.length ? await tx.select().from(escalation).where(inArray(escalation.requestId, v4.map(flow => flow.id))).orderBy(asc(escalation.stageIndex)) : [];
     const actorSlots = v3.length ? await tx.execute(sql`select w.id,app.attendance_workflow_v3_decision_slot(w.correction_id)->>'slot' as slot from public.attendance_workflow_request w where w.id in (${sql.join(v3.map(flow => sql`${flow.id}::uuid`), sql`,`)})`) as unknown as { id: string; slot: string | null }[] : [];
     return new Map(flows.map(f => {
         const overrides = reassignments.filter(r => r.requestId === f.id);
@@ -731,7 +734,8 @@ export async function attendanceWorkflowsForTx(tx: Tx, ids: string[]) {
         const participantChanges = participantReassignments.filter(change => change.requestId === f.id);
         const projected = (f.routingVersion === 3 || f.routingVersion === 4) ? f.stages.map((stage, index) => ({ ...stage, approvers: stage.approvers.map(actor => participantChanges.filter(change => change.stageIndex === index && change.participantSlot === actor.slot).at(-1)?.assigned ?? actor) })) : effectiveStages;
         return [f.correctionId, { ...f, decisions: decisions.filter(d => d.requestId === f.id), effectiveStages: projected, reassignments: overrides,
-            participantDecisions: participantDecisions.filter(d => d.requestId === f.id), participantReassignments: participantChanges, currentParticipantSlot: actorSlots.find(actor => actor.id === f.id)?.slot ?? null }];
+            participantDecisions: participantDecisions.filter(d => d.requestId === f.id), participantReassignments: participantChanges, currentParticipantSlot: actorSlots.find(actor => actor.id === f.id)?.slot ?? null,
+            escalations: escalations.filter(e => e.requestId === f.id) }];
     }));
 }
 
@@ -760,7 +764,8 @@ export async function searchAttendanceApprovers(ctx:SessionContext,input:{compan
  });
 }
 
-const HIERARCHY_PROBLEMS=['missing_superior','ambiguous_superior','cycle','inactive_superior','outside_company_scope','missing_or_ambiguous_login','missing_person','duplicate_person','duplicate_login'];
+// daa76ed4: approvers may be in any company of the tenant, so resolution no longer produces outside_company_scope.
+const HIERARCHY_PROBLEMS=['missing_superior','ambiguous_superior','cycle','inactive_superior','missing_or_ambiguous_login','missing_person','duplicate_person','duplicate_login'];
 type ConfiguredSource={kind:'direct_manager';depth:number}|{kind:'specific_employee';employmentIds:string[]};
 function configuredSources(stage:AnyAttendanceWorkflowInput['stages'][number]|undefined):ConfiguredSource[]{
  if(!stage)return[];
@@ -796,8 +801,8 @@ async function previewWarningFor(tx:Tx,who:{employmentId:string;employeeCode:str
  }
  return{...base,levelIndex,problem};
 }
-type PreviewApprover={name:string;kind:AttendanceResolvedApprover['kind'];employmentId:string|null};
-const previewApprovers=(stage:AttendanceResolvedStage):PreviewApprover[]=>[...stage.approvers.map(actor=>({name:actor.kind==='hr_admin'?'':actor.name,kind:actor.kind,employmentId:actor.employmentId})),...(stage.hrAlternative&&!stage.approvers.some(actor=>actor.kind==='hr_admin')?[{name:'',kind:'hr_admin' as const,employmentId:null}]:[])];
+type PreviewApprover={name:string;kind:AttendanceResolvedApprover['kind'];employmentId:string|null;pendingActivation?:true};
+const previewApprovers=(stage:AttendanceResolvedStage):PreviewApprover[]=>[...stage.approvers.map(actor=>({name:actor.kind==='hr_admin'?'':actor.name,kind:actor.kind,employmentId:actor.employmentId,...(actor.pendingActivation?{pendingActivation:true}:{})})),...(stage.hrAlternative&&!stage.approvers.some(actor=>actor.kind==='hr_admin')?[{name:'',kind:'hr_admin' as const,employmentId:null}]:[])];
 /**
  * Preview Assignment of the saved version: one pass computes matching employees and per-employee route
  * warnings, using the same matcher and resolver as submission, and stores an immutable snapshot.
@@ -838,7 +843,7 @@ export async function generateAttendanceWorkflowPreview(ctx:SessionContext,linea
      const approverIds=levels.flatMap(level=>level.approvers.flatMap(actor=>actor.employmentId?[actor.employmentId]:[]));
      const codeRows=approverIds.length?await tx.select({id:employment.id,code:employment.employeeCode}).from(employment).where(inArray(employment.id,approverIds)):[];
      const codes=new Map(codeRows.map(row=>[row.id,row.code]));
-     record({...who,selectedCode:input.code,outcome:'routed',levels:levels.map(level=>({level:level.level,state:level.state,approvers:level.approvers.map(actor=>({name:actor.name,kind:actor.kind,employeeCode:actor.employmentId?codes.get(actor.employmentId)??null:null}))}))});
+     record({...who,selectedCode:input.code,outcome:'routed',levels:levels.map(level=>({level:level.level,state:level.state,approvers:level.approvers.map(actor=>({name:actor.name,kind:actor.kind,employeeCode:actor.employmentId?codes.get(actor.employmentId)??null:null,...(actor.pendingActivation?{pendingActivation:true as const}:{})}))}))});
     }catch(error){
      if(!(error instanceof AttendanceLevelError||error instanceof AttendanceCcError||error instanceof AttendanceWorkflowError&&error.code==='unresolved'))throw error;
      warn(await previewWarningFor(tx,who,input.stages,error));

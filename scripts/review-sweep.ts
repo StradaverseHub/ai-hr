@@ -42,6 +42,7 @@ import { createDb, withTenant, type SessionContext } from '../db/client';
 import { describeSkips, loadSweepScope } from '../core/sweep-scope';
 import { sweepDueReviews, sweepReviewReminders } from '../core/employment-review';
 import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
+import { sweepAttendanceWorkflowEscalations } from '../core/attendance-workflow-escalation';
 import { sweepDueMovements } from '../core/movement-apply';
 import { runAutomaticChasers, runHrOrchestrator } from '../core/hr-orchestrator';
 import { engineWorkingDayCalendar } from '../core/automatic-chasers';
@@ -85,6 +86,7 @@ async function main() {
   let totalOpened = 0;
   let totalReminders = 0;
   let totalEscalated = 0;
+  let totalAttendanceEscalated = 0;
   let totalChases = 0;
   let chaserTenants = 0;
   let totalMovements = 0;
@@ -144,6 +146,11 @@ async function main() {
       // R51 722904dc/71b9143a — chase leave approval steps sitting past the company's escalation
       // threshold (once per (group, step) ever; the escalation-due events fan out below).
       const { escalated } = await sweepLeaveApprovalEscalations(ctx, { today });
+      // daa76ed4 — Attendance Escalation Approval: move a v4 request to its next level once the level's calendar
+      // days have passed with no decision (bounded indexed batches; never approves, rejects or passes the final level).
+      // Before dispatch so the next approver's notice is projected in this pass.
+      const attendanceEscalation = await sweepAttendanceWorkflowEscalations(ctx, { today });
+      if (attendanceEscalation.cappedOut) console.error('  ⚠ attendance escalation reached the per-run cap; more remain.');
       // 941c9dac — put every future-dated movement whose effective date has arrived into effect. Safe to
       // run twice on the same day: due-ness is read from the ledger, and applying appends the record that
       // removes the movement from the due set (migration 0329 makes that unique).
@@ -279,17 +286,18 @@ async function main() {
         console.error('  Notification queue reached its batch limit; more work may remain.');
       }
       if (orchestration?.failed || chasers?.failed || projection.cappedOut || projectionBlocked || releasesFailed || loops.some(loop => loop.status === 'failed') || audit === null || (audit?.status === 'ran' && audit.failed > 0)
-        || learning === null || learning.companies.some(c => c.status === 'failed')) failures++;
+        || learning === null || learning.companies.some(c => c.status === 'failed') || attendanceEscalation.failed > 0 || attendanceEscalation.cappedOut) failures++;
       totalOpened += opened;
       totalReminders += reminders;
       totalEscalated += escalated;
+      totalAttendanceEscalated += attendanceEscalation.escalated;
       totalMovements += movementsApplied;
       totalNudges += nudge.sent;
       totalNudgesSettled += nudge.settled;
       totalAwaitingReview += nudge.awaitingReview;
       totalChangedBeforeSend += nudge.changed;
       console.log(
-        `  ✓ ${t.name} (${t.id}): ${opened} review(s) opened, ${reminders} reminder(s), ${escalated} escalation(s), ${movementsApplied} movement(s) applied` +
+        `  ✓ ${t.name} (${t.id}): ${opened} review(s) opened, ${reminders} reminder(s), ${escalated} escalation(s), ${attendanceEscalation.escalated} attendance escalation(s), ${movementsApplied} movement(s) applied` +
           (chasers ? `, ${chaseSent} automatic chase(s) using fixed templates` : ', chasers off') +
           `, ${loops.filter(loop => loop.status === 'ran').length} loop(s) run` +
           (movementsFailed > 0 ? ` — ${movementsFailed} movement(s) COULD NOT be applied` : '') +
@@ -349,6 +357,7 @@ async function main() {
         opened: totalOpened,
         reminders: totalReminders,
         escalated: totalEscalated,
+        attendanceEscalated: totalAttendanceEscalated,
         automaticChases: totalChases,
         chaserTenants,
         movementsApplied: totalMovements,

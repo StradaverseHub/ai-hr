@@ -141,9 +141,14 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4526,when:1793330004826,tag:'5126_contract_internship_end_dates'},
  // 8d02748a readable import log references, renumbered 5127 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4527,when:1793330004827,tag:'5127_import_log_actor_labels'},
+ // daa76ed4/96a54ed2 Irwin attendance workflow lane draft (block 5140-5149; final numbering at integration).
+ {idx:4540,when:1793330004840,tag:'5140_attendance_workflow_cross_company_pending'},
+ {idx:4541,when:1793330004841,tag:'5141_attendance_workflow_escalation'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5141_attendance_workflow_escalation':'56e9cd1655be3b5d21639ef38cf1448e3a5d46afaaabeede14bc036f9eaf5385',
+ '5140_attendance_workflow_cross_company_pending':'3fbdc8541c9ba5b9b03d7cb3a0e212df1db1b9e196822db575cc186bbb33c4c1',
  '5124_attendance_workflow_skipped_levels':'849dba4bf7c3aa39e45eb7f463ef24301a2eea3b10a781cf39858aa218635c6d',
  '5123_import_history_kind':'2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7',
  '5127_import_log_actor_labels':'1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2',
@@ -287,6 +292,8 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  {tag:'5036_leave_type_pending_year_cycle',table:'leave_type',columns:['pending_year_cycle_job_id']},
  {tag:'5051_payroll_processing_job',table:'payroll_batch',columns:['processing_job_id','processing_started_at']},
  {tag:'5125_individual_txn_pricing_marker',table:'payroll_individual_txn',columns:['pricing_source','pricing_ref','priced_at']},
+ // daa76ed4 Escalation Approval stage clock: NULL on every request submitted before it (never escalates).
+ {tag:'5141_attendance_workflow_escalation',table:'attendance_workflow_request',columns:['stage_reached_at','escalate_on']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

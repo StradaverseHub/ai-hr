@@ -10895,7 +10895,24 @@ export const attendanceWorkflowRequest = pgTable('attendance_workflow_request', 
     stages: jsonb('stages').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedStage[]>(), currentStage: integer('current_stage').notNull().default(0), createdAt: createdAt(),
     /** v4 only: levels decided "not required" at submission because the reporting chain had ended. */
     skippedLevels: jsonb('skipped_levels').notNull().default([]).$type<import('../lib/attendance-workflow').AttendanceSkippedLevel[]>(),
+    /** Set by the stage-clock trigger (5141) when the current level is reached; NULL on requests submitted before it. */
+    stageReachedAt: timestamp('stage_reached_at', { withTimezone: true }),
+    /** HR-local date the current level escalates (v4 levels with escalateAfterDays, never the final level). */
+    escalateOn: date('escalate_on'),
 }, t => [uniqueIndex('attendance_workflow_request_correction').on(t.correctionId)]);
+/** Immutable automatic escalation history (5141): one row per request level, written only by the system runner. */
+export const attendanceWorkflowEscalation = pgTable('attendance_workflow_escalation', {
+    id: id(), tenantId: tenantId(), requestId: uuid('request_id').notNull().references(() => attendanceWorkflowRequest.id),
+    stageIndex: integer('stage_index').notNull(), nextStageIndex: integer('next_stage_index').notNull(),
+    escalateAfterDays: integer('escalate_after_days').notNull(), stageReachedAt: timestamp('stage_reached_at', { withTimezone: true }).notNull(),
+    dueOn: date('due_on').notNull(),
+    fromParticipants: jsonb('from_participants').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover[]>(),
+    partialDecisions: jsonb('partial_decisions').notNull().default([]).$type<{slot:string;decision:'approved'|'rejected';actualActorName:string;actualPersonId:string;decidedAt:string}[]>(),
+    nextParticipants: jsonb('next_participants').notNull().$type<import('../lib/attendance-workflow').AttendanceResolvedApprover[]>(),
+    reason: text('reason').notNull().default('no_decision_within_period').$type<'no_decision_within_period'>(),
+    actor: text('actor').notNull().default('system').$type<'system'>(),
+    escalatedAt: timestamp('escalated_at', { withTimezone: true }).notNull().defaultNow(),
+}, t => [uniqueIndex('attendance_workflow_escalation_once').on(t.requestId, t.stageIndex)]);
 /** Append-only Preview Assignment snapshot of one saved workflow version (admin of every workflow company). */
 export const attendanceWorkflowPreview = pgTable('attendance_workflow_preview', {
     id: id(), tenantId: tenantId(), lineageId: uuid('lineage_id').notNull(), templateId: uuid('template_id').notNull(),

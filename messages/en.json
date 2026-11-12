@@ -15143,7 +15143,8 @@
       "perDayDecision": "Per-day decision",
       "confirmed": "Confirmed",
       "extended": "Extended",
-      "terminated": "Terminated"
+      "terminated": "Terminated",
+      "escalated": "Escalated"
     }
   },
   "payrollConfig": {
@@ -27592,7 +27593,13 @@
       "unusedDeleteImpact": "Delete this unused workflow for {company}? All unused versions will be permanently removed. This cannot be undone.",
       "usedCannotDelete": "This workflow has already been used by approval transactions and cannot be deleted. Please archive it instead.",
       "archived": "Workflow archived. Existing applications and history are preserved.",
-      "archivedList": "Archived workflows"
+      "archivedList": "Archived workflows",
+      "escalationLegend": "Escalation Approval – Auto Route to Next Level if No Approval / Rejection After [Day]",
+      "escalationEnable": "Enable Escalation Approval",
+      "escalationDays": "Escalation Period (Days)",
+      "escalationHelp": "Calendar days, counted from the day after the request reaches this level. A nightly check moves it to the next level; it is never approved or rejected automatically.",
+      "escalationInvalid": "Enter a whole number of days from 1 to 365.",
+      "escalationFinal": "Final level – no further escalation"
     },
     "chooseCompanies": "Choose companies",
     "searchCompanies": "Search permitted companies",
@@ -27699,7 +27706,8 @@
         "hr_unavailable": "No HR administrator can approve for this employee.",
         "selected_unavailable": "The selected approver is inactive, has no unique usable login, or is outside the permitted company scope. Replace the selection.",
         "login_unusable": "The approver has no unique usable login for this employee's company. Ask HR to correct their login."
-      }
+      },
+      "pendingActivation": "Account not activated yet – requests will wait for this approver"
     }
   },
   "attendanceHistory": {
@@ -27922,7 +27930,12 @@
     },
     "skippedNoSuperior": "Skipped automatically - No further Direct Superior available ({sources})",
     "skippedDecidedAt": "Decided when the application was submitted, {date}",
-    "skippedLabel": "Not required"
+    "skippedLabel": "Not required",
+    "awaitingActivation": "Waiting for account activation",
+    "escalatedStage": "Escalated",
+    "escalatedMoved": "No approval or rejection within {days} day(s). Moved automatically to Level {level}.",
+    "escalatedWaitedFor": "Waited for",
+    "escalatedBy": "Automatic escalation by the system"
   },
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",

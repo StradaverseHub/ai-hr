@@ -30,6 +30,7 @@ export const NOTIFICATION_DESTINATIONS: Readonly<Record<string, NotificationScre
   'leave.cancellation-requested': 'approvals',
   'leave.escalation': 'approvals',
   'attendance.ot-requested': 'approvals',
+  'attendance.escalated': 'approvals',
   'review.started': 'approvals',
   'review.manager-evaluated': 'approvals',
   'review.reminder': 'approvals',

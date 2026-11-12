@@ -424,7 +424,12 @@ describe('approved shared workflows and actor-scoped approver search',()=>{
   const input={companyId:base.companyId,routingVersion:4 as const,applicationType:'irregularity' as const,code:'SIBLING_SELECTED',name:'Authorized sibling reviewer',priority:1,active:true,criteria:{employeeIds:[worker.employmentId]},stages:[{name:'Level 1',mode:'any_one' as const,sources:[{kind:'specific_employee' as const,employmentIds:[reviewer.employmentId]}],hrAlternative:false}],cc:[]};
   const saved=await saveAttendanceWorkflow(root,input);
   expect((await previewAttendanceWorkflow(root,input,saved.lineageId)).rows[0].resolvedStages[0].approvers[0].employmentId).toBe(reviewer.employmentId);
+  // daa76ed4: a login holding a role in any company of the tenant qualifies (Organization Code boundary); an
+  // archived login does not.
   await owner.db.update(schema.roleAssignment).set({companyId:other.id}).where(eq(schema.roleAssignment.appUserId,reviewer.ctx.userId!));
+  expect((await searchAttendanceApprovers(root,{companyIds:[base.companyId],query:'Fictional group reviewer',page:0})).rows[0].eligible).toBe(true);
+  expect(await attendanceWorkflowWarningPage(root,saved.lineageId,[base.companyId])).toMatchObject({total:0});
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,reviewer.ctx.userId!));
   expect((await searchAttendanceApprovers(root,{companyIds:[base.companyId],query:'Fictional group reviewer',page:0})).rows[0].eligible).toBe(false);
   // The group administrator still has permission to configure this selected person. It is the
   // reviewer's qualifying login grant for the applicant's company that now needs correction.

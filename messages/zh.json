@@ -15143,7 +15143,8 @@
       "perDayDecision": "按日决定",
       "confirmed": "已确认",
       "extended": "已延长",
-      "terminated": "已终止"
+      "terminated": "已终止",
+      "escalated": "已升级"
     }
   },
   "payrollConfig": {
@@ -27592,7 +27593,13 @@
       "unusedDeleteImpact": "是否删除 {company} 的此未使用流程？所有未使用版本将永久删除，无法撤销。",
       "usedCannotDelete": "此流程已被审批交易使用，无法删除。请改为归档。",
       "archived": "流程已归档。现有申请和历史记录已保留。",
-      "archivedList": "已归档流程"
+      "archivedList": "已归档流程",
+      "escalationLegend": "升级审批 – 若在 [天数] 后仍未批准/拒绝，则自动转至下一级",
+      "escalationEnable": "启用升级审批",
+      "escalationDays": "升级期限（天）",
+      "escalationHelp": "按日历天计算，从申请到达此级别的次日开始计。每晚检查会将其转至下一级；绝不会自动批准或拒绝。",
+      "escalationInvalid": "请输入 1 到 365 之间的整数天数。",
+      "escalationFinal": "最终级别 – 不再升级"
     },
     "chooseCompanies": "选择公司",
     "searchCompanies": "搜索有权管理的公司",
@@ -27699,7 +27706,8 @@
         "hr_unavailable": "没有人力资源管理员可以为此员工审批。",
         "selected_unavailable": "所选审批人已停用、没有唯一可用的登录账号，或不在允许的公司范围内。请更换所选人员。",
         "login_unusable": "审批人没有可用于此员工公司的唯一登录账号。请让人力资源部更正其登录账号。"
-      }
+      },
+      "pendingActivation": "账户尚未激活 – 申请将等待该审批人"
     }
   },
   "attendanceHistory": {
@@ -27922,7 +27930,12 @@
     },
     "skippedNoSuperior": "已自动跳过 - 没有更上一级直属上级（{sources}）",
     "skippedDecidedAt": "于提交申请时决定，{date}",
-    "skippedLabel": "无需审批"
+    "skippedLabel": "无需审批",
+    "awaitingActivation": "等待账户激活",
+    "escalatedStage": "已升级",
+    "escalatedMoved": "{days} 天内未获批准或拒绝，已自动转至第 {level} 级。",
+    "escalatedWaitedFor": "等待的审批人",
+    "escalatedBy": "系统自动升级"
   },
   "scheduleDrafts": {
     "staleLadder": "“常规”部分的加班时段或费率已更改。您的草稿仍保留在此。保存加班设置前，请重新加载此页面。只有在您确认后，未保存的更改才会被丢弃。",

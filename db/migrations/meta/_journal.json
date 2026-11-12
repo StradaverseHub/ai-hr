@@ -5776,6 +5776,20 @@
       "when": 1793330004827,
       "tag": "5127_import_log_actor_labels",
       "breakpoints": true
+    },
+    {
+      "idx": 4540,
+      "version": "7",
+      "when": 1793330004840,
+      "tag": "5140_attendance_workflow_cross_company_pending",
+      "breakpoints": true
+    },
+    {
+      "idx": 4541,
+      "version": "7",
+      "when": 1793330004841,
+      "tag": "5141_attendance_workflow_escalation",
+      "breakpoints": true
     }
   ]
 }

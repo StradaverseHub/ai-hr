@@ -13,13 +13,15 @@ type Workflow = {
   participantReassignments?:{id:string;stageIndex:number;previousAssigned:{name:string};assigned:{kind:string;name:string};actualActorName:string;occurredAt:Date;reason:string}[];
   /** Frozen at submission; levels that were not required because the reporting chain had ended. */
   skippedLevels?:AttendanceSkippedLevel[]; createdAt?:Date;
+  /** v4 automatic Escalation Approval moves (5141); a level here was escalated, never approved. */
+  escalations?:{id:string;stageIndex:number;nextStageIndex:number;escalateAfterDays:number;escalatedAt:Date;fromParticipants:{kind:string;name:string}[]}[];
 };
 export async function AttendanceWorkflowProgress({ workflow, status, progress, codes = {} }: {
   workflow:Workflow|null; status:string; progress?:AttendanceProgress; codes?:Record<string,string|null>;
 }) {
   const t=await getTranslations('attendanceHistory'),v3=await getTranslations('attendanceWorkflow.v3'),locale=await getLocale();
   const dt=(value:Date)=>new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',dateStyle:'medium',timeStyle:'short'}).format(value);
-  const names=(stage:AttendanceResolvedStage)=>stage.approvers.map(a=>(a.kind==='hr_admin'?t('hrApprover'):`${a.name}${a.employmentId&&codes[a.employmentId]?` · ${codes[a.employmentId]}`:''}`)+(a.slot&&a.slot===workflow?.currentParticipantSlot?` · ${v3('pendingParticipant')}`:'')).join(' / ');
+  const names=(stage:AttendanceResolvedStage)=>stage.approvers.map(a=>(a.kind==='hr_admin'?t('hrApprover'):`${a.name}${a.employmentId&&codes[a.employmentId]?` · ${codes[a.employmentId]}`:''}`)+(a.slot&&a.slot===workflow?.currentParticipantSlot?` · ${v3('pendingParticipant')}`:'')+(a.pendingActivation?` · ${t('awaitingActivation')}`:'')).join(' / ');
   const sourceNames=(sources:AttendanceSkippedLevel['sources'])=>sources.map(source=>source.kind==='direct_manager'?v3('depthOption',{number:source.depth}):v3('selectedEmployees')).join(', ');
   const skipped=workflow?.skippedLevels??[];
   const skippedItem=(entry:AttendanceSkippedLevel)=><li key={`skipped-${entry.configuredLevel}`} className="space-y-1 py-4 text-sm"><h3 className="font-semibold">{t('levelNumber',{level:entry.configuredLevel})} · <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{t('skippedLabel')}</span></h3><p className="text-muted-foreground">{t('skippedNoSuperior',{sources:sourceNames(entry.sources)})}</p>{workflow?.createdAt&&<p className="text-xs text-muted-foreground">{t('skippedDecidedAt',{date:dt(workflow.createdAt)})}</p>}</li>;
@@ -33,14 +35,16 @@ export async function AttendanceWorkflowProgress({ workflow, status, progress, c
       const stage=workflow.effectiveStages?.[index]??original,decision=workflow.decisions.find(d=>d.stageIndex===index);
       const participants=workflow.participantDecisions?.filter(d=>d.stageIndex===index)??[];
       const changes=workflow.reassignments?.filter(r=>r.stageIndex===index)??[];
+      const escalated=workflow.escalations?.find(e=>e.stageIndex===index);
       return [<li key={index} className="space-y-2 py-4 text-sm">
-        <h3 className="font-semibold">{t('levelNumber',{level:levelNumber})} · {decision?t(`statuses.${decision.decision}`):status==='pending'&&index===workflow.currentStage?t('pendingStage'):t(status==='pending'?'notStarted':'notRequired')}</h3>
+        <h3 className="font-semibold">{t('levelNumber',{level:levelNumber})} · {decision?t(`statuses.${decision.decision}`):escalated?t('escalatedStage'):status==='pending'&&index===workflow.currentStage?t('pendingStage'):t(status==='pending'?'notStarted':'notRequired')}</h3>
         <p>{t('assigned')}: {names(stage)||t('routeUnavailable')}{stage.hrAlternative?` / ${t('hrApprover')}`:''}</p>
         {stage.approvers.length>1&&<p className="text-xs text-muted-foreground">{t(stage.mode==='sequential'?'modeSequential':stage.mode==='all_required'?'modeAllRequired':'modeAnyOne')}</p>}
         {stage.mode==='sequential'&&<ol className="list-inside list-decimal space-y-1">{stage.approvers.map((a,i)=><li key={a.slot??i}>{a.kind==='hr_admin'?t('hrApprover'):a.name}{a.employmentId&&codes[a.employmentId]?` · ${codes[a.employmentId]}`:''}</li>)}</ol>}
         {participants.length>0?<ol className="space-y-3">{participants.map((record,i)=><li key={record.id??i} className="space-y-1"><p className="font-medium">{record.assigned.kind==='hr_admin'?t('hrApprover'):record.assigned.name} · {t(`statuses.${record.decision}`)}</p>{actor(record)}</li>)}</ol>:decision&&actor(decision)}
         {changes.length>0&&<div className="space-y-2 rounded-md bg-muted p-3"><p>{t('originalAssignment')}: {names(original)}</p>{changes.map(change=><p key={change.id}>{t('reassignedBy')}: {change.actualActorName||change.actualUserId} · {dt(change.occurredAt)} · {change.reason}</p>)}</div>}
         {workflow.participantReassignments?.filter(change=>change.stageIndex===index).map(change=><div key={change.id} className="space-y-1 rounded-md bg-muted p-3"><p>{change.previousAssigned.name} → {change.assigned.kind==='hr_admin'?t('hrApprover'):change.assigned.name}</p><p>{t('reassignedBy')}: {change.actualActorName} · {dt(change.occurredAt)} · {change.reason}</p></div>)}
+        {escalated&&<div className="space-y-1 rounded-md bg-muted p-3"><p>{t('escalatedMoved',{days:escalated.escalateAfterDays,level:attendanceStageLevelNumber(workflow.stages[escalated.nextStageIndex],escalated.nextStageIndex)})}</p><p>{t('escalatedWaitedFor')}: {escalated.fromParticipants.map(a=>a.kind==='hr_admin'?t('hrApprover'):a.name).join(' / ')||'—'}</p><p className="text-muted-foreground">{t('escalatedBy')} · {dt(escalated.escalatedAt)}</p></div>}
         {partial.map(entry=><p key={`partial-${entry.configuredLevel}`} className="text-xs text-muted-foreground">{t('skippedNoSuperior',{sources:sourceNames(entry.sources)})}</p>)}
       </li>,...after.map(skippedItem)];
     })}</ol>

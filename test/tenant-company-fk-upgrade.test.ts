@@ -203,6 +203,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5126_contract_internship_end_dates',
    // Board item 8d02748a, renumbered at the Irwin board integration onto release candidate 3.
    '5127_import_log_actor_labels',
+   // Irwin attendance workflow lane draft (daa76ed4/96a54ed2).
+   '5140_attendance_workflow_cross_company_pending',
+   '5141_attendance_workflow_escalation',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
