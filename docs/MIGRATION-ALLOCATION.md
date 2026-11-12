@@ -3337,7 +3337,7 @@ It adds one read-only STABLE SECURITY DEFINER function, `app.import_log_actor_fa
 `ai_hr_app` only; no table, column, policy, grant on data or existing function changes. This entry carries no
 deployment authority.
 
-## Manager Today team minimum — 13 November 2026 (unallocated draft)
+## Manager Today team minimum — 13 November 2026 (allocated 13 Nov 2026 as 5161)
 
 Branch `claude/team-minimum-20261113` (base `origin/alpha` at `3a11d916e`, owner decision 12 November 2026, HANDOFF §5 item 4)
 journals `9770_leave_team_minimum_present` at idx 9770 and when 1793330099770 as an UNALLOCATED DRAFT from the
@@ -3347,5 +3347,6 @@ or >= 0); no default, no backfill, no new table, policy, grant or function (`com
 admin-for-company update policy and table-level app grant from 0324). SHA-256
 `fa4c016e8aa6d259e8ec31bec4809c88b46f50dfd157d9ddaf251568623a4660`. The approved upgrade tail pin, its hash and the
 populated null-column proof (`test/helpers/approved-upgrade.ts`, `test/tenant-company-fk-upgrade.test.ts`) carry the draft;
-reassign the final tag, idx and `when` above the freshly verified ledger at integration. This entry carries no allocation
-or deployment authority.
+ALLOCATED by the coordinator on 13 November 2026 as `5161_leave_team_minimum_present`, idx 4561, when 1793330004861 (after the
+sweep-threshold batch's 5160); SQL bytes unchanged (the header comment still records its draft number). This entry carries no
+deployment authority.
