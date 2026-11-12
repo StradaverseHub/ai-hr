@@ -11,7 +11,8 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {owner,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,closeAll,type Base} from './harness';
 import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit,exportRewardReview,readOnlyRewardProjection,refreshRewardPatBasis,rewardApprovalsBoard,rewardsAnalysisSourceTx,cancelRewardReview} from '../packs/rewards/service';
-import {beginRewardViewAs,endRewardViewAs,changeRewardPermission,saveRewardSetupGrant,rewardPermissions,rewardViewAsState,saveRewardPersonalPage} from '../packs/rewards/access-policy';
+import {beginRewardViewAs,endRewardViewAs,saveRewardSetupGrant,rewardViewAsState,saveRewardPersonalPage} from '../packs/rewards/access-policy';
+import {rewardRolePermissionGrid,saveRewardRolePermissionBatch} from '../packs/rewards/role-permission-grid';
 import {createUploadedRewards,uploadedRewards,previewUploadedRewards,saveUploadedRewards,confirmUploadedRewards,adjustUploadedAward,refreshUploadedRewardSources} from '../packs/rewards/uploaded-awards';
 import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
 import {generateRewardAdvisor,saveRewardAdvisorSettings} from '../packs/rewards/advisor';
@@ -19,6 +20,9 @@ import {defaultAdvisorSettings} from '../packs/rewards/advisor-model';
 import {rewardRulesForReview} from '../packs/rewards/applied-rules';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
+/** Board db14e49c: the fixture's HR Admin also holds the Group Rewards seat, so the self rule stops it narrowing
+ * that column; the saved override is seeded directly (the grid command is covered by rewards-role-permission-grid-db). */
+const narrowGroupRewardsReviewPage=(b:Base)=>owner.db.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,level,changed_by,reason) values(${b.tenantId}::uuid,'gr','review.view',false,'none',${b.adminUserId}::uuid,'Fictional narrowed review page')`);
 async function denied(promise:Promise<unknown>){const error=await promise.then(()=>null,error=>error);expect(error).not.toBeNull();expect(pgSqlState(error)).toBe('42501');}
 describe('approved Rewards review SQL custody',()=>{
  let b:Base,gr:SessionContext,checker:SessionContext,unitId:string,entryId:string,employmentId:string;
@@ -46,7 +50,7 @@ describe('approved Rewards review SQL custody',()=>{
  });
  it('read-only View as blocks native writers, direct writes and legacy SECURITY DEFINER helpers until ended',async()=>{await beginRewardViewAs(gr,checker.userId!);await expect(saveRewardEntry(gr,unitId,1,entryId,emptyRecommendation())).rejects.toThrow(/read-only|View as/);expect(await withTenant(gr,tx=>tx.update(schema.rewardEntry).set({recommendation:{...emptyRecommendation(),meritBp:800}}).where(eq(schema.rewardEntry.id,entryId)).returning({id:schema.rewardEntry.id}))).toHaveLength(0);await denied(withTenant(gr,tx=>tx.execute(sql`select app.reward_company_exclusion_change(${b.companyId}::uuid,${year},'Fictional attempted mutation during view',NULL)`)));await endRewardViewAs(gr);expect((await getRewardUnit(gr,unitId)).rows).toHaveLength(1);});
  it('limits scoped Group Rewards to shared View as principals and denies exports from the viewer session',async()=>{
-  expect((await rewardPermissions(checker)).canChange).toBe(false);
+  expect((await rewardRolePermissionGrid(checker)).immediate).toBe(false);
   const [outsider]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional out of scope viewer',primaryEmail:randomUUID()+'@fixture.test'}).returning();
   const outsiderId=await createAppUser(b.tenantId,outsider.id,'employee');
   await denied(withTenant(checker,tx=>tx.execute(sql`select app.reward_view_as_principal(${outsiderId}::uuid)`)));
@@ -57,9 +61,9 @@ describe('approved Rewards review SQL custody',()=>{
   await expect(exportRewardReview(checker,unitId)).rejects.toThrow(/read-only/);
   await endRewardViewAs(checker);
  });
- it('permission overrides narrow the native read owner and fixed own-line protection cannot be changed',async()=>{await expect(changeRewardPermission(gr,{role:'gr',capability:'own.never',allowed:true,reason:'Attempt to weaken own-line confidentiality'})).rejects.toThrow(/fixed/);await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Temporarily suspend this native page capability'});await expect(getRewardUnit(gr,unitId)).rejects.toThrow(/does not permit/);});
+ it('permission overrides narrow the native read owner and fixed own-line protection cannot be changed',async()=>{await expect(saveRewardRolePermissionBatch(gr,{baseRevision:0,changes:[{role:'bu',capability:'own.never',after:'none'}],reason:'Attempt to weaken own-line confidentiality'})).rejects.toMatchObject({code:'invalid'});await narrowGroupRewardsReviewPage(b);await expect(getRewardUnit(gr,unitId)).rejects.toThrow(/does not permit/);});
  it('applies a dated personal page grant only inside an existing seat and company scope',async()=>{
-  await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Test the configured review page restriction'});
+  await narrowGroupRewardsReviewPage(b);
   await expect(getRewardUnit(checker,unitId)).rejects.toThrow(/does not permit/);
   expect((await rewardApprovalsBoard(checker,[b.companyId])).map(row=>row.id)).toContain(unitId);
   const grant={userId:checker.userId!,companyId:b.companyId,capability:'review.view',validFrom:today,validTo:today,active:true,reason:'Allow the existing reviewer to view this company review'};

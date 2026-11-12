@@ -22,6 +22,7 @@ const ALL_TABLES = [
   'reward_config_change',
   'reward_pat_basis',
   'reward_uploaded_adjustment','reward_uploaded_award','reward_uploaded_version','reward_uploaded_review','reward_advisor_suggestion','reward_advisor_setting','reward_advisor_cycle_setting',
+  'reward_role_permission_request','reward_role_permission_version',
   'reward_access_view_session','reward_page_grant','reward_role_permission',
   'reward_setup_cycle','reward_unit_setup','reward_company_year_review','reward_plan_company','reward_plan_setup',
   'reward_snapshot_comp_movement','reward_pat_version','reward_library_revision_audit','reward_library_version','reward_library','reward_setup_grant',

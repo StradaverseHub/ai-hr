@@ -145,6 +145,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4800,when:1793330005100,tag:'5400_rewards_direct_configuration'},
  // fc804e8c Rewards Limit Controls (DRAFT block 5500–5519; the integrator renumbers at admission).
  {idx:4900,when:1793330005200,tag:'5500_rewards_limit_controls'},
+ // db14e49c Rewards role permission grid (DRAFT block 5520–5539; the integrator renumbers at admission).
+ {idx:4920,when:1793330005220,tag:'5520_rewards_role_permission_grid'},
  // b945f0cc Rewards off-cycle company balance (DRAFT block 5540–5559; the integrator renumbers at admission).
  {idx:4940,when:1793330005240,tag:'5540_rewards_offcycle_company_balance'},
 ] as const;
@@ -155,6 +157,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5127_import_log_actor_labels':'1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2',
  '5400_rewards_direct_configuration':'0e55f9de5d62ef07719a876ae208d9206ebc43d716c3bbdba02094a3cb997c6e',
  '5500_rewards_limit_controls':'3a710dc0103dd39b50c734243fd7f2691d6f08dbfb5d94d388d7664eb7ef93b0',
+ '5520_rewards_role_permission_grid':'e603208c9cb9ada2e35a7338ede22637dcf886c5763912e5273adce0fd7ce172',
  '5540_rewards_offcycle_company_balance':'25bd51577444f2cea0a0c53a231156f591c6c2f0f0ce56e293aeae9d054850aa',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',

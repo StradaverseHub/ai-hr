@@ -37098,20 +37098,13 @@
     "rolePermissions": "Kebenaran peranan",
     "users": "Pengguna ({count} aktif)",
     "permission": "Kebenaran",
-    "groupOnly": "Group Rewards sahaja",
-    "editable": "Boleh diubah",
-    "fixedHelp": "Skop, laluan dan kerahsiaan tidak boleh diubah di sini.",
-    "changed": "{count} peranan berubah daripada lalai. Setiap perubahan direkod.",
     "reset": "Set semula lalai peranan",
-    "confirmChange": "Sahkan perubahan kebenaran",
     "reason": "Alasan perubahan",
     "cancel": "Batal",
     "saving": "Menyimpan…",
     "save": "Simpan",
     "error": "Perubahan gagal disimpan. Muat semula dan semak akses.",
     "stepHelp": "Pada langkah sendiri: BU CEO (draf/dikembalikan) → BG CEO → Group Rewards → CTRO → Executive Chairman → Payroll.",
-    "enable": "Aktifkan",
-    "disable": "Nyahaktifkan",
     "viewAs": "Lihat sebagai",
     "viewingAs": "Melihat sebagai {name} – baca sahaja",
     "readOnlyHelp": "Menunjukkan baris yang dibenarkan untuk pengguna sasaran dan mengecualikan baris anda. Tamatkan sesi sebelum mengubah ganjaran.",
@@ -37140,13 +37133,13 @@
       "ctro": "CTRO",
       "ec": "Executive Chairman",
       "pbp": "PBP (read only)",
-      "payroll": "Payroll handoff",
+      "payroll": "Payroll",
       "proxy_bg": "Proksi BG CEO",
-      "hr_admin": "Administrator account"
+      "hr_admin": "HR Admin"
     },
     "permissions": {
       "review": {
-        "view": "Semakan pampasan",
+        "view": "Semakan Ganjaran Pasukan",
         "decide": "Hantar atau lulus",
         "batch": "Lulus beberapa semakan"
       },
@@ -37158,9 +37151,6 @@
       },
       "rules": {
         "view": "Peraturan"
-      },
-      "cycles": {
-        "view": "Kitaran semakan"
       },
       "plans": {
         "manage": "Tetapan ganjaran bersama"
@@ -37190,7 +37180,7 @@
         "manage": "Amaun pelan Senior"
       },
       "restricted": {
-        "view": "Laporan langsung terhad"
+        "view": "Laporan langsung terhad (EC)"
       },
       "offcycle": {
         "raise": "Buka permohonan luar kitaran",
@@ -37209,6 +37199,12 @@
       },
       "audit": {
         "always": "Setiap perubahan diaudit"
+      },
+      "promotions": {
+        "view": "Pencalonan kenaikan pangkat"
+      },
+      "limits": {
+        "view": "Kawalan Had"
       }
     },
     "restrictedName": "Nama terhad",
@@ -37220,7 +37216,92 @@
     "validFrom": "Tarikh mula",
     "validTo": "Tarikh tamat (pilihan)",
     "active": "Aktif",
-    "inactive": "Tidak aktif"
+    "inactive": "Tidak aktif",
+    "grid": {
+      "legend": "Tahap kebenaran",
+      "legendHelp": {
+        "full": "lihat dan ubah",
+        "step": "bertindak hanya pada langkah kelulusan sendiri",
+        "view": "lihat tanpa mengubah",
+        "none": "tiada akses"
+      },
+      "changedOnly": "Hanya yang berubah daripada lalai",
+      "unsaved": "Anda ada perubahan kebenaran yang belum disimpan. Tinggalkan halaman ini dan hilangkannya?",
+      "readOnly": "Anda boleh melihat kebenaran ini. Group Rewards, HR Admin atau CTRO boleh mengubahnya.",
+      "readOnlyViewAs": "Baca sahaja semasa Lihat sebagai aktif.",
+      "appliesNow": "Perubahan yang disimpan terpakai serta-merta pada menu, halaman dan tindakan untuk semua dalam peranan itu.",
+      "needsApproval": "Perubahan anda dihantar ke Menunggu kelulusan. Group Rewards, HR Admin atau CTRO meluluskannya.",
+      "lockedOverrides": "{count, plural, other {# tetapan lama yang disimpan membuang langkah kelulusan tetap.}} Tetapkan semula kepada lalai untuk memulihkan susunan kelulusan.",
+      "skipped": "{count, plural, other {# sel tidak diubah kerana dikunci untuk anda.}}",
+      "resetConfirm": "Muatkan lalai setiap peranan sebagai perubahan belum disimpan? Anda boleh menyemaknya sebelum menyimpan.",
+      "saved": "Kebenaran peranan disimpan.",
+      "requested": "Dihantar untuk kelulusan.",
+      "history": "Sejarah versi",
+      "version": "Versi {revision}",
+      "actions": {
+        "saved": "Disimpan",
+        "reset": "Ditetapkan semula ke lalai",
+        "restored": "Dipulihkan",
+        "approved": "Permintaan diluluskan"
+      },
+      "unavailable": "Tidak tersedia",
+      "restoredFrom": "daripada versi {revision}",
+      "compare": "Bandingkan dengan semasa",
+      "restore": "Pulihkan",
+      "cell": "Kebenaran",
+      "thisVersion": "Versi ini",
+      "current": "Semasa",
+      "sameAsCurrent": "Sama seperti kebenaran semasa.",
+      "noHistory": "Belum ada kelompok disimpan.",
+      "bar": "Perubahan belum disimpan",
+      "changes": "{count, plural, other {# perubahan}}",
+      "discard": "Buang",
+      "save": "Simpan perubahan",
+      "sendForApproval": "Hantar untuk kelulusan",
+      "scopes": {
+        "assignedCompanies": "Syarikat yang ditetapkan",
+        "assignedBusinessUnits": "Unit Perniagaan yang ditetapkan",
+        "wholeGroup": "Seluruh kumpulan",
+        "assignedCompaniesView": "Syarikat yang ditetapkan (lihat sahaja)",
+        "none": "—"
+      },
+      "locks": {
+        "accessKeeper": "Group Rewards mengekalkan Rewards Access supaya tidak terkunci sendiri.",
+        "ownNever": "Melihat atau menetapkan ganjaran sendiri sentiasa Tidak pernah.",
+        "route": "Laluan kelulusan ditetapkan oleh aliran kerja.",
+        "scope": "Skop datang daripada kerusi semakan.",
+        "audit": "Setiap perubahan sentiasa diaudit.",
+        "approvalOrder": "Hantar atau lulus kekal supaya susunan kelulusan tidak terputus.",
+        "notApplicable": "Peranan ini tiada akses kepada baris ini.",
+        "heldRole": "Anda memegang peranan ini. Pentadbir Rewards lain mengubah kebenarannya."
+      },
+      "breaksLock": "Tetapan lama yang disimpan berbeza daripada lalai tetap.",
+      "was": "Asal: {level}",
+      "errors": {
+        "stale": "Kebenaran berubah sejak anda membukanya. Muat semula untuk melihat yang terkini, kemudian buat perubahan semula.",
+        "locked": "Sel yang dikunci tidak boleh diubah.",
+        "forbidden": "Anda tiada kuasa untuk mengubah kebenaran peranan.",
+        "invalid": "Salah satu perubahan tidak dibenarkan. Tiada apa disimpan.",
+        "held": "Anda tidak boleh mengubah kebenaran peranan yang anda pegang.",
+        "changed": "Ini telah berubah. Semak ringkasan sekali lagi.",
+        "reason": "Berikan alasan sekurang-kurangnya 10 aksara.",
+        "decided": "Permintaan ini sudah diputuskan.",
+        "system": "Perubahan tidak dapat disimpan. Cuba lagi."
+      },
+      "waiting": "{count, plural, =0 {Tiada perubahan kebenaran peranan menunggu kelulusan} other {# perubahan kebenaran peranan menunggu kelulusan}}",
+      "decided": "Permintaan yang diputuskan",
+      "statuses": {
+        "pending": "Menunggu kelulusan",
+        "applied": "Diluluskan dan dilaksanakan",
+        "rejected": "Ditolak",
+        "lapsed": "Luput: kebenaran berubah selepas ia dihantar"
+      },
+      "requestedBy": "{name} · {count, plural, other {# perubahan}}",
+      "decisionReason": "Alasan keputusan (wajib untuk menolak)",
+      "approve": "Luluskan",
+      "reject": "Tolak",
+      "needsChecker": "Pengguna Group Rewards, HR Admin atau CTRO lain mesti memutuskan permintaan ini."
+    }
   },
   "rewardsAnalytics": {
     "subtitle": "Gaji sebelum dan selepas kenaikan serta bayaran bonus bagi unit yang dipaparkan. Angka ini berdasarkan cadangan terkini.",

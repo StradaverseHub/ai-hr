@@ -10,7 +10,7 @@ import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {saveRewardLibrary,restoreRewardLibraryVersion,activateRewardLibrary,submitRewardLibrary} from '../packs/rewards/libraries';
 import {saveRewardPatBatch,previewRewardPatBatch,rewardPatInputs} from '../packs/rewards/pat-inputs';
-import {changeRewardPermission} from '../packs/rewards/access-policy';
+import {previewRewardRolePermissionBatch,saveRewardRolePermissionBatch} from '../packs/rewards/role-permission-grid';
 import {rewardConfigChangeLog,rewardConfigChangeExport} from '../packs/rewards/config-change';
 import {setupGrades} from './rewards-setup-fixture';
 
@@ -106,11 +106,14 @@ it('lets the PAT maker activate through raw SQL as the application role (the 220
 
 it('refuses the switches for a role the editor holds and logs a permitted role change',async()=>{
  const maker=await editor('Fictional permissions editor');
- await expect(changeRewardPermission(maker,{role:'gr',capability:'figures.edit',allowed:false,reason:'Try to narrow my own role'})).rejects.toThrow(/role you hold/);
+ // Board db14e49c: the Role permissions grid saves batches; the self rule is unchanged.
+ await expect(saveRewardRolePermissionBatch(maker,{baseRevision:0,changes:[{role:'gr',capability:'figures.edit',after:'none'}],reason:'Try to narrow my own role'})).rejects.toThrow(/role you hold/);
  await expect(withTenant(maker,tx=>tx.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,changed_by,reason) values(app.current_tenant_id(),'gr','figures.edit',false,app.current_user_id(),'Raw own-role write attempt')`))).rejects.toThrow();
- await changeRewardPermission(maker,{role:'bu',capability:'figures.edit',allowed:false,reason:'BU CEO figures edit narrowed'});
+ const batch={baseRevision:0,changes:[{role:'bu' as const,capability:'figures.edit',after:'none' as const}],reason:'BU CEO figures edit narrowed'};
+ const {digest}=await previewRewardRolePermissionBatch(maker,batch);
+ await saveRewardRolePermissionBatch(maker,{...batch,digest});
  const log=await changes(sql`area='role_permission'`);
- expect(log.map(r=>[r.action,r.actor_id,r.summary.lines[0]?.before,r.summary.lines[0]?.after])).toEqual([['changed',maker.userId,'Default','Off']]);
+ expect(log.map(r=>[r.action,r.actor_id,r.summary.lines[0]?.before,r.summary.lines[0]?.after])).toEqual([['batch-saved',maker.userId,'At their step','—']]);
 },60_000);
 
 it('refuses an immediate access change that adds the actor and allows removing their own seat',async()=>{

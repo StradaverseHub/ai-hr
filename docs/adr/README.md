@@ -181,6 +181,7 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [Rewards configuration is saved directly by its accountable editors (board 60f1fdcd, 12 Nov 2026)](2026-11-12-rewards-direct-configuration.md) — supersedes the Rewards configuration maker-checker and the release independence in [rewards-unit-preparation](rewards-unit-preparation.md)
 - [Rewards limits and thresholds have one owner: Limit Controls by reward year (board fc804e8c, 12 Nov 2026)](2026-11-12-rewards-limit-controls.md) — Group Rewards edits, CTRO/EC view; reviews keep their version; saves follow 60f1fdcd (no second person)
 - [Off-cycle requests draw on one balance per company (board b945f0cc, 12 Nov 2026)](2026-11-12-rewards-offcycle-company-balance.md) — supersedes the separate Standard/JG H off-cycle funding in [ADR-0099](0099-rewards-review-and-payroll-handoff.md); off-cycle year, mid-year window, blackout and exception routing
+- [Rewards Access role permissions are one levelled grid saved in batches (board db14e49c, 12 Nov 2026)](2026-11-12-rewards-role-permission-grid.md) — the grid, its levels, doer/checker and the server narrowing of the formerly display-only rows
 - [Proposal — Entra sign-in and cloud/hybrid workforce provisioning](entra-workforce-integration-proposal.md) (design only; unnumbered pending integration)
 
 - [ADR-0172: Subject-owned, content-bound document signing](0172-subject-owned-content-bound-signing.md)

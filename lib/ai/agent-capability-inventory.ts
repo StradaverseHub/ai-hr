@@ -153,7 +153,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/rewards/access/group-role-actions.ts":{"saveRewardGroupRoleAction":"handoff:access_and_authentication"},
  "app/admin/rewards/access/policy-actions.ts":{
   "beginRewardViewAsAction":"handoff:access_and_authentication","endRewardViewAsAction":"handoff:access_and_authentication",
-  "resetRewardPermissionsAction":"handoff:access_and_authentication","rewardPermissionAction":"handoff:access_and_authentication",
+  "previewRewardRolePermissionBatchAction":"handoff:access_and_authentication","saveRewardRolePermissionBatchAction":"handoff:access_and_authentication","decideRewardRolePermissionRequestAction":"handoff:access_and_authentication",
   "saveRewardPersonalPageAction":"handoff:access_and_authentication",
  },
  "app/admin/rewards/actions.ts":{"cancelRewardAction":"registered:rewards.cancel_review"},

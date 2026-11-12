@@ -37098,20 +37098,13 @@
     "rolePermissions": "Quyền vai trò",
     "users": "Người dùng ({count} hoạt động)",
     "permission": "Quyền",
-    "groupOnly": "Chỉ Group Rewards được xem",
-    "editable": "Có thể sửa",
-    "fixedHelp": "Không thể đổi phạm vi, luồng và bảo mật tại đây.",
-    "changed": "{count} vai trò khác mặc định. Mọi thay đổi được ghi lại.",
     "reset": "Đặt lại quyền mặc định",
-    "confirmChange": "Xác nhận đổi quyền",
     "reason": "Lý do thay đổi",
     "cancel": "Hủy",
     "saving": "Đang lưu…",
     "save": "Lưu",
     "error": "Không lưu được. Tải lại và kiểm tra quyền.",
     "stepHelp": "Tại bước của mình: BU CEO (nháp/trả lại) → BG CEO → Group Rewards → CTRO → Executive Chairman → Payroll.",
-    "enable": "Bật",
-    "disable": "Tắt",
     "viewAs": "Xem dưới vai trò",
     "viewingAs": "Đang xem như {name} – chỉ đọc",
     "readOnlyHelp": "Hiện các dòng người dùng đích được phép xem và loại dòng của bạn. Không thể sửa thưởng trước khi kết thúc phiên.",
@@ -37140,13 +37133,13 @@
       "ctro": "CTRO",
       "ec": "Executive Chairman",
       "pbp": "PBP (read only)",
-      "payroll": "Payroll handoff",
+      "payroll": "Payroll",
       "proxy_bg": "BG CEO ủy quyền",
-      "hr_admin": "Administrator account"
+      "hr_admin": "HR Admin"
     },
     "permissions": {
       "review": {
-        "view": "Đánh giá đãi ngộ",
+        "view": "Xét duyệt đãi ngộ của nhóm",
         "decide": "Gửi hoặc duyệt",
         "batch": "Duyệt nhiều đánh giá"
       },
@@ -37158,9 +37151,6 @@
       },
       "rules": {
         "view": "Quy tắc"
-      },
-      "cycles": {
-        "view": "Chu kỳ đánh giá"
       },
       "plans": {
         "manage": "Cấu hình thưởng chung"
@@ -37190,7 +37180,7 @@
         "manage": "Số tiền kế hoạch Senior"
       },
       "restricted": {
-        "view": "Nhân viên trực thuộc hạn chế"
+        "view": "Nhân viên trực thuộc hạn chế (EC)"
       },
       "offcycle": {
         "raise": "Tạo yêu cầu ngoài kỳ",
@@ -37209,6 +37199,12 @@
       },
       "audit": {
         "always": "Ghi nhật ký mọi thay đổi"
+      },
+      "promotions": {
+        "view": "Đề cử thăng chức"
+      },
+      "limits": {
+        "view": "Kiểm soát hạn mức"
       }
     },
     "restrictedName": "Tên bị hạn chế",
@@ -37220,7 +37216,92 @@
     "validFrom": "Ngày bắt đầu",
     "validTo": "Ngày kết thúc (không bắt buộc)",
     "active": "Đang hoạt động",
-    "inactive": "Ngừng hoạt động"
+    "inactive": "Ngừng hoạt động",
+    "grid": {
+      "legend": "Mức quyền",
+      "legendHelp": {
+        "full": "xem và thay đổi",
+        "step": "chỉ thao tác tại bước phê duyệt của mình",
+        "view": "xem mà không thay đổi",
+        "none": "không có quyền"
+      },
+      "changedOnly": "Chỉ những ô khác mặc định",
+      "unsaved": "Bạn có thay đổi quyền chưa lưu. Rời trang này và bỏ các thay đổi?",
+      "readOnly": "Bạn có thể xem các quyền này. Group Rewards, HR Admin hoặc CTRO có thể thay đổi.",
+      "readOnlyViewAs": "Chỉ đọc khi đang dùng View as.",
+      "appliesNow": "Thay đổi đã lưu áp dụng ngay cho menu, trang và thao tác của mọi người trong vai trò đó.",
+      "needsApproval": "Thay đổi của bạn chuyển sang Chờ phê duyệt. Group Rewards, HR Admin hoặc CTRO sẽ phê duyệt.",
+      "lockedOverrides": "{count, plural, other {# thiết lập đã lưu trước đây bỏ một bước phê duyệt cố định.}} Đặt lại về mặc định để khôi phục thứ tự phê duyệt.",
+      "skipped": "{count, plural, other {# ô không được thay đổi vì bị khóa với bạn.}}",
+      "resetConfirm": "Tải mặc định của mọi vai trò thành các thay đổi chưa lưu? Bạn có thể xem lại trước khi lưu.",
+      "saved": "Đã lưu quyền theo vai trò.",
+      "requested": "Đã gửi để phê duyệt.",
+      "history": "Lịch sử phiên bản",
+      "version": "Phiên bản {revision}",
+      "actions": {
+        "saved": "Đã lưu",
+        "reset": "Đặt lại mặc định",
+        "restored": "Đã khôi phục",
+        "approved": "Đã phê duyệt yêu cầu"
+      },
+      "unavailable": "Không có",
+      "restoredFrom": "từ phiên bản {revision}",
+      "compare": "So sánh với hiện tại",
+      "restore": "Khôi phục",
+      "cell": "Quyền",
+      "thisVersion": "Phiên bản này",
+      "current": "Hiện tại",
+      "sameAsCurrent": "Giống quyền hiện tại.",
+      "noHistory": "Chưa có lô nào được lưu.",
+      "bar": "Thay đổi chưa lưu",
+      "changes": "{count, plural, other {# thay đổi}}",
+      "discard": "Bỏ",
+      "save": "Lưu thay đổi",
+      "sendForApproval": "Gửi để phê duyệt",
+      "scopes": {
+        "assignedCompanies": "Công ty được giao",
+        "assignedBusinessUnits": "Đơn vị kinh doanh được giao",
+        "wholeGroup": "Toàn tập đoàn",
+        "assignedCompaniesView": "Công ty được giao (chỉ xem)",
+        "none": "—"
+      },
+      "locks": {
+        "accessKeeper": "Group Rewards giữ Rewards Access để không tự khóa mình.",
+        "ownNever": "Xem hoặc đặt phần thưởng của chính mình luôn là Không bao giờ.",
+        "route": "Tuyến phê duyệt do quy trình cố định.",
+        "scope": "Phạm vi lấy từ các vị trí xét duyệt.",
+        "audit": "Mọi thay đổi luôn được kiểm toán.",
+        "approvalOrder": "Gửi hoặc phê duyệt luôn bật để thứ tự phê duyệt không bị gián đoạn.",
+        "notApplicable": "Vai trò này không có quyền ở dòng này.",
+        "heldRole": "Bạn đang giữ vai trò này. Quản trị viên Rewards khác sẽ thay đổi quyền của nó."
+      },
+      "breaksLock": "Một thiết lập đã lưu trước đây khác với mặc định cố định.",
+      "was": "Trước: {level}",
+      "errors": {
+        "stale": "Quyền đã thay đổi kể từ khi bạn mở. Tải lại để xem bản mới nhất rồi thay đổi lại.",
+        "locked": "Không thể thay đổi ô bị khóa.",
+        "forbidden": "Bạn không có thẩm quyền thay đổi quyền theo vai trò.",
+        "invalid": "Một thay đổi không được phép. Không có gì được lưu.",
+        "held": "Bạn không thể thay đổi quyền của vai trò mình đang giữ.",
+        "changed": "Đã có thay đổi. Hãy xem lại bản tóm tắt.",
+        "reason": "Nhập lý do ít nhất 10 ký tự.",
+        "decided": "Yêu cầu này đã được quyết định.",
+        "system": "Không thể lưu thay đổi. Hãy thử lại."
+      },
+      "waiting": "{count, plural, =0 {Không có thay đổi quyền theo vai trò nào chờ phê duyệt} other {# thay đổi quyền theo vai trò chờ phê duyệt}}",
+      "decided": "Yêu cầu đã quyết định",
+      "statuses": {
+        "pending": "Chờ phê duyệt",
+        "applied": "Đã phê duyệt và áp dụng",
+        "rejected": "Đã từ chối",
+        "lapsed": "Hết hiệu lực: quyền đã thay đổi sau khi gửi"
+      },
+      "requestedBy": "{name} · {count, plural, other {# thay đổi}}",
+      "decisionReason": "Lý do quyết định (bắt buộc khi từ chối)",
+      "approve": "Phê duyệt",
+      "reject": "Từ chối",
+      "needsChecker": "Một người dùng Group Rewards, HR Admin hoặc CTRO khác phải quyết định yêu cầu này."
+    }
   },
   "rewardsAnalytics": {
     "subtitle": "Xem lương trước và sau khi tăng, cùng khoản thưởng của các đơn vị đang chọn. Số liệu phản ánh đề xuất hiện tại.",

@@ -137,10 +137,10 @@ async function recordGovernanceChangeTx(tx:Tx,ctx:SessionContext,unit:typeof rew
 function reasonForGovernance(reason:string){return z.string().trim().min(10).max(2000).parse(reason);}
 export async function getRewardUnitGovernance(ctx:SessionContext,unitId:string){
  return withRewardsTenant(ctx,async tx=>{
-  const {unit,roles,entries}=await load(tx,unitId),state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId),effective=effectiveRewardPolicy(unit.policy,state),awardProjection=await seniorAwardsTx(tx,unitId);
+  const {unit,roles,entries,seniorAmounts}=await load(tx,unitId),state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId),effective=effectiveRewardPolicy(unit.policy,state),awardProjection=await seniorAwardsTx(tx,unitId);
   const calculated=await calculateUnit(tx,unit,entries);
   const visible=entries.filter(entry=>visibleEntry(entry,roles,ctx.personId)),senior=visible.filter(entry=>isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade));
-  const canAmounts=maySeeSeniorAmounts(roles),isGr=roles.includes('gr');
+  const canAmounts=seniorAmounts,isGr=roles.includes('gr');
   const [ready]=await tx.execute<{ready:boolean}>(sql`select to_regclass('public.reward_governance') is not null as ready`);
   const [setupPat]=await tx.execute<{pool_recalculation_required:boolean}>(sql`select pool_recalculation_required from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
   return {unitId,revision:unit.revision,companyPatBound:!!setupPat,patBasisStale:!!setupPat&&publicState?.basis!==governanceBasis(unit.policy,entries),patRecalculationRequired:!!setupPat?.pool_recalculation_required,canEdit:isGr&&unit.status==='draft'&&unit.kind==='annual',isGr,canAmounts,managed:!!publicState,
@@ -235,7 +235,7 @@ export async function saveRewardSeniorAward(ctx:SessionContext,unitId:string,rev
 export async function readRewardSeniorEvidence(ctx:SessionContext,unitId:string,evidenceId:string){
  idSchema.parse(evidenceId);
  return withRewardsTenant(ctx,async tx=>{
-  await assertRewardWritableTx(tx);const {roles,entries}=await load(tx,unitId);if(!maySeeSeniorAmounts(roles))throw new RewardError('Senior plan evidence is restricted.');
+  await assertRewardWritableTx(tx);const {roles,entries,seniorAmounts}=await load(tx,unitId);if(!seniorAmounts)throw new RewardError('Senior plan evidence is restricted.');
   const [file]=await tx.select().from(rewardSeniorEvidence).where(and(eq(rewardSeniorEvidence.unitId,unitId),eq(rewardSeniorEvidence.id,evidenceId)));
   const entry=file&&entries.find(entry=>entry.id===file.entryId);if(!file||!entry||!visibleEntry(entry,roles,ctx.personId))throw new RewardError('Evidence is not available.');
   return {name:file.name,mime:file.mime,content:file.content};
@@ -323,7 +323,11 @@ async function load(tx: Tx, unitId: string, lock = false,capability:import('./ac
   const directReports = new Set((await tx.execute<{ id:string }>(sql`
     select app.reward_group_ec_direct_reports(${unitId}::uuid) as id
   `)).map(row=>row.id));
-  return { unit, roles, entries:entries.map(e=>({...e,groupEcDirectReport:directReports.has(e.employmentId),uploadedAward:awards.find(a=>a.entryId===e.id)?.award??null})) };
+  // Board db14e49c: the Role permissions rows for restricted (EC) direct reports and Senior plan amounts. At their
+  // step keeps the existing entry rule; View only shows the rows without entering them; Senior amounts need View only.
+  const [levels]=await tx.execute<{restricted:number;senior:number}>(sql`select app.reward_level_rank(app.reward_unit_level(${unitId}::uuid,'restricted.view')) as restricted,app.reward_level_rank(app.reward_unit_level(${unitId}::uuid,'senior.manage')) as senior`);
+  const restrictedHidden=(levels?.restricted??0)<1,restrictedReadOnly=(levels?.restricted??0)<2,seniorAmounts=maySeeSeniorAmounts(roles)&&(levels?.senior??0)>=1;
+  return { unit, roles, seniorAmounts, entries:entries.map(e=>({...e,groupEcDirectReport:directReports.has(e.employmentId),restrictedHidden,restrictedReadOnly,uploadedAward:awards.find(a=>a.entryId===e.id)?.award??null})) };
 }
 function assertRevision(unit: typeof rewardUnit.$inferSelect, revision: number) {
   if (!Number.isInteger(revision) || unit.revision !== revision) throw new RewardError('This review changed in another session. Reload before saving.');
@@ -374,7 +378,7 @@ export function exportRewardReview(ctx:SessionContext,unitId:string,format:'revi
  * Compact lists and full reviews both retain the same native role/roster reads, governance passes,
  * independent Senior confirmation and hidden-record flags. Nothing here is cached between calls. */
 async function reviewFinancialProjectionTx(tx: Tx, ctx: SessionContext, unitId: string, capability: import('./access-policy-model').RewardCapability = 'review.view') {
-  const { unit, roles, entries } = await load(tx, unitId, false, capability);
+  const { unit, roles, entries, seniorAmounts } = await load(tx, unitId, false, capability);
   const [caps]=await tx.execute<{value:{figuresEdit:boolean;reviewDecide:boolean;batch:boolean;dataCheck:boolean;snapshotRefresh:boolean;offcycleRaise:boolean;notesAdd:boolean;casesDecide:boolean}}>(sql`select jsonb_build_object('figuresEdit',app.reward_capability(${unitId}::uuid,'figures.edit') and (not exists(select 1 from app.reward_current_group_roles()) or app.reward_group_figures_stage_allowed(${unitId}::uuid)),'reviewDecide',app.reward_capability(${unitId}::uuid,'review.decide'),'batch',app.reward_capability(${unitId}::uuid,'review.batch'),'dataCheck',app.reward_capability(${unitId}::uuid,'data.check'),'snapshotRefresh',app.reward_capability(${unitId}::uuid,'snapshot.refresh'),'offcycleRaise',app.reward_capability(${unitId}::uuid,'offcycle.raise'),'notesAdd',app.reward_capability(${unitId}::uuid,'notes.add'),'casesDecide',app.reward_capability(${unitId}::uuid,'cases.decide')) as value`);
   const [uploadedReview]=await tx.execute<{present:boolean;pending:boolean}>(sql`select true as present,(current_version=0 or checked_version is distinct from current_version) as pending from reward_uploaded_review where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()`);
   const [groupScope]=await tx.execute<{wholeGroup:boolean}>(sql`select exists(select 1 from app.reward_current_group_roles()) as "wholeGroup"`);
@@ -384,7 +388,7 @@ async function reviewFinancialProjectionTx(tx: Tx, ctx: SessionContext, unitId: 
   const state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId),effectivePolicy=state?effectiveRewardPolicy(unit.policy,state):publicState?{...unit.policy,multiplierBp:publicState.multiplierBp,branchRatings:publicState.branchRatings,targetMonthsBp:publicState.targetMonthsBp}:unit.policy;
   if(publicState&&!publicState.selectionConfirmed&&roles.includes('bu')&&!roles.includes('gr'))throw new RewardError('Senior plan membership is a draft. Group Rewards must make it active before the BU review can open.');
   const visible = calculated.rows.filter(e => visibleEntry(e, roles, ctx.personId)).map(entry=>{
-    if(maySeeSeniorAmounts(roles)||!isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade))return entry;
+    if(seniorAmounts||!isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade))return entry;
     return {...entry,recommendation:emptyRecommendation(),newBasicCents:entry.source.basicCents,bonusCents:0,meritCents:0,promotionCents:0,specialCents:0,lumpCents:0};
   });
   const visibleIds = new Set(visible.map(e => e.id));
@@ -393,7 +397,7 @@ async function reviewFinancialProjectionTx(tx: Tx, ctx: SessionContext, unitId: 
   if (hiddenBlocks) flags.push({ severity: 'block', code: 'ACCESS-01', message: 'A restricted record needs review by its authorised reviewer.' });
   const route: RewardRole[] = unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] : offcycleRoute(unit.kind, unit.offcycle!, entries);
   const canEdit = !!caps?.value.figuresEdit && (canEditStage(unit.status, roles) || unit.kind !== 'annual' && unit.status === 'draft' && roles.includes('bg'));
-  return { unit, roles, entries, calculated, state, publicState, effectivePolicy, visible, visibleIds, flags, route, canEdit, caps, uploadedReview, groupScope };
+  return { unit, roles, entries, calculated, state, publicState, effectivePolicy, visible, visibleIds, flags, route, canEdit, caps, uploadedReview, groupScope, seniorAmounts };
 }
 
 /**
@@ -404,7 +408,7 @@ async function reviewFinancialProjectionTx(tx: Tx, ctx: SessionContext, unitId: 
 async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,capability:import('./access-policy-model').RewardCapability='review.view', includeAnalytics = false) {
   {
     const { unit, roles, entries, calculated, state, publicState, effectivePolicy, visible, visibleIds, flags,
-      route, canEdit, caps, uploadedReview, groupScope } = await reviewFinancialProjectionTx(tx, ctx, unitId, capability);
+      route, canEdit, caps, uploadedReview, groupScope, seniorAmounts } = await reviewFinancialProjectionTx(tx, ctx, unitId, capability);
     const [cycle] = await tx.select().from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
     const [bu] = await tx.select({ name: businessUnitDisplayName }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
     // 9070acae: a review is always one company and one unit; the page names both on every save.
@@ -439,12 +443,12 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
     const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);
     const fullView = rewardFullView(roles);
     const analytics = includeAnalytics ? await analyticsRowsTx(tx, ctx, {
-      unit, roles, rows: calculated.rows, flags, state, effectivePolicy, publicState, uploaded: !!uploadedReview?.present,
+      unit, roles, rows: calculated.rows, flags, state, effectivePolicy, publicState, uploaded: !!uploadedReview?.present, seniorAmounts,
     }) : null;
     return { ...(analytics ? { analytics } : {}), libraryBound:libraryBinding?.bound??false,...(caps?{capabilities:{...caps.value,snapshotRefresh:!uploadedReview?.present&&caps.value.snapshotRefresh}}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.filter(row=>entries.some(e=>e.id===row.id&&e.uploadedAward!==null)).length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0),lumpCents:visible.reduce((n,e)=>n+e.lumpCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
       // 37f82412: pay position before and after (basis points of the approved midpoint), worked out here so
       // the screen never does pay arithmetic. Null where the figures are hidden or no midpoint is configured.
-      rows: visible.map(e=>{const {uploadedAward:_award,groupEcDirectReport:_groupEc,...safe}=e as typeof e&{uploadedAward?:unknown;groupEcDirectReport?:boolean};
+      rows: visible.map(e=>{const {uploadedAward:_award,groupEcDirectReport:_groupEc,restrictedHidden:_hidden,restrictedReadOnly:_readOnly,...safe}=e as typeof e&{uploadedAward?:unknown;groupEcDirectReport?:boolean;restrictedHidden?:boolean;restrictedReadOnly?:boolean};
         const hiddenSenior=!maySeeSeniorAmounts(roles)&&isSeniorPlanMember(unit.policy,e.facts,e.source.grade);
         const midpoint=unit.policy.ranges?.[e.recommendation.promotionGrade??e.source.grade]?.[1];
         const position=(cents:number)=>hiddenSenior||!midpoint?null:ratio(cents,10000,midpoint,'nearest');
@@ -944,7 +948,8 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
     if (approvalStageEdit && validatedFacts && !isDeepStrictEqual(validatedFacts, entry.facts)) {
       throw new RewardError('Only the recommendation can change at this approval step.');
     }
-    const canEC = entry.facts.confidentiality === 'ec' && roles.some(r => ['gr', 'ctro', 'ec'].includes(r));
+    const canEC = entry.facts.confidentiality === 'ec' && roles.some(r => ['gr', 'ctro', 'ec'].includes(r)) && !entry.restrictedReadOnly;
+    if ((entry.facts.confidentiality === 'ec' || entry.groupEcDirectReport) && entry.restrictedReadOnly) throw new RewardError('Your Rewards role can view restricted direct reports but not enter rewards for them.');
     if (!canEditStage(unit.status, roles) && !(unit.kind !== 'annual' && roles.includes('bg')) && !canEC) throw new RewardError('You cannot edit this reward recommendation.');
     if (entry.facts.confidentiality !== 'ec' && rec.bonusCents != null) throw new RewardError('Use the bonus multiplier for a standard or JG H employee.');
     if(rec.reason!==entry.recommendation.reason||(rec.note??'')!==(entry.recommendation.note??''))await assertRewardCapabilityTx(tx,unitId,'notes.add');
@@ -2076,10 +2081,10 @@ async function analyticsRowsTx(tx: Tx, ctx: SessionContext, input: {
   unit: typeof rewardUnit.$inferSelect; roles: RewardRole[];
   rows: (CalculatedEntry & { groupEcDirectReport?: boolean })[]; flags: import('./model').RewardFlag[];
   state: RewardGovernance | null; effectivePolicy: RewardPolicy; publicState: RewardPublicGovernance | null;
-  uploaded: boolean;
+  uploaded: boolean; seniorAmounts?: boolean;
 }) {
   const { unit, roles, rows, flags, state, effectivePolicy, publicState, uploaded } = input;
-  const privileged = maySeeSeniorAmounts(roles);
+  const privileged = maySeeSeniorAmounts(roles) && input.seniorAmounts !== false;
   const visible = rows.filter(row => row.activeInReview && visibleEntry(row, roles, ctx.personId) &&
     (privileged || !isSeniorPlanMember(unit.policy, row.facts, row.source.grade)));
   const protectedBg = rows.filter(row => row.activeInReview && !privileged &&
@@ -2173,14 +2178,14 @@ export async function rewardPromotionNominations(ctx: SessionContext, companyIds
       .from(company).innerJoin(rewardUnit, eq(rewardUnit.companyId, company.id))
       .where(and(inArray(company.id, companyIds), eq(rewardUnit.tenantId, ctx.tenantId), isNull(rewardUnit.deletedAt),
         eq(rewardUnit.kind, 'annual'),
-        sql`app.reward_capability(${rewardUnit.id},'review.view') and 'gr' in (select app.reward_roles(${rewardUnit.id}))`))
+        sql`app.reward_capability(${rewardUnit.id},'review.view') and 'gr' in (select app.reward_roles(${rewardUnit.id})) and app.reward_level_rank(app.reward_unit_level(${rewardUnit.id},'promotions.view'))>=1`))
       .orderBy(asc(company.legalName), asc(company.id));
     const ids = companies.map(c => c.id);
     if (!ids.length) return { year, page: 1, maxPage: 1, companies, nominations: [] };
     const where = and(inArray(rewardUnit.companyId, ids), eq(rewardUnit.tenantId, ctx.tenantId), isNull(rewardUnit.deletedAt),
       eq(rewardUnit.kind, 'annual'), eq(rewardCycle.year, year),
       filters.companyId ? eq(rewardUnit.companyId, filters.companyId) : undefined,
-      sql`app.reward_capability(${rewardUnit.id},'review.view') and 'gr' in (select app.reward_roles(${rewardUnit.id}))`);
+      sql`app.reward_capability(${rewardUnit.id},'review.view') and 'gr' in (select app.reward_roles(${rewardUnit.id})) and app.reward_level_rank(app.reward_unit_level(${rewardUnit.id},'promotions.view'))>=1`);
     const [count] = await tx.select({ n: sql<number>`count(*)::int` }).from(rewardUnit)
       .innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).where(where);
     const maxPage = Math.max(1, Math.ceil((count?.n ?? 0) / perPage));

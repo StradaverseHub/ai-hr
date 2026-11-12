@@ -5813,6 +5813,13 @@
       "breakpoints": true
     },
     {
+      "idx": 4920,
+      "version": "7",
+      "when": 1793330005220,
+      "tag": "5520_rewards_role_permission_grid",
+      "breakpoints": true
+    },
+    {
       "idx": 4940,
       "version": "7",
       "when": 1793330005240,
