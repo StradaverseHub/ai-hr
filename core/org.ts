@@ -9,7 +9,7 @@ import { hasExitDateAuthorityTx } from './exit-date-authority';
 import { hasClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {assertCostAllocationTransferTx} from './employment-cost-allocations';
 import {lockAccessAdministratorSetTx,lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
-import {lockEmploymentLeaveDependenciesTx,lockOrgReportingTx,lockPersonValueWritesTx} from './workforce-lock-mode';
+import {joinWorkforceBarrierTx,lockEmploymentLeaveDependenciesTx,lockOrgReportingTx,lockPersonValueWritesTx} from './workforce-lock-mode';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
 import {setWorkforceEmployeeCode} from './workforce-code';
 import {personnelField} from '../lib/personnel-field-registry';
@@ -1502,7 +1502,9 @@ export async function readReviewedReportingLineReferenceTx(tx:Tx,supplied:Sessio
 export async function searchReviewedReportingLineChoicesTx(tx:Tx,supplied:SessionContext,selection:{role:'subordinate'|'manager';query:string;subordinateEmploymentId?:string}){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={...selection,query:selection.query.trim()};
  if(p.query.length<2||p.query.length>80||!['subordinate','manager'].includes(p.role)||p.role==='manager'&&!p.subordinateEmploymentId)throw new Error('Reporting choices unavailable');
- await tx.execute(sql`select app.access_configuration_write_lock()`);
+ // A read: inside withAccessDisplayRead, or after a shared hold, the barrier joins shared (SCALE rule 1); any other
+ // caller keeps the exclusive editor barrier it took before.
+ await joinWorkforceBarrierTx(tx,ctx.tenantId);
  if(p.role==='manager')await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId!,'maintain');
  const pattern='%'+p.query.replace(/[\\%_]/g,value=>'\\'+value)+'%',purpose=p.role==='subordinate'?'workforce.maintain':'workforce.view';
  const rows=await tx.select({employmentId:employment.id,employeeCode:employment.employeeCode,name:person.fullName,companyName:sql<string>`coalesce(${company.companyLabel},${company.legalName})`}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),sql`app.access_workforce_employment(${employment.id},${purpose})`,p.role==='manager'?sql`${employment.id}<>${p.subordinateEmploymentId}::uuid`:undefined,sql`(${person.fullName} ilike ${pattern} escape ${'\\'} or coalesce(${employment.employeeCode},'') ilike ${pattern} escape ${'\\'})`)).orderBy(sql`coalesce(${company.companyLabel},${company.legalName})`,sql`${employment.employeeCode} nulls last`,employment.id).limit(21);

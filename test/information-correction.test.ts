@@ -12,6 +12,7 @@ import * as schema from '../db/schema';
 import {readInformationCorrection,previewInformationCorrection,correctInformation,informationCorrectionHistory,informationCorrectionOptions} from '../core/information-correction';
 import {WorkforceAccessError} from '../core/workforce-access';
 import {previewInformationUpload,confirmInformationUpload} from '../core/information-correction-import';
+import {organisationImportWarningsTx} from '../core/derived-organisation-display';
 import {openLeaveYear,accrueEarnedLeave,reprojectEntitlementForEmployment} from '../core/leave';
 import {reconcileInformationSnapshots} from '../scripts/reconcile-information-snapshots';
 import {PDFDocument} from 'pdf-lib';
@@ -216,6 +217,24 @@ describe('8550b282 information-only corrections',()=>{
   const importedHistory=await movementHistory(ctx(),id);expect(importedHistory).toHaveLength(1);expect(importedHistory[0].effectiveDate).toBe('2025-01-01');expect(importedHistory[0].informationCorrections?.[0].fields).toEqual(['hiredOn']);
   const again=await confirmInformationUpload(ctx(),{attemptId:preview.attemptId,previewHash:preview.plan.previewHash});expect(again).toEqual(result);expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(1);
   const [history]=await informationCorrectionHistory(ctx(),id);expect(history.payload).toMatchObject({method:'excel',batchId:preview.attemptId,filename:'corrections.xlsx'});
+ });
+ it('resolves every row\'s employee in one read and reviews each row as the single-employee review does, with the same refusals',async()=>{
+  // 12 November 2026 (SCALE rule 2): the rows' employees are read in one statement, not one transaction per row.
+  const id=await fixture();await fixture('EMP-002');
+  const rows=[['DEMO','EMP-001','','','2025-01-01','','','','Correct signed record'],['DEMO','EMP-002','','','','','UNKNOWN','','Correct grade'],['DEMO','MISSING','','','','','','','Unknown employee'],['NOPE','EMP-001','','','','','','','Unknown company']];
+  const plan=(await previewInformationUpload(ctx(),{name:'set.xlsx',content:workbook(rows),operationKey:randomUUID()})).plan.rows;
+  expect(plan[0].errors).toEqual([]);
+  expect(plan[0].preview).toEqual(await previewInformationCorrection(ctx(),{employmentId:id,changes:{hiredOn:'2025-01-01'},reason:'Correct signed record'},{extended:true}));
+  expect(plan[0].warnings).toEqual((await withTenant(ctx(),tx=>organisationImportWarningsTx(tx,ctx(),{companyId:b.companyId,asOf:plan[0].preview!.effectiveOn}))).warnings);
+  expect(plan.slice(1).map(row=>row.errors)).toEqual([['Job Grade is not an active system code.'],['Employee ID is unknown or ambiguous within the existing company.'],['Company Code is unknown, ambiguous or outside your permission.']]);
+  // Another company's administrator cannot name these employees, and another tenant's same Company Code finds none of them.
+  const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional other company',companyLabel:'OTHER'}).returning();
+  const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional other company administrator',primaryEmail:randomUUID()+'@example.test'}).returning();
+  const userId=await createAppUser(b.tenantId,person.id,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:other.id}).where(eq(schema.roleAssignment.appUserId,userId));
+  const outsider={...ctx(),userId,personId:person.id,grants:[{role:'hr_admin',companyId:other.id}]};
+  expect((await previewInformationUpload(outsider,{name:'set.xlsx',content:workbook(rows.slice(0,1)),operationKey:randomUUID()})).plan.rows[0].errors).toEqual(['Company Code is unknown, ambiguous or outside your permission.']);
+  const foreign=await seedBase();await owner.db.update(schema.company).set({companyLabel:'DEMO'}).where(eq(schema.company.id,foreign.companyId));
+  expect((await previewInformationUpload(adminCtx(foreign),{name:'set.xlsx',content:workbook(rows.slice(0,1)),operationKey:randomUUID()})).plan.rows[0].errors).toEqual(['Employee ID is unknown or ambiguous within the existing company.']);
  });
  it('refuses duplicate target rows, invalid reasons and formula cells at preview',async()=>{
   await fixture();const content=workbook([['DEMO','EMP-001','','','2025-01-01','','','','Correct record'],['DEMO','EMP-001','','','2025-01-02','','','','']]);

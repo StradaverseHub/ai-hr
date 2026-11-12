@@ -17,10 +17,12 @@ async function assertAllocationPresentationTx(tx:Tx,authority:SQL){
  const [row]=await tx.execute<{allowed:boolean}>(sql`select ${authority} as allowed`);
  if(!row?.allowed)throw new WorkforceAccessError();
 }
-async function subjectTx(tx:Tx,ctx:SessionContext,id:string,date:string,write=false){
- if(write){await assertWorkforceEmploymentTx(tx,ctx,id,'maintain');await lockLabelCriteriaTx(tx,ctx.tenantId);}
+/** 'review' (an import preview inside withAccessDisplayRead, core/cost-allocation-import.ts) runs the same 'maintain'
+ * checks as 'write' without the label-criteria and row locks a save holds; the save repeats them and compares. */
+async function subjectTx(tx:Tx,ctx:SessionContext,id:string,date:string,write=false,review=false){
+ if(write){await assertWorkforceEmploymentTx(tx,ctx,id,'maintain');if(!review)await lockLabelCriteriaTx(tx,ctx.tenantId);}
  else await assertAllocationPresentationTx(tx,workforceEmploymentPredicate(sql`${id}::uuid`));
- const query=tx.select().from(employment).where(eq(employment.id,id));const[e]=await(write?query.for('update'):query);if(!e)throw new CostAllocationError('scope');
+ const query=tx.select().from(employment).where(eq(employment.id,id));const[e]=await(write&&!review?query.for('update'):query);if(!e)throw new CostAllocationError('scope');
  const proof=(await provenCompanyDatesTx(tx,[{employmentId:id,date}])).get(`${id}|${date}`);if(!proof?.companyId)throw new CostAllocationError('date');
  if(write){await assertWorkforceCompanyTx(tx,ctx,proof.companyId,'maintain');const[live]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,proof.companyId),isNull(company.archivedAt)));if(!live)throw new CostAllocationError('scope');}
  else await assertAllocationPresentationTx(tx,sql`app.access_workforce_company(${proof.companyId}::uuid,'workforce.view')`);
@@ -59,10 +61,13 @@ export async function getEmploymentCostAllocations(ctx:SessionContext,employment
  });
 }
 export type EmploymentCostAllocationView=Awaited<ReturnType<typeof getEmploymentCostAllocations>>;
-export async function prepareCostAllocationsTx(tx:Tx,ctx:SessionContext,raw:unknown){
- const input=allocationInputSchema.parse(raw),normalized=normalizedAllocationRows(input.rows,input.operation);const subject=await subjectTx(tx,ctx,input.employmentId,input.effectiveDate,true);
+/** `review` (an import preview under the shared Access lock) returns the same values and digest without row locks. */
+export async function prepareCostAllocationsTx(tx:Tx,ctx:SessionContext,raw:unknown,options:{review?:boolean}={}){
+ const review=options.review===true;
+ const input=allocationInputSchema.parse(raw),normalized=normalizedAllocationRows(input.rows,input.operation);const subject=await subjectTx(tx,ctx,input.employmentId,input.effectiveDate,true,review);
  const[h]=await tx.select().from(head).where(eq(head.employmentId,input.employmentId));if((h?.revision??0)!==input.expectedRevision)throw new CostAllocationError('changed');
- const labels=normalized.length?await tx.select({id:costCenter.id,code:costCenter.code,label:costCenter.label}).from(costCenter).where(and(sql`${costCenter.id} in (${sql.join(normalized.map(r=>sql`${r.costCenterId}::uuid`),sql`,`)})`,isNull(costCenter.archivedAt),visibleLabelIdsCondition(costCenter,'cost_center',[subject.companyId]))).orderBy(asc(costCenter.id)).for('share'):[];
+ const labelRows=()=>tx.select({id:costCenter.id,code:costCenter.code,label:costCenter.label}).from(costCenter).where(and(sql`${costCenter.id} in (${sql.join(normalized.map(r=>sql`${r.costCenterId}::uuid`),sql`,`)})`,isNull(costCenter.archivedAt),visibleLabelIdsCondition(costCenter,'cost_center',[subject.companyId]))).orderBy(asc(costCenter.id));
+ const labels=normalized.length?(review?await labelRows():await labelRows().for('share')):[];
  if(labels.length!==normalized.length)throw new CostAllocationError('label');
  const digest=createHash('sha256').update(JSON.stringify({actor:ctx.userId,tenant:ctx.tenantId,input,companyId:subject.companyId,labels})).digest('hex');
  return{input,normalized,companyId:subject.companyId,labels,digest};

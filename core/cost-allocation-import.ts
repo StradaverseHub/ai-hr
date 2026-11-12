@@ -5,7 +5,8 @@ import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,costCenter,employment,employmentCostAllocationHead,employmentCostAllocationSet as allocationSet,employmentCostAllocationRow as allocationRow} from '../db/schema';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
-import {withAccessDisplayRead} from './access-configuration-lock';
+import {accessLockModeHeldTx,inAccessDisplayRead,withAccessDisplayRead} from './access-configuration-lock';
+import {joinWorkforceBarrierTx} from './workforce-lock-mode';
 import {lockLabelCriteriaTx,visibleLabelIdsCondition} from './system-labels';
 import {provenCompanyDatesTx} from './employment-company';
 import {prepareCostAllocationsTx,saveEmploymentCostAllocations} from './employment-cost-allocations';
@@ -35,23 +36,34 @@ export async function costAllocationReferencesTx(tx:Tx,ctx:SessionContext,compan
 }
 /** A read: its 'maintain' check joins the Access lock shared (withAccessDisplayRead, SCALE rule 1). */
 export function costAllocationReferences(ctx:SessionContext,companyId:string){return withAccessDisplayRead(()=>withTenant(ctx,tx=>costAllocationReferencesTx(tx,ctx,companyId)));}
-/** One template for every company the actor may maintain (c4055300); no company is chosen first. */
+/** One template for every company the actor may maintain (c4055300); no company is chosen first. A read (the template
+ * download): the shared workforce barrier (the shared Access lock and the same policy rows the exclusive barrier
+ * checks), held for the whole read, so no access editor changes the companies or their 'maintain' checks part-way
+ * through (SCALE rule 1). */
 export function costAllocationWorkbookReferences(ctx:SessionContext):Promise<AllocationWorkbookReferences>{
- return withTenant(ctx,async tx=>{
-  await tx.execute(sql`select app.access_configuration_write_lock()`);
+ return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{
+  await joinWorkforceBarrierTx(tx,ctx.tenantId);
   const companies=await maintainableCompaniesTx(tx),result:AllocationWorkbookReferences={companies:[],costCenters:[]};
   for(const c of companies){
    const code=allocationCompanyCode(c);result.companies.push({code,name:c.name});
    for(const ref of await costAllocationReferencesTx(tx,ctx,c.id))result.costCenters.push({companyCode:code,code:ref.code,label:ref.label});
   }
   return result;
- });
+ }));
 }
 const rowsLabel=(rowNums:number[])=>rowNums.length===1?`Row ${rowNums[0]}`:`Rows ${rowNums.join(', ')}`;
 const companyLabel=(c:CompanyRef)=>`${allocationCompanyCode(c)} (${c.name})`;
 
+/** The preview's locks. A review (inside withAccessDisplayRead, holding no exclusive Access lock) takes the shared
+ * workforce barrier and neither bumps the label criteria nor locks rows: the confirm and the employee-import commit repeat
+ * the whole preview under the exclusive writer locks and refuse a different token (SCALE rule 1). Every other caller,
+ * the confirm and the commit among them, keeps exactly the writer locks it took before. */
+async function lockAllocationPreviewTx(tx:Tx,ctx:SessionContext):Promise<boolean>{
+ if(inAccessDisplayRead()&&await accessLockModeHeldTx(tx,ctx.tenantId)!=='X'){await joinWorkforceBarrierTx(tx,ctx.tenantId);return true;}
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLabelCriteriaTx(tx,ctx.tenantId);return false;
+}
 export async function previewCostAllocationImportTx(tx:Tx,ctx:SessionContext,records:AllocationImportRecords,newEmployees?:NewAllocationEmployee[]):Promise<AllocationImportPreview>{
- if(records.length>5000)throw new CostAllocationError('invalid');await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLabelCriteriaTx(tx,ctx.tenantId);
+ if(records.length>5000)throw new CostAllocationError('invalid');const review=await lockAllocationPreviewTx(tx,ctx);
  const companies=await maintainableCompaniesTx(tx);
  const groups=new Map<string,AllocationImportGroup>(),snapshots:unknown[]=[];
  for(const[at,r]of records.entries()){
@@ -88,7 +100,7 @@ export async function previewCostAllocationImportTx(tx:Tx,ctx:SessionContext,rec
     if(matches.length!==1){g.errors.push(matches.length?`${rows}: Employee ID ${g.employeeCode} matches more than one employee of ${companyLabel(co)}.`:`${rows}: Employee ID ${g.employeeCode} is not an employee of ${companyLabel(co)} on ${g.effectiveDate}.`);continue;}
     g.employmentId=matches[0].id;
     const[h]=await tx.select().from(employmentCostAllocationHead).where(eq(employmentCostAllocationHead.employmentId,g.employmentId));g.expectedRevision=h?.revision??0;
-    if(!g.errors.length){const p=await prepareCostAllocationsTx(tx,ctx,{employmentId:g.employmentId,effectiveDate:g.effectiveDate,expectedRevision:g.expectedRevision,operation:g.operation,rows:g.rows});if(p.companyId!==g.companyId)throw new CostAllocationError('binding');snapshots.push(p.digest);}
+    if(!g.errors.length){const p=await prepareCostAllocationsTx(tx,ctx,{employmentId:g.employmentId,effectiveDate:g.effectiveDate,expectedRevision:g.expectedRevision,operation:g.operation,rows:g.rows},{review});if(p.companyId!==g.companyId)throw new CostAllocationError('binding');snapshots.push(p.digest);}
    }
   }catch(e){g.errors.push(`${rows}: ${e instanceof CostAllocationError?e.message:'The allocation company, employee or effective date is unavailable.'}`);}
  }
@@ -100,7 +112,8 @@ export async function previewCostAllocationImportTx(tx:Tx,ctx:SessionContext,rec
  const result=[...groups.values()];const token=createHash('sha256').update(JSON.stringify({actor:ctx.userId,tenant:ctx.tenantId,records,newEmployees,result,snapshots})).digest('hex');
  return{groups:result,token,validCount:result.filter(g=>!g.errors.length).length};
 }
-export function previewCostAllocationImport(ctx:SessionContext,records:AllocationImportRecords){return withTenant(ctx,tx=>previewCostAllocationImportTx(tx,ctx,records));}
+/** A read: the review locks (shared Access, no row locks). */
+export function previewCostAllocationImport(ctx:SessionContext,records:AllocationImportRecords){return withAccessDisplayRead(()=>withTenant(ctx,tx=>previewCostAllocationImportTx(tx,ctx,records)));}
 
 /** Reads the uploaded file. A workbook's "Cost Center Allocations" sheet is used, else its first sheet. */
 export async function readCostAllocationSource(name:string,content:Buffer):Promise<AllocationImportRecords>{
@@ -117,19 +130,21 @@ export async function readCostAllocationSource(name:string,content:Buffer):Promi
 }
 const fileMessage=(e:unknown)=>e instanceof AllocationFileError?e.message:'This file could not be read.';
 const storedGroup=(g:AllocationImportGroup):AllocationImportGroup=>({key:g.key,companyCode:g.companyCode,companyId:g.companyId,...(g.companyName?{companyName:g.companyName}:{}),employeeCode:g.employeeCode,effectiveDate:g.effectiveDate,operation:g.operation,rows:g.rows,rowNums:g.rowNums,...(g.displayRows?{displayRows:g.displayRows}:{}),errors:g.errors,...(g.employmentId?{employmentId:g.employmentId}:{}),expectedRevision:g.expectedRevision});
-/** Validates an upload and records it as an import attempt with the original file. Nothing is saved yet. */
+/** Validates an upload and records it as an import attempt with the original file. Nothing is saved yet. The check is a
+ * review (shared Access lock, no row locks); confirmCostAllocationUpload repeats it under the writer locks and refuses a
+ * different token. Recording the attempt needs no exclusive lock. */
 export async function previewCostAllocationUpload(ctx:SessionContext,input:{name:string;content:Buffer;operationKey?:string}){
  let records:AllocationImportRecords=[],parseError:string|undefined;
  try{records=await readCostAllocationSource(input.name,input.content);}catch(e){parseError=fileMessage(e);}
  if(!parseError&&!records.some(r=>Object.values(r).some(v=>String(v??'').trim())))parseError='The file has no allocation rows.';
- return withTenant(ctx,async tx=>{
+ return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{
   const preview=parseError?null:await previewCostAllocationImportTx(tx,ctx,records);
   const groups=(preview?.groups??[]).map(storedGroup);
   const plan=sealImportPlan<CostAllocationImportPlan>({version:1,kind:'cost_allocations',token:preview?.token??'',groups,counts:{total:groups.length,valid:preview?.validCount??0,invalid:groups.length-(preview?.validCount??0)},issues:parseError?[{rowNum:1,reason:parseError}]:[],previewHash:''});
   const companyIds=[...new Set(groups.map(g=>g.companyId).filter(Boolean))];
   const created=await createImportAttemptTx(tx,ctx,{kind:'cost_allocations',sourceName:input.name,content:input.content,companyIds,plan,operationKey:input.operationKey});
   return{attemptId:created.attemptId,plan:created.plan};
- });
+ }));
 }
 type AllocationSnapshot={setId:string|null;operation:'none'|'replace'|'clear';rows:{costCenterId:string;code:string;label:string;hundredths:number}[]};
 export type CostAllocationItemState=AllocationSnapshot&{headRevision:number;effectiveDate:string;employeeCode:string;companyCode:string};

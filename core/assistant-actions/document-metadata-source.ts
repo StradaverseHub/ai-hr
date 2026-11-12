@@ -8,13 +8,16 @@ import {DocumentMetadata as C,type DocumentMetadataHuman as Human} from '../../l
 import {withAgentActionGuard} from './agent-action-guard';
 import type {AssignedSubject} from './generic-assigned-review-store';
 import {assertWorkforceEmploymentTx} from '../workforce-access';
-import {lockAccessConfigurationWriteTx} from '../access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from '../access-configuration-lock';
 import {prepareEmployeeDocumentMetadataTx,updateEmployeeDocumentMeta} from '../employee-documents';
 export class DocumentMetadataUnavailable extends Error{constructor(){super('Please reopen document details on the Personnel screen.');this.name='DocumentMetadataUnavailable';}}
 export const documentMetadataUnavailable=():never=>{throw new DocumentMetadataUnavailable();};
 const fail=documentMetadataUnavailable,hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 type Subject=AssignedSubject&{employeeName:string;employeeCode:string|null;companyName:string;scopeDigest:string};
 async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();await lockAccessConfigurationWriteTx(tx,fresh.tenantId);return fresh;}
+/** The choices read (readDocumentMetadataChoices, inside withAccessDisplayRead): the same guard and administrator check
+ * under the shared Access lock, taken first so every later check joins it shared (SCALE rule 1). Commands keep actor. */
+async function readActor(tx:Tx,ctx:SessionContext){await lockAccessConfigurationTx(tx,ctx.tenantId);const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();return fresh;}
 async function subject(tx:Tx,ctx:SessionContext,id:string):Promise<Subject>{
  const [nomination]=await tx.execute<{scope:{employmentId:string;personId:string;companyId:string;scopeDigest:string}|null}>(sql`select app.assistant_document_metadata_scope(${id}::uuid) as scope`);const scope=nomination?.scope;if(!scope||scope.personId===ctx.personId)return fail();
  await assertWorkforceEmploymentTx(tx,ctx,scope.employmentId,'maintain');
@@ -40,7 +43,7 @@ export async function reconcileDocumentMetadataSourceTx(tx:Tx,ctx:SessionContext
  const [row]=await tx.execute(sql`select d.id from domain_event d where d.id=${reference.eventId}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.aggregate_id=${reference.subjectId}::uuid and d.subject_employment_id=${reference.employmentId}::uuid and d.aggregate_type='employee-document' and d.event_type='employee-document.updated' and d.actor_type='user' and d.actor_id=${ctx.userId}::uuid`);if(!row)return fail();return C.Receipt.parse({kind:'maintained',...reference});
 }
 export async function readDocumentMetadataChoicesTx(tx:Tx,ctx:SessionContext,selection:unknown){
- const fresh=await actor(tx,ctx),pick=C.Selection.parse(selection??{query:''}),pattern=`%${pick.query.replace(/[\\%_]/g,'\\$&')}%`;
+ const fresh=await readActor(tx,ctx),pick=C.Selection.parse(selection??{query:''}),pattern=`%${pick.query.replace(/[\\%_]/g,'\\$&')}%`;
  const employees=await tx.execute<{employmentId:string;employeeName:string;employeeCode:string|null;companyName:string}>(sql`select e.id as "employmentId",p.full_name as "employeeName",e.employee_code as "employeeCode",c.legal_name as "companyName" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id join company c on c.id=e.company_id and c.tenant_id=e.tenant_id where e.tenant_id=${fresh.tenantId}::uuid and not app.is_self_person(e.person_id) and app.access_workforce_employment(e.id,'workforce.maintain') and (p.full_name ilike ${pattern} or coalesce(e.employee_code,'') ilike ${pattern}) order by p.full_name,e.id limit 26`);
  const shown=Array.from(employees).slice(0,25);let documents:unknown[]=[];let truncated=employees.length>25;
  if(pick.employmentId){await assertWorkforceEmploymentTx(tx,fresh,pick.employmentId,'maintain');const [selected]=await tx.execute<{employmentId:string;employeeName:string;employeeCode:string|null;companyName:string}>(sql`select e.id as "employmentId",p.full_name as "employeeName",e.employee_code as "employeeCode",c.legal_name as "companyName" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id join company c on c.id=e.company_id and c.tenant_id=e.tenant_id where e.id=${pick.employmentId}::uuid and e.tenant_id=${fresh.tenantId}::uuid and not app.is_self_person(e.person_id)`);if(!selected)return fail();
