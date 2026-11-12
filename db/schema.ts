@@ -11595,7 +11595,9 @@ export const bankImportRow=pgTable('bank_import_row',{
  jobId:uuid('job_id').notNull().references(()=>bankImportJob.id,{onDelete:'cascade'}),ordinal:integer('ordinal').notNull(),record:jsonb('record').notNull(),preview:jsonb('preview'),
  companyId:uuid('company_id').references(()=>company.id),employmentId:uuid('employment_id').references(()=>employment.id),binding:text('binding'),state:text('state').notNull().default('pending'),error:text('error'),
 },t=>[primaryKey({columns:[t.jobId,t.ordinal]}),index('bank_import_row_pending').on(t.jobId,t.state,t.ordinal)]);
-/** Current import amounts for batch dashboards; original closed batch counters stay immutable. */
+/** Current import amounts for batch dashboards; original closed batch counters stay immutable. Readers select the view by
+ * name, so the installed definition governs (5129: each history batch's figures computed once, per reader, without
+ * per-payslip row security); the expressions below only name its columns. */
 const payrollHistoryBatchView=pgView('payroll_history_effective_batch').as(qb=>qb.select({
  ...getTableColumns(payrollBatch),
  totals:sql<unknown>`CASE WHEN ${payrollBatch.historyImportAttemptId} IS NULL THEN ${payrollBatch.totals} ELSE app.payroll_history_batch_totals(${payrollBatch.id}) END`.as('totals'),

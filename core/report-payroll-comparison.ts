@@ -197,21 +197,29 @@ function compareRecordedPayItems(input:Parameters<typeof comparePayrollResults>[
 export async function payrollReconciliationPeriods(ctx: SessionContext, scope: readonly string[]) {
   return withTenant(ctx, async tx => {
     const ids = await payrollComparisonAccessTx(tx, ctx, payrollComparisonSpec(), 'view', scope);
-    const groups = tx.$with('reconciliation_periods').as(tx.select({
-      companyId: payrollBatch.companyId,
-      companyName: company.legalName,
-      period: payrollBatch.payPeriod,
-      runCount: sql<number>`count(*) filter (where ${payrollBatch.status} in ('processed', 'closed'))::int`.as('run_count'),
-      requiresReprocessing: sql<boolean>`bool_or(${payrollBatch.needsRecalcAt} is not null or ${payrollBatch.status} = 'draft')`.as('requires_reprocessing'),
+    // The scope's effective batches, read ONCE: every history batch's visible count comes from the effective-batch
+    // view, and the groups, the runs joined back to them and each group's previous month all read this set (it is
+    // referenced three times, so PostgreSQL materialises it). Same rows as reading the view in each place: every
+    // previous-month batch the check reads belongs to a group's company, which is in `ids`.
+    const batches = tx.$with('reconciliation_batches').as(tx.select({
+      id: payrollBatch.id, tenantId: payrollBatch.tenantId, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod,
+      status: payrollBatch.status, needsRecalcAt: payrollBatch.needsRecalcAt, payrollCycleId: payrollBatch.payrollCycleId,
     }).from(payrollHistoryEffectiveBatch)
-      .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(and(inArray(payrollBatch.companyId, ids),
-        sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount} > 0)`))
-      .having(sql`bool_or(${payrollBatch.status} in ('processed', 'closed'))`)
-      .groupBy(payrollBatch.companyId, company.legalName, payrollBatch.payPeriod)
-      .orderBy(desc(payrollBatch.payPeriod), asc(company.legalName), asc(payrollBatch.companyId))
+        sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount} > 0)`)));
+    const groups = tx.$with('reconciliation_periods').as(tx.select({
+      companyId: batches.companyId,
+      companyName: company.legalName,
+      period: batches.payPeriod,
+      runCount: sql<number>`count(*) filter (where ${batches.status} in ('processed', 'closed'))::int`.as('run_count'),
+      requiresReprocessing: sql<boolean>`bool_or(${batches.needsRecalcAt} is not null or ${batches.status} = 'draft')`.as('requires_reprocessing'),
+    }).from(batches)
+      .innerJoin(company, eq(company.id, batches.companyId))
+      .having(sql`bool_or(${batches.status} in ('processed', 'closed'))`)
+      .groupBy(batches.companyId, company.legalName, batches.payPeriod)
+      .orderBy(desc(batches.payPeriod), asc(company.legalName), asc(batches.companyId))
       .limit(120));
-    return tx.with(groups).select({
+    return tx.with(batches, groups).select({
       companyId: groups.companyId,
       companyName: groups.companyName,
       period: groups.period,
@@ -219,9 +227,8 @@ export async function payrollReconciliationPeriods(ctx: SessionContext, scope: r
       requiresReprocessing: groups.requiresReprocessing,
       previousReady: sql<boolean>`coalesce((
         select bool_and(prior.status = 'closed' and prior.needs_recalc_at is null)
-        from payroll_history_effective_batch prior
+        from reconciliation_batches prior
         where prior.tenant_id = ${ctx.tenantId}::uuid and prior.company_id = ${groups.companyId}
-          and (prior.history_import_attempt_id is null or prior.employee_count > 0)
           and prior.pay_period = to_char(to_date(${groups.period}, 'YYYY-MM') - interval '1 month', 'YYYY-MM')
       ), false)`,
       generatedAt: sql<string | null>`(
@@ -235,14 +242,13 @@ export async function payrollReconciliationPeriods(ctx: SessionContext, scope: r
       )`,
       lastProcessed: sql<string | null>`max(${domainEvent.occurredAt})::text`,
       cycles: sql<string[]>`coalesce(array_agg(distinct ${payrollCycle.name} order by ${payrollCycle.name}) filter (where ${payrollCycle.name} is not null), '{}'::text[])`,
-    }).from(groups).innerJoin(payrollHistoryEffectiveBatch, and(
-      eq(payrollBatch.companyId, groups.companyId), eq(payrollBatch.payPeriod, groups.period),
-      inArray(payrollBatch.status, ['processed', 'closed']),
-      sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount} > 0)`,
+    }).from(groups).innerJoin(batches, and(
+      eq(batches.companyId, groups.companyId), eq(batches.payPeriod, groups.period),
+      inArray(batches.status, ['processed', 'closed']),
     )).leftJoin(domainEvent, and(
       eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.aggregateType, 'payroll-batch'),
-      eq(domainEvent.aggregateId, payrollBatch.id), inArray(domainEvent.eventType, ['payroll-batch.processed', 'payroll-batch.selective-reprocessed']),
-    )).leftJoin(payrollCycle, eq(payrollCycle.id, payrollBatch.payrollCycleId))
+      eq(domainEvent.aggregateId, batches.id), inArray(domainEvent.eventType, ['payroll-batch.processed', 'payroll-batch.selective-reprocessed']),
+    )).leftJoin(payrollCycle, eq(payrollCycle.id, batches.payrollCycleId))
       .groupBy(groups.companyId, groups.companyName, groups.period, groups.runCount, groups.requiresReprocessing)
       .orderBy(desc(groups.period), asc(groups.companyName), asc(groups.companyId));
   }, { readOnlySnapshot: true });

@@ -203,6 +203,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5126_contract_internship_end_dates',
    // Board item 8d02748a, renumbered at the Irwin board integration onto release candidate 3.
    '5127_import_log_actor_labels',
+   // Payroll history effective reads (12 November 2026), above PR 240's 5128.
+   '5129_payroll_history_effective_reads',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -248,6 +250,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.import_settle(uuid,uuid,integer)','app.label_import_marker_visible(uuid)','app.leave_ledger_stage_stamp()',
    'app.movement_revert_capture_never_commits()','app.movement_revert_capture_row()','app.notification_event_processing_enqueue()','app.org_structure_statement_lock()',
    'app.payroll_history_row_visible(text,uuid)','app.register_import_release(uuid,boolean)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
+   // 5129: the set-wise effective-snapshot owner, inlined into app.payroll_history_effective and the batch aggregate.
+   'app.payroll_history_effective_ids(uuid[])',
   ];
   const publicFunctions:string[]=[];
   const addedFunctions=[
@@ -286,7 +290,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.leave_stage_digests(uuid[],uuid[],boolean)','app.leave_stage_release(uuid,uuid)','app.leave_stage_released_ids()',
    'app.may_have_attendance_task_metadata()','app.movement_revert_capture_never_commits()','app.movement_revert_capture_row()','app.notification_event_processing_enqueue()',
    'app.notification_projection_exists(uuid,uuid,text)','app.org_structure_statement_lock()','app.payroll_batch_period_required()',
-   'app.payroll_history_hidden_rows(text)','app.payroll_history_row_visible(text,uuid)','app.payroll_history_stage_busy(uuid)',
+   'app.payroll_history_batch_admin_totals(uuid)','app.payroll_history_batch_visible_totals(uuid)','app.payroll_history_effective_ids(uuid[])',
+   'app.payroll_history_hidden_rows(text)','app.payroll_history_row_visible(text,uuid)','app.payroll_history_self_employment_ids()','app.payroll_history_stage_busy(uuid)',
    'app.payroll_history_stage_open(uuid,uuid,text)','app.payroll_history_stage_release(uuid)','app.payroll_history_stage_stamp()',
    'app.payroll_input_lock_keys(uuid[],uuid)','app.personnel_list_rows_for_ids(date,uuid[],uuid[])','app.personnel_overview_facts(date,uuid[])',
    'app.personnel_overview_filter_fields(date,uuid[])','app.personnel_overview_narrow_rows(date,uuid[])','app.personnel_overview_page_rows(date,uuid[],uuid[])',
