@@ -53,6 +53,8 @@ function refusalOf(error:unknown):Refusal{
  if(error instanceof AiProviderReadinessError){const code=pick(READINESS_CODES,error.code)??'unavailable',reason=code==='probe_failed'?'unexpected':code;return{reason,code,refusal:null,sqlstate:null};}
  if(error instanceof AiConfigError){const raw=(error as {reason?:unknown}).reason,reason=own(CONFIG_REASONS,raw)?CONFIG_REASONS[raw]:'config_invalid';return{reason,code:own(CONFIG_REASONS,raw)?raw:'invalid',refusal:null,sqlstate:null};}
  const sqlstate=sqlstateOf(error);
+ // 55000 is the AI Centre owners' stop/controls refusal (migration 3200), e.g. a stopped connection check.
+ if(sqlstate==='55000')return{reason:'controls',code:'controls',refusal:null,sqlstate};
  return{reason:sqlstate?'database':'unexpected',code:sqlstate?'database':'unexpected',refusal:null,sqlstate};
 }
 

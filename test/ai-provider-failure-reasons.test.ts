@@ -74,7 +74,8 @@ describe('failure classification',()=>{
     [new AiAdmissionRefusal('provider_configuration_changed'),'configuration_changed'],[new AiAdmissionRefusal('ai_controls_unavailable'),'controls'],
     [new AiAdmissionRefusal('admission_custody'),'admission'],[new AiGatewayError(`PRIVATE ${SECRET}`),'unavailable'],
     [new AiConfigError(`PRIVATE ${SECRET}`,'secret_unavailable' as never),'secret_unavailable'],[new AiConfigError(`PRIVATE ${SECRET}`),'config_invalid'],
-    [Object.assign(Error(`PRIVATE ${SECRET}`),{cause:{code:'55P03',message:`PRIVATE ${SECRET}`}}),'database'],[Error(`PRIVATE ${SECRET}`),'unexpected'],
+    [Object.assign(Error(`PRIVATE ${SECRET}`),{cause:{code:'55P03',message:`PRIVATE ${SECRET}`}}),'database'],
+    [Object.assign(Error(`PRIVATE ${SECRET}`),{cause:{code:'55000',message:'AI connection check stopped'}}),'controls'],[Error(`PRIVATE ${SECRET}`),'unexpected'],
   ] as const)('%s → %s',(error,reason)=>{
     const failure=describeProviderFailure(error);
     expect(failure.reason).toBe(reason);expect(failure.probe).toBe(false);expect(JSON.stringify(failure)).not.toMatch(LEAK);
