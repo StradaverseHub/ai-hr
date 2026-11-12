@@ -301,7 +301,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.personnel_overview_filter_fields(date,uuid[])','app.personnel_overview_narrow_rows(date,uuid[])','app.personnel_overview_page_rows(date,uuid[],uuid[])',
    'app.personnel_overview_page_rows_typed(date,uuid[],uuid[])','app.personnel_private_search_entries(text,uuid[])',
    'app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])','app.register_import_release(uuid,boolean)',
-   'app.reward_access_observation_due(uuid)','app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
+   'app.reward_access_observation_due(uuid)','app.sweep_swing_thresholds(uuid[])','app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)',
    'app.system_label_import_release_attempt(uuid,uuid)',
   ];
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
