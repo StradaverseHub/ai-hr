@@ -13,8 +13,8 @@ describe('composed application navigation declarations, not permission or execut
   for(const registry of MODULE_SUBMENU_REGISTRIES)sources.push(...registry.items);
   expect(sources).toHaveLength(59);
   for(const descriptor of sources)expect(app.declarations.filter(row=>row.descriptor===descriptor)).toHaveLength(1);
-  expect(new Set(app.declarations.map(row=>row.id)).size).toBe(214);
-  expect(new Set(app.declarations.map(row=>row.sourceKey)).size).toBe(214);
+  expect(new Set(app.declarations.map(row=>row.id)).size).toBe(215);
+  expect(new Set(app.declarations.map(row=>row.sourceKey)).size).toBe(215);
   expect(app.declarations.find(row=>row.id==='shell.rewardsAllReviews')).toMatchObject({
    sourceOwner:'packs/rewards/index.ts',sourceKey:'shell-slot:rewardsAllReviews',declaredHref:'/rewards/reviews',
   });
