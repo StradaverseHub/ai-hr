@@ -7,7 +7,7 @@ import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import { attendanceCorrection as correction, employment, person, company, department, businessUnit, jobGrade, profileOption, domainEvent, appUser, position } from '../db/schema';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
-import type { AttendanceWorkflowCriteria } from '../lib/attendance-workflow';
+import type { AttendanceCriteriaGroup } from '../lib/attendance-workflow';
 import { attendanceWorkflowsForTx, attendanceWorkflowForTx } from './attendance-workflow';
 
 import { attendanceApplicationType, type AttendanceApplicationType } from '../lib/attendance-workflow';
@@ -182,13 +182,13 @@ export function attendanceApplicationFilterOptions(ctx: SessionContext, companyI
         const divisions = await tx.select({ id: profileOption.value, name: profileOption.label }).from(profileOption).where(and(eq(profileOption.category, 'division'), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.label));
         const positions = await tx.select({ id: position.id, name: position.title }).from(position).where(and(isNull(position.archivedAt), visibleLabelIdsCondition(position, 'position', companies.map(c => c.id)))).orderBy(asc(position.title), asc(position.id));
         const profileOptions = await tx.select({ category: profileOption.category, id: profileOption.value, name: profileOption.label }).from(profileOption).where(and(inArray(profileOption.category, [...EMPLOYMENT_PROFILE_CATEGORIES]), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.label), asc(profileOption.id));
-        const profileFields: Partial<Record<keyof AttendanceWorkflowCriteria, { id: string; name: string }[]>> = {};
+        const profileFields: Partial<Record<keyof AttendanceCriteriaGroup, { id: string; name: string }[]>> = {};
         for (const option of profileOptions) {
             const category=EMPLOYMENT_PROFILE_CATEGORIES.find(value=>value===option.category);
             if(!category)continue;
             const field=CATEGORY_EMPLOYMENT_COLUMN[category]?.[0];
             if(!field)continue;
-            const key=field as keyof AttendanceWorkflowCriteria;
+            const key=field as keyof AttendanceCriteriaGroup;
             const values = profileFields[key] ?? []; values.push({ id: option.id, name: option.name }); profileFields[key] = values;
         }
         // Extend the existing authorised options, rather than introducing a wider employee reader.

@@ -1,5 +1,5 @@
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
-import {priceIndividualTxnInputTx,type IndividualCalculationMethod} from '../packs/payroll/individual-calculation';
+import {individualTxnPricingMarkerTx,priceIndividualTxnInputTx,type IndividualCalculationMethod} from '../packs/payroll/individual-calculation';
 import { assertPayComponentCompaniesTx } from './pay-component-company';
 import {payrollEmploymentPredicate,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 /**
@@ -1202,6 +1202,7 @@ export async function createIndividualTxnsBulkTx(
     // Cartesian insert: the validated grid is recorded once per selected employee. Outer loop = employees so
     // each row's subjectEmploymentId / payload employmentId names the right payee.
     const ids: string[] = [];
+    const pricingRules:Parameters<typeof individualTxnPricingMarkerTx>[3]=new Map();
     for (const eid of employmentIds) {
       for (const r of validated) {
         const priced=r.calculationMethod===undefined?null:await priceIndividualTxnInputTx(tx,ctx,{
@@ -1210,6 +1211,11 @@ export async function createIndividualTxnsBulkTx(
           cycleId:intendedCycleId,batchId:target.batchId,
         });
         if(priced&&!(priced.amount>0))throw new AmountNotPositiveError(priced.amount);
+        // 792053e5 — WHICH PRICING PRODUCED THIS AMOUNT, so processing an open run can re-price it with the latest
+        // saved formula. A typed amount is never marked; see individualTxnPricingMarkerTx.
+        const marker=await individualTxnPricingMarkerTx(tx,ctx,{componentId:r.componentId??null,employmentId:eid,companyId:targetCompanyId,payPeriod,txnDate:r.txnDate,
+          quantity:r.quantity??null,unit:r.unit??null,amount:priced?.amount??r.amount,calculationMethod:priced?.calculationMethod??null,
+          formulaRevisionId:priced&&'formulaRevisionId' in priced?priced.formulaRevisionId:null},pricingRules);
         const [row] = await tx
           .insert(payrollIndividualTxn)
           .values({
@@ -1223,6 +1229,7 @@ export async function createIndividualTxnsBulkTx(
             txnDate: r.txnDate,
             amount: money(priced?.amount??r.amount),
             calculationMethod: priced?.calculationMethod??null,
+            ...marker,
             quantity: r.quantity != null ? money(r.quantity) : null,
             unit: r.unit ?? null,
             notes: r.notes ?? null,
@@ -1472,6 +1479,18 @@ export function updateIndividualTxn(
     // `updated_at` (see the note below on why that timestamp has to stay meaningful).
     if (nextIntendedCycleId !== undefined && nextIntendedCycleId !== existing.intendedCycleId) {
       patch.intendedCycleId = nextIntendedCycleId;
+    }
+    // 792053e5 — the pricing marker follows the row's FINAL inputs: an edit that re-prices (or types over) the amount
+    // re-decides it; a saved-formula row the edit did not re-price keeps its own.
+    if (Object.keys(patch).length > 0) {
+      const nextMethod=(priced?.calculationMethod??existing.calculationMethod??null) as IndividualCalculationMethod|null;
+      const nextQuantity=patch.quantity!==undefined?(patch.quantity==null?null:Number(patch.quantity)):existing.quantity==null?null:Number(existing.quantity);
+      const marker=nextMethod==='formula'&&!priced
+        ?{pricingSource:existing.pricingSource,pricingRef:existing.pricingRef,pricedAt:existing.pricedAt}
+        :await individualTxnPricingMarkerTx(tx,ctx,{componentId:nextComponentId??null,employmentId:existing.employmentId,companyId:batch?.companyId??existing.companyId!,payPeriod,
+          txnDate:nextDate,quantity:nextQuantity,unit:(patch.unit!==undefined?patch.unit:existing.unit) as string|null,amount:Number(patch.amount??existing.amount),
+          calculationMethod:nextMethod,formulaRevisionId:priced&&'formulaRevisionId' in priced?priced.formulaRevisionId:null});
+      Object.assign(patch,marker);
     }
     if (Object.keys(patch).length > 0) {
       // 49e7e0a2 — stamp WHEN this row changed. Written only alongside a real field change, so a no-op

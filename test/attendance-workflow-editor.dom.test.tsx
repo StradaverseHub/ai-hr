@@ -163,3 +163,36 @@ it('explains the organisation-wide permission requirement for company-scoped adm
  form(null);expect(screen.getByRole('checkbox',{name:'All Company'})).toBeDisabled();
  expect(screen.getByText(en.attendanceWorkflow.allCompanyRestricted)).toBeVisible();
 });
+describe('4452ba3c: OR groups, default superior depth and copied workflows',()=>{
+ it('adds an OR group, saves the groups and starts a new level at the next superior depth',async()=>{
+  form(null);
+  expect(screen.queryByText('Group 2')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Add Approval Level'}));
+  const depths=screen.getAllByLabelText('Superior depth') as HTMLSelectElement[];
+  expect(depths.map(select=>select.value)).toEqual(['1','2']);
+  fireEvent.click(screen.getByRole('button',{name:'+ Add OR group'}));
+  expect(screen.getByText('Group 2')).toBeVisible();
+  const second=screen.getByRole('group',{name:'Group 2'});
+  fireEvent.click(within(second).getByRole('button',{name:'Department'}));
+  fireEvent.click(screen.getByRole('checkbox',{name:'Finance'}));
+  fireEvent.keyDown(screen.getByPlaceholderText(en.admin.leave.adjustmentsSearchPlaceholder),{key:'Escape'});
+  fireEvent.change(screen.getByLabelText('Workflow code'),{target:{value:'GROUPED'}});
+  fireEvent.change(screen.getByLabelText('Workflow name'),{target:{value:'Grouped review'}});
+  fireEvent.click(screen.getByRole('button',{name:'Save workflow'}));
+  await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][1].criteria).toEqual({groups:[{},{departmentIds:['d1']}]});
+  expect(save.mock.calls[0][1].stages.map((stage:{sources:unknown})=>stage.sources)).toEqual([[{kind:'direct_manager',depth:1}],[{kind:'direct_manager',depth:2}]]);
+  expect(screen.getByRole('button',{name:'Remove group 1'})).toBeInTheDocument();
+ });
+ it('shows the copy banner, keeps the copied priority and sends provenance on save',async()=>{
+  const copied={...initial(),code:'',name:'',description:'',priority:7};
+  render(<NextIntlClientProvider locale="en" messages={en}><WorkflowForm context={{companyId,applicationType:'self_overtime'}} initial={copied} lineageId={null} options={options} copiedFrom={{lineageId:'00000000-0000-0000-0000-0000000000aa',version:4,code:'WF-DESIGN-01'}}/></NextIntlClientProvider>);
+  expect(screen.getByText(/Copied from WF-DESIGN-01 \(version 4\)/)).toBeVisible();
+  expect(screen.getByLabelText('Workflow code')).toHaveValue('');
+  fireEvent.change(screen.getByLabelText('Workflow code'),{target:{value:'WF-COPY'}});
+  fireEvent.change(screen.getByLabelText('Workflow name'),{target:{value:'Copied review'}});
+  fireEvent.click(screen.getByRole('button',{name:'Save workflow'}));
+  await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0]).toEqual([null,expect.objectContaining({code:'WF-COPY',priority:7}),false,expect.any(String),{lineageId:'00000000-0000-0000-0000-0000000000aa',version:4}]);
+ });
+});

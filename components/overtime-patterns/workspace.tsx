@@ -1,7 +1,7 @@
 'use client';
 
 import { ActionButton } from '@/components/ui/action-button';
-import {useEffect,useRef,useState,useTransition} from 'react';
+import {useEffect,useRef,useState,useTransition,type ReactNode} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {Field,inputCls,btnPrimary} from '@/components/ui';
@@ -34,9 +34,11 @@ const withCurrency=(definition:OvertimePattern,code:string|undefined):OvertimePa
 /** newPatternCompany is the single company in the server-side company selection, or null when a new pattern
  * cannot be filed under exactly one company. */
 type WorkspaceProps={detail:OvertimePatternDetail|null;version?:OvertimePatternVersionView;setup:OvertimePatternSetup;starterKey?:OvertimeStarterKey;newPatternCompany?:{id:string;currency:string}|null};
-export function OvertimeWorkspace(props:WorkspaceProps) {
+/** 2f803985: a legacy (Schedule Group) pattern shows its group's overtime bands as 1. General Settings. The page
+ * renders that server editor (legacy-bands.tsx) and passes it in; without one, the old pointer remains. */
+export function OvertimeWorkspace({legacyEditor,...props}:WorkspaceProps&{legacyEditor?:ReactNode}) {
   const t=useTranslations('overtimePatterns');
-  if(props.detail?.pattern.kind==='legacy')return <p className="rounded-lg border border-border p-4 text-sm">{t('legacyHelp')} <a className="text-primary underline" href="/admin/attendance/schedule">{t('legacyLink')}</a></p>;
+  if(props.detail?.pattern.kind==='legacy')return legacyEditor?<>{legacyEditor}</>:<p className="rounded-lg border border-border p-4 text-sm">{t('legacyHelp')} <a className="text-primary underline" href="/admin/attendance/schedule">{t('legacyLink')}</a></p>;
   if(!props.version)return <EditableOvertimeWorkspace {...props} initialDefinition={withCurrency(props.starterKey?prepareOvertimeStarter(props.starterKey,'day','earliest'):blankOvertimePattern(),props.newPatternCompany?.currency)} needsPreparation/>;
   const owningCurrency=props.setup.companies.find(company=>company.id===props.detail?.pattern.creationCompanyId)?.currency;
   const seed=readOvertimeStarterSeed(props.version.definition);

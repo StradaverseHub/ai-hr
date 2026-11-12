@@ -131,9 +131,22 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4490,when:1793330004790,tag:'5090_audit_chain_commit_seal'},
  {idx:4520,when:1793330004820,tag:'5120_access_review_custody_held_mode'},
  {idx:4521,when:1793330004821,tag:'5121_personnel_search_set_mapping'},
+ // ccd3a65c Import History section type, renumbered above release candidate 3's 5120/5121 and PR 240's 5122 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4523,when:1793330004823,tag:'5123_import_history_kind'},
+ // 4452ba3c attendance workflow skipped levels, renumbered after 5123 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4524,when:1793330004824,tag:'5124_attendance_workflow_skipped_levels'},
+ // 792053e5 payroll formula repricing marker, renumbered 5125 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4525,when:1793330004825,tag:'5125_individual_txn_pricing_marker'},
+ // 2260a06b contract/internship end dates (draft 9750), renumbered 5126 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4526,when:1793330004826,tag:'5126_contract_internship_end_dates'},
+ // 8d02748a readable import log references, renumbered 5127 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4527,when:1793330004827,tag:'5127_import_log_actor_labels'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5124_attendance_workflow_skipped_levels':'849dba4bf7c3aa39e45eb7f463ef24301a2eea3b10a781cf39858aa218635c6d',
+ '5123_import_history_kind':'2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7',
+ '5127_import_log_actor_labels':'1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2',
  '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
  '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
  '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
@@ -249,6 +262,8 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5090_audit_chain_commit_seal':'6ce9bebe8c8de296b3b4a03b1d5d52c90c7df79fbdb0b8f8e0617616001e263e',
  '5120_access_review_custody_held_mode':'f99d6938631f4ae17dea7af03b56d5dad4830ef5402b206b097e25ea4854c2a0',
  '5121_personnel_search_set_mapping':'3d9b5a53b963a0f01843d090a96662da3e9f7b5c5bb0650e3064d237a3c60d54',
+ '5125_individual_txn_pricing_marker':'d48a8a3e394da801bbb0e9917d74d934ab51a3470bdea1bc8d8be1b110a24837',
+ '5126_contract_internship_end_dates':'cbc405c4dde11abbe8f298feaf4af0795c8cf742701f62565547eb9ec9d10796',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);
@@ -271,6 +286,7 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  {tag:'5031_leave_ledger_stage',table:'leave_ledger',columns:['stage_id']},
  {tag:'5036_leave_type_pending_year_cycle',table:'leave_type',columns:['pending_year_cycle_job_id']},
  {tag:'5051_payroll_processing_job',table:'payroll_batch',columns:['processing_job_id','processing_started_at']},
+ {tag:'5125_individual_txn_pricing_marker',table:'payroll_individual_txn',columns:['pricing_source','pricing_ref','priced_at']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

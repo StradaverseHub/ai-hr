@@ -1,3 +1,4 @@
+import type {ImportActor} from './import-reference';
 export const INDIVIDUAL_IMPORT_MAX_BYTES = 10 * 1024 * 1024;
 
 export type IndividualImportJobState =
@@ -18,4 +19,6 @@ export type IndividualImportJob = {
   failed_rows: number;
   method: 'monthly' | 'daily';
   error: string | null;
+  /** Board 8d02748a: readable "Imported by"; set by the readers, absent on writer results. */
+  created_by_actor?: ImportActor;
 };

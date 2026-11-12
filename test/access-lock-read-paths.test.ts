@@ -7,7 +7,7 @@
  *  - the mechanism: a report read that takes the shared lock first, and a display read (withAccessDisplayRead), stay
  *    shared through every mode-joining helper, while commands keep the exclusive lock;
  *  - the guard: an independent pg_locks sampler watches the tenant's Access key while the shell bell, the Home
- *    sections, the worker gate, the Personnel movement and correction reads, an Employee Master run and the Personnel
+ *    sections, the worker gate, the Personnel movement and correction reads (history and options), an Employee Master run and the Personnel
  *    export details read a populated tenant, and no exclusive hold may appear. Any SQL owner on these paths that took
  *    the exclusive lock of its own would show here too.
  */
@@ -26,7 +26,7 @@ import {RECOMMENDER_WORKER} from '../core/recommenders/leave-decision';
 import {pendingTaskSummary} from '../core/approvals-inbox';
 import {hireEmployee} from '../core/org';
 import {movementAttachments,movementHistory,resignationInformation} from '../core/movement';
-import {informationCorrectionHistory} from '../core/information-correction';
+import {informationCorrectionHistory,informationCorrectionOptions} from '../core/information-correction';
 import {runEmployeeMasterReport} from '../core/employee-master-reports';
 import {grantAssistant} from '../core/assistant-grant';
 import {prepareOwnLeaveReviewTx,reopenOwnLeaveReviewTx} from '../core/assistant-actions/own-leave-store';
@@ -111,6 +111,8 @@ it('reads the shell bell, Home, the worker gate, Personnel movement history and 
  const history=await movementHistory(ctx,subject.employmentId),hired=history[0];
  if(!hired)throw Error('Missing fictional movement history');
  const documents=await movementAttachments(ctx,subject.employmentId,hired.id),corrections=await informationCorrectionHistory(ctx,subject.employmentId);
+ // The correction form's, template's and import preview's options (organisation catalogue and labels).
+ const correctionOptions=await informationCorrectionOptions(ctx);
  const resignation=await resignationInformation(ctx,subject.employmentId);
  const master=await runEmployeeMasterReport(ctx,[b.companyId],{spec});
  // The Personnel export's details, in one read-only snapshot as the export route reads them.
@@ -125,6 +127,7 @@ it('reads the shell bell, Home, the worker gate, Personnel movement history and 
  expect(typeof gate.run).toBe('boolean');
  expect(doneForYou).toBeDefined();expect(glance).toBeDefined();
  expect(documents).toEqual([]);expect(Array.isArray(corrections)).toBe(true);expect(resignation).toBeDefined();
+ expect(correctionOptions.companies.map(row=>row.id)).toContain(b.companyId);
  expect(master.result.totalRows).toBeGreaterThanOrEqual(3);
  expect(exported.fields.length).toBeGreaterThan(0);expect(exported.cells.size).toBe(3);
 },120_000);

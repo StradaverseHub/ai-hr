@@ -45,6 +45,7 @@ import {
 // Approved9c6b06d4: one private list search and hierarchy-aware filters; profile switchers stay on profiles.
 import {PersonnelOrganisationFilters} from './organisation-filters';
 import {PersonnelListSearch} from './list-search';
+import {PERSONNEL_BLANK_VALUE,PERSONNEL_BLANKABLE_CHOICE_PARAMS,PERSONNEL_CHOICE_COLUMN_PARAMS,PERSONNEL_DATE_COLUMN_PARAMS} from '@/lib/personnel-list-controls';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -129,7 +130,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
   const today = todayInKualaLumpur();
   const { error } = sp;
-  const { q, company, dept, type, draftOnly, hasFilters } = query;
+  const { q, company, draftOnly, hasFilters } = query;
   // The reads behind these values, unchanged, now share the page snapshot (./page-read.ts): drafts follow
   // the TOP-BAR company scope (b1b1879d); saved columns are this reader's own (579255c3); Employee ID rules
   // are read once for the Create New Employee prompt, admin-only like the prompt itself (034a5080).
@@ -167,55 +168,59 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   // badge in the same table prints, plus Draft) on the `bucket` param, instead of the lifecycle
   // active/terminated query on `status`. The old param is still honoured for existing links; nothing
   // writes it any more. See ./list-query.ts.
+  // aa045103 — Department, Status and Employment Type are multi-select, in this dialog AND under the column
+  // headers, over the same params; Blank / unassigned (`__blank`) is offered wherever the field can be empty.
+  const blankOption={value:PERSONNEL_BLANK_VALUE,label:t('controls.blank')};
   const filterFields: FilterField[] = [
     {kind:'multi',name:'companies',label:t('company'),ariaLabel:t('filterCompany'),options:organisationChoices.companies.map(c=>({value:c.id,label:c.name})),removeAriaLabel:t('removeFilter',{label:t('company')})},
     {
-      kind: 'select',
+      kind: 'multi',
       name: 'dept',
       label: t('department'),
       ariaLabel: t('filterDepartment'),
-      allLabel: t('allDepartments'),
-      options: organisationChoiceLabels(departments).map((d) => ({ value: d.id, label: d.displayLabel })),
+      options: [...organisationChoiceLabels(departments).map((d) => ({ value: d.id, label: d.displayLabel })), blankOption],
       removeAriaLabel: t('removeFilter', { label: t('department') }),
     },
     {
-      kind: 'select',
+      kind: 'multi',
       name: 'bucket',
       label: t('colStatus'),
       ariaLabel: t('filterStatus'),
-      allLabel: t('allStatuses'),
       options: [
         ...EMPLOYEE_STATUS_BUCKETS.map((b) => ({ value: b, label: tStatus(b) })),
         // 06f0cb8f — the one option here that is a STORED state rather than a derived one, because it
-        // selects from a different table; picking it shows the Draft rows and no employees at all.
+        // selects from a different table; picking it alone shows the Draft rows and no employees at all.
         { value: DRAFT_BUCKET, label: t('statusDraft') },
       ],
       removeAriaLabel: t('removeFilter', { label: t('colStatus') }),
     },
     {
-      kind: 'select',
+      kind: 'multi',
       name: 'type',
       label: t('employmentType'),
       ariaLabel: t('filterType'),
-      allLabel: t('allTypes'),
-      options: EMPLOYMENT_TYPES.map((et) => ({ value: et.value, label: t(et.labelKey) })),
+      options: [...EMPLOYMENT_TYPES.map((et) => ({ value: et.value, label: t(et.labelKey) })), blankOption],
       removeAriaLabel: t('removeFilter', { label: t('employmentType') }),
     },
   ];
   const uniqueOptions=(items:{value:string|null|undefined;label:string|null|undefined}[])=>{const unique=[...new Map(items.filter((item):item is {value:string;label:string}=>!!item.value&&!!item.label).map(item=>[item.value,item])).values()];return unique.map(item=>({...item,label:unique.some(other=>other.value!==item.value&&other.label===item.label)?item.label+' · '+item.value.slice(0,8):item.label})).sort((a,b)=>a.label.localeCompare(b.label));};
   const multi=(name:string,label:string,options:{value:string;label:string}[]):FilterField=>({kind:'multi',name,label,ariaLabel:label,options,removeAriaLabel:t('removeFilter',{label})});
   filterFields.push(
-   multi('bu',to('businessUnit'),uniqueOptions([...organisationChoices.companies.map(c=>({value:c.businessUnitId,label:c.businessUnit})),...organisationChoices.rows.map(row=>({value:row.businessUnitId,label:row.businessUnit}))])),
+   multi('bu',to('businessUnit'),[...uniqueOptions([...organisationChoices.companies.map(c=>({value:c.businessUnitId,label:c.businessUnit})),...organisationChoices.rows.map(row=>({value:row.businessUnitId,label:row.businessUnit}))]),blankOption]),
    multi('parent',to('parentCompany'),uniqueOptions(organisationChoices.companies.map(c=>({value:c.parentCompanyId,label:c.parentCompany})))),
    multi('group',to('businessGroup'),uniqueOptions(organisationChoices.companies.map(c=>({value:c.businessGroupId,label:c.businessGroup})))),
-   multi('grade',to('jobGrade'),['H',...Array.from({length:12},(_,i)=>String(i+12))].map(value=>({value,label:value}))),
-   multi('position',to('position'),uniqueOptions(organisationChoices.rows.map(row=>({value:row.positionId,label:row.position})))),
+   multi('grade',to('jobGrade'),[...['H',...Array.from({length:12},(_,i)=>String(i+12))].map(value=>({value,label:value})),blankOption]),
+   multi('position',to('position'),[...uniqueOptions(organisationChoices.rows.map(row=>({value:row.positionId,label:row.position}))),blankOption]),
    {kind:'select',name:'confirmation',label:to('confirmation'),ariaLabel:to('confirmation'),allLabel:to('all'),options:[{value:'confirmed',label:to('confirmed')},{value:'unconfirmed',label:to('unconfirmed')}],removeAriaLabel:t('removeFilter',{label:to('confirmation')})},
-   ...(['joinedFrom','joinedTo','probationFrom','probationTo'] as const).map(name=>({kind:'date' as const,name,label:to(name),ariaLabel:to(name),removeAriaLabel:t('removeFilter',{label:to(name)})})),
+   ...(['joinedFrom','joinedTo','probationFrom','probationTo','hiredFrom','hiredTo','confirmedFrom','confirmedTo'] as const).map(name=>({kind:'date' as const,name,label:to(name),ariaLabel:to(name),removeAriaLabel:t('removeFilter',{label:to(name)})})),
    multi('quality',to('quality'),(['missing_business_unit','missing_job_grade','missing_direct_superior','company_not_in_structure','suspected_duplicate'] as const).map(value=>({value,label:to(value)}))),
   );
   const params=personnelQueryParams(sp),filterValues:Record<string,string|string[]|undefined>={};
-  for(const [key,value] of params)filterValues[key]=['companies','bu','parent','group','grade','position','quality'].includes(key)?value.split(','):value;
+  for(const [key,value] of params)filterValues[key]=['companies','bu','parent','group','grade','position','quality','dept','type','bucket'].includes(key)?value.split(','):value;
+  // aa045103 — the column header filters read the SAME applied values and option lists as this dialog.
+  const choiceField=(name:string)=>filterFields.find(field=>field.name===name);
+  const choiceFilters=Object.fromEntries(Object.entries(PERSONNEL_CHOICE_COLUMN_PARAMS).map(([column,param])=>{const field=choiceField(param);const options=field&&(field.kind==='multi'||field.kind==='select')?field.options:[];const blank=PERSONNEL_BLANKABLE_CHOICE_PARAMS.includes(param);return [column,{param,options:options.filter(option=>option.value!==PERSONNEL_BLANK_VALUE),selected:[...new Set(String(params.get(param)??'').split(',').filter(Boolean))],blankLabel:blank?blankOption.label:undefined}];}));
+  const dateFilters=Object.fromEntries(Object.entries(PERSONNEL_DATE_COLUMN_PARAMS).map(([column,[from,to]])=>[column,{params:[from,to] as const,applied:{from:params.get(from)??undefined,to:params.get(to)??undefined}}]));
   if(query.legacyStatus)filterFields.push({kind:'select',name:'status',label:t('colStatus'),ariaLabel:t('filterStatus'),allLabel:t('allStatuses'),options:[{value:'active',label:to('notTerminated')},{value:'terminated',label:to('terminated')}],removeAriaLabel:t('removeFilter',{label:t('colStatus')})});
   if(company)filterFields.push({kind:'select',name:'company',label:t('company'),ariaLabel:t('filterCompany'),allLabel:t('allCompanies'),options:companies.map(c=>({value:c.id,label:c.name})),removeAriaLabel:t('removeFilter',{label:t('company')})});
   if(query.filters.privateSearch)filterFields.push({kind:'select',name:'search',label:to('privateSearch'),ariaLabel:to('privateSearch'),allLabel:to('all'),options:[{value:query.filters.privateSearch,label:to('privateSearch')}],removeAriaLabel:t('removeFilter',{label:to('privateSearch')})});
@@ -241,7 +246,8 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
     // which draft rows the table shows.
     { key: DRAFT_BUCKET, label: t('statusDraft'), hint: t('cardDraftHint'), count: draftCardCount },
   ] as const;
-  const activeCard = draftOnly ? DRAFT_BUCKET : (query.bucket ?? null);
+  // A card lights only when it alone is the Status choice (Status is multi-select since aa045103).
+  const activeCard = draftOnly ? DRAFT_BUCKET : query.buckets.length === 1 && !query.includeDrafts ? query.bucket ?? null : query.buckets.length ? undefined : null;
 
   // ── Column picker (points 2 & 3) ──────────────────────────────────────────────────────────────────
   // Pre-translated, serialisable props only — no closure over `t` may cross into a client island
@@ -405,6 +411,9 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
         fields={filterFields}
         values={filterValues}
         labels={filterLabels}
+        // aa045103 — removing a chip keeps the sort and the page size; only `page` resets. (The private result
+        // is a field of its own above, so it already rides along.)
+        hidden={[...(['sort','direction'] as const).flatMap(key=>params.get(key)?[[key,params.get(key)!] as [string,string]]:[]),['size',String(pq.size)] as [string,string]]}
       />
 
       {query.filters.privateSearch&&<p role="status" className="text-sm text-muted-foreground">{t(privateCriteria?'controls.privateActive':'controls.privateExpired')}</p>}
@@ -417,7 +426,8 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
       )}
 
       <Card className="overflow-hidden" data-tour="people-table">
-        <PersonnelListTable pageSize={String(pq.size)} privateCriteria={privateCriteria??undefined} columns={columns} allOrder={savedColumns.order} columnOptions={{company:companies.map(c=>({value:c.id,label:c.name})),department:departments.map(d=>({value:d.id,label:d.label||d.name})),position:uniqueOptions(organisationChoices.rows.map(row=>({value:row.positionId,label:row.position}))),businessUnit:uniqueOptions(organisationChoices.rows.map(row=>({value:row.businessUnitId,label:row.businessUnit}))),employmentType:EMPLOYMENT_TYPES.map(et=>({value:et.value,label:t(et.labelKey)})),status:EMPLOYEE_STATUS_BUCKETS.map(value=>({value,label:tStatus(value)}))}}
+        <PersonnelListTable pageSize={String(pq.size)} privateCriteria={privateCriteria??undefined} columns={columns} allOrder={savedColumns.order} choiceFilters={choiceFilters} dateFilters={dateFilters}
+          emptyClearHref={hasFilters||privateCriteria?'/admin/personnel':undefined}
           labels={Object.fromEntries(Object.entries(COLUMN_LABEL_KEY).map(([key,label])=>[key,t(label)])) as Record<EmployeeColumnKey,string>}
           parameters={[...personnelQueryParams(sp)]} sort={query.filters.columnSort} direction={query.filters.sortDirection}
           employees={employees.map(e=>{const st=deriveEmploymentStatus(e,today);return {employmentId:e.employmentId,name:e.name,email:e.email,employeeCode:e.employeeCode,status:st,statusLabel:tStatus(st),text:Object.fromEntries(columns.map(key=>[key,textCell(e,key)])),photoPersonId:photoIds.get(e.employmentId)??null};})}

@@ -5,6 +5,16 @@ import { PERSONNEL_FIELDS, PERSONNEL_IMPORT_COMPATIBILITY } from './personnel-fi
 
 export type ImportRecord = Record<string, string>;
 
+/** Item 1859cce0 — one problem with one row, emitted where it is found (never parsed back out of the text).
+ *  `column` is the template column key when the owner names one; the screen captions it through
+ *  personnelColumnLabel. `code` is a stable reason for translated wording; `message` the English detail. */
+export type ImportIssue = { column?: string; code?: string; message: string };
+/** Where a problem was found: the file check before anything is written, or while saving. */
+export type ImportIssueStage = 'check' | 'save';
+/** What happened to the row: refused by the check, refused while saving (it stopped the file), not saved
+ *  because another row stopped the file, or saved. */
+export type ImportRowOutcome = 'refused' | 'stopped' | 'cancelled' | 'saved';
+
 export type RowResult = {
   proposed?:{column:string;value:string}[];
   rowNum: number; // 1-based data row (header excluded)
@@ -12,6 +22,8 @@ export type RowResult = {
   email: string;
   ok: boolean;
   errors: string[];
+  /** Item 1859cce0 — the same problems as `errors`, one entry each, with the column when known. */
+  issues?: ImportIssue[];
   warnings: string[];
   /** Resolved company for THIS row (d8471481) — the `company` cell when supplied, otherwise the
    *  screen's target company. Shown in the preview so a multi-company file is auditable before
@@ -46,7 +58,7 @@ export type ImportResult = {
   warnings?:string[];
   companyId: string;
   imported: number;
-  failed: { rowNum: number; email: string; message: string }[];
+  failed: ImportFailedRow[];
   skipped: number;
   /** Item 2983802f — family members created alongside the employees, from the Family sheet. */
   dependentsImported: number;
@@ -78,6 +90,27 @@ export type ImportRunError = {
   fullName: string;
   email: string;
   errors: string[];
+  /** Item 1859cce0 — optional detail (older rows lack it; readers guard the shape). */
+  employeeCode?: string;
+  companyId?: string;
+  issues?: ImportIssue[];
+  stage?: ImportIssueStage;
+  outcome?: ImportRowOutcome;
+};
+
+/** A row that was not saved by the write, with the reason (item 1859cce0 adds the detail fields). */
+export type ImportFailedRow = {
+  rowNum: number;
+  email: string;
+  message: string;
+  fullName?: string;
+  employeeCode?: string;
+  companyId?: string;
+  column?: string;
+  /** 'stopped': this row was refused while saving; 'cancelled': it had no problem but another row stopped the file. */
+  outcome?: 'stopped' | 'cancelled';
+  /** For a cancelled row: the rows that stopped the file. */
+  stoppedBy?: number[];
 };
 
 /** cf43c909 — one past import, for the Import History list. `outcome` is DERIVED from the counts

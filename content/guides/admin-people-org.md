@@ -3,7 +3,7 @@ Use [Organization](/admin/organization) and [Personnel](/admin/personnel) to mai
 ## Add people and organization data
 
 1. Create the company structure and reference lists before importing people. Review employer statutory identity under the company's statutory page.
-2. Configure [Hiring defaults](/admin/settings/hiring-defaults) and [Employee numbering](/admin/settings/employee-id) if needed.
+2. Configure [Hiring defaults](/admin/settings/hiring-defaults) and [Employee numbering](/admin/settings/employee-id) if needed. Both are cards on [People > Configuration > Settings](/admin/settings/people).
 3. Create the employee or open [Personnel import](/admin/personnel/import). Use the current template, preview the mapping and errors, and commit only after reviewing the selected company and records.
 4. Open the employee's profile and review personal details, employment, assignment, compensation, bank details and statutory information. Complete the hire workflow; an unfinished hire draft is not an active employment.
 

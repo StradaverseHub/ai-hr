@@ -6,6 +6,7 @@ import {isAdmin} from '../lib/authz-model';
 import {INDIVIDUAL_IMPORT_MAX_BYTES, type IndividualImportJob} from '../lib/individual-import-job';
 import type {IndividualImportMethod} from '../lib/payroll-txn-import-schema';
 import {IndividualImportError} from './individual-txn-import';
+import {creatorOf, resolveImportActors} from './import-actor-label';
 
 const uuid = z.uuid();
 const metadata = sql`job.id, job.source_name, job.created_by, job.created_at, job.started_at, job.finished_at,
@@ -57,16 +58,22 @@ export async function readIndividualImportJob(ctx: SessionContext, id: string, s
   return withTenant(ctx, async tx => {
     const [job] = await tx.execute<IndividualImportJob>(sql`
       select ${metadata} from ${jobWithAttempt} where job.id = ${id}::uuid and ${selection(scopeIds)}`);
-    return job;
+    if (!job) return job;
+    const actors = await resolveImportActors(tx, 'payroll_individual_job', [job.id]);
+    return {...job, created_by_actor: creatorOf(actors, job.id)};
   });
 }
 
 export async function listIndividualImportJobs(ctx: SessionContext, scopeIds: string[], before?: {at: string; id: string}) {
   if (before) { z.iso.datetime().parse(before.at); uuid.parse(before.id); }
-  return withTenant(ctx, async tx => [...await tx.execute<IndividualImportJob>(sql`
+  return withTenant(ctx, async tx => {
+    const jobs = [...await tx.execute<IndividualImportJob>(sql`
     select ${metadata} from ${jobWithAttempt} where ${selection(scopeIds)}
     ${before ? sql`and (job.created_at, job.id) < (${before.at}::timestamptz, ${before.id}::uuid)` : sql``}
-    order by job.created_at desc, job.id desc limit 101`)]);
+    order by job.created_at desc, job.id desc limit 101`)];
+    const actors = await resolveImportActors(tx, 'payroll_individual_job', jobs.map(job => job.id));
+    return jobs.map(job => ({...job, created_by_actor: creatorOf(actors, job.id)}));
+  });
 }
 
 export async function readIndividualImportWorkbook(ctx: SessionContext, id: string, scopeIds: string[]) {

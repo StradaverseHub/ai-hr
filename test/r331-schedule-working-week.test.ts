@@ -447,7 +447,10 @@ describe('C. the marker — a submission that said nothing must not CLEAR the we
     // And the page really does emit it, so the contract is pinned across BOTH files (CLAUDE.md §8).
     const page = readFileSync(pathJoin(root, 'app/admin/attendance/schedule/group-sections.tsx'), 'utf8');
     expect(page, 'the new editor saves pool and rotation together').toContain('ScheduleRotationEditor');
-    expect(page, 'the legacy independent week form is retired').not.toContain('name="weekEditor" value="1"');
+    // 2f803985 — the legacy week form remains ONLY for the Standard group, which cannot rotate.
+    expect(page.match(/name="weekEditor" value="1"/g) ?? [], 'one week form').toHaveLength(1);
+    expect(page.slice(page.indexOf('const pattern = rule.isDefault'), page.indexOf('<ScheduleRotationEditor ruleId')),
+      'and it is the Standard branch').toContain('name="weekEditor" value="1"');
   });
 });
 

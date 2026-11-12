@@ -348,6 +348,7 @@
     "attendance": "Attendance Records",
     "attendanceSettings": "Attendance",
     "attendanceSettingsPage": "Settings",
+    "peopleSettings": "Settings",
     "employeeAttendance": "Employee Attendance",
     "myAttendance": "My Attendance",
     "manage": "Manage",
@@ -870,7 +871,21 @@
         "privateExpired": "Private filters expired or unavailable. Apply them again.",
         "superiorId": "Direct Superior · Employee ID",
         "superiorName": "Direct Superior · Name",
-        "removeCriterion": "Remove {name} filter"
+        "removeCriterion": "Remove {name} filter",
+        "choiceAll": "All",
+        "choiceSelected": "{count} selected",
+        "findOption": "Find a value in {name}",
+        "noOptions": "No matching values",
+        "selectAllOptions": "Select all",
+        "clearSelection": "Clear selection",
+        "applyChoice": "Apply",
+        "clearChoice": "Clear",
+        "dateFrom": "From",
+        "dateTo": "To",
+        "dateFromLabel": "{name} from",
+        "dateToLabel": "{name} to",
+        "choicePending": "Updating the list…",
+        "choiceFailed": "Could not update the list. Try again."
       }
     },
     "switcher": {
@@ -879,7 +894,10 @@
       "resultsLabel": "Employee search results",
       "noMatches": "No employee matches that.",
       "currentTag": "Current",
-      "loadFailed": "Employee search could not be loaded. Try again."
+      "loadFailed": "Employee search could not be loaded. Try again.",
+      "matchingHeading": "Matching employees",
+      "showAll": "Show all {count} matches in the list (Enter)",
+      "showAllMore": "Show all matches in the list (Enter)"
     },
     "detail": {
       "incentiveDeclarations": {
@@ -1304,7 +1322,7 @@
         "deleteConfirmTitle": "Delete qualification",
         "deleteConfirmBody": "Remove this qualification record? It will no longer appear in this employee's qualification history.",
         "none": "No qualification records.",
-        "hint": "HR maintains these records. Qualification types are managed under System Settings > System Labels > Profile Options.",
+        "hint": "HR maintains these records. Qualification types are managed under People > Configuration > Settings > System Labels > Profile Options.",
         "level": "Qualification",
         "levelPlaceholder": "Select qualification",
         "institute": "Institute",
@@ -1459,6 +1477,7 @@
         "status_terminated": "Terminated",
         "probationGroup": "Probation Information",
         "contractGroup": "Contract Information",
+        "internshipGroup": "Internship Information",
         "contractStartDate": "Contract Start Date",
         "contractEndDate": "Contract End Date",
         "contractRemark": "Remark",
@@ -1789,6 +1808,8 @@
           "position": "Position",
           "grade": "Job Grade",
           "employmentType": "Employment Type",
+          "contractEndDate": "Contract End Date",
+          "internshipEndDate": "Internship End Date",
           "manager": "Reporting Manager",
           "salary": "Salary",
           "orgDivision": "Division",
@@ -1880,6 +1901,8 @@
           "closedPayrollBody": "This correction updates the employee's record and future processing. The closed payroll, released payslips and statutory submissions keep their finalised figures and will not be recalculated. If an amount needs adjusting, use the payroll correction process. A corrected salary takes effect from the first month after the closed payroll.",
           "closedPayrollAcknowledge": "I understand that closed payroll will not change.",
           "mustChange": "Required to change",
+          "endDateRequiredContract": "Required because the new Employee Type is Contract. The contract starts on the effective date and must end after it.",
+          "endDateRequiredIntern": "Required because the new Employee Type is Intern. The internship must end after the effective date.",
           "mustChangeRefused": "{field} must change for this event type. Enter the new value.",
           "documentOptional": "Supporting document (optional)",
           "documentRequired": "Supporting document (required when this changes)"
@@ -3020,6 +3043,14 @@
         "waiting": "Waiting for the import worker. The check starts automatically; do not upload the file again.",
         "otherRunning": "Another movement check you started is still running. Wait for it to finish before checking a new file.",
         "workerUnavailable": "The import service is not running yet. Your file is kept and the check starts automatically as soon as it is."
+      },
+      "historyButton": "Import History",
+      "uploadErrors": {
+        "unreachable": "The server could not be reached. Check your connection and try again; sending the same file again will not import it twice.",
+        "unavailable": "The system is unavailable at the moment. Open Import History to check whether this import was received before you try again.",
+        "timeout": "This is taking longer than expected. The import may still be running: check Import History and do not upload the file again until it shows a result.",
+        "unknown": "The import result could not be confirmed. Check Import History before trying again.",
+        "progressUnreachable": "The server could not be reached to check progress. The import continues in the background, and this page keeps checking."
       }
     },
     "wizard": {
@@ -3345,9 +3376,14 @@
         "bank_statutory": "Bank & Statutory",
         "employee_full": "Everything — new employees",
         "movement": "Movement",
-        "information_correction": "Information-Only Correction"
+        "information_correction": "Information-Only Correction",
+        "profile": "Profile",
+        "family": "Family",
+        "qualification": "Qualifications",
+        "emergency": "Emergency Contacts",
+        "notRecorded": "Not recorded"
       },
-      "reference": "Reference",
+      "reference": "Batch reference",
       "referenceLabel": "Reference {reference}",
       "type": "Type",
       "file": "File",
@@ -3426,6 +3462,87 @@
       "employeeFull": {
         "created": "Created {code} · {name}",
         "willVoid": "This employee will be voided: removed from lists, headcount and payroll, kept in the audit trail. The Employee ID, email and NRIC are freed."
+      },
+      "listDescription": "Every personnel import file: who imported it, when, for which companies, and the result of every row.",
+      "backToImport": "Import employees",
+      "total": "Total",
+      "successful": "Successful",
+      "failed": "Failed",
+      "totalRows": "Total rows",
+      "pasted": "Pasted data",
+      "openLog": "Open the Import Log of {file}",
+      "log": {
+        "title": "Every row of the file",
+        "hint": "Saved rows show what changed. Rows that were not saved show why. Only employees of companies you can view are shown.",
+        "empty": "No rows of this file are visible to you.",
+        "row": "Row",
+        "employee": "Employee",
+        "result": "Result",
+        "field": "Field",
+        "before": "Before",
+        "after": "After",
+        "reason": "Reason given",
+        "saved": "Saved",
+        "unchanged": "Unchanged",
+        "notSaved": "Not saved",
+        "notConfirmed": "Checked, not saved",
+        "nothingChanged": "Every value already matched — nothing saved."
+      },
+      "run": {
+        "noFile": "This import keeps a summary and the rows that were not saved. The file itself is not stored.",
+        "failedTitle": "Rows not saved",
+        "hint": "Each row that was not saved, with its reason.",
+        "truncated": "Showing {shown} of {total} rows that were not saved.",
+        "noDetail": "No row detail was recorded for this import.",
+        "none": "Every row was saved.",
+        "reasonColumn": "Reason"
+      },
+      "errorReport": {
+        "title": "Error report",
+        "hint": "One line for every problem: the row, the employee, the column to correct and what is wrong.",
+        "download": "Download error report",
+        "filterLabel": "Show rows",
+        "problemRows": "Rows with a problem ({count})",
+        "allRows": "All rows ({count})",
+        "saved": "Employees saved",
+        "toFix": "Rows with a problem to fix",
+        "cancelled": "Rows with no problem, not saved because the file was cancelled",
+        "cancelledTitle": "This file was cancelled while saving, so no employee was created.",
+        "cancelledBody": "Row {rows} could not be saved (see below). A file is saved all together or not at all, so the rows with no problem were not saved either. Fix the rows listed and upload the whole file again.",
+        "stoppedBody": "The import stopped before it finished, so nothing was saved. The reason is in the audit trail below. Upload the whole file again.",
+        "restricted": "Only rows of companies you can view are shown.",
+        "noProblems": "No problems were found in this file.",
+        "noRows": "This import has no rows to show.",
+        "colRow": "Row",
+        "colCode": "Employee ID",
+        "colName": "Name",
+        "colColumn": "Column",
+        "colProblem": "Problem",
+        "colResult": "Result",
+        "stage": {
+          "check": "Found in the file check",
+          "save": "Found while saving — this stopped the file"
+        },
+        "outcome": {
+          "refused": "Not saved",
+          "stopped": "Stopped the save",
+          "cancelled": "Not saved — file cancelled",
+          "saved": "Saved",
+          "pending": "Not finished"
+        },
+        "cancelledRow": "No problem. Not saved because row {rows} stopped the file.",
+        "cancelledRowUnnamed": "No problem. Not saved because the file was cancelled.",
+        "contract": {
+          "required": "Required when Employment Type is Contract.",
+          "before_hire": "Cannot be earlier than the Group Join Date.",
+          "end_not_after_start": "Must be later than the Contract Start Date."
+        },
+        "csvBatch": "Batch reference",
+        "csvFile": "File name",
+        "csvStatus": "Final status",
+        "csvStage": "Found",
+        "rowsHint": "Row numbers count the employee rows of the file, as in the import preview.",
+        "truncated": "Showing the first {shown} of {total} lines. Download the error report for all of them."
       }
     },
     "informationCorrection": {
@@ -3464,14 +3581,40 @@
         "hiredOn": "Group Join Date",
         "joinDate": "Join Date",
         "gradeId": "Job Grade",
-        "employmentType": "Employment Type"
+        "employmentType": "Employment Type",
+        "businessUnitId": "Business Unit",
+        "departmentId": "Department",
+        "positionId": "Position",
+        "orgDivision": "Division",
+        "orgBranch": "Branch",
+        "orgRegion": "Region",
+        "orgLine": "Line",
+        "orgSection": "Section",
+        "orgTeam": "Team",
+        "orgBase": "Base",
+        "employmentCategory": "Category",
+        "probationValue": "Probation Period",
+        "probationUnit": "Probation Period Unit",
+        "extendedProbationValue": "Extended Probation Period",
+        "extendedProbationUnit": "Extended Probation Period Unit",
+        "confirmationDate": "Confirmation Date",
+        "noticeBeforeConfirmationValue": "Notice Before Confirmation",
+        "noticeBeforeConfirmationUnit": "Notice Before Confirmation Unit",
+        "noticeAfterConfirmationValue": "Notice After Confirmation",
+        "noticeAfterConfirmationUnit": "Notice After Confirmation Unit",
+        "managerEmploymentId": "Direct Superior",
+        "contractEndDate": "Contract End Date",
+        "internshipEndDate": "Internship End Date"
       },
       "statuses": {
         "applied": "Successful",
         "failed": "Failed",
         "unchanged": "Unchanged"
       },
-      "effective": "Future processing uses these corrected details from {date}."
+      "effective": "Future processing uses these corrected details from {date}.",
+      "templateFields": "Fields this template corrects (new ones highlighted). Blank cells keep the existing value.",
+      "templateFieldsLabel": "Fields this template corrects",
+      "ownersNote": "Basic Salary and resignation dates are corrected on the event that recorded them: use the Movement import with Action \"Update\". Payment Method is in the Bank and Statutory import."
     }
   },
   "leave": {
@@ -6408,6 +6551,21 @@
       "reprocessOutcomeDetails": "View full reason",
       "reprocessReviewTaxConfiguration": "Review tax configuration for this run",
       "reprocessReviewPcbConfiguration": "Review PCB configuration",
+      "reprocessPayItemFormulaReason": "The updated Pay Item formula could not calculate this employee’s transactions. Correct the formula, then reprocess this employee.",
+      "reprocessPayItemRepriced": "{name}, recalculated with the updated formula",
+      "reprocessPayItemRepricedDetail": "{count, plural, one {# transaction} other {# transactions}}{quantity}: {before} → {after}",
+      "reprocessPayItemFormulaFailed": "{name} ({code}): the updated formula could not calculate {count, plural, one {# transaction} other {# transactions}} ({dates}).",
+      "reprocessPayItemReason_formula_failed": "The formula could not be calculated for these inputs.",
+      "reprocessPayItemReason_not_positive": "The formula did not produce a positive amount.",
+      "reprocessPayItemReason_zero_divisor": "The formula divides by zero for these inputs.",
+      "reprocessPayItemReason_input_missing": "The transactions have no Hours, Days or Quantity the formula needs.",
+      "reprocessPayItemReason_no_longer_calculates": "The Pay Item no longer calculates its amount from a formula.",
+      "reprocessPayItemQuantity_hours": ", {qty} hours",
+      "reprocessPayItemQuantity_days": ", {qty} days",
+      "reprocessPayItemQuantity_qty": ", quantity {qty}",
+      "reprocessPayItemQuantity_units": ", {qty} units",
+      "reprocessOpenPayItem": "Open Pay Item",
+      "reprocessOpenTransactions": "Open transactions",
       "reprocessOutcomeRecordedAt": "Recorded at {at}",
       "reprocessOutcomeTitle": "Selected employee outcomes",
       "reprocessOutcomeSummary": "Selected: {selected} · Reprocessed: {succeeded} · Skipped: {skipped} (completed — nothing payable) · Configuration incomplete: {failed}",
@@ -9992,9 +10150,9 @@
       "importing": "Importing…",
       "logFile": "Log File",
       "backImport": "Back to import",
-      "reference": "Import reference",
+      "reference": "Batch reference",
       "time": "Date and time (MYT)",
-      "user": "User reference",
+      "user": "Imported by",
       "older": "Older attempts",
       "noAttempts": "No import attempts yet.",
       "fingerprint": "Source fingerprint (SHA-256)",
@@ -10150,13 +10308,13 @@
       "confirm": "Confirm import",
       "reference": "Batch reference",
       "time": "Date and time",
-      "user": "User reference",
+      "user": "Imported by",
       "validated": "Validated",
       "completed": "Completed",
       "reverted": "Reverted",
       "empty": "No imports in the selected company scope.",
       "revert": "Revert Import",
-      "revertWarning": "Revert batch {id} ({file})? Only its {count} imported transactions will be reversed. The original import log will remain.",
+      "revertWarning": "Revert {batch} ({file})? Only its {count} imported transactions will be reversed. The original import log will remain.",
       "revertControls": "Reversal is refused if any imported record changed or current payroll controls prohibit it. Manual entries and other imports are unaffected.",
       "revertConfirm": "I confirm reversal of the identified import batch.",
       "processedConfirm": "If existing payroll controls allow changes to processed entries, I acknowledge that payroll recalculation will be required.",
@@ -10871,8 +11029,7 @@
       "policyBadge": "policy",
       "save": "Save",
       "cancel": "Cancel",
-      "typeLabel": "Type",
-      "rename": "Rename",
+      "unsavedChanges": "Unsaved changes",
       "unarchive": "Unarchive",
       "archive": "Archive",
       "deleteTypeConfirmTitle": "Delete this leave type?",
@@ -11117,12 +11274,13 @@
         "summaryCounts": "Also counts: {list}"
       },
       "visual": {
-        "sectionTitle": "Leave Type Visual Configuration",
         "help": "Optional. The icon and colour theme appear beside this leave type on the employee My Profile → Leave tab. Purely visual — no effect on entitlement, eligibility or calculations.",
         "iconLabel": "Icon",
         "colorLabel": "Colour theme",
         "searchPlaceholder": "Search icons…",
         "noIcons": "No matching icons.",
+        "changeIcon": "Change icon",
+        "default": "Default",
         "color": {
           "blue": "Blue",
           "green": "Green",
@@ -13552,7 +13710,10 @@
       "shiftsInGroupCheckTitle": "Check before you save",
       "shiftsInGroupWarning": "Saving this week changes working days for {count} shift(s): {names}. Overtime changes for anyone on those shifts from the day you save.",
       "shiftsInGroupEmploymentsWarning": "{count} employee(s) placed directly in this group also follow it.",
-      "shiftsInGroupNothingUntilSave": "Nothing changes until you press Save."
+      "shiftsInGroupNothingUntilSave": "Nothing changes until you press Save.",
+      "otMovedNote": "Overtime bands, rates, rounding and early overtime for this group are now in Overtime Patterns › 1. General Settings.",
+      "otMovedOpen": "Open",
+      "otSettingPending": "The Overtime Setting section (before and after shift, approval method, lateness offset and rounding) will be added here once Payroll is proven to receive its overtime figures. Until then this group’s overtime works exactly as it does today."
     },
     "leaveConfigLeaveCredit": {
       "pageDescription": "Credits earned by working a rest day, off day or public holiday, and the Replacement Leave that uses them."
@@ -13823,14 +13984,14 @@
       "historyHint": "Every run, so you can answer “who loaded this, and when” months later. The uploaded file itself is not kept.",
       "historyEmpty": "Nothing has been imported yet.",
       "historyColWhen": "When",
-      "historyColFile": "File",
-      "historyColBy": "By",
+      "historyColFile": "Batch reference",
+      "historyColBy": "Imported by",
       "historyColRecords": "Records",
       "historyColImported": "Imported",
       "historyColFailed": "Failed",
       "historyColDuplicate": "Dup.",
       "historyPasted": "Pasted",
-      "historyActorUnknown": "Unknown",
+      "historyActorUnknown": "Unavailable user",
       "historyViewFailed": "Errors",
       "historyOutcomeSucceeded": "Succeeded",
       "historyOutcomePartial": "Partly imported",
@@ -13891,13 +14052,13 @@
       "historyTitle": "Import log",
       "historyEmpty": "Nothing has been imported yet.",
       "historyColWhen": "When",
-      "historyColFile": "File",
-      "historyColBy": "By",
+      "historyColFile": "Batch reference",
+      "historyColBy": "Imported by",
       "historyColRecords": "Records",
       "historyColImported": "Imported",
       "historyColFailed": "Failed",
       "historyPasted": "Pasted",
-      "historyActorUnknown": "Unknown",
+      "historyActorUnknown": "Unavailable user",
       "historyViewFailed": "Errors",
       "historyOutcomeSucceeded": "Succeeded",
       "historyOutcomePartial": "Partly imported",
@@ -13974,7 +14135,7 @@
       "historyEmpty": "No imports yet.",
       "when": "Date",
       "importType": "Import Type",
-      "file": "File",
+      "file": "Batch reference",
       "rows": "Rows",
       "imported": "Imported",
       "failed": "Failed",
@@ -14063,7 +14224,17 @@
       "poolHistorical": "Retained unavailable shifts",
       "poolHistoricalHelp": "These saved references are kept for review. Remove or replace them explicitly before saving a new rotation; they cannot be selected again.",
       "poolRemoveNamed": "Remove {shift} from selected shifts",
-      "poolRemove": "Remove"
+      "poolRemove": "Remove",
+      "methodWorkingWeek": "Working Week",
+      "methodWeekly": "Weekly Pattern",
+      "methodDaily": "Daily Pattern",
+      "methodHint": "Working Week repeats one week. Weekly Pattern repeats several weeks; Daily Pattern repeats a cycle of days. All three use the same Day Type and Shift table.",
+      "stepDays": "Day Type and Shift for each day",
+      "weeksCount": "Number of weeks",
+      "daysCount": "Number of days",
+      "standardWeekHint": "The Standard group uses Working Week only. On working days each employee works the hours of their own assigned shift.",
+      "shiftFromEmployee": "Employee's own shift",
+      "saveWeek": "Save working week"
     }
   },
   "topbar": {
@@ -23807,9 +23978,9 @@
       "back": "Import Clocking Data",
       "recent": "Import logs · most recent first",
       "colAt": "Import Date/Time",
-      "colFile": "File Name",
+      "colFile": "Batch reference",
       "colMapping": "Mapping",
-      "colUser": "User",
+      "colUser": "Imported by",
       "colTotal": "Total",
       "colImported": "Imported",
       "colFailed": "Failed",
@@ -23817,7 +23988,7 @@
       "duplicatesNote": "{count, plural, =1 {# duplicate} other {# duplicates}}",
       "stoppedNote": "stopped, nothing saved",
       "empty": "No clocking file has been imported yet.",
-      "unknownUser": "—"
+      "unknownUser": "Unavailable user"
     },
     "log": {
       "back": "Import logs",
@@ -23825,7 +23996,7 @@
       "at": "Import Date/Time",
       "fileName": "File Name",
       "mappingName": "Mapping Name",
-      "user": "User",
+      "user": "Imported by",
       "total": "Total lines",
       "valid": "Valid records",
       "imported": "Imported records",
@@ -23932,6 +24103,44 @@
       "desc": "Configure and test attendance calculations linked to Payroll Pay Items.",
       "cta": "Open formula builder"
     }
+  },
+  "peopleSettingsHub": {
+    "title": "People Settings",
+    "subtitle": "The central place to manage people settings. Open a section to configure it; only the sections you can access are shown.",
+    "employeeId": {
+      "title": "Employee ID numbering",
+      "desc": "How new Employee IDs are generated: prefix, starting number, digits and scope.",
+      "cta": "Open employee ID numbering"
+    },
+    "general": {
+      "title": "General",
+      "desc": "Organisation-wide rules for employee data entry, such as duplicate NRIC and email checks.",
+      "cta": "Open general settings"
+    },
+    "systemLabels": {
+      "title": "System Labels",
+      "desc": "The shared lists everyone picks from: departments, positions, cost centers, business units, grades and profile options.",
+      "cta": "Open system labels"
+    },
+    "movement": {
+      "title": "Movement Settings",
+      "desc": "The career event types HR can record on an employee, and the termination reasons they offer.",
+      "cta": "Open movement settings"
+    },
+    "hiringDefaults": {
+      "title": "Hiring Defaults",
+      "desc": "Per-company probation length and review-reminder cadence applied when HR creates an employee.",
+      "cta": "Open hiring defaults"
+    },
+    "changeRequests": {
+      "title": "Employee Change Requests",
+      "desc": "What employees can see and change in My Profile, photo editing, and who approves their requests.",
+      "cta": "Open change request settings"
+    },
+    "empty": "You do not have access to any people settings.",
+    "backToSettings": "Back to Settings",
+    "leaveUnsaved": "Leave this page and discard unsaved changes?",
+    "leaveOtherUnsaved": "Saving this form will leave unsaved changes in another form. Discard those changes?"
   },
   "rewards": {
     "promotionNominationsHelp": "Review nominations from the annual rewards reviews you can access.",
@@ -27419,7 +27628,79 @@
     "approvalLevel": "Approval level",
     "warningIssue": "Issue",
     "legacyReadinessWarning": "A required approver is unavailable.",
-    "warningPage": "{from}–{to} of {total}"
+    "warningPage": "{from}–{to} of {total}",
+    "groups": {
+      "help": "Inside a group, every chosen field must match. Employees who match any group use this workflow.",
+      "or": "OR",
+      "groupNumber": "Group {number}",
+      "remove": "Remove group {number}",
+      "add": "+ Add OR group",
+      "everyone": "All employees of the selected companies"
+    },
+    "copy": {
+      "action": "Copy",
+      "rowLabel": "Copy workflow {code}",
+      "help": "Create a new workflow from a copy. The original workflow is not changed.",
+      "banner": "Copied from {code} (version {version}). Enter a new Workflow Code, Workflow Name and Description. The original workflow is not changed.",
+      "codePlaceholder": "Enter a new code",
+      "namePlaceholder": "Enter a new name"
+    },
+    "previewHistory": {
+      "action": "Preview History",
+      "rowLabel": "Preview history for {code}",
+      "title": "Preview History",
+      "backToWorkflow": "Back to workflow",
+      "generate": "Generate new preview",
+      "generating": "Generating preview…",
+      "failed": "The preview could not be generated. Try again.",
+      "latestTitle": "Latest preview",
+      "summary": "Generated {date} for version {version}: {total} matching employees, {warnings} configuration warnings.",
+      "olderVersion": "This preview was generated for version {previewVersion}. The workflow has been saved since and is now version {currentVersion}, so these results may be out of date.",
+      "none": "No preview has been generated yet. Generate a preview to check matching employees and configuration warnings.",
+      "open": "Open preview history",
+      "savedHint": "Workflow saved. Generate a preview to check matching employees and configuration warnings.",
+      "draftNotStored": "Draft preview of unsaved changes. It is not stored; save the workflow to keep a preview.",
+      "stats": {
+        "generatedAt": "Generated",
+        "generatedBy": "Generated by",
+        "workflowVersion": "Workflow version",
+        "matching": "Matching employees",
+        "warnings": "Configuration warnings"
+      },
+      "earlier": "Previews",
+      "chip": "{date} · v{version}",
+      "warningsTitle": "Configuration Warnings ({count})",
+      "approverSource": "Approver source",
+      "warning": "Warning",
+      "noWarnings": "No configuration warnings.",
+      "warningsTruncated": "Showing the first {shown} of {total} warnings.",
+      "employeesTitle": "Matching Employees ({count})",
+      "noEmployees": "No employees match this workflow.",
+      "employeesTruncated": "Showing the first {shown} of {total} employees. The total count is exact.",
+      "seeWarning": "See warning",
+      "notRequired": "Not required - no further Direct Superior",
+      "otherWorkflow": "Routed by {code} (higher priority)",
+      "stoppedAt": "The reporting line stops at the {level}.",
+      "problems": {
+        "tie": "Two workflows match this employee at the same priority. Change a priority or the assignment.",
+        "no_superior": "No Direct Superior assigned. Assign one in Personnel.",
+        "superior_inactive": "Direct Superior is inactive. Update the Direct Superior in Personnel.",
+        "no_login": "Has no usable login. Ask HR to create or reactivate this person's login.",
+        "multiple_logins": "Has more than one usable login. Ask HR to keep only one.",
+        "login_wrong_company": "Their login does not cover this employee's company. Ask HR to extend the login's company access.",
+        "outside_company_scope": "Is employed outside this employee's company and its parent companies. Choose a superior within the permitted company scope.",
+        "ambiguous_superior": "More than one current Direct Superior is recorded. Keep only one in Personnel.",
+        "cycle": "The reporting line loops back to an earlier person. Correct it in Personnel.",
+        "duplicate_person": "The same person would approve more than once. Change the approval levels or the reporting line.",
+        "duplicate_login": "Two approvers share one login. Ask HR to correct the logins.",
+        "missing_person": "The superior's personal record is missing. Ask HR to check Personnel.",
+        "cc_unavailable": "A CC recipient is missing, inactive or has no unique usable login.",
+        "unresolved": "The approval route cannot be worked out for this employee.",
+        "hr_unavailable": "No HR administrator can approve for this employee.",
+        "selected_unavailable": "The selected approver is inactive, has no unique usable login, or is outside the permitted company scope. Replace the selection.",
+        "login_unusable": "The approver has no unique usable login for this employee's company. Ask HR to correct their login."
+      }
+    }
   },
   "attendanceHistory": {
     "title": "Application History",
@@ -27638,7 +27919,10 @@
       "showWaiting": "Show waiting only",
       "showAll": "Show all",
       "older": "Older punches"
-    }
+    },
+    "skippedNoSuperior": "Skipped automatically - No further Direct Superior available ({sources})",
+    "skippedDecidedAt": "Decided when the application was submitted, {date}",
+    "skippedLabel": "Not required"
   },
   "scheduleDrafts": {
     "staleLadder": "The overtime bands or rates changed in General. Your draft is still here. Reload this page before saving overtime settings. Reloading discards unsaved changes only after confirmation.",
@@ -29254,7 +29538,12 @@
     "positionSearch": "Search positions",
     "loadMorePositions": "Load more positions",
     "attendanceFormulaBinding": "Attendance formula result set: {id}",
-    "chooseOneCompany": "Select one company in the company switcher at the top of the screen before saving a new pattern. The new pattern belongs to that company."
+    "chooseOneCompany": "Select one company in the company switcher at the top of the screen before saving a new pattern. The new pattern belongs to that company.",
+    "legacyGeneralSettings": "1. General Settings",
+    "legacyGroup": "Schedule Group: {name}",
+    "legacyOpenGroup": "Open Schedule Group",
+    "legacyMovedHelp": "These overtime bands, rates, rounding and early overtime settings moved here from the Schedule Group. They look and work exactly as before; each save is kept as a new version of this pattern.",
+    "legacyGroupGone": "The Schedule Group behind this pattern no longer exists, so its overtime bands cannot be edited. Earlier versions are kept."
   },
   "systemTestingWorkspace": {
     "title": "System Testing",
@@ -37180,7 +37469,11 @@
     "notTerminated": "Not terminated",
     "terminated": "Terminated",
     "duplicateHint": "Duplicate checks cover only companies with administrator and identity-data access.",
-    "duplicateUnavailable": "Duplicate evidence is unavailable in this scope. Remove this filter or choose an authorised scope."
+    "duplicateUnavailable": "Duplicate evidence is unavailable in this scope. Remove this filter or choose an authorised scope.",
+    "hiredFrom": "Group join date from",
+    "hiredTo": "Group join date to",
+    "confirmedFrom": "Confirmation date from",
+    "confirmedTo": "Confirmation date to"
   },
   "rewardSetupAccess": {
     "title": "Rewards setup authority",
@@ -37608,7 +37901,7 @@
     "noShifts": "No shifts in this list.",
     "includeMarked": "Include {count} selected →",
     "excludeMarked": "← Exclude {count} selected",
-    "rotationPoolSave": "This list shows the rotation saved for {date}. To change the pool, save it with a new rotation in the Duty Roster section below.",
+    "rotationPoolSave": "This list shows the pattern saved for {date}. To change the allowed shifts, save them with a new pattern below.",
     "saveShiftPool": "Save allowed shifts",
     "currentRotation": "{days}-day rotation effective from {date}",
     "company": "Company",
@@ -37978,5 +38271,13 @@
       "otherRunning": "Another Schedule Group assignment is still being saved. Wait for it to finish, then try again.",
       "queuedBehind": "Queued behind another Schedule Group assignment. It starts automatically as soon as that one finishes."
     }
+  },
+  "importLog": {
+    "batchReference": "Batch reference",
+    "importedBy": "Imported by",
+    "batchLabel": "Batch {code}",
+    "actorWithId": "{name} ({employeeId})",
+    "actorUnlinked": "Administrator login (no employee record · login ending {suffix})",
+    "actorUnavailable": "Unavailable user"
   }
 }

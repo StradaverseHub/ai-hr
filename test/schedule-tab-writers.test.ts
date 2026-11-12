@@ -73,7 +73,11 @@ vi.mock('next-intl/server', async () => {
   };
 });
 
-import { createAttendanceRule, getAttendanceRule, type AttendanceRuleView } from '../core/attendance-rule';
+import { attendanceRuleOvertimeSnapshot, createAttendanceRule, getAttendanceRule, type AttendanceRuleView } from '../core/attendance-rule';
+import { legacyOvertimePatternIdForRule } from '../packs/attendance/service';
+import { owner } from './harness';
+import * as schema from '../db/schema';
+import { asc, eq } from 'drizzle-orm';
 import {
   saveScheduleGroupAttendanceAction,
   saveScheduleGroupOvertimeAction,
@@ -416,8 +420,9 @@ describe('C2. an open rounding form survives an unrelated settings save', () => 
      */
     // 665de026 — the fields moved off the list page onto the per-group screen, so the source this case
     // reads moved with them. The contract it pins is identical and still pinned across BOTH files.
+    // 2f803985 — the band editor moved to Overtime Patterns › 1. General Settings with the same fields.
     const page = readFileSync(
-      pathJoin(rootDir, 'app/admin/attendance/schedule/group-sections.tsx'),
+      pathJoin(rootDir, 'app/admin/attendance/settings/overtime-patterns/legacy-bands.tsx'),
       'utf8',
     );
     expect(page).toContain('name="otBandSnapshot"');
@@ -544,5 +549,52 @@ describe('General action uses the scoped service contract',()=>{
     expect(after.includeGraceInLateness).toBe(stale.includeGraceInLateness);
     expect(after.applyToEarlyOt).toBe(false);expect(after.otRows[0].roundingMode).toBe('up');
     expect(after.otRows[0].roundToMinutes).toBe(30);expect(after.deductionsEffectiveFrom).toBe(stale.deductionsEffectiveFrom);
+  });
+});
+
+
+// 2f803985 — the band editor moved to Overtime Patterns › 1. General Settings of the group's legacy pattern.
+describe('relocated band editor (Overtime Patterns › 1. General Settings)', () => {
+  const fullEditor = async (patternId: string, rows: unknown[], applyToEarlyOt: boolean, nonce = '') => {
+    const rule = (await getAttendanceRule(actionCtx!, ruleId))!;
+    return fd({ ruleId, returnPattern: patternId, overtimeFullEditor: '1', otRows: JSON.stringify(rows),
+      otBandSnapshot: attendanceRuleOvertimeSnapshot(rule.otRows, rule.applyToEarlyOt),
+      ...(applyToEarlyOt ? { applyToEarlyOt: 'on' } : {}), ...(nonce ? { __attendanceSaveNonce: nonce } : {}) });
+  };
+  it('saves through the Schedule Group writer, snapshots a new legacy version and returns to the pattern', async () => {
+    const patternId = await legacyOvertimePatternIdForRule(actionCtx!, ruleId);
+    expect(patternId, 'every group has its legacy compatibility pattern').toMatch(/^[0-9a-f-]{36}$/);
+    const versions = () => owner.db.select().from(schema.overtimePatternVersion)
+      .where(eq(schema.overtimePatternVersion.patternId, patternId!)).orderBy(asc(schema.overtimePatternVersion.ordinal));
+    const before = await versions();
+    const rule = (await getAttendanceRule(actionCtx!, ruleId))!;
+    const rows = rule.otRows.map((o, i) => ({ fromMinutes: o.fromMinutes, toMinutes: o.toMinutes, ratePattern: o.ratePattern,
+      rate: Number(o.rate), phRate: o.phRate == null ? null : Number(o.phRate), roundingMode: i === 0 ? 'up' : o.roundingMode, roundToMinutes: i === 0 ? 30 : o.roundToMinutes }));
+    const nonce = 'abcdef0123456789abcdef0123456789';
+    const target = await captureRedirect(async () => saveScheduleGroupOvertimeAction(await fullEditor(patternId!, rows, true, nonce)));
+    expect(target.startsWith(`/admin/attendance/settings/overtime-patterns?pattern=${patternId}&toast=`), target).toBe(true);
+    expect(target).toContain(`saveAck=${nonce}`);
+    const after = (await getAttendanceRule(actionCtx!, ruleId))!;
+    expect([after.otRows[0].roundingMode, after.otRows[0].roundToMinutes]).toEqual(['up', 30]);
+    expect(after.otRows.map(o => [o.fromMinutes, o.toMinutes, Number(o.rate)])).toEqual(rule.otRows.map(o => [o.fromMinutes, o.toMinutes, Number(o.rate)]));
+    const now = await versions();
+    expect(now.length, 'the 0551 trigger recorded the saved ladder as a new legacy version').toBe(before.length + 1);
+    expect((now.at(-1)!.definition as { rows: { rounding_mode: string }[] }).rows[0].rounding_mode).toBe('up');
+  });
+  it('a refused ladder returns to the pattern with the reason and writes nothing', async () => {
+    const patternId = (await legacyOvertimePatternIdForRule(actionCtx!, ruleId))!;
+    const before = snap((await getAttendanceRule(actionCtx!, ruleId))!);
+    const gap = [{ fromMinutes: 0, toMinutes: 60, ratePattern: 'flat', rate: 1.5, phRate: null, roundingMode: 'none', roundToMinutes: null },
+      { fromMinutes: 200, toMinutes: 0, ratePattern: 'flat', rate: 2, phRate: null, roundingMode: 'none', roundToMinutes: null }];
+    const target = await captureRedirect(async () => saveScheduleGroupOvertimeAction(await fullEditor(patternId, gap, true)));
+    expect(target.startsWith(`/admin/attendance/settings/overtime-patterns?pattern=${patternId}&bandError=`), target).toBe(true);
+    expect(snap((await getAttendanceRule(actionCtx!, ruleId))!)).toEqual(before);
+  });
+  it('a malformed return target falls back to the Schedule Group, never an arbitrary path', async () => {
+    const rule = (await getAttendanceRule(actionCtx!, ruleId))!;
+    const target = await captureRedirect(async () => saveScheduleGroupOvertimeAction(fd({ ruleId, returnPattern: '//evil.example/x',
+      overtimeFullEditor: '1', otRows: JSON.stringify(rule.otRows.map(o => ({ ...o, rate: Number(o.rate), phRate: o.phRate == null ? null : Number(o.phRate) }))),
+      otBandSnapshot: attendanceRuleOvertimeSnapshot(rule.otRows, rule.applyToEarlyOt), applyToEarlyOt: 'on' })));
+    expect(target.startsWith(`/admin/attendance/schedule/${ruleId}`), target).toBe(true);
   });
 });

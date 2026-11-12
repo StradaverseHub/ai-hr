@@ -273,3 +273,17 @@ describe('selectable nested formula and condition controls',()=>{
   expect(screen.getByText(words.traceKinds.field+' · 1')).toBeTruthy();
  });
 });
+
+// 2f803985 — a legacy (Schedule Group) pattern shows its relocated band editor instead of a pointer back.
+describe('legacy Schedule Group pattern',()=>{
+ const legacy=():OvertimePatternDetail=>{const item=detail(true);return {...item,writable:false,pattern:{...item.pattern,kind:'legacy',code:null,creationCompanyId:null,legacyRuleRef:companyId,legacyRuleId:companyId}};};
+ it('renders the server band editor as its General Settings, and only the pointer without one',()=>{
+  const item=legacy();
+  wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={setup} legacyEditor={<section aria-label="relocated bands"><p>Band editor</p></section>}/>);
+  expect(screen.getByRole('region',{name:'relocated bands'})).toBeVisible();
+  expect(screen.queryByText(words.legacyLink)).toBeNull();expect(screen.queryByRole('tablist')).toBeNull();
+  cleanup();
+  wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={setup}/>);
+  expect(screen.getByText(words.legacyLink)).toBeVisible();
+ });
+});

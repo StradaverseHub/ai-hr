@@ -97,3 +97,27 @@ it('a caller without Personnel list access never reaches the private search owne
  await expect(POST(request(new URLSearchParams({term:'emp0008',companies:scope.company}).toString()))).rejects.toThrow(/NEXT_REDIRECT/);
  expect(create).not.toHaveBeenCalled();
 });
+
+// aa045103 — the Filter dialog posts several ticked Departments, Employment Types and Statuses as repeated
+// params; the redirect keeps every one (with Blank / unassigned) as an ordinary comma list, drops forged values,
+// keeps the column date ranges, and never turns a choice into private criteria.
+it('keeps multi Department, Employment Type and Status choices, Blank and date ranges as ordinary validated params',async()=>{
+ const deptA='44444444-4444-4444-8444-444444444444',deptB='55555555-5555-4555-8555-555555555555';
+ const form=new URLSearchParams([['dept',deptA],['dept',deptB],['dept','__blank'],['dept','forged-dept'],['type','contract'],['type','intern'],['type','__blank'],
+  ['bucket','active'],['bucket','probation'],['bucket','draft'],['bucket','withhold'],['companies',scope.company],['hiredFrom','2020-01-01'],['hiredTo','2024-12-31'],
+  ['confirmedFrom','2021-01-01'],['confirmedTo','not-a-date'],['size','50']]);
+ const response=await POST(request(form.toString()));expect(response.status).toBe(303);expect(create).not.toHaveBeenCalled();
+ const location=new URL(response.headers.get('location')!,'https://fixture.invalid');
+ expect(location.searchParams.get('dept')).toBe(deptA+','+deptB+',__blank');
+ expect(location.searchParams.get('type')).toBe('contract,intern,__blank');
+ expect(location.searchParams.get('bucket')).toBe('active,probation,draft');
+ expect(location.searchParams.get('hiredFrom')).toBe('2020-01-01');expect(location.searchParams.get('hiredTo')).toBe('2024-12-31');
+ expect(location.searchParams.get('confirmedFrom')).toBe('2021-01-01');expect(location.searchParams.has('confirmedTo')).toBe(false);
+ expect(location.searchParams.get('companies')).toBe(scope.company);expect(location.searchParams.get('size')).toBe('50');
+ expect(location.searchParams.has('page')).toBe(false);expect(location.toString()).not.toContain('forged');
+});
+it('refuses the multi filters before reading when the reader has no Personnel list access',async()=>{
+ access.denied=true;
+ await expect(POST(request('dept=44444444-4444-4444-8444-444444444444&dept=__blank&bucket=active'))).rejects.toThrow(/NEXT_REDIRECT/);
+ expect(create).not.toHaveBeenCalled();
+});

@@ -18,7 +18,8 @@ it('retains entered text and the selected attachment after missing-route refusal
  fireEvent.change(attachment,{target:{files:[file]}});fireEvent.submit(reason.closest('form')!);
  expect(await screen.findByRole('alert')).toHaveTextContent('Please Contact the HR Administrator.');
  expect(reason).toHaveValue('Missing clock out');expect(attachment.files?.[0]).toBe(file);
- expect(screen.getByRole('button',{name:'Submit'})).toBeEnabled();
+ // The error renders before the transition settles; wait for the settled button label.
+ expect(await screen.findByRole('button',{name:'Submit'})).toBeEnabled();
  fireEvent.submit(reason.closest('form')!);await waitFor(()=>expect(action).toHaveBeenCalledTimes(2));
 });
 it('closes the duplicate-submit gap before a transition rerenders and disables the active form',async()=>{
@@ -34,7 +35,8 @@ it('does not turn an ordinary transport failure into a success or expose its pri
  const action=vi.fn(async()=>{throw Error('private connection detail')});render(<Fixture action={action}/>);
  fireEvent.submit(screen.getByRole('textbox',{name:'Reason'}).closest('form')!);
  expect(await screen.findByRole('alert')).not.toHaveTextContent('private connection detail');
- expect(screen.getByRole('button',{name:'Submit'})).toBeEnabled();
+ // The error renders before the transition settles; wait for the settled button label.
+ expect(await screen.findByRole('button',{name:'Submit'})).toBeEnabled();
 });
 it('keeps a framework-handled successful redirect out of the error state',async()=>{
  const action=vi.fn(async()=>{throw Object.assign(Error('NEXT_REDIRECT'),{digest:'NEXT_REDIRECT;push;/attendance/requests;303;',handled:true})});render(<Fixture action={action}/>);

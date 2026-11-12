@@ -348,6 +348,7 @@
     "attendance": "Hồ sơ chấm công",
     "attendanceSettings": "Chấm công",
     "attendanceSettingsPage": "Cài đặt",
+    "peopleSettings": "Cài đặt",
     "employeeAttendance": "Chấm công nhân viên",
     "myAttendance": "Chấm công của tôi",
     "manage": "Quản lý",
@@ -870,7 +871,21 @@
         "privateExpired": "Bộ lọc riêng tư hết hạn hoặc không khả dụng. Hãy áp dụng lại.",
         "superiorId": "Cấp trên trực tiếp · Mã nhân viên",
         "superiorName": "Cấp trên trực tiếp · Tên",
-        "removeCriterion": "Xóa bộ lọc {name}"
+        "removeCriterion": "Xóa bộ lọc {name}",
+        "choiceAll": "Tất cả",
+        "choiceSelected": "Đã chọn {count}",
+        "findOption": "Tìm giá trị trong {name}",
+        "noOptions": "Không có giá trị phù hợp",
+        "selectAllOptions": "Chọn tất cả",
+        "clearSelection": "Bỏ chọn",
+        "applyChoice": "Áp dụng",
+        "clearChoice": "Xóa",
+        "dateFrom": "Từ",
+        "dateTo": "Đến",
+        "dateFromLabel": "{name} từ",
+        "dateToLabel": "{name} đến",
+        "choicePending": "Đang cập nhật danh sách…",
+        "choiceFailed": "Không thể cập nhật danh sách. Hãy thử lại."
       }
     },
     "switcher": {
@@ -879,7 +894,10 @@
       "resultsLabel": "Kết quả tìm nhân viên",
       "noMatches": "Không có nhân viên nào khớp.",
       "currentTag": "Hiện tại",
-      "loadFailed": "Không thể tải tìm kiếm nhân viên. Vui lòng thử lại."
+      "loadFailed": "Không thể tải tìm kiếm nhân viên. Vui lòng thử lại.",
+      "matchingHeading": "Nhân viên phù hợp",
+      "showAll": "Hiện tất cả {count} kết quả trong danh sách (Enter)",
+      "showAllMore": "Hiện tất cả kết quả trong danh sách (Enter)"
     },
     "detail": {
       "incentiveDeclarations": {
@@ -1287,7 +1305,7 @@
         "deleteConfirmTitle": "Xóa bằng cấp",
         "deleteConfirmBody": "Xóa bản ghi bằng cấp này? Nó sẽ không còn hiển thị trong lịch sử bằng cấp của nhân viên này.",
         "none": "Chưa có bản ghi bằng cấp.",
-        "hint": "Bộ phận nhân sự quản lý các bản ghi này. Loại bằng cấp được quản lý tại Cài đặt hệ thống > Nhãn hệ thống > Tùy chọn hồ sơ.",
+        "hint": "Bộ phận nhân sự quản lý các bản ghi này. Loại bằng cấp được quản lý tại Nhân sự > Cấu hình > Cài đặt > Nhãn hệ thống > Tùy chọn hồ sơ.",
         "level": "Bằng cấp",
         "levelPlaceholder": "Chọn bằng cấp",
         "institute": "Cơ sở đào tạo",
@@ -1451,6 +1469,7 @@
         "status_terminated": "Đã chấm dứt",
         "probationGroup": "Thông tin thử việc",
         "contractGroup": "Thông tin hợp đồng",
+        "internshipGroup": "Thông tin thực tập",
         "contractStartDate": "Ngày bắt đầu hợp đồng",
         "contractEndDate": "Ngày kết thúc hợp đồng",
         "contractRemark": "Ghi chú",
@@ -1789,6 +1808,8 @@
           "position": "Chức vụ",
           "grade": "Cấp bậc",
           "employmentType": "Loại hình lao động",
+          "contractEndDate": "Ngày kết thúc hợp đồng",
+          "internshipEndDate": "Ngày kết thúc thực tập",
           "manager": "Quản lý trực tiếp",
           "salary": "Lương",
           "orgDivision": "Khối",
@@ -1880,6 +1901,8 @@
           "closedPayrollBody": "Việc điều chỉnh này cập nhật hồ sơ nhân viên và các lần xử lý sau. Bảng lương đã khóa, phiếu lương đã phát hành và các hồ sơ nộp theo luật định giữ nguyên số liệu cuối cùng và sẽ không được tính lại. Nếu cần điều chỉnh số tiền, hãy dùng quy trình điều chỉnh lương. Mức lương đã điều chỉnh có hiệu lực từ tháng đầu tiên sau kỳ lương đã khóa.",
           "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã khóa sẽ không thay đổi.",
           "mustChange": "Bắt buộc thay đổi",
+          "endDateRequiredContract": "Bắt buộc vì Loại nhân viên mới là Hợp đồng. Hợp đồng bắt đầu từ ngày hiệu lực và phải kết thúc sau ngày đó.",
+          "endDateRequiredIntern": "Bắt buộc vì Loại nhân viên mới là Thực tập. Kỳ thực tập phải kết thúc sau ngày hiệu lực.",
           "mustChangeRefused": "Loại sự kiện này yêu cầu {field} phải thay đổi. Hãy nhập giá trị mới.",
           "documentOptional": "Tài liệu hỗ trợ (tùy chọn)",
           "documentRequired": "Tài liệu hỗ trợ (bắt buộc khi trường này thay đổi)"
@@ -3020,6 +3043,14 @@
         "waiting": "Đang chờ trình xử lý nhập. Việc kiểm tra sẽ tự động bắt đầu; đừng tải tệp lên lần nữa.",
         "otherRunning": "Một lần kiểm tra biến động khác do bạn bắt đầu vẫn đang chạy. Hãy chờ hoàn tất trước khi kiểm tra tệp mới.",
         "workerUnavailable": "Dịch vụ nhập chưa chạy. Tệp của bạn được giữ lại và việc kiểm tra sẽ tự động bắt đầu ngay khi dịch vụ chạy."
+      },
+      "historyButton": "Lịch sử nhập",
+      "uploadErrors": {
+        "unreachable": "Không thể kết nối tới máy chủ. Hãy kiểm tra kết nối và thử lại; gửi lại cùng tệp sẽ không nhập hai lần.",
+        "unavailable": "Hệ thống hiện không khả dụng. Mở Lịch sử nhập để kiểm tra lần nhập này đã được nhận chưa trước khi thử lại.",
+        "timeout": "Việc này mất nhiều thời gian hơn dự kiến. Lần nhập có thể vẫn đang chạy: hãy kiểm tra Lịch sử nhập và đừng tải tệp lên lại cho đến khi có kết quả.",
+        "unknown": "Không thể xác nhận kết quả nhập. Hãy kiểm tra Lịch sử nhập trước khi thử lại.",
+        "progressUnreachable": "Không thể kết nối tới máy chủ để kiểm tra tiến độ. Quá trình nhập vẫn tiếp tục chạy nền và trang này sẽ tiếp tục kiểm tra."
       }
     },
     "wizard": {
@@ -3345,9 +3376,14 @@
         "bank_statutory": "Ngân hàng & Luật định",
         "employee_full": "Tất cả — nhân viên mới",
         "movement": "Biến động",
-        "information_correction": "Chỉ chỉnh sửa thông tin"
+        "information_correction": "Chỉ chỉnh sửa thông tin",
+        "profile": "Hồ sơ",
+        "family": "Gia đình",
+        "qualification": "Bằng cấp",
+        "emergency": "Liên hệ khẩn cấp",
+        "notRecorded": "Không được ghi nhận"
       },
-      "reference": "Mã tham chiếu",
+      "reference": "Mã lô",
       "referenceLabel": "Mã tham chiếu {reference}",
       "type": "Loại",
       "file": "Tệp",
@@ -3426,6 +3462,87 @@
       "employeeFull": {
         "created": "Đã tạo {code} · {name}",
         "willVoid": "Nhân viên này sẽ bị vô hiệu: bị loại khỏi danh sách, số lượng nhân sự và bảng lương, vẫn giữ trong nhật ký kiểm tra. Mã nhân viên, email và NRIC được giải phóng."
+      },
+      "listDescription": "Mọi tệp nhập nhân sự: ai đã nhập, khi nào, cho công ty nào và kết quả của từng dòng.",
+      "backToImport": "Nhập nhân viên",
+      "total": "Tổng",
+      "successful": "Thành công",
+      "failed": "Thất bại",
+      "totalRows": "Tổng số dòng",
+      "pasted": "Dữ liệu đã dán",
+      "openLog": "Mở Nhật ký nhập của {file}",
+      "log": {
+        "title": "Mọi dòng của tệp",
+        "hint": "Dòng đã lưu hiển thị nội dung thay đổi. Dòng chưa lưu hiển thị lý do. Chỉ hiển thị nhân viên của các công ty bạn được xem.",
+        "empty": "Bạn không xem được dòng nào của tệp này.",
+        "row": "Dòng",
+        "employee": "Nhân viên",
+        "result": "Kết quả",
+        "field": "Trường",
+        "before": "Trước",
+        "after": "Sau",
+        "reason": "Lý do đã nêu",
+        "saved": "Đã lưu",
+        "unchanged": "Không thay đổi",
+        "notSaved": "Chưa lưu",
+        "notConfirmed": "Đã kiểm tra, chưa lưu",
+        "nothingChanged": "Mọi giá trị đã khớp — không lưu gì."
+      },
+      "run": {
+        "noFile": "Lần nhập này giữ bản tóm tắt và các dòng chưa lưu. Bản thân tệp không được lưu trữ.",
+        "failedTitle": "Các dòng chưa lưu",
+        "hint": "Từng dòng chưa lưu kèm lý do.",
+        "truncated": "Hiển thị {shown} trên {total} dòng chưa lưu.",
+        "noDetail": "Không có chi tiết dòng nào được ghi nhận cho lần nhập này.",
+        "none": "Mọi dòng đã được lưu.",
+        "reasonColumn": "Lý do"
+      },
+      "errorReport": {
+        "title": "Báo cáo lỗi",
+        "hint": "Mỗi vấn đề một dòng: dòng, nhân viên, cột cần sửa và lỗi là gì.",
+        "download": "Tải báo cáo lỗi",
+        "filterLabel": "Hiển thị dòng",
+        "problemRows": "Dòng có vấn đề ({count})",
+        "allRows": "Tất cả dòng ({count})",
+        "saved": "Nhân viên đã lưu",
+        "toFix": "Dòng có vấn đề cần sửa",
+        "cancelled": "Dòng không có vấn đề, chưa lưu vì tệp đã bị hủy",
+        "cancelledTitle": "Tệp này đã bị hủy trong khi lưu, nên không có nhân viên nào được tạo.",
+        "cancelledBody": "Không thể lưu dòng {rows} (xem bên dưới). Một tệp được lưu toàn bộ hoặc không lưu gì, nên các dòng không có vấn đề cũng không được lưu. Hãy sửa các dòng được liệt kê và tải lại toàn bộ tệp.",
+        "stoppedBody": "Quá trình nhập đã dừng trước khi hoàn tất, nên không có gì được lưu. Lý do có trong nhật ký kiểm tra bên dưới. Hãy tải lại toàn bộ tệp.",
+        "restricted": "Chỉ hiển thị các dòng của công ty bạn có quyền xem.",
+        "noProblems": "Không tìm thấy vấn đề nào trong tệp này.",
+        "noRows": "Lần nhập này không có dòng nào để hiển thị.",
+        "colRow": "Dòng",
+        "colCode": "Mã nhân viên",
+        "colName": "Tên",
+        "colColumn": "Cột",
+        "colProblem": "Vấn đề",
+        "colResult": "Kết quả",
+        "stage": {
+          "check": "Phát hiện khi kiểm tra tệp",
+          "save": "Phát hiện khi lưu — điều này đã dừng tệp"
+        },
+        "outcome": {
+          "refused": "Chưa lưu",
+          "stopped": "Đã dừng việc lưu",
+          "cancelled": "Chưa lưu — tệp bị hủy",
+          "saved": "Đã lưu",
+          "pending": "Chưa hoàn tất"
+        },
+        "cancelledRow": "Không có vấn đề. Chưa lưu vì dòng {rows} đã dừng tệp.",
+        "cancelledRowUnnamed": "Không có vấn đề. Chưa lưu vì tệp đã bị hủy.",
+        "contract": {
+          "required": "Bắt buộc khi Loại hình làm việc là Hợp đồng.",
+          "before_hire": "Không được sớm hơn Ngày gia nhập tập đoàn.",
+          "end_not_after_start": "Phải sau Ngày bắt đầu hợp đồng."
+        },
+        "csvBatch": "Mã tham chiếu lô",
+        "csvFile": "Tên tệp",
+        "csvStatus": "Trạng thái cuối",
+        "csvStage": "Phát hiện",
+        "rowsHint": "Số dòng đếm các dòng nhân viên của tệp, như trong bản xem trước khi nhập.",
+        "truncated": "Đang hiển thị {shown} dòng đầu tiên trong {total} dòng. Tải báo cáo lỗi để xem tất cả."
       }
     },
     "informationCorrection": {
@@ -3464,14 +3581,40 @@
         "hiredOn": "Ngày vào tập đoàn",
         "joinDate": "Ngày vào làm",
         "gradeId": "Bậc công việc",
-        "employmentType": "Loại việc làm"
+        "employmentType": "Loại việc làm",
+        "businessUnitId": "Đơn vị kinh doanh",
+        "departmentId": "Phòng ban",
+        "positionId": "Vị trí",
+        "orgDivision": "Khối",
+        "orgBranch": "Chi nhánh",
+        "orgRegion": "Khu vực",
+        "orgLine": "Tuyến",
+        "orgSection": "Bộ phận",
+        "orgTeam": "Nhóm",
+        "orgBase": "Cơ sở",
+        "employmentCategory": "Danh mục",
+        "probationValue": "Thời gian thử việc",
+        "probationUnit": "Đơn vị thời gian thử việc",
+        "extendedProbationValue": "Thời gian thử việc gia hạn",
+        "extendedProbationUnit": "Đơn vị thời gian thử việc gia hạn",
+        "confirmationDate": "Ngày xác nhận chính thức",
+        "noticeBeforeConfirmationValue": "Báo trước khi xác nhận chính thức",
+        "noticeBeforeConfirmationUnit": "Đơn vị báo trước khi xác nhận chính thức",
+        "noticeAfterConfirmationValue": "Báo trước sau khi xác nhận chính thức",
+        "noticeAfterConfirmationUnit": "Đơn vị báo trước sau khi xác nhận chính thức",
+        "managerEmploymentId": "Cấp trên trực tiếp",
+        "contractEndDate": "Ngày kết thúc hợp đồng",
+        "internshipEndDate": "Ngày kết thúc thực tập"
       },
       "statuses": {
         "applied": "Thành công",
         "failed": "Thất bại",
         "unchanged": "Không đổi"
       },
-      "effective": "Xử lý trong tương lai sử dụng thông tin đã sửa từ {date}."
+      "effective": "Xử lý trong tương lai sử dụng thông tin đã sửa từ {date}.",
+      "templateFields": "Các trường mẫu này sửa được (trường mới được làm nổi bật). Ô trống giữ nguyên giá trị hiện có.",
+      "templateFieldsLabel": "Các trường mẫu này sửa được",
+      "ownersNote": "Lương cơ bản và các ngày nghỉ việc được sửa trên sự kiện đã ghi nhận chúng: dùng nhập Biến động với Action \"Update\". Phương thức thanh toán nằm trong nhập Ngân hàng và Pháp định."
     }
   },
   "leave": {
@@ -7132,6 +7275,21 @@
       "reprocessOutcomeDetails": "Xem đầy đủ lý do",
       "reprocessReviewTaxConfiguration": "Kiểm tra cấu hình thuế cho đợt lương này",
       "reprocessReviewPcbConfiguration": "Kiểm tra cấu hình PCB",
+      "reprocessPayItemFormulaReason": "Công thức Khoản lương đã cập nhật không thể tính các giao dịch của nhân viên này. Hãy sửa công thức, rồi xử lý lại nhân viên này.",
+      "reprocessPayItemRepriced": "{name}, đã tính lại bằng công thức đã cập nhật",
+      "reprocessPayItemRepricedDetail": "{count, plural, other {# giao dịch}}{quantity}: {before} → {after}",
+      "reprocessPayItemFormulaFailed": "{name} ({code}): công thức đã cập nhật không thể tính {count, plural, other {# giao dịch}} ({dates}).",
+      "reprocessPayItemReason_formula_failed": "Không thể tính công thức với các dữ liệu đầu vào này.",
+      "reprocessPayItemReason_not_positive": "Công thức không cho ra số tiền dương.",
+      "reprocessPayItemReason_zero_divisor": "Công thức chia cho 0 với các dữ liệu đầu vào này.",
+      "reprocessPayItemReason_input_missing": "Các giao dịch không có Giờ, Ngày hoặc Số lượng mà công thức cần.",
+      "reprocessPayItemReason_no_longer_calculates": "Khoản lương này không còn tính số tiền từ công thức.",
+      "reprocessPayItemQuantity_hours": ", {qty} giờ",
+      "reprocessPayItemQuantity_days": ", {qty} ngày",
+      "reprocessPayItemQuantity_qty": ", số lượng {qty}",
+      "reprocessPayItemQuantity_units": ", {qty} đơn vị",
+      "reprocessOpenPayItem": "Mở Khoản lương",
+      "reprocessOpenTransactions": "Mở giao dịch",
       "reprocessOutcomeRecordedAt": "Ghi nhận lúc {at}",
       "reprocessOutcomeTitle": "Kết quả của nhân viên đã chọn",
       "reprocessOutcomeSummary": "Đã chọn: {selected} · Đã xử lý lại: {succeeded} · Đã bỏ qua: {skipped} (đã hoàn tất — không có khoản phải trả) · Cấu hình chưa đầy đủ: {failed}",
@@ -9992,9 +10150,9 @@
       "importing": "Đang nhập…",
       "logFile": "Tệp nhật ký",
       "backImport": "Quay lại nhập",
-      "reference": "Mã nhập",
+      "reference": "Mã lô",
       "time": "Ngày giờ (MYT)",
-      "user": "Mã người dùng",
+      "user": "Người nhập",
       "older": "Lần nhập cũ hơn",
       "noAttempts": "Chưa có lần nhập nào.",
       "fingerprint": "Dấu vân tay tệp (SHA-256)",
@@ -10150,13 +10308,13 @@
       "confirm": "Xác nhận nhập",
       "reference": "Mã lô",
       "time": "Ngày và giờ",
-      "user": "Mã người dùng",
+      "user": "Người nhập",
       "validated": "Đã kiểm tra",
       "completed": "Hoàn tất",
       "reverted": "Đã hoàn tác",
       "empty": "Không có bản nhập trong phạm vi công ty đã chọn.",
       "revert": "Hoàn tác nhập",
-      "revertWarning": "Hoàn tác lô {id} ({file})? Chỉ đảo {count} giao dịch do lô này tạo. Nhật ký gốc được giữ lại.",
+      "revertWarning": "Hoàn tác {batch} ({file})? Chỉ đảo {count} giao dịch do lô này tạo. Nhật ký gốc được giữ lại.",
       "revertControls": "Từ chối toàn bộ nếu bản ghi đã thay đổi hoặc quy định lương hiện tại không cho phép. Giao dịch thủ công và lô khác không bị ảnh hưởng.",
       "revertConfirm": "Tôi xác nhận hoàn tác lô nhập được nêu.",
       "processedConfirm": "Nếu quy định hiện hành cho phép sửa giao dịch đã xử lý, tôi hiểu rằng phải tính lại lương.",
@@ -10871,8 +11029,7 @@
       "policyBadge": "chính sách",
       "save": "Lưu",
       "cancel": "Hủy",
-      "typeLabel": "Loại",
-      "rename": "Đổi tên",
+      "unsavedChanges": "Chưa lưu thay đổi",
       "unarchive": "Bỏ lưu trữ",
       "archive": "Lưu trữ",
       "deleteTypeConfirmTitle": "Xóa loại nghỉ phép này?",
@@ -11117,12 +11274,13 @@
         "summaryCounts": "Còn tính: {list}"
       },
       "visual": {
-        "sectionTitle": "Cấu hình Hiển thị Loại nghỉ phép",
         "help": "Tùy chọn. Biểu tượng và chủ đề màu sẽ hiển thị bên cạnh loại nghỉ phép này trong tab Hồ sơ của tôi → Nghỉ phép của nhân viên. Chỉ mang tính hiển thị — không ảnh hưởng đến quyền lợi, điều kiện hay tính toán.",
         "iconLabel": "Biểu tượng",
         "colorLabel": "Chủ đề màu",
         "searchPlaceholder": "Tìm biểu tượng…",
         "noIcons": "Không có biểu tượng phù hợp.",
+        "changeIcon": "Đổi biểu tượng",
+        "default": "Mặc định",
         "color": {
           "blue": "Xanh dương",
           "green": "Xanh lá",
@@ -13552,7 +13710,10 @@
       "shiftsInGroupCheckTitle": "Kiểm tra trước khi lưu",
       "shiftsInGroupWarning": "Lưu tuần này sẽ thay đổi ngày làm việc của {count} ca: {names}. Tăng ca của mọi người ở các ca đó sẽ thay đổi kể từ ngày bạn lưu.",
       "shiftsInGroupEmploymentsWarning": "{count} nhân viên được đặt trực tiếp vào nhóm này cũng theo quy định này.",
-      "shiftsInGroupNothingUntilSave": "Không có gì thay đổi cho đến khi bạn nhấn Lưu."
+      "shiftsInGroupNothingUntilSave": "Không có gì thay đổi cho đến khi bạn nhấn Lưu.",
+      "otMovedNote": "Các mức, đơn giá, cách làm tròn và tăng ca sớm của nhóm này nay nằm ở Mẫu tăng ca › 1. Cài đặt chung.",
+      "otMovedOpen": "Mở",
+      "otSettingPending": "Phần Cài đặt tăng ca (trước và sau ca, phương thức phê duyệt, bù trừ đi muộn và làm tròn) sẽ được thêm vào đây khi đã chứng minh Bảng lương nhận đúng số liệu tăng ca. Cho đến lúc đó, tăng ca của nhóm này vẫn hoạt động như hiện nay."
     },
     "leaveConfigLeaveCredit": {
       "pageDescription": "Tín dụng có được khi làm việc vào ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ, và Nghỉ bù sử dụng tín dụng đó."
@@ -13823,14 +13984,14 @@
       "historyHint": "Mọi lần chạy, để nhiều tháng sau bạn vẫn trả lời được “ai đã nạp dữ liệu này, và khi nào”. Bản thân tệp tải lên không được giữ lại.",
       "historyEmpty": "Chưa có gì được nhập.",
       "historyColWhen": "Khi nào",
-      "historyColFile": "Tệp",
-      "historyColBy": "Bởi",
+      "historyColFile": "Mã lô",
+      "historyColBy": "Người nhập",
       "historyColRecords": "Bản ghi",
       "historyColImported": "Đã nhập",
       "historyColFailed": "Thất bại",
       "historyColDuplicate": "Trùng",
       "historyPasted": "Đã dán",
-      "historyActorUnknown": "Không rõ",
+      "historyActorUnknown": "Người dùng không khả dụng",
       "historyViewFailed": "Lỗi",
       "historyOutcomeSucceeded": "Thành công",
       "historyOutcomePartial": "Nhập một phần",
@@ -13891,13 +14052,13 @@
       "historyTitle": "Nhật ký nhập liệu",
       "historyEmpty": "Chưa có gì được nhập.",
       "historyColWhen": "Khi nào",
-      "historyColFile": "Tệp",
-      "historyColBy": "Bởi",
+      "historyColFile": "Mã lô",
+      "historyColBy": "Người nhập",
       "historyColRecords": "Bản ghi",
       "historyColImported": "Đã nhập",
       "historyColFailed": "Thất bại",
       "historyPasted": "Đã dán",
-      "historyActorUnknown": "Không rõ",
+      "historyActorUnknown": "Người dùng không khả dụng",
       "historyViewFailed": "Lỗi",
       "historyOutcomeSucceeded": "Thành công",
       "historyOutcomePartial": "Nhập một phần",
@@ -13974,7 +14135,7 @@
       "historyEmpty": "Chưa có lần nhập nào.",
       "when": "Ngày",
       "importType": "Loại nhập",
-      "file": "Tệp",
+      "file": "Mã lô",
       "rows": "Số dòng",
       "imported": "Đã nhập",
       "failed": "Thất bại",
@@ -14063,7 +14224,17 @@
       "poolHistorical": "Ca không còn khả dụng được giữ lại",
       "poolHistoricalHelp": "Các tham chiếu đã lưu được giữ để xem lại. Hãy chủ động xóa hoặc thay thế trước khi lưu vòng ca mới; không thể chọn lại chúng.",
       "poolRemoveNamed": "Xóa {shift} khỏi các ca đã chọn",
-      "poolRemove": "Xóa"
+      "poolRemove": "Xóa",
+      "methodWorkingWeek": "Tuần làm việc",
+      "methodWeekly": "Mẫu theo tuần",
+      "methodDaily": "Mẫu theo ngày",
+      "methodHint": "Tuần làm việc lặp lại một tuần. Mẫu theo tuần lặp lại nhiều tuần; Mẫu theo ngày lặp lại một chu kỳ ngày. Cả ba đều dùng cùng một bảng Loại ngày và Ca.",
+      "stepDays": "Loại ngày và Ca cho từng ngày",
+      "weeksCount": "Số tuần",
+      "daysCount": "Số ngày",
+      "standardWeekHint": "Nhóm Tiêu chuẩn chỉ dùng Tuần làm việc. Vào ngày làm việc, mỗi nhân viên làm theo giờ của ca được phân công cho chính họ.",
+      "shiftFromEmployee": "Ca của chính nhân viên",
+      "saveWeek": "Lưu tuần làm việc"
     }
   },
   "topbar": {
@@ -23807,9 +23978,9 @@
       "back": "Nhập dữ liệu chấm công",
       "recent": "Nhật ký nhập · mới nhất trước",
       "colAt": "Ngày/Giờ nhập",
-      "colFile": "Tên tệp",
+      "colFile": "Mã lô",
       "colMapping": "Ánh xạ",
-      "colUser": "Người dùng",
+      "colUser": "Người nhập",
       "colTotal": "Tổng",
       "colImported": "Đã nhập",
       "colFailed": "Thất bại",
@@ -23817,7 +23988,7 @@
       "duplicatesNote": "{count, plural, =1 {# trùng lặp} other {# trùng lặp}}",
       "stoppedNote": "đã dừng, không lưu gì",
       "empty": "Chưa có tệp chấm công nào được nhập.",
-      "unknownUser": "—"
+      "unknownUser": "Người dùng không khả dụng"
     },
     "log": {
       "back": "Nhật ký nhập",
@@ -23825,7 +23996,7 @@
       "at": "Ngày/Giờ nhập",
       "fileName": "Tên tệp",
       "mappingName": "Tên ánh xạ",
-      "user": "Người dùng",
+      "user": "Người nhập",
       "total": "Tổng số dòng",
       "valid": "Bản ghi hợp lệ",
       "imported": "Bản ghi đã nhập",
@@ -23932,6 +24103,44 @@
       "desc": "Cấu hình và thử phép tính chấm công liên kết khoản lương.",
       "cta": "Mở trình tạo công thức"
     }
+  },
+  "peopleSettingsHub": {
+    "title": "Cài đặt nhân sự",
+    "subtitle": "Nơi trung tâm để quản lý cài đặt nhân sự. Mở một mục để cấu hình; chỉ hiển thị các mục bạn có quyền truy cập.",
+    "employeeId": {
+      "title": "Đánh số mã nhân viên",
+      "desc": "Cách tạo mã nhân viên mới: tiền tố, số bắt đầu, số chữ số và phạm vi.",
+      "cta": "Mở đánh số mã nhân viên"
+    },
+    "general": {
+      "title": "Chung",
+      "desc": "Quy tắc toàn tổ chức cho việc nhập dữ liệu nhân viên, như kiểm tra trùng NRIC và email.",
+      "cta": "Mở cài đặt chung"
+    },
+    "systemLabels": {
+      "title": "Nhãn hệ thống",
+      "desc": "Các danh sách dùng chung mà mọi người chọn: phòng ban, vị trí, trung tâm chi phí, đơn vị kinh doanh, ngạch bậc và tùy chọn hồ sơ.",
+      "cta": "Mở nhãn hệ thống"
+    },
+    "movement": {
+      "title": "Cài đặt biến động",
+      "desc": "Các loại sự kiện nghề nghiệp mà nhân sự có thể ghi nhận cho nhân viên, và các lý do nghỉ việc đi kèm.",
+      "cta": "Mở cài đặt biến động"
+    },
+    "hiringDefaults": {
+      "title": "Mặc định tuyển dụng",
+      "desc": "Thời gian thử việc và tần suất nhắc đánh giá theo từng công ty, áp dụng khi nhân sự tạo nhân viên.",
+      "cta": "Mở mặc định tuyển dụng"
+    },
+    "changeRequests": {
+      "title": "Yêu cầu thay đổi của nhân viên",
+      "desc": "Những gì nhân viên có thể xem và thay đổi trong Hồ sơ của tôi, chỉnh sửa ảnh, và ai duyệt yêu cầu của họ.",
+      "cta": "Mở cài đặt yêu cầu thay đổi"
+    },
+    "empty": "Bạn không có quyền truy cập cài đặt nhân sự nào.",
+    "backToSettings": "Về Cài đặt",
+    "leaveUnsaved": "Rời trang này và bỏ các thay đổi chưa lưu?",
+    "leaveOtherUnsaved": "Lưu biểu mẫu này sẽ rời các thay đổi chưa lưu ở biểu mẫu khác. Bỏ các thay đổi đó?"
   },
   "rewards": {
     "promotionNominationsHelp": "Xem các đề cử từ những đợt xét đãi ngộ hằng năm trong phạm vi của bạn.",
@@ -27419,7 +27628,79 @@
     "approvalLevel": "Cấp phê duyệt",
     "warningIssue": "Vấn đề",
     "legacyReadinessWarning": "Người phê duyệt bắt buộc hiện không khả dụng.",
-    "warningPage": "{from}–{to} trên {total}"
+    "warningPage": "{from}–{to} trên {total}",
+    "groups": {
+      "help": "Trong một nhóm, mọi trường đã chọn đều phải khớp. Nhân viên khớp với bất kỳ nhóm nào sẽ dùng quy trình này.",
+      "or": "HOẶC",
+      "groupNumber": "Nhóm {number}",
+      "remove": "Xóa nhóm {number}",
+      "add": "+ Thêm nhóm HOẶC",
+      "everyone": "Tất cả nhân viên của các công ty đã chọn"
+    },
+    "copy": {
+      "action": "Sao chép",
+      "rowLabel": "Sao chép quy trình {code}",
+      "help": "Tạo quy trình mới từ một bản sao. Quy trình gốc không bị thay đổi.",
+      "banner": "Sao chép từ {code} (phiên bản {version}). Nhập Mã quy trình, Tên quy trình và Mô tả mới. Quy trình gốc không bị thay đổi.",
+      "codePlaceholder": "Nhập mã mới",
+      "namePlaceholder": "Nhập tên mới"
+    },
+    "previewHistory": {
+      "action": "Lịch sử xem trước",
+      "rowLabel": "Lịch sử xem trước của {code}",
+      "title": "Lịch sử xem trước",
+      "backToWorkflow": "Quay lại quy trình",
+      "generate": "Tạo bản xem trước mới",
+      "generating": "Đang tạo bản xem trước…",
+      "failed": "Không thể tạo bản xem trước. Vui lòng thử lại.",
+      "latestTitle": "Bản xem trước mới nhất",
+      "summary": "Tạo lúc {date} cho phiên bản {version}: {total} nhân viên khớp, {warnings} cảnh báo cấu hình.",
+      "olderVersion": "Bản xem trước này được tạo cho phiên bản {previewVersion}. Quy trình đã được lưu lại và hiện là phiên bản {currentVersion}, nên kết quả có thể đã lỗi thời.",
+      "none": "Chưa có bản xem trước nào. Hãy tạo bản xem trước để kiểm tra nhân viên khớp và cảnh báo cấu hình.",
+      "open": "Mở lịch sử xem trước",
+      "savedHint": "Đã lưu quy trình. Hãy tạo bản xem trước để kiểm tra nhân viên khớp và cảnh báo cấu hình.",
+      "draftNotStored": "Bản xem trước nháp của các thay đổi chưa lưu. Bản này không được lưu trữ; hãy lưu quy trình để giữ bản xem trước.",
+      "stats": {
+        "generatedAt": "Thời điểm tạo",
+        "generatedBy": "Người tạo",
+        "workflowVersion": "Phiên bản quy trình",
+        "matching": "Nhân viên khớp",
+        "warnings": "Cảnh báo cấu hình"
+      },
+      "earlier": "Các bản xem trước",
+      "chip": "{date} · v{version}",
+      "warningsTitle": "Cảnh báo cấu hình ({count})",
+      "approverSource": "Nguồn người duyệt",
+      "warning": "Cảnh báo",
+      "noWarnings": "Không có cảnh báo cấu hình.",
+      "warningsTruncated": "Hiển thị {shown} cảnh báo đầu tiên trong tổng số {total}.",
+      "employeesTitle": "Nhân viên khớp ({count})",
+      "noEmployees": "Không có nhân viên nào khớp với quy trình này.",
+      "employeesTruncated": "Hiển thị {shown} nhân viên đầu tiên trong tổng số {total}. Tổng số là chính xác.",
+      "seeWarning": "Xem cảnh báo",
+      "notRequired": "Không bắt buộc - không còn Cấp trên trực tiếp",
+      "otherWorkflow": "Được xử lý bởi {code} (ưu tiên cao hơn)",
+      "stoppedAt": "Tuyến báo cáo dừng ở {level}.",
+      "problems": {
+        "tie": "Hai quy trình khớp với nhân viên này ở cùng mức ưu tiên. Hãy đổi mức ưu tiên hoặc phạm vi áp dụng.",
+        "no_superior": "Chưa gán Cấp trên trực tiếp. Hãy gán trong Hồ sơ nhân sự.",
+        "superior_inactive": "Cấp trên trực tiếp đã ngừng hoạt động. Hãy cập nhật Cấp trên trực tiếp trong Hồ sơ nhân sự.",
+        "no_login": "Không có tài khoản đăng nhập dùng được. Hãy nhờ HR tạo hoặc kích hoạt lại tài khoản của người này.",
+        "multiple_logins": "Có nhiều hơn một tài khoản đăng nhập dùng được. Hãy nhờ HR chỉ giữ một tài khoản.",
+        "login_wrong_company": "Tài khoản của họ không bao gồm công ty của nhân viên này. Hãy nhờ HR mở rộng quyền công ty cho tài khoản.",
+        "outside_company_scope": "Làm việc ngoài công ty của nhân viên này và các công ty mẹ. Hãy chọn cấp trên trong phạm vi công ty được phép.",
+        "ambiguous_superior": "Có nhiều hơn một Cấp trên trực tiếp hiện tại được ghi nhận. Chỉ giữ một trong Hồ sơ nhân sự.",
+        "cycle": "Tuyến báo cáo quay vòng lại một người trước đó. Hãy sửa trong Hồ sơ nhân sự.",
+        "duplicate_person": "Cùng một người sẽ duyệt nhiều lần. Hãy đổi các cấp duyệt hoặc tuyến báo cáo.",
+        "duplicate_login": "Hai người duyệt dùng chung một tài khoản đăng nhập. Hãy nhờ HR sửa tài khoản.",
+        "missing_person": "Thiếu hồ sơ cá nhân của cấp trên. Hãy nhờ HR kiểm tra Hồ sơ nhân sự.",
+        "cc_unavailable": "Một người nhận CC bị thiếu, ngừng hoạt động hoặc không có tài khoản đăng nhập duy nhất dùng được.",
+        "unresolved": "Không thể xác định tuyến duyệt cho nhân viên này.",
+        "hr_unavailable": "Không có quản trị viên HR nào có thể duyệt cho nhân viên này.",
+        "selected_unavailable": "Người duyệt được chọn đã ngừng hoạt động, không có tài khoản đăng nhập duy nhất dùng được, hoặc nằm ngoài phạm vi công ty được phép. Hãy thay người được chọn.",
+        "login_unusable": "Người duyệt không có tài khoản đăng nhập duy nhất dùng được cho công ty của nhân viên này. Hãy nhờ HR sửa tài khoản."
+      }
+    }
   },
   "attendanceHistory": {
     "title": "Lịch sử đơn",
@@ -27638,7 +27919,10 @@
       "showWaiting": "Chỉ hiển thị lượt đang chờ",
       "showAll": "Hiển thị tất cả",
       "older": "Lượt chấm công cũ hơn"
-    }
+    },
+    "skippedNoSuperior": "Tự động bỏ qua - Không còn Cấp trên trực tiếp ({sources})",
+    "skippedDecidedAt": "Được quyết định khi gửi đơn, {date}",
+    "skippedLabel": "Không bắt buộc"
   },
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",
@@ -29254,7 +29538,12 @@
     "positionSearch": "Tìm chức danh",
     "loadMorePositions": "Tải thêm chức danh",
     "attendanceFormulaBinding": "Bộ kết quả công thức chấm công: {id}",
-    "chooseOneCompany": "Chọn một công ty trong bộ chuyển công ty ở đầu màn hình trước khi lưu mẫu mới. Mẫu mới thuộc về công ty đó."
+    "chooseOneCompany": "Chọn một công ty trong bộ chuyển công ty ở đầu màn hình trước khi lưu mẫu mới. Mẫu mới thuộc về công ty đó.",
+    "legacyGeneralSettings": "1. Cài đặt chung",
+    "legacyGroup": "Nhóm lịch: {name}",
+    "legacyOpenGroup": "Mở Nhóm lịch",
+    "legacyMovedHelp": "Các mức, đơn giá, cách làm tròn và cài đặt tăng ca sớm này được chuyển từ Nhóm lịch sang đây. Giao diện và cách hoạt động giữ nguyên; mỗi lần lưu được giữ thành một phiên bản mới của mẫu này.",
+    "legacyGroupGone": "Nhóm lịch của mẫu này không còn tồn tại, nên không thể sửa các mức tăng ca. Các phiên bản trước vẫn được giữ."
   },
   "systemTestingWorkspace": {
     "title": "Kiểm thử hệ thống",
@@ -37180,7 +37469,11 @@
     "notTerminated": "Chưa chấm dứt việc làm",
     "terminated": "Đã chấm dứt việc làm",
     "duplicateHint": "Chỉ kiểm tra trùng lặp tại các công ty có quyền quản trị và truy cập dữ liệu định danh.",
-    "duplicateUnavailable": "Không có quyền xem bằng chứng trùng lặp trong phạm vi này. Hãy bỏ bộ lọc hoặc chọn phạm vi được phép."
+    "duplicateUnavailable": "Không có quyền xem bằng chứng trùng lặp trong phạm vi này. Hãy bỏ bộ lọc hoặc chọn phạm vi được phép.",
+    "hiredFrom": "Ngày vào tập đoàn từ",
+    "hiredTo": "Ngày vào tập đoàn đến",
+    "confirmedFrom": "Ngày xác nhận chính thức từ",
+    "confirmedTo": "Ngày xác nhận chính thức đến"
   },
   "rewardSetupAccess": {
     "title": "Quyền cấu hình đãi ngộ",
@@ -37608,7 +37901,7 @@
     "noShifts": "Danh sách này không có ca.",
     "includeMarked": "Đưa vào {count} ca đã chọn →",
     "excludeMarked": "← Loại trừ {count} ca đã chọn",
-    "rotationPoolSave": "Danh sách này hiển thị vòng xoay đã lưu cho {date}. Để thay đổi danh sách, hãy lưu cùng một vòng xoay mới trong phần Lịch trực bên dưới.",
+    "rotationPoolSave": "Danh sách này hiển thị mẫu đã lưu cho ngày {date}. Để thay đổi các ca được phép, hãy lưu cùng với một mẫu mới ở bên dưới.",
     "saveShiftPool": "Lưu các ca được phép",
     "currentRotation": "Chu kỳ {days} ngày có hiệu lực từ {date}",
     "company": "Công ty",
@@ -37978,5 +38271,13 @@
       "otherRunning": "Một lượt phân nhóm lịch làm việc khác vẫn đang được lưu. Hãy đợi hoàn tất rồi thử lại.",
       "queuedBehind": "Đang xếp hàng sau một lượt phân nhóm lịch làm việc khác. Sẽ tự bắt đầu ngay khi lượt kia hoàn tất."
     }
+  },
+  "importLog": {
+    "batchReference": "Mã lô",
+    "importedBy": "Người nhập",
+    "batchLabel": "Lô {code}",
+    "actorWithId": "{name} ({employeeId})",
+    "actorUnlinked": "Đăng nhập quản trị (không có hồ sơ nhân viên · đăng nhập kết thúc bằng {suffix})",
+    "actorUnavailable": "Người dùng không khả dụng"
   }
 }

@@ -2,6 +2,8 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import type {ReactNode} from 'react';
 import {beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({companies:vi.fn(),departments:vi.fn(),units:vi.fn(),heads:vi.fn(),grid:vi.fn()}));
+// 82748f92: the unsaved-changes check is a client island needing the intl provider; its behaviour is test/people-settings-navigation.dom.test.tsx.
+vi.mock('../components/people-settings-navigation',()=>({PeopleSettingsNavigation:()=>null}));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'tenant',userId:'admin',roles:['hr_admin']}),isGroupAdmin:()=>true}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>(key:string)=>key}));
 vi.mock('../core/read',()=>({listJobGrades:async()=>[]}));

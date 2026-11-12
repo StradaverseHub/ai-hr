@@ -7,12 +7,13 @@ import {OVERTIME_STARTERS,overtimeStarter} from '@/lib/overtime-pattern-starters
 import {OvertimeStarterInitializer} from '@/components/overtime-patterns/starter-initializer';
 import {OvertimeWorkspace} from '@/components/overtime-patterns/workspace';
 import {OvertimeGroupPolicyReview} from '@/components/overtime-patterns/group-policy-review';
+import {LegacyOvertimeBands} from './legacy-bands';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 
 const PAGE='/admin/attendance/settings/overtime-patterns';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const states=['draft','active','inactive','archived'] as const;
-export default async function OvertimePatternsPage({searchParams}:{searchParams:Promise<{pattern?:string;version?:string;new?:string;starter?:string;search?:string;status?:string;cursor?:string;method?:string;assignmentSearch?:string;policyCompany?:string;policyGroup?:string;policyVersion?:string}>}) {
+export default async function OvertimePatternsPage({searchParams}:{searchParams:Promise<{pattern?:string;version?:string;new?:string;starter?:string;search?:string;status?:string;cursor?:string;method?:string;assignmentSearch?:string;policyCompany?:string;policyGroup?:string;policyVersion?:string;bandError?:string;saveAck?:string}>}) {
   const {s,scopeIds:selectedScopeIds}=await scopedAdmin();
   const [t,query]=await Promise.all([getTranslations('overtimePatterns'),searchParams]);
   const eligible=await overtimePatternWorkspaceCompanies(s),eligibleIds=new Set(eligible.map(company=>company.id));
@@ -47,7 +48,8 @@ export default async function OvertimePatternsPage({searchParams}:{searchParams:
     <PageHeader title={t('title')} description={t('descriptionText')} back={{href:'/admin/attendance/settings',label:t('backToSettings')}} actions={<Link className={btnPrimary} href={`${PAGE}?new=1`}>{t('create')}</Link>}/>
     {showEditor?<>
       <div className="flex flex-wrap items-center justify-between gap-3"><Link href={PAGE} className="text-sm text-primary hover:underline">{t('backToList')}</Link>{detail?<div className="flex flex-wrap items-center gap-2 text-sm"><span>{t('versions')}</span>{detail.versions.map(item=><Link key={item.id} href={`${PAGE}?pattern=${detail.pattern.id}&version=${item.id}`} aria-current={version?.id===item.id?'page':undefined} className="rounded-lg border border-border px-3 py-2">{item.ordinal} · {t(`status.${item.status}`)}</Link>)}</div>:null}</div>
-      <OvertimeWorkspace key={`${detail?.pattern.id??'new'}:${version?.id??'new'}:${version?.revision??0}:${s.userId??'session'}:${scopeIds.join(',')}:${starter?.key??'custom'}`} detail={query.new==='1'?null:detail} version={query.new==='1'?undefined:version} setup={setup} starterKey={starter?.key} newPatternCompany={newPatternCompany}/>
+      <OvertimeWorkspace legacyEditor={query.new!=='1'&&detail?.pattern.kind==='legacy'?<LegacyOvertimeBands s={s} ruleId={detail.pattern.legacyRuleId} patternId={detail.pattern.id}
+        error={typeof query.bandError==='string'?query.bandError.slice(0,500):undefined} savedReceipt={typeof query.saveAck==='string'&&/^[a-f0-9]{32}$/.test(query.saveAck)?query.saveAck:undefined}/>:undefined} key={`${detail?.pattern.id??'new'}:${version?.id??'new'}:${version?.revision??0}:${s.userId??'session'}:${scopeIds.join(',')}:${starter?.key??'custom'}`} detail={query.new==='1'?null:detail} version={query.new==='1'?undefined:version} setup={setup} starterKey={starter?.key} newPatternCompany={newPatternCompany}/>
     </>:<>
       {query.pattern||query.version?<p role="alert" className="rounded-lg border border-border p-4 text-sm">{t('unavailable')}</p>:null}
       <section aria-label={t('standardStarters')} className="space-y-3"><h2 className="font-semibold">{t('standardStarters')}</h2><p className="text-sm text-muted-foreground">{t('starterDraftHelp')}</p><p className="text-sm font-medium">{OVERTIME_STARTERS.map(item=>item.name).join(' · ')}</p><OvertimeStarterInitializer key={scopeIds.slice().sort().join(',')} scopeKey={scopeIds.slice().sort().join(',')}/></section>

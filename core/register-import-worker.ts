@@ -193,7 +193,7 @@ export const registerImportJobHandler:BulkJobHandler<RegisterStepPayload>={
   const {section,records,fileName}=inputOf(job);
   const updated=plan.updated??0;
   // The synchronous import's history row, best effort and only when something was written, exactly as before.
-  const runId=updated>0?await recordSectionRun(ctx,{companyId:null,fileName,totalRows:records.length,updated,rejected:[],failed:[]}):null;
+  const runId=updated>0?await recordSectionRun(ctx,{section,companyId:null,fileName,totalRows:records.length,updated,rejected:[],failed:[]}):null;
   const result:SectionImportResult={section,updated,skipped:records.length-updated,failed:[],fileErrors:[],runId};
   return{result,counters:{updated}};
  },

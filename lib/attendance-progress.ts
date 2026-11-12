@@ -1,4 +1,4 @@
-import type { AttendanceResolvedApprover, AttendanceResolvedStage } from './attendance-workflow';
+import { attendanceStageLevelNumber, type AttendanceResolvedApprover, type AttendanceResolvedStage } from './attendance-workflow';
 
 /** Presentation over frozen request/decision evidence. Never consults a current workflow template. */
 export type AttendanceProgressWorkflow = {
@@ -28,7 +28,8 @@ export function recordedAttendanceProgress(flow: AttendanceProgressWorkflow | nu
     return { name: a.name, kind: a.kind, slot: a.slot, employeeCode: identity?.employeeCode ?? null,
       eligible: identity?.eligible === true && (!a.personId || !usedPeople.has(a.personId)) };
   });
-  return { state: next.some(a => a.eligible) ? 'pending' : 'unresolved', level: flow.currentStage + 1, mode, next };
+  // The configured level number survives levels skipped at submission.
+  return { state: next.some(a => a.eligible) ? 'pending' : 'unresolved', level: attendanceStageLevelNumber(flow.stages[flow.currentStage], flow.currentStage), mode, next };
 }
 export function attendanceNextApproverLabel(actor: AttendanceNextApprover, labels: { hr: string; onBehalf: string }): string {
   const name = actor.kind === 'hr_admin' ? labels.hr : actor.name;

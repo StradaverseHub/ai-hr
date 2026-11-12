@@ -5,7 +5,27 @@
  * restores those predecessor bodies from the migrations that installed them, captures every answer,
  * then re-applies 5020 and compares the typed facts, the replaced exact owner, the set-wise resolver,
  * page rows, search rows, private-search creation and the bind trigger's refusals against them. */
-import {afterAll,beforeAll,describe,expect,it} from 'vitest';
+import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
+/**
+ * HEADROOM FOR THE PRE-5020 ORACLE'S BIND TRIGGER ONLY. The oracle phase restores 4001's
+ * personnel_private_search_bind, which re-projects the WHOLE scoped population through app.personnel_list_rows
+ * (a per-row app.access_workforce_company check) to verify filter fingerprints; 5020 replaced it with a check
+ * of only the fingerprinted entries. Measured on a standard hosted runner (run 43089469142, 640 fictional
+ * employments, admin): personnel_list_rows alone 8.1 s, the column-filter token 19.7 s in total, so its insert
+ * sat just under the 20 s Personnel statement bound and crossed it with a second DB worker on the runner
+ * (combined run 43083313081, SQLSTATE 57014 in access_scope_covers). The oracle phase is about equivalence,
+ * not speed, so only its token creation gets 60 s (about 3x); every 5020-phase read and token keeps the
+ * production bound unchanged.
+ */
+const oracleBound=vi.hoisted(()=>({headroom:false}));
+vi.mock('../core/personnel-read-bounds',async importOriginal=>{
+ const actual=await importOriginal<typeof import('../core/personnel-read-bounds')>();
+ const {sql:statement}=await import('drizzle-orm');
+ return {...actual,boundPersonnelStatementTx:async(tx:Parameters<typeof actual.boundPersonnelStatementTx>[0])=>{
+  if(!oracleBound.headroom)return actual.boundPersonnelStatementTx(tx);
+  await tx.execute(statement`select set_config('statement_timeout','60000',true)`);
+ }};
+});
 import {randomBytes} from 'node:crypto';
 import {client as applicationClient,type SessionContext} from '../db/client';
 import {readPersonnelOverview} from '../core/read';
@@ -93,6 +113,14 @@ function cases(f:PersonnelScaleFixture,tokens:{term:string;filtered:string}):[st
   ['department-active',{dept:deptB,bucket:'active'}],['department-sorted-desc',{dept:deptB,sort:'joinDate',direction:'desc'},{offset:5}],
   ['parent-sorted-reporting',{parent:b,sort:'reportingTo',direction:'desc'},{offset:3}],
   ['grade-superior-page',{grade:'13,H',quality:'missing_direct_superior'},{offset:2,limit:10}],
+  // aa045103 — header multi-select (any of), Blank / unassigned and From/To ranges, over ordinary params. Each
+  // predicate appears once (the pre-5020 exact oracle costs seconds per case); their counts are checked against
+  // independent native answers in test/personnel-multi-column-filters.test.ts.
+  ['departments-or-blank',{dept:[deptB,f.departments.a[0],'__blank']}],
+  ['types-statuses-multi',{type:'contract,intern,__blank',bucket:'active,probation,draft'}],
+  ['organisation-or-blank',{bu:f.businessUnits[2]+',__blank',position:f.positions[5]+',__blank',grade:'H,13,__blank'}],
+  ['group-join-confirmation-ranges',{hiredFrom:'2019-01-01',hiredTo:'2023-06-30',confirmedFrom:'2020-01-01',confirmedTo:'2024-12-31'}],
+  ['multi-combined',{companies:b,dept:f.departments.b.slice(0,3),type:'full_time,contract',bucket:'active,probation',sort:'department'},{offset:2}],
   ...sorts,
   ['private-term',{search:tokens.term}],['private-term-second-page',{search:tokens.term},{offset:25}],
   ['private-term-sorted',{search:tokens.term,sort:'costCenter',direction:'asc'}],
@@ -104,11 +132,14 @@ function cases(f:PersonnelScaleFixture,tokens:{term:string;filtered:string}):[st
 const scopeOf=async(ctx:SessionContext)=>(await workforceViewScope(ctx,{personnelList:true})).companyIds;
 const roles=()=>({admin:fixture.admin,manager:fixture.manager});
 /** Private search tokens, created once per phase by the phase's own search projection and bind trigger. */
-async function tokensFor(ctx:SessionContext,scope:string[]){
+async function tokensFor(ctx:SessionContext,scope:string[],oracle:boolean){
+ oracleBound.headroom=oracle;
+ try{
  const term=await createPersonnelPrivateSearch(ctx,{text:'Tan',companyIds:scope,replaceCriteria:true});
  const filtered=await createPersonnelPrivateSearch(ctx,{text:'',companyIds:scope,replaceCriteria:true,
   columnFilters:[{field:'department',operator:'contains',value:'department 2'}]});
  return {term,filtered};
+ }finally{oracleBound.headroom=false;}
 }
 /** A token's stored entries, as the bind trigger admitted them. */
 async function storedMatches(token:string){
@@ -119,11 +150,15 @@ async function storedMatches(token:string){
 async function compareAll(role:'admin'|'manager',migrated:boolean){
  const ctx:SessionContext=roles()[role];
  const scope=await scopeOf(ctx);
- const tokens=await tokensFor(ctx,scope);
+ const tokens=await tokensFor(ctx,scope,!migrated);
  for(const [name,token] of Object.entries(tokens)){
   const key=role+' '+name,matches=await storedMatches(token);
   if(!migrated)tokenMatches.set(key,matches);
-  else expect(matches,key+' private search entries').toEqual(tokenMatches.get(key));
+  else{
+   // Without the oracle's entries there is nothing to compare: say so instead of comparing against undefined.
+   expect(tokenMatches.has(key),key+' oracle entries recorded before 5020').toBe(true);
+   expect(matches,key+' private search entries').toEqual(tokenMatches.get(key));
+  }
  }
  const used={facts:0,'filter-fields':0,exact:0};let compared=0,nonEmpty=0;
  // A private search token lives five minutes (2127), and the pre-5020 exact owner needs longer than that for the

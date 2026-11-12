@@ -61,6 +61,8 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/admin/personnel','page:/admin/personnel/duplicates','page:/admin/personnel/import','page:/admin/privacy',
  'page:/admin/rewards/access','page:/admin/rewards/shared','page:/admin/scheduled-actions','page:/admin/settings/email',
  'page:/admin/settings/email-templates','page:/admin/settings/employee-id','page:/admin/settings/hiring-defaults',
+ // arrived via 82748f92 (Irwin combined release 2026-11-12): the People > Settings card hub; no semantic read yet
+ 'page:/admin/settings/people',
  'page:/admin/settings/notifications','page:/admin/settings/profile-requests','page:/admin/settings/profile-requests/rules',
  'page:/admin/system-explorer','page:/admin/system-testing','page:/admin/users','page:/admin/work-locations/clocking',
  'page:/approvals','page:/approvals/history','page:/attendance','page:/attendance/breakdown','page:/attendance/clock','page:/attendance/import',

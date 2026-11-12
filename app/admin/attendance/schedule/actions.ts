@@ -241,8 +241,15 @@ export async function saveScheduleGroupAttendanceAction(fd: FormData) {
  * here. They are the overtime ladder — money, and a continuous-ladder validation — and they stay on the
  * General section with the deduction switch.
  */
+/** 2f803985 — the band editor now sits in Overtime Patterns › 1. General Settings of the group's legacy
+ * pattern. Same writer (updateAttendanceRuleSection, so the 0551 trigger keeps its snapshots) and the same
+ * administrator authority; only where the save returns to differs. `returnPattern` is read BY SHAPE. */
+const PATTERN_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const OVERTIME_PATTERNS = '/admin/attendance/settings/overtime-patterns';
 export async function saveScheduleGroupOvertimeAction(fd: FormData) {
   const ruleId = String(fd.get('ruleId') ?? '');
+  const returnPattern = String(fd.get('returnPattern') ?? '');
+  const toPattern = PATTERN_ID_RE.test(returnPattern) ? `${OVERTIME_PATTERNS}?pattern=${returnPattern}` : null;
   const { s } = await loadRule(ruleId);
   try {
     if(fd.get('overtimeFullEditor')==='1') {
@@ -272,9 +279,16 @@ export async function saveScheduleGroupOvertimeAction(fd: FormData) {
     });
     }
   } catch (e) {
+    if (toPattern) redirect(`${toPattern}&bandError=${encodeURIComponent(publicErrorMessage(e))}`);
     failScheduleGroup(e, ruleId, 'overtime');
   }
   const t = await getTranslations('admin.scheduleConfig');
+  if (toPattern) {
+    revalidatePath(OVERTIME_PATTERNS);
+    revalidatePath(SCHEDULE_GROUPS);
+    const nonce = String(fd.get('__attendanceSaveNonce') ?? '');
+    redirect(`${toPattern}&toast=${encodeURIComponent(t('savedToast'))}${/^[a-f0-9]{32}$/.test(nonce) ? `&saveAck=${nonce}` : ''}`);
+  }
   okScheduleGroup(ruleId, t('savedToast'), 'overtime', String(fd.get('__attendanceSaveNonce') ?? ''));
 }
 
@@ -370,7 +384,7 @@ export async function saveScheduleGroupWeekAction(fd: FormData) {
     failScheduleGroup(e, ruleId, 'general', weekParam(kinds));
   }
   const t = await getTranslations('admin.scheduleConfig');
-  okScheduleGroup(ruleId, t('savedToast'), 'general');
+  okScheduleGroup(ruleId, t('savedToast'), 'general', String(fd.get('__attendanceSaveNonce') ?? ''));
 }
 
 export async function saveScheduleGroupControlAction(fd:FormData) {

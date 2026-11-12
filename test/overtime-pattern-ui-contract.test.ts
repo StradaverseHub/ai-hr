@@ -22,8 +22,13 @@ describe('Overtime Patterns uses the existing Attendance access and storage owne
  });
  it('leaves existing Schedule Group settings and bookmarks in place and links to the new OT owner',()=>{
   const source=read('app/admin/attendance/schedule/group-sections.tsx');
-  expect(source).toContain(`href="${PAGE}"`);
-  expect(source).toContain('saveScheduleGroupOvertimeAction');expect(source).toContain('saveScheduleGroupAttendanceAction');
+  // 2f803985 — the group's Overtime tab links to its own legacy pattern (or the workspace), and the band
+  // editor itself now sits in that pattern's 1. General Settings, saving through the same Schedule Group writer.
+  expect(source).toContain(`${PAGE}?pattern=${'$'}{legacyPatternId}`);expect(source).toContain(`'${PAGE}'`);
+  expect(source).not.toContain('saveScheduleGroupOvertimeAction');expect(source).toContain('saveScheduleGroupAttendanceAction');
+  const bands=read(`app${PAGE}/legacy-bands.tsx`);
+  expect(bands).toContain('submitAction={saveScheduleGroupOvertimeAction}');expect(bands).toContain('name="returnPattern"');
+  expect(page).toContain('<LegacyOvertimeBands');
   expect(existsSync(resolve(root,'app/admin/attendance/schedule/[ruleId]/edit/page.tsx'))).toBe(true);
  });
  it('uses fresh server context for every public operation and never accepts a computed amount for transfer',()=>{

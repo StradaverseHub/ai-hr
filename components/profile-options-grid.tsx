@@ -27,6 +27,7 @@ import { labelCodeConflicts } from '@/lib/label-code-conflicts';
 import { refreshEditableRows } from '@/lib/refresh-editable-rows';
 import { useEffect, useCallback, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
+import { useRegisteredUnsavedChanges } from '@/components/use-registered-unsaved-changes';
 import { toast } from 'sonner';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Trash2, X } from 'lucide-react';
 import { paginateRows } from '@/lib/pagination';
@@ -146,6 +147,7 @@ export function ProfileOptionsGrid({
   const drafts = rows.filter((r) => r.isNew);
   const dirtyExisting = rows.filter((r) => !r.isNew && r.dirty);
   const hasChanges = drafts.length > 0 || dirtyExisting.length > 0;
+  useRegisteredUnsavedChanges(hasChanges, t('unsavedChanges'));
   const activeFilterCount = (search.trim() ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0);
 
   function patchRows(next: RowState[]) {

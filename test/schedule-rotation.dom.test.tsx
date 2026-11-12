@@ -115,3 +115,42 @@ describe('integrated allowed-shift and cycle editor',()=>{
   });
 
 });
+
+// 2f803985 — Working Week, Weekly Pattern and Daily Pattern are one choice over the same Day Type + Shift rows.
+describe('Schedule Rotates Based On',()=>{
+  const cycleOf=(container:HTMLElement)=>JSON.parse((container.querySelector('[name="cycle"]') as HTMLInputElement).value);
+  const method=(name:string)=>screen.getByRole('radio',{name});
+  it('reads the stored unit and length as the method and keeps the shared pool in every method',()=>{
+    const {container}=mount();
+    expect(method(messages.admin.rotation.methodDaily)).toHaveAttribute('aria-checked','true');
+    expect(method(messages.admin.rotation.methodWorkingWeek)).toHaveAttribute('aria-checked','false');
+    vi.spyOn(window,'confirm').mockReturnValue(true);
+    fireEvent.click(method(messages.admin.rotation.methodWorkingWeek));
+    const week=cycleOf(container);
+    expect(week).toMatchObject({unit:'week',length:1});
+    expect(week.days).toHaveLength(7);
+    expect(new Date(`${week.anchorDate}T00:00:00Z`).getUTCDay(),'week cycles start on a Monday').toBe(1);
+    // The first configured day survives the change of method; only the cycle is reorganised.
+    expect(week.days[0]).toEqual({kind:'full',shiftId:'a'});
+    expect(screen.queryByRole('spinbutton'),'Working Week has no length to choose').toBeNull();
+    expect(container.querySelector('[name="rotationAnchorDraft"]'),'nor a rotation start date').toBeNull();
+    expect(screen.getByRole('combobox',{name:'Day type 7'})).toBeTruthy();
+    // Only allowed shifts are offered on a working day.
+    expect(within(screen.getByRole('combobox',{name:'Shift 1'})).queryByRole('option',{name:'b · Night'})).toBeNull();
+    fireEvent.click(method(messages.admin.rotation.methodWeekly));
+    expect(cycleOf(container)).toMatchObject({unit:'week',length:2});
+    expect(cycleOf(container).days).toHaveLength(14);
+    expect(cycleOf(container).days[0]).toEqual({kind:'full',shiftId:'a'});
+    fireEvent.click(method(messages.admin.rotation.methodDaily));
+    expect(cycleOf(container)).toMatchObject({unit:'day',length:7});
+    expect((screen.getByRole('button',{name:messages.admin.rotation.save}) as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('keeps the configured cycle when a destructive method change is declined',()=>{
+    const {container}=mount();
+    const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);
+    fireEvent.click(method(messages.admin.rotation.methodWeekly));
+    expect(confirm).toHaveBeenCalledWith(messages.admin.rotation.replaceConfirm);
+    expect(cycleOf(container)).toMatchObject({unit:'day',length:2});
+    expect(method(messages.admin.rotation.methodDaily)).toHaveAttribute('aria-checked','true');
+  });
+});

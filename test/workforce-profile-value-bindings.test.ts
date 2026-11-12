@@ -51,7 +51,8 @@ describe('physical profile/register authorization declaration',()=>{
    ...columns('EMPLOYMENT_INFO_DATE_FIELDS').filter(name=>!['resignation_date','last_working_date'].includes(name)),
    // Applied SQL still protects the physical tender date; removing its generic Personnel input must
    // not remove that guard or rewrite the released migration's column contract.
-   'tender_resignation_date','extended_confirmation_date','final_confirmation_date','probation_end_date','internship_end_date'].sort();
+   // 2260a06b — internship_end_date is now a generic Personnel input (EMPLOYMENT_INFO_DATE_FIELDS above).
+   'tender_resignation_date','extended_confirmation_date','final_confirmation_date','probation_end_date'].sort();
   expect(columns('EMPLOYMENT_INFO_DATE_FIELDS')).not.toContain('tender_resignation_date');
   const start=migration.indexOf('CREATE FUNCTION app.access_workforce_service_info_columns()');expect(start).toBeGreaterThanOrEqual(0);
   const end=migration.indexOf('$$;',start);expect(end).toBeGreaterThan(start);
