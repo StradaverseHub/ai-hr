@@ -102,6 +102,12 @@
 import { z } from 'zod';
 import { payslipProvenance, payslipStatutoryBases, type StatutoryBases } from './payslip-recompute';
 import { payslipEmployerBorne, type EmployerBorneView } from './payslip-employer-borne';
+import {
+  readStatutoryTrace,
+  type StatutoryTraceAmountKey,
+  type StatutoryTraceRecord,
+  type StatutoryTraceStatus,
+} from './statutory-trace-explain';
 
 /** The six the request names, in the order the screen lists them. */
 export const STATUTORY_EXPLAIN_KEYS = ['epf', 'socso', 'skbbk', 'eis', 'hrdf', 'pcb'] as const;
@@ -417,6 +423,15 @@ export type StatutoryExplanation = {
    * the posture pcb-explain's 'additionalRunManual' already takes for the tax screen.
    */
   setByHand: StatutorySetByHand | null;
+  /**
+   * Item 69d6ed3c — the statutory trace v1 this payslip's run recorded: the pay items in each wage, the
+   * schedule row each wage fell in and the amounts that row gives. NULL unless `traceStatus` is
+   * 'recorded'. 'absent' is a payslip processed before the trace existed (the screen says the detailed
+   * working starts from the next processed or reprocessed payroll); 'invalid' is a trace that does not
+   * reconcile with this payslip's amounts, shown as "working not recorded" and never recomputed.
+   */
+  trace: StatutoryTraceRecord | null;
+  traceStatus: StatutoryTraceStatus;
   /** The statutory ruleset version stamped by the run, when it recorded one. */
   rulesetVersion: string | null;
   /** The employer-borne view this explanation was built from, for the screen's disclosure line. */
@@ -459,6 +474,8 @@ type Blob = {
   epfManual?: unknown;
   epfWorking?: unknown;
   hrdfWorking?: unknown;
+  /** 69d6ed3c — read ONLY through `readStatutoryTrace`, which checks it against this payslip first. */
+  statutoryTrace?: unknown;
 };
 
 /**
@@ -692,12 +709,35 @@ export function explainStatutory(statutory: unknown, runType: string): Statutory
   // `STATUTORY_EXPLAIN_KEYS` order because `items` is, so the banner lists them as the screen does.
   const handSet = items.filter((i) => isSetByHand(i.provenance));
 
+  // 69d6ed3c — the figure the trace must explain, per line: what the payslip carries, except where a person
+  // replaced the line under Statutory Adjustment — then the trace (the run's own calculation) explains the
+  // SYSTEM figure that adjustment recorded, and the hand-set banner explains the rest. A standing manual EPF
+  // amount is applied inside the calculation, so its trace already carries the applied figure.
+  const byKey = (key: StatutoryExplainKey) => items.find((i) => i.key === key)!;
+  const expectedLeg = (key: StatutoryExplainKey, side: 'employee' | 'employer', amount: number) => {
+    const p = byKey(key).provenance;
+    const leg = p.source === 'statutoryAdjustment' ? p[side] : null;
+    return r2(leg ? leg.system : amount);
+  };
+  const expected: Record<StatutoryTraceAmountKey, number> = {
+    epfEmployee: expectedLeg('epf', 'employee', n(st.epfEmployee)),
+    epfEmployer: expectedLeg('epf', 'employer', n(st.epfEmployer)),
+    socsoEmployee: expectedLeg('socso', 'employee', n(st.socsoEmployee)),
+    socsoEmployer: expectedLeg('socso', 'employer', n(st.socsoEmployer)),
+    socsoSkbbk: expectedLeg('skbbk', 'employee', n(st.socsoSkbbk)),
+    eisEmployee: expectedLeg('eis', 'employee', n(st.eisEmployee)),
+    eisEmployer: expectedLeg('eis', 'employer', n(st.eisEmployer)),
+  };
+  const traced = readStatutoryTrace(st.statutoryTrace, expected);
+
   return {
     items,
     epfWorking: epfWorking.success
       ? { ...epfWorking.data, finalEmployee: items[0].employeeReported, finalEmployer: items[0].employer }
       : null,
     hrdfWorking,
+    trace: traced.trace,
+    traceStatus: traced.status,
     hrdfBreakdownNotRecorded: hrdfWorking == null && runType === 'regular',
     basesNotRecorded: bases == null,
     basesCoverWholeMonth: amountsAreIncremental,
