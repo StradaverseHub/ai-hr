@@ -1,3 +1,4 @@
+import { bulkAssignmentProblem, RETURN_BULK_LABELS } from './lifecycle-bulk-assignment';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import type { Note as LifecycleNote } from './onboarding-model';
 import { resolveV9CaseFields, missingV9CaseFields, offCaseFormValues, type CaseField } from './lifecycle-v9-case-form';
@@ -40,7 +41,21 @@ export type Item = {
   nativeSource?: { caseId: string; requestId: string; itemId: string; requestNumber: string };
   group: string | null; assignee: string | null; dueOn: string;
   status: 'todo' | 'progress' | 'done' | 'notReturned' | 'notNeeded'; reason: string;
+  /** d1e26f81 — presets from Onboarding & Offboarding settings. Absent on rows created before this release. */
+  catalogueId?: string | null;
+  method?: ReturnMethod;
+  /** Day offset from the return anchor (the effective last working day); null keeps a fixed date. */
+  dueDay?: number | null;
+  assignmentFailure?: string | null;
+  /** The team, person and handover date recorded on the issuing onboarding item. */
+  providedBy?: { group: string | null; userId: string | null; at: string | null } | null;
+  /** An access card with "Facility prints, Group Tech activates" returns as a collect row and a deactivate row. */
+  cardStep?: 'collect' | 'deactivate'; pairId?: string;
 };
+export type ReturnMethod = 'rr' | 'manual';
+/** d1e26f81 — the shared "Set for all items" change; `due` is a Day offset. */
+export type ItemsBulk = { ids: string[]; group?: string; method?: ReturnMethod; due?: number };
+export type ReturnPreset = Omit<ItemsBulk, 'ids'>;
 export type Field = {
   id: string; label: string; type: 'text' | 'textarea' | 'select' | 'date' | 'checkbox' | 'phone' | 'email' | 'number' | 'table';
   owner: 'employee' | 'hr' | 'pmLocked'; pmKey: string | null; required: boolean;
@@ -154,6 +169,10 @@ export type Case = {
   revokeMode?: 'lastday' | 'date';
   emailEdits?: Record<string, { subject: string; body: string }>;
   settlementOptions?: Pick<SettlementInput, 'override' | 'keepSourceDate' | 'offsetLeave' | 'reduceEncashment'>;
+  /** d1e26f81 — the effective last working day that Return and revoke Day offsets count from. */
+  returnAnchor?: string;
+  /** d1e26f81 — "Set for all items" choices made before submission, keyed by the pending preview id. */
+  returnPresets?: Record<string, ReturnPreset>;
 };
 export type Config = {
   version: 9; revision: number; checklists: Checklist[]; templates: Template[];
@@ -180,6 +199,8 @@ export type Environment = {
   requireDeliveryAck?: boolean;
   /** A real Native onboarding contact; this is never an app-user identity or login grant. */
   onboardingContact?: { email: string; sourceRevision: string };
+  /** d1e26f81 — the Leaver calculator's effective last working day, when the service could compute it. */
+  effectiveLastDay?: string;
 };
 
 export class V9Error extends Error {
@@ -218,10 +239,11 @@ export function resolvePbp(config: Config, facts: Facts): string | null {
   const score = (r: Rules) => (r.businessGroup?.length ? 4 : 0) + (r.company?.length ? 2 : 0) + (r.department?.length ? 1 : 0);
   return config.bpRules.filter(r => matches(r.rules, facts)).map((r, index) => ({ r, index })).sort((a, b) => score(b.r.rules) - score(a.r.rules) || a.index - b.index)[0]?.r.userId ?? null;
 }
-export function assign(config: Config, groupId: string | null, due: string, env: Environment, extra: Record<string, number>, tieBreak: 'recent' | 'memberOrder' = 'recent'): { userId: string | null; reason: string | null } {
+export function assign(config: Config, groupId: string | null, due: string, env: Environment, extra: Record<string, number>, tieBreak: 'recent' | 'memberOrder' = 'recent', exclude: string | null = null): { userId: string | null; reason: string | null } {
   const group = config.groups.find(g => g.id === groupId);
   if (!group) return { userId: null, reason: 'Choose an assignment group.' };
-  const members = [...new Set(group.members)].filter(env.eligibleUser);
+  // d1e26f81 — the leaver never owns their own offboarding work.
+  const members = [...new Set(group.members)].filter(env.eligibleUser).filter(id => !exclude || id !== exclude);
   if (!members.length) return { userId: null, reason: `No eligible members in ${group.name}.` };
   const available = members.filter(id => !env.onLeave(id, due));
   if (!available.length) return { userId: null, reason: `Everyone in ${group.name} is on leave on ${due}.` };
@@ -246,7 +268,7 @@ export function submit(c: Case, config: Config, env: Environment): void {
     if (opensOn && opensOn > dueOn) throw new V9Error(`Opens on cannot follow due by for ${def.name}.`);
     const owner = def.by === 'employee' ? { userId: c.facts.employeeUserId, reason: c.facts.employeeUserId ? null : 'Employee login is not linked.' }
       : def.by === 'manager' ? { userId: c.facts.supervisorUserId, reason: c.facts.supervisorUserId ? null : 'Line manager login is not linked.' }
-      : def.mode === 'rr' ? assign(config, def.group, dueOn, env, extra, c.module === 'off' ? 'memberOrder' : 'recent') : { userId: null, reason: 'Manual assignment is required.' };
+      : def.mode === 'rr' ? assign(config, def.group, dueOn, env, extra, c.module === 'off' ? 'memberOrder' : 'recent', c.module === 'off' ? c.facts.employeeUserId : null) : { userId: null, reason: 'Manual assignment is required.' };
     if (owner.userId) extra[owner.userId] = (extra[owner.userId] ?? 0) + 1;
     return { ...structuredClone(def), dueOn, opensOn, assignee: owner.userId, assignmentFailure: owner.reason, status: 'todo' as const, reason: '' };
   });
@@ -256,6 +278,40 @@ export function submit(c: Case, config: Config, env: Environment): void {
   for (const task of c.tasks) appendLog(c, env, 'task.assigned', `${task.name}: ${task.assignee ? env.userName(task.assignee) : task.assignmentFailure}`, task.assignee && task.group ? { userId: task.assignee, groupId: task.group } : undefined);
 }
 export function isResolved(status: Task['status'] | Item['status']): boolean { return status === 'done' || status === 'notNeeded'; }
+/** d1e26f81 — Return and revoke defaults: physical items the day before the last working day, system access on it. */
+export function defaultReturnDay(kind: Item['kind']): number { return kind === 'device' ? -1 : 0; }
+/** Day 0 is the anchor (the effective last working day); -1 the day before. */
+export function returnDue(anchor: string, dueDay: number): string { return taskDate('off', anchor, dueDay); }
+export function returnOpen(item: Pick<Item, 'status'>): boolean { return !isResolved(item.status) && item.status !== 'notReturned'; }
+/** Round-robin assignment for one return item: the leaver is excluded and the reason is kept when nobody can take it. */
+export function assignReturnItem(c: Case, config: Config, item: Item, env: Environment, extra: Record<string, number>): void {
+  if ((item.method ?? 'rr') === 'manual') { item.assignee = null; item.assignmentFailure = 'Manual assignment is required.'; return; }
+  const assigned = assign(config, item.group, item.dueOn, env, extra, 'memberOrder', c.facts.employeeUserId);
+  item.assignee = assigned.userId; item.assignmentFailure = assigned.reason;
+  if (assigned.userId) extra[assigned.userId] = (extra[assigned.userId] ?? 0) + 1;
+  appendLog(c, env, assigned.userId ? 'item.assigned' : 'item.assignment_failed', `${item.name}: ${assigned.userId ? env.userName(assigned.userId) : assigned.reason}`, assigned.userId && item.group ? { userId: assigned.userId, groupId: item.group } : undefined);
+}
+/** d1e26f81 — "Set for all items" on a submitted case; mirrors onboarding bulkEquipment. Done, not needed and not returned items are never changed. */
+export function bulkItems(c: Case, config: Config, change: ItemsBulk, env: Environment): number {
+  const problem = bulkAssignmentProblem(change, config.groups.map(group => group.id), RETURN_BULK_LABELS);
+  if (problem) throw new V9Error(problem);
+  if (c.module !== 'off' || c.state !== 'submitted') throw new V9Error('This case is not open.');
+  if (change.ids.some(id => !c.items.some(item => item.id === id))) throw new V9Error('A return item is no longer available.');
+  const targets = c.items.filter(item => change.ids.includes(item.id) && returnOpen(item));
+  if (!targets.length) throw new V9Error('No open return items match this change.');
+  const anchor = c.returnAnchor ?? c.facts.lastDay, extra: Record<string, number> = {};
+  for (const item of targets) {
+    if (change.due !== undefined) { item.dueDay = change.due; item.dueOn = returnDue(anchor, change.due); }
+    if (change.method !== undefined) { item.method = change.method; if (change.method === 'manual' && !item.assignee) item.assignmentFailure = 'Manual assignment is required.'; }
+    if (change.group !== undefined && change.group !== item.group) {
+      if (item.assignee) extra[item.assignee] = (extra[item.assignee] ?? 0) - 1;
+      item.group = change.group; item.assignee = null; item.assignmentFailure = null;
+    }
+    if (!item.assignee) assignReturnItem(c, config, item, env, extra);
+  }
+  appendLog(c, env, 'items.bulkUpdated', targets.length + ' items · ' + [change.group ? 'team ' + config.groups.find(group => group.id === change.group)!.name : '', change.method ?? '', change.due !== undefined ? 'due Day ' + change.due : ''].filter(Boolean).join(' · '));
+  return targets.length;
+}
 export function work(c: Case) {
   const tasks = c.tasks.filter(t => t.status !== 'notNeeded'), items = c.items.filter(i => i.status !== 'notNeeded');
   const done = tasks.filter(t => t.status === 'done').length + items.filter(i => i.status === 'done' || i.status === 'notReturned').length;

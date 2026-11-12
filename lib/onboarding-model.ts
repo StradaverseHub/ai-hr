@@ -1,3 +1,4 @@
+import { bulkAssignmentProblem, EQUIPMENT_BULK_LABELS } from './lifecycle-bulk-assignment';
 import type { JoinerSectionSetting, JoinerSections } from './onboarding-page-access';
 import { resolveV9CaseFields, missingV9CaseFields, validateV9CaseValue, type CaseField } from './lifecycle-v9-case-form';
 import { v9EmploymentRule } from './lifecycle-v9-employment';
@@ -483,10 +484,8 @@ export function manualEquipment(config: Config, c: Case, id: string, user: strin
 }
 export function bulkEquipment(config: Config, c: Case, change: EquipmentBulk, a: Actor, env: Environment) {
     if(!a.module&&!(a.caseActions&&a.sections?.equip==='act'))fail('Equipment case actions are required.','forbidden');
-    if (!change.ids.length || new Set(change.ids).size !== change.ids.length || change.group === undefined && change.method === undefined && change.due === undefined) fail('Choose items and at least one equipment change.');
-    if (change.group !== undefined && !config.groups.some(group => group.id === change.group)) fail('Choose an existing assignment group.');
-    if (change.method !== undefined && !['rr','manual'].includes(change.method)) fail('Choose Round robin or Manual.');
-    if (change.due !== undefined && (!Number.isInteger(change.due) || change.due < -999 || change.due > 9999)) fail('Choose an equipment due day from -999 to 9999.');
+    const problem = bulkAssignmentProblem(change, config.groups.map(group => group.id), EQUIPMENT_BULK_LABELS);
+    if (problem) fail(problem);
     let changed = change.ids.length;
     if (c.state === 'pending') {
         if (change.ids.some(id => ![...c.selected, ...c.extras.map(item => item.catalogueId)].includes(id) || !config.catalogue.some(item => item.id === id))) fail('Choose only items selected on this case.');
@@ -1032,4 +1031,32 @@ export function retryApprovals(config: Config, c: Case, itemId: Id, a: Actor, en
     }
     autoApprove(item, c, a, env);
     log(c, a, env, 'approval.routing_retried', item.name);
+}
+/**
+ * 259c6162 — Audit Trail entries for routing-rule edits: created, updated (name and row changes, with
+ * before/after rules and group ids) and deleted (with the replacement routing and the re-pointed steps).
+ * Ids and organisation references only; no personal data. Compare `old` with the persisted `next`.
+ */
+export type RoutingAuditChange = { eventType: 'onboarding.routing.created' | 'onboarding.routing.updated' | 'onboarding.routing.deleted'; payload: Record<string, unknown> };
+export function routingAuditChanges(old: Pick<Config, 'routings' | 'workflows'>, next: Pick<Config, 'routings' | 'workflows'>): RoutingAuditChange[] {
+    const out: RoutingAuditChange[] = [];
+    const rules = (r: Rules): Rules => Object.fromEntries(JSON.parse(canonicalRules(r)));
+    const row = (r: Routing['rows'][number]) => ({ rowId: r.id, rules: rules(r.rules), group: r.group });
+    for (const r of next.routings) {
+        const before = old.routings.find(x => x.id === r.id);
+        if (!before) { out.push({ eventType: 'onboarding.routing.created', payload: { routingId: r.id, name: r.name, rows: r.rows.map(row) } }); continue; }
+        const added = r.rows.filter(x => !before.rows.some(y => y.id === x.id)).map(row);
+        const removed = before.rows.filter(x => !r.rows.some(y => y.id === x.id)).map(row);
+        const changed = r.rows.flatMap(x => { const y = before.rows.find(z => z.id === x.id); return y && (canonicalRules(y.rules) !== canonicalRules(x.rules) || y.group !== x.group) ? [{ rowId: x.id, before: { rules: rules(y.rules), group: y.group }, after: { rules: rules(x.rules), group: x.group } }] : []; });
+        const order = before.rows.map(x => x.id).filter(id => r.rows.some(y => y.id === id)).join() !== r.rows.map(x => x.id).filter(id => before.rows.some(y => y.id === id)).join();
+        if (before.name !== r.name || added.length || removed.length || changed.length || order)
+            out.push({ eventType: 'onboarding.routing.updated', payload: { routingId: r.id, ...(before.name !== r.name ? { name: { before: before.name, after: r.name } } : {}), rowsAdded: added, rowsRemoved: removed, rowsChanged: changed, ...(order ? { rowOrder: r.rows.map(x => x.id) } : {}) } });
+    }
+    for (const r of old.routings) {
+        if (next.routings.some(x => x.id === r.id)) continue;
+        const repointed = next.workflows.flatMap(w => w.steps.filter(s => s.type === 'routing' && old.workflows.find(x => x.id === w.id)?.steps.find(x => x.id === s.id)?.target === r.id && s.target !== r.id).map(s => ({ workflowId: w.id, stepId: s.id, routingId: s.target })));
+        const replacements = [...new Set(repointed.map(s => s.routingId))];
+        out.push({ eventType: 'onboarding.routing.deleted', payload: { routingId: r.id, name: r.name, replacementRoutingId: replacements.length === 1 ? replacements[0] : replacements.length ? replacements : null, repointedSteps: repointed.map(({ workflowId, stepId }) => ({ workflowId, stepId })) } });
+    }
+    return out;
 }

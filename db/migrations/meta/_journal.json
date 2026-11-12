@@ -5790,6 +5790,13 @@
       "when": 1793330005120,
       "tag": "5420_rewards_dashboard_preparation_notices",
       "breakpoints": true
+    },
+    {
+      "idx": 4880,
+      "version": "7",
+      "when": 1793330005180,
+      "tag": "5480_offboarding_items_assignment_load",
+      "breakpoints": true
     }
   ]
 }

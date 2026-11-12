@@ -1079,34 +1079,35 @@ it('snapshots handed Native items by employment and records recovery on their or
 });
 
 it('keeps team asset recovery behind existing IT authority, locked holder checks and atomic issuing history',async()=>{
-  const native=await onboardingContext(admin);native.config.groups.find(group=>group.id===native.config.techGroup)!.members=[employee.userId!];await onboardingSaveConfig(admin,native.revision,native.config);
+  // d1e26f81 — the leaver never owns their own return work, so the providing-team member is another employee.
+  const native=await onboardingContext(admin);native.config.groups.find(group=>group.id===native.config.techGroup)!.members=[other.userId!];await onboardingSaveConfig(admin,native.revision,native.config);
   const config=(await v9Workspace(admin)).config!;for(const workflow of config.workflows)workflow.status='draft';await v9SaveConfig(admin,config.revision,config);
   const id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:todayInKualaLumpur(),lastDay:addDays(todayInKualaLumpur(),30)});
   let c=(await v9CaseDetail(admin,id)).case;
   expect(c.facts.employeeNo).toBeTruthy();
   const asset=await registerAsset(admin,{companyId:base.companyId,assetType:'laptop',status:'issued',userName:c.facts.name,userEmployeeNo:c.facts.employeeNo});
   await v9Command(admin,id,c.revision,{type:'submit'});c=(await v9CaseDetail(admin,id)).case;
-  expect(c.items).toHaveLength(1);expect(c.items[0]).toMatchObject({sourceId:asset.id,assignee:employee.userId});
+  expect(c.items).toHaveLength(1);expect(c.items[0]).toMatchObject({sourceId:asset.id,assignee:other.userId});
   const input={caseId:id,revision:c.revision,itemId:c.items[0].id,status:'done' as const,reason:'Fictional desk recovery'};
-  await expect(v9OwnItem(employee,input)).rejects.toThrow();
+  await expect(v9OwnItem(other,input)).rejects.toThrow();
   expect((await getAsset(admin,asset.code)).status).toBe('issued');
   // Test-only IT authority, never a real account grant.
-  await owner.client`insert into lc_staff(tenant_id,user_id,company_id,level) values(${base.tenantId}::uuid,${employee.userId!}::uuid,${base.companyId}::uuid,'agent')`;
-  await expect(withTenant(employee,tx=>tx.execute(sql`select app.lc_v9_fulfil_item(${id}::uuid,${c.revision},${input.itemId},'done','')`))).rejects.toThrow();
-  await expect(withTenant(employee,tx=>returnAssetTx(tx,employee,asset.code,{requisitionNumber:c.number,expectedHolder:{companyId:base.companyId,employeeNo:'FICTIONAL-WRONG-HOLDER'}}))).rejects.toThrow('holder changed');
-  await expect(withTenant(employee,async tx=>{
-    await returnAssetTx(tx,employee,asset.code,{requisitionNumber:c.number,expectedHolder:{companyId:base.companyId,employeeNo:c.facts.employeeNo}});
+  await owner.client`insert into lc_staff(tenant_id,user_id,company_id,level) values(${base.tenantId}::uuid,${other.userId!}::uuid,${base.companyId}::uuid,'agent')`;
+  await expect(withTenant(other,tx=>tx.execute(sql`select app.lc_v9_fulfil_item(${id}::uuid,${c.revision},${input.itemId},'done','')`))).rejects.toThrow();
+  await expect(withTenant(other,tx=>returnAssetTx(tx,other,asset.code,{requisitionNumber:c.number,expectedHolder:{companyId:base.companyId,employeeNo:'FICTIONAL-WRONG-HOLDER'}}))).rejects.toThrow('holder changed');
+  await expect(withTenant(other,async tx=>{
+    await returnAssetTx(tx,other,asset.code,{requisitionNumber:c.number,expectedHolder:{companyId:base.companyId,employeeNo:c.facts.employeeNo}});
     await tx.execute(sql`select app.lc_v9_fulfil_item(${id}::uuid,${c.revision-1},${input.itemId},'done','')`);
   })).rejects.toThrow();
   expect((await getAsset(admin,asset.code)).status).toBe('issued');
   expect((await assetHistory(admin,asset.code)).filter(event=>event.action==='asset.returned')).toHaveLength(0);
-  await v9OwnItem(employee,input);
+  await v9OwnItem(other,input);
   expect(await getAsset(admin,asset.code)).toMatchObject({status:'returned',userEmployeeNo:null});
-  expect((await assetHistory(admin,asset.code)).filter(event=>event.action==='asset.returned')).toMatchObject([{actorUserId:employee.userId,detail:expect.objectContaining({requisition:c.number})}]);
+  expect((await assetHistory(admin,asset.code)).filter(event=>event.action==='asset.returned')).toMatchObject([{actorUserId:other.userId,detail:expect.objectContaining({requisition:c.number})}]);
   const done=(await v9CaseDetail(admin,id)).case;expect(done.items[0].status).toBe('done');
-  await expect(v9OwnItem(employee,{...input,revision:done.revision,status:'todo'})).rejects.toThrow();
+  await expect(v9OwnItem(other,{...input,revision:done.revision,status:'todo'})).rejects.toThrow();
   await withTenant(admin,tx=>issueAssetTx(tx,admin,asset.code,{name:'Fictional subsequent holder',employeeNo:'V9-ANOTHER',department:null,email:null},{}));
-  await expect(withTenant(employee,tx=>returnAssetTx(tx,employee,asset.code,{expectedHolder:{companyId:base.companyId,employeeNo:c.facts.employeeNo}}))).rejects.toThrow('holder changed');
+  await expect(withTenant(other,tx=>returnAssetTx(tx,other,asset.code,{expectedHolder:{companyId:base.companyId,employeeNo:c.facts.employeeNo}}))).rejects.toThrow('holder changed');
   expect(await getAsset(admin,asset.code)).toMatchObject({status:'issued',userEmployeeNo:'V9-ANOTHER'});
 });
 
