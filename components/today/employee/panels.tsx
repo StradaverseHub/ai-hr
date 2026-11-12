@@ -8,7 +8,7 @@ import {formatPayPeriodMonth} from '@/lib/hr-date';
 import {calendarDaysBetween} from '@/lib/hr-date-calendar';
 import {PAYROLL_READINESS_HREF} from '@/lib/pre-salary/items';
 import {buildMonthCalendar,CALENDAR_MARKS,type CalendarFact,type CalendarMark} from '@/lib/today/month-calendar';
-import {comingUp,isAllClear,nextStepsFrom,orderRequests,paydayView,trackSteps,waitingDays,weekHours,weekOf,
+import {calendarComingUp,comingUp,isAllClear,nextStepsFrom,orderRequests,paydayView,trackSteps,waitingDays,weekHours,weekOf,
  type ModuleState,type NextStep,type TrackedRequest} from '@/lib/today/employee';
 import {AskChips,type AskChip} from './ask-chips';
 import {BUTTON,EYEBROW,LINK,Panel,PanelLink,PanelNote,hrDay} from './panel';
@@ -298,8 +298,7 @@ export async function ComingUpPanel(p:PanelContext){
  const items=comingUp(p.today,{
   cutOff:readiness.ok?readiness.value?.period.cutOff??null:null,
   payday:hints?.ok?hints.value.nextPayment?.date??null:null,
-  leaveDates:days.filter(day=>day.entries.some(entry=>entry.kind==='leave')).map(day=>day.date),
-  holidays:days.flatMap(day=>day.entries.flatMap(entry=>entry.kind==='holiday'&&!entry.replacement?[{date:day.date,name:entry.name}]:[])),
+  ...calendarComingUp(days),
   managerAway:away.ok?away.value:[],
  });
  const text=(item:(typeof items)[number])=>item.kind==='cutoff'?t('upcoming.cutoff'):item.kind==='payday'?t('upcoming.payday')

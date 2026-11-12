@@ -2402,6 +2402,7 @@
       "clockOutReasonOtherLabel": "Taip sebabnya",
       "clockOutActionsLabel": "Sahkan atau edit",
       "clockOutChanged": "Hari ini telah berubah sejak kad disediakan, jadi tiada apa yang dihantar. Gunakan Edit untuk menyemaknya pada borang.",
+      "clockOutPending": "Pembetulan untuk hari ini sudah menunggu kelulusan, jadi tiada apa lagi yang dihantar.",
       "recordTitle": "{count, plural, other {Rekod anda tiada # butiran}}",
       "recordNote": "HR meluluskan kemas kini anda seperti biasa.",
       "recordCta": "Isi",
