@@ -18,6 +18,9 @@ import {verifyBrowserRecoveredCi,revalidateBrowserRecoveredCi} from './browser-r
 import {probeStagingProfile} from './staging-preflight.mjs';
 import {readLease,guardCommand,guardedRsync,leasePhase,redactLeaseError} from '../../scripts/staging/lease.mjs';
 export {STAGING,bindStaging};
+// A full-tree --checksum dry run over SSH reads every candidate file on both sides; 120 s timed out on 12 Nov 2026
+// after build activation (a manual rerun took 4.3 s on a warm cache). Match the source transfer's 600 s deadline.
+export const CHECKSUM_TIMEOUT_MS=600000;
 export function followStagingDeployment(official,ssh,observation={}){
  return official.followDeploy({...observation,run:offset=>ssh(official.buildFollowCommand(offset),{encoding:null,stdio:['ignore','pipe','inherit']})});
 }
@@ -71,7 +74,7 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  requireSuccessfulBuild(official,status,evidence.sha);
  if(status.built_build_id!==grant.build.nextBuildId)throw Error('Actual installed build differs from original CI build');
  frozen();
- const checksum=execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:120000,maxBuffer:16*1024**2});
+ const checksum=execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:CHECKSUM_TIMEOUT_MS,maxBuffer:16*1024**2});
  const checksumCheckedAt=new Date().toISOString();
  save('source-arrival.json',{source:evidence.sha,checksum:true,output:checksum,checkedAt:checksumCheckedAt});
  if(checksum.length!==0)throw Error('Source checksum arrival differs; owned previous build retained for explicit recovery');
@@ -83,9 +86,9 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  const cleanupCommand=stagingInstallerCommand('cleanup-session',grant.source,grant.installId,grant.build.buildRecordId);
  const channel=openNormalCleanupChannel(transport.sshArgs(guardCommand(lease,cleanupCommand)));
  const cleaned=await driveNormalCleanup({channel,grant,arrival:initialArrival,frozen,save,
-  checksum:()=>execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:120000,maxBuffer:16*1024**2})});
+  checksum:()=>execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:CHECKSUM_TIMEOUT_MS,maxBuffer:16*1024**2})});
  const arrival=validateFinalCleanup(cleaned,{grant,installed,expectedLedger});save('owned-cleanup.json',cleaned);frozen();
- const finalChecksum=execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:120000,maxBuffer:16*1024**2});
+ const finalChecksum=execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:CHECKSUM_TIMEOUT_MS,maxBuffer:16*1024**2});
  save('final-source-arrival.json',{source:evidence.sha,checksum:true,output:finalChecksum,checkedAt:new Date().toISOString()});
  if(finalChecksum.length!==0)throw Error('Final source checksum differs after cleanup; owner intervention required');frozen();
  leasePhase(lease,sshRaw,'arrived',grant.build.nextBuildId);
