@@ -234,7 +234,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/attendance/application-history','admin','attendance'],['/attendance/application-history/visible','everyone','attendance'],
  ['/attendance/breakdown','admin','attendance'],['/attendance/clock','everyone','attendance'],['/attendance/daily','everyone','attendance'],
  ['/attendance/import','admin','attendance'],['/attendance/import/logs','admin','attendance'],['/attendance/individual','everyone','attendance'],
- ['/attendance/my-records','everyone','attendance'],['/attendance/my-roster','everyone','attendance'],['/attendance/plan-ot','everyone','attendance'],
+ ['/attendance/my-records','everyone','attendance'],['/attendance/my-roster','everyone','attendance'],['/attendance/on-behalf/approve','everyone','attendance'],['/attendance/on-behalf/request','everyone','attendance'],['/attendance/plan-ot','everyone','attendance'],
  ['/attendance/plan-ot/apply','everyone','attendance'],['/attendance/recompute','admin','attendance'],
  ['/attendance/request-status','everyone','attendance'],['/attendance/requests','everyone','attendance'],['/cases','everyone',null],['/claims','everyone','claims'],
  ['/control-tower/agents','admin',null],

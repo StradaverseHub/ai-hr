@@ -31,7 +31,9 @@ const OPERATIONS={loops:'loops_overview',payroll_cycle:'payroll_cycle_status',sa
  // Payroll history learning (P2): its operations_status topic, listed in offer.topicTools from spec v24.
  payroll_learning:'payroll_learning_status',
  // 50d9b809: the Shared Leave Groups page's groups, listed in offer.topicTools from spec v29.
- shared_leave_groups:'shared_leave_groups'};
+ shared_leave_groups:'shared_leave_groups',
+ // 96a54ed2: the Request On Behalf and Approve On Behalf pages' lists, listed in offer.topicTools from spec v30.
+ attendance_on_behalf_subjects:'attendance_on_behalf_subjects',attendance_on_behalf_approvers:'attendance_on_behalf_approvers'};
 const WHY={pay_difference:'explain_pay_difference',payslip_statutory:'explain_payslip_statutory',claim_limit:'explain_claim_limit',
  leave_entitlement:'explain_leave_entitlement',attendance_day:'explain_attendance_day'};
 
@@ -79,8 +81,11 @@ describe('the topic tools',()=>{
    expect(ANSWERED_BY[read],read).toContain(tool);
    expect(topicRead(tool,topic)).toBe(declared);
   }
-  // The operations topics are administrators' only; the explainers are everyone's own, under the explainers worker.
-  for(const read of Object.values(OPERATIONS))expect(TERAS_CAPABILITIES.find(row=>row.name===read)).toMatchObject({admin:true,worker:null});
+  // The operations topics are administrators' only, except v30's two on-behalf lists, which managers holding the on-behalf
+  // permission key may read too (team access; the runner refuses anyone without the key); the explainers are everyone's
+  // own, under the explainers worker.
+  const ON_BEHALF=['attendance_on_behalf_subjects','attendance_on_behalf_approvers'];
+  for(const read of Object.values(OPERATIONS))expect(TERAS_CAPABILITIES.find(row=>row.name===read)).toMatchObject(ON_BEHALF.includes(read)?{admin:false,access:'team',worker:null}:{admin:true,worker:null});
   for(const read of Object.values(WHY))expect(TERAS_CAPABILITIES.find(row=>row.name===read)).toMatchObject({admin:false,worker:'explainers'});
   // The explainers worker's switch withholds explain_why itself (core/teras-wiring/turn.ts conversationTools), and its
   // records attribute it.

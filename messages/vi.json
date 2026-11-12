@@ -587,7 +587,9 @@
     "privateCases": "Hồ sơ riêng tư",
     "probationTracker": "Theo dõi thử việc",
     "myPayrollReadiness": "Mức sẵn sàng cho kỳ lương của tôi",
-    "attendanceFormulaBuilder": "Công thức chấm công"
+    "attendanceFormulaBuilder": "Công thức chấm công",
+    "attendanceRequestOnBehalf": "Gửi yêu cầu thay",
+    "attendanceApproveOnBehalf": "Phê duyệt thay"
   },
   "dashboard": {
     "viewAll": "Xem tất cả"
@@ -5559,6 +5561,7 @@
     "maFoundMissingOut": "Thiếu giờ ra",
     "maFoundAbsent": "Không có bản ghi nào",
     "maFoundLateBy": "Vào muộn · {minutes} phút",
+    "maFoundLateAfterOffset": "Muộn sau bù trừ làm thêm · {minutes} phút",
     "maFoundLateUnknown": "Vào muộn · chưa ghi nhận thời lượng",
     "maFoundEarlyBy": "Về sớm · {minutes} phút",
     "maFoundShort": "Ít hơn số giờ theo lịch",
@@ -11954,7 +11957,9 @@
         "jobArchitecture": "Quyền truy cập Kiến trúc công việc phụ thuộc vào phân công Kiến trúc công việc hiện tại và phạm vi công ty của bạn.",
         "rewardsAccess": "Phân công Rewards đang có hiệu lực và quyền quản trị HR theo phạm vi quyết định quyền truy cập; chỉ có vai trò hệ thống không cho phép mọi hành động.",
         "myPrivateCases": "Chỉ các hồ sơ riêng tư của chính người đăng nhập. Vai trò đặc quyền không mở rộng phạm vi; quản trị viên không thể đọc hồ sơ của người khác tại đây.",
-        "privateCaseHandling": "Mọi người đều truy cập được, nhưng chỉ hiển thị hồ sơ cho người xử lý được chỉ định của công ty liên quan (hoặc quản trị viên tập đoàn khi không còn người xử lý phù hợp), không bao giờ cho người gửi hoặc người bị người gửi loại trừ. Vai trò không cấp quyền gì tại đây."
+        "privateCaseHandling": "Mọi người đều truy cập được, nhưng chỉ hiển thị hồ sơ cho người xử lý được chỉ định của công ty liên quan (hoặc quản trị viên tập đoàn khi không còn người xử lý phù hợp), không bao giờ cho người gửi hoặc người bị người gửi loại trừ. Vai trò không cấp quyền gì tại đây.",
+        "attendanceRequestOnBehalf": "Chỉ liệt kê nhân viên trong các công ty bạn quản trị với vai trò HR, hoặc người dưới bạn trong tuyến báo cáo của chính bạn, khi bạn có quyền attendance.request_on_behalf. Yêu cầu theo quy trình của chính nhân viên đó.",
+        "attendanceApproveOnBehalf": "Chỉ liệt kê người phê duyệt trong các công ty bạn quản trị với vai trò HR, hoặc người dưới bạn trong tuyến báo cáo của chính bạn, khi bạn có quyền attendance.approve_on_behalf. Quyết định được ghi nhận là thay mặt người phê duyệt được chỉ định."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -15168,7 +15173,8 @@
       "perDayDecision": "Quyết định theo ngày",
       "confirmed": "Đã xác nhận",
       "extended": "Đã gia hạn",
-      "terminated": "Đã chấm dứt"
+      "terminated": "Đã chấm dứt",
+      "escalated": "Đã chuyển cấp"
     }
   },
   "payrollConfig": {
@@ -27597,7 +27603,13 @@
       "unusedDeleteImpact": "Xóa quy trình chưa sử dụng cho {company}? Mọi phiên bản chưa sử dụng sẽ bị xóa vĩnh viễn. Không thể hoàn tác.",
       "usedCannotDelete": "Quy trình đã được dùng trong giao dịch phê duyệt nên không thể xóa. Vui lòng lưu trữ.",
       "archived": "Đã lưu trữ quy trình. Đơn và lịch sử hiện có được giữ nguyên.",
-      "archivedList": "Quy trình đã lưu trữ"
+      "archivedList": "Quy trình đã lưu trữ",
+      "escalationLegend": "Phê duyệt chuyển cấp – Tự động chuyển lên cấp tiếp theo nếu không phê duyệt / từ chối sau [Ngày]",
+      "escalationEnable": "Bật phê duyệt chuyển cấp",
+      "escalationDays": "Thời hạn chuyển cấp (ngày)",
+      "escalationHelp": "Tính theo ngày lịch, từ ngày sau khi yêu cầu đến cấp này. Một lần kiểm tra hằng đêm sẽ chuyển yêu cầu lên cấp tiếp theo; yêu cầu không bao giờ được tự động phê duyệt hay từ chối.",
+      "escalationInvalid": "Nhập số ngày là số nguyên từ 1 đến 365.",
+      "escalationFinal": "Cấp cuối – không chuyển cấp thêm"
     },
     "chooseCompanies": "Chọn công ty",
     "searchCompanies": "Tìm công ty được phép",
@@ -27704,7 +27716,8 @@
         "hr_unavailable": "Không có quản trị viên HR nào có thể duyệt cho nhân viên này.",
         "selected_unavailable": "Người duyệt được chọn đã ngừng hoạt động, không có tài khoản đăng nhập duy nhất dùng được, hoặc nằm ngoài phạm vi công ty được phép. Hãy thay người được chọn.",
         "login_unusable": "Người duyệt không có tài khoản đăng nhập duy nhất dùng được cho công ty của nhân viên này. Hãy nhờ HR sửa tài khoản."
-      }
+      },
+      "pendingActivation": "Tài khoản chưa được kích hoạt – các yêu cầu sẽ chờ người phê duyệt này"
     }
   },
   "attendanceHistory": {
@@ -27787,7 +27800,8 @@
     "modes": {
       "assigned": "Người phê duyệt được chỉ định",
       "delegate": "Người được ủy quyền hợp lệ",
-      "administrator": "Nhân sự thay mặt"
+      "administrator": "Nhân sự thay mặt",
+      "on_behalf": "Thay mặt người phê duyệt được chỉ định"
     },
     "invalidFilters": "Không thể áp dụng bộ lọc. Kiểm tra ngày và các giá trị đã chọn rồi thử lại.",
     "stageRecorded": "Đã ghi nhận bước phê duyệt",
@@ -27927,7 +27941,15 @@
     },
     "skippedNoSuperior": "Tự động bỏ qua - Không còn Cấp trên trực tiếp ({sources})",
     "skippedDecidedAt": "Được quyết định khi gửi đơn, {date}",
-    "skippedLabel": "Không bắt buộc"
+    "skippedLabel": "Không bắt buộc",
+    "awaitingActivation": "Đang chờ kích hoạt tài khoản",
+    "escalatedStage": "Đã chuyển cấp",
+    "escalatedMoved": "Không có phê duyệt hoặc từ chối trong {days} ngày. Đã tự động chuyển lên Cấp {level}.",
+    "escalatedWaitedFor": "Đã chờ",
+    "escalatedBy": "Hệ thống tự động chuyển cấp",
+    "submittedOnBehalfBy": "Được gửi thay bởi {name}",
+    "approvedOnBehalf": "Đã phê duyệt thay",
+    "rejectedOnBehalf": "Đã từ chối thay"
   },
   "scheduleDrafts": {
     "staleLadder": "Các khoảng thời gian hoặc mức tính làm thêm giờ đã thay đổi trong phần Chung. Bản nháp của bạn vẫn còn ở đây. Hãy tải lại trang này trước khi lưu cài đặt làm thêm giờ. Các thay đổi chưa lưu chỉ bị bỏ sau khi bạn xác nhận.",
@@ -38324,5 +38346,96 @@
     "actorWithId": "{name} ({employeeId})",
     "actorUnlinked": "Đăng nhập quản trị (không có hồ sơ nhân viên · đăng nhập kết thúc bằng {suffix})",
     "actorUnavailable": "Người dùng không khả dụng"
+  },
+  "scheduleOvertimeSetting": {
+    "title": "Cài đặt làm thêm giờ",
+    "intro": "Kiểm soát cách ghi nhận, phê duyệt, bù trừ và làm tròn giờ làm thêm cho nhân viên trong Nhóm lịch này. Áp dụng từ ngày bắt đầu: các ngày trước, bản ghi chấm công, bản ghi đi muộn và bảng lương đã qua không bao giờ được tính lại.",
+    "companiesLabel": "Áp dụng cho",
+    "allCompanies": "Tất cả công ty",
+    "selectedCompanies": "Công ty đã chọn",
+    "effectiveFrom": "Ngày bắt đầu",
+    "effectiveHint": "Sau hôm nay, và sau mọi ngày bắt đầu đã lưu của công ty được chọn.",
+    "applicabilityTitle": "Phạm vi làm thêm giờ",
+    "beforeShift": "Làm thêm trước ca",
+    "beforeShiftHint": "Cho phép làm thêm trước ca đã lên lịch.",
+    "afterShift": "Làm thêm sau ca",
+    "afterShiftHint": "Cho phép làm thêm sau ca đã lên lịch.",
+    "allowBackdated": "Cho phép yêu cầu làm thêm hồi tố không cần chấm công",
+    "allowBackdatedHint": "Nhân viên có thể yêu cầu làm thêm hồi tố khi không có bản ghi chấm công tương ứng. Nhân sự vẫn phải ghi nhận khoảng thời gian làm việc thực tế trước khi được tính.",
+    "splitAtMidnight": "Tách làm thêm giờ lúc nửa đêm",
+    "splitAtMidnightHint": "Phần làm thêm sau nửa đêm thuộc ngày dương lịch kế tiếp như làm thêm sớm. Ví dụ: 22:00 đến 02:00 tính 2 giờ cho mỗi ngày.",
+    "offsetTitle": "Bù trừ làm thêm bằng đi muộn",
+    "offsetLateness": "Bù trừ làm thêm bằng đi muộn",
+    "offsetHint": "Trừ số phút đi muộn khỏi giờ làm thêm hợp lệ. Ví dụ: muộn 20 phút so với 60 phút hợp lệ còn lại 40. Số phút đi muộn đã ghi được giữ nguyên.",
+    "showLatenessException": "Hiển thị ngoại lệ đi muộn sau bù trừ",
+    "showLatenessExceptionHint": "Hiển thị ngoại lệ đi muộn cho phần đi muộn còn lại sau bù trừ.",
+    "approvalTitle": "Phương thức phê duyệt làm thêm giờ",
+    "approvalManual": "Thủ công",
+    "approvalAuto": "Tự động",
+    "approvalManualHint": "Chấm công không tạo giờ làm thêm phải trả. Bản ghi chấm công được giữ lại, và giờ làm thêm được nhập thủ công trong Bảng lương.",
+    "autoMethod": "Phương thức phê duyệt làm thêm tự động",
+    "methodIntersect": "Giao giữa thực tế và đã duyệt trước",
+    "methodActual": "Giờ thực tế",
+    "methodPreApproved": "Làm thêm đã duyệt",
+    "methodIntersectHint": "Trả theo số phút thấp hơn giữa đã duyệt và thực tế: duyệt 120, thực tế 90 trả 90.",
+    "methodActualHint": "Trả theo số phút hợp lệ thực tế, không giới hạn theo phê duyệt.",
+    "methodPreApprovedHint": "Trả theo thời lượng đã duyệt: duyệt 120, thực tế 90 trả 120.",
+    "patternsTitle": "Mẫu làm thêm giờ cho từng loại ngày",
+    "patternsHint": "Tiền làm thêm được tính bởi Mẫu làm thêm giờ đã chọn. Chỉ liệt kê các mẫu đang hoạt động cho mọi công ty được chọn.",
+    "patternsNone": "Không có Mẫu làm thêm giờ nào đang hoạt động cho mọi công ty được chọn. Kích hoạt một mẫu trong Mẫu làm thêm giờ để dùng Tự động, hoặc chọn Thủ công.",
+    "choosePattern": "Chọn Mẫu làm thêm giờ",
+    "dayNormal": "Ngày làm việc",
+    "dayOff": "Ngày nghỉ không làm việc",
+    "dayRest": "Ngày nghỉ hằng tuần",
+    "dayPublicHoliday": "Ngày lễ",
+    "dayReplacementHoliday": "Ngày nghỉ bù",
+    "roundingTitle": "Làm tròn làm thêm giờ",
+    "roundingMethod": "Phương thức làm tròn làm thêm giờ",
+    "roundUp": "Làm tròn lên",
+    "roundDown": "Làm tròn xuống",
+    "roundingStep": "Làm tròn làm thêm giờ theo phút",
+    "stepMinutes": "{n} phút",
+    "roundingHint": "Làm tròn được áp dụng cuối cùng, sau phương thức phê duyệt và bù trừ đi muộn. Thời lượng chấm công đã ghi không thay đổi.",
+    "unsupportedRounding": "Cách làm tròn đã lưu dùng tùy chọn mà phần này không cung cấp. Lưu sẽ thay thế từ ngày bắt đầu mới.",
+    "differs": "{n, plural, other {# công ty}} có Cài đặt làm thêm giờ khác hoặc chưa có. Lưu sẽ áp dụng cài đặt này cho mọi công ty được chọn.",
+    "savedFrom": "Cài đặt đã lưu bắt đầu từ {date}.",
+    "none": "Chưa lưu Cài đặt làm thêm giờ. Giờ làm thêm của nhóm này hoạt động như trước cho đến khi lưu.",
+    "save": "Lưu cài đặt làm thêm giờ",
+    "systemReason": "Đã lưu Cài đặt làm thêm giờ của Nhóm lịch",
+    "on": "Bật",
+    "off": "Tắt",
+    "payrollNote": "Bảng lương nhận số liệu làm thêm cuối cùng từ cài đặt này, giống như cách nhận làm thêm hiện nay."
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "Gửi yêu cầu thay",
+    "requestHelp": "Chọn nhân viên, sau đó gửi Bất thường chấm công hoặc Tự khai làm thêm giờ cho họ trên các màn hình thông thường. Yêu cầu theo quy trình và người phê duyệt của chính họ.",
+    "approveTitle": "Phê duyệt thay",
+    "approveHelp": "Chọn người phê duyệt được chỉ định có các yêu cầu chấm công đang chờ mà bạn cần xử lý.",
+    "approveListHelp": "Các yêu cầu đang chờ {name} mà bạn có thể quyết định thay họ.",
+    "searchLabel": "Tìm theo mã nhân viên hoặc tên",
+    "searchPlaceholder": "vd. EMP-0123 hoặc tên",
+    "search": "Tìm",
+    "results": "Nhân viên bạn có thể thay mặt",
+    "noResults": "Không có nhân viên nào bạn có thể thay mặt khớp với tìm kiếm này.",
+    "noPermission": "Vai trò của bạn không có quyền này. Hãy hỏi quản trị viên nếu bạn cần.",
+    "choose": "Chọn",
+    "employeeName": "Nhân viên",
+    "employeeId": "Mã nhân viên",
+    "company": "Công ty",
+    "department": "Phòng ban",
+    "changeEmployee": "Đổi nhân viên",
+    "chooseCategory": "Bạn muốn gửi loại yêu cầu nào?",
+    "irregularity": "Bất thường chấm công",
+    "irregularityHelp": "Giờ chấm công thiếu hoặc sai, thiếu giờ hoặc vắng mặt, trong các ngày của chính nhân viên.",
+    "selfOvertime": "Tự khai làm thêm giờ",
+    "selfOvertimeHelp": "Lập kế hoạch hoặc khai làm thêm giờ theo Nhóm lịch và quy tắc làm thêm giờ của chính nhân viên.",
+    "banner": "Đang gửi thay cho {name}",
+    "pendingTitle": "Yêu cầu đang chờ phê duyệt",
+    "pendingEmpty": "Không có yêu cầu nào đang chờ người phê duyệt này mà bạn có thể quyết định.",
+    "approveOnBehalf": "Phê duyệt thay",
+    "rejectOnBehalf": "Từ chối thay",
+    "approveAudit": "Lịch sử giữ người được chọn là người phê duyệt được chỉ định và ghi nhận bạn là người thực hiện.",
+    "previous": "Trước",
+    "next": "Tiếp"
   }
 }

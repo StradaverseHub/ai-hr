@@ -2,7 +2,8 @@
 import { saveScheduleGroupControl } from '@/core/schedule-group-controls';
 import { withTenant } from '@/db/client';
 import { lockAccessConfigurationWriteTx } from '@/core/access-configuration-lock';
-import { lockAttendanceClockPolicyConfigurationTx, saveScheduleGroupClockPolicy } from '@/packs/attendance/service';
+import { lockAttendanceClockPolicyConfigurationTx, saveScheduleGroupClockPolicy, saveScheduleGroupOvertimeSetting } from '@/packs/attendance/service';
+import { readScheduleOvertimeSettingFields } from './overtime-setting-fields';
 import { readScheduleClockPolicyFields } from './clock-policy-fields';
 import { parseOtRows } from './overtime-fields';
 
@@ -289,6 +290,26 @@ export async function saveScheduleGroupOvertimeAction(fd: FormData) {
     const nonce = String(fd.get('__attendanceSaveNonce') ?? '');
     redirect(`${toPattern}&toast=${encodeURIComponent(t('savedToast'))}${/^[a-f0-9]{32}$/.test(nonce) ? `&saveAck=${nonce}` : ''}`);
   }
+  okScheduleGroup(ruleId, t('savedToast'), 'overtime', String(fd.get('__attendanceSaveNonce') ?? ''));
+}
+
+/** 2f803985 — Schedule Group › Overtime › Overtime Setting. Writes one future-dated policy revision per
+ * in-scope company in one transaction (core/attendance-overtime-setting.ts); refusals land on the Overtime
+ * section of this page. */
+export async function saveScheduleGroupOvertimeSettingAction(fd: FormData) {
+  const ruleId = String(fd.get('ruleId') ?? '');
+  const { s } = await loadRule(ruleId);
+  try {
+    const fields = readScheduleOvertimeSettingFields(fd);
+    if (!fields) throw new Error('Reopen this Schedule Group before saving the Overtime Setting.');
+    const reason = (await getTranslations('scheduleOvertimeSetting'))('systemReason');
+    await saveScheduleGroupOvertimeSetting(s, { ruleId, scope: fields.scope, effectiveFrom: fields.effectiveFrom,
+      setting: fields.setting, expectedToken: fields.token, reason });
+  } catch (e) {
+    failScheduleGroup(e, ruleId, 'overtime');
+  }
+  revalidatePath(SCHEDULE_GROUPS);
+  const t = await getTranslations('admin.scheduleConfig');
   okScheduleGroup(ruleId, t('savedToast'), 'overtime', String(fd.get('__attendanceSaveNonce') ?? ''));
 }
 

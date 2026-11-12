@@ -269,6 +269,7 @@ export function validateAnyAttendanceWorkflow(raw: unknown): AnyAttendanceWorkfl
 /** Finite, translated business guidance; never render raw driver/SQL errors or problem codes. */
 export function attendanceLevelProblemMessageKey(problem: AttendanceLevelProblem): 'selectionRequired' | 'participantLimit' | 'depthRequired' | 'differentPeople' | 'superiorUnavailable' | 'correctLevel' | 'calculationHandoff' | 'identityUnavailable' {
     if (problem.code === 'hr_handoff_required') return 'calculationHandoff';
+    // outside_company_scope stays mapped for tokens issued before 5140 (approvers may now be in any company of the tenant).
     if (['employee_unavailable', 'outside_company_scope', 'missing_or_ambiguous_login', 'missing_person', 'invalid_identity', 'hr_unavailable'].includes(problem.code)) return 'identityUnavailable';
     if (problem.code === 'selection_required') return 'selectionRequired';
     if (problem.code === 'too_many_participants') return 'participantLimit';

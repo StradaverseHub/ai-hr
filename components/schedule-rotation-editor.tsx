@@ -24,7 +24,8 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
 }) {
   const t = useTranslations('admin.rotation');
   const te=useTranslations('scheduleGroupEditor');
-  const [createRotation,setCreateRotation]=useState(false);
+  // 2f803985 — ticked by default on Add Schedule: the dated rotation is the one place Day Type and Shift are set.
+  const [createRotation,setCreateRotation]=useState(true);
   const formId=`attendance-rotation-${ruleId}`;
   const [expectedRevision,setExpectedRevision]=useState(revision);
   const [savedRevision,setSavedRevision]=useState('');

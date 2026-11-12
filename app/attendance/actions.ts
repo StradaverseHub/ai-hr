@@ -10,7 +10,10 @@ import { decideAttendanceCorrection, MissingAttendanceRejectReasonError } from '
 
 export async function decideCorrectionAction(formData: FormData) {
   const s = await getSession();
-  const back = formData.get('returnTo') === '/attendance/application-history/visible'
+  // 96a54ed2 Approve On Behalf posts the designated approver; the service re-proves the key and the on-behalf slot.
+  const onBehalfRaw = String(formData.get('onBehalfOf') ?? '');
+  const onBehalfOf = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(onBehalfRaw) ? onBehalfRaw.toLowerCase() : undefined;
+  const back = onBehalfOf ? `/attendance/on-behalf/approve/${onBehalfOf}` : formData.get('returnTo') === '/attendance/application-history/visible'
     ? '/attendance/application-history/visible' : '/attendance';
   let outcomeStatus: string = String(formData.get('decision'));
   try {
@@ -20,12 +23,14 @@ export async function decideCorrectionAction(formData: FormData) {
       rejectReason: String(formData.get('rejectReason') ?? ''),
       remarks: String(formData.get('remarks') ?? ''),
       expectedStageIndex: formData.get('workflowStage') ? Number(formData.get('workflowStage')) : undefined, expectedParticipantSlot: String(formData.get('workflowParticipant') ?? '') || undefined,
+      ...(onBehalfOf ? { onBehalfOfEmploymentId: onBehalfOf } : {}),
     });
     outcomeStatus = outcome.status;
   } catch (e) {
     redirect(`${back}?error=${encodeURIComponent(e instanceof MissingAttendanceRejectReasonError ? (await getTranslations('attendance'))('rejectRequired') : await attendanceWorkflowErrorMessage(e))}`);
   }
-  for (const path of ['/attendance', '/attendance/application-history', '/attendance/application-history/visible', '/approvals', '/attendance/request-status']) revalidatePath(path);
+  for (const path of ['/attendance', '/attendance/application-history', '/attendance/application-history/visible', '/approvals', '/attendance/request-status', '/attendance/on-behalf/approve']) revalidatePath(path);
+  revalidatePath('/attendance/on-behalf/approve/[employmentId]', 'page');
   revalidatePath('/attendance/application-history/[id]', 'page');
   const t = await getTranslations('attendanceHistory');
   redirect(`${back}?toast=${encodeURIComponent(outcomeStatus === 'pending' ? t('stageRecorded') : t('finalOutcome', { status: t(`statuses.${outcomeStatus}`) }))}`);

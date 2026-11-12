@@ -93,6 +93,7 @@ export function OtPlanCalendar({
   selected,
   today,
   dayHrefBase,
+  dayHrefSuffix = '',
   prevHref,
   nextHref,
   compact = false,
@@ -111,6 +112,8 @@ export function OtPlanCalendar({
   today: string;
   /** Day links are `${dayHrefBase}?date=<iso>`. A string, because a function cannot cross the boundary. */
   dayHrefBase: string;
+  /** 96a54ed2: extra query kept on every day link (Request On Behalf's chosen employee), e.g. `&onBehalfOf=<id>`. */
+  dayHrefSuffix?: string;
   prevHref: string;
   nextHref: string;
   /** The phone/list rendering: smaller cells, no "today is ringed" footnote. */
@@ -195,7 +198,7 @@ export function OtPlanCalendar({
           return (
             <Link
               key={iso}
-              href={`${dayHrefBase}?date=${iso}`}
+              href={`${dayHrefBase}?date=${iso}${dayHrefSuffix}`}
               scroll={false}
               data-otcal-date={iso}
               aria-current={isSelected ? 'date' : undefined}

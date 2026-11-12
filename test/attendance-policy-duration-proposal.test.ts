@@ -24,8 +24,9 @@ describe('shared dated-policy duration proposal',()=>{
   // 60 actual eligible − 15 unioned break − (30 measured late − 10 already unpaid) = 25.
   expect(result).toMatchObject({authority:'proposalOnly',lateOffsetMinutes:20,payableMinutes:25,intervalBasis:'actual',classes:[{eligibleMinutes:25,payableMinutes:25}]});
   expect(result.parts[0].intervals).toEqual([{from:1115,to:1140}]);expect(f).toEqual(before);
+  // 2f803985 plan revision 2: eligibility, then the approval method, then the lateness offset.
   expect(result.selectionSteps).toEqual([{kind:'breaks',basis:'actual',before:60,after:45},
-   {kind:'lateOffset',before:45,after:25,requested:20,applied:20},{kind:'method',method:'actual',before:25,after:25}]);
+   {kind:'method',method:'actual',before:45,after:45},{kind:'lateOffset',before:45,after:25,requested:20,applied:20}]);
  });
  it('finalizes Manual approved positions once after the same actual break and late selection',()=>{
   const f=fixture();f.policy.overtime.approval='manual';f.approval='approved';f.policy.overtime.offsetLateness=true;
@@ -88,11 +89,13 @@ describe('shared dated-policy duration proposal',()=>{
   expect(result.payableMinutes).toBe(requestedWinner?requestedCount:40);
   expect(result.parts.reduce((sum,part)=>sum+part.allocatedPayableMinutes,0)).toBe(result.payableMinutes);
  });
- it('applies one actual lateness offset before intersecting the approved window',()=>{
+ it('intersects the approved window first and then applies the one lateness offset (2f803985 order)',()=>{
   const f=fixture();f.policy.overtime.offsetLateness=true;f.method='intersect';f.policy.overtime.autoMethod='intersect';
   f.lateOffsetIntervals=[{from:500,to:515}];f.eligiblePlannedIntervals=[{from:1110,to:1170}];
-  const result=calculated(f);expect(result.lateOffsetMinutes).toBe(15);expect(result.payableMinutes).toBe(30);
-  expect(result.parts[0].intervals).toEqual([{from:1110,to:1140}]);
+  // Actual 18:00–19:00 ∩ approved 18:30–19:30 = 30 minutes; 15 late minutes then leave 15.
+  const result=calculated(f);expect(result.lateOffsetMinutes).toBe(15);expect(result.payableMinutes).toBe(15);
+  expect(result.parts[0].intervals).toEqual([{from:1125,to:1140}]);
+  expect(result.selectionSteps.map(step=>step.kind)).toEqual(['breaks','method','lateOffset']);
  });
  it('requires an established worked day and evidenced plan for Pre-Approved, keeping planned coverage distinct from actual work',()=>{
   const f=fixture();f.method='preApproved';f.policy.overtime.autoMethod='preApproved';f.eligibleActualIntervals=[];f.workedIntervals=[];
@@ -114,40 +117,47 @@ describe('shared dated-policy duration proposal',()=>{
   const f=fixture();f.policy.overtime.offsetLateness=true;expect(deriveAttendancePolicyDurationProposal(f)).toMatchObject({status:'unavailable',reason:'lateEvidenceUnavailable'});
   f.lateOffsetIntervals=[];f.eligibleActualIntervals=[];expect(calculated(f).payableMinutes).toBe(0);
  });
- it('rounds once for a classification spanning midnight instead of independently per date or interval',()=>{
+ it('rounds each calendar date of a split classification on its own portion (2f803985 approved order)',()=>{
   const f=fixture();f.policy.overtime.splitAtMidnight=true;f.policy.overtime.rounding={mode:'up',step:30};
   f.workedIntervals=[{from:1420,to:1460}];f.eligibleActualIntervals=[{from:1420,to:1460}];f.calendar=[calendar(),calendar(nextDate)];
   const result=calculated(f);expect(result.payableMinutes).toBe(60);expect(result.parts.map(part=>part.minutes)).toEqual([20,20]);
-  expect(result.classes).toMatchObject([{eligibleMinutes:40,payableMinutes:60,unplacedPayableMinutes:20,steps:[{kind:'rounding',before:40,after:60}]}]);
+  expect(result.classes).toMatchObject([
+   {calendarDate:sourceDate,eligibleMinutes:20,payableMinutes:30,unplacedPayableMinutes:10,steps:[{kind:'rounding',before:20,after:30}]},
+   {calendarDate:nextDate,eligibleMinutes:20,payableMinutes:30,unplacedPayableMinutes:10,steps:[{kind:'rounding',before:20,after:30}]}]);
   expect(result.parts.reduce((sum,part)=>sum+part.allocatedPayableMinutes,0)).toBe(40);
+  // Different portions show the per-date rule: 25 + 15 rounded up to 30 gives 30 + 30, not 60 once.
+  f.workedIntervals=[{from:1415,to:1455}];f.eligibleActualIntervals=f.workedIntervals;
+  expect(calculated(f).classes.map(row=>row.payableMinutes)).toEqual([30,30]);
  });
- it.each(['earliest','latest'] as const)('attributes one rounded class remainder to its %s existing dated source without extending work',direction=>{
+ it.each(['earliest','latest'] as const)('attributes each date\'s rounded remainder to that date\'s own %s source without extending work',direction=>{
   const f=fixture();f.policy.overtime.splitAtMidnight=true;f.policy.overtime.rounding={mode:'up',step:30};
   f.workedIntervals=[{from:1420,to:1460}];f.eligibleActualIntervals=f.workedIntervals;
   f.calendar=[calendar(),calendar(nextDate)];f.allocationByClass.normal=direction;
-  const before=structuredClone(f),result=calculated(f),sequence=direction==='earliest'?0:1;
-  expect(result.classes[0].roundingCountAttribution).toEqual({kind:'roundingCount',minutes:20,direction,
-   partSequence:sequence,calendarDate:sequence===0?sourceDate:nextDate,dayClass:'normal',
-   anchor:sequence===0?{from:1420,to:1440}:{from:1440,to:1460}});
+  const before=structuredClone(f),result=calculated(f);
+  expect(result.classes.map(row=>row.roundingCountAttribution)).toEqual([
+   {kind:'roundingCount',minutes:10,direction,partSequence:0,calendarDate:sourceDate,dayClass:'normal',anchor:{from:1420,to:1440}},
+   {kind:'roundingCount',minutes:10,direction,partSequence:1,calendarDate:nextDate,dayClass:'normal',anchor:{from:1440,to:1460}}]);
   expect(result.parts.flatMap(part=>part.allocations)).toEqual([{from:1420,to:1440},{from:1440,to:1460}]);
   expect(result.parts.reduce((n,part)=>n+part.allocatedPayableMinutes,0)).toBe(40);
   expect(result.payableMinutes).toBe(60);expect(f).toEqual(before);
   const attributed=attendancePolicyCountAttribution(result);
   expect(attributed).toMatchObject({state:'known',physicalMinutes:40,roundedMinutes:20,minutes:60});
   if(attributed.state!=='known')throw Error('Expected explicit count attribution');
-  expect(attributed.parts.map(part=>part.minutes)).toEqual(direction==='earliest'?[40,20]:[20,40]);
-  const owner=attributed.parts[sequence],stored={sequence,calendarDate:owner.calendarDate,dayClass:owner.dayClass,
-   allocatedPayableMinutes:owner.physicalMinutes,durationEvidence:{allocatedIntervals:result.parts[sequence].allocations,
-    roundingCountAttributions:owner.roundingCountAttributions,attributedPayableMinutes:owner.minutes}};
-  expect(attendancePolicyStoredPartCount(stored)).toBe(40);
-  expect(attendancePolicyStoredPartCount({...stored,calendarDate:'2024-03-02'})).toBeNull();
-  expect(attendancePolicyStoredPartCount({...stored,durationEvidence:{...stored.durationEvidence,attributedPayableMinutes:41}})).toBeNull();
-  expect(attendancePolicyStoredPartCount({...stored,durationEvidence:{allocatedIntervals:[],attributedPayableMinutes:40}})).toBeNull();
-
-  const changed=structuredClone(result);changed.classes[0].roundingCountAttribution!.calendarDate='2024-03-02';
+  expect(attributed.parts.map(part=>part.minutes)).toEqual([30,30]);
+  for(const sequence of [0,1]){
+   const owner=attributed.parts[sequence],stored={sequence,calendarDate:owner.calendarDate,dayClass:owner.dayClass,
+    allocatedPayableMinutes:owner.physicalMinutes,durationEvidence:{allocatedIntervals:result.parts[sequence].allocations,
+     roundingCountAttributions:owner.roundingCountAttributions,attributedPayableMinutes:owner.minutes}};
+   expect(attendancePolicyStoredPartCount(stored)).toBe(30);
+   expect(attendancePolicyStoredPartCount({...stored,calendarDate:'2024-03-02'})).toBeNull();
+   expect(attendancePolicyStoredPartCount({...stored,durationEvidence:{...stored.durationEvidence,attributedPayableMinutes:31}})).toBeNull();
+  }
+  const changed=structuredClone(result);changed.classes[0].roundingCountAttribution!.calendarDate=nextDate;
   expect(attendancePolicyCountAttribution(changed).state).toBe('unavailable');
-  const missing=structuredClone(result);delete missing.classes[0].roundingCountAttribution;
+  const missing=structuredClone(result);delete missing.classes[1].roundingCountAttribution;
   expect(attendancePolicyCountAttribution(missing).state).toBe('unavailable');
+  const mixed=structuredClone(result);delete mixed.classes[0].calendarDate;
+  expect(attendancePolicyCountAttribution(mixed).state,'per-date and per-class rows never mix').toBe('unavailable');
  });
  it('keeps Nearest rounding count on its own class and respects the final maximum',()=>{
   const f=fixture();f.policy.overtime.splitAtMidnight=true;f.policy.overtime.rounding={mode:'nearest',step:30};

@@ -587,7 +587,9 @@
     "privateCases": "Kes peribadi",
     "probationTracker": "Penjejak percubaan",
     "myPayrollReadiness": "Kesediaan gaji saya",
-    "attendanceFormulaBuilder": "Formula kehadiran"
+    "attendanceFormulaBuilder": "Formula kehadiran",
+    "attendanceRequestOnBehalf": "Mohon Bagi Pihak",
+    "attendanceApproveOnBehalf": "Lulus Bagi Pihak"
   },
   "dashboard": {
     "viewAll": "Lihat semua"
@@ -5559,6 +5561,7 @@
     "maFoundMissingOut": "Waktu keluar tiada",
     "maFoundAbsent": "Tiada rekod",
     "maFoundLateBy": "Lewat masuk · {minutes} minit",
+    "maFoundLateAfterOffset": "Lewat selepas imbangan kerja lebih masa · {minutes} min",
     "maFoundLateUnknown": "Lewat masuk · tempoh tidak direkodkan",
     "maFoundEarlyBy": "Balik awal · {minutes} minit",
     "maFoundShort": "Kurang daripada jam berjadual",
@@ -11954,7 +11957,9 @@
         "jobArchitecture": "Akses Seni Bina Jawatan bergantung pada penugasan Seni Bina Jawatan dan skop syarikat semasa anda.",
         "rewardsAccess": "Penugasan Rewards berkuat kuasa dan kuasa pentadbir HR mengikut skop menentukan akses; peranan sistem sahaja tidak memberikan semua tindakan.",
         "myPrivateCases": "Hanya kes peribadi milik orang yang log masuk. Peranan berkeistimewaan tidak meluaskannya; pentadbir tidak boleh membaca kes orang lain di sini.",
-        "privateCaseHandling": "Boleh dicapai oleh semua orang, tetapi menunjukkan kes hanya kepada pengendali kes yang dilantik bagi syarikat kes itu (atau pentadbir kumpulan apabila tiada pengendali yang layak), tidak sekali-kali kepada penulisnya atau sesiapa yang dikecualikan oleh penulis. Peranan tidak memberi apa-apa di sini."
+        "privateCaseHandling": "Boleh dicapai oleh semua orang, tetapi menunjukkan kes hanya kepada pengendali kes yang dilantik bagi syarikat kes itu (atau pentadbir kumpulan apabila tiada pengendali yang layak), tidak sekali-kali kepada penulisnya atau sesiapa yang dikecualikan oleh penulis. Peranan tidak memberi apa-apa di sini.",
+        "attendanceRequestOnBehalf": "Hanya menyenaraikan pekerja dalam syarikat yang anda tadbir sebagai HR, atau orang di bawah anda dalam talian pelaporan anda sendiri, jika anda memegang attendance.request_on_behalf. Permohonan mengikut aliran kerja pekerja itu sendiri.",
+        "attendanceApproveOnBehalf": "Hanya menyenaraikan pelulus dalam syarikat yang anda tadbir sebagai HR, atau orang di bawah anda dalam talian pelaporan anda sendiri, jika anda memegang attendance.approve_on_behalf. Keputusan direkodkan bagi pihak pelulus yang ditetapkan."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -15168,7 +15173,8 @@
       "perDayDecision": "Keputusan harian",
       "confirmed": "Disahkan",
       "extended": "Dilanjutkan",
-      "terminated": "Ditamatkan"
+      "terminated": "Ditamatkan",
+      "escalated": "Dieskalasi"
     }
   },
   "payrollConfig": {
@@ -27597,7 +27603,13 @@
       "unusedDeleteImpact": "Padam aliran kerja yang belum digunakan untuk {company}? Semua versi yang belum digunakan akan dipadam secara kekal. Tindakan ini tidak boleh dibatalkan.",
       "usedCannotDelete": "Aliran kerja ini pernah digunakan oleh transaksi kelulusan dan tidak boleh dipadam. Sila arkibkannya.",
       "archived": "Aliran kerja diarkibkan. Permohonan dan sejarah sedia ada dikekalkan.",
-      "archivedList": "Aliran kerja diarkibkan"
+      "archivedList": "Aliran kerja diarkibkan",
+      "escalationLegend": "Kelulusan Eskalasi – Hala Automatik ke Tahap Seterusnya jika Tiada Kelulusan / Penolakan Selepas [Hari]",
+      "escalationEnable": "Dayakan Kelulusan Eskalasi",
+      "escalationDays": "Tempoh Eskalasi (Hari)",
+      "escalationHelp": "Hari kalendar, dikira dari hari selepas permohonan sampai ke tahap ini. Semakan setiap malam memindahkannya ke tahap seterusnya; ia tidak sekali-kali diluluskan atau ditolak secara automatik.",
+      "escalationInvalid": "Masukkan bilangan hari dalam nombor bulat dari 1 hingga 365.",
+      "escalationFinal": "Tahap akhir – tiada eskalasi lanjut"
     },
     "chooseCompanies": "Pilih syarikat",
     "searchCompanies": "Cari syarikat yang dibenarkan",
@@ -27704,7 +27716,8 @@
         "hr_unavailable": "Tiada pentadbir HR boleh meluluskan untuk pekerja ini.",
         "selected_unavailable": "Pelulus yang dipilih tidak aktif, tiada log masuk unik yang boleh digunakan, atau di luar skop syarikat yang dibenarkan. Gantikan pilihan.",
         "login_unusable": "Pelulus tiada log masuk unik yang boleh digunakan untuk syarikat pekerja ini. Minta HR membetulkan log masuk mereka."
-      }
+      },
+      "pendingActivation": "Akaun belum diaktifkan – permohonan akan menunggu pelulus ini"
     }
   },
   "attendanceHistory": {
@@ -27787,7 +27800,8 @@
     "modes": {
       "assigned": "Pelulus ditetapkan",
       "delegate": "Wakil sah",
-      "administrator": "HR bagi pihak"
+      "administrator": "HR bagi pihak",
+      "on_behalf": "Bertindak bagi pihak pelulus yang ditetapkan"
     },
     "invalidFilters": "Penapis tidak dapat digunakan. Semak tarikh dan nilai pilihan, kemudian cuba lagi.",
     "stageRecorded": "Peringkat kelulusan direkodkan",
@@ -27927,7 +27941,15 @@
     },
     "skippedNoSuperior": "Dilangkau secara automatik - Tiada Penyelia Langsung seterusnya ({sources})",
     "skippedDecidedAt": "Diputuskan semasa permohonan dihantar, {date}",
-    "skippedLabel": "Tidak diperlukan"
+    "skippedLabel": "Tidak diperlukan",
+    "awaitingActivation": "Menunggu pengaktifan akaun",
+    "escalatedStage": "Dieskalasi",
+    "escalatedMoved": "Tiada kelulusan atau penolakan dalam {days} hari. Dipindahkan secara automatik ke Tahap {level}.",
+    "escalatedWaitedFor": "Menunggu",
+    "escalatedBy": "Eskalasi automatik oleh sistem",
+    "submittedOnBehalfBy": "Dihantar bagi pihak oleh {name}",
+    "approvedOnBehalf": "Diluluskan Bagi Pihak",
+    "rejectedOnBehalf": "Ditolak Bagi Pihak"
   },
   "scheduleDrafts": {
     "staleLadder": "Julat masa atau kadar kerja lebih masa telah berubah dalam bahagian Umum. Draf anda masih ada di sini. Muat semula halaman ini sebelum menyimpan tetapan kerja lebih masa. Perubahan yang belum disimpan hanya dibuang selepas pengesahan.",
@@ -38324,5 +38346,96 @@
     "actorWithId": "{name} ({employeeId})",
     "actorUnlinked": "Log masuk pentadbir (tiada rekod pekerja · log masuk berakhir {suffix})",
     "actorUnavailable": "Pengguna tidak tersedia"
+  },
+  "scheduleOvertimeSetting": {
+    "title": "Tetapan Kerja Lebih Masa",
+    "intro": "Mengawal cara kerja lebih masa direkod, diluluskan, diimbangi dan dibundarkan bagi pekerja dalam Kumpulan Jadual ini. Ia terpakai mulai tarikh mula: hari terdahulu, rekod perakaman waktu, rekod kelewatan dan gaji lalu tidak dikira semula.",
+    "companiesLabel": "Terpakai kepada",
+    "allCompanies": "Semua syarikat",
+    "selectedCompanies": "Syarikat terpilih",
+    "effectiveFrom": "Tarikh mula",
+    "effectiveHint": "Selepas hari ini, dan selepas sebarang tarikh mula yang telah disimpan bagi syarikat terpilih.",
+    "applicabilityTitle": "Kebolehgunaan Kerja Lebih Masa",
+    "beforeShift": "Kerja Lebih Masa Sebelum Syif",
+    "beforeShiftHint": "Benarkan kerja lebih masa sebelum syif yang dijadualkan.",
+    "afterShift": "Kerja Lebih Masa Selepas Syif",
+    "afterShiftHint": "Benarkan kerja lebih masa selepas syif yang dijadualkan.",
+    "allowBackdated": "Benarkan Permohonan Kerja Lebih Masa Terdahulu Tanpa Perakaman Waktu",
+    "allowBackdatedHint": "Pekerja boleh memohon kerja lebih masa terdahulu tanpa rekod perakaman waktu. HR masih merekod tempoh kerja sebenar sebelum ia dikira.",
+    "splitAtMidnight": "Pisahkan Kerja Lebih Masa pada Tengah Malam",
+    "splitAtMidnightHint": "Kerja lebih masa selepas tengah malam dikira pada hari kalendar berikutnya sebagai kerja lebih masa awal. Contoh: 10:00 PM hingga 2:00 AM memberi 2 jam pada setiap tarikh.",
+    "offsetTitle": "Imbangi Kerja Lebih Masa dengan Kelewatan",
+    "offsetLateness": "Imbangi Kerja Lebih Masa dengan Kelewatan",
+    "offsetHint": "Tolak minit lewat masuk daripada kerja lebih masa yang layak. Contoh: lewat 20 minit berbanding 60 minit layak meninggalkan 40. Kelewatan yang direkod dikekalkan.",
+    "showLatenessException": "Tunjukkan Pengecualian Kelewatan Selepas Imbangan",
+    "showLatenessExceptionHint": "Tunjukkan pengecualian kelewatan bagi kelewatan yang masih berbaki selepas imbangan.",
+    "approvalTitle": "Kaedah Kelulusan Kerja Lebih Masa",
+    "approvalManual": "Manual",
+    "approvalAuto": "Auto",
+    "approvalManualHint": "Kehadiran tidak mencipta kerja lebih masa yang perlu dibayar. Rekod perakaman waktu dikekalkan, dan kerja lebih masa dimasukkan secara manual dalam Gaji.",
+    "autoMethod": "Kaedah Kelulusan Auto Kerja Lebih Masa",
+    "methodIntersect": "Persilangan Sebenar dan Pra-Lulus",
+    "methodActual": "Jam Sebenar",
+    "methodPreApproved": "Kerja Lebih Masa Diluluskan",
+    "methodIntersectHint": "Membayar yang lebih rendah antara minit diluluskan dan sebenar: diluluskan 120 dan sebenar 90 membayar 90.",
+    "methodActualHint": "Membayar minit layak sebenar, tanpa had kelulusan.",
+    "methodPreApprovedHint": "Membayar tempoh yang diluluskan: diluluskan 120 dan sebenar 90 membayar 120.",
+    "patternsTitle": "Corak Kerja Lebih Masa bagi setiap jenis hari",
+    "patternsHint": "Bayaran kerja lebih masa dikira oleh Corak Kerja Lebih Masa yang dipilih. Hanya corak yang aktif bagi setiap syarikat terpilih disenaraikan.",
+    "patternsNone": "Tiada Corak Kerja Lebih Masa yang aktif bagi setiap syarikat terpilih. Aktifkan satu dalam Corak Kerja Lebih Masa untuk menggunakan Auto, atau pilih Manual.",
+    "choosePattern": "Pilih Corak Kerja Lebih Masa",
+    "dayNormal": "Hari bekerja",
+    "dayOff": "Hari tidak bekerja",
+    "dayRest": "Hari rehat",
+    "dayPublicHoliday": "Cuti umum",
+    "dayReplacementHoliday": "Cuti gantian",
+    "roundingTitle": "Pembundaran Kerja Lebih Masa",
+    "roundingMethod": "Kaedah Pembundaran Kerja Lebih Masa",
+    "roundUp": "Bundarkan Ke Atas",
+    "roundDown": "Bundarkan Ke Bawah",
+    "roundingStep": "Pembundaran Kerja Lebih Masa kepada Minit",
+    "stepMinutes": "{n} Minit",
+    "roundingHint": "Pembundaran digunakan terakhir, selepas kaedah kelulusan dan imbangan kelewatan. Tempoh perakaman waktu yang direkod tidak diubah.",
+    "unsupportedRounding": "Pembundaran yang disimpan menggunakan pilihan yang tidak ditawarkan oleh bahagian ini. Menyimpan akan menggantikannya mulai tarikh mula baharu.",
+    "differs": "{n, plural, other {# syarikat mempunyai}} Tetapan Kerja Lebih Masa yang berbeza, atau tiada. Menyimpan akan menggunakan tetapan ini bagi setiap syarikat terpilih.",
+    "savedFrom": "Tetapan yang disimpan bermula pada {date}.",
+    "none": "Belum ada Tetapan Kerja Lebih Masa disimpan. Kerja lebih masa kumpulan ini berfungsi seperti sebelum ini sehingga satu disimpan.",
+    "save": "Simpan Tetapan Kerja Lebih Masa",
+    "systemReason": "Tetapan Kerja Lebih Masa Kumpulan Jadual disimpan",
+    "on": "Hidup",
+    "off": "Mati",
+    "payrollNote": "Gaji menerima angka kerja lebih masa akhir daripada tetapan ini, sama seperti ia menerima kerja lebih masa hari ini."
+  },
+  "attendanceOnBehalf": {
+    "requestTitle": "Mohon Bagi Pihak",
+    "requestHelp": "Pilih pekerja, kemudian failkan Ketidakaturan Kehadiran atau Lebih Masa Sendiri untuk mereka pada skrin biasa. Permohonan mengikut aliran kerja dan pelulus mereka sendiri.",
+    "approveTitle": "Lulus Bagi Pihak",
+    "approveHelp": "Pilih pelulus yang ditetapkan yang permohonan kehadiran belum selesainya perlu anda uruskan.",
+    "approveListHelp": "Permohonan yang menunggu {name} yang boleh anda putuskan bagi pihak mereka.",
+    "searchLabel": "Cari mengikut ID Pekerja atau nama",
+    "searchPlaceholder": "cth. EMP-0123 atau nama",
+    "search": "Cari",
+    "results": "Pekerja yang boleh anda wakili",
+    "noResults": "Tiada pekerja yang boleh anda wakili sepadan dengan carian ini.",
+    "noPermission": "Peranan anda tidak mempunyai kebenaran ini. Minta pentadbir jika anda memerlukannya.",
+    "choose": "Pilih",
+    "employeeName": "Pekerja",
+    "employeeId": "ID Pekerja",
+    "company": "Syarikat",
+    "department": "Jabatan",
+    "changeEmployee": "Tukar pekerja",
+    "chooseCategory": "Apakah yang ingin anda failkan?",
+    "irregularity": "Ketidakaturan Kehadiran",
+    "irregularityHelp": "Waktu jam yang tiada atau salah, jam kurang atau ketidakhadiran, untuk hari pekerja itu sendiri.",
+    "selfOvertime": "Lebih Masa Sendiri",
+    "selfOvertimeHelp": "Rancang atau tuntut lebih masa di bawah Kumpulan Jadual dan peraturan lebih masa pekerja itu sendiri.",
+    "banner": "Menghantar bagi pihak {name}",
+    "pendingTitle": "Permohonan menunggu kelulusan",
+    "pendingEmpty": "Tiada apa-apa yang menunggu pelulus ini yang boleh anda putuskan.",
+    "approveOnBehalf": "Lulus Bagi Pihak",
+    "rejectOnBehalf": "Tolak Bagi Pihak",
+    "approveAudit": "Sejarah mengekalkan orang yang dipilih sebagai pelulus yang ditetapkan dan merekodkan anda sebagai orang yang bertindak.",
+    "previous": "Sebelumnya",
+    "next": "Seterusnya"
   }
 }

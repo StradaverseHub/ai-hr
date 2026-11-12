@@ -4,7 +4,8 @@
  * These are the deterministic pieces the Overtime Setting section drives: the stored policy contract
  * (lib/attendance-group-policy.ts), duration finalisation and rounding (core/attendance-calc.ts), lateness
  * offset (packs/attendance/policy-duration.ts) and the midnight split (packs/attendance/policy-partition.ts).
- * The section's screen and writer are released only with the ADR-0134 execution work; nothing here reaches pay.
+ * Round 2 ships the screen, writer and Payroll link together: see overtime-setting-2f803985-calculation.test.ts
+ * and overtime-setting-2f803985-payroll.test.ts.
  */
 import { describe, expect, it } from 'vitest';
 import { finalizePolicyOvertimeDuration } from '../core/attendance-calc';
