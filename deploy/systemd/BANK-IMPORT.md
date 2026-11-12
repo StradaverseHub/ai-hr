@@ -283,5 +283,141 @@ disable and a bounded graceful stop. It never sends SIGKILL and never deletes pr
 or the identity. If the quarantine cannot be confirmed, it reports uncertainty for administrator recovery. A failed
 or partial attempt cannot be retried by deleting its records. After success, verify the worker as in the runbook
 (`scripts/check-import-worker.ts`), then set `AIHR_IMPORT_WORKER_REQUIRED=1` in the deploy environment. Later
-production updates need their own reviewed route: the staging `drain`/`activate` helper depends on staging
-deployment receipts and the v2 environment format.
+production updates use `production-drain`/`production-activate` below; the staging `drain`/`activate` helper depends on
+staging deployment receipts and the v2 environment format, and refuses production.
+
+## Production update (`production-drain`, `production-activate`) and rollback (`production-rollback`)
+
+The same production bundle updates an installed managed worker release to a new source, and can re-activate the
+pinned previous release. **Each production run still needs the owner's separate, explicit go-ahead**; the helper,
+its tests and its bundle grant no release authority. The staging `drain`/`activate`/`adopt-stopped` phases are not
+reachable from this bundle.
+
+The update is two phases because the web install sits between them. The window order is: `production-drain`, stop
+the web, install the web, migrate, start the web, `production-activate`. `production-drain` accepts either the exact
+previous web or the exact new web, so both phases may also run back to back after the web install (the staging
+order). Both phases take the same pins. The drain record binds them, and activation refuses any difference.
+
+Read these pins on production as root before the window and pass them unchanged to every phase:
+
+| Argument | Source of the value |
+| --- | --- |
+| `--previous-worker-source` | `systemctl show -p WorkingDirectory --value aihr-bank-import`: the managed release directory name |
+| `--unit-sha256` | `sha256sum /etc/systemd/system/aihr-bank-import.service`; equals that release receipt's `unitSha256` |
+| `--worker-env-sha256` | `sha256sum /etc/aihr/import-worker.env`; equals that receipt's `selectedEnvironmentSha256` |
+| `--existing-uid` | `id -u aihr-import` |
+| `--previous-web-source`, `--previous-web-build` | the installed web release and `/opt/ai-hr/.next/BUILD_ID` before the window |
+| `--source`, `--build-id` | the new release; `--release-manifest` must name both |
+| `--release-manifest`, `--release-manifest-sha256` | the private package's `release-manifest.json` and its `SHA256SUMS` line |
+| `--archive`, `--archive-sha256`, `--lock-sha256`, `--package-sha256` | the authenticated `worker-package-v1` artifact and its provenance |
+| `--web-port` | `PORT` in `/etc/aihr/runtime.env` (3000 when absent) |
+
+Build the bundle from the reviewed commit, hash-pin it, copy it to a new root-protected path, check the hash there,
+and run every phase from `/` with `python3 -I -B`:
+
+```bash
+python3 -I -B scripts/bank-import-worker-production-bundle.py /PRIVATE/production-helper.py   # prints helperSha256
+# On production, as root: install -m 0400 -o root -g root, then sha256sum -c against helperSha256.
+ARGS=(--previous-worker-source <old> --unit-sha256 <unit> --previous-web-source <old web> --previous-web-build <old build>
+      --source <new> --build-id <new build> --web-port <port>
+      --release-manifest <manifest> --release-manifest-sha256 <manifest sha256>
+      --archive <worker-package.zip> --archive-sha256 <zip> --lock-sha256 <lock> --package-sha256 <package>
+      --worker-env-sha256 <env> --existing-uid <uid>)
+cd / && sudo python3 -I -B /ROOT-PROTECTED/production-helper.py production-drain "${ARGS[@]}"
+# ... stop the web, install the web, migrate, start the web ...
+cd / && sudo python3 -I -B /ROOT-PROTECTED/production-helper.py production-activate "${ARGS[@]}"
+```
+
+Both phases refuse, before they write anything, when:
+- the sources or digests are malformed, or `--source` equals `--previous-worker-source`;
+- the release manifest is not the pinned bytes, or does not name exactly `--source` and `--build-id`;
+- the web is not the running `aihr` service as `aihr` from `/opt/ai-hr` with loopback `/health` returning
+  `{"status":"ok"}`, or `/opt/ai-hr/.next/BUILD_ID` is not a pinned build. `production-drain` accepts the previous or
+  the new pin. `production-activate` accepts only the new pin;
+- the previous release has no root-protected `worker-install-v2.json` from `production-first-install` or
+  `production-activate` (staging or `adopt-stopped` receipts refuse), or the receipt names another source, unit,
+  environment or an unstable service;
+- the previous web source equals the previous worker source and its build differs from that receipt's `webBuildId`;
+- the unit bytes differ from `--unit-sha256` or from the template for the previous source, or the loaded unit is not
+  that template: other `WorkingDirectory`, a drop-in, a pending reload, not `Restart=on-failure` or not enabled;
+- the environment file, identity, database URLs or TLS files fail a `production-first-install` check above (the
+  read-only `psql` role proof runs in `production-activate` and `production-rollback`);
+- the previous worker is neither running from the previous release (uid, release directory, command and exact
+  environment) nor cleanly stopped (`inactive`/`dead`, `MainPID=0`, `Result=success`, exit status 0, no control group,
+  no process as `aihr-import` or in the unit cgroup). An earlier automatic restart of a running worker is accepted.
+
+`production-drain` snapshots and authenticates the archive and extracts it once as a check, in a private
+`/opt/aihr-import/upgrades/.production-drain-<source>-*` directory. It repeats every check, then sends SIGTERM to the
+worker's main process only. The runner finishes its current Bank, Individual and bulk-job tick and exits 0. The helper
+watches for up to 330 seconds. It **never sends SIGKILL**, never arms systemd's timed stop, never disables the unit
+and never replays a job. A restart, a PID change or a non-zero exit refuses. Queued uploads, jobs and saved row
+checkpoints stay durable in the database while the worker is stopped. Only a complete drain publishes the attempt as
+`/opt/aihr-import/upgrades/<source>/` with `drained.json`. After the deadline the helper records
+`drain-unfinished.json` and keeps the previous unit and release unchanged. Let the runner finish, confirm a clean exit
+with `systemctl show aihr-bank-import -p ActiveState,SubState,MainPID,Result,ExecMainStatus`, then run
+`production-drain` again: it records an already cleanly stopped worker without signalling it. A worker that crashed,
+or is still stopping, refuses.
+
+`production-activate` requires that exact drain record, the drained previous worker and the exact new web. It runs
+the read-only database role proof and re-authenticates the drain's archive snapshot. It extracts it again into the new
+immutable `/opt/aihr-import/releases/<source>` and repeats every check. If a check fails at that point, nothing uses the
+new release yet: it is moved, not deleted, into `refused-release-*` inside the attempt, and `production-activate` can
+run again once the cause is repaired. When the checks pass, it replaces the unit atomically with the template for the
+new source, runs `daemon-reload` and starts the worker. Three stable live observations follow:
+uid, release, command and exact environment, with no restart. It then re-checks the web and the environment pin and
+confirms boot enablement. It writes `worker-install-v2.json` (`mode: production-update`, `journeyVerified: false`) and
+`activated.json`. The receipt keeps the previous worker, unit and web pins, and a later `production-drain` accepts it.
+The previous release directory and its receipt are never changed. Any failure after the unit replacement starts
+enters the same quarantine as the staging `activate`: `Restart=no` and `SendSIGKILL=no` loaded and verified, boot
+activation disabled, a bounded graceful stop, with records under `/opt/aihr-import/upgrades/<source>/`. If it cannot
+be confirmed, the helper reports uncertainty. A failed activation is not retried by deleting records. Use
+`production-rollback` to return to the previous release, or reviewed administrator recovery to retry the same source.
+
+After activation, run `scripts/check-import-worker.ts` against the new web tree and the real import journeys in the
+runbook. The receipt is process evidence only.
+
+### Rollback (`production-rollback`)
+
+`production-rollback` re-activates the pinned previous release of a production update attempt. It needs no new code
+during the window. Run it with the web you intend to keep: after a web rollback, that is the previous web; for a
+worker-only rollback, it is the new web.
+
+```bash
+cd / && sudo python3 -I -B /ROOT-PROTECTED/production-helper.py production-rollback \
+  --from-source <new> --to-source <old> \
+  --unit-sha256 <root-read sha256sum of /etc/systemd/system/aihr-bank-import.service now> --to-unit-sha256 <old receipt unitSha256> \
+  --web-source <old or new> --web-build <its BUILD_ID> --web-port <port> \
+  --worker-env-sha256 <env> --existing-uid <uid>
+```
+
+It refuses, before it writes anything, unless all of these hold:
+- `/opt/aihr-import/upgrades/<from>/drained.json` is a production drain record naming `--to-source`, `--to-unit-sha256`
+  and `--worker-env-sha256`;
+- the previous release keeps its production receipt for that source, unit template and environment;
+- every entry of the previous release is owned like its root-protected directory and is neither group- nor
+  other-writable nor set-id;
+- `--web-build` is the build recorded for `--web-source`: the previous receipt's `webBuildId`, or the drain record's
+  `--build-id`. The web passes the customer web check above;
+- the environment, identity, TLS files and read-only database role proof pass;
+- the current unit is exactly `--unit-sha256` and one of four reviewed units:
+  - the previous template, with that worker cleanly stopped (drained, never activated);
+  - the new template (activated: running, restarting or stopped);
+  - the quarantine of the new source (failed activation, stopped);
+  - the quarantine of the previous source (an earlier rollback failed, stopped).
+
+A running new worker is stopped exactly like a failed activation: quarantine unit, reload, disable and a bounded
+graceful stop, without SIGKILL. Its records go in `stop-updated/`. If that stop is not confirmed, the rollback stops for
+administrator recovery. The helper then repeats every check and installs the previous template atomically, unless it
+is already there. It reloads, starts and takes the same three stable observations, then re-checks the web and
+environment. It re-enables boot activation and writes `rolled-back.json` in a new
+`/opt/aihr-import/upgrades/<from>/rollback-<to>-*` directory. The previous receipt is not rewritten. It still matches the
+re-activated unit, so a later `production-drain` from that release works. A failure after the unit change enters the
+quarantine for the previous source. After repair, run `production-rollback` again with the new unit sha256. A
+previous worker that is already running refuses with "nothing to roll back". Without a published attempt (an
+unfinished drain) there is nothing to roll back: the previous unit is unchanged, so once its runner has exited cleanly,
+`systemctl start aihr-bank-import.service` resumes it. Records, packages and both releases are
+never deleted. Retrying the same new source after a rollback needs reviewed administrator recovery of its attempt
+directory and release.
+
+Disk: each update keeps the archive (about 275 MB for 0cbe5fec), one checked extraction in the attempt and the new
+release (about 0.9 GB each). Check `df -B1 /opt/aihr-import` before the window.
