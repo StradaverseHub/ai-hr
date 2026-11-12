@@ -76,7 +76,8 @@ async function hire(email: string, basic: number) {
     hiredOn: '2026-01-01',
   });
   // Born 1 Jan 1990: a Malaysian citizen below 60 — KWSP Part A, SOCSO First Category, EIS eligible.
-  await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015401' });
+  // Subject to SKBBK must be ticked explicitly: the profile writer defaults it off.
+  await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015401', subjectToSkbbk: true });
   await setCompensation(a, { employmentId: e.employmentId, basicSalary: basic, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
   await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('BASIC'), amount: basic, effectiveFrom: '2026-01-01' });
   return e;

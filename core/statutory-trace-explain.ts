@@ -52,18 +52,17 @@ const epfTrace = lookup.extend({
   manualEmployee: z.literal(true).optional(),
   manualEmployer: z.literal(true).optional(),
 });
-const schedule = <R extends [string, ...string[]]>(reasons: R) => z.object({
+const scheduleShape = {
   wage: nonneg,
   band: band.optional(),
   scheduleEmployee: nonneg.optional(),
   scheduleEmployer: nonneg.optional(),
   employee: nonneg,
   employer: nonneg,
-  notApplicable: z.enum(reasons).optional(),
-});
-const socsoTrace = schedule(['not_subject', 'category_none']).extend({ category: z.union([z.literal(1), z.literal(2)]) });
-const skbbkTrace = schedule(['not_subject', 'not_in_ruleset']);
-const eisTrace = schedule(['age_60_plus', 'non_citizen', 'category_none', 'not_eligible']);
+};
+const socsoTrace = z.object({ ...scheduleShape, category: z.union([z.literal(1), z.literal(2)]), notApplicable: z.enum(['not_subject', 'category_none']).optional() });
+const skbbkTrace = z.object({ ...scheduleShape, notApplicable: z.enum(['not_subject', 'not_in_ruleset']).optional() });
+const eisTrace = z.object({ ...scheduleShape, notApplicable: z.enum(['age_60_plus', 'non_citizen', 'category_none', 'not_eligible']).optional() });
 const amounts = z.object({
   epfEmployee: nonneg, epfEmployer: nonneg, socsoEmployee: nonneg, socsoEmployer: nonneg,
   socsoSkbbk: nonneg, eisEmployee: nonneg, eisEmployer: nonneg,
