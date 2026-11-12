@@ -5174,6 +5174,13 @@
       "when": 1793330004112,
       "tag": "4412_recruitment_background_checks",
       "breakpoints": true
+    },
+    {
+      "idx": 3813,
+      "version": "7",
+      "when": 1793330004113,
+      "tag": "4413_recruitment_talent_pools_blocked_list",
+      "breakpoints": true
     }
   ]
 }

@@ -51,6 +51,11 @@
  *   HR (D-043) at or after the Offer stage — the candidate's authorisation first (D-044), then In progress, Completed with an
  *   outcome or Cancelled; the summary, provider, reference and files sit in operator-only tables, and hiring managers see
  *   types, status and outcome (D-045). Checks gate nothing and are never copied to an employee (D-046) (4412).
+ * - Talent pools and the blocked list (slice 13, ./pools, ./blocked-list and ./pool-model): administrators keep custom pools (two
+ *   levels; shared with all recruiters or listed users, D-050) under Settings › Talent pools; operators add and remove the
+ *   candidates they operate in pools they can see. Administrators add and remove blocked-list entries with a reason through
+ *   4413's owner-run functions; every channel's new matching application is marked at commit and cannot move, get an offer or
+ *   be hired until an administrator resolves the mark (D-049). Reasons are for administrators only (4413).
  * - Team access (slice 2): a job's recruiter, assistants, hiring managers and interviewers reach that job's data through
  *   database predicates (4402); the menu shows for team members, interviewers and pending approvers.
  */
@@ -127,6 +132,14 @@ export const recruitmentPack: ModulePack = {
     { table: 'recruitment_background_check_type_link', note: 'the types of a background check, fixed when it is added' },
     { table: 'recruitment_background_check_detail', note: 'provider, reference, authorisation, summary, cancellation reason: the job\'s operators and administrators only' },
     { table: 'recruitment_background_check_file', note: 'authorisation files and reports (bytes): the job\'s operators and administrators only' },
+    // Slice 13 (4413)
+    { table: 'recruitment_talent_pool', note: 'custom talent pools and sub-pools (two levels), shared with all recruiters or listed users' },
+    { table: 'recruitment_talent_pool_share', note: 'the users a "listed users" pool is shared with' },
+    { table: 'recruitment_talent_pool_member', note: 'candidates in custom pools, with who added them and when' },
+    { table: 'recruitment_blocked_entry', note: 'candidates on the blocked list (no reason or identity values here)' },
+    { table: 'recruitment_blocked_entry_restricted', note: 'blocked-list reasons and normalised identity values: recruitment administrators only' },
+    { table: 'recruitment_blocked_history', note: 'blocked-list history: ids, action, actor and time, never a reason or identity value' },
+    { table: 'recruitment_application_review_mark', note: '"Needs an administrator\'s review" marks from the blocked list; hold moves, offers and hire' },
   ],
 };
 registerPack(recruitmentPack);

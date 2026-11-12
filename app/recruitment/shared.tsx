@@ -66,17 +66,18 @@ export type RecruitmentTabKey = (typeof TABS)[number]['key'];
  * shows for administrators and for a job's recruiter, assistant or hiring manager (`reports`; never an interviewer
  * alone); Approvals shows when a step waits for the viewer; Talent pool and Settings are administrator-only. Overview
  * shows for everyone with Recruitment access since slice 9 (its Tasks panel); its tiles stay administrator-only. To screen
- * (slice 11) shows, with its count, while the viewer has open screening requests (or is on it).
+ * (slice 11) shows, with its count, while the viewer has open screening requests (or is on it). Talent pool also shows for a
+ * company's recruiters and assistants (`pools`, slice 13: the custom pools shared with them and the blocked list).
  */
-export async function RecruitmentTabs({ active, admin = true, approvals = 0, reports = false, screening = 0 }: {
-  active: RecruitmentTabKey; admin?: boolean; approvals?: number; reports?: boolean; screening?: number;
+export async function RecruitmentTabs({ active, admin = true, approvals = 0, reports = false, screening = 0, pools = false }: {
+  active: RecruitmentTabKey; admin?: boolean; approvals?: number; reports?: boolean; screening?: number; pools?: boolean;
 }) {
   const t = await getTranslations('recruitment.tabs');
   const label: Record<RecruitmentTabKey, string> = {
     overview: t('overview'), candidates: t('candidates'), screening: t('screening'), interviews: t('interviews'), positions: t('positions'), talentPool: t('talentPool'),
     reports: t('reports'), approvals: t('approvals'), settings: t('settings'),
   };
-  const shown = TABS.filter((tab) => (admin || !tab.adminOnly) && (tab.key !== 'approvals' || approvals > 0 || active === 'approvals')
+  const shown = TABS.filter((tab) => (admin || !tab.adminOnly || (tab.key === 'talentPool' && pools)) && (tab.key !== 'approvals' || approvals > 0 || active === 'approvals')
     && (tab.key !== 'reports' || admin || reports || active === 'reports') && (tab.key !== 'screening' || screening > 0 || active === 'screening'));
   const count = (key: RecruitmentTabKey) => (key === 'approvals' ? approvals : key === 'screening' ? screening : 0);
   return (

@@ -28,7 +28,7 @@ export default async function RecruitmentInterviewsPage({ searchParams }: { sear
   return (
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={t('purpose')} />
-      <RecruitmentTabs active="interviews" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0}  screening={access.pendingScreening} />
+      <RecruitmentTabs active="interviews" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0}  screening={access.pendingScreening} pools={access.poolCompanies.length > 0} />
       {access.companies.length === 0 ? <NoRecruitmentCompany /> : (
         <>
           <form method="get" className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-5">

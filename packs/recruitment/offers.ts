@@ -30,7 +30,7 @@ import {
   recruitmentApplication, recruitmentApplicationEvent, recruitmentApprovalStep, recruitmentArchiveReason, recruitmentCompanySetting, recruitmentHireHandoff,
   recruitmentOffer, recruitmentOfferApproval, recruitmentOfferField, recruitmentOfferValue,
 } from './schema';
-import { actorId, assertCompanyTx, assertJobLevelTx, ensureRecruitmentDefaultsTx, jobLevelTx, processStagesTx, userLabelsTx } from './data';
+import { actorId, assertCompanyTx, assertJobLevelTx, assertNoReviewMarkTx, ensureRecruitmentDefaultsTx, jobLevelTx, processStagesTx, reviewRefusal, userLabelsTx } from './data';
 import { applicationRowTx, companySettingsTx } from './interviews';
 
 const offerEvent = (tx: Tx, s: SessionContext, aggregateId: string, eventType: string, payload: Record<string, unknown>) =>
@@ -149,12 +149,13 @@ async function lockOfferTx(tx: Tx, s: SessionContext, offerId: unknown) {
 async function startRoundTx(tx: Tx, offer: typeof recruitmentOffer.$inferSelect, user: string): Promise<OfferStatus> {
   const round = startApproval(await approvalFlowTx(tx, offer.companyId, 'offer'), offer.createdByUserId);
   if (round.pendingPosition == null) {
-    await tx.update(recruitmentOffer).set({ status: 'approved', approverUserIds: [], pendingPosition: null, updatedByUserId: user }).where(eq(recruitmentOffer.id, offer.id));
+    await tx.update(recruitmentOffer).set({ status: 'approved', approverUserIds: [], pendingPosition: null, updatedByUserId: user }).where(eq(recruitmentOffer.id, offer.id))
+      .catch(reviewRefusal);
     return 'approved';
   }
   await tx.update(recruitmentOffer).set({
     status: 'pending', approvalRound: offer.approvalRound + 1, approverUserIds: round.approvers, pendingPosition: 1, updatedByUserId: user,
-  }).where(eq(recruitmentOffer.id, offer.id));
+  }).where(eq(recruitmentOffer.id, offer.id)).catch(reviewRefusal);
   return 'pending';
 }
 
@@ -171,6 +172,8 @@ export async function saveOffer(s: SessionContext, applicationId: unknown, input
     if (app.state !== 'active') throw new RecruitmentError('application_closed');
     let [offer] = await tx.select().from(recruitmentOffer).where(eq(recruitmentOffer.applicationId, app.id)).for('update');
     if (offer && offer.candidateDecision !== 'pending') throw new RecruitmentError('offer_closed');
+    // Slice 13: no offer for an application that needs an administrator's review (4413 refuses the insert too).
+    if (!offer) await assertNoReviewMarkTx(tx, app.id);
     const allFields = await offerFieldsTx(tx, app.company_id);
     const seesPrivate = await seesPrivateTx(tx, app.company_id, app.job_id, offer?.id ?? null);
     const writable = allFields.filter((f) => f.enabled && (!f.private || seesPrivate));
@@ -180,7 +183,7 @@ export async function saveOffer(s: SessionContext, applicationId: unknown, input
     if (!offer) {
       [offer] = await tx.insert(recruitmentOffer).values({
         tenantId: s.tenantId, companyId: app.company_id, jobId: app.job_id, applicationId: app.id, createdByUserId: user, updatedByUserId: user,
-      }).returning();
+      }).returning().catch(reviewRefusal);
     }
     const before = await visibleValuesTx(tx, offer.id);
     for (const f of writable) {
@@ -224,6 +227,7 @@ export async function submitOffer(s: SessionContext, offerId: unknown): Promise<
     await assertJobLevelTx(tx, offer.companyId, offer.jobId, 'operate', offer.applicationId);
     if (offer.candidateDecision !== 'pending') throw new RecruitmentError('offer_closed');
     if (offer.status !== 'draft') throw new RecruitmentError('offer_state');
+    await assertNoReviewMarkTx(tx, offer.applicationId);
     const fields = (await offerFieldsTx(tx, offer.companyId)).filter((f) => f.enabled);
     // Required values are checked as STORED. A private value the submitter may not see is invisible to them under
     // row security too, so it is not counted as missing here; whoever entered it (recruiter or creator) saw it.
@@ -279,7 +283,7 @@ export async function decideOffer(s: SessionContext, offerId: unknown, decision:
     await tx.update(recruitmentOffer).set({
       status: plan.outcome === 'approved' ? 'approved' : plan.outcome === 'rejected' ? 'draft' : 'pending', pendingPosition: plan.pendingPosition,
       lastRejectionComment: plan.outcome === 'rejected' ? note : offer.lastRejectionComment, updatedByUserId: user,
-    }).where(eq(recruitmentOffer.id, offer.id));
+    }).where(eq(recruitmentOffer.id, offer.id)).catch(reviewRefusal);
     await offerEvent(tx, s, offer.id, decision === 'approve' ? 'recruitment-offer.step-approved' : 'recruitment-offer.step-rejected', {
       companyId: offer.companyId, applicationId: offer.applicationId, round: offer.approvalRound, position: plan.position, outcome: plan.outcome,
     });
@@ -296,9 +300,10 @@ export async function markOfferSent(s: SessionContext, offerId: unknown, channel
     await assertJobLevelTx(tx, offer.companyId, offer.jobId, 'operate', offer.applicationId);
     if (offer.candidateDecision !== 'pending') throw new RecruitmentError('offer_closed');
     if (offer.status !== 'approved' || offer.sentAt) throw new RecruitmentError('offer_state');
+    await assertNoReviewMarkTx(tx, offer.applicationId);
     const settings = await companySettingsTx(tx, offer.companyId);
     await tx.update(recruitmentOffer).set({ sentAt: sql`now()`, sentChannel: channel as 'email', sentByUserId: user, validDays: settings.offerValidDays, updatedByUserId: user })
-      .where(eq(recruitmentOffer.id, offer.id));
+      .where(eq(recruitmentOffer.id, offer.id)).catch(reviewRefusal);
     await offerEvent(tx, s, offer.id, 'recruitment-offer.marked-sent', { companyId: offer.companyId, applicationId: offer.applicationId, channel, validDays: settings.offerValidDays });
   });
 }
@@ -315,15 +320,19 @@ export async function recordOfferDecision(s: SessionContext, offerId: unknown, d
     await assertJobLevelTx(tx, offer.companyId, offer.jobId, 'operate', offer.applicationId);
     if (offer.candidateDecision !== 'pending') throw new RecruitmentError('offer_closed');
     if (!offer.sentAt) throw new RecruitmentError('offer_state');
-    await tx.update(recruitmentOffer).set({ candidateDecision: decision, decidedAt: sql`now()`, decidedByUserId: user, updatedByUserId: user }).where(eq(recruitmentOffer.id, offer.id));
+    // Slice 13: while the application needs an administrator's review, an acceptance is held; a decline can be recorded (and the
+    // optional automation may archive the application — rejecting stays possible), but nothing moves the application forward.
+    if (decision === 'accepted') await assertNoReviewMarkTx(tx, offer.applicationId);
+    await tx.update(recruitmentOffer).set({ candidateDecision: decision, decidedAt: sql`now()`, decidedByUserId: user, updatedByUserId: user }).where(eq(recruitmentOffer.id, offer.id))
+      .catch(reviewRefusal);
     const settings = await companySettingsTx(tx, offer.companyId);
     let moved = false; let archived = false;
     const [app] = await tx.select().from(recruitmentApplication).where(eq(recruitmentApplication.id, offer.applicationId)).for('update');
     if (app?.state === 'active' && decision === 'accepted' && settings.offerAcceptMovesForward) {
       const [job] = await tx.execute<{ process_id: string }>(sql`select process_id from recruitment_job_opening where id = ${offer.jobId}::uuid`);
       const plan = planMoveForward(await processStagesTx(tx, job.process_id), app.currentStageId);
-      if (plan.kind === 'hired') await tx.update(recruitmentApplication).set({ state: 'hired', updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id));
-      else await tx.update(recruitmentApplication).set({ currentStageId: plan.to, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id));
+      if (plan.kind === 'hired') await tx.update(recruitmentApplication).set({ state: 'hired', updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id)).catch(reviewRefusal);
+      else await tx.update(recruitmentApplication).set({ currentStageId: plan.to, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id)).catch(reviewRefusal);
       await tx.insert(recruitmentApplicationEvent).values({ tenantId: s.tenantId, companyId: app.companyId, applicationId: app.id, actorUserId: user, ...moveEvent(plan) });
       moved = true;
     }
@@ -495,17 +504,19 @@ async function hireContextTx(tx: Tx, s: SessionContext, applicationId: unknown) 
   const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.is_admin_for(${app.company_id}::uuid) as ok`);
   const [link] = await tx.select().from(recruitmentHireHandoff).where(eq(recruitmentHireHandoff.applicationId, app.id));
   const eligible = hireHandoffEligible({ state: app.state, stageSystemKey: app.stage_system_key });
-  return { app, isAdmin: admin?.ok === true, link, eligible };
+  // Slice 13: an application that needs an administrator's review is not handed to a new hire (4413 refuses the link too).
+  const [review] = await tx.execute<{ marked: boolean }>(sql`select app.recruitment_application_needs_review(${app.id}::uuid) as marked`);
+  return { app, isAdmin: admin?.ok === true, link, eligible, needsReview: review?.marked === true };
 }
 
 /** The application's hire state: whether "Start new hire" applies (HR administrators, Onboarding or hired, not yet linked). */
 export async function applicationHire(s: SessionContext, applicationId: string): Promise<ApplicationHire> {
   return withRecruitmentTenant(s, async (tx) => {
-    const { app, isAdmin, link, eligible } = await hireContextTx(tx, s, applicationId);
+    const { app, isAdmin, link, eligible, needsReview } = await hireContextTx(tx, s, applicationId);
     await assertJobLevelTx(tx, app.company_id, app.job_id, 'review');
     const labels = link ? await userLabelsTx(tx, app.company_id) : null;
     return {
-      eligible, canStart: isAdmin && eligible && !link,
+      eligible, canStart: isAdmin && eligible && !link && !needsReview,
       link: link ? { draftId: link.employeeDraftId, employeeCode: link.reservedEmployeeCode ?? null, linkedAt: link.linkedAt.toISOString(), linkedBy: labels?.get(link.linkedByUserId)?.name ?? null } : null,
     };
   });
@@ -518,10 +529,11 @@ export async function applicationHire(s: SessionContext, applicationId: string):
  */
 export async function hireHandoffPrefill(s: SessionContext, applicationId: unknown): Promise<HirePrefill> {
   return withRecruitmentTenant(s, async (tx) => {
-    const { app, isAdmin, link, eligible } = await hireContextTx(tx, s, applicationId);
+    const { app, isAdmin, link, eligible, needsReview } = await hireContextTx(tx, s, applicationId);
     if (!isAdmin) throw new RecruitmentError('forbidden');
     if (!eligible) throw new RecruitmentError('hire_not_eligible');
     if (link) throw new RecruitmentError('hire_linked');
+    if (needsReview) throw new RecruitmentError('needs_review');
     const [row] = await tx.execute<{ email: string | null; company: string }>(sql`
       select c.email, co.legal_name as company from recruitment_application a join recruitment_candidate c on c.id = a.candidate_id
       join company co on co.id = a.company_id where a.id = ${app.id}::uuid`);
@@ -538,14 +550,15 @@ export async function linkHireDraft(s: SessionContext, applicationId: unknown, d
   if (!isUuid(draftId)) throw new RecruitmentError('invalid_input', ['draft']);
   const user = actorId(s);
   await withRecruitmentTenant(s, async (tx) => {
-    const { app, isAdmin, link, eligible } = await hireContextTx(tx, s, applicationId);
+    const { app, isAdmin, link, eligible, needsReview } = await hireContextTx(tx, s, applicationId);
     if (!isAdmin) throw new RecruitmentError('forbidden');
     if (!eligible) throw new RecruitmentError('hire_not_eligible');
     if (link) throw new RecruitmentError('hire_linked');
+    if (needsReview) throw new RecruitmentError('needs_review');
     const code = typeof employeeCode === 'string' && employeeCode.trim() && employeeCode.trim().length <= 60 ? employeeCode.trim() : null;
     await tx.insert(recruitmentHireHandoff).values({
       tenantId: s.tenantId, companyId: app.company_id, jobId: app.job_id, applicationId: app.id, employeeDraftId: draftId, reservedEmployeeCode: code, linkedByUserId: user,
-    });
+    }).catch(reviewRefusal);
     await appendEvent(tx, { tenantId: s.tenantId, aggregateType: 'recruitment-application', aggregateId: app.id, eventType: 'recruitment-application.hire-draft-linked', actor: actorOf(s),
       payload: { companyId: app.company_id, employeeDraftId: draftId } });
   });

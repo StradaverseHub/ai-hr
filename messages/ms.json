@@ -37284,7 +37284,15 @@
       "check_state": "Semakan latar belakang ini tidak berada pada langkah yang betul untuk tindakan itu. Muat semula halaman dan cuba lagi.",
       "authorisation_required": "Rekodkan kebenaran bertulis calon sebelum semakan bermula.",
       "check_type_unavailable": "Pilih jenis semakan syarikat ini yang didayakan.",
-      "type_in_use": "Jenis semakan ini digunakan oleh satu semakan. Nyahdayakannya sahaja."
+      "type_in_use": "Jenis semakan ini digunakan oleh satu semakan. Nyahdayakannya sahaja.",
+      "needs_review": "Permohonan ini perlu disemak oleh pentadbir sebelum boleh bergerak, menerima tawaran atau diambil bekerja.",
+      "already_blocked": "Calon ini sudah berada dalam senarai sekatan.",
+      "blocked_entry_removed": "Entri ini sudah dikeluarkan daripada senarai sekatan.",
+      "mark_cleared": "Semakan ini sudah diselesaikan.",
+      "pool_depth": "Kumpulan bersarang dua tahap sahaja: kumpulan dan subkumpulannya. Subkumpulan mengikut perkongsian kumpulannya.",
+      "pool_has_subpools": "Padamkan subkumpulan kumpulan ini dahulu.",
+      "blocked_entry_has_open_marks": "Entri senarai sekatan orang ini masih menahan semakan pada permohonan aktif calon lain. Selesaikan semakan itu dahulu.",
+      "own_entry_mark": "Permohonan ini milik orang dalam senarai sekatan. Keluarkan mereka daripada senarai sekatan untuk menyelesaikannya."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -37541,7 +37549,8 @@
         "referrals": "Rujukan",
         "careers": "Halaman kerjaya",
         "agencies": "Agensi",
-        "checks": "Semakan latar belakang"
+        "checks": "Semakan latar belakang",
+        "pools": "Kumpulan bakat"
       },
       "iv": {
         "rulesTitle": "Peraturan maklum balas",
@@ -38714,6 +38723,121 @@
         "addType": "Tambah jenis"
       },
       "systemCancelled": "Dibatalkan secara automatik apabila data peribadi calon dipadamkan."
+    },
+    "pools": {
+      "poolsLine": "Kumpulan: {names}",
+      "poolsLabel": "Kumpulan:",
+      "unnamedUser": "Pengguna tanpa nama",
+      "notFound": "Kumpulan itu tidak wujud atau tidak dikongsi dengan anda.",
+      "nav": {
+        "label": "Kumpulan",
+        "public": "Kumpulan bakat awam",
+        "custom": "Kumpulan tersuai",
+        "noPools": "Belum ada kumpulan yang dikongsi dengan anda.",
+        "blocked": "Senarai sekatan"
+      },
+      "notice": {
+        "added": "Ditambah ke kumpulan.",
+        "removed": "Dikeluarkan daripada kumpulan.",
+        "blocked": "Ditambah ke senarai sekatan. Permohonan yang sepadan kini ditanda untuk semakan pentadbir.",
+        "unblocked": "Dikeluarkan daripada senarai sekatan. Tanda semakannya telah dikosongkan.",
+        "resolved": "Semakan telah diselesaikan.",
+        "screeningHeld": "Dihantar kepada pengurus pengambilan. {n, plural, other {# permohonan}} perlu disemak oleh pentadbir, jadi tidak dipindahkan."
+      },
+      "add": {
+        "label": "Tambah ke kumpulan",
+        "choose": "Pilih kumpulan",
+        "submit": "Tambah ke kumpulan"
+      },
+      "candidate": {
+        "title": "Kumpulan",
+        "none": "Tiada dalam mana-mana kumpulan yang boleh anda lihat.",
+        "removeFrom": "Keluarkan daripada {pool}"
+      },
+      "members": {
+        "total": "{n, plural, =0 {Tiada calon} other {# calon}}",
+        "empty": "Belum ada calon dalam kumpulan ini. Tambah mereka dari papan Calon, sesuatu permohonan atau kumpulan bakat awam.",
+        "noContact": "Tiada butiran hubungan",
+        "noApplication": "Tiada permohonan yang boleh anda buka",
+        "addedBy": "Ditambah oleh {by} pada {date}",
+        "remove": "Keluarkan daripada kumpulan",
+        "state": {
+          "hired": "Diambil bekerja",
+          "archived": "Diarkibkan"
+        }
+      },
+      "settings": {
+        "note": "Kumpulan tersuai mengumpulkan calon yang ingin anda hubungi semula. Sesuatu kumpulan boleh mempunyai subkumpulan (dua tahap). Kongsi kumpulan dengan semua perekrut syarikat, atau hanya dengan pengguna yang anda senaraikan; pentadbir sentiasa melihat semua kumpulan. Memadam kumpulan mengeluarkan calon daripadanya tetapi tidak sekali-kali memadam calon. Kumpulan bakat awam tidak terjejas.",
+        "empty": "Belum ada kumpulan tersuai.",
+        "name": "Nama kumpulan",
+        "description": "Penerangan",
+        "sharing": "Perkongsian",
+        "sharingOptions": {
+          "all_recruiters": "Semua perekrut",
+          "listed_users": "Pengguna tersenarai sahaja"
+        },
+        "listedUsers": "Pengguna tersenarai",
+        "listedHint": "Digunakan apabila perkongsian ialah Pengguna tersenarai sahaja. Tahan Ctrl atau Cmd untuk memilih beberapa.",
+        "newPool": "Kumpulan baharu",
+        "addPool": "Tambah kumpulan",
+        "subPoolName": "Subkumpulan baharu",
+        "subPoolLabel": "Nama subkumpulan",
+        "addSubPool": "Tambah subkumpulan",
+        "subPools": "Subkumpulan {pool}",
+        "subPoolSharing": "Mengikut perkongsian {pool}.",
+        "members": "{n, plural, =0 {Tiada calon} other {# calon}}",
+        "changed": "Diubah oleh {by}, {at}",
+        "unnamedUser": "Pengguna tanpa nama",
+        "hasSubpools": "Padamkan subkumpulannya dahulu untuk memadamnya.",
+        "save": "Simpan",
+        "delete": "Padam",
+        "required": "wajib"
+      },
+      "blocked": {
+        "title": "Senarai sekatan",
+        "note": "Calon dalam senarai sekatan tidak ditolak di mana-mana. Permohonan mereka, dan permohonan baharu dari mana-mana saluran yang sepadan dengan mereka melalui nombor pengenalan, nama bersama e-mel atau telefon bimbit, atau e-mel bersama telefon bimbit, ditanda untuk semakan pentadbir dan tidak boleh bergerak, menerima tawaran atau diambil bekerja sehingga diselesaikan. Sebab hanya untuk pentadbir.",
+        "operatorNote": "Calon ini berada dalam senarai sekatan. Hanya pentadbir melihat sebabnya, dan hanya mereka boleh menyelesaikan semakan.",
+        "flag": "Senarai sekatan",
+        "reason": "Sebab",
+        "reasonHint": "Hanya dapat dilihat oleh pentadbir. Paling banyak 500 aksara.",
+        "addedBy": "Ditambah oleh {by} pada {date}",
+        "openMarks": "{n, plural, =0 {Tiada permohonan menunggu semakan} other {# permohonan menunggu semakan}}",
+        "remove": "Keluarkan daripada senarai sekatan",
+        "removalReason": "Sebab mengeluarkan",
+        "empty": "Tiada sesiapa dalam senarai sekatan.",
+        "history": "Sejarah",
+        "noHistory": "Belum ada sejarah.",
+        "system": "Automatik",
+        "actions": {
+          "added": "Ditambah ke senarai sekatan",
+          "removed": "Dikeluarkan daripada senarai sekatan",
+          "marked": "Permohonan ditanda untuk semakan",
+          "mark_cleared": "Semakan diselesaikan"
+        },
+        "details": {
+          "not_same_person": "bukan orang yang sama",
+          "entry_removed": "entri dikeluarkan"
+        },
+        "add": "Tambah ke senarai sekatan",
+        "addNote": "Permohonan calon ini, dan permohonan baharu yang sepadan dengan nombor pengenalan mereka, nama mereka bersama e-mel atau telefon bimbit, atau e-mel bersama telefon bimbit mereka, perlu disemak oleh pentadbir sebelum boleh bergerak, menerima tawaran atau diambil bekerja. Pemohon tidak dimaklumkan."
+      },
+      "review": {
+        "needsReview": "Perlu semakan pentadbir",
+        "readerNote": "Pentadbir perlu menyemak permohonan ini sebelum ia boleh diteruskan.",
+        "listedTitle": "Dalam senarai sekatan",
+        "listedNote": "Calon ini berada dalam senarai sekatan.",
+        "operatorSelf": "Calon ini berada dalam senarai sekatan. Pentadbir perlu menyemak permohonan ini sebelum ia boleh bergerak, menerima tawaran atau diambil bekerja.",
+        "operatorMatch": "Permohonan ini sepadan dengan satu entri dalam senarai sekatan. Pentadbir perlu menyemaknya sebelum ia boleh bergerak, menerima tawaran atau diambil bekerja.",
+        "adminSelf": "Calon ini berada dalam senarai sekatan.",
+        "adminMatch": "Permohonan ini sepadan dengan {name} dalam senarai sekatan (nombor pengenalan yang sama; nama yang sama dengan e-mel atau telefon bimbit yang sama; atau e-mel dan telefon bimbit yang sama).",
+        "adminMatchRemoved": "Permohonan ini sepadan dengan entri senarai sekatan yang data peribadi calonnya telah dikeluarkan.",
+        "reason": "Sebab: {reason}",
+        "markedOn": "Ditanda pada {date}",
+        "notSamePerson": "Bukan orang yang sama",
+        "removeFromList": "Keluarkan daripada senarai sekatan",
+        "removalReason": "Sebab mengeluarkan",
+        "cardFlag": "Perlu semakan"
+      }
     }
   },
   "careersPublic": {

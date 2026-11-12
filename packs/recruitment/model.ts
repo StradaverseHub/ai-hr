@@ -80,6 +80,14 @@ export const RECRUITMENT_ERROR_CODES = [
   // completed or cancelled (final); the action does not fit the check's status; the authorisation must be recorded first; a
   // chosen type is disabled or not the company's; a type in use cannot be deleted.
   'check_stage', 'check_closed', 'check_state', 'authorisation_required', 'check_type_unavailable', 'type_in_use',
+  // Slice 13: the application needs an administrator's review (a blocked-list mark) before it moves, gets an offer or is hired;
+  // the candidate is already on the blocked list; the entry was already removed; the mark was already cleared; pools nest two
+  // levels (and a sub-pool follows its pool's sharing); a pool with sub-pools is deleted only after them.
+  'needs_review', 'already_blocked', 'blocked_entry_removed', 'mark_cleared', 'pool_depth', 'pool_has_subpools',
+  // …and a listed person's data is not removed while their entry holds a review on another candidate's active application.
+  'blocked_entry_has_open_marks',
+  // …"Not the same person" does not apply to the listed person's own marks (only removing the entry resolves those).
+  'own_entry_mark',
 ] as const;
 export type RecruitmentErrorCode = (typeof RECRUITMENT_ERROR_CODES)[number];
 

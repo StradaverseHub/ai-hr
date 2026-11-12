@@ -137,12 +137,12 @@ describe('case 11 — no team, not an administrator: no menu and no rows', () =>
     const t = await hiringTeam();
     await scheduleInterview(t.recruiter, { applicationId: t.appX, type: 'onsite', startsAt: future(24), interviewerIds: [t.interviewerA.userId] });
     expect(await recruitmentTeamPresence(t.bystander)).toBe(false);
-    expect(await recruitmentViewer(t.bystander, [base.companyId, otherCompanyId])).toEqual({ adminCompanies: [], teamCompanies: [], pendingApprovals: 0, reportCompanies: [], pendingScreening: 0 });
+    expect(await recruitmentViewer(t.bystander, [base.companyId, otherCompanyId])).toEqual({ adminCompanies: [], teamCompanies: [], pendingApprovals: 0, reportCompanies: [], pendingScreening: 0, poolCompanies: [] });
     expect(await code(candidateBoard(t.bystander, [base.companyId]))).toBe('forbidden');
     expect(await code(interviewSchedule(t.bystander, [base.companyId]))).toBe('forbidden');
     const tables = await owner.db.execute<{ relname: string }>(sql`select relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'recruitment\\_%' order by relname`);
-    expect(tables.length).toBe(51); // 9 (slice 1) + 14 (slices 2–4) + 7 (slice 5) + 1 (slice 7) + 3 (slice 8) + 1 (slice 9) + 9 (slice 10) + 2 (slice 11) + 5 (slice 12)
+    expect(tables.length).toBe(58); // 9 (slice 1) + 14 (slices 2–4) + 7 (slice 5) + 1 (slice 7) + 3 (slice 8) + 1 (slice 9) + 9 (slice 10) + 2 (slice 11) + 5 (slice 12) + 7 (slice 13)
     for (const { relname } of tables) {
       const seen = await rows(t.bystander, sql`select 1 from ${sql.identifier(relname)} where tenant_id = ${base.tenantId}::uuid`);
       expect(seen.length, `${relname} visible to a bystander`).toBe(0);

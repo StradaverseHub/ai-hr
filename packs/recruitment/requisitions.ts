@@ -29,6 +29,7 @@ import {
   type JobFormOptions,
 } from './data';
 import { repeatApplicationBlocked } from './privacy-model';
+import { poolLabels } from './pool-model';
 import { approvalFlowTx, myPendingOfferApprovalsTx, type PendingOfferApproval } from './offers';
 
 const reqEvent = (tx: Tx, s: SessionContext, aggregateId: string, eventType: string, payload: Record<string, unknown>) =>
@@ -417,6 +418,8 @@ export type PoolCard = {
   appliedAt: string; jobId: string; jobTitle: string; jobNumber: string; archivedAt: string; stageLeft: string; reason: string;
   /** Open jobs of the candidate's company it has not applied to (the "Add to job" choices). */
   addable: { id: string; title: string; jobNumber: string }[];
+  /** Slice 13: "Pools: …" (the candidate's custom pools), and whether the candidate is on the blocked list. */
+  pools: string[]; blocked: boolean;
 };
 export type TalentPool = {
   cards: PoolCard[]; totals: { today: number; total: number };
@@ -472,6 +475,13 @@ export async function talentPool(s: SessionContext, companyIds: readonly string[
     const tags = await tx.execute<{ id: string; name: string; group_name: string }>(sql`
       select t.id, t.name, g.name as group_name from recruitment_tag t join recruitment_tag_group g on g.id = t.group_id
       where t.tenant_id = ${s.tenantId}::uuid and t.company_id = any(${ids}::uuid[]) order by g.name, t.name`);
+    // Slice 13: the shown candidates' custom pools and blocked-list entries (two queries over the shown cards).
+    const shown = [...new Set(rows.map((r) => r.candidate_id))];
+    const cardPools = shown.length ? await tx.execute<{ candidate_id: string; name: string; parent_name: string | null }>(sql`
+      select m.candidate_id, p.name, pp.name as parent_name from recruitment_talent_pool_member m join recruitment_talent_pool p on p.id = m.pool_id
+      left join recruitment_talent_pool pp on pp.id = p.parent_id where m.candidate_id = any(${uuidArray(shown)}::uuid[])`) : [];
+    const blocked = new Set(shown.length ? (await tx.execute<{ candidate_id: string }>(sql`select candidate_id from recruitment_blocked_entry
+      where candidate_id = any(${uuidArray(shown)}::uuid[]) and removed_at is null`)).map((r) => r.candidate_id) : []);
     const jobs = await tx.execute<{ id: string; title: string; job_number: string }>(sql`
       select distinct j.id, j.title, j.job_number from recruitment_application a join recruitment_job_opening j on j.id = a.job_id
       where a.tenant_id = ${s.tenantId}::uuid and a.company_id = any(${ids}::uuid[]) and a.state = 'archived' order by j.title, j.job_number`);
@@ -483,6 +493,8 @@ export async function talentPool(s: SessionContext, companyIds: readonly string[
         applicationId: r.id, candidateId: r.candidate_id, candidateName: r.full_name, email: r.email, phone: r.phone, companyId: r.company_id, appliedAt: r.applied_at,
         jobId: r.job_id, jobTitle: r.title, jobNumber: r.job_number, archivedAt: r.archived_at, stageLeft: r.stage_left, reason: r.reason,
         removed: r.removed, tags: cardTags.filter((x) => x.candidate_id === r.candidate_id).map((x) => ({ id: x.id, name: x.name })),
+        pools: poolLabels(cardPools.filter((x) => x.candidate_id === r.candidate_id).map((x) => ({ name: x.name, parentName: x.parent_name }))),
+        blocked: blocked.has(r.candidate_id),
         addable: r.removed ? [] : open.filter((j) => j.company_id === r.company_id
           && !repeatApplicationBlocked(earlier.filter((a) => a.candidateId === r.candidate_id), j.id, windows.get(r.company_id) ?? 3, today))
           .map((j) => ({ id: j.id, title: j.title, jobNumber: j.job_number })),

@@ -1071,3 +1071,151 @@ report and details restricted to the people who run the check. There is no provi
     tables; every new table has forced RLS and grants with none to PUBLIC; the AI Centre read is counts only.
 87. Rendered: settings types; adding a check, recording authorisation, completing with an outcome and report; the
     hiring manager's restricted view; the card marker and to-do.
+
+## Slice 13 — Talent pools and the blocked list (owner: "next slice", 2026-11-12; EV-025, EV-057…EV-059)
+
+Moka keeps system pools (Public talent pool, Blocked list, Hired employee, Former employee, potential talent) and
+HR-made pools with sub-pools, a description and sharing ("disclosed to all HRs by default; modify access in Share");
+each candidate card in the talent pool names its pool, and an application's More menu has "Add to blocked list"
+(EV-057…EV-059, EV-014 vocabulary). AI HR extends slice 4's single public pool with custom pools and a blocked list.
+
+### Actors and access
+
+- Recruitment administrators: create, edit, share and delete custom pools; add and remove blocked-list entries; see
+  blocked-list reasons; clear blocked-list matches.
+- The company's recruiters and assistants (operators of any job in the company): see the pools shared with them and
+  add or remove candidates they can read; see that a candidate is on the blocked list or matches it, never the
+  reason.
+- Hiring managers and interviewers: no pools; on an application they can read, they see only "Needs an
+  administrator's review" when it matches the blocked list.
+
+### Custom pools (EV-057)
+
+- Per company: name (unique among siblings, ≤80), description (≤500), parent (optional; at most two levels: pool
+  and sub-pool), sharing: All recruiters (default) or Only listed users (administrators always see every pool).
+- A candidate can be in any number of custom pools, with who added them and when. Adding works from the talent pool
+  list, the candidate's application page and the Candidates board; removing from the same places. Deleting a pool
+  removes its memberships, not the candidates; a pool with sub-pools cannot be deleted until they are.
+- The slice 4 public pool is unchanged: rejected or archived applications still appear there.
+
+### Talent pool page (EV-059)
+
+- A pool list (Public talent pool for administrators, as in slice 4; custom pools with sub-pools; Blocked list for
+  administrators and operators) with counts; choosing a pool filters the list. Cards add "Pools: …". Existing
+  filters stay. A sub-pool follows its parent's sharing; listed users are set on top-level pools.
+
+### Blocked list (D-049)
+
+- Administrators add a candidate with a reason (required, ≤500; administrators only) and remove them with a reason.
+  History is kept. The entry stores the candidate and the normalised identity values already on their record (ID
+  number, e-mail, mobile, name), used only for matching.
+- Effect: any of the candidate's active applications, and any new application from any channel (manual, careers
+  page, employee referral, agency) whose candidate matches a blocked entry (same ID number; the same normalised name
+  plus the same e-mail or mobile; or the same e-mail and the same mobile) is marked **Needs an administrator's
+  review**. A new application of a candidate who already has an open mark on another application is marked too.
+  While marked it cannot change stage (forward or back), receive or progress an offer, or be hired (service and
+  database); it can still be rejected and an open offer withdrawn. Matching runs when an application is created and
+  when an entry is added, not when an ID number is added to an existing candidate later. Public
+  channels behave exactly as before towards the person (no different message), so the list cannot be probed.
+- An administrator resolves a mark: "Not the same person" (clears it, and that candidate is not marked again for
+  that entry) or "Remove from blocked list" (clears the entry and every mark from it). Resolutions are audited.
+- A marked application can still be rejected, an open offer withdrawn, and a candidate's decline recorded.
+- Slice 5 retention does not destroy a blocked candidate automatically; removal of a blocked candidate deletes the
+  entry and its identity values, and is refused while that entry still holds an open mark on another candidate's
+  active application (an administrator resolves those first, so no hold is lifted without a decision).
+
+### Not built (D-048)
+
+- Hired employee and Former employee pools (AI HR's employee records already hold them), the potential-talent pool,
+  talent activation rules, online talent search and similar-candidate counts.
+
+### Data
+
+- One migration in the recruitment block (4413): pool, pool share, pool membership, blocked entry (with restricted
+  reason and identity values in an administrator-only table), blocked history, and application review mark tables;
+  forced RLS, explicit grants, none to PUBLIC; guards for the two-level tree, administrator-only blocked-list writes,
+  and the move/offer/hire refusal while marked (added to the existing move, offer and hire guards); matching at
+  application insert for every channel through the existing definer paths (careers, referrals, agencies, manual).
+  Removal and company deletion restated from 4412 with the new steps.
+
+### Slice 13 acceptance cases
+
+88. Only administrators create, edit, share and delete pools; sharing to listed users hides the pool and its
+    membership from others (service and database); two levels at most; deleting a pool keeps the candidates.
+89. Operators add and remove candidates they can read to pools they can see; the talent pool list filters by pool
+    with counts matching independently computed values.
+90. Only administrators add and remove blocked entries and read reasons; operators see the flag without the reason;
+    hiring managers and interviewers see only "Needs an administrator's review" on applications they can read.
+91. Marking: the blocked candidate's active applications and new applications matching by ID number, or name plus
+    e-mail or mobile, from manual entry, careers page, referral and agency are marked; one-field matches are not; a
+    marked application cannot move, get an offer or be hired (service and database); public channels respond
+    exactly as for an unmarked person.
+92. "Not the same person" clears one mark; removing the entry clears all its marks; history and audit events carry no
+    reason text or identity values.
+93. Slice 5 removal deletes blocked entries and identity values; company deletion covers new tables; forced RLS and
+    grants with none to PUBLIC; the AI Centre read is counts only and never reveals blocked status.
+94. Rendered: pools with a sub-pool and sharing; adding candidates; filtering; blocking a candidate; a matching
+    careers application marked and refused a move; resolving the mark.
+
+## Slice 14 — Custom candidate and job fields (owner: group 1 "without pausing", 2026-11-12; EV-027, EV-060, EV-061)
+
+Moka's candidate field management groups fields into sections (Upload, Personal info, Job preference, Work
+experience, Education, Internship experience, Projects, Language proficiency, About me, Awards); each field has an
+English and a Chinese name, a type (single line text, multiple lines text, single choice, multiple choice, date y/m/d,
+date y/m, number, region single choice, file, image, résumé file) and a visibility permission, and "Create field"
+adds custom ones; "allow viewing desensitised information" logs who unmasks a hidden value (EV-027, EV-060). Job fields
+list each field's type, Required or Optional, whether a change needs review, and Enabled or Disabled, with
+"Create field" (EV-061). AI HR adds company-defined custom fields for candidates and jobs on top of the fixed
+profile and job form from slices 1 and 5.
+
+### Actors and access
+
+- Recruitment administrators: define, edit, order, enable and disable custom fields for their company.
+- Whoever may edit a candidate profile (slice 5) or a job (slice 1) fills in that record's custom fields; whoever may
+  read the record reads its custom values, except fields marked **Restricted**, which follow slice 5's restricted
+  values rule (administrators and the candidate's job operators only).
+
+### Field definitions
+
+- Per company and per record kind (candidate, job): label in each of the six locales (English required, others
+  optional and falling back to English), help text (≤200), type, required (yes or no), restricted (candidates only),
+  enabled, position.
+- Types: short text (≤200), long text (≤4,000), number (with optional minimum, maximum and decimals 0–4), date,
+  year and month, single choice and multiple choice (options with labels per locale; an option in use can be
+  disabled, not deleted), yes or no. File and image fields are not added: slice 5 files cover documents (D-051).
+- A field's type cannot change once any record has a value; disabling hides it from forms and lists but keeps
+  values. Deleting is allowed only for a field with no values.
+- Fields that would collect sensitive personal data are refused by name and help text for the categories slice 5
+  excludes (race, religion, health, pregnancy, criminal record, family details), with a plain explanation; this is a
+  deterministic word list, not a model (D-052).
+
+### Filling and showing
+
+- Candidate profile form (slice 5) and job form (slice 1) show the enabled custom fields after the fixed ones, in
+  order, validated by type and required; values are stored typed (not as free text) per record and field.
+- Candidates board and talent pool: an optional filter by one custom single-choice, multiple-choice or yes-or-no field
+  per company; job list: same for jobs.
+- Careers page (slice 8) and referral form (slice 7) do not ask custom candidate fields in this slice (D-053).
+- Changes to values are audited with field ids only (restricted values never in events); slice 5 removal deletes all
+  custom candidate values; company deletion covers definitions and values.
+
+### Data
+
+- One migration (next in the renumbered block): field definition, option, candidate value and job value tables with
+  forced RLS, explicit grants, none to PUBLIC; restricted candidate values in a table readable as slice 5's restricted
+  values; guards for type immutability once used, option deletion when used, required values on save done in the
+  service (records created before a field became required stay valid until next edit).
+
+### Slice 14 acceptance cases
+
+95. Only administrators define fields (service and database); type changes are refused once a value exists;
+    disabling hides from forms but keeps values; deleting is refused when values exist.
+96. Values validate by type, range and options; required is enforced on save; multiple choice stores option ids.
+97. Restricted candidate fields are readable only by administrators and the candidate's job operators (service,
+    page data and direct database), never in events.
+98. Filters by a choice field return exactly the matching candidates and jobs (independently computed).
+99. Sensitive-category field names are refused with an explanation; locale fallbacks work.
+100. Slice 5 removal deletes custom values; company deletion covers the new tables; forced RLS and grants with none to
+     PUBLIC; the AI Centre read is unchanged.
+101. Rendered: defining fields of several types; filling them on a candidate and a job; a restricted field hidden from
+     a hiring manager; a filter.

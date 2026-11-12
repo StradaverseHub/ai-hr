@@ -1,3 +1,25 @@
+# Recruitment slice 13 — 12 November 2026 MYT (unapplied)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 12 entry,
+`4413_recruitment_talent_pools_blocked_list` at idx 3813 / when 1793330004113. A read-only survey of the
+already-fetched refs (7,520 refs, 575 distinct committed journal blobs; no new fetch), 286 registered
+worktrees (all journals readable) and 397 committed allocation-document blobs found no claim of this
+name, position or timestamp and no `4413_` migration file. `origin/main` and `origin/alpha` both end at
+idx 4527 / when 1793330004827, above this block, so whichever lands later must be checked against the
+applied watermark; a lower timestamp can be silently skipped. 4413 adds seven tables
+(`recruitment_talent_pool`, `recruitment_talent_pool_share`, `recruitment_talent_pool_member`,
+`recruitment_blocked_entry`, the administrator-only `recruitment_blocked_entry_restricted`,
+`recruitment_blocked_history` and `recruitment_application_review_mark`), the owner-only context marker
+`app.recruitment_blocked_context`, marker-bound owner policies (including SELECT on
+`recruitment_application`, `recruitment_candidate` and `recruitment_candidate_restricted`), a deferred
+matching trigger and an `applied_at` stamp trigger on `recruitment_application`, added review-mark
+triggers on `recruitment_application`, `recruitment_offer` and `recruitment_hire_handoff` (the earlier
+guards are untouched), restates `app.recruitment_destroying` (4405, reading the marker with
+`txid_current_if_assigned()`), and restates `app.recruitment_destroy_candidate` and
+`app.recruitment_delete_company_setup` (4412 bodies) with added steps only; 4400–4412 are unapplied outside throwaway databases and CI. Recheck peer claims, the
+published baseline and the ordered applied ledger before admission. The reservation grants no
+installation authority.
+
 # Recruitment slice 12 — 12 November 2026 MYT (unapplied)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` reserves, after its slice 11 entry,

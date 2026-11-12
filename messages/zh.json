@@ -37284,7 +37284,15 @@
       "check_state": "此背景调查目前不处于可执行该操作的步骤。请刷新页面后重试。",
       "authorisation_required": "调查开始前，请先记录候选人的书面授权。",
       "check_type_unavailable": "请选择本公司已启用的调查类型。",
-      "type_in_use": "此调查类型已被调查使用。请改为停用。"
+      "type_in_use": "此调查类型已被调查使用。请改为停用。",
+      "needs_review": "此申请需先由管理员审核，才能推进、发放录用或入职。",
+      "already_blocked": "此候选人已在黑名单中。",
+      "blocked_entry_removed": "此条目已从黑名单中移除。",
+      "mark_cleared": "此审核已处理完毕。",
+      "pool_depth": "人才库最多两级：人才库及其子库。子库沿用所属人才库的共享设置。",
+      "pool_has_subpools": "请先删除此人才库的子库。",
+      "blocked_entry_has_open_marks": "此人的黑名单条目仍在另一名候选人的进行中申请上保留着待审核标记。请先处理该审核。",
+      "own_entry_mark": "此申请属于黑名单中的本人。如需处理，请将其移出黑名单。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -37541,7 +37549,8 @@
         "referrals": "推荐",
         "careers": "招聘页面",
         "agencies": "猎头机构",
-        "checks": "背景调查"
+        "checks": "背景调查",
+        "pools": "人才库"
       },
       "iv": {
         "rulesTitle": "反馈规则",
@@ -38714,6 +38723,121 @@
         "addType": "添加类型"
       },
       "systemCancelled": "候选人的个人数据被删除时已自动取消。"
+    },
+    "pools": {
+      "poolsLine": "人才库：{names}",
+      "poolsLabel": "人才库：",
+      "unnamedUser": "未命名用户",
+      "notFound": "该人才库不存在，或未与您共享。",
+      "nav": {
+        "label": "人才库",
+        "public": "公共人才库",
+        "custom": "自定义人才库",
+        "noPools": "暂无与您共享的人才库。",
+        "blocked": "黑名单"
+      },
+      "notice": {
+        "added": "已加入人才库。",
+        "removed": "已移出人才库。",
+        "blocked": "已加入黑名单。匹配的申请现已标记为待管理员审核。",
+        "unblocked": "已从黑名单移除，相关审核标记已清除。",
+        "resolved": "审核已处理。",
+        "screeningHeld": "已发送给用人经理。{n} 份申请需管理员审核，因此未推进。"
+      },
+      "add": {
+        "label": "加入人才库",
+        "choose": "选择人才库",
+        "submit": "加入人才库"
+      },
+      "candidate": {
+        "title": "人才库",
+        "none": "未在您可见的任何人才库中。",
+        "removeFrom": "移出 {pool}"
+      },
+      "members": {
+        "total": "{n, plural, =0 {暂无候选人} other {# 名候选人}}",
+        "empty": "此人才库暂无候选人。可从候选人看板、申请页面或公共人才库添加。",
+        "noContact": "无联系方式",
+        "noApplication": "没有您可打开的申请",
+        "addedBy": "由 {by} 于 {date} 添加",
+        "remove": "移出人才库",
+        "state": {
+          "hired": "已录用",
+          "archived": "已归档"
+        }
+      },
+      "settings": {
+        "note": "自定义人才库用于收集日后想再联系的候选人。人才库可设子库（最多两级）。可与公司所有招聘人员共享，或仅与您列出的用户共享；管理员始终可见所有人才库。删除人才库只会将候选人移出，绝不会删除候选人。公共人才库不受影响。",
+        "empty": "暂无自定义人才库。",
+        "name": "人才库名称",
+        "description": "描述",
+        "sharing": "共享",
+        "sharingOptions": {
+          "all_recruiters": "所有招聘人员",
+          "listed_users": "仅列出的用户"
+        },
+        "listedUsers": "列出的用户",
+        "listedHint": "共享设为“仅列出的用户”时使用。按住 Ctrl 或 Cmd 可多选。",
+        "newPool": "新建人才库",
+        "addPool": "添加人才库",
+        "subPoolName": "新建子库",
+        "subPoolLabel": "子库名称",
+        "addSubPool": "添加子库",
+        "subPools": "{pool} 的子库",
+        "subPoolSharing": "沿用 {pool} 的共享设置。",
+        "members": "{n, plural, =0 {暂无候选人} other {# 名候选人}}",
+        "changed": "由 {by} 于 {at} 修改",
+        "unnamedUser": "未命名用户",
+        "hasSubpools": "需先删除其子库才能删除。",
+        "save": "保存",
+        "delete": "删除",
+        "required": "必填"
+      },
+      "blocked": {
+        "title": "黑名单",
+        "note": "黑名单中的候选人不会在任何地方被直接拒绝。其申请，以及任何渠道中按证件号码、按姓名加电子邮件或手机号、或按电子邮件加手机号与其匹配的新申请，都会标记为待管理员审核，在处理前不能推进、发放录用或入职。原因仅管理员可见。",
+        "operatorNote": "这些候选人在黑名单中。只有管理员能看到原因，也只有管理员能处理审核。",
+        "flag": "黑名单",
+        "reason": "原因",
+        "reasonHint": "仅管理员可见。最多 500 个字符。",
+        "addedBy": "由 {by} 于 {date} 添加",
+        "openMarks": "{n, plural, =0 {没有待审核的申请} other {# 份申请待审核}}",
+        "remove": "移出黑名单",
+        "removalReason": "移出原因",
+        "empty": "黑名单中没有任何人。",
+        "history": "记录",
+        "noHistory": "暂无记录。",
+        "system": "自动",
+        "actions": {
+          "added": "加入黑名单",
+          "removed": "移出黑名单",
+          "marked": "申请被标记为待审核",
+          "mark_cleared": "审核已处理"
+        },
+        "details": {
+          "not_same_person": "不是同一人",
+          "entry_removed": "条目已移除"
+        },
+        "add": "加入黑名单",
+        "addNote": "此候选人的申请，以及与其证件号码、姓名加电子邮件或手机号、或电子邮件加手机号匹配的新申请，在推进、发放录用或入职前都需管理员审核。申请人不会收到通知。"
+      },
+      "review": {
+        "needsReview": "需管理员审核",
+        "readerNote": "此申请须经管理员审核后才能继续。",
+        "listedTitle": "在黑名单中",
+        "listedNote": "此候选人在黑名单中。",
+        "operatorSelf": "此候选人在黑名单中。此申请须经管理员审核后才能推进、发放录用或入职。",
+        "operatorMatch": "此申请与黑名单中的一个条目匹配。须经管理员审核后才能推进、发放录用或入职。",
+        "adminSelf": "此候选人在黑名单中。",
+        "adminMatch": "此申请与黑名单中的 {name} 匹配（证件号码相同；姓名相同且电子邮件或手机号相同；或电子邮件和手机号都相同）。",
+        "adminMatchRemoved": "此申请与一个黑名单条目匹配，该候选人的个人资料已被删除。",
+        "reason": "原因：{reason}",
+        "markedOn": "标记于 {date}",
+        "notSamePerson": "不是同一人",
+        "removeFromList": "移出黑名单",
+        "removalReason": "移出原因",
+        "cardFlag": "待审核"
+      }
     }
   },
   "careersPublic": {

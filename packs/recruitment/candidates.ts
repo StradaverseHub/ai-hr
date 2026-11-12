@@ -173,6 +173,11 @@ export async function destroyCandidates(s: SessionContext, companyId: unknown, c
       try {
         [{ counts }] = await tx.execute<{ counts: Record<string, number> }>(sql`select app.recruitment_destroy_candidate(${id}::uuid) as counts`);
       } catch (e) {
+        // Slice 13: the person's blocked-list entry still holds a review on another candidate's active application.
+        let cur = e as { constraint_name?: unknown; cause?: unknown } | null | undefined;
+        for (let i = 0; cur && typeof cur === 'object' && i < 4; i++, cur = cur.cause as typeof cur) {
+          if (cur.constraint_name === 'recruitment_blocked_entry_has_open_marks') throw new RecruitmentError('blocked_entry_has_open_marks');
+        }
         if (pgSqlState(e) === '23514') throw new RecruitmentError('not_due');
         throw e;
       }

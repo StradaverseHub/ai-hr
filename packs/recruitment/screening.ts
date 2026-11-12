@@ -83,7 +83,8 @@ export async function screeningSendOptionsTx(tx: Tx, s: SessionContext, jobId: u
   return { jobId: job.id, reviewers: ids ? ids.map((id) => ({ id, name: labels.get(id)?.name ?? null })) : null };
 }
 
-export type ScreeningSendResult = { sent: number; skipped: number; moved: number };
+/** `held` (slice 13, present only when above zero): applications sent but NOT moved because they need an administrator's review. */
+export type ScreeningSendResult = { sent: number; skipped: number; moved: number; held?: number };
 
 async function sendTx(tx: Tx, s: SessionContext, input: SendInput): Promise<ScreeningSendResult> {
   const v = validateSendInput(input);
@@ -106,6 +107,7 @@ async function sendTx(tx: Tx, s: SessionContext, input: SendInput): Promise<Scre
   let sent = 0;
   let skipped = 0;
   let moved = 0;
+  let held = 0;
   for (const { app, processId } of apps) {
     const created: string[] = [];
     for (const reviewer of reviewers) {
@@ -132,7 +134,10 @@ async function sendTx(tx: Tx, s: SessionContext, input: SendInput): Promise<Scre
     let movedTo: string | null = null;
     if (v.move && created.length) {
       const plan = planMoveForward(await processStagesTx(tx, processId), app.currentStageId);
-      if (plan.kind === 'moved') {
+      // Slice 13: an application that needs an administrator's review is sent but stays where it is.
+      const [review] = plan.kind === 'moved' ? await tx.execute<{ marked: boolean }>(sql`select app.recruitment_application_needs_review(${app.id}::uuid) as marked`) : [];
+      if (review?.marked === true) held += 1;
+      else if (plan.kind === 'moved') {
         movedTo = (await moveApplicationTx(tx, s, app.id, plan.to)).stageId;
         moved += 1;
       }
@@ -141,7 +146,7 @@ async function sendTx(tx: Tx, s: SessionContext, input: SendInput): Promise<Scre
       await event(tx, s, app.id, 'recruitment-application.screening-sent', { companyId: app.companyId, jobId: app.jobId, requestIds: created, movedToStageId: movedTo });
     }
   }
-  return { sent, skipped, moved };
+  return held ? { sent, skipped, moved, held } : { sent, skipped, moved };
 }
 
 /**

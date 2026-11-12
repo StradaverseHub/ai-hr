@@ -160,6 +160,22 @@ export {
 } from './background-check-model';
 // (Slice 10 already exports a CheckOutcome — the agency check's; the background check outcome is BackgroundCheckOutcome here.)
 export type { CheckStatus, CheckOutcome as BackgroundCheckOutcome, AuthorisationMethod, CheckFileKind, CheckMarker, CheckStagePosition } from './background-check-model';
+// Slice 13 — custom talent pools (two levels; sharing with all recruiters or listed users) and the blocked list (administrators
+// add and remove with a reason; matching applications from every channel are marked for an administrator's review, which
+// holds them from moving, offers and hire until resolved). The board's review flag and pools come with candidateBoard; the
+// public pool's "Pools: …" and blocked flag with talentPool.
+export {
+  poolSettings, savePool, deletePool, poolNav, poolMembers, applicationPools, poolChoices, addCandidateToPool, removeCandidateFromPool,
+} from './pools';
+export type { PoolSettingsRow, PoolSettings, PoolNavRow, PoolNav, PoolMemberCard, PoolMembers, CandidatePools } from './pools';
+export { blockCandidate, unblockCandidate, resolveReviewMark, applicationReview, blockedList } from './blocked-list';
+export type { ReviewMarkView, ApplicationReview, BlockedEntryRow, BlockedHistoryRow, BlockedList } from './blocked-list';
+export {
+  POOL_NAME_MAX, POOL_DESCRIPTION_MAX, POOL_SHARING, POOL_SHARE_MAX, POOL_LIST_LIMIT, BLOCKED_REASON_MAX, REVIEW_RESOLUTIONS, BLOCKED_HISTORY_ACTIONS,
+  MARK_CLEARED_KINDS, REVIEW_VIEWS, validatePoolInput, poolTree, parsePoolKey, poolLabels, validateBlockedReason, parseResolution, identityOf,
+  blockedIdentityMatch, reviewView,
+} from './pool-model';
+export type { PoolSharing, ReviewResolution, BlockedHistoryAction, MarkClearedKind, ReviewView, PoolKey, PoolNode, Identity } from './pool-model';
 export {
   RecruitmentError, RECRUITMENT_ERROR_CODES, JOB_STATUSES, JOB_STATUS_TRANSITIONS, JOB_MEMBER_ROLES, POSITION_ATTRIBUTES, RECRUITMENT_TYPES,
   JOB_EMPLOYMENT_TYPES, RECRUITMENT_STAGE_TYPES, canChangeJobStatus, jobTab,

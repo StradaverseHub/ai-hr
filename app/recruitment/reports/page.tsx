@@ -75,7 +75,7 @@ export default async function RecruitmentReportsPage({ searchParams }: { searchP
   return (
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={t('purpose')} />
-      <RecruitmentTabs active="reports" admin={access.isAdmin} approvals={access.pendingApprovals} reports  screening={access.pendingScreening} />
+      <RecruitmentTabs active="reports" admin={access.isAdmin} approvals={access.pendingApprovals} reports  screening={access.pendingScreening} pools={access.poolCompanies.length > 0} />
       <SubTabs label={t('views')} items={views.map((v) => ({ key: v, href: keep({ view: v === 'overview' ? '' : v }), text: t(v), current: v === view }))} />
       <ErrorBanner message={await recruitmentErrorText(error)} />
       <form method="get" aria-label={t('filters')} className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-6">

@@ -37284,7 +37284,15 @@
       "check_state": "This background check is not at the right step for that action. Refresh the page and try again.",
       "authorisation_required": "Record the candidate's written authorisation before the check starts.",
       "check_type_unavailable": "Choose enabled check types of this company.",
-      "type_in_use": "This check type is used by a check. Disable it instead."
+      "type_in_use": "This check type is used by a check. Disable it instead.",
+      "needs_review": "This application needs an administrator's review before it can move, get an offer or be hired.",
+      "already_blocked": "This candidate is already on the blocked list.",
+      "blocked_entry_removed": "This entry has already been removed from the blocked list.",
+      "mark_cleared": "This review has already been resolved.",
+      "pool_depth": "Pools nest two levels at most: a pool and its sub-pools. A sub-pool follows its pool's sharing.",
+      "pool_has_subpools": "Delete this pool's sub-pools first.",
+      "blocked_entry_has_open_marks": "This person's blocked-list entry still holds a review on another candidate's active application. Resolve that review first.",
+      "own_entry_mark": "This application belongs to the person on the blocked list. Remove them from the blocked list to resolve it."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -37541,7 +37549,8 @@
         "referrals": "Referrals",
         "careers": "Careers page",
         "agencies": "Agencies",
-        "checks": "Background checks"
+        "checks": "Background checks",
+        "pools": "Talent pools"
       },
       "iv": {
         "rulesTitle": "Feedback rules",
@@ -38714,6 +38723,121 @@
         "addType": "Add type"
       },
       "systemCancelled": "Cancelled automatically when the candidate's personal data was removed."
+    },
+    "pools": {
+      "poolsLine": "Pools: {names}",
+      "poolsLabel": "Pools:",
+      "unnamedUser": "Unnamed user",
+      "notFound": "That pool does not exist or is not shared with you.",
+      "nav": {
+        "label": "Pools",
+        "public": "Public talent pool",
+        "custom": "Custom pools",
+        "noPools": "No pools shared with you yet.",
+        "blocked": "Blocked list"
+      },
+      "notice": {
+        "added": "Added to the pool.",
+        "removed": "Removed from the pool.",
+        "blocked": "Added to the blocked list. Matching applications are now marked for an administrator's review.",
+        "unblocked": "Removed from the blocked list. Its review marks are cleared.",
+        "resolved": "The review is resolved.",
+        "screeningHeld": "Sent to the hiring manager. {n, plural, one {# application needs} other {# applications need}} an administrator's review, so {n, plural, one {it was} other {they were}} not moved."
+      },
+      "add": {
+        "label": "Add to pool",
+        "choose": "Choose a pool",
+        "submit": "Add to pool"
+      },
+      "candidate": {
+        "title": "Pools",
+        "none": "Not in any pool you can see.",
+        "removeFrom": "Remove from {pool}"
+      },
+      "members": {
+        "total": "{n, plural, =0 {No candidates} one {# candidate} other {# candidates}}",
+        "empty": "No candidates in this pool yet. Add them from the Candidates board, an application or the public talent pool.",
+        "noContact": "No contact details",
+        "noApplication": "No application you can open",
+        "addedBy": "Added by {by} on {date}",
+        "remove": "Remove from pool",
+        "state": {
+          "hired": "Hired",
+          "archived": "Archived"
+        }
+      },
+      "settings": {
+        "note": "Custom pools group candidates you want to come back to. A pool can have sub-pools (two levels). Share a pool with all recruiters of the company, or only with the users you list; administrators always see every pool. Deleting a pool takes its candidates out of it but never deletes a candidate. The public talent pool is not affected.",
+        "empty": "No custom pools yet.",
+        "name": "Pool name",
+        "description": "Description",
+        "sharing": "Sharing",
+        "sharingOptions": {
+          "all_recruiters": "All recruiters",
+          "listed_users": "Only listed users"
+        },
+        "listedUsers": "Listed users",
+        "listedHint": "Used when sharing is Only listed users. Hold Ctrl or Cmd to choose several.",
+        "newPool": "New pool",
+        "addPool": "Add pool",
+        "subPoolName": "New sub-pool",
+        "subPoolLabel": "Sub-pool name",
+        "addSubPool": "Add sub-pool",
+        "subPools": "Sub-pools of {pool}",
+        "subPoolSharing": "Follows the sharing of {pool}.",
+        "members": "{n, plural, =0 {No candidates} one {# candidate} other {# candidates}}",
+        "changed": "Changed by {by}, {at}",
+        "unnamedUser": "Unnamed user",
+        "hasSubpools": "Delete its sub-pools first to delete it.",
+        "save": "Save",
+        "delete": "Delete",
+        "required": "required"
+      },
+      "blocked": {
+        "title": "Blocked list",
+        "note": "A candidate on the blocked list is not refused anywhere. Their applications, and new applications from any channel that match them by ID number, by name together with e-mail or mobile, or by e-mail together with mobile, are marked for an administrator's review and cannot move, get an offer or be hired until resolved. Reasons are for administrators only.",
+        "operatorNote": "These candidates are on the blocked list. Only administrators see why, and only they can resolve a review.",
+        "flag": "Blocked list",
+        "reason": "Reason",
+        "reasonHint": "Visible to administrators only. 500 characters at most.",
+        "addedBy": "Added by {by} on {date}",
+        "openMarks": "{n, plural, =0 {No application waiting for review} one {# application waiting for review} other {# applications waiting for review}}",
+        "remove": "Remove from blocked list",
+        "removalReason": "Reason for removing",
+        "empty": "Nobody is on the blocked list.",
+        "history": "History",
+        "noHistory": "No history yet.",
+        "system": "Automatic",
+        "actions": {
+          "added": "Added to the blocked list",
+          "removed": "Removed from the blocked list",
+          "marked": "Application marked for review",
+          "mark_cleared": "Review resolved"
+        },
+        "details": {
+          "not_same_person": "not the same person",
+          "entry_removed": "entry removed"
+        },
+        "add": "Add to blocked list",
+        "addNote": "The candidate's applications, and new applications that match their ID number, their name with their e-mail or mobile, or their e-mail with their mobile, will need an administrator's review before they can move, get an offer or be hired. Applicants are not told."
+      },
+      "review": {
+        "needsReview": "Needs an administrator's review",
+        "readerNote": "An administrator must review this application before it can move on.",
+        "listedTitle": "On the blocked list",
+        "listedNote": "This candidate is on the blocked list.",
+        "operatorSelf": "This candidate is on the blocked list. An administrator must review this application before it can move, get an offer or be hired.",
+        "operatorMatch": "This application matches an entry on the blocked list. An administrator must review it before it can move, get an offer or be hired.",
+        "adminSelf": "This candidate is on the blocked list.",
+        "adminMatch": "This application matches {name} on the blocked list (the same ID number; the same name with the same e-mail or mobile; or the same e-mail and mobile).",
+        "adminMatchRemoved": "This application matches a blocked-list entry whose candidate's personal data has been removed.",
+        "reason": "Reason: {reason}",
+        "markedOn": "Marked on {date}",
+        "notSamePerson": "Not the same person",
+        "removeFromList": "Remove from blocked list",
+        "removalReason": "Reason for removing",
+        "cardFlag": "Needs review"
+      }
     }
   },
   "careersPublic": {

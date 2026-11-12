@@ -27,6 +27,7 @@ import {
   answerScreening, reassignScreening, sendForScreening, withdrawScreening,
   addBackgroundCheck, addDefaultBackgroundCheckTypes, cancelBackgroundCheck, completeBackgroundCheck, deleteBackgroundCheckType,
   recordBackgroundCheckAuthorisation, saveBackgroundCheckType, startBackgroundCheck, CHECK_FILE_MAX_BYTES, type CheckFileInput,
+  addCandidateToPool, blockCandidate, deletePool, removeCandidateFromPool, resolveReviewMark, savePool, unblockCandidate,
 } from '@/packs/recruitment/service';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -40,10 +41,11 @@ const errorCode = (e: unknown) => (e instanceof RecruitmentError ? e.code : 'une
 /** The query parameter a refusal code comes back in (read by every Recruitment page's ErrorBanner, recruitmentErrorText). */
 const PROBLEM_PARAM = 'problem';
 
-async function run(url: string, work: (s: Awaited<ReturnType<typeof getSession>>) => Promise<unknown>, done?: string): Promise<never> {
+async function run<R>(url: string, work: (s: Awaited<ReturnType<typeof getSession>>) => Promise<R>, done?: string | ((result: R) => string)): Promise<never> {
   const s = await getSession();
+  let result: R;
   try {
-    await work(s);
+    result = await work(s);
   } catch (e) {
     // Only the error's kind and SQLSTATE: a database error's message carries its bound values (candidate details,
     // private offer values, notes), which must never reach the server log.
@@ -51,7 +53,7 @@ async function run(url: string, work: (s: Awaited<ReturnType<typeof getSession>>
     redirect(withParam(url, PROBLEM_PARAM, errorCode(e)));
   }
   revalidatePath('/recruitment', 'layout');
-  redirect(done ?? withParam(url, 'notice', 'saved'));
+  redirect(typeof done === 'function' ? done(result) : done ?? withParam(url, 'notice', 'saved'));
 }
 
 const jobFields = (f: FormData) => ({
@@ -544,7 +546,7 @@ export async function sendForScreeningAction(f: FormData) {
   return run(url, (s) => sendForScreening(s, {
     applicationIds: f.getAll('applicationIds').map(String), reviewerUserIds: f.getAll('reviewerUserIds').map(String),
     note: String(f.get('note') ?? ''), move: f.get('move') === 'on',
-  }), withParam(url, 'notice', 'screening-sent'));
+  }), (r) => (r.held ? withParam(withParam(url, 'notice', 'screening-sent-held'), 'held', String(r.held)) : withParam(url, 'notice', 'screening-sent')));
 }
 /** "Reassign": ask more of the job's hiring managers about one application. */
 export async function reassignScreeningAction(f: FormData) {
@@ -615,4 +617,43 @@ export async function completeBackgroundCheckAction(f: FormData) {
 export async function cancelBackgroundCheckAction(f: FormData) {
   return run(checkPage(f), (s) => cancelBackgroundCheck(s, str(f, 'checkId'), { reason: String(f.get('reason') ?? '') }),
     withParam(checkPage(f), 'notice', 'check-cancelled'));
+}
+
+// ── Slice 13: talent pools and the blocked list ─────────────────────────────────────────────────────────────────
+const poolSettingsPage = (f: FormData) => back(f, '/recruitment/settings?section=pools');
+/** Settings › Talent pools: create a pool or sub-pool, or edit one (name, description, sharing and listed users). */
+export async function savePoolAction(f: FormData) {
+  return run(poolSettingsPage(f), (s) => savePool(s, {
+    id: str(f, 'poolId') || undefined, companyId: str(f, 'companyId'), name: str(f, 'name'), description: String(f.get('description') ?? ''),
+    // Editing never moves a pool: the edit form sends no parent.
+    ...(f.has('parentId') ? { parentId: str(f, 'parentId') } : {}),
+    sharing: str(f, 'sharing'), sharedUserIds: f.getAll('sharedUserIds').map(String),
+  }));
+}
+export async function deletePoolAction(f: FormData) {
+  return run(poolSettingsPage(f), (s) => deletePool(s, str(f, 'poolId')));
+}
+/** Add a candidate to a pool, or remove them (talent pool page, application page, Candidates board). */
+export async function addCandidateToPoolAction(f: FormData) {
+  const url = back(f, '/recruitment/talent-pool');
+  return run(url, (s) => addCandidateToPool(s, str(f, 'poolId'), str(f, 'candidateId')), withParam(url, 'notice', 'pool-added'));
+}
+export async function removeCandidateFromPoolAction(f: FormData) {
+  const url = back(f, '/recruitment/talent-pool');
+  return run(url, (s) => removeCandidateFromPool(s, str(f, 'poolId'), str(f, 'candidateId')), withParam(url, 'notice', 'pool-removed'));
+}
+/** "Add to blocked list" (administrators): the candidate and a reason. */
+export async function blockCandidateAction(f: FormData) {
+  const url = back(f, '/recruitment/talent-pool?pool=blocked');
+  return run(url, (s) => blockCandidate(s, str(f, 'candidateId'), String(f.get('reason') ?? '')), withParam(url, 'notice', 'blocked'));
+}
+/** Remove an entry from the blocked list (administrators), with a reason. */
+export async function unblockCandidateAction(f: FormData) {
+  const url = back(f, '/recruitment/talent-pool?pool=blocked');
+  return run(url, (s) => unblockCandidate(s, str(f, 'entryId'), String(f.get('reason') ?? '')), withParam(url, 'notice', 'unblocked'));
+}
+/** Resolve a review mark (administrators): "Not the same person", or "Remove from blocked list" with a reason. */
+export async function resolveReviewMarkAction(f: FormData) {
+  const url = back(f, '/recruitment/candidates');
+  return run(url, (s) => resolveReviewMark(s, str(f, 'markId'), str(f, 'resolution'), String(f.get('reason') ?? '')), withParam(url, 'notice', 'review-resolved'));
 }

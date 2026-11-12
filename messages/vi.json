@@ -37284,7 +37284,15 @@
       "check_state": "Đợt thẩm tra lý lịch này không ở đúng bước cho thao tác đó. Hãy tải lại trang và thử lại.",
       "authorisation_required": "Hãy ghi nhận sự cho phép bằng văn bản của ứng viên trước khi bắt đầu thẩm tra.",
       "check_type_unavailable": "Hãy chọn các loại thẩm tra đang bật của công ty này.",
-      "type_in_use": "Loại thẩm tra này đang được sử dụng. Hãy tắt nó thay vì xóa."
+      "type_in_use": "Loại thẩm tra này đang được sử dụng. Hãy tắt nó thay vì xóa.",
+      "needs_review": "Đơn ứng tuyển này cần quản trị viên xem xét trước khi được chuyển bước, nhận đề nghị hoặc tuyển dụng.",
+      "already_blocked": "Ứng viên này đã có trong danh sách chặn.",
+      "blocked_entry_removed": "Mục này đã được gỡ khỏi danh sách chặn.",
+      "mark_cleared": "Việc xem xét này đã được xử lý.",
+      "pool_depth": "Kho chỉ lồng tối đa hai cấp: kho và các kho con. Kho con theo chế độ chia sẻ của kho chính.",
+      "pool_has_subpools": "Hãy xóa các kho con của kho này trước.",
+      "blocked_entry_has_open_marks": "Mục trong danh sách chặn của người này vẫn đang giữ một việc xem xét trên đơn đang hoạt động của ứng viên khác. Hãy xử lý việc xem xét đó trước.",
+      "own_entry_mark": "Đơn này thuộc về người có trong danh sách chặn. Hãy gỡ họ khỏi danh sách chặn để xử lý."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -37541,7 +37549,8 @@
         "referrals": "Giới thiệu",
         "careers": "Trang tuyển dụng",
         "agencies": "Công ty tuyển dụng",
-        "checks": "Thẩm tra lý lịch"
+        "checks": "Thẩm tra lý lịch",
+        "pools": "Kho ứng viên"
       },
       "iv": {
         "rulesTitle": "Quy tắc đánh giá",
@@ -38714,6 +38723,121 @@
         "addType": "Thêm loại"
       },
       "systemCancelled": "Đã tự động hủy khi dữ liệu cá nhân của ứng viên bị xóa."
+    },
+    "pools": {
+      "poolsLine": "Kho: {names}",
+      "poolsLabel": "Kho:",
+      "unnamedUser": "Người dùng không tên",
+      "notFound": "Kho đó không tồn tại hoặc không được chia sẻ với bạn.",
+      "nav": {
+        "label": "Kho",
+        "public": "Kho ứng viên chung",
+        "custom": "Kho tùy chỉnh",
+        "noPools": "Chưa có kho nào được chia sẻ với bạn.",
+        "blocked": "Danh sách chặn"
+      },
+      "notice": {
+        "added": "Đã thêm vào kho.",
+        "removed": "Đã gỡ khỏi kho.",
+        "blocked": "Đã thêm vào danh sách chặn. Các đơn ứng tuyển trùng khớp đã được đánh dấu chờ quản trị viên xem xét.",
+        "unblocked": "Đã gỡ khỏi danh sách chặn. Các dấu xem xét liên quan đã được xóa.",
+        "resolved": "Việc xem xét đã được xử lý.",
+        "screeningHeld": "Đã gửi cho quản lý tuyển dụng. {n} đơn cần quản trị viên xem xét nên không được chuyển bước."
+      },
+      "add": {
+        "label": "Thêm vào kho",
+        "choose": "Chọn kho",
+        "submit": "Thêm vào kho"
+      },
+      "candidate": {
+        "title": "Kho",
+        "none": "Không có trong kho nào bạn xem được.",
+        "removeFrom": "Gỡ khỏi {pool}"
+      },
+      "members": {
+        "total": "{n, plural, =0 {Chưa có ứng viên} other {# ứng viên}}",
+        "empty": "Kho này chưa có ứng viên. Hãy thêm từ bảng Ứng viên, trang đơn ứng tuyển hoặc kho ứng viên chung.",
+        "noContact": "Không có thông tin liên hệ",
+        "noApplication": "Không có đơn ứng tuyển nào bạn mở được",
+        "addedBy": "Do {by} thêm ngày {date}",
+        "remove": "Gỡ khỏi kho",
+        "state": {
+          "hired": "Đã tuyển",
+          "archived": "Đã lưu trữ"
+        }
+      },
+      "settings": {
+        "note": "Kho tùy chỉnh gom những ứng viên bạn muốn liên hệ lại. Một kho có thể có kho con (hai cấp). Chia sẻ kho với mọi nhân viên tuyển dụng của công ty, hoặc chỉ với những người dùng bạn liệt kê; quản trị viên luôn thấy mọi kho. Xóa kho chỉ gỡ ứng viên khỏi kho, không bao giờ xóa ứng viên. Kho ứng viên chung không bị ảnh hưởng.",
+        "empty": "Chưa có kho tùy chỉnh nào.",
+        "name": "Tên kho",
+        "description": "Mô tả",
+        "sharing": "Chia sẻ",
+        "sharingOptions": {
+          "all_recruiters": "Mọi nhân viên tuyển dụng",
+          "listed_users": "Chỉ người dùng được liệt kê"
+        },
+        "listedUsers": "Người dùng được liệt kê",
+        "listedHint": "Dùng khi chế độ chia sẻ là Chỉ người dùng được liệt kê. Giữ Ctrl hoặc Cmd để chọn nhiều người.",
+        "newPool": "Kho mới",
+        "addPool": "Thêm kho",
+        "subPoolName": "Kho con mới",
+        "subPoolLabel": "Tên kho con",
+        "addSubPool": "Thêm kho con",
+        "subPools": "Các kho con của {pool}",
+        "subPoolSharing": "Theo chế độ chia sẻ của {pool}.",
+        "members": "{n, plural, =0 {Chưa có ứng viên} other {# ứng viên}}",
+        "changed": "Do {by} thay đổi, {at}",
+        "unnamedUser": "Người dùng không tên",
+        "hasSubpools": "Hãy xóa các kho con trước để xóa kho này.",
+        "save": "Lưu",
+        "delete": "Xóa",
+        "required": "bắt buộc"
+      },
+      "blocked": {
+        "title": "Danh sách chặn",
+        "note": "Ứng viên trong danh sách chặn không bị từ chối ở bất cứ đâu. Các đơn của họ, và các đơn mới từ mọi kênh trùng khớp với họ theo số giấy tờ tùy thân, theo tên cùng với email hoặc số di động, hoặc theo email cùng với số di động, sẽ được đánh dấu chờ quản trị viên xem xét và không thể chuyển bước, nhận đề nghị hoặc được tuyển cho đến khi được xử lý. Lý do chỉ dành cho quản trị viên.",
+        "operatorNote": "Những ứng viên này có trong danh sách chặn. Chỉ quản trị viên thấy lý do và chỉ họ mới xử lý được việc xem xét.",
+        "flag": "Danh sách chặn",
+        "reason": "Lý do",
+        "reasonHint": "Chỉ quản trị viên xem được. Tối đa 500 ký tự.",
+        "addedBy": "Do {by} thêm ngày {date}",
+        "openMarks": "{n, plural, =0 {Không có đơn nào chờ xem xét} other {# đơn đang chờ xem xét}}",
+        "remove": "Gỡ khỏi danh sách chặn",
+        "removalReason": "Lý do gỡ",
+        "empty": "Danh sách chặn đang trống.",
+        "history": "Lịch sử",
+        "noHistory": "Chưa có lịch sử.",
+        "system": "Tự động",
+        "actions": {
+          "added": "Thêm vào danh sách chặn",
+          "removed": "Gỡ khỏi danh sách chặn",
+          "marked": "Đơn được đánh dấu chờ xem xét",
+          "mark_cleared": "Đã xử lý việc xem xét"
+        },
+        "details": {
+          "not_same_person": "không phải cùng một người",
+          "entry_removed": "đã gỡ mục"
+        },
+        "add": "Thêm vào danh sách chặn",
+        "addNote": "Các đơn của ứng viên này, và các đơn mới trùng với số giấy tờ tùy thân của họ, tên cùng email hoặc số di động của họ, hoặc email cùng số di động của họ, sẽ cần quản trị viên xem xét trước khi được chuyển bước, nhận đề nghị hoặc tuyển dụng. Người nộp đơn không được thông báo."
+      },
+      "review": {
+        "needsReview": "Cần quản trị viên xem xét",
+        "readerNote": "Quản trị viên phải xem xét đơn này trước khi có thể tiếp tục.",
+        "listedTitle": "Có trong danh sách chặn",
+        "listedNote": "Ứng viên này có trong danh sách chặn.",
+        "operatorSelf": "Ứng viên này có trong danh sách chặn. Quản trị viên phải xem xét đơn này trước khi nó được chuyển bước, nhận đề nghị hoặc tuyển dụng.",
+        "operatorMatch": "Đơn này trùng khớp với một mục trong danh sách chặn. Quản trị viên phải xem xét trước khi nó được chuyển bước, nhận đề nghị hoặc tuyển dụng.",
+        "adminSelf": "Ứng viên này có trong danh sách chặn.",
+        "adminMatch": "Đơn này trùng khớp với {name} trong danh sách chặn (cùng số giấy tờ tùy thân; cùng tên với cùng email hoặc số di động; hoặc cùng email và số di động).",
+        "adminMatchRemoved": "Đơn này trùng khớp với một mục trong danh sách chặn mà dữ liệu cá nhân của ứng viên đã bị xóa.",
+        "reason": "Lý do: {reason}",
+        "markedOn": "Đánh dấu ngày {date}",
+        "notSamePerson": "Không phải cùng một người",
+        "removeFromList": "Gỡ khỏi danh sách chặn",
+        "removalReason": "Lý do gỡ",
+        "cardFlag": "Chờ xem xét"
+      }
     }
   },
   "careersPublic": {

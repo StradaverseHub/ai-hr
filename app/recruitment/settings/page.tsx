@@ -13,6 +13,7 @@ import { CareersSettingsSection } from './careers-settings';
 import { TagSettingsSection } from './tag-settings';
 import { AgencySettingsSection } from './agency-settings';
 import { BackgroundCheckSettingsSection } from './background-check-settings';
+import { PoolSettingsSection } from './pool-settings';
 
 /**
  * Recruitment › Settings for one company (administrators only). Pipeline: the stage catalogue, recruitment processes
@@ -20,7 +21,8 @@ import { BackgroundCheckSettingsSection } from './background-check-settings';
  * evaluation forms. Offers and approvals (slices 3–4): the offer-field set, validity, the optional automation and the
  * offer and requisition approval flows. Referrals (slice 7): the referral protection period. Careers page (slice 8): the public
  * page, its publish switch and privacy notice versions. Agencies (slice 10): agency tags, agencies, contracts (each with its own
- * page) and consultants. Background checks (slice 12): the company's check types. Every change is a domain event.
+ * page) and consultants. Background checks (slice 12): the company's check types. Talent pools (slice 13): custom pools, sub-pools
+ * and sharing. Every change is a domain event.
  */
 export default async function RecruitmentSettingsPage({ searchParams }: { searchParams: Promise<{ company?: string; problem?: string; notice?: string; section?: string; agency?: string; tag?: string; type?: string; status?: string }> }) {
   await requireModule('recruitment');
@@ -30,7 +32,7 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
   const [t, nav, locale] = await Promise.all([getTranslations('recruitment.settings'), getTranslations('nav'), getLocale()]);
   const company = pickCompany(companies, sp.company);
   const settings = company ? await recruitmentSettings(s, company.id) : null;
-  const section = sp.section === 'interviews' || sp.section === 'offers' || sp.section === 'privacy' || sp.section === 'tags' || sp.section === 'referrals' || sp.section === 'careers' || sp.section === 'agencies' || sp.section === 'checks' ? sp.section : 'general';
+  const section = sp.section === 'interviews' || sp.section === 'offers' || sp.section === 'privacy' || sp.section === 'tags' || sp.section === 'referrals' || sp.section === 'careers' || sp.section === 'agencies' || sp.section === 'checks' || sp.section === 'pools' ? sp.section : 'general';
   const sectionHref = (key: string) => `/recruitment/settings?${new URLSearchParams({ ...(company ? { company: company.id } : {}), ...(key === 'general' ? {} : { section: key }) })}`;
   const here = sectionHref(section);
   const when = (iso: string) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date(iso));
@@ -54,7 +56,7 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
               <button type="submit" className={btnGhost}>{t('switchCompany')}</button>
             </form>
           )}
-          <SubTabs label={t('sections')} items={(['general', 'interviews', 'offers', 'privacy', 'tags', 'referrals', 'careers', 'agencies', 'checks'] as const).map((key) => ({ key, href: sectionHref(key), text: t(`section.${key}`), current: section === key }))} />
+          <SubTabs label={t('sections')} items={(['general', 'interviews', 'offers', 'privacy', 'tags', 'referrals', 'careers', 'agencies', 'checks', 'pools'] as const).map((key) => ({ key, href: sectionHref(key), text: t(`section.${key}`), current: section === key }))} />
           {section === 'interviews' ? <InterviewSettingsSection s={s} companyId={company.id} here={here} />
             : section === 'offers' ? <OfferSettingsSection s={s} companyId={company.id} here={here} />
               : section === 'privacy' ? <PrivacySettingsSection s={s} companyId={company.id} here={here} />
@@ -62,7 +64,8 @@ export default async function RecruitmentSettingsPage({ searchParams }: { search
                   : section === 'referrals' ? <ReferralSettingsSection s={s} companyId={company.id} here={here} />
                     : section === 'careers' ? <CareersSettingsSection s={s} companyId={company.id} here={here} />
                       : section === 'agencies' ? <AgencySettingsSection s={s} companyId={company.id} here={here} filters={{ agency: sp.agency, tag: sp.tag, type: sp.type, status: sp.status }} />
-                        : section === 'checks' ? <BackgroundCheckSettingsSection s={s} companyId={company.id} here={here} /> : (<>
+                        : section === 'checks' ? <BackgroundCheckSettingsSection s={s} companyId={company.id} here={here} />
+                          : section === 'pools' ? <PoolSettingsSection s={s} companyId={company.id} here={here} /> : (<>
 
           <section className="space-y-3" aria-labelledby="stages-title">
             <div><h2 id="stages-title" className="text-base font-semibold">{t('stagesTitle')}</h2><p className="text-sm text-muted-foreground">{t('stagesNote')}</p></div>

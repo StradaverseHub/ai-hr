@@ -22,7 +22,7 @@ export default async function RecruitmentScreeningPage({ searchParams }: { searc
   return (
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={t('toScreenPurpose')} />
-      <RecruitmentTabs active="screening" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0} screening={access.pendingScreening} />
+      <RecruitmentTabs active="screening" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0} screening={access.pendingScreening} pools={access.poolCompanies.length > 0} />
       <Notice text={sp.notice === 'screening-answered' ? t('answeredNotice') : undefined} />
       <ErrorBanner message={await recruitmentErrorText(sp.problem)} />
       {requests.length === 0 ? (

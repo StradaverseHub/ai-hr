@@ -37,6 +37,7 @@ import {
 import { DEFAULT_EVALUATION_FORM, DEFAULT_OFFER_FIELDS } from './hiring-model';
 import { ASSIGNMENT_STATUSES, SCREENING_LIST_LIMIT, SCREENING_STATUS_WINDOW, parseAssignmentFilter, type AssignmentStatus } from './screening-model';
 import { checkMarker, type CheckMarker, type CheckOutcome, type CheckStatus } from './background-check-model';
+import { poolLabels } from './pool-model';
 import {
   CANDIDATE_SOURCES, DEFAULT_REPEAT_WINDOW_MONTHS, ID_TYPES, normEmail, normIdNumber, normMobile, normName, repeatApplicationBlocked,
   type CandidateSource, type IdType,
@@ -92,6 +93,9 @@ export type RecruitmentViewer = {
   /** Slice 11: the caller's open screening requests in the companies they may see here (the To screen list's scope), counted
    *  up to SCREENING_LIST_LIMIT + 1 (more than the list shows reads as "200+"). */
   pendingScreening: number;
+  /** Slice 13: companies whose talent pools the caller may open — those they administer, and those where they are a recruiter
+   *  or assistant of some job (custom pools shared with them, and the blocked list of candidates they operate). */
+  poolCompanies: RecruitmentCompany[];
 };
 
 /**
@@ -101,8 +105,9 @@ export type RecruitmentViewer = {
 export async function recruitmentViewer(s: SessionContext, scopeIds: readonly string[]): Promise<RecruitmentViewer> {
   const ids = scopeIds.filter(isUuid);
   return withRecruitmentTenant(s, async (tx) => {
-    const rows = ids.length ? await tx.execute<{ id: string; name: string; admin: boolean; team: boolean; reporter: boolean }>(sql`
+    const rows = ids.length ? await tx.execute<{ id: string; name: string; admin: boolean; team: boolean; reporter: boolean; operates: boolean }>(sql`
       select c.id, c.legal_name as name, app.can_admin_recruitment_for(c.id) as admin, app.recruitment_team_in_company(c.id) as team,
+        app.recruitment_operates_in_company(c.id) as operates,
         exists (select 1 from recruitment_job_member m where m.tenant_id = c.tenant_id and m.company_id = c.id
           and m.app_user_id = app.current_user_id() and m.member_role in ('recruiter', 'assistant', 'hiring_manager')) as reporter
       from company c
@@ -125,6 +130,7 @@ export async function recruitmentViewer(s: SessionContext, scopeIds: readonly st
       pendingApprovals: pending?.n ?? 0,
       reportCompanies: rows.filter((r) => r.admin || r.reporter).map((r) => ({ id: r.id, name: r.name })),
       pendingScreening: screening?.n ?? 0,
+      poolCompanies: rows.filter((r) => r.admin || r.operates).map((r) => ({ id: r.id, name: r.name })),
     };
   });
 }
@@ -685,6 +691,9 @@ export type ApplicationCard = {
   screeningStatus: AssignmentStatus | null;
   /** Slice 12: a background check marker (Concerns found, else In progress), for the job's operators and administrators only. */
   backgroundCheck: CheckMarker | null;
+  /** Slice 13: the application needs an administrator's review (a blocked-list mark) — a yes/no for anyone who reads the card;
+   *  and the candidate's custom pools the viewer can see (operators and administrators of the card's job; empty otherwise). */
+  needsReview: boolean; pools: { id: string; label: string }[];
 };
 export type CandidateBoard = {
   tabs: StageTab[]; cards: ApplicationCard[];
@@ -819,6 +828,16 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
     const cardTags = rows.length ? await tx.execute<{ candidate_id: string; id: string; name: string }>(sql`
       select ct.candidate_id, t.id, t.name from recruitment_candidate_tag ct join recruitment_tag t on t.id = ct.tag_id
       where ct.candidate_id = any(${uuidArray([...new Set(rows.map((r) => r.candidate_id))])}::uuid[]) order by t.name`) : [];
+    // Slice 13: one yes/no per shown card (app.recruitment_application_needs_review answers only for an application the viewer
+    // reads), and the operated cards' pool memberships under the viewer's row security (pools they can see) — two queries.
+    const review = rows.length ? await tx.execute<{ id: string; r: boolean }>(sql`
+      select x.id, app.recruitment_application_needs_review(x.id) as r from unnest(${uuidArray(rows.map((r) => r.id))}::uuid[]) as x(id)`) : [];
+    const needsReview = new Set(review.filter((x) => x.r).map((x) => x.id));
+    const poolCandidates = [...new Set(rows.filter((r) => access.get(r.job_id)?.operate).map((r) => r.candidate_id))];
+    const poolRows = poolCandidates.length ? await tx.execute<{ candidate_id: string; id: string; name: string; parent_name: string | null }>(sql`
+      select m.candidate_id, p.id, p.name, pp.name as parent_name from recruitment_talent_pool_member m
+      join recruitment_talent_pool p on p.id = m.pool_id left join recruitment_talent_pool pp on pp.id = p.parent_id
+      where m.candidate_id = any(${uuidArray(poolCandidates)}::uuid[])`) : [];
     const tagOptions = await tx.execute<{ id: string; name: string; group_name: string }>(sql`
       select t.id, t.name, g.name as group_name from recruitment_tag t join recruitment_tag_group g on g.id = t.group_id
       where t.tenant_id = ${s.tenantId}::uuid and t.company_id = any(${ids}::uuid[])
@@ -851,6 +870,10 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
         tags: cardTags.filter((x) => x.candidate_id === r.candidate_id).map((x) => ({ id: x.id, name: x.name })),
         screeningStatus: statusOf.get(r.id) ?? null,
         backgroundCheck: access.get(r.job_id)?.operate ? checkMarker(checkRows.filter((x) => x.application_id === r.id)) : null,
+        needsReview: needsReview.has(r.id),
+        pools: access.get(r.job_id)?.operate ? poolRows.filter((x) => x.candidate_id === r.candidate_id)
+          .map((x) => ({ id: x.id, label: poolLabels([{ name: x.name, parentName: x.parent_name }])[0] }))
+          .sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' })) : [],
       })),
     };
   });
@@ -1076,6 +1099,24 @@ export async function addApplication(s: SessionContext, input: AddApplicationInp
   return outcome;
 }
 
+/**
+ * Slice 13: refuse while the application has an open blocked-list mark ("Needs an administrator's review"). The yes/no comes
+ * from app.recruitment_application_needs_review, which answers only for an application the caller may read; the 4413 guards
+ * refuse the same move, offer step or hire for any caller (reviewRefusal maps their refusal).
+ */
+export async function assertNoReviewMarkTx(tx: Tx, applicationId: string): Promise<void> {
+  const [row] = await tx.execute<{ marked: boolean }>(sql`select app.recruitment_application_needs_review(${applicationId}::uuid) as marked`);
+  if (row?.marked === true) throw new RecruitmentError('needs_review');
+}
+/** The 4413 review-mark guard's refusal (RAISE … CONSTRAINT recruitment_application_needs_review) as needs_review. */
+export const reviewRefusal = (e: unknown): never => {
+  let cur = e as { constraint_name?: unknown; cause?: unknown } | null | undefined;
+  for (let i = 0; cur && typeof cur === 'object' && i < 4; i++, cur = cur.cause as typeof cur) {
+    if (cur.constraint_name === 'recruitment_application_needs_review') throw new RecruitmentError('needs_review');
+  }
+  throw e;
+};
+
 /** An ACTIVE application the caller may act on at `level` on its job (review: move forward / reject; operate: the rest). */
 export async function applicationTx(tx: Tx, s: SessionContext, applicationId: unknown, level: JobLevel = 'review') {
   if (!isUuid(applicationId)) throw new RecruitmentError('not_found');
@@ -1107,16 +1148,20 @@ export async function moveApplicationTx(tx: Tx, s: SessionContext, applicationId
   // Move forward: the job's reviewers (hiring manager included). Move to a chosen stage: its operators.
   const chosen = !(targetStageId == null || targetStageId === '');
   const { app, processId } = await applicationTx(tx, s, applicationId, chosen ? 'operate' : 'review');
+  // Slice 13: a blocked-list mark holds the application where it is until an administrator resolves it (4413 refuses too).
+  await assertNoReviewMarkTx(tx, app.id);
   const stages = await processStagesTx(tx, processId);
   const plan = targetStageId == null || targetStageId === ''
     ? planMoveForward(stages, app.currentStageId)
     : planMoveTo(stages, app.currentStageId, isUuid(targetStageId) ? targetStageId : '');
   if (plan.kind === 'hired') {
-    await tx.update(recruitmentApplication).set({ state: 'hired', updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id));
+    await tx.update(recruitmentApplication).set({ state: 'hired', updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id))
+      .catch(reviewRefusal);
     await writeEventTx(tx, s, { companyId: app.companyId, applicationId: app.id, ...moveEvent(plan) });
     return { state: 'hired', stageId: plan.from };
   }
-  await tx.update(recruitmentApplication).set({ currentStageId: plan.to, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id));
+  await tx.update(recruitmentApplication).set({ currentStageId: plan.to, updatedAt: sql`now()`, updatedByUserId: user }).where(eq(recruitmentApplication.id, app.id))
+    .catch(reviewRefusal);
   await writeEventTx(tx, s, { companyId: app.companyId, applicationId: app.id, ...moveEvent(plan) });
   return { state: 'active', stageId: plan.to };
 }

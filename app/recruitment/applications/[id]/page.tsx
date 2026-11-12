@@ -6,7 +6,7 @@ import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, Input, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import {
-  applicationAgency, applicationBackgroundChecks, applicationCareers, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, applicationScreening, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
+  applicationAgency, applicationBackgroundChecks, applicationCareers, applicationPools, applicationReview, applicationHire, applicationHistory, applicationInterviews, applicationOffer, applicationReferral, applicationScreening, candidateProfile, interviewFormOptions, CANDIDATE_RESPONSES, INTERVIEW_TYPES,
   OFFER_SEND_CHANNELS, RecruitmentError, type ApplicationHire, type InterviewFormOptions, type InterviewStatus, type OfferView,
 } from '@/packs/recruitment/service';
 import {
@@ -18,6 +18,7 @@ import { pgSqlState } from '@/lib/db-error';
 import { CandidateSection } from './candidate-section';
 import { ScreeningSection } from './screening-section';
 import { BackgroundChecksSection } from './background-checks-section';
+import { PoolsAndBlockSection, ReviewBanner } from './review-section';
 
 type Tab = 'candidate' | 'screening' | 'interviews' | 'offer' | 'checks' | 'history';
 const STATUS_TONE: Record<InterviewStatus, 'neutral' | 'info' | 'good' | 'warn' | 'bad'> = {
@@ -31,7 +32,7 @@ const STATUS_TONE: Record<InterviewStatus, 'neutral' | 'info' | 'good' | 'warn' 
  * the Interview tab only). The hire hand-off appears once the application is at Onboarding or hired.
  */
 export default async function RecruitmentApplicationPage({ params, searchParams }: {
-  params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; problem?: string; notice?: string; fields?: string }>;
+  params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; problem?: string; notice?: string; fields?: string; held?: string }>;
 }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
@@ -45,7 +46,7 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
     throw e;
   }
   const soft = async <T,>(work: Promise<T>): Promise<T | null> => work.catch((e) => { if (e instanceof RecruitmentError) return null; throw e; });
-  const [offer, history, hire, options, profile, referral, careers, agency, screening, checks] = await Promise.all([
+  const [offer, history, hire, options, profile, referral, careers, agency, screening, checks, review, pools] = await Promise.all([
     soft(applicationOffer(s, id)), soft(applicationHistory(s, id)), soft(applicationHire(s, id)),
     interviews.canSchedule ? soft(interviewFormOptions(s, id)) : Promise.resolve(null), soft(candidateProfile(s, id)), soft(applicationReferral(s, id)),
     soft(applicationCareers(s, id)), soft(applicationAgency(s, id)),
@@ -59,6 +60,8 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
       if (!(e instanceof RecruitmentError)) console.error('recruitment background checks section failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
       return null;
     }),
+    // Slice 13: the review state the viewer may know, and the candidate's pools (operators and administrators only).
+    soft(applicationReview(s, id)), soft(applicationPools(s, id)),
   ]);
   const reviewer = !!offer;
   const tab: Tab = sp.tab === 'offer' && reviewer ? 'offer' : sp.tab === 'history' && history ? 'history' : sp.tab === 'screening' && screening ? 'screening'
@@ -74,10 +77,14 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
       <PageHeader title={profile?.removed ? t('cand.removedLabel') : interviews.candidateName} description={<>{interviews.jobTitle} · {stateText}</>}
         back={{ href: '/recruitment/candidates', label: t('app.back') }} />
       <Notice text={sp.notice === 'saved' ? t('candidates.savedNotice') : sp.notice === 'screening-sent' ? t('screening.sentNotice')
+        : sp.notice === 'screening-sent-held' ? t('pools.notice.screeningHeld', { n: Math.max(1, Number.parseInt(sp.held ?? '1', 10) || 1) })
         : sp.notice === 'screening-answered' ? t('screening.answeredNotice') : sp.notice === 'check-added' ? t('checks.addedNotice')
           : sp.notice === 'check-authorised' ? t('checks.authorisedNotice') : sp.notice === 'check-started' ? t('checks.startedNotice')
-            : sp.notice === 'check-completed' ? t('checks.completedNotice') : sp.notice === 'check-cancelled' ? t('checks.cancelledNotice') : undefined} />
+            : sp.notice === 'check-completed' ? t('checks.completedNotice') : sp.notice === 'check-cancelled' ? t('checks.cancelledNotice')
+              : sp.notice === 'pool-added' ? t('pools.notice.added') : sp.notice === 'pool-removed' ? t('pools.notice.removed') : sp.notice === 'blocked' ? t('pools.notice.blocked')
+                : sp.notice === 'review-resolved' ? t('pools.notice.resolved') : undefined} />
       <ErrorBanner message={errorText} />
+      <ReviewBanner review={review} here={here} locale={locale} />
       {referral && (
         <section aria-labelledby="referral-title" className="space-y-1 rounded-xl border border-border bg-card p-4 text-sm">
           <h2 id="referral-title" className="font-semibold">{t('cand.sources.referral')}</h2>
@@ -112,6 +119,8 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
       ]} />
 
       {tab === 'candidate' && profile && <CandidateSection profile={profile} applicationId={id} here={here} locale={locale} />}
+
+      {tab === 'candidate' && profile && <PoolsAndBlockSection pools={pools} review={review} here={here} />}
 
       {tab === 'screening' && screening && <ScreeningSection screening={screening} here={here} locale={locale} />}
 

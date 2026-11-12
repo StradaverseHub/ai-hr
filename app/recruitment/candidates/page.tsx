@@ -4,8 +4,9 @@ import { requireModule } from '@/lib/authz';
 import { scopedSession } from '@/lib/scope';
 import { ErrorBanner, Field, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { applicationHistory, candidateBoard, ASSIGNMENT_STATUSES, SCREENING_STATUS_WINDOW, CANDIDATE_SOURCES, ID_TYPES, RecruitmentError, type ApplicationHistoryRow } from '@/packs/recruitment/service';
-import { moveApplicationAction, rejectApplicationAction } from '../actions';
+import { applicationHistory, candidateBoard, poolChoices, ASSIGNMENT_STATUSES, SCREENING_STATUS_WINDOW, CANDIDATE_SOURCES, ID_TYPES, RecruitmentError, type ApplicationHistoryRow } from '@/packs/recruitment/service';
+import { moveApplicationAction, rejectApplicationAction, removeCandidateFromPoolAction } from '../actions';
+import { AddToPool } from '../pool-ui';
 import { NoRecruitmentCompany, Notice, Pill, RecruitmentTabs, recruitmentErrorText, recruitmentViewerAccess, selectCls } from '../shared';
 import { RejectDialog } from './reject-dialog';
 import { AddApplicationForm } from './add-application-form';
@@ -13,7 +14,7 @@ import { AgencyReviewList, AgencySubmissionPanel } from './agency-panel';
 import { SCREENING_SEND_FORM, ScreeningSendPanel } from './screening-panel';
 import { ScreeningStatusPill } from '../screening-ui';
 
-type Search = { job?: string; tab?: string; tag?: string; application?: string; problem?: string; notice?: string; screening?: string; send?: string };
+type Search = { job?: string; tab?: string; tag?: string; application?: string; problem?: string; notice?: string; screening?: string; send?: string; held?: string };
 
 /**
  * Recruitment › Candidates: the pipeline by stage, with live counts, Move forward, Reject and Add application.
@@ -26,9 +27,13 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
   const access = await recruitmentViewerAccess(s, scopeIds);
   const companies = access.companies;
   const sp = await searchParams;
-  const [t, nav, locale, tc, ts, tk] = await Promise.all([getTranslations('recruitment.candidates'), getTranslations('nav'), getLocale(), getTranslations('recruitment.cand'),
-    getTranslations('recruitment.screening'), getTranslations('recruitment.checks')]);
-  const board = await candidateBoard(s, companies.map((c) => c.id), { jobId: sp.job, tab: sp.tab, tagId: sp.tag, screening: sp.screening });
+  const [t, nav, locale, tc, ts, tk, tp] = await Promise.all([getTranslations('recruitment.candidates'), getTranslations('nav'), getLocale(), getTranslations('recruitment.cand'),
+    getTranslations('recruitment.screening'), getTranslations('recruitment.checks'), getTranslations('recruitment.pools')]);
+  const [board, choices] = await Promise.all([
+    candidateBoard(s, companies.map((c) => c.id), { jobId: sp.job, tab: sp.tab, tagId: sp.tag, screening: sp.screening }),
+    // Slice 13: the pools the viewer can see (operators and administrators), for "Add to pool" on the cards they operate.
+    poolChoices(s, access.poolCompanies.map((c) => c.id)),
+  ]);
   const selectedTab = board.tabs.find((x) => x.key === sp.tab) ?? board.tabs[0];
   const query = (next: Record<string, string | undefined>) => {
     const q = new URLSearchParams(Object.entries({ job: sp.job, tag: sp.tag, tab: selectedTab?.key, screening: board.screening?.filter ?? undefined, ...next })
@@ -53,8 +58,10 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
   return (
     <div className="w-full space-y-5">
       <PageHeader title={nav('recruitment')} description={t('purpose')} />
-      <RecruitmentTabs active="candidates" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0}  screening={access.pendingScreening} />
+      <RecruitmentTabs active="candidates" admin={access.isAdmin} approvals={access.pendingApprovals} reports={access.reportCompanies.length > 0}  screening={access.pendingScreening} pools={access.poolCompanies.length > 0} />
       <Notice text={sp.notice === 'saved' ? t('savedNotice') : sp.notice === 'screening-sent' ? ts('sentNotice')
+        : sp.notice === 'screening-sent-held' ? tp('notice.screeningHeld', { n: Math.max(1, Number.parseInt(sp.held ?? '1', 10) || 1) })
+        : sp.notice === 'pool-added' ? tp('notice.added') : sp.notice === 'pool-removed' ? tp('notice.removed')
         : sp.notice === 'agency-accepted' || sp.notice === 'agency-waiting' ? await agencyNotice(sp.notice) : undefined} />
       <ErrorBanner message={(await recruitmentErrorText(sp.problem)) ?? (sp.notice === 'agency-refused' ? await agencyNotice(sp.notice) : undefined)} />
       {companies.length === 0 ? <NoRecruitmentCompany /> : (
@@ -133,6 +140,26 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                             {card.tags.map((tag) => <li key={tag.id} className="rounded-full border border-border px-2 py-0.5 text-xs">{tag.name}</li>)}
                           </ul>
                         )}
+                        {card.needsReview && (
+                          <p className="mt-1">
+                            <Link href={`/recruitment/applications/${card.id}`} className="inline-flex"><Pill tone="warn">{tp('review.cardFlag')}</Pill></Link>
+                          </p>
+                        )}
+                        {card.pools.length > 0 && (
+                          <ul aria-label={tp('candidate.title')} className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+                            <li className="text-muted-foreground">{tp('poolsLabel')}</li>
+                            {card.pools.map((p) => (
+                              <li key={p.id} className="flex items-center rounded-full border border-border py-0.5 pl-2 pr-0.5">
+                                <span>{p.label}</span>
+                                <form action={removeCandidateFromPoolAction}>
+                                  <input type="hidden" name="poolId" value={p.id} /><input type="hidden" name="candidateId" value={card.candidateId} />
+                                  <input type="hidden" name="returnTo" value={here} />
+                                  <button type="submit" aria-label={tp('candidate.removeFrom', { pool: p.label })} className="rounded-full px-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">×</button>
+                                </form>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                         {card.backgroundCheck && (
                           <p className="mt-1">
                             <Link href={`/recruitment/applications/${card.id}?tab=checks`} className="inline-flex">
@@ -147,14 +174,14 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                         {card.archiveReason && <div className="col-span-2"><dt className="text-muted-foreground">{t('archiveReason')}</dt><dd>{card.archiveReason}</dd></div>}
                       </dl>
                       <div className="flex flex-wrap items-center gap-2">
-                        {card.state === 'active' && card.canReview && next && (
+                        {card.state === 'active' && card.canReview && next && !card.needsReview && (
                           <form action={moveApplicationAction}>
                             <input type="hidden" name="applicationId" value={card.id} />
                             <input type="hidden" name="returnTo" value={here} />
                             <button type="submit" className={btnPrimary}>{next === 'hired' ? t('markHired') : t('moveTo', { stage: next.name })}</button>
                           </form>
                         )}
-                        {card.state === 'active' && (board.moveTargets[card.id]?.length ?? 0) > 0 && (
+                        {card.state === 'active' && !card.needsReview && (board.moveTargets[card.id]?.length ?? 0) > 0 && (
                           <form action={moveApplicationAction} className="flex items-center gap-1">
                             <input type="hidden" name="applicationId" value={card.id} />
                             <input type="hidden" name="returnTo" value={here} />
@@ -176,6 +203,10 @@ export default async function RecruitmentCandidatesPage({ searchParams }: { sear
                         <Link href={`/recruitment/applications/${card.id}`} className="text-sm font-medium text-primary hover:underline">{t('open')}</Link>
                         <Link href={query({ application: card.id })} className="text-sm text-primary hover:underline">{t('history')}</Link>
                       </div>
+                      {card.canOperate && !card.removed && (() => {
+                        const addable = choices.filter((p) => p.companyId === card.companyId && !card.pools.some((x) => x.id === p.id));
+                        return addable.length > 0 ? <AddToPool candidateId={card.candidateId} choices={addable} here={here} t={tp} id={card.id} /> : null;
+                      })()}
                     </li>
                   );
                 })}
