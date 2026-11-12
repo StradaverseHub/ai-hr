@@ -12,7 +12,7 @@ import {GreetingWithName} from '../today-page';
 import {TodayAsk} from '../today-ask';
 import {LINK,PanelNote,PanelSkeleton} from './panel';
 import {PanelBoundary} from './panel-boundary';
-import {CalendarPanel,ComingUpPanel,HoursPanel,LeavePanel,NextStepPanel,PaydayPanel,RequestsPanel,WaitingPanel,type PanelContext} from './panels';
+import {CalendarPanel,ComingUpPanel,HoursPanel,LeavePanel,NextStepPanel,NoticesPanel,PaydayPanel,RequestsPanel,WaitingPanel,type PanelContext} from './panels';
 import {TodayPerformance} from '../performance-slot';
 import {WorkspaceLinks} from '../workspace-links';
 import {moduleState,readAskAllowed,readOwnContext,readOwnPassportCards,readOwnReadiness} from './reads';
@@ -50,7 +50,7 @@ export async function EmployeeTodayPage({session,scopeIds,employmentId,notice,no
   </div>
   <div className="w-full min-w-0 sm:w-auto sm:min-w-[18rem] sm:flex-[0_1_28rem]"><Suspense fallback={null}><AskBar session={session}/></Suspense></div>
  </header>;
- const te=await getTranslations('today.employee');
+ const [te,tNotices]=await Promise.all([getTranslations('today.employee'),getTranslations('notices')]);
  const pageUnavailable=(key:string)=><div data-today="employee" data-today-page-unavailable={key} className="mx-auto w-full max-w-[72rem] min-w-0 space-y-6">
   {notice}{header}<PanelNote>{te('pageUnavailable')}</PanelNote>
  </div>;
@@ -95,6 +95,7 @@ export async function EmployeeTodayPage({session,scopeIds,employmentId,notice,no
    {gated('hours',visible.hours,te('hoursTitle'),'lg:col-span-3',<HoursPanel {...p}/>)}
    {slot('requests',te('requestsTitle'),'lg:col-span-8',<RequestsPanel {...p}/>)}
    {slot('coming',te('comingUpTitle'),'lg:col-span-4',<ComingUpPanel {...p}/>)}
+   {slot('notices',tNotices('cardTitle'),'lg:col-span-12',<NoticesPanel {...p}/>)}
   </div>
  </div>;
 }

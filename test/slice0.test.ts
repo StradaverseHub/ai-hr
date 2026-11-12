@@ -65,7 +65,7 @@ import {
   transferEmployee,
 } from '../core/org';
 import { decideLeave, InsufficientLeaveBalanceError, openLeaveYear, requestLeave } from '../core/leave';
-import { dashboardStats, listEmployees, listEmployeesPage, reportingLinesFor } from '../core/read';
+import { listEmployees, listEmployeesPage, reportingLinesFor } from '../core/read';
 import {
   archiveDepartment,
   assignRole,
@@ -803,51 +803,6 @@ describe('Slice B — company-scoped authorization', () => {
     const a = adminCtx(base); // roles:['hr_admin'], no grants → group-wide
     const { id: co } = await createCompany(a, { legalName: 'GW Co Sdn Bhd' });
     await expect(createDepartment(a, { companyId: co, name: 'GW-Dept' })).resolves.toBeTruthy();
-  });
-});
-
-describe('Slice C — consolidation (group vs per-company)', () => {
-  it('scopes dashboard stats to a company subtree and breaks headcount down per company', async () => {
-    const a = adminCtx(base);
-    const { id: parent } = await createCompany(a, { legalName: 'Parent Co' });
-    const { id: child } = await createCompany(a, { legalName: 'Child Co' });
-    await setCompanyParent(a, { companyId: child, parentCompanyId: parent });
-    const deptP = await createDepartment(a, { companyId: parent, name: 'P' });
-    const deptC = await createDepartment(a, { companyId: child, name: 'C' });
-    await hireEmployee(a, {
-      person: { fullName: 'P1', primaryEmail: 'p1@x.test' },
-      companyId: parent,
-      departmentId: deptP.id,
-      employmentType: 'full_time',
-      hiredOn: '2026-01-01',
-    });
-    await hireEmployee(a, {
-      person: { fullName: 'C1', primaryEmail: 'c1@x.test' },
-      companyId: child,
-      departmentId: deptC.id,
-      employmentType: 'full_time',
-      hiredOn: '2026-01-01',
-    });
-
-    // 11355c08 — `companies` is NO LONGER switcher-scoped, and these two assertions used to say it was.
-    // They read `.companies` as 2 then 1, which is `scopeIds.length`: the number of companies TICKED IN
-    // THE SWITCHER, not a count of companies. The tile links to /admin/organization, which ignores the
-    // switcher, so the two disagreed. It is now the number this admin can administer — `a` is a
-    // group-wide hr_admin, so that is every company the fixture has: Acme (seedBase) + Parent + Child.
-    // Every OTHER figure here stays switcher-scoped, which is what the headcount lines still pin.
-    const RESOLVED = 3;
-
-    // Company context = both companies (multi-select).
-    const groupStats = await dashboardStats(a, [parent, child]);
-    expect(groupStats.headcount).toBe(2);
-    expect(groupStats.companies).toBe(RESOLVED);
-
-    // Company context = the child alone. Headcount narrows; the company count does not follow the
-    // switcher (test/dashboard-companies-tile.test.ts is where that contract is stated in full).
-    const childStats = await dashboardStats(a, [child]);
-    expect(childStats.headcount).toBe(1);
-    expect(childStats.companies).toBe(RESOLVED);
-
   });
 });
 

@@ -19,6 +19,7 @@ import {readMyPayrollReadiness} from '@/core/pre-salary/person-items';
 import {readLoopCards} from '@/core/loops/cards';
 import {readEmployeeHomeTimeOff} from '@/core/employee-home-time-off';
 import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
+import {readEmployeeHomeNotices} from '@/core/employee-home-notices';
 import {readHomeTeamCalendar,readHomeTeamCalendarAndManagers} from '@/core/employee-home-sharing';
 import {listLeaveRequestsPage,reportingLinesFor} from '@/core/read';
 import {listOpenClaimsForEmployment} from '@/packs/claims/service';
@@ -124,3 +125,8 @@ export const readWaitingForYou=cache((s:SessionContext)=>shared(s,()=>{
  const on=(code:string)=>moduleState(s,code,null)==='on';
  return pendingTaskSummary(s,undefined,{attendance:on('attendance'),claims:on('claims'),performance:on('performance'),rewards:on('rewards')});
 }));
+
+/** The Notice Board, ported from the retired dashboard (owner decision, 12 Nov 2026): the person's newest live notices,
+ * at most five, with the exact unread count, from the Notice owner's own Home reader (core/employee-home-notices.ts),
+ * which proves the employment is the person's own first. */
+export const readOwnNotices=cache((s:SessionContext,employmentId:string)=>shared(s,()=>readEmployeeHomeNotices(s,employmentId)));

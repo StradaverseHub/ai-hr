@@ -2751,7 +2751,14 @@
       "comingUpEmpty": "您的团队近期没有安排。",
       "comingUpPartial": "部分事项暂时无法加载。",
       "otherWork": "{count, plural, other {另有 # 项事项在等待您}}",
-      "seeAllWork": "在任务中查看全部 {count} 项"
+      "seeAllWork": "在任务中查看全部 {count} 项",
+      "teamTodayTitle": "今天的团队",
+      "teamTodayEmpty": "今天没有记录您团队的出勤。",
+      "teamTodayOpen": "打开我的团队",
+      "reviewDue": "{name} 的评估截止日期为 {date}",
+      "reviewDueUnnamed": "一项评估的截止日期为 {date}",
+      "holiday": "{date}：{name}（公共假期）",
+      "holidayUnnamed": "{date}：公共假期"
     },
     "workspaceTitle": "您的工作区"
   },

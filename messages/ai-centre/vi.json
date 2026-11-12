@@ -2751,7 +2751,14 @@
       "comingUpEmpty": "Nhóm của bạn không có gì sắp tới.",
       "comingUpPartial": "Một số mục hiện không tải được.",
       "otherWork": "{count, plural, other {# mục khác đang chờ bạn}}",
-      "seeAllWork": "Xem tất cả {count} mục trong Công việc"
+      "seeAllWork": "Xem tất cả {count} mục trong Công việc",
+      "teamTodayTitle": "Nhóm của bạn hôm nay",
+      "teamTodayEmpty": "Hôm nay chưa có chấm công nào cho nhóm của bạn.",
+      "teamTodayOpen": "Mở Nhóm của tôi",
+      "reviewDue": "Đánh giá cho {name} đến hạn {date}",
+      "reviewDueUnnamed": "Một đánh giá đến hạn {date}",
+      "holiday": "{name}, ngày lễ, vào {date}",
+      "holidayUnnamed": "Ngày lễ vào {date}"
     },
     "workspaceTitle": "Không gian làm việc của bạn"
   },

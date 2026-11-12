@@ -16,7 +16,7 @@ import {resolveServerTree} from './helpers/server-tree';
 const fx=vi.hoisted(()=>({state:{} as {
  needs:unknown;needsPartial:boolean;needsFail:boolean;readiness:unknown;exceptions:{total:number;blocking:number};handled:unknown;handledFail:boolean;
  queue:unknown;summary:{items:unknown[];approvalCount:number};ask:boolean;own:unknown;ownReadiness:unknown;payHints:unknown;push:ReturnType<typeof vi.fn>;recommendCalls:string[][];views:Map<string,unknown>;
- throwPanel:string|null;ownCalls:unknown[];
+ throwPanel:string|null;ownCalls:unknown[];teamToday:unknown;reminders:unknown;teamTodayCalls:string[];
 }}));
 const S=fx.state;
 
@@ -49,6 +49,8 @@ vi.mock('@/components/today/admin/reads',async()=>{
   readHandled:async()=>{if(S.handledFail)throw Error('Fixture ledger outage');return S.handled;},
   readNeeds:async()=>S.queue,
   readManagerQueue:async()=>({...managerQueue(S.summary as never),failed:false}),
+  readTeamAttendanceToday:async(_s:unknown,key:string)=>{S.teamTodayCalls.push(key);return S.teamToday;},
+  readTeamReminders:async()=>S.reminders,
  };
 });
 vi.mock('@/components/today/employee/reads',()=>({
@@ -93,6 +95,7 @@ beforeEach(()=>{
     {key:'tax_number_missing:emp-own',group:'details',kind:'tax_number_missing',state:'todo',date:null,due:'2026-11-24',action:{href:'/me?tab=bankStatutory'}}]},
   payHints:{nextPayment:{date:'2026-11-27'},payslips:[]},
   push:vi.fn(),recommendCalls:[],views:new Map(),throwPanel:null,ownCalls:[],summary:{items:[],approvalCount:0},
+  teamToday:{date:'2026-11-12',present:7,late:2,halfDay:1,absent:3},reminders:{reviews:[],holidays:[],failed:false},teamTodayCalls:[],
  });
  window.sessionStorage.clear();
 });
@@ -241,6 +244,43 @@ describe('Administrator Today, every panel on its own',()=>{
   view=await show('admin',false,{employmentId:'emp-b'});
   expect(S.ownCalls).toContain('emp-b');
   expect(view.panel('today-own')!.querySelector('[data-today-own]')).not.toBeNull();
+ });
+});
+
+describe('Manager Today: the team cards ported from the retired dashboard',()=>{
+ it('shows today\'s attendance for the manager\'s own team, read for the companies in view',async()=>{
+  const view=await show('manager');
+  const team=view.panel('today-team-today')!;
+  expect([...team.querySelectorAll('[data-today-team-status]')].map(cell=>[cell.getAttribute('data-today-team-status'),text(cell.querySelector('dt')),text(cell.querySelector('dd'))]))
+   .toEqual([['present','Present','7'],['late','Late','2'],['half_day','Half day','1'],['absent','Absent','3']]);
+  expect(S.teamTodayCalls).toEqual(['co-a,co-b']);
+  expect(within(team as HTMLElement).getByRole('link',{name:'Open My Team'}).getAttribute('href')).toBe('/manage/my-team');
+ });
+ it('draws no team attendance when the attendance module is off, and says so when nobody is recorded',async()=>{
+  S.teamToday=null;
+  expect((await show('manager')).panel('today-team-today')).toBeNull();
+  cleanup();S.teamToday={date:'2026-11-12',present:0,late:0,halfDay:0,absent:0};
+  const view=await show('manager');
+  expect(view.panel('today-team-today')!.querySelector('[data-today-team-attendance]')).toBeNull();
+  expect(text(view.panel('today-team-today'))).toContain('No attendance is recorded for your team today.');
+ });
+ it('lists the manager\'s review deadlines and public holidays under Coming up',async()=>{
+  S.reminders={failed:false,reviews:[{id:'11111111-2222-3333-4444-555555555555',name:'Daniel Fictional',dueDate:'2026-11-20'}],
+   holidays:[{date:'2026-11-26',name:'Fictional Day'},{date:'2026-12-01',name:null}]};
+  const view=await show('manager');
+  const team=view.panel('today-team-coming-up')!;
+  const lines=[...team.querySelectorAll('[data-today-team-line]')];
+  expect(lines.map(line=>line.getAttribute('data-today-team-line'))).toEqual(['cutoff','review','holiday','holiday']);
+  expect(text(lines[1])).toBe('Review for Daniel Fictional due 20 Nov');
+  expect(lines[1].querySelector('a')?.getAttribute('href')).toContain('/approvals?category=managerReviews&task=managerReview&requestId=11111111-2222-3333-4444-555555555555');
+  expect(text(lines[2])).toBe('Fictional Day, a public holiday, on 26 Nov');
+  expect(text(lines[3])).toBe('A public holiday on 1 Dec');
+ });
+ it('gives an administrator neither the team attendance nor the team reminders',async()=>{
+  const view=await show('admin');
+  expect(view.panel('today-team-today')).toBeNull();
+  expect(view.panel('today-team-coming-up')).toBeNull();
+  expect(S.teamTodayCalls).toEqual([]);
  });
 });
 

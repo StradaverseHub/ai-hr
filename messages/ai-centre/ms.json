@@ -2751,7 +2751,14 @@
       "comingUpEmpty": "Tiada apa yang akan datang untuk pasukan anda.",
       "comingUpPartial": "Sesetengah perkara tidak dapat dimuatkan sekarang.",
       "otherWork": "{count, plural, other {# perkara lain sedang menunggu anda}}",
-      "seeAllWork": "Lihat kesemua {count} dalam Tugasan"
+      "seeAllWork": "Lihat kesemua {count} dalam Tugasan",
+      "teamTodayTitle": "Pasukan anda hari ini",
+      "teamTodayEmpty": "Tiada kehadiran direkodkan untuk pasukan anda hari ini.",
+      "teamTodayOpen": "Buka Pasukan Saya",
+      "reviewDue": "Semakan untuk {name} perlu disiapkan pada {date}",
+      "reviewDueUnnamed": "Satu semakan perlu disiapkan pada {date}",
+      "holiday": "{name}, cuti umum, pada {date}",
+      "holidayUnnamed": "Cuti umum pada {date}"
     },
     "workspaceTitle": "Ruang kerja anda"
   },

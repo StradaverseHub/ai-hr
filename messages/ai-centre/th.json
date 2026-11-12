@@ -2751,7 +2751,14 @@
       "comingUpEmpty": "ไม่มีอะไรกำลังจะมาถึงสำหรับทีมของคุณ",
       "comingUpPartial": "บางรายการโหลดไม่ได้ในขณะนี้",
       "otherWork": "{count, plural, other {มีอีก # รายการรอคุณอยู่}}",
-      "seeAllWork": "ดูทั้งหมด {count} รายการในงาน"
+      "seeAllWork": "ดูทั้งหมด {count} รายการในงาน",
+      "teamTodayTitle": "ทีมของคุณวันนี้",
+      "teamTodayEmpty": "วันนี้ยังไม่มีการบันทึกการเข้างานของทีมคุณ",
+      "teamTodayOpen": "เปิดทีมของฉัน",
+      "reviewDue": "การประเมินของ {name} ครบกำหนด {date}",
+      "reviewDueUnnamed": "มีการประเมินครบกำหนด {date}",
+      "holiday": "{name} วันหยุดนักขัตฤกษ์ วันที่ {date}",
+      "holidayUnnamed": "วันหยุดนักขัตฤกษ์ วันที่ {date}"
     },
     "workspaceTitle": "พื้นที่ทำงานของคุณ"
   },

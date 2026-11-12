@@ -1,14 +1,16 @@
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
-import {isModuleEnabledOrFalse} from '@/core/entitlements';
 import {workspaceLinksFor,type WorkspaceLinkKey} from '@/lib/today/workspace';
 import {LINK} from './employee/panel';
+import {moduleState} from './employee/reads';
 
 /** "Your workspace": the pages this person already opens (lib/today/workspace.ts), in place of the old dashboard's team
  * workbench and the old personal Home under a partner's Today. Nothing is drawn when there is no such page. */
 export async function WorkspaceLinks({session,team}:{session:SessionContext;team:boolean}){
- const links=workspaceLinksFor(session,{team,moduleOn:code=>isModuleEnabledOrFalse(session,code)});
+ // The Today panels' own module reader (isModuleEnabled): a failed entitlement read offers no link, as a module that is
+ // off does, without hiding the failure from the page's other owners.
+ const links=workspaceLinksFor(session,{team,moduleOn:code=>moduleState(session,code,null)==='on'});
  if(!links.length)return null;
  const [t,tNav,tPayslip,tTax]=await Promise.all([getTranslations('today'),getTranslations('nav'),
   getTranslations('payroll.payslipInformation'),getTranslations('payrollTaxBasis')]);

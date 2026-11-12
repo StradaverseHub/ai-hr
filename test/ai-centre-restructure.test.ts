@@ -20,7 +20,8 @@ describe('one place per fact',()=>{
 
  it('Today fix b: passports are shown once, as the loop card; Today reads no second 30-day list',()=>{
   expect(code('components/today/reads.ts')).not.toMatch(/followupItemsTx|passport_expiry/);
-  expect(code('components/today/sections.tsx')).not.toMatch(/passport/i);
+  // The earlier Today's sections (components/today/sections.tsx) were retired on 12 Nov 2026.
+  expect(fs.existsSync(path.join(ROOT,'components/today/sections.tsx'))).toBe(false);
  });
 
  it('Today fix d: Today counts exceptions with the same read and arguments as Exceptions',()=>{

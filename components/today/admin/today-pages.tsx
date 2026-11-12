@@ -9,7 +9,7 @@ import {TodayAsk} from '../today-ask';
 import {PanelNote,PanelSkeleton} from '../employee/panel';
 import {PanelBoundary} from '../employee/panel-boundary';
 import {readAskAllowed} from '../employee/reads';
-import {AdminAskPanel,AdminHeadline,AdminNeedsPanel,DecidePanel,HandledPanel,ManagerHeadline,OwnRecordPanel,ReadinessPanel,TeamComingUpPanel,WatchingPanel,
+import {AdminAskPanel,AdminHeadline,AdminNeedsPanel,DecidePanel,HandledPanel,ManagerHeadline,OwnRecordPanel,ReadinessPanel,TeamComingUpPanel,TeamTodayPanel,WatchingPanel,
  type RoleContext} from './panels';
 import {scopeKey} from './reads';
 import {TodayPerformance} from '../performance-slot';
@@ -94,6 +94,7 @@ export async function ManagerTodayPage(p:PageProps){
     {slot('own',tAdmin('forYouTitle'),<OwnRecordPanel {...c} title="forYou"/>,1)}
    </div>
    <aside aria-label={t('sideLabel')} className="flex min-w-0 flex-col gap-4">
+    {slot('team-today',t('teamTodayTitle'),<TeamTodayPanel {...c}/>,2)}
     {slot('team',t('comingUpTitle'),<TeamComingUpPanel {...c}/>,2)}
    </aside>
   </div>

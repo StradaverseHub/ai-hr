@@ -7,8 +7,8 @@ import {todayInKualaLumpur} from '../lib/hr-date';
  *
  * Three layers:
  *  1. DB → payload: for each derived bucket vector, the read payloads the fixed screens consume
- *     (listEmployeesPage for the directory/search results, employeeDetail for the profile card,
- *     recentHires for the dashboard Onboarding card) carry the lifecycle inputs the deriver needs and
+ *     (listEmployeesPage for the directory/search results, employeeDetail for the profile card; the old
+ *     dashboard's Onboarding card and its recentHires read were retired on 12 Nov 2026) carry the lifecycle inputs the deriver needs and
  *     derive to the expected bucket — proving the same employee reads the same status on every screen.
  *  2. Source drift guard (precedent: test/layout-scroll-containment.test.ts): the two formerly-stale
  *     pages derive via deriveEmploymentStatus and no longer pass raw/legacy statuses to StatusBadge, and
@@ -21,7 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee, setEmploymentBlacklist, setEmploymentInfo } from '../core/org';
-import { employeeDetail, listEmployeesPage, recentHires } from '../core/read';
+import { employeeDetail, listEmployeesPage } from '../core/read';
 import { deriveEmploymentStatus, EMPLOYMENT_STATUSES, type EmploymentStatus } from '../core/employment-status';
 import { employmentStatusSql } from '../core/employment-status-sql';
 import { workforceDemographics } from '../core/analytics';
@@ -170,15 +170,6 @@ describe('Employee Status sync — one derived status across every payload (5afc
     expect(d.byEmploymentStatus.every((r) => (EMPLOYMENT_STATUSES as readonly string[]).includes(r.name))).toBe(true);
   });
 
-  it('dashboard Onboarding payload (recentHires) carries the deriver inputs and agrees', async () => {
-    const hires = await recentHires(adminCtx(b), [b.companyId], { since: HIRED_ON, limit: 50 });
-    for (const [employmentId, bucket] of expected) {
-      const row = hires.find((r) => r.employmentId === employmentId);
-      // recentHires only excludes employments with terminatedOn set; none of the vectors are terminated.
-      expect(row, `hire row for ${bucket}`).toBeDefined();
-      expect(deriveEmploymentStatus(row!, TODAY), bucket).toBe(bucket);
-    }
-  });
 });
 
 describe('drift guard — no surface renders the obsolete statuses', () => {
