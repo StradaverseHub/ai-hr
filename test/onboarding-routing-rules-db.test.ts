@@ -79,11 +79,15 @@ describe('259c6162 routing rules in Assignment groups', () => {
     });
 
     it('records routing creation and edits, and keeps routings out of reach of a master-only actor', async () => {
+        // The setup save already recorded the two fixture routings as created.
+        const setup = await routingEvents();
+        expect(setup.map(e => [e.eventType, (e.payload as { routingId: string }).routingId]).sort()).toEqual([['onboarding.routing.created', 'main-routing'], ['onboarding.routing.created', 'regional-routing']]);
+        const fresh = async () => (await routingEvents()).filter(e => !setup.some(s => s.id === e.id));
         const before = await onboardingContext(admin), input = structuredClone(before.config);
         input.routings.push({ id: 'new-routing', name: 'Fictional new routing', rows: [{ id: 'n1', rules: {}, group: 'tech-bp' }] });
         input.routings[0]!.name = 'Main routing renamed';
         await onboardingSaveConfig(admin, before.revision, input);
-        const events = await routingEvents();
+        const events = await fresh();
         expect(events.map(e => [e.eventType, (e.payload as { routingId: string }).routingId]).sort()).toEqual([['onboarding.routing.created', 'new-routing'], ['onboarding.routing.updated', 'main-routing']]);
         expect(events.find(e => e.eventType === 'onboarding.routing.updated')!.payload).toMatchObject({ name: { before: 'Main routing', after: 'Main routing renamed' }, rowsAdded: [], rowsRemoved: [], rowsChanged: [] });
 
@@ -100,6 +104,6 @@ describe('259c6162 routing rules in Assignment groups', () => {
         removeGroup.groups = removeGroup.groups.filter(g => g.id !== 'regional-bp');
         await expect(onboardingSaveConfig(admin, locked.revision, removeGroup)).rejects.toThrow('This group is used by routing rules: Regional routing.');
         expect((await configRow()).revision).toBe(locked.revision);
-        expect((await routingEvents())).toHaveLength(2);
+        expect(await fresh()).toHaveLength(2);
     });
 });
