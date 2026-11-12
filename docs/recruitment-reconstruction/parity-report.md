@@ -463,3 +463,34 @@ Dispatched after the shared GitHub API limit reset.
 | 43065938273 | Selected tests (23 files, incl. recruitment-screening, recruitment-tasks, the Home, mobile and notification suites) | 22 PASS; 1 FAIL: `setup-copilot-destinations` — the new `/recruitment/screening` page was missing from the pages that need their own access check (lib/product-context/destinations.ts). Fixed in the next commit; the test passes locally (5/5) |
 
 No recruitment test failed on GitHub.
+
+## Slice 12 — Background checks (commit 33cbc96d4)
+
+### Local checks (private Postgres, port 55440)
+
+After one independent review round and a confirmation round: one combined run of every `test/recruitment-*` file and
+the related suites passed 544 of 544 (33 files); the reviewer's own run of all 26 recruitment and related files passed
+457 of 457. Bell timing: 40.6 ms for a recorder with 300 overdue and 300 awaiting checks among 3,700, 7 ms for others.
+
+### Rendered (case 87; local dev server, fictional data)
+
+- Settings offered the six default types; adding them worked.
+- On the Offer-stage application: a check for Employment history and Criminal record with a fictional provider
+  started as Awaiting authorisation; recording the signed authorisation (11 Nov) with "Start the check now" moved it
+  to In progress; completing it as Concerns found with a summary and a PDF report worked. The report downloads as an
+  attachment with nosniff and private, no-store.
+- As the job's hiring manager: types, Completed and Concerns found only, with "The details and reports stay with the
+  recruiter"; the summary, provider, reference and file name are absent from the page (the method label appears only
+  in the translation dictionary); the report link returns 404.
+- The Offer card on the board shows "Background check: concerns found" for the administrator.
+
+### GitHub Actions focused runs (commit 33cbc96d4, 2026-11-12)
+
+| Run | Job | Result |
+| --- | --- | --- |
+| 43147378293 | Whole-repo type check (three compilers) | PASS |
+| 43147378293 | Production build (`linux-build`) | PASS |
+| 43147378293 | Selected tests (64 files) | 57 PASS; FAIL: the known 6 AI files (53 tests) and `provider-data-review-gate` (1 test): the provider-data source manifest was stale because the slice 11 destinations fix (325ad01eb) changed a covered file without regenerating it. Regenerated in the next commit; the test passes locally |
+| 43147392242 | Selected tests (25 files, incl. recruitment-background-checks, -rules, recruitment-screening, recruitment-tasks and the Home, mobile and notification suites) | PASS: 303 tests |
+
+No recruitment test failed on GitHub.
