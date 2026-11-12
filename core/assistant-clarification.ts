@@ -102,6 +102,8 @@ export async function assertOwnAssistantClarificationCurrentTx(tx:Tx,ctx:Session
  if(!source||source.tenantId!==ctx.tenantId||source.userId!==ctx.userId||source.scopeDigest!==assistantConversationScopeDigest(ctx,source.conversationScope))throw new AssistantClarificationError();
  let current=false;
  try{
+  // A read of own rows: shared suffices, because own-history erasure, retention and PDPA redaction hold
+  // Access exclusively, so this sees either the whole erasure or none of it. Re-enters the caller's mode.
   await lockAccessConfigurationTx(tx,source.tenantId);
   // Every carried row, not only the answered one: an earlier reply erased or retired since the read
   // refuses the whole continuation rather than reaching a provider.

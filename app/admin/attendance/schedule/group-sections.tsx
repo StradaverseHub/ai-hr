@@ -2,14 +2,13 @@ import { scheduleGroupControls } from '@/core/schedule-group-controls';
 import { saveScheduleGroupControlAction } from './actions';
 import { ScheduleGroupTabs } from '@/components/schedule-group-tabs';
 import { ScheduleDraftShiftPicker } from '@/components/schedule-shift-picker';
-import { ScheduleClockFields, type ScheduleClockCompany } from '@/components/schedule-clock-fields';
+import { ScheduleClockFields, type ScheduleClockSettings } from '@/components/schedule-clock-fields';
 import type { ReactNode } from 'react';
-import { ScheduleOvertimeDraftFields } from '@/components/schedule-overtime-draft-fields';
 import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
-import { attendanceRuleOvertimeSnapshot, type AttendanceRuleView } from '@/core/attendance-rule';
+import type { AttendanceRuleView } from '@/core/attendance-rule';
 import { listShiftsForTenant } from '@/core/roster';
 import {
   Badge,
@@ -24,7 +23,8 @@ import {
   theadCls,
   thCls,
 } from '@/components/ui';
-import { RuleForm, renderScheduleOvertimeBands } from '../../attendance-policy/rules/rule-form';
+import { RuleForm } from '../../attendance-policy/rules/rule-form';
+import { WageDeductionsCard } from '@/components/schedule-wage-deductions';
 import {
   type ScheduleSectionKey,
 } from './sections';
@@ -32,13 +32,13 @@ import { scheduleGroupEditPath } from '../../attendance-policy/schedule-panel';
 import {
   saveScheduleGroupAttendanceAction,
   saveScheduleGroupAllowedShiftsAction,
-  saveScheduleGroupOvertimeAction,
+  saveScheduleGroupWeekAction,
 } from './actions';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
-import { ScheduleRotationEditor } from '@/components/schedule-rotation-editor';
-import { getScheduleRotation, workingShiftSchedule } from '@/packs/attendance/service';
+import { ScheduleRotationEditor, StepMark } from '@/components/schedule-rotation-editor';
+import { getScheduleRotation, legacyOvertimePatternIdForRule, workingShiftSchedule } from '@/packs/attendance/service';
 import { todayInKualaLumpur } from '@/lib/hr-date';
-import {rotationVersionOn,type RotationCycle} from '@/core/week-pattern';
+import {rotationMethodOf,rotationVersionOn,type RotationCycle} from '@/core/week-pattern';
 
 /**
  * ─── 665de026 (r331) · ONE SCHEDULE GROUP, ONE SCREEN ────────────────────────────────────────────────
@@ -55,8 +55,9 @@ import {rotationVersionOn,type RotationCycle} from '@/core/week-pattern';
  *
  * ── THE SEVEN SECTIONS, AND WHICH OF THEM ARE REAL ──────────────────────────────────────────────────────
  * ./sections.ts holds the order (the reporter's own) and the honest audit of what is behind each key.
- * FOUR render something: general, overtime, attendance and — new in this item — workingDay. THREE are
- * named and empty: holiday, request, notification. They render one sentence saying so.
+ * THREE render something and are the tabs: general, attendance, overtime. c03670cc retired the separate
+ * Duty Roster (workingDay) tab: its switch and rotation sit in General directly under Shift Allowed, and an
+ * old `?section=workingDay` link resolves to General. Holiday, request and notification are named and empty.
  *
  * DO NOT "finish" this screen by drawing a control for a setting nothing stores. The list page's header
  * names the remaining gaps (the duty-roster controls, the day-type
@@ -94,6 +95,7 @@ const DAY_KINDS = ['full', 'half', 'off', 'rest'] as const;
 type DayKind = (typeof DAY_KINDS)[number];
 /** The compact echo `failScheduleGroup` carries back, one character per weekday. See ./actions.ts weekParam. */
 const CHAR_KIND: Record<string, DayKind> = { F: 'full', H: 'half', O: 'off', R: 'rest' };
+const METHOD_LABEL = { workingWeek: 'methodWorkingWeek', weeklyPattern: 'methodWeekly', dailyPattern: 'methodDaily' } as const;
 
 /**
  * Which kind each weekday is, read from the STORED row — or, on the refusal path, from what the operator
@@ -131,7 +133,7 @@ export async function ScheduleGroupSections({
   typedWeek,
   savedSection,
   savedReceipt,
-  clockCompanies = [],
+  clockCompanies = {canUseAll:false,group:[],companies:[]},
   canEditShared = true,
 }: {
   s: SessionContext;
@@ -145,7 +147,7 @@ export async function ScheduleGroupSections({
   typedWeek?: string;
   savedSection?: ScheduleSectionKey | null;
   savedReceipt?: string;
-  clockCompanies?: ScheduleClockCompany[];
+  clockCompanies?: ScheduleClockSettings;
   canEditShared?: boolean;
 }) {
   const t = await getTranslations('admin.scheduleConfig');
@@ -159,9 +161,12 @@ export async function ScheduleGroupSections({
   const tb=await getTranslations('boardSchedule');
   const controls=await scheduleGroupControls(s,rule.id);
   const pendingException=controls.revisions.reduce<typeof controls.revisions[number]|null>((a,b)=>!a||b.effectiveFrom>a.effectiveFrom?b:a,null);
-  const controlPanel=(kind:'exception'|'duty')=><Card className="space-y-3 p-4"><h3 className="text-sm font-semibold">{tb(kind)}</h3><p className="text-xs text-muted-foreground">{tb(kind==='duty'?'dutyHint':'exceptionHint')}</p>{editing?<AttendanceSettingsActionForm submitAction={saveScheduleGroupControlAction} data-schedule-control={kind} data-attendance-save-scope="" data-attendance-saved-receipt={savedReceipt} className="space-y-3"><input type="hidden" name="ruleId" value={rule.id}/><input type="hidden" name="kind" value={kind}/><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" value="1" defaultChecked={kind==='duty'?controls.dutyRosterControl:pendingException?.enabled??false} className="accent-primary"/>{tb(kind)}</label><AttendanceSettingsSaveButton className={btnPrimary}>{tr('save')}</AttendanceSettingsSaveButton></AttendanceSettingsActionForm>:<p className="text-sm">{(kind==='duty'?controls.dutyRosterControl:pendingException?.enabled??false)?tb('on'):tb('off')}</p>}{kind==='exception'&&<ul className="space-y-1 text-xs text-muted-foreground">{controls.revisions.map(r=><li key={r.id}>{r.effectiveFrom} · {r.enabled?tb('on'):tb('off')}</li>)}</ul>}</Card>;
+  // 2f803985 — Enable Exception is the one remaining group control panel. Duty Roster Control has no switch
+  // of its own any more: it follows the saved Working Day / Schedule Pattern (core/attendance-rotation.ts).
+  const controlPanel=()=><Card className="space-y-3 p-4"><h3 className="text-sm font-semibold">{tb('exception')}</h3><p className="text-xs text-muted-foreground">{tb('exceptionHint')}</p>{editing?<AttendanceSettingsActionForm submitAction={saveScheduleGroupControlAction} data-schedule-control="exception" data-attendance-save-scope="" data-attendance-saved-receipt={savedReceipt} className="space-y-3"><input type="hidden" name="ruleId" value={rule.id}/><input type="hidden" name="kind" value="exception"/><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" value="1" defaultChecked={pendingException?.enabled??false} className="accent-primary"/>{tb('exception')}</label><AttendanceSettingsSaveButton className={btnPrimary}>{tr('save')}</AttendanceSettingsSaveButton></AttendanceSettingsActionForm>:<p className="text-sm">{(pendingException?.enabled??false)?tb('on'):tb('off')}</p>}<ul className="space-y-1 text-xs text-muted-foreground">{controls.revisions.map(r=><li key={r.id}>{r.effectiveFrom} · {r.enabled?tb('on'):tb('off')}</li>)}</ul></Card>;
   const shifts = await listShiftsForTenant(s, { includeArchived: true });
   const rotationState = await getScheduleRotation(s, rule.id);
+  const legacyPatternId = await legacyOvertimePatternIdForRule(s, rule.id);
   const kinds = dayKindsOf(rule, typedWeek);
   const currentRotation=rotationVersionOn(rotationState.versions,today);
   const latest=rotationState.versions.at(-1);
@@ -174,7 +179,7 @@ export async function ScheduleGroupSections({
   const bannerFor = (key: ScheduleSectionKey) => (section === key ? error : undefined);
   /** An error with no section, or one naming a section that renders no banner, still has to be readable
    *  somewhere — a refusal that lands on a page and is never printed is worse than an ugly one. */
-  const BANNERED: readonly ScheduleSectionKey[] = ['general', 'overtime', 'attendance', 'workingDay'];
+  const BANNERED: readonly ScheduleSectionKey[] = ['general', 'overtime', 'attendance'];
   const orphanError = error && (section == null || !BANNERED.includes(section)) ? error : undefined;
 
   const SECTION_LABEL: Record<ScheduleSectionKey, string> = {
@@ -184,7 +189,6 @@ export async function ScheduleGroupSections({
     attendance: t('sectionAttendance'),
     request: t('sectionRequest'),
     notification: t('sectionNotification'),
-    workingDay: te('dutyRoster'),
   };
 
   /** The Schedule Group's own identity + ladder — rules/rule-form.tsx, or a read-only mirror of it. */
@@ -229,113 +233,57 @@ export async function ScheduleGroupSections({
               {rule.status === 'active' ? tr('statusActive') : tr('statusInactive')}
             </dd>
           </div>
-          {/* The deduction switch is NOT repeated here. It is rendered once per page, read-only, in the
-              Attendance section below — the place it has been shown since r277 and the place whose note
-              explains why it cannot be typed. Two readouts of one money-adjacent switch on one screen is
-              how two readouts start disagreeing. */}
+          {/* c03670cc — Wage Deductions is shown (and, on Edit, set) once per page: in the Attendance
+              section. Two readouts of one money-adjacent switch on one screen is how they start disagreeing. */}
         </dl>
       </Card>
 
     </>
   );
 
-  const shiftEditor = <Card className="space-y-3 p-4">
-    <h3 className="font-semibold">{te('shiftAllowed')}</h3>
-    <p className="text-sm text-muted-foreground">{te('shiftHelp')}</p>
-    {latest
-      ? <><p className="text-sm text-muted-foreground">{te('rotationPoolSave',{date:latest.effectiveFrom})}</p>
-        <ScheduleDraftShiftPicker shifts={availableShifts}/></>
-      : <AttendanceSettingsActionForm submitAction={saveScheduleGroupAllowedShiftsAction}
-          data-attendance-save-scope="" data-schedule-control="shift-pool" data-attendance-saved-receipt={savedSection==='general'?savedReceipt:undefined}
-          className="space-y-3">
-          <input type="hidden" name="ruleId" value={rule.id}/>
-          <input type="hidden" name="allowedShiftsEditor" value="1"/>
-          <ScheduleDraftShiftPicker base shifts={availableShifts}/>
-          <AttendanceSettingsSaveButton className={btnPrimary}>{te('saveShiftPool')}</AttendanceSettingsSaveButton>
-        </AttendanceSettingsActionForm>}
-  </Card>;
-  const general = <>
-    {identity}
-    <Card className="space-y-2 p-4">
-      <h3 className="font-semibold">{t('sectionWorkingDay')}</h3>
-      {currentRotation ? <p className="text-sm text-muted-foreground">
-        {te('currentRotation',{days:currentRotation.days.length,date:currentRotation.effectiveFrom})}
-      </p> : [rule.weeklyPattern,rule.halfPattern,rule.offPattern].some(days=>days?.length)
-        ? <p className="text-sm text-muted-foreground">{ISO_DAYS.map(day=>`${rotationT(`weekday${day}`)} · ${rotationT(kinds[day])}`).join(' / ')}</p>
-        : <p className="text-sm text-muted-foreground">{te('newPattern')}</p>}
-    </Card>
-    {editing && canEditShared ? shiftEditor : (
-      <Card>
-        <SectionHeader
-          title={te('shiftAllowed')}
-          count={groupShifts.length}
-          subtitle={rotationT('poolHint')}
-        />
-        {groupShifts.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">{tr('shiftsAllowedEmpty')}</p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {shifts
-              .filter((sh) => membershipIds.has(sh.id))
-              .map((sh) => (
-                <li key={sh.id} className="flex items-center justify-between gap-4 px-4 py-2 text-sm">
-                  <Link href={`/admin/attendance/${sh.id}`} className="text-primary hover:underline">
-                    {sh.name}
-                  </Link>
-                  <span className="whitespace-nowrap text-muted-foreground">
-                    {sh.code ? `${sh.code} · ` : ''}
-                    {hhmm(sh.startTime)}–{hhmm(sh.endTime)}
-                  </span>
-                </li>
-              ))}
-          </ul>
-        )}
-      </Card>
-
-)}
-  </>;
-  const overtimeLadderView = (
-      <Card>
-        <SectionHeader title={tr('otSectionTitle')} count={rule.otRows.length} />
-        {rule.otRows.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">{t('otRoundingEmpty')}</p>
-        ) : (
-          <div className={tableWrapCls}>
-            <table className="w-full text-sm">
-              <thead className={theadCls}>
-                <tr>
-                  <th className={thCls}>{t('colBand')}</th>
-                  <th className={thCls}>{tr('otColPattern')}</th>
-                  <th className={thCls}>{tr('otColRate')}</th>
-                  <th className={thCls}>{tr('otColPhRate')}</th>
-                </tr>
-              </thead>
-              <tbody className={tbodyCls}>
-                {rule.otRows.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {/* A band whose "To" is at or below its "From" is OPEN-ENDED (db/schema.ts), which is
-                          a different sentence from a range and must read as one. */}
-                      {row.toMinutes <= row.fromMinutes
-                        ? t('bandOpenEnded', { from: row.fromMinutes })
-                        : t('bandRange', { from: row.fromMinutes, to: row.toMinutes })}
-                    </td>
-                    <td className="px-3 py-2">
-                      {row.ratePattern === 'flat' ? tr('otPatternFlat') : tr('otPatternVariable')}
-                    </td>
-                    <td className="px-3 py-2">{row.rate == null ? tr('otRateUnset') : Number(row.rate).toFixed(2)}</td>
-                    <td className="px-3 py-2">
-                      {row.phRate == null ? tr('otPhRateNone') : Number(row.phRate).toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-);
-
+  // 2f803985 — ONE section, Working Day / Schedule Pattern, in three steps. Step 1 is Shift Allowed; Steps
+  // 2 and 3 are the dated rotation (Working Week = week × 1, Weekly Pattern = week × N, Daily Pattern =
+  // day × N), so every method shares one pool and one Day Type + Shift table. The separate Duty Roster
+  // block and its switch are gone: saving a pattern also turns on Duty Roster Control for the group
+  // (core/attendance-rotation.ts), so a rotation version present means roster-controlled.
+  const stepOne = <div className="space-y-3" data-schedule-step="1">
+    <h4 className="flex items-center gap-2 text-sm font-medium"><StepMark n={1}/>{te('shiftAllowed')}</h4>
+    {editing && canEditShared ? <>
+      <p className="text-sm text-muted-foreground">{te('shiftHelp')}</p>
+      {latest
+        ? <><p className="text-sm text-muted-foreground">{te('rotationPoolSave',{date:latest.effectiveFrom})}</p>
+          <ScheduleDraftShiftPicker shifts={availableShifts}/></>
+        : <AttendanceSettingsActionForm submitAction={saveScheduleGroupAllowedShiftsAction}
+            data-attendance-save-scope="" data-schedule-control="shift-pool" data-attendance-saved-receipt={savedSection==='general'?savedReceipt:undefined}
+            className="space-y-3">
+            <input type="hidden" name="ruleId" value={rule.id}/>
+            <input type="hidden" name="allowedShiftsEditor" value="1"/>
+            <ScheduleDraftShiftPicker base shifts={availableShifts}/>
+            <AttendanceSettingsSaveButton className={btnPrimary}>{te('saveShiftPool')}</AttendanceSettingsSaveButton>
+          </AttendanceSettingsActionForm>}
+    </> : <>
+      <p className="text-xs text-muted-foreground">{rotationT('poolHint')}</p>
+      {groupShifts.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{tr('shiftsAllowedEmpty')}</p>
+      ) : (
+        <ul className="divide-y divide-border rounded-lg border border-border" aria-label={te('shiftAllowed')}>
+          {shifts
+            .filter((sh) => membershipIds.has(sh.id))
+            .map((sh) => (
+              <li key={sh.id} className="flex items-center justify-between gap-4 px-4 py-2 text-sm">
+                <Link href={`/admin/attendance/${sh.id}`} className="text-primary hover:underline">
+                  {sh.name}
+                </Link>
+                <span className="whitespace-nowrap text-muted-foreground">
+                  {sh.code ? `${sh.code} · ` : ''}
+                  {hhmm(sh.startTime)}–{hhmm(sh.endTime)}
+                </span>
+              </li>
+            ))}
+        </ul>
+      )}
+    </>}
+  </div>;
   // Legacy groups retain their weekly pattern until a future-dated cycle is saved.
   // The immutable version owns both its allowed pool and every day of the cycle.
   const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0,10);
@@ -343,31 +291,62 @@ export async function ScheduleGroupSections({
     ? new Date(Date.parse(`${latest.effectiveFrom}T00:00:00Z`)+86_400_000).toISOString().slice(0,10) : tomorrow;
   const monday = new Date(Date.parse(`${minimumDate}T00:00:00Z`));
   monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+  // A group with no saved version shows its legacy week as a Working Week (week × 1). Nothing is written
+  // until an administrator saves a dated version (ADR-0105: no backfill).
   const initialRotation: RotationCycle = latest ? { effectiveFrom: editing ? minimumDate : latest.effectiveFrom,
     anchorDate: latest.anchorDate, unit: latest.unit, length: latest.length, days: latest.days }
     : { effectiveFrom: minimumDate, anchorDate: monday.toISOString().slice(0,10), unit:'week',length:1,
       days:ISO_DAYS.map(d=>({kind:kinds[d],shiftId:kinds[d]==='full'||kinds[d]==='half'?groupShifts.find(sh=>!sh.archivedAt)?.id??null:null})) };
-  const workingDay = <>
-    {controlPanel('duty')}
-    <ErrorBanner message={bannerFor('workingDay')} />
-    <Card><SectionHeader title={SECTION_LABEL.workingDay} subtitle={rotationT('title')}/>
-      {rule.isDefault ? <>{editing&&<AttendanceSettingsNavigation/>}<p className="p-4 text-sm text-muted-foreground">{rotationT('standard')}</p></>
-      : <ScheduleRotationEditor ruleId={rule.id} revision={rotationState.revision}
-          minimumDate={minimumDate} initial={initialRotation} editing={editing&&canEditShared} poolInGeneral useSavedPool={!latest}
-          shifts={shifts.map(sh=>{const input={type:sh.type,start:sh.startTime,end:sh.endTime,crosses:sh.crossesMidnight,
-            breakMinutes:sh.breakMinutes,roundingMinutes:sh.normalHoursRoundingMinutes,normalMinutesOverride:sh.normalMinutesOverride};
-            const full=workingShiftSchedule(input,'full'),half=workingShiftSchedule(input,'half');
-            return {id:sh.id,name:sh.name,code:sh.code,startTime:sh.startTime,endTime:full.shiftEnd,
-              fullMinutes:full.normalMinutes,halfMinutes:half.normalMinutes,halfEnd:half.shiftEnd,
-              archived:!!sh.archivedAt,available:!sh.archivedAt,selected:latest?latest.allowedShiftIds.includes(sh.id):membershipIds.has(sh.id)};})}/>
-      }
-      {!latest && <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{rotationT('legacy')}</p>}
-      {latest && <details className="border-t border-border px-4 py-3 text-sm"><summary>{rotationT('versions')}</summary>
-        <ul className="mt-2 space-y-1">{rotationState.versions.map(v=><li key={v.id}>{v.effectiveFrom} · {v.unit==='week'?rotationT('week'):rotationT('day')} × {v.length} · {rotationT('anchor')}: {v.anchorDate}</li>)}</ul>
-      </details>}
-    </Card>
-  </>;
+  /** The Standard group cannot rotate (saveScheduleRotation refuses it): it offers Working Week only and
+   *  saves its Day Types through the legacy week writer, as before. Each employee keeps their own shift. */
+  const standardWeek = <div className="space-y-3 p-4" data-schedule-standard-week="">
+    <p className="flex items-center gap-2 text-sm font-medium"><StepMark n={2}/>{rotationT('basedOn')} · {rotationT('methodWorkingWeek')}</p>
+    <p className="text-xs text-muted-foreground">{rotationT('standardWeekHint')}</p>
+    <p className="flex items-center gap-2 text-sm font-medium"><StepMark n={3}/>{rotationT('stepDays')}</p>
+    <div className={tableWrapCls}><table className="w-full text-sm">
+      <thead className={theadCls}><tr><th className={thCls}>{rotationT('position')}</th><th className={thCls}>{rotationT('dayType')}</th><th className={thCls}>{rotationT('shift')}</th></tr></thead>
+      <tbody className={tbodyCls}>{ISO_DAYS.map(day=><tr key={day}>
+        <td className="px-3 py-2">{rotationT(`weekday${day}`)}</td>
+        <td className="px-3 py-2">{editing&&canEditShared
+          ? <select name={`dayKind_${day}`} defaultValue={kinds[day]} aria-label={`${rotationT('dayType')} ${rotationT(`weekday${day}`)}`} className={inputCls}>
+              {DAY_KINDS.map(kind=><option key={kind} value={kind}>{rotationT(kind)}</option>)}</select>
+          : rotationT(kinds[day])}</td>
+        <td className="px-3 py-2 text-muted-foreground">{kinds[day]==='full'||kinds[day]==='half'?rotationT('shiftFromEmployee'):rotationT('notRequired')}</td>
+      </tr>)}</tbody>
+    </table></div>
+    {editing&&canEditShared&&<AttendanceSettingsSaveButton className={btnPrimary}>{rotationT('saveWeek')}</AttendanceSettingsSaveButton>}
+  </div>;
+  const pattern = rule.isDefault
+    ? (editing&&canEditShared
+      ? <AttendanceSettingsActionForm submitAction={saveScheduleGroupWeekAction} data-attendance-save-scope=""
+          data-attendance-saved-receipt={savedSection==='general'?savedReceipt:undefined}>
+          <input type="hidden" name="ruleId" value={rule.id}/><input type="hidden" name="weekEditor" value="1"/>{standardWeek}
+        </AttendanceSettingsActionForm>
+      : standardWeek)
+    : <ScheduleRotationEditor ruleId={rule.id} revision={rotationState.revision}
+        minimumDate={minimumDate} initial={initialRotation} editing={editing&&canEditShared} poolInGeneral useSavedPool={!latest}
+        shifts={shifts.map(sh=>{const input={type:sh.type,start:sh.startTime,end:sh.endTime,crosses:sh.crossesMidnight,
+          breakMinutes:sh.breakMinutes,roundingMinutes:sh.normalHoursRoundingMinutes,normalMinutesOverride:sh.normalMinutesOverride};
+          const full=workingShiftSchedule(input,'full'),half=workingShiftSchedule(input,'half');
+          return {id:sh.id,name:sh.name,code:sh.code,startTime:sh.startTime,endTime:full.shiftEnd,
+            fullMinutes:full.normalMinutes,halfMinutes:half.normalMinutes,halfEnd:half.shiftEnd,
+            archived:!!sh.archivedAt,available:!sh.archivedAt,selected:latest?latest.allowedShiftIds.includes(sh.id):membershipIds.has(sh.id)};})}/>;
+  const workingPattern = <Card data-schedule-working-pattern="">
+    <SectionHeader title={t('sectionWorkingDay')} subtitle={currentRotation
+      ? te('currentRotation',{days:currentRotation.days.length,date:currentRotation.effectiveFrom}) : undefined}/>
+    <div className="space-y-4 p-4 pb-0">{stepOne}</div>
+    {rule.isDefault&&editing&&<AttendanceSettingsNavigation/>}
+    {pattern}
+    {!rule.isDefault && !latest && <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{rotationT('legacy')}</p>}
+    {latest && <details className="border-t border-border px-4 py-3 text-sm"><summary>{rotationT('versions')}</summary>
+      <ul className="mt-2 space-y-1">{rotationState.versions.map(v=><li key={v.id}>{v.effectiveFrom} · {rotationT(METHOD_LABEL[rotationMethodOf(v)])}{v.unit==='week'&&v.length===1?'':` × ${v.length}`} · {rotationT('anchor')}: {v.anchorDate}</li>)}</ul>
+    </details>}
+  </Card>;
 
+  const general = <>
+    {identity}
+    {workingPattern}
+  </>;
   /**
    * e5ff7189 stage 1 — THE ATTENDANCE SECTION: the four settings the reporter asked for, which already exist.
    *
@@ -414,7 +393,7 @@ export async function ScheduleGroupSections({
 
   const attendanceBody = (
     <>
-      <ScheduleClockFields companies={clockCompanies} today={today} editing={editing}
+      <ScheduleClockFields settings={clockCompanies} editing={editing}
         grace={<div className="space-y-3">
         <h3 className="font-semibold">{t('graceTitle')}</h3>
         <Field label={te('lateGrace')}>{editing ? <input type="number" min={0} name="lateGracePeriodMinutes"
@@ -453,18 +432,21 @@ export async function ScheduleGroupSections({
           </label>)}
         </div>
         <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('notPayNote')}</p>
-        {editing && (
-          <div className="flex items-center gap-3 border-t border-border px-4 py-3">
-            <AttendanceSettingsSaveButton className={btnPrimary}>{te('saveAttendance')}</AttendanceSettingsSaveButton>
-          </div>
-        )}
       </Card>
+      {/* c03670cc — Wage Deductions moved here from General: the same switch, the same service-stamped
+          start date (never typed) and the same deduction rules; this section is now its only writer. */}
+      <WageDeductionsCard rule={rule} editing={editing}/>
+      {editing && (
+        <div className="flex items-center gap-3">
+          <AttendanceSettingsSaveButton className={btnPrimary}>{te('saveAttendance')}</AttendanceSettingsSaveButton>
+        </div>
+      )}
     </>
   );
 
   const attendance = (
     <>
-      {controlPanel('exception')}
+      {controlPanel()}
       <ErrorBanner message={bannerFor('attendance')} />
       {editing ? (
         <AttendanceSettingsActionForm submitAction={saveScheduleGroupAttendanceAction} data-attendance-save-scope="" data-attendance-saved-receipt={savedSection === 'attendance' ? savedReceipt : undefined} className="space-y-6">
@@ -476,75 +458,27 @@ export async function ScheduleGroupSections({
         <div className="space-y-6">{attendanceBody}</div>
       )}
 
-      {/* ⚠️ THE ONE SETTING THAT DID NOT MOVE, AND IT IS READ-ONLY HERE ON PURPOSE.
-          `apply_deductions` + `deductions_effective_from` (7c834696 stage 1, migration 0394): the
-          effective-from date is STAMPED BY THE SERVICE the moment the switch flips and can never be typed,
-          and a DB CHECK makes "deductions on with no start date" unrepresentable. Together that is what
-          stops a deduction reaching a payroll month that is already closed. A second form over this switch
-          would be a second way to get that date wrong, so it stays on the General section and this card
-          shows it and says where it is edited. DO NOT "finish" this section by adding a checkbox here. */}
-      <Card>
-        <SectionHeader title={tr('deductionsSectionTitle')} />
-        <dl className="divide-y divide-border">
-          <div className="flex items-center justify-between px-4 py-3">
-            <dt className="text-sm font-medium">{t('recordSwitchLabel')}</dt>
-            <dd className="text-sm text-foreground">
-              {rule.applyDeductions ? t('settingOn') : t('settingOff')}
-              {rule.applyDeductions && rule.deductionsEffectiveFrom && (
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {t('recordSwitchFrom', { date: rule.deductionsEffectiveFrom })}
-                </span>
-              )}
-            </dd>
-          </div>
-        </dl>
-        <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('deductionsHere')}</p>
-      </Card>
     </>
   );
 
   /**
-   * d91aee93 stage 1 — THE OVERTIME SECTION: the settings the reporter asked for that already exist, and
-   * the per-band rounding is FINER than what they asked for, not coarser — they asked for one rounding
-   * method and one step for the whole group; each band has carried its own since migration 0439.
-   *
-   * Legacy overtime settings remain on this Schedule Group. fcc2ea42 adds an independent formula
-   * workspace linked below; its effective assignments replace only the OT stage. Ordinary work,
-   * lateness and the existing group editor/bookmarks stay under this owner.
-   *
-   * The band BOUNDARIES and the RATES are not edited here. They are the overtime ladder, they carry a
-   * continuous-ladder validation, and the rate is money; they belong to the General section's form. The
-   * action rebuilds the band table from the STORED rows and overlays rounding matched by the band's
-   * "From" boundary, so nothing here can move a boundary or a rate.
+   * 2f803985 — THE OVERTIME SECTION after the bands moved. The overtime bands, rates, rounding and early
+   * overtime (unchanged UI and writer) now live in Overtime Patterns › 1. General Settings of this group's
+   * own legacy pattern; this tab points there. The new Overtime Setting section (before/after shift,
+   * approval method, lateness offset, rounding) is released separately, only after Payroll is proven to
+   * receive its figures (ADR-0134), so nothing here claims a setting that does not yet reach pay.
    */
-  const overtimeIdentity=attendanceRuleOvertimeSnapshot(rule.otRows,rule.applyToEarlyOt);
-  const overtimeLink=<p className="text-sm text-muted-foreground">{otWorkspace('legacyContext')}{' '}
-    <Link href="/admin/attendance/settings/overtime-patterns" className="text-primary hover:underline">{otWorkspace('openWorkspace')}</Link></p>;
+  const overtimeHref = legacyPatternId
+    ? `/admin/attendance/settings/overtime-patterns?pattern=${legacyPatternId}` : '/admin/attendance/settings/overtime-patterns';
   const overtime = <>
     <ErrorBanner message={bannerFor('overtime')}/>
-    {overtimeLink}
-    {editing ? <AttendanceSettingsActionForm submitAction={saveScheduleGroupOvertimeAction} data-attendance-save-scope=""
-      data-attendance-saved-receipt={savedSection==='overtime'?savedReceipt:undefined} className="space-y-4">
-      <input type="hidden" name="ruleId" value={rule.id}/>
-      <ScheduleOvertimeDraftFields identity={overtimeIdentity} savedReceipt={savedSection==='overtime'?savedReceipt:undefined}>
-        <input type="hidden" name="otBandSnapshot" data-attendance-guard-meta value={overtimeIdentity}/>
-        <input type="hidden" name="overtimeFullEditor" value="1"/>
-        {await renderScheduleOvertimeBands(rule)}
-      </ScheduleOvertimeDraftFields>
-      <AttendanceSettingsSaveButton className={btnPrimary}>{tr('save')}</AttendanceSettingsSaveButton>
-    </AttendanceSettingsActionForm> : <>
-      {overtimeLadderView}
-      <Card>
-        <SectionHeader title={t('otEarlyTitle')}/>
-        <p className="p-4 text-sm">{t('otEarlyLabel')} · {rule.applyToEarlyOt?t('settingOn'):t('settingOff')}</p>
-        {rule.otRows.length>0&&<ul className="divide-y divide-border px-4">
-          {rule.otRows.map(row=><li key={row.id} className="py-2 text-sm">
-            {t('minutes',{n:row.fromMinutes})} · {tr(row.roundingMode==='up'?'roundingModeUp':row.roundingMode==='down'?'roundingModeDown':'roundingModeNone')}
-            {row.roundToMinutes!=null&&` · ${t('minutes',{n:row.roundToMinutes})}`}
-          </li>)}
-        </ul>}
-      </Card>
-    </>}
+    <Card className="space-y-3 p-4" data-schedule-overtime-moved="">
+      <h3 className="font-semibold">{t('sectionOvertime')}</h3>
+      <p className="text-sm">{t('otMovedNote')}{' '}
+        <Link href={overtimeHref} className="text-primary hover:underline">{t('otMovedOpen')}</Link></p>
+      <p className="text-sm text-muted-foreground">{otWorkspace('legacyContext')}</p>
+      <p className="text-xs text-muted-foreground">{t('otSettingPending')}</p>
+    </Card>
   </>;
 
   /** holiday · request · notification — named, and empty, and they say so. Not placeholders for settings
@@ -563,14 +497,13 @@ export async function ScheduleGroupSections({
     attendance,
     request: notBuilt('request'),
     notification: notBuilt('notification'),
-    workingDay,
   };
 
   return (
     <div className="space-y-8">
       <ErrorBanner message={orphanError} />
       <ScheduleGroupTabs initial={section ?? savedSection} ariaLabel={t('sectionsAria')} initialPool={editing&&canEditShared?draftPool:undefined}
-        tabs={(['general','workingDay','attendance','overtime'] as const).map(key=>({id:key,label:SECTION_LABEL[key],body:bodyFor[key]}))}/>
+        tabs={(['general','attendance','overtime'] as const).map(key=>({id:key,label:SECTION_LABEL[key],body:bodyFor[key]}))}/>
       {mode === 'view' && (
         <div className="flex items-center gap-3">
           <Link href={scheduleGroupEditPath(rule.id)} className={btnPrimary}>

@@ -1,26 +1,33 @@
 import {organisationChoiceLabels} from '../lib/organisation-choice-label';
 /** One cost-distribution owner for manual entry, repeated-row imports and new-hire transactions. */
 import {createHash} from 'node:crypto';
-import {and,asc,desc,eq,isNull,lte,or,gt,sql} from 'drizzle-orm';
+import {and,asc,desc,eq,isNull,lte,or,gt,sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {employment,assignment,company,costCenter,employmentCostAllocationHead as head,employmentCostAllocationSet as sets,employmentCostAllocationRow as rows} from '../db/schema';
 import {tenantMutation} from '../db/tenant-mutation';
-import {assertWorkforceEmploymentTx,assertWorkforceCompanyTx} from './workforce-access';
+import {assertWorkforceEmploymentTx,assertWorkforceCompanyTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
+import {withPersonnelRead} from './personnel-read-bounds';
 import {lockLabelCriteriaTx,visibleLabelIdsCondition} from './system-labels';
 import {provenCompanyDatesTx,dayBefore} from './employment-company';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {allocationInputSchema,normalizedAllocationRows,CostAllocationError,type CostAllocationInput,type AllocationSource} from '../lib/employment-cost-allocation';
 import {z} from 'zod';
 export {CostAllocationError} from '../lib/employment-cost-allocation';
+async function assertAllocationPresentationTx(tx:Tx,authority:SQL){
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select ${authority} as allowed`);
+ if(!row?.allowed)throw new WorkforceAccessError();
+}
 async function subjectTx(tx:Tx,ctx:SessionContext,id:string,date:string,write=false){
- await assertWorkforceEmploymentTx(tx,ctx,id,write?'maintain':'view');
- if(write)await lockLabelCriteriaTx(tx,ctx.tenantId);
+ if(write){await assertWorkforceEmploymentTx(tx,ctx,id,'maintain');await lockLabelCriteriaTx(tx,ctx.tenantId);}
+ else await assertAllocationPresentationTx(tx,workforceEmploymentPredicate(sql`${id}::uuid`));
  const query=tx.select().from(employment).where(eq(employment.id,id));const[e]=await(write?query.for('update'):query);if(!e)throw new CostAllocationError('scope');
  const proof=(await provenCompanyDatesTx(tx,[{employmentId:id,date}])).get(`${id}|${date}`);if(!proof?.companyId)throw new CostAllocationError('date');
- await assertWorkforceCompanyTx(tx,ctx,proof.companyId,write?'maintain':'view');if(write){const[live]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,proof.companyId),isNull(company.archivedAt)));if(!live)throw new CostAllocationError('scope');}return{employment:e,companyId:proof.companyId};
+ if(write){await assertWorkforceCompanyTx(tx,ctx,proof.companyId,'maintain');const[live]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,proof.companyId),isNull(company.archivedAt)));if(!live)throw new CostAllocationError('scope');}
+ else await assertAllocationPresentationTx(tx,sql`app.access_workforce_company(${proof.companyId}::uuid,'workforce.view')`);
+ return{employment:e,companyId:proof.companyId};
 }
-async function defaultAllocationDateTx(tx:Tx,ctx:SessionContext,employmentId:string){
- await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
+async function defaultAllocationDateTx(tx:Tx,employmentId:string){
+ await assertAllocationPresentationTx(tx,workforceEmploymentPredicate(sql`${employmentId}::uuid`));
  const[e]=await tx.select({terminatedOn:employment.terminatedOn}).from(employment).where(eq(employment.id,employmentId));
  if(!e)throw new CostAllocationError('scope');
  const versions=await tx.select({from:assignment.validFrom,to:assignment.validTo}).from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt))).orderBy(asc(assignment.validFrom),asc(assignment.id));
@@ -36,8 +43,9 @@ async function defaultAllocationDateTx(tx:Tx,ctx:SessionContext,employmentId:str
 export async function getEmploymentCostAllocations(ctx:SessionContext,employmentId:string,effectiveDate?:string){
  allocationInputSchema.pick({employmentId:true}).parse({employmentId});
  if(effectiveDate!==undefined)allocationInputSchema.pick({effectiveDate:true}).parse({effectiveDate});
- return withTenant(ctx,async tx=>{
-  const selectedDate=effectiveDate??await defaultAllocationDateTx(tx,ctx,employmentId);
+ // Keep display authority, dated company proof and allocation data in one read-only snapshot.
+ return withPersonnelRead(ctx,async tx=>{
+  const selectedDate=effectiveDate??await defaultAllocationDateTx(tx,employmentId);
   const subject=await subjectTx(tx,ctx,employmentId,selectedDate);
 
   const[h]=await tx.select().from(head).where(eq(head.employmentId,employmentId));

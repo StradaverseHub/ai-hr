@@ -11,7 +11,7 @@ export class EmployeeCodeMaintenanceUnavailable extends Error{constructor(){supe
 export const employeeCodeMaintenanceUnavailable=():never=>{throw new EmployeeCodeMaintenanceUnavailable();};
 const fail=employeeCodeMaintenanceUnavailable,hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 type Subject=AssignedSubject&{employeeName:string;employeeCode:string|null;companyName:string;revision:string;generation:string};
-async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');await tx.execute(sql`select app.access_workforce_write_lock()`);return fresh;}
+async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');await tx.execute(sql`select app.access_configuration_write_lock()`);return fresh;}
 async function subject(tx:Tx,ctx:SessionContext,id:string):Promise<Subject>{const [row]=await tx.execute<{scope:Subject|null}>(sql`select app.assistant_employee_code_scope(${id}::uuid) as scope`);if(!row?.scope||row.scope.subjectPersonId===ctx.personId)return fail();return row.scope;}
 export async function withEmployeeCodeMaintenanceSubjectTx<T>(tx:Tx,ctx:SessionContext,id:string,_mode:'pending'|'recorded',work:(fresh:SessionContext,s:AssignedSubject)=>Promise<T>):Promise<T>{const fresh=await actor(tx,ctx);return work(fresh,await subject(tx,fresh,id));}
 async function review(tx:Tx,ctx:SessionContext,human:Human){

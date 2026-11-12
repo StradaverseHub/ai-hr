@@ -19,14 +19,26 @@ import { companyPayrollConfig, employment, payComponent, payrollPolicy, type Pay
 import { assertPayComponentReady } from '../lib/pay-component-contract';
 import { validatePayRule, type PayRuleKind } from './pay-rule';
 import { cleanPayrollPolicyConfig } from './payroll-policy-config';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockPayrollInputsTx} from './payroll-inputs-lock';
 
 
 const capturePolicyContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
 /** Ordinary actual policy/assignment write scope is company HR-admin (native RLS), not Payroll partner.
- * Existing entry callers are USER-backed. No new SYSTEM/marker/roles-only grant is introduced. */
+ * Existing entry callers are USER-backed. No new SYSTEM/marker/roles-only grant is introduced.
+ *
+ * Split (reader/writer wave 4). A policy DEFINITION (create, edit, copy, status) is configuration other
+ * writers and pay runs read, so it keeps the exclusive Access lock. ASSIGNING a policy to one employment
+ * is an employee-data write that runs inside the employee import: it takes the shared lock, and the
+ * employee's payroll inputs key so an assignment cannot land while that company's run reads it. */
 async function ownPolicyWriteTx(tx:Tx,ctx:SessionContext,target:{companyId:string}|{policyId:string}|{employmentId:string}){
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  if('employmentId' in target){
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockPayrollInputsTx(tx,{employmentIds:[target.employmentId]});
+    // A run a background processing job has already paid this employee on reads the old assignment: mark it.
+    const {markProcessingRunsForEmploymentsTx}=await import('./payroll');
+    await markProcessingRunsForEmploymentsTx(tx,ctx,{employmentIds:[target.employmentId]});
+  }else await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const company='companyId' in target?sql`${target.companyId}::uuid`:'policyId' in target?
     sql`(select p.company_id from public.payroll_policy p where p.id=${target.policyId}::uuid and p.tenant_id=${ctx.tenantId}::uuid)`:
     sql`(select e.company_id from public.employment e where e.id=${target.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid)`;
@@ -523,6 +535,65 @@ export async function resolvedPolicyForEmployment(
  * the latter is unexpected and surfaces (never silently downgrades a visible-but-inactive policy to monthly
  * is the EXCEPTION — inactive is a legitimate monthly fallback for the Monthly-only slice, documented above).
  */
+/**
+ * `resolveAssignedPolicy` for many employments at once, with the same answer for each: one read of the
+ * employments, one of the company defaults and one of the policies, instead of up to three per employment.
+ * Every employment gets its own copy of its row (as the one-at-a-time reads did), so nothing a caller does
+ * with one employee's config can reach another's.
+ */
+export async function resolveAssignedPoliciesTx(
+  tx: Tx,
+  employmentIds: readonly string[],
+): Promise<Map<string, PolicyRow | null>> {
+  const out = new Map<string, PolicyRow | null>();
+  const ids = [...new Set(employmentIds)];
+  if (ids.length === 0) return out;
+  const emps = await tx
+    .select({ id: employment.id, policyId: employment.payrollPolicyId, companyId: employment.companyId })
+    .from(employment)
+    .where(inArray(employment.id, ids));
+  const byEmployment = new Map(emps.map((e) => [e.id, e]));
+  const defaultsFor = [...new Set(emps.filter((e) => e.policyId == null).map((e) => e.companyId))];
+  const defaults = new Map<string, string | null>();
+  if (defaultsFor.length) {
+    for (const row of await tx
+      .select({ companyId: companyPayrollConfig.companyId, def: companyPayrollConfig.defaultPayrollPolicyId })
+      .from(companyPayrollConfig)
+      .where(inArray(companyPayrollConfig.companyId, defaultsFor))) defaults.set(row.companyId, row.def ?? null);
+  }
+  const policyOf = (e: { policyId: string | null; companyId: string }) => e.policyId ?? defaults.get(e.companyId) ?? null;
+  const policyIds = [...new Set(emps.map(policyOf).filter((id): id is string => id != null))];
+  const policies = new Map<string, PolicyRow>();
+  if (policyIds.length) {
+    for (const pol of await tx
+      .select({
+        id: payrollPolicy.id, companyId: payrollPolicy.companyId, name: payrollPolicy.name, code: payrollPolicy.code,
+        description: payrollPolicy.description, policyType: payrollPolicy.policyType, payRule: payrollPolicy.payRule,
+        config: payrollPolicy.config, priority: payrollPolicy.priority, status: payrollPolicy.status, updatedAt: payrollPolicy.updatedAt,
+      })
+      .from(payrollPolicy)
+      .where(inArray(payrollPolicy.id, policyIds))) {
+      if (pol.status !== 'active') continue;
+      policies.set(pol.id, {
+        ...pol,
+        policyType: pol.policyType as PolicyType,
+        payRule: pol.payRule as PayRule | null,
+        config: pol.config as PayrollPolicyConfig | null,
+        priority: Number(pol.priority),
+        status: pol.status as PolicyStatus,
+        assignedCount: 0,
+      });
+    }
+  }
+  for (const id of ids) {
+    const e = byEmployment.get(id);
+    const policyId = e ? policyOf(e) : null;
+    const row = policyId ? policies.get(policyId) : undefined;
+    out.set(id, row ? structuredClone(row) : null);
+  }
+  return out;
+}
+
 export async function resolveAssignedPolicy(
   tx: Tx,
   employmentId: string,

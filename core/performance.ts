@@ -4,7 +4,7 @@ import { boundedNarrativeFacts, adjudicateNarrative } from '../lib/ai/evidence-s
 import {assertPerformanceProviderSourceTx} from './performance-provider-source';
 import {withAiAdmissionCheck} from './ai-governance';
 import {draftInputDigest} from '../lib/ai/draft-input';
-import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {lockLeaveDependenciesWaitTx} from './leave-dependency-lock';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { prepareAssessmentEvidenceFileTx, prepareAssessmentKpiFileTx, linkAssessmentAttachmentTx, configureAssessmentCycleTx, previewAssessmentParticipantsTx, snapshotAssessmentParticipantsTx } from '../packs/performance/service';
@@ -32,9 +32,10 @@ import { type SessionContext, type Tx } from '../db/client';
 // therefore NOT gated, deliberately: core/employment-review.ts (employment spine) calls it and must
 // keep working. See core/module-gate.ts.
 import { withPerformanceTenant as withTenant } from './module-gate';
+import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { actorOf, appendEvent } from '../db/events';
 import { assertModuleEnabled } from './entitlements';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationTx, lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import {
   assignment,
   calibrationEntry,
@@ -68,6 +69,7 @@ import type {GenerateArgs} from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { pageState, parsePageQuery, type PageState } from '../lib/pagination';
 import { onehrAttachmentSubjectTx, assertStandardCycleTx, prepareAssessmentClosureTx, initializeOnehrCycleTx } from '../packs/performance/onehr/service';
 
 export class PerfError extends Error {
@@ -701,7 +703,7 @@ export type ReviewedReviewAcknowledgementSource=Pick<Awaited<ReturnType<typeof r
  * refuse changed facts; it cannot supply a status, rating, actor, approval or replacement effect. */
 export async function acknowledgeReviewTx(tx:Tx,ctx:SessionContext,p:{reviewId:string},expected?:ReviewedReviewAcknowledgementSource){
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const reviewId=p.reviewId,checked=expected?{...expected}:undefined;
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const current=await readOwnReviewAcknowledgementSourceTx(tx,ctx,reviewId);
   if(checked&&(checked.reviewId!==current.reviewId||checked.employmentId!==current.employmentId||checked.cycleId!==current.cycleId||checked.reviewVersion!==current.reviewVersion||checked.cycleVersion!==current.cycleVersion))throw new PerfError('This review changed; review it again');
   if(!current.releasedAt)throw new PerfError('This review has not been released yet');
@@ -1173,9 +1175,13 @@ export async function enactCompAction(
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};p={...p};
   return withTenant(ctx, async (tx) => {
     // A merit enact reads compensation before the leaf write; own the full interval before review,
-    // source/Payroll rows. Exclusive configuration also preserves transitive bonus/grade ordering.
+    // source/Payroll rows. Shared (reader/writer wave 4): grade, bonus and leave configuration editors
+    // hold the Access lock exclusively, so they still cannot change under an enact. The review row lock
+    // serialises two enacts of one review; the salary and payroll-input writers below take the
+    // employee's own and payroll inputs locks, so an enact during a payroll run waits for it.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[]);
     // Lock the review row first so two concurrent enacts can't both read 'recommended'.
     await tx.select({ id: performanceReview.id }).from(performanceReview).where(eq(performanceReview.id, p.reviewId)).for('update');
     const { review } = await loadReview(tx, p.reviewId);
@@ -1406,49 +1412,114 @@ export type CycleSummary = {
   pendingComp: number; // recommendations awaiting enactment
 };
 
-/** Cycles for the management view, each with progress counts. RLS scopes to the tenant. */
+const cycleListColumns = {
+  id: reviewCycle.id,
+  name: reviewCycle.name,
+  companyId: reviewCycle.companyId,
+  periodStart: reviewCycle.periodStart,
+  periodEnd: reviewCycle.periodEnd,
+  status: reviewCycle.status,
+  releasedAt: reviewCycle.releasedAt,
+};
+type CycleListMetadata = Omit<CycleSummary, 'total' | 'submitted' | 'acknowledged' | 'pendingComp'>;
+
+async function summarizeCyclesTx(tx: Tx, cycles: CycleListMetadata[]): Promise<CycleSummary[]> {
+  if (cycles.length === 0) return [];
+  const counts = await tx
+    .select({
+      cycleId: performanceReview.cycleId,
+      total: sql<number>`count(*)::int`,
+      submitted: sql<number>`count(*) filter (where ${performanceReview.status} in ('submitted','acknowledged'))::int`,
+      acknowledged: sql<number>`count(*) filter (where ${performanceReview.status} = 'acknowledged')::int`,
+      pendingComp: sql<number>`count(*) filter (where ${performanceReview.compActionStatus} = 'recommended')::int`,
+    })
+    .from(performanceReview)
+    .where(
+      inArray(
+        performanceReview.cycleId,
+        cycles.map((c) => c.id),
+      ),
+    )
+    .groupBy(performanceReview.cycleId);
+  const byId = new Map(counts.map((c) => [c.cycleId, c]));
+  return cycles.map((c) => {
+    const k = byId.get(c.id);
+    return {
+      id: c.id,
+      name: c.name,
+      companyId: c.companyId,
+      periodStart: c.periodStart,
+      periodEnd: c.periodEnd,
+      status: c.status,
+      releasedAt: c.releasedAt,
+      total: k?.total ?? 0,
+      submitted: k?.submitted ?? 0,
+      acknowledged: k?.acknowledged ?? 0,
+      pendingComp: k?.pendingComp ?? 0,
+    };
+  });
+}
+
+/** Cycles for the management view, each with progress counts. RLS scopes to the tenant.
+ * Retained full-list callers keep their existing rows and ordering; list-only reads omit configuration JSON. */
 export function listCycles(ctx: SessionContext): Promise<CycleSummary[]> {
   return withTenant(ctx, async (tx) => {
-    const cycles = await tx.select().from(reviewCycle).orderBy(desc(reviewCycle.periodStart));
-    if (cycles.length === 0) return [];
-    const counts = await tx
-      .select({
-        cycleId: performanceReview.cycleId,
-        total: sql<number>`count(*)::int`,
-        submitted: sql<number>`count(*) filter (where ${performanceReview.status} in ('submitted','acknowledged'))::int`,
-        acknowledged: sql<number>`count(*) filter (where ${performanceReview.status} = 'acknowledged')::int`,
-        pendingComp: sql<number>`count(*) filter (where ${performanceReview.compActionStatus} = 'recommended')::int`,
-      })
-      .from(performanceReview)
-      .where(
-        inArray(
-          performanceReview.cycleId,
-          cycles.map((c) => c.id),
-        ),
-      )
-      .groupBy(performanceReview.cycleId);
-    const byId = new Map(counts.map((c) => [c.cycleId, c]));
-    return cycles.map((c) => {
-      const k = byId.get(c.id);
-      return {
-        id: c.id,
-        name: c.name,
-        companyId: c.companyId,
-        periodStart: c.periodStart,
-        periodEnd: c.periodEnd,
-        status: c.status,
-        releasedAt: c.releasedAt,
-        total: k?.total ?? 0,
-        submitted: k?.submitted ?? 0,
-        acknowledged: k?.acknowledged ?? 0,
-        pendingComp: k?.pendingComp ?? 0,
-      };
-    });
+    const cycles = await tx.select(cycleListColumns).from(reviewCycle).orderBy(desc(reviewCycle.periodStart));
+    return summarizeCyclesTx(tx, cycles);
+  });
+}
+
+/** Native paging for HR's cycle list. Count metadata under the same current tenant/module gate;
+ * load progress only for the selected cycle IDs. OneHR partners retain their distinct scoped reader. */
+export function listCyclePage(ctx: SessionContext, query: { page?: string; size?: string } = {}): Promise<{ rows: CycleSummary[]; state: PageState }> {
+  const q = parsePageQuery(query);
+  return withTenant(ctx, async (tx) => {
+    const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(reviewCycle);
+    const cycles = await tx.select(cycleListColumns).from(reviewCycle)
+      .orderBy(desc(reviewCycle.periodStart), reviewCycle.id).limit(q.limit).offset(q.offset);
+    const rows = await summarizeCyclesTx(tx, cycles);
+    return { rows, state: pageState(q, count.total, rows.length) };
   });
 }
 
 /** ADR-0142 — a OneHR-native cycle row for the performance-administration list, with NO pay figure. */
 export type OnehrAdminCycleSummary = Omit<CycleSummary, 'pendingComp'>;
+
+/** No-pay progress counts for already-admitted OneHR cycle metadata. */
+async function summarizeOnehrCyclesTx(tx: Tx, cycles: CycleListMetadata[]): Promise<OnehrAdminCycleSummary[]> {
+  if (cycles.length === 0) return [];
+  const counts = await tx
+    .select({
+      cycleId: performanceReview.cycleId,
+      total: sql<number>`count(*)::int`,
+      submitted: sql<number>`count(*) filter (where ${performanceReview.status} in ('submitted','acknowledged'))::int`,
+      acknowledged: sql<number>`count(*) filter (where ${performanceReview.status} = 'acknowledged')::int`,
+    })
+    .from(performanceReview)
+    .where(
+      inArray(
+        performanceReview.cycleId,
+        cycles.map((c) => c.id),
+      ),
+    )
+    .groupBy(performanceReview.cycleId);
+  const byId = new Map(counts.map((c) => [c.cycleId, c]));
+  return cycles.map((c) => {
+    const k = byId.get(c.id);
+    return {
+      id: c.id,
+      name: c.name,
+      companyId: c.companyId,
+      periodStart: c.periodStart,
+      periodEnd: c.periodEnd,
+      status: c.status,
+      releasedAt: c.releasedAt,
+      total: k?.total ?? 0,
+      submitted: k?.submitted ?? 0,
+      acknowledged: k?.acknowledged ?? 0,
+    };
+  });
+}
 
 /**
  * ADR-0142 — the OneHR-native cycles this session administers (the performance partner's landing list).
@@ -1458,48 +1529,44 @@ export type OnehrAdminCycleSummary = Omit<CycleSummary, 'pendingComp'>;
  */
 export function listOnehrAdminCycles(ctx: SessionContext): Promise<OnehrAdminCycleSummary[]> {
   return withTenant(ctx, async (tx) => {
-    const cycles = (
-      await tx
-        .select({ cycle: reviewCycle })
-        .from(reviewCycle)
-        .innerJoin(onehrCycle, eq(onehrCycle.cycleId, reviewCycle.id))
-        .where(sql`app.onehr_cycle_admin(${reviewCycle.id})`)
-        .orderBy(desc(reviewCycle.periodStart), reviewCycle.id)
-    )
-      .map((r) => r.cycle)
-      .filter((c) => canAdminOnehrCtx(ctx, c.companyId));
-    if (cycles.length === 0) return [];
-    const counts = await tx
-      .select({
-        cycleId: performanceReview.cycleId,
-        total: sql<number>`count(*)::int`,
-        submitted: sql<number>`count(*) filter (where ${performanceReview.status} in ('submitted','acknowledged'))::int`,
-        acknowledged: sql<number>`count(*) filter (where ${performanceReview.status} = 'acknowledged')::int`,
-      })
-      .from(performanceReview)
-      .where(
-        inArray(
-          performanceReview.cycleId,
-          cycles.map((c) => c.id),
-        ),
-      )
-      .groupBy(performanceReview.cycleId);
-    const byId = new Map(counts.map((c) => [c.cycleId, c]));
-    return cycles.map((c) => {
-      const k = byId.get(c.id);
-      return {
-        id: c.id,
-        name: c.name,
-        companyId: c.companyId,
-        periodStart: c.periodStart,
-        periodEnd: c.periodEnd,
-        status: c.status,
-        releasedAt: c.releasedAt,
-        total: k?.total ?? 0,
-        submitted: k?.submitted ?? 0,
-        acknowledged: k?.acknowledged ?? 0,
-      };
-    });
+    const cycles = (await tx.select(cycleListColumns).from(reviewCycle)
+      .innerJoin(onehrCycle, eq(onehrCycle.cycleId, reviewCycle.id))
+      .where(sql`app.onehr_cycle_admin(${reviewCycle.id})`)
+      .orderBy(desc(reviewCycle.periodStart), reviewCycle.id))
+      .filter(cycle => canAdminOnehrCtx(ctx, cycle.companyId));
+    return summarizeOnehrCyclesTx(tx, cycles);
+  });
+}
+
+/** Exact SQL form of the existing UX mirror, never the native admission authority.
+ * A mirror true for a null company accepts every row that the native authority admits. Otherwise the
+ * mirror can only match exact company IDs from its grants; ask that same owner for each candidate ID.
+ * Text comparison preserves the existing exact company-ID equality. */
+function onehrCycleMirrorSql(ctx: SessionContext) {
+  if (canAdminOnehrCtx(ctx, null)) return sql`true`;
+  const companies = [...new Set((ctx.grants ?? []).map(grant => grant.companyId)
+    .filter((id): id is string => typeof id === 'string' && canAdminOnehrCtx(ctx, id)))];
+  return companies.length ? inArray(sql<string>`${reviewCycle.companyId}::text`, companies) : sql`false`;
+}
+
+/** OneHR-native metadata page. Both purpose and UX scope are applied before counting/limiting.
+ * The window count shares the admitted statement; an out-of-range page repeats the same gates for
+ * its exact total. An empty first page already establishes a zero total. Progress is then read only for that page, using the separate no-pay owner. */
+export function listOnehrAdminCyclePage(ctx: SessionContext, query: { page?: string; size?: string } = {}): Promise<{ rows: OnehrAdminCycleSummary[]; state: PageState }> {
+  const page = parsePageQuery(query);
+  return withTenant(ctx, async tx => {
+    const admitted = and(sql`app.onehr_cycle_admin(${reviewCycle.id})`, onehrCycleMirrorSql(ctx));
+    const selected = await tx.select({ ...cycleListColumns, matchedTotal: sql<number>`(count(*) over ())::int` })
+      .from(reviewCycle).innerJoin(onehrCycle, eq(onehrCycle.cycleId, reviewCycle.id))
+      .where(admitted).orderBy(desc(reviewCycle.periodStart), reviewCycle.id).limit(page.limit).offset(page.offset);
+    let total = selected[0]?.matchedTotal ?? 0;
+    if (!selected.length && page.offset > 0) {
+      const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(reviewCycle)
+        .innerJoin(onehrCycle, eq(onehrCycle.cycleId, reviewCycle.id)).where(admitted);
+      total = count.total;
+    }
+    const rows = await summarizeOnehrCyclesTx(tx, selected.map(({ matchedTotal: _total, ...cycle }) => cycle));
+    return { rows, state: pageState(page, total, rows.length) };
   });
 }
 
@@ -1814,7 +1881,7 @@ export function myReviews(ctx: SessionContext, existingTx?: AiReadTx) {
         reviewId: performanceReview.id,
         cycleName: reviewCycle.name,
         status: performanceReview.status,
-        released: sql<boolean>`${reviewCycle.releasedAt} is not null`,
+        released: MY_REVIEW_RELEASED,
         overallRating: sql<number | null>`case when ${reviewCycle.releasedAt} is not null then ${performanceReview.overallRating} end`,
         finalScore: sql<string | null>`case when ${reviewCycle.releasedAt} is not null then ${performanceReview.finalScore} end`,
         abcClass: sql<'A' | 'B' | 'C' | null>`case when ${reviewCycle.releasedAt} is not null then ${performanceReview.abcClass} end`,
@@ -1826,6 +1893,23 @@ export function myReviews(ctx: SessionContext, existingTx?: AiReadTx) {
       .where(eq(employment.personId, ctx.personId))
       .orderBy(desc(reviewCycle.periodEnd));
   });
+}
+const MY_REVIEW_RELEASED = sql<boolean>`${reviewCycle.releasedAt} is not null`;
+/** The fields of myReviews the Before payroll checklist reads (core/pre-salary/person-items.ts): no rating or score. */
+const MY_REVIEW_CHECKLIST_FIELDS = { reviewId: performanceReview.id, status: performanceReview.status, released: MY_REVIEW_RELEASED, periodEnd: reviewCycle.periodEnd };
+/** myReviews (no outer transaction) in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts):
+ * the same rows (the owner's joins, predicate and order) with the fields the checklist reads. null without a person
+ * (the owner then answers empty without reading). The Performance gate and the AI Centre check stay the caller's. */
+export function myReviewsChecklistBundleSql(ctx: SessionContext) {
+  if (!ctx.personId) return null;
+  return jsonRowsSql({ row: jsonFieldsSql(MY_REVIEW_CHECKLIST_FIELDS),
+    from: sql`${performanceReview} inner join ${reviewCycle} on ${eq(reviewCycle.id, performanceReview.cycleId)}
+     inner join ${employment} on ${eq(employment.id, performanceReview.employmentId)}`,
+    where: eq(employment.personId, ctx.personId), order: sql`${reviewCycle.periodEnd} desc` });
+}
+export type MyReviewChecklistRow = { reviewId: string; status: string; released: boolean; periodEnd: string };
+export function myReviewsChecklistFromBundle(value: unknown): MyReviewChecklistRow[] {
+  return decodeJsonFieldRows(MY_REVIEW_CHECKLIST_FIELDS, value) as MyReviewChecklistRow[];
 }
 
 /** Reviews awaiting the signed-in manager's action (manager_review, they are the reviewer). */
@@ -1874,14 +1958,41 @@ export function managerPendingReviews(ctx: SessionContext) {
     const stepped = await tx.execute<{ review_id: string; employee: string; employee_code: string | null; cycle_name: string; status: string; company_id: string; created_at: string | Date }>(
       sql`select review_id, employee, employee_code, cycle_name, status, company_id, created_at from app.onehr_effective_review_queue()`,
     );
+    return combineManagerPendingReviews(own, stepped);
+  });
+}
+type ManagerPendingReview = { reviewId: string; employee: string; employeeCode: string | null; cycleName: string; status: (typeof performanceReview.$inferSelect)['status']; companyId: string; createdAt: Date };
+type SteppedPendingReview = { review_id: string; employee: string; employee_code: string | null; cycle_name: string; status: string; company_id: string; created_at: string | Date };
+function combineManagerPendingReviews(own: ManagerPendingReview[], stepped: readonly SteppedPendingReview[]): ManagerPendingReview[] {
     const seen = new Set(own.map((r) => r.reviewId));
     const extra = stepped.filter((r) => !seen.has(r.review_id)).map((r) => ({
       reviewId: r.review_id, employee: r.employee, employeeCode: r.employee_code, cycleName: r.cycle_name,
-      status: r.status as (typeof own)[number]['status'], companyId: r.company_id, createdAt: new Date(r.created_at),
+      status: r.status as ManagerPendingReview['status'], companyId: r.company_id, createdAt: new Date(r.created_at),
     }));
     if (!extra.length) return own;
     return [...own, ...extra].sort((a, b) => a.cycleName.localeCompare(b.cycleName) || a.employee.localeCompare(b.employee) || a.reviewId.localeCompare(b.reviewId));
-  });
+}
+/** managerPendingReviews in the one-statement Home task read (core/account-task-bundle.ts): the same two reads in the
+ * caller's session, `stepped` only when the viewer holds an employment, as in the owner. */
+export function managerPendingReviewsBundleSql(ctx: SessionContext) {
+  if (!ctx.personId) return sql`jsonb_build_object('own','[]'::jsonb,'stepped','[]'::jsonb)`;
+  const mine = sql`(select mine.id from public.employment mine where mine.person_id=${ctx.personId}::uuid)`;
+  return sql`(case when not exists${mine} then jsonb_build_object('own','[]'::jsonb,'stepped','[]'::jsonb) else jsonb_build_object(
+    'own',coalesce((select jsonb_agg(jsonb_build_object('reviewId',${performanceReview.id},'employee',${person.fullName},'employeeCode',${employment.employeeCode},
+      'cycleName',${reviewCycle.name},'status',${performanceReview.status},'companyId',${employment.companyId},'createdAt',${performanceReview.createdAt})
+      order by ${reviewCycle.name},${person.fullName})
+     from ${performanceReview} inner join ${reviewCycle} on ${eq(reviewCycle.id, performanceReview.cycleId)}
+      inner join ${employment} on ${eq(employment.id, performanceReview.employmentId)} inner join ${person} on ${eq(person.id, employment.personId)}
+     where ${performanceReview.reviewerEmploymentId} in ${mine} and ${inArray(performanceReview.status, ['manager_review', 'self_review'])}
+      and ${eq(reviewCycle.status, 'open')} and not app.onehr_reviewer_unit_out(${performanceReview.id})),'[]'::jsonb),
+    'stepped',coalesce((select jsonb_agg(jsonb_build_object('review_id',queue.review_id,'employee',queue.employee,'employee_code',queue.employee_code,
+      'cycle_name',queue.cycle_name,'status',queue.status,'company_id',queue.company_id,'created_at',queue.created_at))
+     from app.onehr_effective_review_queue() queue),'[]'::jsonb)) end)`;
+}
+export function managerPendingReviewsFromBundle(value: unknown): ManagerPendingReview[] {
+  const section = value as { own: (Omit<ManagerPendingReview, 'createdAt'> & { createdAt: string })[]; stepped: SteppedPendingReview[] };
+  return combineManagerPendingReviews(section.own.map((row) => ({ reviewId: row.reviewId, employee: row.employee, employeeCode: row.employeeCode,
+    cycleName: row.cycleName, status: row.status, companyId: row.companyId, createdAt: new Date(row.createdAt) })), section.stepped);
 }
 
 /** Map a set of employment ids → person full name (one query). */
@@ -2520,14 +2631,27 @@ export function pendingStandardFeedbackTaskMetadata(ctx:SessionContext):Promise<
     await assertAssignedWorkPrincipalTx(tx,ctx);
     const rows=await tx.select({id:peerFeedbackRequest.id,subjectName:peerFeedbackRequest.subjectName,
       sourceUpdatedAt:peerFeedbackRequest.createdAt}).from(peerFeedbackRequest)
-      .where(and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),
-        sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${peerFeedbackRequest.peerEmploymentId}
-          AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`,
-        sql`NOT EXISTS (SELECT 1 FROM public.performance_onehr_panel panel WHERE panel.request_id=${peerFeedbackRequest.id})`,
-        sql`NOT EXISTS (SELECT 1 FROM public.performance_review review JOIN public.performance_onehr_cycle cycle ON cycle.cycle_id=review.cycle_id WHERE review.id=${peerFeedbackRequest.reviewId})`))
+      .where(pendingStandardFeedbackWhere(ctx))
       .orderBy(desc(peerFeedbackRequest.createdAt),peerFeedbackRequest.id);
     return rows.map(row=>({...row,kind:'feedback' as const,linkPath:`/me/performance#feedback-${row.id}`}));
   });
+}
+function pendingStandardFeedbackWhere(ctx:SessionContext){
+  return and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),
+        sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${peerFeedbackRequest.peerEmploymentId}
+          AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`,
+        sql`NOT EXISTS (SELECT 1 FROM public.performance_onehr_panel panel WHERE panel.request_id=${peerFeedbackRequest.id})`,
+        sql`NOT EXISTS (SELECT 1 FROM public.performance_review review JOIN public.performance_onehr_cycle cycle ON cycle.cycle_id=review.cycle_id WHERE review.id=${peerFeedbackRequest.reviewId})`);
+}
+/** pendingStandardFeedbackTaskMetadata in the one-statement Home task read (core/account-task-bundle.ts): same rows, same order. */
+export function pendingStandardFeedbackTaskBundleSql(ctx:SessionContext){
+  return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',${peerFeedbackRequest.id},'subjectName',${peerFeedbackRequest.subjectName},
+    'sourceUpdatedAt',${peerFeedbackRequest.createdAt}) order by ${peerFeedbackRequest.createdAt} desc,${peerFeedbackRequest.id}),'[]'::jsonb)
+   from ${peerFeedbackRequest} where ${pendingStandardFeedbackWhere(ctx)})`;
+}
+export function pendingStandardFeedbackTasksFromBundle(value:unknown):AssignedPersonalTaskMetadata[]{
+  return (value as {id:string;subjectName:string;sourceUpdatedAt:string}[]).map(row=>({id:row.id,subjectName:row.subjectName,
+    sourceUpdatedAt:new Date(row.sourceUpdatedAt),kind:'feedback' as const,linkPath:`/me/performance#feedback-${row.id}`}));
 }
 
 /** The signed-in peer's pending feedback requests — "give 360 feedback". */

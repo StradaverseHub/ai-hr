@@ -63,7 +63,8 @@ describe('payroll history learning',()=>{
  it('names the payroll_learning topic in the operations line, which lists exactly the spec\'s topics',()=>{
   const operations=line('An administrator\'s question');
   expect(operations).toBe('An administrator\'s question about AI Centre\'s loops, the payroll cycle, the salary payroll checks, the payroll loop settings, the payroll audit, AI quality or payroll learning: call operations_status with that topic (loops, payroll_cycle, salary_payroll, payroll_loop_settings, payroll_audit, ai_quality or payroll_learning), one topic per call. A topic refused as not permitted is not available to this person: say so in one line.');
-  const topics=[...HARNESS_SPEC.offer.topicTools.operations_status];
+  // 50d9b809 (v29) appends shared_leave_groups after v24's list; this line lists exactly v24's topics.
+  const topics=[...v24.offer.topicTools.operations_status];
   expect(operations).toContain(`(${topics.slice(0,-1).join(', ')} or ${topics.at(-1)})`);
  });
  it('says what a payroll learning answer may give: counts per company with the month, "fewer than 5" for a null, never a person, an amount or a range',()=>{
@@ -74,7 +75,8 @@ describe('payroll history learning',()=>{
  });
  it('binds the topic to payroll_learning_status only, a payroll administrators\' read with its kit entry and its page',()=>{
   const operations=TOPIC_TOOLS.find(tool=>tool.name==='operations_status')!;
-  expect(operations.topics.at(-1)).toEqual({topic:'payroll_learning',read:'payroll_learning_status'});
+  // 50d9b809 (v29) appends shared_leave_groups after it, so v24's topic is found by name rather than by position.
+  expect(operations.topics.find(row=>row.topic==='payroll_learning')).toEqual({topic:'payroll_learning',read:'payroll_learning_status'});
   expect(topicRead('operations_status','payroll_learning')?.name).toBe('payroll_learning_status');
   expect(FOLDED_READS.get('payroll_learning_status')).toMatchObject({tool:'operations_status',topic:'payroll_learning'});
   expect(TERAS_CAPABILITIES.find(row=>row.name==='payroll_learning_status')).toMatchObject({admin:true,module:'payroll',worker:null});

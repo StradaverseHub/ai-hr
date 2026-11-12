@@ -7,7 +7,7 @@ import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { formatPayPeriodMonth } from '@/lib/hr-date';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, payrollHasRetiredAttendanceFormulaInputs, listBatches, listRecalcChangeCategories, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
+import { payrollRunRegisterPage, payrollHasRetiredAttendanceFormulaInputs, listBatchRecalcPayslipIdentities, listRecalcChangeCategories, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
 import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
 import {batchScopeHeadcount} from '@/packs/payroll/service';
 import { reverseRetiredAttendanceFormulaAction } from './retired-attendance-formula-action';
@@ -17,9 +17,11 @@ import { statutoryPackStale } from '@/lib/statutory-readiness';
 import { auditEvents } from '@/core/read';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { Pager } from '@/components/pager';
-import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { parsePageQuery } from '@/lib/pagination';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { closeAction, generateAction, resetAction, unlockAction } from '../actions';
+import { payrollProcessingStatus } from '@/core/payroll-processing-job';
+import { PayrollProcessingPanel } from './processing-progress';
 // b372e923 — the payroll result destination, now spelled in ONE place because the Reprocess result table
 // links to it too and the reporter's requirement is that the two cannot be different screens.
 import { payrollResultHref } from '../payroll-result-href';
@@ -91,23 +93,32 @@ export default async function BatchPage({
   const backHref = payrollListReturnTo(from);
   // …and the two screens BELOW this one get it too, so Back is unbroken all the way down the chain.
   const fromSuffix = backHref === '/payroll' ? '' : `?from=${encodeURIComponent(backHref)}`;
-  const data = await batchDetail(s, batchId);
+  const data = await payrollRunRegisterPage(s, batchId, parsePageQuery(sp));
   if (!data) notFound();
-  const { batch, slips } = data;
-  const retiredFormulaInputs = batch.status !== 'closed' && await payrollHasRetiredAttendanceFormulaInputs(s,batch.id);
+  const { batch, closeCycleName, slipPage } = data;
+  const slipCount = slipPage.state.total;
+  // 'processing': the background job is writing this run's payslips. Nothing of the run is shown as issued until its
+  // finalize flips it to processed in one transaction; the processing panel below says where it is.
+  const issued = batch.status === 'processed' || batch.status === 'closed';
+  const processingStatus = await payrollProcessingStatus(s, batch.id);
+  const processingJob = processingStatus?.job ?? null;
+  const showProcessing = batch.status === 'processing' || (processingJob != null && batch.status === 'draft'
+    && (processingJob.state === 'failed' || processingJob.state === 'cancelled')
+    && processingJob.finishedAt != null && Date.now() - Date.parse(processingJob.finishedAt) < 86_400_000);
+  const retiredFormulaInputs = batch.status !== 'closed' && await payrollHasRetiredAttendanceFormulaInputs(s, batch.id);
   // AI v2 P2-2b: who viewed this run's payroll register is recorded (core/payroll-audit/access-log.ts), before it renders.
   await recordPayrollAccess(s, { surface: 'register', action: 'view', companyId: batch.companyId, payPeriod: batch.payPeriod, batchId: batch.id });
   const scope = (batch.scope ?? null) as BatchScope | null;
-  const processingOutcomes = batch.status === 'draft' ? [] : await listReprocessEmployeeOutcomes(s, {batchId});
+  const processingOutcomes = !issued ? [] : await listReprocessEmployeeOutcomes(s, {batchId});
   const processingByEmployment = new Map(processingOutcomes.map(outcome => [outcome.employmentId, outcome]));
   // Feedback ef31d251 — this header used to render the RAW status enum, and "Processed" reads as
   // finished. It is not: payslips stay invisible to employees until Close, which is why eighteen runs
   // were calculated and never published. Derived through the shared helper the payroll LIST also uses,
-  // so the two screens cannot start disagreeing about what "published" means. batchDetail does a bare
+  // so the two screens cannot start disagreeing about what "published" means. The register reader does a bare
   // select() of the batch row, so releasedAt is already in hand — no extra read.
   const pubState = payrollPublicationState(batch);
   // 49e7e0a2 — the run's recalculation mark. Set when a one-off transaction is added, changed or removed
-  // AFTER the run was processed; `closeBatch` refuses while it is set. `batchDetail` does a bare select()
+  // AFTER the run was processed; `closeBatch` refuses while it is set. The register reader does a bare select()
   // of the batch row, so both columns are already in hand — no extra read.
   const needsRecalc = batch.needsRecalcAt != null;
   const recalcEmploymentIds = Array.isArray(batch.recalcEmploymentIds)
@@ -116,14 +127,15 @@ export default async function BatchPage({
   // 3244584c — WHAT KIND of employee change made each named person stale (a category, never a value —
   // ADR-0030 Layer 0). Employees marked by a transaction/attendance edit carry none and are not listed.
   const recalcCategories = needsRecalc ? await listRecalcChangeCategories(s, { batchId: batch.id }) : {};
-  const recalcChangeLines = slips
-    .filter((sl) => recalcCategories[sl.employmentId]?.length)
-    .map((sl) => ({
-      employmentId: sl.employmentId,
-      name: sl.name,
-      employeeCode: sl.employeeCode,
-      changes: recalcCategories[sl.employmentId].map((c) => t(`recalcChangeCategory.${c}`)).join(', '),
-    }));
+  const recalcPeople = await listBatchRecalcPayslipIdentities(
+    s, batch.id, Object.keys(recalcCategories).filter(id => recalcCategories[id].length > 0),
+  );
+  const recalcChangeLines = recalcPeople.map((sl) => ({
+    employmentId: sl.employmentId,
+    name: sl.name,
+    employeeCode: sl.employeeCode,
+    changes: recalcCategories[sl.employmentId].map((c) => t(`recalcChangeCategory.${c}`)).join(', '),
+  }));
   const PUBLICATION_LABEL: Record<PayrollPublicationState, string> = {
     history: t('publishStateHistory'),
     draft: t('publishStateDraft'),
@@ -134,9 +146,6 @@ export default async function BatchPage({
   const totals = (batch.totals ?? {}) as Record<string, number>;
   const draftHeadcount = batch.status === 'draft' ? await batchScopeHeadcount(s, batchId) : null;
   const leavers = batch.status === 'draft' ? await leaverAdvisory(s, batchId) : [];
-  // fc776376 — both per-employee tables on this run are genuine lists that grow with headcount. The
-  // payslip BREAKDOWN (one payslip's own lines) is deliberately not paged: it is one record, not a list.
-  const slipPage = paginateRows(slips, parsePageQuery(sp));
   // Pre-processing checks (feedback f1564110, Phase 1): validate employee master data BEFORE the run
   // is calculated. Blockers (no salary record) disable Generate outright; warnings (no statutory
   // profile / no bank details) swap Generate for a ConfirmSubmit that posts ackWarnings=1.
@@ -158,7 +167,7 @@ export default async function BatchPage({
   // nobody this is an empty list and renders nothing. (r369 — that used to read "every regular run". A
   // regular run now skips an employee with no monthly basic and nothing payable, which is exactly why this
   // panel matters on the ordinary monthly run and not only on a bonus one.)
-  const skippedEmployees = batch.status === 'draft' ? [] : await listSkippedEmployees(s, [batchId]);
+  const skippedEmployees = !issued ? [] : await listSkippedEmployees(s, [batchId]);
   // Feedback 64fb5e48 — blockers are the salary-record gaps (missing / period-miss / a daily-or-hourly
   // employee with no pay rate); the old BASIC-pay-item existence blocker is gone, and r369 took the MONTHLY
   // zero out of `zeroBasic` (it is `preNotices` below). A stale BASIC pay item is a confirm-to-proceed warning.
@@ -218,9 +227,7 @@ export default async function BatchPage({
           cycle: payrollCloseCycleLabel(
             {
               ...batch,
-              payrollCycleName:
-                (await listBatches(s, [batch.companyId], batch.payPeriod)).find((b) => b.id === batch.id)
-                  ?.payrollCycleName ?? null,
+              payrollCycleName: closeCycleName,
             },
             tList(`runType.${batch.runType}`),
           ),
@@ -298,11 +305,10 @@ export default async function BatchPage({
   // requireAdmin-gated and unlockClosedBatch re-asserts the granular payroll.unlock permission
   // (hr_admin + super_admin by default, per-company configurable — feedback 62e85140).
   const unlockOn = settingEnabledOrDefault(s, 'payroll.unlock_enabled');
-  // This batch's lifecycle events. e440991b point 4 took the History CARD off this screen (the Audit
-  // Trail renders the same `domain_event` rows), but the read stays: the "published by X on Y" line
-  // below finds the most recent `payroll-batch.closed` event in it, and without it every closed run
-  // would report "no publication record". Kept at the same limit so that lookup is unchanged.
-  const history = await auditEvents(s, { aggregateId: batchId, limit: 50 });
+  // Access events share the run ID, so look up the latest actual close independently of view traffic.
+  const [closeEv] = pubState === 'published' || pubState === 'scheduled'
+    ? await auditEvents(s, { aggregateType: 'payroll-batch', aggregateId: batchId, eventType: 'payroll-batch.closed', limit: 1 })
+    : [];
   // Feedback efece4ce — this run's company HRDF registration. The levy tile was shown only when the total
   // was > 0, so "this company pays no HRDF because it is not registered" and "the levy failed to compute"
   // rendered identically: as nothing at all. That ambiguity IS the reported bug. Read for display only —
@@ -358,7 +364,7 @@ export default async function BatchPage({
   // row of its (company, period) is outstanding, regardless of when it arrived — arrival time only
   // decides which of the two causes the copy should name.
   const outstanding =
-    isRegular && batch.status !== 'draft'
+    isRegular && issued
       ? await listUnattachedTxnSummary(s, { companyIds: [batch.companyId], year: txnYear, month: txnMonth })
       : [];
   // Summed in CENTS — float-summing the decimal strings would drift on four-figure bonuses.
@@ -390,7 +396,7 @@ export default async function BatchPage({
                 carrying `from` this screen's Back would then collapse to a bare /payroll and the
                 operator's filter selection would be lost one screen deeper than anyone was looking.
                 Same `fromSuffix` Reprocess and Remove already ride. */}
-            {batch.status !== 'draft' && (
+            {issued && (
               <Link
                 href={`/payroll/${batch.id}/anomalies${fromSuffix}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -398,7 +404,7 @@ export default async function BatchPage({
                 {ta('title')}
               </Link>
             )}
-            {batch.status !== 'draft' && (
+            {issued && (
               <ExportDownloadLink
                 href={`/payroll/reports/payment-summary?batchId=${batch.id}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -411,7 +417,7 @@ export default async function BatchPage({
                 deduction, employer contribution and total, off the stored payslips. A plain <a>, not a
                 form: the route is a GET download and this keeps the header a server component.
                 Processed/closed only — a draft has no payslips to reconcile. */}
-            {batch.status !== 'draft' && (
+            {issued && (
               <ExportDownloadLink
                 href={`/payroll/${batch.id}/export?format=xlsx`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -430,8 +436,8 @@ export default async function BatchPage({
                     `backHref`, exactly as the reset form below does. */}
                 <input type="hidden" name="from" value={backHref} />
                 {preBlockers > 0 ? (
-                  // Blocked: employees with no salary record — server re-asserts (PreProcessBlockedError).
-                  <Button type="submit" disabled title={t('preChecksBlockedError', { n: preBlockers })}>
+                  // The checks below identify the actual blocker. The write path rechecks all of them.
+                  <Button type="submit" disabled title={t('preChecksNotReady')}>
                     {t('generatePayslips')}
                   </Button>
                 ) : preWarnings > 0 ? (
@@ -458,7 +464,7 @@ export default async function BatchPage({
                 Same gates as the panel had (processed-only, multi-cycle on, payslips exist); the
                 destination re-asserts all three and the service is still the authority. A plain <Link>,
                 not a form: the destination is a page, and this keeps the header a server component. */}
-            {batch.status === 'processed' && !retiredFormulaInputs && multiCycleOn && slips.length > 0 && (
+            {batch.status === 'processed' && !retiredFormulaInputs && multiCycleOn && slipCount > 0 && (
               <Link
                 href={`/payroll/${batch.id}/reprocess${fromSuffix}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -472,7 +478,7 @@ export default async function BatchPage({
                 exist) PLUS the reset setting, because removal rides that same operator risk switch —
                 and the destination re-asserts every one of them. A plain <Link>: the destination is a
                 page, which keeps this header a server component. */}
-            {batch.status === 'processed' && multiCycleOn && resetOn && slips.length > 0 && (
+            {batch.status === 'processed' && multiCycleOn && resetOn && slipCount > 0 && (
               <Link
                 href={`/payroll/${batch.id}/remove${fromSuffix}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -503,7 +509,7 @@ export default async function BatchPage({
                   <ConfirmSubmit
                     variant="secondary"
                     title={t('closeConfirmTitle', { month: closePrompt?.month ?? batch.payPeriod, cycle: closePrompt?.cycle ?? '' })}
-                    description={t('closeConfirmBody', { n: slips.length })}
+                    description={t('closeConfirmBody', { n: slipCount })}
                     confirmLabel={t('closeConfirmYes')}
                     cancelLabel={t('closeConfirmNo')}
                   >
@@ -541,6 +547,7 @@ export default async function BatchPage({
       />
 
       <ErrorBanner message={error} />
+      {showProcessing && processingStatus && <PayrollProcessingPanel batchId={batch.id} initial={processingStatus} />}
       {retiredFormulaInputs && (
         <div className="space-y-3 rounded-lg border border-border bg-muted p-4 text-sm">
           <p className="font-medium">{t('retiredFormulaReview')}</p>
@@ -593,7 +600,7 @@ export default async function BatchPage({
               ))}
             </ul>
           )}
-          {multiCycleOn && slips.length > 0 && (
+          {!retiredFormulaInputs && multiCycleOn && slipCount > 0 && (
             <Link href={`/payroll/${batch.id}/reprocess${fromSuffix}`} className="mt-1 inline-block font-medium underline">
               {t('recalcBannerAction')}
             </Link>
@@ -652,15 +659,9 @@ export default async function BatchPage({
         </div>
       )}
 
-      {/* ef31d251 — who published this run and when. Read off the batch's own `payroll-batch.closed`
-          domain event, already fetched above for the History card; no new read and no new column.
-          `history` is desc(occurredAt), so .find() yields the MOST RECENT close, which is the right one
-          after an unlock → re-close cycle. The no-record branch is NOT optional: core/payroll-history-
-          import.ts sets status='closed' directly with closed_at/released_at NULL and appends no close
-          event, so an imported run would otherwise render "Published by undefined on Invalid Date". */}
+      {/* Imported runs may have no close event. Keep the existing scheduled or no-record fallback. */}
       {(pubState === 'published' || pubState === 'scheduled') &&
         (() => {
-          const closeEv = history.find((ev) => ev.eventType === 'payroll-batch.closed');
           const releasedOn = batch.releasedAt ? new Date(batch.releasedAt).toLocaleDateString() : null;
           return (
             <div className="text-xs text-muted-foreground">
@@ -1142,7 +1143,7 @@ export default async function BatchPage({
           import moved to Transactions only. A reset no longer lands anyone here, so leaving them would
           have left two copies of the same functions in two places. */}
 
-      {batch.status !== 'draft' &&
+      {issued &&
         (() => {
           // HRD Corp levy is an employer-only cost. Feedback efece4ce — the tile is ALWAYS present now: a
           // registered company shows the amount, an unregistered one says so in words. Hiding it left the
@@ -1203,7 +1204,7 @@ export default async function BatchPage({
       )}
 
       <Card className="overflow-hidden">
-        <SectionHeader title={t('payslipsTitle')} count={slips.length} />
+        <SectionHeader title={t('payslipsTitle')} count={slipCount} />
         <Pager
           basePath={`/payroll/${batchId}`}
           params={{ from, hw }}

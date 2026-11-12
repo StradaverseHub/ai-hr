@@ -31,7 +31,9 @@ async function state(){return{
 async function held(id:string,work:()=>Promise<void>){
  let ready!:()=>void,fail!:(error:unknown)=>void,release!:()=>void;
  const started=new Promise<void>((yes,no)=>{ready=yes;fail=no;}),finish=new Promise<void>(yes=>{release=yes;});
- const timer=setTimeout(()=>{fail(Error('owned roster source handshake timed out'));release();},10000);
+ // Converted single-employee writers wait, with the 5 s bound, for the held subject before refusing as busy,
+ // so a case that refuses two commands in a row needs more than two bounds before the watchdog fires.
+ const timer=setTimeout(()=>{fail(Error('owned roster source handshake timed out'));release();},20000);
  const holder=withTenant(adminCtx(b),async tx=>{await lockLeaveDependenciesTx(tx,b.tenantId,[id]);ready();await finish;});void holder.catch(fail);
  try{await started;await work();}finally{release();clearTimeout(timer);await holder;}
 }
@@ -42,7 +44,7 @@ describe('roster bulk source intervals',()=>{
   await held(f.ids[1],async()=>{await expect(assignDefaultShift(f.ctx,{employmentId:f.ids[1],shiftId:f.shift.id})).rejects.toThrow('Leave source is unavailable');await expect(assignRosterRow(f.ctx,{employmentId:f.ids[1],shiftDates:[date,secondDate],brush:f.shift.id})).rejects.toThrow('Leave source is unavailable');expect(await state()).toEqual(before);});
   await assignDefaultShift(f.ctx,{employmentId:f.ids[1],shiftId:f.shift.id});await assignRosterRow(f.ctx,{employmentId:f.ids[1],shiftDates:[date,secondDate],brush:f.shift.id});
   const after=await state();expect(after.employees.find(row=>row.id===f.ids[1])?.defaultShiftId).toBe(f.shift.id);expect(after.roster).toHaveLength(2);expect(after.roster.every(row=>row.shiftId===f.shift.id)).toBe(true);
- });
+ },60000);
  it('backfill nominates the whole uncovered cohort and refuses a held final subject before any profile/event effect, then applies per row after release',async()=>{
   const f=await fixture(),before=await state();expect(before.employees.every(row=>row.defaultShiftId===null)).toBe(true);
   await held(f.ids[1],async()=>{

@@ -127,7 +127,7 @@ async function prepareAccess(tx: Tx, ctx: SessionContext, input: RewardAccessCha
     // Access/eligibility writers share this barrier. Join before review locks and authority reads,
     // so an in-flight employment suspension or scope revocation cannot pass stale eligibility.
     if (lock)
-        await tx.execute(sql `select app.access_workforce_write_lock()`);
+        await tx.execute(sql `select app.access_configuration_write_lock()`);
     const { unit, current } = await accessState(tx, input.unitId, input.revision, lock);
     const { next, active } = await applyAccess(tx, ctx, unit, current, input);
     const [authority]=await tx.execute<{basis:string|null}>(sql`select app.reward_access_exemption(${unit.id}::uuid) as basis`);
@@ -159,7 +159,7 @@ async function prepareAccessBatch(tx: Tx, ctx: SessionContext, batch: RewardAcce
     // One barrier for the whole batch, then each review locked once in id order: no lock-order inversion
     // against another batch or a single-change writer.
     if (lock)
-        await tx.execute(sql `select app.access_workforce_write_lock()`);
+        await tx.execute(sql `select app.access_configuration_write_lock()`);
     const revisions = new Map<string, number>();
     for (const c of batch.changes) {
         if ((revisions.get(c.unitId) ?? c.revision) !== c.revision)
@@ -216,7 +216,7 @@ export async function rewardAccessRequests(ctx:SessionContext,options:{audit?:bo
 export async function decideRewardAccessRequest(ctx:SessionContext,requestId:string,approve:boolean,reason=''){
  uuid.parse(requestId);z.boolean().parse(approve);reason=z.string().trim().max(2000).parse(reason);if(!approve&&reason.trim().length<10)throw new RewardMaintenanceError('reason');
  return withRewardsTenant(ctx,async tx=>{
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);
   const [q]=await tx.execute<{changes:RewardAccessChange[];requested_by:string;status:string;can_decide:boolean}>(sql`select changes,requested_by,status,app.reward_access_request_can_decide(id) as can_decide from reward_access_request where id=${requestId}::uuid`);
   if(!q)throw new RewardMaintenanceError('scope');
   if(q.status!=='pending')throw new RewardMaintenanceError('changed');

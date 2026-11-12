@@ -2048,7 +2048,211 @@
     "exceptions": {
       "fixedTitle": "Nguyên nhân đã được khắc phục",
       "inGroups": "{count, plural, other {# ngoại lệ}} đã được liệt kê trong các nhóm ở trên.",
-      "resolveThere": "Xử lý tại Ngoại lệ"
+      "resolveThere": "Xử lý tại Ngoại lệ",
+      "grouped": {
+        "headline": "{total, plural, other {# đang chờ}}",
+        "headlineBlocking": "{blocking, plural, =0 {không có mục nào từ bước kiểm tra chặn} other {# từ bước kiểm tra chặn}}",
+        "headlineGroups": "{groups, plural, other {được nhóm thành # dạng}}",
+        "bucket": {
+          "check": "có vẻ là lỗi lương thật · kiểm tra từng mục",
+          "missing": "thiếu thông tin · mỗi người sửa một lần",
+          "setup": "có vẻ do cách thiết lập của bạn, không phải lỗi"
+        },
+        "bucketsPartial": "Ba con số này chỉ được tính từ các dạng phổ biến nhất. Các tổng số ở trên là chính xác.",
+        "groupsCapped": "Chỉ hiển thị các dạng lớn nhất ở đây.",
+        "tag": {
+          "blocks": "Chặn trả lương",
+          "review": "Cần xem lại",
+          "setup": "Có vẻ do thiết lập",
+          "blocksClosed": "Kiểm tra chặn · kỳ lương đã đóng"
+        },
+        "size": {
+          "people": "{people, plural, other {# người}}",
+          "exceptions": "{exceptions, plural, other {# ngoại lệ}} trong {runs, plural, other {# kỳ lương}}",
+          "companies": "Công ty: {names}",
+          "companiesMore": "Công ty: {names} và {more, plural, other {# công ty khác}}"
+        },
+        "action": {
+          "oneByOne": "Kiểm tra từng mục",
+          "review": "Xem lại các mục này",
+          "markExpected": "Xem lại và đánh dấu là bình thường",
+          "fixRecords": "Sửa hồ sơ",
+          "asked": "Xem ai đã được yêu cầu bổ sung thông tin",
+          "seeAll": "Xem tất cả {count}",
+          "openRun": "Mở kỳ lương",
+          "fixTab": {
+            "payroll": "Đặt cách trả lương",
+            "bankStatutory": "Bổ sung thông tin còn thiếu"
+          },
+          "back": "Quay lại tất cả các dạng"
+        },
+        "list": {
+          "waitingSince": "Đánh dấu ngày {date}",
+          "alsoFlagged": "Cũng bị đánh dấu: {checks}",
+          "listedAbove": "Đã liệt kê ở trên, nơi có thể đóng trong một bước.",
+          "notBulk": "Mục này còn bị đánh dấu vì lý do khác, nên hãy quyết định riêng.",
+          "emptyGroup": "Dạng này không còn mục nào. Tất cả đã được quyết định.",
+          "fixNote": "Khi hồ sơ đã được sửa, ngoại lệ của nó chuyển lên mục “Nguyên nhân đã được khắc phục” ở trên, nơi có thể đóng nó.",
+          "pageOf": "Trang {page} / {pages}",
+          "previous": "Trước",
+          "next": "Tiếp",
+          "unnamed": "Người chưa có tên",
+          "runClosed": "Kỳ lương này đã đóng, nên không có gì bị trì hoãn. Quyết định mục này giúp hồ sơ luôn chính xác.",
+          "runClosedShort": "Kỳ lương đã đóng",
+          "ackCapped": "Đang hiển thị {shown} trên {total}. Xử lý một số mục thì các mục còn lại sẽ hiện ra."
+        },
+        "bulk": {
+          "title": "Đánh dấu các mục này là bình thường",
+          "help": "{count, plural, other {# ngoại lệ trên trang này}} sẽ được đóng là bình thường, và quyết định được ghi lại cho từng người. Lương không thay đổi, và việc kiểm tra vẫn chạy ở kỳ lương sau.",
+          "noteLabel": "Vì sao đây là điều bình thường?",
+          "notePlaceholder": "Ví dụ: các công ty này không dùng chấm công",
+          "submit": "{count, plural, other {Đánh dấu # mục này là bình thường}}",
+          "none": "Không có mục nào trên trang này có thể đánh dấu cùng lúc. Hãy quyết định từng mục bên dưới.",
+          "done": "{count, plural, =0 {Không có mục nào được đánh dấu là bình thường.} other {Đã đánh dấu # ngoại lệ là bình thường.}}",
+          "skipped": "{count, plural, other {# mục vẫn để mở vì đã thay đổi hoặc không thuộc quyền quyết định của bạn.}}",
+          "error": {
+            "not_administrator": "Chỉ quản trị viên nhân sự mới có thể làm việc này.",
+            "invalid": "Hãy thêm một lý do ngắn rồi thử lại.",
+            "blocking": "Các ngoại lệ chặn kỳ lương không bao giờ được xóa cùng lúc. Hãy kiểm tra từng mục.",
+            "too_many": "Số lượng vượt quá mức có thể đánh dấu cùng lúc. Hãy thử lại từ danh sách.",
+            "nothing": "Chưa chọn mục nào.",
+            "failed": "Thao tác không thành công và không có gì thay đổi. Vui lòng thử lại.",
+            "retry": "Thao tác bị gián đoạn và không có gì thay đổi. Vui lòng thử lại."
+          },
+          "alreadyDecided": "{count, plural, other {# mục đã được người khác quyết định, nên quyết định đó được giữ nguyên.}}",
+          "superseded": "{count, plural, other {# mục đã được kiểm tra lại kể từ khi mở trang này, nên vẫn để mở. Kết quả mới được liệt kê thay thế.}}",
+          "notYours": "{count, plural, other {# mục thuộc bảng lương bạn không quản lý, nên vẫn để mở.}}"
+        },
+        "footer": "Việc nhóm chỉ thay đổi cách hiển thị ngoại lệ. Lỗi chặn kỳ lương không bao giờ được xóa hàng loạt, mỗi quyết định vẫn được ghi lại cho từng người, và không có con số lương nào bị thay đổi ở đây.",
+        "check": {
+          "negativeNet": {
+            "title": "Lương thực nhận dưới 0",
+            "why": "Những người này sẽ không nhận được gì, hoặc bị nợ, vì khoản khấu trừ lớn hơn thu nhập. Gần như chắc chắn đây là sai sót, nên từng trường hợp được kiểm tra riêng.",
+            "todo": "Mở kỳ lương, sửa các khoản khấu trừ, rồi tính lương lại."
+          },
+          "statutoryOverCap": {
+            "title": "Khoản đóng góp bắt buộc vượt mức tối đa theo luật",
+            "why": "Một khoản EPF, SOCSO, EIS hoặc tương tự vượt mức luật cho phép. Nếu đã nộp, sau đó phải điều chỉnh với cơ quan liên quan.",
+            "todo": "Đừng nộp. Kiểm tra mức đóng góp dùng cho kỳ lương này, sửa lại, rồi tính lương lại."
+          },
+          "missingBankProfile": {
+            "title": "Không có tài khoản ngân hàng để trả lương",
+            "why": "Hồ sơ của họ không có tài khoản ngân hàng, nên lương không thể đưa vào tệp ngân hàng.",
+            "todo": "Thêm tài khoản ngân hàng vào hồ sơ của từng người. Sửa một lần sẽ xử lý cho mọi kỳ lương có họ.",
+            "paymentMethodNotSet": {
+              "title": "Chưa biết trả lương cho những người này bằng cách nào",
+              "why": "Hồ sơ của họ không ghi họ được trả bằng chuyển khoản, tiền mặt hay séc, nên không thể đưa vào tệp ngân hàng. Người được trả bằng tiền mặt không bao giờ bị đánh dấu vì lý do này.",
+              "todo": "Đặt cách trả lương trên hồ sơ của từng người. Đặt một lần sẽ xử lý cho mọi kỳ lương có họ."
+            },
+            "bankDetailsMissing": {
+              "title": "Trả bằng chuyển khoản nhưng không có tài khoản ngân hàng",
+              "why": "Những người này được trả bằng chuyển khoản, nhưng hồ sơ không có tài khoản ngân hàng, nên lương không thể đưa vào tệp ngân hàng.",
+              "todo": "Thêm tài khoản ngân hàng vào hồ sơ của từng người, hoặc đề nghị họ gửi cho bộ phận nhân sự. Sửa một lần sẽ xử lý cho mọi kỳ lương có họ."
+            }
+          },
+          "duplicateEmploymentPay": {
+            "title": "Cùng một người được trả lương hai lần trong một tháng",
+            "why": "Người này được trả lương theo nhiều hơn một công việc trong cùng tháng. Điều đó có thể đúng với nhân viên dùng chung, nhưng nếu không, một khoản lương thứ hai sẽ bị chi ra.",
+            "todo": "Kiểm tra từng trường hợp. Nếu cả hai công việc đều có thật, đánh dấu là đúng. Nếu không, bỏ khoản trả thêm và tính lương lại."
+          },
+          "zeroNetWithPay": {
+            "title": "Không còn gì để trả",
+            "why": "Các khoản khấu trừ dùng hết toàn bộ lương. Điều này có thể xảy ra khi nghỉ không lương cả tháng, nhưng thường là do một khoản khấu trừ bị nhập sai.",
+            "todo": "Kiểm tra các khoản khấu trừ. Nếu đúng, đánh dấu là đúng như hiện tại."
+          },
+          "missingTaxProfile": {
+            "title": "Hồ sơ không có thông tin thuế thu nhập",
+            "why": "Thiếu thông tin thuế thu nhập, số thuế tính cho những người này có thể sai và không thể kê khai dưới tên họ.",
+            "todo": "Thêm thông tin thuế thu nhập vào hồ sơ của từng người, hoặc đề nghị họ gửi cho bộ phận nhân sự. Bộ phận nhân sự duyệt từng cập nhật như thường lệ."
+          },
+          "payWithoutAttendance": {
+            "title": "Đã trả lương nhưng không có ngày làm việc nào được ghi nhận",
+            "why": "Những người này đã được trả lương, nhưng trong tháng không có chấm công và không có ngày nghỉ được duyệt. Ở các công ty không dùng chấm công, điều này là bình thường.",
+            "todo": "Nếu các công ty này không ghi nhận chấm công, hãy đánh dấu là bình thường. Nếu lẽ ra có, hãy kiểm tra dữ liệu chấm công."
+          },
+          "prorationMismatch": {
+            "title": "Số ngày trả lương không khớp với tháng",
+            "why": "Số ngày được trả lương không khớp với ngày người này bắt đầu hoặc nghỉ việc, nên lương có thể quá cao hoặc quá thấp.",
+            "todo": "Kiểm tra ngày bắt đầu hoặc nghỉ việc và số ngày được trả lương. Sửa và tính lương lại nếu cần."
+          },
+          "netSwing": {
+            "title": "Lương thay đổi nhiều hơn bình thường mà không có gì trong bảng lương giải thích",
+            "why": "Lương thực nhận thay đổi nhiều so với tháng trước, và không có khoản thưởng, thay đổi lương, làm thêm giờ, nghỉ không lương hay dữ liệu lương nào khác giải thích được. Số tiền nhập tay luôn được coi là chưa giải thích.",
+            "todo": "Xem điều gì đã thay đổi. Nếu đúng, đánh dấu là đúng như hiện tại."
+          },
+          "componentAppeared": {
+            "title": "Một khoản lương xuất hiện lần đầu",
+            "titleNamed": "{component} xuất hiện lần đầu",
+            "why": "Khoản lương này không có trên phiếu lương tháng trước. Đây thường là thay đổi có kế hoạch, như một khoản phụ cấp mới hoặc một khoản phí công ty bắt đầu đóng.",
+            "todo": "Nếu thay đổi này có kế hoạch, hãy đánh dấu là bình thường. Chỉ cần xác nhận một lần."
+          },
+          "componentVanished": {
+            "title": "Một khoản lương đã biến mất",
+            "titleNamed": "{component} đã biến mất",
+            "why": "Khoản lương này có trên phiếu lương tháng trước nhưng không có trên phiếu này. Có thể là có kế hoạch, như phụ cấp đã kết thúc, hoặc bị bỏ sót do nhầm lẫn.",
+            "todo": "Nếu thay đổi này có kế hoạch, hãy đánh dấu là bình thường. Nếu không, thêm lại khoản đó và tính lương lại."
+          },
+          "hypothesis": {
+            "title": "Có điều bất thường đáng xem",
+            "why": "AI Centre nhận thấy điều gì đó trong các phiếu lương này không khớp với thông lệ. Đây chỉ là gợi ý và không bao giờ chặn kỳ lương.",
+            "todo": "Mở kỳ lương và quyết định đây có phải là vấn đề thật không."
+          },
+          "unknown": {
+            "title": "Một bước kiểm tra lương cần bạn quyết định",
+            "why": "Một trong các bước kiểm tra lương đã đánh dấu những phiếu lương này.",
+            "todo": "Mở kỳ lương để xem chi tiết và quyết định từng mục."
+          }
+        },
+        "detail": {
+          "generic": "Mở kỳ lương để xem các con số.",
+          "negativeNet": "Thu nhập {grossPay}, nhưng bị khấu trừ {totalDeductions}, nên lương thực nhận là {netPay}.",
+          "zeroNetWithPay": "Thu nhập {grossPay}, bị khấu trừ {totalDeductions}, không còn gì để trả.",
+          "statutoryOverCap": "{component} là {actual}, vượt mức tối đa {cap} là {excess}.",
+          "missingBankProfile": {
+            "generic": "Lương thực nhận {netPay} không có tài khoản ngân hàng để chuyển vào.",
+            "paymentMethodNotSet": "Hồ sơ không ghi cách trả lương. Lương thực nhận: {netPay}.",
+            "bankDetailsMissing": "Trả bằng chuyển khoản nhưng hồ sơ không có tài khoản ngân hàng. Lương thực nhận: {netPay}."
+          },
+          "missingTaxProfile": {
+            "withTax": "Hồ sơ không có thông tin thuế thu nhập. Thuế thu nhập đã khấu trừ tháng này: {pcb}.",
+            "noTax": "Hồ sơ không có thông tin thuế thu nhập và không có thuế thu nhập nào được khấu trừ."
+          },
+          "payWithoutAttendance": "Được trả {netPay}, không có chấm công và không có ngày nghỉ được duyệt trong tháng này.",
+          "prorationMismatch": "Được trả cho {daysWorked} trên {periodDays} ngày của tháng.",
+          "duplicateEmploymentPay": "Tháng này còn được trả lương theo {others, plural, other {# công việc khác}}. Lương thực nhận ở đây: {netPay}.",
+          "netSwing": "Lương thực nhận {direction, select, down {giảm} other {tăng}} {pct}%, từ {priorNetPay} thành {netPay}.",
+          "componentAppeared": "{component} {amount} trong tháng này, tháng trước không có.",
+          "componentVanished": "{component} {priorAmount} trong tháng trước, tháng này không có.",
+          "hypothesis": "Mở kỳ lương để đọc điều đã được nhận thấy.",
+          "netSwingExplained": "Được giải thích một phần bởi {causes}; khoảng {pct}% thay đổi chưa được giải thích."
+        },
+        "component": {
+          "allowance": "Phụ cấp",
+          "overtimePay": "Tiền làm thêm giờ",
+          "bonus": "Thưởng",
+          "epfEmployee": "EPF (phần người lao động)",
+          "epfEmployer": "EPF (phần người sử dụng lao động)",
+          "socsoEmployee": "SOCSO (phần người lao động)",
+          "socsoEmployer": "SOCSO (phần người sử dụng lao động)",
+          "eisEmployee": "EIS (phần người lao động)",
+          "eisEmployer": "EIS (phần người sử dụng lao động)",
+          "pcb": "Thuế thu nhập (PCB)",
+          "hrdf": "Phí HRD",
+          "zakat": "Zakat",
+          "other": "Một khoản lương khác",
+          "skbbk": "SKBBK (Lindung 24 Jam)"
+        },
+        "cause": {
+          "additional_run": "một kỳ thưởng hoặc kỳ lương bổ sung",
+          "salary_change": "thay đổi lương",
+          "days_paid": "thay đổi số ngày được trả",
+          "overtime_hours": "làm thêm giờ",
+          "unpaid_leave": "nghỉ không lương",
+          "absence": "vắng mặt",
+          "statutory_rules": "thay đổi mức đóng bắt buộc",
+          "other": "một dữ liệu lương khác"
+        }
+      }
     },
     "readiness": {
       "notChecked": "Công cụ HR chưa kiểm tra",
@@ -2313,6 +2517,241 @@
       "leftAloneTitle": "{loop} để lại {count, plural, other {# mục}} cho mọi người tại {company}",
       "leftAloneNote": "Một điều kiện không đạt, nên người đó tự xác nhận.",
       "reviewCorrection": "Xem chỉnh sửa"
+    },
+    "employee": {
+      "nextStep": "Bước tiếp theo",
+      "nextStepOf": "Bước tiếp theo · {n} trên {total}",
+      "sendToHr": "Gửi cho bộ phận nhân sự",
+      "sendRequest": "Gửi yêu cầu",
+      "open": "Mở",
+      "deciderHr": "Bạn gửi thông tin, bộ phận nhân sự kiểm tra và phê duyệt, sau đó thông tin được lưu vào hồ sơ của bạn. Không có gì thay đổi cho đến khi nhân sự phê duyệt.",
+      "deciderManager": "Bạn gửi yêu cầu và quản lý của bạn phê duyệt. Không có gì thay đổi cho đến lúc đó.",
+      "decidedByHr": "Nhân sự phê duyệt",
+      "decidedByManager": "Quản lý của bạn phê duyệt",
+      "dueOn": "Hạn {date}",
+      "noDue": "Không có hạn",
+      "payrollCloses": "Kỳ lương chốt vào {date}.",
+      "seeAll": "Xem mọi việc trước kỳ lương",
+      "nothingToDo": "Hiện không có việc gì cần bạn.",
+      "then": "Sau đó",
+      "stepsUnavailable": "Một số mục của bạn tạm thời chưa kiểm tra được. Trang riêng của chúng vẫn hoạt động.",
+      "dueIn": "{days, plural, =0 {Hạn hôm nay} other {Hạn trong # ngày}}",
+      "overdue": "Quá hạn",
+      "overdueShort": "trễ",
+      "daysUnit": "{days, plural, other {ngày}}",
+      "allClearTitle": "Mọi thứ đã xong",
+      "allClearBody": "Hiện không có việc gì cần bạn.",
+      "allClearRecord": "Hồ sơ của bạn đã đầy đủ cho kỳ lương {date}.",
+      "allClearPayday": "Tiếp theo: ngày nhận lương {date}",
+      "allClearCutOff": "Tiếp theo: kỳ lương chốt vào {date}",
+      "paydayTitle": "Ngày nhận lương",
+      "cutOffTitle": "Ngày chốt lương",
+      "daysToGo": "{days, plural, =0 {hôm nay} other {ngày nữa}}",
+      "cutOffNote": "Ngày nhận lương được xác định khi chạy bảng lương. Hãy gửi yêu cầu thanh toán và thay đổi trước ngày này.",
+      "noPayday": "Chưa có ngày nhận lương hoặc ngày chốt.",
+      "unavailable": "Tạm thời không tải được phần này. Trang riêng của nó vẫn hoạt động.",
+      "lastPayslip": "Phiếu lương gần nhất {month}",
+      "noPayslip": "Chưa có phiếu lương nào được phát hành.",
+      "leaveTitle": "Ngày nghỉ còn lại",
+      "applyLeave": "Xin nghỉ phép",
+      "seeLeave": "Xem ngày nghỉ",
+      "noLeave": "Chưa có ngày nghỉ để hiển thị.",
+      "ringHidden": "{name}: không hiển thị",
+      "ringLeft": "{name}: {days} ngày bạn có thể xin",
+      "yourMonth": "Tháng của bạn",
+      "legend": "Ý nghĩa các dấu",
+      "calendarPartial": "Tạm thời không tải được một số ngày.",
+      "hoursTitle": "Tuần này",
+      "hoursMinutes": "{hours} giờ {minutes} phút",
+      "running": "Đã chấm công vào",
+      "hoursChart": "Giờ làm tuần này: {items}",
+      "shiftLine": "Đường gạch: ca của bạn, {time}",
+      "todayRunning": "Hôm nay vẫn đang tiếp diễn.",
+      "openRecords": "Mở hồ sơ chấm công",
+      "requestsTitle": "Yêu cầu của bạn · đang ở đâu",
+      "noRequests": "Bạn không có yêu cầu nào đang xử lý.",
+      "requestsPartial": "Tạm thời không tải được một số yêu cầu.",
+      "comingUpTitle": "Sắp tới",
+      "nothingComingUp": "Không có gì trong hai tuần tới.",
+      "comingUpPartial": "Tạm thời không tải được một số ngày.",
+      "needsYouCount": "{count, plural, =0 {Hiện không có việc gì cần bạn} other {# việc đang chờ bạn}}",
+      "steps": {
+        "bank_missing": "Gửi thông tin tài khoản ngân hàng cho bộ phận nhân sự",
+        "tax_number_missing": "Gửi mã số thuế thu nhập cho bộ phận nhân sự",
+        "epf_number_missing": "Gửi số EPF cho bộ phận nhân sự",
+        "socso_number_missing": "Gửi số SOCSO cho bộ phận nhân sự",
+        "identity_missing": "Gửi số IC hoặc hộ chiếu cho bộ phận nhân sự",
+        "tp1_draft": "Gửi tờ khai giảm trừ thuế (TP1)",
+        "passport_renew": "Gửi thông tin hộ chiếu mới cho bộ phận nhân sự trước {date}",
+        "missed_clock_out": "Yêu cầu bổ sung giờ ra bị thiếu ngày {date}",
+        "missed_clock_in": "Yêu cầu bổ sung giờ vào bị thiếu ngày {date}",
+        "absent_no_leave": "Gửi yêu cầu cho ngày vắng mặt {date}"
+      },
+      "marks": {
+        "payday": "Ngày nhận lương",
+        "cutoff": "Chốt lương",
+        "due": "Đến hạn",
+        "fix": "Cần sửa",
+        "leave": "Ngày nghỉ của bạn",
+        "holiday": "Ngày lễ"
+      },
+      "request": {
+        "claim": "Yêu cầu thanh toán {label}",
+        "dates": "{from} đến {to}",
+        "sentOn": "Đã gửi {date}",
+        "sent": "Đã gửi",
+        "withHr": "Đang ở nhân sự",
+        "withApprover": "Đang chờ người duyệt",
+        "declined": "Không được duyệt",
+        "ready": "Sẵn sàng",
+        "paidWithSalary": "Trả cùng lương",
+        "approved": "Đã duyệt",
+        "progress": "Tiến độ của {item}",
+        "waiting": "{days, plural, =0 {Gửi hôm nay} other {Đã chờ # ngày}}",
+        "preparing": "Nhân sự đang chuẩn bị",
+        "openLetter": "Mở thư",
+        "state": {
+          "done": "xong",
+          "current": "đang xử lý",
+          "todo": "chưa đến",
+          "declined": "không được duyệt"
+        }
+      },
+      "upcoming": {
+        "cutoff": "Chốt lương · gửi yêu cầu thanh toán trước ngày này",
+        "payday": "Ngày nhận lương",
+        "leave": "Ngày nghỉ của bạn",
+        "managerAway": "{name} vắng mặt",
+        "managerAwayUnnamed": "Quản lý của bạn vắng mặt",
+        "holiday": "{name} · ngày lễ",
+        "holidayUnnamed": "Ngày lễ"
+      },
+      "pageUnavailable": "Hiện không tải được trang của bạn. Vui lòng thử lại sau ít phút.",
+      "waitingTitle": "Đang chờ bạn quyết định",
+      "waitingCount": "{count, plural, other {# mục đang chờ bạn}}",
+      "waitingSeeAll": "Xem tất cả {count} mục",
+      "requestsSeeAll": "Xem tất cả:",
+      "requestsLeave": "Nghỉ phép",
+      "requestsClaims": "Hoàn ứng",
+      "requestsLetters": "Thư"
+    },
+    "admin": {
+      "unavailable": "Hiện không tải được phần này. Trang riêng của nó vẫn hoạt động.",
+      "sideLabel": "Đang theo dõi, hồ sơ của bạn và các câu hỏi gợi ý",
+      "scopeAll": "Tất cả công ty",
+      "scopeSome": "{count, plural, other {# công ty}}",
+      "headline": "{count, plural, =0 {Hiện không có việc gì cần bạn} other {# việc đang chờ bạn}}",
+      "headlineOverdue": "{count} việc quá hạn",
+      "headlineCutOff": "{days, plural, =0 {lương chốt hôm nay} =1 {lương chốt ngày mai} other {lương chốt sau # ngày}}",
+      "needsTitle": "Cần bạn xử lý",
+      "needsOrder": "việc gấp nhất trước",
+      "seeAll": "Xem tất cả {count} mục",
+      "showFewer": "Chỉ hiện việc gấp nhất",
+      "needsEmpty": "Hiện không có việc gì cần bạn.",
+      "needsPartial": "Một số mục hiện không kiểm tra được nên danh sách này có thể chưa đầy đủ. Trang riêng của chúng vẫn hoạt động.",
+      "tag": {
+        "overdue": "{days, plural, other {Quá hạn # ngày}}",
+        "blocksPayroll": "Chặn kỳ lương",
+        "dueIn": "{days, plural, =0 {Hạn hôm nay} =1 {Hạn ngày mai} other {Hạn trong # ngày}}",
+        "waiting": "{days, plural, other {Đã chờ # ngày}}"
+      },
+      "entry": {
+        "statutory": "{count, plural, other {Nộp # thông báo CP22 hoặc CP22A}}",
+        "statutoryDetail": "{overdue} quá hạn, {soon} đến hạn trong 7 ngày.",
+        "firstDue": "Hạn sớm nhất: {date}.",
+        "exceptions": "{count, plural, other {# ngoại lệ lương đang chặn kỳ lương}}",
+        "exceptionsDetail": "Không thể đóng kỳ lương cho đến khi chúng được xử lý.",
+        "task": "{label}: {count} đang chờ",
+        "oldest": "Gửi sớm nhất ngày {date}",
+        "beforeCutOff": "Quyết định trước ngày chốt {date}",
+        "prepared": {
+          "leaveApply": "{count, plural, other {# đơn nghỉ phép sẵn sàng để bạn xác nhận}}",
+          "leaveCancel": "{count, plural, other {# yêu cầu hủy nghỉ phép sẵn sàng để bạn xác nhận}}",
+          "leaveDecision": "{count, plural, other {# quyết định nghỉ phép sẵn sàng để bạn xác nhận}}"
+        },
+        "preparedDetail": "AI Centre đã chuẩn bị. Không có gì xảy ra cho đến khi bạn xác nhận.",
+        "probation": "{count, plural, other {# kỳ thử việc sắp kết thúc}}",
+        "probationDetail": "Kỳ đầu tiên kết thúc ngày {date}. Kết quả do con người quyết định.",
+        "payrollInputs": "{count, plural, other {# công ty vẫn còn dữ liệu lương chưa đủ}}",
+        "payrollInputsBlockers": "{count, plural, =0 {Chưa có gì chặn kỳ lương.} other {# mục kiểm tra đang chặn kỳ lương.}}",
+        "cutOff": "Ngày chốt {date}.",
+        "passports": "{count, plural, other {# hộ chiếu hết hạn trong 30 ngày}}",
+        "passportsDetail": "Hộ chiếu đầu tiên hết hạn ngày {date}.",
+        "autonomy": {
+          "movedDown": "{loop} đã quay về chỉ chuẩn bị",
+          "acted": "{loop} đã tự xử lý: hãy kiểm tra việc nó đã làm",
+          "sample": "{loop} có mẫu kiểm tra hằng tuần chờ bạn",
+          "leftAlone": "{loop} để lại một số trường hợp cho con người"
+        },
+        "aLoop": "Một vòng lặp AI Centre",
+        "companies": "{count, plural, other {# công ty}}"
+      },
+      "cta": {
+        "statutory": "Mở biểu mẫu luật định",
+        "exceptions": "Mở ngoại lệ",
+        "review": "Xem xét",
+        "open": "Mở",
+        "check": "Kiểm tra"
+      },
+      "readinessTitle": "Mức sẵn sàng của kỳ lương",
+      "readinessNext": "Lương {period} · ngày chốt tiếp theo {date}",
+      "readinessOpen": "Mở lương",
+      "readinessBar": "{ready} trên {companies} công ty đã sẵn sàng",
+      "readiness": {
+        "ready": "{count, plural, other {công ty đã sẵn sàng}}",
+        "waiting": "{count, plural, other {công ty đang chờ dữ liệu}}",
+        "notStarted": "{count, plural, other {công ty chưa được kiểm tra}}"
+      },
+      "readinessOff": "{count, plural, other {# công ty dùng lương.}} Bước kiểm tra trước kỳ lương trong AI Centre đang tắt nên chưa kiểm tra mức sẵn sàng.",
+      "readinessNone": "Các công ty đang xem không dùng lương.",
+      "handledTitle": "AI Centre đã xử lý trong tuần này",
+      "handled": {
+        "answered": "{count, plural, other {câu hỏi đã được trả lời}}",
+        "leaveChecks": "{count, plural, other {gợi ý nghỉ phép đã chuẩn bị}}",
+        "prepared": "{count, plural, other {mục đã chuẩn bị cho bạn}}",
+        "loopFound": "{loop}: {count, plural, other {trường hợp phát hiện}}",
+        "loopResolved": "{count, plural, =0 {Chưa có trường hợp nào được giải quyết} other {# đã giải quyết}}"
+      },
+      "handledEmpty": "Chưa có gì trong 7 ngày qua.",
+      "handledNote": "Đếm từ hồ sơ của chính AI Centre trong 7 ngày qua.",
+      "handledPartial": "Một số số liệu hiện không tải được.",
+      "watchingTitle": "Đang theo dõi",
+      "watchingEmpty": "Hiện không có gì cần theo dõi.",
+      "watchingExceptions": "{count, plural, other {# ngoại lệ lương cần xem nhưng không chặn kỳ lương.}}",
+      "ownTitle": "Hồ sơ của bạn",
+      "forYouTitle": "Dành cho bạn",
+      "ownClear": "Hồ sơ của bạn không có việc gì cần làm.",
+      "ownSteps": "{count, plural, other {# việc cần gửi hoặc làm}}",
+      "ownPayday": "Ngày trả lương tiếp theo {date}",
+      "ownCutOff": "Lương chốt ngày {date}",
+      "askTitle": "Thử hỏi",
+      "ask": {
+        "payrollBlocking": "Điều gì đang chặn kỳ lương tháng này?",
+        "claimsBeforeCutOff": "Ai chưa gửi yêu cầu hoàn ứng trước ngày chốt?",
+        "approvalsWaiting": "Những phê duyệt nào đã chờ hơn 3 ngày?"
+      }
+    },
+    "manager": {
+      "sideLabel": "Nhóm của bạn",
+      "headline": "{count, plural, =0 {Không có quyết định nào đang chờ cho nhóm của bạn} other {# quyết định cho nhóm của bạn}}",
+      "decideTitle": "Quyết định",
+      "decideOrder": "cũ nhất trước",
+      "seeAll": "Xem tất cả {count} mục",
+      "decideEmpty": "Không có quyết định nào đang chờ bạn.",
+      "decidePartial": "Một số quyết định hiện không tải được. Trang phê duyệt vẫn hoạt động.",
+      "sent": "Gửi ngày {date}",
+      "open": "Mở",
+      "checking": "Đang kiểm tra theo quy định của công ty bạn…",
+      "recommendationNote": "Gợi ý đến từ quy định và hồ sơ của công ty bạn, không phải phỏng đoán. Bạn vẫn đưa ra mọi quyết định, và mỗi quyết định được ghi lại dưới tên bạn.",
+      "comingUpTitle": "Sắp tới của nhóm bạn",
+      "probation": "Kỳ thử việc của {name} kết thúc ngày {date}",
+      "probationUnnamed": "Một kỳ thử việc kết thúc ngày {date}",
+      "cutOff": "Dữ liệu lương chốt ngày {date}. Hãy quyết định làm thêm giờ và yêu cầu hoàn ứng trước ngày đó.",
+      "preparedNote": "{count, plural, other {# thay đổi sẵn sàng để bạn xác nhận}}",
+      "comingUpEmpty": "Nhóm của bạn không có gì sắp tới.",
+      "comingUpPartial": "Một số mục hiện không tải được.",
+      "otherWork": "{count, plural, other {# mục khác đang chờ bạn}}",
+      "seeAllWork": "Xem tất cả {count} mục trong Công việc"
     }
   },
   "why": {
@@ -2562,7 +3001,8 @@
       "inProgress": "Lần nhập này đang được xác nhận.",
       "invalid": "Không kiểm tra được thẻ này. Hãy đính kèm tệp lại.",
       "unavailable": "Không thể hoàn tất lần nhập và chưa có gì được nhập. Hãy thử lại, hoặc dùng trang nhập."
-    }
+    },
+    "started": "Đã bắt đầu nhập. Việc nhập chạy ở chế độ nền; trang của nó hiển thị tiến độ và những gì đã được nhập."
   },
   "payrollAudit": {
     "name": "Vòng lặp kiểm toán",

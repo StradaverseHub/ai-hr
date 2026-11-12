@@ -4,7 +4,7 @@
 import {and,eq,inArray,isNull,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {employment,person,department} from '../db/schema';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
 import {visibleLabelIdsCondition} from './system-labels';
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
@@ -12,7 +12,7 @@ export class ReviewedPayrollSelectionUnavailable extends Error{constructor(){sup
 /** Exact native company Payroll + filed-truth readability permission. This is not a role union,
  * posted company authority or claim that the month is unfiled; periodFiledTx still decides that. */
 export async function assertReviewedPayrollScopeCompanyTx(tx:Tx,supplied:SessionContext,companyId:string){
- const ctx=capture(supplied),id=companyId,grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null})),roles=ctx.roles??[...new Set(grants.map(g=>g.role))];await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const ctx=capture(supplied),id=companyId,grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null})),roles=ctx.roles??[...new Set(grants.map(g=>g.role))];await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  const [row]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u join public.company c on c.id=${id}::uuid and c.tenant_id=u.tenant_id
  where u.id=${ctx.userId??null}::uuid and u.id=app.current_user_id() and u.tenant_id=${ctx.tenantId}::uuid and u.tenant_id=app.current_tenant_id() and u.archived_at is null and not app.login_blocked(u.id) and u.person_id is not distinct from ${ctx.personId??null}::uuid
  and app.principal_snapshot_current() and current_setting('transaction_isolation')='read committed' and current_setting('app.roles',true)=${roles.join(',')} and current_setting('app.grants',true)::jsonb=${JSON.stringify(grants)}::jsonb

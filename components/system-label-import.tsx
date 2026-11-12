@@ -2,12 +2,18 @@
 
 import { ExportDownloadLink } from '@/components/export-download-link';
 import * as Dialog from '@radix-ui/react-dialog';
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button, ErrorBanner, tableWrapCls, thCls, theadCls, tbodyCls } from './ui';
 import { LABEL_IMPORT_DEFINITIONS, ORGANISATION_LABEL_KINDS, type LabelImportPreview, type LabelImportPreviewRow } from '@/lib/system-label-definition';
 import type { previewLabelsAction, importLabelsAction } from '@/app/admin/settings/system-labels/import-actions';
+import { SystemLabelImportJobPanel } from './system-label-import-progress';
+import { SYSTEM_LABEL_IMPORT_ALREADY_RUNNING, systemLabelImportActive, type SystemLabelImportProgress } from '@/lib/system-label-import-job';
+
+const subscribeHydration=()=>()=>{};
+const clientSnapshot=()=>true;
+const serverSnapshot=()=>false;
 
 export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];selectedCompanyIds?:string[]}={}) {
   const exchange=useTranslations('systemLabelExchange');
@@ -15,19 +21,36 @@ export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];s
   const category=(kind:string)=>(ORGANISATION_LABEL_KINDS as readonly string[]).includes(kind)?tc(`category.${kind}`):kind==='grades'?tc('category.grade'):kind==='grade_groups'?tg('groupsTitle'):tp(`category.${kind}`);
   const rowMessage=(row:LabelImportPreviewRow)=>row.reason==='required'&&row.reasonField?w('required',{field:w(`fields.${row.reasonField}`)}):w(row.reason==='required'?'invalidRow':row.reason??'invalidRow');
   const fileInput=useRef<HTMLInputElement>(null),stepHeading=useRef<HTMLHeadingElement>(null),importTrigger=useRef<HTMLButtonElement>(null);
+  // The server button cannot accept a click before this wizard's React boundary owns it.
+  const hydrated=useSyncExternalStore(subscribeHydration,clientSnapshot,serverSnapshot);
   const [open,setOpen]=useState(false),[file,setFile]=useState<File|null>(null);
   const [preview,setPreview]=useState<LabelImportPreview|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(false);
   const [summary,setSummary]=useState<{imported:number;updated:number;skipped:number;failed:number;errorReport?:string}|null>(null),[pending,start]=useTransition();
-  const step=summary?3:preview?2:1,ready=preview?.rows.filter(row=>row.outcome==='add'&&row.selected).length??0,blocked=(preview?.rows.length??0)-ready;
+  // The background import (it keeps running when the dialog closes or the page changes, and is rejoined here).
+  const [job,setJob]=useState<SystemLabelImportProgress|null>(null),jobKey=useRef('');
+  const step=summary||job?3:preview?2:1,ready=preview?.rows.filter(row=>row.outcome==='add'&&row.selected).length??0,blocked=(preview?.rows.length??0)-ready;
   useEffect(()=>{if(open&&step>1)stepHeading.current?.focus();},[open,step]);
+  useEffect(()=>{
+    let alive=true;
+    fetch('/admin/settings/system-labels/import/jobs',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(p=>{if(alive&&p?.jobs){const active=(p.jobs as SystemLabelImportProgress[]).find(item=>systemLabelImportActive(item.state));if(active)setJob(active);}}).catch(()=>undefined);
+    return()=>{alive=false;};
+  },[]);
+  const finished=useCallback((done:SystemLabelImportProgress)=>{
+    // The outcome is shown where the synchronous import showed it: the wizard's summary (reopened if it was closed).
+    setJob(null);jobKey.current='';setOpen(true);
+    if(done.state==='completed'&&done.result){setSummary(done.result);setRetry(false);router.refresh();return;}
+    setError(done.error||w('job.state.failed'));setRetry(true);
+  },[router,w]);
   const choose=(next:File|null)=>{
-    setPreview(null);setSummary(null);setRetry(false);setError('');
+    setPreview(null);setSummary(null);jobKey.current='';setRetry(false);setError('');
     if(next&&(!/\.xlsx?$/i.test(next.name)||!next.size||next.size>5_000_000)){setFile(null);setError(w('fileError'));if(fileInput.current)fileInput.current.value='';return;}
     setFile(next);
   };
   const form=()=>{const data=new FormData();if(file)data.set('file',file);return data;};
   const request=async(operation:'preview'|'apply')=>{
     const data=form();data.set('operation',operation);if(preview)data.set('token',preview.token);
+    // One key per confirmed preview, so a repeated click or a retried request rejoins the same background import.
+    if(operation==='apply'){if(!jobKey.current)jobKey.current=crypto.randomUUID();data.set('operationKey',jobKey.current);}
     const response=await fetch('/admin/settings/system-labels/import',{method:'POST',body:data,cache:'no-store'});
     if(!(response.headers.get('Content-Type')??'').includes('application/json'))throw new Error(w('requestFailed'));
     return response.json() as Promise<Awaited<ReturnType<typeof previewLabelsAction>>|Awaited<ReturnType<typeof importLabelsAction>>>;
@@ -35,7 +58,7 @@ export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];s
   const analyse=()=>start(async()=>{setError('');setSummary(null);try{const result=await request('preview');if(result.ok&&'preview' in result){setPreview(result.preview);setRetry(false);}else if(!result.ok)setError(result.message);}catch(error){setError(error instanceof Error?error.message:w('requestFailed'));}});
   const apply=()=>start(async()=>{
     if(!preview)return;setError('');
-    try{const result=await request('apply');if(result.ok&&'summary' in result){setSummary(result.summary);setRetry(false);router.refresh();}else if(!result.ok){setError(result.message);setRetry(true);}}
+    try{const result=await request('apply');if(result.ok&&'job' in result){setJob(result.job);setRetry(false);}else if(!result.ok){setError(result.message===SYSTEM_LABEL_IMPORT_ALREADY_RUNNING?w('job.otherRunning'):result.message);setRetry(true);jobKey.current='';}}
     catch(error){setError(error instanceof Error?error.message:w('requestFailed'));setRetry(true);}
   });
   const errors=()=>start(async()=>{
@@ -54,7 +77,8 @@ export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];s
     <p className="text-sm text-muted-foreground">{exchange('scopeHelp')}</p>
     <div className="flex flex-wrap justify-end gap-2">
       <ExportDownloadLink href="/admin/settings/system-labels/template" className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium">{tx('template')}</ExportDownloadLink>
-      <Button ref={importTrigger} type="button" onClick={()=>{if(summary){setSummary(null);setPreview(null);setFile(null);setError('');}setOpen(true);}}>{t('import')}</Button>
+      {job&&!open&&<div className="w-full"><SystemLabelImportJobPanel key={job.id} job={job} onFinished={finished}/></div>}
+      <Button ref={importTrigger} type="button" disabled={!hydrated} data-label-import-ready={hydrated?'true':'false'} onClick={()=>{if(summary){setSummary(null);setPreview(null);setFile(null);setError('');jobKey.current='';}setOpen(true);}}>{t('import')}</Button>
     </div>
     <Dialog.Root open={open} onOpenChange={value=>{if(!pending)setOpen(value);}}><Dialog.Portal>
       <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40"/>
@@ -77,14 +101,15 @@ export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];s
             {!ready&&<p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{w('nothing')}</p>}
             <div className={`${tableWrapCls} max-h-80 overflow-auto`}><table className="w-full min-w-[600px] text-sm"><thead className={theadCls}><tr>{['row','code','label','assignment','result'].map(key=><th key={key} className={thCls}>{key==='assignment'?exchange('assignment'):w(key)}</th>)}</tr></thead><tbody className={tbodyCls}>{preview.rows.map(row=><tr key={row.sheet+':'+row.row} className={row.outcome!=='add'?'bg-muted/30':''}><td className="px-3 py-2 align-top">{categoryKnown(row.sheet)?category(row.sheet):row.sheet} · {row.row}</td><td className="max-w-48 break-all px-3 py-2 align-top font-mono text-xs">{row.after.Code||row.after.Name||'—'}</td><td className="max-w-48 break-words px-3 py-2 align-top">{row.after.Label||row.after.Name||'—'}</td><td className="max-w-64 break-words px-3 py-2 align-top">{row.outcome==='add'?(row.after.Criteria==='global'?exchange('global'):(row.after['Criteria Companies']||row.after.Company||'—')):'—'}</td><td className="max-w-80 px-3 py-2 align-top"><span className={row.outcome==='add'?'font-medium text-emerald-700 dark:text-emerald-300':'font-medium text-amber-800 dark:text-amber-200'}>{row.reason==='notSelected'?w('notSelectedStatus'):row.outcome==='add'?w('valid'):w('skipped')}</span>{row.outcome!=='add'&&<p className="mt-1 text-xs text-muted-foreground">{rowMessage(row)}</p>}{row.warnings?.map(warning=><p key={warning} className="text-xs text-muted-foreground">{warning}</p>)}</td></tr>)}</tbody></table></div>
           </>}
+          {step===3&&job&&!summary&&<><h3 ref={stepHeading} tabIndex={-1} className="font-semibold outline-none">{w('importing')}</h3><SystemLabelImportJobPanel key={job.id} job={job} onFinished={finished}/></>}
           {step===3&&summary&&<><h3 ref={stepHeading} tabIndex={-1} className="font-semibold outline-none">{w('step3')}</h3><p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">{w('summary',{created:summary.imported,skipped:summary.skipped})}</p>{summary.failed>0&&<p role="status" className="text-sm text-destructive">{exchange('failedRows',{count:summary.failed})}</p>}<p className="text-sm text-muted-foreground">{w('doneHelp')}</p></>}
         </div>
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4"><p className="text-xs text-muted-foreground">{step===1?w('recognised'):step===2?w('onlyNew',{count:ready}):w('unchanged')}</p><div className="flex flex-wrap justify-end gap-2">
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4"><p className="text-xs text-muted-foreground">{step===1?w('recognised'):step===2?w('onlyNew',{count:ready}):job&&!summary?w('job.backgroundHelp'):w('unchanged')}</p><div className="flex flex-wrap justify-end gap-2">
           {step===2&&<Button aria-busy={pending} type="button" variant="secondary" disabled={pending} onClick={()=>{setPreview(null);setError('');setRetry(false);}}>{w('back')}</Button>}
           {(step===2&&blocked>0||step===3&&summary&&(summary.skipped>0||summary.failed>0))&&<Button aria-busy={pending} type="button" variant="outline" disabled={pending} onClick={errors}>{w('errorReport')}</Button>}
           {step===1&&<><Dialog.Close asChild><Button aria-busy={pending} type="button" variant="secondary" disabled={pending}>{tc('cancel')}</Button></Dialog.Close><Button aria-busy={pending} type="button" disabled={!file||pending} onClick={analyse}>{pending?t('working'):w('check')}</Button></>}
           {step===2&&(retry?<Button aria-busy={pending} type="button" disabled={pending} onClick={analyse}>{pending?t('working'):w('checkAgain')}</Button>:<Button aria-busy={pending} type="button" disabled={pending||!preview?.valid||!ready} onClick={apply}>{pending?w('importing'):w('importCount',{count:ready})}</Button>)}
-          {step===3&&<Dialog.Close asChild><Button aria-busy={pending} type="button" disabled={pending}>{w('step3')}</Button></Dialog.Close>}
+          {step===3&&<Dialog.Close asChild><Button aria-busy={pending} type="button" disabled={pending}>{job&&!summary?w('close'):w('step3')}</Button></Dialog.Close>}
         </div></footer>
       </Dialog.Content>
     </Dialog.Portal></Dialog.Root>

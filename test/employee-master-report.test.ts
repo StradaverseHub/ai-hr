@@ -23,7 +23,8 @@ describe('Employee Master report contract',()=>{
     expect(reviews).toHaveLength(9);
     expect(reviews.every(field=>field.tab==='Employment')).toBe(true);
     expect(PERSONNEL_FIELDS.filter(field=>!field.report.enabled).every(field=>!!field.report.disabledReason)).toBe(true);
-    expect(PERSONNEL_FIELDS.filter(field=>field.scope==='draft')).toHaveLength(5);
+    // 2260a06b — Internship End Date left the draft-only set: it is an employment fact from activation onwards.
+    expect(PERSONNEL_FIELDS.filter(field=>field.scope==='draft')).toHaveLength(4);
   });
   it('excludes historical-scope unknowns from rows/totals and counts only subjects already within the selected scope',()=>{
     const selected=subject('missing',{scopeUnavailable:'historical-company-unavailable'}),foreign=subject('foreign',{companyId:'22222222-2222-4222-8222-222222222222',scopeUnavailable:'historical-company-unavailable'});

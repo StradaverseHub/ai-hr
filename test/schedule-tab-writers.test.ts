@@ -17,10 +17,11 @@
  *  A. ROUND TRIP. Post back exactly what the form renders; the stored row must be unchanged in every
  *     column. A screen that silently rewrites a value on an untouched save is worse than one that
  *     refuses.
- *  B. THE DEDUCTION SWITCH DOES NOT MOVE. It stays on the Schedule Group editor (its effective-from date
- *     is stamped by the service and can never be typed, and a DB CHECK from migration 0394 makes
- *     "on with no start date" unrepresentable — that is what keeps a deduction out of a closed payroll
- *     period). Neither tab may change it, INCLUDING when a crafted request body says to.
+ *  B. THE DEDUCTION SWITCH HAS ONE SECTION WRITER. c03670cc moved Wage Deductions from General to the
+ *     Attendance section (its effective-from date is still stamped by the service and can never be typed,
+ *     and a DB CHECK from migration 0394 makes "on with no start date" unrepresentable — that is what
+ *     keeps a deduction out of a closed payroll period). Attendance writes it only behind its own card
+ *     marker; General and Overtime never do, INCLUDING when a crafted request body says to.
  *  C. THE BANDS AND RATES SURVIVE. Money, and an ordering the ladder validation depends on.
  *  D. SAME STORED ROW AS THE OLD SCREEN. The plan's actual promise: a save from the new tab and a save
  *     from the editor that owned the setting must land the same row.
@@ -72,13 +73,18 @@ vi.mock('next-intl/server', async () => {
   };
 });
 
-import { createAttendanceRule, getAttendanceRule, type AttendanceRuleView } from '../core/attendance-rule';
+import { attendanceRuleOvertimeSnapshot, createAttendanceRule, getAttendanceRule, type AttendanceRuleView } from '../core/attendance-rule';
+import { legacyOvertimePatternIdForRule } from '../packs/attendance/service';
+import { owner } from './harness';
+import * as schema from '../db/schema';
+import { asc, eq } from 'drizzle-orm';
 import {
   saveScheduleGroupAttendanceAction,
   saveScheduleGroupOvertimeAction,
 } from '../app/admin/attendance/schedule/actions';
 import { updateAttendanceRuleAction, saveScheduleGroupGeneralAction } from '../app/admin/attendance-policy/rule-actions';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { readFileSync } from 'node:fs';
 import { join as pathJoin, resolve as pathResolve } from 'node:path';
 
@@ -224,8 +230,8 @@ describe('A. round trip — posting back what the form renders changes nothing',
   });
 });
 
-describe('B. the deduction switch does not move', () => {
-  it('a save from the Attendance tab leaves the switch ON and its start date untouched', async () => {
+describe('B. Wage Deductions: the Attendance section is its one section writer (c03670cc)', () => {
+  it('an Attendance save without the card leaves the switch ON and its start date untouched', async () => {
     const before = snap((await getAttendanceRule(actionCtx!, ruleId))!);
     expect(before.applyDeductions, 'fixture precondition: the switch is ON').toBe(true);
     expect(before.deductionsEffectiveFrom, 'fixture precondition: it carries a start date').not.toBeNull();
@@ -236,25 +242,46 @@ describe('B. the deduction switch does not move', () => {
       ),
     );
     const after = snap((await getAttendanceRule(actionCtx!, ruleId))!);
-    expect(after.applyDeductions, 'the tab must not be able to turn the switch off').toBe(true);
+    expect(after.applyDeductions, 'a form without the card must not turn the switch off').toBe(true);
     expect(after.deductionsEffectiveFrom, 'nor move the day it started').toBe(before.deductionsEffectiveFrom);
     // …and the six figures the tab DOES own really did change, so this is not passing on a no-op write.
     expect(after.lateGracePeriodMinutes).toBe(2);
     expect(after.earlyDeductMinutes).toBe(35);
   });
 
-  it('a CRAFTED request body cannot flip it from either tab', async () => {
-    // The tabs do not render this field; the point is that the action never reads it. A stale tab, a
-    // copied form, or someone posting by hand must all be unable to reach the switch from here.
+  it('General and Overtime cannot flip it, and neither can a crafted Attendance body without the card', async () => {
     const before = snap((await getAttendanceRule(actionCtx!, ruleId))!);
     await captureRedirect(() =>
       saveScheduleGroupAttendanceAction(fd({ ruleId, applyDeductions: '', lateGracePeriodMinutes: '4' })),
     );
     expect((await getAttendanceRule(actionCtx!, ruleId))!.applyDeductions, 'still on').toBe(true);
     await captureRedirect(async () => saveScheduleGroupOvertimeAction(await otFd(ruleId,{applyDeductions:''})));
+    // General omits the field, which for a real checkbox would mean OFF — General no longer reads it at all.
+    await captureRedirect(() => saveScheduleGroupGeneralAction(fd({ ruleId, name: before.name, description: before.description ?? '', status: before.status })));
     const after = snap((await getAttendanceRule(actionCtx!, ruleId))!);
     expect(after.applyDeductions, 'still on').toBe(true);
     expect(after.deductionsEffectiveFrom).toBe(before.deductionsEffectiveFrom);
+  });
+
+  it('the Attendance card turns it off and on; re-saving while on keeps the stamped start date', async () => {
+    const before = snap((await getAttendanceRule(actionCtx!, ruleId))!);
+    await captureRedirect(() => saveScheduleGroupAttendanceAction(fd({ ruleId, deductionsEditor: '1', applyDeductions: 'on' })));
+    let after = snap((await getAttendanceRule(actionCtx!, ruleId))!);
+    expect(after.applyDeductions).toBe(true);
+    expect(after.deductionsEffectiveFrom, 'an already-on switch keeps the date it was stamped with').toBe(before.deductionsEffectiveFrom);
+
+    // Unticked: the browser omits the checkbox, the marker says the card was on the form ⇒ OFF.
+    await captureRedirect(() => saveScheduleGroupAttendanceAction(fd({ ruleId, deductionsEditor: '1' })));
+    after = snap((await getAttendanceRule(actionCtx!, ruleId))!);
+    expect(after.applyDeductions).toBe(false);
+    expect(after.deductionsEffectiveFrom, 'off carries no start date (0394 CHECK)').toBeNull();
+
+    await captureRedirect(() => saveScheduleGroupAttendanceAction(fd({ ruleId, deductionsEditor: '1', applyDeductions: 'on' })));
+    after = snap((await getAttendanceRule(actionCtx!, ruleId))!);
+    expect(after.applyDeductions).toBe(true);
+    expect(after.deductionsEffectiveFrom, 'switching on stamps today, never a typed or past date').toBe(todayInKualaLumpur());
+    // Nothing else moved.
+    expect({ ...after, applyDeductions: before.applyDeductions, deductionsEffectiveFrom: before.deductionsEffectiveFrom }).toEqual(before);
   });
 
   it('the switch is still editable where it DOES live — the Schedule Group editor', async () => {
@@ -393,8 +420,9 @@ describe('C2. an open rounding form survives an unrelated settings save', () => 
      */
     // 665de026 — the fields moved off the list page onto the per-group screen, so the source this case
     // reads moved with them. The contract it pins is identical and still pinned across BOTH files.
+    // 2f803985 — the band editor moved to Overtime Patterns › 1. General Settings with the same fields.
     const page = readFileSync(
-      pathJoin(rootDir, 'app/admin/attendance/schedule/group-sections.tsx'),
+      pathJoin(rootDir, 'app/admin/attendance/settings/overtime-patterns/legacy-bands.tsx'),
       'utf8',
     );
     expect(page).toContain('name="otBandSnapshot"');
@@ -521,5 +549,52 @@ describe('General action uses the scoped service contract',()=>{
     expect(after.includeGraceInLateness).toBe(stale.includeGraceInLateness);
     expect(after.applyToEarlyOt).toBe(false);expect(after.otRows[0].roundingMode).toBe('up');
     expect(after.otRows[0].roundToMinutes).toBe(30);expect(after.deductionsEffectiveFrom).toBe(stale.deductionsEffectiveFrom);
+  });
+});
+
+
+// 2f803985 — the band editor moved to Overtime Patterns › 1. General Settings of the group's legacy pattern.
+describe('relocated band editor (Overtime Patterns › 1. General Settings)', () => {
+  const fullEditor = async (patternId: string, rows: unknown[], applyToEarlyOt: boolean, nonce = '') => {
+    const rule = (await getAttendanceRule(actionCtx!, ruleId))!;
+    return fd({ ruleId, returnPattern: patternId, overtimeFullEditor: '1', otRows: JSON.stringify(rows),
+      otBandSnapshot: attendanceRuleOvertimeSnapshot(rule.otRows, rule.applyToEarlyOt),
+      ...(applyToEarlyOt ? { applyToEarlyOt: 'on' } : {}), ...(nonce ? { __attendanceSaveNonce: nonce } : {}) });
+  };
+  it('saves through the Schedule Group writer, snapshots a new legacy version and returns to the pattern', async () => {
+    const patternId = await legacyOvertimePatternIdForRule(actionCtx!, ruleId);
+    expect(patternId, 'every group has its legacy compatibility pattern').toMatch(/^[0-9a-f-]{36}$/);
+    const versions = () => owner.db.select().from(schema.overtimePatternVersion)
+      .where(eq(schema.overtimePatternVersion.patternId, patternId!)).orderBy(asc(schema.overtimePatternVersion.ordinal));
+    const before = await versions();
+    const rule = (await getAttendanceRule(actionCtx!, ruleId))!;
+    const rows = rule.otRows.map((o, i) => ({ fromMinutes: o.fromMinutes, toMinutes: o.toMinutes, ratePattern: o.ratePattern,
+      rate: Number(o.rate), phRate: o.phRate == null ? null : Number(o.phRate), roundingMode: i === 0 ? 'up' : o.roundingMode, roundToMinutes: i === 0 ? 30 : o.roundToMinutes }));
+    const nonce = 'abcdef0123456789abcdef0123456789';
+    const target = await captureRedirect(async () => saveScheduleGroupOvertimeAction(await fullEditor(patternId!, rows, true, nonce)));
+    expect(target.startsWith(`/admin/attendance/settings/overtime-patterns?pattern=${patternId}&toast=`), target).toBe(true);
+    expect(target).toContain(`saveAck=${nonce}`);
+    const after = (await getAttendanceRule(actionCtx!, ruleId))!;
+    expect([after.otRows[0].roundingMode, after.otRows[0].roundToMinutes]).toEqual(['up', 30]);
+    expect(after.otRows.map(o => [o.fromMinutes, o.toMinutes, Number(o.rate)])).toEqual(rule.otRows.map(o => [o.fromMinutes, o.toMinutes, Number(o.rate)]));
+    const now = await versions();
+    expect(now.length, 'the 0551 trigger recorded the saved ladder as a new legacy version').toBe(before.length + 1);
+    expect((now.at(-1)!.definition as { rows: { rounding_mode: string }[] }).rows[0].rounding_mode).toBe('up');
+  });
+  it('a refused ladder returns to the pattern with the reason and writes nothing', async () => {
+    const patternId = (await legacyOvertimePatternIdForRule(actionCtx!, ruleId))!;
+    const before = snap((await getAttendanceRule(actionCtx!, ruleId))!);
+    const gap = [{ fromMinutes: 0, toMinutes: 60, ratePattern: 'flat', rate: 1.5, phRate: null, roundingMode: 'none', roundToMinutes: null },
+      { fromMinutes: 200, toMinutes: 0, ratePattern: 'flat', rate: 2, phRate: null, roundingMode: 'none', roundToMinutes: null }];
+    const target = await captureRedirect(async () => saveScheduleGroupOvertimeAction(await fullEditor(patternId, gap, true)));
+    expect(target.startsWith(`/admin/attendance/settings/overtime-patterns?pattern=${patternId}&bandError=`), target).toBe(true);
+    expect(snap((await getAttendanceRule(actionCtx!, ruleId))!)).toEqual(before);
+  });
+  it('a malformed return target falls back to the Schedule Group, never an arbitrary path', async () => {
+    const rule = (await getAttendanceRule(actionCtx!, ruleId))!;
+    const target = await captureRedirect(async () => saveScheduleGroupOvertimeAction(fd({ ruleId, returnPattern: '//evil.example/x',
+      overtimeFullEditor: '1', otRows: JSON.stringify(rule.otRows.map(o => ({ ...o, rate: Number(o.rate), phRate: o.phRate == null ? null : Number(o.phRate) }))),
+      otBandSnapshot: attendanceRuleOvertimeSnapshot(rule.otRows, rule.applyToEarlyOt), applyToEarlyOt: 'on' })));
+    expect(target.startsWith(`/admin/attendance/schedule/${ruleId}`), target).toBe(true);
   });
 });

@@ -9,17 +9,18 @@
  *  5. The staging operator path writes as the owner with an operator label (migration 0901) and its audit event;
  *     the application role can never write an operator row. */
 import {randomUUID} from 'node:crypto';
-import {and,eq} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import postgres from 'postgres';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {aiProviderConfig,domainEvent} from '../db/schema';
 import {terasOutcomeRecord,terasWorkerControl} from '../db/teras-schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
-import {grantAssistant} from '../core/assistant-grant';
+import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {setWorkerSwitch,workerRunGate,WORKER_SWITCH_IDENTITY} from '../core/agent-registry/controls';
 import {setMandateStopSwitch} from '../core/mandates/mandates';
-import {conversationRoute} from '../core/teras-wiring/switch';
+import {conversationHarnessAvailableForPresentation,conversationRoute} from '../core/teras-wiring/switch';
 import {encryptSecret} from '../lib/ai/crypto';
 import {runSwitch,parseSwitchArguments} from '../scripts/operator/teras-conversation-switch-core';
 import {switchDatabase} from '../scripts/operator/teras-conversation-switch';
@@ -92,6 +93,63 @@ describe('the Noveri conversation switch',()=>{
   expect(await route(ungranted)).toBe('closed');
   await setMandateStopSwitch(group,true);expect(await route(employee)).toBe('closed');
   await setMandateStopSwitch(group,false);expect(await route(employee)).toBe('harness');
+ });
+
+ it('reads the presentation gate while Access is held and still checks live stop and grant changes',async()=>{
+  expect(await conversationHarnessAvailableForPresentation(employee)).toBe(false);
+  await setWorkerSwitch(group,{workerId:'conversation',enabled:true});
+  let ready!:(pid:number)=>void,fail!:(error:unknown)=>void,release!:()=>void;
+  const started=new Promise<number>((resolve,reject)=>{ready=resolve;fail=reject;});
+  const held=new Promise<void>(resolve=>{release=resolve;});
+  let expired=false;
+  const watchdog=setTimeout(()=>{expired=true;fail(Error('Access holder exceeded its fixture interval'));release();},8000);
+  const holder=owner.db.transaction(async tx=>{
+   await tx.execute(sql`set local lock_timeout='3s'`);
+   await lockAccessConfigurationWriteTx(tx,b.tenantId);
+   const [identity]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
+   ready(identity.pid);
+   await held;
+  });
+  void holder.catch(fail);
+  let command:Promise<'closed'|'harness'>|undefined;
+  try{
+   const pid=await started;
+   expect(await conversationHarnessAvailableForPresentation(employee)).toBe(true);
+   expect(expired).toBe(false);
+   command=route(employee);
+   void command.catch(()=>undefined);
+   let blocked=false;
+   for(let n=0;n<100&&!expired;n++){
+    const [observed]=await owner.db.execute<{blocked:boolean}>(sql`select exists(
+      select 1 from pg_locks l join pg_stat_activity a on a.pid=l.pid
+       where l.locktype='advisory' and l.objsubid=1 and l.mode='ExclusiveLock' and not l.granted
+         and a.datname=current_database() and a.usename='ai_hr_app'
+         and ((l.classid::bigint<<32)|l.objid::bigint)=hashtextextended(${'access-configuration:'+b.tenantId},0)
+         and ${pid}::integer=any(pg_blocking_pids(l.pid))) as blocked`);
+    if(observed?.blocked===true){blocked=true;break;}
+    await new Promise(resolve=>setTimeout(resolve,20));
+   }
+   expect(blocked&&!expired).toBe(true);
+  }finally{
+   clearTimeout(watchdog);
+   release();
+   await Promise.allSettled([holder,command]);
+  }
+  await holder;
+  expect(await command).toBe('harness');
+
+  await setMandateStopSwitch(group,true);
+  expect(await conversationHarnessAvailableForPresentation(employee)).toBe(false);
+  expect(await route(employee)).toBe('closed');
+  await setMandateStopSwitch(group,false);
+  expect(await conversationHarnessAvailableForPresentation(employee)).toBe(true);
+  expect(await conversationHarnessAvailableForPresentation({...employee,personId:group.personId})).toBe(false);
+  await setModule(b.tenantId,'assistant','disabled');
+  expect(await conversationHarnessAvailableForPresentation(employee)).toBe(false);
+  await setModule(b.tenantId,'assistant','active');
+  await revokeAssistant(group,{appUserId:employee.userId!});
+  expect(await conversationHarnessAvailableForPresentation(employee)).toBe(false);
+  expect(await route(employee)).toBe('closed');
  });
 
  it('records the direct-provider attestation for the active direct provider only, and clears it without one',async()=>{

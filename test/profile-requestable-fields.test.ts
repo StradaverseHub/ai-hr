@@ -444,7 +444,7 @@ describe('r261 — a switched-off field is ABSENT from the employee\'s screen, n
     expect(ME_PAGE).toContain('readOwnProfileWorkspace(s,{employmentId},presentation)');expect(ESS_EDITOR).toContain('const editable=new Set(workspace.editable),primaryEditable=new Set(workspace.legacyPrimaryEditable)');
     expect(ESS_EDITOR).toContain('const allowed=applicable&&taxAvailable&&canEdit(field.id,row)');expect(ESS_EDITOR).toContain('{allowed?<div');expect(ESS_EDITOR).toContain('{displayValue}');
     expect(ESS_OWNER).toContain('freshProfileEditPolicyTx(tx,ctx)');expect(ESS_OWNER).toContain("throw new EssProfileError('fieldClosed',[field.id])");
-    expect(CORE_PROFILE).toContain("profileChangeApprover(ctx)==='group_admin'");expect(CORE_PROFILE).toContain('await assertProfileRouteDecisionTx(tx,ctx,req)');
+    expect(CORE_PROFILE).toContain("profileChangeApprover(ctx)==='group_admin'");expect(CORE_PROFILE).toContain('await assertProfileRouteDecisionTx(tx,ctx,req,options)');
   });
 
   it('offers NO inert control — the request card contains no disabled attribute at all', () => {

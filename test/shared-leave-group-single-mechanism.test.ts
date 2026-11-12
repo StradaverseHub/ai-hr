@@ -106,11 +106,31 @@ describe('1ef1cf95 · exactly one table pair groups leave types for sharing', ()
    * The set is extended rather than the assertion relaxed, and the READER IS CONSTRAINED BELOW: it may
    * only read. The fault this whole file exists to prevent is a SECOND grouping mechanism, which is what a
    * third file that WROTE these tables would be.
+   *
+   * 83578dc29 (Home: one statement per card) adds `core/own-leave-inputs.ts`, NOT a new role: it is the
+   * engine's own staged read, bundled. leaveBalancesTx's membership statement is answered from it, for the
+   * own employment inside the same transaction, with the same two columns. It is constrained below like the
+   * display reader: it only reads, and it never resolves placement itself.
    */
   it('only the leave engine, its config module and the display reader touch those tables', () => {
     const coreFiles = readdirSync(resolve(here, '../core')).filter((f) => f.endsWith('.ts'));
     const touching = coreFiles.filter((f) => read(`../core/${f}`).includes('leaveSharedGroupMember'));
-    expect(touching.sort()).toEqual(['leave-shared-group.ts', 'leave.ts', 'read.ts']);
+    expect(touching.sort()).toEqual(['leave-shared-group.ts', 'leave.ts', 'own-leave-inputs.ts', 'read.ts']);
+  });
+
+  it("the engine's bundled input reader only READS the membership the engine itself would read", () => {
+    const src = read('../core/own-leave-inputs.ts');
+    for (const table of ['leaveSharedGroupMember', 'leaveSharedGroup']) {
+      for (const verb of ['insert', 'update', 'delete']) {
+        expect(src, `core/own-leave-inputs.ts must never ${verb} ${table}`).not.toMatch(
+          new RegExp(`\\.${verb}\\(\\s*${table}\\b`),
+        );
+      }
+    }
+    expect(src).not.toMatch(/\b(?:insert\s+into|update|delete\s+from)\s+leave_shared_group/i);
+    // It hands the engine the raw rows of the engine's own statement; placement is still resolved in one place.
+    expect(src).not.toContain('resolveSharedGroupPlacement');
+    expect(src).toContain('sharedGroupMembers(){return this.raw.groupMembers.map(row=>({leaveTypeId:row.leaveTypeId,placement:row.placement}));}');
   });
 
   it('the display reader only READS — a third writer would be a second mechanism', () => {
@@ -297,6 +317,10 @@ describe('1ef1cf95 · the group is configured at LEAVE TYPE level, from one labe
     expect(groupConfigSrc.match(/action=\{actions\.create\}/g) ?? []).toHaveLength(1);
     // …and the drag-to-group gesture really is gone, not merely unused.
     expect(groupConfigSrc).not.toMatch(/onDrop|dragStart|draggable/i);
+    // 50d9b809 — and the control is ON A PAGE, not behind a pop-up: the Radix Dialog shell that hid the
+    // whole editor behind a button on Entitlements is gone. Still one create form, still one mechanism.
+    expect(groupConfigSrc).not.toContain("from '@radix-ui/react-dialog'");
+    expect(read('../app/admin/leave-config/shared-groups/page.tsx')).toContain('<LeaveSharedGroupConfig');
   });
 
   it('every locale carries the three shared-group strings', () => {

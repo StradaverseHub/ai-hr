@@ -11,13 +11,12 @@ import zh from '../messages/zh.json';
 import type {OvertimePattern,OvertimeCondition,OvertimeExpression} from '../lib/overtime-pattern-model';
 import type {OvertimePatternDetail,OvertimePatternSetup} from '../packs/attendance/service';
 
-const mocks=vi.hoisted(()=>({save:vi.fn(),fork:vi.fn(),validate:vi.fn(),activate:vi.fn(),stop:vi.fn(),archive:vi.fn(),assign:vi.fn(),close:vi.fn(),choices:vi.fn(),previewEmployee:vi.fn(),previewSample:vi.fn(),readTransfer:vi.fn(),calculate:vi.fn(),transfer:vi.fn(),push:vi.fn(),replace:vi.fn(),refresh:vi.fn()}));
+const mocks=vi.hoisted(()=>({save:vi.fn(),assign:vi.fn(),close:vi.fn(),choices:vi.fn(),previewEmployee:vi.fn(),previewSample:vi.fn(),readTransfer:vi.fn(),calculate:vi.fn(),transfer:vi.fn(),push:vi.fn(),replace:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({usePathname:()=>'/admin/attendance/settings/overtime-patterns',useRouter:()=>({push:mocks.push,replace:mocks.replace,refresh:mocks.refresh})}));
-vi.mock('../app/admin/attendance/settings/overtime-patterns/actions',()=>({saveOvertimeDraftAction:mocks.save,forkOvertimeDraftAction:mocks.fork,validateOvertimeAction:mocks.validate,activateOvertimeAction:mocks.activate,stopOvertimeAction:mocks.stop,archiveOvertimeAction:mocks.archive,saveOvertimeAssignmentAction:mocks.assign,closeOvertimeAssignmentAction:mocks.close,overtimeChoicesAction:mocks.choices,previewOvertimeEmployeeAction:mocks.previewEmployee,previewOvertimeSampleAction:mocks.previewSample,readOvertimeTransferAction:mocks.readTransfer,calculateOvertimeDayAction:mocks.calculate,transferOvertimePayrollAction:mocks.transfer}));
+vi.mock('../app/admin/attendance/settings/overtime-patterns/actions',()=>({saveOvertimeDraftAction:mocks.save,saveOvertimeAssignmentAction:mocks.assign,closeOvertimeAssignmentAction:mocks.close,overtimeChoicesAction:mocks.choices,previewOvertimeEmployeeAction:mocks.previewEmployee,previewOvertimeSampleAction:mocks.previewSample,readOvertimeTransferAction:mocks.readTransfer,calculateOvertimeDayAction:mocks.calculate,transferOvertimePayrollAction:mocks.transfer}));
 import {OVERTIME_WORKSPACE_SECTIONS,OvertimeWorkspace} from '../components/overtime-patterns/workspace';
 import {ConditionControl,ExpressionControl} from '../components/overtime-patterns/rule-controls';
 import {overtimeMoneyText,OvertimeCalculationResult} from '../components/overtime-patterns/calculation-result';
-import {overtimeStarterSeed} from '../lib/overtime-pattern-starters';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {__resetUnsavedGuards} from '../lib/unsaved-changes';
 
@@ -37,39 +36,62 @@ function editor(activated=false) {const item=detail(activated);return wrap(<Over
 const words=en.overtimePatterns;
 function tab(key:typeof OVERTIME_WORKSPACE_SECTIONS[number]) {const label=words.guided[key==='basic'?'general':key];fireEvent.click(screen.getByRole('tab',{name:new RegExp(label)}));return screen.getByRole('tabpanel',{name:new RegExp(label)});}
 
-beforeEach(()=>{cleanup();__resetUnsavedGuards();vi.clearAllMocks();mocks.save.mockResolvedValue({ok:true,value:{patternId,versionId,revision:8}});mocks.fork.mockResolvedValue({ok:true,value:{patternId,versionId,revision:1}});mocks.validate.mockResolvedValue({ok:true,value:{validationDigest:'fresh-digest',issues:[],requiredFields:[]}});mocks.activate.mockResolvedValue({ok:true,value:{versionId}});mocks.assign.mockResolvedValue({ok:true,value:{assignmentId:'assignment'}});mocks.choices.mockResolvedValue({ok:true,value:setup});});
+const single={id:companyId,currency:'MYR'};
+const posted=()=>JSON.parse((document.querySelector('input[name="overtimeDraft"]') as HTMLInputElement).value);
+beforeEach(()=>{cleanup();__resetUnsavedGuards();vi.clearAllMocks();mocks.save.mockResolvedValue({ok:true,value:{patternId,versionId,revision:8}});mocks.assign.mockResolvedValue({ok:true,value:{assignmentId:'assignment'}});mocks.choices.mockResolvedValue({ok:true,value:setup});});
 
 describe('guided Overtime Pattern editing',()=>{
  it.each(['ot15','ot20','ot30','ot00'] as const)('opens %s inside General Settings without a preliminary workflow',key=>{
-  wrap(<OvertimeWorkspace detail={null} setup={setup} starterKey={key}/>);
-  expect(screen.getAllByRole('tab')).toHaveLength(4);
+  wrap(<OvertimeWorkspace detail={null} setup={setup} starterKey={key} newPatternCompany={single}/>);
+  expect(screen.getAllByRole('tab')).toHaveLength(3);
   expect(screen.getByLabelText(words.guided.patternName)).toHaveValue({ot15:'OT 1.5',ot20:'OT 2.0',ot30:'OT 3.0',ot00:'OT 0.0'}[key]);
-  expect(screen.getByLabelText(words.eligibilityBasis)).toHaveValue('');
-  expect(screen.getByLabelText(words.durationAllocation)).toHaveValue('');
+  expect(screen.queryByLabelText(words.eligibilityBasis)).toBeNull();
+  expect(screen.queryByLabelText(words.durationAllocation)).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:words.guided.next}));
   expect(screen.getByText(words.guided.completeGeneral)).toBeVisible();
-  const posted=JSON.parse((document.querySelector('input[name="overtimeDraft"]') as HTMLInputElement).value);
-  expect(posted.definition.rates[0].tiers[0].payment.multiplier.value).toBe({ot15:'1.5',ot20:'2',ot30:'3',ot00:'0'}[key]);
-  expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();
+  // Hidden starter values round-trip unchanged; the server re-derives them and never trusts this payload.
+  expect(posted().definition.rates[0].tiers[0].payment.multiplier.value).toBe({ot15:'1.5',ot20:'2',ot30:'3',ot00:'0'}[key]);
+  expect(posted().definition).toMatchObject({eligibilityBasis:'day',durationAllocation:'earliest',currency:{code:'MYR',minorScale:2}});
+  expect(mocks.save).not.toHaveBeenCalled();
  });
- it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('translates all four steps and summary in %s',locale=>{
+ it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('translates all three steps, the draft note and the company prompt in %s',locale=>{
   const errors:unknown[]=[];
   render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} onError={error=>errors.push(error)}><OvertimeWorkspace detail={null} setup={setup}/></NextIntlClientProvider>);
-  expect(screen.getAllByRole('tab')).toHaveLength(4);
-  for(const key of ['general','rates','eligibility','preview'] as const)expect(screen.getByRole('tab',{name:new RegExp(catalogues[locale].overtimePatterns.guided[key])})).toBeTruthy();
+  expect(screen.getAllByRole('tab')).toHaveLength(3);
+  for(const key of ['general','eligibility','preview'] as const)expect(screen.getByRole('tab',{name:new RegExp(catalogues[locale].overtimePatterns.guided[key])})).toBeTruthy();
+  expect(screen.queryByRole('tab',{name:new RegExp(catalogues[locale].overtimePatterns.guided.rates)})).toBeNull();
+  expect(screen.getByRole('note')).toHaveTextContent(catalogues[locale].overtimePatterns.guided.draftOnlyNote);
+  expect(screen.getByText(catalogues[locale].overtimePatterns.chooseOneCompany)).toBeVisible();
   expect(errors).toEqual([]);
  });
  it('validates each forward step and retains input through Back and Next',()=>{
-  editor();fireEvent.change(screen.getByLabelText(words.guided.patternName),{target:{value:'Retained fictional name'}});
+  editor();fireEvent.change(screen.getByLabelText(words.guided.patternName),{target:{value:''}});
   fireEvent.click(screen.getByRole('button',{name:words.guided.next}));
-  expect(screen.getByRole('tabpanel',{name:/Overtime Rates/})).toBeVisible();
+  expect(screen.getByRole('tabpanel',{name:/General Settings/})).toBeVisible();expect(screen.getByText(words.guided.completeGeneral)).toBeVisible();
+  fireEvent.change(screen.getByLabelText(words.guided.patternName),{target:{value:'Retained fictional name'}});
+  fireEvent.click(screen.getByRole('button',{name:words.guided.next}));
+  expect(screen.getByRole('tabpanel',{name:/Eligibility/})).toBeVisible();expect(screen.getByText('Step 2 of 3')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:words.guided.back}));
   expect(screen.getByLabelText(words.guided.patternName)).toHaveValue('Retained fictional name');
-  fireEvent.click(screen.getByRole('button',{name:words.guided.next}));
-  fireEvent.change(screen.getByLabelText(words.guided.toFor.replace('{row}','1')),{target:{value:'0:00'}});
-  fireEvent.click(screen.getByRole('button',{name:words.guided.next}));
-  expect(screen.getByRole('tabpanel',{name:/Overtime Rates/})).toBeVisible();
-  expect(screen.getAllByRole('alert').length).toBeGreaterThan(0);
+ });
+ it('shows General Settings with only the label, name, description and day types',()=>{
+  const item=detail();
+  wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={{...setup,choices:{...setup.choices,dayType:[{id:'workday',label:'Workday'},{id:'rest_day',label:'Rest day'}]}}}/>);
+  const panel=screen.getByRole('tabpanel',{name:/General Settings/});
+  expect(within(panel).getAllByRole('textbox')).toHaveLength(3);
+  expect(within(panel).getByLabelText(words.guided.patternLabel)).toHaveValue('SYNTH-OT');
+  expect(within(panel).getByLabelText(words.guided.patternName)).toHaveValue('Fictional Overtime');
+  expect(within(panel).getByLabelText(words.description)).toBeInTheDocument();
+  expect(within(panel).getByRole('group',{name:words.guided.dayTypes})).toBeInTheDocument();
+  expect(within(panel).getAllByRole('checkbox')).toHaveLength(2);
+  expect(within(panel).queryAllByRole('combobox')).toEqual([]);expect(within(panel).queryAllByRole('listbox')).toEqual([]);
+  for(const removed of [words.creationCompany,words.companies,words.currency,words.minorScale,words.eligibilityBasis,words.durationAllocation])expect(within(panel).queryByLabelText(removed),removed).toBeNull();
+  for(const removed of [words.eligibilityBasisHelp,words.durationAllocationHelp])expect(screen.queryByText(removed)).toBeNull();
+  expect(screen.getAllByRole('tab').map(tab=>tab.getAttribute('aria-label'))).toEqual([`1.${words.guided.general}`,`2.${words.guided.eligibility}`,`3.${words.guided.preview}`]);
+  expect(screen.getByText('Step 1 of 3')).toBeInTheDocument();
+  expect(screen.queryByRole('group',{name:words.lifecycle})).toBeNull();expect(screen.queryByText(words.guided.manageLifecycle)).toBeNull();
+  for(const name of [words.validate,words.activate,words.fork,words.stop,words.archive])expect(screen.queryByRole('button',{name}),name).toBeNull();
+  expect(screen.getByRole('note')).toHaveTextContent(words.guided.draftOnlyNote);
  });
  it('shows a read-only summary of the draft before saving a validated pattern',async()=>{
   editor();tab('preview');
@@ -79,7 +101,9 @@ describe('guided Overtime Pattern editing',()=>{
   fireEvent.click(within(preview).getByRole('button',{name:words.guided.savePattern}));
   await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce());
   expect(mocks.save.mock.calls[0][0]).toMatchObject({patternId,versionId,expectedRevision:7});
-  expect(mocks.activate).not.toHaveBeenCalled();expect(mocks.assign).not.toHaveBeenCalled();
+  expect(Object.keys(mocks.save.mock.calls[0][0].draft).sort()).toEqual(['code','definition','description','name']);
+  expect(within(preview).queryByRole('button',{name:words.guided.editRates})).toBeNull();
+  expect(mocks.assign).not.toHaveBeenCalled();
  });
  it('warns before saving contradictory eligibility while preserving intentional rules',async()=>{
   const item=detail();
@@ -106,7 +130,10 @@ describe('guided Overtime Pattern editing',()=>{
   item.assignments=[{id:'saved_assignment',versionId,validFrom:'2026-11-01',validTo:'2026-12-01',priority:2,target:{type:'individual',employmentIds:[employeeId]},revision:1,createdAt:new Date('2026-10-29T00:00:00Z'),tenantId:companyId,closeReason:null,createdBy:null,supersededAt:null}];
   wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={{...setup,earningItems:[{id:advanced.rates[0].tiers[0].mapping.earningItemId,label:'Fictional OT earning'}]}}/>);tab('preview');
   const preview=screen.getByRole('tabpanel',{name:/Preview/});
-  expect(within(preview).getAllByText('Fictional Company')).toHaveLength(2);
+  // Owning/applicable company, currency and duration-policy rows are hidden; saved rates stay visible read-only.
+  expect(within(preview).queryByText('Fictional Company')).toBeNull();
+  for(const removed of [words.creationCompany,words.companies,words.currency,words.eligibilityBasis,words.durationAllocation])expect(within(preview).queryByText(removed),removed).toBeNull();
+  expect(within(preview).getByRole('heading',{name:words.guided.rates})).toBeVisible();expect(within(preview).queryByRole('button',{name:words.guided.editRates})).toBeNull();
   expect(within(preview).getByText(/3700.*175.*10400/)).toBeVisible();
   expect(within(preview).getAllByText(/Next day 01:00.*Two days later 01:30/)[0]).toBeVisible();
   expect(within(preview).getByText(/Fictional OT earning/)).toBeVisible();
@@ -114,7 +141,7 @@ describe('guided Overtime Pattern editing',()=>{
   expect(within(preview).getByText(/2026-11-01.*2026-12-01/)).toBeVisible();
   expect(within(preview).getByText('MYR 888')).toBeVisible();
   expect(within(preview).queryByRole('textbox')).toBeNull();
-  expect(screen.getByText(words.guided.manageLifecycle).closest('details')).not.toHaveAttribute('open');
+  expect(screen.queryByText(words.guided.manageLifecycle)).toBeNull();
  });
  it('shows simple salary field/operator/currency amount controls and preserves advanced formula access',()=>{
   editor();tab('eligibility');fireEvent.click(screen.getByRole('button',{name:words.guided.addSalaryCondition}));
@@ -127,29 +154,49 @@ describe('guided Overtime Pattern editing',()=>{
   expect(posted.definition.eligibility.children[1].right).toMatchObject({type:'literal',unit:'money',currency:'MYR',value:'4000'});
   expect(within(panel).getByText(words.guided.advancedCondition)).toBeVisible();
  });
- it('exposes named focusable table regions and a current-step label on narrow layouts',()=>{
-  editor();tab('rates');
+ it('exposes named focusable read-only rate tables and a current-step label on narrow layouts',()=>{
+  editor();tab('preview');
   expect(screen.getByRole('region',{name:'Overtime Rates · Configured rate'})).toHaveAttribute('tabindex','0');
-  expect(within(screen.getByRole('tabpanel',{name:/Overtime Rates/})).getByText(words.guided.horizontalScroll)).toBeInTheDocument();
-  expect(screen.getByText('Step 2 of 4 · Overtime Rates')).toBeInTheDocument();
+  expect(within(screen.getByRole('region',{name:'Overtime Rates · Configured rate'})).queryByRole('textbox')).toBeNull();
+  expect(screen.getByText('Step 3 of 3 · Preview')).toBeInTheDocument();
   expect(screen.getByRole('tab',{name:/General Settings/}).querySelector('svg path')).not.toBeNull();
  });
- it('keeps pending drafts distinct from Save Pattern and never fabricates a missing value',async()=>{
-  editor();tab('rates');
-  fireEvent.change(screen.getByLabelText(words.guided.rateFor.replace('{row}','1')),{target:{value:''}});
+ it('hides the saved rates section for a pattern without rates and keeps edit links for visible steps only',()=>{
+  const item=detail();item.versions[0].definition={...pattern,rates:[]};
+  wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={setup}/>);tab('preview');
+  const preview=screen.getByRole('tabpanel',{name:/Preview/});
+  expect(within(preview).queryByRole('heading',{name:words.guided.rates})).toBeNull();expect(within(preview).queryByRole('heading',{name:words.guided.advancedCalculation})).toBeNull();
+  expect(within(preview).getByRole('button',{name:words.guided.editGeneral})).toBeVisible();expect(within(preview).getByRole('button',{name:words.guided.editEligibility})).toBeVisible();
+  expect(within(preview).queryByRole('button',{name:words.guided.editRates})).toBeNull();
+ });
+ it('posts saved hidden values unchanged with a draft save and never blocks on a blank currency',async()=>{
+  const item=detail(),saved={...structuredClone(pattern),currency:{code:'',minorScale:0},eligibilityBasis:'session' as const,durationAllocation:'latest' as const};item.versions[0].definition=saved;
+  wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={{...setup,companies:[]}}/>);
+  fireEvent.change(screen.getByLabelText(words.guided.patternName),{target:{value:'Renamed fictional pattern'}});
   fireEvent.click(screen.getByRole('button',{name:words.saveDraft}));
   await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce());
-  expect(mocks.save.mock.calls[0][0].draft.definition.rates[0].tiers[0].payment.multiplier.value).toBe('');
-  fireEvent.click(screen.getByRole('button',{name:words.guided.next}));
-  expect(screen.getByRole('tabpanel',{name:/Overtime Rates/})).toBeVisible();
+  const input=mocks.save.mock.calls[0][0];
+  expect(input).toMatchObject({patternId,versionId,expectedRevision:7});expect(input.starterKey).toBeUndefined();
+  expect(input.draft.definition).toEqual(saved);expect(input.draft).not.toHaveProperty('companyIds');expect(input.draft).not.toHaveProperty('creationCompanyId');
  });
- it('supports independent row rounding and hour:minute boundaries without changing zero rates',()=>{
-  editor();tab('rates');
-  fireEvent.change(screen.getByLabelText(words.guided.rateFor.replace('{row}','1')),{target:{value:'0'}});
-  fireEvent.change(screen.getByLabelText(words.guided.roundingFor.replace('{row}','1')),{target:{value:'down'}});
-  fireEvent.change(screen.getByLabelText(words.guided.intervalFor.replace('{row}','1')),{target:{value:'0:15'}});
-  const posted=JSON.parse((document.querySelector('input[name="overtimeDraft"]') as HTMLInputElement).value);
-  expect(posted.definition.rates[0].tiers[0]).toMatchObject({payment:{multiplier:{value:'0'}},rounding:{mode:'down',step:'15'}});
+ it('asks for one company and writes nothing for a new pattern when several companies are selected',async()=>{
+  wrap(<OvertimeWorkspace detail={null} setup={setup}/>);
+  expect(screen.getByText(words.chooseOneCompany)).toBeVisible();
+  fireEvent.change(screen.getByLabelText(words.guided.patternLabel),{target:{value:'NEW-OT'}});fireEvent.change(screen.getByLabelText(words.guided.patternName),{target:{value:'New fictional pattern'}});
+  expect(screen.getByRole('button',{name:words.saveDraft})).toBeDisabled();
+  fireEvent.submit(document.getElementById('overtime-definition')!);
+  await waitFor(()=>expect(screen.getByText(words.chooseOneCompany)).toBeVisible());expect(mocks.save).not.toHaveBeenCalled();
+ });
+ it('saves a new pattern without any company or currency choice and shows a server company refusal',async()=>{
+  mocks.save.mockResolvedValueOnce({ok:false,code:'invalid',notice:'chooseOneCompany'});
+  wrap(<OvertimeWorkspace detail={null} setup={setup} starterKey="ot15" newPatternCompany={single}/>);
+  expect(screen.queryByText(words.chooseOneCompany)).toBeNull();
+  fireEvent.change(screen.getByLabelText(words.guided.patternLabel),{target:{value:'NEW-OT'}});
+  fireEvent.click(screen.getByRole('button',{name:words.saveDraft}));
+  await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce());
+  const input=mocks.save.mock.calls[0][0];
+  expect(input).toEqual({starterKey:'ot15',draft:{code:'NEW-OT',name:'OT 1.5',description:'',definition:expect.objectContaining({currency:{code:'MYR',minorScale:2}})}});
+  await waitFor(()=>expect(screen.getByText(words.chooseOneCompany)).toBeVisible());expect(mocks.replace).not.toHaveBeenCalled();
  });
  it('sends one persistence request while pending and retains entered values on a safe error',async()=>{
   let finish!:(result:unknown)=>void;mocks.save.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));editor();
@@ -159,18 +206,11 @@ describe('guided Overtime Pattern editing',()=>{
   await waitFor(()=>expect(screen.getByText(words.errors.system)).toBeVisible());
   expect(screen.getByLabelText(words.guided.patternName)).toHaveValue('Retained draft');expect(mocks.replace).not.toHaveBeenCalled();
  });
- it('preserves saved activation receipts and invalidates them after an edit',async()=>{
-  editor();fireEvent.click(screen.getByRole('button',{name:words.validate}));await waitFor(()=>expect(screen.getByText(words.validated)).toBeVisible());
-  const from=todayInKualaLumpur(new Date(Date.now()+86400000));
-  fireEvent.change(within(screen.getByRole('group',{name:words.lifecycle})).getByLabelText(words.effectiveFrom),{target:{value:from}});
-  fireEvent.click(screen.getByRole('button',{name:words.activate}));
-  await waitFor(()=>expect(mocks.activate).toHaveBeenCalledExactlyOnceWith({versionId,expectedRevision:7,validationDigest:'fresh-digest',effectiveFrom:from}));
-  fireEvent.change(screen.getByLabelText(words.guided.patternName),{target:{value:'Changed draft'}});
-  expect(screen.getByRole('button',{name:words.activate})).toBeDisabled();
- });
- it('makes activated definitions read-only and retains the canonical fork revision',async()=>{
+ it('makes activated definitions read-only without exposing a fork, stop or archive control',()=>{
   editor(true);expect(screen.getByLabelText(words.guided.patternName)).toBeDisabled();
-  fireEvent.click(screen.getByRole('button',{name:words.fork}));await waitFor(()=>expect(mocks.fork).toHaveBeenCalledExactlyOnceWith({versionId,expectedPatternRevision:3}));
+  expect(screen.getByText(words.immutableHelp)).toBeVisible();expect(screen.queryByRole('button',{name:words.saveDraft})).toBeNull();
+  for(const name of [words.fork,words.stop,words.archive,words.activate])expect(screen.queryByRole('button',{name}),name).toBeNull();
+  expect(screen.queryByRole('note')).toBeNull();
  });
  it('stores selected employee eligibility in the pattern while retaining its existing conditions',()=>{
   editor();tab('eligibility');fireEvent.click(screen.getByLabelText(words.guided.selectedEmployees));
@@ -187,10 +227,12 @@ describe('guided Overtime Pattern editing',()=>{
   fireEvent.click(within(assignment).getByRole('button',{name:words.search}));
   await waitFor(()=>expect(mocks.choices).toHaveBeenCalledExactlyOnceWith({employeeSearch:'Other',employeeCursor:undefined}));
  });
- it('moves focus with the four-step keyboard navigation without losing entered state',()=>{
+ it('moves focus with the three-step keyboard navigation without losing entered state',()=>{
   editor();fireEvent.change(screen.getByLabelText(words.guided.patternName),{target:{value:'Unsaved name'}});
   const tabs=screen.getByRole('tablist');fireEvent.keyDown(tabs,{key:'ArrowRight'});
-  expect(screen.getByRole('tab',{name:/Overtime Rates/})).toHaveFocus();
+  expect(screen.getByRole('tab',{name:/Eligibility/})).toHaveFocus();
+  fireEvent.keyDown(tabs,{key:'End'});expect(screen.getByRole('tab',{name:/Preview/})).toHaveFocus();
+  fireEvent.keyDown(tabs,{key:'ArrowRight'});expect(screen.getByRole('tab',{name:/General Settings/})).toHaveFocus();
   fireEvent.keyDown(tabs,{key:'Home'});expect(screen.getByLabelText(words.guided.patternName)).toHaveValue('Unsaved name');
  });
  it('retains current keyboard focus when required input blocks the next step',()=>{
@@ -229,5 +271,19 @@ describe('selectable nested formula and condition controls',()=>{
   wrap(<OvertimeCalculationResult pattern={pattern} result={{status:'refused',source:{tenantId:companyId,employmentId:employeeId,attendanceId:patternId,date:todayInKualaLumpur(),inputDigest:'input',approvalDigest:'approval'},patternVersionId:versionId,assignmentId:'assignment',transferable:false,issues:[{code:'unknown',path:'rawMinutes',severity:'error',detail:'Synthetic missing fact'}],trace:[{kind:'field',id:'input',data:{rawMinutes:{state:'unknown',reason:'missing'}}}]}}/>);
   expect(screen.getByText(words.errors.unknown)).toBeVisible();expect(screen.queryByText('MYR 0.00')).toBeNull();
   expect(screen.getByText(words.traceKinds.field+' · 1')).toBeTruthy();
+ });
+});
+
+// 2f803985 — a legacy (Schedule Group) pattern shows its relocated band editor instead of a pointer back.
+describe('legacy Schedule Group pattern',()=>{
+ const legacy=():OvertimePatternDetail=>{const item=detail(true);return {...item,writable:false,pattern:{...item.pattern,kind:'legacy',code:null,creationCompanyId:null,legacyRuleRef:companyId,legacyRuleId:companyId}};};
+ it('renders the server band editor as its General Settings, and only the pointer without one',()=>{
+  const item=legacy();
+  wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={setup} legacyEditor={<section aria-label="relocated bands"><p>Band editor</p></section>}/>);
+  expect(screen.getByRole('region',{name:'relocated bands'})).toBeVisible();
+  expect(screen.queryByText(words.legacyLink)).toBeNull();expect(screen.queryByRole('tablist')).toBeNull();
+  cleanup();
+  wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={setup}/>);
+  expect(screen.getByText(words.legacyLink)).toBeVisible();
  });
 });

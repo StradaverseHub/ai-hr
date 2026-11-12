@@ -8,6 +8,8 @@ import {profileVisibilityFingerprint} from '@/lib/profile-policy-fingerprint';
 import {isProfileVisibilityPolicyValue,profileFieldApproval} from '@/lib/profile-edit-policy-value';
 import {resolveEssVisibleIds,linkedEssFieldIds} from '@/lib/personnel-ess-visibility';
 import { getTranslations } from 'next-intl/server';
+import { peopleSettingsBack } from '@/app/admin/settings/people/back';
+import { PeopleSettingsNavigation } from '@/components/people-settings-navigation';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import {getSetting} from '@/core/entitlements';
 import {essVisibleFields,resolveEssEditableIds,resolveEssPrimaryEditableIds} from '@/lib/personnel-ess-contract';
@@ -89,7 +91,8 @@ export default async function ProfileRequestSettingsPage({
 
   return (
     <div className={pageWideCls}>
-      <PageHeader title={t('title')} description={t('description')} />
+      <PageHeader title={t('title')} description={t('description')} back={await peopleSettingsBack()} />
+      <PeopleSettingsNavigation />
 
       <ErrorBanner message={sp.error} />
       {sp.toast ? (

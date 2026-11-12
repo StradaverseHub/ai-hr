@@ -189,9 +189,10 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
     // r429 (f6819e19) · D7 — MOVED TO SECOND. The Shift page's own week row is retired (D1): this section
     // is now the ONLY place a working week is set at all, and it is this round's main screen. The other
     // five keep their relative order.
+    // c03670cc — the Duty Roster ('workingDay') tab is RETIRED: its switch and rotation sit in General
+    // directly under Shift Allowed, and an old `?section=workingDay` link resolves to General.
     expect([...SCHEDULE_SECTION_KEYS]).toEqual([
       'general',
-      'workingDay',
       'holiday',
       'overtime',
       'attendance',
@@ -222,7 +223,7 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
    * overtime without clocking, approval method, Intersect, and offset-overtime-by-lateness (which is the
    * only one of them that moves money and ships alone). Adding a panel key here still fails, loudly.
    */
-  it('exactly four sections are built — Holiday / Request / Notification still render EMPTY', () => {
+  it('exactly three sections are built — Holiday / Request / Notification still render EMPTY', () => {
     // 665de026 — READ FROM THE DECLARED SET, NOT FROM A REGEX OVER THE PAGE. Until this round the page
     // handed `panels={{ … }}` to a tab shell and this case matched that object; the screen has no tab
     // shell now, so the declaration moved into ./sections.ts where the page and this guard read the same
@@ -231,13 +232,13 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
     const supplied = [...SCHEDULE_BUILT_SECTIONS].sort();
     expect(
       supplied,
-      `The built sections are General (1c5602cc), Attendance (e5ff7189 stage 1), Overtime ` +
-        `(d91aee93 stage 1) and Working Day / Schedule Pattern (665de026, on the storage 07ebd04d shipped ` +
-        `in migration 0483) — no more and no fewer. Holiday / Request / Notification ship NAMED AND EMPTY ` +
+      `The built sections are General (1c5602cc; since c03670cc it also carries the Duty Roster that ` +
+        `665de026 gave its own section), Attendance (e5ff7189 stage 1) and Overtime ` +
+        `(d91aee93 stage 1) — no more and no fewer. Holiday / Request / Notification ship NAMED AND EMPTY ` +
         `so the shape is visible and nobody wonders whether they were forgotten. Do not fill one in with a ` +
         `control unless the storage behind it actually ships; when it does, raise that section as its own ` +
         `item and change this assertion with it, as r277 and 665de026 both did.`,
-    ).toEqual(['attendance', 'general', 'overtime', 'workingDay']);
+    ).toEqual(['attendance', 'general', 'overtime']);
     /**
      * Non-vacuity, and it is asserted over the WIRING rather than over the declarations.
      *
@@ -274,56 +275,42 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
   });
 
   /**
-   * ⚠️ THE SCOPE FENCE, SECOND HALF — e4471e3c (r287) MADE THESE TABS EDITABLE, SO THE FENCE HAD TO GROW
-   * A NEW SIDE.
+   * c03670cc — WAGE DEDUCTIONS MOVED FROM GENERAL TO ATTENDANCE, AND IT STILL HAS EXACTLY ONE WRITER.
    *
-   * Until this round the fence only had to stop a later-stage setting being DRAWN here, because nothing
-   * on the screen could be saved. Now it can: the Attendance and Overtime tabs write. So the list of
-   * things that must not appear gains the one setting the approved plan carried forward as its single
-   * deliberate exception, and it is the most important entry on the list.
-   *
-   * `apply_deductions` + `deductions_effective_from` (7c834696 stage 1, migration 0394) stay on the
-   * Schedule Group editor. The effective-from date is stamped by the SERVICE when the switch flips and
-   * can never be typed, and a DB CHECK makes "deductions on with no start date" unrepresentable —
-   * together, that is what stops a deduction reaching a payroll month that is already closed. A second
-   * form over that switch is a second way to get that date wrong. The tab SHOWS the switch and says where
-   * it is edited; what it must never grow is a control.
-   *
-   * The action refuses it too — app/admin/attendance/schedule/actions.ts never reads a form field by that
-   * name, and test/schedule-tab-writers.test.ts proves that against a real row including for a crafted
-   * request body. This case is the other half: the CONTROL must not appear, because a control that saves
-   * nothing is its own defect even when the writer is safe.
+   * `apply_deductions` + `deductions_effective_from` (7c834696 stage 1, migration 0394): the start date is
+   * stamped by the SERVICE when the switch flips and can never be typed, and a DB CHECK makes "deductions on
+   * with no start date" unrepresentable — that is what keeps a deduction out of a closed payroll month. The
+   * reporter asked for the card on the Attendance tab. It moved; it did not multiply. One control
+   * (components/schedule-wage-deductions.tsx WageDeductionsCard), mounted by the Attendance section and by
+   * Add Schedule's Attendance tab; General no longer draws or reads it (test/schedule-tab-writers.test.ts runs the actions).
    */
-  it('the deduction switch is NOT editable here — the one setting that deliberately did not move', () => {
-    // 665de026 — the Attendance SECTION moved off the list page onto the per-group screen, so the source
-    // this case reads moved with it. The invariant is identical and is now asserted over BOTH files:
-    // neither the list nor a group's page may grow a second control over the switch.
-    const src = read('app/admin/attendance/schedule/group-sections.tsx') + read('app/admin/attendance/schedule/page.tsx');
-    expect(
-      src,
-      'no input, checkbox or select named applyDeductions may exist on this screen. It is edited on the ' +
-        'Schedule Group editor and only there; see the note beside the card and ./actions.ts.',
-    ).not.toMatch(/name=["'{`]?applyDeductions/);
-    expect(
-      src,
-      'nor may the effective-from date become a field — the service stamps it, it is never typed',
-    ).not.toMatch(/name=["'{`]?deductionsEffectiveFrom/);
-    // Stated positively, so the guard cannot be satisfied by the screen simply not mentioning the switch:
-    // the reporter must still be able to SEE its state and find out where to change it.
-    expect(src, 'the switch is still shown').toContain('applyDeductions');
-    // 665de026 — `deductionsElsewhere` became `deductionsHere`, and the rename is the point rather than a
-    // tidy-up: the editor that owns the switch is no longer a page away, it is the General section at the
-    // top of THIS screen, so a sentence saying "edited on the Schedule Group itself" would have sent the
-    // reader looking for a screen that no longer exists. The old key was deleted from all six catalogues
-    // in the same change.
-    expect(src, 'with the sentence explaining where it is edited').toContain("t('deductionsHere')");
-    // r301 — the editor that owns it is the SAME editor, rules/rule-form.tsx. So "the switch is not
-    // editable here" keeps its meaning — no SECOND control over it — and is asserted as exactly that:
-    // rule-form.tsx is the only file under app/ that draws it.
-    // 665de026 — it is mounted TWICE now, and both mounts are named below rather than the count being
-    // relaxed: Add Schedule (a new group's identity is all that can exist before the row does) and the
-    // Edit Schedule sections. A THIRD mount, or a mount from anywhere outside the Schedule screens, still
-    // fails here.
+  it('the deduction switch has one control, in Attendance, and its start date is never a field', () => {
+    const sections = read('app/admin/attendance/schedule/group-sections.tsx');
+    const ruleForm = read('app/admin/attendance-policy/rules/rule-form.tsx');
+    const src = sections + read('app/admin/attendance/schedule/page.tsx');
+    expect(src, 'the per-group screen mounts the shared card instead of drawing a second control')
+      .not.toMatch(/name=["'{`]?applyDeductions/);
+    expect(sections, 'the Attendance section mounts the Wage Deductions card').toMatch(/<WageDeductionsCard rule=\{rule\} editing=\{editing\}\/>/);
+    expect(src + ruleForm, 'the effective-from date is stamped by the service, never typed').not.toMatch(/name=["'{`]?deductionsEffectiveFrom/);
+    // The card lives in the Attendance body, after the record rules, and not in General.
+    const attendanceBody = /const attendanceBody = \(([\s\S]*?)\n  \);/.exec(sections)?.[1] ?? '';
+    expect(attendanceBody, 'the Attendance section body was not found').not.toBe('');
+    expect(attendanceBody).toContain('<WageDeductionsCard');
+    const general = /const general = <>([\s\S]*?)\n  <\/>;/.exec(sections)?.[1] ?? '';
+    expect(general, 'the General section body was not found').not.toBe('');
+    expect(general).not.toContain('WageDeductionsCard');
+    // On Add Schedule the card is in the Attendance tab body, never in General.
+    const formGeneral = /const general = <>([\s\S]*?)\n  <\/>;/.exec(ruleForm)?.[1] ?? '';
+    const formAttendance = /const attendance = <>([\s\S]*?)\n  <\/>;/.exec(ruleForm)?.[1] ?? '';
+    expect(formGeneral, 'the Add Schedule General body was not found').not.toBe('');
+    expect(formGeneral).not.toMatch(/applyDeductions|WageDeductionsCard/);
+    expect(formAttendance).toContain('<WageDeductionsCard rule={rule} editing/>');
+    // The writer moved with the control: Attendance reads it behind its own marker; General never reads it.
+    const actions = read('app/admin/attendance/schedule/actions.ts');
+    expect(actions).toMatch(/fd\.get\('deductionsEditor'\)==='1'\)fields\.applyDeductions=fd\.get\('applyDeductions'\)==='on'/);
+    const generalAction = /export async function saveScheduleGroupGeneralAction[\s\S]*?\n}\n/.exec(read('app/admin/attendance-policy/rule-actions.ts'))?.[0] ?? '';
+    expect(generalAction, 'saveScheduleGroupGeneralAction was not found').not.toBe('');
+    expect(generalAction, 'General no longer writes the switch').not.toContain('applyDeductions');
     const walk = (dir: string): string[] =>
       readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((e) => {
         const rel = `${dir}/${e.name}`;
@@ -332,11 +319,10 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
       });
     const appFiles = walk('app');
     expect(
-      appFiles.filter((f) => /name=["'{`]?applyDeductions/.test(read(f))),
-      'exactly one control over the deduction switch exists, and it is the Schedule Group editor’s',
-    ).toEqual(['app/admin/attendance-policy/rules/rule-form.tsx']);
-    // Resolved, not string-matched: any file importing THAT rule-form.tsx, by whatever relative spelling or the
-    // @/ alias (app/admin/leave-approval has an unrelated RuleForm of its own). Type-only imports are not mounts.
+      [...appFiles, ...walk('components')].filter((f) => /name=["'{`]?applyDeductions/.test(read(f))),
+      'exactly one control over the deduction switch exists: WageDeductionsCard',
+    ).toEqual(['components/schedule-wage-deductions.tsx']);
+    expect(read('components/schedule-wage-deductions.tsx'), 'and its date is never a field').not.toMatch(/name=["'{`]?deductionsEffectiveFrom/);
     const importsRuleForm = (f: string) =>
       [...read(f).matchAll(/import\s+(?!type\b)[^;]*?from '([^']*rule-form)'/g)].some((m) => {
         const spec = m[1];
@@ -347,8 +333,12 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
       appFiles.filter((f) => importsRuleForm(f)).sort(),
       'and that editor is mounted by the Add Schedule page and the Edit Schedule sections, and nothing else',
     ).toEqual(
-      ['app/admin/attendance/schedule/group-sections.tsx', 'app/admin/attendance/schedule/new/page.tsx'].sort(),
+      // 2f803985 — Overtime Patterns › 1. General Settings imports only the band renderer (never RuleForm,
+      // and so never the deduction switch) for a legacy Schedule Group pattern.
+      ['app/admin/attendance/schedule/group-sections.tsx', 'app/admin/attendance/schedule/new/page.tsx',
+        'app/admin/attendance/settings/overtime-patterns/legacy-bands.tsx'].sort(),
     );
+    expect(read('app/admin/attendance/settings/overtime-patterns/legacy-bands.tsx')).not.toContain('RuleForm');
   });
 
   it('the built sections show settings that ALREADY EXIST, and read them from the Schedule Group', () => {
@@ -363,10 +353,10 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
       'lateDeductMinutes',
       'earlyAfterMinutes',
       'earlyDeductMinutes',
-      'applyDeductions',
-      'applyToEarlyOt',
-      'roundingMode',
-      'roundToMinutes',
+      // c03670cc — `applyDeductions` is rendered by rule-form.tsx WageDeductionsCard, which this file mounts
+      // in the Attendance section (asserted in the deduction-switch case above).
+      // 2f803985 — applyToEarlyOt, roundingMode and roundToMinutes moved with the band editor to Overtime
+      // Patterns › 1. General Settings; they are asserted on that file below.
       // 665de026 — the seventh section's three columns (07ebd04d, migration 0483). They are listed HERE,
       // beside the six r277 settings, for the same reason those are: each is a stored column, and a
       // section quietly emptied out in a later round must fail rather than disappear.
@@ -376,6 +366,11 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
     ]) {
       expect(src, `the built sections render attendance_rule.${field}`).toContain(field);
     }
+    const bands = read('app/admin/attendance/settings/overtime-patterns/legacy-bands.tsx') + read('app/admin/attendance-policy/rules/rule-form.tsx');
+    for (const field of ['applyToEarlyOt', 'roundingMode', 'roundToMinutes']) {
+      expect(bands, `the relocated band editor renders attendance_rule.${field}`).toContain(field);
+    }
+    expect(src, 'and the Schedule Group no longer draws the bands').not.toContain('renderScheduleOvertimeBands');
     // And they render it FOR ONE GROUP — which, since 665de026, is the PAGE rather than a picker on it.
     // That is the item: the reporter asked for one Schedule Group to be one screen.
     expect(src, 'the sections are rendered for a single rule').toMatch(/rule: AttendanceRuleView;/);
@@ -523,15 +518,38 @@ describe('1c5602cc — the "Not configured here" card is tied to the absences it
     expect(controls).toContain('app.can_admin_employment');
     expect(controls).toContain('lockPayrollForAttendanceChange');
     expect(controls).toContain('roster.manual-changes');
-    expect(read('app/admin/attendance/schedule/group-sections.tsx')).toContain("controlPanel('duty')");
+    // 2f803985 — no separate switch: a saved Working Day / Schedule Pattern turns the control on, in the
+    // rotation writer's own transaction, with its own audit event.
+    expect(read('app/admin/attendance/schedule/group-sections.tsx')).not.toContain("controlPanel('duty')");
+    const rotation=read('core/attendance-rotation.ts');
+    expect(rotation).toContain('dutyRosterControl: true');
+    expect(rotation).toContain("eventType: 'attendance-rule.duty-roster-control.changed'");
     const roster=read('core/roster.ts');
-    for(const writer of ['assignShift','setRestDay','clearRoster','assignShiftBulk','setRestDayBulk','copyRoster']){
-      const start=roster.indexOf(`export async function ${writer}(`);
-      expect(start,writer).toBeGreaterThanOrEqual(0);
+    const bodyOf=(name:string)=>{
+      const start=roster.indexOf(`export async function ${name}(`);
+      expect(start,name).toBeGreaterThanOrEqual(0);
       const end=roster.indexOf('\nexport ',start+1);
       const body=roster.slice(start,end<0?undefined:end);
-      expect(body.length,writer).toBeGreaterThan(100);
-      expect(body,writer).toContain('assertDutyRosterWriteTx');
+      expect(body.length,name).toBeGreaterThan(100);
+      return body;
+    };
+    // 22b594902 (roster bulk operations on the shared job kernel): the three bulk writers delegate their rows to the
+    // per-employee row writers the background job also runs, and the guard moved into those. Pin the CALL (a comment
+    // naming the guard is not a guard) in the writer that actually takes it, and the delegation to it.
+    const ROW_WRITER:Record<string,string>={assignShiftBulk:'writeRosterShiftRowsTx',setRestDayBulk:'writeRosterRestRowsTx',copyRoster:'copyRosterRowsTx'};
+    for(const writer of ['assignShift','setRestDay','clearRoster','assignShiftBulk','setRestDayBulk','copyRoster']){
+      const body=bodyOf(writer),rows=ROW_WRITER[writer];
+      if(rows)expect(body,writer).toMatch(new RegExp(`await ${rows}\\(tx,ctx,`));
+      expect(rows?bodyOf(rows):body,rows??writer).toMatch(/await assertDutyRosterWriteTx\(tx,ctx,/);
+    }
+    // The background job writes through the same row writers, re-runs the guard in its rolled-back check steps, and
+    // re-checks the administrator at prepare, at every chunk, at every step and at finalize.
+    const worker=read('core/roster-bulk-worker.ts');
+    for(const call of ['writeRosterShiftRowsTx(tx,ctx,','writeRosterRestRowsTx(tx,ctx,','copyRosterRowsTx(tx,ctx,','await assertDutyRosterWriteTx(sp,ctx,values)'])expect(worker,call).toContain(call);
+    for(const owner of ['async function prepareRoster(','async function applyRosterStep(','async function finalizeRoster(','async beginChunkTx(tx,ctx,job){']){
+      const start=worker.indexOf(owner);
+      expect(start,owner).toBeGreaterThanOrEqual(0);
+      expect(worker.slice(start,start+400),owner).toContain('assertRosterAdmin(ctx);');
     }
   });
 

@@ -9,7 +9,7 @@ import {isPersonnelRegisterKind,buildPersonnelRegisterCsv} from '@/lib/personnel
 import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
 import { PersonnelImportValues } from '@/components/personnel-import-values';
 
-import { useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -35,6 +35,8 @@ import {
 } from '@/lib/import-sections';
 import type { ImportReference } from './employee-import';
 import { commitSectionAction, validateSectionAction,registerRecordsAction } from './section-actions';
+import {SectionImportJobPanel,SECTION_IMPORT_JOBS_ENDPOINT} from './section-import-progress';
+import {SECTION_IMPORT_ALREADY_RUNNING,sectionImportActive,type SectionImportJobProgress} from '@/lib/section-import-job';
 import { bankStatutoryChoices } from '@/lib/bank-statutory-import';
 
 /**
@@ -80,6 +82,24 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
   const commitPending = useRef(false);
   // Keep the submitted file fixed until the real write reports its outcome; never discard success.
   const [committing, setCommitting] = useState(false);
+  // The background import of this section, rejoined after navigation; the file stays fixed while it runs.
+  const [importJob, setImportJob] = useState<SectionImportJobProgress | null>(null);
+  useEffect(()=>{
+    if(section==='bank_statutory')return;
+    let alive=true;
+    fetch(SECTION_IMPORT_JOBS_ENDPOINT,{cache:'no-store'}).then(r=>r.ok?r.json():null).then(p=>{
+      if(!alive||!p?.jobs)return;
+      const active=(p.jobs as SectionImportJobProgress[]).find(job=>job.section===section&&sectionImportActive(job.state));
+      if(active){commitPending.current=true;setCommitting(true);onCommitPendingChange?.(true);setImportJob(active);}
+    }).catch(()=>undefined);
+    return()=>{alive=false;};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[section]);
+  const jobFinished=useCallback((r:SectionImportResult)=>{
+    setImportJob(null);setResult(r);
+    commitPending.current=false;setCommitting(false);onCommitPendingChange?.(false);
+    router.refresh();
+  },[onCommitPendingChange,router]);
 
   // Literal `t()` calls in a map, not a computed key: test/i18n-coverage.test.ts check C only resolves
   // literal keys, and a label that silently falls back to the key is exactly the class of bug it exists
@@ -256,6 +276,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
     commitPending.current = true;
     setCommitting(true);
     onCommitPendingChange?.(true);
+    let handedOff=false;
     startTransition(async () => {
       setError(null);
       try {
@@ -272,15 +293,19 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
           router.refresh();
           return;
         }
+        // The write runs in the background; its panel hands the same result to the result card when it ends.
         const r = await commitSectionAction(section, csv, `${label} · ${fileName ?? t('historyPasted')}`);
-        setResult(r);
-        router.refresh();
+        if ('error' in r) { setError(r.error === SECTION_IMPORT_ALREADY_RUNNING ? t('sectionJob.otherRunning') : r.error); return; }
+        handedOff = true;
+        setImportJob(r.job);
       } catch (e) {
         setError((e as Error).message);
       } finally {
-        commitPending.current = false;
-        setCommitting(false);
-        onCommitPendingChange?.(false);
+        if (!handedOff) {
+          commitPending.current = false;
+          setCommitting(false);
+          onCommitPendingChange?.(false);
+        }
       }
     });
   };
@@ -468,7 +493,9 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
         </Card>
       )}
 
-      {preview && !result && <SectionPreview preview={preview} onImport={commit} onDownloadErrors={downloadErrors} busy={pending} />}
+      {importJob && !result && <SectionImportJobPanel job={importJob} onFinished={jobFinished} />}
+
+      {preview && !result && !importJob && <SectionPreview preview={preview} onImport={commit} onDownloadErrors={downloadErrors} busy={pending} />}
     </div>
   );
 }

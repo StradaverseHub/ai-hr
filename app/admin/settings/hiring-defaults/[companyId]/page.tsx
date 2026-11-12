@@ -1,5 +1,6 @@
 import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
+import { PeopleSettingsNavigation } from '@/components/people-settings-navigation';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { scopedAdmin } from '@/lib/scope';
@@ -65,6 +66,7 @@ export default async function HiringDefaultsCompanyPage({
         description={company.companyLabel ?? undefined}
         back={{ href: PAGE, label: t('title') }}
       />
+      <PeopleSettingsNavigation />
       <ErrorBanner message={error} />
 
       <Card className="overflow-hidden">

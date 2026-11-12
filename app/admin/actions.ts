@@ -74,8 +74,9 @@ import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 // 93249794 — the Generate Entitlement run. `openLeaveYear` is no longer imported here: this file reaches
 // the grant sweep THROUGH core/leave-generation.ts, which calls it and writes the processing log, so the
 // engine has one entry point from the app layer instead of two.
-import { runLeaveGeneration } from '@/packs/leave/service';
-import { leaveGenerationMessages } from '@/lib/leave-generation-message';
+import type { LeaveGenerationRequest } from '@/packs/leave/service';
+import { createEarnedAccrualJob, createLeaveGenerationJob, createLeaveRecalcJob, LEAVE_COHORT_ALREADY_RUNNING } from '@/core/leave-cohort-job';
+import type { LeaveCohortJobProgress } from '@/lib/leave-cohort-job';
 import { orgCriteriaFromFields } from '@/core/org-criteria';
 // Override Leave Application (56910869): the trigger list the form iterates, so the card and the parser
 // cannot disagree about which rows exist.
@@ -142,7 +143,8 @@ import {
   LeaveSharedGroupNameTakenError,
 } from '@/core/leave-shared-group';
 import { inviteUser, revokeInvitation, setAppUserArchived } from '@/core/auth';
-import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
+import { setToilPolicy } from '@/core/toil';
+import { createReplacementYearCloseJob, createToilExpiryJob, TOIL_SWEEP_ALREADY_RUNNING } from '@/core/toil-sweep-job';
 import { REPLACEMENT_ELIGIBILITY_CRITERIA, type ReplacementRequestEligibility } from '@/core/replacement-eligibility';
 import { setEncashmentPolicy } from '@/core/leave-encashment';
 import type { ToilAccrualBasis, ToilExpiryAction, ToilExpiryUnit, ToilReplacementLeaveFrom } from '@/db/schema';
@@ -171,6 +173,7 @@ import {
   ENTITLEMENTS,
   GENERATE,
   ORGANIZATION,
+  SHARED_GROUPS,
   SPECIAL_SETTING,
   SYSTEM_LABELS,
   fail,
@@ -1042,7 +1045,10 @@ export async function setLeaveTypeRulesAction(formData: FormData) {
   // trigger, so a failure here must not turn a successful save into an error banner.
   if (saved.unconfiguredCleared) {
     try {
-      await reprojectEntitlementForLeaveTypeCohort(s, { leaveTypeId: id, trigger: 'leave_type_rules' });
+      // Bulk-job conversion: the same catch-up in the background (core/leave-follow-up-worker.ts), one employee per
+      // step, admitted at the same moment with the same as-at date. Without a signed-in user it still runs here.
+      if (s.userId) await createLeaveRecalcJob(s, { leaveTypeId: id, trigger: 'leave_type_rules', asOf: todayInKualaLumpur() });
+      else await reprojectEntitlementForLeaveTypeCohort(s, { leaveTypeId: id, trigger: 'leave_type_rules' });
     } catch (e) {
       console.error(`leave-type cohort catch-up failed for leave type ${id}:`, e);
     }
@@ -1113,20 +1119,21 @@ export async function previewEarnedAccrualAction(
  *  toasts + refreshes — the pattern grantAdHocLeaveAction used before 38f1fd40 retired it. */
 export async function runEarnedAccrualAction(
   scope: EarnedAccrualScope,
-): Promise<{ granted?: number; forfeits?: number; error?: string }> {
+): Promise<{ job?: LeaveCohortJobProgress; error?: string }> {
   const s = await requireAdmin();
   try {
     const asOf = asOfForLeaveYear(scope.year, todayInKualaLumpur());
-    const { granted, forfeits } = await accrueEarnedLeave(s, {
+    // Runs in the background (core/leave-cohort-worker.ts), one batch of employees per short transaction; the card
+    // follows the job and shows the same "{granted} generated, {forfeits} forfeits" toast when it finishes.
+    const job = await createEarnedAccrualJob(s, {
       asOf,
       companyIds: scope.companyIds,
       gradeIds: scope.gradeIds,
       leaveTypeIds: scope.leaveTypeIds,
     });
-    revalidatePath(LEAVE);
-    revalidatePath(ENTITLEMENTS);
-    return { granted, forfeits };
+    return { job };
   } catch (e) {
+    if (e instanceof Error && e.message === LEAVE_COHORT_ALREADY_RUNNING) return { error: (await getTranslations('admin.leave.processingJob'))('alreadyRunning') };
     return { error: publicErrorMessage(e) };
   }
 }
@@ -1432,7 +1439,7 @@ export async function openLeaveYearAction(formData: FormData) {
   const t = await getTranslations('admin.leave');
   const year = Number(formData.get('year'));
   const targetMode = formData.get('targetMode') === 'individual' ? 'individual' : 'criteria';
-  let res: Awaited<ReturnType<typeof runLeaveGeneration>>;
+  let job: LeaveCohortJobProgress;
   try {
     if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error('Invalid year');
     // r289 — THE POPULATION A PASTED EMPLOYEE ID RESOLVES AGAINST, read here rather than trusted from the
@@ -1440,7 +1447,9 @@ export async function openLeaveYearAction(formData: FormData) {
     // as it did in the live preview. Read ONLY in individual mode — the criteria path resolves nobody by
     // reference and must not pay for a list it will not look at.
     const pickPopulation = targetMode === 'individual' ? await listEmployeePickOptions(s) : [];
-    res = await runLeaveGeneration(s, {
+    // The run itself happens in the background (core/leave-cohort-worker.ts runs `runLeaveGeneration`'s phases in
+    // batches of employees); this request only checks authority and enqueues. The page follows the job.
+    const request: LeaveGenerationRequest = {
       year,
       // Empty ⇒ every type this sweep grants, exactly as the bare button did.
       leaveTypeIds: formData.getAll('leaveTypeIds').map(String).filter(Boolean),
@@ -1476,18 +1485,15 @@ export async function openLeaveYearAction(formData: FormData) {
               pickPopulation,
             )
           : undefined,
-    });
+    };
+    job = await createLeaveGenerationJob(s, request);
   } catch (e) {
-    fail(GENERATE, e);
+    fail(GENERATE, e instanceof Error && e.message === LEAVE_COHORT_ALREADY_RUNNING ? new Error(t('processingJob.alreadyRunning')) : e);
   }
-  // Localised HERE before the redirect (the dcd8e32f convention): ToastFromQuery renders the raw string, so
-  // an i18n key in the URL would surface to HR verbatim.
-  //
-  // r301 (e5018593) — ONE message for both halves of the run, composed from the result by one pure function
-  // (lib/leave-generation-message.ts). A failed earned accrual rides `?error=` beside it: the entitlement is
-  // committed and the toast says so, and the error says the earned part did not run and where to run it.
-  const message = leaveGenerationMessages((key, values) => t(key as never, values as never), res);
-  okToast(GENERATE, message.toast, message.error);
+  // r301 (e5018593) — the ONE message for both halves of the run is still composed from the result by
+  // lib/leave-generation-message.ts, now by the page's progress panel when the job finishes (a failed earned
+  // accrual still shows as its own error beside the success toast).
+  redirect(`${GENERATE}?job=${job.id}`);
 }
 
 export async function assignRoleAction(formData: FormData) {
@@ -2285,6 +2291,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
   try {
     await updateLeaveType(s, {
       id: leaveTypeId,
+      a2cInBackground: true,
       name: String(fd.get('name') ?? '').trim(),
       ...identityFields,
       eligibility,
@@ -2371,23 +2378,25 @@ export async function deleteLeaveTypeAction(fd: FormData) {
 // (a lapsed entitlement must not strand a settlement the employer already owes), which left a mutating
 // statutory sweep behind a bare session on a directly-POSTable server action. Same correction as
 // openLeaveYearAction above. The service asserts it too — a redirect is a UX gate, not authority.
+//
+// IN THE BACKGROUND (core/toil-sweep-worker.ts): the sweep used to be one request transaction holding the tenant's
+// Access lock and leave configuration lock for every employee. The action now checks the same authority and enqueues
+// it; the page follows the job (components/leave/toil-sweep-job-panel.tsx) and, when it finishes, opens the address
+// this action used to redirect to, `?processed=…&converted=…&lapsed=…&skipped=…` (lib/toil-sweep-job.ts
+// `toilSweepResultHref`). `skipped` still carries core/toil.ts's `skippedOutOfScope` to the banner: dropping it would
+// put the partial-sweep signal back where it was, the same success banner whether nothing was due or another
+// company's statutory settlements were silently left behind.
 export async function runToilExpiryAction() {
   const s = await requireAdmin();
   const today = todayInKualaLumpur();
-  let result;
+  let job;
   try {
-    result = await runToilExpiry(s, { today });
+    job = await createToilExpiryJob(s, { today });
   } catch (e) {
-    fail(TOIL_POLICY, e);
+    fail(TOIL_POLICY, e instanceof Error && e.message === TOIL_SWEEP_ALREADY_RUNNING ? new Error((await getTranslations('admin.toilPolicy.sweepJob'))('alreadyRunning')) : e);
   }
   revalidatePath(TOIL_POLICY);
-  // `skipped` carries core/toil.ts's `skippedOutOfScope` to the banner. Dropping it here would put the
-  // partial-sweep signal back where it was: a company-scoped admin would see the same success banner
-  // whether nothing was due or another company's statutory settlements were silently left behind.
-  redirect(
-    `${TOIL_POLICY}?processed=${result!.processed}&converted=${result!.converted}&lapsed=${result!.lapsed}` +
-      `&skipped=${result!.skippedOutOfScope}`,
-  );
+  redirect(`${TOIL_POLICY}?job=${job!.id}`);
 }
 
 // RL Control Engine (0113) — year-end rollover: expire (or carry-forward, per each accrual's frozen flag) the
@@ -2396,20 +2405,19 @@ export async function runToilExpiryAction() {
 // requireAdmin() for the reason given on runToilExpiryAction, and more sharply here: this writes a
 // `replacement-leave-year.closed` marker, and `domain_event` has UPDATE/DELETE REVOKEd from ai_hr_app, so
 // a marker written by the wrong caller cannot be undone through the product.
+// In the background like runToilExpiryAction; the finished job opens the address this action used to redirect to,
+// `?closed=1&closedAlready=…&closedProcessed=…&closedConverted=…&closedLapsed=…&closedCarried=…`.
 export async function closeReplacementLeaveYearAction() {
   const s = await requireAdmin();
   const asOf = `${new Date().getUTCFullYear()}-12-31`;
-  let result;
+  let job;
   try {
-    result = await closeReplacementLeaveYear(s, { asOf });
+    job = await createReplacementYearCloseJob(s, { asOf });
   } catch (e) {
-    fail(TOIL_POLICY, e);
+    fail(TOIL_POLICY, e instanceof Error && e.message === TOIL_SWEEP_ALREADY_RUNNING ? new Error((await getTranslations('admin.toilPolicy.sweepJob'))('alreadyRunning')) : e);
   }
   revalidatePath(TOIL_POLICY);
-  redirect(
-    `${TOIL_POLICY}?closed=1&closedAlready=${result!.alreadyClosed ? 1 : 0}&closedProcessed=${result!.processed}` +
-      `&closedConverted=${result!.converted}&closedLapsed=${result!.lapsed}&closedCarried=${result!.carriedForward}`,
-  );
+  redirect(`${TOIL_POLICY}?job=${job!.id}`);
 }
 
 // ADR-0033 33-5 — upsert one company's TOIL (leave-in-lieu) policy. Checkboxes ⇒ presence test.
@@ -3021,13 +3029,17 @@ async function sharedGroupFailure(e: unknown): Promise<never> {
   // Leave types screen; it is drawn there at PAGE level, above the per-type workspace and outside it, so
   // it still reads as spanning several types rather than as a property of the selected one. The return
   // address follows the editor, exactly as it did at the cutover and for the same reason.
+  //
+  // 50d9b809 — SHARED_GROUPS, not ENTITLEMENTS. The editor left the Entitlements screen for its own
+  // Shared Leave Groups page under Leave Settings, so every success and every refusal of the three actions
+  // below returns there — the `?error=` banner lands on the page that holds the form it is about.
   if (e instanceof LeaveTypeAlreadyGroupedError) {
-    return fail(ENTITLEMENTS, t('errorAlreadyGrouped', { type: e.leaveTypeName, group: e.groupName }));
+    return fail(SHARED_GROUPS, t('errorAlreadyGrouped', { type: e.leaveTypeName, group: e.groupName }));
   }
   if (e instanceof LeaveSharedGroupNameTakenError) {
-    return fail(ENTITLEMENTS, t('errorNameTaken', { name: e.groupName }));
+    return fail(SHARED_GROUPS, t('errorNameTaken', { name: e.groupName }));
   }
-  return fail(ENTITLEMENTS, e);
+  return fail(SHARED_GROUPS, e);
 }
 
 export async function createLeaveSharedGroupAction(fd: FormData) {
@@ -3046,7 +3058,7 @@ export async function createLeaveSharedGroupAction(fd: FormData) {
   } catch (e) {
     await sharedGroupFailure(e);
   }
-  ok(ENTITLEMENTS);
+  ok(SHARED_GROUPS);
 }
 
 export async function updateLeaveSharedGroupAction(fd: FormData) {
@@ -3066,7 +3078,7 @@ export async function updateLeaveSharedGroupAction(fd: FormData) {
   } catch (e) {
     await sharedGroupFailure(e);
   }
-  ok(ENTITLEMENTS);
+  ok(SHARED_GROUPS);
 }
 
 export async function deleteLeaveSharedGroupAction(fd: FormData) {
@@ -3074,7 +3086,7 @@ export async function deleteLeaveSharedGroupAction(fd: FormData) {
   try {
     await deleteLeaveSharedGroup(s, { id: String(fd.get('id') ?? '') });
   } catch (e) {
-    fail(ENTITLEMENTS, e);
+    fail(SHARED_GROUPS, e);
   }
-  ok(ENTITLEMENTS);
+  ok(SHARED_GROUPS);
 }

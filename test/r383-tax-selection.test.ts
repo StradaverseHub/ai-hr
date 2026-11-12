@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {setTimeout as delay} from 'node:timers/promises';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
@@ -25,6 +26,60 @@ describe('direct employer Income Tax Resident selection',()=>{
   expect(await resolve()).toMatchObject({scheme:'resident',selectionVersion:1,selectionSource:'income_tax_resident'});
   const other=await hireEmployee(adminCtx(b),{person:{fullName:'Synthetic nonresident',primaryEmail:`nr_${randomUUID()}@example.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01',initialTaxScheme:'non_resident'});
   const view=await getTaxSelectionMY(adminCtx(b),other.employmentId);expect(view).toMatchObject({scheme:'non_resident',transitionState:'resolved',version:1});
+ });
+ it('reads the same initialized selection and version while the native writer barriers are held',async()=>{
+  const ctx=adminCtx(b);
+  const selected=await save('rep');
+  const expected=await withTenant(ctx,tx=>getTaxSelectionMY(ctx,e.employmentId,undefined,{tx,readOnly:true}),{readOnlySnapshot:true});
+  expect(expected).toMatchObject({scheme:'rep',transitionState:'resolved',version:selected.version,taxApplicabilityEpoch:0});
+  const ready=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
+  const holder=owner.db.transaction(async tx=>{
+   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0)),
+    pg_advisory_xact_lock(hashtextextended(${b.tenantId+e.employmentId+'tax-scheme'},0))`);
+   const [profile]=await tx.select({id:schema.employeeStatutoryMy.id}).from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,e.personId)).for('update');
+   expect(profile).toBeDefined();
+   ready.resolve();
+   await release.promise;
+  });
+  const deadline=new AbortController();
+  let reading:ReturnType<typeof getTaxSelectionMY>|undefined;
+  try{
+   await Promise.race([ready.promise,holder]);
+   reading=getTaxSelectionMY(ctx,e.employmentId);
+   await expect(Promise.race([reading,delay(4_000,undefined,{signal:deadline.signal}).then(()=>{
+    throw new Error('Initialized tax selection waited for the native writer');
+   })])).resolves.toEqual(expected);
+  }finally{
+   deadline.abort();
+   release.resolve();
+   await Promise.allSettled(reading?[holder,reading]:[holder]);
+  }
+ });
+ it('refuses a stale supplied HR grant before disclosing the initialized selection',async()=>{
+  const userId=await createAppUser(b.tenantId,null,'hr_admin');
+  const ctx={...adminCtx(b),userId};
+  expect(await getTaxSelectionMY(ctx,e.employmentId)).toMatchObject({scheme:'resident',version:1});
+  await owner.db.delete(schema.roleAssignment).where(and(eq(schema.roleAssignment.appUserId,userId),eq(schema.roleAssignment.role,'hr_admin')));
+  await expect(getTaxSelectionMY(ctx,e.employmentId)).rejects.toThrow('Statutory authority unavailable');
+ });
+ it('keeps an explicitly borrowed missing selection read-only and initializes once for authorized native HR',async()=>{
+  await legacy('non_resident',false);
+  const ctx=adminCtx(b),stored=()=>owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,e.employmentId));
+  const before=await withTenant(ctx,tx=>getTaxSelectionMY(ctx,e.employmentId,undefined,{tx,readOnly:true}),{readOnlySnapshot:true});
+  expect(before).toMatchObject({scheme:null,version:0,transitionState:'confirmation_required',taxApplicabilityEpoch:0});
+  expect(await stored()).toEqual([]);
+  const initialized=await getTaxSelectionMY(ctx,e.employmentId);
+  expect(initialized).toEqual({...before,scheme:'non_resident',version:1,transitionState:'resolved'});
+  const rows=await stored();
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({source:'legacy_conversion',legacyScheme:'non_resident',updatedByUserId:ctx.userId});
+  expect(await getTaxSelectionMY(ctx,e.employmentId)).toEqual(initialized);
+  expect(await stored()).toEqual(rows);
+ });
+ it('retains suspended-tenant refusal for the ordinary standalone view',async()=>{
+  const current=adminCtx(b);
+  const ctx:SessionContext={...current,entitlements:{...current.entitlements!,tenantStatus:'suspended'}};
+  await expect(getTaxSelectionMY(ctx,e.employmentId)).rejects.toMatchObject({cause:{code:'25006'}});
  });
  it.each(['resident','non_resident','rep','knowledge_worker','c_suite'])('direct %s choice routes without any declaration',async scheme=>{
   await owner.db.update(schema.employeeStatutoryMy).set({epfCitizenship:'non_citizen'}).where(eq(schema.employeeStatutoryMy.personId,e.personId));

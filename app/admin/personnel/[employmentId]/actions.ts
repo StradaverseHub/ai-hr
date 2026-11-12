@@ -6,7 +6,7 @@ import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect,unstable_rethrow } from 'next/navigation';
-import {movementHistoryHref} from '@/lib/personnel-movement-navigation';
+import {movementPageHref} from '@/lib/personnel-movement-navigation';
 import { getTranslations } from 'next-intl/server';
 import { setEmploymentCardId } from '@/core/attendance-card';
 import { requireAdmin } from '@/lib/authz';
@@ -32,7 +32,7 @@ import {
 import { reprojectEntitlementForEmployment } from '@/core/leave';
 // c063eea9 — the hire-details correction. Its form parser lives in core/ (a 'use server' module may only
 // export async functions) and reads ONLY the six allow-listed fields.
-import { correctHireDetails, parseHireCorrectionForm } from '@/core/hire-correction';
+import { correctHireDetails, parseHireCorrectionEndDate, parseHireCorrectionForm } from '@/core/hire-correction';
 // r256 420ebab5 — the SERVICE behind the Payroll tab's policy card. The per-card door is
 // assignPolicyAction (app/admin/payroll-policy/actions.ts, resolved through getSession); the consolidated
 // door reaches the same service directly, under requireAdmin, so both write through one implementation.
@@ -90,9 +90,10 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 function withTab(formData: FormData, url: string): string {
   if(formData.get('movementPage')){
     const id=String(formData.get('employmentId')??'');
-    const destination=movementHistoryHref(id,{showCorrected:String(formData.get('showCorrected')??''),from:String(formData.get('from')??'')});
+    const destination=movementPageHref(id,'history',undefined,{showCorrected:String(formData.get('showCorrected')??''),from:String(formData.get('from')??'')});
     const parsed=new URL(url,'https://personnel.invalid'),target=new URL(destination,'https://personnel.invalid');
     if(parsed.searchParams.has('toast'))target.searchParams.set('toast',parsed.searchParams.get('toast')!);
+    if(parsed.searchParams.has('error'))target.searchParams.set('error',parsed.searchParams.get('error')!);
     return target.pathname+target.search+target.hash;
   }
   const tab = String(formData.get('tab') ?? '').trim();
@@ -446,6 +447,9 @@ function parseMovementForm(formData: FormData, mode: 'create' | 'edit' = 'create
     paymentTerm: optional('paymentTerm') ?? undefined,
     // The flat, non-dated org columns the comparison screen now carries (Division … Category).
     ...Object.fromEntries(MOVEMENT_FLAT_FIELDS.map((f) => [f, optional(f)])),
+    // 2260a06b — the end date of the Employee Type the movement leaves the employee with (only that row renders).
+    contractEndDate: optional('contractEndDate'),
+    internshipEndDate: optional('internshipEndDate'),
     // ae9350f2 — the Termination movement's structured exit fields. The reason CODE is the only thing the
     // form posts for classification: core/movement.ts validates it against the built-in catalogue and
     // derives `terminationType` from it, so the two can never be submitted in contradiction.
@@ -489,12 +493,9 @@ export async function createMovementEventAction(formData: FormData) {
   let payrollFlagged: string[] = [];
   try {
     const p = parseMovementForm(formData);
-    // 9e2a89e9 — READ BEFORE THE WRITE. After createMovementEvent has committed, employment.grade_id is
-    // the NEW grade and the old one is unrecoverable without replaying the event trail, so the history
-    // row could only ever have named one of the two. One indexed read, on the path that already opens
-    // several transactions.
-    const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
-    const res = await createMovementEvent(s, { employmentId, ...p, documents: await parseMovementDocuments(formData) });
+    const res = await createMovementEvent(s, {
+      employmentId, ...p, documents: await parseMovementDocuments(formData),
+    }, {captureGradeBefore:true});
     if (res && 'payrollFlaggedPeriods' in res && Array.isArray(res.payrollFlaggedPeriods)) {
       payrollFlagged = res.payrollFlaggedPeriods as string[];
     }
@@ -521,7 +522,7 @@ export async function createMovementEventAction(formData: FormData) {
       // recorded as having taken effect on 1 July. It reaches the AUDIT row only — the ledger row keeps
       // the posting date, because re-dating money is a separate decision (see the migration's header).
       await recomputeEntitlement(s, employmentId, 'movement_recorded', {
-        gradeBefore,
+        gradeBefore: res.gradeBefore,
         changeEffectiveOn: p.effectiveDate ?? null,
       });
     }
@@ -651,6 +652,7 @@ export async function correctHireDetailsAction(formData: FormData) {
     const res = await correctHireDetails(s, {
       employmentId,
       changes: parseHireCorrectionForm(formData),
+      endDates: parseHireCorrectionEndDate(formData),
       basicSalary: salary === null ? undefined : Number(salary),
       reason: orNull(formData.get('reason')),
     });
@@ -1269,6 +1271,8 @@ async function applyEmploymentInfoSection(
     contractStartDate: str('contractStartDate'),
     contractEndDate: str('contractEndDate'),
     contractRemark: str('contractRemark'),
+    // 2260a06b — the Internship Information block, rendered only for an Intern; absent (undefined) otherwise.
+    internshipEndDate: str('internshipEndDate'),
     // c5ac75fa / 8ebabbf2 — the eight flat org columns (orgDivision/orgBranch/orgRegion/orgLine/orgSection/
     // orgTeam/orgBase/employmentCategory) are NOT written here. They were owned by
     // setOrganisationAssignmentAction, which 8ebabbf2 deleted along with the editable Organisation

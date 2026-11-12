@@ -7,6 +7,7 @@ import * as schema from '../db/schema';
 import * as reads from '../core/read';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
+import {setAiCentreReadControl} from '../core/ai-centre-inventory';
 import {runGovernedModuleReadPlan,reopenGovernedModuleReadJobTx} from '../core/module-agent-releases';
 import {loadAiWorkspace} from '../core/ai-workspace';
 import {decryptSecret,encryptSecret} from '../lib/ai/crypto';
@@ -14,7 +15,7 @@ import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-governed-job-secret');await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
-async function fixture(){const admin=adminCtx(base);
+async function fixture(){const admin:SessionContext={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
  const make=async(name:string)=>{const subject=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
   const userId=await createAppUser(base.tenantId,subject.personId,'employee');await grantAssistant(admin,{appUserId:userId});
   const ctx:SessionContext={...await entitledCtx(base,['employee']),userId,personId:subject.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};return {ctx,subject};};
@@ -49,7 +50,16 @@ describe('human-invoked current-user governed jobs',()=>{
   const original=reads.myOwnEmploymentSubjectsTx;const spy=vi.spyOn(reads,'myOwnEmploymentSubjectsTx').mockImplementation(async(tx,current,...args)=>{
    const [row]=await tx.execute<{pid:number;readonly:string}>(sql`select pg_backend_pid() as pid,current_setting('transaction_read_only') as readonly`);expect(row.readonly).toBe('on');pids.push(row.pid);return original(tx,current,...args);
   });
-  const first=await reopen(f.mine.ctx,job.jobId);expect(first.changedSinceRun).toBe(false);expect(new Set(pids).size).toBe(1);spy.mockRestore();
+  await owner.client.begin(async holder=>{
+   await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+base.tenantId},0))`;
+   await holder`select pg_advisory_xact_lock_shared(hashtext('ai-control'),hashtext(${base.tenantId}))`;
+   const first=await reopen(f.mine.ctx,job.jobId);expect(first.changedSinceRun).toBe(false);
+   expect(new Set(pids).size).toBe(1);
+  });
+  spy.mockRestore();
+  await setAiCentreReadControl(f.admin,'module:employees',false);
+  await expect(reopen(f.mine.ctx,job.jobId)).rejects.toMatchObject({reason:'paused'});
+  await setAiCentreReadControl(f.admin,'module:employees',true);
   await owner.db.update(schema.employment).set({employeeCode:'CHANGED-CANONICAL-CODE'}).where(eq(schema.employment.id,f.mine.subject.employmentId));
   const second=await reopen(f.mine.ctx,job.jobId);expect(second.changedSinceRun).toBe(true);expect(JSON.stringify(second.results)).toContain('CHANGED-CANONICAL-CODE');
   const workspace=await loadAiWorkspace(f.mine.ctx,{includeHistory:false,includeGovernance:false,governedJobId:job.jobId});

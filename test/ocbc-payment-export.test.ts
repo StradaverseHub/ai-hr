@@ -11,6 +11,7 @@ import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {ocbcBankPaymentFiles} from '../localization/my/ocbc-payment';
 import {appUser,bankPaymentExport,companyBankProfile,companyStatutoryAuthority,companyStatutoryMy,employeeStatutoryMy,payPeriod,payrollBatch,payslip} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {withRunPayPeriod} from '../core/payroll-period-lock';
 import type {BankPaymentRequest} from '../localization/country-pack';
 describe('OCBC immutable generated bank artifacts',()=>{
  let b:Base;const day=todayInKualaLumpur(),period=day.slice(0,7),start=day.slice(0,4)+'-01-01';
@@ -62,7 +63,8 @@ describe('OCBC immutable generated bank artifacts',()=>{
   const ctx={...await entitledCtx(b,['hr_admin']),grants:[{role:'hr_admin',companyId:null}]};
   const {batchId:bonusId}=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'bonus'});
   await closeBatch(ctx,{batchId});
-  const [regular]=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));
+  const [read]=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));
+  const regular=withRunPayPeriod(read,()=>Error('Expected the committed run to carry its pay period'));
   const monthStatus=async ()=>(await owner.db.select({status:payPeriod.status}).from(payPeriod).where(eq(payPeriod.id,regular.payPeriodId)))[0].status;
   const selection={companyId:b.companyId,category:'socso'} as const;
   const {runSeq:_,...monthly}=request;

@@ -1,0 +1,16 @@
+{
+ "kind":"NOTIFICATION_WORKER_NATIVE_LIFECYCLE_PROTOTYPE_REQUEST",
+ "releaseEligible":false,
+ "base":"6094fb821429c27e17430422ea1192a9c7ba1075",
+ "status":"Source recovery of terminal pre-case database-name guard failure42389556301; native rerun and compiler remain pending",
+ "selector":"docs/qualification/notification-worker-lifecycle-focused-tests.json",
+ "execution":"Sole-file standard hosted Actions, job-owned disposable PostgreSQL16 worker database",
+ "runTypecheck":true,
+ "runBuild":false,
+ "buildScope":"No production entrypoint, existing dispatcher, scheduler or fallback changed; no production build claim",
+ "implementedCapabilities":["open_run","scope_page","open_batch","events","finish_batch(empty only)","settle_scope","finish_run","fail_run"],
+ "mutations":["Private native capability state","Fixed-key job_run native accounting only"],
+ "absentCapabilities":["Event fact families","Canonical recipient/render adapter extraction","Reminder preparation","Employment/account notification projection","Outbox/receipt/cursor settlement","Nonzero projection counters","Abandoned-run recovery/retention","Installer and protected invocation/scheduler acceptance"],
+ "production":"Held; no numbered migration, journal, live role/schema, source table grants, app/owner SET edge, SMTP/provider or deployment operation",
+ "recovery":{"originalRun":"42389556301","originalSource":"6094fb821429c27e17430422ea1192a9c7ba1075","failure":"Actual canonical /ai_hr_test_w_aifocus1 rejected by guessed numeric-first test/SQL guards","scope":"Exact canonical test/db-names.ts binding, native current_database/loopback proof and independent executed SQL guard refusal controls; native capability bodies unchanged","documentation":"docs/architecture/NOTIFICATION-WORKER-LIFECYCLE-NAMESPACE-RECOVERY.md"}
+}

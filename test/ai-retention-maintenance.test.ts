@@ -14,7 +14,7 @@ import { createBatch, setPayrollInput, generatePayslips, closeBatch } from '../p
 import { preparePayrollReopenReview } from '../core/assistant-actions/payroll-reopen-review-store';
 import { prepareOrgActionReview, confirmOrgActionReview } from '../core/assistant-actions/org-action-review-store';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from '../core/access-configuration-lock';
 import { retireExpiredAiCustodyTx, AI_RETENTION_MAINTAINED_RELATIONS } from '../core/ai-retention-maintenance';
 import { runAiRetentionTick } from '../scripts/ai-retention-runner';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, setSetting, entitledCtx, type Base } from './harness';
@@ -223,7 +223,7 @@ describe('out-of-band expired AI custody maintenance', () => {
     let ready!: () => void, fail!: (error: unknown) => void, release!: () => void;
     const started = new Promise<void>((yes, no) => { ready = yes; fail = no; }), finish = new Promise<void>(yes => { release = yes; });
     const watchdog = setTimeout(() => { fail(Error('owned retention handshake timed out')); release(); }, 10_000);
-    const holder = withTenant(adminCtx(base), async tx => { await lockAccessConfigurationTx(tx, base.tenantId); ready(); await finish; });
+    const holder = withTenant(adminCtx(base), async tx => { await lockAccessConfigurationWriteTx(tx, base.tenantId); ready(); await finish; });
     void holder.catch(fail);
     try {
       await started; const result = await runAiRetentionTick(owner);
@@ -233,6 +233,29 @@ describe('out-of-band expired AI custody maintenance', () => {
     finally { release(); clearTimeout(watchdog); await holder; }
     expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:0,chats:0, backlog: false, oldestExpiredAgeSeconds: null });
   });
+  it('retires the oldest queue under continuous overlapping shared writers, where a plain try is always busy', async () => {
+    await review(true); await feedback(true);
+    let stop = false;
+    // Five ordinary writers keep Access shared at every moment, the way clock-ins do all day.
+    const key = 'access-configuration:' + base.tenantId;
+    const traffic = Promise.all(Array.from({ length: 5 }, async (_, index) => {
+      await new Promise(resolve => setTimeout(resolve, index * 8));
+      while (!stop) await owner.client.begin(async tx => { await tx`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`; await tx`select pg_sleep(0.04)`; });
+    }));
+    try {
+      await new Promise(resolve => setTimeout(resolve, 150));
+      const tries: boolean[] = [];
+      for (let i = 0; i < 8; i++) {
+        tries.push(await owner.db.transaction(async tx => {
+          const [row] = await tx.execute<{ owned: boolean }>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'access-configuration:' + base.tenantId},0)) as owned`);
+          return row.owned;
+        }));
+        await new Promise(resolve => setTimeout(resolve, 15));
+      }
+      expect(tries.filter(Boolean)).toEqual([]);
+      expect(await runAiRetentionTick(owner)).toMatchObject({ tenants: 1, busy: 0, reviews: 1, feedback: 1 });
+    } finally { stop = true; await traffic; }
+  }, 60000);
   it('reports real remaining expired custody after the100-row bound, then clears it in a separate pass', async () => {
     const ids: string[] = [];
     for (let index=0; index<101; index++) ids.push(await review(true));

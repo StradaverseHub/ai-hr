@@ -1,0 +1,30 @@
+{
+  "kind": "NATIVE_SHELL_NAVIGATION_PREPARED_NOT_BROWSER_ACCEPTANCE",
+  "base": "b7fcfc5ca82b83964b75d5e1fb0c4e88aa25e778",
+  "qualification": "NOT_RUN; source/diff only",
+  "sourceSha256": {
+    "scripts/performance/navigation-shell-browser.ts": "f9621840fd7bcc77934e57e890c0a3619376b2fc7134b69ec3896b9ca1248995",
+    "scripts/performance/navigation-entry.ts": "af01bdaec1bcd89272b7ae517b76a70dee974226d1d78f88c7717a63a9a0f919",
+    "scripts/performance/navigation-protocol.ts": "338e8e65d7e18eb4aba1150860fd776be79036a729e1639366707a54ed8bf811",
+    "scripts/performance/navigation-scenarios.json": "6dae3cc787e5da49e8f00eb30e0d093f7669f8fff3f87aa5f966a00d9397ca7a",
+    "scripts/performance/navigation-browser-capture.ts": "f0519ded30e0b3b782043941c4907ee5dbf1639a966f724f0bf1814b0409c9cf",
+    "test/navigation-shell-browser.dom.test.tsx": "e6243e2a0ce2e0244106d64466bb295361801768adaabf5e14d7352c129ada52",
+    "test/navigation-entry.test.ts": "cdc767bec861eaa8f8e35ba6f9ce970cb5f9a8c95b44a20dcc71d11fec114606",
+    "test/navigation-development-protocol.test.ts": "2e7522cf721575c9386cc67074ceae231dfe567219566cb55f79fa1c179c289a",
+    "docs/qualification/native-shell-navigation-coverage-20261108.md": "c00203720e10b4ef438a87bb6038eddab415011661ad3b1d90daaff6c9f4fee3"
+  },
+  "focusedSelectors": [
+    "test/navigation-shell-browser.dom.test.tsx",
+    "test/navigation-entry.test.ts",
+    "test/navigation-development-protocol.test.ts",
+    "test/navigation-development-verifier.test.ts",
+    "test/navigation-browser-capture.test.ts",
+    "test/navigation-coverage.test.ts",
+    "test/navigation-fixture-bindings.test.ts"
+  ],
+  "plannedCases": 48,
+  "plannedDestinations": 14,
+  "runtimeAcceptance": false,
+  "releaseAuthorized": false,
+  "production": "HELD"
+}

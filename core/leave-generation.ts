@@ -244,11 +244,30 @@ export async function runLeaveGeneration(
   return generate(ctx, p, false);
 }
 
-async function generate(
+/**
+ * What one Generate Entitlement run is aimed at, read once before anything is written: the year, the selected
+ * people (③), and the two facts the earned Annual Leave hand-over needs. Shared by the synchronous run and the
+ * background job (core/leave-cohort-worker.ts), so both select exactly the same people.
+ */
+export type LeaveGenerationPlan = {
+  year: number;
+  leaveTypeIds: string[];
+  targetMode: 'criteria' | 'individual';
+  criteria: OrgCriteria;
+  givenIds: string[];
+  today: string;
+  asOf: string;
+  asOfLate: string;
+  targets: string[];
+  earnedAnnualTypeIds: string[];
+  /** `employmentId|leaveTypeId` keys whose following year has already started (see below). */
+  nextYearStarted: string[];
+};
+
+export async function planLeaveGeneration(
   ctx: SessionContext,
   p: LeaveGenerationRequest,
-  dryRun: boolean,
-): Promise<LeaveGenerationResult> {
+): Promise<{ plan: LeaveGenerationPlan; empty?: undefined } | { empty: LeaveGenerationResult; plan?: undefined }> {
   const year = Number(p.year);
   if (!Number.isInteger(year) || year < 2020 || year > 2100) {
     // The same window openLeaveYearAction has always enforced, said once here so both the preview and the
@@ -331,7 +350,7 @@ async function generate(
   // means "every type this sweep grants", because that is exactly what the plain Generate button this
   // screen replaces has always done. Empty PEOPLE is a mistake; empty TYPES is a choice.
   if (targets.length === 0) {
-    return {
+    return { empty: {
       year,
       employeesSelected: 0,
       employeesReached: 0,
@@ -343,7 +362,7 @@ async function generate(
       lines: [],
       decidedBy: [],
       accrual: null,
-    };
+    } };
   }
 
   // r301 (parent hand-fix) — which leave types in scope are EARNED ANNUAL LEAVE, read BEFORE the year-open so the
@@ -369,56 +388,22 @@ async function generate(
     today > `${year}-12-31` && earnedAnnualTypeIds.size > 0 && targets.length > 0
       ? await pairsWithLedgerRowsAfter(ctx, { employmentIds: targets, leaveTypeIds: [...earnedAnnualTypeIds], after: `${year}-12-31` })
       : new Set<string>();
+  return { plan: { year, leaveTypeIds, targetMode, criteria, givenIds, today, asOf, asOfLate, targets, earnedAnnualTypeIds: [...earnedAnnualTypeIds], nextYearStarted: [...nextYearStarted] } };
+}
 
-  // ── ④/⑤ THE ENGINE. One call. `dryRun` is the ONLY difference between preview and commit. ───────────
-  const res = await openLeaveYear(ctx, { year, leaveTypeIds, employmentIds: targets, dryRun });
-  const engineRows = res.rows;
-  const counts = { granted: res.granted, skipped: res.skipped, forfeits: res.forfeits };
-
-  // ── r301 (e5018593) · EARNED ANNUAL LEAVE, IN THE SAME GENERATION ─────────────────────────────────────
-  //
-  // The year-open above logs an earned Annual Leave pair as `earned_method` and writes nothing for it, by
-  // design (ADR-0040): those days are `accrueEarnedLeave`'s. Until this round nothing called that engine from
-  // here, so every such pair read as Failed and the days appeared only when someone remembered Run Earned
-  // Accrual or the monthly cron came round. Now the SAME generation hands exactly those pairs to it.
-  //
-  // • ANOTHER ENGINE, NOT A SECOND DEFINITION. This module still composes no day: it aims `accrueEarnedLeave`
-  //   the way it aims `openLeaveYear`, and passes it the SAME `dryRun` variable, so the preview's earned
-  //   figures are the commit's (2c7c6385, preview-must-not-lie) and there is still one path, not two.
-  // • WHO: the employees and Annual Leave types of the `earned_method` lines whose r299 flag is false, and
-  //   nobody else. The employee list is passed as `employmentIds`, where EMPTY MEANS NOBODY — and it is
-  //   never empty here anyway, because the call is skipped when there is no such line.
-  // • ⚠️ …AND THE PAIRS THE YEAR-OPEN CALLS `already_open` ON AN EARNED ANNUAL LEAVE TYPE (parent hand-fix).
-  //   The year-open decides "already open" (ANY accrual row inside the year — a prior Run Earned Accrual, the
-  //   monthly cron, a hire grant) BEFORE it reads the earning method, so on any tenant where the cron has run
-  //   once, every earned Annual Leave pair comes back `already_open`, never `earned_method`. Handing over only
-  //   `earned_method` lines left the plan's "works out the earned Annual Leave straight away" true only for
-  //   employees with no row yet (the builder measured it on the dev database). The accrual only ever adds the
-  //   SHORTFALL, so handing an up-to-date pair over is safe: it reads "already up to date" and writes nothing.
-  // • WHEN: at `asOfLate`, the late edge the selection already used — today for the current year, 31
-  //   December for a past one (`asOfForLeaveYear`).
-  // • ⚠️ NEVER A FUTURE YEAR. `asOfForLeaveYear` maps a future year to its 31 December, which was a decision
-  //   for the MANUAL button. Here it would post a whole unearned year: the balance readers carry no date
-  //   bound, so days dated next 31 December are spendable today, and the once-per-cycle carry forfeit would
-  //   lock on a mid-year balance. The result says the days are added as the year goes by instead.
-  // • ⚠️ ITS OWN TRANSACTION, AFTER THE YEAR-OPEN HAS COMMITTED, AND A FAILURE IS RETURNED, NOT THROWN. The
-  //   header's rule: the ledger is the truth, and a failure after a grant must never read as "nothing
-  //   happened" — the entitlement above is written and stays written. The operator is told the earned part
-  //   did not run and where to run it. On a preview the same failure is shown before anything is written.
-  // • ⚠️ A FORMER NEIGHBOUR, BY ADDRESS ONLY. r281 split the two screens so "create a year" and "top up what
-  //   was earned" are never confused; this does not reopen that: Run Earned Accrual keeps its own page, and
-  //   nothing earned is ever created ahead of time.
+/** r301 — which year-open lines the SAME generation hands to the earned accrual (see the notes in `generate`). */
+export function leaveGenerationHandover(plan: Pick<LeaveGenerationPlan, 'year' | 'today' | 'asOfLate' | 'earnedAnnualTypeIds' | 'nextYearStarted'>, engineRows: readonly LeaveYearGrantRow[]) {
+  const { year, today } = plan;
+  const earnedAnnualTypeIds = new Set(plan.earnedAnnualTypeIds);
+  const nextYearStarted = new Set(plan.nextYearStarted);
   const earnedLines = engineRows.filter((r) => r.outcome === 'earned_method');
   const openAnnualLeaveLines = engineRows.filter(
     (r) => r.outcome === 'already_open' && earnedAnnualTypeIds.has(r.leaveTypeId),
   );
   const annualLeaveLines = [...earnedLines.filter((r) => !r.earnedMethodNotAnnualLeave), ...openAnnualLeaveLines];
   const handedLines = annualLeaveLines.filter((r) => !nextYearStarted.has(`${r.employmentId}|${r.leaveTypeId}`));
-  let accrual: LeaveGenerationAccrual | null = null;
-  let accrued: EarnedAccrualResult['pairs'] = [];
-  if (earnedLines.length > 0 || openAnnualLeaveLines.length > 0) {
-    const skippedFutureYear = today < `${year}-01-01`;
-    accrual = {
+  const skippedFutureYear = today < `${year}-01-01`;
+  const accrualStart = (): LeaveGenerationAccrual | null => earnedLines.length > 0 || openAnnualLeaveLines.length > 0 ? {
       annualLeaveLines: annualLeaveLines.length,
       notAnnualLeaveLines: earnedLines.filter((r) => r.earnedMethodNotAnnualLeave).length,
       skippedFutureYear,
@@ -430,33 +415,86 @@ async function generate(
       days: 0,
       byLeaveType: [],
       error: null,
-    };
-    if (handedLines.length > 0 && !skippedFutureYear) {
-      accrual.asOf = asOfLate;
-      try {
-        const acc = await accrueEarnedLeave(ctx, {
-          asOf: asOfLate,
-          leaveTypeIds: [...new Set(handedLines.map((r) => r.leaveTypeId))],
-          employmentIds: [...new Set(handedLines.map((r) => r.employmentId))],
-          dryRun,
-        });
-        // The engine scopes by employee LIST × type LIST, which can include a held-back pair when one employee has
-        // several types; keep only the pairs handed over.
-        const handed = new Set(handedLines.map((r) => `${r.employmentId}|${r.leaveTypeId}`));
-        accrued = acc.pairs.filter((p) => handed.has(`${p.employmentId}|${p.leaveTypeId}`));
-        // r301 (parent hand-fix) — counted from the PAIRS, not breakdown.employeeCount, which also counted pairs with
-        // no entitlement to earn.
-        accrual.posted = accrued.filter((p) => p.days > 0).length;
-        accrual.upToDate = accrued.filter((p) => p.days <= 0).length;
-        accrual.days = round2(accrued.reduce((n, p) => n + p.days, 0));
-        accrual.byLeaveType = summariseByLeaveType({ ...acc, pairs: accrued });
-        accrual.forfeits = acc.forfeits;
-        counts.forfeits += acc.forfeits;
-      } catch (e) {
-        accrual.error = (e as Error).message || 'Earned accrual failed.';
-      }
+    } : null;
+  /** The one accrual call the hand-over makes, or null when there is nothing to hand over (or a future year). */
+  const call = earnedLines.length + openAnnualLeaveLines.length > 0 && handedLines.length > 0 && !skippedFutureYear
+    ? { asOf: plan.asOfLate, leaveTypeIds: [...new Set(handedLines.map((r) => r.leaveTypeId))], employmentIds: [...new Set(handedLines.map((r) => r.employmentId))] }
+    : null;
+  return { earnedLines, openAnnualLeaveLines, annualLeaveLines, handedLines, accrualStart, call };
+}
+
+/** Fills the accrual half of the result from what the accrual engine returned for the handed-over pairs, and
+ * returns the pairs it reached. The caller decides when the engine ran and records its error if it failed. */
+export function applyGenerationAccrual(
+  accrual: LeaveGenerationAccrual,
+  handover: Pick<ReturnType<typeof leaveGenerationHandover>, 'handedLines'>,
+  acc: { pairs: EarnedAccrualResult['pairs']; forfeits: number; breakdown: readonly { leaveTypeId: string; leaveTypeName: string }[] },
+): EarnedAccrualResult['pairs'] {
+  const { handedLines } = handover;
+  // The engine scopes by employee LIST × type LIST, which can include a held-back pair when one employee has
+  // several types; keep only the pairs handed over.
+  const handed = new Set(handedLines.map((r) => `${r.employmentId}|${r.leaveTypeId}`));
+  const accrued = acc.pairs.filter((p) => handed.has(`${p.employmentId}|${p.leaveTypeId}`));
+  // r301 (parent hand-fix) — counted from the PAIRS, not breakdown.employeeCount, which also counted pairs with
+  // no entitlement to earn.
+  accrual.posted = accrued.filter((p) => p.days > 0).length;
+  accrual.upToDate = accrued.filter((p) => p.days <= 0).length;
+  accrual.days = round2(accrued.reduce((n, p) => n + p.days, 0));
+  accrual.byLeaveType = summariseByLeaveType({ ...acc, pairs: accrued });
+  accrual.forfeits = acc.forfeits;
+  return accrued;
+}
+
+
+async function generate(
+  ctx: SessionContext,
+  p: LeaveGenerationRequest,
+  dryRun: boolean,
+): Promise<LeaveGenerationResult> {
+  const planned = await planLeaveGeneration(ctx, p);
+  if (planned.empty) return planned.empty;
+  const plan = planned.plan;
+  const { year, leaveTypeIds, targets } = plan;
+
+  // ── ④/⑤ THE ENGINE. One call. `dryRun` is the ONLY difference between preview and commit. ───────────
+  const res = await openLeaveYear(ctx, { year, leaveTypeIds, employmentIds: targets, dryRun });
+  const engineRows = res.rows;
+  const counts = { granted: res.granted, skipped: res.skipped, forfeits: res.forfeits };
+
+  // r301 (e5018593) — the earned Annual Leave lines, handed to the accrual in its OWN transaction after the year-open
+  // committed (see `leaveGenerationHandover`), the SAME `dryRun`, and a failure RECORDED, never thrown: the
+  // entitlement above is written and stays written.
+  const handover = leaveGenerationHandover(plan, engineRows);
+  const accrual = handover.accrualStart();
+  let accrued: EarnedAccrualResult['pairs'] = [];
+  if (accrual && handover.call) {
+    accrual.asOf = handover.call.asOf;
+    try {
+      const acc = await accrueEarnedLeave(ctx, { asOf: handover.call.asOf, leaveTypeIds: handover.call.leaveTypeIds, employmentIds: handover.call.employmentIds, dryRun });
+      accrued = applyGenerationAccrual(accrual, handover, acc);
+      counts.forfeits += acc.forfeits;
+    } catch (e) {
+      accrual.error = (e as Error).message || 'Earned accrual failed.';
     }
   }
+  return completeLeaveGeneration(ctx, plan, engineRows, counts, accrual, accrued, dryRun);
+}
+
+/** ③–⑤'s ending: name the lines, count passed and failed, and — on a real run — write the processing log. The
+ * year-open and accrual engines have already committed their own ledger rows and summary events. `logTx` runs
+ * inside the log's own transaction (the background job records that it finished in the same commit). */
+export async function completeLeaveGeneration(
+  ctx: SessionContext,
+  plan: LeaveGenerationPlan,
+  engineRows: LeaveYearGrantRow[],
+  counts: { granted: number; skipped: number; forfeits: number },
+  accrual: LeaveGenerationAccrual | null,
+  accrued: EarnedAccrualResult['pairs'],
+  dryRun: boolean,
+  logTx?: (tx: Tx, runId: string, result: LeaveGenerationResult) => Promise<void>,
+): Promise<LeaveGenerationResult> {
+  const { year, leaveTypeIds, targetMode, criteria, givenIds, targets, asOf } = plan;
+  const earnedAnnualTypeIds = new Set(plan.earnedAnnualTypeIds);
   // Which engine lines the accrual reached. Only an Annual Leave `earned_method` line can be — the accrual was
   // scoped to exactly those pairs — and the guard says so rather than trusting the scope to have held.
   const accruedBy = new Map(accrued.map((a) => [`${a.employmentId}|${a.leaveTypeId}`, a.days]));
@@ -525,9 +563,12 @@ async function generate(
         employeesFailed,
       })
       .returning({ id: leaveGenerationRun.id });
-    if (engineRows.length) {
+    // In statements of at most 1,000 lines, in the same transaction: one statement for every line exceeded the
+    // database's 65,535 bind parameters at about 7,300 lines (3,000 employees with three leave types), which
+    // failed the log after the grants had committed.
+    for (let at = 0; at < engineRows.length; at += 1000) {
       await tx.insert(leaveGenerationRunItem).values(
-        engineRows.map((r) => ({
+        engineRows.slice(at, at + 1000).map((r) => ({
           tenantId: ctx.tenantId,
           runId: run.id,
           employmentId: r.employmentId,
@@ -556,6 +597,7 @@ async function generate(
       // business in an immutable log.
       payload: { year, leaveTypeIds, targetMode, criteriaAxes: Object.keys(criteria), employeesSelected: targets.length, granted: counts.granted, skipped: counts.skipped, forfeits: counts.forfeits, employeesPassed, employeesFailed, earnedAccrual: accrual ? { posted: accrual.posted, upToDate: accrual.upToDate, days: accrual.days, skippedFutureYear: accrual.skippedFutureYear, failed: accrual.error !== null } : null },
     });
+    await logTx?.(tx, run.id, result);
     return run.id;
   });
   return { ...result, runId };
@@ -599,7 +641,7 @@ async function resolveDecidedBy(
  * are its breakdown unrolled — see `EarnedAccrualResult.pairs`). The name comes from the breakdown the same
  * engine returned, so this reads no table of its own.
  */
-function summariseByLeaveType(acc: EarnedAccrualResult): LeaveGenerationAccrual['byLeaveType'] {
+function summariseByLeaveType(acc: { breakdown: readonly { leaveTypeId: string; leaveTypeName: string }[]; pairs: EarnedAccrualResult['pairs'] }): LeaveGenerationAccrual['byLeaveType'] {
   const nameOf = new Map(acc.breakdown.map((g) => [g.leaveTypeId, g.leaveTypeName]));
   const byType = new Map<string, LeaveGenerationAccrual['byLeaveType'][number]>();
   for (const p of acc.pairs) {

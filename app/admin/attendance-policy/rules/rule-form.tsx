@@ -1,11 +1,13 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
-import { Card, ErrorBanner, Field, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { ScheduleRotationEditor } from '@/components/schedule-rotation-editor';
 import { ScheduleGroupTabs } from '@/components/schedule-group-tabs';
 import { ScheduleDraftShiftPicker } from '@/components/schedule-shift-picker';
-import { ScheduleClockFields, type ScheduleClockCompany } from '@/components/schedule-clock-fields';
+import { ScheduleClockFields, type ScheduleClockSettings } from '@/components/schedule-clock-fields';
+import { formatOtRate } from '@/lib/ot-rate';
+import { WageDeductionsCard } from '@/components/schedule-wage-deductions';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { AttendanceRuleOtEditor, type OtEditorRow } from '@/components/attendance-rule-ot-editor';
 import type { AttendanceRuleView } from '@/core/attendance-rule';
@@ -57,7 +59,7 @@ export async function RuleForm({
   generalOnly = false,
   savedReceipt,
   initialSection,
-  clockCompanies = [],
+  clockCompanies = {canUseAll:false,group:[],companies:[]},
   canEditShared = true,
 }: {
   hideAllowedShifts?: boolean;
@@ -65,7 +67,7 @@ export async function RuleForm({
   generalOnly?: boolean;
   savedReceipt?: string;
   initialSection?: string | null;
-  clockCompanies?: ScheduleClockCompany[];
+  clockCompanies?: ScheduleClockSettings;
   canEditShared?: boolean;
   rule: AttendanceRuleView | null;
   shifts: readonly RuleShiftChoice[];
@@ -81,6 +83,16 @@ export async function RuleForm({
   const ts=await getTranslations('admin.scheduleConfig');
   const te=await getTranslations('scheduleGroupEditor');
   const tr=await getTranslations('admin.rotation');
+  const tomorrow = new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+86_400_000).toISOString().slice(0,10);
+  const monday=new Date(tomorrow+"T00:00:00Z");
+  monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+  const duty = canEditShared ? <Card><SectionHeader title={ts('sectionWorkingDay')} subtitle={tr('title')}/>
+    <p className="px-4 pt-3 text-sm text-muted-foreground">{te('dutyRosterPoolNote')}</p>
+    <ScheduleRotationEditor creating editing ruleId="" revision="" minimumDate={tomorrow}
+    initial={{effectiveFrom:tomorrow,anchorDate:monday.toISOString().slice(0,10),unit:'week',length:1,days:Array.from({length:7},()=>({kind:'rest',shiftId:null}))}}
+    shifts={shifts.map(shift=>({...shift,startTime:shift.startTime??null,endTime:shift.endTime??null,halfEnd:shift.halfEnd??null,
+      fullMinutes:shift.fullMinutes??0,halfMinutes:shift.halfMinutes??0,archived:false,available:true,selected:false}))}/>
+  </Card> : <Card className="p-4 text-sm text-muted-foreground">{te('createBeforeRotation')}</Card>;
   const general = <>
         <Card className="space-y-4 p-4">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -107,29 +119,6 @@ export async function RuleForm({
           {isDefault && <p className="text-xs text-muted-foreground">{t('standardNote')}</p>}
         </Card>
 
-        {/* 7c834696 stage 1 — the deduction switch. The two "after X → deduct Y" pairs above were stored
-            and read by nothing until this release, so every rule's effective deduction has always been
-            zero. Turning them on for everybody at once would take minutes off people whose employer never
-            knew the field was live — hence a per-rule switch that ships OFF, with the start date stamped
-            by the server (never typed) so it can only ever be today or later. */}
-        <Card className="space-y-3 p-4">
-          <h2 className="text-sm font-semibold text-foreground">{t('deductionsSectionTitle')}</h2>
-          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/10">
-            <input type="checkbox" name="applyDeductions" defaultChecked={rule?.applyDeductions ?? false} className="mt-0.5 h-3.5 w-3.5 accent-primary" />
-            <span>
-              <span className="font-medium text-foreground">{t('applyDeductionsLabel')}</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">{t('applyDeductionsHint')}</span>
-            </span>
-          </label>
-          <p className="text-xs text-muted-foreground">
-            {t('deductionsFromLabel')}:{' '}
-            <span className="font-medium tabular-nums text-foreground">
-              {rule?.deductionsEffectiveFrom ?? t('deductionsFromNone')}
-            </span>
-          </p>
-        </Card>
-
-
         {!hideAllowedShifts && <Card className="space-y-3 p-4">
           <h2 className="font-semibold">{ts('sectionWorkingDay')}</h2>
           <p className="text-sm text-muted-foreground">{te('newPattern')}</p>
@@ -151,6 +140,8 @@ export async function RuleForm({
             <ScheduleDraftShiftPicker base shifts={shifts.map(shift=>({...shift,available:true,archived:false}))}/>
           </>}
         </Card>}
+        {/* c03670cc — the Duty Roster sits directly under Shift Allowed and draws from the same pool. */}
+        {!editing && duty}
   </>;
   const grace = <div className="space-y-3">
     <h3 className="font-semibold">{ts('graceTitle')}</h3>
@@ -158,7 +149,7 @@ export async function RuleForm({
     <Field label={te('earlyGrace')}><input type="number" min={0} name="earlyGracePeriodMinutes" defaultValue={rule?.earlyGracePeriodMinutes??0} className={inputCls}/></Field>
   </div>;
   const attendance = <>
-    <ScheduleClockFields companies={clockCompanies} today={todayInKualaLumpur()} editing grace={grace}/>
+    <ScheduleClockFields settings={clockCompanies} editing grace={grace}/>
 
         {/* Section 1 — Lateness */}
         <Card className="space-y-3 p-4">
@@ -193,19 +184,9 @@ export async function RuleForm({
             {t('includeGraceInEarlyOut')}
           </label>
         </Card>
-
-
-
+        <WageDeductionsCard rule={rule} editing/>
   </>;
   const overtime = generalOnly ? null : await renderScheduleOvertimeBands(rule);
-  const tomorrow = new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+86_400_000).toISOString().slice(0,10);
-  const monday=new Date(tomorrow+"T00:00:00Z");
-  monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
-  const duty = canEditShared ? <Card><ScheduleRotationEditor creating editing ruleId="" revision="" minimumDate={tomorrow}
-    initial={{effectiveFrom:tomorrow,anchorDate:monday.toISOString().slice(0,10),unit:'week',length:1,days:Array.from({length:7},()=>({kind:'rest',shiftId:null}))}}
-    shifts={shifts.map(shift=>({...shift,startTime:shift.startTime??null,endTime:shift.endTime??null,halfEnd:shift.halfEnd??null,
-      fullMinutes:shift.fullMinutes??0,halfMinutes:shift.halfMinutes??0,archived:false,available:true,selected:false}))}/>
-  </Card> : <Card className="p-4 text-sm text-muted-foreground">{te('createBeforeRotation')}</Card>;
   return (
     <div className="space-y-6">
       <ErrorBanner message={error}/>
@@ -214,7 +195,6 @@ export async function RuleForm({
         {!editing ? <ScheduleGroupTabs initial={initialSection} ariaLabel={ts('sectionsAria')} initialPool={[]}
           tabs={[
             {id:'general',label:ts('sectionGeneral'),body:general},
-            {id:'workingDay',label:te('dutyRoster'),body:duty},
             {id:'attendance',label:ts('sectionAttendance'),body:attendance},
             {id:'overtime',label:ts('sectionOvertime'),body:overtime},
           ]}/>
@@ -241,10 +221,10 @@ export async function renderScheduleOvertimeBands(rule:AttendanceRuleView|null) 
     toH: Math.floor(r.toMinutes / 60),
     toM: r.toMinutes % 60,
     ratePattern: r.ratePattern,
-    // ONE decimal place on both sides — the variable-rate <select> compares option values as strings, and
-    // the old toFixed(2) ("1.50") matched none of them, so a saved 1.5 band reopened showing the wrong rate.
-    rate: Number(r.rate).toFixed(Number(r.rate)*10%1===0?1:2),
-    phRate: r.phRate == null ? '' : Number(r.phRate).toFixed(Number(r.phRate)*10%1===0?1:2),
+    // c03670cc — formatted from the stored decimal's own digits (1.50 → "1.5", 1.75 → "1.75", 2 → "2.0"),
+    // never through float arithmetic, so a saved rate always reopens exactly as it was typed.
+    rate: formatOtRate(r.rate),
+    phRate: r.phRate == null ? '' : formatOtRate(r.phRate),
     roundingMode: r.roundingMode,
     roundToMinutes: r.roundToMinutes,
   }));
@@ -276,6 +256,10 @@ export async function renderScheduleOvertimeBands(rule:AttendanceRuleView|null) 
     emptyHint: t('otEmptyHint'),
     colPhRate: t('otColPhRate'),
     phRateNone: t('otPhRateNone'),
+    rateInvalid: t('otRateInvalid'),
+    phRateInvalid: t('otPhRateInvalid'),
+    rateHint: t('otRateHint'),
+    otherRateNote: String(t.raw('otOtherRateNote')),
     // Passed as TEMPLATES with {placeholders} the island fills in — a formatter function would be a
     // closure crossing the server→client boundary, which is the RSC bug this repo has shipped before.
     //
@@ -288,9 +272,14 @@ export async function renderScheduleOvertimeBands(rule:AttendanceRuleView|null) 
   };
 
   return <>
-    <Card className="p-4"><AttendanceRuleOtEditor initialRows={initialRows} initialApplyEarlyOt={rule?.applyToEarlyOt??false} labels={otLabels}/></Card>
+    <Card className="space-y-3 p-4"><AttendanceRuleOtEditor initialRows={initialRows} initialApplyEarlyOt={rule?.applyToEarlyOt??false} labels={otLabels}/>
+      <p className="text-xs text-muted-foreground">{t('otRateHint')}</p>
+      {/* c03670cc — band rates are reporting only; payroll overtime pay does not read them. */}
+      <p className="border-l-2 border-border pl-3 text-sm" data-ot-rate-reporting-note="">{t('otRateReportingNote')}</p>
+    </Card>
     <p className="rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
       {t('statutoryCapNote')}
     </p>
   </>;
 }
+

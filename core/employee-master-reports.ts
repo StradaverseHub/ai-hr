@@ -11,6 +11,7 @@ import { legacyEmployeeMasterSpec } from '../lib/employee-master-legacy';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { masterSpecFields, runEmployeeMasterProjection, validateEmployeeMasterDefinition, validateEmployeeMasterSpec, EmployeeMasterSpecError, MASTER_PREVIEW_ROWS, type EmployeeMasterSpec, type EmployeeMasterResult } from '../lib/employee-master-report';
 import { masterReportFieldsTx, MasterReportAccessError } from './employee-master-access';
+import {withAccessDisplayRead} from './access-configuration-lock';
 import { employeeMasterSubjectsTx } from './employee-master-projection';
 
 export type MasterTemplate={id:string;name:string;description:string;ownerUserId:string|null;ownerName:string|null;shared:boolean;sharedRoleIds:string[];version:number;lastRunAt:string|null;scheduleEnabled:boolean;updatedAt:string;spec:EmployeeMasterSpec;canEdit:boolean};
@@ -53,20 +54,45 @@ export async function saveEmployeeMasterReport(ctx:SessionContext,scopeIds:reado
     return row;
   });
 }
-async function templateTx(tx:Tx,ctx:SessionContext,scopeIds:readonly string[],id:string,purpose:'definition'|'execution'):Promise<MasterTemplate>{
+async function readTemplateDefinitionTx(tx:Tx,ctx:SessionContext,scopeIds:readonly string[],id:string,purpose:'definition'|'execution'){
   const row=await visibleTx(tx,id);const {spec}=await checkedTx(tx,ctx,legacyEmployeeMasterSpec(row.spec,[...scopeIds],todayInKualaLumpur()),scopeIds,purpose);
+  return {row,spec};
+}
+async function projectTemplateTx(tx:Tx,ctx:SessionContext,{row,spec}:Awaited<ReturnType<typeof readTemplateDefinitionTx>>):Promise<MasterTemplate>{
   const [admin]=await tx.execute(sql`select app.is_admin() as admin`) as unknown as {admin:boolean}[];
   const names=await tx.execute(sql`select p.full_name as name from app_user u left join person p on p.id=u.person_id where u.id=${row.createdByUserId}::uuid`) as unknown as {name:string|null}[];
   const [schedule]=await tx.select({enabled:customReportSchedule.enabled}).from(customReportSchedule).where(eq(customReportSchedule.reportId,row.id)).limit(1);
   return {id:row.id,name:row.name,description:row.description,ownerUserId:row.createdByUserId,ownerName:names[0]?.name??null,shared:row.shared,sharedRoleIds:row.sharedRoleIds,version:row.version,lastRunAt:row.lastRunAt?.toISOString()??null,scheduleEnabled:schedule?.enabled??false,updatedAt:row.updatedAt.toISOString(),spec,canEdit:row.createdByUserId===ctx.userId||!!admin?.admin};
 }
+async function templateTx(tx:Tx,ctx:SessionContext,scopeIds:readonly string[],id:string,purpose:'definition'|'execution'):Promise<MasterTemplate>{
+  return projectTemplateTx(tx,ctx,await readTemplateDefinitionTx(tx,ctx,scopeIds,id,purpose));
+}
 /** Read the unchanged authorised definition so an expired condition can be repaired in the builder. */
 export async function getEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string):Promise<MasterTemplate>{return withTenant(ctx,tx=>templateTx(tx,ctx,scopeIds,id,'definition'));}
 /** Scheduling and delivery consumers retain the same strict validation as an actual run. */
 export async function getExecutableEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string):Promise<MasterTemplate>{return withTenant(ctx,tx=>templateTx(tx,ctx,scopeIds,id,'execution'));}
+async function templateIds(ctx:SessionContext,search?:string){
+  return withTenant(ctx,async tx=>(await tx.select({id:customReport.id,name:customReport.name}).from(customReport).where(and(eq(customReport.datasetId,'master'),sql`${customReport.spec} ? 'employeeMaster'`)).orderBy(sql`${customReport.lastRunAt} desc nulls last`,desc(customReport.updatedAt),asc(customReport.id))).filter(row=>!search||row.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(row=>row.id));
+}
 export async function listEmployeeMasterReports(ctx:SessionContext,scopeIds:readonly string[],input:{all?:boolean;search?:string}={}):Promise<MasterTemplate[]>{
-  const ids=await withTenant(ctx,async tx=>(await tx.select({id:customReport.id,name:customReport.name}).from(customReport).where(and(eq(customReport.datasetId,'master'),sql`${customReport.spec} ? 'employeeMaster'`)).orderBy(sql`${customReport.lastRunAt} desc nulls last`,desc(customReport.updatedAt),asc(customReport.id))).filter(row=>!input.search||row.name.toLocaleLowerCase().includes(input.search.toLocaleLowerCase())).map(row=>row.id));
+  const ids=await templateIds(ctx,input.search);
   const reports:MasterTemplate[]=[];for(const id of ids){try{reports.push(await getEmployeeMasterReport(ctx,scopeIds,id));}catch(error){if(!(error instanceof MasterReportAccessError))throw error;}if(!input.all&&reports.length===5)break;}return reports;
+}
+/** Exact authorized full count plus the hub's existing five rows and optional saved confirmation.
+ * Re-read and validate every definition under its own current owner/carrier, as the full API does.
+ * Only displayed rows need owner-name, editability and schedule metadata; no permission result is cached. */
+export async function readEmployeeMasterReportHub(ctx:SessionContext,scopeIds:readonly string[],savedId?:string):Promise<{reports:MasterTemplate[];total:number;savedReport:MasterTemplate|undefined}>{
+  const ids=await templateIds(ctx),reports:MasterTemplate[]=[];let total=0,savedReport:MasterTemplate|undefined;
+  for(const id of ids){
+    try{
+      const template=await withTenant(ctx,async tx=>{
+        const definition=await readTemplateDefinitionTx(tx,ctx,scopeIds,id,'definition');
+        return reports.length<5||id===savedId?projectTemplateTx(tx,ctx,definition):null;
+      });
+      total++;if(template){if(reports.length<5)reports.push(template);if(id===savedId)savedReport=template;}
+    }catch(error){if(!(error instanceof MasterReportAccessError))throw error;}
+  }
+  return {reports,total,savedReport};
 }
 export async function duplicateEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string){const source=await getEmployeeMasterReport(ctx,scopeIds,id);return saveEmployeeMasterReport(ctx,scopeIds,{name:source.name+' (copy)',description:source.description,sharedRoleIds:[],spec:source.spec});}
 export async function deleteEmployeeMasterReport(ctx:SessionContext,id:string){return withTenant(ctx,async tx=>{const row=await visibleTx(tx,id);await editableTx(tx,ctx,row);await tx.delete(customReport).where(eq(customReport.id,id));await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'custom-report',aggregateId:id,eventType:'custom-report.deleted',actor:actorOf(ctx),payload:{datasetId:'master'}});});}
@@ -76,7 +102,10 @@ async function masterAccessStampTx(tx:Tx,reportId:string|null,companyIds:readonl
 }
 export type MasterRun={result:EmployeeMasterResult;spec:EmployeeMasterSpec;reportId:string|null;version:number|null;name:string;catalogue:Awaited<ReturnType<typeof masterReportFieldsTx>>;fingerprint:string;brand?:{content:string;mimeType:string}};
 export async function runEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],input:{id?:string;spec?:unknown;expectedVersion?:number;includeWithoutCompany?:boolean}):Promise<MasterRun>{
-  return withTenant(ctx,async tx=>{
+  // A read of up to 2,000 employments, interactive or scheduled: an owner Workforce check inside (the movement fields)
+  // joins the Access lock shared instead of taking it exclusively for the whole run (staging, 11 November 2026). A run
+  // with no such field still takes no Access lock; the snapshot decides the rows and bytes exactly as before.
+  return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{
     const row=input.id?await visibleTx(tx,input.id):null;
     if(input.expectedVersion!==undefined&&row?.version!==input.expectedVersion)throw new Error('This report changed. Review it before running.');
     const {spec,catalogue,fields}=await checkedTx(tx,ctx,row?legacyEmployeeMasterSpec(row.spec,[...scopeIds],todayInKualaLumpur()):input.spec,scopeIds);
@@ -86,7 +115,7 @@ export async function runEmployeeMasterReport(ctx:SessionContext,scopeIds:readon
     const accessStamp=await masterAccessStampTx(tx,row?.id??null,spec.companyIds);
     const result=runEmployeeMasterProjection(spec,fields,subjects,todayInKualaLumpur());
     return {result,spec,reportId:row?.id??null,version:row?.version??null,name:row?.name??'Employee Master',catalogue,brand,fingerprint:digest({accessStamp,user:ctx.userId,roles:ctx.roles,grants:ctx.grants,companies:spec.companyIds,fields:catalogue.map(f=>f.id),spec,version:row?.version})};
-  },{readOnlySnapshot:true});
+  },{readOnlySnapshot:true}));
 }
 /** Re-authorize after generation before handing bytes/preview to the caller. No row cache crosses users. */
 export async function authorizeEmployeeMasterRun(ctx:SessionContext,scopeIds:readonly string[],run:MasterRun){return withTenant(ctx,async tx=>{

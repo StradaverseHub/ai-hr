@@ -14,7 +14,8 @@ const input=():AttendanceRuleInput=>({name:`Sections ${randomUUID()}`,descriptio
   otRows:[{fromMinutes:0,toMinutes:0,ratePattern:'flat',rate:1.5,phRate:2,roundingMode:'down',roundToMinutes:15}]});
 const general=(rule:AttendanceRuleView)=>({ruleId:rule.id,section:'general' as const,
   name:`Renamed ${randomUUID()}`,description:'General edit',status:'active' as const,applyDeductions:true,
-  // A stale/crafted full editor payload contains rounding and early values. The service ignores them.
+  // A stale/crafted full editor payload contains rounding, early values and (since c03670cc moved Wage
+  // Deductions to Attendance) the deduction switch. The service ignores all of them.
   applyToEarlyOt:false,lateGracePeriodMinutes:0,weeklyPattern:[7],
   otRows:rule.otRows.map(row=>({...row,rate:Number(row.rate),phRate:row.phRate==null?null:Number(row.phRate)}))});
 const overtime=(ruleId:string)=>({ruleId,section:'overtime' as const,applyToEarlyOt:true,
@@ -24,11 +25,11 @@ describe('atomic Schedule Group section ownership',()=>{
   it('a stale General save preserves successful Attendance/Overtime changes and the week',async()=>{
     const ctx=adminCtx(b);const {id}=await createAttendanceRule(ctx,input());
     const stale=(await getAttendanceRule(ctx,id))!;
-    await updateAttendanceRuleSection(ctx,{ruleId:id,section:'attendance',fields:{lateGracePeriodMinutes:9,includeGraceInLateness:true}});
+    await updateAttendanceRuleSection(ctx,{ruleId:id,section:'attendance',fields:{lateGracePeriodMinutes:9,includeGraceInLateness:true,applyDeductions:true}});
     await updateAttendanceRuleSection(ctx,overtime(id));
-    const change=general(stale);change.otRows[0].rate=2;await updateAttendanceRuleSection(ctx,change);
+    const change=general(stale);change.applyDeductions=false;change.otRows[0].rate=2;await updateAttendanceRuleSection(ctx,change);
     const after=(await getAttendanceRule(ctx,id))!;
-    expect(after.name).toBe(change.name);expect(after.applyDeductions).toBe(true);
+    expect(after.name).toBe(change.name);expect(after.applyDeductions,'a stale General save cannot turn Wage Deductions off').toBe(true);
     expect(after.lateGracePeriodMinutes).toBe(9);expect(after.includeGraceInLateness).toBe(true);
     expect(after.applyToEarlyOt).toBe(true);expect(after.otRows[0].rate).toBe('2.00');expect(after.otRows[0].roundingMode).toBe('up');expect(after.otRows[0].roundToMinutes).toBe(30);
     expect([after.weeklyPattern,after.halfPattern,after.offPattern]).toEqual([[1],[2],[3]]);
@@ -38,7 +39,7 @@ describe('atomic Schedule Group section ownership',()=>{
     const ctx=adminCtx(b);const {id}=await createAttendanceRule(ctx,input());const stale=(await getAttendanceRule(ctx,id))!;
     const change=general(stale);
     await Promise.all([updateAttendanceRuleSection(ctx,change),
-      updateAttendanceRuleSection(ctx,{ruleId:id,section:'attendance',fields:{earlyGracePeriodMinutes:11,includeGraceInEarlyOut:true}}),
+      updateAttendanceRuleSection(ctx,{ruleId:id,section:'attendance',fields:{earlyGracePeriodMinutes:11,includeGraceInEarlyOut:true,applyDeductions:true}}),
       updateAttendanceRuleSection(ctx,overtime(id))]);
     const after=(await getAttendanceRule(ctx,id))!;
     expect(after.name).toBe(change.name);expect(after.applyDeductions).toBe(true);
@@ -72,13 +73,23 @@ describe('atomic Schedule Group section ownership',()=>{
 
   it('does not allow a crafted Attendance patch to reach another section or another tenant',async()=>{
     const ctx=adminCtx(b);const {id}=await createAttendanceRule(ctx,input());
-    const fields={lateGracePeriodMinutes:8,name:'Injected',applyDeductions:true,applyToEarlyOt:true,weeklyPattern:[7],otRows:[]};
+    const fields={lateGracePeriodMinutes:8,name:'Injected',applyToEarlyOt:true,weeklyPattern:[7],otRows:[]};
     await updateAttendanceRuleSection(ctx,{ruleId:id,section:'attendance',fields});
     const after=(await getAttendanceRule(ctx,id))!;
     expect(after.lateGracePeriodMinutes).toBe(8);expect(after.name).not.toBe('Injected');
     expect(after.applyDeductions).toBe(false);expect(after.applyToEarlyOt).toBe(false);expect(after.otRows).toHaveLength(1);
+    // c03670cc — the deduction switch IS an Attendance field now, accepted only as a real boolean.
+    await updateAttendanceRuleSection(ctx,{ruleId:id,section:'attendance',fields:{applyDeductions:'yes' as unknown as boolean}});
+    expect((await getAttendanceRule(ctx,id))!.applyDeductions,'a non-boolean is never read as on').toBe(false);
+    await updateAttendanceRuleSection(ctx,{ruleId:id,section:'attendance',fields:{applyDeductions:true}});
+    const switchedOn=(await getAttendanceRule(ctx,id))!;
+    expect(switchedOn.applyDeductions).toBe(true);
+    // Back off, so the other-tenant refusal below compares against the same stored row as before.
+    await updateAttendanceRuleSection(ctx,{ruleId:id,section:'attendance',fields:{applyDeductions:false}});
+    expect({...(await getAttendanceRule(ctx,id))!,updatedAt:after.updatedAt}).toEqual(after);
     const other=await seedBase();
+    const beforeForeign=await getAttendanceRule(ctx,id);
     await expect(updateAttendanceRuleSection(adminCtx(other),{ruleId:id,section:'attendance',fields:{lateGracePeriodMinutes:99}})).rejects.toThrow();
-    expect(await getAttendanceRule(ctx,id)).toEqual(after);
+    expect(await getAttendanceRule(ctx,id)).toEqual(beforeForeign);
   });
 });

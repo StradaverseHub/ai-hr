@@ -73,6 +73,7 @@ import { createLoan, prefillLoansForBatch } from '../core/loans';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { hireEmployee } from '../core/org';
+import { withRunPayPeriod } from '../core/payroll-period-lock';
 import {
   adminCtx,
   closeAll,
@@ -464,7 +465,8 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId });
     // Close the PERIOD directly, leaving the run processed — the exact state the guard is for.
-    const [b] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+    const [read] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+    const b = withRunPayPeriod(read, () => Error('Expected the committed run to carry its pay period'));
     await owner.db.update(schema.payPeriod).set({ status: 'closed' }).where(eq(schema.payPeriod.id, b.payPeriodId));
 
     const g = await entitledCtx(base);

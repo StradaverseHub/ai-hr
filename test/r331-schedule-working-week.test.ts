@@ -281,8 +281,9 @@ describe('A. the seven selects decode into the three stored arrays, and Rest is 
     expect(target.startsWith(`${SCHEDULE}/${ruleId}/edit?toast=`), target).toBe(true);
     const q = new URL(target, 'http://x').searchParams;
     expect(q.get('toast')).toBe(SC.savedToast);
-    expect(q.get('section')).toBe('workingDay');
-    expect(target.endsWith('#section-workingDay'), 'and the browser lands on that heading').toBe(true);
+    // c03670cc — the working week and the Duty Roster sit in General; the Duty Roster tab is retired.
+    expect(q.get('section')).toBe('general');
+    expect(target.endsWith('#section-general'), 'and the browser lands on that heading').toBe(true);
     // Exactly one `?`. The r287 → r301 defect was a parameter concatenated in FRONT of the query key.
     expect(target.split('?').length - 1, target).toBe(1);
   });
@@ -359,7 +360,7 @@ describe('B. the two CHECK constraints of migration 0483', () => {
     expect(message).toContain('working week with no working day');
     expect(message, 'and it says what to do about it').toMatch(/Tick at least one full or half working day/);
     expect(target.startsWith(`${SCHEDULE}/${ruleId}/edit?error=`), target).toBe(true);
-    expect(q.get('section')).toBe('workingDay');
+    expect(q.get('section')).toBe('general');
 
     expect(week((await getAttendanceRule(ctx!, ruleId))!), 'the stored week is untouched').toEqual(before);
   });
@@ -446,7 +447,10 @@ describe('C. the marker — a submission that said nothing must not CLEAR the we
     // And the page really does emit it, so the contract is pinned across BOTH files (CLAUDE.md §8).
     const page = readFileSync(pathJoin(root, 'app/admin/attendance/schedule/group-sections.tsx'), 'utf8');
     expect(page, 'the new editor saves pool and rotation together').toContain('ScheduleRotationEditor');
-    expect(page, 'the legacy independent week form is retired').not.toContain('name="weekEditor" value="1"');
+    // 2f803985 — the legacy week form remains ONLY for the Standard group, which cannot rotate.
+    expect(page.match(/name="weekEditor" value="1"/g) ?? [], 'one week form').toHaveLength(1);
+    expect(page.slice(page.indexOf('const pattern = rule.isDefault'), page.indexOf('<ScheduleRotationEditor ruleId')),
+      'and it is the Standard branch').toContain('name="weekEditor" value="1"');
   });
 });
 

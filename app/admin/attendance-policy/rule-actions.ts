@@ -18,9 +18,9 @@ import { getTranslations } from 'next-intl/server';
 import { SCHEDULE, scheduleGroupEditPath, scheduleGroupNewPath } from './schedule-panel';
 import { failScheduleGroup, okScheduleGroup } from '../_redirects';
 import { withTenant } from '@/db/client';
-import { lockAccessConfigurationTx } from '@/core/access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from '@/core/access-configuration-lock';
 import { sql } from 'drizzle-orm';
-import { getScheduleRotation, lockAttendanceClockPolicyConfigurationTx, saveScheduleRotation, scheduleAttendanceClockPolicy } from '@/packs/attendance/service';
+import { getScheduleRotation, lockAttendanceClockPolicyConfigurationTx, saveScheduleGroupClockPolicy, saveScheduleRotation } from '@/packs/attendance/service';
 import { readScheduleClockPolicyFields } from '../attendance/schedule/clock-policy-fields';
 import { parseOtRows } from '../attendance/schedule/overtime-fields';
 import type { RotationCycle } from '@/core/week-pattern';
@@ -120,9 +120,9 @@ function allowedShiftIds(fd: FormData): string[] | null {
 export async function createAttendanceRuleAction(fd: FormData) {
   const s = await getSession();
   let created: { id: string };
-  let section: 'general' | 'attendance' | 'workingDay' = 'general';
+  let section: 'general' | 'attendance' = 'general';
   try {
-    if(fd.get('scheduleClockPolicy')==='1') section='attendance';
+    section='attendance';
     const clock = readScheduleClockPolicyFields(fd);
     const shiftIds = allowedShiftIds(fd);
     const weekdays = Array.from({length:7}, (_,index)=>String(fd.get(`createDayKind_${index+1}`)??''));
@@ -134,7 +134,7 @@ export async function createAttendanceRuleAction(fd: FormData) {
     }:null;
     section='general';
     created = await withTenant(s, async tx => {
-      await lockAccessConfigurationTx(tx,s.tenantId);
+      await lockAccessConfigurationWriteTx(tx,s.tenantId);
       if (clock) await lockAttendanceClockPolicyConfigurationTx(tx, s);
       if(week){
         const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.principal_snapshot_current() and app.is_group_admin() as allowed`);
@@ -143,7 +143,8 @@ export async function createAttendanceRuleAction(fd: FormData) {
       const result = await createAttendanceRule(s, {...ruleFields(fd),...week}, tx);
       if (shiftIds?.length) await setRuleShifts(s, {ruleId: result.id, shiftIds, expectedShiftIds:[]}, tx);
       if (fd.get('createRotation')==='1') {
-        section='workingDay';
+        // c03670cc — the Duty Roster lives in General, directly under Shift Allowed.
+        section='general';
         const raw=String(fd.get('cycle')??'');
         if(raw.length>100_000)throw new Error('The rotation is too large.');
         const cycle=JSON.parse(raw) as RotationCycle;
@@ -156,7 +157,9 @@ export async function createAttendanceRuleAction(fd: FormData) {
       }
       if (clock) {
         section = 'attendance';
-        await scheduleAttendanceClockPolicy(s, {...clock, ruleId: result.id}, tx);
+        const reason = (await getTranslations('scheduleGroupEditor'))('systemReason');
+        await saveScheduleGroupClockPolicy(s, {ruleId: result.id, scope: clock.scope, policy: clock.policy,
+          expected: clock.expected, reason}, tx);
       }
       return result;
     });
@@ -170,7 +173,8 @@ export async function createAttendanceRuleAction(fd: FormData) {
   okScheduleGroup(created.id, t('createdToast'), 'general');
 }
 
-/** General on the sectioned Schedule Group page owns identity/deduction switch/ladder only.
+/** General on the sectioned Schedule Group page owns identity/ladder only. Wage Deductions is written by
+ * the Attendance section (c03670cc), so this action no longer reads `applyDeductions`.
  * Full legacy RuleForm actions above/below keep their existing complete-form semantics. */
 export async function saveScheduleGroupGeneralAction(fd: FormData) {
   const s = await getSession();
@@ -178,7 +182,7 @@ export async function saveScheduleGroupGeneralAction(fd: FormData) {
   try {
     await updateAttendanceRuleSection(s, {ruleId,section:'general',
       name:String(fd.get('name')??'').trim(),label:String(fd.get('label')??'').trim()||null,description:String(fd.get('description')??'').trim()||null,
-      status:fd.get('status')==='inactive'?'inactive':'active',applyDeductions:bool(fd,'applyDeductions'),
+      status:fd.get('status')==='inactive'?'inactive':'active',
       ...(fd.has('otRows') ? {otRows: parseOtRows(String(fd.get('otRows')))} : {}),
     });
   } catch(e) {failScheduleGroup(e,ruleId,'general');}

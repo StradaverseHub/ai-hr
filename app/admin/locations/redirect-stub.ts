@@ -14,12 +14,20 @@ import { redirect } from 'next/navigation';
  * app/admin/work-locations/clocking/form-fields.ts, which is also what the screens, the actions and the
  * tests read. A literal here would be a second place to fix on the next move.
  */
-export function forward(sp: Record<string, string | string[] | undefined>, to: string): never {
+type QueryValue = string | string[] | undefined;
+
+export function locationsRedirectTarget(entries: Iterable<[string, QueryValue]>, to: string): string {
   const usp = new URLSearchParams();
-  for (const [k, v] of Object.entries(sp)) {
-    if (typeof v === 'string') usp.set(k, v);
-    else if (Array.isArray(v) && v[0] != null) usp.set(k, v[0]);
+  for (const [key, value] of entries) {
+    // A legacy page keeps the first value when a bookmark repeats a parameter.
+    if (usp.has(key)) continue;
+    if (typeof value === 'string') usp.set(key, value);
+    else if (Array.isArray(value) && value[0] != null) usp.set(key, value[0]);
   }
   const qs = usp.toString();
-  redirect(`${to}${qs ? `?${qs}` : ''}`);
+  return `${to}${qs ? `?${qs}` : ''}`;
+}
+
+export function forward(sp: Record<string, QueryValue>, to: string): never {
+  redirect(locationsRedirectTarget(Object.entries(sp), to));
 }

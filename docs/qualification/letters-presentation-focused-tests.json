@@ -1,0 +1,12 @@
+[
+  "test/letter-presentation-snapshot.test.ts",
+  "test/letter-settings.test.ts",
+  "test/letter-catalog.test.ts",
+  "test/letter-generation.test.ts",
+  "test/letter-workflow.test.ts",
+  "test/letter-requests.test.ts",
+  "test/letter-approver-eligibility.test.ts",
+  "test/letter-register-document.test.ts",
+  "test/letter-report-export.test.ts",
+  "test/principal-snapshot-current.test.ts"
+]

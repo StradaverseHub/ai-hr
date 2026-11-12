@@ -437,3 +437,28 @@ source/header proof also refuses. It grants no new table or function authority; 
 retain the existing owner guard and legacy sources retain their current behavior. This temporary
 boundary must be replaced by the complete verified execution/receipt/replay contract before policy
 settlement is enabled. Prepared SQL/owner boundary and legacy consumer probes remain runtime-unrun.
+
+## Owner decision, 11 November 2026: All Companies clock-policy audit reads
+
+Asked "Should HR admins who manage group-wide clock policy see the audit history of 'All Companies'
+clock-policy changes? Read-only, and only for people who can already make those changes.", the owner
+answered yes. The unapplied migration 4342 therefore reads group-wide (company_id NULL) clock-policy
+revisions and their `attendance-rule.clock-policy.scheduled` events under the group-wide writer's own
+check from 4600: a current principal who is a group administrator (`app.is_group_admin()`). Company
+revisions and events still require that company's administrator; employees and other tenants gain
+nothing, and no write path changes. See [migration allocation](../MIGRATION-ALLOCATION.md).
+
+## Board item 2f803985, 12 November 2026: Schedule Group Overtime Setting, first release
+
+The approved plan ships in two releases. The first moves the Schedule Group overtime bands to Overtime
+Patterns › 1. General Settings of the group's legacy pattern, with the same editor and writer
+(`updateAttendanceRuleSection` 'overtimeFull', so the 0551 trigger keeps snapshotting each saved ladder). It also
+extends the policy contract with the request's options, and these are still not exposed: the 45-minute rounding
+step (5, 10 and 60 stay valid) and an optional `showLatenessExceptionAfterOffset`, which requires
+`offsetLateness`. An absent value means off, so stored policies validate unchanged. The reporter's worked
+examples are pinned in `test/overtime-setting-2f803985.test.ts`.
+
+The Overtime Setting screen, its writer and "Manual means no payable attendance overtime" remain behind this
+ADR's release gate. They ship only once policy execution, approval receipts and payroll/TOIL acceptance with
+financial replay are complete. Until then the Schedule Group Overtime tab states that the setting is pending,
+and every group's overtime keeps its current behaviour.

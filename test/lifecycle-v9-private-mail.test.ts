@@ -1,9 +1,9 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 const fixture = vi.hoisted(() => ({ sql: vi.fn(), credential: vi.fn(), active: vi.fn(), principal: vi.fn(), pdf: vi.fn() }));
-vi.mock('../db/client', () => ({ client: fixture.sql }));
+vi.mock('../db/client', () => ({ client: fixture.sql, withPoolWork:(_lane:string,work:()=>unknown)=>work(),withSystemWork:(work:()=>unknown)=>work() }));
 vi.mock('../lib/internal-auth/config', () => ({ internalConfig: () => ({ origin: 'https://fictional.example' }), internalIssuer: (tenant: string) => 'https://fictional.example/auth/' + tenant }));
-vi.mock('../lib/internal-auth/store', () => ({ readRecord: fixture.credential }));
+vi.mock('../lib/internal-auth/store', () => ({ admittedAuthSql: fixture.sql, readRecord: fixture.credential }));
 vi.mock('../lib/internal-auth/active-relay', () => ({ readLifecycleRelayTx: fixture.active }));
 vi.mock('../lib/internal-auth/service', () => ({ assertActiveCredential: fixture.principal, InternalAuthError: class extends Error {} }));
 vi.mock('../lib/lifecycle-v9-pdf', () => ({ renderV9DocumentPdf: fixture.pdf }));

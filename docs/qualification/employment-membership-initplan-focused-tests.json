@@ -1,0 +1,9 @@
+[
+  "test/employment-membership-initplan.test.ts",
+  "test/r395-policy-visibility-guard.test.ts",
+  "test/hierarchy-visibility.test.ts",
+  "test/r395-visibility-equivalence.test.ts",
+  "test/employee-choice-db.test.ts",
+  "test/employee-choice-join-contract.test.ts",
+  "test/claim-visibility-membership.test.ts"
+]

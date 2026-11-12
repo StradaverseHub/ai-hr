@@ -12,7 +12,7 @@ import {isAdmin} from '../lib/authz-model';
 import {assistantAgentStatusTx} from './ai-management';
 import { assertAiPrincipalTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
-import { assertAiActionUnpausedTx } from './ai-governance';
+import { aiPresentationFunctionsEnabledTx, assertAiActionUnpausedTx, assertAiPresentationActionUnpausedTx } from './ai-governance';
 import { assertModuleEnabled, resolveEntitlementsTx, isModuleEnabled } from './entitlements';
 import * as reads from './read';
 import { readinessSnapshot } from './record-readiness';
@@ -34,16 +34,18 @@ const storedAmount = (value: unknown): string | number | null => typeof value ==
   typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value) && value.length <= 40 ? value : null;
 const storedLabel = (value: unknown): string | null => typeof value === 'string' && value.length <= 250 ? value : null;
 const bounded = <T>(rows: T[]) => ({ rows: rows.slice(0, 25), truncated: rows.length > 25 });
-export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: () => boolean) {
+export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: () => boolean,presentation=false) {
   const moduleWork = async (module: AgentModuleCode) => {
     if (!active() || !isAgentModuleCode(module)) return unavailable();
     await assertAiPrincipalTx(tx, ctx);
     const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };
     await assertMayUseAssistant(fresh, tx);
-    await assertAiActionUnpausedTx(tx, fresh, 'hr_assistant');
-    const [control]=await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_read_allowed('read:my_module_work') and app.ai_centre_read_allowed(${'module:'+module}) as allowed`);
-    if(control?.allowed!==true)throw new AiAllowanceError('paused');
-    trackAiCentreFunctions(ctx.tenantId,['read:my_module_work','module:'+module]);
+    await (presentation?assertAiPresentationActionUnpausedTx:assertAiActionUnpausedTx)(tx, fresh, 'hr_assistant');
+    const functions=['read:my_module_work','module:'+module];
+    const allowed=presentation?await aiPresentationFunctionsEnabledTx(tx,functions):
+      (await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_read_allowed('read:my_module_work') and app.ai_centre_read_allowed(${'module:'+module}) as allowed`))[0]?.allowed;
+    if(allowed!==true)throw new AiAllowanceError('paused');
+    trackAiCentreFunctions(ctx.tenantId,functions);
     assertModuleEnabled(fresh, module);
     const capability = MODULE_AGENT_CAPABILITIES.find(entry => entry[0] === module)![1];
     // All Assistant/orchestrator paths share this closed module boundary. A declaration is not

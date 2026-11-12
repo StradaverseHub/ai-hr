@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/dedupe-server-source-maps.mjs .next",
     "start": "next start",
     "host": "bash scripts/host.sh",
     "lint": "eslint",

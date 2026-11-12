@@ -6,7 +6,7 @@ import * as schema from '../db/schema';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload,listPayrollHistoryAttempts,getPayrollHistoryAttempt,payrollHistorySource} from '../core/payroll-history-revisions';
 import {hireEmployee} from '../core/org';
 import {createCompany,createDepartment} from '../core/admin';
-import {createBatch,generatePayslips,closeBatch,myPayslipDetail,listBatches,paymentSummaryForBatch} from '../core/payroll';
+import {batchHeader,batchDetail,createBatch,generatePayslips,closeBatch,myPayslipDetail,listBatches,payrollDashboardCounts,paymentSummaryForBatch} from '../core/payroll';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {historyRecordKey} from '../lib/payroll-history-revisions';
@@ -19,6 +19,8 @@ import {toCsv} from '../lib/csv';
 import {payrollPublicationState} from '../lib/payroll-publication';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {lockPayrollHistoryWriteTx} from '../core/payroll-history-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 
 let b:Base,ctx:SessionContext,employeeId:string,employeePersonId:string;
 const year=Number(todayInKualaLumpur().slice(0,4))-2,period=`${year}-01`;
@@ -41,18 +43,42 @@ beforeEach(async()=>{
 afterAll(closeAll);
 
 describe('immutable payroll history correction and recovery',()=>{
+ it('validates an upload and reviews a revert from snapshots while a history writer and an Access editor hold their exclusive locks',async()=>{
+  // Both reviews used to hold the history barrier (and the revert review the exclusive Access lock) for their whole
+  // planning, which grows with the file; they now take no tenant-wide lock, so neither waits here nor blocks.
+  const whileLocked=<T,>(work:()=>Promise<T>)=>withTenant(ctx,async tx=>{
+   await lockPayrollHistoryWriteTx(tx,b.tenantId);await lockAccessConfigurationWriteTx(tx,b.tenantId);
+   let timer:ReturnType<typeof setTimeout>|undefined;
+   const waited=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('the review waited for a tenant-wide lock')),20000);});
+   try{return await Promise.race([work(),waited]);}finally{clearTimeout(timer);}
+  });
+  const preview=await whileLocked(()=>upload());
+  expect(preview.plan.counts).toEqual({created:1,replaced:0,unchanged:0,invalid:0});
+  // The saved attempt is the one the confirmation re-plans under the write locks.
+  expect((await confirm(preview)).importedRows).toBe(5);
+  const review=await whileLocked(()=>previewPayrollHistoryRevert(ctx,preview.attemptId));
+  expect(review.count).toBe(1);
+  expect(await revertPayrollHistoryUpload(ctx,preview.attemptId,review.previewHash)).toMatchObject({restored:1});
+ });
+
  it('preserves original rows while replacing and reverting the effective money exactly once',async()=>{
   const first=await upload();expect(first.plan.counts).toEqual({created:1,replaced:0,unchanged:0,invalid:0});
   const initial=await confirm(first);expect(payrollPublicationState((await listBatches(ctx,[b.companyId]))[0])).toBe('history');await expect(paymentSummaryForBatch(ctx,(await listBatches(ctx,[b.companyId]))[0].id)).rejects.toThrow(/Imported history/);const original=(await effective())[0];expect(Number(original.grossPay)).toBe(5000);
+  expect(await payrollDashboardCounts(ctx,[b.companyId])).toEqual({totalCount:(await listBatches(ctx,[b.companyId])).length,unpublishedCount:0});
   expect((await confirm(first)).alreadyCommitted).toBe(true);expect(await owner.db.select().from(schema.payslip)).toHaveLength(1);
   const correction=await upload('6000.00');expect(correction.plan.counts.replaced).toBe(1);expect(correction.plan.rows[0].beforeValues?.grossPay).toBe('5000.00');
   await expect(confirm(correction,false)).rejects.toThrow(/Confirm replacement/);expect(await effective()).toHaveLength(1);
   await confirm(correction);expect((await effective()).map(row=>Number(row.grossPay))).toEqual([6000]);
+  const [replacement]=await effective(),detail=await batchDetail(ctx,replacement.batchId);
+  expect(await batchHeader(ctx,replacement.batchId)).toEqual({batch:detail?.batch});
+  expect(detail?.batch.employeeCount).toBe(1);expect(detail?.batch.totals).toMatchObject({gross:6000});
+  expect(await payrollDashboardCounts(ctx,[b.companyId])).toEqual({totalCount:(await listBatches(ctx,[b.companyId])).length,unpublishedCount:0});
   expect(await listBatches(ctx,[b.companyId])).toMatchObject([{historyImportCycleName:'Monthly',employeeCount:1,batchDate:null}]);
   expect(await owner.db.select().from(schema.payslip)).toHaveLength(2);
   const dashboard=await dashboardStats(ctx,[b.companyId]);expect(Number(dashboard.latestPayroll?.net)).toBe(6000);
   const recovery=await previewPayrollHistoryRevert(ctx,correction.attemptId);expect(recovery).toMatchObject({attemptId:correction.attemptId,count:1,previewHash:expect.stringMatching(/^[0-9a-f]{64}$/)});
   await revertPayrollHistoryUpload(ctx,correction.attemptId,recovery.previewHash);expect((await effective()).map(row=>Number(row.grossPay))).toEqual([5000]);
+  expect(await payrollDashboardCounts(ctx,[b.companyId])).toEqual({totalCount:(await listBatches(ctx,[b.companyId])).length,unpublishedCount:0});
   const [unchanged]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,original.id));expect(unchanged).toEqual(original);
   await expect(revertPayrollHistoryUpload(ctx,correction.attemptId,recovery.previewHash)).rejects.toThrow(/already been reverted/);
   await expect(owner.db.update(schema.payslip).set({grossPay:'1.00'}).where(eq(schema.payslip.id,initial.changes[0].snapshotId!))).rejects.toMatchObject({cause:{code:'23514',message:expect.stringMatching(/immutable/)}});
@@ -77,7 +103,13 @@ describe('immutable payroll history correction and recovery',()=>{
   await setCompensation(ctx,{employmentId:employeeId,basicSalary:4000,effectiveFrom:`${year-1}-01-01`});
   await setStatutoryProfileMY(ctx,{personId:employeePersonId,icNumber:'850202025555',taxCategory:1,numChildren:0});
   const run=await createBatch(ctx,{companyId:b.companyId,payPeriod:period});
-  await generatePayslips(ctx,{batchId:run.batchId});await closeBatch(ctx,{batchId:run.batchId});
+  expect((await listBatches(ctx,[b.companyId],period,['draft'])).map(row=>row.id)).toEqual([run.batchId]);
+  expect(await listBatches(ctx,[b.companyId],period,[])).toEqual([]);
+  await generatePayslips(ctx,{batchId:run.batchId});
+  expect(await listBatches(ctx,[b.companyId],period,['draft'])).toEqual([]);
+  expect((await listBatches(ctx,[b.companyId],period,['draft','processed'])).map(row=>row.id)).toEqual([run.batchId]);
+  await closeBatch(ctx,{batchId:run.batchId});
+  expect(await listBatches(ctx,[b.companyId],period,['draft','processed'])).toEqual([]);
   const [original]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,run.batchId));
   expect(original,'fixture: the processed run must hold the employee').toBeTruthy();
   const preview=await upload('6000.00');

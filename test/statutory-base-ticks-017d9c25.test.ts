@@ -217,6 +217,18 @@ describe('017d9c25 — the ticks decide the statutory bases, on a generated pays
     expect(st.bases!.socsoEis).toBeCloseTo(6052, 2);
     expect(st.bases!.pcb).toBeCloseTo(7552, 2);
     expect(st.bases!.hrdf).toBeCloseTo(6052, 2);
+    // c2ea9567 — the same base, itemised on the payslip: the HRDF tick alone decides membership, so the
+    // two unticked allowances (A0080, A0020) and the unticked parking deduction are absent.
+    const hrdfWorking = (s.statutory as { hrdfWorking?: { items: unknown[]; wages: number; rate: number; levy: number } }).hrdfWorking;
+    expect(hrdfWorking).toMatchObject({
+      items: [
+        { kind: 'basic', amount: 5952 },
+        { kind: 'earning', code: 'A0027', amount: 100 },
+      ],
+      wages: 6052,
+      rate: 0.01,
+      levy: 60.52,
+    });
 
     // THE MONEY, to the cent, against the stored production payslip (1,476.30 / 6,075.70):
     //   deductions 660 + 29.75 + 11.90 + 429.05 + parking 169.60 = 1,300.30  (was 1,476.30)

@@ -2,7 +2,7 @@
 import { ActionButton } from '@/components/ui/action-button';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
 
-import { useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -18,6 +18,8 @@ import {
   type LeaveImportSource,
 } from '@/lib/leave-import-schema';
 import { validateLeaveImportAction, commitLeaveImportAction } from './actions';
+import { LeaveImportJobPanel } from './leave-import-progress';
+import type { LeaveImportJobProgress } from '@/lib/leave-import-job';
 import { useAssistantImportIntake } from '@/components/assistant/import-handoff';
 
 // Reporter's human-readable headers (Function 1). They normalise to the snake_case contract
@@ -68,6 +70,26 @@ export function LeaveLedgerImport() {
   const [dragging, setDragging] = useState(false);
   const [reading, setReading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // A running background import, rejoined after a reload.
+  const [job, setJob] = useState<LeaveImportJobProgress | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch('/admin/leave/import/jobs', { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => { if (alive && payload?.job) setJob(payload.job); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const onJobFinished = useCallback((finished: LeaveImportResult | null) => {
+    setJob(null);
+    if (finished) {
+      setResult(finished);
+      setPhase('done');
+      router.refresh();
+    } else {
+      setError(t('job.failed'));
+    }
+  }, [router, t]);
 
   // Any edit invalidates a stale preview/result — force a fresh validate before importing.
   const reset = () => {
@@ -100,10 +122,9 @@ export function LeaveLedgerImport() {
     startTransition(async () => {
       setError(null);
       try {
+        // The import runs in the background; the panel below follows it and hands over the result.
         const r = await commitLeaveImportAction(csv, source);
-        setResult(r);
-        setPhase('done');
-        router.refresh();
+        setJob(r.job);
       } catch (e) {
         setError((e as Error).message);
       }
@@ -314,6 +335,8 @@ export function LeaveLedgerImport() {
           {error}
         </div>
       )}
+
+      {job && <LeaveImportJobPanel job={job} onFinished={onJobFinished} />}
 
       {result && (
         <Card className="overflow-hidden border-emerald-200 dark:border-emerald-500/30">

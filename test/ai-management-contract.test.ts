@@ -248,6 +248,7 @@ function assertWorkloadOwner(file:string,src:string){
  return {kind:'pack',count:calls.length};
 }
 describe('complete AI management inventory and boundary',()=>{
+ // Explicit timeout: measured 22.2 s against the global 30 s in gate 42958137526.
  it('registers every production AI workload caller and keeps providers behind the shared gateway',()=>{
   const coreFound:string[]=[],packFound:Record<string,number>={};let packCalls=0;
   for(const file of [...walk('core'),...walk('packs'),...walk('app'),...walk('lib'),...walk('scripts')]){
@@ -283,7 +284,7 @@ describe('complete AI management inventory and boundary',()=>{
   // snapshot, so the active resolver issues exactly one governed configuration and nothing ungoverned.
   const config=read('core/ai-config.ts');expect(config.match(/governedAiConfig\(/g)?.length).toBe(1);
   expect(config).toMatch(/const snapshot\s*=\s*await resolveAiProviderSnapshotTx\(tx,\s*ctx\);\s*return snapshot\s*\?\s*governedAiConfig\(ctx,\s*snapshot,\s*feature\)\s*:\s*null;/);
- });
+ },90_000);
  it('sees calls after TypeScript generics and preserves canonical aliased and namespace wrapper ownership',()=>{
   const generic='const run=<T>(fn:()=>T):T=>fn();';
   const admin=workloadSource('packs/performance/onehr/admin-agent-service.ts',read('packs/performance/onehr/admin-agent-service.ts'));
@@ -337,7 +338,20 @@ describe('complete AI management inventory and boundary',()=>{
   const journal:string[]=JSON.parse(read('db/migrations/meta/_journal.json')).entries.map((e:{tag:string})=>`db/migrations/${e.tag}.sql`);
   const live=(marker:string)=>{const files=journal.filter(f=>read(f).includes(marker));expect(files.length,marker).toBeGreaterThan(0);return read(files.at(-1)!);};
   const guard=live('FUNCTION app.ai_control_policy_guard()'),admit=live('FUNCTION app.ai_admit('),wrapper=live('FUNCTION app._ai_control_context(');
-  expect(wrapper).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');
+  const installedWrapper=read('db/migrations/3200_ai_centre_controls.sql');
+  expect(installedWrapper).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');
+  const installedAt=installedWrapper.indexOf('CREATE FUNCTION app._ai_control_context(');
+  const finalAt=wrapper.indexOf('CREATE OR REPLACE FUNCTION app._ai_control_context(');
+  expect(installedAt).toBeGreaterThanOrEqual(0);expect(finalAt).toBeGreaterThanOrEqual(0);
+  const installedEnd=installedWrapper.indexOf('END $$;',installedAt),finalEnd=wrapper.indexOf('END $$;',finalAt);
+  expect(installedEnd).toBeGreaterThan(installedAt);expect(finalEnd).toBeGreaterThan(finalAt);
+  expect(wrapper.slice(finalAt+'CREATE OR REPLACE '.length,finalEnd+'END $$;'.length))
+    .toBe(installedWrapper.slice(installedAt+'CREATE '.length,installedEnd+'END $$;'.length));
+  expect(wrapper).toContain('p.oid IS NULL OR md5(p.prosrc) IS DISTINCT FROM expected.body_hash');
+  expect(wrapper).toContain('p.proowner<>control_owner');
+  expect(wrapper).toContain("has_function_privilege('ai_hr_app',p.oid,'EXECUTE') IS DISTINCT FROM expected.app_execute");
+  expect(wrapper).toContain('a.grantor<>p.proowner OR a.is_grantable');
+  expect(wrapper).toContain("p.oid IS DISTINCT FROM before_row.oid OR (to_jsonb(p)-'prosrc'-'proconfig') IS DISTINCT FROM before_row.attributes");
   expect(wrapper).toContain('FROM app._ai_control_context_before_centre(wanted_feature,forced_pause) c');
   expect(wrapper).toContain('c.feature_paused OR EXISTS(SELECT 1 FROM public.teras_mandate_control t WHERE t.tenant_id=app.current_tenant_id() AND t.stopped)');
   const context=read('db/migrations/0812_ai_feature_switch_owner.sql');

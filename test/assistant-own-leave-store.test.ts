@@ -204,6 +204,8 @@ describe('pending own-leave review custody', () => {
   });
 
   it('shares pending capacity across competing preparations rather than admitting each from an old count', async () => {
+    // All six preparations race again (as before cb8674dcf): the per-process Access waiter cap that refused two
+    // of them as busy was removed on 11 November 2026, so every racer competes for pending capacity.
     const attempts = await Promise.allSettled(Array.from({ length: 6 }, () => prepare()));
     const prepared = attempts.flatMap(result => result.status === 'fulfilled' ? [result.value] : []);
     const refused = attempts.flatMap(result => result.status === 'rejected' ? [result.reason] : []);

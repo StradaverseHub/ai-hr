@@ -11,7 +11,7 @@ import { readOpenRouterOptions, type OpenRouterOptions } from '../lib/ai/provide
 import { OpenRouterModel, OpenRouterTransportConfiguration } from '../lib/ai/providers/openrouter-transport';
 import { assertProviderProtocolEvaluation, runProviderProtocolEvaluation, type ProviderProtocolSummary } from '../lib/ai/provider-protocol';
 import { openProviderEvaluationReceipt, sealProviderEvaluationReceipt } from '../lib/ai/provider-evaluation-receipt';
-import { currentAiProviderAdminTx } from './ai-provider-authority';
+import { currentAiProviderAdminTx, currentAiProviderPresentationAdminTx } from './ai-provider-authority';
 import { bindStrictAiSpendRoot, governedAiConfig } from './ai-governance';
 import { resolveAiProviderCandidateSnapshotTx } from './ai-provider-snapshot';
 
@@ -29,6 +29,16 @@ async function authority(tx: Tx, ctx: SessionContext) {
 export type AiProviderCandidateView = Readonly<{ id: string; version: string; provider: 'openrouter'; model: string; keyLast4: string; providerOptions: OpenRouterOptions; updatedAt: string }>;
 export async function providerCandidatesTx(tx: Tx, ctx: SessionContext): Promise<AiProviderCandidateView[]> {
   await authority(tx, ctx);
+  return readProviderCandidatesTx(tx);
+}
+
+/** Candidate metadata for settings display, within the same snapshot as active settings. */
+export async function providerCandidatesPresentationTx(tx: Tx, ctx: SessionContext): Promise<AiProviderCandidateView[]> {
+  if (!(await currentAiProviderPresentationAdminTx(tx, ctx))) return unavailable();
+  return readProviderCandidatesTx(tx);
+}
+
+async function readProviderCandidatesTx(tx: Tx): Promise<AiProviderCandidateView[]> {
   try {
     const rows = await tx.execute<{ id: string; version_token: string; provider: string; model: string; key_last4: string; provider_options: unknown; updated_at: Date }>(sql`select * from app.ai_provider_candidate_view_v1()`);
     return rows.map(row => {

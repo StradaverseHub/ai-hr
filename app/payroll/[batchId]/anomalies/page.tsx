@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { withTenant } from '@/db/client';
-import { batchDetail } from '@/core/payroll';
+import { batchHeader } from '@/core/payroll';
 import {
   anomalyMetrics,
   anomalyQueue,
@@ -103,7 +103,7 @@ export default async function AnomaliesPage({
   // when there is nothing to carry, so an unfiltered visit posts no field at all.
   const carry = carried === '/payroll' ? undefined : carried;
 
-  const batch = await batchDetail(s, batchId).catch(() => null);
+  const batch = await batchHeader(s, batchId).catch(() => null);
   if (!batch) notFound();
 
   const [rows, metrics, swing, provenance, evidence] = await Promise.all([
@@ -240,12 +240,16 @@ export default async function AnomaliesPage({
                       <span className="tabular-nums">{label}</span>
                       <span
                         className={`rounded px-1.5 py-0.5 text-[10px] ${
-                          th.source === 'untuned_default'
-                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                            : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                          th.source === 'configured'
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
                         }`}
                       >
-                        {th.source === 'untuned_default' ? t('thresholdSourceDefault') : t('thresholdSourceConfigured')}
+                        {th.source === 'untuned_default'
+                          ? t('thresholdSourceDefault')
+                          : th.source === 'unreadable_default'
+                            ? t('thresholdSourceUnreadable')
+                            : t('thresholdSourceConfigured')}
                       </span>
                     </li>
                   );

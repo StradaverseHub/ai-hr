@@ -20,6 +20,14 @@ vi.mock('@/core/assistant-grant',()=>({mayUseAssistant:state.assistant}));
 // W3: Today composes above the dashboard and has its own role tests (test/today-*.dom.test.tsx). Here it only hands
 // through the dashboard below it, so these cases keep proving what the legacy composition reads and refuses.
 vi.mock('@/components/today/today-page',()=>({TodayPage:({more}:{more:React.ReactNode})=>React.createElement(React.Fragment,null,more)}));
+// Employee Today (11 Nov 2026): an employee-only session gets the one-pager instead; it has its own tests
+// (test/today-employee-libs.test.ts). Here it is a marker that carries the selection it was given.
+vi.mock('@/components/today/employee/today-page',()=>({EmployeeTodayPage:({employmentId}:{employmentId?:string})=>React.createElement('main',{'data-employee-today':employmentId??''},'Employee Today')}));
+// Administrator and Manager Today (11 Nov 2026): their own pages, with their own tests (test/today-admin-page.dom.test.tsx).
+vi.mock('@/components/today/admin/today-pages',()=>({
+ AdminTodayPage:({all}:{all?:boolean})=>React.createElement('main',{'data-admin-today':String(all===true)},'Administrator Today'),
+ ManagerTodayPage:({scopeIds}:{scopeIds:readonly string[]})=>React.createElement('main',{'data-manager-today':scopeIds.join(',')},'Manager Today'),
+}));
 import {resolveServerTree} from './helpers/server-tree';
 import RealDashboardPage from '../app/page';
 /** The page as the streamed response finally shows it: the dashboard under Today resolves inside its Suspense. */
@@ -35,20 +43,35 @@ beforeEach(()=>{
 });
 describe('personal web landing isolates legacy aggregate and assistant composition',()=>{
  it.each([true,false])('passes the resolved notifications entitlement to personal Home (%s)',async(enabled)=>{
-  state.session.entitlements.enabledModules=enabled?['notifications']:[];
+  // A payroll partner still lands on Today over the personal dashboard; managers have Manager Today (below).
+  state.session.roles=['payroll_partner'];state.session.entitlements.enabledModules=enabled?['notifications']:[];
   const html=renderToStaticMarkup(await DashboardPage({searchParams:Promise.resolve({})}));
   expect(html).toContain('data-greetings="'+String(enabled)+'"');
   expect(state.aggregate).not.toHaveBeenCalled();expect(state.assistant).not.toHaveBeenCalled();
  });
- it('lands an employee directly on personal Home, including a supplied company/employment choice',async()=>{
+ it('lands an employee on Employee Today, not the old personal dashboard, with a supplied employment choice',async()=>{
   const html=renderToStaticMarkup(await DashboardPage({searchParams:Promise.resolve({employmentId:'selected-own'})}));
-  expect(html).toContain('Personal Home');expect(html).toContain('data-selected="selected-own"');
+  expect(html).toContain('Employee Today');expect(html).toContain('data-employee-today="selected-own"');expect(html).not.toContain('Personal Home');
   expect(state.legacyEmployment).not.toHaveBeenCalled();expect(state.reporting).not.toHaveBeenCalled();expect(state.identity).not.toHaveBeenCalled();
   expect(state.aggregate).not.toHaveBeenCalled();expect(state.assistant).not.toHaveBeenCalled();
  });
- it('keeps a manager on personal Home by default without first-employment, aggregate or assistant reads',async()=>{
+ it('lands a manager on Manager Today, not the old personal dashboard, without first-employment, aggregate or assistant reads',async()=>{
   state.session.roles=['manager'];const html=renderToStaticMarkup(await DashboardPage({searchParams:Promise.resolve({})}));
-  expect(html).toContain('Personal Home');expect(state.legacyEmployment).not.toHaveBeenCalled();expect(state.reporting).not.toHaveBeenCalled();expect(state.aggregate).not.toHaveBeenCalled();expect(state.assistant).not.toHaveBeenCalled();
+  expect(html).toContain('Manager Today');expect(html).toContain('data-manager-today="fictional-company"');expect(html).not.toContain('Personal Home');
+  expect(state.legacyEmployment).not.toHaveBeenCalled();expect(state.reporting).not.toHaveBeenCalled();expect(state.aggregate).not.toHaveBeenCalled();expect(state.assistant).not.toHaveBeenCalled();
+ });
+ it('lands an administrator on Administrator Today with no dashboard under it, and passes "See all" through',async()=>{
+  state.session.roles=['hr_admin'];
+  let html=renderToStaticMarkup(await DashboardPage({searchParams:Promise.resolve({})}));
+  expect(html).toContain('Administrator Today');expect(html).toContain('data-admin-today="false"');expect(html).not.toContain('Personal Home');
+  html=renderToStaticMarkup(await DashboardPage({searchParams:Promise.resolve({needs:'all'})}));
+  expect(html).toContain('data-admin-today="true"');
+  expect(state.legacyEmployment).not.toHaveBeenCalled();expect(state.aggregate).not.toHaveBeenCalled();expect(state.assistant).not.toHaveBeenCalled();
+ });
+ it('keeps the explicit team workbench on the earlier path for a manager',async()=>{
+  state.session.roles=['manager'];state.identity.mockResolvedValueOnce({role:'employee',selectedEmploymentId:'selected-own'});
+  const html=renderToStaticMarkup(await DashboardPage({searchParams:Promise.resolve({workspace:'team'})}));
+  expect(html).toContain('Personal Home');expect(html).not.toContain('Manager Today');
  });
  it('does not let an employee opt into the manager path by editing the query string',async()=>{
   const html=renderToStaticMarkup(await DashboardPage({searchParams:Promise.resolve({workspace:'team'})}));

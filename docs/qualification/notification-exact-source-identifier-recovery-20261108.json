@@ -1,0 +1,65 @@
+{
+  "kind": "UNINSTALLED_NATIVE_NOTIFICATION_IDENTIFIER_RECOVERY_NOT_RELEASE",
+  "base": "1dbfb04042ab8e88ffb69539f8c04073ad17a3ce",
+  "sourceRef": "codex/notification-exact-source-identifier-recovery-20261108",
+  "qualification": "NOT_RUN",
+  "releaseAuthorized": false,
+  "production": "HELD",
+  "selectors": {
+    "native": [
+      "test/notification-worker-lifecycle.test.ts"
+    ],
+    "paired": [
+      "test/notification-worker-native-plan-diagnostic.test.ts"
+    ]
+  },
+  "nativeCases": 56,
+  "pairedCases": 6,
+  "canonicalHelpers": 2300,
+  "twentyEventAdmissionCalls": 132,
+  "caseMs": 30000,
+  "sqlMs": 20000,
+  "lockMs": 300,
+  "workerRunSeconds": 240,
+  "retainedParent": {
+    "native": {
+      "run": 42418126062,
+      "passed": 41,
+      "pending": 15,
+      "conclusion": "failure",
+      "reason": "42702 before process suite; required55000 remains unproved",
+      "artifactId": 13592711379,
+      "zipSha256": "2a05def61411624fffc54482a1af4db78983c1fb47922579e871e2a41f93494f"
+    },
+    "paired": {
+      "run": 42418128489,
+      "passed": 3,
+      "pending": 3,
+      "conclusion": "failure",
+      "reason": "candidate install42702; unconditional rolled-back-schema cleanup42P01",
+      "artifactId": 13591643895,
+      "zipSha256": "81e4c2725cf5e80339eef291e668a0b7091d17ed8987a4c397e31fb20d40d971"
+    },
+    "pure": {
+      "run": 42418131362,
+      "passed": 10,
+      "pending": 0,
+      "conclusion": "success",
+      "artifactId": 13591913610,
+      "zipSha256": "9501f6697b4bcb57e116cf7a6a7b3ace1a5f36da8640ebc2c14b1acbc4ea11f0",
+      "executedSource": "1dbfb04042ab8e88ffb69539f8c04073ad17a3ce",
+      "unchangedPureOwnersAndExercisedFunctionBodies": true
+    }
+  },
+  "sourceSha256": {
+    "test/fixtures/notification-worker/exact-source.sql": "722509efb633ec5e5d09b8f5de0e82816952aacf2b46ec68e08d57fdd534b816",
+    "test/fixtures/notification-worker/owner-fixture.ts": "671434f60cb1ebbadb2ff7a5006e1917d67b9f64bb4b6ac2a8dc3024c7d5278e",
+    "test/fixtures/notification-worker/process-cases.ts": "51442d3c8261943d583abe490114a6727d86992ac2fe3214b9589b6aade2bfcb",
+    "test/notification-worker-native-plan-diagnostic.test.ts": "0aa878e719b2a0b1c8db47585d355b13f5765938dd2a1660f8a75e244093626a",
+    "test/fixtures/notification-worker/exact-source-cases.ts": "962824bd4feb509c1168a3a896d0a663439bcefbfa185a897bb094bc3cbbf966",
+    "test/fixtures/notification-worker/admission-plan-summary.ts": "b1eef02cbd8c073734292f45f308875f027c9f4d79b71520b0f0f1dcab112b4e",
+    "test/notification-worker-plan-parser.test.ts": "16df1b6f5af700518e89478ec7f29ffc64312d0163813ae19e32567f87acb3e3",
+    "test/notification-worker-diagnostic-ownership.test.ts": "cdd41537023411edc2b5003fb71c8f756a136f106b9c1c6656162b9afa79b92c",
+    "docs/qualification/notification-exact-source-identifier-recovery-20261108.md": "90fe02b3da9fe8644c27675ad3a2dba7889b83ae81256855c587a3184e6af5cd"
+  }
+}

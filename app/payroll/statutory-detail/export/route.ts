@@ -48,6 +48,7 @@ import {
 } from '@/core/statutory-explain';
 import { toXlsxReport, type ReportData } from '@/lib/report-export';
 import { epfWorkingRows } from '../epf-working';
+import { hrdfCalculationLine, hrdfWorkingRows } from '../hrdf-working';
 import { employeeLabel } from '@/lib/employee-code';
 
 /** STATIC keys, exhaustively mapped — the same map the view uses, for the same reason: a computed `t()`
@@ -132,6 +133,20 @@ export async function GET(req: Request) {
         ...epfWorkingRows(explanation.epfWorking, t, money, locale),
       ].map(({ label, value }) => [label, value, '', '', '', '', '', ...(setByHand ? ['', ''] : [])])
     : [];
+  // c2ea9567 — the HRD Corp levy's itemised working, built by the SAME row builder as the screen. An old
+  // payslip carries the screen's note instead, so the file never implies an itemisation it does not have.
+  const pad = (cells: string[]) => [...cells, ...Array(7 - cells.length).fill(''), ...(setByHand ? ['', ''] : [])];
+  const hrdfRows = explanation?.hrdfWorking
+    ? [
+        pad([t('hrdfWorkingTitle'), t('hrdfEmployerCostNote')]),
+        ...hrdfWorkingRows(explanation.hrdfWorking, t, money, locale).map((row) =>
+          pad([row.code ? `${row.description} (${row.code})` : row.description, row.treatment, row.amount]),
+        ),
+        pad([hrdfCalculationLine(explanation.hrdfWorking, t, money, locale)]),
+      ]
+    : explanation?.hrdfBreakdownNotRecorded
+      ? [pad([t('hrdfWorkingTitle'), t('hrdfBreakdownNotRecorded')])]
+      : [];
 
   const data: ReportData = {
     filename: `statutory-explanation-${row?.employeeCode ?? 'employee'}-${row?.payPeriod ?? ''}`.replace(/-$/, ''),
@@ -169,6 +184,7 @@ export async function GET(req: Request) {
           : []),
       ]),
       ...workingRows,
+      ...hrdfRows,
     ],
     layout: {
       orientation: 'landscape',

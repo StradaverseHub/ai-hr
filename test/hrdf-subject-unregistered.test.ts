@@ -43,6 +43,9 @@ import {
   preProcessAdvisoryForSelection,
 } from '../core/payroll';
 import { generateAction } from '../app/payroll/actions';
+import { runBulkJobTick } from '../core/bulk-job-worker';
+import { payrollProcessJobHandler } from '../core/payroll-processing-job';
+import { PAYROLL_PROCESS_JOB_KIND } from '../lib/payroll-processing-job';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 // generateAction resolves its own session/translations and always redirects; mirror the wiring the
@@ -199,11 +202,25 @@ describe('(A) run-level check — the contradiction is named where the run happe
       return LAST_REDIRECT;
     };
 
+    // 2856e9fa9: the run screen no longer generates in the request. An admitted run is processed by the background
+    // payroll job, so "no payslip" also means "no job admitted", and the acknowledged run is read after its job ends.
+    const jobs = () => owner.client<{ state: string }[]>`select state from bulk_job where kind=${PAYROLL_PROCESS_JOB_KIND} and tenant_id=${base.tenantId}::uuid`;
+    const drain = async () => {
+      for (let i = 0; i < 400; i++) {
+        if ((await jobs()).every((job) => ['completed', 'failed', 'cancelled'].includes(job.state))) return;
+        if (!(await runBulkJobTick(owner.client, { handlers: [payrollProcessJobHandler] }))) await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw new Error('payroll processing job did not finish');
+    };
+
     // Unacknowledged: bounced back to the run with the confirm-required message, and NO payslip written.
     expect(await submit(false)).toContain('error=preChecksConfirmRequired');
+    expect(await jobs()).toEqual([]);
     expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId))).toHaveLength(0);
     // Acknowledged: the run proceeds. Warn-and-proceed, with the operator having had to see it.
     expect(await submit(true)).toContain('toast=');
+    await drain();
+    expect((await jobs()).map((job) => job.state)).toEqual(['completed']);
     expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId))).toHaveLength(1);
   });
 });

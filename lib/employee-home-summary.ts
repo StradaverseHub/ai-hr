@@ -1,4 +1,6 @@
 import {HOME_QUICK_ACTIONS,type HomeQuickAction} from './employee-home';
+/** Seven civil business dates ahead is a presentation window, not an eligibility or payroll rule. */
+export const HOME_SUMMARY_LOOKAHEAD_DAYS=7;
 
 export const HOME_ACTION_REFUSALS=['moduleUnavailable','notConfigured','noPayslip','detailsLocked'] as const;
 export type HomeActionRefusal=typeof HOME_ACTION_REFUSALS[number];

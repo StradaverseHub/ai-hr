@@ -10,7 +10,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {retireExpiredAiCustodyTx} from '../core/ai-retention-maintenance';
 import {runAiRetentionTick} from '../scripts/ai-retention-runner';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -70,7 +70,7 @@ describe('automatic 30-day raw transcript retirement through operator maintenanc
   let ready!:()=>void,fail!:(error:unknown)=>void,release!:()=>void;
   const started=new Promise<void>((yes,no)=>{ready=yes;fail=no;}),finish=new Promise<void>(yes=>{release=yes;});
   const watchdog=setTimeout(()=>{fail(Error('owned transcript handshake timed out'));release();},10_000);
-  const holder=withTenant(adminCtx(base),async tx=>{await lockAccessConfigurationTx(tx,base.tenantId);ready();await finish;});void holder.catch(fail);
+  const holder=withTenant(adminCtx(base),async tx=>{await lockAccessConfigurationWriteTx(tx,base.tenantId);ready();await finish;});void holder.catch(fail);
   try{await started;const result=await runAiRetentionTick(owner);expect(result).toMatchObject({...zero,tenants:1,busy:1,transcripts:0,backlog:true});expect(await exchanges()).toEqual(before);}
   finally{release();clearTimeout(watchdog);await holder;}
   expect(await runAiRetentionTick(owner)).toMatchObject({tenants:1,busy:0,transcripts:1,backlog:false});retired((await exchanges()).find(row=>row.id===old));

@@ -1,12 +1,38 @@
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {accessLockModeHeldTx,inAccessDisplayRead,lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {AiAllowanceError,AiGatewayError} from '../lib/ai/types';
 import {aiCentreActivity,runAiCentreActivity,trackAiCentreFunctions} from '../lib/ai/centre-activity';
 
+/**
+ * Access mode for an AI control check (reader/writer Access lock, wave 4). The check itself only needs the
+ * stop switch and function controls to stay stable: their writers hold Access exclusively, and the SQL
+ * owner also serialises every check on the tenant ai-control lock. A transaction that already holds
+ * Access shared is a converted writer, so it joins shared and never upgrades (two upgrading writers
+ * would deadlock). One that holds nothing still takes it exclusively, because a caller's own later
+ * effect may rely on that until the caller itself is verified. An exclusive holder simply re-enters.
+ */
+export async function lockAccessForAiControlCheckTx(tx:Tx,tenantId:string):Promise<void>{
+  // A display read never takes it exclusively (staging, 11 November 2026); a read-only transaction is shared anyway.
+  const mode=await accessLockModeHeldTx(tx,tenantId);
+  if(mode==='S'||mode!=='X'&&inAccessDisplayRead())await lockAccessConfigurationTx(tx,tenantId);
+  else await lockAccessConfigurationWriteTx(tx,tenantId);
+}
+
 /** The SQL owner serialises this check with stop writes; hold tx through a native effect. */
 export async function assertAiCentreRunningTx(tx:Tx,ctx:Pick<SessionContext,'tenantId'>,expected?:number,additionalFunctions:readonly string[]=[]):Promise<number>{
+  await lockAccessForAiControlCheckTx(tx,ctx.tenantId);
+  return assertAiCentreRunningLockedTx(tx,ctx,expected,additionalFunctions);
+}
+
+/** For a transaction that does nothing but this check (before or after a provider call): a read of the
+ * controls, so it holds Access shared and never stops clock-ins. Stop writes still exclude it. */
+export async function assertAiCentreRunningSharedTx(tx:Tx,ctx:Pick<SessionContext,'tenantId'>,expected?:number,additionalFunctions:readonly string[]=[]):Promise<number>{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
+  return assertAiCentreRunningLockedTx(tx,ctx,expected,additionalFunctions);
+}
+
+async function assertAiCentreRunningLockedTx(tx:Tx,ctx:Pick<SessionContext,'tenantId'>,expected:number|undefined,additionalFunctions:readonly string[]):Promise<number>{
   const [row]=await tx.execute<{generation:number}>(sql`select app.ai_centre_assert_running(${expected??aiCentreActivity(ctx.tenantId)?.generation??null}::integer) as generation`);
   if(row?.generation===null)throw new AiAllowanceError('paused');
   if(!Number.isSafeInteger(row?.generation)||row.generation<0)throw new AiGatewayError('AI controls could not be confirmed.');
@@ -18,11 +44,11 @@ export async function assertAiCentreRunningTx(tx:Tx,ctx:Pick<SessionContext,'ten
 }
 
 export async function withAiCentreActivity<T>(ctx:SessionContext,work:()=>Promise<T>):Promise<T>{
- const generation=await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
+ const generation=await withTenant(ctx,tx=>assertAiCentreRunningSharedTx(tx,ctx));
  if(aiCentreActivity(ctx.tenantId))return work();
  return runAiCentreActivity(ctx.tenantId,generation,async()=>{
   const result=await work();
-  await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
+  await withTenant(ctx,tx=>assertAiCentreRunningSharedTx(tx,ctx));
   return result;
  });
 }
@@ -50,10 +76,10 @@ export async function aiCentreReadAllowed(ctx:SessionContext,name:string):Promis
 export async function withAiCentreFunction<T>(ctx:SessionContext,key:string|readonly string[],work:()=>Promise<T>):Promise<T>{
  const keys=typeof key==='string'?[key]:[...key];
  return withAiCentreActivity(ctx,async()=>{
-  await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx,undefined,keys));
+  await withTenant(ctx,tx=>assertAiCentreRunningSharedTx(tx,ctx,undefined,keys));
   trackAiCentreFunctions(ctx.tenantId,keys);
   const result=await work();
-  await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
+  await withTenant(ctx,tx=>assertAiCentreRunningSharedTx(tx,ctx));
   return result;
  });
 }

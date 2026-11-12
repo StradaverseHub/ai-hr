@@ -7,7 +7,7 @@ import {QualificationMaintenance as C,type QualificationMaintenanceHuman as Huma
 import {withAgentActionGuard} from './agent-action-guard';
 import type {AssignedSubject} from './generic-assigned-review-store';
 import {assertWorkforceEmploymentTx} from '../workforce-access';
-import {lockProfileValueWritesTx} from '../access-configuration-lock';
+import {lockProfileValueWritesTx,lockAccessConfigurationTx,lockProfileValueSharedTx} from '../access-configuration-lock';
 import {validateQualificationInputTx} from '../qualifications';
 import {addQualification,updateQualification,archiveQualification} from '../workforce-registers';
 export class QualificationMaintenanceUnavailable extends Error{constructor(){super('Please reopen the employee qualification review.');this.name='QualificationMaintenanceUnavailable';}}
@@ -48,7 +48,8 @@ export async function reconcileQualificationMaintenanceSourceTx(tx:Tx,ctx:Sessio
  if(!row)return fail();return C.Receipt.parse({kind:'maintained',...reference,qualificationId:row.qualificationId,operation:row.eventType==='qualification.added'?'add':row.eventType==='qualification.updated'?'update':'archive'});
 }
 export async function readQualificationMaintenanceChoicesTx(tx:Tx,ctx:SessionContext,selection:unknown){
- const fresh=await actor(tx,ctx),pick=C.Selection.parse(selection??{query:''});await tx.execute(sql`select app.access_workforce_write_lock()`);await lockProfileValueWritesTx(tx,fresh.tenantId);
+ // A choice list only reads: the shared Access lock first, so the actor guard joins it (staging, 11 November 2026). Prepare and confirm keep the exclusive lock.
+ await lockAccessConfigurationTx(tx,ctx.tenantId);const fresh=await actor(tx,ctx),pick=C.Selection.parse(selection??{query:''});await tx.execute(sql`select app.access_workforce_write_lock()`);await lockProfileValueSharedTx(tx,fresh.tenantId);
  const pattern=`%${pick.query.replace(/[\\%_]/g,'\\$&')}%`;
  const employees=await tx.execute<{employmentId:string;employeeName:string;employeeCode:string|null;companyName:string}>(sql`select e.id as "employmentId",p.full_name as "employeeName",e.employee_code as "employeeCode",c.legal_name as "companyName" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id join company c on c.id=e.company_id and c.tenant_id=e.tenant_id where e.tenant_id=${fresh.tenantId}::uuid and not app.is_self_person(e.person_id) and app.access_workforce_employment(e.id,'workforce.maintain') and (p.full_name ilike ${pattern} or coalesce(e.employee_code,'') ilike ${pattern}) order by p.full_name,e.id limit 26`);
  const nominated=pick.employmentId?await subject(tx,fresh,pick.employmentId):null,qualifications=nominated?await records(tx,fresh,nominated.employmentId):[];

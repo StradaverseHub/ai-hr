@@ -1,4 +1,6 @@
 import { getTranslations } from 'next-intl/server';
+import { peopleSettingsBack } from '@/app/admin/settings/people/back';
+import { PeopleSettingsNavigation } from '@/components/people-settings-navigation';
 import Link from 'next/link';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
@@ -136,7 +138,8 @@ export default async function HiringDefaultsListPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('title')} description={t('description')} />
+      <PageHeader title={t('title')} description={t('description')} back={await peopleSettingsBack()} />
+      <PeopleSettingsNavigation />
       <ErrorBanner message={sp.error} />
 
       <Card className="overflow-hidden">

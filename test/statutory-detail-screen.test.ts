@@ -46,6 +46,7 @@ import StatutoryDetailPage from '../app/payroll/statutory-detail/page';
 import TransactionViewPage from '../app/payroll/transaction-view/page';
 import { StatutoryDetailView } from '../app/payroll/statutory-detail/statutory-detail-view';
 import { GET as statutoryExportGET } from '../app/payroll/statutory-detail/export/route';
+import { hrdfCalculationLine, hrdfWorkingRows } from '../app/payroll/statutory-detail/hrdf-working';
 
 /** Depth-first walk collecting every node whose `type` identity matches. Same helper as the panel guard;
  *  `panel` is walked as well as `children` because Transaction View mounts its tabs inside one. */
@@ -545,5 +546,153 @@ describe('208beb8b — a hand-set figure on the screen and in the download', () 
     expect(file).not.toContain('fieldSystemEmployeeShare');
     expect(file).not.toContain('manualBannerHeading');
     expect(file, 'and EPF is credited to the schedule that did produce it').toContain('ruleScheduleEpf');
+  });
+});
+
+describe('c2ea9567 — the HRD Corp levy breakdown on the shared display and in the download', () => {
+  const CTX = {
+    payslipId: '00000000-0000-0000-0000-0000000000c3',
+    employeeCode: 'E012',
+    employeeName: 'Employee A',
+    company: 'Example Sdn Bhd',
+    periodLabel: 'November 2026',
+    payPeriod: '2026-11',
+    runType: 'regular',
+    runSeq: 1,
+    currency: 'MYR',
+  };
+  const BASE_BLOB = {
+    version: '2026.5',
+    epfEmployee: 264,
+    epfEmployer: 312,
+    socsoEmployee: 11.75,
+    socsoEmployer: 41.15,
+    eisEmployee: 4.7,
+    eisEmployer: 4.7,
+    pcb: 0,
+  };
+  /** The sketch's second block: 3,200 + 500 + 100 − 147.69 unpaid = 3,652.31 × 0.5% = 18.26. */
+  const WORKING = {
+    version: 1,
+    items: [
+      { kind: 'basic', amount: 3200 },
+      { kind: 'earning', code: 'ALW', name: 'Fixed Allowance', amount: 500 },
+      { kind: 'earning', code: 'A0027', name: 'Handphone Allowance', amount: 100 },
+      { kind: 'unpaid', amount: -147.69 },
+    ],
+    wages: 3652.31,
+    status: 'optional',
+    subject: true,
+    rate: 0.005,
+    calculatedLevy: 18.26,
+    levy: 18.26,
+  };
+  const STAMPED_BLOB = {
+    ...BASE_BLOB,
+    hrdf: 18.26,
+    bases: { epf: 3652.31, epfAdditional: 0, socsoEis: 3652.31, pcb: 3652.31, hrdf: 3652.31 },
+    hrdfWorking: WORKING,
+  };
+
+  it('renders every recorded line, the total, the stamped rate and the levy', async () => {
+    const explanation = explainStatutory(STAMPED_BLOB, 'regular');
+    expect(explanation.hrdfWorking, 'precondition: the stamp is read').not.toBeNull();
+    const rendered = textOf(await StatutoryDetailView({ ctx: CTX, explanation }));
+    const text = rendered.join(' ');
+    expect(text).toContain('hrdfWorkingTitle');
+    expect(text).toContain('hrdfWorkingIntro');
+    expect(text).toContain('hrdfEmployerCostNote');
+    expect(text).toContain('hrdfBasic');
+    expect(text).toContain('MYR 3,200.00');
+    expect(text).toContain('Fixed Allowance');
+    expect(text).toContain('Handphone Allowance');
+    expect(text).toContain('A0027');
+    expect(text).toContain('+MYR 500.00');
+    expect(text).toContain('+MYR 100.00');
+    expect(text, 'unpaid leave is taken away').toContain('−MYR 147.69');
+    expect(text).toContain('hrdfTotalWages');
+    expect(text).toContain('MYR 3,652.31');
+    expect(text).toContain('hrdfStatusOptional');
+    expect(text, 'the STAMPED rate, not a derived quotient').toContain('0.5%');
+    expect(text).toContain('MYR 18.26');
+    expect(text).toContain('hrdfCalculation');
+    // The breakdown replaces the derived-rate line and its caveat for this item; the old-slip note is absent.
+    expect(text).not.toContain('3,652.31 ×');
+    expect(text).not.toContain('hrdfBreakdownNotRecorded');
+    expect(rendered.filter((x) => x === 'hrdfEarningTreatment')).toHaveLength(2);
+    expect(rendered.filter((x) => x === 'hrdfDeductionTreatment')).toHaveLength(1);
+  });
+
+  it('the calculation line is the stamped wages × the stamped rate = the levy', () => {
+    const explanation = explainStatutory(STAMPED_BLOB, 'regular');
+    const t = (k: string, v?: Record<string, string>) => (v ? `${k}: ${v.wages} × ${v.rate} = ${v.levy}` : k);
+    const money = (v: number) => `RM${v.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    expect(hrdfCalculationLine(explanation.hrdfWorking!, t, money, 'en')).toBe(
+      'hrdfCalculation: RM3,652.31 × 0.5% = RM18.26',
+    );
+    // The reporter's own example at the mandatory rate.
+    const reporter = explainStatutory(
+      {
+        ...BASE_BLOB,
+        hrdf: 30,
+        bases: { epf: 2400, epfAdditional: 0, socsoEis: 2400, pcb: 2400, hrdf: 3000 },
+        hrdfWorking: {
+          version: 1,
+          items: [{ kind: 'basic', amount: 2400 }, { kind: 'earning', code: 'A0040', name: 'Meal Allowance', amount: 600 }],
+          wages: 3000, status: 'mandatory', subject: true, rate: 0.01, calculatedLevy: 30, levy: 30,
+        },
+      },
+      'regular',
+    );
+    expect(hrdfCalculationLine(reporter.hrdfWorking!, t, money, 'en')).toBe('hrdfCalculation: RM3,000.00 × 1% = RM30.00');
+    const rows = hrdfWorkingRows(reporter.hrdfWorking!, t, money, 'en');
+    expect(rows.map((r) => [r.description, r.code ?? '', r.treatment, r.amount])).toEqual([
+      ['hrdfBasic', '', 'hrdfBasicTreatment', 'RM2,400.00'],
+      ['Meal Allowance', 'A0040', 'hrdfEarningTreatment', '+RM600.00'],
+      ['hrdfTotalWages', '', '', 'RM3,000.00'],
+      ['hrdfRateRow', '', 'hrdfStatusMandatory', '1%'],
+      ['hrdfLevyRow', '', '', 'RM30.00'],
+    ]);
+    // The rate row names WHY a rate is 0: the company's registration first, then the employee's flag.
+    const rateTreatment = (status: 'mandatory' | 'not_registered', subject: boolean) =>
+      hrdfWorkingRows({ ...reporter.hrdfWorking!, status, subject, rate: 0 }, t, money, 'en').find(
+        (r) => r.description === 'hrdfRateRow',
+      )!.treatment;
+    expect(rateTreatment('not_registered', false)).toBe('hrdfStatusNotRegistered');
+    expect(rateTreatment('mandatory', false)).toBe('hrdfNotSubject');
+  });
+
+  it('a payslip processed before the change keeps its line and says where the itemisation starts', async () => {
+    const explanation = explainStatutory(
+      { ...BASE_BLOB, hrdf: 48, bases: { epf: 4800, epfAdditional: 0, socsoEis: 4800, pcb: 4800, hrdf: 4800 } },
+      'regular',
+    );
+    expect(explanation.hrdfWorking).toBeNull();
+    const text = textOf(await StatutoryDetailView({ ctx: CTX, explanation })).join(' ');
+    expect(text, 'the old base × rate line is still printed').toContain('4,800.00 × 1.00% = 48.00');
+    expect(text).toContain('hrdfBreakdownNotRecorded');
+    expect(text).not.toContain('hrdfWorkingTitle');
+  });
+
+  it('a newly processed payslip stamps the breakdown, and the download carries it', async () => {
+    const rows = await listProcessedPayslipsAcross(adminCtx(base), {
+      companyIds: [base.companyId],
+      employmentId: mine.employmentId,
+    });
+    const explanation = explainStatutory(rows[0].statutory, rows[0].runType);
+    // The seeded company is not registered with HRD Corp: the wage is itemised and the rate is 0.
+    expect(explanation.hrdfWorking).toMatchObject({
+      items: [{ kind: 'basic', amount: 5000 }],
+      wages: 5000,
+      status: 'not_registered',
+      rate: 0,
+      levy: 0,
+    });
+    const res = await statutoryExportGET(new Request(`http://t/export?payslipId=${payslipId}`));
+    const file = Buffer.from(await res.arrayBuffer()).toString('utf8');
+    expect(file).toContain('hrdfWorkingTitle');
+    expect(file).toContain('hrdfTotalWages');
+    expect(file).toContain('hrdfStatusNotRegistered');
+    expect(file).not.toContain('hrdfBreakdownNotRecorded');
   });
 });

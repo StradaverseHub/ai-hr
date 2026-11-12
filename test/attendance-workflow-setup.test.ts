@@ -44,7 +44,8 @@ describe('durable attendance workflow setup',()=>{
   const ctx=adminCtx(b),employee=await hireEmployee(ctx,{person:{fullName:'Missing superior employee',primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
   await createAppUser(b.tenantId,employee.personId,'employee');
   const flow=await saveAttendanceWorkflow(ctx,{...input(),routingVersion:4,criteria:{employeeIds:[employee.employmentId]},stages:[{name:'Level 1',mode:'any_one',sources:[{kind:'direct_manager',depth:1}],hrAlternative:false}],cc:[],active:true});
-  expect(flow.warningCount).toBe(1);
+  // 4452ba3c: Save checks the configuration only; the per-employee readiness warning is a preview result.
+  expect(flow).not.toHaveProperty('warningCount');
   const warnings=await attendanceWorkflowWarningPage(ctx,flow.lineageId,[b.companyId]);
   expect(warnings).toMatchObject({total:1,hasMore:false,rows:[{employmentId:employee.employmentId,name:'Missing superior employee',levelIndex:0,problem:{code:'missing_superior'}}]});
  });

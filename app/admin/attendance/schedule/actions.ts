@@ -1,8 +1,8 @@
 'use server';
 import { saveScheduleGroupControl } from '@/core/schedule-group-controls';
 import { withTenant } from '@/db/client';
-import { lockAccessConfigurationTx } from '@/core/access-configuration-lock';
-import { lockAttendanceClockPolicyConfigurationTx, scheduleAttendanceClockPolicy } from '@/packs/attendance/service';
+import { lockAccessConfigurationWriteTx } from '@/core/access-configuration-lock';
+import { lockAttendanceClockPolicyConfigurationTx, saveScheduleGroupClockPolicy } from '@/packs/attendance/service';
 import { readScheduleClockPolicyFields } from './clock-policy-fields';
 import { parseOtRows } from './overtime-fields';
 
@@ -188,13 +188,17 @@ export async function saveScheduleGroupAttendanceAction(fd: FormData) {
       fields.includeGraceInLateness=fd.get('includeGraceInLateness')==='on';
       fields.includeGraceInEarlyOut=fd.get('includeGraceInEarlyOut')==='on';
     }
+    // c03670cc — Wage Deductions moved here from General. Read by VALUE behind its own marker, so a
+    // caller without the card (a script, an older form) leaves the switch and its stamped date alone.
+    if(fd.get('deductionsEditor')==='1')fields.applyDeductions=fd.get('applyDeductions')==='on';
     const clock=readScheduleClockPolicyFields(fd);
     if(clock) {
+      const reason=(await getTranslations('scheduleGroupEditor'))('systemReason');
       await withTenant(s, async tx=>{
-        await lockAccessConfigurationTx(tx,s.tenantId);
+        await lockAccessConfigurationWriteTx(tx,s.tenantId);
         await lockAttendanceClockPolicyConfigurationTx(tx,s);
         await updateAttendanceRuleSection(s,{ruleId,section:'attendance',fields},tx);
-        await scheduleAttendanceClockPolicy(s,{...clock,ruleId},tx);
+        await saveScheduleGroupClockPolicy(s,{ruleId,scope:clock.scope,policy:clock.policy,expected:clock.expected,reason},tx);
       });
     } else await updateAttendanceRuleSection(s,{ruleId,section:'attendance',fields});
   } catch (e) {
@@ -237,8 +241,15 @@ export async function saveScheduleGroupAttendanceAction(fd: FormData) {
  * here. They are the overtime ladder — money, and a continuous-ladder validation — and they stay on the
  * General section with the deduction switch.
  */
+/** 2f803985 — the band editor now sits in Overtime Patterns › 1. General Settings of the group's legacy
+ * pattern. Same writer (updateAttendanceRuleSection, so the 0551 trigger keeps its snapshots) and the same
+ * administrator authority; only where the save returns to differs. `returnPattern` is read BY SHAPE. */
+const PATTERN_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const OVERTIME_PATTERNS = '/admin/attendance/settings/overtime-patterns';
 export async function saveScheduleGroupOvertimeAction(fd: FormData) {
   const ruleId = String(fd.get('ruleId') ?? '');
+  const returnPattern = String(fd.get('returnPattern') ?? '');
+  const toPattern = PATTERN_ID_RE.test(returnPattern) ? `${OVERTIME_PATTERNS}?pattern=${returnPattern}` : null;
   const { s } = await loadRule(ruleId);
   try {
     if(fd.get('overtimeFullEditor')==='1') {
@@ -268,9 +279,16 @@ export async function saveScheduleGroupOvertimeAction(fd: FormData) {
     });
     }
   } catch (e) {
+    if (toPattern) redirect(`${toPattern}&bandError=${encodeURIComponent(publicErrorMessage(e))}`);
     failScheduleGroup(e, ruleId, 'overtime');
   }
   const t = await getTranslations('admin.scheduleConfig');
+  if (toPattern) {
+    revalidatePath(OVERTIME_PATTERNS);
+    revalidatePath(SCHEDULE_GROUPS);
+    const nonce = String(fd.get('__attendanceSaveNonce') ?? '');
+    redirect(`${toPattern}&toast=${encodeURIComponent(t('savedToast'))}${/^[a-f0-9]{32}$/.test(nonce) ? `&saveAck=${nonce}` : ''}`);
+  }
   okScheduleGroup(ruleId, t('savedToast'), 'overtime', String(fd.get('__attendanceSaveNonce') ?? ''));
 }
 
@@ -339,7 +357,7 @@ export async function saveScheduleGroupWeekAction(fd: FormData) {
     failScheduleGroup(
       new Error('That form did not carry the working-week controls, so nothing was changed.'),
       ruleId,
-      'workingDay',
+      'general',
     );
   }
   const kinds: DayKind[] = [];
@@ -363,15 +381,15 @@ export async function saveScheduleGroupWeekAction(fd: FormData) {
     // week before Postgres ever sees the UPDATE; the disjointness CHECK cannot fire at all (header).
     await updateAttendanceRule(s, { ruleId, ...carryForward(rule), weeklyPattern, halfPattern, offPattern });
   } catch (e) {
-    failScheduleGroup(e, ruleId, 'workingDay', weekParam(kinds));
+    failScheduleGroup(e, ruleId, 'general', weekParam(kinds));
   }
   const t = await getTranslations('admin.scheduleConfig');
-  okScheduleGroup(ruleId, t('savedToast'), 'workingDay');
+  okScheduleGroup(ruleId, t('savedToast'), 'general', String(fd.get('__attendanceSaveNonce') ?? ''));
 }
 
 export async function saveScheduleGroupControlAction(fd:FormData) {
  const s=await getSession();const ruleId=String(fd.get('ruleId')??'');
- const kind=String(fd.get('kind')??'');const section=kind==='duty'?'workingDay':'attendance';
+ const kind=String(fd.get('kind')??'');const section=kind==='duty'?'general':'attendance';
  try {if(kind!=='duty'&&kind!=='exception')throw new Error('Unknown Schedule Group control.');await saveScheduleGroupControl(s,{ruleId,kind,enabled:fd.get('enabled')==='1'});}
  catch(e){failScheduleGroup(e,ruleId,section);}
  revalidatePath('/admin/attendance/schedule');

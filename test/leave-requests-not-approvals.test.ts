@@ -202,10 +202,19 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     // The later approved plan requests All employees on this separate inquiry surface. The removed
     // /leave Requests subsection stays removed; its former single-employee restriction is no longer policy.
     expect(recordsPage).toContain('await scopedAdmin()');
-    expect(recordsPage).toContain('await leaveInquiryContext(session, scopeIds, query)');
-    expect(recordsPage).toContain('leaveInquiryRecordsPage(session, inquiry, query)');
+    // e066cf54 reads the authorized context and its records in ONE admitted read-only snapshot
+    // (docs/adr/2026-11-07-leave-inquiry-presentation-read-frame.md); the records page reader is
+    // still handed that freshly resolved scope, never a wider employee source.
+    expect(recordsPage).toContain('await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)');
+    expect(recordsPage).toContain('inquiry:scope,result:await leaveInquiryRecordsPageTx(tx,session,scope,query),');
     expect(recordsPage).not.toContain('listLeaveRequestsPage(session,');
     const owner = read('core/leave-inquiry.ts');
+    // The snapshot resolves the SAME authorized All/single context the page previously read separately.
+    const snapshotFrom = owner.indexOf('export async function leaveInquirySnapshot<T>(');
+    const snapshotTo = owner.indexOf('export async function leaveInquirySnapshotForContext<T>(', snapshotFrom);
+    expect(snapshotFrom, 'admitted inquiry snapshot owner exists').toBeGreaterThan(-1);
+    expect(snapshotTo, 'admitted inquiry snapshot owner has a closing boundary').toBeGreaterThan(snapshotFrom);
+    expect(owner.slice(snapshotFrom, snapshotTo)).toContain('read(tx, await leaveInquiryContextTx(tx,session,ids,captured,ctx,selectionOnly))');
     const from = owner.indexOf('export async function leaveInquiryRecordsPageTx(');
     const to = owner.indexOf('function checkWindow(', from);
     expect(from, 'canonical records page reader exists').toBeGreaterThan(-1);

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { client, withTenant } from '../../db/client';
 import { sql } from 'drizzle-orm';
 import { EmailSettingsError, emailConfigSchema, sameEmailCredential, type EmailSettingsRequest, type EmailSettingsView } from '../identity/email-model';
-import { authTransaction, readRecord, writeRecord } from './store';
+import { admittedAuthSql, authTransaction, readRecord, writeRecord } from './store';
 import { opaque } from './crypto';
 import { INTERNAL_EMAIL_STATE_KEY } from './active-relay';
 import { sendSmtp, type Relay, type Mail, type MailTransport } from './smtp';
@@ -15,7 +15,7 @@ type Draft = StoredEmailRelay & { id: string; revision: string; testedAt: number
 type MailState = ConnectionState & {drafts: Record<string, Draft>};
 const STATE = INTERNAL_EMAIL_STATE_KEY;
 const emptyState = (): MailState => ({ revision: 'initial', active: null, drafts: {} });
-export async function recoveryMailReady() { return Boolean((await readRecord<MailState>(client, STATE))?.active); }
+export async function recoveryMailReady() { return Boolean((await readRecord<MailState>(admittedAuthSql, STATE))?.active); }
 export async function internalEmailRequest<T>(request: EmailSettingsRequest, transport: MailTransport = sendSmtp): Promise<T> {
   if (request.op === 'readiness') return { ready: await recoveryMailReady() } as T;
   const { currentInternalIdentity } = await import('./web-session');
@@ -107,7 +107,7 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
 }
 /** One selected delivery attempt. Held authentication-mail failures are never automatically replayed. */
 export async function sendInternalMail(message: Mail, transport: MailTransport = sendSmtp) {
-  const relay = (await readRecord<MailState>(client, STATE))?.active;
+  const relay = (await readRecord<MailState>(admittedAuthSql, STATE))?.active;
   if (!relay) throw new EmailSettingsError('unavailable');
   await transport(relay, message);
 }

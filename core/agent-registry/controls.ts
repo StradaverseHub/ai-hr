@@ -1,4 +1,4 @@
-import {assertAiCentreRunningTx} from '../ai-centre-control';
+import {assertAiCentreRunningSharedTx,assertAiCentreRunningTx} from '../ai-centre-control';
 /** ADR-0170 §3.13 step 5 — the per-tenant worker switches and the run gate.
  *
  * Each registered worker's switch is read from the owner that already holds it (./workers.ts): the tenant
@@ -16,6 +16,7 @@ import {terasMandateControl,terasWorkerControl,type TerasAttestedProvider,type T
 import {isGroupAdmin} from '../../lib/authz-model';
 import {agentSwitchStatesTx} from '../agent-principal';
 import {resolveActiveAiConfig} from '../ai-config';
+import {readAiProviderPresentationTx} from '../ai-provider-snapshot';
 import {isModuleEnabled} from '../entitlements';
 import {readMandateKeysTx} from '../mandates/mandates';
 import {newRunId,writeOutcomeRecordTx} from '../outcome-record/record';
@@ -49,14 +50,25 @@ export type WorkerSwitchState=Readonly<{on:boolean;
  detail:'off'|'on'|'unattributed'}>;
 
 /** The worker's switch as of this transaction. */
-export async function workerSwitchStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration):Promise<WorkerSwitchState>{
+export function workerSwitchStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration):Promise<WorkerSwitchState>{
+ return readWorkerSwitchStateTx(tx,ctx,worker,async feature=>(await resolveActiveAiConfig(tx,ctx,feature))!=null);
+}
+
+/** Registry display uses the read-only snapshot and never prepares a worker configuration. */
+export function workerSwitchPresentationStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration):Promise<WorkerSwitchState>{
+ return readWorkerSwitchStateTx(tx,ctx,worker,async()=>(await readAiProviderPresentationTx(tx,ctx))!=null);
+}
+
+type ProviderSwitch = Extract<WorkerDeclaration['switch'],{kind:'ai_provider'}>;
+async function readWorkerSwitchStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration,
+ providerUsable:(feature:ProviderSwitch['feature'])=>Promise<boolean>):Promise<WorkerSwitchState>{
  const sw=worker.switch;
  if(sw.kind==='tenant_setting'){
   const state=(await agentSwitchStatesTx(tx,ctx)).find(row=>row.feature===sw.feature);
   const detail=state?.state==='attributed'?'on':state?.state==='unattributed'?'unattributed':'off';
   return Object.freeze({on:detail==='on',owner:'tenant_setting',detail});
  }
- if(sw.kind==='ai_provider'){const on=(await resolveActiveAiConfig(tx,ctx,sw.feature))!=null;return Object.freeze({on,owner:'ai_provider',detail:on?'on':'off'});}
+ if(sw.kind==='ai_provider'){const on=await providerUsable(sw.feature);return Object.freeze({on,owner:'ai_provider',detail:on?'on':'off'});}
  if(sw.kind==='job_type'){const on=(await readMandateKeysTx(tx,ctx.tenantId,sw.jobType)).enablement?.enabled===true;return Object.freeze({on,owner:'job_type',detail:on?'on':'off'});}
  const [row]=await tx.select({enabled:terasWorkerControl.enabled}).from(terasWorkerControl)
   .where(and(eq(terasWorkerControl.tenantId,ctx.tenantId),eq(terasWorkerControl.workerId,sw.workerId))).limit(1);
@@ -71,21 +83,30 @@ export async function tenantStoppedTx(tx:Tx,tenantId:string):Promise<boolean>{
 }
 
 export type WorkerGate=Readonly<{run:boolean;reasons:readonly ('not_registered'|'switched_off'|'stopped')[]}>;
-/** Registered, switched on and not stopped, all read in the caller's transaction. */
-export async function workerRunGateTx(tx:Tx,ctx:SessionContext,workerId:string):Promise<WorkerGate>{
+/** Evaluate already-read display facts. Execution paths still read their current gates. */
+export function workerGateFromState(on:boolean,stopped:boolean):WorkerGate{
+ const reasons:('switched_off'|'stopped')[]=[];
+ if(!on)reasons.push('switched_off');
+ if(stopped)reasons.push('stopped');
+ return Object.freeze({run:reasons.length===0,reasons:Object.freeze(reasons)});
+}
+/** Registered, switched on and not stopped, all read in the caller's transaction. `shared` is for a transaction that
+ * only reads the gate (a page offer, a capability list): it holds the Access lock shared, so stop writes still exclude
+ * it, and it never stops other work in the tenant. A worker's own execution path keeps the default. */
+export async function workerRunGateTx(tx:Tx,ctx:SessionContext,workerId:string,options:{shared?:true}={}):Promise<WorkerGate>{
  const worker=registeredWorker(workerId);
  if(!worker)return Object.freeze({run:false,reasons:Object.freeze(['not_registered' as const])});
- const reasons:('switched_off'|'stopped')[]=[];
  // Serialize with the stop writer and reject work from an older generation.
- try{await assertAiCentreRunningTx(tx,ctx);}catch(error){
+ try{await (options.shared?assertAiCentreRunningSharedTx:assertAiCentreRunningTx)(tx,ctx);}catch(error){
   if(error instanceof Error&&error.name==='AiAllowanceError')return Object.freeze({run:false,reasons:Object.freeze(['stopped' as const])});
   throw error;
  }
- if(!(await workerSwitchStateTx(tx,ctx,worker)).on)reasons.push('switched_off');
- if(await tenantStoppedTx(tx,ctx.tenantId))reasons.push('stopped');
- return Object.freeze({run:reasons.length===0,reasons:Object.freeze(reasons)});
+ const {on}=await workerSwitchStateTx(tx,ctx,worker);
+ return workerGateFromState(on,await tenantStoppedTx(tx,ctx.tenantId));
 }
-export const workerRunGate=(ctx:SessionContext,workerId:string)=>withTenant(ctx,tx=>workerRunGateTx(tx,ctx,workerId));
+/** One worker's gate in its own transaction, which reads it and nothing else: the Home and Approvals offers and the
+ * explainer capability list (staging, 11 November 2026: this took the exclusive Access lock on page renders). */
+export const workerRunGate=(ctx:SessionContext,workerId:string)=>withTenant(ctx,tx=>workerRunGateTx(tx,ctx,workerId,{shared:true}));
 /** One worker's gate as workerRunGatesTx reads it: the gate, its switch, and (a teras_worker_control switch that is on)
  * the user who last changed it, the loop's sponsor. */
 export type WorkerGateState=Readonly<{gate:WorkerGate;on:boolean;changedByUserId:string|null}>;
@@ -93,12 +114,16 @@ export type WorkerGateState=Readonly<{gate:WorkerGate;on:boolean;changedByUserId
  * The teras_worker_control switches are read in one statement (same table, tenant filter and row-level security as
  * workerSwitchStateTx's worker_control branch: a worker with no row is off) and the stop switch once (`stopped`, when the
  * caller has already read it in this transaction); any other switch kind is read as workerSwitchStateTx reads it. */
+const controlledWorkerIds=(workers:readonly (readonly [string,ReturnType<typeof registeredWorker>])[])=>
+ [...new Set(workers.flatMap(([,worker])=>worker&&worker.switch.kind==='worker_control'?[worker.switch.workerId]:[]))];
+const WORKER_CONTROL_FIELDS={workerId:terasWorkerControl.workerId,enabled:terasWorkerControl.enabled,changedByUserId:terasWorkerControl.changedByUserId};
+const workerControlWhere=(tenantId:string,controlled:readonly string[])=>and(eq(terasWorkerControl.tenantId,tenantId),inArray(terasWorkerControl.workerId,controlled as TerasSwitchedWorker[]));
+type WorkerControlRow=Readonly<{workerId:string;enabled:boolean;changedByUserId:string|null}>;
 export async function workerRunGatesTx(tx:Tx,ctx:SessionContext,workerIds:readonly string[],known?:Readonly<{stopped:boolean}>):Promise<ReadonlyMap<string,WorkerGateState>>{
  const workers=workerIds.map(id=>[id,registeredWorker(id)] as const);
- const controlled=[...new Set(workers.flatMap(([,worker])=>worker&&worker.switch.kind==='worker_control'?[worker.switch.workerId]:[]))];
- const rows:readonly Readonly<{workerId:string;enabled:boolean;changedByUserId:string|null}>[]=controlled.length
-  ?await tx.select({workerId:terasWorkerControl.workerId,enabled:terasWorkerControl.enabled,changedByUserId:terasWorkerControl.changedByUserId})
-   .from(terasWorkerControl).where(and(eq(terasWorkerControl.tenantId,ctx.tenantId),inArray(terasWorkerControl.workerId,controlled as TerasSwitchedWorker[]))):[];
+ const controlled=controlledWorkerIds(workers);
+ const rows:readonly WorkerControlRow[]=controlled.length
+  ?await tx.select(WORKER_CONTROL_FIELDS).from(terasWorkerControl).where(workerControlWhere(ctx.tenantId,controlled)):[];
  const control=new Map(rows.map(row=>[row.workerId,row] as const));
  const stopped=workers.some(([,worker])=>Boolean(worker))?(known?known.stopped:await tenantStoppedTx(tx,ctx.tenantId)):false;
  const out=new Map<string,WorkerGateState>();
@@ -106,10 +131,33 @@ export async function workerRunGatesTx(tx:Tx,ctx:SessionContext,workerIds:readon
   if(!worker){out.set(id,Object.freeze({gate:Object.freeze({run:false,reasons:Object.freeze(['not_registered' as const])}),on:false,changedByUserId:null}));continue;}
   const sw=worker.switch,row=sw.kind==='worker_control'?control.get(sw.workerId):undefined;
   const on=sw.kind==='worker_control'?row?.enabled===true:(await workerSwitchStateTx(tx,ctx,worker)).on;
-  const reasons:('switched_off'|'stopped')[]=[];
-  if(!on)reasons.push('switched_off');
-  if(stopped)reasons.push('stopped');
-  out.set(id,Object.freeze({gate:Object.freeze({run:reasons.length===0,reasons:Object.freeze(reasons)}),on,changedByUserId:on?row?.changedByUserId??null:null}));
+  out.set(id,Object.freeze({gate:workerGateFromState(on,stopped),on,changedByUserId:on?row?.changedByUserId??null:null}));
+ }
+ return out;
+}
+/** workerRunGatesTx's two reads as one JSON value (the teras_worker_control rows and the stop switch), a section of the
+ * one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts). */
+export function workerRunGatesBundleSql(ctx:SessionContext,workerIds:readonly string[]){
+ const controlled=controlledWorkerIds(workerIds.map(id=>[id,registeredWorker(id)] as const));
+ return sql`jsonb_build_object('controls',(select coalesce(jsonb_agg(jsonb_build_object('workerId',${terasWorkerControl.workerId},
+   'enabled',${terasWorkerControl.enabled},'changedByUserId',${terasWorkerControl.changedByUserId})),'[]'::jsonb)
+   from ${terasWorkerControl} where ${controlled.length?workerControlWhere(ctx.tenantId,controlled):sql`false`}),
+  'stopped',(select ${terasMandateControl.stopped} from ${terasMandateControl} where ${eq(terasMandateControl.tenantId,ctx.tenantId)} limit 1))`;
+}
+/** workerRunGatesTx over workerRunGatesBundleSql's rows, or null when a worker's switch is not a teras_worker_control
+ * switch (workerSwitchStateTx reads that kind itself). */
+export function workerRunGatesFromBundle(workerIds:readonly string[],value:unknown):ReadonlyMap<string,WorkerGateState>|null{
+ const workers=workerIds.map(id=>[id,registeredWorker(id)] as const);
+ if(workers.some(([,worker])=>worker&&worker.switch.kind!=='worker_control'))return null;
+ const raw=value as {controls:WorkerControlRow[];stopped:boolean|null};
+ const control=new Map(raw.controls.map(row=>[row.workerId,{workerId:row.workerId,enabled:row.enabled,changedByUserId:row.changedByUserId}] as const));
+ const stopped=workers.some(([,worker])=>Boolean(worker))?raw.stopped===true:false;
+ const out=new Map<string,WorkerGateState>();
+ for(const [id,worker] of workers){
+  if(!worker){out.set(id,Object.freeze({gate:Object.freeze({run:false,reasons:Object.freeze(['not_registered' as const])}),on:false,changedByUserId:null}));continue;}
+  const sw=worker.switch,row=sw.kind==='worker_control'?control.get(sw.workerId):undefined;
+  const on=row?.enabled===true;
+  out.set(id,Object.freeze({gate:workerGateFromState(on,stopped),on,changedByUserId:on?row?.changedByUserId??null:null}));
  }
  return out;
 }

@@ -2,15 +2,17 @@ import {PERSONNEL_COLUMN_SOURCES,PERSONNEL_DATE_COLUMNS} from '../lib/personnel-
 import {isEmployeeColumnKey,type EmployeeColumnKey} from '../lib/employee-columns';
 import {privateSearchHash} from './personnel-private-search';
 import {personnelDuplicateIdsTx,type PersonnelQualityFlag} from './personnel-quality';
+import {readOrgChartEdgesTx} from './org-chart-window';
 import {payrollEmploymentPredicate,payrollCompensationEffectiveOn,payrollRunContextsTx,outstandingPaymentPredicate,payrollEmploymentEnd} from '../packs/payroll/service';
 import {settingEnabled} from './entitlements';
+import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../lib/employee-search';
 import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
 import {isCalendarDate} from '../lib/calendar-date';
 import {lockPayrollHistoryReadTx,tryLockPayrollHistoryReadTx} from './payroll-history-lock';
 import {ownPersonPredicate} from './own-person';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
-import {withPersonnelRead} from './personnel-read-bounds';
+import {lockAccessConfigurationWriteTx,lockAccessConfigurationReadTx} from './access-configuration-lock';
+import {withPersonnelRead,withPersonnelPresentationReadTx,withPersonnelOverviewRead,type PersonnelOverviewSnapshot} from './personnel-read-bounds';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
 import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
 import {payrollPublicationState} from '../lib/payroll-publication';
@@ -35,15 +37,23 @@ import {
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { decodeJsonFieldRows, decodeJsonFields, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { assertModuleGate } from './module-gate';
-import { assertAiPrincipalTx } from './ai-principal';
+import { assertAiPrincipalTx, assertAiPresentationPrincipalTx } from './ai-principal';
+import {assertReadCompositionPrincipalTx} from './read-composition-principal';
 
 /** Optional caller-owned read seam. Supplied transactions must bind an actual current login;
  * this is not a bootstrap, migration or owner-pool capability. Ordinary calls are unchanged. */
-async function withReadTx<T>(ctx: SessionContext, existingTx: Tx | undefined, read: (tx: Tx) => Promise<T>): Promise<T> {
+async function withReadTx<T>(ctx: SessionContext, existingTx: Tx | undefined, read: (tx: Tx) => Promise<T>, options?:{presentationSnapshot:true}): Promise<T> {
   if (!existingTx) return withTenant(ctx, read);
-  await assertAiPrincipalTx(existingTx, ctx);
+  await (options?.presentationSnapshot?assertReadCompositionPrincipalTx:assertAiPrincipalTx)(existingTx, ctx);
   return read(existingTx);
+}
+
+/** Workforce projections own a consistent read-only snapshot. Other legacy read owners retain
+ * their established transaction contract; borrowed command transactions remain exclusive. */
+function withProjectionTx<T>(ctx:SessionContext,existingTx:Tx|undefined,purpose:'workforce'|undefined,read:(tx:Tx)=>Promise<T>){
+ return purpose?withPersonnelRead(ctx,read,{existingTx}):withReadTx(ctx,existingTx,read);
 }
 
 import { companyDeleteBlockSqlText } from './company-refs';
@@ -117,10 +127,13 @@ import {
 } from './leave';
 import {
   buildTemplateEntitlementResolver,
+  emptyTemplateEntitlementResolver,
   type TemplateEntitlementResolver,
   eligibilityNoticeFrom,
   explainEntitlementEligibility,
 } from './entitlement-template';
+import type { OwnLeaveInputs } from './own-leave-inputs';
+import { stagedHomeReads } from './calendar-window-inputs';
 // r303 (31492f74) — the per-line working HR's Leave Summary sentences are rendered from. Type only: the
 // renderer is a pure client-safe module and this read builds its input from the locals behind each figure.
 import type { LeaveSummaryDerivation } from '../lib/leave-summary-explain';
@@ -140,7 +153,7 @@ import type { EmployeePickOption } from '../lib/employment-selection';
 // drifted into the bug both items describe.
 import { leaveTypeInUseSqlText } from './leave-type-refs';
 // 23ad620e — "the" emergency contact is now the highest-priority row of the per-person register.
-import { primaryEmergencyContactSql } from './emergency-contacts';
+import { primaryEmergencyContactRow } from './emergency-contacts';
 // ADR-0082 §6 C4 — the per-employment holiday resolver behind `holidayDatesForEmployment` below.
 import { holidayDatesFor } from './holidays';
 import {
@@ -204,7 +217,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
 // employee, not a page, or the checkbox set would silently drop people past the page boundary.
 export function listEmployees(ctx: SessionContext, companyIds?: string[],purpose?:'workforce',existingTx?:Tx) {
-  return withReadTx(ctx,existingTx,async tx=>{if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);return listEmployeesTx(tx,companyIds,purpose);});
+  return withProjectionTx(ctx,existingTx,purpose,tx=>listEmployeesTx(tx,companyIds,purpose));
 }
 export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforce') {
   return tx
@@ -277,6 +290,130 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
       .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
       .where(and(companyIds&&companyIds.length?inArray(employment.companyId,companyIds):undefined,purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',companyIds):undefined))
       .orderBy(person.fullName);
+}
+
+// Keep the Payroll actions on the legacy list's RLS-visible population and join multiplicity.
+const payrollProcessEmployeeFrom = sql`
+  from ${employment}
+  inner join ${person} on ${person.id} = ${employment.personId}
+  inner join ${company} on ${company.id} = ${employment.companyId}
+  left join ${assignment} on ${assignment.employmentId} = ${employment.id}
+    and ${assignment.validTo} is null and ${assignment.supersededAt} is null
+  left join ${department} on ${department.id} = ${assignment.departmentId}
+  left join ${position} on ${position.id} = ${assignment.positionId}
+  left join ${businessUnit} on ${businessUnit.id} = ${assignment.businessUnitId}
+`;
+
+/** Leave inquiry uses this exact legacy list population, including NULL-ended
+ * assignments and ended employments. Its display rows do not need personal/card,
+ * position or lifecycle-detail columns from the general employee DTO. */
+export type LeaveInquiryEmployee = Pick<Awaited<ReturnType<typeof listEmployees>>[number],
+ 'employmentId'|'name'|'employeeCode'|'company'|'companyId'|'department'|'departmentId'|
+ 'businessUnit'|'businessUnitId'|'terminatedOn'>;
+export async function listLeaveInquiryEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:string[],employmentIds?:readonly string[]):Promise<LeaveInquiryEmployee[]>{
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();employmentIds=employmentIds?.slice();
+ await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length||employmentIds?.length===0)return [];
+ return tx.execute<LeaveInquiryEmployee>(sql`select ${employment.id} as "employmentId",${person.fullName} as name,
+  ${employment.employeeCode} as "employeeCode",${company.legalName} as company,${employment.companyId} as "companyId",
+  ${department.name} as department,${assignment.departmentId} as "departmentId",
+  ${businessUnit.name} as "businessUnit",${assignment.businessUnitId} as "businessUnitId",
+  ${employment.terminatedOn}::text as "terminatedOn"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)}
+   ${employmentIds?sql`and ${inArray(employment.id,employmentIds)}`:sql``} order by ${person.fullName}`);
+}
+
+
+/** Minimal exact legacy picker candidates. All company/org/status predicates are
+ * native; Unicode search candidates remain conservative until the JS matcher. */
+export type LeaveInquiryPickerIdentity=Pick<LeaveInquiryEmployee,'employmentId'|'name'|'employeeCode'|'company'|'companyId'>&{assignmentId:string|null};
+export type LeaveInquiryPickerFilters={query:string;companyId:string;businessUnitId:string;departmentId:string;status:string};
+export async function listLeaveInquiryPickerIdentitiesTx(ctx:SessionContext,tx:Tx,companyIds:readonly string[],filters:LeaveInquiryPickerFilters){
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();filters={...filters};await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length)return [];
+ const q=filters.query.trim().toLowerCase(),escaped='%'+q.replace(/[\\%_]/g,char=>'\\'+char)+'%';
+ const unicode=sql`((${person.fullName} collate "C") ~ '[^ -~]' or (coalesce(${employment.employeeCode},'') collate "C") ~ '[^ -~]')`;
+ const search=!q?sql`true`:q.includes('\0')?sql`false`:/^[\x00-\x7f]*$/.test(q)?sql`(${unicode}
+   or lower(${person.fullName} collate "C") like ${escaped} escape '\\'
+   or lower(coalesce(${employment.employeeCode},'') collate "C") like ${escaped} escape '\\')`:unicode;
+ return tx.execute<LeaveInquiryPickerIdentity>(sql`select ${employment.id} as "employmentId",${person.fullName} as name,
+  ${employment.employeeCode} as "employeeCode",${company.legalName} as company,${employment.companyId} as "companyId",${assignment.id} as "assignmentId"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)}
+  and ${filters.companyId?sql`${employment.companyId}=${filters.companyId}::uuid`:sql`true`}
+  and ${filters.businessUnitId?sql`${assignment.businessUnitId}=${filters.businessUnitId}::uuid`:sql`true`}
+  and ${filters.departmentId?sql`${assignment.departmentId}=${filters.departmentId}::uuid`:sql`true`}
+  and ${filters.status?filters.status==='active'?sql`${employment.terminatedOn} is null`:sql`${employment.terminatedOn} is not null`:sql`true`}
+  and ${search} order by ${person.fullName}`);
+}
+export type LeaveInquiryPickerFacet=Pick<LeaveInquiryEmployee,'companyId'|'company'|'departmentId'|'department'|'businessUnitId'|'businessUnit'>;
+export async function leaveInquiryPickerFacetsTx(ctx:SessionContext,tx:Tx,companyIds:readonly string[]){
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length)return {populationTotal:0,rows:[] as LeaveInquiryPickerFacet[]};
+ // One complete native population walk retains exact multiplicity and distinct represented facets.
+ const rows=await tx.execute<LeaveInquiryPickerFacet&{populationTotal:number}>(sql`select distinct
+  ${employment.companyId} as "companyId",${company.legalName} as company,${assignment.departmentId} as "departmentId",${department.name} as department,
+  ${assignment.businessUnitId} as "businessUnitId",${businessUnit.name} as "businessUnit",(count(*) over())::int as "populationTotal"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)}`);
+ return {populationTotal:rows[0]?.populationTotal??0,rows:rows.map(({populationTotal,...row})=>row)};
+}
+/** Hydrate only retained candidate rows, preserving the legacy join identity. */
+export async function leaveInquiryPickerDisplayRowsTx(ctx:SessionContext,tx:Tx,companyIds:readonly string[],identities:readonly LeaveInquiryPickerIdentity[]){
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();identities=identities.map(row=>({...row}));await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length||!identities.length)return [];
+ if(identities.length>200)throw new Error('Inquiry picker display page exceeds 200 rows');
+ return tx.execute<LeaveInquiryEmployee&{assignmentId:string|null}>(sql`select ${employment.id} as "employmentId",${person.fullName} as name,
+  ${employment.employeeCode} as "employeeCode",${company.legalName} as company,${employment.companyId} as "companyId",
+  ${department.name} as department,${assignment.departmentId} as "departmentId",${businessUnit.name} as "businessUnit",${assignment.businessUnitId} as "businessUnitId",
+  ${employment.terminatedOn}::text as "terminatedOn",${assignment.id} as "assignmentId"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)} and ${or(...identities.map(row=>sql`(${employment.id}=${row.employmentId}::uuid and ${assignment.id} is not distinct from ${row.assignmentId}::uuid)`))}`);
+}
+
+type PayrollTransactionEmployee = Pick<Awaited<ReturnType<typeof listEmployees>>[number],
+  'employmentId' | 'name' | 'employeeCode' | 'company' | 'companyId' |
+  'department' | 'departmentLabel' | 'departmentCode' | 'departmentId' |
+  'businessUnit' | 'businessUnitLabel' | 'businessUnitCode' | 'businessUnitId' | 'terminatedOn'>;
+
+/** Transaction View needs only the fields used in its scope rail and filter validation. */
+export function listPayrollTransactionEmployees(ctx:SessionContext,companyIds:string[]){
+  return withTenant(ctx,tx=>tx.execute<PayrollTransactionEmployee>(sql`
+    select ${employment.id} as "employmentId", ${person.fullName} as name,
+      ${employment.employeeCode} as "employeeCode", ${company.legalName} as company,
+      ${employment.companyId} as "companyId", ${department.name} as department,
+      coalesce(nullif(trim(${department.label}), ''), nullif(trim(${department.description}), ''), ${department.name}) as "departmentLabel",
+      ${department.name} as "departmentCode", ${assignment.departmentId} as "departmentId",
+      ${businessUnit.name} as "businessUnit",
+      coalesce(nullif(trim(${businessUnit.label}), ''), nullif(trim(${businessUnit.name}), ''), ${businessUnit.code}) as "businessUnitLabel",
+      ${businessUnit.code} as "businessUnitCode", ${assignment.businessUnitId} as "businessUnitId",
+      ${employment.terminatedOn}::text as "terminatedOn"
+    ${payrollProcessEmployeeFrom}
+    ${companyIds.length?sql`where ${inArray(employment.companyId,companyIds)}`:sql``}
+    order by ${person.fullName}
+  `));
+}
+
+/** Intersect a posted selection with the exact RLS-visible company rows. Keep input order and duplicates. */
+export async function payrollProcessEmployeeSelection(ctx:SessionContext,companyId:string,submittedIds:string[]) {
+  // The legacy string comparison never matched alternate UUID spellings or malformed input.
+  const ids=[...new Set(submittedIds.filter(id=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)))];
+  if(!ids.length)return [];
+  const visible=await withTenant(ctx,tx=>tx.execute<{id:string}>(sql`
+    select ${employment.id} as id ${payrollProcessEmployeeFrom}
+    where ${employment.companyId}=${companyId}::uuid
+      and ${employment.id}=any(${'{' + ids.join(',') + '}'}::uuid[])
+  `));
+  const allowed=new Set(visible.map(row=>row.id));
+  return submittedIds.filter(id=>allowed.has(id));
+}
+
+/** Exact count of the same legacy company list, including its join multiplicity and retained employments. */
+export function payrollProcessEmployeeCount(ctx:SessionContext,companyId:string) {
+  return withTenant(ctx,async tx=>{
+    const [row]=await tx.execute<{total:string}>(sql`
+      select count(*) as total ${payrollProcessEmployeeFrom}
+      where ${employment.companyId}=${companyId}::uuid
+    `);
+    return Number(row.total);
+  });
 }
 
 /**
@@ -381,11 +518,28 @@ export type EmployeeListFilters = {
   businessUnitIds?: string[]; parentCompanyIds?: string[]; businessGroupIds?: string[];
   jobGrades?: string[]; positionIds?: string[]; confirmationState?: 'confirmed'|'unconfirmed';
   probationEndFrom?: string; probationEndTo?: string; joinedFrom?: string; joinedTo?: string;
+  /** aa045103 — multi-select Employment Type (any of), the Personnel header and Filter dialog `type` param. */
+  employmentTypes?: string[];
+  /** aa045103 — "Blank / unassigned" ticked in a choice filter: that field may also be empty. With no ids
+   *  selected for the same field it narrows to the empty rows alone. */
+  blankChoices?: PersonnelBlankChoice[];
+  /** aa045103 — From/To ranges for the Group Join Date and Confirmation Date columns (inclusive). */
+  hiredFrom?: string; hiredTo?: string; confirmationFrom?: string; confirmationTo?: string;
   qualityFlags?: PersonnelQualityFlag[];
   /** Opaque, principal-bound five-minute result membership; never raw identity text. */
   privateSearch?: string;
   columnSort?: EmployeeColumnKey; sortDirection?: 'asc'|'desc';
 };
+
+/** Choice fields whose "Blank / unassigned" option the Personnel listing can combine with chosen values. */
+export const PERSONNEL_BLANK_CHOICES = ['department', 'businessUnit', 'position', 'jobGrade', 'employmentType'] as const;
+export type PersonnelBlankChoice = (typeof PERSONNEL_BLANK_CHOICES)[number];
+/** "Any of these values, or (when Blank is ticked) none at all". Undefined when the field is not narrowed. */
+function anyOfOrBlank<T>(column: SQL<T>, values: readonly NonNullable<T>[] | undefined, blank: boolean, text = false) {
+  const chosen = values?.length ? inArray(column, [...values]) : undefined;
+  const empty = blank ? (text ? sql`coalesce(${column}::text,'') = ''` : isNull(column)) : undefined;
+  return chosen && empty ? or(chosen, empty) : chosen ?? empty;
+}
 
 /** The current-assignment join (≤1 row per employment) — shared by every employee-listing query so the
  *  department / employment-type filters apply identically to the rows, the pager total and the cards. */
@@ -417,10 +571,11 @@ function employeeListWhere(p: EmployeeListFilters, c: EmployeeListColumns = empl
     p.companyId ? eq(c.companyId, p.companyId) : undefined,
     p.filterCompanyIds && p.filterCompanyIds.length ? inArray(c.companyId, p.filterCompanyIds) : undefined,
     p.departmentId ? eq(c.departmentId, p.departmentId) : undefined,
-    p.departmentIds && p.departmentIds.length ? inArray(c.departmentId, p.departmentIds) : undefined,
+    anyOfOrBlank(c.departmentId, p.departmentIds, !!p.blankChoices?.includes('department')),
     p.employmentStatuses && p.employmentStatuses.length ? inArray(c.status, p.employmentStatuses) : undefined,
     p.status === 'terminated' ? isNotNull(c.terminatedOn) : p.status === 'active' ? isNull(c.terminatedOn) : undefined,
     p.employmentType ? eq(c.employmentType, p.employmentType) : undefined,
+    anyOfOrBlank(c.employmentType, p.employmentTypes, !!p.blankChoices?.includes('employmentType'), true),
     q ? sql`(${c.name} ilike ${'%' + q.replace(/[\\%_]/g,'\\$&') + '%'} or ${c.email} ilike ${'%' + q.replace(/[\\%_]/g,'\\$&') + '%'} or ${c.employeeCode} ilike ${'%' + q.replace(/[\\%_]/g,'\\$&') + '%'})` : undefined,
   );
 }
@@ -444,34 +599,41 @@ const privateFilterRowFields = [
 const workforceListValue = <T>(key: string): SQL<T> => sql<T>`workforce_row.value ->> ${key}`;
 const workforceListDate = (key: string) => sql<string | null>`(${workforceListValue(key)})::date`;
 const workforceListUuid = (key: string) => sql<string>`(${workforceListValue(key)})::uuid`;
-function workforceListColumns(asOf=todayInKualaLumpur()): EmployeeListColumns {
+const workforceFieldAccess={value:workforceListValue,date:workforceListDate,uuid:workforceListUuid};
+const typedFieldValue=<T>(key:string):SQL<T>=>sql<T>`workforce_row.${sql.identifier(key)}`;
+const typedWorkforceFieldAccess={value:typedFieldValue,date:(key:string)=>sql<string|null>`(${typedFieldValue(key)})::date`,uuid:(key:string)=>sql<string>`(${typedFieldValue(key)})::uuid`};
+function workforceListColumns(asOf=todayInKualaLumpur(),read=workforceFieldAccess): EmployeeListColumns {
   const status: EmploymentStatusColumns = {
-    finalConfirmationDate: workforceListDate('finalConfirmationDate'), confirmationDate: workforceListDate('confirmationDate'),
-    probationEndDate: workforceListDate('probationEndDate'), provisionalEndOn: workforceListDate('provisionalEndOn'),
-    resignationDate: workforceListDate('resignationDate'), lastWorkingDate: workforceListDate('lastWorkingDate'),
-    terminatedOn: workforceListDate('terminatedOn'), blacklistedAt: workforceListDate('blacklistedAt'),
+    finalConfirmationDate: read.date('finalConfirmationDate'), confirmationDate: read.date('confirmationDate'),
+    probationEndDate: read.date('probationEndDate'), provisionalEndOn: read.date('provisionalEndOn'),
+    resignationDate: read.date('resignationDate'), lastWorkingDate: read.date('lastWorkingDate'),
+    terminatedOn: read.date('terminatedOn'), blacklistedAt: read.date('blacklistedAt'),
   };
   return {
-    companyId: workforceListUuid('companyId'), departmentId: workforceListUuid('departmentId'),
-    employmentType: workforceListValue('employmentType'), terminatedOn: workforceListDate('terminatedOn'),
-    name: workforceListValue('name'), email: workforceListValue('email'), employeeCode: workforceListValue('employeeCode'),
+    companyId: read.uuid('companyId'), departmentId: read.uuid('departmentId'),
+    employmentType: read.value('employmentType'), terminatedOn: read.date('terminatedOn'),
+    name: read.value('name'), email: read.value('email'), employeeCode: read.value('employeeCode'),
     status: employmentStatusSql(asOf, status),
   };
 }
-const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns,duplicateIds:readonly string[]=[]) =>
+const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns,duplicateIds:readonly string[]=[],read=workforceFieldAccess) =>
   and(p.companyIds?.length === 0 ? sql`false` : undefined, employeeListWhere(p, columns),
-   p.businessUnitIds?.length?inArray(workforceListUuid('businessUnitId'),p.businessUnitIds):undefined,
-   p.parentCompanyIds?.length?inArray(workforceListUuid('parentCompanyId'),p.parentCompanyIds):undefined,
-   p.businessGroupIds?.length?inArray(workforceListUuid('businessGroupId'),p.businessGroupIds):undefined,
-   p.jobGrades?.length?inArray(workforceListValue<string>('jobGradeCode'),p.jobGrades):undefined,
-   p.positionIds?.length?inArray(workforceListUuid('positionId'),p.positionIds):undefined,
-   p.confirmationState?eq(workforceListValue<string>('confirmationState'),p.confirmationState):undefined,
-   p.joinedFrom?gte(workforceListDate('joinDate'),p.joinedFrom):undefined,
-   p.joinedTo?lte(workforceListDate('joinDate'),p.joinedTo):undefined,
-   p.probationEndFrom?gte(workforceListDate('probationEndDate'),p.probationEndFrom):undefined,
-   p.probationEndTo?lte(workforceListDate('probationEndDate'),p.probationEndTo):undefined,
-   p.qualityFlags?.length?or(...p.qualityFlags.map(flag=>flag==='suspected_duplicate'?(duplicateIds.length?inArray(workforceListUuid('employmentId'),[...duplicateIds]):sql`false`):sql`(workforce_row.value->'quality'->>${flag})::boolean is true`)):undefined,
-   p.privateSearch?sql`app.personnel_column_search_matches(${privateSearchHash(p.privateSearch)??''},${workforceListUuid('employmentId')},${columns.companyId},${p.companyIds?sql`ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`},${workforceListValue('filterRevision')})`:undefined);
+   anyOfOrBlank(read.uuid('businessUnitId'),p.businessUnitIds,!!p.blankChoices?.includes('businessUnit')),
+   p.parentCompanyIds?.length?inArray(read.uuid('parentCompanyId'),p.parentCompanyIds):undefined,
+   p.businessGroupIds?.length?inArray(read.uuid('businessGroupId'),p.businessGroupIds):undefined,
+   anyOfOrBlank(read.value<string>('jobGradeCode'),p.jobGrades,!!p.blankChoices?.includes('jobGrade'),true),
+   anyOfOrBlank(read.uuid('positionId'),p.positionIds,!!p.blankChoices?.includes('position')),
+   p.confirmationState?eq(read.value<string>('confirmationState'),p.confirmationState):undefined,
+   p.joinedFrom?gte(read.date('joinDate'),p.joinedFrom):undefined,
+   p.joinedTo?lte(read.date('joinDate'),p.joinedTo):undefined,
+   p.hiredFrom?gte(read.date('hiredOn'),p.hiredFrom):undefined,
+   p.hiredTo?lte(read.date('hiredOn'),p.hiredTo):undefined,
+   p.confirmationFrom?gte(read.date('confirmationDate'),p.confirmationFrom):undefined,
+   p.confirmationTo?lte(read.date('confirmationDate'),p.confirmationTo):undefined,
+   p.probationEndFrom?gte(read.date('probationEndDate'),p.probationEndFrom):undefined,
+   p.probationEndTo?lte(read.date('probationEndDate'),p.probationEndTo):undefined,
+   p.qualityFlags?.length?or(...p.qualityFlags.map(flag=>flag==='suspected_duplicate'?(duplicateIds.length?inArray(read.uuid('employmentId'),[...duplicateIds]):sql`false`):sql`(workforce_row.value->'quality'->>${flag})::boolean is true`)):undefined,
+   p.privateSearch?sql`app.personnel_column_search_matches(${privateSearchHash(p.privateSearch)??''},${read.uuid('employmentId')},${columns.companyId},${p.companyIds?sql`ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`},${read.value('filterRevision')})`:undefined);
 
 export type PersonnelCompanyChoice = {
   id: string; name: string; parentCompanyId: string | null; parentCompany: string | null;
@@ -483,10 +645,15 @@ type PersonnelChoiceRow = { businessUnitId: string | null; businessUnit: string 
 async function personnelCompanyChoicesTx(tx: Tx, companyIds: string[], asOf: string) {
   const companies = await tx.execute<PersonnelCompanyChoice>(sql`select * from app.personnel_filter_companies(
     ARRAY[${sql.join(companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[], ${asOf}::date)`);
+  const canInspectDuplicates = await personnelDuplicateAuthorityTx(tx, companies.map(company => company.id));
+  return { companies: [...companies], canInspectDuplicates };
+}
+
+async function personnelDuplicateAuthorityTx(tx: Tx, companyIds: string[]) {
   const [duplicateAuthority] = await tx.execute<{ allowed: boolean }>(sql`select coalesce(
-    bool_or(app.is_admin_for(id) and app.personnel_identity_search_permitted(id)), false) as allowed
-    from unnest(ARRAY[${sql.join(companies.map(company => sql`${company.id}::uuid`), sql`, `)}]::uuid[]) id`);
-  return { companies: [...companies], canInspectDuplicates: duplicateAuthority.allowed };
+    bool_or(app.access_workforce_projection_company(id) and app.is_admin_for(id) and app.personnel_identity_search_permitted(id)), false) as allowed
+    from unnest(ARRAY[${sql.join(companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]) id`);
+  return duplicateAuthority.allowed;
 }
 
 function personnelAssignmentChoices(source: SQL, companyIds: string[], asOf: string) {
@@ -507,14 +674,17 @@ export function personnelFilterChoices(ctx: SessionContext, companyIds: string[]
   });
 }
 
-async function workforcePersonnelPageTx(
+async function workforcePersonnelPageQueryTx(
   tx: Tx, ctx: SessionContext, input: PersonnelListInput, asOf: string,
-  facets?: { headcount: EmployeeListFilters; choiceIds: string[] },
+  facets?: { headcount: EmployeeListFilters; choiceIds?: string[] },
 ) {
   const columns = workforceListColumns(asOf);
-  const duplicateIds = (input.qualityFlags?.includes('suspected_duplicate') ||
-    facets?.headcount.qualityFlags?.includes('suspected_duplicate'))
-    ? await personnelDuplicateIdsTx(tx, ctx, { companyIds: input.companyIds, asOf })
+  const sameFacetScope = facets && JSON.stringify(input.companyIds) === JSON.stringify(facets.headcount.companyIds);
+  const duplicateIds = input.qualityFlags?.includes('suspected_duplicate')
+    ? await personnelDuplicateIdsTx(tx, ctx, { companyIds: input.companyIds, asOf }) : [];
+  const facetDuplicateIds = facets?.headcount.qualityFlags?.includes('suspected_duplicate')
+    ? input.qualityFlags?.includes('suspected_duplicate') && sameFacetScope
+      ? duplicateIds : await personnelDuplicateIdsTx(tx, ctx, { companyIds: facets.headcount.companyIds, asOf })
     : [];
   const filters = workforceListWhere(input, columns, duplicateIds);
   const key=isEmployeeColumnKey(input.columnSort)?input.columnSort:undefined;
@@ -530,17 +700,19 @@ async function workforcePersonnelPageTx(
   // The projection evaluates dated organisation and access policy for every admitted employee.
   // Evaluate it once even when the requested page is empty. The count is independent of pagination.
   const source = sql`personnel_source as workforce_row`;
+  // The native scope applies before dated company projection. A different facet scope needs its own source.
+  const privateFilter = Boolean(input.privateSearch || (sameFacetScope && facets?.headcount.privateSearch));
+  const facetSource = !facets || sameFacetScope ? source
+    : personnelListSource(facets.headcount.companyIds, asOf, Boolean(facets.headcount.privateSearch));
   const choiceIds = facets?.choiceIds ?? [];
   const sameScope = input.companyIds !== undefined && input.companyIds.length === choiceIds.length &&
     input.companyIds.every(id => choiceIds.includes(id));
   const choiceSource = sameScope ? source : personnelListSource(choiceIds, asOf);
-  const publicRow = input.privateSearch
+  const publicRow = privateFilter
     ? sql`value - ARRAY[${sql.join(privateFilterRowFields.map(field => sql`${field}`), sql`, `)}]::text[]`
     : sql`value`;
-  const [result] = await tx.execute<{
-    rows: EmployeeListRow[]; total: number; byStatus: Partial<Record<EmploymentStatus, number>>; choices: PersonnelChoiceRow[];
-  }>(sql`
-    with personnel_source as materialized (select value from ${personnelListSource(input.companyIds, asOf, Boolean(input.privateSearch))}),
+  return sql`
+    with personnel_source as materialized (select value from ${personnelListSource(input.companyIds, asOf, privateFilter)}),
     matching as materialized (select value from ${source} where ${filters ?? sql`true`}),
     page as (select value from matching as workforce_row order by ${order} limit ${input.limit} offset ${input.offset})
     select
@@ -549,33 +721,303 @@ async function workforcePersonnelPageTx(
       ${facets ? sql`,
         (select coalesce(jsonb_object_agg(status, count), '{}'::jsonb) from (
           select ${columns.status} as status, count(distinct ${workforceListUuid('employmentId')})::int as count
-          from ${source} where ${workforceListWhere(facets.headcount, columns, duplicateIds) ?? sql`true`} group by 1
+          from ${facetSource} where ${workforceListWhere(facets.headcount, columns, facetDuplicateIds) ?? sql`true`} group by 1
         ) as counts) as "byStatus",
-        (select coalesce(jsonb_agg(to_jsonb(choice)), '[]'::jsonb) from (
+        ${facets.choiceIds ? sql`(select coalesce(jsonb_agg(to_jsonb(choice)), '[]'::jsonb) from (
           ${personnelAssignmentChoices(choiceSource, choiceIds, asOf)}
-        ) as choice) as choices` : sql``}
-  `);
+        ) as choice)` : sql`'[]'::jsonb`} as choices` : sql``}
+  `;
+}
+
+type PersonnelOverviewInput = PersonnelListInput & { companyIds: string[] };
+
+const PERSONNEL_BOUNDED_ROW_LIMIT = 10_000, PERSONNEL_PAGE_ROWS_CHUNK = 2_000;
+/** Which typed fact relation the bounded overview reads: the 2701 projection, or the complete typed
+ * projection of migration 5020 (db/migrations/5020_personnel_overview_facts.sql) where it is installed. */
+type PersonnelFactSource = 'filter-fields' | 'facts';
+const personnelFactRelation: Record<PersonnelFactSource, SQL> = {
+  'filter-fields': sql`app.personnel_overview_filter_fields`, facts: sql`app.personnel_overview_facts`,
+};
+// Filters each typed relation evaluates with the canonical predicate. The route parser supplies empty
+// arrays when nothing is selected; those are no-op filters, not restrictions.
+const filterFieldsFilters = new Set<string>([
+  'companyIds', 'companyId', 'filterCompanyIds', 'q', 'status', 'employmentStatuses', 'sort', 'sortDirection',
+  'limit', 'offset', 'departmentId', 'departmentIds', 'employmentType', 'businessUnitIds', 'positionIds',
+  'confirmationState', 'probationEndFrom', 'probationEndTo', 'columnSort',
+  // aa045103: both typed relations carry employmentType and confirmationDate.
+  'employmentTypes', 'confirmationFrom', 'confirmationTo',
+]);
+const factsFilters = new Set<string>([
+  ...filterFieldsFilters, 'parentCompanyIds', 'businessGroupIds', 'jobGrades', 'joinedFrom', 'joinedTo',
+  'qualityFlags', 'privateSearch',
+  // aa045103: the 5020 facts carry hiredOn and every blank-able choice column (jobGradeCode included).
+  'blankChoices', 'hiredFrom', 'hiredTo',
+]);
+// Sorts whose JSON source key the 2701 relation carries as a typed column with the same value.
+const filterFieldsSorts = new Set<EmployeeColumnKey>([
+  'code', 'name', 'email', 'company', 'position', 'businessUnit', 'employmentType', 'status', 'confirmationDate',
+]);
+const typedQualityColumn: Record<Exclude<PersonnelQualityFlag, 'suspected_duplicate'>, string> = {
+  missing_business_unit: 'qualityMissingBusinessUnit', missing_job_grade: 'qualityMissingJobGrade',
+  missing_direct_superior: 'qualityMissingDirectSuperior', company_not_in_structure: 'qualityCompanyNotInStructure',
+};
+
+function personnelFactSource(
+  input: PersonnelOverviewInput, facets: EmployeeListFilters, snapshot: PersonnelOverviewSnapshot, asOf: string,
+): PersonnelFactSource | null {
+  // page_rows projects at most 2,000 subjects per call; larger pages (exports) are projected in chunks.
+  if (!Number.isSafeInteger(input.limit) || input.limit < 0 || input.limit > PERSONNEL_BOUNDED_ROW_LIMIT ||
+      !Number.isSafeInteger(input.offset) || input.offset < 0 || input.companyIds.length === 0) return null;
+  const active = (value: unknown) => value !== undefined && (!Array.isArray(value) || value.length > 0);
+  const supported = (allowed: Set<string>, sorts?: Set<EmployeeColumnKey>) => [input, facets].every(filters =>
+    Object.entries(filters).every(([key, value]) => !active(value) || allowed.has(key)) &&
+    (!sorts || !isEmployeeColumnKey(filters.columnSort) || sorts.has(filters.columnSort)));
+  if (supported(filterFieldsFilters, filterFieldsSorts)) return 'filter-fields';
+  // One token per statement: the page and its headcount facets read the same private membership.
+  if (input.privateSearch && facets.privateSearch && input.privateSearch !== facets.privateSearch) return null;
+  // The private filter's dated-company check is stated for the database's current Kuala Lumpur day.
+  const datedPrivate = !input.privateSearch && !facets.privateSearch || snapshot.databaseToday === asOf;
+  return snapshot.typedFacts && datedPrivate && supported(factsFilters) ? 'facts' : null;
+}
+
+/** workforceListWhere over typed facts. Its JSON-only arms (confirmation state, quality, private
+ * membership) are restated over the typed columns that carry the same values. */
+function personnelFactWhere(
+  p: EmployeeListFilters, asOf: string, source: PersonnelFactSource, duplicateIds: readonly string[],
+): SQL {
+  const read = typedWorkforceFieldAccess;
+  const { confirmationState, qualityFlags, privateSearch, ...ordinary } = p;
+  const confirmation = source === 'facts' ? read.value<string>('confirmationState')
+    : sql<string>`(case when coalesce(${read.date('finalConfirmationDate')},${read.date('confirmationDate')})<=${asOf}::date then 'confirmed' else 'unconfirmed' end)`;
+  // app.personnel_column_search_matches, set-wise: a verified token entry (identity entries only where
+  // identity search is permitted) and an entry whose filter fingerprint, if any, is still current. Each
+  // side is an uncorrelated set (search_members below), so it is hashed once rather than scanned per row.
+  const id = read.uuid('employmentId');
+  const member = sql`((${id} in (select employment_id from search_public)
+      or (${id} in (select employment_id from search_identity) and ${read.uuid('companyId')} in (select id from identity_companies)))
+    and ${id} in (select employment_id from search_current))`;
+  return and(
+    workforceListWhere(ordinary, workforceListColumns(asOf, read), [], read),
+    confirmationState ? eq(confirmation, confirmationState) : undefined,
+    qualityFlags?.length ? or(...qualityFlags.map(flag => flag === 'suspected_duplicate'
+      ? duplicateIds.length ? inArray(read.uuid('employmentId'), [...duplicateIds]) : sql`false`
+      : sql`${typedFieldValue(typedQualityColumn[flag])} is true`)) : undefined,
+    privateSearch ? member : undefined,
+  ) ?? sql`true`;
+}
+
+/** Caller-owned scalar expressions (and an administrator page-photo relation over the page's own
+ * employment ids) selected in the overview statement instead of separate statements. */
+export type PersonnelOverviewAttachments = { attach?: Record<string, SQL>; pagePhotos?: (employmentIds: SQL) => SQL | null };
+const attachedColumn = (attach: Record<string, SQL> | undefined) => attach && Object.keys(attach).length
+  ? sql`jsonb_build_object(${sql.join(Object.entries(attach).map(([key, value]) => sql`${key}::text, ${value}`), sql`, `)})`
+  : sql`'{}'::jsonb`;
+
+function personnelNarrowOverviewQuery(
+  input: PersonnelOverviewInput, facets: EmployeeListFilters, asOf: string, source: PersonnelFactSource,
+  duplicateIds: readonly string[], extras: PersonnelOverviewAttachments = {}, typedPageRows = false,
+): SQL {
+  const photos = extras.pagePhotos?.(sql`array(select employment_id from page)`) ?? null;
+  // The complete typed draft ships the same page projection with the set-wise organisation resolver.
+  const pageRows = typedPageRows ? sql`app.personnel_overview_page_rows_typed` : sql`app.personnel_overview_page_rows`;
+  const read = typedWorkforceFieldAccess, columns = workforceListColumns(asOf, read);
+  const scope = sql`array[${sql.join(input.companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
+  const key = isEmployeeColumnKey(input.columnSort) ? input.columnSort : undefined;
+  const sortValue = key === 'status' ? columns.status
+    : key && PERSONNEL_DATE_COLUMNS.has(key) ? read.date(PERSONNEL_COLUMN_SOURCES[key])
+    : key ? sql`lower(${read.value(PERSONNEL_COLUMN_SOURCES[key])})` : undefined;
+  // The exact owner's order: the column sort (nulls last), else company then name, else name; then ID.
+  const order = sortValue ? sql`sort_value ${input.sortDirection === 'desc' ? sql`desc` : sql`asc`} nulls last, employment_id`
+    : input.sort === 'company' ? sql`company_sort, name_sort, employment_id` : sql`name_sort, employment_id`;
+  const privateHash = input.privateSearch ?? facets.privateSearch;
+  const privateSources = privateHash ? sql`
+    search_entries as materialized (
+      select * from app.personnel_private_search_entries(${privateSearchHash(privateHash) ?? ''}, ${scope})
+    ), identity_companies as materialized (
+      select id from companies where app.personnel_identity_search_permitted(id)
+    ), revision_subjects as materialized (
+      select coalesce(array_agg(distinct "employmentId"), '{}'::uuid[]) as ids, count(distinct "employmentId") as n
+      from search_entries where "hasFilterRevision"
+    ), search_revisions as materialized (
+      select (r.value->>'employmentId')::uuid as employment_id, r.value->>'filterRevision' as revision
+      from revision_subjects s cross join lateral app.personnel_list_rows_for_ids(${asOf}::date, ${scope}, s.ids) r(value)
+      where s.n between 1 and 2000
+      union all
+      select (r.value->>'employmentId')::uuid, r.value->>'filterRevision'
+      from app.personnel_list_rows(${asOf}::date, ${scope}) r(value) where (select n from revision_subjects) > 2000
+    ), search_public as materialized (
+      select "employmentId" as employment_id from search_entries where verified and kind = 'public'
+    ), search_identity as materialized (
+      select "employmentId" as employment_id from search_entries where verified and kind = 'identity'
+    ), search_current as materialized (
+      select "employmentId" as employment_id from search_entries where not "hasFilterRevision"
+      union
+      select x."employmentId" from search_entries x
+      join search_revisions r on r.employment_id = x."employmentId" and r.revision = x."filterRevision"
+      where x."hasFilterRevision"
+    ),` : sql``;
+  // personnelDuplicateAuthorityTx's predicate. Over the requested scope it equals the value over the
+  // admitted companies: the projection conjunct is false for every requested company that was not
+  // admitted, so it is evaluated once for both answers.
+  const duplicateAuthority = sql`select coalesce(bool_or(app.access_workforce_projection_company(id)
+    and app.is_admin_for(id) and app.personnel_identity_search_permitted(id)), false) as allowed from companies`;
+  return sql`
+    with companies as materialized (
+      select c.* from app.personnel_filter_companies(${scope}, ${asOf}::date) with ordinality as
+        c(id, name, "parentCompanyId", "parentCompany", "businessGroupId", "businessGroup", "businessUnitId", "businessUnit", ordinality)
+    ), duplicate_authority as materialized (${duplicateAuthority}),
+    ${privateSources} personnel_facts as materialized (
+      select ${read.uuid('employmentId')} as employment_id,
+        ${sortValue ?? sql`null::text`} as sort_value,
+        lower(${read.value('company')}) as company_sort,
+        ${input.sort === 'company' ? sql`lower(${columns.name})` : columns.name} as name_sort,
+        (${personnelFactWhere(input, asOf, source, duplicateIds)}) as page_matches,
+        (${personnelFactWhere(facets, asOf, source, duplicateIds)}) as facet_matches,
+        ${columns.status} as status,
+        ${read.uuid('businessUnitId')} as "businessUnitId", ${read.value('businessUnit')} as "businessUnit",
+        ${read.uuid('positionId')} as "positionId", ${read.value('position')} as position
+      from ${personnelFactRelation[source]}(${asOf}::date, ${scope}) as workforce_row
+      where ${read.uuid('companyId')} in (select id from companies)
+    ), page as materialized (
+      -- A typed fact row is one employment: its key, at most one dated assignment (the reviewed
+      -- exclusion constraint both typed relations require) and one row per employment from each set.
+      -- The counts below are therefore counts of distinct employments.
+      select employment_id, sort_value, company_sort, name_sort from personnel_facts
+      where page_matches order by ${order} limit ${input.limit} offset ${input.offset}
+    ), page_details as materialized (${input.limit <= PERSONNEL_PAGE_ROWS_CHUNK ? sql`
+      select page.*, details.value from page
+      join ${pageRows}(${asOf}::date, ${scope},
+        array(select employment_id from page)) as details(value)
+        on (details.value->>'employmentId')::uuid=page.employment_id` : sql`
+      select page.*, details.value from (
+        select array_agg(employment_id) as ids from (
+          select employment_id, row_number() over (order by employment_id) as ordinal from page
+        ) as numbered group by (ordinal - 1) / ${PERSONNEL_PAGE_ROWS_CHUNK}
+      ) as chunk
+      cross join lateral ${pageRows}(${asOf}::date, ${scope}, chunk.ids) as details(value)
+      join page on (details.value->>'employmentId')::uuid=page.employment_id`}
+    )
+    select
+      (select coalesce(jsonb_agg(value order by ${order}), '[]'::jsonb) from page_details) as rows,
+      (select count(*)::int from personnel_facts where page_matches) as total,
+      (select coalesce(jsonb_object_agg(status, count), '{}'::jsonb) from (
+        select status, count(*)::int as count from personnel_facts
+        where facet_matches group by status
+      ) as counts) as "byStatus",
+      (select coalesce(jsonb_agg(to_jsonb(choice)), '[]'::jsonb) from (
+        select distinct "businessUnitId", "businessUnit", "positionId", position from personnel_facts
+      ) as choice) as choices,
+      (select count(*) from page_details)=(select count(*) from page) as "pageDetailsComplete",
+      (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'parentCompanyId', "parentCompanyId",
+        'parentCompany', "parentCompany", 'businessGroupId', "businessGroupId", 'businessGroup', "businessGroup",
+        'businessUnitId', "businessUnitId", 'businessUnit', "businessUnit") order by ordinality), '[]'::jsonb)
+        from companies) as companies,
+      (select allowed from duplicate_authority) as "canInspectDuplicates",
+      (select allowed from duplicate_authority) as "duplicateAuthority",
+      ${attachedColumn(extras.attach)} as attached,
+      ${photos ? sql`(select coalesce(jsonb_agg(to_jsonb(photo)), '[]'::jsonb) from (${photos}) as photo)` : sql`null::jsonb`} as photos
+  `;
+}
+
+type PersonnelNarrowResult = PersonnelPageResult & {
+  pageDetailsComplete: boolean; companies: PersonnelCompanyChoice[]; canInspectDuplicates: boolean; duplicateAuthority: boolean;
+  attached: Record<string, unknown>; photos: { employmentId: string; personId: string }[] | null;
+};
+
+async function personnelOverviewQueryTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelOverviewInput, headcount: Omit<EmployeeListFilters, 'companyIds'>,
+) {
+  const asOf = todayInKualaLumpur();
+  const choices = await personnelCompanyChoicesTx(tx, input.companyIds, asOf);
+  const query = await workforcePersonnelPageQueryTx(tx, ctx, input, asOf, {
+    headcount: { ...headcount, companyIds: input.companyIds },
+    choiceIds: choices.companies.map(company => company.id),
+  });
+  return { choices, query, asOf };
+}
+
+async function workforcePersonnelPageTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelListInput, asOf: string,
+) {
+  const query = await workforcePersonnelPageQueryTx(tx, ctx, input, asOf);
+  const [result] = await tx.execute<PersonnelPageResult>(query);
   return result;
 }
 
-/** List, headcount and filter choices share one admission lock and one authorised page projection. */
+type PersonnelPageResult = {
+  rows: EmployeeListRow[];
+  total: number;
+  byStatus: Partial<Record<EmploymentStatus, number>>;
+  choices: PersonnelChoiceRow[];
+};
+
+/** List, headcount and filter choices share one authorised snapshot and one page projection. */
 export function readPersonnelOverview(
   ctx: SessionContext,
-  input: PersonnelListInput & { companyIds: string[] },
+  input: PersonnelOverviewInput,
   headcount: Omit<EmployeeListFilters, 'companyIds'>,
+  options?: { compareExact: true },
+) {
+  return withPersonnelOverviewRead(ctx, (tx, snapshot) => readPersonnelOverviewTx(tx, ctx, input, headcount, snapshot, options));
+}
+
+/** The overview inside a caller's Personnel overview snapshot (core/personnel-read-bounds.ts). */
+export async function readPersonnelOverviewTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelOverviewInput, headcount: Omit<EmployeeListFilters, 'companyIds'>,
+  snapshot: PersonnelOverviewSnapshot, options?: { compareExact?: true } & PersonnelOverviewAttachments,
+) {
+  const asOf = todayInKualaLumpur();
+  const facets = { ...headcount, companyIds: input.companyIds };
+  // The exact reader is also the oracle in equivalence and hosted performance qualification.
+  const source = options?.compareExact ? null : personnelFactSource(input, facets, snapshot, asOf);
+  if (source) {
+    const duplicateIds = [input, facets].some(filters => filters.qualityFlags?.includes('suspected_duplicate'))
+      ? await personnelDuplicateIdsTx(tx, ctx, { companyIds: input.companyIds, asOf }) : [];
+    const [narrow] = await tx.execute<PersonnelNarrowResult>(personnelNarrowOverviewQuery(input, facets, asOf, source, duplicateIds, options, snapshot.typedFacts));
+    if (narrow?.pageDetailsComplete) return {
+      employees: { rows: narrow.rows, total: narrow.total },
+      headcount: { total: Object.values(narrow.byStatus).reduce((sum, count) => sum + count, 0), byStatus: narrow.byStatus },
+      duplicateFilterUnavailable: input.qualityFlags?.includes('suspected_duplicate') ? !narrow.duplicateAuthority : false,
+      organisationChoices: { companies: narrow.companies, canInspectDuplicates: narrow.canInspectDuplicates, rows: narrow.choices },
+      attached: narrow.attached,
+      pagePhotos: narrow.photos ? new Map(narrow.photos.map(photo => [photo.employmentId, photo.personId])) : null,
+    };
+  }
+  // The snapshot interprets the bounded statement; the exact owner keeps the session's JIT setting.
+  if (snapshot.previousJit !== 'off') await tx.execute(sql`select set_config('jit', ${snapshot.previousJit}, true)`);
+  const { choices, query } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
+  const [result] = await tx.execute<PersonnelPageResult>(query);
+  const attached = options?.attach && Object.keys(options.attach).length
+    ? (await tx.execute<{ attached: Record<string, unknown> }>(sql`select ${attachedColumn(options.attach)} as attached`))[0].attached : {};
+  return {
+    employees: { rows: result.rows, total: result.total },
+    headcount: { total: Object.values(result.byStatus).reduce((sum, count) => sum + count, 0), byStatus: result.byStatus },
+    duplicateFilterUnavailable: input.qualityFlags?.includes('suspected_duplicate')
+      ? !await personnelDuplicateAuthorityTx(tx, input.companyIds)
+      : false,
+    organisationChoices: { ...choices, rows: result.choices },
+    attached,
+    pagePhotos: null as Map<string, string> | null,
+  };
+}
+
+/** Hosted benchmark diagnostic for the exact overview query, under the same authorized snapshot. */
+export function explainPersonnelOverview(
+  ctx: SessionContext,
+  input: PersonnelOverviewInput,
+  headcount: Omit<EmployeeListFilters, 'companyIds'>,
+  mode: 'estimate' | 'analyze' = 'analyze',
 ) {
   return withPersonnelRead(ctx, async tx => {
-    const asOf = todayInKualaLumpur();
-    const choices = await personnelCompanyChoicesTx(tx, input.companyIds, asOf);
-    const result = await workforcePersonnelPageTx(tx, ctx, input, asOf, {
-      headcount: { ...headcount, companyIds: input.companyIds },
-      choiceIds: choices.companies.map(company => company.id),
-    });
-    return {
-      employees: { rows: result.rows, total: result.total },
-      headcount: { total: Object.values(result.byStatus).reduce((sum, count) => sum + count, 0), byStatus: result.byStatus },
-      organisationChoices: { ...choices, rows: result.choices },
-    };
+    const [identity] = await tx.execute<{ role: string }>(sql`select current_user as role`);
+    if (identity.role !== 'ai_hr_app') throw new Error('Personnel plan must use the application role');
+    const { query } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
+    // Allow a bounded analyzed capture even when the live reader hits its 20-second statement ceiling.
+    if (mode === 'analyze') await tx.execute(sql`select set_config('statement_timeout', '45000', true)`);
+    const rows = await tx.execute<{ 'QUERY PLAN': unknown }>(mode === 'analyze'
+      ? sql`explain (analyze, buffers, format json) ${query}`
+      : sql`explain (format json) ${query}`);
+    return { role: identity.role, plan: rows[0]?.['QUERY PLAN'] };
   });
 }
 
@@ -589,24 +1031,57 @@ function workforcePickerColumns(){return {
   terminatedOn: workforceListValue<string | null>('terminatedOn'),
 };}
 export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: string[]) {
-  return withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
-    return tx.select(workforcePickerColumns()).from(workforceListSource).where(workforceListWhere({ companyIds }, workforceListColumns()))
-      .orderBy(workforceListValue('name'), workforceListUuid('employmentId'));
+  return withPersonnelRead(ctx, async tx => {
+    const scope=companyIds===undefined?sql`null::uuid[]`:sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+    return tx.select({
+      employmentId:sql<string>`workforce_row.employment_id`,name:sql<string>`workforce_row.name`,
+      employeeCode:sql<string|null>`workforce_row.employee_code`,companyId:sql<string>`workforce_row.company_id`,
+      company:sql<string>`workforce_row.company`,department:sql<string|null>`workforce_row.department`,
+      terminatedOn:sql<string|null>`workforce_row.terminated_on::text`,
+    }).from(sql`app.access_workforce_picker_facts(${scope}) workforce_row`)
+      .orderBy(sql`workforce_row.name`,sql`workforce_row.employment_id`);
   });
 }
 /** Resolve an explicit bounded identity set through the same current Workforce projection. */
 export async function readWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[]){
- if(ids.length>500||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new RangeError('Invalid workforce identity selection');
- if(!ids.length)return [];await lockAccessConfigurationTx(tx,ctx.tenantId);const columns=workforcePickerColumns();
- return tx.select(columns).from(workforceListSource).where(inArray(columns.employmentId,ids)).orderBy(columns.employmentId);
+ return workforcePickRowsTx(ctx,tx,ids,lockAccessConfigurationWriteTx);
 }
-/** Bounded picker over the same purpose projection, reusable inside a caller's authorization transaction.
- * Resolve a cursor only inside this exact authorized search; equal names are ordered by employment ID. */
-export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string}){
+/** Display-only counterpart: native identity and rows belong to an enforced RR/RO snapshot. */
+export async function readPresentationWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[]){
+ ctx=structuredClone(ctx);ids=ids.slice();
+ await assertAiPresentationPrincipalTx(tx,ctx);
+ return workforcePickRowsTx(ctx,tx,ids,async()=>{});
+}
+async function workforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[],lock:typeof lockAccessConfigurationWriteTx){
+ if(ids.length>500||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new RangeError('Invalid workforce identity selection');
+ if(!ids.length)return [];await lock(tx,ctx.tenantId);const columns=workforcePickerColumns();
+ const source=sql`app.access_workforce_list_rows_for_ids(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as workforce_row(value)`;
+ return tx.select(columns).from(source).orderBy(columns.employmentId);
+}
+type WorkforcePickPageInput={companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string};
+/** A caller-owned transaction can write, so keep its exclusive barrier. */
+export function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput){
+ return workforcePickPageTx(ctx,tx,input,lockAccessConfigurationWriteTx);
+}
+
+/** The database must enforce read-only before this shared-barrier picker can run. */
+export async function listReadOnlyWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput){
+ const [state]=await tx.execute<{read_only:boolean}>(sql`select current_setting('transaction_read_only')='on' as read_only`);
+ if(state?.read_only!==true)throw Error('Workforce picker requires a read-only transaction.');
+ return workforcePickPageTx(ctx,tx,input,lockAccessConfigurationReadTx);
+}
+/** Explicit pure presentation seam. Existing borrowed command/shared-barrier callers stay unchanged. */
+export async function listPresentationWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput){
+ ctx=structuredClone(ctx);input=structuredClone(input);
+ await assertAiPresentationPrincipalTx(tx,ctx);
+ return workforcePickPageTx(ctx,tx,input,async()=>{});
+}
+
+/** Resolve a cursor only inside this exact authorized search. Equal names are ordered by employment ID. */
+async function workforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput,lock:typeof lockAccessConfigurationWriteTx){
   if(!Number.isInteger(input.limit)||input.limit<1||input.limit>100||(input.q?.length??0)>200||input.after&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.after))throw new RangeError('Invalid workforce picker');
   if((input.departmentSearch?.length??0)>200||(input.branch?.length??0)>200||input.departmentId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.departmentId)||input.hiredFrom&&!isCalendarDate(input.hiredFrom)||input.hiredTo&&!isCalendarDate(input.hiredTo)||input.hiredFrom&&input.hiredTo&&input.hiredFrom>input.hiredTo)throw new RangeError('Invalid workforce picker filters');
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lock(tx,ctx.tenantId);
   const source=sql`app.access_workforce_picker_rows(${input.branch?.trim()||null},${input.hiredFrom??null}::date,${input.hiredTo??null}::date) as workforce_row(value)`;
   const departmentSearch=input.departmentSearch?.trim(),needle=departmentSearch?'%'+departmentSearch.replace(/[\\%_]/g,'\\$&')+'%':undefined;
   const where=and(workforceListWhere({companyIds:input.companyIds,q:input.q,departmentId:input.departmentId},workforceListColumns()),needle?sql`${workforceListValue('department')} ilike ${needle}`:undefined),columns=workforcePickerColumns();
@@ -616,6 +1091,56 @@ export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{co
   return {rows:rows.slice(0,input.limit),nextCursor:rows.length>input.limit?rows[input.limit-1].employmentId:null};
 }
 
+
+/** Standalone switcher: authority and matching fields share one nonblocking read-only snapshot. */
+export function searchWorkforceEmployees(ctx:SessionContext,companyIds:string[],query:string){
+  return withPersonnelRead(ctx,tx=>searchWorkforceMatchesTx(ctx,tx,companyIds,query));
+}
+
+/** A borrowed transaction may later write, so keep its exclusive Access lock. */
+export function searchWorkforceEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string){
+  return searchWorkforceMatchesTx(ctx,tx,companyIds,query,lockAccessConfigurationWriteTx);
+}
+
+/** This deliberately offers no continuation: the switcher is an eight-result jump control. */
+async function searchWorkforceMatchesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string,lock?:typeof lockAccessConfigurationWriteTx){
+  if(query.length>200)throw new RangeError('Invalid employee search');
+  const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query);
+  if(!raw||!companyIds.length)return [];
+  if(lock)await lock(tx,ctx.tenantId);
+  const columns=workforcePickerColumns(),name=sql`workforce_row.search_name`,code=sql`workforce_row.search_code`;
+  const compact=sql`workforce_row.search_compact`;
+  const rank=sql<number>`case
+    when ${folded} <> '' and ${compact} <> '' and ${compact} = ${folded} then 0
+    when ${folded} <> '' and ${compact} <> '' and left(${compact},length(${folded})) = ${folded} then 1
+    when left(${name},length(${raw})) = ${raw} then 2
+    when position(${raw} in ${code}) > 0 or (${folded} <> '' and position(${folded} in ${compact}) > 0) then 3
+    when position(${raw} in ${name}) > 0 then 4 else 5 end`;
+  // Rank authorized typed facts before building detail JSON. Preserve the exact existing rank,
+  // name/ID ordering and eight-result contract; both sources retain their native purpose guard.
+  const source=sql`(
+    with normalized as materialized (
+      select workforce_row.employment_id,workforce_row.name,
+        lower(workforce_row.name) as search_name,
+        lower(coalesce(workforce_row.employee_code,'')) as search_code,
+        regexp_replace(lower(coalesce(workforce_row.employee_code,'')), '[[:space:]._-]', '', 'g') as search_compact
+      from app.access_workforce_list_facts() as workforce_row
+      where ${workforceListWhere({companyIds},personnelFactColumns())}
+    ), scored as materialized (
+      select workforce_row.employment_id,workforce_row.name,${rank} as search_rank
+      from normalized as workforce_row
+    ), selected as materialized (
+      select employment_id,name,search_rank from scored where search_rank<5
+      order by search_rank,name,employment_id limit ${EMPLOYEE_SEARCH_RESULT_CAP}
+    ), details(value) as materialized (
+      select value from app.access_workforce_list_rows_for_ids(array(select employment_id from selected)) r(value)
+    )
+    select details.value,selected.search_rank from selected
+    join details on (details.value->>'employmentId')::uuid=selected.employment_id
+  ) as workforce_row`;
+  return tx.select(columns).from(source).where(sql`workforce_row.search_rank < 5`)
+    .orderBy(sql`workforce_row.search_rank`,columns.name,columns.employmentId).limit(EMPLOYEE_SEARCH_RESULT_CAP);
+}
 
 /**
  * Headcount by DERIVED Employee Status over the whole filtered set (feedback 579255c3, point 5) —
@@ -675,10 +1200,147 @@ export function countEmployeesByStatus(
   });
 }
 
+/** Typed fields for the same listing filters/status owner; full JSON is built only after paging. */
+function personnelFactColumns():EmployeeListColumns{
+  const dates:EmploymentStatusColumns={
+    finalConfirmationDate:sql`workforce_row.final_confirmation_date`,confirmationDate:sql`workforce_row.confirmation_date`,
+    probationEndDate:sql`workforce_row.probation_end_date`,provisionalEndOn:sql`workforce_row.provisional_end_on`,
+    resignationDate:sql`workforce_row.resignation_date`,lastWorkingDate:sql`workforce_row.last_working_date`,
+    terminatedOn:sql`workforce_row.terminated_on`,blacklistedAt:sql`workforce_row.blacklisted_at`,
+  };
+  return {companyId:sql`workforce_row.company_id`,departmentId:sql`workforce_row.department_id`,
+    employmentType:sql`workforce_row.employment_type`,terminatedOn:sql`workforce_row.terminated_on`,
+    name:sql`workforce_row.name`,email:sql`workforce_row.email`,employeeCode:sql`workforce_row.employee_code`,
+    status:employmentStatusSql(todayInKualaLumpur(),dates)};
+}
+
+const personnelFactFilterSupport = {
+  companyIds:true,q:true,companyId:true,departmentId:true,status:true,employmentType:true,
+  filterCompanyIds:true,departmentIds:true,employmentStatuses:true,
+  businessUnitIds:false,parentCompanyIds:false,businessGroupIds:false,jobGrades:false,positionIds:false,
+  confirmationState:false,probationEndFrom:false,probationEndTo:false,joinedFrom:false,joinedTo:false,
+  qualityFlags:false,privateSearch:false,columnSort:false,sortDirection:true,
+  employmentTypes:false,blankChoices:false,hiredFrom:false,hiredTo:false,confirmationFrom:false,confirmationTo:false,
+} satisfies Record<keyof EmployeeListFilters, boolean>;
+const personnelFactFilterKeys = Object.keys(personnelFactFilterSupport) as (keyof EmployeeListFilters)[];
+
+/** Conservative equality over filter inputs only. Paging/order are deliberately independent.
+ * Different but equivalent spellings may miss this optimization; they never broaden a filter. */
+function samePersonnelFilters(page:EmployeeListFilters,facets:EmployeeListFilters):boolean{
+  return personnelFactFilterKeys.every(key=>{
+    if(key==='sortDirection')return true;
+    const left=page[key],right=facets[key];
+    return Array.isArray(left)&&Array.isArray(right)
+      ?left.length===right.length&&left.every((value,index)=>value===right[index]):left===right;
+  });
+}
+
+/** One caller-scoped statement for authorized typed facts, exact total/facets and bounded detail rows.
+ * No cached permissions/results or raw-table grant; both native projections recheck Workforce purpose. */
+/** Legacy typed-fact diagnostic for native EXPLAIN comparisons; not the current Personnel row contract.
+ * Source SQL never comes from a request. Alternate relations must preserve the native purpose owner. */
+export function personnelListPageSql(
+  page:Parameters<typeof listEmployeesPage>[1],facets:EmployeeListFilters,
+  facts?:{source:SQL;materialized:boolean;projectPageFacts?:boolean},
+):SQL{
+  if(!Number.isSafeInteger(page.limit)||page.limit<0||page.limit>ALL_ROW_CEILING||
+     !Number.isSafeInteger(page.offset)||page.offset<0)throw new RangeError('Invalid Personnel page');
+    // The shared query parser emits [] for absent multiselect filters. These are no-op filters,
+    // not unsupported restrictions. Nonempty unsupported filters must still be refused.
+    const active=(value:EmployeeListFilters[keyof EmployeeListFilters])=>value!==undefined&&(!Array.isArray(value)||value.length>0);
+    if (personnelFactFilterKeys.some(key => !personnelFactFilterSupport[key]
+      && (active(page[key]) || active(facets[key])))) {
+      throw new RangeError('The typed Personnel projection does not support these filters');
+    }
+    const columns=personnelFactColumns();
+    const pageWhere=workforceListWhere(page,columns)??sql`true`;
+    const facetWhere=workforceListWhere(facets,columns)??sql`true`;
+    const sourceNameSort=page.sort==='company'?sql`lower(${columns.name})`:columns.name;
+    // Evaluate canonical predicates/status before retaining compact page facts. Server-side
+    // profiling can still compare the original wide projection without duplicating those rules.
+    const projected=facts?.projectPageFacts===true;
+    const sameFilters=samePersonnelFilters(page,facets);
+    const source=facts?.source??sql`app.access_workforce_list_facts()`;
+    const sourceFacts=projected?sql`select workforce_row.employment_id,
+      lower(workforce_row.company)as company_sort,${sourceNameSort} as name_sort,
+      ${sameFilters?sql`true`:sql`(${pageWhere})`} as page_matches,${sameFilters?sql`true`:sql`(${facetWhere})`} as facet_matches,${columns.status} as status
+      from ${source} workforce_row where ${sameFilters?pageWhere:sql`(${pageWhere})or(${facetWhere})`}`:sql`select * from ${source}`;
+    const retainedPageWhere=projected?sql`workforce_row.page_matches`:pageWhere;
+    const retainedFacetWhere=projected?sql`workforce_row.facet_matches`:facetWhere;
+    const retainedStatus=projected?sql`workforce_row.status`:columns.status;
+    const nameSort=projected?sql`workforce_row.name_sort`:sourceNameSort;
+    const companySort=projected?sql`workforce_row.company_sort`:sql`lower(workforce_row.company)`;
+    const pageOrder=page.sort==='company'
+      ?sql`${companySort},${nameSort},workforce_row.employment_id`
+      :sql`${nameSort},workforce_row.employment_id`;
+    const aggregateOrder=page.sort==='company'
+      ?sql`chosen.company_sort,chosen.name_sort,chosen.employment_id`
+      :sql`chosen.name_sort,chosen.employment_id`;
+    return sql`
+      with workforce_facts as ${facts?.materialized===false?sql`not materialized`:sql`materialized`}(${sourceFacts}),
+      selected_page as materialized(
+        select workforce_row.employment_id,${companySort} as company_sort,${nameSort} as name_sort
+        from workforce_facts workforce_row where ${retainedPageWhere}
+        order by ${pageOrder} limit ${page.limit} offset ${page.offset}
+      ), page_projection(value)as materialized(
+        select value from app.access_workforce_list_rows_for_ids(array(select employment_id from selected_page))r(value)
+      ), status_counts as materialized(
+        select ${retainedStatus} as status,
+          count(distinct workforce_row.employment_id)filter(where ${retainedPageWhere})::int as page_count,
+          count(distinct workforce_row.employment_id)filter(where ${retainedFacetWhere})::int as facet_count
+        from workforce_facts workforce_row group by 1
+      )
+      select coalesce((select jsonb_agg(p.value order by ${aggregateOrder})
+        from selected_page chosen join page_projection p on (p.value->>'employmentId')::uuid=chosen.employment_id),'[]'::jsonb)as rows,
+      -- Status depends only on each employment's lifecycle dates (never its assignment),
+      -- so an employment has exactly one bucket. Keep DISTINCT against assignment fanout.
+      coalesce((select sum(page_count)::int from status_counts),0)as total,
+      coalesce((select jsonb_agg(jsonb_build_object('status',status,'count',facet_count))
+        from status_counts where facet_count>0),'[]'::jsonb)as status_counts
+    `;
+}
+
+export async function personnelListPage(
+  ctx:SessionContext,page:Parameters<typeof listEmployeesPage>[1],facets:EmployeeListFilters,
+){
+  if(!Number.isSafeInteger(page.limit)||page.limit<0||page.limit>ALL_ROW_CEILING||
+     !Number.isSafeInteger(page.offset)||page.offset<0)throw new RangeError('Invalid Personnel page');
+  return withPersonnelRead(ctx,async tx=>{
+    const query=await workforcePersonnelPageQueryTx(tx,ctx,page,todayInKualaLumpur(),{headcount:facets});
+    const [result]=await tx.execute<PersonnelPageResult>(query);
+    const byStatus=result.byStatus;
+    const total=Object.values(byStatus).reduce((sum,count)=>sum+Number(count),0);
+    return {rows:result.rows,total:Number(result.total),headcount:{total,byStatus}};
+  });
+}
+
 /** Paginated + searchable employee list for the People page. Returns the page rows plus the
  *  total match count (for the pager). Search matches name or email (case-insensitive). The
  *  unpaginated `listEmployees` stays for callers that genuinely need the whole set (transfer
  *  target dropdowns, exports). */
+/** A presentation-only export may compose the same page projection with other reads. */
+export function listWorkforcePersonnelPresentationPageTx(
+  ctx: SessionContext, input: PersonnelListInput, asOf: string, tx: Tx, overviewSnapshot?: PersonnelOverviewSnapshot,
+) {
+  input = structuredClone(input);
+  return withPersonnelPresentationReadTx(ctx, tx, async (snapshot, current) => {
+    // Inside a Personnel overview snapshot the bounded reader serves the same rows and total.
+    if (overviewSnapshot && input.companyIds) {
+      const { employees } = await readPersonnelOverviewTx(snapshot, current, { ...input, companyIds: input.companyIds }, {}, overviewSnapshot);
+      return employees;
+    }
+    const { rows, total } = await workforcePersonnelPageTx(snapshot, current, input, asOf);
+    return { rows, total };
+  });
+}
+
+/** listEmployeesPage(…, 'workforce') inside a caller's Personnel overview snapshot. */
+export async function listWorkforcePersonnelPageTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelListInput & { companyIds: string[] }, overviewSnapshot: PersonnelOverviewSnapshot,
+) {
+  return (await readPersonnelOverviewTx(tx, ctx, input, {}, overviewSnapshot)).employees;
+}
+
 export function listEmployeesPage(
   ctx: SessionContext,
   p: EmployeeListFilters & {
@@ -776,6 +1438,20 @@ export function listEmployeesPage(
     return { rows, total: Number(count) };
   };
   return existingTx ? read(existingTx) : withTenant(ctx,read);
+}
+
+/** Which of `ids` the employee listing would return for these filters (the same FROM, joins and WHERE as
+ *  listEmployeesPage's rows, restricted to the given employments). RLS-scoped like the listing. */
+export async function employeeListMembersTx(tx: Tx, p: EmployeeListFilters, ids: readonly string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const rows = await tx
+    .select({ employmentId: employment.id })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .leftJoin(assignment, currentAssignmentJoin())
+    .where(and(employeeListWhere(p), inArray(employment.id, [...ids])));
+  return rows.map((row) => row.employmentId);
 }
 
 /**
@@ -939,7 +1615,7 @@ export function companyDeleteStatus(
 
 export function listDepartments(
   ctx: SessionContext,
-  opts: { includeArchived?: boolean; companyIds?: string[] } = {},
+  opts: { includeArchived?: boolean; companyIds?: string[]; usage?: false } = {},
  outerTx?:Tx) {
   const run=(tx:Tx)=>tx
       .select({
@@ -958,7 +1634,9 @@ export function listDepartments(
         isGlobal: department.isGlobal,
         assignedCompanyIds: labelCompanyIdsSql(department, 'department'),
         archivedAt: department.archivedAt,
-        inUse: sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
+        // `usage: false` is for choice lists that never show it (the Personnel filters): without an
+        // assignment department index this is a scan of every assignment per department.
+        inUse: opts.usage === false ? sql<boolean>`null::boolean` : sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
       })
       .from(department)
       .where(
@@ -1348,6 +2026,16 @@ function mayAppearInApplyMenu(t: ApplyMenuType, emp: ApplyMenuEmp, today: string
   );
 }
 
+const applyMenuTypeColumns = {
+  code: leaveType.code,
+  eligibility: leaveType.eligibility,
+  probationEligibility: leaveType.probationEligibility,
+  employeeCanApply: leaveType.employeeCanApply,
+  visibleToEmployee: leaveType.visibleToEmployee,
+  essPlacement: leaveType.essPlacement,
+  role: leaveType.role,
+} as const;
+
 /** The gate's employee-side projection, shared by both reads so neither can fetch a column the other
  *  needs and silently answer a different question (a missing confirmation date reads as "confirmed"). */
 const applyMenuEmpColumns = {
@@ -1365,6 +2053,30 @@ const applyMenuEmpColumns = {
   orgBase: employment.orgBase,
   employmentCategory: employment.employmentCategory,
 } as const;
+
+function applyMenuEmploymentTx(tx:Tx,employmentId:string) {
+  return tx.select(applyMenuEmpColumns).from(employment)
+    .innerJoin(person,eq(person.id,employment.personId)).where(eq(employment.id,employmentId)).limit(1);
+}
+
+/** Home only needs to know whether it can show the application entry point. */
+export async function hasEligibleLeaveTypeForTx(tx:Tx,employmentId:string):Promise<boolean> {
+  const [types,[emp]]=await Promise.all([
+    tx.select(applyMenuTypeColumns).from(leaveType).where(isNull(leaveType.archivedAt)),
+    applyMenuEmploymentTx(tx,employmentId),
+  ]);
+  const today=todayInKualaLumpur();
+  return types.some(type=>mayAppearInApplyMenu(type,emp,today));
+}
+/** hasEligibleLeaveTypeForTx over bundled own leave inputs: the same two selects, answered from the bundle. */
+export function hasEligibleLeaveTypeFrom(tx:Tx,employmentId:string,own:OwnLeaveInputs):Promise<boolean>{
+  if(!own.answers(tx,employmentId))return hasEligibleLeaveTypeForTx(tx,employmentId);
+  const types=own.typeRows<Awaited<ReturnType<typeof applyMenuTypesTx>>[number]>(applyMenuTypeColumns,type=>type.archivedAt===null);
+  const [emp]=own.employmentRows<Awaited<ReturnType<typeof applyMenuEmploymentTx>>[number]>(applyMenuEmpColumns);
+  const today=todayInKualaLumpur();
+  return Promise.resolve(types.some(type=>mayAppearInApplyMenu(type,emp,today)));
+}
+const applyMenuTypesTx=(tx:Tx)=>tx.select(applyMenuTypeColumns).from(leaveType).where(isNull(leaveType.archivedAt));
 
 /**
  * The leave types ONE employee may actually take — `listLeaveTypes` filtered through the eligibility
@@ -1384,9 +2096,19 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
   const perform = async (tx: Tx) => {
     const [types, [emp]] = await Promise.all([
       tx
-        .select({
+        .select(ELIGIBLE_LEAVE_TYPE_FIELDS)
+        .from(leaveType)
+        .where(isNull(leaveType.archivedAt)),
+      applyMenuEmploymentTx(tx,employmentId),
+    ]);
+    return eligibleLeaveTypesFrom(types, emp, locale);
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
+}
+/** listEligibleLeaveTypesFor's catalogue select. */
+const ELIGIBLE_LEAVE_TYPE_FIELDS = {
           id: leaveType.id,
-          code: leaveType.code,
+          ...applyMenuTypeColumns,
           name: leaveType.name,
           i18n: leaveType.i18n,
           paid: leaveType.paid,
@@ -1408,11 +2130,6 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           // Feedback 9d8cf621: the apply-time custom message (applyNotice key) is read off this JSONB to show
           // the HR-authored notice under the leave-type select on the /me apply form.
           customMessages: leaveType.customMessages,
-          eligibility: leaveType.eligibility,
-          // ad965821 — the probation rule's own column (migration 0225). Projected so the gate below can
-          // merge it into `eligibility` the way requestLeave does; without it a confirmed_only type stayed
-          // in the dropdown for a probationer until the submit refused it.
-          probationEligibility: leaveType.probationEligibility,
           durations: leaveType.durations,
           archivedAt: leaveType.archivedAt,
           // ad965821 — Balance Deduction Source (cdf9ca48), already projected by listLeaveTypes at the top
@@ -1421,31 +2138,11 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           // another type's balance. Missing it here would have silently re-shown those controls the moment
           // this became the dropdown's source.
           balanceSourceTypeId: leaveType.balanceSourceTypeId,
-          // Leave Type Employee Visibility (7b11f1c1): the can-apply switch — false ⇒ this type is dropped
-          // from the apply dropdown (in addition to the eligibility filter). NULL ⇒ can apply (today's
-          // behaviour). Independent of visibleToEmployee: a visible-but-not-can-apply type still shows in
-          // leaveBalances but never here. requestLeave enforces the same rule server-side (defense-in-depth).
-          employeeCanApply: leaveType.employeeCanApply,
-          // Leave View Dashboard (6d78f373): the placement inputs so a HIDDEN type never reaches the Request
-          // Leave dropdown. resolvePlacement (lib/leave-groups) resolves 'hidden' from EITHER visible_to_employee
-          // =false OR the code-keyed default-hidden set (Prolonged Illness / Suspension / Unrecorded / Unpaid
-          // Medical). NULL/absent config ⇒ primary|secondary (kept), so every ordinary type is unaffected.
-          visibleToEmployee: leaveType.visibleToEmployee,
-          essPlacement: leaveType.essPlacement,
-          // 5ff7daff: the role marker, so the hidden gate below resolves placement the same way the ESS
-          // cards do. Stripped from the returned rows (below) — this projection is the apply dropdown's
-          // shape and no consumer of it asks the role.
-          role: leaveType.role,
-        })
-        .from(leaveType)
-        .where(isNull(leaveType.archivedAt)),
-      tx
-        .select(applyMenuEmpColumns)
-        .from(employment)
-        .innerJoin(person, eq(person.id, employment.personId))
-        .where(eq(employment.id, employmentId))
-        .limit(1),
-    ]);
+};
+type EligibleLeaveTypeRow = { [K in keyof typeof ELIGIBLE_LEAVE_TYPE_FIELDS]: (typeof ELIGIBLE_LEAVE_TYPE_FIELDS)[K]['_']['notNull'] extends true
+  ? (typeof ELIGIBLE_LEAVE_TYPE_FIELDS)[K]['_']['data'] : (typeof ELIGIBLE_LEAVE_TYPE_FIELDS)[K]['_']['data'] | null };
+type ApplyMenuEmployment = Awaited<ReturnType<typeof applyMenuEmploymentTx>>[number];
+function eligibleLeaveTypesFrom(types: readonly EligibleLeaveTypeRow[], emp: ApplyMenuEmployment | undefined, locale?: string) {
     const today = todayInKualaLumpur();
     // ONE named gate (mayAppearInApplyMenu above) rather than three chained filters restated per surface.
     return types
@@ -1456,8 +2153,19 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           name: pickName(r.name, i18n, locale),
         }),
       );
-  };
-  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
+}
+/** listEligibleLeaveTypesFor in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): its
+ * two selects (the unarchived catalogue and the employment's gate projection) as one JSON value. */
+export function eligibleLeaveTypesBundleSql(employmentId: string) {
+  return sql`jsonb_build_object('types',${jsonRowsSql({ row: jsonFieldsSql(ELIGIBLE_LEAVE_TYPE_FIELDS), from: sql`${leaveType}`, where: isNull(leaveType.archivedAt) })},
+    'employment',(select ${jsonFieldsSql(applyMenuEmpColumns)} from ${employment} inner join ${person} on ${eq(person.id, employment.personId)}
+     where ${eq(employment.id, employmentId)} limit 1))`;
+}
+/** listEligibleLeaveTypesFor's result over eligibleLeaveTypesBundleSql's rows. */
+export function eligibleLeaveTypesFromBundle(value: unknown, locale?: string) {
+  const raw = value as { types: unknown; employment: Record<string, unknown> | null };
+  const emp = raw.employment ? decodeJsonFields(applyMenuEmpColumns, raw.employment) as ApplyMenuEmployment : undefined;
+  return eligibleLeaveTypesFrom(decodeJsonFieldRows(ELIGIBLE_LEAVE_TYPE_FIELDS, raw.types) as EligibleLeaveTypeRow[], emp, locale);
 }
 
 /**
@@ -1501,16 +2209,7 @@ export function eligibleLeaveTypeIdsFor(
     if (ids.length === 0) return {};
     const [types, emps] = await Promise.all([
       tx
-        .select({
-          id: leaveType.id,
-          code: leaveType.code,
-          eligibility: leaveType.eligibility,
-          probationEligibility: leaveType.probationEligibility,
-          employeeCanApply: leaveType.employeeCanApply,
-          visibleToEmployee: leaveType.visibleToEmployee,
-          essPlacement: leaveType.essPlacement,
-          role: leaveType.role,
-        })
+        .select({id:leaveType.id,...applyMenuTypeColumns})
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
       tx
@@ -2690,8 +3389,8 @@ export function employmentCompanyEditable(ctx: SessionContext, employmentId: str
 }
 
 export function employeeDetail(ctx: SessionContext, employmentId: string,purpose?:'workforce', existingTx?: Tx) {
-  return withReadTx(ctx, existingTx, async (tx) => {
-    if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);
+  return withProjectionTx(ctx, existingTx, purpose, async (tx) => {
+    const emergencyContact = primaryEmergencyContactRow(tx);
     const [row] = await tx
       .select({
         employmentId: employment.id,
@@ -2762,11 +3461,11 @@ export function employeeDetail(ctx: SessionContext, employmentId: string,purpose
         // five names are kept exactly as they were so every consumer of employeeDetail is untouched; they
         // now resolve to the HIGHEST-PRIORITY live record (Primary → Secondary → Other) instead of the
         // retired person.emergency_contact_* columns. The full list is read with listEmergencyContacts.
-        emergencyContactName: primaryEmergencyContactSql('full_name'),
-        emergencyContactRelationship: primaryEmergencyContactSql('relationship'),
-        emergencyContactPhone: primaryEmergencyContactSql('mobile_phone'),
-        emergencyContactPhone2: primaryEmergencyContactSql('home_phone'),
-        emergencyContactAddress: primaryEmergencyContactSql('address'),
+        emergencyContactName: emergencyContact.fullName,
+        emergencyContactRelationship: emergencyContact.relationship,
+        emergencyContactPhone: emergencyContact.mobilePhone,
+        emergencyContactPhone2: emergencyContact.homePhone,
+        emergencyContactAddress: emergencyContact.address,
         // 2.1 Payroll Policy: the assigned named pay-processing template (null = monthly default).
         payrollPolicyId: employment.payrollPolicyId,
         payrollPolicyName: payrollPolicy.name,
@@ -2821,6 +3520,8 @@ export function employeeDetail(ctx: SessionContext, employmentId: string,purpose
         contractStartDate: employment.contractStartDate,
         contractEndDate: employment.contractEndDate,
         contractRemark: employment.contractRemark,
+        // 2260a06b — the Intern twin of the contract group: the Employment tab shows and re-saves it.
+        internshipEndDate: employment.internshipEndDate,
         tenderResignationDate: employment.tenderResignationDate,
         lastWorkingDate: employment.lastWorkingDate,
         orgBranch: employment.orgBranch,
@@ -2839,6 +3540,7 @@ export function employeeDetail(ctx: SessionContext, employmentId: string,purpose
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoinLateral(emergencyContact, sql`true`)
       .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
       .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
@@ -2995,10 +3697,11 @@ export function pickName(name: string, i18n: LeaveTypeI18n, locale?: string): st
  * Same date cut as the caller (`effective_on <= asOf`, none when absent), so an as-at read counts exactly the
  * recalculations that had happened by then.
  */
-async function earnedRecalcDaysBy(tx: Tx, employmentIds: string[], asOf?: string): Promise<Map<string, number>> {
+async function earnedRecalcDaysBy(tx: Tx, employmentIds: string[], asOf?: string, own?: OwnLeaveInputs): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (employmentIds.length === 0) return out;
-  const recalcRows = await tx
+  const answered = own && employmentIds.length === 1 && own.answers(tx, employmentIds[0]) ? own : undefined;
+  const recalcRows = answered ? answered.recalculationRows(asOf) : await tx
     .select({
       employmentId: leaveLedger.employmentId,
       leaveTypeId: leaveLedger.leaveTypeId,
@@ -3045,8 +3748,26 @@ export function leaveBalanceInquiryMembership(ctx: SessionContext, employmentIds
 export async function leaveBalanceInquiryMembershipTx(tx: Tx, ctx: SessionContext, employmentIds: string[], asOf: string, locale: string) {
   if (employmentIds.length > 100) throw new Error('Inquiry membership chunk exceeds 100 employments');
     if (!employmentIds.length) return [];
+    return leaveBalanceInquiryMembershipRowsTx(tx,employmentIds,asOf,locale,leaveInquiryMembershipTypesTx(tx));
+}
+function leaveInquiryMembershipTypesTx(tx:Tx){
+ return tx.select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, eligibility: leaveType.eligibility, archivedAt: leaveType.archivedAt }).from(leaveType);
+}
+/** The catalogue is private to this physical transaction/read invocation. It is
+ * neither caller-provided eligibility nor a cross-request authorization cache. */
+export async function createLeaveInquiryMembershipReaderTx(ctx:SessionContext,tx:Tx,asOf:string,locale:string){
+ ctx=structuredClone(ctx);await assertReadCompositionPrincipalTx(tx,ctx);
+ const types=await leaveInquiryMembershipTypesTx(tx);
+ return (employmentIds:readonly string[])=>{
+  const ids=employmentIds.slice();
+  if(ids.length>100)throw new Error('Inquiry membership chunk exceeds 100 employments');
+  return ids.length?leaveBalanceInquiryMembershipRowsTx(tx,ids,asOf,locale,types):Promise.resolve([]);
+ };
+}
+async function leaveBalanceInquiryMembershipRowsTx(tx:Tx,employmentIds:string[],asOf:string,locale:string,
+ typeRead:ReturnType<typeof leaveInquiryMembershipTypesTx>|Awaited<ReturnType<typeof leaveInquiryMembershipTypesTx>>){
     const [types, profiles, ledger, pending] = await Promise.all([
-      tx.select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, eligibility: leaveType.eligibility, archivedAt: leaveType.archivedAt }).from(leaveType),
+      typeRead,
       tx.select({ employmentId: employment.id, gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory }).from(employment).innerJoin(person, eq(person.id, employment.personId)).where(inArray(employment.id, employmentIds)),
       tx.selectDistinct({ employmentId: leaveLedger.employmentId, leaveTypeId: leaveLedger.leaveTypeId }).from(leaveLedger).where(and(inArray(leaveLedger.employmentId, employmentIds), lte(leaveLedger.effectiveOn, asOf))),
       tx.selectDistinct({ employmentId: leaveRequest.employmentId, leaveTypeId: leaveRequest.leaveTypeId }).from(leaveRequest).where(and(inArray(leaveRequest.employmentId, employmentIds), eq(leaveRequest.status, 'pending'), lte(leaveRequest.startDate, asOf))),
@@ -3179,14 +3900,17 @@ export type LeaveBalanceReadOptions = {
    */
   asOf?: string;
 };
-export function leaveBalances(ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}, existingTx?: Tx) {
-  return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts));
+export function leaveBalances(ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}, existingTx?: Tx, inputs?: OwnLeaveInputs) {
+  return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts, inputs),{presentationSnapshot:true});
 }
-/** Explicit transaction seam for snapshot report consumers; the same canonical calculation and defaults. */
-export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}) {
+/** Explicit transaction seam for snapshot report consumers; the same canonical calculation and defaults.
+ *  `inputs` (bundled own leave inputs, core/own-leave-inputs.ts) answers each statement below for the employment and
+ *  transaction they were read for; every line of the calculation is the same either way. */
+export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}, inputs?: OwnLeaveInputs) {
     const asOf = opts.asOf;
+    const own = inputs?.answers(tx, employmentId) ? inputs : undefined;
     const [rows, pend, takenFiled, unpaidFiled, recalcEarnedBy] = await Promise.all([
-      tx
+      own ? own.ledgerTotalsByType(asOf) : tx
         .select({
           leaveTypeId: leaveType.id,
           leaveType: leaveType.name,
@@ -3205,8 +3929,11 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
             ? and(eq(leaveLedger.employmentId, employmentId), lte(leaveLedger.effectiveOn, asOf))
             : eq(leaveLedger.employmentId, employmentId),
         )
-        .groupBy(leaveType.id, leaveType.name),
-      tx
+        .groupBy(leaveType.id, leaveType.name)
+        // Ordered by leave type id, here and in the bundled answer: the row order decides the order of `out`, and so of
+        // a pool's `contributingLeaveTypes`; without an ORDER BY it was whatever the grouping plan produced.
+        .orderBy(leaveType.id),
+      own ? own.pendingDaysByType(asOf) : tx
         .select({
           leaveTypeId: leaveRequest.leaveTypeId,
           leaveType: leaveType.name,
@@ -3227,7 +3954,8 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
             ...(asOf ? [lte(leaveRequest.startDate, asOf)] : []),
           ),
         )
-        .groupBy(leaveRequest.leaveTypeId, leaveType.name),
+        .groupBy(leaveRequest.leaveTypeId, leaveType.name)
+        .orderBy(leaveRequest.leaveTypeId),
       /**
        * 39136455 — TAKEN, ATTRIBUTED TO THE LEAVE CODE IT WAS FILED UNDER.
        *
@@ -3243,7 +3971,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
        *
        * Identical to `rows`'s own filter and date cut, or the two would disagree about which rows exist.
        */
-      tx
+      own ? own.debitsByFiledType(asOf) : tx
         .select({
           filedTypeId: sql<string>`coalesce(${leaveRequest.leaveTypeId}, ${leaveLedger.leaveTypeId})`,
           taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
@@ -3274,7 +4002,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
        * Split survivors (r302) each carry their own `days` and `unpaid_days`, so a partially cancelled
        * leave contributes only what actually survived.
        */
-      tx
+      own ? own.unpaidDaysByType(asOf) : tx
         .select({
           leaveTypeId: leaveRequest.leaveTypeId,
           unpaid: sql<string>`coalesce(sum(${leaveRequest.unpaidDays}), 0)`,
@@ -3291,7 +4019,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
         .groupBy(leaveRequest.leaveTypeId),
       // r389 (62a1bec1) — the automatic recalculations the engines granted, decided by the kernel's
       // `isEarnedToDateRow` exactly as the breakdown walk decides them. Same date cut as `rows`.
-      earnedRecalcDaysBy(tx, [employmentId], asOf),
+      earnedRecalcDaysBy(tx, [employmentId], asOf, own),
     ]);
     const pendingBy = new Map(pend.map((p) => [p.leaveTypeId, Number(p.pending)]));
     // 690d4400 — TAKEN IS ABSENCE, not balance spend: the days the employee was away. `taken` from the
@@ -3391,18 +4119,26 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
     }
     // 2F-1 (R18): surface every active leave type the employee is ELIGIBLE for — even with no activity
     // yet — so the list is the full menu, not just types they've already accrued or requested.
-    const [types, [emp]] = await Promise.all([
-      tx
-        .select({ id: leaveType.id, name: leaveType.name, eligibility: leaveType.eligibility, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, visibleToEmployee: leaveType.visibleToEmployee, essPlacement: leaveType.essPlacement })
-        .from(leaveType)
-        .where(isNull(leaveType.archivedAt)),
-      tx
-        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory })
+    const typePresentation = {
+      id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code,
+      role: leaveType.role, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee,
+      balanceSourceTypeId: leaveType.balanceSourceTypeId, archivedAt: leaveType.archivedAt,
+      eligibility: leaveType.eligibility,
+    };
+    const typeColumns = { ...typePresentation, name: leaveType.name, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig };
+    const profileColumns = { gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory };
+    // Ordered by id for the same reason as `rows`: the eligible-but-inactive tail below follows this order.
+    const typesQuery = tx.select(typeColumns).from(leaveType).where(isNull(leaveType.archivedAt)).orderBy(leaveType.id);
+    const profileQuery = tx
+        .select(profileColumns)
         .from(employment)
         .innerJoin(person, eq(person.id, employment.personId))
         .where(eq(employment.id, employmentId))
-        .limit(1),
-    ]);
+        .limit(1);
+    type TypeRow = Awaited<typeof typesQuery>[number];
+    const [types, [emp]] = own
+      ? ([own.typeRows<TypeRow>(typeColumns, (type) => type.archivedAt === null, true), own.employmentRows<Awaited<typeof profileQuery>[number]>(profileColumns)] as const)
+      : await Promise.all([typesQuery, profileQuery]);
     const today = todayInKualaLumpur();
     for (const lt of types) {
       if (seen.has(lt.id)) continue;
@@ -3425,35 +4161,17 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
     // Employee Leave View Configuration (65dec703): resolve each active type's ESS-view config (missing ⇒
     // all-visible). Archived types with only old ledger entries keep the all-visible placeholder set above.
     const essViewByType = new Map(types.map((t) => [t.id, resolveEssView(t.essViewConfig as Record<string, boolean> | null)]));
-    // Leave Type Visual Configuration Enhancement (639fdf77): one select over every seen type id (active OR
-    // archived-with-old-ledger) for the DISPLAY-ONLY colour / icon / code. Attached below so the ESS Leave
-    // tab can render the icon + colour chip. This does NOT touch any sum / ledger / entitlement math above —
-    // it is a pure presentation join. null ⇒ default styling + code-keyed icon (via lib/leave-visual.ts).
-    const seenIds = out.map((r) => r.leaveTypeId);
-    // Leave grouping visibility (b653ac1b): select ess_placement + visible_to_employee alongside the visual
-    // columns so EVERY seen type (active OR archived-with-old-ledger) has what resolvePlacement needs, in one
-    // query. Archived types (absent from `types`) thus still resolve to their code-keyed default.
-    const visualByType = new Map<
-      string,
-      { color: string | null; icon: string | null; code: string | null; role: string | null; essPlacement: string | null; visibleToEmployee: boolean | null; balanceSourceTypeId: string | null; archivedAt: Date | null; eligibility: unknown }
-    >();
-    if (seenIds.length > 0) {
-      const visuals = await tx
-        // r209 — `balanceSourceTypeId` rides along on the select that already runs for every seen type. It
-        // is not a visual, and it is here for the same reason the placement columns are: one query over the
-        // ids already in hand, rather than a second one for a column that is null on almost every type.
-        // ec991c2a — `archivedAt` rides along for the same reason `balanceSourceTypeId` does: this select
-        // already runs over exactly the ids in hand, and the archived gate at the bottom needs the column.
-        // Read EXPLICITLY rather than inferred from "absent from `types`" — the two are equivalent today
-        // (`types` is the non-archived catalogue) but only one of them says so in the code.
-        // d272834b — `eligibility` rides along for the same reason `archivedAt` does: this select already
-        // runs over exactly the ids in hand, and the identity gate at the bottom needs the rule for EVERY
-        // seen type. It cannot read `types` for it: `types` is the non-archived catalogue, and a row that
-        // came from an old ledger entry on an ARCHIVED type is absent from it.
-        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code, role: leaveType.role, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee, balanceSourceTypeId: leaveType.balanceSourceTypeId, archivedAt: leaveType.archivedAt, eligibility: leaveType.eligibility })
-        .from(leaveType)
-        .where(inArray(leaveType.id, seenIds));
-      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code, role: v.role, essPlacement: v.essPlacement, visibleToEmployee: v.visibleToEmployee, balanceSourceTypeId: v.balanceSourceTypeId, archivedAt: v.archivedAt, eligibility: v.eligibility });
+    // The active catalogue already carries presentation and pooling metadata. Only retained
+    // ledger or pending rows outside that catalogue need a second lookup.
+    const visualByType = new Map(types.map(type => [type.id, type] as const));
+    const retainedIds = out.map(row => row.leaveTypeId).filter(id => !visualByType.has(id));
+    if (retainedIds.length > 0) {
+      const retained = own
+        ? own.typeRows<TypeRow>(typeColumns, (type) => retainedIds.includes(type.id))
+        : await tx.select({
+        ...typePresentation, name: leaveType.name, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig,
+      }).from(leaveType).where(inArray(leaveType.id, retainedIds));
+      for (const type of retained) visualByType.set(type.id, type);
     }
     for (const r of out) {
       r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
@@ -3697,7 +4415,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
      */
     const pooledAway = await (async () => {
       if (opts.includeHidden) return visible;
-      const members = await tx
+      const members = own ? own.sharedGroupMembers() : await tx
         .select({
           leaveTypeId: leaveSharedGroupMember.leaveTypeId,
           placement: leaveSharedGroup.essPlacement,
@@ -4290,6 +5008,9 @@ type BreakdownPreloaded = {
   type: BreakdownTypeRow | undefined;
   emp: BreakdownEmploymentRow | undefined;
   templates: TemplateEntitlementResolver;
+  /** Bundled own leave inputs, already checked to answer this employment in this transaction: the four
+   *  ledger/request statements below are answered from them. */
+  own?: OwnLeaveInputs;
 };
 
 export async function leaveEntitlementBreakdownTx(
@@ -4397,7 +5118,12 @@ export async function leaveEntitlementBreakdownTx(
 
     // The aggregates, all bounded by `effective_on <= asOf` (closed interval). One round-trip.
     const num = (x: unknown) => Number(x ?? 0);
-    const [[agg], [debitAgg], pendingRows, rows] = await Promise.all([
+    const own = pre?.own;
+    const [[agg], [debitAgg], pendingRows, rows] = own
+      ? ([[own.breakdownTotals(leaveTypeId, asOf, cycleStart)],
+          [own.breakdownDebits(leaveTypeId, cycleStart, carryForwardExpiryDate && carryForwardExpiryDate < asOf ? carryForwardExpiryDate : asOf)],
+          own.breakdownPending(leaveTypeId, asOf), own.breakdownLedger(leaveTypeId, cycleStart, asOf)] as const)
+      : await Promise.all([
       tx
         .select({
           // r303: "fresh entitlement granted within the current cycle" (accruals + in-lieu top-ups) used to be
@@ -4498,7 +5224,8 @@ export async function leaveEntitlementBreakdownTx(
             lte(leaveLedger.effectiveOn, asOf),
           ),
         )
-        .orderBy(asc(leaveLedger.effectiveOn)),
+        // The id breaks a same-date tie, here and in the bundled answer, instead of the scan order.
+        .orderBy(asc(leaveLedger.effectiveOn), asc(leaveLedger.id)),
     ]);
 
     const balance = num(agg?.balance);
@@ -4896,11 +5623,21 @@ export function leaveEntitlementBreakdowns(
   employmentId: string,
   items: readonly { leaveTypeId: string; asOf: string }[],
   locale?: string,
+  existingTx?: Tx,
+  inputs?: OwnLeaveInputs,
 ): Promise<(LeaveEntitlementBreakdown | null)[]> {
   if (items.length === 0) return Promise.resolve([]);
-  return withTenant(ctx, async (tx) => {
+  const read = async (tx: Tx) => {
     const typeIds = [...new Set(items.map((i) => i.leaveTypeId))];
-    const [types, [emp]] = await Promise.all([
+    // Bundled own leave inputs answer the type and employment selects, the four per-item statements and the
+    // entitlement resolver's table, rule and default reads; the rules' organisation matches are one statement per
+    // resolver (buildTemplateEntitlementResolver with preloaded inputs). Under withStagedHomeReads a leave type with a
+    // table in force builds its resolver live, as before.
+    const own = inputs?.answers(tx, employmentId) ? inputs : undefined;
+    const [types, [emp]] = own
+      ? ([own.typeRows<BreakdownTypeRow>(breakdownTypeColumns(), (type) => typeIds.includes(type.id)),
+          own.employmentRows<BreakdownEmploymentRow>(breakdownEmploymentColumns)] as const)
+      : await Promise.all([
       selectBreakdownTypes(tx).where(inArray(leaveType.id, typeIds)),
       selectBreakdownEmployment(tx, employmentId),
     ]);
@@ -4910,7 +5647,9 @@ export function leaveEntitlementBreakdowns(
     const resolverByAsOf = new Map<string, TemplateEntitlementResolver>();
     for (const asOf of [...new Set(items.map((i) => i.asOf))]) {
       const ids = [...new Set(items.filter((i) => i.asOf === asOf && typeById.has(i.leaveTypeId)).map((i) => i.leaveTypeId))];
-      resolverByAsOf.set(asOf, await buildTemplateEntitlementResolver(tx, { employmentIds: [employmentId], leaveTypeIds: ids, asOf }));
+      resolverByAsOf.set(asOf, own && ids.length > 0 && !own.templatesInForce(asOf, ids)
+        ? emptyTemplateEntitlementResolver()
+        : await buildTemplateEntitlementResolver(tx, { employmentIds: [employmentId], leaveTypeIds: ids, asOf }, own && !stagedHomeReads() ? own : undefined));
     }
     return Promise.all(
       items.map((i) =>
@@ -4918,10 +5657,12 @@ export function leaveEntitlementBreakdowns(
           type: typeById.get(i.leaveTypeId),
           emp,
           templates: resolverByAsOf.get(i.asOf)!,
+          own,
         }),
       ),
     );
-  });
+  };
+  return withReadTx(ctx, existingTx, read,{presentationSnapshot:true});
 }
 
 // RL Control Engine (0113): the active-vs-expired replacement-leave split, sourced from the toil_accrual
@@ -5225,7 +5966,7 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         // EL applications and partial cancellations both group rows; recorded origin identifies EL.
         parentGroupId: leaveRequest.parentGroupId,
         isEmergencyGroup: emergencyLeaveGroupOriginSql,
-        hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
+        hasDocument: LEAVE_REQUEST_HAS_DOCUMENT,
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
@@ -5247,6 +5988,24 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
     const withDates = await resolveLeaveWorkingDates(tx, rows);
     return withDates.map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n, locale) }));
   });
+}
+const LEAVE_REQUEST_HAS_DOCUMENT = sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`;
+/** The fields of leaveRequestsFor the Before payroll checklist reads (core/pre-salary/person-items.ts). */
+const LEAVE_REQUEST_CHECKLIST_FIELDS = { id: leaveRequest.id, leaveTypeId: leaveRequest.leaveTypeId, leaveType: leaveType.name, i18n: leaveType.i18n,
+  startDate: leaveRequest.startDate, endDate: leaveRequest.endDate, days: leaveRequest.days, status: leaveRequest.status, hasDocument: LEAVE_REQUEST_HAS_DOCUMENT };
+/** leaveRequestsFor in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the same rows
+ * (the owner's join, predicate and order) with the fields the checklist reads, the type name localized the same way.
+ * The working dates the owner resolves after its select feed only the give-back dialog, so they are not read. */
+export function leaveRequestsChecklistBundleSql(employmentId: string) {
+  return jsonRowsSql({ row: jsonFieldsSql(LEAVE_REQUEST_CHECKLIST_FIELDS),
+    from: sql`${leaveRequest} inner join ${leaveType} on ${eq(leaveType.id, leaveRequest.leaveTypeId)}`,
+    where: eq(leaveRequest.employmentId, employmentId), order: sql`${leaveRequest.startDate} desc` });
+}
+export function leaveRequestsChecklistFromBundle(value: unknown, locale?: string) {
+  // Non-null columns of the owner's inner-joined select: each decoded row has the owner's own types.
+  type Row = { id: string; leaveTypeId: string; leaveType: string; i18n: unknown; startDate: string; endDate: string; days: string;
+    status: (typeof leaveRequest.$inferSelect)['status']; hasDocument: boolean };
+  return (decodeJsonFieldRows(LEAVE_REQUEST_CHECKLIST_FIELDS, value) as Row[]).map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n as Parameters<typeof pickName>[1], locale) }));
 }
 
 /** The reporting-line vocabulary as the edge stores it, in the enum's DECLARATION order — which is also
@@ -5330,6 +6089,31 @@ export async function ownReportingManagersTx(tx: Tx, employmentId: string): Prom
  *  (it filters `valid_to IS NULL` and never checks `valid_from`), while 0498 answers only for the line
  *  in force today. Taking either one alone would REMOVE a row somebody can see today, and this round
  *  takes nothing away. */
+/** reportingLinesFor's `managers` predicate: the current, unsuperseded, non-delegate lines above `employmentId`. */
+const visibleReportingManagersWhere = (employmentId: string) => and(
+  eq(reportingLine.subordinateEmploymentId, employmentId),
+  isNull(reportingLine.validTo),
+  isNull(reportingLine.supersededAt),
+  sql`${reportingLine.lineType} <> 'delegate'`,
+);
+/** The manager employment ids of reportingLinesFor's `managers` (the rows this session's row-level security reaches,
+ *  and the rows ownReportingManagersTx adds for the caller's own employment), as one jsonb value of a bundled statement
+ *  (Today's At a glance, docs/adr/2026-11-10-home-request-read-scope.md decision 13). Each read keeps its select, joins
+ *  and predicate; only the ids are carried, the one field that reader uses. */
+export function reportingManagerIdsBundleSql(employmentId: string): SQL {
+  return sql`jsonb_build_object('visible',(select coalesce(jsonb_agg(${reportingLine.managerEmploymentId}),'[]'::jsonb) from ${reportingLine}
+    inner join ${employment} on ${eq(employment.id, reportingLine.managerEmploymentId)} inner join ${person} on ${eq(person.id, employment.personId)}
+    where ${visibleReportingManagersWhere(employmentId)}),
+   'own',(select coalesce(jsonb_agg(manager_employment_id),'[]'::jsonb) from app.own_reporting_managers(${employmentId}::uuid)))`;
+}
+/** The set of manager employment ids reportingLinesFor's `managers` maps to, from reportingManagerIdsBundleSql's value. */
+export function reportingManagerIdsFromBundle(value: unknown): string[] {
+  const raw = value as { visible?: unknown; own?: unknown } | null;
+  if (!raw || !Array.isArray(raw.visible) || !Array.isArray(raw.own) || ![...raw.visible, ...raw.own].every((id) => typeof id === 'string'))
+    throw new Error('Bundled reporting managers are malformed.');
+  return [...new Set([...raw.visible, ...raw.own] as string[])];
+}
+
 export function reportingLinesFor(ctx: SessionContext, employmentId: string, existingTx?: Tx) {
   return withReadTx(ctx, existingTx, async (tx) => {
     const visibleManagers = await tx
@@ -5347,14 +6131,7 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string, exi
       .from(reportingLine)
       .innerJoin(employment, eq(employment.id, reportingLine.managerEmploymentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(
-        and(
-          eq(reportingLine.subordinateEmploymentId, employmentId),
-          isNull(reportingLine.validTo),
-          isNull(reportingLine.supersededAt),
-          sql`${reportingLine.lineType} <> 'delegate'`,
-        ),
-      )
+      .where(visibleReportingManagersWhere(employmentId))
       .orderBy(reportingLine.lineType);
     // r375 — the caller's OWN supervisors, which the query above cannot reach (see ownReportingManagersTx).
     // Keyed by reporting-line id so a row both reads return appears ONCE: `test/direct-superior.test.ts`
@@ -5737,6 +6514,42 @@ export async function orgChartData(ctx: SessionContext, companyIds?: string[]) {
   return orgChartSnapshot(ctx,{companyIds:ids});
 }
 
+/** Active employees + current administrative reporting edges, for the org chart. */
+export function orgChartWindowFullData(ctx: SessionContext, companyIds?: string[],existingTx?:Tx) {
+  return withReadTx(ctx,existingTx, async (tx) => {
+    const employees = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        employeeCode: employment.employeeCode,
+        role: position.title,
+        department: department.name,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          companyIds ? inArray(employment.companyId, companyIds) : undefined,
+        ),
+      )
+      .orderBy(person.fullName);
+    // Use the same authorized, live endpoint set as the bounded chart.
+    const edges = await readOrgChartEdgesTx(tx);
+    return { employees, edges };
+  });
+}
+
 /** Aggregate counts + latest attendance/payroll snapshot for the dashboard. When `companyId` is
  *  given, every figure is scoped to that company's subtree (consolidation); else the whole tenant.
  *
@@ -5969,6 +6782,7 @@ export type AuditFilters = {
    *  same map components/audit-table.tsx chips each row with. The caller passes a validated ModuleKey
    *  (isModuleKey); an out-of-set `?module=` is dropped by the caller, never narrowed to nothing. */
   module?: ModuleKey;
+  eventType?: string; // exact event type for server-owned lookups
   eventQuery?: string; // matches event type / aggregate type
   actorId?: string;
   /** 4ec5a940 — action filter: matches the event's last dot-segment (created/updated/deleted/…). The
@@ -5992,6 +6806,7 @@ function auditWhere(f: AuditFilters) {
   return and(
     f.aggregateType ? eq(domainEvent.aggregateType, f.aggregateType) : undefined,
     f.aggregateId ? eq(domainEvent.aggregateId, f.aggregateId) : undefined,
+    f.eventType ? eq(domainEvent.eventType, f.eventType) : undefined,
     f.employmentId ? sql`exists (
       select 1 from employment audit_subject
       where audit_subject.id=${f.employmentId}::uuid
@@ -6389,17 +7204,52 @@ export async function myEmploymentsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit
       .orderBy(employment.hiredOn,employment.id);
 }
 
+function ownEmploymentSubjectPredicate(ctx:SessionContext,personId:string){
+ return and(ownPersonPredicate(ctx),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,personId));
+}
+
+/** Same own-subject membership as the Home inventory, with fresh principal and actual-login checks. */
+export async function isCurrentOwnHomeEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ if(!ctx.userId||!ctx.personId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId))return false;
+ const [row]=await currentOwnHomeEmploymentQuery(tx,ctx,ctx.personId,employmentId);
+ return row!==undefined;
+}
+/** The select isCurrentOwnHomeEmploymentTx sends (a request preamble answers it ahead, decision 12). */
+export function currentOwnHomeEmploymentQuery(tx:Tx,ctx:SessionContext,personId:string,employmentId:string|SQL){
+ return tx.select({id:employment.id}).from(employment)
+  .innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(ownEmploymentSubjectPredicate(ctx,personId),eq(employment.id,employmentId),sql`app.principal_snapshot_current()`)).limit(1);
+}
+
+/** Selected own subject eligibility, without projecting an inventory or resolving its dated companies. */
+export async function isOwnProfileEditEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ if(!ctx.personId)return false;
+ const [row]=await ownProfileEditEmploymentQuery(tx,ctx,ctx.personId,employmentId);
+ return row!==undefined;
+}
+/** The select isOwnProfileEditEmploymentTx sends (a request preamble answers it ahead, decision 12). */
+export function ownProfileEditEmploymentQuery(tx:Tx,ctx:SessionContext,personId:string,employmentId:string|SQL){
+ return tx.select({id:employment.id}).from(employment)
+  .innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(ownEmploymentSubjectPredicate(ctx,personId),eq(employment.id,employmentId),profileEditEmploymentPredicate(ctx))).limit(1);
+}
+
+/** The inventory select myOwnEmploymentSubjectsTx sends; `statusDay` defaults to today when the select is built, as
+ * before (a request preamble answers it ahead for its own day, decision 12). */
+export function ownEmploymentSubjectsQuery(tx:Tx,ctx:SessionContext,personId:string,opts:{profileEdit?:boolean}={},statusDay?:string){
+ return tx.select({employmentId:employment.id,personId:person.id,personName:person.fullName,employeeCode:employment.employeeCode,
+  currentCompanyId:employment.companyId,company:company.legalName,country:company.country,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,
+  resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt,status:employmentStatusSql(statusDay)})
+  .from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(ownEmploymentSubjectPredicate(ctx,personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
+  .orderBy(employment.hiredOn,employment.id);
+}
 /** Salary-free own-subject inventory. A caller must explicitly select an ID from this set.
  * Dated company proof is strict: a missing assignment is Unknown, never today's company fallback. */
 export async function myOwnEmploymentSubjectsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit?:boolean}={}){
  if(!ctx.personId)return [];
  const date=todayInKualaLumpur();
- const rows=await tx.select({employmentId:employment.id,personId:person.id,personName:person.fullName,employeeCode:employment.employeeCode,
-  currentCompanyId:employment.companyId,company:company.legalName,country:company.country,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,
-  resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt,status:employmentStatusSql()})
-  .from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
-  .where(and(ownPersonPredicate(ctx),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
-  .orderBy(employment.hiredOn,employment.id);
+ const rows=await ownEmploymentSubjectsQuery(tx,ctx,ctx.personId,opts);
  const {provenCompanyDatesTx}=await import('./employment-company');
  const proofs=await provenCompanyDatesTx(tx,rows.map(row=>({employmentId:row.employmentId,date})));
  return rows.map(row=>({...row,companyProof:proofs.get(`${row.employmentId}|${date}`)??{companyId:null,reason:'employment_unavailable' as const}}));
@@ -6710,19 +7560,19 @@ export function allowedCompanies(ctx: SessionContext, existingTx?: Tx) {
         .from(company)
         .orderBy(company.legalName);
     }
-    const ids = new Set((ctx.grants ?? []).map((g) => g.companyId).filter((c): c is string => !!c));
-    if (ctx.personId) {
-      const emps = await tx
-        .select({ c: employment.companyId })
-        .from(employment)
-        .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)));
-      emps.forEach((e) => ids.add(e.c));
-    }
-    if (ids.size === 0) return [];
+    const grantCompanyIds = [...new Set((ctx.grants ?? []).map(grant => grant.companyId).filter((id): id is string => !!id))];
+    if (!ctx.personId && grantCompanyIds.length === 0) return [];
+    const activeEmployments = ctx.personId
+      ? tx.select({ id: employment.companyId }).from(employment)
+        .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
+      : undefined;
     return tx
       .select({ id: company.id, name: company.legalName })
       .from(company)
-      .where(inArray(company.id, [...ids]))
+      .where(or(
+        grantCompanyIds.length ? inArray(company.id, grantCompanyIds) : undefined,
+        activeEmployments ? inArray(company.id, activeEmployments) : undefined,
+      ))
       .orderBy(company.legalName);
   });
 }

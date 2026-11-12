@@ -280,7 +280,19 @@ describe('r413 · CP22 moved onto the screen and its document did not change', (
       return src.slice(start, end);
     };
     const now = slice(fs.readFileSync(path.join(ROOT, 'core/reporting.ts'), 'utf8'));
-    const then = slice(atBaseline('core/reporting.ts'));
+    // 2260a06b (approved board plan, 2026-11-12) makes an intern's CP22 Expected Duration run from the hire date to the
+    // internship end date. Apply exactly that change to the baseline; anything else in the slice must still be identical.
+    const approved: ReadonlyArray<readonly [string, string]> = [
+      ['        contractEndDate: employment.contractEndDate,\n',
+       '        contractEndDate: employment.contractEndDate,\n        internshipEndDate: employment.internshipEndDate,\n'],
+      ["    const dated = current?.employmentType === 'contract' || current?.employmentType === 'intern';\n    const from = base.contractStartDate ?? base.hiredOn;\n",
+       "    // 2260a06b — an intern's period ends on the internship end date (from the hire date); a contract's on the\n    // contract end date (from the contract start).\n    const isIntern = current?.employmentType === 'intern';\n    const dated = current?.employmentType === 'contract' || isIntern;\n    const from = isIntern ? base.hiredOn : (base.contractStartDate ?? base.hiredOn);\n    const until = isIntern ? base.internshipEndDate : base.contractEndDate;\n"],
+      ['      ? base.contractEndDate\n        ? `${from} - ${base.contractEndDate}`\n', '      ? until\n        ? `${from} - ${until}`\n'],
+    ];
+    const then = approved.reduce((text, [from, to]) => {
+      expect(text.split(from).length - 1, from).toBe(1);
+      return text.replace(from, to);
+    }, slice(atBaseline('core/reporting.ts')));
     expect(now.length).toBeGreaterThan(5000);
     expect(now).toBe(then);
   });

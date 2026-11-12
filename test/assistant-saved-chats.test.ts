@@ -10,6 +10,7 @@ import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {assistantConversationScopeDigest,ownAssistantConversationContext,resumeOwnAssistantConversation} from '../core/assistant-conversation-context';
 import {ownAssistantClarification} from '../core/assistant-clarification';
 import {listOwnAssistantChats,loadOwnAssistantChat} from '../core/assistant-threads';
+import {loadAiWorkspace} from '../core/ai-workspace';
 import {sealAssistantDisclosure} from '../lib/ai/assistant-disclosure';
 import {setAgentActionPause} from '../core/ai-inventory';
 import * as proposalCatalogueOwner from '../core/assistant-action-catalogue';
@@ -31,7 +32,20 @@ describe('saved owned chats',()=>{
   const receipt=sealAssistantDisclosure({tenantId:ctx.tenantId,userId:ctx.userId!,exchangeId:id,question,answer},[],proposal,{threadId:id,scopeDigest:assistantConversationScopeDigest(ctx)})!;
   await owner.db.insert(s.assistantExchange).values({id,tenantId:ctx.tenantId,appUserId:ctx.userId!,question,answer,disclosureReceipt:receipt,stop:'end',toolCalls:[]});
   const reopen=async()=>{const chat=await loadOwnAssistantChat(ctx,{exchangeId:id});expect(chat.turns).toHaveLength(1);expect(chat.turns[0].answer).toBeNull();return chat.turns[0].grounded?.conversation;};
-  expect(await reopen()).toEqual({plan:proposal,facts:[]});
+  const replay=proposalCatalogueOwner.assistantProposalCallerTx;
+  const bounded=vi.spyOn(proposalCatalogueOwner,'assistantProposalCallerTx').mockImplementation(async(tx,...args)=>{
+   await tx.execute(sql`set local lock_timeout='500ms'`);
+   return replay(tx,...args);
+  });
+  try{
+   await owner.client.begin(async holder=>{
+    await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+ctx.tenantId},0))`;
+    await holder`select pg_advisory_xact_lock_shared(hashtext('ai-control'),hashtext(${ctx.tenantId}))`;
+    const [saved,workspace]=await Promise.all([reopen(),loadAiWorkspace(ctx,{selectedExchangeId:id,includePlanning:false,includeGovernance:false})]);
+    expect(saved).toEqual({plan:proposal,facts:[]});
+    expect(workspace.history.find(exchange=>exchange.id===id)?.grounded?.conversation).toEqual(saved);
+   });
+  }finally{bounded.mockRestore();}
   await setAgentActionPause(admin,'leave.cancel',true);
   expect(await reopen()).toEqual({plan:proposal,proposalStale:true,facts:[]});
   await setAgentActionPause(admin,'leave.cancel',false);
@@ -57,6 +71,13 @@ describe('saved owned chats',()=>{
   const listed=await listOwnAssistantChats(ctx);expect(listed.chats).toHaveLength(1);expect(listed.chats[0].threadId).toBe(first.exchangeId);expect(listed.chats[0].exchangeId).toBe(second.exchangeId);
   const opened=await loadOwnAssistantChat(ctx,{exchangeId:second.exchangeId});expect(opened.turns.map(turn=>turn.id)).toEqual([first.exchangeId,second.exchangeId]);expect(opened.resume?.exchangeId).toBe(second.exchangeId);expect(opened.turns.every(turn=>turn.answer===null)).toBe(true);
   const context=await ownAssistantConversationContext(ctx,second.exchangeId,'Hello',opened.resume!.conversationToken);expect(context.questions).toEqual(['Hello','Thanks']);
+ });
+ it('resumes an owned saved chat while another read holds shared Access',async()=>{
+  const {ctx}=await actor(),id=await row(ctx);
+  await owner.db.transaction(async tx=>{
+   await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+ctx.tenantId},0))`);
+   await expect(resumeOwnAssistantConversation(ctx,id)).resolves.toMatchObject({exchangeId:id,threadId:id});
+  });
  });
  it('keeps authoritative parent order when equal timestamps would put the child UUID first, including paged history',async()=>{
   const {ctx}=await actor(),askedAt=new Date(Date.now()-1000),parentId='ffffffff-ffff-4fff-8fff-ffffffffffff',childId='00000000-0000-4000-8000-000000000001';

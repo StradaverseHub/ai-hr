@@ -19,6 +19,7 @@ import {captureNativeOutcomeTargetsTx} from '../core/module-native-outcome-targe
 import {prepareReviewedPayrollResetSourceTx,confirmReviewedPayrollResetSourceTx} from '../core/assistant-actions/reviewed-payroll-reset-source';
 import {prepareReviewedPayrollReopenSourceTx,confirmReviewedPayrollReopenSourceTx} from '../core/assistant-actions/reviewed-payroll-reopen-source';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {withRunPayPeriod} from '../core/payroll-period-lock';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 let b:Base,ctx:SessionContext,batchId:string,periodId:string,period:string,employmentId:string;
 const reason='Fictional native lifecycle correction';
@@ -36,7 +37,7 @@ beforeEach(async()=>{
  batchId=(await createBatch(ctx,{companyId:b.companyId,payPeriod:period})).batchId;await setPayrollInput(ctx,{batchId,employmentId,overtimeAmount:0});await generatePayslips(ctx,{batchId});
  await setSetting(b.tenantId,'payroll.reset_enabled',true);await setSetting(b.tenantId,'payroll.unlock_enabled',true);
  ctx={...await entitledCtx(b,['hr_admin']),grants:[{role:'hr_admin',companyId:null}]};
- const [batch]=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batchId));periodId=batch.payPeriodId;
+ const [batch]=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batchId));periodId=withRunPayPeriod(batch,()=>Error('Expected the committed run to carry its pay period')).payPeriodId;
 });
 async function prepareReset(){const r=await preparePayrollResetReview(ctx,resetHuman());if(r.kind!=='prepared')throw Error('Expected real encrypted reset review');return r.review;}
 async function state(){return{

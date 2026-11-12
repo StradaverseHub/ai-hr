@@ -426,7 +426,7 @@ not allocate migrations or grant employee rights.
 | `leave.eligibility_and_explanation_details.formula` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `profile.draft_only_saved_address_choice.sameaspermanent` | Profile | Protected | specialist | Draft creation control; not a saved employee fact. |
 | `employment.draft_only_employment_fields.costcenterid` | Employment | Protected | specialist | Draft creation control; not a saved employee fact. |
-| `employment.draft_only_employment_fields.internshipenddate` | Employment | Protected | specialist | Draft creation control; not a saved employee fact. |
+| `employment.draft_only_employment_fields.internshipenddate` | Employment | Protected | specialist | HR-maintained internship review date; not part of My Profile. |
 | `employment.draft_only_employment_fields.probationenddate` | Employment | Protected | specialist | Draft creation control; not a saved employee fact. |
 | `payroll.draft_initial_monthly_allowance.monthlyallowance` | Payroll | Protected | specialist | Draft creation control; not a saved employee fact. |
 | `employment.employment_dates_and_service.confirmationdate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |

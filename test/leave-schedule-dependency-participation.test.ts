@@ -72,7 +72,10 @@ describe('canonical schedule configuration source owners', () => {
     const newlyInsertedRule=command==='create'||command==='copy'||command==='standard'&&!standardExisted;
     // 0551's deferred native INSERT trigger records the immutable legacy overtime snapshot too.
     // Check both exact events AND their real rule/version/binding, rather than relaxing an event count.
-    const expectedTypes=command==='standard'&&standardExisted?[]:[commandEventType,...(newlyInsertedRule?['overtime.legacy.snapshot.recorded']:[])];
+    // 2f803985: the first saved Schedule Pattern of a group that is not yet roster-controlled turns Duty Roster Control
+    // on in the same transaction, with its own audit event.
+    const rosterSwitched=command==='rotation'&&before.rules.find(row=>row.id===rule.id)?.dutyRosterControl===false;
+    const expectedTypes=command==='standard'&&standardExisted?[]:[commandEventType,...(newlyInsertedRule?['overtime.legacy.snapshot.recorded']:[]),...(rosterSwitched?['attendance-rule.duty-roster-control.changed']:[])];
     expect(addedEvents.map(row=>row.eventType).sort()).toEqual(expectedTypes.sort());
     if(newlyInsertedRule){
       const commandEvent=addedEvents.find(row=>row.eventType===commandEventType)!,snapshot=addedEvents.find(row=>row.eventType==='overtime.legacy.snapshot.recorded')!;
@@ -93,5 +96,6 @@ describe('canonical schedule configuration source owners', () => {
     if (command === 'status') expect(existing?.status).toBe('inactive');
     if (command === 'delete') expect(existing).toBeUndefined();
     if (command === 'rotation') expect(after.rotations.find(row => row.ruleId === rule.id)).toMatchObject({ effectiveFrom: date, allowedShiftIds: [shift.id] });
+    if (command === 'rotation') expect(existing?.dutyRosterControl).toBe(true);
   });
 });

@@ -23,7 +23,8 @@ import {mapEpfUiMode,retainLegacyTotalTopup} from '../lib/epf-mode-map';
 import {applyPersonnelOperationalValuesTx} from './personnel-import-operations';
 import {setEmploymentPaymentMethod} from './org';
 import {isPaymentMethod} from '../lib/payment-methods';
-import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {lockLeaveDependenciesWaitTx} from './leave-dependency-lock';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {
  BANK_COLUMNS,BANK_STATUTORY_STATE_COLUMNS,MERGED_STATUTORY_COLUMNS,OTHERS_COLUMNS,REGISTRATION_COLUMNS,STATUTORY_ROW_COLUMNS,
  bankStatutoryColumnLabel,bankStatutoryStateFrom,childReliefTableFrom,isTaxColumn,parseBankStatutoryCell,
@@ -207,8 +208,10 @@ export function bankStatutoryDiff(before:BankStatutoryState,after:BankStatutoryS
 // ─── Revert ───────────────────────────────────────────────────────────────────────────────────────────────
 const itemState=(value:unknown)=>(value??{fields:{}}) as BankStatutoryItemState;
 const shown=(v:string)=>v===''?'(blank)':v;
-/** Same writer locks as the import's row transactions, always before the attempt row lock. */
-async function lockBankStatutoryWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
+/** Same writer locks as the import's row transactions, always before the attempt row lock. Shared
+ * (reader/writer wave 4): each restored employee's statutory setter then takes its own subject and
+ * payroll inputs locks, so a revert overlaps other writers and still waits for an in-flight run. */
+async function lockBankStatutoryWritersTx(tx:Tx,ctx:SessionContext){await lockAccessConfigurationTx(tx,ctx.tenantId);await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[]);}
 /**
  * Eligible only while every field the import changed still holds exactly the value it set. Restores the
  * recorded "before" values through the merged writer, newest import row first. Nothing the import did not

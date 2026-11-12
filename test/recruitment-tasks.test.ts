@@ -17,7 +17,7 @@ import { addCalendarMonths, timeInKualaLumpur, todayInKualaLumpur } from '../lib
 import { readFileSync } from 'node:fs';
 import { RECRUITMENT_TASK_KINDS } from '../lib/assigned-work';
 import { isModuleEnabled } from '../core/entitlements';
-import { listMyTasks, listPendingTasks, withoutRecruitmentTasks } from '../core/approvals-inbox';
+import { listMyTasks, listPendingTasks, myTaskSummary, pendingTaskSummary, withoutRecruitmentTasks } from '../core/approvals-inbox';
 import { createNotice, publishNotice } from '../core/notice';
 import {
   addApplication, addJobMember, cancelInterview, candidateBoard, changeJobStatus, createJob, setCandidateResponse, UPDATES_PAGE_SIZE, createRequisition, decideOffer, decideRequisition, destroyCandidates,
@@ -582,6 +582,14 @@ describe('case 64 — My tasks lists what its badge counts; Home and the launche
       expect(page.length).toBe(bellList.length);
       // The AI Centre launcher (it opens Home) counts the list without the recruitment kinds, as Home lists it.
       expect(withoutRecruitmentTasks(bellList).length).toBe((await listPendingTasks(who, scope, { attendance: false, claims: false, performance: false, rewards: false })).length);
+      // The shell's streamed summary (the bell and the sidebar's My tasks badge) and the page's summary carry the same items.
+      const shell = await pendingTaskSummary(who, scope, modules, { deferClaimPreview: true });
+      const pageSummary = await myTaskSummary(who, scope, modules);
+      expect(recruitment(shell.items)).toEqual(recruitment(bellList));
+      expect(recruitment(pageSummary.items)).toEqual(recruitment(bellList));
+      expect(shell.total).toBe(bellList.length);
+      expect(pageSummary.total).toBe(page.length);
+      expect(shell.approvalCount).toBe((await pendingTaskSummary(who, scope, { attendance: false, claims: false, performance: false, rewards: false }, { deferClaimPreview: true })).approvalCount);
     }
     // Non-empty: feedback for the interviewer (in the selection only), the approval step for the approver (tenant-wide).
     expect((await listMyTasks(w.i1, [base.companyId], modules)).map((i) => i.kind).sort()).toEqual(['noticeAcknowledgement', 'recruitmentFeedback']);
@@ -592,11 +600,14 @@ describe('case 64 — My tasks lists what its badge counts; Home and the launche
     // The page and layout wiring this rests on.
     const layout = readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8');
     expect(layout).toContain("recruitment: isModuleEnabledOrFalse(session, 'recruitment'),");
-    expect(layout).toContain('taskCount={pendingTaskCount}');
-    expect(layout).toContain('inboxCount={withoutRecruitmentTasks(approvalTasks).length}');
+    expect(layout).toContain('pendingTaskSummary(session, scopeIds, {');
+    // The sidebar's My tasks badge is the shell summary's total; the launcher counts its items without the recruitment kinds.
+    expect(readFileSync(new URL('../components/sidebar.tsx', import.meta.url), 'utf8')).toContain('baseTaskCount+approvals.total');
+    expect(readFileSync(new URL('../components/assistant/assistant-launcher.tsx', import.meta.url), 'utf8'))
+      .toContain("approvals.items.filter(item=>!RECRUITMENT_KINDS.has(item.kind)).length");
     const tasksPage = readFileSync(new URL('../app/tasks/page.tsx', import.meta.url), 'utf8');
     expect(tasksPage).toContain("const {s,scopeIds}=await scopedSession()");
-    expect(tasksPage).toContain("listMyTasks(s,scopeIds,{");
+    expect(tasksPage).toContain("myTaskSummary(s,scopeIds,modules)");
     expect(tasksPage).toContain("recruitment:isModuleEnabledOrFalse(s,'recruitment')");
   });
 });

@@ -4,7 +4,7 @@ import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import en from '../messages/en.json';
 import {MovementImport} from '../app/admin/personnel/import/movement-import';
 import {ImportWorkbench} from '../app/admin/personnel/import/import-workbench';
-const mocks=vi.hoisted(()=>({fetch:vi.fn()}));
+const mocks=vi.hoisted(()=>({fetch:vi.fn(),jobs:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../app/admin/personnel/import/movement-actions',()=>({movementCatalogAction:vi.fn()}));
 vi.mock('../app/admin/personnel/import/actions',()=>({validateImportAction:vi.fn(),commitImportAction:vi.fn()}));
@@ -19,7 +19,7 @@ const reference={departments:[],positions:[],costCenters:[],states:[],countries:
 const response=(data:unknown)=>({ok:true,headers:new Headers({'content-type':'application/json'}),json:async()=>data});
 function mount(workbench=false){render(<NextIntlClientProvider locale="en" messages={en}>{workbench?<ImportWorkbench companies={companies} defaultCompanyId="a" reference={reference}/>:<MovementImport/>}</NextIntlClientProvider>);if(workbench)fireEvent.click(screen.getByRole('radio',{name:/^Movement /}));}
 const choose=()=>fireEvent.change(screen.getByLabelText(en.people.import.movement.file),{target:{files:[new File(['fictional bytes'],'movements.xlsx')]}});
-beforeEach(()=>{vi.resetAllMocks();mocks.fetch.mockResolvedValue(response({ok:true,attemptId:'attempt-1',previewHash:'hash-1',preview}));vi.stubGlobal('fetch',mocks.fetch);vi.stubGlobal('requestAnimationFrame',(fn:()=>void)=>{fn();return 1;});Object.defineProperty(URL,'createObjectURL',{configurable:true,value:vi.fn(()=> 'blob:fixture')});Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:vi.fn()});vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});});afterEach(()=>vi.unstubAllGlobals());
+beforeEach(()=>{vi.resetAllMocks();mocks.fetch.mockResolvedValue(response({ok:true,attemptId:'attempt-1',previewHash:'hash-1',preview}));vi.stubGlobal('fetch',(url:string,init?:RequestInit)=>url==='/admin/personnel/import/movement/jobs'||url==='/admin/personnel/import/movement/checks'?mocks.jobs(url,init):mocks.fetch(url,init));mocks.jobs.mockResolvedValue(response({jobs:[]}));vi.stubGlobal('requestAnimationFrame',(fn:()=>void)=>{fn();return 1;});Object.defineProperty(URL,'createObjectURL',{configurable:true,value:vi.fn(()=> 'blob:fixture')});Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:vi.fn()});vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});});afterEach(()=>vi.unstubAllGlobals());
 describe('single-template Movement import screen (ac6645ec)',()=>{
  it('offers the template and import history with no company or movement type selection',()=>{
   mount(true);
@@ -37,6 +37,7 @@ describe('single-template Movement import screen (ac6645ec)',()=>{
   mocks.fetch.mockResolvedValueOnce(response({ok:true,result:{...preview,attemptId:'attempt-1',imported:1,failed:0,excluded:2,byEventType:[],employees:preview.employees.map(e=>({...e,rows:e.rows.map(r=>({...r,status:e.employeeCode==='GOOD'?'imported':'excluded'}))}))}}));fireEvent.click(save);
   await screen.findByRole('heading',{name:'Import result'});const body=mocks.fetch.mock.calls[1][1].body as FormData;
   expect(body.get('attemptId')).toBe('attempt-1');expect(body.get('previewHash')).toBe('hash-1');expect(JSON.parse(String(body.get('employees')))).toEqual(['company-a|GOOD']);expect(body.get('fingerprints')).toBeNull();expect(body.get('selection')).toBeNull();
+  expect(screen.getAllByRole('link',{name:en.people.import.movement.viewHistory}).map(link=>link.getAttribute('href'))).toContain('/admin/personnel/good/movement/history');
   expect(screen.getByRole('link',{name:'View this import in Import History'})).toHaveAttribute('href','/admin/personnel/import/history/attempt-1');
  });
  it('lists file-level issues distinctly: an unchanged template has no entries, not an unsupported structure (d9e33556)',async()=>{

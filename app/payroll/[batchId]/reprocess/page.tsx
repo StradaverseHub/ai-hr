@@ -24,6 +24,7 @@ import { ReprocessForm, type ReprocessAddCandidate, type ReprocessCandidate } fr
 // The href is spent on the EMPLOYEE NAME (rev.2, below) — the destination did not change, only what
 // the operator clicks to reach it.
 import { ReprocessOutcomePanel, reprocessStoppedMessageKey } from './outcomes';
+import { ReprocessJobPanel } from './reprocess-progress';
 
 /**
  * e440991b — REPROCESS SELECTED EMPLOYEES, a screen of its own.
@@ -276,7 +277,12 @@ export default async function ReprocessPage({
       {/* THE RESULT, when there is one. It is rendered ABOVE the selection because after a submit this
           is what the operator came back for; the selection stays below so a second correction does not
           need a second navigation. */}
+      {/* The recompute runs in the background: while it does, its progress; the results replace it when it ends. */}
+      {thisJob && (thisJob.status === 'queued' || thisJob.status === 'running') && (
+        <ReprocessJobPanel jobId={thisJob.id} initial={{ status: thisJob.status, employmentIds: thisJob.employmentIds, result: thisJob.result as { outcomes?: unknown[] } | null }} />
+      )}
       {thisJob?.status === 'failed' && <ErrorBanner message={t(reprocessStoppedMessageKey(thisJob.stopCode))} />}
+      {/* While the job runs, the employees it has already committed show here under its progress panel. */}
       {thisJob && outcomes !== null && (
         <ReprocessOutcomePanel outcomes={outcomes} history={disclosure} slips={slips} run={batch}
           currency={currency} batchId={batchId} from={listFrom} jobId={thisJob.id}

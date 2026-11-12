@@ -401,7 +401,7 @@ export async function setLeaveApprovalPolicy(
   const reason = normalizeReason(p.reason);
   if (levels.length === 0) throw new Error('An approval chain needs at least one level');
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // 4ec5a940 — capture the prior chain BEFORE the write, so the audit event carries a real before→after
     // comparison (forward-only). The default rule row holds the chain.
@@ -590,7 +590,7 @@ export async function createLeaveApprovalRule(ctx: SessionContext, p: LeaveAppro
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const c = cleanRuleInput(p);
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertNoDuplicateRule(tx, p.companyId, c, null);
     const [row] = await tx
@@ -639,7 +639,7 @@ export async function updateLeaveApprovalRule(
   const c = cleanRuleInput(p);
   const reason = normalizeReason(opts?.reason);
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertNoDuplicateRule(tx, p.companyId, c, ruleId);
     // 4ec5a940 — snapshot the prior rule scope + chain BEFORE the update, for a real before→after audit diff.
@@ -715,7 +715,7 @@ export async function updateLeaveApprovalRule(
 export async function archiveLeaveApprovalRule(ctx: SessionContext, ruleId: string, companyId: string) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx
       .update(leaveApprovalPolicy)
@@ -866,7 +866,7 @@ export async function setLeaveEscalationPolicy(
   }
   const reason = normalizeReason(p.reason);
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({

@@ -5,16 +5,16 @@ import {createHash} from 'node:crypto';
 import {profileVisibilityFingerprint} from '../lib/profile-policy-fingerprint';
 import {getSetting} from './entitlements';
 import {assertAiPrincipalTx} from './ai-principal';
-import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {lockLeaveDependencyConfigurationTx,lockPersonLeaveDependenciesWaitTx} from './leave-dependency-lock';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {pgSqlState} from '../lib/db-error';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
-import {lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx,lockProfileSubjectTx,lockProfileValueSharedTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import {isProfilePhotoProposal} from '../lib/profile-photo-proposal';
 import {readProfileRoutingPolicy,resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate,ProfileRoutingError,type ProfileRouteDecisionSubject} from './profile-routing';
 import type {ProfilePresentationPolicy} from './profile-edit-policy';
 import {projectOwnProfileProposal,ownProfileProposalIsIntact} from '../lib/personnel-ess-visibility';
-import {freshProfileEditPolicyTx} from './profile-edit-policy';
+import {freshProfileEditPolicySharedTx,freshProfileEditPolicyTx,freshProfilePresentationPolicyTx} from './profile-edit-policy';
 import {EssProfileError,type EssProfileProposal} from '../lib/personnel-ess-model';
 import {personnelField,PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import { isCalendarDate } from '../lib/calendar-date';
@@ -63,7 +63,7 @@ import {
 import { profileChangeAllowedKeys, profileChangeApprover } from './tenant-settings';
 import { isGroupAdmin } from '../lib/authz-model';
 // 23ad620e — the emergency contact lives in its own per-person register; /me reads and writes the primary.
-import { primaryEmergencyContactSql, writeSingleEmergencyContactInTx } from './emergency-contacts';
+import { primaryEmergencyContactRow, writeSingleEmergencyContactInTx } from './emergency-contacts';
 // 35b7af0a — the person master lists, defined in a CLIENT-SAFE module and re-exported below (see the note
 // there). Client components render the same lists this module validates saves against.
 import { GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
@@ -273,6 +273,7 @@ export class ProfileChangeFieldClosedError extends Error {
 export function myProfile(ctx: SessionContext) {
   return withTenant(ctx, async (tx) => {
     if (!ctx.personId||!await isOwnPersonTx(tx,ctx)) return null;
+    const emergencyContact = primaryEmergencyContactRow(tx);
     const [p] = await tx
       .select({
         fullName: person.fullName,
@@ -284,8 +285,8 @@ export function myProfile(ctx: SessionContext) {
         maritalStatus: person.maritalStatus,
         // 23ad620e — the emergency contact moved to its own per-person register; /me still shows ONE, so
         // these five resolve to the highest-priority live record (Primary → Secondary → Other).
-        emergencyContactName: primaryEmergencyContactSql('full_name'),
-        emergencyContactPhone: primaryEmergencyContactSql('mobile_phone'),
+        emergencyContactName: emergencyContact.fullName,
+        emergencyContactPhone: emergencyContact.mobilePhone,
         // b4682879 — structured home address + extended emergency contact (self-maintained on /me).
         personalEmail: person.personalEmail,
         addressLine1: person.addressLine1,
@@ -295,11 +296,12 @@ export function myProfile(ctx: SessionContext) {
         city: person.city,
         state: person.state,
         country: person.country,
-        emergencyContactRelationship: primaryEmergencyContactSql('relationship'),
-        emergencyContactPhone2: primaryEmergencyContactSql('home_phone'),
-        emergencyContactAddress: primaryEmergencyContactSql('address'),
+        emergencyContactRelationship: emergencyContact.relationship,
+        emergencyContactPhone2: emergencyContact.homePhone,
+        emergencyContactAddress: emergencyContact.address,
       })
       .from(person)
+      .leftJoinLateral(emergencyContact, sql`true`)
       .where(and(ownPersonPredicate(ctx),eq(person.id, ctx.personId)))
       .limit(1);
     const [stat] = await tx
@@ -310,10 +312,27 @@ export function myProfile(ctx: SessionContext) {
         numChildren: employeeStatutoryMy.numChildren,
       })
       .from(employeeStatutoryMy)
-      .where(and(ownPersonPredicate(ctx),eq(employeeStatutoryMy.personId, ctx.personId)))
+      .where(myStatutoryWhere(ctx, ctx.personId))
       .limit(1);
     return { person: p ?? null, statutory: stat ?? null };
   });
+}
+const myStatutoryWhere = (ctx: SessionContext, personId: string) => and(ownPersonPredicate(ctx),eq(employeeStatutoryMy.personId, personId));
+/** The one fact of myProfile the Before payroll checklist reads (core/pre-salary/person-items.ts): whether the profile
+ * is the caller's own (the owner's isOwnPersonTx statement, as a value) and the statutory row's declared child count
+ * (the owner's predicate and limit). Contact, address and bank fields are not read. null without a person or login
+ * (the owner then answers null without reading). */
+export function myProfileChildCountBundleSql(ctx: SessionContext) {
+  if (!ctx.personId || !ctx.userId) return null;
+  return sql`jsonb_build_object('own',(select ${ownPersonPredicate(ctx)}),
+   'statutory',(select jsonb_build_object('numChildren',${employeeStatutoryMy.numChildren}) from ${employeeStatutoryMy}
+    where ${myStatutoryWhere(ctx, ctx.personId)} limit 1))`;
+}
+/** myProfile's answer narrowed to {statutory: {numChildren}}: null when the profile is not the caller's own. */
+export function myProfileChildCountFromBundle(value: unknown): { statutory: { numChildren: number | null } | null } | null {
+  const raw = value as { own: unknown; statutory: { numChildren: number | null } | null };
+  if (raw.own !== true) return null;
+  return { statutory: raw.statutory ? { numChildren: raw.statutory.numChildren } : null };
 }
 
 /** Direct self-edit of low-risk contact fields on the caller's own person row. Genuinely low-risk only —
@@ -362,9 +381,10 @@ export async function updateOwnContact(
  */
 type OwnProfileChangeInput={employmentId:string;proposed:ProfileChangeProposed|EssProfileProposal;attachments?:import('../lib/profile-attachment').ProfileAttachmentInput[]};
 async function prepareProfileChangeRequestTx(tx:Tx,ctx:SessionContext,p:OwnProfileChangeInput){
-  await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-  const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
-  const {ownProfileSubjectTx,prepareProfileProposalTx}=await import('./profile-edit');
+  const {lockOwnProfileValueSubjectTx,ownProfileSubjectTx,prepareProfileProposalTx}=await import('./profile-edit');
+  // A change request stores a proposal and writes no master value; it joins every lock in shared mode.
+  await lockOwnProfileValueSubjectTx(tx,ctx,p.employmentId);
+  const policy=await freshProfileEditPolicySharedTx(tx,ctx);ctx=policy.ctx;
   await ownProfileSubjectTx(tx,ctx,p.employmentId);
   // Legacy rows remain decidable/readable; no new request may bypass the versioned owner.
   if(!p.proposed||typeof p.proposed!=='object'||Array.isArray(p.proposed)||!('v' in p.proposed)||p.proposed.v!==2)throw new EssProfileError('invalid');
@@ -477,9 +497,11 @@ export async function decideProfileChange(
   const reason = clean(p.reason);
   if (p.decision === 'rejected' && reason === null) throw new ProfileChangeReasonRequiredError();
   const run=async (tx:Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    // Stays exclusive: an approval applies the value through app.access_profile_value_begin, which takes the
+    // profile-policy lock exclusively in SQL, and through the photo and register owners of this course.
+    await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Serialize the decision with configuration revocation before loading any proposal or master data.
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     ctx=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
     const [req] = await tx
       .select()
@@ -593,7 +615,7 @@ export async function decideProfileChange(
 /** Bounded decision metadata for the existing Personnel rejection workflow. Values never leave this
  * owner. Photo/evidence/register proposals remain on the native queue. This is not new authority. */
 export async function profileRequestRejectionContextTx(tx:Tx,ctx:SessionContext,requestId:string,mode:'pending'|'recorded'='pending'){
- await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
  const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
  const [req]=await tx.select().from(profileChangeRequest).where(and(eq(profileChangeRequest.id,requestId),eq(profileChangeRequest.tenantId,ctx.tenantId),sql`octet_length(${profileChangeRequest.proposed}::text)<=65536`)).limit(1).for('update');
  if(!req||req.status!==(mode==='pending'?'pending':'rejected')||mode==='pending'&&(req.decisionReason!==null||req.decidedAt!==null)||req.personId===ctx.personId)throw new EssProfileError('unavailable');
@@ -673,9 +695,11 @@ export async function setPersonComplianceFields(
   if (Object.keys(personSet).length === 0) throw new Error('Nothing to change.');
 
   const run = async (tx:Tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    // Gender, marital status and date of birth feed leave cohorts, so serialise with leave on this person's
+    // employments rather than taking the tenant-wide configuration lock exclusively.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockPersonLeaveDependenciesWaitTx(tx,ctx.tenantId,p.employmentId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
     if(!administrator){const [direct]=await tx.execute<{allowed:boolean}>(sql`select app.profile_direct_subject(${p.employmentId}::uuid) as allowed`);if(!direct?.allowed)throw new EssProfileError('permission');}
     // Resolve the person through the authenticated subject or existing administrator scope.
     const [emp] = await tx
@@ -685,6 +709,7 @@ export async function setPersonComplianceFields(
       .limit(1);
     if (!emp) throw new Error('Employment not found (or not visible).');
     const personId = emp.personId;
+    await lockProfileSubjectTx(tx,ctx.tenantId,personId);
 
     const [before] = await tx
       .select({ gender: person.gender, maritalStatus: person.maritalStatus, dateOfBirth: person.dateOfBirth })
@@ -784,7 +809,9 @@ export function myProfileChangeRequests(ctx: SessionContext, limit = 50,presenta
   const personId = ctx.personId;
   if (!personId) return Promise.resolve([]);
   return withTenant(ctx, async (tx) => {
-    const policy=presentation??await freshProfileEditPolicyTx(tx,ctx);
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    const policy=presentation??await freshProfilePresentationPolicyTx(tx,ctx);
+    if(presentation)await tx.execute(sql`select app.access_profile_policy_read_lock()`);
     const rows=await tx
       .select({
         id: profileChangeRequest.id,
@@ -909,24 +936,70 @@ export async function withdrawProfileChangesForLockedFields(
 export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
-  return tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
+  // No RLS-visible pending request can produce an actionable task. Avoid unrelated
+  // Workforce projections in that case; positives retain the full reader below.
+  // Bind scope UUIDs here too, preserving malformed-input errors for an empty queue.
+  const [pending]=await tx.select({id:profileChangeRequest.id}).from(profileChangeRequest)
+   .where(pendingProfileProbeWhere(ctx,companyIds)).limit(1);
+  if(!pending)return [];
+  // The native reader predicate and RLS already evaluate current routing/access facts.
+  // This first transaction only finds candidates: resolving edit settings here took
+  // the exclusive profile-write barrier on every shell read, even for an empty queue.
+  // Nonempty candidates still pass the locked current-policy decision check below.
+  return pendingProfileCandidatesQuery(tx,ctx,companyIds);
+ });
+ return pendingProfileTasksFromCandidates(ctx,candidates);
+}
+function pendingProfileProbeWhere(ctx:SessionContext,companyIds?:string[]){
+ return and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),
+  companyIds===undefined?undefined:sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[] is not null`);
+}
+function pendingProfileCandidatesQuery(tx:Tx,ctx:SessionContext,companyIds?:string[]){
+ return tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
    employee:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest)
    .innerJoin(employment,and(eq(employment.id,profileChangeRequest.employmentId),eq(employment.tenantId,profileChangeRequest.tenantId)))
    .leftJoin(person,and(eq(person.id,profileChangeRequest.personId),eq(person.tenantId,profileChangeRequest.tenantId)))
-   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current),
+   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(ctx),
     sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
    .orderBy(desc(profileChangeRequest.createdAt),profileChangeRequest.id);
- });
+}
+/** pendingProfileTaskMetadata's second, locked step for the candidates its first transaction (or the account task
+ * statement) read. The first transaction has already checked the current principal and native reader. With no
+ * candidates there is no decision authority to resolve in a second locked transaction. */
+export async function pendingProfileTasksFromCandidates(ctx:SessionContext,candidates:readonly AssignedApprovalMetadata[]):Promise<AssignedApprovalMetadata[]>{
+ if(candidates.length===0)return [];
  const allowed=new Set(await actionableProfileChangeIds(ctx,candidates.map(row=>row.id)));
  return candidates.filter(row=>allowed.has(row.id));
 }
 
+/** pendingProfileTaskMetadata's first transaction in the one-statement account task read (core/account-task-bundle.ts):
+ * its probe with the company binding, then its candidate query unchanged. jsonb {pending, candidates}. No pending request,
+ * or no candidate, is the owner's empty result; candidates still need actionableProfileChangeIds, which takes the
+ * shared Access and profile-policy locks, re-resolves the policy after them and re-checks each routed subject, so that
+ * locked transaction still runs for them (pendingProfileTasksFromCandidates). */
+export function pendingProfileTaskBundleSql(tx:Tx,ctx:SessionContext,companyIds?:string[]){
+ return sql`(select jsonb_build_object('pending',profile_probe.pending,'candidates',case when profile_probe.pending then
+   (select coalesce(jsonb_agg(jsonb_build_object('id',profile_candidate.id,'employmentId',profile_candidate.employment_id,'personId',profile_candidate.person_id,
+     'employee',profile_candidate.employee,'createdAt',profile_candidate.created_at) order by profile_candidate.created_at desc,profile_candidate.id),'[]'::jsonb)
+    from (${pendingProfileCandidatesQuery(tx,ctx,companyIds).getSQL()}) as profile_candidate(id,employment_id,person_id,employee,created_at)) end)
+  from (select exists(select 1 from ${profileChangeRequest} where ${pendingProfileProbeWhere(ctx,companyIds)}) as pending) profile_probe)`;
+}
+type BundleProfileCandidate={id:string;employmentId:string;personId:string;employee:string|null;createdAt:string};
+/** The owner's candidates from the statement: [] is its empty result. */
+export function pendingProfileCandidatesFromBundle(value:unknown):AssignedApprovalMetadata[]{
+ const section=value as {pending:boolean;candidates:BundleProfileCandidate[]|null};
+ return (section.pending?section.candidates??[]:[]).map(row=>({id:row.id,employmentId:row.employmentId,personId:row.personId,employee:row.employee,createdAt:new Date(row.createdAt)}));
+}
 
+/** Which pending profile requests the viewer can decide now: a read for the bell, Home, Approvals and the mobile queue.
+ * It runs on every shell render, so it holds the shared Access and profile-policy locks and no row lock (staging,
+ * 11 November 2026: the exclusive barrier it used to take, held across this per-request loop, stopped every other
+ * caller in the tenant after a restart). Access and profile-policy editors still exclude it; the decision command
+ * itself re-checks the same authority under the exclusive barrier with its row locks. */
 export function actionableProfileChangeIds(ctx:SessionContext,requestIds:readonly string[]){
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx,result:string[]=[],ids=[...new Set(requestIds)];
+  const current=(await freshProfileEditPolicySharedTx(tx,ctx)).ctx,result:string[]=[],ids=[...new Set(requestIds)];
   for(let offset=0;offset<ids.length;offset+=1000){
    const rows=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
     routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,
@@ -934,7 +1007,7 @@ export function actionableProfileChangeIds(ctx:SessionContext,requestIds:readonl
     .where(and(inArray(profileChangeRequest.id,ids.slice(offset,offset+1000)),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current))).orderBy(profileChangeRequest.id);
    for(const row of rows){
     if(row.personId===current.personId||row.requestType===null)continue;
-    try{await assertProfileChangeDecisionAuthorityTx(tx,current,{...row,requestType:row.requestType},'rejected');result.push(row.id);}
+    try{await assertProfileChangeDecisionAuthorityTx(tx,current,{...row,requestType:row.requestType},'rejected',{lockRows:false});result.push(row.id);}
     catch(error){
      if(isApprovalDecisionRefusal(error,'profile change'))continue;
      if(error instanceof ProfileRoutingError&&['changed','unauthorized'].includes(error.code))continue;
@@ -948,8 +1021,8 @@ export function actionableProfileChangeIds(ctx:SessionContext,requestIds:readonl
 }
 
 
-async function assertProfileChangeDecisionAuthorityTx(tx:Tx,ctx:SessionContext,req:ProfileRouteDecisionSubject&{personId:string},decision:'approved'|'rejected'){
- await assertProfileRouteDecisionTx(tx,ctx,req);
+async function assertProfileChangeDecisionAuthorityTx(tx:Tx,ctx:SessionContext,req:ProfileRouteDecisionSubject&{personId:string},decision:'approved'|'rejected',options:{lockRows?:boolean}={}){
+ await assertProfileRouteDecisionTx(tx,ctx,req,options);
  if(req.personId===ctx.personId&&decision==='approved')throw new EssProfileError('permission');
  await assertCanDecide(tx,ctx,req.employmentId,'profile change');
  const roles=ctx.roles??[];

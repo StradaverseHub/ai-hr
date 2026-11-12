@@ -54,7 +54,8 @@ it('adds durable bank imports without changing retained statutory facts, princip
    expect(rows).toEqual([{person_id:actor.personId,tax_number:'T-RETAINED',bank_account_no:'0001234567'}]);return{proof,rows};
   })));
   const before=await facts(),beforeVisibility=await visibility();expect(before.statutory).toHaveLength(2);
-  const expectedRetained={...before,statutory:before.statutory.map(row=>({...row,bank_payee_residency:null}))};
+  // Later additive nullable columns: bank payee residency, and the staged-import marker (5010) on employment and person.
+  const expectedRetained={...before,statutory:before.statutory.map(row=>({...row,bank_payee_residency:null})),employment:before.employment.map(row=>({...row,import_pending_attempt_id:null})),people:before.people.map(row=>({...row,import_pending_attempt_id:null}))};
   const ledger=()=>storage.client`select id,hash,created_at::text as created_at from drizzle.__drizzle_migrations order by created_at,id`;
   const prior=await ledger();expect(prior).toHaveLength(boundary);
   await migrate(storage.db,{migrationsFolder:'db/migrations'});

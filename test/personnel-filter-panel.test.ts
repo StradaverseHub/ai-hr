@@ -55,7 +55,11 @@ describe('Personnel filter panel: both pages use the consolidated component', ()
       for (const param of ['q?: string', 'page?: string', 'company?: string', 'dept?: string', 'status?: string', 'type?: string']) {
         expect(contract.includes(param), `${param} in the ${file} contract`).toBe(true);
       }
-      for (const arg of ['companyId: company', 'departmentId: dept', 'employmentType: type']) {
+      // aa045103 — the admin listing's Department and Employment Type are multi-select (one or many values).
+      const args = file.startsWith('app/admin/')
+        ? ['companyId: company', 'departmentIds: uuidValues(sp.dept)', 'employmentTypes: values(sp.type)']
+        : ['companyId: company', 'departmentId: dept', 'employmentType: type'];
+      for (const arg of args) {
         expect(contract.includes(arg), `${arg} in the ${file} contract`).toBe(true);
       }
       // The lifecycle `status` narrowing is still HONOURED — nothing writes it any more, but an existing

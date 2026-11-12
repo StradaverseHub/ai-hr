@@ -16,7 +16,7 @@ export * from './my-calendar';
 export * from '../../core/attendance-allowance';
 export * from '../../core/attendance-calc';
 export * from '../../core/attendance-group-policy';
-export {attendanceClockPolicyHistory, lockAttendanceClockPolicyConfigurationTx, scheduleAttendanceClockPolicy} from '../../core/attendance-clock-policy';
+export {attendanceClockPolicyGroupHistory, attendanceClockPolicyHistory, lockAttendanceClockPolicyConfigurationTx, saveScheduleGroupClockPolicy} from '../../core/attendance-clock-policy';
 export * from '../../core/attendance-derive';
 export * from '../../core/attendance-device';
 export * from '../../core/attendance-rule';
@@ -36,6 +36,8 @@ export {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from '../.
 
 // r424 (50ed39e1) — File Structure Mapping, Import Clocking Data and Import Logs.
 export * from '../../core/attendance-clocking-import';
+// Import Clocking Data as a background job on the shared bulk-job kernel (draft 5045).
+export * from '../../core/attendance-clocking-import-job';
 
 export * from '../../core/attendance-clock-data';
 export { ClockDataChangedError, AttendancePayrollClosedError } from '../../core/attendance-punch-change';
@@ -53,11 +55,11 @@ export * from '../../core/attendance-shortfall';
 // ADR0123 — canonical recorded inputs, consumed through this facade by Attendance writers.
 export { captureCanonicalOvertimePersonnelContextTx } from './overtime-input';
 
-export { previewOvertimePatternEmployee, previewOvertimePatternSample, calculateOvertimePatternDay, reconcileOvertimePatternDayTx, refreshOvertimePatternDayTx, overtimeSourceRevisionTx } from './overtime-calculation';
+export { previewOvertimePatternEmployee, previewOvertimePatternSample, calculateOvertimePatternDay, reconcileOvertimePatternDayTx, refreshOvertimePatternDayTx, refreshOvertimePatternDaysTx, overtimeSourceRevisionTx } from './overtime-calculation';
 export { canonicalOvertimeInputTx, canonicalOvertimePayrollInputTx, canonicalOvertimeToilInputTx } from './overtime-input';
 
 export { readOvertimePatternCalculation, readOvertimePatternCalculationTx, type OvertimePatternCalculationReview } from './overtime-calculation';
-export { lockOvertimeSubjectForAttendanceWriteTx, listOvertimePatterns, getOvertimePattern, overtimePatternSetup, overtimePatternWorkspaceCompanies, overtimePositionChoices, ensureOvertimePatternStarters, saveOvertimePatternDraft, forkOvertimePatternDraft, validateOvertimePatternActivation, activateOvertimePattern, stopOvertimePatternVersion, archiveOvertimePattern, saveOvertimePatternAssignment, closeOvertimePatternAssignment, readOvertimeCalculationTx, lockOvertimeSourceTx, assertOvertimeSettlementAvailableTx, reserveOvertimeSettlementTx, releaseOvertimeSettlementTx, readOvertimeCashSettlementsTx, listCoveredOvertimeDaysTx, releaseOvertimeSettlementsForDraftTeardownTx, OvertimeOwnerError, type OvertimePatternDraft, type OvertimePatternDetail, type OvertimePatternListItem, type OvertimePatternSetup, type OvertimeRecordOutcome, type OvertimeCashSettlementRead } from './overtime-patterns';
+export { lockOvertimeSubjectForAttendanceWriteTx, listOvertimePatterns, getOvertimePattern, legacyOvertimePatternIdForRule, overtimePatternSetup, overtimePatternWorkspaceCompanies, overtimePositionChoices, ensureOvertimePatternStarters, saveOvertimePatternDraft, forkOvertimePatternDraft, validateOvertimePatternActivation, activateOvertimePattern, stopOvertimePatternVersion, archiveOvertimePattern, saveOvertimePatternAssignment, closeOvertimePatternAssignment, readOvertimeCalculationTx, lockOvertimeSourceTx, assertOvertimeSettlementAvailableTx, reserveOvertimeSettlementTx, releaseOvertimeSettlementTx, readOvertimeCashSettlementsTx, listCoveredOvertimeDaysTx, releaseOvertimeSettlementsForDraftTeardownTx, OvertimeOwnerError, type OvertimePatternDraft, type OvertimePatternDetail, type OvertimePatternListItem, type OvertimePatternSetup, type OvertimeRecordOutcome, type OvertimeCashSettlementRead } from './overtime-patterns';
 export { createOvertimeCalculationOwner, readOvertimeSettlementForDayTx, readOvertimeToilSettlementDatesTx, readOvertimeCashDefinitionTx, readOvertimeDurationsTx, readOvertimeDurationDefinitionTx, hasOvertimePatternForDayTx, lockOvertimeDayForAttendanceWriteTx,
   type OvertimePatternVersionView, type OvertimeDurationRead, type CanonicalOvertimeInput, type CanonicalOvertimeSnapshot } from './overtime-patterns';
 export {resolveOvertimePolicyDatedToilQualificationTx, resolveOvertimeToilDurationTx, OvertimeToilEligibilityError, type OvertimeToilDuration} from './overtime-toil';

@@ -32,11 +32,12 @@ const modulePlacement = (module:NavigationModule,section:NavigationSection):Navi
   area:NAVIGATION_MODULES.find(item=>item.id===module)!.workspace,module,section,
 });
 // AI v2 W11: a person's own private cases sit with My workspace; a handler's queue is personal to them too.
-const shared = new Set(['/','/me','/org','/tasks','/approvals','/system-testing','/assistant','/knowledge-base','/feedback','/me/cases','/cases']);
+const shared = new Set(['/','/me','/org','/tasks','/approvals','/system-testing','/assistant','/policies','/knowledge-base','/feedback','/me/cases','/cases']);
 const system = new Set(['/admin/holidays','/admin/system-settings/approval-delegation',
   '/admin/settings/entra','/admin/settings/email','/admin/settings/email-templates','/admin/settings/login','/admin/settings/notifications','/admin/scheduled-actions','/admin/privacy','/admin/audit',
   '/admin/ai','/admin/security-center/password-policy','/admin/security-center','/admin/users/access','/admin/users/function-access','/admin/users/create','/admin/users/invite','/admin/users','/admin/system-explorer','/admin/system-testing','/mobile-preview','/admin/settings/dashboard']);
-const peopleConfig = new Set(['/admin/settings/system-labels','/admin/organization','/admin/settings/employee-id','/admin/settings/hiring-defaults',
+// 82748f92: '/admin/settings/people' is the People › Settings card page; the six sections keep their placement.
+const peopleConfig = new Set(['/admin/settings/people','/admin/settings/system-labels','/admin/organization','/admin/settings/employee-id','/admin/settings/hiring-defaults',
   '/admin/settings/movement','/admin/settings/profile-requests','/admin/settings/people-general']);
 const leaveHr = new Set(['/admin/leave-config/adjustments','/admin/leave-config/data-import',
   '/admin/leave-config/generate','/admin/leave-config/earned-accrual','/admin/leave-config/balance-health',

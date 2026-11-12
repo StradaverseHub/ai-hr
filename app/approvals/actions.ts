@@ -17,9 +17,9 @@ import { decideLeave, decideLeaveDate, decideLeaveDates, decideLeaveCancellation
 import { parseBulkItems, runBulkDecide, type BulkDecideItem } from '@/lib/approvals-bulk';
 import { approvalsReturnUrl } from '@/lib/approvals-categories';
 import { localizeLeaveError } from '@/app/me/actions';
-import { decideAttendanceCorrection, MissingAttendanceRejectReasonError } from '@/core/attendance';
+import { decideAttendanceCorrection, MissingAttendanceRejectReasonError } from '@/packs/attendance/service';
 import { decideProfileChange } from '@/core/profile';
-import { ClaimError, decideClaim } from '@/core/claims';
+import { ClaimError, decideClaim, listPendingClaimSelection } from '@/packs/claims/service';
 import { decideResignation } from '@/core/offboarding';
 import {
   decideReview,
@@ -328,6 +328,17 @@ async function dispatchBulkItem(
       await decideAttendanceCorrection(s, { correctionId: item.id, decision, rejectReason, deciderEmploymentId, expectedStageIndex: item.expectedStageIndex, expectedParticipantSlot: item.expectedParticipantSlot });
       return;
   }
+}
+
+/** Capture the inbox's selectable claims across pages. The claims queue is not narrowed by the
+ * company switcher (same row set as listPendingClaims); the scope token only refuses a stale view
+ * rendered under a different session selection. The decide action still reauthorizes each ID. */
+export async function selectPendingClaimsAction(companyScope: string) {
+  const { s, scopeIds } = await scopedSession();
+  if ([...scopeIds].sort().join(',') !== companyScope || !isModuleEnabledOrFalse(s, 'claims')) {
+    return { ok: false as const };
+  }
+  return { ok: true as const, ids: await listPendingClaimSelection(s) };
 }
 
 export async function bulkDecideAction(formData: FormData) {

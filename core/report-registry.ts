@@ -1,3 +1,4 @@
+import {withBackgroundDatabaseWork} from '../db/workload';
 import {PAYROLL_COMPARISON_DATASET, PAYROLL_COMPARISON_COLUMNS, validatePayrollComparisonDefinition, payrollComparisonFilters} from '../lib/payroll-period-comparison';
 import {exactOvertimeMinutesText,recordedMinorUnitsText} from '../lib/overtime-records';
 /**
@@ -668,7 +669,10 @@ const contains = (v: string | number | null, needle: string): boolean =>
  * filters, sort, optional group ordering, project the chosen columns (English headers), and append an
  * optional numeric summary row. Returns the neutral ReportData for lib/report-export. PURE READ.
  */
-export async function runReportSpec(
+export function runReportSpec(ctx: SessionContext, scopeIds: string[], spec: CustomReportSpec): Promise<ReportData> {
+  return withBackgroundDatabaseWork(() => runReportSpecWithCapacity(ctx, scopeIds, spec));
+}
+async function runReportSpecWithCapacity(
   ctx: SessionContext,
   scopeIds: string[],
   spec: CustomReportSpec,

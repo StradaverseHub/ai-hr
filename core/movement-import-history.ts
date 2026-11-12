@@ -6,7 +6,7 @@
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {createImportAttemptTx,importAttemptEventsTx,importAttemptItemsTx,lockImportAttemptTx,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError,type ImportAttemptItemRow,type ImportRevertHandler} from './import-history';
-import {commitMovementImport,previewMovementImport,movementImportTypes,movementImportStateTx,type MovementImportItemState} from './movement-import';
+import {commitMovementImport,previewMovementImport,movementImportTypes,movementImportStateTx,type MovementCommitInput,type MovementImportItemState} from './movement-import';
 import {createMovementEventTx,editMovementEventTx,movementCorrectionBaseTx,movementHistoryTx,movementLedgerMarkerTx,movementReversalBlockerTx,reverseMovementForImportTx,type CreateMovementInput} from './movement';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {readMovementSource,movementWorkbookCatalogue} from '../lib/movement-workbook.server';
@@ -23,7 +23,7 @@ export type MovementImportPlan=ImportPlanBase&{kind:'movement';inputHash:string;
  employees:{key:string;employeeCode:string;companyId:string|null;name:string|null;rows:number[];valid:boolean;errors:string[]}[]};
 const sha=(content:Buffer)=>createHash('sha256').update(content).digest('hex');
 type Words={resolve:PersonnelLabelResolver};
-async function sourceRecords(ctx:SessionContext,name:string,content:Buffer,words:Words){
+export async function sourceRecords(ctx:SessionContext,name:string,content:Buffer,words:Words){
  const types=await movementImportTypes(ctx);
  const parsed=await readMovementSource(name,content,{tenantId:ctx.tenantId,types,resolve:words.resolve});
  return{...parsed,catalogueHash:movementWorkbookCatalogue({types}),sourceHash:sha(content)};
@@ -33,61 +33,84 @@ export async function previewMovementUpload(ctx:SessionContext,input:{name:strin
  const source=await sourceRecords(ctx,input.name,input.content,input);
  let preview:MovementImportPreview={inputHash:'',selection:[],fileErrors:source.fileErrors,employees:[],excluded:0,valid:0};
  if(!source.fileErrors.length)preview=await previewMovementImport(ctx,{csv:'',records:source.records,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash});
+ return recordMovementPreview(ctx,{...input,source,preview});
+}
+export type MovementCheckSource=Awaited<ReturnType<typeof sourceRecords>>;
+/** Records a finished check as an import attempt with the original bytes and the sealed plan (the synchronous check and
+ * the background check, core/movement-import-check-worker.ts). `hooks` run first and last in that one transaction. */
+export async function recordMovementPreview(ctx:SessionContext,input:{name:string;content:Buffer;operationKey?:string;source:Pick<MovementCheckSource,'sourceHash'|'catalogueHash'|'fileErrors'>;preview:MovementImportPreview}&Words,hooks:{before?:(tx:Tx)=>Promise<void>;after?:(tx:Tx,attempt:{attemptId:string;previewHash:string})=>Promise<void>}={}):Promise<{attemptId:string;previewHash:string;preview:MovementImportPreview}>{
+ const {source,preview}=input;
  const describe=(errors:readonly string[])=>movementImportIssueText(errors,input.resolve);
  const employees=preview.employees.map(e=>{const errors=e.rows.flatMap(r=>r.errors);return{key:movementEmployeeKey(e),employeeCode:e.employeeCode,companyId:e.companyId??null,name:e.name,rows:e.rows.map(r=>r.row),valid:!!e.fingerprint&&e.rows.every(r=>r.status==='valid'),errors:errors.length?[describe(errors)]:[]};});
  const movements=preview.employees.reduce((n,e)=>n+e.rows.length,0),valid=employees.filter(e=>e.valid).reduce((n,e)=>n+e.rows.length,0);
  const plan=sealImportPlan<MovementImportPlan>({version:1,kind:'movement',inputHash:preview.inputHash,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash,fingerprints:Object.fromEntries(preview.employees.filter(e=>e.fingerprint).map(e=>[movementEmployeeKey(e),e.fingerprint!])),employees,
   counts:{total:movements,valid,invalid:movements-valid},issues:source.fileErrors.map(code=>({rowNum:1,reason:describe([code])})),previewHash:''});
  const companyIds=[...new Set(employees.map(e=>e.companyId).filter((id):id is string=>!!id))];
- const created=await withTenant(ctx,tx=>createImportAttemptTx(tx,ctx,{kind:'movement',sourceName:input.name,content:input.content,companyIds,plan,operationKey:input.operationKey}));
+ const created=await withTenant(ctx,async tx=>{
+  await hooks.before?.(tx);
+  const made=await createImportAttemptTx(tx,ctx,{kind:'movement',sourceName:input.name,content:input.content,companyIds,plan,operationKey:input.operationKey});
+  await hooks.after?.(tx,{attemptId:made.attemptId,previewHash:made.plan.previewHash});
+  return made;
+ });
  return{attemptId:created.attemptId,previewHash:created.plan.previewHash,preview};
 }
 export type MovementUploadResult=MovementImportResult&{attemptId:string;alreadyCommitted:boolean};
-/**
- * Saves the employees chosen from a checked attempt. The ORIGINAL file is re-read from the attempt (the
- * browser cannot swap it), the reviewed plan's fingerprints must still hold for each employee, and each
- * employee is saved in its own transaction together with its history items.
- */
-export async function confirmMovementUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string;employees:string[];acknowledgeExcluded:boolean;acknowledgeClosedPayroll?:boolean}&Words):Promise<MovementUploadResult>{
- type Held={plan:MovementImportPlan;content:Buffer;name:string};
- let prepared:Held|{already:MovementUploadResult};
- try{
-  prepared=await withTenant(ctx,async(tx):Promise<Held|{already:MovementUploadResult}>=>{
-   const source=await lockImportAttemptTx(tx,ctx,input.attemptId,'movement'),plan=source.plan as unknown as MovementImportPlan,events=await importAttemptEventsTx(tx,source.id);
-   if(events.some(e=>e.kind==='reverted'))throw new ImportHistoryError('This import was reverted. Upload the file again to import it.');
-   const confirmed=events.find(e=>e.kind==='confirmed');
-   if(confirmed)return{already:{attemptId:source.id,alreadyCommitted:true,employees:[],imported:Number(confirmed.detail.succeeded??0),failed:Number(confirmed.detail.failed??0),excluded:0,byEventType:[]}};
-   if((await importAttemptItemsTx(tx,source.id)).length)throw new ImportHistoryError('This import is already being saved.');
-   if(input.previewHash!==plan.previewHash||plan.issues.length||!plan.counts.valid)throw new ImportHistoryError('Correct the file and upload it again before saving.');
-   const[covers]=await tx.execute<{ok:boolean}>(sql`select app.import_attempt_access(${source.id}::uuid,'maintain',true) as ok`);
-   if(!covers?.ok)throw new ImportHistoryError('Your permission for a company in this file has changed. Upload the file again.');
-   return{plan,content:source.sourceContent,name:source.sourceName};
-  });
- }catch(error){await recordImportFailure(ctx,input.attemptId,'movement','failed',error);throw error;}
- if('already' in prepared)return prepared.already;
- const source=await sourceRecords(ctx,prepared.name,prepared.content,input);
- const plan=prepared.plan;
- if(source.fileErrors.length||source.sourceHash!==plan.sourceHash){const error=new ImportHistoryError('The file can no longer be read in the current layout. Upload it again.');await recordImportFailure(ctx,input.attemptId,'movement','failed',error);throw error;}
- const chosen=new Set(input.employees),selected=plan.employees.filter(e=>chosen.has(e.key));
- if(input.employees.some(key=>!plan.employees.some(e=>e.key===key&&e.valid))||!selected.length)throw new ImportHistoryError('Choose at least one employee whose movements were checked without errors.');
- let result:MovementImportResult;
- try{
-  result=await commitMovementImport(ctx,{csv:'',records:source.records,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash,inputHash:plan.inputHash,fingerprints:plan.fingerprints,selection:selected.flatMap(e=>e.rows),acknowledgeExcluded:input.acknowledgeExcluded,acknowledgeClosedPayroll:input.acknowledgeClosedPayroll===true,history:{attemptId:input.attemptId}});
- }catch(error){
-  const known=error instanceof Error&&/^[a-z_]+$/.test(error.message)?new ImportHistoryError(movementImportIssueText(error.message,input.resolve)):error;
-  await recordImportFailure(ctx,input.attemptId,'movement','failed',known);throw known;
- }
+export type MovementConfirmInput={attemptId:string;previewHash:string;employees:string[];acknowledgeExcluded:boolean;acknowledgeClosedPayroll?:boolean};
+type HeldMovementAttempt={plan:MovementImportPlan;content:Buffer;name:string;companyIds:string[]};
+/** The checks a confirmation runs under the attempt row lock: not reverted, not yet confirmed (a confirmed attempt
+ * answers with its recorded counts), not already being saved, the reviewed preview, and maintain access for every
+ * company in the file. Any refusal is also recorded on the attempt by the caller. */
+export async function confirmableMovementAttemptTx(tx:Tx,ctx:SessionContext,attemptId:string,previewHash:string):Promise<HeldMovementAttempt|{already:MovementUploadResult}>{
+ const source=await lockImportAttemptTx(tx,ctx,attemptId,'movement'),plan=source.plan as unknown as MovementImportPlan,events=await importAttemptEventsTx(tx,source.id);
+ if(events.some(e=>e.kind==='reverted'))throw new ImportHistoryError('This import was reverted. Upload the file again to import it.');
+ const confirmed=events.find(e=>e.kind==='confirmed');
+ if(confirmed)return{already:{attemptId:source.id,alreadyCommitted:true,employees:[],imported:Number(confirmed.detail.succeeded??0),failed:Number(confirmed.detail.failed??0),excluded:0,byEventType:[]}};
+ if((await importAttemptItemsTx(tx,source.id)).length)throw new ImportHistoryError('This import is already being saved.');
+ if(previewHash!==plan.previewHash||plan.issues.length||!plan.counts.valid)throw new ImportHistoryError('Correct the file and upload it again before saving.');
+ const[covers]=await tx.execute<{ok:boolean}>(sql`select app.import_attempt_access(${source.id}::uuid,'maintain',true) as ok`);
+ if(!covers?.ok)throw new ImportHistoryError('Your permission for a company in this file has changed. Upload the file again.');
+ return{plan,content:source.sourceContent,name:source.sourceName,companyIds:source.companyIds};
+}
+/** The reviewed employees HR chose. Only an employee whose movements were checked without errors may be chosen. */
+export function chosenMovementEmployees(plan:MovementImportPlan,employees:readonly string[]){
+ const chosen=new Set(employees),selected=plan.employees.filter(e=>chosen.has(e.key));
+ if(employees.some(key=>!plan.employees.some(e=>e.key===key&&e.valid))||!selected.length)throw new ImportHistoryError('Choose at least one employee whose movements were checked without errors.');
+ return selected;
+}
+/** The attempt's ORIGINAL file read again in the current layout (the browser cannot swap it); it must still be the
+ * reviewed file. */
+export async function movementAttemptSource(ctx:SessionContext,held:HeldMovementAttempt,words:Words){
+ const source=await sourceRecords(ctx,held.name,held.content,words);
+ if(source.fileErrors.length||source.sourceHash!==held.plan.sourceHash)throw new ImportHistoryError('The file can no longer be read in the current layout. Upload it again.');
+ return source;
+}
+/** What the commit saves: the re-read records, the reviewed fingerprints and the chosen employees' rows. */
+export function movementConfirmCommitInput(plan:MovementImportPlan,source:Awaited<ReturnType<typeof movementAttemptSource>>,selected:MovementImportPlan['employees'],input:MovementConfirmInput):MovementCommitInput{
+ return{csv:'',records:source.records,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash,inputHash:plan.inputHash,fingerprints:plan.fingerprints,selection:selected.flatMap(e=>e.rows),acknowledgeExcluded:input.acknowledgeExcluded,acknowledgeClosedPayroll:input.acknowledgeClosedPayroll===true,history:{attemptId:input.attemptId}};
+}
+/** A commit refusal as Import History records it: a finite row code becomes its sentence. */
+export function movementCommitFailure(error:unknown,resolve:PersonnelLabelResolver){
+ return error instanceof Error&&/^[a-z_]+$/.test(error.message)?new ImportHistoryError(movementImportIssueText(error.message,resolve)):error;
+}
+/** The confirmation, in one short transaction: one failed item per employee whose transaction failed and per
+ * employee the check already refused, then the confirmed event. A second confirmation loses on the once-only index
+ * and reports the import as already committed. `hooks` run first and last inside that transaction (the background
+ * job fences on its lease first and marks the confirmation on the job last). */
+export async function recordMovementConfirmation(ctx:SessionContext,input:{attemptId:string;plan:MovementImportPlan;result:MovementImportResult;acknowledgeClosedPayroll?:boolean;resolve:PersonnelLabelResolver},hooks:{before?:(tx:Tx)=>Promise<void>;after?:(tx:Tx)=>Promise<void>}={}):Promise<MovementUploadResult>{
+ const {result,plan}=input;
  const describe=(errors:readonly string[])=>movementImportIssueText(errors,input.resolve);
  const invalid=plan.employees.filter(e=>!e.valid);
  let failed=result.failed+invalid.reduce((n,e)=>n+e.rows.length,0);
  try{
   await withTenant(ctx,async tx=>{
+   await hooks.before?.(tx);
    await lockImportAttemptTx(tx,ctx,input.attemptId,'movement');
    // Employees whose transaction failed, then those the check already refused: one failed item each.
    for(const employee of result.employees){const failedRows=employee.rows.filter(r=>r.status==='failed');if(!failedRows.length||!employee.companyId)continue;
     await recordImportItemTx(tx,ctx,{attemptId:input.attemptId,companyId:employee.companyId,employmentId:employee.employmentId,itemKey:`failed|${movementEmployeeKey(employee)}`,label:`${employee.employeeCode}${employee.name?' · '+employee.name:''}`,ordinal:Math.min(...failedRows.map(r=>r.row)),status:'failed',errors:[describe(failedRows.flatMap(r=>r.errors))]});}
    for(const employee of invalid)if(employee.companyId)await recordImportItemTx(tx,ctx,{attemptId:input.attemptId,companyId:employee.companyId,employmentId:null,itemKey:`invalid|${employee.key}`,label:`${employee.employeeCode}${employee.name?' · '+employee.name:''}`,ordinal:Math.min(...employee.rows),status:'failed',errors:employee.errors});
    await recordImportEventTx(tx,ctx,{attemptId:input.attemptId,kind:'confirmed',importKind:'movement',detail:{succeeded:result.imported,failed,...(input.acknowledgeClosedPayroll===true?{closedPayrollAcknowledged:true}:{})}});
+   await hooks.after?.(tx);
   });
  }catch(error){
   if(String((error as {message?:string})?.message??'').includes('import_attempt_confirm_once_uq'))return{...result,attemptId:input.attemptId,alreadyCommitted:true};
@@ -95,12 +118,43 @@ export async function confirmMovementUpload(ctx:SessionContext,input:{attemptId:
  }
  return{...result,attemptId:input.attemptId,alreadyCommitted:false};
 }
+/**
+ * Saves the employees chosen from a checked attempt, synchronously (the reference path; the screen enqueues the
+ * background job in core/movement-import-job.ts, which runs these same steps). The ORIGINAL file is re-read from
+ * the attempt, the reviewed plan's fingerprints must still hold for each employee, and each employee is saved in
+ * its own transaction together with its history items.
+ */
+export async function confirmMovementUpload(ctx:SessionContext,input:MovementConfirmInput&Words):Promise<MovementUploadResult>{
+ let prepared:HeldMovementAttempt|{already:MovementUploadResult};
+ try{prepared=await withTenant(ctx,tx=>confirmableMovementAttemptTx(tx,ctx,input.attemptId,input.previewHash));}
+ catch(error){await recordImportFailure(ctx,input.attemptId,'movement','failed',error);throw error;}
+ if('already' in prepared)return prepared.already;
+ let source:Awaited<ReturnType<typeof movementAttemptSource>>;
+ try{source=await movementAttemptSource(ctx,prepared,input);}
+ catch(error){if(error instanceof ImportHistoryError)await recordImportFailure(ctx,input.attemptId,'movement','failed',error);throw error;}
+ const plan=prepared.plan;
+ const selected=chosenMovementEmployees(plan,input.employees);
+ let result:MovementImportResult;
+ try{
+  result=await commitMovementImport(ctx,movementConfirmCommitInput(plan,source,selected,input));
+ }catch(error){
+  const known=movementCommitFailure(error,input.resolve);
+  await recordImportFailure(ctx,input.attemptId,'movement','failed',known);throw known;
+ }
+ return recordMovementConfirmation(ctx,{attemptId:input.attemptId,plan,result,acknowledgeClosedPayroll:input.acknowledgeClosedPayroll,resolve:input.resolve});
+}
 
 const itemState=(value:unknown)=>value as MovementImportItemState;
+/** Whether reviewing this attempt's revert writes (and so needs the writer locks): an applied Update or Delete item is
+ * checked by rehearsing its compensation in a savepoint. Items never change after the confirmation. */
+export async function movementRevertReviewWritesTx(tx:Tx,attemptId:string){
+ const [row]=await tx.execute<{writes:boolean}>(sql`select exists(select 1 from import_attempt_item where attempt_id=${attemptId}::uuid and status='applied' and after ? 'action') as writes`);
+ return row?.writes!==false;
+}
 /** Blockers are stored with the revert's audit detail in the base language, like the other import kinds. */
 const fieldCaption=(field:string)=>movementImportFieldLabel(field,personnelImportLabelResolvers[0]);
 /** Writer locks precede the attempt row lock in revert, the same order as the Movement rollback. */
-async function lockMovementWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
+async function lockMovementWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
 /** The revert's own reason is not known while it is only being checked; the check never commits. */
 const CHECK_REASON='Import revert check';
 const isCorrectionItem=(i:ImportAttemptItemRow)=>!!itemState(i.after).action;
@@ -128,6 +182,16 @@ async function revertItemTx(tx:Tx,ctx:SessionContext,i:ImportAttemptItemRow,reas
   await reverseMovementForImportTx(tx,ctx,i.employmentId,after.movementId,reason);
  }
 }
+/** The revert's whole compensation for these items, newest import write first, through the Movement owner; the
+ * revert event's detail. The synchronous revert applies it; the background revert rehearses it per employee in a
+ * savepoint that always rolls back and replays what it wrote (core/movement-import-revert-job.ts). */
+export async function applyMovementRevertTx(tx:Tx,ctx:SessionContext,items:ImportAttemptItemRow[],reason:string){
+ let reversed=0,restored=0;
+ for(const i of revertOrder(items)){await revertItemTx(tx,ctx,i,reason);if(isCorrectionItem(i))restored++;else reversed++;}
+ return{movements:reversed,...(restored?{corrections:restored}:{})};
+}
+/** The employments of a revert in the order its compensation runs (revertOrder sorts by employment first). */
+export function movementRevertEmployments(items:ImportAttemptItemRow[]){return [...new Set(revertOrder(items).map(i=>i.employmentId??''))];}
 /** Static blockers of an Update or Delete item: the event it touched changed later, or a later movement would
  *  be overwritten by re-recording a deleted one. The rehearsal below catches every owner refusal besides. */
 async function correctionBlockersTx(tx:Tx,ctx:SessionContext,employmentId:string,i:ImportAttemptItemRow,importIds:Set<string>):Promise<string[]>{
@@ -191,9 +255,5 @@ export const movementRevertHandler:ImportRevertHandler={
   }
   return{items:out,fingerprint};
  },
- async apply(tx,ctx,items,options){
-  const reason=options?.reason??'';let reversed=0,restored=0;
-  for(const i of revertOrder(items)){await revertItemTx(tx,ctx,i,reason);if(isCorrectionItem(i))restored++;else reversed++;}
-  return{movements:reversed,...(restored?{corrections:restored}:{})};
- },
+ async apply(tx,ctx,items,options){return applyMovementRevertTx(tx,ctx,items,options?.reason??'');},
 };

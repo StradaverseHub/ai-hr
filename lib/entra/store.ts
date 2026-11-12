@@ -1,13 +1,13 @@
 import { sql } from 'drizzle-orm';
-import { client, withTenant, type SessionContext } from '../../db/client';
-import { readRecord, writeRecord, type AuthSql } from '../internal-auth/store';
+import { client, withPoolWork, withTenant, type SessionContext } from '../../db/client';
+import { admittedAuthSql, readRecord, writeRecord, type AuthSql } from '../internal-auth/store';
 import { internalSelected } from '../internal-auth/config';
 import { entraConfigSchema, EntraError, type EntraConfig } from './model';
-export async function connector(tenantId: string, tx: AuthSql = client): Promise<EntraConfig|null> {
+export async function connector(tenantId: string, tx: AuthSql = admittedAuthSql): Promise<EntraConfig|null> {
   const value = await readRecord<unknown>(tx, `entra-config:${tenantId}`);
   return value ? entraConfigSchema.parse(value) : null;
 }
-export async function registeredOrganization(tenantId:string,tx:AuthSql=client){
+export async function registeredOrganization(tenantId:string,tx:AuthSql=admittedAuthSql){
   const organization=await readRecord<{tenantId:string;code:string;name:string}>(tx,`tenant:${tenantId}`);
   if(!organization||organization.tenantId!==tenantId)throw new EntraError('unavailable');
   const index=await readRecord<{tenantId:string;code:string}>(tx,`org:${organization.code}`);
@@ -17,7 +17,7 @@ export async function registeredOrganization(tenantId:string,tx:AuthSql=client){
 export async function connectorByOrganization(organization: string) {
   const code = organization.trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(code) || !internalSelected()) throw new EntraError('invalid');
-  const rows = await client.unsafe('select tenant_id from app.entra_organization($1)', [code]);
+  const rows = await withPoolWork('authentication', () => client.unsafe('select tenant_id from app.entra_organization($1)', [code]), undefined, {idempotent:true});
   const config = rows[0] ? await connector(rows[0].tenant_id) : null;
   if (!config?.enabled || config.organization!==code) throw new EntraError('unavailable');
   if((await registeredOrganization(config.tenantId)).code!==code)throw new EntraError('forbidden');
@@ -54,6 +54,6 @@ export { readRecord, writeRecord };
 export async function assertProvisioning(config:EntraConfig) {
   const current=await connector(config.tenantId);
   if(!current?.provisioningEnabled||current.revision!==config.revision)throw new EntraError('forbidden');
-  const rows=await client.unsafe('select app.entra_provision_allowed($1::uuid,$2::uuid) allowed',[config.tenantId,config.revision]);
+  const rows=await withPoolWork('authentication',()=>client.unsafe('select app.entra_provision_allowed($1::uuid,$2::uuid) allowed',[config.tenantId,config.revision]),undefined,{idempotent:true});
   if(!rows[0]?.allowed)throw new EntraError('forbidden');
 }

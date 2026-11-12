@@ -3,7 +3,8 @@ import {appendEvent,actorOf} from '../db/events';
 import {profileFieldApproval,profileLegacyPrimaryApprovalRequired} from '../lib/profile-edit-policy-value';
 import {splitProfileSubmission} from '../lib/profile-submission-policy';
 import {getSetting} from './entitlements';
-import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {lockLeaveDependencyConfigurationTx,lockPersonLeaveDependenciesWaitTx} from './leave-dependency-lock';
+import {lockAccessConfigurationTx,lockProfileSubjectTx} from './access-configuration-lock';
 import {projectEssVisible,essFactVisible} from '../lib/personnel-ess-visibility';
 import {createHash} from 'node:crypto';
 /** Own-profile edits compose canonical owners in ONE authenticated caller transaction. */
@@ -16,7 +17,7 @@ import {personnelField,PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {parseEssProfileProposal,sameEssScalar} from '../lib/personnel-ess-contract';
 import {EssProfileError,type EssProfileProposal,type EssFieldChange,type EssScalar,type EssRegisterChange} from '../lib/personnel-ess-model';
 import {isModuleEnabled} from './entitlements';
-import {freshProfileEditPolicyTx,type ProfilePresentationPolicy} from './profile-edit-policy';
+import {freshProfileEditPolicySharedTx,freshProfileEditPolicyTx,freshProfilePresentationPolicyTx,type ProfilePresentationPolicy} from './profile-edit-policy';
 import {packFor} from '../localization/registry';
 import {updatePersonProfilePartial,type PersonProfileFields} from './org';
 import {setPersonComplianceFields,requestProfileChange,updateOwnContact} from './profile';
@@ -40,12 +41,18 @@ const nullableBoolean=(values:Record<string,EssScalar>,key:string):boolean|null|
 const number=(values:Record<string,EssScalar>,key:string):number|undefined=>{const value=values[key];if(value===undefined)return undefined;if(typeof value==='number')return value;if(key==='childReliefPercentage'&&typeof value==='string'&&CHILD_RELIEF_PERCENTAGES.some(share=>String(share)===value))return Number(value);throw new EssProfileError('invalid');};
 function patch(fields:EssFieldChange[]){return Object.fromEntries(fields.map(change=>[personnelField(change.fieldId)!.ess.binding!.field,change.value]));}
 export async function ownProfileSubjectTx(tx:Tx,ctx:SessionContext,selected?:string,forEdit=true){
+ return profileSubjectTx(tx,ctx,selected,forEdit,true);
+}
+/** Private display course. Every exported command subject reader retains physical row locking. */
+async function profileSubjectTx(tx:Tx,ctx:SessionContext,selected:string|undefined,forEdit:boolean,forUpdate:boolean){
  if(!ctx.personId)throw new EssProfileError('permission');
  const eligible=await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:forEdit});
  const selectedId=selected??(eligible.length===1?eligible[0].employmentId:undefined);if(!selectedId||!eligible.some(row=>row.employmentId===selectedId))throw new EssProfileError('permission');
- const [subject]=await tx.select({id:employment.id,personId:employment.personId,companyId:employment.companyId,country:company.country}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.id,selectedId),eq(employment.personId,ctx.personId),forEdit?profileEditEmploymentPredicate(ctx):undefined)).limit(1).for('update');
+ const subjects=tx.select({id:employment.id,personId:employment.personId,companyId:employment.companyId,country:company.country}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.id,selectedId),eq(employment.personId,ctx.personId),forEdit?profileEditEmploymentPredicate(ctx):undefined)).limit(1);
+ const [subject]=await(forUpdate?subjects.for('update'):subjects);
  if(!subject)throw new EssProfileError('permission');
- const [master]=await tx.select().from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,subject.personId))).limit(1).for('update');
+ const masters=tx.select().from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,subject.personId))).limit(1);
+ const [master]=await(forUpdate?masters.for('update'):masters);
  if(!master)throw new EssProfileError('unavailable');
  return {subject,master};
 }
@@ -106,8 +113,12 @@ function addressNeedsReview(master:typeof person.$inferSelect){
 /** Private workspace contains explicitly visible fields only; no admin-row spread crosses RSC. */
 export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:string}={},presentation?:ProfilePresentationPolicy,existingTx?:Tx):Promise<EssWorkspace>{
  const run=async(tx:Tx)=>{
-  const policy=presentation??await freshProfileEditPolicyTx(tx,ctx);const {subject,master}=await ownProfileSubjectTx(tx,policy.ctx,p.employmentId,false);
-  const rows=await mastersTx(tx,policy.ctx,subject);
+  // Existing command carriers keep the original write policy and physical row locks. Standalone
+  // display owns a complete native read-only transaction and shared policy/revocation barrier.
+  const policy=presentation??await(existingTx?freshProfileEditPolicyTx(tx,ctx):freshProfilePresentationPolicyTx(tx,ctx));
+  if(presentation&&!existingTx)await tx.execute(sql`select app.access_profile_policy_read_lock()`);
+  const {subject,master}=await profileSubjectTx(tx,policy.ctx,p.employmentId,false,Boolean(existingTx));
+  const rows=await mastersTx(tx,policy.ctx,subject,Boolean(existingTx));
   const mayEdit=(await myOwnEmploymentSubjectsTx(tx,policy.ctx,{profileEdit:true})).some(row=>row.employmentId===subject.id);
   const values={...readonlyValues('person',master),...registryValues('person',master),...registryValues('compliance',master)};
   const age=PERSONNEL_FIELDS.find(field=>field.owner==='person'&&field.ownerField==='age');if(age)values[age.id]=childAgeYears(master.dateOfBirth);
@@ -138,14 +149,25 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
   const safe=safeValues(projectEssVisible(values,visible),id=>maskedProfileBaseline(policy.ctx,subject,rows,id));
   return {approvals:Object.fromEntries(PERSONNEL_FIELDS.filter(field=>visible.has(field.id)&&policy.editable.has(field.id)).map(field=>[field.id,profileFieldApproval(getSetting(policy.ctx,'ess.profile_change_fields'),field)])),visible:[...visible],employmentId:subject.id,personId:subject.personId,country:subject.country,...safe,registers:registers.map(row=>({...row,values:projectEssVisible(row.values,visible),baselines:projectEssVisible(row.baselines,visible),primary:essFactVisible(visible,'emergency','priority')&&row.primary})).filter(row=>Object.keys(row.values).length>0),editable:mayEdit?[...policy.editable].filter(id=>visible.has(id)):[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary].filter(id=>visible.has(id)&&!profileLegacyPrimaryApprovalRequired(getSetting(policy.ctx,'ess.profile_change_fields'),id)):[],addressReview:addressVisible&&addressNeedsReview(master),legacyAddress:addressVisible?legacyAddress(master):{},statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons:projectEssVisible(fieldReadOnlyReasons,visible)} satisfies EssWorkspace;
  };
- return existingTx?run(existingTx):withTenant(ctx,run);
+ return existingTx?run(existingTx):withTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return run(tx);});
+}
+
+/** An employee's own profile save: shared Access, the person's leave-dependency locks, then the per-person lock,
+ * all before the subject row locks, so a concurrent register writer for the same person cannot invert. */
+export async function lockOwnProfileValueSubjectTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockPersonLeaveDependenciesWaitTx(tx,ctx.tenantId,employmentId);
+ const [row]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,employmentId))).limit(1);
+ if(row)await lockProfileSubjectTx(tx,ctx.tenantId,row.personId);
 }
 
 /** Validation and baseline comparison run again at approval, never trusting the editor or stored JSON. */
 export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employmentId:string,raw:unknown,approval=false,storedLegacy=false){
  raw=structuredClone(raw); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
- await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
- let proposal=storedLegacy?null:parseEssProfileProposal(raw);const policy=await freshProfileEditPolicyTx(tx,ctx);
+ // Approval applies another person's proposal and stays exclusive; the employee's own save shares the locks.
+ if(approval){await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
+ else await lockOwnProfileValueSubjectTx(tx,ctx,employmentId);
+ let proposal=storedLegacy?null:parseEssProfileProposal(raw);const policy=await(approval?freshProfileEditPolicyTx(tx,ctx):freshProfileEditPolicySharedTx(tx,ctx));
  let subject:Awaited<ReturnType<typeof ownProfileSubjectTx>>['subject'],master:typeof person.$inferSelect;
  if(approval){
   if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new EssProfileError('permission');

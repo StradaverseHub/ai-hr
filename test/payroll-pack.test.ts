@@ -141,7 +141,7 @@ describe('ADR-0080 rung 7: payroll’s sidebar presence belongs to the pack', ()
   });
 
   it('sidebar.tsx mounts the nav via the registry and hardcodes it nowhere', () => {
-    const sidebar = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
+    const sidebar = fs.readFileSync(path.resolve(__dirname, '../lib/navigation/shell-inventory.ts'), 'utf8');
     // The registration moved out of the sidebar into packs/register-all.ts (ADR-0077 slice 1) so that
     // SERVER code can enumerate module packs too — a client-component side effect left listPacks()
     // empty on the server. The property under test is unchanged and still end-to-end: the pack is

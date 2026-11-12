@@ -72,6 +72,9 @@ const PLUMBING = 'row plumbing (surrogate key / tenancy / parent FK / timestamps
 
 /** 524303d9 (ADR-0157) — written only by an import revert (`app.employment_void`), never by a file. */
 const VOID_REASON = 'void state of an employment created in error by an import — written only by that import\'s Revert (ADR-0157), never by a spreadsheet';
+/** 9b274b7b3 (staged employee import, migration 5010) — the marker the background import's worker sets on the rows it
+ *  stages and its activation/discard clears; never carried by a file. */
+const STAGED_IMPORT_REASON = 'staged-import marker: set by the background import worker on the rows it stages and cleared by that import\'s activation or discard (migration 5010), never by a spreadsheet';
 /**
  * 524303d9 — import columns that write a persisted field under another name, or several columns into one field:
  * the EPF Category is the election mapped onto epfMode and its figures, HRDF's tri-state is subjectToHrdf, every
@@ -103,6 +106,7 @@ const REGISTRY: Record<string, RegistryTable> = {
     excluded: [
       { reason: PLUMBING, fields: ['id', 'tenantId', 'createdAt'] },
       { reason: VOID_REASON, fields: ['voidedAt', 'voidedIcNumber'] },
+      { reason: STAGED_IMPORT_REASON, fields: ['importPendingAttemptId'] },
       {
         reason:
           'derived, never keyed: date of birth is autofilled from the IC by the importer itself (b9fd8fd5), so a column for it would let a file contradict the identity number beside it',
@@ -188,6 +192,7 @@ const REGISTRY: Record<string, RegistryTable> = {
     excluded: [
       { reason: PLUMBING, fields: ['id', 'tenantId', 'personId', 'createdAt'] },
       { reason: VOID_REASON, fields: ['voidedAt', 'voidedBy', 'voidReason', 'voidedImportAttemptId', 'voidedEmployeeCode'] },
+      { reason: STAGED_IMPORT_REASON, fields: ['importPendingAttemptId'] },
       { reason: 'HR-only guarded data classification is changed through setEmploymentTestRecord; workbooks and generic imports cannot change it.', fields: ['isTestRecord'] },
       {
         reason:
@@ -246,11 +251,8 @@ const REGISTRY: Record<string, RegistryTable> = {
           'set by a movement, not by data entry: a probation extension and its recomputed confirmation date are produced by the Movement module and are derived from what it records',
         fields: ['extendedConfirmationDate', 'finalConfirmationDate'],
       },
-      {
-        reason:
-          'contract-employment block, shown only while the current assignment is a contract; a fixed-term intake is a separate request from the day-one load this template serves',
-        fields: ['contractStartDate', 'contractEndDate', 'contractRemark', 'internshipEndDate'],
-      },
+      // 2260a06b — contract_start_date / contract_end_date / contract_remark and internship_end_date are import
+      // columns (descriptor writer employment-info), so they are covered above, not excluded.
       {
         reason:
           'company transfer / rehire date maintained by a movement, never at creation (it is seeded equal to the group join date this file already carries)',

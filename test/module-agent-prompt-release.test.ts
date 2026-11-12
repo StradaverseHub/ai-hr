@@ -39,6 +39,7 @@ async function completeEvaluation(ctx:SessionContext,input:Parameters<typeof eva
 }
 const expectedModelRuns=()=>PROMPT_HOLDOUTS.length*4+1;
 describe('actual independent prompt-to-plan evaluation custody',()=>{
+ // Explicit timeout: measured 31.3 s (with hooks) against the global 30 s in main gate 42949200222.
  it('requires human synthetic consent before transport, then uses real admission and a bounded promoted synthetic consumer',async()=>{
   const a=await candidate(),sent=await transport(a.author,true);
   // Deliberately wrong MOCKED baseline response exercises promotion policy; it is not real provider quality evidence.
@@ -58,7 +59,7 @@ describe('actual independent prompt-to-plan evaluation custody',()=>{
   // Unknown USD reconciliation stays held even with zero normalized tokens. Both reviewers and
   // the author trial share the same actual root; no retry/arm/principal mints a fresh allowance.
   expect(allocation).toEqual({roots:1,reservations:expectedModelRuns(),held:expectedModelRuns(),reserved:(BigInt(expectedModelRuns())*BigInt("1000000")).toString()});
- });
+ },100_000);
  it('retains authentic passing cases and reruns only a failed exact-input case',async()=>{
   const a=await candidate(),sent=await transport(a.author);const normal=sent.getMockImplementation()!;
   sent.mockImplementation(async(cfg,args)=>args.system!==promptCandidateSystem(PROMPT_BASELINE)&&args.prompt===PROMPT_HOLDOUTS.find(row=>row.id==='reject-peer')!.question?JSON.stringify({decision:'read',modules:['payroll']}):normal(cfg,args));
@@ -68,6 +69,7 @@ describe('actual independent prompt-to-plan evaluation custody',()=>{
   expect(repaired).toMatchObject({retainedPasses:2*PROMPT_HOLDOUTS.length-1,retainedFailures:0,attemptedRequests:1,completedRequests:1,securityFailures:0,qualityFailures:0});expect(sent).toHaveBeenCalledTimes(1);
   const [evidence]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_evaluation where candidate_id=${a.candidateId}::uuid`);expect(evidence.n).toBe(Math.ceil(2*PROMPT_HOLDOUTS.length/PROMPT_HOLDOUT_REQUEST_LIMIT)+1);
  });
+ // Explicit timeout: measured 29.7 s (with hooks) against the global 30 s in main gate 42949200222.
  it('does not convert incomplete or changed-provider evidence into promotable quality',async()=>{
   const a=await candidate(),sent=await transport(a.author);const normal=sent.getMockImplementation()!;
   let count=0;sent.mockImplementation(async(cfg,args)=>{if(++count===2)throw Error('fictional transport failed');return normal(cfg,args);});
@@ -78,7 +80,7 @@ describe('actual independent prompt-to-plan evaluation custody',()=>{
   await completeEvaluation(a.second,{candidateId:a.candidateId,consent:consent()});
   vi.stubEnv('OPENAI_API_KEY','fictional-changed-active-key');
   await expect(promotePromptAgentCandidate(a.promoter,{candidateId:a.candidateId,maxJobs:1,hours:1})).rejects.toThrow();
- });
+ },90_000);
  it('rolls back promotion on a schema-valid wrong synthetic plan before canonical facts are read',async()=>{
   const a=await candidate(),sent=await transport(a.author,true);await completeEvaluation(a.reviewer,{candidateId:a.candidateId,consent:consent()});
   await completeEvaluation(a.second,{candidateId:a.candidateId,consent:consent()});

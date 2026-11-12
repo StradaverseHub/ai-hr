@@ -15,16 +15,23 @@ function sets(event:Event,field:InformationField){
  if(field==='companyId'&&['employment.company.transferred','employment.company.transfer.reverted'].includes(event.eventType))return before.companyId!==after.companyId;
  if(field==='gradeId'&&event.eventType==='employment.grade.changed')return p.before!==p.after;
  if(field==='employmentType'&&event.eventType==='employment.assignment.changed')return before.employmentType!==after.employmentType;
- return (field==='hiredOn'||field==='joinDate')&&event.eventType==='employment.info.updated'&&Array.isArray(p.fields)&&p.fields.includes(field);
+ return (field==='hiredOn'||field==='joinDate'||field==='contractEndDate'||field==='internshipEndDate')&&event.eventType==='employment.info.updated'&&Array.isArray(p.fields)&&p.fields.includes(field);
 }
 /** Corrections amend a fact's existing display lineage, not the immutable ledger or payroll as-of facts.
  * A later explicit writer bounds each field separately. Untagged/unresolvable writers are reviewable,
  * never silently assigned to a different movement. Both manual and imported correction events use this.
  */
 export function personnelInformationCorrections(events:readonly Event[],rows:readonly Row[]):Map<string,InformationHistoryCorrection[]>{
- const result=new Map<string,InformationHistoryCorrection[]>(),ordered=[...events].sort((a,b)=>a.sequence-b.sequence);
+ const result=new Map<string,InformationHistoryCorrection[]>();
+ if(!events.some(event=>event.eventType==='employment.information.corrected'))return result;
+ const ordered=[...events].sort((a,b)=>a.sequence-b.sequence);
+ const lastSequenceByGroup=new Map<string,number>();
+ for(const event of ordered){
+  const group=groupOf(event);
+  if(typeof group==='string'&&group)lastSequenceByGroup.set(group,event.sequence);
+ }
  const owner=(event:Event)=>rows.find(row=>row.id===event.id||row.groupId&&row.groupId===groupOf(event));
- const span=(row:Row)=>Math.max(row.sequence,...ordered.filter(event=>row.groupId&&groupOf(event)===row.groupId).map(event=>event.sequence));
+ const span=(row:Row)=>Math.max(row.sequence,(row.groupId?lastSequenceByGroup.get(row.groupId):undefined)??row.sequence);
  for(const correction of ordered.filter(event=>event.eventType==='employment.information.corrected')){
   const p=object(correction.payload),after=object(p.after),fields=Array.isArray(p.fields)?p.fields:[];
   for(const field of INFORMATION_FIELDS){

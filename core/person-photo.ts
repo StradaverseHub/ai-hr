@@ -1,7 +1,9 @@
 import {assertWorkforcePersonTx} from './workforce-access';
 import {createHash} from 'node:crypto';
 import {isAdmin} from '../lib/authz-model';
-import {freshProfileEditPolicyTx,lockProfileEditPolicyTx} from './profile-edit-policy';
+import {isPrincipalSnapshotCurrentTx} from './read-only-snapshot';
+import {freshProfileEditPolicySharedTx,freshProfileEditPolicyTx,freshProfilePresentationPolicyTx,readProfilePresentationSnapshotPolicyTx,lockProfileEditPolicyTx} from './profile-edit-policy';
+import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {getSetting} from './entitlements';
 import {EssProfileError} from '../lib/personnel-ess-model';
 import type {Tx} from '../db/client';
@@ -17,7 +19,7 @@ import type {Tx} from '../db/client';
  * Substrate: every write appends a DomainEvent (aggregateType 'person') with ONLY derived, non-PII payload
  * fields — never the bytes and never the raw user-supplied fileName (PDPA / ADR-0030 posture).
  */
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, type SQL } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
@@ -139,15 +141,17 @@ export async function applyProfilePhotoProposalTx(tx:Tx,ctx:SessionContext,reque
  if(!photo)throw new EssProfileError('unavailable');assertValidPhoto(photo.mimeType,photo.content);
  return setPersonPhotoTx(tx,ctx,{personId:request.personId,content:photo.content,mimeType:photo.mimeType,sizeBytes:photo.content.byteLength,fileName:'profile-photo'+(photo.mimeType==='image/png'?'.png':'.jpg')});
 }
-/** Pending proposal bytes have their own request visibility; no extra master/Personnel authority. */
+/** Pending proposal bytes have their own request visibility; no extra master/Personnel authority. A read (the photo
+ * route and the mobile request workspace): the shared Access and profile-policy locks, and no row lock on the routed
+ * subject (staging, 11 November 2026). The decision that applies the photo keeps the exclusive barrier. */
 export function getProfilePhotoProposal(ctx:SessionContext,requestId:string){
  return withTenant(ctx,async tx=>{
-  const policy=await freshProfileEditPolicyTx(tx,ctx);
+  const policy=await freshProfileEditPolicySharedTx(tx,ctx);
   const [request]=await tx.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId)).limit(1);
   if(!request||request.status!=='pending'||!isProfilePhotoProposal(request.proposed))return null;
   const own=request.personId===ctx.personId&&await isOwnPersonTx(tx,policy.ctx);
   if(own&&!policy.visible.has(PROFILE_PHOTO_FIELD))return null;
-  if(!own){try{await assertProfileRouteDecisionTx(tx,policy.ctx,request);}catch{return null;}}
+  if(!own){try{await assertProfileRouteDecisionTx(tx,policy.ctx,request,{lockRows:false});}catch{return null;}}
   const [row]=await tx.select({content:profilePhotoProposal.content,mimeType:profilePhotoProposal.mimeType}).from(profilePhotoProposal).where(and(eq(profilePhotoProposal.requestId,requestId),own?ownPersonPredicate(policy.ctx):undefined)).limit(1);
   return row??null;
  });
@@ -176,11 +180,10 @@ export async function removePersonPhoto(ctx: SessionContext, p: { personId: stri
 
 /** Shared avatars retain their independent directory/self visibility. The actual login proves
  * ownership; a caller-supplied Person or old role claim cannot choose a different read course. */
-async function photoReadPredicateTx(tx:Tx,ctx:SessionContext){
-  const [principal]=await tx.execute<{current:boolean}>(sql`select app.principal_snapshot_current() as current`);
-  if(principal?.current!==true)return sql`false`;
+async function photoReadPredicateTx(tx:Tx,ctx:SessionContext,options?:{presentationSnapshot:true}){
+  if(!await isPrincipalSnapshotCurrentTx(tx))return sql`false`;
   if(!isAdmin(ctx)){
-    const policy=await freshProfileEditPolicyTx(tx,ctx);
+    const policy=await (options?.presentationSnapshot?readProfilePresentationSnapshotPolicyTx:freshProfilePresentationPolicyTx)(tx,ctx);
     if(!policy.visible.has('profile.personal_details.photo'))return sql`NOT app.is_self_person(${personPhoto.personId})`;
   }
   return sql`true`;
@@ -192,6 +195,7 @@ export async function getPersonPhoto(
   personId: string,
 ): Promise<{ content: Buffer; fileName: string; mimeType: string } | null> {
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
     const visible=await photoReadPredicateTx(tx,ctx);
     const [row] = await tx
       .select({ content: personPhoto.content, fileName: personPhoto.fileName, mimeType: personPhoto.mimeType })
@@ -206,14 +210,36 @@ export async function getPersonPhoto(
  *  photo the caller may see (RLS-scoped). */
 export async function hasPersonPhoto(ctx: SessionContext, personId: string): Promise<boolean> {
   return withTenant(ctx, async (tx) => {
-    const visible=await photoReadPredicateTx(tx,ctx);
-    const [row] = await tx
-      .select({ id: personPhoto.id })
-      .from(personPhoto)
-      .where(and(eq(personPhoto.personId, personId),visible))
-      .limit(1);
-    return row != null;
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    return hasPersonPhotoTx(tx, ctx, personId);
   });
+}
+
+/** Existence-only read for an existing read-only composition. */
+export async function hasPersonPhotoTx(tx: Tx, ctx: SessionContext, personId: string): Promise<boolean> {
+  const visible = await photoReadPredicateTx(tx, ctx);
+  return photoExistsTx(tx,personId,visible);
+}
+/** Existence only, never photo bytes, with the same visibility policy at snapshot admission. */
+export async function hasPersonPhotoSnapshotTx(tx:Tx,ctx:SessionContext,personId:string):Promise<boolean>{
+  await assertAiPresentationPrincipalTx(tx,ctx);
+  return photoExistsTx(tx,personId,await photoReadPredicateTx(tx,ctx,{presentationSnapshot:true}));
+}
+/** hasPersonPhotoSnapshotTx as one SQL boolean inside a bundled presentation statement (the Home greeting's own facts,
+ * docs/adr/2026-11-10-home-request-read-scope.md decision 13): the same admission proof and visibility policy, read first
+ * exactly as that owner reads them, then the same existence predicate as a value of the caller's statement. */
+export async function personPhotoSnapshotExistsSql(tx:Tx,ctx:SessionContext,personId:string):Promise<SQL>{
+  await assertAiPresentationPrincipalTx(tx,ctx);
+  const visible=await photoReadPredicateTx(tx,ctx,{presentationSnapshot:true});
+  return sql`exists(select 1 from ${personPhoto} where ${and(eq(personPhoto.personId,personId),visible)})`;
+}
+async function photoExistsTx(tx:Tx,personId:string,visible:SQL){
+  const [row] = await tx
+    .select({ id: personPhoto.id })
+    .from(personPhoto)
+    .where(and(eq(personPhoto.personId, personId), visible))
+    .limit(1);
+  return row != null;
 }
 
 /**
@@ -254,12 +280,37 @@ export async function employmentPhotoIds(
   const ids = [...new Set(employmentIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
   if (ids.length === 0) return new Map();
   return withTenant(ctx, async (tx) => {
-    const visible=await photoReadPredicateTx(tx,ctx);
-    const rows = await tx
-      .select({ employmentId: employment.id, personId: personPhoto.personId })
-      .from(employment)
-      .innerJoin(personPhoto, eq(personPhoto.personId, employment.personId))
-      .where(and(inArray(employment.id, ids),visible));
-    return new Map(rows.map((r) => [r.employmentId, r.personId]));
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    return employmentPhotoRowsTx(tx, ctx, ids);
   });
+}
+
+/** employmentPhotoIds inside a caller's read-only REPEATABLE READ snapshot (the Personnel page). A
+ * non-administrator's photo policy is read from that snapshot (readProfilePresentationSnapshotPolicyTx):
+ * the fresh policy's shared lock refuses anything but Read Committed, which failed the whole page for a
+ * Workforce viewer without an administrator role. */
+export async function employmentPhotoIdsTx(tx: Tx, ctx: SessionContext, employmentIds: readonly string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(employmentIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
+  if (ids.length === 0) return new Map();
+  return employmentPhotoRowsTx(tx, ctx, ids, {presentationSnapshot: true});
+}
+
+async function employmentPhotoRowsTx(tx: Tx, ctx: SessionContext, ids: string[], options?: {presentationSnapshot: true}) {
+  const visible=await photoReadPredicateTx(tx,ctx,options);
+  const rows = await tx
+    .select({ employmentId: employment.id, personId: personPhoto.personId })
+    .from(employment)
+    .innerJoin(personPhoto, eq(personPhoto.personId, employment.personId))
+    .where(and(inArray(employment.id, ids),visible));
+  return new Map(rows.map((r) => [r.employmentId, r.personId]));
+}
+
+/** For an administrator, employmentPhotoIds' rows as a relation over a caller-bounded employment-id
+ * array: the same join, RLS and current-principal predicate, so a page read can select it in a
+ * statement it already spends. Null for any other reader, whose predicate needs the profile policy. */
+export function administratorPhotoRowsSql(ctx: SessionContext, employmentIds: SQL): SQL | null {
+  if (!isAdmin(ctx)) return null;
+  return sql`select e.id as "employmentId", pp.person_id as "personId"
+    from employment e join person_photo pp on pp.person_id = e.person_id
+    where e.id = any(${employmentIds}) and (select app.principal_snapshot_current())`;
 }

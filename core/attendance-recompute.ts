@@ -38,13 +38,13 @@
  * day, plus one `attendance-recompute.run` event carrying the whole per-day before/after array. That run
  * event is what lets the screen re-open a past run, and it is why the history needs no table of its own.
  */
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from '../packs/leave/service';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { TraceClockPolicy } from './attendance-trace';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 // ADR-0080 D9/D11 — attendance and payroll services are consumed through their PACK FACADES, not
 // their implementation files. The two import ratchets scan core/ and the allowlist only ever
@@ -217,240 +217,48 @@ const sameFigures = (a: RecomputeFigures, b: RecomputeFigures): boolean =>
  */
 export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope): Promise<RecomputeResult> {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  if (!ISO_DATE.test(p.from) || !ISO_DATE.test(p.to)) {
-    throw new RecomputeScopeError('A date range is required (YYYY-MM-DD).');
-  }
-  if (p.from > p.to) throw new RecomputeScopeError('The start date must not be after the end date.');
-  if (!p.companyId) throw new RecomputeScopeError('A company is required.');
+  assertRecomputeScope(p);
 
   const runId = randomUUID();
   const ranAt = new Date().toISOString();
-  const narrowed = p.employmentIds && p.employmentIds.length > 0 ? p.employmentIds : null;
+  const narrowed = recomputeNarrowed(p);
 
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
-    // The employment set, through the SAME current-assignment join attendanceForDate uses for its
-    // department filter, so the two screens cannot disagree about who is in a department. RLS fences the
-    // company to the caller's scope; an out-of-scope companyId simply selects nobody.
-    const currentAssignment = and(
-      eq(assignment.employmentId, employment.id),
-      isNull(assignment.validTo),
-      isNull(assignment.supersededAt),
-    );
-    const readPeople = () => tx
-      .select({
-        employmentId: employment.id,
-        employeeCode: employment.employeeCode,
-        name: person.fullName,
-      })
-      .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(assignment, currentAssignment)
-      .where(
-        and(
-          eq(employment.companyId, p.companyId),
-          isNull(employment.terminatedOn),
-          p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
-          narrowed ? inArray(employment.id, narrowed) : undefined,
-        ),
-      )
-      .orderBy(asc(person.fullName));
-    const people = await readPeople();
+    const people = await readRecomputePeopleTx(tx, p);
 
-    const empty: RecomputeResult = {
-      runId,
-      dryRun: p.dryRun,
-      ranAt,
-      companyId: p.companyId,
-      departmentId: p.departmentId ?? null,
-      employmentIds: narrowed,
-      from: p.from,
-      to: p.to,
-      checked: 0,
-      updated: 0,
-      unchanged: 0,
-      flagged: 0,
-      rows: [],
-      flags: [],
-      batchWarnings: [],
-    };
+    const empty = emptyRecomputeResult(p, runId, ranAt);
     if (people.length === 0) return empty;
 
-    const [authority] = await tx.execute(sql`select app.is_admin_for(${p.companyId}::uuid) as allowed`) as unknown as {allowed:boolean}[];
-    if(!authority?.allowed)throw new RecomputeScopeError('Attendance recalculation requires administration of this company.');
+    await assertRecomputeAuthorityTx(tx, p.companyId);
     const empIds = people.map((x) => x.employmentId);
     if(!p.dryRun){
       await lockLeaveDependenciesTx(tx,ctx.tenantId,empIds);
-      const fresh=await readPeople();
-      const image=(rows:typeof people)=>JSON.stringify(rows.slice().sort((a,b)=>a.employmentId.localeCompare(b.employmentId)));
-      if(image(people)!==image(fresh))throw new LeaveDependencyUnavailable();
+      const fresh=await readRecomputePeopleTx(tx, p);
+      if(recomputePeopleImage(people)!==recomputePeopleImage(fresh))throw new LeaveDependencyUnavailable();
     }
     for(const employmentId of [...empIds].sort())await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + employmentId}, 0))`);
-    const who = new Map(people.map((x) => [x.employmentId, x]));
 
-    // The stored days. Only rows that EXIST are in scope: a day with no attendance row shows as Absent
-    // because nothing was recorded, and there is nothing to re-work where nothing was recorded.
-    const rows = await tx
-      .select({
-        id: attendance.id,
-        employmentId: attendance.employmentId,
-        date: attendance.attendanceDate,
-        checkInAt: attendance.checkInAt,
-        checkOutAt: attendance.checkOutAt,
-        status: attendance.status,
-        dayType: attendance.dayType,
-        workedMinutes: attendance.workedMinutes,
-        calcTrace: attendance.calcTrace,
-        otMinutes: attendance.otMinutes,
-        lateMinutes: attendance.lateMinutes,
-        earlyOutMinutes: attendance.earlyOutMinutes,
-        underMinutes: attendance.underMinutes,
-        lateDeductMinutes: attendance.lateDeductMinutes,
-        earlyOutDeductMinutes: attendance.earlyOutDeductMinutes,
-        otFlatMinutes: attendance.otFlatMinutes,
-        ot00Minutes: attendance.ot00Minutes,
-        ot10Minutes: attendance.ot10Minutes,
-        ot15Minutes: attendance.ot15Minutes,
-        ot20Minutes: attendance.ot20Minutes,
-        ot30Minutes: attendance.ot30Minutes,
-      })
-      .from(attendance)
-      .where(
-        and(
-          inArray(attendance.employmentId, empIds),
-          gte(attendance.attendanceDate, p.from),
-          lte(attendance.attendanceDate, p.to),
-        ),
-      )
-      .orderBy(asc(attendance.attendanceDate), asc(attendance.employmentId));
-    if (rows.length === 0) return empty;
-
-    // ADR-0069 — the human-approved OT figures in range. A recompute refreshes the MEASURED figures beside
-    // an approved OT total; it never overwrites the total itself (TOIL auto-accrual reads it).
-    const approvals = await tx
-      .select({
-        employmentId: attendanceCorrection.employmentId,
-        date: attendanceCorrection.attendanceDate,
-        approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
-      })
-      .from(attendanceCorrection)
-      .where(
-        and(
-          inArray(attendanceCorrection.employmentId, empIds),
-          gte(attendanceCorrection.attendanceDate, p.from),
-          lte(attendanceCorrection.attendanceDate, p.to),
-          eq(attendanceCorrection.status, 'approved'),
-        ),
-      );
-    const approvedOt = new Map<string, number>();
-    for (const a of approvals) {
-      if (a.approvedOtMinutes != null) approvedOt.set(`${a.employmentId}|${a.date}`, a.approvedOtMinutes);
-    }
-
-    // The changed days and, beside each, the attendance row id and the exact column bag to write. Kept as
-    // ONE list so the write, the per-day event and the reported row can never fall out of step.
-    const changed: { row: RecomputeRow; attendanceId: string; columns: Record<string, unknown> }[] = [];
-    const flags: RecomputeFlag[] = [];
-    let unchanged = 0;
-
-    for (const r of rows) {
-      const id = who.get(r.employmentId)!;
-      if (r.status === 'absent') {
-        flags.push({ ...idOf(id), date: r.date, checkInAt: r.checkInAt, checkOutAt: r.checkOutAt, reason: 'stored-absent' });
-        continue;
-      }
-      if (r.checkInAt == null) {
-        flags.push({ ...idOf(id), date: r.date, checkInAt: null, checkOutAt: r.checkOutAt, reason: 'no-clock-in' });
-        continue;
-      }
-      if (r.checkOutAt == null) {
-        flags.push({ ...idOf(id), date: r.date, checkInAt: r.checkInAt, checkOutAt: null, reason: 'missing-clock-out' });
-        continue;
-      }
-      const d = await recomputeDayFigures(tx, ctx, {
-        employmentId: r.employmentId,
-        date: r.date,
-        checkInAt: r.checkInAt,
-        checkOutAt: r.checkOutAt,
-        approvedOtMinutes: approvedOt.get(`${r.employmentId}|${r.date}`) ?? null,
-      });
-      if(d.clockPolicyReview){
-        flags.push({...idOf(id),date:r.date,checkInAt:r.checkInAt,checkOutAt:r.checkOutAt,reason:'clock-policy-review'});
-        continue;
-      }
-      const before = figuresOf(r);
-      const after = figuresOf(d.columns);
-      const clockBefore=r.calcTrace?.clockPolicy??null,clockAfter=d.columns.calcTrace?.clockPolicy??null;
-      if (sameFigures(before, after) && isDeepStrictEqual(clockBefore,clockAfter)) {
-        unchanged += 1;
-        continue;
-      }
-      changed.push({
-        attendanceId: r.id,
-        columns: d.columns,
-        row: {
-          ...idOf(id),
-          date: r.date,
-          shiftCode: d.shiftCode,
-          checkInAt: r.checkInAt,
-          checkOutAt: r.checkOutAt,
-          before,
-          after,
-          otPreserved: d.otPreserved,
-          ...(clockBefore||clockAfter?{clockPolicy:{before:clockBefore,after:clockAfter}}:{}),
-        },
-      });
-    }
+    const computed = await computeRecomputeDaysTx(tx, ctx, { from: p.from, to: p.to, people });
+    if (computed.checked === 0) return empty;
+    const { changed, flags, unchanged } = computed;
     const changedRows = changed.map((c) => c.row);
 
     // The pay-run interlock. Computed for the PREVIEW too, read-only, from exactly the days that would
     // move — so the warning the reporter sees before pressing Apply is the same set Apply then raises.
-    //
-    // DAY TYPE BELONGS IN THIS PREDICATE, and leaving it out was a silent money difference — the exact
-    // failure this interlock exists to prevent. Payroll does not price overtime from minutes alone:
-    // core/payroll.ts selects attendance.dayType ALONGSIDE attendance.otMinutes and monetises by type
-    // (rest day 2x, holiday 3x plus premium), and core/toil.ts reads the same pair. So a day whose type
-    // is re-decided with its minutes unchanged — a rest day that becomes a public holiday, which is
-    // precisely what recomputing after a holiday is recorded does — moves what an already-processed run
-    // paid while raising nothing. MEASURED: rest_day -> holiday with worked 420 and ot 420 both
-    // unchanged moves ot20 420->0 and ot30 0->420, and the run was never flagged.
-    // Allowance rules also consume lateness and early-out penalties. A duration-rule correction must
-    // flag their processed payroll even when worked and OT minutes stay unchanged.
-    const payAffecting = changedRows
-      .filter(
-        (c) =>
-          c.before.workedMinutes !== c.after.workedMinutes ||
-          c.before.otMinutes !== c.after.otMinutes ||
-          c.before.dayType !== c.after.dayType ||
-          c.before.lateMinutes !== c.after.lateMinutes ||
-          c.before.earlyOutMinutes !== c.after.earlyOutMinutes ||
-          c.before.lateDeductMinutes !== c.after.lateDeductMinutes ||
-          c.before.earlyOutDeductMinutes !== c.after.earlyOutDeductMinutes,
-      )
-      .map((c) => ({ employmentId: c.employmentId, date: c.date }));
-    // Protect every changed result, including late/early penalties used by downstream consumers.
-    // The payroll helper locks existing runs and uses their actual attendance cut-off window.
-    // A closed run refuses the entire preview/apply; no earlier day can be partly rewritten.
-    for (const row of [...changedRows].sort((a,b) => a.employmentId.localeCompare(b.employmentId) || a.date.localeCompare(b.date))) {
-      const covering=await lockPayrollForAttendanceChange(tx, row.employmentId, row.date);
-      if(covering.some(batch=>batch.status==='closed'))throw new RecomputeScopeError(`Attendance on ${row.date} belongs to a closed payroll and cannot be recalculated.`);
-    }
+    // Protect every changed result (see recomputePayAffecting and closedRecomputeDayTx).
+    const payAffecting = recomputePayAffecting(changedRows);
+    const closed = await closedRecomputeDayTx(tx, changedRows);
+    if (closed) throw new RecomputeScopeError(closedRecomputeMessage(closed.date));
     const batchWarnings = await batchesCoveringAttendanceDates(tx, {
       companyId: p.companyId,
       entries: payAffecting,
     });
 
     const result: RecomputeResult = {
-      runId,
-      dryRun: p.dryRun,
-      ranAt,
-      companyId: p.companyId,
-      departmentId: p.departmentId ?? null,
-      employmentIds: narrowed,
-      from: p.from,
-      to: p.to,
-      checked: rows.length,
+      ...empty,
+      checked: computed.checked,
       updated: changed.length,
       unchanged,
       flagged: flags.length,
@@ -460,62 +268,312 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
     };
     if (p.dryRun) return result;
 
-    for (const c of changed) {
-      await tx.update(attendance).set(c.columns).where(eq(attendance.id, c.attendanceId));
-      await refreshOvertimePatternDayTx(tx,ctx,{employmentId:c.row.employmentId,date:c.row.date,reason:'Recomputed attendance day'});
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'attendance',
-        aggregateId: c.attendanceId,
-        eventType: 'attendance.recomputed',
-        actor: actorOf(ctx),
-        subjectEmploymentId: c.row.employmentId,
-        // Minutes only — the same precedent attendance.amended already sets (ADR-0030 Layer 0).
-        payload: { runId, date: c.row.date, before: c.row.before, after: c.row.after, ...(c.row.clockPolicy&&{clockPolicy:c.row.clockPolicy}) },
-      });
-    }
-    // The run event. It carries the WHOLE per-day array because that array is the run history: the screen
-    // re-opens a past run by reading this payload back. At tenant scale (hundreds of attendance rows) the
-    // payload is small.
-    //
-    // ⚠️ r368 c8282468 — THIS COMMENT USED TO END "and /admin/audit renders no payloads at all", WHICH IS
-    // FALSE and was the reason the whole array was considered safe to carry. components/audit-table.tsx
-    // expands every row's payload through lib/audit-format.ts `describePayload`, so this one renders as a
-    // flat key dump with each value truncated at 120 characters — including `rows`. That is ugly, not
-    // unsafe (the array carries minutes, not pay), and it is left as it is rather than reshaped in a round
-    // that is about the correction path. What is corrected is the SENTENCE: the next reader must not size a
-    // payload on the belief that nothing displays it.
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'attendance-recompute',
-      aggregateId: runId,
-      eventType: 'attendance-recompute.run',
-      actor: actorOf(ctx),
-      // No subject: a run spans employees, so it is admin-only to read (fail-closed, ADR-0015).
-      payload: {
-        runId,
-        companyId: p.companyId,
-        departmentId: p.departmentId ?? null,
-        employmentIds: narrowed,
-        from: p.from,
-        to: p.to,
-        checked: result.checked,
-        updated: result.updated,
-        unchanged: result.unchanged,
-        flagged: result.flagged,
-        rows: changedRows,
-        flags,
-        batchWarnings,
-      },
-    });
-    // Raise each affected processed run's EXISTING needs-recalculation notice, in this same transaction.
-    // No payslip and no run total is edited: markBatchNeedsRecalc sets the mark, appends the run's own
-    // `payroll-batch.recalc-required` event, and is already a no-op for draft and closed runs.
-    for (const b of batchWarnings) {
-      await markBatchNeedsRecalc(tx, ctx, { batchId: b.batchId, employmentIds: b.employmentIds });
-    }
+    await writeRecomputedDaysTx(tx, ctx, runId, changed);
+    await appendRecomputeRunTx(tx, ctx, result);
     return result;
   });
+}
+
+/** A scope this feature can run at all (dates and company), before anything is read. */
+export function assertRecomputeScope(p: Pick<RecomputeScope, 'companyId' | 'from' | 'to'>): void {
+  if (!ISO_DATE.test(p.from) || !ISO_DATE.test(p.to)) {
+    throw new RecomputeScopeError('A date range is required (YYYY-MM-DD).');
+  }
+  if (p.from > p.to) throw new RecomputeScopeError('The start date must not be after the end date.');
+  if (!p.companyId) throw new RecomputeScopeError('A company is required.');
+}
+export const recomputeNarrowed = (p: Pick<RecomputeScope, 'employmentIds'>) => (p.employmentIds && p.employmentIds.length > 0 ? p.employmentIds : null);
+export function emptyRecomputeResult(p: Omit<RecomputeScope, 'dryRun'> & { dryRun: boolean }, runId: string, ranAt: string): RecomputeResult {
+  return {
+    runId,
+    dryRun: p.dryRun,
+    ranAt,
+    companyId: p.companyId,
+    departmentId: p.departmentId ?? null,
+    employmentIds: recomputeNarrowed(p),
+    from: p.from,
+    to: p.to,
+    checked: 0,
+    updated: 0,
+    unchanged: 0,
+    flagged: 0,
+    rows: [],
+    flags: [],
+    batchWarnings: [],
+  };
+}
+
+export type RecomputePerson = { employmentId: string; employeeCode: string | null; name: string };
+/** The employment set, through the SAME current-assignment join attendanceForDate uses for its department
+ *  filter, so the two screens cannot disagree about who is in a department. RLS fences the company to the
+ *  caller's scope; an out-of-scope companyId simply selects nobody. `only` narrows the read to one employment
+ *  still inside the scope (the background job's per-employee recheck). */
+export async function readRecomputePeopleTx(tx: Tx, p: Omit<RecomputeScope, 'dryRun'>, only?: string): Promise<RecomputePerson[]> {
+  const narrowed = recomputeNarrowed(p);
+  const currentAssignment = and(
+    eq(assignment.employmentId, employment.id),
+    isNull(assignment.validTo),
+    isNull(assignment.supersededAt),
+  );
+  return tx
+    .select({
+      employmentId: employment.id,
+      employeeCode: employment.employeeCode,
+      name: person.fullName,
+    })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .leftJoin(assignment, currentAssignment)
+    .where(
+      and(
+        eq(employment.companyId, p.companyId),
+        isNull(employment.terminatedOn),
+        p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
+        narrowed ? inArray(employment.id, narrowed) : undefined,
+        only ? eq(employment.id, only) : undefined,
+      ),
+    )
+    .orderBy(asc(person.fullName));
+}
+export const recomputePeopleImage = (rows: RecomputePerson[]) => JSON.stringify(rows.slice().sort((a,b)=>a.employmentId.localeCompare(b.employmentId)));
+
+export async function assertRecomputeAuthorityTx(tx: Tx, companyId: string): Promise<void> {
+  const [authority] = await tx.execute(sql`select app.is_admin_for(${companyId}::uuid) as allowed`) as unknown as {allowed:boolean}[];
+  if(!authority?.allowed)throw new RecomputeScopeError('Attendance recalculation requires administration of this company.');
+}
+
+/** One changed day: the attendance row id and the exact column bag to write beside the reported row. Kept as
+ *  ONE record so the write, the per-day event and the reported row can never fall out of step. */
+export type RecomputeChange = { row: RecomputeRow; attendanceId: string; columns: Record<string, unknown> };
+export type RecomputeComputed = { checked: number; unchanged: number; changed: RecomputeChange[]; flags: RecomputeFlag[] };
+
+/**
+ * Re-work every stored day of these people in the range against the settings that apply now. Writes nothing.
+ * Every day is decided on its own (stored clock evidence, current schedule, date), so computing one employee
+ * alone gives exactly that employee's part of computing them all; rows and flags come back in (date,
+ * employment) order. The caller holds the employees' clock keys.
+ */
+export async function computeRecomputeDaysTx(tx: Tx, ctx: SessionContext, p: { from: string; to: string; people: RecomputePerson[] }): Promise<RecomputeComputed> {
+  const empIds = p.people.map((x) => x.employmentId);
+  const who = new Map(p.people.map((x) => [x.employmentId, x]));
+  if (empIds.length === 0) return { checked: 0, unchanged: 0, changed: [], flags: [] };
+
+  // The stored days. Only rows that EXIST are in scope: a day with no attendance row shows as Absent
+  // because nothing was recorded, and there is nothing to re-work where nothing was recorded.
+  const rows = await tx
+    .select({
+      id: attendance.id,
+      employmentId: attendance.employmentId,
+      date: attendance.attendanceDate,
+      checkInAt: attendance.checkInAt,
+      checkOutAt: attendance.checkOutAt,
+      status: attendance.status,
+      dayType: attendance.dayType,
+      workedMinutes: attendance.workedMinutes,
+      calcTrace: attendance.calcTrace,
+      otMinutes: attendance.otMinutes,
+      lateMinutes: attendance.lateMinutes,
+      earlyOutMinutes: attendance.earlyOutMinutes,
+      underMinutes: attendance.underMinutes,
+      lateDeductMinutes: attendance.lateDeductMinutes,
+      earlyOutDeductMinutes: attendance.earlyOutDeductMinutes,
+      otFlatMinutes: attendance.otFlatMinutes,
+      ot00Minutes: attendance.ot00Minutes,
+      ot10Minutes: attendance.ot10Minutes,
+      ot15Minutes: attendance.ot15Minutes,
+      ot20Minutes: attendance.ot20Minutes,
+      ot30Minutes: attendance.ot30Minutes,
+    })
+    .from(attendance)
+    .where(
+      and(
+        inArray(attendance.employmentId, empIds),
+        gte(attendance.attendanceDate, p.from),
+        lte(attendance.attendanceDate, p.to),
+      ),
+    )
+    .orderBy(asc(attendance.attendanceDate), asc(attendance.employmentId));
+  if (rows.length === 0) return { checked: 0, unchanged: 0, changed: [], flags: [] };
+
+  // ADR-0069 — the human-approved OT figures in range. A recompute refreshes the MEASURED figures beside
+  // an approved OT total; it never overwrites the total itself (TOIL auto-accrual reads it).
+  const approvals = await tx
+    .select({
+      employmentId: attendanceCorrection.employmentId,
+      date: attendanceCorrection.attendanceDate,
+      approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
+    })
+    .from(attendanceCorrection)
+    .where(
+      and(
+        inArray(attendanceCorrection.employmentId, empIds),
+        gte(attendanceCorrection.attendanceDate, p.from),
+        lte(attendanceCorrection.attendanceDate, p.to),
+        eq(attendanceCorrection.status, 'approved'),
+      ),
+    );
+  const approvedOt = new Map<string, number>();
+  for (const a of approvals) {
+    if (a.approvedOtMinutes != null) approvedOt.set(`${a.employmentId}|${a.date}`, a.approvedOtMinutes);
+  }
+
+  const changed: RecomputeChange[] = [];
+  const flags: RecomputeFlag[] = [];
+  let unchanged = 0;
+
+  for (const r of rows) {
+    const id = who.get(r.employmentId)!;
+    if (r.status === 'absent') {
+      flags.push({ ...idOf(id), date: r.date, checkInAt: r.checkInAt, checkOutAt: r.checkOutAt, reason: 'stored-absent' });
+      continue;
+    }
+    if (r.checkInAt == null) {
+      flags.push({ ...idOf(id), date: r.date, checkInAt: null, checkOutAt: r.checkOutAt, reason: 'no-clock-in' });
+      continue;
+    }
+    if (r.checkOutAt == null) {
+      flags.push({ ...idOf(id), date: r.date, checkInAt: r.checkInAt, checkOutAt: null, reason: 'missing-clock-out' });
+      continue;
+    }
+    const d = await recomputeDayFigures(tx, ctx, {
+      employmentId: r.employmentId,
+      date: r.date,
+      checkInAt: r.checkInAt,
+      checkOutAt: r.checkOutAt,
+      approvedOtMinutes: approvedOt.get(`${r.employmentId}|${r.date}`) ?? null,
+    });
+    if(d.clockPolicyReview){
+      flags.push({...idOf(id),date:r.date,checkInAt:r.checkInAt,checkOutAt:r.checkOutAt,reason:'clock-policy-review'});
+      continue;
+    }
+    const before = figuresOf(r);
+    const after = figuresOf(d.columns);
+    const clockBefore=r.calcTrace?.clockPolicy??null,clockAfter=d.columns.calcTrace?.clockPolicy??null;
+    if (sameFigures(before, after) && isDeepStrictEqual(clockBefore,clockAfter)) {
+      unchanged += 1;
+      continue;
+    }
+    changed.push({
+      attendanceId: r.id,
+      columns: d.columns,
+      row: {
+        ...idOf(id),
+        date: r.date,
+        shiftCode: d.shiftCode,
+        checkInAt: r.checkInAt,
+        checkOutAt: r.checkOutAt,
+        before,
+        after,
+        otPreserved: d.otPreserved,
+        ...(clockBefore||clockAfter?{clockPolicy:{before:clockBefore,after:clockAfter}}:{}),
+      },
+    });
+  }
+  return { checked: rows.length, unchanged, changed, flags };
+}
+
+/**
+ * The days whose change moves what a processed pay run paid.
+ *
+ * DAY TYPE BELONGS IN THIS PREDICATE, and leaving it out was a silent money difference — the exact
+ * failure this interlock exists to prevent. Payroll does not price overtime from minutes alone:
+ * core/payroll.ts selects attendance.dayType ALONGSIDE attendance.otMinutes and monetises by type
+ * (rest day 2x, holiday 3x plus premium), and core/toil.ts reads the same pair. So a day whose type
+ * is re-decided with its minutes unchanged — a rest day that becomes a public holiday, which is
+ * precisely what recomputing after a holiday is recorded does — moves what an already-processed run
+ * paid while raising nothing. MEASURED: rest_day -> holiday with worked 420 and ot 420 both
+ * unchanged moves ot20 420->0 and ot30 0->420, and the run was never flagged.
+ * Allowance rules also consume lateness and early-out penalties. A duration-rule correction must
+ * flag their processed payroll even when worked and OT minutes stay unchanged.
+ */
+export function recomputePayAffecting(changedRows: RecomputeRow[]): { employmentId: string; date: string }[] {
+  return changedRows
+    .filter(
+      (c) =>
+        c.before.workedMinutes !== c.after.workedMinutes ||
+        c.before.otMinutes !== c.after.otMinutes ||
+        c.before.dayType !== c.after.dayType ||
+        c.before.lateMinutes !== c.after.lateMinutes ||
+        c.before.earlyOutMinutes !== c.after.earlyOutMinutes ||
+        c.before.lateDeductMinutes !== c.after.lateDeductMinutes ||
+        c.before.earlyOutDeductMinutes !== c.after.earlyOutDeductMinutes,
+    )
+    .map((c) => ({ employmentId: c.employmentId, date: c.date }));
+}
+
+/** Protect every changed result, including late/early penalties used by downstream consumers. The payroll
+ *  helper locks existing runs and uses their actual attendance cut-off window. A closed run refuses the entire
+ *  preview/apply; no earlier day can be partly rewritten. Returns the first changed day (employment, then date
+ *  order) that a CLOSED run owns, or null. */
+export async function closedRecomputeDayTx(tx: Tx, changedRows: RecomputeRow[]): Promise<{ employmentId: string; date: string } | null> {
+  for (const row of [...changedRows].sort((a,b) => a.employmentId.localeCompare(b.employmentId) || a.date.localeCompare(b.date))) {
+    const covering=await lockPayrollForAttendanceChange(tx, row.employmentId, row.date);
+    if(covering.some(batch=>batch.status==='closed'))return { employmentId: row.employmentId, date: row.date };
+  }
+  return null;
+}
+export const closedRecomputeMessage = (date: string) => `Attendance on ${date} belongs to a closed payroll and cannot be recalculated.`;
+
+/** Write only the CALCULATED columns of each changed day, its overtime-pattern refresh and its per-day event. */
+export async function writeRecomputedDaysTx(tx: Tx, ctx: SessionContext, runId: string, changed: RecomputeChange[]): Promise<void> {
+  for (const c of changed) {
+    await tx.update(attendance).set(c.columns).where(eq(attendance.id, c.attendanceId));
+    await refreshOvertimePatternDayTx(tx,ctx,{employmentId:c.row.employmentId,date:c.row.date,reason:'Recomputed attendance day'});
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance',
+      aggregateId: c.attendanceId,
+      eventType: 'attendance.recomputed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: c.row.employmentId,
+      // Minutes only — the same precedent attendance.amended already sets (ADR-0030 Layer 0).
+      payload: { runId, date: c.row.date, before: c.row.before, after: c.row.after, ...(c.row.clockPolicy&&{clockPolicy:c.row.clockPolicy}) },
+    });
+  }
+}
+
+/** The run's history record and its pay-run marks, after its days were written. */
+export async function appendRecomputeRunTx(tx: Tx, ctx: SessionContext, result: RecomputeResult): Promise<void> {
+  // The run event. It carries the WHOLE per-day array because that array is the run history: the screen
+  // re-opens a past run by reading this payload back. At tenant scale (hundreds of attendance rows) the
+  // payload is small.
+  //
+  // ⚠️ r368 c8282468 — THIS COMMENT USED TO END "and /admin/audit renders no payloads at all", WHICH IS
+  // FALSE and was the reason the whole array was considered safe to carry. components/audit-table.tsx
+  // expands every row's payload through lib/audit-format.ts `describePayload`, so this one renders as a
+  // flat key dump with each value truncated at 120 characters — including `rows`. That is ugly, not
+  // unsafe (the array carries minutes, not pay), and it is left as it is rather than reshaped in a round
+  // that is about the correction path. What is corrected is the SENTENCE: the next reader must not size a
+  // payload on the belief that nothing displays it.
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'attendance-recompute',
+    aggregateId: result.runId,
+    eventType: 'attendance-recompute.run',
+    actor: actorOf(ctx),
+    // No subject: a run spans employees, so it is admin-only to read (fail-closed, ADR-0015).
+    payload: {
+      runId: result.runId,
+      companyId: result.companyId,
+      departmentId: result.departmentId,
+      employmentIds: result.employmentIds,
+      from: result.from,
+      to: result.to,
+      checked: result.checked,
+      updated: result.updated,
+      unchanged: result.unchanged,
+      flagged: result.flagged,
+      rows: result.rows,
+      flags: result.flags,
+      batchWarnings: result.batchWarnings,
+    },
+  });
+  // Raise each affected processed run's EXISTING needs-recalculation notice, in this same transaction.
+  // No payslip and no run total is edited: markBatchNeedsRecalc sets the mark, appends the run's own
+  // `payroll-batch.recalc-required` event, and is already a no-op for draft and closed runs.
+  for (const b of result.batchWarnings) {
+    await markBatchNeedsRecalc(tx, ctx, { batchId: b.batchId, employmentIds: b.employmentIds });
+  }
 }
 
 const idOf = (x: { employmentId: string; employeeCode: string | null; name: string }) => ({

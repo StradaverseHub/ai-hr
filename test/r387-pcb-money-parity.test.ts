@@ -150,7 +150,12 @@ describe('r387 complete monetary parity against original calculation',()=>{
     const native=row.statutory as Record<string,unknown>;
     expect(native.taxBasisOpeningExemptionYear).toBe(year);
     expect(native.taxBasisOpeningExemptionUsed).toEqual({PCB_TRA_BUSINESS:5950});
-    const {taxBasisOpeningExemptionYear,taxBasisOpeningExemptionUsed,...statutory}=native;
+    // c2ea9567 adds the HRD Corp levy working to regular runs only. This company is not HRDF-registered:
+    // the working itemises the RM10,000 basic, charges nothing, and agrees with the stored base and levy.
+    const bases=native.bases as Record<string,unknown>;
+    if(batch===extra)expect(native.hrdfWorking).toBeUndefined();
+    else expect(native.hrdfWorking).toEqual({version:1,items:[{kind:'basic',amount:10000}],wages:bases.hrdf,status:'not_registered',subject:false,rate:0,calculatedLevy:0,levy:native.hrdf});
+    const {taxBasisOpeningExemptionYear,taxBasisOpeningExemptionUsed,hrdfWorking,...statutory}=native;
     snapshots.push(nativeMoneySnapshot({...row,statutory},ids));
   }
   if(process.env.R387_WRITE_BASELINE){writeFileSync(process.env.R387_WRITE_BASELINE,JSON.stringify(snapshots,null,2)+'\n');}

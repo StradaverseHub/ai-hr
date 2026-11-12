@@ -15,7 +15,8 @@ import {dependentFieldApplies} from '../lib/dependent-vocabulary';
 import {WorkforceAccessError} from './workforce-access';
 import {WorkforceRecordChangedError} from './workforce-code';
 import {WORKFORCE_PROFILE_FIELDS,type WorkforceProfile} from '../lib/workforce-record-fields';
-import {lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockWorkforceRecordValueWritesTx} from './workforce-lock-mode';
 const version=z.string().regex(/^\d{1,20}$/);
 const scalar=z.union([z.string().max(4000),z.boolean(),z.number().finite(),z.null()]);
 const registerSchema=(kind:'qualification'|'emergency'|'dependent')=>z.object({kind:z.literal(kind),id:z.uuid(),version,
@@ -48,7 +49,12 @@ export async function workforceEditor(ctx:SessionContext,employmentId:string){
 export async function maintainWorkforceRecord(ctx:SessionContext,p:{employmentId:string;kind:WorkforceMaintenanceKind;rowId:string|null;operation:WorkforceMaintenanceOperation;patch:Record<string,unknown>;expectedVersion:string|null},outerTx?:Tx){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};p=structuredClone(p);
  try{const run=async(tx:Tx)=>{
-  await lockProfileValueWritesTx(tx,ctx.tenantId);
+  // Reader/writer lock: one person's or one employment's values. Shared Access unless the caller already holds the
+  // exclusive lock, then the subject's value locks (leave dependencies for a person's own fields, the shared
+  // profile-policy lock and the per-person or per-employment lock) before any row lock. The SQL command joins the
+  // policy lock in value mode (5005) and keeps its row locks and expected-version check.
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockWorkforceRecordValueWritesTx(tx,ctx.tenantId,p.employmentId,p.kind);
   const workspace=await workforceEditorTx(tx,p.employmentId);
   if(!workspace||!(p.kind==='qualification'?workspace.employmentMaintain:workspace.sharedMaintain))throw new WorkforceAccessError();
   const [scope]=await tx.execute<{company:string|null}>(sql`select app.system_label_employment_company(${p.employmentId}::uuid) as company`);

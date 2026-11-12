@@ -23,6 +23,9 @@ import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config
 import { LeaveCreditGrantDialog } from '@/components/leave/leave-credit-grant-dialog';
 import { LeaveCreditReverseDialog } from '@/components/leave/leave-credit-reverse-dialog';
 import { closeReplacementLeaveYearAction, runToilExpiryAction } from '../../actions';
+import { ToilSweepJobPanel } from '@/components/leave/toil-sweep-job-panel';
+import { activeToilSweepJob, readToilSweepJob } from '@/core/toil-sweep-job';
+import { TOIL_SWEEP_JOB_KINDS, type ToilSweepJobProgress } from '@/lib/toil-sweep-job';
 import { leaveCreditGrantClaimReviewAction, grantLeaveCreditRowsAction, leaveCreditGrantContextAction, leaveCreditGrantDayFactsAction, reverseLeaveCreditAction } from './actions';
 
 /** Not exported: Next refuses unknown exports from a page module. */
@@ -74,6 +77,7 @@ export default async function LeaveConfigLeaveCreditPage({
     closedConverted?: string;
     closedLapsed?: string;
     closedCarried?: string;
+    job?: string;
   }>;
 }) {
   const s = await requireAdmin();
@@ -95,6 +99,11 @@ export default async function LeaveConfigLeaveCreditPage({
   const summary = await replacementLeaveSummary(s, visibleIds);
   const windDown = !moduleOn && summary.activeAccruals > 0;
   const showCredits = moduleOn || windDown;
+  // The two sweeps run in the background (the buttons enqueue them): the one just started, or the person's own
+  // running one of each kind, rejoined after a reload. A finished one hands over to the banner below.
+  const named = sp.job ? await readToilSweepJob(s, sp.job) : null;
+  const sweepJobs = (await Promise.all(TOIL_SWEEP_JOB_KINDS.map((kind) => (named?.kind === kind ? named : activeToilSweepJob(s, kind)))))
+    .filter((job): job is ToilSweepJobProgress => job !== null);
 
   const employees = showCredits ? await listEmployees(s, visibleIds) : [];
   const employeeOptions = employees
@@ -241,6 +250,9 @@ export default async function LeaveConfigLeaveCreditPage({
                 ? t('banner.reversedOvertime', { hours: hoursOf(sp.otBackMinutes), date: fmtDate(sp.otBackDate) })
                 : undefined,
             )}
+          {sweepJobs.map((job) => (
+            <ToilSweepJobPanel key={job.id} job={job} />
+          ))}
           {sp.processed !== undefined &&
             banner(
               Number(sp.processed) === 0

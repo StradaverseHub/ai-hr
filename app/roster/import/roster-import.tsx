@@ -21,6 +21,8 @@ import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/
 import { addMonths } from '@/lib/roster-month';
 import type { RosterImportReject, RosterImportResult } from '@/core/roster-import';
 import { commitRosterImportAction, dryRunRosterImportAction } from './actions';
+import { RosterBulkJobPanel } from '@/components/roster-bulk-job-panel';
+import type { RosterBulkJobView } from '@/lib/roster-bulk-job';
 
 export function RosterImport({
   companies,
@@ -44,6 +46,9 @@ export function RosterImport({
   const [fileName, setFileName] = useState<string | null>(null);
   const [preview, setPreview] = useState<RosterImportResult | null>(null);
   const [committed, setCommitted] = useState<RosterImportResult | null>(null);
+  // The background upload job while it runs (core/roster-bulk-worker.ts); its result replaces it.
+  const [job, setJob] = useState<RosterBulkJobView | null>(null);
+  const tJob = useTranslations('bulkJobs.roster');
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [reading, setReading] = useState(false);
@@ -53,6 +58,7 @@ export function RosterImport({
   const reset = () => {
     setPreview(null);
     setCommitted(null);
+    setJob(null);
     setError(null);
   };
 
@@ -102,12 +108,18 @@ export function RosterImport({
       setError(null);
       try {
         const r = await commitRosterImportAction({ csvText: csv, month, companyId, fileName: fileName ?? '' });
-        setCommitted(r);
-        router.refresh();
+        if (r.ok) setJob(r.job);
+        else setError(r.error);
       } catch (e) {
         setError((e as Error).message);
       }
     });
+  const finished = (done: RosterBulkJobView) => {
+    setJob(null);
+    if (done.state === 'completed' && done.importResult) setCommitted(done.importResult);
+    else setError(done.error || tJob('saveFailed'));
+    router.refresh();
+  };
 
   const shown = committed ?? preview;
   const reasonLabel = (r: RosterImportReject['reason']) =>
@@ -246,6 +258,8 @@ export function RosterImport({
         </div>
       )}
 
+      {job && <RosterBulkJobPanel endpoint="/roster/jobs" job={job} title={tJob('import')} waitingLabel={tJob('queuedBehind')} onFinished={finished} />}
+
       {committed && (
         <Card className="overflow-hidden border-emerald-200 dark:border-emerald-500/30">
           <div className="flex flex-wrap items-center gap-3 border-b border-border bg-emerald-50/60 px-4 py-3 dark:bg-emerald-500/10">
@@ -273,8 +287,8 @@ export function RosterImport({
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
             <h2 className="text-sm font-semibold">{committed ? t('resultTitle') : t('previewTitle')}</h2>
             {!committed && (
-              <Button aria-busy={pending} onClick={commit} disabled={pending || shown.changed === 0} size="sm">
-                {pending ? t('saving') : t('save', { count: shown.changed })}
+              <Button aria-busy={pending || job !== null} onClick={commit} disabled={pending || job !== null || shown.changed === 0} size="sm">
+                {pending || job !== null ? t('saving') : t('save', { count: shown.changed })}
               </Button>
             )}
           </div>

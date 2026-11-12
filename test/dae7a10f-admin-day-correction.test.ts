@@ -219,8 +219,16 @@ describe('dae7a10f · the employee panel is MOUNTED, not designed again', () => 
   });
 
   it('the panel is fed from the SAME scoped list, never a wider one', () => {
-    expect(LIST_PAGE).toContain('const employees = await listEmployees(s, scopeIds);');
-    expect(LIST_PAGE).toContain('employees={panelEmployees}');
+    // e2bf843dd replaced the full listEmployees(s, scopeIds) rail with bounded employee choices
+    // (docs/adr/2026-11-06-personnel-read-snapshots.md). The first page, the selected employee and every
+    // later search are still read for exactly this session's scopeIds; the panel has no other source.
+    expect(LIST_PAGE).toContain("const choices=await readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'names',selectedId:sp.emp});");
+    expect(LIST_PAGE).toContain('const selected=choices.selected;');
+    expect(LIST_PAGE).toContain('remote={{initial:choices}}');
+    expect(LIST_PAGE, 'the panel searches only the default scoped route').not.toMatch(/\bendpoint\s*:/);
+    const route = src('app/api/employee-choices/route.ts');
+    expect(route).toContain('const {s,scopeIds}=await scopedSession();');
+    expect(route, 'a client-supplied company list never widens the population').toContain('readEmployeeChoices(s,{...input,companyIds:scopeIds},request.signal)');
   });
 
   /** Every caption crossing into that client component is pre-translated: a translator closure returns a

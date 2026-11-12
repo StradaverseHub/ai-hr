@@ -1,3 +1,5 @@
+import {verifyWorkflowOnlyAttendanceHeader} from './helpers/attendance-task-header-prototype';
+import {legacyPendingAttendanceTaskMetadata} from './helpers/attendance-task-original';
 import {assignedApprovalHref} from '../lib/assigned-approval-focus';
 import {listPendingTasks} from '../core/approvals-inbox';
 import {randomUUID} from 'node:crypto';
@@ -6,8 +8,8 @@ import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections,myOvertimePlans} from '../core/attendance';
-import {ownAttendanceSubmissionRoute,saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,attendanceWorkflowWarningPage,archiveAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows,decideAttendanceWorkflowStageTx} from '../core/attendance-workflow';
+import {checkIn,checkOut,requestAttendanceCorrection,pendingAttendanceTaskMetadata,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections,myOvertimePlans} from '../core/attendance';
+import {ownAttendanceSubmissionRoute,prepareAttendanceWorkflowSnapshotTx,saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,attendanceWorkflowWarningPage,archiveAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows,decideAttendanceWorkflowStageTx} from '../core/attendance-workflow';
 import {attendanceApplicationDetail,attendanceApplicationFilterOptions} from '../core/attendance-application-history';
 import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
 import {createNotificationEmailService} from '../deploy/identity-email/notifications';
@@ -37,6 +39,50 @@ const detail=async(f:Fixture)=>(await attendanceApplicationDetail(f.root,[base.c
 const decide=(f:Fixture,who:Fixture['first'],slot:string,decision:'approved'|'rejected'='approved')=>decideAttendanceCorrection(who.ctx,{correctionId:f.id,expectedStageIndex:0,expectedParticipantSlot:slot,decision,...(decision==='rejected'?{rejectReason:'Fictional rejection'}:{})});
 const day=async(f:Fixture)=>(await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId,f.worker.employmentId),eq(schema.attendance.attendanceDate,f.on))).orderBy(asc(schema.attendance.id)))[0];
 describe('v4 uses the immutable participant and final Attendance owners',()=>{
+ it('submits a frozen workflow while another submission holds the company configuration lock',async()=>{
+  const f=await fixture();
+  const prior=new Date(f.on+'T12:00:00Z');prior.setUTCDate(prior.getUTCDate()-1);
+  const key=base.tenantId+':attendance-workflow:'+base.companyId+':irregularity';
+  let submission:ReturnType<typeof requestAttendanceCorrection>|undefined;
+  try{
+   const completed=await owner.db.transaction(async tx=>{
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`);
+    submission=requestAttendanceCorrection(f.worker.ctx,{employmentId:f.worker.employmentId,date:prior.toISOString().slice(0,10),
+     checkIn:'09:00',checkOut:'18:00',reason:'Fictional overlapping workflow submission'});
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    try{
+     return await Promise.race([submission,new Promise<null>(resolve=>{timer=setTimeout(()=>resolve(null),3000);})]);
+    }finally{clearTimeout(timer);}
+   });
+   expect(completed).not.toBeNull();
+   expect((await detail({...f,id:completed!.correctionId})).workflow).toMatchObject({templateVersion:1});
+  }finally{await submission;}
+ });
+
+ it('makes a workflow configuration edit wait for the shared submission lock',async()=>{
+  const f=await fixture();
+  const key=base.tenantId+':attendance-workflow:'+base.companyId+':irregularity';
+  let update:ReturnType<typeof setAttendanceWorkflowEnabled>|undefined;
+  try{
+   await owner.db.transaction(async tx=>{
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`);
+    update=setAttendanceWorkflowEnabled(f.root,base.companyId,'irregularity',false);
+    const deadline=Date.now()+3000;
+    while(Date.now()<deadline){
+     const [result]=await tx.execute<{blocked:boolean}>(sql`select exists(
+      select 1 from pg_stat_activity activity where activity.datname=current_database()
+       and pg_backend_pid()=any(pg_blocking_pids(activity.pid))
+     ) as blocked`);
+     if(result.blocked)return;
+     await new Promise<void>(resolve=>setTimeout(resolve,20));
+    }
+    throw new Error('Workflow edit did not wait for the shared submission lock');
+   });
+  }finally{await update;}
+  expect((await owner.db.select({enabled:schema.attendanceWorkflowSetting.enabled})
+   .from(schema.attendanceWorkflowSetting).where(eq(schema.attendanceWorkflowSetting.companyId,base.companyId)))[0]?.enabled).toBe(false);
+ });
+
  it.each(['sequential','any_one','all_required'] as const)('previews only the first actionable approvers for %s',async mode=>{
   const f=await fixture(mode);
   const route=await ownAttendanceSubmissionRoute(f.worker.ctx,f.worker.employmentId,'irregularity');
@@ -45,6 +91,41 @@ describe('v4 uses the immutable participant and final Attendance owners',()=>{
    ? ['Fictional v4 superior']
    : ['Fictional v4 superior','Fictional v4 selected participant']);
  });
+ it('previews its own saved route while configuration is locked and rechecks its fingerprint on submit',async()=>{
+  const f=await fixture();
+  // The saved active template is authoritative even when the legacy setting is off.
+  await setAttendanceWorkflowEnabled(f.root,base.companyId,'irregularity',false);
+  const lifecycle=base.tenantId+':attendance-workflow-scope:irregularity';
+  const company=base.tenantId+':attendance-workflow:'+base.companyId+':irregularity';
+  let pending:ReturnType<typeof ownAttendanceSubmissionRoute>|undefined;
+  const preview=await (async()=>{
+   try{
+    return await owner.db.transaction(async tx=>{
+     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lifecycle},0))`);
+     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${company},0))`);
+     pending=ownAttendanceSubmissionRoute(f.worker.ctx,f.worker.employmentId,'irregularity');
+     let timer:ReturnType<typeof setTimeout>|undefined;
+     try{
+      return await Promise.race([pending,new Promise<null>(resolve=>{timer=setTimeout(()=>resolve(null),3000);})]);
+     }finally{clearTimeout(timer);}
+    });
+   }finally{await pending;}
+  })();
+  if(!preview?.available)throw Error('Expected an own route preview while the configuration locks are held');
+  const locked=await withTenant(f.worker.ctx,tx=>prepareAttendanceWorkflowSnapshotTx(tx,f.worker.ctx,f.worker.employmentId,'irregularity'));
+  expect(preview.fingerprint).toBe(locked.fingerprint);
+  expect(preview.stages).toEqual(locked.stages);
+  await expect(ownAttendanceSubmissionRoute({...f.second.ctx,personId:f.worker.personId},f.worker.employmentId,'irregularity'))
+   .rejects.toMatchObject({code:'scope'});
+  const prior=new Date(f.on+'T12:00:00Z');prior.setUTCDate(prior.getUTCDate()-1);
+  const input={employmentId:f.worker.employmentId,date:prior.toISOString().slice(0,10),
+   checkIn:'09:00',checkOut:'18:00',reason:'Fictional route verification'};
+  await expect(requestAttendanceCorrection(f.worker.ctx,{...input,workflowFingerprint:'0'.repeat(64)}))
+   .rejects.toMatchObject({reason:'routeChanged'});
+  const submitted=await requestAttendanceCorrection(f.worker.ctx,{...input,workflowFingerprint:preview.fingerprint});
+  expect((await detail({...f,id:submitted.correctionId})).workflow).toMatchObject({templateVersion:1});
+ });
+
  it('shows the saved current overtime level instead of substituting the live reporting-line superior',async()=>{
   const f=await fixture('all_required','self_overtime');
   const plan=async()=> (await myOvertimePlans(f.worker.ctx,f.worker.employmentId)).find(row=>row.id===f.id);
@@ -55,6 +136,8 @@ describe('v4 uses the immutable participant and final Attendance owners',()=>{
  it('exposes a real named v4 assignment through the canonical inbox without granting unrelated queues',async()=>{
   const f=await fixture('all_required');
   const modules={attendance:true,claims:true,performance:false,rewards:false};
+  expect(await pendingAttendanceTaskMetadata(f.second.ctx,[base.companyId])).toEqual(await legacyPendingAttendanceTaskMetadata(f.second.ctx,[base.companyId]));
+  await verifyWorkflowOnlyAttendanceHeader(f.second.ctx,f.id,f.worker.employmentId);
   expect(await listPendingTasks(f.second.ctx,[base.companyId],modules)).toEqual([
    expect.objectContaining({id:f.id,kind:'attendance',linkPath:assignedApprovalHref({kind:'attendance',id:f.id})})
   ]);
@@ -81,7 +164,7 @@ describe('v4 uses the immutable participant and final Attendance owners',()=>{
  it('sequential refuses the exact out-of-order click that all-required accepts',async()=>{const f=await fixture('sequential');await expect(decide(f,f.second,'0:1')).rejects.toThrow();expect((await detail(f)).workflow!.participantDecisions).toHaveLength(0);await decide(f,f.first,'0:0');expect((await detail(f)).workflow!.currentParticipantSlot).toBeNull();expect((await listAttendanceCorrections(f.second.ctx,{status:'pending'})).find(row=>row.id===f.id)?.canDecide).toBe(true);});
  it('serializes competing any-one clicks into one participant and one level completion',async()=>{const f=await fixture('any_one');const outcomes=await Promise.allSettled([decide(f,f.first,'0:0'),decide(f,f.second,'0:1')]);expect(outcomes.filter(r=>r.status==='fulfilled')).toHaveLength(1);const current=await detail(f);expect(current.workflow!.participantDecisions).toHaveLength(1);expect(current.workflow!.decisions).toHaveLength(1);expect(current.workflow!.currentStage).toBe(1);expect((await day(f)).checkInAt).toBe('08:00:00');});
  it('keeps the submitted sources and evidence after future configuration changes; rejection is terminal',async()=>{const f=await fixture(),before=await detail(f);await saveAttendanceWorkflow(f.root,{...f.input,stages:[f.input.stages[1]]},f.template.lineageId);await decide(f,f.second,'0:1','rejected');const current=await detail(f);expect(current.workflow!.stages).toEqual(before.workflow!.stages);expect(current.workflow!.templateVersion).toBe(1);expect(current.application.status).toBe('rejected');await expect(decide(f,f.first,'0:0')).rejects.toThrow();expect((await day(f)).checkInAt).toBe('08:00:00');});
- it('refuses self/duplicate identities and a caller-supplied administrator role that is absent from actual grants',async()=>{const f=await fixture();await expect(saveAttendanceWorkflow(f.root,{...f.input,stages:[{...f.input.stages[0],sources:[{kind:'specific_employee',employmentIds:[f.worker.employmentId]}]}]},f.template.lineageId)).rejects.toThrow();await expect(saveAttendanceWorkflow(f.root,{...f.input,stages:[{...f.input.stages[0],sources:[...f.input.stages[0].sources,{kind:'specific_employee',employmentIds:[f.first.employmentId]}]}]},f.template.lineageId)).rejects.toThrow();await expect(saveAttendanceWorkflow({...f.second.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]},{...f.input,code:'FORGED',active:false})).rejects.toThrow();});
+ it('refuses self/duplicate identities and a caller-supplied administrator role that is absent from actual grants',async()=>{const f=await fixture();await expect(saveAttendanceWorkflow(f.root,{...f.input,stages:[{...f.input.stages[0],sources:[{kind:'specific_employee',employmentIds:[f.worker.employmentId]}]}]},f.template.lineageId)).rejects.toThrow();const duplicate=await saveAttendanceWorkflow(f.root,{...f.input,stages:[{...f.input.stages[0],sources:[...f.input.stages[0].sources,{kind:'specific_employee',employmentIds:[f.first.employmentId]}]}]},f.template.lineageId);/* 4452ba3c: a per-employee duplicate is a Preview Assignment warning; submission still refuses it. */expect((await attendanceWorkflowWarningPage(f.root,duplicate.lineageId,[base.companyId])).rows.map(row=>row.problem?.code)).toEqual([expect.stringMatching(/^duplicate_/)]);await expect(saveAttendanceWorkflow({...f.second.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]},{...f.input,code:'FORGED',active:false})).rejects.toThrow();});
  it('explains no linked login and then exposes only the genuinely eligible named ID after linking',async()=>{const root=adminCtx(base);await hireEmployee(root,{person:{fullName:'Fictional unlinked worker',primaryEmail:`${randomUUID()}@example.invalid`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});const empty=await attendanceApplicationFilterOptions(root,[base.companyId]);expect(empty.approverEmployees).toEqual([]);expect(empty.approverAvailability).toBe('noLinkedLogin');const linked=await actor('Fictional linked approver');const populated=await attendanceApplicationFilterOptions(root,[base.companyId]);expect(populated.approverAvailability).toBe('available');expect(populated.approverEmployees).toEqual([expect.objectContaining({id:linked.employmentId,name:'Fictional linked approver'})]);});
 });
 describe('v4 final effects require fresh real-actor writes and the actual target day',()=>{
@@ -348,7 +431,7 @@ describe('approved shared workflows and actor-scoped approver search',()=>{
   const [visible]=await withTenant(root,tx=>tx.execute<{allowed:boolean}>(sql`select app.is_admin_for(e.company_id) and app.access_workforce_employment(e.id,'workforce.view') allowed from employment e where e.id=${reviewer.employmentId}::uuid`));
   expect(visible.allowed).toBe(true);
   const warned=await saveAttendanceWorkflow(root,{...input,expectedVersion:1},saved.lineageId);
-  expect(warned).toMatchObject({version:2,warningCount:1});
+  expect(warned).toMatchObject({version:2});
   expect(await attendanceWorkflowWarningPage(root,saved.lineageId,[base.companyId])).toMatchObject({total:1,rows:[{employmentId:worker.employmentId,name:'Fictional group applicant',levelIndex:0,problem:{code:'missing_or_ambiguous_login',levelIndex:0}}]});
   // Saving correctable setup does not grant approval authority or leave an orphan application.
   await setAttendanceWorkflowEnabled(root,base.companyId,'irregularity',true);

@@ -2048,7 +2048,211 @@
     "exceptions": {
       "fixedTitle": "Cause already fixed",
       "inGroups": "{count, plural, one {# exception is} other {# exceptions are}} listed in the groups above.",
-      "resolveThere": "Resolve on Exceptions"
+      "resolveThere": "Resolve on Exceptions",
+      "grouped": {
+        "headline": "{total, plural, one {# waiting} other {# waiting}}",
+        "headlineBlocking": "{blocking, plural, =0 {none from a blocking check} one {# from a blocking check} other {# from blocking checks}}",
+        "headlineGroups": "{groups, plural, one {grouped into # pattern} other {grouped into # patterns}}",
+        "bucket": {
+          "check": "look like real pay errors · check each one",
+          "missing": "missing details · one fix per person",
+          "setup": "look like your setup, not errors"
+        },
+        "bucketsPartial": "These three figures are worked out from the most common patterns only. The totals above are exact.",
+        "groupsCapped": "Only the largest patterns are shown here.",
+        "tag": {
+          "blocks": "Blocks payroll",
+          "review": "Needs review",
+          "setup": "Looks like setup",
+          "blocksClosed": "Blocking check · run already closed"
+        },
+        "size": {
+          "people": "{people, plural, one {# person} other {# people}}",
+          "exceptions": "{exceptions, plural, one {# exception} other {# exceptions}} in {runs, plural, one {# payroll run} other {# payroll runs}}",
+          "companies": "Companies: {names}",
+          "companiesMore": "Companies: {names} and {more, plural, one {# more} other {# more}}"
+        },
+        "action": {
+          "oneByOne": "Check one by one",
+          "review": "Review these",
+          "markExpected": "Review and mark as expected",
+          "fixRecords": "Fix the records",
+          "asked": "See who has been asked for details",
+          "seeAll": "See all {count}",
+          "openRun": "Open the payroll run",
+          "fixTab": {
+            "payroll": "Set how they’re paid",
+            "bankStatutory": "Add the missing details"
+          },
+          "back": "Back to all patterns"
+        },
+        "list": {
+          "waitingSince": "Flagged {date}",
+          "alsoFlagged": "Also flagged: {checks}",
+          "listedAbove": "Listed above, where it can be closed in one step.",
+          "notBulk": "Also flagged for something else, so decide this one on its own.",
+          "emptyGroup": "Nothing is left in this pattern. Everything in it has been decided.",
+          "fixNote": "Once a record is fixed, its exception moves to “Cause already fixed” above, where it can be closed.",
+          "pageOf": "Page {page} of {pages}",
+          "previous": "Previous",
+          "next": "Next",
+          "unnamed": "Unnamed person",
+          "runClosed": "This payroll run is already closed, so nothing is held up. Deciding it keeps the record straight.",
+          "runClosedShort": "Run already closed",
+          "ackCapped": "Showing {shown} of {total}. Resolve some and the rest appear."
+        },
+        "bulk": {
+          "title": "Mark these as expected",
+          "help": "{count, plural, one {# exception on this page is} other {# exceptions on this page are}} closed as expected, and the decision is recorded for each person. Pay is not changed, and the check still runs on the next payroll.",
+          "noteLabel": "Why is this expected?",
+          "notePlaceholder": "For example: these companies don’t use clock-in",
+          "submit": "{count, plural, one {Mark this one as expected} other {Mark these # as expected}}",
+          "none": "Nothing on this page can be marked in one go. Decide each one below.",
+          "done": "{count, plural, =0 {Nothing was marked as expected.} one {# exception was marked as expected.} other {# exceptions were marked as expected.}}",
+          "skipped": "{count, plural, one {# was left open because it had changed or isn’t yours to decide.} other {# were left open because they had changed or aren’t yours to decide.}}",
+          "error": {
+            "not_administrator": "Only an HR administrator can do this.",
+            "invalid": "Add a short reason, then try again.",
+            "blocking": "Exceptions that block a run are never cleared in one go. Check each one.",
+            "too_many": "That is more than can be marked in one go. Try again from the list.",
+            "nothing": "Nothing was selected.",
+            "failed": "That didn’t work, and nothing was changed. Please try again.",
+            "retry": "Something interrupted this, and nothing was changed. Please try again."
+          },
+          "alreadyDecided": "{count, plural, one {# had already been decided by someone else, so that decision stands.} other {# had already been decided by someone else, so those decisions stand.}}",
+          "superseded": "{count, plural, one {# was checked again since this page opened, so it is left open. The new result is listed instead.} other {# were checked again since this page opened, so they are left open. The new results are listed instead.}}",
+          "notYours": "{count, plural, one {# is for a payroll you don’t manage, so it was left open.} other {# are for payrolls you don’t manage, so they were left open.}}"
+        },
+        "footer": "Grouping only changes how exceptions are shown. Blocking errors are never cleared in bulk, every decision is still recorded per person, and no pay figure is changed here.",
+        "check": {
+          "negativeNet": {
+            "title": "Take-home pay is below zero",
+            "why": "These people would receive nothing, or owe money, because more was deducted than they earned. This is almost certainly a mistake, so each one is checked on its own.",
+            "todo": "Open the payroll run, correct the deductions, then run payroll again."
+          },
+          "statutoryOverCap": {
+            "title": "A statutory contribution is above its legal maximum",
+            "why": "An amount for EPF, SOCSO, EIS or similar is more than the law allows. If it is filed, it has to be put right with the agency afterwards.",
+            "todo": "Don’t file it. Check the contribution rates used for this run, correct them, then run payroll again."
+          },
+          "missingBankProfile": {
+            "title": "No bank account to pay into",
+            "why": "Their record has no bank account, so their pay can’t go into the bank file.",
+            "todo": "Add the bank account on each person’s record. Fixing it once clears it for every payroll run they appear in.",
+            "paymentMethodNotSet": {
+              "title": "We don’t know how to pay these people",
+              "why": "Their record doesn’t say whether they’re paid by bank transfer, cash or cheque, so they can’t go into the bank file. People paid in cash are never flagged for this.",
+              "todo": "Set how each person is paid on their record. Setting it once clears it for every payroll run they appear in."
+            },
+            "bankDetailsMissing": {
+              "title": "Paid by bank transfer, but no bank account",
+              "why": "These people are paid by bank transfer, but their record has no bank account, so their pay can’t go into the bank file.",
+              "todo": "Add the bank account on each person’s record, or ask them to send it to HR. Fixing it once clears it for every payroll run they appear in."
+            }
+          },
+          "duplicateEmploymentPay": {
+            "title": "The same person is paid twice in one month",
+            "why": "This person is paid under more than one job in the same month. That can be right for shared staff, but if it isn’t, a second salary goes out.",
+            "todo": "Check each one. If both jobs are real, mark it as correct. If not, remove the extra pay and run payroll again."
+          },
+          "zeroNetWithPay": {
+            "title": "Nothing is left to pay",
+            "why": "Deductions use up the whole salary. That can happen with a month of unpaid leave, but more often a deduction was entered wrongly.",
+            "todo": "Check the deductions. If they are right, mark it as correct as it stands."
+          },
+          "missingTaxProfile": {
+            "title": "No income tax details on their record",
+            "why": "Without income tax details, the tax worked out for these people may be wrong, and it can’t be filed under their name.",
+            "todo": "Add the income tax details on each person’s record, or ask them to send them to HR. HR approves each update as usual."
+          },
+          "payWithoutAttendance": {
+            "title": "Paid, but no working days were recorded",
+            "why": "These people were paid, but there is no attendance and no approved leave for the month. In companies that don’t use clock-in, this is normal.",
+            "todo": "If these companies don’t record attendance, mark this as expected. If they should, check the attendance records."
+          },
+          "prorationMismatch": {
+            "title": "Days paid don’t match the month",
+            "why": "The number of days paid doesn’t fit the dates this person joined or left, so their pay may be too high or too low.",
+            "todo": "Check the joining or leaving date and the days paid. Correct them and run payroll again if needed."
+          },
+          "netSwing": {
+            "title": "Pay changed more than usual, and nothing in payroll explains it",
+            "why": "Take-home pay moved a lot from last month, and no bonus, salary change, overtime, unpaid leave or other payroll record accounts for it. An amount typed in by hand always counts as unexplained.",
+            "todo": "Look at what changed. If it is right, mark it as correct as it stands."
+          },
+          "componentAppeared": {
+            "title": "A pay item appears for the first time",
+            "titleNamed": "{component} appears for the first time",
+            "why": "This pay item wasn’t on last month’s payslip. That is often a planned change, such as a new allowance or a levy the company has started paying.",
+            "todo": "If the change was planned, mark it as expected. It only needs confirming once."
+          },
+          "componentVanished": {
+            "title": "A pay item has disappeared",
+            "titleNamed": "{component} has disappeared",
+            "why": "This pay item was on last month’s payslip but not on this one. That can be planned, such as an allowance that ended, or it can be left out by mistake.",
+            "todo": "If the change was planned, mark it as expected. If not, add the item back and run payroll again."
+          },
+          "hypothesis": {
+            "title": "Something unusual worth a look",
+            "why": "AI Centre noticed something in these payslips that doesn’t fit the usual pattern. It is a suggestion only, and it never blocks a run.",
+            "todo": "Open the payroll run and decide whether it is a real problem."
+          },
+          "unknown": {
+            "title": "A payroll check needs your decision",
+            "why": "One of the payroll checks flagged these payslips.",
+            "todo": "Open the payroll run to see the details and decide each one."
+          }
+        },
+        "detail": {
+          "generic": "Open the payroll run to see the figures.",
+          "negativeNet": "Earned {grossPay}, but {totalDeductions} was deducted, so take-home pay is {netPay}.",
+          "zeroNetWithPay": "Earned {grossPay}, and {totalDeductions} was deducted, which leaves nothing to pay.",
+          "statutoryOverCap": "{component} is {actual}, which is {excess} above the maximum of {cap}.",
+          "missingBankProfile": {
+            "generic": "Take-home pay of {netPay} has no bank account to go to.",
+            "paymentMethodNotSet": "Their record doesn’t say how they’re paid. Take-home pay: {netPay}.",
+            "bankDetailsMissing": "Paid by bank transfer, with no bank account on their record. Take-home pay: {netPay}."
+          },
+          "missingTaxProfile": {
+            "withTax": "No income tax details on their record. Income tax deducted this month: {pcb}.",
+            "noTax": "No income tax details on their record, and no income tax was deducted."
+          },
+          "payWithoutAttendance": "Paid {netPay}, with no attendance and no approved leave this month.",
+          "prorationMismatch": "Paid for {daysWorked} of the {periodDays} days in the month.",
+          "duplicateEmploymentPay": "Also paid under {others, plural, one {another job} other {# other jobs}} this month. Take-home pay here: {netPay}.",
+          "netSwing": "Take-home pay went {direction, select, down {down} other {up}} {pct}%, from {priorNetPay} to {netPay}.",
+          "componentAppeared": "{component} of {amount} this month, and none last month.",
+          "componentVanished": "{component} of {priorAmount} last month, and none this month.",
+          "hypothesis": "Open the payroll run to read what was noticed.",
+          "netSwingExplained": "Partly explained by {causes}; about {pct}% of the change is not explained."
+        },
+        "component": {
+          "allowance": "Allowance",
+          "overtimePay": "Overtime pay",
+          "bonus": "Bonus",
+          "epfEmployee": "EPF (employee share)",
+          "epfEmployer": "EPF (employer share)",
+          "socsoEmployee": "SOCSO (employee share)",
+          "socsoEmployer": "SOCSO (employer share)",
+          "eisEmployee": "EIS (employee share)",
+          "eisEmployer": "EIS (employer share)",
+          "pcb": "Income tax (PCB)",
+          "hrdf": "HRD levy",
+          "zakat": "Zakat",
+          "other": "Another pay item",
+          "skbbk": "SKBBK (Lindung 24 Jam)"
+        },
+        "cause": {
+          "additional_run": "a bonus or additional run",
+          "salary_change": "a salary change",
+          "days_paid": "a change in days paid",
+          "overtime_hours": "overtime",
+          "unpaid_leave": "unpaid leave",
+          "absence": "absence",
+          "statutory_rules": "a change in statutory rates",
+          "other": "another payroll record"
+        }
+      }
     },
     "readiness": {
       "notChecked": "Not yet checked by the HR engine",
@@ -2313,6 +2517,241 @@
       "leftAloneTitle": "{loop} left {count, plural, one {# item} other {# items}} for people in {company}",
       "leftAloneNote": "A condition did not hold, so the person confirms it themselves.",
       "reviewCorrection": "Review correction"
+    },
+    "employee": {
+      "nextStep": "Next step",
+      "nextStepOf": "Next step · {n} of {total}",
+      "sendToHr": "Send to HR",
+      "sendRequest": "Send request",
+      "open": "Open",
+      "deciderHr": "You send it, HR checks and approves it, and then it is saved to your record. Nothing changes until HR approves.",
+      "deciderManager": "You send the request and your manager approves it. Nothing changes until then.",
+      "decidedByHr": "HR approves",
+      "decidedByManager": "Your manager approves",
+      "dueOn": "Due {date}",
+      "noDue": "No due date",
+      "payrollCloses": "Payroll closes on {date}.",
+      "seeAll": "See everything before payroll",
+      "nothingToDo": "Nothing needs you right now.",
+      "then": "Then",
+      "stepsUnavailable": "Some of your items could not be checked just now. Their own pages still work.",
+      "dueIn": "{days, plural, =0 {Due today} one {Due tomorrow} other {Due in # days}}",
+      "overdue": "Overdue",
+      "overdueShort": "late",
+      "daysUnit": "{days, plural, one {day} other {days}}",
+      "allClearTitle": "You're all set",
+      "allClearBody": "Nothing needs you right now.",
+      "allClearRecord": "Your record is complete for the {date} payroll.",
+      "allClearPayday": "Next: payday on {date}",
+      "allClearCutOff": "Next: payroll closes on {date}",
+      "paydayTitle": "Payday",
+      "cutOffTitle": "Payroll cut-off",
+      "daysToGo": "{days, plural, =0 {today} one {day to go} other {days to go}}",
+      "cutOffNote": "Your payday is set when payroll runs. Send claims and changes before this date.",
+      "noPayday": "No payday or cut-off date yet.",
+      "unavailable": "This could not be loaded just now. Its own page still works.",
+      "lastPayslip": "Last payslip {month}",
+      "noPayslip": "No payslip released yet.",
+      "leaveTitle": "Time off left",
+      "applyLeave": "Apply for leave",
+      "seeLeave": "See leave",
+      "noLeave": "No leave to show yet.",
+      "ringHidden": "{name}: not shown",
+      "ringLeft": "{name}: {days} days you can apply for",
+      "yourMonth": "Your month",
+      "legend": "What the marks mean",
+      "calendarPartial": "Some dates could not be loaded just now.",
+      "hoursTitle": "This week",
+      "hoursMinutes": "{hours}h {minutes}m",
+      "running": "Clocked in",
+      "hoursChart": "Hours this week: {items}",
+      "shiftLine": "Dashed line: your shift, {time}",
+      "todayRunning": "Today is still running.",
+      "openRecords": "Open my records",
+      "requestsTitle": "Your requests · where they are",
+      "noRequests": "You have no requests in progress.",
+      "requestsPartial": "Some requests could not be loaded just now.",
+      "comingUpTitle": "Coming up",
+      "nothingComingUp": "Nothing coming up in the next two weeks.",
+      "comingUpPartial": "Some dates could not be loaded just now.",
+      "needsYouCount": "{count, plural, =0 {Nothing needs you right now} one {# thing needs you} other {# things need you}}",
+      "steps": {
+        "bank_missing": "Send your bank account details to HR",
+        "tax_number_missing": "Send your income tax number to HR",
+        "epf_number_missing": "Send your EPF number to HR",
+        "socso_number_missing": "Send your SOCSO number to HR",
+        "identity_missing": "Send your IC or passport number to HR",
+        "tp1_draft": "Send your tax relief declaration (TP1)",
+        "passport_renew": "Send HR your new passport details before {date}",
+        "missed_clock_out": "Request your missing clock-out for {date}",
+        "missed_clock_in": "Request your missing clock-in for {date}",
+        "absent_no_leave": "Send a request for your absence on {date}"
+      },
+      "marks": {
+        "payday": "Payday",
+        "cutoff": "Payroll closes",
+        "due": "Due",
+        "fix": "Needs fixing",
+        "leave": "Your leave",
+        "holiday": "Holiday"
+      },
+      "request": {
+        "claim": "{label} claim",
+        "dates": "{from} – {to}",
+        "sentOn": "Sent {date}",
+        "sent": "Sent",
+        "withHr": "With HR",
+        "withApprover": "With your approver",
+        "declined": "Not approved",
+        "ready": "Ready",
+        "paidWithSalary": "Paid with your salary",
+        "approved": "Approved",
+        "progress": "Progress of {item}",
+        "waiting": "{days, plural, =0 {Sent today} one {Waiting 1 day} other {Waiting # days}}",
+        "preparing": "HR is preparing it",
+        "openLetter": "Open letter",
+        "state": {
+          "done": "done",
+          "current": "in progress",
+          "todo": "not yet",
+          "declined": "not approved"
+        }
+      },
+      "upcoming": {
+        "cutoff": "Payroll closes · send claims before this",
+        "payday": "Payday",
+        "leave": "Your leave",
+        "managerAway": "{name} away",
+        "managerAwayUnnamed": "Your manager away",
+        "holiday": "{name} · public holiday",
+        "holidayUnnamed": "Public holiday"
+      },
+      "pageUnavailable": "We couldn't load your page just now. Please try again in a moment.",
+      "waitingTitle": "Waiting for your decision",
+      "waitingCount": "{count, plural, one {# item is waiting for you} other {# items are waiting for you}}",
+      "waitingSeeAll": "See all {count}",
+      "requestsSeeAll": "See all:",
+      "requestsLeave": "Leave",
+      "requestsClaims": "Claims",
+      "requestsLetters": "Letters"
+    },
+    "admin": {
+      "unavailable": "This could not be loaded just now. Its own page still works.",
+      "sideLabel": "Watching, your own record and questions to ask",
+      "scopeAll": "All companies",
+      "scopeSome": "{count, plural, one {# company} other {# companies}}",
+      "headline": "{count, plural, =0 {Nothing needs you right now} one {# thing needs you} other {# things need you}}",
+      "headlineOverdue": "{count} overdue",
+      "headlineCutOff": "{days, plural, =0 {payroll closes today} one {payroll closes tomorrow} other {payroll closes in # days}}",
+      "needsTitle": "Needs you",
+      "needsOrder": "most urgent first",
+      "seeAll": "See all {count}",
+      "showFewer": "Show the most urgent",
+      "needsEmpty": "Nothing needs you right now.",
+      "needsPartial": "Some items could not be checked just now, so this list may be incomplete. Their own pages still work.",
+      "tag": {
+        "overdue": "{days, plural, one {Overdue # day} other {Overdue # days}}",
+        "blocksPayroll": "Blocks payroll",
+        "dueIn": "{days, plural, =0 {Due today} one {Due tomorrow} other {Due in # days}}",
+        "waiting": "{days, plural, one {Waiting # day} other {Waiting # days}}"
+      },
+      "entry": {
+        "statutory": "{count, plural, one {File # CP22 or CP22A notification} other {File # CP22 or CP22A notifications}}",
+        "statutoryDetail": "{overdue} overdue, {soon} due within 7 days.",
+        "firstDue": "Earliest due date: {date}.",
+        "exceptions": "{count, plural, one {# payroll exception blocks a run} other {# payroll exceptions block a run}}",
+        "exceptionsDetail": "The run cannot close until they are resolved.",
+        "task": "{label}: {count} waiting",
+        "oldest": "Oldest sent {date}",
+        "beforeCutOff": "Decide before the {date} cut-off",
+        "prepared": {
+          "leaveApply": "{count, plural, one {# leave application is ready for you to confirm} other {# leave applications are ready for you to confirm}}",
+          "leaveCancel": "{count, plural, one {# leave cancellation is ready for you to confirm} other {# leave cancellations are ready for you to confirm}}",
+          "leaveDecision": "{count, plural, one {# leave decision is ready for you to confirm} other {# leave decisions are ready for you to confirm}}"
+        },
+        "preparedDetail": "AI Centre prepared it. Nothing happens until you confirm.",
+        "probation": "{count, plural, one {# probation period is ending} other {# probation periods are ending}}",
+        "probationDetail": "The first ends on {date}. A person decides the outcome.",
+        "payrollInputs": "{count, plural, one {# company still has payroll inputs open} other {# companies still have payroll inputs open}}",
+        "payrollInputsBlockers": "{count, plural, =0 {Nothing blocks payroll yet.} one {# check blocks payroll.} other {# checks block payroll.}}",
+        "cutOff": "Cut-off {date}.",
+        "passports": "{count, plural, one {# passport expires within 30 days} other {# passports expire within 30 days}}",
+        "passportsDetail": "The first expires on {date}.",
+        "autonomy": {
+          "movedDown": "{loop} went back to preparing only",
+          "acted": "{loop} acted on its own: check what it did",
+          "sample": "{loop} has a weekly sample for you to check",
+          "leftAlone": "{loop} left some cases for a person"
+        },
+        "aLoop": "An AI Centre loop",
+        "companies": "{count, plural, one {# company} other {# companies}}"
+      },
+      "cta": {
+        "statutory": "Open statutory forms",
+        "exceptions": "Open exceptions",
+        "review": "Review",
+        "open": "Open",
+        "check": "Check"
+      },
+      "readinessTitle": "Payroll readiness",
+      "readinessNext": "{period} payroll · next cut-off {date}",
+      "readinessOpen": "Open payroll",
+      "readinessBar": "{ready} of {companies} companies ready",
+      "readiness": {
+        "ready": "{count, plural, one {company ready} other {companies ready}}",
+        "waiting": "{count, plural, one {company waiting on inputs} other {companies waiting on inputs}}",
+        "notStarted": "{count, plural, one {company not checked yet} other {companies not checked yet}}"
+      },
+      "readinessOff": "{count, plural, one {# company uses payroll.} other {# companies use payroll.}} The pre-salary check in AI Centre is switched off, so readiness has not been checked.",
+      "readinessNone": "Payroll is not in use for the companies in view.",
+      "handledTitle": "AI Centre handled this week",
+      "handled": {
+        "answered": "{count, plural, one {question answered} other {questions answered}}",
+        "leaveChecks": "{count, plural, one {leave recommendation prepared} other {leave recommendations prepared}}",
+        "prepared": "{count, plural, one {item prepared for you} other {items prepared for you}}",
+        "loopFound": "{loop}: {count, plural, one {case found} other {cases found}}",
+        "loopResolved": "{count, plural, =0 {None resolved yet} other {# resolved}}"
+      },
+      "handledEmpty": "Nothing yet in the last 7 days.",
+      "handledNote": "Counted from AI Centre's own records for the last 7 days.",
+      "handledPartial": "Some figures could not be loaded just now.",
+      "watchingTitle": "Watching",
+      "watchingEmpty": "Nothing to watch right now.",
+      "watchingExceptions": "{count, plural, one {# payroll exception needs a look but does not block a run.} other {# payroll exceptions need a look but do not block a run.}}",
+      "ownTitle": "Your own record",
+      "forYouTitle": "For you",
+      "ownClear": "Nothing needs you for your own record.",
+      "ownSteps": "{count, plural, one {# thing to send or do} other {# things to send or do}}",
+      "ownPayday": "Next payday {date}",
+      "ownCutOff": "Payroll closes {date}",
+      "askTitle": "Try asking",
+      "ask": {
+        "payrollBlocking": "What is blocking this month's payroll?",
+        "claimsBeforeCutOff": "Who has not sent their claims before the cut-off?",
+        "approvalsWaiting": "Which approvals have waited more than 3 days?"
+      }
+    },
+    "manager": {
+      "sideLabel": "Your team",
+      "headline": "{count, plural, =0 {No decisions waiting for your team} one {# decision for your team} other {# decisions for your team}}",
+      "decideTitle": "Decide",
+      "decideOrder": "oldest first",
+      "seeAll": "See all {count}",
+      "decideEmpty": "No decisions are waiting for you.",
+      "decidePartial": "Some decisions could not be loaded just now. The approvals page still works.",
+      "sent": "Sent {date}",
+      "open": "Open",
+      "checking": "Checking against your company's rules…",
+      "recommendationNote": "Recommendations come from your company's rules and records, not from guesses. You still make every decision, and each one is recorded under your name.",
+      "comingUpTitle": "Coming up for your team",
+      "probation": "Probation ends for {name} on {date}",
+      "probationUnnamed": "A probation period ends on {date}",
+      "cutOff": "Payroll inputs close on {date}. Decide overtime and claims before then.",
+      "preparedNote": "{count, plural, one {# change is ready for you to confirm} other {# changes are ready for you to confirm}}",
+      "comingUpEmpty": "Nothing coming up for your team.",
+      "comingUpPartial": "Some items could not be loaded just now.",
+      "otherWork": "{count, plural, one {# other item is waiting for you} other {# other items are waiting for you}}",
+      "seeAllWork": "See all {count} in Tasks"
     }
   },
   "why": {
@@ -2562,7 +3001,8 @@
       "inProgress": "This import is already being confirmed.",
       "invalid": "This card could not be checked. Attach the file again.",
       "unavailable": "The import could not be completed, and nothing was imported. Try again, or use the import page."
-    }
+    },
+    "started": "Import started. It runs in the background; its page shows the progress and what was imported."
   },
   "payrollAudit": {
     "name": "Audit loop",

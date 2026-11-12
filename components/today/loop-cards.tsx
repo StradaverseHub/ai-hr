@@ -1,3 +1,4 @@
+import {dateTimeFormatter} from '@/lib/date-time-formatter';
 import {getTranslations} from 'next-intl/server';
 import {CalendarCheck,ClipboardCheck,ClipboardList,Clock,UserCheck} from 'lucide-react';
 import {ArrowDown,CheckCircle2,ListChecks} from 'lucide-react';
@@ -13,7 +14,7 @@ import {ClockOutLoopCard,type ClockOutCardCopy} from './clock-out-loop-card';
  * for HR is a "finding", as the other findings on Today are. Values come from components/today/reads.ts. */
 
 /** An HR calendar date (yyyy-mm-dd) is a day, not an instant: format it as UTC so no offset moves it. */
-const day=(locale:string,iso:string,style:'short'|'medium'='medium')=>new Intl.DateTimeFormat(locale,
+const day=(locale:string,iso:string,style:'short'|'medium'='medium')=>dateTimeFormatter(locale,
  style==='short'?{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'}:{dateStyle:'medium',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
 /** payroll.guide.check<Key>Title, the readiness report's own check names, already in every catalogue. */
 const checkTitle=(key:string)=>`check${key.charAt(0).toUpperCase()}${key.slice(1)}Title`;
@@ -30,7 +31,7 @@ export async function LoopCards({cards,locale}:{cards:readonly LoopCard[];locale
   refused:{not_confirmed:ti('refused.invalid'),invalid:ti('refused.invalid'),retired:ti('refused.retired'),changed:t('clockOutChanged'),
    unavailable:ti('refused.unavailable'),expired:ti('refused.expired'),access:ti('refused.access')}};
  const source=(loop:'loop_probation_ending'|'loop_payroll_inputs'|'loop_missing_employee_data'|'loop_missed_clock_outs'|'loop_document_expiry')=>t('source',{loop:t(`names.${loop}`)});
- // AI v2 Phase 2 P2-1: a clock-out the loop set for the person (with Undo), and a loop that moved itself down (for HR).
+ // Previously automated clock-outs now link to human review. Other loop outcomes retain their own copy.
  const [ta,tr]=await Promise.all([getTranslations('today.autonomy'),getTranslations('aiCentre.autonomy.actions.reasons')]);
  const item=(entry:{personName:string|null;date:string|null;reason:string|null})=>[entry.personName??ta('someone'),...(entry.date?[day(locale,entry.date,'short')]:[]),
   ...(entry.reason?[tr(entry.reason)]:[])].join(' · ');

@@ -1,0 +1,157 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
+import {getSession} from '@/lib/session';
+import {getLocale,getTranslations} from 'next-intl/server';
+import {isLocale} from '@/i18n/config';
+import {OwnHomeConfigurationRead} from '@/core/employee-home-configuration';
+import {readEmployeeHomeGreeting} from '@/core/employee-home-greeting';
+import {readEmployeeHomeSummary} from '@/core/employee-home-summary';
+import {OwnHomeTaskSourceRead,readEmployeeHomeTasks} from '@/core/employee-home-tasks';
+import {HOME_SUMMARY_LOOKAHEAD_DAYS,validateEmployeeHomeSummary} from '@/lib/employee-home-summary';
+import {
+ DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,isHomeSharingCard,HOME_SHARING_STREAM,type HomeSharingCard,type HomeSharingFrame,
+} from '@/lib/employee-home-sharing-cohort';
+import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
+import {greetingProjection,tasksProjection,todayProjection,calendarProjection} from '../personal-projections';
+import {withDatabaseReadDeadline} from '@/db/workload';
+import {declareSharedReadPreamble,declareSharedReadWindow,withSharedReadSnapshot} from '@/db/client';
+import {runCappedHomeCardRead,startHomeCardReadCap} from '../read-cap';
+import {homeRequestPreamble} from '@/core/home-request-preamble';
+import {todayInKualaLumpur} from '@/lib/hr-date';
+import {readEmployeeHomeToday} from '@/core/employee-home-today';
+import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
+import {homeCalendarMonth} from '@/lib/employee-home-calendar';
+import {OwnClockEmploymentUnavailableError} from '@/packs/attendance/service';
+import {OwnHomePayrollRead,OwnPayrollSubjectUnavailableError} from '@/packs/payroll/service';
+import {HomeAccessError} from '@/core/employee-home';
+import {markHomeRead} from '@/lib/home-read-timing';
+
+const addDays=(date:string,days:number)=>new Date(Date.parse(date+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
+/** The widest own date window this response's cards read: Today (yesterday's open overnight day and today), the
+ * Summary's lookahead, and any Calendar grid of the requested month (a grid starts up to six days before the month
+ * and ends up to six days after it). A card whose window falls outside it simply reads its own window. */
+function homeReadWindow(cards:readonly HomeSharingCard[],month:string|undefined){
+ const today=todayInKualaLumpur(),ranges:{from:string;to:string}[]=[];
+ if(cards.includes('today'))ranges.push({from:addDays(today,-1),to:today});
+ if(cards.includes('summary'))ranges.push({from:today,to:addDays(today,HOME_SUMMARY_LOOKAHEAD_DAYS)});
+ if(cards.includes('calendar')){
+  const {from,to}=homeCalendarMonth(month??today.slice(0,7));
+  ranges.push({from:addDays(from,-6),to:addDays(to,6)});
+ }
+ if(!ranges.length)return null;
+ const from=ranges.map(range=>range.from).sort()[0],to=ranges.map(range=>range.to).sort().at(-1)!;
+ // A distant calendar month keeps its own grid as the window instead of every month in between.
+ if((Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z'))/86400000>70)return cards.includes('calendar')?ranges.at(-1)!:null;
+ return {from,to};
+}
+
+/** One fresh web session and independent live reads for the requested Home cards. */
+export const GET = capacityAwareRoute(async function GET(request:Request){
+ markHomeRead('handler');
+ try{
+  const session=await getSession();
+  markHomeRead('session');
+  const query=new URL(request.url).searchParams;
+  const employmentId=query.get('employmentId');
+  const selected=query.getAll('card');
+  if(!employmentId||query.getAll('employmentId').length!==1||[...query.keys()].some(key=>!['employmentId','card','month'].includes(key))
+    ||query.getAll('month').length>1||query.has('month')&&!selected.includes('calendar')
+    || (selected.length>0&&(selected.length<2||new Set(selected).size!==selected.length||!selected.every(isHomeSharingCard)))){
+   return Response.json({error:'invalid'},{status:400,headers:sharingHeaders});
+  }
+  const cards:readonly HomeSharingCard[]=selected.length?selected.filter(isHomeSharingCard):DEFAULT_HOME_SHARING_CARDS;
+  const month=query.get('month')??undefined;
+  if(month!==undefined){try{homeCalendarMonth(month);}catch{return Response.json({error:'invalid'},{status:400,headers:sharingHeaders});}}
+  const readLifetime=new AbortController();
+  const signal=readLifetime.signal;
+  const configurationRead=new OwnHomeConfigurationRead(session,employmentId,signal);
+  const taskSourceRead=cards.includes('summary')&&cards.includes('tasks')?new OwnHomeTaskSourceRead(session,employmentId):undefined;
+  // Summary, Today and Calendar share one own payroll read when at least two of them are requested.
+  const payrollRead=(['summary','today','calendar'] as const).filter(card=>cards.includes(card)).length>1?new OwnHomePayrollRead(session,employmentId,signal):undefined;
+  const readLocale=async()=>{
+   const value=await getLocale();
+   if(!isLocale(value))throw Error('Home locale unavailable');
+   return value;
+  };
+  let language:ReturnType<typeof readLocale>|undefined;
+  const locale=()=>language??=readLocale();
+  const readers:Record<HomeSharingCard,()=>Promise<unknown>>={
+   team:()=>teamResponse(session,employmentId,{},signal),
+   celebrations:()=>celebrationsResponse(session,employmentId,{},signal),
+   notices:()=>noticesResponse(session,employmentId,signal),
+   timeOff:()=>timeOffResponse(session,employmentId,signal),
+   greeting:async()=>greetingProjection(await readEmployeeHomeGreeting(session,employmentId,await locale(),undefined,configurationRead)),
+   summary:async()=>{
+    const [language,t]=await Promise.all([locale(),getTranslations('employeeHome.calendar')]);
+    const value=await readEmployeeHomeSummary(session,employmentId,language,t('replacement'),configurationRead,taskSourceRead,payrollRead);
+    return validateEmployeeHomeSummary(value,employmentId);
+   },
+   tasks:async()=>tasksProjection(await readEmployeeHomeTasks(session,employmentId,1,configurationRead,taskSourceRead)),
+   today:async()=>{
+    try{return todayProjection(await readEmployeeHomeToday(session,employmentId,signal,payrollRead));}
+    catch(error){
+     if(error instanceof OwnClockEmploymentUnavailableError||error instanceof OwnPayrollSubjectUnavailableError)throw new HomeAccessError('employmentUnavailable');
+     throw error;
+    }
+   },
+   calendar:async()=>calendarProjection(await readEmployeeHomeCalendar(session,employmentId,month,undefined,signal,payrollRead)),
+  };
+  const encoder=new TextEncoder();
+  let detach=()=>{};
+  const body=new ReadableStream<Uint8Array>({
+   start(controller){
+    let open=true;
+    const stop=()=>{
+     if(!open)return;
+     open=false;
+     request.signal.removeEventListener('abort',disconnect);
+     controller.close();
+    };
+    const disconnect=()=>{readLifetime.abort();stop();};
+    detach=()=>{readLifetime.abort();open=false;request.signal.removeEventListener('abort',disconnect);};
+    if(request.signal.aborted){disconnect();return;}
+    request.signal.addEventListener('abort',disconnect,{once:true});
+    // Every card read starts below, together, so one cap bounds each of them. It stays armed after a
+    // disconnect: until it fires an executing statement keeps its normal completion boundary.
+    const cap=startHomeCardReadCap();
+    cap.signal.addEventListener('abort',()=>readLifetime.abort(cap.signal.reason),{once:true});
+    // One read-only snapshot for this response's own identity: each card keeps its own owner, result and failure.
+    const read=async(card:HomeSharingCard)=>{
+     markHomeRead('read-start',card);
+     let encoded:Uint8Array;
+     try{
+      const value=await runCappedHomeCardRead(signal,cap.signal,readers[card]);
+      const frame:HomeSharingFrame={version:1,card,status:200,value};
+      encoded=encoder.encode(JSON.stringify(frame)+'\n');
+      if(encoded.byteLength>HOME_SHARING_MAX_FRAME_BYTES)throw new Error('Home sharing frame too large');
+      markHomeRead('read-finish',card);
+     }catch(error){
+      markHomeRead('read-failure',card);
+      const {status}=sharingError(error);
+      const frame:HomeSharingFrame={version:1,card,status};
+      encoded=encoder.encode(JSON.stringify(frame)+'\n');
+     }
+     if(open)controller.enqueue(encoded);
+    };
+    // Disconnect stops eligible readers at their next admission check and drops pending values.
+    // The snapshot is installed under the same cap, so at the cap its shared carrier's running statement is
+    // cancelled and its connection released, exactly as each card's own transaction would be (db/client.ts).
+    // The cards' own date-local reads for this employment (holidays, replacement days, leave presence, dated
+    // company proof) are read once for the widest window they need and sliced per card (db/shared-read.ts).
+    const finish=()=>{cap.stop();stop();};
+    void withDatabaseReadDeadline(cap.signal,()=>withSharedReadSnapshot(session,()=>{
+     // An optimization only: a window that cannot be computed leaves every card reading its own.
+     try{const window=homeReadWindow(cards,month);if(window)declareSharedReadWindow(employmentId,window.from,window.to);}catch{/* own windows */}
+     // Every card's proofs, own identity and configuration reads for this login and employment, answered by the
+     // carrier's identity statement (decision 12); a card asking anything else reads it as before.
+     declareSharedReadPreamble(homeRequestPreamble(employmentId));
+     return Promise.allSettled(cards.map(read));
+    },signal)).then(finish,finish);
+   },
+   cancel(){detach();},
+  });
+  return new Response(body,{headers:{...sharingHeaders,'Content-Type':HOME_SHARING_STREAM,'X-Accel-Buffering':'no'}});
+ }catch(error){
+  const {code,status}=sharingError(error);
+  return Response.json({error:code},{status,headers:sharingHeaders});
+ }
+});

@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
+import { PEOPLE_SETTINGS_SECTIONS } from '../lib/navigation/people-settings';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -65,15 +66,19 @@ describe('7b5f18c3 · Hiring Defaults lives in System Settings', () => {
       expect(SCREENS.filter((s) => s.routes.includes(r)), r).toHaveLength(1);
     }
 
-    // …and the navigation half. Without it the screen is registered but unreachable.
-    const sidebar = read('components/sidebar.tsx');
+    // …and the navigation half. Without it the screen is registered but unreachable. Since 82748f92 the
+    // reachable half is a card on People › Settings (the menu row became that page's Settings row), and the
+    // Settings row owns this address so the menu stays lit here.
+    const card = PEOPLE_SETTINGS_SECTIONS.find((section) => section.href === INDEX_ROUTE);
+    expect(card, 'Hiring Defaults is a People › Settings card').toMatchObject({ labelKey: 'hiringDefaults', gate: 'admin' });
+    const sidebar = read('lib/navigation/shell-inventory.ts');
     const node = sidebar.slice(sidebar.indexOf('const SYSTEM_SETTINGS_NODE'));
     const end = node.indexOf('\n};');
     expect(end, 'SYSTEM_SETTINGS_NODE is terminated').toBeGreaterThan(-1);
-    expect(node.slice(0, end), 'the Hiring Defaults row is a child of the System Settings node').toContain(
-      `href: '${INDEX_ROUTE}'`,
+    expect(node.slice(0, end), 'the People › Settings row is a child of the System Settings node').toContain(
+      "href: '/admin/settings/people', labelKey: 'peopleSettings'",
     );
-    expect(node.slice(0, end)).toContain("labelKey: 'hiringDefaults'");
+    expect(node.slice(0, end)).toContain('ownedSubpaths: PEOPLE_SETTINGS_SECTIONS.map');
   });
 
   it('the old address still resolves — a bare redirect stub, deregistered from the access matrix', () => {

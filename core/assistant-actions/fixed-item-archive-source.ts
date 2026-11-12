@@ -8,13 +8,13 @@ import {canonicalEntitlementsForDigest} from '../../lib/assistant-actions/canoni
 import {withAgentActionGuard} from './agent-action-guard';
 import type {AssignedSubject} from './generic-assigned-review-store';
 import {masterReportFieldsTx} from '../employee-master-access';
-import {lockAccessConfigurationTx} from '../access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../access-configuration-lock';
 import {archiveEmploymentPayComponent,prepareFixedItemArchiveTx,lockFixedItemArchiveIntervalTx,FIXED_ARCHIVE_FIELDS_SQL} from '../../packs/payroll/service';
 export class FixedItemArchiveUnavailable extends Error{constructor(){super('Please reopen this fixed item on the native Payroll screen.');this.name='FixedItemArchiveUnavailable';}}
 export const fixedItemArchiveUnavailable=():never=>{throw new FixedItemArchiveUnavailable();};
 const fail=fixedItemArchiveUnavailable,hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 type Subject=AssignedSubject&{employeeName:string;employeeCode:string|null;companyName:string;scopeDigest:string};
-async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();await lockAccessConfigurationTx(tx,fresh.tenantId);return fresh;}
+async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();await lockAccessConfigurationWriteTx(tx,fresh.tenantId);return fresh;}
 async function visibility(tx:Tx,ctx:SessionContext,employmentId:string){
  const [scope]=await tx.execute<{companyId:string;personId:string}>(sql`select e.company_id as "companyId",e.person_id as "personId" from employment e where e.id=${employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid and app.can_admin_employment(e.id) and not app.is_self_person(e.person_id)`);if(!scope||scope.personId===ctx.personId)return fail();
  const fields=await masterReportFieldsTx(tx,ctx,[scope.companyId]);for(const field of ['componentName','amount','currency','validFrom','validTo','prorate','remarks'])if(!fields.some(f=>f.owner==='payItem'&&f.ownerField.toLowerCase()===field.toLowerCase()&&f.sensitivity==='payroll'))return fail();return scope;

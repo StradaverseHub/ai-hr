@@ -1,4 +1,8 @@
-import {assertWorkforcePersonTx,assertWorkforceEmploymentTx,WorkforceAccessError} from '../../core/workforce-access';
+import {WorkforceAccessError} from '../../core/workforce-access';
+import {assertWorkforcePersonSharedTx,assertWorkforceEmploymentSharedTx} from '../../core/workforce-access-shared';
+import {isPresentationCarrierPrincipalCurrentTx} from '../../core/carrier-principal';
+import {TENANT_STATUS_GOOD_STANDING} from '../../core/entitlement-types';
+import {withPersonnelRead} from '../../core/personnel-read-bounds';
 import {isDeepStrictEqual} from 'node:util';
 import { validPassportMY, type PassportFieldsMY } from './passport';
 import {captureStatutorySourceContext as captureStatutoryContext,lockStatutorySourceTx as statutoryWriteIntervalMYTx,lockReviewedStatutorySourceTx} from '../../core/statutory-source-lock';
@@ -465,14 +469,14 @@ export async function setStatutoryProfileMY(ctx:SessionContext,p:StatutoryInput,
   // Preserve the ordinary API and native defaults, event fields, SYSTEM/bootstrap admission and math.
   const input=structuredClone(p);
   const normalized=normalizeStatutoryInputMY(input);
-  const run=async(tx:Tx)=>{await statutoryWriteIntervalMYTx(tx,ctx);const prepared=await prepareStatutoryProfileMYTx(tx,input,normalized),result=await writeStatutoryProfileMYTx(tx,ctx,input,prepared);return{id:result.id};};
+  const run=async(tx:Tx)=>{await statutoryWriteIntervalMYTx(tx,ctx,{personId:p.personId});const prepared=await prepareStatutoryProfileMYTx(tx,input,normalized),result=await writeStatutoryProfileMYTx(tx,ctx,input,prepared);return{id:result.id};};
   return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /** New hire initializer: preserve an existing person's election; only a genuinely new profile defaults on. */
 export async function initializeHiredStatutoryMY(ctx:SessionContext,p:StatutoryInput,outerTx?:Tx){
  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
- const run=async(tx:Tx)=>{await statutoryWriteIntervalMYTx(tx,ctx);const current=await getStatutoryProfileMYTx(tx,ctx,p.personId,{forUpdate:true});return setStatutoryProfileMY(ctx,{...p,subjectToSkbbk:p.subjectToSkbbk??current?.subjectToSkbbk??true},tx);};
+ const run=async(tx:Tx)=>{await statutoryWriteIntervalMYTx(tx,ctx,{personId:p.personId});const current=await getStatutoryProfileMYTx(tx,ctx,p.personId,{forUpdate:true});return setStatutoryProfileMY(ctx,{...p,subjectToSkbbk:p.subjectToSkbbk??current?.subjectToSkbbk??true},tx);};
  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
@@ -519,7 +523,7 @@ export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input,outerTx?:
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   const values=normalizedTp3OpeningValuesMY(p);
   const run=async (tx:Tx) => {
-    await statutoryWriteIntervalMYTx(tx,ctx);
+    await statutoryWriteIntervalMYTx(tx,ctx,{personId:p.personId});
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,ancillaryHash:tp3AncillaryHashMY,
@@ -620,23 +624,38 @@ function normalizedBankValuesMY(p:BankInput){
 /** Interactive partial bank/passport writes retain the native HR floor and join the shared-person Workforce owner.
  * No-user provisioning retains its existing RLS/service behavior. A genuine unlinked USER still
  * takes every interactive check: absence of PERSON is never treated as a system principal. */
-async function statutoryMaintenanceSubjectMYTx(tx:Tx,ctx:SessionContext,p:{personId:string;employmentId?:string}){
- await statutoryWriteIntervalMYTx(tx,ctx);
+async function statutoryMaintenanceSubjectMYTx(tx:Tx,ctx:SessionContext,p:{personId:string;employmentId?:string},mode:'write'|'presentation'='write'){
+ const presentation=mode==='presentation';
+ if(presentation){
+  if(ctx.userId&&!await isPresentationCarrierPrincipalCurrentTx(tx,ctx))throw new WorkforceAccessError();
+ }else await statutoryWriteIntervalMYTx(tx,ctx,{personId:p.personId});
  if(ctx.userId){
   const [floor]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() and app.can_see_person(${p.personId}::uuid) as allowed`);
   if(floor?.allowed!==true)throw new WorkforceAccessError();
-  await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');
+  if(presentation){
+   const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_person(${p.personId}::uuid,'workforce.maintain')
+    ${p.employmentId===undefined?sql``:sql`and app.access_workforce_employment(${p.employmentId}::uuid,'workforce.view')
+     and app.access_workforce_employment(${p.employmentId}::uuid,'workforce.maintain')`} as allowed`);
+   if(scope?.allowed!==true)throw new WorkforceAccessError();
+  }else await assertWorkforcePersonSharedTx(tx,ctx,p.personId,'maintain');
  }
  if(p.employmentId!==undefined){
-  if(ctx.userId){await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'view');await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');}
-  const [selected]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).for('share');
+  if(ctx.userId&&!presentation){await assertWorkforceEmploymentSharedTx(tx,ctx,p.employmentId,'view');await assertWorkforceEmploymentSharedTx(tx,ctx,p.employmentId,'maintain');}
+  const selectedQuery=tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId)));
+  const [selected]=await (presentation?selectedQuery:selectedQuery.for('share'));
   if(!selected||selected.personId!==p.personId.toLowerCase())throw new WorkforceAccessError();
  }
 }
 /** Authority/identity metadata only: no bank or sibling statutory value is read for editor admission. */
-export async function canMaintainBankProfileMY(supplied:SessionContext,p:{personId:string;employmentId:string}):Promise<boolean>{
+async function canMaintainStatutoryProfileMY(supplied:SessionContext,p:{personId:string;employmentId:string}):Promise<boolean>{
  const ctx=captureStatutoryContext(supplied);p=structuredClone(p);
- try{return await withTenant(ctx,async tx=>{await statutoryMaintenanceSubjectMYTx(tx,ctx,p);return true;});}catch{return false;}
+ const status=ctx.entitlements?.tenantStatus;
+ // A suspended tenant's writer is read-only. Keep its editor unavailable without taking a row lock.
+ if(status!=null&&!TENANT_STATUS_GOOD_STANDING.has(status)&&!ctx.statutoryOverride)return false;
+ try{return await withPersonnelRead(ctx,async tx=>{await statutoryMaintenanceSubjectMYTx(tx,ctx,p,'presentation');return true;});}catch{return false;}
+}
+export function canMaintainBankProfileMY(ctx:SessionContext,p:{personId:string;employmentId:string}):Promise<boolean>{
+ return canMaintainStatutoryProfileMY(ctx,p);
 }
 export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
@@ -648,7 +667,7 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
     // Entry precedes the private bank read; the existing deferred delta/audit guards own completion.
     let directBank = false;
     if (outerTx) {
-      await statutoryWriteIntervalMYTx(tx,ctx);
+      await statutoryWriteIntervalMYTx(tx,ctx,{personId:p.personId});
       const [purpose] = await tx.execute<{allowed:boolean}>(sql`select app.profile_direct_bank_person(${p.personId}::uuid)
         and (${p.employmentId??null}::uuid is null or app.profile_direct_subject(${p.employmentId??null}::uuid)) as allowed`);
       directBank = purpose?.allowed === true;
@@ -727,7 +746,7 @@ export async function setOthersStatutoryMY(ctx: SessionContext, p: OthersStatuto
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   const subjectToHrdf = typeof p.subjectToHrdf === 'boolean' ? p.subjectToHrdf : null;
   const run=async(tx:Tx)=>{
-    await statutoryWriteIntervalMYTx(tx,ctx);
+    await statutoryWriteIntervalMYTx(tx,ctx,{personId:p.personId});
     const [existing] = await tx
       .select({ id: employeeStatutoryMy.id, subjectToHrdf: employeeStatutoryMy.subjectToHrdf })
       .from(employeeStatutoryMy)
@@ -1041,7 +1060,7 @@ export async function setIcProfileMY(
   if (!ic && !oldIc) return { id: null };
   if (ic && !isValidIC(ic)) throw new InvalidICError();
   const run = async (tx:Tx) => {
-    await statutoryWriteIntervalMYTx(tx,ctx);
+    await statutoryWriteIntervalMYTx(tx,ctx,{personId:p.personId});
     const [existing] = await tx
       .select({ id: employeeStatutoryMy.id, icNumber: employeeStatutoryMy.icNumber, oldIcNumber: employeeStatutoryMy.oldIcNumber })
       .from(employeeStatutoryMy)
@@ -1146,9 +1165,8 @@ export function validatePassportProfileMY(p:PassportInput,nationality:string|nul
  return validPassportMY(p,nationality);
 }
 /** Passport editor admission metadata only; the SAME native guard reads no government-ID fields. */
-export async function canMaintainPassportProfileMY(supplied:SessionContext,p:{personId:string;employmentId:string}):Promise<boolean>{
- const ctx=captureStatutoryContext(supplied);p=structuredClone(p);
- try{return await withTenant(ctx,async tx=>{await statutoryMaintenanceSubjectMYTx(tx,ctx,p);return true;});}catch{return false;}
+export function canMaintainPassportProfileMY(ctx:SessionContext,p:{personId:string;employmentId:string}):Promise<boolean>{
+ return canMaintainStatutoryProfileMY(ctx,p);
 }
 export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
@@ -1317,7 +1335,7 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
     childReliefTable: normaliseChildReliefTable(p.childReliefTable),
   };
   const run = async (tx:Tx) => {
-    await statutoryWriteIntervalMYTx(tx,ctx);
+    await statutoryWriteIntervalMYTx(tx,ctx,{personId:p.personId});
     if(p.employmentId)await taxSelectionContextMY(tx,ctx,p.employmentId,true);
     const [existing] = await tx
       .select({
@@ -1464,6 +1482,16 @@ export async function getStatutoryProfileMYTx(tx: Tx, ctx: SessionContext, perso
     return row ?? null;
   }
 
+/** Set-wise form of getStatutoryProfileMYTx for a caller-held scoped snapshot (the Personnel export):
+ * the same RLS read of the same rows, in one statement for every person. person_id is unique
+ * (employee_statutory_my_person_uq), so a person maps to at most one row; a person with no visible
+ * row is absent from the map (the single read's null). */
+export async function getStatutoryProfilesMYTx(tx: Tx, ctx: SessionContext, personIds: readonly string[]) {
+    const ids = [...new Set(personIds)];
+    const rows = ids.length ? await tx.select().from(employeeStatutoryMy).where(inArray(employeeStatutoryMy.personId, ids)) : [];
+    return new Map(rows.map(row => [row.personId, row] as const));
+  }
+
 /** Values and their exact MVCC revision come from the same RLS read/lock. A timestamp is not a revision. */
 export function getStatutoryEditSnapshotMY(ctx: SessionContext, personId: string, outerTx?: Tx, opts: { forUpdate?: boolean } = {}) {
   const run = async (tx: Tx) => {
@@ -1483,7 +1511,7 @@ export async function setRegistrationNumbersMY(ctx:SessionContext,p:{personId:st
   if(p.socsoNumber!==undefined)values.socsoNumber=p.socsoNumber?.trim()||null;
   if(!Object.keys(values).length)throw new Error('Nothing to change.');
   const run=async(tx:Tx)=>{
-    await statutoryWriteIntervalMYTx(tx,ctx);
+    await statutoryWriteIntervalMYTx(tx,ctx,{personId:p.personId});
     const [before]=await tx.select({id:employeeStatutoryMy.id,epfNumber:employeeStatutoryMy.epfNumber,socsoNumber:employeeStatutoryMy.socsoNumber}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,p.personId)).limit(1).for('update');
     if(!before)throw new NoStatutoryProfileError();
     const fields=Object.entries(values).filter(([field,value])=>before[field as 'epfNumber'|'socsoNumber']!==value).map(([field])=>field);
@@ -1569,7 +1597,7 @@ export async function readReviewedStatutoryProfileReferenceMYTx(tx:Tx,ctx:Sessio
  * No nested withTenant: callback readers and canonical setters receive this actual Tx explicitly. */
 export function withStatutoryProfileWriteMY<T>(supplied:SessionContext,personId:string,work:(tx:Tx,current:Awaited<ReturnType<typeof getStatutoryProfileMYTx>>)=>Promise<T>){
  const ctx=captureStatutoryContext(supplied),id=personId;
- return withTenant(ctx,async tx=>{await statutoryWriteIntervalMYTx(tx,ctx);const current=await getStatutoryProfileMYTx(tx,ctx,id,{forUpdate:true});return work(tx,current);});
+ return withTenant(ctx,async tx=>{await statutoryWriteIntervalMYTx(tx,ctx,{personId:id});const current=await getStatutoryProfileMYTx(tx,ctx,id,{forUpdate:true});return work(tx,current);});
 }
 
 /** Current mutable section fields only, after actual native person/statutory ownership. */

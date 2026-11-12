@@ -6,12 +6,15 @@ import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ArrowUp, ChevronRight, Inbox, Maximize2, Minimize2, Sparkles, X } from 'lucide-react';
 import { resolvePageContext, type PageArea } from '@/lib/ai/page-context';
+import {useShellApprovalFacts} from '@/components/shell-approval-facts';
+import {RECRUITMENT_TASK_KINDS} from '@/lib/assigned-work';
 import {AssistantChatBoundary} from './chat-reply-boundary';
 import {ThinkingIndicator} from './thinking-indicator';
 import { askFromLauncherAction } from '@/app/assistant/launcher-actions';
 import { aiCentreName } from '@/lib/ai-centre/brand';
 import { ASK_AI_CENTRE_EVENT, unclaimedAskQuestion } from '@/lib/command-bar-events';
 
+const RECRUITMENT_KINDS:ReadonlySet<string>=new Set<string>(RECRUITMENT_TASK_KINDS);
 type Turn = { id: number; question: string; area: PageArea | null; stale?: true; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true; chatId?: string } | { ok: false; message: string } };
 
 /** The floating Assistant. Rendered only when the shell decided this login may see it (see
@@ -20,7 +23,11 @@ type Turn = { id: number; question: string; area: PageArea | null; stale?: true;
  * record id from the address, never what is on the screen. */
 /** `inboxCount` (AI centre): the decision count the shell already read for the notification bell; the
  * launcher links to the Inbox and never reads anything itself. */
-export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { position: 'bottom-right' | 'bottom-left'; hiddenAreas: readonly PageArea[]; inboxCount?: number }) {
+export function AssistantLauncher({ position, hiddenAreas, inboxCount:baseInboxCount }: { position: 'bottom-right' | 'bottom-left'; hiddenAreas: readonly PageArea[]; inboxCount?: number }) {
+ const approvals=useShellApprovalFacts()?.result;
+ // Recruitment slice 9 (D-034): the bell's list carries the recruitment to-dos; the launcher opens Home, which does
+ // not list them, so its count leaves them out (core/approvals-inbox.ts withoutRecruitmentTasks, the same kinds).
+ const inboxCount=approvals?.state==='ready'?approvals.items.filter(item=>!RECRUITMENT_KINDS.has(item.kind)).length:baseInboxCount;
  const chatCopy=useTranslations('assistant.workspace.chat'),privacyNotice=chatCopy('privacy');
   const t = useTranslations('assistant.launcher'), areas = useTranslations('assistant.launcher.areas'), tCentre = useTranslations('aiCentre.launcher'), centreName = aiCentreName(useTranslations('aiCentre')('genericName'));
   const pathname = usePathname() ?? '/';
@@ -132,7 +139,7 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
           <button type="button" onClick={close} aria-label={t('close')} className="inline-flex size-11 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><X aria-hidden className="size-4"/></button>
         </div>
       </header>
-      {inboxCount !== undefined && <InboxLink count={inboxCount}/>}
+      {(approvals!==undefined||inboxCount!==undefined) && <InboxLink count={inboxCount}/>}
       <div ref={log} role="log" aria-label={centreName} aria-live="polite" aria-relevant="additions text" onScroll={event => {
         const element = event.currentTarget;
         followLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop <= 64;
@@ -172,10 +179,10 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
 /** AI centre: the floating chat's way to what waits on the person: Today at `/`, which replaced the AI Centre
  * Inbox (AI v2 Phase 1). Its own translations, so a login without the count (a shell that passes none) renders
  * nothing here. */
-function InboxLink({ count }: { count: number }) {
+function InboxLink({ count }: { count?: number }) {
   const t = useTranslations('aiCentre.launcher');
   return <Link href="/" className="mx-4 mt-3 flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary/10 px-3 text-sm hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
     <Inbox aria-hidden className="size-4 text-primary"/><span className="font-medium">{t('today')}</span>
-    {count > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[0.6875rem] font-semibold leading-none tabular-nums text-primary-foreground"><span aria-hidden>{count}</span><span className="sr-only">{t('inboxCount', { count })}</span></span>}
+    {count !== undefined && count > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[0.6875rem] font-semibold leading-none tabular-nums text-primary-foreground"><span aria-hidden>{count}</span><span className="sr-only">{t('inboxCount', { count })}</span></span>}
     <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground"/></Link>;
 }

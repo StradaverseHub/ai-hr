@@ -1,6 +1,7 @@
-/** Exact approved forward tail and its ONE intended populated permission transition.
+/** Exact approved forward tail and its intended populated permission transitions.
  * Historical receipts remain pinned by each owning fixture. No migration or old audit row is skipped. */
 import {expect} from 'vitest';
+import {PERFORMANCE_MIGRATION_IDENTITIES} from '../performance-migration-identities';
 import {createHash} from 'node:crypto';
 import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -66,12 +67,92 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:3600,when:1793330003900,tag:'4200_employee_loop_action_digest'},
  {idx:3601,when:1793330003901,tag:'4201_retire_attendance_formula_builder'},
  {idx:3602,when:1793330003902,tag:'4202_attendance_clock_policy_revisions'},
+ {idx:4000,when:1793330004300,tag:'4600_attendance_clock_policy_group_scope'},
+ {idx:4001,when:1793330004301,tag:'4601_last_login_event_index'},
+ // 50d9b809: the AI Centre control for the shared_leave_groups read (docs/MIGRATION-ALLOCATION.md, 10 November 2026).
+ {idx:4200,when:1793330004500,tag:'4800_ai_shared_leave_groups_read'},
+ // Architecture candidate, renumbered above the released 8d5254eb watermark (docs/MIGRATION-ALLOCATION.md, 10 November 2026).
+ ...PERFORMANCE_MIGRATION_IDENTITIES.map(({idx,when,tag})=>({idx,when,tag})),
+ {idx:4237,when:1793330004537,tag:'3500_ai_centre_architecture_compatibility'},
+ {idx:4238,when:1793330004538,tag:'3501_ai_centre_mandate_write_order'},
+ {idx:4239,when:1793330004539,tag:'4338_assistant_rewards_return_presentation_snapshot'},
+ {idx:4240,when:1793330004540,tag:'4339_assistant_rewards_calendar_cancel_presentation_snapshot'},
+ {idx:4241,when:1793330004541,tag:'4340_ai_management_presentation_snapshot'},
+ {idx:4242,when:1793330004542,tag:'4341_home_leave_presentation_snapshot'},
+ {idx:4243,when:1793330004543,tag:'4342_attendance_clock_policy_audit_scope'},
+ // Combined release block above every surveyed peer (docs/MIGRATION-ALLOCATION.md, 11 November 2026): the reader/writer
+ // Access lock, the staged employee import and bulk-job kernel, Personnel typed facts, the bulk conversions, and the
+ // audit-chain commit seal last.
+ {idx:4400,when:1793330004700,tag:'5000_access_reader_writer_core'},
+ {idx:4401,when:1793330004701,tag:'5001_access_reader_writer_serialisers'},
+ {idx:4402,when:1793330004702,tag:'5002_access_reader_writer_profile_values'},
+ {idx:4403,when:1793330004703,tag:'5003_access_reader_writer_owner_writers'},
+ {idx:4404,when:1793330004704,tag:'5004_access_reader_writer_payroll_inputs'},
+ {idx:4405,when:1793330004705,tag:'5005_access_reader_writer_people_values'},
+ {idx:4406,when:1793330004706,tag:'5006_access_wave4_admin_fair_exclusive'},
+ {idx:4410,when:1793330004710,tag:'5010_employee_import_staged_job'},
+ {idx:4411,when:1793330004711,tag:'5011_bulk_job_kernel'},
+ {idx:4412,when:1793330004712,tag:'5012_import_release_visibility'},
+ {idx:4413,when:1793330004713,tag:'5013_bulk_job_least_privilege'},
+ {idx:4414,when:1793330004714,tag:'5014_bulk_job_owner_attribution'},
+ {idx:4420,when:1793330004720,tag:'5020_personnel_overview_facts'},
+ {idx:4430,when:1793330004730,tag:'5030_leave_bulk_jobs'},
+ {idx:4431,when:1793330004731,tag:'5031_leave_ledger_stage'},
+ {idx:4432,when:1793330004732,tag:'5032_bulk_job_unbounded_kind'},
+ {idx:4433,when:1793330004733,tag:'5033_leave_follow_up_jobs'},
+ {idx:4435,when:1793330004735,tag:'5035_leave_stage_digests'},
+ {idx:4436,when:1793330004736,tag:'5036_leave_type_pending_year_cycle'},
+ {idx:4440,when:1793330004740,tag:'5040_roster_bulk_jobs'},
+ {idx:4441,when:1793330004741,tag:'5041_bulk_job_queue_and_watch'},
+ {idx:4445,when:1793330004745,tag:'5045_attendance_bulk_jobs'},
+ {idx:4450,when:1793330004750,tag:'5050_payroll_processing_status'},
+ {idx:4451,when:1793330004751,tag:'5051_payroll_processing_job'},
+ {idx:4452,when:1793330004752,tag:'5052_payroll_run_group'},
+ {idx:4453,when:1793330004753,tag:'5053_bulk_job_settle'},
+ {idx:4454,when:1793330004754,tag:'5054_payroll_partner_point_read'},
+ {idx:4455,when:1793330004755,tag:'5055_payroll_history_staged_job'},
+ {idx:4456,when:1793330004756,tag:'5056_payroll_reprocess_job'},
+ {idx:4460,when:1793330004760,tag:'5060_register_section_import_jobs'},
+ {idx:4461,when:1793330004761,tag:'5061_register_import_set_release'},
+ {idx:4462,when:1793330004762,tag:'5062_employee_import_revert_job'},
+ {idx:4463,when:1793330004763,tag:'5063_register_import_release_key_authority'},
+ {idx:4464,when:1793330004764,tag:'5064_employee_import_revert_release_hash'},
+ {idx:4470,when:1793330004770,tag:'5070_system_label_import_staged_job'},
+ {idx:4471,when:1793330004771,tag:'5071_workforce_capability_tenant_publication'},
+ {idx:4475,when:1793330004775,tag:'5075_bulk_job_movement_import'},
+ {idx:4476,when:1793330004776,tag:'5076_workforce_employment_access_set'},
+ {idx:4477,when:1793330004777,tag:'5077_bulk_job_movement_check'},
+ {idx:4478,when:1793330004778,tag:'5078_bulk_job_movement_import_revert'},
+ {idx:4479,when:1793330004779,tag:'5079_movement_revert_capture'},
+ {idx:4480,when:1793330004780,tag:'5080_access_administrator_coalesced_assert'},
+ {idx:4481,when:1793330004781,tag:'5081_reward_access_observation_due'},
+ {idx:4482,when:1793330004782,tag:'5082_home_own_clock_day'},
+ {idx:4483,when:1793330004783,tag:'5083_home_own_schedule_range'},
+ {idx:4490,when:1793330004790,tag:'5090_audit_chain_commit_seal'},
+ {idx:4520,when:1793330004820,tag:'5120_access_review_custody_held_mode'},
+ {idx:4521,when:1793330004821,tag:'5121_personnel_search_set_mapping'},
+ // ccd3a65c Import History section type, renumbered above release candidate 3's 5120/5121 and PR 240's 5122 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4523,when:1793330004823,tag:'5123_import_history_kind'},
+ // 4452ba3c attendance workflow skipped levels, renumbered after 5123 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4524,when:1793330004824,tag:'5124_attendance_workflow_skipped_levels'},
+ // 792053e5 payroll formula repricing marker, renumbered 5125 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4525,when:1793330004825,tag:'5125_individual_txn_pricing_marker'},
+ // 2260a06b contract/internship end dates (draft 9750), renumbered 5126 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4526,when:1793330004826,tag:'5126_contract_internship_end_dates'},
+ // 8d02748a readable import log references, renumbered 5127 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
+ {idx:4527,when:1793330004827,tag:'5127_import_log_actor_labels'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '4202_attendance_clock_policy_revisions':'4633648e6d0869af1205dcf0911c9b6a02daeb177a16c6a89c5d5bdccf758df6',
+ '5124_attendance_workflow_skipped_levels':'849dba4bf7c3aa39e45eb7f463ef24301a2eea3b10a781cf39858aa218635c6d',
+ '5123_import_history_kind':'2da28686e0f48790491ed9677813be1fae9a71f1e9fbbe1c9b51786f401420e7',
+ '5127_import_log_actor_labels':'1f90bf32091400f2ec667a8538802248a90bb1336c869a8b8faad349b2530ce2',
+ '4800_ai_shared_leave_groups_read':'774dce41ba113549ec5415586d104b8d5b7712934216f2beb4d9aa0e9f00ffc5',
+ '4601_last_login_event_index':'868e30d4a2840d4939a46f303ce999b2e041ae3cb6823eb8b712179ccf7d5788',
+ '4600_attendance_clock_policy_group_scope':'b30a62bec597f53266232abe569a040a9a421eaa2239eac232d0e44041352be6',
  '4200_employee_loop_action_digest':'8fb9906f3f5a4828507a87fe0e162826ccbbe76430e4ca39993e9ab1301d967f',
  '4201_retire_attendance_formula_builder':'7929ff4d341d96873c3d7c7f0a6c7253674816ed65e9b8d44171218377559778',
+ '4202_attendance_clock_policy_revisions':'4633648e6d0869af1205dcf0911c9b6a02daeb177a16c6a89c5d5bdccf758df6',
  '4100_rewards_review_creator_independence':'2b985ae73e3da8c1ce3e7015829734632bff6ac550021dc644c59b9603083dff',
  '4101_attendance_formula_company_scope':'60d18c40db8d2f8392c81fa5ccb7cf05c12d6448321e744ebbc31605574e28f4',
  '4000_attendance_workflow_lifecycle_scope':'62759d27e18adc62dd458a18d7f1525f9ed2ac498ae58d7d3884f9f200cc0b1f',
@@ -125,6 +206,64 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2600_onboarding_current_personnel':'ef82561ecfca93f3feab8f38918c3449569b68afe944085cceb8bafd25ab60be',
  '3200_ai_centre_controls':'2182ae4a614d0b847f399af18f9cfc43e82d3c9fd6f42ca960bfe22ebf4f10e2',
  '3201_ai_centre_function_coverage':'0c7239f512174c0d941dcb441cf98bd3a685a8e4d65973dc92f136dfb6b78d8a',
+ ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
+ '3500_ai_centre_architecture_compatibility':'c264d042ea39709e2bcc3b7f9b33b83715a30f05b98437e60b1c1910b1e3bbf3',
+ '3501_ai_centre_mandate_write_order':'821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76',
+ '4338_assistant_rewards_return_presentation_snapshot':'1acfa11fd818c5efe53dc74c05aef351fb7b71e238dcd0dfc0d1c978672d84d8',
+ '4339_assistant_rewards_calendar_cancel_presentation_snapshot':'6df872ead7dc864a8e2a7c78ee8dcdf9e4bd4d637186c185c54a656acb6f07e9',
+ '4340_ai_management_presentation_snapshot':'17973dd386f8fb1fda3a2773de3cd189055bed744730949912b2206a77c4e32c',
+ '4341_home_leave_presentation_snapshot':'91ceea84de63aa91d8d5c559c0c7c4ee4cadd86ee14bb0d2c1300be580c2a664',
+ '4342_attendance_clock_policy_audit_scope':'bc83887d91db94c2199d600a4ca5293d43d14662fb08c85818d35455ac28f67f',
+ '5000_access_reader_writer_core':'fead3e8f0d90a199119cf0578e2cab387f4a4d9a2e56cb4ab96de792d4040527',
+ '5001_access_reader_writer_serialisers':'6665dac2d56dd325b0495fbf1e1215326071b7a23043d5c546155abae971c104',
+ '5002_access_reader_writer_profile_values':'c976c1b3852df4a7715047912ead0fc53a50492ca9a59c7e72490c8fff4598f1',
+ '5003_access_reader_writer_owner_writers':'07f7c70515033c682a9dadd5031c68df282ad56b9eb984423fd2ee807de019cf',
+ '5004_access_reader_writer_payroll_inputs':'5f6cf69f2c1c6b1285536727df0bb43d6459a4bbec013e4ea2c0628ab80d4bd0',
+ '5005_access_reader_writer_people_values':'4e00488e5571f4d7e17e4f90fa8445150c848fb4159bd50d76f986f1e6354025',
+ '5006_access_wave4_admin_fair_exclusive':'3a8ef207e6235548a53d2d49993c81404a097a6dc503eb77e1e5a7115abe8445',
+ '5010_employee_import_staged_job':'75b8691265788892e2bf3cc885280a804e4528730fb9c461e77a4a6426670ff6',
+ '5011_bulk_job_kernel':'50af4670d06419c82ec7495827cf14db2905fda780b21ee58f17ae2f1df7af58',
+ '5012_import_release_visibility':'f0ac24138bdfecb5c2eea63a724808c119db86cc1719936b7f839473c7396ac8',
+ '5013_bulk_job_least_privilege':'14ced1c75079a4b5846cbb2c267671cbdbcb77e5810aeb43f73909e3b5a3cde6',
+ '5014_bulk_job_owner_attribution':'204bdda42c5a3bbde262c07698d25d34071056b45cf3068189c1cb8c2bb7bdfe',
+ '5020_personnel_overview_facts':'e45555e45eee6f644abf2cd2665b9ac7c3c4adad5b46874fc8b1296f648d350f',
+ '5030_leave_bulk_jobs':'63cf77be718402bc8cf27653ea4fab7cf08f6ace92a08751597fff8dae4b2b9a',
+ '5031_leave_ledger_stage':'89b37fb2f07bd3d12214ddbab3ec681a029d539a1312adcd611f29ff7580b484',
+ '5032_bulk_job_unbounded_kind':'87546b29bea2e2103bf6261fef63d04d068906cba48555def165f53e2fd83df4',
+ '5033_leave_follow_up_jobs':'d948a22f42e1a65ee259782d0d4856e5e3ba5d069ec344d9f39175f87ce47d42',
+ '5035_leave_stage_digests':'494012354aa83806eee58e6c4476016cc2534ec255b58feacd523b0f784638d1',
+ '5036_leave_type_pending_year_cycle':'451ac2eefb07ca27865ea92f60bd7819f9882156c7dda88b1686ef4eace69324',
+ '5040_roster_bulk_jobs':'c8aada50a9e2fb4a9fc938334fc1e7e0412e9afbb155e108296c2516e6fc3d73',
+ '5041_bulk_job_queue_and_watch':'2597d98df5afbbcb1d7dea7a31c1d09c5902753ebc04a40003992dbc8b9d4e2d',
+ '5045_attendance_bulk_jobs':'deb95193c213c2d400d5e2d798c3bcf376d07f9635d635be42b663ee1fef4e1c',
+ '5050_payroll_processing_status':'1e9ca4115879eff695e815bc7e83ce18eef78ce0982da05a8d292eb5a08bc7d1',
+ '5051_payroll_processing_job':'37caaa2ba6bc6ea90552cf3da0a933c9972cc9aff3d56c98c567b28e6891be16',
+ '5052_payroll_run_group':'f420568a0612c6da490ea7330d36b464bedad8fc5e25663d268e9750b1886901',
+ '5053_bulk_job_settle':'a0edd7cf60bd4cb3dc5c52a924abc749b5af3dde9c53a22034673e2ba78d3f6e',
+ '5054_payroll_partner_point_read':'628f65f096449ddfca7075e1fc75e6e727f1e5ea566d83b3610b2924378a5d45',
+ '5055_payroll_history_staged_job':'52b094d559f748ff638bdaff0575ad97bce1a1312a719ed1508e25b90333e69b',
+ '5056_payroll_reprocess_job':'9c060255355bcb74569ffde8d8974ab433cfaa4a319c837b874abd1a33bcb57c',
+ '5060_register_section_import_jobs':'208d2d40dd1c9b6a5c3cc061ac6a9f282e8f20eb1309c69aeb0e15c2a5088346',
+ '5061_register_import_set_release':'2e58415bc1ba2925268df41bf07d3b9cf802f274e01476b336b7dd207b843efe',
+ '5062_employee_import_revert_job':'1e48068ba30160e2a94e5e511a5dd68bf23f5f968f5fd675da39cc11599d8d43',
+ '5063_register_import_release_key_authority':'ae0827b9a2cc63fdc9a2485d4e2762f34800c070da43e2e5b4b2bb2567316f40',
+ '5064_employee_import_revert_release_hash':'8862489275a2132ff64547b7e1641afd43c57a2cc4f1660ff9a3a8464d2ff568',
+ '5070_system_label_import_staged_job':'9d30e4768feb5b5c0de4bbbe40ec149d746216efdabfa55a9dea3327b93b3270',
+ '5071_workforce_capability_tenant_publication':'4d22cd648ea0698c5ce230461862fc4c93e61cbc9196800e0317b680d694a311',
+ '5075_bulk_job_movement_import':'11a734038c4f7d7dd31e3f342a1d85103365f7b13f2936bd6c1348f7f30ce190',
+ '5076_workforce_employment_access_set':'0e1c2bce56e6ee1380bae2451d2d7ab83b6fff9b33a5eddba2d247595fbc995f',
+ '5077_bulk_job_movement_check':'3abc199fe1d6602b771e9c205d5b4f1be15133b10f9deec2f4b33e50d26a4dc1',
+ '5078_bulk_job_movement_import_revert':'de9210cf356101a69c19ea695bdc6b7ccc6ec9e0667e19b82e4b1d20dda98f5d',
+ '5079_movement_revert_capture':'0e334a7236ee9a2ae433b28bce3e7e011aa8cee9407bea46ca4a225cf6f2d47c',
+ '5080_access_administrator_coalesced_assert':'721af90b5e4554c36ce39ee8e8db2ae6b53bdfa2cabc0029b990bd0f78cfd1f2',
+ '5081_reward_access_observation_due':'f55738cd1422d1c955c722869e0328f9dcafafeb0042fd2b137165606663460a',
+ '5082_home_own_clock_day':'345c604cebcc58946865d6cc93cd248ad693165063a67648d6781243ec652c58',
+ '5083_home_own_schedule_range':'75045a4ec8c176c55ddc51ddba0b079e6ca8c5662b004a345945ee335efce70a',
+ '5090_audit_chain_commit_seal':'6ce9bebe8c8de296b3b4a03b1d5d52c90c7df79fbdb0b8f8e0617616001e263e',
+ '5120_access_review_custody_held_mode':'f99d6938631f4ae17dea7af03b56d5dad4830ef5402b206b097e25ea4854c2a0',
+ '5121_personnel_search_set_mapping':'3d9b5a53b963a0f01843d090a96662da3e9f7b5c5bb0650e3064d237a3c60d54',
+ '5125_individual_txn_pricing_marker':'d48a8a3e394da801bbb0e9917d74d934ab51a3470bdea1bc8d8be1b110a24837',
+ '5126_contract_internship_end_dates':'cbc405c4dde11abbe8f298feaf4af0795c8cf742701f62565547eb9ec9d10796',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);
@@ -136,9 +275,49 @@ export type ApprovedUpgradeWitness={events:Row[];eventsRaw:Row[];grants:Row[];ov
 const canonical=(row:unknown)=>JSON.stringify(row,(_key,value)=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b))):value);
 const ordered=(rows:Row[])=>rows.map(canonical).sort();
 async function table(db:Database,name:string):Promise<Row[]>{return (await db.client.unsafe('select to_jsonb(t) value from '+name+' t order by to_jsonb(t)::text')).map(row=>row.value as Row);}
+/** Every nullable column the combined release block (docs/MIGRATION-ALLOCATION.md, 5000-5090) appends to a table
+ * that already holds rows: its ALTER TABLE ... ADD COLUMN statements, by migration. No row that predates the block
+ * may hold a value there. migrateApprovedUpgrade proves each column present and null on every row once its
+ * migration is applied; a retained row is then compared without it (withoutCombinedReleaseNulls). */
+export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;columns:readonly string[]}[]=Object.freeze([
+ {tag:'5010_employee_import_staged_job',table:'employment',columns:['import_pending_attempt_id']},
+ {tag:'5010_employee_import_staged_job',table:'person',columns:['import_pending_attempt_id']},
+ {tag:'5012_import_release_visibility',table:'domain_event',columns:['import_pending_attempt_id']},
+ {tag:'5031_leave_ledger_stage',table:'leave_ledger',columns:['stage_id']},
+ {tag:'5036_leave_type_pending_year_cycle',table:'leave_type',columns:['pending_year_cycle_job_id']},
+ {tag:'5051_payroll_processing_job',table:'payroll_batch',columns:['processing_job_id','processing_started_at']},
+ {tag:'5125_individual_txn_pricing_marker',table:'payroll_individual_txn',columns:['pricing_source','pricing_ref','priced_at']},
+ ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
+  .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
+]);
+// Snapshot keys that name a widened table by another word.
+const SNAPSHOT_TABLE_ALIASES:Readonly<Record<string,string>>={audit:'domain_event',people:'person'};
+/** A retained row of a widened table, compared without the combined release's columns. Each one the row carries
+ * must be null; a row that lacks them (an original-column capture) is returned unchanged. */
+export function withoutCombinedReleaseNulls(name:string,row:Row):Row{
+ const tableName=name.replace(/^public\./,''),target=SNAPSHOT_TABLE_ALIASES[tableName]??tableName;
+ let normalized=row;
+ for(const entry of COMBINED_RELEASE_NULL_COLUMNS)if(entry.table===target)for(const column of entry.columns){
+  if(!Object.hasOwn(normalized,column))continue;
+  expect(normalized[column],tableName+'.'+column+' ('+entry.tag+') on a retained row').toBeNull();
+  const {[column]:_added,...original}=normalized;normalized=original;
+ }
+ return normalized;
+}
+/** After the complete migrate: each column whose migration the applied journal holds exists, and no row holds a value. */
+async function assertCombinedReleaseNulls(db:Database,migrationsFolder:string){
+ const applied=new Set((JSON.parse(readFileSync(join(migrationsFolder,'meta/_journal.json'),'utf8')).entries as {tag:string}[]).map(entry=>entry.tag));
+ for(const entry of COMBINED_RELEASE_NULL_COLUMNS){
+  if(!applied.has(entry.tag))continue;
+  for(const column of entry.columns){
+   expect(await db.client`select 1 as present from information_schema.columns where table_schema='public' and table_name=${entry.table} and column_name=${column}`,entry.table+'.'+column+' added by '+entry.tag).toEqual([{present:1}]);
+   expect(await db.client.unsafe('select count(*)::int as held from public."'+entry.table+'" where "'+column+'" is not null'),entry.table+'.'+column+' is null on every upgraded row').toEqual([{held:0}]);
+  }
+ }
+}
 /** Stage the complete ordinary prefix immediately before 2107, inspect exactly that transition,
  * then migrate every remaining journal entry. No SQL is installed outside the ordinary migrator. */
-export async function migrateApprovedUpgrade(db:Database):Promise<ApprovedUpgradeWitness>{
+export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db/migrations'):Promise<ApprovedUpgradeWitness>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
  assertApprovedUpgradeTail(journal.entries);
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='2107_probation_module_permission');
@@ -189,10 +368,13 @@ export async function migrateApprovedUpgrade(db:Database):Promise<ApprovedUpgrad
    expect(after).toEqual({...before,generation:Number(before.generation)+(configs.some(row=>row.tenant_id===before.tenant_id)?1:0)});return {before,after};
   });
   expect(await table(db,'public.access_group')).toEqual(groups);expect(await table(db,'public.app_user')).toEqual(users);
-  await migrate(db.db,{migrationsFolder:'db/migrations'});
+  await migrate(db.db,{migrationsFolder});
   expect(await db.client`select id from public.company where display_group_field is not null or display_group_option_id is not null`).toEqual([]);
   expect(await db.client`select user_id from public.reward_group_role_grant`).toEqual([]);
-  expect(await table(db,'public.domain_event')).toEqual(eventsAfter);
+  // The combined release appends nullable columns (5012 adds the staged-import marker to domain_event). Each is
+  // present and null on every upgraded row, and only then is a retained event compared without it.
+  await assertCombinedReleaseNulls(db,migrationsFolder);
+  expect((await table(db,'public.domain_event')).map(row=>withoutCombinedReleaseNulls('domain_event',row))).toEqual(eventsAfter);
   expect(await table(db,'public.access_group_grant')).toEqual(groupAfter);expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
   expect(await table(db,'public.access_configuration')).toEqual(configsAfter);expect(await table(db,'app.access_profile_write_generation')).toEqual(generationsAfter);
   return {events,eventsRaw:eventsRaw.filter(row=>events.some(event=>event.id===row.id)),grants,overrides,configurations,generations:generationPairs};
@@ -207,7 +389,8 @@ export function retainedUpgradeRows(name:string,rows:unknown[],witness?:Approved
   const wrapper=parsed as Row;
   const field=wrapper&&typeof wrapper==='object'&&Object.keys(wrapper).length===1&&('row' in wrapper||'value' in wrapper)?('row' in wrapper?'row':'value'):null;
   const row=(field?wrapper[field]:parsed) as Row;
-  let normalized=row;
+  // A combined-release column must be null on the row before the row is compared without it.
+  let normalized=withoutCombinedReleaseNulls(tableName,row);
   if((tableName==='reward_unit'||tableName==='units')&&Object.hasOwn(row,'preparation_required')){
    expect(row.preparation_required,'historical reviews retain unrecorded preparation, never fabricated release proofs').toBe(false);
    const {preparation_required:_preparation,...original}=normalized;normalized=original;
@@ -217,19 +400,19 @@ export function retainedUpgradeRows(name:string,rows:unknown[],witness?:Approved
    const {applied_company_ids:_companies,...original}=normalized;normalized=original;
   }
   if(tableName==='company'&&row.display_group_field===null&&row.display_group_option_id===null){
-   const {display_group_field:_field,display_group_option_id:_option,...original}=row;
+   const {display_group_field:_field,display_group_option_id:_option,...original}=normalized;
    normalized=original;
   }
   if(witness){
    const additions=tableName==='domain_event'||tableName==='audit'?witness.events:tableName==='access_group_grant'?witness.grants:tableName==='access_user_override'?witness.overrides:[];
    const added=additions.find(value=>value.id===row.id);
-   if(added){const raw=witness.eventsRaw.find(value=>value.id===row.id);expect([canonical(added),...(raw?[canonical(raw)]:[])]).toContain(canonical(row));return [];}
+   if(added){const raw=witness.eventsRaw.find(value=>value.id===row.id);expect([canonical(added),...(raw?[canonical(raw)]:[])]).toContain(canonical(normalized));return [];}
    const pairs=name==='app.access_profile_write_generation'?witness.generations:tableName==='access_configuration'?witness.configurations:[];
    const pair=pairs.find(value=>value.after.tenant_id===row.tenant_id);
    if(pair){
     // Fixtures may compare only their original columns. Each present changed field must match
     // the fully validated transition before its original value is restored for comparison.
-    normalized={...row};
+    normalized={...normalized};
     for(const key of Object.keys(pair.before))if(key in row&&canonical(pair.before[key])!==canonical(pair.after[key])){expect(row[key]).toEqual(pair.after[key]);normalized[key]=pair.before[key];}
    }
   }

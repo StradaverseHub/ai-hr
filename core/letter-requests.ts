@@ -16,7 +16,7 @@
  * app.letter_requests_own (migration 2003 §3b), which never returns the reason or who handled it. Person erasure clears
  * the purpose, the reason and the message (core/pdpa.ts -> app.letter_requests_redact) and keeps the request's facts. */
 import {createHash,randomUUID} from 'node:crypto';
-import {and,asc,eq,inArray,sql} from 'drizzle-orm';
+import {and,asc,eq,inArray,sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import {letterRequest,letterRequestOption} from '../db/schema';
@@ -181,13 +181,28 @@ export function getLetterRequestForStaff(ctx:SessionContext,requestId:string):Pr
 }
 /** Requests waiting for HR (status requested) across these companies, for Today. Only companies where the caller holds
  * `generate` count; an employee's own requests never do. */
+const waitingLetterRequestsWhere=(ids:string[])=>and(inArray(letterRequest.companyId,ids),eq(letterRequest.status,'requested'),sql`app.letter_permission(${letterRequest.companyId},'generate')`);
 export function countWaitingLetterRequests(ctx:SessionContext,companyIds:readonly string[]):Promise<number>{
  return requests(ctx,async tx=>{
   const ids=[...new Set(companyIds.map(uuid))];if(!ids.length)return 0;
   const [row]=await tx.select({count:sql<number>`count(*)::int`}).from(letterRequest)
-   .where(and(inArray(letterRequest.companyId,ids),eq(letterRequest.status,'requested'),sql`app.letter_permission(${letterRequest.companyId},'generate')`));
+   .where(waitingLetterRequestsWhere(ids));
   return Number(row?.count??0);
  });
+}
+/** countWaitingLetterRequests as a sub-select of Today's Needs you statement (core/needs-you-bundle.ts,
+ * docs/adr/2026-11-10-home-request-read-scope.md decision 13): the owner's gate, id check, select and predicate. Null
+ * where the owner must run itself, because its gate or an id refuses (the owner reports that by throwing). */
+export function countWaitingLetterRequestsBundleSql(ctx:SessionContext,companyIds:readonly string[]):SQL|null{
+ let ids:string[];
+ try{assertLetterRequestsAvailable(ctx);ids=[...new Set(companyIds.map(uuid))];}catch{return null;}
+ if(!ids.length)return sql`0`;
+ return sql`(select count(*)::int from ${letterRequest} where ${waitingLetterRequestsWhere(ids)})`;
+}
+/** The owner's count over the section's value. */
+export function countWaitingLetterRequestsFromBundle(value:unknown):number{
+ if(typeof value!=='number'||!Number.isInteger(value))throw new Error('Bundled letter request count is not an integer.');
+ return Number(value);
 }
 
 /** Inside core/letters.ts createLetterDraftBatch, in its transaction: the draft just created for the request's employee

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { and, asc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { lockLeaveDependencyConfigurationTx } from '../packs/leave/service';
 import { attendanceRotation, attendanceRule, attendanceRuleShift, employment, employmentShiftArrangement, rosterAssignment, shift } from '../db/schema';
 import { assertModuleGate } from './module-gate';
@@ -18,6 +18,10 @@ export async function rotationLookupTx(tx: Tx) {
   const versions = await tx.select().from(attendanceRotation).orderBy(asc(attendanceRotation.ruleId), asc(attendanceRotation.effectiveFrom));
   const ids = [...new Set(versions.flatMap(v => v.allowedShiftIds))];
   const shifts = ids.length ? await tx.select().from(shift).where(inArray(shift.id, ids)) : [];
+  return rotationLookupFrom(versions, shifts);
+}
+/** rotationLookupTx over its two reads, for a caller that read every version and allowed shift in one statement. */
+export function rotationLookupFrom(versions: AttendanceRotationVersion[], shifts: RotationShift[]) {
   const byShift = new Map(shifts.map(s => [s.id, s]));
   const byRule = new Map<string, AttendanceRotationVersion[]>();
   for (const v of versions) { const rows = byRule.get(v.ruleId) ?? []; rows.push(v); byRule.set(v.ruleId, rows); }
@@ -92,7 +96,7 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
   // A new optional Attendance configuration write; shared tx readers stay available to core Leave.
   assertModuleGate(ctx,'attendance');
   const save=async (tx:Tx)=>{
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     const [authority] = await tx.execute(sql`select app.is_group_admin() as allowed`) as unknown as { allowed: boolean }[];
     if (!authority?.allowed) throw new Error('A group-wide HR administrator is required to change tenant-wide schedule rotations.');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
@@ -133,6 +137,15 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
       eventType: 'attendance-rule.rotation-saved', actor: actorOf(ctx),
       payload: { versionId: version.id, effectiveFrom: cycle.effectiveFrom, anchorDate: cycle.anchorDate,
         unit: cycle.unit, length: cycle.length, allowedShiftIds: pool, days: cycle.days, previousVersionIds: versions.map(v => v.id) } });
+    // 2f803985 — the Duty Roster block and its switch were folded into Working Day / Schedule Pattern. A group
+    // with a saved pattern is roster-controlled, so its first saved version turns Duty Roster Control on (it is
+    // never turned off here). Same transaction and lock as the version, with its own audit event.
+    if (!rule.dutyRosterControl) {
+      await tx.update(attendanceRule).set({ dutyRosterControl: true, updatedAt: new Date() }).where(eq(attendanceRule.id, rule.id));
+      await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-rule', aggregateId: rule.id,
+        eventType: 'attendance-rule.duty-roster-control.changed', actor: actorOf(ctx),
+        payload: { before: false, enabled: true, reason: 'schedule-pattern-saved', versionId: version.id } });
+    }
     return { id: version.id, revision:revisionOf([...versions,version],memberships), effectiveFrom:version.effectiveFrom };
   };
   return existingTx?save(existingTx):withTenant(ctx,save);

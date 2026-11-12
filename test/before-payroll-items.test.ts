@@ -12,14 +12,18 @@
  * No database. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 
-const fx=vi.hoisted(()=>({cutOffRow:true as boolean,cutOffDay:20 as number|null,modules:{} as Record<string,boolean>,fail:new Set<string>(),calls:[] as unknown[][],
+const fx=vi.hoisted(()=>({approvalSummary:vi.fn(),cutOffRow:true as boolean,cutOffDay:20 as number|null,modules:{} as Record<string,boolean>,fail:new Set<string>(),calls:[] as unknown[][],
  own:true as boolean,gaps:null as null|unknown[],tp3Answer:null as null|'yes'|'no',
  // AI Centre navigation speed: holds the person's own employment read until released, to see what runs meanwhile.
  subjectGate:null as null|Promise<void>,subjectFails:false as boolean}));
 const failing=(name:string)=>{if(fx.fail.has(name))throw new Error('Fictional owner failure: '+name);};
 
 // The only direct query is app.own_payroll_cut_off_day (migration 0967): one row for the person's own employment, or none.
-vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,fn:(tx:unknown)=>unknown)=>fn({execute:async()=>{fx.calls.push(['ownCutOff']);return fx.cutOffRow?[{cut_off_day:fx.cutOffDay}]:[];}})}));
+vi.mock('../db/client',()=>({withSharedReadSnapshot:async(_ctx:unknown,work:()=>unknown)=>work(),withTenant:async(_ctx:unknown,fn:(tx:unknown)=>unknown)=>fn({execute:async()=>{fx.calls.push(['ownCutOff']);return fx.cutOffRow?[{cut_off_day:fx.cutOffDay}]:[];}})}));
+// Every owner below reads on its own: the one-statement read of their rows (core/pre-salary/before-payroll-bundle.ts) answers
+// nothing here, and is compared with these owners over real rows in test/before-payroll-checklist.test.ts and the hosted
+// Home diagnostic.
+vi.mock('../core/pre-salary/before-payroll-bundle',()=>({readBeforePayrollBundle:async()=>null,withOwnerBeforePayrollReads:(work:()=>unknown)=>work()}));
 // Phase 2 hardening: the person's own answer to "Did you work for another employer earlier this year?" (core/pre-salary/tp3-answer.ts).
 vi.mock('../core/pre-salary/tp3-answer',()=>({myTp3PreviousEmployerAnswer:async(_ctx:unknown,year:number)=>{fx.calls.push(['tp3Answer',year]);return fx.tp3Answer;}}));
 vi.mock('../core/entitlements',()=>{
@@ -33,14 +37,14 @@ vi.mock('../core/employee-home',()=>{
   return {employmentId:'emp-own',currentCompanyId:'co-1',companyProof:{companyId:'co-1'}};}};
 });
 vi.mock('../packs/payroll/service',()=>({
- listMyTp1Declarations:async(_ctx:unknown,p:{assessmentYear?:number})=>{fx.calls.push(['listMyTp1Declarations',p]);return [
+ listMyTp1DeclarationsSnapshot:async(_ctx:unknown,p:{assessmentYear?:number})=>{fx.calls.push(['listMyTp1DeclarationsSnapshot',p]);return [
   {id:'tp1-draft',assessmentYear:2026,status:'draft',tp1Amount:2500.5,approvedAt:null,submittedAt:null},{id:'tp1-sent',assessmentYear:2026,status:'submitted',tp1Amount:1111.11,approvedAt:null,submittedAt:new Date()},
   {id:'tp1-approved',assessmentYear:2026,status:'submitted',tp1Amount:7777.77,approvedAt:new Date(),submittedAt:new Date()},{id:'tp1-last-year',assessmentYear:2025,status:'draft',tp1Amount:3,approvedAt:null,submittedAt:null}];},
  // The payroll owner's answer for the company's cut-off day; the service must use it as given.
  cutOffWindowFor:(type:string,policy:unknown,company:{cutOffDay:number|null},period:string)=>{fx.calls.push(['cutOffWindowFor',type,policy,company,period]);
   return company.cutOffDay===20?(period==='2026-11'?{start:'2026-10-20',end:'2026-11-19'}:{start:'2026-11-20',end:'2026-12-19'}):{start:`${period}-01`,end:period==='2026-11'?'2026-11-30':'2026-12-31'};},
- myTp3Employments:async()=>[{employmentId:'emp-own',company:'Fictional Ceria Sdn Bhd',employeeCode:'E-1',joinDate:'2026-03-02',hiredOn:'2026-03-02',terminatedOn:null,resignationDate:null,lastWorkingDate:null,blacklistedAt:null}],
- myTp3History:async()=>({records:[{assessmentYear:2025}],drafts:[{assessmentYear:2026,submittedAt:null}]}),
+ myTp3EmploymentsSnapshot:async()=>[{employmentId:'emp-own',company:'Fictional Ceria Sdn Bhd',employeeCode:'E-1',joinDate:'2026-03-02',hiredOn:'2026-03-02',terminatedOn:null,resignationDate:null,lastWorkingDate:null,blacklistedAt:null}],
+ myTp3HistorySnapshot:async()=>({records:[{assessmentYear:2025}],drafts:[{assessmentYear:2026,submittedAt:null}]}),
 }));
 const row=(over:Record<string,unknown>)=>({attendanceId:'att',status:'present',context:null,checkInAt:'09:00:00',checkOutAt:'18:00:00',dayType:'workday',workedMinutes:480,scheduledMinutes:480,
  lateMinutes:0,earlyOutMinutes:0,shiftStart:'09:00:00',shiftEnd:'18:00:00',isRosterRest:false,otMinutes:150,...over});
@@ -74,12 +78,12 @@ vi.mock('../core/read',()=>({
   {id:'lt-mc',paid:true,requiresDocument:true,mandatoryAfterDays:1}],
 }));
 vi.mock('../packs/claims/service',()=>({
- listClaimsForEmployment:async()=>{failing('claims');const claim=(id:string,claimTypeId:string,typeName:string,status:string,incurredOn:string,attachments:unknown[]=[])=>
+ listOpenClaimsForEmployment:async()=>{failing('claims');const claim=(id:string,claimTypeId:string,typeName:string,status:string,incurredOn:string,attachments:unknown[]=[])=>
   ({id,claimTypeId,claimItemId:null,typeCode:'X',typeName,itemName:null,amount:1234.56,quantityKm:null,incurredOn,description:'Fictional typed words',taxable:false,status,createdAt:'2026-11-01',decidedAt:null,paidAt:null,employeeCode:'E-1',personId:'p',attachments});
   return [claim('cl-near','ct-travel','Travel','draft','2026-10-01'),claim('cl-receipt','ct-parking','Parking','draft','2026-11-08'),
    claim('cl-draft','ct-meal','Meal','draft','2026-11-09'),claim('cl-has','ct-parking','Parking','draft','2026-11-09',[{id:'f',fileName:'r.pdf',sizeBytes:10}]),
-   claim('cl-pending','ct-meal','Meal','pending','2026-11-03'),claim('cl-old','ct-meal','Meal','draft','2026-09-01'),claim('cl-paid','ct-meal','Meal','paid','2026-10-03')];},
- getEmployeeClaimTypes:async()=>[{id:'ct-travel',requiresReceipt:false,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}},{id:'ct-parking',requiresReceipt:true,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}},
+   claim('cl-pending','ct-meal','Meal','pending','2026-11-03'),claim('cl-old','ct-meal','Meal','draft','2026-09-01')];},
+ claimTypeReceiptRules:async()=>[{id:'ct-travel',requiresReceipt:false,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}},{id:'ct-parking',requiresReceipt:true,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}},
   {id:'ct-meal',requiresReceipt:false,maxReceiptAgeDays:45,balance:{annualLimit:9876.54}}],
 }));
 vi.mock('../packs/leave/service',()=>({listReplacementLeaveRequests:async()=>[{id:'toil-1',unit:'day',totalDays:1,totalHours:8,status:'pending',submittedOn:'2026-11-02',decidedAt:null,reason:'Fictional reason',
@@ -103,7 +107,7 @@ vi.mock('../packs/performance/service',()=>({myReviews:async()=>[{reviewId:'rv-r
 vi.mock('../packs/lifecycle/service',()=>({onboardingMyAcknowledgements:async()=>[{id:'case-ob',revision:'1',name:'Aina Fictional',employeeId:'E-1',joinDate:'2026-03-02',number:'ON-1',available:true,submittedAt:null},
  {id:'case-done',joinDate:'2026-03-02',available:true,submittedAt:'2026-03-05T01:00:00.000Z'},{id:'case-later',joinDate:'2026-03-02',available:false,submittedAt:null}]}));
 vi.mock('../core/notice',()=>({pendingNoticeAcknowledgementTasks:async()=>[{noticeId:'notice-1',employmentId:'emp-own',title:'Fictional notice',contentVersion:3,sourceUpdatedAt:new Date('2026-11-04T01:00:00Z')}]}));
-vi.mock('../core/approvals-inbox',()=>({listPendingTasks:async(...args:unknown[])=>{fx.calls.push(['listPendingTasks',...args.slice(1)]);failing('approvals');return [
+vi.mock('../core/approvals-inbox',()=>({pendingTaskSummary:fx.approvalSummary,listPendingTasks:async(...args:unknown[])=>{fx.calls.push(['listPendingTasks',...args.slice(1)]);failing('approvals');return [
  {id:'t-leave',kind:'leave',subjectName:'Siti Fictional',createdAt:'2026-11-05T01:00:00.000Z',linkPath:'/approvals?section=leave&focus=t-leave'},
  {id:'t-cancel',kind:'leaveCancellation',subjectName:'Wei Fictional',createdAt:'2026-11-05T01:00:00.000Z',linkPath:'/approvals?section=leave-cancellation&focus=t-cancel'},
  {id:'t-att',kind:'attendance',subjectName:'Siti Fictional',createdAt:'2026-11-06T01:00:00.000Z',linkPath:'/approvals?section=attendance&focus=t-att'},
@@ -121,7 +125,7 @@ const CTX={tenantId:'00000000-0000-4000-8000-000000000001',userId:'00000000-0000
 const TODAY='2026-11-10';
 const read=()=>readMyPayrollReadiness(CTX,{today:TODAY,locale:'en'});
 const brief=(rows:readonly PayrollItem[])=>rows.map(row=>[row.kind,row.state,row.date,row.due,row.action.kind==='confirm'?'confirm:'+row.action.caseId:row.action.kind==='answer'?'answer:'+row.action.href:row.action.href]);
-beforeEach(()=>{fx.cutOffRow=true;fx.cutOffDay=20;fx.modules={};fx.fail=new Set();fx.calls=[];fx.own=true;fx.gaps=null;fx.tp3Answer=null;fx.subjectGate=null;fx.subjectFails=false;});
+beforeEach(()=>{fx.approvalSummary.mockReset();fx.cutOffRow=true;fx.cutOffDay=20;fx.modules={};fx.fail=new Set();fx.calls=[];fx.own=true;fx.gaps=null;fx.tp3Answer=null;fx.subjectGate=null;fx.subjectFails=false;});
 
 describe('the person\'s own items, every kind',()=>{
  it('lists each pending thing with its state, day, due date and one action, the most urgent first',async()=>{
@@ -165,7 +169,7 @@ describe('the person\'s own items, every kind',()=>{
    ['tp1_pending','waiting',null,C,'/me/tax-relief'],
   ]);
   // TP1 is read for this year only.
-  expect(fx.calls).toContainEqual(['listMyTp1Declarations',{assessmentYear:2026}]);
+  expect(fx.calls).toContainEqual(['listMyTp1DeclarationsSnapshot',{assessmentYear:2026}]);
   // The leave and claim type names are the person's own; leave keeps its last day.
   expect(result.items.find(row=>row.kind==='leave_pending')).toMatchObject({label:'Annual Leave',date:'2026-11-12',endDate:'2026-11-13'});
   expect(result.items.find(row=>row.kind==='claim_receipt_missing')).toMatchObject({label:'Parking'});
@@ -351,4 +355,19 @@ describe('the Ask read my_payroll_readiness under harness disclosure',()=>{
   fx.modules={payroll:false};
   expect(await askMyPayrollReadiness(CTX,{companyId:'co-1'})).toMatchObject({ok:false,refusal:'no_data'});
  });
+});
+
+it('bounds UI approval rows while preserving exact Claim totals and excluding unrelated task kinds',async()=>{
+ fx.own=false;
+ const claims=Array.from({length:25},(_,i)=>({id:'claim-'+i,kind:'claim',subjectName:'Fictional claimant',createdAt:'2026-11-06T01:00:00.000Z',linkPath:'/approvals?category=claim'}));
+ fx.approvalSummary.mockResolvedValue({items:[...claims,{id:'profile-1',kind:'profile',subjectName:'Fictional profile owner',linkPath:'/admin/personnel/profile-changes'}],claimTotal:500000,total:500001});
+ const result=(await readMyPayrollReadiness(CTX,{today:TODAY,locale:'en',scopeIds:['co-1'],approvalPreview:true}))!;
+ expect(result.approvals).toHaveLength(25);expect(result.approvalTotal).toBe(500000);expect(result.approvalClaimTotal).toBe(500000);
+ expect(result.approvals.every(row=>row.kind==='approve_claim')).toBe(true);
+ expect(fx.approvalSummary).toHaveBeenCalledWith(CTX,['co-1'],{attendance:true,claims:true,performance:false,rewards:false},{noticeAcknowledgements:false});
+ expect(fx.calls.some(call=>call[0]==='listPendingTasks')).toBe(false);
+});
+it('keeps the existing unabridged read contract for callers that did not request a UI preview',async()=>{
+ const result=(await read())!;expect(result.approvals).toHaveLength(5);expect(result).not.toHaveProperty('approvalTotal');
+ expect(fx.approvalSummary).not.toHaveBeenCalled();
 });

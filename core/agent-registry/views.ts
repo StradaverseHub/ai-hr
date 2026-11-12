@@ -15,8 +15,9 @@ import {terasLoopRun,terasMandate,terasOutcomeFollowup,terasOutcomeRecord} from 
 import type {LoopId} from '../loops/types';
 import {isGroupAdmin} from '../../lib/authz-model';
 import {agreementView,type AgreementView} from '../control-tower';
+import {assertAiPresentationPrincipalTx} from '../ai-principal';
 import {mandateState,type MandateState} from '../mandates/mandates';
-import {tenantStoppedTx,workerRunGateTx,workerSwitchStateTx,type WorkerGate,type WorkerSwitchState} from './controls';
+import {tenantStoppedTx,workerGateFromState,workerSwitchPresentationStateTx,type WorkerGate,type WorkerSwitchState} from './controls';
 import {registeredWorker,registeredWorkers,type WorkerDeclaration} from './workers';
 
 export class WorkerRegistryRefused extends Error{constructor(readonly reason:'not_administrator'|'not_found'){super('Worker registry refused: '+reason);this.name='WorkerRegistryRefused';}}
@@ -86,6 +87,11 @@ async function rowsFor(ctx:SessionContext,workers:readonly WorkerDeclaration[]):
  let agreement:AgreementView|null=null;
  if(workers.some(worker=>worker.metrics.kind==='agreement_view')){try{agreement=await agreementView(ctx);}catch{agreement=null;}}
  return withTenant(ctx,async tx=>{
+  await assertAiPresentationPrincipalTx(tx,ctx);
+  // Planned without JIT (AI Centre › Workers, 11 November 2026): each worker's last run is a row-secured read of the
+  // audit log, which the planner prices high enough to compile, about 1.4 s a statement on a 30,000-event tenant against
+  // milliseconds to run (test/ai-centre-scale-timing.test.ts). Scoped to this read-only transaction; same answer.
+  await tx.execute(sql`set local jit=off`);
   const stopped=await tenantStoppedTx(tx,ctx.tenantId);
   const mandates=await tx.select().from(terasMandate).where(eq(terasMandate.tenantId,ctx.tenantId));
   const now=new Date(),out:WorkerRow[]=[];
@@ -95,13 +101,14 @@ async function rowsFor(ctx:SessionContext,workers:readonly WorkerDeclaration[]):
     :Object.freeze({measured:false,acceptanceRate:null,reversalRate:null,decided:0,reason:worker.metrics.kind==='not_measurable'?worker.metrics.reason
      :worker.metrics.kind==='loop_cases'?'Measured from its cards on Operations, Loops.':'Not measured.'});
    const own=worker.authority.kind==='mandate'?mandates.filter(row=>row.jobType===(worker.authority as {jobType:string}).jobType):null;
+   const switchState=await workerSwitchPresentationStateTx(tx,ctx,worker);
    out.push(Object.freeze({id:worker.id,label:worker.label,family:worker.family,trigger:worker.trigger,readScope:worker.readScope,effect:worker.effect,
-    authority:worker.authority,owners:worker.owners,switch:await workerSwitchStateTx(tx,ctx,worker),stopped,stopHonoured:worker.stop.honoured,
-    stopPending:worker.stop.honoured?null:worker.stop.pending,gate:await workerRunGateTx(tx,ctx,worker.id),lastRunAt:await lastRunTx(tx,ctx.tenantId,worker),metrics,
+    authority:worker.authority,owners:worker.owners,switch:switchState,stopped,stopHonoured:worker.stop.honoured,
+    stopPending:worker.stop.honoured?null:worker.stop.pending,gate:workerGateFromState(switchState.on,stopped),lastRunAt:await lastRunTx(tx,ctx.tenantId,worker),metrics,
     mandates:own?Object.freeze({active:own.filter(row=>mandateState(row,now)==='active').length,total:own.length}):null}));
   }
   return out;
- });
+ },{readOnlySnapshot:true});
 }
 
 /** The Workers list: every registered worker, in registry order. */
@@ -123,6 +130,7 @@ export async function workerDetail(ctx:SessionContext,workerId:string):Promise<W
  if(!worker)throw new WorkerRegistryRefused('not_found');
  const [row]=await rowsFor(ctx,[worker]);
  return withTenant(ctx,async tx=>{
+  await tx.execute(sql`set local jit=off`);// as rowsFor: row-secured audit-log reads, compiled for longer than they run
   const record=worker.record,now=new Date();
   let recentRuns:WorkerRun[]=[];
   if(record.kind==='outcome_record'||record.kind==='mandate_runs'){

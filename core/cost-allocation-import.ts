@@ -5,6 +5,7 @@ import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,costCenter,employment,employmentCostAllocationHead,employmentCostAllocationSet as allocationSet,employmentCostAllocationRow as allocationRow} from '../db/schema';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
+import {withAccessDisplayRead} from './access-configuration-lock';
 import {lockLabelCriteriaTx,visibleLabelIdsCondition} from './system-labels';
 import {provenCompanyDatesTx} from './employment-company';
 import {prepareCostAllocationsTx,saveEmploymentCostAllocations} from './employment-cost-allocations';
@@ -32,11 +33,12 @@ export async function costAllocationReferencesTx(tx:Tx,ctx:SessionContext,compan
  z.uuid().parse(companyId);await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');const[live]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,companyId),isNull(company.archivedAt)));if(!live)throw new CostAllocationError('scope');
  return tx.select({companyId:sql<string>`${companyId}`,id:costCenter.id,code:costCenter.code,label:costCenter.label}).from(costCenter).where(and(isNull(costCenter.archivedAt),visibleLabelIdsCondition(costCenter,'cost_center',[companyId]))).orderBy(asc(costCenter.code),asc(costCenter.id));
 }
-export function costAllocationReferences(ctx:SessionContext,companyId:string){return withTenant(ctx,tx=>costAllocationReferencesTx(tx,ctx,companyId));}
+/** A read: its 'maintain' check joins the Access lock shared (withAccessDisplayRead, SCALE rule 1). */
+export function costAllocationReferences(ctx:SessionContext,companyId:string){return withAccessDisplayRead(()=>withTenant(ctx,tx=>costAllocationReferencesTx(tx,ctx,companyId)));}
 /** One template for every company the actor may maintain (c4055300); no company is chosen first. */
 export function costAllocationWorkbookReferences(ctx:SessionContext):Promise<AllocationWorkbookReferences>{
  return withTenant(ctx,async tx=>{
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);
   const companies=await maintainableCompaniesTx(tx),result:AllocationWorkbookReferences={companies:[],costCenters:[]};
   for(const c of companies){
    const code=allocationCompanyCode(c);result.companies.push({code,name:c.name});
@@ -49,7 +51,7 @@ const rowsLabel=(rowNums:number[])=>rowNums.length===1?`Row ${rowNums[0]}`:`Rows
 const companyLabel=(c:CompanyRef)=>`${allocationCompanyCode(c)} (${c.name})`;
 
 export async function previewCostAllocationImportTx(tx:Tx,ctx:SessionContext,records:AllocationImportRecords,newEmployees?:NewAllocationEmployee[]):Promise<AllocationImportPreview>{
- if(records.length>5000)throw new CostAllocationError('invalid');await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLabelCriteriaTx(tx,ctx.tenantId);
+ if(records.length>5000)throw new CostAllocationError('invalid');await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLabelCriteriaTx(tx,ctx.tenantId);
  const companies=await maintainableCompaniesTx(tx);
  const groups=new Map<string,AllocationImportGroup>(),snapshots:unknown[]=[];
  for(const[at,r]of records.entries()){
@@ -215,7 +217,7 @@ export async function confirmCostAllocationUpload(ctx:SessionContext,input:{atte
  */
 const itemState=(value:unknown)=>value as CostAllocationItemState;
 /** Writer locks always precede the attempt row lock, in confirm and revert alike, so they cannot deadlock. */
-async function lockAllocationWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLabelCriteriaTx(tx,ctx.tenantId);}
+async function lockAllocationWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLabelCriteriaTx(tx,ctx.tenantId);}
 export const costAllocationRevertHandler:ImportRevertHandler={
  kind:'cost_allocations',
  lock:(tx,ctx)=>lockAllocationWritersTx(tx,ctx),

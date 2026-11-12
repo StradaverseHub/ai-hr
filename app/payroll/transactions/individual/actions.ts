@@ -257,7 +257,8 @@ export async function fetchBatchImpactAction(input: { batchId: string }): Promis
 /** Plain-data projection of `batchEditImpact` for the client component (no Date, no service types). */
 export type TxnBatchImpact = {
   batchId: string;
-  status: 'draft' | 'processed' | 'closed';
+  /** 'processing': the background payroll job owns the run; its figures are not final yet. */
+  status: 'draft' | 'processing' | 'processed' | 'closed';
   payPeriod: string;
   needsRecalc: boolean;
   recalcCount: number;

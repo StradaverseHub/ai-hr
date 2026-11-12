@@ -46,6 +46,7 @@ const {capturedClock,fixture,header,part}=createAttendancePolicyStorageFixtures(
 type Fixture=Awaited<ReturnType<typeof fixture>>;
 describe('immutable non-payable policy part storage',()=>{
 
+ // Explicit timeout: measured 20.3 s against the global 30 s in gate 42958137526.
  it('transfers an actual split policy parent into Payroll once and generates the canonical payslip',async()=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'typed_pay_components',null);
   await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
@@ -73,7 +74,7 @@ describe('immutable non-payable policy part storage',()=>{
   await expect(transferOvertimePatternToPayroll(ctx,transfer)).rejects.toThrow();
   await expect(deleteDraftBatch(ctx,{batchId:batch.batchId})).rejects.toThrow();
   expect(await owner.db.select().from(s.overtimeSourceSettlement).where(and(eq(s.overtimeSourceSettlement.sourceId,read.source.id),sql`released_at IS NULL`))).toHaveLength(1);
- });
+ },90_000);
  it('banks actual policy TOIL under its existing credit owner, excludes cash, and releases on canonical reversal',async()=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);
   const f=await fixture('auto','12','actual',false,undefined,0,true),p={employmentId:f.employmentId,date:f.sourceDate};
@@ -97,6 +98,7 @@ describe('immutable non-payable policy part storage',()=>{
   expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,accrual.id)))[0].status).toBe('reversed');
  });
 
+ // Explicit timeout: measured 15.0 s against the global 30 s in gate 42958137526.
  it('serializes independent app reservations across overlapping source parents and releases coverage through the canonical owner',async()=>{
   await setModule(b.tenantId,'payroll','active');ctx=await entitledCtx(b);
   const f=await fixture('auto','12','actual',false,undefined,0,true);
@@ -140,7 +142,7 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await transferOvertimePatternToPayroll(ctx,{employmentId:f.employmentId,date:next,expectedCalculationId:right.calculation.id,
    expectedSourceRevision:right.source.revision,batchId:replacement.batchId,reason:'Fictional source becomes available after canonical coverage release'}))
    .toMatchObject({status:'transferred'});
- });
+ },90_000);
 
  it.each(['identical','datedRates'] as const)('records and pays one capped parent across actual dated classes using $0 immutable definitions',async scope=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'typed_pay_components',null);
@@ -312,6 +314,7 @@ describe('immutable non-payable policy part storage',()=>{
   expect((await runToilExpiry(ctx,{today:credit.expiresOn})).processed).toBe(0);
  });
 
+ // Explicit timeout: measured 23.7 s ('nearest') against the global 30 s in gate 42958137526.
  it.each([{mode:'up' as const,physical:125,direction:'earliest' as const},
   {mode:'nearest' as const,physical:135,direction:'latest' as const}])('carries $mode rounded counts through actual Payroll and independent TOIL without lengthening captures',async({mode,physical,direction})=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'typed_pay_components',null);
@@ -380,7 +383,7 @@ describe('immutable non-payable policy part storage',()=>{
   expect(claim).toMatchObject({mode:'toil',coverageKind:'policyPhysical'});
   await reverseLeaveCredit(ctx,{accrualId:credit.id,reason:'Fictional rounded TOIL reversal'});
   expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.id,claim.id)))[0].releasedAt).not.toBeNull();
- });
+ },90_000);
 
  it('refuses rounded TOIL when a dated next-month allocation already belongs to a later cutoff Payroll period',async()=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);

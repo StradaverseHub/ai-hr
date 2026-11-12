@@ -1,4 +1,5 @@
-import {manageAccount,readManagedAccount} from '../core/account-management';
+import {generateManagedAccountPassword,manageAccount,readManagedAccount,readManagedAccountDirectory,readManagedAccountHistory} from '../core/account-management';
+import {readLastSignIns} from '../core/last-sign-in';
 import { pgSqlState } from '../lib/db-error';
 import { readRememberedMfaPolicyEditor, saveRememberedMfaPolicy } from '../core/remembered-mfa-policy';
 import { rememberedFactorValid } from '../lib/internal-auth/remembered-mfa';
@@ -16,7 +17,7 @@ import { bootstrapInternalOwner } from '../lib/internal-auth/bootstrap';
 import { internalIssuer } from '../lib/internal-auth/config';
 import { digest } from '../lib/internal-auth/crypto';
 import { readRecord, writeRecord } from '../lib/internal-auth/store';
-import { changeInitialPassword, credentialByLogin, readSession, revokeSession, rotateRefresh, startLogin, verifyMfa, type AuthReply, type Credential } from '../lib/internal-auth/service';
+import { changeInitialPassword, credentialByLogin, readSession, revokeSession, rotateRefresh, startLogin, takeRate, verifyMfa, type AuthReply, type Credential } from '../lib/internal-auth/service';
 import { requestRecovery, completeRecovery, sendInternalRecovery } from '../lib/internal-auth/recovery';
 import { sendInternalInvitation,startInvitation, acceptInternalInvitation } from '../lib/internal-auth/invitations';
 import { createManualAccount, resumeManualAccount } from '../core/manual-identity';
@@ -29,6 +30,7 @@ import { sql } from 'drizzle-orm';
 import { hireEmployee } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { getMobileSession } from '../lib/session';
+import { verifyTenantChain } from '../core/audit-chain';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let base: Base;
 const temp = 'Temporary private passphrase 722!';
@@ -52,6 +54,17 @@ async function enroll(native = false, rememberDevice = false) {
   return { signedIn, setup };
 }
 async function nextCode(c: Credential) { return generate({ secret: c.totpSecret!, epoch: (c.lastStep + 1) * 30 }); }
+/** A fictional employee account (not the acting administrator) with a completed first sign-in and authenticator. */
+async function enrolledEmployee() {
+  await enroll();const group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+  const employee=await hireEmployee(group,{person:{fullName:'Fictional Paused Employee',primaryEmail:'paused@example.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  const userId=await createManualAccount(group,{id:randomUUID(),personId:employee.personId,username:'paused.user',email:'paused@example.test',role:'employee',companyId:null,password:temp,ownershipAttested:true});
+  let next=await startLogin({organization:'alpha',username:'paused.user',password:temp,native:false});
+  if(next.step==='password')next=await changeInitialPassword(challenge(next),final);
+  if(next.step!=='enroll'||!next.secret)throw new Error('Expected first-sign-in enrolment');
+  const secret=next.secret;completed(await verifyMfa(challenge(next),await generate({secret})));
+  return {group,userId,password:final,secret};
+}
 
 describe('first-party authentication with real private storage and existing HR bindings', () => {
   it('suspends account-wide access and rejects expired reactivation for browser and native',async()=>{
@@ -100,7 +113,7 @@ describe('first-party authentication with real private storage and existing HR b
   });
   it('consumes a bounded exemption only for password recovery and requires MFA for subsequent HR access',async()=>{
     await enroll();const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
-    await manageAccount(ctx,base.adminUserId,{type:'recovery-exemption',reason:'Verified offline recovery',minutes:5});
+    await manageAccount(ctx,base.adminUserId,{type:'recovery-exemption',reason:'Verified offline recovery',expiresAt:Date.now()+10*60_000});
     await writeRecord(client,'email-state',{active:{config:{host:'smtp.invalid'}},revision:'test',drafts:{}},null);
     let text='';await requestRecovery('alpha','owner',async(_relay,mail)=>{text=mail.text;});
     const token=text.match(/#token=([A-Za-z0-9_-]{43})/)![1];
@@ -121,13 +134,13 @@ describe('first-party authentication with real private storage and existing HR b
   });
   it('never retires an authenticator for an expired exemption or a failed replacement password',async()=>{
     const {signedIn}=await enroll(),ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
-    await manageAccount(ctx,base.adminUserId,{type:'recovery-exemption',reason:'Verified short-lived recovery',minutes:5});
+    await manageAccount(ctx,base.adminUserId,{type:'recovery-exemption',reason:'Verified short-lived recovery',expiresAt:Date.now()+10*60_000});
     await writeRecord(client,'email-state',{active:{config:{host:'smtp.invalid'}},revision:'test',drafts:{}},null);
     let text='';await requestRecovery('alpha','owner',async(_relay,mail)=>{text=mail.text;});
     const token=text.match(/#token=([A-Za-z0-9_-]{43})/)![1],before=(await credentialByLogin('alpha','owner'))!;
     await expect(completeRecovery(token,final,'')).rejects.toMatchObject({code:'passwordPolicy'});
     expect((await credentialByLogin('alpha','owner'))?.totpSecret).toBe(before.totpSecret);
-    const now=Date.now();vi.spyOn(Date,'now').mockReturnValue(now+6*60_000);
+    const now=Date.now();vi.spyOn(Date,'now').mockReturnValue(now+11*60_000);
     await expect(completeRecovery(token,'Expired exemption replacement 738!','')).rejects.toMatchObject({code:'invalidCode'});
     const unchanged=(await credentialByLogin('alpha','owner'))!;
     expect(unchanged.totpSecret).toBe(before.totpSecret);expect(unchanged.recoveryHashes).toEqual(before.recoveryHashes);
@@ -137,9 +150,94 @@ describe('first-party authentication with real private storage and existing HR b
   it('denies unlinked account management to company HR and rejects unknown targets',async()=>{
     await enroll();const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:base.companyId}]};
     await expect(manageAccount(ctx,base.adminUserId,{type:'suspend',reason:'Unauthorized scoped action'})).rejects.toThrow();
+    // Board 07c98c36: the new dialogs pass through the same complete-scope proof.
+    await expect(manageAccount(ctx,base.adminUserId,{type:'recovery-exemption',reason:'Unauthorized scoped pause',expiresAt:Date.now()+3600_000})).rejects.toThrow();
+    await expect(manageAccount(ctx,base.adminUserId,{type:'recovery-exemption-cancel'})).rejects.toThrow();
+    await expect(manageAccount(ctx,base.adminUserId,{type:'temporary-password',minutes:60})).rejects.toThrow();
+    await expect(generateManagedAccountPassword(ctx,base.adminUserId)).rejects.toThrow();
+    await expect(readManagedAccountHistory(ctx,base.adminUserId)).rejects.toThrow();
+    expect(await readManagedAccountDirectory(ctx,[base.adminUserId])).toEqual({});
     const group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
     await expect(manageAccount(group,randomUUID(),{type:'suspend',reason:'Unknown target account'})).rejects.toThrow('forbidden');
     expect((await credentialByLogin('alpha','owner'))?.suspended).not.toBe(true);
+  });
+  it('pauses the authenticator for one temporary-password first sign-in and still requires a new authenticator',async()=>{
+    const {group,userId}=await enrolledEmployee(),temporary='Fictional temporary passphrase 4410!';
+    await manageAccount(group,userId,{type:'temporary-password',password:temporary,minutes:60});
+    const until=Date.now()+2*3600_000;
+    await manageAccount(group,userId,{type:'recovery-exemption',reason:'Verified lost phone by video call',expiresAt:until});
+    expect((await readManagedAccount(group,userId)).exemptionUntil).toBe(until);
+    expect((await readManagedAccountDirectory(group,[userId]))[userId]).toMatchObject({username:'paused.user',status:'active',exemptionUntil:until});
+    const before=(await credentialByLogin('alpha','paused.user'))!;expect(before.totpSecret).not.toBeNull();
+    const login=await startLogin({organization:'alpha',username:'paused.user',password:temporary,native:false});
+    expect(login.step).toBe('password');
+    const retired=(await credentialByLogin('alpha','paused.user'))!;
+    expect(retired.totpSecret).toBeNull();expect(retired.recoveryHashes).toEqual([]);expect(retired.version).not.toBe(before.version);
+    expect(await readRecord(client,`recovery-exemption:${retired.subject}`)).toBeNull();
+    expect(await readSession(challenge(login))).toBeNull();
+    await expect(verifyMfa(challenge(login),await generate({secret:before.totpSecret!}))).rejects.toMatchObject({code:'invalidChallenge'});
+    // The forced password change cannot open a session: a fresh authenticator must be enrolled first.
+    const enrolment=await changeInitialPassword(challenge(login),'Fictional replaced passphrase 4411!');
+    if(enrolment.step!=='enroll'||!enrolment.secret)throw Error('Expected mandatory authenticator enrolment');
+    completed(await verifyMfa(challenge(enrolment),await generate({secret:enrolment.secret})));
+    expect((await readManagedAccount(group,userId)).exemptionUntil).toBeNull();
+    // Single use: the next temporary password needs the new authenticator again.
+    await manageAccount(group,userId,{type:'temporary-password',reason:'Second verified recovery',password:'Fictional temporary passphrase 4412!',minutes:60});
+    expect((await startLogin({organization:'alpha',username:'paused.user',password:'Fictional temporary passphrase 4412!',native:false})).step).toBe('mfa');
+    const events=await owner.client`select event_type,actor_id,payload from domain_event where aggregate_id=${userId}::uuid and event_type like '%recovery-exemption%' order by occurred_at,sequence`;
+    expect(events.map(e=>e.event_type)).toEqual(['app-user.account-recovery-exemption','app-user.recovery-exemption-consumed']);
+    expect(events[0].actor_id).toBe(base.adminUserId);expect(events[1].payload).toEqual({path:'temporary-password',expiresAt:until});
+    const audit=JSON.stringify(await owner.client`select payload from domain_event where aggregate_id=${userId}::uuid`);
+    for(const secret of [temporary,'Fictional replaced passphrase 4411!','Fictional temporary passphrase 4412!',before.totpSecret!,enrolment.secret])expect(audit).not.toContain(secret);
+    const history=await readManagedAccountHistory(group,userId);
+    expect(history.map(e=>e.event_type)).toEqual(expect.arrayContaining(['app-user.account-temporary-password','app-user.account-recovery-exemption','app-user.recovery-exemption-consumed','app-user.logged-in','app-user.password-reset','app-user.mfa-enrolled']));
+    const times=history.map(e=>new Date(e.occurred_at).getTime());expect(times).toEqual([...times].sort((a,b)=>b-a));
+    expect(JSON.stringify(history)).not.toContain(temporary);
+  });
+  it('bounds the pause to 7 days, requires a reason, switches it back on and ignores an expired pause',async()=>{
+    const {group,userId}=await enrolledEmployee(),now=Date.now();
+    for(const expiresAt of [now+7*24*3600_000+60_000,now+60_000,now-60_000,Number.NaN])
+      await expect(manageAccount(group,userId,{type:'recovery-exemption',reason:'Verified lost phone',expiresAt})).rejects.toThrow('invalid');
+    await expect(manageAccount(group,userId,{type:'recovery-exemption',reason:'',expiresAt:now+3600_000})).rejects.toThrow('invalid');
+    await expect(manageAccount(group,userId,{type:'temporary-password',reason:'abc',minutes:60})).rejects.toThrow('invalid');
+    await manageAccount(group,userId,{type:'recovery-exemption',reason:'Verified lost phone',expiresAt:now+7*24*3600_000-60_000});
+    await manageAccount(group,userId,{type:'recovery-exemption-cancel'});
+    await manageAccount(group,userId,{type:'recovery-exemption-cancel'});
+    expect((await readManagedAccount(group,userId)).exemptionUntil).toBeNull();
+    await manageAccount(group,userId,{type:'temporary-password',password:'Fictional temporary passphrase 4420!',minutes:60});
+    expect((await startLogin({organization:'alpha',username:'paused.user',password:'Fictional temporary passphrase 4420!',native:false})).step).toBe('mfa');
+    await manageAccount(group,userId,{type:'recovery-exemption',reason:'Verified short pause',expiresAt:Date.now()+10*60_000});
+    await manageAccount(group,userId,{type:'temporary-password',password:'Fictional temporary passphrase 4421!',minutes:60});
+    const later=Date.now()+11*60_000;vi.spyOn(Date,'now').mockReturnValue(later);
+    expect((await startLogin({organization:'alpha',username:'paused.user',password:'Fictional temporary passphrase 4421!',native:false})).step).toBe('mfa');
+    const c=(await credentialByLogin('alpha','paused.user'))!;expect(c.totpSecret).not.toBeNull();
+    expect(await readRecord(client,`recovery-exemption:${c.subject}`)).toBeNull();
+    expect((await readManagedAccount(group,userId)).exemptionUntil).toBeNull();
+    const events=await owner.client`select event_type from domain_event where aggregate_id=${userId}::uuid and event_type like '%recovery-exemption%' order by occurred_at,sequence`;
+    expect(events.map(e=>e.event_type)).toEqual(['app-user.account-recovery-exemption','app-user.account-recovery-exemption-cancelled','app-user.account-recovery-exemption','app-user.recovery-exemption-expired']);
+  });
+  it('generates a candidate from the saved Password Policy without storing it',async()=>{
+    const {group,userId}=await enrolledEmployee();
+    await savePasswordPolicy(group,{enabled:false,interval:90,unit:'days',requirements:{...NEW_PASSWORD_REQUIREMENTS,maxLength:32,uppercase:true,lowercase:true,numbers:true,special:true}},0);
+    const candidate=await generateManagedAccountPassword(group,userId);
+    expect(candidate).toHaveLength(32);expect(candidate).toMatch(/[A-Z]/);expect(candidate).toMatch(/[a-z]/);expect(candidate).toMatch(/[0-9]/);expect(candidate).toMatch(/[^A-Za-z0-9\s]/);
+    await expect(startLogin({organization:'alpha',username:'paused.user',password:candidate,native:false})).rejects.toMatchObject({code:'invalidLogin'});
+    expect(JSON.stringify(await owner.client`select payload from domain_event where aggregate_id=${userId}::uuid`)).not.toContain(candidate);
+  });
+  it('reads Last Login from the latest sign-in event for every listed user in one batch',async()=>{
+    const {group,userId,password,secret}=await enrolledEmployee(),unknown=randomUUID();
+    const [index]=await owner.client`select indexdef from pg_indexes where indexname='domain_event_app_user_last_login_idx'`;
+    expect(index.indexdef).toContain('WHERE');
+    const first=await readLastSignIns(group,[userId,unknown,base.adminUserId]);
+    expect(Object.keys(first).sort()).toEqual([userId,base.adminUserId].sort());expect(first[unknown]).toBeUndefined();
+    const login=await startLogin({organization:'alpha',username:'paused.user',password,native:false});
+    expect(login.step).toBe('mfa');expect(secret).toBe((await credentialByLogin('alpha','paused.user'))!.totpSecret);
+    completed(await verifyMfa(challenge(login),await nextCode((await credentialByLogin('alpha','paused.user'))!)));
+    const latest=await readLastSignIns(group,[userId]);
+    const [expected]=await owner.client`select max(occurred_at) as last_at from domain_event where aggregate_id=${userId}::uuid and event_type='app-user.logged-in'`;
+    expect(latest[userId]).toBe(new Date(expected.last_at).toISOString());expect(new Date(latest[userId]).getTime()).toBeGreaterThanOrEqual(new Date(first[userId]).getTime());
+    const [{count}]=await owner.client`select count(*)::int count from domain_event where aggregate_id=${userId}::uuid and event_type='app-user.logged-in'`;expect(count).toBe(2);
+    expect(await readLastSignIns({...group,roles:['employee']},[userId])).toEqual({});
   });
   it('limits delegated HR to accounts wholly within their administered companies and protects group admins',async()=>{
     await enroll();const group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
@@ -254,6 +352,76 @@ describe('first-party authentication with real private storage and existing HR b
     for(let n=1;n<10;n++)await expect(startLogin({...input,password:'invalid phrase'})).rejects.toMatchObject({code:'invalidLogin'});
     await expect(startLogin(input)).rejects.toMatchObject({code:'rateLimited'});clock.mockRestore();
   });
+  async function holdRateKey(key: string, signal: AbortSignal, check: (pid: number) => Promise<void>) {
+    let announce!: (pid: number) => void, release!: () => void;
+    const ready = new Promise<number>(resolve => { announce = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    signal.addEventListener('abort', release, { once: true });
+    const holder = owner.client.begin(async tx => {
+      await tx.unsafe("select pg_advisory_xact_lock(hashtextextended('internal-auth:'||$1,0))", [key]);
+      const [row] = await tx<{ pid: number }[]>`select pg_backend_pid() as pid`;
+      announce(row.pid);
+      await held;
+    });
+    try { await check(await Promise.race([ready, holder.then(() => { throw Error('Rate holder exited before the witness'); })])); }
+    finally { signal.removeEventListener('abort', release); release(); await holder; }
+  }
+  const rateKey = (start: number) => `rate:${digest(`login-global:${start}`)}`;
+  const minute = 60_000;
+  async function rateLockState(pid: number) {
+    const [state] = await owner.client<{ held: boolean; waiting: boolean }[]>`select
+      exists(select 1 from pg_locks where pid=${pid} and locktype='advisory' and granted) as held,
+      exists(select 1 from pg_locks where locktype='advisory' and not granted and ${pid}::integer=any(pg_blocking_pids(pid))) as waiting`;
+    return state;
+  }
+  it('returns the app pool permits on held rate-key misses, then admits exactly the one remaining token', async ({ signal }) => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    const start = Math.floor(Date.now() / minute) * minute, key = rateKey(start);
+    await writeRecord(client, key, { count: 119 }, null, start + 2 * minute);
+    let finished = 0, announce!: () => void;
+    const settled = new Promise<void>(resolve => { announce = resolve; });
+    vi.stubGlobal('__aihrPerfBeginPoolWork', () => ({ acquired: () => {}, finished: () => { if (++finished >= 2) announce(); } }));
+    let contenders: Promise<PromiseSettledResult<void>[]> | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await holdRateKey(key, signal, async pid => {
+        // The old blocking expression still waits on exactly this native key.
+        const previous = await owner.client.begin(async tx => {
+          await tx`set local lock_timeout='50ms'`;
+          await tx.unsafe("select pg_advisory_xact_lock(hashtextextended('internal-auth:'||$1,0))", [key]);
+        }).then(() => null, (error: unknown) => error);
+        expect(pgSqlState(previous)).toBe('55P03');
+        contenders = Promise.allSettled([takeRate('login-global', 120, minute), takeRate('login-global', 120, minute)]);
+        await Promise.race([settled, new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(Error('Rate lock miss retained the app pool permit')), 350); })]);
+        expect(await rateLockState(pid)).toEqual({ held: true, waiting: false });
+        expect(await readRecord(client, key)).toEqual({ count: 119 });
+      });
+      const outcomes = await contenders;
+      expect(outcomes?.filter(row => row.status === 'fulfilled')).toHaveLength(1);
+      expect(outcomes?.find(row => row.status === 'rejected')).toMatchObject({ reason: { code: 'rateLimited' } });
+      expect(await readRecord(client, key)).toEqual({ count: 120 });
+    } finally { clearTimeout(timeout); await contenders; clock.mockRestore(); }
+  });
+  it('refuses a sustained global rate-key hold without guessing quota or starting any credential effects', async ({ signal }) => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    const start = Math.floor(Date.now() / minute) * minute, key = rateKey(start);
+    const usernameWindow = 15 * minute, usernameStart = Math.floor(Date.now() / usernameWindow) * usernameWindow;
+    const usernameKey = `rate:${digest(`login:alpha:owner:${usernameStart}`)}`;
+    await writeRecord(client, key, { count: 119 }, null, start + 2 * minute);
+    const challenges = () => owner.client`select count(*)::int as count from app_internal_auth_record where record_key like 'challenge:%'`;
+    const before = await challenges();
+    try {
+      await holdRateKey(key, signal, async pid => {
+        await expect(startLogin({ organization: 'alpha', username: 'owner', password: temp, native: false })).rejects.toMatchObject({ code: 'unavailable' });
+        expect(await rateLockState(pid)).toEqual({ held: true, waiting: false });
+        expect(await readRecord(client, key)).toEqual({ count: 119 });
+        expect(await readRecord(client, usernameKey)).toBeNull();
+        expect(await challenges()).toEqual(before);
+      });
+      await expect(takeRate('login-global', 120, minute)).resolves.toBeUndefined();
+      expect(await readRecord(client, key)).toEqual({ count: 120 });
+    } finally { clock.mockRestore(); }
+  });
   it('blocks wrong passwords, unknown users, partial and forged handles and cross-carrier challenge completion' , async () => {
     for (const username of ['owner', 'missing']) await expect(startLogin({ organization: 'alpha', username, password: 'Wrong private passphrase 999!', native: false })).rejects.toMatchObject({ code: 'invalidLogin' });
     const login = await startLogin({ organization: 'alpha', username: 'owner', password: temp, native: false });
@@ -270,6 +438,252 @@ describe('first-party authentication with real private storage and existing HR b
     const other = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
     await expect(verifyMfa(challenge(other), code)).rejects.toMatchObject({ code: 'invalidCode' });
   });
+  it('releases both returning MFA transactions before effects when their tenant audit owner is held', async () => {
+    const externalHttp = vi.fn(async () => { throw Error('External HTTP is blocked in this on-prem fixture.'); });
+    vi.stubGlobal('fetch', externalHttp);
+    const ctx = adminCtx(base);
+    await owner.client`insert into tenant_setting(tenant_id,key,value)
+      values(${base.tenantId}::uuid,'audit.hash_chain_enabled','true'::jsonb)
+      on conflict(tenant_id,key) do update set value=excluded.value`;
+    await enroll();
+    const employeeId = await createManualAccount(ctx, { id: randomUUID(), personId: null, fullName: 'Fictional MFA audit user',
+      username: 'audit.user', email: 'audit.user@example.test', role: 'employee', companyId: null, password: temp, ownershipAttested: true });
+    const firstLogin = await startLogin({ organization: 'alpha', username: 'audit.user', password: temp, native: false });
+    const firstSetup = await changeInitialPassword(challenge(firstLogin), final);
+    if (firstSetup.step !== 'enroll' || !firstSetup.secret) throw Error('Expected employee authenticator enrollment');
+    completed(await verifyMfa(challenge(firstSetup), await generate({ secret: firstSetup.secret })));
+
+    const now = Date.now(), clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    const rateWindow = 15 * minute, rateStart = Math.floor(now / rateWindow) * rateWindow;
+    const actors = await Promise.all([['owner', base.adminUserId], ['audit.user', employeeId]].map(async ([username, userId]) => {
+      const credential = await credentialByLogin('alpha', username);
+      if (!credential?.totpSecret) throw Error('Expected current, enrolled credential');
+      const login = await startLogin({ organization: 'alpha', username, password: final, native: false });
+      expect(login.step).toBe('mfa');
+      const raw = challenge(login);
+      return { username, userId, credential, raw, code: await nextCode(credential), challengeKey: `challenge:${digest(raw)}`,
+        rateKey: `rate:${digest(`mfa:${credential.subject}:${rateStart}`)}` };
+    }));
+    const subjects = actors.map(actor => actor.credential.subject);
+    expect(new Set(subjects).size).toBe(2);
+    expect(actors.every(actor => actor.credential.tenantId === base.tenantId)).toBe(true);
+
+    const storedCounts = () => owner.client<{ owner_id: string; families: number; sessions: number; challenges: number }[]>`select owner_id,
+      count(*) filter(where record_key like 'family:%')::int as families,
+      count(*) filter(where record_key like 'session:%')::int as sessions,
+      count(*) filter(where record_key like 'challenge:%')::int as challenges
+      from app_internal_auth_record where owner_id=any(${subjects}::uuid[]) group by owner_id order by owner_id`;
+    const before = await storedCounts();
+    expect(before).toHaveLength(2);
+    expect(before.every(actor => actor.families === 1 && actor.sessions === 1 && actor.challenges === 1)).toBe(true);
+    const ratesBefore = await Promise.all(actors.map(actor => readRecord<{ count: number }>(client, actor.rateKey)));
+    const [head] = await owner.client<{ seq: number; hash: string }[]>`select chain_seq::int as seq,hash from domain_event
+      where tenant_id=${base.tenantId}::uuid and chain_seq is not null order by chain_seq desc limit 1`;
+    expect(head?.seq).toBeGreaterThan(0);
+    const newEvents = () => owner.client<{ seq: number; prev_hash: string; hash: string; aggregate_type: string; aggregate_id: string;
+      event_type: string; actor_type: string; actor_id: string; subject_employment_id: string | null; payload: unknown }[]>`select
+      chain_seq::int as seq,prev_hash,hash,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload
+      from domain_event where tenant_id=${base.tenantId}::uuid and chain_seq>${head.seq} order by chain_seq`;
+
+    // Observe the actual driver's TRY return and transaction settlement. The underlying SQL and connection are unchanged.
+    const auditKey = `audit-chain:${base.tenantId}`, begin = client.begin.bind(client), misses = new Map<string, number>();
+    const observeBegin = vi.spyOn(client, 'begin').mockImplementation(((...args: unknown[]) => {
+      const callbackIndex = args.findIndex(arg => typeof arg === 'function');
+      const callback = args[callbackIndex] as (native: typeof client) => unknown;
+      let subject: string | undefined, missed = false, effects = 0;
+      args[callbackIndex] = (native: typeof client) => callback(new Proxy(native, { get(target, key, receiver) {
+        if (key !== 'unsafe') return Reflect.get(target, key, receiver);
+        return (...query: unknown[]) => {
+          const [text, params] = query;
+          const pending = Reflect.apply(target.unsafe, target, query);
+          if (typeof text !== 'string' || !Array.isArray(params)) return pending;
+          if (text.includes("pg_advisory_xact_lock(hashtextextended('internal-auth:'") && subjects.includes(params[0])) subject = params[0];
+          if (!subject) return pending;
+          if (/\bapp\.(?:internal_auth_(?:write|delete|revoke)|append_auth_event)\(/.test(text)) effects++;
+          if (/\bpg_try_advisory_xact_lock\(\s*(?:pg_catalog\.)?hashtext\(/.test(text)
+            && (params.includes(auditKey) || text.includes('audit-chain:') && params.includes(base.tenantId))) {
+            void (pending as PromiseLike<readonly { acquired: boolean }[]>).then(rows => { if (rows[0]?.acquired === false) missed = true; }, () => undefined);
+          }
+          return pending;
+        };
+      } }));
+      const transaction = Reflect.apply(begin, client, args) as PromiseLike<unknown>;
+      void transaction.then(() => { if (subject && missed) misses.set(subject, effects); }, () => undefined);
+      return transaction;
+    }) as typeof client.begin);
+    let attempts: Promise<PromiseSettledResult<AuthReply>[]> | undefined;
+    try {
+      await owner.client.begin(async holder => {
+        await holder`select pg_advisory_xact_lock(hashtext(${auditKey}))`;
+        const [identity] = await holder<{ pid: number }[]>`select pg_backend_pid() as pid`;
+        attempts = Promise.allSettled(actors.map(actor => verifyMfa(actor.raw, actor.code)));
+        const deadline = performance.now() + 2500;
+        for (;;) {
+          const state = await rateLockState(identity.pid);
+          expect(state).toEqual({ held: true, waiting: false });
+          if (misses.size === actors.length) break;
+          if (performance.now() >= deadline) throw Error('Returning MFA did not settle both native audit-key misses');
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        expect(misses).toEqual(new Map(subjects.map(subject => [subject, 0])));
+        expect(await storedCounts()).toEqual(before);
+        expect(await newEvents()).toEqual([]);
+        for (const actor of actors) {
+          expect(await readRecord(client, actor.challengeKey)).not.toBeNull();
+          expect((await credentialByLogin('alpha', actor.username))?.lastStep).toBe(actor.credential.lastStep);
+        }
+        // The code was already checked before the native misses. Crossing its
+        // tolerance while waiting must not change the decision for this request.
+        clock.mockReturnValue(now + 90_000);
+      });
+      const results = await attempts;
+      expect(results?.map(result => result.status)).toEqual(['fulfilled', 'fulfilled']);
+      const sessions = results!.map(result => {
+        if (result.status !== 'fulfilled') throw result.reason;
+        return completed(result.value);
+      });
+      const signedIn = await Promise.all(sessions.map(session => readSession(session.access_token)));
+      expect(signedIn.map(identity => identity?.subject)).toEqual(subjects);
+      expect(new Set(signedIn.map(identity => identity?.family)).size).toBe(2);
+      expect(await storedCounts()).toEqual(before.map(actor => ({ ...actor, families: actor.families + 1,
+        sessions: actor.sessions + 1, challenges: actor.challenges - 1 })));
+      for (const [index, actor] of actors.entries()) {
+        expect(await readRecord(client, actor.challengeKey)).toBeNull();
+        expect((await credentialByLogin('alpha', actor.username))?.lastStep).toBe(actor.credential.lastStep + 1);
+        await expect(verifyMfa(actor.raw, actor.code)).rejects.toMatchObject({ code: 'invalidChallenge' });
+        expect(await readRecord(client, actor.rateKey)).toEqual({ count: (ratesBefore[index]?.count ?? 0) + 1 });
+      }
+      const events = await newEvents();
+      expect(events.map(event => event.seq)).toEqual([head.seq + 1, head.seq + 2]);
+      expect(events.map(event => event.actor_id).sort()).toEqual(actors.map(actor => actor.userId).sort());
+      expect(events.map(event => event.prev_hash)).toEqual([head.hash, events[0].hash]);
+      for (const event of events) expect(event).toMatchObject({ aggregate_type: 'app-user', aggregate_id: event.actor_id,
+        event_type: 'app-user.logged-in', actor_type: 'user', subject_employment_id: null, payload: null, hash: expect.stringMatching(/^[0-9a-f]{64}$/) });
+      expect(await verifyTenantChain(ctx)).toMatchObject({ valid: true, checked: head.seq + 2, unchainedInsideChain: 0 });
+      expect(externalHttp).not.toHaveBeenCalled();
+    } finally { await attempts; observeBegin.mockRestore(); }
+  }, 20000);
+  it('advances returning MFA to required password change while the unused audit owner is held', async () => {
+    await enroll();
+    const ctx = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] };
+    const password = 'Single use fictional MFA password 448!';
+    await manageAccount(ctx, base.adminUserId, { type: 'temporary-password', reason: 'Verified account recovery', password, minutes: 30 });
+    const login = await startLogin({ organization: 'alpha', username: 'owner', password, native: false });
+    expect(login.step).toBe('mfa');
+    const raw = challenge(login), challengeKey = `challenge:${digest(raw)}`;
+    const credential = await credentialByLogin('alpha', 'owner');
+    if (!credential?.totpSecret) throw Error('Expected the existing authenticator');
+    expect(credential).toMatchObject({ mustChange: true, temporaryPasswordUsed: true });
+    const code = await nextCode(credential);
+    const initial = await readRecord<{ phase: string; attempts: number; version: string; mfaPassed?: boolean }>(client, challengeKey);
+    expect(initial).toMatchObject({ phase: 'mfa', attempts: 0, version: credential.version });
+    const auditEvents = () => owner.client`select id,event_type from domain_event where tenant_id=${base.tenantId}::uuid order by sequence`;
+    const sessionRecords = () => owner.client`select count(*)::int as n from app_internal_auth_record where owner_id=${credential.subject}::uuid
+      and (record_key like 'family:%' or record_key like 'session:%' or record_key like 'refresh:%')`;
+    const [beforeAudit, beforeSessions] = await Promise.all([auditEvents(), sessionRecords()]);
+    let attempt: Promise<AuthReply> | undefined, timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await owner.client.begin(async holder => {
+        await holder`select pg_advisory_xact_lock(hashtext(${'audit-chain:' + base.tenantId}))`;
+        const [identity] = await holder<{ pid: number }[]>`select pg_backend_pid() as pid`;
+        attempt = verifyMfa(raw, code);
+        const result = await Promise.race([attempt, new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(Error('A non-auditing MFA transition waited for the audit owner')), 1500);
+        })]);
+        clearTimeout(timeout);
+        expect(result.step).toBe('password');
+        expect(challenge(result)).toBe(raw);
+        expect(await rateLockState(identity.pid)).toEqual({ held: true, waiting: false });
+        expect(await readRecord(client, challengeKey)).toEqual({ ...initial, phase: 'password', mfaPassed: true });
+        expect(await credentialByLogin('alpha', 'owner')).toEqual({ ...credential, lastStep: credential.lastStep + 1 });
+        expect(await auditEvents()).toEqual(beforeAudit);
+        expect(await sessionRecords()).toEqual(beforeSessions);
+      });
+    } finally { clearTimeout(timeout); await attempt?.catch(() => undefined); }
+  }, 20000);
+  it('looks up the MFA challenge once before charging the existing subject budget', async () => {
+    const { signedIn } = await enroll();
+    const account = (await credentialByLogin('alpha', 'owner'))!;
+    const login = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
+    const raw = challenge(login);
+    const key = `challenge:${digest(raw)}`;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    const window = 15 * 60_000;
+    const start = Math.floor(Date.now() / window) * window;
+    const rateKey = `rate:${digest(`mfa:${account.subject}:${start}`)}`;
+    await writeRecord(client, rateKey, { count: 14 }, null, start + 2 * window);
+    const read = vi.spyOn(client, 'unsafe');
+    try {
+      await expect(verifyMfa(raw, signedIn.recoveryCodes![0])).resolves.toMatchObject({ step: 'complete' });
+      const unlockedReads = read.mock.calls.filter(([query, params]) =>
+        query === 'select sealed from app.internal_auth_read($1,$2)' && params?.[0] === key && params?.[1] === false);
+      expect(unlockedReads).toHaveLength(1);
+      expect(await readRecord(client, rateKey)).toEqual({ count: 15 });
+      const other = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
+      await expect(verifyMfa(challenge(other), signedIn.recoveryCodes![1])).rejects.toMatchObject({ code: 'rateLimited' });
+    } finally {
+      read.mockRestore();
+      clock.mockRestore();
+    }
+  });
+  it('rechecks expiry after waiting for the MFA subject budget', async () => {
+    const { signedIn } = await enroll();
+    const account = (await credentialByLogin('alpha', 'owner'))!;
+    const login = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
+    const raw = challenge(login);
+    const key = `challenge:${digest(raw)}`;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+    const window = 15 * 60_000;
+    const start = Math.floor(Date.now() / window) * window;
+    const rateKey = `rate:${digest(`mfa:${account.subject}:${start}`)}`;
+    await writeRecord(client, rateKey, { count: 1 }, null, start + 2 * window);
+    const loginAudits = () => owner.client`select count(*)::int as n from domain_event
+      where tenant_id=${base.tenantId} and event_type='app-user.logged-in'`;
+    const before = await loginAudits();
+    const read = vi.spyOn(client, 'unsafe');
+    let finished = 0, announce!: () => void;
+    const settledMiss = new Promise<void>(resolve => { announce = resolve; });
+    vi.stubGlobal('__aihrPerfBeginPoolWork', () => ({
+      acquired: () => {}, finished: () => { if (++finished === 2) announce(); },
+    }));
+    let attempt: Promise<AuthReply> | undefined;
+    let witnessTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await owner.client.begin(async tx => {
+        const [holder] = await tx<{ pid: number }[]>`select pg_backend_pid() as pid`;
+        await tx`select pg_advisory_xact_lock(hashtextextended(${'internal-auth:' + rateKey},0))`;
+        const started = performance.now();
+        const pending = verifyMfa(raw, signedIn.recoveryCodes![0]);
+        attempt = pending;
+        // First app permit is the unlocked challenge read. The second is the settled rate-key miss.
+        await Promise.race([
+          settledMiss,
+          pending.then(() => { throw Error('MFA completed while its rate key was held'); }),
+          new Promise<never>((_, reject) => { witnessTimeout = setTimeout(() => reject(Error('MFA rate-key miss did not settle')), 350); }),
+        ]);
+        clearTimeout(witnessTimeout);
+        expect(read.mock.calls.filter(([query, params]) =>
+          query === 'select sealed from app.internal_auth_read($1,$2)' && params?.[0] === key && params?.[1] === false)).toHaveLength(1);
+        expect(await rateLockState(holder.pid)).toEqual({ held: true, waiting: false });
+        expect(await readRecord(client, rateKey)).toEqual({ count: 1 });
+        await tx`set local lock_timeout='250ms'`;
+        const expired = await tx<{ expired: boolean }[]>`update public.app_internal_auth_record
+          set expires_at=clock_timestamp()-interval '1 second' where record_key=${key}
+          returning expires_at<clock_timestamp() as expired`;
+        expect(expired).toEqual([{ expired: true }]);
+        expect(performance.now() - started).toBeLessThan(750);
+      });
+      await expect(attempt).rejects.toMatchObject({ code: 'invalidChallenge' });
+      expect(await readRecord(client, rateKey)).toEqual({ count: 2 });
+      expect((await credentialByLogin('alpha', 'owner'))?.recoveryHashes).toEqual(account.recoveryHashes);
+      expect(await loginAudits()).toEqual(before);
+    } finally {
+      clearTimeout(witnessTimeout);
+      await attempt?.catch(() => {});
+      read.mockRestore();
+      clock.mockRestore();
+    }
+  }, 20000);
   it('caps failed MFA attempts and does not allow an old challenge to create a session', async () => {
     await enroll(); const login = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
     for (let i = 0; i < 5; i++) await expect(verifyMfa(challenge(login), 'bad-code')).rejects.toMatchObject({ code: 'invalidCode' });

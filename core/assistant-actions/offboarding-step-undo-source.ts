@@ -39,6 +39,7 @@ export async function reconcileOffboardingStepUndoSourceTx(tx:Tx,ctx:SessionCont
 export async function readOffboardingStepUndoChoices(supplied:SessionContext,value:unknown){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
  try{const pick=C.Selection.parse(structuredClone(value));return await withTenant(ctx,async tx=>{
+  // A choice list only reads: the shared Access lock first, so the actor guard joins it (staging, 11 November 2026). Prepare and confirm keep the exclusive lock.
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   const fresh=await withAgentActionGuard(tx,ctx,C.action);
   const selected=await offboardingStepUndoChoicesTx(tx,fresh,pick.caseNumber);

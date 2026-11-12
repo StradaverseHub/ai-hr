@@ -41,7 +41,7 @@ describe('Ops and Strata placement never grants authority',()=>{
  it.each(['/admin/holidays','/admin/users','/admin/settings/email','/admin/system-testing','/mobile-preview'])('places shared configuration %s under the gear',href=>{
   expect(navigationPlacement(href)).toEqual({area:'system'});
  });
- it.each(['/lifecycle/v9?view=tasks','/lifecycle/v9?view=records','/','/me','/tasks','/approvals','/system-testing','/org','/assistant','/knowledge-base','/feedback','/reports'])('keeps %s shared across both sides',href=>{
+ it.each(['/lifecycle/v9?view=tasks','/lifecycle/v9?view=records','/','/me','/tasks','/approvals','/system-testing','/org','/assistant','/policies','/knowledge-base','/feedback','/reports'])('keeps %s shared across both sides',href=>{
   expect(navigationPlacement(href)).toEqual({area:'shared'});
  });
  // Issue 17 (owner: "Merge both entirely"): every /control-tower page renders inside AI Centre, so it is placed with the

@@ -22,11 +22,14 @@ export type TopicToolDeclaration=Readonly<{name:string;purpose:string;topics:rea
 export const TOPIC_TOOLS:readonly TopicToolDeclaration[]=freeze([
  // The administrators' operations reads: AI v2 W8's loops overview and the five Phase 2 administrator reads.
  {name:'operations_status',
-  purpose:'Administrators only: how AI Centre\'s operations stand for the companies they administer, one topic per call, each as its own page shows it. Pick the topic the question is about; call again with another topic for another. Topics:',
+  purpose:'Administrators only: how AI Centre\'s operations stand for the companies they administer, and the shared leave groups set up under Leave Settings, one topic per call, each as its own page shows it. Pick the topic the question is about; call again with another topic for another. Topics:',
   topics:[{topic:'loops',read:'loops_overview'},{topic:'payroll_cycle',read:'payroll_cycle_status'},{topic:'salary_payroll',read:'salary_payroll_checks'},
    {topic:'payroll_loop_settings',read:'payroll_loop_settings'},{topic:'payroll_audit',read:'payroll_audit_status'},{topic:'ai_quality',read:'ai_quality_summary'},
    // Payroll history learning (P2): its own gate (payroll administrators) and entity; no new tool. Needs spec v24's topic list.
-   {topic:'payroll_learning',read:'payroll_learning_status'}]},
+   {topic:'payroll_learning',read:'payroll_learning_status'},
+   // 50d9b809: the Shared Leave Groups page (Leave Settings), administrators only; its own entity and kit entry, no new tool
+   // (test/harness-tool-ceiling.test.ts). Spec v29 lists the topic.
+   {topic:'shared_leave_groups',read:'shared_leave_groups'}]},
  // The "Why?" explainers: ADR-0170 step 4's three and AI v2 W5's two, all under the explainers worker switch.
  {name:'explain_why',
   purpose:'Why one of the asking person\'s own figures is what it is, from its native owner\'s own working, one topic per call. Pick the topic the question is about; quote its figures exactly and name only the causes it lists. Topics:',

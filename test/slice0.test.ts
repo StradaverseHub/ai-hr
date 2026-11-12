@@ -485,6 +485,7 @@ describe('Slice 4 — payroll', () => {
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     const res = await generatePayslips(a, { batchId });
+    if (!('payslips' in res)) throw Error('Expected a whole-run generation result');
     expect(res.payslips).toBe(1);
 
     const detail = await batchDetail(a, batchId);

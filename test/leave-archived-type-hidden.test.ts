@@ -257,7 +257,12 @@ describe('ec991c2a — which surface asks for which answer, pinned across both f
 
   it('the retained HR inquiry includes archived types without restoring the retired Personnel balance copy', () => {
     expect(read('../app/leave/employee-balances/rows.ts')).toContain('includeArchived: true');
-    expect(read('../app/leave/employee-balances/inquiry-data.ts')).toContain('await employeeBalanceRows(ctx, employmentId, query.asOf,');
+    // e066cf54f (docs/adr/2026-11-07-leave-inquiry-presentation-read-frame.md) hydrates through a private
+    // copy of the SAME session so the admitted snapshot cannot be mutated by its caller; it is still
+    // the canonical employeeBalanceRows owner, per employment, at the inquiry's as-at date.
+    const inquiryData = read('../app/leave/employee-balances/inquiry-data.ts');
+    expect(inquiryData).toContain('const hydrationContext=structuredClone(ctx);');
+    expect(inquiryData).toContain('await employeeBalanceRows(hydrationContext, employmentId, query.asOf,');
     const personnel = read('../app/admin/personnel/[employmentId]/page.tsx');
     expect(personnel).not.toMatch(/\bleaveBalances\(/);
     expect(personnel).not.toContain('<EntitlementBreakdown');

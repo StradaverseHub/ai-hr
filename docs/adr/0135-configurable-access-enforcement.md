@@ -2,6 +2,30 @@
 
 > Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
 
+### Reader/writer Access lock (10 November 2026, unreleased source)
+
+The tenant key `access-configuration:<tenant>` is a reader/writer lock. Ordinary writers and every
+statement trigger join it shared (`lockAccessConfigurationTx`, `app.access_workforce_write_lock()`).
+Editors of access configuration and authority inputs join it exclusively
+(`lockAccessConfigurationWriteTx`, `app.access_configuration_write_lock()`), so an editor is still
+serialized against every writer that depends on it. A site moves to shared only after its own
+check-then-write rules have a narrower serialiser: per-employment leave-dependency locks, a per-code
+Employee ID lock, a tenant reporting-line lock, a per-person profile lock and a shared profile-policy
+mode. Unverified sites stay exclusive.
+
+Triggers never wait for the exclusive lock: authority-row triggers try it and refuse with 55P03, and
+strict test mode (`app.access_lock_strict`, `AIHR_ACCESS_LOCK_STRICT`) refuses a missing mode or a
+shared-to-exclusive upgrade. Employment writes no longer advance the configuration revision under the
+shared lock. A change touching a person with a login takes the `app.access_administrator_guard` row, so
+two concurrent removals of the last administrators cannot both commit.
+
+Exclusive work that must run under all-day shared traffic (AI retention, promotion rollback, the module
+runner, capability publication, the System Labels import) neither try-locks, which starves, nor waits
+unbounded, which queues every later shared writer behind it for as long as the oldest holder runs. It
+queues for a short bounded moment (`app.access_configuration_exclusive_wait`) and backs off from a long
+holder. AI Centre checks join the mode a transaction already holds, so a shared writer never upgrades;
+a check-only transaction holds the lock shared. Stop and control writers remain exclusive.
+
 ### Explicit installation publication
 
 The three bounded Workforce/view, Workforce/maintenance and Profile/review capabilities are published

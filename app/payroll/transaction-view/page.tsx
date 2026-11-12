@@ -1,18 +1,19 @@
 import { ExportDownloadLink } from '@/components/export-download-link';
-import { organisationFilterChoices } from '@/lib/organisation-choice-label';
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listReprocessEmployeeOutcomes } from '@/packs/payroll/service';
-import { listCompanies, listEmployees } from '@/core/read';
+import { listCompanies } from '@/core/read';
+import {readEmployeeChoices} from '@/core/employee-choice';
 import { listPayComponents } from '@/core/pay-components';
 import {
   INDIVIDUAL_TXN_STATUS_FILTERS,
-  listFixedTransactionsAcross,
+  listFixedTransactionsPage,
   listIndividualTxnCreators,
-  listIndividualTxnsAcross,
+  listIndividualTxnsPage,
+  parseIndividualInquirySort,
   listPayslipSourceTxns,
   listProcessedPayslipsAcross,
   listUnattachedTxnSummary,
@@ -20,10 +21,12 @@ import {
 } from '@/core/payroll-view';
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
 import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
-import { CollapsibleEmployeePanel, EmployeeScopePanel, type ScopeEmployee } from '@/components/collapsible-employee-panel';
+import { CollapsibleEmployeePanel, EmployeeScopePanel } from '@/components/collapsible-employee-panel';
 import { payrollProcessBack } from '../back';
 import { packFor } from '@/localization/registry';
 import { IndividualTxnTable } from './individual-table';
+import {Pager} from '@/components/pager';
+import {pageState,parsePageQuery} from '@/lib/pagination';
 import { OutstandingTable } from './outstanding-table';
 import { HistoryTable } from './history-table';
 import { HistoryGrid } from './history-grid';
@@ -135,6 +138,7 @@ export default async function TransactionViewPage({
 }: {
   searchParams: Promise<{
     tab?: string;
+    page?:string;size?:string;txnSort?:string;txnDir?:string;
     companyId?: string;
     employmentId?: string;
     componentId?: string;
@@ -175,8 +179,8 @@ export default async function TransactionViewPage({
   // saved links keep working; only the no-tab default moves.
   const tab: Tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : 'history';
 
-  const [employees, companies, components, creators, gridComponents] = await Promise.all([
-    listEmployees(s, scopeIds),
+  const [employeeChoices, companies, components, creators, gridComponents] = await Promise.all([
+    readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'labels',selectedId:sp.employmentId}),
     listCompanies(s),
     tab === 'fixed' ? listPayComponents(s) : Promise.resolve([]),
     tab === 'individual' ? listIndividualTxnCreators(s, { companyIds: scopeIds }) : Promise.resolve([]),
@@ -191,10 +195,8 @@ export default async function TransactionViewPage({
     // is why the repair would have been silently inert on the tab the reporter actually opened.
     tab === 'grid' || tab === 'history' ? listPayComponents(s, { includeArchived: true }) : Promise.resolve([]),
   ]);
-  // Department options for the Individual History filter — distinct current-assignment departments in scope.
-  const departmentOptions = (() => {
-    return organisationFilterChoices(employees.map(e=>({id:e.departmentId,name:e.departmentLabel??e.department,code:e.departmentCode})));
-  })();
+  // Full-scope department options and selected identity are independent of the rail's current page.
+  const departmentOptions=employeeChoices.allDepartmentOptions;
   // Narrow the company dropdown to the authorised scope — the filter can only narrow, never widen.
   const scopedCompanies = companies.filter((c) => scopeIds.includes(c.id));
 
@@ -202,8 +204,7 @@ export default async function TransactionViewPage({
   // treated as "no selection", so URL tampering cannot cross the company fence.
   const companyId = sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : undefined;
   const companyIds = companyId ? [companyId] : scopeIds;
-  const employmentId =
-    sp.employmentId && employees.some((e) => e.employmentId === sp.employmentId) ? sp.employmentId : undefined;
+  const employmentId=employeeChoices.selected?.employmentId;
   const componentId =
     sp.componentId && components.some((c) => c.id === sp.componentId) ? sp.componentId : undefined;
   const status = sp.status === 'active' || sp.status === 'ended' ? sp.status : undefined;
@@ -227,12 +228,14 @@ export default async function TransactionViewPage({
   const createdTo = sp.createdTo && ISO_DATE.test(sp.createdTo) ? sp.createdTo : undefined;
 
   // Only the active tab's query runs — the others stay empty (single round-trip per view).
-  const [fixedRows, individualRows, historyRows, statutoryMatches, gridPayslips, outstandingRows] = await Promise.all([
+  const inquiryQuery=parsePageQuery(sp),inquirySort=parseIndividualInquirySort(sp.txnSort,sp.txnDir);
+  const inquiryParams={...sp,tab,months:Array.isArray(sp.months)?sp.months.join(','):sp.months};
+  const [fixedPage, individualPage, historyRows, statutoryMatches, gridPayslips, outstandingRows] = await Promise.all([
     tab === 'fixed'
-      ? listFixedTransactionsAcross(s, { companyIds, employmentId, componentId, status })
-      : Promise.resolve([]),
+      ? listFixedTransactionsPage(s, { companyIds, employmentId, componentId, status },inquiryQuery)
+      : Promise.resolve({rows:[],total:0}),
     tab === 'individual'
-      ? listIndividualTxnsAcross(s, {
+      ? listIndividualTxnsPage(s, {
           companyIds,
           year,
           month,
@@ -243,8 +246,8 @@ export default async function TransactionViewPage({
           createdBy,
           createdFrom,
           createdTo,
-        })
-      : Promise.resolve([]),
+        },inquiryQuery,inquirySort)
+      : Promise.resolve({rows:[],total:0}),
     // 862ed0ad — bounded, because History is now the landing tab. One row more than we mean to show, so
     // truncation can be STATED rather than silently applied. See HISTORY_ROW_CAP.
     tab === 'history'
@@ -269,6 +272,7 @@ export default async function TransactionViewPage({
       ? listUnattachedTxnSummary(s, { companyIds, year, month, employmentId })
       : Promise.resolve([]),
   ]);
+  const fixedRows=fixedPage.rows,individualRows=individualPage.rows;
 
   // Feedback efece4ce — which companies are actually registered for the HRD Corp levy. The breakdown used
   // to drop its HRDF line whenever the amount was 0, so a company that legitimately pays nothing (no HRDF
@@ -400,28 +404,9 @@ export default async function TransactionViewPage({
     bonus: t('individual.cycle.bonus'),
     adjustment: t('individual.cycle.adjustment'),
   };
-  // The searchable employee panel every keying screen already uses (r168a) — the reporter asked for "the
-  // same searchable employee selector as the Fixed and Individual Transaction modules", and this is it.
-  //
-  // 98e69987 rev 2 restored this rail after r179 replaced it with a top-row search box: the reporter saw
-  // both live and asked for the list back. It is fed from the SAME scope-fenced read the search box was,
-  // `listEmployees(s, scopeIds)` run once at the top of this render, so the access-fenced set is unchanged
-  // either way; the id it navigates to is re-guarded above (`employmentId`) before any read uses it, so
-  // the list is never what grants access.
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.departmentLabel ?? e.department,
-    departmentCode: e.departmentCode,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnitLabel ?? e.businessUnit,
-    businessUnitCode: e.businessUnitCode,
-    businessUnitId: e.businessUnitId,
-    status: e.terminatedOn == null ? 'active' : 'ended',
-  }));
+  // The shared rail pages minimal authorized choices. It never grants record access;
+  // the independent selected-ID proof above and each native Payroll owner remain authoritative.
+
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const cookieStore = await cookies();
   const gridPanelDefaultOpen = cookieStore.get(GRID_PANEL_COOKIE)?.value !== '0';
@@ -463,7 +448,7 @@ export default async function TransactionViewPage({
   };
   // The chosen person, for whichever tab is showing — the id it is looked up by is the SCOPE-GUARDED one,
   // so this can only ever resolve to somebody the caller is allowed to see.
-  const selectedEmployee = employees.find((e) => e.employmentId === employmentId);
+  const selectedEmployee=employeeChoices.selected?{...employeeChoices.selected,department:employeeChoices.selected.departmentCode??employeeChoices.selected.department}:null;
 
   /**
    * bd14b7e2 — what each of the four inquiry tabs carries across an employee switch: its OWN already
@@ -489,6 +474,7 @@ export default async function TransactionViewPage({
       : tab === 'individual'
         ? {
             tab: 'individual',
+            txnSort:inquirySort.key,txnDir:inquirySort.direction,
             ...periodPreserve,
             ...(kind ? { kind } : {}),
             ...(departmentId ? { departmentId } : {}),
@@ -652,7 +638,7 @@ export default async function TransactionViewPage({
               <p className="mt-1 text-xs text-muted-foreground">{t('view.panel.hint')}</p>
               <div className="mt-3">
                 <EmployeeScopePanel
-                  employees={panelEmployees}
+                  remote={{initial:employeeChoices}}
                   selectedId={employmentId ?? null}
                   basePath="/payroll/transaction-view"
                   preserve={tabPanelPreserve}
@@ -781,7 +767,8 @@ export default async function TransactionViewPage({
           {/* ── 1. Fixed Transaction View ── */}
           {tab === 'fixed' && (
             <Card className="overflow-hidden">
-              <SectionHeader title={t('view.tabs.fixed')} count={fixedRows.length} />
+              <SectionHeader title={t('view.tabs.fixed')} count={fixedPage.total} />
+              <Pager basePath="/payroll/transaction-view" params={inquiryParams} state={pageState(inquiryQuery,fixedPage.total,fixedRows.length)}/>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -847,7 +834,7 @@ export default async function TransactionViewPage({
           {tab === 'individual' && (
             <Card className="overflow-hidden">
               <div className="flex items-center justify-between gap-3 pr-4">
-                <SectionHeader title={t('view.tabs.individual')} count={individualRows.length} />
+                <SectionHeader title={t('view.tabs.individual')} count={individualPage.total} />
                 {/* CSV export honouring the current (scope-guarded) filters — opens in Excel. */}
                 <ExportDownloadLink
                   href={`/payroll/transaction-view/export?${new URLSearchParams({
@@ -869,7 +856,7 @@ export default async function TransactionViewPage({
               </div>
               {/* Sortable + searchable grid (feedback 7b2d4228): GET filters above narrow the set; this client table
                   adds column sorting over the fetched rows. */}
-              <IndividualTxnTable rows={individualRows} />
+              <IndividualTxnTable rows={individualRows} serverSort={inquirySort} pager={<Pager basePath="/payroll/transaction-view" params={inquiryParams} state={pageState(inquiryQuery,individualPage.total,individualRows.length)}/>}/>
             </Card>
           )}
 
@@ -1088,7 +1075,7 @@ export default async function TransactionViewPage({
               <p className="mt-1 text-xs text-muted-foreground">{t('view.grid.pickEmployeeHint')}</p>
               <div className="mt-3">
                 <EmployeeScopePanel
-                  employees={panelEmployees}
+                  remote={{initial:employeeChoices}}
                   selectedId={employmentId ?? null}
                   basePath="/payroll/transaction-view"
                   preserve={gridPanelPreserve}

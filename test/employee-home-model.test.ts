@@ -15,6 +15,7 @@ describe('Employee Home deterministic presentation',()=>{
  it('substitutes only approved fields once and preserves values as literal text',()=>{
   expect(renderHomeTemplate(template('greetingMorning','Good morning, {name}'),'en',{name:'{count} <A&B>'})).toBe('Good morning, {count} <A&B>');
   expect(renderHomeTemplate(template('tasksPending','Waiting: {count}'),'en',{count:1234})).toBe('Waiting: 1,234');
+  expect(renderHomeTemplate(template('tasksPending','Waiting: {count}'),'en',{count:25000})).toBe('Waiting: 25,000');
   expect(()=>renderHomeTemplate(template('tasksPending','Waiting: {count}'),'en',{})).toThrow();
   expect(()=>renderHomeTemplate(template('tasksPending','Waiting: {count}'),'en',{count:Infinity})).toThrow();
   expect(()=>renderHomeTemplate(template('tasksPending','Waiting: {count}'),'en',{count:1,salary:5000})).toThrow();

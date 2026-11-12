@@ -5,6 +5,7 @@ import { sql,type SQL } from 'drizzle-orm';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {ASSISTANT_TRANSCRIPT_RETENTION_DAYS,expiredAssistantHistoryQueueSql,retireExpiredAssistantHistoryTx} from './assistant-history-expiry';
 import type { Tx } from '../db/client';
+import { pgSqlState } from '../lib/db-error';
 
 /** `transcripts` counts exchanges whose raw content (question/answer/tool inputs/disclosure receipt/error)
  * was retired this pass. Their linked feedback, completed strategy marker and original-identity custody
@@ -43,6 +44,35 @@ export function expiredAiCustodyQueueSql():SQL{return sql`select tenant_id,expir
  union all ${expiredAssistantHistoryQueueSql()}
  union all ${sql.join(extraCustody.map(item=>sql`select tenant_id,${item.expiry} as expires_at from ${item.table} where ${item.expiry}<=now()`),sql` union all `)}`;}
 const unavailable = (): never => { throw new Error('AI retention maintenance could not be confirmed.'); };
+
+/** Bounded queue time for the oldest tenant's exclusive Access, in milliseconds. */
+export const AI_RETENTION_ACCESS_WAIT_MS = 250;
+/**
+ * The oldest queue's exclusive Access, waiting its turn in the lock queue for a bounded moment. Later
+ * shared writers are delayed by at most that while the current short holders drain. Builtins only: the
+ * maintenance owner holds no application function grants. The attempt runs in a nested transaction (a
+ * savepoint scope), so a timeout behind a long holder rolls back only the attempt and its lock_timeout
+ * change, never the tick; a granted lock is kept to commit. Keeps any tighter lock_timeout already set.
+ */
+async function queuedAccessExclusiveTx(tx: Tx, tenantId: string): Promise<boolean> {
+  let saved: unknown;
+  try {
+    await tx.transaction(async attempt => {
+      const [prior] = await attempt.execute<{ saved: string }>(sql`select current_setting('lock_timeout') as saved,
+        set_config('lock_timeout',(select (case when s.setting::bigint=0 then ${AI_RETENTION_ACCESS_WAIT_MS}::bigint
+          else least(s.setting::bigint,${AI_RETENTION_ACCESS_WAIT_MS}::bigint) end)::text||'ms'
+          from pg_catalog.pg_settings s where s.name='lock_timeout'),true) as bounded`);
+      saved = prior?.saved;
+      await attempt.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + tenantId},0))`);
+    });
+  } catch (error) {
+    if (pgSqlState(error) !== '55P03') throw error;
+    return false;
+  }
+  if (typeof saved !== 'string') return unavailable();
+  await tx.execute(sql`select set_config('lock_timeout',${saved},true)`);
+  return true;
+}
 const count = (value: unknown, max: number): number => {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > max) return unavailable();
   return value;
@@ -51,7 +81,10 @@ const count = (value: unknown, max: number): number => {
 /** Fixed bounds: ten oldest tenant queues, at most100 direct rows of each custody class per tenant; declared child cascades also retire dependent metadata.
  * Raw transcript content retires FIRST inside each owned Access interval, before any metadata expiry,
  * through the owner-only 30-day helper (at most100 exchanges per tenant).
- * Expiry is database-owned. Busy Access intervals are skipped, never stolen or waited upon.
+ * Expiry is database-owned. Busy Access intervals are never stolen. The oldest queue waits its turn for a
+ * bounded moment, holding nothing else yet, so continuous shared traffic cannot starve it; later tenants
+ * only try, because this tick already holds earlier tenants' exclusive Access. A skipped tenant keeps its
+ * oldest expiry and so comes first, with the bounded wait, in a later tick.
  * Completion references remain; expired ciphertext and dictionary-checkable intent hashes do not.
  * No claim of a maximum cleanup lag follows without scheduling/capacity/rollback verification.
  */
@@ -76,11 +109,14 @@ export async function retireExpiredAiCustodyTx(tx: Tx): Promise<AiRetentionResul
     if (tenants.length > 10) return unavailable();
     let busy = 0, reviews = 0, feedback = 0, transcripts = 0;
     const removed={jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0};
-    for (const tenant of tenants) {
+    for (const [position, tenant] of tenants.entries()) {
       if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(tenant.tenant_id)) return unavailable();
-      const [lock] = await tx.execute<{ owned: boolean }>(sql`select pg_try_advisory_xact_lock(
-        hashtextextended(${'access-configuration:' + tenant.tenant_id},0)) as owned`);
-      if (lock?.owned !== true) { busy++; continue; }
+      // Exclusive Access excludes in-flight conversation turns and every other Access holder. A plain try
+      // fails whenever any shared writer is open, so under steady traffic it would never retire anything.
+      const owned = position === 0 ? await queuedAccessExclusiveTx(tx, tenant.tenant_id)
+        : (await tx.execute<{ owned: boolean }>(sql`select pg_try_advisory_xact_lock(
+        hashtextextended(${'access-configuration:' + tenant.tenant_id},0)) as owned`))[0]?.owned === true;
+      if (!owned) { busy++; continue; }
       // Raw chat content first, under this same exclusive Access interval and BEFORE metadata expiry.
       // The SQL owner re-proves physical ownership, re-enters (never waits for) this Access interval,
       // retires at most100 exchanges and deletes no exchange row, so no allowance is replenished.

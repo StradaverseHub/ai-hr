@@ -12,6 +12,7 @@ import { labelCodeConflicts } from '@/lib/label-code-conflicts';
 import { refreshEditableRows } from '@/lib/refresh-editable-rows';
 import { Fragment, useEffect, useCallback, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
+import { useRegisteredUnsavedChanges } from '@/components/use-registered-unsaved-changes';
 import { toast } from 'sonner';
 import { ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Filter, Trash2, X } from 'lucide-react';
 import { messageOrToken } from '@/lib/label-error-token';
@@ -126,6 +127,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
   const drafts = rows.filter((r) => r.isNew);
   const dirtyExisting = rows.filter((r) => !r.isNew && r.dirty);
   const hasChanges = drafts.length > 0 || dirtyExisting.length > 0;
+  useRegisteredUnsavedChanges(hasChanges, t('unsavedChanges'));
   const activeFilterCount = (search.trim() ? 1 : 0) + (statusFilter !== 'active' ? 1 : 0);
 
   function updateCell(key: string, field: 'code' | 'name' | 'description' | 'rank', value: string) {

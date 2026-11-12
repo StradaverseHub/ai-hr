@@ -8,7 +8,7 @@
  * checked on the decoded text, which is what crosses the server action. Everything else — reading the
  * lines, matching cards, duplicates, refusals — is decided on the server, at Validate and again at Import.
  */
-import { useId, useMemo, useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -20,7 +20,9 @@ import { StatCells } from '@/components/ui/stat-cells';
 import { decodeClockingBytes, physicalLines, type ClockingEncoding } from '@/lib/clocking-file';
 import { MAX_IMPORT_CSV_BYTES, MAX_IMPORT_FILE_BYTES } from '@/lib/import-file';
 import { formatDmy, formatDmyTime } from '@/lib/date-display';
-import type { ClockingImportPreview } from '@/packs/attendance/service';
+import type { ClockingImportJobProgress, ClockingImportPreview } from '@/packs/attendance/service';
+import { attendanceJobActive } from '@/lib/attendance-bulk-job';
+import { AttendanceJobPanel } from '../attendance-job-panel';
 import { commitClockingImportAction, validateClockingImportAction } from './actions';
 import { useAssistantImportIntake } from '@/components/assistant/import-handoff';
 import { lineMessage, ResultPill } from './line-view';
@@ -41,6 +43,8 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
   const [tab, setTab] = useState<Tab>('all');
   const [q, setQ] = useState('');
   const [dragging, setDragging] = useState(false);
+  // Draft 5045: Import runs as a background job; the screen follows it here and rejoins it after navigation.
+  const [job, setJob] = useState<ClockingImportJobProgress | null>(null);
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
   const uid = useId();
@@ -94,20 +98,44 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
       setTab('all');
     });
 
+  useEffect(() => {
+    let alive = true;
+    fetch('/attendance/import/jobs', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p: { jobs?: ClockingImportJobProgress[] } | null) => {
+        const active = p?.jobs?.find((j) => attendanceJobActive(j.state));
+        if (alive && active) setJob(active);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const commit = () =>
     startTransition(async () => {
       setError(null);
-      const r = await commitClockingImportAction(mappingId, text, fileName, bytes?.length ?? 0);
+      const r = await commitClockingImportAction(mappingId, text, fileName, bytes?.length ?? 0, crypto.randomUUID());
       if (!r.ok) {
         setError(t(`import.error.${r.error}`));
         return;
       }
-      if (r.outcome.runId) {
-        router.push(`/attendance/import/logs/${r.outcome.runId}`);
+      setJob(r.job);
+    });
+
+  const finished = useCallback(
+    (done: ClockingImportJobProgress) => {
+      if (done.state === 'completed' && done.result?.runId) {
+        router.push(`/attendance/import/logs/${done.result.runId}`);
         return;
       }
-      setError(t('import.importFailed', { reason: r.outcome.failureReason ?? '' }));
-    });
+      const reason = done.errorCode ? t(`import.error.${done.errorCode}`) : (done.error ?? '');
+      setError(done.errorCode ? t('import.importFailed', { reason }) : t('import.jobStopped', { reason }));
+    },
+    [router, t],
+  );
+  const running = !!job && attendanceJobActive(job.state);
+  const jobT = useCallback((k: string, v?: Record<string, string | number>) => t(`import.job.${k}`, v), [t]);
 
   const rows = useMemo(() => {
     if (!preview) return [];
@@ -240,9 +268,19 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
         )}
       </SectionCard>
 
+      {job && <AttendanceJobPanel job={job} endpoint="/attendance/import/jobs" title={job.sourceName} t={jobT} onFinished={finished} />}
+
       {error && (
         <div role="alert" className={alertCls}>
           {error}
+          {job && !running && job.state !== 'completed' && !job.errorCode && (
+            <>
+              {' '}
+              <Link className="underline" href="/attendance/import/logs">
+                {t('import.logsLink')}
+              </Link>
+            </>
+          )}
         </div>
       )}
 
@@ -358,8 +396,8 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
             >
               {t('import.startAgain')}
             </Button>
-            <Button aria-busy={pending} onClick={commit} disabled={pending}>
-              {pending ? t('import.importing') : t('import.importValid', { count: c.valid })}
+            <Button aria-busy={pending || running} onClick={commit} disabled={pending || running}>
+              {pending || running ? t('import.importing') : t('import.importValid', { count: c.valid })}
             </Button>
           </div>
         </>

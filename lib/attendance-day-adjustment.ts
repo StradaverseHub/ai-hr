@@ -1,6 +1,6 @@
 /** Stored date corrections. No dependency on the engine or database schema. */
 export type AttendanceDayKindOverride = 'workday' | 'off_day' | 'rest_day' | 'holiday';
-export type AttendanceOtBucket = 'flat' | 'ot00' | 'ot10' | 'ot15' | 'ot20' | 'ot30';
+export type AttendanceOtBucket = 'flat' | 'ot00' | 'ot10' | 'ot15' | 'ot20' | 'ot30' | 'other';
 export type ManualOtRow = {
   minutes:number;bucket:AttendanceOtBucket;calculatedMinutes:number;recordedAt:string;actorId:string;
 };

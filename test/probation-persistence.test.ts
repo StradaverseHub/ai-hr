@@ -301,7 +301,8 @@ describe('real evaluation to signed letter custody',()=>{
      const [filed]=await owner.db.execute<{ready:boolean}>(sql`select released_at is not null as ready from probation_outcome where id=${decision.id}::uuid`);
      if(filed.ready){
       contender=owner.withTenant(runner,async tx=>{
-       await tx.execute(sql`select pg_advisory_xact_lock(hashtext('audit-chain:'||${b.tenantId}::uuid::text))`);
+       // A competing V9 writer's serialization key. The audit chain itself is sealed at commit.
+       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${b.tenantId}::uuid::text||':onboarding',0))`);
        enteredAudit();
        await auditGate;
       });
@@ -410,7 +411,7 @@ describe('reviewed existing-cohort activation and legacy ownership handoff',()=>
     return;
    }
    let release!:()=>void,entered!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve}),hasLock=new Promise<void>(resolve=>{entered=resolve});
-   const guardedOwner={withTenant:async<T>(ctx:SessionContext,run:(tx:Tx)=>Promise<T>)=>owner.withTenant(ctx,async tx=>{await tx.execute(sql`select app.access_workforce_write_lock()`);entered();await gate;return run(tx);})};
+   const guardedOwner={withTenant:async<T>(ctx:SessionContext,run:(tx:Tx)=>Promise<T>)=>owner.withTenant(ctx,async tx=>{await tx.execute(sql`select app.access_configuration_write_lock()`);entered();await gate;return run(tx);})};
    const activation=activatePreparedProbationCutover({...admin,userId:undefined,roles:[],grants:undefined},guardedOwner,{id:plan.id,digest:plan.digest,installationReceipt:{origin:'https://probation-staging.example.test',reference:'Fictional staging dispatch-held and owner sign-off receipt'}});await hasLock;
    const competing=startReview(admin,{employmentId:staff.employmentId}).then(()=>'',error=>String(error));let waiting=false;for(let i=0;i<100&&!waiting;i++){const[row]=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_locks where locktype='advisory' and not granted and database=(select oid from pg_database where datname=current_database())) as waiting`);waiting=row.waiting;if(!waiting)await new Promise(resolve=>setTimeout(resolve,10));}release();expect(waiting).toBe(true);expect((await activation).alreadyApplied).toBe(false);expect(await competing).toContain('Probation module');
    expect(await withTenant(admin,tx=>notificationStillTargets(tx,event.id,'review.started','review',manager.employmentId))).toBe(false);expect(await pendingManagerReviewsFor(manager.ctx,manager.employmentId)).toEqual([]);

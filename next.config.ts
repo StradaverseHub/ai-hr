@@ -89,6 +89,8 @@ const nextConfig: NextConfig = {
         source: '/attendance/clock',
         headers: [{ key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(self)' }],
       },
+      // Next preserves the router's pre-set headers over a route handler's response headers.
+      {source:'/admin/personnel/search',headers:[{key:'Referrer-Policy',value:'no-referrer'}]},
       {source:'/me/letters/:path*',headers:[{key:'Cache-Control',value:'private, no-store'},{key:'Referrer-Policy',value:'no-referrer'}]},
       {source:'/letters/:path*',headers:[{key:'Cache-Control',value:'private, no-store'},{key:'Referrer-Policy',value:'no-referrer'}]},
       // Recruitment slice 8: the public careers pages carry their own strict policy (no script, one hashed stylesheet,

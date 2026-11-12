@@ -1,0 +1,295 @@
+-- Combined release allocation, 11 November 2026 (docs/MIGRATION-ALLOCATION.md): 5012_import_release_visibility, idx 4412, when 1793330004712.
+-- Draft name on its branch: 9004_import_release_visibility. Any draft note below describes that unallocated branch position.
+-- UNALLOCATED DRAFT on branch claude/import-staged-job-20261110 (staged import: constant-time activation and staged
+-- audit events): not a reservation, not an installation allocation. The journal position (idx 9004, when
+-- 1793330090004) exists only so this branch's schema is executable; the integration owner assigns the final
+-- tag/idx/when after the freshly verified ledger, per docs/MIGRATION-ALLOCATION.md.
+--
+-- Activation used to clear the staged marker with one UPDATE per table: every employment and person trigger fired
+-- for every row and the deferred constraint triggers ran at COMMIT, all while the import held the tenant's Access
+-- and audit-chain locks (about 1.5 s for 500 rows; proportional to the file). Visibility is now decided by the
+-- attempt: a staged row is visible once its attempt is RELEASED. Release is one row insert under the initiating
+-- user's fresh authority (constant time), so every reader sees the whole import at the same instant. Afterwards the
+-- worker clears the markers in short bounded batches ("settle"), which fires the ordinary triggers (Entra queue,
+-- replacement holidays, epochs) exactly as the single UPDATE did, without changing what anyone can see.
+CREATE TABLE app.import_attempt_release (
+ attempt_id uuid PRIMARY KEY REFERENCES public.import_attempt(id),
+ tenant_id uuid NOT NULL REFERENCES public.tenant(id),
+ outcome text NOT NULL CHECK(outcome IN ('activated','discarded')),
+ released_at timestamptz NOT NULL DEFAULT now(),
+ settled_at timestamptz
+);
+--> statement-breakpoint
+CREATE INDEX import_attempt_release_tenant ON app.import_attempt_release(tenant_id);
+--> statement-breakpoint
+REVOKE ALL ON app.import_attempt_release FROM PUBLIC;
+--> statement-breakpoint
+-- Definer-side visibility predicate. SQL, invoker, no SET clause: the planner inlines it into each definer reader.
+CREATE FUNCTION app.import_marker_visible(p_attempt uuid) RETURNS boolean LANGUAGE sql STABLE AS $$
+ SELECT p_attempt IS NULL OR EXISTS(SELECT 1 FROM app.import_attempt_release r WHERE r.attempt_id=p_attempt);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.import_marker_visible(uuid) FROM PUBLIC;
+--> statement-breakpoint
+-- Policy-side: the current tenant's released attempts, evaluated once per statement (InitPlan) and only for rows
+-- that still carry a marker. Reveals attempt ids only.
+CREATE FUNCTION app.import_released_attempt_ids() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER
+ SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(array_agg(r.attempt_id),'{}'::uuid[]) FROM app.import_attempt_release r WHERE r.tenant_id=app.current_tenant_id();
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.import_released_attempt_ids() FROM PUBLIC;
+--> statement-breakpoint
+ALTER POLICY employment_import_pending ON employment
+ USING (import_pending_attempt_id IS NULL OR import_pending_attempt_id::text = current_setting('app.import_attempt',true)
+  OR import_pending_attempt_id = ANY((SELECT app.import_released_attempt_ids())::uuid[]));
+--> statement-breakpoint
+ALTER POLICY person_import_pending ON person
+ USING (import_pending_attempt_id IS NULL OR import_pending_attempt_id::text = current_setting('app.import_attempt',true)
+  OR import_pending_attempt_id = ANY((SELECT app.import_released_attempt_ids())::uuid[]));
+--> statement-breakpoint
+-- The attempts a session must not see: staged, not released, and not the session's own import. Found by a skip scan
+-- over the partial marker index (two probes per distinct attempt), so the import's own chunk statements, which see
+-- every staged row, no longer pay a scan of all staged rows per statement as the file grows.
+CREATE FUNCTION app.import_hidden_attempt_ids() RETURNS uuid[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH RECURSIVE staged(id) AS (
+  (SELECT e.import_pending_attempt_id FROM public.employment e WHERE e.tenant_id=app.current_tenant_id() AND e.import_pending_attempt_id IS NOT NULL
+   ORDER BY e.import_pending_attempt_id LIMIT 1)
+  UNION ALL
+  SELECT (SELECT e.import_pending_attempt_id FROM public.employment e WHERE e.tenant_id=app.current_tenant_id() AND e.import_pending_attempt_id>s.id
+   ORDER BY e.import_pending_attempt_id LIMIT 1) FROM staged s WHERE s.id IS NOT NULL)
+ SELECT coalesce(array_agg(s.id),'{}'::uuid[]) FROM staged s WHERE s.id IS NOT NULL
+  AND s.id::text IS DISTINCT FROM current_setting('app.import_attempt',true)
+  AND NOT EXISTS(SELECT 1 FROM app.import_attempt_release r WHERE r.attempt_id=s.id);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.import_hidden_attempt_ids() FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.import_hidden_attempt_ids() TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.import_pending_employment_ids() RETURNS uuid[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(array_agg(e.id),'{}'::uuid[]) FROM unnest(app.import_hidden_attempt_ids()) h(id)
+  JOIN public.employment e ON e.tenant_id=app.current_tenant_id() AND e.import_pending_attempt_id=h.id;
+$$;
+--> statement-breakpoint
+-- A staged person always belongs to a staged employment of the same attempt (one chunk transaction writes both).
+CREATE OR REPLACE FUNCTION app.import_pending_person_ids() RETURNS uuid[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(array_agg(p.id),'{}'::uuid[]) FROM unnest(app.import_hidden_attempt_ids()) h(id)
+  JOIN public.person p ON p.tenant_id=app.current_tenant_id() AND p.import_pending_attempt_id=h.id;
+$$;
+--> statement-breakpoint
+-- Child rows of staged hires (5010 policies). While a large import is staged an ordinary session's hidden-id array
+-- holds thousands of ids; "= ANY(array)" compared every row with every id. "IN (SELECT unnest(...))" lets the planner
+-- hash the set once per statement, and with no import staged it is still one empty probe.
+ALTER POLICY assignment_import_pending ON public.assignment USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY compensation_import_pending ON public.compensation USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY leave_ledger_import_pending ON public.leave_ledger USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY reporting_line_import_pending ON public.reporting_line USING (subordinate_employment_id IS NULL OR NOT (subordinate_employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY employment_tax_selection_my_import_pending ON public.employment_tax_selection_my USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY employment_tax_scheme_my_import_pending ON public.employment_tax_scheme_my USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY employee_qualification_import_pending ON public.employee_qualification USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY employment_cost_allocation_head_import_pending ON public.employment_cost_allocation_head USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+ALTER POLICY employee_statutory_my_import_pending ON public.employee_statutory_my USING (person_id IS NULL OR NOT (person_id IN (SELECT unnest(app.import_pending_person_ids()))));
+--> statement-breakpoint
+ALTER POLICY employee_dependent_import_pending ON public.employee_dependent USING (person_id IS NULL OR NOT (person_id IN (SELECT unnest(app.import_pending_person_ids()))));
+--> statement-breakpoint
+ALTER POLICY person_emergency_contact_import_pending ON public.person_emergency_contact USING (person_id IS NULL OR NOT (person_id IN (SELECT unnest(app.import_pending_person_ids()))));
+--> statement-breakpoint
+ALTER POLICY import_attempt_item_import_pending ON public.import_attempt_item USING (employment_id IS NULL OR NOT (employment_id IN (SELECT unnest(app.import_pending_employment_ids()))));
+--> statement-breakpoint
+-- The 5010 audit's definer readers filtered "marker IS NULL". Each is re-created with the release-aware predicate,
+-- from its installed definition, after checking the exact number of predicates the 5010 audit installed. The two
+-- trigger functions (import_pending_stamp, enqueue_replacement_holidays) keep "IS NULL": they react to row writes,
+-- and settle's marker clear re-fires them for every staged row.
+DO $$
+DECLARE r record; def text; found integer; owner_ name;
+BEGIN
+ FOR r IN SELECT * FROM (VALUES
+  ('app._access_workforce_list_rows(uuid[])',2),('app._home_peer_cohort(uuid,text)',2),('app.access_workforce_employment(uuid,text)',1),
+  ('app.access_workforce_list_facts()',1),('app.access_workforce_picker_facts(uuid[])',1),('app.access_workforce_picker_rows(text,date,date)',1),
+  ('app.agent_readiness_presence(uuid[])',2),('app.assessment_unit_exclusion_facts(uuid,uuid,uuid)',2),('app.assessment_unit_exclusion_pin(uuid)',1),
+  ('app.attendance_workflow_approver_availability(uuid)',3),('app.automatic_followup_facts(text,date,uuid[],integer)',3),('app.bank_import_subjects(jsonb)',1),
+  ('app.contract_admission_choices(uuid)',1),('app.eligible_delegates(uuid)',3),('app.entra_active(uuid,uuid,date)',2),('app.entra_claim(date)',1),
+  ('app.entra_configure(text,uuid,text,boolean,boolean,uuid,uuid)',2),('app.import_activation_conflicts(uuid)',1),('app.onboarding_supervisors()',2),
+  ('app.onehr_assignment_facts()',1),('app.onehr_employment_facts()',1),('app.onehr_unit_exclusion_choices(uuid,uuid)',1),('app.own_home_dashboard_role(uuid)',3),
+  ('app.personnel_duplicate_candidate_rows(uuid[],date)',1),('app.personnel_filter_rows(date,uuid[])',2),('app.personnel_overview_filter_fields(date,uuid[])',1),
+  ('app.personnel_overview_narrow_rows(date,uuid[])',1),('app.personnel_overview_page_rows(date,uuid[],uuid[])',2),('app.personnel_search_rows(uuid[])',1),
+  ('app.prepare_company_organisation_run(jsonb)',2),('app.probation_intake_workspace(uuid)',4),('app.probation_required_workflow_status(uuid)',1),
+  ('app.reward_confidentiality_floors(uuid,uuid[],date)',2)
+ ) v(sig,expected) LOOP
+  -- Each reader belongs to the migration owner, which re-creates it. A reader owned by a restricted role (the Rewards
+  -- setup readers 5010 leaves alone) runs under row security, where the staged-row policies already apply, and the
+  -- owner may not replace it.
+  SELECT o.rolname INTO owner_ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_roles o ON o.oid=p.proowner WHERE p.oid=r.sig::regprocedure;
+  IF owner_<>current_user THEN RAISE EXCEPTION 'import release predicate: % belongs to %, not the migration owner',r.sig,owner_ USING ERRCODE='42501'; END IF;
+  def:=pg_catalog.pg_get_functiondef(r.sig::regprocedure);
+  SELECT count(*) INTO found FROM regexp_matches(def,'(\m[a-z_]+\.)?import_pending_attempt_id IS NULL','g');
+  IF found<>r.expected THEN RAISE EXCEPTION 'import release predicate: % has % staged-marker filters, expected %',r.sig,found,r.expected; END IF;
+  EXECUTE regexp_replace(def,'(\m[a-z_]+\.)?import_pending_attempt_id IS NULL','app.import_marker_visible(\1import_pending_attempt_id)','g');
+ END LOOP;
+END $$;
+--> statement-breakpoint
+-- Release (the visibility flip): one row, under the initiating user's freshly checked authority. The caller holds the
+-- workforce write lock and has re-checked duplicate emails in the same transaction. Tenant caches keyed on the
+-- Access revision and the company-organisation source epoch are invalidated here, once, as the row triggers would.
+CREATE FUNCTION app.import_release(p_attempt uuid) RETURNS bigint
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id(); u uuid:=app.current_user_id(); kind_ text; companies uuid[]; staged bigint;
+BEGIN
+ IF t IS NULL OR u IS NULL OR p_attempt IS NULL THEN RAISE EXCEPTION 'import_release_invalid' USING ERRCODE='22023'; END IF;
+ SELECT a.kind,a.company_ids INTO kind_,companies FROM public.import_attempt a WHERE a.id=p_attempt AND a.tenant_id=t AND a.created_by=u;
+ IF kind_ IS DISTINCT FROM 'employee_full' OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'import_release_unavailable' USING ERRCODE='42501'; END IF;
+ IF EXISTS(SELECT 1 FROM unnest(companies) c WHERE NOT app.import_company_access('employee_full',c,'maintain')) THEN
+  RAISE EXCEPTION 'import_release_forbidden' USING ERRCODE='42501';
+ END IF;
+ IF EXISTS(SELECT 1 FROM app.import_attempt_release r WHERE r.attempt_id=p_attempt) THEN RAISE EXCEPTION 'import_release_repeated' USING ERRCODE='55000'; END IF;
+ SELECT count(*) INTO staged FROM public.employment e WHERE e.tenant_id=t AND e.import_pending_attempt_id=p_attempt AND e.voided_at IS NULL;
+ INSERT INTO app.import_attempt_release(attempt_id,tenant_id,outcome) VALUES(p_attempt,t,'activated');
+ UPDATE public.access_configuration SET revision=gen_random_uuid(),updated_at=now() WHERE tenant_id=t AND initialized;
+ INSERT INTO public.company_organisation_source_epoch(tenant_id,revision) VALUES(t,1)
+  ON CONFLICT(tenant_id) DO UPDATE SET revision=company_organisation_source_epoch.revision+1;
+ RETURN staged;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.import_release(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.import_release(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Settle: clear up to p_limit markers of a released attempt per call (persons first, as activation did). Runs on the
+-- worker's queue-owner connection, like discard: visibility was already decided by release, so a later loss of
+-- the initiator's access can never leave markers behind. Returns how many marked rows remain.
+CREATE FUNCTION app.import_settle(p_tenant uuid,p_attempt uuid,p_limit integer) RETURNS bigint
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE remaining bigint;
+BEGIN
+ IF p_tenant IS NULL OR p_attempt IS NULL OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 5000 THEN RAISE EXCEPTION 'import_settle_invalid' USING ERRCODE='22023'; END IF;
+ IF NOT app.access_workforce_storage_owner() THEN RAISE EXCEPTION 'import_settle_forbidden' USING ERRCODE='42501'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM app.import_attempt_release r WHERE r.attempt_id=p_attempt AND r.tenant_id=p_tenant) THEN
+  RAISE EXCEPTION 'import_settle_unreleased' USING ERRCODE='55000';
+ END IF;
+ UPDATE public.person SET import_pending_attempt_id=NULL WHERE id IN (
+  SELECT p.id FROM public.person p WHERE p.tenant_id=p_tenant AND p.import_pending_attempt_id=p_attempt ORDER BY p.id LIMIT p_limit);
+ UPDATE public.employment SET import_pending_attempt_id=NULL WHERE id IN (
+  SELECT e.id FROM public.employment e WHERE e.tenant_id=p_tenant AND e.import_pending_attempt_id=p_attempt ORDER BY e.id LIMIT p_limit);
+ SELECT (SELECT count(*) FROM public.person p WHERE p.tenant_id=p_tenant AND p.import_pending_attempt_id=p_attempt)
+  +(SELECT count(*) FROM public.employment e WHERE e.tenant_id=p_tenant AND e.import_pending_attempt_id=p_attempt) INTO remaining;
+ IF remaining=0 THEN UPDATE app.import_attempt_release SET settled_at=coalesce(settled_at,now()) WHERE attempt_id=p_attempt; END IF;
+ RETURN remaining;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.import_settle(uuid,uuid,integer) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Discard in bounded batches (ADR-0157; decided rule): each staged hire is voided and leaves employment.hired
+-- followed by a void event. The void events carry the attempt's marker, so the hires, their events and the voids
+-- become visible together when the last batch releases the attempt as 'discarded'. Owner connection only.
+CREATE FUNCTION app.import_discard_batch(p_tenant uuid,p_attempt uuid,p_actor uuid,p_reason text,p_limit integer) RETURNS bigint
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE ids uuid[]; persons_ uuid[]; remaining bigint;
+BEGIN
+ IF p_tenant IS NULL OR p_attempt IS NULL OR p_actor IS NULL OR p_reason IS NULL OR length(p_reason) NOT BETWEEN 3 AND 1000
+  OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 5000 THEN
+  RAISE EXCEPTION 'import_discard_invalid' USING ERRCODE='22023';
+ END IF;
+ IF NOT app.access_workforce_storage_owner() THEN RAISE EXCEPTION 'import_discard_forbidden' USING ERRCODE='42501'; END IF;
+ IF EXISTS(SELECT 1 FROM app.import_attempt_release r WHERE r.attempt_id=p_attempt AND r.outcome='activated') THEN
+  RAISE EXCEPTION 'import_discard_released' USING ERRCODE='55000';
+ END IF;
+ PERFORM set_config('app.import_attempt',p_attempt::text,true);
+ SELECT array_agg(x.id ORDER BY x.id),array_agg(DISTINCT x.person_id) INTO ids,persons_ FROM (
+  SELECT e_.id,e_.person_id FROM public.employment e_ WHERE e_.tenant_id=p_tenant AND e_.import_pending_attempt_id=p_attempt AND e_.voided_at IS NULL
+  ORDER BY e_.id LIMIT p_limit FOR UPDATE) x;
+ IF ids IS NOT NULL THEN
+  UPDATE public.person pp SET voided_at=now(),voided_ic_number=(SELECT s.ic_number FROM public.employee_statutory_my s WHERE s.person_id=pp.id AND s.tenant_id=pp.tenant_id)
+   WHERE pp.id=ANY(persons_) AND pp.tenant_id=p_tenant AND pp.voided_at IS NULL;
+  UPDATE public.employee_statutory_my s SET ic_number=NULL WHERE s.person_id=ANY(persons_) AND s.tenant_id=p_tenant AND s.ic_number IS NOT NULL;
+  WITH voided AS (
+   UPDATE public.employment emp SET voided_at=now(),voided_by=p_actor,void_reason=p_reason,voided_import_attempt_id=p_attempt,
+    voided_employee_code=emp.employee_code,employee_code=NULL WHERE emp.id=ANY(ids) AND emp.tenant_id=p_tenant RETURNING emp.id,emp.voided_employee_code)
+  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+   SELECT p_tenant,'employment',v.id,'employment.voided','user',p_actor,v.id,
+    jsonb_build_object('importAttemptId',p_attempt,'reason',p_reason,'employeeCode',v.voided_employee_code,'discarded',true) FROM voided v;
+ END IF;
+ SELECT count(*) INTO remaining FROM public.employment e WHERE e.tenant_id=p_tenant AND e.import_pending_attempt_id=p_attempt AND e.voided_at IS NULL;
+ IF remaining=0 THEN
+  -- A person and its employment are written by one chunk transaction, so an orphan staged person is impossible;
+  -- void any anyway before the attempt becomes visible.
+  UPDATE public.person SET voided_at=coalesce(voided_at,now()) WHERE tenant_id=p_tenant AND import_pending_attempt_id=p_attempt AND voided_at IS NULL;
+  INSERT INTO app.import_attempt_release(attempt_id,tenant_id,outcome) VALUES(p_attempt,p_tenant,'discarded') ON CONFLICT(attempt_id) DO NOTHING;
+ END IF;
+ RETURN remaining;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.import_discard_batch(uuid,uuid,uuid,text,integer) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- The single-statement activate and discard are replaced by release + settle and the bounded discard above.
+DROP FUNCTION app.import_activate(uuid);
+--> statement-breakpoint
+DROP FUNCTION app.import_discard(uuid,uuid,uuid,text);
+--> statement-breakpoint
+-- Staged audit events. Every event appended inside an import chunk carries the attempt (stamped by the database,
+-- like the employment and person rows), whether or not it names an employment: person, statutory, family and
+-- profile events about a staged person stay invisible until the attempt is released (activated or discarded).
+ALTER TABLE domain_event ADD COLUMN import_pending_attempt_id uuid;
+--> statement-breakpoint
+CREATE TRIGGER domain_event_import_pending_stamp BEFORE INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.import_pending_stamp();
+--> statement-breakpoint
+-- The reviewed Bank completion (0863) commits to every business column of its native event: the column set of
+-- to_jsonb(domain_event) outside the generated audit slots and the payload. That set now includes the staged marker,
+-- so the committed scope names it too, and as NULL: an Assistant Bank change is never a staged import event. Same
+-- signature, language, volatility and search_path; CREATE OR REPLACE keeps its owner and its REVOKE.
+CREATE OR REPLACE FUNCTION app._bank_event_scope(p_tenant uuid,p_person uuid,p_statutory uuid,p_user uuid) RETURNS jsonb
+LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('tenant_id',p_tenant,'aggregate_type','employee-statutory',
+  'aggregate_id',p_statutory,'event_type','employee.bank.updated','actor_type','user','actor_id',p_user,
+  'subject_employment_id',(SELECT e.id FROM public.employment e WHERE e.tenant_id=p_tenant AND e.person_id=p_person
+   ORDER BY (e.terminated_on IS NOT NULL),e.hired_on,e.id LIMIT 1),
+  'import_pending_attempt_id',NULL::uuid)
+$$;
+--> statement-breakpoint
+-- Chain verification (core/audit-chain.ts, group administrators only) must read every chained row to prove the
+-- chain; it sets app.audit_chain_verification for its own read-only statements and returns no event content.
+ALTER POLICY domain_event_import_pending ON public.domain_event
+ USING (import_pending_attempt_id IS NULL OR import_pending_attempt_id::text = current_setting('app.import_attempt',true)
+  OR import_pending_attempt_id = ANY((SELECT app.import_released_attempt_ids())::uuid[])
+  OR (current_setting('app.audit_chain_verification',true)='on' AND (SELECT app.is_group_admin())));
+--> statement-breakpoint
+-- app.import_released_attempt_ids() is evaluated by row security under whichever role a policy applies to, so it is executable by exactly
+-- those roles instead of PUBLIC: a policy's own roles, or, for a policy to PUBLIC, every role holding a privilege on
+-- the policy's table (and the table owner where row security is forced). A role granted such a table later needs
+-- this grant too; without it the policy fails closed (permission denied), never open.
+DO $policy_function_grants$
+DECLARE fn regprocedure:='app.import_released_attempt_ids()'::regprocedure; r record;
+BEGIN
+ FOR r IN
+  WITH policies AS (
+   SELECT DISTINCT p.oid,p.polrelid,p.polroles FROM pg_catalog.pg_policy p JOIN pg_catalog.pg_depend d
+    ON d.classid='pg_catalog.pg_policy'::regclass AND d.objid=p.oid AND d.refclassid='pg_catalog.pg_proc'::regclass AND d.refobjid=fn)
+  SELECT DISTINCT g.grantee FROM (
+   SELECT unnest(p.polroles) AS grantee FROM policies p
+   UNION ALL
+   SELECT a.grantee FROM policies p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid
+    CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) a
+    WHERE 0=ANY(p.polroles) AND (a.grantee<>c.relowner OR c.relforcerowsecurity)
+   UNION ALL
+   SELECT a.grantee FROM policies p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid
+    JOIN pg_catalog.pg_attribute att ON att.attrelid=c.oid AND att.attacl IS NOT NULL
+    CROSS JOIN LATERAL pg_catalog.aclexplode(att.attacl) a
+    WHERE 0=ANY(p.polroles) AND (a.grantee<>c.relowner OR c.relforcerowsecurity)
+   UNION ALL
+   SELECT c.relowner FROM policies p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid WHERE 0=ANY(p.polroles) AND c.relforcerowsecurity
+  ) g WHERE g.grantee<>0
+ LOOP
+  EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %I',fn,pg_catalog.pg_get_userbyid(r.grantee));
+ END LOOP;
+END $policy_function_grants$;

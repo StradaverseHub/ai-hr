@@ -1,5 +1,6 @@
 import {isEmployeeColumnKey} from '@/lib/employee-columns';
 import {isCalendarDate} from '@/lib/calendar-date';
+import {PERSONNEL_BLANK_VALUE} from '@/lib/personnel-list-controls';
 import {PERSONNEL_QUALITY_FLAGS,type PersonnelQualityFlag} from '@/core/personnel-quality';
 /**
  * ONE reading of the Personnel listing's query string (feedback 579255c3), shared by the screen
@@ -22,7 +23,7 @@ import {PERSONNEL_QUALITY_FLAGS,type PersonnelQualityFlag} from '@/core/personne
  * still HONOURED so an old bookmark or a saved link keeps narrowing exactly as it did, but nothing in the
  * UI writes it any more.
  */
-import type { EmployeeListFilters } from '@/core/read';
+import type { EmployeeListFilters, PersonnelBlankChoice } from '@/core/read';
 import type { EmploymentStatus } from '@/core/employment-status';
 
 /** The derived Employee Status buckets a reader can narrow to. `withhold` is absent because nothing
@@ -44,17 +45,21 @@ export type PersonnelSearchParams = {
   page?: string;
   size?: string;
   company?: string;
-  dept?: string;
+  /** aa045103 — Department, Employment Type and Status are multi-select (header filters and the Filter
+   *  dialog both write them). A single value, a repeated param and a comma list all read the same. */
+  dept?: string | string[];
   /** LEGACY lifecycle narrowing (active | terminated | draft). Honoured, never written. */
   status?: string;
-  type?: string;
-  /** Derived Employee Status bucket, or 'draft'. Written by the cards and the Filter's Status field. */
-  bucket?: string;
+  type?: string | string[];
+  /** Derived Employee Status buckets, and/or 'draft'. Written by the cards, the Filter's Status field and
+   *  the Status column header. */
+  bucket?: string | string[];
   /** Explicit column list for the export, comma-separated (lib/employee-columns.columnsFromParam). */
   cols?: string;
   companies?:string|string[]; bu?:string|string[]; parent?:string|string[]; group?:string|string[];
   grade?:string|string[]; position?:string|string[]; quality?:string|string[];
   confirmation?:string; joinedFrom?:string; joinedTo?:string; probationFrom?:string; probationTo?:string;
+  hiredFrom?:string; hiredTo?:string; confirmedFrom?:string; confirmedTo?:string;
   search?:string; sort?:string; direction?:string;
 
 };
@@ -62,6 +67,9 @@ export type PersonnelSearchParams = {
 const values=(value:string|string[]|undefined)=>{const selected=[...new Set((Array.isArray(value)?value:value?[value]:[]).flatMap(item=>item.split(',')).map(item=>item.trim()).filter(Boolean))];if(selected.length>1000)throw new RangeError('Too many selected filters. Narrow the selection.');return selected;};
 const uuidValues=(value:string|string[]|undefined)=>values(value).filter(item=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item));
 const dateValue=(value:string|undefined)=>typeof value==='string'&&isCalendarDate(value)?value:undefined;
+/** Which ordinary param carries which blank-able choice field. Company and Status can never be empty. */
+const BLANK_PARAMS={dept:'department',bu:'businessUnit',position:'position',grade:'jobGrade',type:'employmentType'} as const satisfies Record<string,PersonnelBlankChoice>;
+const EMPLOYMENT_TYPE_VALUE=/^[a-z][a-z_]{0,39}$/;
 
 const isBucket = (v: string | undefined): v is EmploymentStatus =>
   !!v && (EMPLOYEE_STATUS_BUCKETS as readonly string[]).includes(v);
@@ -69,12 +77,15 @@ const isBucket = (v: string | undefined): v is EmploymentStatus =>
 export type PersonnelListQuery = {
   q?: string;
   company?: string;
-  dept?: string;
-  type?: string;
   /** The legacy lifecycle narrowing, once validated. */
   legacyStatus?: 'active' | 'terminated';
-  /** The chosen derived bucket, if it is one an employment can be in. */
+  /** The first chosen derived bucket: set whenever Status narrows employments. Setting it aside (the Draft
+   *  card's preview does) sets aside the Status narrowing's effect on drafts. */
   bucket?: EmploymentStatus;
+  /** Every chosen derived bucket an employment can be in. */
+  buckets: EmploymentStatus[];
+  /** True when Draft is among the chosen Status values (unfinished records are shown beside employees). */
+  includeDrafts: boolean;
   /** True when the reader asked for the unfinished records ALONE — from either param. */
   draftOnly: boolean;
   /** True when any narrowing at all is applied (drives the empty state's wording). */
@@ -91,20 +102,22 @@ export type PersonnelListQuery = {
 export function parsePersonnelListQuery(sp: PersonnelSearchParams): PersonnelListQuery {
   const q = typeof sp.q==='string'?sp.q.trim()||undefined:undefined;
   const company = typeof sp.company==='string'?sp.company||undefined:undefined;
-  const dept = typeof sp.dept==='string'?sp.dept||undefined:undefined;
-  const type = typeof sp.type==='string'?sp.type||undefined:undefined;
   const legacyStatus = sp.status === 'active' || sp.status === 'terminated' ? sp.status : undefined;
-  const bucket = isBucket(sp.bucket) ? sp.bucket : undefined;
-  const draftOnly = sp.bucket === DRAFT_BUCKET || sp.status === DRAFT_BUCKET;
+  const chosenBuckets = values(sp.bucket);
+  const buckets = chosenBuckets.filter(isBucket);
+  const includeDrafts = chosenBuckets.includes(DRAFT_BUCKET) || sp.status === DRAFT_BUCKET;
+  const draftOnly = includeDrafts && buckets.length === 0;
+  const blankChoices = (Object.entries(BLANK_PARAMS) as [keyof typeof BLANK_PARAMS, PersonnelBlankChoice][])
+    .filter(([param]) => values(sp[param]).includes(PERSONNEL_BLANK_VALUE)).map(([, field]) => field);
   return {
     q,
     company,
-    dept,
-    type,
     legacyStatus,
-    bucket,
+    bucket: buckets[0],
+    buckets,
+    includeDrafts,
     draftOnly,
-    hasFilters: !!(q || company || dept || type || sp.status || sp.bucket || sp.search || [sp.companies,sp.bu,sp.parent,sp.group,sp.grade,sp.position,sp.quality,sp.confirmation,sp.joinedFrom,sp.joinedTo,sp.probationFrom,sp.probationTo].some(value=>Array.isArray(value)?value.length:!!value)),
+    hasFilters: !!(q || company || sp.status || sp.search || [sp.dept,sp.type,sp.bucket,sp.companies,sp.bu,sp.parent,sp.group,sp.grade,sp.position,sp.quality,sp.confirmation,sp.joinedFrom,sp.joinedTo,sp.probationFrom,sp.probationTo,sp.hiredFrom,sp.hiredTo,sp.confirmedFrom,sp.confirmedTo].some(value=>Array.isArray(value)?value.length:!!value)),
     filters: {
       q,
       columnSort:isEmployeeColumnKey(sp.sort)?sp.sort:undefined,sortDirection:sp.direction==='desc'?'desc':'asc',
@@ -114,11 +127,13 @@ export function parsePersonnelListQuery(sp: PersonnelSearchParams): PersonnelLis
       qualityFlags:values(sp.quality).filter((value):value is PersonnelQualityFlag=>(PERSONNEL_QUALITY_FLAGS as readonly string[]).includes(value)),
       confirmationState:sp.confirmation==='confirmed'||sp.confirmation==='unconfirmed'?sp.confirmation:undefined,
       joinedFrom:dateValue(sp.joinedFrom),joinedTo:dateValue(sp.joinedTo),probationEndFrom:dateValue(sp.probationFrom),probationEndTo:dateValue(sp.probationTo),
+      hiredFrom:dateValue(sp.hiredFrom),hiredTo:dateValue(sp.hiredTo),confirmationFrom:dateValue(sp.confirmedFrom),confirmationTo:dateValue(sp.confirmedTo),
       companyId: company,
-      departmentId: dept,
+      departmentIds: uuidValues(sp.dept),
       status: legacyStatus,
-      employmentType: type,
-      employmentStatuses: bucket ? [bucket] : undefined,
+      employmentTypes: values(sp.type).filter(value=>EMPLOYMENT_TYPE_VALUE.test(value)),
+      blankChoices: blankChoices.length ? blankChoices : undefined,
+      employmentStatuses: buckets.length ? buckets : undefined,
     },
   };
 }
@@ -133,6 +148,18 @@ export function parsePersonnelListQuery(sp: PersonnelSearchParams): PersonnelLis
  */
 export function headcountFilters(query: PersonnelListQuery): Omit<EmployeeListFilters, 'companyIds'> {
   return { ...query.filters, employmentStatuses: undefined };
+}
+
+/** Filters that require a live employment can never match a draft. */
+export function draftFiltersPermitRows(query: PersonnelListQuery): boolean {
+  const filters = query.filters;
+  // aa045103: Status is multi-select. Drafts survive a Status choice only when Draft is one of its values.
+  return !(filters.departmentIds?.length || filters.employmentTypes?.length || filters.blankChoices?.length
+    || query.legacyStatus || (query.bucket && !query.includeDrafts) || filters.privateSearch
+    || filters.businessUnitIds?.length || filters.parentCompanyIds?.length || filters.businessGroupIds?.length
+    || filters.jobGrades?.length || filters.positionIds?.length || filters.qualityFlags?.length
+    || filters.confirmationState || filters.joinedFrom || filters.joinedTo || filters.probationEndFrom || filters.probationEndTo
+    || filters.hiredFrom || filters.hiredTo || filters.confirmationFrom || filters.confirmationTo);
 }
 
 /**
@@ -152,9 +179,9 @@ export function draftMatchesQuery(
   },
   query: PersonnelListQuery,
 ): boolean {
-  if (query.dept || query.type || query.legacyStatus || query.filters.privateSearch || query.filters.businessUnitIds?.length || query.filters.parentCompanyIds?.length || query.filters.businessGroupIds?.length || query.filters.jobGrades?.length || query.filters.positionIds?.length || query.filters.qualityFlags?.length || query.filters.confirmationState || query.filters.joinedFrom || query.filters.joinedTo || query.filters.probationEndFrom || query.filters.probationEndTo) return false;
-  if(query.filters.filterCompanyIds?.length&&(!d.companyId||!query.filters.filterCompanyIds.includes(d.companyId)))return false;
-  if (query.bucket) return false; // a derived employment bucket can never contain a draft
+  if (!draftFiltersPermitRows(query)) return false;
+  const companyIds = query.filters.filterCompanyIds;
+  if (companyIds?.length && (!d.companyId || !companyIds.includes(d.companyId))) return false;
   if (query.company && d.companyId !== query.company) return false;
   if (query.q) {
     const needle = query.q.trim().toLowerCase();
@@ -190,7 +217,10 @@ export function draftListScope(
 /** Every navigation/export path carries the same validated ordinary filter vocabulary. */
 export function personnelQueryParams(sp:PersonnelSearchParams):URLSearchParams{
  const parsed=parsePersonnelListQuery(sp),f=parsed.filters,out=new URLSearchParams();
- for(const [key,value] of Object.entries({sort:f.columnSort,direction:f.columnSort?f.sortDirection:undefined,q:parsed.q,company:parsed.company,dept:parsed.dept,type:parsed.type,status:parsed.legacyStatus,bucket:parsed.draftOnly?'draft':parsed.bucket,search:f.privateSearch,confirmation:f.confirmationState,joinedFrom:f.joinedFrom,joinedTo:f.joinedTo,probationFrom:f.probationEndFrom,probationTo:f.probationEndTo}))if(value)out.set(key,value);
- for(const [key,value] of Object.entries({companies:f.filterCompanyIds,bu:f.businessUnitIds,parent:f.parentCompanyIds,group:f.businessGroupIds,grade:f.jobGrades,position:f.positionIds,quality:f.qualityFlags}))if(value?.length)out.set(key,value.join(','));
+ for(const [key,value] of Object.entries({sort:f.columnSort,direction:f.columnSort?f.sortDirection:undefined,q:parsed.q,company:parsed.company,status:parsed.legacyStatus,search:f.privateSearch,confirmation:f.confirmationState,joinedFrom:f.joinedFrom,joinedTo:f.joinedTo,probationFrom:f.probationEndFrom,probationTo:f.probationEndTo,hiredFrom:f.hiredFrom,hiredTo:f.hiredTo,confirmedFrom:f.confirmationFrom,confirmedTo:f.confirmationTo}))if(value)out.set(key,value);
+ // aa045103: a dropped value here is an unfiltered export, so every multi param (and its Blank) is re-emitted.
+ const blank=(field:PersonnelBlankChoice)=>f.blankChoices?.includes(field)?[PERSONNEL_BLANK_VALUE]:[];
+ const buckets=[...parsed.buckets,...(parsed.includeDrafts?[DRAFT_BUCKET]:[])];
+ for(const [key,value] of Object.entries({companies:f.filterCompanyIds,bu:[...f.businessUnitIds??[],...blank('businessUnit')],parent:f.parentCompanyIds,group:f.businessGroupIds,grade:[...f.jobGrades??[],...blank('jobGrade')],position:[...f.positionIds??[],...blank('position')],quality:f.qualityFlags,dept:[...f.departmentIds??[],...blank('department')],type:[...f.employmentTypes??[],...blank('employmentType')],bucket:buckets}))if(value?.length)out.set(key,value.join(','));
  return out;
 }

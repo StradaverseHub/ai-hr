@@ -22,7 +22,9 @@ import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
-import { createMovementEvent, movementHistory } from '../core/movement';
+import { createMovementEvent, movementCurrentState, movementHistory } from '../core/movement';
+import { movementTypeControls } from '../core/movement-type-controls';
+import { readPersonnelMovementFormData } from '../app/admin/personnel/[employmentId]/movement-form-data';
 import { TERMINATION_REASONS } from '../core/termination-reason';
 import {
   deleteTerminationReason,
@@ -71,6 +73,24 @@ async function hireOne(base: Base = b) {
     hiredOn: '2020-01-01',
   });
 }
+
+it('leaves movement form reads idle on normal profiles and keeps the full New/Edit data when opened', async () => {
+  // A missing tenant would be rejected by the real carrier if the closed form opened any DB work.
+  await expect(readPersonnelMovementFormData({ tenantId: '' }, 'not-an-id', [], false)).resolves.toBeNull();
+  const actor = adminCtx(b), subject = await hireOne();
+  const { code } = await saveTerminationReason(actor, { label: 'Fictional inactive correction reason', category: 'other' });
+  await setTerminationReasonActive(actor, { code, active: false });
+  const types = await listMovementEventTypes(actor);
+  const expected = {
+    controls: await movementTypeControls(actor, types),
+    reasons: await terminationReasonCatalogue(actor),
+    current: await movementCurrentState(actor, subject.employmentId),
+  };
+  expect(await readPersonnelMovementFormData(actor, subject.employmentId, types, true)).toEqual(expected);
+  expect(expected.reasons.find(reason => reason.code === code)).toMatchObject({ active: false, builtIn: false });
+  const outside = adminCtx(await seedBase());
+  await expect(readPersonnelMovementFormData(outside, subject.employmentId, types, true)).rejects.toThrow();
+});
 
 const terminate = (base: Base, employmentId: string, terminationReasonCode: string) =>
   createMovementEvent(adminCtx(base), {
