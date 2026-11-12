@@ -13,13 +13,18 @@ export type FormulaDiagnostic={
  /** English engine text, used when no translated message exists for the code. */
  message:string;
  name?:string;suggestion?:string;
+ /** possible_zero_divisor: the divisor is a current-run Pay Item read, which is 0 when the item is not in the run. */
+ missingItem?:boolean;
  /** internal_id_compared: the literal the internal ID is compared with. */
  value?:string;
 };
 export const PAY_FORMULA_DIAGNOSTIC_CAP=50;
 /** Sources that are typed per employee or per run and can legitimately be 0. Named values derived from
- * them inherit the same possibility. CalendarDays and positive literals are never 0. */
-const MAY_BE_ZERO=new Set(['Input','PayItemInput','AnotherPayItems']);
+ * them inherit the same possibility. CalendarDays and positive literals are never 0. Since the owner rule of
+ * 13 Nov 2026 every current-run Pay Item read is 0 when the employee does not have the item in the run. */
+const MAY_BE_ZERO=new Set(['Input','PayItemInput','PayItem','PayItemNoProrate','Accumulation','AnotherPayItems']);
+/** Current-run Pay Item reads that count as 0 when the item is not in the run (lib/pay-formula-explain.ts). */
+const ZERO_WHEN_MISSING=new Set(['PayItem','PayItemNoProrate','PayItemInput','Accumulation']);
 
 const TOKEN=/^(?:\{#[A-Za-z][A-Za-z0-9_]*\}|\d+(?:\.\d*)?|\.\d+|[A-Za-z_][A-Za-z0-9_]*|"(?:[^"]|"")*"?|<=|>=|<>)/;
 /** Length of the source token that starts at a 1-based line/column; 1 when nothing recognisable starts there. */
@@ -61,8 +66,8 @@ function constant(e:FormulaExpression):string|null{
  }catch{return null;}
  return null;
 }
-type Source={key:string;label:string};
-const keyOf=(e:FormulaExpression):Source|null=>e.kind==='call'?{key:'call:'+e.code.toLowerCase(),label:'{#'+e.code+'}'}:e.kind==='name'?{key:'name:'+e.name.toLowerCase(),label:e.name}:null;
+type Source={key:string;label:string;missingItem?:boolean};
+const keyOf=(e:FormulaExpression):Source|null=>e.kind==='call'?{key:'call:'+e.code.toLowerCase(),label:'{#'+e.code+'}',...(ZERO_WHEN_MISSING.has(e.code)?{missingItem:true}:{})}:e.kind==='name'?{key:'name:'+e.name.toLowerCase(),label:e.name}:null;
 /** Facts a condition proves inside its own branch (x > 0, x <> 0, x >= positive), and facts its
  * failure proves in later branches (x = 0, x <= 0 failed). */
 function proves(c:FormulaExpression,when:boolean):string[]{
@@ -92,7 +97,7 @@ function divisionChecks(program:FormulaProgram,source:string):FormulaDiagnostic[
     const at={line:e.right.loc.line,column:e.right.loc.column,length:formulaTokenLength(source,e.right.loc.line,e.right.loc.column)};
     const value=constant(e.right);
     if(value!==null&&Number(value)===0)out.push({severity:'error',code:'division_by_zero',...at,message:'Division by zero is not allowed'});
-    else{const risky=zeroSources(e.right,taint).filter(s=>!guarded.has(s.key));if(risky.length)out.push({severity:'warning',code:'possible_zero_divisor',...at,name:risky[0].label,message:`This divides by ${risky[0].label}, which can be 0`});}
+    else{const risky=zeroSources(e.right,taint).filter(s=>!guarded.has(s.key));if(risky.length)out.push({severity:'warning',code:'possible_zero_divisor',...at,name:risky[0].label,...(risky[0].missingItem?{missingItem:true}:{}),message:`This divides by ${risky[0].label}, which can be 0`});}
    }
    visit(e.left,taint,guarded);visit(e.right,taint,guarded);
   }else if(e.kind==='unary')visit(e.operand,taint,guarded);
