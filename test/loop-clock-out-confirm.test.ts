@@ -94,8 +94,8 @@ describe('Confirm on the missed clock-out card',()=>{
   // A request for the approver, not a clock change: the day on record is untouched until it is approved.
   const [day]=await owner.db.select({out:schema.attendance.checkOutAt}).from(schema.attendance).where(and(eq(schema.attendance.employmentId,worker.employmentId),eq(schema.attendance.attendanceDate,worked)));
   expect(day.out).toBeNull();
-  // A second Confirm sends nothing more: the attendance service refuses a second request for the day.
-  expect(await confirmMissedClockOut(await caller(),{caseId:id,reason:'Device problem',confirm:true})).toMatchObject({kind:'refused'});
+  // A second Confirm sends nothing more: a correction for the day is already waiting, and the answer says so.
+  expect(await confirmMissedClockOut(await caller(),{caseId:id,reason:'Device problem',confirm:true})).toEqual({kind:'refused',reason:'pending'});
   expect(await requests()).toHaveLength(1);
  });
  it('refuses someone else\'s case, a day changed since the card and a loop switched off, writing nothing',async()=>{

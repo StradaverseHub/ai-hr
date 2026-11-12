@@ -106,6 +106,8 @@ const EXPECTED_STEPS = [
   step({ key: 'letter_acknowledge:a1', kind: 'letter_acknowledge', due: '2026-11-20', date: '2026-11-06', decider: 'you', destination: null }),
   step({ key: `passport_renew:${CASE_PASSPORT}`, kind: 'passport_renew', due: '2026-12-01', decider: 'hr', destination: { screen: 'profileEdit' } }),
 ];
+/** The steps sent when the reminders are read: the missed clock-out and the passport are reminders, not steps. */
+const SHOWN_STEPS = EXPECTED_STEPS.slice(0, 5);
 const EXPECTED_HOURS = { status: 'ok', week: { workedMinutes: 950, shiftMinutes: 540, bars: [
   { date: '2026-11-09', state: 'worked', workedMinutes: 480, scheduledMinutes: 540 },
   { date: '2026-11-10', state: 'worked', workedMinutes: 470, scheduledMinutes: 540 },
@@ -162,7 +164,7 @@ describe('GET /api/mobile/v2/today', () => {
     expect(r.body).toEqual({
       date: '2026-11-12',
       reminders: { status: 'ok', items: EXPECTED_REMINDERS },
-      steps: { status: 'ok', items: EXPECTED_STEPS, more: 0, partial: false },
+      steps: { status: 'ok', items: SHOWN_STEPS, more: 0, partial: false },
       hours: EXPECTED_HOURS, payday: EXPECTED_PAYDAY, comingUp: EXPECTED_COMING_UP,
     });
     expect(r.text).not.toMatch(/href|\/me\?|\/attendance\/|\/web\/only|runType|payslips/);
@@ -196,9 +198,9 @@ describe('GET /api/mobile/v2/today', () => {
       ? changed.steps === 'partial'
         // No loop cards: no passport step, no clock-out reminder to dedupe against, and never all clear.
         ? { status: 'ok', items: [EXPECTED_STEPS[0], EXPECTED_STEPS[1], step({ key: 'missed_clock_out:2026-11-10', kind: 'missed_clock_out', due: '2026-11-20', date: '2026-11-10', decider: 'manager', destination: { screen: 'attendanceCorrection', date: '2026-11-10' } }), ...EXPECTED_STEPS.slice(2, 5)], more: 0, partial: true }
-        // The clock-out card is not on screen as a reminder, so its step stays.
+        // Neither the clock-out nor the passport card is on screen as a reminder, so both steps stay.
         : { status: 'ok', items: [EXPECTED_STEPS[0], EXPECTED_STEPS[1], step({ key: 'missed_clock_out:2026-11-10', kind: 'missed_clock_out', due: '2026-11-20', date: '2026-11-10', decider: 'manager', destination: { screen: 'attendanceCorrection', date: '2026-11-10' } }), ...EXPECTED_STEPS.slice(2)], more: 0, partial: false }
-      : { status: 'ok', items: EXPECTED_STEPS, more: 0, partial: false };
+      : { status: 'ok', items: SHOWN_STEPS, more: 0, partial: false };
     const { steps: _ignored, ...sections } = changed as Record<string, unknown>;
     expect(r.body).toEqual({ date: '2026-11-12', reminders: { status: 'ok', items: EXPECTED_REMINDERS }, hours: EXPECTED_HOURS, payday: EXPECTED_PAYDAY,
       comingUp: EXPECTED_COMING_UP, ...sections, steps });
@@ -210,7 +212,8 @@ describe('GET /api/mobile/v2/today', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     ports.readiness.mockRejectedValue(Error('secret SQL'));
     const r = await today();
-    expect(r.body.steps).toEqual({ status: 'ok', items: [EXPECTED_STEPS[5]], more: 0, partial: true });
+    // The passport is a reminder, so no step is left, and the empty list is partial, never all clear.
+    expect(r.body.steps).toEqual({ status: 'ok', items: [], more: 0, partial: true });
     expect(r.body.payday).toEqual(EXPECTED_PAYDAY);
     expect(r.body.comingUp).toEqual({ status: 'unavailable' });
     expect(r.body.hours).toEqual(EXPECTED_HOURS);
@@ -280,6 +283,22 @@ describe('GET /api/mobile/v2/today', () => {
     expect(recordGaps(['no_bank_account', 'no_bank_account', '', 'x'.repeat(81), 'no_such_gap'], (key) => (key === 'no_such_gap' ? null : key))).toEqual([{ key: 'no_bank_account', label: 'no_bank_account' }]);
   });
 
+  it('leaves out a passport step only while that passport\'s own card is a reminder', async () => {
+    let r = await today();
+    expect(r.body.reminders.items).toContainEqual({ kind: 'passport', caseId: CASE_PASSPORT, expiresOn: '2026-12-01', destination: { screen: 'profile' } });
+    expect(r.body.steps.items.map((s: { kind: string }) => s.kind)).not.toContain('passport_renew');
+    // Twenty clock-out cards fill the reminders (the contract's limit), so the passport is not on screen as a reminder:
+    // its step is sent, and so is the missed clock-out whose card is not among them.
+    const clockOuts = Array.from({ length: 20 }, (_, i) => ({ kind: 'clockOut', caseId: `55555555-5555-4555-8555-${String(i).padStart(12, '0')}`,
+      date: `2026-10-${String(i + 1).padStart(2, '0')}`, checkIn: '09:00', proposedCheckOut: '18:00', href: '/attendance/my-records' }));
+    ports.loopCards.mockResolvedValue([...clockOuts, loopCardsValue()[3]]);
+    r = await today();
+    expect(r.body.reminders.items).toHaveLength(20);
+    expect(r.body.reminders.items.every((item: { kind: string }) => item.kind === 'clockOut')).toBe(true);
+    expect(r.body.steps.items.map((s: { key: string }) => s.key)).toEqual(['claim_draft:c1', `bank_missing:${EMP}`, 'missed_clock_out:2026-11-10',
+      'missed_clock_in:2026-11-11', 'leave_certificate_missing:l1', 'letter_acknowledge:a1', `passport_renew:${CASE_PASSPORT}`]);
+  });
+
   it('sends at most TODAY_STEP_LIMIT steps and counts the rest in `more`', async () => {
     const many = Array.from({ length: TODAY_STEP_LIMIT + 3 }, (_, i) => item({ key: `claim_draft:c${String(i).padStart(2, '0')}`, group: 'claims', kind: 'claim_draft', date: '2026-11-05', due: '2026-11-18', label: 'Fictional Travel' }));
     ports.readiness.mockResolvedValue(readinessValue(many));
@@ -343,12 +362,12 @@ describe('POST /api/mobile/v2/today/clock-out', () => {
     }
   });
 
-  it('a repeated Confirm after a lost response goes to the owner again, which refuses it rather than sending a second request', async () => {
+  it('a repeated Confirm after a lost response goes to the owner again, which answers `pending` rather than sending a second request', async () => {
     // The owner's own answer to a second Confirm for a day that already has a waiting correction
     // (test/loop-clock-out-confirm.test.ts and test/mobile-v2-today-clock-out.test.ts prove it on the database).
-    ports.confirm.mockResolvedValueOnce({ kind: 'submitted' }).mockResolvedValueOnce({ kind: 'refused', reason: 'unavailable' });
+    ports.confirm.mockResolvedValueOnce({ kind: 'submitted' }).mockResolvedValueOnce({ kind: 'refused', reason: 'pending' });
     expect((await post(clockOutPOST, 'clock-out', command())).body).toEqual({ outcome: 'submitted' });
-    expect((await post(clockOutPOST, 'clock-out', command())).body).toEqual({ outcome: 'refused', code: 'unavailable' });
+    expect((await post(clockOutPOST, 'clock-out', command())).body).toEqual({ outcome: 'refused', code: 'pending' });
     expect(ports.confirm).toHaveBeenCalledTimes(2);
     expect(ports.confirm.mock.calls[0]).toEqual(ports.confirm.mock.calls[1]);
   });

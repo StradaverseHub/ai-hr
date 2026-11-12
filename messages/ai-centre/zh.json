@@ -2402,6 +2402,7 @@
       "clockOutReasonOtherLabel": "输入原因",
       "clockOutActionsLabel": "确认或编辑",
       "clockOutChanged": "自卡片准备以来这一天的记录已更改，因此没有提交任何内容。请使用“编辑”在表单上核对。",
+      "clockOutPending": "这一天的更正申请已在等待审批，因此没有再次提交。",
       "recordTitle": "{count, plural, other {您的记录缺少 # 项资料}}",
       "recordNote": "人事照常审批您的更新。",
       "recordCta": "填写",

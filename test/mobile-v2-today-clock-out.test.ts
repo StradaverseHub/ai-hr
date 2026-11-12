@@ -1,8 +1,9 @@
 /** Native Today on the database (owner decisions, 12 Nov 2026): GET /api/mobile/v2/today and Confirm on its missed
  * clock-out reminder, through the REAL route handlers, mobileRoute, the composition and the real owners, on fictional
  * data. The loop opens the case; the person's own Today shows it as a reminder; a foreign employment is refused; and a
- * Confirm the phone repeats after a lost response, or sends twice at once, never sends a second correction request (the
- * attendance service keeps one waiting correction per day, core/attendance.ts attendance_correction_one_pending_uq).
+ * Confirm the phone repeats after a lost response answers `pending` and sends nothing, and two sent at once send one
+ * correction (the attendance service keeps one waiting correction per day, core/attendance.ts
+ * attendance_correction_one_pending_uq).
  * The bearer session is the one seam: it resolves the selected person's own login exactly as
  * test/loop-clock-out-confirm.test.ts does. Next request cookies/locale/cache are framework seams; identity SQL,
  * row-level security, custody and attendance effects are real. Expected values are written out from the fixture. */
@@ -105,9 +106,8 @@ describe('Confirm on the missed clock-out reminder',()=>{
   const once=[{employment:worker.employmentId,date:worked,in:'09:02:00',out:'18:00:00',status:'pending',reason:'Terlupa merekod keluar'}];
   expect(await sent()).toEqual(once);
   // The phone did not hear the answer and sends the identical Confirm again.
-  const retry=await confirm(body);
-  expect(retry.status).toBe(200);
-  expect(retry.body.outcome).toBe('refused');
+  // The correction for the day is already waiting: the answer says so, and nothing more is sent.
+  expect(await confirm(body)).toEqual({status:200,body:{outcome:'refused',code:'pending'}});
   expect(await sent()).toEqual(once);
  });
  it('two identical Confirms at once send one correction',async()=>{
@@ -115,6 +115,8 @@ describe('Confirm on the missed clock-out reminder',()=>{
   const answers=await Promise.all([confirm(body,'en'),confirm(body,'en')]);
   expect(answers.every(answer=>answer.status===200)).toBe(true);
   expect(answers.filter(answer=>answer.body.outcome==='submitted')).toHaveLength(1);
+  // The other is refused (named `pending` once the first has committed, otherwise the custody's own refusal).
+  expect(answers.filter(answer=>answer.body.outcome==='refused')).toHaveLength(1);
   expect((await requests()).map(row=>({employment:row.employmentId,date:row.attendanceDate,status:row.status,reason:row.reason})))
    .toEqual([{employment:worker.employmentId,date:worked,status:'pending',reason:'Device problem'}]);
  });

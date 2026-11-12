@@ -2402,6 +2402,7 @@
       "clockOutReasonOtherLabel": "Nhập lý do",
       "clockOutActionsLabel": "Xác nhận hoặc chỉnh sửa",
       "clockOutChanged": "Ngày này đã thay đổi kể từ khi thẻ được chuẩn bị nên chưa có gì được gửi. Hãy dùng Chỉnh sửa để kiểm tra trên biểu mẫu.",
+      "clockOutPending": "Yêu cầu chỉnh sửa cho ngày này đang chờ phê duyệt nên không gửi thêm gì nữa.",
       "recordTitle": "{count, plural, other {Hồ sơ của bạn thiếu # thông tin}}",
       "recordNote": "Nhân sự phê duyệt cập nhật của bạn như thường lệ.",
       "recordCta": "Điền",

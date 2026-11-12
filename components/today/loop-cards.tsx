@@ -29,7 +29,7 @@ export async function LoopCards({cards,locale}:{cards:readonly LoopCard[];locale
   confirm:ti('confirm'),confirming:ti('confirming'),edit:ti('edit'),actionsLabel:t('clockOutActionsLabel'),confirmedBy:ti('confirmedBy'),
   done:ti('done.attendanceSubmitted'),error:ti('error'),
   refused:{not_confirmed:ti('refused.invalid'),invalid:ti('refused.invalid'),retired:ti('refused.retired'),changed:t('clockOutChanged'),
-   unavailable:ti('refused.unavailable'),expired:ti('refused.expired'),access:ti('refused.access')}};
+   unavailable:ti('refused.unavailable'),expired:ti('refused.expired'),access:ti('refused.access'),pending:t('clockOutPending')}};
  const source=(loop:'loop_probation_ending'|'loop_payroll_inputs'|'loop_missing_employee_data'|'loop_missed_clock_outs'|'loop_document_expiry')=>t('source',{loop:t(`names.${loop}`)});
  // Previously automated clock-outs now link to human review. Other loop outcomes retain their own copy.
  const [ta,tr]=await Promise.all([getTranslations('today.autonomy'),getTranslations('aiCentre.autonomy.actions.reasons')]);
