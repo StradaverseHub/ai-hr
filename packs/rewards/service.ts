@@ -2238,10 +2238,15 @@ async function assertRewardPreparationMutableTx(tx:Tx,unitId:string){
 export async function getRewardDashboardPreference(ctx:SessionContext){
  return withRewardsTenant(ctx,async tx=>{const [row]=await tx.execute<{prefs:Record<string,unknown>|null}>(sql`select app.list_preferences_get() as prefs`);return row?.prefs?.rewardDashboard??null;});
 }
+/**
+ * 356ae8c1: stores a bounded, structurally valid choice for the current login only. Every dashboard read
+ * intersects it with the viewer's live reviews, so a stale or foreign id can never widen a read and the
+ * save needs no review projection. Saves for one login are serialized and applied in arrival order.
+ */
 export async function saveRewardDashboardPreference(ctx:SessionContext,companyIds:string[],raw:unknown){
- const available=await listRewardReviewStatus(ctx,companyIds);
- const {rewardDashboardPreference}=await import('./dashboard-model');
- const value=rewardDashboardPreference(raw,available.rows.filter(row=>row.kind==='annual'&&row.roles.length));
+ if(!companyIds.length)throw new RewardError('Rewards is not available in your current scope.');
+ const {storedRewardDashboardPreference}=await import('./dashboard-model');
+ const value=storedRewardDashboardPreference(raw);
  return withRewardsTenant(ctx,async tx=>{
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`list-prefs:${ctx.tenantId}:${ctx.userId}`},0))`);
   const [row]=await tx.execute<{prefs:Record<string,unknown>|null}>(sql`select app.list_preferences_get() as prefs`);
@@ -2251,37 +2256,86 @@ export async function saveRewardDashboardPreference(ctx:SessionContext,companyId
   return value;
  });
 }
-/** Bounded dashboard output contains no personal lines, source records, recommendations or private PAT inputs. */
+type RewardDashboardNotice={unitId:string;companyId:string;company:string;businessUnitId:string;unit:string;cycle:string;year:number;expectedRelease:string|null};
+const DASHBOARD_PRIVILEGED:readonly RewardRole[]=['gr','ctro','ec'];
+/**
+ * Bounded dashboard output contains no personal lines, source records, recommendations, private PAT inputs
+ * or set-up status. 4de410ed: reviews still being prepared (including those Group Rewards, CTRO and EC can
+ * already inspect) are withheld before aggregation and contribute only a "being prepared" notice.
+ * 81a7b286: figures add each selected released company's own budget; overruns are judged per company first.
+ */
 export async function rewardDashboard(ctx:SessionContext,companyIds:string[],preference:unknown){
- const {rewardDashboardPreference}=await import('./dashboard-model');
+ const model=await import('./dashboard-model');
+ const kind:import('./dashboard-model').RewardDashboardKind='annual';
  const list=await listRewardReviewStatus(ctx,companyIds);
- const available=list.rows.filter(row=>row.kind==='annual'&&row.roles.length);
- const choice=rewardDashboardPreference(preference,available);
+ const visible=list.rows.filter(row=>row.kind===kind&&row.roles.length);
+ const privileged=(row:{roles:readonly string[]})=>row.roles.some(role=>DASHBOARD_PRIVILEGED.includes(role as RewardRole));
  return withRewardsTenant(ctx,async tx=>{
-  const selected=available.filter(row=>choice.scope==='all'||row.id===choice.scope);
-  const units=[];
-  for(const row of selected){
-   const v=await reviewProjectionTx(tx,ctx,row.id),board=boardRow(v,{cycle:row.cycle,company:row.company},todayInKualaLumpur());
+  // Group Rewards, CTRO and EC hold their seats before release; one statement reads every such release state.
+  const inspectable=visible.filter(privileged).map(row=>row.id);
+  const states=inspectable.length?await tx.execute<{id:string;released:boolean;expectedRelease:string|null}>(sql`
+   select u.id::text as id,coalesce((v.value->>'released')::boolean,false) as released,v.value->>'expectedRelease' as "expectedRelease"
+   from unnest(array[${sql.join(inspectable.map(id=>sql`${id}::uuid`),sql`, `)}]) as u(id) cross join lateral (select app.reward_preparation_view(u.id) as value) v`):[];
+  const state=new Map(states.map(row=>[row.id,row]));
+  // Ordinary seats only exist on released reviews (app.reward_roles), so those rows are released.
+  const released=(row:{id:string;roles:readonly string[]})=>!privileged(row)||state.get(row.id)?.released===true;
+  const notices=companyIds.length?(await tx.execute<RewardDashboardNotice>(sql`select * from app.reward_preparation_notices_v2()`)).filter(notice=>companyIds.includes(notice.companyId)):[];
+  type Candidate={id:string;businessUnitId:string;businessUnit:string;companyId:string;company:string;cycle:string;year:number;released:boolean;expectedRelease:string|null;row:typeof visible[number]|null};
+  const candidates:Candidate[]=[
+   ...visible.map(row=>({id:row.id,businessUnitId:row.businessUnitId,businessUnit:row.unit,companyId:row.companyId,company:row.company,cycle:row.cycle,year:row.year,
+    released:released(row),expectedRelease:state.get(row.id)?.expectedRelease??null,row})),
+   ...notices.map(notice=>({id:notice.unitId,businessUnitId:notice.businessUnitId,businessUnit:notice.unit,companyId:notice.companyId,company:notice.company,cycle:notice.cycle,year:notice.year,
+    released:false,expectedRelease:notice.expectedRelease,row:null})),
+  ];
+  // The dashboard covers the latest review year in scope; All reviews keeps every earlier cycle.
+  const year=candidates.length?Math.max(...candidates.map(c=>c.year)):list.year;
+  const current=candidates.filter(c=>c.year===year);
+  const canSelectAll=visible.length>0&&visible.every(privileged);
+  const choice={...model.rewardDashboardPreference(preference,current,canSelectAll,candidates),kind};
+  const businessUnits=[...new Map(current.map(c=>[c.businessUnitId,{id:c.businessUnitId,label:c.businessUnit}])).values()]
+   .sort((a,b)=>a.label.localeCompare(b.label)||a.id.localeCompare(b.id));
+  const inUnit=current.filter(c=>choice.businessUnit===model.REWARD_DASHBOARD_ALL||c.businessUnitId===choice.businessUnit);
+  const pills=new Map<string,{id:string;label:string;headcount:number|null;blocked:boolean;preparing:boolean}>();
+  for(const c of inUnit){
+   const pill=pills.get(c.companyId)??{id:c.companyId,label:c.company,headcount:null,blocked:false,preparing:true};
+   // Only released, visible headcounts and blocker counts are disclosed.
+   if(c.released&&c.row){pill.preparing=false;pill.headcount=c.row.people===null?pill.headcount:(pill.headcount??0)+c.row.people;pill.blocked||=(c.row.blocking??0)>0;}
+   pills.set(c.companyId,pill);
+  }
+  const companies=[...pills.values()].sort((a,b)=>a.label.localeCompare(b.label)||a.id.localeCompare(b.id));
+  const selected=inUnit.filter(c=>model.inRewardDashboardSelection(choice,c));
+  const releasedSelected=selected.filter(c=>c.released&&c.row);
+  const preparing=selected.filter(c=>!c.released).map(c=>({unitId:c.id,company:c.company,expectedRelease:c.expectedRelease}))
+   .sort((a,b)=>a.company.localeCompare(b.company)||a.unitId.localeCompare(b.unitId));
+  const figureUnits:import('./dashboard-model').RewardDashboardFigureUnit[]=[],excluded:{company:string;reason:'restricted'|'uploaded'}[]=[];
+  const snapshots:string[]=[],roles=new Set<string>();
+  for(const c of releasedSelected){
+   const v=await reviewProjectionTx(tx,ctx,c.id);
+   snapshots.push(v.unit.snapshotDate);for(const role of v.roles)roles.add(role);
    // Native unit budgets deliberately include BG direct reports as aggregate-only contributions.
-   // Own-person, EC and concealed Senior records still withhold the entire dashboard budget.
-   const internal=await load(tx,row.id);
+   // Own-person, EC and concealed Senior records still withhold the entire company budget.
+   const internal=await load(tx,c.id);
    const restricted=internal.entries.some(entry=>{
     const seniorHidden=isSeniorPlanMember(v.unit.policy,entry.facts,entry.source.grade)&&!v.seniorAmountsVisible;
     const permittedBgAggregate=entry.facts.reviewed&&entry.facts.confidentiality==='bg'&&!entry.groupEcDirectReport&&entry.source.personId!==ctx.personId&&!seniorHidden;
     return seniorHidden||!visibleEntry(entry,v.roles,ctx.personId)&&!permittedBgAggregate;
    });
-   const budgets=restricted||v.uploaded?null:Object.fromEntries((['standard','h'] as const).map(plan=>{
-    const b=v.budgets[plan];return [plan,{used:b.used,pools:b.pools,bonusUsedCents:b.bonusUsedCents,lumpCents:b.lumpCents,bonusPoolCents:b.bonusPoolCents}];
-   })) as Record<'standard'|'h',{used:number[];pools:number[];bonusUsedCents:number;lumpCents:number;bonusPoolCents:number}>|null;
-   units.push({id:row.id,name:row.unit,company:row.company,companyId:row.companyId,cycle:row.cycle,snapshotDate:v.unit.snapshotDate,roles:v.roles,
-    budgets,poolStatus:v.poolStatus,restricted,uploaded:v.uploaded,setupVisible:v.roles.some(role=>['gr','ctro','ec'].includes(role)),
-    waiting:board.waiting,action:board.action,due:board.due,daysUntilDue:board.daysUntilDue,blocking:board.blocking,exceptions:board.exceptions});
+   if(restricted||v.uploaded){excluded.push({company:c.company,reason:restricted?'restricted':'uploaded'});continue;}
+   figureUnits.push({company:c.company,budgets:{standard:v.budgets.standard,h:v.budgets.h}});
   }
-  const notices=(await tx.execute<{unitId:string;companyId:string;company:string;unit:string;cycle:string;expectedRelease:string|null}>(sql`select * from app.reward_preparation_notices()`)).filter(notice=>companyIds.includes(notice.companyId));
-  return {choice,notices,emptyReason:list.emptyReason,year:list.year,
-   canSelectAll:available.length>0&&available.every(row=>row.roles.some(role=>['gr','ctro','ec'].includes(role))),
-   scopes:available.map(row=>({id:row.id,label:`${row.company} · ${row.unit} · ${row.cycle}`})),units,
-   waiting:units.filter(row=>row.waiting).sort((a,b)=>(a.due??'9999').localeCompare(b.due??'9999')||a.id.localeCompare(b.id))};
+  excluded.sort((a,b)=>a.company.localeCompare(b.company));
+  const figures=model.aggregateRewardDashboardFigures(figureUnits);
+  const cycle=model.rewardDashboardCommon(releasedSelected.map(c=>c.cycle)),snapshot=model.rewardDashboardCommon(snapshots);
+  const context=releasedSelected.length?{
+   businessUnit:choice.businessUnit===model.REWARD_DASHBOARD_ALL?null:businessUnits.find(bu=>bu.id===choice.businessUnit)?.label??null,
+   companies:new Set(releasedSelected.map(c=>c.companyId)).size,cycle:cycle.value,cycleVaries:cycle.varies,snapshot:snapshot.value,snapshotVaries:snapshot.varies,
+  }:null;
+  // Waiting on you keeps every released annual review in the selection, including earlier cycles.
+  const waiting=visible.filter(row=>row.waiting&&released(row)&&model.inRewardDashboardSelection(choice,row))
+   .map(row=>({id:row.id,company:row.company,name:row.unit,due:row.due,daysUntilDue:row.daysUntilDue,blocking:row.blocking??0,exceptions:row.exceptions??0}))
+   .sort((a,b)=>(a.due??'9999').localeCompare(b.due??'9999')||a.id.localeCompare(b.id));
+  return {kind,year,choice,canSelectAll,businessUnits,companies,context,figures,excluded,preparing,waiting,
+   roles:[...roles].sort(),emptyReason:list.emptyReason};
  });
 }
 export type RewardDashboard=Awaited<ReturnType<typeof rewardDashboard>>;

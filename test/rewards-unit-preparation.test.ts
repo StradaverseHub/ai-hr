@@ -14,7 +14,7 @@ import {rewardAccessPageCompanies,rewardAccessPageEntry,rewardNavigation} from '
 import {dispatchNotificationsFromSweep} from '../core/notifications';
 import { REWARD_PREPARATION_STEPS } from '../packs/rewards/preparation-model';
 
-let base:Base,gr:SessionContext,checker:SessionContext,reviewer:SessionContext,unitId:string,employmentId:string;
+let base:Base,gr:SessionContext,checker:SessionContext,reviewer:SessionContext,unitId:string,employmentId:string,buId:string;
 const snapshotDate='2026-01-01';
 async function change(ctx:SessionContext,command:Record<string,unknown>){
  const current=await getRewardPreparationChecklist(ctx,unitId);
@@ -29,7 +29,7 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
  beforeAll(async()=>{await migrateTestDb();});afterAll(closeAll);
  beforeEach(async()=>{
   await resetDb();base=await seedBase();await setModule(base.tenantId,'rewards','active');gr=await entitledCtx(base);
-  const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:base.tenantId,companyId:base.companyId,code:'PREP-BU',name:'Preparation unit'}).returning();
+  const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:base.tenantId,companyId:base.companyId,code:'PREP-BU',name:'Preparation unit'}).returning();buId=bu.id;
   const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:base.tenantId,code:'12',name:'Grade 12',rank:12}).returning();
   const subject=await hireEmployee(gr,{person:{fullName:'Fictional preparation employee',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,businessUnitId:bu.id,gradeId:grade.id,employmentType:'full_time',hiredOn:'2024-01-01'});
   employmentId=subject.employmentId;
@@ -101,19 +101,47 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   expect((await getRewardPreparationChecklist(gr,unitId)).preparation.steps).toEqual({});
  });
 
- it('projects dashboard totals only inside live scope and saves presentation for the current login',async()=>{
-  const pending=await rewardDashboard(reviewer,[base.companyId],{scope:unitId});expect(pending.units).toEqual([]);expect(pending.notices).toHaveLength(1);expect(pending.notices[0].unitId).toBe(unitId);
+ it('withholds every figure and set-up note until release, for reviewers and Group Rewards alike (4de410ed)',async()=>{
+  const pending=await rewardDashboard(reviewer,[base.companyId],{scope:unitId});
+  expect(pending).toMatchObject({year:2026,figures:null,context:null,excluded:[],waiting:[],roles:[],businessUnits:[{id:buId,label:'PREP-BU'}]});
+  expect(pending.preparing).toEqual([{unitId,company:expect.any(String),expectedRelease:null}]);
+  expect(pending.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:null,blocked:false,preparing:true}]);
   expect(await rewardPreparationNotices({...reviewer,userId:randomUUID(),personId:undefined})).toEqual([]);
+  // Group Rewards already inspects the review, but the dashboard still treats it as being prepared.
+  await change(gr,{kind:'expected',date:'2026-11-30'});
+  const inspecting=await rewardDashboard(gr,[base.companyId],{scope:unitId});
+  expect(inspecting).toMatchObject({figures:null,context:null,waiting:[],preparing:[{unitId,expectedRelease:'2026-11-30'}]});
+  expect(inspecting.companies[0]).toMatchObject({headcount:null,preparing:true});
+  for(const view of [pending,inspecting])expect(JSON.stringify(view)).not.toMatch(/poolStatus|setupVisible|missing|Fictional preparation employee|bonusPoolCents/);
+ });
+
+ it('projects combined released figures only inside live scope and saves presentation for the current login (356ae8c1, 81a7b286)',async()=>{
   await confirmAll();await change(checker,{kind:'release'});
   const native=await getRewardUnit(gr,unitId),dashboard=await rewardDashboard(gr,[base.companyId],{scope:unitId,period:'annual'});
-  expect(dashboard.units).toHaveLength(1);expect(dashboard.choice.period).toBe('annual');
-  expect(dashboard.units[0].budgets?.standard.used).toEqual(native.budgets.standard.used);
-  expect(dashboard.units[0].budgets?.standard.bonusPoolCents).toBe(native.budgets.standard.bonusPoolCents);
+  // The earlier single-review preference decodes to its Business unit; one company is All companies.
+  expect(dashboard.choice).toEqual({version:2,kind:'annual',period:'annual',businessUnit:buId,companies:[]});
+  expect(dashboard.preparing).toEqual([]);expect(dashboard.excluded).toEqual([]);
+  expect(dashboard.context).toEqual({businessUnit:'PREP-BU',companies:1,cycle:expect.any(String),cycleVaries:false,snapshot:snapshotDate,snapshotVaries:false});
+  expect(dashboard.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:native.rows.length,blocked:native.flags.some(f=>f.severity==='block'),preparing:false}]);
+  expect(native.rows.length).toBeGreaterThan(0);
+  const b=native.budgets.standard;
+  expect(dashboard.figures!.salary.standard.merit).toMatchObject({used:b.used[0],pool:b.pools[0],balance:b.pools[0]-b.used[0]});
+  expect(dashboard.figures!.salary.standard.special).toMatchObject({used:b.used[2],pool:b.pools[2]});
+  expect(dashboard.figures!.bonus.standard).toMatchObject({used:b.bonusUsedCents,pool:b.bonusPoolCents});
+  expect(dashboard.figures!.bonus.h).toMatchObject({used:native.budgets.h.bonusUsedCents,pool:native.budgets.h.bonusPoolCents});
   expect(JSON.stringify(dashboard)).not.toContain('Fictional preparation employee');
-  expect((await rewardDashboard(gr,[randomUUID()],{scope:unitId})).units).toEqual([]);
-  await saveRewardDashboardPreference(gr,[base.companyId],{scope:unitId,period:'annual'});
-  expect(await getRewardDashboardPreference(gr)).toEqual({scope:unitId,period:'annual'});
+  // Unauthorized company scope, Business unit and company ids never widen the read.
+  const outside=await rewardDashboard(gr,[randomUUID()],{version:2,businessUnit:buId,companies:[base.companyId]});
+  expect(outside).toMatchObject({figures:null,businessUnits:[],companies:[],preparing:[]});
+  const foreign=await rewardDashboard(gr,[base.companyId],{version:2,businessUnit:randomUUID(),companies:[randomUUID()]});
+  expect(foreign.choice).toMatchObject({businessUnit:buId,companies:[]});expect(foreign.figures).toEqual(dashboard.figures);
+  // Only Group Rewards, CTRO and EC on every review may keep All business units.
+  expect((await rewardDashboard(gr,[base.companyId],{version:2,businessUnit:'all'})).choice.businessUnit).toBe('all');
+  expect((await rewardDashboard(reviewer,[base.companyId],{version:2,businessUnit:'all'})).choice.businessUnit).toBe(buId);
+  await saveRewardDashboardPreference(gr,[base.companyId],{version:2,period:'annual',businessUnit:buId,companies:[base.companyId,'not-an-id']});
+  expect(await getRewardDashboardPreference(gr)).toEqual({version:2,kind:'annual',period:'annual',businessUnit:buId,companies:[base.companyId]});
   expect(await getRewardDashboardPreference(reviewer)).toBeNull();
+  await expect(saveRewardDashboardPreference(reviewer,[],{version:2,period:'annual'})).rejects.toThrow(/scope/);
  });
 
  it('retains permitted BG aggregate contributions without returning a BG personal line',async()=>{
@@ -122,8 +150,9 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   await refreshRewardFixtureBudget(gr,unitId);await confirmAll();await change(checker,{kind:'release'});
   const permitted=await getRewardUnit(gr,unitId),review=await getRewardUnit(reviewer,unitId),dashboard=await rewardDashboard(reviewer,[base.companyId],{scope:unitId});
   expect(review.rows.some(row=>row.source.employmentId===employmentId)).toBe(false);
-  expect(dashboard.units).toHaveLength(1);expect(dashboard.units[0].restricted).toBe(false);
-  expect(dashboard.units[0].budgets?.standard.used).toEqual(permitted.budgets.standard.used);
+  expect(dashboard.excluded).toEqual([]);expect(dashboard.preparing).toEqual([]);
+  expect(dashboard.figures!.salary.standard.merit.used).toBe(permitted.budgets.standard.used[0]);
+  expect(dashboard.figures!.salary.standard.promotion.pool).toBe(permitted.budgets.standard.pools[1]);
   expect(JSON.stringify(dashboard)).not.toContain('Fictional preparation employee');
  });
 
