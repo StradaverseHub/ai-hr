@@ -218,6 +218,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5560_rewards_limit_controls_role_level',
    '5580_rewards_config_owner_paths',
    '5600_rewards_config_editor_role_levels',
+   '5620_rewards_config_grants_creator_lock',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
