@@ -9,6 +9,8 @@ vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{chil
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as 'nav'})}));
 vi.mock('../lib/authz',()=>({requireModule:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:async()=>({tenantId:'t',userId:'fictional'})}));
+// f4bcb5de7: the page reads the session through scopedSession (company scope); fictional, no database.
+vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'t',userId:'fictional'},scopeIds:[],allowedCount:0})}));
 vi.mock('../packs/rewards/service',()=>({rewardReviewSetupList:ports.list}));
 import ReviewSetupList from '../app/admin/rewards/review-setup/page';
 const show=async(searchParams:Record<string,string>={})=>render(<NextIntlClientProvider locale="en" messages={en}>{await ReviewSetupList({searchParams:Promise.resolve(searchParams)})}</NextIntlClientProvider>);

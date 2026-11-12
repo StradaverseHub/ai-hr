@@ -28,7 +28,8 @@ describe('Role permissions grid',()=>{
   const legend=screen.getByRole('list',{name:'Permission levels'});
   expect(within(legend).getAllByRole('listitem').map(li=>li.textContent)).toEqual(['Full see and change','At their step act only at their approval step','View only see without changing','— no access']);
   expect(screen.getByText('Reviewing Team Rewards')).toBeTruthy();expect(screen.getByText('Promotion nominations')).toBeTruthy();
-  expect(screen.queryByText('Review Cycles')).toBeNull();expect(screen.queryByText('Limit Controls')).toBeNull();
+  expect(screen.queryByText('Review Cycles')).toBeNull();expect(screen.getByRole('rowheader',{name:'Limit Controls'})).toBeTruthy();
+  expect([...cell(/^CTRO · Limit Controls$/).options].map(o=>o.value)).toEqual(['view','none']);expect([...cell(/^Executive Chairman · Limit Controls$/).options].map(o=>o.value)).toEqual(['view','none']);
   expect(screen.getAllByText('HR Admin').length).toBeGreaterThan(0);expect(screen.getAllByText('Payroll').length).toBeGreaterThan(0);
   const scope=screen.getByText('Units in scope').closest('tr')!;
   expect([...scope.querySelectorAll('td')].map(td=>td.textContent)).toEqual(['Assigned companies','Assigned Business Units','Assigned Business Units','Whole group','Whole group','Whole group','Assigned companies (view only)','—','Assigned companies']);
