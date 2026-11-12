@@ -57,9 +57,11 @@ describe('approved Rewards review SQL custody',()=>{
   await expect(exportRewardReview(checker,unitId)).rejects.toThrow(/read-only/);
   await endRewardViewAs(checker);
  });
- it('permission overrides narrow the native read owner and fixed own-line protection cannot be changed',async()=>{await expect(changeRewardPermission(gr,{role:'gr',capability:'own.never',allowed:true,reason:'Attempt to weaken own-line confidentiality'})).rejects.toThrow(/fixed/);await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Temporarily suspend this native page capability'});await expect(getRewardUnit(gr,unitId)).rejects.toThrow(/does not permit/);});
+ it('permission overrides narrow the native read owner and fixed own-line protection cannot be changed',async()=>{await expect(changeRewardPermission(gr,{role:'gr',capability:'own.never',allowed:true,reason:'Attempt to weaken own-line confidentiality'})).rejects.toThrow(/fixed/);// Board 60f1fdcd self rule: a Group Rewards holder cannot narrow their own role, so another editor's saved override is the fixture.
+ await owner.db.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,changed_by,reason) values(${b.tenantId}::uuid,'gr','review.view',false,${b.adminUserId}::uuid,'Temporarily suspend this native page capability')`);await expect(getRewardUnit(gr,unitId)).rejects.toThrow(/does not permit/);});
  it('applies a dated personal page grant only inside an existing seat and company scope',async()=>{
-  await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Test the configured review page restriction'});
+  // Board 60f1fdcd self rule: a Group Rewards holder cannot narrow their own role, so another editor's saved override is the fixture.
+ await owner.db.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,changed_by,reason) values(${b.tenantId}::uuid,'gr','review.view',false,${b.adminUserId}::uuid,'Test the configured review page restriction')`);
   await expect(getRewardUnit(checker,unitId)).rejects.toThrow(/does not permit/);
   expect((await rewardApprovalsBoard(checker,[b.companyId])).map(row=>row.id)).toContain(unitId);
   const grant={userId:checker.userId!,companyId:b.companyId,capability:'review.view',validFrom:today,validTo:today,active:true,reason:'Allow the existing reviewer to view this company review'};

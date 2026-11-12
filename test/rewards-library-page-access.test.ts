@@ -46,7 +46,8 @@ it('describes actual GR and CTRO (both configuration editors, board 60f1fdcd) ac
  const f=await fixture(),before=await audit(f.b.tenantId),modes:{isolation:string;readonly:string;role:string}[]=[];budgets(modes);
  expect(await rewardLibraryPageAccess(f.gr.ctx)).toEqual({canManage:true});
  expect(await rewardLibraryPageAccess(f.ctro.ctx)).toEqual({canManage:true});
- await expect(rewardLibraryPageAccess(adminCtx(f.b))).rejects.toThrow(/not available/);
+ // A group-wide HR Admin is a configuration editor too (board 60f1fdcd).
+ expect(await rewardLibraryPageAccess(adminCtx(f.b))).toEqual({canManage:true});
  expect(modes).toHaveLength(3);expect(modes.every(mode=>mode.isolation==='repeatable read'&&mode.readonly==='on'&&mode.role==='ai_hr_app')).toBe(true);
  expect(await audit(f.b.tenantId)).toEqual(before);
 },30000);
