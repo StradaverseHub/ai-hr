@@ -13,7 +13,7 @@ import { markAllNotificationsReadAction, markNotificationReadAction } from '@/ap
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
 type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'linkPath'|'createdAt'|'readAt'>&Partial<Pick<StoredNotificationRow,'kind'>>;
 import type { PendingTaskItem as ApprovalTaskItem } from '@/core/approvals-inbox';
-export type NotificationTaskItem=ApprovalTaskItem | (Omit<ApprovalTaskItem,'kind'|'createdAt'>&{kind:'onboarding'|'probation'|'contract_staff';createdAt?:undefined;actionLabel?:string});
+export type NotificationTaskItem=ApprovalTaskItem | (Omit<ApprovalTaskItem,'kind'|'createdAt'>&{kind:'onboarding'|'probation'|'contract_staff'|'lifecycle_email';createdAt?:undefined;actionLabel?:string});
 import type { ApprovalHistoryItem } from '@/lib/approval-history';
 
 /**

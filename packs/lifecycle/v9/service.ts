@@ -14,12 +14,13 @@ import { todayInKualaLumpur, timeInKualaLumpur } from '../../../lib/hr-date';
 import type { NotificationSweepConnection } from '../../../core/notice-projection';
 import { assertModuleEnabled } from '../../../core/entitlements';
 import * as M from '../../../lib/lifecycle-v9-model';
+import { maskEmail } from '../../../lib/lifecycle-v9-recipients';
 import { v9EmploymentLabels } from '../../../lib/lifecycle-v9-employment';
 import { projectNativeCase, nativeDocumentState } from '../../../lib/lifecycle-v9-native';
 import { OnboardingError, nativeCaseFormValues, effectiveFacts as nativeFacts } from '../../../lib/onboarding-model';
 import { changeV9Note, type CaseNoteCommand } from '../../../lib/lifecycle-v9-notes';
 import { v9Defaults } from '../../../lib/lifecycle-v9-defaults';
-import { parseV9Config, validateV9ConfigChange, v9Equal } from '../../../lib/lifecycle-v9-validation';
+import { parseV9Config, validateV9ConfigChange, v9Equal, v9RoleSchema, v9ConfigSchema } from '../../../lib/lifecycle-v9-validation';
 import { readSettlementTx, type SettlementView } from './settlement';
 import { returnRows, plannedDue, offeredToCompany, existingGroup, type ReturnSources } from '../../../lib/lifecycle-v9-return-presets';
 import { bulkAssignmentProblem, RETURN_BULK_LABELS } from '../../../lib/lifecycle-bulk-assignment';
@@ -33,7 +34,7 @@ import { resolveDocumentUpload } from '../../../core/employee-documents';
 type Row = { id: string; revision: number; company_id: string; data: M.Case; native?: true };
 export type DirectoryUser = { id: string; name: string };
 export type Options = { checklistOwnerIds?: string[]; users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; signatoryCandidatesByModule?:Record<M.Module,Record<string,string[]>>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
-export type Workspace = { permissions?:{onboarding:boolean;offboarding:boolean;administration:boolean;records?:boolean}; config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[] };
+export type Workspace = { permissions?:{onboarding:boolean;offboarding:boolean;administration:boolean;records?:boolean}; config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[]; sender?: { name: string | null; configured: boolean } };
 export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'documents'> & { items:(M.Item&{canFulfil?:boolean})[]; own: boolean; equipment?: { id: string; name: string; kind: 'device'|'system'; state: string; approval: string; handedAt: string|null; receipt: {status:'received'|'problem';at:string;by:string;note:string}|null }[] };
 export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[];
   /** d1e26f81 — the rows submission will create, with their team, method and Day (presets applied). */
@@ -50,6 +51,58 @@ async function companySignersTx(tx:Tx,tenantId:string,companyId:string,module?:M
   if(!configuration)return [];
   const users=await tx.execute<{id:string}>(sql`select u.id from app_user u where u.tenant_id=${tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and exists(select 1 from role_assignment r where r.tenant_id=u.tenant_id and r.app_user_id=u.id and r.role in ('super_admin','hr_admin') and (r.company_id is null or r.company_id=${companyId}::uuid)) order by u.id`);
   return users.filter(user=>{const sections=joinerPageSections(configuration.data,user.id),onb=configuration.data.access.onboarding.includes(user.id)||sections?.actions==='allowed'&&sections.hr==='view',off=configuration.data.access.offboarding.includes(user.id);return module==='onb'?onb:module==='off'?off:onb||off;}).map(user=>user.id);
+}
+
+/** Full case view: onboarding module access or a group with the "Full case view" preset; offboarding module access.
+ * Either way the account must be active and able to open the case's company. */
+function fullCaseViewer(configuration: NativeConfig, userId: string, module: M.Module): boolean {
+  if (module === 'off') return configuration.access.offboarding.includes(userId);
+  return configuration.access.onboarding.includes(userId) || configuration.groups.some(group => configuration.access.joinerViewGroups?.includes(group.id) && group.members.includes(userId) && (configuration.access.joinerSections?.[group.id]?.preset ?? 'fulfil') === 'full');
+}
+async function holdAlertUsersTx(tx: Tx, tenantId: string, companyId: string, module: M.Module): Promise<string[]> {
+  const [configuration] = await tx.execute<{ data: NativeConfig }>(sql`select data from lc_onboarding_config where tenant_id=${tenantId}::uuid`);
+  if (!configuration) return [];
+  const users = await tx.execute<{ id: string }>(sql`select u.id from app_user u where u.tenant_id=${tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and exists(select 1 from role_assignment r where r.tenant_id=u.tenant_id and r.app_user_id=u.id and r.role in ('super_admin','hr_admin') and (r.company_id is null or r.company_id=${companyId}::uuid)) order by u.id`);
+  return users.map(user => user.id).filter(id => fullCaseViewer(configuration.data, id, module));
+}
+type HoldKey = { runId: string; stepId: string; at: string; workflow: string; email: string; missing: M.RecipientMissing[] };
+function openHolds(c: Pick<M.Case, 'runs' | 'state'>, config: M.Config | null): HoldKey[] {
+  if (c.state !== 'submitted') return [];
+  return c.runs.flatMap(run => run.hold && run.status === 'waiting' ? [(() => {
+    const definition = run.definition ?? config?.workflows.find(workflow => workflow.id === run.workflowId), step = definition?.steps.find(step => step.id === run.hold!.stepId);
+    const email = step?.type === 'email' ? config?.emails.find(email => email.id === step.template)?.name ?? 'Email' : step?.type === 'notify' ? step.subject || 'Notification' : 'Email';
+    return { runId: run.id, stepId: run.hold!.stepId, at: run.hold!.at, workflow: definition?.name ?? 'Workflow', email, missing: run.hold!.missing };
+  })()] : []);
+}
+/** The Inbox projection of held emails, written in the same transaction as the case store. */
+async function syncEmailHoldsTx(tx: Tx, ctx: SessionContext, input: { caseId: string; companyId: string; before: Pick<M.Case, 'runs' | 'state'>; after: M.Case; config: M.Config | null }): Promise<void> {
+  const key = (hold: HoldKey) => `${hold.runId}\u0000${hold.stepId}\u0000${hold.at}`;
+  const before = openHolds(input.before, input.config), after = openHolds(input.after, input.config), kept = new Set(after.map(key));
+  for (const hold of after) if (!before.some(previous => key(previous) === key(hold)))
+    await tx.execute(sql`insert into lc_v9_email_hold(tenant_id,company_id,module,case_id,case_number,subject_name,run_id,step_id,workflow_name,email_name,missing,held_at) values(${ctx.tenantId}::uuid,${input.companyId}::uuid,${input.after.module},${input.caseId}::uuid,${input.after.number},${input.after.facts.name.slice(0, 500)},${hold.runId},${hold.stepId},${hold.workflow.slice(0, 200)},${hold.email.slice(0, 1000)},${JSON.stringify(hold.missing.slice(0, 32).map(entry => ({ label: entry.label, reason: entry.reason })))}::jsonb,${hold.at}::timestamptz) on conflict do nothing`);
+  const released = before.filter(hold => !kept.has(key(hold)));
+  for (const hold of released) await tx.execute(sql`update lc_v9_email_hold set released_at=now(),released_by=${ctx.userId ?? null}::uuid where tenant_id=${ctx.tenantId}::uuid and case_id=${input.caseId}::uuid and run_id=${hold.runId} and step_id=${hold.stepId} and held_at=${hold.at}::timestamptz and released_at is null`);
+  // A cancelled, cleared or reopened case closes every hold it still has.
+  if (input.after.state !== 'submitted') await tx.execute(sql`update lc_v9_email_hold set released_at=now(),released_by=${ctx.userId ?? null}::uuid where tenant_id=${ctx.tenantId}::uuid and case_id=${input.caseId}::uuid and released_at is null`);
+}
+/** Personal email is shown only to viewers who may see that Personnel field in any company of the tenant. */
+async function personalEmailRevealTx(tx: Tx, ctx: SessionContext): Promise<boolean> {
+  if (!ctx.userId) return false;
+  const [row] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from company where tenant_id=${ctx.tenantId}::uuid and app.personnel_identity_search_permitted(id)) as ok`);
+  return row?.ok === true;
+}
+const maskedKey = (key: string) => { const address = key.startsWith('address:') ? key.slice(8) : key; return 'address:' + maskEmail(address); };
+/** Server-side masking of personal email keys in a case projection. Other recipients are unchanged. */
+function maskCasePersonalEmail(c: M.Case): M.Case {
+  if (!c.mails.some(mail => mail.delivery?.personalKeys?.length)) return c;
+  const next = structuredClone(c);
+  for (const mail of next.mails) {
+    const personal = new Set(mail.delivery?.personalKeys ?? []);
+    if (!personal.size) continue;
+    mail.to = mail.to.map(key => personal.has(key) ? maskedKey(key) : key); mail.cc = mail.cc.map(key => personal.has(key) ? maskedKey(key) : key);
+    mail.delivery!.personalKeys = [...personal].map(maskedKey);
+  }
+  return next;
 }
 
 async function actor(tx: Tx, ctx: SessionContext): Promise<M.Actor> {
@@ -79,9 +132,10 @@ async function load(tx: Tx, ctx: SessionContext, id: string): Promise<Row> {
 async function record(tx: Tx, ctx: SessionContext, id: string, employmentId: string, action: string): Promise<void> {
   await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-case', aggregateId: id, eventType: `lifecycle-v9.${action}`, actor: actorOf(ctx), subjectEmploymentId: employmentId || null, payload: { caseId: id, action } });
 }
-async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action: string): Promise<void> {
+async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action: string, config: M.Config | null = null): Promise<void> {
   if (row.native) {
     await onboardingV9StoreTx(ctx, tx, row.id, row.revision, nativeDocumentState(next), next.tasks.filter(task => task.status === 'done' && task.documentTemplate).map(task => task.id), action);
+    await syncEmailHoldsTx(tx, ctx, { caseId: row.id, companyId: row.company_id, before: row.data, after: next, config });
     return;
   }
   await tx.execute(sql`insert into lc_v9_case_revision(tenant_id,case_id,company_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${row.id}::uuid,${row.company_id}::uuid,${row.revision},${JSON.stringify(row.data)}::jsonb,${ctx.userId ?? null}::uuid)`);
@@ -90,6 +144,7 @@ async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action
   if (!updated.length) throw new M.V9Error('This case changed. Refresh it before trying again.', 'conflict');
   if (row.data.state !== 'cleared' && next.state === 'cleared' && next.finalFigures) await tx.execute(sql`insert into lc_v9_payroll_handover(id,tenant_id,company_id,case_id,employment_id,data) values(${next.finalFigures.payrollReference}::uuid,${ctx.tenantId}::uuid,${row.company_id}::uuid,${row.id}::uuid,${next.facts.employmentId}::uuid,${JSON.stringify(next.finalFigures)}::jsonb)`);
   if (row.data.state === 'cleared' && next.state !== 'cleared') await tx.execute(sql`update lc_v9_payroll_handover set status='withdrawn',updated_at=now() where case_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid and status in ('pending','reviewed')`);
+  await syncEmailHoldsTx(tx, ctx, { caseId: row.id, companyId: row.company_id, before: row.data, after: next, config });
   await record(tx, ctx, row.id, next.facts.employmentId, action);
 }
 async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Config): Promise<M.Environment> {
@@ -147,7 +202,7 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
     onLeave: (id, date) => unavailable.some(r => r.user_id === id && r.on_date === date),
     openLoad: id => Number(sharedLoads.find(load => load.user_id === id)?.task_load ?? 0),
     lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },
-    eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, ...(calculation?.lastDay ? { effectiveLastDay: calculation.lastDay } : {}), signatoryUserId: signatory?.signatoryUserId ?? null, actorSignatoryTitle:v9SignatoryTitle(config,who.id,c.facts.company), requireDeliveryAck: true, ...(native && !c.facts.employeeUserId && z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse((native.c.caseContactEmail ?? nf?.email)?.trim()).success ? { onboardingContact: { email: (native.c.caseContactEmail ?? nf!.email).trim(), sourceRevision: native.c.sourceVersion } } : {}) };
+    eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, ...(calculation?.lastDay ? { effectiveLastDay: calculation.lastDay } : {}), holdAlertUserIds: ['pending', 'submitted'].includes(c.state) ? await holdAlertUsersTx(tx, ctx.tenantId, c.facts.company, c.module) : [], signatoryUserId: signatory?.signatoryUserId ?? null, actorSignatoryTitle:v9SignatoryTitle(config,who.id,c.facts.company), requireDeliveryAck: true, ...(native && !c.facts.employeeUserId && z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse((native.c.caseContactEmail ?? nf?.email)?.trim()).success ? { onboardingContact: { email: (native.c.caseContactEmail ?? nf!.email).trim(), sourceRevision: native.c.sourceVersion } } : {}) };
 }
 /** d1e26f81 — the sources a leaver's Return and revoke rows are built from, read once per command or view. */
 async function returnSourcesTx(tx:Tx,ctx:SessionContext,c:M.Case):Promise<ReturnSources> {
@@ -164,7 +219,8 @@ export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<Cas
     const row = await load(tx, ctx, id), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
     const calculation = await readSettlementTx(tx, ctx, row.data, config);
-    return { ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data,config,calculation?.lastDay??row.data.facts.lastDay)}:{}), case: row.data, calculation, personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
+    const reveal = await personalEmailRevealTx(tx, ctx);
+    return { ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data,config,calculation?.lastDay??row.data.facts.lastDay)}:{}), case: reveal ? row.data : maskCasePersonalEmail(row.data), calculation, personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
   });
 }
 
@@ -186,7 +242,8 @@ export async function v9PreviewEmail(ctx: SessionContext, caseId: string, emailI
   return withLifecycleTenant(ctx, async tx => {
     const row = await load(tx, ctx, caseId), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
-    return M.previewEmail(row.data, config, emailId, await environment(tx, ctx, row.data, config));
+    const preview = M.previewEmail(row.data, config, emailId, await environment(tx, ctx, row.data, config));
+    return await personalEmailRevealTx(tx, ctx) ? preview : { ...preview, cc: preview.cc.map(recipient => recipient.personal ? { ...recipient, id: maskedKey(recipient.id) } : recipient) };
   });
 }
 
@@ -200,9 +257,41 @@ export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, wor
     const c=structuredClone(row.data),env=await environment(tx,ctx,c,config);
     const email=workflow.steps.find(step=>step.type==='email'),notification=workflow.steps.find(step=>step.type==='notify'),document=workflow.steps.find(step=>step.type==='doc');
     // Match the reference's single-output priority; an unrelated later draft cannot break this preview.
-    const messages=notification?.type==='notify'&&!email?[{id:notification.id,name:'Notification',...M.previewWorkflowNotification(c,config,notification,env)}]:[];
+    const messages=notification?.type==='notify'&&!email?[{id:notification.id,name:'Notification',...M.previewWorkflowNotification(c,config,notification,env,workflow.id)}]:[];
     const documents=!email&&!notification&&document?.type==='doc'?[M.generate({...c,documents:[]},config,document.template,env)]:[];
     return {workflow, messages, documents};
+  });
+}
+
+/** Board 4a60b3ec dry run: the real people and addresses each step reaches for this case, or why it would hold.
+ * Nothing is sent or saved. Personal email is masked unless the viewer may see that Personnel field. */
+export async function v9PlanWorkflow(ctx: SessionContext, caseId: string, input: unknown) {
+  const workflow = v9ConfigSchema.shape.workflows.element.parse(input) as M.Workflow;
+  return withLifecycleTenant(ctx, async tx => {
+    const row = await load(tx, ctx, caseId), config = await configTx(tx, ctx);
+    if (!config) throw new M.V9Error('V9 configuration is not available.');
+    if (row.data.module !== workflow.module) throw new M.V9Error('Choose a case from this module.', 'not_found');
+    const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
+    return M.planWorkflow(c, config, workflow, { ...env, revealPersonal: await personalEmailRevealTx(tx, ctx), workflowId: workflow.id });
+  });
+}
+export type EmailHoldInboxItem = { caseId: string; module: M.Module; number: string; name: string; email: string; workflow: string; heldAt: string; missing: { label: string; reason: string }[] };
+/** Inbox: held emails for viewers with Full case view, rechecked on every read. Shared Access lock only (none here). */
+export async function v9EmailHoldInbox(ctx: SessionContext): Promise<{ count: number; items: EmailHoldInboxItem[] }> {
+  if (!ctx.userId) return { count: 0, items: [] };
+  return withLifecycleTenant(ctx, async tx => {
+    const [configuration] = await tx.execute<{ data: NativeConfig }>(sql`select data from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
+    const modules = configuration ? (['onb', 'off'] as const).filter(module => fullCaseViewer(configuration.data, ctx.userId!, module)) : [];
+    if (!modules.length) return { count: 0, items: [] };
+    const rows = await tx.execute<{ case_id: string; module: M.Module; case_number: string; subject_name: string; email_name: string; workflow_name: string; held_at: string; missing: { label: string; reason: string }[]; total: number }>(sql`
+      select h.case_id,h.module,h.case_number,h.subject_name,h.email_name,h.workflow_name,h.held_at,h.missing,count(*) over() as total
+      from lc_v9_email_hold h
+      where h.tenant_id=${ctx.tenantId}::uuid and h.released_at is null and (h.module='onb' and ${modules.includes('onb')}::boolean or h.module='off' and ${modules.includes('off')}::boolean)
+        and not app.login_blocked(app.current_user_id()) and app.is_admin_for(h.company_id)
+        and (h.module='off' and exists(select 1 from lc_v9_case c where c.id=h.case_id and c.tenant_id=h.tenant_id and c.data->>'state'='submitted')
+          or h.module='onb' and exists(select 1 from lc_onboarding_case c where c.id=h.case_id and c.tenant_id=h.tenant_id and c.data->>'state'='submitted'))
+      order by h.held_at desc,h.id limit 20`);
+    return { count: Number(rows[0]?.total ?? 0), items: rows.map(row => ({ caseId: row.case_id, module: row.module, number: row.case_number, name: row.subject_name, email: row.email_name, workflow: row.workflow_name, heldAt: new Date(row.held_at).toISOString(), missing: row.missing })) };
   });
 }
 
@@ -238,13 +327,14 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
     const checklistOwners = permission?.ok ? await tx.execute<{id:string}>(sql`select distinct u.id from app_user u join role_assignment r on r.app_user_id=u.id and r.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and (r.role='super_admin' or r.role='hr_admin' and r.company_id is null)`) : [];
     const employees = await tx.execute<{ id: string; name: string; employeeNo: string; companyId: string }>(sql`select e.id,p.full_name as name,e.employee_code as "employeeNo",e.company_id as "companyId" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(e.company_id) order by p.full_name,e.id`);
     const rows = config ? await tx.execute<{ data: M.Case }>(sql`select data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid order by created_at desc,id desc`) : [];
+    const reveal = rows.length ? await personalEmailRevealTx(tx, ctx) : true;
     const masters = await tx.execute<{ kind: M.RuleField; id: string; name: string }>(sql`select 'businessGroup' as kind,id,name from business_unit where tenant_id=${ctx.tenantId}::uuid union all select 'department',id,name from department where tenant_id=${ctx.tenantId}::uuid union all select 'grade',id,name from job_grade where tenant_id=${ctx.tenantId}::uuid union all select 'title',id,title from position where tenant_id=${ctx.tenantId}::uuid`);
     const labels: NonNullable<Options['labels']> = { company: Object.fromEntries(companies.map(c => [c.id, c.name])), employmentType: v9EmploymentLabels, caseType: Object.fromEntries(['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation'].map(value => [value, value])) };
     for (const master of masters) (labels[master.kind] ??= {})[master.id] = master.name;
     const leaveTypes = await tx.execute<{ id: string; name: string }>(sql`select id,name from leave_type where tenant_id=${ctx.tenantId}::uuid and archived_at is null order by name,id`);
     const usage = config && permission?.ok ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
     const definitionUsage = config && permission?.ok ? await tx.execute<M.DefinitionUsage>(sql`select kind,definition_id as "definitionId",messages,runs from app.lc_v9_definition_usage()`) : [];
-    return { permissions:{onboarding:!!permission?.onboarding,offboarding:!!permission?.offboarding,administration:!!permission?.ok||!!permission?.administration&&(!!permission?.onboardingModule||!!permission?.offboarding),records:!!permission?.records}, definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => r.data), options: { checklistOwnerIds:checklistOwners.map(user=>user.id), signatoryCandidates:permission?.onboardingModule||permission?.offboarding?signatoryCandidates:{}, signatoryCandidatesByModule:permission?.onboardingModule||permission?.offboarding?signatoryCandidatesByModule:undefined, companies: [...companies], users: [...users], employees:permission?.onboardingModule||permission?.offboarding?[...employees]:[], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
+    return { permissions:{onboarding:!!permission?.onboarding,offboarding:!!permission?.offboarding,administration:!!permission?.ok||!!permission?.administration&&(!!permission?.onboardingModule||!!permission?.offboarding),records:!!permission?.records}, definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => reveal ? r.data : maskCasePersonalEmail(r.data)), options: { checklistOwnerIds:checklistOwners.map(user=>user.id), signatoryCandidates:permission?.onboardingModule||permission?.offboarding?signatoryCandidates:{}, signatoryCandidatesByModule:permission?.onboardingModule||permission?.offboarding?signatoryCandidatesByModule:undefined, companies: [...companies], users: [...users], employees:permission?.onboardingModule||permission?.offboarding?[...employees]:[], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
   });
 }
 export async function v9Setup(ctx: SessionContext): Promise<void> {
@@ -481,6 +571,7 @@ export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ emp
     await record(tx, ctx, id, employee.id, 'created'); return id;
 }
 export type Command = CaseNoteCommand
+  | { type: 'recipientsOverride'; workflowId: string; stepId: string; to?: M.Role[]; cc?: M.Role[]; clear?: true }
   | { type: 'pmPush'; id: string }
   | { type: 'pmPushSelected' | 'pmKeep'; ids: string[] }
   | { type: 'caseFormSave'; values: Record<string,string>; reason: string; submit: boolean }
@@ -510,6 +601,7 @@ export type Command = CaseNoteCommand
   | { type: 'item'; id: string; status: M.Item['status']; reason: string };
 const commandId = z.string().min(1).max(120), reasonText = z.string().max(4000);
 const commandSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('recipientsOverride'), workflowId: commandId, stepId: commandId, to: z.array(v9RoleSchema).max(8).optional(), cc: z.array(v9RoleSchema).max(8).optional(), clear: z.literal(true).optional() }).strict().refine(value => value.clear ? value.to === undefined && value.cc === undefined : value.to !== undefined && value.cc !== undefined, 'Choose To and CC, or go back to the workflow recipients.'),
   z.object({type:z.literal('note'),id:commandId.optional(),context:commandId,body:z.string().max(10000),mentions:z.array(z.string().uuid()).max(50),deleted:z.boolean().optional()}).strict(),
   z.object({ type: z.literal('pmPush'), id: commandId }).strict(),
   z.object({ type: z.literal('pmPushSelected'), ids: z.array(commandId).min(1).max(500) }).strict(),
@@ -550,7 +642,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
     const c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
-    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentFillPersonnel', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'documentRegenerate', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentFillPersonnel', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'documentRegenerate', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected', 'recipientsOverride'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if(command.type==='note')changeV9Note(c,env,command);
     if(command.type==='returnSelections'){
@@ -704,11 +796,16 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       const workflow=config.workflows.find(workflow=>workflow.id===command.workflowId&&workflow.module===c.module);
       if(!workflow||workflow.status!=='published'||c.state!=='submitted')throw new M.V9Error('Choose a live workflow on an open case.');
       if(!M.workflowMatches(c,workflow,env.today))throw new M.V9Error('This case does not match the workflow conditions.');
-      if(c.runs.some(run=>run.workflowId===workflow.id&&['waiting','failed'].includes(run.status)))M.runWorkflow(c,config,workflow,env,'resume');
+      if(c.runs.some(run=>run.workflowId===workflow.id&&['waiting','failed'].includes(run.status)))M.runWorkflow(c,config,workflow,env,'resume',{continueHeld:true});
       else M.runWorkflow(c,config,workflow,env,'manual',{startNow:true});
       M.appendLog(c,env,'workflow.startedByHand',workflow.name);
     }
-    else if (command.type === 'retryWorkflow') { const workflow = config.workflows.find(w => w.id === command.workflowId); if (!workflow) throw new M.V9Error('Workflow not found.'); M.runWorkflow(c, config, workflow, env, 'resume'); }
+    else if (command.type === 'retryWorkflow') { const workflow = config.workflows.find(w => w.id === command.workflowId); if (!workflow) throw new M.V9Error('Workflow not found.'); M.runWorkflow(c, config, workflow, env, 'resume', { continueHeld: true }); }
+    else if (command.type === 'recipientsOverride') {
+      // Case-edit authority: the same load/admin path (offboarding) or Native case actions (onboarding) as every case change.
+      M.overrideRecipients(c, config, command.clear ? { workflowId: command.workflowId, stepId: command.stepId, clear: true } : { workflowId: command.workflowId, stepId: command.stepId, to: command.to!, cc: command.cc! }, env);
+      await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-case', aggregateId: c.id, eventType: 'lifecycle-v9.recipientsChanged', actor: actorOf(ctx), subjectEmploymentId: c.facts.employmentId || null, payload: { caseId: c.id, workflowId: command.workflowId, stepId: command.stepId, cleared: !!command.clear, ...(command.clear ? {} : { to: command.to, cc: command.cc }) } });
+    }
     else if (command.type === 'override') { if (c.state !== 'pending') throw new M.V9Error('The submitted checklist is frozen.'); c.override = command.checklist; M.matchChecklist(config, c); M.appendLog(c, env, 'checklist.overridden', command.checklist); }
     else if (command.type === 'assign') {
       if (c.state !== 'submitted') throw new M.V9Error('This case is not open.');
@@ -738,7 +835,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       item.status = command.status; item.reason = command.reason.trim(); M.appendLog(c, env, 'item.updated', `${item.name}: ${item.status}`);
     }
     if (!['emailTest','testWorkflow'].includes(command.type)) for (const w of config.workflows) if (c.runs.some(r => r.workflowId === w.id && r.status === 'waiting')) M.runWorkflow(c, config, w, env, 'resume');
-    await store(tx, ctx, row, c, command.type);
+    await store(tx, ctx, row, c, command.type, config);
   });
 }
 /** Native submission and the privileged minute worker use the same idempotent workflow transition. */
@@ -757,6 +854,7 @@ export async function v9NativeTransitionTx(ctx: SessionContext, tx: Tx, id: stri
   const state = nativeDocumentState(c);
   if (v9Equal(state, native.documentState)) return { revision: native.row.revision, changed: false };
   await onboardingV9StoreTx(ctx, tx, id, native.row.revision, state, c.tasks.filter(task => task.status === 'done' && task.documentTemplate).map(task => task.id), 'workflow');
+  await syncEmailHoldsTx(tx, ctx, { caseId: id, companyId: native.row.companyId, before: { runs: native.documentState?.runs ?? [], state: c.state }, after: c, config });
   return { revision: native.row.revision + 1, changed: true };
 }
 /** Existing privileged maintenance connection; daily dates run after 08:00 Malaysia time. */
@@ -782,7 +880,7 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
       const figures = calculation?.ready && calculation.lastDay === c.facts.lastDay ? { sourceRevision: calculation.sourceRevision, lastDay: calculation.lastDay, leaveDays: String(calculation.encashDays), amount: calculation.amount!.toFixed(2), currency: calculation.currency, payDate: calculation.payDate, lockedAt: env.now, payrollReference: randomUUID() } : null;
       if (dates) M.lastDayCheck(c, config, env, figures);
       if (JSON.stringify(c) === JSON.stringify(row.data)) return false;
-      await store(tx, ctx, row, c, 'scheduled'); return true;
+      await store(tx, ctx, row, c, 'scheduled', config); return true;
     });
     if (changed) output.processed++;
   } catch { output.failed++; }

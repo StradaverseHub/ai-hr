@@ -13,7 +13,7 @@ import type { LifecycleV9MailTarget } from '../lib/lifecycle-v9-delivery-model';
 
 let target: LifecycleV9MailTarget;
 const request = { deliveryId: randomUUID(), leaseToken: randomUUID() }, userId = randomUUID(), tenantId = randomUUID(), subject = randomUUID();
-const relay = { revision: 'applied-revision', relay: { config: { from: 'verified@fictional.invalid' }, password: 'private-fixture-relay-secret' } };
+const relay = { revision: 'applied-revision', senderName: 'Fictional Tenant Sender', relay: { config: { from: 'verified@fictional.invalid', fromName: 'Fictional connection name' }, password: 'private-fixture-relay-secret' } };
 beforeEach(() => {
   vi.resetAllMocks();
   target = { id: request.deliveryId, tenantId, companyId: randomUUID(), caseId: randomUUID(), payload: { version: 1, number: 'OFB-FICTIONAL', subject: { personId: randomUUID(), employmentId: randomUUID() }, files: [], documents: [], mail: { id: randomUUID(), key: 'fixture', workflowId: null, templateId: null, to: [userId], cc: [], subject: 'Fictional saved subject', body: 'Fictional saved body', documentIds: [], fileIds: [], status: 'pending', test: false, at: '2026-10-29T00:00:00Z', deliveredAt: null, failure: null, delivery: { version: 1, queuedBy: { id: randomUUID(), name: 'Fictional HR' }, sender: 'hr', linkDocumentIds: [], pdfDocumentIds: [], toNames: ['Fictional employee'], ccNames: [] } } }, bindings: [{ userId, subject, issuer: 'https://fictional.example/auth/' + tenantId }] };
@@ -34,9 +34,9 @@ const called = (fragment: string) => fixture.sql.mock.calls.some(call => call[0]
 it('accepts only delivery IDs, verifies the actual credential and sends after durable start', async () => {
   const transport = vi.fn(async () => { expect(called('email_start')).toBe(true); expect(called('email_finish')).toBe(false); });
   expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'sent', error: null });
-  expect(fixture.active).toHaveBeenNthCalledWith(1, fixture.sql, tenantId, 'hr');
+  expect(fixture.active).toHaveBeenNthCalledWith(1, fixture.sql, tenantId);
   expect(fixture.credential).toHaveBeenCalledWith(fixture.sql, `credential:${subject}`);
-  expect(transport).toHaveBeenCalledExactlyOnceWith(relay.relay, expect.objectContaining({ to: 'employee@fictional.invalid', cc: [], subject: 'Fictional saved subject', text: 'Fictional saved body', senderProfile: 'hr', attachments: [], messageId: `<lifecycle-v9.${request.deliveryId}@fictional.example>` }));
+  expect(transport).toHaveBeenCalledExactlyOnceWith(relay.relay, expect.objectContaining({ to: 'employee@fictional.invalid', cc: [], subject: 'Fictional saved subject', text: 'Fictional saved body', senderName: 'Fictional Tenant Sender', attachments: [], messageId: `<lifecycle-v9.${request.deliveryId}@fictional.example>` }));
   expect(called('email_finish')).toBe(true);
   await expect(internalLifecycleV9Mail({ ...request, to: 'injected@fictional.invalid' } as typeof request, transport)).rejects.toThrow();
   expect(transport).toHaveBeenCalledOnce();
@@ -111,13 +111,58 @@ it('keeps literal mailboxes separate from credentials while preserving mixed To 
   const proof = JSON.parse(fixture.sql.mock.calls.find(call => call[0].join('?').includes('email_start'))!.at(-1));
   expect(proof).toMatchObject({ literals: target.literals, addresses: ['team@fictional.invalid', 'employee@fictional.invalid', 'archive@fictional.invalid'] });
 });
-it('holds a malformed or duplicate literal destination before persisting start', async () => {
+it('sends one copy when an account and a typed address are the same mailbox, and holds a malformed literal', async () => {
   target.payload.mail.cc = ['address:employee@fictional.invalid'];
   target.literals = [{ key: target.payload.mail.cc[0], email: 'employee@fictional.invalid', position: 2 }];
+  const sent = vi.fn(async () => {});
+  expect(await internalLifecycleV9Mail(request, sent)).toEqual({ outcome: 'sent', error: null });
+  expect(sent).toHaveBeenCalledWith(relay.relay, expect.objectContaining({ to: 'employee@fictional.invalid', cc: [] }));
+  fixture.sql.mockClear();
   const transport = vi.fn();
-  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'skipped', error: 'recipientUnavailable' });
-  expect(called('email_start')).toBe(false);
   target.literals[0].email = 'changed@fictional.invalid';
   expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'skipped', error: 'recipientUnavailable' });
   expect(transport).not.toHaveBeenCalled();
+});
+
+it.each(['hr', 'onboarding', 'noreply'] as const)('sends a queued %s payload as the tenant sender name through the single binding and records it', async sender => {
+  target.payload.mail.delivery!.sender = sender;
+  const transport = vi.fn(async () => {});
+  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'sent', error: null });
+  expect(fixture.active).toHaveBeenCalledWith(fixture.sql, tenantId);
+  expect(transport).toHaveBeenCalledWith(relay.relay, expect.objectContaining({ senderName: 'Fictional Tenant Sender' }));
+  const start = fixture.sql.mock.calls.find(call => call[0].join('?').includes('email_start'))!;
+  expect(JSON.parse(start[4] as string)).toMatchObject({ senderProfile: 'noreply', senderName: 'Fictional Tenant Sender', senderAddress: 'verified@fictional.invalid', relayRevision: 'applied-revision' });
+});
+it('falls back to the connection name when the tenant has none, and refuses an unknown sender key', async () => {
+  fixture.active.mockResolvedValue({ ...relay, senderName: null });
+  const transport = vi.fn(async () => {});
+  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'sent', error: null });
+  expect(transport.mock.calls[0]).not.toHaveProperty('1.senderName');
+  const start = fixture.sql.mock.calls.find(call => call[0].join('?').includes('email_start'))!;
+  expect(JSON.parse(start[4] as string)).toMatchObject({ senderName: 'Fictional connection name' });
+  (target.payload.mail.delivery as { sender: string }).sender = 'a-person-to-impersonate';
+  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'skipped', error: 'notEligible' });
+  expect(transport).toHaveBeenCalledOnce();
+});
+it('holds without sending when the sender name changes between resolution and start', async () => {
+  fixture.active.mockResolvedValueOnce(relay).mockResolvedValueOnce({ ...relay, senderName: 'Renamed meanwhile' });
+  const transport = vi.fn();
+  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'skipped', error: 'relayUnavailable' });
+  expect(called('email_start')).toBe(false); expect(transport).not.toHaveBeenCalled();
+});
+
+it('sends one message to several To recipients together and keeps every address in the durable proof', async () => {
+  target.payload.mail.to = [userId, 'address:work@fictional.invalid'];
+  target.payload.mail.cc = ['address:copy@fictional.invalid'];
+  target.literals = [{ key: 'address:work@fictional.invalid', email: 'work@fictional.invalid', position: 2 }, { key: 'address:copy@fictional.invalid', email: 'copy@fictional.invalid', position: 3 }];
+  const transport = vi.fn(async () => {});
+  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'sent', error: null });
+  expect(transport).toHaveBeenCalledExactlyOnceWith(relay.relay, expect.objectContaining({ to: ['employee@fictional.invalid', 'work@fictional.invalid'], cc: ['copy@fictional.invalid'] }));
+  const proof = JSON.parse(fixture.sql.mock.calls.find(call => call[0].join('?').includes('email_start'))!.at(-1));
+  expect(proof.addresses).toEqual(['employee@fictional.invalid', 'work@fictional.invalid', 'copy@fictional.invalid']);
+  target.payload.mail.to = Array.from({ length: 9 }, (_, index) => `address:to${index}@fictional.invalid`);
+  target.literals = target.payload.mail.to.map((key, index) => ({ key, email: key.slice(8), position: index + 2 }));
+  target.payload.mail.cc = [];
+  expect(await internalLifecycleV9Mail(request, transport)).toMatchObject({ outcome: 'skipped' });
+  expect(transport).toHaveBeenCalledOnce();
 });

@@ -25229,7 +25229,8 @@
       "save": "草稿已保存。当前中继保持不变。",
       "test": "中继已接受测试邮件。启用前请检查收件箱。",
       "apply": "中继已启用，可用于邀请和密码恢复。",
-      "sender": "生命周期邮件发件人已更新。账户恢复和安装环境默认值保持不变。"
+      "sender": "生命周期邮件发件人已更新。账户恢复和安装环境默认值保持不变。",
+      "senderName": "发件人名称已保存。此后发送的入职/离职邮件将使用该名称。"
     },
     "connectionTitle": "SMTP 连接",
     "security": "加密",
@@ -25268,14 +25269,19 @@
     "backToConnections": "返回连接列表",
     "saveConnection": "保存连接",
     "activeChangesHelp": "当前中继继续使用上次启用的设置。请先保存、测试并确认收到邮件，再启用更改。",
-    "lifecycleSenderTitle": "入职和离职邮件发件人",
-    "lifecycleSenderHelp": "每个发件人使用已确认的连接。未单独绑定时，使用安装环境当前启用的邮件中继。",
+    "lifecycleSenderTitle": "入职/离职邮件发件人",
+    "lifecycleSenderHelp": "所有入职和离职邮件都使用这一个发件人。它使用已确认的连接；未应用连接时，使用安装环境当前启用的邮件中继。",
     "applyTarget": "将此已测试的连接应用于",
     "applyDefault": "安装环境默认值（账户及其他邮件）",
     "senderDefault": "使用安装环境默认值",
     "senderConfirmed": "已于 {at} 确认收件",
     "senderPending": "此连接有更新的已保存更改。在重新测试并应用前，继续使用已确认的版本发送邮件。",
-    "senderTargetHelp": "测试在 30 分钟后过期。安装环境默认值用于控制账户邮件。生命周期选项仅更改当前租户的对应发件人。编辑连接后，请重新测试并确认收件。"
+    "senderTargetHelp": "测试在 30 分钟后过期。安装环境默认值用于控制账户邮件。生命周期选项仅更改当前租户的对应发件人。编辑连接后，请重新测试并确认收件。",
+    "lifecycleSenderOption": "入职/离职邮件发件人",
+    "lifecycleSenderName": "入职/离职邮件发件人名称",
+    "lifecycleSenderNameHelp": "收件人会在贵组织的每封入职/离职邮件上看到此名称。发件地址保持不变。未设置名称时，使用连接的发件人名称。",
+    "saveSenderName": "保存发件人名称",
+    "senderStale": "之前的发件人绑定指向其他连接，因此入职/离职邮件已暂停待审核。请重新测试并将连接应用到入职/离职邮件发件人。"
   },
   "workflowEmail": {
     "letterAccountTitle": "此账户的信函通知",
@@ -30640,6 +30646,17 @@
       "caseType": "类型",
       "caseProvidedBy": "提供方",
       "caseReturnDue": "归还或撤销日期",
+      "lev909e718ee5d": "邮件已暂停",
+      "lev902aeadce22": "尚未向任何人发送邮件。缺少的收件人：",
+      "lev9716aacede1": "请修正记录或更改此案例的收件人，然后点击继续。",
+      "lev9432f4737cd": "已更改此案例的收件人",
+      "lev9f96e5e6795": "编辑此案例的收件人",
+      "lev973deec6592": "此案例的收件人",
+      "lev9325a77cc26": "保存此案例的收件人",
+      "lev9b48eacb53d": "使用工作流的收件人",
+      "lev97056f1481a": "无法保存收件人。",
+      "lev984add5b295": "邮件",
+      "lev9c18f8f255a": "通知",
       "c49ce36722982": "路由规则",
       "cdb0e0ee5b2bf": "路由规则根据新员工的业务集团、公司、部门和职位，为审批步骤选择分配小组。填写字段最多的行优先；如果相同，则排在前面的行优先。所有字段均为“任何”的行是默认行。",
       "c8f4cfe1201c9": "路由规则名称",
@@ -38548,6 +38565,9 @@
     "actorWithId": "{name}（{employeeId}）",
     "actorUnlinked": "管理员登录账号（无员工记录 · 账号结尾 {suffix}）",
     "actorUnavailable": "不可用的用户"
+  },
+  "lifecycleEmailHold": {
+    "inboxAction": "邮件已暂停：{email}"
   },
   "rewardConfig": {
     "title": "保存前查看",

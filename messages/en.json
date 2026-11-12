@@ -25229,7 +25229,8 @@
       "save": "Draft saved. The active relay is unchanged.",
       "test": "The relay accepted the test message. Check the inbox before activation.",
       "apply": "Relay activated. Invitations and password recovery can now use it.",
-      "sender": "Lifecycle sender updated. Account recovery and the installation default are unchanged."
+      "sender": "Lifecycle sender updated. Account recovery and the installation default are unchanged.",
+      "senderName": "Sender name saved. On/Off Boarding emails sent from now on use it."
     },
     "connectionTitle": "SMTP connection",
     "security": "Encryption",
@@ -25268,14 +25269,19 @@
     "backToConnections": "Back to connections",
     "saveConnection": "Save connection",
     "activeChangesHelp": "The active relay continues using its last activated settings. Save, test and confirm receipt before activating these changes.",
-    "lifecycleSenderTitle": "Onboarding and offboarding senders",
-    "lifecycleSenderHelp": "Each sender uses its confirmed connection. Without a separate binding, it follows the active installation relay.",
+    "lifecycleSenderTitle": "On/Off Boarding sender",
+    "lifecycleSenderHelp": "Every onboarding and offboarding email uses this one sender. It uses its confirmed connection, or the active installation relay when none is applied.",
     "applyTarget": "Apply this tested connection to",
     "applyDefault": "Installation default (account and other email)",
     "senderDefault": "Uses installation default",
     "senderConfirmed": "Receipt confirmed {at}",
     "senderPending": "This connection has newer saved changes. The confirmed version continues sending until tested and applied again.",
-    "senderTargetHelp": "Tests expire after 30 minutes. The installation default controls account email. A lifecycle choice changes only that sender for the current tenant. Test and confirm receipt again after editing a connection."
+    "senderTargetHelp": "Tests expire after 30 minutes. The installation default controls account email. A lifecycle choice changes only that sender for the current tenant. Test and confirm receipt again after editing a connection.",
+    "lifecycleSenderOption": "On/Off Boarding sender",
+    "lifecycleSenderName": "On/Off Boarding sender name",
+    "lifecycleSenderNameHelp": "Recipients see this name on every On/Off Boarding email for your organisation. The sending address stays the same. Without a name, the connection's sender name is used.",
+    "saveSenderName": "Save sender name",
+    "senderStale": "An earlier sender binding points to a different connection, so On/Off Boarding emails are held for review. Test and apply a connection to the On/Off Boarding sender again."
   },
   "workflowEmail": {
     "letterAccountTitle": "Letters for this account",
@@ -30640,6 +30646,17 @@
       "caseType": "Type",
       "caseProvidedBy": "Provided by",
       "caseReturnDue": "Return or revoke by",
+      "lev909e718ee5d": "Email held",
+      "lev902aeadce22": "Nobody was emailed. Missing recipients:",
+      "lev9716aacede1": "Fix the record or change the recipients for this case, then press Continue.",
+      "lev9432f4737cd": "Recipients changed for this case",
+      "lev9f96e5e6795": "Edit recipients for this case",
+      "lev973deec6592": "Recipients for this case",
+      "lev9325a77cc26": "Save recipients for this case",
+      "lev9b48eacb53d": "Use the workflow recipients",
+      "lev97056f1481a": "The recipients could not be saved.",
+      "lev984add5b295": "Email",
+      "lev9c18f8f255a": "Notification",
       "c49ce36722982": "Routing rules",
       "cdb0e0ee5b2bf": "A routing rule picks the assignment group for an approval step from the new joiner’s Business group, company, department and job title. The row with the most filled-in fields wins, and the higher row wins a tie. A row with every field on Any is the default.",
       "c8f4cfe1201c9": "Routing rule name",
@@ -38548,6 +38565,9 @@
     "actorWithId": "{name} ({employeeId})",
     "actorUnlinked": "Administrator login (no employee record · login ending {suffix})",
     "actorUnavailable": "Unavailable user"
+  },
+  "lifecycleEmailHold": {
+    "inboxAction": "Email held: {email}"
   },
   "rewardConfig": {
     "title": "Review before saving",

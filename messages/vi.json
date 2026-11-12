@@ -25229,7 +25229,8 @@
       "save": "Đã lưu bản nháp. Cấu hình đang dùng không đổi.",
       "test": "Máy chủ đã nhận email thử. Kiểm tra hộp thư trước khi kích hoạt.",
       "apply": "Đã kích hoạt. Lời mời và khôi phục mật khẩu có thể dùng máy chủ này.",
-      "sender": "Đã cập nhật người gửi thư vòng đời. Khôi phục tài khoản và mặc định của bản cài đặt không thay đổi."
+      "sender": "Đã cập nhật người gửi thư vòng đời. Khôi phục tài khoản và mặc định của bản cài đặt không thay đổi.",
+      "senderName": "Đã lưu tên người gửi. Thư nhận việc/nghỉ việc gửi từ bây giờ sẽ dùng tên này."
     },
     "connectionTitle": "Kết nối SMTP",
     "security": "Mã hóa",
@@ -25268,14 +25269,19 @@
     "backToConnections": "Quay lại danh sách kết nối",
     "saveConnection": "Lưu kết nối",
     "activeChangesHelp": "Máy chủ chuyển tiếp đang dùng cài đặt đã kích hoạt gần nhất. Lưu, kiểm tra và xác nhận nhận thư trước khi kích hoạt thay đổi.",
-    "lifecycleSenderTitle": "Người gửi thư nhận việc và nghỉ việc",
-    "lifecycleSenderHelp": "Mỗi người gửi sử dụng kết nối đã được xác nhận. Nếu chưa liên kết riêng, hệ thống dùng máy chủ chuyển tiếp đang hoạt động của bản cài đặt.",
+    "lifecycleSenderTitle": "Người gửi thư nhận việc/nghỉ việc",
+    "lifecycleSenderHelp": "Mọi thư nhận việc và nghỉ việc đều dùng một người gửi này. Người gửi dùng kết nối đã xác nhận, hoặc máy chủ chuyển tiếp đang hoạt động của bản cài đặt nếu chưa áp dụng kết nối nào.",
     "applyTarget": "Áp dụng kết nối đã kiểm tra này cho",
     "applyDefault": "Mặc định của bản cài đặt (thư tài khoản và thư khác)",
     "senderDefault": "Dùng mặc định của bản cài đặt",
     "senderConfirmed": "Đã xác nhận nhận thư lúc {at}",
     "senderPending": "Kết nối này có thay đổi mới đã lưu. Phiên bản đã xác nhận vẫn gửi thư cho đến khi được kiểm tra và áp dụng lại.",
-    "senderTargetHelp": "Kết quả kiểm tra hết hạn sau 30 phút. Mặc định của bản cài đặt điều khiển thư tài khoản. Lựa chọn vòng đời chỉ thay đổi người gửi tương ứng cho đơn vị thuê hiện tại. Sau khi sửa kết nối, hãy kiểm tra và xác nhận nhận thư lần nữa."
+    "senderTargetHelp": "Kết quả kiểm tra hết hạn sau 30 phút. Mặc định của bản cài đặt điều khiển thư tài khoản. Lựa chọn vòng đời chỉ thay đổi người gửi tương ứng cho đơn vị thuê hiện tại. Sau khi sửa kết nối, hãy kiểm tra và xác nhận nhận thư lần nữa.",
+    "lifecycleSenderOption": "Người gửi thư nhận việc/nghỉ việc",
+    "lifecycleSenderName": "Tên người gửi thư nhận việc/nghỉ việc",
+    "lifecycleSenderNameHelp": "Người nhận thấy tên này trên mọi thư nhận việc/nghỉ việc của tổ chức bạn. Địa chỉ gửi không đổi. Nếu chưa đặt tên, hệ thống dùng tên người gửi của kết nối.",
+    "saveSenderName": "Lưu tên người gửi",
+    "senderStale": "Một liên kết người gửi trước đây trỏ tới kết nối khác, nên thư nhận việc/nghỉ việc đang được giữ để xem xét. Hãy kiểm tra và áp dụng lại một kết nối cho người gửi nhận việc/nghỉ việc."
   },
   "workflowEmail": {
     "letterAccountTitle": "Thư cho tài khoản này",
@@ -30640,6 +30646,17 @@
       "caseType": "Loại",
       "caseProvidedBy": "Bên cung cấp",
       "caseReturnDue": "Hạn trả hoặc thu hồi",
+      "lev909e718ee5d": "Thư đang bị giữ",
+      "lev902aeadce22": "Chưa gửi thư cho ai. Người nhận còn thiếu:",
+      "lev9716aacede1": "Sửa hồ sơ hoặc đổi người nhận cho hồ sơ này, rồi bấm Tiếp tục.",
+      "lev9432f4737cd": "Đã đổi người nhận cho hồ sơ này",
+      "lev9f96e5e6795": "Sửa người nhận cho hồ sơ này",
+      "lev973deec6592": "Người nhận cho hồ sơ này",
+      "lev9325a77cc26": "Lưu người nhận cho hồ sơ này",
+      "lev9b48eacb53d": "Dùng người nhận của quy trình",
+      "lev97056f1481a": "Không thể lưu người nhận.",
+      "lev984add5b295": "Thư",
+      "lev9c18f8f255a": "Thông báo",
       "c49ce36722982": "Quy tắc định tuyến",
       "cdb0e0ee5b2bf": "Quy tắc định tuyến chọn nhóm phân công cho một bước phê duyệt dựa trên Nhóm kinh doanh, công ty, phòng ban và chức danh của nhân viên mới. Hàng có nhiều trường được điền nhất sẽ được chọn; nếu bằng nhau, hàng ở trên được chọn. Hàng có mọi trường là Bất kỳ là mặc định.",
       "c8f4cfe1201c9": "Tên quy tắc định tuyến",
@@ -38548,6 +38565,9 @@
     "actorWithId": "{name} ({employeeId})",
     "actorUnlinked": "Đăng nhập quản trị (không có hồ sơ nhân viên · đăng nhập kết thúc bằng {suffix})",
     "actorUnavailable": "Người dùng không khả dụng"
+  },
+  "lifecycleEmailHold": {
+    "inboxAction": "Thư đang bị giữ: {email}"
   },
   "rewardConfig": {
     "title": "Xem trước khi lưu",

@@ -7,14 +7,14 @@ import { sendSmtp, type Mail, type Relay } from '../lib/internal-auth/smtp';
 import { MANAGED_EMAIL_ATTACHMENT_MAX_BYTES } from '../lib/managed-email-attachment';
 const relay: Relay = { config: { host: 'smtp.fixture.invalid', port: 465, security: 'tls', from: 'verified@fixture.invalid', fromName: 'Fictional verified sender', replyTo: '', auth: false, user: '' } };
 const to = 'employee@fixture.invalid', cc = 'supervisor@fixture.invalid';
-function mail(): Extract<Mail, { attachments: unknown }> { return { to, cc: [cc], subject: 'Fictional saved document', text: 'Fictional case message.', messageId: '<v9-fixture-0001@fixture.invalid>', senderProfile: 'onboarding', attachments: [{ filename: 'Fictional form.pdf', contentType: 'application/pdf', bytes: Buffer.from('%PDF-fixture') }] }; }
+function mail(): Extract<Mail, { attachments: unknown }> { return { to, cc: [cc], subject: 'Fictional saved document', text: 'Fictional case message.', messageId: '<v9-fixture-0001@fixture.invalid>', senderName: 'Fictional Group Sender', attachments: [{ filename: 'Fictional form.pdf', contentType: 'application/pdf', bytes: Buffer.from('%PDF-fixture') }] }; }
 beforeEach(() => { vi.resetAllMocks(); smtp.create.mockReturnValue({ sendMail: smtp.send, close: smtp.close }); smtp.send.mockResolvedValue({ accepted: [to, cc] }); });
 it('hands local PDF bytes to Nodemailer with the verified relay address and exact To/CC envelope', async () => {
   const pdf = await PDFDocument.create(); pdf.addPage(); pdf.setTitle('Fictional saved document'); const bytes = await pdf.save();
   const input = { ...mail(), attachments: [{ filename: 'Fictional saved form.pdf', contentType: 'application/pdf' as const, bytes: Buffer.from(bytes) }] };
   await sendSmtp(relay, input);
   const sent = smtp.send.mock.calls[0][0];
-  expect(sent).toMatchObject({ from: { name: 'HR Onboarding', address: relay.config.from }, to, cc: [cc], envelope: { from: relay.config.from, to: [to, cc] }, messageId: input.messageId, disableFileAccess: true, disableUrlAccess: true });
+  expect(sent).toMatchObject({ from: { name: 'Fictional Group Sender', address: relay.config.from }, to, cc: [cc], envelope: { from: relay.config.from, to: [to, cc] }, messageId: input.messageId, disableFileAccess: true, disableUrlAccess: true });
   expect(Buffer.isBuffer(sent.attachments[0].content)).toBe(true); expect(sent.attachments[0].content).toEqual(Buffer.from(bytes));
   expect((await PDFDocument.load(sent.attachments[0].content)).getTitle()).toBe('Fictional saved document');
   expect(smtp.create).toHaveBeenCalledWith(expect.objectContaining({ tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' }, disableFileAccess: true, disableUrlAccess: true }));
@@ -27,7 +27,14 @@ it.each([
   ['duplicate recipient', { cc: [to.toUpperCase()] }],
   ['noncanonical recipient', { to: 'Employee <employee@fixture.invalid>' }],
   ['caller-supplied From address', { from: 'unverified@untrusted.invalid' }],
-  ['unknown sender profile', { senderProfile: 'a-person-to-impersonate' }],
+  ['retired sender profile key', { senderProfile: 'hr' }],
+  ['sender name with an address', { senderName: 'Payroll <payroll@untrusted.invalid>' }],
+  ['sender name with an at sign', { senderName: 'ceo@untrusted.invalid' }],
+  ['sender name with a quote', { senderName: 'Fictional" <x@y.invalid>' }],
+  ['sender name with a header break', { senderName: 'Fictional\r\nBcc: x@untrusted.invalid' }],
+  ['empty sender name', { senderName: '' }],
+  ['untrimmed sender name', { senderName: ' Fictional ' }],
+  ['overlong sender name', { senderName: 'F'.repeat(161) }],
   ['missing delivery identity', { messageId: undefined }],
   ['too many files', { attachments: Array.from({ length: 21 }, () => ({ filename: 'document.pdf', contentType: 'application/pdf', bytes: Buffer.from('%PDF-') })) }],
 ])('rejects %s before opening SMTP', async (_name, override) => {
@@ -56,4 +63,10 @@ it('sends owned image bytes with a bounded CID and inline disposition while keep
   smtp.create.mockClear();
   await expect(sendSmtp(relay,{ ...mail(), attachments: [{ filename: 'Fictional.pdf', contentType: 'application/pdf', bytes: Buffer.from('%PDF-'), cid: `v9-image.${id}@aihr` }] })).rejects.toMatchObject({ code: 'invalid' });
   expect(smtp.create).not.toHaveBeenCalled();
+});
+
+it('uses the connection name when no sender name is given', async () => {
+  const { senderName: _name, ...input } = mail();
+  await sendSmtp(relay, input);
+  expect(smtp.send.mock.calls[0][0].from).toEqual({ name: relay.config.fromName, address: relay.config.from });
 });

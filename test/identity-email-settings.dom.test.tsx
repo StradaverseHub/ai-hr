@@ -15,7 +15,7 @@ vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
 vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:m.demo}));
 vi.mock('../lib/identity/email-settings',()=>({canConfigureIdentityEmail:m.allowed,requireIdentityEmailAdmin:m.guard,readIdentityEmailSettings:m.read}));
-vi.mock('../app/admin/settings/email/actions',()=>({saveEmailDraft:vi.fn(),testEmailDraft:vi.fn(),activateEmailDraft:vi.fn()}));
+vi.mock('../app/admin/settings/email/actions',()=>({saveEmailDraft:vi.fn(),testEmailDraft:vi.fn(),activateEmailDraft:vi.fn(),saveLifecycleSenderName:vi.fn()}));
 vi.mock('../app/admin/settings/email/demo-actions',()=>({testDemoSmtpConnection:m.test}));
 import Page from '../app/admin/settings/email/page';
 import { Sidebar } from '../components/sidebar';
@@ -119,11 +119,22 @@ describe('SMTP settings discovery and temporary demo testing',()=>{
   m.allowed.mockResolvedValue(true);m.read.mockRejectedValue(new EmailSettingsError('unavailable'));await page();expect(screen.getByText(messages.identityEmail.errors.unavailable)).toBeInTheDocument();expect(screen.queryByLabelText(messages.identityEmail.host)).toBeNull();
  });
 });
-it('shows confirmed profile addresses and keeps installation-default activation as the explicit default',async()=>{
+it('shows one On/Off Boarding sender row with its name and keeps installation-default activation as the explicit default',async()=>{
  m.allowed.mockResolvedValue(true);const config={...defaultEmailConfig,host:'smtp.fixture.test',from:'default@fixture.test'};
- m.read.mockResolvedValue({supportsLifecycleSenders:true,lifecycleSenders:[{profile:'hr',from:'confirmed-hr@fixture.test',connectionId:'fixture',appliedAt:'2026-10-29T00:00:00Z',hasUnappliedChanges:true},{profile:'onboarding',from:config.from,hasUnappliedChanges:false},{profile:'noreply',from:config.from,hasUnappliedChanges:false}],active:config,connections:[],selectedConnectionId:'fixture',selectedConnectionName:'Fictional sender',draft:{id:'version',config,hasPassword:false,testedAt:'2026-10-29T00:00:00Z'},revision:'revision',testRecipient:'operator@fixture.test'});
+ m.read.mockResolvedValue({supportsLifecycleSenders:true,lifecycleSenders:[{profile:'noreply',name:'Fictional Group HR',fallbackName:'Fictional connection',from:'confirmed-lifecycle@fixture.test',staleBindings:[],connectionId:'fixture',appliedAt:'2026-10-29T00:00:00Z',hasUnappliedChanges:true}],active:config,connections:[],selectedConnectionId:'fixture',selectedConnectionName:'Fictional sender',draft:{id:'version',config,hasPassword:false,testedAt:'2026-10-29T00:00:00Z'},revision:'revision',testRecipient:'operator@fixture.test'});
  await page({connection:'fixture',success:'sender'});
- expect(screen.getByText(messages.identityEmail.lifecycleSenderTitle)).toBeVisible();expect(screen.getByText(/confirmed-hr@fixture.test/)).toBeVisible();expect(screen.getByText(messages.identityEmail.senderPending)).toBeVisible();
- const target=screen.getByLabelText(messages.identityEmail.applyTarget);expect(target).toHaveValue('');expect(within(target).getAllByRole('option').map(option=>option.getAttribute('value'))).toEqual(['','onboarding','hr','noreply']);fireEvent.change(target,{target:{value:'hr'}});expect(target).toHaveValue('hr');
+ expect(screen.getAllByText(messages.identityEmail.lifecycleSenderTitle)[0]).toBeVisible();expect(screen.getByText(/confirmed-lifecycle@fixture.test/)).toBeVisible();expect(screen.getByText(messages.identityEmail.senderPending)).toBeVisible();
+ const rows=document.querySelectorAll('[data-lifecycle-sender]');expect(rows).toHaveLength(1);expect(rows[0].querySelector('[data-lifecycle-sender-name]')?.textContent).toBe('Fictional Group HR');
+ for(const retired of ['HR Onboarding','Human Resource Department','Kingdee AI HR'])expect(screen.queryByText(retired)).not.toBeInTheDocument();
+ expect(screen.getByLabelText(messages.identityEmail.lifecycleSenderName)).toHaveValue('Fictional Group HR');expect(screen.queryByText(messages.identityEmail.senderStale)).not.toBeInTheDocument();
+ const target=screen.getByLabelText(messages.identityEmail.applyTarget);expect(target).toHaveValue('');expect(within(target).getAllByRole('option').map(option=>[option.getAttribute('value'),option.textContent])).toEqual([['',messages.identityEmail.applyDefault],['noreply',messages.identityEmail.lifecycleSenderOption]]);fireEvent.change(target,{target:{value:'noreply'}});expect(target).toHaveValue('noreply');
  expect(screen.getByLabelText(messages.identityEmail.received)).toBeRequired();expect(screen.getByText(messages.identityEmail.success.sender)).toBeVisible();expect(screen.queryByText(messages.identityEmail.success.apply)).not.toBeInTheDocument();
+});
+it('falls back to the connection name and flags a stale earlier binding for re-apply',async()=>{
+ m.allowed.mockResolvedValue(true);const config={...defaultEmailConfig,host:'smtp.fixture.test',from:'default@fixture.test'};
+ m.read.mockResolvedValue({supportsLifecycleSenders:true,lifecycleSenders:[{profile:'noreply',name:null,fallbackName:'Fictional connection',from:config.from,staleBindings:['hr'],hasUnappliedChanges:false}],active:config,connections:[],revision:'revision',draft:null,testRecipient:'operator@fixture.test'});
+ await page({success:'senderName'});
+ expect(document.querySelector('[data-lifecycle-sender-name]')?.textContent).toBe('Fictional connection');
+ expect(screen.getByRole('alert')).toHaveTextContent(messages.identityEmail.senderStale);
+ expect(screen.getByLabelText(messages.identityEmail.lifecycleSenderName)).toHaveValue('');expect(screen.getByText(messages.identityEmail.success.senderName)).toBeVisible();
 });

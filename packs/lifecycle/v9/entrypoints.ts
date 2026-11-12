@@ -46,3 +46,6 @@ export const v9CreateOffboardingTx: Service['v9CreateOffboardingTx'] = async (..
 export const v9PreviewWorkflowRemoval: Service['v9PreviewWorkflowRemoval'] = async (...args) => (await load()).v9PreviewWorkflowRemoval(...args);
 export const v9RemoveWorkflow: Service['v9RemoveWorkflow'] = async (...args) => (await load()).v9RemoveWorkflow(...args);
 export const v9RestoreWorkflow: Service['v9RestoreWorkflow'] = async (...args) => (await load()).v9RestoreWorkflow(...args);
+
+export const v9PlanWorkflow: Service['v9PlanWorkflow'] = async (...args) => (await load()).v9PlanWorkflow(...args);
+export const v9EmailHoldInbox: Service['v9EmailHoldInbox'] = async (...args) => (await load()).v9EmailHoldInbox(...args);

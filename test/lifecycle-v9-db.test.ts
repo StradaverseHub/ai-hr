@@ -803,7 +803,7 @@ it('fires the HR-signature workflow from an actual sign command and starts a man
   const before=await prepared(),config=(await v9Workspace(admin)).config!;
   config.companies=[{companyId:base.companyId,signatoryUserId:admin.userId!,signatoryTitle:'Fictional HR'}];
   config.templates.push({id:'event-letter',name:'Fictional event letter',module:'off',type:'Letter',rules:{},hrStep:'before',employeeAck:true,retired:false,versions:[{version:1,state:'published',at:'',by:'',blocks:[{id:'body',type:'text',text:'Fictional letter',section:''}],fields:[]}]});
-  for(const event of ['hrSigned','manual'] as const)config.workflows.push({id:'event-'+event,name:'Fictional '+event,module:'off',status:'published',trigger:{event,days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'notify',type:'notify',to:event==='manual'?'starter':'employee',cc:event==='manual'?['hrSignatory']:[],subject:'Fictional '+event,body:'Fictional event'}],description:''});
+  for(const event of ['hrSigned','manual'] as const)config.workflows.push({id:'event-'+event,name:'Fictional '+event,module:'off',status:'published',trigger:{event,days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'notify',type:'notify',to:event==='manual'?`person:${admin.userId}` as const:'employee',cc:event==='manual'?['hrSignatory']:[],subject:'Fictional '+event,body:'Fictional event'}],description:''});
   await v9SaveConfig(admin,config.revision,config);await v9Command(admin,before.id,before.revision,{type:'generate',template:'event-letter'});
   let c=(await v9CaseDetail(admin,before.id)).case;expect(c.mails).toEqual([]);const doc=c.documents.find(document=>document.templateId==='event-letter')!;
   await v9Command(admin,c.id,c.revision,{type:'documentSign',id:doc.id,signature:{method:'typed',value:'Fictional HR',consent:true}});c=(await v9CaseDetail(admin,c.id)).case;
@@ -822,7 +822,8 @@ it('accepts tenant directory recipients and rejects foreign people and deleted r
   await v9SaveConfig(admin, config.revision, config);
   const before = await v9CaseDetail(admin, c.id); await v9Command(admin, c.id, before.case.revision, { type: 'startWorkflow', workflowId: 'directory-review' });
   const mail = (await v9CaseDetail(admin, c.id)).case.mails.find(mail => mail.workflowId === 'directory-review');
-  expect(mail).toMatchObject({ to: [admin.userId], cc: [other.userId], status: 'pending' });
+  // Board 4a60b3ec: a group reaches every active member in To; the same person in CC gets no second copy.
+  expect(mail).toMatchObject({ to: [admin.userId, other.userId], cc: [], status: 'pending' });
   const invalid = (await v9Workspace(admin)).config!;
   const notice = invalid.workflows.find(workflow => workflow.id === 'directory-review')!.steps[0]; if (!('to' in notice)) throw new Error('Expected notification step');
   notice.cc = [`person:${randomUUID()}`]; await expect(v9SaveConfig(admin, invalid.revision, invalid)).rejects.toThrow('available person from this tenant');
@@ -1341,7 +1342,7 @@ it('previews only the first notification or first document without creating live
  const common={module:'off' as const,status:'published' as const,trigger:{event:'manual' as const,days:0,workdays:false,repeat:false,skipIf:'' as const},conditions:[],description:''};
  config.workflows=[{...common,id:'preview-notice',name:'Fictional notice preview',steps:[{id:'first',type:'notify',to:'employee',cc:['supervisor'],subject:'First notification',body:'Read only'},{id:'second',type:'notify',to:'employee',cc:[],subject:'Second notification',body:''},{id:'doc',type:'doc',template:templates[0].id,release:false}]},{...common,id:'preview-document',name:'Fictional document preview',steps:templates.map((template,index)=>({id:'doc'+index,type:'doc' as const,template:template.id,release:false}))}];await v9SaveConfig(admin,config.revision,config);
  const day=todayInKualaLumpur(),id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:addDays(day,-30),lastDay:day}),before=(await v9CaseDetail(admin,id)).case;
- const notification=await v9PreviewWorkflow(admin,id,'preview-notice');expect(notification.messages).toEqual([expect.objectContaining({subject:'First notification',to:'Employee',cc:'Line manager'})]);expect(notification.documents).toEqual([]);
+ const notification=await v9PreviewWorkflow(admin,id,'preview-notice');expect(notification.messages).toEqual([expect.objectContaining({subject:'First notification',to:'Employee (login account)',cc:'Line manager'})]);expect(notification.documents).toEqual([]);
  const document=await v9PreviewWorkflow(admin,id,'preview-document');expect(document.messages).toEqual([]);expect(document.documents).toHaveLength(1);expect(document.documents[0].templateId).toBe(templates[0].id);expect((await v9CaseDetail(admin,id)).case).toEqual(before);
  const older={...document.documents[0],id:'fictional-existing-document',version:0,name:'Old saved document',edits:{},hrSignature:null,employeeSignature:null};
  await owner.db.execute(sql`update lc_v9_case set data=${JSON.stringify({...before,documents:[older]})}::jsonb where id=${id}::uuid`);
