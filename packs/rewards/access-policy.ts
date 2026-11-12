@@ -113,7 +113,7 @@ export function rewardNavigation(ctx: SessionContext) {
   return withRewardsTenant(ctx, async tx => {
     const [pages] = await tx.execute<{
       review: boolean; analytics: boolean; approvals: boolean; rules: boolean; promotions: boolean;
-      manage: boolean; libraries: boolean; access: boolean; bootstrap: boolean;
+      manage: boolean; libraries: boolean; access: boolean; bootstrap: boolean; limits: boolean;
     }>(sql`
       with visible_units as (
         select id, company_id, kind from reward_unit
@@ -130,6 +130,7 @@ export function rewardNavigation(ctx: SessionContext) {
         app.reward_setup_allowed(null, 'manage') as manage,
         app.reward_setup_allowed(null, 'library_view') as libraries,
         app.is_group_admin() as bootstrap,
+        app.reward_limit_controls_access() is not null as limits,
         (exists(${groupRewardsAccessCompanyScope}) or exists(${maintenanceAccessCompanyScope})) as access
     `);
     if (!pages) return [];
@@ -142,6 +143,7 @@ export function rewardNavigation(ctx: SessionContext) {
       ...(pages.manage ? ['/admin/rewards/shared'] : []),
       ...(pages.libraries ? ['/admin/rewards/salary-structures', '/admin/rewards/bonus-matrices'] : []),
       ...(pages.manage ? ['/admin/rewards/pat-inputs'] : []),
+      ...(pages.limits ? ['/admin/rewards/limit-controls'] : []),
       ...(pages.manage || pages.libraries ? ['/admin/rewards/change-log'] : []),
       ...(pages.access || pages.bootstrap ? ['/admin/rewards/access'] : []),
     ];

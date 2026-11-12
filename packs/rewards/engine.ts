@@ -1,5 +1,6 @@
 import {rewardArchitectureFlags} from './architecture-parity';
 import { type RewardEntry, type RewardPolicy, type Plan, type RewardFlag, performances, policySchema, factsSchema, recommendationSchema, isSeniorPlanMember } from './model';
+import { baselineRewardLimits, limitFlagText, limitNumber, limitSeverity, limitValue, type RewardLimits } from './limit-controls-model';
 
 /** BigInt intermediates prevent precision loss while keeping JSON outputs as safe integers. */
 export function ratio(n: number, a: number, b: number, round: 'floor' | 'nearest' = 'floor'): number {
@@ -35,9 +36,21 @@ export const salaryReductionFlags = (rows: Pick<CalculatedEntry, 'id' | 'source'
   rows.filter(x => x.newBasicCents < x.source.basicCents).map(x => ({ severity: 'block', code: 'SAL-01', message: 'Salary reductions are not allowed in the salary review.', entryId: x.id }));
 
 export type RewardMultiplierSuggestion = ReturnType<typeof calculateRewards>['suggestion'];
-export type RewardCalculationControls = { bonusPools?:{standard:number;h:number}; poolStatus?: 'not-set' | 'provisional' | 'final' | 'legacy'; seniorAwards?: Record<string,{newBasicCents:number;bonusCents:number}> };
+/** `limits` are the review's confirmed Limit Controls (board fc804e8c). Absent means the baseline: the engine
+ *  constants with pools and lump-sum settings from the policy, which is exactly the behaviour before Limit Controls. */
+export type RewardCalculationControls = { bonusPools?:{standard:number;h:number}; poolStatus?: 'not-set' | 'provisional' | 'final' | 'legacy'; seniorAwards?: Record<string,{newBasicCents:number;bonusCents:number}>; limits?: RewardLimits };
 export function calculateRewards(entries: RewardEntry[], input: RewardPolicy, controls:RewardCalculationControls = {}) {
-  const policy = policySchema.parse(input);
+  const parsed = policySchema.parse(input);
+  const limits = controls.limits ?? baselineRewardLimits(parsed);
+  // A Limit Controls version owns the pools and lump-sum settings; the stored policy keeps its own values unchanged.
+  const pool = (plan: 'standard' | 'h') => (['merit', 'promotion', 'special'] as const).map(name => limitNumber(limits, `pool.${plan}.${name}`)) as [number, number, number];
+  const policy: RewardPolicy = limits.source === 'version'
+    ? { ...parsed, standardPools: pool('standard'), hPools: pool('h'), lumpShareBp: limitNumber(limits, 'lump.share'), lumpStepCents: limitNumber(limits, 'lump.step'), lumpCapCents: limitValue(limits, 'lump.cap') }
+    : parsed;
+  const versioned = limits.source === 'version';
+  const promotionIncrementBp = limitNumber(limits, 'promotion.increment'), maxGrades = limitNumber(limits, 'promotion.maxGrades'), maxGrade = limitNumber(limits, 'promotion.maxGrade');
+  const crFloorBp = limitNumber(limits, 'catchUp.crFloor'), withoutPromotionBp = limitNumber(limits, 'increase.withoutPromotion'), withPromotionBp = limitNumber(limits, 'increase.withPromotion');
+  const poolCapBp = limitNumber(limits, 'bonus.poolCap'), underUseBp = limitNumber(limits, 'bonus.underUse'), ceilingMonthsBp = limitNumber(limits, 'bonus.individualCeiling');
   const flags: RewardFlag[] = [];
   const add = (severity: RewardFlag['severity'], code: string, message: string, entryId?: string) => flags.push({ severity, code, message, ...(entryId ? { entryId } : {}) });
   const start = `${policy.year}-01-01`, end = `${policy.year}-12-31`, yearDays = dateNumber(end) - dateNumber(start) + 1;
@@ -81,15 +94,16 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy, co
     const pos = range ? s.basicCents < range[0] ? 0 : s.basicCents > range[2] ? 2 : 1 : 1;
     const meritDefault = incrementEligible && f.talent ? policy.meritMatrix[f.talent][pos] : 0;
     const meritBp = left ? 0 : plan === 'ec' ? r.meritBp ?? meritDefault : incrementEligible ? r.meritBp ?? meritDefault : 0;
-    const promotionBp = !left && (incrementEligible || plan === 'ec') && r.promotionGrade ? r.promotionBp ?? 1000 : 0;
+    const promotionBp = !left && (incrementEligible || plan === 'ec') && r.promotionGrade ? r.promotionBp ?? promotionIncrementBp : 0;
     if (r.promotionGrade && !left) {
       if (!incrementEligible && plan !== 'ec') add('block', 'PRO-03', 'This employee is not eligible for an annual promotion award.', e.id);
       const jump = Number(r.promotionGrade) - Number(s.grade);
-      if (!Number.isInteger(jump) || jump < 1 || jump > 3) add('block', 'PRO-01', 'A promotion must advance one to three grades.', e.id);
+      // The highest-grade check belongs to Limit Controls versions; the baseline keeps the earlier grade-step check only.
+      if (!Number.isInteger(jump) || jump < 1 || jump > maxGrades || versioned && Number(r.promotionGrade) > maxGrade) { const severity = limitSeverity(limits, jump > maxGrades || !Number.isInteger(jump) || jump < 1 ? 'promotion.maxGrades' : 'promotion.maxGrade'); add(severity, 'PRO-01', limitFlagText('This promotion is outside the allowed grade range', severity, 'change the promoted grade'), e.id); }
       if (r.reason.length < 30) add('block', 'PRO-02', 'A promotion needs a business case of at least 30 characters.', e.id);
     }
     if (!left && r.meritBp != null && r.meritBp !== meritDefault && plan !== 'ec') add('exception', 'POOL-05', 'Individual merit differs from the matrix.', e.id);
-    if (!left && r.promotionBp != null && r.promotionBp !== 1000 && r.promotionGrade) add('exception', 'POOL-05', 'Promotion differs from the standard 10%.', e.id);
+    if (!left && r.promotionBp != null && r.promotionBp !== promotionIncrementBp && r.promotionGrade) { const severity = limitSeverity(limits, 'promotion.increment'); add(severity, 'POOL-05', limitFlagText('Promotion increment differs from the standard', severity, 'use the standard promotion increment'), e.id); }
     return { ...e, facts: f, recommendation: r, activeInReview:!left, plan, incrementEligible, bonusEligible, lumpEligible: !left && !bonusEligible && !senior && plan !== 'ec' && !f.erCase, incrementReason, bonusReason, meritBp, promotionBp, specialBp: 0, payChange: windowChange && { on: windowChange.on, kind: windowChange.kind }, payWindowKept: kept && !!windowChange, bonusBasicCents: payChange ? payChange.basicCents : s.basicCents, meritCents: increase(s.basicCents, meritBp), promotionCents: increase(s.basicCents, promotionBp), specialCents: 0, newBasicCents: s.basicCents, bonusCents: 0, standardBonusCents: 0, lumpCents: 0, bonusMultiplierBp: 0 };
   });
   const budgets = { standard: blankBudget(), h: blankBudget(), ec: blankBudget() };
@@ -104,9 +118,9 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy, co
     b.excludedCount = excluded.length; b.excludedPayrollCents = sum(excluded.map(x => x.source.basicCents));
     b.bonusPoolCents = plan!=='ec'&&controls.bonusPools ? controls.bonusPools[plan] : ratio(ratio(b.bonusPayrollCents, policy.patActual, policy.patTarget), policy.targetMonthsBp, 10000);
     // Special pool funds the same half-percent catch-up cohort as the reference, within each plan.
-    const stars = group.filter(x => x.incrementEligible && ['STAR', 'SSTAR'].includes(x.facts.talent ?? '') && policy.ranges[x.recommendation.promotionGrade ?? x.source.grade] && x.source.basicCents * 10 < policy.ranges[x.recommendation.promotionGrade ?? x.source.grade][1] * 9);
+    const stars = group.filter(x => x.incrementEligible && ['STAR', 'SSTAR'].includes(x.facts.talent ?? '') && policy.ranges[x.recommendation.promotionGrade ?? x.source.grade] && x.source.basicCents * 10000 < policy.ranges[x.recommendation.promotionGrade ?? x.source.grade][1] * crFloorBp);
     const starPayroll = sum(stars.map(x => x.source.basicCents));
-    const maximumNeed = Math.max(0, ...stars.map(x => Math.max(0, ratio(Math.max(0, ratio(policy.ranges[x.recommendation.promotionGrade ?? x.source.grade][1], 9, 10) - x.source.basicCents - x.meritCents - x.promotionCents), 10000, x.source.basicCents))));
+    const maximumNeed = Math.max(0, ...stars.map(x => Math.max(0, ratio(Math.max(0, ratio(policy.ranges[x.recommendation.promotionGrade ?? x.source.grade][1], crFloorBp, 10000) - x.source.basicCents - x.meritCents - x.promotionCents), 10000, x.source.basicCents))));
     const cohortBp = starPayroll > 0 ? Math.floor(Math.min(ratio(b.pools[2], 10000, starPayroll), maximumNeed) / 50) * 50 : 0;
     for (const x of group) {
       const r = x.recommendation, range = policy.ranges[r.promotionGrade ?? x.source.grade];
@@ -116,7 +130,7 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy, co
       x.specialBp = x.source.basicCents ? ratio(x.specialCents, 10000, x.source.basicCents, 'nearest') : 0;
       x.newBasicCents = sum([x.source.basicCents, x.meritCents, x.promotionCents, x.specialCents]);
       if (!x.source.leftOn && r.specialBp != null && x.specialCents !== catchUp + topUp && plan !== 'ec') add('exception', 'POOL-05', 'Special adjustment differs from the calculated amount.', x.id);
-      if (plan !== 'ec' && (x.recommendation.promotionGrade ? (x.newBasicCents - x.source.basicCents) * 10 >= x.source.basicCents * 3 : (x.newBasicCents - x.source.basicCents) * 10 > x.source.basicCents)) add('warning', 'INC-01', 'Increase exceeds the individual review threshold.', x.id);
+      if (plan !== 'ec' && (x.recommendation.promotionGrade ? (x.newBasicCents - x.source.basicCents) * 10000 >= x.source.basicCents * withPromotionBp : (x.newBasicCents - x.source.basicCents) * 10000 > x.source.basicCents * withoutPromotionBp)) { const severity = limitSeverity(limits, x.recommendation.promotionGrade ? 'increase.withPromotion' : 'increase.withoutPromotion'); add(severity, 'INC-01', limitFlagText('This increase is above the individual review threshold', severity, 'reduce the increase'), x.id); }
       if (range && x.newBasicCents > range[2]) add('review', 'RANGE-01', 'New salary is above the range maximum.', x.id);
     }
   }
@@ -144,7 +158,9 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy, co
     x.standardBonusCents = Math.floor(ratio(bonusBase(x), multiplier, 10000) / 100) * 100;
     x.bonusMultiplierBp = policy.bonusStructure==='branch'&&policy.branchRatings[x.facts.branch]==='UA'?0:r.multiplierBp ?? multiplier;
     x.bonusCents = !x.activeInReview ? 0 : x.plan === 'ec' && r.bonusCents != null ? r.bonusCents : Math.floor(ratio(bonusBase(x), x.bonusMultiplierBp, 10000) / 100) * 100;
-    if (r.multiplierBp != null && r.multiplierBp !== multiplier && x.bonusEligible && x.plan !== 'ec') add('exception', 'BUD-02', 'Individual bonus differs from the unit multiplier.', x.id);
+    if (r.multiplierBp != null && r.multiplierBp !== multiplier && x.bonusEligible && x.plan !== 'ec') { const severity = limitSeverity(limits, 'bonus.individualMultiplier'); add(severity, 'BUD-02', limitFlagText('Individual bonus differs from the unit multiplier', severity, 'use the unit multiplier'), x.id); }
+    // The individual ceiling is a Limit Controls check; the baseline keeps the earlier check set.
+    if (versioned && x.activeInReview && x.plan !== 'ec' && x.bonusBasicCents > 0 && x.bonusCents * 10000 > x.bonusBasicCents * ceilingMonthsBp) { const severity = limitSeverity(limits, 'bonus.individualCeiling'); add(severity, 'BUD-03', limitFlagText('Bonus for this person is above the individual bonus ceiling', severity, 'reduce the bonus'), x.id); }
   }
   const lumpWorking = (['standard', 'h'] as const).flatMap(plan => {
     const group = rows.filter(x => x.plan === plan && !isSeniorPlanMember(policy,x.facts,x.source.grade)), count = group.filter(x => x.lumpEligible).length;
@@ -154,11 +170,11 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy, co
   });
   const suggestedLumpCents = lumpWorking.length ? Math.min(...lumpWorking.map(x => x.perPersonCents), policy.lumpCapCents ?? Number.MAX_SAFE_INTEGER) : 0;
   const lumpUnitCents = policy.lumpUnitCents ?? suggestedLumpCents;
-  if (lumpUnitCents > suggestedLumpCents) add('warning', 'BUD-05', 'The unit lump sum exceeds the amount supported by the remaining budget.');
+  if (lumpUnitCents > suggestedLumpCents) { const severity = limitSeverity(limits, 'lump.aboveSuggestion'); add(severity, 'BUD-05', limitFlagText('The unit lump sum is more than the remaining budget supports', severity, 'reduce the unit lump sum')); }
   if (lumpUnitCents === 0 && rows.some(x => x.lumpEligible)) add('review', 'BUD-05', `The unit lump-sum provision is withheld (RM 0)${policy.lumpReason ? `: ${policy.lumpReason}` : '.'}`);
   for (const x of rows) {
     x.lumpCents = !x.activeInReview ? 0 : x.plan === 'ec' ? x.recommendation.lumpCents ?? 0 : x.lumpEligible ? x.recommendation.lumpCents ?? lumpUnitCents : 0;
-    if (x.lumpEligible && x.recommendation.lumpCents != null && x.lumpCents !== lumpUnitCents) add('exception', 'BUD-05', 'Individual lump sum differs from the unit amount; RM 0 means withheld.', x.id);
+    if (x.lumpEligible && x.recommendation.lumpCents != null && x.lumpCents !== lumpUnitCents) { const severity = limitSeverity(limits, 'lump.individualAmendment'); add(severity, 'BUD-05', limitFlagText('Individual lump sum differs from the unit amount (RM 0 means withheld)', severity, 'use the unit amount'), x.id); }
   }
   for (const plan of ['standard', 'h', 'ec'] as const) {
     const b = budgets[plan], group = rows.filter(x => x.plan === plan);
@@ -170,11 +186,12 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy, co
     b.bonusUsedCents = sum(group.map(x => x.bonusCents + x.lumpCents));
     b.balanceCents = b.bonusPoolCents - b.bonusUsedCents;
     if (plan === 'ec') continue;
-    const severity = policy.exemptReason ? 'review' : 'block', code = policy.exemptReason ? 'CFG-01' : 'POOL-03';
-    b.used.forEach((used, index) => { if (used > b.pools[index]) add(severity, code, `${plan === 'h' ? 'JG H' : 'Standard'} ${['merit', 'promotion', 'special adjustment'][index]} exceeds its separate pool.`); });
-    // Compare amounts, not a ratio: positive spend against a zero pool MUST block.
-    if (b.bonusUsedCents > b.bonusPoolCents) add(controls.poolStatus === 'final' ? 'block' : severity, policy.exemptReason ? 'CFG-01' : 'BUD-01', `${plan === 'h' ? 'JG H' : 'Standard'} bonus exceeds the 100% budget cap.`);
-    if (b.bonusPoolCents > 0 && b.bonusUsedCents * 100 < b.bonusPoolCents * 80) add('warning', 'BUD-07', `${plan === 'h' ? 'JG H' : 'Standard'} bonus budget is less than 80% utilised.`);
+    // An exemption relaxes budget caps only (the salary pools and the bonus pool cap), never any other check.
+    const exempt = !!policy.exemptReason, code = exempt ? 'CFG-01' : 'POOL-03', label = plan === 'h' ? 'JG H' : 'Standard';
+    b.used.forEach((used, index) => { if (used > b.pools[index]) { const severity = exempt ? 'review' : limitSeverity(limits, `pool.${plan}.${(['merit', 'promotion', 'special'] as const)[index]}`); add(severity, code, limitFlagText(`${label} ${['merit', 'promotion', 'special adjustment'][index]} increases are over their separate pool${exempt ? ' (budget-cap exemption)' : ''}`, severity, 'reduce the increases')); } });
+    // Compare amounts, not a ratio: positive spend against a zero pool MUST block (a cap of 0% also blocks any spend).
+    if (b.bonusUsedCents * 10000 > b.bonusPoolCents * poolCapBp) { const severity = controls.poolStatus === 'final' ? 'block' : exempt ? 'review' : limitSeverity(limits, 'bonus.poolCap'); add(severity, exempt ? 'CFG-01' : 'BUD-01', limitFlagText(`${label} bonus pool is over budget${exempt && severity !== 'block' ? ' (budget-cap exemption)' : ''}`, severity, 'reduce amounts')); }
+    if (b.bonusPoolCents > 0 && b.bonusUsedCents * 10000 < b.bonusPoolCents * underUseBp) { const severity = limitSeverity(limits, 'bonus.underUse'); add(severity, 'BUD-07', limitFlagText(`${label} bonus budget is under-used`, severity, 'use more of the bonus budget')); }
   }
   for(const row of rows.filter(row=>isSeniorPlanMember(policy,row.facts,row.source.grade))) {
     // Offline-confirmed Senior awards never enter any standard budget or token calculation.

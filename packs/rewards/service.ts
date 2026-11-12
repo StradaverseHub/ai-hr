@@ -35,6 +35,7 @@ import {latestConfirmedPatTx} from './pat-inputs';
 import {setupAuthority,setupLock} from './setup-data';
 import {assertRewardConfigReviewed,recordRewardConfigChangeTx,rewardConfigSummary,rewardConfigSummaryDigest,type RewardConfigSummary} from './config-change';
 import {setupYear} from './setup-model';
+import {pinRewardLimitsOnSubmitTx,rewardLimitsForUnitTx} from './limit-controls';
 import { emptyGovernance, effectiveRewardPolicy, poolStatus, unitInputSchema, confirmedSeniorAwards, seniorGrade, maySeeSeniorAmounts, redactPatPolicy, seniorAwardSchema, governanceBasis,governanceHistoryProjection,seniorSourceFingerprint,type RewardPublicGovernance,type RewardGovernance, type SeniorAward } from './governance-model';
 import { assertRewardPolicyGrids } from './policy-grid-validation';
 import { onehrRewardResultTx, onehrRewardResultsTx } from '../performance/service';
@@ -244,7 +245,8 @@ export async function annualRewardCalculationTx(tx:Tx,unit:typeof rewardUnit.$in
     const state=await governanceStateTx(tx,unit.id),publicState=await governancePublicTx(tx,unit.id),awards=await seniorAwardsTx(tx,unit.id,posting);
     const calculationState=state?{...state,awards}: {...emptyGovernance(),awards};
     const policy=state?effectiveRewardPolicy(unit.policy,state):publicState?{...unit.policy,patActual:0,patTarget:100,targetMonthsBp:publicState.targetMonthsBp,multiplierBp:publicState.multiplierBp,branchRatings:publicState.branchRatings,exemptReason:''}:unit.policy;
-    const controls:NonNullable<Parameters<typeof calculateRewards>[2]>={poolStatus:publicState?.status??'legacy',...(publicState?{bonusPools:publicState.pools}:{}),seniorAwards:confirmedSeniorAwards(calculationState,entries)};
+    // Board fc804e8c: every annual calculation uses the review's confirmed Limit Controls (baseline when none).
+    const controls:NonNullable<Parameters<typeof calculateRewards>[2]>={poolStatus:publicState?.status??'legacy',...(publicState?{bonusPools:publicState.pools}:{}),seniorAwards:confirmedSeniorAwards(calculationState,entries),limits:await rewardLimitsForUnitTx(tx,unit)};
     return {policy,controls,publicState};
 }
 async function calculateUnit(tx: Tx, unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[],posting=false) {
@@ -750,7 +752,9 @@ function assertMultiplierAuthority(unit: typeof rewardUnit.$inferSelect, revisio
 function prepareRewardMultiplier(ctx: SessionContext, unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[], multiplierBp: number | null,controls:import('./engine').RewardCalculationControls={}) {
   const now = calculateRewards(entries, unit.policy,controls), next = calculateRewards(entries, { ...unit.policy, multiplierBp },controls);
   const utilisation = (b: { bonusUsedCents: number; bonusPoolCents: number }) => b.bonusPoolCents > 0 ? ratio(b.bonusUsedCents, 10000, b.bonusPoolCents, 'nearest') : null;
-  const plans = (['standard', 'h'] as const).map(plan => ({ plan, nowBp: utilisation(now.budgets[plan]), afterBp: utilisation(next.budgets[plan]), over: next.budgets[plan].bonusUsedCents > next.budgets[plan].bonusPoolCents }));
+  // Board fc804e8c: "over" is the confirmed bonus pool cap (100% on the baseline).
+  const capBp = controls.limits?.values['bonus.poolCap'].value ?? 10000;
+  const plans = (['standard', 'h'] as const).map(plan => ({ plan, nowBp: utilisation(now.budgets[plan]), afterBp: utilisation(next.budgets[plan]), over: next.budgets[plan].bonusUsedCents * 10000 > next.budgets[plan].bonusPoolCents * capBp }));
   const exempt = !!unit.policy.exemptReason;
   const token = createHash('sha256').update(JSON.stringify({ actor: { userId: ctx.userId, personId: ctx.personId }, unitId: unit.id, revision: unit.revision, snapshot: digest(unit, entries), multiplierBp })).digest('hex');
   return { unitId: unit.id, revision: unit.revision, beforeBp: unit.policy.multiplierBp, requestedBp: multiplierBp, effectiveBp: multiplierBp ?? next.suggestedMultiplierBp, plans, exempt, blocked: (controls.poolStatus==='final'||!exempt) && plans.some(p => p.over), digest: token };
@@ -761,7 +765,7 @@ export async function previewRewardMultiplier(ctx: SessionContext, unitId: strin
     const { unit, roles, entries } = await load(tx, unitId);
     assertMultiplierAuthority(unit, revision, roles);
     const state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId);
-    return prepareRewardMultiplier(ctx, {...unit,policy:effectiveRewardPolicy(unit.policy,state)}, entries, value,publicState?{bonusPools:publicState.pools,poolStatus:publicState.status}:{});
+    return prepareRewardMultiplier(ctx, {...unit,policy:effectiveRewardPolicy(unit.policy,state)}, entries, value,{...(publicState?{bonusPools:publicState.pools,poolStatus:publicState.status}:{}),limits:await rewardLimitsForUnitTx(tx,unit)});
   });
 }
 export async function saveRewardMultiplier(ctx: SessionContext, unitId: string, revision: number, multiplierBp: number | null, reason: string, previewDigest: string) {
@@ -772,7 +776,7 @@ export async function saveRewardMultiplier(ctx: SessionContext, unitId: string, 
     const { unit, roles, entries } = await load(tx, unitId, true);
     assertMultiplierAuthority(unit, revision, roles);
     const state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId),effective=effectiveRewardPolicy(unit.policy,state);
-    const prepared = prepareRewardMultiplier(ctx, {...unit,policy:effective}, entries, value,publicState?{bonusPools:publicState.pools,poolStatus:publicState.status}:{});
+    const prepared = prepareRewardMultiplier(ctx, {...unit,policy:effective}, entries, value,{...(publicState?{bonusPools:publicState.pools,poolStatus:publicState.status}:{}),limits:await rewardLimitsForUnitTx(tx,unit)});
     if (prepared.digest !== previewDigest) throw new RewardError('The review changed. Check the impact again before saving.');
     if (prepared.blocked) throw new RewardError(publicState?.status==='final'?'A plan would exceed 100% of its final bonus pool. A budget exemption does not bypass the final-pool cap.':'A plan would exceed 100% of its bonus pool and this review has no budget-cap exemption.');
     if(state?.inputs)await saveGovernanceTx(tx,ctx,unitId,state,{...state,inputs:{...state.inputs,multiplierBp:value}},'unit-inputs-updated',why);
@@ -1173,6 +1177,8 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
       )).orderBy(desc(rewardDecision.createdAt), desc(rewardDecision.id)).limit(1);
       if (prior?.actorId === ctx.userId && action === 'approve') throw new RewardError('A different reviewer must sign the next approval stage.');
     }
+    // Board fc804e8c: a submitted annual review keeps the Limit Controls version it was checked with.
+    if (action === 'submit' && unit.kind === 'annual' && unit.status === 'draft' && !uploaded) await pinRewardLimitsOnSubmitTx(tx, unitId, await rewardLimitsForUnitTx(tx, unit));
     await tx.insert(rewardDecision).values({ tenantId: ctx.tenantId, unitId, actorId: ctx.userId!, revision, action, fromStage: unit.status, toStage: next, reason, digest: hash });
     await tx.update(rewardUnit).set({ status: next, approvedDigest: ['return', 'reject', 'withdraw'].includes(action) ? null : hash, ...(action === 'return' ? { revision: revision + 1 } : {}), ...(unit.kind !== 'annual' ? { reservedCents: { standard: calculated.budgets.standard.used[0], h: calculated.budgets.h.used[0] } } : {}), updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
     await stamp(tx, ctx, unitId, next === 'approved' ? 'approved' : 'routed', { from: unit.status, to: next, revision });

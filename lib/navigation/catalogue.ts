@@ -153,6 +153,7 @@ export const REVIEWED_SHELL_BINDINGS:Readonly<Record<string,Binding>> = {
   "rewards/rewardsSalaryStructures": {"id": "shell.rewardsSalaryStructures", "sourceOwner": "packs/rewards/index.ts", "sourceKey": "shell-slot:rewardsSalaryStructures", "status": "declared"},
   "rewards/rewardsBonusMatrices": {"id": "shell.rewardsBonusMatrices", "sourceOwner": "packs/rewards/index.ts", "sourceKey": "shell-slot:rewardsBonusMatrices", "status": "declared"},
   "rewards/rewardsPatInputs": {"id": "shell.rewardsPatInputs", "sourceOwner": "packs/rewards/index.ts", "sourceKey": "shell-slot:rewardsPatInputs", "status": "declared"},
+  "rewards/rewardsLimitControls": {"id": "shell.rewardsLimitControls", "sourceOwner": "packs/rewards/index.ts", "sourceKey": "shell-slot:rewardsLimitControls", "status": "declared"},
   "rewards/rewardsChangeLog": {"id": "shell.rewardsChangeLog", "sourceOwner": "packs/rewards/index.ts", "sourceKey": "shell-slot:rewardsChangeLog", "status": "declared"},
   "rewards/rewardsAccess": {"id": "shell.rewardsAccess", "sourceOwner": "packs/rewards/index.ts", "sourceKey": "shell-slot:rewardsAccess", "status": "declared"},
   "scoped/probation/probationTracker": {"id": "shell.probationTracker", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationTracker", "status": "declared"},

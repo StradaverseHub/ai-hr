@@ -588,7 +588,8 @@
     "probationTracker": "Probation tracker",
     "myPayrollReadiness": "My payroll readiness",
     "attendanceFormulaBuilder": "Attendance formulas",
-    "rewardsChangeLog": "Change log"
+    "rewardsChangeLog": "Change log",
+    "rewardsLimitControls": "Limit Controls"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -24544,7 +24545,9 @@
       "companyArchived": "Archived",
       "selectedSummary": "Selected companies and business units",
       "membershipChanged": "Organisation membership changed; review this selection.",
-      "noMembership": "No current business unit assignment in People Management."
+      "noMembership": "No current business unit assignment in People Management.",
+      "limitControlsNote": "Salary increase pools and lump-sum limits are managed in Limit Controls for the reward year.",
+      "limitControlsLink": "Open Limit Controls"
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -36848,7 +36851,7 @@
       "SAL-03": "With promotion, an increase of {limit}% or more needs review.",
       "SAL-01": "New basic salary cannot be below the current basic salary.",
       "SAL-04": "Pay above maximum or still below minimum is shown for review.",
-      "BUD-01": "Bonus uses PAT achievement × {targetMonths} target months × eligible payroll; over 100% blocks and under {minimum}% warns.",
+      "BUD-01": "Bonus uses PAT achievement × {targetMonths} target months × eligible payroll; over {cap}% blocks and under {minimum}% warns.",
       "BUD-02": "Bonus uses grade × performance × unit multiplier × proration. Individual changes are exceptions.",
       "BUD-03": "Payout is rounded down; more than {months} bonus months is an exception.",
       "BUD-05": "Lump sums use {share}% of remaining balance, rounded down to MYR {step}; cap {cap}. MYR 0 is withheld.",
@@ -36865,6 +36868,20 @@
       "UPL-01": "Uploaded awards must have valid company employees, active grades, nonnegative amounts and no salary reduction.",
       "UPL-02": "General eligibility is warning-only for uploaded awards, including joining cutoff {cutoff} and salary changes {from} to {to}.",
       "ARCH-01": "The employee grade differs from the approved position grade. Review the mapping or propose a dated grade movement; the recorded employee grade stays unchanged."
+    },
+    "plainHeading": "What each rule does",
+    "plainLegend": "Checks on the review tell you what to fix and whether it stops submission. Group Rewards manages the limits behind them.",
+    "limitVersion": "This review uses Limit Controls version {version}.",
+    "plain": {
+      "POOL-01": "Merit increases follow the talent and salary-range matrix and must stay within the merit pool.",
+      "PRO-01": "A promotion moves the person up a limited number of grades and is funded from its own promotion pool.",
+      "POOL-04": "STAR and SSTAR employees paid well below their range may receive a catch-up and a top-up to the range minimum, within the special adjustment pool.",
+      "POOL-10": "JG H has its own merit, promotion and special adjustment pools.",
+      "SAL-02": "A large increase without a promotion needs a reason.",
+      "SAL-03": "A large increase with a promotion needs a reason.",
+      "BUD-01": "The bonus pool follows PAT achievement and target months. Spending over the pool stops submission; using too little of it shows a warning.",
+      "BUD-03": "Bonus payouts are rounded down. An unusually high individual bonus needs a reason.",
+      "BUD-05": "Lump sums share the remaining bonus balance. RM 0 means withheld; a different individual amount needs a reason."
     }
   },
   "rewardAccessPolicy": {
@@ -38391,5 +38408,120 @@
     "previous": "Previous",
     "next": "Next",
     "exportTruncated": "Only the first 5,000 changes are included. Narrow the filters to export the rest."
+  },
+  "rewardLimits": {
+    "description": "Limits and thresholds for each reward year. Every check in the reviews, the AI advisor and Rewards Analytics uses the values for the review's reward year.",
+    "noAccess": "You don't have access",
+    "noAccessHelp": "Limit Controls are available to Group Rewards, CTRO and EC.",
+    "year": "Reward year",
+    "show": "Show",
+    "viewOnly": "You can view these limits. Only Group Rewards can change them.",
+    "versionLine": "Version {version} is in use for {year}.",
+    "baselineLine": "No version has been saved for {year} yet. These are the standard values; saving creates version 1.",
+    "typeHelp": "Block stops submission. Exception and Warning travel with the review and need a reason before it is submitted. Note is shown for information only.",
+    "columns": {
+      "limit": "Limit",
+      "value": "Value",
+      "type": "Type",
+      "appliesTo": "Applies to",
+      "lastChanged": "Last changed by / date"
+    },
+    "areas": {
+      "pools": "Salary increase pools",
+      "person": "Salary increase per person",
+      "bonus": "Bonus",
+      "lump": "Lump sum",
+      "exemption": "Exemptions",
+      "advisor": "AI advisor"
+    },
+    "labels": {
+      "pool_standard_merit": "Merit pool (% of eligible payroll)",
+      "pool_standard_promotion": "Promotion pool (% of eligible payroll)",
+      "pool_standard_special": "Special adjustment pool (% of eligible payroll)",
+      "pool_h_merit": "Merit pool (% of eligible payroll)",
+      "pool_h_promotion": "Promotion pool (% of eligible payroll)",
+      "pool_h_special": "Special adjustment pool (% of eligible payroll)",
+      "pool_separate": "Pools can't fund each other or another company",
+      "increase_withoutPromotion": "Total increase without promotion above",
+      "increase_withPromotion": "Total increase with promotion at or above",
+      "promotion_increment": "Promotion increment",
+      "promotion_maxGrades": "Maximum grades up",
+      "promotion_maxGrade": "Highest grade after promotion",
+      "catchUp_crFloor": "CR catch-up floor for STAR/SSTAR",
+      "salary_noReduction": "No salary reduction",
+      "bonus_poolCap": "Bonus pool cap",
+      "bonus_underUse": "Under-use warning below",
+      "bonus_individualCeiling": "Individual bonus ceiling above",
+      "bonus_rounding": "Payout rounding (round down)",
+      "bonus_individualMultiplier": "Individual multiplier different from the unit's",
+      "lump_share": "Share of remaining balance",
+      "lump_step": "Rounding step",
+      "lump_cap": "Per-person cap",
+      "lump_aboveSuggestion": "Unit amount above the suggestion",
+      "lump_individualAmendment": "Individual amendments",
+      "exemption_budgetCapsOnly": "Exempt companies: budget caps only, with a reason",
+      "advisor_override": "Override threshold",
+      "advisor_longWithoutIncrease": "Long time without increase",
+      "advisor_peerGap": "Peer pay gap"
+    },
+    "types": {
+      "block": "Block",
+      "exception": "Exception",
+      "warning": "Warning",
+      "note": "Note"
+    },
+    "appliesTo": {
+      "standard": "Standard plan",
+      "h": "JG H plan",
+      "all": "All plans"
+    },
+    "units": {
+      "percent": "%",
+      "points": "percentage points",
+      "ratio": "CR",
+      "months": "months",
+      "myr": "RM",
+      "grades": "grades",
+      "grade": "JG",
+      "years": "years"
+    },
+    "fixed": "Fixed",
+    "fixedHelp": "Fixed to protect pay; it cannot be changed.",
+    "none": "None",
+    "standardValue": "Standard value",
+    "changedBy": "{name} · {date}",
+    "unknownPerson": "Unknown",
+    "valueFor": "Value for {limit}",
+    "typeFor": "Type for {limit}",
+    "reviewSave": "Review before saving",
+    "save": "Save new version",
+    "discard": "Discard changes",
+    "saved": "Saved as version {version}.",
+    "errors": {
+      "system": "The limits could not be saved. Your changes are still here; try again."
+    },
+    "reviewsHeading": "Reviews in this reward year",
+    "reviewsHelp": "Draft reviews use the current version. Reviews past Draft keep the version they were submitted with. If you apply the current version to them, their checks are run again and their current approver is told.",
+    "reviewColumns": {
+      "review": "Review",
+      "stage": "Stage",
+      "versionUsed": "Limits used"
+    },
+    "select": "Select",
+    "selectReview": "Select {review}",
+    "baseline": "Standard values (before Limit Controls)",
+    "currentVersion": "Current (version {version})",
+    "version": "Version {version}",
+    "apply": "Apply version {version} to the selected reviews",
+    "applyConfirm": "Apply and notify approvers",
+    "applied": "{count, plural, one {Applied to # review.} other {Applied to # reviews.}}",
+    "noReviews": "No reviews use this reward year yet.",
+    "reviewsTruncated": "Only the first 200 reviews are listed.",
+    "exemptionsHeading": "Budget-cap exemptions",
+    "exemptionsHelp": "An exemption only relaxes budget caps (the salary increase pools and the bonus pool cap). It is recorded with its reason on the review's set-up.",
+    "noExemptions": "No review in this reward year has a budget-cap exemption.",
+    "historyHeading": "Version history",
+    "noVersions": "No versions yet.",
+    "changeLogLink": "See every change in the change log"
   }
 }

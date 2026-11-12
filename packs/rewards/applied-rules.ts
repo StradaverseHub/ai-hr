@@ -6,6 +6,7 @@ import {listRewardUnits} from './service';
 import type {RewardPolicy} from './model';
 import {assertRewardCapabilityTx} from './access-policy';
 import {publicAppliedRules} from './applied-rules-model';
+import {rewardLimitControlsAccessTx,rewardLimitsForUnitTx} from './limit-controls';
 type AppliedReferences={plan:{name:string;version:number};salary:{name:string;version:number};bonus:{name:string;version:number;type:string};pat:{status:string;version:number}};
 export async function rewardRulesForReview(ctx:SessionContext,unitId:string){
  return withRewardsTenant(ctx,async tx=>{
@@ -17,7 +18,10 @@ export async function rewardRulesForReview(ctx:SessionContext,unitId:string){
   let versions:AppliedReferences|null=null;
   const [setupReady]=await tx.execute<{ready:boolean}>(sql`select to_regprocedure('app.reward_applied_public_references(uuid)') is not null as ready`);
   if(setupReady?.ready){const [r]=await tx.execute<{value:AppliedReferences|null}>(sql`select app.reward_applied_public_references(${unitId}::uuid) as value`);versions=r?.value??null;}
-  return{unitId,company:v.companyName,cycle:v.cycleName,cycleId:v.cycleId,origin:origin?.value??null,versions,...publicAppliedRules(v.policy,uploaded)};
+  // Board fc804e8c: the review's confirmed Limit Controls; only Limit Controls readers (Group Rewards, CTRO, EC) see
+  // the values, controls and references. BU and BG CEOs, proxies and PBPs see what each rule does in plain language.
+  const [limits,limitAccess]=[await rewardLimitsForUnitTx(tx,{id:unitId,policy:v.policy}),await rewardLimitControlsAccessTx(tx)];
+  return{unitId,company:v.companyName,cycle:v.cycleName,cycleId:v.cycleId,origin:origin?.value??null,versions,limitVersion:limitAccess?limits.revision:null,...publicAppliedRules(v.policy,uploaded,{limits,showLimits:!!limitAccess})};
  });
 }
 export async function rewardRulesChoices(ctx:SessionContext,companyIds:string[]){const choices=await listRewardUnits(ctx,companyIds);return withRewardsTenant(ctx,async tx=>{const out=[];for(const u of choices){const [cap]=await tx.execute<{allowed:boolean}>(sql`select app.reward_capability(${u.id}::uuid,'rules.view') as allowed`);if(cap?.allowed)out.push({id:u.id,cycleId:u.cycleId,cycle:u.cycle,companyId:u.companyId,company:u.company,year:u.year});}return out;});}

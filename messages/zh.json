@@ -588,7 +588,8 @@
     "probationTracker": "试用期跟踪",
     "myPayrollReadiness": "我的发薪准备",
     "attendanceFormulaBuilder": "考勤公式",
-    "rewardsChangeLog": "变更日志"
+    "rewardsChangeLog": "变更日志",
+    "rewardsLimitControls": "限额控制"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -24544,7 +24545,9 @@
       "companyArchived": "已归档",
       "selectedSummary": "已选公司及业务单位",
       "membershipChanged": "组织归属已变更，请检查此选择。",
-      "noMembership": "人员管理中没有当前业务单位归属。"
+      "noMembership": "人员管理中没有当前业务单位归属。",
+      "limitControlsNote": "加薪池和一次性奖金限额在该奖励年度的限额控制中管理。",
+      "limitControlsLink": "打开限额控制"
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -36848,7 +36851,7 @@
       "SAL-03": "有晋升的加薪达到或超过 {limit}% 时须复核。",
       "SAL-01": "新基本工资不得低于现有基本工资。",
       "SAL-04": "超过最高值或仍低于最低值的工资须复核。",
-      "BUD-01": "奖金为 PAT 达成率 × 目标 {targetMonths} 月 × 合资格工资；超过 100% 会阻止，低于 {minimum}% 会警告。",
+      "BUD-01": "奖金为 PAT 达成率 × 目标 {targetMonths} 月 × 合资格工资；超过 {cap}% 会阻止，低于 {minimum}% 会警告。",
       "BUD-02": "奖金按职级 × 绩效 × 单位倍数 × 比例计算。个人调整属于例外。",
       "BUD-03": "奖金向下取整；超过 {months} 个月属于例外。",
       "BUD-05": "一次性奖励使用余额的 {share}%，向下取整至 MYR {step}；上限 {cap}。MYR 0 表示不发放。",
@@ -36865,6 +36868,20 @@
       "UPL-01": "上传奖励须使用有效公司员工、在用职级及非负金额，不可减薪。",
       "UPL-02": "上传奖励的一般资格仅作警告，包括入职截止日 {cutoff} 及 {from} 至 {to} 的薪资调整。",
       "ARCH-01": "员工职级与已批准的岗位职级不同。请审查映射或提出有生效日期的职级变动；已记录的员工职级保持不变。"
+    },
+    "plainHeading": "每条规则的作用",
+    "plainLegend": "审查中的检查会告诉您需要修正什么，以及是否会阻止提交。背后的限额由 Group Rewards 管理。",
+    "limitVersion": "本审查使用限额控制第 {version} 版。",
+    "plain": {
+      "POOL-01": "绩效加薪按人才与薪资区间矩阵计算，并且必须控制在绩效加薪池内。",
+      "PRO-01": "晋升使员工提升有限的职级，并由其单独的晋升池支付。",
+      "POOL-04": "薪资明显低于区间的 STAR 和 SSTAR 员工可获得追赶调整及补足至区间最低值，在特别调整池内支付。",
+      "POOL-10": "JG H 拥有独立的绩效、晋升和特别调整池。",
+      "SAL-02": "未晋升但加薪幅度较大时需要说明理由。",
+      "SAL-03": "晋升且加薪幅度较大时需要说明理由。",
+      "BUD-01": "奖金池按 PAT 达成率和目标月数计算。超出奖金池会阻止提交；使用过少会显示警告。",
+      "BUD-03": "奖金发放向下取整。个人奖金异常偏高时需要说明理由。",
+      "BUD-05": "一次性奖金分配剩余奖金余额。RM 0 表示暂不发放；个人金额不同需要说明理由。"
     }
   },
   "rewardAccessPolicy": {
@@ -38391,5 +38408,120 @@
     "previous": "上一页",
     "next": "下一页",
     "exportTruncated": "仅包含前 5,000 项变更。请缩小筛选范围以导出其余部分。"
+  },
+  "rewardLimits": {
+    "description": "每个奖励年度的限额和阈值。审查、AI 顾问和奖励分析中的每项检查都使用该审查所属奖励年度的数值。",
+    "noAccess": "您没有访问权限",
+    "noAccessHelp": "限额控制仅供 Group Rewards、CTRO 和 EC 使用。",
+    "year": "奖励年度",
+    "show": "显示",
+    "viewOnly": "您可以查看这些限额。只有 Group Rewards 可以更改。",
+    "versionLine": "{year} 年正在使用第 {version} 版。",
+    "baselineLine": "{year} 年尚未保存任何版本。以下为标准数值；保存后将创建第 1 版。",
+    "typeHelp": "阻止：阻止提交。例外和警告：随审查流转，提交前需要说明理由。备注：仅供参考。",
+    "columns": {
+      "limit": "限额",
+      "value": "数值",
+      "type": "类型",
+      "appliesTo": "适用于",
+      "lastChanged": "最后修改人 / 日期"
+    },
+    "areas": {
+      "pools": "加薪池",
+      "person": "个人加薪",
+      "bonus": "奖金",
+      "lump": "一次性奖金",
+      "exemption": "豁免",
+      "advisor": "AI 顾问"
+    },
+    "labels": {
+      "pool_standard_merit": "绩效加薪池（占合资格工资的 %）",
+      "pool_standard_promotion": "晋升池（占合资格工资的 %）",
+      "pool_standard_special": "特别调整池（占合资格工资的 %）",
+      "pool_h_merit": "绩效加薪池（占合资格工资的 %）",
+      "pool_h_promotion": "晋升池（占合资格工资的 %）",
+      "pool_h_special": "特别调整池（占合资格工资的 %）",
+      "pool_separate": "各池之间及不同公司之间不得相互调拨",
+      "increase_withoutPromotion": "未晋升的总加薪超过",
+      "increase_withPromotion": "晋升的总加薪达到或超过",
+      "promotion_increment": "晋升加薪幅度",
+      "promotion_maxGrades": "最多晋升职级数",
+      "promotion_maxGrade": "晋升后的最高职级",
+      "catchUp_crFloor": "STAR/SSTAR 的 CR 追赶下限",
+      "salary_noReduction": "不得减薪",
+      "bonus_poolCap": "奖金池上限",
+      "bonus_underUse": "使用不足警告低于",
+      "bonus_individualCeiling": "个人奖金上限超过",
+      "bonus_rounding": "发放取整（向下取整）",
+      "bonus_individualMultiplier": "个人系数与单位不同",
+      "lump_share": "剩余余额占比",
+      "lump_step": "取整单位",
+      "lump_cap": "每人上限",
+      "lump_aboveSuggestion": "单位金额高于建议值",
+      "lump_individualAmendment": "个人调整",
+      "exemption_budgetCapsOnly": "豁免公司：仅限预算上限，需说明理由",
+      "advisor_override": "调整阈值",
+      "advisor_longWithoutIncrease": "长期未加薪",
+      "advisor_peerGap": "同级薪资差距"
+    },
+    "types": {
+      "block": "阻止",
+      "exception": "例外",
+      "warning": "警告",
+      "note": "备注"
+    },
+    "appliesTo": {
+      "standard": "标准计划",
+      "h": "JG H 计划",
+      "all": "所有计划"
+    },
+    "units": {
+      "percent": "%",
+      "points": "个百分点",
+      "ratio": "CR",
+      "months": "个月",
+      "myr": "RM",
+      "grades": "级",
+      "grade": "JG",
+      "years": "年"
+    },
+    "fixed": "固定",
+    "fixedHelp": "为保障薪酬而固定，不可更改。",
+    "none": "无",
+    "standardValue": "标准数值",
+    "changedBy": "{name} · {date}",
+    "unknownPerson": "未知",
+    "valueFor": "{limit} 的数值",
+    "typeFor": "{limit} 的类型",
+    "reviewSave": "保存前检查",
+    "save": "保存新版本",
+    "discard": "放弃更改",
+    "saved": "已保存为第 {version} 版。",
+    "errors": {
+      "system": "无法保存限额。您的更改仍在；请重试。"
+    },
+    "reviewsHeading": "本奖励年度的审查",
+    "reviewsHelp": "草稿审查使用当前版本。已提交的审查保留提交时的版本。如果您对其应用当前版本，将重新运行其检查并通知当前审批人。",
+    "reviewColumns": {
+      "review": "审查",
+      "stage": "阶段",
+      "versionUsed": "使用的限额"
+    },
+    "select": "选择",
+    "selectReview": "选择 {review}",
+    "baseline": "标准数值（限额控制之前）",
+    "currentVersion": "当前（第 {version} 版）",
+    "version": "第 {version} 版",
+    "apply": "将第 {version} 版应用于所选审查",
+    "applyConfirm": "应用并通知审批人",
+    "applied": "{count, plural, other {已应用于 # 个审查。}}",
+    "noReviews": "尚无审查使用此奖励年度。",
+    "reviewsTruncated": "仅列出前 200 个审查。",
+    "exemptionsHeading": "预算上限豁免",
+    "exemptionsHelp": "豁免仅放宽预算上限（加薪池和奖金池上限），并连同理由记录在审查的设置中。",
+    "noExemptions": "本奖励年度没有审查获得预算上限豁免。",
+    "historyHeading": "版本历史",
+    "noVersions": "尚无版本。",
+    "changeLogLink": "在变更日志中查看所有更改"
   }
 }

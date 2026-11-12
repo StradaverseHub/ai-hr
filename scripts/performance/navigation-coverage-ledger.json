@@ -1264,6 +1264,15 @@
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
+      "id": "shell.rewardsLimitControls",
+      "sourceOwner": "packs/rewards/index.ts",
+      "sourceKey": "shell-slot:rewardsLimitControls",
+      "declaredHref": "/admin/rewards/limit-controls",
+      "status": "uncovered",
+      "owner": "packs/rewards/index.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
       "id": "shell.rewardsChangeLog",
       "sourceOwner": "packs/rewards/index.ts",
       "sourceKey": "shell-slot:rewardsChangeLog",

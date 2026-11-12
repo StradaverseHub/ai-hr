@@ -32,6 +32,7 @@ export type NotificationRecipientReaders<Reader>={
  rewardPoolChanged:NotificationRecipientReader<Reader>;
  rewardApproved:NotificationRecipientReader<Reader>;
  rewardConfigChanged:NotificationRecipientReader<Reader>;
+ rewardLimitsReapplied:NotificationRecipientReader<Reader>;
  leaveSubmitted:NotificationRecipientReader<Reader>;
  leaveCancellationSubmitted:NotificationRecipientReader<Reader>;
  overtimeSubmitted:NotificationRecipientReader<Reader>;
@@ -162,6 +163,13 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
     kind:'rewards.final-pool-changed',category:'rewards',
     render:(_payload,event)=>({severity:'action',title:'Rewards pool updated',body:'Group Rewards changed the bonus pool or its status. Review the current pool and budget checks before approving.',linkPath:`/rewards/${event.aggregateId}#unit-governance`}),
     recipientPort:'rewardPoolChanged',recipients:readers.rewardPoolChanged,
+  },
+  // Board fc804e8c: Group Rewards explicitly applied a newer Limit Controls version to a review in the approval route.
+  // The same current-approver audience as the pool notice (its own port: no native reader yet); no limit value.
+  'reward-unit.limits-reapplied': {recipientAudience:'reader',
+    kind:'rewards.limits-reapplied',category:'rewards',
+    render:(_payload,event)=>({severity:'action',title:'Rewards checks updated',body:'Group Rewards applied updated Limit Controls to this review. Its checks were run again; review them before you approve.',linkPath:`/rewards/${event.aggregateId}#checks`}),
+    recipientPort:'rewardLimitsReapplied',recipients:readers.rewardLimitsReapplied,
   },
   // Board 60f1fdcd: one notice per Rewards configuration save to the other configuration holders. It names the item,
   // the editor, the count of changed values and the reason; never a value or anyone's pay.
