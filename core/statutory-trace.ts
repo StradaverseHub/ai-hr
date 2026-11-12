@@ -134,3 +134,38 @@ export function readRunStatutoryStamp(statutory: unknown, bonus: number): RunSta
   if (epfAdditional > round2(Math.max(0, bonus)) + 0.005) return null;
   return { epfAdditional, socsoWageExtra };
 }
+
+/**
+ * Item 69d6ed3c (follow-up) — WHAT AN EARLIER RUN CHARGED ITS ADDITIONAL PAY ON, whichever record it has.
+ *
+ *   'trace'           — its own `statutoryTrace.run.own` stamp (payslips processed from this item on);
+ *   'component_lines' — a payslip processed BEFORE the trace, read off its own `componentLines` stamp: the
+ *                       bonus-bucket money on lines whose EPF box was ticked when THAT run folded them. This is
+ *                       the same figure the kernel computes as `bonus − epfAdditionalExcluded`, recorded by that
+ *                       run, so reprocessing a later run corrects it without the earlier run being reprocessed
+ *                       first. Used only when the lines' bonus buckets add up to the slip's own bonus. Those old
+ *                       lines do not record EPF Bonus 2012, so the SOCSO/EIS part stays at the old reading (0);
+ *   null              — neither: the caller keeps the old reading (the gross bonus) and discloses it.
+ */
+export function readEarlierRunLiability(
+  statutory: unknown,
+  bonus: number,
+): (RunStatutoryStamp & { source: 'trace' | 'component_lines' }) | null {
+  const own = readRunStatutoryStamp(statutory, bonus);
+  if (own) return { ...own, source: 'trace' };
+  const lines = (statutory as { componentLines?: unknown } | null)?.componentLines;
+  if (!Array.isArray(lines)) return null;
+  let total = 0, epf = 0;
+  for (const raw of lines) {
+    const l = raw as { epf?: unknown; buckets?: unknown };
+    if (!l || typeof l !== 'object' || typeof l.epf !== 'boolean' || !Array.isArray(l.buckets)) return null;
+    for (const b of l.buckets as { bucket?: unknown; amount?: unknown }[]) {
+      if (b?.bucket !== 'bonus') continue;
+      if (typeof b.amount !== 'number' || !Number.isFinite(b.amount)) return null;
+      total = round2(total + b.amount);
+      if (l.epf) epf = round2(epf + b.amount);
+    }
+  }
+  if (Math.abs(total - round2(Math.max(0, bonus))) >= 0.005) return null;
+  return { epfAdditional: Math.max(0, epf), socsoWageExtra: 0, source: 'component_lines' };
+}

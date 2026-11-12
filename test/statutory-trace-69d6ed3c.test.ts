@@ -19,7 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { statutory, type StatutoryTraceV1 } from '../localization/my/payroll';
-import { buildStatutoryTraceLines, readRunStatutoryStamp } from '../core/statutory-trace';
+import { buildStatutoryTraceLines, readEarlierRunLiability, readRunStatutoryStamp } from '../core/statutory-trace';
 import { readStatutoryTrace, STATUTORY_TRACE_AMOUNT_KEYS } from '../core/statutory-trace-explain';
 import { explainStatutory } from '../core/statutory-explain';
 import { epfTraceItemRows, epfTraceRows, runTraceRows, scheduleTraceRows, socsoTraceItemRows } from '../app/payroll/statutory-detail/statutory-trace';
@@ -131,6 +131,25 @@ describe('69d6ed3c — the multi-run defect, in the arithmetic the kernel perfor
     expect(readRunStatutoryStamp({ statutoryTrace: { version: 1, run: { own: { epfAdditional: 1200, socsoWageExtra: 0 } } } }, 1000)).toBeNull();
     expect(readRunStatutoryStamp({ statutoryTrace: { version: 2, run: { own: { epfAdditional: 0, socsoWageExtra: 0 } } } }, 1000)).toBeNull();
     expect(readRunStatutoryStamp({ statutoryTrace: { version: 1, run: { own: { epfAdditional: -1, socsoWageExtra: 0 } } } }, 1000)).toBeNull();
+  });
+});
+
+describe('69d6ed3c — a pre-trace earlier run is read off its own pay item lines', () => {
+  const lines = [
+    { code: 'B1', epf: false, buckets: [{ bucket: 'bonus', amount: 1000 }] },
+    { code: 'T', epf: true, buckets: [{ bucket: 'wage', amount: 300 }] },
+  ];
+  it('EPF-liable = bonus-bucket money on EPF-ticked lines, when the lines add up to the slip bonus', () => {
+    expect(readEarlierRunLiability({ componentLines: lines }, 1000)).toEqual({ epfAdditional: 0, socsoWageExtra: 0, source: 'component_lines' });
+    expect(readEarlierRunLiability({ componentLines: [...lines, { code: 'B2', epf: true, buckets: [{ bucket: 'bonus', amount: 800 }] }] }, 1800))
+      .toEqual({ epfAdditional: 800, socsoWageExtra: 0, source: 'component_lines' });
+  });
+  it('the trace stamp wins; lines that do not reconcile, or none at all, mean the old gross reading', () => {
+    expect(readEarlierRunLiability({ componentLines: lines, statutoryTrace: { version: 1, run: { own: { epfAdditional: 0, socsoWageExtra: 5 } } } }, 1000))
+      .toEqual({ epfAdditional: 0, socsoWageExtra: 5, source: 'trace' });
+    expect(readEarlierRunLiability({ componentLines: lines }, 1200)).toBeNull();
+    expect(readEarlierRunLiability({}, 1000)).toBeNull();
+    expect(readEarlierRunLiability({ componentLines: [{ code: 'X', buckets: [] }] }, 0)).toBeNull();
   });
 });
 

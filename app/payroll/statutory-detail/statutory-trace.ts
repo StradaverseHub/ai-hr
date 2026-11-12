@@ -233,6 +233,9 @@ export function runTraceRows(trace: StatutoryTraceRecord, key: TraceKey, t: T, m
     if (key === 'epf' && run.earlier && run.earlier.unstamped > 0) {
       rows.push({ label: t('traceNote'), value: t('traceEarlierUnstamped') });
     }
+    if (key === 'epf' && run.earlier && (run.earlier.fromItemLines ?? 0) > 0) {
+      rows.push({ label: t('traceNote'), value: t('traceEarlierFromItemLines') });
+    }
   }
   rows.push({ label: t('traceThisRunEmployee'), value: money(run.thisRun[k.employee]) });
   if (k.employer) rows.push({ label: t('traceThisRunEmployer'), value: money(run.thisRun[k.employer]) });

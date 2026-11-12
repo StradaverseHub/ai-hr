@@ -9010,7 +9010,8 @@
       "traceChargedBeforeEmployer": "Employer amount already charged by earlier runs",
       "traceEarlierUnstamped": "An earlier run this month was processed before the detailed working was recorded, so its whole additional pay is counted. Reprocess that run to apply its pay item settings.",
       "traceThisRunEmployee": "Employee amount on this payslip",
-      "traceThisRunEmployer": "Employer amount on this payslip"
+      "traceThisRunEmployer": "Employer amount on this payslip",
+      "traceEarlierFromItemLines": "An earlier run this month was processed before the detailed working was recorded. Its EPF wages were read from the pay item settings saved on that payslip."
     },
     "txnImport": {
       "title": {

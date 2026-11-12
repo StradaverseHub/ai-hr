@@ -37,6 +37,7 @@ import {
   type PayComponentInput,
 } from '../core/pay-components';
 import { explainStatutory } from '../core/statutory-explain';
+import { runMultiRunEpfRecalcMark } from '../scripts/mark-multirun-epf-recalc-69d6ed3c';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let base: Base;
@@ -190,7 +191,7 @@ describe('69d6ed3c — the payslip carries the working that produced it', () => 
 });
 
 describe('69d6ed3c — the multi-run defect: an earlier run counts only its EPF-subject pay', () => {
-  async function threeRuns(stripRunOneTrace: boolean) {
+  async function threeRuns(strip: 'none' | 'trace' | 'trace_and_lines') {
     await upsertPayComponent(a, TRANSPORT());
     await upsertPayComponent(a, item('B1', 'Ex gratia', { includedInEpf: false, includedInSocsoEis: false, pcbRemunerationType: 'additional' }));
     await upsertPayComponent(a, item('B2', 'Performance bonus', { includedInSocsoEis: false, pcbRemunerationType: 'additional' }));
@@ -201,10 +202,11 @@ describe('69d6ed3c — the multi-run defect: an earlier run counts only its EPF-
     const run1 = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: PERIOD, runType: 'bonus' });
     await setPayrollBatchComponent(a, { batchId: run1.batchId, employmentId: e.employmentId, componentId: await idByCode('B1'), amount: 1000 });
     await generatePayslips(a, { batchId: run1.batchId });
-    if (stripRunOneTrace) {
-      // A run processed before this item carries no trace: emulate it exactly.
+    if (strip !== 'none') {
+      // A run processed before this item carries no trace (and a legacy one no item lines either).
       const s1 = await slipOf(run1.batchId, e.employmentId);
-      await owner.db.update(schema.payslip).set({ statutory: sql`${schema.payslip.statutory} - 'statutoryTrace'` }).where(eq(schema.payslip.id, s1.id));
+      const drop = strip === 'trace' ? sql`${schema.payslip.statutory} - 'statutoryTrace'` : sql`${schema.payslip.statutory} - 'statutoryTrace' - 'componentLines'`;
+      await owner.db.update(schema.payslip).set({ statutory: drop }).where(eq(schema.payslip.id, s1.id));
     }
     const run2 = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: PERIOD, runType: 'bonus' });
     await setPayrollBatchComponent(a, { batchId: run2.batchId, employmentId: e.employmentId, componentId: await idByCode('B2'), amount: 800 });
@@ -214,7 +216,7 @@ describe('69d6ed3c — the multi-run defect: an earlier run counts only its EPF-
 
   it('regular 418 / 494; run 1 (not EPF) adds 0 / 0; run 2 adds 88 / 104 (the old code gave 88 / 48)', async () => {
     await setup();
-    const { e, reg, run1, run2 } = await threeRuns(false);
+    const { e, reg, run1, run2 } = await threeRuns('none');
     const r = statOf(await slipOf(reg.batchId, e.employmentId));
     const s1 = statOf(await slipOf(run1.batchId, e.employmentId));
     const s2 = statOf(await slipOf(run2.batchId, e.employmentId));
@@ -234,9 +236,18 @@ describe('69d6ed3c — the multi-run defect: an earlier run counts only its EPF-
     expect((s2 as unknown as { bases: Record<string, number> }).bases).toMatchObject({ epf: 3800, epfAdditional: 800 });
   });
 
-  it('an earlier run with no trace keeps the old reading and the trace says so', async () => {
+  it('an earlier run from before the trace is read off its own pay item lines: still 88 / 104, in any order', async () => {
     await setup();
-    const { e, run2 } = await threeRuns(true);
+    const { e, run2 } = await threeRuns('trace');
+    const s2 = statOf(await slipOf(run2.batchId, e.employmentId));
+    expect([s2.epfEmployee, s2.epfEmployer]).toEqual([88, 104]);
+    expect(s2.statutoryTrace!.run.earlier).toMatchObject({ unstamped: 0, fromItemLines: 1, epfAdditional: 0 });
+    expect(explainStatutory(s2, 'bonus').traceStatus).toBe('recorded');
+  });
+
+  it('an earlier run with neither a trace nor item lines keeps the old reading and the trace says so', async () => {
+    await setup();
+    const { e, run2 } = await threeRuns('trace_and_lines');
     const s2 = statOf(await slipOf(run2.batchId, e.employmentId));
     // Old behaviour exactly — no recomputation of a payslip processed before the trace.
     expect([s2.epfEmployee, s2.epfEmployer]).toEqual([88, 48]);
@@ -265,5 +276,83 @@ describe('69d6ed3c — closed months stay exactly as they are', () => {
     expect(statOf(after).statutoryTrace).toBeUndefined();
     expect(money(statOf(after))).toEqual([506, 598, 20.75, 72.65, 31.15, 8.3, 8.3]);
     expect(explainStatutory(after.statutory, 'regular').traceStatus).toBe('absent');
+  });
+});
+
+describe('69d6ed3c — open multi-run months processed before the fix show Reprocess Required', () => {
+  const URL = process.env.TEST_MIGRATION_DATABASE_URL!;
+  async function preFixMonth() {
+    await upsertPayComponent(a, TRANSPORT());
+    await upsertPayComponent(a, item('B1', 'Ex gratia', { includedInEpf: false, includedInSocsoEis: false, pcbRemunerationType: 'additional' }));
+    await upsertPayComponent(a, item('B2', 'Performance bonus', { includedInSocsoEis: false, pcbRemunerationType: 'additional' }));
+    const e = await hire('marked@acme.test', 3500);
+    await recurring(e.employmentId, 'TRANSPORT', 300);
+    const reg = await createBatch(a, { companyId: base.companyId, payPeriod: PERIOD });
+    await generatePayslips(a, { batchId: reg.batchId });
+    const run1 = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: PERIOD, runType: 'bonus' });
+    await setPayrollBatchComponent(a, { batchId: run1.batchId, employmentId: e.employmentId, componentId: await idByCode('B1'), amount: 1000 });
+    await generatePayslips(a, { batchId: run1.batchId });
+    const run2 = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: PERIOD, runType: 'bonus' });
+    await setPayrollBatchComponent(a, { batchId: run2.batchId, employmentId: e.employmentId, componentId: await idByCode('B2'), amount: 800 });
+    await generatePayslips(a, { batchId: run2.batchId });
+    // Every slip of the month as the old code left it: no trace anywhere.
+    await owner.db.update(schema.payslip).set({ statutory: sql`${schema.payslip.statutory} - 'statutoryTrace'` }).where(eq(schema.payslip.employmentId, e.employmentId));
+    return { e, reg, run1, run2 };
+  }
+  const batchRow = async (id: string) => (await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, id)))[0]!;
+
+  it('report-only names exactly the later run, writes nothing; --apply marks it once; reprocess clears it at 88 / 104', async () => {
+    await setup();
+    const { e, reg, run1, run2 } = await preFixMonth();
+
+    const report = await runMultiRunEpfRecalcMark(URL, { apply: false });
+    expect(report.targets.map((t) => t.batchId)).toEqual([run2.batchId]);
+    expect(report.targets[0].employmentIds).toEqual([e.employmentId]);
+    expect((await batchRow(run2.batchId)).needsRecalcAt, 'report only').toBeNull();
+
+    const applied = await runMultiRunEpfRecalcMark(URL, { apply: true });
+    expect(applied.marked).toBe(1);
+    const marked = await batchRow(run2.batchId);
+    expect(marked.needsRecalcAt).not.toBeNull();
+    expect(marked.recalcEmploymentIds).toEqual([e.employmentId]);
+    for (const id of [reg.batchId, run1.batchId]) expect((await batchRow(id)).needsRecalcAt).toBeNull();
+    const events = await owner.db.select().from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.aggregateId, run2.batchId), eq(schema.domainEvent.eventType, 'payroll-batch.recalc-required')));
+    expect(events).toHaveLength(1);
+    expect(events[0].payload).toMatchObject({ changeCategory: 'statutory', addedEmploymentIds: [e.employmentId] });
+
+    // Idempotent: running it again adds nothing and records nothing.
+    expect((await runMultiRunEpfRecalcMark(URL, { apply: true })).marked).toBe(0);
+
+    // Reprocessing the LATER run alone corrects it — the earlier run need not be reprocessed first.
+    await reprocessSelectedEmployees(a, { batchId: run2.batchId, employmentIds: [e.employmentId], reason: 'EPF multi-run correction' });
+    const s2 = statOf(await slipOf(run2.batchId, e.employmentId));
+    expect([s2.epfEmployee, s2.epfEmployer]).toEqual([88, 104]);
+    expect((await batchRow(run2.batchId)).needsRecalcAt, 'the reprocess clears the mark').toBeNull();
+    expect((await runMultiRunEpfRecalcMark(URL, { apply: false })).targets).toEqual([]);
+  });
+
+  it('a closed run is never marked', async () => {
+    await setup();
+    const { run2 } = await preFixMonth();
+    await closeBatch(a, { batchId: run2.batchId });
+    expect((await runMultiRunEpfRecalcMark(URL, { apply: true })).targets).toEqual([]);
+    expect((await batchRow(run2.batchId)).needsRecalcAt).toBeNull();
+  });
+
+  it('a month whose earlier runs paid only EPF-ticked additional pay is not marked', async () => {
+    await setup();
+    await upsertPayComponent(a, TRANSPORT());
+    await upsertPayComponent(a, item('B2', 'Performance bonus', { includedInSocsoEis: false, pcbRemunerationType: 'additional' }));
+    const e = await hire('clean@acme.test', 3500);
+    const reg = await createBatch(a, { companyId: base.companyId, payPeriod: PERIOD });
+    await generatePayslips(a, { batchId: reg.batchId });
+    for (const amount of [500, 800]) {
+      const run = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: PERIOD, runType: 'bonus' });
+      await setPayrollBatchComponent(a, { batchId: run.batchId, employmentId: e.employmentId, componentId: await idByCode('B2'), amount });
+      await generatePayslips(a, { batchId: run.batchId });
+    }
+    await owner.db.update(schema.payslip).set({ statutory: sql`${schema.payslip.statutory} - 'statutoryTrace'` }).where(eq(schema.payslip.employmentId, e.employmentId));
+    expect((await runMultiRunEpfRecalcMark(URL, { apply: false })).targets).toEqual([]);
   });
 });

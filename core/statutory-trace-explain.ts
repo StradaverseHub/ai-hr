@@ -94,6 +94,7 @@ const traceSchema = z.object({
     earlier: z.object({
       runs: z.number().int().nonnegative(),
       unstamped: z.number().int().nonnegative(),
+      fromItemLines: z.number().int().nonnegative().optional(),
       additional: nonneg,
       epfAdditional: money,
       socsoWageExtra: nonneg,

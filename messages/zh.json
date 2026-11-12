@@ -9010,7 +9010,8 @@
       "traceChargedBeforeEmployer": "较早批次已计费的雇主金额",
       "traceEarlierUnstamped": "本月一个较早批次在记录详细计算之前已处理，因此其全部额外工资均被计入。请重新处理该批次以应用其工资项目设置。",
       "traceThisRunEmployee": "此工资单上的雇员金额",
-      "traceThisRunEmployer": "此工资单上的雇主金额"
+      "traceThisRunEmployer": "此工资单上的雇主金额",
+      "traceEarlierFromItemLines": "本月一个较早批次在记录详细计算之前已处理。其公积金工资按该工资单上保存的工资项目设置读取。"
     },
     "txnImport": {
       "title": {

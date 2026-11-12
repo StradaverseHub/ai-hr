@@ -9010,7 +9010,8 @@
       "traceChargedBeforeEmployer": "Số tiền của chủ lao động đã được tính bởi các kỳ trước",
       "traceEarlierUnstamped": "Một kỳ trước trong tháng đã được xử lý trước khi phép tính chi tiết được lưu, nên toàn bộ khoản trả bổ sung của kỳ đó được tính. Hãy xử lý lại kỳ đó để áp dụng thiết lập khoản lương của nó.",
       "traceThisRunEmployee": "Số tiền của nhân viên trên phiếu lương này",
-      "traceThisRunEmployer": "Số tiền của chủ lao động trên phiếu lương này"
+      "traceThisRunEmployer": "Số tiền của chủ lao động trên phiếu lương này",
+      "traceEarlierFromItemLines": "Một kỳ trước trong tháng đã được xử lý trước khi phép tính chi tiết được lưu. Lương EPF của kỳ đó được đọc từ thiết lập khoản lương đã lưu trên phiếu lương đó."
     },
     "txnImport": {
       "title": {

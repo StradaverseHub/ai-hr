@@ -9010,7 +9010,8 @@
       "traceChargedBeforeEmployer": "Jumlah majikan yang telah dicaj oleh larian terdahulu",
       "traceEarlierUnstamped": "Larian terdahulu bulan ini diproses sebelum pengiraan terperinci direkodkan, jadi keseluruhan bayaran tambahannya dikira. Proses semula larian itu untuk menggunakan tetapan item gajinya.",
       "traceThisRunEmployee": "Jumlah pekerja pada slip gaji ini",
-      "traceThisRunEmployer": "Jumlah majikan pada slip gaji ini"
+      "traceThisRunEmployer": "Jumlah majikan pada slip gaji ini",
+      "traceEarlierFromItemLines": "Larian terdahulu bulan ini diproses sebelum pengiraan terperinci direkodkan. Upah KWSPnya dibaca daripada tetapan item gaji yang disimpan pada slip gaji itu."
     },
     "txnImport": {
       "title": {

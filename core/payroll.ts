@@ -172,7 +172,7 @@ import {
 // statutory base, a stored payslip column, or any EA/CP39/KWSP/PERKESO grouping.
 import { defaultCategoryOfBucket, resolveDisplayCategory, type PayDisplayCategory } from './pay-display-category';
 import { resolveAssignedPolicy, resolveAssignedPoliciesTx } from './payroll-policy';
-import { buildStatutoryTraceLines, readRunStatutoryStamp } from './statutory-trace';
+import { buildStatutoryTraceLines, readEarlierRunLiability } from './statutory-trace';
 import {
   applyOvertimeCaps,
   applyOvertimeCapsDetailed,
@@ -5316,10 +5316,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
      * `socsoWageExtra` (the part that IS SOCSO/EIS wages). Before 69d6ed3c both were dropped, so a later run
      * charged EPF on an earlier run's bonus even when that pay item was not ticked for EPF, and lost an
      * earlier run's SOCSO-ticked additional pay from the month's SOCSO wage. Read off each earlier slip's own
-     * trace stamp (`readRunStatutoryStamp`); a slip with no stamp keeps the old reading (gross, nothing extra)
+     * trace stamp, or, on a slip from before the trace, off its own componentLines (`readEarlierRunLiability`); a slip with neither keeps the old reading (gross, nothing extra)
      * and is counted in `unstamped` so the trace can say so.
      */
-    const earlierRunByEmp = new Map<string, { additional: number; overtime: number; epfAdditionalExcluded: number; socsoWageExtra: number; runs: number; unstamped: number }>();
+    const earlierRunByEmp = new Map<string, { additional: number; overtime: number; epfAdditionalExcluded: number; socsoWageExtra: number; runs: number; unstamped: number; fromItemLines: number }>();
     const earlierEpfByEmp = new Map<string, { employee: number | null; employer: number | null }>();
     const earlierTaxBasisByEmp = new Map<string,{additionalDelta:number;normal:number|undefined;paidPcb:number;paidBonus:number;corrected:boolean}>();
     const earlierNonCashByEmp = new Map<string,{ownedEntries:NonCashEntry[];regularEntries:NonCashEntry[]|null;ownedEaEntries:NonCashEaEntry[];regularEaEntries:NonCashEaEntry[]|null;legacyRegular:boolean}>();
@@ -5382,15 +5382,18 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           }
           exemptUsedByEmp.set(r.employmentId,used);
         }
-        const cur = earlierRunByEmp.get(r.employmentId) ?? { additional: 0, overtime: 0, epfAdditionalExcluded: 0, socsoWageExtra: 0, runs: 0, unstamped: 0 };
+        const cur = earlierRunByEmp.get(r.employmentId) ?? { additional: 0, overtime: 0, epfAdditionalExcluded: 0, socsoWageExtra: 0, runs: 0, unstamped: 0, fromItemLines: 0 };
         cur.additional = round2(cur.additional + Number(r.bonus));
         // 69d6ed3c — what that run itself charged its additional pay on, from ITS OWN stamp (read off the
         // statutory blob as that run wrote it, before any tax-basis correction replaced `r.statutory`).
-        const ownStamp = readRunStatutoryStamp(savedStatutory, Number(r.bonus));
+        // A slip from before the trace is read off its own pay item lines (`readEarlierRunLiability`), so
+        // reprocessing this run corrects the month whatever order the runs are reprocessed in.
+        const ownStamp = readEarlierRunLiability(savedStatutory, Number(r.bonus));
         cur.runs += 1;
         if (ownStamp) {
           cur.epfAdditionalExcluded = round2(cur.epfAdditionalExcluded + Math.max(0, round2(Number(r.bonus) - ownStamp.epfAdditional)));
           cur.socsoWageExtra = round2(cur.socsoWageExtra + ownStamp.socsoWageExtra);
+          if (ownStamp.source === 'component_lines') cur.fromItemLines += 1;
         } else cur.unstamped += 1;
         const taxBasis = earlierTaxBasisByEmp.get(r.employmentId) ?? {additionalDelta:0,normal:undefined,paidPcb:0,paidBonus:0,corrected:false};
         const paidSource = (r.statutory ?? {}) as {pcb?:number;pcbBonus?:number};
@@ -7391,7 +7394,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // every `computeMonth` below would default to the pre-probe figure. The probe itself passes 0.
         zakatOffsetTotal = round2(effectiveZakat + tp1Rebate);
       }
-      const earlierRun = earlierRunByEmp.get(e.employmentId) ?? { additional: 0, overtime: 0, epfAdditionalExcluded: 0, socsoWageExtra: 0, runs: 0, unstamped: 0 };
+      const earlierRun = earlierRunByEmp.get(e.employmentId) ?? { additional: 0, overtime: 0, epfAdditionalExcluded: 0, socsoWageExtra: 0, runs: 0, unstamped: 0, fromItemLines: 0 };
       /**
        * ── Item 70b14723 — THE SAME OPTION BAG WITH THE TYPED EPF AMOUNTS REMOVED ─────────────────────
        *
@@ -7873,6 +7876,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
             ...(monthDelta ? { earlier: {
               runs: earlierRun.runs,
               unstamped: earlierRun.unstamped,
+              fromItemLines: earlierRun.fromItemLines,
               additional: earlierRun.additional,
               epfAdditional: round2(earlierRun.additional - earlierRun.epfAdditionalExcluded),
               socsoWageExtra: earlierRun.socsoWageExtra,
