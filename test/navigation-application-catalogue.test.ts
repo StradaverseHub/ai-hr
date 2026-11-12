@@ -7,7 +7,7 @@ import {PERFORMANCE_AREA_TABS} from '../packs/performance/onehr/tab-model';
 describe('composed application navigation declarations, not permission or execution proof',()=>{
  it('preserves every existing shell identity and composes published owner references',()=>{
   const app=declaredApplicationNavigationCatalogue(),shell=declaredNavigationCatalogue();
-  expect(app.issues).toEqual([]);expect(app.declarations).toHaveLength(214);
+  expect(app.issues).toEqual([]);expect(app.declarations).toHaveLength(215);
   expect(app.declarations.slice(0,shell.declarations.length)).toEqual(shell.declarations);
   const sources:object[]=[...CENTRE_TABS,...Object.values(CENTRE_SECTIONS).flat(),...PAYROLL_CYCLE_PAGES,...SECURITY_PAGES,...PERFORMANCE_AREA_TABS];
   for(const registry of MODULE_SUBMENU_REGISTRIES)sources.push(...registry.items);
