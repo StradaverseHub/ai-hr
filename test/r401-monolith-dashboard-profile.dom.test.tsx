@@ -244,7 +244,9 @@ const ADMIN_LAYOUT = [
   'recentActivity',
   'noticeBoard',
 ];
-const renderDashboard = async () => wrap(await resolveServerTree(await DashboardPage({ searchParams: Promise.resolve({}) })));
+// Today by audience (11 Nov 2026): an administrator lands on Administrator Today, and the earlier dashboard is drawn on its
+// own only when asked for by name (`?workspace=dashboard`), which is the page these cases draw.
+const renderDashboard = async () => wrap(await resolveServerTree(await DashboardPage({ searchParams: Promise.resolve({ workspace: 'dashboard' }) })));
 const renderMe = async () => wrap(await MePage({ searchParams: Promise.resolve({}) }));
 
 /** Every number printed in `el`, normalised (commas dropped, leading zeros dropped). */

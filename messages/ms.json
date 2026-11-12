@@ -18198,6 +18198,7 @@
     "thresholdBatchSwing": "Perubahan gaji seluruh pusingan: {pct}%",
     "thresholdSourceDefault": "lalai terbina",
     "thresholdSourceConfigured": "ditetapkan untuk syarikat ini",
+    "thresholdSourceUnreadable": "tetapan syarikat sendiri tidak dapat dibaca di sini, jadi nilai lalai digunakan",
     "thresholdsUntuned": "Angka bertanda “lalai terbina” ialah angka sementara tanpa asas empirik — ia dipilih supaya pemeriksaan berfungsi pada pusingan pertama, bukan diukur daripada mana-mana penggajian. Keputusan di bawah mencerminkan angka sementara itu, bukan peraturan yang ditala untuk syarikat ini. Ambang yang boleh dipertahankan datang daripada sejarah gaji syarikat ini sendiri atau satu pusingan selari.",
     "blockedHelp": "Pusingan ini tidak boleh ditutup selagi ada yang disekat.",
     "resolveAccepted": "Betul seperti sedia ada",

@@ -20,11 +20,15 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import * as schema from '../db/schema';
+import { terasPayrollLoopSetting } from '../db/teras-payroll-cycle-schema';
+import { netSwings } from '../core/loops/net-swing';
+import { swingRowsTx } from '../core/loops/swing-rows';
 import { withTenant, type SessionContext } from '../db/client';
 import {
   evaluateBatchAnomalies,
   openBlockingVerdicts,
   resolveAnomalyVerdict,
+  thresholdsInForce,
   UNTUNED_DEFAULT_PARAMS,
 } from '../core/payroll-anomaly';
 import {
@@ -32,7 +36,7 @@ import {
   evaluateCircuitBreaker,
 } from '../core/payroll-anomaly';
 import { BatchHasBlockingAnomaliesError, BatchSwingTooLargeError, closeBatch } from '../core/payroll';
-import { closeAll, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { closeAll, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, setModule, setTenantStatus, type Base } from './harness';
 
 const PERIOD = '2026-05';
 
@@ -237,6 +241,207 @@ describe('ADR-0076 — the evaluator writes verdicts and never touches the money
   });
 });
 
+describe('Owner rule (4 November 2026) — data-aware checks: a legitimate set-up is not an exception', () => {
+  const detectorsOf = async (batchId: string, employmentId: string) => {
+    const v = (await liveVerdicts(batchId)).find((r) => r.employmentId === employmentId)!;
+    return { verdict: v, findings: await findingsOf(v.id) };
+  };
+
+  it('missing-bank-profile stores WHY it blocked, and cash still never fires', async () => {
+    const unset = await makeEmp('UnsetMethod', { paymentMethod: null });
+    const bank = await makeEmp('BankNoDetails', { paymentMethod: 'bank_transfer' });
+    const cash = await makeEmp('CashNoDetails', { paymentMethod: 'cash' });
+    const cheque = await makeEmp('ChequeNoDetails', { paymentMethod: 'cheque' });
+    const batchId = await makeBatch();
+    for (const e of [unset, bank, cash, cheque]) await addPayslip(batchId, e.employmentId);
+
+    await evaluateBatchAnomalies(a, { batchId });
+    const bankFinding = async (employmentId: string) =>
+      (await detectorsOf(batchId, employmentId)).findings.find((f) => f.detectorId === 'missing-bank-profile');
+
+    expect((await bankFinding(unset.employmentId))?.facts).toEqual({ netPay: 4200, paymentMethod: 'unset', reason: 'payment-method-not-set' });
+    expect((await detectorsOf(batchId, unset.employmentId)).verdict.disposition).toBe('block');
+    expect((await bankFinding(bank.employmentId))?.facts).toEqual({ netPay: 4200, paymentMethod: 'bank_transfer', reason: 'bank-details-missing' });
+    expect(await bankFinding(cash.employmentId)).toBeUndefined();
+    expect(await bankFinding(cheque.employmentId)).toBeUndefined();
+  });
+
+  it('pay-without-attendance runs only where the company has Attendance, read once for the batch', async () => {
+    const { employmentId, personId } = await makeEmp('NoClockIn');
+    await giveProfile(personId);
+    const batchId = await makeBatch();
+    await addPayslip(batchId, employmentId, {}, { noAttendance: true });
+    const ghostFlag = async () => {
+      await evaluateBatchAnomalies(a, { batchId });
+      const { verdict, findings } = await detectorsOf(batchId, employmentId);
+      // Always RUN (the coverage figure is unchanged); whether it FINDS anything is the data-aware part.
+      expect(verdict.detectorsRun as string[]).toContain('pay-without-attendance');
+      return findings.some((f) => f.detectorId === 'pay-without-attendance');
+    };
+
+    // Every test tenant (like every tenant the 0313 backfill reached) starts with Attendance granted tenant-wide
+    // (packs/catalog.ts LEGACY_ENABLED_MODULE_CODES): in use, so the person with no attendance is flagged.
+    expect(await ghostFlag()).toBe(true);
+    // Removed: Attendance is off for the company, so nobody there clocks in and zero days is the normal set-up.
+    await setModule(b.tenantId, 'attendance', null);
+    expect(await ghostFlag()).toBe(false);
+    // Granted only for ANOTHER company of the group: still off here.
+    const [other] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Other Fictional Sdn Bhd' }).returning({ id: schema.company.id });
+    await setModule(b.tenantId, 'attendance', 'active', other.id);
+    expect(await ghostFlag()).toBe(false);
+    // Granted for THIS company.
+    await setModule(b.tenantId, 'attendance', 'active', b.companyId);
+    expect(await ghostFlag()).toBe(true);
+    // A suspended tenant reads every billable module off — which must never switch the check off. (`a` was resolved
+    // while the tenant was active, so its transaction may still write; the evaluator's own in-transaction read is the
+    // one that sees the suspension.)
+    await setModule(b.tenantId, 'attendance', null, b.companyId);
+    await setTenantStatus(b.tenantId, 'suspended');
+    expect(await ghostFlag()).toBe(true);
+  });
+
+  it('re-evaluation supersedes a verdict the old rules raised — it neither stays open nor duplicates', async () => {
+    // A verdict as the OLD rules wrote it: a cash employee blocked on bank details, and a ghost flag at a company
+    // without Attendance. Inserted directly, because the current detectors can no longer produce either.
+    await setModule(b.tenantId, 'attendance', null); // the ghost's company does not use Attendance
+    const cash = await makeEmp('OldCashBlock', { paymentMethod: 'cash' });
+    const ghost = await makeEmp('OldGhostFlag');
+    await giveProfile(ghost.personId);
+    const batchId = await makeBatch();
+    await addPayslip(batchId, cash.employmentId);
+    await addPayslip(batchId, ghost.employmentId, {}, { noAttendance: true });
+    const stale = await owner.db
+      .insert(schema.payrollAnomalyVerdict)
+      .values([
+        { tenantId: b.tenantId, batchId, employmentId: cash.employmentId, disposition: 'block' },
+        { tenantId: b.tenantId, batchId, employmentId: ghost.employmentId, disposition: 'review' },
+      ])
+      .returning({ id: schema.payrollAnomalyVerdict.id, employmentId: schema.payrollAnomalyVerdict.employmentId });
+    await owner.db.insert(schema.payrollAnomalyFinding).values([
+      { tenantId: b.tenantId, verdictId: stale[0].id, detectorId: 'missing-bank-profile', severity: 'block', facts: { netPay: 4200, paymentMethod: 'cash' }, sourceEventIds: [], suggestedAction: 'anomaly.action.missingBankProfile' },
+      { tenantId: b.tenantId, verdictId: stale[1].id, detectorId: 'pay-without-attendance', severity: 'review', facts: { netPay: 4200 }, sourceEventIds: [], suggestedAction: 'anomaly.action.payWithoutAttendance' },
+    ]);
+    expect(await withTenant(a, (tx) => openBlockingVerdicts(tx, batchId))).toHaveLength(1);
+
+    await evaluateBatchAnomalies(a, { batchId });
+
+    const all = await owner.db.select().from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.batchId, batchId));
+    // Superseded, never deleted, and NOT marked resolved: it is history, not a human decision.
+    for (const old of stale) {
+      const row = all.find((r) => r.id === old.id)!;
+      expect(row.supersededAt).not.toBeNull();
+      expect(row.resolvedAt).toBeNull();
+    }
+    // Exactly one live verdict per person, and neither carries the old finding.
+    const live = all.filter((r) => r.supersededAt === null);
+    expect(live.map((r) => r.employmentId).sort()).toEqual([cash.employmentId, ghost.employmentId].sort());
+    for (const v of live) {
+      const ids = (await findingsOf(v.id)).map((f) => f.detectorId);
+      expect(ids).not.toContain('missing-bank-profile');
+      expect(ids).not.toContain('pay-without-attendance');
+    }
+    expect(await withTenant(a, (tx) => openBlockingVerdicts(tx, batchId))).toEqual([]);
+  });
+});
+
+describe('One net-swing threshold — what the evaluator reads, and that it agrees with the Salary loop on the same rows', () => {
+  const setThreshold = (thresholdBp: number) =>
+    owner.db.insert(terasPayrollLoopSetting).values({
+      tenantId: b.tenantId, companyId: b.companyId, version: 1, checkInterval: 'daily', swingThresholdBp: thresholdBp, swingExclusions: [],
+      remindersEnabled: true, source: 'admin', changedByUserId: b.adminUserId,
+    });
+  const swingFindings = async (batchId: string) => {
+    const out = new Map<string, Record<string, string | number>>();
+    for (const v of await liveVerdicts(batchId))
+      for (const f of await findingsOf(v.id)) if (f.detectorId === 'net-swing') out.set(v.employmentId, f.facts as Record<string, string | number>);
+    return out;
+  };
+  /** One person paid 4,000 in a closed April and `current` in a processed May. */
+  async function moved(current: string) {
+    const { employmentId, personId } = await makeEmp(`Mover_${randomUUID().slice(0, 6)}`);
+    await giveProfile(personId);
+    const april = await makeBatch('2026-04');
+    await addPayslip(april, employmentId, { netPay: '4000.00' }, { noAttendance: true });
+    await closeRun(april);
+    const may = await makeBatch('2026-05');
+    await addPayslip(may, employmentId, { netPay: current });
+    return { employmentId, may };
+  }
+
+  it('the company setting is used when readable; the sweep and a payroll partner say they could not read it and use 15%', async () => {
+    await setThreshold(3000);
+    const { employmentId, may } = await moved('4800.00'); // +20%: inside the company's 30%, outside the 15% default
+
+    // A company administrator reads the 30%: no flag, and the disclosure says it is the company's own.
+    await evaluateBatchAnomalies(a, { batchId: may });
+    expect((await swingFindings(may)).has(employmentId)).toBe(false);
+    const own = (await thresholdsInForce(a, { batchId: may })).thresholds.find((t) => t.detectorId === 'net-swing')!;
+    expect(own).toMatchObject({ params: { netSwingPct: 30 }, source: 'configured' });
+
+    // The scheduled sweep's carrier (no user): the setting is invisible under row security. 15% is used, no exclusion,
+    // and the finding and the disclosure both say the company's own threshold could not be read.
+    const sweep: SessionContext = { tenantId: b.tenantId, roles: ['hr_admin'], entitlements: a.entitlements };
+    await evaluateBatchAnomalies(sweep, { batchId: may });
+    expect((await swingFindings(may)).get(employmentId)).toMatchObject({ thresholdPct: 15, thresholdSource: 'default_company_setting_unreadable' });
+    const blind = (await thresholdsInForce(sweep, { batchId: may })).thresholds.find((t) => t.detectorId === 'net-swing')!;
+    expect(blind).toMatchObject({ params: { netSwingPct: 15 }, source: 'unreadable_default' });
+
+    // A payroll partner of this company administers its payroll but not its loop settings: the same, said the same way.
+    const [u] = await owner.db.insert(schema.appUser).values({ tenantId: b.tenantId, workosUserId: `user_${randomUUID()}`, personId: null }).returning({ id: schema.appUser.id });
+    await owner.db.insert(schema.roleAssignment).values({ tenantId: b.tenantId, appUserId: u.id, companyId: b.companyId, role: 'payroll_partner' });
+    const partner: SessionContext = { ...(await entitledCtx(b, ['payroll_partner'])), userId: u.id, personId: null, roles: ['payroll_partner'],
+      grants: [{ role: 'payroll_partner', companyId: b.companyId }] };
+    await evaluateBatchAnomalies(partner, { batchId: may });
+    expect((await swingFindings(may)).get(employmentId)).toMatchObject({ thresholdPct: 15, thresholdSource: 'default_company_setting_unreadable' });
+    expect((await thresholdsInForce(partner, { batchId: may })).thresholds.find((t) => t.detectorId === 'net-swing')).toMatchObject({ source: 'unreadable_default' });
+  });
+
+  it('never a vacuous pass: a prior cycle older than the months read is compared like with like', async () => {
+    const { employmentId, personId } = await makeEmp('LongGap');
+    await giveProfile(personId);
+    const december = await makeBatch('2025-12');
+    await addPayslip(december, employmentId, { netPay: '4000.00' }, { noAttendance: true });
+    await closeRun(december);
+    const may = await makeBatch('2026-05');
+    await addPayslip(may, employmentId, { netPay: '6000.00' });
+    await evaluateBatchAnomalies(a, { batchId: may });
+    expect((await swingFindings(may)).get(employmentId)).toMatchObject({ movementPct: 50, comparedWith: 'previous_run_of_same_type' });
+  });
+
+  it('the detector and the Salary loop flag the same people from the same database rows, on the same baseline', async () => {
+    // Steady, +20% with no record, +10%, and one paid in a closed March whose April run is only PROCESSED.
+    const april = await makeBatch('2026-04');
+    const march = await makeBatch('2026-03');
+    const may = await makeBatch('2026-05');
+    const people: string[] = [];
+    for (const [priorNet, mayNet] of [['4000.00', '4000.00'], ['4000.00', '4800.00'], ['4000.00', '4400.00']] as const) {
+      const { employmentId, personId } = await makeEmp(`Agree_${randomUUID().slice(0, 6)}`);
+      await giveProfile(personId);
+      await addPayslip(april, employmentId, { netPay: priorNet }, { noAttendance: true });
+      await addPayslip(may, employmentId, { netPay: mayNet });
+      people.push(employmentId);
+    }
+    const late = await makeEmp(`AgreeLate_${randomUUID().slice(0, 6)}`);
+    await giveProfile(late.personId);
+    await addPayslip(march, late.employmentId, { netPay: '4000.00' }, { noAttendance: true });
+    await addPayslip(may, late.employmentId, { netPay: '4800.00' });
+    await closeRun(march);
+    await closeRun(april);
+    // The late person's April: an off-cycle run left PROCESSED. Were it read as "last month", May (4,800) would compare
+    // with it (4,800) and nothing would move; on the shared baseline both checks compare May with the closed March.
+    const [aprilBatch] = await owner.db.select({ payPeriodId: schema.payrollBatch.payPeriodId }).from(schema.payrollBatch).where(eq(schema.payrollBatch.id, april));
+    const [unfinished] = await owner.db.insert(schema.payrollBatch).values({ tenantId: b.tenantId, companyId: b.companyId, payPeriodId: aprilBatch.payPeriodId,
+      payPeriod: '2026-04', batchDate: '2026-04-28', status: 'processed', runType: 'off_cycle', runSeq: 2 }).returning({ id: schema.payrollBatch.id });
+    await addPayslip(unfinished.id, late.employmentId, { netPay: '4800.00' }, { noAttendance: true });
+    await evaluateBatchAnomalies(a, { batchId: may });
+    const anomaly = [...(await swingFindings(may)).keys()].sort();
+    const loop = await withTenant(a, async (tx) =>
+      netSwings(await swingRowsTx(tx, { companyId: b.companyId, period: '2026-05' }), { period: '2026-05', companyId: b.companyId, thresholdBp: 1500, exclusions: [] }));
+    expect(loop.people.filter((x) => x.flagged).map((x) => x.employmentId).sort()).toEqual(anomaly);
+    expect(anomaly).toEqual([people[1], late.employmentId].sort());
+  });
+});
+
 describe('ADR-0076 §2.4 — coverage transparency', () => {
   it('records the prior-period detectors as SKIPPED with a reason on a first cycle, not as passing', async () => {
     const { employmentId, personId } = await makeEmp('FirstCycle');
@@ -260,29 +465,39 @@ describe('ADR-0076 §2.4 — coverage transparency', () => {
     expect((v.detectorsRun as string[]).length).toBeGreaterThan(0);
   });
 
-  it('runs the prior-period detectors once a prior cycle exists, and net-swing reads its threshold from config', async () => {
+  it('runs the prior-period detectors once a prior cycle exists, and net-swing reads the ONE Salary loop threshold', async () => {
     const { employmentId, personId } = await makeEmp('SecondCycle');
     await giveProfile(personId);
     const priorBatch = await makeBatch('2026-04');
     await addPayslip(priorBatch, employmentId, { netPay: '4000.00' }, { noAttendance: true });
     await closeRun(priorBatch);
     const batchId = await makeBatch('2026-05');
-    await addPayslip(batchId, employmentId, { netPay: '6000.00' }); // +50%, over the untuned 30 default
+    await addPayslip(batchId, employmentId, { netPay: '6000.00' }); // +50%, over the 15% default, and no record explains it
 
     await evaluateBatchAnomalies(a, { batchId });
     let [v] = await liveVerdicts(batchId);
     expect((v.detectorsRun as string[])).toContain('net-swing');
     expect((await findingsOf(v.id)).map((f) => f.detectorId)).toContain('net-swing');
 
-    // THRESHOLDS ARE DATA: the same 50% movement is unremarkable at a 60% threshold, and setting it
-    // required no deploy. This is the property the whole config table exists for.
-    expect(UNTUNED_DEFAULT_PARAMS['net-swing']).toEqual({ netSwingPct: 30 });
+    const [finding] = (await findingsOf(v.id)).filter((f) => f.detectorId === 'net-swing');
+    expect(finding.facts).toMatchObject({ movementPct: 50, thresholdPct: 15, explainedCauses: '', unexplainedShare: 1 });
+
+    // ONE THRESHOLD (owner, 11 November 2026): a per-detector netSwingPct in payroll_anomaly_config no longer applies…
+    expect(UNTUNED_DEFAULT_PARAMS['net-swing']).toEqual({ netSwingPct: 15 });
     await owner.db.insert(schema.payrollAnomalyConfig).values({
       tenantId: b.tenantId,
       companyId: b.companyId,
       detectorId: 'net-swing',
       params: { netSwingPct: 60 },
       effectiveFrom: '2026-01-01',
+    });
+    await evaluateBatchAnomalies(a, { batchId });
+    [v] = await liveVerdicts(batchId);
+    expect((await findingsOf(v.id)).map((f) => f.detectorId)).toContain('net-swing');
+    // …the company's Salary payroll loop setting does, read once for the batch: at 50% the same 50% movement is not over it.
+    await owner.db.insert(terasPayrollLoopSetting).values({
+      tenantId: b.tenantId, companyId: b.companyId, version: 1, checkInterval: 'daily', swingThresholdBp: 5000, swingExclusions: [],
+      remindersEnabled: true, source: 'admin', changedByUserId: b.adminUserId,
     });
     await evaluateBatchAnomalies(a, { batchId });
     [v] = await liveVerdicts(batchId);
@@ -502,8 +717,13 @@ describe('ADR-0076 §4 — the run-level circuit breaker', () => {
   });
 
   it('TRIPS on a uniform global mis-key that every per-employee detector rates as unremarkable', async () => {
-    // +25% for everyone. net-swing's 30% default does NOT fire per employee, which is exactly the blind
+    // +25% for everyone. With the company's per-employee threshold at 30% (its Salary payroll loop setting, the one
+    // net-swing threshold since 11 November 2026), net-swing does NOT fire per employee, which is exactly the blind
     // spot this breaker exists to cover.
+    await owner.db.insert(terasPayrollLoopSetting).values({
+      tenantId: b.tenantId, companyId: b.companyId, version: 1, checkInterval: 'daily', swingThresholdBp: 3000, swingExclusions: [],
+      remindersEnabled: true, source: 'admin', changedByUserId: b.adminUserId,
+    });
     const { current } = await twoCycles('4000.00', '5000.00');
     await evaluateBatchAnomalies(a, { batchId: current });
     const perEmployee = await liveVerdicts(current);

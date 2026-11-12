@@ -75,7 +75,9 @@ export type PreparedKind='leaveApply'|'leaveCancel'|'leaveDecision';
 export type PreparedLeave=Readonly<{leaveType:string;startDate:string;endDate:string;days:number;durationType:string|null}>;
 export type PreparedItem=Readonly<{kind:PreparedKind;actionId:string;createdAt:string;expiresAt:string;href:string;leave?:PreparedLeave|null}>;
 export type Finding=Readonly<{key:'setup'|'readiness'|'proposals'|'letterRequests';count:number;href:string}>;
-export type NeedsYouData=Readonly<{tasks:readonly PendingTaskItem[];taskTotal?:number;recommender:boolean;prepared:readonly PreparedItem[];findings:readonly Finding[];
+export type NeedsYouData=Readonly<{tasks:readonly PendingTaskItem[];taskTotal?:number;
+ /** The exact number of claims waiting: the summary lists only the newest (approvals-inbox pendingTaskSummary). */
+ claimTotal?:number;recommender:boolean;prepared:readonly PreparedItem[];findings:readonly Finding[];
  /** AI v2 W8: the loops' open cards for this viewer. */
  loops:readonly LoopCard[];
  /** AI v2 W8: a probation review already waiting on this viewer as an approvals task is shown once, as that task; the
@@ -161,7 +163,8 @@ async function readNeedsYouOwners(s:SessionContext,p:Readonly<{scopeIds:readonly
  const [tasks,ownLeave,cancellations,decisions,proposals,readiness,digest,loops,letterRequests]=await Promise.all([
   // Home only renders five decisions. Keep its exact count without transporting every Claim.
   // The existing explicit All view retains its complete-queue contract.
-  settle(()=>p.all?listPendingTasks(s,[...p.scopeIds],inboxModules(modules)).then(items=>({items,total:items.length})):pendingTaskSummary(s,[...p.scopeIds],inboxModules(modules))),
+  settle(()=>p.all?listPendingTasks(s,[...p.scopeIds],inboxModules(modules)).then(items=>({items,total:items.length,claimTotal:items.filter(item=>item.kind==='claim').length}))
+   :pendingTaskSummary(s,[...p.scopeIds],inboxModules(modules))),
   leave?settle(()=>readHomeOwnLeaveReviewIndex(s)):null,
   leave?settle(bundled(read=>read.cancellations,()=>readHomeLeaveCancellationReviewIndex(s))):null,
   leave?settle(bundled(read=>read.decisions,()=>readHomeLeaveDecisionReviewIndex(s))):null,
@@ -197,7 +200,7 @@ async function readNeedsYouOwners(s:SessionContext,p:Readonly<{scopeIds:readonly
  if(waitingLetters>0)findings.push(Object.freeze({key:'letterRequests',count:waitingLetters,href:'/letters/generate?requests=all#letter-requests'}));
  const failed=modules.failed()||!tasks.ok||!loops.ok||[proposals,readiness,letterRequests].some(result=>result!==null&&!result.ok);
  const merged=mergeReviewLoops(list,loops.ok?loops.value:[]);
- return Object.freeze({tasks:list,taskTotal:tasks.ok?tasks.value.total:0,recommender,prepared:detailed,findings,loops:merged.loops,taskLoops:merged.taskLoops,failed});
+ return Object.freeze({tasks:list,taskTotal:tasks.ok?tasks.value.total:0,claimTotal:tasks.ok?tasks.value.claimTotal:0,recommender,prepared:detailed,findings,loops:merged.loops,taskLoops:merged.taskLoops,failed});
 }
 
 // ── Done for you ────────────────────────────────────────────────────────────────────────────────────────────

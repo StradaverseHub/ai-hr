@@ -2048,7 +2048,211 @@
     "exceptions": {
       "fixedTitle": "原因已修复",
       "inGroups": "{count, plural, other {# 项异常}}已列在上方分组中。",
-      "resolveThere": "在“异常”中处理"
+      "resolveThere": "在“异常”中处理",
+      "grouped": {
+        "headline": "{total, plural, other {# 项待处理}}",
+        "headlineBlocking": "{blocking, plural, =0 {没有来自阻止性检查的项目} other {# 项来自阻止性检查}}",
+        "headlineGroups": "{groups, plural, other {归为 # 类}}",
+        "bucket": {
+          "check": "看起来是真实的工资错误 · 逐一检查",
+          "missing": "资料不全 · 每人修正一次",
+          "setup": "看起来是贵公司的设置，而非错误"
+        },
+        "bucketsPartial": "这三个数字仅根据最常见的类别计算。上方的总数是准确的。",
+        "groupsCapped": "这里只显示最大的几类。",
+        "tag": {
+          "blocks": "阻止发薪",
+          "review": "需要复核",
+          "setup": "看起来是设置",
+          "blocksClosed": "阻止性检查 · 该次发薪已关闭"
+        },
+        "size": {
+          "people": "{people, plural, other {# 人}}",
+          "exceptions": "{exceptions, plural, other {# 项异常}}，涉及 {runs, plural, other {# 次发薪}}",
+          "companies": "公司：{names}",
+          "companiesMore": "公司：{names} 及另外 {more, plural, other {# 家}}"
+        },
+        "action": {
+          "oneByOne": "逐一检查",
+          "review": "复核这些",
+          "markExpected": "复核并标记为预期情况",
+          "fixRecords": "修正档案",
+          "asked": "查看已被要求补充资料的人",
+          "seeAll": "查看全部 {count} 项",
+          "openRun": "打开该次发薪",
+          "fixTab": {
+            "payroll": "设置发薪方式",
+            "bankStatutory": "补充缺少的资料"
+          },
+          "back": "返回全部类别"
+        },
+        "list": {
+          "waitingSince": "标记于 {date}",
+          "alsoFlagged": "另被标记：{checks}",
+          "listedAbove": "已列在上方，可在那里一步关闭。",
+          "notBulk": "此项还因其他问题被标记，请单独处理。",
+          "emptyGroup": "此类别已没有待处理项目，全部都已处理。",
+          "fixNote": "档案修正后，相应的异常会移到上方的“原因已修复”，可在那里关闭。",
+          "pageOf": "第 {page} 页，共 {pages} 页",
+          "previous": "上一页",
+          "next": "下一页",
+          "unnamed": "未命名人员",
+          "runClosed": "该次发薪已关闭，因此不会耽误任何事。作出决定可以让记录保持准确。",
+          "runClosedShort": "该次发薪已关闭",
+          "ackCapped": "显示 {total} 项中的 {shown} 项。处理部分后，其余项目会显示出来。"
+        },
+        "bulk": {
+          "title": "将这些标记为预期情况",
+          "help": "本页 {count, plural, other {# 项异常}}将作为预期情况关闭，并为每个人分别记录这一决定。工资不会改变，下次发薪时仍会进行此项检查。",
+          "noteLabel": "为什么这是预期情况？",
+          "notePlaceholder": "例如：这些公司不使用打卡",
+          "submit": "{count, plural, other {将这 # 项标记为预期情况}}",
+          "none": "本页没有可以一次性标记的项目，请在下方逐一处理。",
+          "done": "{count, plural, =0 {没有项目被标记为预期情况。} other {已将 # 项异常标记为预期情况。}}",
+          "skipped": "{count, plural, other {有 # 项保持未处理，因为它们已有变化，或不在您的处理范围内。}}",
+          "error": {
+            "not_administrator": "只有人事管理员可以执行此操作。",
+            "invalid": "请填写简短的原因，然后重试。",
+            "blocking": "阻止发薪的异常绝不会被一次性清除，请逐一检查。",
+            "too_many": "超出了一次可标记的数量，请从列表重试。",
+            "nothing": "未选择任何项目。",
+            "failed": "操作未成功，也没有任何更改。请重试。",
+            "retry": "操作被中断，没有任何更改。请重试。"
+          },
+          "alreadyDecided": "{count, plural, other {有 # 项已由他人处理，原决定保持不变。}}",
+          "superseded": "{count, plural, other {有 # 项在本页打开后已重新检查，因此保持未处理，改为列出新的结果。}}",
+          "notYours": "{count, plural, other {有 # 项属于您不负责的发薪，因此保持未处理。}}"
+        },
+        "footer": "分组只改变异常的显示方式。阻止发薪的错误绝不会被批量清除，每项决定仍按人记录，这里也不会更改任何工资数字。",
+        "check": {
+          "negativeNet": {
+            "title": "实发工资低于零",
+            "why": "这些人将拿不到工资，甚至倒欠，因为扣款超过了收入。这几乎肯定是错误，所以每一项都要单独检查。",
+            "todo": "打开该次发薪，修正扣款，然后重新计算工资。"
+          },
+          "statutoryOverCap": {
+            "title": "法定缴款超出法定上限",
+            "why": "公积金（EPF）、社险（SOCSO）、就业保险（EIS）或类似项目的金额超出法律允许的上限。一旦申报，之后必须与相关机构更正。",
+            "todo": "请勿申报。检查本次发薪使用的缴款费率，修正后重新计算工资。"
+          },
+          "missingBankProfile": {
+            "title": "没有可用于发薪的银行账户",
+            "why": "他们的档案中没有银行账户，因此工资无法放入银行文件。",
+            "todo": "在每个人的档案中添加银行账户。修正一次，即可清除其所在每次发薪中的此项问题。",
+            "paymentMethodNotSet": {
+              "title": "不知道如何给这些人发薪",
+              "why": "他们的档案没有说明是通过银行转账、现金还是支票发薪，因此无法放入银行文件。以现金发薪的人绝不会因此被标记。",
+              "todo": "在每个人的档案中设置发薪方式。设置一次，即可清除其所在每次发薪中的此项问题。"
+            },
+            "bankDetailsMissing": {
+              "title": "通过银行转账发薪，但没有银行账户",
+              "why": "这些人通过银行转账发薪，但档案中没有银行账户，因此工资无法放入银行文件。",
+              "todo": "在每个人的档案中添加银行账户，或请他们把资料发送给人事部。修正一次，即可清除其所在每次发薪中的此项问题。"
+            }
+          },
+          "duplicateEmploymentPay": {
+            "title": "同一人在一个月内被发薪两次",
+            "why": "此人同月以多于一个职位领取工资。对于共享人员这可能是正确的，但若不是，就会多发一份工资。",
+            "todo": "逐一检查。如果两个职位都属实，标记为正确；如果不是，删除多余的工资并重新计算。"
+          },
+          "zeroNetWithPay": {
+            "title": "没有可发放的余额",
+            "why": "扣款用完了全部工资。整月无薪假时可能会这样，但更常见的是某项扣款输入有误。",
+            "todo": "检查扣款。如果无误，按现状标记为正确。"
+          },
+          "missingTaxProfile": {
+            "title": "档案中没有所得税资料",
+            "why": "没有所得税资料，为这些人计算的税款可能不正确，也无法以他们的名义申报。",
+            "todo": "在每个人的档案中添加所得税资料，或请他们发送给人事部。人事部照常审批每次更新。"
+          },
+          "payWithoutAttendance": {
+            "title": "已发薪，但没有记录任何工作日",
+            "why": "这些人已领取工资，但本月没有出勤记录，也没有已批准的假期。对于不使用打卡的公司，这是正常的。",
+            "todo": "如果这些公司不记录出勤，请标记为预期情况；如果应该记录，请检查出勤记录。"
+          },
+          "prorationMismatch": {
+            "title": "计薪天数与当月不符",
+            "why": "计薪天数与此人入职或离职的日期不符，因此工资可能偏高或偏低。",
+            "todo": "检查入职或离职日期以及计薪天数，如有需要请修正并重新计算工资。"
+          },
+          "netSwing": {
+            "title": "工资变动超出平常，且发薪记录中没有任何解释",
+            "why": "实发工资与上月相比变动很大，而奖金、调薪、加班、无薪假或其他发薪记录都无法解释这一变化。手动输入的金额一律视为无法解释。",
+            "todo": "查看变动的内容。如果无误，按现状标记为正确。"
+          },
+          "componentAppeared": {
+            "title": "首次出现一个工资项目",
+            "titleNamed": "首次出现“{component}”",
+            "why": "上个月的工资单上没有这个工资项目。这通常是计划中的变化，例如新的津贴，或公司开始缴纳的某项税费。",
+            "todo": "如果这是计划中的变化，请标记为预期情况。只需确认一次。"
+          },
+          "componentVanished": {
+            "title": "一个工资项目消失了",
+            "titleNamed": "“{component}”消失了",
+            "why": "这个工资项目出现在上个月的工资单上，但这次没有。这可能是计划中的，例如津贴已结束，也可能是被误漏。",
+            "todo": "如果这是计划中的变化，请标记为预期情况；如果不是，请加回该项目并重新计算工资。"
+          },
+          "hypothesis": {
+            "title": "有不寻常之处，值得一看",
+            "why": "AI Centre 发现这些工资单中有不符合常规的地方。这只是建议，绝不会阻止发薪。",
+            "todo": "打开该次发薪，判断这是否是真正的问题。"
+          },
+          "unknown": {
+            "title": "一项发薪检查需要您的决定",
+            "why": "某项发薪检查标记了这些工资单。",
+            "todo": "打开该次发薪查看详情，并逐一作出决定。"
+          }
+        },
+        "detail": {
+          "generic": "打开该次发薪查看相关数字。",
+          "negativeNet": "收入 {grossPay}，但扣除了 {totalDeductions}，因此实发工资为 {netPay}。",
+          "zeroNetWithPay": "收入 {grossPay}，扣除了 {totalDeductions}，没有余额可发。",
+          "statutoryOverCap": "{component}为 {actual}，比上限 {cap} 高出 {excess}。",
+          "missingBankProfile": {
+            "generic": "实发工资 {netPay} 没有可转入的银行账户。",
+            "paymentMethodNotSet": "档案没有说明发薪方式。实发工资：{netPay}。",
+            "bankDetailsMissing": "通过银行转账发薪，但档案中没有银行账户。实发工资：{netPay}。"
+          },
+          "missingTaxProfile": {
+            "withTax": "档案中没有所得税资料。本月扣除的所得税：{pcb}。",
+            "noTax": "档案中没有所得税资料，也没有扣除所得税。"
+          },
+          "payWithoutAttendance": "本月发薪 {netPay}，但没有出勤，也没有已批准的假期。",
+          "prorationMismatch": "当月 {periodDays} 天中按 {daysWorked} 天计薪。",
+          "duplicateEmploymentPay": "本月还以{others, plural, other {另外 # 个职位}}领取工资。此处实发工资：{netPay}。",
+          "netSwing": "实发工资{direction, select, down {下降} other {上升}}了 {pct}%，从 {priorNetPay} 变为 {netPay}。",
+          "componentAppeared": "本月有{component} {amount}，上月没有。",
+          "componentVanished": "上月有{component} {priorAmount}，本月没有。",
+          "hypothesis": "打开该次发薪，查看发现的内容。",
+          "netSwingExplained": "部分可由{causes}解释；约 {pct}% 的变动无法解释。"
+        },
+        "component": {
+          "allowance": "津贴",
+          "overtimePay": "加班费",
+          "bonus": "奖金",
+          "epfEmployee": "公积金（雇员部分）",
+          "epfEmployer": "公积金（雇主部分）",
+          "socsoEmployee": "社险（雇员部分）",
+          "socsoEmployer": "社险（雇主部分）",
+          "eisEmployee": "就业保险（雇员部分）",
+          "eisEmployer": "就业保险（雇主部分）",
+          "pcb": "所得税（PCB）",
+          "hrdf": "人力资源发展税",
+          "zakat": "天课",
+          "other": "其他工资项目",
+          "skbbk": "SKBBK（Lindung 24 Jam）"
+        },
+        "cause": {
+          "additional_run": "奖金或额外发薪",
+          "salary_change": "调薪",
+          "days_paid": "计薪天数变化",
+          "overtime_hours": "加班",
+          "unpaid_leave": "无薪假",
+          "absence": "缺勤",
+          "statutory_rules": "法定费率变化",
+          "other": "其他发薪记录"
+        }
+      }
     },
     "readiness": {
       "notChecked": "HR 引擎尚未检查",
@@ -2313,6 +2517,241 @@
       "leftAloneTitle": "{loop}在{company}留下 {count, plural, other {# 项}}由当事人处理",
       "leftAloneNote": "有条件未满足，因此由当事人自行确认。",
       "reviewCorrection": "审核更正"
+    },
+    "employee": {
+      "nextStep": "下一步",
+      "nextStepOf": "下一步 · 第 {n} 项，共 {total} 项",
+      "sendToHr": "提交给人事部",
+      "sendRequest": "提交申请",
+      "open": "打开",
+      "deciderHr": "由您提交，人事部核对并批准后保存到您的记录中。人事部批准之前不会有任何更改。",
+      "deciderManager": "由您提交申请，您的经理批准。在此之前不会有任何更改。",
+      "decidedByHr": "人事部批准",
+      "decidedByManager": "您的经理批准",
+      "dueOn": "截止 {date}",
+      "noDue": "无截止日期",
+      "payrollCloses": "工资结算于 {date} 截止。",
+      "seeAll": "查看发薪前的所有事项",
+      "nothingToDo": "目前没有需要您处理的事项。",
+      "then": "接下来",
+      "stepsUnavailable": "您的部分事项暂时无法检查，相关页面仍可正常使用。",
+      "dueIn": "{days, plural, =0 {今天截止} other {# 天后截止}}",
+      "overdue": "已逾期",
+      "overdueShort": "逾期",
+      "daysUnit": "{days, plural, other {天}}",
+      "allClearTitle": "一切就绪",
+      "allClearBody": "目前没有需要您处理的事项。",
+      "allClearRecord": "您的记录已完整，可用于 {date} 的工资结算。",
+      "allClearPayday": "下一个：{date} 发薪日",
+      "allClearCutOff": "下一个：工资结算于 {date} 截止",
+      "paydayTitle": "发薪日",
+      "cutOffTitle": "工资截止日",
+      "daysToGo": "{days, plural, =0 {就在今天} other {天后}}",
+      "cutOffNote": "发薪日会在工资运行时确定。请在此日期之前提交报销和更改。",
+      "noPayday": "暂无发薪日或截止日期。",
+      "unavailable": "暂时无法加载，相关页面仍可正常使用。",
+      "lastPayslip": "最近工资单 {month}",
+      "noPayslip": "尚未发放工资单。",
+      "leaveTitle": "剩余假期",
+      "applyLeave": "申请休假",
+      "seeLeave": "查看假期",
+      "noLeave": "暂无可显示的假期。",
+      "ringHidden": "{name}：不显示",
+      "ringLeft": "{name}：可申请 {days} 天",
+      "yourMonth": "本月概览",
+      "legend": "标记说明",
+      "calendarPartial": "部分日期暂时无法加载。",
+      "hoursTitle": "本周",
+      "hoursMinutes": "{hours}小时{minutes}分",
+      "running": "已打卡上班",
+      "hoursChart": "本周工时：{items}",
+      "shiftLine": "虚线：您的班次，{time}",
+      "todayRunning": "今天仍在进行中。",
+      "openRecords": "打开我的记录",
+      "requestsTitle": "您的申请 · 当前进度",
+      "noRequests": "您没有进行中的申请。",
+      "requestsPartial": "部分申请暂时无法加载。",
+      "comingUpTitle": "即将到来",
+      "nothingComingUp": "未来两周没有安排。",
+      "comingUpPartial": "部分日期暂时无法加载。",
+      "needsYouCount": "{count, plural, =0 {目前没有需要您处理的事项} other {# 项事情需要您处理}}",
+      "steps": {
+        "bank_missing": "将您的银行账户资料提交给人事部",
+        "tax_number_missing": "将您的所得税号码提交给人事部",
+        "epf_number_missing": "将您的公积金（EPF）号码提交给人事部",
+        "socso_number_missing": "将您的社险（SOCSO）号码提交给人事部",
+        "identity_missing": "将您的身份证或护照号码提交给人事部",
+        "tp1_draft": "提交您的税务减免申报（TP1）",
+        "passport_renew": "请在 {date} 之前将新护照资料提交给人事部",
+        "missed_clock_out": "申请补登 {date} 漏打的下班卡",
+        "missed_clock_in": "申请补登 {date} 漏打的上班卡",
+        "absent_no_leave": "为 {date} 的缺勤提交申请"
+      },
+      "marks": {
+        "payday": "发薪日",
+        "cutoff": "工资截止",
+        "due": "截止日",
+        "fix": "需要更正",
+        "leave": "您的休假",
+        "holiday": "公共假期"
+      },
+      "request": {
+        "claim": "{label}报销",
+        "dates": "{from} 至 {to}",
+        "sentOn": "{date} 已提交",
+        "sent": "已提交",
+        "withHr": "人事部处理中",
+        "withApprover": "审批人处理中",
+        "declined": "未获批准",
+        "ready": "已就绪",
+        "paidWithSalary": "随工资发放",
+        "approved": "已批准",
+        "progress": "{item}的进度",
+        "waiting": "{days, plural, =0 {今天已提交} other {已等待 # 天}}",
+        "preparing": "人事部正在准备",
+        "openLetter": "打开信函",
+        "state": {
+          "done": "已完成",
+          "current": "进行中",
+          "todo": "尚未开始",
+          "declined": "未获批准"
+        }
+      },
+      "upcoming": {
+        "cutoff": "工资截止 · 请在此之前提交报销",
+        "payday": "发薪日",
+        "leave": "您的休假",
+        "managerAway": "{name}不在",
+        "managerAwayUnnamed": "您的经理不在",
+        "holiday": "{name} · 公共假期",
+        "holidayUnnamed": "公共假期"
+      },
+      "pageUnavailable": "暂时无法加载您的页面。请稍后再试。",
+      "waitingTitle": "等待您决定",
+      "waitingCount": "{count, plural, other {有 # 项事项在等待您}}",
+      "waitingSeeAll": "查看全部 {count} 项",
+      "requestsSeeAll": "查看全部：",
+      "requestsLeave": "请假",
+      "requestsClaims": "报销",
+      "requestsLetters": "信函"
+    },
+    "admin": {
+      "unavailable": "暂时无法加载此内容。其自身页面仍可正常使用。",
+      "sideLabel": "关注事项、您本人的记录和可提问的问题",
+      "scopeAll": "所有公司",
+      "scopeSome": "{count, plural, other {# 家公司}}",
+      "headline": "{count, plural, =0 {目前没有需要您处理的事项} other {# 项事情需要您处理}}",
+      "headlineOverdue": "{count} 项已逾期",
+      "headlineCutOff": "{days, plural, =0 {薪资今天截止} =1 {薪资明天截止} other {薪资 # 天后截止}}",
+      "needsTitle": "需要您处理",
+      "needsOrder": "最紧急的在前",
+      "seeAll": "查看全部 {count} 项",
+      "showFewer": "只显示最紧急的",
+      "needsEmpty": "目前没有需要您处理的事项。",
+      "needsPartial": "部分事项暂时无法检查，因此此列表可能不完整。其自身页面仍可正常使用。",
+      "tag": {
+        "overdue": "{days, plural, other {已逾期 # 天}}",
+        "blocksPayroll": "阻碍发薪",
+        "dueIn": "{days, plural, =0 {今天截止} =1 {明天截止} other {# 天后截止}}",
+        "waiting": "{days, plural, other {已等待 # 天}}"
+      },
+      "entry": {
+        "statutory": "{count, plural, other {提交 # 份 CP22 或 CP22A 通知}}",
+        "statutoryDetail": "{overdue} 份已逾期，{soon} 份将在 7 天内到期。",
+        "firstDue": "最早截止日期：{date}。",
+        "exceptions": "{count, plural, other {# 个薪资异常阻碍了薪资运行}}",
+        "exceptionsDetail": "在解决之前，该次运行无法关闭。",
+        "task": "{label}：{count} 项待处理",
+        "oldest": "最早于 {date} 提交",
+        "beforeCutOff": "请在 {date} 截止日前决定",
+        "prepared": {
+          "leaveApply": "{count, plural, other {# 份请假申请已准备好，等待您确认}}",
+          "leaveCancel": "{count, plural, other {# 份请假取消已准备好，等待您确认}}",
+          "leaveDecision": "{count, plural, other {# 个请假决定已准备好，等待您确认}}"
+        },
+        "preparedDetail": "由 AI Centre 准备。在您确认之前不会发生任何变化。",
+        "probation": "{count, plural, other {# 个试用期即将结束}}",
+        "probationDetail": "第一个将于 {date} 结束。结果由人来决定。",
+        "payrollInputs": "{count, plural, other {# 家公司仍有未完成的薪资输入}}",
+        "payrollInputsBlockers": "{count, plural, =0 {目前没有阻碍发薪的事项。} other {# 项检查阻碍发薪。}}",
+        "cutOff": "截止日期 {date}。",
+        "passports": "{count, plural, other {# 本护照将在 30 天内到期}}",
+        "passportsDetail": "第一本将于 {date} 到期。",
+        "autonomy": {
+          "movedDown": "{loop} 已退回为仅准备",
+          "acted": "{loop} 已自行处理：请检查它做了什么",
+          "sample": "{loop} 有一份每周抽样等待您检查",
+          "leftAlone": "{loop} 留下了一些需要人工处理的个案"
+        },
+        "aLoop": "一个 AI Centre 循环",
+        "companies": "{count, plural, other {# 家公司}}"
+      },
+      "cta": {
+        "statutory": "打开法定表格",
+        "exceptions": "打开异常",
+        "review": "审阅",
+        "open": "打开",
+        "check": "检查"
+      },
+      "readinessTitle": "薪资准备情况",
+      "readinessNext": "{period} 薪资 · 下一个截止日 {date}",
+      "readinessOpen": "打开薪资",
+      "readinessBar": "{companies} 家公司中有 {ready} 家已准备好",
+      "readiness": {
+        "ready": "{count, plural, other {家公司已准备好}}",
+        "waiting": "{count, plural, other {家公司正在等待输入}}",
+        "notStarted": "{count, plural, other {家公司尚未检查}}"
+      },
+      "readinessOff": "{count, plural, other {# 家公司使用薪资模块。}}AI Centre 中的发薪前检查已关闭，因此尚未检查准备情况。",
+      "readinessNone": "当前显示的公司未使用薪资模块。",
+      "handledTitle": "AI Centre 本周处理的事项",
+      "handled": {
+        "answered": "{count, plural, other {个问题已回答}}",
+        "leaveChecks": "{count, plural, other {条请假建议已准备}}",
+        "prepared": "{count, plural, other {项事项已为您准备}}",
+        "loopFound": "{loop}：{count, plural, other {发现的个案}}",
+        "loopResolved": "{count, plural, =0 {尚未解决任何个案} other {已解决 # 个}}"
+      },
+      "handledEmpty": "过去 7 天内还没有。",
+      "handledNote": "根据 AI Centre 自身过去 7 天的记录统计。",
+      "handledPartial": "部分数字暂时无法加载。",
+      "watchingTitle": "关注事项",
+      "watchingEmpty": "目前没有需要关注的事项。",
+      "watchingExceptions": "{count, plural, other {# 个薪资异常需要查看，但不会阻碍薪资运行。}}",
+      "ownTitle": "您本人的记录",
+      "forYouTitle": "您的事项",
+      "ownClear": "您本人的记录没有需要处理的事项。",
+      "ownSteps": "{count, plural, other {# 项需要提交或处理}}",
+      "ownPayday": "下一个发薪日 {date}",
+      "ownCutOff": "薪资截止 {date}",
+      "askTitle": "试着问问",
+      "ask": {
+        "payrollBlocking": "是什么阻碍了本月的薪资？",
+        "claimsBeforeCutOff": "谁还没有在截止日前提交报销？",
+        "approvalsWaiting": "哪些审批已等待超过 3 天？"
+      }
+    },
+    "manager": {
+      "sideLabel": "您的团队",
+      "headline": "{count, plural, =0 {您的团队没有待决定的事项} other {您的团队有 # 项待决定}}",
+      "decideTitle": "决定",
+      "decideOrder": "最早的在前",
+      "seeAll": "查看全部 {count} 项",
+      "decideEmpty": "没有等待您决定的事项。",
+      "decidePartial": "部分决定暂时无法加载。审批页面仍可正常使用。",
+      "sent": "{date} 提交",
+      "open": "打开",
+      "checking": "正在按照贵公司的规则检查…",
+      "recommendationNote": "建议来自贵公司的规则和记录，而不是猜测。每个决定仍由您做出，并以您的名义记录。",
+      "comingUpTitle": "您团队即将发生的事项",
+      "probation": "{name} 的试用期将于 {date} 结束",
+      "probationUnnamed": "一个试用期将于 {date} 结束",
+      "cutOff": "薪资输入将于 {date} 截止。请在此之前决定加班和报销。",
+      "preparedNote": "{count, plural, other {# 项更改已准备好，等待您确认}}",
+      "comingUpEmpty": "您的团队近期没有安排。",
+      "comingUpPartial": "部分事项暂时无法加载。",
+      "otherWork": "{count, plural, other {另有 # 项事项在等待您}}",
+      "seeAllWork": "在任务中查看全部 {count} 项"
     }
   },
   "why": {

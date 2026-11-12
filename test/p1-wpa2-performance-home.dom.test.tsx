@@ -111,6 +111,20 @@ describe('the slot', () => {
     expect(fs.readFileSync(path.resolve(__dirname, '../components/ui/button.tsx'), 'utf8').startsWith("'use client'")).toBe(true);
   });
 
+  it('every Today (employee, administrator, manager) mounts the block in its own boundary, and it renders there', async () => {
+    load.mockResolvedValueOnce(manager);
+    const { TodayPerformance } = await import('../components/today/performance-slot');
+    const { resolveServerTree } = await import('./helpers/server-tree');
+    render(await resolveServerTree(await TodayPerformance({ session: {} as never, scopeIds: ['c1'] })) as never);
+    const block = document.querySelector('[data-today-performance] [data-performance-home]');
+    expect(block, 'the Performance block under Today').not.toBeNull();
+    expect(block?.textContent).toContain('Fictional year-end');
+    for (const file of ['../components/today/employee/today-page.tsx', '../components/today/admin/today-pages.tsx']) {
+      const src = fs.readFileSync(path.resolve(__dirname, file), 'utf8');
+      expect(src.match(/<TodayPerformance session=\{(?:p\.)?session\} scopeIds=\{(?:p\.)?scopeIds\}\/>/g)?.length, file).toBe(file.endsWith('today-pages.tsx') ? 2 : 1);
+    }
+  });
+
   it('every Home branch mounts the block: personal landing, Atelier, Monolith, Classic', () => {
     const page = fs.readFileSync(path.resolve(__dirname, '../app/page.tsx'), 'utf8');
     expect(page).toContain('const performanceBlock = <PerformanceHomeSlot session={s} scopeIds={scopeIds} />;');

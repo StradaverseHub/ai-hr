@@ -19,6 +19,9 @@
  * SKIPPED WITH A REASON, so a verdict can say "auto-clear, but 2 of 6 detectors could not run yet".
  */
 
+import { netSwingFor, swingThresholdOrDefault, type ComponentIds } from './loops/net-swing';
+import type { StoredPayslipRow } from './pay-difference';
+
 export type DataRequirement = {
   /** 0 = works on a brand-new client's very first run, before any history exists. */
   priorCycles: number;
@@ -63,13 +66,33 @@ export type DetectorContext = {
   };
   /** Attendance + approved leave day counts for the period. Both zero is what `pay-without-attendance` looks for.
    *  `attendanceExempt` (AI v2 Phase 2 hardening): the person's schedule group is exempt from absence judgments on every
-   *  day of the period (the attendance owner's "Enable Exception"), so no attendance is their normal set-up. */
-  activity: { attendanceDays: number; approvedLeaveDays: number; attendanceExempt?: boolean };
+   *  day of the period (the attendance owner's "Enable Exception"), so no attendance is their normal set-up.
+   *  `attendanceInUse` (owner rule, 4 November 2026): FALSE when the Attendance module is not enabled for the person's
+   *  company (core/entitlements.ts, tenant-wide or company-scoped), so nobody there records attendance and zero days is
+   *  the normal set-up, not a ghost. Absent (a context built before this fact existed) or TRUE = attendance applies. */
+  activity: { attendanceDays: number; approvedLeaveDays: number; attendanceExempt?: boolean; attendanceInUse?: boolean };
   period: { start: string; end: string; calendarDays: number };
   /** Statutory ceilings resolved from the pack in force for this batch. */
   caps: Record<string, number>;
   /** Event ids gathered for this employee, so findings can cite provenance. */
   eventIds: string[];
+  /** Owner, 11 November 2026 — ONE net-swing threshold, and "check the payroll first". What `net-swing` judges by: this
+   *  person's payslips at this company for the period and the months before it (core/loops/net-swing.ts swingMonths), and
+   *  the company's Salary payroll loop setting, read once for the batch. Absent (a context built without it): the swing
+   *  is judged on `current`/`prior` against the 15% default, with nothing explained. */
+  swing?: {
+    period: string;
+    companyId: string;
+    /** The run type of the batch under evaluation. A bonus or off-cycle batch is compared like with like (below). */
+    runType: string;
+    rows: readonly StoredPayslipRow[];
+    thresholdBp: number;
+    /** FALSE when the evaluator could not read the company's setting (row security: the scheduled sweep, a payroll
+     *  partner), so `thresholdBp` is the 15% default and there are no exclusions. Said so on every finding. */
+    thresholdReadable: boolean;
+    exclusions: readonly string[];
+    componentIds?: ComponentIds;
+  };
 };
 
 export type PayslipFigures = {
@@ -172,6 +195,16 @@ const statutoryOverCap: Detector = {
 };
 
 /**
+ * Why `missing-bank-profile` fired, carried as the `reason` fact so a screen can word the two cases differently.
+ * `payment-method-not-set`: the employment has no payment method on record (NULL), so it is paid by bank by default
+ * and has no bank details. `bank-details-missing`: the payment method is bank transfer and the bank details are missing.
+ * ADDITIVE: the `netPay` and `paymentMethod` facts keep their keys and values, so verdicts stored before this fact
+ * existed still render (a finding without `reason` reads as before).
+ */
+export const MISSING_BANK_PROFILE_REASONS = ['payment-method-not-set', 'bank-details-missing'] as const;
+export type MissingBankProfileReason = (typeof MISSING_BANK_PROFILE_REASONS)[number];
+
+/**
  * Payable by BANK TRANSFER with nowhere to send it. BLOCK — the disbursement file would carry a row that
  * cannot land.
  *
@@ -179,34 +212,41 @@ const statutoryOverCap: Detector = {
  * nearly shipped with. `employment.payment_method` is a three-value enum (bank_transfer | cheque | cash),
  * so a cash-paid site worker legitimately has no bank details. Firing on them would flag a whole deskless
  * workforce as blocked on their first cycle — the single fastest way to teach an operator that this layer
- * cries wolf.
+ * cries wolf. Cash and cheque NEVER fire, whatever the bank details.
  *
  * NULL counts as bank transfer. The column is nullable with no default, so every employment predating
  * migration 0270 carries NULL, and those are ordinary bank-transfer employees — treating NULL as "unknown,
- * so stay quiet" would silently exempt most of the existing population from the check.
+ * so stay quiet" would silently exempt most of the existing population from the check. It still BLOCKS
+ * (a bank file cannot be made for the row), but its `reason` says the payment method was never set, because
+ * the fix is different: set the payment method (cash or cheque needs no bank details) or capture the account.
  */
 const missingBankProfile: Detector = {
   id: 'missing-bank-profile',
   requires: { priorCycles: 0 },
   evaluate: (ctx) => {
-    const paidByBank = ctx.profile.paymentMethod === 'bank_transfer' || ctx.profile.paymentMethod === null;
-    return ctx.current.netPay > 0 && paidByBank && !ctx.profile.hasBankProfile
-      ? [
-          {
-            detectorId: 'missing-bank-profile',
-            severity: 'block',
-            facts: { netPay: ctx.current.netPay, paymentMethod: ctx.profile.paymentMethod ?? 'unset' },
-            sourceEventIds: ctx.eventIds,
-            suggestedAction: 'anomaly.action.missingBankProfile',
-          },
-        ]
-      : [];
+    const method = ctx.profile.paymentMethod;
+    const paidByBank = method === 'bank_transfer' || method === null;
+    if (!(ctx.current.netPay > 0 && paidByBank && !ctx.profile.hasBankProfile)) return [];
+    const reason: MissingBankProfileReason = method === null ? 'payment-method-not-set' : 'bank-details-missing';
+    return [
+      {
+        detectorId: 'missing-bank-profile',
+        severity: 'block',
+        facts: { netPay: ctx.current.netPay, paymentMethod: method ?? 'unset', reason },
+        sourceEventIds: ctx.eventIds,
+        suggestedAction: 'anomaly.action.missingBankProfile',
+      },
+    ];
   },
 };
 
 /**
  * No tax profile. REVIEW rather than block: PCB may still be computed on defaults and be right, and a
  * brand-new client mid-onboarding would otherwise have its whole first batch blocked on paperwork.
+ *
+ * WHAT IT TESTS (checked 11 November 2026): the person has NO `employee_statutory_my` row at all (ADR-0076 §3 table) —
+ * no tax category, no children, no statutory numbers, so PCB ran on defaults. It does NOT test the PCB amount: `pcb` is
+ * EVIDENCE only, and a zero PCB (a person below the PCB threshold) neither causes nor prevents a finding.
  */
 const missingTaxProfile: Detector = {
   id: 'missing-tax-profile',
@@ -231,12 +271,18 @@ const missingTaxProfile: Detector = {
  * BOTH counts must be zero. Approved leave is attendance for this purpose — flagging someone on a month of
  * approved annual leave would fire on every legitimate long absence and train the operator to dismiss this
  * detector, which is worse than not shipping it.
+ *
+ * ONLY WHERE ATTENDANCE APPLIES (owner rule, 4 November 2026: a legitimate set-up is not an exception). Not when the
+ * Attendance module is off for the person's company (`attendanceInUse === false`), and not when their schedule group
+ * is exempt for the whole period (`attendanceExempt`). Someone who is expected to record attendance and has zero days
+ * is still flagged.
  */
 const payWithoutAttendance: Detector = {
   id: 'pay-without-attendance',
   requires: { priorCycles: 0 },
   evaluate: (ctx) =>
     ctx.current.netPay > 0 && ctx.activity.attendanceDays === 0 && ctx.activity.approvedLeaveDays === 0 && ctx.activity.attendanceExempt !== true
+      && ctx.activity.attendanceInUse !== false
       ? [
           {
             detectorId: 'pay-without-attendance',
@@ -329,21 +375,72 @@ const duplicateEmploymentPay: Detector = {
 // PHASE 1a — PRIOR-PERIOD DELTA. priorCycles: 1, so these SELF-DISABLE on a client's first cycle and are
 // recorded as skipped rather than passing vacuously.
 //
-// The defaults below are CONSERVATIVE PLACEHOLDERS, EXPLICITLY UNTUNED. ADR-0076 §6 is blunt that only
-// real client history or a shadow run produces defensible thresholds, and the seed config labels them as
-// such so nobody mistakes 30% for an empirically derived number.
+// ONE THRESHOLD (owner, 11 November 2026). `net-swing` no longer has a threshold of its own (it was a fixed 30%
+// placeholder, overridable per tenant through payroll_anomaly_config): it judges by the company's Salary payroll loop
+// threshold (15% unless an administrator set another), through the SAME pure function the Salary loop flags with
+// (core/loops/net-swing.ts netSwingFor), so the two can never disagree. `params` are ignored here on purpose.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Where the threshold a net-swing finding used came from, as a fact on the finding. */
+export const NET_SWING_THRESHOLD_SOURCES = ['company', 'default', 'default_company_setting_unreadable'] as const;
 
 const netSwing: Detector = {
   id: 'net-swing',
   requires: { priorCycles: 1 },
-  evaluate: (ctx, params) => {
-    if (!ctx.prior) return [];
-    const pct = num(params.netSwingPct) || 30;
+  evaluate: (ctx) => {
+    const sw = ctx.swing;
+    // A regular run with a previous PAID month in the months read is judged on it even when the company's last closed run
+    // did not pay this person (the evaluator's gate admits that case); anything else needs the prior cycle.
+    if (!ctx.prior && !(sw?.runType === 'regular' && sw.rows.some((r) => r.payPeriod < sw.period))) return [];
+    const thresholdBp = swingThresholdOrDefault(sw?.thresholdBp);
+    const thresholdSource: (typeof NET_SWING_THRESHOLD_SOURCES)[number] = !sw
+      ? 'default'
+      : sw.thresholdReadable === false
+        ? 'default_company_setting_unreadable'
+        : 'company';
+    // A REGULAR run is judged on the month, through the one owner the Salary loop uses, with the payroll records checked
+    // first. A bonus or off-cycle batch is NOT: an additional run must never explain itself, so it is compared like with
+    // like below, against the last closed run of its own type (the pre-11-November behaviour, at the company threshold).
+    if (sw && sw.runType === 'regular') {
+      const person = netSwingFor(ctx.employmentId, sw.rows, {
+        period: sw.period,
+        companyId: sw.companyId,
+        thresholdBp,
+        exclusions: sw.thresholdReadable === false ? [] : sw.exclusions,
+        componentIds: sw.componentIds,
+      });
+      if (person && person.swingBp !== null && person.unexplainedBp !== null) {
+        if (!person.flagged) return [];
+        const sign = person.direction === 'down' ? -1 : 1;
+        return [
+          {
+            detectorId: 'net-swing',
+            severity: 'review',
+            facts: {
+              netPay: person.netPay,
+              priorNetPay: person.previousNetPay,
+              movementPct: Math.round((sign * person.swingBp) / 10) / 10,
+              thresholdPct: thresholdBp / 100,
+              thresholdSource,
+              comparedWith: 'previous_paid_month',
+              // "Check the payroll first": the records that accounted for part of the change, and how much of it they did
+              // not, as a ratio of the whole change (1 = none of it; above 1 when explained and unexplained moves offset).
+              explainedCauses: person.explainedBy.join(','),
+              unexplainedShare: person.swingBp === 0 ? 1 : Math.round((person.unexplainedBp / person.swingBp) * 1000) / 1000,
+            },
+            sourceEventIds: ctx.eventIds,
+            suggestedAction: 'anomaly.action.netSwing',
+          },
+        ];
+      }
+      // Nothing comparable in the months read (the previous paid month is older than the window, or was not positive):
+      // never a vacuous pass. Fall through to the like-for-like comparison with the prior cycle the gate found.
+    }
+    if (!ctx.prior) return []; // a previous paid month whose net was not positive: a swing from zero (component-appeared)
     const before = ctx.prior.netPay;
     if (before === 0) return []; // a swing from zero is infinite; component-appeared covers that case.
     const movement = ((ctx.current.netPay - before) / Math.abs(before)) * 100;
-    return Math.abs(movement) > pct
+    return Math.abs(movement) * 100 > thresholdBp
       ? [
           {
             detectorId: 'net-swing',
@@ -352,7 +449,11 @@ const netSwing: Detector = {
               netPay: ctx.current.netPay,
               priorNetPay: before,
               movementPct: Math.round(movement * 10) / 10,
-              thresholdPct: pct,
+              thresholdPct: thresholdBp / 100,
+              thresholdSource,
+              comparedWith: 'previous_run_of_same_type',
+              explainedCauses: '',
+              unexplainedShare: 1,
             },
             sourceEventIds: ctx.eventIds,
             suggestedAction: 'anomaly.action.netSwing',

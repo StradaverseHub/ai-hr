@@ -132,10 +132,55 @@ No provider transform, outbound field, approved purpose or transport changes. Ap
 
 The same 28 approvals carry forward from `3baa446f7cfdbae12c6db4c7aebe9074409b8b96182164d6c0bb042e4dfe0a04` (rc3; this branch's previous binding was `8f1b9ba06b4c38abc1920f996f73120d2c27961d84e468bdabd400959251cca7`) to `4de1a055962d8fe58c752e7437fdfe5c25b8871ff67e11c8316d50cbbd9084aa`. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. The review commit is the merge commit that records this section on that branch. This binding covers this release only and grants no production authority.
 
+## AI-native exceptions and Today release binding (12 November 2026)
+
+On 12 November 2026 MYT the repository owner approved re-binding the provider approvals for the payroll anomaly and net-swing source changed by the exceptions detectors branch (session handoff `ainative-handoff-20261111` §5 item 1). The owner then widened that approval the same day, relayed by the release coordinator: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision". The approval is applied to the release candidate on `claude/ainative-release-20261112`, based on alpha `f7ee5177feb1ca37a11847bf9fe349c3deab0b0d`, which merges:
+
+- `claude/ainative-exc-detectors-20261111` at `7b3170c7c7a753080978ddd56499e4ceee40fe2e`;
+- `claude/ainative-exc-page-20261111` at `ea17cbdd1da4641fe0ece5871403a3aec5ece367` (it contains the detectors branch);
+- `claude/ainative-today-employee-20261111` at `c35038453b712d3ff1374d713f3d72f4f959dd4f`.
+
+The exact fingerprint is `2b50c1986a7aaa8e21d3c68e4a333c0972ea67674a28e304151e4d296d65a434` over 1,559 files. The previous fingerprint was `5e631303…`, over 1,558 files.
+
+Twelve covered files changed, all from the detectors branch. The exceptions page and Today branches change no covered source.
+
+- `core/payroll-anomaly.ts` and `core/payroll-anomaly-detectors.ts`: anomaly detection and batch resolution of open exceptions.
+- `core/loops/net-swing.ts`, `core/loops/salary-payroll.ts` and the new `core/loops/swing-rows.ts`: the net-swing explanation rows. The new file is the one added to the closure.
+- `core/pay-difference.ts`: pay difference.
+- `messages/{en,ms,ta,th,vi,zh}.json`: translations.
+
+They are in the closure through the payroll hypothesis and anomaly narration roots (`core/payroll-hypothesis.ts` imports `core/payroll-anomaly.ts`). No provider contract, outbound field, approved purpose or transport is added or widened.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority.
+
+### Re-binding after rc3 (12 November 2026)
+
+This binding follows the rc3 binding above. It is applied under the same 12 November 2026 owner approval, quoted above. The candidate merged alpha `05c4aa0348700a08de6723e88a67f2cbd43689d4`, which is rc3 as installed on staging. Re-binding on top of rc3's fingerprint `3baa446f…` (1,558 files) gives the exact fingerprint `80f49217133642f005e14d21bf76644de7a06f64a7d721b78bb43db45d2235fe` over 1,559 files. The earlier `2b50c198…` binding is superseded.
+
+The covered files that differ from that alpha are the same twelve detectors-branch files listed above. In `core/payroll-anomaly.ts`, rc3's SQL paging of the cross-run exceptions queue merged cleanly with the detectors branch's batch resolve. Neither change adds data to any provider payload. The same 28 approvals carry forward to the new fingerprint. Both pending records and the retired Attendance Formula contract keep their original values. This binding grants no production authority.
+
+### Re-binding after the first full gate's repair (12 November 2026)
+
+Full gate 43120033983, attempt 1 at `7353338ba`, failed in one no-database unit. `test/agent-capability-inventory.test.ts` found that the exceptions page's new bulk "Mark as expected" action (`app/control-tower/exceptions/actions.ts` `markGroupExpectedAction`) was not classified.
+
+It is now classified `backlog:approve`, the same ceiling as the single-exception resolve `resolveAnomalyAction`. It stays a human action on that screen, and the agent cannot prepare it. `lib/ai/agent-capability-inventory.ts` is the only covered file changed since `80f49217…`. No provider contract, outbound field, approved purpose or transport changes.
+
+Under the same 12 November 2026 owner approval, the same 28 approvals carry forward to the exact fingerprint `def82461e55bc63977b0bbe0be16bec688bb025777019c8c9349777cdbf2ae1c` over 1,559 files. Both pending records and the retired Attendance Formula contract keep their original values. This binding grants no production authority.
+
+### Re-binding after Irwin 69de131e (12 November 2026)
+
+Staging moved before this candidate was installed. The candidate merged alpha `69de131ecec4d132cf456d695f68337edff032e7`, the Irwin board release, which is now installed on staging. Its binding `4de1a055962d8fe58c752e7437fdfe5c25b8871ff67e11c8316d50cbbd9084aa` (1,563 files) reproduces from alpha's own tree. Under the owner's standing 12 November 2026 approval, quoted above, the same 28 approvals carry forward from that binding to the exact fingerprint `06f8b5ca8c882d880f24173e1e300e8936e338f354cf9617e836a7c262f61d05` over 1,564 files. This supersedes `def82461…`.
+
+Thirteen covered files differ from that alpha, and they are this candidate's own changes:
+
+- the twelve detectors-branch files listed above;
+- `lib/ai/agent-capability-inventory.ts`, whose `backlog:approve` classification of `markGroupExpectedAction` the coordinator confirmed.
+
+Irwin's changes to `core/payroll.ts` (re-pricing formula-priced one-off rows during payslip generation), `core/payroll-history-revisions.ts`, `core/payroll-individual-txn.ts`, the inventory and the message catalogues merged without conflict. They do not touch the anomaly verdicts, the findings or the Exceptions queue. No provider contract, outbound field, approved purpose or transport is added or widened. Both pending records and the retired Attendance Formula contract keep their original values. This binding grants no production authority.
 ## Information-correction read lock
 
 On 12 November 2026 MYT the repository owner's pre-approval for staging releases ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision") is applied to `claude/ic-read-lock-20261112`, branched from `origin/alpha` at `69de131ecec4d132cf456d695f68337edff032e7` (the release on staging). The covered source changes from `4de1a055962d8fe58c752e7437fdfe5c25b8871ff67e11c8316d50cbbd9084aa` to the exact fingerprint `b68662143d3204ee71e6fbdb96b8fb7937c12901f9e07997a678e1d408fbc1be` over 1,563 files; the agent source manifest changes from `9a323c538e0291fc354cd2acbace37927b1e63ed765a756687072cef35710276` to `dfc7b45d47e64f6122f4a536d3bbc5c754b2fbe5b9ca044faba92d3347760d44` over 487 files.
 
 The covered changes are lock modes only. `core/workforce-lock-mode.ts` (`joinWorkforceBarrierTx`, the Workforce 'maintain' barrier) now takes the shared Access lock inside a display read (`withAccessDisplayRead`) when its transaction holds none, as `joinAccessConfigurationTx` already does for 'view'; outside a display read it is unchanged. `core/cost-allocation-import.ts` wraps the per-company reference read in `withAccessDisplayRead`. The uncovered `core/information-correction.ts` opens the correction form and its review as such reads, without row locks, while the save keeps its exclusive lock and row locks. The authority checks and their results are unchanged. No provider transform, outbound field, approved purpose or transport changes; apart from the two regenerated manifests and these re-bound approvals, no file under `lib/ai`, `core/teras-wiring`, `core/assistant.ts` or `core/ai-governance.ts` changes. None of these changes adds data to any provider payload.
 
-The same 28 approvals carry forward from `4de1a055962d8fe58c752e7437fdfe5c25b8871ff67e11c8316d50cbbd9084aa` to `b68662143d3204ee71e6fbdb96b8fb7937c12901f9e07997a678e1d408fbc1be`. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. The review commit is the commit that records this section on that branch. This binding covers this release only and grants no production authority.
+The same 28 approvals carried forward from `4de1a055962d8fe58c752e7437fdfe5c25b8871ff67e11c8316d50cbbd9084aa` to `b68662143d3204ee71e6fbdb96b8fb7937c12901f9e07997a678e1d408fbc1be` on the fix branch. Rebased onto staging alpha `2a486e58273726729fe4b1a5b3892ad7109b372e` (ai-hr-c2, fingerprint `06f8b5ca8c882d880f24173e1e300e8936e338f354cf9617e836a7c262f61d05`), they carry forward to the exact fingerprint `58325103e2f43020e77d3db1d094ac0799e97f7f5dc1455a55a157b569209f55`, which also covers the Personnel search dropdown fix (no AI source). Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. The review commit is the commit that records this section on that branch. This binding covers this release only and grants no production authority.

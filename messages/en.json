@@ -18198,6 +18198,7 @@
     "thresholdBatchSwing": "Pay change for the whole run: {pct}%",
     "thresholdSourceDefault": "shipped default",
     "thresholdSourceConfigured": "set for this company",
+    "thresholdSourceUnreadable": "the company's own setting could not be read here, so the default was used",
     "thresholdsUntuned": "A figure marked “shipped default” is a placeholder with no empirical basis — it was chosen so the checks would work on a first run, not measured against any payroll. Verdicts below reflect that placeholder, not a rule tuned to this company. A defensible threshold comes from this company’s own pay history or a parallel run.",
     "blockedHelp": "This run cannot be closed while anything is blocked.",
     "resolveAccepted": "Correct as it stands",
