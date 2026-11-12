@@ -24,8 +24,13 @@ import {
   normalizeDashboardLayout,
   type DashboardCardChoice,
 } from '../lib/dashboard-layout';
-import { listDashboardCards, listEmployeeDashboardCards } from '../core/dashboard-card-config';
+import { listCards, listEmployeeDashboardCards, type DashboardCardAudience } from '../core/dashboard-card-config';
 import { closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+
+/** The Card Library's active cards for one audience, from listCards (the screen's own read), in its order. The old
+ * dashboard's per-role reader (listDashboardCards) was retired with it on 12 Nov 2026; the rows stay in the library. */
+const audienceCards = async (ctx: Parameters<typeof listCards>[0], role: DashboardCardAudience) =>
+  (await listCards(ctx)).filter((c) => c.status === 'active' && c.audience.includes(role));
 
 const choice = (cardKey: string, over: Partial<DashboardCardChoice> = {}): DashboardCardChoice => ({
   cardKey,
@@ -214,20 +219,20 @@ describe('dashboard cards — end-to-end read + normalisation', () => {
       { cardKey: 'headcountByCompany', name: 'Headcount by Company', cardType: 'information', defaultDisplay: true, displayOrder: 4, audience: ['hr_admin'] },
     ]);
     const ctx = await newEmployeeCtx();
-    expect((await listDashboardCards(ctx, 'employee')).map((c) => c.cardKey)).toEqual([
+    expect((await audienceCards(ctx, 'employee')).map((c) => c.cardKey)).toEqual([
       'leaveBalance',
       'sharedSection',
     ]);
-    expect((await listDashboardCards(ctx, 'manager')).map((c) => c.cardKey)).toEqual([
+    expect((await audienceCards(ctx, 'manager')).map((c) => c.cardKey)).toEqual([
       'teamAwayToday',
       'sharedSection',
     ]);
-    expect((await listDashboardCards(ctx, 'hr_admin')).map((c) => c.cardKey)).toEqual([
+    expect((await audienceCards(ctx, 'hr_admin')).map((c) => c.cardKey)).toEqual([
       'sharedSection',
       'headcountByCompany',
     ]);
     // A save can never smuggle an out-of-role card in: normalisation against the role catalog drops it.
-    const mgrCards = await listDashboardCards(ctx, 'manager');
+    const mgrCards = await audienceCards(ctx, 'manager');
     const layout = normalizeDashboardLayout(
       { selected: ['teamAwayToday', 'headcountByCompany'], order: ['teamAwayToday', 'headcountByCompany'] },
       mgrCards,

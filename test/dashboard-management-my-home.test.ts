@@ -35,4 +35,11 @@ describe('Dashboard Management configures My Home',()=>{
   const en=JSON.parse(read('messages/en.json')) as {dashboardCardConfig:{manage:{title:string}}};
   expect(en.dashboardCardConfig.manage.title).toBe('My Home settings');
  });
+ it('names the page the same in the sidebar as in its heading, in every locale, on the same route',()=>{
+  for(const locale of LOCALES){
+   const m=JSON.parse(read(`messages/${locale}.json`)) as {nav:Record<string,string>;dashboardCardConfig:{manage:{title:string}}};
+   expect(m.nav.dashboardCardConfig,locale).toBe(m.dashboardCardConfig.manage.title);
+  }
+  expect(read('lib/navigation/shell-inventory.ts')).toContain("{ href: '/admin/settings/dashboard', labelKey: 'dashboardCardConfig'");
+ });
 });

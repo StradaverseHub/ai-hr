@@ -249,9 +249,18 @@ async function fullPageOwners(ctx:SessionContext,scopeIds:string[]):Promise<Reco
 const errorFact=(error:unknown)=>({name:(error as Error)?.name??typeof error,code:(error as {code?:string})?.code??null,
  reason:(error as {reason?:string})?.reason??null,message:String((error as Error)?.message??error).slice(0,240)});
 
-/** The owners the server-rendered Today page combines for a personal (employee or manager) layout. */
+/** The owners the server-rendered Today pages combine (Employee, Manager and Admin Today, since the old dashboard and the
+ * earlier Today's Done for you, Watching and At a glance sections were retired on 12 Nov 2026). The three cards ported
+ * from the old dashboard are measured as their owners read them: the manager's team attendance today
+ * (packs/attendance team-today.ts), the Notice Board (core/employee-home-notices.ts) and the Coming up reminders (the
+ * manager's own review queue and Home calendar, as components/today/admin/reads.ts readTeamReminders composes them). */
 async function todayReaders(today:string){
  const reads=await import('../../components/today/reads');
+ const own=await import('../../core/employee-today-reads');
+ const attendance=await import('../../packs/attendance/service');
+ const notices=await import('../../core/employee-home-notices');
+ const employmentReviews=await import('../../core/employment-review');
+ const {addCalendarDays}=await import('../../lib/hr-date-calendar');
  const {todayAudience}=await import('../../lib/today/audience');
  const {readMyPayrollReadiness}=await import('../../core/pre-salary/person-items');
  const {allowedCompanies}=await import('../../core/read');
@@ -268,11 +277,25 @@ async function todayReaders(today:string){
  // The page wraps these owners in its render's read scope exactly so (components/today/today-page.tsx, app/layout.tsx,
  // components/performance-home/performance-home.tsx, app/page.tsx).
  const inPage=<T,>(ctx:SessionContext,read:()=>Promise<T>)=>database.withSharedReadSnapshot(ctx,read,undefined,requestScope.requestReadScope());
+ /** The viewer's own selected employment, proved by the Home identity owner as every Today page proves it first. */
+ const ownEmployment=(ctx:SessionContext)=>own.readOwnContext(ctx,undefined).then(value=>value.identity.selectedEmploymentId);
  const readers=async(ctx:SessionContext):Promise<Record<string,()=>Promise<unknown>>>=>{
   const scopeIds=(await allowedCompanies(ctx)).map(company=>company.id),audience=todayAudience(ctx);
   const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
   return {
    needsYou:()=>reads.readNeedsYou(ctx,{scopeIds,audience,today,locale:'en'}).then(value=>({failed:value.failed,tasks:value.tasks.length,taskTotal:value.taskTotal,loops:value.loops.length})),
+   teamAttendance:()=>inPage(ctx,()=>attendance.teamAttendanceToday(ctx,{date:today,scopeIds})).then(value=>({total:value.present+value.late+value.halfDay+value.absent})),
+   notices:()=>ownEmployment(ctx).then(async id=>{
+    if(!id)return 'none';
+    const value=await notices.readEmployeeHomeNotices(ctx,id);
+    return {items:value.items.length,unread:value.unread};
+   }),
+   reminders:()=>ownEmployment(ctx).then(async id=>{
+    if(!id)return 'none';
+    const last=addCalendarDays(today,29),months=[...new Set([today.slice(0,7),last.slice(0,7)])];
+    const [queue,calendars]=await Promise.all([inPage(ctx,()=>employmentReviews.pendingManagerReviewsFor(ctx,id)),Promise.all(months.map(month=>own.readOwnCalendar(ctx,id,month)))]);
+    return {reviews:queue.filter(row=>row.dueDate&&row.dueDate<=last).length,days:calendars.reduce((sum,month)=>sum+month.days.length,0)};
+   }),
    beforePayroll:()=>readMyPayrollReadiness(ctx,{scopeIds,locale:'en',today,includeApprovals:false}).then(value=>({present:value!==null,failed:value?.failed??null,items:value?.items.length??null})),
    'needs.pendingTaskSummary':()=>inbox.pendingTaskSummary(ctx,scopeIds,modules).then(value=>({items:value.items.length,total:value.total})),
    'needs.loopCards':()=>loops.readLoopCards(ctx,{scopeIds,admin:false}).then(value=>({cards:value.length})),
@@ -975,7 +998,8 @@ async function cardsSectionsTraces(label:string,actor:Actor,month:string,targets
   'cardsSections:card:greeting':await trace(read('greeting')),
   'cardsSections:card:notices':await trace(read('notices')),
   'cardsSections:section:needsYou':await trace(targets.needsYou),
-  'cardsSections:section:atAGlance':await trace(targets.atAGlance),
+  'cardsSections:section:teamAttendance':await trace(targets.teamAttendance),
+  'cardsSections:section:reminders':await trace(targets.reminders),
   'cardsSections:section:page.assignedPerformance':await trace(targets['page.assignedPerformance']),
   'cardsSections:section:page.greetingIdentity':await trace(targets['page.greetingIdentity']),
   'cardsSections:stream':await trace(()=>streamHome(actor,month,null)),
@@ -983,7 +1007,8 @@ async function cardsSectionsTraces(label:string,actor:Actor,month:string,targets
  };
  const trips=Object.fromEntries(Object.entries(rows).map(([name,row])=>[name.slice('cardsSections:'.length),[row.before,row.after]]));
  print('cards-sections-trips',{label,trips,greetingStatements:rows['cardsSections:card:greeting'].afterOrdered,noticeStatements:rows['cardsSections:card:notices'].afterOrdered,
-  needsYouStatements:rows['cardsSections:section:needsYou'].afterOrdered,atAGlanceStatements:rows['cardsSections:section:atAGlance'].afterOrdered,
+  needsYouStatements:rows['cardsSections:section:needsYou'].afterOrdered,teamAttendanceStatements:rows['cardsSections:section:teamAttendance'].afterOrdered,
+  remindersStatements:rows['cardsSections:section:reminders'].afterOrdered,
   assignedPerformanceStatements:rows['cardsSections:section:page.assignedPerformance'].afterOrdered});
  return rows;
 }
@@ -1365,7 +1390,7 @@ it('completes every manager Home card and Today section read without a handled f
  // its own transaction) and after (one shared read-only snapshot per stream or section). Statement text only (bound
  // values never appear in it); BEGIN, SET TRANSACTION, set_config and COMMIT all count as trips.
  const statementTrace:Record<string,unknown>={};report.statementTrace=statementTrace;
- const pageSections=['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'];
+ const pageSections=['needsYou','teamAttendance','notices','reminders','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'];
  const traceBoth=async(before:()=>Promise<unknown>,after:()=>Promise<unknown>)=>{
   await after().catch(()=>undefined);
   const old=await traceStatements(()=>withIndependentTransactions(before));
@@ -1760,7 +1785,7 @@ it('completes every manager Home card and Today section read without a handled f
   for(const [label,actor] of [['manager',manager],['employee',employee],['manager',manager]] as const){
    const targets=await todayTargets(actor.ctx),started=performance.now(),sectionMs:Record<string,unknown>={};
    const {result,statements}=await sampleActivity(()=>Promise.all([
-    ...['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.performanceBlock','page.assignedPerformance','page.assistant'].map(name=>
+    ...['needsYou','teamAttendance','notices','reminders','beforePayroll','page.identity','page.performanceBlock','page.assignedPerformance','page.assistant'].map(name=>
      targets[name]().then(value=>{sectionMs[name]={ms:Math.round(performance.now()-started),value};},error=>{sectionMs[name]={ms:Math.round(performance.now()-started),failure:errorFact(error)};})),
     streamHome(actor,month,null),
    ]));
@@ -1771,7 +1796,7 @@ it('completes every manager Home card and Today section read without a handled f
   // Three Home pages at once, as the baseline sweep's employee, manager and other-tenant employee lanes do.
   const triple=await sampleActivity(()=>Promise.all([manager,employee,secondManager].map(async actor=>{
    const targets=await todayTargets(actor.ctx),started=performance.now(),sectionMs:Record<string,unknown>={};
-   const [stream]=await Promise.all([streamHome(actor,month,null),...['needsYou','doneForYou','atAGlance','beforePayroll'].map(name=>targets[name]().then(
+   const [stream]=await Promise.all([streamHome(actor,month,null),...['needsYou','teamAttendance','notices','reminders','beforePayroll'].map(name=>targets[name]().then(
     value=>{sectionMs[name]={ms:Math.round(performance.now()-started),value};},error=>{sectionMs[name]={ms:Math.round(performance.now()-started),failure:errorFact(error)};}))]);
    return {role:actor.role,index:actor.index,elapsedMs:Math.round(performance.now()-started),sections:sectionMs,frames:stream.frames.map(f=>[f.card,f.status,f.ms])};
   })));
@@ -1805,7 +1830,7 @@ it('completes every manager Home card and Today section read without a handled f
     print('explain-stream',{attempt,elapsedMs:result.elapsedMs,frames:result.frames.map(f=>[f.card,f.status,f.ms])});
    }
    const targets=await todayTargets(manager.ctx);
-   for(const name of ['needsYou','doneForYou','atAGlance','beforePayroll','page.performanceBlock','page.assignedPerformance']){
+   for(const name of ['needsYou','teamAttendance','notices','reminders','beforePayroll','page.performanceBlock','page.assignedPerformance']){
     const started=performance.now();let failure:unknown=null;
     try{await targets[name]();}catch(error){failure=errorFact(error);}
     print('explain-today',{name,ms:Math.round(performance.now()-started),failure});
@@ -1897,7 +1922,7 @@ it('completes every manager Home card and Today section read without a handled f
      const pages=await Promise.all(lane.map(async actor=>{
       const owners=await targets(actor.ctx),started=performance.now(),sections:Record<string,unknown>={};
       const render=<T,>(work:()=>Promise<T>)=>scope==='page'?targets.pageRender(work):work();
-      const [stream]=await Promise.all([section(()=>streamHome(actor,month,null,worker.GET)),render(()=>Promise.all(['needsYou','doneForYou','atAGlance','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'].map(name=>
+      const [stream]=await Promise.all([section(()=>streamHome(actor,month,null,worker.GET)),render(()=>Promise.all(['needsYou','teamAttendance','notices','reminders','beforePayroll','page.identity','page.greetingIdentity','page.performanceBlock','page.assignedPerformance','page.layoutApprovals'].map(name=>
        section(owners[name]).then(()=>{sections[name]=Math.round(performance.now()-started);},error=>{sections[name]=errorFact(error);}))))]);
       return {role:actor.role,elapsedMs:stream.elapsedMs,over:stream.frames.filter(frame=>frame.ms>deadlineMs).map(frame=>frame.card),
        failed:stream.frames.filter(frame=>frame.status!==200).map(frame=>frame.card),
