@@ -10,6 +10,13 @@ const git = (cwd, ...args) => execFileSync('git', args, {cwd, maxBuffer: 128 * 1
 const text = (cwd, ...args) => git(cwd, ...args).toString('utf8').trim();
 const fail = reason => {throw Error('Repair impact refused: ' + reason);};
 
+/** GitHub's pinned checkout omits .git; both exact HTTPS names identify this repository. */
+export function assertRepairRepositoryOrigin(value) {
+  if (typeof value !== 'string' || !['https://github.com/stradaversehub/ai-hr',
+    'https://github.com/stradaversehub/ai-hr.git'].includes(value.toLowerCase()))
+    fail('unexpected repository origin');
+}
+
 /** Parse exactly one bounded cat-file response for every requested object, with no suffix or truncation. */
 export function decodeCommittedBlobs(ids, bytes) {
   if (!Array.isArray(ids) || !ids.every(sha) || new Set(ids).size !== ids.length || !Buffer.isBuffer(bytes))
@@ -54,8 +61,7 @@ export function reconstructRepairImpact({cwd, base, head, controller}) {
   if (![base, head, controller].every(sha) || base === head) fail('exact distinct source/candidate and controller required');
   if (text(controllerDirectory, 'rev-parse', 'HEAD') !== controller || text(controllerDirectory, 'status', '--porcelain'))
     fail('controller must be exact and clean');
-  if (text(cwd, 'remote', 'get-url', 'origin').toLowerCase() !== 'https://github.com/stradaversehub/ai-hr.git')
-    fail('unexpected repository origin');
+  assertRepairRepositoryOrigin(text(cwd, 'remote', 'get-url', 'origin'));
   for (const ref of [base, head]) if (text(cwd, 'rev-parse', '--verify', ref + '^{commit}') !== ref) fail('not a commit');
   execFileSync('git', ['merge-base', '--is-ancestor', base, head], {cwd, stdio: 'ignore', timeout: 60000});
   const require = createRequire(import.meta.url);

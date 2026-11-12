@@ -1,4 +1,4 @@
-/** Cross-source v2 accounting. API/archive/source authentication belongs to the adapter. */
+/** Cross-source v3 accounting. API/archive/source authentication belongs to the adapter. */
 import assert from 'node:assert/strict';
 import {isDeepStrictEqual} from 'node:util';
 import {relative} from 'node:path';
@@ -6,7 +6,7 @@ import {hash,requiredEvidence} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {REPOSITORY,REPOSITORY_ID,WORKFLOW_ID,WORKFLOW_PATH} from './release-policy.mjs';
-export const REPAIR_RECOVERY_POLICY='aihr-cross-source-recovery/v2';
+export const REPAIR_RECOVERY_POLICY='aihr-cross-source-recovery/v3';
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/.test(x);
 const id=x=>Number.isSafeInteger(x)&&x>0;
