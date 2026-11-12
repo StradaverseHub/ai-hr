@@ -20,8 +20,19 @@ export function withoutVerifiedStatutoryTrace<T>(statutory: T): T {
   return rest as T;
 }
 
-/** A canonical run document's payslips with each verified trace set aside (the shape both hash pins build). */
-export function withoutVerifiedTraces<D>(doc: D): D {
-  const d = doc as { payslips: { statutory: unknown }[] } & Record<string, unknown>;
-  return { ...d, payslips: d.payslips.map((p) => ({ ...p, statutory: withoutVerifiedStatutoryTrace(p.statutory) })) } as D;
+/** Verify every STORED payslip's trace (call with the raw rows: a canonical document drops keys such as
+ *  `version`, which the reader rightly refuses). Returns how many were verified. */
+export function verifyStoredTraces(rows: { statutory: unknown }[]): number {
+  for (const r of rows) withoutVerifiedStatutoryTrace(r.statutory);
+  return rows.length;
+}
+
+/** A canonical run document's payslips with the trace set aside — only after `verifyStoredTraces` on the rows. */
+export function withoutTraces<D>(doc: D): D {
+  const d = doc as { payslips: { statutory: Record<string, unknown> }[] } & Record<string, unknown>;
+  return { ...d, payslips: d.payslips.map((p) => {
+    const statutory = { ...p.statutory };
+    delete statutory.statutoryTrace;
+    return { ...p, statutory };
+  }) } as D;
 }

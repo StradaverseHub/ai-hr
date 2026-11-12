@@ -21,7 +21,7 @@ import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {setCp38} from '../core/cp38';
 import {createBatch,generatePayslips,resetProcessedBatch,setPayrollInput,BatchNotDraftError} from '../core/payroll';
 import {createLoan,prefillLoansForBatch} from '../core/loans';
-import {withoutVerifiedTraces} from './helpers/statutory-trace-evidence';
+import {verifyStoredTraces,withoutTraces} from './helpers/statutory-trace-evidence';
 import {listPayComponents,seedPayComponentCatalog,setEmploymentPayComponent} from '../core/pay-components';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {createIndividualTxn} from '../core/payroll-individual-txn';
@@ -136,7 +136,9 @@ describe('payroll processing background job',()=>{
   const sync=await f.snapshot();
   // 69d6ed3c — the golden predates statutory trace v1; each trace is verified against its payslip, then set
   // aside. The full documents (traces included) are still compared sync-vs-job below with toEqual.
-  expect(createHash('sha256').update(JSON.stringify(withoutVerifiedTraces(sync))).digest('hex')).toBe(GOLDEN);
+  const storedTraces=async()=>verifyStoredTraces(await owner.db.select({statutory:schema.payslip.statutory}).from(schema.payslip).where(eq(schema.payslip.batchId,f.batchId)));
+  expect(await storedTraces()).toBe(5);
+  expect(createHash('sha256').update(JSON.stringify(withoutTraces(sync))).digest('hex')).toBe(GOLDEN);
   await resetProcessedBatch(f.a,{batchId:f.batchId,reason:'Fictional job equivalence reset'});
   const before=await f.lastSequence();
   await generatePayslips(f.a,{batchId:f.batchId});
@@ -159,7 +161,8 @@ describe('payroll processing background job',()=>{
   expect(Number(done.metrics.chunks)).toBeGreaterThanOrEqual(4);
   const viaJob=await f.snapshot();
   expect(viaJob).toEqual(sync);
-  expect(createHash('sha256').update(JSON.stringify(withoutVerifiedTraces(viaJob))).digest('hex')).toBe(GOLDEN);
+  expect(await storedTraces()).toBe(5);
+  expect(createHash('sha256').update(JSON.stringify(withoutTraces(viaJob))).digest('hex')).toBe(GOLDEN);
   // The same audit events (the reset's own events precede `started`; the job's notice is kernel bookkeeping).
   expect(await f.eventsSince(started)).toEqual(syncEvents);
   const status=await payrollProcessingStatus(f.a,f.batchId);
